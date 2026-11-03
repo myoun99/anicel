@@ -1835,7 +1835,7 @@ class BrushFrameStore {
     }
     final move = (canvasSize: canvasSize, dx: dx.round(), dy: dy.round());
     var edited = false;
-    for (final key in _celKeysOfCut(cutId)) {
+    for (final key in celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
       _storeHot(key, _moved(key, bakedSurfaceOrNull(key)!, move));
       _fileCels.remove(key);
@@ -1908,7 +1908,7 @@ class BrushFrameStore {
   }) async {
     final answers = <BrushFrameKey, _MovedCel>{};
     _movedAhead = (move: move, answers: answers);
-    final keys = [for (final cutId in cutIds) ..._celKeysOfCut(cutId)];
+    final keys = [for (final cutId in cutIds) ...celKeysOfCut(cutId)];
     var done = 0;
     await Future.wait([
       for (final key in keys)
@@ -2026,7 +2026,12 @@ class BrushFrameStore {
     return named;
   }
 
-  List<BrushFrameKey> _celKeysOfCut(CutId cutId) => <BrushFrameKey>{
+  /// The keys the cels of [cutId] are kept under, AS KEPT: none resolved
+  /// through the link table ([setLinkResolver]), none materialized. What a
+  /// carry of a cut's own cels walks — its keys are what it moves, and the
+  /// table may already name another cut the canonical (a 동기컷's sheets
+  /// going back to a cut an undo restores, I-150-Q3).
+  List<BrushFrameKey> celKeysOfCut(CutId cutId) => <BrushFrameKey>{
     // A set: a clean promoted cel is hot AND file-backed at once.
     for (final key in _bakedSurfaces.keys)
       if (key.cutId == cutId) key,
@@ -2204,7 +2209,7 @@ class BrushFrameStore {
   /// for its exact undo).
   Map<BrushFrameKey, BitmapSurface> bakedSurfacesForCut(CutId cutId) {
     return {
-      for (final key in _celKeysOfCut(cutId)) key: bakedSurfaceOrNull(key)!,
+      for (final key in celKeysOfCut(cutId)) key: bakedSurfaceOrNull(key)!,
     };
   }
 
@@ -2214,7 +2219,7 @@ class BrushFrameStore {
     CutId cutId,
     Map<BrushFrameKey, BitmapSurface> snapshot,
   ) {
-    for (final key in _celKeysOfCut(cutId)) {
+    for (final key in celKeysOfCut(cutId)) {
       _removeBaked(key);
     }
     for (final entry in snapshot.entries) {

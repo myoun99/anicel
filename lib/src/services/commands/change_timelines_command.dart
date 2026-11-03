@@ -5,7 +5,8 @@ import '../../models/timeline_id.dart';
 import '../brush_frame_store.dart';
 import '../command.dart';
 import '../editing/editing_session_state.dart';
-import '../editing/links_without_cuts.dart' show CelRekey;
+import '../editing/links_without_cuts.dart'
+    show CelRekey, SheetInkMove, moveSheetInk, sheetInkMovesBack;
 import '../project_repository.dart';
 
 /// A change of the project's TIMELINES (I-150) — one made, copied, named or
@@ -31,6 +32,8 @@ class ChangeTimelinesCommand implements Command {
     this.links,
     this.rekeys = const [],
     this.brushFrameStore,
+    this.inkMoves = const [],
+    this.sheetInkStores = const [],
   });
 
   final ProjectRepository repository;
@@ -54,6 +57,13 @@ class ChangeTimelinesCommand implements Command {
   /// Where [rekeys] move.
   final BrushFrameStore? brushFrameStore;
 
+  /// The 동기컷 sheets the step hands over, each from its gone canonical
+  /// ([moveSheetInk]).
+  final List<SheetInkMove> inkMoves;
+
+  /// Where [inkMoves] move.
+  final List<BrushFrameStore> sheetInkStores;
+
   _Standing? _before;
 
   @override
@@ -69,6 +79,7 @@ class ChangeTimelinesCommand implements Command {
     if (rekeys.isNotEmpty) {
       brushFrameStore?.rekeyFrames(rekeys);
     }
+    moveSheetInk(sheetInkStores, inkMoves);
     _lay(timelines, current, links ?? project.linkRegistry);
     if (current == project.currentTimelineId) {
       return;
@@ -90,6 +101,7 @@ class ChangeTimelinesCommand implements Command {
         for (final (from, to) in rekeys) (to, from),
       ]);
     }
+    moveSheetInk(sheetInkStores, sheetInkMovesBack(inkMoves));
     _stand(cut: before.cut, gap: before.gap);
   }
 

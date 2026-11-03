@@ -1,0 +1,440 @@
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+
+import '../../helpers/conte_track_fixture.dart';
+import '../../helpers/draw_on_current_frame.dart';
+
+/// 🗣️I-150-Q3 (유저 2026-11-03): 「일단 다른 타임라인끼리는 단순 겸용컷
+/// 작동안하게. 지금 겸용 만드는게 컷 복사하고 다른타임라인에 링크붙여넣기
+/// 뿐인데 이 동작을 겸용컷이라기보다 새 시스템으로 … 이는 겸용컷이면서
+/// 추가로 타임라인까지 완벽동기화된 실질 같은컷 취급」 — a cut linked into
+/// another timeline is a 동기컷: the same cut, standing in both.
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const first = CutId('cut-1');
+
+  EditorSessionManager session() {
+    final s = EditorSessionManager(initialProject: conteTrackProject());
+    addTearDown(s.dispose);
+    return s;
+  }
+
+  Project projectOf(EditorSessionManager s) => s.repository.requireProject();
+
+  /// The cut [id] in the [timeline]-th timeline, open or not.
+  Cut cutIn(EditorSessionManager s, int timeline, CutId id) =>
+      projectOf(s).timelines[timeline].tracks
+          .expand((track) => track.cuts)
+          .singleWhere((cut) => cut.id == id);
+
+  /// Copies cut-1 standing on it, opens a new timeline and link-pastes it
+  /// there — the 동기컷, in the second timeline.
+  Cut linkedIntoANewTimeline(EditorSessionManager s) {
+    s.selectGlobalFrame(1);
+    s.selectTrackRow(conteTrackId);
+    StoryboardToolbarPanelContext(s).copyFrame();
+    s.timelineVerbs.addTimeline();
+    expect(projectOf(s).currentTimeline.number, 2, reason: '⛔전제');
+    StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+    return projectOf(s).tracks.single.cuts.last;
+  }
+
+  void open(EditorSessionManager s, int timeline) =>
+      s.timelineVerbs.openTimeline(projectOf(s).timelines[timeline].id);
+
+  BitmapSurface ink({int seed = 1}) {
+    final pixels = Uint8List(8 * 8 * 4);
+    for (var i = 0; i < pixels.length; i += 1) {
+      pixels[i] = (i * seed * 13 + seed) & 0xFF;
+    }
+    return BitmapSurface(
+      canvasSize: const CanvasSize(width: 16, height: 16),
+      tileSize: 8,
+      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+    );
+  }
+
+  test('the paste puts the SAME cut there — its length, its panels, every '
+      'row linked to the row it copies — named by where it lands', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final source = cutIn(s, 0, first);
+    final project = projectOf(s);
+
+    expect(made.id, isNot(first));
+    expect(made.name, '2', reason: 'I-150-Q5: counting on from the cut in '
+        'front of where it lands');
+    expect(made.duration, source.duration);
+    expect(
+      [for (final row in made.layers) row.timeline],
+      [for (final row in source.layers) row.timeline],
+      reason: 'the timing is the cut\'s, not started over as a 겸용\'s',
+    );
+    expect(
+      [for (final row in made.layers) row.frames],
+      [for (final row in source.layers) row.frames],
+    );
+    for (final (index, row) in source.layers.indexed) {
+      expect(
+        project.linkRegistry.counterpartIn(
+          cutId: first,
+          layerId: row.id,
+          targetCutId: made.id,
+        ),
+        made.layers[index].id,
+        reason: 'the pictures are one',
+      );
+    }
+    expect(project.linkRegistry.syncOf(made.id)?.cuts, [first, made.id]);
+    expect(
+      Project.fromJson(project.toJson()).linkRegistry.syncOf(first)?.cuts,
+      [first, made.id],
+      reason: 'a saved project opens with its 동기컷',
+    );
+  });
+
+  test('the paste undone and done again is the same 동기컷 again', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+
+    s.historyManager.undo();
+    s.historyManager.redo();
+
+    expect(projectOf(s).tracks.single.cuts.last, made);
+    expect(projectOf(s).linkRegistry.syncOf(made.id)?.cuts, [first, made.id]);
+  });
+
+  test('an edit of either cut is the other\'s: the length drawn in the '
+      'second timeline, a camera key put on in the first', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    s.cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: {made.id: 12},
+      afterDurations: {made.id: 16},
+    );
+    expect(cutIn(s, 0, first).duration, 16);
+
+    open(s, 0);
+    final pose = CameraPose(center: CanvasPoint(x: 5, y: 5), zoom: 1.5);
+    s.cutCommandCoordinator.setCutCameraKeyframe(
+      cutId: first,
+      frameIndex: 3,
+      pose: pose,
+    );
+    expect(cutIn(s, 1, made.id).camera.keyframes[3], pose);
+    expect(cutIn(s, 1, made.id).name, '2', reason: 'its place is its own');
+
+    s.historyManager.undo();
+    expect(cutIn(s, 1, made.id).camera.keyframes, isEmpty);
+    s.historyManager.undo();
+    s.historyManager.undo();
+    expect(cutIn(s, 0, first).duration, 12);
+    expect(cutIn(s, 1, made.id).duration, 12);
+  });
+
+  test('a drawing on one is on the other — the cel, where it stands', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    s.selectGlobalFrame(projectOf(s).tracks.single.cuts.first.duration + 1);
+    expect(s.requireActiveCut.id, made.id, reason: '⛔전제');
+    s.selectLayer(made.layers.first.id);
+    drawOnCurrentFrame(s);
+
+    final drawn = projectOf(s).tracks.single.cuts.last;
+    final source = cutIn(s, 0, first);
+    expect(source.layers.first.timeline, drawn.layers.first.timeline);
+    final cel = drawn.layers.first.frames.last.id;
+    final store = s.renderCaches.brushFrameStore;
+    final picture = store.bakedSurfaceOrNull(
+      s.brushFrameKeyForCut(drawn, drawn.layers.first.id, cel),
+    );
+    expect(picture, isNotNull, reason: '⛔전제: a drawing');
+    expect(
+      store.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(source, source.layers.first.id, cel),
+      ),
+      same(picture),
+    );
+
+    s.historyManager.undo();
+    expect(cutIn(s, 0, first).layers.first, isNot(source.layers.first));
+    expect(
+      cutIn(s, 1, made.id).layers.first.timeline,
+      cutIn(s, 0, first).layers.first.timeline,
+      reason: 'the undo takes the cel off both',
+    );
+    s.historyManager.redo();
+    expect(cutIn(s, 0, first).layers.first, source.layers.first);
+    expect(cutIn(s, 1, made.id).layers.first, drawn.layers.first);
+  });
+
+  test('drawn on in the first timeline, the cel is the second\'s too', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    open(s, 0);
+    s.selectGlobalFrame(1);
+    s.selectLayer(cutIn(s, 0, first).layers.first.id);
+    drawOnCurrentFrame(s);
+
+    expect(
+      cutIn(s, 1, made.id).layers.first.timeline,
+      cutIn(s, 0, first).layers.first.timeline,
+    );
+    expect(
+      cutIn(s, 1, made.id).layers.first.frames,
+      cutIn(s, 0, first).layers.first.frames,
+    );
+  });
+
+  test('what is written on one cut\'s sheets is on the other\'s — one '
+      'timesheet page, one conte block, kept once', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final caches = s.renderCaches;
+    final page = ink();
+    final block = ink(seed: 2);
+    caches.timesheetInkStore.storeBakedSurface(
+      timesheetInkPageKey(made.id, 0),
+      page,
+    );
+    caches.conteInkRowStore.storeBakedSurface(
+      conteInkRowKey(made.id, 'block-1'),
+      block,
+    );
+
+    expect(
+      caches.timesheetInkStore.bakedSurfaceOrNull(
+        timesheetInkPageKey(first, 0),
+      ),
+      same(page),
+    );
+    expect(
+      caches.conteInkRowStore.bakedSurfaceOrNull(
+        conteInkRowKey(first, 'block-1'),
+      ),
+      same(block),
+    );
+    expect(caches.timesheetInkStore.bakedSurfacesForCut(made.id), isEmpty);
+    expect(caches.timesheetInkStore.bakedSurfacesForCut(first), hasLength(1));
+  });
+
+  test('undoing the paste takes the cut and the sync back, and the first '
+      'cut is as it was', () {
+    final s = session();
+    final before = projectOf(s);
+    linkedIntoANewTimeline(s);
+
+    s.historyManager.undo();
+
+    final project = projectOf(s);
+    expect(project.linkRegistry.syncs, isEmpty);
+    expect(project.linkRegistry.groups, before.linkRegistry.groups);
+    expect(project.tracks.single.cuts, hasLength(1));
+    expect(cutIn(s, 0, first), before.tracks.first.cuts.first);
+  });
+
+  test('the first timeline\'s cut deleted, the second is a cut of its own '
+      'and the sheets\' paper — its handwriting moves to it, and back with '
+      'the undo', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final caches = s.renderCaches;
+    final page = ink();
+    caches.timesheetInkStore.storeBakedSurface(
+      timesheetInkPageKey(made.id, 0),
+      page,
+    );
+    open(s, 0);
+
+    s.cutCommandCoordinator.deleteCut(cutId: first);
+
+    expect(projectOf(s).linkRegistry.syncs, isEmpty);
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(made.id).values,
+      [same(page)],
+    );
+    expect(caches.timesheetInkStore.bakedSurfacesForCut(first), isEmpty);
+
+    s.historyManager.undo();
+    expect(projectOf(s).linkRegistry.syncOf(made.id)?.cuts, [first, made.id]);
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(first).values,
+      [same(page)],
+    );
+  });
+
+  test('a timeline deleted takes its cut out of the sync, and its sheets\' '
+      'handwriting to the cut left', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final caches = s.renderCaches;
+    final page = ink();
+    caches.timesheetInkStore.storeBakedSurface(
+      timesheetInkPageKey(first, 0),
+      page,
+    );
+
+    s.timelineVerbs.deleteTimeline(projectOf(s).timelines.first.id);
+
+    expect(projectOf(s).linkRegistry.syncs, isEmpty);
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(made.id).values,
+      [same(page)],
+    );
+    s.historyManager.undo();
+    expect(projectOf(s).linkRegistry.syncOf(first)?.cuts, [first, made.id]);
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(first).values,
+      [same(page)],
+    );
+  });
+
+  test('the second timeline duplicated, the copy of the 동기컷 is a cut of '
+      'its own, with the sheets\' handwriting it showed', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final caches = s.renderCaches;
+    caches.timesheetInkStore.storeBakedSurface(
+      timesheetInkPageKey(made.id, 0),
+      ink(),
+    );
+
+    s.timelineVerbs.duplicateTimeline(projectOf(s).timelines[1].id, 'copy');
+
+    final copy = projectOf(s).tracks.single.cuts.last;
+    expect(copy.id, isNot(made.id), reason: '⛔전제: the copy is open');
+    expect(projectOf(s).linkRegistry.syncOf(copy.id), isNull);
+    expect(projectOf(s).linkRegistry.syncOf(made.id)?.cuts, [first, made.id]);
+    expect(caches.timesheetInkStore.bakedSurfacesForCut(copy.id), hasLength(1));
+  });
+
+  test('linked into a third timeline, the cut joins the same sync — one '
+      'cut standing in three', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    s.timelineVerbs.addTimeline();
+
+    StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+
+    final third = projectOf(s).tracks.single.cuts.last;
+    expect(
+      projectOf(s).linkRegistry.syncs.single.cuts,
+      [first, made.id, third.id],
+    );
+    expect(third.duration, made.duration);
+  });
+
+  test('a row deleted from one is gone from the other, and the undo puts '
+      'it back in both', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final rowsBefore = [for (final row in cutIn(s, 0, first).layers) row.id];
+
+    s.cutCommandCoordinator.deleteLayer(
+      cutId: made.id,
+      layerId: made.layers.first.id,
+    );
+
+    expect(cutIn(s, 0, first).layers, hasLength(rowsBefore.length - 1));
+    expect(
+      [for (final row in cutIn(s, 0, first).layers) row.name],
+      [for (final row in cutIn(s, 1, made.id).layers) row.name],
+    );
+    s.historyManager.undo();
+    expect([for (final row in cutIn(s, 0, first).layers) row.id], rowsBefore);
+  });
+
+  test('linked into the timeline the sync stands in already, it is a 겸용 '
+      'of the cut there — a sync stands in a timeline once', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    open(s, 0);
+    s.selectGlobalFrame(1);
+    s.selectTrackRow(conteTrackId);
+    StoryboardToolbarPanelContext(s).copyFrame();
+    open(s, 1);
+
+    StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+
+    final project = projectOf(s);
+    expect(project.linkRegistry.syncs.single.cuts, [first, made.id]);
+    final again = project.tracks.single.cuts
+        .where((cut) => cut.id != made.id && cut.name != '1')
+        .single;
+    expect(
+      project.linkRegistry.counterpartIn(
+        cutId: made.id,
+        layerId: made.layers.first.id,
+        targetCutId: again.id,
+      ),
+      isNotNull,
+      reason: 'a 겸용 of the cut standing here',
+    );
+    expect(again.duration, isNot(made.duration), reason: 'a 겸용 starts anew');
+  });
+
+  test('a row added to one is added to the other — a drawing row by its '
+      'link, a direction row by the sync — and the undo takes both', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final layers = s.activeCutControllers.layerController;
+    expect(s.requireActiveCut.id, made.id, reason: '⛔전제');
+    final rowsBefore = [for (final row in cutIn(s, 0, first).layers) row.id];
+
+    layers.addLayer(
+      layer: Layer(id: const LayerId('row-b'), name: 'B', frames: const []),
+    );
+    layers.addLayer(
+      layer: Layer(
+        id: const LayerId('row-d'),
+        name: 'Direction 2',
+        kind: LayerKind.instruction,
+        frames: const [],
+      ),
+    );
+
+    final source = cutIn(s, 0, first);
+    expect(
+      projectOf(s).linkRegistry.counterpartIn(
+        cutId: made.id,
+        layerId: const LayerId('row-b'),
+        targetCutId: first,
+      ),
+      isNotNull,
+    );
+    expect(
+      [for (final row in source.layers) row.name],
+      [for (final row in projectOf(s).tracks.single.cuts.last.layers) row.name],
+    );
+    expect(
+      projectOf(s).linkRegistry.syncOf(first)?.cuts,
+      [first, made.id],
+      reason: 'the table rebuilt for the new link keeps the sync',
+    );
+
+    s.historyManager.undo();
+    s.historyManager.undo();
+    expect([for (final row in cutIn(s, 0, first).layers) row.id], rowsBefore);
+    expect(
+      [for (final row in projectOf(s).tracks.single.cuts.last.layers) row.id],
+      [for (final row in made.layers) row.id],
+    );
+  });
+}

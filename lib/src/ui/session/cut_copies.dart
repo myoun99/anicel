@@ -45,10 +45,13 @@ class CutCopies {
   /// The sheets' ink is owned the way the load prunes it (`_InkOwners`): a
   /// conte cell by its block, the others by their cut — the envelope's by
   /// the cut that OWNS the envelope, the representative when [source]
-  /// shares one ([cutEnvelopeInkOwner]).
+  /// shares one ([cutEnvelopeInkOwner]) — and a 동기컷's conte and timesheet
+  /// by its sync's canonical, the paper its cuts all write on
+  /// (`syncedSheetInkKey`).
   CutPictures shownBy(Cut source) {
     final store = _renderCaches.brushFrameStore;
     final project = _project.repository.requireProject();
+    final paper = project.linkRegistry.syncCanonicalOf(source.id);
     return CutPictures(
       cels: {
         for (final row in source.layers)
@@ -58,13 +61,11 @@ class CutCopies {
             keyOf: (cel) => _project.brushFrameKeyForCut(source, row.id, cel),
           ),
       },
-      conte: _renderCaches.conteInkRowStore.bakedSurfacesForCut(source.id),
+      conte: _renderCaches.conteInkRowStore.bakedSurfacesForCut(paper),
       envelope: _renderCaches.envelopeInkStore.bakedSurfacesForCut(
         cutEnvelopeInkOwner(project, source.id),
       ),
-      timesheet: _renderCaches.timesheetInkStore.bakedSurfacesForCut(
-        source.id,
-      ),
+      timesheet: _renderCaches.timesheetInkStore.bakedSurfacesForCut(paper),
     );
   }
 

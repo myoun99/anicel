@@ -112,7 +112,7 @@ class LinkDuplicateLayerCommand implements Command {
         );
       }
       return laid.project.copyWith(
-        linkRegistry: LayerLinkRegistry(
+        linkRegistry: laid.project.linkRegistry.copyWith(
           groups: [
             ...laid.groups,
             ..._copiedFoldersTied(project, laid.project),

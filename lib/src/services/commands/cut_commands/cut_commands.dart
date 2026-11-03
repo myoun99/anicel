@@ -512,6 +512,7 @@ class _CutCommands {
         editingSession: _coordinator.editingSession,
         cutId: cutId,
         brushFrameStore: _coordinator.brushFrameStore,
+        sheetInkStores: _coordinator.sheetInkStores,
       ),
     );
   }
@@ -526,6 +527,7 @@ class _CutCommands {
           editingSession: _coordinator.editingSession,
           cutId: cutId,
           brushFrameStore: _coordinator.brushFrameStore,
+          sheetInkStores: _coordinator.sheetInkStores,
         ),
     ]);
   }

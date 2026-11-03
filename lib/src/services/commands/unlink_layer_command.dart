@@ -103,7 +103,7 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
         }
       }
       return current.copyWith(
-        linkRegistry: LayerLinkRegistry(groups: groups),
+        linkRegistry: current.linkRegistry.copyWith(groups: groups),
       );
     });
 

@@ -100,7 +100,9 @@ class CreateLinkedCutCommand implements Command {
   /// 🗣️I-150 (유저 2026-11-03): 「링크붙여넣기는 물론 겸용컷으로 만들면서
   /// 붙여넣는단느낌. 그리고 이를 통해 다른트랙에도 링크붙여넣기 가능」 — a
   /// linked paste is this cut, made where the paste lands: another place
-  /// of the track, another track, another timeline.
+  /// of the track, another track. ↩️Another timeline too, until I-150-Q3
+  /// (「다른 타임라인끼리는 단순 겸용컷 작동안하게」): a cut put down there
+  /// is a 동기컷 (`CreateSyncedCutCommand`).
   final CutLanding? landing;
 
   CutId? _previousActiveCutId;
@@ -168,7 +170,7 @@ class CreateLinkedCutCommand implements Command {
           plannedGroupId: newGroupIdBySource[layer.id],
         );
       }
-      final registry = LayerLinkRegistry(groups: groups);
+      final registry = project.linkRegistry.copyWith(groups: groups);
 
       final inserted = projectWithCutInserted(
         project,

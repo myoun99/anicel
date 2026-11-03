@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'brush_frame_key.dart';
 import 'cut_id.dart';
+import 'cut_sync.dart';
 import 'layer_id.dart';
 import 'track_id.dart';
 
@@ -121,16 +122,39 @@ class LayerLinkGroup {
 /// physical entity per group, which is what makes drift impossible and
 /// lets revision-based cache validation work unchanged.
 class LayerLinkRegistry {
-  LayerLinkRegistry({List<LayerLinkGroup> groups = const []})
-    : groups = List.unmodifiable(groups);
+  LayerLinkRegistry({
+    List<LayerLinkGroup> groups = const [],
+    List<CutSync> syncs = const [],
+  }) : groups = List.unmodifiable(groups),
+       syncs = List.unmodifiable(syncs);
 
   static final LayerLinkRegistry empty = LayerLinkRegistry();
 
   final List<LayerLinkGroup> groups;
 
-  bool get isEmpty => groups.isEmpty;
+  /// The cuts kept one across timelines (동기컷, [CutSync]) — here beside
+  /// the rows kept one, so every step that puts the table back puts both.
+  ///
+  /// 🚨A table built anew from [groups] alone drops them: a step that
+  /// changes the groups goes through [copyWith].
+  final List<CutSync> syncs;
 
-  bool get isNotEmpty => groups.isNotEmpty;
+  bool get isEmpty => groups.isEmpty && syncs.isEmpty;
+
+  bool get isNotEmpty => !isEmpty;
+
+  /// Each synced cut's sync, read once like [_groupOfMember].
+  late final Map<CutId, CutSync> _syncOfCut = {
+    for (final sync in syncs)
+      for (final cut in sync.cuts) cut: sync,
+  };
+
+  /// The sync [cutId] is one of, or null when it is a cut of its own.
+  CutSync? syncOf(CutId cutId) => _syncOfCut[cutId];
+
+  /// The cut whose id [cutId]'s sheets keep their handwriting under — its
+  /// sync's canonical, or itself.
+  CutId syncCanonicalOf(CutId cutId) => _syncOfCut[cutId]?.canonical ?? cutId;
 
   /// Each member's group, the first to hold it. A registry never changes,
   /// so this is read once.
@@ -221,12 +245,21 @@ class LayerLinkRegistry {
     );
   }
 
-  LayerLinkRegistry copyWith({List<LayerLinkGroup>? groups}) {
-    return LayerLinkRegistry(groups: groups ?? this.groups);
+  LayerLinkRegistry copyWith({
+    List<LayerLinkGroup>? groups,
+    List<CutSync>? syncs,
+  }) {
+    return LayerLinkRegistry(
+      groups: groups ?? this.groups,
+      syncs: syncs ?? this.syncs,
+    );
   }
 
   Map<String, dynamic> toJson() => {
     'groups': groups.map((group) => group.toJson()).toList(),
+    // Omitted while there is none, as the registry itself is: every file
+    // with no synced cut reads as it did.
+    if (syncs.isNotEmpty) 'syncs': [for (final sync in syncs) sync.toJson()],
   };
 
   factory LayerLinkRegistry.fromJson(Map<String, dynamic> json) {
@@ -235,17 +268,24 @@ class LayerLinkRegistry {
         for (final group in json['groups'] as List? ?? const [])
           LayerLinkGroup.fromJson(group as Map<String, dynamic>),
       ],
+      syncs: [
+        for (final sync in json['syncs'] as List? ?? const [])
+          CutSync.fromJson(sync as Map<String, dynamic>),
+      ],
     );
   }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is LayerLinkRegistry && listEquals(other.groups, groups);
+      other is LayerLinkRegistry &&
+          listEquals(other.groups, groups) &&
+          listEquals(other.syncs, syncs);
 
   @override
-  int get hashCode => Object.hashAll(groups);
+  int get hashCode =>
+      Object.hash(Object.hashAll(groups), Object.hashAll(syncs));
 
   @override
-  String toString() => 'LayerLinkRegistry(groups: $groups)';
+  String toString() => 'LayerLinkRegistry(groups: $groups, syncs: $syncs)';
 }

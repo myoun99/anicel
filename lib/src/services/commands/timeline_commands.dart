@@ -1,4 +1,3 @@
-import '../../models/layer_link_registry.dart';
 import '../../models/project_timeline.dart';
 import '../../models/timeline_id.dart';
 import '../brush_frame_store.dart';
@@ -23,6 +22,7 @@ class TimelineCommands {
     required this.editingSession,
     required this.historyManager,
     this.brushFrameStore,
+    this.sheetInkStores = const [],
   });
 
   final ProjectRepository repository;
@@ -31,6 +31,9 @@ class TimelineCommands {
 
   /// Where a deleted timeline's canonical cels re-key.
   final BrushFrameStore? brushFrameStore;
+
+  /// Where a deleted timeline's 동기컷 canonicals hand their sheets over.
+  final List<BrushFrameStore> sheetInkStores;
 
   List<ProjectTimeline> get _timelines => repository.requireProject().timelines;
 
@@ -66,10 +69,11 @@ class TimelineCommands {
       [...project.timelines]..insert(at + 1, copy),
       copy.id,
       links: (
-        registry: LayerLinkRegistry(
+        registry: registry.copyWith(
           groups: [...registry.groups, ...linkGroupsOfACopy(registry, ids)],
         ),
         rekeys: const [],
+        inkMoves: const [],
       ),
     );
     return ids;
@@ -131,7 +135,7 @@ class TimelineCommands {
     String description,
     List<ProjectTimeline> timelines,
     TimelineId current, {
-    ({LayerLinkRegistry registry, List<CelRekey> rekeys})? links,
+    LinksLeft? links,
   }) => historyManager.execute(
     ChangeTimelinesCommand(
       repository: repository,
@@ -142,6 +146,8 @@ class TimelineCommands {
       links: links?.registry,
       rekeys: links?.rekeys ?? const [],
       brushFrameStore: brushFrameStore,
+      inkMoves: links?.inkMoves ?? const [],
+      sheetInkStores: sheetInkStores,
     ),
   );
 }

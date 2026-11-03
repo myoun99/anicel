@@ -261,8 +261,15 @@ class CutClipboard implements BringsMedia {
 
   bool get canPasteLinked => _cutsToLink.isNotEmpty && _landing != null;
 
-  /// A 겸용 cut of each of [_cutsToLink] (`CreateLinkedCutCommand`), as ONE
-  /// block where the paste lands — on any track, in the timeline open now.
+  /// Each of [_cutsToLink] put down linked, as ONE block where the paste
+  /// lands in the timeline open now: a 겸용 cut of a cut that stands in it
+  /// (`CreateLinkedCutCommand`), and of a cut of ANOTHER timeline the same
+  /// cut made one of this one too — a 동기컷 (`CreateSyncedCutCommand`).
+  ///
+  /// 🗣️I-150-Q3 (유저 2026-11-03): 「일단 다른 타임라인끼리는 단순 겸용컷
+  /// 작동안하게 … 이 동작을 겸용컷이라기보다 새 시스템으로」. A sync stands
+  /// in a timeline once: a cut whose sync has a cut here already is made a
+  /// 겸용 of that one.
   void pasteLinked() {
     final cuts = _cutsToLink;
     final landing = _landing;
@@ -271,14 +278,38 @@ class CutClipboard implements BringsMedia {
     }
     _project.historyManager.runAsOneStep('Paste cuts linked', () {
       for (final (at, cutId) in cuts.indexed) {
-        _project.cutCommandCoordinator.createLinkedCut(
-          sourceCutId: cutId,
-          landing: _nth(landing, at),
-        );
+        final coordinator = _project.cutCommandCoordinator;
+        switch (_standingHere(cutId)) {
+          case final here?:
+            coordinator.createLinkedCut(
+              sourceCutId: here,
+              landing: _nth(landing, at),
+            );
+          case null:
+            coordinator.createSyncedCut(
+              sourceCutId: cutId,
+              landing: _nth(landing, at),
+            );
+        }
       }
     });
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
+  }
+
+  /// [cutId] when it stands in the timeline open, else the cut of its sync
+  /// that does — null when neither does.
+  CutId? _standingHere(CutId cutId) {
+    final project = _project.repository.requireProject();
+    final here = {
+      for (final track in project.tracks)
+        for (final cut in track.cuts) cut.id,
+    };
+    if (here.contains(cutId)) {
+      return cutId;
+    }
+    final sync = project.linkRegistry.syncOf(cutId)?.cuts ?? const [];
+    return sync.where(here.contains).firstOrNull;
   }
 
   /// [cut] with its rows' terms spelled as [respell] says ([Arrival]). A

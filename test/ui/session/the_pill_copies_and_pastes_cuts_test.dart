@@ -279,8 +279,11 @@ void main() {
     expect(linkedCutSiblings(project, cutId: made), [const CutId('cut-10')]);
   });
 
+  // ↩️It made a 겸용 cut there until I-150-Q3 (「다른 타임라인끼리는 단순
+  // 겸용컷 작동안하게」): it is the same cut, a 동기컷
+  // (a_cut_linked_into_another_timeline_is_the_same_cut_test).
   test('🗣️「다른트랙에 겸용컷만드는게 가능」: copied in one timeline, a '
-      'linked paste makes its 겸용 cut in the timeline open now', () {
+      'linked paste makes the cut one of the timeline open now', () {
     final s = session();
     standOnV(s, 1).copyFrame();
     s.timelineVerbs.addTimeline();
@@ -296,6 +299,10 @@ void main() {
     final made = track.cuts.last;
     expect(linkedCutSiblings(project, cutId: made.id), [
       const CutId('cut-10'),
+    ]);
+    expect(project.linkRegistry.syncOf(made.id)?.cuts, [
+      const CutId('cut-10'),
+      made.id,
     ]);
     expect(
       {

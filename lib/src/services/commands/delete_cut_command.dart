@@ -17,6 +17,7 @@ class DeleteCutCommand implements Command {
     required this.editingSession,
     required this.cutId,
     this.brushFrameStore,
+    this.sheetInkStores = const [],
   });
 
   final ProjectRepository repository;
@@ -27,6 +28,11 @@ class DeleteCutCommand implements Command {
   /// surviving member promotes and the cels re-key onto it.
   final BrushFrameStore? brushFrameStore;
 
+  /// Needed when the deleted cut is a 동기컷's canonical: its sheets'
+  /// handwriting moves to the cut that takes the sync over
+  /// ([moveSheetInk]).
+  final List<BrushFrameStore> sheetInkStores;
+
   // R28 #14: the replacement-cut inputs are gone. Deleting the only cut
   // empties the track instead of conjuring a stand-in.
 
@@ -35,8 +41,9 @@ class DeleteCutCommand implements Command {
   int? _originalIndex;
   CutId? _previousActiveCutId;
   LayerLinkRegistry? _registryBefore;
-  ({LayerLinkRegistry registry, List<CelRekey> rekeys})? _swept;
+  LinksLeft? _swept;
   List<CelRekey> get _rekeys => _swept?.rekeys ?? const [];
+  List<SheetInkMove> get _inkMoves => _swept?.inkMoves ?? const [];
   bool _hasExecuted = false;
 
   /// ⑱'s two undo anchors: the neighbour whose leading gap grew, and the
@@ -89,6 +96,7 @@ class DeleteCutCommand implements Command {
     if (_rekeys.isNotEmpty) {
       brushFrameStore?.rekeyFrames(_rekeys);
     }
+    moveSheetInk(sheetInkStores, _inkMoves);
     repository.updateProject(
       (current) => current.copyWith(linkRegistry: swept.registry),
     );
@@ -171,6 +179,7 @@ class DeleteCutCommand implements Command {
         for (final (from, to) in _rekeys) (to, from),
       ]);
     }
+    moveSheetInk(sheetInkStores, sheetInkMovesBack(_inkMoves));
     final registryBefore = _registryBefore;
     if (registryBefore != null) {
       repository.restoreLinkRegistry(registryBefore);

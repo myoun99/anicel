@@ -243,6 +243,7 @@ class EditorSessionManager extends ChangeNotifier
       editingSession: editingSession,
       historyManager: historyManager,
       brushFrameStore: renderCaches.brushFrameStore,
+      sheetInkStores: renderCaches.sheetInkStores,
     );
     activeCutControllers.rebuild();
     renderCaches.attach();

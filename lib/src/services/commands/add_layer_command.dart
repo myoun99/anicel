@@ -172,7 +172,7 @@ class AddLayerCommand implements Command {
       }
 
       return next.copyWith(
-        linkRegistry: LayerLinkRegistry(
+        linkRegistry: next.linkRegistry.copyWith(
           groups: [
             ...next.linkRegistry.groups,
             LayerLinkGroup(

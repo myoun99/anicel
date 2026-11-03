@@ -60,6 +60,35 @@ class _LinkCommands {
     );
   }
 
+  /// 동기컷 생성 (I-150-Q3): [sourceCutId] — a cut of another timeline —
+  /// made a cut of the timeline open as well, the same cut, standing on
+  /// [landing] and named as a linked paste is there (I-150-Q5 「지금대로」:
+  /// counting on from the cut in front of it). One undo step; the new cut
+  /// becomes active.
+  void createSyncedCut({
+    required CutId sourceCutId,
+    required CutLanding landing,
+  }) {
+    final project = _coordinator.repository.requireProject();
+    final plan = planCreateSyncedCutCommandInput(
+      project: project,
+      sourceCut: requireCut(project, sourceCutId),
+    );
+    _coordinator.historyManager.execute(
+      CreateSyncedCutCommand(
+        repository: _coordinator.repository,
+        editingSession: _coordinator.editingSession,
+        sourceCutId: sourceCutId,
+        newCutId: plan.newCutId,
+        newName: _nameWhere(landing, sourceCutId: sourceCutId),
+        layerIdMap: plan.layerIdMap,
+        newGroupIdBySource: plan.newGroupIdBySource,
+        newSyncId: plan.newSyncId,
+        landing: landing,
+      ),
+    );
+  }
+
   /// The name a 겸용 cut told none takes: counting on from the cut in front
   /// of where it lands — its source, when it lands right behind it.
   String _nameWhere(CutLanding? landing, {required CutId sourceCutId}) {

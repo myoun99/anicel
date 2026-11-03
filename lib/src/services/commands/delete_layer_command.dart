@@ -1,7 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_link_registry.dart';
 import 'link_registry_snapshot_command.dart';
 import '../project_lookup.dart';
 import 'link_mirror.dart';
@@ -83,7 +82,7 @@ class DeleteLayerCommand extends LinkRegistrySnapshotCommand {
     final deletedIds = {for (final target in _targets!) target.layerId};
     repository.updateProject(
       (current) => current.copyWith(
-        linkRegistry: LayerLinkRegistry(
+        linkRegistry: current.linkRegistry.copyWith(
           groups: [
             for (final group in current.linkRegistry.groups)
               if (!group.members.any(

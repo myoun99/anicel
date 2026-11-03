@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_sync.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
@@ -104,6 +105,38 @@ void main() {
       final links = registry();
       expectJsonRoundTrip(links, LayerLinkRegistry.fromJson);
       expect(LayerLinkRegistry.fromJson(const {'groups': []}).isEmpty, isTrue);
+    });
+
+    test('a table\'s syncs round-trip with it, and one with none writes '
+        'none — every file without a 동기컷 reads as it did (I-150-Q3)', () {
+      final synced = registry().copyWith(
+        syncs: [
+          CutSync(id: 'sync-1', cuts: const [CutId('cut-a'), CutId('cut-b')]),
+        ],
+      );
+      expectJsonRoundTrip(synced, LayerLinkRegistry.fromJson);
+      expect(registry().toJson().containsKey('syncs'), isFalse);
+      expect(
+        LayerLinkRegistry.fromJson(synced.toJson())
+            .syncCanonicalOf(const CutId('cut-b')),
+        const CutId('cut-a'),
+      );
+    });
+
+    test('a table with a sync and no group is no empty table', () {
+      final synced = LayerLinkRegistry(
+        syncs: [
+          CutSync(id: 'sync-1', cuts: const [CutId('cut-a'), CutId('cut-b')]),
+        ],
+      );
+      expect(synced.isEmpty, isFalse);
+    });
+
+    test('a sync holds two cuts or more', () {
+      expect(
+        () => CutSync(id: 'lone', cuts: const [CutId('cut-a')]),
+        throwsArgumentError,
+      );
     });
 
     test('a group must have at least one member', () {

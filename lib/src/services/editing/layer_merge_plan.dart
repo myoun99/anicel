@@ -910,7 +910,7 @@ LayerLinkRegistry _linksAfter(
       ),
     );
   }
-  return LayerLinkRegistry(groups: groups);
+  return links.copyWith(groups: groups);
 }
 
 /// What the result is baked of: the rows [taking] takes, each shown (Q7),

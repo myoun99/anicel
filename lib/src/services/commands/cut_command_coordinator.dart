@@ -51,6 +51,7 @@ import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'create_cut_command.dart';
 import 'create_linked_cut_command.dart';
+import 'create_synced_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
@@ -146,6 +147,7 @@ class CutCommandCoordinator {
     required this.editingSession,
     required this.historyManager,
     this.brushFrameStore,
+    this.sheetInkStores = const [],
   });
 
   final ProjectRepository repository;
@@ -155,6 +157,10 @@ class CutCommandCoordinator {
   /// Optional app-level brush stroke store; when present, canvas resizes
   /// translate the cut's strokes to honor the chosen anchor.
   final BrushFrameStore? brushFrameStore;
+
+  /// The sheets' handwriting stores — where a deleted 동기컷 canonical's
+  /// handwriting moves to the cut taking its sync over.
+  final List<BrushFrameStore> sheetInkStores;
 
   // ── the cut commands: their own object, in their own file ───────────
   //
@@ -512,6 +518,10 @@ class CutCommandCoordinator {
     name: name,
     landing: landing,
   );
+  void createSyncedCut({
+    required CutId sourceCutId,
+    required CutLanding landing,
+  }) => _links.createSyncedCut(sourceCutId: sourceCutId, landing: landing);
   void unlinkLayer({required CutId cutId, required LayerId layerId}) =>
       _links.unlinkLayer(cutId: cutId, layerId: layerId);
   void convertCutToLinked({

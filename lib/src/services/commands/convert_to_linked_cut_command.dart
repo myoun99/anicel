@@ -127,7 +127,7 @@ class ConvertToLinkedCutCommand implements Command {
       (current) => _withCutsLayers(
         current,
         rows.layersByCut,
-      ).copyWith(linkRegistry: LayerLinkRegistry(groups: groups)),
+      ).copyWith(linkRegistry: current.linkRegistry.copyWith(groups: groups)),
     );
     _hasExecuted = true;
   }
@@ -385,7 +385,7 @@ class ConvertToLinkedCutCommand implements Command {
         union.copy,
         from: from,
         into: into,
-        registry: LayerLinkRegistry(groups: groups),
+        registry: _registryBefore!.copyWith(groups: groups),
       );
       into.layers.insert(_landingIndex(into.layers, copy), copy);
       copies.add(copy.id);
@@ -407,7 +407,7 @@ class ConvertToLinkedCutCommand implements Command {
     // The rows a copy's effects name, at their counterparts in [into] —
     // known once every copy is made, as a copy's base is
     // ([_seatedOnItsBase]); one that reaches no row there names none.
-    final registry = LayerLinkRegistry(groups: groups);
+    final registry = _registryBefore!.copyWith(groups: groups);
     for (final (index, row) in into.layers.indexed) {
       if (copies.contains(row.id)) {
         into.layers[index] = row.copyWith(

@@ -310,6 +310,40 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   );
 }
 
+/// Plans a 동기컷 생성 (I-150-Q3, `CreateSyncedCutCommand`): a new cut id,
+/// a row id for EVERY row of [sourceCut] — the rows that link are linked,
+/// the direction rows the new cut holds of its own — registry group ids for
+/// the rows that link, and the sync's id. FrameIds are not mapped: the cut
+/// is the same cut, its pictures one.
+({
+  CutId newCutId,
+  Map<LayerId, LayerId> layerIdMap,
+  Map<LayerId, String> newGroupIdBySource,
+  String newSyncId,
+})
+planCreateSyncedCutCommandInput({
+  required Project project,
+  required Cut sourceCut,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  final minted = _mintLinkIds(ids, [
+    for (final layer in sourceCut.layers)
+      if (layer.kind.linksIntoLinkedCut) layer,
+  ]);
+  return (
+    newCutId: mintCutId(),
+    layerIdMap: {
+      for (final layer in sourceCut.layers)
+        layer.id: minted.layerIdMap[layer.id] ?? ids.nextLayerId(),
+    },
+    newGroupIdBySource: minted.newGroupIdBySource,
+    newSyncId: _firstAvailableId(
+      prefix: 'sync',
+      usedIds: {for (final sync in project.linkRegistry.syncs) sync.id},
+    ),
+  );
+}
+
 /// Whether [layer]'s copy in another cut is born covering that cut with a
 /// panel of its own (F-99): a COVERING row is — the conte row, and the image
 /// row, both born with a frame wherever they are made.

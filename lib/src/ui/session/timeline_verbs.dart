@@ -30,6 +30,7 @@ class TimelineVerbs {
          editingSession: timeline.editingSession,
          historyManager: project.historyManager,
          brushFrameStore: renderCaches.brushFrameStore,
+         sheetInkStores: renderCaches.sheetInkStores,
        );
 
   final ProjectAccess _project;
