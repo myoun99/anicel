@@ -36,6 +36,7 @@ import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
+import 'storyboard/timeline_list.dart' show timelineListButton;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent, LayerRailId;
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
@@ -1134,6 +1135,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // (F-443, 유저 2026-10-23: 「이거는 자리차지하고
                       // 레전드행에도 버튼있는거 감수」) — as the timeline's.
                       onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
+                    ),
+                    // The legend's heading is the timeline list (I-150).
+                    legendHeading: timelineListButton(
+                      context,
+                      _session.timelineVerbs,
                     ),
                     legendOnionSkinOn:
                         _session.onionSkin.displayedLayersOnionSkinEnabled,

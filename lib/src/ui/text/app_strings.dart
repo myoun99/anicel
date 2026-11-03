@@ -1260,6 +1260,13 @@ enum AppStrings {
   /// separately (storyboard → conte, conte → conteSheet).
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
+  String get timelines => _s('timelines');
+  String timelineNumbered(int number) =>
+      _s('timelineNumberedTemplate').replaceAll('{n}', '$number');
+  String get timelineNew => _s('timelineNew');
+  String get timelineRename => _s('timelineRename');
+  String get timelineDuplicate => _s('timelineDuplicate');
+  String get timelineDelete => _s('timelineDelete');
   String get panelTimesheet => _s('panelTimesheet');
   String get panelConte => _s('panelConte');
   String get panelEnvelope => _s('panelEnvelope');
@@ -2814,6 +2821,12 @@ enum AppStrings {
     'panelToolSize': 'Tool size',
     'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
+    'timelines': 'Timelines',
+    'timelineNumberedTemplate': 'Timeline {n}',
+    'timelineNew': 'New timeline',
+    'timelineRename': 'Rename timeline',
+    'timelineDuplicate': 'Duplicate timeline',
+    'timelineDelete': 'Delete timeline',
     'panelTimesheet': 'Timesheet',
     'panelConte': 'Conte Sheet',
     'panelEnvelope': 'Cut envelope',
@@ -4447,6 +4460,12 @@ enum AppStrings {
     'panelToolSize': 'ツールサイズ',
     'panelStoryboard': 'コンテ',
     'panelTimeline': 'タイムライン',
+    'timelines': 'タイムライン',
+    'timelineNumberedTemplate': 'タイムライン {n}',
+    'timelineNew': '新しいタイムライン',
+    'timelineRename': 'タイムライン名を変更',
+    'timelineDuplicate': 'タイムラインを複製',
+    'timelineDelete': 'タイムラインを削除',
     'panelTimesheet': 'タイムシート',
     'panelConte': 'コンテ用紙',
     'panelEnvelope': 'カット袋',
@@ -6281,6 +6300,12 @@ enum AppStrings {
     'panelToolSize': '툴 사이즈',
     'panelStoryboard': '콘티',
     'panelTimeline': '타임라인',
+    'timelines': '타임라인',
+    'timelineNumberedTemplate': '타임라인 {n}',
+    'timelineNew': '새 타임라인',
+    'timelineRename': '타임라인 이름 바꾸기',
+    'timelineDuplicate': '타임라인 복제',
+    'timelineDelete': '타임라인 삭제',
     'panelTimesheet': '타임시트',
     'panelConte': '콘티 용지',
     'panelEnvelope': '컷 봉투',
@@ -8164,6 +8189,12 @@ enum AppStrings {
     'panelToolSize': 'Taille de l\'outil',
     'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
+    'timelines': 'Timelines',
+    'timelineNumberedTemplate': 'Timeline {n}',
+    'timelineNew': 'Nouvelle timeline',
+    'timelineRename': 'Renommer la timeline',
+    'timelineDuplicate': 'Dupliquer la timeline',
+    'timelineDelete': 'Supprimer la timeline',
     'panelTimesheet': 'Feuille de temps',
     'panelConte': 'Feuille de conte',
     'panelEnvelope': 'Enveloppe de plan',
@@ -10067,6 +10098,12 @@ enum AppStrings {
     'panelToolSize': '工具大小',
     'panelStoryboard': '分镜',
     'panelTimeline': '时间轴',
+    'timelines': '时间轴',
+    'timelineNumberedTemplate': '时间轴 {n}',
+    'timelineNew': '新建时间轴',
+    'timelineRename': '重命名时间轴',
+    'timelineDuplicate': '复制时间轴',
+    'timelineDelete': '删除时间轴',
     'panelTimesheet': '摄影表',
     'panelConte': '分镜用纸',
     'panelEnvelope': '卡袋',

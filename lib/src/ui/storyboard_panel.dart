@@ -779,6 +779,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSeekCutFrame,
     this.dragPreview,
     this.legend,
+    this.legendHeading,
     this.legendHand,
     this.rowFilter = TimelineRowFilter.none,
     this.hiddenSections = const {},
@@ -1470,6 +1471,10 @@ class StoryboardPanel extends StatefulWidget {
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
   /// through the same session hooks. Null renders a display-only legend.
   final LayerLegendCallbacks? legend;
+
+  /// The button the legend's heading is — the timeline list (I-150); null
+  /// keeps the rows' heading words.
+  final LegendHeadingButton? legendHeading;
 
   /// Where this panel holds up the menus its legend header opens, written
   /// each time it is built — what a key presses one of (I-40).
@@ -2719,6 +2724,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               railColumns: layerRailColumnWidthsIn(context),
             ),
             legend: widget.legend,
+            heading: widget.legendHeading,
             optionalColumns: StoryboardPanel.optionalRailColumns,
             rowFilter: widget.rowFilter,
             hiddenSections: widget.hiddenSections,
