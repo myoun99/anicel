@@ -882,6 +882,23 @@ void main() {
       expectParted();
     });
 
+    test('undone, it holds none of the copies it parted with', () {
+      final s = session();
+      final made = linkedWhereItStands(s).made;
+      final store = s.renderCaches.brushFrameStore;
+      final before = store.hotBakedBytes;
+
+      s.cutVerbs.unsyncCut(made);
+      expect(
+        store.hotBakedBytes,
+        greaterThan(before),
+        reason: '⛔전제: each part keeps a copy',
+      );
+      s.historyManager.undo();
+
+      expect(store.hotBakedBytes, before);
+    });
+
     test('deleted: the 겸용 there parts from the first timeline\'s cut, '
         'each keeping the picture — one step with the delete', () {
       for (final batch in [false, true]) {
