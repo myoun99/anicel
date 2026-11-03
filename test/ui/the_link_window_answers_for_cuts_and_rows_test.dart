@@ -105,6 +105,15 @@ void main() {
       expect(s.cutVerbs.linkedCutLines(source), [elsewhere]);
       expect(s.cutVerbs.syncedCutLines(source), isEmpty);
       expect(s.layerVerbs.activeCutIsLinkedCut, isTrue);
+
+      final depth = s.historyManager.undoCount;
+      s.cutVerbs.unsyncCut(source);
+      expect(
+        s.cutVerbs.linkedCutLines(source),
+        [elsewhere],
+        reason: '동기 해제 parts no 겸용',
+      );
+      expect(s.historyManager.undoCount, depth);
     });
 
     // 🗣️I-150-Q3 (유저 2026-11-03): 「배지에도 겸용이란 이름이아니라
