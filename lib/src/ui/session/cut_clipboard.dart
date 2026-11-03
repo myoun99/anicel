@@ -101,20 +101,19 @@ class CutClipboard implements BringsMedia {
   /// ([CutVerbs.canDeleteActiveCut]): the project keeps a cut.
   bool get canCut => _cutVerbs.canDeleteActiveCut;
 
-  /// Lifts the cuts in hand as ONE step and puts in hand those that went.
+  /// Lifts the cuts in hand as ONE step and puts them in hand.
   ///
-  /// 🚨결정 14 ②ⓐ, the frame cut's law: a cut banks exactly what it lifts.
-  /// What they showed is read BEFORE the lift, while the stores hold it.
+  /// 🚨결정 14 ②ⓐ, the frame cut's law: a cut banks exactly what it lifts —
+  /// and the delete lifts all of them, or none where the project would keep
+  /// no cut ([canCut]). What they showed is read BEFORE the lift, while the
+  /// stores hold it.
   void cut() {
     if (!canCut) {
       return;
     }
     final taken = [for (final cut in _cutsInHand) _copyOf(cut)];
     _cutVerbs.deleteActiveCut();
-    _bank([
-      for (final cut in taken)
-        if (_project.cutById(cut.source.id) == null) cut,
-    ]);
+    _bank(taken);
   }
 
   /// Puts [copied] in hand, with what their rows name in this project.
@@ -282,7 +281,8 @@ class CutClipboard implements BringsMedia {
     _changes.notifyChanged();
   }
 
-  /// [cut] with its rows' terms spelled as [respell] says ([Arrival]).
+  /// [cut] with its rows' terms spelled as [respell] says ([Arrival]). A
+  /// row whose spans ride its blocks is respelled by its blocks.
   static Cut _respelled(Cut cut, Map<String, String> respell) {
     if (respell.isEmpty) {
       return cut;
@@ -292,9 +292,11 @@ class CutClipboard implements BringsMedia {
         (index, exposure) =>
             MapEntry(index, respelledExposure(exposure, respell)),
       ),
-      instructions: row.instructions.map(
-        (index, span) => MapEntry(index, respelledSpan(span, respell)),
-      ),
+      instructions: row.kind.spansRideBlocks
+          ? null
+          : row.instructions.map(
+              (index, span) => MapEntry(index, respelledSpan(span, respell)),
+            ),
     );
     return cut.copyWith(
       layers: [for (final row in cut.layers) respelledRow(row)],

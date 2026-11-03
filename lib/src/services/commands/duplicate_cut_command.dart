@@ -73,14 +73,14 @@ class DuplicateCutCommand implements Command {
     _hasExecuted = true;
   }
 
+  /// Back to the cut stood in before — none, for a paste in a gap.
   @override
   void undo() {
-    final previousActiveCutId = _previousActiveCutId;
-    if (!_hasExecuted || previousActiveCutId == null) {
+    if (!_hasExecuted) {
       throw StateError('Command has not been executed.');
     }
 
     _insertion.revert(repository);
-    editingSession.setActiveCutId(previousActiveCutId);
+    editingSession.setActiveCutId(_previousActiveCutId);
   }
 }

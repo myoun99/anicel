@@ -6,7 +6,9 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/link_mirror.dart'
     show linkedCutSiblings;
@@ -125,9 +127,16 @@ void main() {
     ]);
   });
 
-  test('in a gap the copy lands where a new cut would — walking into it', () {
+  test('in a gap the copy lands where a new cut would — the block walking '
+      'into it as one, linked or not', () {
     final s = session();
-    standOnV(s, 1).copyFrame();
+    standOnV(s, 1);
+    s.updateStoryboardCutSelectionByFrame(
+      anchorGlobalFrame: 1,
+      headGlobalFrame: 5,
+    );
+    StoryboardToolbarPanelContext(s).copyFrame();
+    s.trackFrameRangeSelection.value = null;
 
     final pill = standOnV(s, 20);
     expect(
@@ -135,11 +144,44 @@ void main() {
       20,
       reason: '⛔전제: parked in the gap past the last cut',
     );
-    pill.pasteIndependentFrame();
+    List<(String, int)> lastTwo() => [
+      for (final cut in s.repository.requireProject().tracks.first.cuts.skip(
+        4,
+      ))
+        (cut.name, cut.leadingGapFrames),
+    ];
 
-    final cuts = s.repository.requireProject().tracks.first.cuts;
-    expect(cuts.last.name, '10 Copy');
-    expect(cuts.last.leadingGapFrames, 4, reason: '16 → 20');
+    pill.pasteIndependentFrame();
+    expect(lastTwo(), [('10 Copy', 4), ('11 Copy', 0)], reason: '16 → 20');
+
+    s.undo();
+    standOnV(s, 20).pasteLinkedFrame();
+    expect([for (final (_, gap) in lastTwo()) gap], [4, 0]);
+    s.undo();
+    expect(namesOn(s, v), ['10', '11', '12', '13'], reason: 'undone in a gap');
+  });
+
+  test('a band over the gap claims the copy, and the paste lands in it', () {
+    final s = session();
+    standOnV(s, 1).copyFrame();
+    final pill = standOnV(s, 1);
+    s.trackFrameRangeSelection.value = const TrackFrameRangeSelection(
+      trackId: v,
+      anchorRow: TrackRowAddress(v),
+      rows: [TrackRowAddress(v)],
+      startFrame: 18,
+      endFrameExclusive: 20,
+    );
+    expect(
+      s.storyboardRows.storyboardSelectedCutIds,
+      isEmpty,
+      reason: '⛔전제: the band names no cut',
+    );
+    expect(pill.canCopyFrame, isFalse, reason: 'not the cut stood in');
+
+    pill.pasteIndependentFrame();
+    final last = s.repository.requireProject().tracks.first.cuts.last;
+    expect((last.name, last.leadingGapFrames), ('10 Copy', 2));
   });
 
   test('a 잘라내기 lifts the cut you stand in, and the paste puts it back '
@@ -159,6 +201,16 @@ void main() {
     expect(pill.canCutRun, isTrue);
     pill.cutRun();
     expect(namesOn(s, v), ['11', '12', '13']);
+    expect(
+      s.appClipboard.heldPictures,
+      contains(same(picture)),
+      reason: 'the memory census weighs what the hand holds',
+    );
+    expect(
+      pill.canPasteLinkedFrame,
+      isFalse,
+      reason: 'a cut cut away has no cel left to share',
+    );
 
     pill.pasteIndependentFrame();
     final pasted = s.repository.requireProject().tracks.first.cuts
@@ -182,6 +234,10 @@ void main() {
     );
     expect(pill.canCopyFrame, isTrue, reason: 'the copy takes them');
     expect(pill.canCutRun, isFalse);
+
+    s.cutClipboard.cut();
+    expect(namesOn(s, v), ['10', '11', '12', '13']);
+    expect(s.cutClipboard.holdsCuts, isFalse, reason: 'nothing lifted');
   });
 
   test('a linked paste makes a 겸용 cut of each copied cut where the paste '
@@ -263,5 +319,15 @@ void main() {
     final timeline = TimelineToolbarPanelContext(s);
     expect(timeline.canPasteIndependentFrame, isFalse);
     expect(timeline.canPasteLinkedFrame, isFalse);
+
+    s.updateStoryboardCutSelectionByFrame(
+      anchorGlobalFrame: 1,
+      headGlobalFrame: 5,
+    );
+    expect(
+      timeline.canCopyFrame,
+      isFalse,
+      reason: 'a band of cuts is no copy of the timeline\'s',
+    );
   });
 }

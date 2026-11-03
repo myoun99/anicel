@@ -218,11 +218,12 @@ class CreateLinkedCutCommand implements Command {
 
   late final TransitionsRideTheCuts _ride = TransitionsRideTheCuts(repository);
 
+  /// Back to the cut stood in before — none, for a linked paste in a gap
+  /// (I-150).
   @override
   void undo() {
-    final previousActiveCutId = _previousActiveCutId;
     final registryBefore = _registryBefore;
-    if (!_hasExecuted || previousActiveCutId == null || registryBefore == null) {
+    if (!_hasExecuted || registryBefore == null) {
       throw StateError('Command has not been executed.');
     }
     void remove() => repository.updateProject((project) {
@@ -244,7 +245,7 @@ class CreateLinkedCutCommand implements Command {
       return next;
     });
     _ride.carryBack(remove);
-    editingSession.setActiveCutId(previousActiveCutId);
+    editingSession.setActiveCutId(_previousActiveCutId);
   }
 
   /// [layer]'s linked copy in the new cut: the same bank and an EMPTY
