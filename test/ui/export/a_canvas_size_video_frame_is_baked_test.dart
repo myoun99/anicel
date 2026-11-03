@@ -143,15 +143,27 @@ void main() {
     ExportFrameTask task, {
     bool preserveAlpha = false,
     ExportLayerFx? layerFx,
+    CanvasSize? outputSize,
   }) async {
     final renderer = ExportFrameRenderer(
       session: session,
       background: white,
       layerFx: layerFx,
     );
-    final image = await renderer
-        .videoRun([task], ExportSizeMode.canvas, preserveAlpha: preserveAlpha)
-        .frame(0);
+    final image = outputSize == null
+        ? await renderer
+              .videoRun(
+                [task],
+                ExportSizeMode.canvas,
+                preserveAlpha: preserveAlpha,
+              )
+              .frame(0)
+        : await renderer.renderVideoFrame(
+            task,
+            ExportSizeMode.canvas,
+            preserveAlpha: preserveAlpha,
+            outputSize: outputSize,
+          );
     final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
     renderer.dispose();
@@ -242,11 +254,13 @@ void main() {
   });
 
   group('two cuts an O.L mixes', () {
-    /// c1 inked green-ish, c2 inked blue, an O.L over frames 12–35 — under
-    /// the V row's [effects] behind its switch [fxEnabled].
+    /// c1 inked green-ish, c2 inked blue — their first [columns] — an O.L
+    /// over frames 12–35, under the V row's [effects] behind its switch
+    /// [fxEnabled].
     EditorSessionManager mixing({
       List<LayerEffect> effects = const [],
       bool fxEnabled = true,
+      int columns = 8,
     }) {
       final session = sessionOf(
         [cutOf('c1'), cutOf('c2')],
@@ -259,7 +273,7 @@ void main() {
         ),
       );
       final [c1, c2] = session.repository.requireProject().tracks.single.cuts;
-      ink(session, {c1: (0, 200, 0), c2: (0, 0, 200)});
+      ink(session, {c1: (0, 200, 0), c2: (0, 0, 200)}, columns: columns);
       return session;
     }
 
@@ -280,6 +294,32 @@ void main() {
         expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut, thinning');
         expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut, coming');
         expect((r, a), (0, 255), reason: 'two whole cuts hide the backdrop');
+      });
+    });
+
+    testWidgets('at a preview\'s size the mix is the same, smaller: each cut '
+        'laid at that size (export-film-preview-is-not-the-film)', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        // Their left halves inked, their right halves the paper.
+        final session = mixing(columns: 4);
+        addTearDown(session.dispose);
+
+        final frame = await videoFrame(
+          session,
+          midway(session),
+          outputSize: const CanvasSize(width: 4, height: 4),
+        );
+        expect(frame.length, 4 * 4 * 4, reason: 'at the size asked');
+        final (_, g, b, _) = pixelOf(frame, 1, 2, side: 4);
+        expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut\'s ink');
+        expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut\'s ink');
+        expect(
+          pixelOf(frame, 2, 2, side: 4),
+          (0, 255, 0, 255),
+          reason: 'both papers — not the left of a whole-size picture',
+        );
       });
     });
 

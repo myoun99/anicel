@@ -246,6 +246,46 @@ void main() {
     });
   });
 
+  testWidgets('one renderer asked for a frame at two sizes draws each at '
+      'its own — and a frame nothing plays in at the size asked too', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final session = sessionOn(const ProjectBackground.color(cream));
+      inkLeftHalf(session);
+      const quarter = CanvasSize(width: 4, height: 4);
+      for (final mode in ExportSizeMode.values) {
+        // The window keeps one renderer for its preview, whatever the size
+        // the preview asks at.
+        final renderer = filmRenderer(session, mp4);
+        Future<Uint8List> at(CanvasSize? size, {int frameIndex = 0}) async =>
+            bytesOf(
+              await renderer.renderVideoFrame(
+                ExportFrameTask(
+                  cut: session.requireActiveCut,
+                  frameIndex: frameIndex,
+                ),
+                mode,
+                preserveAlpha: false,
+                outputSize: size,
+              ),
+            );
+        expect((await at(null)).length, 8 * 8 * 4, reason: '$mode');
+        final small = await at(quarter);
+        expect(
+          (small.length, pixelOf(small, 1, 2, 4), pixelOf(small, 2, 2, 4)),
+          (4 * 4 * 4, ink, creamPixel),
+          reason: 'not the picture held from the size before ($mode)',
+        );
+        expect(
+          (await at(quarter, frameIndex: -1)).length,
+          4 * 4 * 4,
+          reason: 'a gap ($mode)',
+        );
+      }
+    });
+  });
+
   group('the window', () {
     Future<void> pumpWindow(
       WidgetTester tester,
@@ -310,6 +350,25 @@ void main() {
         });
       }
     }
+
+    testWidgets('a film that keeps its clear colour is previewed clear where '
+        'its file is: a canvas-size GIF under a paper that is none', (
+      tester,
+    ) async {
+      final session = sessionOn(
+        const ProjectBackground.color(cream, none: true),
+      );
+      inkLeftHalf(session);
+      await pumpWindow(
+        tester,
+        session,
+        format: gif,
+        sizeMode: ExportSizeMode.canvas,
+      );
+      expect(await previewPixel(tester, 1, 4), ink, reason: 'LIVENESS');
+      expect(await previewPixel(tester, 6, 4), (0, 0, 0, 0));
+      session.playbackRig.prerenderScheduler.cancel();
+    });
 
     testWidgets('an opaque film\'s preview stands on the white its file '
         'stands on, whatever colour the choice still carries for a still', (
