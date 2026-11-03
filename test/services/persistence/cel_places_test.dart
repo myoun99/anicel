@@ -14,6 +14,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/project_timeline.dart';
+import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
@@ -150,6 +152,50 @@ void main() {
 
   test('a row the TRACK owns is named by its track', () {
     expect(placesOf([drawn('c2', 's1', 's1-f')]), ['drawing Track 1/S1/hey']);
+  });
+
+  // 🗣️I-150 (유저 2026-11-03): 「소재위치 표시할때 트랙위치도 표시」.
+  test('a place in another timeline knows that timeline; one in the open '
+      'timeline does not', () {
+    final track = project.tracks.single;
+    final apart = project.copyWith(
+      timelines: [
+        ProjectTimeline(
+          id: const TimelineId('main'),
+          number: 1,
+          tracks: [
+            track.copyWith(cuts: [track.cuts.first]),
+          ],
+        ),
+        ProjectTimeline(
+          id: const TimelineId('pv'),
+          number: 2,
+          tracks: [
+            track.copyWith(id: const TrackId('t2'), cuts: [track.cuts.last]),
+          ],
+        ),
+      ],
+      currentTimelineId: const TimelineId('main'),
+    );
+    PlaceOwner ownerOf(CelPlace place) => switch (place) {
+      DrawingCelPlace(:final owner) ||
+      EnvelopeInkPlace(:final owner) ||
+      TimesheetInkPlace(:final owner) => owner,
+      _ => throw StateError('no owner: $place'),
+    };
+
+    expect(
+      [
+        for (final place in celPlacesOf(apart, [
+          drawn('c1', 'a', 'a1'),
+          drawn('c2', 'b', 'b1'),
+          envelopeInkBoxKey(const CutId('c2'), 'memo'),
+          timesheetInkPageKey(const CutId('c2'), 0),
+        ]))
+          ownerOf(place).away?.id,
+      ],
+      [null, ...List.filled(3, const TimelineId('pv'))],
+    );
   });
 
   group('🗣️F-284 — a drawing\'s place says where its blocks start', () {
