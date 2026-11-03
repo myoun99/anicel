@@ -384,9 +384,10 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
 
+    // Each in its cut's folder, which the project scope holds (I-153).
     expect(
       filesWrittenUnder(temp),
-      containsAll(['_CUT301.gif', '_CUT302.gif']),
+      containsAll(['301/_CUT301.gif', '302/_CUT302.gif']),
     );
     expect(
       [for (final name in filesWrittenUnder(temp)) if (name.endsWith('.gif')) name],

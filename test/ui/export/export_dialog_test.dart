@@ -1012,9 +1012,13 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesWrittenUnder(temp), ['_TSCut B.xdts', '_TSCut.xdts']);
+      // Each in its cut's folder, which the project scope holds (I-153).
+      expect(filesWrittenUnder(temp), [
+        'Cut B/_TSCut B.xdts',
+        'Cut/_TSCut.xdts',
+      ]);
       expect(statusText(tester), 'Exported 2 files.');
-      final content = File('${temp.path}/_TSCut.xdts').readAsStringSync();
+      final content = File('${temp.path}/Cut/_TSCut.xdts').readAsStringSync();
       expect(content, contains('exchangeDigitalTimeSheet'));
     });
   });

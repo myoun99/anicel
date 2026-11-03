@@ -161,14 +161,15 @@ void main() {
     expect(picker(tester).label, '002');
     expect(
       transportLine(tester),
-      'E1.png · 1 / 1',
-      reason: 'the preview goes to the picked cut\'s top row',
+      '002/E1.png · 1 / 1',
+      reason: 'the preview goes to the picked cut\'s top row, in its folder '
+          '— the project scope holds it (I-153)',
     );
 
     await pick(tester, first);
 
     expect(listedIds(tester), const ['b', 'a']);
-    expect(transportLine(tester), 'B1.png · 1 / 1');
+    expect(transportLine(tester), '001/B1.png · 1 / 1');
   });
 
   testWidgets('🚨what the hand does in the picked cut is written to THAT '

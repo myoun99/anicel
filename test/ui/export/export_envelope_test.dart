@@ -41,6 +41,7 @@ import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/checker_sampling.dart';
 import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_scope_pick.dart';
+import '../../helpers/files_written_under.dart';
 import '../../helpers/sheet_image_runs.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -332,11 +333,8 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      final written = temp
-          .listSync()
-          .whereType<File>()
-          .map((file) => file.uri.pathSegments.last)
-          .toList();
+      // In the pair's folder, which the project scope holds (I-153).
+      final written = filesWrittenUnder(temp);
       expect(
         written,
         hasLength(1),

@@ -2834,6 +2834,10 @@ class ExportDialogState extends State<ExportDialog> {
     required String path,
     required void Function(int completed, int total) onProgress,
   }) async {
+    // A cut's film stands in its cut's folder as its cels do — a folder no
+    // file of the run has made yet (I-153: the project scope always has
+    // one). ↩️A film into a folder wrote nothing.
+    await File(path).parent.create(recursive: true);
     final (:format, :sizeMode, :layerFx, :withSound) = film;
     final alphaVideo = format.wantsAlpha;
     final renderer = ExportFrameRenderer.forFormat(
