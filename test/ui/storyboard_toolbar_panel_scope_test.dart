@@ -397,8 +397,6 @@ void main() {
       'blank-exposure-button',
       'toggle-mark-one-button',
       'toggle-mark-button',
-      'shared-cut-button',
-      'shared-copy-button',
       'shared-paste-independent-button',
       'shared-paste-linked-button',
     ]) {
@@ -409,6 +407,19 @@ void main() {
             'panel\'s subject, so this panel must not light it',
       );
     }
+
+    // 🗣️I-150: ↩️the copy and the cut were dark here too. They take the
+    // CUT the V row stands on now (「컷 잘라내기/복사/붙여넣기 … 공용알약」)
+    // — never the cel under the timeline's playhead.
+    for (final keyValue in const ['shared-cut-button', 'shared-copy-button']) {
+      expect(
+        await readCommandEnabled(tester, ValueKey<String>(keyValue)),
+        isTrue,
+        reason: '$keyValue takes the cut stood on',
+      );
+    }
+    StoryboardToolbarPanelContext(manager).copyFrame();
+    expect(manager.cutClipboard.holdsCuts, isTrue);
   });
 
   testWidgets('regression pin: the SAME buttons under the TIMELINE context '
