@@ -121,12 +121,14 @@ class FramePictures implements PlaybackPictures {
 
   /// 🚨★THE PICTURES THE NODES OF A FRAME A CANVAS STANDS ON WERE DRAWN INTO
   /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
-  /// 실측 5): kept as the frame is laid for that canvas ([makeShown]), or
+  /// 실측 5): kept as the frame is laid for that canvas ([makeShown]), as
+  /// that canvas's screen draws it as it stands ([frameAsItStands]), or
   /// once a canvas stands on one laid ahead ([holdNodesOf]), and found as a
-  /// stroke's steps are patched into it ([frameAsItStands]) — what lies
-  /// below the row a pen draws on, as one picture or in the cells a step
-  /// landed in ([BelowThePen]), and each folder over it drawn whole are not
-  /// drawn again for each step that does not touch them.
+  /// stroke's steps are patched into it and as a screen draws it as it
+  /// stands — what lies below the row a pen draws on, as
+  /// one picture or in the cells a step landed in ([BelowThePen]), and each
+  /// folder over it drawn whole are not drawn again for each step, or each
+  /// value of a drag, that does not touch them.
   ///
   /// ⚖️Below the pen, two pages at the most — the page of the frame last
   /// drawn with them ([estimatedImageBytes]): the frame's own list and the
@@ -134,10 +136,10 @@ class FramePictures implements PlaybackPictures {
   /// 「폴더가 몇 개든 2~3장」. Over it, as many as the playback [line] has
   /// room for — the frames' pictures made ahead give way to them (🗣️유저
   /// 2026-10-27, Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」).
-  /// The screen is fed by the frame's picture, and these only make its
-  /// patches cheaper. Past it they are let go of, and a patch draws them as
-  /// it did before; and they are only ever the nodes of the frame last drawn
-  /// to hold them ([HeldSubtreeRasters.holdOnly]).
+  /// The screen is fed by the frame's picture, and these only make what
+  /// comes before it cheaper. Past it they are let go of, and those draw them
+  /// as they did before; and they are only ever the nodes of the frame last
+  /// drawn to hold them ([HeldSubtreeRasters.holdOnly]).
   ///
   /// ↩️One page held the nodes over the pen together until Q3: 🔬nine
   /// folders at 50% over the row drawn on, one of them fitted and a step
@@ -634,22 +636,22 @@ class FramePictures implements PlaybackPictures {
       paintPaper: picture.paintPaper,
       ghosts: picture.ghosts,
     ));
-    return _hasOneToHold(
-      key.signature.nodes,
-      preorderNodes(next.signature.nodes).toSet(),
-    );
+    return _hasOneToHold(key.signature.nodes, {
+      for (final node in preorderNodes(next.signature.nodes)) node.asItsPicture,
+    });
   }
 
-  /// Whether, of [nodes] from the top down, one that [next] draws too and a
-  /// walk holds is not held yet.
+  /// Whether, of [nodes] from the top down, one whose picture [next] has too
+  /// and a walk holds is not held yet.
   bool _hasOneToHold(
     List<CompositeNodeSignature> nodes,
     Set<CompositeNodeSignature> next,
-  ) => nodes.any(
-    (node) => next.contains(node) && _isHeldByAWalk(node)
-        ? !aheadNodes.holds(node)
-        : _hasOneToHold(node.children, next),
-  );
+  ) => nodes.any((node) {
+    final picture = node.asItsPicture;
+    return next.contains(picture) && _isHeldByAWalk(node)
+        ? !aheadNodes.holds(picture)
+        : _hasOneToHold(node.children, next);
+  });
 
   /// Whether a walk holds [node]'s picture (`_CompositeTreeWalk._holdOf`).
   static bool _isHeldByAWalk(CompositeNodeSignature node) => switch (node) {
@@ -796,6 +798,13 @@ class FramePictures implements PlaybackPictures {
   ///
   /// ⛔Not [_drawnOf]: the row a pen is on draws what it holds live, a cel
   /// with nothing stored in it included — the first stroke on it.
+  ///
+  /// 🚨WHAT A CANVAS'S SCREEN DRAWS WHOLE, THE PICTURE LAID BESIDE IT FINDS
+  /// (card a-dragged-opacity-slider-lags-at-rest): each value of a drag is
+  /// drawn here and laid at once ([makeShown]), and a folder the value lies
+  /// in ran its chain in both. So it keeps what that lay would for that
+  /// canvas (`keepsNodes`): whichever draws first spares the other, and a
+  /// value costs one chain.
   StackedFrame frameAsItStands(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
@@ -811,7 +820,7 @@ class FramePictures implements PlaybackPictures {
       live: live,
       held: _holding(page, (
         rasters: heldNodes,
-        keeps: false,
+        keeps: live != null,
         below: BelowThePen.inCells,
       )),
     );

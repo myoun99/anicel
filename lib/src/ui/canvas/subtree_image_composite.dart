@@ -484,7 +484,8 @@ final class SubtreeHold {
 
   final HeldSubtreeRasters rasters;
 
-  /// What the node draws, its pixels' every input ([HeldSubtreeRasters]).
+  /// What the node's picture holds, its pixels' every input
+  /// ([HeldSubtreeRasters]).
   final Object key;
 
   /// Whether the raster drawn here is the node's whole and may be kept.

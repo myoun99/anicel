@@ -649,6 +649,7 @@ void main() {
     'exWhite': (s) => s.exWhite,
     'exBlack': (s) => s.exBlack,
     'exBackground': (s) => s.exBackground,
+    'exOnScreen': (s) => s.exOnScreen,
     'exStratumPaper': (s) => s.exStratumPaper,
     'exStratumForm': (s) => s.exStratumForm,
     'exStratumContent': (s) => s.exStratumContent,

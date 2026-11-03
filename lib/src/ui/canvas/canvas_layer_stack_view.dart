@@ -34,7 +34,10 @@ import 'viewport_canvas_transform.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/playback/cut_frame_composite_signature.dart'
-    show CompositeLayerSignature, CutFrameCompositeSignature;
+    show
+        CompositeLayerSignature,
+        CompositeNodeSignature,
+        CutFrameCompositeSignature;
 import 'raster_picture.dart';
 import 'tile_origin.dart';
 
@@ -276,9 +279,10 @@ typedef StoredRow = ({
 
 /// Where a frame's picture keeps the pictures its nodes are drawn into
 /// ([HeldSubtreeRasters]) — whether the frame drawn here keeps the ones it
-/// draws whole: the frame laid for a screen that stands on it, every row
-/// in hand; a stroke's step patched into it only finds them — and what it
-/// does with what lies below its pen ([below]).
+/// draws whole: the frame for a canvas that stands on it, laid or drawn as it
+/// stands — a stroke's step patched in is cut by its patch, and keeps none
+/// of what that cuts — and what it does with what lies below its pen
+/// ([below]).
 typedef HeldNodePictures = ({
   HeldSubtreeRasters rasters,
   bool keeps,

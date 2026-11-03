@@ -155,6 +155,14 @@ LayerId _seatRowOf(ProjectAccess project, LayerId id) =>
 /// span covers ([picturesTradedInAttachGroup]).
 typedef _AttachTrade = ({List<Layer> group, List<FrameId> baseCels});
 
+/// The pictures a step trades ([BlockMoveDragPreview.picturesMoved]), and
+/// where the selection goes with them: onto [rows], [shift] frames along.
+typedef _PictureTrade = ({
+  List<CelPictureMove> moves,
+  List<LayerId> rows,
+  int shift,
+});
+
 /// [span]'s [_AttachTrade] — null when its rows are not all of one attach
 /// group, or it covers no whole block of the base. Every row of the group
 /// shows the base's blocks, so the span covers the same ones on each.
@@ -174,14 +182,21 @@ _AttachTrade? _attachTradeOf(
         layer,
   ];
   final baseCels = [
-    for (final block in drawingBlocks(base.timeline))
-      if (_wholeBlockIn(block, span.startIndex, span.endIndexExclusive))
-        block.frameId,
+    for (final block in _blocksWholeIn(span, base)) block.frameId,
   ];
   return group.length < 2 || baseCels.isEmpty
       ? null
       : (group: group, baseCels: baseCels);
 }
+
+/// The blocks [row] holds whole inside [span] ([_wholeBlockIn]).
+List<TimelineDrawingBlock> _blocksWholeIn(
+  TimelineFrameRangeSelection span,
+  Layer row,
+) => [
+  for (final block in drawingBlocks(row.timeline))
+    if (_wholeBlockIn(block, span.startIndex, span.endIndexExclusive)) block,
+];
 
 /// The display→commit offset a move applies to [layerId]'s span. ZERO on
 /// the track axis: the span is already stated in commit keys, and
@@ -741,7 +756,8 @@ class FrameRangeMoveDrag {
   ///
   /// ⚖️Mine, not the user's: the pill came at the press, when nothing could
   /// come of the drag. A trade can, so it comes at the release that traded
-  /// nothing ([commit]).
+  /// nothing ([commit]) — and at the press only where the span covers no
+  /// block a trade could take.
   static FrameRangeMoveDrag? _tradingMirrors(
     FrameRangeMoveRoles roles,
     TimelineFrameRangeSelection span,
@@ -749,7 +765,11 @@ class FrameRangeMoveDrag {
     required FoldersAndAttachments folders,
     required LayerId? grabLayerId,
   }) {
-    if (attachTrade == null) {
+    final bases = [
+      for (final id in span.spanLayerIds)
+        ?roles.project.layerById(_seatRowOf(roles.project, id)),
+    ];
+    if (bases.every((base) => _blocksWholeIn(span, base).isEmpty)) {
       folders.noticeSyncedAttachRefusal(span.layerId);
       return null;
     }
@@ -1854,7 +1874,8 @@ class FrameRangeMoveDrag {
       return;
     }
     // 🚨F-276: the row pointed at is read as its SEAT — over a mirror, the
-    // hand is over its base ([_seatRowOf]). Every step below reads this.
+    // hand is over its base ([_seatRowOf]), where it traded no picture
+    // ([_stepIsTheTrades], F-546). Every step below reads this.
     final pointedAt = targetLayerId == null
         ? null
         : _seatRowOf(_project, targetLayerId);
@@ -1904,14 +1925,17 @@ class FrameRangeMoveDrag {
 
   /// Whether this step belongs to the picture trade (F-330): on the same
   /// frames, a hop among the rows of the span's attach group trades their
-  /// pictures — counted on the rows themselves, where a mirror is one. With
-  /// mirrors alone, every step is the trade's: one that trades nothing
-  /// HOLDS the last trade (UI-R23 #10), and back on the row grabbed is the
-  /// origin — mirrors move no block.
+  /// pictures — counted on the rows themselves, where a mirror is one — and
+  /// anywhere, a hop with a synced row on its end trades with the blocks it
+  /// lands on (F-546). With mirrors alone, every step is the trade's: one
+  /// that trades nothing HOLDS the last trade (UI-R23 #10), and back on the
+  /// row grabbed is the origin — mirrors move no block.
   bool _stepIsTheTrades(int frameDelta, LayerId? targetLayerId) {
-    final trade = frameDelta == 0 ? _picturesTradedTo(targetLayerId) : null;
+    final trade =
+        (frameDelta == 0 ? _picturesTradedTo(targetLayerId) : null) ??
+        _picturesTradedInLanding(frameDelta, targetLayerId);
     if (trade != null) {
-      _publishPictureTrade(trade.moves, trade.hop, landedOn: targetLayerId!);
+      _publishPictureTrade(trade, landedOn: targetLayerId!);
       return true;
     }
     if (_refuseUntraded == null) {
@@ -1926,14 +1950,12 @@ class FrameRangeMoveDrag {
 
   /// The pictures a step on the same frames trades with the hand on
   /// [pointedAt] (F-330): the span's rows carried as many rows of its attach
-  /// group as the hand is from the row it grabbed ([_attachTrade]), and that
-  /// hop. Null when the span holds no group, the hand is on the row it
+  /// group as the hand is from the row it grabbed ([_attachTrade]). Null
+  /// when the span holds no group, the hand is on the row it
   /// grabbed or on none of the group, or the carry trades nothing
   /// ([picturesTradedInAttachGroup]) — or no picture can be written yet,
   /// so the release could not land what the step would show.
-  ({List<CelPictureMove> moves, int hop})? _picturesTradedTo(
-    LayerId? pointedAt,
-  ) {
+  _PictureTrade? _picturesTradedTo(LayerId? pointedAt) {
     final trade = _attachTrade;
     final cut = _project.activeCutOrNull;
     if (trade == null || pointedAt == null || cut == null) {
@@ -1953,39 +1975,148 @@ class FrameRangeMoveDrag {
       rowDelta: hop,
       baseCels: trade.baseCels,
     );
-    return moves == null || _blockMove.pictureMoveCommand(cut, moves) == null
-        ? null
-        : (moves: moves, hop: hop);
+    if (moves == null || _blockMove.pictureMoveCommand(cut, moves) == null) {
+      return null;
+    }
+    final group = [for (final row in trade.group) row.id];
+    return (
+      moves: moves,
+      rows: [
+        for (final row in _selectionBefore.spanLayerIds)
+          group[group.indexOf(row) + hop],
+      ],
+      shift: 0,
+    );
   }
 
-  /// Publishes a trade of [moves]: no row changes, so none is previewed —
-  /// a cel a picture goes to reads it where it still is
-  /// ([BlockMoveDragPreview.picturesMoved]) — and the selection follows the
-  /// pictures [hop] rows of the group on, anchored where the hand is
-  /// ([landedOn]).
-  void _publishPictureTrade(
-    List<CelPictureMove> moves,
-    int hop, {
-    required LayerId landedOn,
+  /// The pictures a step [frameDelta] frames along trades with the hand on
+  /// [pointedAt] where a SYNCED row stands on either end of every hop: its
+  /// blocks are its base's, so none of them can go, and each row of the span
+  /// trades with the blocks it lands on ([picturesTradedInBlocks], F-546).
+  ///
+  /// Null where the hand is on the row it grabbed, where a row of the span
+  /// would land as a move, or where no block stands at the landing: the
+  /// step is a move then. ⚠️Mine: the span's rows land together or not at
+  /// all as a trade — a block leaving a row and a picture staying on it want
+  /// the same frames — and a landing that gives a cel twice is no trade (the
+  /// rows it passes over are the rows it left), so it holds.
+  _PictureTrade? _picturesTradedInLanding(int frameDelta, LayerId? pointedAt) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null || pointedAt == null || pointedAt == _grabbedRow) {
+      return null;
+    }
+    final rows = sectionedLayerOrder(_project.layers);
+    final sources = _rowsGivingPictures();
+    final hop = layerIndexDelta(
+      rows,
+      sources.any((row) => row.id == _grabbedRow) ? _grabbedRow! : _hopOrigin,
+      pointedAt,
+    );
+    final hops = hop == null ? null : _tradingHops(sources, rows, hop);
+    if (hops == null) {
+      return null;
+    }
+    final moves = [
+      for (final (:row, :landing) in hops)
+        ..._picturesTradedOn(landing, from: row, frameDelta: frameDelta),
+    ];
+    final givers = {for (final move in moves) (move.fromRow, move.fromCel)};
+    return moves.isEmpty ||
+            givers.length != moves.length ||
+            _blockMove.pictureMoveCommand(cut, moves) == null
+        ? null
+        : (
+            moves: moves,
+            rows: [for (final (:landing, row: _) in hops) landing.id],
+            shift: frameDelta,
+          );
+  }
+
+  /// Where each of [sources] lands [hop] rows on in [rows] — null where one
+  /// lands as no trade ([_tradesPictures]).
+  List<({Layer row, Layer landing})>? _tradingHops(
+    List<Layer> sources,
+    List<Layer> rows,
+    int hop,
+  ) {
+    final hops = <({Layer row, Layer landing})>[];
+    for (final row in sources) {
+      final landing = _rowWalkedTo(rows, row.id, hop);
+      if (landing == null || !_tradesPictures(row, landing)) {
+        return null;
+      }
+      hops.add((row: row, landing: landing));
+    }
+    return hops;
+  }
+
+  /// What the blocks of the span on [from] trade on [landing], [frameDelta]
+  /// frames along.
+  List<CelPictureMove> _picturesTradedOn(
+    Layer landing, {
+    required Layer from,
+    required int frameDelta,
   }) {
+    final blocks = _blocksWholeIn(_selectionBefore, from);
+    return picturesTradedInBlocks(
+      from: from.id,
+      cels: [for (final block in blocks) block.frameId],
+      onto: landing,
+      at: blocks.first.startIndex + frameDelta,
+    );
+  }
+
+  /// The span's rows that give pictures: those that hold a whole block of
+  /// it — its rows of their own, or its mirrors where it has none
+  /// ([_singleRowOf]).
+  List<Layer> _rowsGivingPictures() {
+    final rows = [
+      for (final id in _selectionBefore.spanLayerIds) ?_project.layerById(id),
+    ];
+    final own = [
+      for (final row in rows)
+        if (!isSyncedAttachedLayer(row)) row,
+    ];
+    return [
+      for (final row in own.isEmpty ? rows : own)
+        if (_blocksWholeIn(_selectionBefore, row).isNotEmpty) row,
+    ];
+  }
+
+  /// Whether a hop from [source] onto [landing] is a trade: a synced row on
+  /// one end at least, and on the other a row a block move would take.
+  bool _tradesPictures(Layer source, Layer landing) {
+    final own = [
+      for (final row in [source, landing])
+        if (!isSyncedAttachedLayer(row)) row,
+    ];
+    return own.length < 2 &&
+        own.every((row) => _retime.blockMoveEligible(row.id));
+  }
+
+  /// Publishes [trade]: no row changes, so none is previewed — a cel a
+  /// picture goes to reads it where it still is
+  /// ([BlockMoveDragPreview.picturesMoved]) — and the selection follows the
+  /// pictures, anchored where the hand is ([landedOn]).
+  void _publishPictureTrade(_PictureTrade trade, {required LayerId landedOn}) {
     // A step of the hand that trades the same pictures shows the same
     // preview, so what reads it by identity (the canvas) sleeps through it.
-    if (_dragPreview.value case BlockMoveDragPreview(:final picturesMoved)
-        when listEquals(picturesMoved, moves)) {
-      return;
+    final shown = switch (_dragPreview.value) {
+      BlockMoveDragPreview(:final picturesMoved) => picturesMoved,
+      _ => null,
+    };
+    if (!listEquals(shown, trade.moves)) {
+      _resetPreviewToOrigin();
+      _dragPreview.value = BlockMoveDragPreview(
+        previewLayers: const {},
+        picturesMoved: trade.moves,
+      );
     }
-    _resetPreviewToOrigin();
-    _dragPreview.value = BlockMoveDragPreview(
-      previewLayers: const {},
-      picturesMoved: moves,
-    );
-    final group = [for (final row in _attachTrade!.group) row.id];
-    LayerId carried(LayerId row) => group[group.indexOf(row) + hop];
     _slideSelectionOutline(
       _selectionBefore,
       landedLayerId: landedOn,
-      shift: 0,
-      layerIds: [for (final row in _selectionBefore.spanLayerIds) carried(row)],
+      shift: trade.shift,
+      layerIds: trade.rows,
     );
   }
 

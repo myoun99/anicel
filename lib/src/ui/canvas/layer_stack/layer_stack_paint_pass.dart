@@ -361,17 +361,7 @@ class _LayerStackPaintPass {
     if (held?.below == BelowThePen.inCells) {
       _LayerStackPaintPass(_painter)._paintCells(held!.rasters, under: reach);
     }
-    _held = switch (held) {
-      (:final rasters, :final keeps, :final below) => (
-        rasters: rasters,
-        keyOf: _drawsOf,
-        drawnOn: _drawnOn,
-        keeps: keeps,
-        below: below,
-        cells: null,
-      ),
-      null => null,
-    };
+    _held = _nodesHeld;
     _paintCutWhereItEnds(into, extent, shownWithin: extent);
   }
 
@@ -393,6 +383,7 @@ class _LayerStackPaintPass {
     _held = (
       rasters: rasters,
       keyOf: _drawsOf,
+      pictureOf: _pictureOf,
       drawnOn: _drawnOn,
       keeps: false,
       below: BelowThePen.cellsOnly,
@@ -1090,10 +1081,40 @@ class _LayerStackPaintPass {
   /// one-picture-per-frame ②-5a).
   Rect? _shownWithin;
 
-  /// Where the nodes of the frame's picture find their pictures drawn
-  /// before ([HeldNodePictures]) — while [paintFrame] draws it, and only
-  /// then: what the screen draws as it stands has rows not in hand.
+  /// Where the frame's nodes find their pictures drawn before
+  /// ([HeldNodePictures]) — as [paintFrame] draws its picture, and as the
+  /// display buffer composes it at that picture's resolution
+  /// ([_composeDisplayBuffer]). ⛔Not on the walk a screen falls back on:
+  /// what that rasters lies on the screen's pixels, a picture held on the
+  /// frame's.
+  ///
+  /// 🚨WHAT THE SCREEN DRAWS AS IT STANDS FINDS THEM TOO (card
+  /// a-dragged-opacity-slider-lags-at-rest): each value of a dragged opacity
+  /// is composed there at the next paint, and ran the whole chain of a
+  /// folder it leaves alone, where the frame's picture of that value, laid
+  /// beside it, found the folder held. 🔬Surface Pro 11, profile, S5_BA cut
+  /// 353 (38 rows, a camera lens blur on a folder of 2720 x 1696), a row's
+  /// opacity dragged 30 steps at 16 ms and let go, in turn: let go to its
+  /// picture 1.8–2.1 s → 0.22–0.54 s, the longest a frame waited 1.2–1.7 s →
+  /// 0.33–0.40 s; 120 steps, 1.0–2.2 s → 0.36–0.47 s. ↩️Only [paintFrame]
+  /// looked until then (`745938139`), for 「what the screen draws as it stands
+  /// has rows not in hand」: a row not in hand is no part of its node's key
+  /// ([_drawsOf]), so it finds no picture that holds the row.
   SubtreeHolding<_PaintRow>? _held;
+
+  /// [_painter]'s pictures as this walk looks in them ([_held]).
+  SubtreeHolding<_PaintRow>? get _nodesHeld => switch (_painter.held) {
+    (:final rasters, :final keeps, :final below) => (
+      rasters: rasters,
+      keyOf: _drawsOf,
+      pictureOf: _pictureOf,
+      drawnOn: _drawnOn,
+      keeps: keeps,
+      below: below,
+      cells: null,
+    ),
+    null => null,
+  };
 
   /// What [node] draws, as a frame's picture is signed by it
   /// ([CutFrameCompositeSignature]) — null where a row of it is drawn live
@@ -1141,6 +1162,14 @@ class _LayerStackPaintPass {
       _ => null,
     };
   }
+
+  /// What [node]'s own picture holds: what it draws, at full strength
+  /// ([CompositeNodeSignature.asItsPicture]). What the paper lies in has no
+  /// picture of its own: a blend's backdrop ([onUnderlay]).
+  Object? _pictureOf(CompositeNode<_PaintRow> node) => switch (_drawsOf(node)) {
+    final CompositeNodeSignature rows => rows.asItsPicture,
+    final drawn => drawn,
+  };
 
   static CompositeLayerSignature? _signatureOf(_PaintRow row) => switch (row) {
     _PaintCelSurface(:final signature) => signature,
@@ -1217,11 +1246,12 @@ class _LayerStackPaintPass {
     // cache rasterised the composite once per tile, so panning cost N times
     // what it did), until a standing canvas showed the frame's one picture
     // and patched its strokes into that (one-picture-per-frame ②-5a,
-    // 2026-10-25): what composes here now is a frame as it stands where a
-    // stroke's patch is still on its way — or ghosts whose picture is not
-    // there yet.
+    // 2026-10-25): what composes here now is a frame as it stands until its
+    // picture is there — each value of a drag, a stroke's patch still on its
+    // way, ghosts not laid yet.
     final edge = wholeLevelPixelsOutward(bounds, 0);
     final recorder = ui.PictureRecorder();
+    _held = _nodesHeld;
     labProbe(
       'displayBuffer.recordWhole',
       () => _paintCutWhereItEnds(

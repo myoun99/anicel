@@ -1434,6 +1434,7 @@ enum AppStrings {
   String get exWhite => _s('exWhite');
   String get exBlack => _s('exBlack');
   String get exBackground => _s('exBackground');
+  String get exOnScreen => _s('exOnScreen');
   String get exStratumPaper => _s('exStratumPaper');
   String get exStratumForm => _s('exStratumForm');
   String get exStratumContent => _s('exStratumContent');
@@ -2960,6 +2961,7 @@ enum AppStrings {
     'exWhite': 'White',
     'exBlack': 'Black',
     'exBackground': 'BG',
+    'exOnScreen': 'On screen',
     'exStratumPaper': 'Paper',
     'exStratumForm': 'Form',
     'exStratumContent': 'Text',
@@ -4587,6 +4589,7 @@ enum AppStrings {
     'exWhite': '白',
     'exBlack': '黒',
     'exBackground': '背景',
+    'exOnScreen': '画面表示',
     'exStratumPaper': '用紙',
     'exStratumForm': '書式',
     'exStratumContent': 'テキスト',
@@ -6417,6 +6420,7 @@ enum AppStrings {
     'exWhite': '흰색',
     'exBlack': '검정',
     'exBackground': '배경',
+    'exOnScreen': '화면 표시',
     'exStratumPaper': '용지',
     'exStratumForm': '서식',
     'exStratumContent': '텍스트',
@@ -8306,6 +8310,7 @@ enum AppStrings {
     'exWhite': 'Blanc',
     'exBlack': 'Noir',
     'exBackground': 'Fond',
+    'exOnScreen': 'À l\'écran',
     'exStratumPaper': 'Papier',
     'exStratumForm': 'Formulaire',
     'exStratumContent': 'Texte',
@@ -10195,6 +10200,7 @@ enum AppStrings {
     'exWhite': '白色',
     'exBlack': '黑色',
     'exBackground': '背景',
+    'exOnScreen': '画面显示',
     'exStratumPaper': '用纸',
     'exStratumForm': '格式',
     'exStratumContent': '文字',

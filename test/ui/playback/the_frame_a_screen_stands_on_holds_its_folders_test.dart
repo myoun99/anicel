@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -159,6 +160,17 @@ void main() {
     );
   }
 
+  /// What a canvas that stands hands the frame it draws as it stands, with
+  /// nothing moved in its rows.
+  ({LiveRows rows, LiftedRowPainters painters}) onACanvas() => (
+    rows: (
+      activeSurfacePainter: null,
+      floatOverlay: null,
+      liftedRows: const {},
+    ),
+    painters: LiftedRowPainters(),
+  );
+
   /// Laid for a canvas that stands on it to draw.
   Future<void> shown(EditorSessionManager s, DemandedPicture picture) {
     final pictures = s.playbackRig.framePictures;
@@ -171,9 +183,9 @@ void main() {
   }
 
   testWidgets('laid for the canvas that stands on it the frame keeps its '
-      'folder, and a step patched in as it stands is cut from it — laid '
-      'ahead of a screen, or for one that draws nothing live, it keeps '
-      'none', (tester) async {
+      'folder, and a step patched in as it stands is cut from it, as a '
+      'screen drawing it as it stands is — laid ahead of a screen, or for '
+      'one that draws nothing live, it keeps none', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
@@ -210,6 +222,98 @@ void main() {
           .draw(ui.Canvas(recorder)..clipRect(const Rect.fromLTWH(6, 8, 9, 7)));
       recorder.endRecording().dispose();
       expect(debugSubtreeRasterCount, 0, reason: 'cut from what is held');
+
+      final screen = ui.PictureRecorder();
+      standingPictures
+          .frameAsItStands(standingPictures.stackOf(stood), stood)
+          .paintOnScreen(
+            ui.Canvas(screen),
+            const Size(32, 24),
+            viewport: CanvasViewport(),
+            devicePixelRatio: 1,
+          );
+      screen.endRecording().dispose();
+      expect(debugSubtreeRasterCount, 0, reason: 'found by the screen too');
+    });
+  });
+
+  testWidgets('🚨what a canvas\'s screen draws whole as it stands, the picture '
+      'laid beside it finds — a value costs one chain — and the other way '
+      'round; a step keeps none of what its patch cuts, and a screen that '
+      'draws nothing live keeps none', (tester) async {
+    await tester.runAsync(() async {
+      /// [s]'s frame [stood] drawn on a screen as it stands, for a canvas
+      /// where [canvas] says.
+      void onScreen(
+        EditorSessionManager s,
+        DemandedPicture stood, {
+        bool canvas = true,
+      }) {
+        final pictures = s.playbackRig.framePictures;
+        final screen = ui.PictureRecorder();
+        pictures
+            .frameAsItStands(
+              pictures.stackOf(stood),
+              stood,
+              live: canvas ? onACanvas() : null,
+            )
+            .paintOnScreen(
+              ui.Canvas(screen),
+              const Size(32, 24),
+              viewport: CanvasViewport(),
+              devicePixelRatio: 1,
+            );
+        screen.endRecording().dispose();
+      }
+
+      final s = session();
+      addTearDown(s.dispose);
+      final pictures = s.playbackRig.framePictures;
+      final stood = drawn(s);
+      await pictures.readInStack(pictures.stackOf(stood), stood);
+
+      debugSubtreeRasterCount = 0;
+      onScreen(s, stood);
+      expect(debugSubtreeRasterCount, 1, reason: '⛔premise: drawn');
+      expect(pictures.heldNodes, hasLength(1), reason: 'the folder');
+      await shown(s, stood);
+      expect(debugSubtreeRasterCount, 1, reason: 'found by the lay');
+
+      final laidFirst = session();
+      addTearDown(laidFirst.dispose);
+      final first = drawn(laidFirst);
+      await shown(laidFirst, first);
+      debugSubtreeRasterCount = 0;
+      onScreen(laidFirst, first);
+      expect(debugSubtreeRasterCount, 0, reason: 'found by the screen');
+
+      final stepped = session();
+      addTearDown(stepped.dispose);
+      final stepPictures = stepped.playbackRig.framePictures;
+      final step = drawn(stepped);
+      await stepPictures.readInStack(stepPictures.stackOf(step), step);
+      final recorder = ui.PictureRecorder();
+      stepPictures
+          .frameAsItStands(
+            stepPictures.stackOf(step),
+            step,
+            live: onACanvas(),
+          )
+          .drawing
+          .draw(ui.Canvas(recorder)..clipRect(const Rect.fromLTWH(6, 8, 9, 7)));
+      recorder.endRecording().dispose();
+      expect(stepPictures.heldNodes, hasLength(0), reason: 'cut by the patch');
+
+      final still = session();
+      addTearDown(still.dispose);
+      final stillPictures = still.playbackRig.framePictures;
+      final nothingLive = drawn(still);
+      await stillPictures.readInStack(
+        stillPictures.stackOf(nothingLive),
+        nothingLive,
+      );
+      onScreen(still, nothingLive, canvas: false);
+      expect(stillPictures.heldNodes, hasLength(0));
     });
   });
 

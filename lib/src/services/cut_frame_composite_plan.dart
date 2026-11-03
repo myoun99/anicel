@@ -50,6 +50,7 @@ class CutFrameCompositeLayer {
     this.blendMode = LayerBlendMode.normal,
     this.placement,
     List<ResolvedLayerEffect> effects = const [],
+    this.tint,
   }) : surface = celSurfaceAsShown(surface, effects),
        effects = splitSourceEffects(effects).paint;
 
@@ -58,7 +59,8 @@ class CutFrameCompositeLayer {
       opacity = row.opacity,
       blendMode = LayerBlendMode.normal,
       placement = row.placement,
-      effects = row.effects;
+      effects = row.effects,
+      tint = row.tint;
 
   /// The same row painting normal — what a row in an advanced blend
   /// is, composed over its backdrop ([CompositeBackdropBlend]).
@@ -92,6 +94,10 @@ class CutFrameCompositeLayer {
   /// every layer that carries no effects — the common case, which costs no
   /// filter at all.
   final List<ResolvedLayerEffect> effects;
+
+  /// The side's tint an onion ghost wears ([CutFrameCompositeGhost.tint]);
+  /// null for every other row.
+  final int? tint;
 }
 
 /// The layer's resolved GEOMETRIC pose at [frameIndex]; null while the
@@ -351,8 +357,11 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
 /// ghosts in under the row a pen was on by hand (`stackNodesWithGhosts`,
 /// retired 2026-10-25), so it had no place for a row that showed no cel.
 ///
-/// ⚠️ONLY THE EDITING CANVAS ASKS FOR ONE. Playback, export and the cache
-/// signature pass no ghosts, but they switch over it, as over a live row.
+/// ⚠️ONLY A PICTURE OF THE SCREEN ASKS FOR ONE: the editing canvas, and the
+/// still that shows what it shows (F-547,
+/// `ExportFrameRenderer.renderAsShown`). Playback, the film's exports and
+/// the cache signature pass no ghosts, but they switch over it, as over a
+/// live row.
 final class CutFrameCompositeGhost extends CutFrameCompositeRow {
   const CutFrameCompositeGhost({
     required this.layer,
@@ -1375,9 +1384,9 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   /// for every route that composites stored pixels only.
   LayerId? liveLayerId,
 
-  /// Each row's onion ghosts where a canvas lays them IN PLACE
-  /// ([CutFrameCompositeGhost]), bottom → top. Null for every route that
-  /// composites the film.
+  /// Each row's onion ghosts where a picture of the screen lays them IN
+  /// PLACE ([CutFrameCompositeGhost]), bottom → top. Null for every route
+  /// that composites the film.
   List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
 }) {
   // folder id (null = top level) → the nodes gathered under it so far.
@@ -1696,13 +1705,40 @@ List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
 /// that drops with them (an empty buffer is a wasted saveLayer) — save one
 /// a cel number is written on, which stands bare ([mapCompositeLeaves]).
 ///
-/// [reading]: how each row's cel is read ([CelReading]).
+/// [reading]: how each row's cel is read ([CelReading]). [ghostsOf]: each
+/// row's ghosts, as [resolveCutFrameCompositeTree] places them.
 List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required CelReading reading,
+  List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
 }) => _withSurfaces(
-  resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+  resolveCutFrameCompositeTree(
+    cut: cut,
+    frameIndex: frameIndex,
+    ghostsOf: ghostsOf,
+  ),
+  cut: cut,
+  frameIndex: frameIndex,
+  reading: reading,
+);
+
+/// [ghosts] of [cut]'s frame [frameIndex] by themselves, each onion row's in
+/// stack order: what a picture of the screen lays over its frame where they
+/// lie on top — the tree `EditingCanvas.ghostsOverAt` stacks, its surfaces
+/// resolved as [planCutFrameCompositeTree] resolves them.
+List<CompositeNode<CutFrameCompositeLayer>> planCutFrameGhosts({
+  required Cut cut,
+  required int frameIndex,
+  required Iterable<CutFrameCompositeGhost> ghosts,
+  required CelReading reading,
+}) => _withSurfaces(
+  readingTheirRows(
+    [for (final ghost in ghosts) CompositeLeaf<CutFrameCompositeRow>(ghost)],
+    cut: cut,
+    frameIndex: frameIndex,
+    liveLayerId: null,
+  ),
   cut: cut,
   frameIndex: frameIndex,
   reading: reading,
@@ -1735,20 +1771,41 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
   required int frameIndex,
   required CelReading reading,
 }) {
+  List<ResolvedLayerEffect> boundAt(List<ResolvedLayerEffect> chain, int at) =>
+      reading.plugins?.call(chain, cut: cut, frameIndex: at) ?? chain;
   List<ResolvedLayerEffect> bound(List<ResolvedLayerEffect> chain) =>
-      reading.plugins?.call(chain, cut: cut, frameIndex: frameIndex) ?? chain;
+      boundAt(chain, frameIndex);
+  // Laid as the canvas lays it (`EditingStackMap`): at its peg's strength
+  // and tint, no pose, its chain run at the frame its peg reaches.
+  CutFrameCompositeLayer? ghostOf(
+    CutFrameCompositeGhost ghost,
+    LayerFrameSurfaceResolver surfaceOf,
+  ) {
+    final cel = ghost.layer.frameById(ghost.frameId);
+    final surface = cel == null ? null : surfaceOf(ghost.layer, cel);
+    return surface == null
+        ? null
+        : CutFrameCompositeLayer(
+            surface: surface,
+            opacity: ghost.opacity,
+            blendMode: ghost.blendMode,
+            effects: boundAt(ghost.effects, ghost.frameIndex),
+            tint: ghost.tint,
+          );
+  }
+
   CutFrameCompositeLayer? layerOf(
     CutFrameCompositeRow row,
-    BitmapSurface? Function(CutFrameCompositeEntry entry) surfaceOf,
+    LayerFrameSurfaceResolver surfaceOf,
   ) => switch (row) {
     // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
     // tree for a live row, and only it owns the surface to fill the slot
     // with; every other route resolves surfaces from stored frames.
     // Reached here it would be a caller handing a live row to a route
     // that cannot draw it, so it contributes nothing rather than guessing.
-    // Nor has the film a ghost: only the editing canvas lays one.
-    CutFrameCompositeLiveRow() || CutFrameCompositeGhost() => null,
-    CutFrameCompositeEntry() => switch (surfaceOf(row)) {
+    CutFrameCompositeLiveRow() => null,
+    CutFrameCompositeGhost() => ghostOf(row, surfaceOf),
+    CutFrameCompositeEntry() => switch (surfaceOf(row.layer, row.frame)) {
       final surface? => CutFrameCompositeLayer(
         surface: surface,
         opacity: row.opacity,
@@ -1763,12 +1820,9 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
   return List.unmodifiable(
     mapCompositeLeaves(
       nodes,
-      (row) => layerOf(
-        row,
-        (entry) => reading.surfaces(entry.layer, entry.frame),
-      ),
+      (row) => layerOf(row, reading.surfaces),
       bare: (row) =>
-          layerOf(row, (_) => BitmapSurface(canvasSize: cut.canvasSize)),
+          layerOf(row, (_, _) => BitmapSurface(canvasSize: cut.canvasSize)),
       chains: bound,
     ),
   );

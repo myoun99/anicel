@@ -109,12 +109,13 @@ void main() {
   CompositeNode<CanvasStackRow> rowOf(BrushFrameKey cel) =>
       CompositeLeaf(CanvasLayerImageRequest(frameKey: cel, opacity: 1));
 
-  /// [children] at half strength: one picture of their own.
+  /// [children] below full strength: one picture of their own.
   CompositeNode<CanvasStackRow> folderOf(
-    List<CompositeNode<CanvasStackRow>> children,
-  ) => CompositeGroup<CanvasStackRow>(
+    List<CompositeNode<CanvasStackRow>> children, {
+    double strength = 0.5,
+  }) => CompositeGroup<CanvasStackRow>(
     children: children,
-    opacity: 0.5,
+    opacity: strength,
     blendMode: LayerBlendMode.normal,
     effects: const [],
   );
@@ -176,6 +177,31 @@ void main() {
 
       await madeAhead(run, 0);
       expect(debugSubtreeRasterCount, 1, reason: '⛔premise: drawn');
+      expect(debugKeptFrameDraws, 1, reason: '⛔premise: to be held');
+      await madeAhead(run, 1);
+      await madeAhead(run, 2);
+
+      expect(debugSubtreeRasterCount, 1, reason: 'found');
+      expect(debugKeptFrameDraws, 1, reason: 'held already');
+    });
+  });
+
+  testWidgets('🚨a folder the next picture lays at another strength is the '
+      'same picture: drawn once, and the frames after it draw nothing whole', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final run = walkOf(
+        (picture) => [
+          rowOf(still),
+          rowOf(moving[picture.frameIndex]),
+          folderOf([
+            rowOf(inFolder),
+          ], strength: 0.2 + 0.2 * picture.frameIndex),
+        ],
+      );
+
+      await madeAhead(run, 0);
       expect(debugKeptFrameDraws, 1, reason: '⛔premise: to be held');
       await madeAhead(run, 1);
       await madeAhead(run, 2);

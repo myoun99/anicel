@@ -103,6 +103,21 @@ class CompositeLayerSignature {
 sealed class CompositeNodeSignature
     implements TreeNode<CompositeNodeSignature> {
   const CompositeNodeSignature();
+
+  /// What this node's own picture holds: the node at full strength.
+  ///
+  /// 🚨THE STRENGTH A NODE IS LAID AT IS NOT IN ITS PICTURE (card
+  /// a-dragged-opacity-slider-lags-at-rest): a folder's or a clipping group's,
+  /// and an adjustment's mix, go on as the picture is blitted
+  /// (`drawSubtreeAsImage`'s `compose`), over the same raster and the same
+  /// steps at every value. 🔬Signed into what the picture is held by, a
+  /// blurred folder's own slider ran its chain at each value: S5_BA cut 353,
+  /// in turn with it out, let go to its picture 1.3–1.9 s → 0.22–0.40 s, the
+  /// longest a frame waited 1.3–2.1 s → 0.29–0.52 s.
+  ///
+  /// ⛔Only for a node's own picture: a frame's holds each node at the
+  /// strength it is laid at, and so does what lies below a pen.
+  CompositeNodeSignature get asItsPicture => this;
 }
 
 final class CompositeLeafSignature extends CompositeNodeSignature {
@@ -147,6 +162,14 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
   final List<ResolvedLayerEffect> effects;
 
   @override
+  CompositeNodeSignature get asItsPicture => CompositeGroupSignature(
+    children: children,
+    opacity: 1,
+    blendMode: blendMode,
+    effects: effects,
+  );
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CompositeGroupSignature &&
@@ -186,6 +209,10 @@ final class CompositeAdjustmentSignature extends CompositeNodeSignature {
   final List<CompositeNodeSignature> children;
   final List<ResolvedLayerEffect> effects;
   final double mix;
+
+  @override
+  CompositeNodeSignature get asItsPicture =>
+      CompositeAdjustmentSignature(children: children, effects: effects, mix: 1);
 
   @override
   bool operator ==(Object other) =>
@@ -260,6 +287,14 @@ final class CompositeClipSignature extends CompositeNodeSignature {
 
   @override
   List<CompositeNodeSignature> get children => [base, ...scope];
+
+  @override
+  CompositeNodeSignature get asItsPicture => CompositeClipSignature(
+    base: base,
+    scope: scope,
+    opacity: 1,
+    blendMode: blendMode,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -350,6 +385,10 @@ final class CompositeReadsRowsSignature extends CompositeNodeSignature {
     node,
     for (final drawn in rows.values) ...drawn,
   ];
+
+  @override
+  CompositeNodeSignature get asItsPicture =>
+      CompositeReadsRowsSignature(node: node.asItsPicture, rows: rows);
 
   @override
   bool operator ==(Object other) =>

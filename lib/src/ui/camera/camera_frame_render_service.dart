@@ -366,6 +366,7 @@ class CameraFrameRenderService {
             opacity: layer.opacity,
             blendMode: layer.blendMode,
             effects: layer.effects,
+            tint: layer.tint,
             // Its own canvas, as the rows' are laid on.
             paper: ownCanvas.canvasRect,
             // A texel copy where the projection moves pixels whole, at

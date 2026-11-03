@@ -23,8 +23,9 @@ import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️backlog-21-Q7 (유저 2026-09-30): 「다른 이름으로 저장」's PNG · JPG is
-/// 「내보내기 「이미지」와 같은 깨끗한 한 장」. The same picture because it is
-/// the same code: the frame it is taken of, the ground it is drawn on, the
+/// 「내보내기 「이미지」와 같은 한 장」 (and what that one picture shows,
+/// `a_saved_picture_shows_the_screen_test.dart`). The same picture because it
+/// is the same code: the frame it is taken of, the ground it is drawn on, the
 /// bytes it is written as and the one call that writes it are each spelled
 /// once, here pinned — a behaviour test would pass two spellings that agree
 /// today.
@@ -56,6 +57,14 @@ void main() {
         'lib/src/ui/export/export_dialog.dart': 1,
         'lib/src/ui/export/frame_image_file.dart': 1,
         'lib/src/ui/menu/editor_top_strip.dart': 1,
+      });
+    });
+
+    test('🚨what that call writes and what the image tab previews are one '
+        'render (F-547)', () {
+      expect(callersOf('.renderAsShown('), {
+        'lib/src/ui/export/export_dialog.dart': 1,
+        'lib/src/ui/export/frame_image_file.dart': 1,
       });
     });
 
@@ -194,19 +203,26 @@ void main() {
       format: ExportFormatSelection(kind: ExportMediaKind.still),
       sizeMode: ExportSizeMode.canvas,
     );
+    const guideInk = ui.Color(0xFF000000);
 
     testWidgets('writes the one file and says how far it came', (
       tester,
     ) async {
       final told = <(int, int)>[];
       final written = await tester.runAsync(
-        () => writeFrameImage(session, frameUnderThePlayhead(session)!, spec, (
-          directory: folder.path,
-          name: 'frame.png',
-          isCancelled: null,
-          onProgress: (completed, total) => told.add((completed, total)),
-          onLeftOut: null,
-        )),
+        () => writeFrameImage(
+          session,
+          frameUnderThePlayhead(session)!,
+          spec,
+          (
+            directory: folder.path,
+            name: 'frame.png',
+            isCancelled: null,
+            onProgress: (completed, total) => told.add((completed, total)),
+            onLeftOut: null,
+          ),
+          guideInk: guideInk,
+        ),
       );
       expect(written, isTrue);
       expect(File('${folder.path}/frame.png').existsSync(), isTrue);
@@ -217,13 +233,19 @@ void main() {
       tester,
     ) async {
       final written = await tester.runAsync(
-        () => writeFrameImage(session, frameUnderThePlayhead(session)!, spec, (
-          directory: folder.path,
-          name: 'frame.png',
-          isCancelled: () => true,
-          onProgress: null,
-          onLeftOut: null,
-        )),
+        () => writeFrameImage(
+          session,
+          frameUnderThePlayhead(session)!,
+          spec,
+          (
+            directory: folder.path,
+            name: 'frame.png',
+            isCancelled: () => true,
+            onProgress: null,
+            onLeftOut: null,
+          ),
+          guideInk: guideInk,
+        ),
       );
       expect(written, isFalse);
       expect(File('${folder.path}/frame.png').existsSync(), isFalse);
@@ -232,6 +254,8 @@ void main() {
     testWidgets('the tab\'s FX reaches the picture: off, a row its FX '
         'hide is drawn raw', (tester) async {
       drawOnCurrentFrame(session);
+      // The dab lies outside the camera's frame, which an open eye dims.
+      session.cameraViewMode.toggle();
       final layer = session.requireActiveCut.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
       );
@@ -260,6 +284,7 @@ void main() {
               onProgress: null,
               onLeftOut: null,
             ),
+            guideInk: guideInk,
           );
           final codec = await ui.instantiateImageCodec(
             File('${folder.path}/$name').readAsBytesSync(),
