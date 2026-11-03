@@ -109,6 +109,29 @@ void main() {
     );
   });
 
+  test('a hot cel copied onto a canvas of another size is laid to it', () {
+    final store = BrushFrameStore()..storeBakedSurface(key('a'), inked(3));
+    const bigger = CanvasSize(width: 32, height: 32);
+
+    store.copyCel(key('a'), key('b'), canvasSize: bigger);
+
+    final copy = store.hotBakedSurfaceOrNull(key('b'))!;
+    expect(copy.canvasSize, bigger);
+    expect(pixelsOf(copy), pixelsOf(inked(3)), reason: 'laid from the top left');
+  });
+
+  test('a copy onto an empty key is told as that key crossing to a '
+      'picture', () {
+    final store = BrushFrameStore();
+    keepInAFile(store, {key('a'): inked(1)});
+    final before = store.celContentRevision.value;
+
+    store.copyCel(key('a'), key('b'), canvasSize: size);
+
+    expect(store.celContentRevision.value, before + 1);
+    expect(store.celsLastCrossed, {key('b')});
+  });
+
   test('a kept cel copied onto a canvas of another size is laid to it and '
       'parked — never hot', () {
     final store = BrushFrameStore();
