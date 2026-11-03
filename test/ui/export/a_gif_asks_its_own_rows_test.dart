@@ -66,7 +66,7 @@ void main() {
   ];
 
   testWidgets('🚨a GIF\'s rows stand where a GIF is chosen, and nowhere '
-      'else — beside the channels row a PNG has', (
+      'else — beside the channels row a PNG and a 4444 have', (
     tester,
   ) async {
     const channels = 'export-format-channels-rgba';
@@ -83,12 +83,8 @@ void main() {
         videoCodec: ExportVideoCodec.prores4444,
       ),
     );
-    expect(
-      shown([...gifRows, channels]),
-      isEmpty,
-      reason: 'ProRes 4444 keeps alpha by its name (v10: 「4444(α)」) — '
-          'asked nothing',
-    );
+    // 🗣️I-152-Q1 (유저 2026-11-04): 「채널 행을 보인다」.
+    expect(shown([...gifRows, channels]), [channels], reason: '4444');
 
     await pump(
       tester,

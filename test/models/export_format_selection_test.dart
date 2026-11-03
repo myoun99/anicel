@@ -104,9 +104,9 @@ void main() {
 
     // 🗣️I-152 (유저 2026-11-03): 「색처리든 뭐든 gif에대한 세부설정가능한거
     // 두고싶어」.
+    // 🗣️I-152-Q1 (유저 2026-11-04): 「채널 행을 보인다」 — ProRes 4444 too.
     test('🚨a GIF keeps a clear colour as a PNG keeps alpha: by the ONE '
-        'channels choice — asked of a GIF and every still that keeps alpha; '
-        'ProRes 4444 keeps it by its name, asked nothing', () {
+        'channels choice, asked of every format that can keep alpha', () {
       final gif = const ExportFormatSelection().copyWith(
         container: ExportVideoContainer.gif,
       );
@@ -135,20 +135,6 @@ void main() {
             if (movie(codec).offersAlpha) codec,
         ],
         [ExportVideoCodec.prores4444, ExportVideoCodec.gif],
-      );
-      expect(
-        [
-          for (final format in ExportStillFormat.values)
-            if (!still(format).asksChannels) format,
-        ],
-        [ExportStillFormat.jpg],
-      );
-      expect(
-        [
-          for (final codec in ExportVideoCodec.values)
-            if (movie(codec).asksChannels) codec,
-        ],
-        [ExportVideoCodec.gif],
       );
     });
 

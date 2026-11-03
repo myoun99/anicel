@@ -1245,8 +1245,8 @@ void main() {
       // 4444 exposes the channel choice; RGBA is the default already.
       expect(
         find.byKey(const ValueKey<String>('export-format-channels-rgba')),
-        findsNothing,
-        reason: 'video channels stay internal — wantsAlpha follows 4444',
+        findsOneWidget,
+        reason: '🗣️I-152-Q1 (유저 2026-11-04): 「채널 행을 보인다」',
       );
       await tester.runAsync(state.export);
       await tester.pump();
@@ -1260,6 +1260,33 @@ void main() {
         capturedArgs.last.replaceAll('\\', '/'),
         endsWith('/Cut.mov'),
       );
+    });
+
+    testWidgets('MOV ProRes 4444 asked RGB is written opaque', (tester) async {
+      late List<String> capturedArgs;
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        videoExportService: VideoExportService(
+          processStarter: (executable, arguments) async {
+            capturedArgs = arguments;
+            return FakeFfmpegProcess();
+          },
+        ),
+      );
+      await pickExportContainer(tester, ExportVideoContainer.mov);
+      await pickCodec(tester, 'prores4444');
+      final rgb = find.byKey(
+        const ValueKey<String>('export-format-channels-rgb'),
+      );
+      await tester.ensureVisible(rgb);
+      await tester.tap(rgb);
+      await tester.pumpAndSettle();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(capturedArgs, contains('yuv444p10le'));
+      expect(capturedArgs, isNot(contains('yuva444p10le')));
     });
 
     // 🗣️video-export-speed-Q1 (유저 2026-10-09): 「코덱을 팝오버로 보여서
