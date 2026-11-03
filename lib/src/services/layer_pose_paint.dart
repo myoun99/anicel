@@ -40,6 +40,11 @@ export 'layer_pose_matrix.dart'
 /// drawn as it stands, the same run again and again: moved by half a pixel
 /// 34–63 pixels apart in every run, up to 88/255; enlarged 2.5× 0–95, as
 /// the run fell. Off the edge, 0 in every run, at 25%, 50% and 100%.
+/// ⛔NOT A POSE THAT LAYS ITS TEXELS ON WHOLE PIXELS ([_laysTexelsWhole]) —
+/// moved by whole pixels, enlarged by a whole number, turned a quarter, or
+/// moving nothing: no edge of it lies on a centre, and drawn off it its
+/// hard edge went soft (a photo enlarged twice, its edge 255 → 240) and a
+/// pose that moves nothing stopped drawing as no pose.
 /// ⚠️Only the draw: where the row is told and hit ([placementMatrix]) is
 /// the pose itself — a sixty-fourth of a texel is not where a pen lands.
 void applyLayerPlacement(
@@ -47,9 +52,24 @@ void applyLayerPlacement(
   LayerPlacement placement, {
   double rasterScale = 1,
 }) {
-  canvas
-    ..transform(placementMatrix(placement, rasterScale: rasterScale).storage)
-    ..translate(_offTheTexelEdge, _offTheTexelEdge);
+  canvas.transform(
+    placementMatrix(placement, rasterScale: rasterScale).storage,
+  );
+  if (!_laysTexelsWhole(placement, rasterScale)) {
+    canvas.translate(_offTheTexelEdge, _offTheTexelEdge);
+  }
+}
+
+/// Whether [placement] takes each texel's edges onto whole pixels: whole
+/// numbers in its matrix, and a move of whole pixels at [rasterScale].
+bool _laysTexelsWhole(LayerPlacement placement, double rasterScale) {
+  bool whole(double value) => value == value.roundToDouble();
+  return whole(placement.a) &&
+      whole(placement.b) &&
+      whole(placement.c) &&
+      whole(placement.d) &&
+      whole(placement.tx * rasterScale) &&
+      whole(placement.ty * rasterScale);
 }
 
 /// How far past its pose a posed image is drawn ([applyLayerPlacement]), in
