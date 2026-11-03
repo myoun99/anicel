@@ -433,19 +433,23 @@ if(NOT ANDROID AND NOT IOS)
   # against the published header, without the /utf-8 the app's own sources
   # need — so a change here that breaks the plugin a maker starts from fails
   # the engine's build and its pins (an_fx_plugin_answers_through_the_engine).
-  # The app's build reads this file through the plugin's symlink
-  # (windows/flutter/ephemeral/.plugin_symlinks/qa_native), where three
-  # levels up is not the repository — so the climb starts from the real path.
-  get_filename_component(qa_native_real_dir "${CMAKE_CURRENT_LIST_DIR}" REALPATH)
-  add_library(qa_fx_sdk_example SHARED
-    "${qa_native_real_dir}/../../../sdk/fx/example/shadow.c")
-  target_include_directories(qa_fx_sdk_example PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}")
-  set_target_properties(qa_fx_sdk_example PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED ON
-    C_VISIBILITY_PRESET hidden
-  )
+  # ⚠️Only where this file is the top of the build — the engine's own build
+  # (the lane gate, CI). The app's build reads it through the plugin's
+  # symlink (windows/flutter/ephemeral/.plugin_symlinks/qa_native), where
+  # three levels up is not the repository, and the CMake it runs (Visual
+  # Studio's 3.31) leaves that symlink unresolved in REALPATH — 2026-11-04,
+  # the Windows app failed to generate twice. The app needs no example.
+  if(PROJECT_IS_TOP_LEVEL)
+    add_library(qa_fx_sdk_example SHARED
+      "${CMAKE_CURRENT_LIST_DIR}/../../../sdk/fx/example/shadow.c")
+    target_include_directories(qa_fx_sdk_example PRIVATE
+      "${CMAKE_CURRENT_LIST_DIR}")
+    set_target_properties(qa_fx_sdk_example PROPERTIES
+      C_STANDARD 99
+      C_STANDARD_REQUIRED ON
+      C_VISIBILITY_PRESET hidden
+    )
+  endif()
   enable_testing()
   add_test(NAME qa_fx_plugin COMMAND qa_fx_plugin_test)
   add_test(NAME qa_fx_plugin_interpreted COMMAND qa_fx_plugin_interpreted_test)
