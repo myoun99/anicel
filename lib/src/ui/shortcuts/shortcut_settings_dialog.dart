@@ -635,9 +635,7 @@ final class _PresetVerbs {
       title: title,
       titleIcon: Icons.content_copy,
       fieldLabel: AppText.strings.commonNameField,
-      initialValue: AppText.strings.shortcutPresetCopyName(
-        nameOf(preset),
-      ),
+      initialValue: AppText.strings.copyNamed(nameOf(preset)),
       confirmLabel: AppText.strings.commonSave,
       emptyError: AppText.strings.shortcutPresetNameEmpty,
     ),

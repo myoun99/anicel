@@ -621,7 +621,7 @@ void main() {
 
       expect(desk.palettes.palettes.map((palette) => palette.name), [
         'Skin',
-        AppText.strings.paletteCopyName('Skin'),
+        AppText.strings.copyNamed('Skin'),
         'Sky',
       ]);
       expect(desk.palettes.palettes[1].slots, _two().palettes.first.slots);

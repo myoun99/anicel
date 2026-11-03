@@ -1228,8 +1228,6 @@ enum AppStrings {
   String get paletteExport => _s('paletteExport');
   String paletteBrought(String name) =>
       _s('paletteBroughtTemplate').replaceAll('{name}', name);
-  String paletteCopyName(String name) =>
-      _s('paletteCopyTemplate').replaceAll('{name}', name);
   String get paletteDeleteTitle => _s('paletteDeleteTitle');
   String paletteDeleteBody(String name) =>
       _s('paletteDeleteTemplate').replaceAll('{name}', name);
@@ -1272,6 +1270,12 @@ enum AppStrings {
   String get panelEnvelope => _s('panelEnvelope');
   String get commonRegister => _s('commonRegister');
   String get commonNameField => _s('commonNameField');
+
+  /// What a copy is first called, in every list that copies — palettes,
+  /// shortcut presets, timelines. I-150: the third made it one word; ko
+  /// keeps 「복사본」, the first of the two to land (10-18, over 10-28).
+  String copyNamed(String name) =>
+      _s('copyNameTemplate').replaceAll('{name}', name);
   String get tipRegisterTitle => _s('tipRegisterTitle');
   String get panelToolLibrary => _s('panelToolLibrary');
   String get panelCollapseRegion => _s('panelCollapseRegion');
@@ -1320,8 +1324,6 @@ enum AppStrings {
       _s('shortcutPresetDeleteTemplate').replaceAll('{name}', name);
   String get shortcutPresetRename => _s('shortcutPresetRename');
   String get shortcutPresetDuplicate => _s('shortcutPresetDuplicate');
-  String shortcutPresetCopyName(String name) =>
-      _s('shortcutPresetCopyTemplate').replaceAll('{name}', name);
 
   /// A program's shortcut files made into the new [preset] (I-107): how many
   /// of their keys an action took, and how many none did.
@@ -2796,7 +2798,6 @@ enum AppStrings {
     'paletteDuplicate': 'Duplicate',
     'paletteExport': 'Export',
     'paletteBroughtTemplate': 'Added the palette "{name}".',
-    'paletteCopyTemplate': '{name} copy',
     'paletteDeleteTitle': 'Delete palette',
     'paletteDeleteTemplate': 'Delete the palette "{name}"?',
     'paletteRemoveCurrent': 'Remove the current colour',
@@ -2832,6 +2833,7 @@ enum AppStrings {
     'panelEnvelope': 'Cut envelope',
     'commonRegister': 'Register',
     'commonNameField': 'Name',
+    'copyNameTemplate': '{name} copy',
     'tipRegisterTitle': 'Register as Tip',
     'panelToolLibrary': 'Tool library',
     'panelCollapseRegion': 'Collapse',
@@ -2870,7 +2872,6 @@ enum AppStrings {
     'shortcutPresetDuplicate': 'Duplicate preset',
     'shortcutPresetExport': 'Export preset',
     'shortcutPresetBroughtTemplate': 'Added the preset "{name}".',
-    'shortcutPresetCopyTemplate': '{name} copy',
     'shortcutPresetDeleteTemplate': 'Delete the preset "{name}"?',
     'shortcutFileUnreadableTemplate':
         '{name}: no shortcuts could be read out of this file.',
@@ -4435,7 +4436,6 @@ enum AppStrings {
     'paletteDuplicate': '複製',
     'paletteExport': '書き出し',
     'paletteBroughtTemplate': 'パレット「{name}」を追加しました。',
-    'paletteCopyTemplate': '{name} のコピー',
     'paletteDeleteTitle': 'パレットを削除',
     'paletteDeleteTemplate': 'パレット「{name}」を削除しますか？',
     'paletteRemoveCurrent': '今の色を外す',
@@ -4471,6 +4471,7 @@ enum AppStrings {
     'panelEnvelope': 'カット袋',
     'commonRegister': '登録',
     'commonNameField': '名前',
+    'copyNameTemplate': '{name} のコピー',
     'tipRegisterTitle': '先端として登録',
     'panelToolLibrary': 'ツールライブラリ',
     'panelCollapseRegion': '折りたたむ',
@@ -4507,7 +4508,6 @@ enum AppStrings {
     'shortcutPresetDuplicate': 'プリセットを複製',
     'shortcutPresetExport': 'プリセットを書き出し',
     'shortcutPresetBroughtTemplate': 'プリセット「{name}」を追加しました。',
-    'shortcutPresetCopyTemplate': '{name} のコピー',
     'shortcutPresetDeleteTemplate': 'プリセット「{name}」を削除しますか？',
     'shortcutFileUnreadableTemplate':
         '{name}: このファイルから読めるショートカットがありません。',
@@ -6275,7 +6275,6 @@ enum AppStrings {
     'paletteDuplicate': '복제',
     'paletteExport': '내보내기',
     'paletteBroughtTemplate': '「{name}」 팔레트를 추가했습니다.',
-    'paletteCopyTemplate': '{name} 사본',
     'paletteDeleteTitle': '팔레트 삭제',
     'paletteDeleteTemplate': '「{name}」 팔레트를 삭제할까요?',
     'paletteRemoveCurrent': '지금 색 빼기',
@@ -6311,6 +6310,7 @@ enum AppStrings {
     'panelEnvelope': '컷 봉투',
     'commonRegister': '등록',
     'commonNameField': '이름',
+    'copyNameTemplate': '{name} 복사본',
     'tipRegisterTitle': '팁으로 등록',
     'panelToolLibrary': '도구 라이브러리',
     'panelCollapseRegion': '접기',
@@ -6347,7 +6347,6 @@ enum AppStrings {
     'shortcutPresetDuplicate': '프리셋 복제',
     'shortcutPresetExport': '프리셋 내보내기',
     'shortcutPresetBroughtTemplate': '「{name}」 프리셋을 추가했습니다.',
-    'shortcutPresetCopyTemplate': '{name} 복사본',
     'shortcutPresetDeleteTemplate': '「{name}」 프리셋을 삭제할까요?',
     'shortcutFileUnreadableTemplate':
         '{name}: 이 파일에서 읽을 단축키가 없습니다.',
@@ -8164,7 +8163,6 @@ enum AppStrings {
     'paletteDuplicate': 'Dupliquer',
     'paletteExport': 'Exporter',
     'paletteBroughtTemplate': 'Palette « {name} » ajoutée.',
-    'paletteCopyTemplate': 'Copie de {name}',
     'paletteDeleteTitle': 'Supprimer la palette',
     'paletteDeleteTemplate': 'Supprimer la palette « {name} » ?',
     'paletteRemoveCurrent': 'Retirer la couleur actuelle',
@@ -8200,6 +8198,7 @@ enum AppStrings {
     'panelEnvelope': 'Enveloppe de plan',
     'commonRegister': 'Enregistrer',
     'commonNameField': 'Nom',
+    'copyNameTemplate': 'Copie de {name}',
     'tipRegisterTitle': 'Enregistrer comme pointe',
     'panelToolLibrary': "Bibliothèque d'outils",
     'panelCollapseRegion': 'Réduire',
@@ -8238,7 +8237,6 @@ enum AppStrings {
     'shortcutPresetDuplicate': 'Dupliquer le préréglage',
     'shortcutPresetExport': 'Exporter le préréglage',
     'shortcutPresetBroughtTemplate': 'Préréglage « {name} » ajouté.',
-    'shortcutPresetCopyTemplate': 'Copie de {name}',
     'shortcutPresetDeleteTemplate': 'Supprimer le préréglage « {name} » ?',
     'shortcutFileUnreadableTemplate':
         '{name} : aucun raccourci lisible dans ce fichier.',
@@ -10073,7 +10071,6 @@ enum AppStrings {
     'paletteDuplicate': '复制',
     'paletteExport': '导出',
     'paletteBroughtTemplate': '已添加调色板“{name}”。',
-    'paletteCopyTemplate': '{name} 副本',
     'paletteDeleteTitle': '删除调色板',
     'paletteDeleteTemplate': '要删除调色板“{name}”吗？',
     'paletteRemoveCurrent': '移除当前颜色',
@@ -10109,6 +10106,7 @@ enum AppStrings {
     'panelEnvelope': '卡袋',
     'commonRegister': '注册',
     'commonNameField': '名称',
+    'copyNameTemplate': '{name} 副本',
     'tipRegisterTitle': '注册为笔尖',
     'panelToolLibrary': '工具库',
     'panelCollapseRegion': '折叠',
@@ -10144,7 +10142,6 @@ enum AppStrings {
     'shortcutPresetDuplicate': '复制预设',
     'shortcutPresetExport': '导出预设',
     'shortcutPresetBroughtTemplate': '已添加预设“{name}”。',
-    'shortcutPresetCopyTemplate': '{name} 副本',
     'shortcutPresetDeleteTemplate': '要删除预设“{name}”吗？',
     'shortcutFileUnreadableTemplate': '{name}：此文件中没有可读取的快捷键。',
     'shortcutResetToDefault': '恢复默认',
