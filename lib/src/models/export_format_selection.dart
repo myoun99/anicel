@@ -88,8 +88,10 @@ enum ExportVideoCodec {
   bool get takesBitrate =>
       this == ExportVideoCodec.h264 || this == ExportVideoCodec.h265;
 
-  /// Only 4444 carries alpha; every other codec is opaque.
-  bool get supportsAlpha => this == ExportVideoCodec.prores4444;
+  /// 4444 and a GIF carry alpha — a GIF's a clear colour of its palette;
+  /// every other codec is opaque.
+  bool get supportsAlpha =>
+      this == ExportVideoCodec.prores4444 || this == ExportVideoCodec.gif;
 
   bool allowedIn(ExportVideoContainer container) => switch (this) {
     ExportVideoCodec.h264 => container != ExportVideoContainer.gif,
@@ -112,6 +114,135 @@ enum ExportVideoCodec {
     }
     return ExportVideoCodec.h264;
   }
+}
+
+/// How a GIF finds the colours of its palette: an OCTREE keeps each colour
+/// exact while a picture holds no more than the palette does — cel paint
+/// is flat colours; a NEURAL net learns them near, smoother over a
+/// gradient; BLACK AND WHITE is two, by brightness.
+enum ExportGifReduction {
+  octree,
+  neural,
+  blackWhite;
+
+  String get jsonValue => name;
+
+  /// Whether the palette is as large as it is asked to be: black and white
+  /// is two whatever is asked.
+  bool get takesColorCount => this != ExportGifReduction.blackWhite;
+
+  static ExportGifReduction fromJson(Object? json) {
+    for (final reduction in ExportGifReduction.values) {
+      if (reduction.jsonValue == json) {
+        return reduction;
+      }
+    }
+    return ExportGifReduction.octree;
+  }
+}
+
+/// How a GIF spreads what its palette cannot say over the pixels around:
+/// not at all, or by one of the error-diffusion kernels named for who
+/// made them.
+enum ExportGifDither {
+  none,
+  floydSteinberg,
+  stucki,
+  atkinson;
+
+  String get jsonValue => name;
+
+  static ExportGifDither fromJson(Object? json) {
+    for (final dither in ExportGifDither.values) {
+      if (dither.jsonValue == json) {
+        return dither;
+      }
+    }
+    return ExportGifDither.floydSteinberg;
+  }
+}
+
+const int exportGifFewestColors = 2;
+const int exportGifMostColors = 256;
+
+/// The most times a GIF is asked to play on the bar; zero plays forever.
+const int exportGifMostPlays = 10;
+
+/// What a GIF is asked of beyond its pictures (I-152 · 유저 2026-11-03:
+/// 「색처리든 뭐든 gif에대한 세부설정가능한거 두고싶어」): how its palette is
+/// found and how large it is, how what it cannot say is spread, and how
+/// many times it plays. Whether it keeps a clear colour is the format's
+/// channels, as a PNG's is ([ExportFormatSelection.channels]).
+///
+/// ⚠️My call, not the user's: what is offered is what the app's GIF writer
+/// can do — Photoshop's GIF also asks a dither AMOUNT, interlacing and a
+/// lossy pass, none of which it writes. The defaults are the GIF as it
+/// first landed (octree, 256, Floyd–Steinberg, forever) — the octree
+/// because the neural net wrote a flat red frame grey (the pins' 4×2,
+/// measured 2026-11-03).
+class ExportGifSettings {
+  const ExportGifSettings({
+    this.reduction = ExportGifReduction.octree,
+    this.colors = exportGifMostColors,
+    this.dither = ExportGifDither.floydSteinberg,
+    this.plays = 0,
+  });
+
+  final ExportGifReduction reduction;
+
+  /// [exportGifFewestColors]–[exportGifMostColors] (clamped on write).
+  final int colors;
+
+  final ExportGifDither dither;
+
+  /// How many times the film plays; zero plays it forever.
+  /// 0–[exportGifMostPlays] (clamped on write).
+  final int plays;
+
+  ExportGifSettings copyWith({
+    ExportGifReduction? reduction,
+    int? colors,
+    ExportGifDither? dither,
+    int? plays,
+  }) => ExportGifSettings(
+    reduction: reduction ?? this.reduction,
+    colors: (colors ?? this.colors).clamp(
+      exportGifFewestColors,
+      exportGifMostColors,
+    ),
+    dither: dither ?? this.dither,
+    plays: (plays ?? this.plays).clamp(0, exportGifMostPlays),
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (reduction != ExportGifReduction.octree)
+      'reduction': reduction.jsonValue,
+    if (colors != exportGifMostColors) 'colors': colors,
+    if (dither != ExportGifDither.floydSteinberg) 'dither': dither.jsonValue,
+    if (plays != 0) 'plays': plays,
+  };
+
+  static ExportGifSettings fromJson(Object? json) {
+    final map = json is Map ? json : const <String, Object?>{};
+    return const ExportGifSettings().copyWith(
+      reduction: ExportGifReduction.fromJson(map['reduction']),
+      colors: (map['colors'] as num?)?.round(),
+      dither: ExportGifDither.fromJson(map['dither']),
+      plays: (map['plays'] as num?)?.round(),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ExportGifSettings &&
+          other.reduction == reduction &&
+          other.colors == colors &&
+          other.dither == dither &&
+          other.plays == plays;
+
+  @override
+  int get hashCode => Object.hash(reduction, colors, dither, plays);
 }
 
 /// The lineup's order is this order. BMP · TGA · TIFF · WEBP joined as the
@@ -184,6 +315,7 @@ class ExportFormatSelection {
     this.backgroundArgb = defaultExportBackgroundArgb,
     this.jpgQuality = defaultExportJpgQuality,
     this.videoBitrateMbps = 0,
+    this.gif = const ExportGifSettings(),
   });
 
   final ExportMediaKind kind;
@@ -191,7 +323,7 @@ class ExportFormatSelection {
   final ExportVideoCodec videoCodec;
   final ExportStillFormat stillFormat;
 
-  /// Meaningful for stills with alpha and ProRes 4444 video; everything
+  /// Meaningful for the formats that keep alpha ([offersAlpha]); everything
   /// else resolves to RGB (see [effectiveChannels]).
   final ExportChannels channels;
 
@@ -204,17 +336,22 @@ class ExportFormatSelection {
   /// 0 = automatic (the encoder's own budget); otherwise a target in Mbps.
   final int videoBitrateMbps;
 
+  /// What a GIF is asked of ([ExportGifSettings]) — kept whatever is
+  /// chosen, as the JPG's quality is.
+  final ExportGifSettings gif;
+
   bool get isVideo => kind == ExportMediaKind.video;
   bool get isStill => kind == ExportMediaKind.still;
 
-  /// The channels the output actually gets: JPG and non-4444 video are
-  /// always opaque; every other still and 4444 honor the choice.
-  ExportChannels get effectiveChannels {
-    if (isVideo) {
-      return videoCodec.supportsAlpha ? channels : ExportChannels.rgb;
-    }
-    return stillFormat.supportsAlpha ? channels : ExportChannels.rgb;
-  }
+  /// Whether the chosen format can keep alpha, so [channels] is asked of
+  /// it: every still but a JPG, ProRes 4444 and a GIF.
+  bool get offersAlpha =>
+      isVideo ? videoCodec.supportsAlpha : stillFormat.supportsAlpha;
+
+  /// The channels the output actually gets: the choice where the format
+  /// can keep alpha ([offersAlpha]), opaque everywhere else.
+  ExportChannels get effectiveChannels =>
+      offersAlpha ? channels : ExportChannels.rgb;
 
   bool get wantsAlpha => effectiveChannels == ExportChannels.rgba;
 
@@ -239,6 +376,7 @@ class ExportFormatSelection {
     int? backgroundArgb,
     int? jpgQuality,
     int? videoBitrateMbps,
+    ExportGifSettings? gif,
   }) => normalized(
     kind: kind ?? this.kind,
     container: container ?? this.container,
@@ -248,6 +386,7 @@ class ExportFormatSelection {
     backgroundArgb: backgroundArgb ?? this.backgroundArgb,
     jpgQuality: jpgQuality ?? this.jpgQuality,
     videoBitrateMbps: videoBitrateMbps ?? this.videoBitrateMbps,
+    gif: gif ?? this.gif,
   );
 
   /// Legalizes a combination: a codec outside its container snaps to that
@@ -264,6 +403,7 @@ class ExportFormatSelection {
     int backgroundArgb = defaultExportBackgroundArgb,
     int jpgQuality = defaultExportJpgQuality,
     int videoBitrateMbps = 0,
+    ExportGifSettings gif = const ExportGifSettings(),
   }) => ExportFormatSelection(
     kind: kind,
     container: container,
@@ -275,6 +415,7 @@ class ExportFormatSelection {
     backgroundArgb: backgroundArgb,
     jpgQuality: jpgQuality.clamp(1, 100),
     videoBitrateMbps: videoBitrateMbps < 0 ? 0 : videoBitrateMbps,
+    gif: gif.copyWith(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -290,6 +431,7 @@ class ExportFormatSelection {
       'backgroundArgb': backgroundArgb,
     if (jpgQuality != defaultExportJpgQuality) 'jpgQuality': jpgQuality,
     if (videoBitrateMbps != 0) 'videoBitrateMbps': videoBitrateMbps,
+    if (gif != const ExportGifSettings()) 'gif': gif.toJson(),
   };
 
   static ExportFormatSelection fromJson(Map<String, dynamic> json) =>
@@ -305,6 +447,7 @@ class ExportFormatSelection {
         jpgQuality:
             (json['jpgQuality'] as num?)?.round() ?? defaultExportJpgQuality,
         videoBitrateMbps: (json['videoBitrateMbps'] as num?)?.round() ?? 0,
+        gif: ExportGifSettings.fromJson(json['gif']),
       );
 
   @override
@@ -318,7 +461,8 @@ class ExportFormatSelection {
           other.channels == channels &&
           other.backgroundArgb == backgroundArgb &&
           other.jpgQuality == jpgQuality &&
-          other.videoBitrateMbps == videoBitrateMbps;
+          other.videoBitrateMbps == videoBitrateMbps &&
+          other.gif == gif;
 
   @override
   int get hashCode => Object.hash(
@@ -330,6 +474,7 @@ class ExportFormatSelection {
     backgroundArgb,
     jpgQuality,
     videoBitrateMbps,
+    gif,
   );
 
   @override

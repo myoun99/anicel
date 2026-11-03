@@ -73,6 +73,7 @@ class _AMovieOfOneByte extends VideoExportService {
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
     int bitrateBps = 0,
+    ExportGifSettings gif = const ExportGifSettings(),
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {

@@ -2836,8 +2836,9 @@ class ExportDialogState extends State<ExportDialog> {
     final audioMixPath = withSound && format.carriesSound
         ? await _renderAudioMix(plan)
         : null;
-    // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α keeps
-    // the channel (transparent ground, fade still paints).
+    // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 and a GIF
+    // asked for RGBA keep the channel (transparent ground, fade still
+    // paints).
     final run = renderer.videoRun(plan, sizeMode, preserveAlpha: alphaVideo);
     try {
       return await widget.videoExportService.exportVideo(
@@ -2850,6 +2851,7 @@ class ExportDialogState extends State<ExportDialog> {
         codec: format.videoCodec,
         alpha: alphaVideo,
         bitrateBps: format.videoBitrateMbps * 1000000,
+        gif: format.gif,
         isCancelled: () => _cancelRequested,
         onProgress: onProgress,
       );

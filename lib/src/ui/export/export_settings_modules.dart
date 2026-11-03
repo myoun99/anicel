@@ -179,6 +179,10 @@ enum ExportCaption {
   quality,
   channels,
   background,
+  gifPalette,
+  gifColors,
+  gifDither,
+  gifLoop,
   image,
   paper,
   layerFx,
@@ -194,6 +198,10 @@ enum ExportCaption {
     quality => strings.exQuality,
     channels => strings.exChannels,
     background => strings.exBackground,
+    gifPalette => strings.exGifPalette,
+    gifColors => strings.exGifColors,
+    gifDither => strings.exGifDither,
+    gifLoop => strings.exGifLoop,
     image => strings.exImage,
     paper => strings.exPaperLabel,
     layerFx => strings.exApplyLayerFx,
@@ -617,35 +625,131 @@ class ExportFormatModule extends StatelessWidget {
   /// 그중에 고르게하도록」. ↩️It was a pill strip, and MOV's six shared the
   /// settings column's row at some 30px each — every name cut to an
   /// ellipsis (실측 10-05).
-  Widget _codecRow(List<ExportVideoCodec> codecs) => ExportModuleRow(
-    caption: ExportCaption.codec,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: PanelFlyoutButton(
-        key: ValueKey<String>('$keyPrefix-codec'),
-        label: selection.videoCodec.label,
-        enabled: enabled,
-        entriesBuilder: () => codecs.asFlyoutValueChoices(
-          current: selection.videoCodec,
-          choiceOf: (codec) {
-            final writable = capabilities.isVideoEnabled(
-              selection.container,
-              codec,
-            );
-            return PanelFlyoutChoice(
-              key: '$keyPrefix-codec-${codec.jsonValue}',
-              label: codec.label,
-              enabled: writable,
-              warning: writable
-                  ? null
-                  : capabilities.reasonFor(selection.container, codec),
-            );
-          },
-          onPicked: (codec) => _change(selection.copyWith(videoCodec: codec)),
-        ),
+  Widget _codecRow(List<ExportVideoCodec> codecs) => _flyoutRow(
+    ExportCaption.codec,
+    PanelFlyoutButton(
+      key: ValueKey<String>('$keyPrefix-codec'),
+      label: selection.videoCodec.label,
+      enabled: enabled,
+      entriesBuilder: () => codecs.asFlyoutValueChoices(
+        current: selection.videoCodec,
+        choiceOf: (codec) {
+          final writable = capabilities.isVideoEnabled(
+            selection.container,
+            codec,
+          );
+          return PanelFlyoutChoice(
+            key: '$keyPrefix-codec-${codec.jsonValue}',
+            label: codec.label,
+            enabled: writable,
+            warning: writable
+                ? null
+                : capabilities.reasonFor(selection.container, codec),
+          );
+        },
+        onPicked: (codec) => _change(selection.copyWith(videoCodec: codec)),
       ),
     ),
   );
+
+  /// A row whose control is one value picked from a list — the codec, and
+  /// a GIF's palette and dither.
+  Widget _flyoutRow(ExportCaption caption, PanelFlyoutButton button) =>
+      ExportModuleRow(
+        caption: caption,
+        child: Align(alignment: Alignment.centerLeft, child: button),
+      );
+
+  void _changeGif(ExportGifSettings gif) =>
+      _change(selection.copyWith(gif: gif));
+
+  static String _gifPaletteLabel(ExportGifReduction reduction) =>
+      switch (reduction) {
+        ExportGifReduction.octree => AppText.strings.exGifOctree,
+        ExportGifReduction.neural => AppText.strings.exGifNeural,
+        ExportGifReduction.blackWhite => AppText.strings.exGifBlackWhite,
+      };
+
+  /// A kernel goes by the names of who made it, in every language.
+  static String _gifDitherLabel(ExportGifDither dither) => switch (dither) {
+    ExportGifDither.none => AppText.strings.commonNone,
+    ExportGifDither.floydSteinberg => 'Floyd–Steinberg',
+    ExportGifDither.stucki => 'Stucki',
+    ExportGifDither.atkinson => 'Atkinson',
+  };
+
+  /// A GIF's own rows (I-152, 유저 2026-11-03: 「색처리든 뭐든 gif에대한
+  /// 세부설정가능한거 두고싶어」): how its palette is found and how large it
+  /// is — black and white is two whatever is asked, so it asks no count —
+  /// how what the palette cannot say is spread, and how many times it plays.
+  List<Widget> _gifRows() {
+    final gif = selection.gif;
+    return [
+      _flyoutRow(
+        ExportCaption.gifPalette,
+        PanelFlyoutButton(
+          key: ValueKey<String>('$keyPrefix-gif-palette'),
+          label: _gifPaletteLabel(gif.reduction),
+          enabled: enabled,
+          entriesBuilder: () => ExportGifReduction.values.asFlyoutChoices(
+            current: gif.reduction,
+            keyPrefix: '$keyPrefix-gif-palette-',
+            labelOf: _gifPaletteLabel,
+            onPicked: (reduction) =>
+                _changeGif(gif.copyWith(reduction: reduction)),
+          ),
+        ),
+      ),
+      if (gif.reduction.takesColorCount)
+        ExportModuleRow(
+          caption: ExportCaption.gifColors,
+          child: FieldSlider(
+            key: ValueKey<String>('$keyPrefix-gif-colors'),
+            value: gif.colors.toDouble(),
+            min: exportGifFewestColors.toDouble(),
+            max: exportGifMostColors.toDouble(),
+            divisions: exportGifMostColors - exportGifFewestColors,
+            onChanged: enabled
+                ? (next) => _changeGif(gif.copyWith(colors: next.round()))
+                : null,
+          ),
+        ),
+      _flyoutRow(
+        ExportCaption.gifDither,
+        PanelFlyoutButton(
+          key: ValueKey<String>('$keyPrefix-gif-dither'),
+          label: _gifDitherLabel(gif.dither),
+          enabled: enabled,
+          entriesBuilder: () => ExportGifDither.values.asFlyoutChoices(
+            current: gif.dither,
+            keyPrefix: '$keyPrefix-gif-dither-',
+            labelOf: _gifDitherLabel,
+            onPicked: (dither) => _changeGif(gif.copyWith(dither: dither)),
+          ),
+        ),
+      ),
+      ExportModuleRow(
+        caption: ExportCaption.gifLoop,
+        child: FieldSlider(
+          key: ValueKey<String>('$keyPrefix-gif-loop'),
+          value: gif.plays.toDouble(),
+          min: 0,
+          max: exportGifMostPlays.toDouble(),
+          divisions: exportGifMostPlays,
+          valueTextBuilder: _gifPlaysText,
+          onChanged: enabled
+              ? (next) => _changeGif(gif.copyWith(plays: next.round()))
+              : null,
+        ),
+      ),
+    ];
+  }
+
+  /// Zero plays FOREVER, so the bar's low end is a word, as the bitrate's
+  /// automatic is.
+  static String _gifPlaysText(double plays, String derived) => plays <= 0
+      ? AppText.strings.exGifForever
+      : AppText.strings.exGifPlays(plays.round());
 
   /// Zero is AUTO — the encoder picks — so the bar's low end is a word,
   /// not a number.
@@ -717,11 +821,12 @@ class ExportFormatModule extends StatelessWidget {
     final codecs = selection.isVideo
         ? capabilities.codecsFor(selection.container)
         : const <ExportVideoCodec>[];
-    final showChannels =
-        selection.isStill && selection.stillFormat.supportsAlpha;
+    final showChannels = selection.offersAlpha;
     final showBackground =
         selection.isStill && selection.effectiveChannels == ExportChannels.rgb;
     final showBitrate = selection.isVideo && selection.videoCodec.takesBitrate;
+    final showGif =
+        selection.isVideo && selection.container == ExportVideoContainer.gif;
     final showQuality =
         selection.isStill && selection.stillFormat == ExportStillFormat.jpg;
     return Column(
@@ -730,6 +835,7 @@ class ExportFormatModule extends StatelessWidget {
         _formatRow(),
         if (selection.isVideo && codecs.length > 1) _codecRow(codecs),
         if (showBitrate) _bitrateRow(),
+        if (showGif) ..._gifRows(),
         if (showQuality) _qualityRow(),
         if (showChannels) _channelsRow(),
         if (showBackground) _backgroundRow(),

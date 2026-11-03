@@ -257,6 +257,7 @@ class VideoExportService {
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
     int bitrateBps = 0,
+    ExportGifSettings gif = const ExportGifSettings(),
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -294,6 +295,7 @@ class VideoExportService {
         codec: codec,
         alpha: alpha,
         bitrateBps: bitrateBps,
+        gif: gif,
       );
     } on Object {
       first.dispose();
@@ -410,14 +412,18 @@ class VideoExportService {
     required ExportVideoCodec codec,
     required bool alpha,
     required int bitrateBps,
+    required ExportGifSettings gif,
   }) async {
     if (writtenByTheApp(container)) {
-      return _GifFile.open(
+      return _GifFile.open((
         path: outputFilePath,
         width: width,
         height: height,
-        frameRate: frameRate,
-      );
+        numerator: frameRate.numerator,
+        denominator: frameRate.denominator,
+        look: gif,
+        alpha: alpha,
+      ));
     }
     final encoder = encoderResolver();
     if (encoder != null && encoder.isSupported) {
@@ -693,24 +699,12 @@ class _OsEncoderFeed implements _FrameSink {
 class _GifFile implements _FrameSink {
   _GifFile._(this._isolate, this._port, this._answers, this._requests);
 
-  /// Starts the worker that writes [path], and waits until it listens.
-  static Future<_GifFile> open({
-    required String path,
-    required int width,
-    required int height,
-    required ProjectFrameRate frameRate,
-  }) async {
+  /// Starts the worker that writes [gif], and waits until it listens.
+  static Future<_GifFile> open(_Gif gif) async {
     final port = ReceivePort();
     final isolate = await Isolate.spawn(
       _writeGif,
-      (
-        answers: port.sendPort,
-        path: path,
-        width: width,
-        height: height,
-        numerator: frameRate.numerator,
-        denominator: frameRate.denominator,
-      ),
+      (answers: port.sendPort, gif: gif),
       onError: port.sendPort,
       onExit: port.sendPort,
     );
@@ -729,7 +723,11 @@ class _GifFile implements _FrameSink {
   final StreamIterator<Object?> _answers;
   final SendPort _requests;
 
-  final _FramePixels _pixels = _FramePixels(ui.ImageByteFormat.rawRgba);
+  /// STRAIGHT alpha: a pixel the picture leaves part clear keeps the
+  /// colour it was laid with, where the GIF keeps it opaque.
+  final _FramePixels _pixels = _FramePixels(
+    ui.ImageByteFormat.rawStraightRgba,
+  );
 
   /// The bytes of the picture last sent: a frame that hands these again is
   /// that picture, held.
@@ -795,15 +793,21 @@ class _GifFile implements _FrameSink {
   }
 }
 
-/// What [_writeGif] is started with.
-typedef _GifJob = ({
-  SendPort answers,
+/// The GIF a [_GifFile] writes: where, how large, at what rate, what it is
+/// asked of ([ExportGifSettings]), and whether it keeps a clear colour —
+/// the format's channels ([ExportFormatSelection.wantsAlpha]).
+typedef _Gif = ({
   String path,
   int width,
   int height,
   int numerator,
   int denominator,
+  ExportGifSettings look,
+  bool alpha,
 });
+
+/// What [_writeGif] is started with.
+typedef _GifJob = ({SendPort answers, _Gif gif});
 
 /// The shortest a GIF can show a picture as it was meant: browsers show a
 /// delay of 0 or 1 hundredth as ten, so a picture the film holds for less
@@ -814,17 +818,16 @@ const int _gifShortestDelay = 2;
 /// — or no picture and the frame the film ends before, then writes the
 /// file — and answers each with true, or why not.
 Future<void> _writeGif(_GifJob job) async {
+  final gif = job.gif;
   final requests = ReceivePort();
   job.answers.send(requests.sendPort);
-  // An OCTREE keeps each colour exact while a picture holds no more than
-  // the palette does — cel paint is flat colours. My call, not the user's:
-  // the encoder's own neural quantizer learns them near, and wrote a flat
-  // red frame grey (the pins' 4×2, measured 2026-11-03).
-  final encoder = img.GifEncoder(quantizerType: img.QuantizerType.octree);
+  // Each picture comes with its palette ([_gifPictureOf]): the encoder
+  // packs it as it is.
+  final encoder = img.GifEncoder(repeat: _gifLoopCountOf(gif.look.plays));
   // A frame's start in hundredths of a second, as the GIF counts time: a
   // frame of 24 fps is 4.17, so the delays run 4 4 4 5 and add up.
   int hundredths(int frame) =>
-      (frame * 100 * job.denominator / job.numerator).round();
+      (frame * 100 * gif.denominator / gif.numerator).round();
   img.Image? held;
   var heldFrom = 0;
   await for (final request in requests) {
@@ -836,7 +839,10 @@ Future<void> _writeGif(_GifJob job) async {
       }
       final bytes = encoder.finish();
       if (bytes != null) {
-        File(job.path).writeAsBytesSync(bytes, flush: true);
+        File(gif.path).writeAsBytesSync(
+          gif.look.plays == 1 ? _playedOnce(bytes) : bytes,
+          flush: true,
+        );
       }
       job.answers.send(bytes != null ? true : 'nothing to write');
       requests.close();
@@ -848,28 +854,185 @@ Future<void> _writeGif(_GifJob job) async {
       encoder.addFrame(held, duration: shown);
       heldFrom = frame;
     }
-    held = _gifPictureOf(pixels.materialize(), job.width, job.height);
+    held = _gifPictureOf(pixels.materialize(), gif);
     job.answers.send(true);
   }
 }
 
-/// [rgba]'s picture with no alpha: a movie the app writes is opaque, and a
-/// channel the GIF would read as a transparent colour is left out.
-img.Image _gifPictureOf(ByteBuffer rgba, int width, int height) {
-  final from = rgba.asUint8List();
-  final rgb = Uint8List(width * height * 3);
-  for (var source = 0, target = 0; target < rgb.length; source += 4) {
-    rgb[target++] = from[source];
-    rgb[target++] = from[source + 1];
-    rgb[target++] = from[source + 2];
+/// The loop count that plays a film [plays] times, zero forever: a player
+/// plays a GIF once more than its count says — 1 is twice.
+int _gifLoopCountOf(int plays) => plays == 0 ? 0 : plays - 1;
+
+/// [bytes] with no loop block: a GIF without one plays once, where every
+/// count it could say plays it more. The encoder writes the block right
+/// after the 13 bytes of the header and the screen — it writes no table of
+/// its own there.
+Uint8List _playedOnce(Uint8List bytes) {
+  const at = 13;
+  const length = 19;
+  if (bytes[at] != 0x21 || bytes[at + 1] != 0xFF) {
+    throw StateError('no loop block where the encoder writes one');
   }
-  return img.Image.fromBytes(
-    width: width,
-    height: height,
-    bytes: rgb.buffer,
-    numChannels: 3,
+  return Uint8List.fromList([
+    ...bytes.sublist(0, at),
+    ...bytes.sublist(at + length),
+  ]);
+}
+
+/// [rgba]'s picture cut to [gif]'s palette ([ExportGifSettings]).
+///
+/// Where the GIF keeps a clear colour ([_Gif.alpha]) a pixel under half
+/// covered is that colour ([_gifPictureWithClear]); a movie the app writes
+/// is opaque otherwise, and the channel is left out.
+img.Image _gifPictureOf(ByteBuffer rgba, _Gif gif) {
+  final from = rgba.asUint8List();
+  final count = gif.width * gif.height;
+  final rgb = Uint8List(count * 3);
+  final clear = Uint8List(count);
+  var clearCount = 0;
+  for (var pixel = 0, source = 0; pixel < count; pixel += 1, source += 4) {
+    if (gif.alpha && from[source + 3] < 128) {
+      clear[pixel] = 1;
+      clearCount += 1;
+      continue;
+    }
+    rgb.setRange(pixel * 3, pixel * 3 + 3, from, source);
+  }
+  if (clearCount > 0) {
+    return _gifPictureWithClear(rgb, clear, count - clearCount, gif);
+  }
+  final picture = _rgbPicture(rgb, gif.width, gif.height);
+  return img.ditherImage(
+    picture,
+    quantizer: _gifQuantizerOf(picture, gif.look, gif.look.colors),
+    kernel: _gifKernelOf(gif.look.dither),
   );
 }
+
+/// [rgb]'s picture with its [clear] pixels a clear colour: the palette is
+/// found among the [laid] others, one entry short — the clear one's.
+///
+/// ⚠️My call, not the user's: a GIF's pixel is clear or not, so a pixel
+/// half covered or more is opaque in the colour it was laid with — no
+/// matte to blend its edge into.
+img.Image _gifPictureWithClear(
+  Uint8List rgb,
+  Uint8List clear,
+  int laid,
+  _Gif gif,
+) {
+  final count = clear.length;
+  if (laid == 0) {
+    return img.Image.fromBytes(
+      width: gif.width,
+      height: gif.height,
+      bytes: Uint8List(count).buffer,
+      numChannels: 1,
+      palette: img.PaletteUint8(1, 4),
+    );
+  }
+  final among = Uint8List(laid * 3);
+  for (var pixel = 0, target = 0; pixel < count; pixel += 1) {
+    if (clear[pixel] == 0) {
+      among.setRange(target, target + 3, rgb, pixel * 3);
+      target += 3;
+    }
+  }
+  final quantizer = _gifQuantizerOf(
+    _rgbPicture(among, laid, 1),
+    gif.look,
+    gif.look.colors - 1,
+  );
+  // A clear pixel stands in a colour of the palette, so it carries no error
+  // of its own into the laid ones beside it.
+  final palette = quantizer.palette;
+  final ground = [
+    palette.getRed(0).toInt(),
+    palette.getGreen(0).toInt(),
+    palette.getBlue(0).toInt(),
+  ];
+  for (var pixel = 0; pixel < count; pixel += 1) {
+    if (clear[pixel] == 1) {
+      rgb.setAll(pixel * 3, ground);
+    }
+  }
+  final indices = Uint8List.fromList(
+    img
+        .ditherImage(
+          _rgbPicture(rgb, gif.width, gif.height),
+          quantizer: quantizer,
+          kernel: _gifKernelOf(gif.look.dither),
+        )
+        .toUint8List(),
+  );
+  final withClear = _paletteWithClear(quantizer);
+  final clearIndex = withClear.numColors - 1;
+  for (var pixel = 0; pixel < count; pixel += 1) {
+    if (clear[pixel] == 1) {
+      indices[pixel] = clearIndex;
+    }
+  }
+  return img.Image.fromBytes(
+    width: gif.width,
+    height: gif.height,
+    bytes: indices.buffer,
+    numChannels: 1,
+    palette: withClear,
+  );
+}
+
+/// [quantizer]'s colours, and one more after them that is clear.
+img.PaletteUint8 _paletteWithClear(img.Quantizer quantizer) {
+  final palette = quantizer.palette;
+  // A neural net's palette is 256 long whatever it learned: its colours
+  // are the first of them.
+  final used = quantizer is img.NeuralQuantizer
+      ? quantizer.numColors
+      : palette.numColors;
+  final withClear = img.PaletteUint8(used + 1, 4);
+  for (var index = 0; index < used; index += 1) {
+    withClear.setRgba(
+      index,
+      palette.getRed(index),
+      palette.getGreen(index),
+      palette.getBlue(index),
+      255,
+    );
+  }
+  return withClear;
+}
+
+img.Image _rgbPicture(Uint8List rgb, int width, int height) =>
+    img.Image.fromBytes(
+      width: width,
+      height: height,
+      bytes: rgb.buffer,
+      numChannels: 3,
+    );
+
+/// The palette of at most [colors] that [look] finds in [picture].
+img.Quantizer _gifQuantizerOf(
+  img.Image picture,
+  ExportGifSettings look,
+  int colors,
+) => switch (look.reduction) {
+  ExportGifReduction.octree => img.OctreeQuantizer(
+    picture,
+    numberOfColors: colors,
+  ),
+  ExportGifReduction.neural => img.NeuralQuantizer(
+    picture,
+    numberOfColors: colors,
+  ),
+  ExportGifReduction.blackWhite => img.BinaryQuantizer(),
+};
+
+img.DitherKernel _gifKernelOf(ExportGifDither dither) => switch (dither) {
+  ExportGifDither.none => img.DitherKernel.none,
+  ExportGifDither.floydSteinberg => img.DitherKernel.floydSteinberg,
+  ExportGifDither.stucki => img.DitherKernel.stucki,
+  ExportGifDither.atkinson => img.DitherKernel.atkinson,
+};
 
 /// One ffmpeg run fed through its stdin: raw frames in, the movie out when
 /// the pipe closes.

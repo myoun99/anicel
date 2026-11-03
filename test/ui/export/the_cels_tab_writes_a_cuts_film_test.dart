@@ -281,6 +281,62 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🗣️a film is written as its format asks it of a GIF — how '
+      'many times it plays, and whether the ground it leaves is clear '
+      '(I-152: 「색처리든 뭐든 gif에대한 세부설정가능한거 두고싶어」)', (
+    tester,
+  ) async {
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+
+    /// The cut's film, written as [format] asks.
+    Future<Uint8List> filmOf(ExportFormatSelection format) async {
+      // A window of its own: the one before keeps its own choice.
+      await tester.pumpWidget(const SizedBox.shrink());
+      final temp = scratch();
+      final state = await pumpCels(
+        tester,
+        session,
+        spec: CelsExportSpec(
+          kinds: const {ExportCelKind.video},
+          videoFormat: format,
+        ),
+        into: temp,
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+      return File('${temp.path}/_CUT301.gif').readAsBytesSync();
+    }
+
+    final once = await filmOf(
+      gif.copyWith(gif: const ExportGifSettings(plays: 1)),
+    );
+    expect(
+      String.fromCharCodes(once),
+      isNot(contains('NETSCAPE2.0')),
+      reason: 'played once: no loop block',
+    );
+    expect(
+      img.decodeGif(once)!.any((pixel) => pixel.a == 0),
+      isTrue,
+      reason: 'RGBA: the ground the cels leave is the clear colour',
+    );
+
+    final opaque = await filmOf(gif.copyWith(channels: ExportChannels.rgb));
+    expect(
+      String.fromCharCodes(opaque),
+      contains('NETSCAPE2.0'),
+      reason: 'LIVENESS — forever is a loop block',
+    );
+    expect(
+      img.decodeGif(opaque)!.any((pixel) => pixel.a == 0),
+      isFalse,
+      reason: 'RGB: the white ground of every movie',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('the film is as large as the tab\'s size says: through the '
       'camera, the camera\'s', (tester) async {
     final temp = scratch();

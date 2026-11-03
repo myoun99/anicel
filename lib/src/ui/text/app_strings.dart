@@ -1561,6 +1561,18 @@ enum AppStrings {
   String get exNotInThisBuild => _s('exNotInThisBuild');
   String get exBitrateAuto => _s('exBitrateAuto');
 
+  /// A GIF's own rows (I-152): how its palette is found and how large it
+  /// is, how what it cannot say is spread, how many times it plays.
+  String get exGifPalette => _s('exGifPalette');
+  String get exGifColors => _s('exGifColors');
+  String get exGifDither => _s('exGifDither');
+  String get exGifLoop => _s('exGifLoop');
+  String get exGifOctree => _s('exGifOctree');
+  String get exGifNeural => _s('exGifNeural');
+  String get exGifBlackWhite => _s('exGifBlackWhite');
+  String get exGifForever => _s('exGifForever');
+  String exGifPlays(int count) => _count('exGifPlays', count);
+
   /// The size pills' canvas row, filled at the call site the way
   /// [exCameraTemplate] beside it is.
   String get exCanvasTemplate => _s('exCanvasTemplate');
@@ -3052,6 +3064,16 @@ enum AppStrings {
     'exCheckingEncoders': 'Checking this machine’s encoders…',
     'exNotInThisBuild': 'Not available in this build yet.',
     'exBitrateAuto': 'Auto',
+    'exGifPalette': 'Palette',
+    'exGifColors': 'Colors',
+    'exGifDither': 'Dither',
+    'exGifLoop': 'Loop',
+    'exGifOctree': 'Octree',
+    'exGifNeural': 'Neural',
+    'exGifBlackWhite': 'Black & white',
+    'exGifForever': 'Forever',
+    'exGifPlays': '{n}×',
+    'exGifPlaysOne': '{n}×',
     'exCanvasTemplate': 'Canvas {size}',
     'exCanvasPerCut': 'Canvas (per cut)',
     'imImport': 'Import',
@@ -4769,6 +4791,16 @@ enum AppStrings {
     'exCheckingEncoders': 'このマシンのエンコーダーを確認中…',
     'exNotInThisBuild': 'このビルドではまだ使えません。',
     'exBitrateAuto': '自動',
+    'exGifPalette': '減色',
+    'exGifColors': '色数',
+    'exGifDither': 'ディザ',
+    'exGifLoop': 'ループ',
+    'exGifOctree': 'オクトリー',
+    'exGifNeural': 'ニューラル',
+    'exGifBlackWhite': '白黒',
+    'exGifForever': '無限',
+    'exGifPlays': '{n}回',
+    'exGifPlaysOne': '{n}回',
     'exCanvasTemplate': 'キャンバス {size}',
     'exCanvasPerCut': 'キャンバス（カットごと）',
     'imImport': 'インポート',
@@ -6605,6 +6637,16 @@ enum AppStrings {
     'exCheckingEncoders': '이 컴퓨터의 인코더를 확인하는 중…',
     'exNotInThisBuild': '이 빌드에서는 아직 쓸 수 없습니다.',
     'exBitrateAuto': '자동',
+    'exGifPalette': '색 감소',
+    'exGifColors': '색 수',
+    'exGifDither': '디더링',
+    'exGifLoop': '반복',
+    'exGifOctree': '옥트리',
+    'exGifNeural': '뉴럴',
+    'exGifBlackWhite': '흑백',
+    'exGifForever': '무한',
+    'exGifPlays': '{n}회',
+    'exGifPlaysOne': '{n}회',
     'exCanvasTemplate': '캔버스 {size}',
     'exCanvasPerCut': '캔버스(컷마다)',
     'imImport': '임포트',
@@ -8570,6 +8612,16 @@ enum AppStrings {
     'exCheckingEncoders': 'Vérification des encodeurs de cette machine…',
     'exNotInThisBuild': 'Pas encore disponible dans cette version.',
     'exBitrateAuto': 'Auto',
+    'exGifPalette': 'Palette',
+    'exGifColors': 'Couleurs',
+    'exGifDither': 'Tramage',
+    'exGifLoop': 'Boucle',
+    'exGifOctree': 'Octree',
+    'exGifNeural': 'Neuronal',
+    'exGifBlackWhite': 'Noir et blanc',
+    'exGifForever': 'Toujours',
+    'exGifPlays': '{n}×',
+    'exGifPlaysOne': '{n}×',
     'exCanvasTemplate': 'Canevas {size}',
     'exCanvasPerCut': 'Canevas (par plan)',
     'imImport': 'Importer',
@@ -10191,7 +10243,7 @@ enum AppStrings {
     'exQuality': '质量',
     'exCodec': '编解码器',
     'exBitrate': '码率',
-    'exChannels': '声道',
+    'exChannels': '通道',
     'exAudio': '音频',
     'exHandOverDeclined': '未交出，导出的结果已丢弃。',
     'exHandOverPending': '导出的结果尚未交出。',
@@ -10388,6 +10440,16 @@ enum AppStrings {
     'exCheckingEncoders': '正在检查本机的编码器…',
     'exNotInThisBuild': '此版本尚不可用。',
     'exBitrateAuto': '自动',
+    'exGifPalette': '减色',
+    'exGifColors': '颜色数',
+    'exGifDither': '仿色',
+    'exGifLoop': '循环',
+    'exGifOctree': '八叉树',
+    'exGifNeural': '神经网络',
+    'exGifBlackWhite': '黑白',
+    'exGifForever': '无限',
+    'exGifPlays': '{n}次',
+    'exGifPlaysOne': '{n}次',
     'exCanvasTemplate': '画布 {size}',
     'exCanvasPerCut': '画布（按镜头）',
     'imImport': '导入',

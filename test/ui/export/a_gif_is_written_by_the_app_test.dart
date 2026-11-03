@@ -152,8 +152,8 @@ void main() {
     expect(pictures, [about(red), about(blue)]);
   });
 
-  test('a GIF is opaque: a frame that leaves its ground clear is no '
-      'transparent colour of it', () async {
+  test('a GIF asked for RGB is opaque: a frame that leaves its ground clear '
+      'is no transparent colour of it', () async {
     final file = outputIn('clear.gif');
     await service.exportVideo(
       count: 1,
@@ -186,6 +186,261 @@ void main() {
 
     expect(summary, (written: 2, processed: 2));
     expect([for (final p in picturesOf(file)) p.hundredths], [8, 9]);
+  });
+
+  group('🗣️what a GIF is asked (「색처리든 뭐든 gif에대한 세부설정가능한거 '
+      '두고싶어」)', () {
+    /// A frame [width]×[height] whose pixel at (x, y) is [colorAt]'s.
+    Future<ui.Image> painted(
+      int width,
+      int height,
+      ui.Color Function(int x, int y) colorAt,
+    ) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      for (var y = 0; y < height; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          canvas.drawRect(
+            ui.Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
+            ui.Paint()
+              ..color = colorAt(x, y)
+              ..blendMode = ui.BlendMode.src,
+          );
+        }
+      }
+      final image = await recorder.endRecording().toImage(width, height);
+      made.add(image);
+      return image;
+    }
+
+    /// 64 greys, 0 to 252, a column apiece.
+    Future<ui.Image> greys() =>
+        painted(64, 2, (x, _) => ui.Color.fromARGB(255, x * 4, x * 4, x * 4));
+
+    /// The GIF at [name] of the one frame [image], as [settings] ask.
+    Future<File> written(
+      String name,
+      ui.Image image, {
+      ExportGifSettings settings = const ExportGifSettings(),
+      bool alpha = false,
+    }) async {
+      final file = outputIn(name);
+      await service.exportVideo(
+        count: 1,
+        renderImage: (_) async => image,
+        outputFilePath: file.path,
+        frameRate: ProjectFrameRate.fps24,
+        container: ExportVideoContainer.gif,
+        codec: ExportVideoCodec.gif,
+        alpha: alpha,
+        gif: settings,
+      );
+      return file;
+    }
+
+    /// The first picture of the GIF at [file], a pixel at a time, row by
+    /// row.
+    List<(int, int, int, int)> pixelsOf(File file) => [
+      for (final p in img.decodeGif(file.readAsBytesSync())!)
+        (p.r.toInt(), p.g.toInt(), p.b.toInt(), p.a.toInt()),
+    ];
+
+    /// How often the colour changes along the first row of [pixels], 64
+    /// long.
+    int changesOf(List<(int, int, int, int)> pixels) => [
+      for (var x = 1; x < 64; x += 1)
+        if (pixels[x] != pixels[x - 1]) x,
+    ].length;
+
+    test('an octree keeps every colour of a picture that holds no more '
+        'than its palette', () async {
+      final file = await written('exact.gif', await greys());
+      expect(
+        [for (final p in pixelsOf(file).take(64)) p.$1],
+        [for (var x = 0; x < 64; x += 1) x * 4],
+      );
+    });
+
+    test('🚨the palette is as large as it is asked: 64 greys cut to four '
+        'colours hold four', () async {
+      final file = await written(
+        'four.gif',
+        await greys(),
+        settings: const ExportGifSettings(
+          colors: 4,
+          dither: ExportGifDither.none,
+        ),
+      );
+      expect(pixelsOf(file).toSet(), hasLength(4));
+    });
+
+    test('black and white is two, by brightness, whatever count is '
+        'asked', () async {
+      final file = await written(
+        'bw.gif',
+        await greys(),
+        settings: const ExportGifSettings(
+          reduction: ExportGifReduction.blackWhite,
+          dither: ExportGifDither.none,
+        ),
+      );
+      expect(pixelsOf(file).toSet(), {
+        (0, 0, 0, 255),
+        (255, 255, 255, 255),
+      });
+    });
+
+    test('a neural net learns the colours near: not the octree\'s '
+        'palette', () async {
+      const eight = ExportGifSettings(colors: 8, dither: ExportGifDither.none);
+      final octree = pixelsOf(
+        await written('octree.gif', await greys(), settings: eight),
+      );
+      final neural = pixelsOf(
+        await written(
+          'neural.gif',
+          await greys(),
+          settings: eight.copyWith(reduction: ExportGifReduction.neural),
+        ),
+      );
+      expect(neural, isNot(octree));
+    });
+
+    test('🚨undithered, greys cut to two are two plain halves; each kernel '
+        'spreads them, each its own way', () async {
+      const two = ExportGifSettings(colors: 2, dither: ExportGifDither.none);
+      final plain = pixelsOf(
+        await written('plain.gif', await greys(), settings: two),
+      );
+      expect(changesOf(plain), 1);
+      final spread = <String>{};
+      for (final dither in [
+        ExportGifDither.floydSteinberg,
+        ExportGifDither.stucki,
+        ExportGifDither.atkinson,
+      ]) {
+        final pixels = pixelsOf(
+          await written(
+            '${dither.name}.gif',
+            await greys(),
+            settings: two.copyWith(dither: dither),
+          ),
+        );
+        expect(changesOf(pixels), greaterThan(1), reason: dither.name);
+        spread.add('$pixels');
+      }
+      expect(spread, hasLength(3), reason: 'three kernels, three pictures');
+    });
+
+    /// The loop count the GIF at [file] says, or null where it says none.
+    int? loopCountOf(File file) {
+      final bytes = file.readAsBytesSync();
+      final at = String.fromCharCodes(bytes).indexOf('NETSCAPE2.0');
+      return at < 0 ? null : bytes[at + 13] | bytes[at + 14] << 8;
+    }
+
+    test('🚨it plays as many times as it is asked: forever is a count of '
+        'zero, and once is no count at all — a player plays a GIF once more '
+        'than its count says', () async {
+      expect(loopCountOf(await written('forever.gif', await frame(red))), 0);
+      expect(
+        loopCountOf(
+          await written(
+            'thrice.gif',
+            await frame(red),
+            settings: const ExportGifSettings(plays: 3),
+          ),
+        ),
+        2,
+      );
+
+      final once = outputIn('once.gif');
+      final colors = [red, green, blue];
+      await service.exportVideo(
+        count: 3,
+        renderImage: (index) => frame(colors[index]),
+        outputFilePath: once.path,
+        frameRate: const ProjectFrameRate.integer(12),
+        container: ExportVideoContainer.gif,
+        codec: ExportVideoCodec.gif,
+        gif: const ExportGifSettings(plays: 1),
+      );
+      expect(loopCountOf(once), isNull);
+      expect(
+        picturesOf(once),
+        [about(red), about(green), about(blue)],
+        reason: 'the film is whole without its loop block',
+      );
+    });
+
+    test('🚨asked for RGBA, a pixel under half covered is the clear colour, '
+        'and the rest are opaque in the colour they were laid with', () async {
+      final image = await painted(4, 1, (x, _) => switch (x) {
+        0 => const ui.Color(0x00000000),
+        1 => red.withAlpha(0x40),
+        2 => red.withAlpha(0xC0),
+        _ => red,
+      });
+      final [none, quarter, threeQuarters, whole] = pixelsOf(
+        await written('clear.gif', image, alpha: true),
+      );
+      expect(none.$4, 0);
+      expect(quarter.$4, 0);
+      expect(whole, (224, 32, 16, 255));
+      expect(threeQuarters.$4, 255);
+      expect(
+        [threeQuarters.$1, threeQuarters.$2, threeQuarters.$3],
+        [closeTo(224, 3), closeTo(32, 3), closeTo(16, 3)],
+        reason: 'the colour it was laid with, not darkened by its cover',
+      );
+    });
+
+    test('a frame left all clear is all the clear colour', () async {
+      final pixels = pixelsOf(
+        await written(
+          'nothing.gif',
+          await frame(const ui.Color(0x00000000)),
+          alpha: true,
+        ),
+      );
+      expect({for (final p in pixels) p.$4}, {0});
+    });
+
+    test('🚨the clear colour is an entry of its own beside a full palette — '
+        'as the octree finds it and as the net does', () async {
+      for (final reduction in [
+        ExportGifReduction.octree,
+        ExportGifReduction.neural,
+      ]) {
+        // 1024 colours, the top left 4×4 of them clear.
+        final image = await painted(
+          32,
+          32,
+          (x, y) => x < 4 && y < 4
+              ? const ui.Color(0x00000000)
+              : ui.Color.fromARGB(255, x * 8, y * 8, 128),
+        );
+        final pixels = pixelsOf(
+          await written(
+            '${reduction.name}-full.gif',
+            image,
+            alpha: true,
+            settings: ExportGifSettings(reduction: reduction),
+          ),
+        );
+        expect(
+          [
+            for (final (index, p) in pixels.indexed)
+              if (p.$4 == 0) (index % 32, index ~/ 32),
+          ],
+          [
+            for (var y = 0; y < 4; y += 1)
+              for (var x = 0; x < 4; x += 1) (x, y),
+          ],
+          reason: reduction.name,
+        );
+      }
+    });
   });
 
   test('every machine may pick it: no encoder and no ffmpeg stands between '
