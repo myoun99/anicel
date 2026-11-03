@@ -194,6 +194,13 @@ class LayerLinkRegistry {
   /// (cut, layer)'s counterpart inside [targetCutId] — the member of its
   /// group that lives there, or null when the row does not reach that cut.
   ///
+  /// A cut can hold two members of one group — a row pasted linked inside
+  /// it, its copy mirrored into the cuts that share its rows. The n-th of
+  /// them, in the group's order, is the n-th there. ↩️It was the first
+  /// there, whichever was asked: a 동기컷 with such a row laid both rows onto
+  /// that one, and the other timeline's cut held one row twice (I-150,
+  /// 2026-11-04).
+  ///
   /// Asked of the REGISTRY, so a command still building the next one can
   /// ask the groups it has made so far (겸용 변경 seats a copied attach row
   /// on the row its base was linked to a step earlier).
@@ -206,9 +213,21 @@ class LayerLinkRegistry {
     if (group == null) {
       return null;
     }
+    var nth = 0;
+    for (final member in group.members) {
+      if (member.cutId == cutId) {
+        if (member.layerId == layerId) {
+          break;
+        }
+        nth += 1;
+      }
+    }
     for (final member in group.members) {
       if (member.cutId == targetCutId) {
-        return member.layerId;
+        if (nth == 0) {
+          return member.layerId;
+        }
+        nth -= 1;
       }
     }
     return null;

@@ -29,6 +29,37 @@ void main() {
   );
 
   group('LayerLinkRegistry', () {
+    test('a row pasted linked inside a cut is the n-th there as it is the '
+        'n-th here — never the first twice', () {
+      final links = LayerLinkRegistry(
+        groups: [
+          LayerLinkGroup(
+            id: 'g',
+            members: [
+              member('cut-a', 'a1'),
+              member('cut-b', 'b1'),
+              member('cut-a', 'a2'),
+              member('cut-b', 'b2'),
+              member('cut-c', 'c1'),
+            ],
+          ),
+        ],
+      );
+      LayerId? across(String cut, String layer, String target) =>
+          links.counterpartIn(
+            cutId: CutId(cut),
+            layerId: LayerId(layer),
+            targetCutId: CutId(target),
+          );
+
+      expect(across('cut-a', 'a1', 'cut-b'), const LayerId('b1'));
+      expect(across('cut-a', 'a2', 'cut-b'), const LayerId('b2'));
+      expect(across('cut-b', 'b2', 'cut-a'), const LayerId('a2'));
+      expect(across('cut-c', 'c1', 'cut-a'), const LayerId('a1'));
+      expect(across('cut-a', 'a2', 'cut-c'), isNull, reason: 'no second');
+      expect(across('cut-a', 'a2', 'cut-d'), isNull);
+    });
+
     test('groupOf finds the group of any member; null when unlinked', () {
       final links = registry();
       expect(

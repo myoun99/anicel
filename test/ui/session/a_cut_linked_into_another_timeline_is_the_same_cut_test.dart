@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🗣️I-150-Q3 (유저 2026-11-03): 「일단 다른 타임라인끼리는 단순 겸용컷
 /// 작동안하게. 지금 겸용 만드는게 컷 복사하고 다른타임라인에 링크붙여넣기
@@ -504,6 +505,55 @@ void main() {
       reason: 'a 겸용 of the cut standing here',
     );
     expect(again.duration, isNot(made.duration), reason: 'a 겸용 starts anew');
+  });
+
+  test('a row pasted linked inside one is one more row of the other — the '
+      'n-th as it is the n-th, never one row twice', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    s.selectGlobalFrame(projectOf(s).tracks.single.cuts.first.duration + 1);
+    s.selectLayer(made.layers.first.id);
+    expect(s.requireActiveCut.id, made.id, reason: '⛔전제');
+    drawOnCurrentFrame(s);
+
+    linkDuplicateActiveRow(s);
+
+    final here = projectOf(s).tracks.single.cuts.last;
+    final there = cutIn(s, 0, first);
+    final registry = projectOf(s).linkRegistry;
+    expect(here.layers, hasLength(made.layers.length + 1), reason: '⛔전제');
+    expect(
+      [for (final row in there.layers) row.id].toSet(),
+      hasLength(there.layers.length),
+      reason: 'no row twice',
+    );
+    expect(
+      [
+        for (final row in here.layers)
+          registry.counterpartIn(
+            cutId: made.id,
+            layerId: row.id,
+            targetCutId: first,
+          ),
+      ],
+      [for (final row in there.layers) row.id],
+      reason: 'each row of the one is the row of the other where it stands',
+    );
+    expect(
+      [for (final row in there.layers) row.timeline],
+      [for (final row in here.layers) row.timeline],
+    );
+
+    s.selectLayer(here.layers.first.id);
+    drawOnCurrentFrame(s);
+    expect(
+      [for (final row in cutIn(s, 0, first).layers) row.timeline],
+      [
+        for (final row in projectOf(s).tracks.single.cuts.last.layers)
+          row.timeline,
+      ],
+      reason: 'drawn on after, the two are one still',
+    );
   });
 
   test('a row added to one is added to the other — a drawing row by its '
