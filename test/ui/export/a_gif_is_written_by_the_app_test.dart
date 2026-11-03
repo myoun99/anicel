@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -330,6 +331,106 @@ void main() {
         spread.add('$pixels');
       }
       expect(spread, hasLength(3), reason: 'three kernels, three pictures');
+    });
+
+    /// What [strokes] lays at (x, y): a soft red stroke over white in the
+    /// top eight rows, a soft blue one under it — every pixel its own
+    /// cover, as a brush lays them.
+    ui.Color strokeAt(int x, int y) => ui.Color.lerp(
+      const ui.Color(0xFFFFFFFF),
+      y < 8 ? const ui.Color(0xFFD83C2C) : const ui.Color(0xFF3C7FCD),
+      (x * 4 + (y % 8) * 31) % 256 / 255,
+    )!;
+
+    /// More colours than a palette holds.
+    Future<ui.Image> strokes() => painted(64, 16, strokeAt);
+
+    /// [pixel]'s distance from what [strokes] laid there, the worst channel.
+    int offBy((int, int, int, int) pixel, int x, int y) {
+      final laid = strokeAt(x, y);
+      final (r, g, b, _) = pixel;
+      return [
+        (r - (laid.r * 255).round()).abs(),
+        (g - (laid.g * 255).round()).abs(),
+        (b - (laid.b * 255).round()).abs(),
+      ].reduce(math.max);
+    }
+
+    test('🚨a colour the palette has no room for goes to the NEAREST entry: '
+        'a red stroke stays red and a blue one blue, dithered or not — '
+        '「빨강 획까지 전부 파랑」 (AI 검증 11-04)', () async {
+      for (final dither in [
+        ExportGifDither.floydSteinberg,
+        ExportGifDither.none,
+      ]) {
+        final pixels = pixelsOf(
+          await written(
+            '${dither.name}-strokes.gif',
+            await strokes(),
+            settings: ExportGifSettings(dither: dither),
+          ),
+        );
+        // A near-white pixel may lean either way by a few levels; the
+        // stroke itself never crosses over.
+        for (final (at, pixel) in pixels.indexed) {
+          final (r, _, b, _) = pixel;
+          final red = at ~/ 64 < 8;
+          expect(
+            red ? r + 16 >= b : b + 16 >= r,
+            isTrue,
+            reason: '${dither.name}: ${red ? 'red' : 'blue'} stroke at '
+                '${at % 64},${at ~/ 64} came out $pixel',
+          );
+        }
+        if (dither == ExportGifDither.none) {
+          final worst = [
+            for (final (at, pixel) in pixels.indexed)
+              offBy(pixel, at % 64, at ~/ 64),
+          ].reduce(math.max);
+          expect(worst, lessThan(24), reason: 'undithered, each is near');
+        }
+      }
+    });
+
+    test('🚨cut to four, a small stroke keeps a colour of its own: an '
+        'octree folds a branch whole, never part of it into its parent — '
+        '「획이 통째로 없다」 (AI 검증 11-04)', () async {
+      // White, and in its corners a red square and a blue one — 16 shades
+      // each, a sixty-fourth of the picture.
+      Future<ui.Image> squares() => painted(32, 32, (x, y) {
+        final shade = (x % 4) * 4 + y % 4;
+        return x < 4 && y < 4
+            ? ui.Color.fromARGB(255, 200 + shade, 40, 30)
+            : x >= 28 && y >= 28
+            ? ui.Color.fromARGB(255, 30, 60, 200 + shade)
+            : const ui.Color(0xFFFFFFFF);
+      });
+      for (final dither in [
+        ExportGifDither.none,
+        ExportGifDither.floydSteinberg,
+      ]) {
+        final pixels = pixelsOf(
+          await written(
+            '${dither.name}-four.gif',
+            await squares(),
+            settings: ExportGifSettings(colors: 4, dither: dither),
+          ),
+        );
+        final red = pixels[33];
+        final (r, g, b, _) = red;
+        expect(
+          r > 150 && g < 100 && b < 100,
+          isTrue,
+          reason: '${dither.name}: the red square came out $red',
+        );
+        final blue = pixels[30 * 32 + 30];
+        final (r2, g2, b2, _) = blue;
+        expect(
+          b2 > 150 && r2 < 100 && g2 < 120,
+          isTrue,
+          reason: '${dither.name}: the blue square came out $blue',
+        );
+      }
     });
 
     /// The loop count the GIF at [file] says, or null where it says none.
