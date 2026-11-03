@@ -8,6 +8,11 @@ import '../project_repository.dart';
 import '../project_tree_editor.dart';
 import 'transitions_ride_the_cuts.dart';
 
+/// WHERE A CUT PUT DOWN LANDS (I-150): on [trackId] at [index] — after the
+/// track's last cut when null — walking [leadingGapFrames] into the gap it
+/// lands in, as a new cut landing there would (`CutPlacement`).
+typedef CutLanding = ({TrackId trackId, int? index, int leadingGapFrames});
+
 /// [project] with [cut] put into [trackId] at [index] — after the track's
 /// last cut when null — and the leading gaps of the cuts it took room
 /// from, AS THEY WERE: what [projectWithCutTakenOut] hands the room back by.

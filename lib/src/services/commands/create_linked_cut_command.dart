@@ -76,6 +76,7 @@ class CreateLinkedCutCommand implements Command {
     required this.layerIdMap,
     required this.newGroupIdBySource,
     required this.coveringFrameIdBySource,
+    this.landing,
   });
 
   final ProjectRepository repository;
@@ -93,6 +94,14 @@ class CreateLinkedCutCommand implements Command {
   /// The planned fresh panel of each source row whose copy is born covering
   /// the new cut (F-99).
   final Map<LayerId, FrameId> coveringFrameIdBySource;
+
+  /// Where the new cut lands — null directly behind its source.
+  ///
+  /// 🗣️I-150 (유저 2026-11-03): 「링크붙여넣기는 물론 겸용컷으로 만들면서
+  /// 붙여넣는단느낌. 그리고 이를 통해 다른트랙에도 링크붙여넣기 가능」 — a
+  /// linked paste is this cut, made where the paste lands: another place
+  /// of the track, another track, another timeline.
+  final CutLanding? landing;
 
   CutId? _previousActiveCutId;
   LayerLinkRegistry? _registryBefore;
@@ -113,6 +122,7 @@ class CreateLinkedCutCommand implements Command {
       final position = requireCutPosition(project, sourceCutId);
       final track = position.track;
       final source = position.cut;
+      final into = landing?.trackId ?? track.id;
       // F-97: a new cut's length, read where a new cut reads it.
       const duration = defaultCutDuration;
 
@@ -130,6 +140,7 @@ class CreateLinkedCutCommand implements Command {
           layers: withEnsuredSectionLayers(newCutId, linkedLayers),
           duration: duration,
           canvasSize: source.canvasSize,
+          leadingGapFrames: landing?.leadingGapFrames ?? 0,
           // The camera row came across linked; its keys stay behind — a new
           // cut's camera, empty, as a new cut's length is a new cut's.
         ),
@@ -150,7 +161,7 @@ class CreateLinkedCutCommand implements Command {
             layerId: layer.id,
           ),
           joiner: LayerLinkMember(
-            trackId: track.id,
+            trackId: into,
             cutId: newCutId,
             layerId: _requireCopyId(layer.id),
           ),
@@ -161,10 +172,13 @@ class CreateLinkedCutCommand implements Command {
 
       final inserted = projectWithCutInserted(
         project,
-        trackId: track.id,
+        trackId: into,
         cut: newCut,
-        // Directly behind its source.
-        index: track.cuts.indexWhere((cut) => cut.id == sourceCutId) + 1,
+        index: switch (landing) {
+          // Directly behind its source.
+          null => track.cuts.indexWhere((cut) => cut.id == sourceCutId) + 1,
+          final landing => landing.index,
+        },
       );
       _gapsBefore = inserted.gapsBefore;
       var next = inserted.project.copyWith(linkRegistry: registry);

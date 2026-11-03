@@ -102,6 +102,13 @@ class _CutCommands {
     return null;
   }
 
+  /// Where a cut told no place lands on [trackId] — a new one, or a paste
+  /// (I-150): [_insertionAnchorFor]'s slot, null at the track's end.
+  int? newCutIndexOn(TrackId trackId) => _insertionAnchorFor(
+    _coordinator.repository.requireProject(),
+    trackId,
+  ).index;
+
   /// Where a new cut lands on [trackId], and which name it counts from: to
   /// the RIGHT of the active cut when the active cut is on this track (the
   /// user's working position), the track's end otherwise.
@@ -530,25 +537,37 @@ class _CutCommands {
     required TrackId targetTrackId,
     String? newName,
     int? index,
+  }) => copyCut(
+    _coordinator._requireCut(sourceCutId),
+    landing: (trackId: targetTrackId, index: index, leadingGapFrames: 0),
+    newName: newName,
+  );
+
+  /// Copies [source] onto [landing] as a cut of its own: a cut this project
+  /// holds, or one a board holds (I-150), which may be gone from it since,
+  /// or never have been this project's.
+  DuplicatedCut copyCut(
+    Cut source, {
+    required CutLanding landing,
+    String? newName,
   }) {
-    final project = _coordinator.repository.requireProject();
-    final sourceCut = _coordinator._requireCut(sourceCutId);
     final plan = planDuplicateCutCommandInput(
-      project: project,
-      sourceCut: sourceCut,
+      project: _coordinator.repository.requireProject(),
+      sourceCut: source,
     );
 
     _coordinator.historyManager.execute(
       DuplicateCutCommand(
         repository: _coordinator.repository,
         editingSession: _coordinator.editingSession,
-        sourceCutId: sourceCutId,
-        targetTrackId: targetTrackId,
+        source: source,
+        targetTrackId: landing.trackId,
         newCutId: plan.newCutId,
-        newName: newName ?? '${sourceCut.name} Copy',
+        newName: newName ?? '${source.name} Copy',
         layerIdMap: plan.layerIdMap,
         frameIdMap: plan.frameIdMap,
-        index: index,
+        index: landing.index,
+        leadingGapFrames: landing.leadingGapFrames,
       ),
     );
     return (

@@ -67,7 +67,7 @@ void main() {
         DuplicateCutCommand(
           repository: repository,
           editingSession: editingSession,
-          sourceCutId: cutA.id,
+          source: cutA,
           targetTrackId: _trackId,
           newCutId: const CutId('cut-copy'),
           newName: 'Cut A Copy',
@@ -221,7 +221,7 @@ void main() {
           DuplicateCutCommand(
             repository: repository,
             editingSession: editingSession,
-            sourceCutId: cutA.id,
+            source: cutA,
             targetTrackId: _trackId,
             newCutId: const CutId('cut-copy'),
             newName: 'Cut A Copy',
@@ -334,7 +334,7 @@ void main() {
           DuplicateCutCommand(
             repository: repository,
             editingSession: editingSession,
-            sourceCutId: cutA.id,
+            source: cutA,
             targetTrackId: _trackId,
             newCutId: const CutId('cut-copy'),
             newName: 'Cut A Copy',
@@ -359,7 +359,7 @@ void main() {
         DuplicateCutCommand(
           repository: repository,
           editingSession: editingSession,
-          sourceCutId: sourceCut.id,
+          source: sourceCut,
           targetTrackId: _trackId,
           newCutId: const CutId('cut-copy'),
           newName: 'Source Copy',
@@ -462,7 +462,7 @@ void main() {
           DuplicateCutCommand(
             repository: repository,
             editingSession: editingSession,
-            sourceCutId: sourceCut.id,
+            source: sourceCut,
             targetTrackId: _trackId,
             newCutId: const CutId('cut-copy'),
             newName: 'Source Copy',

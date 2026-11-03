@@ -155,6 +155,7 @@ import 'session/storyboard_rows.dart';
 import 'session/app_clipboard.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
+import 'session/cut_clipboard.dart';
 import 'session/effect_clipboard.dart';
 import 'session/key_clipboard.dart';
 import 'session/text_clipboard.dart';
@@ -839,6 +840,17 @@ class EditorSessionManager extends ChangeNotifier
     pixelVerbs: pixelVerbs,
     renderCaches: renderCaches,
     changes: this,
+  );
+  late final CutClipboard cutClipboard = CutClipboard(
+    board: _appClipboard.cuts,
+    project: this,
+    changes: this,
+    cutVerbs: cutVerbs,
+    storyboardRows: storyboardRows,
+    placement: cutPlacement,
+    renderCaches: renderCaches,
+    mediaBytesOf: projectFile.mediaByteSourceFor,
+    staging: mediaStagingStore,
   );
 
   /// What the boards above hold — the APP's, handed to every open project

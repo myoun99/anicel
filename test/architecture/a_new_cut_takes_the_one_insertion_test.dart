@@ -65,4 +65,15 @@ void main() {
     expect(command, contains('projectWithCutInserted('));
     expect(command, contains('projectWithCutTakenOut('));
   });
+
+  // ↩️I-150: a duplicate put its cut in with a bare `insertCut`, and pushed
+  // the cuts behind it with room to spare — the paste it now shares would
+  // have done the same.
+  test('and so does a cut copied in — a duplicate, a paste', () {
+    final command = File(
+      'lib/src/services/commands/duplicate_cut_command.dart',
+    ).readAsStringSync();
+    expect(command, contains('CutInsertion('));
+    expect(command, isNot(contains('.insertCut(')));
+  });
 }

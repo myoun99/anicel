@@ -21,7 +21,8 @@ import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
 import '../session/effects_and_fx.dart'
     show ActiveRowChain, EffectChainHolder, TrackChain;
 import '../session/frame_clipboard.dart' show ClipboardPlace;
-import '../session/storyboard_cursor.dart' show CommaTarget;
+import '../session/storyboard_cursor.dart'
+    show CommaTarget, StoryboardCursorCutBlock;
 import '../session/what_a_copy_brings.dart' show BringsMedia;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
@@ -235,7 +236,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
 
 /// The boards the shared pill's copy takes into — one copy in hand,
 /// whichever of them took it (`AppClipboard`).
-enum _Board { text, rows, effects, keys, frames }
+enum _Board { text, rows, effects, keys, frames, cuts }
 
 /// The clipboard's four buttons, said ONCE for both panels: a panel answers
 /// only WHERE its press stands ([clipboardPlace]), and the board's verbs
@@ -269,6 +270,19 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// fixtures, which no board holds, so its copy stays the frame axis's.
   bool get rowsAreThisPanels;
 
+  /// 🗣️I-150 (유저 2026-11-03): 「컷 잘라내기/복사/붙여넣기/링크붙여넣기등
+  /// 공용알약 사용 가능하게. 병합만 불가능? 우선은?」.
+  ///
+  /// Whether CUTS are this panel's to copy and paste — the storyboard's,
+  /// whose V row's blocks are cuts (R5q1). The timeline's blocks are a
+  /// cut's own, which no cut board holds.
+  bool get cutsAreThisPanels;
+
+  /// Whether the press stands on a CUT with no band to claim it — the V
+  /// row's block under the cursor, which the frame axis's rung answers with
+  /// the cut, as Delete's does (`StoryboardCursor`).
+  bool get standsOnACut;
+
   /// 🗣️I-123 (유저 2026-10-22): 「레이어도 타임라인 공용알약의 잘라내기 버튼
   /// 사용가능. 여러레이어 선택해서 사용한다던가 다른 규칙 참고해서 법 통일」.
   ///
@@ -287,6 +301,7 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   @override
   bool get canCutRun => switch (_boardTaken) {
     _Board.rows => session.layerClipboard.canCutSelectedRows,
+    _Board.cuts => session.cutClipboard.canCut,
     _Board.frames => session.clipboard.canCutAt(clipboardPlace),
     _Board.text || _Board.effects || _Board.keys => true,
     null => false,
@@ -299,6 +314,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.textClipboard.cut();
       case _Board.rows:
         session.layerClipboard.cutSelectedRows();
+      case _Board.cuts:
+        session.cutClipboard.cut();
       case _Board.effects:
         session.effectClipboard.cut();
       case _Board.keys:
@@ -317,11 +334,17 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// keys come first, as Delete's do (F-87): standing on a lane, the frame
   /// board has no place ([FrameClipboard.timelinePlace]) and the key board
   /// answers (F-388).
+  ///
+  /// A band of CUTS speaks first where cuts are this panel's (I-150), as
+  /// it does for Delete; standing on a cut, the frame axis is that cut.
   PillSubject get _copySubject => pillSubjectOn(
-    cuts: false,
+    cuts:
+        cutsAreThisPanels &&
+        session.storyboardRows.storyboardSelectedCutIds.isNotEmpty,
     layers: () => _copiesRows || session.effectClipboard.namesEffects,
     cells: () =>
         session.keyClipboard.canCopy ||
+        standsOnACut ||
         session.clipboard.canCopyAt(clipboardPlace),
   );
 
@@ -347,11 +370,13 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       return _Board.text;
     }
     return switch (_copySubject) {
+      PillSubject.cuts => _Board.cuts,
       PillSubject.layers when _copiesRows => _Board.rows,
       PillSubject.layers => _Board.effects,
       PillSubject.cells when session.keyClipboard.canCopy => _Board.keys,
+      PillSubject.cells when standsOnACut => _Board.cuts,
       PillSubject.cells => _Board.frames,
-      PillSubject.cuts || PillSubject.nothing => null,
+      PillSubject.nothing => null,
     };
   }
 
@@ -365,6 +390,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.textClipboard.copy();
       case _Board.rows:
         session.layerClipboard.copySelectedRows();
+      case _Board.cuts:
+        session.cutClipboard.copy();
       case _Board.effects:
         session.effectClipboard.copy();
       case _Board.keys:
@@ -382,6 +409,12 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// lands is the row you stand on.
   bool get _pastesRows =>
       rowsAreThisPanels && session.layerClipboard.hasLayerClipboard;
+
+  /// Whether a paste here puts down CUTS: the hand holds them, and cuts are
+  /// this panel's — where a new cut would land (I-150,
+  /// `CutClipboard`), for [_pastesRows]' reason.
+  bool get _pastesCuts =>
+      cutsAreThisPanels && session.cutClipboard.holdsCuts;
 
   /// Whether a paste here puts down KEYS: the hand holds them (F-388) — on
   /// the lanes the press stands on, the frame paste's way.
@@ -410,7 +443,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   };
 
   @override
-  bool get canPasteIndependentFrame => _pastesRows
+  bool get canPasteIndependentFrame => _pastesCuts
+      ? session.cutClipboard.canPaste
+      : _pastesRows
       ? session.layerClipboard.canPasteRows
       : _pastesEffects
       ? _canPasteEffects
@@ -422,8 +457,11 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
 
   /// The board an independent paste here puts down — the one whose media a
   /// paste from another project has to hold first ([pasteWithItsMedia]).
-  BringsMedia get independentPasteBoard =>
-      _pastesRows ? session.layerClipboard : session.clipboard;
+  BringsMedia get independentPasteBoard => _pastesCuts
+      ? session.cutClipboard
+      : _pastesRows
+      ? session.layerClipboard
+      : session.clipboard;
 
   @override
   void pasteIndependentFrame() {
@@ -444,9 +482,16 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
     final board = independentPasteBoard;
     // The place is asked when the paste LANDS — after the wait, where one
     // is held.
-    void paste() => identical(board, session.layerClipboard)
-        ? session.layerClipboard.pasteRows()
-        : session.clipboard.pasteIndependentAt(clipboardPlace);
+    void paste() {
+      if (identical(board, session.cutClipboard)) {
+        session.cutClipboard.paste();
+      } else if (identical(board, session.layerClipboard)) {
+        session.layerClipboard.pasteRows();
+      } else {
+        session.clipboard.pasteIndependentAt(clipboardPlace);
+      }
+    }
+
     final context = waitIn;
     if (context == null) {
       paste();
@@ -463,7 +508,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   }
 
   @override
-  bool get canPasteLinkedFrame => _pastesRows
+  bool get canPasteLinkedFrame => _pastesCuts
+      ? session.cutClipboard.canPasteLinked
+      : _pastesRows
       ? session.layerClipboard.canPasteRowsLinked
       : _pastesKeys
       ? session.keyClipboard.canPasteLinked
@@ -479,6 +526,10 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// land on already holds at another value (F-388).
   @override
   void pasteLinkedFrame() {
+    if (_pastesCuts) {
+      session.cutClipboard.pasteLinked();
+      return;
+    }
     if (_pastesRows) {
       session.layerClipboard.pasteRowsLinked();
       return;
@@ -591,6 +642,12 @@ class TimelineToolbarPanelContext
 
   @override
   bool get rowsAreThisPanels => true;
+
+  @override
+  bool get cutsAreThisPanels => false;
+
+  @override
+  bool get standsOnACut => false;
 
   // ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
   // 레이어 생성.」 — moved here verbatim from the button.
@@ -799,6 +856,16 @@ class StoryboardToolbarPanelContext
   /// Its rows are tracks and their fixtures: no board holds one (I-77).
   @override
   bool get rowsAreThisPanels => false;
+
+  /// Its V row's blocks are cuts (I-150).
+  @override
+  bool get cutsAreThisPanels => true;
+
+  @override
+  bool get standsOnACut =>
+      !_bandClaimsThePress &&
+      session.storyboardCursor.storyboardCursorBlockOrNull()
+          is StoryboardCursorCutBlock;
 
   /// The rail's ONE addable kind: an S row (track-owned SE). V tracks and
   /// the transition row are fixtures nothing can add ("disable" is the

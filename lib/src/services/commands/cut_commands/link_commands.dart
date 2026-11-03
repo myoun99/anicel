@@ -30,8 +30,14 @@ class _LinkCommands {
 
   /// 겸용컷 생성 (L2): a new cut whose drawing layers share the source's
   /// cel banks with EMPTY timelines — the bank re-exposes to a new
-  /// rhythm. One undo step; the new cut becomes active.
-  void createLinkedCut({required CutId sourceCutId, String? name}) {
+  /// rhythm. One undo step; the new cut becomes active. It lands on
+  /// [landing], directly behind its source when told none (I-150's linked
+  /// paste tells it where).
+  void createLinkedCut({
+    required CutId sourceCutId,
+    String? name,
+    CutLanding? landing,
+  }) {
     final project = _coordinator.repository.requireProject();
     final sourceCut = requireCut(project, sourceCutId);
     final plan = planCreateLinkedCutCommandInput(
@@ -45,10 +51,28 @@ class _LinkCommands {
         editingSession: _coordinator.editingSession,
         sourceCutId: sourceCutId,
         newCutId: plan.newCutId,
-        newName: name ?? plannedLinkedCut(sourceCutId: sourceCutId).name,
+        newName: name ?? _nameWhere(landing, sourceCutId: sourceCutId),
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
         coveringFrameIdBySource: plan.coveringFrameIdBySource,
+        landing: landing,
+      ),
+    );
+  }
+
+  /// The name a 겸용 cut told none takes: counting on from the cut in front
+  /// of where it lands — its source, when it lands right behind it.
+  String _nameWhere(CutLanding? landing, {required CutId sourceCutId}) {
+    if (landing == null) {
+      return plannedLinkedCut(sourceCutId: sourceCutId).name;
+    }
+    final project = _coordinator.repository.requireProject();
+    return CutCommandCoordinator.nextCutNameAfter(
+      project,
+      _coordinator._cuts._referenceNameAt(
+        project,
+        landing.trackId,
+        landing.index,
       ),
     );
   }

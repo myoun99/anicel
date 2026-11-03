@@ -184,10 +184,8 @@ class CutVerbs {
   /// 선택한 묶음 뒤에 차례로」. The cut you stand on is a block of one and
   /// goes the same way (CLAUDE.md 절대명령 2: no law split by how much is
   /// selected). ↩️It copied the active cut alone, onto the track's end.
-  void duplicateActiveCut() => _activeCut.onActiveCut((cutId) {
-    // The selection is a band's cuts, in track order.
-    final chosen = _storyboardRows.storyboardSelectedCutIds;
-    final block = chosen.isEmpty ? [cutId] : chosen;
+  void duplicateActiveCut() => _activeCut.onActiveCut((_) {
+    final block = cutsInHand;
     final last = cutPositionOf(
       _project.repository.requireProject(),
       block.last,
@@ -206,6 +204,23 @@ class CutVerbs {
     });
   });
 
+  /// THE CUTS IN HAND: the selected ones — a band's, in track order — else
+  /// the cut you stand in. What a duplicate copies (F-455-Q1), a delete
+  /// lifts ([deleteActiveCut]) and the board takes (I-150, `CutClipboard`).
+  List<CutId> get cutsInHand {
+    final chosen = _storyboardRows.storyboardSelectedCutIds;
+    final standing = _timeline.editingSession.activeCutId;
+    return chosen.isNotEmpty ? chosen : [?standing];
+  }
+
+  /// Whether [deleteActiveCut] lifts the cuts in hand: the selection only
+  /// while the project keeps a cut ([canDeleteSelectedCuts]), the cut you
+  /// stand in whenever you stand in one.
+  bool get canDeleteActiveCut =>
+      _storyboardRows.storyboardSelectedCutIds.isNotEmpty
+      ? canDeleteSelectedCuts
+      : _timeline.editingSession.activeCutId != null;
+
   /// Duplicates [cutId] into [trackId] at [index], pictures and all
   /// ([CutCopies]).
   void _duplicateCut(CutId cutId, TrackId trackId, {required int index}) {
@@ -216,7 +231,7 @@ class CutVerbs {
       index: index,
     );
     _copies.carry(
-      source: source,
+      shown: _copies.shownBy(source),
       copy: copy.cutId,
       rows: copy.rows,
       cels: copy.minted,

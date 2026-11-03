@@ -46,6 +46,7 @@ import '../project_lookup.dart';
 import '../project_repository.dart';
 import '../reference_move_carried.dart';
 import 'cut_command_input_planner.dart';
+import 'cut_insertion.dart' show CutLanding;
 import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'create_cut_command.dart';
@@ -317,6 +318,12 @@ class CutCommandCoordinator {
     newName: newName,
     index: index,
   );
+  DuplicatedCut copyCut(
+    Cut source, {
+    required CutLanding landing,
+    String? newName,
+  }) => _cuts.copyCut(source, landing: landing, newName: newName);
+  int? newCutIndexOn(TrackId trackId) => _cuts.newCutIndexOn(trackId);
 
   // ── the camera commands: their own object ───────────────────────────
   //
@@ -496,8 +503,15 @@ class CutCommandCoordinator {
   ({String name, CanvasSize canvasSize}) plannedLinkedCut({
     required CutId sourceCutId,
   }) => _links.plannedLinkedCut(sourceCutId: sourceCutId);
-  void createLinkedCut({required CutId sourceCutId, String? name}) =>
-      _links.createLinkedCut(sourceCutId: sourceCutId, name: name);
+  void createLinkedCut({
+    required CutId sourceCutId,
+    String? name,
+    CutLanding? landing,
+  }) => _links.createLinkedCut(
+    sourceCutId: sourceCutId,
+    name: name,
+    landing: landing,
+  );
   void unlinkLayer({required CutId cutId, required LayerId layerId}) =>
       _links.unlinkLayer(cutId: cutId, layerId: layerId);
   void convertCutToLinked({
