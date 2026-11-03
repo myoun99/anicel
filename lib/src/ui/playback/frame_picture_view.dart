@@ -1021,8 +1021,18 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     _heldStep = Timer(hold, () {
       _heldStep = null;
-      if (_strokeInHand) {
-        _catchUp();
+      if (!_strokeInHand) {
+        return;
+      }
+      final standing = _standing.whole;
+      _catchUp();
+      // A step that turns to the frame as it stands asks for the paint that
+      // draws it: the paint that held it is out, and none comes after it
+      // once the pen stops. ⛔Not waiting for the next move: the stroke's
+      // last step stood on screen until there was one
+      // (a-held-step-that-turns-to-the-whole-frame-asks-no-paint).
+      if (_standing.whole != standing) {
+        _repaint.value += 1;
       }
     });
   }

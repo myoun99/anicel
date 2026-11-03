@@ -620,6 +620,86 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.dispose();
   }, skip: skipped);
 
+  testWidgets('🚨a step held for the next frame that goes past the picture '
+      'asks for the paint that draws the frame as it stands — none comes '
+      'once the pen stops '
+      '(a-held-step-that-turns-to-the-whole-frame-asks-no-paint)', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-held-step-past-the-picture';
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final live = BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = WritesLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final picture = run.pictures.keyOfStack(nodes, frame);
+    final view = CanvasViewport(panX: 8, panY: 4);
+
+    await pump(tester, run, key: const ValueKey(0), view: view, live: live);
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    // Steps inside the picture, a frame every beat: what they take leaves a
+    // frame room, so the pace holds the next step for it (`StepPace`).
+    const beat = Duration(milliseconds: 200);
+    for (var revision = 1; revision <= 6; revision += 1) {
+      final inside = TileCoord(x: revision % 2, y: revision ~/ 2 % 2);
+      overlay.showResultTiles([
+        PromotedStrokeTile(
+          inside,
+          tileOf(inside, stroke, (_) => true),
+          revision,
+        ),
+      ]);
+      await lendBothClocks(tester, rounds: 3, step: beat);
+    }
+    await lendBothClocks(tester, rounds: 3, step: beat);
+    final before = await onScreen(tester);
+
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    final past = TileCoord(x: -1, y: 0);
+    overlay.showResultTiles([
+      PromotedStrokeTile(past, tileOf(past, stroke, (_) => true), 7),
+    ]);
+    await tester.pump(beat);
+    expect(
+      differences(before, await onScreen(tester)),
+      isEmpty,
+      reason: 'LIVENESS: the step is held for the next frame',
+    );
+
+    // The pen has stopped: the frame after the hold is the only one.
+    await tester.pump(beat);
+    expect(
+      differences(before, await onScreen(tester)),
+      isNotEmpty,
+      reason: 'the frame as it stands shows the stroke past the picture',
+    );
+
+    gpu
+      ..holdsRenders = false
+      ..letAllThrough();
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
   testWidgets('⛔a picture let go on its way to wider leaves the frame standing '
       '— it is all that shows the stroke (F-533)', (tester) async {
     tester.view.devicePixelRatio = 1;
