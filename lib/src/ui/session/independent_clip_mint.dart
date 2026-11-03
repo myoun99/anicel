@@ -456,10 +456,9 @@ void carrySurfaces<S>({
 /// ⚠️AFTER the splice, not before: the born cels have to be in the layer
 /// for the key to name something the app will read back.
 ///
-/// [pictureOf] says where a source cel's picture IS: the store, now, for a
-/// duplicate — its source stands beside it — and the copy's own snapshot for
-/// a paste (F-161), whose source may be in another cut, drawn over since, or
-/// cut away.
+/// [pictureOf] is a paste's own snapshot (F-161): its source may be in
+/// another cut, drawn over since, or cut away. A copy made beside its source
+/// takes the picture through the store instead ([copyBakedPictures]).
 void carryBakedPictures({
   required ProjectAccess project,
   required BrushFrameStore store,
@@ -480,15 +479,44 @@ void carryBakedPictures({
     null => null,
   },
   keyOfCopy: (minted) => project.brushFrameKeyForCut(cut, to, minted.value),
-  // A cel copied on its own row — a duplicate, 링크 독립's fork of a base
-  // cel and of its attach rows' mirrors — is its source's picture as it
-  // stands; one pasted from anywhere else is only stored.
+  // A cel pasted on its own row, its source not drawn over since, is its
+  // source's picture as it stands; one pasted from anywhere else is only
+  // stored.
   keep: (key, surface, minted) => store.storeCopiedSurface(
     key,
     surface,
     source: project.brushFrameKeyForCut(cut, to, minted.key),
   ),
 );
+
+/// 🚨★★★A COPY MADE BESIDE ITS SOURCE TAKES THE PICTURE THROUGH THE STORE
+/// ([BrushFrameStore.copyCel]): each cel [minted] names, from [from]'s row
+/// to [to]'s, laid to [to]'s canvas — in the tier the store keeps the
+/// source in. A duplicated block, row, cut and timeline, and 링크 독립's
+/// fork of a cel and of its attach rows' mirrors.
+///
+/// 🗣️Card `timeline-copy-thaws-every-cel` (유저 2026-11-04: 「FU파일에서
+/// 타임라인복제해서 사용하려하는데, 메모리가 3000mb까지 폭증」): these read
+/// the store's picture as a use and stored it ([carryBakedPictures]), so
+/// every cel kept in the saved file or parked in the room thawed hot to be
+/// copied.
+///
+/// ⚠️AFTER the splice, as [carryBakedPictures] is.
+void copyBakedPictures({
+  required ProjectAccess project,
+  required BrushFrameStore store,
+  required Map<FrameId, FrameId> minted,
+  required ({Cut cut, LayerId row}) from,
+  required ({Cut cut, LayerId row}) to,
+}) {
+  for (final MapEntry(key: source, value: copy) in minted.entries) {
+    store.copyCel(
+      project.brushFrameKeyForCut(from.cut, from.row, source),
+      project.brushFrameKeyForCut(to.cut, to.row, copy),
+      canvasSize: to.cut.canvasSize,
+    );
+  }
+}
 
 /// The pictures [cels] show as they are NOW, each under the key [keyOf]
 /// names — what a copy takes BY VALUE (F-161): a paste may land in another

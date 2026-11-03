@@ -68,8 +68,8 @@ class TimelineVerbs {
     }
     for (final track in source.single.tracks) {
       for (final cut in track.cuts) {
-        _copies.carry(
-          shown: _copies.shownBy(cut),
+        _copies.duplicate(
+          cut,
           copy: ids.cuts[cut.id]!,
           rows: ids.rows,
           cels: ids.cels,

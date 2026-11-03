@@ -231,8 +231,8 @@ class CutVerbs {
       targetTrackId: trackId,
       index: index,
     );
-    _copies.carry(
-      shown: _copies.shownBy(source),
+    _copies.duplicate(
+      source,
       copy: copy.cutId,
       rows: copy.rows,
       cels: copy.minted,

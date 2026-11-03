@@ -12,7 +12,11 @@ import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import 'independent_clip_mint.dart'
-    show carryBakedPictures, carrySurfaces, picturesShownBy;
+    show
+        carryBakedPictures,
+        carrySurfaces,
+        copyBakedPictures,
+        picturesShownBy;
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -25,9 +29,9 @@ import 'session_roles.dart';
 ///
 /// A duplicated cut (`CutVerbs`), every cut of a copied timeline (I-150,
 /// `TimelineVerbs`) and a cut put down from the board (I-150, `CutClipboard`)
-/// take theirs here — what the cut showed ([shownBy]), then onto its copy
-/// ([carry]). A duplicate does both at once; the board holds the first
-/// until a paste.
+/// take theirs here. A duplicate copies at once, its source beside it
+/// ([duplicate]); the board holds what the cut showed ([shownBy]) until a
+/// paste puts it onto the copy ([carry]).
 class CutCopies {
   CutCopies({
     required ProjectAccess project,
@@ -48,19 +52,50 @@ class CutCopies {
   /// shares one ([cutEnvelopeInkOwner]) — and a 동기컷's sheets, that owner's
   /// envelope among them, by its sync's canonical, the paper its cuts all
   /// write on (`syncedSheetInkKey`).
-  CutPictures shownBy(Cut source) {
-    final store = _renderCaches.brushFrameStore;
+  CutPictures shownBy(Cut source) => _withSheetInk(
+    source,
+    cels: {
+      for (final row in source.layers)
+        row.id: picturesShownBy(
+          store: _renderCaches.brushFrameStore,
+          cels: row.frames,
+          keyOf: (cel) => _project.brushFrameKeyForCut(source, row.id, cel),
+        ),
+    },
+  );
+
+  /// [source] onto its copy [copy] at once, its source standing beside it —
+  /// whose rows [rows] and whose cels [cels] name, by the ones they copy.
+  /// Each cel's picture goes through the store ([copyBakedPictures]), so
+  /// nothing kept thaws; the sheets' handwriting goes as [carry] takes it.
+  void duplicate(
+    Cut source, {
+    required CutId copy,
+    required Map<LayerId, LayerId> rows,
+    required Map<FrameId, FrameId> cels,
+  }) {
+    final into = _project.cutById(copy)!;
+    for (final row in source.layers) {
+      copyBakedPictures(
+        project: _project,
+        store: _renderCaches.brushFrameStore,
+        minted: {for (final cel in row.frames) cel.id: cels[cel.id]!},
+        from: (cut: source, row: row.id),
+        to: (cut: into, row: rows[row.id]!),
+      );
+    }
+    _carrySheetInk(_withSheetInk(source, cels: const {}), to: copy);
+  }
+
+  /// [cels] with the sheets' handwriting [source] shows now.
+  CutPictures _withSheetInk(
+    Cut source, {
+    required Map<LayerId, Map<FrameId, BitmapSurface>> cels,
+  }) {
     final project = _project.repository.requireProject();
     final paper = project.linkRegistry.syncCanonicalOf(source.id);
     return CutPictures(
-      cels: {
-        for (final row in source.layers)
-          row.id: picturesShownBy(
-            store: store,
-            cels: row.frames,
-            keyOf: (cel) => _project.brushFrameKeyForCut(source, row.id, cel),
-          ),
-      },
+      cels: cels,
       conte: _renderCaches.conteInkRowStore.bakedSurfacesForCut(paper),
       envelope: _renderCaches.envelopeInkStore.bakedSurfacesForCut(
         project.linkRegistry.syncCanonicalOf(

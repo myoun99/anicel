@@ -258,16 +258,12 @@ class FrameVerbs {
     );
     final cut = _project.activeCutOrNull;
     if (cut != null) {
-      final store = _renderCaches.brushFrameStore;
-      carryBakedPictures(
+      copyBakedPictures(
         project: _project,
-        store: store,
-        cut: cut,
-        to: layer.id,
+        store: _renderCaches.brushFrameStore,
         minted: placed.minted,
-        pictureOf: (source) => store.bakedSurfaceOrNull(
-          _project.brushFrameKeyForCut(cut, layer.id, source),
-        ),
+        from: (cut: cut, row: layer.id),
+        to: (cut: cut, row: layer.id),
       );
       final ink = _renderCaches.conteInkRowStore;
       carryConteHandwriting(

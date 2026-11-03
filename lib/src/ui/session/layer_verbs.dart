@@ -16,7 +16,7 @@ import '../../services/project_lookup.dart'
     show cutWritingRow, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
-    show carryBakedPictures, carryConteHandwriting;
+    show carryConteHandwriting, copyBakedPictures;
 import 'render_caches.dart';
 import 'row_selection.dart';
 import 'session_roles.dart';
@@ -328,16 +328,12 @@ class LayerVerbs {
           : seatAboveRow(_project.requireActiveCut.layers, over),
     );
     final cut = _project.requireActiveCut;
-    final store = _renderCaches.brushFrameStore;
-    carryBakedPictures(
+    copyBakedPictures(
       project: _project,
-      store: store,
-      cut: cut,
-      to: copy.layerId,
+      store: _renderCaches.brushFrameStore,
       minted: copy.minted,
-      pictureOf: (source) => store.bakedSurfaceOrNull(
-        _project.brushFrameKeyForCut(cut, layerId, source),
-      ),
+      from: (cut: cut, row: layerId),
+      to: (cut: cut, row: copy.layerId),
     );
     final ink = _renderCaches.conteInkRowStore;
     carryConteHandwriting(

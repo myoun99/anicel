@@ -1552,17 +1552,13 @@ class FrameClipboard implements BringsMedia {
     _splice(runs: splices, description: 'Unlink frames', riders: riders);
     final cut = _project.activeCutOrNull;
     if (cut != null) {
-      final store = _renderCaches.brushFrameStore;
       for (final (layerId, minted) in mintedByLayer) {
-        carryBakedPictures(
+        copyBakedPictures(
           project: _project,
-          store: store,
-          cut: cut,
-          to: layerId,
+          store: _renderCaches.brushFrameStore,
           minted: minted,
-          pictureOf: (source) => store.bakedSurfaceOrNull(
-            _project.brushFrameKeyForCut(cut, layerId, source),
-          ),
+          from: (cut: cut, row: layerId),
+          to: (cut: cut, row: layerId),
         );
       }
     }
