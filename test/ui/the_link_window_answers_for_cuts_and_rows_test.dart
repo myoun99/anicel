@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -213,6 +215,44 @@ void main() {
 
       expect(s.cutVerbs.cutIsLinked(source), isFalse, reason: '독립시킴');
       expect(s.cutVerbs.linkedCutIds, isNot(contains(CutId(source.value))));
+    });
+
+    // 🗣️I-150 (유저 2026-11-03): 「컷블록의 링크버튼 타임라인의 레이어의
+    // 링크버튼이랑 조작감이 다름. 타임라인은 커서가 손가락커서된다거나」.
+    testWidgets("the icon is the layer badge's button: the hand over it, "
+        'and its press opens the window and stands on no cut', (
+      tester,
+    ) async {
+      final s = session();
+      final source = s.requireActiveCut.id;
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      final linked = s.requireActiveCut.id;
+      await pumpStoryboardHostOn(tester, s, surface: roomy, pixelsPerFrame: 12);
+      final button = find.named('storyboard-cut-link-${source.value}');
+      expect(
+        cutBlocksPainter(tester).drawsLinkGlyphs,
+        isFalse,
+        reason: 'the button draws the glyph — one glyph, not two',
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: tester.getCenter(button));
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      expect(
+        // A test mouse is device 1, whatever its pointer.
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        SystemMouseCursors.click,
+      );
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey<String>('link-window')), findsOneWidget);
+      expect(
+        s.requireActiveCut.id,
+        linked,
+        reason: "the press is the button's — not the block's under it",
+      );
     });
   });
 }

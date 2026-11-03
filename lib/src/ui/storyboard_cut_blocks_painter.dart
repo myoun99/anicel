@@ -192,12 +192,14 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required double devicePixelRatio,
   ValueListenable<int>? windowBucket,
   Set<CutId> linkedCutIds = const {},
+  bool drawsLinkGlyphs = true,
 }) => StoryboardCutBlocksPainter(
   entries: entries,
   // The STRIP's content: the cut's panels, under the coverage rule — the
   // same reading the conte row under this one draws its blocks from.
   storyboardCellsByCut: storyboardCellsByCut(entries),
   linkedCutIds: linkedCutIds,
+  drawsLinkGlyphs: drawsLinkGlyphs,
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
   minBlockWidth: minBlockWidth,
@@ -268,6 +270,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
     required this.entries,
     required this.storyboardCellsByCut,
     this.linkedCutIds = const {},
+    this.drawsLinkGlyphs = true,
     required this.geometry,
     required this.crossAxisExtent,
     required this.minBlockWidth,
@@ -302,6 +305,12 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// The LINKED cuts among [entries] (I-25), resolved by the host that
   /// knows the project's links — the painter only reads them.
   final Set<CutId> linkedCutIds;
+
+  /// Whether the painter draws the link glyph in each linked cut's square
+  /// ([linkAffordanceRectOf]). The open row stands the rail's button there
+  /// instead (I-150), which draws its own; the folded row has no press, and
+  /// the painter draws it.
+  final bool drawsLinkGlyphs;
 
   /// The LIVE frame-axis geometry: a zoom step repaints instead of
   /// rebuilding the row that built this.
@@ -613,11 +622,31 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// square right after a linked cut's name, in its top band: the ONE rect the
   /// paint draws and the press reads (the D30 create affordance's shape).
   /// Null on a cut that is not linked, or a band too narrow for the square.
-  Rect? linkAffordanceRectOf(StoryboardCutBlockVisual block) {
-    if (!block.isLinkedCut) {
-      return null;
+  Rect? linkAffordanceRectOf(StoryboardCutBlockVisual block) =>
+      block.isLinkedCut ? _linkSquareIn(block.topBand, block.title) : null;
+
+  /// Each linked cut in the window and its icon's square
+  /// ([linkAffordanceRectOf]) — where the open row stands its buttons, read
+  /// without the rest of a block's picture.
+  List<(CutId, Rect)> linkAffordances() {
+    final window = visibleFrameWindow();
+    final squares = <(CutId, Rect)>[];
+    for (final entry in entries) {
+      final placed = linkedCutIds.contains(entry.cutId)
+          ? _placedFor(entry, window: window)
+          : null;
+      if (placed == null) {
+        continue;
+      }
+      final square = _linkSquareIn(_bandsOf(placed.rect).top, placed.title);
+      if (square != null) {
+        squares.add((entry.cutId, square));
+      }
     }
-    final band = block.topBand;
+    return squares;
+  }
+
+  Rect? _linkSquareIn(Rect band, String title) {
     final side = band.height;
     final inset = math.min(_padding, band.width / 2);
     final titleRoom = band.width - inset * 2 - side;
@@ -625,7 +654,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       return null;
     }
     final titleWidth = _bandTextWidth(
-      block.title,
+      title,
       _titleStyle,
       Size(titleRoom, band.height),
     );
@@ -804,7 +833,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       alignRight: false,
       ground: cutGround,
     );
-    if (link != null) {
+    if (link != null && drawsLinkGlyphs) {
       _paintLinkIcon(canvas, link);
     }
     canvas.restore();
@@ -1017,6 +1046,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
   Object get props => (
     ByIdentity(entries),
     BySet(linkedCutIds),
+    drawsLinkGlyphs,
     crossAxisExtent,
     minBlockWidth,
     rowAddress,

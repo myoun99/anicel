@@ -155,6 +155,15 @@ void main() {
     expect(painter.devicePixelRatio, 2);
   });
 
+  testWidgets('I-150: the folded row, which has no press, draws the link '
+      'glyph itself — the open row stands a button there', (tester) async {
+    await _pumpFolded(tester, storyboard: true);
+    final painter =
+        tester.widget<CustomPaint>(_cutBlocks()).painter!
+            as StoryboardCutBlocksPainter;
+    expect(painter.drawsLinkGlyphs, isTrue);
+  });
+
   testWidgets('F-234: the folded row prints its words from the ambient style '
       'the open row prints them from', (tester) async {
     await _pumpFolded(tester, storyboard: true);
