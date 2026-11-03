@@ -541,19 +541,13 @@ class _CutCommands {
   }
 
   /// A 동기컷 deleted leaves its sync, so a 겸용 it had where it stood parts
-  /// from the sync's other cuts ([PartLinksAcrossTimelinesCommand]) — named
-  /// before [leaving] go. Null where none of them is a 동기컷.
-  Command? _partingLinksOf(Set<CutId> leaving) {
-    final registry = _coordinator.repository.requireProject().linkRegistry;
-    if (!leaving.any((cutId) => registry.syncOf(cutId) != null)) {
-      return null;
-    }
-    return PartLinksAcrossTimelinesCommand(
-      repository: _coordinator.repository,
-      brushFrameStore: _coordinator.brushFrameStore,
-      groupIds: linkGroupsHolding(registry, leaving),
-    );
-  }
+  /// from the sync's other cuts ([PartLinksAcrossTimelinesCommand]).
+  Command? _partingLinksOf(Set<CutId> leaving) =>
+      PartLinksAcrossTimelinesCommand.forLeaving(
+        repository: _coordinator.repository,
+        brushFrameStore: _coordinator.brushFrameStore,
+        leaving: leaving,
+      );
 
   /// Copies [sourceCutId] into [targetTrackId] at [index] — the track's end
   /// when null.

@@ -150,7 +150,11 @@ class _LinkCommands {
     if (project.linkRegistry.syncOf(cutId) == null) {
       return;
     }
-    final groupIds = linkGroupsHolding(project.linkRegistry, {cutId});
+    final parting = PartLinksAcrossTimelinesCommand.forLeaving(
+      repository: _coordinator.repository,
+      brushFrameStore: _coordinator.brushFrameStore,
+      leaving: {cutId},
+    )!;
     _coordinator.historyManager.runAsOneStep('Leave sync', () {
       _coordinator.historyManager.execute(
         LeaveSyncCommand(
@@ -162,13 +166,7 @@ class _LinkCommands {
       for (final layer in requireCut(project, cutId).layers) {
         unlinkLayer(cutId: cutId, layerId: layer.id);
       }
-      _coordinator.historyManager.execute(
-        PartLinksAcrossTimelinesCommand(
-          repository: _coordinator.repository,
-          brushFrameStore: _coordinator.brushFrameStore,
-          groupIds: groupIds,
-        ),
-      );
+      _coordinator.historyManager.execute(parting);
     });
   }
 

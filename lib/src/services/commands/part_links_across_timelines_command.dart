@@ -2,6 +2,7 @@ import '../../models/cut_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/timeline_id.dart';
 import '../brush_frame_store.dart';
+import '../project_repository.dart';
 import 'link_group_parts.dart';
 import 'link_registry_snapshot_command.dart';
 
@@ -19,7 +20,30 @@ class PartLinksAcrossTimelinesCommand extends LinkRegistrySnapshotCommand {
     required this.groupIds,
   }) : _copies = LinkPartCopies(brushFrameStore);
 
-  /// The groups the leaving cut had rows in — named before it leaves.
+  /// The parting [leaving] call for as they leave — deleted, or by 동기 해제
+  /// — or null where none of them is a 동기컷. Its groups are named NOW,
+  /// before they go.
+  static PartLinksAcrossTimelinesCommand? forLeaving({
+    required ProjectRepository repository,
+    required BrushFrameStore? brushFrameStore,
+    required Set<CutId> leaving,
+  }) {
+    final registry = repository.requireProject().linkRegistry;
+    if (!leaving.any((cutId) => registry.syncOf(cutId) != null)) {
+      return null;
+    }
+    return PartLinksAcrossTimelinesCommand(
+      repository: repository,
+      brushFrameStore: brushFrameStore,
+      groupIds: {
+        for (final group in registry.groups)
+          if (group.members.any((member) => leaving.contains(member.cutId)))
+            group.id,
+      },
+    );
+  }
+
+  /// The groups the leaving cuts had rows in.
   final Set<String> groupIds;
 
   final LinkPartCopies _copies;
@@ -68,13 +92,6 @@ class PartLinksAcrossTimelinesCommand extends LinkRegistrySnapshotCommand {
   @override
   void undoBeforeRegistry() => _copies.takeBack();
 }
-
-/// The ids of the groups holding a row of any of [cuts] — what
-/// [PartLinksAcrossTimelinesCommand] parts once they have left.
-Set<String> linkGroupsHolding(LayerLinkRegistry registry, Set<CutId> cuts) => {
-  for (final group in registry.groups)
-    if (group.members.any((member) => cuts.contains(member.cutId))) group.id,
-};
 
 /// [group]'s rows by timeline, a sync's timelines one — each part in the
 /// group's order, the part of its first member first, with the timeline it

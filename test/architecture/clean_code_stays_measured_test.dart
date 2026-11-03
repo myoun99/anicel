@@ -1214,7 +1214,13 @@ void main() {
   /// master (`ce21fca6d`, at 415) named those two added and nothing gone.
   /// ⛔Not split to fit: each is one table — of a brush's fields, copied
   /// or held to their ranges field for field.
-  const longBodies = 417;
+  ///
+  /// ⚠️417 → 416 on 2026-11-04: `UnlinkLayerCommand.execute` left when its
+  /// parting and its picture copies moved to `link_group_parts`, which the
+  /// parting across timelines answers with too (I-150 ⑤d). 🔬
+  /// `clean_code_diff` against master (`a90e3e9d5`) names it gone and
+  /// nothing added.
+  const longBodies = 416;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
