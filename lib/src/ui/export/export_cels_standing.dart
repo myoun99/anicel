@@ -309,13 +309,12 @@ FlipHudSnapshot exportCelsFlipSnapshot(
       for (final row in rows)
         FlipHudRow(
           name: row.name,
-          // A document is no layer — and wears no layer's glyph, as a
-          // track row does not (`flipHudTrackRow`).
+          // A document is no layer: it stands as a track row does
+          // (`flipHudTrackRow`), and nothing draws it here.
           kind: switch (row) {
             ExportCelsLayerRow(:final layer) => layer.kind,
             ExportCelsDocumentRow() => LayerKind.storyboard,
           },
-          showsKindIcon: row is ExportCelsLayerRow,
           runs: [
             for (var index = 0; index < row.sheets.length; index += 1)
               FlipHudRun(startIndex: index, length: 1),
