@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_in_and_out.dart';
 import 'package:anicel/src/models/brush_mixing_method.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
@@ -180,6 +181,7 @@ void main() {
       mixesGroundColor: true,
       mixingMethod: BrushMixingMethod.mix,
       correction: const BrushCorrection(steadies: true, postStrength: 30),
+      inAndOut: const BrushInAndOut(inLength: 20),
       shown: BrushSettingsRow.values.toSet(),
     ).withMask(BrushMaskSlot.dual, splatterBrushTipMask)
         .withMask(BrushMaskSlot.texture, spongeBrushTipMask);

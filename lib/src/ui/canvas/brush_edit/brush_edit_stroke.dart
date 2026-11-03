@@ -41,7 +41,6 @@ class _BrushEditStroke {
     _arm(
       strokeSettings,
       at: canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
       // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
       // jitter come from its press, so every view that hears the press
       // rolls the same numbers. ↩️Written for a sheet's windows each
@@ -149,7 +148,6 @@ class _BrushEditStroke {
     _armItsOwn(
       _state._activeStrokeInputSettings!,
       at: canvasPosition,
-      startsInsidePasteboard: _state._isInsidePasteboard(canvasPosition),
       dice: dice,
       length: length,
     );
@@ -180,7 +178,6 @@ class _BrushEditStroke {
   void _arm(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
-    required bool startsInsidePasteboard,
     required int dice,
   }) {
     _state.widget.onActiveStrokeChanged?.call(
@@ -189,7 +186,6 @@ class _BrushEditStroke {
     _armAfresh(
       strokeSettings,
       at: at,
-      startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
     );
   }
@@ -202,14 +198,12 @@ class _BrushEditStroke {
   void _armAfresh(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
-    required bool startsInsidePasteboard,
     required int dice,
     double? length,
   }) {
     _armItsOwn(
       strokeSettings,
       at: at,
-      startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
       length: length,
     );
@@ -250,14 +244,15 @@ class _BrushEditStroke {
   void _armItsOwn(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
-    required bool startsInsidePasteboard,
     required int dice,
     double? length,
   }) {
     final canvasPosition = at;
     _state._strokeDice = dice;
     _state._nextSequence = 0;
-    _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
+    _state._breakCurrentVisibleSegment = !_state._isInsidePasteboard(
+      canvasPosition,
+    );
     _state._previousRawCanvasPosition = canvasPosition;
     // Guides are read ONCE per stroke. Both are frozen here rather than
     // consulted per sample so an edit landing mid-stroke cannot bend the
@@ -445,7 +440,6 @@ class _BrushEditStroke {
     _armAfresh(
       settings,
       at: start.position,
-      startsInsidePasteboard: startsInsidePasteboard,
       dice: _state._strokeDice,
       length: lengthThrough([for (final point in line) point.position]),
     );
