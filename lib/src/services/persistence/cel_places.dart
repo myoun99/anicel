@@ -49,13 +49,6 @@ final class PlaceOwner {
 
   /// The timeline holding it, when that is not the open one.
   final ProjectTimeline? away;
-
-  @override
-  bool operator ==(Object other) =>
-      other is PlaceOwner && other.name == name && other.away?.id == away?.id;
-
-  @override
-  int get hashCode => Object.hash(name, away?.id);
 }
 
 /// What holds a row in [project]: its [cut], or the [track] for a row the
