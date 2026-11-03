@@ -119,7 +119,11 @@ void main() {
           .widget<TextField>(byKey('timeline-duplicate-text-field'))
           .controller!
           .text,
-      AppText.strings.copyNamed(AppText.strings.timelineNumbered(1)),
+      allOf(
+        AppText.strings.copyNamed(AppText.strings.timelineNumbered(1)),
+        isNot(AppText.strings.timelineNumbered(1)),
+      ),
+      reason: 'a copy is offered a name of its own',
     );
     await tester.enterText(byKey('timeline-duplicate-text-field'), '예고');
     await tester.tap(byKey('timeline-duplicate-ok-button'));
@@ -133,6 +137,23 @@ void main() {
     ]);
     expect(session.timelineVerbs.currentTimelineId, timelines[1].id);
     expect(headingWords(tester), '예고');
+  });
+
+  testWidgets('with two, a row\'s delete takes that one away', (tester) async {
+    await pumpConte(tester);
+    await openList(tester);
+    await tester.tap(byKey('timeline-add'));
+    await tester.pumpAndSettle();
+    final added = session.timelineVerbs.timelines[1].id;
+    await openList(tester);
+    await tester.tap(byKey('${rowOf(1)}-delete'));
+    await tester.pumpAndSettle();
+
+    expect(session.timelineVerbs.timelines, hasLength(1));
+    expect(
+      session.timelineVerbs.timelines.map((timeline) => timeline.id),
+      isNot(contains(added)),
+    );
   });
 
   testWidgets('a row\'s pencil names it, and the heading reads the name; '

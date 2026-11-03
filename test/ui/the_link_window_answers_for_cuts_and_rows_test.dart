@@ -256,6 +256,13 @@ void main() {
         source,
         reason: 'the block stays hovered under its button',
       );
+      await mouse.moveTo(const Offset(-10, -10));
+      await tester.pump();
+      expect(
+        cutBlocksPainter(tester).hoveredCutId.value,
+        isNull,
+        reason: 'and leaves it when the pointer leaves the row from there',
+      );
 
       await tester.tap(button);
       await tester.pumpAndSettle();
@@ -265,6 +272,32 @@ void main() {
         plain,
         reason: "the press is the button's — not the block's under it",
       );
+    });
+
+    testWidgets('a linked cut the view widens onto wears its button, as the '
+        'paint draws it there', (tester) async {
+      final s = session();
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      final linked = s.requireActiveCut.id;
+      await pumpStoryboardHostOn(
+        tester,
+        s,
+        surface: const Size(900, 800),
+        pixelsPerFrame: 40,
+      );
+      final far = find.named('storyboard-cut-link-${linked.value}');
+      expect(
+        cutBlocksPainter(tester).blockForCut(linked),
+        isNull,
+        reason: 'not vacuous: it starts out of the window',
+      );
+      expect(far, findsNothing);
+
+      await tester.binding.setSurfaceSize(const Size(9000, 800));
+      await tester.pump();
+
+      expect(cutBlocksPainter(tester).blockForCut(linked), isNotNull);
+      expect(far, findsOneWidget);
     });
   });
 }
