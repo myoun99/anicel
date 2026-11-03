@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️I-152 (유저 2026-11-03): 「동영상 출력? 에 gif 추가 … 아무튼 형식으로
@@ -209,6 +210,27 @@ void main() {
       ),
       isFalse,
       reason: 'LIVENESS — a movie the machine writes, with nothing to write it',
+    );
+  });
+
+  test('🚨where the OS writes movies, it is asked of its own alone: a GIF is '
+      'no pair of its to probe', () {
+    final encoder = osVideoEncoderOrSkip();
+    if (encoder == null) {
+      return;
+    }
+    final availability = ExportFormatAvailability(
+      encoderResolver: () => encoder,
+      ffmpegCheck: () async => false,
+      jpgSupported: true,
+    );
+    addTearDown(availability.dispose);
+    expect(
+      availability.videoAllowed(
+        ExportVideoContainer.gif,
+        ExportVideoCodec.gif,
+      ),
+      isTrue,
     );
   });
 }

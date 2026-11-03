@@ -243,6 +243,44 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🚨a run stopped inside the film is a stopped run: the film '
+      'keeps the frames it got to, and is no film done', (tester) async {
+    final temp = scratch();
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    final state = await pumpCels(
+      tester,
+      session,
+      spec: const CelsExportSpec(
+        kinds: {ExportCelKind.cel, ExportCelKind.video},
+        videoFormat: gif,
+      ),
+      into: temp,
+    );
+    // The film's first frame: the two cels and one frame of four steps.
+    state.debugOnProgress = (done, _) {
+      if (done == 3) {
+        state.cancelExport();
+      }
+    };
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(filesWrittenUnder(temp), ['A1.png', 'A2.png', '_CUT301.gif']);
+    expect(
+      img.decodeGif(File('${temp.path}/_CUT301.gif').readAsBytesSync())!
+          .frames,
+      hasLength(1),
+    );
+    expect(
+      tester.widget<Text>(keyed('export-status')).data,
+      AppText.strings.exCancelledAfter(AppText.strings.exFileCount(3)),
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('the film is as large as the tab\'s size says: through the '
       'camera, the camera\'s', (tester) async {
     final temp = scratch();
