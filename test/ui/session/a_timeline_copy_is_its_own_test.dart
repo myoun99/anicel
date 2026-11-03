@@ -317,6 +317,73 @@ void main() {
     expect(projectOf(s).linkRegistry.groups, hasLength(1));
     expect(identical(store.bakedSurfaceOrNull(atCanonical), drawn), isTrue);
   });
+
+  test('🚨…and with two left in the group, the first of them takes the '
+      'cels — the canonical the group goes on with', () {
+    final s = session();
+    final first = (cut: s.requireActiveCut, row: s.activeLayer!);
+    s.cutVerbs.createCut();
+    final second = (cut: s.requireActiveCut, row: s.activeLayer!);
+    s.timelineVerbs.addTimeline();
+    final gone = openOf(s);
+    final canonical = (cut: s.requireActiveCut, row: s.activeLayer!);
+    final cels = first.row.frames;
+    LayerLinkMember member(
+      ({Cut cut, Layer row}) at,
+      ProjectTimeline timeline,
+    ) => LayerLinkMember(
+      trackId: timeline.tracks.single.id,
+      cutId: at.cut.id,
+      layerId: at.row.id,
+    );
+    s.repository.updateProject((project) {
+      var shared = project;
+      for (final row in [second.row.id, canonical.row.id]) {
+        shared = updateLayerAnywhere(
+          shared,
+          row,
+          (layer) =>
+              layer.copyWith(frames: cels, timeline: first.row.timeline),
+        )!;
+      }
+      final kept = project.timelines.first;
+      return shared.copyWith(
+        linkRegistry: LayerLinkRegistry(
+          groups: [
+            LayerLinkGroup(
+              id: 'across',
+              members: [
+                member(canonical, gone),
+                member(first, kept),
+                member(second, kept),
+              ],
+            ),
+          ],
+        ),
+      );
+    });
+    final store = s.renderCaches.brushFrameStore;
+    final drawn = surfaceOf(s, 90);
+    store.storeBakedSurface(
+      s.brushFrameKeyForCut(canonical.cut, canonical.row.id, cels.first.id),
+      drawn,
+    );
+
+    s.timelineVerbs.deleteTimeline(gone.id);
+
+    final group = projectOf(s).linkRegistry.groups.single;
+    expect(group.canonical.cutId, first.cut.id);
+    expect(
+      identical(
+        store.bakedSurfaceOrNull(
+          s.brushFrameKeyForCut(second.cut, second.row.id, cels.first.id),
+        ),
+        drawn,
+      ),
+      isTrue,
+      reason: 'the second reads the first\'s, which holds them',
+    );
+  });
 }
 
 Layer _rowOf(Project project, LayerLinkMember member) => project
