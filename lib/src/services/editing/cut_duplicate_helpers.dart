@@ -7,8 +7,12 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_link_registry.dart';
+import '../../models/project_timeline.dart';
 import '../../models/stroke.dart';
 import '../../models/timeline_exposure.dart';
+import '../../models/timeline_id.dart';
+import '../../models/track_id.dart';
 
 Cut duplicateCutAsIndependentCopy({
   required Cut source,
@@ -47,6 +51,125 @@ Cut duplicateCutAsIndependentCopy({
     camera: CutCamera.fromTrack(source.camera.track),
   );
 }
+
+/// The ids a timeline's copy takes (`planDuplicateTimelineCommandInput`),
+/// each by the one it copies.
+class TimelineCopyIds {
+  TimelineCopyIds({
+    required this.timelineId,
+    required Map<TrackId, TrackId> tracks,
+    required Map<CutId, CutId> cuts,
+    required Map<LayerId, LayerId> rows,
+    required Map<FrameId, FrameId> cels,
+    required Map<String, String> links,
+  }) : tracks = Map.unmodifiable(tracks),
+       cuts = Map.unmodifiable(cuts),
+       rows = Map.unmodifiable(rows),
+       cels = Map.unmodifiable(cels),
+       links = Map.unmodifiable(links);
+
+  final TimelineId timelineId;
+  final Map<TrackId, TrackId> tracks;
+  final Map<CutId, CutId> cuts;
+
+  /// Every row: a cut's, and a track's SE and transition rows.
+  final Map<LayerId, LayerId> rows;
+
+  /// Every cel — ONE map across the whole timeline: rows linked to each
+  /// other share their cels (a link IS the shared ids), so their copies
+  /// share the copies.
+  final Map<FrameId, FrameId> cels;
+
+  /// The link groups two or more of whose members the timeline holds, by
+  /// the id of the group their copies make.
+  final Map<String, String> links;
+}
+
+/// A TIMELINE'S COPY (I-150 「복제」): every track, cut and row of [source]
+/// under the ids [ids] took — a cut as a duplicated cut is
+/// ([duplicateCutAsIndependentCopy]) but under its own name, a track's SE
+/// and transition rows as a row is — numbered [number], named [name].
+ProjectTimeline duplicateTimelineAsIndependentCopy({
+  required ProjectTimeline source,
+  required TimelineCopyIds ids,
+  required int number,
+  required String? name,
+}) {
+  Layer copied(Layer row) => duplicateLayerAsIndependentCopy(
+    source: row,
+    newLayerId: _requireMapped(
+      ids.rows,
+      row.id,
+      argument: 'rows',
+      what: 'LayerId for track row',
+    ),
+    newName: row.name,
+    frameIdMap: ids.cels,
+    layerIdMap: ids.rows,
+  );
+
+  return ProjectTimeline(
+    id: ids.timelineId,
+    number: number,
+    name: name,
+    trailingFrames: source.trailingFrames,
+    tracks: [
+      for (final track in source.tracks)
+        track.copyWith(
+          id: _requireMapped(
+            ids.tracks,
+            track.id,
+            argument: 'tracks',
+            what: 'TrackId for track',
+          ),
+          cuts: [
+            for (final cut in track.cuts)
+              duplicateCutAsIndependentCopy(
+                source: cut,
+                newCutId: _requireMapped(
+                  ids.cuts,
+                  cut.id,
+                  argument: 'cuts',
+                  what: 'CutId for cut',
+                ),
+                newName: cut.name,
+                layerIdMap: ids.rows,
+                frameIdMap: ids.cels,
+              ),
+          ],
+          seLayers: [for (final row in track.seLayers) copied(row)],
+          transitionLayer: copied(track.transitionLayer),
+          effects: effectsWithRowsRenamed(
+            track.effects,
+            (row) => ids.rows[row] ?? row,
+          ),
+        ),
+    ],
+  );
+}
+
+/// The link groups of [registry] that a timeline's copy took two or more
+/// members of ([TimelineCopyIds.links]), made again of the copies — in the
+/// order the source's were, so the first copied is the canonical.
+List<LayerLinkGroup> linkGroupsOfACopy(
+  LayerLinkRegistry registry,
+  TimelineCopyIds ids,
+) => [
+  for (final group in registry.groups)
+    if (ids.links[group.id] case final id?)
+      LayerLinkGroup(
+        id: id,
+        members: [
+          for (final member in group.members)
+            if (ids.cuts[member.cutId] case final cutId?)
+              LayerLinkMember(
+                trackId: ids.tracks[member.trackId]!,
+                cutId: cutId,
+                layerId: ids.rows[member.layerId]!,
+              ),
+        ],
+      ),
+];
 
 Layer duplicateLayerAsIndependentCopy({
   required Layer source,

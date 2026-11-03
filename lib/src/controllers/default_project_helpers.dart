@@ -1,5 +1,3 @@
-import 'dart:math' show max;
-
 import '../models/app_workspace_colors.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
@@ -72,7 +70,7 @@ ProjectTimeline newTimelineIn(
   required CanvasSize canvasSize,
 }) => ProjectTimeline(
   id: mintTimelineId(),
-  number: project.timelines.map((timeline) => timeline.number).reduce(max) + 1,
+  number: timelineNumberAfter(project.timelines),
   tracks: [
     _newTrack(
       createDefaultTrack(

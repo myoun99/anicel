@@ -1863,6 +1863,7 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     changes: this,
     layerIds: layerIds,
+    renderCaches: renderCaches,
   );
 
   @override

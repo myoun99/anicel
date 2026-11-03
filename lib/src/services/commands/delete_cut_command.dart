@@ -1,10 +1,9 @@
 import '../editing/cut_deletion_helpers.dart';
 import '../editing/editing_session_state.dart';
-import '../../models/brush_frame_key.dart';
+import '../editing/links_without_cuts.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_link_registry.dart';
-import '../../models/project.dart';
 import '../../models/track_id.dart';
 import '../brush_frame_store.dart';
 import '../command.dart';
@@ -36,7 +35,8 @@ class DeleteCutCommand implements Command {
   int? _originalIndex;
   CutId? _previousActiveCutId;
   LayerLinkRegistry? _registryBefore;
-  final List<(BrushFrameKey, BrushFrameKey)> _rekeys = [];
+  ({LayerLinkRegistry registry, List<CelRekey> rekeys})? _swept;
+  List<CelRekey> get _rekeys => _swept?.rekeys ?? const [];
   bool _hasExecuted = false;
 
   /// ⑱'s two undo anchors: the neighbour whose leading gap grew, and the
@@ -80,21 +80,17 @@ class DeleteCutCommand implements Command {
         ? null
         : requireCut(project, absorbedByCutId).leadingGapFrames;
     _trailingFramesBefore = project.trailingFrames;
-    // 링크 정리 BEFORE the cut leaves: dead members must never linger in
-    // the registry (mirror fan-outs would hit missing layers). A deleted
-    // CANONICAL member promotes the first survivor — its cels re-key
-    // onto the new canonical address so pixels keep routing.
+    // 링크 정리 BEFORE the cut leaves ([linksWithoutCuts]).
     if (_registryBefore == null) {
       _registryBefore = project.linkRegistry;
-      _planRegistrySweep(project);
+      _swept = linksWithoutCuts(project, {cutId});
     }
+    final swept = _swept!;
     if (_rekeys.isNotEmpty) {
       brushFrameStore?.rekeyFrames(_rekeys);
     }
     repository.updateProject(
-      (current) => current.copyWith(
-        linkRegistry: _sweptRegistry(current.linkRegistry),
-      ),
+      (current) => current.copyWith(linkRegistry: swept.registry),
     );
     _deletedCut = repository.removeCut(cutId: cutId);
 
@@ -181,66 +177,4 @@ class DeleteCutCommand implements Command {
     }
     editingSession.setActiveCutId(previousActiveCutId);
   }
-
-  /// Computes the canonical promotions this deletion forces and queues
-  /// the cel re-keys (old canonical address → surviving member's).
-  void _planRegistrySweep(Project project) {
-    for (final group in project.linkRegistry.groups) {
-      if (group.canonical.cutId != cutId) {
-        continue;
-      }
-      final survivors = [
-        for (final member in group.members)
-          if (member.cutId != cutId) member,
-      ];
-      if (survivors.isEmpty) {
-        continue; // Whole group dies with the cut — nothing to promote.
-      }
-      // Even a lone survivor (group dissolves) needs the cels re-keyed
-      // onto itself, or its now self-resolving reads find nothing.
-      final promoted = survivors.first;
-      final oldCanonicalLayer = requireLayer(
-        project,
-        cutId: cutId,
-        layerId: group.canonical.layerId,
-      );
-      for (final frame in oldCanonicalLayer.frames) {
-        _rekeys.add((
-          BrushFrameKey(
-            projectId: project.id,
-            trackId: group.canonical.trackId,
-            cutId: group.canonical.cutId,
-            layerId: group.canonical.layerId,
-            frameId: frame.id,
-          ),
-          BrushFrameKey(
-            projectId: project.id,
-            trackId: promoted.trackId,
-            cutId: promoted.cutId,
-            layerId: promoted.layerId,
-            frameId: frame.id,
-          ),
-        ));
-      }
-    }
-  }
-
-  /// [registry] with every member of the deleted cut removed; singleton
-  /// leftovers dissolve. Surviving members keep their order, so the
-  /// promoted canonical is exactly the one [_planRegistrySweep] re-keyed
-  /// onto.
-  LayerLinkRegistry _sweptRegistry(LayerLinkRegistry registry) {
-    final groups = <LayerLinkGroup>[];
-    for (final group in registry.groups) {
-      final survivors = [
-        for (final member in group.members)
-          if (member.cutId != cutId) member,
-      ];
-      if (survivors.length >= 2) {
-        groups.add(group.copyWith(members: survivors));
-      }
-    }
-    return LayerLinkRegistry(groups: groups);
-  }
-
 }

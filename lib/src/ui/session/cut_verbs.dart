@@ -1,37 +1,29 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/sheet_memo_side.dart';
-import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/conte/conte_camera_room.dart';
-import '../../models/conte/conte_ink_keys.dart'
-    show conteInkRowIdOf, conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_metadata.dart';
-import '../../models/envelope/cut_envelope_ink_keys.dart'
-    show envelopeInkKeyOfCut;
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/track_id.dart';
 import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_info.dart';
-import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
-import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/persistence/cel_places.dart' show rowOwnerName;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
-import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import '../text/place_lines.dart' show drawingPlaceLines;
 import 'active_cut_edits.dart';
+import 'cut_copies.dart';
 import 'cut_placement.dart';
-import 'independent_clip_mint.dart' show carryBakedPictures, carrySurfaces;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
@@ -214,12 +206,8 @@ class CutVerbs {
     });
   });
 
-  /// Duplicates [cutId] into [trackId] at [index], pictures and all: the
-  /// copy mints every row and cel afresh, and a picture lives under its
-  /// cel's key, so each one follows its cel over (F-62's law at the cut's
-  /// scale). ↩️Nothing did until 2026-09-26 — a duplicated cut came out
-  /// with every drawing blank (measured; card
-  /// `duplicates-lose-their-pictures`).
+  /// Duplicates [cutId] into [trackId] at [index], pictures and all
+  /// ([CutCopies]).
   void _duplicateCut(CutId cutId, TrackId trackId, {required int index}) {
     final source = _project.cutById(cutId)!;
     final copy = _project.cutCommandCoordinator.duplicateCut(
@@ -227,61 +215,18 @@ class CutVerbs {
       targetTrackId: trackId,
       index: index,
     );
-    final into = _project.cutById(copy.cutId)!;
-    final store = _renderCaches.brushFrameStore;
-    for (final row in source.layers) {
-      carryBakedPictures(
-        project: _project,
-        store: store,
-        cut: into,
-        to: copy.rows[row.id]!,
-        minted: {for (final cel in row.frames) cel.id: copy.minted[cel.id]!},
-        pictureOf: (cel) => store.bakedSurfaceOrNull(
-          _project.brushFrameKeyForCut(source, row.id, cel),
-        ),
-      );
-    }
-    _carrySheetInk(from: cutId, to: copy.cutId);
-  }
-
-  /// The sheets' handwriting of a duplicated cut, onto its copy: the conte
-  /// cells' block by block — each copied block keeps its handwriting id, on
-  /// the copy's cut — the envelope's and the timesheet's box by box and band
-  /// by band. From there the copy's is its own.
-  ///
-  /// 🗣️유저 2026-09-26 (cut-duplicate-sheet-ink-Q1): 「따라간다 — 복제는
-  /// 전부 복사」. Each sheet's ink is owned the way the load prunes it
-  /// (`_InkOwners`): a conte cell by its block, the others by their cut —
-  /// the envelope's by the cut that OWNS the envelope, the representative
-  /// when [from] shares one ([cutEnvelopeInkOwner]); the copy is no
-  /// sibling, so it owns its own.
-  void _carrySheetInk({required CutId from, required CutId to}) {
-    void carry(
-      BrushFrameStore store,
-      CutId owner,
-      BrushFrameKey? Function(BrushFrameKey key) inCopy,
-    ) => carrySurfaces(
-      sources: store.bakedSurfacesForCut(owner).entries,
-      surfaceOf: (written) => written.value,
-      keyOfCopy: (written) => inCopy(written.key),
-      keep: (key, surface, _) => store.storeBakedSurface(key, surface),
-    );
-
-    carry(_renderCaches.conteInkRowStore, from, (key) {
-      final block = conteInkRowIdOf(key);
-      return block == null ? null : conteInkRowKey(to, block);
-    });
-    carry(
-      _renderCaches.envelopeInkStore,
-      cutEnvelopeInkOwner(_project.repository.requireProject(), from),
-      (key) => envelopeInkKeyOfCut(key, to),
-    );
-    carry(
-      _renderCaches.timesheetInkStore,
-      from,
-      (key) => timesheetInkKeyOfCut(key, to),
+    _copies.carry(
+      source: source,
+      copy: copy.cutId,
+      rows: copy.rows,
+      cels: copy.minted,
     );
   }
+
+  late final CutCopies _copies = CutCopies(
+    project: _project,
+    renderCaches: _renderCaches,
+  );
 
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the

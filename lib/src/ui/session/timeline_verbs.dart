@@ -4,11 +4,13 @@ import '../../models/timeline_id.dart';
 import '../../services/commands/timeline_commands.dart';
 import '../../services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
+import 'cut_copies.dart';
 import 'layer_id_mint.dart';
+import 'render_caches.dart';
 import 'session_roles.dart';
 
-/// THE TIMELINE VERBS (I-150) — the timeline list's: a new one, another
-/// opened, one named or deleted. Each is a step of the history
+/// THE TIMELINE VERBS (I-150) — the timeline list's: a new one, one copied,
+/// another opened, one named or deleted. Each is a step of the history
 /// ([TimelineCommands]), and one that opens another timeline moves where
 /// the user stands as a command that switches cuts does: walked off first
 /// (I-41), the cut controllers re-read after.
@@ -18,18 +20,22 @@ class TimelineVerbs {
     required TimelineAccess timeline,
     required ChangeSink changes,
     required LayerIdMint layerIds,
+    required RenderCaches renderCaches,
   }) : _project = project,
        _changes = changes,
        _layerIds = layerIds,
+       _copies = CutCopies(project: project, renderCaches: renderCaches),
        _commands = TimelineCommands(
          repository: project.repository,
          editingSession: timeline.editingSession,
          historyManager: project.historyManager,
+         brushFrameStore: renderCaches.brushFrameStore,
        );
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final LayerIdMint _layerIds;
+  final CutCopies _copies;
   final TimelineCommands _commands;
 
   List<ProjectTimeline> get timelines =>
@@ -50,6 +56,26 @@ class TimelineVerbs {
       ),
     ),
   );
+
+  /// [id] copied under [name] right after it, and opened — its pictures and
+  /// its sheets' handwriting along, cut by cut, as a duplicated cut's are.
+  void duplicateTimeline(TimelineId id, String name) => _moving(() {
+    final source = timelines.where((timeline) => timeline.id == id);
+    final ids = _commands.duplicate(id, name);
+    if (ids == null) {
+      return;
+    }
+    for (final track in source.single.tracks) {
+      for (final cut in track.cuts) {
+        _copies.carry(
+          source: cut,
+          copy: ids.cuts[cut.id]!,
+          rows: ids.rows,
+          cels: ids.cels,
+        );
+      }
+    }
+  });
 
   void openTimeline(TimelineId id) => _moving(() => _commands.open(id));
 

@@ -1,9 +1,16 @@
+import 'dart:math' show max;
+
 import '../core/collection_equality.dart';
 import 'timeline_id.dart';
 import 'track.dart';
 
 /// The timeline a project is made with.
 const firstProjectTimelineId = TimelineId('timeline-1');
+
+/// The number a timeline made now takes — a new one or a copy: after the
+/// last of [timelines].
+int timelineNumberAfter(List<ProjectTimeline> timelines) =>
+    timelines.map((timeline) => timeline.number).reduce(max) + 1;
 
 /// One TIMELINE of a project: its tracks — the cuts, the SE rows, the
 /// transition row — and its trailing gap. Everything else the project holds

@@ -10,11 +10,17 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_section_defaults.dart'
+    show seLayerIdForTrack, transitionLayerIdForTrack;
 import '../../models/project.dart';
+import '../../models/project_timeline.dart';
+import '../../models/track_id.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../command.dart';
-import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
-import '../editing/run_id_mint.dart' show mintCutId, mintFrameId;
+import '../editing/cut_duplicate_helpers.dart'
+    show TimelineCopyIds, remapTimelineExposure;
+import '../editing/run_id_mint.dart'
+    show mintCutId, mintFrameId, mintTimelineId, mintTrackId;
 import '../project_lookup.dart' show requireCut;
 import '../project_repository.dart';
 import 'add_layer_command.dart';
@@ -68,23 +74,7 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   final frameIdMap = <FrameId, FrameId>{};
 
   for (final layer in sourceCut.layers) {
-    final newLayerId = LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(newLayerId.value);
-    layerIdMap[layer.id] = newLayerId;
-
-    for (final frame in layer.frames) {
-      _copyOf(frame.id, on: newLayerId, into: frameIdMap);
-    }
-
-    for (final exposure in layer.timeline.values) {
-      final frameId = exposure.frameId;
-      if (frameId == null) {
-        continue;
-      }
-      _copyOf(frameId, on: newLayerId, into: frameIdMap);
-    }
+    _planRowCopy(layer, ids.nextLayerId(), rows: layerIdMap, cels: frameIdMap);
   }
 
   return DuplicateCutCommandInputPlan(
@@ -92,6 +82,77 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
     layerIdMap: layerIdMap,
     frameIdMap: frameIdMap,
   );
+}
+
+/// THE IDS A TIMELINE'S COPY TAKES (I-150 「복제」): each cut's rows fresh,
+/// as a duplicated cut's are ([planDuplicateCutCommandInput]) but from ONE
+/// snapshot, so no two cuts plan the same row; each track's SE and
+/// transition rows under its copy's id; and ONE map of cels across the
+/// whole timeline ([TimelineCopyIds.cels]).
+TimelineCopyIds planDuplicateTimelineCommandInput({
+  required Project project,
+  required ProjectTimeline source,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  final tracks = <TrackId, TrackId>{};
+  final cuts = <CutId, CutId>{};
+  final rows = <LayerId, LayerId>{};
+  final cels = <FrameId, FrameId>{};
+  for (final track in source.tracks) {
+    final trackId = tracks[track.id] = mintTrackId();
+    for (final (at, row) in track.seLayers.indexed) {
+      _planRowCopy(
+        row,
+        seLayerIdForTrack(trackId, at + 1),
+        rows: rows,
+        cels: cels,
+      );
+    }
+    _planRowCopy(
+      track.transitionLayer,
+      transitionLayerIdForTrack(trackId),
+      rows: rows,
+      cels: cels,
+    );
+    for (final cut in track.cuts) {
+      cuts[cut.id] = mintCutId();
+      for (final row in cut.layers) {
+        _planRowCopy(row, ids.nextLayerId(), rows: rows, cels: cels);
+      }
+    }
+  }
+  return TimelineCopyIds(
+    timelineId: mintTimelineId(),
+    tracks: tracks,
+    cuts: cuts,
+    rows: rows,
+    cels: cels,
+    links: {
+      for (final group in project.linkRegistry.groups)
+        if (group.members.where((member) => cuts.containsKey(member.cutId))
+            case final held when held.length > 1)
+          group.id: ids.nextLinkGroupId(),
+    },
+  );
+}
+
+/// [row] copied onto [to] in [rows], and its cels — the ones it holds and
+/// the ones its cells expose — in [cels].
+void _planRowCopy(
+  Layer row,
+  LayerId to, {
+  required Map<LayerId, LayerId> rows,
+  required Map<FrameId, FrameId> cels,
+}) {
+  rows[row.id] = to;
+  for (final frame in row.frames) {
+    _copyOf(frame.id, on: to, into: cels);
+  }
+  for (final exposure in row.timeline.values) {
+    if (exposure.frameId case final frameId?) {
+      _copyOf(frameId, on: to, into: cels);
+    }
+  }
 }
 
 PasteLayerCommandInputPlan planPasteLayerCommandInput({
