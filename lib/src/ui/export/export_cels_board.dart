@@ -350,11 +350,6 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     ExportCelsFolderColumn column,
     BorderSide line,
   ) {
-    final scroll = _folderScrolls.putIfAbsent(
-      column.keyValue,
-      ScrollController.new,
-    );
-    final rowHeight = timelineLayerRowHeightIn(context);
     final keyValue = 'export-cels-folders-${column.keyValue}';
     return Container(
       key: ValueKey<String>(keyValue),
@@ -375,39 +370,51 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
               style: _bandWordStyle(Theme.of(context)),
             ),
           ),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          Expanded(child: _folderRows(context, column, keyValue)),
+        ],
+      ),
+    );
+  }
+
+  /// A folder column's folders, a row each, and the lane they scroll by.
+  Widget _folderRows(
+    BuildContext context,
+    ExportCelsFolderColumn column,
+    String keyValue,
+  ) {
+    final scroll = _folderScrolls.putIfAbsent(
+      column.keyValue,
+      ScrollController.new,
+    );
+    final rowHeight = timelineLayerRowHeightIn(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: ScrollConfiguration(
+            // Its lane IS its bar, as the rows' are.
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: ListView(
+              controller: scroll,
               children: [
-                Expanded(
-                  child: ScrollConfiguration(
-                    // Its lane IS its bar, as the rows' are.
-                    behavior: ScrollConfiguration.of(
-                      context,
-                    ).copyWith(scrollbars: false),
-                    child: ListView(
-                      controller: scroll,
-                      children: [
-                        for (final folder in column.folders)
-                          _folder(context, folder, rowHeight),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: AppScrollbarLane.thin,
-                  child: AppControllerScrollbar(
-                    controller: scroll,
-                    axis: Axis.vertical,
-                    laneKey: ValueKey<String>('$keyValue-lane'),
-                    thumbKey: ValueKey<String>('$keyValue-thumb'),
-                  ),
-                ),
+                for (final folder in column.folders)
+                  _folder(context, folder, rowHeight),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+        SizedBox(
+          width: AppScrollbarLane.thin,
+          child: AppControllerScrollbar(
+            controller: scroll,
+            axis: Axis.vertical,
+            laneKey: ValueKey<String>('$keyValue-lane'),
+            thumbKey: ValueKey<String>('$keyValue-thumb'),
+          ),
+        ),
+      ],
     );
   }
 
