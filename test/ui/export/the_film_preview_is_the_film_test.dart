@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/export/held_pictures.dart';
 
 import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -350,6 +351,28 @@ void main() {
         });
       }
     }
+
+    testWidgets('the window lets go of what its film\'s preview held, as it '
+        'closes', (tester) async {
+      final heldBefore = HeldPictures.debugHeld;
+      final session = sessionOn(const ProjectBackground.color(cream));
+      inkLeftHalf(session);
+      await pumpWindow(
+        tester,
+        session,
+        format: mp4,
+        sizeMode: ExportSizeMode.camera,
+      );
+      expect(
+        HeldPictures.debugHeld,
+        greaterThan(heldBefore),
+        reason: 'LIVENESS: the preview holds its frame as a run does',
+      );
+      session.playbackRig.prerenderScheduler.cancel();
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(HeldPictures.debugHeld, heldBefore);
+    });
 
     testWidgets('a film that keeps its clear colour is previewed clear where '
         'its file is: a canvas-size GIF under a paper that is none', (

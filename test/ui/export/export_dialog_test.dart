@@ -552,12 +552,16 @@ void main() {
       // The pictures a run holds from one frame to the next are its own to
       // let go of.
       expect(heldInTheRun, greaterThan(0), reason: 'LIVENESS: it held some');
-      expect(HeldPictures.debugHeld, 0);
       expect(
         capturedArgs.last.replaceAll('\\', '/'),
         endsWith('/Cut.mp4'),
       );
       expect(statusText(tester), 'Exported video (2 frames).');
+      // The window's preview of the film holds its frames as a run does
+      // (export-film-preview-is-not-the-film), and lets go of them with the
+      // window.
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(HeldPictures.debugHeld, 0);
     });
 
     testWidgets('audio accordion reports the toggle in its summary',

@@ -453,6 +453,11 @@ class ExportDialogState extends State<ExportDialog> {
     }
     _celProjectFolderFields.dispose();
     _celCutFolderFields.dispose();
+    // The pictures a film's preview held from one frame to the next
+    // ([ExportFrameRenderer.renderVideoFrame]).
+    for (final renderer in _previewRenderers.values) {
+      renderer.dispose();
+    }
     _queue.dispose();
     _notices.dispose();
     _availability.removeListener(_onAvailabilityChanged);
