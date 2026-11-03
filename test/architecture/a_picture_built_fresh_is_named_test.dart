@@ -91,7 +91,7 @@ void main() {
       count: 1,
       why: 'the empty picture that takes a copied sheet\'s ink away again',
     ),
-    'lib/src/services/commands/unlink_layer_command.dart': (
+    'lib/src/services/commands/link_group_parts.dart': (
       count: 1,
       why: 'the empty picture that takes a forked cel away again',
     ),
