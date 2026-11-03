@@ -456,18 +456,12 @@ class ExportCelFileNamer {
   }) => _unused(_foldersOf(projectName, cutName), base, extension);
 
   /// The folders the naming rule makes, as the path a file name starts
-  /// with — the project's and the cut's in what they wear around their
-  /// names ([ExportCelNaming.cutFolderName]).
+  /// with ([ExportCelNamingFolders]).
   String _foldersOf(String projectName, String cutName, [String? layerName]) {
     final folder = [
-      if (naming.projectFolder)
-        sanitizeExportFileComponent(
-          naming.projectFolderName.around(projectName),
-        ),
-      if (naming.cutFolder)
-        sanitizeExportFileComponent(naming.cutFolderName.around(cutName)),
-      if (naming.layerFolder && layerName != null)
-        sanitizeExportFileComponent(layerName),
+      ?naming.projectFolderOf(projectName),
+      ?naming.cutFolderOf(cutName),
+      if (layerName != null) ?naming.layerFolderOf(layerName),
     ].join('/');
     return folder.isEmpty ? '' : '$folder/';
   }
@@ -482,6 +476,26 @@ class ExportCelFileNamer {
     );
     return '$folders$name';
   }
+}
+
+/// The folders a naming rule makes, each by its own name — null where it
+/// makes none: the project's and the cut's in what they wear around their
+/// names ([ExportCelNaming.cutFolderName]), a layer's as it is.
+///
+/// The ONE spelling of them: the run's paths ([ExportCelFileNamer]) and the
+/// Cels board's folder columns ask here, so a column cannot name a folder
+/// the run does not make (I-153).
+extension ExportCelNamingFolders on ExportCelNaming {
+  String? projectFolderOf(String projectName) => projectFolder
+      ? sanitizeExportFileComponent(projectFolderName.around(projectName))
+      : null;
+
+  String? cutFolderOf(String cutName) => cutFolder
+      ? sanitizeExportFileComponent(cutFolderName.around(cutName))
+      : null;
+
+  String? layerFolderOf(String layerName) =>
+      layerFolder ? sanitizeExportFileComponent(layerName) : null;
 }
 
 /// [name] as the [bump]-th output to wear it: `shot.png` becomes

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/export_cel_kind.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -113,6 +114,24 @@ final class ExportCelsDocumentRow extends ExportCelsBoardRow {
   LayerMark get mark => LayerMark.none;
 }
 
+/// One folder a folder column lists ([ExportCelsFolderColumn]): the name it
+/// is made under, whether the list stands in it, and the press that stands
+/// the list there — null where nothing else could be stood in.
+typedef ExportCelsFolder = ({
+  String keyValue,
+  String name,
+  bool stood,
+  VoidCallback? onPressed,
+});
+
+/// The folders the naming rule makes at one depth — the project's, the
+/// cut's — as a column left of the rail ([ExportCelsBoard.folderColumns]).
+typedef ExportCelsFolderColumn = ({
+  String keyValue,
+  String title,
+  List<ExportCelsFolder> folders,
+});
+
 /// The Cels tab's list, under its preview (F-289): the rules that pick the
 /// rows on the left, the attach column beside them, and the cut's FILE rows
 /// in the timeline's order — the rail's own leading cells, then one block a
@@ -131,8 +150,16 @@ final class ExportCelsDocumentRow extends ExportCelsBoardRow {
 /// (「흐린블록은 상태적으로 필요없다고생각해」): pressed, a drawing the export
 /// would write is turned off or back on, and one it would not says why.
 ///
-/// Stateless but for its two scroll positions: the window owns everything
-/// it shows.
+/// The folders the run makes stand in its order, left to right
+/// (🗣️I-153, 유저 2026-11-04: 「순서는 중첩구조 그대로. 프로젝트-컷-레이어-그림
+/// 이렇게」): a column a folder depth the naming rule makes, left of the
+/// rail ([folderColumns]); and where it makes a folder a layer, the rail
+/// lists those folders and the drawings of the one stood in run down beside
+/// it ([layerFolderOf] — 「레이어폴더 공간에서 폴더 바꾸면서 다른 레이어
+/// 보는구조로」).
+///
+/// Stateless but for its scroll positions: the window owns everything it
+/// shows.
 class ExportCelsBoard extends StatefulWidget {
   const ExportCelsBoard({
     super.key,
@@ -147,6 +174,8 @@ class ExportCelsBoard extends StatefulWidget {
     required this.onStoodOn,
     required this.onSheetPressed,
     this.rulesNeed = 0,
+    this.folderColumns = const [],
+    this.layerFolderOf,
   });
 
   /// The rules column — the window's, which knows what its words need
@@ -183,6 +212,20 @@ class ExportCelsBoard extends StatefulWidget {
   final ValueChanged<ExportCelsBoardRow> onStoodOn;
   final ValueChanged<ExportListSheet> onSheetPressed;
 
+  /// The project's and the cut's folders, where the rule makes them —
+  /// none, one or two columns.
+  ///
+  /// 🗣️I-153-Q1 (유저 2026-11-04): 「고를 때 생긴다」 — a column stands only
+  /// while its folder is made: the one place the board lets UI come and go
+  /// (「없다가 생기는 UI 금지」), the user's call over the reserved column.
+  final List<ExportCelsFolderColumn> folderColumns;
+
+  /// The folder a row's files go into, where the rule makes a folder a
+  /// layer — or null for the board that makes none, whose rows lay their
+  /// drawings across as the timeline does. Null for a row in no folder of
+  /// its own (a document).
+  final String? Function(ExportCelsBoardRow row)? layerFolderOf;
+
   /// The rules column's least width — what it stands at in a language
   /// whose words fit it.
   ///
@@ -218,12 +261,16 @@ class ExportCelsBoard extends StatefulWidget {
   /// by the base's word or an attach row's arrow alone.
   static const double stackWidth = 248;
 
+  /// A folder column's width (I-153 시안 1), its lane in it.
+  static const double folderColumnWidth = 132;
+
   /// The narrowest a board whose rules need [rulesNeed] lays out at: the
-  /// rules, the attach column, the vertical bar's lane, the rail and five
-  /// blocks.
-  static double minimumWidthFor(double rulesNeed) =>
+  /// rules, the attach column, its [folderColumns], the vertical bar's
+  /// lane, the rail and five blocks.
+  static double minimumWidthFor(double rulesNeed, {int folderColumns = 0}) =>
       rulesWidthFor(rulesNeed) +
       stackWidth +
+      folderColumns * folderColumnWidth +
       AppScrollbarLane.thin +
       railWidth +
       5 * blockWidth +
@@ -237,10 +284,16 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   final ScrollController _down = ScrollController();
   final ScrollController _across = ScrollController();
 
+  /// Each folder column's own scroll, by its key.
+  final Map<String, ScrollController> _folderScrolls = {};
+
   @override
   void dispose() {
     _down.dispose();
     _across.dispose();
+    for (final scroll in _folderScrolls.values) {
+      scroll.dispose();
+    }
     super.dispose();
   }
 
@@ -268,6 +321,8 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
             decoration: BoxDecoration(border: Border(right: line)),
             child: widget.stack,
           ),
+          for (final column in widget.folderColumns)
+            _folderColumn(context, column, line),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -287,8 +342,121 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     );
   }
 
+  /// A column of the folders made at one depth: its title level with the
+  /// band, then a folder a row — the one the list stands in washed as the
+  /// rail washes the row stood on — and the lane its rows scroll by.
+  Widget _folderColumn(
+    BuildContext context,
+    ExportCelsFolderColumn column,
+    BorderSide line,
+  ) {
+    final scroll = _folderScrolls.putIfAbsent(
+      column.keyValue,
+      ScrollController.new,
+    );
+    final rowHeight = timelineLayerRowHeightIn(context);
+    final keyValue = 'export-cels-folders-${column.keyValue}';
+    return Container(
+      key: ValueKey<String>(keyValue),
+      width: ExportCelsBoard.folderColumnWidth,
+      decoration: BoxDecoration(border: Border(right: line)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: ExportCelsBoard.bandHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(border: Border(bottom: line)),
+            child: EllipsisText(
+              column.title,
+              key: ValueKey<String>('$keyValue-title'),
+              maxLines: 1,
+              style: _bandWordStyle(Theme.of(context)),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: ScrollConfiguration(
+                    // Its lane IS its bar, as the rows' are.
+                    behavior: ScrollConfiguration.of(
+                      context,
+                    ).copyWith(scrollbars: false),
+                    child: ListView(
+                      controller: scroll,
+                      children: [
+                        for (final folder in column.folders)
+                          _folder(context, folder, rowHeight),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: AppScrollbarLane.thin,
+                  child: AppControllerScrollbar(
+                    controller: scroll,
+                    axis: Axis.vertical,
+                    laneKey: ValueKey<String>('$keyValue-lane'),
+                    thumbKey: ValueKey<String>('$keyValue-thumb'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One folder of a column, by the name it is made under — the press that
+  /// stands the list in it, as a rail row's name stands the list on it.
+  Widget _folder(BuildContext context, ExportCelsFolder folder, double height) {
+    final scheme = Theme.of(context).colorScheme;
+    final standIn = widget.enabled ? folder.onPressed : null;
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: folder.stood ? railSelectedRowColor(scheme) : scheme.surface,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: ControlPressClaim(
+        onPressed: standIn,
+        child: InkWell(
+          mouseCursor: AppCursors.press,
+          key: ValueKey<String>(folder.keyValue),
+          onTap: silentPress(standIn),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                Text(
+                  '▸',
+                  style: layerRowNameStyle(
+                    context,
+                  ).copyWith(color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: EllipsisText(
+                    folder.name,
+                    maxLines: 1,
+                    style: layerRowNameStyle(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// The rows under the band: the vertical bar's lane at their far left,
-  /// then the rail that stays and the blocks that scroll across.
+  /// then the rail that stays and the blocks that scroll across — or, where
+  /// a layer is a folder, the files of the folder stood in, down.
   Widget _rows(BuildContext context) {
     final rowHeight = timelineLayerRowHeightIn(context);
     return Row(
@@ -329,7 +497,11 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
                       ],
                     ),
                   ),
-                  Expanded(child: _blockRows(context, rowHeight)),
+                  Expanded(
+                    child: widget.layerFolderOf == null
+                        ? _blockRows(context, rowHeight)
+                        : _fileLines(context, rowHeight),
+                  ),
                 ],
               ),
             ),
@@ -362,20 +534,86 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     );
   }
 
+  /// The files of the folder stood in, a line each from the top as a file
+  /// browser lists a folder (I-153 시안 2): its block — pressed as any
+  /// block is — and the name it is written under.
+  Widget _fileLines(BuildContext context, double rowHeight) {
+    final row = widget.rows
+        .where((row) => row.idValue == widget.standing)
+        .firstOrNull;
+    if (row == null) {
+      return const SizedBox.shrink();
+    }
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final sheet in row.sheets)
+          Container(
+            key: ValueKey<String>(
+              'export-cels-file-${row.idValue}-${sheet.idValue}',
+            ),
+            height: rowHeight,
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _block(row, sheet, rowHeight),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: EllipsisText(
+                      // A file that is not written has no name of its
+                      // own: it says what it is.
+                      sheet.fileName.isEmpty
+                          ? sheet.fullName
+                          : fileNameOfPath(sheet.fileName),
+                      key: ValueKey<String>(
+                        'export-cels-file-name-${row.idValue}-'
+                        '${sheet.idValue}',
+                      ),
+                      maxLines: 1,
+                      style: layerRowNameStyle(context).copyWith(
+                        color: sheet.written
+                            ? AppColors.text
+                            : AppColors.text.withValues(
+                                alpha: AppColors.offAlpha,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   /// The horizontal bar's lane, under its hairline: the bar runs under the
-  /// blocks it scrolls, not under the rail that stays.
+  /// blocks it scrolls, not under the rail that stays. Where the files run
+  /// down there is nothing across to scroll: the lane keeps its room.
   Widget _acrossLane(BorderSide line) => Container(
     height: AppScrollbarLane.thin + 1,
     decoration: BoxDecoration(border: Border(top: line)),
     padding: const EdgeInsets.only(
       left: AppScrollbarLane.thin + ExportCelsBoard.railWidth,
     ),
-    child: AppControllerScrollbar(
-      controller: _across,
-      axis: Axis.horizontal,
-      laneKey: const ValueKey<String>('export-cels-board-horizontal-lane'),
-      thumbKey: const ValueKey<String>('export-cels-board-horizontal-thumb'),
-    ),
+    child: widget.layerFolderOf != null
+        ? null
+        : AppControllerScrollbar(
+            controller: _across,
+            axis: Axis.horizontal,
+            laneKey: const ValueKey<String>(
+              'export-cels-board-horizontal-lane',
+            ),
+            thumbKey: const ValueKey<String>(
+              'export-cels-board-horizontal-thumb',
+            ),
+          ),
   );
 
   /// A row's rail: the timeline rail's leading cells ([_leading]), then the
@@ -470,7 +708,10 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
         child: Align(
           alignment: Alignment.centerLeft,
           child: EllipsisText(
-            row.name,
+            switch (widget.layerFolderOf?.call(row)) {
+              final folder? => '$folder/',
+              null => row.name,
+            },
             key: ValueKey<String>('export-cels-name-$idValue'),
             maxLines: 1,
             style: layerRowNameStyle(context).copyWith(color: ink),
@@ -511,24 +752,24 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final sheet in row.sheets)
-            ExportCelBlock(
-              sheet: sheet,
-              rowId: row.idValue,
-              mark: row.mark,
-              // The hairline under the row is the row's, not the block's.
-              height: height - 1,
-              shown:
-                  row.idValue == widget.standing &&
-                  sheet.idValue == widget.shown,
-              onPressed: widget.enabled
-                  ? () => widget.onSheetPressed(sheet)
-                  : null,
-            ),
+          for (final sheet in row.sheets) _block(row, sheet, height),
         ],
       ),
     );
   }
+
+  /// [sheet]'s block on [row], [height] tall with the row's hairline — one
+  /// law wherever the board lays a block.
+  Widget _block(ExportCelsBoardRow row, ExportListSheet sheet, double height) =>
+      ExportCelBlock(
+        sheet: sheet,
+        rowId: row.idValue,
+        mark: row.mark,
+        // The hairline under the row is the row's, not the block's.
+        height: height - 1,
+        shown: row.idValue == widget.standing && sheet.idValue == widget.shown,
+        onPressed: widget.enabled ? () => widget.onSheetPressed(sheet) : null,
+      );
 }
 
 /// The icon of one of the cut's documents: its own panel's, as the
@@ -743,6 +984,15 @@ typedef ExportCelsDirection = ({
 /// there is nothing to lay it on.
 typedef ExportCelsLaying = ({bool laid, VoidCallback? onPressed});
 
+/// The small word the band's line reads in — the count it says, and a
+/// folder column's title level with it.
+TextStyle? _bandWordStyle(ThemeData theme) => theme.textTheme.labelSmall
+    ?.copyWith(
+      fontSize: 10,
+      letterSpacing: 0.6,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
 /// The band over the rows: the cut the list shows, how many files the
 /// export writes, the two steps that turn through the standing row's
 /// drawings, and what is laid over the drawing shown.
@@ -774,7 +1024,10 @@ class ExportCelsBand extends StatelessWidget {
     this.laysOver = true,
   });
 
-  final Widget cutPicker;
+  /// The cut the list shows, picked — or null where the cut column picks it
+  /// (🗣️I-153: the column's rows are the cuts, and two controls for one
+  /// pick are one too many).
+  final Widget? cutPicker;
 
   /// How many files the export writes, said with its noun.
   final String count;
@@ -795,21 +1048,16 @@ class ExportCelsBand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final picker = cutPicker;
     return Padding(
       padding: const EdgeInsets.only(left: 6, right: 8),
       child: Row(
         children: [
-          cutPicker,
-          const SizedBox(width: 8),
+          if (picker != null) ...[picker, const SizedBox(width: 8)],
           Text(
             count,
             key: const ValueKey<String>('export-cels-count'),
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontSize: 10,
-              letterSpacing: 0.6,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: _bandWordStyle(Theme.of(context)),
           ),
           const SizedBox(width: 8),
           ..._steps(),

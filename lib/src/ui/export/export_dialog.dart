@@ -610,12 +610,24 @@ class ExportDialogState extends State<ExportDialog> {
     final (:plan, :cut, :rows, :standing) = _celsList();
     final row = standing.rowIn(rows);
     final (cut: _, :pages, :at) = _celPages();
+    final naming = _celsSpec.namingInForce;
     return ExportCelsBoard(
       rules: _celRules(cut),
       rulesNeed: _celRulesNeed,
       stack: _celStack(cut, row),
+      folderColumns: _celFolderColumns(plan, cut),
+      layerFolderOf: naming.layerFolder
+          ? (row) => switch (row) {
+              // The folder its files are named into: the axis's
+              // ([ExportCelFileNamer.uniqueFileName]'s layerName).
+              ExportCelsLayerRow(:final layer) => naming.layerFolderOf(
+                layer.name,
+              ),
+              ExportCelsDocumentRow() => null,
+            }
+          : null,
       band: ExportCelsBand(
-        cutPicker: _celCutPicker(plan, cut),
+        cutPicker: naming.cutFolder ? null : _celCutPicker(plan, cut),
         count: AppText.strings.exWrittenCount(plan.length),
         onStep: _isExporting ? null : _stepCel,
         canStepBack: at > 0,
@@ -846,12 +858,66 @@ class ExportDialogState extends State<ExportDialog> {
           key: 'export-cels-cut-${cut.id.value}',
           label: celGroupCutName(project, cut),
         ),
-        onPicked: (cut) {
-          setState(() => _celListCut = cut.id);
-          _settleStanding();
-        },
+        onPicked: _showCelCut,
       ),
     );
+  }
+
+  /// Stands the list on [cut] — picked from the band's list, or pressed in
+  /// the cut column.
+  void _showCelCut(Cut cut) {
+    setState(() => _celListCut = cut.id);
+    _settleStanding();
+  }
+
+  /// The folders the Cels tab's rule makes above a layer's, a column a
+  /// depth ([ExportCelsBoard.folderColumns]): the project's; and the
+  /// cut's, a folder a cut the list can show — the one shown stood in, each
+  /// pressed to show it as the band's list would.
+  List<ExportCelsFolderColumn> _celFolderColumns(
+    ExportCelGroupPlan plan,
+    Cut shown,
+  ) {
+    final naming = _celsSpec.namingInForce;
+    final project = _session.repository.requireProject();
+    final strings = AppText.strings;
+    final listed = _celListCuts(plan);
+    // The cut shown is a folder whether or not the plan lists it, as the
+    // band's list names it on its button either way.
+    final cuts = listed.any((cut) => cut.id == shown.id)
+        ? listed
+        : [shown, ...listed];
+    return [
+      if (naming.projectFolderOf(project.name) case final folder?)
+        (
+          keyValue: 'project',
+          title: strings.exProject,
+          folders: [
+            (
+              keyValue: 'export-cels-folder-project',
+              name: folder,
+              stood: true,
+              onPressed: null,
+            ),
+          ],
+        ),
+      if (naming.cutFolder)
+        (
+          keyValue: 'cut',
+          title: '${strings.exCut} ${cuts.length}',
+          folders: [
+            for (final cut in cuts)
+              (
+                keyValue: 'export-cels-folder-cut-${cut.id.value}',
+                name: naming.cutFolderOf(celGroupCutName(project, cut))!,
+                stood: cut.id == shown.id,
+                onPressed: cut.id == shown.id || _isExporting
+                    ? null
+                    : () => _showCelCut(cut),
+              ),
+          ],
+        ),
+    ];
   }
 
   /// The cuts [plan] lists drawings for, in the order the export walks
@@ -3535,8 +3601,21 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// The same on every tab: the window does not change its width as the
   /// tab it shows does.
-  double get _previewColumnWidth =>
-      ExportCelsBoard.minimumWidthFor(_celRulesNeed) + 16;
+  ///
+  /// The Cels list's folder columns widen it where the rule makes them
+  /// (I-153-Q1 「고를 때 생긴다」) — the Cels tab's rule, whichever tab is
+  /// shown.
+  double get _previewColumnWidth {
+    final naming = _celsSpec.namingInForce;
+    return ExportCelsBoard.minimumWidthFor(
+          _celRulesNeed,
+          folderColumns: [
+            naming.projectFolder,
+            naming.cutFolder,
+          ].where((made) => made).length,
+        ) +
+        16;
+  }
   static const double _settingsColumnWidth = 272;
 
   /// The window's size and whether each drawer still fits: its share of the
