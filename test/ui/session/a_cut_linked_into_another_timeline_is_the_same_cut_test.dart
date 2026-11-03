@@ -523,7 +523,7 @@ void main() {
     final registry = projectOf(s).linkRegistry;
     expect(here.layers, hasLength(made.layers.length + 1), reason: '⛔전제');
     expect(
-      [for (final row in there.layers) row.id].toSet(),
+      {for (final row in there.layers) row.id},
       hasLength(there.layers.length),
       reason: 'no row twice',
     );
