@@ -735,8 +735,18 @@ import '../../tool/refactor/clone_scan.dart';
 /// kind of PCM that lands where the device plays it merges the three.
 /// 🔬Measured on the lane over master (`879992e96`, at 86): this one
 /// added, none gone.
+/// 87 → 86 (2026-11-04, resample-request-copies-the-conform-to-the-
+/// worker — the conform a conversion reads is lent to its worker by
+/// address). The pair named at 86 → 87 left the scan: the conversion's
+/// runner takes its worker's job inside the device's lend, so the run the
+/// two shared is under the floor. ⚠️They are still one algorithm in the
+/// part they share (a worker places, the runner adopts) — the 🔜 above
+/// stands: a third kind of PCM that lands where the device plays it
+/// merges the three.
+/// 🔬Measured on the lane over master (`6e22fd0bc`, at 87): none added,
+/// that one gone.
 void main() {
-  const ceiling = 87;
+  const ceiling = 86;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
