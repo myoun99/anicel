@@ -61,13 +61,20 @@ class LegendHeadingButton {
 /// Plain heading (R4 #3): the old LAYER ▾ flyout's jobs moved to the command
 /// bar (add) and the lane-column toggle (fold all). Stood up it writes
 /// vertically, the same table the columns' own names use.
-Widget _legendHeading({
+///
+/// 🗣️F-548 (유저 2026-11-04): 「콘티패널 레전드의 타임라인1이라는 버튼의
+/// 텍스트가 너무 작음. 일반 행 텍스트랑 똑같이 할수있나」 — the button's
+/// words wear a row's name whole ([layerRowNameStyle]). The card named the
+/// button; the plain heading keeps its own.
+Widget _legendHeading(
+  BuildContext context, {
   required bool isVertical,
   required LegendHeadingButton? heading,
   required double rowHeight,
   required Color ink,
 }) {
   final words = heading?.label ?? AppText.strings.tlLegendLayer;
+  final rowName = heading == null ? null : layerRowNameStyle(context);
   final Widget text = isVertical
       ? VerticalWritingText(
           key: const ValueKey<String>('legend-layer'),
@@ -79,11 +86,9 @@ Widget _legendHeading({
           // kind of label than the thing it labels.
           latinForm: VerticalLatinForm.upright,
           mainAlignment: 0,
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            color: ink,
-          ),
+          style:
+              rowName ??
+              TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: ink),
         )
       : Align(
           alignment: Alignment.centerLeft,
@@ -91,12 +96,14 @@ Widget _legendHeading({
             words,
             key: const ValueKey<String>('legend-layer'),
             maxLines: 1,
-            style: TextStyle(
-              fontSize: 9,
-              letterSpacing: 0.8,
-              fontWeight: FontWeight.w600,
-              color: ink,
-            ),
+            style:
+                rowName ??
+                TextStyle(
+                  fontSize: 9,
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w600,
+                  color: ink,
+                ),
           ),
         );
   return heading?.around(text, rowHeight: rowHeight) ?? text;
@@ -585,6 +592,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
                   ),
                   Expanded(
                     child: _legendHeading(
+                      context,
                       isVertical: isVertical,
                       heading: heading,
                       rowHeight: metrics.layerRowHeight,

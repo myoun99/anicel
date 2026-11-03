@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -9,6 +10,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/place_lines.dart' show timelineNameOf;
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
+    show TimelineLayerControlsRow;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/home_page_probes.dart';
@@ -68,6 +71,42 @@ void main() {
       findsNothing,
       reason: 'the conte panel\'s heading is the button\'s',
     );
+  });
+
+  testWidgets('🚨the button\'s words are written as a row\'s name is', (
+    tester,
+  ) async {
+    // 🗣️F-548 (유저 2026-11-04): 「타임라인1이라는 버튼의 텍스트가 너무
+    // 작음. 일반 행 텍스트랑 똑같이 할수있나」.
+    await pumpConte(tester);
+    TextStyle drawn(Finder text) =>
+        tester.renderObject<RenderParagraph>(text).text.style!;
+    final heading = drawn(
+      find.descendant(
+        of: inStoryboard('legend-heading'),
+        matching: byKey('legend-layer'),
+      ),
+    );
+    final rowOne = find
+        .descendant(
+          of: find.byType(StoryboardPanel),
+          matching: find.byType(TimelineLayerControlsRow),
+        )
+        .first;
+    final row = drawn(
+      find.descendant(
+        of: rowOne,
+        matching: find.text(
+          tester.widget<TimelineLayerControlsRow>(rowOne).layer.name,
+        ),
+      ),
+    );
+
+    expect(
+      (heading.fontSize, heading.fontWeight, heading.letterSpacing),
+      (row.fontSize, row.fontWeight, row.letterSpacing),
+    );
+    expect(heading.color, row.color);
   });
 
   testWidgets('the list: a ＋ that opens a new one, the open one in the '
