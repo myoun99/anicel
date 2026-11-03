@@ -714,8 +714,29 @@ import '../../tool/refactor/clone_scan.dart';
 /// reads and the one it writes — no flag says which switch.
 /// 🔬Measured on the lane over master (`f32fe4b06`, at 87): none added,
 /// this one gone.
+///
+/// 86 → 87 (2026-11-04, conform-landing-copies-on-the-ui-thread — a
+/// conform's PCM, and each rate it is converted to, placed in the device
+/// by the worker that made it). Named:
+///
+///     54 tokens
+///       lib/src/services/audio/audio_conform_runner.dart
+///         conformingInto
+///       lib/src/services/audio/audio_conform_runner.dart
+///         resamplingInto
+///
+/// They ARE one algorithm — "run the job on a worker that places its PCM
+/// in the device's buffers, and adopt what lands; with no device, the
+/// plain isolate" — over two jobs whose results differ (a conform keeps
+/// its waveform and its rate beside the samples, a conversion is the
+/// samples alone). ⛔Not merged, by the rule of three (CLAUDE.md): merged,
+/// one body would take the plain runner, the worker's job and the way back
+/// into each result as three callbacks for a shape seen twice. 🔜A third
+/// kind of PCM that lands where the device plays it merges the three.
+/// 🔬Measured on the lane over master (`879992e96`, at 86): this one
+/// added, none gone.
 void main() {
-  const ceiling = 86;
+  const ceiling = 87;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
