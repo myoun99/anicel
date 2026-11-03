@@ -221,4 +221,26 @@ void main() {
       isNull,
     );
   });
+
+  test('updateFrameAnywhere reaches the transition row, as the layer write '
+      'does', () {
+    final row = project.tracks.first.transitionLayer;
+    final frame = Frame(id: const FrameId('t'), duration: 1, strokes: const []);
+    project = updateLayerAnywhere(
+      project,
+      row.id,
+      (l) => l.copyWith(frames: [frame]),
+    )!;
+
+    final edited = updateFrameAnywhere(
+      project,
+      frame.id,
+      (f) => f.copyWith(name: 'Renamed'),
+    );
+
+    expect(
+      edited!.tracks.first.transitionLayer.frames.single.name,
+      'Renamed',
+    );
+  });
 }

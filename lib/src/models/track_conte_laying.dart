@@ -55,7 +55,7 @@ Set<LayerId> conteFillsGiven(Project? before, Project? after) {
   }
   final was = _cutsById(before);
   final given = <LayerId>{};
-  for (final track in after.tracksOfEveryTimeline) {
+  for (final track in after.tracks) {
     for (final cut in track.cuts) {
       final old = was[cut.id];
       if (identical(old, cut)) {
@@ -124,7 +124,8 @@ List<ConteHeadPut> conteHeadsPut(
   return put;
 }
 
-/// Every cut of [project] by its id — none for no project.
+/// Every cut of [project] by its id, every timeline's — none for no project.
+/// A cut another timeline opened on is no cut a write made (I-150).
 Map<CutId, Cut> _cutsById(Project? project) => {
   for (final track in project?.tracksOfEveryTimeline ?? const <Track>[])
     for (final cut in track.cuts) cut.id: cut,

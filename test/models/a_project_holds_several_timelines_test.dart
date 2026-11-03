@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,12 +13,19 @@ import 'package:anicel/src/models/project_timeline.dart';
 import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/commands/cut_command_input_planner.dart'
+    show planDuplicateCutCommandInput;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/services/media/media_moves.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
     show projectMediaPaths;
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_tree_editor.dart';
+
+import '../helpers/a_plugin_that_shifts.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// 🗣️I-150 (유저 2026-11-03): 「새로운 타임라인을 만들수있음」 · 「트랙바꾸면
 /// 타임라인 완전 바꿔치기됨. se던 뭐던 싹 다」 · 「미디어풀을 공용」.
@@ -36,13 +44,14 @@ void main() {
     String? name,
     int trailingFrames = 0,
     String? clip,
+    LayerId? row,
   }) {
     final track = createDefaultTrack(
       trackId: TrackId('${id.value}-track'),
       firstCut: createDefaultCut(
         cutId: CutId('${id.value}-cut'),
         name: '1',
-        layerId: LayerId('${id.value}-row'),
+        layerId: row ?? LayerId('${id.value}-row'),
       ),
     );
     return ProjectTimeline(
@@ -68,11 +77,17 @@ void main() {
     );
   }
 
-  /// A and B, B open — A playing [clipOfA].
-  Project twoTimelines({String? clipOfA}) =>
+  /// A and B, B open — A playing [clipOfA], its row [rowOfA].
+  Project twoTimelines({String? clipOfA, LayerId? rowOfA}) =>
       createDefaultProject().copyWith(
         timelines: [
-          timeline(a, number: 1, trailingFrames: 4, clip: clipOfA),
+          timeline(
+            a,
+            number: 1,
+            trailingFrames: 4,
+            clip: clipOfA,
+            row: rowOfA,
+          ),
           timeline(b, number: 2, name: '본편'),
         ],
         currentTimelineId: b,
@@ -140,13 +155,14 @@ void main() {
     expect(reread.timelines.first.trailingFrames, 4);
   });
 
-  test('a renamed timeline differs from the one it was', () {
+  test('a timeline renamed, or another one open, is another project', () {
     final project = twoTimelines();
     final renamed = project.copyWith(
       timelines: [project.timelines.first.named('예고'), project.timelines.last],
     );
 
     expect(renamed == project, isFalse);
+    expect(project.copyWith(currentTimelineId: a) == project, isFalse);
     expect(renamed.timelines.first.named(null), project.timelines.first);
   });
 
@@ -195,6 +211,51 @@ void main() {
       expect(gone.removed?.id, const CutId('a-cut'));
       expect(gone.project.timelines.first.tracks.single.cuts, isEmpty);
       expect(gone.project.timelines.last, open);
+    });
+
+    test('a copy of the open timeline\'s cut takes no row id a closed one '
+        'holds', () {
+      final project = twoTimelines(rowOfA: const LayerId('layer-1'));
+
+      final plan = planDuplicateCutCommandInput(
+        project: project,
+        sourceCut: project.tracks.single.cuts.single,
+      );
+
+      expect(
+        {for (final id in plan.layerIdMap.values) id.value}.intersection(
+          projectLayerIdValues(project),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('a plugin a closed timeline\'s track runs is one the project needs',
+        () async {
+      final room = Directory.systemTemp.createTempSync('anicel_fx_timelines');
+      deleteAfterSessionEnds(room);
+      final project = twoTimelines();
+      final closed = project.timelines.first;
+      final ran = project.copyWith(
+        timelines: [
+          closed.copyWith(
+            tracks: [
+              closed.tracks.single.copyWith(
+                effects: [shiftingFxPluginLayerEffect()],
+              ),
+            ],
+          ),
+          project.timelines.last,
+        ],
+      );
+      final plugins = InstalledFxPlugins(
+        service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
+      );
+
+      expect(
+        [for (final plugin in await plugins.missingFrom(ran)) plugin.id],
+        [shiftingFxPluginDescription.id],
+      );
     });
 
     test('a rebuild that changes nothing is the project it was', () {
@@ -263,6 +324,23 @@ void main() {
           ?.frameId,
       isNotNull,
       reason: 'row A is drawn on from its first frame, as a new project\'s',
+    );
+  });
+
+  test('two new timelines are two: no id of one is the other\'s', () {
+    final project = twoTimelines();
+    ProjectTimeline made(String row) => newTimelineIn(
+      project,
+      rowA: LayerId(row),
+      canvasSize: defaultCutCanvasSize,
+    );
+    final (one, two) = (made('r1'), made('r2'));
+
+    expect(one.id, isNot(two.id));
+    expect(one.tracks.single.id, isNot(two.tracks.single.id));
+    expect(
+      one.tracks.single.cuts.single.id,
+      isNot(two.tracks.single.cuts.single.id),
     );
   });
 

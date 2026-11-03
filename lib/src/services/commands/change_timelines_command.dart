@@ -1,5 +1,4 @@
 import '../../models/cut_id.dart';
-import '../../models/project.dart';
 import '../../models/project_timeline.dart';
 import '../../models/timeline_id.dart';
 import '../../models/track_id.dart';
@@ -16,11 +15,6 @@ import '../project_repository.dart';
 /// 🗣️I-150-Q1 (recommended a; the user's answer pending): opening another
 /// timeline is a step of its own. An undo after it opens the one before
 /// first, so the edit the next undo takes back is the one on screen.
-///
-/// ⚠️Only what changed goes back. The list is laid out as [timelines] says
-/// — its order, its names, the ones made and the ones gone — over each
-/// timeline as it stands when the step runs, so what happened to one since
-/// is kept ([_laidOut]).
 class ChangeTimelinesCommand implements Command {
   ChangeTimelinesCommand({
     required this.repository,
@@ -75,10 +69,10 @@ class ChangeTimelinesCommand implements Command {
     _stand(cut: before.cut, track: before.track, gap: before.gap);
   }
 
-  void _lay(List<ProjectTimeline> order, TimelineId current) =>
+  void _lay(List<ProjectTimeline> timelines, TimelineId current) =>
       repository.updateProject(
         (project) => project.copyWith(
-          timelines: _laidOut(order, project),
+          timelines: timelines,
           currentTimelineId: current,
         ),
       );
@@ -91,25 +85,6 @@ class ChangeTimelinesCommand implements Command {
     ..setActiveCutId(cut)
     ..setSelectedTrackId(track)
     ..gapGlobalFrame = gap;
-
-  /// [order]'s timelines, each as [project] holds it now where it holds it
-  /// — named as [order] names it.
-  static List<ProjectTimeline> _laidOut(
-    List<ProjectTimeline> order,
-    Project project,
-  ) {
-    final now = {
-      for (final timeline in project.timelines) timeline.id: timeline,
-    };
-    return [
-      for (final timeline in order)
-        switch (now[timeline.id]) {
-          null => timeline,
-          final held when held.name == timeline.name => held,
-          final held => held.named(timeline.name),
-        },
-    ];
-  }
 }
 
 typedef _Standing = ({
