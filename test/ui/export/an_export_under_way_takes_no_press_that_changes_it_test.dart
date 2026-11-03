@@ -361,7 +361,8 @@ void main() {
             'export-cels-reset',
             'export-cels-stand-a',
             'export-cels-switch-a',
-            'export-cels-cut-picker',
+            // The project scope's cut column picks the cut (I-153).
+            'export-cels-folder-cut-cut2',
             'export-cut-grid',
             'export-cut-cell-2',
             'export-cels-stack-switch-a-ring',
@@ -558,7 +559,9 @@ void main() {
     addTearDown(s.dispose);
     final editing = paperEditingKit(s);
     final (:road, :invoked, held: keysHeld) = recordingKeyRoad(s);
-    await tester.binding.setSurfaceSize(const Size(2000, 2400));
+    // Wide enough for both drawers beside the Cels list's cut column, which
+    // the project scope makes (I-153).
+    await tester.binding.setSurfaceSize(const Size(2200, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(

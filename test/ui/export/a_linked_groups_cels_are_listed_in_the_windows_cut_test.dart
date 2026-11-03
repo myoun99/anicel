@@ -226,10 +226,12 @@ void main() {
     await pumpCels(tester, session, scope: ExportScopeKind.project);
 
     expect(listedIds(tester), ['c1-b', 'c1-a']);
-    expect(picker(tester).label, 'C1-C2');
+    // The project scope's cut column picks the cut (I-153).
+    final folders = tester.celsBoard.folderColumns.single.folders;
+    expect([for (final folder in folders) folder.name], ['C1-C2']);
     expect(
-      picker(tester).enabled,
-      isFalse,
+      folders.single.onPressed,
+      isNull,
       reason: 'the group exports once, as one cut: nothing to pick between',
     );
     session.playbackRig.prerenderScheduler.cancel();

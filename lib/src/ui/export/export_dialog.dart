@@ -911,9 +911,8 @@ class ExportDialogState extends State<ExportDialog> {
                 keyValue: 'export-cels-folder-cut-${cut.id.value}',
                 name: naming.cutFolderOf(celGroupCutName(project, cut))!,
                 stood: cut.id == shown.id,
-                onPressed: cut.id == shown.id || _isExporting
-                    ? null
-                    : () => _showCelCut(cut),
+                // A run under way is the board's to refuse ([enabled]).
+                onPressed: cut.id == shown.id ? null : () => _showCelCut(cut),
               ),
           ],
         ),

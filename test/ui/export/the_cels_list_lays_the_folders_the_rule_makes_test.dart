@@ -23,6 +23,9 @@ import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show railSelectedRowColor;
 import 'package:anicel/src/ui/widgets/ellipsis_text.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
@@ -90,10 +93,16 @@ void main() {
     EditorSessionManager session, {
     ExportScopeKind scope = ExportScopeKind.cut,
     ExportCelNaming naming = const ExportCelNaming(),
+    LayerMark label = CelsExportSpec.defaultLabel,
   }) async {
     AppExport.settings.value = AppExportSettings(
       lastSpecs: ExportTabSpecs(
-        cels: CelsExportSpec(kinds: celKindsAlone, scope: scope, naming: naming),
+        cels: CelsExportSpec(
+          kinds: celKindsAlone,
+          scope: scope,
+          naming: naming,
+          label: label,
+        ),
       ),
     );
     // Room for the window's least in the TEST font, whose words run wide,
@@ -135,7 +144,7 @@ void main() {
     for (final column in tester.celsBoard.folderColumns)
       '${column.title}: ${[
         for (final folder in column.folders)
-          folder.stood ? '[${folder.name}]' : folder.name,
+          if (folder.stood) '[${folder.name}]' else folder.name,
       ].join(', ')}',
   ];
 
@@ -231,6 +240,43 @@ void main() {
 
     expect(tester.celsBoardRowIds, const ['b', 'a']);
     expect(tester.exportPreviewLine, 'csm_14_001_lo/B1.png · 1 / 1');
+  });
+
+  testWidgets('the folder the list stands in is washed as the rail washes '
+      'the row stood on — by its colour alone', (tester) async {
+    final session = twoCuts();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session, scope: ExportScopeKind.project);
+    final scheme = Theme.of(tester.element(cutFolder(first))).colorScheme;
+    Color? washOf(CutId cut) => [
+      for (final container in tester.widgetList<Container>(
+        find.ancestor(of: cutFolder(cut), matching: find.byType(Container)),
+      ))
+        if (container.decoration case BoxDecoration(:final color?)) color,
+    ].first;
+
+    expect(washOf(first), railSelectedRowColor(scheme));
+    expect(washOf(second), scheme.surface);
+
+    await tester.pressInCelsBoard(cutFolder(second));
+
+    expect(washOf(first), scheme.surface);
+    expect(washOf(second), railSelectedRowColor(scheme));
+  });
+
+  testWidgets('a cut the rule writes nothing of is still the folder the list '
+      'stands in, as the band\'s button still names it', (tester) async {
+    final session = twoCuts();
+    addTearDown(session.dispose);
+
+    await pumpCels(
+      tester,
+      session,
+      naming: const ExportCelNaming(cutFolder: true),
+      label: const LayerMark(process: LayerProcess.layout),
+    );
+
+    expect(columnsOf(tester), ['${AppText.strings.exCut} 1: [001]']);
   });
 
   testWidgets('the folder the list stands in is not pressed again', (
@@ -339,9 +385,22 @@ void main() {
       naming: const ExportCelNaming(layerFolder: true),
     );
 
+    Color? nameInk() => tester
+        .widget<EllipsisText>(
+          find.byKey(const ValueKey<String>('export-cels-file-name-b-b-f1')),
+        )
+        .style
+        ?.color;
+    expect(nameInk(), AppColors.text);
+
     await tester.pressInCelsBoard(tester.celsBoardBlock('b', 'b-f1'));
 
     expect(tester.celsBoardBlockOf('b', 'b-f1').sheet.written, isFalse);
+    expect(
+      nameInk(),
+      AppColors.text.withValues(alpha: AppColors.offAlpha),
+      reason: 'a file not written reads dim, as its block does',
+    );
     expect(
       session.repository
           .requireProject()

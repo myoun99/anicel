@@ -35,6 +35,11 @@ import '../../helpers/text_finders.dart';
 /// 팝오버로 컷 선택하면 밑에 셀 리스트? 보여주게하도록」 — and the shape
 /// chosen on the board (cel-export-project-list): a button at the head of
 /// the list, the list showing the picked cut alone.
+///
+/// ↩️Under the project scope the cut's folder is held (I-153), and its
+/// column beside the list picks the cut — the band's button is left out
+/// there, one control for one choice (I-153 시안 1, 「컷 열이 컷 고르기를
+/// 겸합니다」).
 void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
@@ -129,19 +134,23 @@ void main() {
     await tester.pressCelsStackSwitch(row);
   }
 
-  Future<void> pick(WidgetTester tester, CutId cut) async {
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-cels-cut-picker')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(ValueKey<String>('export-cels-cut-${cut.value}')),
-    );
-    await tester.pumpAndSettle();
-  }
+  /// The cut folder the list stands in, under the project scope.
+  String stoodCut(WidgetTester tester) => tester
+      .celsBoard
+      .folderColumns
+      .single
+      .folders
+      .where((folder) => folder.stood)
+      .single
+      .name;
+
+  /// Picks [cut] in the project scope's cut column.
+  Future<void> pick(WidgetTester tester, CutId cut) => tester.pressInCelsBoard(
+    find.byKey(ValueKey<String>('export-cels-folder-cut-${cut.value}')),
+  );
 
   testWidgets('🎯under the project scope the list shows ONE cut, and the '
-      'popover above it picks which', (tester) async {
+      'cut column beside it picks which', (tester) async {
     final session = twoCuts();
     addTearDown(session.dispose);
 
@@ -152,13 +161,16 @@ void main() {
       const ['b', 'a'],
       reason: 'it listed every cut\'s rows in one list before F-177',
     );
-    expect(picker(tester).label, '001');
-    expect(picker(tester).enabled, isTrue);
+    expect(stoodCut(tester), '001');
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-cut-picker')),
+      findsNothing,
+    );
 
     await pick(tester, second);
 
     expect(listedIds(tester), const ['e', 'd']);
-    expect(picker(tester).label, '002');
+    expect(stoodCut(tester), '002');
     expect(
       transportLine(tester),
       '002/E1.png · 1 / 1',
