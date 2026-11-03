@@ -65,6 +65,14 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v32 (2026-11-03, I-151 — 유저: 「출력창, 셀 탭에 영상도 출력하는 기능
+/// 추가」): the Cels tab writes a cut's film as one of the cut's documents,
+/// so a film turned off on its list is kept in the project's export
+/// overrides as a page of the document `video` (`ExportCelsCutDelta`'s
+/// skipped pages). A v31 build knows no such document: it drops the word
+/// on open, and its next save writes the film back on — and nothing said.
+/// The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
 /// v31 (2026-11-02, F-542 — 유저: 「둘 다 동일한 메모고」, 「고정텍스트를
 /// 카메라 움직임처럼 전체설정이랑 현재컷 설정 두개로 나눔」): a timesheet
 /// page has a memo on its right as on its left (`CutMetadata.rightPageNotes`,
@@ -488,7 +496,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 31;
+const int anicelFormatVersion = 32;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

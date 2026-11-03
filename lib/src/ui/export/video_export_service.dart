@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:image/image.dart' as img;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/export_format_selection.dart';
@@ -15,11 +18,20 @@ import '../../services/media/media_byte_source.dart' show MediaFileBytes;
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
 import '../../models/audio_pcm_scale.dart';
 
+/// Whether the app writes a movie in [container] itself, with no encoder of
+/// the machine's — a GIF ([_GifFile]): no OS encoder and no ffmpeg is asked
+/// for one, so every machine writes it.
+bool writtenByTheApp(ExportVideoContainer container) =>
+    container == ExportVideoContainer.gif;
+
 /// The ABI v21 integers the native encoder speaks (qa_video_encode.c).
+/// ⛔A movie the app writes itself has none: it is never handed over
+/// ([writtenByTheApp]).
 extension ExportVideoContainerAbi on ExportVideoContainer {
   int get abiValue => switch (this) {
     ExportVideoContainer.mp4 => 0,
     ExportVideoContainer.mov => 1,
+    ExportVideoContainer.gif => throw StateError('the app writes a GIF'),
   };
 }
 
@@ -32,6 +44,7 @@ extension ExportVideoCodecAbi on ExportVideoCodec {
     ExportVideoCodec.prores422 => 4,
     ExportVideoCodec.proresHq => 5,
     ExportVideoCodec.prores4444 => 6,
+    ExportVideoCodec.gif => throw StateError('the app writes a GIF'),
   };
 
   /// The ffmpeg prores_ks profile index (proxy..4444).
@@ -84,6 +97,8 @@ class VideoExportException implements Exception {
 /// OS whose encoder refuses the job. It must be installed and on PATH (or
 /// injected via [executable]). Either path finalizes a playable partial
 /// on cancel instead of leaving a corrupt file.
+///
+/// A GIF is neither's: the app writes it on every machine ([_GifFile]).
 ///
 /// ONE loop walks the frames whichever of the two takes them
 /// ([exportVideo]): the first frame that renders says how large the movie
@@ -381,9 +396,10 @@ class VideoExportService {
     );
   }
 
-  /// The first sink that takes a movie of [width]×[height]: the OS encoder
-  /// when this machine has one and it accepts the job, the ffmpeg pipe
-  /// otherwise.
+  /// The first sink that takes a movie of [width]×[height]: the app's own
+  /// writer for a movie it writes itself ([writtenByTheApp]), else the OS
+  /// encoder when this machine has one and it accepts the job, the ffmpeg
+  /// pipe otherwise.
   Future<_FrameSink> _openSink({
     required int width,
     required int height,
@@ -395,6 +411,14 @@ class VideoExportService {
     required bool alpha,
     required int bitrateBps,
   }) async {
+    if (writtenByTheApp(container)) {
+      return _GifFile.open(
+        path: outputFilePath,
+        width: width,
+        height: height,
+        frameRate: frameRate,
+      );
+    }
     final encoder = encoderResolver();
     if (encoder != null && encoder.isSupported) {
       // The mix is the WAV the dialog wrote
@@ -533,7 +557,8 @@ class _FramePixels {
 }
 
 /// Where one run's frames go, once it is known how large they are: the OS
-/// encoder ([_OsEncoderFeed]) or the ffmpeg pipe ([_FfmpegPipe]).
+/// encoder ([_OsEncoderFeed]), the ffmpeg pipe ([_FfmpegPipe]), or the
+/// app's own GIF ([_GifFile]).
 ///
 /// A run ends ONE of two ways — [finish] or [abandon] — so nothing can ask
 /// a sink to end a run that both failed and was cancelled.
@@ -656,6 +681,194 @@ class _OsEncoderFeed implements _FrameSink {
     _audioCursor = target;
     return true;
   }
+}
+
+/// A GIF the app writes itself ([writtenByTheApp], I-152): its pictures are
+/// cut to a palette of their own on a worker isolate, a picture at a time,
+/// so the window goes on drawing — and Cancel is heard — while they are.
+///
+/// A picture HELD over frames goes in ONCE, shown as long as it is held:
+/// the frame that is the picture before it is the same bytes
+/// ([_FramePixels]), never two pictures found to look alike.
+class _GifFile implements _FrameSink {
+  _GifFile._(this._isolate, this._port, this._answers, this._requests);
+
+  /// Starts the worker that writes [path], and waits until it listens.
+  static Future<_GifFile> open({
+    required String path,
+    required int width,
+    required int height,
+    required ProjectFrameRate frameRate,
+  }) async {
+    final port = ReceivePort();
+    final isolate = await Isolate.spawn(
+      _writeGif,
+      (
+        answers: port.sendPort,
+        path: path,
+        width: width,
+        height: height,
+        numerator: frameRate.numerator,
+        denominator: frameRate.denominator,
+      ),
+      onError: port.sendPort,
+      onExit: port.sendPort,
+    );
+    final answers = StreamIterator<Object?>(port);
+    final listening = await answers.moveNext() ? answers.current : null;
+    if (listening is! SendPort) {
+      isolate.kill();
+      port.close();
+      throw const VideoExportException('GIF: the writer did not start');
+    }
+    return _GifFile._(isolate, port, answers, listening);
+  }
+
+  final Isolate _isolate;
+  final ReceivePort _port;
+  final StreamIterator<Object?> _answers;
+  final SendPort _requests;
+
+  final _FramePixels _pixels = _FramePixels(ui.ImageByteFormat.rawRgba);
+
+  /// The bytes of the picture last sent: a frame that hands these again is
+  /// that picture, held.
+  Uint8List? _sent;
+
+  /// What the worker said when it could not go on.
+  String? _complaint;
+
+  @override
+  int written = 0;
+
+  /// [message] to the worker, and its answer: true when it did what was
+  /// asked; anything else says why not — its error, or null once it has
+  /// stopped.
+  Future<bool> _ask(Object message) async {
+    _requests.send(message);
+    final answer = await _answers.moveNext() ? _answers.current : null;
+    if (answer == true) {
+      return true;
+    }
+    _complaint = 'GIF: ${answer ?? 'the writer stopped'}';
+    return false;
+  }
+
+  @override
+  Future<bool> take(ui.Image image) async {
+    final rgba = await _pixels.of(image);
+    if (rgba == null) {
+      return false;
+    }
+    if (!identical(rgba, _sent)) {
+      _sent = rgba;
+      if (!await _ask((TransferableTypedData.fromList([rgba]), written))) {
+        return false;
+      }
+    }
+    written += 1;
+    return true;
+  }
+
+  /// A CANCELLED run writes the frames it got to, as a movie's other sinks
+  /// finalize a playable partial.
+  @override
+  Future<void> finish({required bool cancelled}) async {
+    _pixels.dispose();
+    final done = await _ask((null, written));
+    _close();
+    if (!done && !cancelled) {
+      throw VideoExportException(_complaint!);
+    }
+  }
+
+  @override
+  Future<String> abandon() async {
+    _pixels.dispose();
+    _close();
+    return _complaint ?? 'GIF: the writer failed';
+  }
+
+  void _close() {
+    _isolate.kill();
+    _port.close();
+  }
+}
+
+/// What [_writeGif] is started with.
+typedef _GifJob = ({
+  SendPort answers,
+  String path,
+  int width,
+  int height,
+  int numerator,
+  int denominator,
+});
+
+/// The shortest a GIF can show a picture as it was meant: browsers show a
+/// delay of 0 or 1 hundredth as ten, so a picture the film holds for less
+/// is let go and the next takes its time — the film keeps its length.
+const int _gifShortestDelay = 2;
+
+/// The worker of a [_GifFile]: takes a picture and the frame it starts on
+/// — or no picture and the frame the film ends before, then writes the
+/// file — and answers each with true, or why not.
+Future<void> _writeGif(_GifJob job) async {
+  final requests = ReceivePort();
+  job.answers.send(requests.sendPort);
+  // An OCTREE keeps each colour exact while a picture holds no more than
+  // the palette does — cel paint is flat colours. My call, not the user's:
+  // the encoder's own neural quantizer learns them near, and wrote a flat
+  // red frame grey (the pins' 4×2, measured 2026-11-03).
+  final encoder = img.GifEncoder(quantizerType: img.QuantizerType.octree);
+  // A frame's start in hundredths of a second, as the GIF counts time: a
+  // frame of 24 fps is 4.17, so the delays run 4 4 4 5 and add up.
+  int hundredths(int frame) =>
+      (frame * 100 * job.denominator / job.numerator).round();
+  img.Image? held;
+  var heldFrom = 0;
+  await for (final request in requests) {
+    final (pixels, frame) = request as (TransferableTypedData?, int);
+    final shown = held == null ? 0 : hundredths(frame) - hundredths(heldFrom);
+    if (pixels == null) {
+      if (held != null) {
+        encoder.addFrame(held, duration: math.max(shown, _gifShortestDelay));
+      }
+      final bytes = encoder.finish();
+      if (bytes != null) {
+        File(job.path).writeAsBytesSync(bytes, flush: true);
+      }
+      job.answers.send(bytes != null ? true : 'nothing to write');
+      requests.close();
+      return;
+    }
+    if (held == null) {
+      heldFrom = frame;
+    } else if (shown >= _gifShortestDelay) {
+      encoder.addFrame(held, duration: shown);
+      heldFrom = frame;
+    }
+    held = _gifPictureOf(pixels.materialize(), job.width, job.height);
+    job.answers.send(true);
+  }
+}
+
+/// [rgba]'s picture with no alpha: a movie the app writes is opaque, and a
+/// channel the GIF would read as a transparent colour is left out.
+img.Image _gifPictureOf(ByteBuffer rgba, int width, int height) {
+  final from = rgba.asUint8List();
+  final rgb = Uint8List(width * height * 3);
+  for (var source = 0, target = 0; target < rgb.length; source += 4) {
+    rgb[target++] = from[source];
+    rgb[target++] = from[source + 1];
+    rgb[target++] = from[source + 2];
+  }
+  return img.Image.fromBytes(
+    width: width,
+    height: height,
+    bytes: rgb.buffer,
+    numChannels: 3,
+  );
 }
 
 /// One ffmpeg run fed through its stdin: raw frames in, the movie out when

@@ -1400,6 +1400,7 @@ enum AppStrings {
   String get exCelFormat => _s('exCelFormat');
   String get exTimesheetFormat => _s('exTimesheetFormat');
   String get exEnvelopeFormat => _s('exEnvelopeFormat');
+  String get exVideoFormat => _s('exVideoFormat');
 
   /// Why a drawing of the Cels list is no file as things stand — said at
   /// the pointer when its block is pressed (유저 2026-10-06: 「나갈 수 없는
@@ -2928,6 +2929,7 @@ enum AppStrings {
     'exCelFormat': 'Cel format',
     'exTimesheetFormat': 'Timesheet format',
     'exEnvelopeFormat': 'Cut envelope format',
+    'exVideoFormat': 'Video format',
     'exWrittenCount': '{n} files',
     'exWrittenCountOne': '{n} file',
     'noticeExportNoPicture': 'No row that is on holds a picture for this cel',
@@ -4557,6 +4559,7 @@ enum AppStrings {
     'exCelFormat': 'セル形式',
     'exTimesheetFormat': 'タイムシート形式',
     'exEnvelopeFormat': 'カット袋形式',
+    'exVideoFormat': '動画形式',
     'exWrittenCount': '{n}枚',
     'exWrittenCountOne': '{n}枚',
     'noticeExportNoPicture': 'このセルにはオンの行の絵がありません',
@@ -6388,6 +6391,7 @@ enum AppStrings {
     'exCelFormat': '셀 형식',
     'exTimesheetFormat': '타임시트 형식',
     'exEnvelopeFormat': '컷 봉투 형식',
+    'exVideoFormat': '동영상 형식',
     'exWrittenCount': '{n}장',
     'exWrittenCountOne': '{n}장',
     'noticeExportNoPicture': '이 셀에 켜진 그림이 존재하지 않습니다',
@@ -8277,6 +8281,7 @@ enum AppStrings {
     'exCelFormat': 'Format des cellulos',
     'exTimesheetFormat': 'Format de la feuille de temps',
     'exEnvelopeFormat': 'Format de l\'enveloppe de plan',
+    'exVideoFormat': 'Format vidéo',
     'exWrittenCount': '{n} fichiers',
     'exWrittenCountOne': '{n} fichier',
     'noticeExportNoPicture':
@@ -10168,6 +10173,7 @@ enum AppStrings {
     'exCelFormat': '赛璐珞格式',
     'exTimesheetFormat': '摄影表格式',
     'exEnvelopeFormat': '卡袋格式',
+    'exVideoFormat': '视频格式',
     'exWrittenCount': '{n}张',
     'exWrittenCountOne': '{n}张',
     'noticeExportNoPicture': '此赛璐珞没有已开启的画',

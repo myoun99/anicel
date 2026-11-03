@@ -1109,6 +1109,7 @@ void main() {
       // A document wears its panel's name.
       ExportCelKind.timesheet: strings.panelTimesheet,
       ExportCelKind.envelope: strings.panelEnvelope,
+      ExportCelKind.video: strings.exVideo,
     };
     expect(names.keys, ExportCelKind.values, reason: 'every kind is named');
     expect(names.values.toSet(), hasLength(names.length));
@@ -1276,6 +1277,7 @@ void main() {
         ExportCelKind.direction: '_',
         ExportCelKind.timesheet: '_',
         ExportCelKind.envelope: '_',
+        ExportCelKind.video: '_',
       },
     );
 

@@ -61,6 +61,48 @@ void main() {
       ]);
     });
 
+    test('🗣️GIF (I-152): a movie container of its own one way of packing — '
+        'no other codec is held in it, and it in no other — with no sound, '
+        'no bitrate and no alpha, read and written by its word', () {
+      expect(ExportVideoCodec.codecsFor(ExportVideoContainer.gif), [
+        ExportVideoCodec.gif,
+      ]);
+      for (final container in [
+        ExportVideoContainer.mp4,
+        ExportVideoContainer.mov,
+      ]) {
+        expect(
+          ExportVideoCodec.codecsFor(container),
+          isNot(contains(ExportVideoCodec.gif)),
+        );
+      }
+      final gif = const ExportFormatSelection().copyWith(
+        container: ExportVideoContainer.gif,
+      );
+      expect(
+        gif.videoCodec,
+        ExportVideoCodec.gif,
+        reason: 'H.264 snaps to the container\'s first',
+      );
+      expect(
+        gif.copyWith(container: ExportVideoContainer.mp4).videoCodec,
+        ExportVideoCodec.h264,
+      );
+      expect(gif.fileExtension, 'gif');
+      expect(gif.carriesSound, isFalse);
+      expect(const ExportFormatSelection().carriesSound, isTrue);
+      expect(
+        const ExportFormatSelection(kind: ExportMediaKind.still).carriesSound,
+        isFalse,
+      );
+      expect(gif.videoCodec.takesBitrate, isFalse);
+      expect(ExportVideoCodec.prores422.takesBitrate, isFalse);
+      expect(ExportVideoCodec.h265.takesBitrate, isTrue);
+      expect(gif.copyWith(channels: ExportChannels.rgba).wantsAlpha, isFalse);
+      expect(gif.toJson(), {'container': 'gif', 'videoCodec': 'gif'});
+      expect(ExportFormatSelection.fromJson(gif.toJson()), gif);
+    });
+
     test('effective channels: JPG and non-4444 video are opaque, the RGBA '
         'preference survives underneath', () {
       final jpg = ExportFormatSelection.normalized(

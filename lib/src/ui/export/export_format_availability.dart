@@ -8,7 +8,8 @@ import '../../models/export_format_selection.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../native/qa_video_encoder.dart';
 import '../text/app_strings.dart';
-import 'video_export_service.dart' show ExportVideoCodecAbi, ExportVideoContainerAbi;
+import 'video_export_service.dart'
+    show ExportVideoCodecAbi, ExportVideoContainerAbi, writtenByTheApp;
 
 /// What THIS machine can write (EX4): the OS encoder's probe per
 /// container/codec pair, ffmpeg's presence as the fallback answer, and
@@ -31,6 +32,9 @@ class ExportFormatAvailability extends ChangeNotifier {
             : QaVideoEncoder.instance;
     final encoder = resolve();
     for (final container in ExportVideoContainer.values) {
+      if (writtenByTheApp(container)) {
+        continue;
+      }
       for (final codec in ExportVideoCodec.codecsFor(container)) {
         _osPairs[(container, codec)] =
             encoder != null &&
@@ -83,7 +87,9 @@ class ExportFormatAvailability extends ChangeNotifier {
   bool get ffmpegPresent => _ffmpegPresent ?? false;
 
   bool videoAllowed(ExportVideoContainer container, ExportVideoCodec codec) =>
-      (_osPairs[(container, codec)] ?? false) || ffmpegPresent;
+      writtenByTheApp(container) ||
+      (_osPairs[(container, codec)] ?? false) ||
+      ffmpegPresent;
 
   /// Why a pair is off; null while it is on.
   String? videoBlockedReason(

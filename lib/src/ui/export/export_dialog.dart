@@ -290,6 +290,9 @@ class ExportDialogState extends State<ExportDialog> {
   late ExportFormatAvailability _availability;
   bool _ownsAvailability = false;
   int _sequencePosition = 0;
+
+  /// The frame a cut's film on the Cels list stands on ([_filmShown]).
+  int _filmPosition = 0;
   late int _imageFrame;
   /// The cut the Cels list shows — the picker's pick; null shows the cut
   /// the window opened on ([_celCutShown]).
@@ -1455,17 +1458,18 @@ class ExportDialogState extends State<ExportDialog> {
     ExportTab.conte => _contePreview(),
   };
 
-  /// The page of it the window stands on.
+  /// The page of it the window stands on — on a cut's film, its frame.
   int _previewPage() => switch (_tab) {
     ExportTab.sequence => _sequencePosition,
     ExportTab.image => _currentImageFrame(),
-    ExportTab.cels || ExportTab.aeScript => math.max(0, _celPages().at),
+    ExportTab.cels || ExportTab.aeScript =>
+      _filmShown() == null ? math.max(0, _celPages().at) : _filmPosition,
     ExportTab.conte => _contePosition,
   };
 
   /// The preview moved to [page] — a hand on its transport or its page
   /// cluster, or its run. (A row's drawings are turned by the list's band:
-  /// [_stepCel].)
+  /// [_stepCel]; a film's frames run on its transport.)
   void _turnPreviewTo(int page) => setState(() {
     switch (_tab) {
       case ExportTab.sequence:
@@ -1475,7 +1479,9 @@ class ExportDialogState extends State<ExportDialog> {
       case ExportTab.conte:
         _contePosition = page;
       case ExportTab.cels || ExportTab.aeScript:
-        break;
+        if (_filmShown() != null) {
+          _filmPosition = page;
+        }
     }
   });
 
@@ -1494,38 +1500,62 @@ class ExportDialogState extends State<ExportDialog> {
     if (axis.isEmpty) {
       return null;
     }
-    final format = spec.format;
-    final renderer = _previewRendererFor(
+    return _runningPreview(
+      subject: (ExportTab.sequence, spec.scope),
+      plan: axis,
+      format: spec.format,
+      sizeMode: spec.sizeMode,
       layerFx: spec.layerFx,
-      format: format,
     );
+  }
+
+  /// [plan]'s frames as a preview that RUNS, each the picture a run of
+  /// [format] writes it as — the Sequence tab's, and a cut's film on the
+  /// Cels list (I-151: 「누르면 미리보기창이 영상 미리보기로 바뀌는등」).
+  ExportPreviewDocument _runningPreview({
+    required Object subject,
+    required List<ExportFrameTask> plan,
+    required ExportFormatSelection format,
+    required ExportSizeMode sizeMode,
+    required ExportLayerFx layerFx,
+  }) {
+    final renderer = _previewRendererFor(layerFx: layerFx, format: format);
     // The video run burns the SE name tags in (videoRun);
     // stills stay clean because they are compositing sources. The preview
     // has to answer the same question, or it shows a frame the export
     // will not produce.
     final withNameTags = format.kind == ExportMediaKind.video;
     return ExportPreviewDocument(
-      subject: (ExportTab.sequence, spec.scope),
-      look: (
-        spec.sizeMode,
-        spec.layerFx,
-        _groundKeyOf(format),
-        withNameTags,
-      ),
+      subject: subject,
+      look: (sizeMode, layerFx, _groundKeyOf(format), withNameTags),
       shape: ExportPreviewShape.runs,
       framesPerSecond: _previewRate,
-      pageCount: axis.length,
+      pageCount: plan.length,
       opensAlpha: format.wantsAlpha,
-      sizeOf: (page) => _frameSizeOf(axis[page].cut, spec.sizeMode),
-      renderAt: (page, size) async => axis[page].isGap
+      sizeOf: (page) => _frameSizeOf(plan[page].cut, sizeMode),
+      renderAt: (page, size) async => plan[page].isGap
           ? null
           : await renderer.renderComposite(
-              axis[page],
-              spec.sizeMode,
+              plan[page],
+              sizeMode,
               outputSize: size,
               withNameTags: withNameTags,
             ),
     );
+  }
+
+  /// The cut's film the Cels list stands on, or null while it stands on
+  /// something else.
+  ExportDocumentSheet? _filmShown() {
+    final (cut: _, :pages, :at) = _celPages();
+    if (pages.isEmpty) {
+      return null;
+    }
+    return switch (pages[math.max(0, at)]) {
+      final ExportDocumentSheet sheet when sheet.kind == ExportCelKind.video =>
+        sheet,
+      _ => null,
+    };
   }
 
   /// The Image tab's cut, frame by frame: what the transport stands on IS
@@ -1567,6 +1597,21 @@ class ExportDialogState extends State<ExportDialog> {
     final (:cut, :pages, at: _) = _celPages();
     if (pages.isEmpty) {
       return null;
+    }
+    // A film runs: its frames, as the run writes them ([_cutFilmFile]).
+    final film = _filmShown();
+    if (film != null) {
+      final spec = _celsSpec;
+      final plan = _cutFilmPlan(film.of);
+      return plan.isEmpty
+          ? null
+          : _runningPreview(
+              subject: (_tab, film.idValue),
+              plan: plan,
+              format: spec.videoFormat,
+              sizeMode: spec.sizeMode,
+              layerFx: spec.layerFx,
+            );
     }
     final face = _documentFace;
     final guideInk = guideColorOf(context);
@@ -2483,29 +2528,31 @@ class ExportDialogState extends State<ExportDialog> {
   /// there were any.
   ///
   /// [thenWrite] are the files of the run that are no picture — a digital
-  /// sheet — written after the pictures, a file each, counted with them and
-  /// stopped where they are stopped.
+  /// sheet, a cut's film — written after the pictures, a file each, counted
+  /// with them and stopped where they are stopped. The bar counts a film's
+  /// frames as it goes ([_AfterFile.steps]); the sentence counts files.
   Future<String> _runImageExport({
     required int count,
     required Future<ui.Image?> Function(int index) renderImage,
     required String Function(int index) fileNameFor,
     required _Tally says,
     ExportImageEncoder? Function(int index)? encoderFor,
-    List<Future<void> Function()> thenWrite = const [],
+    List<_AfterFile> thenWrite = const [],
   }) async {
-    final total = count + thenWrite.length;
+    final files = count + thenWrite.length;
     // The lone file of a run asked a place of its own wears the name it was
     // given there, whatever its rule calls it ([_placedName]).
     final placedName = _placedName;
-    if (placedName != null && total > 1) {
+    if (placedName != null && files > 1) {
       // ⛔A file's place holds ONE file. Written on regardless, every file
       // of the run would land on that one name, each over the last — so a
       // run that reaches here with more is stopped before it writes
       // (the queue asks such a job its place again, [_placesStillFit]).
       throw StateError(
-        'A place asked for one file cannot take the $total this run writes.',
+        'A place asked for one file cannot take the $files this run writes.',
       );
     }
+    final steps = thenWrite.fold(count, (sum, file) => sum + file.steps);
     final summary = await _exportService.exportImages(
       count: count,
       renderImage: renderImage,
@@ -2513,22 +2560,31 @@ class ExportDialogState extends State<ExportDialog> {
       directoryPath: _outputDirectory,
       encoderFor: encoderFor,
       isCancelled: () => _cancelRequested,
-      onProgress: (completed, _) => _reportProgress(completed, total),
+      onProgress: (completed, _) => _reportProgress(completed, steps),
     );
     var (:written, :processed) = summary;
+    var stepsDone = processed;
     // Nothing more is written once the pictures were stopped short.
     final picturesDone = processed == count;
-    for (final write in thenWrite) {
+    for (final file in thenWrite) {
       if (!picturesDone || _cancelRequested) {
         break;
       }
-      await write();
+      final from = stepsDone;
+      final whole = await file.write(
+        (done) => _reportProgress(from + done, steps),
+      );
+      // A film stopped short keeps the frames it got to: a file, not done.
       written += 1;
+      if (!whole) {
+        break;
+      }
       processed += 1;
-      _reportProgress(processed, total);
+      stepsDone += file.steps;
+      _reportProgress(stepsDone, steps);
     }
     final strings = AppText.strings;
-    if (processed < total) {
+    if (processed < files) {
       return _exportCancelled(says.kept(strings, written));
     }
     return _exportDone(
@@ -2730,31 +2786,64 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportVideo() async {
     final spec = _specs.sequence;
-    final format = spec.format;
-    final alphaVideo = format.wantsAlpha;
     final plan = _sequencePlanForRun(video: true);
+    final summary = await _writeFilm(
+      plan: plan,
+      format: spec.format,
+      sizeMode: spec.sizeMode,
+      layerFx: spec.layerFx,
+      withSound: spec.includeAudio,
+      path: _joinLocation(
+        _singleFileName(ExportTab.sequence, spec.format.container.fileExtension),
+      ),
+      onProgress: _reportProgress,
+    );
+    if (summary.processed < plan.length) {
+      return summary.written == 0
+          ? AppText.strings.exCancelled
+          : AppText.strings.exCancelledVideo(
+              AppText.strings.exFrameCount(summary.written),
+            );
+    }
+    return AppText.strings.exDoneVideo(
+      AppText.strings.exFrameCount(summary.written),
+    );
+  }
+
+  /// [plan]'s frames as ONE movie at [path]: in [format], at [sizeMode],
+  /// through [layerFx] — with the sound of those frames when [withSound] and
+  /// the format has room for it ([ExportFormatSelection.carriesSound]).
+  ///
+  /// ⛔ONE FILM WRITER. The Sequence tab's movie and the Cels tab's film a
+  /// cut are this call (I-151, 유저 2026-11-03: 「동영상 출력이랑 똑같이
+  /// 재사용할것들 재사용」) — what each hands in is all that differs.
+  Future<ExportWriteSummary> _writeFilm({
+    required List<ExportFrameTask> plan,
+    required ExportFormatSelection format,
+    required ExportSizeMode sizeMode,
+    required ExportLayerFx layerFx,
+    required bool withSound,
+    required String path,
+    required void Function(int completed, int total) onProgress,
+  }) async {
+    final alphaVideo = format.wantsAlpha;
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
-      layerFx: spec.layerFx,
+      layerFx: layerFx,
       format: format,
       alphaVideo: alphaVideo,
     );
-    final videoPath = _joinLocation(
-      _singleFileName(ExportTab.sequence, format.container.fileExtension),
-    );
-    final audioMixPath = spec.includeAudio ? await _renderAudioMix(plan) : null;
+    final audioMixPath = withSound && format.carriesSound
+        ? await _renderAudioMix(plan)
+        : null;
     // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α keeps
     // the channel (transparent ground, fade still paints).
-    final run = renderer.videoRun(
-      plan,
-      spec.sizeMode,
-      preserveAlpha: alphaVideo,
-    );
+    final run = renderer.videoRun(plan, sizeMode, preserveAlpha: alphaVideo);
     try {
-      final summary = await widget.videoExportService.exportVideo(
+      return await widget.videoExportService.exportVideo(
         count: plan.length,
         renderImage: run.frame,
-        outputFilePath: videoPath,
+        outputFilePath: path,
         frameRate: _session.projectSettings.projectFrameRate,
         audioMixPath: audioMixPath,
         container: format.container,
@@ -2762,17 +2851,7 @@ class ExportDialogState extends State<ExportDialog> {
         alpha: alphaVideo,
         bitrateBps: format.videoBitrateMbps * 1000000,
         isCancelled: () => _cancelRequested,
-        onProgress: _reportProgress,
-      );
-      if (summary.processed < plan.length) {
-        return summary.written == 0
-            ? AppText.strings.exCancelled
-            : AppText.strings.exCancelledVideo(
-                AppText.strings.exFrameCount(summary.written),
-              );
-      }
-      return AppText.strings.exDoneVideo(
-        AppText.strings.exFrameCount(summary.written),
+        onProgress: onProgress,
       );
     } finally {
       // The pictures the run held from one frame to the next.
@@ -2785,6 +2864,38 @@ class ExportDialogState extends State<ExportDialog> {
         }
       }
     }
+  }
+
+  /// The frames of [cut]'s film, first to last — the plan the Sequence tab
+  /// writes a cut by ([ExportRange.activeCut]), of this cut.
+  List<ExportFrameTask> _cutFilmPlan(Cut cut) => buildExportFramePlan(
+    project: _session.repository.requireProject(),
+    activeCutId: cut.id,
+    range: ExportRange.activeCut,
+  );
+
+  /// [sheet]'s film, a file after the run's pictures: its cut's frames as
+  /// the Sequence tab writes a cut ([_writeFilm]) — at the tab's size,
+  /// through its layer FX, in the film's own format and with its sound.
+  /// The size and the FX are the tab's: my call, not the user's (I-151).
+  _AfterFile _cutFilmFile(ExportDocumentSheet sheet) {
+    final spec = _specs.cels;
+    final plan = _cutFilmPlan(sheet.of);
+    return _AfterFile(
+      steps: math.max(1, plan.length),
+      write: (step) async {
+        final summary = await _writeFilm(
+          plan: plan,
+          format: spec.videoFormat,
+          sizeMode: spec.sizeMode,
+          layerFx: spec.layerFx,
+          withSound: spec.videoAudio,
+          path: _joinLocation(sheet.fileName),
+          onProgress: (completed, _) => step(completed),
+        );
+        return summary.processed == plan.length;
+      },
+    );
   }
 
   Future<String> _exportPngSequence() async {
@@ -2909,7 +3020,8 @@ class ExportDialogState extends State<ExportDialog> {
               ),
             ),
           )
-        else if (!isDigitalSheet(sheet))
+        else if (sheet.kind == ExportCelKind.timesheet &&
+            !isDigitalSheet(sheet))
           (
             fileName: sheet.fileName,
             render: () => _renderSheetPage(_sheetPageTask(sheet), face: face),
@@ -2933,7 +3045,10 @@ class ExportDialogState extends State<ExportDialog> {
       encoderFor: (index) => pictures[index].encoder,
       thenWrite: [
         for (final sheet in plan.writtenDocuments)
-          if (isDigitalSheet(sheet)) () => _writeXdts(sheet),
+          if (isDigitalSheet(sheet))
+            _AfterFile.whole(() => _writeXdts(sheet))
+          else if (sheet.kind == ExportCelKind.video)
+            _cutFilmFile(sheet),
       ],
       says: plan.writtenDocuments.isEmpty ? _Tally.cels : _Tally.files,
     );
@@ -2987,14 +3102,16 @@ class ExportDialogState extends State<ExportDialog> {
       },
       fileNameFor: fileNameFor,
       thenWrite: [
-        () => _writeAeScript(
-          aeLaidOf(plan, wrote),
-          scope: spec.scope,
-          cameraPaths: {
-            for (final (:cut, :fileName) in paths)
-              if (wrote.contains(fileName)) cut.id: fileName,
-          },
-          claim: claim,
+        _AfterFile.whole(
+          () => _writeAeScript(
+            aeLaidOf(plan, wrote),
+            scope: spec.scope,
+            cameraPaths: {
+              for (final (:cut, :fileName) in paths)
+                if (wrote.contains(fileName)) cut.id: fileName,
+            },
+            claim: claim,
+          ),
         ),
       ],
       says: _Tally.files,
@@ -3783,19 +3900,28 @@ class ExportDialogState extends State<ExportDialog> {
     if (sheet is! ExportDocumentSheet) {
       return null;
     }
-    if (sheet.kind == ExportCelKind.envelope) {
-      final task = _envelopeTask(sheet);
-      return ExportEnvelopePage(
-        owner: task.owner.id,
-        layout: task.layout,
-        source: task.source,
-      );
+    switch (sheet.kind) {
+      case ExportCelKind.envelope:
+        final task = _envelopeTask(sheet);
+        return ExportEnvelopePage(
+          owner: task.owner.id,
+          layout: task.layout,
+          source: task.source,
+        );
+      case ExportCelKind.timesheet:
+        return ExportTimesheetPage(
+          cutId: sheet.of.id,
+          layout: _sheetDocFor(sheet.of).$2,
+          page: sheet.page,
+        );
+      // A film is no paper: it runs in the preview ([_celsPreview]).
+      case ExportCelKind.video ||
+          ExportCelKind.cel ||
+          ExportCelKind.conte ||
+          ExportCelKind.art ||
+          ExportCelKind.direction:
+        return null;
     }
-    return ExportTimesheetPage(
-      cutId: sheet.of.id,
-      layout: _sheetDocFor(sheet.of).$2,
-      page: sheet.page,
-    );
   }
 
   Widget _settingsZone() {
@@ -3830,8 +3956,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// `enabled` keeps its format pickers live DURING a render, which is
   /// the setting changing under the export it is feeding.
   ///
-  /// On the Cels tab it is 「셀 형식」 — one of three formats the tab
-  /// writes, beside the timesheet's and the cut envelope's — and stands
+  /// On the Cels tab it is 「셀 형식」 — one of the formats the tab writes,
+  /// beside the timesheet's, the cut envelope's and the film's — and stands
   /// folded (drawn so in the F-289 mock).
   ExportAccordion _formatAccordion({
     required ExportFormatSelection format,
@@ -3891,20 +4017,7 @@ class ExportDialogState extends State<ExportDialog> {
             for (final still in ExportStillFormat.values)
               if (still != ExportStillFormat.psd) still,
           ],
-          video: const {
-            ExportVideoContainer.mp4: [
-              ExportVideoCodec.h264,
-              ExportVideoCodec.h265,
-            ],
-            ExportVideoContainer.mov: [
-              ExportVideoCodec.h264,
-              ExportVideoCodec.proresProxy,
-              ExportVideoCodec.proresLt,
-              ExportVideoCodec.prores422,
-              ExportVideoCodec.proresHq,
-              ExportVideoCodec.prores4444,
-            ],
-          },
+          video: _videoLineup,
           stillEnabled: _availability.stillAllowed,
           videoEnabled: _availability.videoAllowed,
           videoReason: _availability.videoBlockedReason,
@@ -3937,21 +4050,13 @@ class ExportDialogState extends State<ExportDialog> {
         open: true,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
-      if (spec.format.isVideo)
-        ExportAccordion(
-          title: AppText.strings.exAudio,
-          summary: spec.includeAudio
-              ? AppText.strings.exSeMuxed(
-                  spec.format.videoCodec.isProRes ? 'PCM' : 'AAC',
-                )
-              : AppText.strings.commonOff,
-          expansion: _expansion('audio'),
-          child: _specToggle(
-            keyValue: 'export-audio-toggle',
-            label: AppText.strings.exMuxSeMix,
-            value: spec.includeAudio,
-            write: (value) => spec.copyWith(includeAudio: value),
-          ),
+      // A movie with nowhere to put sound — a GIF — is not asked it.
+      if (spec.format.carriesSound)
+        _soundAccordion(
+          format: spec.format,
+          keyValue: 'export-audio-toggle',
+          on: spec.includeAudio,
+          write: (value) => spec.copyWith(includeAudio: value),
         ),
       _fxAccordion(
         keyPrefix: 'export-apply-fx',
@@ -4424,21 +4529,37 @@ class ExportDialogState extends State<ExportDialog> {
 
   List<Widget> _celsModules() {
     final spec = _specs.cels;
+    final kinds = spec.kinds;
     return [
-      // Three formats, one a kind of file the tab writes (유저 2026-10-05:
-      // 「형식만 타임시트 형식이라는 항목 만들어서 법 통일해서 고를수있게.
-      // 그리고 기존 형식 항목은 구분하기위해 셀 형식. 추가로 컷봉투용으로
-      // 컷봉투 형식도 만들기」). They stand whether or not their kind is
-      // written — a module that came and went with a pill would be UI that
-      // pops into existence.
-      _formatAccordion(
-        format: spec.format,
-        // A cel's PSD keeps the rows it is made of ([_exportCels]).
-        capabilities: _stillOnlyCapabilities(),
-        onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
-      ),
-      _sheetFormatAccordion(spec),
-      _envelopeFormatAccordion(spec),
+      // A format a kind of file the tab writes (유저 2026-10-05: 「형식만
+      // 타임시트 형식이라는 항목 만들어서 법 통일해서 고를수있게. 그리고 기존
+      // 형식 항목은 구분하기위해 셀 형식. 추가로 컷봉투용으로 컷봉투 형식도
+      // 만들기」), and the film's since I-151 — each standing while its kind
+      // is written, and gone while it is not.
+      // ↩️They stood whatever was written, so that no module would pop into
+      // existence. 유저 2026-11-03 (I-151): 「그냥 필요없어진 형식설정
+      // 번거로우니 없애서 안보이게」 — over the same day's 「접은상태로 고정해두고
+      // 비활성화」.
+      if (kinds.any((kind) => !kind.isDocument))
+        _formatAccordion(
+          format: spec.format,
+          // A cel's PSD keeps the rows it is made of ([_exportCels]).
+          capabilities: _stillOnlyCapabilities(),
+          onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
+        ),
+      if (kinds.contains(ExportCelKind.timesheet)) _sheetFormatAccordion(spec),
+      if (kinds.contains(ExportCelKind.envelope))
+        _envelopeFormatAccordion(spec),
+      if (kinds.contains(ExportCelKind.video)) ...[
+        _filmFormatAccordion(spec),
+        if (spec.videoFormat.carriesSound)
+          _soundAccordion(
+            format: spec.videoFormat,
+            keyValue: 'export-cels-film-audio',
+            on: spec.videoAudio,
+            write: (value) => spec.copyWith(videoAudio: value),
+          ),
+      ],
       _sizeAccordion(
         sizeMode: spec.sizeMode,
         canvasSizes: {_activeCut.canvasSize},
@@ -4592,6 +4713,65 @@ class ExportDialogState extends State<ExportDialog> {
       ),
     );
   }
+
+  /// 동영상 형식: the movie a cut's film is written as — the Sequence tab's
+  /// movies, the same lineup (I-151, 유저 2026-11-03: 「오른쪽 옵션에도
+  /// 동영상 형식 넣고」).
+  ExportAccordion _filmFormatAccordion(CelsExportSpec spec) => ExportAccordion(
+    title: AppText.strings.exVideoFormat,
+    summary: ExportFormatModule.summarize(spec.videoFormat),
+    expansion: _expansion('video-format', open: true),
+    child: ExportFormatModule(
+      keyPrefix: 'export-film-format',
+      selection: spec.videoFormat,
+      capabilities: ExportFormatCapabilities(
+        stills: const [],
+        video: _videoLineup,
+        videoEnabled: _availability.videoAllowed,
+        videoReason: _availability.videoBlockedReason,
+      ),
+      enabled: !_isExporting,
+      onChanged: (format) => _updateSpec(spec.copyWith(videoFormat: format)),
+    ),
+  );
+
+  /// The movies every tab that writes one offers: one table, so a format
+  /// that joins it — GIF (I-152, 유저 2026-11-03: 「새 형식이니까 다른
+  /// 대응하는곳에서도 필요하면 등장하게」) — joins every one.
+  static const Map<ExportVideoContainer, List<ExportVideoCodec>> _videoLineup =
+      {
+        ExportVideoContainer.mp4: [ExportVideoCodec.h264, ExportVideoCodec.h265],
+        ExportVideoContainer.mov: [
+          ExportVideoCodec.h264,
+          ExportVideoCodec.proresProxy,
+          ExportVideoCodec.proresLt,
+          ExportVideoCodec.prores422,
+          ExportVideoCodec.proresHq,
+          ExportVideoCodec.prores4444,
+        ],
+        ExportVideoContainer.gif: [ExportVideoCodec.gif],
+      };
+
+  /// 오디오: whether a movie in [format] carries the sound of its frames —
+  /// the Sequence tab's movie, and the Cels tab's film (I-151).
+  ExportAccordion _soundAccordion({
+    required ExportFormatSelection format,
+    required String keyValue,
+    required bool on,
+    required ExportTabSpec Function(bool value) write,
+  }) => ExportAccordion(
+    title: AppText.strings.exAudio,
+    summary: on
+        ? AppText.strings.exSeMuxed(format.videoCodec.isProRes ? 'PCM' : 'AAC')
+        : AppText.strings.commonOff,
+    expansion: _expansion('audio'),
+    child: _specToggle(
+      keyValue: keyValue,
+      label: AppText.strings.exMuxSeMix,
+      value: on,
+      write: write,
+    ),
+  );
 
   /// The conte sheet: one vector PDF, or its pages as pictures — PNG or JPG
   /// (유저 2026-10-05: 「콘티용지도 pdf면 단일파일, 그 외 사진파일이면
@@ -4860,6 +5040,27 @@ typedef _Setup = ({
   ExportDestination? destination,
   Map<TextEditingController, String> names,
 });
+
+/// A file of a run that is no picture, written after its pictures
+/// ([ExportDialogState._runImageExport]): how many steps of the bar it is,
+/// and its writing — told how far it has come, answering whether it was
+/// written whole.
+class _AfterFile {
+  const _AfterFile({required this.steps, required this.write});
+
+  /// A file written in one go — a digital sheet, a script.
+  _AfterFile.whole(Future<void> Function() write)
+    : this(
+        steps: 1,
+        write: (_) async {
+          await write();
+          return true;
+        },
+      );
+
+  final int steps;
+  final Future<bool> Function(void Function(int done) step) write;
+}
 
 /// One picture file of a run: where it is written, what it is, and the
 /// encoder its format asks for (null is the default PNG).

@@ -18,30 +18,42 @@ enum ExportMediaKind {
   };
 }
 
+/// The movie files the app writes. GIF joined as the user named it (I-152,
+/// 유저 2026-11-03: 「동영상 출력? 에 gif 추가 … 아무튼 형식으로 새롭게 gif를
+/// 넣고싶음」) — a film of frames, written as the others are, with no sound.
 enum ExportVideoContainer {
   mp4,
-  mov;
+  mov,
+  gif;
 
   String get jsonValue => name;
 
   String get label => switch (this) {
     ExportVideoContainer.mp4 => 'MP4',
     ExportVideoContainer.mov => 'MOV',
+    ExportVideoContainer.gif => 'GIF',
   };
 
   String get fileExtension => switch (this) {
     ExportVideoContainer.mp4 => 'mp4',
     ExportVideoContainer.mov => 'mov',
+    ExportVideoContainer.gif => 'gif',
   };
+
+  /// Whether the file holds the film's sound beside its pictures: a GIF
+  /// has nowhere to put it.
+  bool get carriesSound => this != ExportVideoContainer.gif;
 
   static ExportVideoContainer fromJson(Object? json) => switch (json) {
     'mov' => ExportVideoContainer.mov,
+    'gif' => ExportVideoContainer.gif,
     _ => ExportVideoContainer.mp4,
   };
 }
 
 /// The confirmed lineup (v10): MP4 = H.264 · H.265, MOV = H.264(경량) +
 /// ProRes Proxy/LT/422/HQ/4444(α). ProRes is MOV-only; H.265 is MP4-only.
+/// A GIF is its own one way of packing a picture (I-152), and nothing else.
 enum ExportVideoCodec {
   h264,
   h265,
@@ -49,7 +61,8 @@ enum ExportVideoCodec {
   proresLt,
   prores422,
   proresHq,
-  prores4444;
+  prores4444,
+  gif;
 
   String get jsonValue => name;
 
@@ -61,19 +74,27 @@ enum ExportVideoCodec {
     ExportVideoCodec.prores422 => 'ProRes 422',
     ExportVideoCodec.proresHq => 'ProRes HQ',
     ExportVideoCodec.prores4444 => 'ProRes 4444',
+    ExportVideoCodec.gif => 'GIF',
   };
 
   bool get isProRes => switch (this) {
-    ExportVideoCodec.h264 || ExportVideoCodec.h265 => false,
+    ExportVideoCodec.h264 || ExportVideoCodec.h265 || ExportVideoCodec.gif =>
+      false,
     _ => true,
   };
+
+  /// Whether a bitrate can be asked of it: the H.26x pair's. ProRes holds
+  /// its profile's rate, and a GIF is as large as its pictures make it.
+  bool get takesBitrate =>
+      this == ExportVideoCodec.h264 || this == ExportVideoCodec.h265;
 
   /// Only 4444 carries alpha; every other codec is opaque.
   bool get supportsAlpha => this == ExportVideoCodec.prores4444;
 
   bool allowedIn(ExportVideoContainer container) => switch (this) {
-    ExportVideoCodec.h264 => true,
+    ExportVideoCodec.h264 => container != ExportVideoContainer.gif,
     ExportVideoCodec.h265 => container == ExportVideoContainer.mp4,
+    ExportVideoCodec.gif => container == ExportVideoContainer.gif,
     _ => container == ExportVideoContainer.mov,
   };
 
@@ -197,6 +218,10 @@ class ExportFormatSelection {
 
   bool get wantsAlpha => effectiveChannels == ExportChannels.rgba;
 
+  /// Whether the file this writes holds sound: a movie whose container has
+  /// room for it ([ExportVideoContainer.carriesSound]).
+  bool get carriesSound => isVideo && container.carriesSound;
+
   /// Whether the file keeps the rows its picture is laid up of apart: a
   /// PSD's (I-117).
   bool get keepsRowsApart => isStill && stillFormat == ExportStillFormat.psd;
@@ -225,8 +250,9 @@ class ExportFormatSelection {
     videoBitrateMbps: videoBitrateMbps ?? this.videoBitrateMbps,
   );
 
-  /// Legalizes a combination: a codec outside its container snaps to H.264
-  /// (legal in both), quality/bitrate clamp to their ranges. Channel
+  /// Legalizes a combination: a codec outside its container snaps to that
+  /// container's first (H.264 in MP4 and MOV, GIF in a GIF), quality/bitrate
+  /// clamp to their ranges. Channel
   /// legality lives in [effectiveChannels] so the RGBA preference survives
   /// a round trip through JPG and back to PNG.
   static ExportFormatSelection normalized({
@@ -243,7 +269,7 @@ class ExportFormatSelection {
     container: container,
     videoCodec: videoCodec.allowedIn(container)
         ? videoCodec
-        : ExportVideoCodec.h264,
+        : ExportVideoCodec.codecsFor(container).first,
     stillFormat: stillFormat,
     channels: channels,
     backgroundArgb: backgroundArgb,

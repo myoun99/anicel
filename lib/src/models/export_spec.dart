@@ -362,6 +362,8 @@ class CelsExportSpec extends ExportTabSpec {
     this.sheetImage = paperDocumentFormat,
     this.envelopePaper = CutEnvelopePaperMode.cut,
     this.envelopeImage = paperDocumentFormat,
+    this.videoFormat = const ExportFormatSelection(),
+    this.videoAudio = true,
   });
 
   /// 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
@@ -462,6 +464,15 @@ class CelsExportSpec extends ExportTabSpec {
   /// The picture a cut envelope is written as ([paperDocumentFormat]).
   final ExportFormatSelection envelopeImage;
 
+  /// 동영상 형식: the movie a cut's film is written as ([ExportCelKind.video])
+  /// — the Sequence tab's lineup (I-151, 유저 2026-11-03: 「오른쪽 옵션에도
+  /// 동영상 형식 넣고. 동영상 출력이랑 똑같이 재사용할것들 재사용」).
+  final ExportFormatSelection videoFormat;
+
+  /// Whether the film carries the cut's sound where its format has room for
+  /// it — the Sequence tab's switch ([SequenceExportSpec.includeAudio]).
+  final bool videoAudio;
+
   @override
   ExportTab get tab => ExportTab.cels;
 
@@ -484,6 +495,8 @@ class CelsExportSpec extends ExportTabSpec {
     ExportFormatSelection? sheetImage,
     CutEnvelopePaperMode? envelopePaper,
     ExportFormatSelection? envelopeImage,
+    ExportFormatSelection? videoFormat,
+    bool? videoAudio,
   }) => CelsExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
@@ -501,6 +514,8 @@ class CelsExportSpec extends ExportTabSpec {
     sheetImage: sheetImage ?? this.sheetImage,
     envelopePaper: envelopePaper ?? this.envelopePaper,
     envelopeImage: envelopeImage ?? this.envelopeImage,
+    videoFormat: videoFormat ?? this.videoFormat,
+    videoAudio: videoAudio ?? this.videoAudio,
   );
 
   /// This spec with [kind] written or not.
@@ -536,6 +551,9 @@ class CelsExportSpec extends ExportTabSpec {
       'envelopePaper': envelopePaper.toJson(),
     if (envelopeImage != paperDocumentFormat)
       'envelopeImage': envelopeImage.toJson(),
+    if (videoFormat != const ExportFormatSelection())
+      'videoFormat': videoFormat.toJson(),
+    if (!videoAudio) 'videoAudio': false,
   };
 
   static CelsExportSpec fromJson(Map<String, dynamic> json) => CelsExportSpec(
@@ -575,6 +593,14 @@ class CelsExportSpec extends ExportTabSpec {
         ? CutEnvelopePaperMode.cut
         : CutEnvelopePaperMode.fromJson(json['envelopePaper']),
     envelopeImage: paperDocumentFormatFromJson(json['envelopeImage']),
+    // A film is a movie: whatever kind the word holds, it is read as one.
+    videoFormat: switch (json['videoFormat']) {
+      final Map<String, dynamic> format => ExportFormatSelection.fromJson(
+        format,
+      ).copyWith(kind: ExportMediaKind.video),
+      _ => const ExportFormatSelection(),
+    },
+    videoAudio: json['videoAudio'] as bool? ?? true,
   );
 
   static bool _presetJsonWas(Map<String, dynamic> json, Set<String> names) =>
@@ -599,7 +625,9 @@ class CelsExportSpec extends ExportTabSpec {
           other.sheetFormat == sheetFormat &&
           other.sheetImage == sheetImage &&
           other.envelopePaper == envelopePaper &&
-          other.envelopeImage == envelopeImage;
+          other.envelopeImage == envelopeImage &&
+          other.videoFormat == videoFormat &&
+          other.videoAudio == videoAudio;
 
   @override
   int get hashCode => Object.hash(
@@ -619,6 +647,8 @@ class CelsExportSpec extends ExportTabSpec {
     sheetImage,
     envelopePaper,
     envelopeImage,
+    videoFormat,
+    videoAudio,
   );
 }
 

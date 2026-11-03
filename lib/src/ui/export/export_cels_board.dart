@@ -535,6 +535,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
 /// workspace's tab wears it.
 IconData exportDocumentIcon(ExportCelKind kind) => switch (kind) {
   ExportCelKind.envelope => Icons.mail_outline,
+  ExportCelKind.video => Icons.movie_outlined,
   _ => Icons.table_chart_outlined,
 };
 

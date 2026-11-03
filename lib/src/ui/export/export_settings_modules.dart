@@ -425,6 +425,7 @@ class ExportFormatModule extends StatelessWidget {
     required this.capabilities,
     required this.enabled,
     required this.onChanged,
+    this.keyPrefix = 'export-format',
   });
 
   final ExportFormatSelection selection;
@@ -432,9 +433,17 @@ class ExportFormatModule extends StatelessWidget {
   final bool enabled;
   final ValueChanged<ExportFormatSelection> onChanged;
 
+  /// What its controls' keys start with: a tab with two of these — the
+  /// Cels tab's cels and its film (I-151) — tells them apart by it.
+  final String keyPrefix;
+
   static String summarize(ExportFormatSelection selection) {
     if (selection.isVideo) {
-      return '${selection.container.label} · ${selection.videoCodec.label}';
+      // A container with one way of packing says itself: 「GIF」, not
+      // 「GIF · GIF」.
+      return ExportVideoCodec.codecsFor(selection.container).length > 1
+          ? '${selection.container.label} · ${selection.videoCodec.label}'
+          : selection.container.label;
     }
     final channels = selection.effectiveChannels == ExportChannels.rgba
         ? 'RGBA'
@@ -462,7 +471,8 @@ class ExportFormatModule extends StatelessWidget {
   /// seven still formats do not fit one.
   ///
   /// The format button stands whichever kind is chosen: what it lists is
-  /// what changes.
+  /// what changes. A tab that writes one kind only — the Cels tab's movie
+  /// (I-151) — has no kind to choose.
   Widget _formatRow() => ExportModuleRow(
     caption: ExportCaption.format,
     child: Align(
@@ -470,7 +480,7 @@ class ExportFormatModule extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (capabilities.hasVideo) ...[
+          if (capabilities.hasVideo && capabilities.stills.isNotEmpty) ...[
             _kindButton(),
             const SizedBox(width: 4),
           ],
@@ -496,13 +506,13 @@ class ExportFormatModule extends StatelessWidget {
   };
 
   Widget _kindButton() => PanelFlyoutButton(
-    key: const ValueKey<String>('export-format-kind'),
+    key: ValueKey<String>('$keyPrefix-kind'),
     label: _kindLabel(selection.kind),
     enabled: enabled,
     entriesBuilder: () => ExportMediaKind.values.asFlyoutValueChoices(
       current: selection.kind,
       choiceOf: (kind) => PanelFlyoutChoice(
-        key: 'export-format-kind-${kind.jsonValue}',
+        key: '$keyPrefix-kind-${kind.jsonValue}',
         label: _kindLabel(kind),
         enabled: _kindWritable(kind),
         warning: _kindWritable(kind)
@@ -538,7 +548,7 @@ class ExportFormatModule extends StatelessWidget {
   /// codec when the current one is off there — picking MOV must not leave a
   /// codec selected that MOV cannot hold.
   Widget _containerButton() => PanelFlyoutButton(
-    key: const ValueKey<String>('export-format-file'),
+    key: ValueKey<String>('$keyPrefix-file'),
     label: selection.container.label,
     enabled: enabled,
     entriesBuilder: () => capabilities.video.keys.asFlyoutValueChoices(
@@ -546,7 +556,7 @@ class ExportFormatModule extends StatelessWidget {
       choiceOf: (container) {
         final writable = capabilities.isContainerEnabled(container);
         return PanelFlyoutChoice(
-          key: 'export-format-container-${container.jsonValue}',
+          key: '$keyPrefix-container-${container.jsonValue}',
           label: container.label,
           enabled: writable,
           warning: writable
@@ -581,7 +591,7 @@ class ExportFormatModule extends StatelessWidget {
   }
 
   Widget _stillButton() => PanelFlyoutButton(
-    key: const ValueKey<String>('export-format-file'),
+    key: ValueKey<String>('$keyPrefix-file'),
     label: selection.stillFormat.label,
     enabled: enabled,
     entriesBuilder: () => capabilities.stills.asFlyoutValueChoices(
@@ -589,7 +599,7 @@ class ExportFormatModule extends StatelessWidget {
       choiceOf: (still) {
         final writable = capabilities.isStillEnabled(still);
         return PanelFlyoutChoice(
-          key: 'export-format-still-${still.jsonValue}',
+          key: '$keyPrefix-still-${still.jsonValue}',
           label: still.label,
           enabled: writable,
           warning: writable ? null : AppText.strings.exNotInThisBuild,
@@ -612,7 +622,7 @@ class ExportFormatModule extends StatelessWidget {
     child: Align(
       alignment: Alignment.centerLeft,
       child: PanelFlyoutButton(
-        key: const ValueKey<String>('export-format-codec'),
+        key: ValueKey<String>('$keyPrefix-codec'),
         label: selection.videoCodec.label,
         enabled: enabled,
         entriesBuilder: () => codecs.asFlyoutValueChoices(
@@ -623,7 +633,7 @@ class ExportFormatModule extends StatelessWidget {
               codec,
             );
             return PanelFlyoutChoice(
-              key: 'export-format-codec-${codec.jsonValue}',
+              key: '$keyPrefix-codec-${codec.jsonValue}',
               label: codec.label,
               enabled: writable,
               warning: writable
@@ -645,7 +655,7 @@ class ExportFormatModule extends StatelessWidget {
   Widget _bitrateRow() => ExportModuleRow(
     caption: ExportCaption.bitrate,
     child: FieldSlider(
-      key: const ValueKey<String>('export-format-bitrate'),
+      key: ValueKey<String>('$keyPrefix-bitrate'),
       value: selection.videoBitrateMbps.clamp(0, 50).toDouble(),
       min: 0,
       max: 50,
@@ -660,7 +670,7 @@ class ExportFormatModule extends StatelessWidget {
   );
 
   Widget _qualityRow() => ExportJpgQualityRow(
-    keyValue: 'export-format-quality',
+    keyValue: '$keyPrefix-quality',
     quality: selection.jpgQuality,
     onChanged: enabled
         ? (quality) => _change(selection.copyWith(jpgQuality: quality))
@@ -669,7 +679,7 @@ class ExportFormatModule extends StatelessWidget {
 
   Widget _channelsRow() => ExportChoiceRow<ExportChannels>(
     caption: ExportCaption.channels,
-    keyPrefix: 'export-format-channels',
+    keyPrefix: '$keyPrefix-channels',
     values: ExportChannels.values,
     selected: selection.effectiveChannels,
     keyOf: (channels) => channels.jsonValue,
@@ -683,7 +693,7 @@ class ExportFormatModule extends StatelessWidget {
     strip: PillStrip(
       items: [
         PillItem(
-          keyValue: 'export-format-bg-white',
+          keyValue: '$keyPrefix-bg-white',
           label: AppText.strings.exWhite,
           selected: selection.backgroundArgb == 0xFFFFFFFF,
           onTap: enabled
@@ -691,7 +701,7 @@ class ExportFormatModule extends StatelessWidget {
               : null,
         ),
         PillItem(
-          keyValue: 'export-format-bg-black',
+          keyValue: '$keyPrefix-bg-black',
           label: AppText.strings.exBlack,
           selected: selection.backgroundArgb == 0xFF000000,
           onTap: enabled
@@ -711,7 +721,7 @@ class ExportFormatModule extends StatelessWidget {
         selection.isStill && selection.stillFormat.supportsAlpha;
     final showBackground =
         selection.isStill && selection.effectiveChannels == ExportChannels.rgb;
-    final showBitrate = selection.isVideo && !selection.videoCodec.isProRes;
+    final showBitrate = selection.isVideo && selection.videoCodec.takesBitrate;
     final showQuality =
         selection.isStill && selection.stillFormat == ExportStillFormat.jpg;
     return Column(
@@ -1200,6 +1210,7 @@ String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
   ExportCelKind.direction => AppText.strings.exSelDirection,
   ExportCelKind.timesheet => AppText.strings.panelTimesheet,
   ExportCelKind.envelope => AppText.strings.panelEnvelope,
+  ExportCelKind.video => AppText.strings.exVideo,
 };
 
 /// Cel-file naming: the CSP-style options ported into the module grammar.

@@ -245,44 +245,54 @@ void main() {
       );
       final session = linkedPair();
       addTearDown(session.dispose);
-      // A screen whose share is narrower than the least and whose room is
-      // not — so the window stands at its least in every language.
-      // ↩️1200, while the least was one width in every language: since
-      // F-486 the rules stand as wide as their words, and a 1200 screen
-      // leaves no room for the least of the longer ones.
-      await tester.binding.setSurfaceSize(const Size(1300, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildAppTheme(),
-          home: Scaffold(
-            body: ExportDialog(
-              session: session,
-              formatAvailability: ExportFormatAvailability.permissive(),
+      Future<void> openOn(double width) async {
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildAppTheme(),
+            home: Scaffold(
+              body: ExportDialog(
+                session: session,
+                formatAvailability: ExportFormatAvailability.permissive(),
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey<String>('export-tab-cels')));
-      await tester.pump();
+        );
+        await tester.pump();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('export-tab-cels')),
+        );
+        await tester.pump();
+      }
 
+      await openOn(1600);
       final rules = ExportCelsBoard.rulesWidthFor(
         tester.widget<ExportCelsBoard>(find.byType(ExportCelsBoard)).rulesNeed,
       );
+      // ↩️1018 while the cel list stood 184 wide (F-395 widened it), and
+      // while its lane stood 16 (F-440 halved the thin one).
+      final least =
+          1018 -
+          184 +
+          ExportCelsBoard.stackWidth -
+          16 +
+          AppScrollbarLane.thin +
+          (rules - ExportCelsBoard.leastRulesWidth);
+      // A screen whose share is narrower than the least and whose room is
+      // not — so the window stands at its least: the dialog's inset and a
+      // little over it. ↩️One screen for every language — 1200, then 1300
+      // once F-486 stood the rules as wide as their words — until the film
+      // joined the documents' strip (I-151): French outgrew 1300, and a
+      // screen wide enough for it gave Korean a share over its least.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await openOn(least + 100);
       expect(
         tester.widget<AppWindow>(find.byType(AppWindow)).width,
-        // ↩️1018 while the cel list stood 184 wide (F-395 widened it), and
-        // while its lane stood 16 (F-440 halved the thin one).
-        1018 -
-            184 +
-            ExportCelsBoard.stackWidth -
-            16 +
-            AppScrollbarLane.thin +
-            (rules - ExportCelsBoard.leastRulesWidth),
+        least,
         reason: 'the four columns with both drawers folded — two thirds of '
-            '1300 by area is narrower',
+            'the screen by area is narrower',
       );
       expect(picker(tester).label, 'C1-C2');
       expect(tester.takeException(), isNull);

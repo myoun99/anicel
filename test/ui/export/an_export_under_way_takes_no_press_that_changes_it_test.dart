@@ -345,6 +345,10 @@ void main() {
         'the Cels tab': (
           setUp: (tester) async {
             await tapKey(tester, 'export-tab-cels');
+            // A format stands while its kind is written (I-151): the
+            // envelope's and the film's with theirs.
+            await tapKey(tester, 'export-cels-kind-envelope');
+            await tapKey(tester, 'export-cels-kind-video');
             await unfoldEverything(tester);
             await tapKey(tester, 'export-scope-project');
             await tapKey(tester, 'export-cels-stand-a');
@@ -371,6 +375,8 @@ void main() {
             'export-cel-suffix-field',
             'export-tsformat-file',
             'export-envelope-paper-sheet',
+            'export-film-format-file',
+            'export-cels-film-audio-ring',
             'export-cels-apply-fx-basic',
           ],
         ),

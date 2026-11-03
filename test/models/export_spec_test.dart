@@ -191,6 +191,7 @@ void main() {
           ExportCelKind.direction: '_',
           ExportCelKind.timesheet: '_',
           ExportCelKind.envelope: '_',
+          ExportCelKind.video: '_',
         },
       );
       final typed = naming
@@ -219,19 +220,20 @@ void main() {
   });
 
   group('the cut\'s documents are kinds of the Cels tab (F-289)', () {
-    test('the timesheet and the cut envelope are documents; the rows\' '
-        'kinds are not — and both start behind an underscore (유저 '
+    test('the timesheet, the cut envelope and the film are documents; the '
+        'rows\' kinds are not — and all start behind an underscore (유저 '
         '2026-10-06: 「기본값은 셀:없음, 미술:_, 디렉션:_, 시트:_, '
-        '컷봉투:_」)', () {
+        '컷봉투:_」; the film\'s is my call, I-151)', () {
       expect(
         [
           for (final kind in ExportCelKind.values)
             if (kind.isDocument) kind,
         ],
-        [ExportCelKind.timesheet, ExportCelKind.envelope],
+        [ExportCelKind.timesheet, ExportCelKind.envelope, ExportCelKind.video],
       );
       expect(ExportCelKind.timesheet.defaultPrefix, '_');
       expect(ExportCelKind.envelope.defaultPrefix, '_');
+      expect(ExportCelKind.video.defaultPrefix, '_');
     });
 
     test('타임시트 형식 and 컷봉투 형식 are the cels spec\'s: pictures by '

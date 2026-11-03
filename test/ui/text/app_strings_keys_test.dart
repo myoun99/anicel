@@ -621,6 +621,7 @@ void main() {
     'exCelFormat': (s) => s.exCelFormat,
     'exTimesheetFormat': (s) => s.exTimesheetFormat,
     'exEnvelopeFormat': (s) => s.exEnvelopeFormat,
+    'exVideoFormat': (s) => s.exVideoFormat,
     'noticeExportNoPicture': (s) => s.noticeExportNoPicture,
     'noticeExportNotPlaced': (s) => s.noticeExportNotPlaced,
     'noticeExportSameName': (s) => s.noticeExportSameName,
