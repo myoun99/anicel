@@ -24,7 +24,8 @@ class TimelineRowFilter {
 
   static const TimelineRowFilter none = TimelineRowFilter();
 
-  /// When non-empty, a layer passes only if its mark is in this set.
+  /// When non-empty, a layer passes only if its COLOUR LABEL is in this set
+  /// — whatever take it is on ([LayerMark.colorLabel], F-553).
   final Set<LayerMark> markColors;
 
   /// When non-empty, a layer passes only if its kind is in this set (the
@@ -115,7 +116,9 @@ class TimelineRowFilter {
     required bool fxEnabled,
     bool? clipsToBelow,
   }) {
-    if (mark != null && markColors.isNotEmpty && !markColors.contains(mark)) {
+    if (mark != null &&
+        markColors.isNotEmpty &&
+        !markColors.contains(mark.colorLabel)) {
       return false;
     }
     if (kind != null && kinds.isNotEmpty && !kinds.contains(kind)) {
@@ -149,9 +152,9 @@ class TimelineRowFilter {
     );
   }
 
-  /// Toggles [mark] in the color set.
+  /// Toggles [mark]'s colour label in the color set.
   TimelineRowFilter toggledMark(LayerMark mark) =>
-      copyWith(markColors: toggledSet(markColors, mark));
+      copyWith(markColors: toggledSet(markColors, mark.colorLabel));
 
   /// Toggles [kind] in the kind set.
   TimelineRowFilter toggledKind(LayerKind kind) =>

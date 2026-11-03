@@ -303,8 +303,11 @@ class TimelineLegendMenus {
   /// every label left LO in the filter and gone from this list: every row
   /// but the standing one hidden, and nothing here to uncheck.
   List<PanelFlyoutEntry> _markSolos(LayerLegendCallbacks legend) {
-    final listed = {...marksInUse(), ...rowFilter.markColors}
-      ..removeWhere((mark) => mark.isNone);
+    // One solo a colour label, whatever takes its rows are on (F-553).
+    final listed = {
+      for (final mark in {...marksInUse(), ...rowFilter.markColors})
+        mark.colorLabel,
+    }..removeWhere((mark) => mark.isNone);
     return listed.isEmpty
         ? const []
         : [
