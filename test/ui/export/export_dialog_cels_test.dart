@@ -1320,6 +1320,10 @@ void main() {
     // 그래서 폴더생성에서 컷이나 프로젝트 누르면 아래에 접두 접미사 텍스트
     // 지정할수있도록」.
     final state = await pumpCels(tester, celsSession());
+    // Both folders made, the Cels list stands two folder columns wider
+    // (I-153) than the screen [pumpCels] lays.
+    await tester.binding.setSurfaceSize(const Size(1700, 660));
+    await tester.pump();
     await standOn(tester, 'a');
     final naming = await openNaming(tester);
 
@@ -1474,7 +1478,15 @@ void main() {
     await tester.pump();
     await tapKey(tester, 'export-scope-project');
 
-    expect(find.text('CUT2-CUT3'), findsOneWidget);
+    // In the grid: the Cels list's cut column names the pair's folder too
+    // (I-153).
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('export-cut-grid')),
+        matching: find.text('CUT2-CUT3'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('3 / 3 cuts'), findsOneWidget);
     await tapKey(tester, 'export-cut-cell-2');
     final overrides = session.repository.requireProject().exportOverrides;

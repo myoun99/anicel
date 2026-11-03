@@ -121,11 +121,12 @@ void main() {
     EditorSessionManager session, {
     required CelsExportSpec spec,
     Directory? into,
+    Size surface = const Size(1280, 720),
   }) async {
     AppExport.settings.value = AppExportSettings(
       lastSpecs: ExportTabSpecs(cels: spec),
     );
-    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    await tester.binding.setSurfaceSize(surface);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -379,6 +380,9 @@ void main() {
         scope: ExportScopeKind.project,
       ),
       into: temp,
+      // The project scope holds the cut's folder, whose column (I-153)
+      // widens the Cels list past what a 1280 screen leaves it.
+      surface: const Size(1600, 720),
     );
 
     await tester.runAsync(state.export);
