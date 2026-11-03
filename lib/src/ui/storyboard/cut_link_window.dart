@@ -17,11 +17,13 @@ Future<void> showCutLinkWindow(
   required CutId cutId,
 }) => showLinkWindow(
   context,
-  targets: session.cutVerbs.linkedCutLines(cutId),
-  unlink: session.cutVerbs.cutIsLinked(cutId)
-      ? () => session.cutVerbs.unlinkCuts([cutId])
-      : null,
-  unlinkOffReason: AppText.strings.linkWindowUnlinkSyncedCut,
-  synced: session.cutVerbs.syncedCutLines(cutId),
-  unsync: () => session.cutVerbs.unsyncCut(cutId),
+  LinkWindow(
+    targets: session.cutVerbs.linkedCutLines(cutId),
+    unlink: session.cutVerbs.cutIsLinked(cutId)
+        ? () => session.cutVerbs.unlinkCuts([cutId])
+        : null,
+    unlinkOffReason: AppText.strings.linkWindowUnlinkSyncedCut,
+    synced: session.cutVerbs.syncedCutLines(cutId),
+    unsync: () => session.cutVerbs.unsyncCut(cutId),
+  ),
 );

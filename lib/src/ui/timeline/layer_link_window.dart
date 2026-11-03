@@ -27,14 +27,16 @@ Future<void> showLayerLinkWindow(
   final linkedCut = layerVerbs.activeCutIsLinkedCut;
   return showLinkWindow(
     context,
-    targets: layerVerbs.linkPartnersOf(layerId),
-    unlink: linkedCut || !layerVerbs.unlinksAnyOf(rows)
-        ? null
-        : () => layerVerbs.unlinkLayers(rows),
-    unlinkOffReason: linkedCut
-        ? AppText.strings.linkWindowUnlinkLinkedCut
-        : AppText.strings.linkWindowUnlinkSyncedCut,
-    synced: layerVerbs.syncPartnersOf(layerId),
-    unsync: cutId == null ? null : () => session.cutVerbs.unsyncCut(cutId),
+    LinkWindow(
+      targets: layerVerbs.linkPartnersOf(layerId),
+      unlink: linkedCut || !layerVerbs.unlinksAnyOf(rows)
+          ? null
+          : () => layerVerbs.unlinkLayers(rows),
+      unlinkOffReason: linkedCut
+          ? AppText.strings.linkWindowUnlinkLinkedCut
+          : AppText.strings.linkWindowUnlinkSyncedCut,
+      synced: layerVerbs.syncPartnersOf(layerId),
+      unsync: cutId == null ? null : () => session.cutVerbs.unsyncCut(cutId),
+    ),
   );
 }

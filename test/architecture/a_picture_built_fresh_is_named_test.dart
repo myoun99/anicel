@@ -87,6 +87,10 @@ void main() {
       count: 1,
       why: 'the 「nothing was here」 an undo puts back for a cel that had none',
     ),
+    'lib/src/services/commands/leave_sync_command.dart': (
+      count: 1,
+      why: 'the empty picture that takes a copied sheet\'s ink away again',
+    ),
     'lib/src/services/commands/unlink_layer_command.dart': (
       count: 1,
       why: 'the empty picture that takes a forked cel away again',
@@ -205,7 +209,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 22);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 23);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '

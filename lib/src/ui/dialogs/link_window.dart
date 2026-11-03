@@ -11,24 +11,10 @@ import '../widgets/app_window.dart';
 IconData linkGlyph({required bool synced}) =>
     synced ? Icons.sync : Icons.link;
 
-/// Opens [LinkWindow] and waits for it to close.
-Future<void> showLinkWindow(
-  BuildContext context, {
-  required List<String> targets,
-  required VoidCallback? unlink,
-  String? unlinkOffReason,
-  List<String> synced = const [],
-  VoidCallback? unsync,
-}) => showDialog<void>(
-  context: context,
-  builder: (context) => LinkWindow(
-    targets: targets,
-    unlink: unlink,
-    unlinkOffReason: unlinkOffReason,
-    synced: synced,
-    unsync: unsync,
-  ),
-);
+/// Opens [window] and waits for it to close. ↩️It took the window's
+/// fields one by one and built it, a second list of them to keep in step.
+Future<void> showLinkWindow(BuildContext context, LinkWindow window) =>
+    showDialog<void>(context: context, builder: (context) => window);
 
 /// THE LINK WINDOW: what a cut or a row is linked to, and the one button
 /// that unlinks it.

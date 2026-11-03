@@ -193,11 +193,13 @@ void main() {
               builder: (context) => TextButton(
                 onPressed: () => showLinkWindow(
                   context,
-                  targets: const ['C002 · A', 'C003 · A'],
-                  unlink: unlink,
-                  unlinkOffReason: 'why not',
-                  synced: synced,
-                  unsync: unsync,
+                  LinkWindow(
+                    targets: const ['C002 · A', 'C003 · A'],
+                    unlink: unlink,
+                    unlinkOffReason: 'why not',
+                    synced: synced,
+                    unsync: unsync,
+                  ),
                 ),
                 child: const Text('open'),
               ),
