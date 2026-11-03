@@ -41,6 +41,7 @@ import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/flip_hud_controller.dart';
 import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../canvas/tiled_surface_compose.dart';
 import '../import/import_warnings_notice.dart';
@@ -66,6 +67,7 @@ import '../brush/sheet_canvas_panel.dart' show sheetBrushSwitch;
 import '../sheet/paper_editing.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_key_funnel.dart';
+import '../shortcuts/sheet_arrow.dart' show SheetArrowTurn;
 import '../sliced_value_listenable_builder.dart';
 import '../timeline/layer_label_controls.dart';
 import '../timeline/memo_token.dart' show ByIdentity;
@@ -305,6 +307,16 @@ class ExportDialogState extends State<ExportDialog> {
   /// Where the Cels list stands ([ExportCelsStanding]).
   ExportCelsStanding _celStanding = const ExportCelsStanding();
 
+  /// The sheet in front of the user while the window is up — the Cels
+  /// list, laid as the timeline lays it whatever the editor shows behind
+  /// the window: what the window's keys turn by (F-28: the keys and the
+  /// flip follow the sheet the user reads) and what its flip steps and
+  /// ticks by (I-153-Q2).
+  final FlipHudController _celFlip = FlipHudController();
+
+  /// The sheet the editor's keys turned by before the window took them.
+  SheetArrowTurn? _editorSheet;
+
   /// Why a press in this window did nothing, said at the pointer — the
   /// window's own channel: the editor's overlay lies under this window's
   /// barrier, where a notice would be said to nobody.
@@ -390,6 +402,14 @@ class ExportDialogState extends State<ExportDialog> {
     _syncControllersFromSpecs();
     _filmNews.addListener(_heardFilm);
     _session.layerStack.celTintRevision.addListener(_heardCels);
+    _celFlip.bind(this, (_) {
+      final (plan: _, cut: _, :rows, :standing) = _celsList();
+      return exportCelsFlipSnapshot(rows, standing);
+    });
+    if (widget.keys case final keys?) {
+      _editorSheet = keys.bindings.sheet;
+      keys.bindings.sheet = _celFlip;
+    }
     unawaited(_restoreFromStore());
   }
 
@@ -413,6 +433,13 @@ class ExportDialogState extends State<ExportDialog> {
 
   @override
   void dispose() {
+    if (widget.keys case final keys?
+        when identical(keys.bindings.sheet, _celFlip)) {
+      keys.bindings.sheet = _editorSheet;
+    }
+    _celFlip
+      ..unbind(this)
+      ..dispose();
     _filmNews.dispose();
     _session.layerStack.celTintRevision.removeListener(_heardCels);
     _progress.dispose();
@@ -727,6 +754,36 @@ class ExportDialogState extends State<ExportDialog> {
 
   void _stepCel(int steps) =>
       _standCels((standing, rows) => standing.stepped(steps, rows));
+
+  void _stepCelRow(int steps) =>
+      _standCels((standing, rows) => standing.rowStepped(steps, rows));
+
+  /// What a move on the sheet does on the Cels list — the canvas's keys
+  /// and its flip, read by the same bindings and the same gesture
+  /// (I-153-Q2, 유저 2026-11-04: 「셀 탭에 키 + 손가락 플립」): a block's
+  /// step walks the drawings of the row stood on, as ◀ ▶ do, and a row's
+  /// stands on the row above or below. None on another tab, nor for any
+  /// other move.
+  VoidCallback? _celMoveOf(String actionId) {
+    if (_tab != ExportTab.cels) {
+      return null;
+    }
+    return switch (actionId) {
+      EditorActionIds.drawingPrevious => () => _stepCel(-1),
+      EditorActionIds.drawingNext => () => _stepCel(1),
+      EditorActionIds.layerUp => () => _stepCelRow(-1),
+      EditorActionIds.layerDown => () => _stepCelRow(1),
+      _ => null,
+    };
+  }
+
+  /// A flip step on the Cels tab's preview — none while a run is under
+  /// way, which owns the film it writes as it owns the keys.
+  void _flipCel(String actionId) {
+    if (!_isExporting) {
+      _celMoveOf(actionId)?.call();
+    }
+  }
 
   /// A block, pressed: a file the export would write is turned off, or
   /// back on — and one it would not says why, where the pointer is
@@ -3500,7 +3557,14 @@ class ExportDialogState extends State<ExportDialog> {
     return keys == null
         ? window
         : EditorKeyFunnel(
-            road: keys,
+            // The Cels list's moves are the window's own; every other key
+            // runs where the editor runs it.
+            road: (
+              bindings: keys.bindings,
+              onHoldKey: keys.onHoldKey,
+              invoke: (actionId) =>
+                  (_celMoveOf(actionId) ?? () => keys.invoke(actionId))(),
+            ),
             // The run under way owns the film it writes.
             enabled: !_isExporting,
             admits: (actionId) => _keyAdmitted(keys, actionId),
@@ -3515,13 +3579,15 @@ class ExportDialogState extends State<ExportDialog> {
   /// undo and redo — what the papers are edited under (I-127, 유저
   /// 2026-10-25: 「도구 단축키 통해서 변경하든 변경가능하게 … 물론 언두도
   /// 가능」) — and the held keys, which press a tool for as long as they are
-  /// held. A key of the editor's panels or menus stands behind the window.
-  static bool _keyAdmitted(EditorKeyRoad keys, String actionId) {
+  /// held — and, on the Cels tab, the moves on its list ([_celMoveOf]). A
+  /// key of the editor's panels or menus stands behind the window.
+  bool _keyAdmitted(EditorKeyRoad keys, String actionId) {
     final definition = keys.bindings.definitionFor(actionId);
     return definition?.toolPress != null ||
         definition?.brushPress != null ||
         actionId == EditorActionIds.undo ||
-        actionId == EditorActionIds.redo;
+        actionId == EditorActionIds.redo ||
+        _celMoveOf(actionId) != null;
   }
 
   Widget _window(BuildContext context) {
@@ -3970,6 +4036,9 @@ class ExportDialogState extends State<ExportDialog> {
         fileName: file.name,
         fileAbsent: file.absent,
         enabled: !_isExporting,
+        flip: _tab == ExportTab.cels
+            ? (hud: _celFlip, onInvokeAction: _flipCel)
+            : null,
         // A drawing among the papers keeps their brush switch's place,
         // standing off: nothing writes on a cel here.
         bottomBarLeading: [
