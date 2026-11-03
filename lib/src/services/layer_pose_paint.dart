@@ -27,15 +27,35 @@ export 'layer_pose_matrix.dart'
 /// camera renders (export/thumbnails) and the editing canvas's layer
 /// stack — so a transformed layer looks byte-identical everywhere
 /// (three-route parity discipline).
+///
+/// 🚨A TEXEL'S EDGE NEVER LIES ON A PIXEL'S CENTRE: the image is drawn
+/// [_offTheTexelEdge] of a texel past its pose. A pose whose texel edges
+/// land on pixel centres — moved by half a pixel, enlarged 1.5× or 2.5× —
+/// leaves an unfiltered draw a tie at each, and which texel takes it is the
+/// rounding of the raster it is drawn into: the frame's picture, a step's
+/// patch of it, the screen's walk each broke it their own way, and a
+/// stroke's patches showed the row a texel off the frame laid whole beside
+/// them (an-enlarged-row-at-half-comes-apart-from-its-frame). 🔬The
+/// tester's Impeller, one stroke patched into a frame and the same frame
+/// drawn as it stands, the same run again and again: moved by half a pixel
+/// 34–63 pixels apart in every run, up to 88/255; enlarged 2.5× 0–95, as
+/// the run fell. Off the edge, 0 in every run, at 25%, 50% and 100%.
+/// ⚠️Only the draw: where the row is told and hit ([placementMatrix]) is
+/// the pose itself — a sixty-fourth of a texel is not where a pen lands.
 void applyLayerPlacement(
   Canvas canvas,
   LayerPlacement placement, {
   double rasterScale = 1,
 }) {
-  canvas.transform(
-    placementMatrix(placement, rasterScale: rasterScale).storage,
-  );
+  canvas
+    ..transform(placementMatrix(placement, rasterScale: rasterScale).storage)
+    ..translate(_offTheTexelEdge, _offTheTexelEdge);
 }
+
+/// How far past its pose a posed image is drawn ([applyLayerPlacement]), in
+/// its texels: well past the rounding of a raster of the largest side a
+/// picture is laid in, and a hair on any screen.
+const double _offTheTexelEdge = 1 / 64;
 
 /// Applies the camera projection to [canvas] so canvas-space drawing lands
 /// in the camera's OUTPUT space — see [cameraProjectionMatrix]. The export
