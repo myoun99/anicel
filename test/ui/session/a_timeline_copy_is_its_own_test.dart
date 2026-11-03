@@ -8,6 +8,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_timeline.dart';
@@ -84,6 +85,22 @@ void main() {
       'right after it in the list, and opened', () {
     final s = session();
     s.cutVerbs.createCut();
+    final rowA = s.activeLayer!.id;
+    s.repository.updateProject(
+      (project) => project.copyWith(
+        trailingFrames: 5,
+        tracks: [
+          project.tracks.single.copyWith(
+            effects: [
+              LayerEffect.defaults(
+                id: const EffectId('lens'),
+                kind: EffectKind.cameraLensBlur,
+              ).withLayer('blurMapLayer', rowA),
+            ],
+          ),
+        ],
+      ),
+    );
     s.timelineVerbs.addTimeline();
     final source = s.timelineVerbs.timelines.first;
     final last = s.timelineVerbs.timelines.last;
@@ -114,6 +131,14 @@ void main() {
       [for (final row in source.tracks.single.seLayers) row.name],
     );
     expect(idsOf(copy).intersection(idsOf(source)), isEmpty);
+    final named = cutsOf(source).last.layers.indexWhere(
+      (row) => row.id == rowA,
+    );
+    expect(
+      copy.tracks.single.effects.single.layers['blurMapLayer'],
+      cutsOf(copy).last.layers[named].id,
+      reason: 'the track\'s effect names the copy of the row it named',
+    );
     expect(s.activeCutId, cutsOf(copy).first.id);
   });
 
@@ -188,6 +213,9 @@ void main() {
     for (final group in groups.skip(before.length)) {
       expect(group.members.map((member) => member.cutId), everyElement(
         isIn(copyCuts),
+      ));
+      expect(group.members.map((member) => member.trackId), everyElement(
+        openOf(s).tracks.single.id,
       ));
       final cels = {
         for (final member in group.members)
