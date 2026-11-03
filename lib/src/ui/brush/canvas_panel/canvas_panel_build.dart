@@ -565,7 +565,7 @@ class _PanelBuild {
         ),
       ),
     );
-    if (hud == null) {
+    if (hud == null || !_state.widget.drawsFlipHud) {
       return layer;
     }
     // Above the gesture layer, in the same box: the anchor

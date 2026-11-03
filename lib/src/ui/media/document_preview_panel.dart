@@ -9,12 +9,21 @@ import '../../services/media/viewer_document.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../canvas/canvas_zoom_scale.dart';
+import '../canvas/flip_hud_controller.dart';
 import '../canvas/viewport_pages_painter.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../widgets/static_raster.dart';
 import 'viewer_page_loading.dart';
 import 'viewer_pages_and_run.dart';
 import 'viewer_render_tier.dart';
+
+/// A preview a finger flips as it flips the canvas (I-153-Q2): the moves a
+/// step sends, and the controller that reads the sheet's turn and ticks a
+/// landing — the canvas's own ([FlipHudController]).
+typedef PreviewFlip = ({
+  FlipHudController hud,
+  void Function(String actionId) onInvokeAction,
+});
 
 /// A WINDOW'S PREVIEW OF A DOCUMENT — the page stood on, in a canvas-base
 /// panel: its pill (fit, zoom, 1:1), both scrollbars always, 100% a pixel
@@ -43,6 +52,7 @@ class DocumentPreviewPanel extends StatefulWidget {
     this.documentAbsent = false,
     this.marks,
     this.bottomBarLeading = const <Widget>[],
+    this.flip,
   });
 
   /// What this panel's keys are named under — `<prefix>-page`,
@@ -84,6 +94,10 @@ class DocumentPreviewPanel extends StatefulWidget {
   /// The head of the pill ([BrushCanvasPanel.bottomBarLeading]) — what a
   /// host keeps in its place beside the pictures it shows among papers.
   final List<Widget> bottomBarLeading;
+
+  /// What one finger does: flips through what the host steps, or — with
+  /// none — moves the page.
+  final PreviewFlip? flip;
 
   @override
   State<DocumentPreviewPanel> createState() => _DocumentPreviewPanelState();
@@ -133,6 +147,7 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
         : Offset.zero & document.pageSize(widget.page);
     final canvas = paper?.size ?? const Size(640, 360);
     final marks = widget.marks;
+    final flip = widget.flip;
     return BrushCanvasPanel(
       // The panel keeps the view, and a view nobody has framed is a fit of
       // the page ([BrushCanvasPanel.unframedFit]): a page of another size
@@ -153,7 +168,12 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
       // Nothing here is drawn on: a press moves the page.
       toolCursorsEnabled: false,
       runsTheSelectedTool: false,
-      oneFingerAction: CanvasTouchDragAction.navigate,
+      oneFingerAction: flip == null
+          ? CanvasTouchDragAction.navigate
+          : CanvasTouchDragAction.flip,
+      onInvokeAction: flip?.onInvokeAction,
+      flipHud: flip?.hud,
+      drawsFlipHud: false,
       canvasBase: true,
       // F-315: the viewer's 1:1, where the viewer keeps it.
       oneToOneOnPill: true,

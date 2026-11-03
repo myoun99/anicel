@@ -328,6 +328,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onBrushSizeDragUpdate,
     this.onBrushSizeDragEnd,
     this.flipHud,
+    this.drawsFlipHud = true,
     this.onEyedropperPick,
     this.fillDabsAt,
     this.shapeFillDabsFor,
@@ -931,6 +932,12 @@ class BrushCanvasPanel extends StatefulWidget {
   /// overlay above the gesture layer so the window lands in the same
   /// coordinates the gesture reports its anchor in.
   final FlipHudController? flipHud;
+
+  /// Whether the panel mounts [flipHud]'s window. A host whose own list
+  /// shows the rows and blocks steps and ticks through the controller and
+  /// draws none — the export window's Cels list (I-153-Q2: 「보드가 이미 행과
+  /// 블록을 보여 주므로 HUD는 띄우지 않고」).
+  final bool drawsFlipHud;
 
   /// Builds the fill region's stamp pieces for a tap (P6); the panel
   /// commits them through the exact stroke funnel. Null disables the fill
