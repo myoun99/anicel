@@ -326,6 +326,13 @@ void main() {
     expect(tester.exportPreviewName, '_CUT301.mp4');
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
+
+    await tester.seekExportPreview(1);
+    expect(
+      tester.exportTransport.currentFrame,
+      1,
+      reason: 'a hand on its transport moves the film, not the list',
+    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 

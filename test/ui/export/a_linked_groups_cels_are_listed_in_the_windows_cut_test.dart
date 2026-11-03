@@ -124,8 +124,13 @@ void main() {
     WidgetTester tester,
     EditorSessionManager session, {
     required ExportScopeKind scope,
+    Set<ExportCelKind> kinds = celKindsAlone,
   }) async {
-    AppExport.settings.value = exportSettingsWritingCelsAlone(scope: scope);
+    AppExport.settings.value = AppExportSettings(
+      lastSpecs: ExportTabSpecs(
+        cels: CelsExportSpec(kinds: kinds, scope: scope),
+      ),
+    );
     // Its share (F-337) a little wider than the window's least: in the TEST
     // font the band's 「C1-C2」 runs 5 px past its room there — in the app's
     // own faces it holds (the last test here). ↩️1280, while the Cels list's
@@ -226,6 +231,29 @@ void main() {
       picker(tester).enabled,
       isFalse,
       reason: 'the group exports once, as one cut: nothing to pick between',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🗣️a film a cut of the pair, as a timesheet is (I-151: 「셀은 '
+      '컷마다 출력이니까 컷마다 영상 출력하는것임」)', (tester) async {
+    final session = linkedPair();
+    addTearDown(session.dispose);
+
+    await pumpCels(
+      tester,
+      session,
+      scope: ExportScopeKind.cut,
+      kinds: {...celKindsAlone, ExportCelKind.video},
+    );
+
+    expect(
+      [
+        for (final row in tester.celsBoard.rows)
+          for (final sheet in row.sheets)
+            if (sheet.fileName.endsWith('.mp4')) sheet.fileName,
+      ],
+      ['_CUTC1.mp4', '_CUTC2.mp4'],
     );
     session.playbackRig.prerenderScheduler.cancel();
   });
