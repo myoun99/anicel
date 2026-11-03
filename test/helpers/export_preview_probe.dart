@@ -89,12 +89,19 @@ extension ExportPreviewProbe on WidgetTester {
   /// Types a one-based frame into the transport's IN or OUT readout, as a
   /// hand does: its pencil opens its number pad, the number atop the pad
   /// brings the keyboard up (I-134), Enter commits.
+  ///
+  /// The pencil is brought into view first, as a hand scrolls to what it
+  /// presses: a window narrower than its columns scrolls sideways
+  /// (I-153-Q3), and a pick in the settings column scrolls it there.
   Future<void> typeExportRange({String? inFrame, String? outFrame}) async {
     for (final (end, typed) in [('in', inFrame), ('out', outFrame)]) {
       if (typed == null) {
         continue;
       }
-      await tap(find.byKey(ValueKey<String>('export-transport-$end-edit')));
+      final pencil = find.byKey(ValueKey<String>('export-transport-$end-edit'));
+      await ensureVisible(pencil);
+      await pump();
+      await tap(pencil);
       await pump();
       await openThePadsKeyboard(this);
       await enterText(
