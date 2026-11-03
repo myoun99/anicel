@@ -287,10 +287,14 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   /// Each folder column's own scroll, by its key.
   final Map<String, ScrollController> _folderScrolls = {};
 
+  /// The layer folders' own scroll, where a folder is a layer ([_rows]).
+  final ScrollController _layerFolders = ScrollController();
+
   @override
   void dispose() {
     _down.dispose();
     _across.dispose();
+    _layerFolders.dispose();
     for (final scroll in _folderScrolls.values) {
       scroll.dispose();
     }
@@ -332,7 +336,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
                   decoration: BoxDecoration(border: Border(bottom: line)),
                   child: widget.band,
                 ),
-                Expanded(child: _rows(context)),
+                Expanded(child: _rows(context, line)),
                 _acrossLane(line),
               ],
             ),
@@ -382,41 +386,46 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     ExportCelsFolderColumn column,
     String keyValue,
   ) {
-    final scroll = _folderScrolls.putIfAbsent(
-      column.keyValue,
-      ScrollController.new,
-    );
     final rowHeight = timelineLayerRowHeightIn(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return _folderList(
+      context,
+      scroll: _folderScrolls.putIfAbsent(column.keyValue, ScrollController.new),
+      keyValue: keyValue,
       children: [
-        Expanded(
-          child: ScrollConfiguration(
-            // Its lane IS its bar, as the rows' are.
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(scrollbars: false),
-            child: ListView(
-              controller: scroll,
-              children: [
-                for (final folder in column.folders)
-                  _folder(context, folder, rowHeight),
-              ],
-            ),
-          ),
-        ),
-        SizedBox(
-          width: AppScrollbarLane.thin,
-          child: AppControllerScrollbar(
-            controller: scroll,
-            axis: Axis.vertical,
-            laneKey: ValueKey<String>('$keyValue-lane'),
-            thumbKey: ValueKey<String>('$keyValue-thumb'),
-          ),
-        ),
+        for (final folder in column.folders)
+          _folder(context, folder, rowHeight),
       ],
     );
   }
+
+  /// Folders down a list, and the lane at its right they scroll by — a
+  /// folder column's, and the layer folders where a folder is a layer.
+  Widget _folderList(
+    BuildContext context, {
+    required ScrollController scroll,
+    required String keyValue,
+    required List<Widget> children,
+  }) => Row(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Expanded(
+        child: ScrollConfiguration(
+          // Its lane IS its bar, as the rows' are.
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: ListView(controller: scroll, children: children),
+        ),
+      ),
+      SizedBox(
+        width: AppScrollbarLane.thin,
+        child: AppControllerScrollbar(
+          controller: scroll,
+          axis: Axis.vertical,
+          laneKey: ValueKey<String>('$keyValue-lane'),
+          thumbKey: ValueKey<String>('$keyValue-thumb'),
+        ),
+      ),
+    ],
+  );
 
   /// One folder of a column, by the name it is made under — the press that
   /// stands the list in it, as a rail row's name stands the list on it.
@@ -463,60 +472,81 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
 
   /// The rows under the band: the vertical bar's lane at their far left,
   /// then the rail that stays and the blocks that scroll across — or, where
-  /// a layer is a folder, the files of the folder stood in, down.
-  Widget _rows(BuildContext context) {
+  /// a layer is a folder, the layer folders as a folder column stands, and
+  /// the files of the one stood in down beside them.
+  ///
+  /// 🗣️F-552 (유저 2026-11-04: 「레이어폴더 만들때 레이어영역에도 스크롤바
+  /// 항상 있도록 … 컷 폴더 만들때 생기는 세로선 … 확실하게 다른 공간이라는
+  /// 구분」): the layer folders are a space of their own — the lane at their
+  /// right and the line a folder column closes with — and the files scroll
+  /// by the board's lane on their own. ↩️The rail and the files scrolled
+  /// together, by the one lane left of the rail.
+  Widget _rows(BuildContext context, BorderSide line) {
     final rowHeight = timelineLayerRowHeightIn(context);
+    final rails = [
+      for (final row in widget.rows) _rail(context, row, rowHeight),
+    ];
+    if (widget.layerFolderOf == null) {
+      return _scrolledDown(
+        context,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: ExportCelsBoard.railWidth,
+              child: Column(children: rails),
+            ),
+            Expanded(child: _blockRows(context, rowHeight)),
+          ],
+        ),
+      );
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: AppScrollbarLane.thin,
-          child: AppControllerScrollbar(
-            controller: _down,
-            axis: Axis.vertical,
-            laneKey: const ValueKey<String>(
-              'export-cels-board-vertical-lane',
-            ),
-            thumbKey: const ValueKey<String>(
-              'export-cels-board-vertical-thumb',
-            ),
+        Container(
+          key: const ValueKey<String>('export-cels-layer-folders'),
+          width: ExportCelsBoard.railWidth + AppScrollbarLane.thin + line.width,
+          decoration: BoxDecoration(border: Border(right: line)),
+          child: _folderList(
+            context,
+            scroll: _layerFolders,
+            keyValue: 'export-cels-layer-folders',
+            children: rails,
           ),
         ),
-        Expanded(
-          child: ScrollConfiguration(
-            // The lanes ARE the bars: the app's own scroll behaviour would
-            // lay a second pair over the rows.
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(scrollbars: false),
-            child: SingleChildScrollView(
-              key: const ValueKey<String>('export-cels-board-rows'),
-              controller: _down,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: ExportCelsBoard.railWidth,
-                    child: Column(
-                      children: [
-                        for (final row in widget.rows)
-                          _rail(context, row, rowHeight),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: widget.layerFolderOf == null
-                        ? _blockRows(context, rowHeight)
-                        : _fileLines(context, rowHeight),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        Expanded(child: _scrolledDown(context, _fileLines(context, rowHeight))),
       ],
     );
   }
+
+  /// [content] scrolled down by the board's vertical lane, at its far left.
+  Widget _scrolledDown(BuildContext context, Widget content) => Row(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SizedBox(
+        width: AppScrollbarLane.thin,
+        child: AppControllerScrollbar(
+          controller: _down,
+          axis: Axis.vertical,
+          laneKey: const ValueKey<String>('export-cels-board-vertical-lane'),
+          thumbKey: const ValueKey<String>('export-cels-board-vertical-thumb'),
+        ),
+      ),
+      Expanded(
+        child: ScrollConfiguration(
+          // The lanes ARE the bars: the app's own scroll behaviour would lay
+          // a second pair over the rows.
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: SingleChildScrollView(
+            key: const ValueKey<String>('export-cels-board-rows'),
+            controller: _down,
+            child: content,
+          ),
+        ),
+      ),
+    ],
+  );
 
   /// The drawings, a row of blocks a row — as wide as the longest row, and
   /// scrolled across by the lane under them.

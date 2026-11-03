@@ -431,6 +431,109 @@ void main() {
     );
   });
 
+  group('🗣️F-552 (유저 2026-11-04: 「레이어폴더 만들때 레이어영역에도 스크롤바 '
+      '항상 있도록 … 확실하게 다른 공간」)', () {
+    Finder keyed(String key) => find.byKey(ValueKey<String>(key));
+    final layerFolders = keyed('export-cels-layer-folders');
+    final lane = keyed('export-cels-layer-folders-lane');
+
+    /// One cut of twelve layers — more than the list shows at once.
+    EditorSessionManager twelveLayers() => inkEveryCel(
+      EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          cameraSize: const CanvasSize(width: 32, height: 18),
+          createdAt: DateTime.utc(2026),
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
+                cutOf(first, '001', [for (var i = 0; i < 12; i++) 'l$i']),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    testWidgets('the layer folders stand as a folder column does: their own '
+        'lane at their right, standing while nothing overflows, and the line '
+        'the column closes with', (tester) async {
+      final session = twoCuts();
+      addTearDown(session.dispose);
+      await pumpCels(
+        tester,
+        session,
+        naming: const ExportCelNaming(projectFolder: true, layerFolder: true),
+      );
+
+      expect(keyed('export-cels-layer-folders-thumb'), findsOneWidget);
+      final rail = tester.getRect(keyed('export-cels-row-b'));
+      final space = tester.getRect(layerFolders);
+      expect(tester.getRect(lane).left, rail.right);
+      expect(tester.getRect(lane).right, space.right - 1, reason: 'its line');
+      expect(
+        tester.getRect(keyed('export-cels-board-vertical-lane')).left,
+        space.right,
+        reason: 'the files\' lane is the space beyond the line',
+      );
+      BoxDecoration? decorationOf(Finder found) =>
+          tester.widget<Container>(found).decoration as BoxDecoration?;
+      expect(
+        decorationOf(layerFolders),
+        decorationOf(column('project')),
+        reason: 'the same line as a folder column',
+      );
+    });
+
+    testWidgets('the layer folders scroll by their lane, and the files of the '
+        'one stood in stay where they are', (tester) async {
+      final session = twelveLayers();
+      addTearDown(session.dispose);
+      await pumpCels(
+        tester,
+        session,
+        naming: const ExportCelNaming(layerFolder: true),
+      );
+      // The bar looks again a frame after the list is laid out.
+      await tester.pump();
+      final file = keyed('export-cels-file-l11-l11-f1');
+      final before = tester.getRect(file);
+
+      await tester.tapAt(tester.getRect(lane).bottomCenter.translate(0, -2));
+      await tester.pump();
+
+      final folders = tester.widget<ListView>(
+        find.descendant(of: layerFolders, matching: find.byType(ListView)),
+      );
+      expect(folders.controller!.offset, greaterThan(0));
+      expect(tester.getRect(file), before);
+      expect(
+        tester
+            .widget<SingleChildScrollView>(keyed('export-cels-board-rows'))
+            .controller!
+            .offset,
+        0,
+      );
+    });
+
+    testWidgets('no layer folder: the rail and the blocks scroll together, by '
+        'the one lane left of the rail', (tester) async {
+      final session = twoCuts();
+      addTearDown(session.dispose);
+      await pumpCels(tester, session);
+
+      expect(layerFolders, findsNothing);
+      expect(lane, findsNothing);
+      expect(
+        tester.getRect(keyed('export-cels-board-vertical-lane')).right,
+        tester.getRect(keyed('export-cels-row-b')).left,
+      );
+    });
+  });
+
   test('each folder column widens the board by its own width', () {
     expect(
       ExportCelsBoard.minimumWidthFor(100, folderColumns: 2) -
