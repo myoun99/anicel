@@ -49,6 +49,14 @@ jobs:
           cmake --build build/ci-apple --config Release
           ls -la build/ci-apple
 
+      # The Mac's engine writes code as a plugin opens, which nothing else
+      # here does: its fx plugin test asks the WebAssembly twin, and a build
+      # that found no engine is a failure (fx-plugin-sdk-publish-Q2).
+      - name: A .wasm answers as its native twin does (Apple clang, host)
+        env:
+          QA_REQUIRE_WASM: '1'
+        run: ctest --test-dir build/ci-apple -R '^qa_fx_plugin$' --output-on-failure --no-tests=error
+
       - name: Native core (arm64 iOS target)
         run: |
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)

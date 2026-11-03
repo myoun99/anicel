@@ -20,8 +20,7 @@
 #include "qa_fx_plugin.h"
 
 #if QA_FX_WASM
-#include <wasm.h>
-#include <wasmtime.h>
+#include "qa_wasmtime.h"
 #endif
 
 void *qa_fx_plugin_open_native(const char *path, char *error,
@@ -536,6 +535,11 @@ int main(void) {
 #if QA_FX_WASM
   check_twin(description);
 #else
+  // A build that found no engine passes everything else without asking the
+  // twin, so a run that must have one says so (QA_REQUIRE_WASM=1, CI).
+  const char *required = getenv("QA_REQUIRE_WASM");
+  CHECK(required == NULL || strcmp(required, "1") != 0,
+        "QA_REQUIRE_WASM=1 but this build has no WebAssembly engine");
   printf("qa_fx_plugin_test: this build has no WebAssembly engine - the "
          "twin is not asked\n");
 #endif

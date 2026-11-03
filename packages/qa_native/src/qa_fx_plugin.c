@@ -30,9 +30,7 @@
 #endif
 
 #if QA_FX_WASM
-#include <wasi.h>
-#include <wasm.h>
-#include <wasmtime.h>
+#include "qa_wasmtime.h"
 #endif
 
 typedef uint32_t (*spec_fn)(void);
