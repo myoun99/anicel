@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../input/arena_tap_hold.dart';
 import '../input/control_press_claim.dart';
+import '../dialogs/link_window.dart' show linkGlyph;
 import '../widgets/app_icon_button.dart';
 import '../widgets/clip_button.dart';
 import '../../models/attached_placement.dart';
@@ -186,6 +187,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
     this.linkPartners = const [],
+    this.syncPartners = const [],
     this.onLayerBlendModeSelected,
     this.chromeless = false,
     this.laneGraphVerbs,
@@ -344,6 +346,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// 🗣️유저 2026-09-25: 「링크버튼통해서 어디랑 링크되고있는지만 제대로
   /// 표시하게」. ↩️It was a bool, and the tooltip a fixed sentence.
   final List<String> linkPartners;
+
+  /// The cut this row's cut is in the other timelines, when the row is one
+  /// they share — a 동기컷 (I-150-Q3: 「배지에도 겸용이란 이름이아니라
+  /// 동기컷? 뭐 그런식으로 따로 표시」). The badge then wears the sync
+  /// glyph, and its tooltip names them apart from [linkPartners].
+  final List<String> syncPartners;
 
   /// R27 #6: the blend-mode dropdown lives in the LABEL now (rightmost
   /// slot, past the opacity bar) instead of the timeline toolbar. Null
@@ -791,15 +799,25 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// 표시」 — the badge is the entrance to the link window, a rail button
   /// like the reference button beside it.
   Widget? _linkBadge(ColorScheme colorScheme) {
-    if (linkPartners.isEmpty) return null;
+    if (linkPartners.isEmpty && syncPartners.isEmpty) return null;
     final onOpen = onOpenLayerLinks;
+    final strings = AppText.strings;
     return _nameButton(
       slug: 'link-badge',
-      tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
+      tooltip: [
+        if (linkPartners.isNotEmpty) ...[strings.tlLinkedWith, ...linkPartners],
+        if (syncPartners.isNotEmpty) ...[
+          strings.linkWindowSynced,
+          ...syncPartners,
+        ],
+      ].join('\n'),
       // The link reads in the accent whatever the button's own rest
       // colour: it says the row is linked before anything is pressed.
       look: _NameButtonLook(
-        RailIconGlyph(Icons.link, color: colorScheme.primary),
+        RailIconGlyph(
+          linkGlyph(synced: syncPartners.isNotEmpty),
+          color: colorScheme.primary,
+        ),
       ),
       onPressed: onOpen == null
           ? null

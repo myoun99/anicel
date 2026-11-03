@@ -171,6 +171,26 @@ class LayerLinkRegistry {
           (other, row),
   ];
 
+  /// The members (cut, layer) shares its pictures with as a 겸용: its group
+  /// but the row itself in its sync's other cuts ([rowAcrossItsSync]), which
+  /// never leave it — what an unlink takes it away from, and what the badge
+  /// names as linked (I-150-Q3 · Q6). Empty for a row of a cut of its own
+  /// that no group holds, and for a 동기컷's row linked nowhere else.
+  List<LayerLinkMember> linkedBeyondItsSync({
+    required CutId cutId,
+    required LayerId layerId,
+  }) {
+    final group = groupOf(cutId: cutId, layerId: layerId);
+    if (group == null) {
+      return const [];
+    }
+    final itself = rowAcrossItsSync(cutId: cutId, layerId: layerId);
+    return [
+      for (final member in group.members)
+        if (!itself.contains((member.cutId, member.layerId))) member,
+    ];
+  }
+
   /// Each member's group, the first to hold it. A registry never changes,
   /// so this is read once.
   ///
@@ -250,9 +270,13 @@ class LayerLinkRegistry {
     return groupOf(cutId: cutId, layerId: layerId)?.members.length ?? 1;
   }
 
-  /// Whether (cut, layer) shares its pictures with another use site — the
-  /// one question the badge, 독립시키기 and the link-independent button ask
-  /// of a row.
+  /// Whether (cut, layer) shares its pictures with another use site — one
+  /// bank of cels, a 동기컷's other selves among them.
+  ///
+  /// ↩️It was the one question the badge, 독립시키기 and the link-independent
+  /// button asked of a row. A 동기컷's row shares its bank with the same row
+  /// in other timelines, which no unlink takes it from (I-150-Q3: 「실질
+  /// 같은컷 취급」) — those ask [linkedBeyondItsSync].
   bool isLinked({required CutId cutId, required LayerId layerId}) =>
       useCountOf(cutId: cutId, layerId: layerId) > 1;
 

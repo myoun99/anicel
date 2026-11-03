@@ -61,6 +61,9 @@ typedef LayerControlsRowFacts = ({
   // The rows the pictures are shared with — a fresh list every build, so
   // compared by what it holds ([ByList]).
   ByList<String> linkPartners,
+  // The cut the row's cut is in the other timelines, when the row is one
+  // they share (a 동기컷, I-150-Q3) — compared like [linkPartners].
+  ByList<String> syncPartners,
   // Solo is SESSION state, not a Layer field, so the layer comparison
   // cannot see it: the speaker's accent tint went stale the moment
   // solo moved anywhere but this row. It has always been shown here —
@@ -138,6 +141,7 @@ LayerControlsRowFacts layerControlsRowFacts(
     fxState: hooks.layerFxStateOf?.call(id) ?? LayerFxState.on,
     onionSkinEnabled: hooks.layerOnionSkinEnabledOf?.call(id) ?? false,
     linkPartners: ByList(hooks.layerLinkPartnersOf?.call(id) ?? const []),
+    syncPartners: ByList(hooks.layerSyncPartnersOf?.call(id) ?? const []),
     soloed: hooks.isLayerSoloed?.call(id) ?? false,
     attachArrow: hooks.attachArrowPlacementOf?.call(id),
     isReferenceSourceShort: hooks.layerSourceIsShortOf?.call(id) ?? false,
@@ -204,6 +208,7 @@ Widget layerControlsRowFrom(
     onToggleGroupFold: fold.onToggle,
     opacityDragPreview: facts.opacityDragPreview.value,
     linkPartners: facts.linkPartners.value,
+    syncPartners: facts.syncPartners.value,
     onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
     laneGraphVerbs: hooks.laneGraphVerbs,
     headsGraph: facts.headsGraph,

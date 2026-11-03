@@ -68,6 +68,7 @@ import 'set_layer_placement_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
+import 'leave_sync_command.dart';
 import 'link_duplicate_layer_command.dart';
 import 'unlink_layer_command.dart';
 import 'rename_cut_command.dart';
@@ -524,6 +525,7 @@ class CutCommandCoordinator {
   }) => _links.createSyncedCut(sourceCutId: sourceCutId, landing: landing);
   void unlinkLayer({required CutId cutId, required LayerId layerId}) =>
       _links.unlinkLayer(cutId: cutId, layerId: layerId);
+  void unsyncCut(CutId cutId) => _links.unsyncCut(cutId);
   void convertCutToLinked({
     required CutId originCutId,
     required CutId targetCutId,

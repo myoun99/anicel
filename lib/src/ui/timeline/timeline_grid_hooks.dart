@@ -114,6 +114,7 @@ class TimelineGridHooks {
     required this.onToggleLayerTimesheet,
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
+    this.layerSyncPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -400,6 +401,10 @@ class TimelineGridHooks {
   /// two answers the panel held for the rail alone, until the sheet's
   /// header became the rail's row stood up and asked for them too.
   final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
+
+  /// The badge's 동기 lines (I-150-Q3): the cut a layer's cut is in the other
+  /// timelines, when the layer is a row they share. Null shows none.
+  final List<String> Function(LayerId layerId)? layerSyncPartnersOf;
 
   /// The row twirl that folds a FOLDER's members (the attach fold has its
   /// own hook because it is session state, not layer state).

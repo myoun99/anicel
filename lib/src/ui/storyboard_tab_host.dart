@@ -919,6 +919,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // I-25: a linked cut's name wears the link icon, and the
                     // icon opens the link window.
                     linkedCutIds: _session.cutVerbs.linkedCutIds,
+                    syncedCutIds: _session.cutVerbs.syncedCutIds,
                     onOpenCutLinks: (context, cutId) => showCutLinkWindow(
                       context,
                       session: _session,

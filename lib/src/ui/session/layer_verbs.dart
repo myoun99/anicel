@@ -10,7 +10,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
-import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
+import '../../services/commands/link_mirror.dart' show linkedCutsBeyondItsSync;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/project_lookup.dart'
     show cutWritingRow, projectLayersAnywhere;
@@ -20,7 +20,7 @@ import 'independent_clip_mint.dart'
 import 'render_caches.dart';
 import 'row_selection.dart';
 import 'session_roles.dart';
-import '../text/place_lines.dart' show linkPartnerLines;
+import '../text/place_lines.dart' show linkPartnerLines, syncPartnerLines;
 
 /// The LAYER VERBS — deleting, duplicating, linking and unlinking,
 /// renaming and copying a layer, and adding a row above the active one —
@@ -416,6 +416,25 @@ class LayerVerbs {
     );
   }
 
+  /// The cut the ACTIVE cut is in the other timelines — its 동기컷's other
+  /// cuts ([syncPartnerLines], I-150-Q3) — when [layerId] is a row they
+  /// share: what the badge names apart from the 겸용. Empty for a row only
+  /// this cut holds, and in a cut of its own.
+  List<String> syncPartnersOf(LayerId layerId) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    final project = _project.repository.requireProject();
+    final across = project.linkRegistry.rowAcrossItsSync(
+      cutId: cut.id,
+      layerId: layerId,
+    );
+    return across.length < 2
+        ? const []
+        : syncPartnerLines(project, cutId: cut.id);
+  }
+
   // ↩️「링크 복제」 of the ACTIVE row stood here (`linkDuplicateActiveLayer`),
   // behind the layer menu's 「링크해서 복제」. 🗣️I-77 (유저 2026-10-06):
   // 「링크해서 복제도 필요없어지니 삭제」 — the shared pill's copy and its
@@ -434,7 +453,9 @@ class LayerVerbs {
     return cut.layers.any(
       (member) =>
           (member.id == baseId || member.attachedToLayerId == baseId) &&
-          registry.isLinked(cutId: cut.id, layerId: member.id),
+          registry
+              .linkedBeyondItsSync(cutId: cut.id, layerId: member.id)
+              .isNotEmpty,
     );
   }
 
@@ -480,9 +501,23 @@ class LayerVerbs {
     );
   }
 
+  /// Whether [unlinkLayers] takes any of [layerIds] apart from anything —
+  /// its link window's button lights by it.
+  bool unlinksAnyOf(Iterable<LayerId> layerIds) {
+    final cut = _project.activeCutOrNull;
+    return cut != null &&
+        layerIds.any(
+          (id) => switch (cut.layers.firstWhereOrNull((row) => row.id == id)) {
+            final layer? => groupIsLinked(layer, cut),
+            null => false,
+          },
+        );
+  }
+
   /// Whether the ACTIVE cut is a linked cut (겸용 — its linked rows all have
-  /// counterparts in another cut, [linkedCutSiblings]): its rows then share
-  /// their pictures as the cut does, and one row cannot leave alone.
+  /// counterparts in another cut, [linkedCutsBeyondItsSync]): its rows then
+  /// share their pictures as the cut does, and one row cannot leave alone.
+  /// Its own 동기컷's other cuts are no 겸용 of it (I-150-Q3).
   ///
   /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
   /// 표시. 여기서 링크컷일경우엔 링크해제버튼 비활성화하고 툴팁으로 링크컷이기
@@ -490,7 +525,7 @@ class LayerVerbs {
   bool get activeCutIsLinkedCut {
     final cut = _project.activeCutOrNull;
     return cut != null &&
-        linkedCutSiblings(
+        linkedCutsBeyondItsSync(
           _project.repository.requireProject(),
           cutId: cut.id,
         ).isNotEmpty;

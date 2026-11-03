@@ -689,6 +689,7 @@ class StoryboardPanel extends StatefulWidget {
     this.stripSelect,
     this.onCreateStoryboardLayer,
     this.linkedCutIds = const {},
+    this.syncedCutIds = const {},
     this.onOpenCutLinks,
     this.movieEnd,
     this.trackLaneHeight = defaultTrackLaneHeight,
@@ -1131,6 +1132,9 @@ class StoryboardPanel extends StatefulWidget {
 
   /// The LINKED cuts (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
+
+  /// The 동기컷 among them (I-150-Q3): their icon is the sync glyph.
+  final Set<CutId> syncedCutIds;
 
   /// Pressed on a linked cut's link icon: the link window (I-25). Null
   /// keeps the icon display-only.
@@ -5184,6 +5188,7 @@ class _StoryboardTrackRow extends KeptPiece {
     required this.projectFrameRate,
     this.railSweepAt,
     this.linkedCutIds = const {},
+    this.syncedCutIds = const {},
     this.onOpenCutLinks,
     this.onEditCutBlock,
   });
@@ -5197,6 +5202,9 @@ class _StoryboardTrackRow extends KeptPiece {
 
   /// The LINKED cuts on this track (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
+
+  /// The 동기컷 among them (I-150-Q3): their icon is the sync glyph.
+  final Set<CutId> syncedCutIds;
 
   /// Pressed on a linked cut's link icon: the link window (I-25). Null
   /// keeps the icon display-only.
@@ -5453,6 +5461,7 @@ class _StoryboardTrackRow extends KeptPiece {
     projectFrameRate,
     thumbnails,
     BySet(linkedCutIds),
+    BySet(syncedCutIds),
     onRowFramePress != null,
     onDropMediaAsset != null,
     acceptsMediaAsset != null,
@@ -5493,6 +5502,7 @@ class _StoryboardTrackRow extends KeptPiece {
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
       linkedCutIds: linkedCutIds,
+      syncedCutIds: syncedCutIds,
       drawsLinkGlyphs: onOpenCutLinks == null,
     );
 
@@ -5690,7 +5700,10 @@ class _StoryboardTrackRow extends KeptPiece {
                       height: square.height,
                       iconSize: square.height,
                     ),
-                    glyph: RailIconGlyph(Icons.link, color: ink),
+                    glyph: RailIconGlyph(
+                      painter.linkGlyphOf(cutId),
+                      color: ink,
+                    ),
                     onPressed: () => onOpen(context, cutId),
                   ),
                 ),

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_sync.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -273,6 +274,58 @@ void main() {
         ['$first · C1 · BG', '$first · C2 · BG'],
         reason: 'a timeline with no name of its own says its number name',
       );
+    });
+
+    // 🗣️I-150-Q3 (유저 2026-11-03): 「배지에도 겸용이란 이름이아니라
+    // 동기컷? 뭐 그런식으로 따로 표시」 — and 「소재위치 표시할때 트랙위치도
+    // 표시」: away from the open timeline, each says its timeline first.
+    test("a 동기컷's other cut is listed apart, not as a 겸용 — the 겸용 of "
+        'it in a third timeline is', () {
+      final cuts = project.tracks.single.cuts;
+      Track track(String id, Cut cut) =>
+          Track(id: TrackId(id), name: 'V', cuts: [cut]);
+      final synced = project.copyWith(
+        timelines: [
+          ProjectTimeline(
+            id: const TimelineId('main'),
+            number: 1,
+            tracks: [track('t1', cuts[0])],
+          ),
+          ProjectTimeline(
+            id: const TimelineId('pv'),
+            number: 2,
+            name: '예고',
+            tracks: [track('t2', cuts[1])],
+          ),
+          ProjectTimeline(
+            id: const TimelineId('cm'),
+            number: 3,
+            tracks: [track('t3', cuts[2])],
+          ),
+        ],
+        currentTimelineId: const TimelineId('main'),
+        linkRegistry: project.linkRegistry.copyWith(
+          syncs: [
+            CutSync(id: 's', cuts: const [CutId('c1'), CutId('c2')]),
+          ],
+        ),
+      );
+
+      expect(
+        linkPartnerLines(
+          synced,
+          cutId: const CutId('c1'),
+          layerId: const LayerId('bg'),
+        ),
+        ['${AppText.strings.timelineNumbered(3)} · C3 · BOOK'],
+        reason: 'C2 · BG is the row itself, standing in 예고',
+      );
+      expect(syncPartnerLines(synced, cutId: const CutId('c1')), [
+        '예고 · C2',
+      ]);
+      expect(syncPartnerLines(synced, cutId: const CutId('c3')), isEmpty);
+      expect(cutPlaceLine(synced, const CutId('c1')), 'C1');
+      expect(cutPlaceLine(synced, const CutId('gone')), isNull);
     });
 
     test('an unlinked row has no partners — and no badge', () {

@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_sync.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_timeline.dart';
 import 'package:anicel/src/models/timeline_id.dart';
@@ -37,6 +38,50 @@ void main() {
     return s;
   }
 
+  Finder keyed(String key) => find.byKey(ValueKey<String>(key));
+
+  /// A cut and its linked copy, each in a timeline of its own — the first
+  /// one open — and, [synced], one 동기컷 (I-150-Q3).
+  ({EditorSessionManager s, CutId source, String elsewhere}) apart({
+    required bool synced,
+  }) {
+    final made = session();
+    final source = made.requireActiveCut.id;
+    made.cutVerbs.createLinkedCutFromActiveCut();
+    final linked = made.requireActiveCut.id;
+    final project = made.repository.requireProject();
+    final track = project.tracks.single;
+    Track holding(CutId cut, String trackId) => track.copyWith(
+      id: TrackId(trackId),
+      cuts: [for (final held in track.cuts) if (held.id == cut) held],
+    );
+    final s = EditorSessionManager(
+      initialProject: project.copyWith(
+        timelines: [
+          ProjectTimeline(
+            id: const TimelineId('main'),
+            number: 1,
+            tracks: [holding(source, 'main-v')],
+          ),
+          ProjectTimeline(
+            id: const TimelineId('pv'),
+            number: 2,
+            name: '예고',
+            tracks: [holding(linked, 'pv-v')],
+          ),
+        ],
+        currentTimelineId: const TimelineId('main'),
+        linkRegistry: synced
+            ? project.linkRegistry.copyWith(
+                syncs: [CutSync(id: 's', cuts: [source, linked])],
+              )
+            : null,
+      ),
+    );
+    addTearDown(s.dispose);
+    return (s: s, source: source, elsewhere: '예고 · ${s.cutById(linked)!.name}');
+  }
+
   group('the session', () {
     test('a linked cut is named by its partner, and its rows cannot leave '
         'alone', () {
@@ -55,39 +100,44 @@ void main() {
 
     // 🗣️I-150 (유저 2026-11-03): 「그런 소재위치 표시할때 트랙위치도 표시」.
     test('a partner in another timeline is named after that timeline', () {
-      final made = session();
-      final source = made.requireActiveCut.id;
-      made.cutVerbs.createLinkedCutFromActiveCut();
-      final linked = made.requireActiveCut.id;
-      final project = made.repository.requireProject();
-      final track = project.tracks.single;
-      Track holding(CutId cut, String trackId) => track.copyWith(
-        id: TrackId(trackId),
-        cuts: [for (final held in track.cuts) if (held.id == cut) held],
-      );
-      final s = EditorSessionManager(
-        initialProject: project.copyWith(
-          timelines: [
-            ProjectTimeline(
-              id: const TimelineId('main'),
-              number: 1,
-              tracks: [holding(source, 'main-v')],
-            ),
-            ProjectTimeline(
-              id: const TimelineId('pv'),
-              number: 2,
-              name: '예고',
-              tracks: [holding(linked, 'pv-v')],
-            ),
-          ],
-          currentTimelineId: const TimelineId('main'),
-        ),
-      );
-      addTearDown(s.dispose);
+      final (:s, :source, :elsewhere) = apart(synced: false);
 
-      expect(s.cutVerbs.linkedCutLines(source), [
-        '예고 · ${s.cutById(linked)!.name}',
-      ]);
+      expect(s.cutVerbs.linkedCutLines(source), [elsewhere]);
+      expect(s.cutVerbs.syncedCutLines(source), isEmpty);
+      expect(s.layerVerbs.activeCutIsLinkedCut, isTrue);
+    });
+
+    // 🗣️I-150-Q3 (유저 2026-11-03): 「배지에도 겸용이란 이름이아니라
+    // 동기컷? 뭐 그런식으로 따로 표시」 — and Q6 (11-04): 「동기 해제 = 독립
+    // 컷」, which is the one way they part.
+    test("a 동기컷's other cut is no 겸용 of it: listed apart, and nothing "
+        'for 링크 해제 to part', () {
+      final (:s, :source, :elsewhere) = apart(synced: true);
+      final row = s.activeLayerId!;
+      expect(s.requireActiveCut.id, source, reason: '⛔전제');
+
+      expect(s.cutVerbs.linkedCutLines(source), isEmpty);
+      expect(s.cutVerbs.syncedCutLines(source), [elsewhere]);
+      expect(s.cutVerbs.linkedCutIds, {source}, reason: 'it wears its glyph');
+      expect(s.cutVerbs.syncedCutIds, {source});
+      expect(s.cutVerbs.cutIsLinked(source), isFalse);
+      expect(s.layerVerbs.linkPartnersOf(row), isEmpty);
+      expect(s.layerVerbs.syncPartnersOf(row), [elsewhere]);
+      expect(s.layerVerbs.activeCutIsLinkedCut, isFalse);
+      expect(s.layerVerbs.unlinksAnyOf([row]), isFalse);
+      expect(s.layerVerbs.linkedSelectedLayerIds(), isEmpty);
+      final unshared = [
+        for (final layer in s.layers)
+          if (!layer.kind.linksIntoLinkedCut) layer.id,
+      ];
+      expect(unshared, isNotEmpty, reason: '⛔전제: a direction row');
+      for (final id in unshared) {
+        expect(
+          s.layerVerbs.syncPartnersOf(id),
+          isEmpty,
+          reason: 'a row only this cut holds wears no sync',
+        );
+      }
     });
 
     test('a link duplicate is not a linked cut, and its rows unlink as one '
@@ -124,6 +174,8 @@ void main() {
     Future<void> pump(
       WidgetTester tester, {
       required VoidCallback? unlink,
+      List<String> synced = const [],
+      VoidCallback? unsync,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -135,6 +187,8 @@ void main() {
                   targets: const ['C002 · A', 'C003 · A'],
                   unlink: unlink,
                   unlinkOffReason: 'why not',
+                  synced: synced,
+                  unsync: unsync,
                 ),
                 child: const Text('open'),
               ),
@@ -156,6 +210,36 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(unlinked, 1);
+      expect(find.byKey(const ValueKey<String>('link-window')), findsNothing);
+    });
+
+    testWidgets("a 동기컷's other cuts are listed apart, under their own "
+        'word, and 동기 해제 stands beside 링크 해제', (tester) async {
+      await pump(tester, unlink: () {}, unsync: () {});
+      expect(keyed('link-window-synced'), findsNothing);
+      expect(keyed('link-window-unsync'), findsNothing);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      var unsynced = 0;
+      await pump(
+        tester,
+        unlink: null,
+        synced: const ['예고 · C001'],
+        unsync: () => unsynced += 1,
+      );
+      expect(
+        tester.widget<Text>(keyed('link-window-synced')).data,
+        AppText.strings.linkWindowSynced,
+      );
+      expect(
+        tester.widget<Text>(keyed('link-window-synced-0')).data,
+        '예고 · C001',
+      );
+      await tester.tap(keyed('link-window-unsync'));
+      await tester.pumpAndSettle();
+
+      expect(unsynced, 1);
       expect(find.byKey(const ValueKey<String>('link-window')), findsNothing);
     });
 
@@ -228,6 +312,60 @@ void main() {
       );
     });
 
+    testWidgets("a 동기컷's row wears the sync glyph; its window lists the "
+        'cut apart, its 링크 해제 is off and says why, and 동기 해제 parts '
+        'them', (tester) async {
+      final (:s, source: _, :elsewhere) = apart(synced: true);
+      final row = s.activeLayerId!;
+      await timeline(tester, s);
+      final badge = find.named('timeline-layer-link-badge-${row.value}');
+      expect(tester.appIconButton(badge).icon, Icons.sync);
+
+      await openBadge(tester, row);
+      expect(find.text(elsewhere), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey<String>('link-window-unlink')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        find.tooltipSaying(AppText.strings.linkWindowUnlinkSyncedCut),
+        findsOneWidget,
+      );
+      await tester.tap(keyed('link-window-unsync'));
+      await tester.pumpAndSettle();
+
+      expect(s.repository.requireProject().linkRegistry.syncs, isEmpty);
+      expect(s.layerVerbs.isLayerLinked(row), isFalse);
+      expect(badge, findsNothing, reason: 'a cut of its own');
+    });
+
+    testWidgets("a 동기컷's block wears the sync glyph, and its window parts "
+        'it as the row\'s does', (tester) async {
+      final (:s, :source, :elsewhere) = apart(synced: true);
+      await pumpStoryboardHostOn(tester, s, surface: roomy, pixelsPerFrame: 12);
+      final button = find.named('storyboard-cut-link-${source.value}');
+      expect(cutBlocksPainter(tester).linkGlyphOf(source), Icons.sync);
+      expect(tester.appIconButton(button).icon, Icons.sync);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text(elsewhere), findsOneWidget);
+      expect(
+        find.tooltipSaying(AppText.strings.linkWindowUnlinkSyncedCut),
+        findsOneWidget,
+      );
+      await tester.tap(keyed('link-window-unsync'));
+      await tester.pumpAndSettle();
+
+      expect(s.repository.requireProject().linkRegistry.syncs, isEmpty);
+      expect(s.cutVerbs.linkedCutIds, isEmpty);
+      expect(button, findsNothing);
+    });
+
     testWidgets('a linked cut\'s name wears the link icon, which opens the '
         'window, whose button makes the cut independent', (tester) async {
       final s = session();
@@ -239,6 +377,7 @@ void main() {
       final painter = cutBlocksPainter(tester);
       final block = painter.blockForCut(source)!;
       expect(block.isLinkedCut, isTrue);
+      expect(painter.linkGlyphOf(source), Icons.link);
       final icon = painter.linkAffordanceRectOf(block)!;
       expect(
         icon.left,

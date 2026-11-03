@@ -691,6 +691,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // model state, read straight off the layer).
             layerFxStateOf: _session.effectsAndFx.layerFxState,
             layerLinkPartnersOf: _session.layerVerbs.linkPartnersOf,
+            layerSyncPartnersOf: _session.layerVerbs.syncPartnersOf,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.

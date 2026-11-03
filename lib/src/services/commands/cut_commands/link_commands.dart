@@ -139,6 +139,30 @@ class _LinkCommands {
     );
   }
 
+  /// 동기 해제 (I-150-Q6, 유저 2026-11-04 「동기 해제 = 독립 컷」): [cutId]
+  /// leaves its 동기컷 ([LeaveSyncCommand]) and then every link of its rows,
+  /// each as 독립시키기 unlinks one — an independent cut, every picture and
+  /// every sheet each part's own. ONE undo step. Nothing for a cut of its
+  /// own.
+  void unsyncCut(CutId cutId) {
+    final project = _coordinator.repository.requireProject();
+    if (project.linkRegistry.syncOf(cutId) == null) {
+      return;
+    }
+    _coordinator.historyManager.runAsOneStep('Leave sync', () {
+      _coordinator.historyManager.execute(
+        LeaveSyncCommand(
+          repository: _coordinator.repository,
+          sheetInkStores: _coordinator.sheetInkStores,
+          cutId: cutId,
+        ),
+      );
+      for (final layer in requireCut(project, cutId).layers) {
+        unlinkLayer(cutId: cutId, layerId: layer.id);
+      }
+    });
+  }
+
   /// 겸용 변경 (L2b): links [targetCutId] to [originCutId] after both
   /// were drawn — name-matching, 원본 승리 conflicts, 완전 미러 union.
   /// [plan] previews the effect for the confirmation dialog; the caller

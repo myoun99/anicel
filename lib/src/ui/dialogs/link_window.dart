@@ -3,18 +3,30 @@ import 'package:flutter/material.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
+/// The glyph that says a cut or a row shares its pictures — a row's badge,
+/// a cut block's square: the link, or a 동기컷's sync, set apart from the
+/// 겸용 (🗣️I-150-Q3: 「배지에도 겸용이란 이름이아니라 동기컷? 뭐 그런식으로
+/// 따로 표시」). One answer, so the cut's icon stays the row's (I-25:
+/// 「레이어에서 사용하는거랑 똑같은 것」).
+IconData linkGlyph({required bool synced}) =>
+    synced ? Icons.sync : Icons.link;
+
 /// Opens [LinkWindow] and waits for it to close.
 Future<void> showLinkWindow(
   BuildContext context, {
   required List<String> targets,
   required VoidCallback? unlink,
   String? unlinkOffReason,
+  List<String> synced = const [],
+  VoidCallback? unsync,
 }) => showDialog<void>(
   context: context,
   builder: (context) => LinkWindow(
     targets: targets,
     unlink: unlink,
     unlinkOffReason: unlinkOffReason,
+    synced: synced,
+    unsync: unsync,
   ),
 );
 
@@ -35,10 +47,22 @@ class LinkWindow extends StatelessWidget {
     required this.targets,
     required this.unlink,
     this.unlinkOffReason,
+    this.synced = const [],
+    this.unsync,
   });
 
   /// The linked places, one line each — view only.
   final List<String> targets;
+
+  /// The cut it is in the other timelines — its 동기컷's other cuts — one
+  /// line each, under their own heading, apart from the 겸용 (🗣️I-150-Q3:
+  /// 「배지에도 겸용이란 이름이아니라 동기컷? 뭐 그런식으로 따로 표시」).
+  /// Empty: not a 동기컷.
+  final List<String> synced;
+
+  /// 동기 해제 (I-150-Q6, 유저 2026-11-04 「동기 해제 = 독립 컷」): the
+  /// button beside [unlink] while [synced] lists a cut.
+  final VoidCallback? unsync;
 
   /// What the button does; null keeps it in place, off, with
   /// [unlinkOffReason] as its tooltip.
@@ -49,6 +73,7 @@ class LinkWindow extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     final unlink = this.unlink;
+    final unsync = this.unsync;
     return AppWindow(
       windowKey: const ValueKey<String>('link-window'),
       title: strings.tlLinkedWith,
@@ -69,11 +94,37 @@ class LinkWindow extends StatelessWidget {
                     key: ValueKey<String>('link-window-target-$index'),
                   ),
                 ),
+              if (synced.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 9, bottom: 3),
+                  child: Text(
+                    strings.linkWindowSynced,
+                    key: const ValueKey<String>('link-window-synced'),
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+              for (final (index, line) in synced.indexed)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Text(
+                    line,
+                    key: ValueKey<String>('link-window-synced-$index'),
+                  ),
+                ),
             ],
           ),
         ),
       ),
       actions: [
+        if (synced.isNotEmpty && unsync != null)
+          AppWindowAction(
+            label: strings.linkWindowUnsync,
+            actionKey: const ValueKey<String>('link-window-unsync'),
+            onPressed: () {
+              Navigator.of(context).pop();
+              unsync();
+            },
+          ),
         AppWindowAction(
           label: strings.linkWindowUnlink,
           actionKey: const ValueKey<String>('link-window-unlink'),

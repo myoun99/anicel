@@ -13,7 +13,9 @@ import '../text/app_strings.dart';
 ///
 /// A linked cut's rows share as the cut does, so on one the button stays in
 /// place, off, and says why (「링크컷일경우엔 링크해제버튼 비활성화하고
-/// 툴팁으로 링크컷이기때문에 불가능하다고 띄움」).
+/// 툴팁으로 링크컷이기때문에 불가능하다고 띄움」) — as it does where the rows
+/// are linked only to themselves in their 동기컷's other cuts, which 동기
+/// 해제 parts (I-150-Q6).
 Future<void> showLayerLinkWindow(
   BuildContext context, {
   required EditorSessionManager session,
@@ -21,12 +23,18 @@ Future<void> showLayerLinkWindow(
 }) {
   final layerVerbs = session.layerVerbs;
   final rows = session.rowSelectionVerbs.rowsActedOnBy(layerId);
+  final cutId = session.activeCutOrNull?.id;
+  final linkedCut = layerVerbs.activeCutIsLinkedCut;
   return showLinkWindow(
     context,
     targets: layerVerbs.linkPartnersOf(layerId),
-    unlink: layerVerbs.activeCutIsLinkedCut
+    unlink: linkedCut || !layerVerbs.unlinksAnyOf(rows)
         ? null
         : () => layerVerbs.unlinkLayers(rows),
-    unlinkOffReason: AppText.strings.linkWindowUnlinkLinkedCut,
+    unlinkOffReason: linkedCut
+        ? AppText.strings.linkWindowUnlinkLinkedCut
+        : AppText.strings.linkWindowUnlinkSyncedCut,
+    synced: layerVerbs.syncPartnersOf(layerId),
+    unsync: cutId == null ? null : () => session.cutVerbs.unsyncCut(cutId),
   );
 }

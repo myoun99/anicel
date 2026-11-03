@@ -2994,6 +2994,7 @@ class _StoryboardRailRows {
             showSeconds: _state.widget.showSeconds,
             projectFrameRate: _state.widget.projectFrameRate,
             linkedCutIds: _state.widget.linkedCutIds,
+            syncedCutIds: _state.widget.syncedCutIds,
             onOpenCutLinks: _state.widget.onOpenCutLinks,
             onEditCutBlock: _state.widget.onEditCutBlock,
           ),

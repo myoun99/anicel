@@ -1427,7 +1427,11 @@ class FrameClipboard implements BringsMedia {
   /// link is (F-115): a block of this row outside its run (a link paste,
   /// Ctrl+B), or a block of a row linked to this one (링크 복제 · 겸용컷 —
   /// one cel bank, so one id per picture). ⛔Ghosts are not showings: a
-  /// hold's ghost is its own block going on, not a second exposure.
+  /// hold's ghost is its own block going on, not a second exposure. ⛔Nor is
+  /// the row itself in its 동기컷's other cuts (I-150-Q3: 「실질 같은컷
+  /// 취급」, [LayerLinkRegistry.linkedBeyondItsSync]): it shows every cel the
+  /// row does, so every cel would read as shared, and a press would mint
+  /// every one anew — unnamed — each time.
   Map<LayerId, Set<FrameId>> sharedCelsIn(List<UnlinkRun> runs) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
@@ -1447,11 +1451,10 @@ class FrameClipboard implements BringsMedia {
         }
         (start >= run.index && start < end ? inRun : elsewhere).add(id);
       }
-      final group = registry.groupOf(cutId: cut.id, layerId: run.layer.id);
-      for (final member in group?.members ?? const <LayerLinkMember>[]) {
-        if (member.cutId == cut.id && member.layerId == run.layer.id) {
-          continue;
-        }
+      for (final member in registry.linkedBeyondItsSync(
+        cutId: cut.id,
+        layerId: run.layer.id,
+      )) {
         final row = _project
             .cutById(member.cutId)
             ?.layers

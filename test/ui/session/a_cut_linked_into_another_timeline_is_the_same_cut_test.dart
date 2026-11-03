@@ -9,9 +9,11 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
@@ -59,6 +61,21 @@ void main() {
 
   void open(EditorSessionManager s, int timeline) =>
       s.timelineVerbs.openTimeline(projectOf(s).timelines[timeline].id);
+
+  /// The picture of cel [cel] on [cut]'s first row, as [s] reads it there.
+  BitmapSurface? pictureOf(EditorSessionManager s, Cut cut, FrameId cel) =>
+      s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(cut, cut.layers.first.id, cel),
+      );
+
+  /// Stands on the 동기컷 [made] in the open timeline, on its first row,
+  /// with no band up (a paste leaves one over what it pasted).
+  void standIn(EditorSessionManager s, Cut made) {
+    s.clearFrameRangeSelection();
+    s.selectGlobalFrame(projectOf(s).tracks.single.cuts.first.duration + 1);
+    s.selectLayer(made.layers.first.id);
+    expect(s.requireActiveCut.id, made.id, reason: '⛔전제');
+  }
 
   BitmapSurface ink({int seed = 1}) {
     final pixels = Uint8List(8 * 8 * 4);
@@ -476,6 +493,220 @@ void main() {
     for (final cut in rows.keys) {
       expect(pictureOf(cut), same(picture), reason: '$cut');
     }
+  });
+
+  // 🗣️I-150-Q3: 「실질 같은컷 취급」 — the other timeline's row is the row
+  // itself, so a cel it shows is no cel shared; a row linked to it is.
+  test("the frame axis's 링크 독립 finds nothing shared in a 동기컷's row — "
+      'and, the row pasted linked beside it, it does', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    standIn(s, made);
+    drawOnCurrentFrame(s);
+    expect(
+      cutIn(s, 0, first).layers.first.frames,
+      cutIn(s, 1, made.id).layers.first.frames,
+      reason: '⛔전제: the cel is the other timeline\'s too',
+    );
+
+    expect(s.cells.canUnlinkCells, isFalse);
+    expect(s.unlinkSubject, PillSubject.nothing);
+    expect(s.cutVerbs.cutIsLinked(made.id), isFalse);
+    expect(
+      s.cutVerbs.syncedCutIds,
+      {made.id},
+      reason: 'of the open timeline\'s two cuts',
+    );
+
+    linkDuplicateActiveRow(s);
+    standIn(s, made);
+
+    expect(s.cells.canUnlinkCells, isTrue, reason: 'its copy shows the cel');
+    expect(s.cutVerbs.cutIsLinked(made.id), isTrue);
+  });
+
+  // 🗣️I-150-Q6 (유저 2026-11-04): 「동기 해제 = 독립 컷」 — the cut leaves
+  // the sync and every link of its rows, each cut keeping its pictures.
+  test('동기 해제 makes the cut one of its own — every picture and the '
+      "sheets' handwriting kept by both, and one undo makes them one "
+      'again', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    standIn(s, made);
+    drawOnCurrentFrame(s);
+    final cel = cutIn(s, 1, made.id).layers.first.frames.last.id;
+    final caches = s.renderCaches;
+    final page = ink();
+    caches.timesheetInkStore.storeBakedSurface(
+      timesheetInkPageKey(made.id, 0),
+      page,
+    );
+    final picture = pictureOf(s, cutIn(s, 1, made.id), cel);
+    expect(picture, isNotNull, reason: '⛔전제: a drawing');
+    final depth = s.historyManager.undoCount;
+
+    s.cutVerbs.unsyncCut(made.id);
+
+    void expectApart() {
+      final registry = projectOf(s).linkRegistry;
+      expect(registry.syncs, isEmpty);
+      for (final (cut, rows) in [
+        (made.id, cutIn(s, 1, made.id).layers),
+        (first, cutIn(s, 0, first).layers),
+      ]) {
+        for (final row in rows) {
+          expect(
+            registry.groupOf(cutId: cut, layerId: row.id),
+            isNull,
+            reason: '${row.name} of $cut',
+          );
+        }
+      }
+      expect(pictureOf(s, cutIn(s, 0, first), cel), same(picture));
+      expect(pictureOf(s, cutIn(s, 1, made.id), cel), same(picture));
+      for (final cut in [first, made.id]) {
+        expect(
+          caches.timesheetInkStore.bakedSurfacesForCut(cut).values,
+          [same(page)],
+          reason: '$cut',
+        );
+      }
+    }
+
+    expectApart();
+    expect(s.historyManager.undoCount, depth + 1);
+
+    s.historyManager.undo();
+    final registry = projectOf(s).linkRegistry;
+    expect(registry.syncOf(made.id)?.cuts, [first, made.id]);
+    expect(
+      registry.counterpartIn(
+        cutId: first,
+        layerId: cutIn(s, 0, first).layers.first.id,
+        targetCutId: made.id,
+      ),
+      made.layers.first.id,
+    );
+    expect(pictureOf(s, cutIn(s, 1, made.id), cel), same(picture));
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(made.id),
+      isEmpty,
+      reason: 'one page, kept once',
+    );
+    expect(
+      caches.timesheetInkStore.bakedSurfaceOrNull(
+        timesheetInkPageKey(made.id, 0),
+      ),
+      same(page),
+    );
+
+    s.historyManager.redo();
+    expectApart();
+
+    s.cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: {made.id: made.duration},
+      afterDurations: {made.id: made.duration + 4},
+    );
+    expect(
+      cutIn(s, 0, first).duration,
+      made.duration,
+      reason: 'an edit of one is no longer the other\'s',
+    );
+  });
+
+  test('동기 해제 of the cut whose id the sheets are kept under leaves the '
+      'other a copy of them — a timesheet page and a conte block', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final caches = s.renderCaches;
+    final page = ink();
+    final block = ink(seed: 2);
+    caches.timesheetInkStore.storeBakedSurface(
+      timesheetInkPageKey(made.id, 0),
+      page,
+    );
+    caches.conteInkRowStore.storeBakedSurface(
+      conteInkRowKey(made.id, 'block-1'),
+      block,
+    );
+    open(s, 0);
+
+    s.cutVerbs.unsyncCut(first);
+
+    expect(projectOf(s).linkRegistry.syncs, isEmpty);
+    for (final cut in [first, made.id]) {
+      expect(
+        caches.timesheetInkStore.bakedSurfacesForCut(cut).values,
+        [same(page)],
+        reason: '$cut',
+      );
+      expect(
+        caches.conteInkRowStore.bakedSurfaceOrNull(
+          conteInkRowKey(cut, 'block-1'),
+        ),
+        same(block),
+        reason: '$cut',
+      );
+    }
+
+    s.historyManager.undo();
+    expect(projectOf(s).linkRegistry.syncOf(first)?.cuts, [first, made.id]);
+    expect(caches.timesheetInkStore.bakedSurfacesForCut(made.id), isEmpty);
+    expect(caches.conteInkRowStore.bakedSurfacesForCut(made.id), isEmpty);
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(first).values,
+      [same(page)],
+    );
+  });
+
+  test('동기 해제 of one cut of three leaves the other two one cut', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    s.timelineVerbs.addTimeline();
+    StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+    final third = projectOf(s).tracks.single.cuts.last.id;
+    expect(
+      projectOf(s).linkRegistry.syncs.single.cuts,
+      [first, made.id, third],
+      reason: '⛔전제',
+    );
+    final caches = s.renderCaches;
+    final page = ink();
+    caches.timesheetInkStore.storeBakedSurface(
+      timesheetInkPageKey(third, 0),
+      page,
+    );
+    open(s, 1);
+
+    s.cutVerbs.unsyncCut(made.id);
+
+    final registry = projectOf(s).linkRegistry;
+    final row = cutIn(s, 0, first).layers.first.id;
+    expect(registry.syncs.single.cuts, [first, third]);
+    expect(
+      registry.counterpartIn(cutId: first, layerId: row, targetCutId: third),
+      cutIn(s, 2, third).layers.first.id,
+    );
+    expect(
+      registry.counterpartIn(cutId: first, layerId: row, targetCutId: made.id),
+      isNull,
+    );
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(made.id).values,
+      [same(page)],
+    );
+    expect(
+      caches.timesheetInkStore.bakedSurfacesForCut(third),
+      isEmpty,
+      reason: 'still kept under the first',
+    );
+
+    s.cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: {made.id: made.duration},
+      afterDurations: {made.id: made.duration + 4},
+    );
+    expect(cutIn(s, 2, third).duration, made.duration);
+    expect(cutIn(s, 0, first).duration, made.duration);
   });
 
   test('linked into the timeline the sync stands in already, it is a 겸용 '

@@ -160,21 +160,42 @@ String mediaAssetUseLine(
 /// 표시하게」 — the badge said only THAT the pictures are shared, never with
 /// whom; a link is made by duplicating now, never by a name, so the name
 /// cannot tell you either.
+///
+/// I-150-Q3 (유저 2026-11-03): 「배지에도 겸용이란 이름이아니라 동기컷? 뭐
+/// 그런식으로 따로 표시」 — the row itself in its 동기컷's other cuts is no
+/// partner here ([LayerLinkRegistry.linkedBeyondItsSync]); those cuts are
+/// listed apart ([syncPartnerLines]).
 List<String> linkPartnerLines(
   Project project, {
   required CutId cutId,
   required LayerId layerId,
 }) {
-  final group = project.linkRegistry.groupOf(cutId: cutId, layerId: layerId);
-  if (group == null) {
-    return const [];
-  }
   return [
-    for (final member in group.members)
-      if (member.cutId != cutId || member.layerId != layerId)
-        ?_memberLine(project, member),
+    for (final member in project.linkRegistry.linkedBeyondItsSync(
+      cutId: cutId,
+      layerId: layerId,
+    ))
+      ?_memberLine(project, member),
   ];
 }
+
+/// The other cuts of [cutId]'s 동기컷 (`CutSync`) — the one cut, standing in
+/// other timelines — each as [cutPlaceLine] names it, its timeline first.
+/// Empty for a cut of its own.
+List<String> syncPartnerLines(Project project, {required CutId cutId}) => [
+  for (final other in project.linkRegistry.syncOf(cutId)?.cuts ?? const [])
+    if (other != cutId) ?cutPlaceLine(project, other),
+];
+
+/// A CUT as one line: what holds it, as [ownerLine] writes it — its timeline
+/// first where that is not the open one. Null for a cut no track holds.
+String? cutPlaceLine(Project project, CutId cutId) =>
+    switch (cutPositionOf(project, cutId)) {
+      null => null,
+      final position => ownerLine(
+        placeOwnerOf(project, track: position.track, cut: position.cut),
+      ),
+    };
 
 /// [member] as [rowPlaceLine] names it; null for a member whose row is gone.
 String? _memberLine(Project project, LayerLinkMember member) {

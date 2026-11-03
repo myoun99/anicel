@@ -15,6 +15,7 @@ import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
 import 'text/word_condensation.dart';
 import '../models/storyboard_timeline_layout.dart';
+import 'dialogs/link_window.dart' show linkGlyph;
 import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart' show layerMarkColor;
 import 'timeline/timeline_cell_style.dart';
@@ -192,6 +193,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required double devicePixelRatio,
   ValueListenable<int>? windowBucket,
   Set<CutId> linkedCutIds = const {},
+  Set<CutId> syncedCutIds = const {},
   bool drawsLinkGlyphs = true,
 }) => StoryboardCutBlocksPainter(
   entries: entries,
@@ -199,6 +201,7 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   // same reading the conte row under this one draws its blocks from.
   storyboardCellsByCut: storyboardCellsByCut(entries),
   linkedCutIds: linkedCutIds,
+  syncedCutIds: syncedCutIds,
   drawsLinkGlyphs: drawsLinkGlyphs,
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
@@ -270,6 +273,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
     required this.entries,
     required this.storyboardCellsByCut,
     this.linkedCutIds = const {},
+    this.syncedCutIds = const {},
     this.drawsLinkGlyphs = true,
     required this.geometry,
     required this.crossAxisExtent,
@@ -305,6 +309,15 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// The LINKED cuts among [entries] (I-25), resolved by the host that
   /// knows the project's links — the painter only reads them.
   final Set<CutId> linkedCutIds;
+
+  /// The 동기컷 among [linkedCutIds] (I-150-Q3) — their square wears the
+  /// sync glyph ([linkGlyphOf]).
+  final Set<CutId> syncedCutIds;
+
+  /// The glyph [cutId]'s square wears — the one the painter draws and the
+  /// one the rail's button stands there with ([linkGlyph]).
+  IconData linkGlyphOf(CutId cutId) =>
+      linkGlyph(synced: syncedCutIds.contains(cutId));
 
   /// Whether the painter draws the link glyph in each linked cut's square
   /// ([linkAffordanceRectOf]). The open row stands the rail's button there
@@ -670,9 +683,8 @@ class StoryboardCutBlocksPainter extends CustomPainter
     return set.glyph.width * wordFit(set.glyph.size, room).x;
   }
 
-  /// The layer badge's glyph ([Icons.link]) in the accent, centred in [rect].
-  void _paintLinkIcon(Canvas canvas, Rect rect) {
-    const icon = Icons.link;
+  /// The layer badge's glyph ([linkGlyph]) in the accent, centred in [rect].
+  void _paintLinkIcon(Canvas canvas, Rect rect, IconData icon) {
     final glyph = laidOutGlyph(
       String.fromCharCode(icon.codePoint),
       TextStyle(
@@ -834,7 +846,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       ground: cutGround,
     );
     if (link != null && drawsLinkGlyphs) {
-      _paintLinkIcon(canvas, link);
+      _paintLinkIcon(canvas, link, linkGlyphOf(block.cutId));
     }
     canvas.restore();
 
@@ -1046,6 +1058,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
   Object get props => (
     ByIdentity(entries),
     BySet(linkedCutIds),
+    BySet(syncedCutIds),
     drawsLinkGlyphs,
     crossAxisExtent,
     minBlockWidth,

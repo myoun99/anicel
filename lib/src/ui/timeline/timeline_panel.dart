@@ -109,6 +109,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
+    this.layerSyncPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -359,6 +360,9 @@ class TimelinePanel extends StatefulWidget {
   /// Link badge (L4): the rows a layer shares its pictures with; null shows
   /// no badges.
   final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
+
+  /// The badge's 동기 lines (I-150-Q3); null shows none.
+  final List<String> Function(LayerId layerId)? layerSyncPartnersOf;
 
   /// A folder is a LAYER: its eye, opacity, blend, fx switch, FX lanes and
   /// selection all arrive through the layer hooks above. R10 R3 took its
@@ -754,6 +758,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onLayerMarkSelected: widget.onLayerMarkSelected,
       layerFxStateOf: widget.layerFxStateOf,
       layerLinkPartnersOf: widget.layerLinkPartnersOf,
+      layerSyncPartnersOf: widget.layerSyncPartnersOf,
       onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
       onToggleLayerFx: widget.onToggleLayerFx,
       layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,

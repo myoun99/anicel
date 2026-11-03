@@ -16,11 +16,12 @@ import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_info.dart';
 import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
-import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
-import '../../services/persistence/cel_places.dart' show placeOwnerOf;
+import '../../services/commands/link_mirror.dart'
+    show linkedCutSiblings, linkedCutsBeyondItsSync;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
-import '../text/place_lines.dart' show drawingPlaceLines, ownerLine;
+import '../text/place_lines.dart'
+    show cutPlaceLine, drawingPlaceLines, syncPartnerLines;
 import 'active_cut_edits.dart';
 import 'cut_copies.dart';
 import 'cut_placement.dart';
@@ -636,7 +637,10 @@ class CutVerbs {
 
   /// Whether any row of [cutId] shares its pictures through a link — what
   /// the link-independent button asks of a cut (I-45: 「프레임 독립시키거나
-  /// 레이어나 컷이나」).
+  /// 레이어나 컷이나」). A 동기컷's rows in its other cuts are no such link:
+  /// they are the row itself (I-150-Q3,
+  /// [LayerLinkRegistry.linkedBeyondItsSync]), and only 동기 해제 takes them
+  /// apart.
   bool cutIsLinked(CutId cutId) {
     final cut = _project.cutById(cutId);
     if (cut == null) {
@@ -644,12 +648,15 @@ class CutVerbs {
     }
     final registry = _project.repository.requireProject().linkRegistry;
     return cut.layers.any(
-      (layer) => registry.isLinked(cutId: cutId, layerId: layer.id),
+      (layer) => registry
+          .linkedBeyondItsSync(cutId: cutId, layerId: layer.id)
+          .isNotEmpty,
     );
   }
 
-  /// The LINKED cuts (겸용 — [linkedCutSiblings]), which wear the link icon
-  /// on their blocks (I-25: 「링크컷이 발생해있는 경우, 모든 컷에 적용」).
+  /// The LINKED cuts — 겸용 and 동기컷 alike ([linkedCutSiblings]) — which
+  /// wear the link icon on their blocks (I-25: 「링크컷이 발생해있는 경우,
+  /// 모든 컷에 적용」); a 동기컷's is the sync glyph ([syncedCutIds]).
   Set<CutId> get linkedCutIds {
     final project = _project.repository.requireProject();
     return {
@@ -659,17 +666,41 @@ class CutVerbs {
     };
   }
 
-  /// The cuts [cutId] is linked with, named as a place line names them — the
-  /// link window's list (I-25).
+  /// The 동기컷 among the open timeline's cuts (I-150-Q3): their blocks wear
+  /// the sync glyph, apart from a 겸용's link — 「배지에도 겸용이란
+  /// 이름이아니라 동기컷? 뭐 그런식으로 따로 표시」.
+  Set<CutId> get syncedCutIds {
+    final project = _project.repository.requireProject();
+    final registry = project.linkRegistry;
+    return {
+      for (final track in project.tracks)
+        for (final cut in track.cuts)
+          if (registry.syncOf(cut.id) != null) cut.id,
+    };
+  }
+
+  /// The cuts [cutId] is linked with, named as a place line names them —
+  /// the link window's list (I-25). The cut it is in the other timelines is
+  /// listed apart ([syncedCutLines]).
   List<String> linkedCutLines(CutId cutId) {
     final project = _project.repository.requireProject();
     return [
-      for (final siblingId in linkedCutSiblings(project, cutId: cutId))
-        if (cutPositionOf(project, siblingId) case final position?)
-          ownerLine(
-            placeOwnerOf(project, track: position.track, cut: position.cut),
-          ),
+      for (final siblingId in linkedCutsBeyondItsSync(project, cutId: cutId))
+        ?cutPlaceLine(project, siblingId),
     ];
+  }
+
+  /// The cut [cutId] is in the other timelines — its 동기컷's other cuts
+  /// (I-150-Q3) — the link window's 동기 list. Empty for a cut of its own.
+  List<String> syncedCutLines(CutId cutId) =>
+      syncPartnerLines(_project.repository.requireProject(), cutId: cutId);
+
+  /// 동기 해제 (I-150-Q6): [cutId] leaves its 동기컷 and every link — an
+  /// independent cut. ONE undo step.
+  void unsyncCut(CutId cutId) {
+    _project.cutCommandCoordinator.unsyncCut(cutId);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// 독립시키기 for every linked row of every cut in [cutIds] — ONE undo
