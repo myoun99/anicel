@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -277,6 +278,25 @@ void main() {
     );
 
     expect(columnsOf(tester), ['${AppText.strings.exCut} 1: [001]']);
+  });
+
+  testWidgets('a press that is not a pointer\'s — a screen reader\'s tap — '
+      'stands the list in a cut folder too', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final session = twoCuts();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session, scope: ExportScopeKind.project);
+    await tester.ensureVisible(cutFolder(second));
+    await tester.pump();
+
+    tester.binding.renderViews.first.owner!.semanticsOwner!.performAction(
+      tester.getSemantics(cutFolder(second)).id,
+      SemanticsAction.tap,
+    );
+    await tester.pump();
+
+    expect(tester.celsBoardRowIds, const ['e', 'd']);
+    semantics.dispose();
   });
 
   testWidgets('the folder the list stands in is not pressed again', (
