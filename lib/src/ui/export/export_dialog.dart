@@ -1501,24 +1501,32 @@ class ExportDialogState extends State<ExportDialog> {
       return null;
     }
     return _runningPreview(
-      subject: (ExportTab.sequence, spec.scope),
-      plan: axis,
-      format: spec.format,
-      sizeMode: spec.sizeMode,
-      layerFx: spec.layerFx,
+      (ExportTab.sequence, spec.scope),
+      axis,
+      _sequenceRun,
     );
   }
 
-  /// [plan]'s frames as a preview that RUNS, each the picture a run of
-  /// [format] writes it as — the Sequence tab's, and a cut's film on the
-  /// Cels list (I-151: 「누르면 미리보기창이 영상 미리보기로 바뀌는등」).
-  ExportPreviewDocument _runningPreview({
-    required Object subject,
-    required List<ExportFrameTask> plan,
-    required ExportFormatSelection format,
-    required ExportSizeMode sizeMode,
-    required ExportLayerFx layerFx,
-  }) {
+  /// The Sequence tab's run, as its preview shows it and its movie writes it.
+  _FrameRun get _sequenceRun {
+    final spec = _specs.sequence;
+    return (
+      format: spec.format,
+      sizeMode: spec.sizeMode,
+      layerFx: spec.layerFx,
+      withSound: spec.includeAudio,
+    );
+  }
+
+  /// [plan]'s frames as a preview that RUNS, each the picture [run] writes
+  /// it as — the Sequence tab's, and a cut's film on the Cels list (I-151:
+  /// 「누르면 미리보기창이 영상 미리보기로 바뀌는등」).
+  ExportPreviewDocument _runningPreview(
+    Object subject,
+    List<ExportFrameTask> plan,
+    _FrameRun run,
+  ) {
+    final (:format, :sizeMode, :layerFx, withSound: _) = run;
     final renderer = _previewRendererFor(layerFx: layerFx, format: format);
     // The video run burns the SE name tags in (videoRun);
     // stills stay clean because they are compositing sources. The preview
@@ -1601,16 +1609,13 @@ class ExportDialogState extends State<ExportDialog> {
     // A film runs: its frames, as the run writes them ([_cutFilmFile]).
     final film = _filmShown();
     if (film != null) {
-      final spec = _celsSpec;
       final plan = _cutFilmPlan(film.of);
       return plan.isEmpty
           ? null
           : _runningPreview(
-              subject: (_tab, film.idValue),
-              plan: plan,
-              format: spec.videoFormat,
-              sizeMode: spec.sizeMode,
-              layerFx: spec.layerFx,
+              (_tab, film.idValue),
+              plan,
+              _cutFilmRun(_celsSpec),
             );
     }
     final face = _documentFace;
@@ -2788,11 +2793,8 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.sequence;
     final plan = _sequencePlanForRun(video: true);
     final summary = await _writeFilm(
-      plan: plan,
-      format: spec.format,
-      sizeMode: spec.sizeMode,
-      layerFx: spec.layerFx,
-      withSound: spec.includeAudio,
+      plan,
+      _sequenceRun,
       path: _joinLocation(
         _singleFileName(ExportTab.sequence, spec.format.container.fileExtension),
       ),
@@ -2810,22 +2812,20 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// [plan]'s frames as ONE movie at [path]: in [format], at [sizeMode],
-  /// through [layerFx] — with the sound of those frames when [withSound] and
-  /// the format has room for it ([ExportFormatSelection.carriesSound]).
+  /// [plan]'s frames as ONE movie at [path], as [film] writes them — with
+  /// the sound of those frames when it asks for it and its format has room
+  /// for it ([ExportFormatSelection.carriesSound]).
   ///
   /// ⛔ONE FILM WRITER. The Sequence tab's movie and the Cels tab's film a
   /// cut are this call (I-151, 유저 2026-11-03: 「동영상 출력이랑 똑같이
   /// 재사용할것들 재사용」) — what each hands in is all that differs.
-  Future<ExportWriteSummary> _writeFilm({
-    required List<ExportFrameTask> plan,
-    required ExportFormatSelection format,
-    required ExportSizeMode sizeMode,
-    required ExportLayerFx layerFx,
-    required bool withSound,
+  Future<ExportWriteSummary> _writeFilm(
+    List<ExportFrameTask> plan,
+    _FrameRun film, {
     required String path,
     required void Function(int completed, int total) onProgress,
   }) async {
+    final (:format, :sizeMode, :layerFx, :withSound) = film;
     final alphaVideo = format.wantsAlpha;
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
@@ -2874,22 +2874,27 @@ class ExportDialogState extends State<ExportDialog> {
     range: ExportRange.activeCut,
   );
 
+  /// A cut's film on the list of [spec], as its preview shows it and its
+  /// file is written: at the tab's size, through its layer FX, in the
+  /// film's own format and with its sound. The size and the FX are the
+  /// tab's: my call, not the user's (I-151).
+  _FrameRun _cutFilmRun(CelsExportSpec spec) => (
+    format: spec.videoFormat,
+    sizeMode: spec.sizeMode,
+    layerFx: spec.layerFx,
+    withSound: spec.videoAudio,
+  );
+
   /// [sheet]'s film, a file after the run's pictures: its cut's frames as
-  /// the Sequence tab writes a cut ([_writeFilm]) — at the tab's size,
-  /// through its layer FX, in the film's own format and with its sound.
-  /// The size and the FX are the tab's: my call, not the user's (I-151).
+  /// the Sequence tab writes a cut ([_writeFilm]), as [_cutFilmRun] says.
   _AfterFile _cutFilmFile(ExportDocumentSheet sheet) {
-    final spec = _specs.cels;
     final plan = _cutFilmPlan(sheet.of);
     return _AfterFile(
       steps: math.max(1, plan.length),
       write: (step) async {
         final summary = await _writeFilm(
-          plan: plan,
-          format: spec.videoFormat,
-          sizeMode: spec.sizeMode,
-          layerFx: spec.layerFx,
-          withSound: spec.videoAudio,
+          plan,
+          _cutFilmRun(_specs.cels),
           path: _joinLocation(sheet.fileName),
           onProgress: (completed, _) => step(completed),
         );
@@ -5061,6 +5066,16 @@ class _AfterFile {
   final int steps;
   final Future<bool> Function(void Function(int done) step) write;
 }
+
+/// How a run of frames is written — the Sequence tab's movie, or a cut's
+/// film on the Cels tab: its format, its size, its layer FX, and whether
+/// the sound of its frames rides along where the format has room for it.
+typedef _FrameRun = ({
+  ExportFormatSelection format,
+  ExportSizeMode sizeMode,
+  ExportLayerFx layerFx,
+  bool withSound,
+});
 
 /// One picture file of a run: where it is written, what it is, and the
 /// encoder its format asks for (null is the default PNG).
