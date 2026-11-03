@@ -110,6 +110,15 @@ class ResampleRequest {
   final int inputRate;
   final int outputRate;
   final String? libraryPathOverride;
+
+  /// This conversion of [samples] instead.
+  ResampleRequest withSamples(Float32List samples) => ResampleRequest(
+    samples: samples,
+    channels: channels,
+    inputRate: inputRate,
+    outputRate: outputRate,
+    libraryPathOverride: libraryPathOverride,
+  );
 }
 
 /// How a store runs a rate conversion; production is
@@ -153,20 +162,34 @@ ConformRunner conformingInto(QaAudioDevice? Function() device) =>
 
 /// The production resample runner, its PCM placed as [conformingInto]
 /// places a conform's.
+///
+/// 🚨THE CONFORM IT CONVERTS IS READ WHERE IT LIES (resample-request-copies-
+/// the-conform-to-the-worker): the conform's samples are a buffer of the
+/// device's, lent to the worker by address for as long as it works
+/// ([QaAudioDevice.lendToAWorker]). ↩️The request carried them, and a
+/// message copies what it carries — on the thread that draws, a sound's
+/// whole PCM once more for each sound a device at another rate asks for.
 ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
     (request) async {
       final into = device();
       if (into == null) {
         return runResampleInIsolate(request);
       }
-      final landed = await _resampleOnAWorker(request, into.buffers);
+      final landed = await into.lendToAWorker(
+        request.samples,
+        (lent) => _resampleOnAWorker(
+          lent == null ? request : request.withSamples(Float32List(0)),
+          lent,
+          into.buffers,
+        ),
+      );
       return landed.address == 0
           ? landed.samples
           : into.adoptSamples(landed.address, landed.floats);
     };
 
 /// The workers' jobs, each in a function of its own: [onAWorker] copies
-/// the closure's whole context, and these hold a request and two addresses.
+/// the closure's whole context, and these hold a request and addresses.
 Future<({ConformResult result, int address, int floats})> _conformOnAWorker(
   ConformRequest request,
   AudioBuffers buffers,
@@ -183,11 +206,23 @@ Future<({ConformResult result, int address, int floats})> _conformOnAWorker(
   );
 });
 
+/// [lent]: where the samples [request] left out lie, when it left them out.
 Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
   ResampleRequest request,
+  ({int address, int floats})? lent,
   AudioBuffers buffers,
 ) => onAWorker(() {
-  final converted = runResampleHere(request);
+  assert(
+    lent == null || request.samples.isEmpty,
+    'a lent conversion carries its samples by address alone',
+  );
+  final converted = runResampleHere(
+    lent == null
+        ? request
+        : request.withSamples(
+            Pointer<Float>.fromAddress(lent.address).asTypedList(lent.floats),
+          ),
+  );
   final placed = placedWhereTheDevicePlays(
     converted,
     audioBuffersHere(buffers),

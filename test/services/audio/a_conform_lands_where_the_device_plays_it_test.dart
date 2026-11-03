@@ -108,6 +108,74 @@ void main() {
     expect(device.debugHoldsOf(converted), 1);
   }, skip: skip);
 
+  test('🎯a conform the device holds is read where it lies by the worker '
+      'that converts it, and lent only for as long as it works', () async {
+    final device = openNull();
+    final plain = runConformHere(aSound()).samples!;
+    final from = device.newSamples(plain.length)!..setAll(0, plain);
+    final request = ResampleRequest(
+      samples: from,
+      channels: 2,
+      inputRate: 48000,
+      outputRate: 44100,
+      libraryPathOverride: libraryPath,
+    );
+    final here = runResampleHere(request.withSamples(plain));
+    debugWorkersRunHere = false;
+
+    final converting = resamplingInto(() => device)(request);
+    expect(device.debugHoldsOf(from), 2, reason: 'lent to the worker');
+    final converted = await converting;
+
+    expect(converted, here);
+    expect(device.debugHoldsOf(converted), 1);
+    expect(device.debugHoldsOf(from), 1, reason: 'the lend given back');
+  }, skip: skip);
+
+  group('lendToAWorker', () {
+    test('lends the buffer a made list lies in, held while the work runs',
+        () async {
+      final device = openNull();
+      final samples = device.newSamples(3)!..setAll(0, [0.5, -0.25, 1]);
+      int? holdsWhileWorking;
+
+      final read = await device.lendToAWorker(samples, (lent) async {
+        holdsWhileWorking = device.debugHoldsOf(samples);
+        return Pointer<Float>.fromAddress(lent!.address)
+            .asTypedList(lent.floats)
+            .toList();
+      });
+
+      expect(read, [0.5, -0.25, 1]);
+      expect(holdsWhileWorking, 2);
+      expect(device.debugHoldsOf(samples), 1);
+    }, skip: skip);
+
+    test('gives the lend back when the work fails', () async {
+      final device = openNull();
+      final samples = device.newSamples(2)!;
+
+      await expectLater(
+        device.lendToAWorker<void>(samples, (_) async {
+          throw StateError('the worker failed');
+        }),
+        throwsStateError,
+      );
+      expect(device.debugHoldsOf(samples), 1);
+    }, skip: skip);
+
+    test('lends nothing for a list the device did not make', () async {
+      final device = openNull();
+      final lends = <Object?>[];
+
+      await device.lendToAWorker(Float32List(4), (lent) async {
+        lends.add(lent);
+      });
+
+      expect(lends, [null]);
+    }, skip: skip);
+  });
+
   test('with no device, the PCM stays where it was made', () async {
     final request = aSound();
 
