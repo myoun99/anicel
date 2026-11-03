@@ -66,7 +66,7 @@ void main() {
   ];
 
   testWidgets('🚨a GIF\'s rows stand where a GIF is chosen, and nowhere '
-      'else — beside the channels row of every format that keeps alpha', (
+      'else — beside the channels row a PNG has', (
     tester,
   ) async {
     const channels = 'export-format-channels-rgba';
@@ -85,8 +85,9 @@ void main() {
     );
     expect(
       shown([...gifRows, channels]),
-      [channels],
-      reason: 'ProRes 4444 keeps alpha, as a GIF does',
+      isEmpty,
+      reason: 'ProRes 4444 keeps alpha by its name (v10: 「4444(α)」) — '
+          'asked nothing',
     );
 
     await pump(

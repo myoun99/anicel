@@ -441,6 +441,37 @@ void main() {
         );
       }
     });
+
+    test('🚨a clear pixel carries no error of its own into the laid ones '
+        'beside it: under a clear row, greys dither as they do '
+        'alone', () async {
+      // The same greys, alone and under a row left clear — one colour more
+      // asked of the second for its clear entry, so both palettes are found
+      // among the same greys at the same size.
+      final alone = pixelsOf(
+        await written(
+          'alone.gif',
+          await greys(),
+          settings: const ExportGifSettings(colors: 2),
+        ),
+      );
+      final underClear = pixelsOf(
+        await written(
+          'under-clear.gif',
+          await painted(
+            64,
+            3,
+            (x, y) => y == 0
+                ? const ui.Color(0x00000000)
+                : ui.Color.fromARGB(255, x * 4, x * 4, x * 4),
+          ),
+          alpha: true,
+          settings: const ExportGifSettings(colors: 3),
+        ),
+      );
+      expect(changesOf(alone), greaterThan(1), reason: 'LIVENESS — dithered');
+      expect(underClear.sublist(64), alone);
+    });
   });
 
   test('every machine may pick it: no encoder and no ffmpeg stands between '

@@ -821,7 +821,7 @@ class ExportFormatModule extends StatelessWidget {
     final codecs = selection.isVideo
         ? capabilities.codecsFor(selection.container)
         : const <ExportVideoCodec>[];
-    final showChannels = selection.offersAlpha;
+    final showChannels = selection.asksChannels;
     final showBackground =
         selection.isStill && selection.effectiveChannels == ExportChannels.rgb;
     final showBitrate = selection.isVideo && selection.videoCodec.takesBitrate;

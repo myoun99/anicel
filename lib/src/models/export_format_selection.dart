@@ -348,6 +348,14 @@ class ExportFormatSelection {
   bool get offersAlpha =>
       isVideo ? videoCodec.supportsAlpha : stillFormat.supportsAlpha;
 
+  /// Whether the window ASKS [channels] of the chosen format: every still
+  /// that keeps alpha, and a GIF — its clear colour a choice as a PNG's
+  /// alpha is (I-152). ProRes 4444 keeps alpha by its name (v10, 유저 확정
+  /// 2026-07-21: 「4444(α)」) and is asked nothing.
+  bool get asksChannels => isVideo
+      ? container == ExportVideoContainer.gif
+      : stillFormat.supportsAlpha;
+
   /// The channels the output actually gets: the choice where the format
   /// can keep alpha ([offersAlpha]), opaque everywhere else.
   ExportChannels get effectiveChannels =>
