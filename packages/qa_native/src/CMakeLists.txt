@@ -460,11 +460,29 @@ if(NOT ANDROID AND NOT IOS)
     QA_FX_SAMPLE_SPEC=2)
   target_compile_definitions(qa_fx_plugin_sample_no_render PRIVATE
     QA_FX_SAMPLE_NO_RENDER=1)
-  add_executable(qa_fx_plugin_test
-    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_test.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin.c")
+  # The same test twice: the second with its engine interpreting, as an
+  # iPad's does (QA_FX_WASM_INTERPRET, qa_fx_plugin.c) — so every machine
+  # that builds this asks the iPad's path, which none of them is.
+  foreach(qa_fx_test IN ITEMS qa_fx_plugin_test qa_fx_plugin_interpreted_test)
+    add_executable(${qa_fx_test}
+      "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_test.c"
+      "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin.c")
+    target_compile_definitions(${qa_fx_test} PRIVATE
+      "QA_FX_SAMPLE=\"$<TARGET_FILE:qa_fx_plugin_sample>\""
+      "QA_FX_SAMPLE_SPEC2=\"$<TARGET_FILE:qa_fx_plugin_sample_spec2>\""
+      "QA_FX_SAMPLE_NO_RENDER=\"$<TARGET_FILE:qa_fx_plugin_sample_no_render>\"")
+    add_dependencies(${qa_fx_test} qa_fx_plugin_sample
+      qa_fx_plugin_sample_spec2 qa_fx_plugin_sample_no_render)
+    qa_link_wasmtime(${qa_fx_test})
+    if(NOT WIN32)
+      target_link_libraries(${qa_fx_test} ${CMAKE_DL_LIBS})
+    endif()
+  endforeach()
+  target_compile_definitions(qa_fx_plugin_interpreted_test PRIVATE
+    QA_FX_WASM_INTERPRET=1)
   foreach(qa_fx_target IN ITEMS qa_fx_plugin_sample qa_fx_plugin_sample_spec2
-      qa_fx_plugin_sample_no_render qa_fx_plugin_test)
+      qa_fx_plugin_sample_no_render qa_fx_plugin_test
+      qa_fx_plugin_interpreted_test)
     set_target_properties(${qa_fx_target} PROPERTIES
       C_STANDARD 99
       C_STANDARD_REQUIRED ON
@@ -473,18 +491,9 @@ if(NOT ANDROID AND NOT IOS)
       target_compile_options(${qa_fx_target} PRIVATE /utf-8)
     endif()
   endforeach()
-  target_compile_definitions(qa_fx_plugin_test PRIVATE
-    "QA_FX_SAMPLE=\"$<TARGET_FILE:qa_fx_plugin_sample>\""
-    "QA_FX_SAMPLE_SPEC2=\"$<TARGET_FILE:qa_fx_plugin_sample_spec2>\""
-    "QA_FX_SAMPLE_NO_RENDER=\"$<TARGET_FILE:qa_fx_plugin_sample_no_render>\"")
-  add_dependencies(qa_fx_plugin_test qa_fx_plugin_sample
-    qa_fx_plugin_sample_spec2 qa_fx_plugin_sample_no_render)
-  qa_link_wasmtime(qa_fx_plugin_test)
-  if(NOT WIN32)
-    target_link_libraries(qa_fx_plugin_test ${CMAKE_DL_LIBS})
-  endif()
   enable_testing()
   add_test(NAME qa_fx_plugin COMMAND qa_fx_plugin_test)
+  add_test(NAME qa_fx_plugin_interpreted COMMAND qa_fx_plugin_interpreted_test)
 endif()
 
 if(WIN32)

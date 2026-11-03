@@ -349,6 +349,24 @@ static int32_t native_render(qa_fx_plugin *plugin,
 // ── WebAssembly ──────────────────────────────────────────────────────────
 
 #if QA_FX_WASM
+// 🗣️fx-plugin-sdk-publish-Q5 (유저 2026-11-04): an iPad makes no machine code
+// as it runs — Apple gives no app the right — so there the engine compiles a
+// module to Pulley, its own interpreter's bytecode, and interprets it: the
+// same engine and this same host, not WebKit's WebAssembly beside them
+// (「웹뷰자체가 사본이란 느낌드니까」), about 10x slower by Wasmtime's docs —
+// 「그 상태에서 최대한 개선하는식으로」. A test build asks it anywhere
+// (QA_FX_WASM_INTERPRET=1, qa_fx_plugin_interpreted_test).
+#ifndef QA_FX_WASM_INTERPRET
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#define QA_FX_WASM_INTERPRET 1
+#else
+#define QA_FX_WASM_INTERPRET 0
+#endif
+#endif
+
 static void say_wasm(char *error, int32_t capacity, const char *doing,
                      wasmtime_error_t *wasm_error, wasm_trap_t *trap) {
   wasm_byte_vec_t message;
@@ -366,6 +384,26 @@ static void say_wasm(char *error, int32_t capacity, const char *doing,
              message.data == NULL ? "" : message.data);
   }
   wasm_byte_vec_delete(&message);
+}
+
+// The engine a module runs in: compiled to this machine's code, or to
+// Pulley's where none may be made (above).
+static wasm_engine_t *new_engine(char *error, int32_t capacity) {
+#if QA_FX_WASM_INTERPRET
+  wasm_config_t *config = wasm_config_new();
+  wasmtime_error_t *wasm_error = wasmtime_config_target_set(
+      config, sizeof(void *) == 8 ? "pulley64" : "pulley32");
+  if (wasm_error != NULL) {
+    say_wasm(error, capacity, "the interpreter", wasm_error, NULL);
+    wasm_config_delete(config);
+    return NULL;
+  }
+  return wasm_engine_new_with_config(config);
+#else
+  (void)error;
+  (void)capacity;
+  return wasm_engine_new();
+#endif
 }
 
 static int find_export(qa_fx_plugin *plugin, const char *name,
@@ -458,7 +496,11 @@ QA_EXPORT void *qa_fx_plugin_open_wasm(const uint8_t *bytes, int64_t length,
     return NULL;
   }
   plugin->kind = KIND_WASM;
-  plugin->engine = wasm_engine_new();
+  plugin->engine = new_engine(error, error_capacity);
+  if (plugin->engine == NULL) {
+    free(plugin);
+    return NULL;
+  }
   plugin->store = wasmtime_store_new(plugin->engine, NULL, NULL);
   wasmtime_context_t *context = wasmtime_store_context(plugin->store);
   // WASI with nothing behind it — no folder, no network, no environment —
@@ -673,6 +715,19 @@ QA_EXPORT void qa_fx_plugin_close(void *handle) {
   }
   free(plugin->block);
   free(plugin);
+}
+
+// 1 when [handle] is a module its engine interprets (QA_FX_WASM_INTERPRET),
+// as the engine itself says; 0 for compiled code and a native library.
+QA_EXPORT int32_t qa_fx_plugin_interprets(void *handle) {
+  qa_fx_plugin *plugin = (qa_fx_plugin *)handle;
+#if QA_FX_WASM
+  if (plugin != NULL && plugin->kind == KIND_WASM) {
+    return wasmtime_engine_is_pulley(plugin->engine) ? 1 : 0;
+  }
+#endif
+  (void)plugin;
+  return 0;
 }
 
 // The job's size as this build lays it, for the Dart struct that mirrors
