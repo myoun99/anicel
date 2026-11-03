@@ -1730,6 +1730,94 @@ class BrushFrameStore {
     }
   }
 
+  /// The picture the cel [from] shows made the cel [to]'s, at [canvasSize]
+  /// — a copy minted beside its source taking what its source shows NOW,
+  /// in the tier the source keeps it in.
+  ///
+  /// 🗣️Card `store-copies-a-kept-cel-without-thawing` (유저 2026-11-04,
+  /// timeline-copy-thaws-every-cel-Q1 「저장 레인이 ①」): a timeline copy
+  /// read every cel it copied as a use — each one kept in the saved file or
+  /// parked in the room thawed hot, and the copy took the thawed picture —
+  /// and FU rose to 3000MB.
+  ///
+  /// · Hot: the surface itself ([storeCopiedSurface]) — the tiles are shared.
+  /// · Kept at [canvasSize]: the bytes as they are kept. A stretch of the
+  ///   saved file is the copy's stretch too, and the save writes it under
+  ///   the copy's own name; a parked one is parked again under the copy's
+  ///   name — one cel, one file, since a parked file goes with its cel
+  ///   ([_dropCold]).
+  /// · Kept at another size: read for this copy alone, laid to
+  ///   [canvasSize] and parked — never hot.
+  /// · Nothing kept, or bytes that will not read right now: nothing, as a
+  ///   read of it answers nothing.
+  ///
+  /// ⚠️A room that refuses the park leaves the copy hot: over budget is a
+  /// number, and losing the drawing is not ([_storeCold]).
+  void copyCel(
+    BrushFrameKey from,
+    BrushFrameKey to, {
+    required CanvasSize canvasSize,
+  }) {
+    final source = _canonicalize(from);
+    final hot = _bakedSurfaces[source];
+    if (hot != null) {
+      storeCopiedSurface(
+        to,
+        resizeBitmapSurfaceCanvas(hot, canvasSize),
+        source: from,
+      );
+      return;
+    }
+    final kept = _kept(source);
+    if (kept == null) {
+      return;
+    }
+    final key = _canonicalize(to);
+    if (!kept.parked && kept.ref.canvasSize == canvasSize) {
+      _keepCopy(key, () => _fileCels[key] = kept.ref);
+      return;
+    }
+    final blob = _keptBlobOrNull(source);
+    if (blob == null) {
+      return;
+    }
+    final copy = kept.ref.canvasSize == canvasSize
+        ? AnicelCelBlob.reKeyed(blob, key)
+        : AnicelCelBlob.ofSurface(
+            key,
+            resizeBitmapSurfaceCanvas(
+              _behind(blob.decode().toSurface()),
+              canvasSize,
+            ),
+          );
+    final path = ScratchCelFiles.write(
+      _scratchNamespace,
+      anicelCelEntryName(key),
+      copy.bytes,
+    );
+    if (path == null) {
+      storeBakedSurface(key, copy.decode().toSurface());
+      return;
+    }
+    _keepCopy(key, () => _keepCold(key, _parkedRef(path, copy)));
+  }
+
+  /// [key] keeping, from now on, only the copy [place] keeps — a picture
+  /// new to its key, and unsaved.
+  void _keepCopy(BrushFrameKey key, void Function() place) {
+    final estimate = _hotByteEstimates.remove(key);
+    if (estimate != null) {
+      _hotBytes -= estimate;
+    }
+    _bakedSurfaces.remove(key);
+    _dropCold(key);
+    _fileCels.remove(key);
+    place();
+    _update(key, _markCacheDirty);
+    _markDirty(key);
+    _noteCelContent(key);
+  }
+
   /// Re-homes stored drawings under new keys, AS GIVEN — the cut-scoped ops
   /// that manage canonical storage directly (a cut deleted, a cut made
   /// 겸용). Content is untouched, so the display cache travels along and
