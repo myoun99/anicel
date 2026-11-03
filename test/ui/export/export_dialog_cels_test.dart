@@ -44,6 +44,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindowField;
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -1352,6 +1353,26 @@ void main() {
     expect(
       state.debugSpecs.cels.naming.cutFolderName,
       const ExportNameAffix(prefix: 'csm_14_', suffix: '_lo'),
+    );
+    String labelOf(String side) => tester
+        .widget<AppWindowField>(
+          find.ancestor(
+            of: field('cut', side),
+            matching: find.byType(AppWindowField),
+          ),
+        )
+        .label!;
+    expect(
+      (labelOf('prefix'), labelOf('suffix')),
+      (AppText.strings.exPrefix, AppText.strings.exSuffix),
+    );
+    expect(
+      [
+        of('project', 'prefix').controller!.text,
+        of('project', 'suffix').controller!.text,
+      ],
+      ['', ''],
+      reason: 'the project\'s fields are its own',
     );
 
     await tapKey(tester, 'export-cel-folder-project');

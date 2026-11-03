@@ -152,7 +152,21 @@ void main() {
         isNot(const ExportCelNaming()),
         reason: 'the project folder\'s name is still worn',
       );
-      expect(naming.hashCode, isNot(const ExportCelNaming().hashCode));
+      for (final one in const [
+        ExportCelNaming(projectFolderName: ExportNameAffix(prefix: 'csm_')),
+        ExportCelNaming(cutFolderName: ExportNameAffix(suffix: '_lo')),
+      ]) {
+        expect(one, isNot(const ExportCelNaming()));
+        expect(one.hashCode, isNot(const ExportCelNaming().hashCode));
+      }
+      for (final other in const [
+        ExportNameAffix(prefix: 'csm_14_'),
+        ExportNameAffix(suffix: '_lo'),
+        ExportNameAffix(prefix: 'csm_14_', suffix: '_LO'),
+      ]) {
+        expect(other, isNot(naming.cutFolderName));
+        expect(other.hashCode, isNot(naming.cutFolderName.hashCode));
+      }
     });
 
     test('🗣️I-153: a project-wide export makes the cut\'s folder whatever its '
