@@ -146,7 +146,6 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
         ? null
         : Offset.zero & document.pageSize(widget.page);
     final canvas = paper?.size ?? const Size(640, 360);
-    final marks = widget.marks;
     final flip = widget.flip;
     return BrushCanvasPanel(
       // The panel keeps the view, and a view nobody has framed is a fit of
@@ -182,24 +181,38 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
       transport: widget.transport,
       documentName: document == null ? null : widget.documentName,
       documentAbsent: widget.documentAbsent,
-      contentOverride: (context, viewport) => Stack(
-        children: [
+      contentOverride: (context, viewport) =>
+          _content(context, viewport, document, paper),
+    );
+  }
+
+  /// What the panel shows through [viewport]: the page of [document] on
+  /// [paper] with its marks over it, and the wait while it is not drawn yet
+  /// — or the host's nothing.
+  Widget _content(
+    BuildContext context,
+    CanvasViewport viewport,
+    ViewerDocument? document,
+    Rect? paper,
+  ) {
+    final marks = widget.marks;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: document == null
+              ? widget.nothing
+              : _picture(context, viewport, document),
+        ),
+        if (document != null && marks != null)
           Positioned.fill(
-            child: document == null
-                ? widget.nothing
-                : _picture(context, viewport, document),
+            child: IgnorePointer(child: marks(viewport, paper!.size)),
           ),
-          if (document != null && marks != null)
-            Positioned.fill(
-              child: IgnorePointer(child: marks(viewport, paper!.size)),
-            ),
-          if (document != null &&
-              widget.pagesAndRun.rasters.imageOf(widget.page) == null)
-            Positioned.fill(
-              child: ViewerPageLoading(key: ValueKey<String>(_key('loading'))),
-            ),
-        ],
-      ),
+        if (document != null &&
+            widget.pagesAndRun.rasters.imageOf(widget.page) == null)
+          Positioned.fill(
+            child: ViewerPageLoading(key: ValueKey<String>(_key('loading'))),
+          ),
+      ],
     );
   }
 
