@@ -41,7 +41,13 @@ class AnicelOpenResult {
     this.mediaEntryNames = const {},
     this.session = AnicelOpenedSessionFields.none,
     this.mediaMoved = const {},
+    this.carriesNamedAnew = false,
   });
+
+  /// Whether the open gave a carry a name of its own
+  /// ([AnicelProjectDocument.carriesNamedAnew]) — the session opens unsaved,
+  /// so its next save carries those bytes (F-550-Q2).
+  final bool carriesNamedAnew;
 
   /// The files the open found where the project's folder took them — old
   /// path to new — which [project]'s references already follow. What the
@@ -1733,6 +1739,7 @@ class AnicelFileService {
       cels: cels,
       mediaEntryNames: mediaEntryNames,
       mediaMoved: remap,
+      carriesNamedAnew: document.carriesNamedAnew,
       // Through the SAME remap the references just went through, and
       // narrowed to what the pool still holds. A fingerprint filed under a
       // path the project no longer uses describes nothing, and the one

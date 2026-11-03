@@ -179,6 +179,12 @@ const Set<String> _allowedFiles = {
   // the planner hands over an import's.
   'lib/src/services/commands/cut_command_coordinator.dart',
   'lib/src/services/commands/relink_media_asset_command.dart',
+  // 🗣️F-550-Q2 (유저 2026-11-04: 「원본에서 다시 품는다」): an OPEN names a
+  // carry whose name holds no bytes of its own (`projectWithEveryCarryNamed`)
+  // and takes nothing — the answer was 「다음 저장 때 디스크의 원본에서」, and
+  // an open is no place to copy a file. The carry reads its original until
+  // that save, which takes the bytes.
+  'lib/src/services/persistence/anicel_project_archive.dart',
   // A .clip's sounds are carried through the pool's `addMediaAssets`, whose
   // `_admit` holds every carried entry's bytes before it records one — the
   // funnel this scan looks for, one call in. The door builds no asset, and

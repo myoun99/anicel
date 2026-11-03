@@ -33,6 +33,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/media_asset.dart'
     show
         MediaCarry,
+        isOneStoredName,
         mediaCarryName,
         mediaNameParts,
         mintMediaCarry;
@@ -1130,6 +1131,7 @@ class AnicelProjectDocument {
     required this.mediaRelativePaths,
     required this.mediaEntryNames,
     required this.session,
+    required this.carriesNamedAnew,
   });
 
   final Project project;
@@ -1142,6 +1144,11 @@ class AnicelProjectDocument {
 
   /// What the file carried beside the project, as written.
   final AnicelOpenedSessionFields session;
+
+  /// Whether the read gave a carry a name of its own
+  /// ([projectWithEveryCarryNamed]): the file holds what [project] no
+  /// longer says, and its next save is what carries those bytes.
+  final bool carriesNamedAnew;
 }
 
 /// The project a `.anicel`'s `project.json` bytes hold, with its format
@@ -1166,8 +1173,10 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   if (saved > anicelFormatVersion || saved < anicelOldestReadFormatVersion) {
     throw AnicelFormatRefused(saved);
   }
+  final written = Project.fromJson(decoded['project'] as Map<String, dynamic>);
+  final project = projectWithEveryCarryNamed(written);
   return AnicelProjectDocument(
-    project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
+    project: project,
     mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
     mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
     session: AnicelOpenedSessionFields(
@@ -1175,6 +1184,50 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
       mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
       resume: anicelObjectMapField(decoded['resume']),
     ),
+    carriesNamedAnew: !identical(project, written),
+  );
+}
+
+/// [project] with a name of its own for every carry whose name holds no
+/// bytes of its own: one that is not ONE stored name ([isOneStoredName]),
+/// or one another carry of the pool wears too. Each then finds nothing
+/// under its name — not in the file, not staged — and reads its original,
+/// and the next save carries that under the new name
+/// (`storedMediaBytesFor`); an original that is gone is a missing file the
+/// relink hunt finds. [project] itself when every name is its own.
+///
+/// 🗣️F-550-Q2 (유저 2026-11-04: 「원본에서 다시 품는다」). A carry made
+/// before carries had names (`''`, before 09-24) was read as the entry its
+/// path alone named, until edebae921 (10-08) stopped reading that shape —
+/// such a file would be refused by its format number. FU had been saved
+/// again by newer builds, a new number with the old carries inside, and
+/// opened: every nameless carry asked for the ONE entry `media/`, and the
+/// next save wrote each one's original under it in turn and kept the last.
+/// A picture and two sounds became one sound.
+///
+/// ⚠️The save law's one exception, for this shape — and it reads nothing of
+/// the old meaning: what the old name pointed at is left behind.
+Project projectWithEveryCarryNamed(Project project) {
+  final worn = <String>{};
+  final shared = {
+    for (final asset in project.mediaAssets)
+      if (asset.carriedAs case final name? when !worn.add(name)) name,
+  };
+  bool holdsNoneOfItsOwn(String? name) =>
+      name != null && (!isOneStoredName(name) || shared.contains(name));
+  if (!project.mediaAssets.any(
+    (asset) => holdsNoneOfItsOwn(asset.carriedAs),
+  )) {
+    return project;
+  }
+  return project.copyWith(
+    mediaAssets: [
+      for (final asset in project.mediaAssets)
+        if (holdsNoneOfItsOwn(asset.carriedAs))
+          asset.copyWith(carriedAs: mintMediaCarry(asset.path))
+        else
+          asset,
+    ],
   );
 }
 

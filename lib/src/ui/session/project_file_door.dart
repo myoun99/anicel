@@ -1130,8 +1130,9 @@ class ProjectFileDoor {
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED
       // mismatched cels, where memory no longer matches the file (R7q2), or
-      // moved a sheet's photos onto a file it found moved (I-97).
-      unsaved: read.bindTo != null || healed,
+      // moved a sheet's photos onto a file it found moved (I-97), or gave a
+      // carry a name of its own, whose bytes the next save takes (F-550-Q2).
+      unsaved: read.bindTo != null || healed || result.carriesNamedAnew,
     );
     warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened
