@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/rail_glyph_button.dart' show RailPlateButton;
@@ -23,6 +24,10 @@ import '../text/vertical_writing_text.dart';
 /// A button the legend's heading slot is
 /// ([TimelineLayerControlsHeader.heading]):
 /// its words, its tooltip, and the list it opens.
+///
+/// 🗣️I-150 (유저 2026-11-03): 「콘티패널에서 레전드의 레이어 텍스트
+/// 없애고, 트랙이란 버튼 신설 … 해당 영역 전부 버튼」 — the conte panel's
+/// timeline list.
 class LegendHeadingButton {
   const LegendHeadingButton({
     required this.label,
@@ -35,6 +40,66 @@ class LegendHeadingButton {
 
   /// Built as the list opens, so it reads what stands then.
   final LegendFlyout entries;
+
+  /// [words] as this button: the heading slot whole, its words where the
+  /// rows' heading stands, on a clear plate the legend's own shows through
+  /// — and its hover with it (유저: 「호버하면 버튼 흰색호버색 된다던가」).
+  Widget around(Widget words, {required double rowHeight}) =>
+      RailFlyoutTrigger(
+        key: const ValueKey<String>('legend-heading'),
+        name: 'legend-heading',
+        tooltip: tooltip,
+        entriesBuilder: entries,
+        hoverShape: AppShapes.control(rowHeight),
+        child: words,
+      );
+}
+
+/// The legend's heading: the rows' name — or [heading]'s words, and the slot
+/// is that button (I-150) — in [ink].
+///
+/// Plain heading (R4 #3): the old LAYER ▾ flyout's jobs moved to the command
+/// bar (add) and the lane-column toggle (fold all). Stood up it writes
+/// vertically, the same table the columns' own names use.
+Widget _legendHeading({
+  required bool isVertical,
+  required LegendHeadingButton? heading,
+  required double rowHeight,
+  required Color ink,
+}) {
+  final words = heading?.label ?? AppText.strings.tlLegendLayer;
+  final Widget text = isVertical
+      ? VerticalWritingText(
+          key: const ValueKey<String>('legend-layer'),
+          // The same word as lying down: F-37 tabled the timeline's heading
+          // and left this one English.
+          text: words,
+          // Stands up with the names it heads (user, 2026-08-08): a heading
+          // lying down over a column of upright names reads as a different
+          // kind of label than the thing it labels.
+          latinForm: VerticalLatinForm.upright,
+          mainAlignment: 0,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            color: ink,
+          ),
+        )
+      : Align(
+          alignment: Alignment.centerLeft,
+          child: EllipsisText(
+            words,
+            key: const ValueKey<String>('legend-layer'),
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 9,
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w600,
+              color: ink,
+            ),
+          ),
+        );
+  return heading?.around(text, rowHeight: rowHeight) ?? text;
 }
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide
@@ -138,12 +203,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// toggle folds/unfolds ALL layers based on this (R3 feedback #5).
   final bool anyLanesExpanded;
 
-  /// The button the heading is where a host hands one in — the whole slot,
-  /// its words in place of the rows' heading; null keeps the heading words.
-  ///
-  /// 🗣️I-150 (유저 2026-11-03): 「콘티패널에서 레전드의 레이어 텍스트
-  /// 없애고, 트랙이란 버튼 신설 … 해당 영역 전부 버튼」 — the conte panel's
-  /// timeline list.
+  /// The heading as a button, where a host hands one in.
   final LegendHeadingButton? heading;
 
   /// Grid-provided lane sweeps (the grid owns lane expansion knowledge).
@@ -451,28 +511,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
           );
   }
 
-  /// The heading's words: the rows' name, or the [heading] button's.
-  String get _headingWords => heading?.label ?? AppText.strings.tlLegendLayer;
-
-  /// [words] as the heading slot holds them: as they are, or the [heading]
-  /// button — the slot whole, a rail plate as every legend cell is.
-  Widget _headingButton(Widget words) => switch (heading) {
-    null => words,
-    final heading => RailFlyoutTrigger(
-      key: const ValueKey<String>('legend-heading'),
-      name: 'legend-heading',
-      tooltip: heading.tooltip,
-      entriesBuilder: heading.entries,
-      // A clear plate: the legend's own shows through, and the hover with
-      // it (유저: 「호버하면 버튼 흰색호버색 된다던가」).
-      hoverShape: AppShapes.control(metrics.layerRowHeight),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: words,
-      ),
-    ),
-  };
-
   /// Legend icons read like the row toggles now (R3 feedback #2): GRAY at
   /// rest, ACCENT while their column's display-solo/state is engaged.
   Widget _legendIcon(
@@ -545,45 +583,13 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     // (R4 #8): solo one layer TYPE like the mark colors.
                     typeButton: _buildTypeButton(menus, restColor),
                   ),
-                  // Plain heading (R4 #3): the old LAYER ▾ flyout's jobs
-                  // moved to the command bar (add) and the lane-column
-                  // toggle (fold all). Stood up it writes vertically, the
-                  // same table the columns' own names use. A host's
-                  // [heading] makes the slot a button, its words in place.
                   Expanded(
-                    child: _headingButton(isVertical
-                        ? VerticalWritingText(
-                            key: const ValueKey<String>('legend-layer'),
-                            // The same word as lying down: F-37 tabled the
-                            // timeline's heading and left this one English.
-                            text: _headingWords,
-                            // Stands up with the names it heads (user,
-                            // 2026-08-08): a heading lying down over a
-                            // column of upright names reads as a different
-                            // kind of label than the thing it labels.
-                            latinForm: VerticalLatinForm.upright,
-                            mainAlignment: 0,
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          )
-                        : Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              _headingWords,
-                              key: const ValueKey<String>('legend-layer'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 9,
-                                letterSpacing: 0.8,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          )),
+                    child: _legendHeading(
+                      isVertical: isVertical,
+                      heading: heading,
+                      rowHeight: metrics.layerRowHeight,
+                      ink: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   ...layerRailTrailingCells(
                     axis: axis,

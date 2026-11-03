@@ -94,6 +94,10 @@ const ledger = <String, Why>{
   // The shortcut window's list of presets (I-107): which layout the keys
   // are, one out of the list — `key` is `'shortcut-preset-${preset.id}'`.
   'shortcuts/shortcut_settings_dialog.dart | key': Why.aChoice,
+  // The conte legend's list of timelines (I-150): which timeline is open,
+  // one out of the list, as the shortcut window's presets are.
+  "storyboard/timeline_list.dart | 'timeline-\${timeline.id.value}'":
+      Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-\${option.keySlug}'":
       Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-none'": Why.aChoice,
