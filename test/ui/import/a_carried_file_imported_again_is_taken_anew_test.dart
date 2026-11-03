@@ -30,6 +30,7 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/project_lookup.dart' show requireCut;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart' show partsOf;
@@ -496,6 +497,17 @@ void main() {
       await openWindow(tester, session, path);
       await settleAsync(tester, () => bar().frameCount != 1);
       expect(bar().frameCount, framesOf(3), reason: 'the file, not the pool');
+      final heard = tester
+          .widget<ImportPreview>(find.byType(ImportPreview))
+          .sound
+          ?.conformStore;
+      expect(
+        heard
+            ?.peaksFor(path)
+            ?.durationFrames(session.projectSettings.projectFrameRate),
+        framesOf(3),
+        reason: 'what plays is the file too, not the pool\'s copy',
+      );
 
       await pressImport(tester);
       final peaks = await tester.runAsync(
