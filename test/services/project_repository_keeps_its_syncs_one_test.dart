@@ -81,13 +81,14 @@ void main() {
     ),
   );
 
-  Layer rowOf(ProjectRepository repository, CutId id) => repository
+  Cut cutOf(ProjectRepository repository, CutId id) => repository
       .requireProject()
       .tracksOfEveryTimeline
       .expand((track) => track.cuts)
-      .singleWhere((cut) => cut.id == id)
-      .layers
-      .single;
+      .singleWhere((cut) => cut.id == id);
+
+  Layer rowOf(ProjectRepository repository, CutId id) =>
+      cutOf(repository, id).layers.single;
 
   Layer drawnOn(Layer row) =>
       row.copyWith(frames: [cel, added], timeline: drawn);
@@ -114,5 +115,41 @@ void main() {
 
     expect(rowOf(r, y).timeline, drawn);
     expect(rowOf(r, x).timeline, drawn);
+  });
+
+  test('a row the table links before the other cut holds it is no row of '
+      'that cut yet: a step run outside the history, writing the table '
+      'first and the rows of each cut after, makes it once', () {
+    final r = repository();
+    const xNew = LayerId('x-b');
+    const yNew = LayerId('y-b');
+    r.updateProject(
+      (project) => project.copyWith(
+        linkRegistry: project.linkRegistry.copyWith(
+          groups: [
+            ...project.linkRegistry.groups,
+            LayerLinkGroup(
+              id: 'link-2',
+              members: [member('t1', x, xNew), member('t2', y, yNew)],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    r.insertLayer(
+      cutId: y,
+      layer: Layer(id: yNew, name: 'B', frames: [cel]),
+    );
+    expect(
+      [for (final row in cutOf(r, x).layers) row.id],
+      [xRow],
+      reason: 'x-b is the row the next write puts in x',
+    );
+    r.insertLayer(
+      cutId: x,
+      layer: Layer(id: xNew, name: 'B', frames: [cel]),
+    );
+    expect([for (final row in cutOf(r, x).layers) row.id], [xRow, xNew]);
   });
 }

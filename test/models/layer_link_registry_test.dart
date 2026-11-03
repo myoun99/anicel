@@ -121,6 +121,7 @@ void main() {
             .syncCanonicalOf(const CutId('cut-b')),
         const CutId('cut-a'),
       );
+      expect(synced, isNot(registry()), reason: 'the syncs are the table');
     });
 
     test('a table with a sync and no group is no empty table', () {

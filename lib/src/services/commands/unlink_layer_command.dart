@@ -52,64 +52,89 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   @override
   void execute() {
     final project = repository.requireProject();
-    final attached = requireAttachedGroup(
-      project,
-      cutId: cutId,
-      layerId: sourceLayerId,
-    );
-    final track = attached.track;
-    final members = attached.members;
+    final registry = project.linkRegistry;
+    // A 동기컷's rows leave TOGETHER and stay one group: the sync is one
+    // cut, and its row is unlinked wherever the cut stands (I-150-Q3).
+    final leaving = {
+      for (final member in requireAttachedGroup(
+        project,
+        cutId: cutId,
+        layerId: sourceLayerId,
+      ).members)
+        ...registry.rowAcrossItsSync(cutId: cutId, layerId: member.id),
+    };
+    bool leaves(LayerLinkMember member) =>
+        leaving.contains((member.cutId, member.layerId));
 
-    // 1. Capture the shared pixels THROUGH the still-linked member keys
-    //    (they resolve to the canonical cels). LOCAL, so the pixels are
-    //    gone the moment this call returns — see [_forkedCels].
+    // 1. Each group parted in two — the rows leaving and the rows staying,
+    //    a part of one dissolving — and the part the group's cels are NOT
+    //    kept under (its first member's) starts from its own copy of them.
+    //    ↩️Only the leaving rows were copied: unlinked in the cut the cels
+    //    were kept under, the rows staying lost every picture, and the
+    //    undo's emptying of the copies emptied the kept cels.
+    final groups = <LayerLinkGroup>[];
+    final copiers = <LayerLinkMember>[];
+    for (final group in registry.groups) {
+      final staying = [
+        for (final member in group.members)
+          if (!leaves(member)) member,
+      ];
+      final going = [
+        for (final member in group.members)
+          if (leaves(member)) member,
+      ];
+      if (staying.length >= 2) {
+        groups.add(group.copyWith(members: staying));
+      }
+      if (going.length >= 2) {
+        groups.add(
+          staying.length >= 2
+              ? LayerLinkGroup(id: '${group.id}:sync', members: going)
+              : group.copyWith(members: going),
+        );
+      }
+      if (staying.isNotEmpty && going.isNotEmpty) {
+        copiers.add((leaves(group.members.first) ? staying : going).first);
+      }
+    }
+
+    // 2. The cels captured THROUGH the copier's still-linked keys (they
+    //    resolve to the kept cels). LOCAL, so the pixels are gone the
+    //    moment this call returns — see [_forkedCels].
     final forked = <(BrushFrameKey, BitmapSurface)>[];
     _forkedCels.clear();
-    for (final member in members) {
-      if (project.linkRegistry.groupOf(cutId: cutId, layerId: member.id) ==
-          null) {
-        continue;
-      }
-      for (final frame in member.frames) {
-        final memberKey = BrushFrameKey(
+    for (final copier in copiers) {
+      final row = requireLayer(
+        project,
+        cutId: copier.cutId,
+        layerId: copier.layerId,
+      );
+      for (final frame in row.frames) {
+        final key = BrushFrameKey(
           projectId: project.id,
-          trackId: track.id,
-          cutId: cutId,
-          layerId: member.id,
+          trackId: copier.trackId,
+          cutId: copier.cutId,
+          layerId: copier.layerId,
           frameId: frame.id,
         );
-        final surface = brushFrameStore.bakedSurfaceOrNull(memberKey);
+        final surface = brushFrameStore.bakedSurfaceOrNull(key);
         if (surface != null) {
-          forked.add((memberKey, surface));
-          _forkedCels.add((memberKey, surface.canvasSize));
+          forked.add((key, surface));
+          _forkedCels.add((key, surface.canvasSize));
         }
       }
     }
 
-    // 2. Leave the link groups (singleton leftovers dissolve).
     snapshotRegistry(project);
-    repository.updateProject((current) {
-      final memberIds = {for (final member in members) member.id};
-      final groups = <LayerLinkGroup>[];
-      for (final group in current.linkRegistry.groups) {
-        final remaining = [
-          for (final groupMember in group.members)
-            if (!(groupMember.cutId == cutId &&
-                memberIds.contains(groupMember.layerId)))
-              groupMember,
-        ];
-        if (remaining.length >= 2) {
-          groups.add(group.copyWith(members: remaining));
-        }
-      }
-      return current.copyWith(
+    repository.updateProject(
+      (current) => current.copyWith(
         linkRegistry: current.linkRegistry.copyWith(groups: groups),
-      );
-    });
+      ),
+    );
 
-    // 3. The member keys now resolve to THEMSELVES — store the captured
-    //    pixels as the layer's own cels (surfaces are immutable, sharing
-    //    the object is a true copy-on-write fork).
+    // 3. A copier's keys now resolve to THEMSELVES — the first of its part
+    //    — so the captured pixels are that part's own cels (surfaces are
+    //    immutable, sharing the object is a true copy-on-write fork).
     for (final (key, surface) in forked) {
       brushFrameStore.storeBakedSurface(key, surface);
     }

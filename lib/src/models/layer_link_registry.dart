@@ -156,6 +156,21 @@ class LayerLinkRegistry {
   /// sync's canonical, or itself.
   CutId syncCanonicalOf(CutId cutId) => _syncOfCut[cutId]?.canonical ?? cutId;
 
+  /// The row (cut, layer) is in every cut of [cutId]'s sync — itself among
+  /// them: one row of one cut, wherever the cut stands (I-150-Q3). Itself
+  /// alone in a cut of its own.
+  List<(CutId, LayerId)> rowAcrossItsSync({
+    required CutId cutId,
+    required LayerId layerId,
+  }) => [
+    (cutId, layerId),
+    for (final other in syncOf(cutId)?.cuts ?? const <CutId>[])
+      if (other != cutId)
+        if (counterpartIn(cutId: cutId, layerId: layerId, targetCutId: other)
+            case final row?)
+          (other, row),
+  ];
+
   /// Each member's group, the first to hold it. A registry never changes,
   /// so this is read once.
   ///

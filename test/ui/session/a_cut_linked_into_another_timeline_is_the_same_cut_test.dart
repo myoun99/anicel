@@ -361,6 +361,122 @@ void main() {
     expect([for (final row in cutIn(s, 0, first).layers) row.id], rowsBefore);
   });
 
+  test('made a 겸용 of a cut where it stands, the 동기컷 takes its sync '
+      'along — the other timeline\'s cut is the same 겸용', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final here = projectOf(s).tracks.single.cuts.first.id;
+
+    s.cutCommandCoordinator.convertCutToLinked(
+      originCutId: here,
+      targetCutId: made.id,
+    );
+
+    final registry = projectOf(s).linkRegistry;
+    final synced = cutIn(s, 1, made.id);
+    expect(registry.syncOf(made.id)?.cuts, [first, made.id]);
+    expect(
+      [for (final row in cutIn(s, 0, first).layers) row.name],
+      [for (final row in synced.layers) row.name],
+    );
+    for (final row in synced.layers) {
+      if (registry.counterpartIn(
+            cutId: made.id,
+            layerId: row.id,
+            targetCutId: here,
+          ) !=
+          null) {
+        expect(
+          registry.counterpartIn(
+            cutId: made.id,
+            layerId: row.id,
+            targetCutId: first,
+          ),
+          isNotNull,
+          reason: '${row.name}: one row of one cut',
+        );
+      }
+    }
+  });
+
+  test('a row of the 동기컷 unlinked from the 겸용 where it stands leaves with '
+      'the other timeline\'s row — still one row, every picture kept', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    s.selectGlobalFrame(projectOf(s).tracks.single.cuts.first.duration + 1);
+    s.selectLayer(made.layers.first.id);
+    drawOnCurrentFrame(s);
+    s.selectTrackRow(conteTrackId);
+    final before = {for (final cut in projectOf(s).tracks.single.cuts) cut.id};
+    StoryboardToolbarPanelContext(s).copyFrame();
+    StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+    StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+    final kept = [
+      for (final cut in projectOf(s).tracks.single.cuts)
+        if (!before.contains(cut.id)) cut.id,
+    ];
+    expect(kept, hasLength(2), reason: '⛔전제: two 겸용 of it');
+    final row = made.layers.first.id;
+    LayerId? rowIn(CutId cut) => projectOf(s).linkRegistry.counterpartIn(
+      cutId: made.id,
+      layerId: row,
+      targetCutId: cut,
+    );
+    final rows = {
+      made.id: row,
+      first: rowIn(first)!,
+      for (final cut in kept) cut: rowIn(cut)!,
+    };
+    final cel = cutIn(s, 1, made.id).layers.first.frames.last.id;
+    BitmapSurface? pictureOf(CutId id) {
+      final cut = projectOf(s).tracksOfEveryTimeline
+          .expand((track) => track.cuts)
+          .singleWhere((cut) => cut.id == id);
+      return s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(cut, rows[id]!, cel),
+      );
+    }
+
+    final picture = pictureOf(made.id);
+    expect(picture, isNotNull, reason: '⛔전제: a drawing');
+    expect(pictureOf(kept.first), same(picture), reason: '⛔전제: 겸용');
+
+    s.cutCommandCoordinator.unlinkLayer(cutId: made.id, layerId: row);
+
+    final registry = projectOf(s).linkRegistry;
+    expect(rowIn(first), rows[first]);
+    expect([for (final cut in kept) rowIn(cut)], [null, null]);
+    expect(
+      registry.counterpartIn(
+        cutId: kept.first,
+        layerId: rows[kept.first]!,
+        targetCutId: kept.last,
+      ),
+      rows[kept.last],
+      reason: 'the 겸용 left behind are one another\'s still',
+    );
+    final left = registry.groupOf(
+      cutId: kept.first,
+      layerId: rows[kept.first]!,
+    );
+    expect(
+      registry.groupOf(cutId: made.id, layerId: row)?.id,
+      isNot(left?.id),
+      reason: 'two groups, two names',
+    );
+    for (final cut in rows.keys) {
+      expect(pictureOf(cut), same(picture), reason: '$cut');
+    }
+
+    s.historyManager.undo();
+    expect([for (final cut in kept) rowIn(cut)], [
+      for (final cut in kept) rows[cut],
+    ]);
+    for (final cut in rows.keys) {
+      expect(pictureOf(cut), same(picture), reason: '$cut');
+    }
+  });
+
   test('linked into the timeline the sync stands in already, it is a 겸용 '
       'of the cut there — a sync stands in a timeline once', () {
     final s = session();
