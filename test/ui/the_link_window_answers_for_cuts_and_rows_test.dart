@@ -5,7 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_timeline.dart';
+import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/dialogs/link_window.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -47,6 +51,43 @@ void main() {
       expect(s.cutVerbs.linkedCutIds, {source, linked});
       expect(s.cutVerbs.linkedCutLines(source), [s.cutById(linked)!.name]);
       expect(s.layerVerbs.activeCutIsLinkedCut, isTrue);
+    });
+
+    // 🗣️I-150 (유저 2026-11-03): 「그런 소재위치 표시할때 트랙위치도 표시」.
+    test('a partner in another timeline is named after that timeline', () {
+      final made = session();
+      final source = made.requireActiveCut.id;
+      made.cutVerbs.createLinkedCutFromActiveCut();
+      final linked = made.requireActiveCut.id;
+      final project = made.repository.requireProject();
+      final track = project.tracks.single;
+      Track holding(CutId cut, String trackId) => track.copyWith(
+        id: TrackId(trackId),
+        cuts: [for (final held in track.cuts) if (held.id == cut) held],
+      );
+      final s = EditorSessionManager(
+        initialProject: project.copyWith(
+          timelines: [
+            ProjectTimeline(
+              id: const TimelineId('main'),
+              number: 1,
+              tracks: [holding(source, 'main-v')],
+            ),
+            ProjectTimeline(
+              id: const TimelineId('pv'),
+              number: 2,
+              name: '예고',
+              tracks: [holding(linked, 'pv-v')],
+            ),
+          ],
+          currentTimelineId: const TimelineId('main'),
+        ),
+      );
+      addTearDown(s.dispose);
+
+      expect(s.cutVerbs.linkedCutLines(source), [
+        '예고 · ${s.cutById(linked)!.name}',
+      ]);
     });
 
     test('a link duplicate is not a linked cut, and its rows unlink as one '

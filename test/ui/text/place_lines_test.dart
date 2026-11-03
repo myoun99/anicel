@@ -8,10 +8,13 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/project_timeline.dart';
+import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/media/media_asset_uses.dart';
 import 'package:anicel/src/services/persistence/cel_places.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/place_lines.dart';
 
 /// A use of a pool file reads as the line a person finds it by (F-118): a
@@ -28,7 +31,7 @@ void main() {
         const RowMediaUse(
           cutId: CutId('c1'),
           layerId: LayerId('walk'),
-          ownerName: 'C1',
+          owner: PlaceOwner('C1'),
           layerName: 'walk',
         ),
         framePlace: counted,
@@ -40,7 +43,7 @@ void main() {
   test('a frame that carries the file reads the way the lost-picture list '
       'names a drawing', () {
     const place = DrawingCelPlace(
-      ownerName: 'Video',
+      owner: PlaceOwner('Video'),
       layerName: 'S1',
       celName: 'walk.mp4',
       blockStarts: [14],
@@ -69,7 +72,7 @@ void main() {
     expect(
       celPlaceLine(
         const DrawingCelPlace(
-          ownerName: 'C1',
+          owner: PlaceOwner('C1'),
           layerName: 'BG',
           celName: '',
           blockStarts: [],
@@ -81,12 +84,48 @@ void main() {
     );
   });
 
+  test('🗣️I-150: a place in another timeline says that timeline before '
+      'what holds it, on every sheet', () {
+    final away = PlaceOwner(
+      'C1',
+      away: ProjectTimeline(
+        id: const TimelineId('pv'),
+        number: 2,
+        name: '예고',
+        tracks: const [],
+      ),
+    );
+    String said(CelPlace place) => celPlaceLine(place, framePlace: counted);
+    final strings = AppText.strings;
+
+    expect(
+      said(
+        DrawingCelPlace(
+          owner: away,
+          layerName: 'BG',
+          celName: '',
+          blockStarts: const [],
+        ),
+      ),
+      '예고 · C1 · BG',
+    );
+    expect(
+      said(ConteRowInkPlace(owner: away, celName: '1')),
+      '${strings.panelConte} · 예고 · C1 · 1',
+    );
+    expect(said(EnvelopeInkPlace(away)), '${strings.panelEnvelope} · 예고 · C1');
+    expect(
+      said(TimesheetInkPlace(away)),
+      '${strings.panelTimesheet} · 예고 · C1',
+    );
+  });
+
   group('🗣️F-284 — a frame\'s line ends with where its blocks start', () {
     // 유저 2026-10-04: 「링크된 오디오 링크버튼눌러서 쓰는곳 확인할때,
     // 인덱스도 표시. 예를들어 se는 지금 S1 등 트랙이름까지만 표시되는데,
     // S1의 15 … 이런 표기는 초+코마 표기로 바꾼거에 대응하도록 법 통일」.
     DrawingCelPlace sound(List<int> blockStarts) => DrawingCelPlace(
-      ownerName: 'Video',
+      owner: const PlaceOwner('Video'),
       layerName: 'S1',
       celName: '',
       blockStarts: blockStarts,
@@ -183,6 +222,56 @@ void main() {
           layerId: const LayerId('book'),
         ),
         ['C1 · BG', 'C2 · BG'],
+      );
+    });
+
+    // 🗣️I-150 (유저 2026-11-03): 「소재위치 표시할때 트랙위치도 표시」 — and
+    // board I-150-Q3's recommended answer: away from the open one only.
+    test('a partner in another timeline says that timeline first; one in '
+        'the open timeline does not', () {
+      final cuts = project.tracks.single.cuts;
+      Project apart({required TimelineId open}) => project.copyWith(
+        timelines: [
+          ProjectTimeline(
+            id: const TimelineId('main'),
+            number: 1,
+            tracks: [
+              Track(
+                id: const TrackId('t1'),
+                name: 'V',
+                cuts: cuts.take(2).toList(),
+              ),
+            ],
+          ),
+          ProjectTimeline(
+            id: const TimelineId('pv'),
+            number: 2,
+            name: '예고',
+            tracks: [
+              Track(id: const TrackId('t2'), name: 'V', cuts: [cuts.last]),
+            ],
+          ),
+        ],
+        currentTimelineId: open,
+      );
+
+      expect(
+        linkPartnerLines(
+          apart(open: const TimelineId('main')),
+          cutId: const CutId('c1'),
+          layerId: const LayerId('bg'),
+        ),
+        ['C2 · BG', '예고 · C3 · BOOK'],
+      );
+      final first = AppText.strings.timelineNumbered(1);
+      expect(
+        linkPartnerLines(
+          apart(open: const TimelineId('pv')),
+          cutId: const CutId('c3'),
+          layerId: const LayerId('book'),
+        ),
+        ['$first · C1 · BG', '$first · C2 · BG'],
+        reason: 'a timeline with no name of its own says its number name',
       );
     });
 

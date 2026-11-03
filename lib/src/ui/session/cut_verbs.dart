@@ -17,10 +17,10 @@ import '../../models/timesheet_info.dart';
 import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
-import '../../services/persistence/cel_places.dart' show rowOwnerName;
+import '../../services/persistence/cel_places.dart' show placeOwnerOf;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
-import '../text/place_lines.dart' show drawingPlaceLines;
+import '../text/place_lines.dart' show drawingPlaceLines, ownerLine;
 import 'active_cut_edits.dart';
 import 'cut_copies.dart';
 import 'cut_placement.dart';
@@ -651,7 +651,9 @@ class CutVerbs {
     return [
       for (final siblingId in linkedCutSiblings(project, cutId: cutId))
         if (cutPositionOf(project, siblingId) case final position?)
-          rowOwnerName(track: position.track, cut: position.cut),
+          ownerLine(
+            placeOwnerOf(project, track: position.track, cut: position.cut),
+          ),
     ];
   }
 

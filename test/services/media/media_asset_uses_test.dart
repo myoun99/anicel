@@ -104,8 +104,8 @@ void main() {
 
   /// Which sheet of which cut, in this test's own words.
   String sheetSaid(CelPlace place) => switch (place) {
-    EnvelopeInkPlace(:final cutName) => 'envelope $cutName',
-    TimesheetInkPlace(:final cutName) => 'timesheet $cutName',
+    EnvelopeInkPlace(:final owner) => 'envelope ${owner.name}',
+    TimesheetInkPlace(:final owner) => 'timesheet ${owner.name}',
     _ => 'elsewhere',
   };
 
@@ -114,10 +114,10 @@ void main() {
     RowMediaUse(
       :final cutId,
       :final layerId,
-      :final ownerName,
+      :final owner,
       :final layerName,
     ) =>
-      'row ${cutId.value}/${layerId.value} = $ownerName · $layerName',
+      'row ${cutId.value}/${layerId.value} = ${owner.name} · $layerName',
     FrameMediaUse(
       :final trackId,
       :final cutId,
@@ -126,7 +126,7 @@ void main() {
       :final place,
     ) =>
       'frame ${trackId.value}/${cutId?.value}/${layerId.value}/'
-          '${frameId.value} = ${place.ownerName} · ${place.layerName} · '
+          '${frameId.value} = ${place.owner.name} · ${place.layerName} · '
           '${place.celName} @${place.blockStarts}',
     SheetPhotoMediaUse(:final key, :final place) =>
       'sheet ${key.frameId.value} = ${sheetSaid(place)}',

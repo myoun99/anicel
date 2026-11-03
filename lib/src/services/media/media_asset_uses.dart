@@ -10,9 +10,10 @@ import '../persistence/cel_places.dart'
     show
         CelPlace,
         DrawingCelPlace,
+        PlaceOwner,
         RowDrawingPlaces,
         celPlacesByKey,
-        rowOwnerName;
+        placeOwnerOf;
 import '../project_lookup.dart' show projectLayersWithOwners;
 
 /// Where a project uses a file of its media pool, by the names a person
@@ -36,13 +37,13 @@ final class RowMediaUse extends MediaAssetUse {
   const RowMediaUse({
     required this.cutId,
     required this.layerId,
-    required this.ownerName,
+    required this.owner,
     required this.layerName,
   });
 
   final CutId cutId;
   final LayerId layerId;
-  final String ownerName;
+  final PlaceOwner owner;
   final String layerName;
 }
 
@@ -121,11 +122,12 @@ Iterable<MediaAssetUse> mediaAssetUsesOf(
   for (final owned in projectLayersWithOwners(project)) {
     final layer = owned.layer;
     final cut = owned.cut;
+    final owner = placeOwnerOf(project, track: owned.track, cut: cut);
     if (cut != null && layer.mediaReference?.assetPath == path) {
       yield RowMediaUse(
         cutId: cut.id,
         layerId: layer.id,
-        ownerName: rowOwnerName(track: owned.track, cut: cut),
+        owner: owner,
         layerName: layer.name,
       );
     }
@@ -136,7 +138,7 @@ Iterable<MediaAssetUse> mediaAssetUsesOf(
     if (linked.isEmpty) {
       continue;
     }
-    final row = RowDrawingPlaces(track: owned.track, cut: cut, layer: layer);
+    final row = RowDrawingPlaces(owner: owner, layer: layer);
     for (final frame in layer.frames) {
       if (linked.contains(frame.id)) {
         yield FrameMediaUse(

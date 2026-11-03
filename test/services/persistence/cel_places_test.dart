@@ -113,12 +113,12 @@ void main() {
 
   /// What each place says, in this test's own words.
   String said(CelPlace place) => switch (place) {
-    DrawingCelPlace(:final ownerName, :final layerName, :final celName) =>
-      'drawing $ownerName/$layerName/$celName',
-    ConteRowInkPlace(:final cutName, :final celName) =>
-      'conte row $cutName/$celName',
-    EnvelopeInkPlace(:final cutName) => 'envelope $cutName',
-    TimesheetInkPlace(:final cutName) => 'timesheet $cutName',
+    DrawingCelPlace(:final owner, :final layerName, :final celName) =>
+      'drawing ${owner.name}/$layerName/$celName',
+    ConteRowInkPlace(:final owner, :final celName) =>
+      'conte row ${owner.name}/$celName',
+    EnvelopeInkPlace(:final owner) => 'envelope ${owner.name}',
+    TimesheetInkPlace(:final owner) => 'timesheet ${owner.name}',
     ViewerInkPlace(:final fileName) => 'viewer $fileName',
     GoneCelPlace() => 'gone',
   };

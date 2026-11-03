@@ -7,19 +7,31 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
+import '../../models/project_timeline.dart';
 import '../../models/track.dart';
 import '../../services/media/media_asset_uses.dart';
 import '../../services/persistence/cel_places.dart';
 import '../../services/project_lookup.dart';
 import 'app_strings.dart';
 
+/// What a timeline is called: its name, or the one its number gives.
+String timelineNameOf(ProjectTimeline timeline) =>
+    timeline.name ?? AppText.strings.timelineNumbered(timeline.number);
+
+/// What holds a place as one line: its name, after its timeline's where
+/// that is not the open one ([PlaceOwner]).
+String ownerLine(PlaceOwner owner) => switch (owner.away) {
+  null => owner.name,
+  final timeline => '${timelineNameOf(timeline)} · ${owner.name}',
+};
+
 /// A ROW as one line: what holds it — its cut, or its track — and its name.
 ///
 /// Four lists name a row — a frame's place (its first two parts), a media
 /// pool file's row uses, a link badge's partners and a lane key's link
 /// notice — so a row reads the same wherever it is listed.
-String rowPlaceLine({required String ownerName, required String layerName}) =>
-    '$ownerName · $layerName';
+String rowPlaceLine({required PlaceOwner owner, required String layerName}) =>
+    '${ownerLine(owner)} · $layerName';
 
 /// A place in a project as one line of a list: the names it is found by,
 /// joined the way the canvas title joins a cut, a layer and a frame.
@@ -43,21 +55,22 @@ String celPlaceLine(CelPlace place, {required FramePlaceLabel framePlace}) {
     // 이외 레이어는 이름없으면 진짜 이름없도록」), so its row names it alone.
     // ↩️The image row's alone until then — the layer's name is the picture's.
     DrawingCelPlace(
-      :final ownerName,
+      :final owner,
       :final layerName,
       :final celName,
       :final blockStarts,
     ) =>
       [
-        rowPlaceLine(ownerName: ownerName, layerName: layerName),
+        rowPlaceLine(owner: owner, layerName: layerName),
         if (celName.isNotEmpty) celName,
         if (blockStarts.isNotEmpty) blockStarts.map(framePlace).join(', '),
       ].join(' · '),
-    ConteRowInkPlace(:final cutName, :final celName) =>
-      '${strings.panelConte} · $cutName · $celName',
-    EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',
-    TimesheetInkPlace(:final cutName) =>
-      '${strings.panelTimesheet} · $cutName',
+    ConteRowInkPlace(:final owner, :final celName) =>
+      '${strings.panelConte} · ${ownerLine(owner)} · $celName',
+    EnvelopeInkPlace(:final owner) =>
+      '${strings.panelEnvelope} · ${ownerLine(owner)}',
+    TimesheetInkPlace(:final owner) =>
+      '${strings.panelTimesheet} · ${ownerLine(owner)}',
     ViewerInkPlace(:final fileName) =>
       '${strings.panelMediaViewer} · $fileName',
     GoneCelPlace() => strings.saveCelsLostGone,
@@ -87,8 +100,7 @@ List<String> drawingPlaceLines(
     return const [];
   }
   final row = RowDrawingPlaces(
-    track: owned.track,
-    cut: owned.cut,
+    owner: placeOwnerOf(project, track: owned.track, cut: owned.cut),
     layer: owned.layer,
   );
   return [
@@ -106,7 +118,7 @@ List<String> drawingPlaceLines(
 List<String> rowPlaceLines(Project project, LayerId layerId) => [
   if (_rowOf(project, layerId) case final owned?)
     rowPlaceLine(
-      ownerName: rowOwnerName(track: owned.track, cut: owned.cut),
+      owner: placeOwnerOf(project, track: owned.track, cut: owned.cut),
       layerName: owned.layer.name,
     ),
 ];
@@ -129,8 +141,8 @@ String mediaAssetUseLine(
   WorkPictureMediaUse(:final picture) =>
     '${AppText.strings.workSettingsTitle} · '
         '${AppText.strings.workPictureName(picture)}',
-  RowMediaUse(:final ownerName, :final layerName) => rowPlaceLine(
-    ownerName: ownerName,
+  RowMediaUse(:final owner, :final layerName) => rowPlaceLine(
+    owner: owner,
     layerName: layerName,
   ),
   FrameMediaUse(:final place) => celPlaceLine(place, framePlace: framePlace),
@@ -174,7 +186,7 @@ String? _memberLine(Project project, LayerLinkMember member) {
     return null;
   }
   return rowPlaceLine(
-    ownerName: rowOwnerName(track: position.track, cut: position.cut),
+    owner: placeOwnerOf(project, track: position.track, cut: position.cut),
     layerName: layer.name,
   );
 }

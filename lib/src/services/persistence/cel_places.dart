@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart' show IterableExtension;
+
 import '../../models/brush_frame_key.dart';
 import '../../models/cel_bank_lanes.dart' show laneBlockStarts;
 import '../../models/conte/conte_ink_keys.dart';
@@ -12,6 +14,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaFileShownName;
 import '../../models/project.dart';
+import '../../models/project_timeline.dart';
 import '../../models/track.dart';
 import '../project_lookup.dart' show projectLayersWithOwners;
 
@@ -27,25 +30,62 @@ sealed class CelPlace {
   const CelPlace();
 }
 
-/// What holds a row, by the name a person finds it by: its [cut], or the
-/// [track] for a row the track owns (an SE row).
+/// What holds a row, by the name a person finds it by: its cut, or the
+/// track for a row the track owns (an SE row) — and the timeline it is in,
+/// where that is not the open one.
 ///
 /// ONE naming for every list that sends a person to a row — the pictures a
-/// save could not carry, and the uses of a media pool file (F-118).
-String rowOwnerName({required Track track, required Cut? cut}) =>
-    cut?.name ?? track.name;
+/// save could not carry, the uses of a media pool file (F-118) and the
+/// places a link reaches (I-25).
+///
+/// 🗣️I-150 (유저 2026-11-03): 「컷의 링크버튼 누르거나 뭐 아무튼 그런
+/// 소재위치 표시할때 트랙위치도 표시」. It names the timeline only away from
+/// the open one — board I-150-Q3's recommended answer, asked and not yet
+/// answered: one rule for the screen and the print.
+final class PlaceOwner {
+  const PlaceOwner(this.name, {this.away});
+
+  final String name;
+
+  /// The timeline holding it, when that is not the open one.
+  final ProjectTimeline? away;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlaceOwner && other.name == name && other.away?.id == away?.id;
+
+  @override
+  int get hashCode => Object.hash(name, away?.id);
+}
+
+/// What holds a row in [project]: its [cut], or the [track] for a row the
+/// track owns — in whichever timeline holds the track.
+PlaceOwner placeOwnerOf(
+  Project project, {
+  required Track track,
+  required Cut? cut,
+}) {
+  bool holds(ProjectTimeline timeline) =>
+      timeline.tracks.any((held) => held.id == track.id);
+  return PlaceOwner(
+    cut?.name ?? track.name,
+    away: holds(project.currentTimeline)
+        ? null
+        : project.timelines.firstWhereOrNull(holds),
+  );
+}
 
 /// A drawing on a row: named by what holds the row — its cut, or the track
 /// for a row the track owns (an SE row) — the row, and [celName].
 final class DrawingCelPlace extends CelPlace {
   const DrawingCelPlace({
-    required this.ownerName,
+    required this.owner,
     required this.layerName,
     required this.celName,
     required this.blockStarts,
   });
 
-  final String ownerName;
+  final PlaceOwner owner;
   final String layerName;
 
   /// What the timeline prints where the drawing's block starts
@@ -62,26 +102,23 @@ final class DrawingCelPlace extends CelPlace {
 }
 
 /// The drawings of ONE row, each as [DrawingCelPlace] names it: [layer],
-/// held by [cut] — or by [track] when the track owns the row.
+/// held by [owner].
 ///
 /// A row's object and not a function of a row and a drawing, because where
 /// a drawing's blocks start is ONE walk of the row's lane however many of
 /// its drawings are asked for — a save that could not carry a row's
 /// thousand pictures asks a thousand times.
 final class RowDrawingPlaces {
-  RowDrawingPlaces({
-    required Track track,
-    required Cut? cut,
-    required Layer layer,
-  }) : _ownerName = rowOwnerName(track: track, cut: cut),
-       _layer = layer;
+  RowDrawingPlaces({required PlaceOwner owner, required Layer layer})
+    : _owner = owner,
+      _layer = layer;
 
-  final String _ownerName;
+  final PlaceOwner _owner;
   final Layer _layer;
   late final _blockStarts = laneBlockStarts(_layer.timeline);
 
   DrawingCelPlace of(Frame frame) => DrawingCelPlace(
-    ownerName: _ownerName,
+    owner: _owner,
     layerName: _layer.name,
     celName: celNumberOrMark(frame.name, kind: _layer.kind),
     blockStarts: _blockStarts[frame.id] ?? const [],
@@ -91,25 +128,28 @@ final class RowDrawingPlaces {
 /// Conte handwriting of one storyboard block: its cut, and the drawing the
 /// block shows.
 final class ConteRowInkPlace extends CelPlace {
-  const ConteRowInkPlace({required this.cutName, required this.celName});
+  const ConteRowInkPlace({required this.owner, required this.celName});
 
-  final String cutName;
+  /// Its cut.
+  final PlaceOwner owner;
   final String celName;
 }
 
 /// Ink in a box of one cut's envelope.
 final class EnvelopeInkPlace extends CelPlace {
-  const EnvelopeInkPlace(this.cutName);
+  const EnvelopeInkPlace(this.owner);
 
-  final String cutName;
+  /// Its cut.
+  final PlaceOwner owner;
 }
 
 /// Ink on a page of one cut's timesheet — the third sheet, said as the
 /// envelope's is (I-97: a photo on a page is a use of its pool file).
 final class TimesheetInkPlace extends CelPlace {
-  const TimesheetInkPlace(this.cutName);
+  const TimesheetInkPlace(this.owner);
 
-  final String cutName;
+  /// Its cut.
+  final PlaceOwner owner;
 }
 
 /// Ink on a page of a file the project carries, written in a viewer
@@ -170,24 +210,21 @@ class _CelPlaceIndex {
     }
     for (final owned in projectLayersWithOwners(project)) {
       final cut = owned.cut;
+      final owner = placeOwnerOf(project, track: owned.track, cut: cut);
       if (cut != null) {
         _envelopes[cut.id] ??= (
           plane: _Plane.envelope,
           position: _envelopes.length,
-          place: EnvelopeInkPlace(cut.name),
+          place: EnvelopeInkPlace(owner),
         );
         _timesheets[cut.id] ??= (
           plane: _Plane.timesheet,
           position: _timesheets.length,
-          place: TimesheetInkPlace(cut.name),
+          place: TimesheetInkPlace(owner),
         );
       }
       final drawings = <FrameId, DrawingCelPlace>{};
-      final row = RowDrawingPlaces(
-        track: owned.track,
-        cut: cut,
-        layer: owned.layer,
-      );
+      final row = RowDrawingPlaces(owner: owner, layer: owned.layer);
       for (final frame in owned.layer.frames) {
         final drawing = row.of(frame);
         _drawings[(owned.layer.id, frame.id)] = (
@@ -207,7 +244,7 @@ class _CelPlaceIndex {
         _rows[(cut.id, inkId)] = (
           plane: _Plane.conteRow,
           position: _rows.length,
-          place: ConteRowInkPlace(cutName: cut.name, celName: drawing.celName),
+          place: ConteRowInkPlace(owner: owner, celName: drawing.celName),
         );
       }
     }

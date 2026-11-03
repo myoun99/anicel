@@ -7,13 +7,10 @@ import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart' show askThenCommit;
 import '../session/timeline_verbs.dart';
 import '../text/app_strings.dart';
+import '../text/place_lines.dart' show timelineNameOf;
 import '../timeline/timeline_layer_controls_header.dart'
     show LegendHeadingButton;
 import '../widgets/panel_flyout.dart';
-
-/// What [timeline] is called: its name, or the one its number gives.
-String timelineNameOf(ProjectTimeline timeline) =>
-    timeline.name ?? AppText.strings.timelineNumbered(timeline.number);
 
 /// THE TIMELINE LIST (I-150) — the conte panel's legend heading: a button
 /// that names the open timeline and opens the list of them.
