@@ -65,6 +65,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v34 (2026-11-04, I-150 ⑤ — 유저 I-150-Q3: 「다른 타임라인끼리는 단순
+/// 겸용컷 작동안하게 … 타임라인 링크컷?으로 작동하게」): the link registry
+/// keeps its 동기컷 (`LayerLinkRegistry.syncs`, written only where there
+/// is one) — a cut kept one across timelines, its rows linked. A v33 build
+/// knows no such word: it drops it on open, and its next save writes the
+/// rows back linked across timelines with no sync — a 겸용 between
+/// timelines, the very thing the answer says does not work — and nothing
+/// said. The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a registry that says none has no
+/// sync at THIS version too, so a v33 file is such a document.
+///
 /// v33 (2026-11-03, I-150 — 유저: 「새로운 타임라인을 만들수있음」): a
 /// project holds its TIMELINES (`Project.timelines` — each its tracks and
 /// its trailing gap) and says which one is open (`currentTimeline`), where
@@ -511,7 +524,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 33;
+const int anicelFormatVersion = 34;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
