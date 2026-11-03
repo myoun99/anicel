@@ -185,6 +185,28 @@ void main() {
     expect(s.activeCutId, openOf(s).tracks.single.cuts.single.id);
   });
 
+  test('🚨what was done just before another timeline opened is taken back '
+      'where it was done: the user walks off first (I-41)', () {
+    final s = session();
+    final first = openOf(s).id;
+    s.timelineVerbs.addTimeline();
+    final second = openOf(s).id;
+    s.timelineVerbs.openTimeline(first);
+    s.cutVerbs.createCut();
+    final made = s.activeCutId;
+
+    s.timelineVerbs.openTimeline(second);
+    s.undo();
+
+    expect(openOf(s).id, first);
+    expect(s.activeCutId, made);
+
+    s.undo();
+
+    expect(openOf(s).id, first);
+    expect(openOf(s).tracks.single.cuts, hasLength(1));
+  });
+
   test('a timeline is named, a blank name gives it back its number\'s, and '
       'the same name is no step', () {
     final s = session();

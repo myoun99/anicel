@@ -163,15 +163,29 @@ void main() {
     expect(reread.timelines.first.trailingFrames, 4);
   });
 
-  test('a timeline renamed, or another one open, is another project', () {
+  test('a timeline renamed, renumbered, or another one open, is another '
+      'project', () {
     final project = twoTimelines();
+    final first = project.timelines.first;
     final renamed = project.copyWith(
-      timelines: [project.timelines.first.named('예고'), project.timelines.last],
+      timelines: [first.named('예고'), project.timelines.last],
+    );
+    final renumbered = ProjectTimeline(
+      id: first.id,
+      number: first.number + 1,
+      name: first.name,
+      tracks: first.tracks,
+      trailingFrames: first.trailingFrames,
     );
 
     expect(renamed == project, isFalse);
     expect(project.copyWith(currentTimelineId: a) == project, isFalse);
-    expect(renamed.timelines.first.named(null), project.timelines.first);
+    expect(renamed.timelines.first.named(null), first);
+    expect(
+      renumbered == first,
+      isFalse,
+      reason: 'a timeline with no name is called by its number',
+    );
   });
 
   group('🚨what the project holds is every timeline\'s', () {
