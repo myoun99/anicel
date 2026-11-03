@@ -202,6 +202,32 @@ void main() {
     expect(invoked, isEmpty, reason: 'the editor behind stood still');
   });
 
+  // 🗣️I-153-Q4 (유저 2026-11-04): 「프레임 키도 그림을 넘긴다」 — the list has
+  // no frames. The preset the app starts on binds the bare ← → to them.
+  testWidgets('🗣️the frame keys walk the drawings too — the list has no '
+      'frames, and the preset the app starts on binds ← → to them', (
+    tester,
+  ) async {
+    final session = film();
+    addTearDown(session.dispose);
+    final (:road, :invoked, held: _) = recordingKeyRoad(session);
+    expect(
+      road.bindings.activatorsFor(EditorActionIds.frameNext).first,
+      const SingleActivator(LogicalKeyboardKey.arrowRight),
+      reason: '⛔전제: the bare → is the next frame',
+    );
+    await pumpCels(tester, session, road);
+    await standOnA(tester);
+
+    await pressBound(tester, road, EditorActionIds.frameNext);
+    expect(tester.exportPreviewLine, 'A2.png · 2 / 3');
+    await pressBound(tester, road, EditorActionIds.frameNext);
+    expect(tester.exportPreviewLine, 'A3.png · 3 / 3');
+    await pressBound(tester, road, EditorActionIds.framePrevious);
+    expect(tester.exportPreviewLine, 'A2.png · 2 / 3');
+    expect(invoked, isEmpty, reason: 'the editor behind stood still');
+  });
+
   testWidgets('the keys turn as the list does — on the editor\'s X-sheet, '
       '→ is still the next drawing — and the editor\'s turn is back once '
       'the window closes', (tester) async {
@@ -350,6 +376,49 @@ void main() {
       await flip(tester, const Offset(1, 0));
       expect(tester.exportPreviewLine, 'A2.png · 2 / 3');
       expect(asked, isEmpty);
+    });
+
+    // 🗣️I-153-Q4: the extra finger is the one-frame step, as Shift is on the
+    // keys — and on a list with no frames it walks the drawings.
+    testWidgets('🗣️with a finger more on the glass, a step along still walks '
+        'the drawings — the one-frame step, on a list with no frames', (
+      tester,
+    ) async {
+      final session = film();
+      addTearDown(session.dispose);
+      final (:road, :invoked, held: _) = recordingKeyRoad(session);
+      await pumpCels(tester, session, road);
+      await standOnA(tester);
+      final at = onThePreview(tester);
+
+      final finger = await tester.startGesture(
+        at,
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await finger.moveBy(
+        const Offset(CanvasViewportGestureLayer.flipStepExtent + 12, 0),
+      );
+      await tester.pump();
+      expect(tester.exportPreviewLine, 'A2.png · 2 / 3', reason: '⛔전제');
+
+      final more = await tester.startGesture(
+        at + const Offset(0, 60),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await finger.moveBy(
+        const Offset(CanvasViewportGestureLayer.flipStepExtent, 0),
+      );
+      await tester.pump();
+      expect(tester.exportPreviewLine, 'A3.png · 3 / 3');
+
+      await more.up();
+      await finger.up();
+      await tester.pump(
+        FlipHudController.holdAfterRelease + FlipHudController.fadeOut,
+      );
+      expect(invoked, isEmpty, reason: 'the editor behind stood still');
     });
 
     testWidgets('on another tab one finger moves the page, as it did', (

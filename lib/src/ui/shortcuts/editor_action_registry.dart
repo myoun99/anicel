@@ -222,6 +222,13 @@ String sheetMoveActionId(SheetArrow arrow, {required bool fine}) {
   return (fine ? moveOf(step: true) : null) ?? moveOf(step: false)!;
 }
 
+/// The move on the sheet [actionId] is ([EditorActionDefinition.sheetMove]),
+/// or null for an action that is none — [sheetMoveActionId] read back.
+SheetMove? sheetMoveOf(String actionId) => editorActionDefinitions
+    .where((definition) => definition.id == actionId)
+    .firstOrNull
+    ?.sheetMove;
+
 /// The action a tool button or tile presses, found by its press — so the
 /// button names its action without spelling an id (I-19).
 String toolActionIdFor(ToolPress press) => _toolActionIds[press]!;

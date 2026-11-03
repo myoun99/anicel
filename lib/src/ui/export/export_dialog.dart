@@ -50,6 +50,7 @@ import '../conte/conte_sheet_builder.dart';
 import '../conte/conte_words_in.dart';
 import '../envelope/cut_envelope_builder.dart';
 import '../widgets/ellipsis_text.dart';
+import '../widgets/overflow_scrollers.dart';
 import 'export_envelope_render.dart';
 import 'conte_pdf_writer.dart';
 import 'ae_script_plan.dart';
@@ -65,7 +66,8 @@ import '../../models/layer_mark.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../brush/sheet_canvas_panel.dart' show sheetBrushSwitch;
 import '../sheet/paper_editing.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_action_registry.dart'
+    show EditorActionIds, sheetMoveOf;
 import '../shortcuts/editor_key_funnel.dart';
 import '../shortcuts/sheet_arrow.dart' show SheetArrowTurn;
 import '../sliced_value_listenable_builder.dart';
@@ -771,21 +773,28 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// What a move on the sheet does on the Cels list — the canvas's keys
   /// and its flip, read by the same bindings and the same gesture
-  /// (I-153-Q2, 유저 2026-11-04: 「셀 탭에 키 + 손가락 플립」): a block's
-  /// step walks the drawings of the row stood on, as ◀ ▶ do, and a row's
-  /// stands on the row above or below. None on another tab, nor for any
-  /// other move.
+  /// (I-153-Q2, 유저 2026-11-04: 「셀 탭에 키 + 손가락 플립」): a step along
+  /// the frames walks the drawings of the row stood on, as ◀ ▶ do, and a
+  /// row's stands on the row above or below. None on another tab, nor for
+  /// any other move.
+  ///
+  /// 🗣️I-153-Q4 (유저 2026-11-04: 「프레임 키도 그림을 넘긴다」): the list
+  /// has drawings and no frames, so the one-frame step — the preset's bare
+  /// ← →, the extra finger on the flip — walks the drawings as the block's
+  /// step does. Read off the move ([sheetMoveOf]): ↩️a list of the block
+  /// and row moves' ids left the frame steps doing nothing here.
   VoidCallback? _celMoveOf(String actionId) {
     if (_tab != ExportTab.cels) {
       return null;
     }
-    return switch (actionId) {
-      EditorActionIds.drawingPrevious => () => _stepCel(-1),
-      EditorActionIds.drawingNext => () => _stepCel(1),
-      EditorActionIds.layerUp => () => _stepCelRow(-1),
-      EditorActionIds.layerDown => () => _stepCelRow(1),
-      _ => null,
-    };
+    final arrow = sheetMoveOf(actionId)?.arrow;
+    if (arrow == null) {
+      return null;
+    }
+    final steps = arrow.forward ? 1 : -1;
+    return arrow.horizontal
+        ? () => _stepCel(steps)
+        : () => _stepCelRow(steps);
   }
 
   /// A flip step on the Cels tab's preview — none while a run is under
@@ -3632,10 +3641,22 @@ class ExportDialogState extends State<ExportDialog> {
           selectedTab: ExportTab.values.indexOf(_tab),
           body: CursorNoticeOverlay(
             controller: _notices,
-            child: _zones(
-              theme,
-              presetsOpen: room.presetsOpen,
-              queueOpen: room.queueOpen,
+            // 🗣️I-153-Q3 (유저 2026-11-04: 「창 전체가 가로로 스크롤」): a
+            // screen narrower than the four columns with what still fits of
+            // the drawers stands them at their width and scrolls the body
+            // sideways — nothing is cut or folded for it. ↩️The columns
+            // overflowed and were cut where the window, which never grows
+            // past the screen ([AppWindow.screenShare]), ended.
+            child: OverflowScrollers(
+              minWidth: _columnsWidth(
+                presetsOpen: room.presetsOpen,
+                queueOpen: room.queueOpen,
+              ),
+              child: _zones(
+                theme,
+                presetsOpen: room.presetsOpen,
+                queueOpen: room.queueOpen,
+              ),
             ),
           ),
           leadingActions: [
