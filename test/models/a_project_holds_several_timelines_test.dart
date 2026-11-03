@@ -128,6 +128,14 @@ void main() {
     expect(written.timelines.last.name, '본편');
   });
 
+  test('a write of anything else keeps the open timeline\'s tracks as they '
+      'were, and a trailing gap is never below none', () {
+    final project = twoTimelines();
+
+    expect(project.copyWith(name: 'q').tracks, same(project.tracks));
+    expect(project.copyWith(trailingFrames: -3).trailingFrames, 0);
+  });
+
   test('a timeline named nowhere opens the first', () {
     final project = twoTimelines().copyWith(
       currentTimelineId: const TimelineId('gone'),

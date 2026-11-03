@@ -17,6 +17,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart'
     show timesheetInkPageKey;
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/project_tree_editor.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
@@ -79,6 +80,22 @@ void main() {
 
     expect(s.requireActiveCut.canvasSize, size);
     expect(s.currentFrameIndex, 0);
+  });
+
+  test('a new timeline opened from a gap stands on its cut, and the undo '
+      'parks the playhead back', () {
+    final s = session();
+    s.parkGlobalFrame(500);
+    expect(s.editingSession.gapGlobalFrame, 500, reason: '전제');
+
+    s.timelineVerbs.addTimeline();
+
+    expect(s.editingSession.gapGlobalFrame, isNull);
+    expect(s.activeCutId, openOf(s).tracks.single.cuts.single.id);
+
+    s.undo();
+
+    expect(s.editingSession.gapGlobalFrame, 500);
   });
 
   test('opening the open timeline, or one the project holds not, is no '
@@ -175,8 +192,12 @@ void main() {
     s.cutVerbs.createCut();
     final standing = s.activeCutId;
 
+    var heard = 0;
+    s.addListener(() => heard += 1);
+
     s.timelineVerbs.renameTimeline(id, '  본편 ');
     expect(openOf(s).name, '본편');
+    expect(heard, greaterThan(0), reason: 'the list shows the name');
     expect(s.activeCutId, standing, reason: 'a name moves no one');
     final steps = s.historyManager.undoCount;
 
@@ -212,23 +233,49 @@ void main() {
     expect(made.tracks.single.cuts, hasLength(2));
   });
 
-  test('the first timeline deleted open opens the one after it; a closed one '
-      'deleted leaves the open one open', () {
+  test('a closed timeline deleted leaves the open one open; the open one '
+      'deleted opens the one after it', () {
     final s = session();
     final first = openOf(s);
-    s.timelineVerbs.addTimeline();
-    final second = openOf(s);
-    s.timelineVerbs.addTimeline();
-    final third = openOf(s);
-    s.timelineVerbs.openTimeline(first.id);
-
-    s.timelineVerbs.deleteTimeline(first.id);
-    expect(openOf(s).id, second.id);
+    final made = <ProjectTimeline>[];
+    for (var n = 0; n < 3; n += 1) {
+      s.timelineVerbs.addTimeline();
+      made.add(openOf(s));
+    }
+    s.timelineVerbs.openTimeline(made.first.id);
     final standing = s.activeCutId;
 
-    s.timelineVerbs.deleteTimeline(third.id);
-    expect(openOf(s).id, second.id);
+    s.timelineVerbs.deleteTimeline(made.last.id);
+    expect(openOf(s).id, made.first.id);
     expect(s.activeCutId, standing);
+
+    s.timelineVerbs.openTimeline(first.id);
+    s.timelineVerbs.deleteTimeline(first.id);
+    expect(openOf(s).id, made.first.id);
+  });
+
+  test('a file that stood on a closed timeline\'s cut opens on the open '
+      'one\'s first', () async {
+    final dir = Directory.systemTemp.createTempSync('anicel-timeline-resume');
+    deleteAfterSessionEnds(dir);
+    final path = '${dir.path}/resume.anicel';
+    final s = session();
+    final closedCut = s.activeCutId!;
+    s.timelineVerbs.addTimeline();
+    File(path).writeAsBytesSync(
+      buildAnicelArchiveBytes(
+        project: s.repository.requireProject(),
+        cels: const [],
+        sessionFields: AnicelSessionFields(
+          resume: {'cutId': closedCut.value},
+        ),
+      ),
+    );
+
+    final loaded = await openedSession(path);
+    addTearDown(loaded.dispose);
+
+    expect(loaded.activeCutId, openOf(s).tracks.single.cuts.single.id);
   });
 
   test('🚨every timeline\'s pictures and handwriting, and which one is open, '
