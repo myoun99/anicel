@@ -195,6 +195,40 @@ void main() {
     });
   });
 
+  group('an undo that stores the copy a blank lets the copy go, and the '
+      'source keeps its own', () {
+    // `UnlinkLayerCommand` · `LeaveSyncCommand` undo a copy so: the key and
+    // its size, a surface that holds nothing.
+    void blank(BrushFrameStore store) =>
+        store.storeBakedSurface(key('b'), BitmapSurface(canvasSize: size));
+
+    test('a stretch of the saved file', () {
+      final store = BrushFrameStore();
+      keepInAFile(store, {key('a'): inked(1)});
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+
+      blank(store);
+
+      expect(store.isCelFileBacked(key('b')), isFalse);
+      expect(store.celHasRenderableContent(key('b')), isFalse);
+      expect(store.celsLastCrossed, {key('b')});
+      expect(looked(store, 'a'), pixelsOf(inked(1)));
+    });
+
+    test('a parked file', () async {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): inked(2)});
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+
+      blank(store);
+      await ScratchFile.lettingGo;
+
+      expect(store.isCelCold(key('b')), isFalse);
+      expect(store.celHasRenderableContent(key('b')), isFalse);
+      expect(looked(store, 'a'), pixelsOf(inked(2)));
+    });
+  });
+
   test('nothing kept, nothing copied', () {
     final store = BrushFrameStore();
 
