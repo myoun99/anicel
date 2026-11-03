@@ -383,11 +383,22 @@ class ProjectFile {
   _Whereabouts _whereTheBytesAre(String poolPath) {
     final carry = mediaCarryFor(poolPath);
     if (carry == null) {
-      final file = MediaFileBytes(poolPath);
-      return (source: file, hold: null, carry: null, stored: file);
+      return _theFileAt(poolPath);
     }
     return _whereTheCarryIs(carry);
   }
+
+  /// [path]'s FILE as it lies, which nothing of the project's moves.
+  static _Whereabouts _theFileAt(String path) {
+    final file = MediaFileBytes(path);
+    return (source: file, hold: null, carry: null, stored: file);
+  }
+
+  /// [path]'s FILE held, whatever the pool carries at its path — what a
+  /// window shows of a file it is about to carry anew (F-550-Q3: 「미리보기는
+  /// 고른 파일을 보인다」). [holdMediaBytes] for a reference.
+  Future<HeldMediaBytes> holdFileBytes(String path) =>
+      _hold(() => _theFileAt(path));
 
   /// Where [carry]'s bytes are — [_whereTheBytesAre] for a carry already
   /// known: what a reader following its bytes asks ([HeldMediaBytes.again]),

@@ -128,6 +128,24 @@ class AudioConformStore extends ChangeNotifier {
   /// fresh statics).
   final String? libraryPathOverride;
 
+  /// A store that conforms each path's FILE as it lies — no carry, no
+  /// conform of the project's, nothing kept on disk — at this one's rate
+  /// and speed, through its runners: what the import window plays a file
+  /// from while the pool carries other bytes at its path (F-550-Q3).
+  AudioConformStore ofTheFilesThemselves() => AudioConformStore(
+    resolveConformPath: (_) => null,
+    runner: _runner,
+    resampleRunner: _resampleRunner,
+    resolveProjectSampleRate: _resolveProjectSampleRate,
+    resolveAudioSpeed: _resolveAudioSpeed,
+    bucketsPerSecond: bucketsPerSecond,
+    now: _now,
+    maxAttempts: maxAttempts,
+    retryDelay: retryDelay,
+    log: _log,
+    libraryPathOverride: libraryPathOverride,
+  );
+
   final Map<String, ConformResult> _entries = {};
   final Set<String> _pending = {};
   final Map<String, _ConformFailure> _failures = {};

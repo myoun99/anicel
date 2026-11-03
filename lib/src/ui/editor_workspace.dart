@@ -25,7 +25,6 @@ import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
-import '../models/reference_swap.dart';
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
@@ -86,6 +85,7 @@ import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
+import 'import/reference_swap_words.dart';
 import 'import/settings_rows.dart';
 import 'menu/opened_files_door.dart';
 import 'menu/project_open_door.dart' show ProjectPick;
@@ -3553,28 +3553,3 @@ class _WorkspaceRoom {
 class _CanvasAreaKey extends GlobalObjectKey {
   const _CanvasAreaKey(super.value);
 }
-
-/// What a person reads when a file let go on a reference row did not come
-/// in (I-47): the program language's sentence for why — or null when there
-/// is nothing to say, the file in or the row left as it was.
-///
-/// 🗣️I-68 「가」 ⓐ (유저 2026-10-10 「추천대로가자」): a file that reads, and
-/// only lacks the picture the row's cel shows, says that — 「bg.png에는
-/// 2번째 그림이 없습니다」. ↩️It was told 「could not read the file」, and so
-/// was a row that changed while its file was read.
-///
-/// The file is named as [project]'s pool shows it (F-376).
-String? referenceSwapWords(
-  ReferenceRedraw answer,
-  String path,
-  Project project,
-) => switch (answer) {
-  ReferenceLaid() || ReferenceLeftAlone() => null,
-  ReferenceUnreadable() => AppText.strings.imUnreadable(
-    project.shownNameOfMedia(path),
-  ),
-  ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
-    project.shownNameOfMedia(path),
-    picture + 1,
-  ),
-};

@@ -23,8 +23,11 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
+import '../../services/media/media_byte_source.dart' show HeldMediaBytes;
 import '../../services/media/media_pixel_size.dart';
 import '../../services/media/movie_bytes.dart' show readHeldMovieInfo;
+import '../audio/audio_conform_store.dart';
+import '../media/viewer_sound.dart';
 import '../../services/media/video_decode_worker.dart'
     show videoDecodeBackend;
 import '../../services/pdf/pdf_render_service.dart';
@@ -56,6 +59,7 @@ import 'import_file_table.dart';
 import 'import_preview.dart';
 import 'import_warnings_notice.dart';
 import 'movie_rate_dialog.dart';
+import 'reference_swap_words.dart';
 import 'settings_rows.dart';
 import '../text/byte_size_label.dart';
 import '../text/pixel_size_label.dart';
@@ -580,6 +584,36 @@ class _ImportDialogState extends State<ImportDialog> {
       .requireProject()
       .mediaAssetByPath(path);
 
+  /// Whether the press carries [path] anew ([MediaPool.carryAnew]): a file
+  /// the door handed in — picked or dropped, not a pool row
+  /// ([ImportDialog.initialPaths]) — at a path the pool carries. Until the
+  /// press, the window reads the file itself, so what it shows is what
+  /// comes in ([_holdBytes], [_soundsOf]).
+  ///
+  /// 🗣️F-550-Q3 (유저 2026-11-04: 「새로 받는다」 — 「미리보기는 고른 파일을
+  /// 보인다」). A pool row stays the pool's (유저 2026-09-11: 「풀에서
+  /// 가져올때는 가 로 하자」).
+  bool _takesAnew(String path) =>
+      !widget.initialPaths.contains(path) &&
+      (_poolEntryFor(path)?.carried ?? false);
+
+  /// Where the window reads [path]'s bytes: the file itself for one the
+  /// press takes anew ([_takesAnew]), the project's copy first otherwise.
+  Future<HeldMediaBytes> _holdBytes(String path) => _takesAnew(path)
+      ? widget.session.projectFile.holdFileBytes(path)
+      : widget.session.projectFile.holdMediaBytes(path);
+
+  /// The window's own conforms of the files it takes anew
+  /// ([AudioConformStore.ofTheFilesThemselves]) — made at the first one.
+  AudioConformStore? _filesOwnSounds;
+
+  /// The conforms [path]'s sound is read from, as [_holdBytes] reads its
+  /// bytes.
+  AudioConformStore _soundsOf(String path) => _takesAnew(path)
+      ? (_filesOwnSounds ??= widget.session.audioConformStore
+            .ofTheFilesThemselves())
+      : widget.session.audioConformStore;
+
   /// How this window names [path] — in its title, its rows and the
   /// warnings it gives about the file: as the pool shows it (F-376).
   String _shownName(String path) =>
@@ -766,7 +800,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return;
     }
     unawaited(
-      widget.session.audioConformStore.ensurePeaksFor(key).then((peaks) {
+      _soundsOf(key).ensurePeaksFor(key).then((peaks) {
         if (mounted) {
           setState(() => _movieSound[key] = peaks != null);
         }
@@ -798,11 +832,7 @@ class _ImportDialogState extends State<ImportDialog> {
       final kind = mediaAssetKindForPath(path);
       final size = kind == null
           ? null
-          : await readMediaPixelSize(
-              kind,
-              path,
-              widget.session.projectFile.holdMediaBytes,
-            );
+          : await readMediaPixelSize(kind, path, _holdBytes);
       if (mounted) {
         _pixelSizes[key] = size;
         _showPixelSizesSoon();
@@ -961,6 +991,7 @@ class _ImportDialogState extends State<ImportDialog> {
     _step.dispose();
     _cutName.dispose();
     _intakeCopies.forEach(ProviderDocuments.letGo);
+    _filesOwnSounds?.dispose();
     super.dispose();
   }
 
@@ -1417,11 +1448,8 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// What [path]'s movie says of itself, read as its door will read it
   /// ([readHeldMovieInfo]) — null when it does not open.
-  Future<QaVideoInfo?> _movieInfoOf(String path) => readHeldMovieInfo(
-    videoDecodeBackend,
-    widget.session.projectFile.holdMediaBytes,
-    path,
-  );
+  Future<QaVideoInfo?> _movieInfoOf(String path) =>
+      readHeldMovieInfo(videoDecodeBackend, _holdBytes, path);
 
   /// Every span counted in PROJECT frames — a movie's and a sound's, whose
   /// IN/OUT run on the sound's clock (`ProjectImportDoors.importVideoFile`)
@@ -1516,6 +1544,7 @@ class _ImportDialogState extends State<ImportDialog> {
       if (widget.putSettingsInPlace case final put?) {
         await _settingsRows.putInPlace(put, tally);
       }
+      await _carryAnew(tally);
       // Each row as its 넣을 곳 says: a folder's cut first — what its media
       // rows place lands in it, the cut its landing opens — then the files
       // that only register, then the ones that are placed. One count over
@@ -1551,6 +1580,25 @@ class _ImportDialogState extends State<ImportDialog> {
       tally.warn('$error');
     }
     return true;
+  }
+
+  /// The listed files the press takes anew ([_takesAnew]), carried anew
+  /// before anything of the press reads the pool, and the rows that show
+  /// them drawn from them again — a row that was not said in [tally], as a
+  /// file let go on a row is ([referenceSwapWords]).
+  ///
+  /// 🗣️F-550-Q3 (유저 2026-11-04: 「새로 받는다」 — 「되돌리기 한 번. 타임라인에
+  /// 놓인 것도 새 데이터를 쓴다」): the press is one undo step ([_runImport]).
+  Future<void> _carryAnew(_ImportTally tally) async {
+    final session = widget.session;
+    final anew = await session.mediaPool.carryAnew(_files.where(_takesAnew));
+    final undrawn = await session.importDoors.drawAgainFrom(anew);
+    final project = session.repository.requireProject();
+    for (final MapEntry(key: path, value: answer) in undrawn.entries) {
+      if (referenceSwapWords(answer, path, project) case final words?) {
+        tally.warnOf(_shownName(path), words);
+      }
+    }
   }
 
   /// The folder's cut, landed as the window answered it — false when the
@@ -2288,8 +2336,12 @@ class _ImportDialogState extends State<ImportDialog> {
   Widget _preview() {
     final key = _selected.isNotEmpty ? _selected.last : _rowKeys.firstOrNull;
     final shown = _shownOf(key);
+    // A file taken anew plays from its own conforms ([_soundsOf]), and the
+    // preview holds its sound for its life: another preview, not this one
+    // told another store.
+    final anew = shown.path != null && _takesAnew(shown.path!);
     return ImportPreview(
-      key: const ValueKey<String>('import-preview'),
+      key: ValueKey<String>(anew ? 'import-preview-anew' : 'import-preview'),
       session: widget.session,
       path: shown.path,
       run: shown.run,
@@ -2297,8 +2349,14 @@ class _ImportDialogState extends State<ImportDialog> {
       inFrame: shown.inFrame,
       outFrame: shown.outFrame,
       rangeEditable: shown.editable,
-      soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
-      holdBytes: widget.session.projectFile.holdMediaBytes,
+      soundPeaks: (path) => _soundsOf(path).ensurePeaksFor(path),
+      holdBytes: _holdBytes,
+      sound: anew
+          ? ViewerSound.ofSession(
+              widget.session,
+              conformStore: _soundsOf(shown.path!),
+            )
+          : null,
       frameRate: widget.session.projectSettings.projectFrameRate,
       audioSpeed: _projectAudioSpeed,
       onRangeChanged: (start, end) {

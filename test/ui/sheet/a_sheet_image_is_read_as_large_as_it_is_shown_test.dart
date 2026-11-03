@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_photo.dart';
+import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
@@ -99,12 +100,15 @@ void main() {
     late int landed;
     late SheetImageCache cache;
 
-    void makeCache() {
+    void makeCache({MediaCarry? Function(String path)? carryFor}) {
       reads = _Reads();
       told = [];
       landed = 0;
-      cache = SheetImageCache(read: reads.call, onHeldBytesChanged: told.add)
-        ..addListener(() => landed += 1);
+      cache = SheetImageCache(
+        read: reads.call,
+        carryFor: carryFor,
+        onHeldBytesChanged: told.add,
+      )..addListener(() => landed += 1);
     }
 
     /// [path] at [width] asked for and landed with a [side]-pixel square.
@@ -175,6 +179,34 @@ void main() {
       expect(identical(cache.imageFor('a', width: 2), shown), isTrue);
       await pumpEventQueue();
       expect(reads.asked, hasLength(before));
+    });
+
+    test('🚨a picture is of one carry: carried anew, the path is read again '
+        'and the old picture is not stood in — an undo shows it again, and '
+        'a carry that cannot be read refuses only itself (F-550-Q3)', () async {
+      var carry = (poolPath: 'a', token: 'first');
+      makeCache(carryFor: (_) => carry);
+      addTearDown(cache.dispose);
+      final first = await hold('a', 4);
+
+      carry = (poolPath: 'a', token: 'anew');
+      expect(cache.imageFor('a', width: 4), isNull, reason: 'not the first');
+      await pumpEventQueue();
+      expect(reads.asked.last, (path: 'a', width: 4));
+      await reads.land(null);
+      expect(cache.imageFor('a', width: 8), isNull);
+      await pumpEventQueue();
+      expect(reads.asked, hasLength(2), reason: 'the new carry is refused');
+
+      carry = (poolPath: 'a', token: 'first');
+      expect(identical(cache.imageFor('a', width: 4), first), isTrue);
+      cache.imageFor('a', width: 8);
+      await pumpEventQueue();
+      expect(
+        reads.asked.last,
+        (path: 'a', width: 8),
+        reason: 'the first carry is not refused for the other\'s sake',
+      );
     });
 
     test('what is held stays within one viewer\'s share — the least '
