@@ -72,6 +72,14 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   endif()
 endif()
 qa_wasmtime_fetch("${qa_wt_target}" QA_WASMTIME_DIR QA_WASMTIME_LIBRARY)
+if(QA_WASMTIME_DIR AND NOT ANDROID AND NOT IOS)
+  # The script as the Apple apps' pods read it, asked on every machine that
+  # runs these tests — a Mac's CI among them (wasmtime_script_test.cmake).
+  enable_testing()
+  add_test(NAME qa_wasmtime_script
+    COMMAND "${CMAKE_COMMAND}" "-DQA_WASMTIME_TARGET=${qa_wt_target}"
+      -P "${CMAKE_CURRENT_LIST_DIR}/wasmtime_script_test.cmake")
+endif()
 
 # Links [target] against the engine found above, where there is one — with
 # what its Rust standard library calls on each system: the lists of the

@@ -73,11 +73,12 @@ jobs:
       # here does: its fx plugin test asks the WebAssembly twin, and a build
       # that found no engine is a failure (fx-plugin-sdk-publish-Q2). Every
       # test of that name: the twin is asked again interpreting, as an iPad
-      # asks it, and an arm64 Mac is the nearest machine to one.
+      # asks it, and an arm64 Mac is the nearest machine to one. And the
+      # engine's script answers as the pods below read it, here where they do.
       - name: A .wasm answers as its native twin does (Apple clang, host)
         env:
           QA_REQUIRE_WASM: '1'
-        run: ctest --test-dir build/ci-apple -R '^qa_fx_plugin' --output-on-failure --no-tests=error
+        run: ctest --test-dir build/ci-apple -R '^qa_(fx_plugin|wasmtime_script)' --output-on-failure --no-tests=error
 
       - name: Native core (arm64 iOS target)
         run: |
