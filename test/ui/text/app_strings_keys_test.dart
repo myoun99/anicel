@@ -757,6 +757,8 @@ void main() {
     'rasterizeLeftReferences': (s) => s.rasterizeLeftReferences,
     'pasteProgressRunning': (s) => s.pasteProgressRunning,
     'pasteProgressDone': (s) => s.pasteProgressDone,
+    'duplicateProgressRunning': (s) => s.duplicateProgressRunning,
+    'duplicateProgressDone': (s) => s.duplicateProgressDone,
     'mpFileMissing': (s) => s.mpFileMissing,
     'mpInUseOnTimeline': (s) => s.mpInUseOnTimeline,
     'mpNameEmpty': (s) => s.mpNameEmpty,

@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/project_timeline.dart';
+import '../dialogs/app_progress_dialog.dart' show runWithAppProgress;
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart' show askThenCommit;
 import '../session/timeline_verbs.dart';
@@ -109,6 +110,12 @@ Future<void> _rename(
 
 /// [timeline] copied whole, right after it and opened, under the name the
 /// user gives — offered as a copy's, as a shortcut preset's duplicate is.
+///
+/// 🗣️F-549 (유저 2026-11-04): 「타임라인 복제누르고 진행중에 진행창뜨도록」 —
+/// the app's one wait window, as every heavy step stands behind it (F-432:
+/// 「이런 시간 걸리는 로직은 규칙으로서 공용 로딩창 표시해야함」). The copy is
+/// synchronous, so the window's spinner turns without a share; the trailing
+/// frame keeps the barrier up over the opened copy's first build.
 Future<void> _duplicate(
   BuildContext context,
   TimelineVerbs verbs,
@@ -123,5 +130,16 @@ Future<void> _duplicate(
     initialValue: AppText.strings.copyNamed(timelineNameOf(timeline)),
     confirmLabel: AppText.strings.commonSave,
   ),
-  commit: (name) => verbs.duplicateTimeline(timeline.id, name),
+  commit: (name) => runWithAppProgress<void>(
+    context: context,
+    title: AppText.strings.timelineDuplicate,
+    titleIcon: Icons.content_copy,
+    runningLabel: AppText.strings.duplicateProgressRunning,
+    doneLabel: AppText.strings.duplicateProgressDone,
+    windowKey: const ValueKey<String>('timeline-duplicate-progress'),
+    task: (_) async {
+      verbs.duplicateTimeline(timeline.id, name);
+      await WidgetsBinding.instance.endOfFrame;
+    },
+  ),
 );

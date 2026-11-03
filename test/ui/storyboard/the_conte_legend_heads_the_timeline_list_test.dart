@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/wait_window.dart';
 
 /// 🗣️I-150 (유저 2026-11-03): 「위치는 콘티패널에서 레전드의 레이어 텍스트
 /// 없애고, 트랙이란 버튼 신설 … 기본값은 트랙1이고 누르면 리스트 팝오버로
@@ -166,7 +167,14 @@ void main() {
     );
     await tester.enterText(byKey('timeline-duplicate-text-field'), '예고');
     await tester.tap(byKey('timeline-duplicate-ok-button'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    // 🗣️F-549 (유저 2026-11-04): 「타임라인 복제누르고 진행중에 진행창뜨도록」.
+    expect(
+      byKey('timeline-duplicate-progress'),
+      findsOneWidget,
+      reason: "the copy stands behind the app's one wait window",
+    );
+    await pumpPastTheWaitWindow(tester);
 
     final timelines = session.timelineVerbs.timelines;
     expect(timelines.map(timelineNameOf), [
@@ -176,6 +184,7 @@ void main() {
     ]);
     expect(session.timelineVerbs.currentTimelineId, timelines[1].id);
     expect(headingWords(tester), '예고');
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('with two, a row\'s delete takes that one away', (tester) async {

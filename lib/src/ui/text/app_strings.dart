@@ -612,6 +612,10 @@ enum AppStrings {
   String get rasterizeLeftReferences => _s('rasterizeLeftReferences');
   String get pasteProgressRunning => _s('pasteProgressRunning');
   String get pasteProgressDone => _s('pasteProgressDone');
+
+  /// F-549: the wait window a timeline's copy stands behind.
+  String get duplicateProgressRunning => _s('duplicateProgressRunning');
+  String get duplicateProgressDone => _s('duplicateProgressDone');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
   String get unsavedAutosaveBody => _s('unsavedAutosaveBody');
   String get commonNotNow => _s('commonNotNow');
@@ -2483,6 +2487,8 @@ enum AppStrings {
     'rasterizeLeftReferences': 'Some layers were left as references.',
     'pasteProgressRunning': 'Pasting…',
     'pasteProgressDone': 'Pasted',
+    'duplicateProgressRunning': 'Duplicating…',
+    'duplicateProgressDone': 'Duplicated',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
         'This project has never been saved, so autosave has nowhere to '
@@ -3924,6 +3930,8 @@ enum AppStrings {
         '参照を同じ位置にそろえるとラスタライズできます。',
     'pasteProgressRunning': 'ペースト中…',
     'pasteProgressDone': 'ペーストしました',
+    'duplicateProgressRunning': '複製中…',
+    'duplicateProgressDone': '複製しました',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
         'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
@@ -5789,6 +5797,8 @@ enum AppStrings {
         '담을 수 없습니다. 참조를 같은 자리로 맞추면 래스터라이즈됩니다.',
     'pasteProgressRunning': '붙여넣는 중…',
     'pasteProgressDone': '붙여넣음',
+    'duplicateProgressRunning': '복제하는 중…',
+    'duplicateProgressDone': '복제함',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
         '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
@@ -7668,6 +7678,8 @@ enum AppStrings {
         'Référence pour pixelliser.',
     'pasteProgressRunning': 'Collage…',
     'pasteProgressDone': 'Collé',
+    'duplicateProgressRunning': 'Duplication…',
+    'duplicateProgressDone': 'Dupliqué',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
         "Ce projet n'a jamais été enregistré : la sauvegarde automatique "
@@ -9672,6 +9684,8 @@ enum AppStrings {
         '一张赛璐珞只能放在一个位置。将参照对齐到同一位置即可栅格化。',
     'pasteProgressRunning': '粘贴中…',
     'pasteProgressDone': '已粘贴',
+    'duplicateProgressRunning': '复制中…',
+    'duplicateProgressDone': '已复制',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':
         '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'
