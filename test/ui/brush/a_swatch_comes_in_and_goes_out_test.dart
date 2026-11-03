@@ -48,4 +48,20 @@ void main() {
       reason: 'all the way in, and not yet going out',
     );
   });
+
+  test('its 入り抜き is as long against the swatch as against the brush: '
+      'one twice as big, coming in twice as far, is drawn the same', () {
+    final small = BrushSettings(
+      size: 20,
+      inAndOut: const BrushInAndOut(inLength: 40),
+    );
+    final big = BrushSettings(
+      size: 40,
+      inAndOut: const BrushInAndOut(inLength: 80),
+    );
+    expect(
+      rasterizeBrushStrokeSample(big, width, height),
+      rasterizeBrushStrokeSample(small, width, height),
+    );
+  });
 }
