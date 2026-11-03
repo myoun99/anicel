@@ -35,11 +35,31 @@ jobs:
     name: macOS app + iOS simulator + native C
     runs-on: macos-latest
     # Compile verification only — the suite lives in apple-suite below,
-    # on the cadence where nobody waits on it. ~8 minutes warm; 20 bounds
-    # a hang without ever touching a real run.
-    timeout-minutes: 20
+    # on the cadence where nobody waits on it. ~8 minutes warm; 20 bounded
+    # a hang without ever touching a real run. 45 since the iPad's fx engine
+    # is built here from source when its cache is cold (below) — two Rust
+    # builds, guessed at 10-20 minutes and not yet measured: a cold run must
+    # not be the one that times out.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+
+      # The fx plugins' engine, which packages/qa_native/src/wasmtime.cmake
+      # fetches — and for iOS builds from source — once per machine. A runner
+      # is a new machine every time, so its folder is kept between runs,
+      # keyed by the script that pins it.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/anicel/third_party
+          key: wasmtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/qa_native/src/wasmtime.cmake') }}
+
+      # The pods ask for these as they install; asked here first, a cold
+      # build's minutes and any failure of it show as a step of their own.
+      - name: The iPad's fx engine from source (device + simulator)
+        run: |
+          for target in aarch64-ios aarch64-ios-sim; do
+            cmake -DQA_WASMTIME_TARGET=$target -P packages/qa_native/src/wasmtime.cmake
+          done
 
       # Cheapest signal first: does the portable C core compile with
       # Apple clang for both host and iOS targets?
@@ -51,11 +71,13 @@ jobs:
 
       # The Mac's engine writes code as a plugin opens, which nothing else
       # here does: its fx plugin test asks the WebAssembly twin, and a build
-      # that found no engine is a failure (fx-plugin-sdk-publish-Q2).
+      # that found no engine is a failure (fx-plugin-sdk-publish-Q2). Every
+      # test of that name: the twin is asked again interpreting, as an iPad
+      # asks it, and an arm64 Mac is the nearest machine to one.
       - name: A .wasm answers as its native twin does (Apple clang, host)
         env:
           QA_REQUIRE_WASM: '1'
-        run: ctest --test-dir build/ci-apple -R '^qa_fx_plugin$' --output-on-failure --no-tests=error
+        run: ctest --test-dir build/ci-apple -R '^qa_fx_plugin' --output-on-failure --no-tests=error
 
       - name: Native core (arm64 iOS target)
         run: |
@@ -76,7 +98,15 @@ jobs:
             -o /tmp/qa_audio_denoise_ios.o \
             -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
             -O3 -ffp-contract=off -std=c99
-          ls -la /tmp/qa_engine_ios.o /tmp/qa_audio_decode_ios.o /tmp/qa_audio_denoise_ios.o
+          # The fx plugin host with the engine the device links — the pod
+          # build below is the simulator's.
+          WASMTIME=$(cmake -DQA_WASMTIME_TARGET=aarch64-ios -P packages/qa_native/src/wasmtime.cmake | head -n 1)
+          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_fx_plugin.c \
+            -o /tmp/qa_fx_plugin_ios.o \
+            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
+            -O3 -ffp-contract=off -std=c99 -Wall \
+            -DQA_FX_WASM=1 -DWASM_API_EXTERN= -DWASI_API_EXTERN= -I"$WASMTIME/include"
+          ls -la /tmp/qa_engine_ios.o /tmp/qa_audio_decode_ios.o /tmp/qa_audio_denoise_ios.o /tmp/qa_fx_plugin_ios.o
 
       - uses: subosito/flutter-action@v2
         with:

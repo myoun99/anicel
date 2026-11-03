@@ -40,109 +40,38 @@ if(NOT WIN32)
   target_link_libraries(qa_engine ${CMAKE_DL_LIBS})
 endif()
 
-# 🗣️I-132-Q31 (유저 2026-10-30): the fx plugins' WebAssembly engine is
-# Wasmtime 48 LTS — its project's own prebuilt C library, pinned by version
-# and SHA-256 and fetched ONCE PER MACHINE into a folder outside the
-# repository (28 MB zipped; a binary in git stays in every clone for ever).
-# Linked statically: 12.9 MB in an executable on Windows x64, where its DLL
-# is 22 MB (measured 2026-10-30).
-# 🗣️fx-plugin-sdk-publish-Q2 (유저 2026-11-04): 「애초에 모든플랫폼 플러그인
-# 대응하게 하고, 그 다음 sdk만들고 공개」 — the prebuilt library on every
-# platform its project publishes one for: Windows x64 · ARM64, macOS and
-# Linux x86_64 · arm64, Android arm64 · x86_64. A Mac's line here is its
-# host build (CI's native core); the app's own link is the pod's.
-# ⚠️iOS has none: an iPad makes no code as it runs, so its engine is built
-# from source to interpret (Pulley) — a round of its own.
-# 🗣️fx-plugin-sdk-publish-Q5 (유저 2026-11-04): 「웹뷰자체가 사본이란
-# 느낌드니까. 다른 구현방식이란게」 — the same engine and host as here, not
-# WebKit's WebAssembly beside them. Until then a build without the engine
+# The fx plugins' WebAssembly engine (wasmtime.cmake says which and why), for
+# the target this builds for. A Mac's line here is its host build (CI's
+# native core); the apps' own links are their pods'. A target with none
 # opens native plugins only and tells a .wasm so (qa_fx_plugin.c).
-set(QA_WASMTIME_VERSION "48.0.8")
-set(QA_WASMTIME_DIR "")
+include("${CMAKE_CURRENT_LIST_DIR}/wasmtime.cmake")
 set(qa_wt_target "")
 if(ANDROID)
   # The device's, not the host's: an Android build on a Windows host links
   # Android's library.
   if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(qa_wt_target "aarch64-android")
-    set(qa_wt_sha256
-      "0954e8b9e1b05461645821621464aef94b60a1b148e0cc0cb00ddaaf3353c0f9")
   elseif(ANDROID_ABI STREQUAL "x86_64")
     set(qa_wt_target "x86_64-android")
-    set(qa_wt_sha256
-      "ddeb32ac16c43cba8a9c104c44912a7bce76e95731e6b0b6cf43570ae363a6e4")
   endif()
 elseif(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
   set(qa_wt_target "x86_64-windows")
-  set(qa_wt_sha256
-    "31c2d97399b2555c06233a5fe0d2ba7373d020dae584107b1e3f459dd1756c42")
 elseif(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64")
   set(qa_wt_target "aarch64-windows")
-  set(qa_wt_sha256
-    "2dd5ec2f86b9d50da93e4f29985472c0520ee3545e5ab9e8771430f39011c269")
 elseif(APPLE AND NOT IOS)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     set(qa_wt_target "aarch64-macos")
-    set(qa_wt_sha256
-      "2c7c4e75ca41f505867ef7c836c942c6b1190f708939753d10d1927585eaed59")
   elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
     set(qa_wt_target "x86_64-macos")
-    set(qa_wt_sha256
-      "07dc84f84debc1cca9f79c5b75200799296bb53d83f2e9d0e8dc83fe05245a63")
   endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
     set(qa_wt_target "aarch64-linux")
-    set(qa_wt_sha256
-      "3bb7d77fcbf0da214b7d56fc1f244e77b6dbb51b740c63ff7cbd8ece398308dc")
   elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     set(qa_wt_target "x86_64-linux")
-    set(qa_wt_sha256
-      "6cd2e5a976d68932afb546c2d14d89ba9e5578127a9716a13500dde40fc1e0e6")
   endif()
 endif()
-if(qa_wt_target)
-  set(qa_wt_name "wasmtime-v${QA_WASMTIME_VERSION}-${qa_wt_target}-c-api")
-  if(WIN32)
-    set(qa_wt_archive "${qa_wt_name}.zip")
-    set(qa_wt_library "wasmtime.lib")
-  else()
-    set(qa_wt_archive "${qa_wt_name}.tar.xz")
-    set(qa_wt_library "libwasmtime.a")
-  endif()
-  # The HOST's folder for things fetched once per machine.
-  if(CMAKE_HOST_WIN32)
-    file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}" qa_wt_home)
-  elseif(DEFINED ENV{XDG_CACHE_HOME})
-    set(qa_wt_home "$ENV{XDG_CACHE_HOME}")
-  else()
-    set(qa_wt_home "$ENV{HOME}/.cache")
-  endif()
-  set(qa_wt_cache
-    "${qa_wt_home}/anicel/third_party/wasmtime-v${QA_WASMTIME_VERSION}")
-  set(qa_wt_file "${qa_wt_cache}/${qa_wt_archive}")
-  set(qa_wt_sum "")
-  if(EXISTS "${qa_wt_file}")
-    file(SHA256 "${qa_wt_file}" qa_wt_sum)
-  endif()
-  if(NOT qa_wt_sum STREQUAL qa_wt_sha256)
-    file(DOWNLOAD
-      "https://github.com/bytecodealliance/wasmtime/releases/download/v${QA_WASMTIME_VERSION}/${qa_wt_archive}"
-      "${qa_wt_file}"
-      EXPECTED_HASH SHA256=${qa_wt_sha256}
-      STATUS qa_wt_status)
-    list(GET qa_wt_status 0 qa_wt_code)
-    if(NOT qa_wt_code EQUAL 0)
-      message(FATAL_ERROR "Wasmtime ${QA_WASMTIME_VERSION} did not download: ${qa_wt_status}")
-    endif()
-    # ⛔Only this one's: a machine that builds for two targets keeps both.
-    file(REMOVE_RECURSE "${qa_wt_cache}/x/${qa_wt_name}")
-  endif()
-  if(NOT EXISTS "${qa_wt_cache}/x/${qa_wt_name}/lib/${qa_wt_library}")
-    file(ARCHIVE_EXTRACT INPUT "${qa_wt_file}" DESTINATION "${qa_wt_cache}/x")
-  endif()
-  set(QA_WASMTIME_DIR "${qa_wt_cache}/x/${qa_wt_name}")
-endif()
+qa_wasmtime_fetch("${qa_wt_target}" QA_WASMTIME_DIR QA_WASMTIME_LIBRARY)
 
 # Links [target] against the engine found above, where there is one — with
 # what its Rust standard library calls on each system: the lists of the
@@ -156,7 +85,7 @@ function(qa_link_wasmtime target)
   # Empty: the static library's symbols, not a DLL's imports.
   target_compile_definitions(${target} PRIVATE
     QA_FX_WASM=1 WASM_API_EXTERN= WASI_API_EXTERN=)
-  target_link_libraries(${target} "${QA_WASMTIME_DIR}/lib/${qa_wt_library}")
+  target_link_libraries(${target} "${QA_WASMTIME_LIBRARY}")
   if(WIN32)
     target_link_libraries(${target}
       ws2_32 advapi32 userenv ntdll shell32 ole32 bcrypt)
@@ -170,8 +99,9 @@ function(qa_link_wasmtime target)
   if(NOT WIN32 AND NOT APPLE)
     # The engine's own exports are its interface; the Rust library's are not
     # — as a Windows DLL exports only what it names.
+    get_filename_component(library_name "${QA_WASMTIME_LIBRARY}" NAME)
     target_link_options(${target} PRIVATE
-      "LINKER:--exclude-libs,${qa_wt_library}")
+      "LINKER:--exclude-libs,${library_name}")
   endif()
 endfunction()
 qa_link_wasmtime(qa_engine)

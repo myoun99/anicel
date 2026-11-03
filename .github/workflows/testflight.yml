@@ -34,12 +34,20 @@ jobs:
   testflight:
     name: Signed device build -> TestFlight
     runs-on: macos-latest
-    # Measured 7-12 minutes including the parity check; 30 bounds a hang.
+    # Measured 7-12 minutes including the parity check; 30 bounded a hang.
     # A build that stalls must not sit for six hours holding the
     # `testflight` concurrency group and blocking the nightly behind it.
-    timeout-minutes: 30
+    # 50 since the iPad's fx engine is built from source when its cache is
+    # cold (apple.yml says why) — guessed at 10-20 minutes, not yet measured.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
+
+      # The fx plugins' engine, kept between runs as apple.yml keeps it.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/anicel/third_party
+          key: wasmtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/qa_native/src/wasmtime.cmake') }}
 
       - uses: subosito/flutter-action@v2
         with:

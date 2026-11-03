@@ -1,3 +1,5 @@
+require 'open3'
+
 Pod::Spec.new do |s|
   s.name             = 'qa_native'
   s.version          = '0.0.1'
@@ -29,10 +31,37 @@ Pod::Spec.new do |s|
   # says 181). CI's parity job builds the CMake standalone, which HAS the
   # flag, so a drift here would not show up there: the same .qap would
   # simply render different pixels on iPad than on Windows.
+  #
+  # The fx plugins' WebAssembly engine (I-132) — the same flags reason: the
+  # CMake core's link never reaches this app, so the pod asks the same script
+  # (src/wasmtime.cmake: its folder, then the library) as it installs. No
+  # prebuilt library is published for iOS, so the script builds the pinned
+  # source on this Mac, for the device and for an arm64 simulator — minutes
+  # the first time, then kept. An Intel simulator has none and tells a .wasm
+  # so, as any build without the engine does.
+  qa_wasmtime = lambda do |target|
+    script = File.join(__dir__, '..', 'src', 'wasmtime.cmake')
+    out, err, status = Open3.capture3(
+      'cmake', "-DQA_WASMTIME_TARGET=#{target}", '-P', script)
+    raise "qa_native: Wasmtime for #{target}: #{err}" unless status.success?
+    out.lines.map(&:chomp)
+  end
+  device_engine, device_library = qa_wasmtime.call('aarch64-ios')
+  _, simulator_library = qa_wasmtime.call('aarch64-ios-sim')
+  # As the CMake core's qa_link_wasmtime: empty, the static library's
+  # symbols and not a DLL's imports.
+  engine = '$(inherited) QA_FX_WASM=1 WASM_API_EXTERN= WASI_API_EXTERN='
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'GCC_OPTIMIZATION_LEVEL' => '3',
     'OTHER_CFLAGS' => '$(inherited) -ffp-contract=off',
+    'GCC_PREPROCESSOR_DEFINITIONS[sdk=iphoneos*]' => engine,
+    'GCC_PREPROCESSOR_DEFINITIONS[sdk=iphonesimulator*][arch=arm64]' => engine,
+    # One version, so one build's headers.
+    'HEADER_SEARCH_PATHS' => "$(inherited) \"#{device_engine}/include\"",
+    'OTHER_LDFLAGS[sdk=iphoneos*]' => "$(inherited) \"#{device_library}\"",
+    'OTHER_LDFLAGS[sdk=iphonesimulator*][arch=arm64]' =>
+      "$(inherited) \"#{simulator_library}\"",
   }
   s.swift_version = '5.0'
 end
