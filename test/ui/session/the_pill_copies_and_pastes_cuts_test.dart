@@ -144,6 +144,7 @@ void main() {
       20,
       reason: '⛔전제: parked in the gap past the last cut',
     );
+    expect(s.cutClipboard.canCut, isFalse, reason: 'no cut in hand here');
     List<(String, int)> lastTwo() => [
       for (final cut in s.repository.requireProject().tracks.first.cuts.skip(
         4,
@@ -182,6 +183,29 @@ void main() {
     pill.pasteIndependentFrame();
     final last = s.repository.requireProject().tracks.first.cuts.last;
     expect((last.name, last.leadingGapFrames), ('10 Copy', 2));
+  });
+
+  test('a band over cuts that names none — another row\'s — leaves a new '
+      'cut no place, and the pastes dim', () {
+    final s = session();
+    standOnV(s, 1).copyFrame();
+    final pill = standOnV(s, 1);
+    s.trackFrameRangeSelection.value = const TrackFrameRangeSelection(
+      trackId: v,
+      anchorRow: LayerRowAddress(LayerId('elsewhere')),
+      rows: [LayerRowAddress(LayerId('elsewhere'))],
+      startFrame: 5,
+      endFrameExclusive: 10,
+    );
+    expect(
+      s.storyboardRows.storyboardSelectedCutIds,
+      isEmpty,
+      reason: '⛔전제: the band names no cut',
+    );
+    expect(s.cutPlacement.canCreateCut, isFalse, reason: '⛔전제');
+
+    expect(pill.canPasteIndependentFrame, isFalse);
+    expect(pill.canPasteLinkedFrame, isFalse);
   });
 
   test('a 잘라내기 lifts the cut you stand in, and the paste puts it back '
