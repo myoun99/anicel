@@ -148,6 +148,17 @@ void main() {
           .text,
       AppText.strings.timelineNumbered(1),
     );
+    await tester.tap(byKey('timeline-rename-ok-button'));
+    await tester.pumpAndSettle();
+    expect(
+      session.timelineVerbs.timelines.first.name,
+      isNull,
+      reason: 'the name its number gives, left as it was, stays that one',
+    );
+
+    await openList(tester);
+    await tester.tap(byKey('${rowOf(0)}-rename'));
+    await tester.pumpAndSettle();
     await tester.enterText(byKey('timeline-rename-text-field'), '본편');
     await tester.tap(byKey('timeline-rename-ok-button'));
     await tester.pumpAndSettle();

@@ -226,9 +226,15 @@ void main() {
       final s = session();
       final source = s.requireActiveCut.id;
       s.cutVerbs.createLinkedCutFromActiveCut();
-      final linked = s.requireActiveCut.id;
+      s.cutVerbs.createCut();
+      final plain = s.requireActiveCut.id;
       await pumpStoryboardHostOn(tester, s, surface: roomy, pixelsPerFrame: 12);
       final button = find.named('storyboard-cut-link-${source.value}');
+      expect(
+        find.named('storyboard-cut-link-${plain.value}'),
+        findsNothing,
+        reason: 'a cut that is not linked has none',
+      );
       expect(
         cutBlocksPainter(tester).drawsLinkGlyphs,
         isFalse,
@@ -236,13 +242,19 @@ void main() {
       );
 
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: tester.getCenter(button));
+      await mouse.addPointer(location: tester.getTopLeft(button));
       addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(button));
       await tester.pump();
       expect(
         // A test mouse is device 1, whatever its pointer.
         RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
         SystemMouseCursors.click,
+      );
+      expect(
+        cutBlocksPainter(tester).hoveredCutId.value,
+        source,
+        reason: 'the block stays hovered under its button',
       );
 
       await tester.tap(button);
@@ -250,7 +262,7 @@ void main() {
       expect(find.byKey(const ValueKey<String>('link-window')), findsOneWidget);
       expect(
         s.requireActiveCut.id,
-        linked,
+        plain,
         reason: "the press is the button's — not the block's under it",
       );
     });

@@ -5674,8 +5674,9 @@ class _StoryboardTrackRow extends KeptPiece {
         hitTestBehavior: HitTestBehavior.deferToChild,
         onHover: _handleHover,
         onExit: (_) => hoveredCutId.value = null,
+        // Built again whenever the paint is, from what the paint read.
         child: ListenableBuilder(
-          listenable: Listenable.merge([frameGeometry, windowBucket]),
+          listenable: painter,
           builder: (context, _) => Stack(
             children: [
               for (final (cutId, square) in painter.linkAffordances())
