@@ -124,6 +124,54 @@ void main() {
     expect(pixelsOf(copy), pixelsOf(inked(4)), reason: 'laid from the top left');
   });
 
+  group('the copy is all its key keeps afterwards', () {
+    test('a picture it showed before — hot, and drawn from its preview', () {
+      final store = BrushFrameStore();
+      keepInAFile(store, {key('a'): inked(1)});
+      store
+        ..storeBakedSurface(key('b'), inked(9))
+        ..storeRebuiltDisplayCache(key: key('b'), previewSurface: inked(9));
+
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+
+      expect(store.hotBakedSurfaceOrNull(key('b')), isNull);
+      expect(store.hotBakedBytes, 0);
+      expect(store.validPreviewSurfaceOrNull(key('b')), isNull);
+      expect(looked(store, 'b'), pixelsOf(inked(1)));
+    });
+
+    test('a picture it had parked', () async {
+      final store = BrushFrameStore();
+      keepInAFile(store, {key('a'): inked(1)});
+      store
+        ..hotCelByteBudget = 0
+        ..storeBakedSurface(key('b'), inked(9))
+        ..storeBakedSurface(key('c'), inked(8));
+      await store.drainCooling();
+      expect(store.isCelCold(key('b')), isTrue, reason: 'fixture: parked');
+
+      store.copyCel(key('a'), key('b'), canvasSize: size);
+
+      expect(store.isCelCold(key('b')), isFalse);
+      expect(store.coldBakedBytes, 0);
+      expect(looked(store, 'b'), pixelsOf(inked(1)));
+    });
+
+    test('a stretch of the saved file it was kept in', () {
+      final store = BrushFrameStore();
+      keepInAFile(store, {key('a'): inked(1), key('b'): inked(9)});
+
+      store.copyCel(
+        key('a'),
+        key('b'),
+        canvasSize: const CanvasSize(width: 32, height: 32),
+      );
+
+      expect(store.isCelFileBacked(key('b')), isFalse);
+      expect(store.isCelCold(key('b')), isTrue);
+    });
+  });
+
   test('nothing kept, nothing copied', () {
     final store = BrushFrameStore();
 
