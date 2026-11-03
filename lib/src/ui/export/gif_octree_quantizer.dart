@@ -15,8 +15,6 @@ import 'package:image/image.dart' as img;
 /// thinnest first (Gervautz–Purgathofer), and an entry is found by
 /// distance.
 class GifOctreeQuantizer extends img.Quantizer {
-  GifOctreeQuantizer._(this.palette, this._entries);
-
   /// The palette of at most [colors] that an octree finds in [picture] —
   /// every colour of it while it holds no more than that.
   factory GifOctreeQuantizer(img.Image picture, {required int colors}) {
@@ -55,6 +53,8 @@ class GifOctreeQuantizer extends img.Quantizer {
     }
     return GifOctreeQuantizer._(palette, entries);
   }
+
+  GifOctreeQuantizer._(this.palette, this._entries);
 
   /// How deep a colour's branch goes: a bit of each channel a level.
   static const int _depth = 8;
