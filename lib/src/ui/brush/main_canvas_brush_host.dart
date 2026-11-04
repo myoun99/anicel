@@ -23,6 +23,7 @@ import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../../services/canvas_flood_fill.dart' show FillRangeAt;
 import '../../services/canvas_selection_region.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
@@ -99,7 +100,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onBrushSizeDragEnd,
     this.flipHud,
     this.onEyedropperPick,
-    this.fillDabsAt,
+    this.fillRangeAt,
     this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
@@ -284,12 +285,7 @@ class MainCanvasBrushHost extends StatefulWidget {
   final FlipHudController? flipHud;
 
   final ValueChanged<int>? onEyedropperPick;
-  final List<BrushDab> Function(
-    CanvasPoint point,
-    int color,
-    SymmetryShape? symmetry,
-  )?
-  fillDabsAt;
+  final FillRangeAt? fillRangeAt;
 
   /// Forwarded to [BrushCanvasPanel]: builds the stamp pieces of a drawn
   /// shape fill's area.
@@ -588,7 +584,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
       flipHud: widget.flipHud,
       onEyedropperPick: widget.onEyedropperPick,
-      fillDabsAt: widget.fillDabsAt,
+      fillRangeAt: widget.fillRangeAt,
       shapeFillDabsFor: widget.shapeFillDabsFor,
       selectionMaskOptions: widget.selectionMaskOptions,
       transformOptions: widget.transformOptions,

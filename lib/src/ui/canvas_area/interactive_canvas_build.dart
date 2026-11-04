@@ -537,16 +537,16 @@ class _InteractiveCanvasBuild {
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,
-      // P6 fill: the flood region as stamp pieces; the panel commits them
-      // through the stroke funnel onto the active layer's frame.
+      // P6 fill: the flood's range, laid as stamp pieces at the lift
+      // (I-160); the panel commits them through the stroke funnel onto
+      // the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,
       transformOptions: _state.widget.transformOptions,
-      fillDabsAt: (point, color, symmetry) => buildFillDabs(
+      fillRangeAt: (point, symmetry) => fillRangeAt(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
         point: point,
-        color: color,
         // TP1: the FILL has its own opacity now — the strip's bar
         // writes the fill's field, not the brush's.
         opacity: _state.widget.brushToolState.value.activeOpacity,

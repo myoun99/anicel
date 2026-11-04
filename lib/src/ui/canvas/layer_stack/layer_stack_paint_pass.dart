@@ -778,14 +778,19 @@ class _LayerStackPaintPass {
         case _PaintPaper():
           _paintPaperInto(canvas);
         case final _SurfaceRow row:
+          final slot = _slotOf(row);
           _paintSurfaceRow(
             canvas,
-            _slotOf(row),
+            slot,
             row.paint,
             rasterScale,
             rows: rowsUnderPlacement(rows, row.placement),
             within: within,
           );
+          // I-160: the range a fill held down covers — over the row it
+          // lands on, outside the row's own opacity, and under every row
+          // above ([FillRangeMark]).
+          slot.painter.overlayModel?.fillRange?.paint(canvas);
       }
     },
   );

@@ -355,7 +355,7 @@ class _CanvasPanelTap {
         return eyedropperPick();
       case CanvasTool.fill:
         // R22-A: fill taps are handled by the interactive view's stroke
-        // pipeline (fillDabsAt) — the result tiles on the tap frame, and the
+        // pipeline (fillRangeAt) — the result tiles on the tap frame, and the
         // same primary-button discipline as strokes. No tap layer.
         return null;
       case CanvasTool.guide:

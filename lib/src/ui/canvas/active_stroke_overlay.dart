@@ -29,6 +29,7 @@ import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_tile_image_cache.dart';
 import 'chained_picture.dart';
 import 'deferred_image_disposal.dart';
+import 'fill_range_mark.dart';
 
 /// Mutable state of the in-progress stroke overlay.
 ///
@@ -200,6 +201,24 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// Where the pictures stand, for [movedSince] to be asked from.
   OverlayMoveMark get moveMark => (moves: _moves, count: _moves.length);
+
+  /// The range a fill held down will cover (I-160), marked over the row
+  /// this overlay draws on — null while no fill is held.
+  ///
+  /// Here because a fill IS a stroke of this overlay, of one dab: the press
+  /// marks where it reaches and the lift shows the result in its place,
+  /// both through this model's one notification ([reset] clears it).
+  FillRangeMark? get fillRange => _fillRange;
+  FillRangeMark? _fillRange;
+
+  /// Marks [mark] as the range a held fill covers, in place of any before.
+  void showFillRange(FillRangeMark? mark) {
+    if (identical(mark, _fillRange)) {
+      return;
+    }
+    _fillRange = mark;
+    notifyListeners();
+  }
 
   /// What the stroke moved since [mark] — inside the tiles whose pictures it
   /// changed, the pixels that are not what they were. Null where that cannot
@@ -643,6 +662,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     dropStaged();
     preBlendBase = null;
     dabs.clear();
+    _fillRange = null;
     notifyListeners();
   }
 

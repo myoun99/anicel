@@ -429,6 +429,38 @@ void main() {
         expect(leaked, isTrue);
       });
 
+      test('🚨I-160: an OPEN range says so when it is LAID, not when it is '
+          'flooded — a press resting on it has filled nothing yet', () {
+        var leaked = 0;
+        final range = fillRangeAt(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          point: CanvasPoint(x: 3, y: 3),
+          options: const FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            extendBeyondCanvas: true,
+          ),
+          onOpenRegion: () => leaked += 1,
+        )!;
+
+        expect(range.open, isTrue);
+        expect(leaked, 0, reason: 'flooded, not laid');
+        expect(
+          range.covers(CanvasPoint(x: 3, y: 3)),
+          isTrue,
+          reason: 'a press moving over it does not flood it again',
+        );
+        expect(
+          range.contoursWithin(null),
+          isEmpty,
+          reason: 'nothing is marked where nothing fills',
+        );
+        expect(range.dabsIn(0xFF3366CC), isEmpty);
+        expect(leaked, 1, reason: 'the lift says why nothing filled');
+      });
+
       test('the same open tap WITHOUT the option floods to the canvas wall '
           'as before', () {
         final dab = buildFillDabs(

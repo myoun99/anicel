@@ -90,7 +90,10 @@ class _BrushEditPress {
     // first finger turned out to be the start of a pinch. Nothing was
     // drawn and nothing entered history, so this is a forget rather
     // than an undo — which is the whole point of making the fill wait.
-    _state._fill.forgetFillTap();
+    // A pen's or a mouse's held fill stays, as their stroke does below.
+    if (_state._fill.heldBy(_activeTouchPointers)) {
+      _state._fill.forgetPress();
+    }
     // Discard only a SUB-SLOP touch stroke — the first finger turned
     // out to be the start of a pinch, not a stroke (both fingers
     // landed together). A stylus/mouse stroke keeps drawing: extra
@@ -251,28 +254,24 @@ class _BrushEditPress {
   /// block, or said 「프레임이 존재하지 않습니다」). ⛔The fill's alone: a
   /// stroke that starts beyond the wall can still come inside it.
   bool fillSpendsNothingAt(CanvasPoint canvasPosition) =>
-      _state.widget.fillDabsAt != null &&
+      _state.widget.fillRangeAt != null &&
       !_state._isInsidePasteboard(canvasPosition);
 
   /// With the fill tool armed the press IS the fill: off the pasteboard
-  /// it does nothing, on touch it waits for the release (a two-finger
-  /// navigation may follow), else it runs at once. True when consumed.
+  /// it does nothing, else it HOLDS the fill — its range marked where the
+  /// press is, laid at the lift ([_BrushEditFill.press]). True when
+  /// consumed.
   bool _pressAsFillTap(PointerDownEvent event, CanvasPoint canvasPosition) {
-    final fillDabsAt = _state.widget.fillDabsAt;
-    if (fillDabsAt != null) {
+    if (_state.widget.fillRangeAt != null) {
       // Off-canvas fill taps flow through: the default (stage-bounded)
       // raster answers null for them, the extended raster fills — the
       // fill's own boundary options decide, not the pointer.
       // The busy half of this used to be here too; it now lives in
-      // [_runFillTap], which is the only place that can be sure.
+      // [_BrushEditFill.press], which is the only place that can be sure.
       if (fillSpendsNothingAt(canvasPosition)) {
         return true;
       }
-      // The seed and the axis come from the same pair the STROKE path uses
-      // — this view's own position and its own guides, both already in the
-      // space the pointer is in. Reading the symmetry from the project
-      // instead would put the mirror where the pen is not under a pose.
-      // 🚨★★★A TOUCH FILL RESOLVES ON THE LIFT, NOT ON THE TOUCH.
+      // 🚨★★★A FILL RESOLVES ON THE LIFT, NOT ON THE TOUCH.
       //
       // 유저 2026-08-27, iPhone: 「필 툴인 채로 … undo가 작동안함. 브러시툴
       // 에서는 잘 작동함. 1핑거 플립모드로 전환하면 또 잘 작동함」 — a
@@ -292,14 +291,23 @@ class _BrushEditPress {
       // 보이는 건 무조건 걸린다」. So the REVEAL waits with the commit; a
       // tap that turns out to be a pinch never draws anything at all.
       //
-      // Pen and mouse are untouched: they cannot be half of a pinch, and
-      // the instant reveal is the whole point of R22-A.
-      if (event.kind == PointerDeviceKind.touch) {
-        _state._fillTapPointer = event.pointer;
-        _state._fillTapSeed = canvasPosition;
-        return true;
+      // ↩️Pen and mouse filled at once on the press — 「they cannot be half
+      // of a pinch, and the instant reveal is the whole point of R22-A」 —
+      // until I-160-Q2 a (유저 2026-11-04 「바꾼다 — 누르는 동안 미리보기,
+      // 떼면 채움」): every pointer holds the fill now, its range marked
+      // while it is down, so one press is one law whatever presses.
+      //
+      // 🚨A PEN OR A MOUSE RETIRES A FINGER'S HELD FILL — a finger resting
+      // on the glass took the fill on its touchdown, and the pen is the
+      // intent: one intent, one fill. ↩️「A fill going out RETIRES any armed
+      // tap, whoever armed it」 while only a finger's tap waited. ⛔Not the
+      // other way: a palm landing while the pen holds the fill takes
+      // nothing ([_BrushEditFill.press] — the first press holds it).
+      if (event.kind != PointerDeviceKind.touch &&
+          _state._fill.heldBy(_activeTouchPointers)) {
+        _state._fill.forgetPress();
       }
-      _state._fill.runFillTap(canvasPosition);
+      _state._fill.press(event.pointer, canvasPosition);
       return true;
     }
     return false;
@@ -309,6 +317,13 @@ class _BrushEditPress {
     _state._celPress.resumePressThatMadeTheCel(event.pointer);
     if (!_state.widget.editable) {
       return; // Standing down: inert, exactly as when nothing was built.
+    }
+    // A held fill's range follows the press (I-160 — TVPaint's 「이동할때마다
+    // 그게 바뀌고」). ⛔Before the drawing-pointer gate: a fill press never
+    // becomes the drawing pointer.
+    if (_state._fill.holds(event.pointer)) {
+      _state._fill.reach(_state._canvasPositionFromLocal(event.localPosition));
+      return;
     }
     if (event.pointer != _state._activeDrawingPointer) {
       return;
@@ -343,12 +358,12 @@ class _BrushEditPress {
       return;
     }
     _releasePointer(event.pointer);
-    // The lone finger lifted with nobody having joined it: the tap was this
-    // fill's after all. ⛔BEFORE the drawing-pointer gate below — a fill tap
-    // never becomes the drawing pointer, so that gate would drop it.
-    final fillSeed = _state._fillTapSeed;
-    if (event.pointer == _state._fillTapPointer && fillSeed != null) {
-      _state._fill.runFillTap(fillSeed);
+    // The press that held the fill lifted with nobody having joined it:
+    // the fill lands where it showed. ⛔BEFORE the drawing-pointer gate
+    // below — a fill press never becomes the drawing pointer, so that gate
+    // would drop it.
+    if (_state._fill.holds(event.pointer)) {
+      _state._fill.lift();
       return;
     }
     if (event.pointer != _state._activeDrawingPointer) {
@@ -461,11 +476,11 @@ class _BrushEditPress {
   /// by another door. The pointer's own bookkeeping stayed behind the same
   /// gate, holding a touch in the app-wide census and a mapped tool hold.
   void _discardPress(int pointer) {
-    // A cancelled fill tap is a fill that never runs — the lift's branch
-    // runs it instead. Ordering against the release below is free: this
-    // writes only the fill-tap slots, which none of the release steps read.
-    if (pointer == _state._fillTapPointer) {
-      _state._fill.forgetFillTap();
+    // A cancelled fill press is a fill that never lands — the lift's branch
+    // lands it instead. Ordering against the release below is free: this
+    // writes only the fill's press, which none of the release steps read.
+    if (_state._fill.holds(pointer)) {
+      _state._fill.forgetPress();
     }
     _releasePointer(pointer);
     if (pointer != _state._activeDrawingPointer) {

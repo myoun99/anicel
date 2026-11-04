@@ -1,8 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -21,18 +19,6 @@ import '../../helpers/device_viewport.dart';
 /// 않습니다」 (off). The view standing on the empty cell asks the fill's own
 /// wall answer first now.
 void main() {
-  BrushDab fillDab(int color) => BrushDab(
-    center: CanvasPoint(x: 4, y: 4),
-    color: color,
-    size: 8,
-    opacity: 1,
-    flow: 1,
-    hardness: 1,
-    tipShape: BrushTipShape.square,
-    pressure: 1,
-    sequence: 0,
-  );
-
   /// An empty cell under [tool]: the view stands down in place, and every
   /// press it would draw with asks for a cel — counted, never made.
   Future<List<int>> standOnAnEmptyCell(
@@ -54,7 +40,7 @@ void main() {
             brushToolState: ValueNotifier(
               BrushToolState.defaults.copyWith(tool: tool),
             ),
-            fillDabsAt: (_, color, _) => [fillDab(color)],
+            fillRangeAt: (_, _) => null,
             onPressNeedsCel: () {
               asked.add(1);
               return false;

@@ -50,7 +50,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
 import '../../services/canvas_flood_fill.dart'
-    show FloodFillOptions, regionFillPieces;
+    show FillRangeAt, FloodFillOptions, regionFillPieces;
 import '../../services/plain_line_region.dart';
 import '../../services/mark_under_a_pixel.dart';
 import '../../models/canvas_size.dart';
@@ -316,7 +316,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.flipHud,
     this.drawsFlipHud = true,
     this.onEyedropperPick,
-    this.fillDabsAt,
+    this.fillRangeAt,
     this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
@@ -914,19 +914,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// 블록을 보여 주므로 HUD는 띄우지 않고」).
   final bool drawsFlipHud;
 
-  /// Builds the fill region's stamp pieces for a tap (P6); the panel
-  /// commits them through the exact stroke funnel. Null disables the fill
+  /// Floods the fill's range for a press (P6 · I-160); the panel commits
+  /// what it lays through the exact stroke funnel. Null disables the fill
   /// tool.
-  final List<BrushDab> Function(
-    CanvasPoint point,
-    int color,
-    SymmetryShape? symmetry,
-  )?
-  fillDabsAt;
+  final FillRangeAt? fillRangeAt;
 
   /// Builds the stamp pieces of a finished SHAPE FILL — the AREA it fills,
   /// its outline and every copy a guide made of it together. Supplied by
-  /// the host for the same reason [fillDabsAt] is — the fill's knobs live
+  /// the host for the same reason [fillRangeAt] is — the fill's knobs live
   /// up there, and the panel commits whatever comes back. Null disables
   /// the shape fill.
   final List<BrushDab> Function(CanvasSelectionRegion area, int color)?
@@ -2208,8 +2203,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // R22-A: the FILL tool runs through the view's stroke pipeline
       // (the result tiles on the tap frame, landed like a pen-up) instead
       // of the panel tap layer.
-      fillDabsAt: _brush.tool == CanvasTool.fill
-          ? widget.fillDabsAt
+      fillRangeAt: _brush.tool == CanvasTool.fill
+          ? widget.fillRangeAt
           : null,
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it — in the row's own artwork, where this

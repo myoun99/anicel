@@ -972,6 +972,9 @@ final class _LayerStackPainter {
     // the rect it covers, so a drag can be patched. ↩️F-130 put the stamp's
     // ghost here too; since brush-fidelity-Q9 it is the overlay's tiles.
     final landing = surfacePainter.landingPreview?.value;
+    // I-160: the range a held fill covers, drawn over the row — by value
+    // too, so a press that moves to another region patches both.
+    final range = overlay?.fillRange;
     return (
       overlay: <TileCoord, Object>{
         ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
@@ -983,6 +986,7 @@ final class _LayerStackPainter {
       },
       previews: [
         if (landing != null) (value: landing, rect: landing.drawnWorldRect),
+        if (range != null) (value: range, rect: range.bounds),
       ],
     );
   }

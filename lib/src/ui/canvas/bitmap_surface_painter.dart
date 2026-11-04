@@ -200,6 +200,12 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     final overlay = overlayModel;
     if (overlay != null) {
       add(tileCoordsWorldRect(overlay.tileImages.keys, overlay.tileSize));
+      // I-160: drawn over this surface by whoever draws its row ([paint];
+      // the stack after the row), so reached by what this row draws.
+      final range = overlay.fillRange;
+      if (range != null && !range.isEmpty) {
+        add(range.bounds);
+      }
     }
     add(_ownFloat?.preview.drawnWorldRect);
     return drawn ?? Rect.zero;
@@ -240,6 +246,8 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
           : displayScaleOf(resolvedViewport.zoom, devicePixelRatio),
       pixelRatio: devicePixelRatio,
     );
+    // I-160: over the surface, as the stack draws it over the row.
+    overlayModel?.fillRange?.paint(canvas);
     canvas.restore();
   }
 

@@ -31,6 +31,7 @@ import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_in_and_out_along.dart';
 import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_fill_promotion.dart';
+import '../../services/canvas_flood_fill.dart' show FillRange, FillRangeAt;
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_second_stroke.dart';
 import '../../services/brush_stroke_dynamics.dart';
@@ -52,6 +53,7 @@ import 'brush_edit_canvas_view.dart';
 import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
+import 'fill_range_mark.dart';
 import 'shown_cels.dart';
 import 'stroke_in_flight.dart';
 import 'view_hand.dart';
@@ -182,7 +184,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
-    this.fillDabsAt,
+    this.fillRangeAt,
     this.selectionNow,
     this.overlayModel,
     this.paintsContent = true,
@@ -371,17 +373,12 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final CanvasToolHolds? toolHolds;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
-  /// primary tap builds the flood's stamp pieces here and the view runs
-  /// them as one stroke (`promoteFillDabs`): the overlay shows the result
-  /// tiles the very next frame and the commit lands them through
-  /// [onSourceStrokeCommitted] with their pictures already made — no
-  /// tile-by-tile reveal on big fills.
-  final List<BrushDab> Function(
-    CanvasPoint point,
-    int color,
-    SymmetryShape? symmetry,
-  )?
-  fillDabsAt;
+  /// primary press floods its range here, marked while it is held
+  /// (I-160), and the lift lays it as one stroke (`promoteFillDabs`): the
+  /// overlay shows the result tiles the very next frame and the commit
+  /// lands them through [onSourceStrokeCommitted] with their pictures
+  /// already made — no tile-by-tile reveal on big fills.
+  final FillRangeAt? fillRangeAt;
 
   /// R26 #18: what a stroke or a fill starting NOW is confined to, in this
   /// view's cel; null confines it to nothing. Asked at the start of each,
@@ -914,12 +911,13 @@ class _InteractiveBrushEditCanvasViewState
   ({List<BrushDab> dabs, BitmapSurface base, List<PromotedStrokeTile> tiles})?
   _pendingFill;
 
-  /// The touch pointer whose lift will run a fill, and where it landed.
+  /// The pointer whose press holds the fill, and the range it covers where
+  /// the press is now (I-160) — null while the seed reaches nothing. The
+  /// lift lays that range ([_BrushEditFill.lift]).
   ///
-  /// Both cleared together — see the second-finger branch, which is where a
-  /// tap stops being this fill's gesture.
-  int? _fillTapPointer;
-  CanvasPoint? _fillTapSeed;
+  /// One value — see the second-finger branch, which is where a press stops
+  /// being this fill's gesture.
+  ({int pointer, FillRange? range})? _fillPress;
 
   // ── the fill: its own object, in its own file ───────────────────────
   //
