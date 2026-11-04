@@ -55,6 +55,10 @@ const ledger = <String, Why>{
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":
       Why.aRow,
   "menu/editor_top_strip.dart | 'project-tab-close-\$index'": Why.aRow,
+  // A cut's link and sync buttons (I-150): its cut's, as the layer's
+  // badges are its row's.
+  "storyboard_panel.dart | 'storyboard-cut-\${kind.name}-\${cutId.value}'":
+      Why.aRow,
   // A header graph's two toggles (I-89 ③): the graph of the group whose
   // header or camera row wears it, and the pin of the lane it stands on.
   'timeline/lane_graph_toggle.dart | name': Why.aRow,
@@ -91,6 +95,11 @@ const ledger = <String, Why>{
       Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-reset-\${layer.id}-\${lane.laneId}'":
+      Why.aRow,
+  // A header's RASTERIZE (I-120 ②): it bakes the fx of the group it stands
+  // in — the transform's, in the Transform's — into its row's pictures.
+  'timeline/timeline_lane_rows.dart | '
+          "'\$_keyPrefix-lane-group-rasterize-\${layer.id}-\${lane.laneId}'":
       Why.aRow,
   'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-onion-\${layer.id}'":

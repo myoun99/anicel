@@ -2,7 +2,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart';
 
-import '../../services/command.dart' show WorkAhead;
+import '../../services/wait_window.dart' show StepBehind;
 import '../debug/key_trace.dart';
 import '../editor_session_manager.dart';
 import 'canvas_selection_commands.dart';
@@ -68,10 +68,9 @@ class HistoryVerbs {
   /// the lift has been heard, or it counts itself — the H42 failure.
   final bool Function() contactIsDown;
 
-  /// Takes a document step behind the wait window while what it works out
-  /// [ahead] runs — the window its first run stood behind
-  /// (`stepBehindTheWaitWindow`).
-  final Future<void> Function(WorkAhead ahead, VoidCallback step)
+  /// Takes a document step behind the window its first run stood behind,
+  /// while what it works out ahead runs (`stepBehindTheWaitWindow`).
+  final Future<void> Function(StepBehind behind, VoidCallback step)
   behindTheWaitWindow;
 
   /// Everything [canUndo] and [canRedo] depend on.
@@ -177,23 +176,25 @@ class HistoryVerbs {
   }
 
   /// The document's own undo — or, with [undo] false, redo — behind the
-  /// wait window where it works something out ahead of it
-  /// ([EditorSessionManager.historyStepAhead]), else at once.
+  /// wait window its first run stood behind
+  /// ([EditorSessionManager.historyStepBehind]), else at once.
   ///
   /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
   /// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo that runs a resize again
-  /// moves every cel of the cut, as the first run did.
+  /// moves every cel of the cut, as the first run did. 🗣️F-551-Q1 (유저
+  /// 2026-11-04: 「전부 늘 띄운다」): and every step a heavy door took behind
+  /// its window, its undo and redo every time.
   void _stepTheDocument({required bool undo}) {
     final step = undo ? session.undo : session.redo;
-    final ahead = session.historyStepAhead(undo: undo);
-    if (ahead == null) {
+    final behind = session.historyStepBehind(undo: undo);
+    if (behind == null) {
       step();
       return;
     }
     final history = session.historyManager;
     final asked = history.revision;
     unawaited(
-      behindTheWaitWindow(ahead, () {
+      behindTheWaitWindow(behind, () {
         // A step that waited is taken only over the history it was asked
         // of, and never over work begun since ([HistoryManager.revision]).
         if (history.revision == asked &&

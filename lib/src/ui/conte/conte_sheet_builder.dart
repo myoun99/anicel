@@ -115,7 +115,8 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
 /// cell's lines, the page for the cell (🗣️F-542, 유저 2026-11-02: 「똑같이 법
 /// 재사용/통일하면서」), each as a page writes it ([sheetCameraLine] ·
 /// [sheetTransitionLine]) in [words] — none where the cut or the work leaves
-/// them out, or the cut is on no track.
+/// them out, or the cut is on no track — but the 겸용 cuts, which its header
+/// prints (F-558).
 ///
 /// 🗣️F-542 (유저 2026-11-02): 「고정텍스트 카메라지시 써주는거, 첫페이지에만
 /// 쓰는것임」 · 「지금 2페이지넘는 카메라 움직임 컷에 걸칠때 페이지마다 지시
@@ -168,7 +169,11 @@ List<SheetFixedLines> sheetPageFixedLines(
       project,
     ),
     transitionLineOf: (event) => sheetTransitionLine(event, defById: defById),
-    linkedCuts: _othersOfItsGroup(cut, LinkedCutGroups(project)),
+    // 🗣️F-558 (유저 2026-11-04): 「겸용컷은 고정텍스트 위치가 이게아님. 그리고
+    // 고정텍스트 on이든 off이든 연관없음. 항상 보여줌」 — the sheet prints its
+    // 겸용 cuts in its header (`TimesheetDocument.linkedCuts`). ↩️The memo
+    // wrote them with the conte cell's other lines.
+    linkedCuts: const [],
   );
 }
 

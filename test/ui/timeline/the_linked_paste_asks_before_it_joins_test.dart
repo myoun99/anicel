@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/an_empty_drawing_row.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// 🗣️I-71 (유저 2026-10-05): 「다른레이어에 붙여넣을때 … 링크붙여넣기
 /// 가능하게. 동작은 말한대로 이름 유지되는붙여넣기. 해당행동시 기존에 이름
@@ -92,8 +93,12 @@ void main() {
     expect(s.historyManager.undoCount, steps);
 
     await tapToolbarButton(tester, paste);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    // The join stands behind the paste's wait window again (F-551).
+    await windowBehind(
+      tester,
+      () => tester.tap(
+        find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.byKey(window), findsNothing);
@@ -148,8 +153,11 @@ void main() {
     expect(s.historyManager.undoCount, steps);
 
     await tapToolbarButton(tester, paste);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    await windowBehind(
+      tester,
+      () => tester.tap(
+        find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+      ),
     );
     await tester.pumpAndSettle();
     expect(opacity(), {2: 0.3, 21: 0.3});

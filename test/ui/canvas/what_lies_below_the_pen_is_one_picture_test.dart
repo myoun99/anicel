@@ -170,7 +170,11 @@ void main() {
     live: live,
     held: switch (below) {
       final below? => (
-        pictures: (rasters: held, keeps: keeps, below: below),
+        pictures: (
+          rasters: held,
+          keeps: keeps ? NodesKept.onlyDrawn : NodesKept.none,
+          below: below,
+        ),
         revisionOf: (_) => 1,
       ),
       null => null,

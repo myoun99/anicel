@@ -91,6 +91,78 @@ void expectOneBar(List<double> told, List<double> stops) {
   );
 }
 
+/// The wait window [press] stood behind — read while it holds its done
+/// line, then let go — or null when the press stood behind none.
+///
+/// For a step that runs on the frame clock alone (F-551's doors: a step
+/// taken whole on the UI thread once the window is drawn); work that hops
+/// to a file or an isolate waits with [settleBehindTheWaitWindow].
+Future<AppProgressDialog?> windowBehind(
+  WidgetTester tester,
+  Future<void> Function() press,
+) async {
+  final stood = await stepBehind(tester, press);
+  if (stood != null) {
+    await passTheDoneLinger(tester);
+    await tester.pump();
+    expect(
+      find.byType(AppProgressDialog),
+      findsNothing,
+      reason: 'the window went once its step did',
+    );
+  }
+  return stood;
+}
+
+/// The wait window a press's own frame put up, waited out and let go
+/// ([windowBehind]) — nothing at all when none is up, so a helper that
+/// presses a key can call it after every press.
+Future<void> waitOutTheWaitWindow(WidgetTester tester) async {
+  if (find.byType(AppProgressDialog).evaluate().isNotEmpty) {
+    await windowBehind(tester, () async {});
+  }
+}
+
+/// [windowBehind]'s first half: [press], and frames until the step behind
+/// the window it put up is over and drawn — the window still on its done
+/// line, for a test that reads the frames the step landed in
+/// ([passTheDoneLinger] lets it go).
+Future<AppProgressDialog?> stepBehind(
+  WidgetTester tester,
+  Future<void> Function() press,
+) async {
+  await press();
+  final window = find.byType(AppProgressDialog);
+  final done = find.descendant(
+    of: window,
+    matching: find.byKey(const ValueKey<String>('app-progress-done')),
+  );
+  // Frames counted, not settled: the spinner turns until the step is over,
+  // and a canvas may keep an animation of its own going under it. A list
+  // closing before its row runs takes a few of them.
+  for (var frame = 0; frame < 30 && done.evaluate().isEmpty; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  if (window.evaluate().isEmpty) {
+    return null;
+  }
+  expect(done, findsOneWidget, reason: 'the step behind the window was over');
+  return tester.widget<AppProgressDialog>(window);
+}
+
+/// The wait window a tap on [key] stood behind ([windowBehind]).
+Future<AppProgressDialog?> windowBehindTheTap(
+  WidgetTester tester,
+  ValueKey<String> key,
+) {
+  final found = find.byKey(key);
+  return windowBehind(tester, () async {
+    await tester.ensureVisible(found);
+    await tester.pumpAndSettle();
+    await tester.tap(found);
+  });
+}
+
 Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
   final window = find.byType(AppProgressDialog);
   await tester.pump();

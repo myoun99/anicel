@@ -65,6 +65,7 @@ import 'brush/tool_press.dart';
 import 'brush/transform_tool_options.dart';
 import 'debug/input_inspector.dart';
 import 'input/contact_census.dart';
+import 'input/one_pointer_shows_the_cursor.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
@@ -533,6 +534,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// Whether a contact is down, and every way it learns that one is over.
   final ContactCensus _contacts = ContactCensus();
 
+  /// The system's one cursor, the pointer's that moved last (F-562).
+  final OnePointerShowsTheCursor _cursorOwner = OnePointerShowsTheCursor();
+
   /// PEN-12 #5: the DESKTOP exit gate — the window's close button lands
   /// in the same confirm dialog as the Android back button (the OS asks
   /// the framework before tearing the window down).
@@ -611,6 +615,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // instead ([SessionScratch.ensureThisRunsFolder]).
     SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
+    _cursorOwner.listen();
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
       onInactive: _letGoOfEverythingPressed,
@@ -840,8 +845,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       text: _canvasTextCommands,
       session: session,
       contactIsDown: () => _contacts.anyDown,
-      behindTheWaitWindow: (ahead, step) =>
-          stepBehindTheWaitWindow(context, ahead, step),
+      behindTheWaitWindow: (behind, step) =>
+          stepBehindTheWaitWindow(context, behind, step),
     );
     _keyHolds.strokeLive = session.brushInputActive;
     return true;
@@ -1060,6 +1065,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HandedFiles.listen(null);
     AppSave.settings.removeListener(_syncAutosaveClock);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
+    _cursorOwner.dispose();
     _autosaveClock.dispose();
     _lifecycle?.dispose();
     // Every open project goes with the window — AFTER the frame, as a
@@ -1708,6 +1714,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 child: EditorWorkspace(
                                   session: _session,
                                   onOpenProjects: _openProjectPicks,
+                                  projects: _projects,
                                   layoutStore: widget.layoutStore,
                                   presetFileService: widget.presetFileService,
                                   tipLibraryService: widget.tipLibraryService,

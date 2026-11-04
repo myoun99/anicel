@@ -53,6 +53,7 @@ class ExportPreviewPanel extends StatefulWidget {
     this.fileAbsent = false,
     this.enabled = true,
     this.bottomBarLeading = const <Widget>[],
+    this.flip,
   });
 
   /// The session the window exports from: the memory census this panel's
@@ -87,6 +88,9 @@ class ExportPreviewPanel extends StatefulWidget {
 
   /// The head of the pill ([DocumentPreviewPanel.bottomBarLeading]).
   final List<Widget> bottomBarLeading;
+
+  /// What one finger flips through ([DocumentPreviewPanel.flip]).
+  final PreviewFlip? flip;
 
   @override
   State<ExportPreviewPanel> createState() => ExportPreviewPanelState();
@@ -297,6 +301,7 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       documentName: widget.fileName,
       documentAbsent: widget.fileAbsent,
       bottomBarLeading: widget.bottomBarLeading,
+      flip: widget.flip,
     );
   }
 

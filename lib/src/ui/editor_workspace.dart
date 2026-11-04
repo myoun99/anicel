@@ -17,6 +17,7 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
 import '../models/cut_id.dart';
+import '../models/cut_piece.dart' show CutPiece;
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
@@ -25,7 +26,6 @@ import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
-import '../models/reference_swap.dart';
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
@@ -50,7 +50,6 @@ import 'brush/brush_library_look.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
-import 'brush/brush_canvas_panel.dart' show CanvasEdgePill;
 import 'brush/brush_value_group.dart' show BrushValuesPill;
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
@@ -86,6 +85,8 @@ import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
+import 'open_projects.dart';
+import 'import/reference_swap_words.dart';
 import 'import/settings_rows.dart';
 import 'menu/opened_files_door.dart';
 import 'menu/project_open_door.dart' show ProjectPick;
@@ -101,7 +102,9 @@ import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
+import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import 'dialogs/app_prompt_dialog.dart';
+import 'dialogs/behind_the_wait_window.dart';
 import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/fx_plugin_install_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
@@ -249,6 +252,7 @@ class EditorWorkspace extends StatefulWidget {
     super.key,
     required this.session,
     required this.onOpenProjects,
+    this.projects,
     this.presetFileService,
     this.tipLibraryService,
     this.fontLibraryService,
@@ -285,6 +289,11 @@ class EditorWorkspace extends StatefulWidget {
   /// shell's Open door, which holds the tabs a project opens into. The
   /// workspace only tells them from the rest ([OpenedFilesDoor]).
   final Future<void> Function(List<ProjectPick> picks) onOpenProjects;
+
+  /// The window's tabs — where the import window opens the project a file
+  /// is brought in as (I-156). Null in a workspace with no tabs around it
+  /// (focused widget tests).
+  final OpenProjects? projects;
 
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
   /// shortcuts and the workspace panels drive one state. Null keeps a
@@ -2239,12 +2248,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   bool _regionOnTop = false;
 
   /// Whether the brush's values stand in the top strip — false, the
-  /// default, stands them in the canvas's pill
+  /// default, stands them in the floor's pill ([_floor])
   /// ([WorkspacePanelsMenuController.brushValuesOnStrip]).
   ///
   /// ↩️09-16 had the strip as the default; 유저 2026-10-18 (I-34): 「그리고
   /// 기본값은 알약으로 두는걸 기본값으로」. A notifier, as the strip above the
-  /// workspace and the canvas inside it both follow it.
+  /// workspace and the floor inside it both follow it.
   final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
 
   /// Whether the tool strip holds its tools alone — false, the default,
@@ -2468,14 +2477,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the row keeps every answer it already gave (Q1 2026-09-27: 「창 없이
   /// 바로 바꾼다 (언두 하나)」). A file that would not come in is said, as the
   /// window would have said it — and why ([referenceSwapWords]).
+  ///
+  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the file read in and
+  /// laid behind the app's wait window, under the row's name — a wait, not
+  /// the import window Q1 2026-09-27 left out.
   Future<void> _swapReference(LayerId layerId, String path) async {
-    final words = referenceSwapWords(
-      await widget.session.importDoors.swapReference(
+    final session = widget.session;
+    final swapped = await AppWaitWindow(
+      title: session.layerById(layerId)?.name ?? AppText.strings.commonReplace,
+      runningLabel: AppText.strings.workProgressRunning,
+      doneLabel: AppText.strings.workProgressDone,
+      windowKey: const ValueKey<String>('reference-swap-progress'),
+    ).standBehind(context, (_) async {
+      final swapped = await session.importDoors.swapReference(
         layerId: layerId,
         path: path,
-      ),
+      );
+      await WidgetsBinding.instance.endOfFrame;
+      return swapped;
+    });
+    if (!mounted) {
+      return;
+    }
+    final words = referenceSwapWords(
+      swapped,
       path,
-      widget.session.repository.requireProject(),
+      session.repository.requireProject(),
     );
     if (words == null || !mounted) {
       return;
@@ -2511,6 +2538,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       placeOnly: placeOnly,
       spot: spot,
       putSettingsInPlace: _putSettingsInPlace,
+      projects: widget.projects,
     ),
   );
 
@@ -3157,38 +3185,54 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Positioned _floor(_WorkspaceFrame frame, Widget? floor) {
     return Positioned.fill(
-      child: CanvasFloorInsets(
-        insets: frame.floorCover,
-        // ⑩: the collapsed row lies ON the artwork
-        // just past the region's edge. It frames
-        // nothing, so it is not in `insets` — but a
-        // bar on the bottom edge would be under it.
-        bottomOverlaySpan:
-            frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
-            ? _collapsedRows.collapsedRowHeight()
-            : 0,
-        // WHERE each column actually is, not just how
-        // wide it is. A rail panel is as tall as it was
-        // left at, so a short one covers a band and not
-        // an edge — and the scrollbar that stepped
-        // aside for the whole edge read as floating for
-        // no reason (유저, R3 #5). The left one is for
-        // the brush pill on that edge (I-34).
-        leftRailBand: _rail.railBand(
-          right: false,
-          stop: frame.leftStop,
-          onTop: frame.onTop,
-          height: frame.constraints.maxHeight,
-          grid: frame.grid,
+      // I-34: the brush's values stand on the floor unless the workspace
+      // stands them on the top strip.
+      child: ValueListenableBuilder<bool>(
+        valueListenable: _brushValuesOnStrip,
+        builder: (context, onStrip, floor) => CanvasFloorInsets(
+          insets: frame.floorCover,
+          // ⑩: the collapsed row lies ON the artwork
+          // just past the region's edge. It frames
+          // nothing, so it is not in `insets` — but a
+          // bar on the bottom edge would be under it.
+          bottomOverlaySpan:
+              frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
+              ? _collapsedRows.collapsedRowHeight()
+              : 0,
+          // WHERE each column actually is, not just how
+          // wide it is. A rail panel is as tall as it was
+          // left at, so a short one covers a band and not
+          // an edge — and the scrollbar that stepped
+          // aside for the whole edge read as floating for
+          // no reason (유저, R3 #5). The left one is for
+          // the brush pill on that edge (I-34).
+          leftRailBand: _rail.railBand(
+            right: false,
+            stop: frame.leftStop,
+            onTop: frame.onTop,
+            height: frame.constraints.maxHeight,
+            grid: frame.grid,
+          ),
+          rightRailBand: _rail.railBand(
+            right: true,
+            stop: frame.rightStop,
+            onTop: frame.onTop,
+            height: frame.constraints.maxHeight,
+            grid: frame.grid,
+          ),
+          leftPill: onStrip
+              ? null
+              // ⛔Built here each time, never kept: a pill kept across builds
+              // is the same widget after a language switch, and is not built
+              // again — it went on speaking the old language. The panel lying
+              // on the floor is the one reader it wakes.
+              : CanvasEdgePill(
+                  width: BrushValuesPill.widthIn(context),
+                  child: BrushValuesPill(brushTool: _brushTool),
+                ),
+          child: floor!,
         ),
-        rightRailBand: _rail.railBand(
-          right: true,
-          stop: frame.rightStop,
-          onTop: frame.onTop,
-          height: frame.constraints.maxHeight,
-          grid: frame.grid,
-        ),
-        child: floor!,
+        child: floor,
       ),
     );
   }
@@ -3553,28 +3597,3 @@ class _WorkspaceRoom {
 class _CanvasAreaKey extends GlobalObjectKey {
   const _CanvasAreaKey(super.value);
 }
-
-/// What a person reads when a file let go on a reference row did not come
-/// in (I-47): the program language's sentence for why — or null when there
-/// is nothing to say, the file in or the row left as it was.
-///
-/// 🗣️I-68 「가」 ⓐ (유저 2026-10-10 「추천대로가자」): a file that reads, and
-/// only lacks the picture the row's cel shows, says that — 「bg.png에는
-/// 2번째 그림이 없습니다」. ↩️It was told 「could not read the file」, and so
-/// was a row that changed while its file was read.
-///
-/// The file is named as [project]'s pool shows it (F-376).
-String? referenceSwapWords(
-  ReferenceRedraw answer,
-  String path,
-  Project project,
-) => switch (answer) {
-  ReferenceLaid() || ReferenceLeftAlone() => null,
-  ReferenceUnreadable() => AppText.strings.imUnreadable(
-    project.shownNameOfMedia(path),
-  ),
-  ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
-    project.shownNameOfMedia(path),
-    picture + 1,
-  ),
-};

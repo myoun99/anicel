@@ -97,19 +97,18 @@ void main() {
     required CanvasPoint at,
     bool pastTheCanvas = false,
     void Function()? onOpenRegion,
-  }) => buildFillDabs(
+  }) => fillRangeAt(
     cut: cut,
     frameIndex: 0,
     surfaceResolver: (_, _) => surface,
     point: at,
-    color: 0xFF3366CC,
     options: FloodFillOptions(
       expandPx: 0,
       antiAlias: false,
       extendBeyondCanvas: pastTheCanvas,
     ),
     onOpenRegion: onOpenRegion,
-  );
+  )?.dabsIn(0xFF3366CC) ?? const [];
 
   for (final engine in ['dart', 'native']) {
     group('($engine)', () {

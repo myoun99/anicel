@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -881,6 +882,202 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(await pinch(tester), closeTo(1.5, 0.005));
+      });
+
+      // 🗣️I-155 (유저 2026-11-04): 「alt+휠로 타임라인이나 콘티패널에서
+      // 줌기능으로 작동하도록」 — Alt and the wheel zoom time in After Effects
+      // and Premiere Pro.
+
+      /// One notch of a mouse wheel at [at] — the cells' middle unless it
+      /// says — up, or [down], or [by] where it says; with Alt held unless
+      /// [alt] says not.
+      Future<void> notch(
+        WidgetTester tester, {
+        Offset? at,
+        bool down = false,
+        Offset? by,
+        bool alt = true,
+      }) async {
+        if (alt) {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        }
+        final pointer = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(
+          pointer.hover(at ?? onTheCells(tester)),
+        );
+        await tester.sendEventToBinding(
+          pointer.scroll(by ?? Offset(0, down ? 120 : -120)),
+        );
+        await tester.pumpAndSettle();
+        if (alt) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        }
+      }
+
+      double keyStep(double from, {required bool zoomIn}) =>
+          TimelineZoomLimits.stepped(
+            from,
+            zoomIn: zoomIn,
+            framesPerSecond: ProjectFrameRate.fps24.countingBase,
+          );
+
+      /// The sheet's frame axis — its inner scroller on every sheet.
+      ScrollPosition frameAxis(WidgetTester tester) =>
+          positionOf(tester, sheet.inner);
+
+      /// How many frames stand before [at] along the frame axis: the frame
+      /// whose cell holds it and how far across — the axis's one law
+      /// ([timelineFrameAt]), at the viewport-local offset a press on the
+      /// frames is read at.
+      double framesUnder(WidgetTester tester, Offset at) {
+        final frames = frameAxis(tester);
+        final viewport = tester.getTopLeft(
+          find
+              .descendant(
+                of: find.byKey(ValueKey<String>(sheet.inner)),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        final along = frames.pixels + partAlong(frames.axis, at - viewport);
+        final frame = timelineFrameAt(along, zoom.value);
+        final start = timelineFrameEdge(frame, zoom.value);
+        final end = timelineFrameEdge(frame + 1, zoom.value);
+        return frame + (along - start) / (end - start);
+      }
+
+      testWidgets('🚨a notch with Alt held on its cells zooms its frames one '
+          'zoom key\'s step — in up, out down — holding the frame under the '
+          'cursor under it, as far across; the layers stay (I-155 · Q1 b: '
+          '「휠 줌만 커서 기준」)', (tester) async {
+        await pumpSheet(tester);
+        final at = onTheCells(tester);
+        final under = framesUnder(tester, at);
+        final found = zoom.value;
+
+        await notch(tester, at: at);
+        final zoomedIn = keyStep(found, zoomIn: true);
+        expect(zoom.value, zoomedIn);
+        expect(
+          frameAxis(tester).pixels,
+          greaterThan(0),
+          reason: '⛔premise: the frames moved to hold it',
+        );
+        expect(framesUnder(tester, at), closeTo(under, 0.02), reason: 'in');
+        await notch(tester, at: at, down: true);
+        expect(zoom.value, keyStep(zoomedIn, zoomIn: false));
+        expect(framesUnder(tester, at), closeTo(under, 0.02), reason: 'out');
+
+        expect(positionOf(tester, sheet.outer).pixels, 0, reason: '레이어');
+        expect(
+          [for (final position in theFloor(tester)) position.pixels],
+          everyElement(0),
+        );
+      });
+
+      /// The frame axis far from the playhead, which then holds nothing: a
+      /// zoom with no point to hold holds the leading edge.
+      Future<double> farFromThePlayhead(WidgetTester tester) async {
+        frameAxis(tester).jumpTo(2000);
+        await tester.pumpAndSettle();
+        return frameAxis(tester).pixels;
+      }
+
+      /// A zoom key's step written to [to], as the keys write it.
+      Future<void> keyZoom(WidgetTester tester, double to) async {
+        zoom.value = to;
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('⛔a notch\'s point holds its own step and no later one — '
+          'a key\'s step back to the same zoom holds the leading edge', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        await farFromThePlayhead(tester);
+        await notch(tester);
+        final zoomedIn = zoom.value;
+        final out = keyStep(zoomedIn, zoomIn: false);
+        await keyZoom(tester, out);
+        final before = frameAxis(tester).pixels;
+
+        await keyZoom(tester, zoomedIn);
+
+        expect(frameAxis(tester).pixels, closeTo(before * zoomedIn / out, 0.5));
+      });
+
+      testWidgets('⛔a notch turned where the zoom goes no further holds '
+          'nothing — the next key\'s step holds the leading edge', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        await keyZoom(tester, TimelineZoomLimits.maxPixelsPerFrame);
+        final before = await farFromThePlayhead(tester);
+        await notch(tester);
+        expect(
+          zoom.value,
+          TimelineZoomLimits.maxPixelsPerFrame,
+          reason: '⛔premise: no further',
+        );
+        final out = keyStep(zoom.value, zoomIn: false);
+
+        await keyZoom(tester, out);
+
+        expect(
+          frameAxis(tester).pixels,
+          closeTo(before * out / TimelineZoomLimits.maxPixelsPerFrame, 0.5),
+        );
+      });
+
+      testWidgets('⛔the same notch without Alt scrolls it, and zooms nothing', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        final found = zoom.value;
+
+        await notch(tester, alt: false);
+        expect(zoom.value, found, reason: 'up, where nothing can scroll');
+        await notch(tester, down: true, alt: false);
+
+        expect(zoom.value, found);
+        expect(standing(tester), isNot(Offset.zero));
+      });
+
+      testWidgets('⛔a notch that comes sideways with Alt held zooms nothing', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        final found = zoom.value;
+
+        await notch(tester, by: const Offset(120, 0));
+
+        expect(zoom.value, found);
+      });
+
+      testWidgets('⛔with Alt let go a notch scrolls it again — the scrollers '
+          'stood aside only while it was held', (tester) async {
+        await pumpSheet(tester);
+        await notch(tester, down: true);
+        final zoomed = zoom.value;
+
+        await notch(tester, down: true, alt: false);
+
+        expect(zoom.value, zoomed);
+        expect(standing(tester), isNot(Offset.zero));
+      });
+
+      testWidgets('🚨on its layer area too: a notch with Alt held zooms its '
+          'frames, and moves neither the area\'s window nor its layers', (
+        tester,
+      ) async {
+        final rail = await pumpNarrowed(tester);
+        final found = zoom.value;
+
+        await notch(tester, at: tester.getCenter(sheet.aLayerName), down: true);
+
+        expect(zoom.value, keyStep(found, zoomIn: false));
+        expect(rail.offset.value, 0);
+        expect(standing(tester).dy, 0);
       });
 
       testWidgets('⛔two fingers on its layer area zoom nothing — they pull '

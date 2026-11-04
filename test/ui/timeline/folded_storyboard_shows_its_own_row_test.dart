@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/dialogs/link_window.dart' show LinkKind;
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
@@ -12,6 +13,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// D15 (유저 2026-08-21): 「①트랙이 보여야 하는데 프레임이 보임 ②심지어
 /// 수정 전 구버전 간편오버레이가 보임 — 설마 사본 멋대로 만든 건가?」
@@ -153,6 +155,30 @@ void main() {
         tester.widget<CustomPaint>(_cutBlocks()).painter!
             as StoryboardCutBlocksPainter;
     expect(painter.devicePixelRatio, 2);
+  });
+
+  testWidgets('I-150: the folded row, which has no press, draws the link '
+      'glyph itself — the open row stands a button there — and a '
+      "동기컷's, the sync glyph", (tester) async {
+    await _pumpFolded(tester, storyboard: true);
+    StoryboardCutBlocksPainter painter() =>
+        tester.widget<CustomPaint>(_cutBlocks()).painter!
+            as StoryboardCutBlocksPainter;
+    expect(painter().drawsLinkGlyphs, isTrue);
+
+    final s = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    s.selectGlobalFrame(1);
+    s.selectTrackRow(s.repository.requireProject().tracks.single.id);
+    StoryboardToolbarPanelContext(s).copyFrame();
+    s.timelineVerbs.addTimeline();
+    StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+    await tester.pumpAndSettle();
+
+    final made = s.repository.requireProject().tracks.single.cuts.last.id;
+    expect(painter().syncedCutIds, {made});
+    expect(painter().badgesOf(made), [LinkKind.sync]);
   });
 
   testWidgets('F-234: the folded row prints its words from the ambient style '

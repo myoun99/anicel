@@ -30,7 +30,8 @@ class _LinkCommands {
 
   /// 겸용컷 생성 (L2): a new cut whose drawing layers share the source's
   /// cel banks with EMPTY timelines — the bank re-exposes to a new
-  /// rhythm. One undo step; the new cut becomes active.
+  /// rhythm. One undo step; the new cut becomes active, directly behind its
+  /// source.
   void createLinkedCut({required CutId sourceCutId, String? name}) {
     final project = _coordinator.repository.requireProject();
     final sourceCut = requireCut(project, sourceCutId);
@@ -49,6 +50,89 @@ class _LinkCommands {
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
         coveringFrameIdBySource: plan.coveringFrameIdBySource,
+      ),
+    );
+  }
+
+  /// A 겸용 cut of [sourceCutId] made AS IT STANDS: [copied] — a board's
+  /// copy of it — put down on [landing] as a copy is ([_CutCommands
+  /// .copyCut]), named as a linked paste is there, then made a 겸용 of the
+  /// source ([convertCutToLinked]). [carry] hands the copy its pictures in
+  /// between, told which of the copy's cels the conversion REPLACES with
+  /// the source's namesakes — no row shows those after it. One undo step;
+  /// the new cut becomes active.
+  ///
+  /// 🗣️F-555 (유저 2026-11-04): 「컷버튼의 겸용컷 작성은 지금처럼 빈
+  /// 타임라인인채로 만드는거 ok. 다만 컷블록을 복사하고 링크붙여넣기할땐 같은
+  /// 타임라인인채로」 · F-555-Q1: 「디렉션까지도 복사. 완전 글로벌인 se행만
+  /// 복사안하는것임. 콘티도 물론 복사하는거고」 — the 「타이밍까지 통째 겸용 =
+  /// 복제→변경」 path ([ConvertToLinkedCutCommand]) in one press: the
+  /// length, the timing, the camera's keys and the direction rows are the
+  /// copy's, and its pictures link by name — an unnamed one stays its own
+  /// (F-278: 「이름이 없으면 독립적인 그림」).
+  void createLinkedCutAsItStands(
+    Cut copied, {
+    required CutId sourceCutId,
+    required CutLanding landing,
+    required void Function(DuplicatedCut landed, Set<FrameId> replaced) carry,
+  }) {
+    final name = _nameWhere(landing, sourceCutId: sourceCutId);
+    _coordinator.historyManager.runAsOneStep('Create linked cut $name', () {
+      final landed = _coordinator._cuts.copyCut(
+        copied,
+        landing: landing,
+        newName: name,
+      );
+      final plan = convertToLinkedCutPreview(
+        originCutId: sourceCutId,
+        targetCutId: landed.cutId,
+      );
+      carry(landed, {
+        for (final cels in plan.replacedFrames.values) ...cels,
+      });
+      convertCutToLinked(originCutId: sourceCutId, targetCutId: landed.cutId);
+    });
+  }
+
+  /// 동기컷 생성 (I-150-Q3): [sourceCutId] — a cut of another timeline —
+  /// made a cut of the timeline open as well, the same cut, standing on
+  /// [landing] and named as a linked paste is there (I-150-Q5 「지금대로」:
+  /// counting on from the cut in front of it). One undo step; the new cut
+  /// becomes active.
+  void createSyncedCut({
+    required CutId sourceCutId,
+    required CutLanding landing,
+  }) {
+    final project = _coordinator.repository.requireProject();
+    final plan = planCreateSyncedCutCommandInput(
+      project: project,
+      sourceCut: requireCut(project, sourceCutId),
+    );
+    _coordinator.historyManager.execute(
+      CreateSyncedCutCommand(
+        repository: _coordinator.repository,
+        editingSession: _coordinator.editingSession,
+        sourceCutId: sourceCutId,
+        newCutId: plan.newCutId,
+        newName: _nameWhere(landing, sourceCutId: sourceCutId),
+        layerIdMap: plan.layerIdMap,
+        newGroupIdBySource: plan.newGroupIdBySource,
+        newSyncId: plan.newSyncId,
+        landing: landing,
+      ),
+    );
+  }
+
+  /// The name a cut a linked paste puts down on [landing] takes: counting
+  /// on from the cut in front of where it lands (I-150-Q5).
+  String _nameWhere(CutLanding landing, {required CutId sourceCutId}) {
+    final project = _coordinator.repository.requireProject();
+    return CutCommandCoordinator.nextCutNameAfter(
+      project,
+      _coordinator._cuts._referenceNameAt(
+        project,
+        landing.trackId,
+        landing.index,
       ),
     );
   }
@@ -84,6 +168,37 @@ class _LinkCommands {
         sourceLayerId: layerId,
       ),
     );
+  }
+
+  /// 동기 해제 (I-150-Q6, 유저 2026-11-04 「동기 해제 = 독립 컷」): [cutId]
+  /// leaves its 동기컷 ([LeaveSyncCommand]) and then every link of its rows,
+  /// each as 독립시키기 unlinks one — an independent cut, every picture and
+  /// every sheet each part's own — and a 겸용 it had where it stood parts
+  /// from the cuts it leaves ([PartLinksAcrossTimelinesCommand]). ONE undo
+  /// step. Nothing for a cut of its own.
+  void unsyncCut(CutId cutId) {
+    final project = _coordinator.repository.requireProject();
+    if (project.linkRegistry.syncOf(cutId) == null) {
+      return;
+    }
+    final parting = PartLinksAcrossTimelinesCommand.forLeaving(
+      repository: _coordinator.repository,
+      brushFrameStore: _coordinator.brushFrameStore,
+      leaving: {cutId},
+    )!;
+    _coordinator.historyManager.runAsOneStep('Leave sync', () {
+      _coordinator.historyManager.execute(
+        LeaveSyncCommand(
+          repository: _coordinator.repository,
+          sheetInkStores: _coordinator.sheetInkStores,
+          cutId: cutId,
+        ),
+      );
+      for (final layer in requireCut(project, cutId).layers) {
+        unlinkLayer(cutId: cutId, layerId: layer.id);
+      }
+      _coordinator.historyManager.execute(parting);
+    });
   }
 
   /// 겸용 변경 (L2b): links [targetCutId] to [originCutId] after both

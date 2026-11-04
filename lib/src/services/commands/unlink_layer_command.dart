@@ -1,10 +1,8 @@
-import '../../models/bitmap_surface.dart';
-import '../../models/brush_frame_key.dart';
-import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../brush_frame_store.dart';
+import 'link_group_parts.dart';
 import 'link_registry_snapshot_command.dart';
 import '../project_lookup.dart';
 
@@ -19,32 +17,18 @@ import '../project_lookup.dart';
 class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   UnlinkLayerCommand({
     required super.repository,
-    required this.brushFrameStore,
+    required BrushFrameStore brushFrameStore,
     required this.cutId,
     required this.sourceLayerId,
-  });
+  }) : _copies = LinkPartCopies(brushFrameStore);
 
-  final BrushFrameStore brushFrameStore;
   final CutId cutId;
 
   /// Any member of the group to unlink (resolves to its base).
   final LayerId sourceLayerId;
 
-  /// The cels forked at execute — undo removes exactly these.
-  ///
-  /// 🚨★★★**KEYS AND SIZES, NEVER THE SURFACES.** This used to hold the
-  /// forked [BitmapSurface]s and it read them for one field: undo puts an
-  /// EMPTY surface of the same canvas size back. So an entry sitting on
-  /// the undo stack for the rest of the session pinned a whole layer's
-  /// pixels — invisibly, because this command reports no weight at all
-  /// (the byte budget only sees a [RetainedBytesCommand]). It looked
-  /// harmless while the store still held the same objects, and stopped
-  /// being harmless the moment the user drew on the forked layer.
-  ///
-  /// ⛔It cannot become a [RetainedBytesCommand] instead: the answer is
-  /// not「report these bytes」, it is「do not hold them」. A redo re-reads
-  /// the pixels from the store on its way through [execute] anyway.
-  final List<(BrushFrameKey, CanvasSize)> _forkedCels = [];
+  /// The cels forked at execute — undo empties exactly these.
+  final LinkPartCopies _copies;
 
   @override
   String get description => 'Unlink layer $sourceLayerId';
@@ -52,67 +36,51 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   @override
   void execute() {
     final project = repository.requireProject();
-    final attached = requireAttachedGroup(
-      project,
-      cutId: cutId,
-      layerId: sourceLayerId,
-    );
-    final track = attached.track;
-    final members = attached.members;
+    final registry = project.linkRegistry;
+    // A 동기컷's rows leave TOGETHER and stay one group: the sync is one
+    // cut, and its row is unlinked wherever the cut stands (I-150-Q3).
+    final leaving = {
+      for (final member in requireAttachedGroup(
+        project,
+        cutId: cutId,
+        layerId: sourceLayerId,
+      ).members)
+        ...registry.rowAcrossItsSync(cutId: cutId, layerId: member.id),
+    };
+    bool leaves(LayerLinkMember member) =>
+        leaving.contains((member.cutId, member.layerId));
 
-    // 1. Capture the shared pixels THROUGH the still-linked member keys
-    //    (they resolve to the canonical cels). LOCAL, so the pixels are
-    //    gone the moment this call returns — see [_forkedCels].
-    final forked = <(BrushFrameKey, BitmapSurface)>[];
-    _forkedCels.clear();
-    for (final member in members) {
-      if (project.linkRegistry.groupOf(cutId: cutId, layerId: member.id) ==
-          null) {
-        continue;
-      }
-      for (final frame in member.frames) {
-        final memberKey = BrushFrameKey(
-          projectId: project.id,
-          trackId: track.id,
-          cutId: cutId,
-          layerId: member.id,
-          frameId: frame.id,
-        );
-        final surface = brushFrameStore.bakedSurfaceOrNull(memberKey);
-        if (surface != null) {
-          forked.add((memberKey, surface));
-          _forkedCels.add((memberKey, surface.canvasSize));
-        }
-      }
-    }
-
-    // 2. Leave the link groups (singleton leftovers dissolve).
-    snapshotRegistry(project);
-    repository.updateProject((current) {
-      final memberIds = {for (final member in members) member.id};
-      final groups = <LayerLinkGroup>[];
-      for (final group in current.linkRegistry.groups) {
-        final remaining = [
-          for (final groupMember in group.members)
-            if (!(groupMember.cutId == cutId &&
-                memberIds.contains(groupMember.layerId)))
-              groupMember,
-        ];
-        if (remaining.length >= 2) {
-          groups.add(group.copyWith(members: remaining));
-        }
-      }
-      return current.copyWith(
-        linkRegistry: LayerLinkRegistry(groups: groups),
+    // Each group parted in two — the rows staying and the rows leaving —
+    // each part keeping its pictures ([partLinkGroup]).
+    final groups = <LayerLinkGroup>[];
+    final copiers = <LayerLinkMember>[];
+    for (final group in registry.groups) {
+      final parted = partLinkGroup(
+        group,
+        [
+          [
+            for (final member in group.members)
+              if (!leaves(member)) member,
+          ],
+          [
+            for (final member in group.members)
+              if (leaves(member)) member,
+          ],
+        ],
+        idOf: (_) => '${group.id}:sync',
       );
-    });
-
-    // 3. The member keys now resolve to THEMSELVES — store the captured
-    //    pixels as the layer's own cels (surfaces are immutable, sharing
-    //    the object is a true copy-on-write fork).
-    for (final (key, surface) in forked) {
-      brushFrameStore.storeBakedSurface(key, surface);
+      groups.addAll(parted.groups);
+      copiers.addAll(parted.copiers);
     }
+
+    final taken = _copies.take(project, copiers);
+    snapshotRegistry(project);
+    repository.updateProject(
+      (current) => current.copyWith(
+        linkRegistry: current.linkRegistry.copyWith(groups: groups),
+      ),
+    );
+    _copies.keep(taken);
     markExecuted();
   }
 
@@ -120,12 +88,5 @@ class UnlinkLayerCommand extends LinkRegistrySnapshotCommand {
   /// restore the registry — reads flow back to the canonical cels. The
   /// template fixes that order (see [LinkRegistrySnapshotCommand.undo]).
   @override
-  void undoBeforeRegistry() {
-    for (final (key, canvasSize) in _forkedCels) {
-      brushFrameStore.storeBakedSurface(
-        key,
-        BitmapSurface(canvasSize: canvasSize),
-      );
-    }
-  }
+  void undoBeforeRegistry() => _copies.takeBack();
 }

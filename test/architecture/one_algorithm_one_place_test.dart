@@ -714,8 +714,52 @@ import '../../tool/refactor/clone_scan.dart';
 /// reads and the one it writes — no flag says which switch.
 /// 🔬Measured on the lane over master (`f32fe4b06`, at 87): none added,
 /// this one gone.
+///
+/// 86 → 87 (2026-11-04, conform-landing-copies-on-the-ui-thread — a
+/// conform's PCM, and each rate it is converted to, placed in the device
+/// by the worker that made it). Named:
+///
+///     54 tokens
+///       lib/src/services/audio/audio_conform_runner.dart
+///         conformingInto
+///       lib/src/services/audio/audio_conform_runner.dart
+///         resamplingInto
+///
+/// They ARE one algorithm — "run the job on a worker that places its PCM
+/// in the device's buffers, and adopt what lands; with no device, the
+/// plain isolate" — over two jobs whose results differ (a conform keeps
+/// its waveform and its rate beside the samples, a conversion is the
+/// samples alone). ⛔Not merged, by the rule of three (CLAUDE.md): merged,
+/// one body would take the plain runner, the worker's job and the way back
+/// into each result as three callbacks for a shape seen twice. 🔜A third
+/// kind of PCM that lands where the device plays it merges the three.
+/// 🔬Measured on the lane over master (`879992e96`, at 86): this one
+/// added, none gone.
+/// 87 → 86 (2026-11-04, resample-request-copies-the-conform-to-the-
+/// worker — the conform a conversion reads is lent to its worker by
+/// address). The pair named at 86 → 87 left the scan: the conversion's
+/// runner takes its worker's job inside the device's lend, so the run the
+/// two shared is under the floor. ⚠️They are still one algorithm in the
+/// part they share (a worker places, the runner adopts) — the 🔜 above
+/// stands: a third kind of PCM that lands where the device plays it
+/// merges the three.
+/// 🔬Measured on the lane over master (`6e22fd0bc`, at 87): none added,
+/// that one gone.
+/// 86 → 85 (2026-11-04, fill-gradient — I-160's gradient stamp, the THIRD
+/// body to copy a pixel's three colour bytes by hand). The pair it met at
+/// 41 tokens:
+///
+///     lib/src/services/canvas_selection.dart
+///       transformStampDabMesh
+///       gatherMaskedSurfacePixels
+///
+/// The third merged the three (CLAUDE.md's rule of three): each copies the
+/// colour through `copyRgb` and writes its own alpha — taken whole, taken
+/// where it is not clear, or under the coverage.
+/// 🔬Measured on the lane over master (`826a20074`, at 86): none added,
+/// that one gone.
 void main() {
-  const ceiling = 86;
+  const ceiling = 85;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -74,9 +74,14 @@ class ViewerSound {
   /// ⚠️The SAME conform store the timeline plays out of, so a file conformed
   /// for one is conformed for the other and nothing is decoded twice; the
   /// output the settings chose; and the user's A/V correction the canvas
-  /// reads ([PlaybackRig.userOffsetSamples]).
-  factory ViewerSound.ofSession(EditorSessionManager session) => ViewerSound(
-    conformStore: session.audioConformStore,
+  /// reads ([PlaybackRig.userOffsetSamples]). A [conformStore] of its own
+  /// plays a file the pool carries other bytes of — the import window's,
+  /// for a file it will take anew (F-550-Q3).
+  factory ViewerSound.ofSession(
+    EditorSessionManager session, {
+    AudioConformStore? conformStore,
+  }) => ViewerSound(
+    conformStore: conformStore ?? session.audioConformStore,
     resolveOutputDeviceName: () =>
         session.appSettings.audioSyncSettings.value.outputDeviceName,
     resolveUserOffsetSamples: session.playbackRig.userOffsetSamples,

@@ -413,13 +413,14 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
 }
 
 /// Where a NEW row riding [baseId] on its [placement] side lands in
-/// [layers]. The group reads `[below…, base, above…]`: a new below goes
-/// bottommost (before the existing belows and their organizer folders), a
-/// new above topmost (past the group).
+/// [layers] when no row of the group was stood on. The group reads
+/// `[below…, base, above…]`: a new below goes bottommost (before the
+/// existing belows and their organizer folders), a new above topmost (past
+/// the group).
 ///
-/// One answer for every door a row joins a group by — the add
-/// (`FoldersAndAttachments.addAttachedLayer`) and the copy 겸용 변경 makes
-/// of a row only one of its cuts holds. A missing base answers
+/// The copy 겸용 변경 makes of a row only one of its cuts holds joins its
+/// group here. ↩️The add did too, until I-159 stood it beside the row it
+/// is added from ([newAttachedRowBeside]). A missing base answers
 /// `layers.length` either way: the end of the stack.
 int newAttachedRowIndex(
   LayerId baseId,
@@ -428,6 +429,38 @@ int newAttachedRowIndex(
 ) => placement == AttachedPlacement.below
     ? attachedGroupStartIndex(baseId, layers)
     : attachedGroupEndIndex(baseId, layers);
+
+/// Where a NEW attach row added from [stood] — a base, or a row riding one
+/// — lands in [layers]: directly on [side] of [stood], in [stood]'s folder,
+/// on the side of the base [stood] stands on (a base's own: [side]).
+///
+/// 🗣️I-159 (유저 2026-11-04): 「아래/위의 어태치레이어 추가는 서있는걸
+/// 기준으로. 지금 위의 어태치행에 서있어도 아래 어태치레이어 추가하면
+/// 무조건 기준레이어의 밑에 생기는데, 서있는 어태치행을 기준으로 그 아래나
+/// 위에 생기게하도록」. ↩️The add went to the far end of [side]
+/// ([newAttachedRowIndex]) whichever row was stood on, and one added from
+/// a row in a 공정 folder of [side] to that folder's top (the SIBLING rule)
+/// — beside a row is in that row's folder now, wherever it stands in it.
+///
+/// A [stood] missing from [layers] answers `layers.length`: the end of the
+/// stack, as a missing base does.
+({int index, AttachedPlacement placement, LayerId? folderId})
+newAttachedRowBeside(
+  Layer stood,
+  List<Layer> layers,
+  AttachedPlacement side,
+) {
+  final at = layers.indexWhere((layer) => layer.id == stood.id);
+  return (
+    index: at == -1
+        ? layers.length
+        : side == AttachedPlacement.below
+        ? at
+        : at + 1,
+    placement: isAttachedLayer(stood) ? stood.attachedPlacement : side,
+    folderId: stood.folderId,
+  );
+}
 
 /// The attach group [member] belongs to, named by its BASE: the row it
 /// rides, or itself when it IS the base.
@@ -563,6 +596,11 @@ int? _defaultAttachNumber(
 /// written, and a side whose seats did not change is not touched: the
 /// numbers move with the rows, they are not packed — a deleted row's gap
 /// stays a gap, as a base's rename keeps its riders' numbers.
+///
+/// I-159 (「이름도 그에 맞춰서 재정렬」): a row the write MADE counts as one
+/// that stood there already, wearing the name it was born with — the first
+/// unused ([nextAttachedLayerName]) — so a row added beside another takes
+/// its seat's number as a moved one does.
 Map<LayerId, String> attachNamesForMovedSeats(
   List<Layer> before,
   List<Layer> after,
@@ -584,9 +622,9 @@ Map<LayerId, String> attachNamesForMovedSeats(
       final named = <Layer>[];
       var arrived = 0;
       for (final row in seats) {
-        final old = was[row.id];
-        final oldBase = was[old?.attachedToLayerId];
-        if (old == null || oldBase == null) {
+        final old = was[row.id] ?? row;
+        final oldBase = was[old.attachedToLayerId];
+        if (oldBase == null) {
           continue;
         }
         final number = _defaultAttachNumber(

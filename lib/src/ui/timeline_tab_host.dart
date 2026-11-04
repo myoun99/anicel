@@ -12,6 +12,8 @@ import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
+import 'timeline/cut_list.dart' show cutListButton;
+import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
@@ -665,11 +667,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   session: _session,
                   layerId: layerId,
                 ),
-            onOpenLayerLinks: (anchorContext, layerId) => showLayerLinkWindow(
-              anchorContext,
-              session: _session,
-              layerId: layerId,
-            ),
+            onOpenLayerLinks: (anchorContext, layerId, kind) =>
+                showLayerLinkWindow(
+                  anchorContext,
+                  session: _session,
+                  layerId: layerId,
+                  kind: kind,
+                ),
             onOpenCameraPath: (anchorContext) => showCameraPathSettings(
               anchorContext,
               _session.appSettings.setCameraPathSettings,
@@ -691,6 +695,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // model state, read straight off the layer).
             layerFxStateOf: _session.effectsAndFx.layerFxState,
             layerLinkPartnersOf: _session.layerVerbs.linkPartnersOf,
+            layerSyncPartnersOf: _session.layerVerbs.syncPartnersOf,
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
@@ -931,13 +936,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   lane.laneId,
                   description: 'Toggle ${lane.label}',
                 ),
+            // I-120-Q10: the header's basis chip, dispatched as its switch.
+            onSetLaneGroupBasis: (layer, lane, basis) =>
+                _session.laneVerbs.setLaneGroupBasis(
+                  layer.id,
+                  lane.laneId,
+                  basis,
+                  description: 'Set ${lane.label} basis',
+                ),
+            onRasterizeLaneGroup: (layer, lane) =>
+                rasterizeLaneGroupOf(context, _session, layer, lane),
             // R5: AE's group Reset. The session owns the scope rule (the
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.
             onResetLaneGroup: (layer, lane) =>
                 _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
             transport: timelineTransport,
-            cutName: _session.cutUnderPlayhead.cutName,
+            // The legend's heading is the cut list (I-154).
+            legendHeading: cutListButton(context, _session),
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
@@ -1020,8 +1036,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       // diverges from).
       panelContext: TimelineToolbarPanelContext(_session, waitIn: context),
       onAddLayer: _session.layerStack.addLayer,
-      onRenameLayer: () =>
-          unawaited(renameActiveLayerWithDialog(context, _session)),
       onDeleteLayer: () =>
           unawaited(deleteActiveLayerWithDialog(context, _session)),
       // F: the shared delete's ROW rung keeps the confirmation the loose
@@ -1057,7 +1071,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       projectFrameRate: _session.projectSettings.projectFrameRate,
       pixelsPerFrame: pixelsPerFrame,
       onPixelsPerFrameChanged: null,
-      cutName: _session.cutUnderPlayhead.cutName,
       trailing: [
         TimelineOrientationToggle(
           orientation: widget.orientation,

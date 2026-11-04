@@ -55,14 +55,16 @@ void main() {
       'resize-cut-canvas-button',
       'add-cut-create-linked',
       'convert-cut-to-linked-button',
+      // 🗣️I-154 (유저 2026-11-04): 「컷 버튼에 이름변경, 레이어버튼에도
+      // 이름변경 추가. 역시 있는게 나을거같음」. ↩️F-455 had taken it off.
+      'rename-cut-button',
     ]) {
       expect(find.byKey(ValueKey<String>(item)), findsOneWidget);
     }
     // 🗣️F-455 (유저 2026-10-23): 「컷 버튼의 컷 왼쪽/오른쪽으로 삭제 …
-    // 카메라AE키프레임 복사도 삭제 … 컷 이름 변경도 … 삭제 … 레이어랑
-    // 컷버튼의 레이어복제/컷복제 삭제」.
+    // 카메라AE키프레임 복사도 삭제 … 레이어랑 컷버튼의 레이어복제/컷복제
+    // 삭제」.
     for (final gone in [
-      'rename-cut-button',
       'duplicate-cut-button',
       'move-cut-left-button',
       'move-cut-right-button',

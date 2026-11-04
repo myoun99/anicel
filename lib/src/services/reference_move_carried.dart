@@ -3,6 +3,7 @@ import '../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/fx_basis.dart';
 import '../models/layer.dart';
 import '../models/media_reference.dart';
 import '../models/movie_cel.dart' show isMovieReference;
@@ -242,6 +243,14 @@ enum ReferenceWait {
   usesApart(
     "The linked layers show this cel's picture in different places, and "
     'one cel holds it in one. Match their Reference to rasterize.',
+  ),
+
+  /// The row's transform reads its keys by blocks (I-120-Q10), and keys
+  /// carrying the fx's move would be read so too: the picture would move
+  /// once a block where the fx moves it every frame.
+  blocks(
+    "This layer's Transform applies per block, so a moving Reference "
+    'cannot become its keys. Apply the Transform per frame to rasterize.',
   );
 
   const ReferenceWait(this.label);
@@ -341,6 +350,13 @@ ReferenceCarry transformCarryingReferenceMove({
   // lay that is not would need that lay undone first.
   if (laid != TransformPose(center: laid.center)) {
     return const ReferenceUncarried(ReferenceWait.laidAsFitted);
+  }
+  // A row read by blocks reads the carried keys by blocks too: an fx that
+  // moves the picture every frame would move it once a block.
+  if (layer.fxBlocks != null &&
+      layer.transformBasis == FxBasis.block &&
+      reference.fx.lanes.any((lane) => lane.keys.length > 1)) {
+    return const ReferenceUncarried(ReferenceWait.blocks);
   }
   final shown = layer.transformEnabled
       ? layer
@@ -522,8 +538,14 @@ TransformTrack? _framesCarried(
     for (final lane in lanes) ...lane.keys.keys,
   };
   final frames = keyed([...own, ...fx.lanes]).toList()..sort();
+  // A row read by blocks shows its last key from the block after the one
+  // it falls in (I-120-Q10): the frames run on to there.
+  var last = frames.last;
+  while (layer.transformReadFrame(last) < frames.last) {
+    last += 1;
+  }
   final byFrame = <int, LayerPoseSample>{};
-  for (var frame = frames.first; frame <= frames.last; frame += 1) {
+  for (var frame = frames.first; frame <= last; frame += 1) {
     final carrier = _Carrier(_ownAt(layer, canvas, frame), canvas);
     final pose = carrier.pose(reference.poseAt(frame));
     if (pose == null) {

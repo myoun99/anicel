@@ -323,7 +323,6 @@ void main() {
       await tester.pump();
       await gesture.moveTo(picture.center + const Offset(12, 0));
       await tester.pump();
-      await tester.pump(Duration.zero);
       expect(
         storyboardLayerForCut(cutOf(of))?.timeline ?? const {},
         isEmpty,

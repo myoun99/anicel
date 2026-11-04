@@ -25,7 +25,18 @@ class ExportCelNaming {
     this.cutFolder = false,
     this.layerFolder = false,
     this.prefixes = const {},
+    this.projectFolderName = const ExportNameAffix(),
+    this.cutFolderName = const ExportNameAffix(),
   });
+
+  /// What the project's and the cut's folders wear around their names
+  /// ([projectFolder] · [cutFolder]) — `csm_14_` + the cut + `_lo`.
+  ///
+  /// 🗣️I-153 (유저 2026-11-04): 「csm_14_컷이름_lo 이런식으로 출력하고 …
+  /// 그래서 폴더생성에서 컷이나 프로젝트 누르면 아래에 접두 접미사 텍스트
+  /// 지정할수있도록」 — the work folders' own shape, title_episode_cut_process.
+  final ExportNameAffix projectFolderName;
+  final ExportNameAffix cutFolderName;
 
   /// What each kind's files start with, WHERE THE USER SAID SO — a kind not
   /// here starts with its own default ([ExportCelKind.defaultPrefix]).
@@ -77,6 +88,8 @@ class ExportCelNaming {
     bool? cutFolder,
     bool? layerFolder,
     Map<ExportCelKind, String>? prefixes,
+    ExportNameAffix? projectFolderName,
+    ExportNameAffix? cutFolderName,
   }) => ExportCelNaming(
     includeProjectName: includeProjectName ?? this.includeProjectName,
     includeCutName: includeCutName ?? this.includeCutName,
@@ -87,6 +100,8 @@ class ExportCelNaming {
     cutFolder: cutFolder ?? this.cutFolder,
     layerFolder: layerFolder ?? this.layerFolder,
     prefixes: prefixes ?? this.prefixes,
+    projectFolderName: projectFolderName ?? this.projectFolderName,
+    cutFolderName: cutFolderName ?? this.cutFolderName,
   );
 
   Map<String, dynamic> toJson() => {
@@ -103,6 +118,9 @@ class ExportCelNaming {
         for (final entry in prefixes.entries)
           entry.key.jsonValue: entry.value,
       },
+    if (!projectFolderName.isBare)
+      'projectFolderName': projectFolderName.toJson(),
+    if (!cutFolderName.isBare) 'cutFolderName': cutFolderName.toJson(),
   };
 
   static ExportCelNaming fromJson(Map<String, dynamic> json) =>
@@ -125,6 +143,8 @@ class ExportCelNaming {
           },
           _ => const {},
         },
+        projectFolderName: ExportNameAffix.fromJson(json['projectFolderName']),
+        cutFolderName: ExportNameAffix.fromJson(json['cutFolderName']),
       );
 
   @override
@@ -139,7 +159,9 @@ class ExportCelNaming {
           other.projectFolder == projectFolder &&
           other.cutFolder == cutFolder &&
           other.layerFolder == layerFolder &&
-          mapEquals(other.prefixes, prefixes);
+          mapEquals(other.prefixes, prefixes) &&
+          other.projectFolderName == projectFolderName &&
+          other.cutFolderName == cutFolderName;
 
   @override
   int get hashCode => Object.hash(
@@ -154,5 +176,52 @@ class ExportCelNaming {
     Object.hashAllUnordered([
       for (final entry in prefixes.entries) Object.hash(entry.key, entry.value),
     ]),
+    projectFolderName,
+    cutFolderName,
   );
+}
+
+/// What a name wears around it: [prefix] before, [suffix] after — empty
+/// for none. ⚠️Not trimmed: what was typed is the name (the files'
+/// prefixes are kept so).
+class ExportNameAffix {
+  const ExportNameAffix({this.prefix = '', this.suffix = ''});
+
+  final String prefix;
+  final String suffix;
+
+  /// Whether it wears nothing: the name as it is.
+  bool get isBare => prefix.isEmpty && suffix.isEmpty;
+
+  /// [name] with this around it.
+  String around(String name) => '$prefix$name$suffix';
+
+  ExportNameAffix copyWith({String? prefix, String? suffix}) =>
+      ExportNameAffix(
+        prefix: prefix ?? this.prefix,
+        suffix: suffix ?? this.suffix,
+      );
+
+  Map<String, dynamic> toJson() => {
+    if (prefix.isNotEmpty) 'prefix': prefix,
+    if (suffix.isNotEmpty) 'suffix': suffix,
+  };
+
+  static ExportNameAffix fromJson(Object? json) => switch (json) {
+    final Map<String, dynamic> map => ExportNameAffix(
+      prefix: map['prefix'] is String ? map['prefix'] as String : '',
+      suffix: map['suffix'] is String ? map['suffix'] as String : '',
+    ),
+    _ => const ExportNameAffix(),
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ExportNameAffix &&
+          other.prefix == prefix &&
+          other.suffix == suffix;
+
+  @override
+  int get hashCode => Object.hash(prefix, suffix);
 }

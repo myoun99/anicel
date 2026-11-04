@@ -26,9 +26,10 @@ Project projectWithMediaMoved(Project project, Map<String, String> moved) {
     return project;
   }
   final moves = mediaMovesInPoolSpelling(moved);
-  final tracks = [
-    for (final track in project.tracks) _trackMoved(track, moves),
-  ];
+  final followed = project.withTracksOfEveryTimeline((tracks) {
+    final moving = [for (final track in tracks) _trackMoved(track, moves)];
+    return listsMatch(moving, tracks, identical) ? tracks : moving;
+  });
   var info = project.timesheetInfo;
   for (final picture in WorkPicture.values) {
     final path = picture.pathIn(info);
@@ -37,7 +38,7 @@ Project projectWithMediaMoved(Project project, Map<String, String> moved) {
       info = picture.withPath(info, to);
     }
   }
-  return project.copyWith(
+  return followed.copyWith(
     mediaAssets: _eachMoved(
       project.mediaAssets,
       moves,
@@ -48,9 +49,6 @@ Project projectWithMediaMoved(Project project, Map<String, String> moved) {
       // copy came from is the copy's business — see `MediaAsset.sourcePath`.
       movedTo: (asset, to) => asset.copyWith(path: to),
     ),
-    tracks: listsMatch(tracks, project.tracks, identical)
-        ? project.tracks
-        : tracks,
     timesheetInfo: info,
   );
 }

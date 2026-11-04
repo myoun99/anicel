@@ -1130,8 +1130,9 @@ class ProjectFileDoor {
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED
       // mismatched cels, where memory no longer matches the file (R7q2), or
-      // moved a sheet's photos onto a file it found moved (I-97).
-      unsaved: read.bindTo != null || healed,
+      // moved a sheet's photos onto a file it found moved (I-97), or gave a
+      // carry a name of its own, whose bytes the next save takes (F-550-Q2).
+      unsaved: read.bindTo != null || healed || result.carriesNamedAnew,
     );
     warmAudioConforms();
     // RELINK-2: the first of the three refresh moments. A project opened
@@ -1184,7 +1185,11 @@ class ProjectFileDoor {
   /// through the rebuild's own clamp. And the tools, as they were.
   void _standWhereItWasSaved(ProjectResume resume, Project project) {
     final savedCut = resume.cutId;
-    if (savedCut != null && cutPositionOf(project, savedCut) != null) {
+    // On the open timeline: the cut stood on is one of its (I-150).
+    if (savedCut != null &&
+        project.tracks.any(
+          (track) => track.cuts.any((cut) => cut.id == savedCut),
+        )) {
       _timeline.editingSession.setActiveCutId(savedCut);
     }
     _controllers.rebuild(
@@ -1326,7 +1331,7 @@ Future<ProjectFileRead> readProjectFile(
 /// Every cut the project holds — what a loaded envelope's or timesheet's
 /// ink is checked against.
 Set<CutId> _everyCutId(Project project) => {
-  for (final track in project.tracks)
+  for (final track in project.tracksOfEveryTimeline)
     for (final cut in track.cuts) cut.id,
 };
 
@@ -1408,7 +1413,7 @@ bool _healStaleCelSizes(
   required BrushFrameStore store,
 }) {
   final cutSizes = {
-    for (final track in project.tracks)
+    for (final track in project.tracksOfEveryTimeline)
       for (final cut in track.cuts) cut.id: cut.canvasSize,
   };
   final healedCuts = <CutId>{};

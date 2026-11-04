@@ -348,6 +348,45 @@ void main() {
     );
   });
 
+  test('🚨I-160: the RANGE an area covers is the one sheet, byte for byte — '
+      'what a gradient dragged across an outline covers is what its fill '
+      'lays', () {
+    for (final MapEntry(key: name, value: region) in areas.entries) {
+      for (final options in optionsTried) {
+        final why = '$name, expand ${options.expandPx} AA ${options.antiAlias}';
+        final sheet = sheetOf(region, options);
+        final held = regionFillRange(
+          region: region,
+          opacity: 0.7,
+          options: options,
+        )!;
+        final range = held.region!;
+        expect(
+          (range.left, range.top, range.width, range.height),
+          (sheet.left, sheet.top, sheet.width, sheet.height),
+          reason: why,
+        );
+        expect(range.mask, sheet.mask, reason: why);
+        expect(
+          {for (final piece in held.dabsIn(color)) piece.opacity},
+          {0.7},
+          reason: '$why: at the fill\'s opacity',
+        );
+      }
+    }
+  });
+
+  test('an area that covers no pixel holds no range', () {
+    expect(
+      regionFillRange(
+        region: CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 0, top: 0.6, right: 900, bottom: 1.4),
+        ),
+      ),
+      isNull,
+    );
+  });
+
   group('the pieces LAND what the one stamp landed', () {
     final dllPath = nativeEngineLibraryPathOrNull();
     const canvas = CanvasSize(width: 512, height: 384);
@@ -575,7 +614,7 @@ void main() {
     test('a ring\'s fill is four pieces — a whole tile empty in its middle '
         'carries nothing — and lays exactly the ring', () {
       final surface = inked();
-      final pieces = buildFillDabs(
+      final pieces = fillRangeAt(
         cut: Cut(
           id: const CutId('cut'),
           name: 'Cut',
@@ -597,9 +636,8 @@ void main() {
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
         point: p(50.5, 50.5),
-        color: color,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      );
+      )?.dabsIn(color) ?? const [];
       expect(pieces, hasLength(4), reason: 'rows 0 and 2 whole, row 1 split');
       for (var y = 0; y < canvas.height; y += 1) {
         for (var x = 0; x < canvas.width; x += 1) {

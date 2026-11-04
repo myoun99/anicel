@@ -10,6 +10,7 @@ import '../../helpers/home_page_probes.dart';
 import '../../helpers/panel_finders.dart';
 import '../timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
 import '../../helpers/text_finders.dart';
+import '../../helpers/wait_window.dart' show waitOutTheWaitWindow;
 
 /// 🗣️I-19 (유저 2026-09-12 / 09-13): 「여러 단축키 기존 버튼에 연결」 — every
 /// key here presses a button that already existed, and the test for each is
@@ -37,6 +38,8 @@ Future<void> _press(
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
   }
   await tester.pumpAndSettle();
+  // As its button's press does, a key's waits out the wait window (F-551).
+  await waitOutTheWaitWindow(tester);
 }
 
 /// [key] pressed under Shift, TYPING [typed] — how a layout that puts a

@@ -159,9 +159,10 @@ class ConformResult {
   final String? error;
 
   /// This result with its PCM in another place — the same sound, wherever
-  /// it lives (`AudioConformStore.placeForPlayback`). On the class, so no
-  /// field is left behind by a copy spelled out somewhere else.
-  ConformResult withSamples(Float32List samples) => ConformResult(
+  /// it lives (`conformingInto`), or none here while it crosses to where it
+  /// does. On the class, so no field is left behind by a copy spelled out
+  /// somewhere else.
+  ConformResult withSamples(Float32List? samples) => ConformResult(
     outcome: outcome,
     conformBytes: conformBytes,
     peaks: peaks,

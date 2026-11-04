@@ -75,13 +75,15 @@ Project? updateTrackById(
   Track Function(Track track) update,
 ) {
   var found = false;
-  final tracks = _replacingOne(
-    project.tracks,
-    (id: trackId, of: (Track track) => track.id),
-    update,
-    () => found = true,
+  final next = project.withTracksOfEveryTimeline(
+    (tracks) => _replacingOne(
+      tracks,
+      (id: trackId, of: (Track track) => track.id),
+      update,
+      () => found = true,
+    ),
   );
-  return found ? project.copyWith(tracks: tracks) : null;
+  return found ? next : null;
 }
 
 /// Replaces the first cut matching [cutId] (searching every track) via [update].
@@ -98,18 +100,20 @@ Project? updateCutAnywhere(
   Cut Function(Cut cut) update,
 ) {
   var found = false;
-  final tracks = [
-    for (final track in project.tracks)
-      track.copyWith(
-        cuts: _replacingOne(
-          track.cuts,
-          (id: cutId, of: (cut) => cut.id),
-          update,
-          () => found = true,
+  final next = project.withTracksOfEveryTimeline(
+    (tracks) => [
+      for (final track in tracks)
+        track.copyWith(
+          cuts: _replacingOne(
+            track.cuts,
+            (id: cutId, of: (cut) => cut.id),
+            update,
+            () => found = true,
+          ),
         ),
-      ),
-  ];
-  return found ? project.copyWith(tracks: tracks) : null;
+    ],
+  );
+  return found ? next : null;
 }
 
 /// Replaces the first layer matching [layerId] — searching every cut AND
@@ -124,27 +128,14 @@ Project? updateLayerAnywhere(
 ) {
   var found = false;
   void mark() => found = true;
-  List<Layer> replaced(Iterable<Layer> layers) => _replacingOne(
+  List<Layer> replaced(List<Layer> layers) => _replacingOne(
     layers,
     (id: layerId, of: (layer) => layer.id),
     update,
     mark,
   );
-  final tracks = [
-    for (final track in project.tracks)
-      track.copyWith(
-        cuts: [
-          for (final cut in track.cuts)
-            cut.copyWith(layers: replaced(cut.layers)),
-        ],
-        seLayers: replaced(track.seLayers),
-        // The TRANSITION row lives on the track beside the SE rows and
-        // reaches a cut's row list as a display clone, so a flag command
-        // (eye, mark, timesheet) sweeping the visible rows can name it.
-        transitionLayer: replaced([track.transitionLayer]).single,
-      ),
-  ];
-  return found ? project.copyWith(tracks: tracks) : null;
+  final next = _withEveryRowList(project, replaced);
+  return found ? next : null;
 }
 
 /// Replaces the first frame matching [frameId] — searching every layer,
@@ -164,18 +155,37 @@ Project? updateFrameAnywhere(
       () => found = true,
     ),
   );
-  final tracks = [
-    for (final track in project.tracks)
+  final next = _withEveryRowList(
+    project,
+    (rows) => [for (final row in rows) updateFrames(row)],
+  );
+  return found ? next : null;
+}
+
+/// [project] with every list of rows it holds rebuilt by [rebuild]: each
+/// cut's, each track's SE rows and its transition row — every timeline's.
+///
+/// ⛔The rows `projectLayersAnywhere` walks, which is the law of 「every
+/// layer in the project」 (F-131). The TRANSITION row lives on the track
+/// beside the SE rows and reaches a cut's row list as a display clone, so a
+/// flag command (eye, mark, timesheet) sweeping the visible rows can name
+/// it. ↩️The frames' walk wrote this out again without it.
+Project _withEveryRowList(
+  Project project,
+  List<Layer> Function(List<Layer> rows) rebuild,
+) => project.withTracksOfEveryTimeline(
+  (tracks) => [
+    for (final track in tracks)
       track.copyWith(
         cuts: [
           for (final cut in track.cuts)
-            cut.copyWith(layers: cut.layers.map(updateFrames).toList()),
+            cut.copyWith(layers: rebuild(cut.layers)),
         ],
-        seLayers: track.seLayers.map(updateFrames).toList(),
+        seLayers: rebuild(track.seLayers),
+        transitionLayer: rebuild([track.transitionLayer]).single,
       ),
-  ];
-  return found ? project.copyWith(tracks: tracks) : null;
-}
+  ],
+);
 
 /// Replaces the layer matching [layerId] within [cut] via [update]. Returns
 /// `null` if the cut has no such layer.
@@ -201,21 +211,25 @@ Cut? updateLayerInCut(
   CutId cutId,
 ) {
   Cut? removed;
-  final tracks = [
-    for (final track in project.tracks)
-      if (removed != null)
-        track
-      else
-        () {
-          final without = _withoutOne(track.cuts, (
-            id: cutId,
-            of: (Cut cut) => cut.id,
-          ));
-          removed = without.removed;
-          return removed == null ? track : track.copyWith(cuts: without.items);
-        }(),
-  ];
-  return (project: project.copyWith(tracks: tracks), removed: removed);
+  final next = project.withTracksOfEveryTimeline(
+    (tracks) => [
+      for (final track in tracks)
+        if (removed != null)
+          track
+        else
+          () {
+            final without = _withoutOne(track.cuts, (
+              id: cutId,
+              of: (Cut cut) => cut.id,
+            ));
+            removed = without.removed;
+            return removed == null
+                ? track
+                : track.copyWith(cuts: without.items);
+          }(),
+    ],
+  );
+  return (project: next, removed: removed);
 }
 
 /// Removes the layer matching [layerId] from [cut] and hands it back.

@@ -8,6 +8,7 @@ import 'package:sqlite3/sqlite3.dart';
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_correction.dart';
+import '../../models/brush_in_and_out.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_preset.dart';
@@ -442,6 +443,7 @@ BrushSettings _settingsFromVariant(
       warnings: warnings,
     ),
     correction: _correctionOf(variant),
+    inAndOut: _inAndOutOf(variant, brushName: brushName, warnings: warnings),
   );
   // The second tip's own way along the path, read by the first tip's
   // reader under its `Dual` prefix — once a tip arrived, for the reason
@@ -499,6 +501,98 @@ BrushCorrection _correctionOf(Map<String, Object?> variant) {
     postByViewScale: flag('BrushRevisionByViewScale', fallback.postByViewScale),
     postBezier: flag('BrushRevisionBezier', fallback.postBezier),
   );
+}
+
+/// The brush's 入り抜き (brush-in-and-out): how far its 入り and its 抜き
+/// run, and what they leave of the size and of the 濃度 — `BrushFlow`, our
+/// flow.
+///
+/// 📏Read off the user's four brushes (2026-11-03): `BrushUseIn` and
+/// `BrushUseOut` say whether each is on, `BrushInLength` and
+/// `BrushOutLength` how far, their unit columns 0 and `BrushInOutType` 0 on
+/// every one — 長さ指定, the one way we lay it (brush-in-and-out-Q1).
+/// `BrushInOutTarget` says what it reaches ([_inAndOutReach]).
+///
+/// A brush set another way — パーセント指定, フェード, a length in another
+/// unit — comes in without it, and says so, rather than at a wrong scale.
+BrushInAndOut _inAndOutOf(
+  Map<String, Object?> variant, {
+  required String brushName,
+  required List<String> warnings,
+}) {
+  final comesIn = _intOf(variant['BrushUseIn']) == 1;
+  final goesOut = _intOf(variant['BrushUseOut']) == 1;
+  if (!comesIn && !goesOut) {
+    return BrushInAndOut.none;
+  }
+  final type = _intOf(variant['BrushInOutType']) ?? 0;
+  final inUnit = _intOf(variant['BrushInLengthUnit']) ?? 0;
+  final outUnit = _intOf(variant['BrushOutLengthUnit']) ?? 0;
+  if (type != 0 || inUnit != 0 || outUnit != 0) {
+    warnings.add(
+      'Brush "$brushName": its start and end are set in a way this app does '
+      'not lay (BrushInOutType $type, units $inUnit/$outUnit); imported '
+      'without them.',
+    );
+    return BrushInAndOut.none;
+  }
+  final reach = _inAndOutReach(variant['BrushInOutTarget']);
+  final unread = reach.keys.where(
+    (id) => id != _inAndOutSize && id != _inAndOutFlow,
+  );
+  if (unread.isNotEmpty) {
+    warnings.add(
+      'Brush "$brushName": its start and end also reach settings this app '
+      'does not taper (Clip Studio ids ${unread.join(', ')}); imported '
+      'with the size and the flow only.',
+    );
+  }
+  double length(String column) {
+    final value = _doubleOf(variant[column]);
+    return value == null || !value.isFinite
+        ? 0
+        : value.clamp(0.0, BrushInAndOut.maxLength).toDouble();
+  }
+
+  return BrushInAndOut(
+    inLength: comesIn ? length('BrushInLength') : 0,
+    outLength: goesOut ? length('BrushOutLength') : 0,
+    sizeMinimum: reach[_inAndOutSize] ?? 1,
+    flowMinimum: reach[_inAndOutFlow] ?? 1,
+  );
+}
+
+/// Clip Studio's ids in `BrushInOutTarget` for ブラシサイズ and ブラシ濃度.
+const _inAndOutSize = 112;
+const _inAndOutFlow = 1001;
+
+/// The settings a `BrushInOutTarget` ticks, by Clip Studio's id, each with
+/// what it leaves of that setting, 0..1.
+///
+/// 📏Three int32s (12, the count, 12), then three per setting it can reach:
+/// the setting's id, whether it is ticked, its minimum — big-endian, as
+/// the effectors are ([_effectorFlags]). Twenty-one on all four of the
+/// user's brushes, the same ids in the same order.
+///
+/// ⚠️READ BY POSITION, NOT MEASURED. That 112 is ブラシサイズ and 1001
+/// ブラシ濃度 follows from the ids running in the order of Clip Studio's
+/// 入り抜き list — ブラシサイズ · ブラシ濃度 · 間隔 · … — with 50112 and 51001
+/// after them for 2-ブラシ先端. That the minimum is a whole percent is a
+/// guess: every minimum in the four files is 0, and only one ticks
+/// anything (1021, 間隔, on a brush with 入り抜き off).
+Map<int, double> _inAndOutReach(Object? target) {
+  if (target is! Uint8List || target.length < 12) {
+    return const {};
+  }
+  final data = ByteData.sublistView(target);
+  final end = 12 + data.getInt32(4) * 12;
+  return {
+    for (var at = 12; at < end && at + 12 <= target.length; at += 12)
+      if (data.getInt32(at + 4) != 0)
+        data.getInt32(at): (data.getInt32(at + 8) / 100)
+            .clamp(0.0, 1.0)
+            .toDouble(),
+  };
 }
 
 /// How hard Clip Studio draws this brush's edge.

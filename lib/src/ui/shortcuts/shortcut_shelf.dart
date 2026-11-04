@@ -18,6 +18,13 @@
 /// timesheet · conte sheet · cut envelope · palette) stand in a fifth place,
 /// 「패널 안」 — the answer's four have none for them.
 ///
+/// 🗣️F-560 (유저 2026-11-04): 「도구 라이브러리 단축키들, 브러시 도구의
+/// 브러시같은거나 해당 항목 전부. 캔버스-세부도구랑 사실상 겹치니까 그
+/// 세부도구쪽에 싹 다 이전해서 알기쉽게. 브러시랑 세부도구랑 사실상
+/// 같은거니까」 — the tool library's shelves stand under 세부 도구 now, and
+/// the place they made is gone. ↩️「도구 라이브러리」 was a place of the
+/// answer above.
+///
 /// ★AN ACTION NAMES ITS SHELF AND NOTHING ELSE: every heading above it is
 /// the shelf's [parent]s, so a shelf added here arrives in the window, in
 /// the guide's page and in the search at once.
@@ -25,6 +32,11 @@ enum ShortcutShelf {
   canvas('Canvas'),
   tools('Tools', canvas),
   toolTiles('Sub tools', canvas),
+  brushLibrary('Brush Library', toolTiles),
+  brushToolBrushes('Brush Tool Brushes', toolTiles),
+  eraserToolBrushes('Eraser Tool Brushes', toolTiles),
+  guides('Guides', toolTiles),
+  texts('Texts', toolTiles),
   blendModes('Blend modes', canvas),
   selection('Selection', canvas),
   edit('Edit', canvas),
@@ -42,13 +54,6 @@ enum ShortcutShelf {
   colourEdit('Color Edit', pills),
   layerHeader('Layer Header', timeline),
   timelineBar('Timeline bar', timeline),
-
-  toolLibrary('Tool library'),
-  brushLibrary('Brush Library', toolLibrary),
-  brushToolBrushes('Brush Tool Brushes', toolLibrary),
-  eraserToolBrushes('Eraser Tool Brushes', toolLibrary),
-  guides('Guides', toolLibrary),
-  texts('Texts', toolLibrary),
 
   topStrip('Top strip'),
   file('File', topStrip),

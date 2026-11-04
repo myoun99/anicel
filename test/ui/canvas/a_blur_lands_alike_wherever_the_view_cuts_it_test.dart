@@ -372,7 +372,11 @@ void main() {
           nodes,
           ink,
           drawnOn: false,
-          held: (rasters: held, keeps: true, below: BelowThePen.whole),
+          held: (
+            rasters: held,
+            keeps: NodesKept.onlyDrawn,
+            below: BelowThePen.whole,
+          ),
         ),
       );
       expect(held.length, greaterThan(0), reason: '⛔premise: kept');
@@ -384,7 +388,11 @@ void main() {
           nodes,
           ink,
           drawnOn: false,
-          held: (rasters: held, keeps: false, below: BelowThePen.inCells),
+          held: (
+            rasters: held,
+            keeps: NodesKept.none,
+            below: BelowThePen.inCells,
+          ),
         ),
         edge,
       );

@@ -275,6 +275,7 @@ void main() {
     expect(keysOf(stripOf(ExportCelKind.timesheet)), [
       'export-cels-kind-timesheet',
       'export-cels-kind-envelope',
+      'export-cels-kind-video',
     ]);
     expect(
       tester.getTopLeft(keyed('export-cels-kind-timesheet')).dy,
@@ -422,9 +423,9 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('셀 형식 · 타임시트 형식 · 컷봉투 형식: three modules, there '
-      'whatever kinds are written — the cels\' folded, the documents\' open',
-      (tester) async {
+  testWidgets('셀 형식 · 타임시트 형식 · 컷봉투 형식 · 동영상 형식: a module '
+      'a kind, there while that kind is written and gone while it is not — '
+      'the cels\' folded, the documents\' open', (tester) async {
     final session = film();
     addTearDown(session.dispose);
     final state = await pumpCels(
@@ -436,8 +437,23 @@ void main() {
 
     expect(find.text('${strings.exCelFormat} — PNG · RGBA'), findsOneWidget);
     expect(keyed('export-format-file'), findsNothing, reason: 'folded');
+    // 🗣️I-151 (유저 2026-11-03): 「그냥 필요없어진 형식설정 번거로우니
+    // 없애서 안보이게」. ↩️They stood whatever was written.
+    expect(find.text(strings.exTimesheetFormat), findsNothing);
+    expect(find.text(strings.exEnvelopeFormat), findsNothing);
+    expect(find.text(strings.exVideoFormat), findsNothing);
+    for (final kind in ['timesheet', 'envelope', 'video']) {
+      await press(tester, 'export-cels-kind-$kind');
+    }
     expect(find.text(strings.exTimesheetFormat), findsOneWidget);
     expect(find.text(strings.exEnvelopeFormat), findsOneWidget);
+    expect(find.text(strings.exVideoFormat), findsOneWidget);
+    await press(tester, 'export-cels-kind-cel');
+    expect(
+      find.textContaining(strings.exCelFormat),
+      findsNothing,
+      reason: 'no kind of the rows is written: no cel is',
+    );
 
     // 타임시트 형식: the pictures and XDTS in one list, and a quality while
     // it is a JPG.

@@ -308,6 +308,46 @@ void main() {
       expect(onA.standingOn('f', rows), onA, reason: 'a folder is no row');
     });
 
+    // 🗣️I-153-Q2 (유저 2026-11-04): 「셀 탭에 키 + 손가락 플립」 — the row
+    // keys, and a flip across the rows, stand on the rail's next row.
+    test('a row step stands on the row above or below at the place '
+        'remembered, and stops at the list\'s ends', () {
+      final rows = board(film()).rows;
+      expect(ids(rows), ['c', 'b', 'a', 'l'], reason: '⛔전제');
+      final third = const ExportCelsStanding()
+          .standingOn('a', rows)
+          .stepped(2, rows);
+
+      final up = third.rowStepped(-1, rows);
+      expect((up.row, up.shown, up.place), ('b', 'b-3', 2));
+      final down = third.rowStepped(1, rows);
+      expect((down.row, down.shown, down.place), ('l', null, 2));
+      expect(down.rowStepped(-1, rows).shown, 'a-3');
+      expect(third.rowStepped(-9, rows).row, 'c');
+
+      expect(down.rowStepped(1, rows), down);
+      final top = third.rowStepped(-2, rows);
+      expect(top.rowStepped(-1, rows), top);
+    });
+
+    test('the flip reads a row a row and a drawing a run: a step onto '
+        'another picture is another landing, one onto none is none', () {
+      final rows = board(film()).rows;
+      final onA = const ExportCelsStanding().standingOn('a', rows);
+      String? landing(ExportCelsStanding standing) =>
+          exportCelsFlipSnapshot(rows, standing).contentKey;
+
+      final snapshot = exportCelsFlipSnapshot(rows, onA);
+      expect(
+        (snapshot.rowIndex, snapshot.frameIndex, snapshot.frameCount),
+        (2, 0, 4),
+      );
+      expect(landing(onA), '2:0');
+      expect(landing(onA.stepped(1, rows)), '2:1');
+      expect(landing(onA.rowStepped(-1, rows)), '1:0');
+      expect(landing(onA.rowStepped(1, rows)), isNull, reason: 'L shows none');
+    });
+
     test('the steps stop at the row\'s ends', () {
       final rows = board(film()).rows;
       final onA = const ExportCelsStanding().standingOn('a',

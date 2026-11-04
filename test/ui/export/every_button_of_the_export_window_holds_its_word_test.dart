@@ -138,8 +138,9 @@ void main() {
       final session = film();
       addTearDown(session.dispose);
       // A screen whose share is narrower than the window's least and whose
-      // room is not: the window stands at its least.
-      await tester.binding.setSurfaceSize(const Size(1300, 900));
+      // room is not: the window stands at its least. ↩️1300, until the film
+      // joined the documents' strip (I-151) and French outgrew it.
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
       await tester.pumpWidget(
@@ -178,7 +179,14 @@ void main() {
   ) async {
     await loadTheAppFaces();
     final widths = <AppLanguage, double>{};
-    for (final language in [AppLanguage.ko, AppLanguage.ja]) {
+    // Korean on the AE Script tab, whose kinds are the rows' alone — their
+    // strip is under the least there. ↩️The Cels tab's, until the film
+    // joined its documents' strip (I-151) and stood that one wider.
+    final tabs = {
+      AppLanguage.ko: ExportTab.aeScript,
+      AppLanguage.ja: ExportTab.cels,
+    };
+    for (final MapEntry(key: language, value: tab) in tabs.entries) {
       AppText.settings.value = AppLanguageSettings(programLanguage: language);
       addTearDown(() => AppText.settings.value = const AppLanguageSettings());
       final session = film();
@@ -197,7 +205,9 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey<String>('export-tab-cels')));
+      await tester.tap(
+        find.byKey(ValueKey<String>('export-tab-${tab.jsonValue}')),
+      );
       await tester.pump();
       double stripOf(String pill) => tester
           .getSize(

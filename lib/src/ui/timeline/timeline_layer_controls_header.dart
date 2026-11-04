@@ -1,13 +1,17 @@
 import '../widgets/app_tooltip.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/fixed_label.dart' show FixedLabel;
 import '../widgets/panel_flyout.dart';
 import '../widgets/rail_glyph_button.dart' show RailPlateButton;
+import '../widgets/tick_layer.dart';
 import 'axis_turn.dart' show alongBox;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
@@ -19,6 +23,116 @@ import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import '../text/app_strings.dart';
 import '../text/vertical_writing_text.dart';
+
+/// A button the legend's heading slot is
+/// ([TimelineLayerControlsHeader.heading]):
+/// its words, its tooltip, and the list it opens.
+///
+/// 🗣️I-150 (유저 2026-11-03): 「콘티패널에서 레전드의 레이어 텍스트
+/// 없애고, 트랙이란 버튼 신설 … 해당 영역 전부 버튼」 — the conte panel's
+/// timeline list; and 🗣️I-154 (유저 2026-11-04): 「타임라인패널의 레전드행의
+/// 레이어부분 … 현재컷 이름을 여기로 옮겨서」 — the timeline panel's cut list.
+class LegendHeadingButton {
+  const LegendHeadingButton({
+    required this.label,
+    required this.tooltip,
+    required this.entries,
+  });
+
+  /// Its words, heard where they change: the cut stood in turns over at a
+  /// crossing, and only the words are drawn again for it — on a tick layer
+  /// of their own, as the bar's cut name was (I-22 ③) — while the legend
+  /// is kept (I-57). A [FixedLabel] where they do not.
+  final ValueListenable<String> label;
+  final String tooltip;
+
+  /// Built as the list opens, so it reads what stands then.
+  final LegendFlyout entries;
+
+  /// [words] as this button: the heading slot whole, its words where the
+  /// rows' heading stands, on a clear plate the legend's own shows through
+  /// — and its hover with it (유저: 「호버하면 버튼 흰색호버색 된다던가」).
+  Widget around(Widget words, {required double rowHeight}) =>
+      RailFlyoutTrigger(
+        key: const ValueKey<String>('legend-heading'),
+        name: 'legend-heading',
+        tooltip: tooltip,
+        entriesBuilder: entries,
+        hoverShape: AppShapes.control(rowHeight),
+        child: words,
+      );
+}
+
+/// The legend's heading: the rows' name — or [heading]'s words, and the slot
+/// is that button (I-150) — in [ink].
+///
+/// Plain heading (R4 #3): the old LAYER ▾ flyout's jobs moved to the command
+/// bar (add) and the lane-column toggle (fold all). Stood up it writes
+/// vertically, the same table the columns' own names use.
+///
+/// 🗣️F-548 (유저 2026-11-04): 「콘티패널 레전드의 타임라인1이라는 버튼의
+/// 텍스트가 너무 작음. 일반 행 텍스트랑 똑같이 할수있나」 — the button's
+/// words wear a row's name whole ([layerRowNameStyle]). The card named the
+/// button; the plain heading keeps its own.
+Widget _legendHeading(
+  BuildContext context, {
+  required bool isVertical,
+  required LegendHeadingButton? heading,
+  required double rowHeight,
+  required Color ink,
+}) {
+  final rowName = heading == null ? null : layerRowNameStyle(context);
+  Widget text(String words) => isVertical
+      ? VerticalWritingText(
+          key: const ValueKey<String>('legend-layer'),
+          // The same word as lying down: F-37 tabled the timeline's heading
+          // and left this one English.
+          text: words,
+          // Stands up with the names it heads (user, 2026-08-08): a heading
+          // lying down over a column of upright names reads as a different
+          // kind of label than the thing it labels.
+          latinForm: VerticalLatinForm.upright,
+          mainAlignment: 0,
+          style:
+              rowName ??
+              TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: ink),
+        )
+      : Align(
+          alignment: Alignment.centerLeft,
+          child: EllipsisText(
+            words,
+            key: const ValueKey<String>('legend-layer'),
+            maxLines: 1,
+            style:
+                rowName ??
+                TextStyle(
+                  fontSize: 9,
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w600,
+                  color: ink,
+                ),
+          ),
+        );
+  if (heading == null) {
+    return text(AppText.strings.tlLegendLayer);
+  }
+  return heading.around(
+    // The slot whole, as a tick layer asks to be laid out: tight.
+    SizedBox.expand(
+      child: TickLayer(
+        child: ValueListenableBuilder<String>(
+          valueListenable: heading.label,
+          builder: (context, words, _) => isVertical
+              // Where the stood-up legend's Flex put the column: its own
+              // width, centred, from the slot's top.
+              ? Align(alignment: Alignment.topCenter, child: text(words))
+              : text(words),
+        ),
+      ),
+    ),
+    rowHeight: rowHeight,
+  );
+}
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide
 /// '+ Layer' button is gone — instead each control column gets an icon
@@ -50,6 +164,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
     this.displayedLayerIds,
     this.displayedOpacity = 1.0,
     this.displayedOnionSkinOn = false,
+    this.heading,
   }) : assert(
          axis == Axis.horizontal || railExtent != null,
          'a stood-up legend is told its extent',
@@ -91,9 +206,9 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// The active row filter (for the legend flyouts' check marks).
   final TimelineRowFilter rowFilter;
 
-  /// Marks currently assigned across the active cut's layers — the
-  /// "solo color X" list is built from these (empty color set skipped),
-  /// read when it is ([TimelineLegendMenus.marksInUse] has why).
+  /// The marks the active cut's layers wear — the colour and take solos
+  /// are built from these, read when they are
+  /// ([TimelineLegendMenus.marksInUse] has why).
   final Set<LayerMark> Function() marksInUse;
 
   /// The kinds this panel's rows can be — the "solo kind" list (R4 #8,
@@ -119,6 +234,9 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// Whether any layer's lanes are expanded — the lane-column header
   /// toggle folds/unfolds ALL layers based on this (R3 feedback #5).
   final bool anyLanesExpanded;
+
+  /// The heading as a button, where a host hands one in.
+  final LegendHeadingButton? heading;
 
   /// Grid-provided lane sweeps (the grid owns lane expansion knowledge).
   final VoidCallback? onCollapseAllLanes;
@@ -161,6 +279,8 @@ class TimelineLayerControlsHeader extends KeptPiece {
     displayedOnionSkinOn,
     onCollapseAllLanes != null,
     onExpandAllLanes != null,
+    heading?.label,
+    heading?.tooltip,
   );
 
   /// The legend's menus — this header's flyouts and, published by the panel
@@ -271,8 +391,11 @@ class TimelineLayerControlsHeader extends KeptPiece {
   }
 
   /// The label pair's column: the colour label's icon over the colour
-  /// label, and the take's half held empty over the take — the rows' pair
+  /// label, and the take's over the take — the rows' pair
   /// ([LayerMarkChip]), cell for cell.
+  ///
+  /// 🗣️take-legend-button (유저 2026-11-04): the take's half was held empty
+  /// until the take had a solo of its own ([TimelineLegendMenus.take]).
   ///
   /// 🚨F-409 (유저 2026-10-19): 「레전드의 왼쪽 버튼(섹션버튼,색라벨버튼)이랑
   /// 밑의 색라벨이랑 테이크등의 위치가 어긋나서 행/열 구조란 느낌이 안듬」.
@@ -289,11 +412,21 @@ class TimelineLayerControlsHeader extends KeptPiece {
         engaged: rowFilter.markColors.isNotEmpty,
       ),
     );
+    final takeCell = _cell(
+      keyValue: 'legend-take',
+      tooltip: AppText.strings.tlColTake,
+      entriesBuilder: menus.take,
+      child: _legendIcon(
+        Icons.looks_one_outlined,
+        restColor: restColor,
+        engaged: rowFilter.takes.isNotEmpty,
+      ),
+    );
     return Flex(
       direction: axis,
       children: [
         alongBox(axis, layerMarkSlotWidth, child: markCell),
-        alongBox(axis, layerTakeSlotWidth),
+        alongBox(axis, layerTakeSlotWidth, child: takeCell),
       ],
     );
   }
@@ -495,42 +628,14 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     // (R4 #8): solo one layer TYPE like the mark colors.
                     typeButton: _buildTypeButton(menus, restColor),
                   ),
-                  // Plain heading (R4 #3): the old LAYER ▾ flyout's jobs
-                  // moved to the command bar (add) and the lane-column
-                  // toggle (fold all). Stood up it writes vertically, the
-                  // same table the columns' own names use.
                   Expanded(
-                    child: isVertical
-                        ? VerticalWritingText(
-                            key: const ValueKey<String>('legend-layer'),
-                            // The same word as lying down: F-37 tabled the
-                            // timeline's heading and left this one English.
-                            text: AppText.strings.tlLegendLayer,
-                            // Stands up with the names it heads (user,
-                            // 2026-08-08): a heading lying down over a
-                            // column of upright names reads as a different
-                            // kind of label than the thing it labels.
-                            latinForm: VerticalLatinForm.upright,
-                            mainAlignment: 0,
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          )
-                        : Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              AppText.strings.tlLegendLayer,
-                              key: const ValueKey<String>('legend-layer'),
-                              style: TextStyle(
-                                fontSize: 9,
-                                letterSpacing: 0.8,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
+                    child: _legendHeading(
+                      context,
+                      isVertical: isVertical,
+                      heading: heading,
+                      rowHeight: metrics.layerRowHeight,
+                      ink: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   ...layerRailTrailingCells(
                     axis: axis,

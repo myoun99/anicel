@@ -143,7 +143,7 @@ class InstalledFxPlugins extends ChangeNotifier {
     await load();
     final missing = <String, FxPluginDescription>{};
     for (final effect in [
-      for (final track in project.tracks) ...track.effects,
+      for (final track in project.tracksOfEveryTimeline) ...track.effects,
       for (final row in projectLayersAnywhere(project)) ...row.effects,
     ]) {
       if (effect.plugin case final plugin? when !has(plugin)) {

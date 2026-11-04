@@ -41,15 +41,18 @@ BrushFrameKey conteInkRowKey(CutId cutId, String inkId) {
 String? conteInkRowIdOf(BrushFrameKey key) =>
     isConteInkRowKey(key) ? key.frameId.value : null;
 
-/// Every block [project] has written on, by its cut and its handwriting id
-/// — what a loaded row entry must still name.
+/// Every block [project] has written on, by the cut its handwriting is
+/// kept under and its handwriting id — what a loaded row entry must still
+/// name. A 동기컷's is kept under its sync's canonical, the one paper its
+/// cuts write on (`syncedSheetInkKey`, I-150-Q3): a block only one of
+/// them holds, on a row its own track gave it, is written there too.
 Set<(CutId, String)> writtenConteBlocks(Project project) => {
-  for (final track in project.tracks)
+  for (final track in project.tracksOfEveryTimeline)
     for (final cut in track.cuts)
       for (final layer in cut.layers)
         for (final exposure in layer.timeline.values)
           if (exposure.memo?.inkId case final inkId? when inkId.isNotEmpty)
-            (cut.id, inkId),
+            (project.linkRegistry.syncCanonicalOf(cut.id), inkId),
 };
 
 /// [exposures] as their COPY writes on the conte: every block written on

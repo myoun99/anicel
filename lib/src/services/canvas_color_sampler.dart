@@ -96,7 +96,11 @@ _Stack? _throughAdjustment(
   }
   final (:r, :g, :b, :coverage) = stack;
   final graded = pixelThroughChain(
-    resolveLayerEffectsAt(effects: adjustment.effects, frameIndex: frameIndex),
+    resolveLayerEffectsAt(
+      effects: adjustment.effects,
+      frameIndex: frameIndex,
+      blocks: adjustment.fxBlocks,
+    ),
     red: r / coverage,
     green: g / coverage,
     blue: b / coverage,

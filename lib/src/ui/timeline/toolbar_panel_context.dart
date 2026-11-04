@@ -13,15 +13,18 @@ import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/timeline_row_address.dart';
 import '../../models/track_projection_row.dart' show trackIdOfProjectionRow;
 import '../../models/track_id.dart';
+import '../../services/command.dart' show WorkAhead;
+import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import '../dialogs/behind_the_wait_window.dart';
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../editor_session_manager.dart';
 import '../paste_linked_asking_first.dart';
-import '../paste_with_its_media.dart';
 import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
 import '../session/effects_and_fx.dart'
     show ActiveRowChain, EffectChainHolder, TrackChain;
 import '../session/frame_clipboard.dart' show ClipboardPlace;
-import '../session/storyboard_cursor.dart' show CommaTarget;
+import '../session/storyboard_cursor.dart'
+    show CommaTarget, StoryboardCursorCutBlock;
 import '../session/what_a_copy_brings.dart' show BringsMedia;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
@@ -182,6 +185,16 @@ abstract class ToolbarPanelContext {
   /// for the window's Apply — asked again when the number is given — and
   /// for the key (T25's law).
   AutoNameTargets? get autoNameTargets;
+
+  /// Where a press here puts up the app's wait window — the widget the
+  /// press came through. Without one (a test's context) the press is taken
+  /// at once, and a paste records no carried medium it has not held.
+  BuildContext? get waitIn;
+
+  /// What an independent paste here holds ahead of it — the media a copy
+  /// from another project brings that this project's pool lacks (I-7) —
+  /// or null where it holds nothing.
+  WorkAhead? get independentPasteAhead;
 }
 
 /// What each SHARED pill button does when it is pressed — null while it has
@@ -194,20 +207,67 @@ abstract class ToolbarPanelContext {
 /// were in (09-13, the one every bound film verb spoke to then — a session's
 /// pick, not a ruling: the order was 「여러 단축키 기존 버튼에 연결」), and the
 /// storyboard's pill answered differently from its own keys.
+///
+/// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: each press is taken
+/// behind the app's one wait window, under its action's name, every time
+/// ([_behindTheWaitWindow]). 링크 붙여넣기 puts up its own
+/// ([pasteLinkedFrame]): its question comes between two of them.
 extension ToolbarSharedPresses on ToolbarPanelContext {
-  void Function()? get cutPress => canCutRun ? cutRun : null;
+  void Function()? get cutPress => canCutRun
+      ? _behindTheWaitWindow(EditorActionIds.editCut, cutRun)
+      : null;
 
-  void Function()? get copyPress => canCopyFrame ? copyFrame : null;
+  void Function()? get copyPress => canCopyFrame
+      ? _behindTheWaitWindow(EditorActionIds.editCopy, copyFrame)
+      : null;
 
-  void Function()? get pasteIndependentPress =>
-      canPasteIndependentFrame ? pasteIndependentFrame : null;
+  void Function()? get pasteIndependentPress => canPasteIndependentFrame
+      ? _behindTheWaitWindow(
+          EditorActionIds.editPasteIndependent,
+          pasteIndependentFrame,
+          window: AppWaitWindow.pasting,
+          ahead: () => independentPasteAhead,
+        )
+      : null;
 
   void Function()? get pasteLinkedPress =>
       canPasteLinkedFrame ? pasteLinkedFrame : null;
 
-  void Function()? get unlinkPress => canUnlink ? unlink : null;
+  void Function()? get unlinkPress => canUnlink
+      ? _behindTheWaitWindow(EditorActionIds.editUnlink, unlink)
+      : null;
 
-  void Function()? get duplicatePress => canDuplicate ? duplicate : null;
+  void Function()? get duplicatePress => canDuplicate
+      ? _behindTheWaitWindow(
+          EditorActionIds.editDuplicate,
+          duplicate,
+          window: AppWaitWindow.duplicating,
+        )
+      : null;
+
+  /// [press] behind the window [window] makes of [actionId]'s name — with
+  /// what it holds [ahead] of it, asked as it is pressed — or at once where
+  /// the panel has no [waitIn].
+  void Function() _behindTheWaitWindow(
+    String actionId,
+    void Function() press, {
+    AppWaitWindow Function(String title) window = AppWaitWindow.working,
+    WorkAhead? Function()? ahead,
+  }) => () {
+    final context = waitIn;
+    if (context == null) {
+      press();
+      return;
+    }
+    unawaited(
+      takeBehindTheWaitWindow(
+        context,
+        press,
+        window: window(editorActionLabel(actionId)),
+        ahead: ahead?.call(),
+      ),
+    );
+  };
 
   /// Whether 병합 has anything to merge here — the button's gate and the
   /// key's, read off the one ladder ([mergeSubject]).
@@ -235,7 +295,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
 
 /// The boards the shared pill's copy takes into — one copy in hand,
 /// whichever of them took it (`AppClipboard`).
-enum _Board { text, rows, effects, keys, frames }
+enum _Board { text, rows, effects, keys, frames, cuts }
 
 /// The clipboard's four buttons, said ONCE for both panels: a panel answers
 /// only WHERE its press stands ([clipboardPlace]), and the board's verbs
@@ -250,12 +310,6 @@ enum _Board { text, rows, effects, keys, frames }
 mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   EditorSessionManager get session;
 
-  /// Where a paste that brings media from another project puts up its wait
-  /// window ([pasteWithItsMedia]) — the widget the press came through.
-  /// Without one (a test's context) the paste lands at once, recording no
-  /// carried medium it has not held.
-  BuildContext? get waitIn;
-
   /// Where this panel's clipboard press stands — null where it stands on
   /// nothing the board serves.
   ClipboardPlace? get clipboardPlace;
@@ -268,6 +322,19 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// rows are the cut's layers. The storyboard's rows are tracks and their
   /// fixtures, which no board holds, so its copy stays the frame axis's.
   bool get rowsAreThisPanels;
+
+  /// 🗣️I-150 (유저 2026-11-03): 「컷 잘라내기/복사/붙여넣기/링크붙여넣기등
+  /// 공용알약 사용 가능하게. 병합만 불가능? 우선은?」.
+  ///
+  /// Whether CUTS are this panel's to copy and paste — the storyboard's,
+  /// whose V row's blocks are cuts (R5q1). The timeline's blocks are a
+  /// cut's own, which no cut board holds.
+  bool get cutsAreThisPanels;
+
+  /// Whether the press stands on a CUT with no band to claim it — the V
+  /// row's block under the cursor, which the frame axis's rung answers with
+  /// the cut, as Delete's does (`StoryboardCursor`).
+  bool get standsOnACut;
 
   /// 🗣️I-123 (유저 2026-10-22): 「레이어도 타임라인 공용알약의 잘라내기 버튼
   /// 사용가능. 여러레이어 선택해서 사용한다던가 다른 규칙 참고해서 법 통일」.
@@ -287,6 +354,7 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   @override
   bool get canCutRun => switch (_boardTaken) {
     _Board.rows => session.layerClipboard.canCutSelectedRows,
+    _Board.cuts => session.cutClipboard.canCut,
     _Board.frames => session.clipboard.canCutAt(clipboardPlace),
     _Board.text || _Board.effects || _Board.keys => true,
     null => false,
@@ -299,6 +367,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.textClipboard.cut();
       case _Board.rows:
         session.layerClipboard.cutSelectedRows();
+      case _Board.cuts:
+        session.cutClipboard.cut();
       case _Board.effects:
         session.effectClipboard.cut();
       case _Board.keys:
@@ -317,11 +387,17 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// keys come first, as Delete's do (F-87): standing on a lane, the frame
   /// board has no place ([FrameClipboard.timelinePlace]) and the key board
   /// answers (F-388).
+  ///
+  /// A band of CUTS speaks first where cuts are this panel's (I-150), as
+  /// it does for Delete; standing on a cut, the frame axis is that cut.
   PillSubject get _copySubject => pillSubjectOn(
-    cuts: false,
+    cuts:
+        cutsAreThisPanels &&
+        session.storyboardRows.storyboardSelectedCutIds.isNotEmpty,
     layers: () => _copiesRows || session.effectClipboard.namesEffects,
     cells: () =>
         session.keyClipboard.canCopy ||
+        standsOnACut ||
         session.clipboard.canCopyAt(clipboardPlace),
   );
 
@@ -347,11 +423,13 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       return _Board.text;
     }
     return switch (_copySubject) {
+      PillSubject.cuts => _Board.cuts,
       PillSubject.layers when _copiesRows => _Board.rows,
       PillSubject.layers => _Board.effects,
       PillSubject.cells when session.keyClipboard.canCopy => _Board.keys,
+      PillSubject.cells when standsOnACut => _Board.cuts,
       PillSubject.cells => _Board.frames,
-      PillSubject.cuts || PillSubject.nothing => null,
+      PillSubject.nothing => null,
     };
   }
 
@@ -365,6 +443,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.textClipboard.copy();
       case _Board.rows:
         session.layerClipboard.copySelectedRows();
+      case _Board.cuts:
+        session.cutClipboard.copy();
       case _Board.effects:
         session.effectClipboard.copy();
       case _Board.keys:
@@ -382,6 +462,12 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// lands is the row you stand on.
   bool get _pastesRows =>
       rowsAreThisPanels && session.layerClipboard.hasLayerClipboard;
+
+  /// Whether a paste here puts down CUTS: the hand holds them, and cuts are
+  /// this panel's — where a new cut would land (I-150,
+  /// `CutClipboard`), for [_pastesRows]' reason.
+  bool get _pastesCuts =>
+      cutsAreThisPanels && session.cutClipboard.holdsCuts;
 
   /// Whether a paste here puts down KEYS: the hand holds them (F-388) — on
   /// the lanes the press stands on, the frame paste's way.
@@ -410,7 +496,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   };
 
   @override
-  bool get canPasteIndependentFrame => _pastesRows
+  bool get canPasteIndependentFrame => _pastesCuts
+      ? session.cutClipboard.canPaste
+      : _pastesRows
       ? session.layerClipboard.canPasteRows
       : _pastesEffects
       ? _canPasteEffects
@@ -421,9 +509,29 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       : session.clipboard.canPasteIndependentAt(clipboardPlace);
 
   /// The board an independent paste here puts down — the one whose media a
-  /// paste from another project has to hold first ([pasteWithItsMedia]).
-  BringsMedia get independentPasteBoard =>
-      _pastesRows ? session.layerClipboard : session.clipboard;
+  /// paste from another project has to hold first ([independentPasteAhead]).
+  BringsMedia get independentPasteBoard => _pastesCuts
+      ? session.cutClipboard
+      : _pastesRows
+      ? session.layerClipboard
+      : session.clipboard;
+
+  /// Whether an independent paste here puts down a board that holds
+  /// pictures — not effects, keys or a text, which bring no media.
+  bool get _pastesABoard => !_pastesEffects && !_pastesKeys && !_pastesText;
+
+  /// A paste that brings media from ANOTHER project (I-7): when the copy
+  /// carries media this project's pool lacks, their bytes are held first —
+  /// as this project's own carries, behind the paste's wait window (F-53:
+  /// 「로딩창 안 떠서 여는 중인지 아닌지 모르겠어」) — and the paste lands
+  /// after, with them, as one undo.
+  @override
+  WorkAhead? get independentPasteAhead {
+    final board = independentPasteBoard;
+    return _pastesABoard && board.pasteMustHoldMedia
+        ? (_) => board.holdWhatThePasteBrings()
+        : null;
+  }
 
   @override
   void pasteIndependentFrame() {
@@ -442,28 +550,19 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       return;
     }
     final board = independentPasteBoard;
-    // The place is asked when the paste LANDS — after the wait, where one
-    // is held.
-    void paste() => identical(board, session.layerClipboard)
-        ? session.layerClipboard.pasteRows()
-        : session.clipboard.pasteIndependentAt(clipboardPlace);
-    final context = waitIn;
-    if (context == null) {
-      paste();
-      return;
+    if (identical(board, session.cutClipboard)) {
+      session.cutClipboard.paste();
+    } else if (identical(board, session.layerClipboard)) {
+      session.layerClipboard.pasteRows();
+    } else {
+      session.clipboard.pasteIndependentAt(clipboardPlace);
     }
-    unawaited(
-      pasteWithItsMedia(
-        context,
-        title: editorActionLabel(EditorActionIds.editPasteIndependent),
-        board: board,
-        paste: paste,
-      ),
-    );
   }
 
   @override
-  bool get canPasteLinkedFrame => _pastesRows
+  bool get canPasteLinkedFrame => _pastesCuts
+      ? session.cutClipboard.canPasteLinked
+      : _pastesRows
       ? session.layerClipboard.canPasteRowsLinked
       : _pastesKeys
       ? session.keyClipboard.canPasteLinked
@@ -477,26 +576,47 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// ROWS in hand are linked whole, each beside the row you stand on, and
   /// have nothing to ask. KEYS ask the same way, of a name the lane they
   /// land on already holds at another value (F-388).
+  ///
+  /// 🗣️F-551-Q1: behind the paste's wait window, every time — and the join
+  /// a question takes, behind it again ([pasteLinkedAskingFirst]).
   @override
   void pasteLinkedFrame() {
-    if (_pastesRows) {
-      session.layerClipboard.pasteRowsLinked();
-      return;
-    }
     final context = waitIn;
     if (context == null) {
-      _pastesKeys
-          ? session.keyClipboard.pasteLinked()
-          : session.clipboard.pasteLinkedAt(clipboardPlace);
+      if (_pastesCuts) {
+        session.cutClipboard.pasteLinked();
+      } else if (_pastesRows) {
+        session.layerClipboard.pasteRowsLinked();
+      } else if (_pastesKeys) {
+        session.keyClipboard.pasteLinked();
+      } else {
+        session.clipboard.pasteLinkedAt(clipboardPlace);
+      }
+      return;
+    }
+    final window = AppWaitWindow.pasting(
+      editorActionLabel(EditorActionIds.editPasteLinked),
+    );
+    if (_pastesCuts || _pastesRows) {
+      unawaited(
+        takeBehindTheWaitWindow(
+          context,
+          _pastesCuts
+              ? session.cutClipboard.pasteLinked
+              : session.layerClipboard.pasteRowsLinked,
+          window: window,
+        ),
+      );
       return;
     }
     unawaited(
       _pastesKeys
-          ? pasteLinkedKeysAskingFirst(context, session)
+          ? pasteLinkedKeysAskingFirst(context, session, window: window)
           : pasteLinkedAskingFirst(
               context,
               session,
               place: () => clipboardPlace,
+              window: window,
             ),
     );
   }
@@ -591,6 +711,12 @@ class TimelineToolbarPanelContext
 
   @override
   bool get rowsAreThisPanels => true;
+
+  @override
+  bool get cutsAreThisPanels => false;
+
+  @override
+  bool get standsOnACut => false;
 
   // ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
   // 레이어 생성.」 — moved here verbatim from the button.
@@ -799,6 +925,16 @@ class StoryboardToolbarPanelContext
   /// Its rows are tracks and their fixtures: no board holds one (I-77).
   @override
   bool get rowsAreThisPanels => false;
+
+  /// Its V row's blocks are cuts (I-150).
+  @override
+  bool get cutsAreThisPanels => true;
+
+  @override
+  bool get standsOnACut =>
+      !_bandClaimsThePress &&
+      session.storyboardCursor.storyboardCursorBlockOrNull()
+          is StoryboardCursorCutBlock;
 
   /// The rail's ONE addable kind: an S row (track-owned SE). V tracks and
   /// the transition row are fixtures nothing can add ("disable" is the

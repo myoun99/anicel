@@ -183,11 +183,10 @@ void main() {
       ),
       projectName: 'P',
       fps: 24,
-      info: const TimesheetInfo(exposureBarThreshold: 3, seEmptyFill: false),
+      info: const TimesheetInfo(exposureBarThreshold: 3),
     );
 
     expect(document.exposureBarThreshold, 3);
-    expect(document.seEmptyFill, isFalse);
 
     final actionColumn = document.columns.firstWhere(
       (column) => column.kind == TimesheetColumnKind.action,

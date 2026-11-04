@@ -88,8 +88,8 @@ Future<int> _inkInCell(
   final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
   final top = layout.halfRowsTop(0) + row * TimesheetDocumentLayout.rowHeight;
   final columnWidth = layout.columnWidthFor(document.columns[column].kind);
-  // Two pixels in from each side: a neighbour's ink (the SE wash) lands on
-  // the shared edge's split pixel and would read as this cell's own.
+  // Two pixels in from each side: a neighbour's ink lands on the shared
+  // edge's split pixel and would read as this cell's own.
   return _inkIn(
     bytes,
     width,

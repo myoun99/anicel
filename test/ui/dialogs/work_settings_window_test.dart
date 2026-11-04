@@ -244,7 +244,6 @@ void main() {
       title: 'T',
       hiddenFields: {TimesheetHeaderField.scene},
       exposureBarThreshold: 4,
-      seEmptyFill: false,
       logoAssetPath: 'logo.png',
       coverImagePath: 'cover.png',
       envelopeFormId: CutEnvelopePresets.digitalId,

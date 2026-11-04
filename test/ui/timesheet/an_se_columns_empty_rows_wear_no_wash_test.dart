@@ -26,16 +26,19 @@ class _SheetRects extends PaintedGlyphBoxes {
       rects.add((rect: rect, argb: paint.color.toARGB32()));
 }
 
-/// 🗣️F-340 (유저 2026-10-11): 「OL추가시 타임시트패널에서 se행의 회색칸이
-/// 끝까지 안이어짐. OL여백으로 생긴 엔드라인은 그 경우 그게 왠만한
-/// 경우에선 진짜 엔드라인을 대체하는 방식인데, SE행이 아직 그 방식
-/// 안쓰는듯」 — an SE column's empty rows wear the "no SE here" wash down to
-/// the line the cut is DRAWN to, the のりしろ an O.L asks of it included.
+/// 🗣️F-557 (유저 2026-11-04): 「타임시트 용지 출력한걸로 확인했는데, 우선
+/// se블록이랑 se가 없는곳의 반투명 영역이랑 같은 층인게 맘에안듬. 이걸
+/// psd로 받아서 대사 위치 수정하기 힘든느낌. 그래서 그냥 대사 없는 구간
+/// 칠하는 기능자체를 삭제」.
+///
+/// ↩️An SE column's empty rows wore a light-gray "no SE here" wash, down to
+/// the line the cut is drawn to (F-340) — the のりしろ an O.L asks of it
+/// included, which this sheet still draws.
 void main() {
   const rowHeight = TimesheetDocumentLayout.rowHeight;
 
-  test('the wash runs through the のりしろ an O.L leaving the cut asks — '
-      'every empty row the column shows, and none past it', () {
+  test('no empty row of an SE column is washed — down to the のりしろ an '
+      'O.L leaving the cut asks', () {
     // A 24-frame cut an O.L leaves over 18..29: the sheet is drawn to 30.
     final sheet = TimesheetDocument.fromCut(
       cut: Cut(
@@ -84,6 +87,7 @@ void main() {
     final column = sheet.columns.indexWhere(
       (column) => column.kind == TimesheetColumnKind.se,
     );
+    expect(column, isNot(-1), reason: '⛔전제: the sheet has its SE column');
     final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
     final width = layout.columnWidthFor(TimesheetColumnKind.se);
     final washed = {
@@ -96,9 +100,6 @@ void main() {
           ((fill.rect.top - layout.halfRowsTop(0)) / rowHeight).round(),
     };
 
-    expect(washed, {
-      for (var row = 0; row < 30; row += 1)
-        if (row != 2 && row != 3) row,
-    });
+    expect(washed, isEmpty);
   });
 }

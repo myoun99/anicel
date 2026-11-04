@@ -3,6 +3,7 @@ import 'dart:collection';
 import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/frame.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
@@ -42,6 +43,7 @@ class LayerCopyPayload {
     this.blendMode = LayerBlendMode.normal,
     TransformTrack? transformTrack,
     this.transformEnabled = true,
+    this.transformBasis = FxBasis.frame,
     List<LayerEffect> effects = const [],
     this.mark = LayerMark.none,
     this.onTimesheet = true,
@@ -91,6 +93,10 @@ class LayerCopyPayload {
   /// the artwork at the posed offset while its source sits at identity.
   final bool transformEnabled;
 
+  /// What the Transform bundle's keys are read at — it rides with them as
+  /// the switch does.
+  final FxBasis transformBasis;
+
   /// The row's effect chain (R6) — including each effect's own switch, so
   /// the paste is bypassed exactly as far as the source was.
   final List<LayerEffect> effects;
@@ -121,6 +127,7 @@ class LayerCopyPayload {
     blendMode: blendMode,
     transformTrack: transformTrack,
     transformEnabled: transformEnabled,
+    transformBasis: transformBasis,
     effects: effects,
     mark: mark,
     onTimesheet: onTimesheet,
@@ -142,6 +149,7 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     blendMode: source.blendMode,
     transformTrack: source.transformTrack,
     transformEnabled: source.transformEnabled,
+    transformBasis: source.transformBasis,
     effects: source.effects,
     mark: source.mark,
     onTimesheet: source.onTimesheet,

@@ -440,13 +440,20 @@ void main() {
       final server = BoardServer(base, secret: secret);
       final card = await askBoard(server, 'GET', '/api/records?id=T-1');
       expect(card.status, HttpStatus.ok);
+      final cardLines = const LineSplitter().convert(card.body);
       expect(
         [
-          for (final line in const LineSplitter().convert(card.body))
+          for (final line in cardLines.take(2))
             (jsonDecode(line) as Map)['id'],
         ],
         ['T-1', 'T-1-Q1'],
         reason: 'the card, and the question asked of it',
+      );
+      expect(
+        cardLines.skip(2),
+        ['📎 /shot/T-1-1.png'],
+        reason: 'card-shots-unseen-by-sessions: the screenshot pasted on it, '
+            'which no line names',
       );
 
       final since = await askBoard(
@@ -462,6 +469,18 @@ void main() {
         isNot(contains('T-1')),
       );
       expect(since.body, contains('T-9'));
+      expect(since.body, isNot(contains('📎')));
+
+      final question = await askBoard(
+        server,
+        'GET',
+        '/api/records?since=2026-10-07T00:00:00.500000',
+      );
+      expect(
+        const LineSplitter().convert(question.body).last,
+        '📎 /shot/T-1-1.png',
+        reason: 'a question\'s line since the stamp brings its card\'s shot',
+      );
 
       final neither = await askBoard(server, 'GET', '/api/records');
       expect(neither.status, HttpStatus.badRequest);

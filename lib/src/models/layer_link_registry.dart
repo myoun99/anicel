@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'brush_frame_key.dart';
 import 'cut_id.dart';
+import 'cut_sync.dart';
 import 'layer_id.dart';
 import 'track_id.dart';
 
@@ -121,16 +122,74 @@ class LayerLinkGroup {
 /// physical entity per group, which is what makes drift impossible and
 /// lets revision-based cache validation work unchanged.
 class LayerLinkRegistry {
-  LayerLinkRegistry({List<LayerLinkGroup> groups = const []})
-    : groups = List.unmodifiable(groups);
+  LayerLinkRegistry({
+    List<LayerLinkGroup> groups = const [],
+    List<CutSync> syncs = const [],
+  }) : groups = List.unmodifiable(groups),
+       syncs = List.unmodifiable(syncs);
 
   static final LayerLinkRegistry empty = LayerLinkRegistry();
 
   final List<LayerLinkGroup> groups;
 
-  bool get isEmpty => groups.isEmpty;
+  /// The cuts kept one across timelines (동기컷, [CutSync]) — here beside
+  /// the rows kept one, so every step that puts the table back puts both.
+  ///
+  /// 🚨A table built anew from [groups] alone drops them: a step that
+  /// changes the groups goes through [copyWith].
+  final List<CutSync> syncs;
 
-  bool get isNotEmpty => groups.isNotEmpty;
+  bool get isEmpty => groups.isEmpty && syncs.isEmpty;
+
+  bool get isNotEmpty => !isEmpty;
+
+  /// Each synced cut's sync, read once like [_groupOfMember].
+  late final Map<CutId, CutSync> _syncOfCut = {
+    for (final sync in syncs)
+      for (final cut in sync.cuts) cut: sync,
+  };
+
+  /// The sync [cutId] is one of, or null when it is a cut of its own.
+  CutSync? syncOf(CutId cutId) => _syncOfCut[cutId];
+
+  /// The cut whose id [cutId]'s sheets keep their handwriting under — its
+  /// sync's canonical, or itself.
+  CutId syncCanonicalOf(CutId cutId) => _syncOfCut[cutId]?.canonical ?? cutId;
+
+  /// The row (cut, layer) is in every cut of [cutId]'s sync — itself among
+  /// them: one row of one cut, wherever the cut stands (I-150-Q3). Itself
+  /// alone in a cut of its own.
+  List<(CutId, LayerId)> rowAcrossItsSync({
+    required CutId cutId,
+    required LayerId layerId,
+  }) => [
+    (cutId, layerId),
+    for (final other in syncOf(cutId)?.cuts ?? const <CutId>[])
+      if (other != cutId)
+        if (counterpartIn(cutId: cutId, layerId: layerId, targetCutId: other)
+            case final row?)
+          (other, row),
+  ];
+
+  /// The members (cut, layer) shares its pictures with as a 겸용: its group
+  /// but the row itself in its sync's other cuts ([rowAcrossItsSync]), which
+  /// never leave it — what an unlink takes it away from, and what the badge
+  /// names as linked (I-150-Q3 · Q6). Empty for a row of a cut of its own
+  /// that no group holds, and for a 동기컷's row linked nowhere else.
+  List<LayerLinkMember> linkedBeyondItsSync({
+    required CutId cutId,
+    required LayerId layerId,
+  }) {
+    final group = groupOf(cutId: cutId, layerId: layerId);
+    if (group == null) {
+      return const [];
+    }
+    final itself = rowAcrossItsSync(cutId: cutId, layerId: layerId);
+    return [
+      for (final member in group.members)
+        if (!itself.contains((member.cutId, member.layerId))) member,
+    ];
+  }
 
   /// Each member's group, the first to hold it. A registry never changes,
   /// so this is read once.
@@ -155,6 +214,13 @@ class LayerLinkRegistry {
   /// (cut, layer)'s counterpart inside [targetCutId] — the member of its
   /// group that lives there, or null when the row does not reach that cut.
   ///
+  /// A cut can hold two members of one group — a row pasted linked inside
+  /// it, its copy mirrored into the cuts that share its rows. The n-th of
+  /// them, in the group's order, is the n-th there. ↩️It was the first
+  /// there, whichever was asked: a 동기컷 with such a row laid both rows onto
+  /// that one, and the other timeline's cut held one row twice (I-150,
+  /// 2026-11-04).
+  ///
   /// Asked of the REGISTRY, so a command still building the next one can
   /// ask the groups it has made so far (겸용 변경 seats a copied attach row
   /// on the row its base was linked to a step earlier).
@@ -167,9 +233,21 @@ class LayerLinkRegistry {
     if (group == null) {
       return null;
     }
+    var nth = 0;
+    for (final member in group.members) {
+      if (member.cutId == cutId) {
+        if (member.layerId == layerId) {
+          break;
+        }
+        nth += 1;
+      }
+    }
     for (final member in group.members) {
       if (member.cutId == targetCutId) {
-        return member.layerId;
+        if (nth == 0) {
+          return member.layerId;
+        }
+        nth -= 1;
       }
     }
     return null;
@@ -192,9 +270,13 @@ class LayerLinkRegistry {
     return groupOf(cutId: cutId, layerId: layerId)?.members.length ?? 1;
   }
 
-  /// Whether (cut, layer) shares its pictures with another use site — the
-  /// one question the badge, 독립시키기 and the link-independent button ask
-  /// of a row.
+  /// Whether (cut, layer) shares its pictures with another use site — one
+  /// bank of cels, a 동기컷's other selves among them.
+  ///
+  /// ↩️It was the one question the badge, 독립시키기 and the link-independent
+  /// button asked of a row. A 동기컷's row shares its bank with the same row
+  /// in other timelines, which no unlink takes it from (I-150-Q3: 「실질
+  /// 같은컷 취급」) — those ask [linkedBeyondItsSync].
   bool isLinked({required CutId cutId, required LayerId layerId}) =>
       useCountOf(cutId: cutId, layerId: layerId) > 1;
 
@@ -221,12 +303,21 @@ class LayerLinkRegistry {
     );
   }
 
-  LayerLinkRegistry copyWith({List<LayerLinkGroup>? groups}) {
-    return LayerLinkRegistry(groups: groups ?? this.groups);
+  LayerLinkRegistry copyWith({
+    List<LayerLinkGroup>? groups,
+    List<CutSync>? syncs,
+  }) {
+    return LayerLinkRegistry(
+      groups: groups ?? this.groups,
+      syncs: syncs ?? this.syncs,
+    );
   }
 
   Map<String, dynamic> toJson() => {
     'groups': groups.map((group) => group.toJson()).toList(),
+    // Omitted while there is none, as the registry itself is: every file
+    // with no synced cut reads as it did.
+    if (syncs.isNotEmpty) 'syncs': [for (final sync in syncs) sync.toJson()],
   };
 
   factory LayerLinkRegistry.fromJson(Map<String, dynamic> json) {
@@ -235,17 +326,24 @@ class LayerLinkRegistry {
         for (final group in json['groups'] as List? ?? const [])
           LayerLinkGroup.fromJson(group as Map<String, dynamic>),
       ],
+      syncs: [
+        for (final sync in json['syncs'] as List? ?? const [])
+          CutSync.fromJson(sync as Map<String, dynamic>),
+      ],
     );
   }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is LayerLinkRegistry && listEquals(other.groups, groups);
+      other is LayerLinkRegistry &&
+          listEquals(other.groups, groups) &&
+          listEquals(other.syncs, syncs);
 
   @override
-  int get hashCode => Object.hashAll(groups);
+  int get hashCode =>
+      Object.hash(Object.hashAll(groups), Object.hashAll(syncs));
 
   @override
-  String toString() => 'LayerLinkRegistry(groups: $groups)';
+  String toString() => 'LayerLinkRegistry(groups: $groups, syncs: $syncs)';
 }

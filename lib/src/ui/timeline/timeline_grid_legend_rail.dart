@@ -55,6 +55,7 @@ final class TimelineGridLegendRail {
       metrics: metrics,
       optionalColumns: hooks.optionalRailColumns,
       legend: legend.verbs,
+      heading: legend.heading,
       hiddenSections: hooks.hiddenSections,
       onToggleSection: legend.onToggleSection,
       rowFilter: hooks.rowFilter,
@@ -77,11 +78,9 @@ final class TimelineGridLegendRail {
     return header;
   }
 
-  /// Marks assigned across the grid's layers — the mark-solo menu's
-  /// "solo color X" list is built from these.
+  /// The marks the grid's layers wear ([TimelineLegendMenus.marksInUse]).
   Set<LayerMark> _marksInUse() => {
-    for (final layer in _grid.layers)
-      if (layer.mark != LayerMark.none) layer.mark,
+    for (final layer in _grid.layers) layer.mark,
   };
 
   /// The rows the rail currently DISPLAYS (layer rows only, camera

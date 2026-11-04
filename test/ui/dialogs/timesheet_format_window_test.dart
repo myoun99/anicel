@@ -19,7 +19,6 @@ const _cellBar = ValueKey<String>('timesheet-format-stretch-line-cell');
 const _cellThreshold = ValueKey<String>(
   'timesheet-format-stretch-line-cell-threshold',
 );
-const _seFill = ValueKey<String>('timesheet-format-se-empty-fill');
 const _save = ValueKey<String>('timesheet-format-save-button');
 
 /// Opens the window on [initial] — and, when given, on the cut [sheet] the
@@ -130,32 +129,24 @@ void main() {
   });
 
   testWidgets('each yes/no is one pill that says its state: the ACTION '
-      'stretch line and the SE wash flip, and the save carries N and the '
-      'wash', (
+      'stretch line flips, and the save carries N', (
     tester,
   ) async {
     final strings = AppText.strings;
     TimesheetInfo? result;
     await _openWindow(tester, TimesheetInfo.empty, (r) => result = r);
 
-    // Defaults: the ACTION line off (F-430 「액션은 늘림선 기본 없음」),
-    // SE wash on.
+    // Default: the ACTION line off (F-430 「액션은 늘림선 기본 없음」).
     expect(_pill(tester, _bar).selected, isFalse);
     expect(_pill(tester, _bar).label, strings.sheetStretchLineOff);
-    expect(_pill(tester, _seFill).selected, isTrue);
-    expect(_pill(tester, _seFill).label, strings.sheetFillOn);
 
     await _press(tester, _bar);
     expect(_pill(tester, _bar).selected, isTrue);
     expect(_pill(tester, _bar).label, strings.sheetStretchLineOn);
     await tester.enterText(find.byKey(_threshold), '4');
-    await _press(tester, _seFill);
-    expect(_pill(tester, _seFill).selected, isFalse);
-    expect(_pill(tester, _seFill).label, strings.sheetFillOff);
 
     await _press(tester, _save);
     expect(result!.exposureBarThreshold, 4);
-    expect(result!.seEmptyFill, isFalse);
   });
 
   // 🐛F-355: a 全角 IME's draft is not changed under it — N reads its
@@ -209,7 +200,7 @@ void main() {
     TimesheetInfo? result;
     await _openWindow(
       tester,
-      const TimesheetInfo(exposureBarThreshold: 4, seEmptyFill: false),
+      const TimesheetInfo(exposureBarThreshold: 4),
       (r) => result = r,
     );
 
@@ -222,7 +213,6 @@ void main() {
     await _press(tester, _bar);
     await _press(tester, _save);
     expect(result!.exposureBarThreshold, isNull);
-    expect(result!.seEmptyFill, isFalse);
 
     // Garbage N → default 3.
     TimesheetInfo? second;

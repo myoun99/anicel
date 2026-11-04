@@ -46,10 +46,12 @@ import '../project_lookup.dart';
 import '../project_repository.dart';
 import '../reference_move_carried.dart';
 import 'cut_command_input_planner.dart';
+import 'cut_insertion.dart' show CutLanding;
 import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'create_cut_command.dart';
 import 'create_linked_cut_command.dart';
+import 'create_synced_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
@@ -66,7 +68,9 @@ import 'set_layer_placement_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
+import 'leave_sync_command.dart';
 import 'link_duplicate_layer_command.dart';
+import 'part_links_across_timelines_command.dart';
 import 'unlink_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';
@@ -145,6 +149,7 @@ class CutCommandCoordinator {
     required this.editingSession,
     required this.historyManager,
     this.brushFrameStore,
+    this.sheetInkStores = const [],
   });
 
   final ProjectRepository repository;
@@ -154,6 +159,10 @@ class CutCommandCoordinator {
   /// Optional app-level brush stroke store; when present, canvas resizes
   /// translate the cut's strokes to honor the chosen anchor.
   final BrushFrameStore? brushFrameStore;
+
+  /// The sheets' handwriting stores — where a deleted 동기컷 canonical's
+  /// handwriting moves to the cut taking its sync over.
+  final List<BrushFrameStore> sheetInkStores;
 
   // ── the cut commands: their own object, in their own file ───────────
   //
@@ -317,6 +326,12 @@ class CutCommandCoordinator {
     newName: newName,
     index: index,
   );
+  DuplicatedCut copyCut(
+    Cut source, {
+    required CutLanding landing,
+    String? newName,
+  }) => _cuts.copyCut(source, landing: landing, newName: newName);
+  int? newCutIndexOn(TrackId trackId) => _cuts.newCutIndexOn(trackId);
 
   // ── the camera commands: their own object ───────────────────────────
   //
@@ -498,8 +513,24 @@ class CutCommandCoordinator {
   }) => _links.plannedLinkedCut(sourceCutId: sourceCutId);
   void createLinkedCut({required CutId sourceCutId, String? name}) =>
       _links.createLinkedCut(sourceCutId: sourceCutId, name: name);
+  void createLinkedCutAsItStands(
+    Cut copied, {
+    required CutId sourceCutId,
+    required CutLanding landing,
+    required void Function(DuplicatedCut landed, Set<FrameId> replaced) carry,
+  }) => _links.createLinkedCutAsItStands(
+    copied,
+    sourceCutId: sourceCutId,
+    landing: landing,
+    carry: carry,
+  );
+  void createSyncedCut({
+    required CutId sourceCutId,
+    required CutLanding landing,
+  }) => _links.createSyncedCut(sourceCutId: sourceCutId, landing: landing);
   void unlinkLayer({required CutId cutId, required LayerId layerId}) =>
       _links.unlinkLayer(cutId: cutId, layerId: layerId);
+  void unsyncCut(CutId cutId) => _links.unsyncCut(cutId);
   void convertCutToLinked({
     required CutId originCutId,
     required CutId targetCutId,
@@ -1300,11 +1331,28 @@ class CutCommandCoordinator {
     ]);
   }
 
+  /// Adds [layer], an attach row, at [insertionIndex] of [cutId] — beside
+  /// the row it was added from ([newAttachedRowBeside], I-159) — with the
+  /// renames the seats it pushes along owe, in its own undo step.
+  void addAttachedLayer({
+    required CutId cutId,
+    required Layer layer,
+    required int insertionIndex,
+  }) => _executeMovingSeats(cutId, 'Add layer ${layer.name}', [
+    plannedAddLayerCommand(
+      repository: repository,
+      cutId: cutId,
+      layer: layer,
+      insertionIndex: insertionIndex,
+    ),
+  ]);
+
   /// Runs [commands] — a write that may move attach rows' seats — as ONE
   /// undo step, with the renames those moves owe inside it
-  /// ([attachNamesForMovedSeats], I-122 · F-436 ③). The two doors that move
-  /// a seat come through here: a drag's [setLayerPlacement] and the menu's
-  /// [setLayerAttachment].
+  /// ([attachNamesForMovedSeats], I-122 · F-436 ③). The three doors that
+  /// move a seat come through here: a drag's [setLayerPlacement], the
+  /// menu's [setLayerAttachment] and the add beside a row
+  /// ([addAttachedLayer], I-159).
   void _executeMovingSeats(
     CutId cutId,
     String description,

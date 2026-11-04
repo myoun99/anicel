@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 
+import '../../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
@@ -320,8 +321,16 @@ class PixelVerbs {
         !cut.layers.rowVisible(cut.layers.byId(layer.id) ?? layer)) {
       return null;
     }
+    // 🗣️F-564 (유저 2026-11-04): 「일반행끼리는 라이브로도 상자가 두 그림
+    // 선택되서 되는데, 어태치 싱크행끼리라던가는 … 라이브로 안보임. 확정해야
+    // 다른 행도 바뀜」. A synced row's cels are found through the row as a cut
+    // SHOWS it ([attachedRowAsShown], the door F-183 put the onion skin
+    // through) — its stored timeline is empty by design. ↩️The rows handed in
+    // as stored — the canvas's own, to say what it shows, and a folder's
+    // members — named no cel of a synced row: the box lifted none while it
+    // was open, and a folder's left out at the confirm too.
     final frame = _controllers.timelineController.resolveFrameForLayer(
-      layer: layer,
+      layer: attachedRowAsShown(layer, cut.layers),
       frameIndex: frameIndex,
     );
     if (frame == null) {

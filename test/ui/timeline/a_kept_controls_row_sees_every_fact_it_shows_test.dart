@@ -63,6 +63,7 @@ void main() {
     LayerFxState fxState = LayerFxState.on,
     bool onionSkinEnabled = false,
     List<String> linkPartners = const ['other'],
+    List<String> syncPartners = const ['elsewhere'],
     bool soloed = false,
     AttachedPlacement? attachArrow,
     bool sourceIsShort = false,
@@ -95,6 +96,7 @@ void main() {
         layerOnionSkinEnabledOf: (_) => onionSkinEnabled,
         // A fresh list at every ask, as the session hands them out.
         layerLinkPartnersOf: (_) => [...linkPartners],
+        layerSyncPartnersOf: (_) => [...syncPartners],
         isLayerSoloed: (_) => soloed,
         attachArrowPlacementOf: (_) => attachArrow,
         layerSourceIsShortOf: (_) => sourceIsShort,
@@ -140,6 +142,7 @@ void main() {
     'fxState': () => facts(fxState: LayerFxState.off),
     'onionSkinEnabled': () => facts(onionSkinEnabled: true),
     'linkPartners': () => facts(linkPartners: const ['another']),
+    'syncPartners': () => facts(syncPartners: const ['another']),
     'soloed': () => facts(soloed: true),
     'attachArrow': () => facts(attachArrow: AttachedPlacement.below),
     'isReferenceSourceShort': () => facts(sourceIsShort: true),

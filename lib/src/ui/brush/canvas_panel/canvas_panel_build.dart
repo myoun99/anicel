@@ -122,7 +122,7 @@ class _PanelBuild {
           horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
           bottomBar: _state._shellBars.memoizedBottomBar(),
           transport: _state.widget.transport,
-          leftPill: _state.widget.leftPill,
+          leftPill: _state._floor?.leftPill,
           onLeftPillLaidOut: _state._rememberLeftPillBeside,
           documentName: _state.widget.documentName,
           documentAbsent: _state.widget.documentAbsent,
@@ -565,7 +565,7 @@ class _PanelBuild {
         ),
       ),
     );
-    if (hud == null) {
+    if (hud == null || !_state.widget.drawsFlipHud) {
       return layer;
     }
     // Above the gesture layer, in the same box: the anchor

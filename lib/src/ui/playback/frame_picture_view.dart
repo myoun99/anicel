@@ -987,32 +987,34 @@ class _FramePictureViewState extends State<FramePictureView> {
     return (overlay?.strokeInHand ?? false) && _celNow() == _drawnOn;
   }
 
-  /// [_catchUp] for a paint: at once, or for a stroke in hand once the
-  /// frame is out, as late as its step goes in before the next frame
-  /// ([StepPace]).
+  /// [_catchUp] for a paint: at once, or for a stroke in hand as late as its
+  /// step goes in before the next frame ([StepPace]).
   ///
-  /// 🚨★★⛔NOT IN THE PAINT WHILE A STROKE IS IN HAND, where the last steps
-  /// leave a frame nothing as well (F-533, 유저 2026-11-01 「최대한 그
-  /// 외적으로 좋아지기만 하는 부분에서」). Recording a step takes 4–9 ms in a
-  /// heavy frame, and in the paint that frame goes out that much later: it
-  /// took the next vsync with it, and a step had a frame to itself. 🔬Main PC,
-  /// 144 Hz, S5_BA cut 352, every row on, at 60%, in turn in one run, tests
-  /// running, input to raster done p50 / p90: 20 px 28.1–29.0 / 34.8–37.1 →
-  /// 21.5–22.2 / 27.6–30.3 ms, 300 px 37.0–39.3 / 44.6–50.5 → 32.4–33.5 /
-  /// 42.6–44.3 ms, a frame's build 5.1–5.4 → 1.6 ms. A new project, fitted,
-  /// the same way: 45–52 → 39–43 ms, p99 79.5 → 64.7. Quiet, and at 100% in a
-  /// new project, no change either way: those steps are held already.
+  /// ↩️⛔NOT ONCE THE FRAME IS OUT, where the last steps leave a frame
+  /// nothing (F-533, `c3649ff9f` 2026-11-02, undone 2026-11-03): the step's
+  /// recording left the paint, and on the main PC the frame went out that
+  /// much sooner — S5_BA cut 352 at 60%, under another session's tests,
+  /// input to raster done p50 20 px 28.1–29.0 → 21.5–22.2 ms, a frame's build
+  /// 5.1–5.4 → 1.6 ms. 🔬But on the Surface Pro 11 (release, 120 Hz, S5_BA
+  /// cut 352, every row on, a quiet machine, nine rounds a view in turn,
+  /// fourteen strokes a round, 2026-11-02) frames at 100% went past 16.7 ms
+  /// 89 → 144 times and past 30 ms 0 → 15, the longest 28.2 → 41.2 ms; with
+  /// a step's patch cut to its dabs (`c4280799c`) still 117 and 8. Fitted no
+  /// worse (271 → 251), and input to ink the same within its 25 ms grid. The
+  /// step's render went to the raster thread right behind its frame, into
+  /// the next one's way. 🚨The main PC does not speak for the Surface here.
   ///
-  /// ⛔Not at the next frame's top, for a sample that came between frames:
-  /// the step lands 8–10 ms sooner and past that frame's paint, and the ink
-  /// is no earlier (36–40 ms against 37–38). ⛔Not as the last step lands:
-  /// 300 px 33–36 ms but 20 px 26–31, and steps with no frame between them
-  /// are what the Surface Pro 11 turned down (`StepPace`). ⛔Not a post-frame
-  /// callback: 1–2 ms behind the timer, 20 px 22.4–23.7, 300 px 32.7–37.3.
-  /// ↩️Where nothing was held this went ahead of the paint from 2026-11-02,
-  /// from the frame's callbacks: 1–3 steps in 230 went that way, a pen's
-  /// samples coming between frames (`AnicelBinding`), and its measured gain
-  /// was not seen again.
+  /// 🪦⛔NOT AHEAD OF THE PAINT, FROM THE FRAME'S CALLBACKS, where nothing
+  /// was held (`5c91b0c42` 2026-11-01, 유저 「최대한 그 외적으로 좋아지기만
+  /// 하는 부분에서 구조를 효율적으로 리팩토링」; gone with `c3649ff9f`, back
+  /// with its undoing, gone again 2026-11-04): it ran only for a change of
+  /// the live rows made in a frame's callbacks, and a pen's samples come
+  /// between frames and are laid as they come (`AnicelBinding`,
+  /// `_BrushEditStroke.takeSample`). 1–3 steps in 230 went that way
+  /// (2026-11-02), and 1 move of the live rows in 860 came in a frame's
+  /// callbacks (S5 cut 352, every row on, fitted and at 100%, 2026-11-04).
+  /// The gain it was measured with (at 100% under tests 29.1 → 21.8 ms) was
+  /// not seen again.
   void _catchUpAtPaint() {
     _pace.painted(SchedulerBinding.instance.currentSystemFrameTimeStamp);
     if (!_strokeInHand) {
@@ -1023,15 +1025,25 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (_heldStep != null) {
       return;
     }
-    _heldStep = Timer(_pace.ask(), () {
+    final hold = _pace.ask();
+    if (hold == Duration.zero) {
+      _catchUp();
+      return;
+    }
+    _heldStep = Timer(hold, () {
       _heldStep = null;
-      if (_strokeInHand) {
-        final whole = _standing.whole;
-        _catchUp();
-        // The paint that asked read [_standing] before this.
-        if (_standing.whole != whole) {
-          _repaint.value += 1;
-        }
+      if (!_strokeInHand) {
+        return;
+      }
+      final standing = _standing.whole;
+      _catchUp();
+      // A step that turns to the frame as it stands asks for the paint that
+      // draws it: the paint that held it is out, and none comes after it
+      // once the pen stops. ⛔Not waiting for the next move: the stroke's
+      // last step stood on screen until there was one
+      // (a-held-step-that-turns-to-the-whole-frame-asks-no-paint).
+      if (_standing.whole != standing) {
+        _repaint.value += 1;
       }
     });
   }

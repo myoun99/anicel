@@ -161,8 +161,11 @@ void main() {
       expect(blocksOf(s, other), {4: ('X', 31), 6: ('Y', 32)});
     });
 
-    test('the ghost of a hold on the row is no block of the run — the copy '
-        'reads the row ghost-free, as the copy of every row does (F-134)', () {
+    // A run swept over the hold — from [from] into cells the row shows a
+    // ghost on. Cut out of the ghost, a piece of it came out a real block
+    // (F-134), and the paste laid it.
+    ({EditorSessionManager s, LayerId base, LayerId mirror, LayerId other})
+    sweptOverAHold(int from) {
       final (:s, :base, :mirror, :other) = baseMirrorAndAnEmptyRow();
       s.rangeMove.setRunEdgeBehavior(
         layerId: base,
@@ -181,39 +184,57 @@ void main() {
         isTrue,
         reason: 'PREMISE: the row shows the ghost of the hold at 4',
       );
-      // A run swept INSIDE the hold — cells the row shows a ghost on, and
-      // none of its blocks. Cut out of the ghost, a piece of it came out a
-      // real block (F-134), and the paste laid it.
       s.selectLayer(mirror);
-      s.selectFrameIndex(4);
+      s.selectFrameIndex(from);
       s.updateFrameRangeSelectionDrag(
         layerId: mirror,
-        anchorIndex: 4,
+        anchorIndex: from,
         headIndex: 5,
       );
       expect(
         s.frameRangeSelection.value?.startIndex,
-        4,
+        from,
         reason: 'PREMISE: a ghost does not pull the range onto its block',
       );
-      expect(clipboardOf(s).canCopyFrameAtCurrentFrame, isTrue, reason: '⛔전제');
+      return (s: s, base: base, mirror: mirror, other: other);
+    }
+
+    test('a run only the ghost of a hold covers holds no drawing — the copy '
+        'is dark, and pressed banks nothing (F-134 · F-556)', () {
+      final (:s, base: _, mirror: _, :other) = sweptOverAHold(4);
+
+      expect(clipboardOf(s).canCopyFrameAtCurrentFrame, isFalse);
       clipboardOf(s).copyFrameAtCurrentFrame();
-      expect(clipboardOf(s).bankedRowLayerIds, [mirror], reason: '⛔전제');
+      expect(clipboardOf(s).bankedRowLayerIds, isEmpty);
 
       standOn(s, other, 0);
-      expect(
-        clipboardOf(s).canPasteIndependentFrameAtCurrentFrame,
-        isTrue,
-        reason: '⛔전제: the press is made',
-      );
-      clipboardOf(s).pasteIndependentFrameAtCurrentFrame();
-
+      expect(clipboardOf(s).canPasteIndependentFrameAtCurrentFrame, isFalse);
       expect(
         rowOf(s, other).timeline,
         isEmpty,
         reason: 'a ghost is not material',
       );
-      expect(rowOf(s, other).frames, isEmpty);
+    });
+
+    test('the ghost of a hold on the row is no block of the run — the copy '
+        'reads the row ghost-free, as the copy of every row does (F-134)', () {
+      final (:s, :base, :mirror, :other) = sweptOverAHold(2);
+      expect(clipboardOf(s).canCopyFrameAtCurrentFrame, isTrue, reason: '⛔전제');
+      clipboardOf(s).copyFrameAtCurrentFrame();
+      expect(clipboardOf(s).bankedRowLayerIds, [mirror], reason: '⛔전제');
+
+      standOn(s, other, 0);
+      clipboardOf(s).pasteIndependentFrameAtCurrentFrame();
+
+      expect(
+        blocksOf(s, other),
+        {0: (null, 32)},
+        reason: 'a ghost is not material',
+      );
+      expect(
+        rowOf(s, other).timeline[0]?.length,
+        rowOf(s, base).timeline[2]?.length,
+      );
     });
 
     test('stood on, one comma of the drawing shown', () {

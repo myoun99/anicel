@@ -41,7 +41,6 @@ class _BrushEditStroke {
     _arm(
       strokeSettings,
       at: canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
       // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
       // jitter come from its press, so every view that hears the press
       // rolls the same numbers. ↩️Written for a sheet's windows each
@@ -135,16 +134,22 @@ class _BrushEditStroke {
   /// Every dab of it reads [pressure], as a pen held at it the whole way
   /// would: full for a shape, which no pen pressed, and the last stroke's
   /// for the line from it ([ShapeShow.landStroke]).
+  ///
+  /// Its path is the tool's before it is laid, and so is its [length]: it
+  /// comes in and goes out as it goes ([BrushInAndOutAlong]) — where a
+  /// pen's stroke goes out only when it is laid again at the lift
+  /// ([layAgainAtLift]).
   void startToolStrokeAt(
     CanvasPoint canvasPosition, {
     required int dice,
     required double pressure,
+    required double length,
   }) {
     _armItsOwn(
       _state._activeStrokeInputSettings!,
       at: canvasPosition,
-      startsInsidePasteboard: _state._isInsidePasteboard(canvasPosition),
       dice: dice,
+      length: length,
     );
     _state._readings = _state._readings.withPressure(pressure);
     _state._pendingOverlayDabs.clear();
@@ -173,7 +178,6 @@ class _BrushEditStroke {
   void _arm(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
-    required bool startsInsidePasteboard,
     required int dice,
   }) {
     _state.widget.onActiveStrokeChanged?.call(
@@ -182,7 +186,6 @@ class _BrushEditStroke {
     _armAfresh(
       strokeSettings,
       at: at,
-      startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
     );
   }
@@ -190,19 +193,19 @@ class _BrushEditStroke {
   /// The pen's stroke stands on nothing yet at [at]: what is its own is made
   /// afresh, the overlay opens on the cel as it stands, and the live tiles
   /// and the dabs queued for them go — at the press, and again for a line
-  /// laid anew along its 後補正 ([postCorrect]), which the host still sees
-  /// as the one stroke it heard of.
+  /// laid anew at the lift ([layAgainAtLift]), which the host still sees
+  /// as the one stroke it heard of. A line laid anew is [length] long.
   void _armAfresh(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
-    required bool startsInsidePasteboard,
     required int dice,
+    double? length,
   }) {
     _armItsOwn(
       strokeSettings,
       at: at,
-      startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
+      length: length,
     );
     _openOverlay(strokeSettings);
     _state._pendingOverlayDabs.clear();
@@ -234,19 +237,22 @@ class _BrushEditStroke {
   }
 
   /// What a stroke stands on that is its OWN — the snap, the symmetry, the
-  /// dice, the dynamics, the ground mixer, the dabs laid so far — made
-  /// afresh from [strokeSettings]. The stabiliser is the pen's
-  /// ([_startSteadying]).
+  /// dice, the dynamics, the ground mixer, how far it has come, the dabs
+  /// laid so far — made afresh from [strokeSettings]. The stabiliser is the
+  /// pen's ([_startSteadying]). [length] is the whole line's, where it is
+  /// known before it is laid.
   void _armItsOwn(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
-    required bool startsInsidePasteboard,
     required int dice,
+    double? length,
   }) {
     final canvasPosition = at;
     _state._strokeDice = dice;
     _state._nextSequence = 0;
-    _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
+    _state._breakCurrentVisibleSegment = !_state._isInsidePasteboard(
+      canvasPosition,
+    );
     _state._previousRawCanvasPosition = canvasPosition;
     // Guides are read ONCE per stroke. Both are frozen here rather than
     // consulted per sample so an edit landing mid-stroke cannot bend the
@@ -268,6 +274,11 @@ class _BrushEditStroke {
       random: math.Random(dice + 5),
     );
     _state._inputRandom = math.Random(dice + 3);
+    _state._inAndOut = BrushInAndOutAlong(
+      strokeSettings.shape.inAndOut,
+      from: canvasPosition,
+      length: length,
+    );
     _state._strokeDynamics = BrushStrokeDynamics(
       settings: strokeSettings,
       random: math.Random(dice + 2),
@@ -349,7 +360,7 @@ class _BrushEditStroke {
   /// pen's own back after — THE way a stroke lays what was read elsewhere
   /// than where the pen is now: a sample that waited for its first readings
   /// ([_BrushEditOpening._paintWaiting]), the steadied line behind the pen
-  /// ([_paintSteadied]), the line its 後補正 lays anew ([postCorrect]).
+  /// ([_paintSteadied]), the line laid anew at the lift ([layAgainAtLift]).
   void paintReading(PenReadings readings, void Function() paint) {
     final pen = _state._readings;
     _state._readings = readings;
@@ -397,42 +408,31 @@ class _BrushEditStroke {
     _paintSteadied(_state._stabilizer?.finish() ?? const []);
   }
 
-  /// 後補正: the line the pen drew, its wobble taken out, laid again as this
-  /// same stroke — from nothing, on its own dice, so its scatter and jitter
-  /// roll as they did — before it lands.
+  /// The line the pen drew, laid again as this same stroke — from nothing,
+  /// on its own dice, so its scatter and jitter roll as they did — before
+  /// it lands: its wobble taken out by its 後補正, its end going out by its
+  /// 抜き.
   ///
   /// 🗣️유저 2026-10-20 (F-418-Q7 「뗄 때 다듬은 선으로 바뀐다」): the line
   /// on screen while it is drawn is the steadied one, and the pen-up puts
-  /// the smoothed one in its place. ⚠️The one stroke that lands other than
-  /// it was shown, by that answer — and still in one turn: what is shown
-  /// next is what landed.
+  /// the smoothed one in its place. 🗣️유저 2026-11-01 (brush-in-and-out-Q2
+  /// 「뗄 때 고쳐 깐다」): where the line ends is known only now, and it is
+  /// drawn to its end at full until then. ⚠️The strokes that land other
+  /// than they were shown, by those answers — and still in one turn: what
+  /// is shown next is what landed.
   ///
-  /// Nothing happens for a brush that takes nothing out, nor for a stroke
-  /// the tool lays — it draws no line of the pen's ([_state._drawn]).
-  void postCorrect() {
+  /// Nothing happens for a brush that does neither, nor for a stroke the
+  /// tool lays — it draws no line of the pen's ([_state._drawn]), and knows
+  /// its end before it is laid ([startToolStrokeAt]).
+  void layAgainAtLift() {
     final drawn = _state._drawn;
     _state._drawn = null;
     final settings = _state._activeStrokeInputSettings;
     if (drawn == null || settings == null) {
       return;
     }
-    final correction = settings.shape.correction;
-    final within = correction.postWithin(
-      zoom: _state.widget.viewport.zoom,
-      speed:
-          drawn.fold(0.0, (sum, point) => sum + point.readings.speed) /
-          drawn.length,
-    );
-    if (within == null) {
-      return;
-    }
-    final line = postCorrected(
-      drawn,
-      within: within,
-      bezier: correction.postBezier,
-      keepCorners: correction.sharpenCorners,
-    );
-    if (identical(line, drawn)) {
+    final line = _postCorrected(drawn, settings.shape.correction);
+    if (identical(line, drawn) && !settings.shape.inAndOut.goesOut) {
       return;
     }
     final start = line.first;
@@ -440,8 +440,8 @@ class _BrushEditStroke {
     _armAfresh(
       settings,
       at: start.position,
-      startsInsidePasteboard: startsInsidePasteboard,
       dice: _state._strokeDice,
+      length: lengthThrough([for (final point in line) point.position]),
     );
     if (startsInsidePasteboard) {
       paintReading(start.readings, () => _paintPress(start.position));
@@ -451,13 +451,38 @@ class _BrushEditStroke {
     }
   }
 
+  /// [drawn] with its wobble taken out by [correction]'s 後補正 — [drawn]
+  /// itself where it takes nothing out.
+  List<PenPoint> _postCorrected(
+    List<PenPoint> drawn,
+    BrushCorrection correction,
+  ) {
+    final within = correction.postWithin(
+      zoom: _state.widget.viewport.zoom,
+      speed:
+          drawn.fold(0.0, (sum, point) => sum + point.readings.speed) /
+          drawn.length,
+    );
+    if (within == null) {
+      return drawn;
+    }
+    return postCorrected(
+      drawn,
+      within: within,
+      bezier: correction.postBezier,
+      keepCorners: correction.sharpenCorners,
+    );
+  }
+
   /// The stroke's FIRST dab, under the press.
   void _paintPress(CanvasPoint canvasPosition) {
-    final initialDabs = _state._pressure.withPressureDynamics(
-      _interpolateTo(
-        null,
-        canvasPosition,
-        sequence: _state._nextSequence,
+    final initialDabs = _tapered(
+      _state._pressure.withPressureDynamics(
+        _interpolateTo(
+          null,
+          canvasPosition,
+          sequence: _state._nextSequence,
+        ),
       ),
     );
     if (initialDabs.isNotEmpty) {
@@ -494,6 +519,13 @@ class _BrushEditStroke {
     );
     _lay(emitted);
   }
+
+  /// [dabs] as thin and as faint as their place along the line leaves them
+  /// — its 入り抜き ([BrushInAndOutAlong]), after the pen's dynamics: one
+  /// more thing that drives the size and the flow, multiplied in as each
+  /// of those is ([applyBrushInputDynamics]).
+  List<BrushDab> _tapered(List<BrushDab> dabs) =>
+      _state._inAndOut?.taper(dabs) ?? dabs;
 
   /// [firstTip] with the second tip's stroke along [path] behind it — the
   /// first tip's dabs before the dynamics placed them ([BrushSecondStroke]).
@@ -559,6 +591,7 @@ class _BrushEditStroke {
 
   void advanceStrokeTo(CanvasPoint canvasPosition) {
     _state._drawn?.add((position: canvasPosition, readings: _readings));
+    _state._inAndOut?.goTo(canvasPosition);
     final previousRaw = _state._previousRawCanvasPosition;
     _state._previousRawCanvasPosition = canvasPosition;
     if (previousRaw == null) {
@@ -604,7 +637,7 @@ class _BrushEditStroke {
         sequence: firstEndSequence,
       ),
     );
-    final baseDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
+    final baseDabs = _tapered([...segmentStartDabs, ...segmentEndDabs]);
     if (baseDabs.isEmpty) {
       return;
     }
@@ -843,6 +876,7 @@ class _BrushEditStroke {
     _state._pressure.restInput();
     _state._strokeDynamics = null;
     _state._secondStroke = null;
+    _state._inAndOut = null;
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;
     // Guides are re-read at the next pointer-down, so an axis moved between

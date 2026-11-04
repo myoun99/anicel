@@ -114,7 +114,7 @@ void main() {
     );
   }
 
-  void draw(EditorSessionManager s, String id, double x) {
+  void draw(EditorSessionManager s, String id, double x, {double y = 12}) {
     final cut = s.requireActiveCut;
     BrushFrameEditingCoordinator(
       initialFrameKey: s.brushFrameKeyForCut(
@@ -131,7 +131,7 @@ void main() {
     ).commitSourceStroke(
       sourceDabs: [
         BrushDab(
-          center: CanvasPoint(x: x, y: 12),
+          center: CanvasPoint(x: x, y: y),
           color: 0xFF000000,
           size: 10,
           opacity: 1,
@@ -335,6 +335,54 @@ void main() {
           .draw(ui.Canvas(recorder)..clipRect(const Rect.fromLTWH(6, 8, 9, 7)));
       recorder.endRecording().dispose();
       expect(debugSubtreeRasterCount, 0, reason: 'both cut from what is held');
+    });
+  });
+
+  testWidgets('🚨a step patched in by the frame as a canvas stands lets go of '
+      'no folder it does not reach — the screen over the page finds it '
+      'still (F-533)', (tester) async {
+    await tester.runAsync(() async {
+      final s = session(count: 2, withPen: true);
+      addTearDown(s.dispose);
+      final pictures = s.playbackRig.framePictures;
+      // The folder under the pen where the step lands, the one over it in the
+      // far corner of the page, cell for cell away from the step.
+      draw(s, 'a', 10);
+      draw(s, 'b', 20);
+      draw(s, 'c', 27, y: 19);
+      draw(s, 'd', 27, y: 19);
+      final stood = (
+        cut: s.requireActiveCut,
+        frameIndex: 0,
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      );
+      await shown(s, stood);
+      final held = pictures.heldNodes;
+      final nodes = held.heldBytes - held.heldBelowBytes;
+      expect(nodes, greaterThan(0), reason: '⛔premise: the folder over it');
+
+      // A step in the near corner.
+      final step = ui.PictureRecorder();
+      pictures
+          .frameAsItStands(pictures.stackOf(stood), stood, live: onACanvas())
+          .drawing
+          .draw(ui.Canvas(step)..clipRect(const Rect.fromLTWH(0, 0, 6, 6)));
+      step.endRecording().dispose();
+      expect(held.heldBytes - held.heldBelowBytes, nodes);
+
+      debugSubtreeRasterCount = 0;
+      final screen = ui.PictureRecorder();
+      pictures
+          .frameAsItStands(pictures.stackOf(stood), stood, live: onACanvas())
+          .paintOnScreen(
+            ui.Canvas(screen),
+            const Size(32, 24),
+            viewport: CanvasViewport(),
+            devicePixelRatio: 1,
+          );
+      screen.endRecording().dispose();
+      expect(debugSubtreeRasterCount, 0, reason: 'found by the screen');
     });
   });
 

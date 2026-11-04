@@ -342,7 +342,13 @@ void main() {
   /// answered in the other four languages by id
   /// (`shortcutAction.brush-size-up` · `-down`). The ceiling stood one under
   /// the count of them when they came.
-  const untranslatedElsewhere = 141;
+  ///
+  /// 143 (I-154, the cut and layer renames back on their menus, 2026-11-04):
+  /// the English rows of two registry actions, 「Rename cut」 and 「Rename
+  /// layer」 — answered in the other four languages by id
+  /// (`shortcutAction.cut-rename` · `layer-rename`). The ceiling stood at
+  /// the count (141) when they came.
+  const untranslatedElsewhere = 143;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

@@ -6,7 +6,8 @@ import 'export_list_sheet.dart';
 import 'export_plan.dart' show sanitizeExportFileComponent;
 
 /// ONE DOCUMENT FILE of a cut the Cels tab writes beside its cels: a page of
-/// its timesheet (or the sheet's digital file), or its cut envelope.
+/// its timesheet (or the sheet's digital file), its cut envelope, or its
+/// film (I-151).
 ///
 /// 🗣️F-289 (유저 2026-10-05): 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
 /// 컷봉투탭도 셀 내부로 편입 … 기존의 범위는 셀의 범위 규칙 따라가고」.
@@ -21,7 +22,8 @@ class ExportDocumentSheet extends ExportListSheet {
     this.skipped = false,
   });
 
-  /// [ExportCelKind.timesheet] or [ExportCelKind.envelope].
+  /// [ExportCelKind.timesheet], [ExportCelKind.envelope] or
+  /// [ExportCelKind.video].
   final ExportCelKind kind;
 
   /// The cut the window lists it in.
@@ -88,11 +90,13 @@ class ExportDocumentSheet extends ExportListSheet {
 /// TS+컷번호 이런식. 페이지가 2개이상 있다면 TS301_1 , TS301_2 이런식」).
 /// ↩️`CUT301` · `CUT301_p1`, the name its tab gave it.
 ///
-/// A cut ENVELOPE keeps `CUT301_envelope`.
+/// A cut ENVELOPE keeps `CUT301_envelope`; a cut's FILM is `CUT301` — my
+/// call, not the user's (I-151 named none).
 String exportDocumentBase(ExportCelKind kind, Cut of, int page, int pageCount) {
   final cut = sanitizeExportFileComponent(of.name);
   return switch (kind) {
     ExportCelKind.envelope => 'CUT${cut}_envelope',
+    ExportCelKind.video => 'CUT$cut',
     _ => pageCount > 1 ? 'TS${cut}_${page + 1}' : 'TS$cut',
   };
 }
@@ -101,6 +105,7 @@ String exportDocumentBase(ExportCelKind kind, Cut of, int page, int pageCount) {
 String exportDocumentExtension(ExportCelKind kind, CelsExportSpec spec) =>
     switch (kind) {
       ExportCelKind.envelope => spec.envelopeImage.stillFormat.fileExtension,
+      ExportCelKind.video => spec.videoFormat.container.fileExtension,
       _ =>
         spec.sheetFormat == ExportTimesheetFormat.xdts
             ? 'xdts'

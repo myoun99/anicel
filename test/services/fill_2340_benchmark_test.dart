@@ -115,14 +115,13 @@ void main() {
 
       for (final gapClose in [0, 4]) {
         final tapWatch = Stopwatch()..start();
-        final dabs = buildFillDabs(
+        final dabs = fillRangeAt(
           cut: cut,
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
-          color: 0xFF3366CC,
           options: FloodFillOptions(gapClosePx: gapClose),
-        );
+        )?.dabsIn(0xFF3366CC) ?? const [];
         tapWatch.stop();
 
         final coordinator = BrushFrameEditingCoordinator(

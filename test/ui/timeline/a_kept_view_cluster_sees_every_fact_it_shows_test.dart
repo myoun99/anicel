@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -29,7 +28,6 @@ typedef _Inputs = ({
   double zoom,
   ValueChanged<double>? onZoom,
   TimelineOrientation orientation,
-  ValueListenable<String> cutName,
 });
 
 /// 🚨F-244 ⑧: A KEPT VIEW CLUSTER SEES EVERY FACT IT SHOWS.
@@ -58,7 +56,6 @@ void main() {
     zoom: 24,
     onZoom: zoom,
     orientation: TimelineOrientation.horizontal,
-    cutName: const AlwaysStoppedAnimation<String>(''),
   );
 
   Widget panel(_Inputs inputs) => MaterialApp(
@@ -81,7 +78,6 @@ void main() {
         projectFrameRate: inputs.rate,
         pixelsPerFrame: inputs.zoom,
         onPixelsPerFrameChanged: inputs.onZoom,
-        cutName: inputs.cutName,
       ),
     ),
   );
@@ -94,7 +90,6 @@ void main() {
     cluster.projectFrameRate,
     cluster.pixelsPerFrame,
     cluster.onPixelsPerFrameChanged,
-    cluster.cutName,
     cluster.trailing
         .map((control) => (control as TimelineOrientationToggle).orientation)
         .join(' | '),
@@ -122,37 +117,27 @@ void main() {
       zoom: base.zoom,
       onZoom: base.onZoom,
       orientation: base.orientation,
-      cutName: base.cutName,
     ),
     'the zoom': (
       rate: base.rate,
       zoom: 30,
       onZoom: base.onZoom,
       orientation: base.orientation,
-      cutName: base.cutName,
     ),
     'the zoom taken away': (
       rate: base.rate,
       zoom: base.zoom,
       onZoom: null,
       orientation: base.orientation,
-      cutName: base.cutName,
     ),
     'the orientation its toggle shows': (
       rate: base.rate,
       zoom: base.zoom,
       onZoom: base.onZoom,
       orientation: TimelineOrientation.vertical,
-      cutName: base.cutName,
     ),
-    // F-491: the cut's name heads the cluster.
-    'the cut name it hears': (
-      rate: base.rate,
-      zoom: base.zoom,
-      onZoom: base.onZoom,
-      orientation: base.orientation,
-      cutName: const AlwaysStoppedAnimation<String>('001'),
-    ),
+    // ↩️'the cut name it hears' (F-491) left with the name: the timeline
+    // panel names its cut in its legend's heading (I-154).
   };
 
   for (final MapEntry(key: fact, value: changed) in changes.entries) {

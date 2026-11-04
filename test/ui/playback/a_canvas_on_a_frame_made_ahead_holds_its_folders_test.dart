@@ -299,7 +299,7 @@ void main() {
           1,
         ),
       ]);
-      await aFrameAndItsStep(tester);
+      await tester.pump();
     }
 
     await aStepIn(0x10);

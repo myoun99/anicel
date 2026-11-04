@@ -31,6 +31,10 @@ import '../../services/transform_box_law.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
+import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import '../dialogs/behind_the_wait_window.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import 'box_chrome.dart' show SelectionTransformChrome;
 import 'box_on_screen.dart';
 import 'canvas_touch_contacts.dart';
@@ -1342,7 +1346,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     if (_sessionHasChanges) {
-      return _confirmSession;
+      return _confirmBehindTheWaitWindow;
     }
     // 🚨THE ARMED MODE'S OWN MEMORY (유저 2026-08-29: 「툴마다 기억하는게
     // 다름」). One shared slot could only answer for whichever mode
@@ -1353,6 +1357,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     return () => _replayTransform(recall);
+  }
+
+  /// 확정 pressed — Enter, the rail's ↵, the tool settings' 적용, the box's ✓
+  /// — lands the session behind the app's wait window, under 확정's name:
+  /// every cel of a range or a folder is drawn again (🗣️F-551, 유저
+  /// 2026-11-04 · Q1 「전부 늘 띄운다」).
+  void _confirmBehindTheWaitWindow() {
+    unawaited(
+      takeBehindTheWaitWindow(
+        context,
+        _confirmSession,
+        window: AppWaitWindow.working(
+          editorActionLabel(EditorActionIds.confirm),
+        ),
+      ),
+    );
   }
 
   /// Lands the session: the open box folded into the move it rides, the
@@ -1368,6 +1388,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// size, the warped preview kept painting on top until something closed
   /// the box, and the wrong landing went into history.
   void _confirmSession() {
+    if (!mounted) {
+      return;
+    }
     _confirmMoveSession();
     if (_transform != null) {
       // Untouched, a degenerate quad, or a box a walk carried onto a cel

@@ -10,8 +10,10 @@
 // threshold, a plugin's failure, a module's trap (and a render after it),
 // strides on both sides with the output's padding untouched, the modules
 // and libraries the host must refuse (another spec version, no render, no
-// plugin at all), a module started before it is asked (`_initialize`), and
-// WASI linked with no folder behind it.
+// plugin at all), a module started before it is asked (`_initialize`),
+// WASI linked with no folder behind it, and the engine interpreting exactly
+// where the build says (QA_FX_WASM_INTERPRET — this whole test runs again
+// that way as qa_fx_plugin_interpreted_test).
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,8 +22,7 @@
 #include "qa_fx_plugin.h"
 
 #if QA_FX_WASM
-#include <wasm.h>
-#include <wasmtime.h>
+#include "qa_wasmtime.h"
 #endif
 
 void *qa_fx_plugin_open_native(const char *path, char *error,
@@ -34,6 +35,12 @@ int32_t qa_fx_plugin_reach(void *plugin, const double *values,
                            double time, double frame_rate, double scale);
 int32_t qa_fx_plugin_render(void *plugin, const qa_fx_render_job *job);
 void qa_fx_plugin_close(void *plugin);
+int32_t qa_fx_plugin_interprets(void *plugin);
+
+// What the host was built to do with a module (qa_fx_plugin.c).
+#ifndef QA_FX_WASM_INTERPRET
+#define QA_FX_WASM_INTERPRET 0
+#endif
 
 static int failures = 0;
 
@@ -373,6 +380,9 @@ static void check_twin(const char *description) {
   if (twin == NULL) {
     return;
   }
+  CHECK(qa_fx_plugin_interprets(twin) == QA_FX_WASM_INTERPRET,
+        "wasm: the engine interprets %d where the build says %d",
+        qa_fx_plugin_interprets(twin), QA_FX_WASM_INTERPRET);
   check_plugin(twin, "wasm", description);
   uint8_t out[IN_H * OUT_STRIDE];
   int32_t trapped = render(twin, -200, 1, 0, out);
@@ -530,12 +540,19 @@ int main(void) {
     qa_fx_plugin_describe(native, description,
                           (int32_t)sizeof(description) - 1);
     check_plugin(native, "native", description);
+    CHECK(qa_fx_plugin_interprets(native) == 0,
+          "native: a library says it is interpreted");
     qa_fx_plugin_close(native);
   }
   check_refusals();
 #if QA_FX_WASM
   check_twin(description);
 #else
+  // A build that found no engine passes everything else without asking the
+  // twin, so a run that must have one says so (QA_REQUIRE_WASM=1, CI).
+  const char *required = getenv("QA_REQUIRE_WASM");
+  CHECK(required == NULL || strcmp(required, "1") != 0,
+        "QA_REQUIRE_WASM=1 but this build has no WebAssembly engine");
   printf("qa_fx_plugin_test: this build has no WebAssembly engine - the "
          "twin is not asked\n");
 #endif

@@ -16,6 +16,7 @@
 // inks are (F-477): a key of the colour typed or picked, `#RRGGBB`.
 
 import '../../models/canvas_size.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer_effect.dart';
 import '../../models/property_track.dart';
 import '../../models/transform_track.dart';
@@ -634,6 +635,18 @@ List<LayerEffect>? effectsWithEnabledToggled(
   effects,
   effectId,
   (effect) => effect.copyWith(enabled: !effect.enabled),
+);
+
+/// [effects] with one entry reading its keys by [basis] (I-120-Q10); null
+/// when the id is not present or it already does.
+List<LayerEffect>? effectsWithBasis(
+  List<LayerEffect> effects,
+  EffectId effectId,
+  FxBasis basis,
+) => _editEffect(
+  effects,
+  effectId,
+  (effect) => effect.basis == basis ? null : effect.copyWith(basis: basis),
 );
 
 /// Rebuilds the ONE effect [effectId] names through [edit], returning the

@@ -23,7 +23,6 @@ import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/commands/set_project_pasteboard_command.dart';
 import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
@@ -976,7 +975,7 @@ void main() {
         brushFrameStore: f.store,
         size: PasteboardSize.oneAndAHalf,
       );
-      expect(shrink.workAhead(undo: false)?.wall, WallMove.pasteboard);
+      expect(shrink.workAhead(undo: false), isNotNull);
       expect(shrink.workAhead(undo: true), isNull, reason: 'not taken yet');
       shrink.execute();
       expect(shrink.workAhead(undo: true), isNull, reason: 'its undo grows');
@@ -987,10 +986,10 @@ void main() {
       );
       expect(grow.workAhead(undo: false), isNull);
       grow.execute();
-      expect(grow.workAhead(undo: true)?.wall, WallMove.pasteboard);
+      expect(grow.workAhead(undo: true), isNotNull);
       grow.undo();
       shrink.undo();
-      expect(shrink.workAhead(undo: false)?.wall, WallMove.pasteboard);
+      expect(shrink.workAhead(undo: false), isNotNull);
     });
 
     test('done again either way, it cuts what was worked out ahead of it, '
@@ -1002,7 +1001,7 @@ void main() {
         brushFrameStore: f.store,
         size: PasteboardSize.oneAndAHalf,
       )..execute()..undo();
-      await shrink.workAhead(undo: false)!.run((_) {});
+      await shrink.workAhead(undo: false)!((_) {});
       final redone = f.store.cutAheadOf(cut);
       expect(redone, isNotNull, reason: 'its undo laid the cel back hot');
       shrink.execute();
@@ -1015,7 +1014,7 @@ void main() {
       )..execute();
       final drawnPast = drawn();
       f.store.storeBakedSurface(cut, drawnPast);
-      await grow.workAhead(undo: true)!.run((_) {});
+      await grow.workAhead(undo: true)!((_) {});
       final undone = f.store.cutAheadOf(cut);
       expect(undone, isNotNull);
       grow.undo();
@@ -1038,7 +1037,7 @@ void main() {
         brushFrameStore: f.store,
         inUse: false,
       );
-      await command.workAhead(undo: false)!.run((_) {});
+      await command.workAhead(undo: false)!((_) {});
       command.execute();
       expect(f.store.isCelCold(cut), isTrue, reason: 'premise: cut, parked');
       final parked = f.store.bakedSnapshotForSave().cold[cut]!.filePath;

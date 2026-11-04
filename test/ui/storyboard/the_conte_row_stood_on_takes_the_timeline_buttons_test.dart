@@ -373,7 +373,10 @@ void main() {
     expect(panel.editTarget, isA<StoryboardEditCut>());
     expect(panel.canToggleMark, isFalse);
     expect(panel.canMarkEvery, isFalse);
-    expect(panel.canCopyFrame, isFalse);
+    // 🗣️I-150: the copy is the CUT's too, as Delete is — ↩️it was dark.
+    expect(panel.canCopyFrame, isTrue);
+    panel.copyFrame();
+    expect(session.cutClipboard.holdsCuts, isTrue, reason: 'not the cel');
     expect(panel.canSelectRowSpan, isTrue, reason: 'D40: the cuts\' span');
     session.storyboardCursor.deleteBlockAtStoryboardCursor();
     expect(

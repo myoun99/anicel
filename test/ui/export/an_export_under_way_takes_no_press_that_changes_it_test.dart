@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,12 +34,15 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart'
     show debugOperatingSystemOverride;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_job.dart';
+import 'package:anicel/src/ui/export/export_preview_panel.dart';
 import 'package:anicel/src/ui/export/export_queue_column.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/export/png_sequence_export_service.dart'
@@ -73,6 +77,7 @@ class _AMovieOfOneByte extends VideoExportService {
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
     int bitrateBps = 0,
+    ExportGifSettings gif = const ExportGifSettings(),
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -345,6 +350,10 @@ void main() {
         'the Cels tab': (
           setUp: (tester) async {
             await tapKey(tester, 'export-tab-cels');
+            // A format stands while its kind is written (I-151): the
+            // envelope's and the film's with theirs.
+            await tapKey(tester, 'export-cels-kind-envelope');
+            await tapKey(tester, 'export-cels-kind-video');
             await unfoldEverything(tester);
             await tapKey(tester, 'export-scope-project');
             await tapKey(tester, 'export-cels-stand-a');
@@ -356,7 +365,8 @@ void main() {
             'export-cels-reset',
             'export-cels-stand-a',
             'export-cels-switch-a',
-            'export-cels-cut-picker',
+            // The project scope's cut column picks the cut (I-153).
+            'export-cels-folder-cut-cut2',
             'export-cut-grid',
             'export-cut-cell-2',
             'export-cels-stack-switch-a-ring',
@@ -371,6 +381,8 @@ void main() {
             'export-cel-suffix-field',
             'export-tsformat-file',
             'export-envelope-paper-sheet',
+            'export-film-format-file',
+            'export-cels-film-audio-ring',
             'export-cels-apply-fx-basic',
           ],
         ),
@@ -551,7 +563,9 @@ void main() {
     addTearDown(s.dispose);
     final editing = paperEditingKit(s);
     final (:road, :invoked, held: keysHeld) = recordingKeyRoad(s);
-    await tester.binding.setSurfaceSize(const Size(2000, 2400));
+    // Wide enough for both drawers beside the Cels list's cut column, which
+    // the project scope makes (I-153).
+    await tester.binding.setSurfaceSize(const Size(2200, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -754,5 +768,73 @@ void main() {
     await pressKeys();
     expect(window.invoked, [EditorActionIds.toolEraser, EditorActionIds.undo]);
     expect(window.held, isNotEmpty);
+  });
+
+  // I-153-Q2: the sheet's keys and a finger along the Cels tab's preview
+  // walk the list — and the preview shows what a run writes.
+  testWidgets('while the Cels tab writes, neither the sheet\'s keys nor a '
+      'finger along its preview moves the list — both do again when it '
+      'ends', (tester) async {
+    final window = await openWindow(tester);
+    await tapKey(tester, 'export-tab-cels');
+    await tapKey(tester, 'export-cels-stand-a');
+    final bindings = (window.state.widget.keys!).bindings;
+
+    String shown() => tester
+        .widget<ExportPreviewPanel>(find.byType(ExportPreviewPanel))
+        .fileName!;
+    Future<void> step() async {
+      final bound = bindings.activatorsFor(EditorActionIds.drawingNext).first;
+      if (bound.control) {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      }
+      await tester.sendKeyEvent(bound.trigger);
+      if (bound.control) {
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      }
+      await tester.pump();
+    }
+
+    Future<void> flip({double way = 1}) async {
+      final finger = await tester.startGesture(
+        tester.getCenter(
+          find.descendant(
+            of: find.byType(ExportPreviewPanel),
+            matching: find.byType(CanvasViewportGestureLayer),
+          ),
+        ),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await finger.moveBy(
+        Offset(way * (CanvasViewportGestureLayer.flipStepExtent + 12), 0),
+      );
+      await tester.pump();
+      await finger.up();
+      await tester.pump(
+        FlipHudController.holdAfterRelease + FlipHudController.fadeOut,
+      );
+    }
+
+    final first = shown();
+    late Future<void> whole;
+    await tester.runAsync(() async {
+      whole = window.state.export();
+      expect(await pollUntil(() => window.handedOver() == 1), isTrue);
+    });
+    await tester.pump();
+    await step();
+    await flip();
+    expect(shown(), first);
+
+    await tester.runAsync(() async {
+      window.release();
+      await whole;
+    });
+    await tester.pump();
+    await step();
+    expect(shown(), isNot(first));
+    await flip(way: -1);
+    expect(shown(), first);
   });
 }

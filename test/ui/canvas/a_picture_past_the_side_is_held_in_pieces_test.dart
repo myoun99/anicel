@@ -110,6 +110,15 @@ void main() {
   /// [shown] is [whole] byte for byte — or, drawn through a pose, a
   /// rounding apart at a few pixels and no more. 🔬Measured 2026-10-21:
   /// posed at half, 1 byte of 7680 one apart; posed and blurred, 2 of 4032.
+  /// 🔬Measured again 2026-11-04, once a posed image is drawn a sixty-fourth
+  /// of a texel past its pose (`applyLayerPlacement`,
+  /// an-enlarged-row-at-half-comes-apart-from-its-frame): posed and blurred,
+  /// 7 of 4032 one apart, every run (2 with the offset taken out); turned
+  /// and grown, 1; every other pose 0. ↩️Held to 0.1% until then; held now
+  /// to 0.4%, twice the worst as 0.1% was to the 10-21 two — the offset
+  /// moves where a sample falls, not how far a part lies, so the difference
+  /// stays one (a-cel-past-the-side-resamples-a-hair-apart, 캔버스 베이스 패널
+  /// 2026-11-04: 「되돌리지 않고 이 핀의 기준을 다시 잰다」).
   /// A pose resamples, and the part is drawn from a quad of its own — a
   /// smaller quad rounds its texture coordinates differently, the reason a
   /// posed crop gets its whole laid back ([inkCropDrawsTheSame]). A picture
@@ -170,7 +179,7 @@ void main() {
     }
     final (:count, :most) = differences(shown, whole);
     expect(
-      (most <= 1, count <= shown.length ~/ 1000),
+      (most <= 1, count <= shown.length ~/ 250),
       (true, true),
       reason: differ(shown, whole),
     );

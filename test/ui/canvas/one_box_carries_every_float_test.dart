@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/canvas/float_warp.dart'
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 
 import '../../helpers/settle_async.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// I-37 — ONE BOX CARRIES EVERY FLOAT.
 ///
@@ -236,7 +237,7 @@ void main() {
     await tester.pump();
     env.commands.editTransformValues((now) => now.copyWith(sx: 2, sy: 2));
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(env.confirmed, hasLength(1), reason: 'one confirm');
@@ -287,7 +288,7 @@ void main() {
     await tester.pump();
     await gesture.up();
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     final carry = env.carries.single;

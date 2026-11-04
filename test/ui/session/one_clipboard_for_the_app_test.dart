@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/session/key_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/opened_session.dart';
@@ -477,6 +478,43 @@ void main() {
             ?.name,
         'SHAKE',
       );
+    });
+
+    // 🗣️I-150: the cut board is the sixth (「컷 잘라내기/복사/붙여넣기/
+    // 링크붙여넣기등 공용알약 사용 가능하게」).
+    test('a CUT copied on the storyboard brings what its rows name — the '
+        'medium, held first, and a term spelt this project\'s way', () async {
+      final (:a, :path) = await aCarriedStill();
+      spell(a, 'SHAKE');
+      aTermRow(a, 'custom-1');
+      StoryboardToolbarPanelContext standingOnV(EditorSessionManager on) {
+        on.selectGlobalFrame(0);
+        on.selectTrackRow(on.selectedTrackId);
+        return StoryboardToolbarPanelContext(on);
+      }
+
+      standingOnV(a).copyFrame();
+      final b = open();
+      spell(b, 'BLUR');
+      expect(b.cutClipboard.pasteMustHoldMedia, isTrue);
+      await b.cutClipboard.holdWhatThePasteBrings();
+      final before = {
+        for (final cut in b.repository.requireProject().tracks.first.cuts)
+          cut.id,
+      };
+      standingOnV(b).pasteIndependentFrame();
+
+      final pasted = b.repository.requireProject().tracks.first.cuts
+          .singleWhere((cut) => !before.contains(cut.id));
+      expect(carryIn(b, path), isNotNull, reason: 'the pool lists it');
+      expect([
+        for (final row in pasted.layers) ?row.mediaReference?.assetPath,
+      ], [path]);
+      expect([
+        for (final row in pasted.layers)
+          for (final cell in row.timeline.values)
+            ?cell.instruction?.instructionId,
+      ], ['custom-2']);
     });
 
     test('at home too a paste brings what the project LACKS — a term deleted '

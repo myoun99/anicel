@@ -43,7 +43,7 @@ class CutPosition {
 /// the same find, not three finds: a caller that needs several takes them
 /// from one answer.
 CutPosition? cutPositionOf(Project project, CutId cutId) {
-  for (final track in project.tracks) {
+  for (final track in project.tracksOfEveryTimeline) {
     final cutIndex = track.cuts.indexWhere((cut) => cut.id == cutId);
     if (cutIndex != -1) {
       return CutPosition(track: track, cutIndex: cutIndex);
@@ -314,7 +314,7 @@ Iterable<Layer> projectLayersAnywhere(Project project) =>
 Iterable<({Track track, Cut? cut, Layer layer})> projectLayersWithOwners(
   Project project,
 ) sync* {
-  for (final track in project.tracks) {
+  for (final track in project.tracksOfEveryTimeline) {
     for (final layer in track.seLayers) {
       yield (track: track, cut: null, layer: layer);
     }

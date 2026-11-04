@@ -74,10 +74,10 @@ const _koTrailer = 'Board-ko:';
 late final String _recordsPath;
 
 /// ⚠️NOT `late final`, so the page can be drawn without a server behind it.
-/// `_shotsFor` reads this on every card; as a `late` it threw the moment a
+/// `shotsFor` reads this on every card; as a `late` it threw the moment a
 /// test imported this file, which is a large part of why the renderer had no
 /// tests at all while three of its bugs shipped in one day. Empty means 「no
-/// shots directory」 and [_shotsFor] already answers that with `const []` —
+/// shots directory」 and [shotsFor] already answers that with `const []` —
 /// the same answer it gives for a directory that is not there yet.
 String _shotsDir = '';
 late final String _ghPath;
@@ -341,7 +341,7 @@ void boardIs({
   _gitRoot = gitRoot;
   _door = door;
   _isThisMachine = isThisMachine ?? _loopback;
-  _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
+  _shotsDir = boardShotsDir(File(_recordsPath));
   Directory(_shotsDir).createSync(recursive: true);
   _findOwnSource();
 }
@@ -931,6 +931,7 @@ Future<void> _handle(HttpRequest req) async {
       BoardRecords.of(File(_recordsPath)),
       id: req.uri.queryParameters['id'],
       since: req.uri.queryParameters['since'],
+      shotsDir: _shotsDir,
     );
     req.response
       ..statusCode = asked == null ? HttpStatus.badRequest : HttpStatus.ok
@@ -1126,14 +1127,32 @@ document.getElementById('door').addEventListener('submit', function(e){
 """;
 
 /// The records a tool asked for, as the lines they are: one card's (its
-/// questions with it) by [id], or everything stamped at or after [since].
+/// questions with it) by [id], or everything stamped at or after [since] —
+/// then the screenshots in [shotsDir] of every card those lines are about,
+/// as [shotLines], because no line names them ([shotsFor]).
 /// Null when it asked for neither — the whole file is not an answer.
-String? recordsAsked(BoardRecords records, {String? id, String? since}) {
+String? recordsAsked(
+  BoardRecords records, {
+  String? id,
+  String? since,
+  String shotsDir = '',
+}) {
   if (id == null && since == null) return null;
   final out = StringBuffer();
-  for (final line in records.textOf((line) =>
-      (id == null || line.id == id || line.id.startsWith('$id-Q')) &&
-      (since == null || line.ts.compareTo(since) >= 0))) {
+  final cards = <String>{?id};
+  for (final line in records.textOf((line) {
+    final asked =
+        (id == null || line.id == id || line.id.startsWith('$id-Q')) &&
+            (since == null || line.ts.compareTo(since) >= 0);
+    if (asked && id == null) {
+      cards.add(kQName.firstMatch(line.id)?[1] ?? line.id);
+    }
+    return asked;
+  })) {
+    out.writeln(line);
+  }
+  final shots = {for (final card in cards) ...shotsFor(shotsDir, card)};
+  for (final line in shotLines(shots)) {
     out.writeln(line);
   }
   return out.toString();
@@ -1299,17 +1318,6 @@ void _saveShot(Map<String, dynamic> body) {
   stdout.writeln('board: shot $name (${(bytes.length / 1024).round()} KB)');
 }
 
-List<String> _shotsFor(String id) {
-  final dir = Directory(_shotsDir);
-  if (!dir.existsSync()) return const [];
-  final out = <String>[];
-  for (final f in dir.listSync()) {
-    final name = f.path.split(RegExp(r'[\\/]')).last;
-    if (name.startsWith('$id-') && name.endsWith('.png')) out.add(name);
-  }
-  out.sort();
-  return out;
-}
 
 // ---------------------------------------------------------------- records
 
@@ -2165,7 +2173,7 @@ String _day(String ts) {
 }
 
 String _shotStrip(String id) {
-  final shots = _shotsFor(id);
+  final shots = shotsFor(_shotsDir, id);
   if (shots.isEmpty) return '';
   final b = StringBuffer('<div class="shots">');
   for (final s in shots) {

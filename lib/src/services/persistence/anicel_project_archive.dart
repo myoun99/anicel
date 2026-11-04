@@ -33,6 +33,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/media_asset.dart'
     show
         MediaCarry,
+        isOneStoredName,
         mediaCarryName,
         mediaNameParts,
         mintMediaCarry;
@@ -65,6 +66,42 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v34 (2026-11-04, I-150 ⑤ — 유저 I-150-Q3: 「다른 타임라인끼리는 단순
+/// 겸용컷 작동안하게 … 타임라인 링크컷?으로 작동하게」): the link registry
+/// keeps its 동기컷 (`LayerLinkRegistry.syncs`, written only where there
+/// is one) — a cut kept one across timelines, its rows linked. A v33 build
+/// knows no such word: it drops it on open, and its next save writes the
+/// rows back linked across timelines with no sync — a 겸용 between
+/// timelines, the very thing the answer says does not work — and nothing
+/// said. The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a registry that says none has no
+/// sync at THIS version too, so a v33 file is such a document.
+///
+/// v33 (2026-11-03, I-150 — 유저: 「새로운 타임라인을 만들수있음」): a
+/// project holds its TIMELINES (`Project.timelines` — each its tracks and
+/// its trailing gap) and says which one is open (`currentTimeline`), where
+/// its one set of tracks and its trailing gap stood right under it. A v32
+/// build finds no `tracks` there and fails the open on the cast, naming
+/// nothing a person could act on — so the bump refuses the file up front
+/// instead, as a newer Anicel's ([decodeAnicelProjectDocument]).
+///
+/// ⛔The older shape is not read (the save law, and the save lane's word on
+/// this one), and the floor rose with it ([anicelOldestReadFormatVersion]).
+/// One that has to open is carried over by hand: its `tracks` and
+/// `trailingFrames` go into one timeline, `timelines: [{id: {value:
+/// timeline-1}, number: 1, tracks, trailingFrames}]`, beside
+/// `currentTimeline: {value: timeline-1}`.
+///
+/// v32 (2026-11-03, I-151 — 유저: 「출력창, 셀 탭에 영상도 출력하는 기능
+/// 추가」): the Cels tab writes a cut's film as one of the cut's documents,
+/// so a film turned off on its list is kept in the project's export
+/// overrides as a page of the document `video` (`ExportCelsCutDelta`'s
+/// skipped pages). A v31 build knows no such document: it drops the word
+/// on open, and its next save writes the film back on — and nothing said.
+/// The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
 /// v31 (2026-11-02, F-542 — 유저: 「둘 다 동일한 메모고」, 「고정텍스트를
 /// 카메라 움직임처럼 전체설정이랑 현재컷 설정 두개로 나눔」): a timesheet
 /// page has a memo on its right as on its left (`CutMetadata.rightPageNotes`,
@@ -488,7 +525,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 31;
+const int anicelFormatVersion = 34;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -515,7 +552,9 @@ const int anicelFormatVersion = 31;
 /// 28: a key's one handle and its mirror are no longer read (v28 above).
 /// 29: a cel blob that does not say whether it shows anything is no longer
 /// read (v29 above).
-const int anicelOldestReadFormatVersion = 29;
+/// 33: a project's tracks and trailing gap right under it, in no timeline,
+/// are no longer read (v33 above).
+const int anicelOldestReadFormatVersion = 33;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the
@@ -1092,6 +1131,7 @@ class AnicelProjectDocument {
     required this.mediaRelativePaths,
     required this.mediaEntryNames,
     required this.session,
+    required this.carriesNamedAnew,
   });
 
   final Project project;
@@ -1104,6 +1144,11 @@ class AnicelProjectDocument {
 
   /// What the file carried beside the project, as written.
   final AnicelOpenedSessionFields session;
+
+  /// Whether the read gave a carry a name of its own
+  /// ([projectWithEveryCarryNamed]): the file holds what [project] no
+  /// longer says, and its next save is what carries those bytes.
+  final bool carriesNamedAnew;
 }
 
 /// The project a `.anicel`'s `project.json` bytes hold, with its format
@@ -1128,8 +1173,10 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   if (saved > anicelFormatVersion || saved < anicelOldestReadFormatVersion) {
     throw AnicelFormatRefused(saved);
   }
+  final written = Project.fromJson(decoded['project'] as Map<String, dynamic>);
+  final project = projectWithEveryCarryNamed(written);
   return AnicelProjectDocument(
-    project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
+    project: project,
     mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
     mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
     session: AnicelOpenedSessionFields(
@@ -1137,6 +1184,50 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
       mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
       resume: anicelObjectMapField(decoded['resume']),
     ),
+    carriesNamedAnew: !identical(project, written),
+  );
+}
+
+/// [project] with a name of its own for every carry whose name holds no
+/// bytes of its own: one that is not ONE stored name ([isOneStoredName]),
+/// or one another carry of the pool wears too. Each then finds nothing
+/// under its name — not in the file, not staged — and reads its original,
+/// and the next save carries that under the new name
+/// (`storedMediaBytesFor`); an original that is gone is a missing file the
+/// relink hunt finds. [project] itself when every name is its own.
+///
+/// 🗣️F-550-Q2 (유저 2026-11-04: 「원본에서 다시 품는다」). A carry made
+/// before carries had names (`''`, before 09-24) was read as the entry its
+/// path alone named, until edebae921 (10-08) stopped reading that shape —
+/// such a file would be refused by its format number. FU had been saved
+/// again by newer builds, a new number with the old carries inside, and
+/// opened: every nameless carry asked for the ONE entry `media/`, and the
+/// next save wrote each one's original under it in turn and kept the last.
+/// A picture and two sounds became one sound.
+///
+/// ⚠️The save law's one exception, for this shape — and it reads nothing of
+/// the old meaning: what the old name pointed at is left behind.
+Project projectWithEveryCarryNamed(Project project) {
+  final worn = <String>{};
+  final shared = {
+    for (final asset in project.mediaAssets)
+      if (asset.carriedAs case final name? when !worn.add(name)) name,
+  };
+  bool holdsNoneOfItsOwn(String? name) =>
+      name != null && (!isOneStoredName(name) || shared.contains(name));
+  if (!project.mediaAssets.any(
+    (asset) => holdsNoneOfItsOwn(asset.carriedAs),
+  )) {
+    return project;
+  }
+  return project.copyWith(
+    mediaAssets: [
+      for (final asset in project.mediaAssets)
+        if (holdsNoneOfItsOwn(asset.carriedAs))
+          asset.copyWith(carriedAs: mintMediaCarry(asset.path))
+        else
+          asset,
+    ],
   );
 }
 
@@ -1213,7 +1304,7 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
 /// the same tree that could drift from this one.
 Set<String> projectMediaPaths(Project project) {
   final paths = <String>{for (final asset in project.mediaAssets) asset.path};
-  for (final track in project.tracks) {
+  for (final track in project.tracksOfEveryTimeline) {
     for (final layer in track.seLayers) {
       for (final clip in layer.audioClips) {
         paths.add(clip.filePath);

@@ -31,6 +31,23 @@ void main() {
     expect(rate.label, '23.976 fps', reason: 'what the picker shows');
   });
 
+  test('a project made for a file brought in runs at its movie\'s rate, or a '
+      'new project\'s — and holds no cut until the file\'s lands (I-156)', () {
+    final picture = newProjectToImportInto();
+    final movie = newProjectToImportInto(
+      frameRate: const ProjectFrameRate.integer(30),
+    );
+
+    expect(picture.frameRate, newUntitledProject().frameRate);
+    expect(movie.frameRate, const ProjectFrameRate.integer(30));
+    for (final project in [picture, movie]) {
+      final track = project.tracks.single;
+      expect(track.cuts, isEmpty);
+      expect(track.seLayers, hasLength(2), reason: 'a track\'s SE fixtures');
+    }
+    expect(picture.id, isNot(movie.id), reason: 'each a project of its own');
+  });
+
   test('⛔a .tvpp opened as a project stays at 24 — the new default is a '
       'new project\'s, not every project\'s', () async {
     final temp = Directory.systemTemp.createTempSync('anicel-fps-default');

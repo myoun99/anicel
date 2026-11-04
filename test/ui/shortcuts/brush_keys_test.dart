@@ -433,10 +433,13 @@ void main() {
       await tester.pump();
     }
 
-    /// Turns the wheel down until [finder] is built, then shows it.
+    /// Turns the wheel down half the list at a time until [finder] is shown,
+    /// then shows it whole. ⚠️A turn longer than the list steps over a row,
+    /// and at the list's end that row stays above it — 300 did once the
+    /// clash's names took half the warning's line (I-158).
     Future<void> wheelUntilVisible(WidgetTester tester, Finder finder) async {
       for (var turn = 0; turn < 200 && finder.evaluate().isEmpty; turn += 1) {
-        await wheel(tester, 300);
+        await wheel(tester, tester.getSize(list).height / 2);
       }
       await tester.ensureVisible(finder);
       await tester.pump();
@@ -457,9 +460,10 @@ void main() {
       // Every shelf stands shut (menu-rows-and-panels-are-shortcut-rows,
       // the brush bundles' own law): these cases are about what stands
       // INSIDE the two brush shelves, so they open them first — their
-      // place, then each — as a person would.
+      // place and 세부 도구 (F-560), then each — as a person would.
       for (final shelf in [
-        ShortcutShelf.toolLibrary,
+        ShortcutShelf.canvas,
+        ShortcutShelf.toolTiles,
         ...brushActionShelves.values,
       ]) {
         final twirl = find.named('shortcut-bundle-shelf-${shelf.name}');

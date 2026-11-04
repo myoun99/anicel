@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/attached_layer_resolve.dart';
-import '../../models/conte/conte_ink_keys.dart'
-    show conteInkRowKey;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/cut.dart' show Cut;
@@ -258,24 +256,17 @@ class FrameVerbs {
     );
     final cut = _project.activeCutOrNull;
     if (cut != null) {
-      final store = _renderCaches.brushFrameStore;
-      carryBakedPictures(
+      copyBakedPictures(
         project: _project,
-        store: store,
-        cut: cut,
-        to: layer.id,
+        store: _renderCaches.brushFrameStore,
         minted: placed.minted,
-        pictureOf: (source) => store.bakedSurfaceOrNull(
-          _project.brushFrameKeyForCut(cut, layer.id, source),
-        ),
+        from: (cut: cut, row: layer.id),
+        to: (cut: cut, row: layer.id),
       );
-      final ink = _renderCaches.conteInkRowStore;
-      carryConteHandwriting(
-        store: ink,
+      copyConteHandwriting(
+        store: _renderCaches.conteInkRowStore,
         cut: cut.id,
         copies: placed.handwriting,
-        handwritingOf: (inkId) =>
-            ink.bakedSurfaceOrNull(conteInkRowKey(cut.id, inkId)),
       );
     }
     _changes.notifyChanged();

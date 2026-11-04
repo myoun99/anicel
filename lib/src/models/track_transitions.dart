@@ -232,11 +232,14 @@ int? cutMediaStartFrame(Project project, CutId cutId) {
   return found == null ? null : found.start - found.handles.head;
 }
 
+/// [cutId] as its own track places it, in whichever timeline holds it: a
+/// step mirrors a linked row into a 동기컷's member in another timeline
+/// (I-150-Q3), and that member is drawn for as long as ITS track asks.
 ({Cut cut, int start, CutTransitionHandles handles})? _handlesOfOne(
   Project project,
   CutId cutId,
 ) {
-  for (final track in project.tracks) {
+  for (final track in project.tracksOfEveryTimeline) {
     for (final placed in cutSpansOf(track)) {
       if (placed.cut.id == cutId) {
         return (

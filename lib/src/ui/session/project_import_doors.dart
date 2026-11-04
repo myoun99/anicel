@@ -49,6 +49,9 @@ import '../../services/import/psd_expand_import.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/reference_move_carried.dart'
     show ReferenceMoveCarried, ReferenceUse;
+import '../../services/media/media_asset_uses.dart' show RowMediaUse;
+import '../../services/project_lookup.dart'
+    show cutPositionOf, layerAnywhereOrNull;
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart'
@@ -1318,36 +1321,81 @@ class ProjectImportDoors {
     required LayerId layerId,
     required String path,
   }) async {
+    final cut = _project.activeCutOrNull;
     final layer = _project.layerById(layerId);
     final reference = layer?.mediaReference;
-    if (layer == null ||
+    if (cut == null ||
+        layer == null ||
         reference == null ||
         referenceSwapFor(layer, path) == null) {
       return const ReferenceLeftAlone();
     }
     return _drawAgain(
+      cut,
       layer,
       reference.copyWith(assetPath: path),
       description: 'Swap layer reference',
     );
   }
 
-  /// [layer] — a reference row of the active cut — pointed at [next] and its
-  /// pictures made from that file again ([referenceRedrawFor]), as ONE undo
-  /// step. The picture's own size is the file's as it reads now.
+  /// Every reference row that shows one of [paths] — in any cut of any
+  /// timeline — drawn from its file again ([referenceRedrawFor]), each as
+  /// ONE undo step: the files were just carried anew ([MediaPool.carryAnew])
+  /// and a row shows what its file is now. Answers, by path, why a row of
+  /// it was not drawn — the first one, in the project's order — and nothing
+  /// for a path whose every row was.
+  ///
+  /// 🗣️F-550-Q3 (유저 2026-11-04: 「새로 받는다」 — 「타임라인에 놓인 것도
+  /// 새 데이터를 쓴다」). A sound and a movie's pictures read the carry the
+  /// pool names as they play, and follow on their own; a still's, a GIF's
+  /// and a PDF's cels are pictures made from the file, and a movie's
+  /// reference says the size of its frames. ⚠️A row whose cels do not say
+  /// which picture of the file each is (a run of files) is not drawn
+  /// again, as it takes no other file ([referenceSwapFor]).
+  Future<Map<String, ReferenceRedraw>> drawAgainFrom(Set<String> paths) async {
+    final undrawn = <String, ReferenceRedraw>{};
+    for (final path in paths) {
+      final rows = _pool.mediaAssetUses(path).whereType<RowMediaUse>();
+      for (final row in rows.toList()) {
+        final project = _project.repository.requireProject();
+        final cut = cutPositionOf(project, row.cutId)?.cut;
+        final layer = layerAnywhereOrNull(project, row.layerId);
+        final reference = layer?.mediaReference;
+        if (cut == null || layer == null || reference == null) {
+          continue;
+        }
+        final answer = await _drawAgain(
+          cut,
+          layer,
+          reference,
+          description: 'Import media',
+        );
+        if (answer is! ReferenceLaid) {
+          undrawn.putIfAbsent(path, () => answer);
+        }
+      }
+    }
+    return undrawn;
+  }
+
+  /// [layer] — a reference row of [cut] — pointed at [next] and its pictures
+  /// made from that file again ([referenceRedrawFor]), as ONE undo step.
+  /// The picture's own size is the file's as it reads now.
   ///
   /// ↩️A moved reference fx laid its OWN file again here too — I-68's one
   /// value, then F-374's keys where they stood the picture still — until
   /// F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼 화면에서 옮긴다」): the
-  /// canvas moves the picture, and only another file is drawn again.
+  /// canvas moves the picture. Another file is drawn again, and the same
+  /// path carried anew ([drawAgainFrom]) — another movie too, so a movie is
+  /// always asked its size. ↩️One at the same path was not.
   Future<ReferenceRedraw> _drawAgain(
+    Cut cut,
     Layer layer,
     MediaReference next, {
     required String description,
   }) async {
-    final cut = _project.activeCutOrNull;
     final redraw = referenceRedrawFor(layer);
-    if (cut == null || redraw == null) {
+    if (redraw == null) {
       return const ReferenceLeftAlone();
     }
     final remade = switch (redraw) {
@@ -1356,10 +1404,6 @@ class ProjectImportDoors {
         next,
         cut.canvasSize,
       ),
-      // The movie it shows already said its size; another one is asked.
-      ReferenceSwap.movie
-          when next.assetPath == layer.mediaReference?.assetPath =>
-        _Drawn(const <FrameId, BitmapSurface>{}, next),
       ReferenceSwap.movie => await _movieSized(next),
     };
     return switch (remade) {
@@ -1376,7 +1420,8 @@ class ProjectImportDoors {
     _Drawn drawn, {
     required String description,
   }) {
-    if (_project.layerById(layer.id) != layer) {
+    final project = _project.repository.requireProject();
+    if (layerAnywhereOrNull(project, layer.id) != layer) {
       return const ReferenceLeftAlone();
     }
     _project.historyManager.execute(
@@ -1457,15 +1502,35 @@ class ProjectImportDoors {
     );
   }
 
-  /// [reference]'s file open for its pictures — an image's, a still's one
-  /// and a GIF's frames, read through the project's copy first
-  /// ([readHeldMediaBytes]) as every door here reads. Null when it does not
-  /// open.
+  /// [reference]'s file open for its pictures: a PDF's pages, each rendered
+  /// once at the size its pose stands it at ([_renderedPage]) — or an
+  /// image's, a still's one and a GIF's frames, read through the project's
+  /// copy first ([readHeldMediaBytes]) as every door here reads. Null when
+  /// it does not open.
   ///
-  /// ↩️A PDF's pages opened here too, each rendered once at the size its
-  /// pose stood it at, for a moved fx to lay them again — until F-374-Q1:
-  /// no PDF row takes another file ([referenceSwapFor]).
+  /// ↩️The PDF's pages went with F-374-Q1 — no PDF row takes another file
+  /// ([referenceSwapFor]) — and came back with F-550-Q3: a PDF carried anew
+  /// draws its rows again ([drawAgainFrom]).
   Future<_OpenPictures?> _openPictures(MediaReference reference) async {
+    if (mediaAssetKindForPath(reference.assetPath) == MediaAssetKind.pdf) {
+      final document = await openHeldViewerDocument(
+        _holdBytes,
+        reference.assetPath,
+        PdfRenderService.open,
+      );
+      return document == null
+          ? null
+          : (
+              count: document.pageCount,
+              at: (index) => _renderedPage(
+                document,
+                index,
+                pagePixelSize(document, index),
+                reference.laid,
+              ),
+              close: document.dispose,
+            );
+    }
     final List<DecodedImageFrame> frames;
     try {
       frames = await decodeImageFrames(

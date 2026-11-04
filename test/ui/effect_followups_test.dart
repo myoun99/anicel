@@ -280,6 +280,7 @@ void main() {
         resolveLayerEffectsAt(
           effects: session.activeLayer!.effects,
           frameIndex: 0,
+          blocks: null,
         ),
         isEmpty,
       );

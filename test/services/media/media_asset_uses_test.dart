@@ -11,6 +11,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/project_timeline.dart';
+import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
@@ -104,8 +106,8 @@ void main() {
 
   /// Which sheet of which cut, in this test's own words.
   String sheetSaid(CelPlace place) => switch (place) {
-    EnvelopeInkPlace(:final cutName) => 'envelope $cutName',
-    TimesheetInkPlace(:final cutName) => 'timesheet $cutName',
+    EnvelopeInkPlace(:final owner) => 'envelope ${owner.name}',
+    TimesheetInkPlace(:final owner) => 'timesheet ${owner.name}',
     _ => 'elsewhere',
   };
 
@@ -114,10 +116,10 @@ void main() {
     RowMediaUse(
       :final cutId,
       :final layerId,
-      :final ownerName,
+      :final owner,
       :final layerName,
     ) =>
-      'row ${cutId.value}/${layerId.value} = $ownerName · $layerName',
+      'row ${cutId.value}/${layerId.value} = ${owner.name} · $layerName',
     FrameMediaUse(
       :final trackId,
       :final cutId,
@@ -126,7 +128,7 @@ void main() {
       :final place,
     ) =>
       'frame ${trackId.value}/${cutId?.value}/${layerId.value}/'
-          '${frameId.value} = ${place.ownerName} · ${place.layerName} · '
+          '${frameId.value} = ${place.owner.name} · ${place.layerName} · '
           '${place.celName} @${place.blockStarts}',
     SheetPhotoMediaUse(:final key, :final place) =>
       'sheet ${key.frameId.value} = ${sheetSaid(place)}',
@@ -151,6 +153,50 @@ void main() {
       'row c1/walk-1 = C1 · walk',
       'row c2/walk-2 = C2 · walk again',
     ]);
+  });
+
+  // 🗣️I-150 (유저 2026-11-03): 「소재위치 표시할때 트랙위치도 표시」 — the
+  // pool is the timelines' one, so a file is used in each.
+  test('a use in another timeline knows that timeline; one in the open '
+      'timeline does not', () {
+    final track = project.tracks.single;
+    final apart = project.copyWith(
+      timelines: [
+        ProjectTimeline(
+          id: const TimelineId('main'),
+          number: 1,
+          tracks: [
+            track.copyWith(cuts: [track.cuts.first]),
+          ],
+        ),
+        ProjectTimeline(
+          id: const TimelineId('pv'),
+          number: 2,
+          tracks: [
+            track.copyWith(
+              id: const TrackId('pv-video'),
+              cuts: [track.cuts.last],
+              seLayers: const [],
+            ),
+          ],
+        ),
+      ],
+      currentTimelineId: const TimelineId('main'),
+    );
+
+    expect(
+      [
+        for (final use in mediaAssetUsesOf(apart, movie))
+          switch (use) {
+            RowMediaUse(:final cutId, :final owner) =>
+              '${cutId.value} ${owner.away?.id.value}',
+            FrameMediaUse(:final frameId, :final place) =>
+              '${frameId.value} ${place.owner.away?.id.value}',
+            _ => 'elsewhere',
+          },
+      ],
+      ['step null', 'blank null', 'c1 null', 'c2 pv'],
+    );
   });
 
   test('🚨the work\'s pictures are uses of the file they are taken from — '

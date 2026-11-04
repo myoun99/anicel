@@ -756,23 +756,21 @@ void main() {
     // End to end: the whole fill tap (compose + flood + stamp build)
     // must produce the identical pieces through both paths.
     QaNativeEngine.debugForceDartFallback = true;
-    final dartDab = buildFillDabs(
+    final dartDab = fillRangeAt(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id],
       point: CanvasPoint(x: 300, y: 260),
-      color: 0xFF3366CC,
       options: const FloodFillOptions(tolerance: 40),
-    );
+    )?.dabsIn(0xFF3366CC) ?? const [];
     QaNativeEngine.debugForceDartFallback = false;
-    final nativeDab = buildFillDabs(
+    final nativeDab = fillRangeAt(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id],
       point: CanvasPoint(x: 300, y: 260),
-      color: 0xFF3366CC,
       options: const FloodFillOptions(tolerance: 40),
-    );
+    )?.dabsIn(0xFF3366CC) ?? const [];
 
     expect(nativeDab, isNotEmpty);
     expect(nativeDab.length, dartDab.length);

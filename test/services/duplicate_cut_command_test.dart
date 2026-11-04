@@ -37,7 +37,7 @@ void main() {
         DuplicateCutCommand(
           repository: repository,
           editingSession: editingSession,
-          sourceCutId: const CutId('cut-source'),
+          source: sourceCut,
           targetTrackId: const TrackId('track-1'),
           newCutId: const CutId('cut-duplicate'),
           newName: 'Duplicate Cut',
@@ -85,7 +85,7 @@ void main() {
       DuplicateCutCommand(
         repository: repository,
         editingSession: editingSession,
-        sourceCutId: sourceCut.id,
+        source: sourceCut,
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
@@ -120,7 +120,7 @@ void main() {
       DuplicateCutCommand(
         repository: repository,
         editingSession: editingSession,
-        sourceCutId: sourceCut.id,
+        source: sourceCut,
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
@@ -158,7 +158,7 @@ void main() {
       DuplicateCutCommand(
         repository: repository,
         editingSession: editingSession,
-        sourceCutId: sourceCut.id,
+        source: sourceCut,
         targetTrackId: const TrackId('track-target'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
@@ -194,7 +194,7 @@ void main() {
           DuplicateCutCommand(
             repository: repository,
             editingSession: editingSession,
-            sourceCutId: sourceCut.id,
+            source: sourceCut,
             targetTrackId: const TrackId('track-1'),
             newCutId: const CutId('cut-duplicate'),
             newName: 'Duplicate Cut',
@@ -229,7 +229,7 @@ void main() {
       final command = DuplicateCutCommand(
         repository: repository,
         editingSession: editingSession,
-        sourceCutId: sourceCut.id,
+        source: sourceCut,
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
@@ -255,27 +255,88 @@ void main() {
       expect(editingSession.activeCutId, const CutId('cut-duplicate'));
     });
 
-    test('throws when the source cut cannot be found', () {
+    // 🗣️I-150: a paste puts down the cut its board holds — cut away since,
+    // or another project's.
+    test('copies the cut it is handed, though the project holds it no '
+        'longer, walking into the gap it lands in', () {
+      final sourceCut = _sourceCut();
+      final cutA = _cut(id: 'cut-a', name: 'Cut A');
       final repository = ProjectRepository(
         initialProject: _project(
-          tracks: [_track(id: 'track-1', name: 'Video')],
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
         ),
       );
-      final editingSession = EditingSessionState(
-        activeCutId: const CutId('cut-source'),
-      );
-      final command = DuplicateCutCommand(
+      final editingSession = EditingSessionState(activeCutId: cutA.id);
+
+      DuplicateCutCommand(
         repository: repository,
         editingSession: editingSession,
-        sourceCutId: const CutId('cut-missing'),
+        source: sourceCut,
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',
-        layerIdMap: const {},
-        frameIdMap: const {},
+        layerIdMap: {
+          const LayerId('layer-source'): const LayerId('layer-copy'),
+        },
+        frameIdMap: {
+          const FrameId('frame-source'): const FrameId('frame-copy'),
+        },
+        leadingGapFrames: 5,
+      ).execute();
+
+      final copy = repository.requireProject().tracks.single.cuts.last;
+      expect(copy.id, const CutId('cut-duplicate'));
+      expect(copy.layers.single.id, const LayerId('layer-copy'));
+      expect(copy.leadingGapFrames, 5);
+    });
+
+    // 유저 #19: 「공간이 여유분이 있는데도 여유분 뒤의 컷을 밀어버림」.
+    test('takes its room out of the gap ahead of the cut behind it before '
+        'it pushes — and hands it back on undo', () {
+      final sourceCut = _sourceCut();
+      final cutB = _cut(id: 'cut-b', name: 'Cut B').copyWith(
+        leadingGapFrames: 20,
+      );
+      final repository = ProjectRepository(
+        initialProject: _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [sourceCut, cutB]),
+          ],
+        ),
+      );
+      final editingSession = EditingSessionState(activeCutId: sourceCut.id);
+      final historyManager = HistoryManager();
+
+      historyManager.execute(
+        DuplicateCutCommand(
+          repository: repository,
+          editingSession: editingSession,
+          source: sourceCut,
+          targetTrackId: const TrackId('track-1'),
+          newCutId: const CutId('cut-duplicate'),
+          newName: 'Duplicate Cut',
+          layerIdMap: {
+            const LayerId('layer-source'): const LayerId('layer-copy'),
+          },
+          frameIdMap: {
+            const FrameId('frame-source'): const FrameId('frame-copy'),
+          },
+          index: 1,
+        ),
       );
 
-      expect(command.execute, throwsStateError);
+      int gapOfB() => repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .firstWhere((cut) => cut.id == cutB.id)
+          .leadingGapFrames;
+      expect(gapOfB(), 20 - sourceCut.duration);
+      historyManager.undo();
+      expect(gapOfB(), 20);
     });
 
     test('undo before execute throws', () {
@@ -291,7 +352,7 @@ void main() {
       final command = DuplicateCutCommand(
         repository: repository,
         editingSession: editingSession,
-        sourceCutId: sourceCut.id,
+        source: sourceCut,
         targetTrackId: const TrackId('track-1'),
         newCutId: const CutId('cut-duplicate'),
         newName: 'Duplicate Cut',

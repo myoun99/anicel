@@ -32,6 +32,9 @@ class _WorkspaceTabs {
   /// 래스터라이즈 (vanishing-point-types-Q5 · Q6): the picked guide's lines baked
   /// onto [paper] off the frame's clock, then laid on the cels through the
   /// paste's door as one undo. Null with no paper to bake onto.
+  ///
+  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the bake and the lay
+  /// behind the app's wait window, under the button's name.
   ValueChanged<DrawingGuide>? _guideRasterizer(
     BuildContext context,
     CanvasSize? paper,
@@ -40,17 +43,30 @@ class _WorkspaceTabs {
       return null;
     }
     final pixels = _state.widget.session.pixelVerbs;
-    return (guide) => unawaited(
-      guideLinesOnPaper(
-        guide,
-        canvasSize: paper,
-        color: guideColorOf(context),
-      ).then((picture) {
-        if (picture != null) {
-          pixels.landCanvasPicture(picture, description: 'Rasterize guide');
-        }
-      }),
-    );
+    return (guide) {
+      CutPiece? picture;
+      unawaited(
+        takeBehindTheWaitWindow(
+          context,
+          () {
+            if (picture case final baked?) {
+              pixels.landCanvasPicture(baked, description: 'Rasterize guide');
+            }
+          },
+          window: AppWaitWindow(
+            title: editorActionLabel(EditorActionIds.guideRasterize),
+            runningLabel: AppText.strings.bakeProgressRunning,
+            doneLabel: AppText.strings.bakeProgressDone,
+            windowKey: const ValueKey<String>('guide-rasterize-progress'),
+          ),
+          ahead: (_) async => picture = await guideLinesOnPaper(
+            guide,
+            canvasSize: paper,
+            color: guideColorOf(context),
+          ),
+        ),
+      );
+    };
   }
 
   /// What the tool settings show of the session — the slice their panel
@@ -248,8 +264,8 @@ class _WorkspaceTabs {
     );
   }
 
-  /// The drawing canvas, [leftPill] on its left edge.
-  Widget _canvasArea({required CanvasEdgePill? leftPill}) => EditorCanvasArea(
+  /// The drawing canvas.
+  Widget _canvasArea() => EditorCanvasArea(
     key: _state._canvasAreaKey,
     onInvokeAction: _state.widget.onInvokeAction,
     session: _state.widget.session,
@@ -268,11 +284,11 @@ class _WorkspaceTabs {
     cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
     expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds,
     fillOptions: _state._views._fillOptions,
+    colorBackground: _state.widget.colorBackground,
     selectionMaskOptions: _state._views._selectionMaskOptions,
     transformOptions: _state._transformOptions,
     eyedropperSource: _state._views._eyedropperSource,
     flipHud: _state.widget.flipHud,
-    leftPill: leftPill,
   );
 
   /// [tabId]'s tab, built for the project on screen.
@@ -370,23 +386,7 @@ class _WorkspaceTabs {
               // page's root — the canvas is a panel host like the others
               // ([_panelHost]), on a layer of its own. The expanding stack is
               // what makes the layer's constraints tight.
-              TickLayer.host(
-                // I-34: the brush's values stand on the drawing unless the
-                // workspace stands them on the top strip.
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _state._brushValuesOnStrip,
-                  builder: (context, onStrip, _) => _canvasArea(
-                    leftPill: onStrip
-                        ? null
-                        : CanvasEdgePill(
-                            width: BrushValuesPill.widthIn(context),
-                            child: BrushValuesPill(
-                              brushTool: _state._brushTool,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
+              TickLayer.host(child: _canvasArea()),
               // A pool row dropped on the STAGE (§7): the cut and the layer
               // are the ones already under the cursor, so this entrance
               // fills nothing extra — it opens the place window with the

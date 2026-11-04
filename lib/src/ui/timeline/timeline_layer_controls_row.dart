@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../input/arena_tap_hold.dart';
 import '../input/control_press_claim.dart';
+import '../dialogs/link_window.dart' show LinkKind;
 import '../widgets/app_icon_button.dart';
 import '../widgets/clip_button.dart';
 import '../../models/attached_placement.dart';
@@ -186,6 +187,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerOnionSkin,
     this.opacityDragPreview,
     this.linkPartners = const [],
+    this.syncPartners = const [],
     this.onLayerBlendModeSelected,
     this.chromeless = false,
     this.laneGraphVerbs,
@@ -269,8 +271,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
   onOpenLayerReference;
 
   /// The link badge's window (I-25): what the row is linked to, and the
-  /// button that unlinks it. Null leaves the badge a picture.
-  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  /// button that unlinks it — and the sync badge's, its [LinkKind] the
+  /// sync (I-150). Null leaves the badges pictures.
+  final Future<void> Function(
+    BuildContext anchorContext,
+    LayerId layerId,
+    LinkKind kind,
+  )?
   onOpenLayerLinks;
 
   /// The camera row's path button ([_cameraPathButton], I-89 ④): how the
@@ -344,6 +351,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// 🗣️유저 2026-09-25: 「링크버튼통해서 어디랑 링크되고있는지만 제대로
   /// 표시하게」. ↩️It was a bool, and the tooltip a fixed sentence.
   final List<String> linkPartners;
+
+  /// The cut this row's cut is in the other timelines, when the row is one
+  /// they share — a 동기컷 (I-150-Q3: 「배지에도 겸용이란 이름이아니라
+  /// 동기컷? 뭐 그런식으로 따로 표시」): the sync badge's, beside the link's
+  /// ([_linkBadge]).
+  final List<String> syncPartners;
 
   /// R27 #6: the blend-mode dropdown lives in the LABEL now (rightmost
   /// slot, past the opacity bar) instead of the timeline toolbar. Null
@@ -721,7 +734,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
               child: _nameText(context),
             ),
           ),
-          ?_linkBadge(colorScheme),
+          ?_linkBadge(colorScheme, LinkKind.link, linkPartners),
+          ?_linkBadge(colorScheme, LinkKind.sync, syncPartners),
           ?_referenceButton(),
           ?_soundButton(colorScheme),
           ?_cameraPathButton(),
@@ -789,21 +803,26 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
   /// 표시」 — the badge is the entrance to the link window, a rail button
-  /// like the reference button beside it.
-  Widget? _linkBadge(ColorScheme colorScheme) {
-    if (linkPartners.isEmpty) return null;
+  /// like the reference button beside it: [kind]'s, while [partners] names
+  /// any — the link's, and a 동기컷's row's sync beside it ([LinkKind]).
+  Widget? _linkBadge(
+    ColorScheme colorScheme,
+    LinkKind kind,
+    List<String> partners,
+  ) {
+    if (partners.isEmpty) return null;
     final onOpen = onOpenLayerLinks;
     return _nameButton(
-      slug: 'link-badge',
-      tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
+      slug: '${kind.name}-badge',
+      tooltip: [kind.title, ...partners].join('\n'),
       // The link reads in the accent whatever the button's own rest
       // colour: it says the row is linked before anything is pressed.
       look: _NameButtonLook(
-        RailIconGlyph(Icons.link, color: colorScheme.primary),
+        RailIconGlyph(kind.glyph, color: colorScheme.primary),
       ),
       onPressed: onOpen == null
           ? null
-          : (context) => onOpen(context, layerIdNow(context, layer.id)),
+          : (context) => onOpen(context, layerIdNow(context, layer.id), kind),
     );
   }
 

@@ -70,8 +70,13 @@ class HistoryPlaces {
       return;
     }
     final place = placeNow();
+    // A gap is where an action can leave the user too: there, the entry is
+    // made nowhere ([of] null). ↩️A gap kept the place before it, so an
+    // undo that took a pasted cut away and left the user in the gap kept
+    // that cut as the redo's place, and every redo walked to a cut that
+    // was not there (F-559, 2026-11-04).
+    _places[entry] = place;
     if (place != null) {
-      _places[entry] = place;
       _found[entry] ??= place;
     }
     _settling = entry;
@@ -91,10 +96,7 @@ class HistoryPlaces {
     if (entry == null || placeNow == null) {
       return;
     }
-    final place = placeNow();
-    if (place != null) {
-      _places[entry] = place;
-    }
+    _places[entry] = placeNow();
   }
 
   /// What a walk lets go of, landed where the user still stands — set by

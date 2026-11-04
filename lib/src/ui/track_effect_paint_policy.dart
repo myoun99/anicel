@@ -44,7 +44,12 @@ List<ResolvedLayerEffect> trackEffectsAt(
   if (!enabled || effects.isEmpty) {
     return const <ResolvedLayerEffect>[];
   }
-  return resolveLayerEffectsAt(effects: effects, frameIndex: frameIndex);
+  // A track has no blocks of its own to step on: every frame (I-120-Q9).
+  return resolveLayerEffectsAt(
+    effects: effects,
+    frameIndex: frameIndex,
+    blocks: null,
+  );
 }
 
 /// [cutNodes] under the V row's chain [effects] ([trackEffectsAt]) — one

@@ -11,6 +11,7 @@ import '../models/covering_storyboard_normalize.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/cut_content_translation.dart' show translateCutContentModel;
+import '../models/cut_sync_alignment.dart' show projectWithItsSyncsAligned;
 import '../models/drawing_guide.dart';
 import '../models/cut_id.dart';
 import '../models/direction_spans_normalize.dart';
@@ -137,6 +138,13 @@ class ProjectRepository {
   /// the structure: the history runs every step through this
   /// (`ConteStepScope`).
   ///
+  /// The 동기컷 are made one the same way, once, from what the whole step
+  /// changed ([projectWithItsSyncsAligned]): a step that mirrors a linked
+  /// row writes the row drawn on, then each member of its group with that
+  /// member's own lanes (`UpdateLayerTimelineCommand`). Aligned between
+  /// those writes, the member written last — a 동기컷's, still holding the
+  /// lanes from before the step — gave them back to the cut drawn on.
+  ///
   /// Inside another, it is that one's: the outer laying lays it.
   ConteWriteMade asOneConteWrite(void Function() body) {
     if (_conteStart != null) {
@@ -152,8 +160,10 @@ class ProjectRepository {
       final against = _conteStart!;
       _conteStart = null;
       if (_currentProject case final project?) {
-        written = project;
-        final pass = _settle(project, memo: _settled, laidAgainst: against);
+        written = before == null
+            ? project
+            : projectWithItsSyncsAligned(before, project);
+        final pass = _settle(written, memo: _settled, laidAgainst: against);
         _settled = pass.settled;
         _currentProject = pass.project;
       }
@@ -215,8 +225,18 @@ class ProjectRepository {
     }
   }
 
+  /// Every write: [update] of the project, its 동기컷 made one again
+  /// ([projectWithItsSyncsAligned] — before the invariants, which lay the
+  /// open timeline's own; inside [asOneConteWrite], after its last write),
+  /// then the invariants ([_normalized]).
   void updateProject(Project Function(Project project) update) {
-    _currentProject = _normalized(update(requireProject()));
+    final before = requireProject();
+    final written = update(before);
+    _currentProject = _normalized(
+      _conteStart == null
+          ? projectWithItsSyncsAligned(before, written)
+          : written,
+    );
   }
 
   /// Puts the link registry back to [registry] — what every link-touching

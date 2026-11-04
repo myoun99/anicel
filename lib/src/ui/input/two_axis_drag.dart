@@ -12,6 +12,7 @@ import '../timeline/timeline_zoom_limits.dart';
 import 'pan_slide.dart';
 import 'pen_friendly_scroll_controller.dart';
 import 'scroller_drive.dart';
+import 'wheel_law.dart';
 
 /// 🚨★★A SHEET SCROLLED TWO WAYS IS DRAGGED BOTH WAYS AT ONCE — the
 /// timeline's rows and frames, the x-sheet's layers and frames, the conte
@@ -63,6 +64,13 @@ import 'scroller_drive.dart';
 /// #4): the second finger takes the first from an edit drag that has not
 /// started yet (결정 10 — one finger is the drawing hand), and a drag that
 /// HAS started keeps its finger, as a committed stroke does.
+///
+/// 🗣️I-155 (유저 2026-11-04): 「ae나 프리미어에서 어떤식인지 모르겠는데
+/// 있으면 그거로 통일할까 생각이고, 딱히 자료 없으면 alt+휠로 타임라인이나
+/// 콘티패널에서 줌기능으로 작동하도록」 — both programs zoom time on Alt and
+/// the wheel. A notch turned with Alt held ([wheelZoomsASheet]) is one step
+/// of the [zoom], a zoom key's, through the writer the keys and the pinch
+/// write through; the sheet's own scrollers leave it to the zoom.
 class TwoAxisDrag extends StatelessWidget {
   const TwoAxisDrag({
     super.key,
@@ -99,32 +107,88 @@ class TwoAxisDrag extends StatelessWidget {
             ..gestureSettings = MediaQuery.maybeGestureSettingsOf(context),
         ),
       },
-      child: child,
+      child: switch (zoom) {
+        null => child,
+        final zoom => Listener(
+          onPointerSignal: (event) => _zoomByWheel(event, zoom),
+          child: child,
+        ),
+      },
     );
   }
+
+  /// A notch with Alt held: one step of [zoom] — in up, out down — held
+  /// still where it was turned ([TwoAxisScrollController.zoomHold]).
+  static void _zoomByWheel(PointerSignalEvent event, SheetZoom zoom) {
+    if (!wheelZoomsASheet) {
+      return;
+    }
+    handleWheelExclusively(event, (notch) {
+      final down = notch.scrollDelta.dy;
+      if (down == 0) {
+        return;
+      }
+      final to = TimelineZoomLimits.stepped(
+        zoom.pixelsPerFrame,
+        zoomIn: down < 0,
+        framesPerSecond: zoom.framesPerSecond,
+      );
+      zoom.frames.zoomHold = (at: notch.position, to: to);
+      zoom.onChanged(to);
+    });
+  }
+}
+
+/// Its [parent], but a notch that zooms a sheet ([wheelZoomsASheet]) is not
+/// its scrollers' to take — the physics every scroller in the app is handed
+/// (`AppScrollBehavior.getScrollPhysics`). A `Scrollable` asks its physics
+/// before it takes a notch, and only a sheet's own scroller
+/// ([_NoDragOfItsOwn]) is answered differently: a list on a sheet, and
+/// every other, scrolls as it did. A sheet with no [TwoAxisDrag.zoom]
+/// leaves that notch to nobody.
+class SheetScrollPhysics extends ScrollPhysics {
+  const SheetScrollPhysics({super.parent});
+
+  @override
+  SheetScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      SheetScrollPhysics(parent: buildParent(ancestor));
+
+  @override
+  bool shouldAcceptUserOffset(ScrollMetrics position) =>
+      !(wheelZoomsASheet &&
+          position is ScrollPosition &&
+          position.context is _NoDragOfItsOwn) &&
+      super.shouldAcceptUserOffset(position);
 }
 
 /// What a pinch on a sheet zooms (F-506): the zoom its frame axis is laid
 /// out at, the rate of the project its steps are counted for, and the
 /// writer every zoom control of its panel writes through — each zoom on a
 /// step inside the range ([TimelineZoomLimits.clamped]), as the readout's.
+///
+/// [frames] is the axis it stretches, which a notch's step holds still at
+/// the notch ([TwoAxisScrollController.zoomHold]).
 typedef SheetZoom = ({
   double pixelsPerFrame,
   int framesPerSecond,
   ValueChanged<double> onChanged,
+  TwoAxisScrollController frames,
 });
 
 /// The [SheetZoom] of a sheet laid out at [pixelsPerFrame] for a project of
-/// [rate], written through [onChanged] — none without a writer.
+/// [rate] along [frames], written through [onChanged] — none without a
+/// writer.
 SheetZoom? sheetZoom(
   double pixelsPerFrame,
   ProjectFrameRate rate,
   ValueChanged<double>? onChanged,
+  TwoAxisScrollController frames,
 ) => switch (onChanged) {
   final onChanged? => (
     pixelsPerFrame: pixelsPerFrame,
     framesPerSecond: rate.countingBase,
     onChanged: onChanged,
+    frames: frames,
   ),
   null => null,
 };
@@ -153,6 +217,12 @@ class TwoAxisScrollController extends PenFriendlyScrollController {
 
   @override
   double get initialScrollOffset => bornAt?.value ?? 0;
+
+  /// Where the zoom step to `to` holds the frames still — the global point
+  /// a notch on the sheet was turned at (I-155-Q1 b: 「휠 줌만 커서 기준」),
+  /// set on the axis the zoom stretches. Taken by the axis's next
+  /// re-anchoring (`applyZoomAnchoredScroll`), its step's or not.
+  ({Offset at, double to})? zoomHold;
 
   @override
   ScrollPosition createScrollPosition(

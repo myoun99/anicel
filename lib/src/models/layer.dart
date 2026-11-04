@@ -12,6 +12,7 @@ import 'exposure_instruction.dart';
 import 'exposure_memo.dart';
 import 'frame.dart';
 import 'frame_id.dart';
+import 'fx_basis.dart';
 import 'layer_blend_mode.dart';
 import 'layer_effect.dart';
 import 'layer_id.dart';
@@ -58,6 +59,7 @@ class Layer {
     this.seNameTag,
     TransformTrack? transformTrack,
     this.transformEnabled = true,
+    this.transformBasis = FxBasis.frame,
     List<LayerEffect> effects = const [],
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
@@ -222,6 +224,23 @@ class Layer {
   /// false, and the authoring overlays keep showing the real pose.
   final bool transformEnabled;
 
+  /// What the Transform bundle's keys are read at ([FxBasis]) — part of the
+  /// row's HEAD, as [transformEnabled] is: mirrored across a 겸용 link group
+  /// and worn by a track's conte rows (I-120, the bundle's chip).
+  final FxBasis transformBasis;
+
+  /// The blocks this row's FX bundles step on when they are read by the
+  /// block ([fxReadFrame]): its own timeline where its content is blocks
+  /// ([LayerKind.hasBlocks]) — none for a folder, an adjustment or the
+  /// camera (🗣️I-120-Q9 「그런 행에는 스위치를 두지 않는다」).
+  SplayTreeMap<int, TimelineExposure>? get fxBlocks =>
+      kind.hasBlocks ? timeline : null;
+
+  /// The frame this row's Transform bundle reads its keys at, for what shows
+  /// at [frameIndex] ([transformBasis]).
+  int transformReadFrame(int frameIndex) =>
+      fxReadFrame(transformBasis, fxBlocks, frameIndex);
+
   /// The layer's EFFECT CHAIN (R6), applied at COMPOSITE time like the
   /// transform — never baked into the artwork. Applied in list order over
   /// the row's own picture, after its transform and before its
@@ -314,6 +333,7 @@ class Layer {
     bool? clipsToBelow,
     TransformTrack? transformTrack,
     bool? transformEnabled,
+    FxBasis? transformBasis,
     List<LayerEffect>? effects,
     Object? attachedToLayerId = copyWithSentinel,
     AttachedPlacement? attachedPlacement,
@@ -346,6 +366,7 @@ class Layer {
       clipsToBelow: clipsToBelow ?? this.clipsToBelow,
       transformTrack: transformTrack ?? this.transformTrack,
       transformEnabled: transformEnabled ?? this.transformEnabled,
+      transformBasis: transformBasis ?? this.transformBasis,
       effects: effects ?? this.effects,
       // Sentinel: DETACHING (P3) clears the linkage — an attach row can
       // become an ordinary drawing row again, so null must be expressible.
@@ -411,6 +432,8 @@ class Layer {
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     // Default true omitted — pre-R8 files read back with their FX applied.
     if (!transformEnabled) 'transformEnabled': false,
+    if (transformBasis != FxBasis.frame)
+      'transformBasis': transformBasis.toJson(),
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     if (attachedToLayerId != null) ...{
@@ -477,6 +500,7 @@ class Layer {
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
       transformEnabled: json['transformEnabled'] as bool? ?? true,
+      transformBasis: FxBasis.fromJson(json['transformBasis']),
       effects: json['effects'] == null
           ? const []
           : [
@@ -547,6 +571,7 @@ class Layer {
           other.seNameTag == seNameTag &&
           other.transformTrack == transformTrack &&
           other.transformEnabled == transformEnabled &&
+          other.transformBasis == transformBasis &&
           listEquals(other.effects, effects) &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
@@ -597,7 +622,12 @@ class Layer {
     // Folded with clipsToBelow: Object.hash caps at 20 positional args.
     Object.hash(clipsToBelow, mediaReference, seNameTag),
     // Folded with transformTrack: Object.hash caps at 20 positional args.
-    Object.hash(transformTrack, transformEnabled, Object.hashAll(effects)),
+    Object.hash(
+      transformTrack,
+      transformEnabled,
+      transformBasis,
+      Object.hashAll(effects),
+    ),
     attachedToLayerId,
     Object.hash(attachedPlacement, attachedMode),
     Object.hashAllUnordered(

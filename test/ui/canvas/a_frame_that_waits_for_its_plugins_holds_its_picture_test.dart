@@ -324,7 +324,7 @@ void main() {
     overlay.showResultTiles([
       PromotedStrokeTile(coord, tileOf(coord, stroke, (_) => true), 1),
     ]);
-    await aFrameAndItsStep(tester);
+    await tester.pump();
   }
 
   bool onlyTheScreen(Shot shot) {

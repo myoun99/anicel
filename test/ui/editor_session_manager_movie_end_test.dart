@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/movie_end_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -56,7 +57,7 @@ void main() {
     s.movieEnd.endMovieEndDrag();
 
     final json = s.repository.requireProject().toJson();
-    expect(json['trailingFrames'], 7);
+    expect(Project.fromJson(json).trailingFrames, 7);
   });
 
   test('the commit survives the display channel being cleared', () {

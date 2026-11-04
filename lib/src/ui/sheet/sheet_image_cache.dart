@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
+import '../../models/media_asset.dart' show MediaCarry;
 import '../../services/media/media_byte_source.dart' show HoldMediaBytes;
 import '../../services/media/viewer_document.dart';
 import '../media/shown_rasters.dart';
@@ -23,9 +24,14 @@ typedef SheetImageLookup = ui.Image? Function(String assetPath, {int? width});
 /// ([readSheetImage]).
 typedef SheetImageRead = Future<ui.Image?> Function(String path, int? width);
 
-/// One sheet media image's place among those held: its path, and the
-/// width it was read at (null: its own).
+/// One sheet media image's place among those read: its path, and the width
+/// it was read at (null: its own).
 typedef _SheetImageKey = ({String path, int? width});
+
+/// One sheet media image's place among those HELD: its path, the carry the
+/// pool named there when it was asked for ([SheetImageCache.carryFor]), and
+/// the width it was read at.
+typedef _HeldSheetImageKey = ({String path, MediaCarry? carry, int? width});
 
 /// [path]'s picture as [hold] answers for it — a still, a GIF's first
 /// frame, a PSD's composite ([ImageViewerDocument.open]) — decoded [width]
@@ -99,9 +105,15 @@ Future<T?> _readSheetPicture<T extends Object>(
 /// the workspace, which rebuilt everything — and the painters, seeing equal
 /// inputs, did not repaint: a logo showed only after the next pan.
 ///
-/// ⛔A path that cannot be read is remembered, at every width. Read again
-/// on every paint it would read the disk on every frame and never succeed;
-/// what was read of it before still shows.
+/// ⛔A picture that cannot be read is remembered, at every width. Read
+/// again on every paint it would read the disk on every frame and never
+/// succeed; what was read of it before still shows.
+///
+/// 🚨A picture is of ONE CARRY'S BYTES, not of a path ([carryFor]) — the
+/// conforms' law (`AudioConformStore.resolveCarry`). Carried anew
+/// (F-550-Q3, 유저 2026-11-04 「새로 받는다」), a path means other bytes,
+/// and an undo brings the first back. ↩️Held by the path alone, the sheets
+/// went on printing the picture the file held before.
 ///
 /// 🚨★★AS LARGE AS SHOWN, ONE READ AT A TIME, IN A BUDGET (I-97, 10-15). A
 /// photo asks for the width its sheet draws it at — the viewer's ladder over
@@ -122,10 +134,17 @@ Future<T?> _readSheetPicture<T extends Object>(
 /// panels moved onto how they are held (유저 10-30 「붙잡는 곳 하나」): all
 /// three are held by [ShownRasters] now.
 class SheetImageCache extends ChangeNotifier {
-  SheetImageCache({required SheetImageRead read, this.onHeldBytesChanged})
-    : _read = read;
+  SheetImageCache({
+    required SheetImageRead read,
+    this.carryFor,
+    this.onHeldBytesChanged,
+  }) : _read = read;
 
   final SheetImageRead _read;
+
+  /// Which carry the pool names at a path now — what a picture held is OF
+  /// (`ProjectFile.mediaCarryFor`). Null keys nothing by it.
+  final MediaCarry? Function(String path)? carryFor;
 
   /// Told whenever [decodedBytes] changes, so the census can reach a cache
   /// that lives in the workspace — the storyboard store's shape.
@@ -134,7 +153,7 @@ class SheetImageCache extends ChangeNotifier {
   /// What is held — let go past the budget the least recently asked for
   /// first ([ShownRasters.use]), never the one just read. A file read whole
   /// has one look, so a picture held is a picture ready.
-  late final ShownRasters<_SheetImageKey, ()> _images = ShownRasters(
+  late final ShownRasters<_HeldSheetImageKey, ()> _images = ShownRasters(
     budget: _budget,
     // Nothing plays the sheets.
     wantedAt: (_) => null,
@@ -145,8 +164,9 @@ class SheetImageCache extends ChangeNotifier {
     ended: notifyListeners,
   );
 
-  /// Paths that could not be read — never asked for again.
-  final Set<String> _unreadable = {};
+  /// Pictures that could not be read, by path and carry — never asked for
+  /// again.
+  final Set<({String path, MediaCarry? carry})> _unreadable = {};
 
   bool _disposed = false;
 
@@ -165,29 +185,32 @@ class SheetImageCache extends ChangeNotifier {
     if (_disposed) {
       return null;
     }
-    final key = (path: assetPath, width: width);
+    final carry = carryFor?.call(assetPath);
+    final key = (path: assetPath, carry: carry, width: width);
     // Asked for: to the young end of the order things are let go in.
     _images.use(key);
     final held = _images.imageOf(key);
     if (held != null) {
       return held;
     }
-    if (!_unreadable.contains(assetPath)) {
+    if (!_unreadable.contains((path: assetPath, carry: carry))) {
       _images.want(key, (), () => _readOrUnreadable(key));
     }
-    return _images.sharpestOf((other) => other.path == assetPath);
+    return _images.sharpestOf(
+      (other) => other.path == assetPath && other.carry == carry,
+    );
   }
 
   /// [key]'s picture. One that cannot be read — null, or a read that threw
-  /// — marks its path, and is refused like a page the viewer cannot have:
-  /// what was read of the path before still shows. A read that threw is
-  /// reported, rather than lost behind the refusal.
-  Future<ui.Image> _readOrUnreadable(_SheetImageKey key) async {
+  /// — marks its path and carry, and is refused like a page the viewer
+  /// cannot have: what was read of it before still shows. A read that threw
+  /// is reported, rather than lost behind the refusal.
+  Future<ui.Image> _readOrUnreadable(_HeldSheetImageKey key) async {
     final ui.Image? image;
     try {
       image = await _read(key.path, key.width);
     } on Object catch (error, stack) {
-      _unreadable.add(key.path);
+      _unreadable.add((path: key.path, carry: key.carry));
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
@@ -199,7 +222,7 @@ class SheetImageCache extends ChangeNotifier {
       rethrow;
     }
     if (image == null) {
-      _unreadable.add(key.path);
+      _unreadable.add((path: key.path, carry: key.carry));
       throw StateError('${key.path} cannot be read');
     }
     return image;

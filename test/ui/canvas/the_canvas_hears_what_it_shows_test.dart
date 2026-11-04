@@ -31,6 +31,13 @@ import 'package:anicel/src/ui/home_page.dart';
 
 /// The project's fields nothing on the canvas reads — each with where it
 /// IS read. Every other field is heard ([EditorCanvasArea.shownBy]).
+/// The fields the canvas hears through what they give: of the timelines it
+/// draws the open one, its tracks and its trailing gap (I-150).
+const _heardAs = {
+  'timelines': ['tracks', 'trailingFrames'],
+  '_currentTimelineId': ['tracks', 'trailingFrames'],
+};
+
 const _drawnNowhereOnTheCanvas = {
   // Who the work is: its file, its tab, the export's names.
   'id', 'name', 'createdAt',
@@ -198,7 +205,11 @@ void main() {
       ).allMatches(model.substring(start, end)))
         field[1]!,
     };
-    expect(fields, contains('tracks'), reason: '⛔premise: the fields read');
+    expect(
+      fields,
+      containsAll(_heardAs.keys),
+      reason: '⛔premise: the fields read',
+    );
 
     final area = File('lib/src/ui/editor_canvas_area.dart').readAsStringSync();
     final shownBy = area.substring(
@@ -208,7 +219,10 @@ void main() {
     expect(
       {
         for (final field in fields)
-          if (!shownBy.contains('project.$field')) field,
+          if (!(_heardAs[field] ?? [field]).every(
+            (heard) => shownBy.contains('project.$heard'),
+          ))
+            field,
       },
       _drawnNowhereOnTheCanvas,
       reason:

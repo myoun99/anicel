@@ -13,7 +13,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/command.dart' show WorkAhead;
+import 'package:anicel/src/services/wait_window.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/canvas_traces.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
@@ -26,13 +26,17 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// with no window. The document's step goes behind the wait window now when
 /// it has work ahead of it, and the work runs on the machine's workers.
 ///
+/// 🗣️F-551-Q1 (유저 2026-11-04: 「전부 늘 띄운다」): and its undo stands
+/// behind the same window too, with nothing to work out ahead.
+///
 /// Here the window is a door that holds the step until the test lets it go;
 /// the real window is the app's (`a_wall_moved_again_waits_behind_its_
 /// window_test`).
 void main() {
   late EditorSessionManager session;
   late HistoryVerbs verbs;
-  late List<({WorkAhead ahead, VoidCallback step})> waited;
+  late List<({StepBehind behind, VoidCallback step})> waited;
+  final resizeWindow = _Window();
 
   setUp(() {
     final canvas = CanvasSelectionCommands();
@@ -50,20 +54,24 @@ void main() {
       text: text,
       session: session,
       contactIsDown: () => false,
-      behindTheWaitWindow: (ahead, step) async =>
-          waited.add((ahead: ahead, step: step)),
+      behindTheWaitWindow: (behind, step) async =>
+          waited.add((behind: behind, step: step)),
     );
   });
 
   CanvasSize sizeNow() => session.requireActiveCut.canvasSize;
 
   /// The active cut two pixels smaller about its centre: the picture moves
-  /// one pixel up and to the left, no whole tile.
+  /// one pixel up and to the left, no whole tile — behind its window, as
+  /// every door resizes.
   void shrink() {
     final size = sizeNow();
-    session.cutVerbs.resizeActiveCutCanvas(
-      CanvasSize(width: size.width - 2, height: size.height - 2),
-      anchor: CanvasResizeAnchor.center,
+    behindWaitWindow(
+      resizeWindow,
+      () => session.cutVerbs.resizeActiveCutCanvas(
+        CanvasSize(width: size.width - 2, height: size.height - 2),
+        anchor: CanvasResizeAnchor.center,
+      ),
     );
   }
 
@@ -95,7 +103,8 @@ void main() {
   }
 
   test('🎯a resize done again waits while its pictures move ahead, and the '
-      'step takes them; its undo does not wait', () async {
+      'step takes them; its undo waits behind the same window, with nothing '
+      'ahead', () async {
     final store = session.renderCaches.brushFrameStore;
     final drawn = draw(session.requireActiveCut.id);
     final before = sizeNow();
@@ -103,18 +112,23 @@ void main() {
     final resized = sizeNow();
 
     verbs.undo();
+    expect(waited, hasLength(1));
+    expect(waited.single.behind.window, same(resizeWindow));
     expect(
-      waited,
-      isEmpty,
+      waited.single.behind.ahead,
+      isNull,
       reason: 'an undo puts the pictures back as they were',
     );
+    expect(sizeNow(), resized, reason: 'nothing is taken before the window');
+    waited.removeLast().step();
     expect(sizeNow(), before);
 
     verbs.redo();
     expect(waited, hasLength(1));
+    expect(waited.single.behind.window, same(resizeWindow));
     expect(sizeNow(), before, reason: 'nothing is taken before the work');
     final reports = <double>[];
-    await waited.single.ahead.run(reports.add);
+    await waited.single.behind.ahead!(reports.add);
     expect(reports, [1.0]);
     expect(store.movedAheadOf(drawn), isNotNull);
     final movedHere = store.celsMovedHere;
@@ -123,14 +137,30 @@ void main() {
     expect(store.celsMovedHere, movedHere, reason: 'moved ahead, not here');
   });
 
+  test('a step taken behind no window is undone and redone at once', () {
+    final before = sizeNow();
+    final size = sizeNow();
+    session.cutVerbs.resizeActiveCutCanvas(
+      CanvasSize(width: size.width - 2, height: size.height - 2),
+      anchor: CanvasResizeAnchor.center,
+    );
+    verbs.undo();
+    expect(waited, isEmpty);
+    expect(sizeNow(), before);
+    verbs.redo();
+    expect(waited, isEmpty);
+    expect(sizeNow(), isNot(before));
+  });
+
   test('a step that waited is not taken over a history that moved on', (
   ) async {
     shrink();
     shrink();
     verbs.undo();
+    waited.removeLast().step();
     verbs.redo();
-    final (:ahead, :step) = waited.single;
-    await ahead.run((_) {});
+    final (:behind, :step) = waited.single;
+    await behind.ahead!((_) {});
     session.undo();
     expect(session.historyManager.redoCount, 2, reason: 'premise');
     step();
@@ -145,9 +175,10 @@ void main() {
     shrink();
     final resized = sizeNow();
     verbs.undo();
+    waited.removeLast().step();
     verbs.redo();
-    final (:ahead, :step) = waited.single;
-    await ahead.run((_) {});
+    final (:behind, :step) = waited.single;
+    await behind.ahead!((_) {});
     var pending = true;
     session.historyManager.pendingBeforeUndoRedo = () => pending;
     step();
@@ -162,6 +193,7 @@ void main() {
     shrink();
     final resized = sizeNow();
     verbs.undo();
+    waited.removeLast().step();
     session.selectFrameIndex(1);
     expect(session.currentFrameIndex, 1, reason: 'premise: elsewhere');
     verbs.redo();
@@ -191,7 +223,7 @@ void main() {
       final drawn = draw(target);
       final ahead = session.cutVerbs.convertActiveCutToLinkedAhead(target);
       expect(ahead, isNotNull);
-      await ahead!.run((_) {});
+      await ahead!((_) {});
       final store = session.renderCaches.brushFrameStore;
       expect(store.movedAheadOf(drawn), isNotNull);
       final movedHere = store.celsMovedHere;
@@ -210,3 +242,5 @@ void main() {
     });
   });
 }
+
+class _Window implements WaitWindow {}

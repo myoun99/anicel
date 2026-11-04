@@ -162,7 +162,7 @@ void main() {
     });
   });
 
-  group('buildFillDabs', () {
+  group('a fill range laid', () {
     Frame frame(String id) =>
         Frame(id: FrameId(id), duration: 1, strokes: const []);
 
@@ -209,14 +209,13 @@ void main() {
         'is one, centred on it (R15-⑥: exact bytes, no tip-mask '
         'resampling)', () {
       final surface = outlineSurface();
-      final dab = buildFillDabs(
+      final dab = fillRangeAt(
         cut: cutWith([inkLayer()]),
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: 3, y: 3),
-        color: 0xFF3366CC,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      ).single;
+      )!.dabsIn(0xFF3366CC).single;
 
       expect(dab.size, 2);
       expect(dab.center, CanvasPoint(x: 4, y: 4));
@@ -235,13 +234,12 @@ void main() {
 
     test('a seed off the canvas fills nothing', () {
       expect(
-        buildFillDabs(
+        fillRangeAt(
           cut: cutWith([]),
           frameIndex: 0,
           surfaceResolver: (_, _) => null,
           point: CanvasPoint(x: -1, y: 0),
-          color: 0xFF000000,
-        ),
+        )?.dabsIn(0xFF000000) ?? const [],
         isEmpty,
       );
     });
@@ -289,7 +287,7 @@ void main() {
         required LayerId active,
         bool clipped = false,
       }) {
-        final dabs = buildFillDabs(
+        final dabs = fillRangeAt(
           cut: cutWith([
             inkLayer(),
             paintLayer.copyWith(clipsToBelow: clipped),
@@ -297,14 +295,13 @@ void main() {
           frameIndex: 0,
           surfaceResolver: resolve,
           point: CanvasPoint(x: 3, y: 3),
-          color: 0xFF3366CC,
           options: FloodFillOptions(
             expandPx: 0,
             antiAlias: false,
             source: source,
           ),
           activeLayerId: active,
-        );
+        )?.dabsIn(0xFF3366CC) ?? const [];
         final box = piecesBox(dabs);
         return (box.width, box.height);
       }
@@ -371,18 +368,17 @@ void main() {
       test('a closed region crossing the canvas edge fills whole, off-canvas '
           'pixels included', () {
         final surface = outlineSurfaceAt(boxAcrossLeftEdge());
-        final dab = buildFillDabs(
+        final dab = fillRangeAt(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 0, y: 3),
-          color: 0xFF3366CC,
           options: const FloodFillOptions(
             expandPx: 0,
             antiAlias: false,
             extendBeyondCanvas: true,
           ),
-        ).single;
+        )!.dabsIn(0xFF3366CC).single;
 
         // Interior 6×2 at world (-2, 3) → center (1, 4). It crosses the
         // cel grid at x = 0, and a run of neighbouring tiles is ONE piece.
@@ -395,14 +391,13 @@ void main() {
       test('the same region WITHOUT the option clips at the canvas edge '
           '(default boundary unchanged)', () {
         final surface = outlineSurfaceAt(boxAcrossLeftEdge());
-        final dab = buildFillDabs(
+        final dab = fillRangeAt(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 0, y: 3),
-          color: 0xFF3366CC,
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        ).single;
+        )!.dabsIn(0xFF3366CC).single;
 
         // Canvas boundary is the wall: interior x in [0, 3] only.
         expect((dab.stamp!.width, dab.stamp!.height), (4, 2));
@@ -411,34 +406,120 @@ void main() {
 
       test('an OPEN region refuses to fill and reports the leak', () {
         var leaked = false;
-        final dab = buildFillDabs(
+        final dab = fillRangeAt(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
           point: CanvasPoint(x: 3, y: 3),
-          color: 0xFF3366CC,
           options: const FloodFillOptions(
             expandPx: 0,
             antiAlias: false,
             extendBeyondCanvas: true,
           ),
           onOpenRegion: () => leaked = true,
-        );
+        )?.dabsIn(0xFF3366CC) ?? const [];
 
         expect(dab, isEmpty);
         expect(leaked, isTrue);
       });
 
-      test('the same open tap WITHOUT the option floods to the canvas wall '
-          'as before', () {
-        final dab = buildFillDabs(
+      test('🚨I-160: an OPEN range says so when it is LAID, not when it is '
+          'flooded — a press resting on it has filled nothing yet', () {
+        var leaked = 0;
+        final range = fillRangeAt(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
           point: CanvasPoint(x: 3, y: 3),
-          color: 0xFF3366CC,
+          options: const FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            extendBeyondCanvas: true,
+          ),
+          onOpenRegion: () => leaked += 1,
+        )!;
+
+        expect(range.open, isTrue);
+        expect(leaked, 0, reason: 'flooded, not laid');
+        expect(
+          range.covers(CanvasPoint(x: 3, y: 3)),
+          isTrue,
+          reason: 'a press moving over it does not flood it again',
+        );
+        expect(
+          range.contoursWithin(null),
+          isEmpty,
+          reason: 'nothing is marked where nothing fills',
+        );
+        expect(range.dabsIn(0xFF3366CC), isEmpty);
+        expect(leaked, 1, reason: 'the lift says why nothing filled');
+      });
+
+      test('🚨I-160 「연속 채우기」: ranges joined lay as one — an open one '
+          'adds nothing to lay, and is said only when every one was open', () {
+        var leaked = 0;
+        final open = fillRangeAt(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          point: CanvasPoint(x: 3, y: 3),
+          options: const FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            extendBeyondCanvas: true,
+          ),
+          onOpenRegion: () => leaked += 1,
+        )!;
+        FillRange square(int left) => FillRange.over(
+          FloodFillRegion(
+            left: left,
+            top: 0,
+            width: 2,
+            height: 2,
+            mask: Uint8List(4)..fillRange(0, 4, 255),
+          ),
+        );
+
+        final both = square(0).joining(square(6));
+        expect(both.covers(CanvasPoint(x: 1, y: 1)), isTrue);
+        expect(both.covers(CanvasPoint(x: 7, y: 1)), isTrue);
+        expect(both.covers(CanvasPoint(x: 4, y: 1)), isFalse);
+        final region = both.region!;
+        expect((region.left, region.width, region.height), (0, 8, 2));
+        expect(
+          [for (var x = 0; x < 8; x += 1) region.mask[x]],
+          [255, 255, 0, 0, 0, 0, 255, 255],
+          reason: 'both laid, and nothing between them',
+        );
+
+        final closed = square(0);
+        final passed = closed.joining(open);
+        expect(
+          identical(passed.region, closed.region),
+          isTrue,
+          reason: 'an open region adds nothing to lay',
+        );
+        expect(
+          passed.covers(CanvasPoint(x: 3, y: 3)),
+          isTrue,
+          reason: 'but a press passing over it does not flood it again',
+        );
+        expect(passed.dabsIn(0xFF3366CC), isNotEmpty);
+        expect(leaked, 0, reason: 'something filled: nothing to say');
+
+        expect(open.joining(open).dabsIn(0xFF3366CC), isEmpty);
+        expect(leaked, 1, reason: 'every region open: said once');
+      });
+
+      test('the same open tap WITHOUT the option floods to the canvas wall '
+          'as before', () {
+        final dab = fillRangeAt(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          point: CanvasPoint(x: 3, y: 3),
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        ).single;
+        )!.dabsIn(0xFF3366CC).single;
 
         expect((dab.stamp!.width, dab.stamp!.height), (8, 8));
       });
@@ -451,12 +532,11 @@ void main() {
           required CanvasPoint at,
           required PasteboardReach reach,
           void Function()? onOpenRegion,
-        }) => buildFillDabs(
+        }) => fillRangeAt(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => outlineSurfaceAt(ink),
           point: at,
-          color: 0xFF3366CC,
           options: const FloodFillOptions(
             expandPx: 0,
             antiAlias: false,
@@ -464,7 +544,7 @@ void main() {
           ),
           onOpenRegion: onOpenRegion,
           pasteboardReach: reach,
-        );
+        )?.dabsIn(0xFF3366CC) ?? const [];
 
         test('a box whose wall stands past the pasteboard\'s is open', () {
           var leaked = false;
@@ -512,14 +592,13 @@ void main() {
         // size must reproduce the region EXACTLY on the committed surface —
         // no falloff, no resampling drift.
         final surface = outlineSurface();
-        final dabs = buildFillDabs(
+        final dabs = fillRangeAt(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 3, y: 3),
-          color: 0xFF3366CC,
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        );
+        )?.dabsIn(0xFF3366CC) ?? const [];
 
         final coordinator = BrushFrameEditingCoordinator(
           initialFrameKey: const BrushFrameKey(

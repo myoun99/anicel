@@ -18,6 +18,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -36,11 +37,12 @@ import '../../helpers/cels_parked_cold.dart';
 ///
 /// What a frame is made of is gathered into one value and painted from it
 /// alone (F-289); each part of that value is pinned here by the pixels it
-/// leaves. The paper is GREEN (the canvas route stands a frame on the
-/// renderer's own ground) and the backdrop RED, so neither passes for the
-/// other.
+/// leaves. The paper is GREEN — the project's, laid as a camera-size frame
+/// lays it (export-film-preview-is-not-the-film-Q1) — on a renderer's WHITE
+/// ground, and the backdrop RED, so none passes for another.
 void main() {
   const green = ui.Color(0xFF00FF00);
+  const white = ui.Color(0xFFFFFFFF);
   const red = 0xFFFF0000;
   const small = CanvasSize(width: 8, height: 8);
   const trackId = TrackId('t');
@@ -81,6 +83,7 @@ void main() {
       createdAt: DateTime.utc(2026),
       cameraSize: camera,
       backdropArgb: red,
+      background: ProjectBackground.color(green.toARGB32()),
       tracks: [
         Track(
           id: trackId,
@@ -95,36 +98,41 @@ void main() {
     ),
   );
 
-  /// Parks a tile of one colour as [cut]'s drawing — its first [columns],
-  /// the whole tile unless told.
+  /// Parks a tile of one colour as each cut's drawing — its first
+  /// [columns], the whole tile unless told — all in one parking, since a
+  /// parking replaces the whole store ([parkCold]). ↩️It parked one cut a
+  /// call, and the O.L pins below inked their second cut alone: the first
+  /// cut's "ink" was the renderer's green ground.
   void ink(
     EditorSessionManager session,
-    Cut cut,
-    (int, int, int) rgb, {
+    Map<Cut, (int, int, int)> inks, {
     int columns = 8,
   }) {
-    final pixels = Uint8List(8 * 8 * 4);
-    for (var i = 0; i < pixels.length; i += 4) {
-      if ((i ~/ 4) % 8 >= columns) {
-        continue;
+    BitmapSurface tileOf((int, int, int) rgb) {
+      final pixels = Uint8List(8 * 8 * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        if ((i ~/ 4) % 8 >= columns) {
+          continue;
+        }
+        pixels[i] = rgb.$1;
+        pixels[i + 1] = rgb.$2;
+        pixels[i + 2] = rgb.$3;
+        pixels[i + 3] = 255;
       }
-      pixels[i] = rgb.$1;
-      pixels[i + 1] = rgb.$2;
-      pixels[i + 2] = rgb.$3;
-      pixels[i + 3] = 255;
-    }
-    final layer = cut.layers.first;
-    final key = session.brushFrameKeyForCut(
-      cut,
-      layer.id,
-      layer.frames.single.id,
-    );
-    parkCold(session.renderCaches.brushFrameStore, {
-      key: BitmapSurface(
+      return BitmapSurface(
         canvasSize: small,
         tileSize: 8,
         tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
-      ),
+      );
+    }
+
+    parkCold(session.renderCaches.brushFrameStore, {
+      for (final MapEntry(key: cut, value: rgb) in inks.entries)
+        session.brushFrameKeyForCut(
+          cut,
+          cut.layers.first.id,
+          cut.layers.first.frames.single.id,
+        ): tileOf(rgb),
     });
   }
 
@@ -135,15 +143,27 @@ void main() {
     ExportFrameTask task, {
     bool preserveAlpha = false,
     ExportLayerFx? layerFx,
+    CanvasSize? outputSize,
   }) async {
     final renderer = ExportFrameRenderer(
       session: session,
-      background: green,
+      background: white,
       layerFx: layerFx,
     );
-    final image = await renderer
-        .videoRun([task], ExportSizeMode.canvas, preserveAlpha: preserveAlpha)
-        .frame(0);
+    final image = outputSize == null
+        ? await renderer
+              .videoRun(
+                [task],
+                ExportSizeMode.canvas,
+                preserveAlpha: preserveAlpha,
+              )
+              .frame(0)
+        : await renderer.renderVideoFrame(
+            task,
+            ExportSizeMode.canvas,
+            preserveAlpha: preserveAlpha,
+            outputSize: outputSize,
+          );
     final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
     renderer.dispose();
@@ -195,7 +215,7 @@ void main() {
       // The cut's left half inked, its right half the paper.
       EditorSessionManager halfInked({List<LayerEffect> effects = const []}) {
         final session = sessionOf([cutOf('c')], effects: effects);
-        ink(session, session.requireActiveCut, (0, 0, 100), columns: 4);
+        ink(session, {session.requireActiveCut: (0, 0, 100)}, columns: 4);
         return session;
       }
 
@@ -234,11 +254,13 @@ void main() {
   });
 
   group('two cuts an O.L mixes', () {
-    /// c1 inked green-ish, c2 inked blue, an O.L over frames 12–35 — under
-    /// the V row's [effects] behind its switch [fxEnabled].
+    /// c1 inked green-ish, c2 inked blue — their first [columns] — an O.L
+    /// over frames 12–35, under the V row's [effects] behind its switch
+    /// [fxEnabled].
     EditorSessionManager mixing({
       List<LayerEffect> effects = const [],
       bool fxEnabled = true,
+      int columns = 8,
     }) {
       final session = sessionOf(
         [cutOf('c1'), cutOf('c2')],
@@ -251,8 +273,7 @@ void main() {
         ),
       );
       final [c1, c2] = session.repository.requireProject().tracks.single.cuts;
-      ink(session, c1, (0, 200, 0));
-      ink(session, c2, (0, 0, 200));
+      ink(session, {c1: (0, 200, 0), c2: (0, 0, 200)}, columns: columns);
       return session;
     }
 
@@ -273,6 +294,32 @@ void main() {
         expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut, thinning');
         expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut, coming');
         expect((r, a), (0, 255), reason: 'two whole cuts hide the backdrop');
+      });
+    });
+
+    testWidgets('at a preview\'s size the mix is the same, smaller: each cut '
+        'laid at that size (export-film-preview-is-not-the-film)', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        // Their left halves inked, their right halves the paper.
+        final session = mixing(columns: 4);
+        addTearDown(session.dispose);
+
+        final frame = await videoFrame(
+          session,
+          midway(session),
+          outputSize: const CanvasSize(width: 4, height: 4),
+        );
+        expect(frame.length, 4 * 4 * 4, reason: 'at the size asked');
+        final (_, g, b, _) = pixelOf(frame, 1, 2, side: 4);
+        expect(g, inInclusiveRange(60, 140), reason: 'the leaving cut\'s ink');
+        expect(b, inInclusiveRange(60, 140), reason: 'the arriving cut\'s ink');
+        expect(
+          pixelOf(frame, 2, 2, side: 4),
+          (0, 255, 0, 255),
+          reason: 'both papers — not the left of a whole-size picture',
+        );
       });
     });
 

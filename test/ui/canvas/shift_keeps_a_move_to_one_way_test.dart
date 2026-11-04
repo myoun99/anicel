@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// 🗣️I-136 (유저 2026-10-27): 「카메라 이동할때나 fx의 트랜스폼
 /// 이동할때등 캔버스에서 어떤 조작 할때도 쉬프트 통해 누른상태면
@@ -199,7 +200,7 @@ void main() {
       const Offset(5, 10),
       const Offset(10, 10),
     ]);
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     final carry = env.carries.single;

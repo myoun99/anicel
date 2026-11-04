@@ -10,7 +10,7 @@ import '../../models/onion_skin_settings.dart';
 import '../../models/project.dart';
 import '../../services/commands/link_mirror.dart' show conteHeadTargets;
 import '../../services/cut_frame_composite_plan.dart'
-    show CutFrameCompositeGhost, chainWornBy;
+    show CutFrameCompositeGhost, chainBlocksOf, chainWornBy;
 import '../../services/onion_skin_plan.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/timeline_drag_preview.dart'
@@ -283,6 +283,7 @@ class OnionSkin {
                 effects: resolveLayerEffectsAt(
                   effects: chainWornBy(cut, layer),
                   frameIndex: plan.frameIndex,
+                  blocks: chainBlocksOf(cut, layer),
                 ),
               ),
           ],

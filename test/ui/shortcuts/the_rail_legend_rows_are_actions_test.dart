@@ -41,10 +41,12 @@ LayerLegendCallbacks everyVerb() => LayerLegendCallbacks(
   onSheetAllOn: () {},
   onSheetAllOff: () {},
   onClearMarkFilter: () {},
+  onClearTakeFilter: () {},
   onClearAllClips: () {},
   onBypassAllFx: () {},
   onEnableAllFx: () {},
   onToggleMarkFilter: (_) {},
+  onToggleTakeFilter: (_) {},
   onToggleKindFilter: (_) {},
   onToggleSheetOnlyFilter: () {},
   onToggleFxOnlyFilter: () {},
@@ -61,7 +63,10 @@ LayerLegendCallbacks everyVerb() => LayerLegendCallbacks(
 TimelineLegendMenus fullest() => TimelineLegendMenus(
   legend: everyVerb(),
   onToggleSection: (_) {},
-  marksInUse: () => everyLayerMark().toSet(),
+  marksInUse: () => {
+    ...everyLayerMark(),
+    for (final take in LayerMark.takeChoices) LayerMark.none.withTake(take),
+  },
   kinds: LayerKind.values.toSet(),
   displayedLayerIds: () => const {},
 );

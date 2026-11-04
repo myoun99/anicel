@@ -20,6 +20,7 @@ import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
+import '../widgets/settings_rows.dart' show settingsHelpTooltip;
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, pill strips, and the shared Format module.
@@ -179,11 +180,17 @@ enum ExportCaption {
   quality,
   channels,
   background,
+  gifPalette,
+  gifColors,
+  gifDither,
+  gifLoop,
   image,
   paper,
   layerFx,
   target,
   folders,
+  projectFolderName,
+  cutFolderName,
   nameParts,
   prefix;
 
@@ -194,11 +201,17 @@ enum ExportCaption {
     quality => strings.exQuality,
     channels => strings.exChannels,
     background => strings.exBackground,
+    gifPalette => strings.exGifPalette,
+    gifColors => strings.exGifColors,
+    gifDither => strings.exGifDither,
+    gifLoop => strings.exGifLoop,
     image => strings.exImage,
     paper => strings.exPaperLabel,
     layerFx => strings.exApplyLayerFx,
     target => strings.exTarget,
     folders => strings.exFolders,
+    projectFolderName => strings.exProject,
+    cutFolderName => strings.exCut,
     nameParts => strings.exNameParts,
     prefix => strings.exPrefix,
   };
@@ -209,6 +222,7 @@ class ExportModuleRow extends StatelessWidget {
     super.key,
     required this.caption,
     required this.child,
+    this.help,
   }) : _strip = false;
 
   /// A row whose control is a strip of pills: beside its caption where the
@@ -222,11 +236,19 @@ class ExportModuleRow extends StatelessWidget {
     super.key,
     required this.caption,
     required PillStrip strip,
+    this.help,
   }) : child = strip,
        _strip = true;
 
   final ExportCaption caption;
   final Widget child;
+
+  /// What the row does, as a tooltip on its name ([settingsHelpTooltip]) —
+  /// null where the name says it on its own.
+  ///
+  /// 🗣️I-153 (유저 2026-11-04): 「이름지정 이게 무슨기능이었지? …
+  /// 툴팁으로 무슨내용인지 이름지정 호버하면 뜨게하도록. 폴더도 마찬가지」.
+  final String? help;
 
   /// Whether [child] is a strip that goes under the caption when it does
   /// not fit beside it ([ExportModuleRow.strip]).
@@ -257,7 +279,7 @@ class ExportModuleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = SizedBox(
+    final words = SizedBox(
       width: captionWidthIn(context),
       child: EllipsisText(
         caption.wordsIn(AppText.strings),
@@ -265,6 +287,7 @@ class ExportModuleRow extends StatelessWidget {
         style: _wordStyleOf(Theme.of(context)),
       ),
     );
+    final name = settingsHelpTooltip(help, words);
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
       child: _strip
@@ -425,6 +448,7 @@ class ExportFormatModule extends StatelessWidget {
     required this.capabilities,
     required this.enabled,
     required this.onChanged,
+    this.keyPrefix = 'export-format',
   });
 
   final ExportFormatSelection selection;
@@ -432,9 +456,17 @@ class ExportFormatModule extends StatelessWidget {
   final bool enabled;
   final ValueChanged<ExportFormatSelection> onChanged;
 
+  /// What its controls' keys start with: a tab with two of these — the
+  /// Cels tab's cels and its film (I-151) — tells them apart by it.
+  final String keyPrefix;
+
   static String summarize(ExportFormatSelection selection) {
     if (selection.isVideo) {
-      return '${selection.container.label} · ${selection.videoCodec.label}';
+      // A container with one way of packing says itself: 「GIF」, not
+      // 「GIF · GIF」.
+      return ExportVideoCodec.codecsFor(selection.container).length > 1
+          ? '${selection.container.label} · ${selection.videoCodec.label}'
+          : selection.container.label;
     }
     final channels = selection.effectiveChannels == ExportChannels.rgba
         ? 'RGBA'
@@ -462,7 +494,8 @@ class ExportFormatModule extends StatelessWidget {
   /// seven still formats do not fit one.
   ///
   /// The format button stands whichever kind is chosen: what it lists is
-  /// what changes.
+  /// what changes. A tab that writes one kind only — the Cels tab's movie
+  /// (I-151) — has no kind to choose.
   Widget _formatRow() => ExportModuleRow(
     caption: ExportCaption.format,
     child: Align(
@@ -470,7 +503,7 @@ class ExportFormatModule extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (capabilities.hasVideo) ...[
+          if (capabilities.hasVideo && capabilities.stills.isNotEmpty) ...[
             _kindButton(),
             const SizedBox(width: 4),
           ],
@@ -496,13 +529,13 @@ class ExportFormatModule extends StatelessWidget {
   };
 
   Widget _kindButton() => PanelFlyoutButton(
-    key: const ValueKey<String>('export-format-kind'),
+    key: ValueKey<String>('$keyPrefix-kind'),
     label: _kindLabel(selection.kind),
     enabled: enabled,
     entriesBuilder: () => ExportMediaKind.values.asFlyoutValueChoices(
       current: selection.kind,
       choiceOf: (kind) => PanelFlyoutChoice(
-        key: 'export-format-kind-${kind.jsonValue}',
+        key: '$keyPrefix-kind-${kind.jsonValue}',
         label: _kindLabel(kind),
         enabled: _kindWritable(kind),
         warning: _kindWritable(kind)
@@ -538,7 +571,7 @@ class ExportFormatModule extends StatelessWidget {
   /// codec when the current one is off there — picking MOV must not leave a
   /// codec selected that MOV cannot hold.
   Widget _containerButton() => PanelFlyoutButton(
-    key: const ValueKey<String>('export-format-file'),
+    key: ValueKey<String>('$keyPrefix-file'),
     label: selection.container.label,
     enabled: enabled,
     entriesBuilder: () => capabilities.video.keys.asFlyoutValueChoices(
@@ -546,7 +579,7 @@ class ExportFormatModule extends StatelessWidget {
       choiceOf: (container) {
         final writable = capabilities.isContainerEnabled(container);
         return PanelFlyoutChoice(
-          key: 'export-format-container-${container.jsonValue}',
+          key: '$keyPrefix-container-${container.jsonValue}',
           label: container.label,
           enabled: writable,
           warning: writable
@@ -581,7 +614,7 @@ class ExportFormatModule extends StatelessWidget {
   }
 
   Widget _stillButton() => PanelFlyoutButton(
-    key: const ValueKey<String>('export-format-file'),
+    key: ValueKey<String>('$keyPrefix-file'),
     label: selection.stillFormat.label,
     enabled: enabled,
     entriesBuilder: () => capabilities.stills.asFlyoutValueChoices(
@@ -589,7 +622,7 @@ class ExportFormatModule extends StatelessWidget {
       choiceOf: (still) {
         final writable = capabilities.isStillEnabled(still);
         return PanelFlyoutChoice(
-          key: 'export-format-still-${still.jsonValue}',
+          key: '$keyPrefix-still-${still.jsonValue}',
           label: still.label,
           enabled: writable,
           warning: writable ? null : AppText.strings.exNotInThisBuild,
@@ -607,35 +640,131 @@ class ExportFormatModule extends StatelessWidget {
   /// 그중에 고르게하도록」. ↩️It was a pill strip, and MOV's six shared the
   /// settings column's row at some 30px each — every name cut to an
   /// ellipsis (실측 10-05).
-  Widget _codecRow(List<ExportVideoCodec> codecs) => ExportModuleRow(
-    caption: ExportCaption.codec,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: PanelFlyoutButton(
-        key: const ValueKey<String>('export-format-codec'),
-        label: selection.videoCodec.label,
-        enabled: enabled,
-        entriesBuilder: () => codecs.asFlyoutValueChoices(
-          current: selection.videoCodec,
-          choiceOf: (codec) {
-            final writable = capabilities.isVideoEnabled(
-              selection.container,
-              codec,
-            );
-            return PanelFlyoutChoice(
-              key: 'export-format-codec-${codec.jsonValue}',
-              label: codec.label,
-              enabled: writable,
-              warning: writable
-                  ? null
-                  : capabilities.reasonFor(selection.container, codec),
-            );
-          },
-          onPicked: (codec) => _change(selection.copyWith(videoCodec: codec)),
-        ),
+  Widget _codecRow(List<ExportVideoCodec> codecs) => _flyoutRow(
+    ExportCaption.codec,
+    PanelFlyoutButton(
+      key: ValueKey<String>('$keyPrefix-codec'),
+      label: selection.videoCodec.label,
+      enabled: enabled,
+      entriesBuilder: () => codecs.asFlyoutValueChoices(
+        current: selection.videoCodec,
+        choiceOf: (codec) {
+          final writable = capabilities.isVideoEnabled(
+            selection.container,
+            codec,
+          );
+          return PanelFlyoutChoice(
+            key: '$keyPrefix-codec-${codec.jsonValue}',
+            label: codec.label,
+            enabled: writable,
+            warning: writable
+                ? null
+                : capabilities.reasonFor(selection.container, codec),
+          );
+        },
+        onPicked: (codec) => _change(selection.copyWith(videoCodec: codec)),
       ),
     ),
   );
+
+  /// A row whose control is one value picked from a list — the codec, and
+  /// a GIF's palette and dither.
+  Widget _flyoutRow(ExportCaption caption, PanelFlyoutButton button) =>
+      ExportModuleRow(
+        caption: caption,
+        child: Align(alignment: Alignment.centerLeft, child: button),
+      );
+
+  void _changeGif(ExportGifSettings gif) =>
+      _change(selection.copyWith(gif: gif));
+
+  static String _gifPaletteLabel(ExportGifReduction reduction) =>
+      switch (reduction) {
+        ExportGifReduction.octree => AppText.strings.exGifOctree,
+        ExportGifReduction.neural => AppText.strings.exGifNeural,
+        ExportGifReduction.blackWhite => AppText.strings.exGifBlackWhite,
+      };
+
+  /// A kernel goes by the names of who made it, in every language.
+  static String _gifDitherLabel(ExportGifDither dither) => switch (dither) {
+    ExportGifDither.none => AppText.strings.commonNone,
+    ExportGifDither.floydSteinberg => 'Floyd–Steinberg',
+    ExportGifDither.stucki => 'Stucki',
+    ExportGifDither.atkinson => 'Atkinson',
+  };
+
+  /// A GIF's own rows (I-152, 유저 2026-11-03: 「색처리든 뭐든 gif에대한
+  /// 세부설정가능한거 두고싶어」): how its palette is found and how large it
+  /// is — black and white is two whatever is asked, so it asks no count —
+  /// how what the palette cannot say is spread, and how many times it plays.
+  List<Widget> _gifRows() {
+    final gif = selection.gif;
+    return [
+      _flyoutRow(
+        ExportCaption.gifPalette,
+        PanelFlyoutButton(
+          key: ValueKey<String>('$keyPrefix-gif-palette'),
+          label: _gifPaletteLabel(gif.reduction),
+          enabled: enabled,
+          entriesBuilder: () => ExportGifReduction.values.asFlyoutChoices(
+            current: gif.reduction,
+            keyPrefix: '$keyPrefix-gif-palette-',
+            labelOf: _gifPaletteLabel,
+            onPicked: (reduction) =>
+                _changeGif(gif.copyWith(reduction: reduction)),
+          ),
+        ),
+      ),
+      if (gif.reduction.takesColorCount)
+        ExportModuleRow(
+          caption: ExportCaption.gifColors,
+          child: FieldSlider(
+            key: ValueKey<String>('$keyPrefix-gif-colors'),
+            value: gif.colors.toDouble(),
+            min: exportGifFewestColors.toDouble(),
+            max: exportGifMostColors.toDouble(),
+            divisions: exportGifMostColors - exportGifFewestColors,
+            onChanged: enabled
+                ? (next) => _changeGif(gif.copyWith(colors: next.round()))
+                : null,
+          ),
+        ),
+      _flyoutRow(
+        ExportCaption.gifDither,
+        PanelFlyoutButton(
+          key: ValueKey<String>('$keyPrefix-gif-dither'),
+          label: _gifDitherLabel(gif.dither),
+          enabled: enabled,
+          entriesBuilder: () => ExportGifDither.values.asFlyoutChoices(
+            current: gif.dither,
+            keyPrefix: '$keyPrefix-gif-dither-',
+            labelOf: _gifDitherLabel,
+            onPicked: (dither) => _changeGif(gif.copyWith(dither: dither)),
+          ),
+        ),
+      ),
+      ExportModuleRow(
+        caption: ExportCaption.gifLoop,
+        child: FieldSlider(
+          key: ValueKey<String>('$keyPrefix-gif-loop'),
+          value: gif.plays.toDouble(),
+          min: 0,
+          max: exportGifMostPlays.toDouble(),
+          divisions: exportGifMostPlays,
+          valueTextBuilder: _gifPlaysText,
+          onChanged: enabled
+              ? (next) => _changeGif(gif.copyWith(plays: next.round()))
+              : null,
+        ),
+      ),
+    ];
+  }
+
+  /// Zero plays FOREVER, so the bar's low end is a word, as the bitrate's
+  /// automatic is.
+  static String _gifPlaysText(double plays, String derived) => plays <= 0
+      ? AppText.strings.exGifForever
+      : AppText.strings.exGifPlays(plays.round());
 
   /// Zero is AUTO — the encoder picks — so the bar's low end is a word,
   /// not a number.
@@ -645,7 +774,7 @@ class ExportFormatModule extends StatelessWidget {
   Widget _bitrateRow() => ExportModuleRow(
     caption: ExportCaption.bitrate,
     child: FieldSlider(
-      key: const ValueKey<String>('export-format-bitrate'),
+      key: ValueKey<String>('$keyPrefix-bitrate'),
       value: selection.videoBitrateMbps.clamp(0, 50).toDouble(),
       min: 0,
       max: 50,
@@ -660,7 +789,7 @@ class ExportFormatModule extends StatelessWidget {
   );
 
   Widget _qualityRow() => ExportJpgQualityRow(
-    keyValue: 'export-format-quality',
+    keyValue: '$keyPrefix-quality',
     quality: selection.jpgQuality,
     onChanged: enabled
         ? (quality) => _change(selection.copyWith(jpgQuality: quality))
@@ -669,7 +798,7 @@ class ExportFormatModule extends StatelessWidget {
 
   Widget _channelsRow() => ExportChoiceRow<ExportChannels>(
     caption: ExportCaption.channels,
-    keyPrefix: 'export-format-channels',
+    keyPrefix: '$keyPrefix-channels',
     values: ExportChannels.values,
     selected: selection.effectiveChannels,
     keyOf: (channels) => channels.jsonValue,
@@ -683,7 +812,7 @@ class ExportFormatModule extends StatelessWidget {
     strip: PillStrip(
       items: [
         PillItem(
-          keyValue: 'export-format-bg-white',
+          keyValue: '$keyPrefix-bg-white',
           label: AppText.strings.exWhite,
           selected: selection.backgroundArgb == 0xFFFFFFFF,
           onTap: enabled
@@ -691,7 +820,7 @@ class ExportFormatModule extends StatelessWidget {
               : null,
         ),
         PillItem(
-          keyValue: 'export-format-bg-black',
+          keyValue: '$keyPrefix-bg-black',
           label: AppText.strings.exBlack,
           selected: selection.backgroundArgb == 0xFF000000,
           onTap: enabled
@@ -707,11 +836,12 @@ class ExportFormatModule extends StatelessWidget {
     final codecs = selection.isVideo
         ? capabilities.codecsFor(selection.container)
         : const <ExportVideoCodec>[];
-    final showChannels =
-        selection.isStill && selection.stillFormat.supportsAlpha;
+    final showChannels = selection.offersAlpha;
     final showBackground =
         selection.isStill && selection.effectiveChannels == ExportChannels.rgb;
-    final showBitrate = selection.isVideo && !selection.videoCodec.isProRes;
+    final showBitrate = selection.isVideo && selection.videoCodec.takesBitrate;
+    final showGif =
+        selection.isVideo && selection.container == ExportVideoContainer.gif;
     final showQuality =
         selection.isStill && selection.stillFormat == ExportStillFormat.jpg;
     return Column(
@@ -720,6 +850,7 @@ class ExportFormatModule extends StatelessWidget {
         _formatRow(),
         if (selection.isVideo && codecs.length > 1) _codecRow(codecs),
         if (showBitrate) _bitrateRow(),
+        if (showGif) ..._gifRows(),
         if (showQuality) _qualityRow(),
         if (showChannels) _channelsRow(),
         if (showBackground) _backgroundRow(),
@@ -1200,7 +1331,30 @@ String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
   ExportCelKind.direction => AppText.strings.exSelDirection,
   ExportCelKind.timesheet => AppText.strings.panelTimesheet,
   ExportCelKind.envelope => AppText.strings.panelEnvelope,
+  ExportCelKind.video => AppText.strings.exVideo,
 };
+
+/// A name's two fields — what goes before it and what after
+/// ([ExportNameAffix]) — the window's, as the suffix's is, so a preset or a
+/// reset can write them ([show]).
+class ExportAffixFields {
+  final TextEditingController prefix = TextEditingController();
+  final TextEditingController suffix = TextEditingController();
+
+  /// Sets both fields to [affix].
+  void show(ExportNameAffix affix) {
+    prefix.text = affix.prefix;
+    suffix.text = affix.suffix;
+  }
+
+  void dispose() {
+    prefix.dispose();
+    suffix.dispose();
+  }
+}
+
+/// The folders whose names take a prefix and a suffix.
+enum _NamedFolder { project, cut }
 
 /// Cel-file naming: the CSP-style options ported into the module grammar.
 class ExportCelNamingModule extends StatelessWidget {
@@ -1211,6 +1365,9 @@ class ExportCelNamingModule extends StatelessWidget {
     required this.onChanged,
     required this.suffixController,
     required this.prefixControllers,
+    required this.projectFolderFields,
+    required this.cutFolderFields,
+    this.cutFolderHeld = false,
   });
 
   final ExportCelNaming naming;
@@ -1221,6 +1378,17 @@ class ExportCelNamingModule extends StatelessWidget {
   /// One field a kind ([ExportCelNaming.prefixOf]) — the window's, as the
   /// suffix's is, so a preset or a reset can write them.
   final Map<ExportCelKind, TextEditingController> prefixControllers;
+
+  /// The project's and the cut's folder names' fields
+  /// ([ExportCelNaming.projectFolderName] · [ExportCelNaming.cutFolderName]).
+  final ExportAffixFields projectFolderFields;
+  final ExportAffixFields cutFolderFields;
+
+  /// Whether the cut folder is made whatever [naming] says
+  /// ([CelsExportSpec.cutFolderHeld]): its pill reads chosen and takes no
+  /// tap, and says why. [naming] keeps the user's own pick for when the
+  /// hold lets go.
+  final bool cutFolderHeld;
 
   /// How many prefix fields share a line of the settings column.
   static const int _prefixesPerLine = 3;
@@ -1263,28 +1431,92 @@ class ExportCelNamingModule extends StatelessWidget {
   }
 
   /// Three names the file can carry and the same three the folders can, as
-  /// two multi-select strips.
+  /// two multi-select strips. A [cutHeldBecause] holds the cut's pill
+  /// chosen, untappable, with that as its tooltip.
   PillStrip _names({
     required String keyPrefix,
-    required bool project,
-    required bool cut,
-    required bool layer,
+    required ({bool project, bool cut, bool layer}) chosen,
     required ExportCelNaming Function(String which) toggled,
+    String? cutHeldBecause,
   }) {
     final strings = AppText.strings;
-    PillItem item(String which, String label, bool selected) =>
+    PillItem item(String which, String label, bool selected, [String? held]) =>
         PillItem(
           keyValue: '$keyPrefix-$which',
           label: label,
-          selected: selected,
-          onTap: enabled ? () => onChanged(toggled(which)) : null,
+          selected: selected || held != null,
+          onTap: enabled && held == null
+              ? () => onChanged(toggled(which))
+              : null,
+          tooltip: held,
         );
     return PillStrip(
       items: [
-        item('project', strings.exProject, project),
-        item('cut', strings.exCut, cut),
-        item('layer', strings.exLayer, layer),
+        item('project', strings.exProject, chosen.project),
+        item('cut', strings.exCut, chosen.cut, cutHeldBecause),
+        item('layer', strings.exLayer, chosen.layer),
       ],
+    );
+  }
+
+  /// [folder]'s prefix and suffix, on a row of their own under 「폴더 생성」.
+  ///
+  /// 🗣️I-153 (유저 2026-11-04): 「폴더생성에서 컷이나 프로젝트 누르면
+  /// 아래에 접두 접미사 텍스트 지정할수있도록」 — the row keeps its seat and
+  /// its fields open when the folder is made (「없다가 생기는 UI 금지」).
+  Widget _folderNameRow(_NamedFolder folder) {
+    final strings = AppText.strings;
+    final (caption, fields, affix, made) = switch (folder) {
+      _NamedFolder.project => (
+        ExportCaption.projectFolderName,
+        projectFolderFields,
+        naming.projectFolderName,
+        naming.projectFolder,
+      ),
+      _NamedFolder.cut => (
+        ExportCaption.cutFolderName,
+        cutFolderFields,
+        naming.cutFolderName,
+        naming.cutFolder || cutFolderHeld,
+      ),
+    };
+    ExportCelNaming named(ExportNameAffix to) => switch (folder) {
+      _NamedFolder.project => naming.copyWith(projectFolderName: to),
+      _NamedFolder.cut => naming.copyWith(cutFolderName: to),
+    };
+    Widget field(
+      String side,
+      TextEditingController controller,
+      ExportNameAffix Function(String typed) typed,
+    ) => Expanded(
+      child: AppWindowField(
+        label: side == 'prefix' ? strings.exPrefix : strings.exSuffix,
+        child: TextField(
+          key: ValueKey<String>('export-cel-folder-${folder.name}-$side'),
+          controller: controller,
+          enabled: enabled && made,
+          onChanged: (value) => onChanged(named(typed(value))),
+        ),
+      ),
+    );
+    return ExportModuleRow(
+      caption: caption,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          field(
+            'prefix',
+            fields.prefix,
+            (typed) => affix.copyWith(prefix: typed),
+          ),
+          const SizedBox(width: 8),
+          field(
+            'suffix',
+            fields.suffix,
+            (typed) => affix.copyWith(suffix: typed),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1298,26 +1530,37 @@ class ExportCelNamingModule extends StatelessWidget {
       children: [
         ExportModuleRow.strip(
           caption: ExportCaption.folders,
+          help: AppText.strings.exFoldersTip,
           strip: _names(
             keyPrefix: 'export-cel-folder',
-            project: naming.projectFolder,
-            cut: naming.cutFolder,
-            layer: naming.layerFolder,
+            chosen: (
+              project: naming.projectFolder,
+              cut: naming.cutFolder,
+              layer: naming.layerFolder,
+            ),
             toggled: (which) => switch (which) {
               'project' =>
                 naming.copyWith(projectFolder: !naming.projectFolder),
               'cut' => naming.copyWith(cutFolder: !naming.cutFolder),
               _ => naming.copyWith(layerFolder: !naming.layerFolder),
             },
+            cutHeldBecause: cutFolderHeld
+                ? AppText.strings.exCutFolderHeld
+                : null,
           ),
         ),
+        _folderNameRow(_NamedFolder.project),
+        _folderNameRow(_NamedFolder.cut),
         ExportModuleRow.strip(
           caption: ExportCaption.nameParts,
+          help: AppText.strings.exNamePartsTip,
           strip: _names(
             keyPrefix: 'export-cel-include',
-            project: naming.includeProjectName,
-            cut: naming.includeCutName,
-            layer: naming.includeLayerName,
+            chosen: (
+              project: naming.includeProjectName,
+              cut: naming.includeCutName,
+              layer: naming.includeLayerName,
+            ),
             toggled: (which) => switch (which) {
               'project' => naming.copyWith(
                 includeProjectName: !naming.includeProjectName,

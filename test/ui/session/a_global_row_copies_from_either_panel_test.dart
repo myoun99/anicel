@@ -345,8 +345,12 @@ void main() {
       expect(blocksOf(second()), [(cut2 + 12, 2, 'c')]);
     });
 
-    test('on the V row and the transition row the rail stands on nothing '
-        'the board serves — whatever the timeline\'s own cursor holds', () {
+    // 🗣️I-150: ↩️the V row stood on nothing the board served, until its
+    // cuts went on a board of their own (「컷 잘라내기/복사/붙여넣기 …
+    // 공용알약 사용 가능하게」).
+    test('on the V row the rail copies the cut it stands on, and on the '
+        'transition row nothing — the frames in hand land on neither, '
+        'whatever the timeline\'s own cursor holds', () {
       standOnTheSoundRow(3);
       rail.copyFrame();
       session.selectLayer(cel);
@@ -357,13 +361,16 @@ void main() {
         reason: 'premise: the timeline\'s place is lit',
       );
 
-      for (final row in [
-        TrackRowAddress(session.selectedTrackId),
-        LayerRowAddress(session.activeTrack.transitionLayer.id),
+      for (final (row, four) in [
+        (TrackRowAddress(session.selectedTrackId), [true, true, false, false]),
+        (
+          LayerRowAddress(session.activeTrack.transitionLayer.id),
+          [false, false, false, false],
+        ),
       ]) {
         session.selectRow(row);
         expect(session.storyboardStandingRow, row, reason: 'fixture');
-        expect(fourOf(rail), [false, false, false, false], reason: '$row');
+        expect(fourOf(rail), four, reason: '$row');
       }
     });
   });

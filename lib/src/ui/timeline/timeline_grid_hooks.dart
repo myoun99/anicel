@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/cut_id.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -10,7 +11,9 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
-import '../input/two_axis_drag.dart' show SheetZoom, sheetZoom;
+import '../dialogs/link_window.dart' show LinkKind;
+import '../input/two_axis_drag.dart'
+    show SheetZoom, TwoAxisScrollController, sheetZoom;
 import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
@@ -114,6 +117,7 @@ class TimelineGridHooks {
     required this.onToggleLayerTimesheet,
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
+    this.layerSyncPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -147,6 +151,8 @@ class TimelineGridHooks {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
+    this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
@@ -311,9 +317,17 @@ class TimelineGridHooks {
   /// no zoom, and fingers only move the grid.
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
-  /// What a pinch on a grid laid out at [pixelsPerFrame] zooms.
-  SheetZoom? zoomAt(double pixelsPerFrame) =>
-      sheetZoom(pixelsPerFrame, projectFrameRate, onPixelsPerFrameChanged);
+  /// What a pinch on a grid laid out at [pixelsPerFrame] along [frames]
+  /// zooms.
+  SheetZoom? zoomAt(
+    double pixelsPerFrame,
+    TwoAxisScrollController frames,
+  ) => sheetZoom(
+    pixelsPerFrame,
+    projectFrameRate,
+    onPixelsPerFrameChanged,
+    frames,
+  );
 
   /// A media-browser sound dropped on an SE block: linked to that block's
   /// instance. Null mounts no drop place. ↩️It rode the audio lane's
@@ -360,9 +374,14 @@ class TimelineGridHooks {
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
 
-  /// A linked row's badge: the link window (I-25). Null leaves the badge a
-  /// picture.
-  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  /// A linked row's badge: the link window (I-25) — and a 동기컷's row's
+  /// sync badge, its [LinkKind] the sync (I-150). Null leaves the badges
+  /// pictures.
+  final Future<void> Function(
+    BuildContext anchorContext,
+    LayerId layerId,
+    LinkKind kind,
+  )?
   onOpenLayerLinks;
 
   /// The camera row's path button: how the canvas shows the camera's path
@@ -400,6 +419,10 @@ class TimelineGridHooks {
   /// two answers the panel held for the rail alone, until the sheet's
   /// header became the rail's row stood up and asked for them too.
   final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
+
+  /// The sync badge's lines (I-150-Q3): the cut a layer's cut is in the
+  /// other timelines, when the layer is a row they share. Null shows none.
+  final List<String> Function(LayerId layerId)? layerSyncPartnersOf;
 
   /// The row twirl that folds a FOLDER's members (the attach fold has its
   /// own hook because it is session state, not layer state).
@@ -558,6 +581,13 @@ class TimelineGridHooks {
   /// The group header's own ON/OFF switch (R6), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
+
+  /// The group header's basis chip (I-120-Q10), forwarded to the lane rows.
+  final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
+  onSetLaneGroupBasis;
+
+  /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;

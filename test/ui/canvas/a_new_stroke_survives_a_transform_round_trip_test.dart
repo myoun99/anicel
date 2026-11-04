@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/panel_finders.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// 🚨★★★**F-164 ⑤ — 유저 2026-09-18: 「새로 선을 그어도 긋고나서 커밋하면
 /// 사라짐」**, the last symptom of the report whose first four this round
@@ -306,7 +307,11 @@ void main() {
 
     // 유저: 「프레임2가면」 … 「그 상태에서 엔터버튼으로 확정시키고」.
     await seekTo(tester, 1);
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    // Behind the wait window, which goes before the next key (F-551).
+    await windowBehind(
+      tester,
+      () => tester.sendKeyEvent(LogicalKeyboardKey.enter),
+    );
     await pumpFrames(tester);
 
     // 유저: 「프레임1가면 프레임1의 그림이 사라짐」 — it must not.

@@ -278,16 +278,44 @@ typedef StoredRow = ({
 });
 
 /// Where a frame's picture keeps the pictures its nodes are drawn into
-/// ([HeldSubtreeRasters]) — whether the frame drawn here keeps the ones it
-/// draws whole: the frame for a canvas that stands on it, laid or drawn as it
-/// stands — a stroke's step patched in is cut by its patch, and keeps none
-/// of what that cuts — and what it does with what lies below its pen
+/// ([HeldSubtreeRasters]) — what the frame drawn here keeps of them
+/// ([NodesKept]): the frame for a canvas that stands on it, laid or drawn as
+/// it stands — a stroke's step patched in is cut by its patch, and keeps
+/// none of what that cuts — and what it does with what lies below its pen
 /// ([below]).
 typedef HeldNodePictures = ({
   HeldSubtreeRasters rasters,
-  bool keeps,
+  NodesKept keeps,
   BelowThePen below,
 });
+
+/// What a frame drawn here does with the pictures its nodes are drawn into
+/// ([HeldNodePictures.keeps]).
+///
+/// 🚨TWO QUESTIONS, NOT ONE FLAG: whether the ones it draws whole are kept,
+/// and whether the ones it does not draw are let go of
+/// ([HeldSubtreeRasters.holdOnly]). Only a frame drawn whole for the nodes
+/// it holds — a lay — may answer the second: drawn, it is what is held. ↩️A
+/// bool answered both until 2026-11-04, and the frame a canvas draws as it
+/// stands, told to keep (`2b213b4f6`), let go too — and a stroke's step is
+/// patched in by that frame, cut to the step: each step let go of every
+/// folder it did not reach, and the screen fitted to the page drew each
+/// whole again (F-533). 🔬Surface Pro 11, S5_BA cut 352, every row
+/// visible, fitted, 14 strokes a run, 4 runs a build: the longest frame
+/// 209–294 ms against 137–175 ms the commit before, frames past 30 ms 37–43
+/// against 19–24 — at the first pen-down after the view was fitted.
+enum NodesKept {
+  /// Finds them, and keeps none.
+  none,
+
+  /// Keeps the ones it draws whole, and lets go of none — the frame a
+  /// canvas draws as it stands.
+  drawnWhole,
+
+  /// Keeps the ones it draws whole, and lets go of the rest: what it draws
+  /// is what is held after.
+  onlyDrawn,
+}
 
 /// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
@@ -944,6 +972,9 @@ final class _LayerStackPainter {
     // the rect it covers, so a drag can be patched. ↩️F-130 put the stamp's
     // ghost here too; since brush-fidelity-Q9 it is the overlay's tiles.
     final landing = surfacePainter.landingPreview?.value;
+    // I-160: the range a held fill covers, drawn over the row — by value
+    // too, so a press that moves to another region patches both.
+    final range = overlay?.fillRange;
     return (
       overlay: <TileCoord, Object>{
         ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
@@ -955,6 +986,7 @@ final class _LayerStackPainter {
       },
       previews: [
         if (landing != null) (value: landing, rect: landing.drawnWorldRect),
+        if (range != null) (value: range, rect: range.bounds),
       ],
     );
   }

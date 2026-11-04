@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
+import '../text/place_lines.dart' show cutNameWritten;
 import '../text/readout_text.dart' show readoutText;
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -36,7 +37,7 @@ typedef TimelineViewClusterFacts = ({
   double pixelsPerFrame,
   ValueChanged<double>? onPixelsPerFrameChanged,
   VoidCallback? onZoomFit,
-  ValueListenable<String> cutName,
+  ValueListenable<String>? cutName,
   Object? trailing,
 });
 
@@ -70,7 +71,7 @@ class TimelineViewCluster extends StatelessWidget {
     required this.projectFrameRate,
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
-    required this.cutName,
+    this.cutName,
     this.onZoomFit,
     this.trailing = const <Widget>[],
   });
@@ -80,8 +81,10 @@ class TimelineViewCluster extends StatelessWidget {
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
   /// The name of the cut the panel's playhead stands in
-  /// (`CutUnderPlayhead.cutName`).
-  final ValueListenable<String> cutName;
+  /// (`CutUnderPlayhead.cutName`) — none where the panel names it in its
+  /// legend's heading instead: the timeline's (I-154, 유저 2026-11-04:
+  /// 「현재컷 이름을 여기로 옮겨서」).
+  final ValueListenable<String>? cutName;
 
   /// The zoom fit (I-111): the host's, which knows the end line its panel
   /// draws and the window it shows it in. Null keeps the button dark.
@@ -130,7 +133,7 @@ class TimelineViewCluster extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      _CutName(name: cutName),
+      if (cutName case final name?) _CutName(name: name),
       _zoomReadout(context),
       // 🗣️F-491 (23:15): 「오른쪽이 마지막에 남도록. 즉 지금으로 치면
       // fit버튼」 — the least of the group its bar shows, from the fit to
@@ -208,7 +211,9 @@ class TimelineViewCluster extends StatelessWidget {
 /// 컷 이름 앞에 c 붙이도록. 즉 컷이름 500이면 c500 되도록」. ↩️It stood in
 /// the cut pill right of its 「컷」 from F-463 ④ (유저 2026-10-25), and here
 /// between the frame counter and the zoom's − before that (I-57, 유저
-/// 2026-10-01), up to 160px wide.
+/// 2026-10-01), up to 160px wide. ↩️The timeline panel's bar showed it too
+/// until I-154 (유저 2026-11-04: 「현재컷 이름을 여기로 옮겨서」) — that
+/// panel names its cut in its legend's heading now (`cutListButton`).
 ///
 /// 🗣️F-463 ④: 「글자는 숫자+영어기준 5글자까지만 정상적으로 표시하도록. 그
 /// 이상은 생략. 호버하면 풀네임 뜨도록 툴팁표시」. Its place is always laid,
@@ -237,15 +242,11 @@ class _CutName extends StatelessWidget {
   /// Between the name and the zoom after it.
   static const double _breath = 2;
 
-  /// What a cut's name is written after — 「c500」.
-  static const String _cut = 'c';
-
   static const String _ellipsis = '…';
 
-  /// [name] as the place writes it, and its tooltip says it whole.
-  static String _written(String name) => name.isEmpty ? '' : '$_cut$name';
-
-  static String _shown(String name) => _written(
+  /// [name] as the place writes it ([cutNameWritten]); its tooltip says it
+  /// whole.
+  static String _shown(String name) => cutNameWritten(
     name.characters.length > _wholeCharacters
         ? '${name.characters.take(_wholeCharacters)}$_ellipsis'
         : name,
@@ -262,7 +263,7 @@ class _CutName extends StatelessWidget {
         .widest(
           everyDigitIn(
             (character) =>
-                '$_cut${character * _wholeCharacters}$_ellipsis',
+                cutNameWritten('${character * _wholeCharacters}$_ellipsis'),
             digits: _digitsAndLatin,
           ),
         )
@@ -284,7 +285,7 @@ class _CutName extends StatelessWidget {
           child: ValueListenableBuilder<String>(
             valueListenable: name,
             builder: (context, name, _) => AppTooltip(
-              message: _written(name),
+              message: cutNameWritten(name),
               child: Align(
                 alignment: Alignment.centerRight,
                 child: EllipsisText(

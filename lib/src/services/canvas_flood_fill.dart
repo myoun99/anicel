@@ -6,6 +6,7 @@ import 'dart:ui' show Offset;
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
 import '../core/point_bounds.dart';
+import '../core/rgba_premultiply.dart' show copyRgb, mul255Round;
 import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -24,6 +25,7 @@ import '../core/seed_tolerance.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection_region.dart';
 import 'cel_text_laying.dart';
+import 'fill_gradient.dart';
 import 'cut_frame_composite_plan.dart';
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'guide_geometry.dart';
@@ -32,6 +34,8 @@ import 'resample/resample_kernel.dart';
 import 'resample/selection_resample.dart';
 import 'mask_morphology.dart';
 import 'mask_soft_edge.dart';
+import 'pixel_run_contours.dart';
+import 'selection_clip.dart';
 
 /// P6 fill options — the Tool Settings panel's knobs (R11-④).
 class FloodFillOptions {
@@ -42,7 +46,25 @@ class FloodFillOptions {
     this.gapClosePx = 0,
     this.extendBeyondCanvas = false,
     this.source = CanvasReadSource.display,
+    this.continuous = false,
+    this.gradient = const FillGradientOptions(),
   });
+
+  /// The fill's gradient (I-160, 유저 2026-11-04: 「채우기도구안에서
+  /// 도구 설정안에서 구현」) — on, a press picks the range and the next lays
+  /// a gradient across it ([FillGradientOptions]).
+  final FillGradientOptions gradient;
+
+  /// 「연속 채우기」 (I-160, 유저 2026-11-04): a press held across the canvas
+  /// takes in every region it passes over — one range, marked as one and
+  /// laid as one at the lift ([FillRange.joining]) — instead of moving its
+  /// range to wherever it is.
+  ///
+  /// 🗣️I-160-Q6 b 「지나간 칸 전부」: any region the press passes, whatever
+  /// its colour — line art included, as Krita's 「Fill Regions of Any
+  /// Color」 does. CSP's help says only that a drag fills 「連続する複数の閉じた
+  /// 領域」 at once.
+  final bool continuous;
 
   /// Which layers the flood reads (I-36) — the eyedropper's question and
   /// answers ([CanvasReadSource]). The default is the user's first mode,
@@ -81,6 +103,8 @@ class FloodFillOptions {
     int? gapClosePx,
     bool? extendBeyondCanvas,
     CanvasReadSource? source,
+    bool? continuous,
+    FillGradientOptions? gradient,
   }) {
     return FloodFillOptions(
       tolerance: tolerance ?? this.tolerance,
@@ -89,6 +113,8 @@ class FloodFillOptions {
       gapClosePx: gapClosePx ?? this.gapClosePx,
       extendBeyondCanvas: extendBeyondCanvas ?? this.extendBeyondCanvas,
       source: source ?? this.source,
+      continuous: continuous ?? this.continuous,
+      gradient: gradient ?? this.gradient,
     );
   }
 
@@ -100,7 +126,9 @@ class FloodFillOptions {
       other.antiAlias == antiAlias &&
       other.gapClosePx == gapClosePx &&
       other.extendBeyondCanvas == extendBeyondCanvas &&
-      other.source == source;
+      other.source == source &&
+      other.continuous == continuous &&
+      other.gradient == gradient;
 
   @override
   int get hashCode => Object.hash(
@@ -110,6 +138,8 @@ class FloodFillOptions {
     gapClosePx,
     extendBeyondCanvas,
     source,
+    continuous,
+    gradient,
   );
 }
 
@@ -1322,39 +1352,24 @@ Iterable<BrushDab> regionFillPieces({
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
 }) sync* {
-  final bounds = region.coverageBounds;
-  final left = bounds.left.floor();
-  final top = bounds.top.floor();
-  final width = bounds.right.ceil() - left;
-  final height = bounds.bottom.ceil() - top;
-  if (width <= 0 || height <= 0) {
+  final area = _areaOf(region, options);
+  if (area == null) {
     return;
   }
-  final rows = region.pixelRunsFor(
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-  );
-  final hard = (rows: rows, left: left, top: top);
-  final reach = fillFinishReach(options);
-  // The sheet the area is finished as: the coverage box, with room for all
-  // the finish reaches — the expand AND the ramp past it.
-  final sheet = DirtyRegion(
-    left: left - reach,
-    top: top - reach,
-    rightExclusive: left + width + reach,
-    bottomExclusive: top + height + reach,
-  );
+  final (:hard, :sheet, :reach) = area;
   final reached = _tilesReached(hard, sheet: sheet, reach: reach);
   yield* _stampPieces(
     sheet,
-    color: color,
-    opacity: opacity,
+    paint: (color: color, gradient: null, opacity: opacity),
     finishedAround: (piece) => reached(piece)
         ? _finishedWindow(
             hard,
-            piece: piece,
+            around: (
+              left: piece.left,
+              top: piece.top,
+              rightExclusive: piece.rightExclusive,
+              bottomExclusive: piece.bottomExclusive,
+            ),
             sheet: sheet,
             reach: reach,
             options: options,
@@ -1363,10 +1378,92 @@ Iterable<BrushDab> regionFillPieces({
   );
 }
 
+/// The RANGE a drawn outline covers (I-160: 「올가미같은것도 올가미로 범위고르고
+/// 그 다음 드래그」) — [region] finished as [regionFillPieces] finishes it,
+/// held as the bucket's flood is held ([FillRange]), so the press after it
+/// lays its gradient through the bucket's own code. Null when it covers no
+/// pixel.
+///
+/// ⚠️Finished over its whole sheet at once, which [regionFillPieces] will
+/// not do (board `an-area-dab-costs-its-box`): a range is read whole — its
+/// mark, and a gradient over every pixel of it — as the bucket's flood is,
+/// which costs its box too.
+FillRange? regionFillRange({
+  required CanvasSelectionRegion region,
+  double opacity = 1.0,
+  FloodFillOptions options = const FloodFillOptions(),
+}) {
+  final area = _areaOf(region, options);
+  // Nothing the finish passes can grow: they only ever spread coverage.
+  if (area == null || area.hard.rows.every((runs) => runs.isEmpty)) {
+    return null;
+  }
+  final (:hard, :sheet, :reach) = area;
+  final whole = _finishedWindow(
+    hard,
+    around: (
+      left: sheet.left,
+      top: sheet.top,
+      rightExclusive: sheet.rightExclusive,
+      bottomExclusive: sheet.bottomExclusive,
+    ),
+    sheet: sheet,
+    reach: reach,
+    options: options,
+  );
+  return FillRange.over(
+    FloodFillRegion(
+      left: whole.left,
+      top: whole.top,
+      width: whole.width,
+      height: whole.mask.length ~/ whole.width,
+      mask: whole.mask,
+    ),
+    opacity: opacity,
+  );
+}
+
+/// [region]'s hard coverage and the sheet it is finished as: the coverage
+/// box, with room for all the finish reaches — the expand AND the ramp
+/// past it. Null when the box is empty.
+({_HardRuns hard, DirtyRegion sheet, int reach})? _areaOf(
+  CanvasSelectionRegion region,
+  FloodFillOptions options,
+) {
+  final bounds = region.coverageBounds;
+  final left = bounds.left.floor();
+  final top = bounds.top.floor();
+  final width = bounds.right.ceil() - left;
+  final height = bounds.bottom.ceil() - top;
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  final rows = region.pixelRunsFor(
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
+  final reach = fillFinishReach(options);
+  return (
+    hard: (rows: rows, left: left, top: top),
+    sheet: DirtyRegion(
+      left: left - reach,
+      top: top - reach,
+      rightExclusive: left + width + reach,
+      bottomExclusive: top + height + reach,
+    ),
+    reach: reach,
+  );
+}
+
 /// A region's hard coverage as rows of runs: row `r` is the canvas row
 /// `top + r`, its `[start, end, …]` columns counted from `left`
 /// ([CanvasSelectionRegion.pixelRunsFor]).
 typedef _HardRuns = ({List<List<int>> rows, int left, int top});
+
+/// A box of canvas pixels, right and bottom exclusive.
+typedef _Box = ({int left, int top, int rightExclusive, int bottomExclusive});
 
 /// A finished coverage mask and where it sits on the canvas, at least as
 /// large as the piece it was finished for.
@@ -1424,24 +1521,25 @@ bool Function(TileSpan piece) _tilesReached(
       0;
 }
 
-/// The area finished over [piece] as the one sheet over [sheet] would have
-/// finished it: its hard mask over a window — the piece grown by [reach],
-/// cut at [sheet] — then the expand and the anti-alias pass, as
-/// [_cropAndFinishFloodRegion] runs them. Exact over the piece, which is
-/// all a reader takes from it ([buildRegionFillDabs] says why).
+/// The area finished over [around] — a piece, or the whole sheet — as the
+/// one sheet over [sheet] would have finished it: its hard mask over a
+/// window — [around] grown by [reach], cut at [sheet] — then the expand and
+/// the anti-alias pass, as [_cropAndFinishFloodRegion] runs them. Exact
+/// over [around], which is all a reader takes from it
+/// ([buildRegionFillDabs] says why).
 _FinishedMask _finishedWindow(
   _HardRuns hard, {
-  required TileSpan piece,
+  required _Box around,
   required DirtyRegion sheet,
   required int reach,
   required FloodFillOptions options,
 }) {
-  final left = math.max(piece.left - reach, sheet.left);
-  final top = math.max(piece.top - reach, sheet.top);
-  final width = math.min(piece.rightExclusive + reach, sheet.rightExclusive) -
+  final left = math.max(around.left - reach, sheet.left);
+  final top = math.max(around.top - reach, sheet.top);
+  final width = math.min(around.rightExclusive + reach, sheet.rightExclusive) -
       left;
   final height =
-      math.min(piece.bottomExclusive + reach, sheet.bottomExclusive) - top;
+      math.min(around.bottomExclusive + reach, sheet.bottomExclusive) - top;
   final mask = Uint8List(width * height);
   final firstRow = math.max(top, hard.top);
   final endRow = math.min(top + height, hard.top + hard.rows.length);
@@ -1469,13 +1567,187 @@ _FinishedMask _finishedWindow(
   return (mask: mask, left: left, top: top, width: width);
 }
 
-/// The whole P6 tap: compose → fill from [point] → the region as stamp
-/// pieces ([_stampPieces]), committed through the exact stroke funnel —
-/// three-route parity, undo and .anicel serialization come free. Empty
-/// when nothing fills (seed off the fill raster), or when an EXTENDED
-/// fill's flood reaches the apron wall — the region is not closed;
-/// [onOpenRegion] fires so the UI can say so instead of silently flooding
-/// the surround.
+/// 🚨★★★WHAT A FILL HELD DOWN WILL COVER, BEFORE A COLOUR IS LAID (I-160 ·
+/// I-160-Q2 a, 유저 2026-11-04 「바꾼다 — 누르는 동안 미리보기, 떼면 채움」):
+/// the flood from a point, kept so the press can show where it reaches and
+/// the lift can land it without flooding again.
+///
+/// In the space the seed was in ([fillRangeAt]'s `space`). Null from
+/// [fillRangeAt] when nothing was flooded at all — the seed off the fill
+/// raster.
+final class FillRange {
+  FillRange._({
+    required this.region,
+    required List<FloodFillRegion> reached,
+    required double opacity,
+    void Function()? onOpenRegion,
+  }) : _reached = reached,
+       _opacity = opacity,
+       _onOpenRegion = onOpenRegion;
+
+  /// The range of [region], already flooded and closed — laid at [opacity].
+  FillRange.over(FloodFillRegion region, {double opacity = 1.0})
+    : this._(region: region, reached: [region], opacity: opacity);
+
+  /// What the fill lands on: every closed copy's region in one — null when
+  /// each copy flooded to the apron's wall ([open]).
+  final FloodFillRegion? region;
+
+  /// Every copy the flood reached, closed or open — what [covers] reads, so
+  /// a press moving over a region that refuses to fill does not flood it
+  /// again at each step.
+  final List<FloodFillRegion> _reached;
+
+  final double _opacity;
+  final void Function()? _onOpenRegion;
+
+  /// Whether nothing fills because the region is not closed — an EXTENDED
+  /// fill's flood reached the apron wall.
+  bool get open => region == null;
+
+  /// Whether a flood from [point] would flood what this one did: a pixel
+  /// this range's flood covered, in the seed's space.
+  bool covers(CanvasPoint point) {
+    final x = point.x.floor();
+    final y = point.y.floor();
+    for (final part in _reached) {
+      final column = x - part.left;
+      final row = y - part.top;
+      if (column >= 0 &&
+          row >= 0 &&
+          column < part.width &&
+          row < part.height &&
+          part.mask[row * part.width + column] > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// This range and [next] as one — what a continuous fill holds as its
+  /// press passes from region to region ([FloodFillOptions.continuous]).
+  ///
+  /// Each region is judged as it was flooded, as a symmetry's copies are
+  /// ([fillRangeAt]): an open one adds nothing to lay, and the notice is
+  /// said only when every region was open. The closed ones merge through the
+  /// copies' one merge ([_unionRegions]) — one mask per join, which a press
+  /// whose mark changes at each join pays anyway.
+  FillRange joining(FillRange next) => FillRange._(
+    region: _unionRegions([?region, ?next.region]),
+    reached: [..._reached, ...next._reached],
+    opacity: _opacity,
+    onOpenRegion: _onOpenRegion,
+  );
+
+  /// The range laid in [color] as stamp pieces ([_stampPieces]) — empty for
+  /// an [open] range, which says so ([fillRangeAt]'s `onOpenRegion`): it is
+  /// where the fill would have landed that nothing does.
+  List<BrushDab> dabsIn(int color) => _laid(color: color).toList();
+
+  /// The range laid under [gradient] (I-160) — the stamp pieces [dabsIn]
+  /// lays, each pixel the gradient's colour at its centre. Made as they are
+  /// asked for, afresh at each ask: what a dragged shape lays a share of a
+  /// frame at a time ([ShapeArea]'s `pieces`).
+  Iterable<BrushDab> piecesUnder(FillGradient gradient) =>
+      _laid(color: gradient.startColor, gradient: gradient);
+
+  Iterable<BrushDab> _laid({required int color, FillGradient? gradient}) {
+    final finished = region;
+    if (finished == null) {
+      _onOpenRegion?.call();
+      return const [];
+    }
+    final mask = (
+      mask: finished.mask,
+      left: finished.left,
+      top: finished.top,
+      width: finished.width,
+    );
+    return _stampPieces(
+      DirtyRegion(
+        left: finished.left,
+        top: finished.top,
+        rightExclusive: finished.left + finished.width,
+        bottomExclusive: finished.top + finished.height,
+      ),
+      paint: (color: color, gradient: gradient, opacity: _opacity),
+      finishedAround: (_) => mask,
+    );
+  }
+
+  /// The outline of every pixel the fill would write into, inside [within]
+  /// where a selection cuts it — on the pixel grid, in the seed's space
+  /// ([pixelRunContours]). Empty for an [open] range.
+  List<List<CanvasPoint>> contoursWithin(SelectionClip? within) {
+    final finished = region;
+    if (finished == null) {
+      return const [];
+    }
+    final width = finished.width;
+    final cut = within?.maskFor(
+      left: finished.left,
+      top: finished.top,
+      width: width,
+      height: finished.height,
+    );
+    final mask = finished.mask;
+    // Four bytes at a time where the four are one answer — all ink inside a
+    // run, all empty outside one — and a byte at a time where they are not
+    // (🔬I-160: a 4K range read a byte each was 25 ms of rows). Only where
+    // the mask's words line up, and never under a cut, which reads its own.
+    final words = cut == null && mask.offsetInBytes % 4 == 0
+        ? mask.buffer.asUint32List(mask.offsetInBytes, mask.length ~/ 4)
+        : null;
+    // The covered runs of the row that starts at [offset] in the mask.
+    List<int> runsFrom(int offset) {
+      // [words] and [cut] are the method's, and a capture checked inside a
+      // loop is read past its check by the AOT compiler — a null one kills
+      // the release build
+      // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+      final wordsNow = words;
+      final cutNow = cut;
+      final runs = <int>[];
+      var inside = false;
+      var x = 0;
+      while (x < width) {
+        final at = offset + x;
+        if (wordsNow != null && at & 3 == 0 && x + 4 <= width) {
+          final word = wordsNow[at >> 2];
+          if (inside ? word == 0xFFFFFFFF : word == 0) {
+            x += 4;
+            continue;
+          }
+        }
+        final covered = mask[at] > 0 && (cutNow == null || cutNow[at] > 0);
+        if (covered != inside) {
+          runs.add(x);
+          inside = covered;
+        }
+        x += 1;
+      }
+      if (inside) {
+        runs.add(width);
+      }
+      return runs;
+    }
+
+    return pixelRunContours(
+      [for (var y = 0; y < finished.height; y += 1) runsFrom(y * width)],
+      left: finished.left,
+      top: finished.top,
+      width: width,
+    );
+  }
+}
+
+/// What a canvas asks for the fill's range at [point] — [fillRangeAt] with
+/// the host's cut, frame and knobs — and every copy [symmetry] makes of it.
+typedef FillRangeAt =
+    FillRange? Function(CanvasPoint point, SymmetryShape? symmetry);
+
+/// The flood a fill from [point] makes — compose, then flood — as a
+/// [FillRange] laid later, in [FillRange.dabsIn]'s colour at [opacity].
+/// Null when nothing floods (the seed off the fill raster).
 ///
 /// [symmetry] makes the tap fill every copy of the seed, unioned into the
 /// same one region — see the loop below for why the stroke path's dab
@@ -1485,12 +1757,14 @@ _FinishedMask _finishedWindow(
 /// the dab lands on. [space] is where [point] and the dab are: that layer's
 /// ARTWORK when it is posed (the draw-through wrap hands the seed over in
 /// it), null for the canvas.
-List<BrushDab> buildFillDabs({
+///
+/// [onOpenRegion] is told when an open range is laid ([FillRange.dabsIn]),
+/// not here: a press that rests on an open region has filled nothing yet.
+FillRange? fillRangeAt({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
-  required int color,
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
   LayerId? activeLayerId,
@@ -1540,9 +1814,9 @@ List<BrushDab> buildFillDabs({
             copy.apply(point),
         ];
   final parts = <FloodFillRegion>[];
-  var reachedWall = false;
+  final reached = <FloodFillRegion>[];
   for (final seed in seeds) {
-    final part = labProbe(
+    final flooded = labProbe(
       'fill.flood',
       () => floodFillRegion(
         rgb: raster.rgb,
@@ -1556,9 +1830,20 @@ List<BrushDab> buildFillDabs({
         nativeHandles: raster.nativeHandles,
       ),
     );
-    if (part == null) {
+    if (flooded == null) {
       continue;
     }
+    // The flood finished its region as one sheet already (the raster is
+    // whole either way), so every piece is cut from that one mask — where
+    // the raster lies.
+    final part = FloodFillRegion(
+      left: flooded.left + raster.originX,
+      top: flooded.top + raster.originY,
+      width: flooded.width,
+      height: flooded.height,
+      mask: flooded.mask,
+    );
+    reached.add(part);
     if (extended) {
       // Leak detection: a flood that reached the apron's outer wall means
       // the region is OPEN (nothing bounded it before the wall). Refuse
@@ -1568,19 +1853,17 @@ List<BrushDab> buildFillDabs({
       // Judged per COPY: one copy landing in open space says nothing about
       // the others, and dropping the whole fill because a mirror missed
       // would make the symmetry's own copies veto the seed's.
-      final reached =
-          part.left <= 0 ||
-          part.top <= 0 ||
-          part.left + part.width >= raster.width ||
-          part.top + part.height >= raster.height;
-      if (reached) {
-        reachedWall = true;
+      final hitTheWall =
+          flooded.left <= 0 ||
+          flooded.top <= 0 ||
+          flooded.left + flooded.width >= raster.width ||
+          flooded.top + flooded.height >= raster.height;
+      if (hitTheWall) {
         continue;
       }
     }
     parts.add(part);
   }
-  final region = _unionRegions(parts);
   if (extended) {
     // The extended raster grew the engine's fill arenas ~9×; give the
     // memory back once this tap's flood is done (the next canvas fill
@@ -1589,34 +1872,18 @@ List<BrushDab> buildFillDabs({
       keepBytes: cut.canvasSize.width * cut.canvasSize.height * 4,
     );
   }
-  if (region == null) {
-    // The notice is the OPEN-region one only when a flood actually hit the
-    // wall; a seed that simply landed outside the raster answers nothing in
-    // silence, exactly as it did before symmetry existed.
-    if (reachedWall) {
-      onOpenRegion?.call();
-    }
-    return const [];
+  // A seed that simply landed outside the raster answers nothing in
+  // silence, exactly as it did before symmetry existed; the notice is the
+  // OPEN-region one only when a flood actually hit the wall.
+  if (reached.isEmpty) {
+    return null;
   }
-  // The flood finished its region as one sheet already (the raster is
-  // whole either way), so every piece is cut from that one mask.
-  final finished = (
-    mask: region.mask,
-    left: region.left + raster.originX,
-    top: region.top + raster.originY,
-    width: region.width,
-  );
-  return _stampPieces(
-    DirtyRegion(
-      left: finished.left,
-      top: finished.top,
-      rightExclusive: finished.left + region.width,
-      bottomExclusive: finished.top + region.height,
-    ),
-    color: color,
+  return FillRange._(
+    region: _unionRegions(parts),
+    reached: reached,
     opacity: opacity,
-    finishedAround: (_) => finished,
-  ).toList();
+    onOpenRegion: onOpenRegion,
+  );
 }
 
 /// The regions a fill flooded, merged into the single region the stamp path
@@ -1671,7 +1938,12 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
   );
 }
 
-/// A finished coverage mask painted [color] and handed over as STAMP
+/// How a fill's stamp pieces are painted: in [color] — or under a
+/// [gradient] (I-160), each pixel the gradient's colour at its centre — at
+/// [opacity].
+typedef _Paint = ({int color, FillGradient? gradient, double opacity});
+
+/// A finished coverage mask painted as [paint] says and handed over as STAMP
 /// PIECES: one dab for each run of cel tiles of [box] that the mask covers
 /// at all, along a tile row, in row-major order. [finishedAround] hands
 /// the finished mask over a tile, or null for a tile it knows is empty.
@@ -1698,8 +1970,7 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 /// and a thin line still carries only the tiles it crosses.
 Iterable<BrushDab> _stampPieces(
   DirtyRegion box, {
-  required int color,
-  required double opacity,
+  required _Paint paint,
   required _FinishedMask? Function(TileSpan tile) finishedAround,
 }) sync* {
   // ⚠️ONE id per fill, and a piece's first tile in it. Pieces are made
@@ -1717,8 +1988,9 @@ Iterable<BrushDab> _stampPieces(
       width: run.last.tile.rightExclusive - first.left,
       height: first.bottomExclusive - first.top,
       mask: _joined(run),
-      color: color,
-      opacity: opacity,
+      color: paint.color,
+      gradient: paint.gradient,
+      opacity: paint.opacity,
       id: '$id-${first.coord.x}.${first.coord.y}',
       sequence: sequence,
     );
@@ -1804,6 +2076,9 @@ Uint8List _joined(List<({TileSpan tile, Uint8List coverage})> run) {
 /// tip-mask dab re-sampled the giant mask bilinearly per pixel at every
 /// materialization — a multi-second slice on large fills — and the stamp
 /// is byte-exact by construction.
+///
+/// Under a [gradient] (I-160) each pixel is the gradient's colour at its
+/// centre instead, its alpha times the coverage ([_gradientRgba]).
 BrushDab _colorStampDab({
   required int left,
   required int top,
@@ -1811,6 +2086,7 @@ BrushDab _colorStampDab({
   required int height,
   required Uint8List mask,
   required int color,
+  FillGradient? gradient,
   required double opacity,
   required String id,
   required int sequence,
@@ -1819,6 +2095,14 @@ BrushDab _colorStampDab({
   final g = argbGreen(color);
   final b = argbBlue(color);
   final rgba = labProbe('fill.stamp-build', () {
+    if (gradient != null) {
+      return _gradientRgba((
+        mask: mask,
+        left: left,
+        top: top,
+        width: width,
+      ), gradient);
+    }
     final bytes = Uint8List(width * height * 4);
     if (Endian.host == Endian.little) {
       // One word store per pixel (R19-8K): the four byte stores below
@@ -1862,4 +2146,42 @@ BrushDab _colorStampDab({
     sequence: sequence,
     stamp: BrushStampImage(id: id, width: width, height: height, rgba: rgba),
   );
+}
+
+/// How finely [_gradientRgba] looks a pixel's colour up along its gradient
+/// ([FillGradient.stops]) — four stops to each level a channel can take.
+const int _gradientStops = 1024;
+
+/// [piece] — the coverage of a piece of a fill, where its corner sits —
+/// painted with [gradient]: each covered pixel the gradient's colour at its
+/// centre, that colour's alpha times the coverage.
+Uint8List _gradientRgba(_FinishedMask piece, FillGradient gradient) {
+  final (:mask, :left, :top, :width) = piece;
+  // The stops as the stamp's own bytes, so a pixel copies three of them
+  // rather than taking a colour apart.
+  final stops = Uint8List(_gradientStops * 4);
+  for (final (i, argb) in gradient.stops(_gradientStops).indexed) {
+    stops
+      ..[i * 4] = argbRed(argb)
+      ..[i * 4 + 1] = argbGreen(argb)
+      ..[i * 4 + 2] = argbBlue(argb)
+      ..[i * 4 + 3] = argbAlpha(argb);
+  }
+  final bytes = Uint8List(mask.length * 4);
+  final along = Float64List(width);
+  for (var start = 0; start < mask.length; start += width) {
+    gradient.rowInto(along, left + 0.5, top + start ~/ width + 0.5);
+    for (var column = 0; column < width; column += 1) {
+      final coverage = mask[start + column];
+      if (coverage == 0) {
+        continue;
+      }
+      // Rounded: [along] is never below 0.
+      final stop = (along[column] * (_gradientStops - 1) + 0.5).toInt() * 4;
+      final offset = (start + column) * 4;
+      copyRgb(bytes, offset, stops, stop);
+      bytes[offset + 3] = mul255Round(stops[stop + 3], coverage);
+    }
+  }
+  return bytes;
 }

@@ -102,6 +102,13 @@ class _CutCommands {
     return null;
   }
 
+  /// Where a cut told no place lands on [trackId] — a new one, or a paste
+  /// (I-150): [_insertionAnchorFor]'s slot, null at the track's end.
+  int? newCutIndexOn(TrackId trackId) => _insertionAnchorFor(
+    _coordinator.repository.requireProject(),
+    trackId,
+  ).index;
+
   /// Where a new cut lands on [trackId], and which name it counts from: to
   /// the RIGHT of the active cut when the active cut is on this track (the
   /// user's working position), the track's end otherwise.
@@ -278,7 +285,7 @@ class _CutCommands {
     final ahead = _resize(cutId, canvasSize, contentOffset).workAhead(
       undo: false,
     );
-    await ahead?.run(report ?? (_) {});
+    await ahead?.call(report ?? (_) {});
   }
 
   /// The step [placeCutCanvas] takes — and asks what it works out ahead.
@@ -499,14 +506,22 @@ class _CutCommands {
   /// clear the track, and the replacement was indistinguishable from a
   /// real cut in the undo stack.
   void deleteCut({required CutId cutId}) {
-    _coordinator.historyManager.execute(
-      DeleteCutCommand(
-        repository: _coordinator.repository,
-        editingSession: _coordinator.editingSession,
-        cutId: cutId,
-        brushFrameStore: _coordinator.brushFrameStore,
-      ),
+    final parting = _partingLinksOf({cutId});
+    final delete = DeleteCutCommand(
+      repository: _coordinator.repository,
+      editingSession: _coordinator.editingSession,
+      cutId: cutId,
+      brushFrameStore: _coordinator.brushFrameStore,
+      sheetInkStores: _coordinator.sheetInkStores,
     );
+    if (parting == null) {
+      _coordinator.historyManager.execute(delete);
+    } else {
+      _coordinator.historyManager.executeAsOneStep(delete.description, [
+        delete,
+        parting,
+      ]);
+    }
   }
 
   /// Deletes a batch of cuts as ONE undo step; emptying the track is
@@ -519,9 +534,20 @@ class _CutCommands {
           editingSession: _coordinator.editingSession,
           cutId: cutId,
           brushFrameStore: _coordinator.brushFrameStore,
+          sheetInkStores: _coordinator.sheetInkStores,
         ),
+      ?_partingLinksOf(cutIds.toSet()),
     ]);
   }
+
+  /// A 동기컷 deleted leaves its sync, so a 겸용 it had where it stood parts
+  /// from the sync's other cuts ([PartLinksAcrossTimelinesCommand]).
+  Command? _partingLinksOf(Set<CutId> leaving) =>
+      PartLinksAcrossTimelinesCommand.forLeaving(
+        repository: _coordinator.repository,
+        brushFrameStore: _coordinator.brushFrameStore,
+        leaving: leaving,
+      );
 
   /// Copies [sourceCutId] into [targetTrackId] at [index] — the track's end
   /// when null.
@@ -530,25 +556,37 @@ class _CutCommands {
     required TrackId targetTrackId,
     String? newName,
     int? index,
+  }) => copyCut(
+    _coordinator._requireCut(sourceCutId),
+    landing: (trackId: targetTrackId, index: index, leadingGapFrames: 0),
+    newName: newName,
+  );
+
+  /// Copies [source] onto [landing] as a cut of its own: a cut this project
+  /// holds, or one a board holds (I-150), which may be gone from it since,
+  /// or never have been this project's.
+  DuplicatedCut copyCut(
+    Cut source, {
+    required CutLanding landing,
+    String? newName,
   }) {
-    final project = _coordinator.repository.requireProject();
-    final sourceCut = _coordinator._requireCut(sourceCutId);
     final plan = planDuplicateCutCommandInput(
-      project: project,
-      sourceCut: sourceCut,
+      project: _coordinator.repository.requireProject(),
+      sourceCut: source,
     );
 
     _coordinator.historyManager.execute(
       DuplicateCutCommand(
         repository: _coordinator.repository,
         editingSession: _coordinator.editingSession,
-        sourceCutId: sourceCutId,
-        targetTrackId: targetTrackId,
+        source: source,
+        targetTrackId: landing.trackId,
         newCutId: plan.newCutId,
-        newName: newName ?? '${sourceCut.name} Copy',
+        newName: newName ?? '${source.name} Copy',
         layerIdMap: plan.layerIdMap,
         frameIdMap: plan.frameIdMap,
-        index: index,
+        index: landing.index,
+        leadingGapFrames: landing.leadingGapFrames,
       ),
     );
     return (

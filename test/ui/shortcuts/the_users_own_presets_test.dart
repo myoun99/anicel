@@ -352,7 +352,7 @@ void main() {
       );
       expect(
         field.controller!.text,
-        AppText.strings.shortcutPresetCopyName(
+        AppText.strings.copyNamed(
           AppText.strings.shortcutPresetName(
             ShortcutPreset.tvpaint.name,
             ShortcutPreset.tvpaint.label,

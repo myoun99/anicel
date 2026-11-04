@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/app_input_settings.dart' show AppInput;
+import '../../models/fx_basis.dart';
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
@@ -26,6 +27,7 @@ import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import 'layer_label_controls.dart'
     show
         LayerSectionBandCell,
+        RailChoiceChip,
         RailSwipeColumn,
         RailSwipeColumnPointer,
         fxGlyphStyle,
@@ -39,6 +41,7 @@ import 'timeline_block_look.dart';
 import 'timeline_current_row.dart';
 import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
 import '../text/app_strings.dart' show AppText;
+import '../text/model_vocabulary.dart' show FxBasisWords;
 import '../text/readout_text.dart'
     show
         ReadoutPart,
@@ -154,6 +157,8 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
+    this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
@@ -192,6 +197,17 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// Only reached for headers whose [PropertyLaneRow.groupEnabled] is set.
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
+
+  /// The group header's basis chip (I-120-Q10): what the group reads its
+  /// keys by. Only reached for headers whose [PropertyLaneRow.groupBasis]
+  /// is set; null leaves the chip out, as [onResetLaneGroup] does its reset.
+  final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
+  onSetLaneGroupBasis;
+
+  /// The group header's RASTERIZE (I-120 round ②) as the host answers it:
+  /// none for a header that has none, its press null where it bakes
+  /// nothing now (the slot stays, Q8). Null leaves it out everywhere.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5, AE's group Reset). Never deletes a key:
   /// it puts the group's members back to their defaults at the playhead —
@@ -915,8 +931,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       layerRailTrailingCells(
         axis: widget.axis,
         columns: widget.metrics.railColumns,
+        visibility: _groupRasterize(colorScheme),
         clip: _groupReset(colorScheme),
         fx: _groupFx(context),
+        blend: _groupBasis(),
         optionalColumns: widget.optionalColumns,
         trailingRegion: _groupPreview(),
       );
@@ -975,6 +993,53 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           style: fxGlyphStyle(context: context, active: enabled, fontSize: 11),
         ),
       ),
+    );
+  }
+
+  /// 🗣️I-120-Q10 「A」: the group's RASTERIZE in the EYE column — a header
+  /// has no eye, so the column is free — wearing the hatch the reference
+  /// rasterize's window wears, its tooltip naming what it bakes.
+  Widget? _groupRasterize(ColorScheme colorScheme) {
+    final answer = widget.onRasterizeLaneGroup?.call(layer, lane);
+    if (answer == null) return null;
+    return RailGlyphButton(
+      name: '$_keyPrefix-lane-group-rasterize-${layer.id}-${lane.laneId}',
+      tooltip: AppText.strings.tlRasterizeFxTemplate.replaceAll(
+        '{name}',
+        lane.label,
+      ),
+      size: AppIconButtonSize.micro,
+      onPressed: answer.press,
+      glyph: RailIconGlyph(
+        Icons.texture_outlined,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  /// I-120-Q10: what the group reads its keys by — each frame, or the head
+  /// of the block a frame is in — as a list in the BLEND column (the
+  /// user's layout A: a header has no blend, so the column is free). Its
+  /// tooltip says what it is the basis of (「적용 대상」 — the user's word).
+  Widget? _groupBasis() {
+    final basis = lane.groupBasis;
+    final onPick = widget.onSetLaneGroupBasis;
+    if (basis == null || onPick == null) return null;
+    final language = AppText.language;
+    final name = '$_keyPrefix-lane-group-basis-${layer.id}-${lane.laneId}';
+    return RailChoiceChip<FxBasis>(
+      name: name,
+      tooltip: AppText.strings.tlFxBasisTemplate.replaceAll(
+        '{name}',
+        lane.label,
+      ),
+      optionKeyPrefix: '$name-option-',
+      value: basis,
+      options: () => FxBasis.values,
+      labelOf: (value) => value.labelFor(language),
+      marked: basis != FxBasis.frame,
+      onPicked: (picked) => onPick(layer, lane, picked),
+      axis: widget.axis,
     );
   }
 

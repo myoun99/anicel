@@ -851,7 +851,30 @@ void main() {
   /// (`edd34ba45`) names those two added and nothing gone. ⛔Not bundled to
   /// fit: the leaf, the bare row and the chain are three kinds of node, and
   /// the drawing and whether it still stands are two questions.
-  const wideSignatures = 456;
+  ///
+  /// ⚠️456 → 457 on 2026-11-04, named as the rule above asks (card
+  /// timeline-copy-thaws-every-cel, 유저 「타임라인복제 … 메모리가 3000mb까지
+  /// 폭증」): `copyBakedPictures` (five) is the ONE way a copy made beside
+  /// its source — a duplicated block, row, cut and timeline, and 링크 독립 —
+  /// hands its cels to the store's copy, where four sites each read the
+  /// picture as a use and thawed every kept cel. Its inputs are the store
+  /// that copies, the project that names the keys, the cels the copy
+  /// minted, and the rows they go from and to. 🔬`clean_code_diff` against
+  /// master (`fcee56de1`) names it added and nothing gone. ⛔Not bundled to
+  /// fit: the source's row and the copy's are two places.
+  ///
+  /// ⚠️457 → 460 on 2026-11-04, three named as the rule above asks (I-120,
+  /// an fx read by the frame or by the block): `_reading` (five) and
+  /// `transformPositionLane` (five) took the frame the value column asks
+  /// the reading at (`shownFrame` — 🗣️Q12 「값 칸 숫자도 대응하도록 해서
+  /// 캔버스랑 같도록」: the head of the block, while the line stays the
+  /// keys'), and `transformUnionHeader` (five) the basis chip a header
+  /// wears beside its switch (Q10). 🔬`clean_code_diff` against the lane's
+  /// base (`cf70f6f8d`) names those three added and nothing gone. ⛔Not
+  /// bundled to fit: the line reads the value at its own time and the
+  /// column at another — one reading asked twice — and the switch and the
+  /// basis are two questions the header answers.
+  const wideSignatures = 460;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1214,7 +1237,18 @@ void main() {
   /// master (`ce21fca6d`, at 415) named those two added and nothing gone.
   /// ⛔Not split to fit: each is one table — of a brush's fields, copied
   /// or held to their ranges field for field.
-  const longBodies = 417;
+  ///
+  /// ⚠️417 → 416 on 2026-11-04: `UnlinkLayerCommand.execute` left when its
+  /// parting and its picture copies moved to `link_group_parts`, which the
+  /// parting across timelines answers with too (I-150 ⑤d). 🔬
+  /// `clean_code_diff` against master (`a90e3e9d5`) names it gone and
+  /// nothing added.
+  ///
+  /// ⚠️416 → 415 on 2026-11-04, following one down: the cel board's folder
+  /// column handed its rows and lane to a method of their own (`5745769e0`,
+  /// I-153), landed beside ⑤d. 🔬`clean_code_diff` across that commit names
+  /// `ExportCelsBoardState._folderColumn` gone and nothing added.
+  const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1618,7 +1652,27 @@ void main() {
   /// `resetHeldBrush`). 🔬`clean_code_diff` against master names this one and
   /// no other class. ⛔Not split to fit: the bank and what takes from it
   /// stand together.
-  const longClasses = 83;
+  ///
+  /// ⚠️83 → 84 on 2026-11-04, ONE name: `Layer` crossed (582 → 611) when
+  /// its Transform bundle came to be read by the frame or by the block
+  /// (I-120-Q1 · Q9): the basis it is read at (`transformBasis` — the
+  /// head's, mirrored and saved as `transformEnabled` is), the blocks its
+  /// bundles step on (`fxBlocks`) and the frame its transform reads
+  /// (`transformReadFrame`). 🔬`clean_code_diff` against the lane's base
+  /// (`cf70f6f8d`) names this one and no other class. ⛔Not split to fit:
+  /// the basis is the row's as its switch is, and the blocks it steps on
+  /// are its timeline.
+  ///
+  /// ⚠️84 → 85 on 2026-11-04, ONE name: `EditorShortcutBindings` crossed
+  /// (596 → 651) when the settings window came to name who clashes and to
+  /// leave a key on one of them (I-158, 🗣️「펜(Y)이런식으로 이 텍스트를
+  /// 버튼으로 만들어서, 이걸로 할당하는 기능」): the clashes read from the
+  /// one key-to-actions inversion both conflict queries read
+  /// (`_holdersByKey`), and the press writes through the recording the
+  /// other setters do (`_record`). 🔬`clean_code_diff` against master names
+  /// this one and no other class. ⛔Not split to fit: a key is put and taken
+  /// off where its recording is kept.
+  const longClasses = 85;
 
   late CleanCodeScan scan;
   setUpAll(() {

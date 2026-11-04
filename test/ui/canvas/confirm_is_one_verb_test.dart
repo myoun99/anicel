@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/panel_finders.dart';
+import '../../helpers/wait_window.dart'
+    show waitOutTheWaitWindow, windowBehind;
 
 /// 🚨★★★**확정 — ONE verb, three doors** (confirm-button, 유저 2026-09-24):
 /// 「입구 확실하게 안전하게 해서 **일반상태=마지막 스트로크 재입력,
@@ -158,9 +160,11 @@ void main() {
     await pumpFrames(tester);
   }
 
+  // A transform's 확정 stands behind the wait window (F-551) — waited out.
   Future<void> pressEnter(WidgetTester tester) async {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await pumpFrames(tester);
+    await waitOutTheWaitWindow(tester);
   }
 
   final railConfirm = find.byWidgetPredicate(
@@ -466,7 +470,7 @@ void main() {
       ),
     );
     await pumpFrames(tester);
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await pumpFrames(tester);
     expect(commands.transformActive, isFalse, reason: '⛔전제: 일반 변형 확정');
     expect(

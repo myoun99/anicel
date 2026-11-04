@@ -111,7 +111,11 @@ void main() {
         id: const EffectId('fx'),
         kind: EffectKind.colorKey,
       );
-      final resolved = resolveLayerEffectsAt(effects: [fresh], frameIndex: 0);
+      final resolved = resolveLayerEffectsAt(
+        effects: [fresh],
+        frameIndex: 0,
+        blocks: null,
+      );
       expect(
         resolved,
         isEmpty,

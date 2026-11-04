@@ -1,25 +1,45 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import 'app_progress_dialog.dart' show AppWaitWindow;
+import 'behind_the_wait_window.dart';
 
-/// Opens [LinkWindow] and waits for it to close.
-Future<void> showLinkWindow(
-  BuildContext context, {
-  required List<String> targets,
-  required VoidCallback? unlink,
-  String? unlinkOffReason,
-}) => showDialog<void>(
-  context: context,
-  builder: (context) => LinkWindow(
-    targets: targets,
-    unlink: unlink,
-    unlinkOffReason: unlinkOffReason,
-  ),
-);
+/// What a cut or a row shares, and so which of its two buttons and windows
+/// answers: its pictures with a 겸용 (I-25) — the link — or, a 동기컷, its
+/// very self with the cut it is in the other timelines (I-150-Q3) — the
+/// sync. A glyph each, the cut's the row's (I-25: 「레이어에서 사용하는거랑
+/// 똑같은 것」).
+///
+/// 🗣️유저 2026-11-04: 「동기컷이 지금 링크랑 같은 버튼인데, 그거말고 그냥
+/// 버튼나누자. 동기 대상 뭐 이런식? 아이콘도 다른거쓰고」. ↩️A 동기컷 wore the
+/// sync glyph on the link's one button, and the link window listed it under
+/// a heading of its own with 동기 해제 beside 링크 해제.
+enum LinkKind {
+  link(Icons.link),
+  sync(Icons.sync);
 
-/// THE LINK WINDOW: what a cut or a row is linked to, and the one button
-/// that unlinks it.
+  const LinkKind(this.glyph);
+
+  final IconData glyph;
+
+  /// The window's title, which heads the button's tooltip too.
+  String get title => switch (this) {
+    link => AppText.strings.tlLinkedWith,
+    sync => AppText.strings.syncedWith,
+  };
+}
+
+/// Opens [window] and waits for it to close. ↩️It took the window's
+/// fields one by one and built it, a second list of them to keep in step.
+Future<void> showLinkWindow(BuildContext context, LinkWindow window) =>
+    showDialog<void>(context: context, builder: (context) => window);
+
+/// THE LINK WINDOW: what a cut or a row is linked to — or, its [kind] the
+/// sync, the cut a 동기컷 is in the other timelines — and the one button that
+/// takes it apart.
 ///
 /// 🗣️I-25 (유저 2026-09-14): 「링크컷/링크레이어 등 좀 더 알기쉽게. 우선
 /// 링크컷이 발생해있는 경우, 모든 컷에 적용. 내용은 컷블록에서 컷 이름 오른쪽에
@@ -32,27 +52,37 @@ Future<void> showLinkWindow(
 class LinkWindow extends StatelessWidget {
   const LinkWindow({
     super.key,
+    required this.kind,
     required this.targets,
-    required this.unlink,
-    this.unlinkOffReason,
+    required this.action,
+    this.actionOffReason,
   });
 
-  /// The linked places, one line each — view only.
+  /// Which window: the link's or the sync's.
+  final LinkKind kind;
+
+  /// The places it shares with, one line each — view only.
   final List<String> targets;
 
-  /// What the button does; null keeps it in place, off, with
-  /// [unlinkOffReason] as its tooltip.
-  final VoidCallback? unlink;
-  final String? unlinkOffReason;
+  /// What the button does — 링크 해제, or 동기 해제 (I-150-Q6, 유저
+  /// 2026-11-04 「동기 해제 = 독립 컷」); null keeps it in place, off, with
+  /// [actionOffReason] as its tooltip.
+  final VoidCallback? action;
+  final String? actionOffReason;
 
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final unlink = this.unlink;
+    final action = this.action;
+    final name = kind.name;
+    final label = switch (kind) {
+      LinkKind.link => strings.linkWindowUnlink,
+      LinkKind.sync => strings.linkWindowUnsync,
+    };
     return AppWindow(
-      windowKey: const ValueKey<String>('link-window'),
-      title: strings.tlLinkedWith,
-      titleIcon: Icons.link,
+      windowKey: ValueKey<String>('$name-window'),
+      title: kind.title,
+      titleIcon: kind.glyph,
       onClose: () => Navigator.of(context).pop(),
       width: 320,
       body: ConstrainedBox(
@@ -66,7 +96,7 @@ class LinkWindow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Text(
                     line,
-                    key: ValueKey<String>('link-window-target-$index'),
+                    key: ValueKey<String>('$name-window-target-$index'),
                   ),
                 ),
             ],
@@ -75,15 +105,28 @@ class LinkWindow extends StatelessWidget {
       ),
       actions: [
         AppWindowAction(
-          label: strings.linkWindowUnlink,
-          actionKey: const ValueKey<String>('link-window-unlink'),
+          label: label,
+          actionKey: ValueKey<String>(switch (kind) {
+            LinkKind.link => 'link-window-unlink',
+            LinkKind.sync => 'sync-window-unsync',
+          }),
           emphasis: AppWindowActionEmphasis.primary,
-          tooltip: unlink == null ? unlinkOffReason : null,
-          onPressed: unlink == null
+          tooltip: action == null ? actionOffReason : null,
+          // 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the window
+          // closes and the button's step is taken behind the app's wait
+          // window, under the button's name — put up where this window
+          // stood, which is gone.
+          onPressed: action == null
               ? null
               : () {
-                  Navigator.of(context).pop();
-                  unlink();
+                  final navigator = Navigator.of(context)..pop();
+                  unawaited(
+                    takeBehindTheWaitWindow(
+                      navigator.context,
+                      action,
+                      window: AppWaitWindow.working(label),
+                    ),
+                  );
                 },
         ),
       ],

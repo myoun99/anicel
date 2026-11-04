@@ -499,7 +499,8 @@ void main() {
         naming: ExportCelNaming(includeCutName: true),
       ),
     );
-    expect(files(built), ['_C1_BG.png', '_C2_BG.png']);
+    // Each in its cut's folder: the project scope holds it (I-153).
+    expect(files(built), ['C1/_C1_BG.png', 'C2/_C2_BG.png']);
   });
 
   test('⛔the unnamed cel that IS the layer is the one the row SHOWS — a 겸용 '
@@ -804,6 +805,58 @@ void main() {
     expect(built.cels.map((task) => task.cut.id.value).toSet(), {'c1'});
   });
 
+  test('🗣️I-153: project scope puts every cut in a folder of its own, its '
+      'pill left off or not', () {
+    // 유저 2026-11-04: 「범위에서 프로젝트 고르면 이름규칙 폴더생성에서 컷
+    // 체크 고정되도록」.
+    final project = Project(
+      id: const ProjectId('project'),
+      name: 'Project',
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          cuts: [
+            for (final id in ['c1', 'c2'])
+              Cut(
+                id: CutId(id),
+                name: id.toUpperCase(),
+                duration: 2,
+                canvasSize: const CanvasSize(width: 8, height: 8),
+                layers: [
+                  base('$id-a', 'A', [frame('$id-f1', name: '1')]),
+                  createCameraLayer(cutId: CutId(id)),
+                ],
+              ),
+          ],
+        ),
+      ],
+      createdAt: DateTime.utc(2026),
+    );
+    List<String> filesOf(CelsExportSpec spec) => [
+      for (final task in buildExportCelGroupPlan(
+        project: project,
+        activeCutId: const CutId('c1'),
+        drawn: everyFrameDrawn,
+        spec: spec.copyWith(kinds: {ExportCelKind.cel}),
+      ).cels)
+        task.fileName,
+    ];
+    const lo = ExportCelNaming(
+      cutFolderName: ExportNameAffix(prefix: 'csm_14_', suffix: '_lo'),
+    );
+    expect(
+      filesOf(const CelsExportSpec(scope: ExportScopeKind.project)),
+      ['C1/A1.png', 'C2/A1.png'],
+    );
+    expect(
+      filesOf(const CelsExportSpec(scope: ExportScopeKind.project, naming: lo)),
+      ['csm_14_C1_lo/A1.png', 'csm_14_C2_lo/A1.png'],
+      reason: 'the held folder wears its name as a picked one does',
+    );
+    expect(filesOf(const CelsExportSpec(naming: lo)), ['A1.png']);
+  });
+
   test('겸용: a link group is ONE cut — exported once, from its owner, under '
       'the joined name', () {
     // 유저 2026-09-09: 「겸용컷은 하나라는 느낌이야 … 겸용컷 비포함이란게
@@ -862,7 +915,8 @@ void main() {
     );
 
     expect(built.cels.map((task) => task.cut.id.value), ['c1', 'c3']);
-    expect(files(built), ['C1-C2_A1.png', 'C3_A1.png']);
+    // Each in its cut's folder: the project scope holds it (I-153).
+    expect(files(built), ['C1-C2/C1-C2_A1.png', 'C3/C3_A1.png']);
     // The cut scope, opened on the sibling, still names the whole group.
     final fromSibling = buildExportCelGroupPlan(
       project: project,
@@ -1002,7 +1056,11 @@ void main() {
 
     test('…and under the project scope, where the group is walked once from '
         'its owner', () {
-      expect(stacks(planFrom('c2', scope: ExportScopeKind.project)), everyCel);
+      // In the group's folder: the project scope holds it (I-153).
+      expect(stacks(planFrom('c2', scope: ExportScopeKind.project)), {
+        for (final MapEntry(:key, :value) in everyCel.entries)
+          'C1-C2/$key': value,
+      });
     });
 
     test('a cel is its showing cut\'s stack: that cut\'s rows, and the '
@@ -1323,6 +1381,40 @@ void main() {
         ),
       ).cels.single.fileName,
       'Project/CUT1/A/A1.png',
+    );
+  });
+
+  test('🗣️I-153: the project\'s and the cut\'s folders wear their prefix '
+      'and suffix — the folders only, and only the ones made', () {
+    // 유저 2026-11-04: 「csm_14_컷이름_lo 이런식으로 출력하고 … 폴더생성에서
+    // 컷이나 프로젝트 누르면 아래에 접두 접미사 텍스트 지정할수있도록」.
+    final layers = [base('a', 'A', [frame('f1')])];
+    String fileOf(ExportCelNaming naming) =>
+        plan(layers, spec: CelsExportSpec(naming: naming)).cels.single.fileName;
+    const worn = ExportCelNaming(
+      projectFolderName: ExportNameAffix(prefix: 'csm', suffix: '_all'),
+      cutFolderName: ExportNameAffix(prefix: 'csm_14_', suffix: '_lo'),
+    );
+    expect(
+      fileOf(worn.copyWith(projectFolder: true, cutFolder: true)),
+      'csmProject_all/csm_14_CUT1_lo/A1.png',
+    );
+    expect(fileOf(worn.copyWith(cutFolder: true)), 'csm_14_CUT1_lo/A1.png');
+    expect(fileOf(worn), 'A1.png', reason: 'no folder, nothing to wear');
+    expect(
+      fileOf(worn.copyWith(cutFolder: true, includeCutName: true)),
+      'csm_14_CUT1_lo/CUT1_A1.png',
+      reason: 'the file\'s own cut name is the cut\'s name',
+    );
+    expect(
+      fileOf(
+        const ExportCelNaming(
+          cutFolder: true,
+          cutFolderName: ExportNameAffix(prefix: 'ep/14 ', suffix: ' .'),
+        ),
+      ),
+      'ep_14 CUT1/A1.png',
+      reason: 'what is worn is a name, not a path: no folder of its own',
     );
   });
 
@@ -2124,12 +2216,15 @@ void main() {
           for (final sheet in whole.documents)
             (sheet.listedIn.id.value, sheet.of.id.value, sheet.fileName),
         ],
+        // The project scope folders every cut (I-153): a group's documents
+        // stand in ONE folder — the entry's — whichever of its cuts each is
+        // of.
         [
-          ('c1', 'c1', '_TSC1.png'),
-          ('c1', 'c2', '_TSC2.png'),
-          ('c1', 'c1', '_CUTC1_envelope.png'),
-          ('c3', 'c3', '_TSC3.png'),
-          ('c3', 'c3', '_CUTC3_envelope.png'),
+          ('c1', 'c1', 'C1-C2/_TSC1.png'),
+          ('c1', 'c2', 'C1-C2/_TSC2.png'),
+          ('c1', 'c1', 'C1-C2/_CUTC1_envelope.png'),
+          ('c3', 'c3', 'C3/_TSC3.png'),
+          ('c3', 'c3', 'C3/_CUTC3_envelope.png'),
         ],
       );
       // Each answers to the delta of the cut it is OF.
@@ -2175,31 +2270,11 @@ void main() {
         ),
       );
       expect(c2Off.writtenFileNames, [
-        '_TSC1.png',
-        '_CUTC1_envelope.png',
-        '_TSC3.png',
-        '_CUTC3_envelope.png',
+        'C1-C2/_TSC1.png',
+        'C1-C2/_CUTC1_envelope.png',
+        'C3/_TSC3.png',
+        'C3/_CUTC3_envelope.png',
       ]);
-
-      // With a folder a cut, a group's documents stand in ONE folder — the
-      // entry's — whichever of its cuts each is of.
-      final foldered = buildExportCelGroupPlan(
-        project: project,
-        activeCutId: const CutId('c2'),
-        drawn: everyFrameDrawn,
-        spec: documents.copyWith(
-          scope: ExportScopeKind.project,
-          naming: const ExportCelNaming(cutFolder: true),
-        ),
-      ).writtenFileNames;
-      String folderOf(String ending) {
-        final file = foldered.singleWhere((name) => name.endsWith(ending));
-        return file.substring(0, file.lastIndexOf('/'));
-      }
-
-      expect(folderOf('_TSC2.png'), folderOf('_TSC1.png'));
-      expect(folderOf('_CUTC1_envelope.png'), folderOf('_TSC1.png'));
-      expect(folderOf('_TSC3.png'), isNot(folderOf('_TSC1.png')));
     });
   });
 }

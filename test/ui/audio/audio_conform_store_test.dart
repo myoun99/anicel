@@ -233,28 +233,22 @@ void main() {
     store.dispose();
   });
 
-  test('🚨the PCM the device plays lands where the device plays it: the '
-      'conform and each rate it is converted to are placed once, as they '
-      'land', () async {
-    final placed = <Float32List>[];
+  test('🚨the PCM lands where its runner placed it — the conform and each '
+      'rate it is converted to, kept as they came, copied by nothing here '
+      '(conform-landing-copies-on-the-ui-thread)', () async {
+    final conformed = _usableResult();
+    final converted = Float32List.fromList([0.9]);
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
-      runner: (request) async => _usableResult(),
-      resampleRunner: (request) async => Float32List.fromList([0.9]),
-      placeForPlayback: (floats) {
-        final samples = Float32List(floats);
-        placed.add(samples);
-        return samples;
-      },
+      runner: (request) async => conformed,
+      resampleRunner: (request) async => converted,
       log: (_) {},
     );
     store.resultFor('a.wav');
     await pumpEventQueue();
 
-    expect(placed, hasLength(1));
-    expect(store.samplesFor('a.wav'), same(placed[0]));
-    expect(store.samplesAtRate('a.wav', 48000), same(placed[0]));
-    expect(placed[0], _usableResult().samples);
+    expect(store.samplesFor('a.wav'), same(conformed.samples));
+    expect(store.samplesAtRate('a.wav', 48000), same(conformed.samples));
     final landed = store.resultFor('a.wav')!;
     expect(landed.isUsable, isTrue);
     expect(store.peaksFor('a.wav')?.peaks, hasLength(1));
@@ -262,13 +256,7 @@ void main() {
 
     expect(store.samplesAtRate('a.wav', 44100), isNull);
     await pumpEventQueue();
-    expect(placed, hasLength(2));
-    expect(store.samplesAtRate('a.wav', 44100), same(placed[1]));
-    expect(placed[1], Float32List.fromList([0.9]));
-
-    store.samplesAtRate('a.wav', 48000);
-    store.samplesAtRate('a.wav', 44100);
-    expect(placed, hasLength(2), reason: 'what landed is placed once');
+    expect(store.samplesAtRate('a.wav', 44100), same(converted));
     store.dispose();
   });
   test('a project-rate change makes cached entries stale on their own — '

@@ -22,6 +22,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -305,8 +306,8 @@ void main() {
     });
   });
 
-  testWidgets('the SE rows\' name tags: the frame a presentation render '
-      'makes, as the canvas lays them over its picture', (tester) async {
+  testWidgets('the SE rows\' name tags: the frame a film makes, as the '
+      'canvas lays them over its picture', (tester) async {
     await tester.runAsync(() async {
       const se = LayerId('se');
       final s = EditorSessionManager(
@@ -315,6 +316,11 @@ void main() {
           name: 'Project',
           createdAt: DateTime.utc(2026),
           cameraSize: cameraSize,
+          // On nothing, as the saved picture here is: a film lays its paper.
+          background: const ProjectBackground.color(
+            ProjectBackground.defaultPaperArgb,
+            none: true,
+          ),
           tracks: [
             Track(
               id: trackId,
@@ -355,10 +361,10 @@ void main() {
       );
       addTearDown(s.dispose);
       final named = await bytesOf(
-        await rendererOf(s).renderComposite(
+        await rendererOf(s).renderVideoFrame(
           standing(s),
           ExportSizeMode.canvas,
-          withNameTags: true,
+          preserveAlpha: true,
         ),
       );
       expect(named, isNot(await film(s)), reason: '⛔premise: a tag is drawn');

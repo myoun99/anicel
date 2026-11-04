@@ -17,6 +17,7 @@ import 'conte/conte_sheet_builder.dart' show contePageHeadsOf;
 import 'storyboard/cut_link_window.dart';
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/instance_editor_commands.dart';
+import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
@@ -36,6 +37,7 @@ import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
+import 'storyboard/timeline_list.dart' show timelineListButton;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent, LayerRailId;
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
@@ -590,8 +592,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // read).
               panelContext: _toolbarPanel,
               onAddLayer: _session.layerStack.addLayer,
-              onRenameLayer: () =>
-                  unawaited(renameActiveLayerWithDialog(context, _session)),
               onDeleteLayer: () =>
                   unawaited(deleteActiveLayerWithDialog(context, _session)),
               // F: the shared delete's ROW rung, confirmation included.
@@ -916,13 +916,17 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       }
                     },
                     // I-25: a linked cut's name wears the link icon, and the
-                    // icon opens the link window.
+                    // icon opens the link window — a 동기컷's, the sync's
+                    // beside it (I-150).
                     linkedCutIds: _session.cutVerbs.linkedCutIds,
-                    onOpenCutLinks: (context, cutId) => showCutLinkWindow(
-                      context,
-                      session: _session,
-                      cutId: cutId,
-                    ),
+                    syncedCutIds: _session.cutVerbs.syncedCutIds,
+                    onOpenCutLinks: (context, cutId, kind) =>
+                        showCutLinkWindow(
+                          context,
+                          session: _session,
+                          cutId: cutId,
+                          kind: kind,
+                        ),
                     // The end line edits the MOVIE length (UI-R20 #3): the
                     // project's trailing gap, never the cuts.
                     movieEnd: StoryboardMovieEndCallbacks(
@@ -1065,6 +1069,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           lane.laneId,
                           description: 'Toggle ${lane.label}',
                         ),
+                    onSetLaneGroupBasis: (layer, lane, basis) =>
+                        _session.laneVerbs.setLaneGroupBasis(
+                          layer.id,
+                          lane.laneId,
+                          basis,
+                          description: 'Set ${lane.label} basis',
+                        ),
+                    onRasterizeLaneGroup: (layer, lane) =>
+                        rasterizeLaneGroupOf(context, _session, layer, lane),
                     onResetLaneGroup: (layer, lane) =>
                         _session.laneVerbs.resetLaneGroup(
                           layer.id,
@@ -1134,6 +1147,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // (F-443, 유저 2026-10-23: 「이거는 자리차지하고
                       // 레전드행에도 버튼있는거 감수」) — as the timeline's.
                       onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
+                    ),
+                    // The legend's heading is the timeline list (I-150).
+                    legendHeading: timelineListButton(
+                      context,
+                      _session.timelineVerbs,
                     ),
                     legendOnionSkinOn:
                         _session.onionSkin.displayedLayersOnionSkinEnabled,

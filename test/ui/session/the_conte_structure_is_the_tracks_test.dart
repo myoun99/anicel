@@ -117,9 +117,17 @@ void main() {
 
       session.folders.addAttachedLayer(AttachedPlacement.above);
       final added = projectOf(session);
-      final given = conteGroupOf(cutIn(session, 'b')).first.row;
-      expect(conteGroupOf(cutIn(session, 'b')), hasLength(3));
-      expect(isConteFill(given), isTrue, reason: 'b was given the new row');
+      // 🗣️I-159 (유저 2026-11-04): 「서있는걸 기준으로 … 그 아래나 위에
+      // 생기게」 — stood on the conte, the row added takes the seat beside
+      // it in every cut, and Over moves one out. ↩️It went topmost.
+      final given = conteGroupOf(
+        cutIn(session, 'b'),
+      ).singleWhere((entry) => entry.seat == 1).row;
+      expect(
+        seats(session, 'b'),
+        ['2:Over', '1:*${given.name}', '0:Conte'],
+        reason: 'b was given the new row',
+      );
 
       session.undo();
       expect(projectOf(session), before);

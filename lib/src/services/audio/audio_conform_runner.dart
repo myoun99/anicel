@@ -11,11 +11,14 @@
 /// the pipeline inside the isolate instead of capturing one.
 library;
 
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import '../../core/on_a_worker.dart';
 import '../../native/qa_audio_decoder.dart';
+import '../../native/qa_audio_device.dart';
 import '../../native/qa_audio_native.dart';
 import '../../native/qa_engine_abi.dart';
 import '../media/media_byte_source.dart';
@@ -107,6 +110,15 @@ class ResampleRequest {
   final int inputRate;
   final int outputRate;
   final String? libraryPathOverride;
+
+  /// This conversion of [samples] instead.
+  ResampleRequest withSamples(Float32List samples) => ResampleRequest(
+    samples: samples,
+    channels: channels,
+    inputRate: inputRate,
+    outputRate: outputRate,
+    libraryPathOverride: libraryPathOverride,
+  );
 }
 
 /// How a store runs a rate conversion; production is
@@ -116,6 +128,131 @@ typedef ResampleRunner = Future<Float32List> Function(ResampleRequest request);
 /// The production resample runner.
 Future<Float32List> runResampleInIsolate(ResampleRequest request) =>
     Isolate.run(() => runResampleHere(request));
+
+/// The production runner, its PCM placed where [device] plays it — or, with
+/// no device, [runConformInIsolate]'s.
+///
+/// 🚨THE PCM THE DEVICE PLAYS LIVES IN THE DEVICE FROM THE MOMENT IT LANDS
+/// (play-press-first-frame-stall, 10-15). A conform's samples, and each
+/// rate they were converted to ([resamplingInto]), are placed there ONCE,
+/// and every schedule after names them without a copy. ↩️They stayed in
+/// Dart memory, and every upload — each press, seek and streaming advance —
+/// copied every resident sound into the device again, however many takes a
+/// project had.
+///
+/// 🚨PLACED BY THE WORKER THAT MADE THEM (conform-landing-copies-on-the-ui-
+/// thread): it fills a buffer of the device's own, and this isolate adopts
+/// it as it lands — here, the one place, so no buffer is left that nobody
+/// holds. ↩️The store copied them in as they landed (`placeForPlayback`),
+/// on the thread that draws: two minutes of stereo is 46 MB, and an
+/// unsaved project's sound is held whole however long it is.
+ConformRunner conformingInto(QaAudioDevice? Function() device) =>
+    (request) async {
+      final into = device();
+      if (into == null) {
+        return runConformInIsolate(request);
+      }
+      final landed = await _conformOnAWorker(request, into.buffers);
+      return landed.address == 0
+          ? landed.result
+          : landed.result.withSamples(
+              into.adoptSamples(landed.address, landed.floats),
+            );
+    };
+
+/// The production resample runner, its PCM placed as [conformingInto]
+/// places a conform's.
+///
+/// 🚨THE CONFORM IT CONVERTS IS READ WHERE IT LIES (resample-request-copies-
+/// the-conform-to-the-worker): the conform's samples are a buffer of the
+/// device's, lent to the worker by address for as long as it works
+/// ([QaAudioDevice.lendToAWorker]). ↩️The request carried them, and a
+/// message copies what it carries — on the thread that draws, a sound's
+/// whole PCM once more for each sound a device at another rate asks for.
+ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
+    (request) async {
+      final into = device();
+      if (into == null) {
+        return runResampleInIsolate(request);
+      }
+      final landed = await into.lendToAWorker(
+        request.samples,
+        (lent) => _resampleOnAWorker(
+          lent == null ? request : request.withSamples(Float32List(0)),
+          lent,
+          into.buffers,
+        ),
+      );
+      return landed.address == 0
+          ? landed.samples
+          : into.adoptSamples(landed.address, landed.floats);
+    };
+
+/// The workers' jobs, each in a function of its own: [onAWorker] copies
+/// the closure's whole context, and these hold a request and addresses.
+Future<({ConformResult result, int address, int floats})> _conformOnAWorker(
+  ConformRequest request,
+  AudioBuffers buffers,
+) => onAWorker(() {
+  final result = runConformHere(request);
+  final placed = placedWhereTheDevicePlays(
+    result.samples,
+    audioBuffersHere(buffers),
+  );
+  return (
+    result: placed.address == 0 ? result : result.withSamples(null),
+    address: placed.address,
+    floats: placed.floats,
+  );
+});
+
+/// [lent]: where the samples [request] left out lie, when it left them out.
+Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
+  ResampleRequest request,
+  ({int address, int floats})? lent,
+  AudioBuffers buffers,
+) => onAWorker(() {
+  assert(
+    lent == null || request.samples.isEmpty,
+    'a lent conversion carries its samples by address alone',
+  );
+  final converted = runResampleHere(
+    lent == null
+        ? request
+        : request.withSamples(
+            Pointer<Float>.fromAddress(lent.address).asTypedList(lent.floats),
+          ),
+  );
+  final placed = placedWhereTheDevicePlays(
+    converted,
+    audioBuffersHere(buffers),
+  );
+  return (
+    samples: placed.address == 0 ? converted : Float32List(0),
+    address: placed.address,
+    floats: placed.floats,
+  );
+});
+
+/// [samples] in a buffer [hands] makes, by its address and its floats — or
+/// none, at 0, where there are none or the buffer cannot be made, and the
+/// samples stay where they are, as a device that had no room left them.
+({int address, int floats}) placedWhereTheDevicePlays(
+  Float32List? samples,
+  AudioBufferHands hands,
+) {
+  if (samples == null || samples.isEmpty) {
+    return (address: 0, floats: 0);
+  }
+  final Pointer<Float> buffer;
+  try {
+    buffer = hands.make(samples.length);
+  } on StateError {
+    return (address: 0, floats: 0);
+  }
+  buffer.asTypedList(samples.length).setAll(0, samples);
+  return (address: buffer.address, floats: samples.length);
+}
 
 /// The conversion itself, on whichever isolate this is called from.
 Float32List runResampleHere(ResampleRequest request) {

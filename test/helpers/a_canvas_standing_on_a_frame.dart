@@ -297,13 +297,6 @@ final String? noFlutterGpu = () {
   }
 }();
 
-/// The frame for what changed, and the step its paint asks for: that goes
-/// once the frame is out, or later where the pace holds it.
-Future<void> aFrameAndItsStep(WidgetTester tester, [Duration? frame]) async {
-  await tester.pump(frame);
-  await tester.pump(Duration.zero);
-}
-
 /// Waits for [landing] — a patch or a move a store answers for
 /// (`FramePictureStore.landingOf`) — to be in its picture, and pumps the
 /// paint after it.

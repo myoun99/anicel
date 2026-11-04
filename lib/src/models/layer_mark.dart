@@ -49,7 +49,13 @@ class LayerMark {
   ///
   /// ⚠️The TAKE is not carried: the user named the colour label, and the take
   /// is a chip of its own — the new row starts at its own first pass.
-  LayerMark get inherited =>
+  LayerMark get inherited => colorLabel;
+
+  /// The COLOUR LABEL alone, the take left out — what the legend's colour
+  /// solo lists and passes a row by (F-553, 유저 2026-11-04: 「색 라벨로만
+  /// 보고 인식하도록. 테이크 다른거는 신경쓰지않음. 그거는 테이크 레전드버튼
+  /// 만들어서 별도구현」).
+  LayerMark get colorLabel =>
       isNone ? none : LayerMark(process: process, revise: revise);
 
   /// The label a row of [kind] made from nothing is born with (F-76, 유저

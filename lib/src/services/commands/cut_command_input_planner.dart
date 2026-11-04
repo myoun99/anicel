@@ -10,11 +10,17 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_section_defaults.dart'
+    show seLayerIdForTrack, transitionLayerIdForTrack;
 import '../../models/project.dart';
+import '../../models/project_timeline.dart';
+import '../../models/track_id.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../command.dart';
-import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
-import '../editing/run_id_mint.dart' show mintCutId, mintFrameId;
+import '../editing/cut_duplicate_helpers.dart'
+    show TimelineCopyIds, remapTimelineExposure;
+import '../editing/run_id_mint.dart'
+    show mintCutId, mintFrameId, mintTimelineId, mintTrackId;
 import '../project_lookup.dart' show requireCut;
 import '../project_repository.dart';
 import 'add_layer_command.dart';
@@ -68,23 +74,7 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
   final frameIdMap = <FrameId, FrameId>{};
 
   for (final layer in sourceCut.layers) {
-    final newLayerId = LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(newLayerId.value);
-    layerIdMap[layer.id] = newLayerId;
-
-    for (final frame in layer.frames) {
-      _copyOf(frame.id, on: newLayerId, into: frameIdMap);
-    }
-
-    for (final exposure in layer.timeline.values) {
-      final frameId = exposure.frameId;
-      if (frameId == null) {
-        continue;
-      }
-      _copyOf(frameId, on: newLayerId, into: frameIdMap);
-    }
+    _planRowCopy(layer, ids.nextLayerId(), rows: layerIdMap, cels: frameIdMap);
   }
 
   return DuplicateCutCommandInputPlan(
@@ -92,6 +82,77 @@ DuplicateCutCommandInputPlan planDuplicateCutCommandInput({
     layerIdMap: layerIdMap,
     frameIdMap: frameIdMap,
   );
+}
+
+/// THE IDS A TIMELINE'S COPY TAKES (I-150 「복제」): each cut's rows fresh,
+/// as a duplicated cut's are ([planDuplicateCutCommandInput]) but from ONE
+/// snapshot, so no two cuts plan the same row; each track's SE and
+/// transition rows under its copy's id; and ONE map of cels across the
+/// whole timeline ([TimelineCopyIds.cels]).
+TimelineCopyIds planDuplicateTimelineCommandInput({
+  required Project project,
+  required ProjectTimeline source,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  final tracks = <TrackId, TrackId>{};
+  final cuts = <CutId, CutId>{};
+  final rows = <LayerId, LayerId>{};
+  final cels = <FrameId, FrameId>{};
+  for (final track in source.tracks) {
+    final trackId = tracks[track.id] = mintTrackId();
+    for (final (at, row) in track.seLayers.indexed) {
+      _planRowCopy(
+        row,
+        seLayerIdForTrack(trackId, at + 1),
+        rows: rows,
+        cels: cels,
+      );
+    }
+    _planRowCopy(
+      track.transitionLayer,
+      transitionLayerIdForTrack(trackId),
+      rows: rows,
+      cels: cels,
+    );
+    for (final cut in track.cuts) {
+      cuts[cut.id] = mintCutId();
+      for (final row in cut.layers) {
+        _planRowCopy(row, ids.nextLayerId(), rows: rows, cels: cels);
+      }
+    }
+  }
+  return TimelineCopyIds(
+    timelineId: mintTimelineId(),
+    tracks: tracks,
+    cuts: cuts,
+    rows: rows,
+    cels: cels,
+    links: {
+      for (final group in project.linkRegistry.groups)
+        if (group.members.where((member) => cuts.containsKey(member.cutId))
+            case final held when held.length > 1)
+          group.id: ids.nextLinkGroupId(),
+    },
+  );
+}
+
+/// [row] copied onto [to] in [rows], and its cels — the ones it holds and
+/// the ones its cells expose — in [cels].
+void _planRowCopy(
+  Layer row,
+  LayerId to, {
+  required Map<LayerId, LayerId> rows,
+  required Map<FrameId, FrameId> cels,
+}) {
+  rows[row.id] = to;
+  for (final frame in row.frames) {
+    _copyOf(frame.id, on: to, into: cels);
+  }
+  for (final exposure in row.timeline.values) {
+    if (exposure.frameId case final frameId?) {
+      _copyOf(frameId, on: to, into: cels);
+    }
+  }
 }
 
 PasteLayerCommandInputPlan planPasteLayerCommandInput({
@@ -160,6 +221,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     blendMode: payload.blendMode,
     transformTrack: payload.transformTrack,
     transformEnabled: payload.transformEnabled,
+    transformBasis: payload.transformBasis,
     effects: payload.effects,
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,
@@ -246,6 +308,40 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
             _bornWithAFreshPanel(layer))
           layer.id: mintFrameId(minted.layerIdMap[layer.id]!),
     },
+  );
+}
+
+/// Plans a 동기컷 생성 (I-150-Q3, `CreateSyncedCutCommand`): a new cut id,
+/// a row id for EVERY row of [sourceCut] — the rows that link are linked,
+/// the direction rows the new cut holds of its own — registry group ids for
+/// the rows that link, and the sync's id. FrameIds are not mapped: the cut
+/// is the same cut, its pictures one.
+({
+  CutId newCutId,
+  Map<LayerId, LayerId> layerIdMap,
+  Map<LayerId, String> newGroupIdBySource,
+  String newSyncId,
+})
+planCreateSyncedCutCommandInput({
+  required Project project,
+  required Cut sourceCut,
+}) {
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  final minted = _mintLinkIds(ids, [
+    for (final layer in sourceCut.layers)
+      if (layer.kind.linksIntoLinkedCut) layer,
+  ]);
+  return (
+    newCutId: mintCutId(),
+    layerIdMap: {
+      for (final layer in sourceCut.layers)
+        layer.id: minted.layerIdMap[layer.id] ?? ids.nextLayerId(),
+    },
+    newGroupIdBySource: minted.newGroupIdBySource,
+    newSyncId: _firstAvailableId(
+      prefix: 'sync',
+      usedIds: {for (final sync in project.linkRegistry.syncs) sync.id},
+    ),
   );
 }
 
@@ -714,7 +810,7 @@ class _ProjectIdSnapshot {
       layerIds: <String>{},
       linkGroupIds: {for (final group in project.linkRegistry.groups) group.id},
     );
-    for (final track in project.tracks) {
+    for (final track in project.tracksOfEveryTimeline) {
       for (final cut in track.cuts) {
         snapshot.includeCut(cut);
       }

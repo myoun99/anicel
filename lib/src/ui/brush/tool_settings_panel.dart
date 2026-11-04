@@ -10,6 +10,7 @@ import '../../models/shape_tool_options.dart';
 import '../../models/transform_values.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_flood_fill.dart';
+import '../../services/fill_gradient.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
@@ -275,7 +276,9 @@ class ToolSettingsPanel extends StatelessWidget {
     // The bucket's knobs above are about reading the picture — where
     // the flood may go — and a drawn outline never asks that question,
     // so tolerance, gap close and pasteboard-fill are simply not here.
-    // Only the edge is shared, because only the edge is shared.
+    // Only the edge is shared, because only the edge is shared. ↩️And the
+    // gradient now (I-160 「올가미같은것도 올가미로 범위고르고 그 다음
+    // 드래그」): an outline is a range as a flood is.
     CanvasTool.fillShape => _ShapeFillSettings(
       options: fillOptions,
       onChanged: onFillOptionsChanged,
@@ -352,7 +355,9 @@ class ToolSettingsPanel extends StatelessWidget {
 /// 확정: 올가미 채우기는 A), so nothing here reads the picture — the
 /// bucket's tolerance, gap close and pasteboard boundary have no question
 /// to answer. What remains is the edge, which both tiles share because
-/// both end in a coverage mask.
+/// both end in a coverage mask — and the gradient (I-160: 「올가미같은것도
+/// 올가미로 범위고르고 그 다음 드래그」), which both share because both end
+/// in a range a gradient is laid across ([_gradientKnobs]).
 class _ShapeFillSettings extends StatelessWidget {
   const _ShapeFillSettings({
     required this.options,
@@ -378,6 +383,7 @@ class _ShapeFillSettings extends StatelessWidget {
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
+        ..._gradientKnobs(options, onChanged),
         ToolSettingActions(lines: _closePolygonLine(shapeKind, traces)),
       ],
     );
@@ -1647,7 +1653,87 @@ class _FillSettings extends StatelessWidget {
           onChanged: (value) =>
               onChanged(options.copyWith(extendBeyondCanvas: value)),
         ),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-continuous-switch'),
+          label: AppText.strings.brFillContinuous,
+          value: options.continuous,
+          onChanged: (value) => onChanged(options.copyWith(continuous: value)),
+        ),
+        ..._gradientKnobs(options, onChanged),
       ],
     );
   }
+}
+
+/// The fill's GRADIENT knobs (I-160) — the bucket's and the shape fill's,
+/// one setting for both (`FloodFillOptions.gradient`): 「올가미같은것도
+/// 올가미로 범위고르고 그 다음 드래그」 — a drawn outline is a range as a
+/// flood is, and the drag that lays its gradient is the bucket's.
+///
+/// I-160: 「그 항목 on하면 밑에 그라데이션항목 보이는느낌」 — what the
+/// gradient is made of stands under it while it is on (the tool settings
+/// show what the mode in hand needs, F-478-Q1).
+List<Widget> _gradientKnobs(
+  FloodFillOptions options,
+  ValueChanged<FloodFillOptions> onChanged,
+) {
+  final gradient = options.gradient;
+  void change(FillGradientOptions next) =>
+      onChanged(options.copyWith(gradient: next));
+  return [
+    SettingsSwitchRow(
+      tileKey: const ValueKey<String>('fill-gradient-switch'),
+      label: AppText.strings.brFillGradient,
+      value: gradient.enabled,
+      onChanged: (value) => change(gradient.copyWith(enabled: value)),
+    ),
+    if (gradient.enabled) ...[
+      ToolSettingRow(
+        label: AppText.strings.brGradientColors,
+        child: PillStrip.even(
+          key: const ValueKey<String>('fill-gradient-end-segments'),
+          items: [
+            for (final end in FillGradientEnd.values)
+              PillItem(
+                keyValue: 'fill-gradient-end-${end.name}',
+                label: switch (end) {
+                  FillGradientEnd.sub => AppText.strings.brGradientToSub,
+                  FillGradientEnd.transparent =>
+                    AppText.strings.brGradientToClear,
+                },
+                selected: end == gradient.end,
+                onTap: () => change(gradient.copyWith(end: end)),
+              ),
+          ],
+        ),
+      ),
+      SettingsSwitchRow(
+        tileKey: const ValueKey<String>('fill-gradient-reverse-switch'),
+        label: AppText.strings.brGradientReverse,
+        value: gradient.reversed,
+        onChanged: (value) =>
+            change(gradient.copyWith(reversed: value)),
+      ),
+      ToolSettingRow(
+        label: AppText.strings.brGradientShape,
+        child: PillStrip.even(
+          key: const ValueKey<String>('fill-gradient-shape-segments'),
+          items: [
+            for (final shape in FillGradientShape.values)
+              PillItem(
+                keyValue: 'fill-gradient-shape-${shape.name}',
+                label: switch (shape) {
+                  FillGradientShape.linear =>
+                    AppText.strings.brGradientLinear,
+                  FillGradientShape.radial =>
+                    AppText.strings.brGradientRadial,
+                },
+                selected: shape == gradient.shape,
+                onTap: () => change(gradient.copyWith(shape: shape)),
+              ),
+          ],
+        ),
+      ),
+    ],
+  ];
 }

@@ -50,7 +50,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
 import '../../services/canvas_flood_fill.dart'
-    show FloodFillOptions, regionFillPieces;
+    show FillRange, FillRangeAt, FloodFillOptions, regionFillPieces;
 import '../../services/plain_line_region.dart';
 import '../../services/mark_under_a_pixel.dart';
 import '../../models/canvas_size.dart';
@@ -137,6 +137,8 @@ import '../widgets/page_turn_bar.dart';
 import '../widgets/tick_layer.dart';
 import '../text/readout_text.dart' show columnValueOf, readoutText;
 import '../widgets/panel_flyout.dart';
+import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import '../dialogs/behind_the_wait_window.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
@@ -221,20 +223,6 @@ class CanvasTransportBand {
   final Widget child;
 }
 
-/// What stands on a canvas panel's LEFT edge, in the middle of the room
-/// there ([BrushCanvasPanel.leftPill]) — the brush's values on the
-/// drawing (I-34).
-///
-/// The [width] travels with the widget for [CanvasTransportBand.height]'s
-/// reason: nothing the panel frames may lie under it, and framing is read
-/// before anything is laid out.
-class CanvasEdgePill {
-  const CanvasEdgePill({required this.width, required this.child});
-
-  final double width;
-  final Widget child;
-}
-
 /// Reusable Brush canvas panel for the production main-canvas brush route.
 ///
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
@@ -274,6 +262,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.transformTargetKeys,
     this.cellPlacementOf,
     this.transformCelsUnderfoot,
+    this.transformCelsUnderfootChanges,
     this.pieceGround,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
@@ -328,9 +317,13 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onBrushSizeDragUpdate,
     this.onBrushSizeDragEnd,
     this.flipHud,
+    this.drawsFlipHud = true,
     this.onEyedropperPick,
-    this.fillDabsAt,
+    this.fillRangeAt,
+    this.fillsContinuously,
+    this.fillGradient,
     this.shapeFillDabsFor,
+    this.shapeFillRangeFor,
     this.selectionMaskOptions,
     this.transformOptions,
     this.viewCommands,
@@ -353,7 +346,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.transport,
-    this.leftPill,
     this.documentName,
     this.documentAbsent = false,
     this.bottomBarHostToken,
@@ -449,6 +441,18 @@ class BrushCanvasPanel extends StatefulWidget {
   /// playhead and the rows change under this panel.
   final List<({BrushFrameKey key, bool live})>? Function()?
   transformCelsUnderfoot;
+
+  /// Says [transformCelsUnderfoot]'s answer may have changed with no build
+  /// of this panel — a frame range taken on the timeline. The playhead and
+  /// the row stood on build the panel again; the range did not, so an open
+  /// box never heard it.
+  ///
+  /// 🗣️F-564 (유저 2026-11-04): 「변형중 다른행 블록 선택하면 바로 그게
+  /// 라이브로 반영되게. 지금은 변형중 다른행블록 선택하면 확정해야 바뀜」. Only
+  /// the selection layer hears it, and it walks the box on it as on the
+  /// playhead ([CanvasSelectionLayer.frameToken]): the float let go, the
+  /// cels lifted afresh with the numbers the box holds.
+  final Listenable? transformCelsUnderfootChanges;
 
   /// 🚨★★★**WHERE THE CUT TOOL'S STAMP LANDS** — the ground 픽셀 붙여넣기
   /// lands on, read by the session that reads it for the paste
@@ -627,16 +631,6 @@ class BrushCanvasPanel extends StatefulWidget {
   /// It hides the artwork as a lane does, so framing keeps out from under
   /// it (`_framingInsets`).
   final CanvasTransportBand? transport;
-
-  /// What stands on the LEFT edge: the brush's values on the drawing panel
-  /// (I-34, 유저 2026-10-18: 「캔버스 패널의 왼쪽 중앙 알약 만들어서 거기로
-  /// 이동」). Null stands nothing there.
-  ///
-  /// It is seated as the page strip that stood on this edge was
-  /// ([_LeftEdgeSeat]): in the middle of the room between the pill's band
-  /// and the file's name, and past the left rail where the rail is beside
-  /// it. It is cover to framing as that strip was (F-346).
-  final CanvasEdgePill? leftPill;
 
   /// The name of the FILE shown, written at the artwork's lower left over
   /// the horizontal panbar. Null writes nothing.
@@ -932,23 +926,37 @@ class BrushCanvasPanel extends StatefulWidget {
   /// coordinates the gesture reports its anchor in.
   final FlipHudController? flipHud;
 
-  /// Builds the fill region's stamp pieces for a tap (P6); the panel
-  /// commits them through the exact stroke funnel. Null disables the fill
+  /// Whether the panel mounts [flipHud]'s window. A host whose own list
+  /// shows the rows and blocks steps and ticks through the controller and
+  /// draws none — the export window's Cels list (I-153-Q2: 「보드가 이미 행과
+  /// 블록을 보여 주므로 HUD는 띄우지 않고」).
+  final bool drawsFlipHud;
+
+  /// Floods the fill's range for a press (P6 · I-160); the panel commits
+  /// what it lays through the exact stroke funnel. Null disables the fill
   /// tool.
-  final List<BrushDab> Function(
-    CanvasPoint point,
-    int color,
-    SymmetryShape? symmetry,
-  )?
-  fillDabsAt;
+  final FillRangeAt? fillRangeAt;
+
+  /// 「연속 채우기」 (I-160): whether a held fill takes in every region its
+  /// press passes over — asked as the press moves.
+  final ValueGetter<bool>? fillsContinuously;
+  /// The fill's gradient knobs and the sub colour (I-160) — asked as a
+  /// held fill lifts and as its gradient is dragged.
+  final ValueGetter<FillGradientInHand>? fillGradient;
 
   /// Builds the stamp pieces of a finished SHAPE FILL — the AREA it fills,
   /// its outline and every copy a guide made of it together. Supplied by
-  /// the host for the same reason [fillDabsAt] is — the fill's knobs live
+  /// the host for the same reason [fillRangeAt] is — the fill's knobs live
   /// up there, and the panel commits whatever comes back. Null disables
   /// the shape fill.
   final List<BrushDab> Function(CanvasSelectionRegion area, int color)?
   shapeFillDabsFor;
+
+  /// The RANGE a finished shape fill's area covers, held for its gradient
+  /// when the fill's gradient is on (I-160: 「올가미로 범위고르고 그 다음
+  /// 드래그」) — supplied by the host as [shapeFillDabsFor] is. Null lands
+  /// the shape fill at once, gradient or not.
+  final FillRange? Function(CanvasSelectionRegion area)? shapeFillRangeFor;
 
   /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
   /// Null/absent keeps the classic byte-preserving hard mask.
@@ -1430,7 +1438,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   /// Whether the tool or its shape moved since the last build — and if so,
-  /// cancels the polygon being traced.
+  /// cancels the polygon being traced, and lets go of an outline held for
+  /// its gradient (I-160) by the same law.
   ///
   /// 유저 확정: an open polygon trace survives a frame change and a CUT
   /// change, but putting the TOOL or the SHAPE down cancels it.
@@ -1446,6 +1455,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _builtFor = structure;
     widget.selectionCommands?.abandonPolygon();
+    _rangeHold.now?.letGo();
     return true;
   }
 
@@ -2044,7 +2054,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   Positioned _selectionLayer() {
     return Positioned.fill(
-      child: _asideForTheContent(ValueListenableBuilder<TransformToolOptions>(
+      // A range held for its gradient takes the next press, whatever this
+      // layer would trace with it (I-160-Q5 「그냥 클릭시작하면 조작임」): the
+      // drawing view under it drags the gradient. ⚠️Asked AT THE HIT TEST,
+      // as the control holds' gate is: the press right after the outline's
+      // lift must find it shut, and a rebuild comes a frame later.
+      child: HitGate(
+        admits: (_) => !_aRangeIsHeld,
+        // What a lift takes up is heard here as well as at the panel's
+        // build ([BrushCanvasPanel.transformCelsUnderfootChanges], F-564).
+        child: _asideForTheContent(ListenableBuilder(
+        listenable: Listenable.merge([widget.transformCelsUnderfootChanges]),
+        builder: (context, _) => ValueListenableBuilder<TransformToolOptions>(
         valueListenable:
             widget
                 .transformOptions ??
@@ -2177,7 +2198,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               transformOptions:
                   transformOptions,
             ),
-      )),
+        ),
+      ))),
     );
   }
 
@@ -2226,9 +2248,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // R22-A: the FILL tool runs through the view's stroke pipeline
       // (the result tiles on the tap frame, landed like a pen-up) instead
       // of the panel tap layer.
-      fillDabsAt: _brush.tool == CanvasTool.fill
-          ? widget.fillDabsAt
+      fillRangeAt: _brush.tool == CanvasTool.fill
+          ? widget.fillRangeAt
           : null,
+      fillsContinuously: widget.fillsContinuously,
+      fillGradient: widget.fillGradient,
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it — in the row's own artwork, where this
       // view draws (a-marquee-on-a-posed-row).
@@ -2236,6 +2260,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       strokeLander: _viewLander,
       // I-69: the shape tool has the view draw what its drag traced.
       shapeShow: _shapeShow,
+      // I-160: and the shape fill has it hold what its outline closed.
+      gradientRangeHold: _rangeHold,
       onActiveStrokeChanged: (stroke) {
         if (_stroke != stroke) {
           widget.onStrokeInputActiveChanged?.call(stroke);
@@ -2327,7 +2353,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
             floorOverlay: _floor?.bottomOverlaySpan ?? 0,
           ),
         );
-    final pill = _CanvasEditorPanelShell.leftPillBandOf(widget.leftPill);
+    final pill = _CanvasEditorPanelShell.leftPillBandOf(_floor?.leftPill);
     return covered.copyWith(
       left: _leftPillBesideRail
           ? covered.left + pill
@@ -2611,6 +2637,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The drawing view's [StrokeLander] while it is mounted, counted as
   /// [_shapeShow] is.
   final ViewHand<StrokeLander> _viewLander = ViewHand();
+
+  /// The drawing view's [GradientRangeHold] while it is mounted, counted
+  /// as [_shapeShow] is — where a shape fill's outline is held for its
+  /// gradient ([_fillDrawnOutline]).
+  final ViewHand<GradientRangeHold> _rangeHold = ViewHand();
+
+  /// Whether a range is held for its gradient — the next press is its
+  /// gradient's, so the selection layer lets it through to the drawing
+  /// view ([_selectionLayer]).
+  bool get _aRangeIsHeld => _rangeHold.now?.holdsARange ?? false;
 
   /// The line Shift holds on this canvas (I-121) — ONE for every path the
   /// hand draws here, the stroke's, the lasso's and the stamp's, so a line
@@ -3002,12 +3038,32 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the live selection clips it, undo covers it and serialization is free
   /// — the fill has landed this way since P6 and the shape fill is the same
   /// stamp from a different source.
+  ///
+  /// 🚨With the fill's gradient on it lays nothing yet (I-160: 「올가미같은것도
+  /// 올가미로 범위고르고 그 다음 드래그 같은느낌」): the area is held, marked,
+  /// in the drawing view as the bucket's lift holds its flood, and the next
+  /// press drags its gradient through the bucket's own press
+  /// ([GradientRangeHold]).
   void _fillDrawnOutline(CanvasSelectionRegion outline) {
     final build = widget.shapeFillDabsFor;
     // Drawn on the canvas, painted into the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
     final area = _selectionSeat.regionOnTheRow(outline);
     if (build == null || area == null) {
+      return;
+    }
+    final hold = _rangeHold.now;
+    final rangeFor = widget.shapeFillRangeFor;
+    if (hold != null &&
+        rangeFor != null &&
+        (widget.fillGradient?.call().options.enabled ?? false)) {
+      // Nothing to hold it on where [_layArea] has nothing to lay it on.
+      final range = widget._editableCoordinator == null
+          ? null
+          : rangeFor(area);
+      if (range != null) {
+        hold.hold(range);
+      }
       return;
     }
     _layArea((color) => build(area, color));
@@ -3053,6 +3109,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// 페더 따름」 — on every cel 픽셀 붙여넣기 would land on, through the
   /// selection's softness ([_landStamp]). ↩️It asked for a cel under the
   /// playhead first; the ground answers that now, as it does for the paste.
+  ///
+  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: behind the app's wait
+  /// window, under the button's name.
   void pasteCutPieceAtOrigin() {
     final piece = widget.cutPieceSlot?.piece;
     if (piece == null) {
@@ -3061,7 +3120,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // ONE dab for every row: the piece goes back where it was cut from,
     // whichever row takes it.
     final dab = buildCutPasteDab(piece, opacity: _brush.cutStampOpacity);
-    _landStamp((_) => dab);
+    unawaited(
+      takeBehindTheWaitWindow(
+        context,
+        () {
+          if (mounted) {
+            _landStamp((_) => dab);
+          }
+        },
+        window: AppWaitWindow.working(
+          editorActionLabel(EditorActionIds.cutStampPasteAtOrigin),
+        ),
+      ),
+    );
   }
 
   /// Lands the held piece with the stamp tool's own blend — [onTheRow] is
@@ -3080,6 +3151,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// ↩️They went down the stroke funnel ([_commitSourceStroke]), which lands
   /// on the cel you stand on and cuts through a selection's hard outline.
   /// The erase flag a stamp's dab wears rode along here; the door sets it.
+  ///
+  /// 🗣️F-551-Q2 (유저 2026-11-04): 「캔버스 스탬프는 지금처럼 창 없이」 — the
+  /// press and the trail land here at once, with no wait window: the press
+  /// is the trail's first stamp, and a window put ahead of it would land the
+  /// trail before the press. Only 원래 위치에 붙여넣기 stands behind one
+  /// ([pasteCutPieceAtOrigin]).
   void _landStamp(BrushDab? Function(LayerPlacement? placement) onTheRow) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
@@ -3365,7 +3442,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// See [BrushCanvasPanel.transport] — null means nothing under the bars.
   final CanvasTransportBand? transport;
 
-  /// See [BrushCanvasPanel.leftPill] — null means nothing on the left edge.
+  /// See [CanvasFloorInsets.leftPill] — null means nothing on the left edge.
   final CanvasEdgePill? leftPill;
 
   /// Told whether the left pill was laid out past the left rail
@@ -3810,7 +3887,7 @@ enum _LeftEdgeSlot { name, pill }
 /// Seats what stands on the LEFT edge: the file's name at the artwork's
 /// lower left ([BrushCanvasPanel.documentName]) — over the horizontal bar
 /// and inside what the side panels leave — and the left pill
-/// ([BrushCanvasPanel.leftPill]) in the middle of the room between the
+/// ([CanvasFloorInsets.leftPill]) in the middle of the room between the
 /// pill's band and the name.
 ///
 /// The axis law the two bars follow (유저, R4): ALONG the edge it rides the

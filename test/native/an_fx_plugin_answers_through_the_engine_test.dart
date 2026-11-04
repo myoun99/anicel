@@ -6,6 +6,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/effect_parameter_spec.dart';
+import 'package:anicel/src/models/fx_plugin_description.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_fx_plugin_host.dart';
 
@@ -19,9 +22,16 @@ import '../helpers/native_engine_path.dart';
 ///
 /// The WebAssembly side is the engine's own test's (qa_fx_plugin_test.c):
 /// it writes its twin module from text, which Dart cannot.
+///
+/// The SDK's example (sdk/fx/example/shadow.c) is the plugin a maker starts
+/// from, built beside the engine as a maker builds it: what it says of
+/// itself is held to the app's own reading of a description, and its
+/// pictures to answers worked out here.
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
-  final samplePath = libraryPath == null ? null : _sampleBeside(libraryPath);
+  final samplePath = libraryPath == null
+      ? null
+      : _builtBeside(libraryPath, 'qa_fx_plugin_sample');
   final skip = libraryPath == null
       ? nativeEngineMissingSkipReason
       : samplePath == null
@@ -170,23 +180,161 @@ void main() {
     expect(garbage.plugin, isNull);
     expect(garbage.error, isNotEmpty);
   }, skip: skip);
+
+  group('the SDK example', () {
+    final examplePath = libraryPath == null
+        ? null
+        : _builtBeside(libraryPath, 'qa_fx_sdk_example');
+    final skipExample = libraryPath == null
+        ? nativeEngineMissingSkipReason
+        : examplePath == null
+        ? 'the engine at $libraryPath has no SDK example beside it'
+        : false;
+
+    QaFxPlugin openExample() {
+      final opened = QaFxPluginHost.instance!.openNative(examplePath!);
+      expect(opened.error, isNull);
+      return opened.plugin!;
+    }
+
+    // A 3×2 block of picture in a 7×5 input, its colour no more than its
+    // alpha; the shadow's colour as its parameter says it, 0 to 1.
+    const width = 7;
+    const height = 5;
+    final picture = Uint8List(width * height * 4);
+    for (var y = 1; y <= 2; y += 1) {
+      for (var x = 2; x <= 4; x += 1) {
+        final at = (y * width + x) * 4;
+        final alpha = 200 + x * 7 + y * 11;
+        picture
+          ..[at] = alpha * 3 ~/ 4
+          ..[at + 1] = alpha ~/ 2
+          ..[at + 2] = alpha ~/ 5
+          ..[at + 3] = alpha;
+      }
+    }
+    const color = [0.2, 0.4, 0.6, 0.5];
+    Float64List values(double x, double y) => Float64List.fromList([
+      x, 0, 0, 0, //
+      y, 0, 0, 0,
+      ...color,
+    ]);
+    FxPluginMoment at(double scale) =>
+        (frameIndex: 0, time: 0.0, frameRate: 24.0, scale: scale);
+
+    // What the example draws, worked out here on its own: the picture over
+    // its alpha moved by the offset (in output pixels, rounded half away
+    // from zero) and painted in the colour, both premultiplied.
+    Uint8List shadowed(double x, double y, double scale) {
+      int rounded(double v) => (v < 0 ? v - 0.5 : v + 0.5).truncate();
+      int byte(double unit) => (unit * 255 + 0.5).floor();
+      int times(int a, int b) => ((a * b + 128) + ((a * b + 128) >> 8)) >> 8;
+      final dx = rounded(x * scale);
+      final dy = rounded(y * scale);
+      final out = Uint8List(picture.length);
+      for (var row = 0; row < height; row += 1) {
+        for (var column = 0; column < width; column += 1) {
+          final at = (row * width + column) * 4;
+          final fromX = column - dx;
+          final fromY = row - dy;
+          final inside =
+              fromX >= 0 && fromY >= 0 && fromX < width && fromY < height;
+          final cast = inside ? picture[(fromY * width + fromX) * 4 + 3] : 0;
+          final alpha = times(cast, byte(color[3]));
+          final behind = 255 - picture[at + 3];
+          for (var c = 0; c < 3; c += 1) {
+            out[at + c] =
+                picture[at + c] + times(times(byte(color[c]), alpha), behind);
+          }
+          out[at + 3] = picture[at + 3] + times(alpha, behind);
+        }
+      }
+      return out;
+    }
+
+    test('says who it is as the app reads a description', () {
+      final plugin = openExample();
+      final description = FxPluginDescription.read(plugin.describe()!);
+      expect(description, isNotNull);
+      expect(description!.id, 'com.example.shadow');
+      expect([
+        for (final p in description.parameters)
+          (p.id, p.unit, p.defaultValue, p.minimum, p.maximum),
+      ], [
+        ('x', EffectParameterUnit.number, 8, -200, 200),
+        ('y', EffectParameterUnit.number, 8, -200, 200),
+        ('color', EffectParameterUnit.color, 0x99000000, 0, 0xFFFFFFFF),
+      ]);
+      plugin.close();
+    }, skip: skipExample);
+
+    test('reaches as far as the shadow is moved, in output pixels', () {
+      final plugin = openExample();
+      expect(plugin.reach(values(2, 1), at(1)), 2);
+      expect(plugin.reach(values(-3, 1), at(1)), 3);
+      expect(plugin.reach(values(8, -9), at(0.5)), 5);
+      plugin.close();
+    }, skip: skipExample);
+
+    test('draws the picture over its shadow', () {
+      final plugin = openExample();
+      const offsets = [(2.0, 1.0, 1.0), (-3.0, 2.0, 1.0), (5.0, -4.0, 0.5)];
+      for (final (x, y, scale) in offsets) {
+        expect(
+          plugin.render(
+            input: (
+              pixels: picture,
+              width: width,
+              height: height,
+              left: -2,
+              top: -1,
+            ),
+            values: values(x, y),
+            layers: const [],
+            moment: at(scale),
+          ),
+          shadowed(x, y, scale),
+          reason: 'offset ($x, $y) at scale $scale',
+        );
+      }
+      plugin.close();
+    }, skip: skipExample);
+
+    // A maker's compiler reads the source in its own code page: MSVC on a
+    // Japanese or Korean Windows warns at every byte past ASCII, and one at
+    // a line's end can take the line break with it.
+    test('its C is ASCII, as every code page reads it', () {
+      for (final path in [
+        'packages/qa_native/src/anicel_fx_plugin.h',
+        'sdk/fx/example/shadow.c',
+        'sdk/fx/example/CMakeLists.txt',
+      ]) {
+        final bytes = File(path).readAsBytesSync();
+        expect(
+          [for (var i = 0; i < bytes.length; i += 1) if (bytes[i] > 0x7E) i],
+          isEmpty,
+          reason: path,
+        );
+      }
+    });
+  });
 }
 
-/// The sample plugin the engine's build makes in its own folder — where
+/// The plugin [target] the engine's build makes in its own folder — where
 /// QA_ENGINE_PATH points ([nativeEngineLibraryPathOrNull]).
-String? _sampleBeside(String libraryPath) {
+String? _builtBeside(String libraryPath, String target) {
   final folder = File(libraryPath).parent.path;
   final name = Platform.isWindows
-      ? 'qa_fx_plugin_sample.dll'
+      ? '$target.dll'
       : Platform.isMacOS
-      ? 'libqa_fx_plugin_sample.dylib'
-      : 'libqa_fx_plugin_sample.so';
+      ? 'lib$target.dylib'
+      : 'lib$target.so';
   final path = '$folder${Platform.pathSeparator}$name';
   if (File(path).existsSync()) {
     return path;
   }
   if (nativeEngineRequired) {
-    fail('QA_REQUIRE_NATIVE=1 but no sample plugin beside the engine: $path');
+    fail('QA_REQUIRE_NATIVE=1 but no $target beside the engine: $path');
   }
   return null;
 }

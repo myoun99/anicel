@@ -43,6 +43,8 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerTypeButton;
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindowField;
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -308,6 +310,20 @@ void main() {
 
   Future<void> pressBlock(WidgetTester tester, String row, String cel) =>
       tapKey(tester, 'export-cels-block-$row-$cel');
+
+  /// Unfolds the naming module, and finds it.
+  Future<Finder> openNaming(WidgetTester tester) async {
+    final naming = find.byWidgetPredicate(
+      (widget) =>
+          widget is ExportAccordion && widget.title == AppText.strings.exNaming,
+    );
+    await tester.ensureVisible(naming);
+    await tester.tap(
+      find.descendant(of: naming, matching: find.byType(InkWell)).first,
+    );
+    await tester.pump();
+    return naming;
+  }
 
   testWidgets('the list is the cut\'s STACKS as the timeline draws them, each '
       'led by its switch over its files; the paper, the attach rows, the '
@@ -1109,6 +1125,7 @@ void main() {
       // A document wears its panel's name.
       ExportCelKind.timesheet: strings.panelTimesheet,
       ExportCelKind.envelope: strings.panelEnvelope,
+      ExportCelKind.video: strings.exVideo,
     };
     expect(names.keys, ExportCelKind.values, reason: 'every kind is named');
     expect(names.values.toSet(), hasLength(names.length));
@@ -1253,15 +1270,7 @@ void main() {
     // 없음으로」.
     final state = await pumpCels(tester, celsSession());
     await standOn(tester, 'a');
-    final naming = find.byWidgetPredicate(
-      (widget) =>
-          widget is ExportAccordion && widget.title == AppText.strings.exNaming,
-    );
-    await tester.ensureVisible(naming);
-    await tester.tap(
-      find.descendant(of: naming, matching: find.byType(InkWell)).first,
-    );
-    await tester.pump();
+    final naming = await openNaming(tester);
 
     Finder field(ExportCelKind kind) =>
         find.byKey(ValueKey<String>('export-cel-prefix-${kind.jsonValue}'));
@@ -1276,6 +1285,7 @@ void main() {
         ExportCelKind.direction: '_',
         ExportCelKind.timesheet: '_',
         ExportCelKind.envelope: '_',
+        ExportCelKind.video: '_',
       },
     );
 
@@ -1303,6 +1313,161 @@ void main() {
     expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
   });
 
+  testWidgets('🗣️I-153: under 폴더 생성 the project\'s and the cut\'s names '
+      'keep their seats, open as their folders are made, write what they '
+      'wear, and go back with the module\'s reset', (tester) async {
+    // 유저 2026-11-04: 「csm_14_컷이름_lo 이런식으로 출력하고데 그게 안됨.
+    // 그래서 폴더생성에서 컷이나 프로젝트 누르면 아래에 접두 접미사 텍스트
+    // 지정할수있도록」.
+    final state = await pumpCels(tester, celsSession());
+    // Both folders made, the Cels list stands two folder columns wider
+    // (I-153) than the screen [pumpCels] lays.
+    await tester.binding.setSurfaceSize(const Size(1700, 660));
+    await tester.pump();
+    await standOn(tester, 'a');
+    final naming = await openNaming(tester);
+
+    Finder field(String folder, String side) =>
+        find.byKey(ValueKey<String>('export-cel-folder-$folder-$side'));
+    TextField of(String folder, String side) =>
+        tester.widget<TextField>(field(folder, side));
+    Map<String, bool> open() => {
+      for (final folder in ['project', 'cut'])
+        for (final side in ['prefix', 'suffix'])
+          '$folder-$side': of(folder, side).enabled!,
+    };
+    expect(open(), {
+      'project-prefix': false,
+      'project-suffix': false,
+      'cut-prefix': false,
+      'cut-suffix': false,
+    });
+
+    await tapKey(tester, 'export-cel-folder-cut');
+    expect(open(), {
+      'project-prefix': false,
+      'project-suffix': false,
+      'cut-prefix': true,
+      'cut-suffix': true,
+    });
+    await tester.enterText(field('cut', 'prefix'), 'csm_14_');
+    await tester.pump();
+    await tester.enterText(field('cut', 'suffix'), '_lo');
+    await tester.pump();
+    expect(
+      state.debugSpecs.cels.naming.cutFolderName,
+      const ExportNameAffix(prefix: 'csm_14_', suffix: '_lo'),
+    );
+    String labelOf(String side) => tester
+        .widget<AppWindowField>(
+          find.ancestor(
+            of: field('cut', side),
+            matching: find.byType(AppWindowField),
+          ),
+        )
+        .label!;
+    expect(
+      (labelOf('prefix'), labelOf('suffix')),
+      (AppText.strings.exPrefix, AppText.strings.exSuffix),
+    );
+    expect(
+      [
+        of('project', 'prefix').controller!.text,
+        of('project', 'suffix').controller!.text,
+      ],
+      ['', ''],
+      reason: 'the project\'s fields are its own',
+    );
+
+    await tapKey(tester, 'export-cel-folder-project');
+    expect(open().values, everyElement(isTrue));
+    await tester.enterText(field('project', 'suffix'), '_v2');
+    await tester.pump();
+    expect(
+      state.debugSpecs.cels.naming,
+      const ExportCelNaming(
+        projectFolder: true,
+        cutFolder: true,
+        projectFolderName: ExportNameAffix(suffix: '_v2'),
+        cutFolderName: ExportNameAffix(prefix: 'csm_14_', suffix: '_lo'),
+      ),
+    );
+
+    final reset = find.descendant(
+      of: naming,
+      matching: find.text(AppText.strings.commonReset),
+    );
+    await tester.ensureVisible(reset);
+    await tester.pump();
+    await tester.tap(reset);
+    await tester.pump();
+    expect(state.debugSpecs.cels.naming, const ExportCelNaming());
+    expect(
+      [
+        for (final folder in ['project', 'cut'])
+          for (final side in ['prefix', 'suffix'])
+            of(folder, side).controller!.text,
+      ],
+      everyElement(isEmpty),
+    );
+    expect(open().values, everyElement(isFalse));
+  });
+
+  testWidgets('🗣️I-153: 폴더 생성 and 이름 지정 say what they do on a hover of '
+      'their names; the scope 프로젝트 holds the cut folder chosen, says why, '
+      'and lets go to what the user left', (tester) async {
+    // 유저 2026-11-04: 「이름지정 이게 무슨기능이었지? … 툴팁으로
+    // 무슨내용인지 이름지정 호버하면 뜨게하도록. 폴더도 마찬가지」 ·
+    // 「범위에서 프로젝트 고르면 이름규칙 폴더생성에서 컷 체크 고정되도록」.
+    final state = await pumpCels(tester, celsSession());
+    await openNaming(tester);
+    Finder saying(String message) => find.byWidgetPredicate(
+      (widget) => widget is AppTooltip && widget.message == message,
+    );
+    final strings = AppText.strings;
+    for (final (tip, caption) in [
+      (strings.exFoldersTip, strings.exFolders),
+      (strings.exNamePartsTip, strings.exNameParts),
+    ]) {
+      expect(
+        find.descendant(of: saying(tip), matching: find.text(caption)),
+        findsOneWidget,
+        reason: '$caption wears its tooltip',
+      );
+    }
+    expect(saying(strings.exCutFolderHeld), findsNothing);
+    expect(pill(tester, 'export-cel-folder-cut').selected, isFalse);
+
+    await tester.ensureVisible(find.textContaining(strings.exScope));
+    await tester.tap(find.textContaining(strings.exScope));
+    await tester.pump();
+    await tapKey(tester, 'export-scope-project');
+    final held = pill(tester, 'export-cel-folder-cut');
+    expect((held.selected, held.onTap), (true, null));
+    expect(
+      find.descendant(
+        of: saying(strings.exCutFolderHeld),
+        matching: find.byKey(const ValueKey<String>('export-cel-folder-cut')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey<String>('export-cel-folder-cut-prefix')),
+          )
+          .enabled,
+      isTrue,
+      reason: 'the held folder is made, so its name is open',
+    );
+    expect(state.debugSpecs.cels.naming.cutFolder, isFalse);
+
+    await tapKey(tester, 'export-scope-cut');
+    final mine = pill(tester, 'export-cel-folder-cut');
+    expect((mine.selected, mine.onTap == null), (false, false));
+    expect(saying(strings.exCutFolderHeld), findsNothing);
+  });
+
   testWidgets('the project-scope grid shows a 겸용 pair as ONE cell and '
       'excludes both cuts at once', (tester) async {
     final session = celsSession();
@@ -1313,7 +1478,15 @@ void main() {
     await tester.pump();
     await tapKey(tester, 'export-scope-project');
 
-    expect(find.text('CUT2-CUT3'), findsOneWidget);
+    // In the grid: the Cels list's cut column names the pair's folder too
+    // (I-153).
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('export-cut-grid')),
+        matching: find.text('CUT2-CUT3'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('3 / 3 cuts'), findsOneWidget);
     await tapKey(tester, 'export-cut-cell-2');
     final overrides = session.repository.requireProject().exportOverrides;

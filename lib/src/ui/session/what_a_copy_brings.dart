@@ -185,8 +185,8 @@ abstract interface class BoardCopy {
 }
 
 /// A board whose paste can bring media from another project — what the
-/// UI's one door for such a paste asks (`pasteWithItsMedia`): whether to
-/// put its wait window up, and what to wait for.
+/// UI's one door for such a paste asks (`independentPasteAhead`): what its
+/// wait window waits for before the paste lands.
 abstract interface class BringsMedia {
   bool get pasteMustHoldMedia;
   Future<void> holdWhatThePasteBrings();

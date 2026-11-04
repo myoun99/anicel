@@ -57,7 +57,7 @@ import 'canvas/viewport_canvas_transform.dart';
 import '../services/composite_effect_paint.dart' show alphaOnly;
 import 'brush/main_canvas_brush_host.dart';
 import 'brush/brush_canvas_panel.dart'
-    show BrushCanvasPanel, CanvasEdgePill, CanvasFloats;
+    show BrushCanvasPanel, CanvasFloats;
 import 'sliced_value_listenable_builder.dart';
 import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
@@ -233,12 +233,12 @@ class EditorCanvasArea extends StatefulWidget {
     this.toolHold,
     this.expandedLaneLayerIds,
     this.fillOptions,
+    this.colorBackground,
     this.selectionMaskOptions,
     this.transformOptions,
     this.eyedropperSource,
     this.onInvokeAction,
     this.flipHud,
-    this.leftPill,
   });
 
   final EditorSessionManager session;
@@ -250,10 +250,6 @@ class EditorCanvasArea extends StatefulWidget {
   /// The flip HUD's state (shell-owned), forwarded to the panel that
   /// mounts the window.
   final FlipHudController? flipHud;
-
-  /// What stands on the canvas's left edge, forwarded to its panel — see
-  /// [BrushCanvasPanel.leftPill].
-  final CanvasEdgePill? leftPill;
 
   /// The active brush tool + settings (workspace-owned; the tools and
   /// brush-settings panels write it).
@@ -306,6 +302,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The fill tool's flood options (Tool Settings knobs, R11-④); null
   /// keeps the defaults.
   final ValueListenable<FloodFillOptions>? fillOptions;
+
+  /// The sub colour — the rail swatch's back slot — a fill's gradient may
+  /// run to (I-160-Q3). Null holds no gradient.
+  final ValueListenable<int>? colorBackground;
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob); null
   /// keeps "pick what you see".
@@ -1449,6 +1449,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final resolved = resolveLayerEffectsAt(
       effects: [boxed.effect],
       frameIndex: at.frame,
+      blocks: row.fxBlocks,
     ).single;
     final name = '${row.name} ${boxed.effect.label}';
     return boxed.effect.kind.drawsItsOwnPicture

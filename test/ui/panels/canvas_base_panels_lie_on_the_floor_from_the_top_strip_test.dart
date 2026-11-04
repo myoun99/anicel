@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/brush_value_group.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
@@ -8,6 +10,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
+import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -236,6 +239,61 @@ void main() {
         reason: '$host',
       );
     }
+  });
+
+  testWidgets('🗣️I-157: the brush\'s pill stands on whatever lies on the '
+      'floor — the canvas, the main viewer, every sheet laid there — and on '
+      'no sheet docked in a rail; stood on the strip, on none', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    final pill = find.byKey(const ValueKey<String>('canvas-brush-pill'));
+    final brush = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .brushTool;
+    void standsOn(Type host) {
+      final values = find.descendant(
+        of: find.byType(host),
+        matching: find.byType(BrushValuesPill),
+      );
+      expect(values, findsOneWidget, reason: '$host');
+      expect(
+        tester.widget<BrushValuesPill>(values).brushTool,
+        same(brush),
+        reason: '$host — the workspace\'s brush',
+      );
+      expect(pill, findsOneWidget, reason: '$host — one pill in the app');
+    }
+
+    // The sheets open in their rail as the app opens.
+    expect(
+      find.byType(TimesheetTabHost),
+      findsOneWidget,
+      reason: '⛔premise: docked in its rail',
+    );
+    expect(
+      find.descendant(of: find.byType(TimesheetTabHost), matching: pill),
+      findsNothing,
+    );
+    standsOn(MainCanvasBrushHost);
+
+    await tester.tap(floorButton(EditorWorkspace.mediaViewerTabId));
+    await tester.pumpAndSettle();
+    standsOn(MediaViewerTabHost);
+
+    await carry(tester, sheets, () => railGroupButton(top(1)));
+    for (final (slot, host) in [
+      (1, TimesheetTabHost),
+      (2, ConteTabHost),
+      (3, CutEnvelopeTabHost),
+    ]) {
+      await tester.tap(railGroupButton(top(slot)));
+      await tester.pumpAndSettle();
+      standsOn(host);
+    }
+
+    await tapPanelsDrawerRow(tester, 'menu-window-brush-values-on-strip');
+    expect(pill, findsNothing, reason: 'the strip holds them');
   });
 
   testWidgets('a button holding a panel that is no canvas-base panel finds no '

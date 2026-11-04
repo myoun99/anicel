@@ -82,7 +82,7 @@ typedef LinkOffer<C extends Object> = ({
 ///
 /// ↩️It was the tail of [nameThenOfferLink], private to the rename commands.
 /// A fourth press makes the offer since I-71 — 링크 붙여넣기 onto another row
-/// (`pasteLinkedAskingFirst`), with no window before it: the press is the
+/// (`pasteLinkedAskingFirst`), with no question before it: the press is the
 /// question — so the guard stands HERE, beside the window it opens. The
 /// panel context that fires the paste cannot import the rename commands
 /// (they import it).

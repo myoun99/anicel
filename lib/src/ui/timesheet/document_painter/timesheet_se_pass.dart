@@ -298,24 +298,4 @@ class _TimesheetSePass {
         ..strokeWidth = 2,
     );
   }
-
-  /// An SE column's empty row: the light-gray "no SE here" wash (project
-  /// toggle). Print-sheet only — the timeline/X-sheet's dark uncovered
-  /// cells already read as empty, and the dotted center guide is retired
-  /// everywhere (R5-②).
-  void paintSeEmptyRow(
-    Canvas canvas, {
-    required double columnLeft,
-    required double columnWidth,
-    required double centerX,
-    required double cellTop,
-  }) {
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    if (_painter.document.seEmptyFill) {
-      canvas.drawRect(
-        Rect.fromLTWH(columnLeft, cellTop, columnWidth, rowHeight),
-        Paint()..color = TimesheetDocumentPainter._ink.withValues(alpha: 0.05),
-      );
-    }
-  }
 }

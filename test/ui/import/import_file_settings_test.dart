@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/services/import/media_import_planner.dart'
-    show ImportDestination;
+import 'package:anicel/src/models/import/import_destination.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
@@ -404,6 +403,70 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('a NEW PROJECT is the file\'s own (I-156)', () {
+    const intoAProject = ImportFileSettings(
+      into: ImportDestination.newProject,
+    );
+
+    test('its cut is made at the file\'s size too — 1:1, locked', () {
+      for (final fit in MediaFitMode.values) {
+        expect(
+          resolve(intoAProject.copyWith(fit: fit)).fit,
+          MediaFitMode.none,
+          reason: '$fit',
+        );
+      }
+    });
+
+    test('it needs no cut open here — only a layer does', () {
+      expect(
+        resolve(intoAProject, hasActiveCut: false).into,
+        ImportDestination.newProject,
+      );
+      expect(
+        importDestinationGiven(
+          ImportDestination.activeCutLayer,
+          hasOpenCut: false,
+        ),
+        ImportDestination.newCut,
+      );
+    });
+
+    test('a picture placed there lands in it; a sound, a movie\'s sound '
+        'alone and a registration do not', () {
+      bool lands(
+        MediaAssetKind? kind, {
+        ImportFileSettings settings = intoAProject,
+        bool placing = true,
+      }) => importLandsInANewProject(
+        kind: kind,
+        settings: settings,
+        placing: placing,
+      );
+
+      expect(lands(MediaAssetKind.image), isTrue);
+      expect(lands(MediaAssetKind.video), isTrue);
+      expect(lands(MediaAssetKind.pdf), isTrue);
+      expect(lands(MediaAssetKind.audio), isFalse);
+      expect(
+        lands(
+          MediaAssetKind.video,
+          settings: intoAProject.copyWith(movieParts: MovieParts.sound),
+        ),
+        isFalse,
+      );
+      expect(lands(MediaAssetKind.image, placing: false), isFalse);
+      expect(lands(MediaAssetKind.image, settings: defaults), isFalse);
+    });
+
+    test('a cut folder\'s row is asked the places in THIS project', () {
+      expect(ImportDestination.inThisProject, [
+        ImportDestination.activeCutLayer,
+        ImportDestination.newCut,
+      ]);
     });
   });
 

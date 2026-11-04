@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
@@ -42,8 +44,8 @@ void main() {
     layerId: defaultLayerIdForSequence(sequence),
   );
 
-  /// Cuts A and B, 겸용, and C on its own — A's 겸용 cut D on a track of its
-  /// own, with [elsewhere].
+  /// Cuts A and B, 겸용, and C on its own, a fade in on A's head — A's 겸용
+  /// cut D on a track of its own, with [elsewhere].
   Project work({bool elsewhere = false}) => Project(
     id: const ProjectId('fixed-text'),
     name: 'Fixed text',
@@ -53,6 +55,11 @@ void main() {
         id: track,
         name: 'V',
         cuts: [cut('A', 1), cut('B', 2), cut('C', 3)],
+        transitionLayer: createTrackTransitionLayer(track).copyWith(
+          instructions: {
+            0: const InstructionEvent(instructionId: 'fi', length: 6),
+          },
+        ),
       ),
       if (elsewhere)
         Track(id: otherTrack, name: 'V2', cuts: [cut('D', 4)]),
@@ -235,39 +242,50 @@ void main() {
       expect(linesOn(tester), isNotEmpty);
     });
 
-    testWidgets('🎯the sheet reprints when what its lines read changes: a '
-        '겸용 cut\'s name, the sheet\'s language', (tester) async {
+    testWidgets('🎯the sheet reprints when what its lines read changes: the '
+        'sheet\'s language', (tester) async {
       await pumpHost(tester);
       session.languageSettings.value = session.languageSettings.value.copyWith(
         notationLanguage: AppLanguage.ja,
       );
       await tester.pumpAndSettle();
-      expect(linesOn(tester), ['兼用 cB']);
-
-      session.cutVerbs.renameCuts({const CutId('B'): 'B2'});
-      await tester.pumpAndSettle();
-      expect(linesOn(tester), ['兼用 cB2']);
+      expect(linesOn(tester), ['カット頭 FI']);
 
       session.languageSettings.value = session.languageSettings.value.copyWith(
         notationLanguage: AppLanguage.ko,
       );
       await tester.pumpAndSettle();
-      expect(linesOn(tester), ['겸용 cB2']);
+      expect(linesOn(tester), ['컷 앞 FI']);
     });
 
-    testWidgets('…the name of a 겸용 cut on another track among them', (
+    // 🗣️F-558 (유저 2026-11-04): 「겸용컷은 고정텍스트 위치가 이게아님. 그리고
+    // 고정텍스트 on이든 off이든 연관없음. 항상 보여줌. 위치는 헤더의 컷 번호
+    // 아래」.
+    testWidgets('🎯the header names the 겸용 cuts, one on another track among '
+        'them, again when one is renamed — and the memo writes none', (
       tester,
     ) async {
       await pumpHost(tester, project: work(elsewhere: true));
-      session.languageSettings.value = session.languageSettings.value.copyWith(
-        notationLanguage: AppLanguage.ko,
-      );
-      await tester.pumpAndSettle();
-      expect(linesOn(tester), ['겸용 cB,cD']);
+      expect(sheet(tester).linkedCuts, ['B', 'D']);
+      expect(linesOn(tester), hasLength(1), reason: 'the fade\'s alone');
 
       session.cutVerbs.renameCuts({const CutId('D'): 'D2'});
       await tester.pumpAndSettle();
-      expect(linesOn(tester), ['겸용 cB,cD2']);
+      expect(sheet(tester).linkedCuts, ['B', 'D2']);
+      session.cutVerbs.renameCuts({const CutId('B'): 'B2'});
+      await tester.pumpAndSettle();
+      expect(sheet(tester).linkedCuts, ['B2', 'D2']);
+    });
+
+    testWidgets('🎯…whether the sheet writes its lines or not', (tester) async {
+      await pumpHost(tester);
+      await tap(tester, window);
+      await tap(tester, 'timesheet-format-fixed-text');
+      await tap(tester, save);
+
+      expect(session.timesheetInfo.sheetFixedText, isFalse, reason: '⛔전제');
+      expect(linesOn(tester), isEmpty);
+      expect(sheet(tester).linkedCuts, ['B']);
     });
   });
 

@@ -29,6 +29,7 @@ import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/collect_garbage.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// 🚨★★★A CONFIRMED TRANSFORM WHOSE UNDO ENTRY WAS PARKED HOLDS NONE OF
 /// THE PICTURE IT WOULD UNDO TO (C-ipad-crash ①, 2026-09-15).
@@ -150,7 +151,7 @@ void main() {
       );
       await tester.pump();
       expect(commands.transformActive, isTrue, reason: 'the box opened');
-      commands.applyTransform();
+      await windowBehind(tester, () async => commands.applyTransform());
       await tester.pump();
       await settle();
       expect(commands.transformActive, isFalse, reason: 'Enter closed it');

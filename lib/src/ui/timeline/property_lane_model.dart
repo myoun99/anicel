@@ -3,6 +3,7 @@ import 'dart:ui' show Color, Offset, VoidCallback;
 import 'package:flutter/foundation.dart' show Listenable;
 
 import '../../models/frame_id.dart';
+import '../../models/fx_basis.dart';
 import '../../models/key_mark.dart';
 import '../../models/key_side.dart' show KeyExit, KeySide, KeySidesEdit;
 import '../../models/layer.dart';
@@ -90,6 +91,12 @@ double scrubbedAngle(double degrees, Offset dragDelta) {
 String formatLaneColorValue(int? argb) =>
     argb == null ? 'none' : colorHexOf(argb);
 
+/// A group header's RASTERIZE as a host answers it for [layer]'s [lane]
+/// (I-120 round ②): null where the header has none; its press null where
+/// it bakes nothing now.
+typedef LaneGroupRasterize =
+    ({VoidCallback? press})? Function(Layer layer, PropertyLaneRow lane);
+
 class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,
@@ -108,6 +115,7 @@ class PropertyLaneRow {
     this.isGroupHeader = false,
     this.groupExpanded = false,
     this.groupEnabled,
+    this.groupBasis,
     this.pluginNotOnDevice = false,
     this.headsAGraph = false,
     this.previewText,
@@ -239,6 +247,12 @@ class PropertyLaneRow {
   /// `fx` glyph — AE's per-effect eyeball (R6). Null = this group has no
   /// switch (the Transform group; the row's one fx switch covers it).
   final bool? groupEnabled;
+
+  /// Group headers only: what the group reads its keys by — each frame, or
+  /// the head of the block a frame is in (I-120-Q10) — the header's basis
+  /// chip. Null = this group has no chip: its row has no blocks of its own
+  /// to step on, a folder's, an adjustment's, a track's (I-120-Q9).
+  final FxBasis? groupBasis;
 
   /// Group headers only: the effect is of a plugin this device has not —
   /// 🗣️I-132-Q28 a 「Fx 목록에 그 fx 가 회색으로 남고 값 · 키도 그대로」:
@@ -625,6 +639,16 @@ void folderBandStandsFor(Layer band, Iterable<Layer> rows) =>
 
 /// The rows each band stands for, held weakly like the bands themselves.
 final Expando<List<Layer>> _bandRows = Expando('folder band rows');
+
+/// Where [row]'s blocks start and end — where what a block shows can
+/// change along it: a row's cells' edges (`timelineRowCellEdges`), and a
+/// folder band's, which shows its rows' (F-561).
+Iterable<int> timelineBlockEdgesOf(Layer row) sync* {
+  for (final MapEntry(key: start, value: block) in row.timeline.entries) {
+    yield start;
+    yield start + (block.length ?? 1);
+  }
+}
 
 /// The folder row's aggregate band (the TVP-latest display): the UNION of
 /// the subtree members' BLOCKS merged into runs. Nameless, and no comma

@@ -124,9 +124,10 @@ List<ConteHeadPut> conteHeadsPut(
   return put;
 }
 
-/// Every cut of [project] by its id — none for no project.
+/// Every cut of [project] by its id, every timeline's — none for no project.
+/// A cut another timeline opened on is no cut a write made (I-150).
 Map<CutId, Cut> _cutsById(Project? project) => {
-  for (final track in project?.tracks ?? const <Track>[])
+  for (final track in project?.tracksOfEveryTimeline ?? const <Track>[])
     for (final cut in track.cuts) cut.id: cut,
 };
 
@@ -158,7 +159,7 @@ List<LayerLinkGroup> _withoutGoneFills(
     return groups;
   }
   final held = {
-    for (final track in project.tracks)
+    for (final track in project.tracksOfEveryTimeline)
       for (final cut in track.cuts)
         for (final layer in cut.layers)
           if (isConteFill(layer)) (cut.id, layer.id),

@@ -1,5 +1,9 @@
+import 'dart:collection';
+
 import '../../models/canvas_size.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer_effect.dart';
+import '../../models/timeline_exposure.dart';
 import 'ae_script.dart';
 
 /// [effect] as the After Effects effect nearest it, over a comp [frames]
@@ -32,8 +36,9 @@ AeEffect? aeEffectOf(
   LayerEffect effect, {
   required int frames,
   required CanvasSize paper,
+  required SplayTreeMap<int, TimelineExposure>? blocks,
 }) {
-  final kin = _AeKin(effect, frames: frames, paper: paper);
+  final kin = _AeKin(effect, frames: frames, paper: paper, blocks: blocks);
   return switch (effect.kind) {
     EffectKind.brightnessContrast => kin.brightnessContrast(),
     EffectKind.hueSaturation => kin.hueSaturation(),
@@ -61,13 +66,21 @@ double aeLegacyContrastOf(double contrast) =>
     contrast <= 0 ? contrast : 100 * contrast / (100 + contrast);
 
 /// One effect's kin in After Effects ([aeEffectOf]): the effect sampled at
-/// each of the comp's frames, and a property of the kin per lane.
+/// each of the comp's frames — where its basis reads its keys over
+/// [blocks], as the screen does — and a property of the kin per lane.
 class _AeKin {
-  _AeKin(this.effect, {required this.frames, required this.paper})
-    : samples = [
-        for (var frame = 0; frame < frames; frame += 1)
-          sampleLayerEffectAt(effect, frame),
-      ];
+  _AeKin(
+    this.effect, {
+    required this.frames,
+    required this.paper,
+    required SplayTreeMap<int, TimelineExposure>? blocks,
+  }) : samples = [
+         for (var frame = 0; frame < frames; frame += 1)
+           sampleLayerEffectAt(
+             effect,
+             fxReadFrame(effect.basis, blocks, frame),
+           ),
+       ];
 
   final LayerEffect effect;
   final int frames;

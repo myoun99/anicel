@@ -499,10 +499,27 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// the viewer, as a rename does.
   String? _drawnCarry;
 
+  /// What the open file was carried as when it was opened ([_load]).
+  String? _openedCarry;
+
   void _onSessionChanged() {
-    if (mounted &&
-        (_shownName != _drawnName ||
-            _shownAsset?.carriedAs != _drawnCarry)) {
+    if (!mounted) {
+      return;
+    }
+    final carry = _shownAsset?.carriedAs;
+    if (carry != _openedCarry) {
+      final anew = carry != null && _openedCarry != null;
+      _openedCarry = carry;
+      if (anew) {
+        // 🗣️F-550-Q3 (유저 2026-11-04: 「새로 받는다」): a file carried anew
+        // while it is open — or an undo's, the first carry back — is other
+        // bytes, and opens as the document it is. A carry made or let go of
+        // is the same file, which stays open.
+        unawaited(_load(_currentRequest));
+        return;
+      }
+    }
+    if (_shownName != _drawnName || carry != _drawnCarry) {
       setState(() {});
     }
   }
@@ -720,6 +737,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // A position past the end of a shorter document reads clamped
     // ([_turnToPage] and the build both clamp), never out of range.
     setState(_disposeContent);
+    _openedCarry = _shownAsset?.carriedAs;
     if (request == null) {
       return; // The empty state reads from _currentRequest == null.
     }

@@ -17,6 +17,10 @@ import 'touch_shortcuts.dart';
 /// The layout an install opens on ([EditorShortcutBindings.preset]).
 const ShortcutLayout _startingPreset = ShortcutPreset.clipStudio;
 
+/// A key two or more actions hold, and its holders in the registry's order
+/// ([EditorShortcutBindings.keyClashes]).
+typedef KeyClash = ({SingleActivator key, List<String> holders});
+
 /// The LIVE shortcut bindings: the keys of the preset in use merged with the
 /// user's persisted overrides. Notifies on every change so the app-level
 /// Shortcuts map, the menu labels and the settings dialog all rebuild
@@ -348,35 +352,90 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   /// Action ids whose activators collide with another action's (the
   /// settings dialog highlights them).
-  Set<String> get conflictedActionIds => _conflictedIds(
-    (actionId) => activatorsFor(actionId).map(activatorKey),
-  );
+  Set<String> get conflictedActionIds => _conflictedIds(_keyboardKeysOf);
+
+  /// Every key two or more actions hold, with its holders in the registry's
+  /// order — what the settings window names beside its warning (I-158).
+  List<KeyClash> get keyClashes => [
+    for (final MapEntry(key: at, value: holders)
+        in _holdersByKey(_keyboardKeysOf).entries)
+      if (holders.length > 1)
+        (
+          key: activatorsFor(
+            holders.first,
+          ).firstWhere((activator) => activatorKey(activator) == at),
+          holders: holders,
+        ),
+  ];
+
+  Iterable<String> _keyboardKeysOf(String actionId) =>
+      activatorsFor(actionId).map(activatorKey);
 
   /// Every action id that shares one of its [keysOf] keys with another
-  /// action — the key→actions inversion both conflict queries are.
-  Set<String> _conflictedIds<K>(Iterable<K> Function(String actionId) keysOf) {
+  /// action.
+  Set<String> _conflictedIds<K>(
+    Iterable<K> Function(String actionId) keysOf,
+  ) => {
+    for (final ids in _holdersByKey(keysOf).values)
+      if (ids.length > 1) ...ids,
+  };
+
+  /// Each of the [keysOf] keys and the actions holding it — the key→actions
+  /// inversion every conflict query is.
+  Map<K, List<String>> _holdersByKey<K>(
+    Iterable<K> Function(String actionId) keysOf,
+  ) {
     final byKey = <K, List<String>>{};
     for (final definition in definitions) {
       for (final key in keysOf(definition.id)) {
         byKey.putIfAbsent(key, () => []).add(definition.id);
       }
     }
-    return {
-      for (final ids in byKey.values)
-        if (ids.length > 1) ...ids,
-    };
+    return byKey;
   }
 
   /// Replaces [actionId]'s activators; a value equal to the defaults
   /// clears the override. Persists and notifies.
   void setActivators(String actionId, List<SingleActivator> activators) {
+    _record(actionId, activators);
+    _persist();
+    notifyListeners();
+  }
+
+  /// [key] on [actionId] alone: taken off every other action that holds it,
+  /// and put on [actionId] where it was not. Persists and notifies once.
+  ///
+  /// 🗣️I-158 (유저 2026-11-04): 「펜(Y)이런식으로 이 텍스트를 버튼으로
+  /// 만들어서, 이걸로 할당하는 기능 … 그거 버튼누르면 올가미채우기의 키가
+  /// 사라지는식으로」 — the other holders keep the rest of their keys.
+  void giveKeyTo(String actionId, SingleActivator key) {
+    final at = activatorKey(key);
+    for (final definition in definitions) {
+      final keys = activatorsFor(definition.id);
+      final held = keys.any((activator) => activatorKey(activator) == at);
+      if (definition.id == actionId) {
+        if (!held) {
+          _record(actionId, [...keys, key]);
+        }
+      } else if (held) {
+        _record(definition.id, [
+          for (final activator in keys)
+            if (activatorKey(activator) != at) activator,
+        ]);
+      }
+    }
+    _persist();
+    notifyListeners();
+  }
+
+  /// [activators] recorded for [actionId] — no override where they are its
+  /// defaults.
+  void _record(String actionId, List<SingleActivator> activators) {
     if (_sameKeys(activators, defaultActivatorsFor(actionId))) {
       _overrides.remove(actionId);
     } else {
       _overrides[actionId] = List.unmodifiable(activators);
     }
-    _persist();
-    notifyListeners();
   }
 
   static bool _sameKeys(List<SingleActivator> a, List<SingleActivator> b) =>

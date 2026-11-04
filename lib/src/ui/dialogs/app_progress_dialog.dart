@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/wait_window.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/ellipsis_text.dart';
+import '../widgets/fixed_label.dart';
 
 /// What a [AppProgressDialog] is showing right now.
 ///
@@ -149,7 +151,7 @@ class AppProgressDialog extends StatelessWidget {
               Expanded(
                 child: ValueListenableBuilder<String>(
                   valueListenable:
-                      runningStatus ?? const _FixedLabel(''),
+                      runningStatus ?? const FixedLabel(''),
                   builder: (context, status, _) => EllipsisText(
                     value.done
                         ? doneLabel
@@ -185,21 +187,6 @@ class AppProgressDialog extends StatelessWidget {
   }
 }
 
-/// A listenable that never changes — so the label builder has one shape
-/// whether or not the caller supplied a status line.
-class _FixedLabel implements ValueListenable<String> {
-  const _FixedLabel(this.value);
-
-  @override
-  final String value;
-
-  @override
-  void addListener(VoidCallback listener) {}
-
-  @override
-  void removeListener(VoidCallback listener) {}
-}
-
 /// How long the finished line is held up before the window leaves.
 ///
 /// Long enough to be read on a glance away from the screen, short enough
@@ -224,6 +211,9 @@ const Duration appProgressDoneLinger = Duration(milliseconds: 900);
 ///
 /// A throw takes the window down and comes back out, so the caller's own
 /// error path is unchanged by having been wrapped.
+///
+/// Every step [task] lands stands behind this same window again when it is
+/// undone or redone ([AppWaitWindow], 🗣️F-551-Q1).
 Future<T> runWithAppProgress<T>({
   required BuildContext context,
   required String title,
@@ -238,6 +228,13 @@ Future<T> runWithAppProgress<T>({
   ValueListenable<bool>? cancelLive,
 }) async {
   final progress = ValueNotifier<AppProgress>(const AppProgress.running(null));
+  final window = AppWaitWindow(
+    title: title,
+    runningLabel: runningLabel,
+    doneLabel: doneLabel,
+    titleIcon: titleIcon,
+    windowKey: windowKey,
+  );
   return _awaitBehindWindow(
     context: context,
     title: title,
@@ -256,9 +253,72 @@ Future<T> runWithAppProgress<T>({
     // over an app with nothing left running to take it down. So this
     // arm hands over the task UNSTARTED and lets the helper begin it
     // after the first frame.
-    start: () => task(
-      (fraction) => progress.value = AppProgress.running(fraction),
+    start: () => behindWaitWindow(
+      window,
+      () => task((fraction) => progress.value = AppProgress.running(fraction)),
     ),
+  );
+}
+
+/// The app's one wait window as a step stands behind it — what it says, so
+/// an undo or a redo of the step stands behind the window its first run
+/// stood behind (`StepWindows`).
+final class AppWaitWindow implements WaitWindow {
+  const AppWaitWindow({
+    required this.title,
+    required this.runningLabel,
+    required this.doneLabel,
+    this.titleIcon,
+    this.windowKey,
+  });
+
+  /// [title]'s window where the step has no words of its own for its work.
+  AppWaitWindow.working(String title)
+    : this(
+        title: title,
+        runningLabel: AppText.strings.workProgressRunning,
+        doneLabel: AppText.strings.workProgressDone,
+        windowKey: const ValueKey<String>('work-progress-dialog'),
+      );
+
+  /// [title]'s window over a paste — and over the media a paste from
+  /// another project holds first (I-7).
+  AppWaitWindow.pasting(String title)
+    : this(
+        title: title,
+        titleIcon: Icons.content_paste,
+        runningLabel: AppText.strings.pasteProgressRunning,
+        doneLabel: AppText.strings.pasteProgressDone,
+        windowKey: const ValueKey<String>('paste-progress-dialog'),
+      );
+
+  /// [title]'s window over a duplicate.
+  AppWaitWindow.duplicating(String title)
+    : this(
+        title: title,
+        runningLabel: AppText.strings.duplicateProgressRunning,
+        doneLabel: AppText.strings.duplicateProgressDone,
+        windowKey: const ValueKey<String>('duplicate-progress-dialog'),
+      );
+
+  final String title;
+  final String runningLabel;
+  final String doneLabel;
+  final IconData? titleIcon;
+  final Key? windowKey;
+
+  /// Runs [task] behind this window ([runWithAppProgress]).
+  Future<T> standBehind<T>(
+    BuildContext context,
+    Future<T> Function(void Function(double done) report) task,
+  ) => runWithAppProgress<T>(
+    context: context,
+    title: title,
+    runningLabel: runningLabel,
+    doneLabel: doneLabel,
+    titleIcon: titleIcon,
+    windowKey: windowKey,
+    task: task,
   );
 }
 

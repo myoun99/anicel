@@ -552,12 +552,16 @@ void main() {
       // The pictures a run holds from one frame to the next are its own to
       // let go of.
       expect(heldInTheRun, greaterThan(0), reason: 'LIVENESS: it held some');
-      expect(HeldPictures.debugHeld, 0);
       expect(
         capturedArgs.last.replaceAll('\\', '/'),
         endsWith('/Cut.mp4'),
       );
       expect(statusText(tester), 'Exported video (2 frames).');
+      // The window's preview of the film holds its frames as a run does
+      // (export-film-preview-is-not-the-film), and lets go of them with the
+      // window.
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(HeldPictures.debugHeld, 0);
     });
 
     testWidgets('audio accordion reports the toggle in its summary',
@@ -1012,9 +1016,13 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesWrittenUnder(temp), ['_TSCut B.xdts', '_TSCut.xdts']);
+      // Each in its cut's folder, which the project scope holds (I-153).
+      expect(filesWrittenUnder(temp), [
+        'Cut B/_TSCut B.xdts',
+        'Cut/_TSCut.xdts',
+      ]);
       expect(statusText(tester), 'Exported 2 files.');
-      final content = File('${temp.path}/_TSCut.xdts').readAsStringSync();
+      final content = File('${temp.path}/Cut/_TSCut.xdts').readAsStringSync();
       expect(content, contains('exchangeDigitalTimeSheet'));
     });
   });
@@ -1241,8 +1249,8 @@ void main() {
       // 4444 exposes the channel choice; RGBA is the default already.
       expect(
         find.byKey(const ValueKey<String>('export-format-channels-rgba')),
-        findsNothing,
-        reason: 'video channels stay internal — wantsAlpha follows 4444',
+        findsOneWidget,
+        reason: '🗣️I-152-Q1 (유저 2026-11-04): 「채널 행을 보인다」',
       );
       await tester.runAsync(state.export);
       await tester.pump();
@@ -1256,6 +1264,33 @@ void main() {
         capturedArgs.last.replaceAll('\\', '/'),
         endsWith('/Cut.mov'),
       );
+    });
+
+    testWidgets('MOV ProRes 4444 asked RGB is written opaque', (tester) async {
+      late List<String> capturedArgs;
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        videoExportService: VideoExportService(
+          processStarter: (executable, arguments) async {
+            capturedArgs = arguments;
+            return FakeFfmpegProcess();
+          },
+        ),
+      );
+      await pickExportContainer(tester, ExportVideoContainer.mov);
+      await pickCodec(tester, 'prores4444');
+      final rgb = find.byKey(
+        const ValueKey<String>('export-format-channels-rgb'),
+      );
+      await tester.ensureVisible(rgb);
+      await tester.tap(rgb);
+      await tester.pumpAndSettle();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(capturedArgs, contains('yuv444p10le'));
+      expect(capturedArgs, isNot(contains('yuva444p10le')));
     });
 
     // 🗣️video-export-speed-Q1 (유저 2026-10-09): 「코덱을 팝오버로 보여서

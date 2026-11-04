@@ -41,6 +41,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -129,12 +130,25 @@ void main() {
       ),
   ];
 
-  for (final (name, inPlace, effects, zoom) in [
-    ('the stroke over its cel', false, const <ResolvedLayerEffect>[], 1.0),
-    ('the result in place of its cel', true, const <ResolvedLayerEffect>[], 1.0),
-    ('at a half', true, const <ResolvedLayerEffect>[], 0.5),
-    ('at a quarter', true, const <ResolvedLayerEffect>[], 0.25),
-    ('through its row\'s keys', true, keyed, 1.0),
+  const none = <ResolvedLayerEffect>[];
+  for (final (name, inPlace, effects, zoom, placement) in [
+    ('the stroke over its cel', false, none, 1.0, null),
+    ('the result in place of its cel', true, none, 1.0, null),
+    ('at a half', true, none, 0.5, null),
+    ('at a quarter', true, none, 0.25, null),
+    ('through its row\'s keys', true, keyed, 1.0, null),
+    // 🚨Every texel edge of a row moved by half a pixel lies on a pixel's
+    // centre, and each raster broke that tie its own way until a posed
+    // image was drawn off it (`applyLayerPlacement`,
+    // an-enlarged-row-at-half-comes-apart-from-its-frame). Its patches keep
+    // their tiles, as a pose's do.
+    (
+      'on a row moved by half a pixel',
+      true,
+      none,
+      1.0,
+      const LayerPlacement(1, 0, 0, 1, 0.5, 0.5),
+    ),
   ]) {
     testWidgets('$name: patched in steps, the picture is the stroke as it '
         'stands', (tester) async {
@@ -142,7 +156,12 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final nodes = [
         CompositeLeaf<CanvasStackRow>(
-          CanvasActiveLayerRow(opacity: 0.5, frameKey: key, effects: effects),
+          CanvasActiveLayerRow(
+            opacity: 0.5,
+            frameKey: key,
+            effects: effects,
+            placement: placement,
+          ),
         ),
       ];
       final viewport = CanvasViewport(zoom: zoom);
@@ -225,7 +244,7 @@ void main() {
             region: rasterizer.blendFrom(overlay.dabs, from: from)!,
           );
         });
-        await aFrameAndItsStep(tester);
+        await tester.pump();
         final landing = patched.landingOf(keptByTheCanvas(tester, shown));
         expect(
           landing,
@@ -238,8 +257,10 @@ void main() {
       }
       expect(
         gpu.widestPatch,
-        lessThan(tileSize),
-        reason: '⛔premise: the patches were the dabs\', not their tiles',
+        placement == null ? lessThan(tileSize) : greaterThanOrEqualTo(tileSize),
+        reason: placement == null
+            ? '⛔premise: the patches were the dabs\', not their tiles'
+            : '⛔premise: a pose\'s patches keep their tiles',
       );
       final afterPatches = await shotOf(tester, screen);
 

@@ -1,10 +1,10 @@
 import 'dart:ui' as ui;
 
+import 'package:collection/collection.dart' show IterableExtension;
 import 'package:flutter/material.dart';
 
 import '../../core/progress_share.dart';
 import '../../models/cut.dart';
-import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardWall;
@@ -35,8 +35,72 @@ Future<void> mergeLayerRows(
   if (plan == null) {
     return;
   }
-  if (plan.changes.isNotEmpty &&
-      await _accepts(context, plan.changes) != true) {
+  final strings = AppText.strings;
+  await bakeAfterAsking<LayerMergeChange>(context, session, (
+    title: plan.result.name,
+    icon: Icons.merge,
+    windowKey: 'layer-merge-progress',
+    question: (
+      slug: 'layer-merge-changes',
+      title: strings.tlMergeChangesTitle,
+      body: strings.tlMergeChangesBody,
+      accept: editorActionLabel(EditorActionIds.editMerge),
+    ),
+    changes: plan.changes,
+    lineOf: (change) => switch (change) {
+      LayerMergeChange.blend => strings.tlMergeChangeBlend,
+      LayerMergeChange.clip => strings.tlMergeChangeClip,
+      LayerMergeChange.folder => strings.tlMergeChangeFolder,
+      LayerMergeChange.riderOver => strings.tlMergeChangeRiderOver,
+      LayerMergeChange.riderUnder => strings.tlMergeChangeRiderUnder,
+      LayerMergeChange.wall => strings.tlMergeChangeWall,
+    },
+    pictures: plan.pictures,
+    land: () => session.layerMerging.land(plan),
+  ));
+}
+
+/// What a bake asks before it changes how its rows look: its window's
+/// [title] and [body] — keyed [confirmDialogKeys] of [slug] — answered
+/// with [accept].
+typedef BakeQuestion = ({
+  String slug,
+  String title,
+  String body,
+  String accept,
+});
+
+/// A bake as its press runs it ([bakeAfterAsking]) — a MERGE's (I-78), an
+/// fx RASTERIZE's (I-120): its wait window's [title] under [icon], keyed
+/// [windowKey]; what it asks first ([question]), a line for each of the
+/// [changes] it makes to how the rows look ([lineOf]); the [pictures] it
+/// lays, and how it [land]s.
+typedef Bake<C extends Enum> = ({
+  String title,
+  IconData icon,
+  String windowKey,
+  BakeQuestion question,
+  Set<C> changes,
+  String Function(C change) lineOf,
+  List<LayerMergePicture> pictures,
+  void Function() land,
+});
+
+/// [bake] pressed: asked first where it changes how the rows look — its
+/// changes in their order; none, and it goes ahead unasked — each of its
+/// pictures drawn as the rows show it behind the one wait window heavy
+/// work shows ([runWithAppProgress]), and landed as one undo step.
+Future<void> bakeAfterAsking<C extends Enum>(
+  BuildContext context,
+  EditorSessionManager session,
+  Bake<C> bake,
+) async {
+  final lines = [
+    for (final change in bake.changes.sortedBy<num>((c) => c.index))
+      bake.lineOf(change),
+  ];
+  if (lines.isNotEmpty &&
+      await _accepts(context, bake.question, bake.icon, lines) != true) {
     return;
   }
   if (!context.mounted) {
@@ -45,47 +109,42 @@ Future<void> mergeLayerRows(
   final strings = AppText.strings;
   await runWithAppProgress<void>(
     context: context,
-    title: plan.result.name,
-    titleIcon: Icons.merge,
+    title: bake.title,
+    titleIcon: bake.icon,
     runningLabel: strings.bakeProgressRunning,
     doneLabel: strings.bakeProgressDone,
-    windowKey: const ValueKey<String>('layer-merge-progress'),
+    windowKey: ValueKey<String>(bake.windowKey),
     task: (report) async {
-      await _layPictures(session, plan, report);
-      session.layerMerging.land(plan);
+      await layBakedPictures(session, bake.pictures, report);
+      bake.land();
     },
   );
 }
 
-/// Whether the merge goes ahead over the [changes] it makes to how the
-/// rows look — null for a window walked away from.
-Future<bool?> _accepts(BuildContext context, Set<LayerMergeChange> changes) {
-  final strings = AppText.strings;
-  return askConfirm(
-    context,
-    ConfirmQuestion(
-      keys: confirmDialogKeys('layer-merge-changes'),
-      title: strings.tlMergeChangesTitle,
-      message: strings.tlMergeChangesBody,
-      titleIcon: Icons.merge,
-      details: [
-        NoticeDetails(heading: strings.tlMergeChanges, open: true, [
-          for (final change in LayerMergeChange.values)
-            if (changes.contains(change))
-              switch (change) {
-                LayerMergeChange.blend => strings.tlMergeChangeBlend,
-                LayerMergeChange.clip => strings.tlMergeChangeClip,
-                LayerMergeChange.folder => strings.tlMergeChangeFolder,
-                LayerMergeChange.riderOver => strings.tlMergeChangeRiderOver,
-                LayerMergeChange.riderUnder => strings.tlMergeChangeRiderUnder,
-                LayerMergeChange.wall => strings.tlMergeChangeWall,
-              },
-        ]),
-      ],
-    ),
-    accept: ConfirmChoice(editorActionLabel(EditorActionIds.editMerge)),
-  );
-}
+/// Whether the bake goes ahead over the [lines] it changes how the rows
+/// look by — null for a window walked away from.
+Future<bool?> _accepts(
+  BuildContext context,
+  BakeQuestion question,
+  IconData icon,
+  List<String> lines,
+) => askConfirm(
+  context,
+  ConfirmQuestion(
+    keys: confirmDialogKeys(question.slug),
+    title: question.title,
+    message: question.body,
+    titleIcon: icon,
+    details: [
+      NoticeDetails(
+        heading: AppText.strings.tlMergeChanges,
+        open: true,
+        lines,
+      ),
+    ],
+  ),
+  accept: ConfirmChoice(question.accept),
+);
 
 /// MERGE as the shared pill's button and its key press it: whatever
 /// [subject] names — the panel's ladder ([ToolbarPanelContext.mergeSubject])
@@ -127,31 +186,29 @@ Future<void> mergeBlocks(
   );
 }
 
-/// Each of [plan]'s pictures drawn of the cut it is made from, laid on its
-/// new cel in the cut that keeps it ([LayerMergePicture.into]) — a merge
-/// of a track's conte rows lays each cut's own (I-78-Q20), one cut's after
-/// another's.
-Future<void> _layPictures(
+/// Each of [pictures] drawn of the cut it is made from, laid on its new
+/// cel in the cut that keeps it ([LayerMergePicture.into]) — a merge of a
+/// track's conte rows lays each cut's own (I-78-Q20), one cut's after
+/// another's. A merge's pictures, and an fx RASTERIZE's (I-120).
+Future<void> layBakedPictures(
   EditorSessionManager session,
-  LayerMergePlan plan,
+  List<LayerMergePicture> pictures,
   void Function(double) report,
 ) async {
-  final byCut = <CutId, List<LayerMergePicture>>{};
-  for (final picture in plan.pictures) {
-    (byCut[picture.into.id] ??= []).add(picture);
-  }
   var laid = 0;
-  for (final pictures in byCut.values) {
-    final laying = _Laying(session, pictures.first.into);
+  for (final ofCut in pictures
+      .groupListsBy((picture) => picture.into.id)
+      .values) {
+    final laying = _Laying(session, ofCut.first.into);
     try {
-      for (final picture in pictures) {
+      for (final picture in ofCut) {
         await laying.lay(
           picture.rowId,
           picture.frameId,
           await laying.draw(picture.from, picture.frameIndex),
         );
         laid += 1;
-        report(doneShare(laid, plan.pictures.length));
+        report(doneShare(laid, pictures.length));
       }
     } finally {
       laying.dispose();

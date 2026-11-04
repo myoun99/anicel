@@ -111,6 +111,10 @@ failed=$(printf '%s' "$checks" | tr ',' '\n' \
   | grep -cv '^SUCCESS$\|^PENDING$\|^SKIPPED$\|^NEUTRAL$')
 # The verdict below still turns on "not green", which is both of them.
 bad=$((pending + failed))
+# No check is not green either. A PR seconds old has none yet, and this added
+# up to zero bad ones: #1492 said 「0, all green」 and went in eight seconds
+# after it opened, with its CI not started.
+[ "$total" -eq 0 ] && bad=1
 # Compared the other way round on purpose: base=branch, head=master makes
 # `ahead_by` the number of commits this branch is BEHIND, and hands back the
 # files THOSE commits touched in the same response. One call, two answers.
@@ -174,7 +178,9 @@ overlaps=$(printf '%s\n' "$others" | awk -F'\t' -v me="$PR" -v mine="$myfiles" '
 
 echo "PR #$PR  ($branch)  in $REPO"
 echo "  mergeable state : $state"
-if [ "$bad" -eq 0 ]; then
+if [ "$total" -eq 0 ]; then
+  echo "  checks          : none yet — unverified"
+elif [ "$bad" -eq 0 ]; then
   echo "  checks          : $total, all green"
 else
   echo "  checks          : $total — $failed failed, $pending still running"
@@ -238,6 +244,7 @@ case "$state" in
     echo "  - GitHub says $state."
     ;;
 esac
+[ "$total" -eq 0 ] && echo "  - No check on this PR yet — this is a wait, not a break."
 [ "$failed" -ne 0 ] && echo "  - $failed check(s) FAILED."
 [ "$pending" -ne 0 ] && echo "  - $pending check(s) have not finished — this is a wait, not a break."
 if [ "$behind" != "0" ] && [ "$behind" != "?" ]; then

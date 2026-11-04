@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_in_and_out.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
@@ -295,7 +296,11 @@ void main() {
         DualThickness INTEGER, DualRotation REAL, DualUseSpray INTEGER,
         DualSpraySize REAL, DualSprayDensity INTEGER,
         BrushMixColorEffector BLOB, BrushMixAlphaEffector BLOB,
-        BrushAdjustFlowByInterval INTEGER, TextureCompositeMode INTEGER);
+        BrushAdjustFlowByInterval INTEGER, TextureCompositeMode INTEGER,
+        BrushUseIn INTEGER, BrushUseOut INTEGER, BrushInLength REAL,
+        BrushOutLength REAL, BrushInLengthUnit INTEGER,
+        BrushOutLengthUnit INTEGER, BrushInOutType INTEGER,
+        BrushInOutTarget BLOB);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -647,6 +652,140 @@ void main() {
           'imported from its preview.',
         ),
       );
+    });
+  });
+
+  // 🗣️brush-in-and-out (유저 2026-11-01): Q1 「크기 · 농도, 길이 지정 하나」.
+  group('入り抜き', () {
+    // Clip Studio's twenty-one, in the order the user's four brushes carry
+    // them.
+    const ids = [
+      112, 1001, 1021, 1041, 1051, 1082, 1084, 1093, 1100, 1104, 1106, //
+      1108, 1132, 1134, 50112, 51001, 51021, 51041, 51051, 51132, 51134,
+    ];
+    Uint8List target(Map<int, (int, int)> ticked) {
+      final data = ByteData(12 + ids.length * 12)
+        ..setInt32(0, 12)
+        ..setInt32(4, ids.length)
+        ..setInt32(8, 12);
+      for (var n = 0; n < ids.length; n++) {
+        final (on, minimum) = ticked[ids[n]] ?? (0, 0);
+        data
+          ..setInt32(12 + n * 12, ids[n])
+          ..setInt32(16 + n * 12, on)
+          ..setInt32(20 + n * 12, minimum);
+      }
+      return data.buffer.asUint8List();
+    }
+
+    Future<(BrushInAndOut, List<String>)> read(
+      Map<String, Object?> columns,
+    ) async {
+      final path = await buildFixture(tipPng: await blackPng(4, 4));
+      final database = sqlite3.open(path);
+      for (final MapEntry(:key, :value) in columns.entries) {
+        // The sampled brush's own, the first that comes in.
+        database.execute(
+          'UPDATE Variant SET $key = ? WHERE VariantID = 9',
+          [value],
+        );
+      }
+      database.close();
+      final result = await decodeSutBrushFile(
+        File(path).readAsBytesSync(),
+        sourceName: 'fixture',
+      );
+      return (
+        result.presets.first.settings.inAndOut,
+        [
+          for (final warning in result.warnings)
+            if (warning.contains('start and end')) warning,
+        ],
+      );
+    }
+
+    const lengths = {
+      'BrushInLength': 20.0,
+      'BrushOutLength': 35.0,
+      'BrushInLengthUnit': 0,
+      'BrushOutLengthUnit': 0,
+      'BrushInOutType': 0,
+    };
+
+    test('入り and 抜き come in as lengths, with what they leave of the size '
+        'and of the 濃度', () async {
+      final (inAndOut, warnings) = await read({
+        ...lengths,
+        'BrushUseIn': 1,
+        'BrushUseOut': 1,
+        'BrushInOutTarget': target({112: (1, 0), 1001: (1, 40)}),
+      });
+      expect(
+        inAndOut,
+        const BrushInAndOut(
+          inLength: 20,
+          outLength: 35,
+          sizeMinimum: 0,
+          flowMinimum: 0.4,
+        ),
+      );
+      expect(warnings, isEmpty);
+    });
+
+    test('one that is off keeps no length, and what it does not reach it '
+        'takes nothing of', () async {
+      final (inAndOut, _) = await read({
+        ...lengths,
+        'BrushUseIn': 0,
+        'BrushUseOut': 1,
+        'BrushInOutTarget': target({}),
+      });
+      expect(
+        inAndOut,
+        const BrushInAndOut(outLength: 35, sizeMinimum: 1, flowMinimum: 1),
+      );
+    });
+
+    test('off at both ends it is none, whatever the file keeps — and so is '
+        'a file without it', () async {
+      final (off, warnings) = await read({
+        ...lengths,
+        'BrushUseIn': 0,
+        'BrushUseOut': 0,
+        'BrushInOutTarget': target({1021: (1, 0)}),
+      });
+      expect(off, BrushInAndOut.none);
+      expect(warnings, isEmpty);
+      expect((await read({})).$1, BrushInAndOut.none);
+    });
+
+    test('⛔set by percent or fade, or in another unit, it comes in without '
+        'them, and says so', () async {
+      for (final columns in [
+        {...lengths, 'BrushInOutType': 1},
+        {...lengths, 'BrushInOutType': 2},
+        {...lengths, 'BrushOutLengthUnit': 2},
+      ]) {
+        final (inAndOut, warnings) = await read({
+          ...columns,
+          'BrushUseIn': 1,
+          'BrushUseOut': 1,
+          'BrushInOutTarget': target({112: (1, 0)}),
+        });
+        expect(inAndOut, BrushInAndOut.none, reason: '$columns');
+        expect(warnings, hasLength(1), reason: '$columns');
+      }
+    });
+
+    test('what else it reaches is left out, and said', () async {
+      final (inAndOut, warnings) = await read({
+        ...lengths,
+        'BrushUseIn': 1,
+        'BrushUseOut': 0,
+        'BrushInOutTarget': target({112: (1, 10), 1021: (1, 0)}),
+      });
+      expect(inAndOut, const BrushInAndOut(inLength: 20, sizeMinimum: 0.1));
+      expect(warnings.single, contains('1021'));
     });
   });
 

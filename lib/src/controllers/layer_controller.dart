@@ -4,6 +4,7 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
+import '../models/fx_basis.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_id.dart';
@@ -16,6 +17,7 @@ import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
 import '../services/commands/update_layer_opacity_command.dart';
+import '../services/commands/update_layer_transform_basis_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
 import '../services/project_repository.dart';
@@ -466,6 +468,22 @@ class LayerController {
       cutId: cutId,
       layerId: layerId,
       blendMode: blendMode,
+    ),
+  );
+
+  /// What the row's TRANSFORM reads its keys by (I-120-Q10) — the link
+  /// group's and the track's conte rows', as its switch is
+  /// ([UpdateLayerTransformBasisCommand]).
+  void setLayerTransformBasis({
+    required LayerId layerId,
+    required FxBasis basis,
+  }) => _executeInItsCut(
+    layerId,
+    (cutId) => UpdateLayerTransformBasisCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      basis: basis,
     ),
   );
 

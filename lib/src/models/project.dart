@@ -11,6 +11,8 @@ import 'project_background.dart';
 import 'project_font_file.dart';
 import 'project_frame_rate.dart';
 import 'project_id.dart';
+import 'project_timeline.dart';
+import 'timeline_id.dart';
 import 'timesheet_info.dart';
 import 'track.dart';
 
@@ -57,7 +59,7 @@ class Project {
   Project({
     required this.id,
     required this.name,
-    required List<Track> tracks,
+    List<Track>? tracks,
     required this.createdAt,
     this.frameRate = ProjectFrameRate.fps24,
     this.cameraSize = defaultProjectCameraSize,
@@ -72,6 +74,8 @@ class Project {
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
     int trailingFrames = 0,
+    List<ProjectTimeline>? timelines,
+    TimelineId? currentTimelineId,
     LayerLinkRegistry? linkRegistry,
     int audioSampleRate = defaultProjectAudioSampleRate,
     int audioSpeedNumerator = 1,
@@ -81,11 +85,24 @@ class Project {
     List<ProjectFontFile> fonts = const [],
   }) : mediaViewerBookmarks = Map.unmodifiable(mediaViewerBookmarks),
        fonts = List.unmodifiable(fonts),
-       tracks = List.unmodifiable(tracks),
+       // A project is given its timelines, or the tracks of its one.
+       assert(timelines == null || (tracks == null && trailingFrames == 0)),
+       assert(timelines?.isNotEmpty ?? tracks != null),
+       timelines = List.unmodifiable(
+         timelines ??
+             [
+               ProjectTimeline(
+                 id: firstProjectTimelineId,
+                 number: 1,
+                 tracks: tracks!,
+                 trailingFrames: trailingFrames,
+               ),
+             ],
+       ),
+       _currentTimelineId = currentTimelineId,
        exportOverrides = exportOverrides ?? ExportProjectOverrides.empty,
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
        mediaAssets = immutableMediaAssetList(mediaAssets),
-       trailingFrames = trailingFrames < 0 ? 0 : trailingFrames,
        linkRegistry = linkRegistry ?? LayerLinkRegistry.empty,
        audioSampleRate = audioSampleRate < 1
            ? defaultProjectAudioSampleRate
@@ -97,7 +114,57 @@ class Project {
 
   final ProjectId id;
   final String name;
-  final List<Track> tracks;
+
+  /// Every timeline the project holds, in the order its list shows them
+  /// (I-150).
+  final List<ProjectTimeline> timelines;
+
+  final TimelineId? _currentTimelineId;
+
+  /// The timeline open — the first where none is named, or the one named
+  /// is gone.
+  late final ProjectTimeline currentTimeline = timelines.firstWhere(
+    (timeline) => timeline.id == _currentTimelineId,
+    orElse: () => timelines.first,
+  );
+
+  TimelineId get currentTimelineId => currentTimeline.id;
+
+  /// The CURRENT timeline's tracks — what the panels, the conte, the sheets
+  /// and the export read (🗣️I-150: 「앞으로는 출력되는 것이던 모두
+  /// 현재트랙을 기반으로. 콘티던 뭐던」 · 「타임라인패널도 현재트랙을
+  /// 기반으로 읽도록」).
+  ///
+  /// ⛔Not what the PROJECT holds. A walk asking that — an id free in it,
+  /// a file it uses, a cut its ink names — reads [tracksOfEveryTimeline],
+  /// and a write addressed by id reaches every timeline
+  /// ([withTracksOfEveryTimeline]): an id names one thing wherever it is.
+  List<Track> get tracks => currentTimeline.tracks;
+
+  /// The current timeline's trailing gap ([ProjectTimeline.trailingFrames]).
+  int get trailingFrames => currentTimeline.trailingFrames;
+
+  /// The tracks of every timeline, the current one's among them.
+  Iterable<Track> get tracksOfEveryTimeline =>
+      timelines.expand((timeline) => timeline.tracks);
+
+  /// This project with each timeline's tracks rebuilt by [update] — itself
+  /// where [update] hands every list back as it was.
+  Project withTracksOfEveryTimeline(
+    List<Track> Function(List<Track> tracks) update,
+  ) {
+    final rebuilt = [
+      for (final timeline in timelines)
+        switch (update(timeline.tracks)) {
+          final tracks when identical(tracks, timeline.tracks) => timeline,
+          final tracks => timeline.copyWith(tracks: tracks),
+        },
+    ];
+    return listsMatch(rebuilt, timelines, identical)
+        ? this
+        : copyWith(timelines: rebuilt);
+  }
+
   final DateTime createdAt;
 
   /// The exact rate, fraction and all (23.976 = 24000/1001).
@@ -109,13 +176,6 @@ class Project {
   int get fps => frameRate.countingBase;
 
   final CanvasSize cameraSize;
-
-  /// The movie's TRAILING GAP (UI-R20 #3): extra frames past the last
-  /// cut's end — the storyboard end line drags THIS, so the final length
-  /// is authored independently of the cuts (gaps are first-class on this
-  /// timeline, the tail included). The movie end = the cuts' content end
-  /// + this.
-  final int trailingFrames;
 
   /// The PAPER (R10-⑥ / R3b): the sheet under the artwork, alpha-capable
   /// — one plane of the four-plane stage this project displays and
@@ -262,6 +322,8 @@ class Project {
     List<MediaAsset>? mediaAssets,
     MediaViewerBookmarks? mediaViewerBookmarks,
     int? trailingFrames,
+    List<ProjectTimeline>? timelines,
+    TimelineId? currentTimelineId,
     LayerLinkRegistry? linkRegistry,
     int? audioSampleRate,
     int? audioSpeedNumerator,
@@ -269,10 +331,25 @@ class Project {
     ExportProjectOverrides? exportOverrides,
     List<ProjectFontFile>? fonts,
   }) {
+    final current = currentTimelineId ?? this.currentTimelineId;
+    final standing = timelines ?? this.timelines;
     return Project(
       id: id ?? this.id,
       name: name ?? this.name,
-      tracks: tracks ?? this.tracks,
+      // The tracks and the trailing gap given are the current timeline's.
+      timelines: tracks == null && trailingFrames == null
+          ? standing
+          : [
+              for (final timeline in standing)
+                if (timeline.id == current)
+                  timeline.copyWith(
+                    tracks: tracks,
+                    trailingFrames: trailingFrames,
+                  )
+                else
+                  timeline,
+            ],
+      currentTimelineId: current,
       createdAt: createdAt ?? this.createdAt,
       frameRate: frameRate ?? this.frameRate,
       cameraSize: cameraSize ?? this.cameraSize,
@@ -286,7 +363,6 @@ class Project {
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
-      trailingFrames: trailingFrames ?? this.trailingFrames,
       linkRegistry: linkRegistry ?? this.linkRegistry,
       audioSampleRate: audioSampleRate ?? this.audioSampleRate,
       audioSpeedNumerator: audioSpeedNumerator ?? this.audioSpeedNumerator,
@@ -302,7 +378,8 @@ class Project {
   Map<String, dynamic> toJson() => {
     'id': id.toJson(),
     'name': name,
-    'tracks': tracks.map((track) => track.toJson()).toList(),
+    'timelines': [for (final timeline in timelines) timeline.toJson()],
+    'currentTimeline': currentTimelineId.toJson(),
     'createdAt': createdAt.toIso8601String(),
     // ↩️`fps` rode beside this so a build that predated the fraction could
     // still open the file. Every build that opens this format reads the
@@ -328,7 +405,6 @@ class Project {
     // had before fonts could be carried.
     if (fonts.isNotEmpty)
       'fonts': [for (final font in fonts) font.toJson()],
-    if (trailingFrames != 0) 'trailingFrames': trailingFrames,
     // Omitted when empty: unlinked projects keep their exact legacy JSON.
     if (linkRegistry.isNotEmpty) 'linkRegistry': linkRegistry.toJson(),
     // Omitted at the default: 48k projects keep their exact legacy JSON.
@@ -351,9 +427,10 @@ class Project {
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
-    final tracks = (json['tracks'] as List<dynamic>)
-        .map((track) => Track.fromJson(track as Map<String, dynamic>))
-        .toList();
+    final timelines = [
+      for (final timeline in json['timelines'] as List<dynamic>)
+        ProjectTimeline.fromJson(timeline as Map<String, dynamic>),
+    ];
     final storedAssets = json['mediaAssets'] == null
         ? const <MediaAsset>[]
         : (json['mediaAssets'] as List<dynamic>)
@@ -364,7 +441,10 @@ class Project {
     return Project(
       id: ProjectId.fromJson(json['id'] as Map<String, dynamic>),
       name: json['name'] as String,
-      tracks: tracks,
+      timelines: timelines,
+      currentTimelineId: TimelineId.fromJson(
+        json['currentTimeline'] as Map<String, dynamic>,
+      ),
       createdAt: DateTime.parse(json['createdAt'] as String),
       frameRate: ProjectFrameRate.fromJson(
         json['frameRate'] as Map<String, dynamic>,
@@ -397,8 +477,9 @@ class Project {
           : CameraInstructionSet.fromJson(
               json['cameraInstructions'] as Map<String, dynamic>,
             ),
-      mediaAssets: reconciledMediaAssets(storedAssets, tracks),
-      trailingFrames: (json['trailingFrames'] as int?) ?? 0,
+      mediaAssets: reconciledMediaAssets(storedAssets, [
+        for (final timeline in timelines) ...timeline.tracks,
+      ]),
       linkRegistry: json['linkRegistry'] == null
           ? null
           : LayerLinkRegistry.fromJson(
@@ -430,7 +511,8 @@ class Project {
       other is Project &&
           other.id == id &&
           other.name == name &&
-          listEquals(other.tracks, tracks) &&
+          listEquals(other.timelines, timelines) &&
+          other.currentTimelineId == currentTimelineId &&
           other.createdAt == createdAt &&
           other.frameRate == frameRate &&
           other.cameraSize == cameraSize &&
@@ -438,7 +520,6 @@ class Project {
           other.timesheetInfo == timesheetInfo &&
           other.cameraInstructions == cameraInstructions &&
           listEquals(other.mediaAssets, mediaAssets) &&
-          other.trailingFrames == trailingFrames &&
           other.linkRegistry == linkRegistry &&
           other.audioSampleRate == audioSampleRate &&
           other.audioSpeedNumerator == audioSpeedNumerator &&
@@ -451,7 +532,8 @@ class Project {
   int get hashCode => Object.hash(
     id,
     name,
-    Object.hashAll(tracks),
+    Object.hashAll(timelines),
+    currentTimelineId,
     createdAt,
     frameRate,
     cameraSize,
@@ -459,7 +541,6 @@ class Project {
     timesheetInfo,
     cameraInstructions,
     Object.hashAll(mediaAssets),
-    trailingFrames,
     linkRegistry,
     audioSampleRate,
     audioSpeedNumerator,

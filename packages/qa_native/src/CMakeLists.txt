@@ -40,58 +40,51 @@ if(NOT WIN32)
   target_link_libraries(qa_engine ${CMAKE_DL_LIBS})
 endif()
 
-# 🗣️I-132-Q31 (유저 2026-10-30): the fx plugins' WebAssembly engine is
-# Wasmtime 48 LTS — its project's own prebuilt C library, pinned by version
-# and SHA-256 and fetched ONCE PER MACHINE into a folder outside the
-# repository (28 MB zipped; a binary in git stays in every clone for ever).
-# Linked statically: 12.9 MB in an executable on Windows x64, where its DLL
-# is 22 MB (measured 2026-10-30).
-# ⚠️Windows first, x64 and ARM64. The other prebuilt libraries (macOS · Linux ·
-# Android) and the iPad's build from source are rounds of their own; until
-# then a build without the engine opens native plugins only and tells a
-# .wasm so (qa_fx_plugin.c).
-set(QA_WASMTIME_VERSION "48.0.8")
-set(QA_WASMTIME_DIR "")
-set(qa_wt_arch "")
-if(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
-  set(qa_wt_arch "x86_64")
-  set(qa_wt_sha256
-    "31c2d97399b2555c06233a5fe0d2ba7373d020dae584107b1e3f459dd1756c42")
+# The fx plugins' WebAssembly engine (wasmtime.cmake says which and why), for
+# the target this builds for. A Mac's line here is its host build (CI's
+# native core); the apps' own links are their pods'. A target with none
+# opens native plugins only and tells a .wasm so (qa_fx_plugin.c).
+include("${CMAKE_CURRENT_LIST_DIR}/wasmtime.cmake")
+set(qa_wt_target "")
+if(ANDROID)
+  # The device's, not the host's: an Android build on a Windows host links
+  # Android's library.
+  if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(qa_wt_target "aarch64-android")
+  elseif(ANDROID_ABI STREQUAL "x86_64")
+    set(qa_wt_target "x86_64-android")
+  endif()
+elseif(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
+  set(qa_wt_target "x86_64-windows")
 elseif(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64")
-  set(qa_wt_arch "aarch64")
-  set(qa_wt_sha256
-    "2dd5ec2f86b9d50da93e4f29985472c0520ee3545e5ab9e8771430f39011c269")
+  set(qa_wt_target "aarch64-windows")
+elseif(APPLE AND NOT IOS)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    set(qa_wt_target "aarch64-macos")
+  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(qa_wt_target "x86_64-macos")
+  endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(qa_wt_target "aarch64-linux")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(qa_wt_target "x86_64-linux")
+  endif()
 endif()
-if(qa_wt_arch)
-  set(qa_wt_name
-    "wasmtime-v${QA_WASMTIME_VERSION}-${qa_wt_arch}-windows-c-api")
-  file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}" qa_wt_home)
-  set(qa_wt_cache
-    "${qa_wt_home}/anicel/third_party/wasmtime-v${QA_WASMTIME_VERSION}")
-  set(qa_wt_zip "${qa_wt_cache}/${qa_wt_name}.zip")
-  set(qa_wt_sum "")
-  if(EXISTS "${qa_wt_zip}")
-    file(SHA256 "${qa_wt_zip}" qa_wt_sum)
-  endif()
-  if(NOT qa_wt_sum STREQUAL qa_wt_sha256)
-    file(DOWNLOAD
-      "https://github.com/bytecodealliance/wasmtime/releases/download/v${QA_WASMTIME_VERSION}/${qa_wt_name}.zip"
-      "${qa_wt_zip}"
-      EXPECTED_HASH SHA256=${qa_wt_sha256}
-      STATUS qa_wt_status)
-    list(GET qa_wt_status 0 qa_wt_code)
-    if(NOT qa_wt_code EQUAL 0)
-      message(FATAL_ERROR "Wasmtime ${QA_WASMTIME_VERSION} did not download: ${qa_wt_status}")
-    endif()
-    file(REMOVE_RECURSE "${qa_wt_cache}/x")
-  endif()
-  if(NOT EXISTS "${qa_wt_cache}/x/${qa_wt_name}/lib/wasmtime.lib")
-    file(ARCHIVE_EXTRACT INPUT "${qa_wt_zip}" DESTINATION "${qa_wt_cache}/x")
-  endif()
-  set(QA_WASMTIME_DIR "${qa_wt_cache}/x/${qa_wt_name}")
+qa_wasmtime_fetch("${qa_wt_target}" QA_WASMTIME_DIR QA_WASMTIME_LIBRARY)
+if(QA_WASMTIME_DIR AND NOT ANDROID AND NOT IOS)
+  # The script as the Apple apps' pods read it, asked on every machine that
+  # runs these tests — a Mac's CI among them (wasmtime_script_test.cmake).
+  enable_testing()
+  add_test(NAME qa_wasmtime_script
+    COMMAND "${CMAKE_COMMAND}" "-DQA_WASMTIME_TARGET=${qa_wt_target}"
+      -P "${CMAKE_CURRENT_LIST_DIR}/wasmtime_script_test.cmake")
 endif()
 
-# Links [target] against the engine found above, where there is one.
+# Links [target] against the engine found above, where there is one — with
+# what its Rust standard library calls on each system: the lists of the
+# project's own crates/c-api/CMakeLists.txt, but Android's, whose threads are
+# its libc's and whose std writes to its log.
 function(qa_link_wasmtime target)
   if(NOT QA_WASMTIME_DIR)
     return()
@@ -100,8 +93,24 @@ function(qa_link_wasmtime target)
   # Empty: the static library's symbols, not a DLL's imports.
   target_compile_definitions(${target} PRIVATE
     QA_FX_WASM=1 WASM_API_EXTERN= WASI_API_EXTERN=)
-  target_link_libraries(${target} "${QA_WASMTIME_DIR}/lib/wasmtime.lib"
-    ws2_32 advapi32 userenv ntdll shell32 ole32 bcrypt)
+  target_link_libraries(${target} "${QA_WASMTIME_LIBRARY}")
+  if(WIN32)
+    target_link_libraries(${target}
+      ws2_32 advapi32 userenv ntdll shell32 ole32 bcrypt)
+  elseif(APPLE)
+    target_link_libraries(${target} "-framework CoreFoundation")
+  elseif(ANDROID)
+    target_link_libraries(${target} dl m log)
+  else()
+    target_link_libraries(${target} pthread dl m)
+  endif()
+  if(NOT WIN32 AND NOT APPLE)
+    # The engine's own exports are its interface; the Rust library's are not
+    # — as a Windows DLL exports only what it names.
+    get_filename_component(library_name "${QA_WASMTIME_LIBRARY}" NAME)
+    target_link_options(${target} PRIVATE
+      "LINKER:--exclude-libs,${library_name}")
+  endif()
 endfunction()
 qa_link_wasmtime(qa_engine)
 if(APPLE)
@@ -389,11 +398,29 @@ if(NOT ANDROID AND NOT IOS)
     QA_FX_SAMPLE_SPEC=2)
   target_compile_definitions(qa_fx_plugin_sample_no_render PRIVATE
     QA_FX_SAMPLE_NO_RENDER=1)
-  add_executable(qa_fx_plugin_test
-    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_test.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin.c")
+  # The same test twice: the second with its engine interpreting, as an
+  # iPad's does (QA_FX_WASM_INTERPRET, qa_fx_plugin.c) — so every machine
+  # that builds this asks the iPad's path, which none of them is.
+  foreach(qa_fx_test IN ITEMS qa_fx_plugin_test qa_fx_plugin_interpreted_test)
+    add_executable(${qa_fx_test}
+      "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_test.c"
+      "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin.c")
+    target_compile_definitions(${qa_fx_test} PRIVATE
+      "QA_FX_SAMPLE=\"$<TARGET_FILE:qa_fx_plugin_sample>\""
+      "QA_FX_SAMPLE_SPEC2=\"$<TARGET_FILE:qa_fx_plugin_sample_spec2>\""
+      "QA_FX_SAMPLE_NO_RENDER=\"$<TARGET_FILE:qa_fx_plugin_sample_no_render>\"")
+    add_dependencies(${qa_fx_test} qa_fx_plugin_sample
+      qa_fx_plugin_sample_spec2 qa_fx_plugin_sample_no_render)
+    qa_link_wasmtime(${qa_fx_test})
+    if(NOT WIN32)
+      target_link_libraries(${qa_fx_test} ${CMAKE_DL_LIBS})
+    endif()
+  endforeach()
+  target_compile_definitions(qa_fx_plugin_interpreted_test PRIVATE
+    QA_FX_WASM_INTERPRET=1)
   foreach(qa_fx_target IN ITEMS qa_fx_plugin_sample qa_fx_plugin_sample_spec2
-      qa_fx_plugin_sample_no_render qa_fx_plugin_test)
+      qa_fx_plugin_sample_no_render qa_fx_plugin_test
+      qa_fx_plugin_interpreted_test)
     set_target_properties(${qa_fx_target} PROPERTIES
       C_STANDARD 99
       C_STANDARD_REQUIRED ON
@@ -402,18 +429,30 @@ if(NOT ANDROID AND NOT IOS)
       target_compile_options(${qa_fx_target} PRIVATE /utf-8)
     endif()
   endforeach()
-  target_compile_definitions(qa_fx_plugin_test PRIVATE
-    "QA_FX_SAMPLE=\"$<TARGET_FILE:qa_fx_plugin_sample>\""
-    "QA_FX_SAMPLE_SPEC2=\"$<TARGET_FILE:qa_fx_plugin_sample_spec2>\""
-    "QA_FX_SAMPLE_NO_RENDER=\"$<TARGET_FILE:qa_fx_plugin_sample_no_render>\"")
-  add_dependencies(qa_fx_plugin_test qa_fx_plugin_sample
-    qa_fx_plugin_sample_spec2 qa_fx_plugin_sample_no_render)
-  qa_link_wasmtime(qa_fx_plugin_test)
-  if(NOT WIN32)
-    target_link_libraries(qa_fx_plugin_test ${CMAKE_DL_LIBS})
+  # The SDK's example (sdk/fx/example) built as a maker builds it: C99,
+  # against the published header, without the /utf-8 the app's own sources
+  # need — so a change here that breaks the plugin a maker starts from fails
+  # the engine's build and its pins (an_fx_plugin_answers_through_the_engine).
+  # ⚠️Only where this file is the top of the build — the engine's own build
+  # (the lane gate, CI). The app's build reads it through the plugin's
+  # symlink (windows/flutter/ephemeral/.plugin_symlinks/qa_native), where
+  # three levels up is not the repository, and the CMake it runs (Visual
+  # Studio's 3.31) leaves that symlink unresolved in REALPATH — 2026-11-04,
+  # the Windows app failed to generate twice. The app needs no example.
+  if(PROJECT_IS_TOP_LEVEL)
+    add_library(qa_fx_sdk_example SHARED
+      "${CMAKE_CURRENT_LIST_DIR}/../../../sdk/fx/example/shadow.c")
+    target_include_directories(qa_fx_sdk_example PRIVATE
+      "${CMAKE_CURRENT_LIST_DIR}")
+    set_target_properties(qa_fx_sdk_example PROPERTIES
+      C_STANDARD 99
+      C_STANDARD_REQUIRED ON
+      C_VISIBILITY_PRESET hidden
+    )
   endif()
   enable_testing()
   add_test(NAME qa_fx_plugin COMMAND qa_fx_plugin_test)
+  add_test(NAME qa_fx_plugin_interpreted COMMAND qa_fx_plugin_interpreted_test)
 endif()
 
 if(WIN32)

@@ -32,7 +32,6 @@ class TimesheetInfo {
     this.hiddenFields = const {},
     this.exposureBarThreshold,
     this.cellExposureBarThreshold = defaultCellExposureBarThreshold,
-    this.seEmptyFill = true,
     this.staff = const {},
     this.logoAssetPath,
     this.coverImagePath,
@@ -78,10 +77,6 @@ class TimesheetInfo {
   /// 적용가능하게」) — on by default ([defaultCellExposureBarThreshold]).
   /// ↩️One threshold drew both blocks until then.
   final int? cellExposureBarThreshold;
-
-  /// Light-gray fill over SE columns' empty stretches (the "no SE here"
-  /// wash) — default on, toggleable per project.
-  final bool seEmptyFill;
 
   /// Who does the conte's work — its worker and its corrections, the stages
   /// the work keeps ([StaffHolder.work]; every other stage is the cut's,
@@ -164,7 +159,6 @@ class TimesheetInfo {
     Set<TimesheetHeaderField>? hiddenFields,
     int? Function()? exposureBarThreshold,
     int? Function()? cellExposureBarThreshold,
-    bool? seEmptyFill,
     Map<String, String>? staff,
     String? Function()? logoAssetPath,
     String? Function()? coverImagePath,
@@ -187,7 +181,6 @@ class TimesheetInfo {
       cellExposureBarThreshold: cellExposureBarThreshold == null
           ? this.cellExposureBarThreshold
           : cellExposureBarThreshold(),
-      seEmptyFill: seEmptyFill ?? this.seEmptyFill,
       staff: staff ?? this.staff,
       logoAssetPath: logoAssetPath == null
           ? this.logoAssetPath
@@ -222,7 +215,6 @@ class TimesheetInfo {
     if (cellExposureBarThreshold case final from?
         when from != defaultCellExposureBarThreshold)
       'cellExposureBarThreshold': from,
-    if (!seEmptyFill) 'seEmptyFill': false,
     if (staff.isNotEmpty) 'staff': {...staff},
     if (logoAssetPath != null) 'logo': logoAssetPath,
     if (coverImagePath != null) 'cover': coverImagePath,
@@ -253,7 +245,6 @@ class TimesheetInfo {
           ? null
           : json['cellExposureBarThreshold'] as int? ??
                 defaultCellExposureBarThreshold,
-      seEmptyFill: json['seEmptyFill'] as bool? ?? true,
       staff: staffFromJson(json['staff']),
       logoAssetPath: json['logo'] as String?,
       coverImagePath: json['cover'] as String?,
@@ -279,7 +270,6 @@ class TimesheetInfo {
           other.episode == episode &&
           other.exposureBarThreshold == exposureBarThreshold &&
           other.cellExposureBarThreshold == cellExposureBarThreshold &&
-          other.seEmptyFill == seEmptyFill &&
           other.logoAssetPath == logoAssetPath &&
           other.coverImagePath == coverImagePath &&
           other.envelopeFormId == envelopeFormId &&
@@ -300,7 +290,6 @@ class TimesheetInfo {
     episode,
     exposureBarThreshold,
     cellExposureBarThreshold,
-    seEmptyFill,
     logoAssetPath,
     coverImagePath,
     envelopeFormId,
@@ -322,8 +311,7 @@ class TimesheetInfo {
       'TimesheetInfo(title: $title, episode: $episode, staff: $staff, '
       'hiddenFields: $hiddenFields, '
       'exposureBarThreshold: $exposureBarThreshold, '
-      'cellExposureBarThreshold: $cellExposureBarThreshold, '
-      'seEmptyFill: $seEmptyFill)';
+      'cellExposureBarThreshold: $cellExposureBarThreshold)';
 }
 
 /// A picture of the work its sheets print, taken from its media pool: the

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/set_toggle.dart';
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_correction.dart';
+import '../../models/brush_in_and_out.dart';
 import '../../models/brush_mixing_method.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings_group.dart';
@@ -278,6 +279,11 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   void _correct(BrushCorrection correction) =>
       onChanged(state.copyWith(correction: correction));
 
+  /// The brush in hand, its line coming in and going out as [inAndOut]
+  /// says (brush-in-and-out).
+  void _comeInAndGoOut(BrushInAndOut inAndOut) =>
+      onChanged(state.copyWith(inAndOut: inAndOut));
+
   /// The CSP-style per-setting pressure button (BB-3): sits at the right
   /// of each pressure-capable slider row and opens the shared curve popup.
   Widget _pressureButton(BrushPressureTarget target) {
@@ -480,6 +486,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     BrushSettingsGroup.scattering => AppText.strings.brGroupScattering,
     BrushSettingsGroup.texture => AppText.strings.brGroupTexture,
     BrushSettingsGroup.correction => AppText.strings.brGroupCorrection,
+    BrushSettingsGroup.inAndOut => AppText.strings.brGroupInAndOut,
   };
 
   /// Whether [row] stands in the brush in hand at all.
@@ -531,6 +538,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     BrushSettingsRow.postBySpeed ||
     BrushSettingsRow.postByViewScale ||
     BrushSettingsRow.postBezier => state.correction.postStrength > 0,
+    // What the 入り抜き takes away, where the line comes in or goes out.
+    BrushSettingsRow.inAndOutSize || BrushSettingsRow.inAndOutFlow =>
+      state.inAndOut.inLength > 0 || state.inAndOut.outLength > 0,
     _ => true,
   };
 
@@ -932,7 +942,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     // out of presets (P7).
     BrushSettingsRow.stabilizer => _PanelSlider(
       label: AppText.strings.brStabilizer,
-      value: BrushToolState.clampCorrection(
+      value: BrushToolState.clampUpTo(
         state.correction.stabilization,
         BrushCorrection.maxStabilization,
       ),
@@ -955,7 +965,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     ),
     BrushSettingsRow.postCorrection => _PanelSlider(
       label: AppText.strings.brPostCorrection,
-      value: BrushToolState.clampCorrection(
+      value: BrushToolState.clampUpTo(
         state.correction.postStrength,
         BrushCorrection.maxPostStrength,
       ),
@@ -986,7 +996,69 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       state.correction.postBezier,
       (on) => state.correction.copyWith(postBezier: on),
     ),
+    // ---- 入り抜き ---- whole pixels and whole percents, as Clip Studio
+    // sets them (F-435's 「정수로만」).
+    BrushSettingsRow.inLength => _inAndOutLength(
+      'brush-tool-in-length-slider',
+      AppText.strings.brInLength,
+      state.inAndOut.inLength,
+      (value) => state.inAndOut.copyWith(inLength: value),
+    ),
+    BrushSettingsRow.outLength => _inAndOutLength(
+      'brush-tool-out-length-slider',
+      AppText.strings.brOutLength,
+      state.inAndOut.outLength,
+      (value) => state.inAndOut.copyWith(outLength: value),
+    ),
+    BrushSettingsRow.inAndOutSize => _inAndOutMinimum(
+      'brush-tool-in-and-out-size-slider',
+      AppText.strings.brInOutSize,
+      state.inAndOut.sizeMinimum,
+      (value) => state.inAndOut.copyWith(sizeMinimum: value),
+    ),
+    BrushSettingsRow.inAndOutFlow => _inAndOutMinimum(
+      'brush-tool-in-and-out-flow-slider',
+      AppText.strings.brInOutFlow,
+      state.inAndOut.flowMinimum,
+      (value) => state.inAndOut.copyWith(flowMinimum: value),
+    ),
   };
+
+  /// The 入り or the 抜き: how far, in canvas pixels.
+  Widget _inAndOutLength(
+    String key,
+    String label,
+    double value,
+    BrushInAndOut Function(double value) change,
+  ) => _PanelSlider(
+    label: label,
+    unit: 'px',
+    value: BrushToolState.clampUpTo(value, BrushInAndOut.maxLength),
+    min: 0,
+    max: BrushInAndOut.maxLength,
+    divisions: BrushInAndOut.maxLength.toInt(),
+    keyValue: key,
+    onChanged: (value) => _comeInAndGoOut(change(value)),
+  );
+
+  /// What the 入り抜き leaves of a setting where the line comes in or goes
+  /// out.
+  Widget _inAndOutMinimum(
+    String key,
+    String label,
+    double value,
+    BrushInAndOut Function(double value) change,
+  ) => _PanelSlider(
+    label: label,
+    unit: '%',
+    displayScale: 100,
+    value: BrushToolState.clampUnit(value),
+    min: 0,
+    max: 1,
+    divisions: 100,
+    keyValue: key,
+    onChanged: (value) => _comeInAndGoOut(change(value)),
+  );
 
   /// One of the three switches that bend the 後補正.
   Widget _postSwitch(

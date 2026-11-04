@@ -1049,9 +1049,10 @@ class TimesheetDocumentPainter extends CustomPainter
   /// [headerValueRect] (R7-⑥ reference layout).
   static const double headerValueSize = 14;
 
-  /// The duration box's second, parenthesised length — the drawn one
-  /// ([_TimesheetBandsPass._paintDrawnLength]) — set small under the value.
-  static const double headerDrawnLengthSize = 9;
+  /// What a header box sets small under its value: the duration box's
+  /// drawn length ([_TimesheetBandsPass._paintDrawnLength]), the cut box's
+  /// 겸용 cuts ([_TimesheetBandsPass._paintLinkedCuts]).
+  static const double headerUnderSize = 9;
 
   /// Where a header box's value is set: its top this far down the box, no
   /// wider than the box less its margins.

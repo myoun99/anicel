@@ -15,7 +15,9 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/project_timeline.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte.dart';
 import 'package:anicel/src/models/track_conte_laying.dart';
@@ -710,6 +712,49 @@ void main() {
       expect([for (final group in relaid.linkRegistry.groups) group.id], [
         'link-1',
       ]);
+    });
+
+    // I-150: the registry is the work's, and a write lays the open
+    // timeline alone.
+    test('🚨a closed timeline\'s rows keep their link group while the open '
+        'one is laid, and opening it gives no row', () {
+      final laid = projectWithItsContesLaid(film(), settledCut: (_) => null);
+      final given = rowOf(laid.tracks.single, 'b', 'X').id;
+      final other = Track(
+        id: const TrackId('t2'),
+        name: 'V1',
+        cuts: [
+          cutOf('d', [conte('d')]),
+        ],
+      );
+      final otherOpen = laid.copyWith(
+        timelines: [
+          laid.timelines.single,
+          ProjectTimeline(
+            id: const TimelineId('other'),
+            number: 2,
+            tracks: [other],
+          ),
+        ],
+        currentTimelineId: const TimelineId('other'),
+      );
+
+      final relaid = projectWithItsContesLaid(
+        otherOpen,
+        settledCut: (_) => null,
+      );
+
+      expect(
+        relaid.linkRegistry.groupOf(cutId: const CutId('b'), layerId: given),
+        isNotNull,
+      );
+      expect(
+        conteFillsGiven(
+          otherOpen,
+          otherOpen.copyWith(currentTimelineId: firstProjectTimelineId),
+        ),
+        isEmpty,
+      );
     });
 
     test('one of them gone with its cut leaves the other no link group of '

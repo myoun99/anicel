@@ -28,8 +28,11 @@ import '../../models/layer_id.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
+import '../../services/brush_in_and_out_along.dart';
 import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_fill_promotion.dart';
+import '../../services/canvas_flood_fill.dart' show FillRange, FillRangeAt;
+import '../../services/fill_gradient.dart' show FillGradientOptions;
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_second_stroke.dart';
 import '../../services/brush_stroke_dynamics.dart';
@@ -51,6 +54,7 @@ import 'brush_edit_canvas_view.dart';
 import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
+import 'fill_range_mark.dart';
 import 'shown_cels.dart';
 import 'stroke_in_flight.dart';
 import 'view_hand.dart';
@@ -110,6 +114,28 @@ typedef ShapeArea = ({
   BrushBlendMode blend,
   SelectionClip? selection,
 });
+
+/// The fill's gradient knobs and the sub colour — the rail swatch's back
+/// slot — a gradient may run to (I-160-Q3).
+typedef FillGradientInHand = ({FillGradientOptions options, int sub});
+
+/// This view's hand for a RANGE HELD FOR ITS GRADIENT (I-160: 「올가미같은것도
+/// 올가미로 범위고르고 그 다음 드래그」) — the fill's own hold
+/// ([_BrushEditFill]) handed out, published as [ShapeShow] is. An outline
+/// the shape fill closed is held here as the bucket's lift holds its flood,
+/// and the press after it lays the gradient through the bucket's own press:
+/// one hold, one drag, whoever picked the range.
+abstract interface class GradientRangeHold {
+  /// Holds [range] for its gradient, marked as the bucket's held range is.
+  void hold(FillRange range);
+
+  /// Whether a range is held for its gradient now — the next press is its
+  /// gradient's, whichever tool's layer would have heard it.
+  bool get holdsARange;
+
+  /// Lets go of the range, laying nothing.
+  void letGo();
+}
 
 /// This view's hand for a shape being dragged (I-69-Q4ⓒ) —
 /// [_BrushEditShapeShow] handed out, published as [StrokeLander] is.
@@ -178,10 +204,13 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onActiveStrokeChanged,
     this.strokeLander,
     this.shapeShow,
+    this.gradientRangeHold,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
-    this.fillDabsAt,
+    this.fillRangeAt,
+    this.fillsContinuously,
+    this.fillGradient,
     this.selectionNow,
     this.overlayModel,
     this.paintsContent = true,
@@ -349,6 +378,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// up the way [strokeLander] is.
   final ViewHand<ShapeShow>? shapeShow;
 
+  /// Where this view holds up its [GradientRangeHold] while it is mounted
+  /// — held up the way [strokeLander] is.
+  final ViewHand<GradientRangeHold>? gradientRangeHold;
+
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
   /// eraser, switched the tool temporarily — the shell mirrors it on the
   /// tool notifier so the cursor/panels follow, and restores (or keeps) on
@@ -370,17 +403,25 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final CanvasToolHolds? toolHolds;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
-  /// primary tap builds the flood's stamp pieces here and the view runs
-  /// them as one stroke (`promoteFillDabs`): the overlay shows the result
-  /// tiles the very next frame and the commit lands them through
-  /// [onSourceStrokeCommitted] with their pictures already made — no
-  /// tile-by-tile reveal on big fills.
-  final List<BrushDab> Function(
-    CanvasPoint point,
-    int color,
-    SymmetryShape? symmetry,
-  )?
-  fillDabsAt;
+  /// primary press floods its range here, marked while it is held
+  /// (I-160), and the lift lays it as one stroke (`promoteFillDabs`): the
+  /// overlay shows the result tiles the very next frame and the commit
+  /// lands them through [onSourceStrokeCommitted] with their pictures
+  /// already made — no tile-by-tile reveal on big fills.
+  final FillRangeAt? fillRangeAt;
+
+  /// Whether a held fill takes in every region its press passes over
+  /// rather than moving its range (「연속 채우기」, I-160 —
+  /// `FloodFillOptions.continuous`). Asked as the press moves, as
+  /// [inputSettings] is; null = never.
+  final ValueGetter<bool>? fillsContinuously;
+
+  /// The fill's gradient knobs in hand and the sub colour they may run to
+  /// (I-160 — `FloodFillOptions.gradient`): on, the lift holds the range
+  /// for the next press, whose drag lays a gradient across it. Asked as
+  /// the press lifts and as the drag moves, as [inputSettings] is; null =
+  /// never on.
+  final ValueGetter<FillGradientInHand>? fillGradient;
 
   /// R26 #18: what a stroke or a fill starting NOW is confined to, in this
   /// view's cel; null confines it to nothing. Asked at the start of each,
@@ -479,6 +520,11 @@ class _InteractiveBrushEditCanvasViewState
   /// pointer-down from the stroke's settings snapshot ([_BrushEditStroke]).
   BrushSecondStroke? _secondStroke;
 
+  /// How far the active stroke has come, for its 入り抜き
+  /// ([BrushInAndOutAlong]). Made with the stroke from its settings
+  /// snapshot ([_BrushEditStroke]).
+  BrushInAndOutAlong? _inAndOut;
+
   /// Latest known stroke direction (visual CCW degrees); kept across
   /// stationary events so direction-following tips do not snap back.
   double? _lastDirectionDegrees;
@@ -506,7 +552,8 @@ class _InteractiveBrushEditCanvasViewState
   StrokeStabilizer? _stabilizer;
 
   /// The line the pen's stroke has been laid along so far, each point with
-  /// what it read there — what its 後補正 smooths at pen-up (F-418). Null
+  /// what it read there — what its 後補正 smooths and its 抜き ends at
+  /// pen-up (F-418, brush-in-and-out). Null
   /// for a stroke the tool lays: it draws no line of the pen's.
   List<PenPoint>? _drawn;
 
@@ -571,6 +618,8 @@ class _InteractiveBrushEditCanvasViewState
   /// so it puts its own hands down there as it goes.
   late final ViewHand<StrokeLander>? _landerKeeper = widget.strokeLander;
   late final ViewHand<ShapeShow>? _shapeKeeper = widget.shapeShow;
+  late final ViewHand<GradientRangeHold>? _holdKeeper =
+      widget.gradientRangeHold;
 
   @override
   void initState() {
@@ -578,6 +627,7 @@ class _InteractiveBrushEditCanvasViewState
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     _landerKeeper?.up(_press.landActiveStroke);
     _shapeKeeper?.up(_shapeShow);
+    _holdKeeper?.up(_fill);
     _toolHolds.handOver = _door;
   }
 
@@ -593,7 +643,8 @@ class _InteractiveBrushEditCanvasViewState
     // one it held them up to would keep them past its going (F-419).
     assert(
       identical(widget.strokeLander, _landerKeeper) &&
-          identical(widget.shapeShow, _shapeKeeper),
+          identical(widget.shapeShow, _shapeKeeper) &&
+          identical(widget.gradientRangeHold, _holdKeeper),
       'a view keeps the keepers it held its hands up to',
     );
     // The view no longer REMOUNTS per cel (R13-2): the old frameId-keyed
@@ -609,9 +660,14 @@ class _InteractiveBrushEditCanvasViewState
       }
       _toolHolds.handOver = _door;
     }
+    // The fill tool put down: what the fill held goes with it.
+    if (widget.fillRangeAt == null && oldWidget.fillRangeAt != null) {
+      _fill.letGo();
+    }
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       _endStrokeAfterTheFrame();
+      _fill.letGo();
       // A shape laid on the cel that went is no shape of this one's.
       _shapeShow.drop();
       _overlay.resetOverlay();
@@ -656,6 +712,7 @@ class _InteractiveBrushEditCanvasViewState
     // is no pen here any more」.
     _landerKeeper?.down(_press.landActiveStroke);
     _shapeKeeper?.down(_shapeShow);
+    _holdKeeper?.down(_fill);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
@@ -907,12 +964,19 @@ class _InteractiveBrushEditCanvasViewState
   ({List<BrushDab> dabs, BitmapSurface base, List<PromotedStrokeTile> tiles})?
   _pendingFill;
 
-  /// The touch pointer whose lift will run a fill, and where it landed.
+  /// The pointer whose press holds the fill, and the range it covers where
+  /// the press is now (I-160) — null while the seed reaches nothing. The
+  /// lift lays that range ([_BrushEditFill.lift]).
   ///
-  /// Both cleared together — see the second-finger branch, which is where a
-  /// tap stops being this fill's gesture.
-  int? _fillTapPointer;
-  CanvasPoint? _fillTapSeed;
+  /// One value — see the second-finger branch, which is where a press stops
+  /// being this fill's gesture.
+  ({int pointer, FillRange? range})? _fillPress;
+
+  /// A range picked with the gradient on (I-160), held for the press that
+  /// lays its gradient — and that press's drag, from where it landed to
+  /// where it is, once it is down.
+  ({FillRange range, ({CanvasPoint from, CanvasPoint to})? drag})?
+  _heldForGradient;
 
   // ── the fill: its own object, in its own file ───────────────────────
   //

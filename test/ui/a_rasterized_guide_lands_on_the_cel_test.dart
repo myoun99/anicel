@@ -26,12 +26,14 @@ import 'package:anicel/src/services/canvas_color_sampler.dart'
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart'
+    show AppProgressDialog;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
-import '../helpers/settle_async.dart';
 import '../helpers/rail_group_button.dart';
+import '../helpers/wait_window.dart' show settleBehindTheWaitWindow;
 
 /// 🗣️vanishing-point-types-Q5 (유저 2026-10-16): 래스터라이즈 draws 「지금
 /// 레이어의 지금 셀에」 — not the new row the question recommended — and
@@ -95,8 +97,14 @@ void main() {
     );
     await tester.pump();
     await tester.tap(button);
-    // The bake reads the picture back off the engine: real time.
-    expect(await settleAsync(tester, () => inkOf(session) != null), isTrue);
+    // The bake reads the picture back off the engine: real time — behind
+    // the wait window, which goes once it has landed (F-551).
+    await settleBehindTheWaitWindow(
+      tester,
+      () =>
+          inkOf(session) != null &&
+          find.byType(AppProgressDialog).evaluate().isEmpty,
+    );
 
     final ink = inkOf(session)!;
     expect(ink.left, greaterThanOrEqualTo(0));

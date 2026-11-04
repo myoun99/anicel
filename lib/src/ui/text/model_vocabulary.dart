@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart' show XTypeGroup;
 
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/fx_basis.dart';
 import '../../models/key_path.dart' show KeyPathKind;
 import '../../models/key_side.dart' show KeySideKind;
 import '../../models/layer_blend_mode.dart';
@@ -70,6 +71,12 @@ extension KeySideKindWords on KeySideKind {
 extension KeyPathKindWords on KeyPathKind {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).keyPathKindName(name, label);
+}
+
+/// What an fx reads its keys by — an fx header's basis chip (I-120-Q10).
+extension FxBasisWords on FxBasis {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).fxBasisName(name, label);
 }
 
 /// A row kind's name. Its words are rows of their own in the tables

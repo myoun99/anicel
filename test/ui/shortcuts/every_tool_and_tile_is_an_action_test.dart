@@ -107,11 +107,22 @@ void main() {
           .defaultActivators,
       isEmpty,
     );
-    // 「채우기툴을 f로 변경하고, 가이드 툴을 g로 지정」
+    // 🗣️F-560 (유저 2026-11-04): 「채우기도구의 채우기를 F로. 채우기도구 자체
+    // 단축키는 해제」. ↩️「채우기툴을 f로 변경하고」 gave F to the tool.
     expectDefault(
-      const RailToolPress(CanvasTool.fill),
+      const ToolTilePress(CanvasTool.fill),
       const SingleActivator(LogicalKeyboardKey.keyF),
     );
+    expect(
+      editorActionDefinitions
+          .firstWhere(
+            (d) =>
+                d.id == toolActionIdFor(const RailToolPress(CanvasTool.fill)),
+          )
+          .defaultActivators,
+      isEmpty,
+    );
+    // 「가이드 툴을 g로 지정」
     expectDefault(
       const RailToolPress(CanvasTool.guide),
       const SingleActivator(LogicalKeyboardKey.keyG),

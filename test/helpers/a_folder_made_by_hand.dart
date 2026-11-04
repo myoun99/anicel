@@ -11,7 +11,8 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
 /// dropped on it. Stood on the row again; the folder is handed back.
 ///
 /// 🗣️R5 #14: 「폴더로 묶기」 went from the layer menu — a folder is made
-/// EMPTY and filled by dropping rows on it. ↩️A fixture wanting a folder
+/// holding the rows selected (F-563), none here, and filled by dropping
+/// rows on it. ↩️A fixture wanting a folder
 /// called the menu's old verb, which no screen called any more
 /// (layer-menu-strings-outlive-their-entries-Q3).
 LayerId groupTheActiveRowIntoAFolder(EditorSessionManager session) {

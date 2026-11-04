@@ -62,7 +62,7 @@ void main() {
     final effect = session.activeLayer!.effects.single;
     expect(effect.kind, EffectKind.blur);
     expect(
-      resolveLayerEffectsAt(effects: [effect], frameIndex: 0),
+      resolveLayerEffectsAt(effects: [effect], frameIndex: 0, blocks: null),
       isEmpty,
       reason: 'a fresh effect is all defaults — nothing to paint',
     );

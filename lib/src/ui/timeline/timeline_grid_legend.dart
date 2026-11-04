@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'timeline_layer_controls_header.dart' show LegendHeadingButton;
 import 'timeline_legend_menus.dart';
 import 'timeline_section_policy.dart';
 
@@ -14,6 +15,7 @@ import 'timeline_section_policy.dart';
 final class TimelineGridLegend {
   const TimelineGridLegend({
     this.verbs,
+    this.heading,
     this.onMenus,
     this.onToggleSection,
     this.visibilitySoloEnabled = false,
@@ -23,6 +25,10 @@ final class TimelineGridLegend {
 
   /// The rail legend's bulk commands; null renders a display-only legend.
   final LayerLegendCallbacks? verbs;
+
+  /// The button the legend's heading is — the cut list (I-154); null
+  /// keeps the rows' heading words.
+  final LegendHeadingButton? heading;
 
   /// Told the menus the legend header opens each time it is built — what a
   /// key presses one of (I-40, `RailLegends`).

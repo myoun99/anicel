@@ -61,6 +61,161 @@ void main() {
       ]);
     });
 
+    test('🗣️GIF (I-152): a movie container of its own one way of packing — '
+        'no other codec is held in it, and it in no other — with no sound '
+        'and no bitrate, read and written by its word', () {
+      expect(ExportVideoCodec.codecsFor(ExportVideoContainer.gif), [
+        ExportVideoCodec.gif,
+      ]);
+      for (final container in [
+        ExportVideoContainer.mp4,
+        ExportVideoContainer.mov,
+      ]) {
+        expect(
+          ExportVideoCodec.codecsFor(container),
+          isNot(contains(ExportVideoCodec.gif)),
+        );
+      }
+      final gif = const ExportFormatSelection().copyWith(
+        container: ExportVideoContainer.gif,
+      );
+      expect(
+        gif.videoCodec,
+        ExportVideoCodec.gif,
+        reason: 'H.264 snaps to the container\'s first',
+      );
+      expect(
+        gif.copyWith(container: ExportVideoContainer.mp4).videoCodec,
+        ExportVideoCodec.h264,
+      );
+      expect(gif.fileExtension, 'gif');
+      expect(gif.carriesSound, isFalse);
+      expect(const ExportFormatSelection().carriesSound, isTrue);
+      expect(
+        const ExportFormatSelection(kind: ExportMediaKind.still).carriesSound,
+        isFalse,
+      );
+      expect(gif.videoCodec.takesBitrate, isFalse);
+      expect(ExportVideoCodec.prores422.takesBitrate, isFalse);
+      expect(ExportVideoCodec.h265.takesBitrate, isTrue);
+      expect(gif.toJson(), {'container': 'gif', 'videoCodec': 'gif'});
+      expect(ExportFormatSelection.fromJson(gif.toJson()), gif);
+    });
+
+    // 🗣️I-152 (유저 2026-11-03): 「색처리든 뭐든 gif에대한 세부설정가능한거
+    // 두고싶어」.
+    // 🗣️I-152-Q1 (유저 2026-11-04): 「채널 행을 보인다」 — ProRes 4444 too.
+    test('🚨a GIF keeps a clear colour as a PNG keeps alpha: by the ONE '
+        'channels choice, asked of every format that can keep alpha', () {
+      final gif = const ExportFormatSelection().copyWith(
+        container: ExportVideoContainer.gif,
+      );
+      expect(gif.copyWith(channels: ExportChannels.rgba).wantsAlpha, isTrue);
+      expect(gif.copyWith(channels: ExportChannels.rgb).wantsAlpha, isFalse);
+      ExportFormatSelection still(ExportStillFormat format) =>
+          ExportFormatSelection.normalized(
+            kind: ExportMediaKind.still,
+            stillFormat: format,
+          );
+      ExportFormatSelection movie(ExportVideoCodec codec) =>
+          ExportFormatSelection.normalized(
+            container: ExportVideoContainer.values.firstWhere(codec.allowedIn),
+            videoCodec: codec,
+          );
+      expect(
+        [
+          for (final format in ExportStillFormat.values)
+            if (!still(format).offersAlpha) format,
+        ],
+        [ExportStillFormat.jpg],
+      );
+      expect(
+        [
+          for (final codec in ExportVideoCodec.values)
+            if (movie(codec).offersAlpha) codec,
+        ],
+        [ExportVideoCodec.prores4444, ExportVideoCodec.gif],
+      );
+    });
+
+    test('a GIF\'s settings: the defaults are the GIF as it first landed and '
+        'are written as nothing; the rest round-trip by their words', () {
+      const settings = ExportGifSettings();
+      expect(settings.reduction, ExportGifReduction.octree);
+      expect(settings.colors, 256);
+      expect(settings.dither, ExportGifDither.floydSteinberg);
+      expect(settings.plays, 0, reason: 'forever');
+      expect(settings.toJson(), isEmpty);
+      expect(ExportGifSettings.fromJson(null), settings);
+      expect(ExportGifSettings.fromJson('junk'), settings);
+
+      const asked = ExportGifSettings(
+        reduction: ExportGifReduction.neural,
+        colors: 16,
+        dither: ExportGifDither.none,
+        plays: 3,
+      );
+      expect(asked.toJson(), {
+        'reduction': 'neural',
+        'colors': 16,
+        'dither': 'none',
+        'plays': 3,
+      });
+      expect(ExportGifSettings.fromJson(asked.toJson()), asked);
+      for (final reduction in ExportGifReduction.values) {
+        expect(
+          ExportGifSettings.fromJson({'reduction': reduction.jsonValue})
+              .reduction,
+          reduction,
+        );
+      }
+      for (final dither in ExportGifDither.values) {
+        expect(
+          ExportGifSettings.fromJson({'dither': dither.jsonValue}).dither,
+          dither,
+        );
+      }
+
+      final selection = const ExportFormatSelection().copyWith(
+        container: ExportVideoContainer.gif,
+        gif: asked,
+      );
+      expect(selection.toJson()['gif'], asked.toJson());
+      expect(ExportFormatSelection.fromJson(selection.toJson()), selection);
+      expect(
+        selection,
+        isNot(selection.copyWith(gif: const ExportGifSettings())),
+        reason: 'two GIFs asked differently are two choices',
+      );
+      expect(
+        selection.copyWith(container: ExportVideoContainer.mp4).gif,
+        asked,
+        reason: 'kept whatever is chosen, as the JPG\'s quality is',
+      );
+    });
+
+    test('a GIF\'s count and plays clamp on write, from the window and from '
+        'a file alike', () {
+      const settings = ExportGifSettings();
+      expect(settings.copyWith(colors: 1).colors, 2);
+      expect(settings.copyWith(colors: 999).colors, 256);
+      expect(settings.copyWith(plays: -3).plays, 0);
+      expect(settings.copyWith(plays: 99).plays, exportGifMostPlays);
+      expect(
+        ExportGifSettings.fromJson({'colors': 999, 'plays': 99}),
+        settings.copyWith(colors: 256, plays: exportGifMostPlays),
+      );
+      expect(
+        ExportFormatSelection.normalized(
+          gif: const ExportGifSettings(colors: 0),
+        ).gif.colors,
+        2,
+      );
+      expect(ExportGifReduction.blackWhite.takesColorCount, isFalse);
+      expect(ExportGifReduction.octree.takesColorCount, isTrue);
+      expect(ExportGifReduction.neural.takesColorCount, isTrue);
+    });
+
     test('effective channels: JPG and non-4444 video are opaque, the RGBA '
         'preference survives underneath', () {
       final jpg = ExportFormatSelection.normalized(

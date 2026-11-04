@@ -49,6 +49,73 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // F-556's law over a row that holds no cels: a band names a drawing it
+  // holds, read off the rows a copy takes. ↩️It read every row the band
+  // named, and the transition row is none the cut's timeline holds — the
+  // sweep threw (2026-11-04).
+  for (final kind in [LayerKind.camera, LayerKind.transition]) {
+    testWidgets('a band swept from a drawing\'s row onto the ${kind.name} '
+        'row names the drawing, stood on either', (tester) async {
+      final session = await pumpWorkspace(tester);
+      final drawing = session.activeLayer!;
+      session.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
+      final other = layerOfKind(session, kind);
+
+      final gesture = await tester.startGesture(
+        timelineCellCenter(tester, drawing.id.value, 3),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.moveTo(timelineCellCenter(tester, other.id.value, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final band = session.frameRangeSelection.value!;
+      expect(
+        [band.coversLayer(drawing.id), band.coversLayer(other.id)],
+        [true, true],
+        reason: '⛔전제',
+      );
+      expect(session.clipboard.canCopyFrameAtCurrentFrame, isTrue);
+
+      session.selectLayer(other.id);
+      expect(
+        session.clipboard.canCopyFrameAtCurrentFrame,
+        isFalse,
+        reason: 'a row that holds no cels is no place (F-281)',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a band over an empty run of a drawing\'s row and the '
+        '${kind.name} row names nothing, and sweeps', (tester) async {
+      final session = await pumpWorkspace(tester);
+      final drawing = session.activeLayer!;
+      expect(drawing.timeline, isEmpty, reason: '⛔전제: nothing to name');
+      final other = layerOfKind(session, kind);
+
+      final gesture = await tester.startGesture(
+        timelineCellCenter(tester, drawing.id.value, 3),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.moveTo(timelineCellCenter(tester, other.id.value, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        session.frameRangeSelection.value!.coversLayer(other.id),
+        isTrue,
+        reason: '⛔전제',
+      );
+      expect(session.activeLayerId, drawing.id, reason: '⛔전제');
+      expect(session.clipboard.canCopyFrameAtCurrentFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final kind in [LayerKind.camera, LayerKind.transition]) {
     testWidgets('a drag across the ${kind.name} row draws a band', (
       tester,

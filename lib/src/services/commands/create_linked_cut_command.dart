@@ -23,7 +23,11 @@ import 'transitions_ride_the_cuts.dart';
 /// the source's — same FrameIds and names (the pictures are one), with
 /// **EMPTY timelines**: the bank re-exposes to a new rhythm. "겸용 설정은
 /// 그림만 잇는다, 타임라인 불간섭" — full-timing reuse is the plain
-/// duplicate → 겸용 변경 composition instead.
+/// duplicate → 겸용 변경 composition instead, which a linked paste is
+/// (`createLinkedCutAsItStands`, F-555). ↩️A linked paste made THIS cut,
+/// put down where the paste landed (I-150), until 유저 2026-11-04 (F-555):
+/// 「컷버튼의 겸용컷 작성은 지금처럼 빈 타임라인인채로 … 링크붙여넣기할땐
+/// 같은 타임라인인채로」.
 ///
 /// Per the confirmed design:
 /// - Every row whose kind links (`LayerKind.linksIntoLinkedCut`) is
@@ -157,7 +161,7 @@ class CreateLinkedCutCommand implements Command {
           plannedGroupId: newGroupIdBySource[layer.id],
         );
       }
-      final registry = LayerLinkRegistry(groups: groups);
+      final registry = project.linkRegistry.copyWith(groups: groups);
 
       final inserted = projectWithCutInserted(
         project,
@@ -206,9 +210,8 @@ class CreateLinkedCutCommand implements Command {
 
   @override
   void undo() {
-    final previousActiveCutId = _previousActiveCutId;
     final registryBefore = _registryBefore;
-    if (!_hasExecuted || previousActiveCutId == null || registryBefore == null) {
+    if (!_hasExecuted || registryBefore == null) {
       throw StateError('Command has not been executed.');
     }
     void remove() => repository.updateProject((project) {
@@ -230,7 +233,7 @@ class CreateLinkedCutCommand implements Command {
       return next;
     });
     _ride.carryBack(remove);
-    editingSession.setActiveCutId(previousActiveCutId);
+    editingSession.setActiveCutId(_previousActiveCutId);
   }
 
   /// [layer]'s linked copy in the new cut: the same bank and an EMPTY

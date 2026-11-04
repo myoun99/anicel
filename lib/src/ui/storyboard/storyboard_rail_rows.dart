@@ -905,6 +905,8 @@ class _StoryboardRailRows {
       return const [];
     }
     final onToggleEnabled = _state.widget.onToggleLaneGroupEnabled;
+    final onSetBasis = _state.widget.onSetLaneGroupBasis;
+    final onRasterize = _state.widget.onRasterizeLaneGroup;
     final onReset = _state.widget.onResetLaneGroup;
     final lanes = _seLanes(track, slot);
     final labels = _state._rows.laneLabels(
@@ -915,6 +917,12 @@ class _StoryboardRailRows {
       onToggleGroupEnabled: onToggleEnabled == null
           ? null
           : (lane) => onToggleEnabled(layer, lane),
+      onSetGroupBasis: onSetBasis == null
+          ? null
+          : (lane, basis) => onSetBasis(layer, lane, basis),
+      rasterizeGroup: onRasterize == null
+          ? null
+          : (lane) => onRasterize(layer, lane),
       onResetGroup: onReset == null ? null : (lane) => onReset(layer, lane),
       // The row exists or it does not; the open cut is not part of the
       // question (user, 2026-08-09).
@@ -1054,6 +1062,8 @@ class _StoryboardRailRows {
     final stood = labels.stood;
     final seek = _state.widget.onSeekCutFrame;
     final toggleEnabled = _state.widget.onToggleLaneGroupEnabled;
+    final setBasis = _state.widget.onSetLaneGroupBasis;
+    final rasterize = _state.widget.onRasterizeLaneGroup;
     final reset = _state.widget.onResetLaneGroup;
     final rows = _state._rows.laneLabels(
       carrier: labels.shown.copyWith(id: projection.rowId),
@@ -1063,6 +1073,12 @@ class _StoryboardRailRows {
       onToggleGroupEnabled: stood == null || toggleEnabled == null
           ? null
           : (lane) => toggleEnabled(stood.layer, lane),
+      onSetGroupBasis: stood == null || setBasis == null
+          ? null
+          : (lane, basis) => setBasis(stood.layer, lane, basis),
+      rasterizeGroup: stood == null || rasterize == null
+          ? null
+          : (lane) => rasterize(stood.layer, lane),
       onResetGroup: stood == null || reset == null
           ? null
           : (lane) => reset(stood.layer, lane),
@@ -2994,6 +3010,7 @@ class _StoryboardRailRows {
             showSeconds: _state.widget.showSeconds,
             projectFrameRate: _state.widget.projectFrameRate,
             linkedCutIds: _state.widget.linkedCutIds,
+            syncedCutIds: _state.widget.syncedCutIds,
             onOpenCutLinks: _state.widget.onOpenCutLinks,
             onEditCutBlock: _state.widget.onEditCutBlock,
           ),

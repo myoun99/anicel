@@ -85,7 +85,16 @@ void main() {
             selectionCommands: CanvasSelectionCommands()
               ..setRegion(selection ?? selected),
             selectionMaskOptions: softness,
-            fillDabsAt: (_, color, _) => [wholeCanvasDab(color)],
+            // What [wholeCanvasDab] covers, as the bucket floods it.
+            fillRangeAt: (_, _) => FillRange.over(
+              FloodFillRegion(
+                left: 0,
+                top: 0,
+                width: 200,
+                height: 120,
+                mask: Uint8List(200 * 120)..fillRange(0, 200 * 120, 255),
+              ),
+            ),
             shapeFillDabsFor: (area, color) => buildRegionFillDabs(
               region: area,
               color: color,

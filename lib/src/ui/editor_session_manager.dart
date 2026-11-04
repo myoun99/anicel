@@ -84,10 +84,11 @@ import 'text/app_strings.dart';
 import 'text/word_bake.dart' show RepaintOnWordBakes;
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
-import '../services/command.dart' show WorkAhead;
+import '../services/wait_window.dart' show StepBehind;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
-import '../services/audio/audio_conform_runner.dart' show runConformHere;
+import '../services/audio/audio_conform_runner.dart'
+    show conformingInto, resamplingInto, runConformHere;
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -155,6 +156,7 @@ import 'session/storyboard_rows.dart';
 import 'session/app_clipboard.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
+import 'session/cut_clipboard.dart';
 import 'session/effect_clipboard.dart';
 import 'session/key_clipboard.dart';
 import 'session/text_clipboard.dart';
@@ -165,6 +167,7 @@ import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/rail_view.dart';
 import 'session/panel_view_memory.dart';
+import 'session/timeline_verbs.dart';
 import 'session/timeline_zoom_memory.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
@@ -241,6 +244,7 @@ class EditorSessionManager extends ChangeNotifier
       editingSession: editingSession,
       historyManager: historyManager,
       brushFrameStore: renderCaches.brushFrameStore,
+      sheetInkStores: renderCaches.sheetInkStores,
     );
     activeCutControllers.rebuild();
     renderCaches.attach();
@@ -839,6 +843,17 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     changes: this,
   );
+  late final CutClipboard cutClipboard = CutClipboard(
+    board: _appClipboard.cuts,
+    project: this,
+    changes: this,
+    cutVerbs: cutVerbs,
+    storyboardRows: storyboardRows,
+    placement: cutPlacement,
+    renderCaches: renderCaches,
+    mediaBytesOf: projectFile.mediaByteSourceFor,
+    staging: mediaStagingStore,
+  );
 
   /// What the boards above hold — the APP's, handed to every open project
   /// by the shell (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든
@@ -888,6 +903,7 @@ class EditorSessionManager extends ChangeNotifier
     dragPreview: dragPreview,
     soundCannotPlay: (filePath) => playbackRig.soundCannotPlay(filePath),
     soundsMoved: () => playbackRig.soundsMoved,
+    selectedLayers: () => rowSelectionVerbs.selectedLayerIds,
   );
 
   bool get canCopyFrameAtCurrentFrame => clipboard.canCopyFrameAtCurrentFrame;
@@ -1794,9 +1810,8 @@ class EditorSessionManager extends ChangeNotifier
               // short-circuit before any decode, so this stays cheap.
               runner: underFlutterTest
                   ? (request) => Future.value(runConformHere(request))
-                  : null,
-              placeForPlayback: (floats) =>
-                  audioDeviceUnlessTesting()?.newSamples(floats),
+                  : conformingInto(audioDeviceUnlessTesting),
+              resampleRunner: resamplingInto(audioDeviceUnlessTesting),
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.
@@ -1850,6 +1865,18 @@ class EditorSessionManager extends ChangeNotifier
     storyboardRows: storyboardRows,
     activeCut: _activeCutEdits,
     placement: cutPlacement,
+    renderCaches: renderCaches,
+  );
+
+  // ── the timeline verbs: their own object, in their own file ─────────
+  //
+  // A collaborator (session/timeline_verbs.dart), named as the cut verbs
+  // are: `session.timelineVerbs.openTimeline(id)`.
+  late final TimelineVerbs timelineVerbs = TimelineVerbs(
+    project: this,
+    timeline: this,
+    changes: this,
+    layerIds: layerIds,
     renderCaches: renderCaches,
   );
 
@@ -2288,29 +2315,27 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// What the next [undo] — or, with [undo] false, [redo] — works out
-  /// ahead of its step ([HistoryManager.workAhead]): null where the press
-  /// only walks to the edit (I-41), or the step works nothing out. Settled
-  /// first, as the press is, so it is asked of the step the press takes.
-  WorkAhead? historyStepAhead({required bool undo}) {
+  /// What the next [undo] — or, with [undo] false, [redo] — stands behind
+  /// ([HistoryManager.stepBehind]): null where the press only walks to the
+  /// edit (I-41), or the step stood behind no window. Settled first, as the
+  /// press is, so it is asked of the step the press takes.
+  StepBehind? historyStepBehind({required bool undo}) {
     _settleAndAdopt();
     return _walkTo(undo: undo) == null
-        ? historyManager.workAhead(undo: undo)
+        ? historyManager.stepBehind(undo: undo)
         : null;
   }
 
   /// Where the next [undo] — or redo — walks the user instead of stepping:
   /// the place its edit was made, while the user stands elsewhere (I-41).
   ///
-  /// A gap is elsewhere too. ↩️Standing in one (no place) never walked
-  /// (2026-09-24, unasked): the step was taken there, and a cel's pixels
-  /// were refused at the gap's canvas — the undo did nothing (board
-  /// `a-text-walked-into-a-gap-lands-at-its-size`).
+  /// A gap is elsewhere too ([Standing.isElsewhere]). ↩️Standing in one (no
+  /// place) never walked (2026-09-24, unasked): the step was taken there,
+  /// and a cel's pixels were refused at the gap's canvas — the undo did
+  /// nothing (board `a-text-walked-into-a-gap-lands-at-its-size`).
   StandingPlace? _walkTo({required bool undo}) {
-    final here = standingPlace;
     final there = undo ? historyManager.undoPlace : historyManager.redoPlace;
-    return there != null &&
-            (here == null || standing.isElsewhere(there, from: here))
+    return there != null && standing.isElsewhere(there, from: standingPlace)
         ? there
         : null;
   }

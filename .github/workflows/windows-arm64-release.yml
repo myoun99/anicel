@@ -110,16 +110,11 @@ jobs:
       # Wasmtime writes ARM64 code as a plugin opens, which nothing else here
       # does. The host's own test asks a native plugin and its WebAssembly twin
       # the same questions, and passes without the twin when the build found
-      # no engine — so its word for that is a failure here.
+      # no engine — unless the run says it must have one.
       - name: A .wasm answers as its native twin does
-        run: |
-          set -euo pipefail
-          out=$(build/windows/arm64/plugins/qa_native/shared/Release/qa_fx_plugin_test.exe)
-          echo "$out"
-          if grep -q 'no WebAssembly engine' <<< "$out"; then
-            echo "::error::this build has no WebAssembly engine"
-            exit 1
-          fi
+        env:
+          QA_REQUIRE_WASM: '1'
+        run: build/windows/arm64/plugins/qa_native/shared/Release/qa_fx_plugin_test.exe
 
       # The launch the x64 zip gets on the desk: still alive after 15 s, with
       # its window titled Anicel. It proves every library resolves and the

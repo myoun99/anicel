@@ -1,9 +1,14 @@
+import 'dart:math' as math;
+
 import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
 import '../../models/export_spec.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../canvas/flip_hud_controller.dart' show FlipHudController;
+import '../canvas/flip_hud_model.dart';
 import '../timeline/layer_timeline_display_adapter.dart';
 import '../widgets/boolean_dot.dart';
 import 'export_cel_group_plan.dart';
@@ -224,6 +229,18 @@ class ExportCelsStanding {
     );
   }
 
+  /// Standing on the row [steps] rows down [rows] from the one stood on —
+  /// up, for a negative step — held to the list's ends: the sheet's row
+  /// keys and a flip across the rows (I-153-Q2: 「레일의 위/아래 행에 섬」).
+  ExportCelsStanding rowStepped(int steps, List<ExportCelsBoardRow> rows) {
+    final stood = rowIn(rows);
+    if (stood == null) {
+      return this;
+    }
+    final next = (rows.indexOf(stood) + steps).clamp(0, rows.length - 1);
+    return standingOn(rows[next].idValue, rows);
+  }
+
   /// This standing over [rows] as they are NOW: on a row the list shows,
   /// and showing a drawing that row still shows.
   ///
@@ -274,6 +291,43 @@ class ExportCelsStanding {
 
   @override
   int get hashCode => Object.hash(row, shown, place);
+}
+
+/// The Cels list as a flip reads where it landed (I-153-Q2): a row a row,
+/// a run a drawing — a step onto another picture is another
+/// [FlipHudSnapshot.contentKey], which is when the flip ticks
+/// ([FlipHudController.refresh]). The list shows itself, so nothing draws
+/// this.
+FlipHudSnapshot exportCelsFlipSnapshot(
+  List<ExportCelsBoardRow> rows,
+  ExportCelsStanding standing,
+) {
+  final stood = standing.rowIn(rows);
+  final shown = standing.sheetIn(rows);
+  return FlipHudSnapshot(
+    rows: [
+      for (final row in rows)
+        FlipHudRow(
+          name: row.name,
+          // A document is no layer: it stands as a track row does
+          // (`flipHudTrackRow`), and nothing draws it here.
+          kind: switch (row) {
+            ExportCelsLayerRow(:final layer) => layer.kind,
+            ExportCelsDocumentRow() => LayerKind.storyboard,
+          },
+          runs: [
+            for (var index = 0; index < row.sheets.length; index += 1)
+              FlipHudRun(startIndex: index, length: 1),
+          ],
+        ),
+    ],
+    rowIndex: stood == null ? 0 : rows.indexOf(stood),
+    frameIndex: shown == null ? 0 : stood!.sheets.indexOf(shown),
+    frameCount: rows.fold(
+      0,
+      (most, row) => math.max(most, row.sheets.length),
+    ),
+  );
 }
 
 /// What the preview turns through on [row]: its files that are written —

@@ -11,6 +11,8 @@ import '../../models/pixel_clipboard_verb.dart';
 import '../../models/pixel_verb_settings.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../cut_command_group.dart';
+import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import '../dialogs/behind_the_wait_window.dart';
 import '../editor_session_manager.dart';
 import '../session/effects_and_fx.dart' show EffectChainHolder;
 import '../shortcuts/editor_action_registry.dart';
@@ -19,6 +21,7 @@ import '../text/app_strings.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
+import 'layer_name_commands.dart' show renameActiveLayerWithDialog;
 import 'rasterize_reference_rows.dart';
 import 'toolbar_panel_context.dart';
 
@@ -67,7 +70,7 @@ class TimelineBarMenus {
     ...layer(context),
     ...addLayer(),
     ...frame(),
-    ...colourEdit(),
+    ...colourEdit(context),
     ...effects(),
   ]).toList();
 
@@ -259,9 +262,8 @@ class TimelineBarMenus {
   /// light up rename (↩️it said duplicate, which F-455 moved to the shared
   /// pill).
   ///
-  /// A getter because ① moved rename OUT of the menu: the pill's button and
-  /// the entries that stayed behind have to answer the same question, and
-  /// two copies of this line would eventually stop agreeing.
+  /// The rename row's gate (I-154). ↩️A getter since ① moved rename onto
+  /// the pill, whose button and this menu had to answer the same question.
   bool get canEditActiveLayer {
     final active = session.activeLayer;
     return active != null && !active.kind.isTrackFixture;
@@ -276,11 +278,20 @@ class TimelineBarMenus {
     // instead of editing a row that panel is not showing.
     final serves = panel.servesActiveLayerVerbs;
     return [
-      // ⛔RENAME IS NOT HERE — ① moved it onto the pill itself (유저 확정:
-      // 「레이어 알약 밖으로: 레이어 이름변경」). "밖으로" means out of the
-      // MENU and onto that pill, which is where 컷 삭제 went for the same
-      // sentence; it does not mean the shared pill, whose residents 확정 #11
-      // fixes at four.
+      // ↩️🗣️I-154 (유저 2026-11-04): 「레이어버튼에도 이름변경 추가. 역시
+      // 있는게 나을거같음」 — back at the head of the menu. ① (08-13) had
+      // moved it onto the pill (「레이어 알약 밖으로: 레이어 이름변경」), and
+      // the pill's button gave way to the shared pill's Edit Instance. The
+      // selected rows, or the one stood on (⑨).
+      PanelFlyoutItem(
+        keyValue: 'timeline-rename-layer-button',
+        label: editorActionLabel(EditorActionIds.layerRename),
+        shortcuts: const [EditorActionIds.layerRename],
+        icon: Icons.drive_file_rename_outline,
+        enabled: serves && canEditActiveLayer,
+        onSelected: () =>
+            unawaited(renameActiveLayerWithDialog(context, session)),
+      ),
       // ⛔DUPLICATE IS NOT HERE EITHER (F-455, 유저 2026-10-23: 「공용알약에
       // 복제 버튼 만들고 레이어랑 컷버튼의 레이어복제/컷복제 삭제」). The
       // shared pill's 복제 duplicates the selected rows, as its copy takes
@@ -320,10 +331,12 @@ class TimelineBarMenus {
       // being a tail on the layer menu.
       //
       // R5 #14: and the two FOLDER-making commands went with it. "Group
-      // into folder" wrapped the active layer; a folder is made EMPTY from
-      // the Add Layer menu now and filled by dropping rows on it, which is
-      // how every other app this user works in behaves. "New attach folder"
-      // goes for the same reason — the drag makes those too.
+      // into folder" wrapped the active layer; a folder is made from the
+      // Add Layer menu now, and holds the rows selected as it is made
+      // (🗣️F-563, 유저 2026-11-04: 「레이어 여러개 선택하고 폴더생성누르면
+      // 선택한 레이어들 폴더안에 들어가는식으로」 — ↩️it was born EMPTY, to be
+      // filled by dropping rows on it). "New attach folder" goes for the
+      // same reason — the drag makes those too.
       PanelFlyoutItem(
         keyValue: 'timeline-rasterize-layer-button',
         label: editorActionLabel(EditorActionIds.layerRasterize),
@@ -441,13 +454,17 @@ class TimelineBarMenus {
   /// 아래 붙여넣기/픽셀 위 붙여넣기」 — after the four, as their own group.
   /// ↩️I-90 opened that group with 픽셀 비우기, and put 픽셀 잘라내기 over
   /// 픽셀 복사 (「복사버튼 위」).
-  List<PanelFlyoutEntry> colourEdit() => [
+  ///
+  /// 🗣️F-551 (유저 2026-11-04): 「색변환이나 색삭제나 그런거」 — every row
+  /// runs behind the app's wait window, put up in [context], under the
+  /// row's own name (Q1 「전부 늘 띄운다」).
+  List<PanelFlyoutEntry> colourEdit(BuildContext context) => [
     PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
     for (final verb in CelPixelVerb.values)
-      if (verb.usesTheColour) _pixelVerbRow(verb),
+      if (verb.usesTheColour) _pixelVerbRow(context, verb),
     const PanelFlyoutDivider(),
     for (final verb in CelPixelVerb.values)
-      if (!verb.usesTheColour) _pixelVerbRow(verb),
+      if (!verb.usesTheColour) _pixelVerbRow(context, verb),
     for (final verb in PixelClipboardVerb.values)
       PanelFlyoutItem(
         keyValue: switch (verb) {
@@ -465,12 +482,35 @@ class TimelineBarMenus {
         },
         shortcuts: [pixelClipboardActionIdFor(verb)],
         enabled: session.pixelVerbs.canRunPixelClipboardVerb(verb),
-        onSelected: () => session.pixelVerbs.runPixelClipboardVerb(verb),
+        onSelected: () => _behindTheWaitWindow(
+          context,
+          pixelClipboardActionIdFor(verb),
+          () => session.pixelVerbs.runPixelClipboardVerb(verb),
+        ),
       ),
   ];
 
+  /// [run], a row of the colour edit list, behind the wait window under
+  /// [actionId]'s name.
+  static void _behindTheWaitWindow(
+    BuildContext context,
+    String actionId,
+    VoidCallback run,
+  ) {
+    unawaited(
+      takeBehindTheWaitWindow(
+        context,
+        run,
+        window: AppWaitWindow.working(editorActionLabel(actionId)),
+      ),
+    );
+  }
+
   /// One of the overwrite verbs' rows, with the knob its verb runs by.
-  PanelFlyoutItem _pixelVerbRow(CelPixelVerb verb) => PanelFlyoutItem(
+  PanelFlyoutItem _pixelVerbRow(
+    BuildContext context,
+    CelPixelVerb verb,
+  ) => PanelFlyoutItem(
     keyValue: switch (verb) {
       // The retired buttons' own key strings, kept.
       CelPixelVerb.replaceColour => 'shared-replace-colour-button',
@@ -493,7 +533,11 @@ class TimelineBarMenus {
     },
     shortcuts: [pixelVerbActionIdFor(verb)],
     enabled: session.pixelVerbs.canRunPixelVerb,
-    onSelected: () => session.pixelVerbs.runPixelVerb(verb),
+    onSelected: () => _behindTheWaitWindow(
+      context,
+      pixelVerbActionIdFor(verb),
+      () => session.pixelVerbs.runPixelVerb(verb),
+    ),
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
     // in its own row — the value the row's command runs with.
     knob: switch (verb) {

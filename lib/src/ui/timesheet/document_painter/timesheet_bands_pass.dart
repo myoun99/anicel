@@ -64,14 +64,17 @@ class _TimesheetBandsPass {
             bold: true,
           ),
         );
-        SheetLinePlace.of(
+        final place = SheetLinePlace.of(
           line.size,
           value,
           SheetTextForm.centredLine,
-        ).paint(canvas, line);
+        )..paint(canvas, line);
         line.dispose();
         if (box.field == TimesheetHeaderField.time && _owesNoriShiro) {
           _paintDrawnLength(canvas, value);
+        }
+        if (box.field == TimesheetHeaderField.cut) {
+          _paintLinkedCuts(canvas, place.rect, value);
         }
       }
     }
@@ -91,9 +94,64 @@ class _TimesheetBandsPass {
         value.center.dx,
         value.top + TimesheetDocumentPainter.headerValueSize + 4,
       ),
-      fontSize: TimesheetDocumentPainter.headerDrawnLengthSize,
+      fontSize: TimesheetDocumentPainter.headerUnderSize,
       centeredAtX: true,
       maxWidth: value.width,
+    );
+  }
+
+  /// The cuts the cut is 겸용 with, small, a line each under its [name],
+  /// from its left, a 「(」 binding the name and them — in the box label's
+  /// grey, so the cut's own name is the one that reads. [value] is the
+  /// room the box sets its value in.
+  ///
+  /// 🗣️F-558 (유저 2026-11-04): 「고정텍스트 on이든 off이든 연관없음. 항상
+  /// 보여줌. 위치는 헤더의 컷 번호 아래에 겸용컷들을 텍스트로 둠. 심플하게
+  /// 텍스트로만 쭉 나열. 그러고 왼쪽에 ( 이 모양으로 컷들 묶는느낌」 · 「다른
+  /// 겸용컷 보여주는 텍스트는 텍스트색이랑 ( 아이콘 동일하게 연하게 표시하자.
+  /// 겸용컷의 컷이름 글자도 헤더 컷이름 텍스트보다 작게」 · 「작게하고
+  /// (아이콘에 붙여야하니까 왼쪽정렬」 · F-558-Q1 「손글씨(잉크?)로 말고 텍스트
+  /// 층으로만」. In the sketch the list ran on past the box's foot, over the
+  /// memo band — so it does here.
+  void _paintLinkedCuts(Canvas canvas, Rect name, Rect value) {
+    final cuts = _painter.document.linkedCuts;
+    if (cuts.isEmpty) {
+      return;
+    }
+    var top = name.bottom;
+    for (final cut in cuts) {
+      final line = sheetLine(
+        cut,
+        TimesheetDocumentPainter.wordsStyle(
+          _painter.face,
+          fontSize: TimesheetDocumentPainter.headerUnderSize,
+          color: TimesheetDocumentPainter._gridMedium,
+        ),
+      );
+      final place = SheetLinePlace.of(
+        line.size,
+        Rect.fromLTRB(name.left, top, value.right, top + line.height),
+        SheetTextForm.leftLine,
+      )..paint(canvas, line);
+      line.dispose();
+      top = place.rect.bottom;
+    }
+    _paintBinding(canvas, Rect.fromLTRB(name.left, name.top, name.left, top));
+  }
+
+  /// A 「(」 standing just left of [lines], from their top to their foot.
+  void _paintBinding(Canvas canvas, Rect lines) {
+    const gap = 2.0;
+    const bow = 3.0;
+    final x = lines.left - gap;
+    canvas.drawPath(
+      Path()
+        ..moveTo(x, lines.top)
+        ..quadraticBezierTo(x - bow * 2, lines.center.dy, x, lines.bottom),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = TimesheetDocumentPainter._gridMedium,
     );
   }
 

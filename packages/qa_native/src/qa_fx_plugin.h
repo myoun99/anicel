@@ -7,6 +7,23 @@
 // to: its own memory for a native library, the module's linear memory for
 // a .wasm. Everything past opening is the same code.
 //
+// Why the spec (anicel_fx_plugin.h) is as it is — kept here, on the app's
+// side, since that header is the SDK's and speaks to plugin makers
+// (fx-plugin-sdk-publish, 2026-11-04):
+// 🗣️I-132-Q5: one .wasm runs on every platform and a desktop may also take
+// a native build of the same source, so the spec is a C FUNCTION SPEC that a
+// .dll speaks as well as a .wasm, not a WebAssembly component interface
+// (I-132-Q31: the component model stays a road to add on the wasm side).
+// 🗣️I-132-Q29 (유저 2026-10-29): 「a + 플러그인이 다른 레이어를 읽기」 — a
+// 「layer」 parameter hands a plugin another row's picture. 「나중엔 최대한
+// 극한으로 확장 … 플러그인은 확장성이 젤 중요」: a plugin says what it can
+// do (`"can"`), so a later host can offer more — a GPU route, say, chosen by
+// the plugin as AE's GPU effects are — and an older plugin still runs.
+// ↩️No pointers in the frame: pointers would have made two layouts (4- and
+// 8-byte) the host fills differently, and a plugin built for the one would
+// read the other's fields wrong.
+// Published, spec 1 does not break: what comes later is spec 2 and `"can"`.
+//
 // ⚠️A plugin is asked by one thread at a time; two plugins may be asked at
 // once.
 #ifndef QA_FX_PLUGIN_H

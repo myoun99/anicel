@@ -216,8 +216,10 @@ class _WorkspaceCollapsedRows {
                     geometry: geometry,
                     crossAxisExtent: height,
                     minBlockWidth: StoryboardPanel.cutBlockMinWidth,
-                    // D15: the folded row shows the link icons too (I-25).
+                    // D15: the folded row shows the link icons too (I-25)
+                    // — a 동기컷's its sync glyph (I-150-Q3).
                     linkedCutIds: session.cutVerbs.linkedCutIds,
+                    syncedCutIds: session.cutVerbs.syncedCutIds,
                     // F-248: the cut you stand on wears the standing wash on
                     // its bands, as on the open row — while the conte's row
                     // you stand on is this one.
@@ -303,6 +305,7 @@ class _WorkspaceCollapsedRows {
         layer.id,
       ),
       linkPartners: session.layerVerbs.linkPartnersOf(layer.id),
+      syncPartners: session.layerVerbs.syncPartnersOf(layer.id),
       // A row HAS lanes when its lanes are not empty — the same question the
       // panel asks. Hardcoding `true` gave a twirl to rows that have nothing
       // to twirl.
@@ -335,7 +338,7 @@ class _WorkspaceCollapsedRows {
       onToggleLayerClip: (_) {},
       onOpenLayerMixer: (_, _) {},
       onOpenLayerReference: (_, _) async {},
-      onOpenLayerLinks: (_, _) async {},
+      onOpenLayerLinks: (_, _, _) async {},
       onOpenCameraPath: (_) async {},
       onLayerBlendModeSelected: (_, _) {},
     );

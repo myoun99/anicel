@@ -602,7 +602,7 @@ Widget _panel(
         onLayerBlendModeSelected: (id, _) => hear('blend', id),
         layerLinkPartnersOf: (id) =>
             id.value.startsWith('draw') ? const ['Elsewhere'] : const [],
-        onOpenLayerLinks: (_, id) async => hear('links', id),
+        onOpenLayerLinks: (_, id, _) async => hear('links', id),
         onOpenLayerReference: (_, id) async => hear('reference', id),
         isLayerSoloed: (_) => false,
         onOpenLayerMixer: (_, id) => hear('mixer', id),

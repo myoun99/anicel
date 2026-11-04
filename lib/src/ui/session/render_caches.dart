@@ -29,6 +29,7 @@ import '../../models/brush_frame_cache_invalidation.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut.dart';
+import '../../models/cut_sync_alignment.dart' show syncedSheetInkKey;
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -164,20 +165,37 @@ class RenderCaches {
   /// (`ExposureMemo.inkId`): entries no block names any more are pruned at
   /// LOAD (never at save — a deleted block's ink must survive its own
   /// undo), so "ink dies with the block" lands at the session boundary.
-  final BrushFrameStore conteInkRowStore = BrushFrameStore();
+  late final BrushFrameStore conteInkRowStore = BrushFrameStore()
+    ..setLinkResolver(_onSyncedSheets);
 
   /// The cut envelope's ink store — SESSION-owned for the same reason: the
   /// archive persists it, the workspace's controller owns the coordinator.
   /// Its keys carry the OWNER cut's id, so an entry whose cut is gone is
-  /// pruned at LOAD exactly like a conte row's.
-  final BrushFrameStore envelopeInkStore = BrushFrameStore();
+  /// pruned at LOAD exactly like a conte row's — a 동기컷's, its sync's
+  /// canonical ([_onSyncedSheets]).
+  late final BrushFrameStore envelopeInkStore = BrushFrameStore()
+    ..setLinkResolver(_onSyncedSheets);
 
   /// The timesheet's ink store — SESSION-owned like the conte's and the
   /// envelope's (유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」):
   /// the ink was the one sheet's that no save carried. The keys carry the
   /// cut's id, so an entry whose cut is gone is pruned at LOAD, the
   /// envelope's unit.
-  final BrushFrameStore timesheetInkStore = BrushFrameStore();
+  late final BrushFrameStore timesheetInkStore = BrushFrameStore()
+    ..setLinkResolver(_onSyncedSheets);
+
+  /// A 동기컷's sheets are one paper ([syncedSheetInkKey]): the conte's,
+  /// the timesheet's and the envelope's handwriting resolve to the sync's
+  /// canonical cut, read
+  /// off the CURRENT project's table on every resolve, as the drawings'
+  /// link resolver reads it.
+  BrushFrameKey _onSyncedSheets(BrushFrameKey key) => switch (_project
+      .repository
+      .currentProject
+      ?.linkRegistry) {
+    final registry? => syncedSheetInkKey(registry, key),
+    null => key,
+  };
 
   /// The viewers' ink store (I-114) — SESSION-owned like the sheets'. Its
   /// keys carry the carry of the file written on ([viewerInkPageKey]), so

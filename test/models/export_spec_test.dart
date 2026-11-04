@@ -122,6 +122,74 @@ void main() {
       expect(restored.naming.projectFolder, isTrue);
     });
 
+    test('🗣️I-153: the folders\' names keep what they wear, and a bare one '
+        'is not written', () {
+      const naming = ExportCelNaming(
+        projectFolderName: ExportNameAffix(prefix: 'csm_'),
+        cutFolderName: ExportNameAffix(prefix: 'csm_14_', suffix: '_lo'),
+      );
+      final json = naming.toJson();
+      expect(json, {
+        'projectFolderName': {'prefix': 'csm_'},
+        'cutFolderName': {'prefix': 'csm_14_', 'suffix': '_lo'},
+      });
+      expect(ExportCelNaming.fromJson(json), naming);
+      expect(const ExportCelNaming().toJson(), isEmpty);
+      expect(
+        ExportCelNaming.fromJson({
+          'cutFolderName': {'prefix': 7, 'suffix': '_lo'},
+          'projectFolderName': 'csm_',
+        }),
+        const ExportCelNaming(
+          cutFolderName: ExportNameAffix(suffix: '_lo'),
+        ),
+        reason: 'what is not a string is no affix',
+      );
+      expect(naming.cutFolderName.around('085'), 'csm_14_085_lo');
+      expect(naming, isNot(const ExportCelNaming()));
+      expect(
+        naming.copyWith(cutFolderName: const ExportNameAffix()),
+        isNot(const ExportCelNaming()),
+        reason: 'the project folder\'s name is still worn',
+      );
+      for (final one in const [
+        ExportCelNaming(projectFolderName: ExportNameAffix(prefix: 'csm_')),
+        ExportCelNaming(cutFolderName: ExportNameAffix(suffix: '_lo')),
+      ]) {
+        expect(one, isNot(const ExportCelNaming()));
+        expect(one.hashCode, isNot(const ExportCelNaming().hashCode));
+      }
+      for (final other in const [
+        ExportNameAffix(prefix: 'csm_14_'),
+        ExportNameAffix(suffix: '_lo'),
+        ExportNameAffix(prefix: 'csm_14_', suffix: '_LO'),
+      ]) {
+        expect(other, isNot(naming.cutFolderName));
+        expect(other.hashCode, isNot(naming.cutFolderName.hashCode));
+      }
+    });
+
+    test('🗣️I-153: a project-wide export makes the cut\'s folder whatever its '
+        'pill says, and keeps the pill as the user left it', () {
+      // 유저 2026-11-04: 「범위에서 프로젝트 고르면 이름규칙 폴더생성에서
+      // 컷 체크 고정되도록」.
+      const off = ExportCelNaming(layerFolder: true);
+      const project = CelsExportSpec(
+        scope: ExportScopeKind.project,
+        naming: off,
+      );
+      expect(project.cutFolderHeld, isTrue);
+      expect(project.namingInForce, off.copyWith(cutFolder: true));
+      expect(project.naming, off);
+      expect(
+        CelsExportSpec.fromJson(project.toJson()).naming.cutFolder,
+        isFalse,
+      );
+      const cut = CelsExportSpec(naming: off);
+      expect(cut.cutFolderHeld, isFalse);
+      expect(cut.namingInForce, off);
+    });
+
     test('the label stores its stage and revise only — a take riding the '
         'stored label is dropped on read, since the take is its own field',
         () {
@@ -191,6 +259,7 @@ void main() {
           ExportCelKind.direction: '_',
           ExportCelKind.timesheet: '_',
           ExportCelKind.envelope: '_',
+          ExportCelKind.video: '_',
         },
       );
       final typed = naming
@@ -219,19 +288,20 @@ void main() {
   });
 
   group('the cut\'s documents are kinds of the Cels tab (F-289)', () {
-    test('the timesheet and the cut envelope are documents; the rows\' '
-        'kinds are not — and both start behind an underscore (유저 '
+    test('the timesheet, the cut envelope and the film are documents; the '
+        'rows\' kinds are not — and all start behind an underscore (유저 '
         '2026-10-06: 「기본값은 셀:없음, 미술:_, 디렉션:_, 시트:_, '
-        '컷봉투:_」)', () {
+        '컷봉투:_」; the film\'s is my call, I-151)', () {
       expect(
         [
           for (final kind in ExportCelKind.values)
             if (kind.isDocument) kind,
         ],
-        [ExportCelKind.timesheet, ExportCelKind.envelope],
+        [ExportCelKind.timesheet, ExportCelKind.envelope, ExportCelKind.video],
       );
       expect(ExportCelKind.timesheet.defaultPrefix, '_');
       expect(ExportCelKind.envelope.defaultPrefix, '_');
+      expect(ExportCelKind.video.defaultPrefix, '_');
     });
 
     test('타임시트 형식 and 컷봉투 형식 are the cels spec\'s: pictures by '
@@ -303,6 +373,39 @@ void main() {
         expect(read.wantsAlpha, isFalse, reason: format.label);
         expect(read.jpgQuality, 55, reason: 'the quality is kept for a JPG');
       }
+    });
+
+    test('🗣️I-151: the film\'s format and its sound are the cels spec\'s — an '
+        'MP4 with its sound by default, carried by the JSON once one moves, '
+        'and a movie however its JSON says otherwise', () {
+      const spec = CelsExportSpec();
+      expect(spec.videoFormat, const ExportFormatSelection());
+      expect(spec.videoAudio, isTrue);
+      expect(
+        spec.toJson().keys,
+        isNot(anyOf(contains('videoFormat'), contains('videoAudio'))),
+      );
+
+      const gif = ExportFormatSelection(
+        container: ExportVideoContainer.gif,
+        videoCodec: ExportVideoCodec.gif,
+      );
+      for (final one in [
+        spec.copyWith(videoFormat: gif),
+        spec.copyWith(videoAudio: false),
+      ]) {
+        expect(one, isNot(spec));
+        expect(one.hashCode, isNot(spec.hashCode));
+        expect(CelsExportSpec.fromJson(one.toJson()), one);
+      }
+
+      final still = const ExportFormatSelection(
+        kind: ExportMediaKind.still,
+      ).toJson();
+      expect(
+        CelsExportSpec.fromJson({'videoFormat': still}).videoFormat.kind,
+        ExportMediaKind.video,
+      );
     });
 
     test('I-117: the conte is ONE file as a PDF or as a Photoshop document — '

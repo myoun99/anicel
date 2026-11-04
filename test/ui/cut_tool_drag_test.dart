@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
+import '../helpers/wait_window.dart' show windowBehind;
 
 /// The cut tool driven through real pointer input.
 ///
@@ -479,8 +480,7 @@ void main() {
     );
     await tester.pump();
     await env.setTool(CanvasTool.cutStamp, stampBlend: BrushBlendMode.behind);
-    env.slot.pasteAtOrigin();
-    await tester.pump();
+    await windowBehind(tester, () async => env.slot.pasteAtOrigin());
 
     final landed = surfacePixelRgba(
       env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
@@ -583,8 +583,7 @@ void main() {
     );
     await tester.pump();
 
-    env.slot.pasteAtOrigin();
-    await tester.pump();
+    await windowBehind(tester, () async => env.slot.pasteAtOrigin());
 
     final surface = env.coordinator.currentSurfaceOf(
       env.coordinator.activeFrameKey,
@@ -794,14 +793,12 @@ void main() {
       stampBlend: BrushBlendMode.erase,
       rowTakesStrokes: false,
     );
-    env.slot.pasteAtOrigin();
-    await tester.pump();
+    await windowBehind(tester, () async => env.slot.pasteAtOrigin());
     expect(inkOnTheBar(), isNot(0), reason: 'the lane refused it');
 
     // CONTROL: the same press on the row itself does land.
     await env.setTool(CanvasTool.cutStamp, stampBlend: BrushBlendMode.erase);
-    env.slot.pasteAtOrigin();
-    await tester.pump();
+    await windowBehind(tester, () async => env.slot.pasteAtOrigin());
     expect(inkOnTheBar(), 0);
   });
 
@@ -853,15 +850,13 @@ void main() {
     expect(alphaAt(), 0, reason: 'nothing underneath to confuse the reading');
 
     await env.setTool(CanvasTool.cutStamp, stampOpacity: 0.5);
-    env.slot.pasteAtOrigin();
-    await tester.pump();
+    await windowBehind(tester, () async => env.slot.pasteAtOrigin());
     final half = alphaAt();
     expect(half, greaterThan(0), reason: 'it still lands');
 
     await wipe();
     await env.setTool(CanvasTool.cutStamp, stampOpacity: 1);
-    env.slot.pasteAtOrigin();
-    await tester.pump();
+    await windowBehind(tester, () async => env.slot.pasteAtOrigin());
     final full = alphaAt();
 
     expect(full, greaterThan(half), reason: 'the setting is read, not ignored');

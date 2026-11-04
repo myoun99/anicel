@@ -450,6 +450,76 @@ void main() {
       );
     });
 
+    // 🗣️F-561 (유저 2026-11-04): 「G행의 프레임쪽보면 중간까지밖에 색이
+    // 안칠해져있음. 3 직전까지 색이 있으면 그런 기능인가보다 하겠는데 중간에
+    // 걸쳐있으니까 버그인가?」 — the folder's block wore what its first cell
+    // in the window showed, so a tile begun past a row's drawn block showed
+    // the rest as empty, and one begun on it showed it all as drawn.
+    test('🎯the block is LAID grey where the answer is, whatever window '
+        'lays it — the edges of its rows\' blocks are its edges too', () {
+      final s = _session(_stack());
+      _draw(s, 'a', 'a0');
+      final painter = _painter(s, _band(s));
+      bool covers(Rect rect, int frame) =>
+          rect.contains(painter.paperRectFor(frame).center);
+      for (final from in [0, 1, 3, 4, 5, 8]) {
+        final laid = painter.substrateIn(from, 12);
+        for (var frame = from; frame < 12; frame += 1) {
+          final style = painter.resolvedCellStyleFor(frame);
+          expect(
+            [
+              for (final piece in laid.paper)
+                if (covers(piece.rect, frame)) piece.color,
+            ],
+            [if (style.background.a > 0) style.background],
+            reason: 'the paper at $frame, laid from $from',
+          );
+          expect(
+            [
+              for (final ring in laid.rings)
+                if (covers(ring.rect, frame)) ring.color,
+            ],
+            [if (style.border.a > 0) style.border],
+            reason: 'the outline at $frame, laid from $from',
+          );
+        }
+      }
+    });
+
+    test('a row\'s block that moves inside the folder\'s gives the folder '
+        'a row to lay again, though its blocks did not move', () {
+      final s = _session(_stack());
+      final before = _band(s);
+      s.repository.updateProject(
+        (project) => project.copyWith(
+          tracks: [
+            for (final track in project.tracks)
+              track.copyWith(
+                cuts: [
+                  for (final cut in track.cuts)
+                    cut.copyWith(
+                      layers: [
+                        for (final layer in cut.layers)
+                          if (layer.id == const LayerId('b'))
+                            _row('b', const {2: 1, 3: 3}, inside: 'F')
+                          else
+                            layer,
+                      ],
+                    ),
+                ],
+              ),
+          ],
+        ),
+      );
+      final after = _band(s);
+      expect(_blocks(after), _blocks(before), reason: '⛔전제: 0..6, 8..10');
+      expect(
+        identical(after, before),
+        isFalse,
+        reason: 'b\'s blocks meet at 3 now, where its grey can change',
+      );
+    });
+
     test('a folder inside it is no row that drew: what it holds is asked, '
         'the folder\'s own row answers nothing', () {
       final s = _session([
@@ -844,8 +914,8 @@ void main() {
       s.mediaPlacement.clear();
     });
 
-    test('a folder kept over an edit that left its blocks as they were is '
-        'read from its rows as they are now', () {
+    test('a folder over an edit that left its blocks as they were is read '
+        'from its rows as they are now', () {
       final s = _session(_stack());
       final before = _band(s);
       s.edgeDrag.beginExposureEdgeDrag(
@@ -856,12 +926,19 @@ void main() {
       s.edgeDrag.updateExposureEdgeDrag(-1);
       s.edgeDrag.endExposureEdgeDrag();
       expect(
-        [_blocks(_layer(s, 'a')), identical(_band(s), before)],
+        [
+          _blocks(_layer(s, 'a')),
+          _blocks(_band(s)),
+          identical(_band(s), before),
+        ],
         [
           {0: 3, 8: 2},
-          true,
+          _blocks(before),
+          false,
         ],
-        reason: '⛔전제: a ends at 3 under b\'s 2..6, so the band was kept',
+        reason: '⛔전제: a ends at 3 under b\'s 2..6 — the band\'s blocks as '
+            'they were, a row\'s end moved inside them where its grey can '
+            'change, so a band of its own (F-561). ↩️The band was kept',
       );
 
       s.edgeDrag.beginExposureEdgeDrag(

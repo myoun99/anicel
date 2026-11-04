@@ -44,6 +44,7 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 void main() {
   const red = [255, 0, 0, 255];
@@ -308,12 +309,12 @@ void main() {
       s.pixelVerbs.cutToolHand!(pieceAt(-210, 10));
       await settle(tester);
 
-      tester
+      final slot = tester
           .widget<BrushCanvasPanel>(
             find.byKey(const ValueKey<String>('main-canvas-brush-host')),
           )
-          .cutPieceSlot!
-          .pasteAtOriginHandler!();
+          .cutPieceSlot!;
+      await windowBehind(tester, () async => slot.pasteAtOriginHandler!());
       await settle(tester);
 
       await expectThroughSolo(tester, s, pastTheX, pastTheY);

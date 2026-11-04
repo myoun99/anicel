@@ -134,7 +134,7 @@ void main() {
       final keeps? => (
         pictures: (
           rasters: held,
-          keeps: keeps,
+          keeps: keeps ? NodesKept.onlyDrawn : NodesKept.none,
           below: keeps ? BelowThePen.whole : BelowThePen.inCells,
         ),
         revisionOf: (cel) => revisions[cel.layerId.value] ?? 1,

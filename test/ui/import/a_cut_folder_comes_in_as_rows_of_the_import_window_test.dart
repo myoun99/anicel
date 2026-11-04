@@ -310,9 +310,11 @@ void main() {
     );
   });
 
+  // 🗣️F-550-Q5 (유저 2026-11-04: 「다시 임포트하는건 바이트 비교하지말고
+  // 애초에 새롭게 임포트하게하도록」) — ↩️「nothing is copied again」 (the
+  // audit of 2026-09-24) gave way: the scan is carried anew, unchanged too.
   testWidgets('a folder brought in again places nothing it was not asked '
-      'to: the scan the pool holds stays there, and nothing is copied '
-      'again', (tester) async {
+      'to: the scan stays one pool row, taken as it is now', (tester) async {
     final folder = await aFolder(tester, 'csm_13_069_loeks', [
       'A1.png',
       '_069_ts_loe.png',
@@ -329,6 +331,8 @@ void main() {
       reason: 'the premise: the save absorbed the staged copy',
     );
 
+    final before = session.projectFile.mediaCarryFor(scan);
+
     await openOn(tester, session, folder);
     expect(
       column(tester, 'into').cellWordOf('$folder/_069_ts_loe.png'),
@@ -336,7 +340,8 @@ void main() {
     );
     await importAll(tester, session);
 
-    expect(session.mediaStagingStore.holdsAnyCopyOf(scan), isFalse);
+    expect(session.projectFile.mediaCarryFor(scan), isNot(before));
+    expect(session.mediaStagingStore.holdsAnyCopyOf(scan), isTrue);
     expect(session.mediaPool.mediaAssets, hasLength(1));
     final cuts = session.repository.requireProject().tracks.first.cuts;
     expect(
@@ -415,7 +420,7 @@ void main() {
     expect(pill('custom').selected, isTrue);
     expect(name().enabled, isFalse, reason: 'dimmed, in its place');
     final into = column(tester, 'into');
-    expect(into.answersFor('folder:A'), ImportDestination.values);
+    expect(into.answersFor('folder:A'), ImportDestination.inThisProject);
     expect(into.cellWordOf('folder:A'), AppText.strings.imIntoNewLayer);
     const correction = 'folder:A animation-director';
     expect(into.answersFor(correction), hasLength(3));

@@ -249,23 +249,28 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
     // The count the list shows is the count on disk
-    // (cels-tab-lists-a-blank-cel-as-written-Q1).
+    // (cels-tab-lists-a-blank-cel-as-written-Q1) — each group in its cut's
+    // folder, which the project scope holds (I-153).
     expect(filesWrittenUnder(temp), [
-      'A1.png',
-      'A1_2.png',
-      'A2.png',
-      '_CUTC1_envelope.png',
-      '_CUTC3_envelope.png',
-      '_TSC1.png',
-      '_TSC2.png',
-      '_TSC3.png',
+      'C1-C2/A1.png',
+      'C1-C2/A2.png',
+      'C1-C2/_CUTC1_envelope.png',
+      'C1-C2/_TSC1.png',
+      'C1-C2/_TSC2.png',
+      'C3/A1.png',
+      'C3/_CUTC3_envelope.png',
+      'C3/_TSC3.png',
     ]);
     all.playbackRig.prerenderScheduler.cancel();
 
     final pairOut = film(unticked: {'c1', 'c2'});
     addTearDown(pairOut.dispose);
     await pumpExport(tester, pairOut, scope: ExportScopeKind.project);
-    expect(listed(tester), ['A1.png', '_TSC3.png', '_CUTC3_envelope.png']);
+    expect(listed(tester), [
+      'C3/A1.png',
+      'C3/_TSC3.png',
+      'C3/_CUTC3_envelope.png',
+    ]);
     expect(count(tester), '3 files');
     pairOut.playbackRig.prerenderScheduler.cancel();
   });
@@ -293,7 +298,11 @@ void main() {
         {const CutId('c1'), const CutId('c2')},
       );
       expect(count(tester), '3 files');
-      expect(listed(tester), ['A1.png', '_TSC3.png', '_CUTC3_envelope.png']);
+      expect(listed(tester), [
+        'C3/A1.png',
+        'C3/_TSC3.png',
+        'C3/_CUTC3_envelope.png',
+      ]);
       session.playbackRig.prerenderScheduler.cancel();
     });
 

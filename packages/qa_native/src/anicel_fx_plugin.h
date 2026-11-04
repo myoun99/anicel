@@ -1,29 +1,24 @@
 /*
- * Anicel fx plugin specification, version 1 — the one header a plugin is
- * built against, as a native library (.dll · .dylib · .so) and as a
- * WebAssembly module (.wasm) from the SAME source.
+ * Anicel fx plugin specification, version 1.
  *
- * 🗣️I-132-Q5 (유저 2026-10-27): 「a + 데스크톱은 같은 규격의 네이티브(.dll ·
- * .dylib)도」 — one .wasm runs on every platform, and a desktop may also take
- * a native build of the same source. So this is a C FUNCTION SPEC that a
- * .dll can speak as well as a .wasm, not a WebAssembly component interface
- * (I-132-Q31: the component model stays a road to add on the wasm side).
- * 🗣️I-132-Q29 (유저 2026-10-29): 「a + 플러그인이 다른 레이어를 읽기」 — a
- * plugin declares its parameters, takes the row's picture (wider by the reach
- * it declares) and gives back a picture; a 「layer」 parameter hands it
- * another row's picture too. 「나중엔 최대한 극한으로 확장 … 플러그인은
- * 확장성이 젤 중요」: a plugin says what it can do in its description
- * (`"can"`), so a later host can offer more — a GPU route, say, chosen by
- * the plugin as AE's GPU effects are — and an older plugin still runs.
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2026 PARK GUNWOO -- the Anicel fx plugin SDK's LICENSE.
  *
- * ★ONE LAYOUT ON EVERY TARGET. Nothing the host hands a plugin is a pointer:
+ * The one header a plugin is built against. The same source builds as a
+ * WebAssembly module (.wasm), which Anicel runs on every device in a
+ * sandbox, and -- where its maker wants -- as a native library (.dll, .dylib
+ * or .so) that a desktop runs instead.
+ *
+ * A plugin declares its parameters, takes the row's picture (wider by the
+ * reach it declares) and gives back a picture; a "layer" parameter hands it
+ * another row's picture as well. It says what it can do in its description
+ * ("can"), so a later host can offer more and an older plugin still runs.
+ *
+ * ONE LAYOUT ON EVERY TARGET. Nothing the host hands a plugin is a pointer:
  * every place is a byte DISTANCE from the frame's own address, so the
  * structs below are the same bytes in a 32-bit WebAssembly module and in a
- * 64-bit native library, and the host writes them once. ↩️Pointers in the
- * structs would have made two layouts (4- and 8-byte pointers) the host
- * fills differently — a plugin built for the one would read the other's
- * fields wrong. The ANICEL_FX_ASSERT lines below hold the layout to the
- * numbers on every compiler a plugin is built with.
+ * 64-bit native library. The ANICEL_FX_ASSERT lines below hold the layout to
+ * the numbers on every compiler a plugin is built with.
  *
  * WHAT A PLUGIN EXPORTS (the names are the spec):
  *
@@ -31,7 +26,7 @@
  *       The spec version it was built against: ANICEL_FX_SPEC_VERSION.
  *
  *   uint32_t anicel_fx_describe(char *out, uint32_t capacity);
- *       Writes its description — UTF-8 JSON, below — into out and returns
+ *       Writes its description -- UTF-8 JSON, below -- into out and returns
  *       its length in bytes. A length past capacity asks to be called again
  *       with that much room; nothing past capacity is written.
  *
@@ -60,13 +55,13 @@
  *       "default":100, "min":0, "max":100},
  *      {"id":"map", "kind":"layer", "label":"Map"}]}
  *
- *   "kind" is one of number · angle · color · point · checkbox · menu ·
- *   layer — the kinds the app's own effects have, keyed, graphed and linked
+ *   "kind" is one of number, angle, color, point, checkbox, menu or
+ *   layer -- the kinds the app's own effects have, keyed, graphed and linked
  *   the same way. What each says beside its id and label:
  *     number, angle  "default", "min", "max" (an angle in degrees)
  *     color          "default":[r, g, b, a], each from 0 to 1
  *     checkbox       "default": true or false
- *     menu           "choices":[{"id":…,"label":…}, …], "default": its place
+ *     menu           "choices":[{"id":...,"label":...}, ...], "default": its place
  *     point, layer   nothing (a point starts at the paper's middle, a layer
  *                    names no row until one is picked)
  *   An id is letters, digits and `_ . -`. A description that leaves out
@@ -75,19 +70,24 @@
  *   so a later spec's hints do not stop an older host. A parameter's
  *   place in "params" is its place in frame->values.
  *
- * THE FILE (.anifx) — a zip a person opens with the app's 「열기」:
+ * THE FILE (.anifx) -- a zip a person opens with the app's Open:
  *
  *   plugin.wasm                the module; every bundle has it
  *   native/windows-x64.dll     \
  *   native/windows-arm64.dll    |  the same source built natively,
  *   native/macos.dylib          |  each where the plugin has one
- *   native/linux-x64.so         |  (🗣️I-132-Q5 b)
+ *   native/linux-x64.so         |  (macos.dylib for both Mac chips)
  *   native/linux-arm64.so      /
  *
  *   The app asks plugin.wasm for the description, in its sandbox, and
  *   shows it to the person before anything is installed; a native build
  *   is never opened before they say yes. A device with a native build of
  *   its own runs that, and every other device the module.
+ *
+ * VERSIONS. Spec 1 does not change once published: a host that speaks it
+ * runs every spec-1 plugin. What comes later comes as spec 2 -- in the
+ * frame's `reserved` room, new kinds and keys in the description, new
+ * formats a plugin names in "can" -- and a spec-1 plugin still runs.
  */
 #ifndef ANICEL_FX_PLUGIN_H
 #define ANICEL_FX_PLUGIN_H
@@ -97,14 +97,14 @@
 
 #define ANICEL_FX_SPEC_VERSION 1u
 
-/* Premultiplied 8-bit RGBA, rows top to bottom — the only format of
- * spec 1. ⚠️A new format comes with a new number here and the plugin's
+/* Premultiplied 8-bit RGBA, rows top to bottom -- the only format of
+ * spec 1. A new format comes with a new number here and the plugin's
  * "can" naming it; a plugin that names none of them is handed this one. */
 #define ANICEL_FX_RGBA8_PREMULTIPLIED 1u
 
 /* One picture: its first pixel lies `pixels` bytes past the frame. Its
  * columns start at canvas x `left` and its rows at canvas y `top`, in the
- * output's pixels — the reach included, so `left` is negative where the
+ * output's pixels -- the reach included, so `left` is negative where the
  * input reaches past the paper. */
 typedef struct anicel_fx_image {
   uint32_t pixels;
@@ -115,8 +115,8 @@ typedef struct anicel_fx_image {
   int32_t top;
 } anicel_fx_image;
 
-/* One parameter's value at this frame. number · angle (degrees) ·
- * checkbox (0 or 1) · menu (the choice's place) use v[0]; point is v[0],
+/* One parameter's value at this frame. number, angle (degrees),
+ * checkbox (0 or 1) and menu (the choice's place) use v[0]; point is v[0],
  * v[1] in canvas pixels; color is r, g, b, a from 0 to 1; layer is the
  * place of its picture in frame->layers, or -1 where it names no row. */
 typedef struct anicel_fx_value {
@@ -134,13 +134,13 @@ typedef struct anicel_fx_frame {
   uint32_t layers; /* bytes past the frame to anicel_fx_image[layer_count] */
   double time;       /* seconds from the cut's first frame */
   double frame_rate; /* frames per second */
-  double scale;      /* output pixels per canvas pixel — below 1 in a draft */
+  double scale;      /* output pixels per canvas pixel -- below 1 in a draft */
   int32_t frame_index;
-  uint32_t reserved; /* 0 — room for spec 2 without moving a field */
+  uint32_t reserved; /* 0 -- room for spec 2 without moving a field */
 } anicel_fx_frame;
 
-/* A size of -1 fails the build where the layout moved. ⛔Not
- * `_Static_assert`: that is C11, and the host is built as C99. */
+/* A size of -1 fails the build where the layout moved. Not `_Static_assert`:
+ * that is C11, and a plugin may be built as C99 -- the app's host is. */
 #define ANICEL_FX_ASSERT(name, holds) typedef char anicel_fx_##name[(holds) ? 1 : -1]
 ANICEL_FX_ASSERT(image_is_24, sizeof(anicel_fx_image) == 24);
 ANICEL_FX_ASSERT(value_is_32, sizeof(anicel_fx_value) == 32);
@@ -170,7 +170,7 @@ static inline const anicel_fx_image *anicel_fx_layers(
 }
 
 /* Put before each exported function, with its name:
- *   ANICEL_FX_EXPORT(anicel_fx_render) int32_t anicel_fx_render(…) { … }
+ *   ANICEL_FX_EXPORT(anicel_fx_render) int32_t anicel_fx_render(...) { ... }
  * A WebAssembly module exports a function by name only where the name is
  * said (`export_name`), so the name is part of the macro. */
 #if defined(_WIN32)
@@ -182,12 +182,22 @@ static inline const anicel_fx_image *anicel_fx_layers(
 #endif
 
 /* The allocator a WebAssembly module exports: `ANICEL_FX_DEFINE_ALLOC()`
- * once in one source of the plugin. Native builds define nothing. */
-#if defined(__wasm__)
+ * once in one source of the plugin. Built with a C library (WASI SDK) it is
+ * malloc; built without one (clang --target=wasm32 alone) it grows the
+ * module's memory by what is asked -- the host asks only for the room it
+ * writes a frame into, and keeps it. Native builds define nothing. */
+#if defined(__wasm__) && defined(__wasi__)
 #include <stdlib.h>
 #define ANICEL_FX_DEFINE_ALLOC()                                   \
   ANICEL_FX_EXPORT(anicel_fx_alloc) void *anicel_fx_alloc(uint32_t size) { \
     return malloc(size);                                           \
+  }
+#elif defined(__wasm__)
+#define ANICEL_FX_DEFINE_ALLOC()                                   \
+  ANICEL_FX_EXPORT(anicel_fx_alloc) void *anicel_fx_alloc(uint32_t size) { \
+    size_t pages = ((size_t)size + 65535u) / 65536u;               \
+    size_t at = __builtin_wasm_memory_grow(0, pages);              \
+    return at == (size_t)-1 ? NULL : (void *)(at * 65536u);        \
   }
 #else
 #define ANICEL_FX_DEFINE_ALLOC()

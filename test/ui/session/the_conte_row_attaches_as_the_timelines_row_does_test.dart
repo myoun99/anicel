@@ -139,9 +139,11 @@ void main() {
       );
     });
 
+    // Right beside the conte row stood on (I-159) — above, the row riding
+    // it moves up a seat. ↩️Above went past it, to seat 2.
     for (final (placement, mode, seat) in [
-      (AttachedPlacement.above, AttachedMode.free, 2),
-      (AttachedPlacement.above, AttachedMode.synced, 2),
+      (AttachedPlacement.above, AttachedMode.free, 1),
+      (AttachedPlacement.above, AttachedMode.synced, 1),
       (AttachedPlacement.below, AttachedMode.free, -1),
       (AttachedPlacement.below, AttachedMode.synced, -1),
     ]) {
@@ -285,9 +287,10 @@ void main() {
     timeline.addAttachedLayer(AttachedPlacement.above);
 
     expect(session.activeLayerId, isNot(const LayerId('a-conte')));
+    // Right above the conte row stood on (I-159).
     expect(
       session.storyboardStandingRow,
-      LayerRowAddress(trackConteRowId(trackId, seat: 2)),
+      LayerRowAddress(trackConteRowId(trackId, seat: 1)),
     );
   });
 

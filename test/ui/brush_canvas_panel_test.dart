@@ -56,7 +56,7 @@ const floorPillKeys = <String>[
   'canvas-backdrop-color-button',
 ];
 
-/// A left pill as a host hands one in ([BrushCanvasPanel.leftPill]) — a
+/// A left pill as the floor hands one in ([CanvasFloorInsets.leftPill]) — a
 /// column of a known size.
 const testLeftPill = CanvasEdgePill(
   width: 28,
@@ -88,7 +88,6 @@ Widget floorPillHarness({
     coordinator: BrushCanvasFixture.createCoordinator(frameKeys: frameKeys),
     availableFrameKeys: frameKeys,
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-    leftPill: leftPill,
     documentName: documentName,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
@@ -134,6 +133,7 @@ Widget floorPillHarness({
               ? CanvasFloorInsets(
                   insets: floorCover,
                   leftRailBand: floorLeftRailBand,
+                  leftPill: leftPill,
                   child: panel,
                 )
               : panel,
@@ -372,9 +372,40 @@ void main() {
     }
   });
 
+  testWidgets('a left pill the floor hands wider, round the same column, '
+      'frames the artwork past its width — the floor tells the panel lying '
+      'there', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const column = SizedBox(width: 28, height: 40);
+    Future<double> fitCentreWith(double width) async {
+      CanvasViewport? fitted;
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: true,
+          onViewportChanged: (view) => fitted = view,
+          leftPill: CanvasEdgePill(width: width, child: column),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      );
+      await tester.pumpAndSettle();
+      return renderOf(
+        tester,
+        fitted!,
+      ).canvasToViewport(CanvasPoint(x: 150, y: 150)).x;
+    }
+
+    final narrow = await fitCentreWith(28);
+    expect(await fitCentreWith(60), closeTo(narrow + 16, 0.5));
+  });
+
   testWidgets('🗣️F-209: a docked panel\'s lanes take their room, and every '
-      'panel\'s pill and left pill their bands — Fit centres the artwork in '
-      'what they leave, the two pills floating on them; ringed on the '
+      'panel\'s pill and the floor\'s left pill their bands — Fit centres the '
+      'artwork in what they leave, the pills floating on them; ringed on the '
       'artwork side (유저 2026-09-30: 「판정을 알약까지 포함해서 판정」 · '
       'F-346: the left edge as the top)', (
     tester,
@@ -401,13 +432,18 @@ void main() {
         // The harness panel is `width` × 420; the artwork is 300 × 300.
         final lane = onFloor ? 0.0 : AppScrollbarLane.thin;
         final band = pillBandOf(tester);
-        final leftBand = leftPillBandOf(tester);
         final where = '${onFloor ? 'floor' : 'docked'} at ${width}px';
         expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
+        // ⛔I-157: the left pill is the floor's — a docked panel stands none.
+        expect(
+          find.byKey(const ValueKey<String>('canvas-left-pill')),
+          onFloor ? findsOneWidget : findsNothing,
+        );
+        final leftBand = onFloor ? leftPillBandOf(tester) : 0.0;
         expect(
           leftBand,
-          greaterThan(30),
-          reason: 'premise: the left pill\'s band',
+          onFloor ? greaterThan(30) : 0,
+          reason: 'premise: the left pill\'s band ($where)',
         );
         final centre = renderOf(
           tester,
@@ -441,6 +477,9 @@ void main() {
           lessThanOrEqualTo(panel.right - lane + 0.5),
           reason: 'and never reaches into a lane ($where)',
         );
+        if (!onFloor) {
+          continue;
+        }
         // The left pill holds the middle of its room: under the pill's
         // band, over the row the horizontal bar stands in.
         final left = tester.getRect(

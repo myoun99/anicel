@@ -2,7 +2,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 
 /// What a fill's stamp pieces lay, read where the canvas lands them
 /// ([BrushStampImage.landingRect]) — a fill and an area arrive as one stamp
-/// per cel tile they cover (`buildFillDabs` · `buildRegionFillDabs`), and a
+/// per cel tile they cover (`FillRange.dabsIn` · `buildRegionFillDabs`), and a
 /// reader that asks 「what lands at this pixel」 or 「how far does it reach」
 /// asks every piece.
 

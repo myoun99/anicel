@@ -15,6 +15,7 @@ import '../models/attached_placement.dart' show AttachedPlacement;
 import '../models/canvas_size.dart';
 import '../models/conte_group.dart';
 import '../models/cut.dart';
+import '../models/fx_basis.dart';
 import '../models/cut_id.dart';
 import '../models/frame_id.dart';
 import '../models/fx_plugin_description.dart';
@@ -60,6 +61,7 @@ import 'canvas/view_hand.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import 'audio/sound_cannot_play.dart' show SoundCannotPlay, soundCannotPlayIn;
+import 'dialogs/link_window.dart' show LinkKind;
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_layer_policy.dart';
@@ -98,6 +100,7 @@ import 'widgets/ellipsis_text.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
+        LaneGroupRasterize,
         LaneStretchWord,
         PropertyLaneEditCallbacks,
         PropertyLaneRow,
@@ -175,7 +178,9 @@ import 'timeline/transform_lane_policy.dart'
         transformGroupHeader,
         transformGroupHeaderLane;
 import '../models/app_input_settings.dart' show AppInput;
+import 'widgets/icon_button_box.dart' show AppIconButtonBox;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
+import 'widgets/rail_glyph_button.dart';
 import 'widgets/row_plate.dart';
 import 'timeline/timeline_beat_lines.dart'
     show
@@ -687,6 +692,7 @@ class StoryboardPanel extends StatefulWidget {
     this.stripSelect,
     this.onCreateStoryboardLayer,
     this.linkedCutIds = const {},
+    this.syncedCutIds = const {},
     this.onOpenCutLinks,
     this.movieEnd,
     this.trackLaneHeight = defaultTrackLaneHeight,
@@ -758,6 +764,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleTrackEffectEnabled,
     this.onResetTrackEffectGroup,
     this.onToggleLaneGroupEnabled,
+    this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.laneGroupOnOf,
     this.onResetLaneGroup,
     this.seCommaDrag,
@@ -779,6 +787,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSeekCutFrame,
     this.dragPreview,
     this.legend,
+    this.legendHeading,
     this.legendHand,
     this.rowFilter = TimelineRowFilter.none,
     this.hiddenSections = const {},
@@ -1129,9 +1138,14 @@ class StoryboardPanel extends StatefulWidget {
   /// The LINKED cuts (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
 
-  /// Pressed on a linked cut's link icon: the link window (I-25). Null
-  /// keeps the icon display-only.
-  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
+  /// The 동기컷 among them (I-150-Q3): their name wears the sync's button.
+  final Set<CutId> syncedCutIds;
+
+  /// Pressed on a cut's link icon: the link window (I-25) — or on a
+  /// 동기컷's sync icon, its [LinkKind] the sync (I-150). Null keeps the
+  /// icons display-only.
+  final void Function(BuildContext context, CutId cutId, LinkKind kind)?
+  onOpenCutLinks;
 
   /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
   /// still shows).
@@ -1471,6 +1485,10 @@ class StoryboardPanel extends StatefulWidget {
   /// through the same session hooks. Null renders a display-only legend.
   final LayerLegendCallbacks? legend;
 
+  /// The button the legend's heading is — the timeline list (I-150); null
+  /// keeps the rows' heading words.
+  final LegendHeadingButton? legendHeading;
+
   /// Where this panel holds up the menus its legend header opens, written
   /// each time it is built — what a key presses one of (I-40).
   final ViewHand<RailLegendHold>? legendHand;
@@ -1546,6 +1564,15 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+
+  /// An S row's, and a conte row's, group header basis chip — the
+  /// timeline's own verb (I-120-Q10). Null leaves the chip out.
+  final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
+  onSetLaneGroupBasis;
+
+  /// An S row's group header RASTERIZE — the timeline's own (I-120). Null
+  /// leaves it out.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
 
   /// A LIVE read of a lane group's switch, by its header lane — for the
   /// column sweep, as [layerOnTimesheetOf] is.
@@ -2015,8 +2042,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   Set<LayerMark> _legendMarksInUse() => {
-    for (final layer in _legendLayers())
-      if (layer.mark != LayerMark.none) layer.mark,
+    for (final layer in _legendLayers()) layer.mark,
   };
 
   Set<LayerId> _legendDisplayedLayerIds() => {
@@ -2371,6 +2397,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                   widget.pixelsPerFrame,
                   widget.projectFrameRate,
                   widget.onPixelsPerFrameChanged,
+                  _horizontalController,
                 ),
                 child: SingleChildScrollView(
                   key: const ValueKey<String>(
@@ -2719,6 +2746,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               railColumns: layerRailColumnWidthsIn(context),
             ),
             legend: widget.legend,
+            heading: widget.legendHeading,
             optionalColumns: StoryboardPanel.optionalRailColumns,
             rowFilter: widget.rowFilter,
             hiddenSections: widget.hiddenSections,
@@ -5176,6 +5204,7 @@ class _StoryboardTrackRow extends KeptPiece {
     required this.projectFrameRate,
     this.railSweepAt,
     this.linkedCutIds = const {},
+    this.syncedCutIds = const {},
     this.onOpenCutLinks,
     this.onEditCutBlock,
   });
@@ -5190,9 +5219,14 @@ class _StoryboardTrackRow extends KeptPiece {
   /// The LINKED cuts on this track (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
 
-  /// Pressed on a linked cut's link icon: the link window (I-25). Null
-  /// keeps the icon display-only.
-  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
+  /// The 동기컷 among them (I-150-Q3): their name wears the sync's button.
+  final Set<CutId> syncedCutIds;
+
+  /// Pressed on a cut's link icon: the link window (I-25) — or on a
+  /// 동기컷's sync icon, its [LinkKind] the sync (I-150). Null keeps the
+  /// icons display-only.
+  final void Function(BuildContext context, CutId cutId, LinkKind kind)?
+  onOpenCutLinks;
 
   final TrackId trackId;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
@@ -5445,6 +5479,7 @@ class _StoryboardTrackRow extends KeptPiece {
     projectFrameRate,
     thumbnails,
     BySet(linkedCutIds),
+    BySet(syncedCutIds),
     onRowFramePress != null,
     onDropMediaAsset != null,
     acceptsMediaAsset != null,
@@ -5462,8 +5497,8 @@ class _StoryboardTrackRow extends KeptPiece {
     final rangeGesture = _rangeGesture();
     final drop = onDropMediaAsset;
 
-    // Held in a local so the press layer hit-tests the SAME visuals the
-    // paint lays down (the link icon reads the block's band).
+    // Held in a local so the edges and the link buttons stand on the SAME
+    // visuals the paint lays down (the link icon reads the block's band).
     //
     // Through the shared builder (D15): the folded storyboard draws its
     // row with this same call, so the picture there cannot be a second
@@ -5485,6 +5520,8 @@ class _StoryboardTrackRow extends KeptPiece {
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
       linkedCutIds: linkedCutIds,
+      syncedCutIds: syncedCutIds,
+      drawsLinkGlyphs: onOpenCutLinks == null,
     );
 
     return KeyedSubtree(
@@ -5522,9 +5559,7 @@ class _StoryboardTrackRow extends KeptPiece {
                 onExit: (_) => hoveredCutId.value = null,
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
-                  onPointerDown: (event) {
-                    _onCutPressDown(context, event, blocksPainter);
-                  },
+                  onPointerDown: _onCutPressDown,
                   // …and its ACTIVATION half, on the same gate, INSIDE the
                   // press: a pointer down reaches the deepest handler
                   // first, so the first press is read here before the
@@ -5564,6 +5599,8 @@ class _StoryboardTrackRow extends KeptPiece {
             // ABOVE the cut gesture so an edge keeps its priority over it;
             // the middles keep the rest.
             if (stripEdges != null) _edgeChrome(context, blocksPainter),
+            if (onOpenCutLinks case final onOpen?)
+              _linkButtons(context, blocksPainter, onOpen),
             // A pool file let go on the row's frames. The row stands on that
             // frame through its own press first — landing is standing (T4) —
             // then hands the drop up, where the session names the NEW cut
@@ -5625,13 +5662,8 @@ class _StoryboardTrackRow extends KeptPiece {
     );
   }
 
-  /// A press on the cut blocks: gated first, then the press itself, then
-  /// the link icon judged on the painter this build drew.
-  void _onCutPressDown(
-    BuildContext context,
-    PointerDownEvent event,
-    StoryboardCutBlocksPainter blocksPainter,
-  ) {
+  /// A press on the cut blocks: gated first, then the press itself.
+  void _onCutPressDown(PointerDownEvent event) {
     // The frame block's activation law, RECORD half: which cell this press
     // hit, whatever the device and whatever the press goes on to do — the
     // recogniser reports only the second tap.
@@ -5645,24 +5677,57 @@ class _StoryboardTrackRow extends KeptPiece {
       return;
     }
     _handlePressDown(event);
-    _maybeOpenCutLinks(context, blocksPainter, event);
   }
 
-  /// I-25: a press inside a linked cut's link icon opens the link window —
-  /// the rect is [StoryboardCutBlocksPainter.linkAffordanceRectOf]'s, the
-  /// SAME call the paint made (the D30 create affordance's shape).
-  void _maybeOpenCutLinks(
+  /// I-25: a linked cut's link icon opens the link window — and a 동기컷's
+  /// sync icon, the sync's (I-150) — on the square the paint leaves each
+  /// ([StoryboardCutBlocksPainter.badgeSquares]).
+  ///
+  /// 🗣️I-150 (유저 2026-11-03): 「컷블록의 링크버튼 타임라인의 레이어의
+  /// 링크버튼이랑 조작감이 다름. 타임라인은 커서가 손가락커서된다거나」. It is
+  /// the layer's link badge now — the rail's button, its glyph in the
+  /// accent — so it has the hand, the hover and the claim the badge has.
+  /// ↩️It was painted, and a press on its square opened the window on the
+  /// DOWN beside the block's own press, so the press also stood on the cut.
+  /// Above every layer of the row: a press there is the button's alone,
+  /// and it fires as every button off a rail does, let go inside it. Its
+  /// region keeps the block hovered while the pointer is on it.
+  Widget _linkButtons(
     BuildContext context,
     StoryboardCutBlocksPainter painter,
-    PointerDownEvent event,
+    void Function(BuildContext context, CutId cutId, LinkKind kind) onOpen,
   ) {
-    final onOpen = onOpenCutLinks;
-    final block = onOpen == null ? null : painter.blockAt(event.localPosition);
-    final icon = block == null ? null : painter.linkAffordanceRectOf(block);
-    if (icon == null || !icon.contains(event.localPosition)) {
-      return;
-    }
-    onOpen!(context, block!.cutId);
+    final ink = Theme.of(context).colorScheme.primary;
+    return Positioned.fill(
+      child: MouseRegion(
+        hitTestBehavior: HitTestBehavior.deferToChild,
+        onHover: _handleHover,
+        onExit: (_) => hoveredCutId.value = null,
+        // Built again whenever the paint is, from what the paint read.
+        child: ListenableBuilder(
+          listenable: painter,
+          builder: (context, _) => Stack(
+            children: [
+              for (final (cutId, kind, square) in painter.badgeSquares())
+                Positioned.fromRect(
+                  rect: square,
+                  child: RailGlyphButton(
+                    name: 'storyboard-cut-${kind.name}-${cutId.value}',
+                    tooltip: kind.title,
+                    size: AppIconButtonBox(
+                      width: square.width,
+                      height: square.height,
+                      iconSize: square.height,
+                    ),
+                    glyph: RailIconGlyph(kind.glyph, color: ink),
+                    onPressed: () => onOpen(context, cutId, kind),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

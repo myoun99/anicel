@@ -23,7 +23,7 @@ void main() {
       'back', () {
     final cut = session.activeCutOrNull!;
     final before = session.timesheetInfo;
-    final after = before.copyWith(seEmptyFill: !before.seEmptyFill);
+    final after = before.copyWith(sheetFixedText: !before.sheetFixedText);
     expect(paperOf(session), TimesheetSheetKind.sixSeconds, reason: '⛔전제');
 
     session.updateTimesheetFormat(
@@ -63,7 +63,7 @@ void main() {
 
   test('in the gap the save writes the format alone', () {
     final before = session.timesheetInfo;
-    final after = before.copyWith(seEmptyFill: !before.seEmptyFill);
+    final after = before.copyWith(sheetFixedText: !before.sheetFixedText);
 
     session.updateTimesheetFormat(info: after);
     expect(session.timesheetInfo, after);

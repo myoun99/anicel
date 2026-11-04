@@ -796,7 +796,7 @@ void main() {
       isNull,
       reason: 'a link is the same cel, and that cel is the first project\'s',
     );
-    await tapKey(tester, paste.value);
+    await windowBehind(tester, () => tapKey(tester, paste.value));
     expect(second.activeLayer!.frames, hasLength(before + 1));
   });
 

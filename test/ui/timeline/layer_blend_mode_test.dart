@@ -179,7 +179,6 @@ void main() {
               session: s,
               panelContext: TimelineToolbarPanelContext(s),
               onAddLayer: () {},
-              onRenameLayer: () {},
               onDeleteLayer: () {},
               onEditInstance: () {},
               onCreateInstance: () {},

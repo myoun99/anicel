@@ -423,6 +423,29 @@ final class QaAudioDevice {
   Float32List adoptSamples(int address, int floats) =>
       _listOver(Pointer<Float>.fromAddress(address), floats);
 
+  /// [work] given the buffer [samples] lie in, held until [work] is done —
+  /// so a worker reads them where they lie instead of having them copied
+  /// into its message. Null for samples [newSamples] did not make: [work]
+  /// sends those itself.
+  ///
+  /// The hold is taken and let go here, around [work], and nowhere else: a
+  /// worker that read the buffer has finished with it by the time its
+  /// future answers, whether it answers with a result or an error.
+  Future<T> lendToAWorker<T>(
+    Float32List samples,
+    Future<T> Function(({int address, int floats})? lent) work,
+  ) async {
+    final made = _made[samples];
+    if (made == null || _bufferRetain(made) == nullptr) {
+      return work(null);
+    }
+    try {
+      return await work((address: made.address, floats: samples.length));
+    } finally {
+      _bufferRelease(made.cast());
+    }
+  }
+
   /// The list over the buffer at [pointer], holding it until the list goes.
   Float32List _listOver(Pointer<Float> pointer, int floats) {
     final samples = pointer.asTypedList(

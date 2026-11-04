@@ -1,4 +1,5 @@
 import '../../models/bitmap_surface.dart';
+import 'cut_clipboard.dart' show CutBoard;
 import 'effect_clipboard.dart' show EffectBoard;
 import 'frame_clipboard.dart' show FrameBoard;
 import 'key_clipboard.dart' show KeyBoard;
@@ -46,6 +47,10 @@ import 'text_clipboard.dart' show TextBoard;
 ///
 /// 🗣️F-476-Q1 (유저 2026-10-27): 「b + 복제도」 — the EFFECT board is the
 /// fifth: the effects a rail selection's fx headers name.
+///
+/// 🗣️I-150 (유저 2026-11-03): 「컷 잘라내기/복사/붙여넣기/링크붙여넣기등
+/// 공용알약 사용 가능하게」 — the CUT board is the sixth: the cuts in hand on
+/// the storyboard.
 class AppClipboard {
   AppClipboard() {
     final letGoes = [
@@ -54,6 +59,7 @@ class AppClipboard {
       keys.letGo,
       texts.letGo,
       effects.letGo,
+      cuts.letGo,
     ];
     void Function() lettingGoAllBut(void Function() own) => () {
       for (final letGo in letGoes) {
@@ -67,6 +73,7 @@ class AppClipboard {
     keys.onTake = lettingGoAllBut(keys.letGo);
     texts.onTake = lettingGoAllBut(texts.letGo);
     effects.onTake = lettingGoAllBut(effects.letGo);
+    cuts.onTake = lettingGoAllBut(cuts.letGo);
   }
 
   final FrameBoard frames = FrameBoard();
@@ -81,15 +88,19 @@ class AppClipboard {
   /// The effects a copy of a rail selection took ([EffectBoard], F-476).
   final EffectBoard effects = EffectBoard();
 
+  /// The cuts a copy on the storyboard took ([CutBoard], I-150).
+  final CutBoard cuts = CutBoard();
+
   /// 픽셀 복사's board (I-55) — a third payload with a third set of verbs,
   /// which the frame copy neither reads nor overwrites (유저 2026-10-01:
   /// 「프레임 복사한다고해서 픽셀복사 내역이 사라지지않아」).
   final PixelBoard pixels = PixelBoard();
 
-  /// Every picture the two boards hold — by value, so they stay in memory
-  /// for as long as the copy does (`collectMemoryCensus` weighs them).
+  /// Every picture the boards hold — by value, so they stay in memory for
+  /// as long as the copy does (`collectMemoryCensus` weighs them).
   Iterable<BitmapSurface> get heldPictures => [
     ...frames.heldPictures,
     ...layers.heldPictures,
+    ...cuts.heldPictures,
   ];
 }

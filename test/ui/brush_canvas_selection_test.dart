@@ -64,6 +64,8 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
+import '../helpers/wait_window.dart'
+    show passTheDoneLinger, stepBehind, windowBehind;
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
@@ -672,7 +674,7 @@ void main() {
     final left = (previewed.center.x - stamp.width / 2).round();
     final top = (previewed.center.y - stamp.height / 2).round();
 
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.commands.movePending, isFalse);
 
@@ -892,7 +894,7 @@ void main() {
       ),
     );
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     // Blend is the default, and a rotation through it MUST invent
@@ -1277,7 +1279,7 @@ void main() {
         ),
       );
       await tester.pump();
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       env.coordinator.selectFrame(keys[1]);
@@ -1491,7 +1493,7 @@ void main() {
     );
 
     // Enter, then back to frame one.
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     env.coordinator.selectFrame(keys.first);
     await env.setTool(CanvasTool.move);
@@ -1617,7 +1619,7 @@ void main() {
       reason: '②유저: 「확정버튼도 사라지는문제」 — the box survives the walk',
     );
 
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -1690,7 +1692,7 @@ void main() {
       env.coordinator.selectFrame(keys[1]);
       await env.setTool(CanvasTool.move);
       await tester.pump();
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       return inkAt(env.coordinator, 135, 135);
     }
@@ -1785,7 +1787,7 @@ void main() {
     env.coordinator.selectFrame(keys[1]);
     await env.setTool(CanvasTool.move);
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -1878,7 +1880,7 @@ void main() {
     env.coordinator.selectFrame(keys[1]);
     await env.setTool(CanvasTool.move);
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -1970,7 +1972,7 @@ void main() {
       ),
     );
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -2069,7 +2071,7 @@ void main() {
       ),
     );
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     env.coordinator.selectFrame(keys[1]);
@@ -2129,7 +2131,7 @@ void main() {
       ),
     );
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -2188,7 +2190,7 @@ void main() {
           ? const Offset(20, 20)
           : const Offset(37, 37);
       await dragOnLayer(tester, grab, grab + const Offset(-8, 6));
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       expect(env.history.undoCount, entriesBefore + 1, reason: 'one confirm');
@@ -2251,7 +2253,7 @@ void main() {
 
     // The box frames frame one's ink; its bottom-right corner, pulled out.
     await dragOnLayer(tester, const Offset(62, 62), const Offset(74, 72));
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     // Where the SAME homography sends frame two's far ink — the corners as
@@ -2314,7 +2316,7 @@ void main() {
 
     // The grid's bottom-right node, pulled out by (12, 10).
     await dragOnLayer(tester, const Offset(62, 62), const Offset(74, 72));
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     env.coordinator.selectFrame(keys[1]);
@@ -2747,7 +2749,7 @@ void main() {
       ),
     );
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -2839,7 +2841,7 @@ void main() {
           'line that followed the drag would be saying nothing',
     );
 
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(
       antsOnScreen(tester)?.startShape,
@@ -3248,7 +3250,7 @@ void main() {
 
     await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
     await moveBoxBy(tester, const Offset(10, 5));
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -3572,7 +3574,7 @@ void main() {
       grabCanvas: const Offset(36.5, 36.5),
       byCanvas: const Offset(10, 0),
     );
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.commands.transformActive, isFalse);
     expect(inkAt(env.coordinator, 40, 30), isNonZero, reason: '+10 landed');
@@ -3609,7 +3611,7 @@ void main() {
       grabCanvas: const Offset(46.5, 36.5),
       byCanvas: const Offset(10, 0),
     );
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(
       inkAt(env.coordinator, 50, 30),
@@ -3747,7 +3749,7 @@ void main() {
     );
 
     // Enter: resample through the homography + confirm as ONE entry.
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.commands.movePending, isFalse);
     expect(env.history.undoCount, entriesBefore + 1);
@@ -3780,7 +3782,7 @@ void main() {
     expect(values, isNotNull);
     expect(values!.rotationDegrees, 0, reason: 'a translate does not rotate');
 
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.commands.movePending, isFalse);
     // ⛔THE ASSERTION THE OLD TEST WAS MISSING. Its title said "resamples
@@ -3819,7 +3821,7 @@ void main() {
     await dragOnLayer(tester, const Offset(70, 45), const Offset(70, 31));
     expect(env.commands.transformActive, isTrue);
 
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     final recall = env.commands.recallFor(TransformMode.perspective);
     // 🚨THE FIRST THING THE OLD BEHAVIOUR FAILED. Routed to the affine
@@ -4006,7 +4008,7 @@ void main() {
       mode: TransformMode.perspective,
     );
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.commands.movePending, isFalse);
   });
@@ -4133,7 +4135,7 @@ void main() {
       findsOneWidget,
     );
 
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.commands.movePending, isFalse);
     expect(env.history.undoCount, entriesBefore + 1);
@@ -4306,7 +4308,7 @@ void main() {
       ),
     );
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     final entriesAfterFirst = env.history.undoCount;
 
@@ -4314,7 +4316,7 @@ void main() {
     // values land where they can be seen, and history does not move.
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.commands.transformValues?.tx, 10);
     expect(env.commands.transformValues?.ty, 4);
@@ -4325,7 +4327,7 @@ void main() {
     );
 
     // The second press is the one that applies.
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
     expect(env.history.undoCount, entriesAfterFirst + 1);
   });
@@ -4424,7 +4426,7 @@ void main() {
           entry.value.landed,
           reason: '⛔전제: the box holds what the hand did',
         );
-        env.commands.applyTransform();
+        await windowBehind(tester, () async => env.commands.applyTransform());
         await tester.pump();
         expect(env.commands.transformActive, isFalse, reason: '⛔전제: 확정');
 
@@ -4436,7 +4438,7 @@ void main() {
           isTrue,
           reason: 'there is a transform to replay',
         );
-        env.commands.applyTransform();
+        await windowBehind(tester, () async => env.commands.applyTransform());
         await tester.pump();
 
         expect(env.commands.transformValues, entry.value.landed);
@@ -4686,7 +4688,10 @@ void main() {
           await gesture.value.perform(tester, env.commands);
           switch (ending) {
             case '확정':
-              env.commands.applyTransform();
+              await windowBehind(
+                tester,
+                () async => env.commands.applyTransform(),
+              );
             case 'a painting tool':
               await env.setTool(CanvasTool.brush);
             case 'another selection tool':
@@ -4904,7 +4909,7 @@ void main() {
       expect(values.tx, 0, reason: '⛔전제: 숫자는 그대로다');
       expect(values.sx, 1);
 
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       expect(
         env.commands.movePending,
@@ -5003,7 +5008,7 @@ void main() {
     await dragOnLayer(tester, const Offset(100, 100), const Offset(40, 30));
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     expect(env.commands.transformActive, isTrue);
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     expect(
@@ -5431,7 +5436,7 @@ void main() {
       await moveBoxBy(tester, const Offset(10, 3));
       expect(env.history.undoCount, undoDepthBefore);
 
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       expect(env.commands.transformActive, isFalse);
       // The (+10,+3) translation landed: (30,30) → (40,33).
@@ -5507,7 +5512,7 @@ void main() {
       );
       await tester.pump();
       await settle();
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       await settle();
 
@@ -5709,8 +5714,10 @@ void main() {
             'the button is offered with the box open — that is the '
             'premise of this test, not an accident of it',
       );
-      await tester.tap(button, warnIfMissed: false);
-      await tester.pump();
+      await windowBehind(
+        tester,
+        () => tester.tap(button, warnIfMissed: false),
+      );
 
       // The same landing the corner-scale test asserts for Enter. ⚠️Both
       // witnesses are OUTSIDE the unwarped stroke's 30..60 span, which is
@@ -5743,7 +5750,7 @@ void main() {
         ),
       );
       await tester.pump();
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       expect(env.commands.transformActive, isFalse, reason: '⛔전제: 확정됨');
       final entriesAfterFirst = env.history.undoCount;
@@ -5766,8 +5773,10 @@ void main() {
         reason: '⛔재현은 확정이 아니다',
       );
 
-      await tester.tap(confirm, warnIfMissed: false);
-      await tester.pump();
+      await windowBehind(
+        tester,
+        () => tester.tap(confirm, warnIfMissed: false),
+      );
       expect(env.commands.transformActive, isFalse);
       expect(env.commands.movePending, isFalse);
       expect(
@@ -6059,9 +6068,10 @@ void main() {
         reason: 'the warped preview never came up — bad premise',
       );
 
-      env.commands.applyTransform();
-      await tester.pump();
+      // The frames the confirm lands in, its wait window still up (F-551).
+      await stepBehind(tester, () async => env.commands.applyTransform());
       final atConfirm = await screenInkMask(tester);
+      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenInkMask(tester);
@@ -6123,9 +6133,10 @@ void main() {
         () => decodedPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
-      env.commands.applyTransform();
-      await tester.pump();
+      // The frames the confirm lands in, its wait window still up (F-551).
+      await stepBehind(tester, () async => env.commands.applyTransform());
       final atConfirm = await screenInkMask(tester);
+      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenInkMask(tester);
@@ -6351,7 +6362,7 @@ void main() {
         () => decodedPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       await settle(tester);
       expect(env.history.undoCount, greaterThan(0), reason: 'no entry to undo');
@@ -6444,7 +6455,8 @@ void main() {
             '— bad premise',
       );
 
-      env.commands.applyTransform();
+      // The frames the confirm lands in, its wait window still up (F-551).
+      await stepBehind(tester, () async => env.commands.applyTransform());
       // The release changes nothing about the landing — the box closed
       // under it, and its release only lowers the drag flags — but it
       // does change the CHROME, and both captures have to be taken with
@@ -6457,6 +6469,7 @@ void main() {
         isEmpty,
         reason: 'the landing is still being covered for',
       );
+      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenBytes(tester);
@@ -6611,7 +6624,7 @@ void main() {
         held.top + float.surfaceOffset.y,
       );
 
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await settle(tester);
       final landed = bitmapSurfaceContentBounds(
         currentSurface(env.coordinator),
@@ -6660,7 +6673,7 @@ void main() {
         () => decodedPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       await settle(tester);
 
@@ -6856,7 +6869,7 @@ void main() {
         ),
       );
       await tester.pump();
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       expect(
@@ -6943,7 +6956,7 @@ void main() {
         ),
       );
       await tester.pump();
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       // The stroke runs 30..60 down the diagonal. Turned 90° about
@@ -7040,7 +7053,7 @@ void main() {
 
       // Drag BR to (95,95): 2× about the box centre (45,45).
       await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       // Dab centers map through q = 45 + 2·(p − 45):
@@ -7068,7 +7081,7 @@ void main() {
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
       await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       // q = 20 + 1.5·(p − 20): (30,30)→(35,35), (45,45)→(57.5,57.5),
@@ -7160,7 +7173,7 @@ void main() {
         reason: 'the handle grab promoted the implicit box into a session',
       );
 
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       expect(inkAt(env.coordinator, 15, 15), isNonZero);
       expect(inkAt(env.coordinator, 75, 75), isNonZero);
@@ -7188,7 +7201,7 @@ void main() {
       await env.setTool(CanvasTool.move);
 
       await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 70));
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       expect(
@@ -7224,7 +7237,7 @@ void main() {
       expect(env.commands.transformActive, isTrue);
       expect(env.commands.transformValues?.tx, 10);
 
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
       expect(inkAt(env.coordinator, 40, 35), isNonZero);
       expect(inkAt(env.coordinator, 28, 28), 0);
@@ -7245,7 +7258,7 @@ void main() {
       // Knob sits 28px above the top edge midpoint (45,40) → (45,12).
       // Sweep to angle 0° about the center (45,65): +90° rotation.
       await dragOnLayer(tester, const Offset(45, 12), const Offset(90, 65));
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       // R90 about (45,65): (45,45)→(65,65), (60,60)→(50,80).
@@ -8815,7 +8828,7 @@ void main() {
           'Enter lands — and it stops at the wall',
     );
 
-    env.commands.applyTransform();
+    await windowBehind(tester, () async => env.commands.applyTransform());
     await tester.pump();
 
     final right = wall.rightExclusive - 1;
@@ -9257,7 +9270,7 @@ void main() {
         ),
       );
       await tester.pump();
-      env.commands.applyTransform();
+      await windowBehind(tester, () async => env.commands.applyTransform());
       await tester.pump();
 
       final box = env.commands.region!.selectedBounds;

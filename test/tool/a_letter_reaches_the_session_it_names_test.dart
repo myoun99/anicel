@@ -324,6 +324,28 @@ void main() {
       expect(takeLetters(records, theirs, now), isEmpty, reason: 'taken');
     });
 
+    test('card-shots-unseen-by-sessions: a letter brings the screenshots '
+        'pasted on its card, which no line names', () {
+      final shot = File('${dir.path}/board-shots/S-1.png')
+        ..writeAsBytesSync([1]);
+      addTearDown(shot.deleteSync);
+      boardHolds([
+        line({
+          'kind': 'item',
+          'id': 'S',
+          'at': '할 일',
+          'title': '그림',
+          'note': '아직',
+          'ts': '2026-10-07T10:40:00.000000',
+        }),
+        letter(t1, id: 'S', from: '관제', note: '스샷을 봐 주세요'),
+      ]);
+      expect(
+        takeLetters(records, theirs, now),
+        contains('스샷을 봐 주세요\n📎 /shot/S-1.png\n'),
+      );
+    });
+
     test('⛔a mark names no kind — a line\'s kind is its card\'s — and '
         'takes nobody else\'s letters', () {
       final check = line({

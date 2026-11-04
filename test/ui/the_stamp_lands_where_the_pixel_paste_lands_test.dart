@@ -42,6 +42,7 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/panel_finders.dart';
 import '../helpers/rail_group_button.dart';
+import '../helpers/wait_window.dart' show windowBehind;
 
 /// 🚨★★★**THE CUT TOOL'S STAMP LANDS WHERE 픽셀 붙여넣기 LANDS** (F-293).
 ///
@@ -252,7 +253,8 @@ void main() {
     }
     await tester.ensureVisible(button);
     await tester.pump();
-    await tester.tap(button);
+    // Behind the wait window (F-551), which goes before anything is read.
+    await windowBehind(tester, () => tester.tap(button));
     await pumpFrames(tester);
   }
 
@@ -571,12 +573,12 @@ void main() {
     await pumpFrames(tester);
 
     // The main canvas's panel — it is not the only one the app holds up.
-    tester
+    final slot = tester
         .widget<BrushCanvasPanel>(
           find.byKey(const ValueKey<String>('main-canvas-brush-host')),
         )
-        .cutPieceSlot!
-        .pasteAtOriginHandler!();
+        .cutPieceSlot!;
+    await windowBehind(tester, () async => slot.pasteAtOriginHandler!());
     await pumpFrames(tester);
 
     expect(

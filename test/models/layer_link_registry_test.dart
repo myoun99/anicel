@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_sync.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
@@ -28,6 +29,37 @@ void main() {
   );
 
   group('LayerLinkRegistry', () {
+    test('a row pasted linked inside a cut is the n-th there as it is the '
+        'n-th here — never the first twice', () {
+      final links = LayerLinkRegistry(
+        groups: [
+          LayerLinkGroup(
+            id: 'g',
+            members: [
+              member('cut-a', 'a1'),
+              member('cut-b', 'b1'),
+              member('cut-a', 'a2'),
+              member('cut-b', 'b2'),
+              member('cut-c', 'c1'),
+            ],
+          ),
+        ],
+      );
+      LayerId? across(String cut, String layer, String target) =>
+          links.counterpartIn(
+            cutId: CutId(cut),
+            layerId: LayerId(layer),
+            targetCutId: CutId(target),
+          );
+
+      expect(across('cut-a', 'a1', 'cut-b'), const LayerId('b1'));
+      expect(across('cut-a', 'a2', 'cut-b'), const LayerId('b2'));
+      expect(across('cut-b', 'b2', 'cut-a'), const LayerId('a2'));
+      expect(across('cut-c', 'c1', 'cut-a'), const LayerId('a1'));
+      expect(across('cut-a', 'a2', 'cut-c'), isNull, reason: 'no second');
+      expect(across('cut-a', 'a2', 'cut-d'), isNull);
+    });
+
     test('groupOf finds the group of any member; null when unlinked', () {
       final links = registry();
       expect(
@@ -104,6 +136,39 @@ void main() {
       final links = registry();
       expectJsonRoundTrip(links, LayerLinkRegistry.fromJson);
       expect(LayerLinkRegistry.fromJson(const {'groups': []}).isEmpty, isTrue);
+    });
+
+    test('a table\'s syncs round-trip with it, and one with none writes '
+        'none — every file without a 동기컷 reads as it did (I-150-Q3)', () {
+      final synced = registry().copyWith(
+        syncs: [
+          CutSync(id: 'sync-1', cuts: const [CutId('cut-a'), CutId('cut-b')]),
+        ],
+      );
+      expectJsonRoundTrip(synced, LayerLinkRegistry.fromJson);
+      expect(registry().toJson().containsKey('syncs'), isFalse);
+      expect(
+        LayerLinkRegistry.fromJson(synced.toJson())
+            .syncCanonicalOf(const CutId('cut-b')),
+        const CutId('cut-a'),
+      );
+      expect(synced, isNot(registry()), reason: 'the syncs are the table');
+    });
+
+    test('a table with a sync and no group is no empty table', () {
+      final synced = LayerLinkRegistry(
+        syncs: [
+          CutSync(id: 'sync-1', cuts: const [CutId('cut-a'), CutId('cut-b')]),
+        ],
+      );
+      expect(synced.isEmpty, isFalse);
+    });
+
+    test('a sync holds two cuts or more', () {
+      expect(
+        () => CutSync(id: 'lone', cuts: const [CutId('cut-a')]),
+        throwsArgumentError,
+      );
     });
 
     test('a group must have at least one member', () {

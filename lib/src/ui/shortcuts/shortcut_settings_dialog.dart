@@ -23,6 +23,7 @@ import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
 import 'shortcut_activator_codec.dart';
+import 'shortcut_clash_names.dart';
 import 'shortcut_presets.dart';
 import 'shortcut_settings_store.dart' show shortcutPresetSettingsFile;
 import 'shortcut_shelf.dart';
@@ -298,9 +299,6 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       if (!_openBundles.contains(fold)) {
         return;
       }
-      for (final each in shelf.shelves) {
-        shelve(each);
-      }
       final depth = shelf.path.length;
       for (final definition
           in byShelf[shelf] ?? const <EditorActionDefinition>[]) {
@@ -343,6 +341,12 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             ),
           );
         }
+      }
+      // 🗣️F-560: 세부 도구 holds rows of its own AND the tool library's
+      // shelves — its rows first, then the shelves on it: rows after an
+      // open shelf's rows would read as that shelf's.
+      for (final each in shelf.shelves) {
+        shelve(each);
       }
     }
 
@@ -474,16 +478,38 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               // and shown when one does. ↩️It was mounted on the clash, and
               // the list under it jumped down a line — two, in the
               // languages the sentence wraps in.
+              //
+              // 🗣️I-158: who clashes stands beside it ([ShortcutClashNames]),
+              // on a half of its own: the sentence wraps the same whatever
+              // the names are, so the list under it never moves.
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Visibility.maintain(
                   visible: conflicted.isNotEmpty,
-                  child: Text(
-                    AppText.strings.shortcutConflictBanner,
-                    key: const ValueKey<String>('shortcut-conflict-banner'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          AppText.strings.shortcutConflictBanner,
+                          key: const ValueKey<String>(
+                            'shortcut-conflict-banner',
+                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: _clashNamesHeight,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: ShortcutClashNames(bindings: bindings),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -635,9 +661,7 @@ final class _PresetVerbs {
       title: title,
       titleIcon: Icons.content_copy,
       fieldLabel: AppText.strings.commonNameField,
-      initialValue: AppText.strings.shortcutPresetCopyName(
-        nameOf(preset),
-      ),
+      initialValue: AppText.strings.copyNamed(nameOf(preset)),
       confirmLabel: AppText.strings.commonSave,
       emptyError: AppText.strings.shortcutPresetNameEmpty,
     ),
@@ -725,6 +749,10 @@ final class _PresetVerbs {
 /// One step of the list's depth: the twirl's own width, so a row's words
 /// start where the words of the row it folds under do.
 const double _step = layerLaneToggleSlotWidth;
+
+/// The clash's names' line, as tall with a pair as with the list's button
+/// or with nothing in it.
+const double _clashNamesHeight = 28;
 
 /// [style] as a row writes it: in the banner's red where a clash stands
 /// ([_ShortcutSettingsDialogState._clashed]), in [color] everywhere else.

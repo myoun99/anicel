@@ -451,6 +451,43 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('a bake\'s window names its changes in their order, whatever '
+      'order its plan gathered them in — a track\'s conte merge gathers them '
+      'cut by cut (Q20)', (tester) async {
+    final s = session();
+    addTearDown(s.dispose);
+    final context = await hostedContext(tester);
+
+    unawaited(
+      bakeAfterAsking<LayerMergeChange>(context, s, (
+        title: 'Bake',
+        icon: Icons.merge,
+        windowKey: 'bake-progress',
+        question: (
+          slug: 'bake-changes',
+          title: 'Bake?',
+          body: 'Bake.',
+          accept: 'Bake',
+        ),
+        changes: {LayerMergeChange.wall, LayerMergeChange.blend},
+        lineOf: (change) => change.name,
+        pictures: const [],
+        land: () {},
+      )),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('blend')).dy,
+      lessThan(tester.getTopLeft(find.text('wall')).dy),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('bake-changes-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
   test('the wall it warns at is the project\'s pasteboard (Q15)', () {
     for (final (inUse, changes) in [
       (true, <LayerMergeChange>{}),

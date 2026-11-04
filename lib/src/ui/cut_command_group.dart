@@ -17,6 +17,7 @@ import 'session/canvas_adjust.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'text/app_strings.dart';
+import 'timeline/layer_name_commands.dart' show renameActiveCutWithDialog;
 import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
 import 'timeline/layer_label_controls.dart'
@@ -206,7 +207,8 @@ Future<void> _askLinkedCut(
 /// pill's state: the shell builds the same rows to press one.
 ///
 /// ⛔🗣️F-455 (유저 2026-10-23) took five rows out:
-/// - 컷 이름 변경 — 「공용알약꺼 쓰거나 더블클릭으로 되니 삭제」;
+/// - 컷 이름 변경 — 「공용알약꺼 쓰거나 더블클릭으로 되니 삭제」 (↩️back since
+///   I-154, below);
 /// - 컷 복제 — 「공용알약에 복제 버튼 만들고 … 컷복제 삭제」;
 /// - 컷 왼쪽/오른쪽으로 — 「필요시 공용알약에서 구현할것임」;
 /// - 카메라 AE 키프레임 복사 — 「다른 카드에서 선택한 행 ae복사(애니메이션
@@ -216,6 +218,16 @@ List<PanelFlyoutEntry> cutMenuEntries(
   EditorSessionManager session,
 ) {
   return [
+    // ↩️🗣️I-154 (유저 2026-11-04): 「컷 버튼에 이름변경 … 추가. 역시 있는게
+    // 나을거같음」 — the row F-455 took out, back at the head.
+    PanelFlyoutItem(
+      keyValue: 'rename-cut-button',
+      label: editorActionLabel(EditorActionIds.cutRename),
+      shortcuts: const [EditorActionIds.cutRename],
+      icon: Icons.drive_file_rename_outline,
+      onSelected: () =>
+          unawaited(renameActiveCutWithDialog(context, session)),
+    ),
     PanelFlyoutItem(
       keyValue: 'edit-cut-note-button',
       label: editorActionLabel(EditorActionIds.cutEditNote),
@@ -295,7 +307,8 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
   /// ([CommandGroupZone]) from F-463 ④: the name ticked, and a tick layer
   /// inside a bake kept the pill from baking (`panel_static_raster_test`).
   /// The name stands at the head of the bar's right group since F-491
-  /// (`TimelineViewCluster`).
+  /// (`TimelineViewCluster`) — the conte panel's; the timeline panel's legend
+  /// heading since I-154 (`cutListButton`).
   @override
   Widget build(BuildContext context) {
     return CommandPill(

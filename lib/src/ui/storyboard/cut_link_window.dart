@@ -8,12 +8,23 @@ import '../editor_session_manager.dart';
 /// button that makes it independent — 「해제버튼은 현재 컷을 독립시킴」, which
 /// is `CutVerbs.unlinkCuts` on this cut alone, the verb the pill's 「링크
 /// 독립」 already presses for a cut.
+///
+/// Its [kind] the sync, a 동기컷's (I-150-Q3): the cut it is in the other
+/// timelines, and 동기 해제 (I-150-Q6).
 Future<void> showCutLinkWindow(
   BuildContext context, {
   required EditorSessionManager session,
   required CutId cutId,
-}) => showLinkWindow(
-  context,
-  targets: session.cutVerbs.linkedCutLines(cutId),
-  unlink: () => session.cutVerbs.unlinkCuts([cutId]),
-);
+  required LinkKind kind,
+}) => showLinkWindow(context, switch (kind) {
+  LinkKind.link => LinkWindow(
+    kind: kind,
+    targets: session.cutVerbs.linkedCutLines(cutId),
+    action: () => session.cutVerbs.unlinkCuts([cutId]),
+  ),
+  LinkKind.sync => LinkWindow(
+    kind: kind,
+    targets: session.cutVerbs.syncedCutLines(cutId),
+    action: () => session.cutVerbs.unsyncCut(cutId),
+  ),
+});

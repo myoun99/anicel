@@ -128,6 +128,7 @@ class _WorkspaceDocumentViews {
     final hold = session.projectFile.holdMediaBytes;
     _sheetImages = SheetImageCache(
       read: (path, width) => readSheetImage(hold, path, width),
+      carryFor: session.projectFile.mediaCarryFor,
       // The census cannot reach the workspace; the session can be reached.
       onHeldBytesChanged: (bytes) => caches.sheetImageBytes = bytes,
     );

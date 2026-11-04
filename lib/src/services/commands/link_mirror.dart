@@ -421,6 +421,17 @@ List<CutId> _siblingsOf(Cut cut, Project project) {
   ];
 }
 
+/// [cutId]'s 겸용 — its [linkedCutSiblings] but its own 동기컷's other cuts,
+/// the cut itself standing in other timelines (I-150-Q3: 「배지에도
+/// 겸용이란 이름이아니라 동기컷? 뭐 그런식으로 따로 표시」).
+List<CutId> linkedCutsBeyondItsSync(Project project, {required CutId cutId}) {
+  final itself = project.linkRegistry.syncOf(cutId)?.cuts ?? const <CutId>[];
+  return [
+    for (final sibling in linkedCutSiblings(project, cutId: cutId))
+      if (!itself.contains(sibling)) sibling,
+  ];
+}
+
 /// [cutId]'s 겸용 group as CUTS, in TRACK order: the cut itself and its
 /// [linkedCutSiblings] — the cut alone when it is linked to none. The FIRST
 /// is the group's owner.

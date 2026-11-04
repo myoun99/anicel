@@ -26,6 +26,11 @@ void main() {
           '— the canvas\'s frame picture and display buffer above 100% — '
           'through `drawShadedRect`.',
     ),
+    'lib/src/ui/canvas/fill_range_mark.dart': (
+      count: 1,
+      how: 'a held fill\'s checker (I-160), inside the range\'s outline, '
+          'through `drawShadedRect` (`FillRangeMark.paint`).',
+    ),
     'lib/src/ui/canvas/paper_background.dart': (
       count: 1,
       how: 'the alpha checker, through `drawShadedRect` '

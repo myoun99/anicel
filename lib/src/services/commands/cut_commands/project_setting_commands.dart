@@ -212,7 +212,7 @@ class _ProjectSettingCommands {
     await _pasteboard(
       size: size,
       inUse: inUse,
-    ).workAhead(undo: false)?.run(report ?? (_) {});
+    ).workAhead(undo: false)?.call(report ?? (_) {});
   }
 
   SetProjectPasteboardCommand _pasteboard({

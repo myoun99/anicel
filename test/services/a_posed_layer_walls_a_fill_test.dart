@@ -114,16 +114,15 @@ void main() {
     LayerPoseSample? space,
     String? active,
   }) {
-    final dabs = buildFillDabs(
+    final dabs = fillRangeAt(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id.value],
       point: seed,
-      color: 0xFF3366CC,
       options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       activeLayerId: active == null ? null : LayerId(active),
       space: space == null ? null : placementOf(space, cut.canvasSize),
-    );
+    )?.dabsIn(0xFF3366CC) ?? const [];
     final reach = piecesBox(dabs);
     return (reach.width, reach.height);
   }
@@ -203,13 +202,12 @@ void main() {
       cel('paint', scale: 0.5),
     ]);
     final line = box(left: 9, top: 13, side: 6);
-    final dabs = buildFillDabs(
+    final dabs = fillRangeAt(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
       // Artwork (16, 16) IS canvas (16, 16) under a pose about the centre.
       point: CanvasPoint(x: 16, y: 16),
-      color: 0xFF3366CC,
       options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       activeLayerId: const LayerId('paint'),
       space: placementOf((
@@ -219,7 +217,7 @@ void main() {
         ),
         anchorPoint: null,
       ), cut.canvasSize),
-    );
+    )?.dabsIn(0xFF3366CC) ?? const [];
 
     final reach = piecesBox(dabs);
     expect(reach.width, inInclusiveRange(8, 12));
@@ -271,14 +269,13 @@ void main() {
       anchorPoint: null,
     ), wide);
 
-    final dabs = buildFillDabs(
+    final dabs = fillRangeAt(
       cut: cutOf([cel('line'), cel('paint')], canvas: wide),
       frameIndex: 0,
       surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
       // The middle of the right-hand box, (39, 32) on the canvas, in the
       // paint layer's own pixels.
       point: CanvasPoint(x: 46, y: 32),
-      color: 0xFF3366CC,
       options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       activeLayerId: const LayerId('paint'),
       space: space,
@@ -287,7 +284,7 @@ void main() {
         lineCount: 4,
         lineSymmetry: false,
       ),
-    );
+    )?.dabsIn(0xFF3366CC) ?? const [];
 
     // The four insides and nothing else: 19 across and 19 down on the
     // canvas, so twice as many across in the paint layer's pixels.

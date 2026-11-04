@@ -657,7 +657,6 @@ void main() {
     await tester.pump();
     await gesture.moveTo(centre + const Offset(12, 0));
     await tester.pump();
-    await tester.pump(Duration.zero);
 
     expect(
       await showsInk(),

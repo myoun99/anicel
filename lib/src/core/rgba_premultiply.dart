@@ -88,3 +88,17 @@ int mul255Round(int value, int alpha) {
   final product = value * alpha + 128;
   return (product + (product >> 8)) >> 8;
 }
+
+/// Copies the three colour bytes of the RGBA pixel at [at] in [from] to the
+/// pixel at [into] in [to] — its alpha is the caller's to write.
+///
+/// 🚨ONE copy of a pixel's colour (the clone scan, 2026-11-04): a mesh
+/// warp's sampled pixel, a moved selection's gathered one and a gradient's
+/// colour stop each wrote these three bytes by hand. Each writes its own
+/// alpha — taken whole, taken where it is not clear, or under coverage.
+@pragma('vm:prefer-inline')
+void copyRgb(Uint8List to, int into, Uint8List from, int at) {
+  to[into] = from[at];
+  to[into + 1] = from[at + 1];
+  to[into + 2] = from[at + 2];
+}

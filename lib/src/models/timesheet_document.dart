@@ -358,8 +358,8 @@ class TimesheetDocument {
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
     required this.cellExposureBarThreshold,
-    required this.seEmptyFill,
     required this.cutName,
+    required this.linkedCuts,
     required this.scene,
     required this.fps,
     required this.playbackFrameCount,
@@ -410,6 +410,9 @@ class TimesheetDocument {
     // caller as the pages stand: `cutSheetDocument` gathers it, the sheet's
     // geometry stays here.
     List<List<String>> Function(SheetPages pages)? fixedLinesOfPages,
+    // The cuts it is 겸용 with, by name ([linkedCuts]) — the work's, which
+    // `cutSheetDocument` reads.
+    List<String> linkedCuts = const [],
   }) {
     const seColumnCount = 2;
     const cameraColumnCount = 2;
@@ -526,8 +529,8 @@ class TimesheetDocument {
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
       cellExposureBarThreshold: info.cellExposureBarThreshold,
-      seEmptyFill: info.seEmptyFill,
       cutName: cut.name,
+      linkedCuts: List.unmodifiable(linkedCuts),
       scene: cut.metadata.scene,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
@@ -689,15 +692,15 @@ class TimesheetDocument {
     TimesheetColumnKind.se || TimesheetColumnKind.camera => null,
   };
 
-  /// Whether SE columns wash their empty stretches light gray (mirrored
-  /// from [TimesheetInfo.seEmptyFill]).
-  final bool seEmptyFill;
-
   /// The header boxes the form prints, in printing order (the user hides
   /// boxes per project via [TimesheetInfo.hiddenFields]).
   final List<TimesheetHeaderField> visibleHeaderFields;
 
   final String cutName;
+
+  /// The cuts this one is 겸용 with, by name, in track order — the header
+  /// prints them under [cutName] (F-558).
+  final List<String> linkedCuts;
 
   /// The cut's scene, empty where none is written (`CutMetadata.scene`).
   final String scene;

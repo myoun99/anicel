@@ -620,6 +620,56 @@ class MediaPool {
     return true;
   }
 
+  /// Carries [paths] anew: each one the pool CARRIES takes the bytes its
+  /// file holds now, under a carry of its own, held before it is recorded
+  /// ([MediaStagingStore.stageCarriedBytes]) — one undo step, which brings
+  /// the carry before back. A path the pool does not carry, or whose file is
+  /// not there, is left as it is. Answers the paths carried anew.
+  ///
+  /// 🗣️F-550-Q3 (유저 2026-11-04: 「새로 받는다」): a file the pool carries,
+  /// imported again, is taken as it is now, and whatever shows the path
+  /// reads the carry the pool names. 08-30's 「품은 순간 데이터를 가지고있고
+  /// 불변」 stands: a changed original does not change what is carried — an
+  /// import of it again does. ↩️An import again kept the pool's entry
+  /// ([_admit]), so mending a carry gone wrong that way changed nothing
+  /// (F-550).
+  ///
+  /// 🗣️F-550-Q5 (유저 2026-11-04: 「다시 임포트하는건 바이트 비교하지말고
+  /// 애초에 새롭게 임포트하게하도록」): an unchanged file is carried anew
+  /// too. ↩️A file whose bytes were the carry's was compared and left as it
+  /// was (a folder brought in again staged a second copy of the same bytes —
+  /// audit 2026-09-24).
+  Future<Set<String>> carryAnew(Iterable<String> paths) async {
+    final asked = {for (final path in paths) normalizedMediaPath(path)};
+    final anew = {
+      for (final asset in mediaAssets)
+        if (asset.carried &&
+            asked.contains(asset.path) &&
+            File(asset.path).existsSync())
+          asset.path: mintMediaCarry(asset.path),
+    };
+    if (anew.isEmpty) {
+      return const {};
+    }
+    await _staging.stageCarriedBytes([
+      for (final MapEntry(key: path, value: token) in anew.entries)
+        (poolPath: path, token: token),
+    ]);
+    // Read after the wait, as [_admit] does: what changed meanwhile stays.
+    _project.cutCommandCoordinator.updateMediaAssets([
+      for (final asset in mediaAssets)
+        if (anew[asset.path] case final carriedAs? when asset.carried)
+          asset.copyWith(
+            carriedAs: carriedAs,
+            identity: readMediaIdentity(asset.path),
+          )
+        else
+          asset,
+    ], description: 'Import media');
+    _changes.notifyChanged();
+    return anew.keys.toSet();
+  }
+
   /// Links the pool asset at [path] to the SE block of [layerId] starting
   /// at [blockStartFrame] (the browser's drag-drop target hook). The block
   /// carries the sound exactly like an import at that spot; unknown pool

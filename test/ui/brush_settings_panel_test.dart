@@ -986,6 +986,44 @@ void main() {
     expect(read().correction.postStrength, greaterThan(20));
     expect(read().toBrushSettings().correction, read().correction);
   });
+
+  // 🗣️brush-in-and-out (유저 2026-11-01): Q1 「크기 · 농도, 길이 지정
+  // 하나」. What sits under it is there only while it does anything, by
+  // F-478-Q2 「없앤다 — 패널 안 스위치도 같은 법」.
+  testWidgets("the 入り抜き group writes the brush's own, and has no row for "
+      'what it takes away while the line neither comes in nor goes out', (
+    tester,
+  ) async {
+    Future<void> drag(String key, Offset by) async {
+      final slider = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(slider);
+      await tester.drag(slider, by);
+      await tester.pumpAndSettle();
+    }
+
+    const minimums = [
+      'brush-tool-in-and-out-size-slider',
+      'brush-tool-in-and-out-flow-slider',
+    ];
+
+    final read = await _pumpPanel(tester);
+    for (final key in minimums) {
+      expect(find.byKey(ValueKey<String>(key)), findsNothing, reason: key);
+    }
+
+    await drag('brush-tool-out-length-slider', const Offset(80, 0));
+    expect(read().inAndOut.outLength, greaterThan(0));
+    expect(read().inAndOut.inLength, 0);
+    for (final key in minimums) {
+      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
+    }
+
+    await drag('brush-tool-in-and-out-flow-slider', const Offset(-400, 0));
+    expect(read().inAndOut.flowMinimum, lessThan(1));
+    await drag('brush-tool-in-length-slider', const Offset(80, 0));
+    expect(read().inAndOut.inLength, greaterThan(0));
+    expect(read().toBrushSettings().inAndOut, read().inAndOut);
+  });
 }
 
 /// A paper for the texture slot, whose rows are there only with one.

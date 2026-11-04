@@ -56,7 +56,11 @@ enum BrushSettingsRow {
   postCorrection(BrushSettingsGroup.correction),
   postBySpeed(BrushSettingsGroup.correction),
   postByViewScale(BrushSettingsGroup.correction),
-  postBezier(BrushSettingsGroup.correction);
+  postBezier(BrushSettingsGroup.correction),
+  inLength(BrushSettingsGroup.inAndOut),
+  outLength(BrushSettingsGroup.inAndOut),
+  inAndOutSize(BrushSettingsGroup.inAndOut),
+  inAndOutFlow(BrushSettingsGroup.inAndOut);
 
   const BrushSettingsRow(this.group);
 

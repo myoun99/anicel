@@ -350,6 +350,9 @@ class _InteractiveCanvasBuild {
       // I-37: stood on a folder, a transform takes up every drawing row
       // inside it — the same ladder's answer at the playhead.
       transformCelsUnderfoot: session.pixelVerbs.transformCelsUnderfoot,
+      // F-564: the frame range is the one input of that answer the host is
+      // not built again for.
+      transformCelsUnderfootChanges: session.frameRangeSelection,
       // F-293: the cut tool's stamp lands where 픽셀 붙여넣기 lands — the
       // ground is read by the one that reads it for the paste.
       pieceGround: session.pixelVerbs.pieceGround,
@@ -537,17 +540,16 @@ class _InteractiveCanvasBuild {
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,
-      leftPill: _state.widget.leftPill,
-      // P6 fill: the flood region as stamp pieces; the panel commits them
-      // through the stroke funnel onto the active layer's frame.
+      // P6 fill: the flood's range, laid as stamp pieces at the lift
+      // (I-160); the panel commits them through the stroke funnel onto
+      // the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,
       transformOptions: _state.widget.transformOptions,
-      fillDabsAt: (point, color, symmetry) => buildFillDabs(
+      fillRangeAt: (point, symmetry) => fillRangeAt(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
         point: point,
-        color: color,
         // TP1: the FILL has its own opacity now — the strip's bar
         // writes the fill's field, not the brush's.
         opacity: _state.widget.brushToolState.value.activeOpacity,
@@ -572,6 +574,17 @@ class _InteractiveCanvasBuild {
         // The apron reaches as far as the pasteboard does (I-109).
         pasteboardReach: session.repository.requireProject().pasteboardReach,
       ),
+      fillsContinuously: () =>
+          _state.widget.fillOptions?.value.continuous ?? false,
+      fillGradient: switch (_state.widget.colorBackground) {
+        final sub? => () => (
+          options:
+              (_state.widget.fillOptions?.value ?? const FloodFillOptions())
+                  .gradient,
+          sub: sub.value,
+        ),
+        null => null,
+      },
       // The SHAPE fill's pieces. No cut, no frame, no surfaces: a
       // drawn outline is filled whatever is under it, so it never
       // reads the picture — which is why this line is short and
@@ -579,6 +592,12 @@ class _InteractiveCanvasBuild {
       shapeFillDabsFor: (area, color) => buildRegionFillDabs(
         region: area,
         color: color,
+        opacity: _state.widget.brushToolState.value.activeOpacity,
+        options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
+      ),
+      // …and the range those pieces cover, held for its gradient (I-160).
+      shapeFillRangeFor: (area) => regionFillRange(
+        region: area,
         opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
       ),

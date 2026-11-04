@@ -157,14 +157,19 @@ void main() {
       expect(rowsOf(r.s).hasLayerClipboard, isFalse);
     });
 
-    test('the STORYBOARD\'s cut is never the rows', () {
+    // 🗣️I-150: ↩️it lifted nothing; it lifts the cut it stands on now
+    // (「컷 잘라내기 … 공용알약 사용 가능하게」) — its rows with it, as a cut.
+    test('the STORYBOARD\'s cut is never the rows — it is the cut it '
+        'stands on', () {
       final r = threeRows();
       select(r.s, [r.a]);
+      final cut = r.s.requireActiveCut.id;
 
       StoryboardToolbarPanelContext(r.s).cutRun();
 
-      expect(names(r.s), ['A', 'B', 'C']);
       expect(rowsOf(r.s).hasLayerClipboard, isFalse);
+      expect(r.s.cutClipboard.holdsCuts, isTrue);
+      expect(r.s.cutById(cut), isNull);
     });
   });
 

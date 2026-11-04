@@ -98,7 +98,11 @@ void main() {
   test('a fresh one is drawn — its defaults are its plugin\'s to mean — and '
       'its sample carries its plugin and its plugin\'s values', () {
     final effect = effectOf(glow());
-    final resolved = resolveLayerEffectsAt(effects: [effect], frameIndex: 0);
+    final resolved = resolveLayerEffectsAt(
+      effects: [effect],
+      frameIndex: 0,
+      blocks: null,
+    );
 
     expect(resolved, hasLength(1));
     final sample = resolved.single;
@@ -113,6 +117,7 @@ void main() {
     final naming = resolveLayerEffectsAt(
       effects: [effect.withLayer('mask', const LayerId('matte'))],
       frameIndex: 0,
+      blocks: null,
     ).single;
     expect(naming.layers, {'mask': const LayerId('matte')});
     expect(naming.namingNoRow.layers, {'mask': null});
@@ -135,6 +140,7 @@ void main() {
     double at(LayerEffect effect, int frame) => resolveLayerEffectsAt(
       effects: [effect],
       frameIndex: frame,
+      blocks: null,
     ).single.parameter('brightness');
 
     expect(at(held, 3), 60);
@@ -205,8 +211,8 @@ void main() {
     expect(one.plugin, glow());
     expect(one, isNot(two));
     expect(
-      resolveLayerEffectsAt(effects: [one], frameIndex: 0),
-      isNot(resolveLayerEffectsAt(effects: [two], frameIndex: 0)),
+      resolveLayerEffectsAt(effects: [one], frameIndex: 0, blocks: null),
+      isNot(resolveLayerEffectsAt(effects: [two], frameIndex: 0, blocks: null)),
     );
     expect(one.copyWith(enabled: false).plugin, one.plugin);
   });

@@ -1,37 +1,30 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/sheet_memo_side.dart';
-import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/conte/conte_camera_room.dart';
-import '../../models/conte/conte_ink_keys.dart'
-    show conteInkRowIdOf, conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_metadata.dart';
-import '../../models/envelope/cut_envelope_ink_keys.dart'
-    show envelopeInkKeyOfCut;
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/track_id.dart';
 import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_info.dart';
-import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
-import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
-import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
-import '../../services/persistence/cel_places.dart' show rowOwnerName;
+import '../../services/commands/link_mirror.dart'
+    show linkedCutsBeyondItsSync;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
-import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
-import '../text/place_lines.dart' show drawingPlaceLines;
+import '../text/place_lines.dart'
+    show cutPlaceLine, drawingPlaceLines, syncPartnerLines;
 import 'active_cut_edits.dart';
+import 'cut_copies.dart';
 import 'cut_placement.dart';
-import 'independent_clip_mint.dart' show carryBakedPictures, carrySurfaces;
 import 'render_caches.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
@@ -192,10 +185,8 @@ class CutVerbs {
   /// 선택한 묶음 뒤에 차례로」. The cut you stand on is a block of one and
   /// goes the same way (CLAUDE.md 절대명령 2: no law split by how much is
   /// selected). ↩️It copied the active cut alone, onto the track's end.
-  void duplicateActiveCut() => _activeCut.onActiveCut((cutId) {
-    // The selection is a band's cuts, in track order.
-    final chosen = _storyboardRows.storyboardSelectedCutIds;
-    final block = chosen.isEmpty ? [cutId] : chosen;
+  void duplicateActiveCut() => _activeCut.onActiveCut((_) {
+    final block = cutsInHand;
     final last = cutPositionOf(
       _project.repository.requireProject(),
       block.last,
@@ -214,12 +205,25 @@ class CutVerbs {
     });
   });
 
-  /// Duplicates [cutId] into [trackId] at [index], pictures and all: the
-  /// copy mints every row and cel afresh, and a picture lives under its
-  /// cel's key, so each one follows its cel over (F-62's law at the cut's
-  /// scale). ↩️Nothing did until 2026-09-26 — a duplicated cut came out
-  /// with every drawing blank (measured; card
-  /// `duplicates-lose-their-pictures`).
+  /// THE CUTS IN HAND: the selected ones — a band's, in track order — else
+  /// the cut you stand in. What a duplicate copies (F-455-Q1), a delete
+  /// lifts ([deleteActiveCut]) and the board takes (I-150, `CutClipboard`).
+  List<CutId> get cutsInHand {
+    final chosen = _storyboardRows.storyboardSelectedCutIds;
+    final standing = _timeline.editingSession.activeCutId;
+    return chosen.isNotEmpty ? chosen : [?standing];
+  }
+
+  /// Whether [deleteActiveCut] lifts the cuts in hand: the selection only
+  /// while the project keeps a cut ([canDeleteSelectedCuts]), the cut you
+  /// stand in whenever you stand in one.
+  bool get canDeleteActiveCut =>
+      _storyboardRows.storyboardSelectedCutIds.isNotEmpty
+      ? canDeleteSelectedCuts
+      : _timeline.editingSession.activeCutId != null;
+
+  /// Duplicates [cutId] into [trackId] at [index], pictures and all
+  /// ([CutCopies]).
   void _duplicateCut(CutId cutId, TrackId trackId, {required int index}) {
     final source = _project.cutById(cutId)!;
     final copy = _project.cutCommandCoordinator.duplicateCut(
@@ -227,61 +231,18 @@ class CutVerbs {
       targetTrackId: trackId,
       index: index,
     );
-    final into = _project.cutById(copy.cutId)!;
-    final store = _renderCaches.brushFrameStore;
-    for (final row in source.layers) {
-      carryBakedPictures(
-        project: _project,
-        store: store,
-        cut: into,
-        to: copy.rows[row.id]!,
-        minted: {for (final cel in row.frames) cel.id: copy.minted[cel.id]!},
-        pictureOf: (cel) => store.bakedSurfaceOrNull(
-          _project.brushFrameKeyForCut(source, row.id, cel),
-        ),
-      );
-    }
-    _carrySheetInk(from: cutId, to: copy.cutId);
-  }
-
-  /// The sheets' handwriting of a duplicated cut, onto its copy: the conte
-  /// cells' block by block — each copied block keeps its handwriting id, on
-  /// the copy's cut — the envelope's and the timesheet's box by box and band
-  /// by band. From there the copy's is its own.
-  ///
-  /// 🗣️유저 2026-09-26 (cut-duplicate-sheet-ink-Q1): 「따라간다 — 복제는
-  /// 전부 복사」. Each sheet's ink is owned the way the load prunes it
-  /// (`_InkOwners`): a conte cell by its block, the others by their cut —
-  /// the envelope's by the cut that OWNS the envelope, the representative
-  /// when [from] shares one ([cutEnvelopeInkOwner]); the copy is no
-  /// sibling, so it owns its own.
-  void _carrySheetInk({required CutId from, required CutId to}) {
-    void carry(
-      BrushFrameStore store,
-      CutId owner,
-      BrushFrameKey? Function(BrushFrameKey key) inCopy,
-    ) => carrySurfaces(
-      sources: store.bakedSurfacesForCut(owner).entries,
-      surfaceOf: (written) => written.value,
-      keyOfCopy: (written) => inCopy(written.key),
-      keep: (key, surface, _) => store.storeBakedSurface(key, surface),
-    );
-
-    carry(_renderCaches.conteInkRowStore, from, (key) {
-      final block = conteInkRowIdOf(key);
-      return block == null ? null : conteInkRowKey(to, block);
-    });
-    carry(
-      _renderCaches.envelopeInkStore,
-      cutEnvelopeInkOwner(_project.repository.requireProject(), from),
-      (key) => envelopeInkKeyOfCut(key, to),
-    );
-    carry(
-      _renderCaches.timesheetInkStore,
-      from,
-      (key) => timesheetInkKeyOfCut(key, to),
+    _copies.duplicate(
+      source,
+      copy: copy.cutId,
+      rows: copy.rows,
+      cels: copy.minted,
     );
   }
+
+  late final CutCopies _copies = CutCopies(
+    project: _project,
+    renderCaches: _renderCaches,
+  );
 
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the
@@ -429,12 +390,18 @@ class CutVerbs {
   /// The active cut named [newName] — and put in [scene] where one is given,
   /// as the cut rename window gives it (F-291) — as ONE undo step.
   void renameActiveCut(String newName, {String? scene}) =>
-      _activeCut.onActiveCut(
-        (cutId) => _project.cutCommandCoordinator.nameCut(
-          cutId: cutId,
-          name: newName,
-          scene: scene,
-        ),
+      _activeCut.onActiveCut(_naming(newName, scene));
+
+  /// [cutId] named as [renameActiveCut] names the active one — a row of the
+  /// timeline panel's cut list names a cut that may not be (I-154).
+  void renameCut(CutId cutId, String newName, {String? scene}) =>
+      _activeCut.onCut(cutId, _naming(newName, scene));
+
+  void Function(CutId cutId) _naming(String name, String? scene) =>
+      (cutId) => _project.cutCommandCoordinator.nameCut(
+        cutId: cutId,
+        name: name,
+        scene: scene,
       );
 
   /// Names each cut of [names] — ONE undo step. 자동 이름 지정's cuts (I-18,
@@ -676,7 +643,10 @@ class CutVerbs {
 
   /// Whether any row of [cutId] shares its pictures through a link — what
   /// the link-independent button asks of a cut (I-45: 「프레임 독립시키거나
-  /// 레이어나 컷이나」).
+  /// 레이어나 컷이나」). A 동기컷's rows in its other cuts are no such link:
+  /// they are the row itself (I-150-Q3,
+  /// [LayerLinkRegistry.linkedBeyondItsSync]), and only 동기 해제 takes them
+  /// apart.
   bool cutIsLinked(CutId cutId) {
     final cut = _project.cutById(cutId);
     if (cut == null) {
@@ -684,30 +654,60 @@ class CutVerbs {
     }
     final registry = _project.repository.requireProject().linkRegistry;
     return cut.layers.any(
-      (layer) => registry.isLinked(cutId: cutId, layerId: layer.id),
+      (layer) => registry
+          .linkedBeyondItsSync(cutId: cutId, layerId: layer.id)
+          .isNotEmpty,
     );
   }
 
-  /// The LINKED cuts (겸용 — [linkedCutSiblings]), which wear the link icon
-  /// on their blocks (I-25: 「링크컷이 발생해있는 경우, 모든 컷에 적용」).
+  /// The LINKED cuts — linked to a cut beyond their own 동기컷
+  /// ([linkedCutsBeyondItsSync]) — which wear the link icon on their blocks
+  /// (I-25: 「링크컷이 발생해있는 경우, 모든 컷에 적용」).
   Set<CutId> get linkedCutIds {
     final project = _project.repository.requireProject();
     return {
       for (final track in project.tracks)
         for (final cut in track.cuts)
-          if (linkedCutSiblings(project, cutId: cut.id).isNotEmpty) cut.id,
+          if (linkedCutsBeyondItsSync(project, cutId: cut.id).isNotEmpty)
+            cut.id,
     };
   }
 
-  /// The cuts [cutId] is linked with, named as a place line names them — the
-  /// link window's list (I-25).
+  /// The 동기컷 among the open timeline's cuts (I-150-Q3): their blocks wear
+  /// the sync's own button, apart from a 겸용's link — 「배지에도 겸용이란
+  /// 이름이아니라 동기컷? 뭐 그런식으로 따로 표시」, 「버튼나누자」.
+  Set<CutId> get syncedCutIds {
+    final project = _project.repository.requireProject();
+    final registry = project.linkRegistry;
+    return {
+      for (final track in project.tracks)
+        for (final cut in track.cuts)
+          if (registry.syncOf(cut.id) != null) cut.id,
+    };
+  }
+
+  /// The cuts [cutId] is linked with, named as a place line names them —
+  /// the link window's list (I-25). The cut it is in the other timelines is
+  /// listed apart ([syncedCutLines]).
   List<String> linkedCutLines(CutId cutId) {
     final project = _project.repository.requireProject();
     return [
-      for (final siblingId in linkedCutSiblings(project, cutId: cutId))
-        if (cutPositionOf(project, siblingId) case final position?)
-          rowOwnerName(track: position.track, cut: position.cut),
+      for (final siblingId in linkedCutsBeyondItsSync(project, cutId: cutId))
+        ?cutPlaceLine(project, siblingId),
     ];
+  }
+
+  /// The cut [cutId] is in the other timelines — its 동기컷's other cuts
+  /// (I-150-Q3) — the link window's 동기 list. Empty for a cut of its own.
+  List<String> syncedCutLines(CutId cutId) =>
+      syncPartnerLines(_project.repository.requireProject(), cutId: cutId);
+
+  /// 동기 해제 (I-150-Q6): [cutId] leaves its 동기컷 and every link — an
+  /// independent cut. ONE undo step.
+  void unsyncCut(CutId cutId) {
+    _project.cutCommandCoordinator.unsyncCut(cutId);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
   }
 
   /// 독립시키기 for every linked row of every cut in [cutIds] — ONE undo

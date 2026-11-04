@@ -676,7 +676,7 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
         onSelected: () => _change(
           (now) => now.duplicated(
             palette.id,
-            strings.paletteCopyName(palette.name),
+            strings.copyNamed(palette.name),
           ),
         ),
       ),

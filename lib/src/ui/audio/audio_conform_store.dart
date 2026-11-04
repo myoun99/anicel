@@ -60,7 +60,6 @@ class AudioConformStore extends ChangeNotifier {
     this.retryDelay = const Duration(seconds: 2),
     void Function(String message)? log,
     this.libraryPathOverride,
-    this.placeForPlayback,
   }) : _runner = runner ?? runConformInIsolate,
        _resampleRunner = resampleRunner ?? runResampleInIsolate,
        _resolveProjectSampleRate =
@@ -129,28 +128,23 @@ class AudioConformStore extends ChangeNotifier {
   /// fresh statics).
   final String? libraryPathOverride;
 
-  /// [floats] samples in the memory the output device plays where they lie
-  /// (`QaAudioDevice.newSamples`), or null to keep them in Dart's — no
-  /// device, or none wanted.
-  ///
-  /// 🚨THE PCM THE DEVICE PLAYS LIVES IN THE DEVICE FROM THE MOMENT IT LANDS
-  /// (play-press-first-frame-stall, 10-15). A conform's samples, and each
-  /// rate they were converted to, are placed there ONCE, and every schedule
-  /// after names them without a copy. ↩️They stayed in Dart memory, and
-  /// every upload — each press, seek and streaming advance — copied every
-  /// resident sound into the device again, however many takes a project
-  /// had.
-  final Float32List? Function(int floats)? placeForPlayback;
-
-  /// [samples] where the device plays them ([placeForPlayback]).
-  Float32List _placedForPlayback(Float32List samples) {
-    final placed = placeForPlayback?.call(samples.length);
-    if (placed == null) {
-      return samples;
-    }
-    placed.setAll(0, samples);
-    return placed;
-  }
+  /// A store that conforms each path's FILE as it lies — no carry, no
+  /// conform of the project's, nothing kept on disk — at this one's rate
+  /// and speed, through its runners: what the import window plays a file
+  /// from while the pool carries other bytes at its path (F-550-Q3).
+  AudioConformStore ofTheFilesThemselves() => AudioConformStore(
+    resolveConformPath: (_) => null,
+    runner: _runner,
+    resampleRunner: _resampleRunner,
+    resolveProjectSampleRate: _resolveProjectSampleRate,
+    resolveAudioSpeed: _resolveAudioSpeed,
+    bucketsPerSecond: bucketsPerSecond,
+    now: _now,
+    maxAttempts: maxAttempts,
+    retryDelay: retryDelay,
+    log: _log,
+    libraryPathOverride: libraryPathOverride,
+  );
 
   final Map<String, ConformResult> _entries = {};
   final Set<String> _pending = {};
@@ -387,9 +381,7 @@ class AudioConformStore extends ChangeNotifier {
       if (_disposed || !identical(_entries[sourcePath], entry)) {
         return;
       }
-      (_resampledByRate[sourcePath] ??= {})[sampleRate] = _placedForPlayback(
-        converted,
-      );
+      (_resampledByRate[sourcePath] ??= {})[sampleRate] = converted;
     } on Object catch (error) {
       if (_disposed) {
         return;
@@ -505,10 +497,9 @@ class AudioConformStore extends ChangeNotifier {
       // decides before it holds any ([conformStaysOnDisk]), and the store
       // keeps what it is given.
       _closeStreamReader(sourcePath);
-      final samples = result.samples;
-      _entries[sourcePath] = samples == null
-          ? result
-          : result.withSamples(_placedForPlayback(samples));
+      // Kept as it came: its PCM is where the device plays it already
+      // (`conformingInto`).
+      _entries[sourcePath] = result;
     } else if (result.isTransientFailure) {
       // Records the ATTEMPT TIME but not the attempt: a source that is
       // there and merely not readable yet (a cloud placeholder still

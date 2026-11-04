@@ -964,7 +964,7 @@ extension _NamingRunFiles on _NamingRun {
       cutName: cutName,
       labelName: labelName,
       celName: celName,
-      naming: spec.naming,
+      naming: namer.naming,
     ),
   );
 }
@@ -1000,7 +1000,7 @@ ExportCelGroupPlan buildExportCelGroupPlan({
     project: project,
     spec: spec,
     namer: ExportCelFileNamer(
-      naming: spec.naming,
+      naming: spec.namingInForce,
       fileExtension: fileExtension,
     ),
   );
@@ -1044,8 +1044,9 @@ typedef _Document = ({ExportCelKind kind, Cut of, int pages});
 /// The documents the export writes beside the cels of [entry]'s cut
 /// (F-289, 유저 2026-10-05: 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
 /// 컷봉투탭도 셀 내부로 편입 … 기존의 범위는 셀의 범위 규칙 따라가고」): the
-/// timesheet of every cut the entry stands for, and the cut envelope — ONE
-/// for a 겸용 group, which shares it ([cutEnvelopeInkOwner]).
+/// timesheet of every cut the entry stands for, the cut envelope — ONE
+/// for a 겸용 group, which shares it ([cutEnvelopeInkOwner]) — and the film
+/// of every cut (I-151).
 ///
 /// A timesheet is a file a page ([sheetPagesOf]) as pictures, and one file
 /// as the digital sheet.
@@ -1080,6 +1081,17 @@ Iterable<ExportDocumentSheet> _documentsOf(
       entry,
       overrides,
     );
+  }
+  // A film a cut, as a timesheet is: each cut of a 겸용 group runs frames
+  // of its own (I-151, 「셀은 컷마다 출력이니까 컷마다 영상 출력하는것임」).
+  if (spec.kinds.contains(ExportCelKind.video)) {
+    for (final of in _cutsOf(entry)) {
+      yield* _filesOf(
+        (kind: ExportCelKind.video, of: of, pages: 1),
+        entry,
+        overrides,
+      );
+    }
   }
 }
 
@@ -1121,7 +1133,7 @@ Iterable<ExportDocumentSheet> _filesOf(
         projectName: entry.run.project.name,
         cutName: entry.cutName,
         base:
-            '${entry.run.spec.naming.prefixOf(kind)}'
+            '${entry.run.namer.naming.prefixOf(kind)}'
             '${exportDocumentBase(kind, of, page, pages)}',
         extension: exportDocumentExtension(kind, entry.run.spec),
       ),

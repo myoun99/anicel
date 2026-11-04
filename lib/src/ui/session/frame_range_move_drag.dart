@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../timeline/timeline_drag_preview.dart'
-    show BlockMoveDragPreview, TimelineDragPreview;
+    show BlockMoveDragPreview, TimelineDragPreview, celPixelsHungBy;
 import 'dart:collection';
 
 import '../../models/frame_id.dart';
@@ -153,6 +153,13 @@ class FrameRangeMoveDragVerbs {
     required int frameDelta,
     LayerId? targetLayerId,
   }) => _drag?.update(frameDelta: frameDelta, targetLayerId: targetLayerId);
+
+  /// Whether letting the drag go trades pictures between cels (F-330): the
+  /// pictures its last step shows moving ([celPixelsHungBy]) — each read
+  /// in and written again where it goes.
+  bool get releaseTradesPictures =>
+      _drag != null &&
+      celPixelsHungBy(_roles.dragPreview.value).pictures.isNotEmpty;
 
   /// Commits the range move as ONE undo step (layer updates + the brush
   /// re-key on cross-layer carries), mirroring the block-move commit.

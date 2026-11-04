@@ -11,7 +11,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
-    show actionLabelOf;
+    show actionLabelOf, labelWithKeys;
+import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart'
+    show activatorKey, singleActivatorLabel;
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
@@ -20,6 +22,8 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/text_finders.dart';
@@ -169,6 +173,38 @@ void main() {
         keys.sublist(heading + 1, heading + 1 + members.length),
         members,
         reason: '${apart.name}\'s rows, all of them, right under its heading',
+      );
+    });
+
+    // 🗣️F-560 (유저 2026-11-04): the tool library's shelves stand under 세부
+    // 도구, which keeps rows of its own. ↩️Every row stood on a shelf with
+    // no shelves of its own until then.
+    testWidgets('a shelf\'s own rows stand before the shelves on it', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      const tiles = ShortcutShelf.toolTiles;
+      final own = [
+        for (final row in bindings.definitions)
+          if (row.shelf == tiles) 'shortcut-row-${row.id}',
+      ];
+      // ⛔premise: 세부 도구 holds rows and shelves both.
+      expect(own, isNotEmpty);
+      expect(tiles.shelves, isNotEmpty);
+
+      for (final shelf in tiles.path) {
+        await tester.tap(twirlOf(shelf));
+        await tester.pump();
+      }
+
+      final keys = listed(tester);
+      final after = keys.indexOf(headingKeyOf(tiles)) + 1;
+      expect(keys.sublist(after, after + own.length), own);
+      // The brush tools' shelves hold the library's brushes, none here.
+      expect(
+        keys[after + own.length],
+        headingKeyOf(ShortcutShelf.brushLibrary),
+        reason: 'the shelves on it come after its rows',
       );
     });
 
@@ -801,6 +837,180 @@ void main() {
         button(tester, 'unassign', aKeyedRow(bindings)).tooltip,
         AppStrings.of(AppLanguage.ko).shortcutUnassign,
       );
+    });
+
+    // 🗣️I-158 (유저 2026-11-04): 「키 충돌하면 같은키를 쓰는 동작 있습니다
+    // 옆에 대상 텍스트로 보여주게. 예를들어 올가미 채우기(Y) : 펜(Y) 이런식.
+    // 여러개 충돌하면 해당 영역 버튼눌러서 리스트팝오버로 여러개 보여주게.
+    // 그리고 추가로 펜(Y)이런식으로 이 텍스트를 버튼으로 만들어서, 이걸로
+    // 할당하는 기능. 호버하면 설명 말한대로 툴팁으로 보여주고 그거
+    // 버튼누르면 올가미채우기의 키가 사라지는식으로」.
+    group('🗣️I-158: who clashes stands beside the warning', () {
+      const another = SingleActivator(LogicalKeyboardKey.f19);
+      final clashList = find.byKey(
+        const ValueKey<String>('shortcut-clash-list'),
+      );
+      Finder keep(String id, SingleActivator key) => find.byKey(
+        ValueKey<String>('shortcut-clash-keep-$id-${activatorKey(key)}'),
+      );
+      String nameOf(EditorShortcutBindings bindings, String id) =>
+          actionLabelOf(bindings.definitionFor(id)!);
+      List<String> keysOf(EditorShortcutBindings bindings, String id) => [
+        for (final activator in bindings.activatorsFor(id))
+          activatorKey(activator),
+      ];
+
+      testWidgets('a pair: each name with the key, on the warning\'s line '
+          'after it — a button, and nothing there before', (tester) async {
+        final bindings = await pump(tester);
+        final [first, second, ...] = bindings.definitions;
+        expect(keep(first.id, spare), findsNothing);
+
+        clash(bindings);
+        await tester.pump();
+
+        final line = tester.getRect(banner);
+        for (final row in [first, second]) {
+          final name = keep(row.id, spare);
+          expect(
+            tester
+                .widget<Text>(
+                  find.descendant(of: name, matching: find.anyText()),
+                )
+                .data,
+            labelWithKeys(
+              nameOf(bindings, row.id),
+              singleActivatorLabel(spare),
+            ),
+          );
+          expect(tester.getRect(name).left, greaterThan(line.right));
+          expect(
+            tester.getRect(name).center.dy,
+            closeTo(line.center.dy, line.height / 2),
+          );
+        }
+        expect(
+          tester.getRect(keep(second.id, spare)).left,
+          greaterThan(tester.getRect(keep(first.id, spare)).right),
+          reason: 'the pair reads along the line, in the registry\'s order',
+        );
+        expect(clashList, findsNothing);
+      });
+
+      testWidgets('a name pressed keeps the key on it alone, and the clash '
+          'ends', (tester) async {
+        final bindings = await pump(tester);
+        final (first, second) = clash(bindings);
+        await tester.pump();
+
+        await tester.tap(keep(second, spare));
+        await tester.pump();
+
+        expect(keysOf(bindings, second), [activatorKey(spare)]);
+        expect(keysOf(bindings, first), isEmpty);
+        expect(warns(tester), isFalse);
+      });
+
+      testWidgets('hovered, a name says what its press does, in the program '
+          'language', (tester) async {
+        speak(AppLanguage.ko);
+        final bindings = await pump(tester);
+        final (first, second) = clash(bindings);
+        await tester.pump();
+
+        final strings = AppStrings.of(AppLanguage.ko);
+        expect(
+          tester
+              .widget<AppTooltip>(
+                find.ancestor(
+                  of: keep(second, spare),
+                  matching: find.byType(AppTooltip),
+                ),
+              )
+              .message,
+          strings.shortcutClashKeep(
+            singleActivatorLabel(spare),
+            nameOf(bindings, second),
+            nameOf(bindings, first),
+          ),
+        );
+        expect(
+          strings.shortcutClashKeep('k', 'n', 'o'),
+          isNot(AppStrings.of(AppLanguage.en).shortcutClashKeep('k', 'n', 'o')),
+          reason: '⛔premise: the table has this language\'s sentence',
+        );
+      });
+
+      testWidgets('more than one pair: a button named by their keys opens '
+          'the list, a line a pair — and the list under the warning does '
+          'not move', (tester) async {
+        final bindings = await pump(tester);
+        final listBefore = tester.getRect(list);
+        final [a, b, c, d, ...] = [
+          for (final row in bindings.definitions) row.id,
+        ];
+        bindings
+          ..setActivators(a, const [spare])
+          ..setActivators(b, const [spare])
+          ..setActivators(c, const [another])
+          ..setActivators(d, const [another]);
+        await tester.pump();
+
+        expect(keep(a, spare), findsNothing, reason: 'no pair stands alone');
+        expect(
+          tester.widget<PanelFlyoutButton>(clashList).label,
+          '${singleActivatorLabel(spare)}, ${singleActivatorLabel(another)}',
+        );
+        expect(tester.getRect(list), listBefore);
+
+        await tester.tap(clashList);
+        await tester.pumpAndSettle();
+        for (final (id, key) in [
+          (a, spare),
+          (b, spare),
+          (c, another),
+          (d, another),
+        ]) {
+          expect(keep(id, key), findsOneWidget, reason: id);
+        }
+
+        await tester.tap(keep(c, another));
+        await tester.pump();
+        expect(keysOf(bindings, c), [activatorKey(another)]);
+        expect(keysOf(bindings, d), isEmpty);
+        expect(
+          keep(d, another),
+          findsOneWidget,
+          reason: 'the line stays up, and shows where the key went',
+        );
+        Color? inkOf(String id) => tester
+            .widget<TextButton>(keep(id, another))
+            .style
+            ?.foregroundColor
+            ?.resolve({});
+        final colors = Theme.of(tester.element(keep(d, another))).colorScheme;
+        expect(inkOf(c), colors.primary);
+        expect(inkOf(d), colors.onSurfaceVariant);
+      });
+
+      testWidgets('one key on three actions is more than a pair', (
+        tester,
+      ) async {
+        final bindings = await pump(tester);
+        final [a, b, c, ...] = [
+          for (final row in bindings.definitions) row.id,
+        ];
+        for (final id in [a, b, c]) {
+          bindings.setActivators(id, const [spare]);
+        }
+        await tester.pump();
+
+        expect(keep(a, spare), findsNothing);
+        expect(
+          tester.widget<PanelFlyoutButton>(clashList).label,
+          singleActivatorLabel(spare),
+        );
+      });
     });
   });
 }

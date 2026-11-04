@@ -1,6 +1,7 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
 import 'brush_correction.dart';
+import 'brush_in_and_out.dart';
 import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
@@ -50,6 +51,7 @@ class BrushEditCanvasInputSettings {
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     BrushCorrection correction = const BrushCorrection(),
+    BrushInAndOut inAndOut = BrushInAndOut.none,
   }) {
     assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.');
     assert(
@@ -129,6 +131,7 @@ class BrushEditCanvasInputSettings {
         textureMode: textureMode,
         antiAlias: antiAlias,
         correction: correction,
+        inAndOut: inAndOut,
       ),
       erase: erase,
       blendMode: blendMode,
@@ -234,6 +237,9 @@ class BrushEditCanvasInputSettings {
   /// How the line is corrected — see [BrushShape.correction].
   BrushCorrection get correction => shape.correction;
 
+  /// How the line comes in and goes out — see [BrushShape.inAndOut].
+  BrushInAndOut get inAndOut => shape.inAndOut;
+
   /// Eraser mode: dabs remove destination alpha (destination-out) instead
   /// of painting color.
   final bool erase;
@@ -286,6 +292,7 @@ class BrushEditCanvasInputSettings {
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     BrushCorrection? correction,
+    BrushInAndOut? inAndOut,
   }) {
     // 🚨MERGE, DO NOT REBUILD. The live stroke path goes through here: a
     // mapped-erase press snapshots the settings with `copyWith(erase:
@@ -334,6 +341,7 @@ class BrushEditCanvasInputSettings {
         textureMode: textureMode,
         antiAlias: antiAlias,
         correction: correction,
+        inAndOut: inAndOut,
       ),
       erase: erase ?? this.erase,
       blendMode: blendMode ?? this.blendMode,

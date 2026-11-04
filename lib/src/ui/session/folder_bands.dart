@@ -3,7 +3,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../timeline/property_lane_model.dart'
-    show folderBandOf, folderBandStandsFor;
+    show folderBandOf, folderBandStandsFor, timelineBlockEdgesOf;
 import 'session_roles.dart';
 
 /// The FOLDER BANDS — which layer a folder's band stands on, who its members
@@ -47,7 +47,12 @@ class FolderBands {
   /// carries, not on the part it was built to summarise.
   final Map<
     LayerId,
-    ({List<({int start, int endExclusive})> runs, Layer source, Layer band})
+    ({
+      List<({int start, int endExclusive})> runs,
+      Set<int> edges,
+      Layer source,
+      Layer band,
+    })
   >
   _folderBandCache = {};
 
@@ -72,14 +77,19 @@ class FolderBands {
       final members = index.subtreeMembersOf(layer.id);
       _folderBandMembers[layer.id] = members;
       final band = folderBandOf(layer, members);
+      final edges = {
+        for (final member in members) ...timelineBlockEdgesOf(member),
+      };
       final cached = _folderBandCache[layer.id];
       // The FOLDER's own instance is half the key: the repository hands back
       // the same instance while nothing about the folder changed, and a new
       // one the moment anything did. The other half is everything the band
-      // shows of its rows — the ghosts beside the blocks (F-311).
+      // shows of its rows — the ghosts beside the blocks (F-311), and where
+      // their blocks meet inside its own, which its grey follows (F-561).
       if (cached != null &&
           identical(cached.source, layer) &&
-          mapEquals(cached.band.timeline, band.timeline)) {
+          mapEquals(cached.band.timeline, band.timeline) &&
+          setEquals(cached.edges, edges)) {
         // Kept for what it shows, it stands for the rows under it now — a
         // drag reads it from them (`rowShownWhileMoved`).
         folderBandStandsFor(cached.band, members);
@@ -91,6 +101,7 @@ class FolderBands {
             if (!entry.value.ghost)
               (start: entry.key, endExclusive: entry.key + entry.value.length!),
         ],
+        edges: edges,
         source: layer,
         band: band,
       );

@@ -21,8 +21,8 @@ typedef TimesheetFormat = ({
 });
 
 /// 「타임시트 서식」: how the paper timesheet prints — the paper the cut on
-/// the sheet prints on, which header boxes it carries, the stretch lines,
-/// the SE wash. Pops the edited [TimesheetFormat], or null when cancelled.
+/// the sheet prints on, which header boxes it carries, the stretch lines and
+/// the fixed lines. Pops the edited [TimesheetFormat], or null when cancelled.
 ///
 /// ⛔The work's words are not here: its title, episode and staff are set in
 /// the work's settings (`WorkSettingsWindow`, 유저 09-25 「작품명/화수는
@@ -72,7 +72,6 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     widget.initialInfo.cellExposureBarThreshold,
     suggested: TimesheetInfo.defaultCellExposureBarThreshold,
   );
-  late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
   late TimesheetSheetKind? _kind = widget.sheet?.kind;
   late bool _fixedText = widget.initialInfo.sheetFixedText;
 
@@ -115,7 +114,6 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
         hiddenFields: {..._hiddenFields},
         exposureBarThreshold: () => _actionLine.threshold,
         cellExposureBarThreshold: () => _cellLine.threshold,
-        seEmptyFill: _seEmptyFill,
         sheetFixedText: _fixedText,
       ),
       kind: _kind,
@@ -218,22 +216,6 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     );
   }
 
-  Widget _seWash() {
-    final strings = AppText.strings;
-    return AppWindowField(
-      label: strings.sheetSeEmptyFill,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: TogglePill(
-          keyValue: 'timesheet-format-se-empty-fill',
-          on: _seEmptyFill,
-          words: (on: strings.sheetFillOn, off: strings.sheetFillOff),
-          onChanged: (on) => setState(() => _seEmptyFill = on),
-        ),
-      ),
-    );
-  }
-
   /// Whether a page writes its fixed lines: the whole work's and the cut's,
   /// as the conte's window sets its own (F-542).
   Widget _fixedTextField() {
@@ -295,7 +277,6 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
               'timesheet-format-stretch-line-cell',
               _cellLine,
             ),
-            _seWash(),
             _fixedTextField(),
           ],
         ),

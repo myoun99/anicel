@@ -7,6 +7,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_basis.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -206,6 +207,30 @@ void main() {
       isFalse,
       reason: 'the header wears the timeline\'s switch, and it switches',
     );
+  });
+
+  testWidgets('the S row\'s Transform header picks what it reads its keys '
+      'by, as the timeline\'s does (I-120-Q10)', (tester) async {
+    await _openApp(tester);
+    final session = tester
+        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+        .session;
+    FxBasis basis() => session.repository
+        .requireProject()
+        .tracks
+        .single
+        .seLayers
+        .single
+        .transformBasis;
+    expect(basis(), FxBasis.frame);
+
+    await _press(tester, 'timeline-mode-storyboard-button');
+    await _pressNamed(tester, 'storyboard-lane-toggle-${_seId.value}');
+    final chip = 'storyboard-lane-group-basis-${_seId.value}-transform-group';
+    await _pressNamed(tester, chip);
+    await _press(tester, '$chip-option-block');
+
+    expect(basis(), FxBasis.block);
   });
 
   // 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —

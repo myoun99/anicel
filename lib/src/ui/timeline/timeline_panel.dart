@@ -6,6 +6,7 @@ import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/cut_id.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
@@ -13,6 +14,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
+import '../dialogs/link_window.dart' show LinkKind;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
@@ -60,6 +62,7 @@ import '../../models/project_frame_rate.dart';
 import 'frame_ruler_view.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_legend.dart';
+import 'timeline_layer_controls_header.dart' show LegendHeadingButton;
 
 class TimelinePanel extends StatefulWidget {
   const TimelinePanel({
@@ -109,6 +112,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
+    this.layerSyncPartnersOf,
     this.onToggleLayerCollapsed,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
@@ -126,7 +130,7 @@ class TimelinePanel extends StatefulWidget {
     required this.orientation,
     required this.onOrientationChanged,
     this.transport,
-    this.cutName = const AlwaysStoppedAnimation<String>(''),
+    this.legendHeading,
     this.timelineActionToolbar,
     this.pixelsPerFrame = TimelinePanel.defaultPixelsPerFrame,
     this.onPixelsPerFrameChanged,
@@ -159,6 +163,8 @@ class TimelinePanel extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
+    this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -329,8 +335,13 @@ class TimelinePanel extends StatefulWidget {
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
 
-  /// A linked row's badge, both orientations: the link window (I-25).
-  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  /// A linked row's badge, both orientations: the link window (I-25) — and
+  /// a 동기컷's row's sync badge, its [LinkKind] the sync (I-150).
+  final Future<void> Function(
+    BuildContext anchorContext,
+    LayerId layerId,
+    LinkKind kind,
+  )?
   onOpenLayerLinks;
 
   /// The camera row's path button, both orientations (I-89 ④).
@@ -359,6 +370,9 @@ class TimelinePanel extends StatefulWidget {
   /// Link badge (L4): the rows a layer shares its pictures with; null shows
   /// no badges.
   final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
+
+  /// The badge's 동기 lines (I-150-Q3); null shows none.
+  final List<String> Function(LayerId layerId)? layerSyncPartnersOf;
 
   /// A folder is a LAYER: its eye, opacity, blend, fx switch, FX lanes and
   /// selection all arrive through the layer hooks above. R10 R3 took its
@@ -421,9 +435,10 @@ class TimelinePanel extends StatefulWidget {
   /// ([TimelineCommandBar.transport]).
   final Widget? transport;
 
-  /// The name of the cut the panel's playhead stands in, for the bar's
-  /// right group ([TimelineViewCluster.cutName]).
-  final ValueListenable<String> cutName;
+  /// The button the legend's heading is — the cut list, which names the
+  /// cut the panel's playhead stands in (I-154: 「현재컷 이름을 여기로
+  /// 옮겨서」); null keeps the rows' heading words.
+  final LegendHeadingButton? legendHeading;
 
   final Widget? timelineActionToolbar;
 
@@ -590,6 +605,13 @@ class TimelinePanel extends StatefulWidget {
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
 
+  /// The group header's basis chip (I-120-Q10), forwarded to the lane rows.
+  final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
+  onSetLaneGroupBasis;
+
+  /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
+
   /// The group header's RESET (R5), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
 
@@ -754,6 +776,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onLayerMarkSelected: widget.onLayerMarkSelected,
       layerFxStateOf: widget.layerFxStateOf,
       layerLinkPartnersOf: widget.layerLinkPartnersOf,
+      layerSyncPartnersOf: widget.layerSyncPartnersOf,
       onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
       onToggleLayerFx: widget.onToggleLayerFx,
       layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
@@ -780,12 +803,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
       laneEdit: widget.laneEdit,
       onToggleLaneGroup: widget.onToggleLaneGroup,
       onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
+      onSetLaneGroupBasis: widget.onSetLaneGroupBasis,
+      onRasterizeLaneGroup: widget.onRasterizeLaneGroup,
       onResetLaneGroup: widget.onResetLaneGroup,
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,
       // The legend over either grid's rail (F-408 ②).
       legend: TimelineGridLegend(
         verbs: widget.legend,
+        heading: widget.legendHeading,
         onMenus: (menus) => _legend.menus = menus,
         onToggleSection: widget.onToggleSection,
         visibilitySoloEnabled: widget.visibilitySoloEnabled,
@@ -830,7 +856,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
-                cutName: widget.cutName,
+                // Its cut's name is the legend's heading (I-154).
+                cutName: null,
                 // The orientation toggle below: what it shows, and where its
                 // press goes.
                 trailing: widget.orientation,
@@ -840,7 +867,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
-                cutName: widget.cutName,
                 trailing: [
                   TimelineOrientationToggle(
                     orientation: widget.orientation,
