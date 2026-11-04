@@ -1,10 +1,10 @@
 import 'dart:ui' as ui;
 
+import 'package:collection/collection.dart' show IterableExtension;
 import 'package:flutter/material.dart';
 
 import '../../core/progress_share.dart';
 import '../../models/cut.dart';
-import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardWall;
@@ -35,8 +35,67 @@ Future<void> mergeLayerRows(
   if (plan == null) {
     return;
   }
-  if (plan.changes.isNotEmpty &&
-      await _accepts(context, plan.changes) != true) {
+  final strings = AppText.strings;
+  await bakeAfterAsking(
+    context,
+    session,
+    title: plan.result.name,
+    icon: Icons.merge,
+    windowKey: 'layer-merge-progress',
+    question: (
+      slug: 'layer-merge-changes',
+      title: strings.tlMergeChangesTitle,
+      body: strings.tlMergeChangesBody,
+      accept: editorActionLabel(EditorActionIds.editMerge),
+    ),
+    changes: plan.changes,
+    lineOf: (change) => switch (change) {
+      LayerMergeChange.blend => strings.tlMergeChangeBlend,
+      LayerMergeChange.clip => strings.tlMergeChangeClip,
+      LayerMergeChange.folder => strings.tlMergeChangeFolder,
+      LayerMergeChange.riderOver => strings.tlMergeChangeRiderOver,
+      LayerMergeChange.riderUnder => strings.tlMergeChangeRiderUnder,
+      LayerMergeChange.wall => strings.tlMergeChangeWall,
+    },
+    pictures: plan.pictures,
+    land: () => session.layerMerging.land(plan),
+  );
+}
+
+/// What a bake asks before it changes how its rows look: its window's
+/// [title] and [body] — keyed [confirmDialogKeys] of [slug] — answered
+/// with [accept].
+typedef BakeQuestion = ({
+  String slug,
+  String title,
+  String body,
+  String accept,
+});
+
+/// A bake — a MERGE's (I-78), an fx RASTERIZE's (I-120): asked first
+/// where it changes how the rows look ([question], a line for each of
+/// [changes] in their order — none, and it goes ahead unasked), each of
+/// [pictures] drawn as the rows show it behind the one wait window heavy
+/// work shows ([runWithAppProgress]) — [title] under [icon], keyed
+/// [windowKey] — and [land]ed as one undo step.
+Future<void> bakeAfterAsking<C extends Enum>(
+  BuildContext context,
+  EditorSessionManager session, {
+  required String title,
+  required IconData icon,
+  required String windowKey,
+  required BakeQuestion question,
+  required Set<C> changes,
+  required String Function(C change) lineOf,
+  required List<LayerMergePicture> pictures,
+  required void Function() land,
+}) async {
+  if (changes.isNotEmpty &&
+      await _accepts(context, question, icon, [
+            for (final change in changes.sortedBy<num>((c) => c.index))
+              lineOf(change),
+          ]) !=
+          true) {
     return;
   }
   if (!context.mounted) {
@@ -45,47 +104,42 @@ Future<void> mergeLayerRows(
   final strings = AppText.strings;
   await runWithAppProgress<void>(
     context: context,
-    title: plan.result.name,
-    titleIcon: Icons.merge,
+    title: title,
+    titleIcon: icon,
     runningLabel: strings.bakeProgressRunning,
     doneLabel: strings.bakeProgressDone,
-    windowKey: const ValueKey<String>('layer-merge-progress'),
+    windowKey: ValueKey<String>(windowKey),
     task: (report) async {
-      await layBakedPictures(session, plan.pictures, report);
-      session.layerMerging.land(plan);
+      await layBakedPictures(session, pictures, report);
+      land();
     },
   );
 }
 
-/// Whether the merge goes ahead over the [changes] it makes to how the
-/// rows look — null for a window walked away from.
-Future<bool?> _accepts(BuildContext context, Set<LayerMergeChange> changes) {
-  final strings = AppText.strings;
-  return askConfirm(
-    context,
-    ConfirmQuestion(
-      keys: confirmDialogKeys('layer-merge-changes'),
-      title: strings.tlMergeChangesTitle,
-      message: strings.tlMergeChangesBody,
-      titleIcon: Icons.merge,
-      details: [
-        NoticeDetails(heading: strings.tlMergeChanges, open: true, [
-          for (final change in LayerMergeChange.values)
-            if (changes.contains(change))
-              switch (change) {
-                LayerMergeChange.blend => strings.tlMergeChangeBlend,
-                LayerMergeChange.clip => strings.tlMergeChangeClip,
-                LayerMergeChange.folder => strings.tlMergeChangeFolder,
-                LayerMergeChange.riderOver => strings.tlMergeChangeRiderOver,
-                LayerMergeChange.riderUnder => strings.tlMergeChangeRiderUnder,
-                LayerMergeChange.wall => strings.tlMergeChangeWall,
-              },
-        ]),
-      ],
-    ),
-    accept: ConfirmChoice(editorActionLabel(EditorActionIds.editMerge)),
-  );
-}
+/// Whether the bake goes ahead over the [lines] it changes how the rows
+/// look by — null for a window walked away from.
+Future<bool?> _accepts(
+  BuildContext context,
+  BakeQuestion question,
+  IconData icon,
+  List<String> lines,
+) => askConfirm(
+  context,
+  ConfirmQuestion(
+    keys: confirmDialogKeys(question.slug),
+    title: question.title,
+    message: question.body,
+    titleIcon: icon,
+    details: [
+      NoticeDetails(
+        heading: AppText.strings.tlMergeChanges,
+        open: true,
+        lines,
+      ),
+    ],
+  ),
+  accept: ConfirmChoice(question.accept),
+);
 
 /// MERGE as the shared pill's button and its key press it: whatever
 /// [subject] names — the panel's ladder ([ToolbarPanelContext.mergeSubject])
@@ -136,12 +190,10 @@ Future<void> layBakedPictures(
   List<LayerMergePicture> pictures,
   void Function(double) report,
 ) async {
-  final byCut = <CutId, List<LayerMergePicture>>{};
-  for (final picture in pictures) {
-    (byCut[picture.into.id] ??= []).add(picture);
-  }
   var laid = 0;
-  for (final ofCut in byCut.values) {
+  for (final ofCut in pictures
+      .groupListsBy((picture) => picture.into.id)
+      .values) {
     final laying = _Laying(session, ofCut.first.into);
     try {
       for (final picture in ofCut) {

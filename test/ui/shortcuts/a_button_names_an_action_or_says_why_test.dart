@@ -96,6 +96,11 @@ const ledger = <String, Why>{
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-reset-\${layer.id}-\${lane.laneId}'":
       Why.aRow,
+  // A header's RASTERIZE (I-120 ②): it bakes the fx of the group it stands
+  // in — the transform's, in the Transform's — into its row's pictures.
+  'timeline/timeline_lane_rows.dart | '
+          "'\$_keyPrefix-lane-group-rasterize-\${layer.id}-\${lane.laneId}'":
+      Why.aRow,
   'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-onion-\${layer.id}'":
       Why.aRow,

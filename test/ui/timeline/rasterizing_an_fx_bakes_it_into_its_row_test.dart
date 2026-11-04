@@ -39,6 +39,7 @@ import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/rasterize_fx_group.dart';
 
 import '../../helpers/cel_text_fixture.dart' show pixelOf;
@@ -366,19 +367,157 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a hold repeated past its run is made of blocks of its own '
-      'where each repeat shows another picture', (tester) async {
+  testWidgets('🎯what stays on the row — its opacity, a transform that '
+      'moves, an fx after the one baked — shows over the baked pictures as '
+      'it showed over the cel', (tester) async {
+    // Brighter, not darker: a colour fx after one that pushes past white
+    // would pull back what the baked picture clipped — I-120-Q13 asks
+    // what to do there.
+    final brighter = LayerEffect(
+      id: const EffectId('e-after'),
+      kind: EffectKind.brightnessContrast,
+      parameters: {'brightness': EffectParameter(value: 40)},
+    );
+    final moving = TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>.empty()
+          .withKey(0, CanvasPoint(x: 32, y: 24))
+          .withKey(2, CanvasPoint(x: 48, y: 24)),
+    );
     final s = sessionOf([
       rowA(
-        timeline: {
-          0: const TimelineExposure.drawing(
-            FrameId('a-1'),
-            length: 1,
-            endEdge: TimelineRunEdgeMark(mode: TimelineRunEdgeMode.repeat),
-          ),
-        },
+        effects: [brightness(), brighter],
+        transformTrack: moving,
+      ).copyWith(opacity: 0.5),
+    ]);
+    addTearDown(s.dispose);
+    Future<List<List<int>>> seenNow() async => [
+      for (var frame = 0; frame < 3; frame += 1)
+        for (final x in [44, 52]) await shownAt(tester, s, frame, x, 5),
+    ];
+    final seen = await seenNow();
+    expect(
+      seen.where((rgba) => rgba[3] > 0 && rgba[3] < 255),
+      isNotEmpty,
+      reason: '⛔전제: half seen through',
+    );
+    expect(seen.toSet().length, greaterThan(3), reason: '⛔전제: it moves');
+
+    await rasterize(tester, s);
+
+    final row = a(s);
+    expect(
+      (row.opacity, row.transformTrack, row.effects.last),
+      (0.5, moving, brighter),
+    );
+    expect(await seenNow(), seen);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  final repeatedHold = {
+    0: const TimelineExposure.drawing(
+      FrameId('a-1'),
+      length: 1,
+      endEdge: TimelineRunEdgeMark(mode: TimelineRunEdgeMode.repeat),
+    ),
+  };
+
+  testWidgets('a still fx over a repeated hold is one picture, and the '
+      'repeat stays a repeat', (tester) async {
+    final s = sessionOf([
+      rowA(effects: [brightness(keyed: false)], timeline: repeatedHold),
+    ]);
+    addTearDown(s.dispose);
+    Map<int, (int?, bool)> runs() => a(s).timeline.map(
+      (start, block) => MapEntry(start, (block.length, block.ghost)),
+    );
+    final before = runs();
+    expect(before.values.where((run) => run.$2), isNotEmpty);
+    final seen = await shownAt(tester, s, 2, 36, 5);
+
+    await rasterize(tester, s);
+
+    expect(a(s).frames, hasLength(1));
+    expect(runs(), before);
+    expect(await shownAt(tester, s, 2, 36, 5), seen);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🚨Q2 — a bake that changes how the row looks asks first: no '
+      'leaves the row as it was, yes bakes it', (tester) async {
+    final s = sessionOf([
+      rowA(
+        effects: [
+          LayerEffect(id: const EffectId('e-key'), kind: EffectKind.colorKey),
+          brightness(),
+        ],
       ),
     ]);
+    addTearDown(s.dispose);
+    final before = a(s);
+    final context = await hostedContext(tester);
+    Future<void> press() async {
+      unawaited(
+        rasterizeFxGroup(context, s, const LayerId('a'), bright, 'fx'),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await press();
+    expect(
+      find.byKey(const ValueKey<String>('fx-rasterize-changes-dialog')),
+      findsOneWidget,
+    );
+    expect(find.text(AppText.strings.tlFxBakeChangeOrder), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('fx-rasterize-changes-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(a(s), before);
+
+    await press();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('fx-rasterize-changes-confirm-button')),
+    );
+    await settleBehindTheWaitWindow(
+      tester,
+      () =>
+          a(s) != before &&
+          find
+              .byKey(const ValueKey<String>('fx-rasterize-progress'))
+              .evaluate()
+              .isEmpty,
+    );
+    expect(
+      a(s).effects.last,
+      LayerEffect(id: bright, kind: EffectKind.brightnessContrast),
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a hidden row is baked as it would show, its eye kept shut', (
+    tester,
+  ) async {
+    final shown = sessionOf([rowA(effects: [brightness(keyed: false)])]);
+    final hidden = sessionOf([
+      rowA(effects: [brightness(keyed: false)]).copyWith(isVisible: false),
+    ]);
+    addTearDown(shown.dispose);
+    addTearDown(hidden.dispose);
+
+    await rasterize(tester, shown);
+    await rasterize(tester, hidden);
+
+    final ink = celAt(shown, a(shown).frames.single.id, 36, 5);
+    expect(ink, isNot(green), reason: '⛔전제: brightened');
+    expect(celAt(hidden, a(hidden).frames.single.id, 36, 5), ink);
+    expect(a(hidden).isVisible, isFalse);
+    shown.playbackRig.prerenderScheduler.cancel();
+    hidden.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a hold repeated past its run is made of blocks of its own '
+      'where each repeat shows another picture', (tester) async {
+    final s = sessionOf([rowA(timeline: repeatedHold)]);
     addTearDown(s.dispose);
     expect(
       a(s).timeline.values.where((block) => block.ghost),

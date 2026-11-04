@@ -4,12 +4,10 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
 import '../../services/editing/fx_bake_plan.dart';
-import '../dialogs/app_confirm_dialog.dart';
-import '../dialogs/app_progress_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
-import 'merge_layer_rows.dart' show layBakedPictures;
+import 'merge_layer_rows.dart' show bakeAfterAsking;
 import 'property_lane_model.dart' show PropertyLaneRow;
 import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
@@ -54,9 +52,8 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
 /// RASTERIZE (I-120): [rowId]'s fx [effectId] — the transform, where null —
 /// baked into its pictures as they show ([planFxBake]), asked first where
-/// the bake changes how the row looks (Q2), behind the one wait window
-/// heavy work shows ([runWithAppProgress]) with the hatch the reference
-/// rasterize's wears (Q10), and landed as one undo step.
+/// the bake changes how the row looks (Q2), with the hatch the reference
+/// rasterize's wears (Q10) — a bake ([bakeAfterAsking]).
 Future<void> rasterizeFxGroup(
   BuildContext context,
   EditorSessionManager session,
@@ -68,50 +65,25 @@ Future<void> rasterizeFxGroup(
   if (plan == null) {
     return;
   }
-  if (plan.changes.isNotEmpty &&
-      await _accepts(context, plan.changes) != true) {
-    return;
-  }
-  if (!context.mounted) {
-    return;
-  }
   final strings = AppText.strings;
-  await runWithAppProgress<void>(
-    context: context,
-    title: strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
-    titleIcon: Icons.texture_outlined,
-    runningLabel: strings.bakeProgressRunning,
-    doneLabel: strings.bakeProgressDone,
-    windowKey: const ValueKey<String>('fx-rasterize-progress'),
-    task: (report) async {
-      await layBakedPictures(session, plan.pictures, report);
-      session.layerMerging.landFx(plan);
-    },
-  );
-}
-
-/// Whether the bake goes ahead over the [changes] it makes to how the row
-/// looks — null for a window walked away from.
-Future<bool?> _accepts(BuildContext context, Set<FxBakeChange> changes) {
-  final strings = AppText.strings;
-  return askConfirm(
+  await bakeAfterAsking(
     context,
-    ConfirmQuestion(
-      keys: confirmDialogKeys('fx-rasterize-changes'),
+    session,
+    title: strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
+    icon: Icons.texture_outlined,
+    windowKey: 'fx-rasterize-progress',
+    question: (
+      slug: 'fx-rasterize-changes',
       title: strings.tlFxBakeChangesTitle,
-      message: strings.tlFxBakeChangesBody,
-      titleIcon: Icons.texture_outlined,
-      details: [
-        NoticeDetails(heading: strings.tlMergeChanges, open: true, [
-          for (final change in FxBakeChange.values)
-            if (changes.contains(change))
-              switch (change) {
-                FxBakeChange.order => strings.tlFxBakeChangeOrder,
-                FxBakeChange.wall => strings.tlMergeChangeWall,
-              },
-        ]),
-      ],
+      body: strings.tlFxBakeChangesBody,
+      accept: strings.imBake,
     ),
-    accept: ConfirmChoice(strings.imBake),
+    changes: plan.changes,
+    lineOf: (change) => switch (change) {
+      FxBakeChange.order => strings.tlFxBakeChangeOrder,
+      FxBakeChange.wall => strings.tlMergeChangeWall,
+    },
+    pictures: plan.pictures,
+    land: () => session.layerMerging.landFx(plan),
   );
 }
