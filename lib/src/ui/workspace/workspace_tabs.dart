@@ -284,6 +284,7 @@ class _WorkspaceTabs {
     cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
     expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds,
     fillOptions: _state._views._fillOptions,
+    colorBackground: _state.widget.colorBackground,
     selectionMaskOptions: _state._views._selectionMaskOptions,
     transformOptions: _state._transformOptions,
     eyedropperSource: _state._views._eyedropperSource,

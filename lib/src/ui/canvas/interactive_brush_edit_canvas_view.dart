@@ -32,6 +32,7 @@ import '../../services/brush_in_and_out_along.dart';
 import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_fill_promotion.dart';
 import '../../services/canvas_flood_fill.dart' show FillRange, FillRangeAt;
+import '../../services/fill_gradient.dart' show FillGradientOptions;
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_second_stroke.dart';
 import '../../services/brush_stroke_dynamics.dart';
@@ -114,6 +115,10 @@ typedef ShapeArea = ({
   SelectionClip? selection,
 });
 
+/// The fill's gradient knobs and the sub colour — the rail swatch's back
+/// slot — a gradient may run to (I-160-Q3).
+typedef FillGradientInHand = ({FillGradientOptions options, int sub});
+
 /// This view's hand for a shape being dragged (I-69-Q4ⓒ) —
 /// [_BrushEditShapeShow] handed out, published as [StrokeLander] is.
 ///
@@ -186,6 +191,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.toolHolds,
     this.fillRangeAt,
     this.fillsContinuously,
+    this.fillGradient,
     this.selectionNow,
     this.overlayModel,
     this.paintsContent = true,
@@ -386,6 +392,13 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// `FloodFillOptions.continuous`). Asked as the press moves, as
   /// [inputSettings] is; null = never.
   final ValueGetter<bool>? fillsContinuously;
+
+  /// The fill's gradient knobs in hand and the sub colour they may run to
+  /// (I-160 — `FloodFillOptions.gradient`): on, the lift holds the range
+  /// for the next press, whose drag lays a gradient across it. Asked as
+  /// the press lifts and as the drag moves, as [inputSettings] is; null =
+  /// never on.
+  final ValueGetter<FillGradientInHand>? fillGradient;
 
   /// R26 #18: what a stroke or a fill starting NOW is confined to, in this
   /// view's cel; null confines it to nothing. Asked at the start of each,
@@ -620,9 +633,14 @@ class _InteractiveBrushEditCanvasViewState
       }
       _toolHolds.handOver = _door;
     }
+    // The fill tool put down: what the fill held goes with it.
+    if (widget.fillRangeAt == null && oldWidget.fillRangeAt != null) {
+      _fill.letGo();
+    }
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       _endStrokeAfterTheFrame();
+      _fill.letGo();
       // A shape laid on the cel that went is no shape of this one's.
       _shapeShow.drop();
       _overlay.resetOverlay();
@@ -925,6 +943,12 @@ class _InteractiveBrushEditCanvasViewState
   /// One value — see the second-finger branch, which is where a press stops
   /// being this fill's gesture.
   ({int pointer, FillRange? range})? _fillPress;
+
+  /// A range picked with the gradient on (I-160), held for the press that
+  /// lays its gradient — and that press's drag, from where it landed to
+  /// where it is, once it is down.
+  ({FillRange range, ({CanvasPoint from, CanvasPoint to})? drag})?
+  _heldForGradient;
 
   // ── the fill: its own object, in its own file ───────────────────────
   //

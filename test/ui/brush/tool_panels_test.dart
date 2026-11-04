@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/fill_gradient.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -917,6 +918,58 @@ void main() {
       expect(changes, hasLength(2));
       expect(changes.last.continuous, isTrue);
       expect(changes.last.antiAlias, isTrue, reason: 'other knobs untouched');
+    });
+
+    testWidgets('I-160: the gradient\'s knobs stand under it while it is on, '
+        'and each reports its own edit', (tester) async {
+      final changes = <FloodFillOptions>[];
+      Future<void> pumpWith(FillGradientOptions gradient) =>
+          tester.pumpWidget(
+            app(
+              ToolSettingsPanel(
+                state: BrushToolState.defaults.copyWith(
+                  tool: CanvasTool.fill,
+                ),
+                onChanged: (_) {},
+                fillOptions: FloodFillOptions(gradient: gradient),
+                onFillOptionsChanged: changes.add,
+              ),
+            ),
+          );
+      Future<void> press(String key, {bool ring = false}) async {
+        final target = find.byKey(ValueKey<String>(key));
+        await tester.ensureVisible(target);
+        await tester.pump();
+        await (ring ? tester.pressRingIn(target) : tester.tap(target));
+        await tester.pump();
+      }
+
+      await pumpWith(const FillGradientOptions());
+      for (final key in [
+        'fill-gradient-end-segments',
+        'fill-gradient-reverse-switch',
+        'fill-gradient-shape-segments',
+      ]) {
+        expect(find.byKey(ValueKey<String>(key)), findsNothing, reason: key);
+      }
+      await press('fill-gradient-switch', ring: true);
+      expect(changes.last.gradient, const FillGradientOptions(enabled: true));
+
+      const on = FillGradientOptions(enabled: true);
+      await pumpWith(on);
+      await press('fill-gradient-end-transparent');
+      expect(
+        changes.last.gradient,
+        on.copyWith(end: FillGradientEnd.transparent),
+      );
+      await press('fill-gradient-reverse-switch', ring: true);
+      expect(changes.last.gradient, on.copyWith(reversed: true));
+      await press('fill-gradient-shape-radial');
+      expect(
+        changes.last.gradient,
+        on.copyWith(shape: FillGradientShape.radial),
+      );
+      expect(changes.last.tolerance, 32, reason: 'other knobs untouched');
     });
 
     testWidgets('painting tools keep the brush settings panel', (tester) async {

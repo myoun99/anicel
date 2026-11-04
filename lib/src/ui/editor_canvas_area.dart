@@ -233,6 +233,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.toolHold,
     this.expandedLaneLayerIds,
     this.fillOptions,
+    this.colorBackground,
     this.selectionMaskOptions,
     this.transformOptions,
     this.eyedropperSource,
@@ -301,6 +302,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The fill tool's flood options (Tool Settings knobs, R11-④); null
   /// keeps the defaults.
   final ValueListenable<FloodFillOptions>? fillOptions;
+
+  /// The sub colour — the rail swatch's back slot — a fill's gradient may
+  /// run to (I-160-Q3). Null holds no gradient.
+  final ValueListenable<int>? colorBackground;
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob); null
   /// keeps "pick what you see".

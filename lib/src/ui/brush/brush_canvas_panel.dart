@@ -321,6 +321,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onEyedropperPick,
     this.fillRangeAt,
     this.fillsContinuously,
+    this.fillGradient,
     this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
@@ -938,6 +939,9 @@ class BrushCanvasPanel extends StatefulWidget {
   /// 「연속 채우기」 (I-160): whether a held fill takes in every region its
   /// press passes over — asked as the press moves.
   final ValueGetter<bool>? fillsContinuously;
+  /// The fill's gradient knobs and the sub colour (I-160) — asked as a
+  /// held fill lifts and as its gradient is dragged.
+  final ValueGetter<FillGradientInHand>? fillGradient;
 
   /// Builds the stamp pieces of a finished SHAPE FILL — the AREA it fills,
   /// its outline and every copy a guide made of it together. Supplied by
@@ -2232,6 +2236,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           ? widget.fillRangeAt
           : null,
       fillsContinuously: widget.fillsContinuously,
+      fillGradient: widget.fillGradient,
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it — in the row's own artwork, where this
       // view draws (a-marquee-on-a-posed-row).

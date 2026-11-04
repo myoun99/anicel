@@ -10,6 +10,7 @@ import '../../models/shape_tool_options.dart';
 import '../../models/transform_values.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_flood_fill.dart';
+import '../../services/fill_gradient.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
@@ -1653,7 +1654,69 @@ class _FillSettings extends StatelessWidget {
           value: options.continuous,
           onChanged: (value) => onChanged(options.copyWith(continuous: value)),
         ),
+        // I-160: 「그 항목 on하면 밑에 그라데이션항목 보이는느낌」 — what the
+        // gradient is made of stands under it while it is on (the tool
+        // settings show what the mode in hand needs, F-478-Q1).
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-gradient-switch'),
+          label: AppText.strings.brFillGradient,
+          value: gradient.enabled,
+          onChanged: (value) => _gradient(gradient.copyWith(enabled: value)),
+        ),
+        if (gradient.enabled) ...[
+          ToolSettingRow(
+            label: AppText.strings.brGradientColors,
+            child: PillStrip.even(
+              key: const ValueKey<String>('fill-gradient-end-segments'),
+              items: [
+                for (final end in FillGradientEnd.values)
+                  PillItem(
+                    keyValue: 'fill-gradient-end-${end.name}',
+                    label: switch (end) {
+                      FillGradientEnd.sub => AppText.strings.brGradientToSub,
+                      FillGradientEnd.transparent =>
+                        AppText.strings.brGradientToClear,
+                    },
+                    selected: end == gradient.end,
+                    onTap: () => _gradient(gradient.copyWith(end: end)),
+                  ),
+              ],
+            ),
+          ),
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('fill-gradient-reverse-switch'),
+            label: AppText.strings.brGradientReverse,
+            value: gradient.reversed,
+            onChanged: (value) =>
+                _gradient(gradient.copyWith(reversed: value)),
+          ),
+          ToolSettingRow(
+            label: AppText.strings.brGradientShape,
+            child: PillStrip.even(
+              key: const ValueKey<String>('fill-gradient-shape-segments'),
+              items: [
+                for (final shape in FillGradientShape.values)
+                  PillItem(
+                    keyValue: 'fill-gradient-shape-${shape.name}',
+                    label: switch (shape) {
+                      FillGradientShape.linear =>
+                        AppText.strings.brGradientLinear,
+                      FillGradientShape.radial =>
+                        AppText.strings.brGradientRadial,
+                    },
+                    selected: shape == gradient.shape,
+                    onTap: () => _gradient(gradient.copyWith(shape: shape)),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
+
+  FillGradientOptions get gradient => options.gradient;
+
+  void _gradient(FillGradientOptions next) =>
+      onChanged(options.copyWith(gradient: next));
 }

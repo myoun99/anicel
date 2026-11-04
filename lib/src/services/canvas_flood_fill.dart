@@ -47,7 +47,13 @@ class FloodFillOptions {
     this.extendBeyondCanvas = false,
     this.source = CanvasReadSource.display,
     this.continuous = false,
+    this.gradient = const FillGradientOptions(),
   });
+
+  /// The fill's gradient (I-160, 유저 2026-11-04: 「채우기도구안에서
+  /// 도구 설정안에서 구현」) — on, a press picks the range and the next lays
+  /// a gradient across it ([FillGradientOptions]).
+  final FillGradientOptions gradient;
 
   /// 「연속 채우기」 (I-160, 유저 2026-11-04): a press held across the canvas
   /// takes in every region it passes over — one range, marked as one and
@@ -98,6 +104,7 @@ class FloodFillOptions {
     bool? extendBeyondCanvas,
     CanvasReadSource? source,
     bool? continuous,
+    FillGradientOptions? gradient,
   }) {
     return FloodFillOptions(
       tolerance: tolerance ?? this.tolerance,
@@ -107,6 +114,7 @@ class FloodFillOptions {
       extendBeyondCanvas: extendBeyondCanvas ?? this.extendBeyondCanvas,
       source: source ?? this.source,
       continuous: continuous ?? this.continuous,
+      gradient: gradient ?? this.gradient,
     );
   }
 
@@ -119,7 +127,8 @@ class FloodFillOptions {
       other.gapClosePx == gapClosePx &&
       other.extendBeyondCanvas == extendBeyondCanvas &&
       other.source == source &&
-      other.continuous == continuous;
+      other.continuous == continuous &&
+      other.gradient == gradient;
 
   @override
   int get hashCode => Object.hash(
@@ -130,6 +139,7 @@ class FloodFillOptions {
     extendBeyondCanvas,
     source,
     continuous,
+    gradient,
   );
 }
 

@@ -576,6 +576,15 @@ class _InteractiveCanvasBuild {
       ),
       fillsContinuously: () =>
           _state.widget.fillOptions?.value.continuous ?? false,
+      fillGradient: switch (_state.widget.colorBackground) {
+        final sub? => () => (
+          options:
+              (_state.widget.fillOptions?.value ?? const FloodFillOptions())
+                  .gradient,
+          sub: sub.value,
+        ),
+        null => null,
+      },
       // The SHAPE fill's pieces. No cut, no frame, no surfaces: a
       // drawn outline is filled whatever is under it, so it never
       // reads the picture — which is why this line is short and

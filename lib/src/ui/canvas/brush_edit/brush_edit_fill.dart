@@ -21,7 +21,9 @@ class _BrushEditFill {
   }
 
   /// [pointer] takes the fill at [at] (I-160-Q2 a): its range flooded and
-  /// marked, laid at the lift ([lift]).
+  /// marked, laid at the lift ([lift]) — or, a range held for its gradient,
+  /// the gradient dragged from here (I-160-Q5 「툭이던 뭐던 묻지않음 … 그냥
+  /// 클릭시작하면 조작임」: whatever this press turns out to be).
   void press(int pointer, CanvasPoint at) {
     // 🚨The busy check lives HERE rather than at each caller. It used to sit
     // only in the pointer-down path, which was true while every fill ran
@@ -40,19 +42,41 @@ class _BrushEditFill {
         _state._fillPress != null) {
       return;
     }
+    final held = _state._heldForGradient;
+    if (held != null) {
+      if (_gradientOn) {
+        _state._fillPress = (pointer: pointer, range: held.range);
+        _drag(held.range, from: at, to: at);
+        return;
+      }
+      // The gradient was switched off since the range was picked: this
+      // press picks anew.
+      letGo();
+    }
     _state._fillPress = (pointer: pointer, range: null);
     reach(at);
   }
+
+  /// Whether the fill's gradient is on (`FloodFillOptions.gradient`).
+  bool get _gradientOn =>
+      _state.widget.fillGradient?.call().options.enabled ?? false;
 
   /// The held fill's press is at [at]: its range is the flood from there —
   /// flooded again only past what the range reached, so a press resting in
   /// one region floods it once (TVPaint's 「이동할때마다 그게 바뀌고」). A
   /// continuous fill's range takes the flood in beside what it holds
-  /// ([FillRange.joining]) instead.
+  /// ([FillRange.joining]) instead. A press dragging a held range's
+  /// gradient takes the gradient's end there.
   void reach(CanvasPoint at) {
     final held = _state._fillPress;
     final fillRangeAt = _state.widget.fillRangeAt;
     if (held == null || fillRangeAt == null) {
+      return;
+    }
+    final gradient = _state._heldForGradient;
+    final drag = gradient?.drag;
+    if (gradient != null && drag != null) {
+      _drag(gradient.range, from: drag.from, to: at);
       return;
     }
     if (held.range?.covers(at) ?? false) {
@@ -86,9 +110,34 @@ class _BrushEditFill {
   /// The held fill lands what its range showed — the flood the press made,
   /// in the colour in hand, through the stroke a fill is ([_handleFillDabs]),
   /// whose result takes the mark's place in one notification.
+  ///
+  /// With the gradient on, the range is not laid but held, marked, for the
+  /// press that lays its gradient; and that press's lift lands the
+  /// gradient as it shows — the road a dragged shape lands by
+  /// ([ShapeShow.land]).
   void lift() {
     final held = _state._fillPress;
     _state._fillPress = null;
+    final gradient = _state._heldForGradient;
+    final drag = gradient?.drag;
+    if (gradient != null && drag != null) {
+      _state._heldForGradient = null;
+      final area = _gradientArea(gradient.range, drag.from, drag.to);
+      if (area == null) {
+        _state._shapeShow.drop();
+        _mark(null);
+        return;
+      }
+      _state._shapeShow.land(area);
+      return;
+    }
+    final range = held?.range;
+    // ⚠️An open range is laid as ever, which lays nothing and says why: it
+    // would hold a gradient over nothing.
+    if (range != null && !range.open && _gradientOn) {
+      _state._heldForGradient = (range: range, drag: null);
+      return;
+    }
     final dabs =
         held?.range?.dabsIn(_state.widget.inputSettings().color) ??
         const <BrushDab>[];
@@ -101,9 +150,73 @@ class _BrushEditFill {
 
   /// The press is not this fill's any more — a second finger joined, or the
   /// gesture was cancelled. ⛔Nothing to undo, because nothing was drawn.
+  ///
+  /// A gradient's drag given up gives up the drag, not the range: a pinch
+  /// between picking a range and laying its gradient is the canvas moved
+  /// to lay it, and the range waits for the next press, marked again.
   void forgetPress() {
     _state._fillPress = null;
+    final held = _state._heldForGradient;
+    if (held != null && held.drag != null) {
+      _state._heldForGradient = (range: held.range, drag: null);
+      _state._shapeShow.drop();
+      _mark(held.range);
+      return;
+    }
     _mark(null);
+  }
+
+  /// The fill lets go of all it holds — its press, and a range held for
+  /// its gradient — laying nothing: the tool was put down, or the cel it
+  /// held them on went, as a stroke in flight is let go then
+  /// ([_InteractiveBrushEditCanvasViewState._endStrokeAfterTheFrame]).
+  void letGo() {
+    final holding =
+        _state._fillPress != null || _state._heldForGradient != null;
+    _state._fillPress = null;
+    _state._heldForGradient = null;
+    if (holding) {
+      _state._shapeShow.drop();
+      _mark(null);
+    }
+  }
+
+  /// [range]'s gradient dragged [from] [to]: held so, and shown as it will
+  /// land — laid a share of each frame by the dragged shape's own show,
+  /// put up when it is whole ([ShapeShow.show]).
+  void _drag(
+    FillRange range, {
+    required CanvasPoint from,
+    required CanvasPoint to,
+  }) {
+    _state._heldForGradient = (range: range, drag: (from: from, to: to));
+    final area = _gradientArea(range, from, to);
+    if (area != null) {
+      _state._shapeShow.show(area);
+    }
+  }
+
+  /// [range] under the gradient from [from] to [to] in the colours in hand
+  /// — as an area a dragged shape is ([ShapeArea]): the same range under
+  /// the same gradient is the same shape, asked for again for nothing.
+  ShapeArea? _gradientArea(FillRange range, CanvasPoint from, CanvasPoint to) {
+    final inHand = _state.widget.fillGradient?.call();
+    if (inHand == null) {
+      return null;
+    }
+    final input = _state.widget.inputSettings();
+    final gradient = inHand.options.between(
+      from,
+      to,
+      main: input.color,
+      sub: inHand.sub,
+    );
+    return (
+      shape: (range, gradient),
+      pieces: () => range.piecesUnder(gradient),
+      blend: input.blendMode,
+      selection: _state.widget.selectionNow?.call(),
+    );
   }
 
   /// [range] marked over the row it lands on ([FillRangeMark]) — cut by the

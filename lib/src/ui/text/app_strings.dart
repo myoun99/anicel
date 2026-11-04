@@ -2020,6 +2020,14 @@ enum AppStrings {
   String get brAntiAlias => _s('brAntiAlias');
   String get brFillBeyondCanvas => _s('brFillBeyondCanvas');
   String get brFillContinuous => _s('brFillContinuous');
+  String get brFillGradient => _s('brFillGradient');
+  String get brGradientColors => _s('brGradientColors');
+  String get brGradientToSub => _s('brGradientToSub');
+  String get brGradientToClear => _s('brGradientToClear');
+  String get brGradientReverse => _s('brGradientReverse');
+  String get brGradientShape => _s('brGradientShape');
+  String get brGradientLinear => _s('brGradientLinear');
+  String get brGradientRadial => _s('brGradientRadial');
   String get brOpenRegionsRefuse => _s('brOpenRegionsRefuse');
   String get brName => _s('brName');
   String get brDisplay => _s('brDisplay');
@@ -3383,6 +3391,14 @@ enum AppStrings {
     'brAntiAlias': 'Anti-alias',
     'brFillBeyondCanvas': 'Fill Beyond Canvas',
     'brFillContinuous': 'Continuous Fill',
+    'brFillGradient': 'Gradient',
+    'brGradientColors': 'Colors',
+    'brGradientToSub': 'Main → Sub',
+    'brGradientToClear': 'Main → Transparent',
+    'brGradientReverse': 'Reverse',
+    'brGradientShape': 'Shape',
+    'brGradientLinear': 'Linear',
+    'brGradientRadial': 'Radial',
     'brOpenRegionsRefuse': 'Open regions refuse to fill',
     'brName': 'Name',
     'brDisplay': 'Display',
@@ -5138,6 +5154,14 @@ enum AppStrings {
     'brAntiAlias': 'アンチエイリアス',
     'brFillBeyondCanvas': 'カンバス外も塗る',
     'brFillContinuous': '連続塗り',
+    'brFillGradient': 'グラデーション',
+    'brGradientColors': '色',
+    'brGradientToSub': 'メイン → サブ',
+    'brGradientToClear': 'メイン → 透明',
+    'brGradientReverse': '反転',
+    'brGradientShape': '形状',
+    'brGradientLinear': '直線',
+    'brGradientRadial': '円形',
     'brOpenRegionsRefuse': '開いた領域は塗られません',
     'brName': '名前',
     'brDisplay': '表示',
@@ -7008,6 +7032,14 @@ enum AppStrings {
     'brAntiAlias': '안티앨리어스',
     'brFillBeyondCanvas': '캔버스 밖도 채우기',
     'brFillContinuous': '연속 채우기',
+    'brFillGradient': '그라데이션',
+    'brGradientColors': '색',
+    'brGradientToSub': '메인 → 서브',
+    'brGradientToClear': '메인 → 투명',
+    'brGradientReverse': '반전',
+    'brGradientShape': '모양',
+    'brGradientLinear': '직선',
+    'brGradientRadial': '원형',
     'brOpenRegionsRefuse': '열린 영역은 채워지지 않습니다',
     'brName': '이름',
     'brDisplay': '표시',
@@ -9032,6 +9064,14 @@ enum AppStrings {
     'trFinish': 'Finition',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
     'brFillContinuous': 'Remplissage continu',
+    'brFillGradient': 'Dégradé',
+    'brGradientColors': 'Couleurs',
+    'brGradientToSub': 'Principale → secondaire',
+    'brGradientToClear': 'Principale → transparent',
+    'brGradientReverse': 'Inverser',
+    'brGradientShape': 'Forme',
+    'brGradientLinear': 'Linéaire',
+    'brGradientRadial': 'Radial',
     'brOpenRegionsRefuse': 'Les zones ouvertes ne se remplissent pas',
     'brName': 'Nom',
     'brDisplay': 'Affichage',
@@ -10867,6 +10907,14 @@ enum AppStrings {
     'brAntiAlias': '抗锯齿',
     'brFillBeyondCanvas': '填充到画布之外',
     'brFillContinuous': '连续填充',
+    'brFillGradient': '渐变',
+    'brGradientColors': '颜色',
+    'brGradientToSub': '主色 → 副色',
+    'brGradientToClear': '主色 → 透明',
+    'brGradientReverse': '反转',
+    'brGradientShape': '形状',
+    'brGradientLinear': '线性',
+    'brGradientRadial': '径向',
     'brOpenRegionsRefuse': '开放区域不会被填充',
     'brName': '名称',
     'brDisplay': '显示',

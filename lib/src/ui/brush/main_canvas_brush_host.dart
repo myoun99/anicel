@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
+import '../canvas/interactive_brush_edit_canvas_view.dart'
+    show FillGradientInHand, StrokeLander;
 import '../canvas/view_hand.dart';
 import '../canvas/stroke_in_flight.dart';
 
@@ -102,6 +103,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onEyedropperPick,
     this.fillRangeAt,
     this.fillsContinuously,
+    this.fillGradient,
     this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
@@ -292,6 +294,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// 「연속 채우기」 (I-160): whether a held fill takes in every region its
   /// press passes over — asked as the press moves.
   final ValueGetter<bool>? fillsContinuously;
+  /// The fill's gradient knobs and the sub colour (I-160) — asked as a
+  /// held fill lifts and as its gradient is dragged.
+  final ValueGetter<FillGradientInHand>? fillGradient;
 
   /// Forwarded to [BrushCanvasPanel]: builds the stamp pieces of a drawn
   /// shape fill's area.
@@ -597,6 +602,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onEyedropperPick: widget.onEyedropperPick,
       fillRangeAt: widget.fillRangeAt,
       fillsContinuously: widget.fillsContinuously,
+      fillGradient: widget.fillGradient,
       shapeFillDabsFor: widget.shapeFillDabsFor,
       selectionMaskOptions: widget.selectionMaskOptions,
       transformOptions: widget.transformOptions,

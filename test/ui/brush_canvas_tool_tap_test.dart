@@ -19,6 +19,7 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
+import 'package:anicel/src/services/fill_gradient.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -30,6 +31,10 @@ import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
+
+/// The sub colour a gradient runs to (I-160-Q3), and as a pixel reads it.
+const _sub = 0xFF00FF00;
+const _subRgba = 0x00FF00FF;
 
 /// P5/P6 tool routing: the non-painting tools mount ONE tap layer above
 /// the canvas (no stroke may start), the eyedropper reports through the
@@ -249,6 +254,8 @@ void main() {
       WidgetTester tester, {
       CanvasSelectionRegion? selection,
       bool continuous = false,
+      FillGradientOptions? gradient,
+      ValueNotifier<BrushToolState>? brush,
     }) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
       final coordinator = BrushCanvasFixture.createCoordinator(
@@ -263,9 +270,11 @@ void main() {
             coordinator: coordinator,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: ValueNotifier(
-              BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
-            ),
+            brushToolState:
+                brush ??
+                ValueNotifier(
+                  BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
+                ),
             activeStrokeOverlayModel: overlay,
             // One canvas pixel to a logical one, from the view's corner.
             viewport: seedFromRender(tester, CanvasViewport()),
@@ -283,6 +292,9 @@ void main() {
               );
             },
             fillsContinuously: () => continuous,
+            fillGradient: gradient == null
+                ? null
+                : () => (options: gradient, sub: _sub),
           ),
         ),
       );
@@ -294,6 +306,180 @@ void main() {
 
     int inkWhere(BrushFrameEditingCoordinator coordinator, CanvasPoint at) =>
         inkAt(coordinator, at.x.floor(), at.y.floor());
+
+    group('🚨I-160 the gradient: a press picks the range, the next drags '
+        'its gradient', () {
+      const gradient = FillGradientOptions(enabled: true);
+
+      /// A red fill's range picked at the centre and held: where it was
+      /// flooded from, and the view's corner.
+      Future<({CanvasPoint at, Offset origin})> pick(
+        WidgetTester tester,
+        List<CanvasPoint> floods,
+      ) async {
+        final view = find.byKey(const ValueKey<String>('brush-canvas-view'));
+        final pen = await tester.startGesture(
+          tester.getCenter(view),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.up();
+        await tester.pumpAndSettle();
+        return (at: floods.single, origin: tester.getTopLeft(view));
+      }
+
+      /// A press dragged along the range's middle row, from the centre of
+      /// its first column to the centre of its last.
+      Future<TestGesture> dragAcross(
+        WidgetTester tester,
+        ({CanvasPoint at, Offset origin}) picked,
+      ) async {
+        final left = picked.at.x.floor() - 8;
+        final row = picked.at.y.floor() + 0.5;
+        final pen = await tester.startGesture(
+          picked.origin + Offset(left + 0.5, row),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveBy(const Offset(15, 0));
+        await tester.pump();
+        return pen;
+      }
+
+      testWidgets('lifted, the range is held marked and nothing lands — the '
+          'next press\'s lift lands the gradient across it, start to end', (
+        tester,
+      ) async {
+        final brush = ValueNotifier(
+          BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+            color: 0xFFFF0000,
+          ),
+        );
+        final (:coordinator, :overlay, :floods) = await pumpHeld(
+          tester,
+          gradient: gradient,
+          brush: brush,
+        );
+        final picked = await pick(tester, floods);
+        expect(overlay.fillRange, isNotNull, reason: 'held, marked');
+        expect(inkWhere(coordinator, picked.at), 0, reason: '⛔not laid');
+
+        final pen = await dragAcross(tester, picked);
+        expect(floods, hasLength(1), reason: 'the drag floods nothing');
+        await pen.up();
+        await tester.pumpAndSettle();
+        final left = picked.at.x.floor() - 8;
+        final y = picked.at.y.floor();
+        expect(inkAt(coordinator, left, y), 0xFF0000FF, reason: 'main');
+        expect(inkAt(coordinator, left + 15, y), _subRgba, reason: 'sub');
+        final middle = inkAt(coordinator, left + 7, y);
+        expect(middle >> 24, inExclusiveRange(0, 0xFF), reason: 'between');
+        expect(overlay.fillRange, isNull, reason: 'the result took its place');
+
+        // Laid and let go: the next press picks anew.
+        final again = await tester.startGesture(
+          picked.origin + Offset(picked.at.x + 60, picked.at.y),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        expect(floods, hasLength(2));
+        await again.up();
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a drag given up gives up the drag, not the range — the '
+          'next press drags it again', (tester) async {
+        final (:coordinator, :overlay, :floods) = await pumpHeld(
+          tester,
+          gradient: gradient,
+        );
+        final picked = await pick(tester, floods);
+        final pen = await dragAcross(tester, picked);
+        await pen.cancel();
+        await tester.pumpAndSettle();
+        expect(inkWhere(coordinator, picked.at), 0, reason: 'nothing laid');
+        expect(overlay.fillRange, isNotNull, reason: 'the range, marked');
+
+        final again = await dragAcross(tester, picked);
+        expect(floods, hasLength(1), reason: 'still the range picked');
+        await again.up();
+        await tester.pumpAndSettle();
+        expect(inkWhere(coordinator, picked.at), isNonZero);
+      });
+
+      testWidgets('the fill put down lets the held range go', (tester) async {
+        final brush = ValueNotifier(
+          BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
+        );
+        final (:coordinator, :overlay, :floods) = await pumpHeld(
+          tester,
+          gradient: gradient,
+          brush: brush,
+        );
+        final picked = await pick(tester, floods);
+        brush.value = brush.value.copyWith(tool: CanvasTool.brush);
+        await tester.pumpAndSettle();
+        expect(overlay.fillRange, isNull, reason: 'the mark goes with it');
+        brush.value = brush.value.copyWith(tool: CanvasTool.fill);
+        await tester.pumpAndSettle();
+
+        final pen = await tester.startGesture(
+          picked.origin + Offset(picked.at.x, picked.at.y),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        expect(floods, hasLength(2), reason: 'a press picks anew');
+        await pen.up();
+        await tester.pumpAndSettle();
+        expect(inkWhere(coordinator, picked.at), 0, reason: 'held, not laid');
+      });
+
+      testWidgets('switched off while a range is held: the next press picks '
+          'anew and lands at its lift', (tester) async {
+        var options = gradient;
+        final frameKeys = BrushCanvasFixture.createFrameKeys();
+        final coordinator = BrushCanvasFixture.createCoordinator(
+          frameKeys: frameKeys,
+        );
+        final floods = <CanvasPoint>[];
+        await tester.pumpWidget(
+          app(
+            BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              brushToolState: ValueNotifier(
+                BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
+              ),
+              viewport: seedFromRender(tester, CanvasViewport()),
+              fillRangeAt: (point, _) {
+                floods.add(point);
+                return rangeOf(
+                  left: point.x.floor() - 8,
+                  top: point.y.floor() - 8,
+                  width: 16,
+                  height: 16,
+                );
+              },
+              fillGradient: () => (options: options, sub: _sub),
+            ),
+          ),
+        );
+        await tester.pump();
+        final picked = await pick(tester, floods);
+        options = const FillGradientOptions();
+        final pen = await tester.startGesture(
+          picked.origin + Offset(picked.at.x, picked.at.y),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        expect(floods, hasLength(2));
+        await pen.up();
+        await tester.pumpAndSettle();
+        expect(inkWhere(coordinator, picked.at), isNonZero);
+      });
+    });
 
     testWidgets('🚨held: marked, not filled — moved within its region, '
         'flooded once — moved past it, marked anew — lifted, filled there', (
