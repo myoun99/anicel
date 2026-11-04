@@ -270,4 +270,24 @@ void main() {
       isEmpty,
     );
   });
+
+  test('the verb is ONE step on its own — whoever presses it', () {
+    final s = session();
+    final ten = cutNamed(s, '10');
+    final steps = s.historyManager.undoCount;
+
+    s.cutCommandCoordinator.createLinkedCutAsItStands(
+      ten,
+      sourceCutId: ten.id,
+      landing: (trackId: v, index: 2, leadingGapFrames: 0),
+      carry: (_, _) {},
+    );
+
+    final project = s.repository.requireProject();
+    final made = project.tracks.single.cuts.last;
+    expect(linkedCutSiblings(project, cutId: made.id), [ten.id]);
+    expect(s.historyManager.undoCount, steps + 1);
+    s.undo();
+    expect(s.repository.requireProject().tracks.single.cuts, hasLength(2));
+  });
 }
