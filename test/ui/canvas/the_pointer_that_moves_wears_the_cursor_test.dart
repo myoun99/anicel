@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -265,5 +266,42 @@ void main() {
     await pen.moveBy(const Offset(4, 0));
     await pumpFrames(tester);
     expect(asked.last, 'basic', reason: 'the pen moved last');
+  });
+
+  // ⛔A finger wears no cursor of its own, and a hand steadying the tablet
+  // under a hovering pen is the ordinary case: its landing leaves the pen
+  // where it is.
+  testWidgets('a finger landing does not take the pen\'s place', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: project())),
+    );
+    await tester.pumpAndSettle();
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: visibleCanvasPoint(tester));
+    addTearDown(pen.removePointer);
+    await pumpFrames(tester);
+    final tracker = RendererBinding.instance.mouseTracker;
+    // flutter_test numbers every stylus and finger device 0.
+    const penDevice = 0;
+    expect(
+      tracker.debugDeviceActiveCursor(penDevice),
+      isNotNull,
+      reason: '⛔CONTROL: the pen hovers',
+    );
+
+    final finger = TestGesture(
+      dispatcher: tester.sendEventToBinding,
+      pointer: 9,
+      device: 5,
+    );
+    await finger.down(
+      visibleCanvasPoint(tester, offset: const Offset(200, 100)),
+    );
+    await finger.up();
+    await pumpFrames(tester);
+
+    expect(tracker.debugDeviceActiveCursor(penDevice), isNotNull);
   });
 }
