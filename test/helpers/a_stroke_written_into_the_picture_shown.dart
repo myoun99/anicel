@@ -1218,9 +1218,11 @@ void aStrokeIsWrittenIntoThePictureShown({
     expect(store.landingOf(keptByTheCanvas(tester, picture)), isNull);
 
     await tester.pump(aMillisecond);
-    final onItsWay = store.landingOf(keptByTheCanvas(tester, picture));
-    expect(onItsWay, isNotNull, reason: 'asked in that paint, at no timer');
-    await inThePicture(tester, onItsWay);
+    expect(gpu.rendersAsked, 1, reason: 'asked in that paint, at no timer');
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, picture)),
+    );
 
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
