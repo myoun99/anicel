@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
 import '../text/app_strings.dart';
 import '../widgets/app_tooltip.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/panel_flyout.dart';
 import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
@@ -156,7 +157,7 @@ class _KeepButton extends StatelessWidget {
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           visualDensity: VisualDensity.compact,
         ),
-        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        child: EllipsisText(label, maxLines: 1),
       ),
     ),
   );

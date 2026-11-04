@@ -1662,7 +1662,17 @@ void main() {
   /// (`cf70f6f8d`) names this one and no other class. ⛔Not split to fit:
   /// the basis is the row's as its switch is, and the blocks it steps on
   /// are its timeline.
-  const longClasses = 84;
+  ///
+  /// ⚠️84 → 85 on 2026-11-04, ONE name: `EditorShortcutBindings` crossed
+  /// (596 → 651) when the settings window came to name who clashes and to
+  /// leave a key on one of them (I-158, 🗣️「펜(Y)이런식으로 이 텍스트를
+  /// 버튼으로 만들어서, 이걸로 할당하는 기능」): the clashes read from the
+  /// one key-to-actions inversion both conflict queries read
+  /// (`_holdersByKey`), and the press writes through the recording the
+  /// other setters do (`_record`). 🔬`clean_code_diff` against master names
+  /// this one and no other class. ⛔Not split to fit: a key is put and taken
+  /// off where its recording is kept.
+  const longClasses = 85;
 
   late CleanCodeScan scan;
   setUpAll(() {

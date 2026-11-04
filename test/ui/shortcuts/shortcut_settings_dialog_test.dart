@@ -875,7 +875,7 @@ void main() {
           expect(
             tester
                 .widget<Text>(
-                  find.descendant(of: name, matching: find.byType(Text)),
+                  find.descendant(of: name, matching: find.anyText()),
                 )
                 .data,
             labelWithKeys(
