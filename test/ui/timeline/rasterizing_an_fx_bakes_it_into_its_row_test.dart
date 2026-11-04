@@ -16,6 +16,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/fx_basis.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -37,6 +38,7 @@ import 'package:anicel/src/services/editing/fx_bake_plan.dart'
     show FxBakeChange;
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -55,6 +57,9 @@ import '../../helpers/wait_window.dart';
 /// Q4 switches off what changes the picture at its defaults; Q8 bakes no
 /// row without a picture of its own.
 void main() {
+  // The difference blend below is an advanced one, drawn by the shader.
+  setUpAll(LayerBlendShader.load);
+
   const canvasSize = CanvasSize(width: 64, height: 48);
   const cutId = CutId('cut');
   const green = [0, 160, 0, 255];
@@ -515,6 +520,54 @@ void main() {
     hidden.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🎯what the row lays over the rows under it — its blend, its '
+      'clip — stays on the row, and lays the baked pictures as it laid the '
+      'cel', (tester) async {
+    final s = sessionOf([
+      Layer(
+        id: const LayerId('b'),
+        name: 'B',
+        frames: [
+          Frame(id: const FrameId('b-1'), duration: 3, name: '1', strokes: []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('b-1'), length: 3),
+        },
+      ),
+      rowA(
+        effects: [brightness(keyed: false)],
+      ).copyWith(clipsToBelow: true, blendMode: LayerBlendMode.difference),
+    ]);
+    addTearDown(s.dispose);
+    // `a` over two tiles, `b` under the first alone: the clip keeps `a`
+    // where `b` is.
+    bakeCelSurface(
+      s.renderCaches.brushFrameStore,
+      s.brushFrameKeyForCut(
+        s.requireActiveCut,
+        const LayerId('a'),
+        const FrameId('a-1'),
+      ),
+      inkAt([TileCoord(x: 2, y: 0), TileCoord(x: 3, y: 0)], green),
+    );
+    Future<List<List<int>>> seenNow() async => [
+      await shownAt(tester, s, 0, 36, 5),
+      await shownAt(tester, s, 0, 52, 5),
+    ];
+    final seen = await seenNow();
+    expect(seen.last[3], 0, reason: '⛔전제: clipped off where b is not');
+    expect(seen.first, isNot(green), reason: '⛔전제: a laid over b');
+
+    await rasterize(tester, s);
+
+    expect(
+      (a(s).clipsToBelow, a(s).blendMode),
+      (true, LayerBlendMode.difference),
+    );
+    expect(await seenNow(), seen);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('a hold repeated past its run is made of blocks of its own '
       'where each repeat shows another picture', (tester) async {
     final s = sessionOf([rowA(timeline: repeatedHold)]);
@@ -631,6 +684,69 @@ void main() {
         s.layerMerging.planOfFx(const LayerId('a'), null)!.changes,
         {FxBakeChange.wall},
       );
+    });
+
+    test('a cel the row does not show stays in its bank as it is', () {
+      final idle = Frame(
+        id: const FrameId('a-9'),
+        duration: 1,
+        name: '9',
+        strokes: [],
+      );
+      final s = plain([
+        rowA().copyWith(frames: [...rowA().frames, idle]),
+      ]);
+      final row = s.layerMerging.planOfFx(const LayerId('a'), bright)!.row;
+      expect([for (final cel in row.frames) cel.name], [
+        '1',
+        '1-2',
+        '1-3',
+        '9',
+      ]);
+      expect(row.frames.last, idle);
+    });
+
+    test('🗣️I-132-Q23 — a row the fx reads stands by its pictures hidden, '
+        'as it is; the row itself, read, is drawn as itself; no other row '
+        'is drawn into them', () {
+      LayerEffect lens(String map) => LayerEffect.defaults(
+        id: const EffectId('e-lens'),
+        kind: EffectKind.cameraLensBlur,
+      ).withLayer('blurMapLayer', LayerId(map));
+      Layer still(String id) => Layer(
+        id: LayerId(id),
+        name: id.toUpperCase(),
+        frames: [Frame(id: FrameId('$id-1'), duration: 3, strokes: [])],
+        timeline: {0: TimelineExposure.drawing(FrameId('$id-1'), length: 3)},
+      );
+      ({List<(LayerId, bool)> rows, List<LayerEffect> worn}) drawnFrom(
+        String map,
+      ) {
+        final s = plain([
+          still('m'),
+          still('o'),
+          rowA(effects: [lens(map), brightness()]),
+        ]);
+        final from = s.layerMerging
+            .planOfFx(const LayerId('a'), const EffectId('e-lens'))!
+            .pictures
+            .first
+            .from;
+        return (
+          rows: [for (final row in from.layers) (row.id, row.isVisible)],
+          worn: from.layers.byId(const LayerId('a'))!.effects,
+        );
+      }
+
+      final other = drawnFrom('m');
+      expect(other.rows, [
+        (const LayerId('m'), false),
+        (const LayerId('a'), true),
+      ]);
+      expect(other.worn, [lens('m')]);
+      final itself = drawnFrom('a');
+      expect(itself.rows, [(const LayerId('a'), true)]);
+      expect(itself.worn, [lens('a')]);
     });
   });
 
