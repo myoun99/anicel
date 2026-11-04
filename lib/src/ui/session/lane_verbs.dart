@@ -2482,6 +2482,20 @@ class LaneVerbs {
     return _laneKeysWriteOver(span, pick: KeyTypePick(sides: sides)).edit;
   }
 
+  /// The lane span that scopes a verb of [layerId]'s group header
+  /// [headerLaneId] — its Reset, its Rasterize (I-120-Q3) — or null where
+  /// none does. A span covering this very group is the only one that does:
+  /// standing elsewhere with a selection alive on another row must not
+  /// silently retarget it.
+  TimelineLaneSelection? groupSpan(LayerId layerId, String headerLaneId) {
+    final span = _selection.laneRangeSelection.value;
+    return span != null &&
+            span.layerId == layerId &&
+            span.spanLaneIds.contains(headerLaneId)
+        ? span
+        : null;
+  }
+
   /// AE's group Reset (R5, user 2026-08-09): puts a GROUP HEADER's members
   /// back to their defaults without deleting a single key.
   ///
@@ -2503,14 +2517,8 @@ class LaneVerbs {
     if (layer == null || _wearsBaseFx(layer)) {
       return false;
     }
-    final span = _selection.laneRangeSelection.value;
-    // A span covering this very group is the only one that scopes the
-    // reset: standing elsewhere with a selection alive on another row must
-    // not silently retarget it.
-    final scoped =
-        span != null &&
-        span.layerId == layerId &&
-        span.spanLaneIds.contains(headerLaneId);
+    final span = groupSpan(layerId, headerLaneId);
+    final scoped = span != null;
     final frames = scoped
         ? [for (var i = span.startIndex; i < span.endIndexExclusive; i += 1) i]
         : [_laneVerbFrameFor(layerId)];

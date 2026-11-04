@@ -335,6 +335,15 @@ final class _TrackTime<T> {
     return times;
   }
 
+  /// [PropertyTrack.paceFrom].
+  ({int to, KeyPace pace})? paceFrom(int from, KeyValueSpace<T> space) {
+    final roves = space.walk != null && _anyRoving;
+    final to = _timedKeyAfter(from, roves: roves);
+    return to == null
+        ? null
+        : (to: to, pace: _paceBetween(from, to, space, roves: roves));
+  }
+
   /// [PropertyTrack.wayFrom].
   ({int to, double length})? wayFrom(int from, KeyValueSpace<T> space) {
     final walk = space.walk;
@@ -860,6 +869,13 @@ class PropertyTrack<T> {
   /// the way between two of them as long as they stand apart.
   ({int to, double length})? wayFrom(int from, KeyValueSpace<T> space) =>
       _time.wayFrom(from, space);
+
+  /// The pace of the way from the key at [from] — one that keeps its time
+  /// — to the next that does, at [to]: the leaving side of the one and the
+  /// arriving side of the other as handles, an auto side's speed read off
+  /// the keys either side ([segmentProgress]). Null after the last key.
+  ({int to, KeyPace pace})? paceFrom(int from, KeyValueSpace<T> space) =>
+      _time.paceFrom(from, space);
 
   /// [this] with each roving key on the frame nearest when its run passes
   /// it ([rovingTimes]) — in their order, one to a frame, between the

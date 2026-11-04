@@ -117,7 +117,11 @@ class LayerMerging {
   bool bakesFx(LayerId rowId, EffectId? effectId) =>
       _takingOfFx(rowId, effectId) != null;
 
-  FxBakeTaking? _takingOfFx(LayerId rowId, EffectId? effectId) {
+  FxBakeTaking? _takingOfFx(
+    LayerId rowId,
+    EffectId? effectId, [
+    BakedFrames? band,
+  ]) {
     final project = _project.repository.requireProject();
     final cutId = cutWritingRow(
       project,
@@ -131,14 +135,28 @@ class LayerMerging {
             cutId: cutId,
             rowId: rowId,
             effectId: effectId,
+            band: band,
           );
   }
 
-  /// What RASTERIZE makes of [rowId]'s fx [effectId] — null where it bakes
-  /// nothing.
-  FxBakePlan? planOfFx(LayerId rowId, EffectId? effectId) =>
-      switch (_takingOfFx(rowId, effectId)) {
+  /// Whether RASTERIZE scoped to [band] bakes nothing because the rest of
+  /// the row would not stay as it shows ([FxBakeTaking.cannotKeepTheRest])
+  /// — which the press says.
+  bool fxBakeCannotKeepTheRest(
+    LayerId rowId,
+    EffectId? effectId,
+    BakedFrames? band,
+  ) => _takingOfFx(rowId, effectId, band)?.cannotKeepTheRest ?? false;
+
+  /// What RASTERIZE scoped to [band] — over every frame, where none does —
+  /// makes of [rowId]'s fx [effectId]: null where it bakes nothing.
+  FxBakePlan? planOfFx(
+    LayerId rowId,
+    EffectId? effectId, {
+    BakedFrames? band,
+  }) => switch (_takingOfFx(rowId, effectId, band)) {
         null => null,
+        FxBakeTaking(cannotKeepTheRest: true) => null,
         final taking => planFxBake(
           taking,
           reads: _readsOf(taking.cut),

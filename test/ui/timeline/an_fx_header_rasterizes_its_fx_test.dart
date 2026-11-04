@@ -5,6 +5,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineLaneSelection;
 import 'package:anicel/src/services/project_lookup.dart'
     show requireLayerAnywhere;
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -89,6 +91,66 @@ void main() {
       LayerEffect(id: blur, kind: EffectKind.blur),
       reason: 'it stays, at its defaults',
     );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯a band over the fx header scopes the press to its frames '
+      '(Q3) — the tap leaves it standing — and a band over another group '
+      'does not', (tester) async {
+    final session = await theApp(tester);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    await tester.pumpAndSettle();
+    final row = session.activeLayerId!;
+    final blur = _rowOf(session, row).effects.single.id;
+    final header = effectGroupLaneId(blur);
+    void stillBlur() {
+      session.effectsAndFx.updateLayerEffects(row, [
+        LayerEffect(
+          id: blur,
+          kind: EffectKind.blur,
+          parameters: {'blurriness': EffectParameter(value: 12)},
+        ),
+      ]);
+    }
+
+    Future<void> press(String lane) async {
+      stillBlur();
+      await tester.pumpAndSettle();
+      session.laneRangeSelection.value = TimelineLaneSelection(
+        layerId: row,
+        laneId: lane,
+        startIndex: 2,
+        endIndexExclusive: 4,
+      );
+      await tester.pumpAndSettle();
+      final before = session.historyManager.undoCount;
+      await tester.ensureVisible(find.named(buttonOf(row, header)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.named(buttonOf(row, header)));
+      await settleBehindTheWaitWindow(
+        tester,
+        () =>
+            session.historyManager.undoCount == before + 1 &&
+            find
+                .byKey(const ValueKey<String>('fx-rasterize-progress'))
+                .evaluate()
+                .isEmpty,
+      );
+    }
+
+    List<double> blurriness() => [
+      for (var frame = 0; frame < 6; frame += 1)
+        _rowOf(
+          session,
+          row,
+        ).effects.single.parameterOf('blurriness').resolveAt(frame),
+    ];
+
+    await press(header);
+    expect(blurriness(), [12, 12, 0, 0, 12, 12]);
+
+    await press('transform-group');
+    expect(blurriness(), [0, 0, 0, 0, 0, 0], reason: 'not this group: all');
     session.playbackRig.prerenderScheduler.cancel();
   });
 

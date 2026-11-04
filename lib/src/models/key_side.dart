@@ -381,9 +381,26 @@ double segmentProgress(
   if (x >= 1) {
     return 1;
   }
-  final (x: x1, y: y1) = keyHandlePoint(leaving, leaving: true);
-  final (x: x2, y: y2) = keyHandlePoint(arriving, leaving: false);
-  double bezier(double t, double p1, double p2) => cubicAt(t, 0, p1, p2, 1);
+  final (x: _, y: y1) = keyHandlePoint(leaving, leaving: true);
+  final (x: _, y: y2) = keyHandlePoint(arriving, leaving: false);
+  return cubicAt(
+    segmentCurveParameter(x, leaving: leaving, arriving: arriving),
+    0,
+    y1,
+    y2,
+    1,
+  );
+}
+
+/// The parameter of [segmentProgress]'s curve at which [x] of the
+/// segment's time has gone, 0 < x < 1 — where a cut there falls on it.
+double segmentCurveParameter(
+  double x, {
+  required KeyHandle leaving,
+  required KeyHandle arriving,
+}) {
+  final x1 = keyHandlePoint(leaving, leaving: true).x;
+  final x2 = keyHandlePoint(arriving, leaving: false).x;
 
   // Newton's step where it lands inside the bracket, a halving where it
   // does not: with both handles' times inside the segment the curve's time
@@ -392,7 +409,7 @@ double segmentProgress(
   var hi = 1.0;
   var t = x;
   for (var step = 0; step < 32; step += 1) {
-    final off = bezier(t, x1, x2) - x;
+    final off = cubicAt(t, 0, x1, x2, 1) - x;
     if (off.abs() < 1e-10) {
       break;
     }
@@ -406,5 +423,5 @@ double segmentProgress(
     final next = slope.abs() > 1e-12 ? t - off / slope : (lo + hi) / 2;
     t = next > lo && next < hi ? next : (lo + hi) / 2;
   }
-  return bezier(t, y1, y2);
+  return t;
 }

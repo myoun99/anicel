@@ -1055,6 +1055,11 @@ enum AppStrings {
   String get tlFxBakeChangesBody => _s('tlFxBakeChangesBody');
   String get tlFxBakeChangeOrder => _s('tlFxBakeChangeOrder');
 
+  /// The notice over a rasterize a band scoped, of an fx that draws at its
+  /// defaults (I-120-Q14 「막고 경고」, its recommendation while it is
+  /// asked): it baked nothing, and why.
+  String get tlFxBakeCannotKeepTheRest => _s('tlFxBakeCannotKeepTheRest');
+
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
   /// ellipsized labels on device. ↩️The '…' stayed on menu ENTRIES that
@@ -3675,6 +3680,8 @@ enum AppStrings {
         'The rasterized pictures may look otherwise than they do now.',
     'tlFxBakeChangeOrder':
         'An fx that ran before it runs over the rasterized pictures',
+    'tlFxBakeCannotKeepTheRest':
+        'This fx draws even at its defaults, and its switch holds for the whole layer, so the frames outside the selection could not stay as they show. Nothing was rasterized.',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
@@ -5573,6 +5580,8 @@ enum AppStrings {
     'tlFxBakeChangesTitle': 'ラスタライズすると見た目が変わることがあります',
     'tlFxBakeChangesBody': 'ラスタライズした絵は、今と違って見えることがあります。',
     'tlFxBakeChangeOrder': '先にかかっていた fx が、ラスタライズした絵の上にかかります',
+    'tlFxBakeCannotKeepTheRest':
+        'この fx は初期値でも描画し、スイッチはレイヤー全体にかかるため、選択範囲外のフレームを見えていたままにできません。ラスタライズしませんでした。',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -7456,6 +7465,8 @@ enum AppStrings {
     'tlFxBakeChangesTitle': '래스터라이즈하면 겉보기가 달라질 수 있습니다',
     'tlFxBakeChangesBody': '래스터라이즈한 그림은 지금과 다르게 보일 수 있습니다.',
     'tlFxBakeChangeOrder': '먼저 걸리던 fx 가 래스터라이즈한 그림 위에 걸립니다',
+    'tlFxBakeCannotKeepTheRest':
+        '이 fx 는 기본값에서도 그림을 그리고 스위치는 레이어 전체에 걸려서, 선택 범위 밖 프레임을 보이던 그대로 둘 수 없습니다. 래스터라이즈하지 않았습니다.',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
@@ -9486,6 +9497,8 @@ enum AppStrings {
         'Les images pixellisées peuvent paraître autrement qu’à présent.',
     'tlFxBakeChangeOrder':
         'Un fx appliqué avant lui s’applique sur les images pixellisées',
+    'tlFxBakeCannotKeepTheRest':
+        'Ce fx dessine même à ses valeurs par défaut et son interrupteur vaut pour tout le calque : les images hors de la sélection ne pourraient pas rester telles qu’elles s’affichent. Rien n’a été pixellisé.',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -11301,6 +11314,7 @@ enum AppStrings {
     'tlFxBakeChangesTitle': '栅格化后外观可能会改变',
     'tlFxBakeChangesBody': '栅格化后的画面可能与现在看起来不同。',
     'tlFxBakeChangeOrder': '先前应用的 fx 将应用在栅格化后的画面上',
+    'tlFxBakeCannotKeepTheRest': '此 fx 在默认值下也会绘制，且开关作用于整个图层，因此选区外的帧无法保持原样。未进行栅格化。',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

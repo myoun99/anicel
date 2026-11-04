@@ -41,7 +41,7 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show exposedCelIdAt;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/fx_bake_plan.dart'
-    show FxBakeChange;
+    show BakedFrames, FxBakeChange, FxBakePlan;
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
@@ -197,6 +197,13 @@ void main() {
   Layer a(EditorSessionManager s) =>
       s.requireActiveCut.layers.byId(const LayerId('a'))!;
 
+  /// A session over [layers] ([sessionOf]), let go after the test.
+  EditorSessionManager plain(List<Layer> layers) {
+    final s = sessionOf(layers);
+    addTearDown(s.dispose);
+    return s;
+  }
+
   Future<BuildContext> hostedContext(WidgetTester tester) async {
     late BuildContext hosted;
     await tester.pumpWidget(
@@ -283,16 +290,25 @@ void main() {
   ];
 
   /// Presses `a`'s group header RASTERIZE for [effectId] — the transform's
-  /// where null — and waits out its window.
+  /// where null — scoped to [band] where one is given, and waits out its
+  /// window.
   Future<void> rasterize(
     WidgetTester tester,
     EditorSessionManager s, [
     EffectId? effectId = bright,
+    BakedFrames? band,
   ]) async {
     final before = a(s);
     final context = await hostedContext(tester);
     unawaited(
-      rasterizeFxGroup(context, s, const LayerId('a'), effectId, 'fx'),
+      rasterizeFxGroup(
+        context,
+        s,
+        const LayerId('a'),
+        effectId,
+        'fx',
+        band: band,
+      ),
     );
     await settleBehindTheWaitWindow(
       tester,
@@ -445,6 +461,34 @@ void main() {
       (row.opacity, row.transformTrack, row.effects.last),
       (0.5, moving, brighter),
     );
+    expect(await seenNow(), seen);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯a bundle read by the block goes on reading the head it '
+      'read where the bake parts its block — the row shows what it showed', (
+    tester,
+  ) async {
+    final s = sessionOf([
+      rowA(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty()
+              .withKey(0, CanvasPoint(x: 32, y: 24))
+              .withKey(2, CanvasPoint(x: 48, y: 24)),
+        ),
+      ).copyWith(transformBasis: FxBasis.block),
+    ]);
+    addTearDown(s.dispose);
+    Future<List<List<int>>> seenNow() async => [
+      for (var frame = 0; frame < 3; frame += 1)
+        for (final x in [36, 52]) await shownAt(tester, s, frame, x, 5),
+    ];
+    final seen = await seenNow();
+    expect(seen[4][3], 255, reason: '⛔전제: still on the head at frame 2');
+
+    await rasterize(tester, s);
+
+    expect(a(s).timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
     expect(await seenNow(), seen);
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -624,12 +668,6 @@ void main() {
   });
 
   group('the plan', () {
-    EditorSessionManager plain(List<Layer> layers) {
-      final s = sessionOf(layers);
-      addTearDown(s.dispose);
-      return s;
-    }
-
     test('an image row that needs more than one picture becomes a drawing '
         'row; one that needs one stays an image', () {
       final parted = plain([rowA(kind: LayerKind.image)]);
@@ -966,6 +1004,53 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
+    testWidgets('🎯over a band (Q3), a synced rider keeps its cel where its '
+        'row keeps its own, and takes the band\'s picture under its '
+        'mirror\'s id', (tester) async {
+      final s = ridden(riderOf('a'));
+      final seen = await seenOfR(tester, s);
+
+      await rasterize(tester, s, bright, (start: 1, end: 2));
+
+      final made = a(s).frames.last.id;
+      final rider = rOf(s);
+      expect([for (final cel in rider.frames) cel.name], ['1', '1-2']);
+      expect(rider.frames.first.id, const FrameId('r-1'));
+      expect(rider.baseFrameLinks, {
+        const FrameId('a-1'): const FrameId('r-1'),
+        made: attachedMirrorCelId(r, made),
+      });
+      expect(celsOfR(s), [
+        const FrameId('r-1'),
+        attachedMirrorCelId(r, made),
+        const FrameId('r-1'),
+      ]);
+      expect(await seenOfR(tester, s), seen);
+      expect(
+        celAt(s, attachedMirrorCelId(r, made), 5, 20, of: r),
+        seen[1],
+        reason: 'the band\'s picture baked in its cel',
+      );
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('over a band, a free rider parts there alone', (tester) async {
+      final s = ridden(riderOf('a', free: true));
+      final seen = await seenOfR(tester, s);
+
+      await rasterize(tester, s, bright, (start: 1, end: 2));
+
+      final rider = rOf(s);
+      expect([for (final cel in rider.frames) cel.name], ['1', '1-2']);
+      expect(rider.frames.first.id, const FrameId('r-1'));
+      expect(
+        rider.timeline.map((start, block) => MapEntry(start, block.length)),
+        {0: 1, 1: 1, 2: 1},
+      );
+      expect(await seenOfR(tester, s), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
     test('a folder riding the row lays no picture, so it is no rider', () {
       final s = sessionOf([
         rowA(),
@@ -1049,6 +1134,201 @@ void main() {
         for (final cel in plan.row.frames)
           cel.id: attachedMirrorCelId(r, cel.id),
       });
+    });
+  });
+
+  group('③ — a band over the header bakes its frames alone, every frame '
+      'outside showing what it showed (Q3 「범위 안만 굽고, 범위 밖은 보이던 '
+      '그대로」)', () {
+    const band = (start: 1, end: 2);
+
+    /// What [s]'s cut shows at canvas ([x], 5) on frames 0..2.
+    Future<List<List<int>>> seenOf(
+      WidgetTester tester,
+      EditorSessionManager s, [
+      List<int> xs = const [36],
+    ]) async => [
+      for (var frame = 0; frame < 3; frame += 1)
+        for (final x in xs) await shownAt(tester, s, frame, x, 5),
+    ];
+
+    Map<int, Object?> keysOf(PropertyTrack<Object?> track) =>
+        track.keys.map((frame, key) => MapEntry(frame, key.value));
+
+    testWidgets('🎯a keyed fx read by the frame: the band\'s frame takes a '
+        'picture of its own, the cel stays where it still shows, the fx is '
+        'at rest over the band alone, and one undo gives the row back', (
+      tester,
+    ) async {
+      final s = sessionOf([rowA()]);
+      addTearDown(s.dispose);
+      final before = s.requireActiveCut.layers;
+      final seen = await seenOf(tester, s);
+      expect(seen.toSet(), hasLength(3), reason: '⛔전제: every frame its own');
+
+      await rasterize(tester, s, bright, band);
+
+      final row = a(s);
+      final made = row.frames.last.id;
+      expect([for (final cel in row.frames) cel.name], ['1', '1-2']);
+      expect(row.frames.first.id, const FrameId('a-1'));
+      expect(shownCels(s), [const FrameId('a-1'), made, const FrameId('a-1')]);
+      expect(keysOf(row.effects.single.parameterOf('brightness').track), {
+        0: 0,
+        1: 0,
+        2: 100,
+      });
+      expect(await seenOf(tester, s), seen);
+      expect(celAt(s, made, 36, 5), seen[1], reason: 'baked in its cel');
+      expect(celAt(s, const FrameId('a-1'), 36, 5), green);
+
+      s.undo();
+      expect(s.requireActiveCut.layers, before);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('🎯read by the block, the part of a block the band leaves '
+        'after it goes on showing what its head showed', (tester) async {
+      final s = sessionOf([rowA(effects: [brightness(basis: FxBasis.block)])]);
+      addTearDown(s.dispose);
+      final seen = await seenOf(tester, s);
+
+      await rasterize(tester, s, bright, band);
+
+      expect(a(s).timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
+      expect(await seenOf(tester, s), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('🎯a bundle it leaves, read by the block, shows what its '
+        'head showed in the band and after it', (tester) async {
+      final s = sessionOf([
+        rowA(
+          transformTrack: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>.empty()
+                .withKey(0, CanvasPoint(x: 32, y: 24))
+                .withKey(2, CanvasPoint(x: 48, y: 24)),
+          ),
+        ).copyWith(transformBasis: FxBasis.block),
+      ]);
+      addTearDown(s.dispose);
+      final seen = await seenOf(tester, s, [36, 52]);
+
+      await rasterize(tester, s, bright, band);
+
+      expect(a(s).timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
+      expect(await seenOf(tester, s, [36, 52]), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('🎯the transform rasterized over a band moves the band\'s '
+        'picture where it showed, and keeps moving the row outside it', (
+      tester,
+    ) async {
+      final s = sessionOf([
+        rowA(
+          effects: [brightness(keyed: false, enabled: false)],
+          transformTrack: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>.empty()
+                .withKey(0, CanvasPoint(x: 32, y: 24))
+                .withKey(2, CanvasPoint(x: 48, y: 24)),
+          ),
+        ),
+      ]);
+      addTearDown(s.dispose);
+      final seen = await seenOf(tester, s, [36, 44, 52]);
+      expect(seen.toSet().length, greaterThan(2), reason: '⛔전제: it moves');
+
+      await rasterize(tester, s, null, band);
+
+      expect(keysOf(a(s).transformTrack.position), {
+        0: CanvasPoint(x: 32, y: 24),
+        1: CanvasPoint(x: 32, y: 24),
+        2: CanvasPoint(x: 48, y: 24),
+      });
+      expect(await seenOf(tester, s, [36, 44, 52]), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('🚨Q14 — over a band, an fx that draws at its defaults bakes '
+        'nothing and says why: its switch has no key to be off by there '
+        'alone', (tester) async {
+      const number = EffectId('e-number');
+      final s = sessionOf([
+        rowA(effects: [LayerEffect(id: number, kind: EffectKind.celNumber)]),
+      ]);
+      addTearDown(s.dispose);
+      final before = a(s);
+      final context = await hostedContext(tester);
+
+      unawaited(
+        rasterizeFxGroup(
+          context,
+          s,
+          const LayerId('a'),
+          number,
+          'fx',
+          band: band,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey<String>('fx-rasterize-cannot-keep-the-rest'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(AppText.strings.tlFxBakeCannotKeepTheRest),
+        findsOneWidget,
+      );
+      expect(a(s), before);
+      expect(
+        s.layerMerging.planOfFx(const LayerId('a'), number),
+        isNotNull,
+        reason: 'over every frame it bakes',
+      );
+    });
+
+    test('a band is cut to the frames the cut draws; one over every one of '
+        'them bakes the row whole, as no band does; one holding none of '
+        'them bakes nothing', () {
+      final s = plain([rowA()]);
+      FxBakePlan? over(BakedFrames band) =>
+          s.layerMerging.planOfFx(const LayerId('a'), bright, band: band);
+      List<FrameId> cels(FxBakePlan plan) => [
+        for (final cel in plan.row.frames) cel.id,
+      ];
+
+      final past = over((start: 1, end: 9))!;
+      expect([for (final cel in past.row.frames) cel.name], [
+        '1',
+        '1-2',
+        '1-3',
+      ]);
+      expect(cels(past).first, const FrameId('a-1'));
+      final every = over((start: -4, end: 9))!;
+      expect(cels(every), isNot(contains(const FrameId('a-1'))));
+      expect(
+        every.row.effects.single,
+        LayerEffect(id: bright, kind: EffectKind.brightnessContrast),
+      );
+      expect(over((start: 3, end: 9)), isNull);
+    });
+
+    test('a cel kept where it still shows keeps its sounds', () {
+      final s = plain([
+        rowA(
+          audioClips: [
+            AudioClip(filePath: 'ping.wav', frameId: const FrameId('a-1')),
+          ],
+        ),
+      ]);
+      final row = s.layerMerging
+          .planOfFx(const LayerId('a'), bright, band: band)!
+          .row;
+      expect(row.audioClips.single.frameId, const FrameId('a-1'));
     });
   });
 
