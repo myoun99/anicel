@@ -174,8 +174,67 @@ FxBakePlan planFxBake(
 }) {
   final FxBakeTaking(:cut, :row, :effectId) = taking;
   final shown = _wearingOnly(cut, row, effectId);
-  final runs = runsByPicture(shown, [shown.layers.byId(row.id)!], reads
-      .revisionOf);
+  final bank = _bankOf(
+    taking,
+    shown,
+    runsByPicture(shown, [shown.layers.byId(row.id)!], reads.revisionOf),
+    mintFrameId,
+  );
+  final baked = row.copyWith(
+    kind: kindHoldingPictures(row.kind, bank.cels.length),
+    frames: bank.cels,
+    timeline: _timelineShowing(row, bank.celAt, taking._drawnFrames),
+    effects: [
+      for (final fx in row.effects)
+        if (fx.id == effectId) _atItsDefaults(fx) else fx,
+    ],
+    transformTrack: effectId == null
+        ? TransformTrack.empty()
+        : row.transformTrack,
+    // A cel baked takes its sounds to its first picture.
+    audioClips: [
+      for (final clip in row.audioClips)
+        switch (bank.firstOf[clip.frameId]) {
+          final made? => clip.copyWith(frameId: made),
+          null => clip,
+        },
+    ],
+  );
+  return FxBakePlan._(
+    cut: cut,
+    row: baked,
+    pictures: bank.pictures,
+    changes: {
+      if (_runsAfterAnFxOn(row, effectId)) FxBakeChange.order,
+      if (picturesCutAtTheWall(bank.pictures, (
+        wall: cut.canvasSize.pasteboardAt(reach),
+        inkOf: reads.inkOf,
+      )))
+        FxBakeChange.wall,
+    },
+  );
+}
+
+/// The cels a bake leaves its row: [cels] its bank, [celAt] the cel each
+/// frame shows, [pictures] each new cel's picture still to be laid, and
+/// [firstOf] the first picture each cel baked became.
+typedef _Bank = ({
+  List<Frame> cels,
+  Map<int, FrameId> celAt,
+  List<LayerMergePicture> pictures,
+  Map<FrameId, FrameId> firstOf,
+});
+
+/// [taking]'s row's bank after the bake, [runs] being the pictures [shown]
+/// shows it as ([planFxBake]): each cel it does not show kept as it is,
+/// each it shows parted into its pictures.
+_Bank _bankOf(
+  FxBakeTaking taking,
+  Cut shown,
+  List<List<CutFrameCompositeSpan>> runs,
+  FrameId Function(LayerId row) mintFrameId,
+) {
+  final FxBakeTaking(:cut, :row) = taking;
   // Each picture, by the cel it was baked of: the first keeps the cel's
   // place, the rest are new.
   final byCel = <FrameId, List<List<CutFrameCompositeSpan>>>{};
@@ -219,41 +278,13 @@ FxBakePlan planFxBake(
       ));
     }
   }
-  final firstOf = {
-    for (final MapEntry(key: cel, value: parts) in byCel.entries)
-      cel: celAt[parts.first.first.start]!,
-  };
-  final baked = row.copyWith(
-    kind: kindHoldingPictures(row.kind, bank.length),
-    frames: bank,
-    timeline: _timelineShowing(row, celAt, taking._drawnFrames),
-    effects: [
-      for (final fx in row.effects)
-        if (fx.id == effectId) _atItsDefaults(fx) else fx,
-    ],
-    transformTrack: effectId == null
-        ? TransformTrack.empty()
-        : row.transformTrack,
-    // A cel baked takes its sounds to its first picture.
-    audioClips: [
-      for (final clip in row.audioClips)
-        switch (firstOf[clip.frameId]) {
-          final made? => clip.copyWith(frameId: made),
-          null => clip,
-        },
-    ],
-  );
-  return FxBakePlan._(
-    cut: cut,
-    row: baked,
+  return (
+    cels: bank,
+    celAt: celAt,
     pictures: pictures,
-    changes: {
-      if (_runsAfterAnFxOn(row, effectId)) FxBakeChange.order,
-      if (picturesCutAtTheWall(pictures, (
-        wall: cut.canvasSize.pasteboardAt(reach),
-        inkOf: reads.inkOf,
-      )))
-        FxBakeChange.wall,
+    firstOf: {
+      for (final MapEntry(key: cel, value: parts) in byCel.entries)
+        cel: celAt[parts.first.first.start]!,
     },
   );
 }
