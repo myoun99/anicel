@@ -183,6 +183,19 @@ void main() {
           ],
         );
       });
+
+      test('a path the later key left as it was is the earlier\'s, of any '
+          'kind', () {
+        const turned = JoinedPath(degrees: 30, ahead: 4, behind: 10);
+        final moved = movedNamedKeys(
+          keys({0: n(path: KeyPath.auto), 8: n(path: KeyPath.auto)}),
+          keys({
+            0: n(path: turned),
+            8: n(path: KeyPath.auto, incoming: arriving),
+          }),
+        );
+        expect(moved['N'], n(path: turned, incoming: arriving).held);
+      });
     });
 
     test('a name SURVIVES a value edit — it is identity, not content', () {

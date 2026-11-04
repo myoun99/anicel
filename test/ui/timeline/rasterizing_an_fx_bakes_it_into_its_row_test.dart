@@ -44,7 +44,7 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show exposedCelIdAt;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/fx_bake_plan.dart'
-    show BakedFrames, FxBakeChange, FxBakePlan, FxBakeWaits;
+    show BakedFrames, FxBakePlan, FxBakeWaits;
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
@@ -62,7 +62,7 @@ import '../../helpers/wait_window.dart';
 /// 늘 보이던 그대로」) — a picture wherever its value parts them — and puts
 /// its values and keys back at their defaults, its line kept; an image row
 /// that needs more than one picture becomes a drawing row; one undo gives
-/// the row back. Q2 asks first where the fx alone, baked, changes the look;
+/// the row back. Q21 asks nothing first, baking every fx on up to its line;
 /// Q4 switches off what changes the picture at its defaults; Q8 bakes no
 /// row without a picture of its own.
 void main() {
@@ -113,6 +113,17 @@ void main() {
             )
           : EffectParameter(value: 60),
     },
+  );
+
+  const darker = EffectId('e-darker');
+
+  /// A still brightness fx of -40: run before [brightness] or after it,
+  /// the row shows otherwise — a picture baked clips at white.
+  LayerEffect darkening({bool enabled = true}) => LayerEffect(
+    id: darker,
+    kind: EffectKind.brightnessContrast,
+    enabled: enabled,
+    parameters: {'brightness': EffectParameter(value: -40)},
   );
 
   /// Row `a` — its cel `1` held over frames 0..2, green in the canvas's
@@ -575,55 +586,30 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('🚨Q2 — a bake that changes how the row looks asks first: no '
-      'leaves the row as it was, yes bakes it', (tester) async {
+  testWidgets('🚨Q21 — a press asks nothing first: an fx on that runs before '
+      'the one pressed is baked with it, and the row shows what it showed '
+      '(유저 11-05 「순서는 안바뀌게. 최대한 자기선에서 래스터라이즈」)', (
+    tester,
+  ) async {
     final s = sessionOf([
-      rowA(
-        effects: [
-          LayerEffect(id: const EffectId('e-key'), kind: EffectKind.colorKey),
-          brightness(),
-        ],
-      ),
+      rowA(effects: [darkening(), brightness()]),
     ]);
     addTearDown(s.dispose);
-    final before = a(s);
-    final context = await hostedContext(tester);
-    Future<void> press() async {
-      unawaited(
-        rasterizeFxGroup(context, s, const LayerId('a'), bright, 'fx'),
-      );
-      await tester.pumpAndSettle();
-    }
+    final seen = [
+      for (var frame = 0; frame < 3; frame += 1)
+        await shownAt(tester, s, frame, 36, 5),
+    ];
 
-    await press();
-    expect(
-      find.byKey(const ValueKey<String>('fx-rasterize-changes-dialog')),
-      findsOneWidget,
-    );
-    expect(find.text(AppText.strings.tlFxBakeChangeOrder), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('fx-rasterize-changes-cancel-button')),
-    );
-    await tester.pumpAndSettle();
-    expect(a(s), before);
+    await rasterize(tester, s);
 
-    await press();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('fx-rasterize-changes-confirm-button')),
-    );
-    await settleBehindTheWaitWindow(
-      tester,
-      () =>
-          a(s) != before &&
-          find
-              .byKey(const ValueKey<String>('fx-rasterize-progress'))
-              .evaluate()
-              .isEmpty,
-    );
-    expect(
-      a(s).effects.last,
+    expect(a(s).effects, [
+      LayerEffect(id: darker, kind: EffectKind.brightnessContrast),
       LayerEffect(id: bright, kind: EffectKind.brightnessContrast),
-    );
+    ]);
+    expect([
+      for (var frame = 0; frame < 3; frame += 1)
+        await shownAt(tester, s, frame, 36, 5),
+    ], seen);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -745,30 +731,30 @@ void main() {
       expect(row.audioClips.single.frameId, row.frames.first.id);
     });
 
-    test('🚨Q2 — an fx on that runs before the one baked asks first; one '
-        'off does not; the transform asks first under any fx on', () {
-      LayerEffect key({bool enabled = true}) => LayerEffect(
-        id: const EffectId('e-key'),
-        kind: EffectKind.colorKey,
-        enabled: enabled,
-      );
-      Set<FxBakeChange> changes(List<LayerEffect> effects, EffectId? baked) =>
-          plain([rowA(effects: effects)]).layerMerging
-              .bakeOf(const LayerId('a'), baked)!
-              .changes;
+    test('🚨Q21 — a press bakes its fx and each fx on that runs before it, '
+        'none off nor after; the transform, each fx on', () {
+      List<EffectId> baked(List<LayerEffect> effects, EffectId? pressed) {
+        final row = plain([rowA(effects: effects)]).layerMerging
+            .bakeOf(const LayerId('a'), pressed)!
+            .row;
+        return [
+          for (final (index, fx) in row.effects.indexed)
+            if (fx != effects[index]) fx.id,
+        ];
+      }
 
       expect([
-        changes([key(), brightness()], bright),
-        changes([key(enabled: false), brightness()], bright),
-        changes([brightness(), key()], bright),
-        changes([brightness()], null),
-        changes([brightness(enabled: false)], null),
+        baked([darkening(), brightness()], bright),
+        baked([darkening(enabled: false), brightness()], bright),
+        baked([brightness(), darkening()], bright),
+        baked([darkening(), brightness()], null),
+        baked([darkening(enabled: false), brightness()], null),
       ], [
-        {FxBakeChange.order},
-        <FxBakeChange>{},
-        <FxBakeChange>{},
-        {FxBakeChange.order},
-        <FxBakeChange>{},
+        [darker, bright],
+        [bright],
+        [bright],
+        [darker, bright],
+        [bright],
       ]);
     });
 
@@ -788,24 +774,6 @@ void main() {
         verbs.bakeOf(const LayerId('a'), number)!.row.effects.first.enabled,
         verbs.bakeOf(const LayerId('a'), bright)!.row.effects.last.enabled,
       ], [false, true]);
-    });
-
-    test('a picture past the wall is warned of, as a merge warns of it', () {
-      final s = plain([
-        rowA(
-          effects: const [],
-          transformTrack: TransformTrack.empty().copyWith(
-            position: PropertyTrack<CanvasPoint>.empty().withKey(
-              0,
-              CanvasPoint(x: 32 + 2000, y: 24),
-            ),
-          ),
-        ),
-      ]);
-      expect(
-        s.layerMerging.bakeOf(const LayerId('a'), null)!.changes,
-        {FxBakeChange.wall},
-      );
     });
 
     test('a cel the row does not show stays in its bank as it is', () {
@@ -1362,8 +1330,8 @@ void main() {
     });
 
     testWidgets('🚨Q14 — over a band, an fx that draws at its defaults is '
-        'baked into the band\'s frames and switched off, warned of first: '
-        'the frames outside show the row without it (유저 11-05 「범위 안만 '
+        'baked into the band\'s frames and switched off, unasked (Q21): the '
+        'frames outside show the row without it (유저 11-05 「범위 안만 '
         '굽고 스위치를 끈다」)', (tester) async {
       LayerEffect numbered({bool enabled = true}) => LayerEffect(
         id: number,
@@ -1385,34 +1353,8 @@ void main() {
       final (seen, off) = (await walls(s), await walls(bare));
       expect(seen[1], isNot(off[1]), reason: '⛔전제: the number draws');
       final before = a(s);
-      final context = await hostedContext(tester);
 
-      unawaited(
-        rasterizeFxGroup(
-          context,
-          s,
-          const LayerId('a'),
-          number,
-          'fx',
-          band: band,
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text(AppText.strings.tlFxBakeChangeRest), findsOneWidget);
-      await tester.tap(
-        find.byKey(
-          const ValueKey<String>('fx-rasterize-changes-confirm-button'),
-        ),
-      );
-      await settleBehindTheWaitWindow(
-        tester,
-        () =>
-            a(s) != before &&
-            find
-                .byKey(const ValueKey<String>('fx-rasterize-progress'))
-                .evaluate()
-                .isEmpty,
-      );
+      await rasterize(tester, s, number, band);
 
       expect(a(s).effects.single, numbered(enabled: false));
       expect(await walls(s), [off[0], seen[1], off[2]]);
@@ -1420,34 +1362,6 @@ void main() {
       expect(a(s), before);
       s.playbackRig.prerenderScheduler.cancel();
       bare.playbackRig.prerenderScheduler.cancel();
-    });
-
-    test('🚨Q14 — what it leaves of the frames drawn is what the warning '
-        'names: none over every frame, as no band', () {
-      final s = plain([
-        rowA(effects: [LayerEffect(id: number, kind: EffectKind.celNumber)]),
-      ]);
-      expect(
-        [
-          for (final over in <BakedFrames?>[
-            band,
-            (start: 0, end: 2),
-            (start: 1, end: 9),
-            (start: -1, end: 9),
-            null,
-          ])
-            s.layerMerging
-                .bakeOf(const LayerId('a'), number, band: over)!
-                .changes,
-        ],
-        [
-          {FxBakeChange.rest},
-          {FxBakeChange.rest},
-          {FxBakeChange.rest},
-          <FxBakeChange>{},
-          <FxBakeChange>{},
-        ],
-      );
     });
 
     test('🚨Q15 — a named key the cut paces anew keeps its name, and the name '
@@ -1499,6 +1413,58 @@ void main() {
         expect(
           at(row.effects, frame),
           closeTo(at([fx], frame), 1e-6),
+          reason: 'frame $frame',
+        );
+      }
+    });
+
+    test('🚨Q15 — the transform\'s too: a named key its band\'s cut paces '
+        'anew keeps its name, and the name holds what each key of it '
+        'moved', () {
+      const eased = EaseSide(influence: 0.6, speed: 0);
+      const n = PropertyKey<double>(
+        0,
+        incoming: eased,
+        outgoing: eased,
+        name: 'N',
+      );
+      final turning = TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>(
+          keys: {0: n, 4: const PropertyKey<double>(90), 8: n},
+        ),
+      );
+      final s = plain([
+        rowA(
+          effects: const [],
+          transformTrack: turning,
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('a-1'), length: 9),
+          },
+        ),
+      ], duration: 9);
+      double at(TransformTrack track, int frame) => track.rotation.resolveAt(
+        frameIndex: frame,
+        orElse: () => 0,
+        space: doubleKeySpace,
+      );
+
+      final track = s.layerMerging
+          .bakeOf(const LayerId('a'), null, band: (start: 2, end: 6))!
+          .row
+          .transformTrack;
+
+      final keys = track.rotation.keys;
+      expect([keys[0]!.name, keys[8]!.name], ['N', 'N']);
+      expect(keys[8]!.held, keys[0]!.held, reason: 'one key');
+      expect(
+        [keys[0]!.outgoing, keys[0]!.incoming],
+        everyElement(isNot(eased)),
+        reason: 'the way leaving 0 and the way arriving at 8 paced anew',
+      );
+      for (final frame in [0, 1, 6, 7, 8]) {
+        expect(
+          at(track, frame),
+          closeTo(at(turning, frame), 1e-6),
           reason: 'frame $frame',
         );
       }
@@ -1562,10 +1528,10 @@ void main() {
       ).withLayer('blurMapLayer', const LayerId('a')).copyWith(
         basis: FxBasis.block,
       );
-      final s = plain([rowA(effects: [number, lens, brightness()])]);
+      final s = plain([rowA(effects: [brightness(), number, lens])]);
       final row = s.layerMerging.bakeOf(const LayerId('a'), bright)!.row;
       expect(row.timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
-      expect(row.effects.take(2), [number, lens]);
+      expect(row.effects.skip(1), [number, lens]);
     });
   });
 
@@ -1876,26 +1842,15 @@ void main() {
     });
 
     test('🚨Q14 — a band over every frame of the pressed cut leaves every '
-        'frame of the other use: an fx that draws at its defaults is '
-        'warned of, and goes off in both — one switch', () {
+        'frame of the other use: an fx that draws at its defaults goes off '
+        'in both — one switch', () {
       const number = EffectId('e-number');
       final effects = [LayerEffect(id: number, kind: EffectKind.celNumber)];
-      FxBakePlan overEvery(EditorSessionManager s) => s.layerMerging.bakeOf(
+      final linked = linkedOf([rowA(effects: effects)]).layerMerging.bakeOf(
         const LayerId('a'),
         number,
         band: (start: 0, end: 3),
       )!;
-      final (linked, alone) = (
-        overEvery(linkedOf([rowA(effects: effects)])),
-        overEvery(plain([rowA(effects: effects)])),
-      );
-      expect(
-        [linked.changes, alone.changes],
-        [
-          {FxBakeChange.rest},
-          <FxBakeChange>{},
-        ],
-      );
       expect(
         [
           linked.row,

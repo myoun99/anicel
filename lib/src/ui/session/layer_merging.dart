@@ -152,7 +152,6 @@ class LayerMerging {
       taking,
       readsOf: _readsOf,
       mintFrameId: _frameIds.mintFrameId,
-      reach: _project.repository.requireProject().pasteboardReach,
     ),
   };
 

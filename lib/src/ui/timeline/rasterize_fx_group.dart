@@ -11,7 +11,7 @@ import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_reference_popover.dart' show layerReferenceTargets;
-import 'merge_layer_rows.dart' show bakeAfterAsking;
+import 'merge_layer_rows.dart' show bakeBehindTheWaitWindow;
 import 'property_lane_model.dart' show PropertyLaneRow;
 import 'rasterize_reference_rows.dart' show rasterizeReferenceRows;
 import 'reference_lane_policy.dart' show referenceGroupLaneId;
@@ -88,12 +88,12 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 }
 
 /// RASTERIZE (I-120): [rowId]'s fx [effectId] — the transform, where null —
-/// baked into its pictures as they show ([planFxBake]) over the frames of
-/// the [band] scoping the press, every frame where none does (Q3), asked
-/// first where the bake changes how the row looks (Q2), with the hatch the
-/// reference rasterize's wears (Q10) — a bake ([bakeAfterAsking]). One
-/// its pictures cannot hold bakes nothing, and says why ([FxBakeWaits]:
-/// Q6 · Q17 · Q18).
+/// and the chain up to its line baked into its pictures as they show
+/// ([planFxBake]) over the frames of the [band] scoping the press, every
+/// frame where none does (Q3), asked nothing first (Q21 「경고 창을
+/// 없앤다」), with the hatch the reference rasterize's wears (Q10) — a bake
+/// ([bakeBehindTheWaitWindow]). One its pictures cannot hold bakes
+/// nothing, and says why ([FxBakeWaits]: Q6 · Q17 · Q18).
 Future<void> rasterizeFxGroup(
   BuildContext context,
   EditorSessionManager session,
@@ -112,34 +112,19 @@ Future<void> rasterizeFxGroup(
   }
 }
 
-/// [plan] baked, asked first where it changes how the row looks.
+/// [plan] baked.
 Future<void> _bake(
   BuildContext context,
   EditorSessionManager session,
   FxBakePlan plan,
   String name,
-) {
-  final strings = AppText.strings;
-  return bakeAfterAsking<FxBakeChange>(context, session, (
-    title: strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
-    icon: Icons.texture_outlined,
-    windowKey: 'fx-rasterize-progress',
-    question: (
-      slug: 'fx-rasterize-changes',
-      title: strings.tlFxBakeChangesTitle,
-      body: strings.tlFxBakeChangesBody,
-      accept: strings.imBake,
-    ),
-    changes: plan.changes,
-    lineOf: (change) => switch (change) {
-      FxBakeChange.order => strings.tlFxBakeChangeOrder,
-      FxBakeChange.wall => strings.tlMergeChangeWall,
-      FxBakeChange.rest => strings.tlFxBakeChangeRest,
-    },
-    pictures: plan.pictures,
-    land: () => session.layerMerging.landFx(plan),
-  ));
-}
+) => bakeBehindTheWaitWindow(context, session, (
+  title: AppText.strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
+  icon: Icons.texture_outlined,
+  windowKey: 'fx-rasterize-progress',
+  pictures: plan.pictures,
+  land: () => session.layerMerging.landFx(plan),
+));
 
 /// The notice over a press that bakes nothing, saying [why].
 Future<void> _sayWhy(BuildContext context, FxBakeWait why) {

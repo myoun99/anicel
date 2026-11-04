@@ -37,9 +37,13 @@ Future<void> mergeLayerRows(
   }
   final strings = AppText.strings;
   await bakeAfterAsking<LayerMergeChange>(context, session, (
-    title: plan.result.name,
-    icon: Icons.merge,
-    windowKey: 'layer-merge-progress',
+    run: (
+      title: plan.result.name,
+      icon: Icons.merge,
+      windowKey: 'layer-merge-progress',
+      pictures: plan.pictures,
+      land: () => session.layerMerging.land(plan),
+    ),
     question: (
       slug: 'layer-merge-changes',
       title: strings.tlMergeChangesTitle,
@@ -55,8 +59,6 @@ Future<void> mergeLayerRows(
       LayerMergeChange.riderUnder => strings.tlMergeChangeRiderUnder,
       LayerMergeChange.wall => strings.tlMergeChangeWall,
     },
-    pictures: plan.pictures,
-    land: () => session.layerMerging.land(plan),
   ));
 }
 
@@ -70,26 +72,30 @@ typedef BakeQuestion = ({
   String accept,
 });
 
-/// A bake as its press runs it ([bakeAfterAsking]) — a MERGE's (I-78), an
-/// fx RASTERIZE's (I-120): its wait window's [title] under [icon], keyed
-/// [windowKey]; what it asks first ([question]), a line for each of the
-/// [changes] it makes to how the rows look ([lineOf]); the [pictures] it
-/// lays, and how it [land]s.
-typedef Bake<C extends Enum> = ({
+/// A bake as its press runs it ([bakeBehindTheWaitWindow]) — a MERGE's
+/// (I-78), an fx RASTERIZE's (I-120): its wait window's [title] under
+/// [icon], keyed [windowKey]; the [pictures] it lays, and how it [land]s.
+typedef BakeRun = ({
   String title,
   IconData icon,
   String windowKey,
-  BakeQuestion question,
-  Set<C> changes,
-  String Function(C change) lineOf,
   List<LayerMergePicture> pictures,
   void Function() land,
 });
 
+/// A bake asked first ([bakeAfterAsking]) — a MERGE's: how it [run]s, what
+/// it asks first ([question]), and a line for each of the [changes] it
+/// makes to how the rows look ([lineOf]).
+typedef Bake<C extends Enum> = ({
+  BakeRun run,
+  BakeQuestion question,
+  Set<C> changes,
+  String Function(C change) lineOf,
+});
+
 /// [bake] pressed: asked first where it changes how the rows look — its
-/// changes in their order; none, and it goes ahead unasked — each of its
-/// pictures drawn as the rows show it behind the one wait window heavy
-/// work shows ([runWithAppProgress]), and landed as one undo step.
+/// changes in their order; none, and it goes ahead unasked — and run
+/// ([bakeBehindTheWaitWindow]).
 Future<void> bakeAfterAsking<C extends Enum>(
   BuildContext context,
   EditorSessionManager session,
@@ -100,22 +106,34 @@ Future<void> bakeAfterAsking<C extends Enum>(
       bake.lineOf(change),
   ];
   if (lines.isNotEmpty &&
-      await _accepts(context, bake.question, bake.icon, lines) != true) {
+      await _accepts(context, bake.question, bake.run.icon, lines) != true) {
     return;
   }
   if (!context.mounted) {
     return;
   }
+  await bakeBehindTheWaitWindow(context, session, bake.run);
+}
+
+/// [run]: each of its pictures drawn as the rows show it behind the one
+/// wait window heavy work shows ([runWithAppProgress]), and landed as one
+/// undo step — asked nothing first (an fx RASTERIZE's, 🗣️I-120-Q21 「경고
+/// 창을 없앤다 — 묻지 않고 굽는다」), or once [bakeAfterAsking] has asked.
+Future<void> bakeBehindTheWaitWindow(
+  BuildContext context,
+  EditorSessionManager session,
+  BakeRun run,
+) {
   final strings = AppText.strings;
-  await runWithAppProgress<void>(
+  return runWithAppProgress<void>(
     context: context,
-    title: bake.title,
-    titleIcon: bake.icon,
+    title: run.title,
+    titleIcon: run.icon,
     runningLabel: strings.bakeProgressRunning,
-    windowKey: ValueKey<String>(bake.windowKey),
+    windowKey: ValueKey<String>(run.windowKey),
     task: (report) async {
-      await layBakedPictures(session, bake.pictures, report);
-      bake.land();
+      await layBakedPictures(session, run.pictures, report);
+      run.land();
     },
   );
 }
