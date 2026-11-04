@@ -262,6 +262,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.transformTargetKeys,
     this.cellPlacementOf,
     this.transformCelsUnderfoot,
+    this.transformCelsUnderfootChanges,
     this.pieceGround,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
@@ -438,6 +439,18 @@ class BrushCanvasPanel extends StatefulWidget {
   /// playhead and the rows change under this panel.
   final List<({BrushFrameKey key, bool live})>? Function()?
   transformCelsUnderfoot;
+
+  /// Says [transformCelsUnderfoot]'s answer may have changed with no build
+  /// of this panel — a frame range taken on the timeline. The playhead and
+  /// the row stood on build the panel again; the range did not, so an open
+  /// box never heard it.
+  ///
+  /// 🗣️F-564 (유저 2026-11-04): 「변형중 다른행 블록 선택하면 바로 그게
+  /// 라이브로 반영되게. 지금은 변형중 다른행블록 선택하면 확정해야 바뀜」. Only
+  /// the selection layer hears it, and it walks the box on it as on the
+  /// playhead ([CanvasSelectionLayer.frameToken]): the float let go, the
+  /// cels lifted afresh with the numbers the box holds.
+  final Listenable? transformCelsUnderfootChanges;
 
   /// 🚨★★★**WHERE THE CUT TOOL'S STAMP LANDS** — the ground 픽셀 붙여넣기
   /// lands on, read by the session that reads it for the paste
@@ -2028,7 +2041,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   Positioned _selectionLayer() {
     return Positioned.fill(
-      child: _asideForTheContent(ValueListenableBuilder<TransformToolOptions>(
+      // What a lift takes up is heard here as well as at the panel's build
+      // ([BrushCanvasPanel.transformCelsUnderfootChanges], F-564).
+      child: _asideForTheContent(ListenableBuilder(
+        listenable: Listenable.merge([widget.transformCelsUnderfootChanges]),
+        builder: (context, _) => ValueListenableBuilder<TransformToolOptions>(
         valueListenable:
             widget
                 .transformOptions ??
@@ -2161,6 +2178,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               transformOptions:
                   transformOptions,
             ),
+        ),
       )),
     );
   }

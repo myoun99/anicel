@@ -125,6 +125,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.transformTargetKeys,
     this.cellPlacementOf,
     this.transformCelsUnderfoot,
+    this.transformCelsUnderfootChanges,
     this.pieceGround,
   });
 
@@ -417,6 +418,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   final List<({BrushFrameKey key, bool live})>? Function()?
   transformCelsUnderfoot;
 
+  /// When that answer may have changed (F-564) — passed straight through to
+  /// the panel ([BrushCanvasPanel.transformCelsUnderfootChanges]).
+  final Listenable? transformCelsUnderfootChanges;
+
   /// Where the cut tool's stamp lands (F-293) — passed straight through to
   /// the panel ([BrushCanvasPanel.pieceGround]).
   final PieceGround Function()? pieceGround;
@@ -540,6 +545,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       transformTargetKeys: widget.transformTargetKeys,
       cellPlacementOf: widget.cellPlacementOf,
       transformCelsUnderfoot: widget.transformCelsUnderfoot,
+      transformCelsUnderfootChanges: widget.transformCelsUnderfootChanges,
       pieceGround: widget.pieceGround,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
