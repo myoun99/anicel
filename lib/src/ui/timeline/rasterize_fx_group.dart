@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -8,20 +10,26 @@ import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
+import 'layer_reference_popover.dart' show layerReferenceTargets;
 import 'merge_layer_rows.dart' show bakeAfterAsking;
 import 'property_lane_model.dart' show PropertyLaneRow;
+import 'rasterize_reference_rows.dart' show rasterizeReferenceRows;
+import 'reference_lane_policy.dart' show referenceGroupLaneId;
 import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
 /// RASTERIZE in [layer]'s group header [lane] (I-120 round ②) as the rail
-/// draws it: none where the header is neither an fx's nor the
-/// transform's; its press null where it bakes nothing now — 🗣️I-120-Q8
-/// 「폴더 · 조정 레이어 둘 다 버튼이 꺼진다」, the slot kept.
+/// draws it: none where the header is neither an fx's, the transform's nor
+/// the reference's; its press null where it bakes nothing now —
+/// 🗣️I-120-Q8 「폴더 · 조정 레이어 둘 다 버튼이 꺼진다」, the slot kept.
 ({VoidCallback? press})? rasterizeLaneGroupOf(
   BuildContext context,
   EditorSessionManager session,
   Layer layer,
   PropertyLaneRow lane,
 ) {
+  if (lane.laneId == referenceGroupLaneId) {
+    return _referenceRasterize(context, session, layer);
+  }
   final baked = _bakedBy(lane.laneId);
   if (baked == null) {
     return null;
@@ -45,6 +53,27 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
         : null,
   );
 }
+
+/// 🗣️I-120-Q11 (유저 2026-11-04 「래스터라이즈 버튼만 둔다(지금 참조
+/// 래스터라이즈와 같은 길), 스위치는 없음」): the reference header's
+/// RASTERIZE is the reference popover's 「래스터라이즈 · N장」 — the rows a
+/// press on [layer] acts on ([layerReferenceTargets]), rasterized the one
+/// way ([rasterizeReferenceRows]); lit off where it acts on none.
+({VoidCallback? press}) _referenceRasterize(
+  BuildContext context,
+  EditorSessionManager session,
+  Layer layer,
+) => (
+  press: layerReferenceTargets(session, layer.id).isEmpty
+      ? null
+      : () => unawaited(
+          rasterizeReferenceRows(
+            context,
+            session,
+            layerReferenceTargets(session, layer.id),
+          ),
+        ),
+);
 
 /// The fx a group header's RASTERIZE bakes — the transform's header's,
 /// the transform (null) — or none for any other header.

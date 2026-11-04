@@ -14,6 +14,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -43,6 +44,8 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/rasterize_fx_group.dart'
+    show rasterizeLaneGroupOf;
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
@@ -522,6 +525,40 @@ void main() {
 
     s.undo();
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1210, y: 800));
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('🎯I-120-Q11 「래스터라이즈 버튼만 둔다(지금 참조 래스터라이즈와 '
+      '같은 길)」: the header\'s RASTERIZE lets the reference go as the '
+      'popover\'s does — lit off where a press acts on no row', (
+    tester,
+  ) async {
+    final (s, row) = await placed(tester);
+    final header = referencePropertyLanes(
+      row.mediaReference!,
+      expanded: false,
+      poseAt: null,
+    ).first;
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (hosted) {
+            context = hosted;
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    rasterizeLaneGroupOf(context, s, row, header)!.press!();
+    await tester.pumpAndSettle();
+    expect(s.layerById(row.id)!.mediaReference, isNull);
+
+    s.undo();
+    expect(s.layerById(row.id)!.mediaReference, isNotNull);
+    s.cutVerbs.createLinkedCutFromActiveCut();
+    expect(rasterizeLaneGroupOf(context, s, row, header)!.press, isNull);
     await stopTheWarmer(tester, s);
   });
 
