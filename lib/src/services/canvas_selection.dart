@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
 import '../core/point_bounds.dart';
+import '../core/rgba_premultiply.dart' show copyRgb;
 
 import '../models/bitmap_surface.dart';
 import '../models/pasteboard_bounds.dart';
@@ -745,9 +746,7 @@ BrushDab transformStampDabMesh(
         covered[index] = 1;
         final from = ((y - top) * tileWidth + (x - left)) * 4;
         final to = index * 4;
-        bytes[to] = scratch[from];
-        bytes[to + 1] = scratch[from + 1];
-        bytes[to + 2] = scratch[from + 2];
+        copyRgb(bytes, to, scratch, from);
         bytes[to + 3] = scratch[from + 3];
       }
     }
@@ -985,9 +984,7 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
               continue;
             }
             final targetOffset = (rowBase + col) * 4;
-            rgba[targetOffset] = pixels[sourceOffset];
-            rgba[targetOffset + 1] = pixels[sourceOffset + 1];
-            rgba[targetOffset + 2] = pixels[sourceOffset + 2];
+            copyRgb(rgba, targetOffset, pixels, sourceOffset);
             // 🚨★★★A MOVE TAKES THE WHOLE PIXEL. The mask says WHICH pixels
             // travel, not how much of each one does.
             //

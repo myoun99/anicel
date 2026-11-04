@@ -745,8 +745,21 @@ import '../../tool/refactor/clone_scan.dart';
 /// merges the three.
 /// 🔬Measured on the lane over master (`6e22fd0bc`, at 87): none added,
 /// that one gone.
+/// 86 → 85 (2026-11-04, fill-gradient — I-160's gradient stamp, the THIRD
+/// body to copy a pixel's three colour bytes by hand). The pair it met at
+/// 41 tokens:
+///
+///     lib/src/services/canvas_selection.dart
+///       transformStampDabMesh
+///       gatherMaskedSurfacePixels
+///
+/// The third merged the three (CLAUDE.md's rule of three): each copies the
+/// colour through `copyRgb` and writes its own alpha — taken whole, taken
+/// where it is not clear, or under the coverage.
+/// 🔬Measured on the lane over master (`826a20074`, at 86): none added,
+/// that one gone.
 void main() {
-  const ceiling = 86;
+  const ceiling = 85;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

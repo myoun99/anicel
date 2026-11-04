@@ -6,7 +6,7 @@ import 'dart:ui' show Offset;
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
 import '../core/point_bounds.dart';
-import '../core/rgba_premultiply.dart' show mul255Round;
+import '../core/rgba_premultiply.dart' show copyRgb, mul255Round;
 import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -1379,8 +1379,7 @@ Iterable<BrushDab> regionFillPieces({
   final reached = _tilesReached(hard, sheet: sheet, reach: reach);
   yield* _stampPieces(
     sheet,
-    color: color,
-    opacity: opacity,
+    paint: (color: color, gradient: null, opacity: opacity),
     finishedAround: (piece) => reached(piece)
         ? _finishedWindow(
             hard,
@@ -1602,9 +1601,7 @@ final class FillRange {
         rightExclusive: finished.left + finished.width,
         bottomExclusive: finished.top + finished.height,
       ),
-      color: color,
-      gradient: gradient,
-      opacity: _opacity,
+      paint: (color: color, gradient: gradient, opacity: _opacity),
       finishedAround: (_) => mask,
     );
   }
@@ -1872,7 +1869,12 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
   );
 }
 
-/// A finished coverage mask painted [color] and handed over as STAMP
+/// How a fill's stamp pieces are painted: in [color] — or under a
+/// [gradient] (I-160), each pixel the gradient's colour at its centre — at
+/// [opacity].
+typedef _Paint = ({int color, FillGradient? gradient, double opacity});
+
+/// A finished coverage mask painted as [paint] says and handed over as STAMP
 /// PIECES: one dab for each run of cel tiles of [box] that the mask covers
 /// at all, along a tile row, in row-major order. [finishedAround] hands
 /// the finished mask over a tile, or null for a tile it knows is empty.
@@ -1899,9 +1901,7 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 /// and a thin line still carries only the tiles it crosses.
 Iterable<BrushDab> _stampPieces(
   DirtyRegion box, {
-  required int color,
-  FillGradient? gradient,
-  required double opacity,
+  required _Paint paint,
   required _FinishedMask? Function(TileSpan tile) finishedAround,
 }) sync* {
   // ⚠️ONE id per fill, and a piece's first tile in it. Pieces are made
@@ -1919,9 +1919,9 @@ Iterable<BrushDab> _stampPieces(
       width: run.last.tile.rightExclusive - first.left,
       height: first.bottomExclusive - first.top,
       mask: _joined(run),
-      color: color,
-      gradient: gradient,
-      opacity: opacity,
+      color: paint.color,
+      gradient: paint.gradient,
+      opacity: paint.opacity,
       id: '$id-${first.coord.x}.${first.coord.y}',
       sequence: sequence,
     );
@@ -2027,13 +2027,12 @@ BrushDab _colorStampDab({
   final b = argbBlue(color);
   final rgba = labProbe('fill.stamp-build', () {
     if (gradient != null) {
-      return _gradientRgba(
-        mask,
+      return _gradientRgba((
+        mask: mask,
         left: left,
         top: top,
         width: width,
-        gradient: gradient,
-      );
+      ), gradient);
     }
     final bytes = Uint8List(width * height * 4);
     if (Endian.host == Endian.little) {
@@ -2084,16 +2083,11 @@ BrushDab _colorStampDab({
 /// ([FillGradient.stops]) — four stops to each level a channel can take.
 const int _gradientStops = 1024;
 
-/// [mask], the coverage of a piece whose corner is ([left], [top]), painted
-/// with [gradient]: each covered pixel the gradient's colour at its centre,
-/// that colour's alpha times the coverage.
-Uint8List _gradientRgba(
-  Uint8List mask, {
-  required int left,
-  required int top,
-  required int width,
-  required FillGradient gradient,
-}) {
+/// [piece] — the coverage of a piece of a fill, where its corner sits —
+/// painted with [gradient]: each covered pixel the gradient's colour at its
+/// centre, that colour's alpha times the coverage.
+Uint8List _gradientRgba(_FinishedMask piece, FillGradient gradient) {
+  final (:mask, :left, :top, :width) = piece;
   // The stops as the stamp's own bytes, so a pixel copies three of them
   // rather than taking a colour apart.
   final stops = Uint8List(_gradientStops * 4);
@@ -2116,9 +2110,7 @@ Uint8List _gradientRgba(
       // Rounded: [along] is never below 0.
       final stop = (along[column] * (_gradientStops - 1) + 0.5).toInt() * 4;
       final offset = (start + column) * 4;
-      bytes[offset] = stops[stop];
-      bytes[offset + 1] = stops[stop + 1];
-      bytes[offset + 2] = stops[stop + 2];
+      copyRgb(bytes, offset, stops, stop);
       bytes[offset + 3] = mul255Round(stops[stop + 3], coverage);
     }
   }
