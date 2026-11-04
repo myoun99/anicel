@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../../models/canvas_point.dart';
+import 'display_resample.dart';
 import 'raster_picture.dart';
 
 /// 🚨★★★THE RANGE A FILL HELD DOWN WILL COVER, AS THE CANVAS MARKS IT
@@ -39,9 +40,22 @@ final class FillRangeMark {
   /// Whether [paint] draws nothing.
   bool get isEmpty => bounds.isEmpty;
 
-  /// The checker over [outline]: one path filled by one shader — the vector
-  /// the user asked for, as the ants are, with no picture of the range made.
-  void paint(Canvas canvas) => canvas.drawPath(outline, _checkerPaint);
+  /// The checker over [outline]: one shader in one path — the vector the
+  /// user asked for, as the ants are, with no picture of the range made.
+  ///
+  /// 🚨CLIPPED AND PAINTED, NOT THE PATH FILLED (deep-zoom-blanks-the-canvas):
+  /// an image's shader filling a shape costs the GPU by the shape's whole
+  /// extent on the device and fills it WHITE past 16384 device pixels a
+  /// side — a 4K range held at 5× would. Inside the outline, the shader
+  /// goes through the one draw that covers only what shows
+  /// ([drawShadedRect]).
+  void paint(Canvas canvas) {
+    canvas
+      ..save()
+      ..clipPath(outline);
+    drawShadedRect(canvas, bounds, _checkerPaint);
+    canvas.restore();
+  }
 
   static ui.Path _outlineOf(List<List<CanvasPoint>> contours) {
     final path = ui.Path();

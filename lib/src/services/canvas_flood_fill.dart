@@ -1471,45 +1471,6 @@ _FinishedMask _finishedWindow(
   return (mask: mask, left: left, top: top, width: width);
 }
 
-/// The whole P6 tap: compose → fill from [point] → the region as stamp
-/// pieces ([_stampPieces]), committed through the exact stroke funnel —
-/// three-route parity, undo and .anicel serialization come free. Empty
-/// when nothing fills (seed off the fill raster), or when an EXTENDED
-/// fill's flood reaches the apron wall — the region is not closed;
-/// [onOpenRegion] fires so the UI can say so instead of silently flooding
-/// the surround.
-///
-/// The range ([fillRangeAt]) laid in [color] at once — what a fill held
-/// down lands at its lift ([FillRange.dabsIn]).
-List<BrushDab> buildFillDabs({
-  required Cut cut,
-  required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
-  required CanvasPoint point,
-  required int color,
-  double opacity = 1.0,
-  FloodFillOptions options = const FloodFillOptions(),
-  LayerId? activeLayerId,
-  LayerPlacement? space,
-  SymmetryShape? symmetry,
-  void Function()? onOpenRegion,
-  PasteboardReach pasteboardReach = PasteboardReach.whole,
-}) =>
-    fillRangeAt(
-      cut: cut,
-      frameIndex: frameIndex,
-      surfaceResolver: surfaceResolver,
-      point: point,
-      opacity: opacity,
-      options: options,
-      activeLayerId: activeLayerId,
-      space: space,
-      symmetry: symmetry,
-      onOpenRegion: onOpenRegion,
-      pasteboardReach: pasteboardReach,
-    )?.dabsIn(color) ??
-    const [];
-
 /// 🚨★★★WHAT A FILL HELD DOWN WILL COVER, BEFORE A COLOUR IS LAID (I-160 ·
 /// I-160-Q2 a, 유저 2026-11-04 「바꾼다 — 누르는 동안 미리보기, 떼면 채움」):
 /// the flood from a point, kept so the press can show where it reaches and
@@ -1618,10 +1579,9 @@ final class FillRange {
     final words = cut == null && mask.offsetInBytes % 4 == 0
         ? mask.buffer.asUint32List(mask.offsetInBytes, mask.length ~/ 4)
         : null;
-    final rows = <List<int>>[];
-    for (var y = 0; y < finished.height; y += 1) {
+    // The covered runs of the row that starts at [offset] in the mask.
+    List<int> runsFrom(int offset) {
       final runs = <int>[];
-      final offset = y * width;
       var inside = false;
       var x = 0;
       while (x < width) {
@@ -1643,10 +1603,11 @@ final class FillRange {
       if (inside) {
         runs.add(width);
       }
-      rows.add(runs);
+      return runs;
     }
+
     return pixelRunContours(
-      rows,
+      [for (var y = 0; y < finished.height; y += 1) runsFrom(y * width)],
       left: finished.left,
       top: finished.top,
       width: width,

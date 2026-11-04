@@ -27,7 +27,7 @@ const int fillPromotionRevision = 1;
 ///
 /// ↩️It was one dab until 2026-10-09: a fill is cut into pieces on the
 /// cel's tile grid — one per run of covered tiles along a tile row
-/// (`buildFillDabs`) — which land the same bytes.
+/// (`FillRange.dabsIn`) — which land the same bytes.
 ///
 /// 🪦R23 (2026-08) previewed a fill as ONE stamp image at its landing
 /// rect, because blending it into live-raster tiles and re-decoding

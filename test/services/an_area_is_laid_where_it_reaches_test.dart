@@ -575,7 +575,7 @@ void main() {
     test('a ring\'s fill is four pieces — a whole tile empty in its middle '
         'carries nothing — and lays exactly the ring', () {
       final surface = inked();
-      final pieces = buildFillDabs(
+      final pieces = fillRangeAt(
         cut: Cut(
           id: const CutId('cut'),
           name: 'Cut',
@@ -597,9 +597,8 @@ void main() {
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
         point: p(50.5, 50.5),
-        color: color,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      );
+      )?.dabsIn(color) ?? const [];
       expect(pieces, hasLength(4), reason: 'rows 0 and 2 whole, row 1 split');
       for (var y = 0; y < canvas.height; y += 1) {
         for (var x = 0; x < canvas.width; x += 1) {
