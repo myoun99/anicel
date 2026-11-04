@@ -895,6 +895,66 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
+    testWidgets('a free rider parts where its own cels do too: each cel its '
+        'own picture', (tester) async {
+      final s = ridden(
+        riderOf('a', free: true).copyWith(
+          frames: [
+            ...riderOf('a').frames,
+            Frame(
+              id: const FrameId('r-2'),
+              duration: 1,
+              name: '2',
+              strokes: [],
+            ),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('r-1'), length: 2),
+            2: const TimelineExposure.drawing(FrameId('r-2'), length: 1),
+          },
+        ),
+        effects: [brightness(keyed: false)],
+      );
+      bakeCelSurface(
+        s.renderCaches.brushFrameStore,
+        s.brushFrameKeyForCut(s.requireActiveCut, r, const FrameId('r-2')),
+        inkAt([TileCoord(x: 1, y: 1)], blue),
+      );
+      Future<List<List<int>>> seenNow() async => [
+        for (var frame = 0; frame < 3; frame += 1)
+          for (final x in [5, 21]) await shownAt(tester, s, frame, x, 20),
+      ];
+      final seen = await seenNow();
+
+      await rasterize(tester, s);
+
+      final rider = rOf(s);
+      expect([for (final cel in rider.frames) cel.name], ['1', '2']);
+      expect(
+        rider.timeline.map((start, block) => MapEntry(start, block.length)),
+        {0: 2, 2: 1},
+      );
+      expect(await seenNow(), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test('a folder riding the row lays no picture, so it is no rider', () {
+      final s = sessionOf([
+        rowA(),
+        Layer(
+          id: const LayerId('f'),
+          name: 'F',
+          kind: LayerKind.folder,
+          attachedToLayerId: const LayerId('a'),
+          frames: const [],
+          timeline: const {},
+        ),
+      ]);
+      addTearDown(s.dispose);
+      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+      expect(plan.riders, isEmpty);
+    });
+
     test('a free rider\'s sounds go with its cel\'s first picture', () {
       final s = ridden(
         riderOf('a', free: true).copyWith(
