@@ -672,6 +672,17 @@ void main() {
         await pen.up();
         await tester.pumpAndSettle();
         expect(inkWhere(coordinator, picked.at), isNonZero);
+
+        // The range picked before is let go, not left waiting.
+        options = gradient;
+        final again = await tester.startGesture(
+          picked.origin + Offset(picked.at.x + 60, picked.at.y),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        expect(floods, hasLength(3), reason: 'a press picks anew');
+        await again.up();
+        await tester.pumpAndSettle();
       });
     });
 
