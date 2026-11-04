@@ -905,6 +905,7 @@ void main() {
     'brGrowShrink': (s) => s.brGrowShrink,
     'brAntiAlias': (s) => s.brAntiAlias,
     'brFillBeyondCanvas': (s) => s.brFillBeyondCanvas,
+    'brFillContinuous': (s) => s.brFillContinuous,
     'brOpenRegionsRefuse': (s) => s.brOpenRegionsRefuse,
     'brName': (s) => s.brName,
     'brDisplay': (s) => s.brDisplay,
