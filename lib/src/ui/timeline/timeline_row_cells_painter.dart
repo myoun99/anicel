@@ -32,6 +32,7 @@ import 'axis_turn.dart'
 import 'berth_row.dart';
 import 'rail_eyes.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
+import 'property_lane_model.dart' show folderBandRowsOf, timelineBlockEdgesOf;
 import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -99,11 +100,8 @@ TextPainter _glyphPainter(
 /// so nothing that reads the state rather than the paint (the semantics)
 /// may walk these.
 List<int> timelineRowCellEdges(Layer layer) {
-  final changes = <int>{0};
+  final changes = <int>{0, ...timelineBlockEdgesOf(layer)};
   for (final MapEntry(key: start, value: block) in layer.timeline.entries) {
-    changes
-      ..add(start)
-      ..add(start + (block.length ?? 1));
     for (final offset in block.breakdownOffsets) {
       changes.add(start + offset);
     }
@@ -113,6 +111,13 @@ List<int> timelineRowCellEdges(Layer layer) {
     changes
       ..add(from)
       ..add(from + span.length);
+  }
+  // A folder's band paints what its rows hold (R28 #11): one of its blocks
+  // is drawn where a row's is, so it can change where any row's block
+  // starts or ends inside it. ↩️Its own blocks alone were asked, so a tile
+  // painted a block as its first cell in the window (F-561, 2026-11-04).
+  for (final row in folderBandRowsOf(layer) ?? const <Layer>[]) {
+    changes.addAll(timelineBlockEdgesOf(row));
   }
   return {
     for (final change in changes) ...[change - 1, change, change + 1],

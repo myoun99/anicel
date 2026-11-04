@@ -634,6 +634,16 @@ void folderBandStandsFor(Layer band, Iterable<Layer> rows) =>
 /// The rows each band stands for, held weakly like the bands themselves.
 final Expando<List<Layer>> _bandRows = Expando('folder band rows');
 
+/// Where [row]'s blocks start and end — where what a block shows can
+/// change along it: a row's cells' edges (`timelineRowCellEdges`), and a
+/// folder band's, which shows its rows' (F-561).
+Iterable<int> timelineBlockEdgesOf(Layer row) sync* {
+  for (final MapEntry(key: start, value: block) in row.timeline.entries) {
+    yield start;
+    yield start + (block.length ?? 1);
+  }
+}
+
 /// The folder row's aggregate band (the TVP-latest display): the UNION of
 /// the subtree members' BLOCKS merged into runs. Nameless, and no comma
 /// edits.
