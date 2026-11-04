@@ -1797,14 +1797,21 @@ void main() {
         s,
       ).firstWhere((cut) => cut.id == cutId).layers.byId(const LayerId('r'))!;
 
-      testWidgets('🎯a still fx pressed in the linked cut: a synced rider is '
-          "baked with it in both cuts, a cel for each of the row's new ones "
-          'in one bank — each cut showing what it showed — and one undo '
-          'gives both back', (tester) async {
-        final s = linkedOf([
-          rowA(effects: [brightness(keyed: false)]),
-          riderOf('a'),
-        ]);
+      testWidgets('🎯a still fx pressed in the linked cut, longer: a synced '
+          "rider is baked with it in both cuts, a cel for each of the row's "
+          'new ones in one bank — each cut showing what it showed — and one '
+          'undo gives both back', (tester) async {
+        final s = linkedOf(
+          [
+            rowA(effects: [brightness(keyed: false)]),
+            riderOf('a'),
+          ],
+          twin: (use) => use.copyWith(
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('a-1'), length: 5),
+            },
+          ),
+        );
         final before = rowsOf(s);
         final seen = await seenIn(tester, s);
 
@@ -1842,6 +1849,87 @@ void main() {
         expect(twin.frames, original.frames, reason: 'one bank');
         expect(celsOf(twin), celsOf(original));
         expect(celsOf(original).toSet(), hasLength(3));
+        expect(await seenIn(tester, s), seen);
+        s.playbackRig.prerenderScheduler.cancel();
+      });
+
+      testWidgets('🚨a cel of the row only the linked cut shows: the synced '
+          "rider's cel over it is named by that cut's new cel — a cel for "
+          "each of the row's, every one its own", (tester) async {
+        const second = FrameId('a-2');
+        final s = linkedOf(
+          [
+            rowA(effects: [brightness(keyed: false)]).copyWith(
+              frames: [
+                Frame(
+                  id: const FrameId('a-1'),
+                  duration: 3,
+                  name: '1',
+                  strokes: const [],
+                ),
+                Frame(id: second, duration: 1, name: '2', strokes: const []),
+              ],
+            ),
+            riderOf('a').copyWith(
+              frames: [
+                Frame(
+                  id: const FrameId('r-1'),
+                  duration: 3,
+                  name: '1',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('r-2'),
+                  duration: 1,
+                  name: '2',
+                  strokes: const [],
+                ),
+              ],
+              baseFrameLinks: {
+                const FrameId('a-1'): const FrameId('r-1'),
+                second: const FrameId('r-2'),
+              },
+            ),
+          ],
+          twin: (use) => use.copyWith(
+            timeline: {
+              0: const TimelineExposure.drawing(second, length: 1),
+              1: const TimelineExposure.drawing(FrameId('a-1'), length: 2),
+            },
+          ),
+        );
+        final seen = await seenIn(tester, s);
+
+        await press(tester, s, const LayerId('a'));
+
+        final (original, twin) = (rIn(s), riderTwinOf(s));
+        expect({for (final cel in original.frames) cel.id}, hasLength(2));
+        expect(twin.frames, original.frames, reason: 'one bank');
+        final base = twinOf(s);
+        expect(twin.baseFrameLinks, {
+          for (final (index, cel) in base.frames.indexed)
+            cel.id: original.frames[index].id,
+        });
+        expect(await seenIn(tester, s), seen);
+        s.playbackRig.prerenderScheduler.cancel();
+      });
+
+      testWidgets('a band over the pressed cut bakes its riders there alone — '
+          "the linked cut's showing what they showed", (tester) async {
+        final s = linkedOf([rowA(), riderOf('a', free: true)]);
+        final seen = await seenIn(tester, s);
+
+        await press(
+          tester,
+          s,
+          const LayerId('a'),
+          bright,
+          (start: 1, end: 3),
+        );
+
+        expect(celsOf(riderTwinOf(s)).toSet(), {const FrameId('r-1')});
+        expect(celsOf(rIn(s)).first, const FrameId('r-1'));
+        expect(celsOf(rIn(s)).toSet(), hasLength(3));
         expect(await seenIn(tester, s), seen);
         s.playbackRig.prerenderScheduler.cancel();
       });
