@@ -230,7 +230,43 @@ class FrameClipboard implements BringsMedia {
     if (place == null || place._bandMissesTheRow) {
       return false;
     }
-    return place._cel != null;
+    return _drawingNamedAt(place) != null;
+  }
+
+  /// The drawing a copy — or a cut — at [place] names: standing, the one
+  /// the cursor's cell shows; under THE selection, one the band holds, on
+  /// the row the press stands on first and then on each row it sweeps.
+  ///
+  /// 🗣️F-556 (유저 2026-11-04): 「빈공간에서 시작한 선택범위는 블록에 닿아도
+  /// 잘라내기 동작등이 작동안됨. 순서를 반대로해서 블록에서 시작해서
+  /// 빈공간까지 선택범위하면 잘라내기 잘 동작하는데. 뭘 어떻게 선택하든
+  /// 선택범위로 선택하면 동작하도록 하는게 규칙」. ↩️The cursor's cell
+  /// answered under a band too. A sweep leaves the cursor where it began, so
+  /// one begun on an empty cell named no drawing: copy and cut sat dark over
+  /// the drawings it swept, and their keys banked nothing. That gate was the
+  /// standing copy's (2026-07), kept when the band came — no one asked for
+  /// where the sweep began to decide.
+  Frame? _drawingNamedAt(ClipboardPlace place) {
+    final band = place._band;
+    if (band == null) {
+      return place._cel;
+    }
+    final stoodOn = place._row;
+    for (final row in [
+      if (band.covers(stoodOn.id)) stoodOn,
+      for (final id in band.rows)
+        if (id != stoodOn.id) ?_project.rangeLayerById(id),
+    ]) {
+      final run = _runCopiedOff(
+        row,
+        index: band.startOn(row.id),
+        count: band.length,
+      );
+      if (_celsCarriedBy(row, run).firstOrNull case final drawing?) {
+        return drawing;
+      }
+    }
+    return null;
   }
 
   bool get canPasteLinkedFrameAtCurrentFrame =>
@@ -311,33 +347,17 @@ class FrameClipboard implements BringsMedia {
     return 'Links: $uses';
   }
 
-  /// 결정 14 ②ⓐ — the clipboard entries for every swept row BESIDES the
-  /// anchor, in the span's own order.
+  /// 결정 14 ②ⓐ — the clipboard entry for [row], a row [band] seats
+  /// besides the one the press stands on ([_seatsOf]): its run of the band.
   ///
-  /// Empty with no band, which is what makes the single-row copy the same
-  /// code path rather than a branch beside it.
-  ///
-  /// ⚠️Same rows a paste would accept ([_pasteTargetRowsBesides]): a row
-  /// that cannot receive a clip has no business putting one on the board,
-  /// and a cut must not lift what a paste could never put back.
-  List<_CopiedRow> _copiedRowsBesides(ClipboardPlace place) {
-    final band = place._band;
-    if (band == null || !band.covers(place._row.id)) {
-      return const [];
-    }
-    final entries = <_CopiedRow>[];
-    for (final row in _pasteTargetRowsBesides(place)) {
-      final clip = _runCopiedOff(
-        row,
-        index: band.startOn(row.id),
-        count: band.length,
-      );
-      entries.add(
-        _copiedRowFor(row, clip, keys: _laneVerbs.bandKeysOf(row.id)),
-      );
-    }
-    return entries;
-  }
+  /// ⚠️Same rows a paste would accept ([_seatsOf]): a row that cannot
+  /// receive a clip has no business putting one on the board, and a cut
+  /// must not lift what a paste could never put back.
+  _CopiedRow _bandRowOf(Layer row, _ClipboardBand band) => _copiedRowFor(
+    row,
+    _runCopiedOff(row, index: band.startOn(row.id), count: band.length),
+    keys: _laneVerbs.bandKeysOf(row.id),
+  );
 
   /// The cels [clip] carries: the ones [row] holds that its cells actually
   /// point at. The clipboard travels BY VALUE, so what the run exposes has
@@ -527,7 +547,7 @@ class FrameClipboard implements BringsMedia {
   void cutRunAtCurrentFrame() => cutAt(timelinePlace);
 
   void cutAt(ClipboardPlace? place) {
-    final frame = place?._cel;
+    final frame = place == null ? null : _drawingNamedAt(place);
     if (place == null || frame == null || !canCutAt(place)) {
       return;
     }
@@ -628,7 +648,7 @@ class FrameClipboard implements BringsMedia {
   void copyFrameAtCurrentFrame() => copyAt(timelinePlace);
 
   void copyAt(ClipboardPlace? place) {
-    final frame = place?._cel;
+    final frame = place == null ? null : _drawingNamedAt(place);
     if (place == null || frame == null || !canCopyAt(place)) {
       return;
     }
@@ -708,11 +728,15 @@ class FrameClipboard implements BringsMedia {
   }) {
     final layer = place._row;
     final cels = _celsCarriedBy(layer, clip);
-    // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first, and
-    // each the keys the band holds on its lanes (one-band-no-lane-tail-Q1).
+    // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, in the band's order
+    // ([_seatsOf]), and each the keys the band holds on its lanes
+    // (one-band-no-lane-tail-Q1).
     final rows = [
-      _copiedRowFor(layer, clip, keys: _laneVerbs.bandKeysOf(layer.id)),
-      ..._copiedRowsBesides(place),
+      for (final seat in _seatsOf(place))
+        if (seat.id == layer.id)
+          _copiedRowFor(layer, clip, keys: _laneVerbs.bandKeysOf(layer.id))
+        else
+          _bandRowOf(seat, place._band!),
     ];
     _board._take(_CopiedFrameReference(
       from: this,
@@ -805,7 +829,9 @@ class FrameClipboard implements BringsMedia {
     // A SYNCED attach row owns no timeline of its own: it makes no cel, and
     // takes the copy's pictures in the blocks it shows (F-545).
     if (isSyncedAttachedLayer(layer)) {
-      return _picturesTakenOn(_landingsOn(place, copied).first).isNotEmpty;
+      return _landingsOn(place, copied)
+          .where((landing) => landing.target.id == layer.id)
+          .any((landing) => _picturesTakenOn(landing).isNotEmpty);
     }
     // The row's half of every door that makes a cel ([rowTakesNewCels]): a
     // direction row pastes blocks like every cel row (its span rides the
@@ -879,7 +905,7 @@ class FrameClipboard implements BringsMedia {
   /// (I-72-direction-link).
   bool _keepsNamesOn(Layer layer, _CopiedFrameReference copied) =>
       rowTakesNewCels(layer) &&
-      (copied.rows.firstOrNull?.linkable ?? false) &&
+      copied.rows.any((row) => row.layerId == copied.layerId && row.linkable) &&
       copied.cels.any((cel) => cel.name != null) &&
       wearsNamesOf(layer, copied.cels);
 
@@ -898,10 +924,7 @@ class FrameClipboard implements BringsMedia {
     final board = copied.rows;
     final band = place._band;
     final landings = <_PasteLanding>[];
-    for (final (i, target) in [
-      place._row,
-      ..._pasteTargetRowsBesides(place),
-    ].indexed) {
+    for (final (i, target) in _seatsOf(place).indexed) {
       if (board.length > 1 && i >= board.length) {
         break;
       }
@@ -925,7 +948,8 @@ class FrameClipboard implements BringsMedia {
       final at = lift == null
           ? (index: place._index, liftCount: 0)
           : (index: lift.index, liftCount: lift.count);
-      // The anchor row is the board's first — the pictures live on rows.
+      // The board's rows meet the seats in the band's order ([_seatsOf]) —
+      // the pictures live on rows.
       final mine = board[board.length <= 1 ? 0 : i];
       final clip = board.length <= 1 ? copied.clip : mine.clip;
       landings.add((
@@ -1056,11 +1080,21 @@ class FrameClipboard implements BringsMedia {
   /// ⚠️A cel is minted PER SOURCE CEL, not per cell: a clip holding one
   /// drawing exposed three times pastes as one new drawing exposed three
   /// times. Minting per cell would quietly unlink a block from itself.
-  /// 결정 14 ③ⓐ — the OTHER rows a paste lands on: every row the band names
-  /// besides [anchor], minus the ones that cannot hold what is being pasted.
+  /// 결정 14 ②ⓐ×③ⓐ — the rows a copy at [place] takes and a paste on it
+  /// lands on, IN THE BAND'S ORDER: the row the press stands on where the
+  /// band sweeps it, and every other row the band names minus the ones that
+  /// cannot hold what is being pasted.
   ///
-  /// Empty when no band covers the anchor, which is what keeps the
-  /// single-row paste on the same code path instead of beside it.
+  /// The row stood on alone where no band covers it, which is what keeps
+  /// the single-row copy and paste on the same code path instead of beside
+  /// it.
+  ///
+  /// 🗣️F-556 (유저 2026-11-04): 「뭘 어떻게 선택하든 선택범위로 선택하면
+  /// 동작하도록 하는게 규칙」. ↩️The row stood on came first and the rest
+  /// after it — and a sweep stands the press on the row it began on. So a
+  /// band copied from its lower row and pasted on one swept from its upper
+  /// row paired each row's run with the other row: where the hand began
+  /// decided which row got what.
   ///
   /// ↩️F-545: a SYNCED attach row was passed over, having no timing of its
   /// own — a paste's cells written into it are taken straight back out by
@@ -1074,29 +1108,25 @@ class FrameClipboard implements BringsMedia {
   /// picture row was passed over, held or empty.
   ///
   /// ⛔By KIND alone, never by what a row holds: these are also the rows a
-  /// copy TAKES ([_copiedRowsBesides]), and the board pairs its rows with
+  /// copy TAKES ([_bank]), and the board pairs its rows with
   /// the targets IN ORDER ([_landingsOn]) — a filter that changed with what
   /// a row holds would pair a clip with another row's seat the moment the
   /// row was emptied or filled between the copy and the paste. A row with
   /// no room keeps its seat and takes nothing ([_holdsAPictureOnceLifted]).
-  List<Layer> _pasteTargetRowsBesides(ClipboardPlace place) {
+  List<Layer> _seatsOf(ClipboardPlace place) {
     final band = place._band;
-    final anchor = place._row;
-    if (band == null || !band.covers(anchor.id)) {
-      return const [];
+    final stoodOn = place._row;
+    if (band == null || !band.covers(stoodOn.id)) {
+      return [stoodOn];
     }
-    final rows = <Layer>[];
-    for (final id in band.rows) {
-      if (id == anchor.id) {
-        continue;
-      }
-      final row = _project.rangeLayerById(id);
-      if (row == null || !row.kind.takesAuthoredCels) {
-        continue;
-      }
-      rows.add(row);
-    }
-    return rows;
+    return [
+      for (final id in band.rows)
+        if (id == stoodOn.id)
+          stoodOn
+        else if (_project.rangeLayerById(id) case final row?
+            when row.kind.takesAuthoredCels)
+          row,
+    ];
   }
 
   void _pasteRun({
@@ -1858,7 +1888,9 @@ class _CopiedFrameReference implements BoardCopy {
   /// `LaneVerbs.bandKeysBesides`).
   final List<LanesAlone> lanesAlone;
 
-  /// 🚨결정 14 ②ⓐ — EVERY swept row, in display order, the anchor first.
+  /// 🚨결정 14 ②ⓐ — EVERY swept row, in the band's order, the anchor where
+  /// the band seats it (F-556 — ↩️the anchor first, which made the order the
+  /// hand's).
   ///
   /// > 「지우기 눌렀다고해서 현재 행만 지우는게아니라 **선택된 모든게**
   /// > 지워지는걸 말하는거임. **복사든 뭐든 마찬가지**」
