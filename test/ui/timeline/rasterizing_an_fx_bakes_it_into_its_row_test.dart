@@ -1253,6 +1253,33 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
+    testWidgets('a band over a repeat bakes its frame alone, a transform read '
+        'by the block stepping on each repeat as it did', (tester) async {
+      final s = sessionOf([
+        rowA(
+          timeline: repeatedHold,
+          transformTrack: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>.empty()
+                .withKey(0, CanvasPoint(x: 32, y: 24))
+                .withKey(2, CanvasPoint(x: 48, y: 24)),
+          ),
+        ).copyWith(transformBasis: FxBasis.block),
+      ]);
+      addTearDown(s.dispose);
+      expect(
+        a(s).timeline.values.where((block) => block.ghost),
+        isNotEmpty,
+        reason: '⛔전제: the repeat shows the cel again',
+      );
+      final seen = await seenOf(tester, s, [36, 52]);
+
+      await rasterize(tester, s, bright, band);
+
+      expect(a(s).frames.first.id, const FrameId('a-1'));
+      expect(await seenOf(tester, s, [36, 52]), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
     testWidgets('🎯the transform rasterized over a band moves the band\'s '
         'picture where it showed, and keeps moving the row outside it', (
       tester,
