@@ -201,9 +201,13 @@ void main() {
       // born on that seat wearing its head, and the other cut was given no
       // second row. Since F-343 no cut lacks it past the open: the seat is
       // the structure's, given to every cut's conte.
+      // 🗣️I-159 (유저 2026-11-04): 「서있는걸 기준으로 … 그 아래나 위에
+      // 생기게」 — stood on the conte, the row added takes the seat beside
+      // it, and the seat it was given moves one out. ↩️It landed past that
+      // seat, at the end of its side.
       test('🚨a seat only another cut holds is every cut\'s from the open — '
           '${placement.name}: given wearing its head — and a row added lands '
-          'past it in every cut', () {
+          'beside the conte in every cut, the given one a seat further', () {
         final session = sessionOf([
           cutOf('a', [cel('a'), conte('a')]),
           cutOf('b', [
@@ -238,9 +242,14 @@ void main() {
 
         session.folders.addAttachedLayer(placement);
 
-        expect(seatRow(session, 'a', seat).id, given.id);
-        expect(seatRow(session, 'b', seat).id, const LayerId('b-side'));
-        expect(seatRow(session, 'b', seat * 2).id, isNot(given.id));
+        final added = session.activeLayerId;
+        expect(seatRow(session, 'a', seat).id, added);
+        expect(seatRow(session, 'a', seat * 2).id, given.id);
+        expect(
+          seatRow(session, 'b', seat).id,
+          isNot(anyOf(const LayerId('b-side'), added)),
+        );
+        expect(seatRow(session, 'b', seat * 2).id, const LayerId('b-side'));
         expect(conteGroupOf(cutIn(session, 'b')), hasLength(3));
       });
     }
