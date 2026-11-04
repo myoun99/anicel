@@ -1,5 +1,6 @@
 import 'dart:collection' show SplayTreeMap;
 
+import '../../core/collection_equality.dart' show setEquals;
 import '../../models/attached_layer_resolve.dart'
     show attachedMirrorCelId, fxCarrierOf, isSyncedAttachedLayer;
 import '../../models/audio_clip.dart';
@@ -26,10 +27,11 @@ import '../../models/timeline_splice.dart' show splitTimelineAt;
 import '../../models/track_conte_laying.dart' show conteBaseOf;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/transform_track.dart';
-import '../commands/link_mirror.dart' show existenceMirrorTargets;
+import '../commands/link_mirror.dart'
+    show existenceMirrorTargets, linkMirrorTargets;
 import '../cut_frame_composite_plan.dart' show exposedCelIdAt;
 import '../playback/cut_frame_composite_signature.dart'
-    show BrushFrameRevisionResolver;
+    show BrushFrameRevisionResolver, CutFrameCompositeSignature;
 import '../playback/cut_frame_composite_spans.dart';
 import '../project_lookup.dart' show requireCut;
 import 'layer_merge_plan.dart'
@@ -39,6 +41,7 @@ import 'layer_merge_plan.dart'
         drawnBare,
         kindHoldingPictures,
         picturesCutAtTheWall,
+        rowsKeyedAcrossCuts,
         runsByPicture,
         tailClearOf;
 
@@ -60,77 +63,95 @@ enum FxBakeChange {
 /// (exclusive).
 typedef BakedFrames = ({int start, int end});
 
-/// What ONE press of RASTERIZE in a row's fx group header takes: the row,
-/// the fx — the transform, where [effectId] is null — the rows riding the
-/// row that wear it, and the [frames] it bakes.
+/// One use of the row a press bakes — the row as one cut of its link group
+/// holds it, its cels the group's one bank: the [cut], the [row] there, the
+/// frames [drawn] there and the [frames] it bakes of them — none for a use
+/// it leaves showing what it shows — and [keys], each row of the cut a link
+/// group holds named as every cut names it ([rowsKeyedAcrossCuts]), so the
+/// uses' pictures are one where they show one.
+typedef _Use = ({
+  Cut cut,
+  Layer row,
+  int drawn,
+  BakedFrames? frames,
+  Map<LayerId, LayerId> keys,
+});
+
+/// What ONE press of RASTERIZE in a row's fx group header takes: the row in
+/// every cut it is used in, the fx — the transform, where [_effectId] is
+/// null — and the rows riding the row that wear it.
 final class FxBakeTaking {
-  const FxBakeTaking._(
-    this.cut,
-    this.row,
-    this.effectId,
-    this._riders,
-    this._drawnFrames,
-    this.frames,
-  );
-
-  /// The cut it was taken of.
-  final Cut cut;
-
-  /// The row it bakes.
-  final Layer row;
+  const FxBakeTaking._(this._effectId, this._uses, this._riders);
 
   /// The fx it bakes; null for the transform.
-  final EffectId? effectId;
+  final EffectId? _effectId;
 
-  /// The rows riding [row] that wear its fx and its transform
+  /// The row's uses, the pressed cut's first: every member of its link
+  /// group, whose cels are one bank — baked together (🗣️I-120-Q6 「같은 셀을
+  /// 보는 다른 컷도 같이 굽는다」, as a reference rasterize lets every use
+  /// go, F-374-Q10).
+  final List<_Use> _uses;
+
+  /// The rows riding the row that wear its fx and its transform
   /// ([fxCarrierOf]), baked with it (I-120 ②b — 「어태치 레이어는 주인과
-  /// 같이 굽는다」, 07-21).
+  /// 같이 굽는다」, 07-21) — none while the row has other uses (④b).
   final List<Layer> _riders;
 
-  /// The cut's drawn length, which the rows' holds and repeats fill to.
-  final int _drawnFrames;
+  /// The use the press was pressed in.
+  _Use get _pressed => _uses.first;
 
-  /// The frames it bakes: the band's, where one scopes the press, else
-  /// every frame the cut draws (🗣️I-120-Q3 「범위 안만 굽고, 범위 밖은
-  /// 보이던 그대로」 — with no band the range is the row, and the one code
-  /// clears every key).
-  final BakedFrames frames;
-
-  /// Whether a frame the cut draws lies outside [frames].
-  bool get _keepsAFrame => !_coversEvery(frames, _drawnFrames);
-
-  /// Whether it bakes a part of the row an fx that draws at its defaults —
-  /// the cel number's, a plugin's — would go on drawing outside: its switch
-  /// has no key, so it cannot be off for [frames] alone. 🗣️I-120-Q14, its
-  /// recommendation while it is asked 「막고 경고」 (Q6's law for what one
-  /// picture cannot hold): it bakes nothing, and says why.
-  bool get cannotKeepTheRest =>
-      _keepsAFrame &&
-      row.effects.any(
-        (fx) => fx.id == effectId && !fx.kind.changesNothingAtItsDefaults,
+  /// Whether it bakes an fx that draws at its defaults — the cel number's,
+  /// a plugin's — and leaves a frame a use draws, where it would go on
+  /// drawing: its switch has no key, and is every use's, so it cannot be
+  /// off for the frames baked alone. 🗣️I-120-Q14, its recommendation while
+  /// it is asked 「막고 경고」 (Q6's law for what one picture cannot hold):
+  /// it bakes nothing, and says why ([FxBakeWait.rest]).
+  bool get _cannotKeepTheRest =>
+      _uses.any(_keepsAFrame) &&
+      _pressed.row.effects.any(
+        (fx) => fx.id == _effectId && !fx.kind.changesNothingAtItsDefaults,
       );
 
-  /// It scoped to the frames of its own [band] holds — the band scoping the
-  /// press (Q3) — as it is where none does, and null where the band holds
-  /// none of them.
+  /// It scoped to the frames of the pressed cut its own [band] holds — the
+  /// band scoping the press (Q3), which is that cut's: it bakes nothing of
+  /// the row's other uses, the cels they show kept where they show them —
+  /// as it is where none does, and null where the band holds none of them.
   FxBakeTaking? over(BakedFrames? band) {
     if (band == null) {
       return this;
     }
-    final start = band.start < frames.start ? frames.start : band.start;
+    final (:cut, :row, :drawn, :frames, :keys) = _pressed;
+    // The pressed use bakes: it is what the press bakes of.
+    final start = band.start < frames!.start ? frames.start : band.start;
     final end = band.end > frames.end ? frames.end : band.end;
-    return start < end
-        ? FxBakeTaking._(
-            cut,
-            row,
-            effectId,
-            _riders,
-            _drawnFrames,
-            (start: start, end: end),
-          )
-        : null;
+    if (start >= end) {
+      return null;
+    }
+    return FxBakeTaking._(_effectId, [
+      (
+        cut: cut,
+        row: row,
+        drawn: drawn,
+        frames: (start: start, end: end),
+        keys: keys,
+      ),
+      for (final use in _uses.skip(1))
+        (
+          cut: use.cut,
+          row: use.row,
+          drawn: use.drawn,
+          frames: null,
+          keys: use.keys,
+        ),
+    ], _riders);
   }
 }
+
+/// Whether a frame [use]'s cut draws is one it does not bake.
+bool _keepsAFrame(_Use use) => switch (use.frames) {
+  final frames? => !_coversEvery(frames, use.drawn),
+  null => use.drawn > 0,
+};
 
 /// What a press of RASTERIZE in [rowId]'s group header for [effectId] — the
 /// transform's, where null — takes of [cutId] in [project]: null where it
@@ -141,15 +162,16 @@ final class FxBakeTaking {
 /// row, the camera. Nor does a row that wears another's fx: a row riding
 /// another wears its base's and authors none (R9 — the panels draw it none).
 ///
-/// ⚠️Rows this round (② of the card's) does not bake yet stand down, as a
+/// ⚠️Rows this round (④ of the card's) does not bake yet stand down, as a
 /// merge's did until the round that took them, wherever the press reaches
-/// one — its row or a row riding it: a row whose cels another cut shows too
-/// (④, Q6 — every use baked together), a row of a track's conte — the conte
-/// and the rows riding it, which wear fx of their own (④, Q7 · I-99) — and
-/// a reference row (⑤, Q5 · Q11). The card's order, not a law of the verb.
+/// one — a use of its row or a row riding it: a row of a track's conte —
+/// the conte and the rows riding it, which wear fx of their own (④c, Q7 ·
+/// I-99) — a row used in other cuts with rows riding it, and a row riding
+/// it with selves in other cuts (④b), and a reference row (⑤, Q5 · Q11).
+/// The card's order, not a law of the verb.
 ///
-/// It bakes every frame the cut draws; a band scoping the press narrows it
-/// ([FxBakeTaking.over]).
+/// It bakes every frame each use's cut draws; a band scoping the press
+/// narrows it ([FxBakeTaking.over]).
 FxBakeTaking? takeFxToBake({
   required Project project,
   required CutId cutId,
@@ -166,50 +188,109 @@ FxBakeTaking? takeFxToBake({
   if (effectId != null && !row.effects.any((fx) => fx.id == effectId)) {
     return null;
   }
-  final riders = [
-    for (final other in cut.layers)
-      if (other.id != row.id &&
-          other.kind.isDrawingCel &&
-          fxCarrierOf(other, cut.layers)?.id == row.id)
-        other,
+  final pressed = (cutId: cut.id, layerId: row.id);
+  final uses = [
+    for (final (:cutId, :layerId) in [
+      pressed,
+      for (final use in linkMirrorTargets(
+        project,
+        cutId: cut.id,
+        layerId: row.id,
+      ))
+        if (use != pressed) use,
+    ])
+      _useOf(project, cutId, layerId),
   ];
-  if (_waitsForALaterRound(project, cut, [row, ...riders])) {
+  final riders = _ridersOf(cut, row);
+  if (_waitsForALaterRound(project, uses, riders)) {
     return null;
   }
+  return FxBakeTaking._(effectId, uses, riders);
+}
+
+/// [rowId]'s use in [cutId] ([_Use]), every frame the cut draws baked.
+_Use _useOf(Project project, CutId cutId, LayerId rowId) {
+  final cut = requireCut(project, cutId);
   final drawn = cutDrawnFrameCount(project, cutId) ?? cut.duration;
-  return FxBakeTaking._(
-    cut,
-    row,
-    effectId,
-    riders,
-    drawn,
-    (start: 0, end: drawn),
+  return (
+    cut: cut,
+    row: cut.layers.byId(rowId)!,
+    drawn: drawn,
+    frames: (start: 0, end: drawn),
+    keys: rowsKeyedAcrossCuts(project.linkRegistry, cut),
   );
 }
 
-bool _waitsForALaterRound(Project project, Cut cut, List<Layer> reached) =>
-    reached.any(
-      (row) =>
+/// The rows of [cut] riding [row] that wear its fx ([fxCarrierOf]).
+List<Layer> _ridersOf(Cut cut, Layer row) => [
+  for (final other in cut.layers)
+    if (other.id != row.id &&
+        other.kind.isDrawingCel &&
+        fxCarrierOf(other, cut.layers)?.id == row.id)
+      other,
+];
+
+bool _waitsForALaterRound(
+  Project project,
+  List<_Use> uses,
+  List<Layer> riders,
+) =>
+    uses.any(
+      (use) =>
+          conteBaseOf(use.cut)?.id == use.row.id ||
+          ridesTheConte(use.row, use.cut.layers) ||
+          use.row.mediaReference != null ||
+          (uses.length > 1 && _ridersOf(use.cut, use.row).isNotEmpty),
+    ) ||
+    riders.any(
+      (rider) =>
           existenceMirrorTargets(
                 project,
-                cutId: cut.id,
-                layerId: row.id,
+                cutId: uses.first.cut.id,
+                layerId: rider.id,
               ).length >
               1 ||
-          conteBaseOf(cut)?.id == row.id ||
-          ridesTheConte(row, cut.layers) ||
-          row.mediaReference != null,
+          rider.mediaReference != null,
     );
 
-/// What a press of RASTERIZE makes of [taking]'s row: its pictures with the
-/// fx baked in, and the row after.
-class FxBakePlan {
+/// What a press of RASTERIZE makes of what it takes ([planFxBake]): a bake
+/// ([FxBakePlan]), or nothing, and why ([FxBakeWaits]).
+sealed class FxBakeOutcome {
+  const FxBakeOutcome();
+}
+
+/// It bakes nothing, and [why] is what the press says.
+final class FxBakeWaits extends FxBakeOutcome {
+  const FxBakeWaits(this.why);
+
+  final FxBakeWait why;
+}
+
+/// Why a press of RASTERIZE bakes nothing ([FxBakeWaits]): what the row's
+/// pictures cannot hold, which it does not bake and warns of (「막고 경고」 —
+/// 🗣️I-120-Q6, as F-374-Q11 for a reference).
+enum FxBakeWait {
+  /// The fx draws at its defaults, and a frame a use draws is left unbaked:
+  /// its switch, every frame's of every use, cannot be off there alone
+  /// (Q14, its recommendation while it is asked).
+  rest,
+
+  /// A cel the uses share shows as other pictures in one than in another,
+  /// and one cel holds one (Q6).
+  usesApart,
+}
+
+/// What a press of RASTERIZE makes of a row: its pictures with the fx baked
+/// in, and the row after — in every cut it is used in.
+final class FxBakePlan extends FxBakeOutcome {
   const FxBakePlan._({
     required this.cut,
     required this.row,
     required this.riders,
     required this.pictures,
     required this.changes,
+    required this.layers,
+    required this.others,
   });
 
   /// The cut it was planned of, as it was.
@@ -222,18 +303,20 @@ class FxBakePlan {
   /// wearing the fx ([_riderBaked]).
   final List<Layer> riders;
 
-  /// Every new cel's picture, still to be laid: each drawn of the row
-  /// wearing the baked fx alone ([_wearingOnly]), or of a rider riding it
-  /// so ([_ridingOnly]).
+  /// Every new cel's picture, still to be laid: each drawn of a use of the
+  /// row wearing the baked fx alone ([_wearingOnly]), or of a rider riding
+  /// it so ([_ridingOnly]).
   final List<LayerMergePicture> pictures;
 
   final Set<FxBakeChange> changes;
 
-  /// The cut's rows after: [row] and [riders] where they stood.
-  List<Layer> get layers {
-    final after = {row.id: row, for (final rider in riders) rider.id: rider};
-    return [for (final layer in cut.layers) after[layer.id] ?? layer];
-  }
+  /// [cut]'s rows after: [row] and [riders] where they stood, and any other
+  /// use of the row it holds.
+  final List<Layer> layers;
+
+  /// Every other cut the row is used in (Q6), as it was, with its rows
+  /// after.
+  final List<({Cut cut, List<Layer> layers})> others;
 }
 
 /// What RASTERIZE makes of [taking] (I-120 round ②).
@@ -249,6 +332,11 @@ class FxBakePlan {
 /// - Q4 「구운 뒤 그 fx 의 스위치를 끈다」 — every value and key of the fx
 ///   back at its default, its line kept; one that changes the picture at
 ///   its defaults (the cel number, a plugin's) switched off besides.
+/// - Q6 「같은 셀을 보는 다른 컷도 같이 굽는다 — 한 장에 못 담으면 막고
+///   경고」 — every use of the row by its own values and timing, into the
+///   one bank its cels are: a picture two uses show is one cel; a cel one
+///   use shows as other pictures than another does bakes nothing
+///   ([FxBakeWait.usesApart]).
 ///
 /// A cel that shows one picture is that picture — its name, its place in
 /// the bank. A cel shown as several takes a new cel for each after the
@@ -260,66 +348,137 @@ class FxBakePlan {
 /// drawing row (I-120: 「애니메이션레이어로 전환」). The rows riding the row
 /// wear its fx, so they are baked with it ([_riderBaked]).
 ///
-/// [reads] says how the cut's cels are read; [mintFrameId] names each new
-/// cel; [reach] is how far past the canvas the wall stands.
-FxBakePlan planFxBake(
+/// [readsOf] says how each cut's cels are read; [mintFrameId] names each
+/// new cel; [reach] is how far past the canvas the wall stands.
+FxBakeOutcome planFxBake(
   FxBakeTaking taking, {
-  required CelReads reads,
+  required CelReads Function(Cut cut) readsOf,
   required FrameId Function(LayerId row) mintFrameId,
   required PasteboardReach reach,
 }) {
-  assert(!taking.cannotKeepTheRest, 'it bakes nothing, and says why');
-  final FxBakeTaking(:cut, :row, :effectId, :frames) = taking;
-  final shown = _wearingOnly(cut, row, effectId);
-  final runs = runsByPicture(shown, [
-    shown.layers.byId(row.id)!,
-  ], reads.revisionOf);
-  final bank = _bankOf(
-    cut,
-    row,
-    (cut: shown, runs: runs, baked: frames),
-    (_) => mintFrameId(row.id),
-  );
-  final baked = _rowBaked(taking, bank);
+  if (taking._cannotKeepTheRest) {
+    return const FxBakeWaits(FxBakeWait.rest);
+  }
+  final FxBakeTaking(_effectId: effectId, _uses: uses, _pressed: pressed) =
+      taking;
+  final shown = [
+    for (final use in uses) _shownOf(use, effectId, readsOf(use.cut)),
+  ];
+  final bank = _bankOf(shown, (_) => mintFrameId(pressed.row.id));
+  if (bank == null) {
+    return const FxBakeWaits(FxBakeWait.usesApart);
+  }
+  final rows = [
+    for (final (index, use) in uses.indexed)
+      _rowBaked(use, effectId, bank, bank.celAt[index]),
+  ];
   final riders = [
     for (final rider in taking._riders)
-      _riderBaked(taking, rider, (runs: runs, bank: bank), (
-        revisionOf: reads.revisionOf,
-        mintFrameId: mintFrameId,
-      )),
+      _riderBaked(
+        taking,
+        rider,
+        (
+          runs: shown.first.runs,
+          celAt: bank.celAt.first,
+          firstOf: bank.firstOf,
+        ),
+        (
+          revisionOf: readsOf(pressed.cut).revisionOf,
+          mintFrameId: mintFrameId,
+        ),
+      ),
   ];
   final pictures = [
     ...bank.pictures,
     for (final rider in riders) ...rider.pictures,
   ];
+  final cuts = _cutsAfter([
+    for (final (index, use) in uses.indexed) (cut: use.cut, row: rows[index]),
+    for (final rider in riders) (cut: pressed.cut, row: rider.row),
+  ]);
   return FxBakePlan._(
-    cut: cut,
-    row: baked,
+    cut: pressed.cut,
+    row: rows.first,
     riders: [for (final rider in riders) rider.row],
     pictures: pictures,
     changes: {
-      if (_runsAfterAnFxOn(row, effectId)) FxBakeChange.order,
-      if (picturesCutAtTheWall(pictures, (
-        wall: cut.canvasSize.pasteboardAt(reach),
-        inkOf: reads.inkOf,
-      )))
-        FxBakeChange.wall,
+      if (_runsAfterAnFxOn(pressed.row, effectId)) FxBakeChange.order,
+      if (_cutAtTheWall(pictures, readsOf, reach)) FxBakeChange.wall,
     },
+    layers: cuts.first.layers,
+    others: cuts.sublist(1),
   );
 }
 
-/// [taking]'s row after its bake: its cels [bank], its blocks parted where
-/// its pictures are, and each of its FX bundles kept showing what it showed
-/// ([_Keeping]) — the one baked at rest over the frames baked.
-Layer _rowBaked(FxBakeTaking taking, _Bank bank) {
-  final FxBakeTaking(:cut, :row, :effectId, :frames) = taking;
+/// [use] as the bake draws it ([_Shown]): wearing the fx [effectId] alone
+/// ([_wearingOnly]), its cels read by [reads].
+_Shown _shownOf(_Use use, EffectId? effectId, CelReads reads) {
+  final cut = _wearingOnly(use.cut, use.row, effectId);
+  return (
+    into: use.cut,
+    row: use.row,
+    cut: cut,
+    runs: runsByPicture(
+      cut,
+      [cut.layers.byId(use.row.id)!],
+      reads.revisionOf,
+      keys: use.keys,
+    ),
+    baked: use.frames,
+  );
+}
+
+/// Whether a row a picture of [pictures] is drawn of shows a picture past
+/// its cut's wall, [reach] past the canvas ([picturesCutAtTheWall]) — each
+/// cut's cels read by [readsOf].
+bool _cutAtTheWall(
+  List<LayerMergePicture> pictures,
+  CelReads Function(Cut cut) readsOf,
+  PasteboardReach reach,
+) => pictures.any(
+  (picture) => picturesCutAtTheWall([picture], (
+    wall: picture.into.canvasSize.pasteboardAt(reach),
+    inkOf: readsOf(picture.into).inkOf,
+  )),
+);
+
+/// Each cut [after] names a row of, as it was, with its rows after: each
+/// row [after] gives it where it stood — the cuts in the order [after]
+/// first names them.
+List<({Cut cut, List<Layer> layers})> _cutsAfter(
+  List<({Cut cut, Layer row})> after,
+) {
+  final byCut = <CutId, ({Cut cut, Map<LayerId, Layer> rows})>{};
+  for (final (:cut, :row) in after) {
+    (byCut[cut.id] ??= (cut: cut, rows: {})).rows[row.id] = row;
+  }
+  return [
+    for (final (:cut, :rows) in byCut.values)
+      (
+        cut: cut,
+        layers: [for (final layer in cut.layers) rows[layer.id] ?? layer],
+      ),
+  ];
+}
+
+/// [use]'s row after its bake: its cels the [bank], showing [celAt]'s at
+/// each frame, its blocks parted where its pictures are, and each of its
+/// FX bundles kept showing what it showed ([_Keeping]) — the one baked at
+/// rest over the frames baked.
+Layer _rowBaked(
+  _Use use,
+  EffectId? effectId,
+  _Bank bank,
+  Map<int, FrameId> celAt,
+) {
+  final (:cut, :row, :drawn, :frames, keys: _) = use;
   final parted = row.copyWith(
     kind: kindHoldingPictures(row.kind, bank.cels.length),
     frames: bank.cels,
-    timeline: _timelineShowing(row, bank.celAt, taking._drawnFrames),
+    timeline: _timelineShowing(row, celAt, drawn),
   );
   _Keeping keeping(FxBasis basis, {required bool baked}) => _Keeping(
-    taking._drawnFrames,
+    drawn,
     baked: baked ? frames : null,
     reads: (
       was: (frame) => fxReadFrame(basis, row.fxBlocks, frame),
@@ -336,77 +495,92 @@ Layer _rowBaked(FxBakeTaking taking, _Bank bank) {
       row.transformTrack,
       keeping(row.transformBasis, baked: effectId == null),
     ),
-    audioClips: _clipsAfter(row, bank),
+    audioClips: _clipsAfter(row, bank.firstOf),
   );
 }
 
-/// The cels a bake leaves a row: [cels] its bank, [celAt] the cel each
-/// frame shows, [pictures] each new cel's picture still to be laid, and
-/// [firstOf] the first picture each cel baked became.
+/// The cels a bake leaves a bank: [cels] the bank, [celAt] the cel each
+/// frame of each use shows (by the use's place), [pictures] each new cel's
+/// picture still to be laid, and [firstOf] the first picture each cel
+/// baked became.
 typedef _Bank = ({
   List<Frame> cels,
-  Map<int, FrameId> celAt,
+  List<Map<int, FrameId>> celAt,
   List<LayerMergePicture> pictures,
   Map<FrameId, FrameId> firstOf,
 });
 
-/// A row as a bake draws it: the [cut] it is drawn of, the [runs] of
-/// frames it shows one picture over there ([runsByPicture]), and the frames
-/// [baked] of them.
+/// A use of a bank as a bake draws it: the [row] as the cut [into] holds
+/// it, the [cut] it is drawn of, the [runs] of frames it shows one picture
+/// over there ([runsByPicture]), and the frames [baked] of them — none for
+/// a use it leaves.
 typedef _Shown = ({
-  Cut cut,
-  List<List<CutFrameCompositeSpan>> runs,
-  BakedFrames baked,
-});
-
-/// [row]'s bank after the bake, as [shown] shows it — each new cel named
-/// [idOf] its run, its picture laid into [into]: each cel it does not show
-/// over the frames baked kept as it is, each it shows there parted into its
-/// pictures — and kept besides where it still shows outside them, its
-/// pictures all new (🗣️I-120-Q3 「범위 밖은 보이던 그대로」).
-_Bank _bankOf(
   Cut into,
   Layer row,
-  _Shown shown,
+  Cut cut,
+  List<List<CutFrameCompositeSpan>> runs,
+  BakedFrames? baked,
+});
+
+/// One picture as a use shows it: the [use], by its place, and the [spans]
+/// it shows it over.
+typedef _Seen = ({int use, List<CutFrameCompositeSpan> spans});
+
+/// The bank [uses] share after the bake, as each shows it — each new cel
+/// named [idOf] its run, its picture drawn of the use that shows it first:
+/// each cel no use shows over the frames it bakes kept as it is, each one
+/// shown there parted into its pictures — and kept besides where a use
+/// still shows it outside them, its pictures all new (🗣️I-120-Q3 「범위
+/// 밖은 보이던 그대로」). Null where a use shows a cel as other pictures
+/// than another does ([_picturesOfCels]).
+_Bank? _bankOf(
+  List<_Shown> uses,
   FrameId Function(List<CutFrameCompositeSpan> run) idOf,
 ) {
-  final (:baked, :celAt) = _bakedRuns(row, shown);
+  final ran = [for (final use in uses) _bakedRuns(use)];
+  final pictured = _picturesOfCels([for (final each in ran) each.baked]);
+  if (pictured == null) {
+    return null;
+  }
   final outside = {
-    for (final MapEntry(key: frame, value: cel) in celAt.entries)
-      if (frame < shown.baked.start || frame >= shown.baked.end) cel,
+    for (final (index, use) in uses.indexed)
+      for (final MapEntry(key: frame, value: cel)
+          in ran[index].celAt.entries)
+        if (!_holds(use.baked, frame)) cel,
   };
+  final celAt = [for (final each in ran) each.celAt];
+  // The uses hold one bank.
+  final row = uses.first.row;
   final held = {for (final cel in row.frames) ?celNumberOf(cel.name)};
   final bank = <Frame>[];
   final pictures = <LayerMergePicture>[];
   final firstOf = <FrameId, FrameId>{};
   for (final cel in row.frames) {
-    final parts = baked[cel.id] ?? const [];
+    final parts = pictured[cel.id] ?? const [];
     // The first picture keeps the place of a cel shown nowhere else.
     final kept = parts.isEmpty || outside.contains(cel.id);
     if (kept) {
       bank.add(cel);
     }
-    for (final (index, spans) in parts.indexed) {
+    for (final (index, seen) in parts.indexed) {
+      final first = index == 0 && !kept;
+      final (:use, :spans) = seen.first;
       final made = Frame(
         id: idOf(spans),
         duration: spans.first.length,
-        name: index == 0 && !kept ? cel.name : _tailed(held, cel.name),
+        name: first ? cel.name : _tailed(held, cel.name),
         strokes: const [],
       );
       bank.add(made);
-      if (index == 0 && !kept) {
+      if (first) {
         firstOf[cel.id] = made.id;
       }
-      for (final span in spans) {
-        for (var frame = span.start; frame < span.endExclusive; frame += 1) {
-          celAt[frame] = made.id;
-        }
-      }
+      _showing(celAt, seen, made.id);
       pictures.add((
-        into: into,
-        rowId: row.id,
+        into: uses[use].into,
+        rowId: uses[use].row.id,
         frameId: made.id,
-        from: shown.cut,
+        from: uses[use].cut,
         frameIndex: spans.first.start,
       ));
     }
@@ -414,26 +588,73 @@ _Bank _bankOf(
   return (cels: bank, celAt: celAt, pictures: pictures, firstOf: firstOf);
 }
 
-/// [row]'s runs as [shown] shows them: each of its cels' runs over the
-/// frames baked ([baked]), and the cel it shows at every frame it shows
-/// one ([celAt]). A run [row] shows nothing over is none of its.
+/// [celAt] — each use's, by its place — showing [cel] wherever [seen]
+/// shows its picture.
+void _showing(
+  List<Map<int, FrameId>> celAt,
+  List<_Seen> seen,
+  FrameId cel,
+) {
+  for (final (:use, :spans) in seen) {
+    for (final span in spans) {
+      for (var frame = span.start; frame < span.endExclusive; frame += 1) {
+        celAt[use][frame] = cel;
+      }
+    }
+  }
+}
+
+/// Each cel the uses show over the frames they bake — [baked], each use's
+/// by its place ([_bakedRuns]) — as its pictures, each seen by every use
+/// that shows it: null where a use shows a cel as other pictures than
+/// another does, which one cel cannot hold (🗣️I-120-Q6 「한 장에 못 담으면
+/// 막고 경고」).
+Map<FrameId, List<List<_Seen>>>? _picturesOfCels(
+  List<Map<FrameId, List<List<CutFrameCompositeSpan>>>> baked,
+) {
+  final byCel = <FrameId, Map<CutFrameCompositeSignature, List<_Seen>>>{};
+  for (final (use, cels) in baked.indexed) {
+    for (final MapEntry(key: cel, value: runs) in cels.entries) {
+      final signatures = {for (final run in runs) run.first.signature};
+      final known = byCel[cel];
+      if (known != null && !setEquals(signatures, known.keys.toSet())) {
+        return null;
+      }
+      final pictures = byCel[cel] ??= {};
+      for (final run in runs) {
+        (pictures[run.first.signature] ??= []).add((use: use, spans: run));
+      }
+    }
+  }
+  return {
+    for (final MapEntry(key: cel, value: pictures) in byCel.entries)
+      cel: [...pictures.values],
+  };
+}
+
+/// [shown]'s runs: each of its cels' runs over the frames baked ([baked]),
+/// and the cel it shows at every frame it shows one ([celAt]). A run its
+/// row shows nothing over is none of its.
 ({
   Map<FrameId, List<List<CutFrameCompositeSpan>>> baked,
   Map<int, FrameId> celAt,
 })
-_bakedRuns(Layer row, _Shown shown) {
+_bakedRuns(_Shown shown) {
   final baked = <FrameId, List<List<CutFrameCompositeSpan>>>{};
   final celAt = <int, FrameId>{};
   for (final spans in shown.runs) {
     final cel = exposedCelIdAt(
       cut: shown.cut,
-      layerId: row.id,
+      layerId: shown.row.id,
       frameIndex: spans.first.start,
     );
     if (cel == null) {
       continue;
     }
-    final inside = [for (final span in spans) ?_within(span, shown.baked)];
+    final inside = [
+      if (shown.baked case final frames?)
+        for (final span in spans) ?_within(span, frames),
+    ];
     if (inside.isNotEmpty) {
       (baked[cel] ??= []).add(inside);
     }
@@ -459,19 +680,30 @@ CutFrameCompositeSpan? _within(CutFrameCompositeSpan span, BakedFrames frames) {
       : null;
 }
 
-/// [row]'s sounds after [bank]: a cel baked takes its sounds to its first
-/// picture.
-List<AudioClip> _clipsAfter(Layer row, _Bank bank) => [
+/// Whether [frames] holds [frame] — none does, where none are.
+bool _holds(BakedFrames? frames, int frame) => switch (frames) {
+  (:final start, :final end) => start <= frame && frame < end,
+  null => false,
+};
+
+/// [row]'s sounds after a bake that made [firstOf]: a cel baked takes its
+/// sounds to its first picture.
+List<AudioClip> _clipsAfter(Layer row, Map<FrameId, FrameId> firstOf) => [
   for (final clip in row.audioClips)
-    switch (bank.firstOf[clip.frameId]) {
+    switch (firstOf[clip.frameId]) {
       final made? => clip.copyWith(frameId: made),
       null => clip,
     },
 ];
 
 /// What the rows riding a baked row are baked against: the row's [runs]
-/// by picture, and its [bank] after.
-typedef _Ridden = ({List<List<CutFrameCompositeSpan>> runs, _Bank bank});
+/// by picture, and of its bank after, the cel it shows at each frame
+/// ([celAt]) and the first picture each cel baked became ([firstOf]).
+typedef _Ridden = ({
+  List<List<CutFrameCompositeSpan>> runs,
+  Map<int, FrameId> celAt,
+  Map<FrameId, FrameId> firstOf,
+});
 
 /// What a new cel is made under: what each cel holds as the composite
 /// signature reads it, and the minting of a row's new cel.
@@ -494,38 +726,35 @@ typedef _Minting = ({
   _Ridden ridden,
   _Minting minting,
 ) {
+  final (:cut, :drawn, :frames, row: _, keys: _) = taking._pressed;
   final alone = _ridingOnly(taking, rider);
   final synced = isSyncedAttachedLayer(rider);
-  final bank = synced
-      ? _bankOf(
-          taking.cut,
-          rider,
-          (cut: alone, runs: ridden.runs, baked: taking.frames),
-          (run) => attachedMirrorCelId(
-            rider.id,
-            ridden.bank.celAt[run.first.start]!,
-          ),
-        )
-      : _bankOf(
-          taking.cut,
-          rider,
-          (
-            cut: alone,
-            runs: runsByPicture(alone, [rider], minting.revisionOf),
-            baked: taking.frames,
-          ),
-          (_) => minting.mintFrameId(rider.id),
-        );
+  final shown = (
+    into: cut,
+    row: rider,
+    cut: alone,
+    runs: synced
+        ? ridden.runs
+        : runsByPicture(alone, [rider], minting.revisionOf),
+    baked: frames,
+  );
+  // One use: none shows a cel otherwise than another.
+  final bank = _bankOf(
+    [shown],
+    (run) => synced
+        ? attachedMirrorCelId(rider.id, ridden.celAt[run.first.start]!)
+        : minting.mintFrameId(rider.id),
+  )!;
   final after = rider.copyWith(
     kind: kindHoldingPictures(rider.kind, bank.cels.length),
     frames: bank.cels,
-    audioClips: _clipsAfter(rider, bank),
+    audioClips: _clipsAfter(rider, bank.firstOf),
   );
   return (
     row: synced
-        ? after.copyWith(baseFrameLinks: _linksAfter(rider, ridden.bank, bank))
+        ? after.copyWith(baseFrameLinks: _linksAfter(rider, ridden, bank))
         : after.copyWith(
-            timeline: _timelineShowing(rider, bank.celAt, taking._drawnFrames),
+            timeline: _timelineShowing(rider, bank.celAt.single, drawn),
           ),
     pictures: bank.pictures,
   );
@@ -535,11 +764,11 @@ typedef _Minting = ({
 /// ([bank]): each of the base's cels kept to the cel it showed — its first
 /// picture, where that was baked — and each of the base's new cels to the
 /// rider's cel over it.
-Map<FrameId, FrameId> _linksAfter(Layer rider, _Bank base, _Bank bank) => {
+Map<FrameId, FrameId> _linksAfter(Layer rider, _Ridden base, _Bank bank) => {
   for (final MapEntry(key: baseCel, value: cel)
       in rider.baseFrameLinks.entries)
     if (!base.firstOf.containsKey(baseCel)) baseCel: bank.firstOf[cel] ?? cel,
-  for (final MapEntry(key: frame, value: cel) in bank.celAt.entries)
+  for (final MapEntry(key: frame, value: cel) in bank.celAt.single.entries)
     base.celAt[frame]!: cel,
 };
 
@@ -579,8 +808,8 @@ Cut _wearingOnly(Cut cut, Layer row, EffectId? effectId) {
 /// transform alone. A row's eye is its own (UI-R24 #5), so the row hidden
 /// hides nothing of the rider.
 Cut _ridingOnly(FxBakeTaking taking, Layer rider) {
-  final FxBakeTaking(:cut, :row, :effectId) = taking;
-  final worn = _wearingOnly(cut, row, effectId);
+  final (:cut, :row, drawn: _, frames: _, keys: _) = taking._pressed;
+  final worn = _wearingOnly(cut, row, taking._effectId);
   return worn.copyWith(
     layers: [
       for (final layer in worn.layers)
@@ -642,18 +871,13 @@ final class _Keeping {
   /// Whether it leaves the bundle as it is.
   bool get keepsAll => baked == null && _parted.isEmpty;
 
-  bool _bakes(int frame) => switch (baked) {
-    (:final start, :final end) => start <= frame && frame < end,
-    null => false,
-  };
-
   /// Each run of the frames it does not bake that read at a frame of their
   /// own after the bake — each from the [head] of the block it parted.
   late final List<({int start, int end, int head})> _parted = () {
     final runs = <({int start, int end, int head})>[];
     for (var frame = 0; frame < frames; frame += 1) {
       final head = reads.was(frame);
-      if (reads.now(frame) == head || _bakes(frame)) {
+      if (reads.now(frame) == head || _holds(baked, frame)) {
         continue;
       }
       final last = runs.lastOrNull;
@@ -707,7 +931,7 @@ final class _Keeping {
       ].every(
         (frame) => values.same(
           shown(kept, reads.now(frame), unkeyedAfter(before, rest)),
-          _bakes(frame) ? rest : shown(track, reads.was(frame), before),
+          _holds(baked, frame) ? rest : shown(track, reads.was(frame), before),
         ),
       ),
       'each frame shows what it showed — a bake only parts blocks',

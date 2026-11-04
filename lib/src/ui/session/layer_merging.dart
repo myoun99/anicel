@@ -4,6 +4,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
+import '../../models/layer_link_registry.dart' show LayerLinkRegistry;
 import '../../services/commands/set_cut_layers_command.dart';
 import '../../services/commands/set_cuts_layers_command.dart';
 import '../../services/editing/fx_bake_plan.dart';
@@ -138,36 +139,32 @@ class LayerMerging {
           )?.over(band);
   }
 
-  /// Whether RASTERIZE scoped to [band] bakes nothing because the rest of
-  /// the row would not stay as it shows ([FxBakeTaking.cannotKeepTheRest])
-  /// — which the press says.
-  bool fxBakeCannotKeepTheRest(
-    LayerId rowId,
-    EffectId? effectId,
-    BakedFrames? band,
-  ) => _takingOfFx(rowId, effectId, band)?.cannotKeepTheRest ?? false;
-
   /// What RASTERIZE scoped to [band] — over every frame, where none does —
-  /// makes of [rowId]'s fx [effectId]: null where it bakes nothing.
-  FxBakePlan? planOfFx(
+  /// makes of [rowId]'s fx [effectId]: a bake, or why it bakes nothing
+  /// ([FxBakeWaits]) — which the press says; null where it bakes nothing.
+  FxBakeOutcome? planOfFx(
     LayerId rowId,
     EffectId? effectId, {
     BakedFrames? band,
   }) => switch (_takingOfFx(rowId, effectId, band)) {
-        null => null,
-        FxBakeTaking(cannotKeepTheRest: true) => null,
-        final taking => planFxBake(
-          taking,
-          reads: _readsOf(taking.cut),
-          mintFrameId: _frameIds.mintFrameId,
-          reach: _project.repository.requireProject().pasteboardReach,
-        ),
-      };
+    null => null,
+    final taking => planFxBake(
+      taking,
+      readsOf: _readsOf,
+      mintFrameId: _frameIds.mintFrameId,
+      reach: _project.repository.requireProject().pasteboardReach,
+    ),
+  };
 
-  /// The row [plan] bakes made what it planned, in ONE undo step — or
-  /// nothing, when its cut has changed since it was planned.
+  /// The row [plan] bakes made what it planned in every cut it is used in,
+  /// in ONE undo step — or nothing, when one of its cuts has changed since
+  /// it was planned.
   bool landFx(FxBakePlan plan) {
-    if (!_lands(plan.cut, plan.layers, 'Rasterize fx')) {
+    if (!_landsAcross(
+      [(cut: plan.cut, layers: plan.layers), ...plan.others],
+      _project.repository.requireProject().linkRegistry,
+      'Rasterize fx',
+    )) {
       return false;
     }
     _changes.refreshAfterCutCommand();
@@ -206,18 +203,13 @@ class LayerMerging {
   /// Every cut and the link table as ONE write and ONE undo step
   /// ([SetCutsLayersCommand]).
   bool land(LayerMergePlan plan) {
-    final cuts = [(cut: plan.cut, layers: plan.layers), ...plan.others];
-    if (cuts.any((each) => _project.cutById(each.cut.id) != each.cut)) {
+    if (!_landsAcross(
+      [(cut: plan.cut, layers: plan.layers), ...plan.others],
+      plan.links,
+      'Merge layers',
+    )) {
       return false;
     }
-    _project.historyManager.execute(
-      SetCutsLayersCommand(
-        repository: _project.repository,
-        layers: {for (final each in cuts) each.cut.id: each.layers},
-        links: plan.links,
-        description: 'Merge layers',
-      ),
-    );
     _rowSelection.clearRowSelection();
     _changes.refreshAfterCutCommand(preferredActiveLayerId: plan.result.id);
     _changes.notifyChanged();
@@ -233,6 +225,28 @@ class LayerMerging {
     }
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
+    return true;
+  }
+
+  /// Each of [cuts] written its rows after, and the link table [links], as
+  /// ONE write and ONE undo step ([SetCutsLayersCommand]) — none when a cut
+  /// is no longer what it was.
+  bool _landsAcross(
+    List<({Cut cut, List<Layer> layers})> cuts,
+    LayerLinkRegistry links,
+    String step,
+  ) {
+    if (cuts.any((each) => _project.cutById(each.cut.id) != each.cut)) {
+      return false;
+    }
+    _project.historyManager.execute(
+      SetCutsLayersCommand(
+        repository: _project.repository,
+        layers: {for (final each in cuts) each.cut.id: each.layers},
+        links: links,
+        description: step,
+      ),
+    );
     return true;
   }
 

@@ -63,8 +63,8 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 /// the [band] scoping the press, every frame where none does (Q3), asked
 /// first where the bake changes how the row looks (Q2), with the hatch the
 /// reference rasterize's wears (Q10) — a bake ([bakeAfterAsking]). One
-/// whose rest would not stay as it shows bakes nothing, and says why (Q14,
-/// its recommendation while it is asked).
+/// its pictures cannot hold bakes nothing, and says why ([FxBakeWaits]:
+/// Q6 · Q14).
 Future<void> rasterizeFxGroup(
   BuildContext context,
   EditorSessionManager session,
@@ -73,21 +73,25 @@ Future<void> rasterizeFxGroup(
   String name, {
   BakedFrames? band,
 }) async {
+  switch (session.layerMerging.planOfFx(rowId, effectId, band: band)) {
+    case null:
+      return;
+    case FxBakeWaits(:final why):
+      await _sayWhy(context, why);
+    case final FxBakePlan plan:
+      await _bake(context, session, plan, name);
+  }
+}
+
+/// [plan] baked, asked first where it changes how the row looks.
+Future<void> _bake(
+  BuildContext context,
+  EditorSessionManager session,
+  FxBakePlan plan,
+  String name,
+) {
   final strings = AppText.strings;
-  if (session.layerMerging.fxBakeCannotKeepTheRest(rowId, effectId, band)) {
-    await showAppNotice(
-      context,
-      windowKey: const ValueKey<String>('fx-rasterize-cannot-keep-the-rest'),
-      title: strings.commonNotice,
-      message: strings.tlFxBakeCannotKeepTheRest,
-    );
-    return;
-  }
-  final plan = session.layerMerging.planOfFx(rowId, effectId, band: band);
-  if (plan == null) {
-    return;
-  }
-  await bakeAfterAsking<FxBakeChange>(context, session, (
+  return bakeAfterAsking<FxBakeChange>(context, session, (
     title: strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
     icon: Icons.texture_outlined,
     windowKey: 'fx-rasterize-progress',
@@ -105,4 +109,21 @@ Future<void> rasterizeFxGroup(
     pictures: plan.pictures,
     land: () => session.layerMerging.landFx(plan),
   ));
+}
+
+/// The notice over a press that bakes nothing, saying [why].
+Future<void> _sayWhy(BuildContext context, FxBakeWait why) {
+  final strings = AppText.strings;
+  return showAppNotice(
+    context,
+    windowKey: ValueKey<String>(switch (why) {
+      FxBakeWait.rest => 'fx-rasterize-cannot-keep-the-rest',
+      FxBakeWait.usesApart => 'fx-rasterize-uses-apart',
+    }),
+    title: strings.commonNotice,
+    message: switch (why) {
+      FxBakeWait.rest => strings.tlFxBakeCannotKeepTheRest,
+      FxBakeWait.usesApart => strings.tlFxBakeUsesApart,
+    },
+  );
 }

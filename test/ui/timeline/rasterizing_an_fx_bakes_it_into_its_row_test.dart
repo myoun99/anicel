@@ -41,12 +41,13 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show exposedCelIdAt;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/fx_bake_plan.dart'
-    show BakedFrames, FxBakeChange, FxBakePlan;
+    show BakedFrames, FxBakeChange, FxBakePlan, FxBakeWaits;
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/session/layer_merging.dart' show LayerMerging;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/rasterize_fx_group.dart';
 
@@ -221,16 +222,17 @@ void main() {
     return hosted;
   }
 
-  /// What [s]'s cut shows at canvas ([x], [y]) on [frame], drawn as an
-  /// export draws it.
+  /// What [s]'s cut — [of], where given — shows at canvas ([x], [y]) on
+  /// [frame], drawn as an export draws it.
   Future<List<int>> shownAt(
     WidgetTester tester,
     EditorSessionManager s,
     int frame,
     int x,
-    int y,
-  ) async {
-    final cut = s.requireActiveCut;
+    int y, {
+    Cut? of,
+  }) async {
+    final cut = of ?? s.requireActiveCut;
     final wall = s.pasteboardOf(cut.canvasSize);
     final rgba = await tester.runAsync(() async {
       final renderer = ExportFrameRenderer(
@@ -287,6 +289,20 @@ void main() {
   /// same as itself.
   Set<String> coloursOf(List<List<int>> seen) => {
     for (final rgba in seen) rgba.join(','),
+  };
+
+  /// What RASTERIZE in [rowId]'s header for [effectId], scoped to [band],
+  /// answers in [s]: `bakes`, what it waits for by name, or
+  /// `nothing`.
+  String outcomeOf(
+    EditorSessionManager s,
+    LayerId rowId,
+    EffectId? effectId, [
+    BakedFrames? band,
+  ]) => switch (s.layerMerging.planOfFx(rowId, effectId, band: band)) {
+    FxBakePlan() => 'bakes',
+    FxBakeWaits(:final why) => why.name,
+    null => 'nothing',
   };
 
   /// The cel `a` shows at each of frames 0..2.
@@ -681,8 +697,8 @@ void main() {
         rowA(kind: LayerKind.image, effects: [brightness(keyed: false)]),
       ]);
       expect([
-        parted.layerMerging.planOfFx(const LayerId('a'), bright)!.row.kind,
-        still.layerMerging.planOfFx(const LayerId('a'), bright)!.row.kind,
+        parted.layerMerging.bakeOf(const LayerId('a'), bright)!.row.kind,
+        still.layerMerging.bakeOf(const LayerId('a'), bright)!.row.kind,
       ], [LayerKind.animation, LayerKind.image]);
     });
 
@@ -694,7 +710,7 @@ void main() {
           ],
         ),
       ]);
-      final row = s.layerMerging.planOfFx(const LayerId('a'), bright)!.row;
+      final row = s.layerMerging.bakeOf(const LayerId('a'), bright)!.row;
       expect(row.audioClips.single.frameId, row.frames.first.id);
     });
 
@@ -707,7 +723,7 @@ void main() {
       );
       Set<FxBakeChange> changes(List<LayerEffect> effects, EffectId? baked) =>
           plain([rowA(effects: effects)]).layerMerging
-              .planOfFx(const LayerId('a'), baked)!
+              .bakeOf(const LayerId('a'), baked)!
               .changes;
 
       expect([
@@ -738,8 +754,8 @@ void main() {
       ]);
       final verbs = s.layerMerging;
       expect([
-        verbs.planOfFx(const LayerId('a'), number)!.row.effects.first.enabled,
-        verbs.planOfFx(const LayerId('a'), bright)!.row.effects.last.enabled,
+        verbs.bakeOf(const LayerId('a'), number)!.row.effects.first.enabled,
+        verbs.bakeOf(const LayerId('a'), bright)!.row.effects.last.enabled,
       ], [false, true]);
     });
 
@@ -756,7 +772,7 @@ void main() {
         ),
       ]);
       expect(
-        s.layerMerging.planOfFx(const LayerId('a'), null)!.changes,
+        s.layerMerging.bakeOf(const LayerId('a'), null)!.changes,
         {FxBakeChange.wall},
       );
     });
@@ -771,7 +787,7 @@ void main() {
       final s = plain([
         rowA().copyWith(frames: [...rowA().frames, idle]),
       ]);
-      final row = s.layerMerging.planOfFx(const LayerId('a'), bright)!.row;
+      final row = s.layerMerging.bakeOf(const LayerId('a'), bright)!.row;
       expect([for (final cel in row.frames) cel.name], [
         '1',
         '1-2',
@@ -803,7 +819,7 @@ void main() {
           rowA(effects: [lens(map), brightness()]),
         ]);
         final from = s.layerMerging
-            .planOfFx(const LayerId('a'), const EffectId('e-lens'))!
+            .bakeOf(const LayerId('a'), const EffectId('e-lens'))!
             .pictures
             .first
             .from;
@@ -1074,7 +1090,7 @@ void main() {
         ),
       ]);
       addTearDown(s.dispose);
-      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+      final plan = s.layerMerging.bakeOf(const LayerId('a'), bright)!;
       expect(plan.riders, isEmpty);
     });
 
@@ -1087,7 +1103,7 @@ void main() {
         ),
       );
       final rider = s.layerMerging
-          .planOfFx(const LayerId('a'), bright)!
+          .bakeOf(const LayerId('a'), bright)!
           .riders
           .single;
       expect(rider.audioClips.single.frameId, rider.frames.first.id);
@@ -1096,7 +1112,7 @@ void main() {
     test('a synced rider of an image row that comes to hold more than one '
         'picture becomes a drawing row with it', () {
       final s = ridden(riderOf('a').copyWith(kind: LayerKind.image));
-      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright);
+      final plan = s.layerMerging.bakeOf(const LayerId('a'), bright);
       expect(plan!.riders.single.kind, LayerKind.animation);
     });
 
@@ -1119,7 +1135,7 @@ void main() {
       ]);
       addTearDown(s.dispose);
       final rider = s.layerMerging
-          .planOfFx(const LayerId('a'), bright)!
+          .bakeOf(const LayerId('a'), bright)!
           .riders
           .single;
       expect(
@@ -1139,7 +1155,7 @@ void main() {
         'cel over it itself — left to the mirroring a session does on its '
         'own, a picture could land where no link reaches', () {
       final s = ridden(riderOf('a'));
-      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+      final plan = s.layerMerging.bakeOf(const LayerId('a'), bright)!;
       expect(plan.riders.single.baseFrameLinks, {
         for (final cel in plan.row.frames)
           cel.id: attachedMirrorCelId(r, cel.id),
@@ -1347,19 +1363,20 @@ void main() {
         findsOneWidget,
       );
       expect(a(s), before);
-      final verbs = s.layerMerging;
-      expect(verbs.planOfFx(const LayerId('a'), number, band: band), isNull);
-      expect([
-        for (final over in <BakedFrames?>[
-          band,
-          (start: 0, end: 2),
-          (start: 1, end: 9),
-          (start: -1, end: 9),
-          null,
-        ])
-          verbs.fxBakeCannotKeepTheRest(const LayerId('a'), number, over),
-      ], [true, true, true, false, false], reason: 'over every frame it bakes');
-      expect(verbs.planOfFx(const LayerId('a'), number), isNotNull);
+      expect(
+        [
+          for (final over in <BakedFrames?>[
+            band,
+            (start: 0, end: 2),
+            (start: 1, end: 9),
+            (start: -1, end: 9),
+            null,
+          ])
+            outcomeOf(s, const LayerId('a'), number, over),
+        ],
+        ['rest', 'rest', 'rest', 'bakes', 'bakes'],
+        reason: 'over every frame it bakes',
+      );
     });
 
     test('a band is cut to the frames the cut draws; one over every one of '
@@ -1367,7 +1384,7 @@ void main() {
         'them bakes nothing', () {
       final s = plain([rowA()]);
       FxBakePlan? over(BakedFrames band) =>
-          s.layerMerging.planOfFx(const LayerId('a'), bright, band: band);
+          s.layerMerging.bakeOf(const LayerId('a'), bright, band: band);
       List<FrameId> cels(FxBakePlan plan) => [
         for (final cel in plan.row.frames) cel.id,
       ];
@@ -1402,7 +1419,7 @@ void main() {
         ),
       ]);
       final row = s.layerMerging
-          .planOfFx(const LayerId('a'), bright, band: band)!
+          .bakeOf(const LayerId('a'), bright, band: band)!
           .row;
       expect(row.audioClips.single.frameId, const FrameId('a-1'));
     });
@@ -1421,9 +1438,338 @@ void main() {
         basis: FxBasis.block,
       );
       final s = plain([rowA(effects: [number, lens, brightness()])]);
-      final row = s.layerMerging.planOfFx(const LayerId('a'), bright)!.row;
+      final row = s.layerMerging.bakeOf(const LayerId('a'), bright)!.row;
       expect(row.timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
       expect(row.effects.take(2), [number, lens]);
+    });
+  });
+
+  group('④ — a 겸용 row is baked in every cut it is used in, each by its own '
+      'values and timing, into the one bank its cels are (Q6 「같은 셀을 보는 '
+      '다른 컷도 같이 굽는다 — 한 장에 못 담으면 막고 경고」)', () {
+    /// `a`'s use in the cut [s] stands in — the cut linked to `a`'s.
+    Layer twinOf(EditorSessionManager s) =>
+        s.requireActiveCut.layers.firstWhere((layer) => layer.name == 'A');
+
+    /// [layers] in one cut ([sessionOf]) and a cut linked to it, stood in —
+    /// `a`'s use there showing `a`'s timing, values and keys, made [twin] of
+    /// that where given. A 겸용컷 is made with its lanes empty (F-555).
+    EditorSessionManager linkedOf(
+      List<Layer> layers, {
+      Layer Function(Layer use)? twin,
+    }) {
+      final s = plain(layers);
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      final a = layers.firstWhere((layer) => layer.id == const LayerId('a'));
+      final use = twinOf(s).copyWith(
+        timeline: a.timeline,
+        effects: a.effects,
+        transformTrack: a.transformTrack,
+      );
+      s.repository.replaceLayer(layer: twin == null ? use : twin(use));
+      return s;
+    }
+
+    /// The cuts of [s]'s track: `a`'s and the one linked to it.
+    List<Cut> cutsOf(EditorSessionManager s) =>
+        s.repository.requireProject().tracks.single.cuts;
+
+    /// Each cut's rows.
+    List<List<Layer>> rowsOf(EditorSessionManager s) => [
+      for (final cut in cutsOf(s)) cut.layers,
+    ];
+
+    /// `a` in its own cut, wherever [s] stands.
+    Layer aIn(EditorSessionManager s) => cutsOf(
+      s,
+    ).firstWhere((cut) => cut.id == cutId).layers.byId(const LayerId('a'))!;
+
+    /// What each cut shows at canvas (36, 5) on frames 0..2.
+    Future<List<List<int>>> seenIn(
+      WidgetTester tester,
+      EditorSessionManager s,
+    ) async => [
+      for (final cut in cutsOf(s))
+        for (var frame = 0; frame < 3; frame += 1)
+          await shownAt(tester, s, frame, 36, 5, of: cut),
+    ];
+
+    /// The cel [row] shows at each of frames 0..2.
+    List<FrameId?> celsOf(Layer row) => [
+      for (var frame = 0; frame < 3; frame += 1)
+        exposedFrameIdAt(row.timeline, frame),
+    ];
+
+    /// Presses [rowId]'s group header RASTERIZE for [effectId] — scoped to
+    /// [band] where one is given — and waits out its window.
+    Future<void> press(
+      WidgetTester tester,
+      EditorSessionManager s,
+      LayerId rowId, [
+      EffectId? effectId = bright,
+      BakedFrames? band,
+    ]) async {
+      final before = s.repository.requireProject();
+      final context = await hostedContext(tester);
+      unawaited(
+        rasterizeFxGroup(context, s, rowId, effectId, 'fx', band: band),
+      );
+      await settleBehindTheWaitWindow(
+        tester,
+        () =>
+            !identical(s.repository.requireProject(), before) &&
+            find
+                .byKey(const ValueKey<String>('fx-rasterize-progress'))
+                .evaluate()
+                .isEmpty,
+      );
+    }
+
+    testWidgets('🎯a still fx pressed in the linked cut: every use bakes it — '
+        'its cel baked once into the one bank, the fx at rest in both cuts, '
+        'each showing what it showed — and one undo gives both back', (
+      tester,
+    ) async {
+      final s = linkedOf([
+        rowA(effects: [brightness(keyed: false)]),
+      ]);
+      final before = rowsOf(s);
+      final seen = await seenIn(tester, s);
+      expect(seen.first, isNot(green), reason: '⛔전제: it wears the fx');
+
+      await press(tester, s, twinOf(s).id);
+
+      final (original, twin) = (aIn(s), twinOf(s));
+      expect([for (final cel in original.frames) cel.name], ['1']);
+      expect(original.frames.single.id, isNot(const FrameId('a-1')));
+      expect(twin.frames, original.frames, reason: 'one bank');
+      for (final row in [original, twin]) {
+        expect(
+          row.effects.single,
+          LayerEffect(id: bright, kind: EffectKind.brightnessContrast),
+        );
+        expect(celsOf(row).toSet(), {original.frames.single.id});
+      }
+      expect(await seenIn(tester, s), seen);
+
+      s.undo();
+      expect(rowsOf(s), before);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('🎯a keyed fx the uses read alike, pressed in its own cut: '
+        'the cel each shows as three pictures parts into three cels both '
+        'show alike — the linked cut, longer, over every frame it draws', (
+      tester,
+    ) async {
+      final s = linkedOf(
+        [rowA()],
+        twin: (use) => use.copyWith(
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('a-1'), length: 5),
+          },
+        ),
+      );
+      final seen = await seenIn(tester, s);
+      expect(coloursOf(seen), hasLength(3), reason: '⛔전제: three pictures');
+
+      await press(tester, s, const LayerId('a'));
+
+      final (original, twin) = (aIn(s), twinOf(s));
+      expect([for (final cel in original.frames) cel.name], [
+        '1',
+        '1-2',
+        '1-3',
+      ]);
+      expect(twin.frames, original.frames, reason: 'one bank');
+      expect(celsOf(original).toSet(), hasLength(3));
+      expect(celsOf(twin), celsOf(original));
+      expect(
+        [for (final frame in [3, 4]) exposedFrameIdAt(twin.timeline, frame)],
+        [celsOf(original).last, celsOf(original).last],
+        reason: 'its last key held',
+      );
+      expect(await seenIn(tester, s), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('🚨the uses reading the fx otherwise, a cel shown as other '
+        'pictures in each cut: it bakes nothing, and says why', (tester) async {
+      final s = linkedOf(
+        [rowA()],
+        twin: (use) => use.copyWith(effects: [brightness(keyed: false)]),
+      );
+      final before = rowsOf(s);
+      final context = await hostedContext(tester);
+
+      unawaited(
+        rasterizeFxGroup(context, s, const LayerId('a'), bright, 'fx'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('fx-rasterize-uses-apart')),
+        findsOneWidget,
+      );
+      expect(find.text(AppText.strings.tlFxBakeUsesApart), findsOneWidget);
+      expect(rowsOf(s), before);
+    });
+
+    test('🚨a use showing the cel over fewer frames shows it as fewer '
+        'pictures, which one cel cannot hold — but for a band, which bakes '
+        'the pressed cut alone', () {
+      final s = linkedOf(
+        [rowA()],
+        twin: (use) => use.copyWith(
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('a-1'), length: 2),
+          },
+        ),
+      );
+      expect(
+        [
+          outcomeOf(s, const LayerId('a'), bright),
+          outcomeOf(s, twinOf(s).id, bright),
+        ],
+        ['usesApart', 'usesApart'],
+        reason: 'pressed in either cut',
+      );
+      expect(
+        outcomeOf(s, const LayerId('a'), bright, (start: 0, end: 1)),
+        'bakes',
+      );
+    });
+
+    test('a band over every frame of the pressed cut keeps a cel the other '
+        'use shows, its pictures all new', () {
+      final s = linkedOf([rowA()]);
+      final plan = s.layerMerging.bakeOf(
+        const LayerId('a'),
+        bright,
+        band: (start: 0, end: 3),
+      )!;
+      expect([for (final cel in plan.row.frames) cel.name], [
+        '1',
+        '1-2',
+        '1-3',
+        '1-4',
+      ]);
+      expect(plan.row.frames.first.id, const FrameId('a-1'));
+    });
+
+    test('a cel a use does not show asks nothing of it: it is baked as the '
+        'uses that show it show it', () {
+      final s = linkedOf(
+        [
+          rowA(
+            effects: [brightness(keyed: false)],
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('a-1'), length: 2),
+              2: const TimelineExposure.drawing(FrameId('a-2'), length: 1),
+            },
+          ).copyWith(
+            frames: [
+              Frame(
+                id: const FrameId('a-1'),
+                duration: 2,
+                name: '1',
+                strokes: const [],
+              ),
+              Frame(
+                id: const FrameId('a-2'),
+                duration: 1,
+                name: '2',
+                strokes: const [],
+              ),
+            ],
+          ),
+        ],
+        twin: (use) => use.copyWith(
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('a-1'), length: 3),
+          },
+        ),
+      );
+      final plan = s.layerMerging.bakeOf(const LayerId('a'), bright)!;
+      expect([for (final cel in plan.row.frames) cel.name], ['1', '2']);
+      final twin = plan.others.single.layers.firstWhere(
+        (layer) => layer.name == 'A',
+      );
+      expect(twin.frames, plan.row.frames, reason: 'one bank');
+      expect(celsOf(twin).toSet(), {celsOf(plan.row).first});
+
+      final fromTheTwin = s.layerMerging.bakeOf(twinOf(s).id, bright)!;
+      final two = fromTheTwin.row.frames.firstWhere((cel) => cel.name == '2');
+      final drawn = fromTheTwin.pictures.singleWhere(
+        (picture) => picture.frameId == two.id,
+      );
+      expect(
+        (drawn.from.id, drawn.into.id, drawn.rowId),
+        (cutId, cutId, const LayerId('a')),
+        reason: 'drawn of the use that shows it',
+      );
+    });
+
+    testWidgets('🎯a band bakes the pressed cut alone: the other use keeps '
+        'its cels, its timing and its keys, its bank one with the band\'s '
+        'new cel', (tester) async {
+      final s = linkedOf([rowA()]);
+      final before = rowsOf(s);
+      final kept = twinOf(s);
+      final seen = await seenIn(tester, s);
+
+      await press(tester, s, const LayerId('a'), bright, (start: 1, end: 2));
+
+      final (original, twin) = (aIn(s), twinOf(s));
+      expect([for (final cel in original.frames) cel.name], ['1', '1-2']);
+      expect(original.frames.first.id, const FrameId('a-1'));
+      expect(twin.frames, original.frames, reason: 'one bank');
+      expect(twin.timeline, kept.timeline);
+      expect(twin.effects, kept.effects);
+      expect(await seenIn(tester, s), seen);
+
+      s.undo();
+      expect(rowsOf(s), before);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test('🚨Q14 — a band over every frame of the pressed cut leaves every '
+        'frame of the other use: an fx that draws at its defaults waits', () {
+      const number = EffectId('e-number');
+      final effects = [LayerEffect(id: number, kind: EffectKind.celNumber)];
+      String overEvery(EditorSessionManager s) =>
+          outcomeOf(s, const LayerId('a'), number, (start: 0, end: 3));
+      expect(
+        [
+          overEvery(linkedOf([rowA(effects: effects)])),
+          overEvery(plain([rowA(effects: effects)])),
+        ],
+        ['rest', 'bakes'],
+      );
+    });
+
+    test('the transform, each use\'s own: alike it bakes, apart it waits', () {
+      TransformTrack movedTo(double x) => TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: x, y: 24),
+        ),
+      );
+      final moved = rowA(transformTrack: movedTo(40));
+      expect(
+        [
+          outcomeOf(linkedOf([moved]), const LayerId('a'), null),
+          outcomeOf(
+            linkedOf(
+              [moved],
+              twin: (use) => use.copyWith(transformTrack: movedTo(44)),
+            ),
+            const LayerId('a'),
+            null,
+          ),
+        ],
+        ['bakes', 'usesApart'],
+      );
     });
   });
 
@@ -1492,7 +1838,7 @@ void main() {
       expect(bakes(s, 'a'), isFalse);
     });
 
-    test('a row riding the conte, which wears fx of its own (④ · I-99)', () {
+    test('a row riding the conte, which wears fx of its own (④c · I-99)', () {
       final project = conteTrackProject();
       final cut = project.tracks.single.cuts.first;
       final conte = cut.layers.firstWhere(
@@ -1521,13 +1867,19 @@ void main() {
       expect(s.layerMerging.bakesFx(const LayerId('r'), bright), isFalse);
     });
 
-    test('a row another cut shows too — a 겸용 (④)', () {
+    test('a 겸용 row a row wearing its fx rides, in any of its cuts (④b)', () {
       final s = sessionOf([rowA()]);
       addTearDown(s.dispose);
       s.cutVerbs.createLinkedCutFromActiveCut();
-      final twin = s.requireActiveCut.layers.firstWhere(
-        (layer) => layer.name == 'A',
+      final cut = s.requireActiveCut;
+      final twin = cut.layers.firstWhere((layer) => layer.name == 'A');
+      expect(bakes(s, 'a'), isTrue, reason: '⛔전제: a 겸용 row bakes');
+
+      s.repository.setCutLayers(
+        cutId: cut.id,
+        layers: [...cut.layers, riderOf(twin.id.value, free: true)],
       );
+
       expect([bakes(s, 'a'), bakes(s, twin.id.value)], [false, false]);
     });
 
@@ -1545,7 +1897,7 @@ void main() {
       expect(bakes(s, 'a'), isFalse);
     });
 
-    test('the conte of a track (④)', () {
+    test('the conte of a track (④c)', () {
       final s = EditorSessionManager(initialProject: conteTrackProject());
       addTearDown(s.dispose);
       final conte = s.activeTrack.cuts.first.layers.firstWhere(
@@ -1554,4 +1906,14 @@ void main() {
       expect(s.layerMerging.bakesFx(conte.id, null), isFalse);
     });
   });
+}
+
+extension on LayerMerging {
+  /// The bake RASTERIZE in [rowId]'s header plans of [effectId] — null where
+  /// it bakes nothing, or waits.
+  FxBakePlan? bakeOf(LayerId rowId, EffectId? effectId, {BakedFrames? band}) =>
+      switch (planOfFx(rowId, effectId, band: band)) {
+        final FxBakePlan plan => plan,
+        _ => null,
+      };
 }

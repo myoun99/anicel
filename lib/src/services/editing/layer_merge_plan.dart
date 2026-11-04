@@ -701,21 +701,25 @@ Layer? _conteFollowed(
   return conte;
 }
 
-/// Every cut's rows as ONE key names them across the cuts: a row of a link
-/// group by its group's first member — the row its cels are kept under —
-/// and every other row by its own id.
+/// Every cut's rows as ONE key names them across the cuts
+/// ([rowsKeyedAcrossCuts]).
 Map<CutId, Map<LayerId, LayerId>> _canonicalIdsOf(LayerMergeTakings takings) {
   final links = takings._project.linkRegistry;
   return {
     for (final taking in takings._all)
-      taking.cut.id: {
-        for (final row in taking.cut.layers)
-          if (links.groupOf(cutId: taking.cut.id, layerId: row.id)
-              case final group?)
-            row.id: group.canonical.layerId,
-      },
+      taking.cut.id: rowsKeyedAcrossCuts(links, taking.cut),
   };
 }
+
+/// [cut]'s rows as ONE key names them across the cuts ([runsByPicture]'s
+/// `keys`): a row of a link group by its group's first member — the row its
+/// cels are kept under — and every other row by its own id.
+Map<LayerId, LayerId> rowsKeyedAcrossCuts(LayerLinkRegistry links, Cut cut) =>
+    {
+      for (final row in cut.layers)
+        if (links.groupOf(cutId: cut.id, layerId: row.id) case final group?)
+          row.id: group.canonical.layerId,
+    };
 
 /// One cel of the bank the results share, and the share it first shows in.
 typedef _BankCel = ({_Cel cel, int part});
