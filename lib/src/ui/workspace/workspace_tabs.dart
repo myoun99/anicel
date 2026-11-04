@@ -248,8 +248,8 @@ class _WorkspaceTabs {
     );
   }
 
-  /// The drawing canvas, [leftPill] on its left edge.
-  Widget _canvasArea({required CanvasEdgePill? leftPill}) => EditorCanvasArea(
+  /// The drawing canvas.
+  Widget _canvasArea() => EditorCanvasArea(
     key: _state._canvasAreaKey,
     onInvokeAction: _state.widget.onInvokeAction,
     session: _state.widget.session,
@@ -272,7 +272,6 @@ class _WorkspaceTabs {
     transformOptions: _state._transformOptions,
     eyedropperSource: _state._views._eyedropperSource,
     flipHud: _state.widget.flipHud,
-    leftPill: leftPill,
   );
 
   /// [tabId]'s tab, built for the project on screen.
@@ -370,23 +369,7 @@ class _WorkspaceTabs {
               // page's root — the canvas is a panel host like the others
               // ([_panelHost]), on a layer of its own. The expanding stack is
               // what makes the layer's constraints tight.
-              TickLayer.host(
-                // I-34: the brush's values stand on the drawing unless the
-                // workspace stands them on the top strip.
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _state._brushValuesOnStrip,
-                  builder: (context, onStrip, _) => _canvasArea(
-                    leftPill: onStrip
-                        ? null
-                        : CanvasEdgePill(
-                            width: BrushValuesPill.widthIn(context),
-                            child: BrushValuesPill(
-                              brushTool: _state._brushTool,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
+              TickLayer.host(child: _canvasArea()),
               // A pool row dropped on the STAGE (§7): the cut and the layer
               // are the ones already under the cursor, so this entrance
               // fills nothing extra — it opens the place window with the

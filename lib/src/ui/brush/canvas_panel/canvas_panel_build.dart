@@ -122,7 +122,7 @@ class _PanelBuild {
           horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
           bottomBar: _state._shellBars.memoizedBottomBar(),
           transport: _state.widget.transport,
-          leftPill: _state.widget.leftPill,
+          leftPill: _state._floor?.leftPill,
           onLeftPillLaidOut: _state._rememberLeftPillBeside,
           documentName: _state.widget.documentName,
           documentAbsent: _state.widget.documentAbsent,

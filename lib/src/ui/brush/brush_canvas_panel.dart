@@ -221,20 +221,6 @@ class CanvasTransportBand {
   final Widget child;
 }
 
-/// What stands on a canvas panel's LEFT edge, in the middle of the room
-/// there ([BrushCanvasPanel.leftPill]) — the brush's values on the
-/// drawing (I-34).
-///
-/// The [width] travels with the widget for [CanvasTransportBand.height]'s
-/// reason: nothing the panel frames may lie under it, and framing is read
-/// before anything is laid out.
-class CanvasEdgePill {
-  const CanvasEdgePill({required this.width, required this.child});
-
-  final double width;
-  final Widget child;
-}
-
 /// Reusable Brush canvas panel for the production main-canvas brush route.
 ///
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
@@ -354,7 +340,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.transport,
-    this.leftPill,
     this.documentName,
     this.documentAbsent = false,
     this.bottomBarHostToken,
@@ -628,16 +613,6 @@ class BrushCanvasPanel extends StatefulWidget {
   /// It hides the artwork as a lane does, so framing keeps out from under
   /// it (`_framingInsets`).
   final CanvasTransportBand? transport;
-
-  /// What stands on the LEFT edge: the brush's values on the drawing panel
-  /// (I-34, 유저 2026-10-18: 「캔버스 패널의 왼쪽 중앙 알약 만들어서 거기로
-  /// 이동」). Null stands nothing there.
-  ///
-  /// It is seated as the page strip that stood on this edge was
-  /// ([_LeftEdgeSeat]): in the middle of the room between the pill's band
-  /// and the file's name, and past the left rail where the rail is beside
-  /// it. It is cover to framing as that strip was (F-346).
-  final CanvasEdgePill? leftPill;
 
   /// The name of the FILE shown, written at the artwork's lower left over
   /// the horizontal panbar. Null writes nothing.
@@ -2334,7 +2309,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
             floorOverlay: _floor?.bottomOverlaySpan ?? 0,
           ),
         );
-    final pill = _CanvasEditorPanelShell.leftPillBandOf(widget.leftPill);
+    final pill = _CanvasEditorPanelShell.leftPillBandOf(_floor?.leftPill);
     return covered.copyWith(
       left: _leftPillBesideRail
           ? covered.left + pill
@@ -3372,7 +3347,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// See [BrushCanvasPanel.transport] — null means nothing under the bars.
   final CanvasTransportBand? transport;
 
-  /// See [BrushCanvasPanel.leftPill] — null means nothing on the left edge.
+  /// See [CanvasFloorInsets.leftPill] — null means nothing on the left edge.
   final CanvasEdgePill? leftPill;
 
   /// Told whether the left pill was laid out past the left rail
@@ -3817,7 +3792,7 @@ enum _LeftEdgeSlot { name, pill }
 /// Seats what stands on the LEFT edge: the file's name at the artwork's
 /// lower left ([BrushCanvasPanel.documentName]) — over the horizontal bar
 /// and inside what the side panels leave — and the left pill
-/// ([BrushCanvasPanel.leftPill]) in the middle of the room between the
+/// ([CanvasFloorInsets.leftPill]) in the middle of the room between the
 /// pill's band and the name.
 ///
 /// The axis law the two bars follow (유저, R4): ALONG the edge it rides the

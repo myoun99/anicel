@@ -49,7 +49,6 @@ import 'brush/brush_library_look.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
-import 'brush/brush_canvas_panel.dart' show CanvasEdgePill;
 import 'brush/brush_value_group.dart' show BrushValuesPill;
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
@@ -2239,13 +2238,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   bool _regionOnTop = false;
 
   /// Whether the brush's values stand in the top strip — false, the
-  /// default, stands them in the canvas's pill
+  /// default, stands them in the floor's pill ([_floor])
   /// ([WorkspacePanelsMenuController.brushValuesOnStrip]).
   ///
   /// ↩️09-16 had the strip as the default; 유저 2026-10-18 (I-34): 「그리고
   /// 기본값은 알약으로 두는걸 기본값으로」. A notifier, as the strip above the
-  /// workspace and the canvas inside it both follow it.
+  /// workspace and the floor inside it both follow it.
   final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
+
+  /// The brush's values as they stand on the floor — ONE widget, so a floor
+  /// built again with what it had hands the panel lying there the same pill
+  /// ([CanvasEdgePill]'s equality) and wakes nothing.
+  late final Widget _floorBrushValues = BrushValuesPill(brushTool: _brushTool);
 
   /// Whether the tool strip holds its tools alone — false, the default,
   /// stands the shortcut buttons above them
@@ -3157,38 +3161,50 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Positioned _floor(_WorkspaceFrame frame, Widget? floor) {
     return Positioned.fill(
-      child: CanvasFloorInsets(
-        insets: frame.floorCover,
-        // ⑩: the collapsed row lies ON the artwork
-        // just past the region's edge. It frames
-        // nothing, so it is not in `insets` — but a
-        // bar on the bottom edge would be under it.
-        bottomOverlaySpan:
-            frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
-            ? _collapsedRows.collapsedRowHeight()
-            : 0,
-        // WHERE each column actually is, not just how
-        // wide it is. A rail panel is as tall as it was
-        // left at, so a short one covers a band and not
-        // an edge — and the scrollbar that stepped
-        // aside for the whole edge read as floating for
-        // no reason (유저, R3 #5). The left one is for
-        // the brush pill on that edge (I-34).
-        leftRailBand: _rail.railBand(
-          right: false,
-          stop: frame.leftStop,
-          onTop: frame.onTop,
-          height: frame.constraints.maxHeight,
-          grid: frame.grid,
+      // I-34: the brush's values stand on the floor unless the workspace
+      // stands them on the top strip.
+      child: ValueListenableBuilder<bool>(
+        valueListenable: _brushValuesOnStrip,
+        builder: (context, onStrip, floor) => CanvasFloorInsets(
+          insets: frame.floorCover,
+          // ⑩: the collapsed row lies ON the artwork
+          // just past the region's edge. It frames
+          // nothing, so it is not in `insets` — but a
+          // bar on the bottom edge would be under it.
+          bottomOverlaySpan:
+              frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
+              ? _collapsedRows.collapsedRowHeight()
+              : 0,
+          // WHERE each column actually is, not just how
+          // wide it is. A rail panel is as tall as it was
+          // left at, so a short one covers a band and not
+          // an edge — and the scrollbar that stepped
+          // aside for the whole edge read as floating for
+          // no reason (유저, R3 #5). The left one is for
+          // the brush pill on that edge (I-34).
+          leftRailBand: _rail.railBand(
+            right: false,
+            stop: frame.leftStop,
+            onTop: frame.onTop,
+            height: frame.constraints.maxHeight,
+            grid: frame.grid,
+          ),
+          rightRailBand: _rail.railBand(
+            right: true,
+            stop: frame.rightStop,
+            onTop: frame.onTop,
+            height: frame.constraints.maxHeight,
+            grid: frame.grid,
+          ),
+          leftPill: onStrip
+              ? null
+              : CanvasEdgePill(
+                  width: BrushValuesPill.widthIn(context),
+                  child: _floorBrushValues,
+                ),
+          child: floor!,
         ),
-        rightRailBand: _rail.railBand(
-          right: true,
-          stop: frame.rightStop,
-          onTop: frame.onTop,
-          height: frame.constraints.maxHeight,
-          grid: frame.grid,
-        ),
-        child: floor!,
+        child: floor,
       ),
     );
   }

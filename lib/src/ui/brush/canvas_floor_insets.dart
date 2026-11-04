@@ -5,7 +5,32 @@ import '../../models/pasteboard_bounds.dart';
 /// One rail column's vertical extent, in the floor's own coordinates.
 typedef CanvasFloorBand = ({double top, double bottom});
 
-/// How much of the canvas FLOOR is covered by the panels floating on it.
+/// What stands on a canvas panel's LEFT edge, in the middle of the room
+/// there ([CanvasFloorInsets.leftPill]) — the brush's values on the
+/// drawing (I-34).
+///
+/// The [width] travels with the widget for `CanvasTransportBand.height`'s
+/// reason: nothing the panel frames may lie under it, and framing is read
+/// before anything is laid out.
+///
+/// The same width round the same widget is the same pill: a floor built
+/// again with what it had tells the panel lying there nothing new.
+class CanvasEdgePill {
+  const CanvasEdgePill({required this.width, required this.child});
+
+  final double width;
+  final Widget child;
+
+  @override
+  bool operator ==(Object other) =>
+      other is CanvasEdgePill && other.width == width && other.child == child;
+
+  @override
+  int get hashCode => Object.hash(width, child);
+}
+
+/// How much of the canvas FLOOR is covered by the panels floating on it —
+/// and what stands on its left edge ([leftPill]).
 ///
 /// The canvas is the app's bottom layer now: it fills everything but the top
 /// strip and the two tool strips, and every panel — the always-open timeline,
@@ -36,6 +61,7 @@ class CanvasFloorInsets extends InheritedWidget {
     this.leftRailBand,
     this.rightRailBand,
     this.bottomOverlaySpan = 0,
+    this.leftPill,
     required super.child,
   });
 
@@ -81,6 +107,24 @@ class CanvasFloorInsets extends InheritedWidget {
   /// columns: where something IS, versus what the framing owes it.
   final double bottomOverlaySpan;
 
+  /// What stands on the LEFT edge of whichever panel lies on the floor: the
+  /// brush's values (I-34, 유저 2026-10-18: 「캔버스 패널의 왼쪽 중앙 알약
+  /// 만들어서 거기로 이동」), or null where the workspace stands them on the
+  /// top strip.
+  ///
+  /// 🗣️I-157 (유저 2026-11-04): 「배경에 있는 패널에선 다 브러시사이즈 알약
+  /// 보이도록. 배경에 깔린 타임시트용지던 뭐던」 — so the floor says it, as it
+  /// says its cover: the canvas, the main viewer and a canvas-base panel
+  /// laid there from the top strip stand the same pill, and the same panel
+  /// docked in a rail stands none. ↩️The canvas's tab handed it to its own
+  /// panel, and nothing else on the floor had one.
+  ///
+  /// It is seated as the page strip that stood on this edge was
+  /// (`_LeftEdgeSeat`): in the middle of the room between the pill's band
+  /// and the file's name, and past the left rail where the rail is beside
+  /// it. It is cover to framing as that strip was (F-346).
+  final CanvasEdgePill? leftPill;
+
   /// The cover for the floor [context] sits on, or null when it is not the
   /// floor at all.
   static CanvasFloorInsets? maybeOf(BuildContext context) =>
@@ -91,7 +135,8 @@ class CanvasFloorInsets extends InheritedWidget {
       oldWidget.insets != insets ||
       oldWidget.leftRailBand != leftRailBand ||
       oldWidget.rightRailBand != rightRailBand ||
-      oldWidget.bottomOverlaySpan != bottomOverlaySpan;
+      oldWidget.bottomOverlaySpan != bottomOverlaySpan ||
+      oldWidget.leftPill != leftPill;
 }
 
 /// The stage's outer two surfaces, published ONCE by the shell for the
