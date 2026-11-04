@@ -33,7 +33,8 @@ class SheetFixedLines {
 
   /// The cuts its cut is 겸용 with, as a line writes them — on the cut's
   /// first stretch only, none on the others (유저 2026-11-01, F-531:
-  /// 「해당 컷의 첫번째 패널에만 적어줌」).
+  /// 「해당 컷의 첫번째 패널에만 적어줌」). A conte cell's alone: a timesheet
+  /// prints them in its header (F-558).
   final List<String> linkedCuts;
 
   /// The lines as the paper writes them, in [words]: what the camera does,

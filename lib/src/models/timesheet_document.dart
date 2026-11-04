@@ -359,6 +359,7 @@ class TimesheetDocument {
     required this.exposureBarThreshold,
     required this.cellExposureBarThreshold,
     required this.cutName,
+    required this.linkedCuts,
     required this.scene,
     required this.fps,
     required this.playbackFrameCount,
@@ -409,6 +410,9 @@ class TimesheetDocument {
     // caller as the pages stand: `cutSheetDocument` gathers it, the sheet's
     // geometry stays here.
     List<List<String>> Function(SheetPages pages)? fixedLinesOfPages,
+    // The cuts it is 겸용 with, by name ([linkedCuts]) — the work's, which
+    // `cutSheetDocument` reads.
+    List<String> linkedCuts = const [],
   }) {
     const seColumnCount = 2;
     const cameraColumnCount = 2;
@@ -526,6 +530,7 @@ class TimesheetDocument {
       exposureBarThreshold: info.exposureBarThreshold,
       cellExposureBarThreshold: info.cellExposureBarThreshold,
       cutName: cut.name,
+      linkedCuts: List.unmodifiable(linkedCuts),
       scene: cut.metadata.scene,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
@@ -692,6 +697,10 @@ class TimesheetDocument {
   final List<TimesheetHeaderField> visibleHeaderFields;
 
   final String cutName;
+
+  /// The cuts this one is 겸용 with, by name, in track order — the header
+  /// prints them under [cutName] (F-558).
+  final List<String> linkedCuts;
 
   /// The cut's scene, empty where none is written (`CutMetadata.scene`).
   final String scene;

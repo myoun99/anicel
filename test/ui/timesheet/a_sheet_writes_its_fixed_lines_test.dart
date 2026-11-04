@@ -194,10 +194,10 @@ void main() {
 
   group('🎯a page writes what a conte cell of its frames writes', () {
     test('the same lines in the same order, with no time and no FIX: a '
-        'sheet\'s rows are its time', () {
+        'sheet\'s rows are its time — and no 겸용, its header\'s (F-558)', () {
       final work = project();
       expect(pagesOf(work, 0, 3), [
-        ['カット頭 FI', '7f-17f PAN', '31f-41f PAN', '${ja.linked} c3'],
+        ['カット頭 FI', '7f-17f PAN', '31f-41f PAN'],
         <String>[],
         ['カット尻 FO'],
       ]);
@@ -218,18 +218,20 @@ void main() {
         hasLength(1),
         reason: 'the conte keeps its time',
       );
+      expect(conte, contains('${ja.linked} c3'), reason: 'the cell keeps it');
     });
 
-    test('its fade on the first page and the last, its 겸용 on the first, '
-        'an O.L on the last of the cut it leaves', () {
+    test('its fade on the first page and the last, its 겸용 on none — the '
+        'header prints them (F-558) — an O.L on the last of the cut it '
+        'leaves', () {
       final work = project();
       final [first, middle, last] = pagesOf(work, 0, 3);
       expect(first.first, 'カット頭 FI');
-      expect(first, contains('${ja.linked} c3'));
       expect(last.last, 'カット尻 FO');
       expect(middle.where((line) => line.startsWith('カット')), isEmpty);
-      expect(middle.where((line) => line.startsWith(ja.linked)), isEmpty);
-      expect(last.where((line) => line.startsWith(ja.linked)), isEmpty);
+      for (final page in [first, middle, last]) {
+        expect(page.where((line) => line.startsWith(ja.linked)), isEmpty);
+      }
       final [before, leaving] = pagesOf(work, 1, 2);
       expect(before, isEmpty, reason: 'the O.L is not there');
       expect(leaving, ['c2 × c3 カットO.L']);
@@ -459,6 +461,30 @@ void main() {
         ).fixedLinesOf(0),
         ['1f-24f PAN (컷 전체)'],
       );
+    });
+
+    // 🗣️F-558 (유저 2026-11-04): 「고정텍스트 on이든 off이든 연관없음. 항상
+    // 보여줌. 위치는 헤더의 컷 번호 아래」.
+    test('🎯a cut\'s sheet names its 겸용 cuts for its header, whether it '
+        'writes its lines or not', () {
+      for (final writes in [true, false]) {
+        final session = EditorSessionManager(
+          initialProject: project(
+            info: TimesheetInfo.empty.copyWith(sheetFixedText: writes),
+          ),
+        );
+        addTearDown(session.dispose);
+        TimesheetDocument sheetOf(int index) => cutSheetDocument(
+          session,
+          cut: session.repository.requireProject().tracks.single.cuts[index],
+          cutStartFrame: 0,
+        );
+
+        expect(sheetOf(0).fixedLinesOf(0), writes ? isNotEmpty : isEmpty);
+        expect(sheetOf(0).linkedCuts, ['3'], reason: 'writes: $writes');
+        expect(sheetOf(2).linkedCuts, ['1']);
+        expect(sheetOf(1).linkedCuts, isEmpty, reason: 'a cut of its own');
+      }
     });
   });
 

@@ -2,6 +2,7 @@ import '../../models/app_frame_grid_settings.dart';
 import '../../models/cut.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timesheet_document.dart';
+import '../../services/commands/link_mirror.dart';
 import '../../services/export/xdts_builder.dart';
 import '../conte/conte_sheet_builder.dart';
 import '../conte/conte_words_in.dart';
@@ -66,6 +67,12 @@ TimesheetDocument cutSheetDocument(
           lines.writtenIn(words),
       ];
     },
+    linkedCuts: [
+      for (final other in LinkedCutGroups(
+        session.repository.requireProject(),
+      ).of(cut))
+        if (other.id != cut.id) other.name,
+    ],
   );
 }
 
