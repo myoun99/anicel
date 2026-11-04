@@ -2246,11 +2246,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// workspace and the floor inside it both follow it.
   final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
 
-  /// The brush's values as they stand on the floor — ONE widget, so a floor
-  /// built again with what it had hands the panel lying there the same pill
-  /// ([CanvasEdgePill]'s equality) and wakes nothing.
-  late final Widget _floorBrushValues = BrushValuesPill(brushTool: _brushTool);
-
   /// Whether the tool strip holds its tools alone — false, the default,
   /// stands the shortcut buttons above them
   /// ([WorkspacePanelsMenuController.railToolsOnly], I-128).
@@ -3198,9 +3193,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           ),
           leftPill: onStrip
               ? null
+              // ⛔Built here each time, never kept: a pill kept across builds
+              // is the same widget after a language switch, and is not built
+              // again — it went on speaking the old language. The panel lying
+              // on the floor is the one reader it wakes.
               : CanvasEdgePill(
                   width: BrushValuesPill.widthIn(context),
-                  child: _floorBrushValues,
+                  child: BrushValuesPill(brushTool: _brushTool),
                 ),
           child: floor!,
         ),
