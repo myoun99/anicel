@@ -48,8 +48,8 @@ Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   await tester.pumpAndSettle();
   await tester.tap(button);
   await tester.pumpAndSettle();
-  // A heavy press stands behind the app's wait window (F-551), whose done
-  // line would hold the next press off under its barrier.
+  // A press may stand behind a wait window that says it is over (a save's),
+  // whose done line would hold the next press off under its barrier.
   await passTheDoneLinger(tester);
   await tester.pumpAndSettle();
 }

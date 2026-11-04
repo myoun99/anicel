@@ -349,10 +349,8 @@ void main() {
       ),
     );
     await tester.tap(find.text('paste'));
-    // The paste is tried behind its wait window, which lingers on its done
-    // line before the question comes up (F-551).
-    await tester.pumpAndSettle();
-    await tester.pump(appProgressDoneLinger);
+    // The paste is tried behind its wait window, which goes before the
+    // question comes up (F-551).
     await tester.pumpAndSettle();
 
     final window = tester.widget<FrameNameConflictDialog>(
@@ -391,10 +389,8 @@ void main() {
       ),
     );
     await tester.tap(find.text('paste'));
-    // The paste is tried behind its wait window, which lingers on its done
-    // line before the question comes up (F-551).
-    await tester.pumpAndSettle();
-    await tester.pump(appProgressDoneLinger);
+    // The paste is tried behind its wait window, which goes before the
+    // question comes up (F-551).
     await tester.pumpAndSettle();
 
     final window = tester.widget<FrameNameConflictDialog>(

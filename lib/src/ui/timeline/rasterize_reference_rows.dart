@@ -95,7 +95,6 @@ Future<void> _bake(
     title: baked.length > 1 ? strings.tlSelectedLayers : baked.single.name,
     titleIcon: Icons.texture_outlined,
     runningLabel: strings.bakeProgressRunning,
-    doneLabel: strings.bakeProgressDone,
     windowKey: const ValueKey<String>('reference-rasterize-progress'),
     task: (report) async {
       for (var i = 0; i < baked.length; i += 1) {

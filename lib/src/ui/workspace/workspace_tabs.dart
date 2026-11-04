@@ -56,7 +56,6 @@ class _WorkspaceTabs {
           window: AppWaitWindow(
             title: editorActionLabel(EditorActionIds.guideRasterize),
             runningLabel: AppText.strings.bakeProgressRunning,
-            doneLabel: AppText.strings.bakeProgressDone,
             windowKey: const ValueKey<String>('guide-rasterize-progress'),
           ),
           ahead: (_) async => picture = await guideLinesOnPaper(

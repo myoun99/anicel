@@ -112,7 +112,6 @@ Future<void> bakeAfterAsking<C extends Enum>(
     title: bake.title,
     titleIcon: bake.icon,
     runningLabel: strings.bakeProgressRunning,
-    doneLabel: strings.bakeProgressDone,
     windowKey: ValueKey<String>(bake.windowKey),
     task: (report) async {
       await layBakedPictures(session, bake.pictures, report);
@@ -177,7 +176,6 @@ Future<void> mergeBlocks(
     title: editorActionLabel(EditorActionIds.editMerge),
     titleIcon: Icons.merge,
     runningLabel: strings.bakeProgressRunning,
-    doneLabel: strings.bakeProgressDone,
     windowKey: const ValueKey<String>('layer-merge-progress'),
     task: (report) async {
       await _layBlockPictures(session, plan, report);

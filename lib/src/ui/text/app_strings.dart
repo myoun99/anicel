@@ -604,28 +604,23 @@ enum AppStrings {
   /// to be worth a decision; the window's cancel is the decision.
   String get openWaitingStalledTemplate => _s('openWaitingStalledTemplate');
   String get resizeProgressRunning => _s('resizeProgressRunning');
-  String get resizeProgressDone => _s('resizeProgressDone');
 
   /// The wait window over a bake — a movie's frames into cels, at placement
   /// or by the reference button's rasterize.
   String get bakeProgressRunning => _s('bakeProgressRunning');
-  String get bakeProgressDone => _s('bakeProgressDone');
 
   /// The notice over a rasterize that left rows the references they are
   /// (F-374-Q11 「막고 경고」): its line. Why each row waits, with what gets
   /// it past, is [referenceWait]'s.
   String get rasterizeLeftReferences => _s('rasterizeLeftReferences');
   String get pasteProgressRunning => _s('pasteProgressRunning');
-  String get pasteProgressDone => _s('pasteProgressDone');
 
   /// F-549: the wait window a timeline's copy stands behind.
   String get duplicateProgressRunning => _s('duplicateProgressRunning');
-  String get duplicateProgressDone => _s('duplicateProgressDone');
 
   /// F-551: the wait window a heavy step with no words of its own stands
   /// behind, under the step's own name.
   String get workProgressRunning => _s('workProgressRunning');
-  String get workProgressDone => _s('workProgressDone');
 
   /// F-551: the wait window a block dragged onto another row's pictures
   /// lets go behind — the pictures traded (F-330).
@@ -2533,16 +2528,11 @@ enum AppStrings {
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
     'openWaitingStalledTemplate': 'Nothing has arrived for {sec}s',
     'resizeProgressRunning': 'Resizing…',
-    'resizeProgressDone': 'Resized',
     'bakeProgressRunning': 'Rasterizing…',
-    'bakeProgressDone': 'Rasterized',
     'rasterizeLeftReferences': 'Some layers were left as references.',
     'pasteProgressRunning': 'Pasting…',
-    'pasteProgressDone': 'Pasted',
     'duplicateProgressRunning': 'Duplicating…',
-    'duplicateProgressDone': 'Duplicated',
     'workProgressRunning': 'Working…',
-    'workProgressDone': 'Done',
     'pictureTradeTitle': 'Swap drawings',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
@@ -3984,9 +3974,7 @@ enum AppStrings {
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
     'openWaitingStalledTemplate': '{sec}秒間、まだ届いていません',
     'resizeProgressRunning': 'サイズ変更中…',
-    'resizeProgressDone': 'サイズ変更しました',
     'bakeProgressRunning': 'ラスタライズ中…',
-    'bakeProgressDone': 'ラスタライズしました',
     'rasterizeLeftReferences': '参照のまま残したレイヤーがあります。',
     'referenceWait.attached':
         'アタッチされたレイヤーはベースのトランスフォームで置かれるため、'
@@ -4014,11 +4002,8 @@ enum AppStrings {
         '動く参照をキーにできません。'
         'トランスフォームの適用対象をフレームにするとラスタライズできます。',
     'pasteProgressRunning': 'ペースト中…',
-    'pasteProgressDone': 'ペーストしました',
     'duplicateProgressRunning': '複製中…',
-    'duplicateProgressDone': '複製しました',
     'workProgressRunning': '処理中…',
-    'workProgressDone': '完了しました',
     'pictureTradeTitle': '作画の入れ替え',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
@@ -5888,9 +5873,7 @@ enum AppStrings {
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
     'openWaitingStalledTemplate': '{sec}초째 도착하지 않았습니다',
     'resizeProgressRunning': '크기 변경 중…',
-    'resizeProgressDone': '크기 변경 완료',
     'bakeProgressRunning': '래스터라이즈 중…',
-    'bakeProgressDone': '래스터라이즈 완료',
     'rasterizeLeftReferences': '참조로 남긴 레이어가 있습니다.',
     'referenceWait.attached':
         '어태치된 레이어는 베이스의 변형으로 놓여, 움직이는 참조를 자기 키로 '
@@ -5912,11 +5895,8 @@ enum AppStrings {
         '이 레이어의 변형은 블록 단위로 적용되어, 움직이는 참조를 키로 옮길 '
         '수 없습니다. 변형의 적용 대상을 프레임으로 바꾸면 래스터라이즈됩니다.',
     'pasteProgressRunning': '붙여넣는 중…',
-    'pasteProgressDone': '붙여넣음',
     'duplicateProgressRunning': '복제하는 중…',
-    'duplicateProgressDone': '복제함',
     'workProgressRunning': '처리 중…',
-    'workProgressDone': '완료',
     'pictureTradeTitle': '원화 맞바꾸기',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
@@ -7796,9 +7776,7 @@ enum AppStrings {
     'saveStepCompacting': 'Comblement des vides du fichier…',
     'saveStepHandingBack': 'Remise du fichier à son document…',
     'resizeProgressRunning': 'Redimensionnement…',
-    'resizeProgressDone': 'Redimensionné',
     'bakeProgressRunning': 'Pixellisation…',
-    'bakeProgressDone': 'Pixellisé',
     'rasterizeLeftReferences': 'Certains calques restent des références.',
     'referenceWait.attached':
         'Un calque attaché se place selon la Transformation de sa base. Une '
@@ -7825,11 +7803,8 @@ enum AppStrings {
         'Référence qui bouge ne peut pas devenir ses clés. Appliquez la '
         'Transformation par image pour pixelliser.',
     'pasteProgressRunning': 'Collage…',
-    'pasteProgressDone': 'Collé',
     'duplicateProgressRunning': 'Duplication…',
-    'duplicateProgressDone': 'Dupliqué',
     'workProgressRunning': 'Traitement…',
-    'workProgressDone': 'Terminé',
     'pictureTradeTitle': 'Échanger les dessins',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
@@ -9841,9 +9816,7 @@ enum AppStrings {
     'saveStepCompacting': '正在填补文件中的空隙…',
     'saveStepHandingBack': '正在将文件交还给原文档…',
     'resizeProgressRunning': '正在调整尺寸…',
-    'resizeProgressDone': '已调整尺寸',
     'bakeProgressRunning': '正在栅格化…',
-    'bakeProgressDone': '栅格化完成',
     'rasterizeLeftReferences': '部分图层仍保留为参照。',
     'referenceWait.attached':
         '附属图层由其基底的变换放置，移动的参照无法变成它自己的关键帧。'
@@ -9864,11 +9837,8 @@ enum AppStrings {
         '此图层的变换按块应用，移动的参照无法转为关键帧。'
         '将变换的应用对象改为帧即可栅格化。',
     'pasteProgressRunning': '粘贴中…',
-    'pasteProgressDone': '已粘贴',
     'duplicateProgressRunning': '复制中…',
-    'duplicateProgressDone': '已复制',
     'workProgressRunning': '正在处理…',
-    'workProgressDone': '已完成',
     'pictureTradeTitle': '交换画稿',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':

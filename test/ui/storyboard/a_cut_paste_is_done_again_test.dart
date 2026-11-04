@@ -24,7 +24,6 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/home_page_probes.dart';
-import '../../helpers/wait_window.dart' show waitOutTheWaitWindow;
 
 /// 🗣️F-559 (유저 2026-11-04): 「컷블록 링크붙여넣기로 타임라인 같은
 /// 겸용컷만들때, 언두하고 리두하면 다시 생겨야하는데 안생김.
@@ -175,10 +174,6 @@ void main() {
         }
         await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
         await tester.pumpAndSettle();
-        // An undo or a redo of a paste stands behind the paste's wait window
-        // (F-551-Q1), whose done line holds the next press off under its
-        // barrier — gone, as the buttons' presses see it go.
-        await waitOutTheWaitWindow(tester);
       }
 
       await press(undo: true);

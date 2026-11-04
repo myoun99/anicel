@@ -2486,7 +2486,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     final swapped = await AppWaitWindow(
       title: session.layerById(layerId)?.name ?? AppText.strings.commonReplace,
       runningLabel: AppText.strings.workProgressRunning,
-      doneLabel: AppText.strings.workProgressDone,
       windowKey: const ValueKey<String>('reference-swap-progress'),
     ).standBehind(context, (_) async {
       final swapped = await session.importDoors.swapReference(

@@ -47,13 +47,24 @@ class AppProgress {
 /// ⚠️The glyph goes in the SPINNER'S OWN SLOT, which was already reserved at
 /// full size so the line would not shuffle sideways on its last frame. The
 /// slot did not change; only what stands in it.
+///
+/// 🗣️↩️THE END IS NOT SHOWN ANY MORE (유저 2026-11-05,
+/// bundle-red-paste-behind-the-wait-window-Q1): 「창을 나눔. 완료표시
+/// 진행창이랑 완료비표시 진행창. … 근데 이 창은 쓸데가 있나싶음. 저장도
+/// 완료비표시 진행창으로 할거라서. 완료비표시 진행창은 로딩창만 보여주고
+/// 끝나면 그냥 바로 사라짐」 · Q2 「셋도 「완료」 없는 창으로 — 「완료」 창은
+/// 지운다」. The check's line held its barrier 0.9s over an app with nothing
+/// left to wait for, and a second Ctrl+Z pressed under it went nowhere (the
+/// 11-04 bundle red). A window with no [doneLabel] never wears the check: it
+/// goes the moment its work does. The check goes with the last callers still
+/// handing one over (the file windows, 저장's round).
 class AppProgressDialog extends StatelessWidget {
   const AppProgressDialog({
     super.key,
     required this.title,
     required this.runningLabel,
-    required this.doneLabel,
     required this.progress,
+    this.doneLabel,
     this.titleIcon,
     this.windowKey,
     this.runningStatus,
@@ -64,9 +75,10 @@ class AppProgressDialog extends StatelessWidget {
   final String title;
   final IconData? titleIcon;
 
-  /// While the work runs, and once it is over.
+  /// While the work runs, and once it is over — null for a window that
+  /// goes with its work instead of saying it is over.
   final String runningLabel;
-  final String doneLabel;
+  final String? doneLabel;
 
   /// A running line that CHANGES — what the work is doing right now, when
   /// that is not one sentence for its whole length. An open spends its
@@ -131,6 +143,7 @@ class AppProgressDialog extends StatelessWidget {
         valueListenable: progress,
         builder: (context, value, _) {
           final fraction = value.fraction;
+          final done = value.done ? doneLabel : null;
           return Row(
             children: [
               // Kept at its full size when finished so the line does not
@@ -138,7 +151,7 @@ class AppProgressDialog extends StatelessWidget {
               SizedBox(
                 width: _spinnerBox,
                 height: _spinnerBox,
-                child: value.done
+                child: done != null
                     ? Icon(
                         Icons.check_rounded,
                         size: _spinnerBox,
@@ -153,22 +166,21 @@ class AppProgressDialog extends StatelessWidget {
                   valueListenable:
                       runningStatus ?? const FixedLabel(''),
                   builder: (context, status, _) => EllipsisText(
-                    value.done
-                        ? doneLabel
-                        : (runningStatus == null || status.isEmpty
-                              ? runningLabel
-                              : status),
+                    done ??
+                        (runningStatus == null || status.isEmpty
+                            ? runningLabel
+                            : status),
                     key: const ValueKey<String>('app-progress-label'),
                     maxLines: 1,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: value.done
+                      color: done != null
                           ? theme.colorScheme.primary
                           : theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
               ),
-              if (!value.done && fraction != null)
+              if (done == null && fraction != null)
                 Text(
                   '${(fraction * 100).round()}%',
                   key: const ValueKey<String>('app-progress-percent'),
@@ -214,12 +226,16 @@ const Duration appProgressDoneLinger = Duration(milliseconds: 900);
 ///
 /// Every step [task] lands stands behind this same window again when it is
 /// undone or redone ([AppWaitWindow], 🗣️F-551-Q1).
+///
+/// Without a [doneLabel] the window goes the moment the work does
+/// ([AppProgressDialog]); with one it says so for [doneLinger] first, under
+/// its barrier.
 Future<T> runWithAppProgress<T>({
   required BuildContext context,
   required String title,
   required String runningLabel,
-  required String doneLabel,
   required Future<T> Function(void Function(double) report) task,
+  String? doneLabel,
   IconData? titleIcon,
   Key? windowKey,
   Duration doneLinger = appProgressDoneLinger,
@@ -263,11 +279,16 @@ Future<T> runWithAppProgress<T>({
 /// The app's one wait window as a step stands behind it — what it says, so
 /// an undo or a redo of the step stands behind the window its first run
 /// stood behind (`StepWindows`).
+///
+/// The windows the doors make for their steps have no done line: each goes
+/// the moment its step does, and so does its undo's and its redo's
+/// (🗣️bundle-red-paste-behind-the-wait-window-Q1 — 「로딩창만 보여주고
+/// 끝나면 그냥 바로 사라짐」).
 final class AppWaitWindow implements WaitWindow {
   const AppWaitWindow({
     required this.title,
     required this.runningLabel,
-    required this.doneLabel,
+    this.doneLabel,
     this.titleIcon,
     this.windowKey,
   });
@@ -277,7 +298,6 @@ final class AppWaitWindow implements WaitWindow {
     : this(
         title: title,
         runningLabel: AppText.strings.workProgressRunning,
-        doneLabel: AppText.strings.workProgressDone,
         windowKey: const ValueKey<String>('work-progress-dialog'),
       );
 
@@ -288,7 +308,6 @@ final class AppWaitWindow implements WaitWindow {
         title: title,
         titleIcon: Icons.content_paste,
         runningLabel: AppText.strings.pasteProgressRunning,
-        doneLabel: AppText.strings.pasteProgressDone,
         windowKey: const ValueKey<String>('paste-progress-dialog'),
       );
 
@@ -297,13 +316,12 @@ final class AppWaitWindow implements WaitWindow {
     : this(
         title: title,
         runningLabel: AppText.strings.duplicateProgressRunning,
-        doneLabel: AppText.strings.duplicateProgressDone,
         windowKey: const ValueKey<String>('duplicate-progress-dialog'),
       );
 
   final String title;
   final String runningLabel;
-  final String doneLabel;
+  final String? doneLabel;
   final IconData? titleIcon;
   final Key? windowKey;
 
@@ -338,7 +356,7 @@ Future<T> _awaitBehindWindow<T>({
   required String title,
   required IconData? titleIcon,
   required String runningLabel,
-  required String doneLabel,
+  required String? doneLabel,
   required Key? windowKey,
   required Duration doneLinger,
   required ValueNotifier<AppProgress> progress,
@@ -374,8 +392,10 @@ Future<T> _awaitBehindWindow<T>({
   await WidgetsBinding.instance.endOfFrame;
   try {
     final result = await start();
-    progress.value = const AppProgress.done();
-    await Future<void>.delayed(doneLinger);
+    if (doneLabel != null) {
+      progress.value = const AppProgress.done();
+      await Future<void>.delayed(doneLinger);
+    }
     return result;
   } finally {
     // `removeRoute`, NOT `pop`. A pop takes whatever route is on TOP, and

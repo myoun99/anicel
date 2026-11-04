@@ -138,7 +138,6 @@ Future<void> _duplicate(
     title: AppText.strings.timelineDuplicate,
     titleIcon: Icons.content_copy,
     runningLabel: AppText.strings.duplicateProgressRunning,
-    doneLabel: AppText.strings.duplicateProgressDone,
     windowKey: const ValueKey<String>('timeline-duplicate-progress'),
     task: (_) async {
       verbs.duplicateTimeline(timeline.id, name);

@@ -23,7 +23,9 @@ import 'app_progress_dialog.dart';
 /// 🗣️F-551 (유저 2026-11-04): 「연산 필요한거? 무거운거? 들은 왠만하면 다
 /// 로딩창띄우도록. 색변환이나 색삭제나 그런거.」 · Q1 「전부 늘 띄운다」 — the
 /// copy, the paste, the 확정 and every other step a hand takes many times
-/// too, every time.
+/// too, every time. ⇒ The window goes with the step's second half, no done
+/// line after it (bundle-red-paste-behind-the-wait-window-Q1): a hand that
+/// takes it many times presses again right away.
 Future<void> takeBehindTheWaitWindow(
   BuildContext context,
   VoidCallback step, {
@@ -54,7 +56,6 @@ Future<void> resizeBehindTheWaitWindow(
     title: title,
     titleIcon: Icons.aspect_ratio,
     runningLabel: AppText.strings.resizeProgressRunning,
-    doneLabel: AppText.strings.resizeProgressDone,
     windowKey: const ValueKey<String>('resize-progress-dialog'),
   ),
   ahead: ahead,

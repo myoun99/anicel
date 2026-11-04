@@ -91,8 +91,8 @@ void expectOneBar(List<double> told, List<double> stops) {
   );
 }
 
-/// The wait window [press] stood behind — read while it holds its done
-/// line, then let go — or null when the press stood behind none.
+/// The wait window [press] stood behind — read while it was up, and gone
+/// now — or null when the press stood behind none.
 ///
 /// For a step that runs on the frame clock alone (F-551's doors: a step
 /// taken whole on the UI thread once the window is drawn); work that hops
@@ -124,30 +124,65 @@ Future<void> waitOutTheWaitWindow(WidgetTester tester) async {
 }
 
 /// [windowBehind]'s first half: [press], and frames until the step behind
-/// the window it put up is over and drawn — the window still on its done
-/// line, for a test that reads the frames the step landed in
-/// ([passTheDoneLinger] lets it go).
+/// the window it put up is over and drawn, for a test that reads the frames
+/// the step landed in. A window with no done line goes with its step
+/// (bundle-red-paste-behind-the-wait-window-Q1), so it is read on a frame
+/// it was up in; one with a done line is left on it ([passTheDoneLinger]
+/// lets it go).
 Future<AppProgressDialog?> stepBehind(
   WidgetTester tester,
   Future<void> Function() press,
 ) async {
+  final seen = _WindowSeen(tester);
   await press();
   final window = find.byType(AppProgressDialog);
   final done = find.descendant(
     of: window,
     matching: find.byKey(const ValueKey<String>('app-progress-done')),
   );
+  bool over() =>
+      done.evaluate().isNotEmpty ||
+      (seen.window != null && window.evaluate().isEmpty);
   // Frames counted, not settled: the spinner turns until the step is over,
   // and a canvas may keep an animation of its own going under it. A list
   // closing before its row runs takes a few of them.
-  for (var frame = 0; frame < 30 && done.evaluate().isEmpty; frame += 1) {
+  for (var frame = 0; frame < 30 && !over(); frame += 1) {
     await tester.pump(const Duration(milliseconds: 16));
   }
-  if (window.evaluate().isEmpty) {
+  seen.stop();
+  final stood = seen.window;
+  if (stood == null) {
     return null;
   }
-  expect(done, findsOneWidget, reason: 'the step behind the window was over');
-  return tester.widget<AppProgressDialog>(window);
+  expect(over(), isTrue, reason: 'the step behind the window was over');
+  return stood;
+}
+
+/// The first wait window up from now on — read at once when one is up
+/// already, and after each frame until [stop]: a window that goes with its
+/// step may be up and gone between two of a test's own looks.
+final class _WindowSeen {
+  _WindowSeen(this._tester) {
+    _look(Duration.zero);
+  }
+
+  final WidgetTester _tester;
+  AppProgressDialog? window;
+  bool _stopped = false;
+
+  void stop() => _stopped = true;
+
+  void _look(Duration _) {
+    if (_stopped || window != null) {
+      return;
+    }
+    final up = find.byType(AppProgressDialog).evaluate();
+    if (up.isNotEmpty) {
+      window = up.first.widget as AppProgressDialog;
+      return;
+    }
+    _tester.binding.addPostFrameCallback(_look);
+  }
 }
 
 /// The wait window a tap on [key] stood behind ([windowBehind]).

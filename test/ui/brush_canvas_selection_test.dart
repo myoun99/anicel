@@ -64,8 +64,7 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
-import '../helpers/wait_window.dart'
-    show passTheDoneLinger, stepBehind, windowBehind;
+import '../helpers/wait_window.dart' show stepBehind, windowBehind;
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
@@ -6068,10 +6067,9 @@ void main() {
         reason: 'the warped preview never came up — bad premise',
       );
 
-      // The frames the confirm lands in, its wait window still up (F-551).
+      // The frames the confirm lands in, behind its wait window (F-551).
       await stepBehind(tester, () async => env.commands.applyTransform());
       final atConfirm = await screenInkMask(tester);
-      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenInkMask(tester);
@@ -6133,10 +6131,9 @@ void main() {
         () => decodedPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
-      // The frames the confirm lands in, its wait window still up (F-551).
+      // The frames the confirm lands in, behind its wait window (F-551).
       await stepBehind(tester, () async => env.commands.applyTransform());
       final atConfirm = await screenInkMask(tester);
-      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenInkMask(tester);
@@ -6455,7 +6452,7 @@ void main() {
             '— bad premise',
       );
 
-      // The frames the confirm lands in, its wait window still up (F-551).
+      // The frames the confirm lands in, behind its wait window (F-551).
       await stepBehind(tester, () async => env.commands.applyTransform());
       // The release changes nothing about the landing — the box closed
       // under it, and its release only lowers the drag flags — but it
@@ -6469,7 +6466,6 @@ void main() {
         isEmpty,
         reason: 'the landing is still being covered for',
       );
-      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenBytes(tester);
