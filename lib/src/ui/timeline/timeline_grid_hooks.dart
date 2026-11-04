@@ -12,7 +12,8 @@ import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
 import '../dialogs/link_window.dart' show LinkKind;
-import '../input/two_axis_drag.dart' show SheetZoom, sheetZoom;
+import '../input/two_axis_drag.dart'
+    show SheetZoom, TwoAxisScrollController, sheetZoom;
 import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
@@ -315,9 +316,17 @@ class TimelineGridHooks {
   /// no zoom, and fingers only move the grid.
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
-  /// What a pinch on a grid laid out at [pixelsPerFrame] zooms.
-  SheetZoom? zoomAt(double pixelsPerFrame) =>
-      sheetZoom(pixelsPerFrame, projectFrameRate, onPixelsPerFrameChanged);
+  /// What a pinch on a grid laid out at [pixelsPerFrame] along [frames]
+  /// zooms.
+  SheetZoom? zoomAt(
+    double pixelsPerFrame,
+    TwoAxisScrollController frames,
+  ) => sheetZoom(
+    pixelsPerFrame,
+    projectFrameRate,
+    onPixelsPerFrameChanged,
+    frames,
+  );
 
   /// A media-browser sound dropped on an SE block: linked to that block's
   /// instance. Null mounts no drop place. ↩️It rode the audio lane's

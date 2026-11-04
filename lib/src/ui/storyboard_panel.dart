@@ -2392,6 +2392,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                   widget.pixelsPerFrame,
                   widget.projectFrameRate,
                   widget.onPixelsPerFrameChanged,
+                  _horizontalController,
                 ),
                 child: SingleChildScrollView(
                   key: const ValueKey<String>(

@@ -1370,6 +1370,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                 ],
                                                 zoom: widget.hooks.zoomAt(
                                                   _metrics.frameCellWidth,
+                                                  _horizontalScrollController,
                                                 ),
                                                 child: TimelineScrollViewport(
                                                   viewportKey: const ValueKey<String>(

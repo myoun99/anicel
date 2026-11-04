@@ -2,8 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+import '../input/two_axis_drag.dart' show TwoAxisScrollController;
+import 'axis_turn.dart' show partAlong;
 import 'timeline_edge_auto_pan.dart' show scrollableIsShown;
-import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 
 /// Where the frame axis should sit after a zoom step (Premiere-style
 /// zoom-around-playhead), shared by every frame-axis surface — the
@@ -14,26 +17,51 @@ import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 /// is off screen (or the surface has none) the viewport's leading-edge
 /// content anchors instead — the previous behavior — so zooming far away
 /// from the playhead never yanks the view across the track.
+///
+/// 🗣️I-155-Q1 b (유저 2026-11-04): 「휠 줌만 커서 기준」 — a step a notch
+/// asked for anchors the point it was turned at ([anchorAt], along the
+/// axis from the viewport's leading edge) in the playhead's place: the
+/// frame under it stays under it, as far across its cell. The keys, the
+/// bar and a pinch have no point, and hold the playhead.
 double zoomAnchoredScrollOffset({
   required double oldOffset,
   required double oldPixelsPerFrame,
   required double newPixelsPerFrame,
   required double viewportExtent,
   int? anchorFrame,
+  double? anchorAt,
 }) {
-  if (anchorFrame != null && viewportExtent > 0) {
-    // Anchor on the frame CELL's center, matching the playhead tint — the
-    // cell the frame axis' one law lays out at each zoom.
-    double centre(double pixelsPerFrame) =>
-        (timelineFrameEdge(anchorFrame, pixelsPerFrame) +
-            timelineFrameEdge(anchorFrame + 1, pixelsPerFrame)) /
-        2;
-    final anchorOnScreen = centre(oldPixelsPerFrame) - oldOffset;
-    if (anchorOnScreen >= 0 && anchorOnScreen <= viewportExtent) {
-      return math.max(0, centre(newPixelsPerFrame) - anchorOnScreen);
-    }
+  // Anchor on the frame CELL's center, matching the playhead tint — the
+  // cell the frame axis' one law lays out at each zoom.
+  final at =
+      anchorAt ??
+      switch (anchorFrame) {
+        final frame? => _stretched(frame + 0.5, oldPixelsPerFrame) - oldOffset,
+        null => null,
+      };
+  if (at != null && viewportExtent > 0 && at >= 0 && at <= viewportExtent) {
+    final frames = _framesAt(oldOffset + at, oldPixelsPerFrame);
+    return math.max(0, _stretched(frames, newPixelsPerFrame) - at);
   }
   return math.max(0, oldOffset * (newPixelsPerFrame / oldPixelsPerFrame));
+}
+
+/// How many frames along the axis [offset] stands: the frame whose cell
+/// holds it, and how far across that cell.
+double _framesAt(double offset, double pixelsPerFrame) {
+  final frame = timelineFrameAt(offset, pixelsPerFrame);
+  final start = timelineFrameEdge(frame, pixelsPerFrame);
+  final span = timelineFrameEdge(frame + 1, pixelsPerFrame) - start;
+  return frame + (span > 0 ? (offset - start) / span : 0);
+}
+
+/// Where [frames] stands along the axis at [pixelsPerFrame] — [_framesAt]
+/// read back, in the cell the law lays.
+double _stretched(double frames, double pixelsPerFrame) {
+  final frame = frames.floor();
+  final start = timelineFrameEdge(frame, pixelsPerFrame);
+  final end = timelineFrameEdge(frame + 1, pixelsPerFrame);
+  return start + (frames - frame) * (end - start);
 }
 
 /// Re-anchors [controller] after the frame cell changed size, if it did.
@@ -50,24 +78,49 @@ double zoomAnchoredScrollOffset({
 /// it from a scroll position no page had moved, and from the middle of a
 /// build, which dirtied the folded row mid-build — measured, a debug
 /// assertion on every zoom step with the axis scrolled.
+///
+/// The point a notch held ([TwoAxisScrollController.zoomHold]) is taken
+/// here whether or not this is its step: it anchors the step it asked for
+/// and no later one.
 void applyZoomAnchoredScroll(
-  ScrollController controller, {
+  TwoAxisScrollController controller, {
   required double oldPixelsPerFrame,
   required double newPixelsPerFrame,
   int? anchorFrame,
 }) {
+  final hold = controller.zoomHold;
+  controller.zoomHold = null;
   if (oldPixelsPerFrame == newPixelsPerFrame ||
       !controller.hasClients ||
       !scrollableIsShown(controller.position)) {
     return;
   }
+  final position = controller.position;
   controller.jumpTo(
     zoomAnchoredScrollOffset(
       oldOffset: controller.offset,
       oldPixelsPerFrame: oldPixelsPerFrame,
       newPixelsPerFrame: newPixelsPerFrame,
-      viewportExtent: controller.position.viewportDimension,
+      viewportExtent: position.viewportDimension,
       anchorFrame: anchorFrame,
+      anchorAt: switch (hold) {
+        (:final at, :final to) when to == newPixelsPerFrame => _along(
+          position,
+          at,
+        ),
+        _ => null,
+      },
     ),
   );
+}
+
+/// How far along [position]'s axis the global point [at] stands from its
+/// viewport's leading edge — the viewport-local offset every press on the
+/// frame axis is read at (`frameIndexFromLocalX`).
+double? _along(ScrollPosition position, Offset at) {
+  final viewport = position.context.notificationContext?.findRenderObject();
+  if (viewport is! RenderBox || !viewport.hasSize) {
+    return null;
+  }
+  return partAlong(position.axis, viewport.globalToLocal(at));
 }

@@ -117,7 +117,8 @@ class TwoAxisDrag extends StatelessWidget {
     );
   }
 
-  /// A notch with Alt held: one step of [zoom] — in up, out down.
+  /// A notch with Alt held: one step of [zoom] — in up, out down — held
+  /// still where it was turned ([TwoAxisScrollController.zoomHold]).
   static void _zoomByWheel(PointerSignalEvent event, SheetZoom zoom) {
     if (!wheelZoomsASheet) {
       return;
@@ -127,13 +128,13 @@ class TwoAxisDrag extends StatelessWidget {
       if (down == 0) {
         return;
       }
-      zoom.onChanged(
-        TimelineZoomLimits.stepped(
-          zoom.pixelsPerFrame,
-          zoomIn: down < 0,
-          framesPerSecond: zoom.framesPerSecond,
-        ),
+      final to = TimelineZoomLimits.stepped(
+        zoom.pixelsPerFrame,
+        zoomIn: down < 0,
+        framesPerSecond: zoom.framesPerSecond,
       );
+      zoom.frames.zoomHold = (at: notch.position, to: to);
+      zoom.onChanged(to);
     });
   }
 }
@@ -164,23 +165,30 @@ class SheetScrollPhysics extends ScrollPhysics {
 /// out at, the rate of the project its steps are counted for, and the
 /// writer every zoom control of its panel writes through — each zoom on a
 /// step inside the range ([TimelineZoomLimits.clamped]), as the readout's.
+///
+/// [frames] is the axis it stretches, which a notch's step holds still at
+/// the notch ([TwoAxisScrollController.zoomHold]).
 typedef SheetZoom = ({
   double pixelsPerFrame,
   int framesPerSecond,
   ValueChanged<double> onChanged,
+  TwoAxisScrollController frames,
 });
 
 /// The [SheetZoom] of a sheet laid out at [pixelsPerFrame] for a project of
-/// [rate], written through [onChanged] — none without a writer.
+/// [rate] along [frames], written through [onChanged] — none without a
+/// writer.
 SheetZoom? sheetZoom(
   double pixelsPerFrame,
   ProjectFrameRate rate,
   ValueChanged<double>? onChanged,
+  TwoAxisScrollController frames,
 ) => switch (onChanged) {
   final onChanged? => (
     pixelsPerFrame: pixelsPerFrame,
     framesPerSecond: rate.countingBase,
     onChanged: onChanged,
+    frames: frames,
   ),
   null => null,
 };
@@ -209,6 +217,12 @@ class TwoAxisScrollController extends PenFriendlyScrollController {
 
   @override
   double get initialScrollOffset => bornAt?.value ?? 0;
+
+  /// Where the zoom step to `to` holds the frames still — the global point
+  /// a notch on the sheet was turned at (I-155-Q1 b: 「휠 줌만 커서 기준」),
+  /// set on the axis the zoom stretches. Taken by the axis's next
+  /// re-anchoring (`applyZoomAnchoredScroll`), its step's or not.
+  ({Offset at, double to})? zoomHold;
 
   @override
   ScrollPosition createScrollPosition(
