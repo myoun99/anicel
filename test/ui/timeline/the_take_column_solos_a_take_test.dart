@@ -197,9 +197,14 @@ void main() {
       'rows on T2, whatever their colour, and pressing it again brings the '
       'rest back', (tester) async {
     final session = await pumpTimelineHost(tester, _project());
-    session.selectLayer(const LayerId('t1-layout'));
+    session.selectLayer(const LayerId('t1-plain'));
     await tester.pumpAndSettle();
-    expect(_row('t1-plain'), findsOneWidget, reason: '⛔전제');
+    expect(_row('t3-layout'), findsOneWidget, reason: '⛔전제');
+    await tester.tap(find.byKey(const ValueKey<String>('legend-take')));
+    await tester.pumpAndSettle();
+    expect(_listedTakes(), [1, 2, 3], reason: 'T1 is worn only unlabelled');
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
 
     await _pick(tester, 'legend-filter-take-2');
 
@@ -222,15 +227,12 @@ void main() {
 
   testWidgets('the conte panel\'s legend lists the takes its rows are on — '
       'an unlabelled row\'s T1 too', (tester) async {
-    await pumpStoryboardHost(tester, createDefaultProject());
+    await pumpStoryboardHost(tester, _project());
 
     await tester.tap(find.byKey(const ValueKey<String>('legend-take')).first);
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey<String>('legend-filter-take-1')),
-      findsOneWidget,
-    );
+    expect(_listedTakes(), [1, 2, 3]);
   });
 }
 
@@ -243,8 +245,18 @@ Future<void> _pick(WidgetTester tester, String key) async {
 
 Finder _row(String id) => find.named('timeline-layer-row-$id');
 
+/// The takes the open take flyout lists.
+List<int> _listedTakes() => [
+  for (final take in LayerMark.takeChoices)
+    if (find
+        .byKey(ValueKey<String>('legend-filter-take-$take'))
+        .evaluate()
+        .isNotEmpty)
+      take,
+];
+
 /// [_project]'s rows, bottom → top.
-const _ids = ['t1-layout', 't2-plain', 't2-layout', 't1-plain'];
+const _ids = ['t1-plain', 't2-plain', 't2-layout', 't3-layout'];
 
 /// A legend whose take verbs write what they were asked into [heard].
 LayerLegendCallbacks _legend(List<Object> heard) => LayerLegendCallbacks(
@@ -277,7 +289,8 @@ Layer _layer(String id, LayerMark mark) => Layer(
   timeline: const {},
 );
 
-/// Four rows: the colour label and the take crossed, the first stood on.
+/// Four rows, the colour label and the take crossed — T1 worn only by a
+/// row with no label.
 Project _project() {
   const layout = LayerMark(process: LayerProcess.layout);
   return Project(
@@ -295,10 +308,10 @@ Project _project() {
             duration: 12,
             canvasSize: const CanvasSize(width: 640, height: 360),
             layers: [
-              _layer('t1-layout', layout),
+              _layer('t1-plain', LayerMark.none),
               _layer('t2-plain', LayerMark.none.withTake(2)),
               _layer('t2-layout', layout.withTake(2)),
-              _layer('t1-plain', LayerMark.none),
+              _layer('t3-layout', layout.withTake(3)),
             ],
           ),
         ],
