@@ -197,37 +197,27 @@ void main() {
       expect(session.historyManager.undoCount, steps);
     });
 
-    testWidgets('a file that holds what the pool carries already is left as it '
-        'is — no second copy, no step; one as long but of other bytes is '
-        'carried anew', (tester) async {
+    testWidgets('🗣️a file whose bytes are the carry\'s is carried anew too — '
+        'nothing is compared (F-550-Q5)', (tester) async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      final paths = [
-        for (final name in ['same.wav', 'other.wav'])
-          normalizedMediaPath('${tempDir.path}/$name'),
-      ];
+      final path = normalizedMediaPath('${tempDir.path}/same.wav');
       await tester.runAsync(() async {
-        for (final path in paths) {
-          await File(path).writeAsBytes(List<int>.filled(3000, 1));
-        }
-        await session.mediaPool.importMediaFiles(paths, copyIntoProject: true);
-        await File(paths[1]).writeAsBytes([
-          ...List<int>.filled(2999, 1),
-          2,
-        ]);
+        await File(path).writeAsBytes(List<int>.filled(3000, 1));
+        await session.mediaPool.importMediaFiles([path], copyIntoProject: true);
       });
-      final before = [for (final path in paths) carryIn(session, path)];
+      final before = carryIn(session, path);
       final steps = session.historyManager.undoCount;
 
       final anew = await tester.runAsync(
-        () => session.mediaPool.carryAnew(paths),
+        () => session.mediaPool.carryAnew([path]),
       );
 
-      expect(anew, {paths[1]}, reason: 'its last byte, not its length');
-      expect(carryIn(session, paths[0]), before[0]);
-      expect(carryIn(session, paths[1]), isNot(before[1]));
+      expect(anew, {path});
+      expect(carryIn(session, path), isNot(before));
+      expect(stagedCopyIn(session, path), isNotNull);
       expect(session.historyManager.undoCount, steps + 1);
     });
   });
