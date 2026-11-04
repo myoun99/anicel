@@ -122,10 +122,15 @@ void main() {
     await settleAsync(tester, () => !tester.any(answer));
   }
 
-  Future<void> pressImport(WidgetTester tester) async {
+  /// The window's press, waited out — and every tab's warmer stopped, the
+  /// one it opened among them.
+  Future<void> pressImport(WidgetTester tester, OpenProjects projects) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
+    for (final session in projects.sessions) {
+      session.playbackRig.prerenderScheduler.cancel();
+    }
   }
 
   /// [session]'s one cut — the file's.
@@ -166,7 +171,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    await pressImport(tester);
+    await pressImport(tester, projects);
 
     expect(projects.sessions, hasLength(2));
     final made = projects.active;
@@ -197,7 +202,6 @@ void main() {
     expect(made.mediaPool.mediaAssets.single.carried, isTrue);
     expect(shapeOf(here), before, reason: 'the window\'s project is untouched');
     expect(importWarningsButton, findsNothing);
-    made.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️a movie brought in as a new project runs at the movie\'s '
@@ -214,9 +218,7 @@ void main() {
     final before = shapeOf(here);
 
     await pick(tester, 'into', movie, 'newProject');
-    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await pumpPastTheWaitWindow(tester);
-    await tester.pumpAndSettle();
+    await pressImport(tester, projects);
 
     expect(
       find.byKey(const ValueKey<String>('import-movie-rate-dialog')),
@@ -236,7 +238,6 @@ void main() {
     final cut = theCut(made);
     expect(cut.duration, 48, reason: 'frame for frame with the take');
     expect(cut.canvasSize, const CanvasSize(width: 64, height: 36));
-    made.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🗣️a trimmed 30 fps movie comes in on the same pictures — its '
@@ -264,7 +265,7 @@ void main() {
     // One-based: frames 10 · 29 on the 24 clock show the take's 12 · 36.
     await keepImportSpan(tester, 11, 30);
 
-    await pressImport(tester);
+    await pressImport(tester, projects);
 
     final made = projects.active;
     expect(
@@ -277,7 +278,6 @@ void main() {
       reason: 'the take\'s 12 to 36, one frame each at 30 — ↩️20 would be '
           'the 24 clock\'s count laid on the 30 one',
     );
-    made.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a file that does not come in leaves no tab behind — the '
@@ -293,13 +293,12 @@ void main() {
     final here = await openWindow(tester, projects, broken);
 
     await pick(tester, 'into', broken, 'newProject');
-    await pressImport(tester);
+    await pressImport(tester, projects);
 
     expect(projects.sessions, [here]);
     expect(identical(projects.active, here), isTrue);
     expect(letGo, hasLength(1), reason: 'the one made for it, let go');
     expect(importWarningsButton, findsOneWidget);
-    here.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a file this project carries, picked again for a new project, '
@@ -321,7 +320,7 @@ void main() {
 
     await openWindow(tester, projects, png);
     await pick(tester, 'into', png, 'newProject');
-    await pressImport(tester);
+    await pressImport(tester, projects);
 
     expect(carryIn(here, png), kept);
     expect(shapeOf(here), before);
@@ -329,7 +328,6 @@ void main() {
     expect(identical(made, here), isFalse);
     expect(carryIn(made, png), isNotNull);
     expect(carryIn(made, png), isNot(kept), reason: 'a carry of its own');
-    made.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a window with no tabs to open one in offers no new project',
