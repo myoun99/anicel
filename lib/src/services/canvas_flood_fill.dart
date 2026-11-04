@@ -6,6 +6,7 @@ import 'dart:ui' show Offset;
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
 import '../core/point_bounds.dart';
+import '../core/rgba_premultiply.dart' show mul255Round;
 import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -24,6 +25,7 @@ import '../core/seed_tolerance.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection_region.dart';
 import 'cel_text_laying.dart';
+import 'fill_gradient.dart';
 import 'cut_frame_composite_plan.dart';
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'guide_geometry.dart';
@@ -1562,7 +1564,16 @@ final class FillRange {
   /// The range laid in [color] as stamp pieces ([_stampPieces]) — empty for
   /// an [open] range, which says so ([fillRangeAt]'s `onOpenRegion`): it is
   /// where the fill would have landed that nothing does.
-  List<BrushDab> dabsIn(int color) {
+  List<BrushDab> dabsIn(int color) => _laid(color: color).toList();
+
+  /// The range laid under [gradient] (I-160) — the stamp pieces [dabsIn]
+  /// lays, each pixel the gradient's colour at its centre. Made as they are
+  /// asked for, afresh at each ask: what a dragged shape lays a share of a
+  /// frame at a time ([ShapeArea]'s `pieces`).
+  Iterable<BrushDab> piecesUnder(FillGradient gradient) =>
+      _laid(color: gradient.startColor, gradient: gradient);
+
+  Iterable<BrushDab> _laid({required int color, FillGradient? gradient}) {
     final finished = region;
     if (finished == null) {
       _onOpenRegion?.call();
@@ -1582,9 +1593,10 @@ final class FillRange {
         bottomExclusive: finished.top + finished.height,
       ),
       color: color,
+      gradient: gradient,
       opacity: _opacity,
       finishedAround: (_) => mask,
-    ).toList();
+    );
   }
 
   /// The outline of every pixel the fill would write into, inside [within]
@@ -1878,6 +1890,7 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 Iterable<BrushDab> _stampPieces(
   DirtyRegion box, {
   required int color,
+  FillGradient? gradient,
   required double opacity,
   required _FinishedMask? Function(TileSpan tile) finishedAround,
 }) sync* {
@@ -1897,6 +1910,7 @@ Iterable<BrushDab> _stampPieces(
       height: first.bottomExclusive - first.top,
       mask: _joined(run),
       color: color,
+      gradient: gradient,
       opacity: opacity,
       id: '$id-${first.coord.x}.${first.coord.y}',
       sequence: sequence,
@@ -1983,6 +1997,9 @@ Uint8List _joined(List<({TileSpan tile, Uint8List coverage})> run) {
 /// tip-mask dab re-sampled the giant mask bilinearly per pixel at every
 /// materialization — a multi-second slice on large fills — and the stamp
 /// is byte-exact by construction.
+///
+/// Under a [gradient] (I-160) each pixel is the gradient's colour at its
+/// centre instead, its alpha times the coverage ([_gradientRgba]).
 BrushDab _colorStampDab({
   required int left,
   required int top,
@@ -1990,6 +2007,7 @@ BrushDab _colorStampDab({
   required int height,
   required Uint8List mask,
   required int color,
+  FillGradient? gradient,
   required double opacity,
   required String id,
   required int sequence,
@@ -1998,6 +2016,15 @@ BrushDab _colorStampDab({
   final g = argbGreen(color);
   final b = argbBlue(color);
   final rgba = labProbe('fill.stamp-build', () {
+    if (gradient != null) {
+      return _gradientRgba(
+        mask,
+        left: left,
+        top: top,
+        width: width,
+        gradient: gradient,
+      );
+    }
     final bytes = Uint8List(width * height * 4);
     if (Endian.host == Endian.little) {
       // One word store per pixel (R19-8K): the four byte stores below
@@ -2041,4 +2068,39 @@ BrushDab _colorStampDab({
     sequence: sequence,
     stamp: BrushStampImage(id: id, width: width, height: height, rgba: rgba),
   );
+}
+
+/// How finely [_gradientRgba] looks a pixel's colour up along its gradient
+/// ([FillGradient.stops]) — four stops to each level a channel can take.
+const int _gradientStops = 1024;
+
+/// [mask], the coverage of a piece whose corner is ([left], [top]), painted
+/// with [gradient]: each covered pixel the gradient's colour at its centre,
+/// that colour's alpha times the coverage.
+Uint8List _gradientRgba(
+  Uint8List mask, {
+  required int left,
+  required int top,
+  required int width,
+  required FillGradient gradient,
+}) {
+  final stops = gradient.stops(_gradientStops);
+  final bytes = Uint8List(mask.length * 4);
+  for (var index = 0; index < mask.length; index += 1) {
+    final coverage = mask[index];
+    if (coverage == 0) {
+      continue;
+    }
+    final along = gradient.at(
+      left + index % width + 0.5,
+      top + index ~/ width + 0.5,
+    );
+    final argb = stops[(along * (_gradientStops - 1)).round()];
+    final offset = index * 4;
+    bytes[offset] = argbRed(argb);
+    bytes[offset + 1] = argbGreen(argb);
+    bytes[offset + 2] = argbBlue(argb);
+    bytes[offset + 3] = mul255Round(argbAlpha(argb), coverage);
+  }
+  return bytes;
 }
