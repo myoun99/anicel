@@ -56,6 +56,14 @@ enum FxBakeChange {
   /// A picture lies past the wall, which the bake cuts off as a merge does
   /// (I-78-Q15 · Q19).
   wall,
+
+  /// An fx that draws at its defaults — the cel number's, a plugin's — is
+  /// baked over some of the frames its row's uses draw, and its switch,
+  /// which has no key and is every use's, goes off: it no longer draws on
+  /// the rest (🗣️I-120-Q14, 유저 2026-11-05 「범위 안만 굽고 스위치를
+  /// 끈다」 — its line 「범위 밖에서 이 fx 가 사라집니다」). ↩️It baked
+  /// nothing and said why until the answer, the card's recommendation.
+  rest,
 }
 
 /// The frames a press of RASTERIZE bakes, from [start] to [end]
@@ -108,12 +116,10 @@ final class FxBakeTaking {
   _Use get _pressed => _uses.first;
 
   /// Whether it bakes an fx that draws at its defaults — the cel number's,
-  /// a plugin's — and leaves a frame a use draws, where it would go on
-  /// drawing: its switch has no key, and is every use's, so it cannot be
-  /// off for the frames baked alone. 🗣️I-120-Q14, its recommendation while
-  /// it is asked 「막고 경고」 (Q6's law for what one picture cannot hold):
-  /// it bakes nothing, and says why ([FxBakeWait.rest]).
-  bool get _cannotKeepTheRest =>
+  /// a plugin's — and leaves a frame a use draws, where it no longer draws
+  /// after: its switch has no key, and is every use's, so it goes off for
+  /// the frames it leaves too ([FxBakeChange.rest]).
+  bool get _dropsTheRest =>
       _uses.any(_keepsAFrame) &&
       _pressed.row.effects.any(
         (fx) => fx.id == _effectId && !fx.kind.changesNothingAtItsDefaults,
@@ -275,11 +281,6 @@ final class FxBakeWaits extends FxBakeOutcome {
 /// pictures cannot hold, which it does not bake and warns of (「막고 경고」 —
 /// 🗣️I-120-Q6, as F-374-Q11 for a reference).
 enum FxBakeWait {
-  /// The fx draws at its defaults, and a frame a use draws is left unbaked:
-  /// its switch, every frame's of every use, cannot be off there alone
-  /// (Q14, its recommendation while it is asked).
-  rest,
-
   /// A cel the uses share shows as other pictures in one than in another,
   /// and one cel holds one (Q6).
   usesApart,
@@ -343,7 +344,9 @@ final class FxBakePlan extends FxBakeOutcome {
 /// - Q2 — the fx alone is baked ([FxBakeChange.order]).
 /// - Q4 「구운 뒤 그 fx 의 스위치를 끈다」 — every value and key of the fx
 ///   back at its default, its line kept; one that changes the picture at
-///   its defaults (the cel number, a plugin's) switched off besides.
+///   its defaults (the cel number, a plugin's) switched off besides — in
+///   every use, a band's bake too (Q14, 11-05 「범위 안만 굽고 스위치를
+///   끈다」: [FxBakeChange.rest]).
 /// - Q6 「같은 셀을 보는 다른 컷도 같이 굽는다 — 한 장에 못 담으면 막고
 ///   경고」 — every use of the row by its own values and timing, into the
 ///   one bank its cels are: a picture two uses show is one cel; a cel one
@@ -354,6 +357,9 @@ final class FxBakePlan extends FxBakeOutcome {
 ///   and timing into a bank of its own, as a merge takes them (I-78-Q20).
 ///   A panel that would show more than one picture of the row bakes
 ///   nothing while Q17 · Q18 are asked ([FxBakeWait.panelParts]).
+/// - Q15 (11-05) 「같은 이름 키 전부에 새 손잡이」 — a named key a band's
+///   cut paces anew keeps its name, and every key of the name takes what
+///   it moved ([_namesCarried]).
 ///
 /// A cel that shows one picture is that picture — its name, its place in
 /// the bank. A cel shown as several takes a new cel for each after the
@@ -377,9 +383,6 @@ FxBakeOutcome planFxBake(
   required FrameId Function(LayerId row) mintFrameId,
   required PasteboardReach reach,
 }) {
-  if (taking._cannotKeepTheRest) {
-    return const FxBakeWaits(FxBakeWait.rest);
-  }
   final FxBakeTaking(_effectId: effectId, _uses: uses, _pressed: pressed) =
       taking;
   final shown = [
@@ -390,10 +393,10 @@ FxBakeOutcome planFxBake(
     return const FxBakeWaits(FxBakeWait.usesApart);
   }
   final held = banked.held;
-  final rows = [
+  final rows = _namesCarried(uses, [
     for (final (index, use) in uses.indexed)
       _rowBaked(use, effectId, held[index]),
-  ];
+  ]);
   for (final (index, use) in uses.indexed) {
     if (_partsAPanel(use, rows[index], held[index])) {
       return const FxBakeWaits(FxBakeWait.panelParts);
@@ -426,6 +429,7 @@ FxBakeOutcome planFxBake(
     changes: {
       if (_runsAfterAnFxOn(pressed.row, effectId)) FxBakeChange.order,
       if (_cutAtTheWall(pictures, readsOf, reach)) FxBakeChange.wall,
+      if (taking._dropsTheRest) FxBakeChange.rest,
     },
     layers: cuts.first.layers,
     others: cuts.sublist(1),
@@ -511,7 +515,10 @@ Layer _rowBaked(_Use use, EffectId? effectId, _Held held) {
   return parted.copyWith(
     effects: [
       for (final fx in row.effects)
-        _effectKept(fx, keeping(fx.basis, baked: fx.id == effectId)),
+        _switchedAfter(
+          _effectKept(fx, keeping(fx.basis, baked: fx.id == effectId)),
+          baked: fx.id == effectId,
+        ),
     ],
     transformTrack: _transformKept(
       row.transformTrack,
@@ -519,6 +526,54 @@ Layer _rowBaked(_Use use, EffectId? effectId, _Held held) {
     ),
   );
 }
+
+/// [fx] switched as a bake leaves it: one [baked] whose defaults change the
+/// picture — the cel number's, a plugin's — off, so the cels it was baked
+/// into do not wear it twice; in every use, the switch being every frame's
+/// of every use (🗣️I-120-Q4 「구운 뒤 그 fx 의 스위치를 끈다」 · Q14 「범위
+/// 안만 굽고 스위치를 끈다」).
+LayerEffect _switchedAfter(LayerEffect fx, {required bool baked}) =>
+    baked && !fx.kind.changesNothingAtItsDefaults
+    ? fx.copyWith(enabled: false)
+    : fx;
+
+/// [rows], each of [uses] after its bake, with what it moved of a named key
+/// carried to every key of the name — on its lane, and on that lane in
+/// each use the row's link group holds, one naming space (🗣️I-120-Q15,
+/// 유저 2026-11-05 「같은 이름 키 전부에 새 손잡이」): the link a write of
+/// a row's fx or transform hands on ([namedEffectKeyChanges] ·
+/// [transformNamedKeyChanges]).
+List<Layer> _namesCarried(List<_Use> uses, List<Layer> rows) {
+  final moved =
+      <LayerId, List<(List<NamedEffectKeyChange>, TransformNamedChanges)>>{};
+  for (final (index, use) in uses.indexed) {
+    (moved[_linkKey(use.keys, use.row.id)] ??= []).add((
+      namedEffectKeyChanges(use.row.effects, rows[index].effects),
+      transformNamedKeyChanges(
+        use.row.transformTrack,
+        rows[index].transformTrack,
+      ),
+    ));
+  }
+  return [
+    for (final (index, use) in uses.indexed)
+      moved[_linkKey(use.keys, use.row.id)]!.fold(
+        rows[index],
+        (row, changes) => row.copyWith(
+          effects: effectsWithNamedValues(row.effects, changes.$1),
+          transformTrack: transformTrackWithNamedKeys(
+            row.transformTrack,
+            changes.$2,
+          ),
+        ),
+      ),
+  ];
+}
+
+/// [row] as every cut a link group of [keys] holds it in names it — the
+/// key its uses share one bank of cels and one naming space by
+/// ([rowsKeyedAcrossCuts]).
+LayerId _linkKey(Map<LayerId, LayerId> keys, LayerId row) => keys[row] ?? row;
 
 /// The cels a bake leaves a bank: [cels] the bank, [celAt] the cel each
 /// frame of each use shows (by the use's place), [pictures] each new cel's
@@ -566,7 +621,7 @@ _Held _heldAsShown(Cut cut, Layer row, Iterable<int> frames) => (
 ) {
   final sharing = <LayerId, List<int>>{};
   for (final (index, use) in uses.indexed) {
-    (sharing[use.keys[use.row.id] ?? use.row.id] ??= []).add(index);
+    (sharing[_linkKey(use.keys, use.row.id)] ??= []).add(index);
   }
   final held = <int, _Held>{};
   final pictures = <LayerMergePicture>[];
@@ -876,7 +931,7 @@ _ridersBaked(FxBakeTaking taking, List<_Ridden> ridden, _Minting minting) {
   final sharing = <LayerId, List<_Riding>>{};
   for (final riding in taking._riders) {
     final keys = uses[riding.use].keys;
-    (sharing[keys[riding.rider.id] ?? riding.rider.id] ??= []).add(riding);
+    (sharing[_linkKey(keys, riding.rider.id)] ??= []).add(riding);
   }
   final rows = <({Cut cut, Layer row})>[];
   final pictures = <LayerMergePicture>[];
@@ -1153,10 +1208,8 @@ bool _coversEvery(BakedFrames baked, int drawn) =>
     baked.start <= 0 && baked.end >= drawn;
 
 /// [fx] as [keeping] keeps it: where it bakes the fx, at its defaults over
-/// the frames baked ([_Keeping.lane]) — and, where it bakes every frame,
-/// switched off where its defaults still change the picture (Q4), so the
-/// cels it was baked into do not wear it twice. A value with no keys — its
-/// switch, a row it reads — is at its default only where every frame is.
+/// the frames baked ([_Keeping.lane]). A value with no keys — a row it
+/// reads — is at its default only where every frame is.
 LayerEffect _effectKept(LayerEffect fx, _Keeping keeping) {
   if (keeping.keepsAll) {
     return fx;
@@ -1166,7 +1219,7 @@ LayerEffect _effectKept(LayerEffect fx, _Keeping keeping) {
     id: fx.id,
     kind: fx.kind,
     plugin: fx.plugin,
-    enabled: fx.enabled && (!every || fx.kind.changesNothingAtItsDefaults),
+    enabled: fx.enabled,
     basis: fx.basis,
     parameters: {
       for (final MapEntry(key: id, value: parameter) in fx.parameters.entries)

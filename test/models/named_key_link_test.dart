@@ -111,6 +111,80 @@ void main() {
       );
     });
 
+    group('🚨keys of one name one write moved apart — a bake\'s cut (I-120-'
+        'Q15 「같은 이름 키 전부에 새 손잡이」) — hand on what each moved', () {
+      const was = EaseSide(influence: 0.6, speed: 0);
+      const leaving = EaseSide(influence: 0.2, speed: 1);
+      const arriving = EaseSide(influence: 0.4, speed: 2);
+      PropertyTrack<double> keys(Map<int, PropertyKey<double>> keys) =>
+          PropertyTrack<double>(keys: keys);
+      PropertyKey<double> n({
+        KeySide incoming = was,
+        KeyExit outgoing = was,
+        KeyPath path = KeyPath.straight,
+      }) => PropertyKey(
+        0,
+        incoming: incoming,
+        outgoing: outgoing,
+        path: path,
+        name: 'N',
+      );
+
+      test('one the way leaving it, another the way arriving: both land', () {
+        final moved = movedNamedKeys(
+          keys({0: n(), 8: n()}),
+          keys({0: n(outgoing: leaving), 8: n(incoming: arriving)}),
+        );
+        expect(moved['N'], n(incoming: arriving, outgoing: leaving).held);
+      });
+
+      test('both one side: the later key\'s — as one key moved alone', () {
+        final moved = movedNamedKeys(
+          keys({0: n(), 8: n()}),
+          keys({0: n(outgoing: leaving), 8: n(outgoing: arriving)}),
+        );
+        expect(moved['N'], n(outgoing: arriving).held);
+        expect(
+          movedNamedKeys(keys({0: n(), 8: n()}), keys({0: n(), 8: n()})),
+          isEmpty,
+        );
+      });
+
+      test('a path\'s reach ahead and its reach behind, each its own — one '
+          'way through the key; another way, the later\'s', () {
+        const joined = JoinedPath(degrees: 30, ahead: 10, behind: 10);
+        SplitPath split(double ahead, double behind) => SplitPath(
+          ahead: CanvasPoint(x: ahead, y: 0),
+          behind: CanvasPoint(x: -behind, y: 0),
+        );
+        KeyPath? both(KeyPath from, KeyPath one, KeyPath two) =>
+            movedNamedKeys(
+              keys({0: n(path: from), 8: n(path: from)}),
+              keys({0: n(path: one), 8: n(path: two)}),
+            )['N']?.path;
+        expect(
+          [
+            both(
+              joined,
+              const JoinedPath(degrees: 30, ahead: 4, behind: 10),
+              const JoinedPath(degrees: 30, ahead: 10, behind: 6),
+            ),
+            both(split(10, 10), split(4, 10), split(10, 6)),
+            both(
+              joined,
+              const JoinedPath(degrees: 30, ahead: 4, behind: 10),
+              const JoinedPath(degrees: 45, ahead: 10, behind: 6),
+            ),
+          ],
+          [
+            const JoinedPath(degrees: 30, ahead: 4, behind: 6),
+            split(4, 6),
+            const JoinedPath(degrees: 45, ahead: 10, behind: 6),
+          ],
+        );
+      });
+    });
+
     test('a name SURVIVES a value edit — it is identity, not content', () {
       final result = track({4: (1, 'A')}).withKey(4, 7);
 

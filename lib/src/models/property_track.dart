@@ -1055,6 +1055,11 @@ class KeyTypePick {
 ///
 /// A key standing where none stood was moved in time, which leaves what it
 /// holds as it was.
+///
+/// Keys of one name one write moved apart — a bake's cut, pacing anew the
+/// way leaving one and the way arriving at another (🗣️I-120-Q15, 유저
+/// 2026-11-05 「같은 이름 키 전부에 새 손잡이」) — hand on what each moved
+/// ([_movesJoined]).
 Map<String, NamedKeyValue<T>> movedNamedKeys<T>(
   PropertyTrack<T> before,
   PropertyTrack<T> after,
@@ -1073,10 +1078,61 @@ Map<String, NamedKeyValue<T>> movedNamedKeys<T>(
     if (old == null || (old.name == name && old.held == key.held)) {
       continue;
     }
-    moved[name] = key.held;
+    moved[name] = switch ((moved[name], before.keyForName(name))) {
+      (final earlier?, final was?) => _movesJoined(was.held, earlier, key.held),
+      _ => key.held,
+    };
   }
   return moved;
 }
+
+/// What [earlier] and then [later] moved of [was], held as one: each part
+/// as the later moved it, any other as the earlier did — a path's two
+/// reaches parts of their own ([_pathsJoined]).
+NamedKeyValue<T> _movesJoined<T>(
+  NamedKeyValue<T> was,
+  NamedKeyValue<T> earlier,
+  NamedKeyValue<T> later,
+) {
+  P part<P>(P Function(NamedKeyValue<T> held) of) =>
+      of(later) != of(was) ? of(later) : of(earlier);
+  return (
+    value: part((held) => held.value),
+    incoming: part((held) => held.incoming),
+    outgoing: part((held) => held.outgoing),
+    path: _pathsJoined(was.path, earlier.path, later.path),
+    roving: part((held) => held.roving),
+  );
+}
+
+/// [earlier] and then [later] as moves of [was]: the reach ahead of the key
+/// and the one behind it each as the later moved it, else as the earlier
+/// did — where all three go one way; the later's otherwise.
+KeyPath _pathsJoined(KeyPath was, KeyPath earlier, KeyPath later) =>
+    switch ((was, earlier, later)) {
+      _ when later == was => earlier,
+      (
+        JoinedPath(:final degrees, ahead: final a, behind: final b),
+        final JoinedPath one,
+        final JoinedPath two,
+      )
+          when one.degrees == degrees && two.degrees == degrees =>
+        JoinedPath(
+          degrees: degrees,
+          ahead: two.ahead != a ? two.ahead : one.ahead,
+          behind: two.behind != b ? two.behind : one.behind,
+        ),
+      (
+        SplitPath(ahead: final a, behind: final b),
+        final SplitPath one,
+        final SplitPath two,
+      ) =>
+        SplitPath(
+          ahead: two.ahead != a ? two.ahead : one.ahead,
+          behind: two.behind != b ? two.behind : one.behind,
+        ),
+      _ => later,
+    };
 
 /// The value of the key at [frame] of [keys], and those of the keys either
 /// side of it — null at an end: what a path's handles are laid from

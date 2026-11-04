@@ -200,9 +200,10 @@ void main() {
   Layer a(EditorSessionManager s) =>
       s.requireActiveCut.layers.byId(const LayerId('a'))!;
 
-  /// A session over [layers] ([sessionOf]), let go after the test.
-  EditorSessionManager plain(List<Layer> layers) {
-    final s = sessionOf(layers);
+  /// A session over [layers] ([sessionOf]), [duration] frames long, let go
+  /// after the test.
+  EditorSessionManager plain(List<Layer> layers, {int duration = 3}) {
+    final s = sessionOf(layers, duration: duration);
     addTearDown(s.dispose);
     return s;
   }
@@ -224,19 +225,18 @@ void main() {
     return hosted;
   }
 
-  /// What [s]'s cut — [of], where given — shows at canvas ([x], [y]) on
-  /// [frame], drawn as an export draws it.
-  Future<List<int>> shownAt(
+  /// What [s]'s cut — [of], where given — shows on [frame], drawn as an
+  /// export draws it: the wall's pixels row by row, [width] to a row, the
+  /// first at canvas ([left], [top]).
+  Future<({List<int> rgba, int width, int left, int top})> wallAt(
     WidgetTester tester,
     EditorSessionManager s,
-    int frame,
-    int x,
-    int y, {
+    int frame, {
     Cut? of,
   }) async {
     final cut = of ?? s.requireActiveCut;
     final wall = s.pasteboardOf(cut.canvasSize);
-    final rgba = await tester.runAsync(() async {
+    final drawn = await tester.runAsync(() async {
       final renderer = ExportFrameRenderer(
         session: s,
         background: const ui.Color(0x00000000),
@@ -252,8 +252,12 @@ void main() {
           final bytes = (await image.toByteData(
             format: ui.ImageByteFormat.rawStraightRgba,
           ))!;
-          final at = ((y - wall.top) * image.width + (x - wall.left)) * 4;
-          return [for (var i = 0; i < 4; i += 1) bytes.getUint8(at + i)];
+          return (
+            rgba: bytes.buffer
+                .asUint8List(bytes.offsetInBytes, bytes.lengthInBytes)
+                .toList(),
+            width: image.width,
+          );
         } finally {
           image.dispose();
         }
@@ -261,7 +265,32 @@ void main() {
         renderer.dispose();
       }
     });
-    return rgba!;
+    return (
+      rgba: drawn!.rgba,
+      width: drawn.width,
+      left: wall.left,
+      top: wall.top,
+    );
+  }
+
+  /// What [s]'s cut — [of], where given — shows at canvas ([x], [y]) on
+  /// [frame] ([wallAt]).
+  Future<List<int>> shownAt(
+    WidgetTester tester,
+    EditorSessionManager s,
+    int frame,
+    int x,
+    int y, {
+    Cut? of,
+  }) async {
+    final (:rgba, :width, :left, :top) = await wallAt(
+      tester,
+      s,
+      frame,
+      of: of,
+    );
+    final at = ((y - top) * width + (x - left)) * 4;
+    return rgba.sublist(at, at + 4);
   }
 
   /// [cel] of the row [of] as its picture, at canvas ([x], [y]).
@@ -1169,6 +1198,7 @@ void main() {
       'outside showing what it showed (Q3 「범위 안만 굽고, 범위 밖은 보이던 '
       '그대로」)', () {
     const band = (start: 1, end: 2);
+    const number = EffectId('e-number');
 
     /// What [s]'s cut shows at canvas ([x], 5) on frames 0..2.
     Future<List<List<int>>> seenOf(
@@ -1331,14 +1361,29 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
-    testWidgets('🚨Q14 — over a band, an fx that draws at its defaults bakes '
-        'nothing and says why: its switch has no key to be off by there '
-        'alone', (tester) async {
-      const number = EffectId('e-number');
+    testWidgets('🚨Q14 — over a band, an fx that draws at its defaults is '
+        'baked into the band\'s frames and switched off, warned of first: '
+        'the frames outside show the row without it (유저 11-05 「범위 안만 '
+        '굽고 스위치를 끈다」)', (tester) async {
+      LayerEffect numbered({bool enabled = true}) => LayerEffect(
+        id: number,
+        kind: EffectKind.celNumber,
+        enabled: enabled,
+      );
       final s = sessionOf([
-        rowA(effects: [LayerEffect(id: number, kind: EffectKind.celNumber)]),
+        rowA(effects: [numbered()]),
       ]);
       addTearDown(s.dispose);
+      final bare = sessionOf([
+        rowA(effects: [numbered(enabled: false)]),
+      ]);
+      addTearDown(bare.dispose);
+      Future<List<List<int>>> walls(EditorSessionManager of) async => [
+        for (var frame = 0; frame < 3; frame += 1)
+          (await wallAt(tester, of, frame)).rgba,
+      ];
+      final (seen, off) = (await walls(s), await walls(bare));
+      expect(seen[1], isNot(off[1]), reason: '⛔전제: the number draws');
       final before = a(s);
       final context = await hostedContext(tester);
 
@@ -1353,18 +1398,35 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-
-      expect(
+      expect(find.text(AppText.strings.tlFxBakeChangeRest), findsOneWidget);
+      await tester.tap(
         find.byKey(
-          const ValueKey<String>('fx-rasterize-cannot-keep-the-rest'),
+          const ValueKey<String>('fx-rasterize-changes-confirm-button'),
         ),
-        findsOneWidget,
       );
-      expect(
-        find.text(AppText.strings.tlFxBakeCannotKeepTheRest),
-        findsOneWidget,
+      await settleBehindTheWaitWindow(
+        tester,
+        () =>
+            a(s) != before &&
+            find
+                .byKey(const ValueKey<String>('fx-rasterize-progress'))
+                .evaluate()
+                .isEmpty,
       );
+
+      expect(a(s).effects.single, numbered(enabled: false));
+      expect(await walls(s), [off[0], seen[1], off[2]]);
+      s.undo();
       expect(a(s), before);
+      s.playbackRig.prerenderScheduler.cancel();
+      bare.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test('🚨Q14 — what it leaves of the frames drawn is what the warning '
+        'names: none over every frame, as no band', () {
+      final s = plain([
+        rowA(effects: [LayerEffect(id: number, kind: EffectKind.celNumber)]),
+      ]);
       expect(
         [
           for (final over in <BakedFrames?>[
@@ -1374,11 +1436,72 @@ void main() {
             (start: -1, end: 9),
             null,
           ])
-            outcomeOf(s, const LayerId('a'), number, over),
+            s.layerMerging
+                .bakeOf(const LayerId('a'), number, band: over)!
+                .changes,
         ],
-        ['rest', 'rest', 'rest', 'bakes', 'bakes'],
-        reason: 'over every frame it bakes',
+        [
+          {FxBakeChange.rest},
+          {FxBakeChange.rest},
+          {FxBakeChange.rest},
+          <FxBakeChange>{},
+          <FxBakeChange>{},
+        ],
       );
+    });
+
+    test('🚨Q15 — a named key the cut paces anew keeps its name, and the name '
+        'holds what each key of it moved — the way leaving one, the way '
+        'arriving at another — every frame outside as it showed (유저 11-05 '
+        '「같은 이름 키 전부에 새 손잡이」)', () {
+      const eased = EaseSide(influence: 0.6, speed: 0);
+      const n = PropertyKey<double>(
+        0,
+        incoming: eased,
+        outgoing: eased,
+        name: 'N',
+      );
+      final fx = LayerEffect(
+        id: bright,
+        kind: EffectKind.brightnessContrast,
+        parameters: {
+          'brightness': EffectParameter(
+            track: PropertyTrack<double>(
+              keys: {0: n, 4: const PropertyKey<double>(100), 8: n},
+            ),
+          ),
+        },
+      );
+      final s = plain([
+        rowA(
+          effects: [fx],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('a-1'), length: 9),
+          },
+        ),
+      ], duration: 9);
+      double at(List<LayerEffect> effects, int frame) =>
+          effectParameterValueAt(effects, bright, 'brightness', frame);
+
+      final row = s.layerMerging
+          .bakeOf(const LayerId('a'), bright, band: (start: 2, end: 6))!
+          .row;
+
+      final keys = row.effects.single.parameters['brightness']!.track.keys;
+      expect([keys[0]!.name, keys[8]!.name], ['N', 'N']);
+      expect(keys[8]!.held, keys[0]!.held, reason: 'one key');
+      expect(
+        [keys[0]!.outgoing, keys[0]!.incoming],
+        everyElement(isNot(eased)),
+        reason: 'the way leaving 0 and the way arriving at 8 paced anew',
+      );
+      for (final frame in [0, 1, 6, 7, 8]) {
+        expect(
+          at(row.effects, frame),
+          closeTo(at([fx], frame), 1e-6),
+          reason: 'frame $frame',
+        );
+      }
     });
 
     test('a band is cut to the frames the cut draws; one over every one of '
@@ -1513,8 +1636,9 @@ void main() {
       List<Layer> layers, {
       Layer Function(Layer use)? twin,
       Layer Function(Layer use)? riderTwin,
+      int duration = 3,
     }) {
-      final s = plain(layers);
+      final s = plain(layers, duration: duration);
       s.cutVerbs.createLinkedCutFromActiveCut();
       final a = layers.firstWhere((layer) => layer.id == const LayerId('a'));
       final use = twinOf(s).copyWith(
@@ -1752,17 +1876,104 @@ void main() {
     });
 
     test('🚨Q14 — a band over every frame of the pressed cut leaves every '
-        'frame of the other use: an fx that draws at its defaults waits', () {
+        'frame of the other use: an fx that draws at its defaults is '
+        'warned of, and goes off in both — one switch', () {
       const number = EffectId('e-number');
       final effects = [LayerEffect(id: number, kind: EffectKind.celNumber)];
-      String overEvery(EditorSessionManager s) =>
-          outcomeOf(s, const LayerId('a'), number, (start: 0, end: 3));
+      FxBakePlan overEvery(EditorSessionManager s) => s.layerMerging.bakeOf(
+        const LayerId('a'),
+        number,
+        band: (start: 0, end: 3),
+      )!;
+      final (linked, alone) = (
+        overEvery(linkedOf([rowA(effects: effects)])),
+        overEvery(plain([rowA(effects: effects)])),
+      );
+      expect(
+        [linked.changes, alone.changes],
+        [
+          {FxBakeChange.rest},
+          <FxBakeChange>{},
+        ],
+      );
       expect(
         [
-          overEvery(linkedOf([rowA(effects: effects)])),
-          overEvery(plain([rowA(effects: effects)])),
+          linked.row,
+          linked.others.single.layers.firstWhere((row) => row.name == 'A'),
+        ].map((row) => row.effects.single.enabled),
+        [false, false],
+      );
+    });
+
+    test('🚨Q15 — what a band\'s cut moved of a named key reaches every key '
+        'of the name: on its lane — the way after it bending anew — and on '
+        'the lane of the other use, one naming space', () {
+      const eased = EaseSide(influence: 0.6, speed: 0);
+      const n = PropertyKey<double>(
+        0,
+        incoming: eased,
+        outgoing: eased,
+        name: 'N',
+      );
+      const hundred = PropertyKey<double>(100);
+      LayerEffect brightnessOf(Map<int, PropertyKey<double>> keys) =>
+          LayerEffect(
+            id: bright,
+            kind: EffectKind.brightnessContrast,
+            parameters: {
+              'brightness': EffectParameter(
+                track: PropertyTrack<double>(keys: keys),
+              ),
+            },
+          );
+      final mine = brightnessOf({0: n, 4: hundred, 6: n, 8: hundred});
+      final theirs = brightnessOf({
+        0: const PropertyKey<double>(50),
+        3: n,
+        8: hundred,
+      });
+      final s = linkedOf(
+        [
+          rowA(
+            effects: [mine],
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('a-1'), length: 9),
+            },
+          ),
         ],
-        ['rest', 'bakes'],
+        twin: (use) => use.copyWith(effects: [theirs]),
+        duration: 9,
+      );
+      Map<int, PropertyKey<double>> keysOf(Layer row) =>
+          row.effects.single.parameters['brightness']!.track.keys;
+      double at(Layer row, int frame) =>
+          effectParameterValueAt(row.effects, bright, 'brightness', frame);
+
+      final plan = s.layerMerging.bakeOf(
+        const LayerId('a'),
+        bright,
+        band: (start: 2, end: 3),
+      )!;
+
+      final row = keysOf(plan.row);
+      final twin = keysOf(
+        plan.others.single.layers.firstWhere((layer) => layer.name == 'A'),
+      );
+      expect(
+        row[0]!.outgoing,
+        isNot(eased),
+        reason: '⛔전제: the cut paced the way leaving it anew',
+      );
+      expect([row[6]!.held, twin[3]!.held], [row[0]!.held, row[0]!.held]);
+      expect([row[6]!.name, twin[3]!.name], ['N', 'N']);
+      expect([
+        twin[0],
+        twin[8],
+      ], const [PropertyKey<double>(50), hundred], reason: 'as they were');
+      expect(
+        at(plan.row, 7),
+        isNot(closeTo(at(rowA(effects: [mine]), 7), 1e-6)),
+        reason: 'the way leaving 6 is paced as the way leaving 0 is now',
       );
     });
 

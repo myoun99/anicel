@@ -93,7 +93,7 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 /// first where the bake changes how the row looks (Q2), with the hatch the
 /// reference rasterize's wears (Q10) — a bake ([bakeAfterAsking]). One
 /// its pictures cannot hold bakes nothing, and says why ([FxBakeWaits]:
-/// Q6 · Q14 · Q17 · Q18).
+/// Q6 · Q17 · Q18).
 Future<void> rasterizeFxGroup(
   BuildContext context,
   EditorSessionManager session,
@@ -134,6 +134,7 @@ Future<void> _bake(
     lineOf: (change) => switch (change) {
       FxBakeChange.order => strings.tlFxBakeChangeOrder,
       FxBakeChange.wall => strings.tlMergeChangeWall,
+      FxBakeChange.rest => strings.tlFxBakeChangeRest,
     },
     pictures: plan.pictures,
     land: () => session.layerMerging.landFx(plan),
@@ -146,13 +147,11 @@ Future<void> _sayWhy(BuildContext context, FxBakeWait why) {
   return showAppNotice(
     context,
     windowKey: ValueKey<String>(switch (why) {
-      FxBakeWait.rest => 'fx-rasterize-cannot-keep-the-rest',
       FxBakeWait.usesApart => 'fx-rasterize-uses-apart',
       FxBakeWait.panelParts => 'fx-rasterize-panel-parts',
     }),
     title: strings.commonNotice,
     message: switch (why) {
-      FxBakeWait.rest => strings.tlFxBakeCannotKeepTheRest,
       FxBakeWait.usesApart => strings.tlFxBakeUsesApart,
       FxBakeWait.panelParts => strings.tlFxBakePanelParts,
     },

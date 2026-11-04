@@ -249,8 +249,8 @@ void main() {
   });
 
   group('a key\'s name', () {
-    test('leaves the key whose sides the cut set apart (Q15, while it is '
-        'asked) — a name is one key, sides and all', () {
+    test('stays on a key whose sides the cut paces anew — what it moved is '
+        'the link\'s to carry (🗣️Q15 「같은 이름 키 전부에 새 손잡이」)', () {
       final track = numbers({
         0: const PropertyKey(
           0,
@@ -262,9 +262,13 @@ void main() {
       });
       final now = cleared(track, start: 8, end: 12);
       expect(
+        [for (final frame in [0, 20]) now.keys[frame]!.held],
+        isNot([for (final frame in [0, 20]) track.keys[frame]!.held]),
+        reason: '⛔전제: both halves of the eased way are paced anew',
+      );
+      expect(
         [for (final frame in [0, 20, 25]) now.keys[frame]!.name],
-        [null, null, 'C'],
-        reason: 'both halves of the eased way are paced anew; 25 is not cut',
+        ['A', 'B', 'C'],
       );
     });
 

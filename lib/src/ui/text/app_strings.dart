@@ -1046,10 +1046,10 @@ enum AppStrings {
   String get tlFxBakeChangesBody => _s('tlFxBakeChangesBody');
   String get tlFxBakeChangeOrder => _s('tlFxBakeChangeOrder');
 
-  /// The notice over a rasterize a band scoped, of an fx that draws at its
-  /// defaults (I-120-Q14 「막고 경고」, its recommendation while it is
-  /// asked): it baked nothing, and why.
-  String get tlFxBakeCannotKeepTheRest => _s('tlFxBakeCannotKeepTheRest');
+  /// The line over a rasterize a band scoped, of an fx that draws at its
+  /// defaults (🗣️I-120-Q14 「범위 안만 굽고 스위치를 끈다」 — 「범위 밖에서
+  /// 이 fx 가 사라집니다」): its switch goes off for the frames left too.
+  String get tlFxBakeChangeRest => _s('tlFxBakeChangeRest');
 
   /// The notice over a rasterize of a 겸용 row whose uses show a cel as
   /// other pictures (🗣️I-120-Q6 「한 장에 못 담으면 막고 경고」): it baked
@@ -3664,8 +3664,7 @@ enum AppStrings {
         'The rasterized pictures may look otherwise than they do now.',
     'tlFxBakeChangeOrder':
         'An fx that ran before it runs over the rasterized pictures',
-    'tlFxBakeCannotKeepTheRest':
-        'This fx draws even at its defaults, and its switch holds for the whole layer, so the frames outside the selection could not stay as they show. Nothing was rasterized.',
+    'tlFxBakeChangeRest': 'This fx disappears outside the range',
     'tlFxBakeUsesApart':
         'The linked layers show the same cel differently through this fx, and one cel holds one picture. Nothing was rasterized.',
     'tlFxBakePanelParts':
@@ -5557,8 +5556,7 @@ enum AppStrings {
     'tlFxBakeChangesTitle': 'ラスタライズすると見た目が変わることがあります',
     'tlFxBakeChangesBody': 'ラスタライズした絵は、今と違って見えることがあります。',
     'tlFxBakeChangeOrder': '先にかかっていた fx が、ラスタライズした絵の上にかかります',
-    'tlFxBakeCannotKeepTheRest':
-        'この fx は初期値でも描画し、スイッチはレイヤー全体にかかるため、選択範囲外のフレームを見えていたままにできません。ラスタライズしませんでした。',
+    'tlFxBakeChangeRest': '範囲外ではこの fx が消えます',
     'tlFxBakeUsesApart':
         'リンクされたレイヤーがこの fx で同じセルを別々に見せているため、セル1枚に収められません。ラスタライズしませんでした。',
     'tlFxBakePanelParts':
@@ -7435,8 +7433,7 @@ enum AppStrings {
     'tlFxBakeChangesTitle': '래스터라이즈하면 겉보기가 달라질 수 있습니다',
     'tlFxBakeChangesBody': '래스터라이즈한 그림은 지금과 다르게 보일 수 있습니다.',
     'tlFxBakeChangeOrder': '먼저 걸리던 fx 가 래스터라이즈한 그림 위에 걸립니다',
-    'tlFxBakeCannotKeepTheRest':
-        '이 fx 는 기본값에서도 그림을 그리고 스위치는 레이어 전체에 걸려서, 선택 범위 밖 프레임을 보이던 그대로 둘 수 없습니다. 래스터라이즈하지 않았습니다.',
+    'tlFxBakeChangeRest': '범위 밖에서 이 fx 가 사라집니다',
     'tlFxBakeUsesApart':
         '링크된 레이어들이 이 fx 로 같은 셀을 서로 다르게 보여서, 셀 한 장에 담을 수 없습니다. 래스터라이즈하지 않았습니다.',
     'tlFxBakePanelParts':
@@ -9462,8 +9459,7 @@ enum AppStrings {
         'Les images pixellisées peuvent paraître autrement qu’à présent.',
     'tlFxBakeChangeOrder':
         'Un fx appliqué avant lui s’applique sur les images pixellisées',
-    'tlFxBakeCannotKeepTheRest':
-        'Ce fx dessine même à ses valeurs par défaut et son interrupteur vaut pour tout le calque : les images hors de la sélection ne pourraient pas rester telles qu’elles s’affichent. Rien n’a été pixellisé.',
+    'tlFxBakeChangeRest': 'Hors de la plage, ce fx disparaît',
     'tlFxBakeUsesApart':
         'Les calques liés montrent le même cellulo différemment avec ce fx, et un cellulo garde une seule image. Rien n’a été pixellisé.',
     'tlFxBakePanelParts':
@@ -11272,7 +11268,7 @@ enum AppStrings {
     'tlFxBakeChangesTitle': '栅格化后外观可能会改变',
     'tlFxBakeChangesBody': '栅格化后的画面可能与现在看起来不同。',
     'tlFxBakeChangeOrder': '先前应用的 fx 将应用在栅格化后的画面上',
-    'tlFxBakeCannotKeepTheRest': '此 fx 在默认值下也会绘制，且开关作用于整个图层，因此选区外的帧无法保持原样。未进行栅格化。',
+    'tlFxBakeChangeRest': '范围外此 fx 将消失',
     'tlFxBakeUsesApart': '链接的图层通过此 fx 将同一张赛璐珞显示得各不相同，一张赛璐珞只能容纳一幅画面。未进行栅格化。',
     'tlFxBakePanelParts': '此 fx 会让分镜的一格显示不止一幅画面，一格只能容纳一幅。未进行栅格化。',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',

@@ -20,6 +20,11 @@ import 'property_track.dart';
 /// comes back to where it was cut — takes a key on each of its frames from
 /// the last key before the cut, the value it showed. A range over every
 /// frame clears every key.
+///
+/// A named key whose sides it paces anew keeps its name, and its namesakes
+/// as they were: what it moved is the write's to hand the link
+/// ([movedNamedKeys] — 🗣️I-120-Q15 「같은 이름 키 전부에 새 손잡이」).
+/// ↩️It left the name until the answer (11-05), the card's recommendation.
 PropertyTrack<T> trackClearedOver<T>(
   PropertyTrack<T> track, {
   required ({int start, int end}) range,
@@ -101,7 +106,7 @@ final class _Cut<T> {
         'a key on every frame of a side shows what it showed',
       );
     }
-    return _unnamedWhereChanged(cleared);
+    return cleared;
   }
 
   /// Whether [cleared] shows each frame of [side] as [track] did.
@@ -281,23 +286,6 @@ final class _Cut<T> {
               as Map<int, PropertyKey<T>>,
     );
   }
-
-  /// [cleared] with each key of [track]'s whose sides it changed out of
-  /// the name it shared — 🗣️I-120-Q15, its recommendation while it is
-  /// asked: a name is one key seen in several places, sides and all (유저
-  /// 09-12 「싹다 링크해야하는데」), so a key the cut set apart leaves the
-  /// link and its namesakes stay as they were.
-  PropertyTrack<T> _unnamedWhereChanged(PropertyTrack<T> cleared) =>
-      PropertyTrack(
-        keys: {
-          for (final MapEntry(key: frame, value: key) in cleared.keys.entries)
-            frame: switch (track.keys[frame]) {
-              final own? when own.name != null && own.held != key.held =>
-                key.copyWith(name: () => null),
-              _ => key,
-            },
-        },
-      );
 }
 
 /// A way across an edge: the keys either side of it.

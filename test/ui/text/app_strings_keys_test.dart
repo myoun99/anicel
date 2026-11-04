@@ -1145,7 +1145,7 @@ void main() {
     'tlFxBakeChangesTitle': (s) => s.tlFxBakeChangesTitle,
     'tlFxBakeChangesBody': (s) => s.tlFxBakeChangesBody,
     'tlFxBakeChangeOrder': (s) => s.tlFxBakeChangeOrder,
-    'tlFxBakeCannotKeepTheRest': (s) => s.tlFxBakeCannotKeepTheRest,
+    'tlFxBakeChangeRest': (s) => s.tlFxBakeChangeRest,
     'tlFxBakeUsesApart': (s) => s.tlFxBakeUsesApart,
     'tlFxBakePanelParts': (s) => s.tlFxBakePanelParts,
     'tlSetCommasN': (s) => s.tlSetCommasN,
