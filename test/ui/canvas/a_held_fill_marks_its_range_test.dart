@@ -208,6 +208,31 @@ void main() {
       expect(pixelAt(reset, 12, 12)[3], 0, reason: 'nothing marked');
     });
 
+    testWidgets('🚨not in a hole of its range — the checker keeps to the '
+        'outline, not to the box around it', (tester) async {
+      final nodes = [
+        CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, frameKey: keyOf('live')),
+        ),
+      ];
+      final live = liveOn(surfaceOf(const {}));
+      final mask = Uint8List(16 * 16)..fillRange(0, 256, 255);
+      for (var y = 6; y < 10; y += 1) {
+        mask.fillRange(y * 16 + 6, y * 16 + 10, 0);
+      }
+      overlay.showFillRange(
+        FillRangeMark(
+          FillRange.over(
+            FloodFillRegion(left: 8, top: 8, width: 16, height: 16, mask: mask),
+          ).contoursWithin(null),
+        ),
+      );
+
+      final bytes = await bytesOf(tester, frameOf(nodes, live: live));
+      expect(pixelAt(bytes, 10, 10)[3], 0x80, reason: 'the range');
+      expect(pixelAt(bytes, 16, 16)[3], 0, reason: 'its hole');
+    });
+
     test('🚨a mark that moves is patched where it was and where it is', () {
       final nodes = [
         CompositeLeaf<CanvasStackRow>(
