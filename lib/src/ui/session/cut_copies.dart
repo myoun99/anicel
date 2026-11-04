@@ -198,6 +198,22 @@ class CutPictures {
         _Sheet.timesheet => timesheet,
       };
 
+  /// These without the pictures of the cels [gone] names — what a copy
+  /// takes along that lets those cels go as it lands (a linked paste's,
+  /// whose namesakes the source's replace — `createLinkedCutAsItStands`).
+  CutPictures withoutCels(Set<FrameId> gone) => CutPictures(
+    cels: {
+      for (final MapEntry(key: row, value: pictures) in cels.entries)
+        row: {
+          for (final MapEntry(key: cel, value: picture) in pictures.entries)
+            if (!gone.contains(cel)) cel: picture,
+        },
+    },
+    conte: conte,
+    envelope: envelope,
+    timesheet: timesheet,
+  );
+
   /// Every one of them — the memory census's to weigh, while a board holds
   /// them.
   Iterable<BitmapSurface> get all => [

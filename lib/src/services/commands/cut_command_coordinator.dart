@@ -511,14 +511,18 @@ class CutCommandCoordinator {
   ({String name, CanvasSize canvasSize}) plannedLinkedCut({
     required CutId sourceCutId,
   }) => _links.plannedLinkedCut(sourceCutId: sourceCutId);
-  void createLinkedCut({
+  void createLinkedCut({required CutId sourceCutId, String? name}) =>
+      _links.createLinkedCut(sourceCutId: sourceCutId, name: name);
+  void createLinkedCutAsItStands(
+    Cut copied, {
     required CutId sourceCutId,
-    String? name,
-    CutLanding? landing,
-  }) => _links.createLinkedCut(
+    required CutLanding landing,
+    required void Function(DuplicatedCut landed, Set<FrameId> replaced) carry,
+  }) => _links.createLinkedCutAsItStands(
+    copied,
     sourceCutId: sourceCutId,
-    name: name,
     landing: landing,
+    carry: carry,
   );
   void createSyncedCut({
     required CutId sourceCutId,

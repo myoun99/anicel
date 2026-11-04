@@ -30,14 +30,9 @@ class _LinkCommands {
 
   /// 겸용컷 생성 (L2): a new cut whose drawing layers share the source's
   /// cel banks with EMPTY timelines — the bank re-exposes to a new
-  /// rhythm. One undo step; the new cut becomes active. It lands on
-  /// [landing], directly behind its source when told none (I-150's linked
-  /// paste tells it where).
-  void createLinkedCut({
-    required CutId sourceCutId,
-    String? name,
-    CutLanding? landing,
-  }) {
+  /// rhythm. One undo step; the new cut becomes active, directly behind its
+  /// source.
+  void createLinkedCut({required CutId sourceCutId, String? name}) {
     final project = _coordinator.repository.requireProject();
     final sourceCut = requireCut(project, sourceCutId);
     final plan = planCreateLinkedCutCommandInput(
@@ -51,13 +46,52 @@ class _LinkCommands {
         editingSession: _coordinator.editingSession,
         sourceCutId: sourceCutId,
         newCutId: plan.newCutId,
-        newName: name ?? _nameWhere(landing, sourceCutId: sourceCutId),
+        newName: name ?? plannedLinkedCut(sourceCutId: sourceCutId).name,
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
         coveringFrameIdBySource: plan.coveringFrameIdBySource,
-        landing: landing,
       ),
     );
+  }
+
+  /// A 겸용 cut of [sourceCutId] made AS IT STANDS: [copied] — a board's
+  /// copy of it — put down on [landing] as a copy is ([_CutCommands
+  /// .copyCut]), named as a linked paste is there, then made a 겸용 of the
+  /// source ([convertCutToLinked]). [carry] hands the copy its pictures in
+  /// between, told which of the copy's cels the conversion REPLACES with
+  /// the source's namesakes — no row shows those after it. One undo step;
+  /// the new cut becomes active.
+  ///
+  /// 🗣️F-555 (유저 2026-11-04): 「컷버튼의 겸용컷 작성은 지금처럼 빈
+  /// 타임라인인채로 만드는거 ok. 다만 컷블록을 복사하고 링크붙여넣기할땐 같은
+  /// 타임라인인채로」 · F-555-Q1: 「디렉션까지도 복사. 완전 글로벌인 se행만
+  /// 복사안하는것임. 콘티도 물론 복사하는거고」 — the 「타이밍까지 통째 겸용 =
+  /// 복제→변경」 path ([ConvertToLinkedCutCommand]) in one press: the
+  /// length, the timing, the camera's keys and the direction rows are the
+  /// copy's, and its pictures link by name — an unnamed one stays its own
+  /// (F-278: 「이름이 없으면 독립적인 그림」).
+  void createLinkedCutAsItStands(
+    Cut copied, {
+    required CutId sourceCutId,
+    required CutLanding landing,
+    required void Function(DuplicatedCut landed, Set<FrameId> replaced) carry,
+  }) {
+    final name = _nameWhere(landing, sourceCutId: sourceCutId);
+    _coordinator.historyManager.runAsOneStep('Create linked cut $name', () {
+      final landed = _coordinator._cuts.copyCut(
+        copied,
+        landing: landing,
+        newName: name,
+      );
+      final plan = convertToLinkedCutPreview(
+        originCutId: sourceCutId,
+        targetCutId: landed.cutId,
+      );
+      carry(landed, {
+        for (final cels in plan.replacedFrames.values) ...cels,
+      });
+      convertCutToLinked(originCutId: sourceCutId, targetCutId: landed.cutId);
+    });
   }
 
   /// 동기컷 생성 (I-150-Q3): [sourceCutId] — a cut of another timeline —
@@ -89,12 +123,9 @@ class _LinkCommands {
     );
   }
 
-  /// The name a 겸용 cut told none takes: counting on from the cut in front
-  /// of where it lands — its source, when it lands right behind it.
-  String _nameWhere(CutLanding? landing, {required CutId sourceCutId}) {
-    if (landing == null) {
-      return plannedLinkedCut(sourceCutId: sourceCutId).name;
-    }
+  /// The name a cut a linked paste puts down on [landing] takes: counting
+  /// on from the cut in front of where it lands (I-150-Q5).
+  String _nameWhere(CutLanding landing, {required CutId sourceCutId}) {
     final project = _coordinator.repository.requireProject();
     return CutCommandCoordinator.nextCutNameAfter(
       project,

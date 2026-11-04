@@ -23,7 +23,11 @@ import 'transitions_ride_the_cuts.dart';
 /// the source's — same FrameIds and names (the pictures are one), with
 /// **EMPTY timelines**: the bank re-exposes to a new rhythm. "겸용 설정은
 /// 그림만 잇는다, 타임라인 불간섭" — full-timing reuse is the plain
-/// duplicate → 겸용 변경 composition instead.
+/// duplicate → 겸용 변경 composition instead, which a linked paste is
+/// (`createLinkedCutAsItStands`, F-555). ↩️A linked paste made THIS cut,
+/// put down where the paste landed (I-150), until 유저 2026-11-04 (F-555):
+/// 「컷버튼의 겸용컷 작성은 지금처럼 빈 타임라인인채로 … 링크붙여넣기할땐
+/// 같은 타임라인인채로」.
 ///
 /// Per the confirmed design:
 /// - Every row whose kind links (`LayerKind.linksIntoLinkedCut`) is
@@ -76,7 +80,6 @@ class CreateLinkedCutCommand implements Command {
     required this.layerIdMap,
     required this.newGroupIdBySource,
     required this.coveringFrameIdBySource,
-    this.landing,
   });
 
   final ProjectRepository repository;
@@ -94,16 +97,6 @@ class CreateLinkedCutCommand implements Command {
   /// The planned fresh panel of each source row whose copy is born covering
   /// the new cut (F-99).
   final Map<LayerId, FrameId> coveringFrameIdBySource;
-
-  /// Where the new cut lands — null directly behind its source.
-  ///
-  /// 🗣️I-150 (유저 2026-11-03): 「링크붙여넣기는 물론 겸용컷으로 만들면서
-  /// 붙여넣는단느낌. 그리고 이를 통해 다른트랙에도 링크붙여넣기 가능」 — a
-  /// linked paste is this cut, made where the paste lands: another place
-  /// of the track, another track. ↩️Another timeline too, until I-150-Q3
-  /// (「다른 타임라인끼리는 단순 겸용컷 작동안하게」): a cut put down there
-  /// is a 동기컷 (`CreateSyncedCutCommand`).
-  final CutLanding? landing;
 
   CutId? _previousActiveCutId;
   LayerLinkRegistry? _registryBefore;
@@ -124,7 +117,6 @@ class CreateLinkedCutCommand implements Command {
       final position = requireCutPosition(project, sourceCutId);
       final track = position.track;
       final source = position.cut;
-      final into = landing?.trackId ?? track.id;
       // F-97: a new cut's length, read where a new cut reads it.
       const duration = defaultCutDuration;
 
@@ -142,7 +134,6 @@ class CreateLinkedCutCommand implements Command {
           layers: withEnsuredSectionLayers(newCutId, linkedLayers),
           duration: duration,
           canvasSize: source.canvasSize,
-          leadingGapFrames: landing?.leadingGapFrames ?? 0,
           // The camera row came across linked; its keys stay behind — a new
           // cut's camera, empty, as a new cut's length is a new cut's.
         ),
@@ -163,7 +154,7 @@ class CreateLinkedCutCommand implements Command {
             layerId: layer.id,
           ),
           joiner: LayerLinkMember(
-            trackId: into,
+            trackId: track.id,
             cutId: newCutId,
             layerId: _requireCopyId(layer.id),
           ),
@@ -174,13 +165,10 @@ class CreateLinkedCutCommand implements Command {
 
       final inserted = projectWithCutInserted(
         project,
-        trackId: into,
+        trackId: track.id,
         cut: newCut,
-        index: switch (landing) {
-          // Directly behind its source.
-          null => track.cuts.indexWhere((cut) => cut.id == sourceCutId) + 1,
-          final landing => landing.index,
-        },
+        // Directly behind its source.
+        index: track.cuts.indexWhere((cut) => cut.id == sourceCutId) + 1,
       );
       _gapsBefore = inserted.gapsBefore;
       var next = inserted.project.copyWith(linkRegistry: registry);
@@ -220,8 +208,6 @@ class CreateLinkedCutCommand implements Command {
 
   late final TransitionsRideTheCuts _ride = TransitionsRideTheCuts(repository);
 
-  /// Back to the cut stood in before — none, for a linked paste in a gap
-  /// (I-150).
   @override
   void undo() {
     final registryBefore = _registryBefore;

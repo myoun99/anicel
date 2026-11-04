@@ -248,23 +248,24 @@ class CutClipboard implements BringsMedia {
   /// timelines. A link is 「the same cel」 (I-7): a cut of another project
   /// has none of this one, though it may well wear the same id, and a cut
   /// that is gone has none to share.
-  List<CutId> get _cutsToLink {
+  List<_CopiedCut> get _cutsToLink {
     final copy = _board._copy;
     if (copy == null || !identical(copy.from, this)) {
       return const [];
     }
     return [
       for (final cut in copy.cuts)
-        if (_project.cutById(cut.source.id) != null) cut.source.id,
+        if (_project.cutById(cut.source.id) != null) cut,
     ];
   }
 
   bool get canPasteLinked => _cutsToLink.isNotEmpty && _landing != null;
 
   /// Each of [_cutsToLink] put down linked, as ONE block where the paste
-  /// lands in the timeline open now: a 겸용 cut of a cut that stands in it
-  /// (`CreateLinkedCutCommand`), and of a cut of ANOTHER timeline the same
-  /// cut made one of this one too — a 동기컷 (`CreateSyncedCutCommand`).
+  /// lands in the timeline open now: a 겸용 cut of a cut that stands in it,
+  /// made as the copy stands (`createLinkedCutAsItStands`, F-555), and of a
+  /// cut of ANOTHER timeline the same cut made one of this one too — a
+  /// 동기컷 (`CreateSyncedCutCommand`).
   ///
   /// 🗣️I-150-Q3 (유저 2026-11-03): 「일단 다른 타임라인끼리는 단순 겸용컷
   /// 작동안하게 … 이 동작을 겸용컷이라기보다 새 시스템으로」. A sync stands
@@ -277,17 +278,28 @@ class CutClipboard implements BringsMedia {
       return;
     }
     _project.historyManager.runAsOneStep('Paste cuts linked', () {
-      for (final (at, cutId) in cuts.indexed) {
+      for (final (at, cut) in cuts.indexed) {
         final coordinator = _project.cutCommandCoordinator;
-        switch (_standingHere(cutId)) {
+        switch (_standingHere(cut.source.id)) {
           case final here?:
-            coordinator.createLinkedCut(
+            coordinator.createLinkedCutAsItStands(
+              cut.source,
               sourceCutId: here,
               landing: _nth(landing, at),
+              carry: (landed, replaced) => _copies.carry(
+                shown: cut.pictures.withoutCels({
+                  for (final MapEntry(key: cel, value: copy)
+                      in landed.minted.entries)
+                    if (replaced.contains(copy)) cel,
+                }),
+                copy: landed.cutId,
+                rows: landed.rows,
+                cels: landed.minted,
+              ),
             );
           case null:
             coordinator.createSyncedCut(
-              sourceCutId: cutId,
+              sourceCutId: cut.source.id,
               landing: _nth(landing, at),
             );
         }
