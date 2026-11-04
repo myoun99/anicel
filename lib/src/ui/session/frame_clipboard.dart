@@ -261,9 +261,6 @@ class FrameClipboard implements BringsMedia {
     if (band == null) {
       return place._cel;
     }
-    if (place._bandMissesTheRow) {
-      return null;
-    }
     final stoodOn = place._row.id;
     final seats = _seatsOf(place);
     for (final row in [
