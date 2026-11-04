@@ -89,6 +89,7 @@ String cutXdtsContent(
 }) => buildXdtsContent(
   cut: cut,
   cutLabel: cut.name,
+  unnamedMark: AppFrameGridSettings.settings.value.unnamedMark,
   instructionDefById: session.camera.cameraInstructionSet.defById,
   trackSeLayers: session.activeTrack.seLayers,
   cutStartFrame: cutStartFrame,

@@ -99,6 +99,7 @@ void main() {
               buildXdtsContent(
                 cut: inScene,
                 cutLabel: '3',
+                unnamedMark: InbetweenMark.two,
               ).split('\n').skip(1).join('\n'),
             )
             as Map<String, dynamic>;
@@ -110,6 +111,7 @@ void main() {
     final content = buildXdtsContent(
       cut: _cut(),
       cutLabel: '3',
+      unnamedMark: InbetweenMark.two,
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
@@ -162,13 +164,13 @@ void main() {
           as String,
     );
 
-    // CELL: only value-change frames — named cel, gap, positional
-    // fallback, trailing gap.
+    // CELL: only value-change frames — named cel, gap, the unnamed cel's
+    // mark as its tick, trailing gap.
     final cel = trackFrames(0).cast<Map<String, dynamic>>();
     expect(cel.map(frameValue), [
       (0, 'A1'),
       (3, 'SYMBOL_NULL_CELL'),
-      (5, '2'),
+      (5, 'SYMBOL_TICK_2'),
       (9, 'SYMBOL_NULL_CELL'),
     ]);
 
@@ -187,6 +189,96 @@ void main() {
       (6, 'SYMBOL_NULL_CELL'),
       (8, 'ゆっくりFI'),
     ]);
+  });
+
+  // I-161: the CELL value is the head the printed sheet writes
+  // (drawingHeadOf) — ↩️it was `name ?? index + 1`, a number the sheet
+  // never prints.
+  test('a cel writes the head its sheet prints: the cel number trimmed, and '
+      'with none — blank or spaces alike — the picked mark as its tick', () {
+    List<(int, String)> celValues(InbetweenMark unnamedMark) {
+      final content = buildXdtsContent(
+        cut: Cut(
+          id: const CutId('xdts-heads'),
+          name: 'Cut 5',
+          duration: 8,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            Layer(
+              id: const LayerId('cel-b'),
+              name: 'B',
+              frames: [
+                Frame(
+                  id: const FrameId('spaced'),
+                  duration: 2,
+                  name: ' B3 ',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('blank'),
+                  duration: 2,
+                  name: '   ',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('none'),
+                  duration: 2,
+                  strokes: const [],
+                ),
+              ],
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('spaced'), length: 2),
+                2: const TimelineExposure.drawing(FrameId('blank'), length: 2),
+                4: const TimelineExposure.drawing(FrameId('none'), length: 2),
+              },
+            ),
+          ],
+        ),
+        cutLabel: '5',
+        unnamedMark: unnamedMark,
+      );
+      final json =
+          jsonDecode(content.split('\n').skip(1).join('\n'))
+              as Map<String, dynamic>;
+      final field =
+          (((json['timeTables'] as List<dynamic>).single
+                      as Map<String, dynamic>)['fields']
+                  as List<dynamic>)
+              .cast<Map<String, dynamic>>()
+              .firstWhere((field) => field['fieldId'] == 0);
+      return [
+        for (final entry
+            in (((field['tracks'] as List<dynamic>).single
+                        as Map<String, dynamic>)['frames']
+                    as List<dynamic>)
+                .cast<Map<String, dynamic>>())
+          (
+            entry['frame'] as int,
+            (((entry['data'] as List<dynamic>).single
+                            as Map<String, dynamic>)['values']
+                        as List<dynamic>)
+                    .single
+                as String,
+          ),
+      ];
+    }
+
+    expect(celValues(InbetweenMark.two), [
+      (0, 'B3'),
+      (2, 'SYMBOL_TICK_2'),
+      (4, 'SYMBOL_TICK_2'),
+      (6, 'SYMBOL_NULL_CELL'),
+    ]);
+    expect(
+      celValues(InbetweenMark.one),
+      [
+        (0, 'B3'),
+        (2, 'SYMBOL_TICK_1'),
+        (4, 'SYMBOL_TICK_1'),
+        (6, 'SYMBOL_NULL_CELL'),
+      ],
+      reason: 'mark 1, the ○, is the format\'s first tick (I-130 order)',
+    );
   });
 
   // 🗣️I-72-block-without-instruction: a span with no mark is 「(없음)」 —
@@ -220,6 +312,7 @@ void main() {
         ],
       ),
       cutLabel: '4',
+      unnamedMark: InbetweenMark.two,
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
@@ -286,6 +379,7 @@ void main() {
               buildXdtsContent(
                 cut: hidden,
                 cutLabel: '3',
+                unnamedMark: InbetweenMark.two,
               ).split('\n').skip(1).join('\n'),
             )
             as Map<String, dynamic>;
@@ -331,7 +425,11 @@ void main() {
       ],
     );
 
-    final content = buildXdtsContent(cut: withImage, cutLabel: '3');
+    final content = buildXdtsContent(
+      cut: withImage,
+      cutLabel: '3',
+      unnamedMark: InbetweenMark.two,
+    );
     final json =
         jsonDecode(content.split('\n').skip(1).join('\n'))
             as Map<String, dynamic>;
@@ -377,6 +475,7 @@ void main() {
               buildXdtsContent(
                 cut: withAttach,
                 cutLabel: '3',
+                unnamedMark: InbetweenMark.two,
               ).split('\n').skip(1).join('\n'),
             )
             as Map<String, dynamic>;
@@ -426,6 +525,7 @@ void main() {
         ],
       ),
       cutLabel: '7',
+      unnamedMark: InbetweenMark.two,
       // The cut starts at global 20 on its track's axis.
       cutStartFrame: 20,
       trackSeLayers: [
@@ -537,6 +637,7 @@ void main() {
         ],
       ),
       cutLabel: '1',
+      unnamedMark: InbetweenMark.two,
     );
 
     final json =

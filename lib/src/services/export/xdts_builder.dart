@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../models/camera_instruction.dart';
 import '../../models/cut.dart';
+import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timeline_coverage.dart';
@@ -24,6 +25,8 @@ const int xdtsFieldDialog = 3;
 const int xdtsFieldCamerawork = 5;
 const int xdtsVersion = 5;
 const String xdtsNullCell = 'SYMBOL_NULL_CELL';
+const String xdtsTick1 = 'SYMBOL_TICK_1';
+const String xdtsTick2 = 'SYMBOL_TICK_2';
 
 String buildXdtsContent({
   required Cut cut,
@@ -32,6 +35,10 @@ String buildXdtsContent({
   /// cut's 1-based position, so reordering cuts silently renumbered every
   /// sheet that had already been exported.
   required String cutLabel,
+
+  /// The mark a drawing with no cel number wears — the pick its host heard
+  /// (`AppFrameGridSettings.unnamedMark`), as the printed sheet is handed it.
+  required InbetweenMark unnamedMark,
   CameraInstructionDef? Function(String instructionId)? instructionDefById,
 
   /// The owning track's SE lanes (GLOBAL frame axis) and this cut's start
@@ -94,7 +101,11 @@ String buildXdtsContent({
           for (var track = 0; track < celLayers.length; track += 1)
             {
               'trackNo': track,
-              'frames': _drawingTrackFrames(celLayers[track], duration),
+              'frames': _drawingTrackFrames(
+                celLayers[track],
+                duration,
+                unnamedMark,
+              ),
             },
         ],
       },
@@ -105,7 +116,11 @@ String buildXdtsContent({
           for (var track = 0; track < seLayers.length; track += 1)
             {
               'trackNo': track,
-              'frames': _drawingTrackFrames(seLayers[track], duration),
+              'frames': _drawingTrackFrames(
+                seLayers[track],
+                duration,
+                unnamedMark,
+              ),
             },
         ],
       },
@@ -187,13 +202,25 @@ List<Map<String, dynamic>> _changeTrackFrames(
   return frames;
 }
 
-/// Value-change frames for a cel/SE layer: the sheet label at each drawing
-/// start (Frame.name, 1-based position fallback — the timesheet's naming
-/// rule) and SYMBOL_NULL_CELL where coverage ends or is missing.
-List<Map<String, dynamic>> _drawingTrackFrames(Layer layer, int duration) {
+/// Value-change frames for a cel/SE layer: each drawing's head where its
+/// block starts — what the printed sheet writes there ([drawingHeadOf]),
+/// as an XDTS value ([_xdtsHead]) — and SYMBOL_NULL_CELL where coverage
+/// ends or is missing.
+///
+/// ↩️It wrote `name ?? '${index + 1}'` (I-161, 2026-11-05): a number the
+/// sheet never prints (R5-④ 「never an invented number」), a name of spaces
+/// as spaces, a written name as its hidden text — the one head the sheet
+/// and the cel export already asked here, spelled again.
+List<Map<String, dynamic>> _drawingTrackFrames(
+  Layer layer,
+  int duration,
+  InbetweenMark unnamedMark,
+) {
   final labelsByFrameId = {
-    for (var index = 0; index < layer.frames.length; index += 1)
-      layer.frames[index].id: layer.frames[index].name ?? '${index + 1}',
+    for (final frame in layer.frames)
+      frame.id: _xdtsHead(
+        drawingHeadOf(frame.name, kind: layer.kind, unnamedMark: unnamedMark),
+      ),
   };
 
   return _changeTrackFrames(
@@ -207,6 +234,19 @@ List<Map<String, dynamic>> _drawingTrackFrames(Layer layer, int duration) {
     duration,
   );
 }
+
+/// A drawing's [head] as an XDTS cell value: its cel number, or its mark
+/// as the tick the format has for it. Mark 1 (○) is SYMBOL_TICK_1 and mark
+/// 2 (●) SYMBOL_TICK_2 — the order `xdtsio`'s spec names them in (中割り記号
+/// ○, 逆シート記号 ●) and the one the user checked against Toei's digital
+/// sheet and Clip Studio (I-130, 2026-10-25). The XDTS viewer draws
+/// TICK_1 as a small dot; whether our sheet copies that is I-161-Q6's, not
+/// the file's.
+String _xdtsHead(DrawingHead head) => switch (head.mark) {
+  null => head.word,
+  InbetweenMark.one => xdtsTick1,
+  InbetweenMark.two => xdtsTick2,
+};
 
 /// Value-change frames for an instruction row: the event's writing (free
 /// text, vocabulary-name fallback; A→B appended when present) at each span
