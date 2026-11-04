@@ -1610,18 +1610,35 @@ final class FillRange {
       width: width,
       height: finished.height,
     );
+    final mask = finished.mask;
+    // Four bytes at a time where the four are one answer — all ink inside a
+    // run, all empty outside one — and a byte at a time where they are not
+    // (🔬I-160: a 4K range read a byte each was 25 ms of rows). Only where
+    // the mask's words line up, and never under a cut, which reads its own.
+    final words = cut == null && mask.offsetInBytes % 4 == 0
+        ? mask.buffer.asUint32List(mask.offsetInBytes, mask.length ~/ 4)
+        : null;
     final rows = <List<int>>[];
     for (var y = 0; y < finished.height; y += 1) {
       final runs = <int>[];
       final offset = y * width;
       var inside = false;
-      for (var x = 0; x < width; x += 1) {
+      var x = 0;
+      while (x < width) {
         final at = offset + x;
-        final covered = finished.mask[at] > 0 && (cut == null || cut[at] > 0);
+        if (words != null && at & 3 == 0 && x + 4 <= width) {
+          final word = words[at >> 2];
+          if (inside ? word == 0xFFFFFFFF : word == 0) {
+            x += 4;
+            continue;
+          }
+        }
+        final covered = mask[at] > 0 && (cut == null || cut[at] > 0);
         if (covered != inside) {
           runs.add(x);
           inside = covered;
         }
+        x += 1;
       }
       if (inside) {
         runs.add(width);

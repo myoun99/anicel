@@ -79,11 +79,11 @@ class _BrushEditFill {
     final dabs =
         held?.range?.dabsIn(_state.widget.inputSettings().color) ??
         const <BrushDab>[];
-    if (dabs.isEmpty) {
-      _mark(null);
-      return;
+    // A range that lays nothing covers no pixel, so it never marked one:
+    // nothing is left to take away.
+    if (dabs.isNotEmpty) {
+      _handleFillDabs(dabs);
     }
-    _handleFillDabs(dabs);
   }
 
   /// The press is not this fill's any more — a second finger joined, or the
