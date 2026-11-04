@@ -1,5 +1,3 @@
-import 'dart:collection' show SplayTreeMap;
-
 import '../../models/attached_layer_mount.dart' show detachedLayer;
 import '../../models/attached_layer_resolve.dart'
     show attachedMirrorCelId, fxCarrierOf, isSyncedAttachedLayer;
@@ -18,11 +16,6 @@ import '../../models/project.dart';
 import '../../models/property_track.dart'
     show KeyValueSpace, PropertyTrack;
 import '../../models/property_track_cut.dart' show trackClearedOver;
-import '../../models/timeline_coverage.dart' show exposedFrameIdAt;
-import '../../models/timeline_exposure.dart';
-import '../../models/timeline_repeat.dart'
-    show ghostFreeTimeline, rederiveRunBehaviors;
-import '../../models/timeline_splice.dart' show splitTimelineAt;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/transform_track.dart';
 import '../commands/link_mirror.dart'
@@ -41,7 +34,8 @@ import 'layer_merge_plan.dart'
         kindHoldingPictures,
         rowsKeyedAcrossCuts,
         runsByPicture,
-        tailClearOf;
+        tailedName;
+import 'timeline_showing.dart';
 
 /// The frames a press of RASTERIZE bakes, from [start] to [end]
 /// (exclusive).
@@ -387,7 +381,7 @@ final class FxBakePlan {
 /// the bank. A cel shown as several takes a new cel for each after the
 /// first, named with the tail a merge names a parted picture with (I-78-Q10
 /// 「갈라진 곳은 꼬리 번호」), its blocks split where the picture changes
-/// ([splitTimelineAt]: the head keeps the memo and the marks). A hold or a
+/// ([timelineShowing]: the head keeps the memo and the marks). A hold or a
 /// repeat that would show a cel where another picture belongs is made of
 /// blocks of its own. An image row holding more than one picture becomes a
 /// drawing row (I-120: 「애니메이션레이어로 전환」). The rows riding the row
@@ -771,7 +765,7 @@ List<Frame> _withCopies(List<Frame> cels, List<MirrorCopies> born) {
     for (final cel in cels) ...[
       cel,
       for (final copy in copiesOf[cel.id] ?? const <Frame>[])
-        copy.copyWith(name: _tailed(held, cel.name)),
+        copy.copyWith(name: tailedName(held, cel.name)),
     ],
   ];
 }
@@ -880,7 +874,7 @@ _Bank _bankOf(
       final made = Frame(
         id: idOf(use, spans),
         duration: spans.first.length,
-        name: first ? cel.name : _tailed(held, cel.name),
+        name: first ? cel.name : tailedName(held, cel.name),
         strokes: const [],
       );
       bank.add(made);
@@ -1131,7 +1125,7 @@ _Shown _riderShown(
 /// [row] holding the cels [own] holds after a bake, the [drawn] frames of
 /// its cut showing them: synced on a base whose cels after it are [base],
 /// linked to them where it shows one ([_linksAfter]) — else its blocks
-/// parted where its pictures are ([_timelineShowing]).
+/// parted where its pictures are ([timelineShowing]).
 Layer _holding(
   Layer row,
   _Held own, {
@@ -1147,7 +1141,7 @@ Layer _holding(
     final base? => after.copyWith(
       baseFrameLinks: _linksAfter(row, base, own),
     ),
-    null => after.copyWith(timeline: _timelineShowing(row, own.celAt, drawn)),
+    null => after.copyWith(timeline: timelineShowing(row, own.celAt, drawn)),
   };
 }
 
@@ -1442,75 +1436,3 @@ bool _samePlace(CanvasPoint a, CanvasPoint b) =>
 const _LaneValues<int> _colours = (space: argbKeySpace, same: _sameColour);
 
 bool _sameColour(int a, int b) => a == b;
-
-/// [name]'s printed number with the first tail none of [held] wears — which
-/// holds it from then on; null for a cel with no number.
-String? _tailed(Set<String> held, String? name) {
-  final number = celNumberOf(name);
-  if (number == null) {
-    return null;
-  }
-  final tailed = tailClearOf(held, number);
-  held.add(tailed);
-  return tailed;
-}
-
-/// [row]'s timeline showing [celAt]'s cel at each frame it names: each
-/// block split where its picture changes and showing its pictures' cels,
-/// its holds and repeats derived again ([rederiveRunBehaviors]) — and,
-/// where one would show a cel another picture belongs on, made of blocks
-/// of its own.
-Map<int, TimelineExposure> _timelineShowing(
-  Layer row,
-  Map<int, FrameId> celAt,
-  int drawnFrames,
-) {
-  Layer laid(Map<int, TimelineExposure> authored) => rederiveRunBehaviors(
-    row.copyWith(timeline: _splitBy(authored, celAt)),
-    drawnFrameCount: drawnFrames,
-  );
-  final derived = laid(ghostFreeTimeline(row));
-  if (_shows(derived, celAt)) {
-    return derived.timeline;
-  }
-  final authored = laid({
-    for (final MapEntry(key: start, value: entry) in row.timeline.entries)
-      start: entry.ghost
-          ? TimelineExposure.drawing(
-              entry.frameId!,
-              length: entry.length!,
-              breakdownMarks: entry.breakdownMarks,
-            )
-          : entry,
-  });
-  assert(_shows(authored, celAt), 'every frame is a block of its own');
-  return authored.timeline;
-}
-
-/// [authored] with each block split where [celAt] changes, each part
-/// showing the cel [celAt] names at its head — or its own, where none.
-SplayTreeMap<int, TimelineExposure> _splitBy(
-  Map<int, TimelineExposure> authored,
-  Map<int, FrameId> celAt,
-) {
-  var next = SplayTreeMap<int, TimelineExposure>.from(authored);
-  for (final MapEntry(key: start, value: entry) in authored.entries) {
-    for (var frame = start + 1; frame < start + entry.length!; frame += 1) {
-      if (celAt[frame] != celAt[frame - 1]) {
-        next = splitTimelineAt(next, frame);
-      }
-    }
-  }
-  return SplayTreeMap.from({
-    for (final MapEntry(key: start, value: entry) in next.entries)
-      start: switch (celAt[start]) {
-        final cel? => entry.copyWith(frameId: cel),
-        null => entry,
-      },
-  });
-}
-
-/// Whether [row] shows [celAt]'s cel at every frame it names.
-bool _shows(Layer row, Map<int, FrameId> celAt) => celAt.entries.every(
-  (at) => exposedFrameIdAt(row.timeline, at.key) == at.value,
-);

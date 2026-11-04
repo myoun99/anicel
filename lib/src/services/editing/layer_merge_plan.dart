@@ -748,11 +748,13 @@ typedef _BankCel = ({_Cel cel, int part});
     final cel = (
       cel: (
         frameId: mint(share, spans),
-        name: _nameTakenAt(
+        name: tailedName(
           held,
-          share.baked,
-          share.taking._pictureRows,
-          spans.first.start,
+          _nameShownAt(
+            share.baked,
+            share.taking._pictureRows,
+            spans.first.start,
+          ),
         ),
         spans: spans,
       ),
@@ -1238,29 +1240,27 @@ List<_Cel> _celsOf(
     for (final (picture, spans) in runs.indexed)
       (
         frameId: mintFrameId(picture),
-        name: _nameTakenAt(heldNames, shown, rows, spans.first.start),
+        name: tailedName(
+          heldNames,
+          _nameShownAt(shown, rows, spans.first.start),
+        ),
         spans: spans,
       ),
   ];
 }
 
-/// The name a new cel takes where the topmost of [rows] that shows a cel
-/// in [shown] at [frameIndex] shows one (Q10 · Q11): that cel's number, its
-/// tail clear of every name [held] holds — which holds it from then on.
-String? _nameTakenAt(
-  Set<String> held,
-  Cut shown,
-  List<Layer> rows,
-  int frameIndex,
-) {
-  final name = switch (_nameShownAt(shown, rows, frameIndex)) {
-    final number? => tailClearOf(held, number),
-    null => null,
-  };
-  if (name != null) {
-    held.add(name);
+/// [name]'s printed number ([celNumberOf]) with the first tail no name of
+/// [held] wears (Q10 · Q11 — 「갈라진 곳은 꼬리 번호」) — which holds it from
+/// then on; null for a cel with no number. A merge's new cel, an fx bake's
+/// parted picture and a reference's rasterized one are named by it.
+String? tailedName(Set<String> held, String? name) {
+  final number = celNumberOf(name);
+  if (number == null) {
+    return null;
   }
-  return name;
+  final tailed = tailClearOf(held, number);
+  held.add(tailed);
+  return tailed;
 }
 
 /// [number], or [number] with the first tail no name of [held] wears
