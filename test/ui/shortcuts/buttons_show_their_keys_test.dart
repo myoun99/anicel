@@ -58,8 +58,6 @@ void main() {
       ('redo-button', 'Redo (Ctrl+Shift+Z)'),
       ('tool-brush-button', 'Brush Tool (B)'),
       ('tool-eraser-button', 'Eraser Tool (E)'),
-      // One button, two actions: both keys land on it.
-      ('tool-fill-button', 'Fill Tool (F)'),
       ('tool-guide-button', 'Guide Tool (G)'),
       // A tool with no key of its own shows its name alone — M, L and V
       // are retired (I-19, 2026-09-13).
@@ -67,6 +65,9 @@ void main() {
       // cut's tile now — 「잘라내기를 고르고싶으면 올가미 잘라내기의 단축키를
       // 사용할 예정」 — and the tool itself ships unbound.
       ('tool-cut-button', 'Cut Tool'),
+      // 🗣️F-560 (유저 2026-11-04): 「채우기도구의 채우기를 F로. 채우기도구
+      // 자체 단축키는 해제」 — F is the bucket tile's.
+      ('tool-fill-button', 'Fill Tool'),
       ('tool-select-button', 'Select Tool'),
       ('tool-move-button', 'Transform Tool'),
       // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with TVPaint's key.
