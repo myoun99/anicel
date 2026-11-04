@@ -85,6 +85,7 @@ import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
+import 'open_projects.dart';
 import 'import/reference_swap_words.dart';
 import 'import/settings_rows.dart';
 import 'menu/opened_files_door.dart';
@@ -251,6 +252,7 @@ class EditorWorkspace extends StatefulWidget {
     super.key,
     required this.session,
     required this.onOpenProjects,
+    this.projects,
     this.presetFileService,
     this.tipLibraryService,
     this.fontLibraryService,
@@ -287,6 +289,11 @@ class EditorWorkspace extends StatefulWidget {
   /// shell's Open door, which holds the tabs a project opens into. The
   /// workspace only tells them from the rest ([OpenedFilesDoor]).
   final Future<void> Function(List<ProjectPick> picks) onOpenProjects;
+
+  /// The window's tabs — where the import window opens the project a file
+  /// is brought in as (I-156). Null in a workspace with no tabs around it
+  /// (focused widget tests).
+  final OpenProjects? projects;
 
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
   /// shortcuts and the workspace panels drive one state. Null keeps a
@@ -2531,6 +2538,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       placeOnly: placeOnly,
       spot: spot,
       putSettingsInPlace: _putSettingsInPlace,
+      projects: widget.projects,
     ),
   );
 

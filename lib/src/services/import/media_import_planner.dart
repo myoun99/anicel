@@ -537,6 +537,11 @@ class _FolderPlan {
       : switch (edits.intoOf(rowKey, hasOpenCut: openCut != null)) {
           ImportDestination.activeCutLayer => _theOpenCut,
           ImportDestination.newCut => 'own $rowKey',
+          // A folder's row is asked where in THIS project it goes
+          // ([ImportDestination.inThisProject]); a new project is a file's.
+          ImportDestination.newProject => throw StateError(
+            'a cut folder\'s row lands in this project',
+          ),
         };
 
   /// [landing]'s rows laid, bottom first, and its cut made — or, for the

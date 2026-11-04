@@ -420,7 +420,7 @@ void main() {
     expect(pill('custom').selected, isTrue);
     expect(name().enabled, isFalse, reason: 'dimmed, in its place');
     final into = column(tester, 'into');
-    expect(into.answersFor('folder:A'), ImportDestination.values);
+    expect(into.answersFor('folder:A'), ImportDestination.inThisProject);
     expect(into.cellWordOf('folder:A'), AppText.strings.imIntoNewLayer);
     const correction = 'folder:A animation-director';
     expect(into.answersFor(correction), hasLength(3));

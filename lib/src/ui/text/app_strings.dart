@@ -1684,6 +1684,7 @@ enum AppStrings {
       .replaceAll('{row}', row)
       .replaceAll('{frame}', '$frame');
   String get imIntoNewCut => _s('imIntoNewCut');
+  String get imIntoNewProject => _s('imIntoNewProject');
   String get imPsdMerge => _s('imPsdMerge');
   String get imPsdExpand => _s('imPsdExpand');
 
@@ -3169,6 +3170,7 @@ enum AppStrings {
     'imIntoSeRow': 'SE row',
     'imIntoRowCellTemplate': '{row} · frame {frame}',
     'imIntoNewCut': 'New cut',
+    'imIntoNewProject': 'New project',
     'imPsdMerge': 'Merge layers',
     'imPsdExpand': 'Keep layers',
     'imNoSource': 'No source selected',
@@ -4924,6 +4926,7 @@ enum AppStrings {
     'imIntoSeRow': 'SE行',
     'imIntoRowCellTemplate': '{row} · {frame}コマ目',
     'imIntoNewCut': '新規カット',
+    'imIntoNewProject': '新規プロジェクト',
     'imPsdMerge': 'レイヤーを統合',
     'imPsdExpand': 'レイヤーを保持',
     'imNoSource': 'ソースが選ばれていません',
@@ -6799,6 +6802,7 @@ enum AppStrings {
     'imIntoSeRow': 'SE 행',
     'imIntoRowCellTemplate': '{row} · {frame}번 칸',
     'imIntoNewCut': '새 컷',
+    'imIntoNewProject': '새 프로젝트',
     'imPsdMerge': '레이어 합치기',
     'imPsdExpand': '레이어 보존',
     'imNoSource': '고른 소스가 없습니다',
@@ -8806,6 +8810,7 @@ enum AppStrings {
     'imIntoSeRow': 'Ligne SE',
     'imIntoRowCellTemplate': '{row} · image {frame}',
     'imIntoNewCut': 'Nouveau plan',
+    'imIntoNewProject': 'Nouveau projet',
     'imPsdMerge': 'Fusionner les calques',
     'imPsdExpand': 'Garder les calques',
     'imNoSource': 'Aucune source',
@@ -10662,6 +10667,7 @@ enum AppStrings {
     'imIntoSeRow': 'SE 行',
     'imIntoRowCellTemplate': '{row} · 第{frame}格',
     'imIntoNewCut': '新镜头',
+    'imIntoNewProject': '新建项目',
     'imPsdMerge': '合并图层',
     'imPsdExpand': '保留图层',
     'imNoSource': '未选择来源',

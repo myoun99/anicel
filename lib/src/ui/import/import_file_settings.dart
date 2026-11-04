@@ -289,6 +289,18 @@ bool importLandsAsSound({
     kind == MediaAssetKind.audio ||
     (kind == MediaAssetKind.video && settings.movieParts == MovieParts.sound);
 
+/// Whether a row lands in a NEW PROJECT of its own (I-156): a placement
+/// answered 「새 프로젝트」 — of a picture; one that lands as a sound goes
+/// to the SE rows, the one place a sound has.
+bool importLandsInANewProject({
+  required MediaAssetKind? kind,
+  required ImportFileSettings settings,
+  required bool placing,
+}) =>
+    placing &&
+    settings.into == ImportDestination.newProject &&
+    !importLandsAsSound(kind: kind, settings: settings);
+
 /// What a row answers before anyone has answered for it — the settings' own
 /// starting answers, and its PLACE's: a movie dropped on a picture row's
 /// frames starts without its sound, which can be turned on (「프레임 영역
@@ -357,9 +369,10 @@ bool importPsdLocked(ImportLayerSpot? spot) => spot is RowFramesSpot;
 /// Whether the fit has one answer: a NEW cut is made at the file's own size,
 /// so 1:1 is the only fit that means anything there (user 2026-09-11:
 /// 「넣을곳이 새 컷이면 맞춤 1:1외의 항목이 불필요해보임. 그러니 1:1로
-/// 고정시켜서 노출시키도록. 비활성화된상태로」).
+/// 고정시켜서 노출시키도록. 비활성화된상태로」) — and so is a new project's
+/// cut ([ImportDestination.makesItsCut]).
 bool importFitLocked(ImportFileSettings settings, {required bool placing}) =>
-    placing && settings.into == ImportDestination.newCut;
+    placing && settings.into.makesItsCut;
 
 /// [settings] with every answer this file can actually give.
 ///
@@ -452,10 +465,12 @@ String importFitLabel(MediaFitMode fit) => switch (fit) {
 };
 
 /// 「새 레이어」 · 「새 컷」 — the pair the user named (2026-09-11: 「넣을곳 뉴
-/// 컷에 맞춰서 레이어도 뉴 레이어가 맞을듯」).
+/// 컷에 맞춰서 레이어도 뉴 레이어가 맞을듯」) — and 「새 프로젝트」, the
+/// user's word for the third (I-156).
 String importIntoLabel(ImportDestination into) => switch (into) {
   ImportDestination.activeCutLayer => AppText.strings.imIntoNewLayer,
   ImportDestination.newCut => AppText.strings.imIntoNewCut,
+  ImportDestination.newProject => AppText.strings.imIntoNewProject,
 };
 
 String importPsdLabel(PsdPlaceMode mode) => switch (mode) {

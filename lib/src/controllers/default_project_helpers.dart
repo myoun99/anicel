@@ -57,6 +57,25 @@ Project newUntitledProject() {
 
 int _minted = 0;
 
+/// A NEW project for a file the import window brings in as one
+/// (`ImportDestination.newProject`, I-156): [newUntitledProject] at
+/// [frameRate] — its movie's (I-156-Q2: 「그 동영상의 fps」), or the new
+/// project's own where none is given — with NO cut on its track yet. The
+/// file's cut lands there as a new cut does, at the file's size and as long
+/// as it runs (07-29 임포트 설계 §2: 「미디어 크기로 새 프로젝트」), so the
+/// project's one cut is made for the file by the code that makes every cut
+/// for a file.
+///
+/// A track with no cut is a state of its own (R28 #14: 「컷도 1개도 없는
+/// 상황 허용」), so an import that does not land leaves nothing broken.
+Project newProjectToImportInto({ProjectFrameRate? frameRate}) {
+  final project = newUntitledProject();
+  return project.copyWith(
+    frameRate: frameRate,
+    tracks: [createDefaultTrack().copyWith(cuts: const [])],
+  );
+}
+
 /// A NEW TIMELINE for [project] (I-150): the track a new project opens with
 /// ([newUntitledProject] — 🗣️「새 프로젝트를 만드는것과 동일하게」), under
 /// ids [project] holds nowhere — the run's for its track and its cut, and

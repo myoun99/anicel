@@ -62,13 +62,14 @@ void main() {
       },
     );
 
-    test('throws when no cuts exist', () {
+    test('a project with no cut at all stands on its gap — no cut, and no '
+        'throw (R28 #14: 「컷도 1개도 없는 상황 허용」, I-156)', () {
       final project = _projectWithTracks([
         _track(id: 'empty-video-track', cuts: []),
         _track(id: 'empty-audio-track', type: TrackType.audio, cuts: []),
       ]);
 
-      expect(() => defaultActiveCutIdFor(project), throwsStateError);
+      expect(defaultActiveCutIdFor(project), isNull);
     });
 
     test('sample project resolves to the existing sample cut id', () {

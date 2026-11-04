@@ -328,13 +328,40 @@ ProjectFrameRate? pulldownPartnerOf(
   } else {
     return null;
   }
+  return _movieRunsAt(partner, movie) ? partner : null;
+}
+
+/// Whether a movie running at [movie] frames per second runs at [rate] —
+/// within a quarter of the 0.1% that parts a pulldown pair, as a decoder
+/// may spell 24000/1001 as 2997/125 or 23976/1000.
+bool _movieRunsAt(
+  ProjectFrameRate rate,
+  ({int numerator, int denominator}) movie,
+) {
   final apart =
-      (movie.numerator * partner.denominator -
-              partner.numerator * movie.denominator)
+      (movie.numerator * rate.denominator - rate.numerator * movie.denominator)
           .abs();
-  return apart * 4000 <= partner.numerator * movie.denominator
-      ? partner
-      : null;
+  return apart * 4000 <= rate.numerator * movie.denominator;
+}
+
+/// The rate a project made FOR a movie running at [movie] frames per second
+/// runs at: the NTSC rate where the movie runs at one ([_movieRunsAt]),
+/// else the whole rate nearest it — or null for a movie that names no rate,
+/// which leaves a new project its own.
+///
+/// 🗣️I-156-Q2 (유저 2026-11-04: 「그 동영상의 fps」 · 「그런건 다 fps를
+/// 기준으로 정하도록 되어있지않나? 아무튼 fps기준으로 정해짐」): a file
+/// brought in as a NEW PROJECT gives the project its movie's rate.
+ProjectFrameRate? projectRateOfMovie(({int numerator, int denominator}) movie) {
+  if (movie.numerator <= 0 || movie.denominator <= 0) {
+    return null;
+  }
+  final base = (movie.numerator / movie.denominator).round();
+  if (base < 1) {
+    return null;
+  }
+  final ntsc = ProjectFrameRate.ntsc(base);
+  return _movieRunsAt(ntsc, movie) ? ntsc : ProjectFrameRate.integer(base);
 }
 
 /// [frame] of a [from] clock as the [to] frame that begins nearest the

@@ -58,9 +58,18 @@ class OpenProjects extends ChangeNotifier {
   /// the others, and shows it.
   EditorSessionManager open(Project project) {
     final session = prepare(project);
+    adoptNew(session);
+    return session;
+  }
+
+  /// Puts a [prepare]d NEW project — one no file names — in a tab of its own
+  /// after the others, and shows it: [open]'s second half, for a project
+  /// filled before it shows. A file brought in as a new project lands in
+  /// its session first (I-156), so a file that does not come in leaves no
+  /// tab behind ([discard]).
+  void adoptNew(EditorSessionManager session) {
     _admit(session, untitled: true);
     _show(_sessions.length - 1);
-    return session;
   }
 
   /// A session born for [project] that is NOT in a tab yet — what an opened

@@ -53,6 +53,33 @@ void main() {
     expect(letGo, isEmpty, reason: 'opening closes nothing');
   });
 
+  test('a NEW project filled before it shows joins as an opened one does — '
+      'after the others, shown, untitled — and one let go never joins '
+      '(I-156)', () {
+    final projects = make();
+    final first = projects.active;
+    final opened = projects.open(createDefaultProject());
+
+    final filled = projects.prepare(newProjectToImportInto());
+    expect(projects.sessions, [first, opened], reason: 'no tab until shown');
+    projects.adoptNew(filled);
+    expect(projects.sessions, [first, opened, filled]);
+    expect(identical(projects.active, filled), isTrue);
+    expect(
+      projects.untitledNumberOf(filled),
+      projects.untitledNumberOf(opened)! + 1,
+    );
+    expect(
+      filled.repository.requireProject().name,
+      untitledProjectName(projects.untitledNumberOf(filled)!),
+    );
+
+    final failed = projects.prepare(newProjectToImportInto());
+    projects.discard(failed);
+    expect(projects.sessions, [first, opened, filled]);
+    expect(letGo, [failed]);
+  });
+
   test('activating shows that tab; the shown one or a stranger is a no-op',
       () {
     final projects = make();

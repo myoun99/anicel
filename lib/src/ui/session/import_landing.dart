@@ -159,11 +159,19 @@ class ImportLanding {
     required String path,
     ImportLayerSpot? spot,
   }) {
-    final targetCut = destination == ImportDestination.activeCutLayer
-        ? _project.activeCutOrNull
-        : null;
-    if (destination == ImportDestination.activeCutLayer && targetCut == null) {
-      return null;
+    final Cut? targetCut;
+    switch (destination) {
+      case ImportDestination.activeCutLayer:
+        targetCut = _project.activeCutOrNull;
+        if (targetCut == null) {
+          return null;
+        }
+      case ImportDestination.newCut:
+        targetCut = null;
+      // A landing lands in its own project: the import window opens the new
+      // one and lands the file there as a new cut (I-156).
+      case ImportDestination.newProject:
+        return null;
     }
     // A drop on a row's frames is the gate's to refuse too: a row that is
     // not in this cut, or takes no frames, turns it away before any read.

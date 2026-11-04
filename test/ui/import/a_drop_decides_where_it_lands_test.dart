@@ -474,8 +474,7 @@ void main() {
         '— 「액티브 컷이 없는 상태에서 캔버스 떨구면 새 컷 고정」', (tester) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       // No cut in hand the way the app gets there — the playhead parked in
-      // the gap between two cuts (a session cannot start with no cut at all:
-      // `defaultActiveCutIdFor` refuses one).
+      // the gap between two cuts.
       final base = createDefaultProject();
       final track = base.tracks.first;
       final first = track.cuts.first;

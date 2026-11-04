@@ -1714,6 +1714,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 child: EditorWorkspace(
                                   session: _session,
                                   onOpenProjects: _openProjectPicks,
+                                  projects: _projects,
                                   layoutStore: widget.layoutStore,
                                   presetFileService: widget.presetFileService,
                                   tipLibraryService: widget.tipLibraryService,

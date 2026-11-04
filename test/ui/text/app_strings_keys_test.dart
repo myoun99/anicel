@@ -732,6 +732,7 @@ void main() {
     'imIntoNewLayer': (s) => s.imIntoNewLayer,
     'imIntoSeRow': (s) => s.imIntoSeRow,
     'imIntoNewCut': (s) => s.imIntoNewCut,
+    'imIntoNewProject': (s) => s.imIntoNewProject,
     'imPsdMerge': (s) => s.imPsdMerge,
     'imPsdExpand': (s) => s.imPsdExpand,
     'imNoSource': (s) => s.imNoSource,
