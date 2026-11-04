@@ -1352,30 +1352,11 @@ Iterable<BrushDab> regionFillPieces({
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
 }) sync* {
-  final bounds = region.coverageBounds;
-  final left = bounds.left.floor();
-  final top = bounds.top.floor();
-  final width = bounds.right.ceil() - left;
-  final height = bounds.bottom.ceil() - top;
-  if (width <= 0 || height <= 0) {
+  final area = _areaOf(region, options);
+  if (area == null) {
     return;
   }
-  final rows = region.pixelRunsFor(
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-  );
-  final hard = (rows: rows, left: left, top: top);
-  final reach = fillFinishReach(options);
-  // The sheet the area is finished as: the coverage box, with room for all
-  // the finish reaches — the expand AND the ramp past it.
-  final sheet = DirtyRegion(
-    left: left - reach,
-    top: top - reach,
-    rightExclusive: left + width + reach,
-    bottomExclusive: top + height + reach,
-  );
+  final (:hard, :sheet, :reach) = area;
   final reached = _tilesReached(hard, sheet: sheet, reach: reach);
   yield* _stampPieces(
     sheet,
@@ -1383,7 +1364,12 @@ Iterable<BrushDab> regionFillPieces({
     finishedAround: (piece) => reached(piece)
         ? _finishedWindow(
             hard,
-            piece: piece,
+            around: (
+              left: piece.left,
+              top: piece.top,
+              rightExclusive: piece.rightExclusive,
+              bottomExclusive: piece.bottomExclusive,
+            ),
             sheet: sheet,
             reach: reach,
             options: options,
@@ -1392,10 +1378,92 @@ Iterable<BrushDab> regionFillPieces({
   );
 }
 
+/// The RANGE a drawn outline covers (I-160: 「올가미같은것도 올가미로 범위고르고
+/// 그 다음 드래그」) — [region] finished as [regionFillPieces] finishes it,
+/// held as the bucket's flood is held ([FillRange]), so the press after it
+/// lays its gradient through the bucket's own code. Null when it covers no
+/// pixel.
+///
+/// ⚠️Finished over its whole sheet at once, which [regionFillPieces] will
+/// not do (board `an-area-dab-costs-its-box`): a range is read whole — its
+/// mark, and a gradient over every pixel of it — as the bucket's flood is,
+/// which costs its box too.
+FillRange? regionFillRange({
+  required CanvasSelectionRegion region,
+  double opacity = 1.0,
+  FloodFillOptions options = const FloodFillOptions(),
+}) {
+  final area = _areaOf(region, options);
+  // Nothing the finish passes can grow: they only ever spread coverage.
+  if (area == null || area.hard.rows.every((runs) => runs.isEmpty)) {
+    return null;
+  }
+  final (:hard, :sheet, :reach) = area;
+  final whole = _finishedWindow(
+    hard,
+    around: (
+      left: sheet.left,
+      top: sheet.top,
+      rightExclusive: sheet.rightExclusive,
+      bottomExclusive: sheet.bottomExclusive,
+    ),
+    sheet: sheet,
+    reach: reach,
+    options: options,
+  );
+  return FillRange.over(
+    FloodFillRegion(
+      left: whole.left,
+      top: whole.top,
+      width: whole.width,
+      height: whole.mask.length ~/ whole.width,
+      mask: whole.mask,
+    ),
+    opacity: opacity,
+  );
+}
+
+/// [region]'s hard coverage and the sheet it is finished as: the coverage
+/// box, with room for all the finish reaches — the expand AND the ramp
+/// past it. Null when the box is empty.
+({_HardRuns hard, DirtyRegion sheet, int reach})? _areaOf(
+  CanvasSelectionRegion region,
+  FloodFillOptions options,
+) {
+  final bounds = region.coverageBounds;
+  final left = bounds.left.floor();
+  final top = bounds.top.floor();
+  final width = bounds.right.ceil() - left;
+  final height = bounds.bottom.ceil() - top;
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  final rows = region.pixelRunsFor(
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
+  final reach = fillFinishReach(options);
+  return (
+    hard: (rows: rows, left: left, top: top),
+    sheet: DirtyRegion(
+      left: left - reach,
+      top: top - reach,
+      rightExclusive: left + width + reach,
+      bottomExclusive: top + height + reach,
+    ),
+    reach: reach,
+  );
+}
+
 /// A region's hard coverage as rows of runs: row `r` is the canvas row
 /// `top + r`, its `[start, end, …]` columns counted from `left`
 /// ([CanvasSelectionRegion.pixelRunsFor]).
 typedef _HardRuns = ({List<List<int>> rows, int left, int top});
+
+/// A box of canvas pixels, right and bottom exclusive.
+typedef _Box = ({int left, int top, int rightExclusive, int bottomExclusive});
 
 /// A finished coverage mask and where it sits on the canvas, at least as
 /// large as the piece it was finished for.
@@ -1453,24 +1521,25 @@ bool Function(TileSpan piece) _tilesReached(
       0;
 }
 
-/// The area finished over [piece] as the one sheet over [sheet] would have
-/// finished it: its hard mask over a window — the piece grown by [reach],
-/// cut at [sheet] — then the expand and the anti-alias pass, as
-/// [_cropAndFinishFloodRegion] runs them. Exact over the piece, which is
-/// all a reader takes from it ([buildRegionFillDabs] says why).
+/// The area finished over [around] — a piece, or the whole sheet — as the
+/// one sheet over [sheet] would have finished it: its hard mask over a
+/// window — [around] grown by [reach], cut at [sheet] — then the expand and
+/// the anti-alias pass, as [_cropAndFinishFloodRegion] runs them. Exact
+/// over [around], which is all a reader takes from it
+/// ([buildRegionFillDabs] says why).
 _FinishedMask _finishedWindow(
   _HardRuns hard, {
-  required TileSpan piece,
+  required _Box around,
   required DirtyRegion sheet,
   required int reach,
   required FloodFillOptions options,
 }) {
-  final left = math.max(piece.left - reach, sheet.left);
-  final top = math.max(piece.top - reach, sheet.top);
-  final width = math.min(piece.rightExclusive + reach, sheet.rightExclusive) -
+  final left = math.max(around.left - reach, sheet.left);
+  final top = math.max(around.top - reach, sheet.top);
+  final width = math.min(around.rightExclusive + reach, sheet.rightExclusive) -
       left;
   final height =
-      math.min(piece.bottomExclusive + reach, sheet.bottomExclusive) - top;
+      math.min(around.bottomExclusive + reach, sheet.bottomExclusive) - top;
   final mask = Uint8List(width * height);
   final firstRow = math.max(top, hard.top);
   final endRow = math.min(top + height, hard.top + hard.rows.length);
