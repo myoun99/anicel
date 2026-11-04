@@ -17,6 +17,7 @@ import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
 import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
+import '../../services/export/xdts_viewer_ink.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -3216,7 +3217,9 @@ class ExportDialogState extends State<ExportDialog> {
       thenWrite: [
         for (final sheet in plan.writtenDocuments)
           if (isDigitalSheet(sheet))
-            _AfterFile.whole(() => _writeXdts(sheet))
+            _AfterFile.whole(
+              () => _writeXdts(sheet, inkFace: spec.sheetInk ? face : null),
+            )
           else if (sheet.kind == ExportCelKind.video)
             _cutFilmFile(sheet),
       ],
@@ -3372,8 +3375,13 @@ class ExportDialogState extends State<ExportDialog> {
     return sounds;
   }
 
-  /// The digital sheet of a cut's timesheet, at [sheet]'s file.
-  Future<void> _writeXdts(ExportDocumentSheet sheet) async {
+  /// The digital sheet of a cut's timesheet, at [sheet]'s file — and, given
+  /// the [inkFace] its words are set in ([CelsExportSpec.sheetInk]), its
+  /// pages' handwriting beside it as the XDTS Viewer reads it.
+  Future<void> _writeXdts(
+    ExportDocumentSheet sheet, {
+    required TextStyle? inkFace,
+  }) async {
     final cut = sheet.of;
     final content = cutXdtsContent(
       _session,
@@ -3383,6 +3391,60 @@ class ExportDialogState extends State<ExportDialog> {
     final file = File(_joinLocation(sheet.fileName));
     await file.parent.create(recursive: true);
     await file.writeAsString(content, flush: true);
+    if (inkFace != null) {
+      await _writeXdtsInk(cut, beside: file, face: inkFace);
+    }
+  }
+
+  /// [cut]'s ink folder [beside] its digital sheet (`xdts_viewer_ink.dart`):
+  /// each page of its timesheet with the handwriting alone, the page laid
+  /// whole onto the viewer's paper — 🗣️I-161-Q2 (유저 2026-11-05): 「우리
+  /// 용지를 뷰어 용지 크기에 맞춰 통째로 늘린다」 — and the viewer's settings
+  /// for that paper.
+  Future<void> _writeXdtsInk(
+    Cut cut, {
+    required File beside,
+    required TextStyle face,
+  }) async {
+    final (document, _) = _sheetDocFor(cut);
+    final viewer = XdtsViewerSheet.of(document.sheetKind);
+    final folder = Directory(
+      '${beside.parent.path}${Platform.pathSeparator}'
+      '${xdtsInkFolderName(beside.uri.pathSegments.last)}',
+    );
+    await folder.create(recursive: true);
+    final (:width, :height) = viewer.pixelSize;
+    final pageCount = document.pages.length;
+    for (var page = 0; page < pageCount; page += 1) {
+      final image = await _renderSheetPage(
+        ExportTimesheetPageTask(
+          cut: cut,
+          cutLabel: cut.name,
+          cutStartFrame: _trackStartOf(cut),
+          pageIndex: page,
+          pageCount: pageCount,
+          fileName: xdtsInkPageFileName(page),
+        ),
+        face: face,
+        outputSize: CanvasSize(width: width, height: height),
+        layers: const {SheetPaintLayer.ink},
+      );
+      try {
+        final png = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          '${folder.path}${Platform.pathSeparator}'
+          '${xdtsInkPageFileName(page)}',
+        ).writeAsBytes(png!.buffer.asUint8List(), flush: true);
+      } finally {
+        image.dispose();
+      }
+    }
+    await File(
+      '${folder.path}${Platform.pathSeparator}config.ini',
+    ).writeAsString(
+      xdtsViewerConfig(sheet: viewer, handles: document.transitionHandles),
+      flush: true,
+    );
   }
 
   /// Renders the SE mix to a temp WAV through the same mixer playback
@@ -4835,37 +4897,54 @@ class ExportDialogState extends State<ExportDialog> {
     ),
   );
 
-  /// 타임시트 형식: its pages as pictures — PNG or JPG — or the digital sheet.
+  /// 타임시트 형식: its pages as pictures — PNG or JPG — or the digital sheet,
+  /// with or without its handwriting (잉크 출력, I-161) — a switch whose row
+  /// stands under either, live under the digital sheet alone.
   ExportAccordion _sheetFormatAccordion(CelsExportSpec spec) {
     final pictured = spec.sheetFormat == ExportTimesheetFormat.sheetImage;
+    final strings = AppText.strings;
     return ExportAccordion(
-      title: AppText.strings.exTimesheetFormat,
+      title: strings.exTimesheetFormat,
       summary: pictured
           ? ExportPaperFormatModule.summarize(spec.sheetImage)
+          : spec.sheetInk
+          ? 'XDTS · ${strings.exXdtsInk}'
           : 'XDTS',
       expansion: _expansion('sheet-format', open: true),
-      child: ExportPaperFormatModule(
-        keyPrefix: 'export-tsformat',
-        caption: ExportCaption.format,
-        image: spec.sheetImage,
-        stillEnabled: _availability.stillAllowed,
-        pictured: pictured,
-        onImageChanged: _isExporting
-            ? null
-            : (image) => _updateSpec(
-                spec.copyWith(
-                  sheetFormat: ExportTimesheetFormat.sheetImage,
-                  sheetImage: image,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExportPaperFormatModule(
+            keyPrefix: 'export-tsformat',
+            caption: ExportCaption.format,
+            image: spec.sheetImage,
+            stillEnabled: _availability.stillAllowed,
+            pictured: pictured,
+            onImageChanged: _isExporting
+                ? null
+                : (image) => _updateSpec(
+                    spec.copyWith(
+                      sheetFormat: ExportTimesheetFormat.sheetImage,
+                      sheetImage: image,
+                    ),
+                  ),
+            after: [
+              _pill(
+                keyValue: 'export-tsformat-xdts',
+                label: 'XDTS',
+                selected: !pictured,
+                onPick: () => _updateSpec(
+                  spec.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
                 ),
               ),
-        after: [
-          _pill(
-            keyValue: 'export-tsformat-xdts',
-            label: 'XDTS',
-            selected: !pictured,
-            onPick: () => _updateSpec(
-              spec.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
-            ),
+            ],
+          ),
+          _specToggle(
+            keyValue: 'export-tsformat-xdts-ink',
+            label: strings.exXdtsInk,
+            value: spec.sheetInk,
+            live: !pictured,
+            write: (value) => spec.copyWith(sheetInk: value),
           ),
         ],
       ),
@@ -5093,8 +5172,9 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// A toggle row bound to the tab's spec: DEAD while an export runs, and
-  /// a change writes the spec [write] answers. Six rows wrote that binding
+  /// A toggle row bound to the tab's spec: DEAD while an export runs — and
+  /// where it is not [live], a row kept for a choice it waits on — and a
+  /// change writes the spec [write] answers. Six rows wrote that binding
   /// out; a run in flight owns the spec, so one place says it — the same
   /// law [_pill] states for the pills.
   SettingsSwitchRow _specToggle({
@@ -5102,11 +5182,14 @@ class ExportDialogState extends State<ExportDialog> {
     required String label,
     required bool value,
     required ExportTabSpec Function(bool value) write,
+    bool live = true,
   }) => SettingsSwitchRow(
     tileKey: ValueKey<String>(keyValue),
     label: label,
     value: value,
-    onChanged: _isExporting ? null : (value) => _updateSpec(write(value)),
+    onChanged: _isExporting || !live
+        ? null
+        : (value) => _updateSpec(write(value)),
   );
 
   /// The Size accordion three tabs offer: one title, one fold key, one

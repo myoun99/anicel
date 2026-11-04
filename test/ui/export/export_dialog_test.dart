@@ -948,6 +948,75 @@ void main() {
       expect(data.getUint8(1), lessThan(80));
     });
 
+    // 🗣️I-161 (유저 2026-11-05): 「형식 xdts로하면 잉크 출력 on off버튼 둠 …
+    // off는 … 일반 xdts로 출력하기위함」 · Q2 「우리 용지를 뷰어 용지 크기에
+    // 맞춰 통째로 늘린다」.
+    testWidgets('잉크 출력: the digital sheet writes the XDTS Viewer\'s folder '
+        'beside it — each page\'s handwriting alone, the page laid whole on '
+        'the viewer\'s paper, and the viewer\'s settings; off, the file '
+        'alone', (tester) async {
+      final session = exportSession();
+      addTearDown(session.dispose);
+      session.renderCaches.timesheetInkStore.storeBakedSurface(
+        timesheetInkPageKey(const CutId('cut'), 0),
+        _redSurface(),
+      );
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      final ink = find.byKey(const ValueKey<String>('export-tsformat-xdts-ink'));
+      expect(
+        tester.booleanDotIn(ink).enabled,
+        isFalse,
+        reason: 'its row stands under a picture sheet, dead',
+      );
+      await pickPaperFormat(tester, 'export-tsformat', 'xdts');
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesWrittenUnder(temp), ['_TSCut.xdts'], reason: 'a plain XDTS');
+
+      await tester.ensureVisible(ink);
+      await tester.pump();
+      expect(tester.booleanDotIn(ink).enabled, isTrue);
+      await tester.pressRingIn(ink);
+      await tester.pump();
+      expect(state.debugSpecs.cels.sheetInk, isTrue);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesWrittenUnder(temp), [
+        '_TSCut.xdts',
+        '_TSCut_xdts/1.png',
+        '_TSCut_xdts/config.ini',
+      ]);
+      expect(
+        File('${temp.path}/_TSCut_xdts/config.ini').readAsStringSync(),
+        contains('TemplateName="A3 size, 6 seconds sheet"'),
+      );
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final data = (await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      ))!;
+      // A3 at the viewer's 250 dpi.
+      expect((image.width, image.height), (2923, 4134));
+      expect(data.getUint8(0), greaterThan(200), reason: 'the ink, red');
+      expect(data.getUint8(3), 255);
+      final farOff = ((3000 * image.width) + 2000) * 4;
+      expect(
+        data.getUint8(farOff + 3),
+        0,
+        reason: 'no paper and no form: the viewer draws its own sheet under it',
+      );
+    });
+
     testWidgets('a photo laid on the sheet rides its PNG, drawn from its '
         'file where it was laid (I-97)', (tester) async {
       final session = exportSession();

@@ -1438,6 +1438,7 @@ enum AppStrings {
   String get exDigits => _s('exDigits');
   String get exApplyLayerFx => _s('exApplyLayerFx');
   String get exMuxSeMix => _s('exMuxSeMix');
+  String get exXdtsInk => _s('exXdtsInk');
   String get exLabel => _s('exLabel');
   String get exApply => _s('exApply');
   String get exKinds => _s('exKinds');
@@ -3001,6 +3002,7 @@ enum AppStrings {
     'exDigits': 'Digits',
     'exApplyLayerFx': 'Layer FX',
     'exMuxSeMix': 'Mux the SE mix into the video',
+    'exXdtsInk': 'Ink output',
     'exLabel': 'Label',
     'exApply': 'Apply',
     'exKinds': 'Kinds to export',
@@ -4648,6 +4650,7 @@ enum AppStrings {
     'exDigits': '桁数',
     'exApplyLayerFx': 'レイヤーFX',
     'exMuxSeMix': 'SEミックスを動画に多重化',
+    'exXdtsInk': 'インク出力',
     'exLabel': 'ラベル',
     'exApply': '適用',
     'exKinds': '書き出す種類',
@@ -6504,6 +6507,7 @@ enum AppStrings {
     'exDigits': '자릿수',
     'exApplyLayerFx': '레이어 FX',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
+    'exXdtsInk': '잉크 출력',
     'exLabel': '라벨',
     'exApply': '적용',
     'exKinds': '내보낼 종류',
@@ -8418,6 +8422,7 @@ enum AppStrings {
     'exDigits': 'Chiffres',
     'exApplyLayerFx': 'FX de calque',
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
+    'exXdtsInk': "Sortie de l'encre",
     'exLabel': 'Étiquette',
     'exApply': 'Appliquer',
     'exKinds': 'Types à exporter',
@@ -10334,6 +10339,7 @@ enum AppStrings {
     'exDigits': '位数',
     'exApplyLayerFx': '图层 FX',
     'exMuxSeMix': '将 SE 混音封装进视频',
+    'exXdtsInk': '墨迹输出',
     'exLabel': '标签',
     'exApply': '应用',
     'exKinds': '导出种类',

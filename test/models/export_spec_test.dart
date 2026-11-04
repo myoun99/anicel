@@ -78,6 +78,7 @@ void main() {
       expect(spec.base, isTrue);
       expect(spec.attach, isTrue);
       expect(spec.sheetOnly, isFalse);
+      expect(spec.sheetInk, isFalse, reason: 'a plain XDTS (I-161)');
       expect(spec.toJson().keys, unorderedEquals(['format', 'naming']));
       expect(CelsExportSpec.fromJson(spec.toJson()), spec);
     });
@@ -112,9 +113,11 @@ void main() {
         base: false,
         sheetOnly: true,
         scope: ExportScopeKind.project,
+        sheetInk: true,
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
+      expect(restored.sheetInk, isTrue);
       expect(restored.kinds, {ExportCelKind.conte, ExportCelKind.direction});
       expect(restored.take, 3);
       expect(restored.base, isFalse);

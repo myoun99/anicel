@@ -360,6 +360,7 @@ class CelsExportSpec extends ExportTabSpec {
     this.scope = ExportScopeKind.cut,
     this.sheetFormat = ExportTimesheetFormat.sheetImage,
     this.sheetImage = paperDocumentFormat,
+    this.sheetInk = false,
     this.envelopePaper = CutEnvelopePaperMode.cut,
     this.envelopeImage = paperDocumentFormat,
     this.videoFormat = const ExportFormatSelection(),
@@ -459,6 +460,14 @@ class CelsExportSpec extends ExportTabSpec {
   /// The picture a timesheet page is written as ([paperDocumentFormat]).
   final ExportFormatSelection sheetImage;
 
+  /// 잉크 출력: whether the digital sheet carries its pages' handwriting, as
+  /// the XDTS Viewer reads it beside the file (`xdts_viewer_ink.dart`) —
+  /// off, a plain XDTS. 🗣️I-161 (유저 2026-11-05): 「형식 xdts로하면 잉크
+  /// 출력 on off버튼 둠 … off는 xdts뷰어로 보는거 말고 일반 xdts로
+  /// 출력하기위함」. Off from the start, as the sheet was written before it —
+  /// my call, not the user's.
+  final bool sheetInk;
+
   /// 컷봉투 형식: the paper a cut envelope is written on (유저 2026-10-05:
   /// 「기존의 컷봉투탭에 있던 용지는 컷크기/실측용지 이거는 컷봉투 형식안에
   /// 넣고」). The CUT's own pixel size from the start, because the point of
@@ -508,6 +517,7 @@ class CelsExportSpec extends ExportTabSpec {
     ExportScopeKind? scope,
     ExportTimesheetFormat? sheetFormat,
     ExportFormatSelection? sheetImage,
+    bool? sheetInk,
     CutEnvelopePaperMode? envelopePaper,
     ExportFormatSelection? envelopeImage,
     ExportFormatSelection? videoFormat,
@@ -527,6 +537,7 @@ class CelsExportSpec extends ExportTabSpec {
     scope: scope ?? this.scope,
     sheetFormat: sheetFormat ?? this.sheetFormat,
     sheetImage: sheetImage ?? this.sheetImage,
+    sheetInk: sheetInk ?? this.sheetInk,
     envelopePaper: envelopePaper ?? this.envelopePaper,
     envelopeImage: envelopeImage ?? this.envelopeImage,
     videoFormat: videoFormat ?? this.videoFormat,
@@ -562,6 +573,7 @@ class CelsExportSpec extends ExportTabSpec {
     if (sheetFormat != ExportTimesheetFormat.sheetImage)
       'sheetFormat': sheetFormat.jsonValue,
     if (sheetImage != paperDocumentFormat) 'sheetImage': sheetImage.toJson(),
+    if (sheetInk) 'sheetInk': true,
     if (envelopePaper != CutEnvelopePaperMode.cut)
       'envelopePaper': envelopePaper.toJson(),
     if (envelopeImage != paperDocumentFormat)
@@ -603,6 +615,7 @@ class CelsExportSpec extends ExportTabSpec {
     scope: ExportScopeKind.fromJson(json['scope']),
     sheetFormat: ExportTimesheetFormat.fromJson(json['sheetFormat']),
     sheetImage: paperDocumentFormatFromJson(json['sheetImage']),
+    sheetInk: json['sheetInk'] as bool? ?? false,
     // Absent means the DEFAULT (cut-fitted), not the enum's own fallback.
     envelopePaper: json['envelopePaper'] == null
         ? CutEnvelopePaperMode.cut
@@ -639,6 +652,7 @@ class CelsExportSpec extends ExportTabSpec {
           other.scope == scope &&
           other.sheetFormat == sheetFormat &&
           other.sheetImage == sheetImage &&
+          other.sheetInk == sheetInk &&
           other.envelopePaper == envelopePaper &&
           other.envelopeImage == envelopeImage &&
           other.videoFormat == videoFormat &&
@@ -660,6 +674,7 @@ class CelsExportSpec extends ExportTabSpec {
     scope,
     sheetFormat,
     sheetImage,
+    sheetInk,
     envelopePaper,
     envelopeImage,
     videoFormat,
