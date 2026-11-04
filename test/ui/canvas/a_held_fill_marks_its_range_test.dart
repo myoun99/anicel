@@ -304,6 +304,27 @@ void main() {
       expect(path.contains(const Offset(2.5, 2.5)), isFalse, reason: 'hole');
     });
 
+    test('a hole the row scan could step over four pixels at a time is '
+        'carved to the pixel', () {
+      // Four uncovered pixels on a four-aligned column: a whole word of the
+      // mask, which the scan reads at once wherever a row is solid.
+      final mask = Uint8List(16 * 3)..fillRange(0, 48, 255);
+      mask.fillRange(16 + 8, 16 + 12, 0);
+      final contours = FillRange.over(
+        FloodFillRegion(left: 0, top: 0, width: 16, height: 3, mask: mask),
+      ).contoursWithin(null);
+      expect(
+        [
+          for (final contour in contours)
+            [for (final point in contour) (point.x, point.y)],
+        ],
+        [
+          [(0.0, 0.0), (16.0, 0.0), (16.0, 3.0), (0.0, 3.0)],
+          [(8.0, 1.0), (8.0, 2.0), (12.0, 2.0), (12.0, 1.0)],
+        ],
+      );
+    });
+
     test('cut by the selection, as the fill is', () {
       final clip = SelectionClip.outline(
         CanvasSelectionRegion.shape(
