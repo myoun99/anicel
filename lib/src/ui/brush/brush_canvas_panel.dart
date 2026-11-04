@@ -50,7 +50,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
 import '../../services/canvas_flood_fill.dart'
-    show FillRangeAt, FloodFillOptions, regionFillPieces;
+    show FillRange, FillRangeAt, FloodFillOptions, regionFillPieces;
 import '../../services/plain_line_region.dart';
 import '../../services/mark_under_a_pixel.dart';
 import '../../models/canvas_size.dart';
@@ -323,6 +323,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.fillsContinuously,
     this.fillGradient,
     this.shapeFillDabsFor,
+    this.shapeFillRangeFor,
     this.selectionMaskOptions,
     this.transformOptions,
     this.viewCommands,
@@ -951,6 +952,12 @@ class BrushCanvasPanel extends StatefulWidget {
   final List<BrushDab> Function(CanvasSelectionRegion area, int color)?
   shapeFillDabsFor;
 
+  /// The RANGE a finished shape fill's area covers, held for its gradient
+  /// when the fill's gradient is on (I-160: 「올가미로 범위고르고 그 다음
+  /// 드래그」) — supplied by the host as [shapeFillDabsFor] is. Null lands
+  /// the shape fill at once, gradient or not.
+  final FillRange? Function(CanvasSelectionRegion area)? shapeFillRangeFor;
+
   /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
   /// Null/absent keeps the classic byte-preserving hard mask.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
@@ -1431,7 +1438,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   /// Whether the tool or its shape moved since the last build — and if so,
-  /// cancels the polygon being traced.
+  /// cancels the polygon being traced, and lets go of an outline held for
+  /// its gradient (I-160) by the same law.
   ///
   /// 유저 확정: an open polygon trace survives a frame change and a CUT
   /// change, but putting the TOOL or the SHAPE down cancels it.
@@ -1447,6 +1455,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _builtFor = structure;
     widget.selectionCommands?.abandonPolygon();
+    _rangeHold.now?.letGo();
     return true;
   }
 
@@ -2045,9 +2054,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   Positioned _selectionLayer() {
     return Positioned.fill(
-      // What a lift takes up is heard here as well as at the panel's build
-      // ([BrushCanvasPanel.transformCelsUnderfootChanges], F-564).
-      child: _asideForTheContent(ListenableBuilder(
+      // A range held for its gradient takes the next press, whatever this
+      // layer would trace with it (I-160-Q5 「그냥 클릭시작하면 조작임」): the
+      // drawing view under it drags the gradient. ⚠️Asked AT THE HIT TEST,
+      // as the control holds' gate is: the press right after the outline's
+      // lift must find it shut, and a rebuild comes a frame later.
+      child: HitGate(
+        admits: (_) => !_aRangeIsHeld,
+        // What a lift takes up is heard here as well as at the panel's
+        // build ([BrushCanvasPanel.transformCelsUnderfootChanges], F-564).
+        child: _asideForTheContent(ListenableBuilder(
         listenable: Listenable.merge([widget.transformCelsUnderfootChanges]),
         builder: (context, _) => ValueListenableBuilder<TransformToolOptions>(
         valueListenable:
@@ -2183,7 +2199,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   transformOptions,
             ),
         ),
-      )),
+      ))),
     );
   }
 
@@ -2244,6 +2260,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       strokeLander: _viewLander,
       // I-69: the shape tool has the view draw what its drag traced.
       shapeShow: _shapeShow,
+      // I-160: and the shape fill has it hold what its outline closed.
+      gradientRangeHold: _rangeHold,
       onActiveStrokeChanged: (stroke) {
         if (_stroke != stroke) {
           widget.onStrokeInputActiveChanged?.call(stroke);
@@ -2619,6 +2637,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The drawing view's [StrokeLander] while it is mounted, counted as
   /// [_shapeShow] is.
   final ViewHand<StrokeLander> _viewLander = ViewHand();
+
+  /// The drawing view's [GradientRangeHold] while it is mounted, counted
+  /// as [_shapeShow] is — where a shape fill's outline is held for its
+  /// gradient ([_fillDrawnOutline]).
+  final ViewHand<GradientRangeHold> _rangeHold = ViewHand();
+
+  /// Whether a range is held for its gradient — the next press is its
+  /// gradient's, so the selection layer lets it through to the drawing
+  /// view ([_selectionLayer]).
+  bool get _aRangeIsHeld => _rangeHold.now?.holdsARange ?? false;
 
   /// The line Shift holds on this canvas (I-121) — ONE for every path the
   /// hand draws here, the stroke's, the lasso's and the stamp's, so a line
@@ -3010,12 +3038,32 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the live selection clips it, undo covers it and serialization is free
   /// — the fill has landed this way since P6 and the shape fill is the same
   /// stamp from a different source.
+  ///
+  /// 🚨With the fill's gradient on it lays nothing yet (I-160: 「올가미같은것도
+  /// 올가미로 범위고르고 그 다음 드래그 같은느낌」): the area is held, marked,
+  /// in the drawing view as the bucket's lift holds its flood, and the next
+  /// press drags its gradient through the bucket's own press
+  /// ([GradientRangeHold]).
   void _fillDrawnOutline(CanvasSelectionRegion outline) {
     final build = widget.shapeFillDabsFor;
     // Drawn on the canvas, painted into the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
     final area = _selectionSeat.regionOnTheRow(outline);
     if (build == null || area == null) {
+      return;
+    }
+    final hold = _rangeHold.now;
+    final rangeFor = widget.shapeFillRangeFor;
+    if (hold != null &&
+        rangeFor != null &&
+        (widget.fillGradient?.call().options.enabled ?? false)) {
+      // Nothing to hold it on where [_layArea] has nothing to lay it on.
+      final range = widget._editableCoordinator == null
+          ? null
+          : rangeFor(area);
+      if (range != null) {
+        hold.hold(range);
+      }
       return;
     }
     _layArea((color) => build(area, color));

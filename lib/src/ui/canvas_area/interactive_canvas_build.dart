@@ -595,6 +595,12 @@ class _InteractiveCanvasBuild {
         opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
       ),
+      // …and the range those pieces cover, held for its gradient (I-160).
+      shapeFillRangeFor: (area) => regionFillRange(
+        region: area,
+        opacity: _state.widget.brushToolState.value.activeOpacity,
+        options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
+      ),
       // Layers below/above the active one composite around the
       // interactive view from the layer image cache — this is what makes
       // the other layers (and their visibility/opacity) visible while

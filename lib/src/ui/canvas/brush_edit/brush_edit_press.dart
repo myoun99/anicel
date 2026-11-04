@@ -252,17 +252,22 @@ class _BrushEditPress {
   /// (fill-beyond-wall-notice, 2026-09-29: that one asked for a cel without
   /// looking where it landed, so a press that did nothing still made a
   /// block, or said 「프레임이 존재하지 않습니다」). ⛔The fill's alone: a
-  /// stroke that starts beyond the wall can still come inside it.
+  /// stroke that starts beyond the wall can still come inside it. ⛔Nor a
+  /// press on a range held for its gradient: it drags the gradient, which
+  /// starts wherever it starts (I-160-Q5 「그냥 클릭시작하면 조작임」).
   bool fillSpendsNothingAt(CanvasPoint canvasPosition) =>
       _state.widget.fillRangeAt != null &&
+      !_state._fill.holdsARange &&
       !_state._isInsidePasteboard(canvasPosition);
 
   /// With the fill tool armed the press IS the fill: off the pasteboard
   /// it does nothing, else it HOLDS the fill — its range marked where the
-  /// press is, laid at the lift ([_BrushEditFill.press]). True when
-  /// consumed.
+  /// press is, laid at the lift ([_BrushEditFill.press]). And with a range
+  /// held for its gradient — the bucket's, or an outline the shape fill
+  /// closed ([GradientRangeHold]) — the press drags its gradient. True
+  /// when consumed.
   bool _pressAsFillTap(PointerDownEvent event, CanvasPoint canvasPosition) {
-    if (_state.widget.fillRangeAt != null) {
+    if (_state.widget.fillRangeAt != null || _state._fill.holdsARange) {
       // Off-canvas fill taps flow through: the default (stage-bounded)
       // raster answers null for them, the extended raster fills — the
       // fill's own boundary options decide, not the pointer.

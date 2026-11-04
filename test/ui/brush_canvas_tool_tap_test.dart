@@ -265,10 +265,12 @@ void main() {
       bool continuous = false,
       FillGradientOptions? gradient,
       ValueNotifier<BrushToolState>? brush,
+      CanvasSize canvasSize = BrushCanvasFixture.canvasSize,
     }) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
       final coordinator = BrushCanvasFixture.createCoordinator(
         frameKeys: frameKeys,
+        canvasSize: canvasSize,
       );
       final overlay = ActiveStrokeOverlayModel();
       addTearDown(overlay.dispose);
@@ -304,6 +306,16 @@ void main() {
             fillGradient: gradient == null
                 ? null
                 : () => (options: gradient, sub: _sub),
+            // The shape fill's area, hard-edged, at full opacity.
+            shapeFillDabsFor: (area, color) => buildRegionFillDabs(
+              region: area,
+              color: color,
+              options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+            ),
+            shapeFillRangeFor: (area) => regionFillRange(
+              region: area,
+              options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+            ),
           ),
         ),
       );
@@ -683,6 +695,147 @@ void main() {
         expect(floods, hasLength(3), reason: 'a press picks anew');
         await again.up();
         await tester.pumpAndSettle();
+      });
+
+      testWidgets('a press past the pasteboard wall drags the held range\'s '
+          'gradient — it starts wherever it starts (I-160-Q5)', (
+        tester,
+      ) async {
+        final (:coordinator, :overlay, :floods) = await pumpHeld(
+          tester,
+          gradient: gradient,
+          // A small paper, so its wall — a paper past each edge at most —
+          // stands well inside the view.
+          canvasSize: const CanvasSize(width: 64, height: 64),
+        );
+        final origin = tester.getTopLeft(
+          find.byKey(const ValueKey<String>('brush-canvas-view')),
+        );
+        final press = await tester.startGesture(
+          origin + const Offset(32, 32),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await press.up();
+        await tester.pumpAndSettle();
+        // Past the wall, in the middle of the view where nothing of the
+        // panel's own stands over it.
+        final past = origin + const Offset(400, 300);
+        expect(
+          tester
+              .getRect(find.byKey(const ValueKey<String>('brush-canvas-view')))
+              .contains(past),
+          isTrue,
+          reason: '⛔premise: the press lands on the view',
+        );
+        final pen = await tester.startGesture(
+          past,
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveBy(const Offset(20, 0));
+        await tester.pump();
+        await pen.up();
+        await tester.pumpAndSettle();
+        expect(floods, hasLength(1), reason: 'the drag floods nothing');
+        expect(inkAt(coordinator, 32, 32), isNonZero, reason: 'laid');
+        expect(overlay.fillRange, isNull);
+      });
+
+      /// 🚨I-160: 「올가미같은것도 올가미로 범위고르고 그 다음 드래그 같은느낌」 —
+      /// the shape fill's outline is held as the bucket's flood is, and the
+      /// next press drags its gradient through the bucket's own press.
+      group('the shape fill: its outline is the range', () {
+        ValueNotifier<BrushToolState> shapeFill() => ValueNotifier(
+          BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fillShape,
+            color: 0xFFFF0000,
+          ),
+        );
+
+        /// The shape fill's rectangle dragged from (20, 20) to (52, 36) and
+        /// let go — the view's corner.
+        Future<Offset> outline(WidgetTester tester) async {
+          final origin = tester.getTopLeft(
+            find.byKey(const ValueKey<String>('brush-canvas-view')),
+          );
+          final pen = await tester.startGesture(
+            origin + const Offset(20, 20),
+            kind: PointerDeviceKind.stylus,
+          );
+          await tester.pump();
+          for (var step = 1; step <= 4; step += 1) {
+            await pen.moveTo(origin + Offset(20 + 8.0 * step, 20 + 4.0 * step));
+            await tester.pump();
+          }
+          await pen.up();
+          await tester.pumpAndSettle();
+          return origin;
+        }
+
+        testWidgets('let go, the outline is held marked and nothing lands — '
+            'the next drag lays its gradient across it, and the one after '
+            'that traces again', (tester) async {
+          final (:coordinator, :overlay, :floods) = await pumpHeld(
+            tester,
+            gradient: gradient,
+            brush: shapeFill(),
+          );
+          final origin = await outline(tester);
+          expect(overlay.fillRange, isNotNull, reason: 'held, marked');
+          expect(inkAt(coordinator, 30, 28), 0, reason: '⛔not laid');
+
+          final pen = await tester.startGesture(
+            origin + const Offset(20.5, 28.5),
+            kind: PointerDeviceKind.stylus,
+          );
+          await tester.pump();
+          await pen.moveBy(const Offset(31, 0));
+          await tester.pump();
+          await pen.up();
+          await tester.pumpAndSettle();
+          expect(inkAt(coordinator, 20, 28), 0xFF0000FF, reason: 'main');
+          expect(inkAt(coordinator, 51, 28), _subRgba, reason: 'sub');
+          expect(inkAt(coordinator, 52, 28), 0, reason: 'the outline ends');
+          expect(inkAt(coordinator, 30, 19), 0, reason: 'above it');
+          expect(floods, isEmpty, reason: 'nothing is flooded');
+          expect(overlay.fillRange, isNull, reason: 'the result took its place');
+
+          await outline(tester);
+          expect(overlay.fillRange, isNotNull, reason: 'a new outline, held');
+          expect(inkAt(coordinator, 20, 28), 0xFF0000FF, reason: 'unchanged');
+        });
+
+        testWidgets('with the gradient off the outline lands at once, as ever',
+            (tester) async {
+          final (:coordinator, :overlay, :floods) = await pumpHeld(
+            tester,
+            gradient: const FillGradientOptions(),
+            brush: shapeFill(),
+          );
+          await outline(tester);
+          expect(inkAt(coordinator, 30, 28), 0xFF0000FF);
+          expect(overlay.fillRange, isNull, reason: 'nothing held');
+        });
+
+        testWidgets('the tool put down lets the outline go — back in hand, a '
+            'drag traces again', (tester) async {
+          final brush = shapeFill();
+          final (:coordinator, :overlay, :floods) = await pumpHeld(
+            tester,
+            gradient: gradient,
+            brush: brush,
+          );
+          await outline(tester);
+          brush.value = brush.value.copyWith(tool: CanvasTool.brush);
+          await tester.pumpAndSettle();
+          expect(overlay.fillRange, isNull, reason: 'the mark goes with it');
+          brush.value = brush.value.copyWith(tool: CanvasTool.fillShape);
+          await tester.pumpAndSettle();
+          await outline(tester);
+          expect(overlay.fillRange, isNotNull, reason: 'a new outline, held');
+          expect(inkAt(coordinator, 30, 28), 0, reason: 'nothing laid');
+        });
       });
     });
 

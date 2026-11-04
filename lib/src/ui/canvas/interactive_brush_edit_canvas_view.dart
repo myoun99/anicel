@@ -119,6 +119,24 @@ typedef ShapeArea = ({
 /// slot — a gradient may run to (I-160-Q3).
 typedef FillGradientInHand = ({FillGradientOptions options, int sub});
 
+/// This view's hand for a RANGE HELD FOR ITS GRADIENT (I-160: 「올가미같은것도
+/// 올가미로 범위고르고 그 다음 드래그」) — the fill's own hold
+/// ([_BrushEditFill]) handed out, published as [ShapeShow] is. An outline
+/// the shape fill closed is held here as the bucket's lift holds its flood,
+/// and the press after it lays the gradient through the bucket's own press:
+/// one hold, one drag, whoever picked the range.
+abstract interface class GradientRangeHold {
+  /// Holds [range] for its gradient, marked as the bucket's held range is.
+  void hold(FillRange range);
+
+  /// Whether a range is held for its gradient now — the next press is its
+  /// gradient's, whichever tool's layer would have heard it.
+  bool get holdsARange;
+
+  /// Lets go of the range, laying nothing.
+  void letGo();
+}
+
 /// This view's hand for a shape being dragged (I-69-Q4ⓒ) —
 /// [_BrushEditShapeShow] handed out, published as [StrokeLander] is.
 ///
@@ -186,6 +204,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onActiveStrokeChanged,
     this.strokeLander,
     this.shapeShow,
+    this.gradientRangeHold,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
@@ -358,6 +377,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// Where this view holds up its [ShapeShow] while it is mounted — held
   /// up the way [strokeLander] is.
   final ViewHand<ShapeShow>? shapeShow;
+
+  /// Where this view holds up its [GradientRangeHold] while it is mounted
+  /// — held up the way [strokeLander] is.
+  final ViewHand<GradientRangeHold>? gradientRangeHold;
 
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
   /// eraser, switched the tool temporarily — the shell mirrors it on the
@@ -595,6 +618,8 @@ class _InteractiveBrushEditCanvasViewState
   /// so it puts its own hands down there as it goes.
   late final ViewHand<StrokeLander>? _landerKeeper = widget.strokeLander;
   late final ViewHand<ShapeShow>? _shapeKeeper = widget.shapeShow;
+  late final ViewHand<GradientRangeHold>? _holdKeeper =
+      widget.gradientRangeHold;
 
   @override
   void initState() {
@@ -602,6 +627,7 @@ class _InteractiveBrushEditCanvasViewState
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     _landerKeeper?.up(_press.landActiveStroke);
     _shapeKeeper?.up(_shapeShow);
+    _holdKeeper?.up(_fill);
     _toolHolds.handOver = _door;
   }
 
@@ -617,7 +643,8 @@ class _InteractiveBrushEditCanvasViewState
     // one it held them up to would keep them past its going (F-419).
     assert(
       identical(widget.strokeLander, _landerKeeper) &&
-          identical(widget.shapeShow, _shapeKeeper),
+          identical(widget.shapeShow, _shapeKeeper) &&
+          identical(widget.gradientRangeHold, _holdKeeper),
       'a view keeps the keepers it held its hands up to',
     );
     // The view no longer REMOUNTS per cel (R13-2): the old frameId-keyed
@@ -685,6 +712,7 @@ class _InteractiveBrushEditCanvasViewState
     // is no pen here any more」.
     _landerKeeper?.down(_press.landActiveStroke);
     _shapeKeeper?.down(_shapeShow);
+    _holdKeeper?.down(_fill);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }

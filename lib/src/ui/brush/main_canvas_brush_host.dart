@@ -24,7 +24,7 @@ import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
-import '../../services/canvas_flood_fill.dart' show FillRangeAt;
+import '../../services/canvas_flood_fill.dart' show FillRange, FillRangeAt;
 import '../../services/canvas_selection_region.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
@@ -105,6 +105,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.fillsContinuously,
     this.fillGradient,
     this.shapeFillDabsFor,
+    this.shapeFillRangeFor,
     this.selectionMaskOptions,
     this.transformOptions,
     this.viewCommands,
@@ -302,6 +303,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// shape fill's area.
   final List<BrushDab> Function(CanvasSelectionRegion area, int color)?
   shapeFillDabsFor;
+
+  /// Forwarded to [BrushCanvasPanel]: the range a drawn shape fill's area
+  /// covers, held for its gradient.
+  final FillRange? Function(CanvasSelectionRegion area)? shapeFillRangeFor;
 
   /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time
   /// mask knobs.
@@ -604,6 +609,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       fillsContinuously: widget.fillsContinuously,
       fillGradient: widget.fillGradient,
       shapeFillDabsFor: widget.shapeFillDabsFor,
+      shapeFillRangeFor: widget.shapeFillRangeFor,
       selectionMaskOptions: widget.selectionMaskOptions,
       transformOptions: widget.transformOptions,
       viewCommands: widget.viewCommands,

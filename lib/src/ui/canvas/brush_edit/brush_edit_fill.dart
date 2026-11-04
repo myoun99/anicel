@@ -6,7 +6,7 @@ part of '../interactive_brush_edit_canvas_view.dart';
 /// 🚨A collaborator carved out of `_InteractiveBrushEditCanvasViewState`
 /// (the audit's SRP cut, 2026-09-02). It reaches the State through
 /// `_state`.
-class _BrushEditFill {
+class _BrushEditFill implements GradientRangeHold {
   _BrushEditFill(this._state);
 
   final _InteractiveBrushEditCanvasViewState _state;
@@ -37,9 +37,7 @@ class _BrushEditFill {
     // a palm landing on the glass take the pen's fill away. The one press
     // that retires another is a pen's or a mouse's over a finger's, and
     // the press reader does that before it gets here.
-    if (_state.widget.fillRangeAt == null ||
-        _state._pendingFill != null ||
-        _state._fillPress != null) {
+    if (_state._pendingFill != null || _state._fillPress != null) {
       return;
     }
     final held = _state._heldForGradient;
@@ -50,8 +48,11 @@ class _BrushEditFill {
         return;
       }
       // The gradient was switched off since the range was picked: this
-      // press picks anew.
+      // press picks anew — where the bucket is in hand to pick with.
       letGo();
+    }
+    if (_state.widget.fillRangeAt == null) {
+      return;
     }
     _state._fillPress = (pointer: pointer, range: null);
     reach(at);
@@ -69,8 +70,7 @@ class _BrushEditFill {
   /// gradient takes the gradient's end there.
   void reach(CanvasPoint at) {
     final held = _state._fillPress;
-    final fillRangeAt = _state.widget.fillRangeAt;
-    if (held == null || fillRangeAt == null) {
+    if (held == null) {
       return;
     }
     final gradient = _state._heldForGradient;
@@ -79,7 +79,8 @@ class _BrushEditFill {
       _drag(gradient.range, from: drag.from, to: at);
       return;
     }
-    if (held.range?.covers(at) ?? false) {
+    final fillRangeAt = _state.widget.fillRangeAt;
+    if (fillRangeAt == null || (held.range?.covers(at) ?? false)) {
       return;
     }
     // The seed and the axis come from the same pair the STROKE path uses —
@@ -166,10 +167,24 @@ class _BrushEditFill {
     _mark(null);
   }
 
+  /// [range] — an outline the shape fill closed — held for its gradient as
+  /// the bucket's lift holds its flood ([lift]): marked, for the press that
+  /// lays its gradient. Whatever the fill held before goes.
+  @override
+  void hold(FillRange range) {
+    letGo();
+    _state._heldForGradient = (range: range, drag: null);
+    _mark(range);
+  }
+
+  @override
+  bool get holdsARange => _state._heldForGradient != null;
+
   /// The fill lets go of all it holds — its press, and a range held for
   /// its gradient — laying nothing: the tool was put down, or the cel it
   /// held them on went, as a stroke in flight is let go then
   /// ([_InteractiveBrushEditCanvasViewState._endStrokeAfterTheFrame]).
+  @override
   void letGo() {
     final holding =
         _state._fillPress != null || _state._heldForGradient != null;

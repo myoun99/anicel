@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -14,7 +15,10 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/fill_gradient.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_settings_section.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -172,5 +176,26 @@ void main() {
         sub: 0xFF123456,
       )),
     );
+  });
+
+  testWidgets('the shape fill: what its outline covers is a range the '
+      'canvas can hold for its gradient', (tester) async {
+    await pumpFill(tester);
+    final outline = CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(left: 10, top: 10, right: 30, bottom: 20),
+    );
+    // Every canvas the shape fill lays on can hold what it covers.
+    final ranges = [
+      for (final panel in tester.widgetList<BrushCanvasPanel>(
+        find.byType(BrushCanvasPanel),
+      ))
+        if (panel.shapeFillDabsFor != null)
+          panel.shapeFillRangeFor?.call(outline),
+    ];
+    expect(ranges, isNotEmpty, reason: '⛔CONTROL');
+    for (final range in ranges) {
+      expect(range?.covers(CanvasPoint(x: 20, y: 15)), isTrue);
+      expect(range?.covers(CanvasPoint(x: 40, y: 15)), isFalse);
+    }
   });
 }
