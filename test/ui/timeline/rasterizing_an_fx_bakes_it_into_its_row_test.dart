@@ -2187,29 +2187,32 @@ void main() {
       group('🗣️Q19 — a rider linked to a row riding one that is no use of the '
           "row, its cels that row's too, which the press does not reach", () {
         const second = CutId('cut2');
-        Layer rides(String id, String base) => riderOf(base, free: true)
-            .copyWith(id: LayerId(id));
-        Cut cutOf(CutId id, Layer row, String rider) => Cut(
-          id: id,
-          name: id.value,
-          duration: 3,
-          canvasSize: canvasSize,
-          layers: [
-            row,
-            rides(rider, row.id.value),
-            createCameraLayer(cutId: id),
-          ],
-        );
+        Cut cutOf(CutId id, Layer row, String rider, {required bool free}) =>
+            Cut(
+              id: id,
+              name: id.value,
+              duration: 3,
+              canvasSize: canvasSize,
+              layers: [
+                row,
+                riderOf(row.id.value, free: free).copyWith(id: LayerId(rider)),
+                createCameraLayer(cutId: id),
+              ],
+            );
         LayerLinkMember member(CutId cut, String row) => LayerLinkMember(
           trackId: const TrackId('track'),
           cutId: cut,
           layerId: LayerId(row),
         );
 
-        /// `r` riding `a` in its cut, and `q` riding `b` in [second] — `r`
-        /// and `q` one where [linked] — every row's cel green in the
-        /// canvas's third tile, every rider's red in the second.
-        EditorSessionManager ridersOf({required bool linked}) {
+        /// `r` riding `a` in its cut, and `q` riding `b` in [second] — [free]
+        /// or synced, `r` and `q` one where [linked] — every row's cel green
+        /// in the canvas's third tile, every rider's red in the second.
+        EditorSessionManager ridersOf({
+          required bool linked,
+          bool free = true,
+        }) {
+          final b = rowA().copyWith(id: const LayerId('b'));
           final s = EditorSessionManager(
             initialProject: Project(
               id: const ProjectId('project'),
@@ -2220,8 +2223,8 @@ void main() {
                   id: const TrackId('track'),
                   name: 'Track',
                   cuts: [
-                    cutOf(cutId, rowA(), 'r'),
-                    cutOf(second, rowA().copyWith(id: const LayerId('b')), 'q'),
+                    cutOf(cutId, rowA(), 'r', free: free),
+                    cutOf(second, b, 'q', free: free),
                   ],
                 ),
               ],
@@ -2277,6 +2280,34 @@ void main() {
             find.byKey(const ValueKey<String>('fx-rasterize-rows-freed')),
             findsNothing,
           );
+
+          s.undo();
+          expect(rowsOf(s), before);
+          s.playbackRig.prerenderScheduler.cancel();
+        });
+
+        testWidgets('🎯synced, alike: the other row keeps its links to the '
+            "cel it showed, and the rider's ride the row's new cels", (
+          tester,
+        ) async {
+          final s = ridersOf(linked: true, free: false);
+          final before = rowsOf(s);
+          final seen = await seenIn(tester, s, also: const [(20, 5)]);
+          final q = rowIn(s, second, 'q');
+
+          await press(tester, s, const LayerId('a'));
+
+          final (r, self) = (rowIn(s, cutId, 'r'), rowIn(s, second, 'q'));
+          expect(r.frames, hasLength(4));
+          expect(r.frames.first.id, const FrameId('r-1'));
+          expect(self.frames, r.frames, reason: 'one bank');
+          expect(self.baseFrameLinks, q.baseFrameLinks, reason: 'kept');
+          expect(self.timeline, q.timeline);
+          expect(r.baseFrameLinks, {
+            for (final (index, cel) in aIn(s).frames.indexed)
+              cel.id: r.frames[index + 1].id,
+          });
+          expect(await seenIn(tester, s, also: const [(20, 5)]), seen);
 
           s.undo();
           expect(rowsOf(s), before);
