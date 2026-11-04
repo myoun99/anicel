@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
-import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -384,7 +384,6 @@ class _FramePictureViewState extends State<FramePictureView> {
   void dispose() {
     widget.run.landings.removeListener(_landed);
     _heldStep?.cancel();
-    _hearLive(null);
     _letGo(_store);
     _repaint.dispose();
     super.dispose();
@@ -406,7 +405,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
     _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
     _waits = waitsForItsPlugins(widget.nodes);
-    _hearLive(null);
+    _liveChanges = null;
     _live = null;
     _onScreen = const {};
     final live = widget.live;
@@ -431,7 +430,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
     _live = frame;
     if (live != null) {
-      _hearLive(frame.changes);
+      _liveChanges = frame.changes;
     }
     final nodes = widget.nodes;
     _onScreen = {
@@ -1004,6 +1003,18 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// worse (271 → 251), and input to ink the same within its 25 ms grid. The
   /// step's render went to the raster thread right behind its frame, into
   /// the next one's way. 🚨The main PC does not speak for the Surface here.
+  ///
+  /// 🪦⛔NOT AHEAD OF THE PAINT, FROM THE FRAME'S CALLBACKS, where nothing
+  /// was held (`5c91b0c42` 2026-11-01, 유저 「최대한 그 외적으로 좋아지기만
+  /// 하는 부분에서 구조를 효율적으로 리팩토링」; gone with `c3649ff9f`, back
+  /// with its undoing, gone again 2026-11-04): it ran only for a change of
+  /// the live rows made in a frame's callbacks, and a pen's samples come
+  /// between frames and are laid as they come (`AnicelBinding`,
+  /// `_BrushEditStroke.takeSample`). 1–3 steps in 230 went that way
+  /// (2026-11-02), and 1 move of the live rows in 860 came in a frame's
+  /// callbacks (S5 cut 352, every row on, fitted and at 100%, 2026-11-04).
+  /// The gain it was measured with (at 100% under tests 29.1 → 21.8 ms) was
+  /// not seen again.
   void _catchUpAtPaint() {
     _pace.painted(SchedulerBinding.instance.currentSystemFrameTimeStamp);
     if (!_strokeInHand) {
@@ -1035,50 +1046,6 @@ class _FramePictureViewState extends State<FramePictureView> {
         _repaint.value += 1;
       }
     });
-  }
-
-  /// Hears the live rows through [changes] from here on, as the painter
-  /// does.
-  void _hearLive(Listenable? changes) {
-    _liveChanges?.removeListener(_liveMoved);
-    changes?.addListener(_liveMoved);
-    _liveChanges = changes;
-  }
-
-  /// The live rows moved: at the top of a frame, a stroke's samples coming
-  /// in. Its step is asked once all of them are in
-  /// ([_stepAheadOfThePaint]) — the frame's callbacks done, its build not
-  /// begun.
-  void _liveMoved() {
-    if (SchedulerBinding.instance.schedulerPhase ==
-        SchedulerPhase.transientCallbacks) {
-      scheduleMicrotask(_stepAheadOfThePaint);
-    }
-  }
-
-  /// 🚨★★A STEP THE LAST ONES LEFT NO ROOM TO HOLD GOES AHEAD OF THE PAINT
-  /// (F-533, 유저 2026-11-01 「최대한 그 외적으로 좋아지기만 하는 부분에서 구조를
-  /// 효율적으로 리팩토링」). Asked at the paint, its render goes to the raster
-  /// thread right behind that paint's frame and waits it out; asked here it
-  /// goes first, on a thread the frame before has left, and the frame waits
-  /// for it instead. 🔬Main PC, 144 Hz, a new project, in turn in one run,
-  /// input to raster done, p50 at 300 px/s: at 100% as tests came and went
-  /// 29.1 → 21.8, 25.0 → 15.6, 21.9 → 10.4 ms, a step's render 5.4 → 1.9
-  /// ms; fitted, quiet, 15.3 → 12.3 ms, p90 28.0 → 21.5; fitted, under
-  /// eighteen suites of tests, 72.3 → 70.2 ms, the levels' waits behind it
-  /// the same. 🔬The Surface Pro 11 lost nothing by it (release, 120 Hz,
-  /// S5_BA cut 352, every row on, 2026-11-02, with the levels a step lays cut
-  /// to what the screen reads): input to ink p50 32–33 → 32–33 ms, seen 25 ms
-  /// apart so no gain of this size can show there, vsync to raster end p50
-  /// 2.2 → 2.0 ms at 100% and 2.6 → 2.8 ms fitted. ⛔No sooner than this:
-  /// where the last steps leave a frame
-  /// room the pace holds a step (`StepPace`), and that is the later and so
-  /// the fuller one, in before the next frame all the same.
-  void _stepAheadOfThePaint() {
-    if (mounted && _strokeInHand && !_pace.holds) {
-      _pace.askNow();
-      _catchUp();
-    }
   }
 
   /// Lets go of what is shown, and of [store]'s hold on its picture.

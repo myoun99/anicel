@@ -64,10 +64,6 @@ final class StepPace {
     return hold;
   }
 
-  /// Whether a step asked now would be held: whether the last steps leave
-  /// a frame anything.
-  bool get holds => _hold != Duration.zero;
-
   /// A step is to go now.
   void askNow() => _due = _now();
 
