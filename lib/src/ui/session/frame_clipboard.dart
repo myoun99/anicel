@@ -273,13 +273,12 @@ class FrameClipboard implements BringsMedia {
       canPasteLinkedAt(timelinePlace);
 
   bool canPasteLinkedAt(ClipboardPlace? place) {
-    // Same law as its independent twin: this lands on the row the press
+    // Same law as its independent twin: this lands on the rows the press
     // stands on and serves only a band that covers it ([_pasteRun]'s
     // `replaced`).
     if (place == null || place._bandMissesTheRow) {
       return false;
     }
-    final layer = place._row;
     final copiedFrame = _copiedFrame;
     if (copiedFrame == null ||
         // 🚨I-7 — a link is 「the same cel」, and no cel of another project
@@ -287,23 +286,32 @@ class FrameClipboard implements BringsMedia {
         // spelling here names another drawing, or nothing (유저 2026-09-26:
         // 「레이어 id가 다른거?라던가 … 알아서 조심하고」). From another
         // project the copy pastes independent only.
-        !identical(copiedFrame.from, this) ||
-        !rowHoldsLinks(layer) ||
-        // An IMAGE row holds ONE block: once it stands, a second exposure
-        // has no place on it ([canPasteIndependentFrameAtCurrentFrame]'s
-        // stand-down). ↩️Every image row was turned away, by kind; one
-        // standing EMPTY takes its picture back (image-row-cut-paste, 유저
-        // 2026-10-04 — the cut's other half, [canCutRunAtCurrentFrame]),
-        // and so does one a selection empties ([_holdsAPictureOnceLifted]).
-        _holdsAPictureOnceLifted(layer, _selectedRunAt(place))) {
+        !identical(copiedFrame.from, this)) {
+      return false;
+    }
+    // 🗣️F-556: every row the paste lands on answers, as its independent
+    // twin's do. An IMAGE row a selection leaves holding its picture lands
+    // nothing ([_landingsOn]): once it stands, a second exposure has no
+    // place on it. ↩️Every image row was turned away, by kind; one standing
+    // EMPTY takes its picture back (image-row-cut-paste, 유저 2026-10-04 —
+    // the cut's other half, [canCutRunAtCurrentFrame]).
+    return _landingsOn(
+      place,
+      copiedFrame,
+    ).any((landing) => _linksTheCopy(landing, copiedFrame));
+  }
+
+  /// Whether [landing]'s row takes its row of [copied] by a 링크 붙여넣기.
+  bool _linksTheCopy(_PasteLanding landing, _CopiedFrameReference copied) {
+    final row = landing.target;
+    if (!rowHoldsLinks(row)) {
       return false;
     }
     // 🗣️I-71 — on a row the copy was NOT taken from, the link is by NAME
     // ([_keepsNamesOn]). ↩️Every other row was turned away here: 「is that
     // cel in THIS row」 was the whole of what a link could mean.
-    if (layer.id != copiedFrame.layerId) {
-      final room = _onceLifted(layer, _selectedRunAt(place));
-      return _keepsNamesOn(room, copiedFrame) && place._onRoom;
+    if (row.id != copied.layerId) {
+      return _keepsNamesOn(landing) && _onRoomFor(landing);
     }
 
     // 🚨T3 — the clipboard may be holding cels the layer no longer has: a
@@ -311,14 +319,14 @@ class FrameClipboard implements BringsMedia {
     // paste (same ids, so it is the same cel), and gating on "the layer
     // still has it" would have made cut-then-paste-back impossible while
     // the button sat lit.
-    if (copiedFrame.cels.any((cel) => cel.id == copiedFrame.frameId)) {
-      return place._onRoom;
+    if (copied.cels.any((cel) => cel.id == copied.frameId)) {
+      return _onRoomFor(landing);
     }
 
     return _controllers.timelineController.canPasteLinkedFrameAt(
-      layer: layer,
-      frameIndex: place._index,
-      copiedFrameId: copiedFrame.frameId,
+      layer: row,
+      frameIndex: landing.at.index,
+      copiedFrameId: copied.frameId,
     );
   }
 
@@ -821,28 +829,47 @@ class FrameClipboard implements BringsMedia {
     if (place == null || place._bandMissesTheRow) {
       return false;
     }
-    final layer = place._row;
     final copied = _copiedFrame;
     if (copied == null) {
       return false;
     }
+    // 🗣️F-556: every row the paste lands on answers ([_landingsOn]), not the
+    // one the sweep began on — the paste lands on them all. ↩️The row stood
+    // on answered for the band, so a band begun on a synced row went dark
+    // over a cel row that takes the copy.
+    return _landingsOn(place, copied).any(_takesTheCopy);
+  }
+
+  /// Whether [landing]'s row takes its row of the board by an independent
+  /// paste.
+  bool _takesTheCopy(_PasteLanding landing) {
+    final row = landing.target;
     // A SYNCED attach row owns no timeline of its own: it makes no cel, and
     // takes the copy's pictures in the blocks it shows (F-545).
-    if (isSyncedAttachedLayer(layer)) {
-      return _landingsOn(place, copied)
-          .where((landing) => landing.target.id == layer.id)
-          .any((landing) => _picturesTakenOn(landing).isNotEmpty);
+    if (isSyncedAttachedLayer(row)) {
+      return _picturesTakenOn(landing).isNotEmpty;
     }
     // The row's half of every door that makes a cel ([rowTakesNewCels]): a
     // direction row pastes blocks like every cel row (its span rides the
     // block it is, R27); a reference row's picture comes from the library;
     // an IMAGE row holds ONE cel, and takes one only while it stands empty
     // — as the selection's lift leaves it ([_onceLifted]).
-    if (!rowTakesNewCels(_onceLifted(layer, _selectedRunAt(place)))) {
-      return false;
-    }
-    return place._onRoom;
+    return rowTakesNewCels(_onceLifted(row, _liftOf(landing))) &&
+        _onRoomFor(landing);
   }
+
+  /// The cells a selection lifts out of [landing]'s row — null with none up.
+  static ({int index, int count})? _liftOf(_PasteLanding landing) =>
+      landing.at.liftCount == 0
+      ? null
+      : (index: landing.at.index, count: landing.at.liftCount);
+
+  /// Whether a cel may land where [landing] puts the clip on its row, on
+  /// that row's own axis: at or past the row's floor — a conte's held-back
+  /// のりしろ is no room (F-339, [layerBlockFloor]). ↩️Asked of the cursor
+  /// on the row stood on, for every row a band held (F-556).
+  static bool _onRoomFor(_PasteLanding landing) =>
+      landing.at.index >= layerBlockFloor(landing.target);
 
   void pasteIndependentFrameAtCurrentFrame() =>
       pasteIndependentAt(timelinePlace);
@@ -890,8 +917,9 @@ class FrameClipboard implements BringsMedia {
     return null;
   }
 
-  /// Whether a 링크 붙여넣기 of [copied] has anything to do on [layer], a row
-  /// it was NOT copied from — the name-keeping paste (I-71).
+  /// Whether a 링크 붙여넣기 has anything to do with [landing]'s row of the
+  /// board on its row, one it was NOT copied from — the name-keeping paste
+  /// (I-71).
   ///
   /// It makes drawings there, so the row has to take them
   /// ([rowTakesNewCels]) and to WEAR the copy's names ([wearsNamesOf]): a
@@ -903,11 +931,16 @@ class FrameClipboard implements BringsMedia {
   /// ↩️A direction row wore none (유저 2026-09-12: 「이름없으면
   /// 독립적인거니까」) until its blocks linked by what they say
   /// (I-72-direction-link).
-  bool _keepsNamesOn(Layer layer, _CopiedFrameReference copied) =>
-      rowTakesNewCels(layer) &&
-      copied.rows.any((row) => row.layerId == copied.layerId && row.linkable) &&
-      copied.cels.any((cel) => cel.name != null) &&
-      wearsNamesOf(layer, copied.cels);
+  ///
+  /// F-556: the board's row that lands here is asked, as the paste asks it
+  /// ([_linkLandingOf]). ↩️The row the copy's sweep began on was.
+  bool _keepsNamesOn(_PasteLanding landing) {
+    final row = _onceLifted(landing.target, _liftOf(landing));
+    return rowTakesNewCels(row) &&
+        landing.linkable &&
+        landing.cels.any((cel) => cel.name != null) &&
+        wearsNamesOf(row, landing.cels);
+  }
 
   /// 결정 14 ②ⓐ×③ⓐ — EVERY ROW a paste on [layer] lands on, each with the
   /// row of the board it receives.
@@ -1727,11 +1760,6 @@ class ClipboardPlace {
   final int _index;
 
   final _ClipboardBand? _band;
-
-  /// Whether a cel may land where the cursor stands on [_row]: at or past
-  /// the row's floor — a conte's held-back のりしろ is no room (F-339,
-  /// [layerBlockFloor]).
-  bool get _onRoom => _index >= layerBlockFloor(_row);
 
   /// Whether THE selection names rows this press would MISS — the law
   /// [SelectionAccess.bandNamesRowsThisPressWouldMiss] states for the cut's

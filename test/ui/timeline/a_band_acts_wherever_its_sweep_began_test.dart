@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -112,7 +113,8 @@ void main() {
       final session = await pumpTimelineHost(
         tester,
         _project(),
-        surface: const Size(1200, 700),
+        // Tall enough that the X-sheet shows every frame of the cut.
+        surface: const Size(1200, 1000),
       );
       if (vertical) {
         await tester.tap(
@@ -184,6 +186,16 @@ void main() {
         ],
       )}';
     }
+
+    /// What each row holds, by the drawings' names and lengths — a paste's
+    /// new drawings are minted ids of their own each time.
+    String sheet(EditorSessionManager session) => [
+      for (final row in session.requireActiveCut.layers)
+        {
+          for (final MapEntry(key: at, value: block) in row.timeline.entries)
+            at: (row.frameById(block.frameId!)?.name, block.length),
+        },
+    ].toString();
 
     for (final MapEntry(key: how, value: (fromEmpty, fromDrawing))
         in ways.entries) {
@@ -284,6 +296,102 @@ void main() {
 
         expect(await after(fromEmpty), await after(fromDrawing));
       });
+    }
+
+    // ★Every row the band holds, from either end — and a SYNCED attach row
+    // among them (F-545: it makes no cel, and takes pictures in the blocks
+    // it shows), with a board banked so the pastes have something to say.
+    for (final synced in [false, true]) {
+      final family = synced ? 'a synced row and a cel row' : 'two cel rows';
+      for (final board in ['one stood cel', 'a band of every row']) {
+        testWidgets('$where, $family, $board banked: the pastes answer a '
+            'band from either end alike, and do the same', (tester) async {
+          /// The rows the band runs across — [_b] and the one under it.
+          Future<(EditorSessionManager, LayerId)> setUp() async {
+            final session = await open(tester);
+            var under = _a;
+            if (synced) {
+              session.selectLayer(_a);
+              session.folders.addAttachedLayer(AttachedPlacement.above);
+              under = session.activeLayerId!;
+              await tester.pumpAndSettle();
+            }
+            if (board == 'one stood cel') {
+              session.selectLayer(_b);
+              session.selectFrameIndex(7);
+            } else {
+              await sweep(tester, (from: (_a, 4), to: (_b, 7)));
+            }
+            TimelineToolbarPanelContext(session).copyFrame();
+            session.frameRangeSelection.value = null;
+            await tester.pumpAndSettle();
+            expect(
+              session.clipboard.bankedRowLayerIds,
+              isNotEmpty,
+              reason: '⛔전제: a board',
+            );
+            return (session, under);
+          }
+
+          Future<({_Pill pill, String independent, String linked})> from(
+            bool theTop,
+          ) async {
+            final results = <String>[];
+            late _Pill lit;
+            for (final linked in [false, true]) {
+              final (session, under) = await setUp();
+              // Clear of the blocks' edges, which a press takes hold of.
+              final ends = [(_b, 10), (under, 9)];
+              await sweep(
+                tester,
+                theTop
+                    ? (from: ends.first, to: ends.last)
+                    : (from: ends.last, to: ends.first),
+              );
+              expect(
+                session.frameRangeSelection.value?.spanLayerIds.length,
+                2,
+                reason: '⛔전제: a band of two rows',
+              );
+              lit = pill(session);
+              final panel = TimelineToolbarPanelContext(session);
+              linked ? panel.pasteLinkedFrame() : panel.pasteIndependentFrame();
+              await tester.pumpAndSettle();
+              results.add(sheet(session));
+              await tester.pumpWidget(const SizedBox());
+            }
+            return (pill: lit, independent: results[0], linked: results[1]);
+          }
+
+          final fromTheTop = await from(true);
+          expect(
+            fromTheTop.pill.pasteIndependent || fromTheTop.pill.pasteLinked,
+            isTrue,
+            reason: '⛔전제: a paste is lit',
+          );
+          final fromTheBottom = await from(false);
+          // ⛔But 복제: a ROW's verb — 「복제는 현재 액티브인 대상」 (유저
+          // 2026-08-13) — and a synced row is no row of its own to copy.
+          _Pill banded(_Pill pill) => (
+            cut: pill.cut,
+            copy: pill.copy,
+            pasteIndependent: pill.pasteIndependent,
+            pasteLinked: pill.pasteLinked,
+            delete: pill.delete,
+            unlink: pill.unlink,
+            duplicate: false,
+            merge: pill.merge,
+            autoName: pill.autoName,
+          );
+          expect(
+            banded(fromTheBottom.pill),
+            banded(fromTheTop.pill),
+            reason: '「뭘 어떻게」',
+          );
+          expect(fromTheBottom.independent, fromTheTop.independent);
+          expect(fromTheBottom.linked, fromTheTop.linked);
+        });
+      }
     }
   }
 }
