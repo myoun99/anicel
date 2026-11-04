@@ -972,6 +972,45 @@ void main() {
       expect(changes.last.tolerance, 32, reason: 'other knobs untouched');
     });
 
+    testWidgets('I-160: the shape fill has the same gradient — one setting '
+        'for both tiles (「올가미같은것도 올가미로 범위고르고 그 다음 드래그」)', (
+      tester,
+    ) async {
+      final changes = <FloodFillOptions>[];
+      const on = FillGradientOptions(enabled: true);
+      await tester.pumpWidget(
+        app(
+          ToolSettingsPanel(
+            state: BrushToolState.defaults.copyWith(
+              tool: CanvasTool.fillShape,
+            ),
+            onChanged: (_) {},
+            fillOptions: const FloodFillOptions(gradient: on),
+            onFillOptionsChanged: changes.add,
+          ),
+        ),
+      );
+      final shape = find.byKey(
+        const ValueKey<String>('fill-gradient-shape-radial'),
+      );
+      await tester.ensureVisible(shape);
+      await tester.pump();
+      await tester.tap(shape);
+      await tester.pump();
+      expect(
+        changes.last.gradient,
+        on.copyWith(shape: FillGradientShape.radial),
+      );
+      final gradient = find.byKey(
+        const ValueKey<String>('fill-gradient-switch'),
+      );
+      await tester.ensureVisible(gradient);
+      await tester.pump();
+      await tester.pressRingIn(gradient);
+      await tester.pump();
+      expect(changes.last.gradient, const FillGradientOptions());
+    });
+
     testWidgets('painting tools keep the brush settings panel', (tester) async {
       await tester.pumpWidget(
         app(
