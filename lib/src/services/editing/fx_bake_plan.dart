@@ -851,11 +851,11 @@ _Bank? _bankOf(
         if (!_holds(use.baked, frame)) cel,
   };
   final celAt = [for (final each in ran) each.celAt];
-  final cels = _bankCels(uses);
-  final held = {for (final cel in cels) ?celNumberOf(cel.name)};
   final bank = <Frame>[];
   final pictures = <LayerMergePicture>[];
   final firstOf = <FrameId, FrameId>{};
+  final cels = _bankCels(uses);
+  final held = {for (final cel in cels) ?celNumberOf(cel.name)};
   for (final cel in cels) {
     final parts = pictured[cel.id] ?? const [];
     // The first picture keeps the place of a cel shown nowhere else.
