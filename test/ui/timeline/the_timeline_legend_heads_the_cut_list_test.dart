@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
+import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
@@ -138,6 +139,49 @@ void main() {
     expect(strays, isEmpty);
     session.frameScrub.commitFrameScrub();
     await tester.pumpAndSettle();
+  });
+
+  // 🚨I-57 ㉢-2 (`a_cut_switch_keeps_the_legend_test`): the header is kept
+  // by every fact it shows, and the host makes its heading anew each build
+  // — the same name's source, so the same heading.
+  testWidgets('a cut switch builds the host again and nothing of the legend '
+      'but the heading\'s words', (tester) async {
+    final session = await open(tester);
+    var hosts = 0;
+    final strays = <Type>[];
+    final words = find.descendant(
+      of: heading,
+      matching: find.byType(ValueListenableBuilder<String>),
+    );
+    debugOnRebuildDirtyWidget = (element, _) {
+      if (element.widget is TimelineTabHost) {
+        hosts += 1;
+      }
+      var inWords = false;
+      element.visitAncestorElements((ancestor) {
+        if (ancestor.widget is ValueListenableBuilder<String>) {
+          inWords = true;
+        }
+        if (ancestor.widget is! TimelineLayerControlsHeader) {
+          return true;
+        }
+        if (!inWords && element.widget is! ValueListenableBuilder<String>) {
+          strays.add(element.widget.runtimeType);
+        }
+        return false;
+      });
+    };
+    try {
+      session.selectCut(const CutId('cut-b'));
+      await tester.pumpAndSettle();
+    } finally {
+      debugOnRebuildDirtyWidget = null;
+    }
+
+    expect(words, findsOneWidget, reason: '⛔전제: the words\' builder');
+    expect(headingWords(tester), 'c002', reason: '⛔전제: the cut switched');
+    expect(hosts, greaterThan(0), reason: 'LIVENESS: the host was built');
+    expect(strays, isEmpty);
   });
 
   testWidgets('the list: the timeline\'s cuts, the one stood in in the '
