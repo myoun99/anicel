@@ -50,8 +50,7 @@ import '../../services/camera_frame_corners.dart'
     show
         CameraView,
         cameraFrameCornersInCanvas,
-        cameraViewOver,
-        pictureView;
+        cameraViewOver;
 import '../../models/sheet_marks.dart' show SheetMark;
 import '../../models/sheet_paint_layer.dart';
 import '../../services/camera_path.dart';
@@ -135,7 +134,6 @@ class ExportFrameRenderer {
     CameraFrameRenderService? renderService,
     this.layerFx,
     this.keepsRowsApart = false,
-    this.giveWay,
     ui.Color background = exportFrameGround,
   }) : renderService =
            renderService ?? CameraFrameRenderService(background: background);
@@ -195,12 +193,6 @@ class ExportFrameRenderer {
   /// cost it was chosen at: the file's picture differs from the app's by
   /// those effects.
   final bool keepsRowsApart;
-
-  /// Waited for before each row a panel's picture ([renderPicture])
-  /// composes — a picture nobody waits for stands behind the hand
-  /// ([CameraFrameRenderService.renderThroughCamera]). None where someone
-  /// waits for the render: an export, a bake.
-  final Future<void> Function()? giveWay;
 
   /// The cels the frame being drawn has read, and the ones the frame before
   /// it read — all this renderer holds (card `render-reads-thaw-into-hot`).
@@ -936,22 +928,16 @@ class ExportFrameRenderer {
     ],
   ];
 
-  /// A panel's picture — the storyboard's, the conte's: [cut] at
-  /// [frameIndex] through its camera, or over the canvas [region] a conte
-  /// cell's moving camera sweeps ([pictureView]) — [width] pixels wide, in
-  /// the shape of what it shows, reduced as the canvas's display reduces
-  /// ([CameraFrameRenderService.renderThroughCamera]) — its rows each after
-  /// [giveWay].
-  Future<ui.Image> renderPicture(
-    Cut cut,
-    int frameIndex, {
-    required int width,
-    ui.Rect? region,
-  }) async {
-    final view = pictureView(
-      _viewFor(cut, frameIndex, ExportSizeMode.camera),
-      region,
-    );
+  /// [cut]'s rows at [frameIndex] over the canvas [region], a pixel a
+  /// pixel — a camera standing square over it ([cameraViewOver]), and the
+  /// pasteboard it takes in kept: what a merge lays as the one cel its rows
+  /// become (`merge_layer_rows`).
+  ///
+  /// ↩️It was a panel's picture too — at a panel's width, through the
+  /// camera where no region was given — until a panel was cut from the
+  /// frame's one picture (F-533-Q8, `PanelPictures`).
+  Future<ui.Image> renderOver(Cut cut, int frameIndex, ui.Rect region) async {
+    final view = cameraViewOver(region);
     _startFrame();
     await _hydrate(cut, frameIndex);
     return renderService.renderThroughCamera(
@@ -959,8 +945,6 @@ class ExportFrameRenderer {
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       canvasSize: cut.canvasSize,
-      outputSize: view.frameSize.scaledToWidth(width),
-      giveWay: giveWay,
     );
   }
 

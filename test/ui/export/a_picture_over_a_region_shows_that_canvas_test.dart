@@ -23,7 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/panel_pictures.dart';
 
 /// A conte cell whose camera moves shows the canvas that camera sweeps
 /// (유저 2026-09-29: 「일단 카메라 팬대로 해당 코마에서 보여주고」): its
@@ -106,10 +106,9 @@ void main() {
       );
 
       Future<(int, int, ByteData)> picture({ui.Rect? region}) async {
-        final image = await ExportFrameRenderer(
+        final image = await PanelPictures(
           session: session,
-          background: const ui.Color(0x00000000),
-        ).renderPicture(cut, 0, width: 32, region: region);
+        ).render(cut, 0, width: 32, region: region);
         final bytes = await image.toByteData(
           format: ui.ImageByteFormat.rawRgba,
         );
@@ -118,19 +117,20 @@ void main() {
         return (size.$1, size.$2, bytes!);
       }
 
-      int alphaAt((int, int, ByteData) picture, int x, int y) =>
-          picture.$3.getUint8((y * picture.$1 + x) * 4 + 3);
+      // The ink a pixel holds: the paper's white it takes away.
+      int inkAt((int, int, ByteData) picture, int x, int y) =>
+          255 - picture.$3.getUint8((y * picture.$1 + x) * 4);
 
       final corner = await picture(
         region: const ui.Rect.fromLTWH(0, 0, 32, 18),
       );
       expect((corner.$1, corner.$2), (32, 18));
       expect(
-        alphaAt(corner, 4, 4),
+        inkAt(corner, 4, 4),
         greaterThan(200),
         reason: 'the dab, a pixel a pixel',
       );
-      expect(alphaAt(corner, 20, 12), 0);
+      expect(inkAt(corner, 20, 12), 0);
 
       final wide = await picture(region: const ui.Rect.fromLTWH(0, 0, 64, 18));
       expect(
@@ -139,7 +139,7 @@ void main() {
         reason: 'the region\'s shape, 32 wide',
       );
       expect(
-        alphaAt(wide, 2, 2),
+        inkAt(wide, 2, 2),
         greaterThan(100),
         reason: 'the dab, at half the size',
       );
@@ -147,14 +147,14 @@ void main() {
       final beside = await picture(
         region: const ui.Rect.fromLTWH(32, 0, 32, 18),
       );
-      expect(alphaAt(beside, 4, 4), 0, reason: 'another region, no dab');
+      expect(inkAt(beside, 4, 4), 0, reason: 'another region, no dab');
 
       final camera = await picture();
       expect((camera.$1, camera.$2), (32, 18));
       for (var y = 0; y < 18; y += 1) {
         for (var x = 0; x < 32; x += 1) {
           expect(
-            alphaAt(camera, x, y),
+            inkAt(camera, x, y),
             0,
             reason: 'the camera\'s view holds no dab ($x, $y)',
           );

@@ -509,12 +509,26 @@ class FramePictureStore<K extends Object> {
   /// Answers once every patch asked for is in its picture, at every level.
   Future<void> settled() async {
     for (final entry in _everyEntry) {
-      await entry.renders;
+      await _settledAt(entry);
+    }
+  }
+
+  /// [settled] for [key]'s picture alone: what one drawn off the screen at a
+  /// level waits for, without telling the picture it is read
+  /// ([FramePicture.readAt]) — a screen's reading lays every step of the
+  /// patches after it that deep (a panel's, F-533).
+  Future<void> leveled(K key) async {
+    if (_entries[key] case final entry?) {
+      await _settledAt(entry);
+    }
+  }
+
+  Future<void> _settledAt(_Entry<K> entry) async {
+    await entry.renders;
+    await entry.writes;
+    while (entry.picture._owed != null && !entry.gone) {
+      _writeOwed(entry);
       await entry.writes;
-      while (entry.picture._owed != null && !entry.gone) {
-        _writeOwed(entry);
-        await entry.writes;
-      }
     }
   }
 

@@ -31,6 +31,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/panel_pictures.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart'
     show ExportLayerRow;
 
@@ -205,7 +206,9 @@ void main() {
           await renderer.renderComposite(task, ExportSizeMode.camera),
         ),
         panel: await bytesOf(
-          await renderer.renderPicture(cut, 0, width: frameSize.width),
+          await PanelPictures(
+            session: s,
+          ).render(cut, 0, width: frameSize.width),
         ),
       );
     }
@@ -216,8 +219,20 @@ void main() {
         await tester.runAsync(() async {
           final (:video, :still, :panel) = await routes(zoom);
           expect(still.length, frameSize.width * frameSize.height * 4);
+          expect(panel.length, still.length);
 
-          expect(still, panel, reason: 'the reduction the canvas draws');
+          // The panel is cut from the frame's one picture, composed on its
+          // paper and then reduced (F-533-Q8); a still reduces each row and
+          // then composes them on its ground: rounded apart wherever a
+          // pixel takes a line in part, by a few levels at most.
+          // ↩️Byte for byte while a panel was a still of its own
+          // (`ExportFrameRenderer.renderPicture`).
+          var panelMost = 0;
+          for (var i = 0; i < still.length; i += 1) {
+            final apart = (panel[i] - still[i]).abs();
+            panelMost = apart > panelMost ? apart : panelMost;
+          }
+          expect(panelMost, lessThanOrEqualTo(3), reason: 'one reduction');
           // The film lays the cut's picture — composed on clear — on its
           // stage's paper, as playback lays it: rounded once more than a
           // picture composed straight onto its ground.
@@ -479,8 +494,8 @@ void main() {
       });
 
       testWidgets('🎯through a camera at $where, the cut takes nothing of a '
-          'pixel the canvas covers in part: there a picture of the sequence '
-          'is the panel\'s picture, which is cut nowhere', (tester) async {
+          'pixel the canvas covers in part: a picture of the sequence is '
+          'the panel\'s picture, cut where the film is', (tester) async {
         await tester.runAsync(() async {
           final (s, renderer) = filmAt(pose);
           final cut = s.requireActiveCut;
@@ -497,18 +512,13 @@ void main() {
             reason: 'LIVENESS: the edge falls inside a pixel',
           );
           final panel = await bytesOf(
-            await renderer.renderPicture(cut, 0, width: canvas.width),
+            await PanelPictures(
+              session: s,
+            ).render(cut, 0, width: canvas.width),
           );
-          // The film's pixels the canvas covers, whole or in part: the
-          // frame's centre at (30, 19), the canvas `zoom` a canvas pixel.
-          final z = pose.zoom;
-          final left = (30 - pose.center.x * z).floor();
-          final right = (30 + (canvas.width - pose.center.x) * z).ceil();
-          final top = (19 - pose.center.y * z).floor();
-          final bottom = (19 + (canvas.height - pose.center.y) * z).ceil();
           final apart = <String>[
-            for (var y = top; y < bottom; y += 1)
-              for (var x = left; x < right; x += 1)
+            for (var y = 0; y < canvas.height; y += 1)
+              for (var x = 0; x < canvas.width; x += 1)
                 if (pixelOf(still, canvas.width, x, y) !=
                     pixelOf(panel, canvas.width, x, y))
                   '($x, $y): ${pixelOf(still, canvas.width, x, y)} → '
@@ -519,7 +529,9 @@ void main() {
           // row spreads its edge a level's texel past the canvas — onto
           // the pasteboard the film does not show (「페이스트보드는 포함
           // 안 시킴」), and cut there as playback's shot cuts it
-          // (`ShotClip`), until one-picture-per-frame ②-5b-3.
+          // (`ShotClip`), until one-picture-per-frame ②-5b-3. Then only
+          // where the canvas lies, a panel being cut nowhere — until it was
+          // cut from the frame's picture where the film is (F-533-Q8).
           expect(apart, isEmpty);
         });
       });
@@ -876,6 +888,24 @@ void main() {
             pixelOf(gradedFrame, 8, 6, 4),
             (255, 255, 255, 255),
             reason: 'the paper as it is',
+          );
+        });
+      });
+
+      testWidgets('🎯a panel\'s picture is the cut\'s own: the chain is the '
+          'track\'s, not the block\'s (R4)', (tester) async {
+        await tester.runAsync(() async {
+          final graded = halfInked([brightness(EffectParameter(value: 50))]);
+          addTearDown(graded.dispose);
+          final panel = await bytesOf(
+            await PanelPictures(
+              session: graded,
+            ).render(graded.requireActiveCut, 0, width: 8),
+          );
+          expect(
+            (pixelOf(panel, 8, 1, 4), pixelOf(panel, 8, 6, 4)),
+            ((0, 0, 100, 255), (255, 255, 255, 255)),
+            reason: 'the ink and the paper as they are',
           );
         });
       });

@@ -457,6 +457,46 @@ class FramePictures implements PlaybackPictures {
     keepsNodes: keepsNodes,
   );
 
+  /// 🚨THE PICTURE A PANEL IS CUT FROM (F-533-Q8, 유저 2026-11-05: 「프레임
+  /// 그림에서 잘라 쓴다」 · 「최대한 하나로 통합」): the frame [nodes] stack for
+  /// [picture], under its key ([keyOfStack]) — the canvas's and the warmer's
+  /// own wherever they stack the frame alike — and made in the store's line
+  /// as one made ahead is ([make]) where none is there — whole at every
+  /// level ([FramePictureStore.leveled]): a panel draws it reduced. Null
+  /// where there is none to cut from: the frame draws its page alone
+  /// ([drawsOnlyItsPage]), a canvas holds it as its own over what no cel
+  /// stores ([_isThere] — a panel is of what the cels store), or the making
+  /// was given up.
+  ///
+  /// ↩️A panel composed the frame again for itself, every row at the
+  /// canvas's size (`ExportFrameRenderer.renderPicture`) — 🔬S5_BA cut 352,
+  /// 68 rows: about 180 Mpx a picture, seconds of a Surface Pro 11's GPU
+  /// each time the pen came up.
+  Future<FramePicture?> pictureOf(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture, {
+    required bool Function() shouldAbort,
+  }) async {
+    var key = keyOfStack(nodes, picture);
+    if (!store.holds(key)) {
+      if (_isThere(key) ||
+          !await _make(
+            () => nodes,
+            picture,
+            shouldAbort: shouldAbort,
+            due: notDue,
+            shownNow: false,
+            keepsNodes: false,
+          )) {
+        return null;
+      }
+      // Asked once it is made: a cel it was made without is noted then.
+      key = keyOfStack(nodes, picture);
+    }
+    await store.leveled(key);
+    return store.peek(key);
+  }
+
   /// 🚨Holds the nodes of the frame [nodes] stack for [picture] — one a
   /// screen stands on to draw on, its picture laid ahead of it ([make]),
   /// which keeps none ([heldNodes]): the frame drawn as it is laid, in its

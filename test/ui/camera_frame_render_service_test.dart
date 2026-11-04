@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -21,7 +20,6 @@ import 'package:anicel/src/services/straight_rgba_image.dart';
 import '../helpers/awaited_uploads.dart';
 
 import '../helpers/placement_reading.dart';
-import '../helpers/poll_until.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -423,46 +421,6 @@ void main() {
       expect(image.height, 4);
       // Canvas pixel (2..3) maps to output (1..1.5): probe (1,1).
       expect(await pixelAt(image, 1, 1), isNot(const Color(0xFFFFFFFF)));
-      image.dispose();
-    });
-  });
-
-  testWidgets('a render that gives way waits before each row it composes '
-      '(F-533)', (tester) async {
-    await tester.runAsync(() async {
-      final held = Completer<void>();
-      var asked = 0;
-      Future<void> giveWay() {
-        asked += 1;
-        return asked == 1 ? held.future : Future<void>.value();
-      }
-
-      var rendered = false;
-      final rendering = service.renderThroughCamera(
-        canvasSize: canvasSize,
-        layers: [
-          CutFrameCompositeLayer(
-            surface: surfaceWithRedPixelAt(1, 2),
-            opacity: 1,
-          ),
-          CutFrameCompositeLayer(
-            surface: surfaceWithRedPixelAt(5, 5),
-            opacity: 1,
-          ),
-        ],
-        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
-        cameraFrameSize: canvasSize,
-        giveWay: giveWay,
-      );
-      unawaited(rendering.then((_) => rendered = true));
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      expect(asked, 1, reason: 'the first row waits');
-      expect(rendered, isFalse);
-
-      held.complete();
-      final image = await patiently(rendering);
-      expect(asked, 2, reason: 'once a row');
-      expect(await pixelAt(image, 5, 5), const Color(0xFFFF0000));
       image.dispose();
     });
   });

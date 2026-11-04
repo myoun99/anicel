@@ -22,7 +22,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart'
     show filterQualityForDisplayScale;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/panel_pictures.dart';
 import 'package:anicel/src/ui/sheet_painting.dart';
 
 /// 🗣️F-215 (유저 2026-09-30): 「브러시허용누르면 그림 바뀌는거 … 허용누르면
@@ -43,9 +43,10 @@ void main() {
   const canvas = CanvasSize(width: 128, height: 128);
   const size = 128;
 
-  /// A picture [width] pixels wide of a cut whose one cel is black on the
-  /// columns [inked] picks, clear between, over [region] of its canvas —
-  /// the alpha of its tenth row.
+  /// A panel's picture [width] pixels wide of a cut whose one cel is black
+  /// on the columns [inked] picks, clear between, over [region] of its
+  /// canvas — the ink each pixel of its tenth row holds: the paper's white
+  /// it takes away.
   Future<List<int>> pictureRow(
     WidgetTester tester, {
     required bool Function(int x) inked,
@@ -114,10 +115,9 @@ void main() {
           ),
         ]),
       );
-      final image = await ExportFrameRenderer(
+      final image = await PanelPictures(
         session: session,
-        background: const ui.Color(0x00000000),
-      ).renderPicture(cut, 0, width: width, region: region);
+      ).render(cut, 0, width: width, region: region);
       final bytes = (await image.toByteData(
         format: ui.ImageByteFormat.rawRgba,
       ))!;
@@ -126,7 +126,7 @@ void main() {
       session.dispose();
       return [
         for (var x = 0; x < shown; x += 1)
-          bytes.getUint8((9 * shown + x) * 4 + 3),
+          255 - bytes.getUint8((9 * shown + x) * 4),
       ];
     }))!;
   }
@@ -162,10 +162,12 @@ void main() {
       region: const ui.Rect.fromLTWH(1, 0, 128, 72),
     );
     // The display's draw of the same ink: its one picture at canvas
-    // resolution, a quarter, a canvas pixel to the left.
+    // resolution — on its paper, as the frame's picture holds it — a
+    // quarter, a canvas pixel to the left.
     final shown = (await tester.runAsync(() async {
       final ink = ui.PictureRecorder();
-      final into = ui.Canvas(ink);
+      final into = ui.Canvas(ink)
+        ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src);
       for (var x = 0; x < size; x += 1) {
         if (inked(x)) {
           into.drawRect(
@@ -179,6 +181,8 @@ void main() {
       inkPicture.dispose();
       final reduced = ui.PictureRecorder();
       ui.Canvas(reduced)
+        // Paper past the canvas too: the panel's ground.
+        ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src)
         ..scale(0.25)
         ..translate(-1, 0)
         ..drawImage(
@@ -196,7 +200,7 @@ void main() {
       image.dispose();
       return [
         for (var x = 0; x < 32; x += 1)
-          bytes.getUint8((9 * 32 + x) * 4 + 3),
+          255 - bytes.getUint8((9 * 32 + x) * 4),
       ];
     }))!;
     expect(

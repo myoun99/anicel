@@ -23,6 +23,7 @@ import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../editor_session_manager.dart';
+import '../panel_pictures.dart';
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -1420,9 +1421,9 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// Renders each cell picture the conte [pages] name, once — a window's
-  /// [width] wide ([contePictureRenderWidth]) — fresh composites straight from
-  /// the brush store (the storyboard thumbnail rule: the cache is
-  /// panel-resolution, an export re-renders). [have] says which keys the
+  /// [width] wide ([contePictureRenderWidth]) — cut from the frame's one
+  /// picture as the conte tab's are ([PanelPictures]; the tab holds them at
+  /// its cells' size, a page's are cut again). [have] says which keys the
   /// caller already holds, and [take] receives each image and owns it from
   /// then on.
   ///
@@ -1438,7 +1439,7 @@ class ExportDialogState extends State<ExportDialog> {
     required Future<void> Function(SheetPictureKey key, ui.Image image) take,
   }) async {
     _contePictureSize = _session.camera.cameraFrameSize.scaledToWidth(width);
-    final renderer = ExportFrameRenderer(session: _session);
+    final panels = PanelPictures(session: _session);
     for (final page in pages) {
       for (final cell in page.cells) {
         final picture = contePictureOf(cell, page.metrics);
@@ -1453,7 +1454,7 @@ class ExportDialogState extends State<ExportDialog> {
         _sheetPartsMade += 1;
         await take(
           key,
-          await renderer.renderPicture(
+          await panels.render(
             cut,
             picture.pictureFrame,
             width: contePictureRenderWidth(picture, page.metrics, width),

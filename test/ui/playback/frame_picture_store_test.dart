@@ -934,6 +934,33 @@ void main() {
       store.dispose();
     });
 
+    test('🚨a picture drawn off the screen waits for every level it owes, '
+        'and is no screen: the steps after it lay no deeper (F-533-Q8)',
+        () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      (await _layed(store, 'a', 1024)).readAt(0.4);
+      store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
+      await store.landingOf('b');
+      expect(
+        levelsOf(gpu.levelWrites.single),
+        [1, 2, 3],
+        reason: 'LIVENESS: the rest owed',
+      );
+
+      await store.leveled('b');
+      expect(levelsOf(gpu.levelWrites.last), everyLevel, reason: 'all in');
+      store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
+      await store.landingOf('c');
+      expect(
+        levelsOf(gpu.levelWrites.last),
+        [1, 2, 3],
+        reason: 'what the screen reads, as before the panel drew',
+      );
+      await store.settled();
+      store.dispose();
+    });
+
     test('tells no screen as the rest of what it reads is laid: nothing it '
         'draws changes (F-533)', () async {
       final gpu = _RecordingGpu();

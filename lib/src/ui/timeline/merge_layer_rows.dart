@@ -290,12 +290,8 @@ final class _Laying {
   final ExportFrameRenderer _renderer;
 
   /// [from] at [frameIndex], over the whole wall.
-  Future<ui.Image> draw(Cut from, int frameIndex) => _renderer.renderPicture(
-    from,
-    frameIndex,
-    width: wall.rect.width.round(),
-    region: wall.rect,
-  );
+  Future<ui.Image> draw(Cut from, int frameIndex) =>
+      _renderer.renderOver(from, frameIndex, wall.rect);
 
   /// [image] laid as [cut]'s cel [frameId] of [rowId], where it lies.
   Future<void> lay(LayerId rowId, FrameId frameId, ui.Image image) async {

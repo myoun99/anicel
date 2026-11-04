@@ -252,12 +252,7 @@ void main() {
         background: const ui.Color(0x00000000),
       );
       try {
-        final image = await renderer.renderPicture(
-          cut,
-          frame,
-          width: wall.rect.width.round(),
-          region: wall.rect,
-        );
+        final image = await renderer.renderOver(cut, frame, wall.rect);
         try {
           final bytes = (await image.toByteData(
             format: ui.ImageByteFormat.rawStraightRgba,

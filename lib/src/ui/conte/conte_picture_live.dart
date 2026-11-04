@@ -158,10 +158,12 @@ class ContePictureLive extends StatelessWidget {
         landings: session.playbackRig.prerenderScheduler.landings,
         pictures: session.playbackRig.framePictures,
       ),
+      // The frame its print is cut from, on the same page: the print and
+      // the live one are one picture (F-533-Q8, `PanelPictures`).
       picture: (
         cut: picture.cut,
         frameIndex: picture.frame,
-        paintPaper: false,
+        paintPaper: true,
         ghosts: FrameGhosts.none,
       ),
       nodes: drawn.nodes,
