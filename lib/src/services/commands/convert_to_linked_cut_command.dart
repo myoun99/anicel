@@ -203,17 +203,27 @@ class ConvertToLinkedCutCommand implements Command {
     final resolution = resolveLayerMerge(origin: origin, target: target);
     final mergedBank = _mergedBank(rows, origin, target, resolution);
 
-    // Origin (and every existing member of its group) adopts the bank;
-    // here we set the origin layer — other members re-derive lazily
-    // through the shared FrameIds (their own frame lists gain the
-    // joiners on their next bank edit; the registry link already routes
-    // pixels correctly).
-    final originIndex = originSide.layers.indexWhere(
-      (layer) => layer.id == origin.id,
-    );
-    originSide.layers[originIndex] = origin.copyWith(frames: mergedBank);
+    // The origin and every row 겸용 with it already adopt the bank — a
+    // group's rows hold one bank — each keeping any cel it held that the
+    // origin's list did not. ↩️The origin's row alone did, the rest left to
+    // gain the joiners "on their next bank edit": a group parted before
+    // that (링크 해제, 동기 해제) copied the pictures each part's rows list,
+    // and a joiner's picture was gone from the part that had not gained it
+    // (F-555's linked paste, which converts, 2026-11-04).
+    final banked = {for (final frame in mergedBank) frame.id};
+    for (final member in _familyOf(rows, originCutId, origin.id)) {
+      final layers = rows.of(member.cutId);
+      final index = layers.indexWhere((layer) => layer.id == member.layerId);
+      layers[index] = layers[index].copyWith(
+        frames: [
+          ...mergedBank,
+          for (final frame in layers[index].frames)
+            if (!banked.contains(frame.id)) frame,
+        ],
+      );
+    }
 
-    for (final joiner in _targetFamily(rows, target.id)) {
+    for (final joiner in _familyOf(rows, targetCutId, target.id)) {
       final layers = rows.of(joiner.cutId);
       final index = layers.indexWhere((layer) => layer.id == joiner.layerId);
       layers[index] = _joinedRow(
@@ -268,19 +278,23 @@ class ConvertToLinkedCutCommand implements Command {
     return [...origin.frames, ...joiningFrames];
   }
 
-  /// The target row [targetId] and every row it was 겸용 with already — the
-  /// target's family, which a pair joins to the origin's (F-398 ⑤). None of
-  /// it is the origin's: a pair 겸용 already is no pair
+  /// [cutId]'s row [layerId] and every row it was 겸용 with already — its
+  /// family. A pair joins the target's to the origin's (F-398 ⑤), and none
+  /// of the one is the other's: a pair 겸용 already is no pair
   /// ([planConvertToLinkedCut]).
-  List<LayerLinkMember> _targetFamily(_ConvertRows rows, LayerId targetId) =>
+  List<LayerLinkMember> _familyOf(
+    _ConvertRows rows,
+    CutId cutId,
+    LayerId layerId,
+  ) =>
       rows.project.linkRegistry
-          .groupOf(cutId: targetCutId, layerId: targetId)
+          .groupOf(cutId: cutId, layerId: layerId)
           ?.members ??
       [
         LayerLinkMember(
-          trackId: rows.sideOf(targetCutId).trackId,
-          cutId: targetCutId,
-          layerId: targetId,
+          trackId: rows.sideOf(cutId).trackId,
+          cutId: cutId,
+          layerId: layerId,
         ),
       ];
 

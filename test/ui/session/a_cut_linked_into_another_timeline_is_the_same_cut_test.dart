@@ -1040,7 +1040,9 @@ void main() {
       isNotNull,
       reason: 'a 겸용 of the cut standing here',
     );
-    expect(again.duration, isNot(made.duration), reason: 'a 겸용 starts anew');
+    // 🗣️F-555 (유저 2026-11-04): 「컷블록을 복사하고 링크붙여넣기할땐 같은
+    // 타임라인인채로」. ↩️A 겸용 pasted linked started anew.
+    expect(again.duration, made.duration, reason: 'as it stands');
   });
 
   test('a row pasted linked inside one is one more row of the other — the '
