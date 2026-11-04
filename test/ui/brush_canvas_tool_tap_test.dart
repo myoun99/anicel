@@ -5,14 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -433,6 +442,191 @@ void main() {
         await pen.up();
         await tester.pumpAndSettle();
         expect(inkWhere(coordinator, picked.at), 0, reason: 'held, not laid');
+      });
+
+      testWidgets('its cel gone, the held range goes with it', (tester) async {
+        final (:coordinator, :overlay, :floods) = await pumpHeld(
+          tester,
+          gradient: gradient,
+        );
+        final picked = await pick(tester, floods);
+        final frameKeys = BrushCanvasFixture.createFrameKeys();
+        coordinator.selectFrame(frameKeys[1]);
+        // The host builds the panel again on the other cel, as a flip does.
+        tester.element(find.byType(BrushCanvasPanel)).markNeedsBuild();
+        await tester.pumpAndSettle();
+        expect(overlay.fillRange, isNull);
+
+        final pen = await tester.startGesture(
+          picked.origin + Offset(picked.at.x, picked.at.y),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        expect(floods, hasLength(2), reason: 'a press picks anew');
+        await pen.up();
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('the gradient is cut by the selection, as the fill is', (
+        tester,
+      ) async {
+        final (:coordinator, :overlay, :floods) = await pumpHeld(
+          tester,
+          gradient: gradient,
+          selection: CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(left: 0, top: 0, right: 200, bottom: 400),
+          ),
+        );
+        final origin = tester.getTopLeft(
+          find.byKey(const ValueKey<String>('brush-canvas-view')),
+        );
+        final press = await tester.startGesture(
+          origin + const Offset(200, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await press.up();
+        await tester.pump();
+        final pen = await dragAcross(tester, (
+          at: floods.single,
+          origin: origin,
+        ));
+        await pen.up();
+        await tester.pump();
+        await tester.pump();
+        final left = floods.single.x.floor() - 8;
+        final y = floods.single.y.floor();
+        expect(inkAt(coordinator, left + 3, y), isNonZero, reason: 'inside');
+        expect(inkAt(coordinator, left + 12, y), 0, reason: 'past it');
+      });
+
+      testWidgets('the gradient lays under the fill\'s blend — erase takes '
+          'ink away as far as the gradient reaches', (tester) async {
+        final brush = ValueNotifier(
+          BrushToolState.defaults.copyWith(
+            tool: CanvasTool.fill,
+            fillBlendMode: BrushBlendMode.erase,
+          ),
+        );
+        final (:coordinator, :overlay, :floods) = await pumpHeld(
+          tester,
+          gradient: const FillGradientOptions(
+            enabled: true,
+            end: FillGradientEnd.transparent,
+          ),
+          brush: brush,
+        );
+        coordinator.commitSourceStroke(
+          sourceDabs: [
+            for (var x = 8; x <= 40; x += 4)
+              fillDab(
+                0xFF000000,
+              ).copyWith(center: CanvasPoint(x: x.toDouble(), y: 16)),
+          ],
+        );
+        final origin = tester.getTopLeft(
+          find.byKey(const ValueKey<String>('brush-canvas-view')),
+        );
+        final press = await tester.startGesture(
+          origin + const Offset(24, 16),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await press.up();
+        await tester.pumpAndSettle();
+        final left = floods.single.x.floor() - 8;
+        expect(inkAt(coordinator, left, 16), isNonZero, reason: 'ink there');
+        final pen = await dragAcross(tester, (
+          at: floods.single,
+          origin: origin,
+        ));
+        await pen.up();
+        await tester.pumpAndSettle();
+        expect(inkAt(coordinator, left, 16), 0, reason: 'the start erases');
+        expect(
+          inkAt(coordinator, left + 15, 16),
+          isNonZero,
+          reason: 'its clear end leaves the ink',
+        );
+      });
+
+      testWidgets('an open range is laid as ever — it says so at the lift '
+          'and holds nothing for a gradient', (tester) async {
+        var said = 0;
+        var floods = 0;
+        const size = CanvasSize(width: 16, height: 16);
+        final frameKeys = BrushCanvasFixture.createFrameKeys();
+        await tester.pumpWidget(
+          app(
+            BrushCanvasPanel(
+              coordinator: BrushCanvasFixture.createCoordinator(
+                frameKeys: frameKeys,
+              ),
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              brushToolState: ValueNotifier(
+                BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
+              ),
+              viewport: seedFromRender(tester, CanvasViewport()),
+              // Nothing drawn and the fill let out past the canvas: the
+              // flood reaches the apron's wall wherever it starts.
+              fillRangeAt: (_, _) {
+                floods += 1;
+                return fillRangeAt(
+                  cut: Cut(
+                    id: const CutId('open'),
+                    name: 'Open',
+                    duration: 24,
+                    canvasSize: size,
+                    layers: [
+                      Layer(
+                        id: const LayerId('ink'),
+                        name: 'Ink',
+                        frames: [
+                          Frame(
+                            id: const FrameId('ink-frame'),
+                            duration: 1,
+                            strokes: const [],
+                          ),
+                        ],
+                        timeline: {
+                          0: const TimelineExposure.drawing(
+                            FrameId('ink-frame'),
+                            length: 1,
+                          ),
+                        },
+                      ),
+                    ],
+                  ),
+                  frameIndex: 0,
+                  surfaceResolver: (_, _) =>
+                      BitmapSurface(canvasSize: size, tileSize: 4),
+                  point: CanvasPoint(x: 3, y: 3),
+                  options: const FloodFillOptions(
+                    expandPx: 0,
+                    antiAlias: false,
+                    extendBeyondCanvas: true,
+                  ),
+                  onOpenRegion: () => said += 1,
+                );
+              },
+              fillGradient: () => (options: gradient, sub: _sub),
+            ),
+          ),
+        );
+        await tester.pump();
+        final view = find.byKey(const ValueKey<String>('brush-canvas-view'));
+        for (var press = 1; press <= 2; press += 1) {
+          final pen = await tester.startGesture(
+            tester.getCenter(view),
+            kind: PointerDeviceKind.stylus,
+          );
+          await tester.pump();
+          await pen.up();
+          await tester.pumpAndSettle();
+          expect(said, press, reason: 'said at each lift');
+          expect(floods, press, reason: 'each press picks');
+        }
       });
 
       testWidgets('switched off while a range is held: the next press picks '
