@@ -290,4 +290,48 @@ void main() {
     s.undo();
     expect(s.repository.requireProject().tracks.single.cuts, hasLength(2));
   });
+
+  // 🗣️F-559 (유저 2026-11-04): 「컷블록 링크붙여넣기로 타임라인 같은
+  // 겸용컷만들때, 언두하고 리두하면 다시 생겨야하는데 안생김.
+  // 독립붙여넣기도 동일」.
+  for (final linked in [true, false]) {
+    final paste = linked ? 'linked' : 'independent';
+    test('undone and done again, an $paste paste of a cut comes back '
+        'whole — its cut, its timing and its pictures', () {
+      final s = copiedTen();
+      final pill = standOnV(s, 7);
+      linked ? pill.pasteLinkedFrame() : pill.pasteIndependentFrame();
+      List<String> names() => [
+        for (final cut in s.repository.requireProject().tracks.single.cuts)
+          cut.name,
+      ];
+      final pasted = names();
+      expect(pasted, hasLength(3), reason: '⛔전제: the paste made a cut');
+      final made = cutNamed(s, pasted.last);
+      final drawing = made.layers.singleWhere((one) => one.name == 'A');
+      final store = s.renderCaches.brushFrameStore;
+      Object? pictures(Cut cut) => [
+        for (final cel in drawing.timeline.values)
+          store.bakedSurfaceOrNull(
+            s.brushFrameKeyForCut(cut, drawing.id, cel.frameId!),
+          ),
+      ];
+      final shown = pictures(made);
+      expect(shown, everyElement(isNotNull), reason: '⛔전제: pictures');
+
+      s.undo();
+      expect(names(), ['10', '11'], reason: '⛔전제: undone');
+
+      s.redo();
+      expect(names(), pasted, reason: '「다시 생겨야하는데」');
+      final again = cutNamed(s, pasted.last);
+      expect(again.id, made.id);
+      expect(again.duration, made.duration);
+      expect(
+        again.layers.singleWhere((one) => one.name == 'A').timeline,
+        drawing.timeline,
+      );
+      expect(pictures(again), everyElement(isNotNull));
+    });
+  }
 }
