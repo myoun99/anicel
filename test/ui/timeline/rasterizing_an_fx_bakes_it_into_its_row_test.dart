@@ -26,6 +26,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -1499,12 +1500,19 @@ void main() {
     Layer twinOf(EditorSessionManager s) =>
         s.requireActiveCut.layers.firstWhere((layer) => layer.name == 'A');
 
+    /// `r`'s use in the cut [s] stands in — the cut linked to `a`'s.
+    Layer riderTwinOf(EditorSessionManager s) =>
+        s.requireActiveCut.layers.firstWhere((layer) => layer.name == 'R');
+
     /// [layers] in one cut ([sessionOf]) and a cut linked to it, stood in —
     /// `a`'s use there showing `a`'s timing, values and keys, made [twin] of
-    /// that where given. A 겸용컷 is made with its lanes empty (F-555).
+    /// that where given, and `r`'s, where it rides, showing `r`'s timing,
+    /// made [riderTwin] of that. A 겸용컷 is made with its lanes empty
+    /// (F-555).
     EditorSessionManager linkedOf(
       List<Layer> layers, {
       Layer Function(Layer use)? twin,
+      Layer Function(Layer use)? riderTwin,
     }) {
       final s = plain(layers);
       s.cutVerbs.createLinkedCutFromActiveCut();
@@ -1515,6 +1523,12 @@ void main() {
         transformTrack: a.transformTrack,
       );
       s.repository.replaceLayer(layer: twin == null ? use : twin(use));
+      for (final r in layers.where((layer) => layer.id == const LayerId('r'))) {
+        final ridden = riderTwinOf(s).copyWith(timeline: r.timeline);
+        s.repository.replaceLayer(
+          layer: riderTwin == null ? ridden : riderTwin(ridden),
+        );
+      }
       return s;
     }
 
@@ -1774,6 +1788,159 @@ void main() {
         ],
         ['bakes', 'usesApart'],
       );
+    });
+
+    group('④b — the rows riding it, which wear its fx, are baked with it in '
+        "every cut, a rider's uses sharing one bank as the row's do", () {
+      /// `r` in `a`'s own cut, wherever [s] stands.
+      Layer rIn(EditorSessionManager s) => cutsOf(
+        s,
+      ).firstWhere((cut) => cut.id == cutId).layers.byId(const LayerId('r'))!;
+
+      testWidgets('🎯a still fx pressed in the linked cut: a synced rider is '
+          "baked with it in both cuts, a cel for each of the row's new ones "
+          'in one bank — each cut showing what it showed — and one undo '
+          'gives both back', (tester) async {
+        final s = linkedOf([
+          rowA(effects: [brightness(keyed: false)]),
+          riderOf('a'),
+        ]);
+        final before = rowsOf(s);
+        final seen = await seenIn(tester, s);
+
+        await press(tester, s, twinOf(s).id);
+
+        final (original, twin) = (rIn(s), riderTwinOf(s));
+        expect(original.frames.single.id, isNot(const FrameId('r-1')));
+        expect(twin.frames, original.frames, reason: 'one bank');
+        for (final (rider, base) in [(original, aIn(s)), (twin, twinOf(s))]) {
+          expect(rider.baseFrameLinks, {
+            base.frames.single.id: original.frames.single.id,
+          });
+        }
+        expect(await seenIn(tester, s), seen);
+
+        s.undo();
+        expect(rowsOf(s), before);
+        s.playbackRig.prerenderScheduler.cancel();
+      });
+
+      testWidgets('🎯a keyed fx: a free rider parts its cel in both cuts '
+          'alike, one bank', (tester) async {
+        final s = linkedOf([rowA(), riderOf('a', free: true)]);
+        final seen = await seenIn(tester, s);
+        expect(coloursOf(seen), hasLength(3), reason: '⛔전제: three pictures');
+
+        await press(tester, s, const LayerId('a'));
+
+        final (original, twin) = (rIn(s), riderTwinOf(s));
+        expect([for (final cel in original.frames) cel.name], [
+          '1',
+          '1-2',
+          '1-3',
+        ]);
+        expect(twin.frames, original.frames, reason: 'one bank');
+        expect(celsOf(twin), celsOf(original));
+        expect(celsOf(original).toSet(), hasLength(3));
+        expect(await seenIn(tester, s), seen);
+        s.playbackRig.prerenderScheduler.cancel();
+      });
+
+      test("🚨a rider's cel shown as other pictures in each cut, which one "
+          'cel cannot hold: it bakes nothing, as the row\'s would not', () {
+        final s = linkedOf(
+          [rowA(), riderOf('a', free: true)],
+          riderTwin: (use) => use.copyWith(
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('r-1'), length: 2),
+            },
+          ),
+        );
+        expect(outcomeOf(s, const LayerId('a'), bright), 'usesApart');
+      });
+
+      test('a row riding it in one of its cuts alone is baked there', () {
+        final s = sessionOf([rowA()]);
+        addTearDown(s.dispose);
+        s.cutVerbs.createLinkedCutFromActiveCut();
+        final cut = s.requireActiveCut;
+        final twin = cut.layers.firstWhere((layer) => layer.name == 'A');
+        s.repository.setCutLayers(
+          cutId: cut.id,
+          layers: [...cut.layers, riderOf(twin.id.value, free: true)],
+        );
+
+        final plan = s.layerMerging.bakeOf(twin.id, bright)!;
+        expect(plan.riders.single.id, const LayerId('r'));
+        expect(
+          [for (final cel in plan.riders.single.frames) cel.name],
+          ['1', '1-2', '1-3'],
+        );
+        expect(plan.others.single.layers.byId(const LayerId('r')), isNull);
+        expect(s.layerMerging.bakesFx(const LayerId('a'), bright), isTrue);
+      });
+
+      test('🚨a rider linked to a row riding one that is no use of the row — '
+          'its cels that row\'s too, which the press does not reach — stands '
+          'the press down', () {
+        const second = CutId('cut2');
+        Layer rides(String id, String base) => riderOf(base, free: true)
+            .copyWith(id: LayerId(id));
+        Cut cutOf(CutId id, Layer row, String rider) => Cut(
+          id: id,
+          name: id.value,
+          duration: 3,
+          canvasSize: canvasSize,
+          layers: [
+            row,
+            rides(rider, row.id.value),
+            createCameraLayer(cutId: id),
+          ],
+        );
+        LayerLinkMember member(CutId cut, String row) => LayerLinkMember(
+          trackId: const TrackId('track'),
+          cutId: cut,
+          layerId: LayerId(row),
+        );
+        bool bakes({required bool linked}) {
+          final s = EditorSessionManager(
+            initialProject: Project(
+              id: const ProjectId('project'),
+              name: 'Project',
+              cameraSize: canvasSize,
+              tracks: [
+                Track(
+                  id: const TrackId('track'),
+                  name: 'Track',
+                  cuts: [
+                    cutOf(cutId, rowA(), 'r'),
+                    cutOf(second, rowA().copyWith(id: const LayerId('b')), 'q'),
+                  ],
+                ),
+              ],
+              linkRegistry: LayerLinkRegistry(
+                groups: [
+                  if (linked)
+                    LayerLinkGroup(
+                      id: 'riders',
+                      members: [member(cutId, 'r'), member(second, 'q')],
+                    ),
+                ],
+              ),
+              createdAt: DateTime.utc(2026),
+            ),
+          );
+          addTearDown(s.dispose);
+          expect(
+            s.repository.requireProject().linkRegistry.groups,
+            hasLength(linked ? 1 : 0),
+            reason: '⛔전제: the riders are one where linked',
+          );
+          return s.layerMerging.bakesFx(const LayerId('a'), bright);
+        }
+
+        expect([bakes(linked: false), bakes(linked: true)], [true, false]);
+      });
     });
   });
 
@@ -2186,22 +2353,6 @@ void main() {
       ]);
       addTearDown(s.dispose);
       expect(bakes(s, 'a'), isFalse);
-    });
-
-    test('a 겸용 row a row wearing its fx rides, in any of its cuts (④b)', () {
-      final s = sessionOf([rowA()]);
-      addTearDown(s.dispose);
-      s.cutVerbs.createLinkedCutFromActiveCut();
-      final cut = s.requireActiveCut;
-      final twin = cut.layers.firstWhere((layer) => layer.name == 'A');
-      expect(bakes(s, 'a'), isTrue, reason: '⛔전제: a 겸용 row bakes');
-
-      s.repository.setCutLayers(
-        cutId: cut.id,
-        layers: [...cut.layers, riderOf(twin.id.value, free: true)],
-      );
-
-      expect([bakes(s, 'a'), bakes(s, twin.id.value)], [false, false]);
     });
 
     test('a reference row (⑤)', () {
