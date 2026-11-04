@@ -304,4 +304,36 @@ void main() {
 
     expect(tracker.debugDeviceActiveCursor(penDevice), isNotNull);
   });
+
+  // ⛔A pen going out of reach is no pointer that moved: the mouse that
+  // moved last keeps its cursor, and goes on hearing what changes under it
+  // — a 확정 going dead under it among them.
+  testWidgets('a pen leaving leaves the mouse that moved last its cursor', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: project())),
+    );
+    await tester.pumpAndSettle();
+    final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+    await pen.addPointer(location: visibleCanvasPoint(tester));
+    await pumpFrames(tester);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(confirm));
+    addTearDown(mouse.removePointer);
+    await pumpFrames(tester);
+    final tracker = RendererBinding.instance.mouseTracker;
+    // flutter_test numbers a mouse device 1.
+    const mouseDevice = 1;
+    expect(
+      tracker.debugDeviceActiveCursor(mouseDevice),
+      isNotNull,
+      reason: '⛔CONTROL: the mouse moved last',
+    );
+
+    await pen.removePointer();
+    await pumpFrames(tester);
+
+    expect(tracker.debugDeviceActiveCursor(mouseDevice), isNotNull);
+  });
 }
