@@ -2589,6 +2589,12 @@ void main() {
         ),
       );
       s.cutVerbs.createLinkedCutFromActiveCut();
+      // Its own still, one picture a panel there.
+      s.repository.replaceLayer(
+        layer: s.requireActiveCut.layers
+            .firstWhere((row) => row.name == 'K1')
+            .copyWith(effects: [still(30)]),
+      );
       final plan = s.layerMerging.bakeOf(const LayerId('k'), bright)!;
       final rows = {
         for (final (:cut, :layers) in [
