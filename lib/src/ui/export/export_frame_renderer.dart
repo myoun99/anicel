@@ -135,6 +135,7 @@ class ExportFrameRenderer {
     CameraFrameRenderService? renderService,
     this.layerFx,
     this.keepsRowsApart = false,
+    this.giveWay,
     ui.Color background = exportFrameGround,
   }) : renderService =
            renderService ?? CameraFrameRenderService(background: background);
@@ -194,6 +195,12 @@ class ExportFrameRenderer {
   /// cost it was chosen at: the file's picture differs from the app's by
   /// those effects.
   final bool keepsRowsApart;
+
+  /// Waited for before each row a panel's picture ([renderPicture])
+  /// composes — a picture nobody waits for stands behind the hand
+  /// ([CameraFrameRenderService.renderThroughCamera]). None where someone
+  /// waits for the render: an export, a bake.
+  final Future<void> Function()? giveWay;
 
   /// The cels the frame being drawn has read, and the ones the frame before
   /// it read — all this renderer holds (card `render-reads-thaw-into-hot`).
@@ -940,7 +947,6 @@ class ExportFrameRenderer {
     int frameIndex, {
     required int width,
     ui.Rect? region,
-    Future<void> Function()? giveWay,
   }) async {
     final view = pictureView(
       _viewFor(cut, frameIndex, ExportSizeMode.camera),

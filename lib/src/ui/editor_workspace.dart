@@ -1584,12 +1584,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
       StoryboardCutThumbnailStore(
         render: (cut, frameIndex, width, region) =>
-            ExportFrameRenderer(session: session).renderPicture(
+            ExportFrameRenderer(
+              session: session,
+              giveWay: session.playbackRig.prerenderScheduler.untilQuiet,
+            ).renderPicture(
               cut,
               frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
               width: width,
               region: region,
-              giveWay: session.playbackRig.prerenderScheduler.untilQuiet,
             ),
         originalSize: () {
           final camera = session.camera.cameraFrameSize;
