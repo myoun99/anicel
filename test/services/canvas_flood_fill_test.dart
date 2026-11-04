@@ -455,6 +455,62 @@ void main() {
         expect(leaked, 1, reason: 'the lift says why nothing filled');
       });
 
+      test('🚨I-160 「연속 채우기」: ranges joined lay as one — an open one '
+          'adds nothing to lay, and is said only when every one was open', () {
+        var leaked = 0;
+        final open = fillRangeAt(
+          cut: cutWith([inkLayer()]),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
+          point: CanvasPoint(x: 3, y: 3),
+          options: const FloodFillOptions(
+            expandPx: 0,
+            antiAlias: false,
+            extendBeyondCanvas: true,
+          ),
+          onOpenRegion: () => leaked += 1,
+        )!;
+        FillRange square(int left) => FillRange.over(
+          FloodFillRegion(
+            left: left,
+            top: 0,
+            width: 2,
+            height: 2,
+            mask: Uint8List(4)..fillRange(0, 4, 255),
+          ),
+        );
+
+        final both = square(0).joining(square(6));
+        expect(both.covers(CanvasPoint(x: 1, y: 1)), isTrue);
+        expect(both.covers(CanvasPoint(x: 7, y: 1)), isTrue);
+        expect(both.covers(CanvasPoint(x: 4, y: 1)), isFalse);
+        final region = both.region!;
+        expect((region.left, region.width, region.height), (0, 8, 2));
+        expect(
+          [for (var x = 0; x < 8; x += 1) region.mask[x]],
+          [255, 255, 0, 0, 0, 0, 255, 255],
+          reason: 'both laid, and nothing between them',
+        );
+
+        final closed = square(0);
+        final passed = closed.joining(open);
+        expect(
+          identical(passed.region, closed.region),
+          isTrue,
+          reason: 'an open region adds nothing to lay',
+        );
+        expect(
+          passed.covers(CanvasPoint(x: 3, y: 3)),
+          isTrue,
+          reason: 'but a press passing over it does not flood it again',
+        );
+        expect(passed.dabsIn(0xFF3366CC), isNotEmpty);
+        expect(leaked, 0, reason: 'something filled: nothing to say');
+
+        expect(open.joining(open).dabsIn(0xFF3366CC), isEmpty);
+        expect(leaked, 1, reason: 'every region open: said once');
+      });
+
       test('the same open tap WITHOUT the option floods to the canvas wall '
           'as before', () {
         final dab = fillRangeAt(

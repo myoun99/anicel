@@ -1647,6 +1647,12 @@ class _FillSettings extends StatelessWidget {
           onChanged: (value) =>
               onChanged(options.copyWith(extendBeyondCanvas: value)),
         ),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-continuous-switch'),
+          label: AppText.strings.brFillContinuous,
+          value: options.continuous,
+          onChanged: (value) => onChanged(options.copyWith(continuous: value)),
+        ),
       ],
     );
   }

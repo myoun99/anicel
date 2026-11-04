@@ -185,6 +185,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolRelease,
     this.toolHolds,
     this.fillRangeAt,
+    this.fillsContinuously,
     this.selectionNow,
     this.overlayModel,
     this.paintsContent = true,
@@ -379,6 +380,12 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// lands them through [onSourceStrokeCommitted] with their pictures
   /// already made — no tile-by-tile reveal on big fills.
   final FillRangeAt? fillRangeAt;
+
+  /// Whether a held fill takes in every region its press passes over
+  /// rather than moving its range (「연속 채우기」, I-160 —
+  /// `FloodFillOptions.continuous`). Asked as the press moves, as
+  /// [inputSettings] is; null = never.
+  final ValueGetter<bool>? fillsContinuously;
 
   /// R26 #18: what a stroke or a fill starting NOW is confined to, in this
   /// view's cel; null confines it to nothing. Asked at the start of each,

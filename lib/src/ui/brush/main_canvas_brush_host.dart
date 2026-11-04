@@ -101,6 +101,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.flipHud,
     this.onEyedropperPick,
     this.fillRangeAt,
+    this.fillsContinuously,
     this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
@@ -286,6 +287,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   final ValueChanged<int>? onEyedropperPick;
   final FillRangeAt? fillRangeAt;
+
+  /// 「연속 채우기」 (I-160): whether a held fill takes in every region its
+  /// press passes over — asked as the press moves.
+  final ValueGetter<bool>? fillsContinuously;
 
   /// Forwarded to [BrushCanvasPanel]: builds the stamp pieces of a drawn
   /// shape fill's area.
@@ -585,6 +590,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       flipHud: widget.flipHud,
       onEyedropperPick: widget.onEyedropperPick,
       fillRangeAt: widget.fillRangeAt,
+      fillsContinuously: widget.fillsContinuously,
       shapeFillDabsFor: widget.shapeFillDabsFor,
       selectionMaskOptions: widget.selectionMaskOptions,
       transformOptions: widget.transformOptions,

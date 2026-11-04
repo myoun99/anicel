@@ -44,7 +44,19 @@ class FloodFillOptions {
     this.gapClosePx = 0,
     this.extendBeyondCanvas = false,
     this.source = CanvasReadSource.display,
+    this.continuous = false,
   });
+
+  /// 「연속 채우기」 (I-160, 유저 2026-11-04): a press held across the canvas
+  /// takes in every region it passes over — one range, marked as one and
+  /// laid as one at the lift ([FillRange.joining]) — instead of moving its
+  /// range to wherever it is.
+  ///
+  /// 🗣️I-160-Q6 b 「지나간 칸 전부」: any region the press passes, whatever
+  /// its colour — line art included, as Krita's 「Fill Regions of Any
+  /// Color」 does. CSP's help says only that a drag fills 「連続する複数の閉じた
+  /// 領域」 at once.
+  final bool continuous;
 
   /// Which layers the flood reads (I-36) — the eyedropper's question and
   /// answers ([CanvasReadSource]). The default is the user's first mode,
@@ -83,6 +95,7 @@ class FloodFillOptions {
     int? gapClosePx,
     bool? extendBeyondCanvas,
     CanvasReadSource? source,
+    bool? continuous,
   }) {
     return FloodFillOptions(
       tolerance: tolerance ?? this.tolerance,
@@ -91,6 +104,7 @@ class FloodFillOptions {
       gapClosePx: gapClosePx ?? this.gapClosePx,
       extendBeyondCanvas: extendBeyondCanvas ?? this.extendBeyondCanvas,
       source: source ?? this.source,
+      continuous: continuous ?? this.continuous,
     );
   }
 
@@ -102,7 +116,8 @@ class FloodFillOptions {
       other.antiAlias == antiAlias &&
       other.gapClosePx == gapClosePx &&
       other.extendBeyondCanvas == extendBeyondCanvas &&
-      other.source == source;
+      other.source == source &&
+      other.continuous == continuous;
 
   @override
   int get hashCode => Object.hash(
@@ -112,6 +127,7 @@ class FloodFillOptions {
     gapClosePx,
     extendBeyondCanvas,
     source,
+    continuous,
   );
 }
 
@@ -1527,6 +1543,21 @@ final class FillRange {
     }
     return false;
   }
+
+  /// This range and [next] as one — what a continuous fill holds as its
+  /// press passes from region to region ([FloodFillOptions.continuous]).
+  ///
+  /// Each region is judged as it was flooded, as a symmetry's copies are
+  /// ([fillRangeAt]): an open one adds nothing to lay, and the notice is
+  /// said only when every region was open. The closed ones merge through the
+  /// copies' one merge ([_unionRegions]) — one mask per join, which a press
+  /// whose mark changes at each join pays anyway.
+  FillRange joining(FillRange next) => FillRange._(
+    region: _unionRegions([?region, ?next.region]),
+    reached: [..._reached, ...next._reached],
+    opacity: _opacity,
+    onOpenRegion: _onOpenRegion,
+  );
 
   /// The range laid in [color] as stamp pieces ([_stampPieces]) — empty for
   /// an [open] range, which says so ([fillRangeAt]'s `onOpenRegion`): it is

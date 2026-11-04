@@ -46,7 +46,9 @@ class _BrushEditFill {
 
   /// The held fill's press is at [at]: its range is the flood from there —
   /// flooded again only past what the range reached, so a press resting in
-  /// one region floods it once (TVPaint's 「이동할때마다 그게 바뀌고」).
+  /// one region floods it once (TVPaint's 「이동할때마다 그게 바뀌고」). A
+  /// continuous fill's range takes the flood in beside what it holds
+  /// ([FillRange.joining]) instead.
   void reach(CanvasPoint at) {
     final held = _state._fillPress;
     final fillRangeAt = _state.widget.fillRangeAt;
@@ -63,11 +65,22 @@ class _BrushEditFill {
     // copies do.
     // ↩️The view's guides used to be carried into its own space, so both
     // were 「already in the space the pointer is in」.
-    final range = _state._press.fillSpendsNothingAt(at)
+    final found = _state._press.fillSpendsNothingAt(at)
         ? null
         : fillRangeAt(at, _state.widget.guides.actingSymmetry);
+    final kept = held.range;
+    final continuous = _state.widget.fillsContinuously?.call() ?? false;
+    final range = !continuous || kept == null
+        ? found
+        : found == null
+        ? kept
+        : kept.joining(found);
     _state._fillPress = (pointer: held.pointer, range: range);
-    _mark(range);
+    // What the range lays is its region: one that did not change (an open
+    // region joined, or none found) leaves the mark as it stands.
+    if (!identical(range?.region, kept?.region)) {
+      _mark(range);
+    }
   }
 
   /// The held fill lands what its range showed — the flood the press made,

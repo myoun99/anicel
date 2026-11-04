@@ -2009,6 +2009,7 @@ enum AppStrings {
   String get brGrowShrink => _s('brGrowShrink');
   String get brAntiAlias => _s('brAntiAlias');
   String get brFillBeyondCanvas => _s('brFillBeyondCanvas');
+  String get brFillContinuous => _s('brFillContinuous');
   String get brOpenRegionsRefuse => _s('brOpenRegionsRefuse');
   String get brName => _s('brName');
   String get brDisplay => _s('brDisplay');
@@ -3367,6 +3368,7 @@ enum AppStrings {
     'brGrowShrink': 'Grow/Shrink',
     'brAntiAlias': 'Anti-alias',
     'brFillBeyondCanvas': 'Fill Beyond Canvas',
+    'brFillContinuous': 'Continuous Fill',
     'brOpenRegionsRefuse': 'Open regions refuse to fill',
     'brName': 'Name',
     'brDisplay': 'Display',
@@ -5117,6 +5119,7 @@ enum AppStrings {
     'brGrowShrink': '拡張 / 収縮',
     'brAntiAlias': 'アンチエイリアス',
     'brFillBeyondCanvas': 'カンバス外も塗る',
+    'brFillContinuous': '連続塗り',
     'brOpenRegionsRefuse': '開いた領域は塗られません',
     'brName': '名前',
     'brDisplay': '表示',
@@ -6982,6 +6985,7 @@ enum AppStrings {
     'brGrowShrink': '확장 / 축소',
     'brAntiAlias': '안티앨리어스',
     'brFillBeyondCanvas': '캔버스 밖도 채우기',
+    'brFillContinuous': '연속 채우기',
     'brOpenRegionsRefuse': '열린 영역은 채워지지 않습니다',
     'brName': '이름',
     'brDisplay': '표시',
@@ -9001,6 +9005,7 @@ enum AppStrings {
     'trMesh': 'Grille',
     'trFinish': 'Finition',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
+    'brFillContinuous': 'Remplissage continu',
     'brOpenRegionsRefuse': 'Les zones ouvertes ne se remplissent pas',
     'brName': 'Nom',
     'brDisplay': 'Affichage',
@@ -10831,6 +10836,7 @@ enum AppStrings {
     'brGrowShrink': '扩展 / 收缩',
     'brAntiAlias': '抗锯齿',
     'brFillBeyondCanvas': '填充到画布之外',
+    'brFillContinuous': '连续填充',
     'brOpenRegionsRefuse': '开放区域不会被填充',
     'brName': '名称',
     'brDisplay': '显示',

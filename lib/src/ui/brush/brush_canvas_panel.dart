@@ -317,6 +317,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.drawsFlipHud = true,
     this.onEyedropperPick,
     this.fillRangeAt,
+    this.fillsContinuously,
     this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
@@ -918,6 +919,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// what it lays through the exact stroke funnel. Null disables the fill
   /// tool.
   final FillRangeAt? fillRangeAt;
+
+  /// 「연속 채우기」 (I-160): whether a held fill takes in every region its
+  /// press passes over — asked as the press moves.
+  final ValueGetter<bool>? fillsContinuously;
 
   /// Builds the stamp pieces of a finished SHAPE FILL — the AREA it fills,
   /// its outline and every copy a guide made of it together. Supplied by
@@ -2206,6 +2211,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       fillRangeAt: _brush.tool == CanvasTool.fill
           ? widget.fillRangeAt
           : null,
+      fillsContinuously: widget.fillsContinuously,
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it — in the row's own artwork, where this
       // view draws (a-marquee-on-a-posed-row).

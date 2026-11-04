@@ -245,7 +245,11 @@ void main() {
         List<CanvasPoint> floods,
       })
     >
-    pumpHeld(WidgetTester tester, {CanvasSelectionRegion? selection}) async {
+    pumpHeld(
+      WidgetTester tester, {
+      CanvasSelectionRegion? selection,
+      bool continuous = false,
+    }) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
       final coordinator = BrushCanvasFixture.createCoordinator(
         frameKeys: frameKeys,
@@ -278,6 +282,7 @@ void main() {
                 height: 16,
               );
             },
+            fillsContinuously: () => continuous,
           ),
         ),
       );
@@ -336,6 +341,46 @@ void main() {
         reason: 'and only that one',
       );
       expect(overlay.fillRange, isNull, reason: 'the result takes its place');
+    });
+
+    testWidgets('🚨I-160-Q6 「연속 채우기」: every region the press passed over '
+        'is marked and held — passed again, not flooded again — lifted, all '
+        'filled', (tester) async {
+      final (:coordinator, :overlay, :floods) = await pumpHeld(
+        tester,
+        continuous: true,
+      );
+      final centre = tester.getCenter(
+        find.byKey(const ValueKey<String>('brush-canvas-view')),
+      );
+      final pen = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      await pen.moveBy(const Offset(120, 0));
+      await tester.pump();
+      expect(floods, hasLength(2), reason: 'past the first: the next flood');
+      final mark = overlay.fillRange!.outline;
+      for (final at in floods) {
+        expect(
+          mark.contains(Offset(at.x.floor() + 0.5, at.y.floor() + 0.5)),
+          isTrue,
+          reason: 'both regions marked: $at',
+        );
+      }
+
+      await pen.moveBy(const Offset(-120, 0));
+      await tester.pump();
+      expect(floods, hasLength(2), reason: 'back over the first: held already');
+      expect(inkWhere(coordinator, floods.first), 0, reason: 'still held');
+
+      await pen.up();
+      await tester.pumpAndSettle();
+      for (final at in floods) {
+        expect(inkWhere(coordinator, at), isNonZero, reason: 'filled: $at');
+      }
+      expect(overlay.fillRange, isNull);
     });
 
     testWidgets('⛔a palm landing while the pen holds the fill takes '

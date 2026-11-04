@@ -905,6 +905,18 @@ void main() {
       expect(changes, hasLength(1));
       expect(changes.single.antiAlias, isFalse);
       expect(changes.single.tolerance, 32, reason: 'other knobs untouched');
+
+      // I-160 「연속 채우기」.
+      final continuous = find.byKey(
+        const ValueKey<String>('fill-continuous-switch'),
+      );
+      await tester.ensureVisible(continuous);
+      await tester.pump();
+      await tester.pressRingIn(continuous);
+      await tester.pump();
+      expect(changes, hasLength(2));
+      expect(changes.last.continuous, isTrue);
+      expect(changes.last.antiAlias, isTrue, reason: 'other knobs untouched');
     });
 
     testWidgets('painting tools keep the brush settings panel', (tester) async {
