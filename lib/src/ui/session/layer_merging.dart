@@ -135,8 +135,7 @@ class LayerMerging {
             cutId: cutId,
             rowId: rowId,
             effectId: effectId,
-            band: band,
-          );
+          )?.over(band);
   }
 
   /// Whether RASTERIZE scoped to [band] bakes nothing because the rest of

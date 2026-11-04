@@ -23,13 +23,14 @@ void main() {
     KeyValueSpace<double> space = doubleKeySpace,
   }) => trackClearedOver(
     track,
-    start: start,
-    end: end,
-    frames: frames,
+    range: (start: start, end: end),
     rest: 0,
-    unkeyed: () => unkeyed,
-    space: space,
-    same: (a, b) => (a - b).abs() <= 1e-9 * (a.abs() > 1 ? a.abs() : 1),
+    lane: (
+      frames: frames,
+      unkeyed: () => unkeyed,
+      space: space,
+      same: (a, b) => (a - b).abs() <= 1e-9 * (a.abs() > 1 ? a.abs() : 1),
+    ),
   );
 
   double at(
@@ -54,7 +55,9 @@ void main() {
       expect(
         at(now, frame.toDouble(), unkeyed: unkeyed, space: space),
         closeTo(
-          inside ? 0 : at(was, frame.toDouble(), unkeyed: unkeyed, space: space),
+          inside
+              ? 0
+              : at(was, frame.toDouble(), unkeyed: unkeyed, space: space),
           1e-9,
         ),
         reason: 'frame $frame',
@@ -64,7 +67,10 @@ void main() {
 
   test('a range over every frame clears every key — what a bake with no '
       'range did (Q4)', () {
-    final track = numbers({0: const PropertyKey(10), 20: const PropertyKey(40)});
+    final track = numbers({
+      0: const PropertyKey(10),
+      20: const PropertyKey(40),
+    });
     expect(cleared(track, start: 0, end: frames).isEmpty, isTrue);
   });
 
@@ -180,13 +186,14 @@ void main() {
     );
     final now = trackClearedOver(
       track,
-      start: 10,
-      end: 12,
-      frames: frames,
+      range: (start: 10, end: 12),
       rest: 0xFF808080,
-      unkeyed: () => 0xFF808080,
-      space: argbKeySpace,
-      same: (a, b) => a == b,
+      lane: (
+        frames: frames,
+        unkeyed: () => 0xFF808080,
+        space: argbKeySpace,
+        same: (a, b) => a == b,
+      ),
     );
     for (var frame = 0; frame < frames; frame += 1) {
       final inside = frame >= 10 && frame < 12;
@@ -248,13 +255,14 @@ void main() {
       required int end,
     }) => trackClearedOver(
       track,
-      start: start,
-      end: end,
-      frames: frames,
+      range: (start: start, end: end),
       rest: p(50, 50),
-      unkeyed: () => p(50, 50),
-      space: pathKeySpace,
-      same: (a, b) => (a.x - b.x).abs() < 1e-2 && (a.y - b.y).abs() < 1e-2,
+      lane: (
+        frames: frames,
+        unkeyed: () => p(50, 50),
+        space: pathKeySpace,
+        same: (a, b) => (a.x - b.x).abs() < 1e-2 && (a.y - b.y).abs() < 1e-2,
+      ),
     );
 
     CanvasPoint place(PropertyTrack<CanvasPoint> track, double time) =>

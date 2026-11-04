@@ -6,9 +6,9 @@ import 'canvas_point.dart';
 import 'key_path_walk.dart' show keyPathHandle;
 import 'property_track.dart';
 
-/// [track] cleared over the frames from [start] to [end] (exclusive) of
-/// the [frames] a cut draws — a bake's (I-120): [rest] at each of them,
-/// and every other frame of the [frames] showing what it showed.
+/// [track] cleared over the frames from [range]'s start to its end
+/// (exclusive) of the ones its [lane] is drawn over — a bake's (I-120):
+/// [rest] at each of them, and every other frame showing what it showed.
 ///
 /// 🗣️I-120-Q3 (유저 2026-11-04) 「범위 안만 굽고, 범위 밖은 보이던 그대로」 —
 /// a key on the frame before the range and on the frame after it, at the
@@ -20,54 +20,52 @@ import 'property_track.dart';
 /// comes back to where it was cut — takes a key on each of its frames from
 /// the last key before the cut, the value it showed. A range over every
 /// frame clears every key.
-///
-/// [unkeyed] is the lane's value with no key; [same] says whether two of
-/// its values show as one.
 PropertyTrack<T> trackClearedOver<T>(
   PropertyTrack<T> track, {
-  required int start,
-  required int end,
-  required int frames,
+  required ({int start, int end}) range,
   required T rest,
-  required T Function() unkeyed,
-  required KeyValueSpace<T> space,
-  required bool Function(T a, T b) same,
+  required DrawnLane<T> lane,
 }) {
+  final (:start, :end) = range;
+  final frames = lane.frames;
   assert(0 <= start && start < end && end <= frames, 'a range of frames');
   final sides = [
     if (start > 0) (before: true, at: start - 1),
     if (end < frames) (before: false, at: end),
   ];
-  if (sides.isEmpty || (track.isEmpty && same(unkeyed(), rest))) {
+  if (sides.isEmpty || (track.isEmpty && lane.same(lane.unkeyed(), rest))) {
     return PropertyTrack.empty();
   }
-  return _Cut(track, (space: space, unkeyed: unkeyed, same: same), frames)
-      .cleared(sides, {
-        if (start > 0) start: PropertyKey(rest),
-        if (end < frames) end - 1: PropertyKey(rest),
-      });
+  return _Cut(track, lane).cleared(sides, {
+    if (start > 0) start: PropertyKey(rest),
+    if (end < frames) end - 1: PropertyKey(rest),
+  });
 }
 
-/// One side of a cut: the frames [before] the cleared range, up to [at] —
-/// the frame before it — or the frames after it, from [at] on.
-typedef _Side = ({bool before, int at});
-
-/// What a lane's values are ([trackClearedOver]).
-typedef _Values<T> = ({
+/// A lane as a cut draws it ([trackClearedOver]): the [frames] it is drawn
+/// over, how its values walk between keys ([space]), its value with no key
+/// ([unkeyed]), and whether two of its values show as one ([same]).
+typedef DrawnLane<T> = ({
+  int frames,
   KeyValueSpace<T> space,
   T Function() unkeyed,
   bool Function(T a, T b) same,
 });
 
+/// One side of a cut: the frames [before] the cleared range, up to [at] —
+/// the frame before it — or the frames after it, from [at] on.
+typedef _Side = ({bool before, int at});
+
 /// The cut of one track ([trackClearedOver]).
 final class _Cut<T> {
-  _Cut(this.track, this.values, this.frames);
+  _Cut(this.track, this.lane);
 
   final PropertyTrack<T> track;
-  final _Values<T> values;
-  final int frames;
+  final DrawnLane<T> lane;
 
-  KeyValueSpace<T> get space => values.space;
+  int get frames => lane.frames;
+
+  KeyValueSpace<T> get space => lane.space;
 
   /// The roving keys of [track] (I-89 ④), whose frame is not their time.
   late final Set<int> _roving = track.rovingTimes(space).keys.toSet();
@@ -76,7 +74,7 @@ final class _Cut<T> {
   T was(int frame) => _shownBy(track, frame);
 
   T _shownBy(PropertyTrack<T> keys, int frame) =>
-      keys.resolveAt(frameIndex: frame, orElse: values.unkeyed, space: space);
+      keys.resolveAt(frameIndex: frame, orElse: lane.unkeyed, space: space);
 
   /// [track] with [range]'s keys and each of [sides] keeping its frames
   /// as they showed: the way across its edge cut where that keeps them,
@@ -112,7 +110,7 @@ final class _Cut<T> {
     for (var frame = before ? 0 : at;
         frame <= (before ? at : frames - 1);
         frame += 1) {
-      if (!values.same(was(frame), _shownBy(cleared, frame))) {
+      if (!lane.same(was(frame), _shownBy(cleared, frame))) {
         return false;
       }
     }
@@ -146,41 +144,27 @@ final class _Cut<T> {
         at: before ? stand : stand.copyWith(outgoing: KeyExit.hold),
       };
     }
-    final pace = track.paceFrom(from, space)!.pace;
-    final time = segmentCurveParameter(
-      (at - from) / (to - from),
-      leaving: pace.leaving,
-      arriving: pace.arriving,
-    );
-    final curve = cubicCut(
-      Offset.zero,
-      _pointOf(keyHandlePoint(pace.leaving, leaving: true)),
-      _pointOf(keyHandlePoint(pace.arriving, leaving: false)),
-      const Offset(1, 1),
-      time,
-    );
-    final half = before
-        ? _halfPace(Offset.zero, curve.before.$1, curve.before.$2, curve.at)
-        : _halfPace(
-            curve.at,
-            curve.after.$1,
-            curve.after.$2,
-            const Offset(1, 1),
-          );
+    final half = _halfOf((from: from, to: to), side);
     if (half == null) {
       return null;
     }
     final cut = {
       ...kept,
       if (before)
-        from: kept[from]!.copyWith(outgoing: _sideOf(leaving, half.leaving))
+        from: kept[from]!.copyWith(
+          outgoing: _sideOf(leaving, half.pace.leaving),
+        )
       else
         to: kept[to]!.copyWith(
-          incoming: _sideOf(kept[to]!.incoming, half.arriving),
+          incoming: _sideOf(kept[to]!.incoming, half.pace.arriving),
         ),
       at: before
-          ? stand.copyWith(incoming: _sideOf(KeySide.linear, half.arriving))
-          : stand.copyWith(outgoing: _sideOf(KeySide.linear, half.leaving)),
+          ? stand.copyWith(
+              incoming: _sideOf(KeySide.linear, half.pace.arriving),
+            )
+          : stand.copyWith(
+              outgoing: _sideOf(KeySide.linear, half.pace.leaving),
+            ),
     };
     if (space.walk == null) {
       return cut;
@@ -188,9 +172,37 @@ final class _Cut<T> {
     return _pathCut(
           track.keys as SplayTreeMap<int, PropertyKey<CanvasPoint>>,
           cut as Map<int, PropertyKey<CanvasPoint>>,
-          (way: (from: from, to: to), side: side, progress: curve.at.dy),
+          (way: (from: from, to: to), side: side, progress: half.progress),
         )
         as Map<int, PropertyKey<T>>;
+  }
+
+  /// The half of [way]'s curve on [side] of its edge, paced as a way of its
+  /// own ([_halfPace]), and how far the value had come along the way at the
+  /// edge — null where the half cannot be paced.
+  ({KeyPace pace, double progress})? _halfOf(_Way way, _Side side) {
+    final (:from, :to) = way;
+    final pace = track.paceFrom(from, space)!.pace;
+    final time = segmentCurveParameter(
+      (side.at - from) / (to - from),
+      leaving: pace.leaving,
+      arriving: pace.arriving,
+    );
+    final curve = cubicCut((
+      Offset.zero,
+      _pointOf(keyHandlePoint(pace.leaving, leaving: true)),
+      _pointOf(keyHandlePoint(pace.arriving, leaving: false)),
+      const Offset(1, 1),
+    ), time);
+    final half = side.before
+        ? _halfPace(Offset.zero, curve.before.$1, curve.before.$2, curve.at)
+        : _halfPace(
+            curve.at,
+            curve.after.$1,
+            curve.after.$2,
+            const Offset(1, 1),
+          );
+    return half == null ? null : (pace: half, progress: curve.at.dy);
   }
 
   /// [track]'s keys on [side]'s frames.
@@ -363,13 +375,7 @@ Map<int, PropertyKey<CanvasPoint>> _pathCut(
     controls.$3,
     controls.$4,
   ).parameterAt(progress);
-  final halves = cubicCut(
-    controls.$1,
-    controls.$2,
-    controls.$3,
-    controls.$4,
-    u,
-  );
+  final halves = cubicCut(controls, u);
   final outside = before ? from : to;
   final handle = before
       ? halves.before.$2 - halves.at

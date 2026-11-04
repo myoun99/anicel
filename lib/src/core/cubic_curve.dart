@@ -112,18 +112,16 @@ final class CubicWalk {
   }
 }
 
-/// The cubic Bézier [p0] · [p1] · [p2] · [p3] cut at its parameter [u]
-/// (de Casteljau): the controls of the half before the cut — [p0],
-/// [before].$1, [before].$2, [at] — and of the half after it — [at],
-/// [after].$1, [after].$2, [p3]. Each half is the curve it was there, so a
-/// key cut into a way leaves the way's two halves as they were (I-120-Q3).
+/// The cubic Bézier of [controls] cut at its parameter [u] (de Casteljau):
+/// the controls of the half before the cut — its first, [before].$1,
+/// [before].$2, [at] — and of the half after it — [at], [after].$1,
+/// [after].$2, its last. Each half is the curve it was there, so a key cut
+/// into a way leaves the way's two halves as they were (I-120-Q3).
 ({(Offset, Offset) before, Offset at, (Offset, Offset) after}) cubicCut(
-  Offset p0,
-  Offset p1,
-  Offset p2,
-  Offset p3,
+  (Offset, Offset, Offset, Offset) controls,
   double u,
 ) {
+  final (p0, p1, p2, p3) = controls;
   Offset lerp(Offset a, Offset b) => a + (b - a) * u;
   final a1 = lerp(p0, p1);
   final b1 = lerp(p1, p2);

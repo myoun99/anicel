@@ -283,6 +283,12 @@ void main() {
     );
   }
 
+  /// The colours of [seen] told apart by value — a list is only ever the
+  /// same as itself.
+  Set<String> coloursOf(List<List<int>> seen) => {
+    for (final rgba in seen) rgba.join(','),
+  };
+
   /// The cel `a` shows at each of frames 0..2.
   List<FrameId?> shownCels(EditorSessionManager s) => [
     for (var frame = 0; frame < 3; frame += 1)
@@ -333,7 +339,7 @@ void main() {
       for (var frame = 0; frame < 3; frame += 1)
         await shownAt(tester, s, frame, 36, 5),
     ];
-    expect(seen.toSet(), hasLength(3), reason: '⛔전제: every frame its own');
+    expect(coloursOf(seen), hasLength(3), reason: '⛔전제: every frame its own');
     expect(s.layerMerging.bakesFx(const LayerId('a'), bright), isTrue);
 
     await rasterize(tester, s);
@@ -452,7 +458,7 @@ void main() {
       isNotEmpty,
       reason: '⛔전제: half seen through',
     );
-    expect(seen.toSet().length, greaterThan(3), reason: '⛔전제: it moves');
+    expect(coloursOf(seen).length, greaterThan(3), reason: '⛔전제: it moves');
 
     await rasterize(tester, s);
 
@@ -873,7 +879,7 @@ void main() {
       final s = ridden(riderOf('a'));
       final before = s.requireActiveCut.layers;
       final seen = await seenOfR(tester, s);
-      expect(seen.toSet(), hasLength(3), reason: '⛔전제: it wears a\'s fx');
+      expect(coloursOf(seen), hasLength(3), reason: '⛔전제: it wears a\'s fx');
 
       await rasterize(tester, s);
 
@@ -952,7 +958,11 @@ void main() {
             await shownAt(tester, s, frame, x, y),
       ];
       final seen = await seenNow();
-      expect(seen.toSet(), hasLength(6), reason: '⛔전제: both wear a\'s fx');
+      expect(
+        coloursOf(seen),
+        hasLength(5),
+        reason: '⛔전제: both wear a\'s fx — white alike at its full',
+      );
 
       await rasterize(tester, s);
 
@@ -1164,7 +1174,7 @@ void main() {
       addTearDown(s.dispose);
       final before = s.requireActiveCut.layers;
       final seen = await seenOf(tester, s);
-      expect(seen.toSet(), hasLength(3), reason: '⛔전제: every frame its own');
+      expect(coloursOf(seen), hasLength(3), reason: '⛔전제: every frame its own');
 
       await rasterize(tester, s, bright, band);
 
@@ -1187,11 +1197,33 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
-    testWidgets('🎯read by the block, the part of a block the band leaves '
-        'after it goes on showing what its head showed', (tester) async {
-      final s = sessionOf([rowA(effects: [brightness(basis: FxBasis.block)])]);
+    testWidgets('🎯read by the block, the fx is at rest over the band, and '
+        'the part of a block the band leaves after it goes on showing what '
+        'its head showed', (tester) async {
+      // Brightened from its head on, short of white so twice shows: falling
+      // 30 → 0 over frames 0..2.
+      final s = sessionOf([
+        rowA(
+          effects: [
+            brightness(basis: FxBasis.block).copyWith(
+              parameters: {
+                'brightness': EffectParameter(
+                  track: PropertyTrack<double>(
+                    keys: {
+                      0: const PropertyKey<double>(30),
+                      2: const PropertyKey<double>(0),
+                    },
+                  ),
+                ),
+              },
+            ),
+          ],
+        ),
+      ]);
       addTearDown(s.dispose);
       final seen = await seenOf(tester, s);
+      expect(coloursOf(seen), hasLength(1), reason: '⛔전제: the head\'s, all');
+      expect(seen.first, isNot(green), reason: '⛔전제: brightened');
 
       await rasterize(tester, s, bright, band);
 
@@ -1237,7 +1269,11 @@ void main() {
       ]);
       addTearDown(s.dispose);
       final seen = await seenOf(tester, s, [36, 44, 52]);
-      expect(seen.toSet().length, greaterThan(2), reason: '⛔전제: it moves');
+      expect(
+        seen.sublist(0, 3),
+        isNot(seen.sublist(6, 9)),
+        reason: '⛔전제: it moves',
+      );
 
       await rasterize(tester, s, null, band);
 
@@ -1284,11 +1320,19 @@ void main() {
         findsOneWidget,
       );
       expect(a(s), before);
-      expect(
-        s.layerMerging.planOfFx(const LayerId('a'), number),
-        isNotNull,
-        reason: 'over every frame it bakes',
-      );
+      final verbs = s.layerMerging;
+      expect(verbs.planOfFx(const LayerId('a'), number, band: band), isNull);
+      expect([
+        for (final over in <BakedFrames?>[
+          band,
+          (start: 0, end: 2),
+          (start: 1, end: 9),
+          (start: -1, end: 9),
+          null,
+        ])
+          verbs.fxBakeCannotKeepTheRest(const LayerId('a'), number, over),
+      ], [true, true, true, false, false], reason: 'over every frame it bakes');
+      expect(verbs.planOfFx(const LayerId('a'), number), isNotNull);
     });
 
     test('a band is cut to the frames the cut draws; one over every one of '
@@ -1308,6 +1352,11 @@ void main() {
         '1-3',
       ]);
       expect(cels(past).first, const FrameId('a-1'));
+      expect(
+        cels(over((start: 0, end: 2))!).first,
+        const FrameId('a-1'),
+        reason: 'shown after it',
+      );
       final every = over((start: -4, end: 9))!;
       expect(cels(every), isNot(contains(const FrameId('a-1'))));
       expect(
@@ -1329,6 +1378,25 @@ void main() {
           .planOfFx(const LayerId('a'), bright, band: band)!
           .row;
       expect(row.audioClips.single.frameId, const FrameId('a-1'));
+    });
+
+    test('an fx it leaves, read by the block on a row it parts, keeps its '
+        'switch and the row it reads', () {
+      final number = LayerEffect(
+        id: const EffectId('e-number'),
+        kind: EffectKind.celNumber,
+        basis: FxBasis.block,
+      );
+      final lens = LayerEffect.defaults(
+        id: const EffectId('e-lens'),
+        kind: EffectKind.cameraLensBlur,
+      ).withLayer('blurMapLayer', const LayerId('a')).copyWith(
+        basis: FxBasis.block,
+      );
+      final s = plain([rowA(effects: [number, lens, brightness()])]);
+      final row = s.layerMerging.planOfFx(const LayerId('a'), bright)!.row;
+      expect(row.timeline.keys, [0, 1, 2], reason: '⛔전제: its block parted');
+      expect(row.effects.take(2), [number, lens]);
     });
   });
 

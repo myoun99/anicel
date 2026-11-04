@@ -1156,6 +1156,7 @@ void main() {
     'tlFxBakeChangesTitle': (s) => s.tlFxBakeChangesTitle,
     'tlFxBakeChangesBody': (s) => s.tlFxBakeChangesBody,
     'tlFxBakeChangeOrder': (s) => s.tlFxBakeChangeOrder,
+    'tlFxBakeCannotKeepTheRest': (s) => s.tlFxBakeCannotKeepTheRest,
     'tlSetCommasN': (s) => s.tlSetCommasN,
     'tlSetCommaTemplate': (s) => s.tlSetCommaTemplate,
     'tlProjectAudioRate': (s) => s.tlProjectAudioRate,

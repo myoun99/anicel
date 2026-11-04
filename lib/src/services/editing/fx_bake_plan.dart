@@ -109,6 +109,27 @@ final class FxBakeTaking {
       row.effects.any(
         (fx) => fx.id == effectId && !fx.kind.changesNothingAtItsDefaults,
       );
+
+  /// It scoped to the frames of its own [band] holds — the band scoping the
+  /// press (Q3) — as it is where none does, and null where the band holds
+  /// none of them.
+  FxBakeTaking? over(BakedFrames? band) {
+    if (band == null) {
+      return this;
+    }
+    final start = band.start < frames.start ? frames.start : band.start;
+    final end = band.end > frames.end ? frames.end : band.end;
+    return start < end
+        ? FxBakeTaking._(
+            cut,
+            row,
+            effectId,
+            _riders,
+            _drawnFrames,
+            (start: start, end: end),
+          )
+        : null;
+  }
 }
 
 /// What a press of RASTERIZE in [rowId]'s group header for [effectId] — the
@@ -127,15 +148,13 @@ final class FxBakeTaking {
 /// and the rows riding it, which wear fx of their own (④, Q7 · I-99) — and
 /// a reference row (⑤, Q5 · Q11). The card's order, not a law of the verb.
 ///
-/// [band] is the frames the band scoping the press holds — its frames the
-/// cut draws are the ones baked ([FxBakeTaking.frames]); one holding none
-/// of them bakes nothing.
+/// It bakes every frame the cut draws; a band scoping the press narrows it
+/// ([FxBakeTaking.over]).
 FxBakeTaking? takeFxToBake({
   required Project project,
   required CutId cutId,
   required LayerId rowId,
   required EffectId? effectId,
-  BakedFrames? band,
 }) {
   final cut = requireCut(project, cutId);
   final row = cut.layers.byId(rowId);
@@ -158,18 +177,14 @@ FxBakeTaking? takeFxToBake({
     return null;
   }
   final drawn = cutDrawnFrameCount(project, cutId) ?? cut.duration;
-  final start = band == null || band.start < 0 ? 0 : band.start;
-  final end = band == null || band.end > drawn ? drawn : band.end;
-  return start < end
-      ? FxBakeTaking._(
-          cut,
-          row,
-          effectId,
-          riders,
-          drawn,
-          (start: start, end: end),
-        )
-      : null;
+  return FxBakeTaking._(
+    cut,
+    row,
+    effectId,
+    riders,
+    drawn,
+    (start: 0, end: drawn),
+  );
 }
 
 bool _waitsForALaterRound(Project project, Cut cut, List<Layer> reached) =>
@@ -265,31 +280,7 @@ FxBakePlan planFxBake(
     (cut: shown, runs: runs, baked: frames),
     (_) => mintFrameId(row.id),
   );
-  final parted = row.copyWith(
-    kind: kindHoldingPictures(row.kind, bank.cels.length),
-    frames: bank.cels,
-    timeline: _timelineShowing(row, bank.celAt, taking._drawnFrames),
-  );
-  _Keeping keeping(FxBasis basis, {required bool baked}) => _Keeping(
-    taking._drawnFrames,
-    baked: baked ? frames : null,
-    reads: (
-      was: (frame) => fxReadFrame(basis, row.fxBlocks, frame),
-      now: (frame) => fxReadFrame(basis, parted.fxBlocks, frame),
-    ),
-    paper: layerIdentityPose(cut.canvasSize),
-  );
-  final baked = parted.copyWith(
-    effects: [
-      for (final fx in row.effects)
-        _effectKept(fx, keeping(fx.basis, baked: fx.id == effectId)),
-    ],
-    transformTrack: _transformKept(
-      row.transformTrack,
-      keeping(row.transformBasis, baked: effectId == null),
-    ),
-    audioClips: _clipsAfter(row, bank),
-  );
+  final baked = _rowBaked(taking, bank);
   final riders = [
     for (final rider in taking._riders)
       _riderBaked(taking, rider, (runs: runs, bank: bank), (
@@ -314,6 +305,38 @@ FxBakePlan planFxBake(
       )))
         FxBakeChange.wall,
     },
+  );
+}
+
+/// [taking]'s row after its bake: its cels [bank], its blocks parted where
+/// its pictures are, and each of its FX bundles kept showing what it showed
+/// ([_Keeping]) — the one baked at rest over the frames baked.
+Layer _rowBaked(FxBakeTaking taking, _Bank bank) {
+  final FxBakeTaking(:cut, :row, :effectId, :frames) = taking;
+  final parted = row.copyWith(
+    kind: kindHoldingPictures(row.kind, bank.cels.length),
+    frames: bank.cels,
+    timeline: _timelineShowing(row, bank.celAt, taking._drawnFrames),
+  );
+  _Keeping keeping(FxBasis basis, {required bool baked}) => _Keeping(
+    taking._drawnFrames,
+    baked: baked ? frames : null,
+    reads: (
+      was: (frame) => fxReadFrame(basis, row.fxBlocks, frame),
+      now: (frame) => fxReadFrame(basis, parted.fxBlocks, frame),
+    ),
+    paper: layerIdentityPose(cut.canvasSize),
+  );
+  return parted.copyWith(
+    effects: [
+      for (final fx in row.effects)
+        _effectKept(fx, keeping(fx.basis, baked: fx.id == effectId)),
+    ],
+    transformTrack: _transformKept(
+      row.transformTrack,
+      keeping(row.transformBasis, baked: effectId == null),
+    ),
+    audioClips: _clipsAfter(row, bank),
   );
 }
 
@@ -634,7 +657,7 @@ final class _Keeping {
         continue;
       }
       final last = runs.lastOrNull;
-      if (last != null && last.head == head && last.end == frame) {
+      if (last != null && last.end == frame) {
         runs.last = (start: last.start, end: frame + 1, head: head);
       } else {
         runs.add((start: frame, end: frame + 1, head: head));
@@ -663,17 +686,14 @@ final class _Keeping {
       orElse: () => orElse,
       space: values.space,
     );
+    final drawn = (
+      frames: frames,
+      space: values.space,
+      unkeyed: () => before,
+      same: values.same,
+    );
     PropertyTrack<T> held(PropertyTrack<T> keys, BakedFrames over, T value) =>
-        trackClearedOver(
-          keys,
-          start: over.start,
-          end: over.end,
-          frames: frames,
-          rest: value,
-          unkeyed: () => before,
-          space: values.space,
-          same: values.same,
-        );
+        trackClearedOver(keys, range: over, rest: value, lane: drawn);
     var kept = switch (baked) {
       final over? => held(track, over, rest),
       null => track,
