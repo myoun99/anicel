@@ -491,18 +491,13 @@ class EditingCanvas {
     return null;
   }
 
-  /// Rasterize (§6-f): the ONE verb for every derived-content layer.
-  /// Reference layers null [Layer.mediaReference] (the pixels are already
-  /// the cels) and their asset stays in the pool (유저 2026-09-11: 「구워도
-  /// 풀에 남음」).
-  bool get canRasterizeActiveLayer =>
-      _selection.activeLayer?.mediaReference != null;
-
   /// Rasterizes every REFERENCE row among [layerIds] as ONE undo step —
   /// each whose move its own transform carries (`rasterizeReferenceRows`
-  /// hands the rest to the bakes).
+  /// hands the rest to the bakes). Reference layers null
+  /// [Layer.mediaReference] (the pixels are already the cels) and their
+  /// asset stays in the pool (유저 2026-09-11: 「구워도 풀에 남음」).
   ///
-  /// The reference button's popover hands over the rows its press acts on
+  /// The reference header's RASTERIZE hands over the rows its press acts on
   /// (`RowSelection.rowsActedOnBy`: 「선택 안에서 누르면 선택 전체, 밖에서
   /// 누르면 그것만」), and one gesture undoes as one — through the history's
   /// `runAsOneStep`, as the row verbs do. A row that points at no file lands

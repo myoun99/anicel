@@ -1011,7 +1011,6 @@ abstract final class EditorActionIds {
   static const cutConvertLinked = 'cut-convert-linked';
   static const layerRename = 'layer-rename';
   static const layerDetach = 'layer-detach';
-  static const layerRasterize = 'layer-rasterize';
   static const layerStoryboard = 'layer-storyboard';
   static const layerAttachFreeAbove = 'layer-attach-free-above';
   static const layerAttachFreeBelow = 'layer-attach-free-below';
@@ -2105,13 +2104,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.layerDetach,
     label: 'Detach from base',
-    shelf: ShortcutShelf.layerPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.layerRasterize,
-    label: 'Rasterize layer',
     shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,

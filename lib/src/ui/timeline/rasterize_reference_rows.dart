@@ -4,8 +4,6 @@ import '../../core/progress_share.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/movie_cel.dart';
-import '../../models/timeline_coverage.dart';
 import '../../services/reference_move_carried.dart'
     show ReferenceMoveCarried, ReferenceMoveWaits, ReferenceWait;
 import '../dialogs/app_confirm_dialog.dart' show NoticeDetails, showAppNotice;
@@ -13,26 +11,6 @@ import '../dialogs/app_progress_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart' show ReferenceWaitWords;
-
-/// How many cels rasterizing [layer] would leave behind.
-///
-/// A STILL reference's cels are already its own, so it is the cels it
-/// holds — a still its transform cannot carry the move of takes it in those
-/// same cels (`bakeReferenceAsSeen`). A MOVIE's are not: one held cel
-/// stands for every position of its block, and each position becomes a
-/// cel — 30 seconds at 24 fps is 720 of them, which is the number the
-/// button has to say before it spends that long (유저 2026-09-11:
-/// 「래스터라이즈 · N장」).
-int rasterizeCelCount(Layer layer) {
-  if (!isMovieReference(layer)) {
-    return layer.frames.length;
-  }
-  var positions = 0;
-  for (final block in drawingBlocks(layer.timeline)) {
-    positions += block.length;
-  }
-  return positions;
-}
 
 /// Rasterizes [targets] — the reference rows a press acts on — each the
 /// way the coordinator's one answer says (`referenceLetGo`, F-374-Q7), with
@@ -159,17 +137,4 @@ Future<void> showReferenceWaits(
         ),
     ],
   );
-}
-
-/// The layer menu's RASTERIZE (§6-f): the one verb for every
-/// derived-content row, through the one router above.
-Future<void> rasterizeActiveRow(
-  BuildContext context,
-  EditorSessionManager session,
-) async {
-  final layer = session.activeLayer;
-  if (layer == null) {
-    return;
-  }
-  await rasterizeReferenceRows(context, session, [layer]);
 }

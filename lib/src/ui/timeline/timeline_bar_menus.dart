@@ -22,7 +22,6 @@ import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
 import 'layer_name_commands.dart' show renameActiveLayerWithDialog;
-import 'rasterize_reference_rows.dart';
 import 'toolbar_panel_context.dart';
 
 /// The frame pill's standing switch, pressed — 「빈 칸에 그리면 프레임 자동
@@ -337,24 +336,17 @@ class TimelineBarMenus {
       // 선택한 레이어들 폴더안에 들어가는식으로」 — ↩️it was born EMPTY, to be
       // filled by dropping rows on it). "New attach folder" goes for the
       // same reason — the drag makes those too.
-      PanelFlyoutItem(
-        keyValue: 'timeline-rasterize-layer-button',
-        label: editorActionLabel(EditorActionIds.layerRasterize),
-        shortcuts: const [EditorActionIds.layerRasterize],
-        icon: Icons.texture_outlined,
-        enabled: serves && session.editingCanvas.canRasterizeActiveLayer,
-        // A movie reference is decoded frame by frame behind the wait
-        // window ([rasterizeActiveRow]); every other row is the session's
-        // own verb, unchanged.
-        onSelected: () => unawaited(rasterizeActiveRow(context, session)),
-      ),
+      //
+      // ↩️RASTERIZE stood here. 🗣️I-120-Q11 (유저 2026-11-04: 「참조 버튼의
+      // 래스터라이즈 버튼은 삭제. 레이어 버튼의 래스터라이즈도 삭제. 그래서
+      // 하나만 남기도록」) — the group header's RASTERIZE on the rail is the
+      // one entrance, a reference's and an fx's alike.
       // 'SE name tag…' opened a window. R5 #7 put every control it held on
       // the SE row's Name Tag lane group, so the entry would only lead
       // somewhere that changes the same thing a second way.
       // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
       // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
       // link window, and its button unlinks.
-      const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-storyboard-layer-button',
         label: editorActionLabel(EditorActionIds.layerStoryboard),

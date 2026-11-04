@@ -613,10 +613,11 @@ final Map<String, ProgramRow> _clipStudioRows = {
     [],
   ),
   EditorActionIds.cutNew: const ProgramRow(['animationnewcut'], []),
-  // Layer > Duplicate layer · Rasterize. ↩️F-455: the duplicate is the
-  // shared pill's 복제 now, which duplicates the rows on the timeline.
+  // Layer > Duplicate layer. ↩️F-455: the duplicate is the shared pill's
+  // 복제 now, which duplicates the rows on the timeline. ↩️Rasterize left
+  // with the layer menu's entry (I-120-Q11 「하나만 남기도록」): the rail's
+  // group header is its one door, and no action presses it.
   EditorActionIds.editDuplicate: const ProgramRow(['layercopy'], []),
-  EditorActionIds.layerRasterize: const ProgramRow(['layerrasterize'], []),
   // Transform > Mesh transformation · Flip horizontal · Flip vertical ·
   // Confirm transformation — the confirm here — · Cancel transformation.
   EditorActionIds.toolTransformMesh: const ProgramRow(['transformmesh'], []),

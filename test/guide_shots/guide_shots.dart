@@ -1172,7 +1172,6 @@ Future<void> timelineShots(WidgetTester tester) async {
     rect: keyed(tester, [
       'timeline-layer-menu-button',
       'timeline-detach-layer-button',
-      'timeline-rasterize-layer-button',
       'toggle-storyboard-layer-button',
     ]).inflate(8),
     ratio: 2,

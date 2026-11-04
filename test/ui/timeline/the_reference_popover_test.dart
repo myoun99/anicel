@@ -1,8 +1,9 @@
 // THE REFERENCE POPOVER (유저 2026-09-11, 미디어 배치 라운드 3~6): the file
 // button does not bake — it opens this. Its first line is the file beside
-// its POOL state, or 「선택한 레이어」 when the press acts on several rows;
-// its one button bakes 「래스터라이즈 · N장」 — the whole selection when the
-// pressed row is in it, that row alone when it is not — as ONE undo.
+// its POOL state, or 「선택한 레이어」 when the press acts on several rows.
+// And the rasterize of reference rows its one button ran — the reference
+// header's RASTERIZE's now (I-120-Q11 「하나만 남기도록」): a movie decoded
+// behind the wait window, one bar for the batch, as ONE undo.
 import 'dart:async';
 import 'dart:io';
 
@@ -30,8 +31,6 @@ import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
-import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart'
     show ReferenceWaitWords;
@@ -45,7 +44,6 @@ import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
-import '../../helpers/text_finders.dart';
 
 void main() {
   late Directory tempDir;
@@ -114,14 +112,6 @@ void main() {
 
   String sourceLine(WidgetTester tester) => tester
       .widget<Text>(find.byKey(const ValueKey<String>('layer-reference-source')))
-      .data!;
-
-  final rasterize = find.byKey(
-    const ValueKey<String>('layer-reference-rasterize'),
-  );
-
-  String buttonLabel(WidgetTester tester) => tester
-      .widget<Text>(find.descendant(of: rasterize, matching: find.anyText()))
       .data!;
 
   /// A session with a [frameCount]-frame take placed as a reference from
@@ -207,11 +197,6 @@ void main() {
       isNull,
       reason: '자리는 예약하고 내용만 바꾼다 — the window made room for it',
     );
-    expect(
-      buttonLabel(tester),
-      contains(editorActionLabel(EditorActionIds.layerRasterize)),
-      reason: 'the bake is still the popover own action',
-    );
   });
 
   /// The decode runs in `runAsync`; its answers land on the pumps after —
@@ -219,8 +204,8 @@ void main() {
   Future<void> settle(WidgetTester tester, bool Function() done) =>
       settleAsync(tester, done, step: const Duration(milliseconds: 20));
 
-  testWidgets('one row: its file beside its POOL state, and the one cel it '
-      'bakes (「bg_street.png · 참조」 · 「래스터라이즈 · 1장」)', (tester) async {
+  testWidgets('one row: its file beside its POOL state '
+      '(「bg_street.png · 참조」)', (tester) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     await openOn(tester, s, rows['bg_street.png']!);
 
@@ -231,11 +216,10 @@ void main() {
       '${asset.name} · Linked',
       reason: 'linked, not carried — the file stayed where it was',
     );
-    expect(buttonLabel(tester), 'Rasterize layer · 1 cel');
   });
 
-  testWidgets('pressed INSIDE the selection it bakes every selected '
-      'reference row — and one undo puts them all back', (tester) async {
+  testWidgets('pressed INSIDE the selection it speaks of every selected '
+      'reference row — 「선택한 레이어」', (tester) async {
     final (s, rows) = await sessionWith(tester, [
       'bg_street.png',
       'bg_night.png',
@@ -246,25 +230,10 @@ void main() {
     await openOn(tester, s, street);
 
     expect(sourceLine(tester), 'Selected layers');
-    expect(buttonLabel(tester), 'Rasterize layer · 2 cels');
-
-    await tester.tap(rasterize);
-    await tester.pumpAndSettle();
-    expect(popover, findsNothing, reason: 'the bake closes the popover');
-    expect(current(s, street).mediaReference, isNull);
-    expect(current(s, night).mediaReference, isNull);
-
-    s.undo();
-    expect(current(s, street).mediaReference, isNotNull);
-    expect(
-      current(s, night).mediaReference,
-      isNotNull,
-      reason: 'one gesture, one undo',
-    );
   });
 
   testWidgets('a selected row that points at NO file is not one of them — '
-      'one file to bake, so the line names it', (tester) async {
+      'one file, so the line names it', (tester) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     final street = rows['bg_street.png']!;
     final plain = s.requireActiveCut.layers.firstWhere(
@@ -274,11 +243,11 @@ void main() {
     await openOn(tester, s, street);
 
     expect(sourceLine(tester), endsWith(' · Linked'));
-    expect(buttonLabel(tester), 'Rasterize layer · 1 cel');
   });
 
-  testWidgets('pressed OUTSIDE the selection it bakes that row alone, and '
-      'the selection is left as it was', (tester) async {
+  testWidgets('pressed OUTSIDE the selection it names that row alone', (
+    tester,
+  ) async {
     final (s, rows) = await sessionWith(tester, [
       'bg_street.png',
       'bg_night.png',
@@ -289,64 +258,6 @@ void main() {
     await openOn(tester, s, street);
 
     expect(sourceLine(tester), contains('bg_street'));
-    expect(buttonLabel(tester), 'Rasterize layer · 1 cel');
-
-    await tester.tap(rasterize);
-    await tester.pumpAndSettle();
-    expect(current(s, street).mediaReference, isNull);
-    expect(
-      current(s, night).mediaReference,
-      isNotNull,
-      reason: 'the selection was not what was pressed',
-    );
-    expect(
-      [
-        for (final row in s.rowSelection.value)
-          if (row is LayerRowAddress) row.layerId,
-      ],
-      [night],
-      reason:
-          'what a press does to the selection itself is not the rule\'s to '
-          'say (the user did not), so the bake leaves it alone',
-    );
-  });
-
-  testWidgets('a MOVIE row counts what the bake would LEAVE — a cel per '
-      'position of its block, not the one held cel it shows them with', (
-    tester,
-  ) async {
-    final (s, movie) = await movieSession(tester);
-    await openOn(tester, s, movie);
-
-    expect(current(s, movie).frames, hasLength(1), reason: 'the premise');
-    expect(buttonLabel(tester), 'Rasterize layer · 20 cels');
-  });
-
-  testWidgets('pressing it puts the decode behind the WAIT WINDOW, and the '
-      'row comes back as cels', (tester) async {
-    final (s, movie) = await movieSession(
-      tester,
-      frameCount: 6,
-      inFrame: 0,
-    );
-    await openOn(tester, s, movie);
-
-    await tester.tap(rasterize);
-    await tester.pump();
-    expect(
-      waitWindow,
-      findsOneWidget,
-      reason: 'the one window heavy work waits behind',
-    );
-
-    await settle(
-      tester,
-      () =>
-          waitWindow.evaluate().isEmpty &&
-          current(s, movie).mediaReference == null,
-    );
-    expect(current(s, movie).frames, hasLength(6));
-    await tester.pumpAndSettle();
   });
 
   /// A context under an app, for a verb that puts a window up.
@@ -367,17 +278,20 @@ void main() {
     return hosted;
   }
 
-  testWidgets('the layer menu takes the same road — its rasterize is this '
-      'verb, so a movie goes behind the window there too', (tester) async {
+  testWidgets('rasterizing a movie puts the decode behind the WAIT WINDOW, '
+      'and the row comes back as cels', (tester) async {
     final (s, movie) = await movieSession(tester, frameCount: 6, inFrame: 0);
-    expect(s.activeLayer?.id, movie, reason: 'fixture: the placed row');
     final menuContext = await hostedContext(tester);
 
     // ⛔Not awaited HERE: the decode needs the pumps below to run, and a
     // test body waiting on it is a test body not pumping.
-    unawaited(rasterizeActiveRow(menuContext, s));
+    unawaited(rasterizeReferenceRows(menuContext, s, [current(s, movie)]));
     await tester.pump();
-    expect(waitWindow, findsOneWidget);
+    expect(
+      waitWindow,
+      findsOneWidget,
+      reason: 'the one window heavy work waits behind',
+    );
 
     await settle(
       tester,

@@ -530,8 +530,9 @@ void main() {
   });
 
   testWidgets('🎯I-120-Q11 「래스터라이즈 버튼만 둔다(지금 참조 래스터라이즈와 '
-      '같은 길)」: the header\'s RASTERIZE lets the reference go as the '
-      'popover\'s does — lit off where a press acts on no row', (
+      '같은 길)」 · 「하나만 남기도록」: the header\'s RASTERIZE lets go of '
+      'the rows a press acts on — the selection pressed inside it, the row '
+      'alone outside it — lit off where it acts on none', (
     tester,
   ) async {
     final (s, row) = await placed(tester);
@@ -588,7 +589,24 @@ void main() {
     expect(
       [for (final id in [row.id, other.id]) s.layerById(id)!.mediaReference],
       [null, null],
-      reason: 'pressed in the selection: the selection, as the popover does',
+      reason: 'pressed in the selection: the selection',
+    );
+
+    s.undo();
+    s.rowSelectionVerbs.rowSelection.value = [LayerRowAddress(other.id)];
+    rasterizeLaneGroupOf(context, s, row, header)!.press!();
+    await tester.pumpAndSettle();
+    expect(
+      [for (final id in [row.id, other.id]) s.layerById(id)!.mediaReference],
+      [isNull, isNotNull],
+      reason: 'pressed outside the selection: that row alone',
+    );
+    expect(
+      s.rowSelectionVerbs.rowSelection.value,
+      [LayerRowAddress(other.id)],
+      reason:
+          'what a press does to the selection itself is not the rule\'s to '
+          'say (the user did not), so the bake leaves it alone',
     );
 
     s.undo();

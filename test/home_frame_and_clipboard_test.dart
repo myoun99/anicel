@@ -291,7 +291,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('timeline-rasterize-layer-button')),
+      find.byKey(const ValueKey<String>('toggle-storyboard-layer-button')),
       findsOneWidget,
       reason: '⛔전제: the flyout is open',
     );
