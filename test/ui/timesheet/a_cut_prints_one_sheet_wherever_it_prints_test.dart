@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -306,6 +307,41 @@ void main() {
         reason: '${cut.name}: on the rows the sheet prints them on',
       );
     }
+  });
+
+  test('the XDTS writes an unnamed cel with the mark its sheet prints — the '
+      'one Preferences picks (I-161)', () {
+    final picked = AppFrameGridSettings.settings.value;
+    addTearDown(() => AppFrameGridSettings.settings.value = picked);
+    AppFrameGridSettings.settings.value = picked.copyWith(
+      unnamedMark: InbetweenMark.one,
+    );
+    final s = session(
+      layersOf301: [
+        Layer(
+          id: const LayerId('c'),
+          name: 'C',
+          frames: [
+            Frame(id: const FrameId('u'), duration: 1, strokes: const []),
+          ],
+          timeline: const {
+            4: TimelineExposure.drawing(FrameId('u'), length: 3),
+          },
+        ),
+      ],
+    );
+    addTearDown(s.dispose);
+    final cut301 = s.activeTrack.cuts.first;
+
+    final column = sheetOf301(
+      s,
+    ).columns.firstWhere((column) => column.layerId == const LayerId('c'));
+    expect(column.cells[4].mark, InbetweenMark.one, reason: 'the sheet');
+    expect(
+      writtenOn(xdtsTableOf(s, cut301, cutStartFrame: 0), xdtsFieldCell)[4],
+      xdtsTick1,
+      reason: 'the XDTS writes the mark the sheet wears, as its tick',
+    );
   });
 
   test('a transition row kept off the sheet leaves its slot blank — the '
