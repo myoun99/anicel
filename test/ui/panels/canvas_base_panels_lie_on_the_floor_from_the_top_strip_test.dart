@@ -265,10 +265,7 @@ void main() {
       expect(pill, findsOneWidget, reason: '$host — one pill in the app');
     }
 
-    standsOn(MainCanvasBrushHost);
-
-    await tester.tap(railGroupButton(sheets));
-    await tester.pumpAndSettle();
+    // The sheets open in their rail as the app opens.
     expect(
       find.byType(TimesheetTabHost),
       findsOneWidget,
@@ -279,8 +276,6 @@ void main() {
       findsNothing,
     );
     standsOn(MainCanvasBrushHost);
-    await tester.tap(railGroupButton(sheets));
-    await tester.pumpAndSettle();
 
     await tester.tap(floorButton(EditorWorkspace.mediaViewerTabId));
     await tester.pumpAndSettle();
