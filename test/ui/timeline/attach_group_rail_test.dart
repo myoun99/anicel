@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -397,10 +398,18 @@ layers: layers,
       await tester.pumpAndSettle();
     }
 
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final base = session.activeLayerId!;
     await addViaFlyout('add-layer-attach-above');
     expect(attachNamed('+1'), findsWidgets);
 
-    // The fresh attach row is active; adding below still targets ITS base.
+    // Stood on the base again, below rides it on its other side. ↩️From the
+    // fresh attach row it did too — I-159 stands it beside the row stood on
+    // (`an_attach_row_is_added_beside_the_row_stood_on_test`).
+    session.selectLayer(base);
+    await tester.pumpAndSettle();
     await addViaFlyout('add-layer-attach-below');
     expect(attachNamed('-1'), findsWidgets);
 
