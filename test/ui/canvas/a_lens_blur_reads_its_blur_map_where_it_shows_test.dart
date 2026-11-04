@@ -253,7 +253,7 @@ void main() {
           final keeps? => (
             pictures: (
               rasters: held,
-              keeps: keeps,
+              keeps: keeps ? NodesKept.onlyDrawn : NodesKept.none,
               below: keeps ? BelowThePen.whole : BelowThePen.inCells,
             ),
             revisionOf: (key) => key == mapCel && drawnOn ? 2 : 1,
