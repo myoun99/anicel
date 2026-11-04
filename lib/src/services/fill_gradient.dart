@@ -116,16 +116,36 @@ final class FillGradient {
   /// [startColor] whatever the shape (I-160-Q5 — a press that never moved
   /// is a gradient too, made nothing special of).
   double at(double x, double y) {
-    final along = switch (shape) {
-      FillGradientShape.linear => shareAlongSegment(Offset(x, y), _a, _b),
-      FillGradientShape.radial => _radius == 0
-          ? 0.0
-          : math.sqrt(
-                  (x - _a.dx) * (x - _a.dx) + (y - _a.dy) * (y - _a.dy),
-                ) /
-                _radius,
-    };
-    return along.clamp(0.0, 1.0);
+    final one = Float64List(1);
+    rowInto(one, x, y);
+    return one.single;
+  }
+
+  /// [at] for a row of pixels one apart, the first at ([x], [y]) — into
+  /// [along], as many as it holds. A line's projection moves by the same
+  /// share at each pixel, so it is projected twice a row rather than once
+  /// a pixel.
+  void rowInto(Float64List along, double x, double y) {
+    switch (shape) {
+      case FillGradientShape.linear:
+        final start = shareAlongSegment(Offset(x, y), _a, _b);
+        final step = shareAlongSegment(Offset(x + 1, y), _a, _b) - start;
+        for (var i = 0; i < along.length; i += 1) {
+          along[i] = math.min(math.max(start + step * i, 0.0), 1.0);
+        }
+      case FillGradientShape.radial:
+        final radius = _radius;
+        if (radius == 0) {
+          along.fillRange(0, along.length, 0);
+          return;
+        }
+        final dy = y - _a.dy;
+        final dySquared = dy * dy;
+        for (var i = 0; i < along.length; i += 1) {
+          final dx = x + i - _a.dx;
+          along[i] = math.min(math.sqrt(dx * dx + dySquared) / radius, 1.0);
+        }
+    }
   }
 
   late final double _radius = (_b - _a).distance;

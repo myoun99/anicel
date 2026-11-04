@@ -2084,23 +2084,33 @@ Uint8List _gradientRgba(
   required int width,
   required FillGradient gradient,
 }) {
-  final stops = gradient.stops(_gradientStops);
+  // The stops as the stamp's own bytes, so a pixel copies three of them
+  // rather than taking a colour apart.
+  final stops = Uint8List(_gradientStops * 4);
+  for (final (i, argb) in gradient.stops(_gradientStops).indexed) {
+    stops
+      ..[i * 4] = argbRed(argb)
+      ..[i * 4 + 1] = argbGreen(argb)
+      ..[i * 4 + 2] = argbBlue(argb)
+      ..[i * 4 + 3] = argbAlpha(argb);
+  }
   final bytes = Uint8List(mask.length * 4);
-  for (var index = 0; index < mask.length; index += 1) {
-    final coverage = mask[index];
-    if (coverage == 0) {
-      continue;
+  final along = Float64List(width);
+  for (var start = 0; start < mask.length; start += width) {
+    gradient.rowInto(along, left + 0.5, top + start ~/ width + 0.5);
+    for (var column = 0; column < width; column += 1) {
+      final coverage = mask[start + column];
+      if (coverage == 0) {
+        continue;
+      }
+      // Rounded: [along] is never below 0.
+      final stop = (along[column] * (_gradientStops - 1) + 0.5).toInt() * 4;
+      final offset = (start + column) * 4;
+      bytes[offset] = stops[stop];
+      bytes[offset + 1] = stops[stop + 1];
+      bytes[offset + 2] = stops[stop + 2];
+      bytes[offset + 3] = mul255Round(stops[stop + 3], coverage);
     }
-    final along = gradient.at(
-      left + index % width + 0.5,
-      top + index ~/ width + 0.5,
-    );
-    final argb = stops[(along * (_gradientStops - 1)).round()];
-    final offset = index * 4;
-    bytes[offset] = argbRed(argb);
-    bytes[offset + 1] = argbGreen(argb);
-    bytes[offset + 2] = argbBlue(argb);
-    bytes[offset + 3] = mul255Round(argbAlpha(argb), coverage);
   }
   return bytes;
 }
