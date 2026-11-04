@@ -36,18 +36,17 @@ void main() {
   LayerId addFolder(EditorSessionManager s) =>
       _added(s, LayerKind.folder);
 
-  /// The stack as structure: each row's name and its folder's, bottom →
-  /// top — names, so two sessions' stacks compare.
-  List<String> shapeOf(EditorSessionManager s) {
-    final stack = stackOf(s);
-    return [
-      for (final layer in stack)
-        '${layer.name} in ${switch (layer.folderId) {
-          final id? => stack.byId(id)?.name,
-          null => null,
-        }}',
-    ];
-  }
+  /// [stack] as structure: each row's name and its folder's, bottom → top
+  /// — names, so two sessions' stacks compare.
+  List<String> shapeIn(List<Layer> stack) => [
+    for (final layer in stack)
+      '${layer.name} in ${switch (layer.folderId) {
+        final id? => stack.byId(id)?.name,
+        null => null,
+      }}',
+  ];
+
+  List<String> shapeOf(EditorSessionManager s) => shapeIn(stackOf(s));
 
   test('🎯the rows selected go in as a drag of them let go on an empty '
       'folder puts them', () {
@@ -88,6 +87,45 @@ void main() {
       expect(folderStructureProblem(stackOf(made)), isNull);
       expect(made.activeLayerId, folder, reason: 'you stand on what you made');
     }
+  });
+
+  test('🎯made in a 겸용 cut, the folder holds the same rows in its sibling '
+      '— as the same drag does', () {
+    /// A session standing on a cut that has a 겸용, with [count] rows
+    /// added there — and so in its sibling.
+    ({EditorSessionManager s, List<LayerId> rows}) linked(int count) {
+      final s = session();
+      final source = s.requireActiveCut.id;
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      s.selectCut(source);
+      return (s: s, rows: addRows(s, count));
+    }
+
+    List<List<String>> everyCut(EditorSessionManager s) => [
+      for (final cut in s.activeTrack.cuts) shapeIn(cut.layers),
+    ];
+
+    final made = linked(3);
+    made.s.selectLayer(made.rows[2]);
+    select(made.s, [made.rows[0], made.rows[2]]);
+    final folder = addFolder(made.s);
+
+    final dragged = linked(3);
+    dragged.s.selectLayer(dragged.rows[2]);
+    final empty = addFolder(dragged.s);
+    select(dragged.s, [dragged.rows[0], dragged.rows[2]]);
+    _dropOn(dragged.s, dragged.rows[0], empty);
+
+    expect(everyCut(made.s), everyCut(dragged.s));
+    final sibling = made.s.activeTrack.cuts.singleWhere(
+      (cut) => cut.id != made.s.requireActiveCut.id,
+    );
+    expect(
+      shapeIn(sibling.layers),
+      shapeOf(made.s),
+      reason: 'the 겸용 wears it',
+    );
+    expect(stackOf(made.s).byId(made.rows[0])!.folderId, folder);
   });
 
   test('it is ONE undo — the folder and what it holds go and come back '
