@@ -5714,8 +5714,10 @@ void main() {
             'the button is offered with the box open — that is the '
             'premise of this test, not an accident of it',
       );
-      await tester.tap(button, warnIfMissed: false);
-      await tester.pump();
+      await windowBehind(
+        tester,
+        () => tester.tap(button, warnIfMissed: false),
+      );
 
       // The same landing the corner-scale test asserts for Enter. ⚠️Both
       // witnesses are OUTSIDE the unwarped stroke's 30..60 span, which is
@@ -5771,8 +5773,10 @@ void main() {
         reason: '⛔재현은 확정이 아니다',
       );
 
-      await tester.tap(confirm, warnIfMissed: false);
-      await tester.pump();
+      await windowBehind(
+        tester,
+        () => tester.tap(confirm, warnIfMissed: false),
+      );
       expect(env.commands.transformActive, isFalse);
       expect(env.commands.movePending, isFalse);
       expect(
