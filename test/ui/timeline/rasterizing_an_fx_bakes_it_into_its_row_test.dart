@@ -1797,10 +1797,10 @@ void main() {
         s,
       ).firstWhere((cut) => cut.id == cutId).layers.byId(const LayerId('r'))!;
 
-      testWidgets('🎯a still fx pressed in the linked cut, longer: a synced '
-          "rider is baked with it in both cuts, a cel for each of the row's "
-          'new ones in one bank — each cut showing what it showed — and one '
-          'undo gives both back', (tester) async {
+      testWidgets('🎯a still fx pressed in its own cut, the linked cut '
+          'longer: a synced rider is baked with it in both cuts, a cel for '
+          "each of the row's new ones in one bank — each cut showing what it "
+          'showed — and one undo gives both back', (tester) async {
         final s = linkedOf(
           [
             rowA(effects: [brightness(keyed: false)]),
@@ -1815,7 +1815,7 @@ void main() {
         final before = rowsOf(s);
         final seen = await seenIn(tester, s);
 
-        await press(tester, s, twinOf(s).id);
+        await press(tester, s, const LayerId('a'));
 
         final (original, twin) = (rIn(s), riderTwinOf(s));
         expect(original.frames.single.id, isNot(const FrameId('r-1')));
