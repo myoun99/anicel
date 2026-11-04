@@ -21,6 +21,7 @@ import 'package:anicel/src/models/fx_basis.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
@@ -786,15 +787,21 @@ void main() {
     const r = LayerId('r');
 
     /// `a` wearing [effects] and [transformTrack], ridden by [rider] —
-    /// whose cel is blue in the canvas's first tile of the second row.
+    /// whose cel is blue in the canvas's first tile of the second row —
+    /// the two in [folder] where one is given.
     EditorSessionManager ridden(
       Layer rider, {
       List<LayerEffect>? effects,
       TransformTrack? transformTrack,
+      Layer? folder,
     }) {
-      final s = sessionOf([
+      final rows = [
         rowA(effects: effects, transformTrack: transformTrack),
         rider,
+      ];
+      final s = sessionOf([
+        for (final row in rows) row.copyWith(folderId: folder?.id),
+        ?folder,
       ]);
       addTearDown(s.dispose);
       bakeCelSurface(
@@ -891,6 +898,27 @@ void main() {
       await rasterize(tester, s, null);
 
       expect(a(s).transformTrack.isEmpty, isTrue);
+      expect(await seenNow(), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('a row and its rider in a folder are each drawn as they '
+        'showed there, the folder staying over them', (tester) async {
+      final s = ridden(
+        riderOf('a'),
+        folder: createFolderLayer(id: const LayerId('f'), name: 'F'),
+      );
+      Future<List<List<int>>> seenNow() async => [
+        for (var frame = 0; frame < 3; frame += 1)
+          for (final (x, y) in [(5, 20), (36, 5)])
+            await shownAt(tester, s, frame, x, y),
+      ];
+      final seen = await seenNow();
+      expect(seen.toSet(), hasLength(6), reason: '⛔전제: both wear a\'s fx');
+
+      await rasterize(tester, s);
+
+      expect(rOf(s).folderId, const LayerId('f'));
       expect(await seenNow(), seen);
       s.playbackRig.prerenderScheduler.cancel();
     });
@@ -1010,6 +1038,17 @@ void main() {
           'a-9': rider.frames.first.id,
         },
       );
+    });
+
+    test('the bake links each of the row\'s new cels to its synced rider\'s '
+        'cel over it itself — left to the mirroring a session does on its '
+        'own, a picture could land where no link reaches', () {
+      final s = ridden(riderOf('a'));
+      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright)!;
+      expect(plan.riders.single.baseFrameLinks, {
+        for (final cel in plan.row.frames)
+          cel.id: attachedMirrorCelId(r, cel.id),
+      });
     });
   });
 
