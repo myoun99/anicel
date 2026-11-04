@@ -519,9 +519,10 @@ void main() {
         ['Ctrl+Alt+U'],
         reason: 'the recording waited on its own preset',
       );
+      // 🗣️F-560: the fill tool ships no key of its own on Anicel.
       expect(
         written(bindings.activatorsFor(EditorActionIds.toolFill)),
-        ['F'],
+        isEmpty,
         reason: 'the other preset\'s recording did not come along',
       );
       expect(bindings.isOverridden(EditorActionIds.toolFill), isFalse);
@@ -612,7 +613,7 @@ void main() {
         expect(written(again.activatorsFor(EditorActionIds.undo)), ['Ctrl+Z']);
         again.setPreset(ShortcutPreset.anicel);
         expect(written(again.activatorsFor(EditorActionIds.undo)), ['Ctrl+U']);
-        expect(written(again.activatorsFor(EditorActionIds.toolFill)), ['F']);
+        expect(written(again.activatorsFor(EditorActionIds.toolFill)), isEmpty);
         expect(again.isOverridden(EditorActionIds.toolFill), isFalse);
       });
 
@@ -828,7 +829,7 @@ void main() {
       expect(bindings.preset, ShortcutPreset.anicel);
       expect(chosen(tester, ShortcutPreset.anicel), isTrue);
       expect(chosen(tester, ShortcutPreset.clipStudio), isFalse);
-      expect(chipsOf(tester, EditorActionIds.toolFill), ['F']);
+      expect(chipsOf(tester, EditorActionIds.toolFill), isEmpty);
 
       await pick(tester, ShortcutPreset.tvpaint);
       expect(bindings.preset, ShortcutPreset.tvpaint);
@@ -906,9 +907,7 @@ void main() {
     test('the keymap holds every preset\'s keys for an action', () {
       final page = shortcutTableMarkdown(AppLanguage.ko);
       final fill = actionOn(page, '채우기 도구');
-      expect(keysOf(fill, ShortcutPreset.anicel), [
-        ['F', 'F'],
-      ]);
+      expect(keysOf(fill, ShortcutPreset.anicel), isEmpty);
       expect(keysOf(fill, ShortcutPreset.clipStudio), [
         ['G', 'G'],
       ]);

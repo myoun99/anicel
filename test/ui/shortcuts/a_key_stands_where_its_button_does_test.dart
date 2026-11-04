@@ -148,10 +148,4 @@ void main() {
       expect(shelfOf(id), shelf, reason: id);
     }
   });
-
-  test('every action stands on a shelf with no shelves of its own', () {
-    for (final row in editorActionDefinitions) {
-      expect(row.shelf.shelves, isEmpty, reason: row.id);
-    }
-  });
 }

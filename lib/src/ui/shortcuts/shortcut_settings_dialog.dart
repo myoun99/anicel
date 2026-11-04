@@ -298,9 +298,6 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       if (!_openBundles.contains(fold)) {
         return;
       }
-      for (final each in shelf.shelves) {
-        shelve(each);
-      }
       final depth = shelf.path.length;
       for (final definition
           in byShelf[shelf] ?? const <EditorActionDefinition>[]) {
@@ -343,6 +340,12 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             ),
           );
         }
+      }
+      // 🗣️F-560: 세부 도구 holds rows of its own AND the tool library's
+      // shelves — its rows first, then the shelves on it: rows after an
+      // open shelf's rows would read as that shelf's.
+      for (final each in shelf.shelves) {
+        shelve(each);
       }
     }
 

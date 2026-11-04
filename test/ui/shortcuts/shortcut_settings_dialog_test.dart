@@ -172,6 +172,36 @@ void main() {
       );
     });
 
+    // 🗣️F-560 (유저 2026-11-04): the tool library's shelves stand under 세부
+    // 도구, which keeps rows of its own. ↩️Every row stood on a shelf with
+    // no shelves of its own until then.
+    testWidgets('a shelf\'s own rows stand before the shelves on it', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      const tiles = ShortcutShelf.toolTiles;
+      final own = [
+        for (final row in bindings.definitions)
+          if (row.shelf == tiles) 'shortcut-row-${row.id}',
+      ];
+      // ⛔premise: 세부 도구 holds rows and shelves both.
+      expect(own, isNotEmpty);
+      expect(tiles.shelves, isNotEmpty);
+
+      for (final shelf in tiles.path) {
+        await tester.tap(twirlOf(shelf));
+        await tester.pump();
+      }
+
+      final keys = listed(tester);
+      final after = keys.indexOf(headingKeyOf(tiles)) + 1;
+      final under = [
+        ...own,
+        for (final shelf in tiles.shelves) headingKeyOf(shelf),
+      ];
+      expect(keys.sublist(after, after + under.length), under);
+    });
+
     testWidgets('every shelf stands shut when the window opens: the places\' '
         'headings and nothing under them', (tester) async {
       await pump(tester);
