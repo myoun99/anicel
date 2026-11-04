@@ -9,13 +9,14 @@ import '../../models/layer_mark.dart';
 /// per-layer. Project state is never touched; export/save ignore it.
 ///
 /// All active facets combine with AND (user rule): a mark-color set, a
-/// layer-kind set and the sheet/fx/clip flags must ALL pass. An
+/// take set, a layer-kind set and the sheet/fx/clip flags must ALL pass. An
 /// empty filter passes everything. The active layer is exempt (the host
 /// keeps the layer you're working on visible so a filter can't hide your
 /// own strokes).
 class TimelineRowFilter {
   const TimelineRowFilter({
     this.markColors = const {},
+    this.takes = const {},
     this.kinds = const {},
     this.onTimesheetOnly = false,
     this.fxOnly = false,
@@ -27,6 +28,11 @@ class TimelineRowFilter {
   /// When non-empty, a layer passes only if its COLOUR LABEL is in this set
   /// — whatever take it is on ([LayerMark.colorLabel], F-553).
   final Set<LayerMark> markColors;
+
+  /// When non-empty, a layer passes only if its TAKE is in this set —
+  /// whatever its colour label ([LayerMark.take]; take-legend-button, 유저
+  /// 2026-11-04: 「테이크 다른거는 … 테이크 레전드버튼 만들어서 별도구현」).
+  final Set<int> takes;
 
   /// When non-empty, a layer passes only if its kind is in this set (the
   /// legend's kind-icon solo, R4 #8).
@@ -44,6 +50,7 @@ class TimelineRowFilter {
 
   bool get isActive =>
       markColors.isNotEmpty ||
+      takes.isNotEmpty ||
       kinds.isNotEmpty ||
       onTimesheetOnly ||
       fxOnly ||
@@ -121,6 +128,9 @@ class TimelineRowFilter {
         !markColors.contains(mark.colorLabel)) {
       return false;
     }
+    if (mark != null && takes.isNotEmpty && !takes.contains(mark.take)) {
+      return false;
+    }
     if (kind != null && kinds.isNotEmpty && !kinds.contains(kind)) {
       return false;
     }
@@ -138,6 +148,7 @@ class TimelineRowFilter {
 
   TimelineRowFilter copyWith({
     Set<LayerMark>? markColors,
+    Set<int>? takes,
     Set<LayerKind>? kinds,
     bool? onTimesheetOnly,
     bool? fxOnly,
@@ -145,6 +156,7 @@ class TimelineRowFilter {
   }) {
     return TimelineRowFilter(
       markColors: markColors ?? this.markColors,
+      takes: takes ?? this.takes,
       kinds: kinds ?? this.kinds,
       onTimesheetOnly: onTimesheetOnly ?? this.onTimesheetOnly,
       fxOnly: fxOnly ?? this.fxOnly,
@@ -156,6 +168,10 @@ class TimelineRowFilter {
   TimelineRowFilter toggledMark(LayerMark mark) =>
       copyWith(markColors: toggledSet(markColors, mark.colorLabel));
 
+  /// Toggles [take] in the take set.
+  TimelineRowFilter toggledTake(int take) =>
+      copyWith(takes: toggledSet(takes, take));
+
   /// Toggles [kind] in the kind set.
   TimelineRowFilter toggledKind(LayerKind kind) =>
       copyWith(kinds: toggledSet(kinds, kind));
@@ -164,6 +180,7 @@ class TimelineRowFilter {
   bool operator ==(Object other) {
     return other is TimelineRowFilter &&
         setEquals(other.markColors, markColors) &&
+        setEquals(other.takes, takes) &&
         setEquals(other.kinds, kinds) &&
         other.onTimesheetOnly == onTimesheetOnly &&
         other.fxOnly == fxOnly &&
@@ -173,6 +190,7 @@ class TimelineRowFilter {
   @override
   int get hashCode => Object.hash(
     Object.hashAllUnordered(markColors),
+    Object.hashAllUnordered(takes),
     Object.hashAllUnordered(kinds),
     onTimesheetOnly,
     fxOnly,

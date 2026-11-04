@@ -206,9 +206,9 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// The active row filter (for the legend flyouts' check marks).
   final TimelineRowFilter rowFilter;
 
-  /// Marks currently assigned across the active cut's layers — the
-  /// "solo color X" list is built from these (empty color set skipped),
-  /// read when it is ([TimelineLegendMenus.marksInUse] has why).
+  /// The marks the active cut's layers wear — the colour and take solos
+  /// are built from these, read when they are
+  /// ([TimelineLegendMenus.marksInUse] has why).
   final Set<LayerMark> Function() marksInUse;
 
   /// The kinds this panel's rows can be — the "solo kind" list (R4 #8,
@@ -391,8 +391,11 @@ class TimelineLayerControlsHeader extends KeptPiece {
   }
 
   /// The label pair's column: the colour label's icon over the colour
-  /// label, and the take's half held empty over the take — the rows' pair
+  /// label, and the take's over the take — the rows' pair
   /// ([LayerMarkChip]), cell for cell.
+  ///
+  /// 🗣️take-legend-button (유저 2026-11-04): the take's half was held empty
+  /// until the take had a solo of its own ([TimelineLegendMenus.take]).
   ///
   /// 🚨F-409 (유저 2026-10-19): 「레전드의 왼쪽 버튼(섹션버튼,색라벨버튼)이랑
   /// 밑의 색라벨이랑 테이크등의 위치가 어긋나서 행/열 구조란 느낌이 안듬」.
@@ -409,11 +412,21 @@ class TimelineLayerControlsHeader extends KeptPiece {
         engaged: rowFilter.markColors.isNotEmpty,
       ),
     );
+    final takeCell = _cell(
+      keyValue: 'legend-take',
+      tooltip: AppText.strings.tlColTake,
+      entriesBuilder: menus.take,
+      child: _legendIcon(
+        Icons.looks_one_outlined,
+        restColor: restColor,
+        engaged: rowFilter.takes.isNotEmpty,
+      ),
+    );
     return Flex(
       direction: axis,
       children: [
         alongBox(axis, layerMarkSlotWidth, child: markCell),
-        alongBox(axis, layerTakeSlotWidth),
+        alongBox(axis, layerTakeSlotWidth, child: takeCell),
       ],
     );
   }

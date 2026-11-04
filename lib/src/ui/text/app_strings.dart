@@ -2127,6 +2127,7 @@ enum AppStrings {
   String get tlHideAll => _s('tlHideAll');
   String get tlSoloKind => _s('tlSoloKind');
   String get tlSoloColor => _s('tlSoloColor');
+  String get tlSoloTake => _s('tlSoloTake');
   String get tlSoloClips => _s('tlSoloClips');
   String get tlSoloFxOnRows => _s('tlSoloFxOnRows');
   String get tlSoloSheetOnRows => _s('tlSoloSheetOnRows');
@@ -2135,6 +2136,7 @@ enum AppStrings {
   String get tlAllOnTimesheet => _s('tlAllOnTimesheet');
   String get tlAllOffTimesheet => _s('tlAllOffTimesheet');
   String get tlClearMarkFilter => _s('tlClearMarkFilter');
+  String get tlClearTakeFilter => _s('tlClearTakeFilter');
   String get tlClearAllClips => _s('tlClearAllClips');
   String get tlColVisibility => _s('tlColVisibility');
   String get tlColLayerKind => _s('tlColLayerKind');
@@ -2143,6 +2145,7 @@ enum AppStrings {
   String get tlColBlendMode => _s('tlColBlendMode');
   String get tlColFx => _s('tlColFx');
   String get tlColMark => _s('tlColMark');
+  String get tlColTake => _s('tlColTake');
   String get tlColClip => _s('tlColClip');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlShowXSheet => _s('tlShowXSheet');
@@ -3468,6 +3471,7 @@ enum AppStrings {
     'tlHideAll': 'Hide all',
     'tlSoloKind': 'Solo kind',
     'tlSoloColor': 'Solo color',
+    'tlSoloTake': 'Solo take',
     'tlSoloClips': 'Solo clipped layers',
     'tlSoloFxOnRows': 'Solo fx-on rows',
     'tlSoloSheetOnRows': 'Solo sheet-on rows',
@@ -3476,6 +3480,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'All on timesheet',
     'tlAllOffTimesheet': 'All off timesheet',
     'tlClearMarkFilter': 'Clear mark filter',
+    'tlClearTakeFilter': 'Clear take solo',
     'tlClearAllClips': 'Release all clipping',
     'tlColVisibility': 'Visibility column',
     'tlColLayerKind': 'Layer kind column',
@@ -3484,6 +3489,7 @@ enum AppStrings {
     'tlColBlendMode': 'Blend mode column',
     'tlColFx': 'FX column',
     'tlColMark': 'Mark column',
+    'tlColTake': 'Take column',
     'tlColClip': 'Clipping column',
     'tlColTimesheet': 'Timesheet column',
     'tlShowXSheet': 'Show X-sheet',
@@ -5309,6 +5315,7 @@ enum AppStrings {
     'tlHideAll': 'すべて隠す',
     'tlSoloKind': '種類をソロ',
     'tlSoloColor': '色をソロ',
+    'tlSoloTake': 'テイクをソロ',
     'tlSoloClips': 'クリッピングをソロ',
     'tlSoloFxOnRows': 'FXオンの行をソロ',
     'tlSoloSheetOnRows': 'シートオンの行をソロ',
@@ -5317,6 +5324,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'すべてシートに載せる',
     'tlAllOffTimesheet': 'すべてシートから外す',
     'tlClearMarkFilter': 'マークフィルターを解除',
+    'tlClearTakeFilter': 'テイクソロを解除',
     'tlClearAllClips': 'クリッピングをすべて解除',
     'tlColVisibility': '表示列',
     'tlColLayerKind': 'レイヤー種類列',
@@ -5325,6 +5333,7 @@ enum AppStrings {
     'tlColBlendMode': '合成モード列',
     'tlColFx': 'FX列',
     'tlColMark': 'マーク列',
+    'tlColTake': 'テイク列',
     'tlColClip': 'クリッピング列',
     'tlColTimesheet': 'タイムシート列',
     'tlShowXSheet': 'Xシートで表示',
@@ -7171,6 +7180,7 @@ enum AppStrings {
     'tlHideAll': '모두 숨기기',
     'tlSoloKind': '종류 솔로',
     'tlSoloColor': '색 솔로',
+    'tlSoloTake': '테이크 솔로',
     'tlSoloClips': '클리핑 솔로',
     'tlSoloFxOnRows': 'FX 켜진 행 솔로',
     'tlSoloSheetOnRows': '시트 켜진 행 솔로',
@@ -7179,6 +7189,7 @@ enum AppStrings {
     'tlAllOnTimesheet': '모두 시트에 올리기',
     'tlAllOffTimesheet': '모두 시트에서 내리기',
     'tlClearMarkFilter': '마크 필터 해제',
+    'tlClearTakeFilter': '테이크 솔로 지우기',
     'tlClearAllClips': '클리핑 모두 해제',
     'tlColVisibility': '표시 열',
     'tlColLayerKind': '레이어 종류 열',
@@ -7187,6 +7198,7 @@ enum AppStrings {
     'tlColBlendMode': '블렌드 모드 열',
     'tlColFx': 'FX 열',
     'tlColMark': '마크 열',
+    'tlColTake': '테이크 열',
     'tlColClip': '클리핑 열',
     'tlColTimesheet': '타임시트 열',
     'tlShowXSheet': 'X시트로 보기',
@@ -9190,6 +9202,7 @@ enum AppStrings {
     'tlHideAll': 'Tout masquer',
     'tlSoloKind': 'Solo par type',
     'tlSoloColor': 'Solo par couleur',
+    'tlSoloTake': 'Solo par prise',
     'tlSoloClips': 'Solo des calques écrêtés',
     'tlSoloFxOnRows': 'Solo des lignes avec FX',
     'tlSoloSheetOnRows': 'Solo des lignes sur la feuille',
@@ -9198,6 +9211,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'Tout mettre sur la feuille',
     'tlAllOffTimesheet': 'Tout retirer de la feuille',
     'tlClearMarkFilter': 'Effacer le filtre de repères',
+    'tlClearTakeFilter': 'Effacer le solo de prise',
     'tlClearAllClips': 'Libérer tous les masques d’écrêtage',
     'tlColVisibility': 'Colonne visibilité',
     'tlColLayerKind': 'Colonne type de calque',
@@ -9206,6 +9220,7 @@ enum AppStrings {
     'tlColBlendMode': 'Colonne mode de fusion',
     'tlColFx': 'Colonne FX',
     'tlColMark': 'Colonne repère',
+    'tlColTake': 'Colonne prise',
     'tlColClip': 'Colonne masque d’écrêtage',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlShowXSheet': "Afficher en feuille d'exposition",
@@ -11010,6 +11025,7 @@ enum AppStrings {
     'tlHideAll': '全部隐藏',
     'tlSoloKind': '按类型独奏',
     'tlSoloColor': '按颜色独奏',
+    'tlSoloTake': '按镜次独奏',
     'tlSoloClips': '独奏剪贴图层',
     'tlSoloFxOnRows': '独奏已开 FX 的行',
     'tlSoloSheetOnRows': '独奏已上表的行',
@@ -11018,6 +11034,7 @@ enum AppStrings {
     'tlAllOnTimesheet': '全部放上摄影表',
     'tlAllOffTimesheet': '全部移出摄影表',
     'tlClearMarkFilter': '清除标记筛选',
+    'tlClearTakeFilter': '清除镜次独奏',
     'tlClearAllClips': '释放所有剪贴',
     'tlColVisibility': '可见性列',
     'tlColLayerKind': '图层类型列',
@@ -11026,6 +11043,7 @@ enum AppStrings {
     'tlColBlendMode': '混合模式列',
     'tlColFx': 'FX 列',
     'tlColMark': '标记列',
+    'tlColTake': '镜次列',
     'tlColClip': '剪贴列',
     'tlColTimesheet': '摄影表列',
     'tlShowXSheet': '以摄影表显示',

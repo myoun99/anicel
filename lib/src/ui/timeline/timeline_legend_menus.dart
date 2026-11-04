@@ -26,10 +26,12 @@ class LayerLegendCallbacks {
     required this.onSheetAllOn,
     required this.onSheetAllOff,
     required this.onClearMarkFilter,
+    required this.onClearTakeFilter,
     required this.onClearAllClips,
     required this.onBypassAllFx,
     required this.onEnableAllFx,
     required this.onToggleMarkFilter,
+    required this.onToggleTakeFilter,
     required this.onToggleKindFilter,
     required this.onToggleSheetOnlyFilter,
     required this.onToggleFxOnlyFilter,
@@ -50,12 +52,14 @@ class LayerLegendCallbacks {
   final VoidCallback onSheetAllOn;
   final VoidCallback onSheetAllOff;
   final VoidCallback onClearMarkFilter;
+  final VoidCallback onClearTakeFilter;
   final VoidCallback onClearAllClips;
   final VoidCallback onBypassAllFx;
   final VoidCallback onEnableAllFx;
 
-  /// R2/R4 row-filter facet toggles (mark colors + layer kinds).
+  /// R2/R4 row-filter facet toggles (mark colors + takes + layer kinds).
   final ValueChanged<LayerMark> onToggleMarkFilter;
+  final ValueChanged<int> onToggleTakeFilter;
   final ValueChanged<LayerKind> onToggleKindFilter;
   final VoidCallback onToggleSheetOnlyFilter;
   final VoidCallback onToggleFxOnlyFilter;
@@ -139,8 +143,10 @@ class TimelineLegendMenus {
   /// The active row filter (for the flyouts' check marks).
   final TimelineRowFilter rowFilter;
 
-  /// Marks currently assigned across the panel's layers — the 「solo color
-  /// X」 list is built from these — read when the list is.
+  /// The marks the panel's layers wear, unlabelled ones too — the colour
+  /// solos list their labels and the take solos their takes — read when
+  /// the list is. ↩️Only the labelled ones: a row on T1 with no label wore
+  /// a take no list could see (take-legend-button, 2026-11-04).
   ///
   /// 🚨READ, NEVER HELD (I-57, 10-14): held, the two sets changed at every
   /// cut switch, and the header that hands them on was built again whole
@@ -175,6 +181,7 @@ class TimelineLegendMenus {
       sections,
       sheet,
       mark,
+      take,
       kind,
       clip,
       fx,
@@ -321,6 +328,46 @@ class TimelineLegendMenus {
                 shortcuts: [railSoloMarkActionId(mark)],
                 checked: rowFilter.markColors.contains(mark),
                 onSelected: () => legend.onToggleMarkFilter(mark),
+              ),
+          ];
+  }
+
+  /// 🗣️take-legend-button (유저 2026-11-04, F-553: 「테이크 다른거는 …
+  /// 테이크 레전드버튼 만들어서 별도구현」): the take column — the colour
+  /// column's template, its reset over its solos.
+  LegendFlyout? get take =>
+      _bulkThenSolos((legend) => [_takeFilterReset(legend)], _takeSolos);
+
+  /// The take filter's own way back ([_markFilterReset]'s twin).
+  PanelFlyoutItem _takeFilterReset(LayerLegendCallbacks legend) =>
+      PanelFlyoutItem(
+        keyValue: 'legend-take-filter-clear',
+        label: AppText.strings.tlClearTakeFilter,
+        shortcuts: const [RailLegendActionIds.takeFilterClear],
+        icon: Icons.filter_alt_off_outlined,
+        enabled: rowFilter.takes.isNotEmpty,
+        onSelected: legend.onClearTakeFilter,
+      );
+
+  /// The take solos: the takes the rows are on, and every take the filter
+  /// holds — the colour solos' law ([_markSolos]), so a take held after its
+  /// last row moved off it can still be let go.
+  List<PanelFlyoutEntry> _takeSolos(LayerLegendCallbacks legend) {
+    final listed = {
+      for (final mark in marksInUse()) mark.take,
+      ...rowFilter.takes,
+    };
+    return listed.isEmpty
+        ? const []
+        : [
+            PanelFlyoutHeader(AppText.strings.tlSoloTake),
+            for (final take in listed.toList()..sort())
+              PanelFlyoutItem(
+                keyValue: 'legend-filter-take-$take',
+                label: AppText.strings.tlLayerTakeNumber(take),
+                shortcuts: [railSoloTakeActionId(take)],
+                checked: rowFilter.takes.contains(take),
+                onSelected: () => legend.onToggleTakeFilter(take),
               ),
           ];
   }

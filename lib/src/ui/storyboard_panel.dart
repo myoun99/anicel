@@ -2036,8 +2036,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   Set<LayerMark> _legendMarksInUse() => {
-    for (final layer in _legendLayers())
-      if (layer.mark != LayerMark.none) layer.mark,
+    for (final layer in _legendLayers()) layer.mark,
   };
 
   Set<LayerId> _legendDisplayedLayerIds() => {

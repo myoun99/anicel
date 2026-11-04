@@ -433,6 +433,7 @@ abstract final class RailLegendActionIds {
   static const sheetAllOff = 'rail-sheet-all-off';
   static const soloSheet = 'rail-solo-sheet';
   static const markFilterClear = 'rail-mark-filter-clear';
+  static const takeFilterClear = 'rail-take-filter-clear';
   static const clipClear = 'rail-clip-clear';
   static const soloClip = 'rail-solo-clip';
   static const fxEnableAll = 'rail-fx-enable-all';
@@ -448,6 +449,11 @@ abstract final class RailLegendActionIds {
 /// lists only the labels on the rows (and the ones the filter holds).
 String railSoloMarkActionId(LayerMark mark) =>
     'rail-solo-mark-${mark.keySlug}';
+
+/// A take solo's action: one per take there can be
+/// ([LayerMark.takeChoices]), though the column lists only the takes on
+/// the rows (and the ones the filter holds).
+String railSoloTakeActionId(int take) => 'rail-solo-take-$take';
 
 /// A kind solo's action: one per kind.
 String railSoloKindActionId(LayerKind kind) => 'rail-solo-kind-${kind.name}';
@@ -501,6 +507,10 @@ List<EditorActionDefinition> _railLegendActions() {
       (l) => s(l).tlClearMarkFilter,
     ),
     _railLegendAction(
+      RailLegendActionIds.takeFilterClear,
+      (l) => s(l).tlClearTakeFilter,
+    ),
+    _railLegendAction(
       RailLegendActionIds.clipClear,
       (l) => s(l).tlClearAllClips,
     ),
@@ -539,6 +549,11 @@ List<EditorActionDefinition> _railLegendActions() {
           railSoloMarkActionId(mark),
           (l) => '${s(l).tlSoloColor}: ${mark.labelFor(l)}',
         ),
+    for (final take in LayerMark.takeChoices)
+      _railLegendAction(
+        railSoloTakeActionId(take),
+        (l) => '${s(l).tlSoloTake}: ${s(l).tlLayerTakeNumber(take)}',
+      ),
     for (final kind in LayerKind.values)
       _railLegendAction(
         railSoloKindActionId(kind),

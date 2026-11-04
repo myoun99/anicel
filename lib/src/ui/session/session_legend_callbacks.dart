@@ -32,11 +32,15 @@ LayerLegendCallbacks sessionLegendCallbacks(
   onClearMarkFilter: () => onSetRowFilter?.call(
     rowFilter.copyWith(markColors: const <LayerMark>{}),
   ),
+  onClearTakeFilter: () =>
+      onSetRowFilter?.call(rowFilter.copyWith(takes: const <int>{})),
   onClearAllClips: session.layerSwitches.clearAllClips,
   onBypassAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(true),
   onEnableAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(false),
   onToggleMarkFilter: (mark) =>
       onSetRowFilter?.call(rowFilter.toggledMark(mark)),
+  onToggleTakeFilter: (take) =>
+      onSetRowFilter?.call(rowFilter.toggledTake(take)),
   onToggleKindFilter: (kind) =>
       onSetRowFilter?.call(rowFilter.toggledKind(kind)),
   onToggleSheetOnlyFilter: () => onSetRowFilter?.call(
