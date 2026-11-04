@@ -13,7 +13,9 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -52,7 +54,6 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/rasterize_fx_group.dart';
 
 import '../../helpers/cel_text_fixture.dart' show pixelOf;
-import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/wait_window.dart';
 
 /// 🗣️I-120 (유저 2026-10-21 · 11-04): an fx group header's RASTERIZE bakes
@@ -1444,6 +1445,53 @@ void main() {
     });
   });
 
+  /// The cuts of [s]'s track.
+  List<Cut> cutsOf(EditorSessionManager s) =>
+      s.repository.requireProject().tracks.single.cuts;
+
+  /// Each cut's rows.
+  List<List<Layer>> rowsOf(EditorSessionManager s) => [
+    for (final cut in cutsOf(s)) cut.layers,
+  ];
+
+  /// What each cut shows at canvas (36, 5) on frames 0..2 — and at each
+  /// point of [also] after.
+  Future<List<List<int>>> seenIn(
+    WidgetTester tester,
+    EditorSessionManager s, {
+    List<(int, int)> also = const [],
+  }) async => [
+    for (final cut in cutsOf(s))
+      for (final (x, y) in [(36, 5), ...also])
+        for (var frame = 0; frame < 3; frame += 1)
+          await shownAt(tester, s, frame, x, y, of: cut),
+  ];
+
+  /// Presses [rowId]'s group header RASTERIZE for [effectId] — scoped to
+  /// [band] where one is given — and waits out its window.
+  Future<void> press(
+    WidgetTester tester,
+    EditorSessionManager s,
+    LayerId rowId, [
+    EffectId? effectId = bright,
+    BakedFrames? band,
+  ]) async {
+    final before = s.repository.requireProject();
+    final context = await hostedContext(tester);
+    unawaited(
+      rasterizeFxGroup(context, s, rowId, effectId, 'fx', band: band),
+    );
+    await settleBehindTheWaitWindow(
+      tester,
+      () =>
+          !identical(s.repository.requireProject(), before) &&
+          find
+              .byKey(const ValueKey<String>('fx-rasterize-progress'))
+              .evaluate()
+              .isEmpty,
+    );
+  }
+
   group('④ — a 겸용 row is baked in every cut it is used in, each by its own '
       'values and timing, into the one bank its cels are (Q6 「같은 셀을 보는 '
       '다른 컷도 같이 굽는다 — 한 장에 못 담으면 막고 경고」)', () {
@@ -1470,60 +1518,16 @@ void main() {
       return s;
     }
 
-    /// The cuts of [s]'s track: `a`'s and the one linked to it.
-    List<Cut> cutsOf(EditorSessionManager s) =>
-        s.repository.requireProject().tracks.single.cuts;
-
-    /// Each cut's rows.
-    List<List<Layer>> rowsOf(EditorSessionManager s) => [
-      for (final cut in cutsOf(s)) cut.layers,
-    ];
-
     /// `a` in its own cut, wherever [s] stands.
     Layer aIn(EditorSessionManager s) => cutsOf(
       s,
     ).firstWhere((cut) => cut.id == cutId).layers.byId(const LayerId('a'))!;
-
-    /// What each cut shows at canvas (36, 5) on frames 0..2.
-    Future<List<List<int>>> seenIn(
-      WidgetTester tester,
-      EditorSessionManager s,
-    ) async => [
-      for (final cut in cutsOf(s))
-        for (var frame = 0; frame < 3; frame += 1)
-          await shownAt(tester, s, frame, 36, 5, of: cut),
-    ];
 
     /// The cel [row] shows at each of frames 0..2.
     List<FrameId?> celsOf(Layer row) => [
       for (var frame = 0; frame < 3; frame += 1)
         exposedFrameIdAt(row.timeline, frame),
     ];
-
-    /// Presses [rowId]'s group header RASTERIZE for [effectId] — scoped to
-    /// [band] where one is given — and waits out its window.
-    Future<void> press(
-      WidgetTester tester,
-      EditorSessionManager s,
-      LayerId rowId, [
-      EffectId? effectId = bright,
-      BakedFrames? band,
-    ]) async {
-      final before = s.repository.requireProject();
-      final context = await hostedContext(tester);
-      unawaited(
-        rasterizeFxGroup(context, s, rowId, effectId, 'fx', band: band),
-      );
-      await settleBehindTheWaitWindow(
-        tester,
-        () =>
-            !identical(s.repository.requireProject(), before) &&
-            find
-                .byKey(const ValueKey<String>('fx-rasterize-progress'))
-                .evaluate()
-                .isEmpty,
-      );
-    }
 
     testWidgets('🎯a still fx pressed in the linked cut: every use bakes it — '
         'its cel baked once into the one bank, the fx at rest in both cuts, '
@@ -1773,6 +1777,352 @@ void main() {
     });
   });
 
+  /// 🗣️I-120-Q7 (유저 2026-11-04 「트랙의 콘티가 있는 컷 전부에서 같이
+  /// 굽는다」) — and, while Q17 · Q18 are asked, a panel that would show
+  /// more than one picture bakes nothing.
+  group("④c — a row of a track's conte is baked in every cut of the track "
+      'that has the conte, each by its own values and timing into a bank of '
+      'its own (Q7)', () {
+    const other = CutId('cut2');
+    const bare = CutId('cut3');
+    const red = [200, 0, 0, 255];
+
+    /// A brightness fx standing still at [value].
+    LayerEffect still(double value) => LayerEffect(
+      id: bright,
+      kind: EffectKind.brightnessContrast,
+      parameters: {'brightness': EffectParameter(value: value)},
+    );
+
+    /// A cut [id] of the conte [base] — its panel `1` over frames 0..1 and
+    /// `2` over frame 2 — wearing [fx], and riding it the track's row `K1`
+    /// as [rider] names it, its cels `1` · `2` one for each panel: synced,
+    /// or [free] on blocks of its own, wearing [riderFx].
+    Cut conteCut(
+      CutId id,
+      String base,
+      String rider, {
+      List<LayerEffect> fx = const [],
+      List<LayerEffect> riderFx = const [],
+      bool free = false,
+    }) {
+      FrameId cel(String row, int n) => FrameId('$row-$n');
+      List<Frame> cels(String row) => [
+        for (final n in [1, 2])
+          Frame(id: cel(row, n), duration: 1, name: '$n', strokes: const []),
+      ];
+      Map<int, TimelineExposure> panels(String row) => {
+        0: TimelineExposure.drawing(
+          cel(row, 1),
+          length: 2,
+          memo: const ExposureMemo(actionMemo: 'PAN', inkId: 'ink-1'),
+        ),
+        2: TimelineExposure.drawing(cel(row, 2), length: 1),
+      };
+      return Cut(
+        id: id,
+        name: id.value,
+        duration: 3,
+        canvasSize: canvasSize,
+        layers: [
+          Layer(
+            id: LayerId(base),
+            name: 'Conte',
+            kind: LayerKind.storyboard,
+            effects: fx,
+            frames: cels(base),
+            timeline: panels(base),
+          ),
+          Layer(
+            id: LayerId(rider),
+            name: 'K1',
+            kind: LayerKind.storyboard,
+            attachedToLayerId: LayerId(base),
+            attachedPlacement: AttachedPlacement.above,
+            attachedMode: free ? AttachedMode.free : AttachedMode.synced,
+            conteKey: const ConteKey('K1'),
+            effects: riderFx,
+            frames: cels(rider),
+            baseFrameLinks: free
+                ? const {}
+                : {cel(base, 1): cel(rider, 1), cel(base, 2): cel(rider, 2)},
+            timeline: free ? panels(rider) : const {},
+          ),
+          createCameraLayer(cutId: id),
+        ],
+      );
+    }
+
+    /// A track of the cut stood in — its conte `s`, `k` riding it — and
+    /// [other] — its conte `t`, `j` riding it — each made by [cut], and a
+    /// cut with no conte after: every conte's cel green in the canvas's
+    /// third tile, every rider's red in the second.
+    EditorSessionManager trackOf(
+      Cut Function(CutId id, String base, String rider) cut,
+    ) {
+      final s = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          cameraSize: canvasSize,
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
+                cut(cutId, 's', 'k'),
+                cut(other, 't', 'j'),
+                Cut(
+                  id: bare,
+                  name: 'bare',
+                  duration: 3,
+                  canvasSize: canvasSize,
+                  layers: [createCameraLayer(cutId: bare)],
+                ),
+              ],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      addTearDown(s.dispose);
+      for (final at in cutsOf(s)) {
+        for (final layer in at.layers) {
+          final rides = layer.attachedToLayerId != null;
+          for (final cel in layer.frames) {
+            bakeCelSurface(
+              s.renderCaches.brushFrameStore,
+              s.brushFrameKeyForCut(at, layer.id, cel.id),
+              inkAt([TileCoord(x: rides ? 1 : 2, y: 0)], rides ? red : green),
+            );
+          }
+        }
+      }
+      return s;
+    }
+
+    /// [row] in [cut] of [s].
+    Layer rowIn(EditorSessionManager s, CutId cut, String row) => cutsOf(
+      s,
+    ).firstWhere((at) => at.id == cut).layers.byId(LayerId(row))!;
+
+    /// [row]'s blocks: each one's start, its length and its cel's name.
+    Map<int, (int?, String?)> blocksOf(Layer row) => {
+      for (final MapEntry(key: start, value: block) in row.timeline.entries)
+        start: (
+          block.length,
+          row.frames.firstWhere((cel) => cel.id == block.frameId).name,
+        ),
+    };
+
+    /// What each cut shows of its conte and of the row riding it.
+    Future<List<List<int>>> seen(WidgetTester tester, EditorSessionManager s) =>
+        seenIn(tester, s, also: const [(20, 5)]);
+
+    testWidgets("🎯a still fx on the conte: every cut of the track's conte "
+        'bakes it by its own value into cels of its own, its panels as they '
+        'were — the row synced on it showing what it showed, linked to its '
+        'new cels — and one undo gives every cut back', (tester) async {
+      final s = trackOf(
+        (id, base, rider) =>
+            conteCut(id, base, rider, fx: [still(id == cutId ? 60 : 30)]),
+      );
+      final before = rowsOf(s);
+      final looks = await seen(tester, s);
+      expect(looks[0], isNot(looks[6]), reason: '⛔전제: each its own value');
+
+      await press(tester, s, const LayerId('t'));
+
+      for (final (index, (cut, base, rider)) in [
+        (cutId, 's', 'k'),
+        (other, 't', 'j'),
+      ].indexed) {
+        final conte = rowIn(s, cut, base);
+        expect(blocksOf(conte), {0: (2, '1'), 2: (1, '2')});
+        expect(
+          conte.timeline[0]!.memo,
+          const ExposureMemo(actionMemo: 'PAN', inkId: 'ink-1'),
+          reason: "the sheet's writing on its panel",
+        );
+        expect(
+          conte.frames.map((cel) => cel.id),
+          isNot(contains(FrameId('$base-1'))),
+        );
+        expect(
+          conte.effects.single,
+          LayerEffect(id: bright, kind: EffectKind.brightnessContrast),
+        );
+        final riding = rowIn(s, cut, rider);
+        expect(riding.frames, before[index].byId(LayerId(rider))!.frames);
+        expect(riding.baseFrameLinks, {
+          conte.frames[0].id: FrameId('$rider-1'),
+          conte.frames[1].id: FrameId('$rider-2'),
+        });
+      }
+      expect(
+        rowIn(s, cutId, 's').frames.toSet().intersection(
+          rowIn(s, other, 't').frames.toSet(),
+        ),
+        isEmpty,
+        reason: 'a bank of its own',
+      );
+      expect(rowsOf(s).last, before.last, reason: 'a cut with no conte');
+      expect(await seen(tester, s), looks);
+
+      s.undo();
+      expect(rowsOf(s), before);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test('🚨a keyed fx read by frame shows a panel as two pictures: it bakes '
+        'nothing while Q17 is asked — read by block, each panel one picture, '
+        'it bakes', () {
+      String outcome(FxBasis basis) => outcomeOf(
+        trackOf(
+          (id, base, rider) =>
+              conteCut(id, base, rider, fx: [brightness(basis: basis)]),
+        ),
+        const LayerId('s'),
+        bright,
+      );
+      expect([outcome(FxBasis.frame), outcome(FxBasis.block)], [
+        'panelParts',
+        'bakes',
+      ]);
+    });
+
+    testWidgets('🚨…and the press says why, baking nothing', (tester) async {
+      final s = trackOf(
+        (id, base, rider) => conteCut(id, base, rider, fx: [brightness()]),
+      );
+      final before = rowsOf(s);
+      final context = await hostedContext(tester);
+
+      unawaited(
+        rasterizeFxGroup(context, s, const LayerId('s'), bright, 'fx'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('fx-rasterize-panel-parts')),
+        findsOneWidget,
+      );
+      expect(find.text(AppText.strings.tlFxBakePanelParts), findsOneWidget);
+      expect(rowsOf(s), before);
+    });
+
+    test('🚨a band whose edge falls inside a panel parts it — one along its '
+        'panels bakes the pressed cut alone', () {
+      final s = trackOf(
+        (id, base, rider) => conteCut(id, base, rider, fx: [still(60)]),
+      );
+      final before = rowsOf(s);
+      expect(
+        outcomeOf(s, const LayerId('s'), bright, (start: 1, end: 3)),
+        'panelParts',
+      );
+
+      final plan = s.layerMerging.bakeOf(
+        const LayerId('s'),
+        bright,
+        band: (start: 2, end: 3),
+      )!;
+      final conte = plan.layers.byId(const LayerId('s'))!;
+      expect(blocksOf(conte), {0: (2, '1'), 2: (1, '2')});
+      expect(conte.timeline[0]!.frameId, const FrameId('s-1'));
+      expect(conte.timeline[2]!.frameId, isNot(const FrameId('s-2')));
+      expect(
+        {for (final cut in plan.others) cut.cut.id: cut.layers},
+        {other: before[1]},
+        reason: 'the other cut showing what it showed',
+      );
+    });
+
+    testWidgets('🎯a still fx on a row riding the conte, which wears its own '
+        '(I-99): it bakes in every cut, staying synced — a cel for each of '
+        "the conte's, the conte as it was", (tester) async {
+      final s = trackOf(
+        (id, base, rider) =>
+            conteCut(id, base, rider, riderFx: [still(id == cutId ? 60 : 30)]),
+      );
+      final before = rowsOf(s);
+      final looks = await seen(tester, s);
+
+      await press(tester, s, const LayerId('k'));
+
+      for (final (index, (cut, base, rider)) in [
+        (cutId, 's', 'k'),
+        (other, 't', 'j'),
+      ].indexed) {
+        final riding = rowIn(s, cut, rider);
+        expect(riding.attachedMode, AttachedMode.synced);
+        expect(riding.timeline, isEmpty);
+        expect([for (final cel in riding.frames) cel.name], ['1', '2']);
+        expect(
+          riding.frames.map((cel) => cel.id),
+          isNot(contains(FrameId('$rider-1'))),
+        );
+        expect(riding.baseFrameLinks, {
+          FrameId('$base-1'): riding.frames[0].id,
+          FrameId('$base-2'): riding.frames[1].id,
+        });
+        expect(rowIn(s, cut, base), before[index].byId(LayerId(base)));
+      }
+      expect(await seen(tester, s), looks);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test("🚨…but keyed, two pictures over one of the conte's panels: it "
+        'bakes nothing while Q18 is asked — a row of its own timing parts '
+        'its block, as any row does', () {
+      String outcome({required bool free}) => outcomeOf(
+        trackOf(
+          (id, base, rider) => conteCut(
+            id,
+            base,
+            rider,
+            riderFx: [brightness()],
+            free: free,
+          ),
+        ),
+        const LayerId('k'),
+        bright,
+      );
+      expect([outcome(free: false), outcome(free: true)], [
+        'panelParts',
+        'bakes',
+      ]);
+    });
+
+    testWidgets('a free row riding the conte parts its own block where its '
+        'picture changes, in every cut, each showing what it showed', (
+      tester,
+    ) async {
+      final s = trackOf(
+        (id, base, rider) =>
+            conteCut(id, base, rider, riderFx: [brightness()], free: true),
+      );
+      final looks = await seen(tester, s);
+      expect(
+        coloursOf(looks.sublist(3, 6)),
+        hasLength(3),
+        reason: '⛔전제: it wears its own fx',
+      );
+
+      await press(tester, s, const LayerId('k'));
+
+      for (final (cut, rider) in [(cutId, 'k'), (other, 'j')]) {
+        expect(blocksOf(rowIn(s, cut, rider)), {
+          0: (1, '1'),
+          1: (1, '1-2'),
+          2: (1, '2'),
+        });
+      }
+      expect(await seen(tester, s), looks);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+  });
+
   group('🚨what it bakes nothing of yet — its button lit off, the slot kept '
       '(Q8, and the card\'s rounds ahead)', () {
     bool bakes(EditorSessionManager s, String row, [EffectId? fx = bright]) =>
@@ -1838,35 +2188,6 @@ void main() {
       expect(bakes(s, 'a'), isFalse);
     });
 
-    test('a row riding the conte, which wears fx of its own (④c · I-99)', () {
-      final project = conteTrackProject();
-      final cut = project.tracks.single.cuts.first;
-      final conte = cut.layers.firstWhere(
-        (layer) => layer.kind == LayerKind.storyboard,
-      );
-      final s = EditorSessionManager(
-        initialProject: project.copyWith(
-          tracks: [
-            project.tracks.single.copyWith(
-              cuts: [
-                cut.copyWith(
-                  layers: [
-                    ...cut.layers,
-                    withBright(
-                      riderOf(conte.id.value),
-                    ).copyWith(kind: LayerKind.storyboard),
-                  ],
-                ),
-                ...project.tracks.single.cuts.skip(1),
-              ],
-            ),
-          ],
-        ),
-      );
-      addTearDown(s.dispose);
-      expect(s.layerMerging.bakesFx(const LayerId('r'), bright), isFalse);
-    });
-
     test('a 겸용 row a row wearing its fx rides, in any of its cuts (④b)', () {
       final s = sessionOf([rowA()]);
       addTearDown(s.dispose);
@@ -1895,15 +2216,6 @@ void main() {
       ]);
       addTearDown(s.dispose);
       expect(bakes(s, 'a'), isFalse);
-    });
-
-    test('the conte of a track (④c)', () {
-      final s = EditorSessionManager(initialProject: conteTrackProject());
-      addTearDown(s.dispose);
-      final conte = s.activeTrack.cuts.first.layers.firstWhere(
-        (layer) => layer.kind == LayerKind.storyboard,
-      );
-      expect(s.layerMerging.bakesFx(conte.id, null), isFalse);
     });
   });
 }
