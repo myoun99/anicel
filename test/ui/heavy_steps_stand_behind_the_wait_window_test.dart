@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -99,5 +100,43 @@ void main() {
       ),
     );
     expect(history.undoCount, before + 2, reason: 'the duplicate was taken');
+  });
+
+  // 링크 붙여넣기 puts up its own window (its question comes between two of
+  // them), on each of its branches.
+  testWidgets('the pill\'s linked paste stands behind the window under its '
+      'own name — a cel in hand, and rows', (tester) async {
+    final session = await pump(tester);
+    const linked = ValueKey<String>('shared-paste-linked-button');
+    final pasting = (
+      const ValueKey<String>('paste-progress-dialog'),
+      editorActionLabel(EditorActionIds.editPasteLinked),
+    );
+
+    await windowBehindTheTap(
+      tester,
+      const ValueKey<String>('shared-copy-button'),
+    );
+    final cell = timelineCellGlobalRect(tester, 'default-layer-1', 1);
+    await tester.tapAt(Offset(cell.left + cell.width * 3 / 4, cell.center.dy));
+    await tester.pumpAndSettle();
+    final cel = await windowBehindTheTap(tester, linked);
+    expect((cel?.windowKey, cel?.title), pasting);
+
+    session.rowSelectionVerbs.beginRowSelection(
+      LayerRowAddress(session.activeLayerId!),
+    );
+    await tester.pumpAndSettle();
+    await windowBehindTheTap(
+      tester,
+      const ValueKey<String>('shared-copy-button'),
+    );
+    expect(
+      session.layerClipboard.hasLayerClipboard,
+      isTrue,
+      reason: '⛔전제: rows in hand',
+    );
+    final rows = await windowBehindTheTap(tester, linked);
+    expect((rows?.windowKey, rows?.title), pasting);
   });
 }
