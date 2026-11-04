@@ -15,6 +15,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/dialogs/behind_the_wait_window.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -28,7 +29,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 /// rail's ↷, as by every door that opens the one redo — and a 겸용 변경 that
 /// takes the other cut's canvas stand behind the window a resize stands
 /// behind, and their pictures move ahead of the step. 🗣️F-432: a pasteboard
-/// moved in again stands behind the pasteboard's.
+/// moved in again stands behind the pasteboard's. 🗣️F-551-Q1 (유저
+/// 2026-11-04: 「전부 늘 띄운다」): and each one's undo, behind the same.
 void main() {
   final window = find.byKey(const ValueKey<String>('resize-progress-dialog'));
 
@@ -98,8 +100,25 @@ void main() {
     expect(window, findsNothing);
   }
 
+  /// [move] taken as its door takes it, behind the window named [title].
+  Future<void> moveTheWall(
+    WidgetTester tester,
+    VoidCallback move, {
+    required String title,
+  }) async {
+    final moved = resizeBehindTheWaitWindow(
+      tester.element(find.byType(EditorCanvasArea)),
+      move,
+      title: title,
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 950));
+    await tester.pumpAndSettle();
+    await moved;
+  }
+
   testWidgets('🎯the rail\'s ↷ runs a resize again behind the window, its '
-      'pictures moved ahead; the ↶ does not wait', (tester) async {
+      'pictures moved ahead; the ↶ stands behind it too', (tester) async {
     final session = await openApp(tester);
     final store = session.renderCaches.brushFrameStore;
     draw(session, session.requireActiveCut.id);
@@ -108,17 +127,20 @@ void main() {
       width: before.width - 2,
       height: before.height - 2,
     );
-    session.cutVerbs.resizeActiveCutCanvas(
-      resized,
-      anchor: CanvasResizeAnchor.center,
+    await moveTheWall(
+      tester,
+      () => session.cutVerbs.resizeActiveCutCanvas(
+        resized,
+        anchor: CanvasResizeAnchor.center,
+      ),
+      title: AppText.strings.canvasSizeTitle,
     );
-    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
-    await tester.pump();
-    expect(window, findsNothing, reason: 'an undo puts the pictures back');
-    expect(session.requireActiveCut.canvasSize, before);
-    await tester.pumpAndSettle();
+    await expectBehindTheWindow(
+      tester,
+      () => session.requireActiveCut.canvasSize == before,
+    );
 
     final movedHere = store.celsMovedHere;
     await tester.tap(find.byKey(const ValueKey<String>('redo-button')));
@@ -130,7 +152,7 @@ void main() {
   });
 
   testWidgets('a pasteboard made smaller runs again behind its own window, '
-      'what it cuts cut; its undo, which grows it, does not wait', (
+      'what it cuts cut; its undo, which grows it, stands behind it too', (
     tester,
   ) async {
     final session = await openApp(tester);
@@ -141,15 +163,21 @@ void main() {
       y: 1,
     );
     final key = draw(session, session.requireActiveCut.id, at: past);
-    session.projectSettings.setPasteboardSize(PasteboardSize.oneAndAHalf);
-    await tester.pumpAndSettle();
+    await moveTheWall(
+      tester,
+      () => session.projectSettings.setPasteboardSize(
+        PasteboardSize.oneAndAHalf,
+      ),
+      title: AppText.strings.pasteboardTitle,
+    );
     expect(store.bakedSurfaceOrNull(key)?.tileAt(past), isNull);
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
-    await tester.pump();
-    expect(window, findsNothing, reason: 'its undo cuts nothing');
-    expect(store.pasteboardReach, PasteboardReach.whole);
-    await tester.pumpAndSettle();
+    await expectBehindTheWindow(
+      tester,
+      () => store.pasteboardReach == PasteboardReach.whole,
+      title: AppText.strings.pasteboardTitle,
+    );
     expect(store.hotBakedSurfaceOrNull(key)!.tileAt(past), isNotNull);
 
     await tester.tap(find.byKey(const ValueKey<String>('redo-button')));

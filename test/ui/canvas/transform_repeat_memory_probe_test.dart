@@ -37,6 +37,7 @@ import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/collect_garbage.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// 🔬C-ipad-crash ① (유저 2026-09-14): 「2000x1400정도의 소재를 2배크게,
 /// 작게 변형을 반복해봤는데 반복시마다 약 150mb가 늘어남 … 2200mb정도에서 다음
@@ -312,7 +313,7 @@ void main() {
       );
       await tester.pump();
       expect(commands.transformActive, isTrue, reason: 'the box opened');
-      commands.applyTransform();
+      await windowBehind(tester, () async => commands.applyTransform());
       await tester.pump();
       await settle(tester);
       expect(commands.transformActive, isFalse, reason: 'Enter closed it');

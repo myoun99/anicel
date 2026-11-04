@@ -8,6 +8,7 @@ import 'cels_ahead.dart';
 import 'command.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/volatile_scratch_files.dart';
+import 'wait_window.dart';
 
 /// The undo byte budget for THIS machine — physical RAM/8, clamped.
 ///
@@ -110,6 +111,10 @@ class HistoryManager extends ChangeNotifier {
   /// 🚨★★★I-41 — where each entry was made ([HistoryPlaces]): the first
   /// undo walks there, the next one takes the edit back.
   final HistoryPlaces places = HistoryPlaces();
+
+  /// 🗣️F-551-Q1 — the wait window each entry stood behind as it was first
+  /// taken: its undo and redo stand behind the same ([stepBehind]).
+  final StepWindows windows = StepWindows();
 
   /// Where the next undo's edit was made, or null when nothing says.
   StandingPlace? get undoPlace =>
@@ -253,6 +258,7 @@ class HistoryManager extends ChangeNotifier {
 
   void _push(Command command) {
     places.stamp(command);
+    windows.stamp(command);
     _undoStack.add(command);
     gestures._pushed += 1;
     if (_undoStack.length > maxEntries) {
@@ -502,7 +508,7 @@ class HistoryManager extends ChangeNotifier {
 
   /// Whether [onBeforeUndoRedo] would adopt something RIGHT NOW.
   ///
-  /// Asked by a step that WAITED while its work ran ahead ([workAhead]):
+  /// Asked by a step that WAITED behind its wait window ([stepBehind]):
   /// work the user began after pressing — a lift, an open transform box — is
   /// theirs, and a late step that adopted it would land it out from under
   /// their hand.
@@ -536,10 +542,19 @@ class HistoryManager extends ChangeNotifier {
     return cels.cels;
   }
 
-  /// What the next undo — or redo, with [undo] false — works out off the UI
-  /// thread before it is taken ([WorksAheadCommand]); null when nothing.
-  WorkAhead? workAhead({required bool undo}) =>
-      _next<WorksAheadCommand>(undo: undo)?.workAhead(undo: undo);
+  /// What the next undo — or redo, with [undo] false — stands behind: the
+  /// wait window its first run stood behind ([windows]), with what it works
+  /// out off the UI thread before it is taken ([WorksAheadCommand]). Null
+  /// where it stood behind none.
+  StepBehind? stepBehind({required bool undo}) {
+    final next = (undo ? _undoStack : _redoStack).lastOrNull;
+    final window = next == null ? null : windows.of(next);
+    if (window == null) {
+      return null;
+    }
+    final ahead = _next<WorksAheadCommand>(undo: undo)?.workAhead(undo: undo);
+    return (window: window, ahead: ahead);
+  }
 
   /// The next undo — or redo, with [undo] false — when it is a [T].
   T? _next<T>({required bool undo}) {
@@ -733,6 +748,7 @@ class HistoryGestures {
     // nothing a second time.
     final folded = oneStepOf(description, run)!;
     _history.places.stamp(folded);
+    _history.windows.fold(folded, run);
     _history._made.fold(folded, run);
     stack.add(folded);
     _history._changed();

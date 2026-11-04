@@ -11,13 +11,19 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/cel_pixel_overwrite.dart'
+    show CelPixelVerb;
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show editorActionLabel;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/app_shortcuts.dart';
+import '../helpers/wait_window.dart' show windowBehind, windowBehindTheTap;
 
 /// 유저 2026-08-27, 실기: 「지금 아직도 캔버스에 반영안되고 블록도 반영안되는데」
 /// + 「버튼 자체도 블록에 따라 활성화 비활성화 제대로 갱신 안되고있어」.
@@ -282,8 +288,7 @@ void main() {
         expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
         expect(session.canUndo, isFalse);
 
-        await press();
-        await tester.pumpAndSettle();
+        await windowBehind(tester, press);
 
         return (
           undoable: session.canUndo,
@@ -323,13 +328,13 @@ void main() {
 
   /// Empties the cel under the playhead the way the user does: the 색 편집
   /// head, then 픽셀 비우기 inside it.
-  Future<void> clearPixelsFromTheHead(WidgetTester tester) async {
-    await pressTheHead(tester);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('shared-clear-pixels-button')),
-    );
-    await tester.pumpAndSettle();
-  }
+  Future<AppProgressDialog?> clearPixelsFromTheHead(WidgetTester tester) =>
+      windowBehind(tester, () async {
+        await pressTheHead(tester);
+        await tester.tap(
+          find.byKey(const ValueKey<String>('shared-clear-pixels-button')),
+        );
+      });
 
   testWidgets(
     'F-75: a seek from a cel emptied in place to a drawn one lights the 색 '
@@ -428,6 +433,74 @@ void main() {
     },
   );
 
+  /// Stands on the first drawn row's frame 1 (the timeline case's reason
+  /// above) and answers whether its cel holds ink.
+  Future<bool Function()> standOnAnInkedCel(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
+    final row = session.layers.firstWhere(
+      (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+    );
+    session.selectLayer(row.id);
+    session.selectFrameIndex(1);
+    await tester.pumpAndSettle();
+    final key = session.brushFrameKeyForCut(
+      session.requireActiveCut,
+      row.id,
+      session.selectedFrame!.id,
+    );
+    return () =>
+        session.renderCaches.brushFrameStore.celHasRenderableContent(key);
+  }
+
+  const undo = ValueKey<String>('undo-button');
+  const redo = ValueKey<String>('redo-button');
+
+  testWidgets(
+    '🗣️F-551: 픽셀 비우기 stands behind the wait window under its own name '
+    '— 「색변환이나 색삭제나 그런거」 — and so do its undo and redo',
+    (tester) async {
+      final session = await pump(tester);
+      final drawn = await standOnAnInkedCel(tester, session);
+
+      final cleared = await clearPixelsFromTheHead(tester);
+      expect(
+        (cleared?.windowKey, cleared?.title),
+        (
+          const ValueKey<String>('work-progress-dialog'),
+          editorActionLabel(EditorActionIds.editClearPixels),
+        ),
+      );
+      expect(drawn(), isFalse, reason: 'the step it stood over was taken');
+
+      // Q1 「전부 늘 띄운다」: the step is as heavy back as it was forth.
+      final undone = await windowBehindTheTap(tester, undo);
+      expect(undone?.title, cleared?.title);
+      expect(drawn(), isTrue);
+
+      final redone = await windowBehindTheTap(tester, redo);
+      expect(redone?.title, cleared?.title);
+      expect(drawn(), isFalse);
+    },
+  );
+
+  testWidgets(
+    'F-551: the window is what a step stood behind, not which verb it was — '
+    'the same 픽셀 비우기 taken with no window is undone at once',
+    (tester) async {
+      final session = await pump(tester);
+      final drawn = await standOnAnInkedCel(tester, session);
+
+      session.pixelVerbs.runPixelVerb(CelPixelVerb.clearPixels);
+      await tester.pumpAndSettle();
+      expect(drawn(), isFalse, reason: '⛔fixture: the verb ran');
+
+      expect(await windowBehindTheTap(tester, undo), isNull);
+      expect(drawn(), isTrue, reason: 'and the undo was taken');
+    },
+  );
+
   /// 🗣️I-13 (유저 2026-09-11, 10-16): 2치화's row and the colour verbs'
   /// rows carry the value they run with at their end — 「버튼 안에 공간을
   /// 두개로 나눠서」: the name runs, the knob turns.
@@ -511,8 +584,10 @@ void main() {
       expect(session.canUndo, isFalse, reason: 'a click on it is its own');
       expect(binarize, findsOneWidget);
 
-      await tester.tapAt(tester.getTopLeft(binarize) + const Offset(24, 16));
-      await tester.pumpAndSettle();
+      await windowBehind(
+        tester,
+        () => tester.tapAt(tester.getTopLeft(binarize) + const Offset(24, 16)),
+      );
       expect(session.canUndo, isTrue, reason: 'the row\'s name runs 2치화');
       expect(binarize, findsNothing, reason: 'and closes the list');
     },

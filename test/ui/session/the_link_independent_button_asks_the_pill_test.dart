@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/wait_window.dart' show waitOutTheWaitWindow;
 
 /// 🚨I-45 — THE LINK-INDEPENDENT BUTTON ASKS THE SHARED PILL'S ONE LADDER.
 ///
@@ -474,9 +475,11 @@ void main() {
           .session;
     }
 
+    // Behind the wait window, which goes before the next press (F-551).
     Future<void> pressTheKey(WidgetTester tester) async {
       await tester.sendKeyEvent(key);
       await tester.pumpAndSettle();
+      await waitOutTheWaitWindow(tester);
     }
 
     test('it is one row of the shortcut list, and ships with no key', () {

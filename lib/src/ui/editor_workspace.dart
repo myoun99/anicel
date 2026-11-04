@@ -17,6 +17,7 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
 import '../models/cut_id.dart';
+import '../models/cut_piece.dart' show CutPiece;
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
@@ -100,7 +101,9 @@ import 'layout/device_grid.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
+import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import 'dialogs/app_prompt_dialog.dart';
+import 'dialogs/behind_the_wait_window.dart';
 import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/fx_plugin_install_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
@@ -2467,14 +2470,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the row keeps every answer it already gave (Q1 2026-09-27: 「창 없이
   /// 바로 바꾼다 (언두 하나)」). A file that would not come in is said, as the
   /// window would have said it — and why ([referenceSwapWords]).
+  ///
+  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the file read in and
+  /// laid behind the app's wait window, under the row's name — a wait, not
+  /// the import window Q1 2026-09-27 left out.
   Future<void> _swapReference(LayerId layerId, String path) async {
-    final words = referenceSwapWords(
-      await widget.session.importDoors.swapReference(
+    final session = widget.session;
+    final swapped = await AppWaitWindow(
+      title: session.layerById(layerId)?.name ?? AppText.strings.commonReplace,
+      runningLabel: AppText.strings.workProgressRunning,
+      doneLabel: AppText.strings.workProgressDone,
+      windowKey: const ValueKey<String>('reference-swap-progress'),
+    ).standBehind(context, (_) async {
+      final swapped = await session.importDoors.swapReference(
         layerId: layerId,
         path: path,
-      ),
+      );
+      await WidgetsBinding.instance.endOfFrame;
+      return swapped;
+    });
+    if (!mounted) {
+      return;
+    }
+    final words = referenceSwapWords(
+      swapped,
       path,
-      widget.session.repository.requireProject(),
+      session.repository.requireProject(),
     );
     if (words == null || !mounted) {
       return;

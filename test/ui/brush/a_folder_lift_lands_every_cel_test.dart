@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// I-37 — EVERY CEL A FOLDER'S LIFT TOOK UP LANDS, each from the float the
 /// layer hands back for it.
@@ -92,7 +93,7 @@ void main() {
     await tester.pump();
     commands.editTransformValues((now) => now.copyWith(tx: 50));
     await tester.pump();
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await tester.pump();
 
     expect(

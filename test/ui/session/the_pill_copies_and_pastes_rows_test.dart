@@ -311,7 +311,7 @@ void main() {
     });
 
     test('the board a paste must hold the media of is the one in hand', () {
-      // What the wait window is told to wait for (`pasteWithItsMedia`): a
+      // What the wait window is told to wait for (`independentPasteAhead`): a
       // row copy's media, asked of the frame board, would never be held.
       final r = threeRows();
       r.s.createDrawingAtCurrentFrame();

@@ -84,7 +84,7 @@ import 'text/app_strings.dart';
 import 'text/word_bake.dart' show RepaintOnWordBakes;
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
-import '../services/command.dart' show WorkAhead;
+import '../services/wait_window.dart' show StepBehind;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart'
@@ -2315,14 +2315,14 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
-  /// What the next [undo] — or, with [undo] false, [redo] — works out
-  /// ahead of its step ([HistoryManager.workAhead]): null where the press
-  /// only walks to the edit (I-41), or the step works nothing out. Settled
-  /// first, as the press is, so it is asked of the step the press takes.
-  WorkAhead? historyStepAhead({required bool undo}) {
+  /// What the next [undo] — or, with [undo] false, [redo] — stands behind
+  /// ([HistoryManager.stepBehind]): null where the press only walks to the
+  /// edit (I-41), or the step stood behind no window. Settled first, as the
+  /// press is, so it is asked of the step the press takes.
+  StepBehind? historyStepBehind({required bool undo}) {
     _settleAndAdopt();
     return _walkTo(undo: undo) == null
-        ? historyManager.workAhead(undo: undo)
+        ? historyManager.stepBehind(undo: undo)
         : null;
   }
 

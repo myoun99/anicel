@@ -937,7 +937,10 @@ class TimelineActionToolbar extends StatelessWidget {
             tooltip: AppText.strings.tlSharedColourEdit,
             icon: Icons.palette_outlined,
             onPressed: session.pixelVerbs.canOpenColourEdit
-                ? () => showPanelFlyout(context, entries: _menus.colourEdit())
+                ? () => showPanelFlyout(
+                    context,
+                    entries: _menus.colourEdit(context),
+                  )
                 : null,
           ),
         ),

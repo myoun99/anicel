@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// I-37 — A FOLDER IS LIFTED WHOLE.
 ///
@@ -207,7 +208,7 @@ void main() {
 
     commands.editTransformValues((now) => now.copyWith(tx: 20));
     await tester.pumpAndSettle();
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await tester.pumpAndSettle();
 
     expect(
@@ -272,7 +273,7 @@ void main() {
       {'${a.value}-1', '${b.value}-1'},
     );
 
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await tester.pumpAndSettle();
 
     expect(
@@ -351,7 +352,7 @@ void main() {
 
     commands.editTransformValues((now) => now.copyWith(tx: 20));
     await pumpFrames(tester);
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await pumpFrames(tester);
 
     expect(
@@ -386,7 +387,7 @@ void main() {
     await tester.pumpAndSettle();
     commands.editTransformValues((now) => now.copyWith(tx: 20));
     await tester.pumpAndSettle();
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await tester.pumpAndSettle();
 
     for (final cel in ['0', '1']) {

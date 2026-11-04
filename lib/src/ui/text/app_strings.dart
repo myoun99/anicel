@@ -621,6 +621,15 @@ enum AppStrings {
   /// F-549: the wait window a timeline's copy stands behind.
   String get duplicateProgressRunning => _s('duplicateProgressRunning');
   String get duplicateProgressDone => _s('duplicateProgressDone');
+
+  /// F-551: the wait window a heavy step with no words of its own stands
+  /// behind, under the step's own name.
+  String get workProgressRunning => _s('workProgressRunning');
+  String get workProgressDone => _s('workProgressDone');
+
+  /// F-551: the wait window a block dragged onto another row's pictures
+  /// lets go behind — the pictures traded (F-330).
+  String get pictureTradeTitle => _s('pictureTradeTitle');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
   String get unsavedAutosaveBody => _s('unsavedAutosaveBody');
   String get commonNotNow => _s('commonNotNow');
@@ -2505,6 +2514,9 @@ enum AppStrings {
     'pasteProgressDone': 'Pasted',
     'duplicateProgressRunning': 'Duplicating…',
     'duplicateProgressDone': 'Duplicated',
+    'workProgressRunning': 'Working…',
+    'workProgressDone': 'Done',
+    'pictureTradeTitle': 'Swap drawings',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
         'This project has never been saved, so autosave has nowhere to '
@@ -3957,6 +3969,9 @@ enum AppStrings {
     'pasteProgressDone': 'ペーストしました',
     'duplicateProgressRunning': '複製中…',
     'duplicateProgressDone': '複製しました',
+    'workProgressRunning': '処理中…',
+    'workProgressDone': '完了しました',
+    'pictureTradeTitle': '作画の入れ替え',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
         'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
@@ -5833,6 +5848,9 @@ enum AppStrings {
     'pasteProgressDone': '붙여넣음',
     'duplicateProgressRunning': '복제하는 중…',
     'duplicateProgressDone': '복제함',
+    'workProgressRunning': '처리 중…',
+    'workProgressDone': '완료',
+    'pictureTradeTitle': '원화 맞바꾸기',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
         '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
@@ -7724,6 +7742,9 @@ enum AppStrings {
     'pasteProgressDone': 'Collé',
     'duplicateProgressRunning': 'Duplication…',
     'duplicateProgressDone': 'Dupliqué',
+    'workProgressRunning': 'Traitement…',
+    'workProgressDone': 'Terminé',
+    'pictureTradeTitle': 'Échanger les dessins',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
         "Ce projet n'a jamais été enregistré : la sauvegarde automatique "
@@ -9739,6 +9760,9 @@ enum AppStrings {
     'pasteProgressDone': '已粘贴',
     'duplicateProgressRunning': '复制中…',
     'duplicateProgressDone': '已复制',
+    'workProgressRunning': '正在处理…',
+    'workProgressDone': '已完成',
+    'pictureTradeTitle': '交换画稿',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':
         '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'

@@ -13,6 +13,8 @@ import 'package:anicel/src/models/timeline_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart'
+    show appProgressDoneLinger;
 import 'package:anicel/src/ui/dialogs/link_window.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -224,6 +226,8 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey<String>('link-window-unlink')));
       await tester.pumpAndSettle();
+      await tester.pump(appProgressDoneLinger);
+      await tester.pumpAndSettle();
 
       expect(unlinked, 1);
       expect(find.byKey(const ValueKey<String>('link-window')), findsNothing);
@@ -261,6 +265,8 @@ void main() {
       );
       expect(keyed('link-window-unlink'), findsNothing);
       await tester.tap(keyed('sync-window-unsync'));
+      await tester.pumpAndSettle();
+      await tester.pump(appProgressDoneLinger);
       await tester.pumpAndSettle();
 
       expect(unsynced, 1);
@@ -314,6 +320,8 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey<String>('link-window-unlink')));
       await tester.pumpAndSettle();
+      await tester.pump(appProgressDoneLinger);
+      await tester.pumpAndSettle();
 
       expect(
         [s.layerVerbs.isLayerLinked(row), s.layerVerbs.isLayerLinked(copy)],
@@ -356,6 +364,8 @@ void main() {
       expect(keyed('sync-window'), findsOneWidget);
       expect(find.text(elsewhere), findsOneWidget);
       await tester.tap(keyed('sync-window-unsync'));
+      await tester.pumpAndSettle();
+      await tester.pump(appProgressDoneLinger);
       await tester.pumpAndSettle();
 
       expect(s.repository.requireProject().linkRegistry.syncs, isEmpty);
@@ -400,6 +410,8 @@ void main() {
       expect(keyed('sync-window'), findsOneWidget);
       expect(find.text(elsewhere), findsOneWidget);
       await tester.tap(keyed('sync-window-unsync'));
+      await tester.pumpAndSettle();
+      await tester.pump(appProgressDoneLinger);
       await tester.pumpAndSettle();
 
       expect(s.repository.requireProject().linkRegistry.syncs, isEmpty);
@@ -487,6 +499,8 @@ void main() {
       expect(find.text(s.cutById(linked)!.name), findsWidgets);
 
       await tester.tap(find.byKey(const ValueKey<String>('link-window-unlink')));
+      await tester.pumpAndSettle();
+      await tester.pump(appProgressDoneLinger);
       await tester.pumpAndSettle();
 
       expect(s.cutVerbs.cutIsLinked(source), isFalse, reason: '독립시킴');

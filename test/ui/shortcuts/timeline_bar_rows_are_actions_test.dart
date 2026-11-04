@@ -330,7 +330,7 @@ void main() {
         for (final entry in TimelineBarMenus(
           session: sessionOf(tester),
           panel: TimelineToolbarPanelContext(sessionOf(tester)),
-        ).colourEdit())
+        ).colourEdit(tester.element(find.byType(EditorWorkspace))))
           switch (entry) {
             PanelFlyoutItem(:final shortcuts) => shortcuts.single,
             PanelFlyoutDivider() => '—',

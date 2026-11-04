@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import 'app_progress_dialog.dart' show AppWaitWindow;
+import 'behind_the_wait_window.dart';
 
 /// What a cut or a row shares, and so which of its two buttons and windows
 /// answers: its pictures with a 겸용 (I-25) — the link — or, a 동기컷, its
@@ -71,6 +75,10 @@ class LinkWindow extends StatelessWidget {
     final strings = AppText.strings;
     final action = this.action;
     final name = kind.name;
+    final label = switch (kind) {
+      LinkKind.link => strings.linkWindowUnlink,
+      LinkKind.sync => strings.linkWindowUnsync,
+    };
     return AppWindow(
       windowKey: ValueKey<String>('$name-window'),
       title: kind.title,
@@ -97,21 +105,28 @@ class LinkWindow extends StatelessWidget {
       ),
       actions: [
         AppWindowAction(
-          label: switch (kind) {
-            LinkKind.link => strings.linkWindowUnlink,
-            LinkKind.sync => strings.linkWindowUnsync,
-          },
+          label: label,
           actionKey: ValueKey<String>(switch (kind) {
             LinkKind.link => 'link-window-unlink',
             LinkKind.sync => 'sync-window-unsync',
           }),
           emphasis: AppWindowActionEmphasis.primary,
           tooltip: action == null ? actionOffReason : null,
+          // 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the window
+          // closes and the button's step is taken behind the app's wait
+          // window, under the button's name — put up where this window
+          // stood, which is gone.
           onPressed: action == null
               ? null
               : () {
-                  Navigator.of(context).pop();
-                  action();
+                  final navigator = Navigator.of(context)..pop();
+                  unawaited(
+                    takeBehindTheWaitWindow(
+                      navigator.context,
+                      action,
+                      window: AppWaitWindow.working(label),
+                    ),
+                  );
                 },
         ),
       ],

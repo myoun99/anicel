@@ -20,6 +20,8 @@ import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart'
     show debugVideoDecodeBackend;
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart'
+    show AppProgressDialog;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -33,8 +35,8 @@ import '../../helpers/fake_video_backend.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
-import '../../helpers/settle_async.dart';
 import '../../helpers/three_frame_gif.dart';
+import '../../helpers/wait_window.dart' show settleBehindTheWaitWindow;
 import '../../helpers/named_finders.dart';
 import '../../helpers/rail_group_button.dart';
 
@@ -207,9 +209,14 @@ void main() {
     return silhouette?.frames;
   }
 
-  /// Lets the swap's read and bake land.
+  /// Lets the swap's read and bake land — and the wait window they stand
+  /// behind go (F-551).
   Future<void> settle(WidgetTester tester, bool Function() done) async {
-    await settleAsync(tester, done);
+    final window = find.byType(AppProgressDialog);
+    await settleBehindTheWaitWindow(
+      tester,
+      () => done() && window.evaluate().isEmpty,
+    );
     await tester.pumpAndSettle();
   }
 
@@ -217,8 +224,8 @@ void main() {
       session.layerById(row.id)!.mediaReference!.assetPath == path;
 
   testWidgets('🎯a still let go on a still reference row: the row shows it — '
-      'at once, no window — with its name and its frames as they were, and '
-      'ONE undo brings the old picture back', (tester) async {
+      'no import window, only the wait — with its name and its frames as they '
+      'were, and ONE undo brings the old picture back', (tester) async {
     final (:session, :row, :next) = await open(tester);
     final old = row.mediaReference!.assetPath;
     expect(centre(session, row), [255, 0, 0, 255]);

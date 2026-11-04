@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// F-329 — A FRAME RANGE ACROSS ROWS IS LIFTED, EVERY ROW, WHILE THE BOX IS
 /// OPEN.
@@ -195,7 +196,7 @@ void main() {
 
     commands.editTransformValues((now) => now.copyWith(tx: 20));
     await tester.pumpAndSettle();
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await tester.pumpAndSettle();
 
     for (final cel in ['0', '1']) {
@@ -235,7 +236,7 @@ void main() {
     // would span 0..80.
     commands.editTransformValues((now) => now.copyWith(sx: 2));
     await tester.pumpAndSettle();
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await tester.pumpAndSettle();
 
     expect(

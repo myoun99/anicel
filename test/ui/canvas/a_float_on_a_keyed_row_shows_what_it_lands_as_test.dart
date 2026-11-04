@@ -42,6 +42,7 @@ import '../../helpers/key_chords.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// Who the box carries: the row the canvas edits, alone; that row and
 /// another across a frame range (F-329), the other floating in a slot of
@@ -499,7 +500,7 @@ void main() {
       await settle(tester);
     }
     final carried = await composite(tester);
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     await settle(tester);
     expect(
       [for (final (i, cel) in cels().indexed) identical(cel, before[i])],
@@ -978,7 +979,7 @@ void main() {
     expect(there.picture.debugDisposed, isTrue);
     expect(further.picture.debugDisposed, isFalse, reason: 'still shown');
 
-    commands.applyTransform();
+    await windowBehind(tester, () async => commands.applyTransform());
     expect(
       await settleAsync(
         tester,

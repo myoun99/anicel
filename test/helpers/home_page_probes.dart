@@ -30,6 +30,7 @@ import '../ui/flyout_test_helpers.dart'
 import 'app_icon_button_probe.dart';
 import 'named_finders.dart';
 import 'text_finders.dart';
+import 'wait_window.dart' show passTheDoneLinger;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
@@ -46,6 +47,10 @@ Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
+  await tester.pumpAndSettle();
+  // A heavy press stands behind the app's wait window (F-551), whose done
+  // line would hold the next press off under its barrier.
+  await passTheDoneLinger(tester);
   await tester.pumpAndSettle();
 }
 

@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/dialogs/frame_name_conflict_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/paste_linked_asking_first.dart';
@@ -340,6 +341,7 @@ void main() {
               context,
               s,
               place: () => s.clipboard.timelinePlace,
+              window: AppWaitWindow.working('paste'),
             ),
             child: const Text('paste'),
           ),
@@ -347,6 +349,10 @@ void main() {
       ),
     );
     await tester.tap(find.text('paste'));
+    // The paste is tried behind its wait window, which lingers on its done
+    // line before the question comes up (F-551).
+    await tester.pumpAndSettle();
+    await tester.pump(appProgressDoneLinger);
     await tester.pumpAndSettle();
 
     final window = tester.widget<FrameNameConflictDialog>(
@@ -377,6 +383,7 @@ void main() {
               context,
               s,
               place: () => s.clipboard.timelinePlace,
+              window: AppWaitWindow.working('paste'),
             ),
             child: const Text('paste'),
           ),
@@ -384,6 +391,10 @@ void main() {
       ),
     );
     await tester.tap(find.text('paste'));
+    // The paste is tried behind its wait window, which lingers on its done
+    // line before the question comes up (F-551).
+    await tester.pumpAndSettle();
+    await tester.pump(appProgressDoneLinger);
     await tester.pumpAndSettle();
 
     final window = tester.widget<FrameNameConflictDialog>(

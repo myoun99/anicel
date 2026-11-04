@@ -11,6 +11,8 @@ import '../../models/pixel_clipboard_verb.dart';
 import '../../models/pixel_verb_settings.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../cut_command_group.dart';
+import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import '../dialogs/behind_the_wait_window.dart';
 import '../editor_session_manager.dart';
 import '../session/effects_and_fx.dart' show EffectChainHolder;
 import '../shortcuts/editor_action_registry.dart';
@@ -68,7 +70,7 @@ class TimelineBarMenus {
     ...layer(context),
     ...addLayer(),
     ...frame(),
-    ...colourEdit(),
+    ...colourEdit(context),
     ...effects(),
   ]).toList();
 
@@ -452,13 +454,17 @@ class TimelineBarMenus {
   /// 아래 붙여넣기/픽셀 위 붙여넣기」 — after the four, as their own group.
   /// ↩️I-90 opened that group with 픽셀 비우기, and put 픽셀 잘라내기 over
   /// 픽셀 복사 (「복사버튼 위」).
-  List<PanelFlyoutEntry> colourEdit() => [
+  ///
+  /// 🗣️F-551 (유저 2026-11-04): 「색변환이나 색삭제나 그런거」 — every row
+  /// runs behind the app's wait window, put up in [context], under the
+  /// row's own name (Q1 「전부 늘 띄운다」).
+  List<PanelFlyoutEntry> colourEdit(BuildContext context) => [
     PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
     for (final verb in CelPixelVerb.values)
-      if (verb.usesTheColour) _pixelVerbRow(verb),
+      if (verb.usesTheColour) _pixelVerbRow(context, verb),
     const PanelFlyoutDivider(),
     for (final verb in CelPixelVerb.values)
-      if (!verb.usesTheColour) _pixelVerbRow(verb),
+      if (!verb.usesTheColour) _pixelVerbRow(context, verb),
     for (final verb in PixelClipboardVerb.values)
       PanelFlyoutItem(
         keyValue: switch (verb) {
@@ -476,12 +482,35 @@ class TimelineBarMenus {
         },
         shortcuts: [pixelClipboardActionIdFor(verb)],
         enabled: session.pixelVerbs.canRunPixelClipboardVerb(verb),
-        onSelected: () => session.pixelVerbs.runPixelClipboardVerb(verb),
+        onSelected: () => _behindTheWaitWindow(
+          context,
+          pixelClipboardActionIdFor(verb),
+          () => session.pixelVerbs.runPixelClipboardVerb(verb),
+        ),
       ),
   ];
 
+  /// [run], a row of the colour edit list, behind the wait window under
+  /// [actionId]'s name.
+  static void _behindTheWaitWindow(
+    BuildContext context,
+    String actionId,
+    VoidCallback run,
+  ) {
+    unawaited(
+      takeBehindTheWaitWindow(
+        context,
+        run,
+        window: AppWaitWindow.working(editorActionLabel(actionId)),
+      ),
+    );
+  }
+
   /// One of the overwrite verbs' rows, with the knob its verb runs by.
-  PanelFlyoutItem _pixelVerbRow(CelPixelVerb verb) => PanelFlyoutItem(
+  PanelFlyoutItem _pixelVerbRow(
+    BuildContext context,
+    CelPixelVerb verb,
+  ) => PanelFlyoutItem(
     keyValue: switch (verb) {
       // The retired buttons' own key strings, kept.
       CelPixelVerb.replaceColour => 'shared-replace-colour-button',
@@ -504,7 +533,11 @@ class TimelineBarMenus {
     },
     shortcuts: [pixelVerbActionIdFor(verb)],
     enabled: session.pixelVerbs.canRunPixelVerb,
-    onSelected: () => session.pixelVerbs.runPixelVerb(verb),
+    onSelected: () => _behindTheWaitWindow(
+      context,
+      pixelVerbActionIdFor(verb),
+      () => session.pixelVerbs.runPixelVerb(verb),
+    ),
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
     // in its own row — the value the row's command runs with.
     knob: switch (verb) {

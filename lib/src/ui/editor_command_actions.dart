@@ -20,6 +20,7 @@ import 'dialogs/behind_the_wait_window.dart';
 import 'dialogs/convert_to_linked_cut_dialog.dart';
 import 'dialogs/dialog_verb.dart';
 import 'editor_session_manager.dart';
+import 'text/app_strings.dart';
 
 /// The kind-dispatched "make one here" verb: a drawing cel, a camera key,
 /// an SE entry or an instruction event, whichever the active row holds. A
@@ -84,9 +85,18 @@ Future<void> showConvertActiveCutToLinked(
     candidates: session.cutVerbs.convertToLinkedCutCandidates,
     previewOf: session.cutVerbs.convertToLinkedCutPreviewData,
   ),
-  commit: (targetCutId) => stepBehindTheWaitWindow(
-    context,
-    session.cutVerbs.convertActiveCutToLinkedAhead(targetCutId),
-    () => session.cutVerbs.convertActiveCutToLinked(targetCutId),
-  ),
+  commit: (targetCutId) {
+    void convert() => session.cutVerbs.convertActiveCutToLinked(targetCutId);
+    final ahead = session.cutVerbs.convertActiveCutToLinkedAhead(targetCutId);
+    if (ahead == null) {
+      convert();
+      return null;
+    }
+    return resizeBehindTheWaitWindow(
+      context,
+      convert,
+      title: AppText.strings.canvasSizeTitle,
+      ahead: ahead,
+    );
+  },
 );

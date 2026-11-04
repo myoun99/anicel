@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/wait_window.dart' show windowBehind;
 
 /// 🗣️F-455 — 복제 IS THE SHARED PILL'S, AND EACH PANEL PRESSES ITS OWN NOUN.
 ///
@@ -205,8 +206,10 @@ void main() {
         expect(s.workingPanel, panel, reason: '⛔premise');
       }
 
+      // Behind the wait window, which goes before the next panel is
+      // pressed (F-551).
       Future<void> pressTheKey() async {
-        await tester.sendKeyEvent(key);
+        await windowBehind(tester, () => tester.sendKeyEvent(key));
         await tester.pumpAndSettle();
       }
 

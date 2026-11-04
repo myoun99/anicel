@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
+import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import 'dialogs/behind_the_wait_window.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'editor_session_manager.dart';
 import 'session/frame_clipboard.dart' show ClipboardPlace, LinkedPasteJoins;
@@ -13,12 +17,16 @@ import 'text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
 /// 유지되는붙여넣기. 해당행동시 기존에 이름 존재한다면 링크시킬지 묻는것도
 /// 띄우고」.
 ///
-/// The press IS the question, so there is no window before the paste: it
+/// The press IS the question, so nothing is asked before the paste: it
 /// lands at once unless a name it carries is already held on a row it lands
 /// on. Then nothing is written and the link window asks ONCE, listing the
 /// row's own frames the pasted blocks would show ([offerLink] — the
 /// rename's own guard). Link pastes joined to them, as one undo; Cancel
 /// writes nothing.
+///
+/// 🗣️F-551-Q1 (유저 2026-11-04: 「전부 늘 띄운다」): the paste is tried behind
+/// the wait [window], and the join behind it again — the question asks
+/// between the two, never over the wait window.
 ///
 /// [place] is where the pressing panel stands ([ClipboardPlace]) — asked
 /// again when the answer comes, as the press itself would be.
@@ -30,15 +38,22 @@ Future<void> pasteLinkedAskingFirst(
   BuildContext context,
   EditorSessionManager session, {
   required ClipboardPlace? Function() place,
+  required AppWaitWindow window,
 }) async {
-  final joins = session.clipboard.pasteLinkedAt(place());
-  if (joins == null) {
+  LinkedPasteJoins? joins;
+  await takeBehindTheWaitWindow(
+    context,
+    () => joins = session.clipboard.pasteLinkedAt(place()),
+    window: window,
+  );
+  final asked = joins;
+  if (asked == null || !context.mounted) {
     return;
   }
   await offerLink<LinkedPasteJoins>(
     context,
-    joins,
-    notice: joins.any((row) => row.held.isNotEmpty)
+    asked,
+    notice: asked.any((row) => row.held.isNotEmpty)
         ? AppText.strings.linkedPasteConflictBody
         : null,
     onConflict: (
@@ -54,8 +69,11 @@ Future<void> pasteLinkedAskingFirst(
             ...rowPlaceLines(session.repository.requireProject(), row.layerId),
         ],
       ],
-      join: (_) =>
-          session.clipboard.pasteLinkedAt(place(), joinTakenNames: true),
+      join: (_) => _joinBehind(
+        context,
+        window,
+        () => session.clipboard.pasteLinkedAt(place(), joinTakenNames: true),
+      ),
       decline: null,
     ),
   );
@@ -66,24 +84,47 @@ Future<void> pasteLinkedAskingFirst(
 /// on the lane they land on. Then nothing is written and the link window
 /// asks ONCE, listing what the key window's rename lists for the same
 /// question — the row the keys sit on. Joined, the pasted keys take what
-/// their names hold there, as one undo; Cancel writes nothing.
+/// their names hold there, as one undo; Cancel writes nothing. Behind the
+/// wait [window] as the frames' is.
 Future<void> pasteLinkedKeysAskingFirst(
   BuildContext context,
-  EditorSessionManager session,
-) async {
-  final joins = session.keyClipboard.pasteLinked();
+  EditorSessionManager session, {
+  required AppWaitWindow window,
+}) async {
+  Set<String>? joins;
+  await takeBehindTheWaitWindow(
+    context,
+    () => joins = session.keyClipboard.pasteLinked(),
+    window: window,
+  );
+  final asked = joins;
   final lane = session.laneVerbs.laneVerbRange;
-  if (joins == null || lane == null) {
+  if (asked == null || lane == null || !context.mounted) {
     return;
   }
   await offerLink<Set<String>>(
     context,
-    joins,
+    asked,
     onConflict: (
       lines: (_) =>
           rowPlaceLines(session.repository.requireProject(), lane.layerId),
-      join: (_) => session.keyClipboard.pasteLinked(joinTakenNames: true),
+      join: (_) => _joinBehind(
+        context,
+        window,
+        () => session.keyClipboard.pasteLinked(joinTakenNames: true),
+      ),
       decline: null,
     ),
   );
+}
+
+/// A join the question took, behind the paste's [window] again.
+void _joinBehind(
+  BuildContext context,
+  AppWaitWindow window,
+  VoidCallback join,
+) {
+  if (context.mounted) {
+    unawaited(takeBehindTheWaitWindow(context, join, window: window));
+  }
 }

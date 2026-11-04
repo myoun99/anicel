@@ -81,17 +81,14 @@ class ResizeCutCanvasCommand
     if (undo || store == null) {
       return null;
     }
-    return (
-      wall: WallMove.canvasSize,
-      run: (report) => store.moveCutCelsAhead(
-        targetsOf(repository.requireProject(), cutId),
-        (
-          canvasSize: canvasSize,
-          dx: contentOffset.dx.round(),
-          dy: contentOffset.dy.round(),
-        ),
-        report: report,
+    return (report) => store.moveCutCelsAhead(
+      targetsOf(repository.requireProject(), cutId),
+      (
+        canvasSize: canvasSize,
+        dx: contentOffset.dx.round(),
+        dy: contentOffset.dy.round(),
       ),
+      report: report,
     );
   }
 

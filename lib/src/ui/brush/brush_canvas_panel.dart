@@ -137,6 +137,8 @@ import '../widgets/page_turn_bar.dart';
 import '../widgets/tick_layer.dart';
 import '../text/readout_text.dart' show columnValueOf, readoutText;
 import '../widgets/panel_flyout.dart';
+import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import '../dialogs/behind_the_wait_window.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
@@ -3036,6 +3038,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// 페더 따름」 — on every cel 픽셀 붙여넣기 would land on, through the
   /// selection's softness ([_landStamp]). ↩️It asked for a cel under the
   /// playhead first; the ground answers that now, as it does for the paste.
+  ///
+  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: behind the app's wait
+  /// window, under the button's name.
   void pasteCutPieceAtOrigin() {
     final piece = widget.cutPieceSlot?.piece;
     if (piece == null) {
@@ -3044,7 +3049,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // ONE dab for every row: the piece goes back where it was cut from,
     // whichever row takes it.
     final dab = buildCutPasteDab(piece, opacity: _brush.cutStampOpacity);
-    _landStamp((_) => dab);
+    unawaited(
+      takeBehindTheWaitWindow(
+        context,
+        () {
+          if (mounted) {
+            _landStamp((_) => dab);
+          }
+        },
+        window: AppWaitWindow.working(
+          editorActionLabel(EditorActionIds.cutStampPasteAtOrigin),
+        ),
+      ),
+    );
   }
 
   /// Lands the held piece with the stamp tool's own blend — [onTheRow] is
@@ -3063,6 +3080,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// ↩️They went down the stroke funnel ([_commitSourceStroke]), which lands
   /// on the cel you stand on and cuts through a selection's hard outline.
   /// The erase flag a stamp's dab wears rode along here; the door sets it.
+  ///
+  /// 🗣️F-551-Q2 (유저 2026-11-04): 「캔버스 스탬프는 지금처럼 창 없이」 — the
+  /// press and the trail land here at once, with no wait window: the press
+  /// is the trail's first stamp, and a window put ahead of it would land the
+  /// trail before the press. Only 원래 위치에 붙여넣기 stands behind one
+  /// ([pasteCutPieceAtOrigin]).
   void _landStamp(BrushDab? Function(LayerPlacement? placement) onTheRow) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {

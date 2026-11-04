@@ -74,10 +74,7 @@ class SetProjectPasteboardCommand
     if (!store.wallShrinksTo(reach)) {
       return null;
     }
-    return (
-      wall: WallMove.pasteboard,
-      run: (report) => store.cutCelsAhead(reach, report: report),
-    );
+    return (report) => store.cutCelsAhead(reach, report: report);
   }
 
   /// Where a run of the step moves the pasteboard: to [size] and [inUse],

@@ -840,8 +840,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       text: _canvasTextCommands,
       session: session,
       contactIsDown: () => _contacts.anyDown,
-      behindTheWaitWindow: (ahead, step) =>
-          stepBehindTheWaitWindow(context, ahead, step),
+      behindTheWaitWindow: (behind, step) =>
+          stepBehindTheWaitWindow(context, behind, step),
     );
     _keyHolds.strokeLive = session.brushInputActive;
     return true;
