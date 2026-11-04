@@ -55,6 +55,7 @@ final class TimelineGridLegendRail {
       metrics: metrics,
       optionalColumns: hooks.optionalRailColumns,
       legend: legend.verbs,
+      heading: legend.heading,
       hiddenSections: hooks.hiddenSections,
       onToggleSection: legend.onToggleSection,
       rowFilter: hooks.rowFilter,

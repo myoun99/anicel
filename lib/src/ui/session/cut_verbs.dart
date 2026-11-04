@@ -390,12 +390,18 @@ class CutVerbs {
   /// The active cut named [newName] — and put in [scene] where one is given,
   /// as the cut rename window gives it (F-291) — as ONE undo step.
   void renameActiveCut(String newName, {String? scene}) =>
-      _activeCut.onActiveCut(
-        (cutId) => _project.cutCommandCoordinator.nameCut(
-          cutId: cutId,
-          name: newName,
-          scene: scene,
-        ),
+      _activeCut.onActiveCut(_naming(newName, scene));
+
+  /// [cutId] named as [renameActiveCut] names the active one — a row of the
+  /// timeline panel's cut list names a cut that may not be (I-154).
+  void renameCut(CutId cutId, String newName, {String? scene}) =>
+      _activeCut.onCut(cutId, _naming(newName, scene));
+
+  void Function(CutId cutId) _naming(String name, String? scene) =>
+      (cutId) => _project.cutCommandCoordinator.nameCut(
+        cutId: cutId,
+        name: name,
+        scene: scene,
       );
 
   /// Names each cut of [names] — ONE undo step. 자동 이름 지정's cuts (I-18,

@@ -1274,6 +1274,10 @@ enum AppStrings {
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
   String get timelines => _s('timelines');
+
+  /// The timeline panel's cut list (I-154): its heading and its button's
+  /// tooltip.
+  String get cuts => _s('cuts');
   String timelineNumbered(int number) =>
       _s('timelineNumberedTemplate').replaceAll('{n}', '$number');
   String get timelineNew => _s('timelineNew');
@@ -2864,6 +2868,7 @@ enum AppStrings {
     'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'timelines': 'Timelines',
+    'cuts': 'Cuts',
     'timelineNumberedTemplate': 'Timeline {n}',
     'timelineNew': 'New timeline',
     'timelineRename': 'Rename timeline',
@@ -4447,6 +4452,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': 'ズームアウト',
     'cutCommands': 'カット操作',
     'shortcutAction.cut-new': '新規カット',
+    'shortcutAction.cut-rename': 'カット名を変更',
     'shortcutAction.cut-edit-note': 'カットメモを編集',
     'shortcutAction.cut-settings': 'カット設定',
     'cutSettingsTitle': 'カット設定',
@@ -4535,6 +4541,7 @@ enum AppStrings {
     'panelStoryboard': 'コンテ',
     'panelTimeline': 'タイムライン',
     'timelines': 'タイムライン',
+    'cuts': 'カット',
     'timelineNumberedTemplate': 'タイムライン {n}',
     'timelineNew': '新しいタイムライン',
     'timelineRename': 'タイムライン名を変更',
@@ -5482,6 +5489,7 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': '{name} にアタッチ（シンク）',
     'tlDropAttachFreeTemplate': '{name} にアタッチ（フリー）',
     'tlDropDetachAttach': 'アタッチを解除',
+    'shortcutAction.layer-rename': 'レイヤー名を変更',
     'shortcutAction.layer-detach': 'アタッチを解除',
     'tlAttachDropsFxRows': 'fx を失うレイヤー',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
@@ -6319,6 +6327,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': '축소',
     'cutCommands': '컷 명령',
     'shortcutAction.cut-new': '새 컷',
+    'shortcutAction.cut-rename': '컷 이름 변경',
     'shortcutAction.cut-edit-note': '컷 메모 편집',
     'shortcutAction.cut-settings': '컷 설정',
     'cutSettingsTitle': '컷 설정',
@@ -6406,6 +6415,7 @@ enum AppStrings {
     'panelStoryboard': '콘티',
     'panelTimeline': '타임라인',
     'timelines': '타임라인',
+    'cuts': '컷',
     'timelineNumberedTemplate': '타임라인 {n}',
     'timelineNew': '새 타임라인',
     'timelineRename': '타임라인 이름 바꾸기',
@@ -7345,6 +7355,7 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': '{name}에 어태치 (싱크)',
     'tlDropAttachFreeTemplate': '{name}에 어태치 (프리)',
     'tlDropDetachAttach': '어태치 해제',
+    'shortcutAction.layer-rename': '레이어 이름 변경',
     'shortcutAction.layer-detach': '어태치 해제',
     'tlAttachDropsFxRows': 'fx 가 사라지는 레이어',
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
@@ -8231,6 +8242,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': 'Zoom arrière',
     'cutCommands': 'Commandes de plan',
     'shortcutAction.cut-new': 'Nouveau plan',
+    'shortcutAction.cut-rename': 'Renommer le plan',
     'shortcutAction.cut-edit-note': 'Modifier la note du plan',
     'shortcutAction.cut-settings': 'Réglages du plan',
     'cutSettingsTitle': 'Réglages du plan',
@@ -8327,6 +8339,7 @@ enum AppStrings {
     'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'timelines': 'Timelines',
+    'cuts': 'Plans',
     'timelineNumberedTemplate': 'Timeline {n}',
     'timelineNew': 'Nouvelle timeline',
     'timelineRename': 'Renommer la timeline',
@@ -9347,6 +9360,7 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
     'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
     'tlDropDetachAttach': 'détacher',
+    'shortcutAction.layer-rename': 'Renommer le calque',
     'shortcutAction.layer-detach': 'Détacher de la base',
     'tlAttachDropsFxRows': 'Calques qui perdent leur fx',
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
@@ -10183,6 +10197,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': '缩小',
     'cutCommands': '镜头命令',
     'shortcutAction.cut-new': '新建镜头',
+    'shortcutAction.cut-rename': '重命名镜头',
     'shortcutAction.cut-edit-note': '编辑镜头备注',
     'shortcutAction.cut-settings': '镜头设置',
     'cutSettingsTitle': '镜头设置',
@@ -10267,6 +10282,7 @@ enum AppStrings {
     'panelStoryboard': '分镜',
     'panelTimeline': '时间轴',
     'timelines': '时间轴',
+    'cuts': '镜头',
     'timelineNumberedTemplate': '时间轴 {n}',
     'timelineNew': '新建时间轴',
     'timelineRename': '重命名时间轴',
@@ -11147,6 +11163,7 @@ enum AppStrings {
     'tlDropAttachSyncedTemplate': '附属到 {name}（同步）',
     'tlDropAttachFreeTemplate': '附属到 {name}（自由）',
     'tlDropDetachAttach': '解除附属',
+    'shortcutAction.layer-rename': '重命名图层',
     'shortcutAction.layer-detach': '解除附属',
     'tlAttachDropsFxRows': '将失去 fx 的图层',
     'tlAttachDropsFxTitle': '附属后将失去 fx',

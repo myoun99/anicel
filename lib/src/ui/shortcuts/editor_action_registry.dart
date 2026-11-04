@@ -989,10 +989,12 @@ abstract final class EditorActionIds {
   /// worded a row by an id (`menuAction.<id>`), the action keeps that id.
   static const cutNew = 'cut-new';
   static const cutCreateLinked = 'cut-create-linked';
+  static const cutRename = 'cut-rename';
   static const cutEditNote = 'cut-edit-note';
   static const cutSettings = 'cut-settings';
   static const cutCanvasSize = 'cut-canvas-size';
   static const cutConvertLinked = 'cut-convert-linked';
+  static const layerRename = 'layer-rename';
   static const layerDetach = 'layer-detach';
   static const layerRasterize = 'layer-rasterize';
   static const layerStoryboard = 'layer-storyboard';
@@ -2028,6 +2030,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
   ),
+  // ↩️🗣️I-154 (유저 2026-11-04): 「컷 버튼에 이름변경, 레이어버튼에도
+  // 이름변경 추가. 역시 있는게 나을거같음」 — back on both pills' menus.
+  // F-455 (10-23) had taken the cut's out (「공용알약꺼 쓰거나 더블클릭으로
+  // 되니 삭제」), and T25 (08-14) the layer's.
+  const EditorActionDefinition(
+    id: EditorActionIds.cutRename,
+    label: 'Rename cut',
+    shelf: ShortcutShelf.cutPill,
+    defaultActivators: [],
+    menuRow: true,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.cutEditNote,
     label: 'Edit cut note',
@@ -2062,6 +2075,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.cutConvertLinked,
     label: 'Convert to linked cut',
     shelf: ShortcutShelf.cutPill,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerRename,
+    label: 'Rename layer',
+    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),

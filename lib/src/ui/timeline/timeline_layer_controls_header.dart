@@ -1,4 +1,5 @@
 import '../widgets/app_tooltip.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
@@ -7,8 +8,10 @@ import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/fixed_label.dart' show FixedLabel;
 import '../widgets/panel_flyout.dart';
 import '../widgets/rail_glyph_button.dart' show RailPlateButton;
+import '../widgets/tick_layer.dart';
 import 'axis_turn.dart' show alongBox;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
@@ -27,7 +30,8 @@ import '../text/vertical_writing_text.dart';
 ///
 /// 🗣️I-150 (유저 2026-11-03): 「콘티패널에서 레전드의 레이어 텍스트
 /// 없애고, 트랙이란 버튼 신설 … 해당 영역 전부 버튼」 — the conte panel's
-/// timeline list.
+/// timeline list; and 🗣️I-154 (유저 2026-11-04): 「타임라인패널의 레전드행의
+/// 레이어부분 … 현재컷 이름을 여기로 옮겨서」 — the timeline panel's cut list.
 class LegendHeadingButton {
   const LegendHeadingButton({
     required this.label,
@@ -35,7 +39,11 @@ class LegendHeadingButton {
     required this.entries,
   });
 
-  final String label;
+  /// Its words, heard where they change: the cut stood in turns over at a
+  /// crossing, and only the words are drawn again for it — on a tick layer
+  /// of their own, as the bar's cut name was (I-22 ③) — while the legend
+  /// is kept (I-57). A [FixedLabel] where they do not.
+  final ValueListenable<String> label;
   final String tooltip;
 
   /// Built as the list opens, so it reads what stands then.
@@ -73,9 +81,8 @@ Widget _legendHeading(
   required double rowHeight,
   required Color ink,
 }) {
-  final words = heading?.label ?? AppText.strings.tlLegendLayer;
   final rowName = heading == null ? null : layerRowNameStyle(context);
-  final Widget text = isVertical
+  Widget text(String words) => isVertical
       ? VerticalWritingText(
           key: const ValueKey<String>('legend-layer'),
           // The same word as lying down: F-37 tabled the timeline's heading
@@ -106,7 +113,25 @@ Widget _legendHeading(
                 ),
           ),
         );
-  return heading?.around(text, rowHeight: rowHeight) ?? text;
+  if (heading == null) {
+    return text(AppText.strings.tlLegendLayer);
+  }
+  return heading.around(
+    // The slot whole, as a tick layer asks to be laid out: tight.
+    SizedBox.expand(
+      child: TickLayer(
+        child: ValueListenableBuilder<String>(
+          valueListenable: heading.label,
+          builder: (context, words, _) => isVertical
+              // Where the stood-up legend's Flex put the column: its own
+              // width, centred, from the slot's top.
+              ? Align(alignment: Alignment.topCenter, child: text(words))
+              : text(words),
+        ),
+      ),
+    ),
+    rowHeight: rowHeight,
+  );
 }
 
 /// The rail header cell, reborn as the LEGEND (R-toolbar round): the wide

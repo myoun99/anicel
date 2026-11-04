@@ -399,7 +399,6 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.session,
     required this.panelContext,
     required this.onAddLayer,
-    required this.onRenameLayer,
     this.onDeleteRowSelection,
     required this.onDeleteLayer,
     this.onEditInstance,
@@ -424,8 +423,6 @@ class TimelineActionToolbar extends StatelessWidget {
   /// pressed without first looking, which is the opposite of what a bar
   /// button is for. The band above it still offers every kind explicitly.
   final VoidCallback onAddLayer;
-
-  final VoidCallback onRenameLayer;
 
   /// F: the shared delete's ROW rung, with its confirmation. Null lets the
   /// rung run unconfirmed (a host with no dialogs to show).
@@ -571,8 +568,9 @@ class TimelineActionToolbar extends StatelessWidget {
   ///
   /// Cached (see [_StaticCommandGroup]) on the hidden-section mask — the
   /// menu's show/hide checkmarks read `hiddenSections` from THIS closure —
-  /// on the program LANGUAGE, because the name cell prints a word now, and
-  /// on the one predicate a verb outside the menu reads.
+  /// on the program LANGUAGE, because the name cell prints a word now.
+  /// ↩️And on the rename's gate while ① stood its button on this pill — its
+  /// row is the menu's again, read as the menu opens (I-154).
   Widget _layerPill() => _StaticCommandGroup(
     news: _news,
     gates: () => Object.hash(
@@ -582,9 +580,6 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       AppText.settings.value.programLanguage,
       session.layerVerbs.canDeleteActiveLayer,
-      // ①: the rename button lives here now, so its gate has to be part of
-      // what wakes this group up.
-      _menus.canEditActiveLayer,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-layer-group'),

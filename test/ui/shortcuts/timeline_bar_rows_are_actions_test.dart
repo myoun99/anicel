@@ -44,11 +44,13 @@ const k = LogicalKeyboardKey.keyK;
 
 /// The bar's menu rows, in the bar's order — 컷 · 레이어 · 프레임 · fx.
 final barRows = [
+  EditorActionIds.cutRename,
   EditorActionIds.cutEditNote,
   EditorActionIds.cutSettings,
   EditorActionIds.cutCanvasSize,
   EditorActionIds.cutCreateLinked,
   EditorActionIds.cutConvertLinked,
+  EditorActionIds.layerRename,
   EditorActionIds.layerDetach,
   EditorActionIds.layerRasterize,
   EditorActionIds.layerStoryboard,

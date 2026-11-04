@@ -62,6 +62,7 @@ import '../../models/project_frame_rate.dart';
 import 'frame_ruler_view.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_legend.dart';
+import 'timeline_layer_controls_header.dart' show LegendHeadingButton;
 
 class TimelinePanel extends StatefulWidget {
   const TimelinePanel({
@@ -129,7 +130,7 @@ class TimelinePanel extends StatefulWidget {
     required this.orientation,
     required this.onOrientationChanged,
     this.transport,
-    this.cutName = const AlwaysStoppedAnimation<String>(''),
+    this.legendHeading,
     this.timelineActionToolbar,
     this.pixelsPerFrame = TimelinePanel.defaultPixelsPerFrame,
     this.onPixelsPerFrameChanged,
@@ -433,9 +434,10 @@ class TimelinePanel extends StatefulWidget {
   /// ([TimelineCommandBar.transport]).
   final Widget? transport;
 
-  /// The name of the cut the panel's playhead stands in, for the bar's
-  /// right group ([TimelineViewCluster.cutName]).
-  final ValueListenable<String> cutName;
+  /// The button the legend's heading is — the cut list, which names the
+  /// cut the panel's playhead stands in (I-154: 「현재컷 이름을 여기로
+  /// 옮겨서」); null keeps the rows' heading words.
+  final LegendHeadingButton? legendHeading;
 
   final Widget? timelineActionToolbar;
 
@@ -804,6 +806,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       // The legend over either grid's rail (F-408 ②).
       legend: TimelineGridLegend(
         verbs: widget.legend,
+        heading: widget.legendHeading,
         onMenus: (menus) => _legend.menus = menus,
         onToggleSection: widget.onToggleSection,
         visibilitySoloEnabled: widget.visibilitySoloEnabled,
@@ -848,7 +851,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
-                cutName: widget.cutName,
+                // Its cut's name is the legend's heading (I-154).
+                cutName: null,
                 // The orientation toggle below: what it shows, and where its
                 // press goes.
                 trailing: widget.orientation,
@@ -858,7 +862,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
-                cutName: widget.cutName,
                 trailing: [
                   TimelineOrientationToggle(
                     orientation: widget.orientation,

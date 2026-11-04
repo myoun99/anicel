@@ -19,6 +19,7 @@ import '../text/app_strings.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
+import 'layer_name_commands.dart' show renameActiveLayerWithDialog;
 import 'rasterize_reference_rows.dart';
 import 'toolbar_panel_context.dart';
 
@@ -259,9 +260,8 @@ class TimelineBarMenus {
   /// light up rename (↩️it said duplicate, which F-455 moved to the shared
   /// pill).
   ///
-  /// A getter because ① moved rename OUT of the menu: the pill's button and
-  /// the entries that stayed behind have to answer the same question, and
-  /// two copies of this line would eventually stop agreeing.
+  /// The rename row's gate (I-154). ↩️A getter since ① moved rename onto
+  /// the pill, whose button and this menu had to answer the same question.
   bool get canEditActiveLayer {
     final active = session.activeLayer;
     return active != null && !active.kind.isTrackFixture;
@@ -276,11 +276,20 @@ class TimelineBarMenus {
     // instead of editing a row that panel is not showing.
     final serves = panel.servesActiveLayerVerbs;
     return [
-      // ⛔RENAME IS NOT HERE — ① moved it onto the pill itself (유저 확정:
-      // 「레이어 알약 밖으로: 레이어 이름변경」). "밖으로" means out of the
-      // MENU and onto that pill, which is where 컷 삭제 went for the same
-      // sentence; it does not mean the shared pill, whose residents 확정 #11
-      // fixes at four.
+      // ↩️🗣️I-154 (유저 2026-11-04): 「레이어버튼에도 이름변경 추가. 역시
+      // 있는게 나을거같음」 — back at the head of the menu. ① (08-13) had
+      // moved it onto the pill (「레이어 알약 밖으로: 레이어 이름변경」), and
+      // the pill's button gave way to the shared pill's Edit Instance. The
+      // selected rows, or the one stood on (⑨).
+      PanelFlyoutItem(
+        keyValue: 'timeline-rename-layer-button',
+        label: editorActionLabel(EditorActionIds.layerRename),
+        shortcuts: const [EditorActionIds.layerRename],
+        icon: Icons.drive_file_rename_outline,
+        enabled: serves && canEditActiveLayer,
+        onSelected: () =>
+            unawaited(renameActiveLayerWithDialog(context, session)),
+      ),
       // ⛔DUPLICATE IS NOT HERE EITHER (F-455, 유저 2026-10-23: 「공용알약에
       // 복제 버튼 만들고 레이어랑 컷버튼의 레이어복제/컷복제 삭제」). The
       // shared pill's 복제 duplicates the selected rows, as its copy takes

@@ -83,173 +83,175 @@ void main() {
   /// The bar's right group: the cut's name, the zoom and its fit.
   final rightGroup = find.byType(TimelineViewCluster);
 
-  for (final storyboard in [false, true]) {
-    final tab = storyboard ? 'storyboard' : 'timeline';
+  // ↩️Both tabs until I-154 (유저 2026-11-04: 「현재컷 이름을 여기로
+  // 옮겨서」) — the timeline panel names its cut in its legend's heading
+  // now (the_timeline_legend_heads_the_cut_list_test).
+  const storyboard = true;
+  const tab = 'storyboard';
 
-    testWidgets('the $tab names the cut with a c before it, at the head of '
-        'the bar\'s right group, out of the cut pill', (tester) async {
-      final session = await open(tester, storyboard: storyboard);
+  testWidgets('the $tab names the cut with a c before it, at the head of '
+      'the bar\'s right group, out of the cut pill', (tester) async {
+    final session = await open(tester, storyboard: storyboard);
 
-      session.selectCut(const CutId('cut-a'));
-      await tester.pumpAndSettle();
-      expect(shown(tester), 'c001', reason: '「컷이름 500이면 c500」');
+    session.selectCut(const CutId('cut-a'));
+    await tester.pumpAndSettle();
+    expect(shown(tester), 'c001', reason: '「컷이름 500이면 c500」');
+    expect(
+      find.descendant(
+        of: find.byType(CutCommandGroup),
+        matching: find.byKey(name),
+      ),
+      findsNothing,
+      reason: '「컷 버튼 옆에 있는데 너무 쓸데없이 공간차지함」',
+    );
+    expect(
+      find.descendant(of: rightGroup, matching: find.byKey(name)),
+      findsOneWidget,
+    );
+    final nameRect = tester.getRect(find.byKey(name));
+    final zoomRect = tester.getRect(find.byKey(zoom));
+    final fitRect = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-zoom-fit-button')),
+    );
+    expect(
+      [nameRect.right <= zoomRect.left, zoomRect.right <= fitRect.left],
+      [isTrue, isTrue],
+      reason: '「오른쪽묶음엔 컷이름/줌/fit 이순서로」',
+    );
+    final buttons = find.descendant(
+      of: rightGroup,
+      matching: find.byType(AppIconButton),
+    );
+    expect(buttons, findsWidgets, reason: '⛔전제');
+    for (final button in buttons.evaluate()) {
       expect(
-        find.descendant(
-          of: find.byType(CutCommandGroup),
-          matching: find.byKey(name),
-        ),
-        findsNothing,
-        reason: '「컷 버튼 옆에 있는데 너무 쓸데없이 공간차지함」',
+        tester.getRect(find.byWidget(button.widget)).left,
+        greaterThanOrEqualTo(nameRect.right),
+        reason: '「오른쪽묶음의 제일 왼쪽에」: '
+            '${(button.widget as AppIconButton).keyValue} after it',
       );
-      expect(
-        find.descendant(of: rightGroup, matching: find.byKey(name)),
-        findsOneWidget,
-      );
-      final nameRect = tester.getRect(find.byKey(name));
-      final zoomRect = tester.getRect(find.byKey(zoom));
-      final fitRect = tester.getRect(
-        find.byKey(const ValueKey<String>('timeline-zoom-fit-button')),
-      );
-      expect(
-        [nameRect.right <= zoomRect.left, zoomRect.right <= fitRect.left],
-        [isTrue, isTrue],
-        reason: '「오른쪽묶음엔 컷이름/줌/fit 이순서로」',
-      );
-      final buttons = find.descendant(
-        of: rightGroup,
-        matching: find.byType(AppIconButton),
-      );
-      expect(buttons, findsWidgets, reason: '⛔전제');
-      for (final button in buttons.evaluate()) {
-        expect(
-          tester.getRect(find.byWidget(button.widget)).left,
-          greaterThanOrEqualTo(nameRect.right),
-          reason: '「오른쪽묶음의 제일 왼쪽에」: '
-              '${(button.widget as AppIconButton).keyValue} after it',
-        );
-      }
+    }
 
-      session.selectCut(const CutId('cut-b'));
-      await tester.pumpAndSettle();
-      expect(shown(tester), 'c002', reason: 'the name follows the cut');
-    });
+    session.selectCut(const CutId('cut-b'));
+    await tester.pumpAndSettle();
+    expect(shown(tester), 'c002', reason: 'the name follows the cut');
+  });
 
-    testWidgets('on the $tab, the name stands at its place\'s right, against '
-        'the zoom — a short one and the widest alike', (tester) async {
-      final session = await open(
-        tester,
-        storyboard: storyboard,
-        of: project(first: '1', second: 'WWWWW'),
-      );
-      session.selectCut(const CutId('cut-a'));
-      await tester.pumpAndSettle();
-      final short = tester.getRect(find.byKey(name));
-      final readout = tester.getRect(find.byKey(zoom));
-      expect(shown(tester), 'c1');
+  testWidgets('on the $tab, the name stands at its place\'s right, against '
+      'the zoom — a short one and the widest alike', (tester) async {
+    final session = await open(
+      tester,
+      storyboard: storyboard,
+      of: project(first: '1', second: 'WWWWW'),
+    );
+    session.selectCut(const CutId('cut-a'));
+    await tester.pumpAndSettle();
+    final short = tester.getRect(find.byKey(name));
+    final readout = tester.getRect(find.byKey(zoom));
+    expect(shown(tester), 'c1');
 
-      session.selectCut(const CutId('cut-b'));
-      await tester.pumpAndSettle();
-      final widest = tester.getRect(find.byKey(name));
-      expect(shown(tester), 'cWWWWW', reason: 'the widest five, whole');
-      expect(told(tester), 'cWWWWW');
-      expect(widest.width, greaterThan(short.width), reason: '⛔전제');
-      expect(short.right, widest.right, reason: '「오른쪽정렬」');
-      expect(
-        tester.getRect(find.byKey(zoom)),
-        readout,
-        reason: 'the place stays; only its words change',
-      );
-      expect(readout.left - widest.right, inInclusiveRange(0, 4));
-    });
+    session.selectCut(const CutId('cut-b'));
+    await tester.pumpAndSettle();
+    final widest = tester.getRect(find.byKey(name));
+    expect(shown(tester), 'cWWWWW', reason: 'the widest five, whole');
+    expect(told(tester), 'cWWWWW');
+    expect(widest.width, greaterThan(short.width), reason: '⛔전제');
+    expect(short.right, widest.right, reason: '「오른쪽정렬」');
+    expect(
+      tester.getRect(find.byKey(zoom)),
+      readout,
+      reason: 'the place stays; only its words change',
+    );
+    expect(readout.left - widest.right, inInclusiveRange(0, 4));
+  });
 
-    testWidgets('on the $tab, five characters stand whole and a sixth is cut '
-        'off — the whole name is the tooltip\'s', (tester) async {
-      final session = await open(
-        tester,
-        storyboard: storyboard,
-        of: project(second: '001234'),
-      );
-      session.selectCut(const CutId('cut-b'));
-      await tester.pumpAndSettle();
-      expect(shown(tester), 'c00123…', reason: '「그 이상은 생략」');
-      expect(told(tester), 'c001234', reason: '「호버하면 풀네임」');
-    });
+  testWidgets('on the $tab, five characters stand whole and a sixth is cut '
+      'off — the whole name is the tooltip\'s', (tester) async {
+    final session = await open(
+      tester,
+      storyboard: storyboard,
+      of: project(second: '001234'),
+    );
+    session.selectCut(const CutId('cut-b'));
+    await tester.pumpAndSettle();
+    expect(shown(tester), 'c00123…', reason: '「그 이상은 생략」');
+    expect(told(tester), 'c001234', reason: '「호버하면 풀네임」');
+  });
 
-    // 🗣️I-57, after seeing it (유저 2026-10-01): 「스크럽중에도 통일해서
-    // 컷이름 갱신되게. 컷 실제로 바뀔때 한번」. ↩️The name was the ACTIVE
-    // cut's, and a scrub left the active cut alone (UI-R7 #9) — so it named
-    // the cut being left until the release. Since I-57 ② the scrub crosses
-    // into the cut under it, and the name turns over with that crossing.
-    testWidgets('a scrub over another cut names it — once, at the crossing '
-        '— on the $tab', (tester) async {
-      final session = await open(tester, storyboard: storyboard);
-      session.selectCut(const CutId('cut-a'));
-      await tester.pumpAndSettle();
-      expect(shown(tester), 'c001', reason: '⛔전제');
-      var heard = 0;
-      void count() => heard += 1;
-      session.cutUnderPlayhead.cutName.addListener(count);
-      addTearDown(
-        () => session.cutUnderPlayhead.cutName.removeListener(count),
-      );
+  // 🗣️I-57, after seeing it (유저 2026-10-01): 「스크럽중에도 통일해서
+  // 컷이름 갱신되게. 컷 실제로 바뀔때 한번」. ↩️The name was the ACTIVE
+  // cut's, and a scrub left the active cut alone (UI-R7 #9) — so it named
+  // the cut being left until the release. Since I-57 ② the scrub crosses
+  // into the cut under it, and the name turns over with that crossing.
+  testWidgets('a scrub over another cut names it — once, at the crossing '
+      '— on the $tab', (tester) async {
+    final session = await open(tester, storyboard: storyboard);
+    session.selectCut(const CutId('cut-a'));
+    await tester.pumpAndSettle();
+    expect(shown(tester), 'c001', reason: '⛔전제');
+    var heard = 0;
+    void count() => heard += 1;
+    session.cutUnderPlayhead.cutName.addListener(count);
+    addTearDown(
+      () => session.cutUnderPlayhead.cutName.removeListener(count),
+    );
 
-      // Cut A is frames [0, 24) of the track; these are all inside cut B.
-      for (final frame in [26, 27, 30, 31]) {
-        session.frameScrub.scrubGlobalFrame(frame);
-        await tester.pump();
-      }
-      expect(session.frameScrub.active.value, isTrue, reason: '⛔전제: live');
-      expect(
-        session.activeCutId,
-        const CutId('cut-b'),
-        reason: 'the scrub crossed into it',
-      );
-      expect(shown(tester), 'c002');
-      expect(heard, 1, reason: '「컷 실제로 바뀔때 한번」 — not once per frame');
-
-      session.frameScrub.commitFrameScrub();
-      await tester.pumpAndSettle();
-      expect(
-        shown(tester),
-        'c002',
-        reason: 'the release lands where it showed',
-      );
-    });
-
-    // 🚨I-22 ③: the name turns over on a scrub's move, so it is drawn on a
-    // layer of its own — the bar's own is a tick layer too, and the app's
-    // scrub pin lets it repaint, pills and all.
-    testWidgets('a crossing repaints the name\'s layer and nothing else of '
-        'the $tab\'s bar', (tester) async {
-      final session = await open(tester, storyboard: storyboard);
-      session.selectCut(const CutId('cut-a'));
-      await tester.pumpAndSettle();
-      session.frameScrub.scrubGlobalFrame(20);
+    // Cut A is frames [0, 24) of the track; these are all inside cut B.
+    for (final frame in [26, 27, 30, 31]) {
+      session.frameScrub.scrubGlobalFrame(frame);
       await tester.pump();
-      final bar = tester.renderObject(find.byType(TimelineCommandBar));
-      // Inside the right group: the bar stands on one too.
-      final own = find.descendant(
-        of: rightGroup,
-        matching: find.ancestor(
-          of: find.byKey(name),
-          matching: find.byType(TickLayer),
-        ),
-      );
-      expect(own, findsOneWidget, reason: 'a layer of the name\'s own');
-      final layer = tester.renderObject(own);
+    }
+    expect(session.frameScrub.active.value, isTrue, reason: '⛔전제: live');
+    expect(
+      session.activeCutId,
+      const CutId('cut-b'),
+      reason: 'the scrub crossed into it',
+    );
+    expect(shown(tester), 'c002');
+    expect(heard, 1, reason: '「컷 실제로 바뀔때 한번」 — not once per frame');
 
-      session.frameScrub.scrubGlobalFrame(26);
-      await tester.pump(null, EnginePhase.layout);
-      final strays = repaintStrays(bar, allowed: {layer});
-      await tester.pump();
+    session.frameScrub.commitFrameScrub();
+    await tester.pumpAndSettle();
+    expect(
+      shown(tester),
+      'c002',
+      reason: 'the release lands where it showed',
+    );
+  });
 
-      expect(shown(tester), 'c002', reason: '⛔전제: the move crossed');
-      expect(strays, isEmpty);
-    });
-  }
+  // 🚨I-22 ③: the name turns over on a scrub's move, so it is drawn on a
+  // layer of its own — the bar's own is a tick layer too, and the app's
+  // scrub pin lets it repaint, pills and all.
+  testWidgets('a crossing repaints the name\'s layer and nothing else of '
+      'the $tab\'s bar', (tester) async {
+    final session = await open(tester, storyboard: storyboard);
+    session.selectCut(const CutId('cut-a'));
+    await tester.pumpAndSettle();
+    session.frameScrub.scrubGlobalFrame(20);
+    await tester.pump();
+    final bar = tester.renderObject(find.byType(TimelineCommandBar));
+    // Inside the right group: the bar stands on one too.
+    final own = find.descendant(
+      of: rightGroup,
+      matching: find.ancestor(
+        of: find.byKey(name),
+        matching: find.byType(TickLayer),
+      ),
+    );
+    expect(own, findsOneWidget, reason: 'a layer of the name\'s own');
+    final layer = tester.renderObject(own);
+
+    session.frameScrub.scrubGlobalFrame(26);
+    await tester.pump(null, EnginePhase.layout);
+    final strays = repaintStrays(bar, allowed: {layer});
+    await tester.pump();
+
+    expect(shown(tester), 'c002', reason: '⛔전제: the move crossed');
+    expect(strays, isEmpty);
+  });
 
   testWidgets('a rename of the cut reaches the name', (tester) async {
-    final session = await open(tester);
+    final session = await open(tester, storyboard: true);
     session.selectCut(const CutId('cut-a'));
     await tester.pumpAndSettle();
 

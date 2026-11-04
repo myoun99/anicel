@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/ellipsis_text.dart';
+import '../widgets/fixed_label.dart';
 
 /// What a [AppProgressDialog] is showing right now.
 ///
@@ -149,7 +150,7 @@ class AppProgressDialog extends StatelessWidget {
               Expanded(
                 child: ValueListenableBuilder<String>(
                   valueListenable:
-                      runningStatus ?? const _FixedLabel(''),
+                      runningStatus ?? const FixedLabel(''),
                   builder: (context, status, _) => EllipsisText(
                     value.done
                         ? doneLabel
@@ -183,21 +184,6 @@ class AppProgressDialog extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A listenable that never changes — so the label builder has one shape
-/// whether or not the caller supplied a status line.
-class _FixedLabel implements ValueListenable<String> {
-  const _FixedLabel(this.value);
-
-  @override
-  final String value;
-
-  @override
-  void addListener(VoidCallback listener) {}
-
-  @override
-  void removeListener(VoidCallback listener) {}
 }
 
 /// How long the finished line is held up before the window leaves.

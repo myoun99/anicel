@@ -12,6 +12,7 @@ import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
+import 'timeline/cut_list.dart' show cutListButton;
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
@@ -948,7 +949,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onResetLaneGroup: (layer, lane) =>
                 _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
             transport: timelineTransport,
-            cutName: _session.cutUnderPlayhead.cutName,
+            // The legend's heading is the cut list (I-154).
+            legendHeading: cutListButton(context, _session),
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
@@ -1031,8 +1033,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       // diverges from).
       panelContext: TimelineToolbarPanelContext(_session, waitIn: context),
       onAddLayer: _session.layerStack.addLayer,
-      onRenameLayer: () =>
-          unawaited(renameActiveLayerWithDialog(context, _session)),
       onDeleteLayer: () =>
           unawaited(deleteActiveLayerWithDialog(context, _session)),
       // F: the shared delete's ROW rung keeps the confirmation the loose
@@ -1068,7 +1068,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       projectFrameRate: _session.projectSettings.projectFrameRate,
       pixelsPerFrame: pixelsPerFrame,
       onPixelsPerFrameChanged: null,
-      cutName: _session.cutUnderPlayhead.cutName,
       trailing: [
         TimelineOrientationToggle(
           orientation: widget.orientation,

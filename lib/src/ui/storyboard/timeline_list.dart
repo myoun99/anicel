@@ -11,6 +11,7 @@ import '../text/app_strings.dart';
 import '../text/place_lines.dart' show timelineNameOf;
 import '../timeline/timeline_layer_controls_header.dart'
     show LegendHeadingButton;
+import '../widgets/fixed_label.dart';
 import '../widgets/panel_flyout.dart';
 
 /// THE TIMELINE LIST (I-150) — the conte panel's legend heading: a button
@@ -26,9 +27,11 @@ LegendHeadingButton timelineListButton(
   BuildContext context,
   TimelineVerbs verbs,
 ) => LegendHeadingButton(
-  label: timelineNameOf(
-    verbs.timelines.firstWhere(
-      (timeline) => timeline.id == verbs.currentTimelineId,
+  label: FixedLabel(
+    timelineNameOf(
+      verbs.timelines.firstWhere(
+        (timeline) => timeline.id == verbs.currentTimelineId,
+      ),
     ),
   ),
   tooltip: AppText.strings.timelines,

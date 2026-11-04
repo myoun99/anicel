@@ -18,6 +18,11 @@ import 'app_strings.dart';
 String timelineNameOf(ProjectTimeline timeline) =>
     timeline.name ?? AppText.strings.timelineNumbered(timeline.number);
 
+/// A cut's [name] as a place that names the cut stood in writes it — 🗣️
+/// F-491 (유저 2026-10-27): 「컷 이름 앞에 c 붙이도록. 즉 컷이름 500이면
+/// c500 되도록」 — and nothing for a gap's empty one.
+String cutNameWritten(String name) => name.isEmpty ? '' : 'c$name';
+
 /// What holds a place as one line: its name, after its timeline's where
 /// that is not the open one ([PlaceOwner]).
 String ownerLine(PlaceOwner owner) => switch (owner.away) {

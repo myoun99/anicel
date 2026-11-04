@@ -591,8 +591,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // read).
               panelContext: _toolbarPanel,
               onAddLayer: _session.layerStack.addLayer,
-              onRenameLayer: () =>
-                  unawaited(renameActiveLayerWithDialog(context, _session)),
               onDeleteLayer: () =>
                   unawaited(deleteActiveLayerWithDialog(context, _session)),
               // F: the shared delete's ROW rung, confirmation included.

@@ -199,8 +199,20 @@ Future<void> _askRowsName(
 Future<void> renameActiveCutWithDialog(
   BuildContext context,
   EditorSessionManager session,
+) => renameCutWithDialog(
+  context,
+  session,
+  session.activeCutOrNull, // Gap state: no cut to rename.
+);
+
+/// The same window for [cut] — the active one's ([renameActiveCutWithDialog])
+/// or a row's of the timeline panel's cut list, which names a cut that may
+/// not be it (I-154).
+Future<void> renameCutWithDialog(
+  BuildContext context,
+  EditorSessionManager session,
+  Cut? cut,
 ) {
-  final cut = session.activeCutOrNull; // Gap state: no cut to rename.
   var scene = cut?.metadata.scene ?? '';
   return askAboutThenCommit<Cut, String>(
     context,
@@ -210,7 +222,8 @@ Future<void> renameActiveCutWithDialog(
       initialScene: cut.metadata.scene,
       onSceneChanged: (typed) => scene = typed,
     ),
+    // Asked of a cut only: the helper stands down where there is none.
     commit: (name) =>
-        session.cutVerbs.renameActiveCut(name, scene: scene.trim()),
+        session.cutVerbs.renameCut(cut!.id, name, scene: scene.trim()),
   );
 }
