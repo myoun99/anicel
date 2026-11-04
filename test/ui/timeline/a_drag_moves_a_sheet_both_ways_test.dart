@@ -975,6 +975,20 @@ void main() {
         );
       });
 
+      testWidgets('🚨two fingers zoom its frames holding the frame between '
+          'them between them, as far across — as a notch holds the one '
+          'under the cursor (F-565: 「휠로 줌하는거랑 똑같이 '
+          '커서(손가락위치?) 기준으로」)', (tester) async {
+        await pumpSheet(tester);
+        final at = onTheCells(tester);
+        final under = framesUnder(tester, at);
+
+        expect(await pinch(tester, at: at), closeTo(1.5, 0.005));
+        expect(framesUnder(tester, at), closeTo(under, 0.02), reason: 'in');
+        expect(await pinch(tester, at: at, by: -10), lessThan(1));
+        expect(framesUnder(tester, at), closeTo(under, 0.02), reason: 'out');
+      });
+
       /// The frame axis far from the playhead, which then holds nothing: a
       /// zoom with no point to hold holds the leading edge.
       Future<double> farFromThePlayhead(WidgetTester tester) async {

@@ -329,7 +329,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       _handlePlaybackPage,
     );
     // Zoom-around-playhead: the playhead stays put on screen through zoom
-    // when visible; otherwise the leading-edge frame anchors.
+    // when visible; otherwise the leading-edge frame anchors — unless a
+    // notch or a pinch held its own point.
     applyZoomAnchoredScroll(
       _horizontalScrollController,
       oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,

@@ -71,6 +71,11 @@ import 'wheel_law.dart';
 /// the wheel. A notch turned with Alt held ([wheelZoomsASheet]) is one step
 /// of the [zoom], a zoom key's, through the writer the keys and the pinch
 /// write through; the sheet's own scrollers leave it to the zoom.
+///
+/// 🗣️F-565 (유저 2026-11-04): 「프레임 영역을 손가락2개로 줌하는것, 휠로
+/// 줌하는거랑 똑같이 커서(손가락위치?) 기준으로 줌하도록」 — a pinch's step
+/// holds the frames under the point between its fingers still, as a notch's
+/// holds the ones under the cursor: one hold ([_zoomHolding]), one anchor.
 class TwoAxisDrag extends StatelessWidget {
   const TwoAxisDrag({
     super.key,
@@ -133,8 +138,7 @@ class TwoAxisDrag extends StatelessWidget {
         zoomIn: down < 0,
         framesPerSecond: zoom.framesPerSecond,
       );
-      zoom.frames.zoomHold = (at: notch.position, to: to);
-      zoom.onChanged(to);
+      _zoomHolding(zoom, to, notch.position);
     });
   }
 }
@@ -166,8 +170,8 @@ class SheetScrollPhysics extends ScrollPhysics {
 /// writer every zoom control of its panel writes through — each zoom on a
 /// step inside the range ([TimelineZoomLimits.clamped]), as the readout's.
 ///
-/// [frames] is the axis it stretches, which a notch's step holds still at
-/// the notch ([TwoAxisScrollController.zoomHold]).
+/// [frames] is the axis it stretches, which a step holds still at the point
+/// it was asked at ([TwoAxisScrollController.zoomHold]).
 typedef SheetZoom = ({
   double pixelsPerFrame,
   int framesPerSecond,
@@ -192,6 +196,14 @@ SheetZoom? sheetZoom(
   ),
   null => null,
 };
+
+/// [zoom]'s step to [to], holding still the frames under the global point
+/// [at] — where a notch was turned, or the middle of a pinch's fingers
+/// (F-565: 「휠로 줌하는거랑 똑같이」).
+void _zoomHolding(SheetZoom zoom, double to, Offset at) {
+  zoom.frames.zoomHold = (at: at, to: to);
+  zoom.onChanged(to);
+}
 
 /// The scroll controller of one axis of a sheet a [TwoAxisDrag] drags.
 ///
@@ -220,6 +232,7 @@ class TwoAxisScrollController extends PenFriendlyScrollController {
 
   /// Where the zoom step to `to` holds the frames still — the global point
   /// a notch on the sheet was turned at (I-155-Q1 b: 「휠 줌만 커서 기준」),
+  /// or the middle of a pinch's fingers (F-565: 「휠로 줌하는거랑 똑같이」),
   /// set on the axis the zoom stretches. Taken by the axis's next
   /// re-anchoring (`applyZoomAnchoredScroll`), its step's or not.
   ({Offset at, double to})? zoomHold;
@@ -434,7 +447,7 @@ class _SheetDrag extends PanGestureRecognizer {
 
   /// The fingers moved: their middle moves the sheet with the hand and,
   /// while they pinch, they zoom it by how far they spread since they took
-  /// hold.
+  /// hold, around their middle.
   void _pinchStep() {
     final grip = _pinch!;
     final fingers = _fingers.values;
@@ -454,7 +467,7 @@ class _SheetDrag extends PanGestureRecognizer {
       framesPerSecond: sheet.framesPerSecond,
     );
     _zoomed = to;
-    sheet.onChanged(to);
+    _zoomHolding(sheet, to, middle);
   }
 
   @override

@@ -1932,7 +1932,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
-    // anchors. ⛔The timeline grids' own call, not a third spelling of it:
+    // anchors — unless a notch or a pinch held its own point. ⛔The
+    // timeline grids' own call, not a third spelling of it:
     // this jump was the policy written out again, and the one that did not
     // hear the fold rule the grids' call keeps.
     applyZoomAnchoredScroll(
