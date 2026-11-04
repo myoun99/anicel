@@ -169,7 +169,13 @@ void main() {
               const JoinedPath(degrees: 30, ahead: 4, behind: 10),
               const JoinedPath(degrees: 30, ahead: 10, behind: 6),
             ),
+            both(
+              joined,
+              const JoinedPath(degrees: 30, ahead: 10, behind: 6),
+              const JoinedPath(degrees: 30, ahead: 4, behind: 10),
+            ),
             both(split(10, 10), split(4, 10), split(10, 6)),
+            both(split(10, 10), split(10, 6), split(4, 10)),
             both(
               joined,
               const JoinedPath(degrees: 30, ahead: 4, behind: 10),
@@ -178,6 +184,8 @@ void main() {
           ],
           [
             const JoinedPath(degrees: 30, ahead: 4, behind: 6),
+            const JoinedPath(degrees: 30, ahead: 4, behind: 6),
+            split(4, 6),
             split(4, 6),
             const JoinedPath(degrees: 45, ahead: 10, behind: 6),
           ],
