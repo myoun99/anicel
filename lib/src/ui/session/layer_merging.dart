@@ -11,6 +11,7 @@ import '../../services/editing/fx_bake_plan.dart';
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/import/raster_cel_import.dart' show bakeCelSurface;
 import '../../services/project_lookup.dart' show cutWritingRow;
+import 'independent_clip_mint.dart' show copyBakedPictures;
 import 'layer_verbs.dart';
 import 'range_selections.dart';
 import 'render_caches.dart';
@@ -156,8 +157,9 @@ class LayerMerging {
   };
 
   /// The row [plan] bakes made what it planned in every cut it is used in,
-  /// in ONE undo step — or nothing, when one of its cuts has changed since
-  /// it was planned.
+  /// in ONE undo step, and the pictures it copies copied to their new cels
+  /// ([FxBakePlan.copies]) — or nothing, when one of its cuts has changed
+  /// since it was planned.
   bool landFx(FxBakePlan plan) {
     if (!_landsAcross(
       [(cut: plan.cut, layers: plan.layers), ...plan.others],
@@ -165,6 +167,15 @@ class LayerMerging {
       'Rasterize fx',
     )) {
       return false;
+    }
+    for (final (:cut, :row, :minted) in plan.copies) {
+      copyBakedPictures(
+        project: _project,
+        store: _renderCaches.brushFrameStore,
+        minted: minted,
+        from: (cut: cut, row: row),
+        to: (cut: cut, row: row),
+      );
     }
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();

@@ -2199,8 +2199,9 @@ void main() {
   });
 
   /// 🗣️I-120-Q7 (유저 2026-11-04 「트랙의 콘티가 있는 컷 전부에서 같이
-  /// 굽는다」) — and, while Q17 · Q18 are asked, a panel that would show
-  /// more than one picture bakes nothing.
+  /// 굽는다」) — a panel shown as more than one picture parted (Q17), and a
+  /// row synced on the conte showing more than one over a panel made free
+  /// (Q18).
   group("④c — a row of a track's conte is baked in every cut of the track "
       'that has the conte, each by its own values and timing into a bank of '
       'its own (Q7)', () {
@@ -2395,53 +2396,88 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
-    test('🚨a keyed fx read by frame shows a panel as two pictures: it bakes '
-        'nothing while Q17 is asked — read by block, each panel one picture, '
-        'it bakes', () {
-      String outcome(FxBasis basis) => outcomeOf(
-        trackOf(
-          (id, base, rider) =>
-              conteCut(id, base, rider, fx: [brightness(basis: basis)]),
-        ),
-        const LayerId('s'),
-        bright,
-      );
-      expect([outcome(FxBasis.frame), outcome(FxBasis.block)], [
-        'panelParts',
-        'bakes',
-      ]);
-    });
-
-    testWidgets('🚨…and the press says why, baking nothing', (tester) async {
+    testWidgets('🚨Q17 — a keyed fx read by the frame shows a panel as two '
+        'pictures: the conte parts it as any row parts its block, the head '
+        "keeping the sheet's writing, and the row synced on it keeps over the "
+        'new panel a copy of the picture it showed there, named with a tail — '
+        'nothing said, and one undo gives every cut back (유저 11-05 「칸을 '
+        '나눈다(보통 레이어와 같은 법)」)', (tester) async {
       final s = trackOf(
         (id, base, rider) => conteCut(id, base, rider, fx: [brightness()]),
       );
       final before = rowsOf(s);
-      final context = await hostedContext(tester);
+      final looks = await seen(tester, s);
 
-      unawaited(
-        rasterizeFxGroup(context, s, const LayerId('s'), bright, 'fx'),
-      );
+      await press(tester, s, const LayerId('s'));
+
+      for (final (cut, base, rider) in [
+        (cutId, 's', 'k'),
+        (other, 't', 'j'),
+      ]) {
+        final conte = rowIn(s, cut, base);
+        expect(blocksOf(conte), {0: (1, '1'), 1: (1, '1-2'), 2: (1, '2')});
+        expect(
+          [conte.timeline[0]!.memo, conte.timeline[1]!.memo],
+          [const ExposureMemo(actionMemo: 'PAN', inkId: 'ink-1'), null],
+        );
+        final riding = rowIn(s, cut, rider);
+        expect(riding.attachedMode, AttachedMode.synced);
+        expect([for (final cel in riding.frames) cel.name], ['1', '1-2', '2']);
+        expect(
+          [riding.frames[0].id, riding.frames[2].id],
+          [FrameId('$rider-1'), FrameId('$rider-2')],
+        );
+        expect(riding.baseFrameLinks, {
+          for (final (index, block) in conte.timeline.values.indexed)
+            block.frameId!: riding.frames[index].id,
+        });
+      }
       await tester.pumpAndSettle();
-
       expect(
-        find.byKey(const ValueKey<String>('fx-rasterize-panel-parts')),
-        findsOneWidget,
+        find.byKey(const ValueKey<String>('fx-rasterize-rows-freed')),
+        findsNothing,
       );
-      expect(find.text(AppText.strings.tlFxBakePanelParts), findsOneWidget);
+      expect(await seen(tester, s), looks, reason: 'the copy its picture');
+
+      s.undo();
       expect(rowsOf(s), before);
+      s.playbackRig.prerenderScheduler.cancel();
     });
 
-    test('🚨a band whose edge falls inside a panel parts it — one along its '
-        'panels bakes the pressed cut alone', () {
+    test('🚨a band whose edge falls inside a panel parts it there (Q17): the '
+        "panel's cel kept where the band leaves it, the row synced on it "
+        'keeping its own there and a copy over the part — minted under the '
+        'id its settle gives a mirror; one along its panels bakes the pressed '
+        'cut alone', () {
       final s = trackOf(
         (id, base, rider) => conteCut(id, base, rider, fx: [still(60)]),
       );
       final before = rowsOf(s);
-      expect(
-        outcomeOf(s, const LayerId('s'), bright, (start: 1, end: 3)),
-        'panelParts',
-      );
+
+      final parted = s.layerMerging.bakeOf(
+        const LayerId('s'),
+        bright,
+        band: (start: 1, end: 3),
+      )!;
+      final cels = parted.layers.byId(const LayerId('s'))!;
+      expect(blocksOf(cels), {0: (1, '1'), 1: (1, '1-2'), 2: (1, '2')});
+      expect(cels.timeline[0]!.frameId, const FrameId('s-1'));
+      final part = cels.timeline[1]!.frameId!;
+      final riding = parted.layers.byId(const LayerId('k'))!;
+      expect([for (final cel in riding.frames) cel.id], [
+        const FrameId('k-1'),
+        attachedMirrorCelId(const LayerId('k'), part),
+        const FrameId('k-2'),
+      ]);
+      expect(riding.frames[1].name, '1-2');
+      expect(riding.baseFrameLinks, {
+        const FrameId('s-1'): const FrameId('k-1'),
+        part: riding.frames[1].id,
+        cels.timeline[2]!.frameId!: const FrameId('k-2'),
+      });
+      final copy = parted.copies.single;
+      expect((copy.cut.id, copy.row), (cutId, const LayerId('k')));
+      expect(copy.minted, {const FrameId('k-1'): riding.frames[1].id});
 
       final plan = s.layerMerging.bakeOf(
         const LayerId('s'),
@@ -2493,26 +2529,91 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
-    test("🚨…but keyed, two pictures over one of the conte's panels: it "
-        'bakes nothing while Q18 is asked — a row of its own timing parts '
-        'its block, as any row does', () {
-      String outcome({required bool free}) => outcomeOf(
-        trackOf(
-          (id, base, rider) => conteCut(
-            id,
-            base,
-            rider,
-            riderFx: [brightness()],
-            free: free,
-          ),
+    testWidgets("🚨Q18 — keyed, two pictures over one of the conte's panels: "
+        "that cut's row goes free on a timing of its own, its block parted "
+        'where its picture changes, riding the conte still — a cut whose row '
+        'shows one picture a panel stays synced — and the press says so '
+        'after; one undo gives every cut back (유저 11-05 「그 행을 자유(자기 '
+        '타이밍)로 바꾼다 — 병합과 같은 법」)', (tester) async {
+      final s = trackOf(
+        (id, base, rider) => conteCut(
+          id,
+          base,
+          rider,
+          riderFx: [if (id == cutId) brightness() else still(30)],
         ),
-        const LayerId('k'),
-        bright,
       );
-      expect([outcome(free: false), outcome(free: true)], [
-        'panelParts',
-        'bakes',
-      ]);
+      final before = rowsOf(s);
+      final looks = await seen(tester, s);
+
+      await press(tester, s, const LayerId('k'));
+
+      final freed = rowIn(s, cutId, 'k');
+      expect(
+        (freed.attachedToLayerId, freed.attachedMode),
+        (const LayerId('s'), AttachedMode.free),
+      );
+      expect(freed.baseFrameLinks, isEmpty);
+      expect(blocksOf(freed), {0: (1, '1'), 1: (1, '1-2'), 2: (1, '2')});
+      final kept = rowIn(s, other, 'j');
+      expect(kept.attachedMode, AttachedMode.synced);
+      expect(kept.timeline, isEmpty);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('fx-rasterize-rows-freed')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          AppText.strings.tlFxBakeRowsFreedTemplate.replaceAll('{names}', 'K1'),
+        ),
+        findsOneWidget,
+      );
+      expect(await seen(tester, s), looks);
+
+      s.undo();
+      expect(rowsOf(s), before);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test("🚨Q18 — the timing is the link group's: a 겸용 cut's row goes free "
+        'with the one that shows two pictures over a panel, though it shows '
+        'one a panel itself — a mount is synced only where every use agrees '
+        "— and holds each cel its timing shows, the bank's every one", () {
+      final s = trackOf(
+        (id, base, rider) => conteCut(
+          id,
+          base,
+          rider,
+          riderFx: [if (id == cutId) brightness() else still(30)],
+        ),
+      );
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      final plan = s.layerMerging.bakeOf(const LayerId('k'), bright)!;
+      final rows = {
+        for (final (:cut, :layers) in [
+          (cut: plan.cut, layers: plan.layers),
+          ...plan.others,
+        ])
+          for (final row in layers)
+            if (row.name == 'K1') cut.id: row,
+      };
+      final twin = rows.entries.singleWhere(
+        (row) => row.key != cutId && row.key != other,
+      );
+      expect(
+        [rows[cutId]!.attachedMode, twin.value.attachedMode],
+        [AttachedMode.free, AttachedMode.free],
+      );
+      expect(rows[other]!.attachedMode, AttachedMode.synced);
+      expect(plan.freed, ['K1']);
+      for (final row in [rows[cutId]!, twin.value]) {
+        expect(
+          {for (final block in row.timeline.values) block.frameId},
+          everyElement(isIn({for (final cel in row.frames) cel.id})),
+          reason: '${row.id.value} shows only cels it holds',
+        );
+      }
     });
 
     testWidgets('a free row riding the conte parts its own block where its '

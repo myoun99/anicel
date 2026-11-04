@@ -1,8 +1,10 @@
 import 'dart:collection' show SplayTreeMap;
 
 import '../../core/collection_equality.dart' show setEquals;
+import '../../models/attached_layer_mount.dart' show detachedLayer;
 import '../../models/attached_layer_resolve.dart'
     show attachedMirrorCelId, fxCarrierOf, isSyncedAttachedLayer;
+import '../../models/attached_mode.dart';
 import '../../models/audio_clip.dart';
 import '../../models/canvas_point.dart';
 import '../../models/cut.dart';
@@ -22,7 +24,6 @@ import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart'
     show ghostFreeTimeline, rederiveRunBehaviors;
 import '../../models/timeline_splice.dart' show splitTimelineAt;
-import '../../models/track_conte_laying.dart' show conteBaseOf;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/transform_track.dart';
 import '../commands/link_mirror.dart'
@@ -32,6 +33,7 @@ import '../playback/cut_frame_composite_signature.dart'
     show BrushFrameRevisionResolver, CutFrameCompositeSignature;
 import '../playback/cut_frame_composite_spans.dart';
 import '../project_lookup.dart' show requireCut;
+import 'cut_duplicate_helpers.dart' show MirrorCopies, mirrorCopiesFor;
 import 'layer_merge_plan.dart'
     show
         CelReads,
@@ -270,14 +272,13 @@ enum FxBakeWait {
   /// A cel the uses share shows as other pictures in one than in another,
   /// and one cel holds one (Q6).
   usesApart,
-
-  /// A panel of a cut's conte would show more than one picture of the row:
-  /// the conte's own block parted — a cell more on the conte sheet — or a
-  /// synced row's cel of it, which is one for each of the conte's. Both
-  /// are asked (🗣️I-120-Q17 · Q18); until they are answered it bakes
-  /// nothing and says why.
-  panelParts,
 }
+
+/// A picture a bake copies as it is besides the ones it draws: [cut]'s
+/// cels of the row [row], each copied to the cel [minted] names it to — a
+/// row synced on a conte whose panel the bake parts keeps the picture it
+/// showed over each part ([mirrorCopiesFor], Q17).
+typedef FxBakeCopy = ({Cut cut, LayerId row, Map<FrameId, FrameId> minted});
 
 /// What a press of RASTERIZE makes of a row: its pictures with the fx baked
 /// in, and the row after — in every cut it is used in.
@@ -287,8 +288,10 @@ final class FxBakePlan extends FxBakeOutcome {
     required this.row,
     required this.riders,
     required this.pictures,
+    required this.copies,
     required this.layers,
     required this.others,
+    required this.freed,
   });
 
   /// The cut it was planned of, as it was.
@@ -306,6 +309,10 @@ final class FxBakePlan extends FxBakeOutcome {
   /// it so ([_ridingOnly]).
   final List<LayerMergePicture> pictures;
 
+  /// Every new cel's picture copied as it is, still to be copied once it
+  /// lands ([FxBakeCopy]).
+  final List<FxBakeCopy> copies;
+
   /// [cut]'s rows after: [row] and [riders] where they stood, and any other
   /// use of the row it holds.
   final List<Layer> layers;
@@ -313,6 +320,10 @@ final class FxBakePlan extends FxBakeOutcome {
   /// Every other cut the row is used in (Q6), as it was, with its rows
   /// after.
   final List<({Cut cut, List<Layer> layers})> others;
+
+  /// The names of the rows it makes free, on timings of their own
+  /// ([_freedOf], Q18) — a change of the rows' make the press says after.
+  final List<String> freed;
 }
 
 /// What RASTERIZE makes of [taking] (I-120 round ②).
@@ -337,8 +348,13 @@ final class FxBakePlan extends FxBakeOutcome {
 /// - Q7 「트랙의 콘티가 있는 컷 전부에서 같이 굽는다」 — a row of a track's
 ///   conte in every cut of the track that has it, each by its own values
 ///   and timing into a bank of its own, as a merge takes them (I-78-Q20).
-///   A panel that would show more than one picture of the row bakes
-///   nothing while Q17 · Q18 are asked ([FxBakeWait.panelParts]).
+///   A panel the conte shows as more than one picture is parted as any
+///   row's block is (Q17 「칸을 나눈다(보통 레이어와 같은 법)」) — the rows
+///   synced on it keeping a copy of their picture over each part
+///   ([_followersAfter]); a row synced on the conte showing more than one
+///   picture over one panel is made free on a timing of its own (Q18
+///   「그 행을 자유(자기 타이밍)로 바꾼다 — 병합과 같은 법」, [_freedOf]).
+///   ↩️Both baked nothing and said why until the 11-05 answers.
 /// - Q15 (11-05) 「같은 이름 키 전부에 새 손잡이」 — a named key a band's
 ///   cut paces anew keeps its name, and every key of the name takes what
 ///   it moved ([_namesCarried]).
@@ -357,9 +373,10 @@ final class FxBakePlan extends FxBakeOutcome {
 /// drawing row (I-120: 「애니메이션레이어로 전환」). The rows riding the row
 /// wear its fx, so they are baked with it ([_riderBaked]) — but the rows
 /// riding a conte, which wear their own (I-99): those synced on it keep
-/// their pictures, linked to its new cels ([_followersOf]). A synced row
+/// their pictures, linked to its new cels ([_followersAfter]). A synced row
 /// of the conte keeps its pictures one for each of the conte's cels, its
-/// links where its timing is.
+/// links where its timing is — or, one cel of the conte's showing more than
+/// one of them, its timing its own ([_freedOf]).
 ///
 /// [readsOf] says how each cut's cels are read; [mintFrameId] names each
 /// new cel.
@@ -377,15 +394,11 @@ FxBakeOutcome planFxBake(
     return const FxBakeWaits(FxBakeWait.usesApart);
   }
   final held = banked.held;
+  final freed = _freedOf(uses, held);
   final rows = _namesCarried(uses, [
     for (final (index, use) in uses.indexed)
-      _rowBaked(use, baking, held[index]),
+      _rowBaked(use, baking, held[index], free: freed.contains(index)),
   ]);
-  for (final (index, use) in uses.indexed) {
-    if (_partsAPanel(use, rows[index], held[index])) {
-      return const FxBakeWaits(FxBakeWait.panelParts);
-    }
-  }
   final riders = _ridersBaked(taking, [
     for (final (index, each) in shown.indexed)
       (runs: each.runs, held: held[index]),
@@ -393,11 +406,13 @@ FxBakeOutcome planFxBake(
   if (riders == null) {
     return const FxBakeWaits(FxBakeWait.usesApart);
   }
-  final pictures = [...banked.pictures, ...riders.pictures];
+  final followers = [
+    for (final (index, use) in uses.indexed) _followersAfter(use, held[index]),
+  ];
   final cuts = _cutsAfter([
     for (final (index, use) in uses.indexed) ...[
       (cut: use.cut, row: rows[index]),
-      for (final follower in _followersAfter(use, held[index]))
+      for (final follower in followers[index].rows)
         (cut: use.cut, row: follower),
     ],
     ...riders.rows,
@@ -409,9 +424,16 @@ FxBakeOutcome planFxBake(
       for (final (:cut, :row) in riders.rows)
         if (cut.id == pressed.cut.id) row,
     ],
-    pictures: pictures,
+    pictures: [...banked.pictures, ...riders.pictures],
+    copies: [for (final each in followers) ...each.copies],
     layers: cuts.first.layers,
     others: cuts.sublist(1),
+    freed: [
+      ...{
+        for (final (index, use) in uses.indexed)
+          if (freed.contains(index)) use.row.name,
+      },
+    ],
   );
 }
 
@@ -455,19 +477,27 @@ List<({Cut cut, List<Layer> layers})> _cutsAfter(
 /// [use]'s row after its bake: its cels those [held], showing the one
 /// [held] names at each frame — its blocks parted where its pictures are,
 /// or, synced on a base, linked to each of the base's cels where it shows
-/// one — and each of its FX bundles kept showing what it showed
-/// ([_Keeping]) — those it is [baking] at rest over the frames baked.
-Layer _rowBaked(_Use use, _Baking baking, _Held held) {
+/// one, or made [free] ([_freed]) — and each of its FX bundles kept
+/// showing what it showed ([_Keeping]) — those it is [baking] at rest over
+/// the frames baked.
+Layer _rowBaked(
+  _Use use,
+  _Baking baking,
+  _Held held, {
+  required bool free,
+}) {
   final (:cut, :row, :drawn, :frames, keys: _) = use;
-  final parted = _holding(
-    row,
-    held,
-    base: switch (_syncedBaseOf(cut, row)) {
-      final base? => _heldAsShown(cut, base, held.celAt.keys),
-      null => null,
-    },
-    drawn: drawn,
-  );
+  final parted = free
+      ? _freed(use, held)
+      : _holding(
+          row,
+          held,
+          base: switch (_syncedBaseOf(cut, row)) {
+            final base? => _heldAsShown(cut, base, held.celAt.keys),
+            null => null,
+          },
+          drawn: drawn,
+        );
   _Keeping keeping(FxBasis basis, {required bool baked}) => _Keeping(
     drawn,
     baked: baked ? frames : null,
@@ -637,49 +667,140 @@ List<Layer> _followersOf(Cut cut, Layer row) => [
       other,
 ];
 
-/// [use]'s rows synced on its row ([_followersOf]) after its bake [held]:
-/// each showing the cels it showed, over the row's cels after.
-List<Layer> _followersAfter(_Use use, _Held held) => [
-  for (final follower in _followersOf(use.cut, use.row))
-    follower.copyWith(
-      baseFrameLinks: _linksAfter(
-        follower,
-        held,
-        _heldAsShown(use.cut, follower, held.celAt.keys),
-      ),
-    ),
-];
-
-/// Whether [use]'s row [after] its bake ([held]) shows more than one
-/// picture over a panel of its cut's conte ([FxBakeWait.panelParts]): the
-/// conte itself, its blocks no longer the ones they were — or a row synced
-/// on it, a cel of the conte showing more than one of its.
-bool _partsAPanel(_Use use, Layer after, _Held held) {
-  final (:cut, :row, drawn: _, frames: _, keys: _) = use;
-  if (conteBaseOf(cut)?.id == row.id) {
-    return !_sameBlocks(row.timeline, after.timeline);
+/// [use]'s rows synced on its row ([_followersOf]) after its bake [held],
+/// and the pictures they copy: each showing the cels it showed over the
+/// row's cels after — and over each part after the first of a cel the
+/// bake parted, a copy of the one it showed there (🗣️I-120-Q17, 유저
+/// 2026-11-05 「칸을 나눈다(보통 레이어와 같은 법)」: 싱크 행의 셀도 같은
+/// 그림으로 같이 나뉜다), as a row synced on a base whose cels are re-cut
+/// keeps them ([mirrorCopiesFor]) — minted under its link group's row.
+({List<Layer> rows, List<FxBakeCopy> copies}) _followersAfter(
+  _Use use,
+  _Held held,
+) {
+  final followers = _followersOf(use.cut, use.row);
+  if (followers.isEmpty) {
+    return (rows: const [], copies: const []);
   }
-  return switch (_syncedBaseOf(cut, row)) {
-    final base? => !_oneEach(
-      _heldAsShown(cut, base, held.celAt.keys).celAt,
-      held.celAt,
-    ),
-    null => false,
-  };
+  final born = [
+    for (final part in _laterParts(use, held))
+      ...mirrorCopiesFor(
+        attachedRows: followers,
+        baseMinted: part,
+        mintedUnder: (follower) => _linkKey(use.keys, follower.id),
+      ),
+  ];
+  return (
+    rows: [
+      for (final follower in followers)
+        follower.copyWith(
+          frames: _withCopies(follower.frames, [
+            for (final each in born)
+              if (each.layerId == follower.id) each,
+          ]),
+          baseFrameLinks: {
+            ..._linksAfter(
+              follower,
+              held,
+              _heldAsShown(use.cut, follower, held.celAt.keys),
+            ),
+            for (final each in born)
+              if (each.layerId == follower.id) ...each.baseLinks,
+          },
+        ),
+    ],
+    copies: [
+      for (final each in born)
+        (cut: use.cut, row: each.layerId, minted: each.minted),
+    ],
+  );
 }
 
-/// Whether [after] is made of the blocks [before] is — each where it was,
-/// as long.
-bool _sameBlocks(
-  Map<int, TimelineExposure> before,
-  Map<int, TimelineExposure> after,
-) =>
-    before.length == after.length &&
-    before.entries.every(
-      (block) =>
-          after.containsKey(block.key) &&
-          after[block.key]!.length == block.value.length,
-    );
+/// Each part of a cel of [use]'s row its bake parted ([held]) but the
+/// first — every part of one it keeps — with the cel it is part of: one to
+/// a map, a cel parted into three being two ([mirrorCopiesFor]'s source →
+/// copy).
+List<Map<FrameId, FrameId>> _laterParts(_Use use, _Held held) {
+  final kept = {for (final cel in use.row.frames) cel.id};
+  final firsts = {...held.firstOf.values};
+  final of = <FrameId, FrameId>{};
+  for (final frame in held.celAt.keys.toList()..sort()) {
+    final cel = held.celAt[frame]!;
+    if (!kept.contains(cel) && !firsts.contains(cel)) {
+      of[cel] ??= exposedCelIdAt(
+        cut: use.cut,
+        layerId: use.row.id,
+        frameIndex: frame,
+      )!;
+    }
+  }
+  return [
+    for (final MapEntry(key: part, value: cel) in of.entries) {cel: part},
+  ];
+}
+
+/// [cels] with each copy [born] of one of them after it, in the order they
+/// were made, each named with the first tail none of them wears — as a
+/// bake names a part of a cel (I-78-Q10 「갈라진 곳은 꼬리 번호」).
+List<Frame> _withCopies(List<Frame> cels, List<MirrorCopies> born) {
+  final copiesOf = <FrameId, List<Frame>>{};
+  for (final each in born) {
+    for (final MapEntry(key: source, value: copy) in each.minted.entries) {
+      (copiesOf[source] ??= []).add(
+        each.born.singleWhere((cel) => cel.id == copy),
+      );
+    }
+  }
+  final held = {for (final cel in cels) ?celNumberOf(cel.name)};
+  return [
+    for (final cel in cels) ...[
+      cel,
+      for (final copy in copiesOf[cel.id] ?? const <Frame>[])
+        copy.copyWith(name: _tailed(held, cel.name)),
+    ],
+  ];
+}
+
+/// The places of [uses] whose row its bake makes free, on a timing of its
+/// own: a row synced on a base one of whose cels would show more than one
+/// of its after ([held]) — a cel of its to each of the base's — and, the
+/// mode being its link group's, every place the group holds (🗣️I-120-Q18,
+/// 유저 2026-11-05 「그 행을 자유(자기 타이밍)로 바꾼다 — 병합과 같은 법」:
+/// 다른 컷의 같은 행은 그 컷에서 칸 안에 그림이 둘이 될 때만 바뀐다).
+Set<int> _freedOf(List<_Use> uses, List<_Held> held) => {
+  for (final places in _linkGroupsOf(uses))
+    if (places.any((place) => _outgrowsItsBase(uses[place], held[place])))
+      ...places,
+};
+
+/// Whether [use]'s row, synced on a base, shows more than one of its cels
+/// after its bake ([held]) over one of the base's.
+bool _outgrowsItsBase(_Use use, _Held held) =>
+    switch (_syncedBaseOf(use.cut, use.row)) {
+      final base? => !_oneEach(
+        _heldAsShown(use.cut, base, held.celAt.keys).celAt,
+        held.celAt,
+      ),
+      null => false,
+    };
+
+/// [use]'s row, synced on its base, holding its cels after its bake
+/// ([held]) on a timing of its own: the base's as it showed it, laid as
+/// its own ([detachedLayer]), parted where its pictures are — riding the
+/// base still, free, as a merge leaves a row of the conte whose timing is
+/// its own (I-78-Q20).
+Layer _freed(_Use use, _Held held) {
+  final (:cut, :row, :drawn, frames: _, keys: _) = use;
+  final standing = detachedLayer(
+    attached: row,
+    base: _syncedBaseOf(cut, row),
+    drawnFrameCount: drawn,
+  );
+  return _holding(standing, held, base: null, drawn: drawn).copyWith(
+    attachedToLayerId: row.attachedToLayerId,
+    attachedMode: AttachedMode.free,
+  );
+}
 
 /// Whether each cel [by] names at a frame is shown with one cel [cels]
 /// names there.
@@ -730,13 +851,12 @@ _Bank? _bankOf(
         if (!_holds(use.baked, frame)) cel,
   };
   final celAt = [for (final each in ran) each.celAt];
-  // The uses hold one bank.
-  final row = uses.first.row;
-  final held = {for (final cel in row.frames) ?celNumberOf(cel.name)};
+  final cels = _bankCels(uses);
+  final held = {for (final cel in cels) ?celNumberOf(cel.name)};
   final bank = <Frame>[];
   final pictures = <LayerMergePicture>[];
   final firstOf = <FrameId, FrameId>{};
-  for (final cel in row.frames) {
+  for (final cel in cels) {
     final parts = pictured[cel.id] ?? const [];
     // The first picture keeps the place of a cel shown nowhere else.
     final kept = parts.isEmpty || outside.contains(cel.id);
@@ -767,6 +887,20 @@ _Bank? _bankOf(
     }
   }
   return (cels: bank, celAt: celAt, pictures: pictures, firstOf: firstOf);
+}
+
+/// The one bank [uses] hold: every cel any of them holds, the first's in
+/// its order and then each one only another holds — a mirror the settle
+/// minted in one cut of a link group alone is the group's too, or the use
+/// that shows it would be left showing a cel its row lacks.
+List<Frame> _bankCels(List<_Shown> uses) {
+  final cels = <FrameId, Frame>{};
+  for (final use in uses) {
+    for (final cel in use.row.frames) {
+      cels.putIfAbsent(cel.id, () => cel);
+    }
+  }
+  return [...cels.values];
 }
 
 /// [celAt] — each use's, by its place — showing [cel] wherever [seen]

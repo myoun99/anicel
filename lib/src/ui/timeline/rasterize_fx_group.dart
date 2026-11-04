@@ -92,8 +92,9 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 /// ([planFxBake]) over the frames of the [band] scoping the press, every
 /// frame where none does (Q3), asked nothing first (Q21 「경고 창을
 /// 없앤다」), with the hatch the reference rasterize's wears (Q10) — a bake
-/// ([bakeBehindTheWaitWindow]). One its pictures cannot hold bakes
-/// nothing, and says why ([FxBakeWaits]: Q6 · Q17 · Q18).
+/// ([bakeBehindTheWaitWindow]), saying after which rows it made free
+/// (Q18). One its pictures cannot hold bakes nothing, and says why
+/// ([FxBakeWaits]: Q6).
 Future<void> rasterizeFxGroup(
   BuildContext context,
   EditorSessionManager session,
@@ -112,19 +113,37 @@ Future<void> rasterizeFxGroup(
   }
 }
 
-/// [plan] baked.
+/// [plan] baked — and, where it made rows free on timings of their own
+/// ([FxBakePlan.freed]), a notice saying so after: a change of the rows'
+/// make (🗣️I-120-Q20, 유저 2026-11-05 「행 구조가 바뀌는건 안내문」).
 Future<void> _bake(
   BuildContext context,
   EditorSessionManager session,
   FxBakePlan plan,
   String name,
-) => bakeBehindTheWaitWindow(context, session, (
-  title: AppText.strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
-  icon: Icons.texture_outlined,
-  windowKey: 'fx-rasterize-progress',
-  pictures: plan.pictures,
-  land: () => session.layerMerging.landFx(plan),
-));
+) async {
+  final strings = AppText.strings;
+  var landed = false;
+  await bakeBehindTheWaitWindow(context, session, (
+    title: strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
+    icon: Icons.texture_outlined,
+    windowKey: 'fx-rasterize-progress',
+    pictures: plan.pictures,
+    land: () => landed = session.layerMerging.landFx(plan),
+  ));
+  if (!landed || plan.freed.isEmpty || !context.mounted) {
+    return;
+  }
+  await showAppNotice(
+    context,
+    windowKey: const ValueKey<String>('fx-rasterize-rows-freed'),
+    title: strings.commonNotice,
+    message: strings.tlFxBakeRowsFreedTemplate.replaceAll(
+      '{names}',
+      plan.freed.join(', '),
+    ),
+  );
+}
 
 /// The notice over a press that bakes nothing, saying [why].
 Future<void> _sayWhy(BuildContext context, FxBakeWait why) {
@@ -133,12 +152,10 @@ Future<void> _sayWhy(BuildContext context, FxBakeWait why) {
     context,
     windowKey: ValueKey<String>(switch (why) {
       FxBakeWait.usesApart => 'fx-rasterize-uses-apart',
-      FxBakeWait.panelParts => 'fx-rasterize-panel-parts',
     }),
     title: strings.commonNotice,
     message: switch (why) {
       FxBakeWait.usesApart => strings.tlFxBakeUsesApart,
-      FxBakeWait.panelParts => strings.tlFxBakePanelParts,
     },
   );
 }

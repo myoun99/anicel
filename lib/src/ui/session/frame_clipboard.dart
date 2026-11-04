@@ -18,6 +18,8 @@ import '../../models/timeline_splice.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show resizeBitmapSurfaceCanvas;
 import '../../services/commands/cel_picture_replace_command.dart';
+import '../../services/editing/cut_duplicate_helpers.dart'
+    show MirrorCopies, mirrorCopiesFor;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/project_lookup.dart' show attachedMirrorGroupOf;
 import '../../services/persistence/media_staging_store.dart';

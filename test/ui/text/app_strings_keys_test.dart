@@ -1143,7 +1143,7 @@ void main() {
     'tlMergeChangeRiderUnder': (s) => s.tlMergeChangeRiderUnder,
     'tlMergeChangeWall': (s) => s.tlMergeChangeWall,
     'tlFxBakeUsesApart': (s) => s.tlFxBakeUsesApart,
-    'tlFxBakePanelParts': (s) => s.tlFxBakePanelParts,
+    'tlFxBakeRowsFreedTemplate': (s) => s.tlFxBakeRowsFreedTemplate,
     'tlSetCommasN': (s) => s.tlSetCommasN,
     'tlSetCommaTemplate': (s) => s.tlSetCommaTemplate,
     'tlProjectAudioRate': (s) => s.tlProjectAudioRate,
