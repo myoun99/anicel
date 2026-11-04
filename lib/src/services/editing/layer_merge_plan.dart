@@ -655,7 +655,7 @@ _Part _partOf(
     _cutWith(taking, folders, [
       ...rows,
       for (final rider in taking._riders)
-        if (isSyncedAttachedLayer(rider)) _riding(rider),
+        if (isSyncedAttachedLayer(rider)) drawnBare(rider),
     ]),
     taking._pictureRows,
     reads.revisionOf,
@@ -1128,17 +1128,18 @@ Cut _aloneWithItsBase(
   final base = taking.cut.layers.byId(rider.attachedToLayerId!)!;
   return _cutWith(taking, _foldersLeft(taking, over, [base]), [
     base.copyWith(isVisible: false),
-    _riding(rider),
+    drawnBare(rider),
   ]);
 }
 
 /// [row] baked as it would show with its eye on (Q7).
 Layer _shown(Layer row) => row.copyWith(isVisible: true);
 
-/// [rider] baked as it rides: shown, with nothing of its own laid — its
-/// strength, blend and clip stay on its row, and land on the pictures as
-/// they did.
-Layer _riding(Layer rider) => rider.copyWith(
+/// [row] as a bake draws it into its pictures — a rider as it rides (a
+/// merge's), a row its fx is baked into (I-120): shown, with nothing of its
+/// own laid — its strength, blend and clip stay on its row, and land on
+/// the pictures as they did.
+Layer drawnBare(Layer row) => row.copyWith(
   isVisible: true,
   opacity: 1,
   blendMode: LayerBlendMode.normal,

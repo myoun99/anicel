@@ -4,6 +4,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart'
+    show attachedMirrorCelId;
+import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -33,6 +36,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
+import 'package:anicel/src/services/cut_frame_composite_plan.dart'
+    show exposedCelIdAt;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/fx_bake_plan.dart'
     show FxBakeChange;
@@ -127,6 +132,25 @@ void main() {
     timeline:
         timeline ??
         {0: const TimelineExposure.drawing(FrameId('a-1'), length: 3)},
+  );
+
+  /// Row `r` riding [base] — synced to its cel `<base>-1`, or [free] on a
+  /// timeline of its own — its cel `r-1` held over frames 0..2.
+  Layer riderOf(String base, {bool free = false}) => Layer(
+    id: const LayerId('r'),
+    name: 'R',
+    attachedToLayerId: LayerId(base),
+    attachedPlacement: AttachedPlacement.above,
+    attachedMode: free ? AttachedMode.free : AttachedMode.synced,
+    frames: [
+      Frame(id: const FrameId('r-1'), duration: 3, name: '1', strokes: []),
+    ],
+    baseFrameLinks: free
+        ? const {}
+        : {FrameId('$base-1'): const FrameId('r-1')},
+    timeline: free
+        ? {0: const TimelineExposure.drawing(FrameId('r-1'), length: 3)}
+        : const {},
   );
 
   /// A session over one cut of [layers] and the camera, three frames long,
@@ -228,11 +252,17 @@ void main() {
     return rgba!;
   }
 
-  /// [cel] of `a` as its picture, at canvas ([x], [y]).
-  List<int>? celAt(EditorSessionManager s, FrameId cel, int x, int y) {
+  /// [cel] of the row [of] as its picture, at canvas ([x], [y]).
+  List<int>? celAt(
+    EditorSessionManager s,
+    FrameId cel,
+    int x,
+    int y, {
+    LayerId of = const LayerId('a'),
+  }) {
     final cut = s.requireActiveCut;
     final surface = s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
-      s.brushFrameKeyForCut(cut, const LayerId('a'), cel),
+      s.brushFrameKeyForCut(cut, of, cel),
       read: CelRead.look,
     )!;
     final size = surface.tileSize;
@@ -750,6 +780,179 @@ void main() {
     });
   });
 
+  group('②b — a row\'s riders wear its fx and its transform, and are baked '
+      'with it (07-21 「어태치 레이어는 주인과 같이 굽는다」)', () {
+    const blue = [0, 0, 200, 255];
+    const r = LayerId('r');
+
+    /// `a` wearing [effects] and [transformTrack], ridden by [rider] —
+    /// whose cel is blue in the canvas's first tile of the second row.
+    EditorSessionManager ridden(
+      Layer rider, {
+      List<LayerEffect>? effects,
+      TransformTrack? transformTrack,
+    }) {
+      final s = sessionOf([
+        rowA(effects: effects, transformTrack: transformTrack),
+        rider,
+      ]);
+      addTearDown(s.dispose);
+      bakeCelSurface(
+        s.renderCaches.brushFrameStore,
+        s.brushFrameKeyForCut(s.requireActiveCut, r, const FrameId('r-1')),
+        inkAt([TileCoord(x: 0, y: 1)], blue),
+      );
+      return s;
+    }
+
+    Layer rOf(EditorSessionManager s) => s.requireActiveCut.layers.byId(r)!;
+
+    /// What [s]'s cut shows at canvas (5, 20) — `r`'s ink — on frames 0..2.
+    Future<List<List<int>>> seenOfR(
+      WidgetTester tester,
+      EditorSessionManager s,
+    ) async => [
+      for (var frame = 0; frame < 3; frame += 1)
+        await shownAt(tester, s, frame, 5, 20),
+    ];
+
+    /// The cel `r` shows at each of frames 0..2.
+    List<FrameId?> celsOfR(EditorSessionManager s) => [
+      for (var frame = 0; frame < 3; frame += 1)
+        exposedCelIdAt(cut: s.requireActiveCut, layerId: r, frameIndex: frame),
+    ];
+
+    testWidgets('🎯a synced rider takes a cel for each of its row\'s new ones '
+        '— named as its cel was, under its mirror\'s id — each the picture '
+        'it showed there, and one undo gives both rows back', (tester) async {
+      final s = ridden(riderOf('a'));
+      final before = s.requireActiveCut.layers;
+      final seen = await seenOfR(tester, s);
+      expect(seen.toSet(), hasLength(3), reason: '⛔전제: it wears a\'s fx');
+
+      await rasterize(tester, s);
+
+      final row = a(s);
+      final rider = rOf(s);
+      expect([for (final cel in rider.frames) cel.name], ['1', '1-2', '1-3']);
+      expect(rider.baseFrameLinks, {
+        for (final cel in row.frames) cel.id: attachedMirrorCelId(r, cel.id),
+      });
+      expect(await seenOfR(tester, s), seen);
+      expect([
+        for (final cel in celsOfR(s)) celAt(s, cel!, 5, 20, of: r),
+      ], seen, reason: 'each picture baked in its cel');
+      expect([
+        for (final cel in celsOfR(s)) celAt(s, cel!, 36, 5, of: r)?[3] ?? 0,
+      ], [0, 0, 0], reason: 'none of a\'s picture in them');
+
+      s.undo();
+      expect(s.requireActiveCut.layers, before);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('a free rider parts where its own picture does, into blocks '
+        'of its own, its strength staying on its row', (tester) async {
+      final s = ridden(riderOf('a', free: true).copyWith(opacity: 0.5));
+      final seen = await seenOfR(tester, s);
+
+      await rasterize(tester, s);
+
+      final rider = rOf(s);
+      expect([for (final cel in rider.frames) cel.name], ['1', '1-2', '1-3']);
+      expect(
+        rider.timeline.map((start, block) => MapEntry(start, block.length)),
+        {0: 1, 1: 1, 2: 1},
+      );
+      expect(rider.opacity, 0.5);
+      expect(await seenOfR(tester, s), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    testWidgets('🎯the row\'s transform rasterized moves its rider\'s '
+        'pictures where they showed', (tester) async {
+      final s = ridden(
+        riderOf('a'),
+        effects: [brightness(keyed: false, enabled: false)],
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 48, y: 24),
+          ),
+        ),
+      );
+      Future<List<List<int>>> seenNow() async => [
+        await shownAt(tester, s, 0, 21, 20),
+        await shownAt(tester, s, 0, 5, 20),
+      ];
+      final seen = await seenNow();
+      expect(seen.first, blue, reason: '⛔전제: it rides a 16 to the right');
+
+      await rasterize(tester, s, null);
+
+      expect(a(s).transformTrack.isEmpty, isTrue);
+      expect(await seenNow(), seen);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test('a free rider\'s sounds go with its cel\'s first picture', () {
+      final s = ridden(
+        riderOf('a', free: true).copyWith(
+          audioClips: [
+            AudioClip(filePath: 'ping.wav', frameId: const FrameId('r-1')),
+          ],
+        ),
+      );
+      final rider = s.layerMerging
+          .planOfFx(const LayerId('a'), bright)!
+          .riders
+          .single;
+      expect(rider.audioClips.single.frameId, rider.frames.first.id);
+    });
+
+    test('a synced rider of an image row that comes to hold more than one '
+        'picture becomes a drawing row with it', () {
+      final s = ridden(riderOf('a').copyWith(kind: LayerKind.image));
+      final plan = s.layerMerging.planOfFx(const LayerId('a'), bright);
+      expect(plan!.riders.single.kind, LayerKind.animation);
+    });
+
+    test('a synced rider keeps the links of its row\'s cels the row does not '
+        'show — to the first picture of a cel that was baked', () {
+      Frame idle(String id) =>
+          Frame(id: FrameId(id), duration: 1, name: '9', strokes: []);
+      final s = sessionOf([
+        rowA().copyWith(
+          frames: [...rowA().frames, idle('a-8'), idle('a-9')],
+        ),
+        riderOf('a').copyWith(
+          frames: [...riderOf('a').frames, idle('r-8')],
+          baseFrameLinks: {
+            const FrameId('a-1'): const FrameId('r-1'),
+            const FrameId('a-8'): const FrameId('r-8'),
+            const FrameId('a-9'): const FrameId('r-1'),
+          },
+        ),
+      ]);
+      addTearDown(s.dispose);
+      final rider = s.layerMerging
+          .planOfFx(const LayerId('a'), bright)!
+          .riders
+          .single;
+      expect(
+        {
+          for (final base in ['a-1', 'a-8', 'a-9'])
+            base: rider.baseFrameLinks[FrameId(base)],
+        },
+        {
+          'a-1': null,
+          'a-8': const FrameId('r-8'),
+          'a-9': rider.frames.first.id,
+        },
+      );
+    });
+  });
+
   group('🚨what it bakes nothing of yet — its button lit off, the slot kept '
       '(Q8, and the card\'s rounds ahead)', () {
     bool bakes(EditorSessionManager s, String row, [EffectId? fx = bright]) =>
@@ -793,26 +996,55 @@ void main() {
       expect(bakes(s, 'a', const EffectId('e-gone')), isFalse);
     });
 
-    test('a row ridden, and the row riding it (②b)', () {
+    test('a row riding another, which wears its base\'s fx and none of its '
+        'own (R9) — its base bakes (②b)', () {
+      final s = sessionOf([rowA(), withBright(riderOf('a'))]);
+      addTearDown(s.dispose);
+      expect([bakes(s, 'a'), bakes(s, 'r')], [true, false]);
+    });
+
+    test('a reference row riding the row (⑤)', () {
       final s = sessionOf([
         rowA(),
-        withBright(
-          Layer(
-            id: const LayerId('r'),
-            name: 'R',
-            attachedToLayerId: const LayerId('a'),
-            attachedPlacement: AttachedPlacement.above,
-            frames: [
-              Frame(id: const FrameId('r-1'), duration: 3, strokes: []),
-            ],
-            timeline: {
-              0: const TimelineExposure.drawing(FrameId('r-1'), length: 3),
-            },
+        riderOf('a').copyWith(
+          mediaReference: MediaReference(
+            assetPath: 'ref.png',
+            pose: TransformPose(center: CanvasPoint(x: 32, y: 24)),
+            pictureSize: const CanvasSize(width: 16, height: 16),
           ),
         ),
       ]);
       addTearDown(s.dispose);
-      expect([bakes(s, 'a'), bakes(s, 'r')], [false, false]);
+      expect(bakes(s, 'a'), isFalse);
+    });
+
+    test('a row riding the conte, which wears fx of its own (④ · I-99)', () {
+      final project = conteTrackProject();
+      final cut = project.tracks.single.cuts.first;
+      final conte = cut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.storyboard,
+      );
+      final s = EditorSessionManager(
+        initialProject: project.copyWith(
+          tracks: [
+            project.tracks.single.copyWith(
+              cuts: [
+                cut.copyWith(
+                  layers: [
+                    ...cut.layers,
+                    withBright(
+                      riderOf(conte.id.value),
+                    ).copyWith(kind: LayerKind.storyboard),
+                  ],
+                ),
+                ...project.tracks.single.cuts.skip(1),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(s.dispose);
+      expect(s.layerMerging.bakesFx(const LayerId('r'), bright), isFalse);
     });
 
     test('a row another cut shows too — a 겸용 (④)', () {
