@@ -883,6 +883,117 @@ void main() {
         expect(await pinch(tester), closeTo(1.5, 0.005));
       });
 
+      // 🗣️I-155 (유저 2026-11-04): 「alt+휠로 타임라인이나 콘티패널에서
+      // 줌기능으로 작동하도록」 — Alt and the wheel zoom time in After Effects
+      // and Premiere Pro.
+
+      /// One notch of a mouse wheel at [at] — the cells' middle unless it
+      /// says — up, or [down], or [by] where it says; with Alt held unless
+      /// [alt] says not.
+      Future<void> notch(
+        WidgetTester tester, {
+        Offset? at,
+        bool down = false,
+        Offset? by,
+        bool alt = true,
+      }) async {
+        if (alt) {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        }
+        final pointer = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(
+          pointer.hover(at ?? onTheCells(tester)),
+        );
+        await tester.sendEventToBinding(
+          pointer.scroll(by ?? Offset(0, down ? 120 : -120)),
+        );
+        await tester.pumpAndSettle();
+        if (alt) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        }
+      }
+
+      double keyStep(double from, {required bool zoomIn}) =>
+          TimelineZoomLimits.stepped(
+            from,
+            zoomIn: zoomIn,
+            framesPerSecond: ProjectFrameRate.fps24.countingBase,
+          );
+
+      testWidgets('🚨a notch with Alt held on its cells zooms its frames one '
+          'zoom key\'s step — in up, out down — and scrolls it neither way '
+          '(I-155)', (tester) async {
+        await pumpSheet(tester);
+        final found = zoom.value;
+
+        await notch(tester);
+        final zoomedIn = keyStep(found, zoomIn: true);
+        expect(zoom.value, zoomedIn);
+        await notch(tester, down: true);
+        await notch(tester, down: true);
+        expect(
+          zoom.value,
+          keyStep(keyStep(zoomedIn, zoomIn: false), zoomIn: false),
+        );
+
+        expect(standing(tester), Offset.zero, reason: '⛔줌만 — 스크롤 없음');
+        expect(
+          [for (final position in theFloor(tester)) position.pixels],
+          everyElement(0),
+        );
+      });
+
+      testWidgets('⛔the same notch without Alt scrolls it, and zooms nothing', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        final found = zoom.value;
+
+        await notch(tester, alt: false);
+        expect(zoom.value, found, reason: 'up, where nothing can scroll');
+        await notch(tester, down: true, alt: false);
+
+        expect(zoom.value, found);
+        expect(standing(tester), isNot(Offset.zero));
+      });
+
+      testWidgets('⛔a notch that comes sideways with Alt held zooms nothing', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        final found = zoom.value;
+
+        await notch(tester, by: const Offset(120, 0));
+
+        expect(zoom.value, found);
+      });
+
+      testWidgets('⛔with Alt let go a notch scrolls it again — the scrollers '
+          'stood aside only while it was held', (tester) async {
+        await pumpSheet(tester);
+        await notch(tester, down: true);
+        final zoomed = zoom.value;
+
+        await notch(tester, down: true, alt: false);
+
+        expect(zoom.value, zoomed);
+        expect(standing(tester), isNot(Offset.zero));
+      });
+
+      testWidgets('🚨on its layer area too: a notch with Alt held zooms its '
+          'frames, and moves neither the area\'s window nor its layers', (
+        tester,
+      ) async {
+        final rail = await pumpNarrowed(tester);
+        final found = zoom.value;
+
+        await notch(tester, at: tester.getCenter(sheet.aLayerName), down: true);
+
+        expect(zoom.value, keyStep(found, zoomIn: false));
+        expect(rail.offset.value, 0);
+        expect(standing(tester).dy, 0);
+      });
+
       testWidgets('⛔two fingers on its layer area zoom nothing — they pull '
           'it as one finger does', (tester) async {
         await pumpSheet(tester);

@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 
 import '../input/scroller_press_hold.dart';
+import '../input/two_axis_drag.dart' show SheetScrollPhysics;
 import '../panels/panel_scrollbar.dart';
 
 /// The app's scroll behaviour: ONE scrollbar vocabulary, everywhere.
@@ -105,6 +106,15 @@ class AppScrollBehavior extends MaterialScrollBehavior {
       return track(event);
     };
   }
+
+  /// 🗣️I-155 — a sheet's scrollers leave a notch turned with Alt to the
+  /// sheet's zoom ([SheetScrollPhysics]). Here for the tracker's reason above:
+  /// a sheet's frames sit under configurations read off a context above
+  /// the sheet, and only what this behaviour hands every scroller reaches
+  /// them all.
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      SheetScrollPhysics(parent: super.getScrollPhysics(context));
 
   @override
   Widget buildScrollbar(

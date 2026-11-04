@@ -116,7 +116,7 @@ class RenderPanSlideRegion extends RenderProxyBoxWithHitTestBehavior {
 
   @override
   void handleEvent(PointerEvent event, HitTestEntry entry) {
-    if (event is! PointerScrollEvent) {
+    if (event is! PointerScrollEvent || wheelZoomsASheet) {
       return;
     }
     final axis = slide.axis;

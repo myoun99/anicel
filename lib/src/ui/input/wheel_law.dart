@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../services/input/modifier_keys.dart';
 import '../canvas/canvas_touch_contacts.dart';
 
 /// 🚨★★★ ONE NOTCH, ONE CONSUMER (H23, 유저 2026-08-23: 「휠 줌이 패널과 띠에서
@@ -77,6 +78,13 @@ void handleWheelExclusively(
 /// question every surface that takes a notch and drops it asks, a sheet's
 /// scrollers too (`PenFriendlyScrollPosition`).
 bool get wheelIsATouchsEcho => CanvasTouchContacts.appWideCount > 0;
+
+/// Whether a notch turned now zooms the frames of the sheet under it rather
+/// than scrolling it (I-155): Alt held — After Effects' and Premiere Pro's
+/// zoom of time. What a sheet's zoom asks before it takes a notch, and its
+/// scrollers and its layer area's window before they do (`TwoAxisDrag`,
+/// `PanSlideRegion`) — so it zooms wherever on the sheet it is turned.
+bool get wheelZoomsASheet => ModifierKeys.isAltPressed;
 
 /// How far [event]'s notch pushes along [axis] — the part a scroll view
 /// along it would take: a mouse wheel turned with one of [flipKeys] held
