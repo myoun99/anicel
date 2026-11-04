@@ -457,9 +457,10 @@ void main() {
       // Every shelf stands shut (menu-rows-and-panels-are-shortcut-rows,
       // the brush bundles' own law): these cases are about what stands
       // INSIDE the two brush shelves, so they open them first — their
-      // place, then each — as a person would.
+      // place and 세부 도구 (F-560), then each — as a person would.
       for (final shelf in [
-        ShortcutShelf.toolLibrary,
+        ShortcutShelf.canvas,
+        ShortcutShelf.toolTiles,
         ...brushActionShelves.values,
       ]) {
         final twirl = find.named('shortcut-bundle-shelf-${shelf.name}');

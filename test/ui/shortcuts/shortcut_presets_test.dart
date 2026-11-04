@@ -72,7 +72,8 @@ void main() {
 
     test('⛔fixture premise: the registry\'s keys the rows below move', () {
       const anicel = ShortcutPreset.anicel;
-      expect(keysOf(anicel, EditorActionIds.toolFill), ['F']);
+      expect(keysOf(anicel, EditorActionIds.toolFill), isEmpty);
+      expect(keysOf(anicel, EditorActionIds.toolFillBucket), ['F']);
       expect(keysOf(anicel, EditorActionIds.toolGuide), ['G']);
       expect(keysOf(anicel, EditorActionIds.layerUp), ['↑', 'W']);
       expect(keysOf(anicel, EditorActionIds.onionSkinToggle), ['T']);
@@ -454,7 +455,7 @@ void main() {
 
       expect(bindings.preset, ShortcutPreset.anicel);
       expect(told, 1);
-      expect(actionOn(bindings, f), EditorActionIds.toolFill);
+      expect(actionOn(bindings, f), EditorActionIds.toolFillBucket);
       expect(actionOn(bindings, g), EditorActionIds.toolGuide);
 
       bindings.setPreset(ShortcutPreset.anicel);

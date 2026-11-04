@@ -19,12 +19,11 @@ ShortcutShelf shelfOf(String id) =>
     editorActionDefinitions.singleWhere((row) => row.id == id).shelf;
 
 void main() {
-  test('the places are the answer\'s four and a fifth for a panel\'s own '
-      'buttons', () {
+  test('the places are the answer\'s but the tool library (F-560), and a '
+      'fifth for a panel\'s own buttons', () {
     expect(ShortcutShelf.places, [
       ShortcutShelf.canvas,
       ShortcutShelf.timeline,
-      ShortcutShelf.toolLibrary,
       ShortcutShelf.topStrip,
       ShortcutShelf.inAPanel,
     ]);
@@ -43,7 +42,8 @@ void main() {
       ShortcutShelf.layerHeader,
       ShortcutShelf.timelineBar,
     ]);
-    expect(ShortcutShelf.toolLibrary.shelves, [
+    // 🗣️F-560: the tool library stands under 세부 도구 — its place is gone.
+    expect(ShortcutShelf.toolTiles.shelves, [
       ShortcutShelf.brushLibrary,
       ShortcutShelf.brushToolBrushes,
       ShortcutShelf.eraserToolBrushes,

@@ -1506,19 +1506,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI)],
     toolPress: RailToolPress(CanvasTool.eyedropper),
   ),
-  // 「채우기툴을 f로 변경하고」 — it was G.
+  // 🗣️F-560 (유저 2026-11-04): 「채우기도구의 채우기를 F로. 채우기도구 자체
+  // 단축키는 해제」 — F went from the tool to its 채우기 tile.
+  // ↩️「채우기툴을 f로 변경하고」 — the tool's F, which was G before it.
   const EditorActionDefinition(
     id: EditorActionIds.toolFill,
     label: 'Fill Tool',
     shelf: ShortcutShelf.tools,
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyF)],
+    defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.fill),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolFillBucket,
     label: 'Bucket',
     shelf: ShortcutShelf.toolTiles,
-    defaultActivators: [],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyF)],
     toolPress: ToolTilePress(CanvasTool.fill),
   ),
   ..._shapeTileActions(CanvasTool.fillShape),
