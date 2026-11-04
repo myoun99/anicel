@@ -14,6 +14,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -474,9 +475,12 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a row that waits stays the reference it is — no wait window '
-      'comes up for it, the notice that says why does (F-374-Q9 · Q11 '
-      '「막고 경고」)', (tester) async {
+  testWidgets('🎯a still its fx MOVES where its transform cannot carry it '
+      'goes behind the window and comes back an animation layer — a cel '
+      'wherever the move changes, the first with its cel\'s name — as ONE '
+      'undo (I-120-Q5: 「애니메이션 레이어로, 움직이는 프레임마다 한 장」)', (
+    tester,
+  ) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     final street = rows['bg_street.png']!;
     sheared(
@@ -484,6 +488,57 @@ void main() {
       street,
       PropertyTrack<double>().withKey(0, 30).withKey(12, 60),
     );
+    final before = current(s, street);
+    final length = drawingBlocks(
+      before.timeline,
+    ).fold(0, (sum, block) => sum + block.length);
+    expect(length, greaterThan(13), reason: 'the premise');
+    final menuContext = await hostedContext(tester);
+
+    unawaited(rasterizeReferenceRows(menuContext, s, [before]));
+    await tester.pump();
+    expect(waitWindow, findsOneWidget);
+
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, street).mediaReference == null,
+    );
+    final baked = current(s, street);
+    expect(baked.kind, LayerKind.animation);
+    // A turn a frame over 0..12, then held: thirteen pictures.
+    expect(baked.frames, hasLength(13));
+    expect(baked.frames.first.name, before.frames.single.name);
+    expect(
+      [
+        for (var frame = 0; frame < length; frame += 1)
+          exposedFrameIdAt(baked.timeline, frame),
+      ],
+      [
+        for (final cel in baked.frames) cel.id,
+        for (var at = 13; at < length; at += 1) baked.frames.last.id,
+      ],
+    );
+    expect(foldsOf(tester), isEmpty, reason: 'nothing waited');
+
+    s.undo();
+    expect(current(s, street), before);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a row that waits stays the reference it is — no wait window '
+      'comes up for it, the notice that says why does: a 겸용 copy no key '
+      'carries the move of shows its picture elsewhere (F-374-Q10 · Q11 '
+      '「막고 경고」)', (tester) async {
+    final (s, rows) = await sessionWith(tester, ['bg_street.png']);
+    final street = rows['bg_street.png']!;
+    final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+      cutId: s.requireActiveCut.id,
+      layerId: street,
+      insertionIndex: 0,
+    );
+    sheared(s, copy, PropertyTrack<double>().withKey(0, 30));
     final before = current(s, street);
     final menuContext = await hostedContext(tester);
 
@@ -493,7 +548,7 @@ void main() {
     expect(waitWindow, findsNothing);
     expect(current(s, street), before);
     expect(foldsOf(tester), {
-      ReferenceWait.sheared.labelFor(AppText.language): [before.name],
+      ReferenceWait.usesApart.labelFor(AppText.language): [before.name],
     });
   });
 
@@ -503,16 +558,11 @@ void main() {
     final menuContext = await hostedContext(tester);
     Layer row(String name) =>
         Layer(id: LayerId(name), name: name, frames: const []);
-    String words(ReferenceWait why) => why.labelFor(AppText.language);
 
     unawaited(
       showReferenceWaits(menuContext, [
-        (row: row('a'), why: ReferenceWait.attached),
-        (row: row('b'), why: ReferenceWait.laidAsFitted),
-        (row: row('c'), why: ReferenceWait.sheared),
-        (row: row('d'), why: ReferenceWait.othersKeepKeys),
-        (row: row('e'), why: ReferenceWait.usesApart),
-        (row: row('f'), why: ReferenceWait.sheared),
+        (row: row('a'), why: ReferenceWait.usesApart),
+        (row: row('b'), why: ReferenceWait.usesApart),
       ]),
     );
     await tester.pumpAndSettle();
@@ -522,11 +572,7 @@ void main() {
       findsOneWidget,
     );
     expect(foldsOf(tester), {
-      words(ReferenceWait.attached): ['a'],
-      words(ReferenceWait.laidAsFitted): ['b'],
-      words(ReferenceWait.sheared): ['c', 'f'],
-      words(ReferenceWait.othersKeepKeys): ['d'],
-      words(ReferenceWait.usesApart): ['e'],
+      ReferenceWait.usesApart.labelFor(AppText.language): ['a', 'b'],
     });
   });
 
@@ -540,14 +586,14 @@ void main() {
     );
     addTearDown(() => AppText.settings.value = const AppLanguageSettings());
     final menuContext = await hostedContext(tester);
-    final words = ReferenceWait.attached.labelFor(AppLanguage.ko);
-    expect(words, isNot(ReferenceWait.attached.label), reason: 'the premise');
+    final words = ReferenceWait.usesApart.labelFor(AppLanguage.ko);
+    expect(words, isNot(ReferenceWait.usesApart.label), reason: 'the premise');
 
     unawaited(
       showReferenceWaits(menuContext, [
         (
           row: Layer(id: const LayerId('a'), name: 'a', frames: const []),
-          why: ReferenceWait.attached,
+          why: ReferenceWait.usesApart,
         ),
       ]),
     );

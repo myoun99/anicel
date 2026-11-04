@@ -39,8 +39,9 @@ int rasterizeCelCount(Layer layer) {
 /// every other use of its cels (F-374-Q10).
 ///
 /// The rows whose move their own transform carries land at once, in the one
-/// undo step they always did. The rest are BAKED — a movie decoded frame by
-/// frame, a still's cels drawn where the row shows them — so they go behind
+/// undo step they always did. The rest are BAKED — a movie decoded and a
+/// still its fx moves taken a position apiece, a still's cels drawn where
+/// the row shows them — so they go behind
 /// the one wait window this app shows for heavy work ([runWithAppProgress])
 /// — the window the placement window's bake uses, because it is the same
 /// work. A row that waits is left the reference it is, and says why
@@ -55,7 +56,7 @@ Future<void> rasterizeReferenceRows(
     return;
   }
   final keyed = <LayerId>[];
-  final baked = <Layer>[];
+  final baked = <_Baked>[];
   final waits = <({Layer row, ReferenceWait why})>[];
   for (final layer in targets) {
     switch (session.cutCommandCoordinator.referenceLetGoOf(
@@ -65,10 +66,10 @@ Future<void> rasterizeReferenceRows(
       case ReferenceMoveWaits(:final why):
         waits.add((row: layer, why: why));
       // A movie is decoded either way: its door carries the moves first.
-      case ReferenceMoveCarried(bakes: false) when !isMovieReference(layer):
+      case ReferenceMoveCarried(bakes: false, framed: false):
         keyed.add(layer.id);
-      case ReferenceMoveCarried():
-        baked.add(layer);
+      case ReferenceMoveCarried(:final framed):
+        baked.add((row: layer, framed: framed));
     }
   }
   if (keyed.isNotEmpty) {
@@ -82,17 +83,23 @@ Future<void> rasterizeReferenceRows(
   }
 }
 
+/// A row a rasterize bakes, and whether its cels are made a position apiece
+/// ([ReferenceMoveCarried.framed]) or take the picture in place.
+typedef _Baked = ({Layer row, bool framed});
+
 /// [baked] rasterized behind the wait window, one bar for the batch.
 Future<void> _bake(
   BuildContext context,
   EditorSessionManager session,
   CutId cutId,
-  List<Layer> baked,
+  List<_Baked> baked,
 ) {
   final strings = AppText.strings;
   return runWithAppProgress<void>(
     context: context,
-    title: baked.length > 1 ? strings.tlSelectedLayers : baked.single.name,
+    title: baked.length > 1
+        ? strings.tlSelectedLayers
+        : baked.single.row.name,
     titleIcon: Icons.texture_outlined,
     runningLabel: strings.bakeProgressRunning,
     windowKey: const ValueKey<String>('reference-rasterize-progress'),
@@ -106,9 +113,9 @@ Future<void> _bake(
             count: baked.length,
           ),
         );
-        final layerId = baked[i].id;
-        if (isMovieReference(baked[i])) {
-          await session.importDoors.rasterizeMovieReference(
+        final layerId = baked[i].row.id;
+        if (baked[i].framed) {
+          await session.importDoors.rasterizeReferenceFrames(
             cutId: cutId,
             layerId: layerId,
             onRenderProgress: share,

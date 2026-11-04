@@ -79,7 +79,7 @@ void main() {
     final (s, layer) = await placed(frameCount: 12, fps: 12);
 
     expect(
-      await s.importDoors.rasterizeMovieReference(
+      await s.importDoors.rasterizeReferenceFrames(
         cutId: s.requireActiveCut.id,
         layerId: layer.id,
       ),
@@ -116,7 +116,7 @@ void main() {
     debugVideoDecodeBackend = reader;
 
     expect(
-      await s.importDoors.rasterizeMovieReference(
+      await s.importDoors.rasterizeReferenceFrames(
         cutId: s.requireActiveCut.id,
         layerId: placedRow.id,
       ),
@@ -135,7 +135,7 @@ void main() {
 
   test('one undo puts the held cel and its file back', () async {
     final (s, layer) = await placed(frameCount: 12, fps: 12);
-    await s.importDoors.rasterizeMovieReference(
+    await s.importDoors.rasterizeReferenceFrames(
       cutId: s.requireActiveCut.id,
       layerId: layer.id,
     );
@@ -148,15 +148,24 @@ void main() {
     expect(isMovieReference(back), isTrue);
   });
 
+  test('the keyed rasterize leaves a movie to this verb — its one cel '
+      'holds no pixels to keep', () async {
+    final (s, layer) = await placed();
+
+    s.editingCanvas.rasterizeLayerReferences([layer.id]);
+
+    expect(rowOf(s, layer), layer);
+  });
+
   test('a row that points at no movie is not this verb\'s', () async {
     final (s, layer) = await placed();
-    await s.importDoors.rasterizeMovieReference(
+    await s.importDoors.rasterizeReferenceFrames(
       cutId: s.requireActiveCut.id,
       layerId: layer.id,
     );
 
     expect(
-      await s.importDoors.rasterizeMovieReference(
+      await s.importDoors.rasterizeReferenceFrames(
         cutId: s.requireActiveCut.id,
         layerId: layer.id,
       ),
@@ -165,13 +174,11 @@ void main() {
     );
   });
 
-  test('a STILL reference is not this verb\'s either — its one cel IS its '
-      'pixels', () async {
+  test('a STILL reference its fx stands still is not this verb\'s either — '
+      'its one cel IS its pixels (I-120-Q5: only one the fx moves is)',
+      () async {
     final (s, layer) = await placed();
-    // ⚠️The movie's own row, still ONE block, pointed at a picture instead.
-    // A row imported as a still is born covering its cut, so the block
-    // count would turn it away and the guard under test would never be the
-    // one that spoke.
+    // The movie's own row pointed at a picture instead, no fx on it.
     final png = await writeSolidPng(tempDir, 'bg.png');
     final still = layer.copyWith(
       mediaReference: layer.mediaReference!.copyWith(assetPath: png),
@@ -179,7 +186,7 @@ void main() {
     s.repository.replaceLayer(layer: still);
 
     expect(
-      await s.importDoors.rasterizeMovieReference(
+      await s.importDoors.rasterizeReferenceFrames(
         cutId: s.requireActiveCut.id,
         layerId: still.id,
       ),

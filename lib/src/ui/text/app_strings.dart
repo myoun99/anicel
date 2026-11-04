@@ -3940,31 +3940,10 @@ enum AppStrings {
     'resizeProgressRunning': 'サイズ変更中…',
     'bakeProgressRunning': 'ラスタライズ中…',
     'rasterizeLeftReferences': '参照のまま残したレイヤーがあります。',
-    'referenceWait.attached':
-        'アタッチされたレイヤーはベースのトランスフォームで置かれるため、'
-        '動く参照を自分のキーに移せません。'
-        'アタッチを解除するとラスタライズできます。',
-    'referenceWait.laidAsFitted':
-        '以前のバージョンで合わせた大きさに置かれたファイルのため、'
-        '動く参照をキーに移せません。'
-        'ファイルを置き直すとラスタライズできます。',
-    'referenceWait.sheared':
-        '片方の軸だけ伸ばした拡大率の下での90°単位でない回転は、'
-        'トランスフォームでは描けません。'
-        '拡大率をそろえるか90°単位で回すとラスタライズできます。',
-    'referenceWait.othersKeepKeys':
-        'トランスフォームのスイッチを共有する別のレイヤーが、'
-        'オフの間のキーを持っているため、'
-        'スイッチを入れるとそのキーが表示されます。'
-        '先にトランスフォームをオンにするとラスタライズできます。',
     'referenceWait.usesApart':
         'リンクされたレイヤーが同じセルの絵を別々の位置に見せているため、'
         'セル1枚に収められません。'
         '参照を同じ位置にそろえるとラスタライズできます。',
-    'referenceWait.blocks':
-        'このレイヤーのトランスフォームはブロック単位で適用されるため、'
-        '動く参照をキーにできません。'
-        'トランスフォームの適用対象をフレームにするとラスタライズできます。',
     'pasteProgressRunning': 'ペースト中…',
     'duplicateProgressRunning': '複製中…',
     'workProgressRunning': '処理中…',
@@ -5826,25 +5805,9 @@ enum AppStrings {
     'resizeProgressRunning': '크기 변경 중…',
     'bakeProgressRunning': '래스터라이즈 중…',
     'rasterizeLeftReferences': '참조로 남긴 레이어가 있습니다.',
-    'referenceWait.attached':
-        '어태치된 레이어는 베이스의 변형으로 놓여, 움직이는 참조를 자기 키로 '
-        '옮길 수 없습니다. 어태치를 해제하면 래스터라이즈됩니다.',
-    'referenceWait.laidAsFitted':
-        '이전 버전에서 맞춘 크기로 깔린 파일이라, 움직이는 참조를 키로 옮길 수 '
-        '없습니다. 파일을 다시 놓으면 래스터라이즈됩니다.',
-    'referenceWait.sheared':
-        '한 축만 늘인 배율 아래에서 90° 단위가 아닌 회전은 변형이 그릴 수 '
-        '없습니다. 배율을 고르게 하거나 90° 단위로 돌리면 래스터라이즈됩니다.',
-    'referenceWait.othersKeepKeys':
-        '변형 스위치를 같이 쓰는 다른 레이어가 꺼 둔 동안의 키를 갖고 있어, '
-        '스위치를 켜면 그 키가 보이게 됩니다. 변형을 먼저 켜면 '
-        '래스터라이즈됩니다.',
     'referenceWait.usesApart':
         '링크된 레이어들이 같은 셀의 그림을 서로 다른 자리에 보여, 셀 한 장에 '
         '담을 수 없습니다. 참조를 같은 자리로 맞추면 래스터라이즈됩니다.',
-    'referenceWait.blocks':
-        '이 레이어의 변형은 블록 단위로 적용되어, 움직이는 참조를 키로 옮길 '
-        '수 없습니다. 변형의 적용 대상을 프레임으로 바꾸면 래스터라이즈됩니다.',
     'pasteProgressRunning': '붙여넣는 중…',
     'duplicateProgressRunning': '복제하는 중…',
     'workProgressRunning': '처리 중…',
@@ -7717,30 +7680,10 @@ enum AppStrings {
     'resizeProgressRunning': 'Redimensionnement…',
     'bakeProgressRunning': 'Pixellisation…',
     'rasterizeLeftReferences': 'Certains calques restent des références.',
-    'referenceWait.attached':
-        'Un calque attaché se place selon la Transformation de sa base. Une '
-        'Référence qui bouge ne peut donc pas devenir ses propres clés. '
-        'Détachez-le pour le pixelliser.',
-    'referenceWait.laidAsFitted':
-        'Ce fichier a été posé à une taille ajustée par une version '
-        'antérieure. Une Référence qui bouge ne peut donc pas devenir des '
-        'clés. Replacez le fichier pour le pixelliser.',
-    'referenceWait.sheared':
-        'Une rotation qui n’est pas un multiple de 90° sous une Échelle '
-        'étirée sur un seul axe donne une forme qu’aucune Transformation ne '
-        'dessine. Égalisez l’Échelle ou tournez par 90° pour pixelliser.',
-    'referenceWait.othersKeepKeys':
-        'Un autre calque qui partage cet interrupteur de Transformation garde '
-        'ses propres clés tant qu’il est éteint, et l’allumer les montrerait. '
-        'Allumez d’abord la Transformation pour pixelliser.',
     'referenceWait.usesApart':
         'Les calques liés montrent l’image de ce cellulo à des endroits '
         'différents, et un cellulo la garde à un seul. Alignez leur '
         'Référence pour pixelliser.',
-    'referenceWait.blocks':
-        'La Transformation de ce calque s’applique par bloc, et une '
-        'Référence qui bouge ne peut pas devenir ses clés. Appliquez la '
-        'Transformation par image pour pixelliser.',
     'pasteProgressRunning': 'Collage…',
     'duplicateProgressRunning': 'Duplication…',
     'workProgressRunning': 'Traitement…',
@@ -9742,24 +9685,9 @@ enum AppStrings {
     'resizeProgressRunning': '正在调整尺寸…',
     'bakeProgressRunning': '正在栅格化…',
     'rasterizeLeftReferences': '部分图层仍保留为参照。',
-    'referenceWait.attached':
-        '附属图层由其基底的变换放置，移动的参照无法变成它自己的关键帧。'
-        '解除附属即可栅格化。',
-    'referenceWait.laidAsFitted':
-        '此文件由旧版本按适配尺寸放置，移动的参照无法变成关键帧。'
-        '重新放置文件即可栅格化。',
-    'referenceWait.sheared':
-        '在只拉伸一个轴的缩放下，非 90° 倍数的旋转无法用变换绘制。'
-        '统一缩放或按 90° 旋转即可栅格化。',
-    'referenceWait.othersKeepKeys':
-        '共用此变换开关的另一个图层在关闭期间保留了自己的关键帧，'
-        '打开开关会显示它们。先打开变换即可栅格化。',
     'referenceWait.usesApart':
         '链接的图层在不同位置显示同一张赛璐珞的画面，'
         '一张赛璐珞只能放在一个位置。将参照对齐到同一位置即可栅格化。',
-    'referenceWait.blocks':
-        '此图层的变换按块应用，移动的参照无法转为关键帧。'
-        '将变换的应用对象改为帧即可栅格化。',
     'pasteProgressRunning': '粘贴中…',
     'duplicateProgressRunning': '复制中…',
     'workProgressRunning': '正在处理…',

@@ -29,7 +29,7 @@ import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/reference_swap.dart';
 import '../../models/timeline_coverage.dart';
-import '../../models/timeline_exposure.dart';
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/brush_frame_store.dart' show CelRead;
@@ -41,6 +41,9 @@ import '../../services/guide_geometry.dart' show GuideTransform;
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, picturePlacement;
 import '../../services/commands/update_layer_timeline_command.dart';
+import '../../services/editing/layer_merge_plan.dart'
+    show kindHoldingPictures, tailedName;
+import '../../services/editing/timeline_showing.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/cel_picture.dart';
 import '../../services/import/media_identity_reader.dart';
@@ -134,8 +137,9 @@ _BakePicture _pictureOf(CelPicture picture, {required bool owned}) =>
 
 /// Where a placement stands each of its pictures — one rule for the whole
 /// placement, given the bake, the picture's own size and the canvas it
-/// lands on. A movie rasterized as it is shown stands each frame where its
-/// reference fx stood it there ([ProjectImportDoors.rasterizeMovieReference]).
+/// lands on. A reference rasterized as it is shown stands each picture
+/// where its reference fx stood it there
+/// ([ProjectImportDoors.rasterizeReferenceFrames]).
 typedef _Standing =
     TransformPose Function(
       PlannedCelBake bake,
@@ -153,27 +157,37 @@ _Standing _atTheFit(MediaFitMode fit) => (_, picture, canvas) =>
 _Standing _standingFor(MediaReference? reference, MediaFitMode fit) =>
     reference == null ? _atTheFit(fit) : (_, _, _) => reference.laid;
 
-/// The cels every use of a movie reference is rasterized into
-/// ([ProjectImportDoors.rasterizeMovieReference]): the bank the uses share,
-/// the bakes that fill it, where each cel's picture stands, and each use's
-/// exposure of them, in the uses' order.
-typedef _MovieCels = ({
+/// The cels every use of a reference is rasterized into a position apiece
+/// ([ProjectImportDoors.rasterizeReferenceFrames]): the bank the uses
+/// share, the bakes that fill it, where each cel's picture stands, and the
+/// cel each use shows at each frame, in the uses' order.
+typedef _FramedCels = ({
   List<Frame> frames,
   List<PlannedCelBake> bakes,
   Map<FrameId, TransformPose> standing,
-  List<SplayTreeMap<int, TimelineExposure>> timelines,
+  List<Map<int, FrameId>> celAt,
 });
 
-/// What one use of a movie reference shows at each position of its block,
-/// and the cels that makes ([ProjectImportDoors._plannedMovieUse]).
-typedef _PlannedMovieUse = ({
-  List<_ShownMovieFrame> shown,
+/// What one block of a reference's use shows at each position, and the
+/// cels that makes ([ProjectImportDoors._plannedBlock]).
+typedef _PlannedBlock = ({
+  List<_ShownPicture> shown,
   SequenceLayerImportPlan plan,
 });
 
-/// What a movie reference shows at one position: its file, the movie frame
-/// the sound's clock reads there, and where that picture stands.
-typedef _ShownMovieFrame = ({String file, int movieFrame, TransformPose pose});
+/// What a reference shows at one position: its file, the picture of the
+/// file there — the movie frame the sound's clock reads, the picture a
+/// still's cel is ([Frame.filePicture]) — and where that picture stands.
+typedef _ShownPicture = ({String file, int picture, TransformPose pose});
+
+/// A file a reference shows, open for its rasterize: a movie's reading
+/// ([QaVideoInfo] — none for a still's), each picture a bake asks of it,
+/// and the letting go of what was opened.
+typedef _OpenFile = ({
+  QaVideoInfo? info,
+  Future<_BakePicture> Function(PlannedCelBake bake) pictureOf,
+  Future<void> Function() close,
+});
 
 /// The image / PSD / PDF / sound import doors.
 class ProjectImportDoors {
@@ -1034,58 +1048,61 @@ class ProjectImportDoors {
     return landed;
   }
 
-  /// RASTERIZE a movie kept as a reference (§6-f; the video spec the user
-  /// approved on 2026-09-11): every position of its block becomes a cel —
-  /// one per movie frame the sound's clock shows there, consecutive
-  /// duplicates folded into held exposure (「중복 접기」, the fold the
-  /// placement window's bake uses) — the reference is let go of, and the
-  /// pool entry stays: it was made when the reference was placed, and a
-  /// later bake does not empty the pool (「구워도 풀에 남음」 — what a
-  /// PLACEMENT registers is [placementRegisters]'s, F-282-Q6).
+  /// RASTERIZE a reference a position apiece (§6-f; the video spec the user
+  /// approved on 2026-09-11): a movie kept as a reference — and a still
+  /// whose fx moves its picture where the row's transform cannot carry the
+  /// move ([ReferenceMoveCarried.framed]; 🗣️I-120-Q5, 유저 2026-11-04
+  /// 「바꾼다 — 애니메이션 레이어로, 움직이는 프레임마다 한 장」, the movie's
+  /// way). Every position of its blocks becomes a cel — one per picture of
+  /// the file shown there, the movie frame the sound's clock shows or the
+  /// still cel's own, consecutive duplicates folded into held exposure
+  /// (「중복 접기」, the fold the placement window's bake uses) — the
+  /// reference is let go of, and the pool entry stays: it was made when the
+  /// reference was placed, and a later bake does not empty the pool (「구워도
+  /// 풀에 남음」 — what a PLACEMENT registers is [placementRegisters]'s,
+  /// F-282-Q6). A row holding more than one picture becomes a drawing row
+  /// ([kindHoldingPictures]).
   ///
-  /// Where it shows each frame is [referenceLetGo]'s (F-374-Q7): its
+  /// Where it shows each picture is [referenceLetGo]'s (F-374-Q7): its
   /// reference fx's move carried into the row's own transform and the
-  /// frames laid where the file is laid — or, where that transform cannot
-  /// carry it, each frame laid where the fx stands it at its position, a cel
-  /// apiece wherever the movie or the move changes (「움직이는 참조는
-  /// 움직이는 프레임마다 한 장」). A row that waits is left as it is.
+  /// pictures laid where the file is laid — or, where that transform cannot
+  /// carry it, each laid where the fx stands it at its position, a cel
+  /// apiece wherever the picture or the move changes (「움직이는 참조는
+  /// 움직이는 프레임마다 한 장」), the file laid whole past the wall
+  /// (F-374-Q8). A row that waits is left as it is.
   ///
   /// 🗣️F-374-Q10 (유저 2026-10-17, 「같은 셀을 보는 쓰임을 전부 같이」): the
-  /// cel the row shows its movie through is its 겸용 link group's, so every
+  /// cel the row shows its file through is its 겸용 link group's, so every
   /// use of it is rasterized with it — each its own way, through ONE bank
-  /// of cels ([_movieCelsOf]).
+  /// of cels ([_framedCelsOf]).
   ///
   /// ⚠️HERE rather than beside [RasterizeLayerReferenceCommand], because
-  /// this is where a movie's pixels come in: the reader, the sound's clock,
+  /// this is where a file's pixels come in: the reader, the sound's clock,
   /// the duplicate fold and the bake tail are all this file's already, and
-  /// a second set of them is what this file exists to prevent. A still's
-  /// cels ARE its pixels: what it shows comes from them
-  /// ([bakeReferenceAsSeen]).
-  Future<bool> rasterizeMovieReference({
+  /// a second set of them is what this file exists to prevent. A still that
+  /// stands still takes its picture in its own cels ([bakeReferenceAsSeen]).
+  Future<bool> rasterizeReferenceFrames({
     required CutId cutId,
     required LayerId layerId,
     void Function(int rendered, int total)? onRenderProgress,
-    void Function(int movieFrame)? onFrameRenderFailed,
+    void Function(int picture)? onFrameRenderFailed,
   }) async {
-    final layer = _project.cutById(cutId)?.layers.byId(layerId);
-    if (layer == null || !isMovieReference(layer)) {
-      return false;
-    }
-    final way = _project.cutCommandCoordinator.referenceLetGoOf(
+    final way = _project.cutCommandCoordinator.referenceCarriedOf(
       cutId: cutId,
       layerId: layerId,
     );
     // A movie reference is ONE block by construction — every reshaping verb
     // stands its row down until this verb has run.
-    if (way is! ReferenceMoveCarried ||
+    if (way == null ||
+        !way.framed ||
         way.uses.any(
           (use) =>
-              !isMovieReference(use.use.layer) ||
+              isMovieReference(use.use.layer) &&
               drawingBlocks(use.use.layer.timeline).length != 1,
         )) {
       return false;
     }
-    final opened = <String, HeldMovie>{};
+    final opened = <String, _OpenFile>{};
     try {
       // Each file a use shows, opened once.
       for (final use in way.uses) {
@@ -1093,21 +1110,21 @@ class ProjectImportDoors {
         if (opened.containsKey(path)) {
           continue;
         }
-        final movie = await openHeldMovie(videoDecodeBackend, _holdBytes, path);
-        if (movie == null) {
+        final file = await _openFile(use.use.layer);
+        if (file == null) {
           return false;
         }
-        opened[path] = movie;
+        opened[path] = file;
       }
       // Or nothing, when a use changed while its file was opened: [way] is
       // the uses' as they were.
       if (_changedSince(way)) {
         return false;
       }
-      final cels = _movieCelsOf(way, opened);
+      final cels = _framedCelsOf(way, opened);
       await _bakeLandedCels(
         cutId,
-        _letMovieReferencesGo(way, cels, layerId),
+        _letFramedReferencesGo(way, cels, layerId),
         cels.bakes,
         // The cels are THIS row's, under its own id — the bank its link
         // group shares.
@@ -1117,20 +1134,48 @@ class ProjectImportDoors {
         // row was placed with — and fitted each frame to the canvas again.
         standing: (bake, _, _) => cels.standing[bake.frameId]!,
         onProgress: onRenderProgress,
-        // One frame the reader refuses leaves its cel empty and is reported
-        // — never an abort into a half-rasterized row.
+        // One picture the reader refuses leaves its cel empty and is
+        // reported — never an abort into a half-rasterized row.
         onFailed: (bake) => onFrameRenderFailed?.call(bake.sourceFrameIndex),
-        pictureOf: (bake, _) {
-          final movie = opened[bake.sourceFile]!;
-          return _moviePicture(movie.token, movie.info, bake);
-        },
+        pictureOf: (bake, _) => opened[bake.sourceFile]!.pictureOf(bake),
       );
       return true;
     } finally {
-      for (final movie in opened.values) {
-        await movie.close();
+      for (final file in opened.values) {
+        await file.close();
       }
     }
+  }
+
+  /// [layer]'s file open for its rasterize ([_OpenFile]): a movie's
+  /// reader, a still's pictures ([_openPictures]) — or null when it does
+  /// not open.
+  Future<_OpenFile?> _openFile(Layer layer) async {
+    final reference = layer.mediaReference!;
+    if (isMovieReference(layer)) {
+      final movie = await openHeldMovie(
+        videoDecodeBackend,
+        _holdBytes,
+        reference.assetPath,
+      );
+      return movie == null
+          ? null
+          : (
+              info: movie.info,
+              pictureOf: (PlannedCelBake bake) =>
+                  _moviePicture(movie.token, movie.info, bake),
+              close: movie.close,
+            );
+    }
+    final pictures = await _openPictures(reference);
+    return pictures == null
+        ? null
+        : (
+            info: null,
+            pictureOf: (PlannedCelBake bake) =>
+                pictures.at(bake.sourceFrameIndex),
+            close: pictures.close,
+          );
   }
 
   /// Whether a use [way] was asked of has changed since — what a door that
@@ -1162,17 +1207,17 @@ class ProjectImportDoors {
   }) async {
     final cut = _project.cutById(cutId);
     final layer = cut?.layers.byId(layerId);
-    if (cut == null ||
-        layer == null ||
-        layer.mediaReference == null ||
-        isMovieReference(layer)) {
-      return false;
-    }
-    final way = _project.cutCommandCoordinator.referenceLetGoOf(
+    final way = _project.cutCommandCoordinator.referenceCarriedOf(
       cutId: cutId,
       layerId: layerId,
     );
-    if (way is! ReferenceMoveCarried || !way.bakes) {
+    // A movie, and a still the fx moves, take a cel a position
+    // ([rasterizeReferenceFrames]).
+    if (cut == null ||
+        layer == null ||
+        way == null ||
+        !way.bakes ||
+        way.framed) {
       return false;
     }
     final pictures = await _celsMoved(cut, layer);
@@ -1601,86 +1646,101 @@ class ProjectImportDoors {
     movie: info,
   );
 
-  /// The cels [rasterizeMovieReference] makes of [way]'s uses, each planned
-  /// from the movie [opened] holds for its file ([_plannedMovieUse]) — and
-  /// a picture a use before it made a cel of is that cel, the bank being
-  /// one, as the one cel they shared was. A use alone is planned as it
-  /// always was.
-  _MovieCels _movieCelsOf(
+  /// The cels [rasterizeReferenceFrames] makes of [way]'s uses, each block
+  /// of each planned from the file [opened] holds for it ([_plannedBlock]) —
+  /// and a picture of a cel a block before it made is that cel, the bank
+  /// being one, as the cels the uses shared were: each cel's pictures its
+  /// own, a picture two uses show of it one, as an fx RASTERIZE keeps them
+  /// (I-120-Q20).
+  ///
+  /// The bank keeps its cels' order: each in its place as the pictures it
+  /// was shown as — the first with its name, each after it a tail of it
+  /// ([tailedName], I-78-Q10 「갈라진 곳은 꼬리 번호」, as an fx RASTERIZE
+  /// names its parted pictures) — or as it is, where no use shows it, as an
+  /// fx RASTERIZE leaves a cel no use shows. A movie's one cel has no name,
+  /// and neither have its pictures.
+  _FramedCels _framedCelsOf(
     ReferenceMoveCarried way,
-    Map<String, HeldMovie> opened,
+    Map<String, _OpenFile> opened,
   ) {
-    final frames = <Frame>[];
+    final made = <(FrameId, _ShownPicture), FrameId>{};
+    final madeOf = <FrameId, List<Frame>>{};
     final bakes = <PlannedCelBake>[];
     final standing = <FrameId, TransformPose>{};
-    final timelines = <SplayTreeMap<int, TimelineExposure>>[];
-    final made = <_ShownMovieFrame, FrameId>{};
+    final celAt = <Map<int, FrameId>>[];
     for (final (:use, track: _, :asShown) in way.uses) {
-      final block = drawingBlocks(use.layer.timeline).single;
-      final (:shown, :plan) = _plannedMovieUse(
-        use,
-        block,
-        info: opened[use.layer.mediaReference!.assetPath]!.info,
-        asShown: asShown,
-      );
-      final celOf = <FrameId, FrameId>{};
-      final mine = <_ShownMovieFrame, FrameId>{};
-      for (final MapEntry(key: position, value: exposure)
-          in plan.layer.timeline.entries) {
-        if (exposure.frameId case final cel?) {
-          final earlier = made[shown[position]];
-          celOf[cel] = earlier ?? cel;
-          if (earlier == null) {
-            mine.putIfAbsent(shown[position], () => cel);
-            standing[cel] = shown[position].pose;
+      final shows = <int, FrameId>{};
+      for (final block in drawingBlocks(use.layer.timeline)) {
+        final (:shown, :plan) = _plannedBlock(
+          use,
+          block,
+          info: opened[use.layer.mediaReference!.assetPath]!.info,
+          asShown: asShown,
+        );
+        for (final MapEntry(key: position, value: exposure)
+            in plan.layer.timeline.entries) {
+          final picture = shown[position];
+          final cel = made[(block.frameId, picture)] ??= exposure.frameId!;
+          if (cel == exposure.frameId) {
+            standing[cel] = picture.pose;
+            (madeOf[block.frameId] ??= []).add(plan.layer.frameById(cel)!);
+            bakes.add(plan.bakes.firstWhere((bake) => bake.frameId == cel));
+          }
+          for (var at = 0; at < exposure.length!; at += 1) {
+            shows[block.startIndex + position + at] = cel;
           }
         }
       }
-      made.addAll(mine);
-      frames.addAll(
-        plan.layer.frames.where((frame) => celOf[frame.id] == frame.id),
-      );
-      bakes.addAll(
-        plan.bakes.where((bake) => celOf[bake.frameId] == bake.frameId),
-      );
-      timelines.add(
-        SplayTreeMap.of({
-          for (final MapEntry(key: position, value: exposure)
-              in plan.layer.timeline.entries)
-            position + block.startIndex: exposure.copyWith(
-              frameId: celOf[exposure.frameId],
-            ),
-        }),
-      );
+      celAt.add(shows);
     }
+    final bank = {
+      for (final letGo in way.uses)
+        for (final cel in letGo.use.layer.frames) cel.id: cel,
+    };
+    final held = {for (final cel in bank.values) ?celNumberOf(cel.name)};
     return (
-      frames: frames,
+      frames: [
+        for (final cel in bank.values)
+          if (madeOf[cel.id] case final pictures?)
+            for (final (index, picture) in pictures.indexed)
+              picture.copyWith(
+                name: index == 0 ? cel.name : tailedName(held, cel.name),
+              )
+          else
+            cel,
+      ],
       bakes: bakes,
       standing: standing,
-      timelines: timelines,
+      celAt: celAt,
     );
   }
 
-  /// What [use] shows at each position of its one [block] — the movie frame
-  /// the sound's clock of [info] reads there, standing where its reference
-  /// fx stands it at that position where its cels take the picture as it
-  /// shows it ([asShown]), else where its file is laid, the move its own
-  /// transform's now — and the cels that makes: one wherever the movie or
-  /// the move changes (「중복 접기」, the fold the placement window's bake
-  /// uses).
-  _PlannedMovieUse _plannedMovieUse(
+  /// What [use] shows at each position of its [block] — the picture of its
+  /// file there, the movie frame the sound's clock of [info] reads or a
+  /// still cel's own, standing where its reference fx stands it at that
+  /// position where its cels take the picture as it shows it ([asShown]),
+  /// else where its file is laid, the move its own transform's now — and
+  /// the cels that makes: one wherever the picture or the move changes
+  /// (「중복 접기」, the fold the placement window's bake uses).
+  _PlannedBlock _plannedBlock(
     ReferenceUse use,
     TimelineDrawingBlock block, {
-    required QaVideoInfo info,
+    required QaVideoInfo? info,
     required bool asShown,
   }) {
     final reference = use.layer.mediaReference!;
-    final clock = _movieClock(info);
+    final clock = info == null ? null : _movieClock(info);
+    final still = use.layer.frameById(block.frameId)?.filePicture;
     final shown = [
       for (var position = 0; position < block.length; position += 1)
         (
           file: reference.assetPath,
-          movieFrame: clock.movieFrameAt(movieElapsedAt(reference, position)),
+          picture: switch (clock) {
+            final clock? => clock.movieFrameAt(
+              movieElapsedAt(reference, position),
+            ),
+            null => still!,
+          },
           pose: asShown
               ? reference.poseAt(block.startIndex + position)
               : reference.laid,
@@ -1690,48 +1750,60 @@ class ProjectImportDoors {
       shown: shown,
       plan: planSequenceLayer(
         sourceFiles: List<String>.filled(shown.length, reference.assetPath),
-        // A position is a cel of its own where the movie or the move
+        // A position is a cel of its own where the picture or the move
         // changes.
         frameFingerprints: shown,
-        sourceFrameIndices: [
-          for (final position in shown) position.movieFrame,
-        ],
+        sourceFrameIndices: [for (final position in shown) position.picture],
         displayName: use.layer.name,
         cutId: use.cut.id,
         mint: _landing.idMint(),
-        assetKind: MediaAssetKind.video,
-        sourceFps: info.fps,
+        assetKind: info == null ? MediaAssetKind.image : MediaAssetKind.video,
+        sourceFps: info?.fps,
       ),
     );
   }
 
-  /// The structure a movie's rasterize lands as ONE undo step — every use's
-  /// reference fx's move carried into its own transform where that carries
-  /// it, as a still's is (F-374-Q3 · Q7 · Q10), the bank [cels] holds, each
-  /// use's exposure of it and every reference let go of — through the edit
-  /// funnels every transform and timeline change uses. The pixels follow
-  /// it, as a landed import's do. Answers [layerId]'s row as it lands.
-  Layer _letMovieReferencesGo(
+  /// The structure a rasterize a position apiece lands as ONE undo step —
+  /// every use's reference fx's move carried into its own transform where
+  /// that carries it, as a still's is (F-374-Q3 · Q7 · Q10), the bank
+  /// [cels] holds, each use's blocks parted where its pictures are
+  /// ([timelineShowing] — the head keeps the memo and the marks), its kind
+  /// the one a row of so many pictures is ([kindHoldingPictures]), and
+  /// every reference let go of — through the edit funnels every transform
+  /// and timeline change uses. The pixels follow it, as a landed import's
+  /// do. Answers [layerId]'s row as it lands.
+  Layer _letFramedReferencesGo(
     ReferenceMoveCarried way,
-    _MovieCels cels,
+    _FramedCels cels,
     LayerId layerId,
   ) {
     final landed = <LayerId, Layer>{};
     _project.historyManager.runAsOneStep('Rasterize layer', () {
       _project.cutCommandCoordinator.carryReferenceMoves(way);
+      final project = _project.repository.requireProject();
+      Layer now(ReferenceUse use) =>
+          _project.cutById(use.cut.id)!.layers.byId(use.layer.id)!;
+      // Every use's exposure read before any lands: the first use's bank is
+      // every use's — the timeline funnel mirrors it, and sweeps the cels
+      // it replaces from the others' exposures.
+      final timelines = [
+        for (final (index, letGo) in way.uses.indexed)
+          timelineShowing(
+            now(letGo.use),
+            cels.celAt[index],
+            cutDrawnFrameCount(project, letGo.use.cut.id) ??
+                _project.cutById(letGo.use.cut.id)!.duration,
+          ),
+      ];
       for (final (index, letGo) in way.uses.indexed) {
         final use = letGo.use;
-        final carried = _project
-            .cutById(use.cut.id)!
-            .layers
-            .byId(use.layer.id)!;
+        final carried = now(use);
         // ⛔`plan.assets` is dropped: the pool entry is already there, and
-        // it stays there — baking does not unregister a file. The first
-        // use's bank is every use's: the timeline funnel mirrors it, and
-        // sweeps the one cel it replaces from the others' exposures.
+        // it stays there — baking does not unregister a file.
         final rasterized = carried.copyWith(
+          kind: kindHoldingPictures(carried.kind, cels.frames.length),
           frames: cels.frames,
-          timeline: cels.timelines[index],
+          timeline: timelines[index],
           mediaReference: null,
         );
         _project.historyManager.execute(
