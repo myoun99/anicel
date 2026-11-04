@@ -1245,6 +1245,19 @@ class FramePictureStore<K extends Object> {
   /// the very code of the levels round it, on any backend (measured on the
   /// Surface Pro 11: the levels it replaced, byte for byte, 2026-10-24).
   /// Drawn 1:1 on whole pixels, it is a copy.
+  ///
+  /// ↩️🔬NOT BYTE FOR BYTE ON THE MAIN PC (Windows, GLES, F-533-Q7,
+  /// 2026-11-05): Impeller reads a mip with a bias of -0.475
+  /// (`kDefaultMipBias`), so a halving drawn at 1/2^k is level k - 1 at
+  /// 47.5% and level k at 52.5% — the mean of its texels as the engine's
+  /// chain is, rounded another way: up to 1/255 in 250–500 bytes of a
+  /// stroke's band at 36%, seen once the frame is laid again, and nothing
+  /// above 1/2. ⛔Not the row drawn 0.72 px tall so the GPU picks level k
+  /// alone (Impeller's MSAA covers three quarters of it), nor its texture
+  /// coordinates stretched on one axis (`drawVertices`: read as anisotropy,
+  /// 12–54 off the mean). The exact ways — a quad a texel, or every lay's
+  /// levels written again — cost each step or lay more, and 유저 F-533-Q7:
+  /// 「성능 나빠지면 안할예정」.
   Future<ui.Image> _readAt(List<_PictureRead> reads, int width, int height) {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
