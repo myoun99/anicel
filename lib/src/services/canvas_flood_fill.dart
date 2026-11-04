@@ -1581,19 +1581,25 @@ final class FillRange {
         : null;
     // The covered runs of the row that starts at [offset] in the mask.
     List<int> runsFrom(int offset) {
+      // [words] and [cut] are the method's, and a capture checked inside a
+      // loop is read past its check by the AOT compiler — a null one kills
+      // the release build
+      // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+      final wordsNow = words;
+      final cutNow = cut;
       final runs = <int>[];
       var inside = false;
       var x = 0;
       while (x < width) {
         final at = offset + x;
-        if (words != null && at & 3 == 0 && x + 4 <= width) {
-          final word = words[at >> 2];
+        if (wordsNow != null && at & 3 == 0 && x + 4 <= width) {
+          final word = wordsNow[at >> 2];
           if (inside ? word == 0xFFFFFFFF : word == 0) {
             x += 4;
             continue;
           }
         }
-        final covered = mask[at] > 0 && (cut == null || cut[at] > 0);
+        final covered = mask[at] > 0 && (cutNow == null || cutNow[at] > 0);
         if (covered != inside) {
           runs.add(x);
           inside = covered;
