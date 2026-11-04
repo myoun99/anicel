@@ -425,6 +425,7 @@ void main() {
 
       await tapToolbarButton(tester, const ValueKey<String>('undo-button'));
       expect(names(), hasLength(1), reason: '⛔전제: undone');
+      expect(session.canRedo, isTrue, reason: 'the paste is there to redo');
       await tapToolbarButton(tester, const ValueKey<String>('redo-button'));
       expect(names(), pasted, reason: '「다시 생겨야하는데」');
       expect(tester.takeException(), isNull);

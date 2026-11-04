@@ -1321,10 +1321,16 @@ class Standing {
   /// (a track SE row stands there too, and is not in the cut's document).
   /// ⚠️A row that is gone is taken back right where the cut and frame
   /// match: a walk to it would arrive nowhere, and every press after it
-  /// would walk again. A place whose cut is gone is nowhere to walk to.
-  bool isElsewhere(StandingPlace there, {required StandingPlace from}) {
+  /// would walk again. A place whose cut is gone is nowhere to walk to —
+  /// from a gap ([from] null) too, which is elsewhere from any cut.
+  /// ↩️A gap walked before this was asked, to a cut that was gone too
+  /// (F-559, 2026-11-04).
+  bool isElsewhere(StandingPlace there, {required StandingPlace? from}) {
     if (_project.cutById(there.cut) == null) {
       return false;
+    }
+    if (from == null) {
+      return true;
     }
     if (there.cut != from.cut || there.frame != from.frame) {
       return true;

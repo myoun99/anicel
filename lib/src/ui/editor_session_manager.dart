@@ -2329,15 +2329,13 @@ class EditorSessionManager extends ChangeNotifier
   /// Where the next [undo] — or redo — walks the user instead of stepping:
   /// the place its edit was made, while the user stands elsewhere (I-41).
   ///
-  /// A gap is elsewhere too. ↩️Standing in one (no place) never walked
-  /// (2026-09-24, unasked): the step was taken there, and a cel's pixels
-  /// were refused at the gap's canvas — the undo did nothing (board
-  /// `a-text-walked-into-a-gap-lands-at-its-size`).
+  /// A gap is elsewhere too ([Standing.isElsewhere]). ↩️Standing in one (no
+  /// place) never walked (2026-09-24, unasked): the step was taken there,
+  /// and a cel's pixels were refused at the gap's canvas — the undo did
+  /// nothing (board `a-text-walked-into-a-gap-lands-at-its-size`).
   StandingPlace? _walkTo({required bool undo}) {
-    final here = standingPlace;
     final there = undo ? historyManager.undoPlace : historyManager.redoPlace;
-    return there != null &&
-            (here == null || standing.isElsewhere(there, from: here))
+    return there != null && standing.isElsewhere(there, from: standingPlace)
         ? there
         : null;
   }
