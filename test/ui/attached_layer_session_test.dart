@@ -53,9 +53,13 @@ void main() {
       baseIndexBefore + 1,
     );
 
-    // Adding from the attach row targets ITS base (same group); a below
-    // row lands right before the base and counts its own side (-1).
+    // Adding from the attach row targets ITS base (same group).
     expect(s.folders.canAddAttachedLayerToActive, isTrue);
+    // Stood on the base, a below row lands right before it and counts its
+    // own side (-1). ↩️From the attach row it did too — I-159 stands it
+    // beside the row stood on (`an_attach_row_is_added_beside_the_row_
+    // stood_on_test`).
+    s.selectLayer(base.id);
     s.folders.addAttachedLayer(AttachedPlacement.below);
     final below = s.activeLayer!;
     expect(below.attachedToLayerId, base.id);
@@ -751,8 +755,7 @@ void main() {
     });
 
     test('the SIBLING rule: adding an attach from a row inside an '
-        'organizer (same placement) joins that organizer; a different '
-        'placement lands at the group edge with the base\'s folder', () {
+        'organizer joins that organizer — above it or below it', () {
       final (s, base) = sessionWithBase();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final firstId = s.activeLayer!.id;
@@ -768,12 +771,14 @@ void main() {
       expect(sibling.folderId, organizerId, reason: 'same 공정, same folder');
       expect(folderStructureProblem(layers), isNull);
 
-      // A BELOW attach from the same active row skips the organizer (its
-      // side is different) and lands at the group edge, folder-free.
+      // 🗣️I-159: below the row stood on is beside it too — in its folder,
+      // on its side of the base. ↩️A below from it skipped the organizer
+      // and landed at the group's far end, below the base.
       s.selectLayer(firstId);
       s.folders.addAttachedLayer(AttachedPlacement.below);
       final below = s.activeLayer!;
-      expect(below.folderId, isNull);
+      expect(below.folderId, organizerId);
+      expect(below.attachedPlacement, AttachedPlacement.above);
       expect(folderStructureProblem(cutLayers(s)), isNull);
     });
 

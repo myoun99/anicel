@@ -3,7 +3,6 @@ import '../../models/attached_mode.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_placement.dart';
 import '../../models/conte_group.dart' show ridesTheConte;
-import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -73,13 +72,14 @@ class FoldersAndAttachments {
   }
 
   /// Adds an ATTACH LAYER riding the active layer (or the active attach
-  /// row's base): own cels/eye/opacity, the base's FX; [placement] picks
-  /// above or below the base's picture. [mode] picks the timing contract
+  /// row's base): own cels/eye/opacity, the base's FX; [side] picks above
+  /// or below the row stood on, which it stands beside
+  /// ([newAttachedRowBeside], I-159). [mode] picks the timing contract
   /// (UI-R21 #3): synced = the W5 ghost mirror riding the base's
   /// exposures; free = authors its own timeline like a normal drawing
   /// layer. Selected on creation; excluded from the timesheet by default.
   void addAttachedLayer(
-    AttachedPlacement placement, {
+    AttachedPlacement side, {
     AttachedMode mode = AttachedMode.synced,
   }) {
     if (!canAddAttachedLayerToActive) {
@@ -91,39 +91,18 @@ class FoldersAndAttachments {
         ? attachedBaseOf(active, cut.layers)!
         : active;
     final layerId = _layerIds.mint();
-    final baseIndex = cut.layers.indexWhere((layer) => layer.id == base.id);
-    if (baseIndex == -1) {
-      return;
-    }
-    // [below…, base, above…]: a new below goes bottommost (before the
-    // existing belows and their organizer folders), a new above topmost
-    // (past the group) — [newAttachedRowIndex]. The new row INHERITS the
-    // base's folderId — the group shares the base's folder, and a null row
-    // inside a folder's contiguous run would break the folder invariant.
-    var insertionIndex = newAttachedRowIndex(base.id, cut.layers, placement);
-    var folderId = base.folderId;
-    // SIBLING rule: adding from an attach row that lives in an ORGANIZER
-    // folder ([연출]/[작감]…) with the same placement joins that folder —
-    // "add another part to this 공정" — landing right where the folder
-    // row sits (which keeps the folder's member run contiguous).
-    final activeOrganizer = cut.layers.folderById(active.folderId);
-    if (activeOrganizer != null &&
-        isAttachedLayer(active) &&
-        active.attachedPlacement == placement &&
-        attachOrganizerBaseOf(activeOrganizer, cut.layers) == base.id) {
-      folderId = activeOrganizer.id;
-      insertionIndex = cut.layers.indexWhere(
-        (layer) => layer.id == activeOrganizer.id,
-      );
-    }
+    // The folder comes with the seat: a row with none inside a folder's
+    // contiguous run would break the folder invariant.
+    final seat = newAttachedRowBeside(active, cut.layers, side);
     // UI-R23 #7 v2: the row is added EMPTY — the repository's
     // always-mirror reconciliation fills one own cel + base link per base
     // cel in the same write (and keeps doing so live as the base gains
     // cels later), so every mirror cell is editable from the first frame.
-    _controllers.layerController.addLayer(
+    _project.cutCommandCoordinator.addAttachedLayer(
+      cutId: cut.id,
       layer: Layer(
         id: layerId,
-        name: nextAttachedLayerName(base, cut.layers, placement),
+        name: nextAttachedLayerName(base, cut.layers, seat.placement),
         frames: const [],
         timeline: const {},
         // An attach row exists to be DRAWN on (own cels riding the base's
@@ -134,15 +113,16 @@ class FoldersAndAttachments {
         kind: base.kind.acceptsBrushInput ? base.kind : LayerKind.animation,
         onTimesheet: false,
         attachedToLayerId: base.id,
-        attachedPlacement: placement,
+        attachedPlacement: seat.placement,
         attachedMode: mode,
-        folderId: folderId,
+        folderId: seat.folderId,
         // F-133: made FROM the row you stand on, it starts with that row's
         // colour label — the door names its target ([LayerMark.inherited]).
         mark: active.mark.inherited,
       ),
-      insertionIndex: insertionIndex,
+      insertionIndex: seat.index,
     );
+    _controllers.layerController.selectLayer(layerId);
     // F-169 ②: made from a folded group's base, the new row opens its group.
     // ↩️It used to show that one row inside the shut group (the active attach
     // row's exemption, UI-R20 #9) — the exemption that also put a handed-off

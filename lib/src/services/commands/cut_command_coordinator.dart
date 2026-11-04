@@ -1331,11 +1331,28 @@ class CutCommandCoordinator {
     ]);
   }
 
+  /// Adds [layer], an attach row, at [insertionIndex] of [cutId] — beside
+  /// the row it was added from ([newAttachedRowBeside], I-159) — with the
+  /// renames the seats it pushes along owe, in its own undo step.
+  void addAttachedLayer({
+    required CutId cutId,
+    required Layer layer,
+    required int insertionIndex,
+  }) => _executeMovingSeats(cutId, 'Add layer ${layer.name}', [
+    plannedAddLayerCommand(
+      repository: repository,
+      cutId: cutId,
+      layer: layer,
+      insertionIndex: insertionIndex,
+    ),
+  ]);
+
   /// Runs [commands] — a write that may move attach rows' seats — as ONE
   /// undo step, with the renames those moves owe inside it
-  /// ([attachNamesForMovedSeats], I-122 · F-436 ③). The two doors that move
-  /// a seat come through here: a drag's [setLayerPlacement] and the menu's
-  /// [setLayerAttachment].
+  /// ([attachNamesForMovedSeats], I-122 · F-436 ③). The three doors that
+  /// move a seat come through here: a drag's [setLayerPlacement], the
+  /// menu's [setLayerAttachment] and the add beside a row
+  /// ([addAttachedLayer], I-159).
   void _executeMovingSeats(
     CutId cutId,
     String description,

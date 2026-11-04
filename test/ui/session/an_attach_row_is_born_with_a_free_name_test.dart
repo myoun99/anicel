@@ -24,7 +24,7 @@ void main() {
 
     s.folders.addAttachedLayer(AttachedPlacement.below);
     final first = s.activeLayer!;
-    s.selectLayer(base.id);
+    // Stood on it: the next stands below it (I-159).
     s.folders.addAttachedLayer(AttachedPlacement.below);
     expect(
       [first.name, s.activeLayer!.name],
