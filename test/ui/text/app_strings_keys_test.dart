@@ -1072,6 +1072,7 @@ void main() {
     'tlLegendLayer': (s) => s.tlLegendLayer,
     'tlAllDisplayedOpacity': (s) => s.tlAllDisplayedOpacity,
     'tlLinkedWith': (s) => s.tlLinkedWith,
+    'tlFxBasisTemplate': (s) => s.tlFxBasisTemplate,
     'tlAudioGroup': (s) => s.tlAudioGroup,
     'tlSoundVolume': (s) => s.tlSoundVolume,
     'tlSoundTotalVolume': (s) => s.tlSoundTotalVolume,

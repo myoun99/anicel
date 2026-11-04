@@ -862,7 +862,19 @@ void main() {
   /// minted, and the rows they go from and to. 🔬`clean_code_diff` against
   /// master (`fcee56de1`) names it added and nothing gone. ⛔Not bundled to
   /// fit: the source's row and the copy's are two places.
-  const wideSignatures = 457;
+  ///
+  /// ⚠️457 → 460 on 2026-11-04, three named as the rule above asks (I-120,
+  /// an fx read by the frame or by the block): `_reading` (five) and
+  /// `transformPositionLane` (five) took the frame the value column asks
+  /// the reading at (`shownFrame` — 🗣️Q12 「값 칸 숫자도 대응하도록 해서
+  /// 캔버스랑 같도록」: the head of the block, while the line stays the
+  /// keys'), and `transformUnionHeader` (five) the basis chip a header
+  /// wears beside its switch (Q10). 🔬`clean_code_diff` against the lane's
+  /// base (`cf70f6f8d`) names those three added and nothing gone. ⛔Not
+  /// bundled to fit: the line reads the value at its own time and the
+  /// column at another — one reading asked twice — and the switch and the
+  /// basis are two questions the header answers.
+  const wideSignatures = 460;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1640,7 +1652,17 @@ void main() {
   /// `resetHeldBrush`). 🔬`clean_code_diff` against master names this one and
   /// no other class. ⛔Not split to fit: the bank and what takes from it
   /// stand together.
-  const longClasses = 83;
+  ///
+  /// ⚠️83 → 84 on 2026-11-04, ONE name: `Layer` crossed (582 → 611) when
+  /// its Transform bundle came to be read by the frame or by the block
+  /// (I-120-Q1 · Q9): the basis it is read at (`transformBasis` — the
+  /// head's, mirrored and saved as `transformEnabled` is), the blocks its
+  /// bundles step on (`fxBlocks`) and the frame its transform reads
+  /// (`transformReadFrame`). 🔬`clean_code_diff` against the lane's base
+  /// (`cf70f6f8d`) names this one and no other class. ⛔Not split to fit:
+  /// the basis is the row's as its switch is, and the blocks it steps on
+  /// are its timeline.
+  const longClasses = 84;
 
   late CleanCodeScan scan;
   setUpAll(() {
