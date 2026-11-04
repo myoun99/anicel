@@ -166,6 +166,18 @@ void main() {
       ], reason: 'r g b a: a third, two thirds');
     });
 
+    test('the halfway pixel the halfway colour — the table spans the ramp',
+        () {
+      final laid = row([255, 255, 255]).piecesUnder(
+        gradient(
+          FillGradientShape.linear,
+          from: CanvasPoint(x: 0.5, y: 0.5),
+          to: CanvasPoint(x: 2.5, y: 0.5),
+        ),
+      );
+      expect(pixels(laid), [0x000000FF, 0x808080FF, 0xFFFFFFFF]);
+    });
+
     test('its alpha under the coverage — a soft edge stays soft', () {
       final laid = row([255, 128, 0]).piecesUnder(
         gradient(
