@@ -689,11 +689,23 @@ class _ImportDialogState extends State<ImportDialog> {
     Iterable<String> paths,
     ImportFileSettings Function(ImportFileSettings) change,
   ) {
+    final readItself = {
+      for (final path in paths) path: _readsTheFileItself(path),
+    };
     setState(() {
-      for (final path in paths) {
+      for (final path in readItself.keys) {
         _settings[path] = change(_settings[path] ?? _seed);
       }
     });
+    // An answer that moves where the window reads a row — this project's
+    // copy, or the file itself for a row bound for a new project (I-156) —
+    // has its size read again from there: what it shows is what comes in.
+    for (final MapEntry(key: path, value: itself) in readItself.entries) {
+      if (_readsTheFileItself(path) != itself) {
+        _pixelSizes.remove(normalizedMediaPath(path));
+        _readPixelSize(path);
+      }
+    }
   }
 
   /// 🐛ONE SEED FOR READING AND WRITING ([seedImportSettings]). A row's

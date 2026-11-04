@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/model_vocabulary.dart' show partsOf;
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/import_span.dart';
@@ -67,13 +68,15 @@ void main() {
     return projects;
   }
 
-  /// The window on [session], handed [path] by its door — with the tabs to
-  /// open a project in, or none.
+  /// The window on [session], handed [path] by its door — or, with
+  /// [fromThePool], as a pool row places it — with the tabs to open a
+  /// project in, or none.
   Future<void> openWindowOn(
     WidgetTester tester,
     EditorSessionManager session,
     String path, {
     OpenProjects? projects,
+    bool fromThePool = false,
   }) async {
     tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1.0;
@@ -81,26 +84,78 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ImportDialog(
-            session: session,
-            picked: [FolderGrant.granted(path: path, kind: GrantKind.file)],
-            projects: projects,
-          ),
+          body: fromThePool
+              ? ImportDialog(
+                  session: session,
+                  initialPaths: [path],
+                  placeOnly: true,
+                  projects: projects,
+                )
+              : ImportDialog(
+                  session: session,
+                  picked: [
+                    FolderGrant.granted(path: path, kind: GrantKind.file),
+                  ],
+                  projects: projects,
+                ),
         ),
       ),
     );
     await settleLoadedPages(tester);
   }
 
-  /// The window on the shown tab, handed [path] by its door.
+  /// The window on the shown tab, handed [path] by its door — or by the
+  /// pool, [fromThePool].
   Future<EditorSessionManager> openWindow(
     WidgetTester tester,
     OpenProjects projects,
-    String path,
-  ) async {
+    String path, {
+    bool fromThePool = false,
+  }) async {
     final here = projects.active;
-    await openWindowOn(tester, here, path, projects: projects);
+    await openWindowOn(
+      tester,
+      here,
+      path,
+      projects: projects,
+      fromThePool: fromThePool,
+    );
     return here;
+  }
+
+  /// [path]'s row word for its size — '' until it is read.
+  String resolutionOf(WidgetTester tester, String path) => tester
+      .widget<Text>(find.byKey(ValueKey<String>('import-resolution-$path')))
+      .data!;
+
+  /// `bg.png`, red at 8×8, carried by [session]'s pool — and the file on
+  /// disk blue at 16×16 since, or [gone].
+  Future<String> carriedThenChanged(
+    WidgetTester tester,
+    EditorSessionManager session, {
+    bool gone = false,
+  }) async {
+    final path = normalizedMediaPath(
+      (await tester.runAsync(
+        () => writeSolidPng(tempDir, 'bg.png', rgba: 0xFF0000FF),
+      ))!,
+    );
+    await tester.runAsync(
+      () => session.mediaPool.importMediaFiles([path], copyIntoProject: true),
+    );
+    expect(carryIn(session, path), isNotNull, reason: '⛔전제: carried');
+    await tester.runAsync(
+      () => gone
+          ? File(path).delete()
+          : writeSolidPng(
+              tempDir,
+              'bg.png',
+              rgba: 0x0000FFFF,
+              width: 16,
+              height: 16,
+            ),
+    );
+    return path;
   }
 
   /// [option] pressed in [path]'s cell of [column].
@@ -328,6 +383,96 @@ void main() {
     expect(identical(made, here), isFalse);
     expect(carryIn(made, png), isNotNull);
     expect(carryIn(made, png), isNot(kept), reason: 'a carry of its own');
+  });
+
+  testWidgets('a pool row bound for a new project shows what comes in — the '
+      'file itself, its size read again from it, not this project\'s copy '
+      '(F-550-Q3 「미리보기는 고른 파일을 보인다」; I-156-Q5 asks whether '
+      'the copy should come instead)', (tester) async {
+    final projects = tabs();
+    final path = await carriedThenChanged(tester, projects.active);
+    await openWindow(tester, projects, path, fromThePool: true);
+    const step = Duration(milliseconds: 50);
+    await settleAsync(
+      tester,
+      () => resolutionOf(tester, path) != '',
+      step: step,
+    );
+    expect(
+      resolutionOf(tester, path),
+      '8×8',
+      reason: 'placed here, the row is this project\'s copy',
+    );
+
+    await pick(tester, 'into', path, 'newProject');
+    await settleAsync(
+      tester,
+      () => resolutionOf(tester, path) == '16×16',
+      step: step,
+    );
+    expect(resolutionOf(tester, path), '16×16');
+    await pressImport(tester, projects);
+
+    expect(
+      theCut(projects.active).canvasSize,
+      const CanvasSize(width: 16, height: 16),
+    );
+  });
+
+  testWidgets('a file this project points at, brought in as a new project, '
+      'is kept as its row says — this project\'s pool does not answer for '
+      'the new one\'s', (tester) async {
+    final projects = tabs();
+    final here = projects.active;
+    final png = (await tester.runAsync(
+      () => writeSolidPng(tempDir, 'board.png'),
+    ))!;
+    await tester.runAsync(
+      () => here.mediaPool.importMediaFiles([png], copyIntoProject: false),
+    );
+    expect(
+      here.mediaPool.mediaAssets.single.carried,
+      isFalse,
+      reason: '⛔전제: this project points at the file',
+    );
+
+    await openWindow(tester, projects, png);
+    await pick(tester, 'into', png, 'newProject');
+    await pressImport(tester, projects);
+
+    expect(
+      projects.active.mediaPool.mediaAssets.single.carried,
+      isTrue,
+      reason: 'the row\'s own answer, carried',
+    );
+    expect(here.mediaPool.mediaAssets.single.carried, isFalse);
+  });
+
+  testWidgets('a pool row whose file is gone makes no new project — the new '
+      'one would hold no copy of it — and the window says it could not '
+      'read it', (tester) async {
+    final projects = tabs();
+    final here = projects.active;
+    final path = await carriedThenChanged(tester, here, gone: true);
+    await openWindow(tester, projects, path, fromThePool: true);
+    await pick(tester, 'into', path, 'newProject');
+    await pressImport(tester, projects);
+
+    expect(projects.sessions, [here]);
+    expect(letGo, isEmpty, reason: 'no project is made for it');
+    final notice = await openImportWarnings(tester);
+    final name = here.repository.requireProject().shownNameOfMedia(path);
+    final (:about, :says) = partsOf(
+      AppText.strings.imUnreadable(name),
+      about: name,
+    );
+    for (final words in [about!, '$says (1)']) {
+      expect(
+        find.descendant(of: notice, matching: find.text(words)),
+        findsOneWidget,
+        reason: words,
+      );
+    }
   });
 
   testWidgets('a window with no tabs to open one in offers no new project',
