@@ -169,10 +169,9 @@ class _BrushEditFill implements GradientRangeHold {
 
   /// [range] — an outline the shape fill closed — held for its gradient as
   /// the bucket's lift holds its flood ([lift]): marked, for the press that
-  /// lays its gradient. Whatever the fill held before goes.
+  /// lays its gradient.
   @override
   void hold(FillRange range) {
-    letGo();
     _state._heldForGradient = (range: range, drag: null);
     _mark(range);
   }

@@ -266,6 +266,7 @@ void main() {
       FillGradientOptions? gradient,
       ValueNotifier<BrushToolState>? brush,
       CanvasSize canvasSize = BrushCanvasFixture.canvasSize,
+      bool rowAcceptsStrokes = true,
     }) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
       final coordinator = BrushCanvasFixture.createCoordinator(
@@ -287,6 +288,7 @@ void main() {
                   BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
                 ),
             activeStrokeOverlayModel: overlay,
+            rowAcceptsStrokes: rowAcceptsStrokes,
             // One canvas pixel to a logical one, from the view's corner.
             viewport: seedFromRender(tester, CanvasViewport()),
             selectionCommands: selection == null
@@ -804,6 +806,19 @@ void main() {
           await outline(tester);
           expect(overlay.fillRange, isNotNull, reason: 'a new outline, held');
           expect(inkAt(coordinator, 20, 28), 0xFF0000FF, reason: 'unchanged');
+        });
+
+        testWidgets('on a row that takes no strokes it holds nothing — no '
+            'press could lay what it would mark', (tester) async {
+          final (:coordinator, :overlay, :floods) = await pumpHeld(
+            tester,
+            gradient: gradient,
+            brush: shapeFill(),
+            rowAcceptsStrokes: false,
+          );
+          await outline(tester);
+          expect(overlay.fillRange, isNull, reason: 'nothing held');
+          expect(inkAt(coordinator, 30, 28), 0, reason: 'nothing laid');
         });
 
         testWidgets('with the gradient off the outline lands at once, as ever',
