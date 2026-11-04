@@ -163,12 +163,6 @@ enum AppStrings {
   String exclusionReason(String key, String fallback) =>
       _values['exclusionReason.$key'] ?? fallback;
 
-  /// Why a rasterize left a row the reference it is, and what gets it past
-  /// (F-374-Q11), by `ReferenceWait.name` — the contract [exclusionReason]
-  /// keeps: the English is the enum's own, the other languages are here.
-  String referenceWait(String key, String fallback) =>
-      _values['referenceWait.$key'] ?? fallback;
-
   /// A file type's name in the save window, by the extensions it writes —
   /// the contract of [importWarning]: the English is the group's own label
   /// (`file_type_groups.dart`), the other languages are here (F-273).
@@ -603,13 +597,9 @@ enum AppStrings {
   String get resizeProgressRunning => _s('resizeProgressRunning');
 
   /// The wait window over a bake — a movie's frames into cels, at placement
-  /// or by the reference button's rasterize.
+  /// or by the reference header's rasterize.
   String get bakeProgressRunning => _s('bakeProgressRunning');
 
-  /// The notice over a rasterize that left rows the references they are
-  /// (F-374-Q11 「막고 경고」): its line. Why each row waits, with what gets
-  /// it past, is [referenceWait]'s.
-  String get rasterizeLeftReferences => _s('rasterizeLeftReferences');
   String get pasteProgressRunning => _s('pasteProgressRunning');
 
   /// F-549: the wait window a timeline's copy stands behind.
@@ -2508,7 +2498,6 @@ enum AppStrings {
     'openWaitingStalledTemplate': 'Nothing has arrived for {sec}s',
     'resizeProgressRunning': 'Resizing…',
     'bakeProgressRunning': 'Rasterizing…',
-    'rasterizeLeftReferences': 'Some layers were left as references.',
     'pasteProgressRunning': 'Pasting…',
     'duplicateProgressRunning': 'Duplicating…',
     'workProgressRunning': 'Working…',
@@ -3939,11 +3928,6 @@ enum AppStrings {
     'openWaitingStalledTemplate': '{sec}秒間、まだ届いていません',
     'resizeProgressRunning': 'サイズ変更中…',
     'bakeProgressRunning': 'ラスタライズ中…',
-    'rasterizeLeftReferences': '参照のまま残したレイヤーがあります。',
-    'referenceWait.usesApart':
-        'リンクされたレイヤーが同じセルの絵を別々の位置に見せているため、'
-        'セル1枚に収められません。'
-        '参照を同じ位置にそろえるとラスタライズできます。',
     'pasteProgressRunning': 'ペースト中…',
     'duplicateProgressRunning': '複製中…',
     'workProgressRunning': '処理中…',
@@ -5803,10 +5787,6 @@ enum AppStrings {
     'openWaitingStalledTemplate': '{sec}초째 도착하지 않았습니다',
     'resizeProgressRunning': '크기 변경 중…',
     'bakeProgressRunning': '래스터라이즈 중…',
-    'rasterizeLeftReferences': '참조로 남긴 레이어가 있습니다.',
-    'referenceWait.usesApart':
-        '링크된 레이어들이 같은 셀의 그림을 서로 다른 자리에 보여, 셀 한 장에 '
-        '담을 수 없습니다. 참조를 같은 자리로 맞추면 래스터라이즈됩니다.',
     'pasteProgressRunning': '붙여넣는 중…',
     'duplicateProgressRunning': '복제하는 중…',
     'workProgressRunning': '처리 중…',
@@ -7677,11 +7657,6 @@ enum AppStrings {
     'saveStepHandingBack': 'Remise du fichier à son document…',
     'resizeProgressRunning': 'Redimensionnement…',
     'bakeProgressRunning': 'Pixellisation…',
-    'rasterizeLeftReferences': 'Certains calques restent des références.',
-    'referenceWait.usesApart':
-        'Les calques liés montrent l’image de ce cellulo à des endroits '
-        'différents, et un cellulo la garde à un seul. Alignez leur '
-        'Référence pour pixelliser.',
     'pasteProgressRunning': 'Collage…',
     'duplicateProgressRunning': 'Duplication…',
     'workProgressRunning': 'Traitement…',
@@ -9681,10 +9656,6 @@ enum AppStrings {
     'saveStepHandingBack': '正在将文件交还给原文档…',
     'resizeProgressRunning': '正在调整尺寸…',
     'bakeProgressRunning': '正在栅格化…',
-    'rasterizeLeftReferences': '部分图层仍保留为参照。',
-    'referenceWait.usesApart':
-        '链接的图层在不同位置显示同一张赛璐珞的画面，'
-        '一张赛璐珞只能放在一个位置。将参照对齐到同一位置即可栅格化。',
     'pasteProgressRunning': '粘贴中…',
     'duplicateProgressRunning': '复制中…',
     'workProgressRunning': '正在处理…',

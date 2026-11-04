@@ -35,10 +35,12 @@ typedef ReferenceUse = ({Cut cut, Layer layer});
 ///   ([ReferenceMoveCarried.framed]: 🗣️I-120-Q5, 유저 2026-11-04 「바꾼다 —
 ///   애니메이션 레이어로, 움직이는 프레임마다 한 장」);
 /// * and where the uses of a still's cels show the picture at different
-///   places, every use waits, the reference it is, and the row says why
-///   ([ReferenceMoveWaits] — F-374-Q11, 유저 2026-10-17: 「막고 경고」).
-///   ↩️A still the fx moves waited too, for what kept the keys from
-///   carrying it, until Q5.
+///   places, each place is a picture of its own, the link kept
+///   (🗣️I-120-Q22, 유저 2026-11-05 「바꾼다 — 링크를 둔 채 셀을 나눠
+///   굽는다(Q20 · 동영상 참조와 같은 법)」). ↩️Every use waited there and
+///   the row said why (F-374-Q11 「막고 경고」) until Q22, and a still the
+///   fx moves waited too, for what kept the keys from carrying it, until
+///   Q5.
 ///
 /// 🗣️F-374-Q10 (유저 2026-10-17: 「같은 셀을 보는 쓰임을 전부 같이」 —
 /// 「겸용컷이니까 다른컷이 바뀌는거는 인지하고있는게 사용자 기준」): the uses
@@ -47,16 +49,14 @@ typedef ReferenceUse = ({Cut cut, Layer layer});
 /// was off give way. A still's cel is ONE picture
 /// (`SwapLayerReferenceCommand`): baked in place, every use shows it moved,
 /// so its uses take their moves as keys all or none, and the cel takes the
-/// picture only where every use shows it at one place (Q10's cost: 「쓰임마다
-/// 참조 fx 가 다르면 한 셀에 담을 수 없어, 그때는 막힙니다」). A movie's cels
-/// are made a position apiece, so each of its uses takes its own way.
+/// picture in place only where every use shows it at one place. A movie's
+/// cels are made a position apiece, so each of its uses takes its own way.
 ///
 /// [othersKeepKeys]: a row that wears their head but shows none of their
 /// cels — a track's conte row (`headMirrorRows`) — keeps transform keys of
 /// its own, which the switch coming on would show. Q10 answered for the
-/// uses alone, so those keys never give way: the uses bake instead, or
-/// wait.
-ReferenceLetGo referenceLetGo({
+/// uses alone, so those keys never give way: the uses bake instead.
+ReferenceMoveCarried referenceLetGo({
   required List<ReferenceUse> uses,
   required bool othersKeepKeys,
 }) {
@@ -81,15 +81,17 @@ ReferenceLetGo referenceLetGo({
     for (final carry in carries)
       !showsOthers && carry is ReferenceCarried && (movie || !uncarried),
   ];
-  if (!movie && !keyed.contains(true) && _usesApart(uses)) {
-    return const ReferenceMoveWaits(ReferenceWait.usesApart);
-  }
   final on = [
     for (final (use, key) in keyed.indexed) key && turnsOn[use],
   ].contains(true);
   return ReferenceMoveCarried(
     _usesLetGo(uses, carries, keyed: keyed, on: on),
     switchOn: on,
+    framed:
+        movie ||
+        !keyed.contains(true) &&
+            (uses.any((use) => referenceMoves(use.layer)) ||
+                _usesApart(uses)),
   );
 }
 
@@ -140,11 +142,9 @@ List<ReferenceUseLetGo> _usesLetGo(
 
 /// Whether [uses] of a still's cels show the picture at different places
 /// at a frame — the move each one's fx makes there ([referenceMoveAt]) —
-/// which the cels they share cannot take: a cel holds the picture at one
-/// place (F-374-Q10's cost, 「쓰임마다 참조 fx 가 다르면 한 셀에 담을 수
-/// 없어, 그때는 막힙니다」, kept by I-120-Q5's 「지금처럼 막습니다」). A move
-/// holds on from its last key, so the frames up to the last key any of
-/// them has say every place.
+/// which one cel taking the picture in place cannot hold: each place is a
+/// picture of its own (🗣️I-120-Q22). A move holds on from its last key,
+/// so the frames up to the last key any of them has say every place.
 bool _usesApart(List<ReferenceUse> uses) {
   final last = [
     for (final use in uses)
@@ -166,31 +166,28 @@ bool referenceMoves(Layer layer) =>
     layer.mediaReference?.fx.lanes.any((lane) => lane.keys.length > 1) ??
     false;
 
-/// What [referenceLetGo] answers.
-sealed class ReferenceLetGo {
-  const ReferenceLetGo();
-}
-
-/// Every use lets go of the reference, each the way [uses] says, and where
-/// [switchOn] the switch they share comes on with them.
-final class ReferenceMoveCarried extends ReferenceLetGo {
-  const ReferenceMoveCarried(this.uses, {required this.switchOn});
+/// What [referenceLetGo] answers: every use lets go of the reference, each
+/// the way [uses] says, and where [switchOn] the switch they share comes on
+/// with them.
+final class ReferenceMoveCarried {
+  const ReferenceMoveCarried(
+    this.uses, {
+    required this.switchOn,
+    required this.framed,
+  });
 
   final List<ReferenceUseLetGo> uses;
   final bool switchOn;
 
+  /// Whether the cels are made a position apiece, as a movie's are — a
+  /// movie's always, a still's where the uses take the picture as shown and
+  /// one cel cannot hold it in place: its fx moves it (🗣️I-120-Q5), or the
+  /// uses show it apart (🗣️I-120-Q22) — rather than taking it in place.
+  final bool framed;
+
   /// Whether a cel takes a picture where a use shows it — the rasterize
   /// that bakes.
   bool get bakes => uses.any((use) => use.asShown);
-
-  /// Whether the cels are made a position apiece, as a movie's are — a
-  /// movie's always, a still's where its fx moves the picture a use takes
-  /// as shown (🗣️I-120-Q5) — rather than taking the picture in place.
-  bool get framed => uses.any(
-    (letGo) =>
-        isMovieReference(letGo.use.layer) ||
-        (letGo.asShown && referenceMoves(letGo.use.layer)),
-  );
 }
 
 /// How one use lets go ([ReferenceMoveCarried]): the transform [track] it
@@ -203,39 +200,6 @@ typedef ReferenceUseLetGo = ({
   TransformTrack track,
   bool asShown,
 });
-
-/// Neither yet: every use stays the reference it is, and [why] is what the
-/// row's warning says.
-final class ReferenceMoveWaits extends ReferenceLetGo {
-  const ReferenceMoveWaits(this.why);
-
-  final ReferenceWait why;
-}
-
-/// Why a rasterize leaves a reference row the reference it is
-/// ([ReferenceMoveWaits]) — what its warning says, and how to get past it
-/// (F-374-Q11 「막고 경고」) — the stable key the string tables answer, and
-/// the English the UI falls back to (I-4, the contract every reason a model
-/// gives keeps since F-124).
-///
-/// ↩️A still its fx moved waited for what kept the keys from carrying the
-/// move — an attach row, a file laid fitted, a shear, the keys another row
-/// keeps, a transform read by blocks — until 🗣️I-120-Q5 made its cels a
-/// position apiece: the option the user took says those warnings go.
-enum ReferenceWait {
-  /// The uses show the picture at different places, and the cel they share
-  /// holds it at one.
-  usesApart(
-    "The linked layers show this cel's picture in different places, and "
-    'one cel holds it in one. Match their Reference to rasterize.',
-  );
-
-  const ReferenceWait(this.label);
-
-  /// The English wording, and the fallback for a language that has not
-  /// tabled this reason (`ReferenceWaitWords.labelFor`).
-  final String label;
-}
 
 /// What [transformCarryingReferenceMove] answers.
 sealed class ReferenceCarry {

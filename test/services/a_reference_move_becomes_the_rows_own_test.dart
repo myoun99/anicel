@@ -2,7 +2,7 @@
 // (추천)」): rasterizing a reference keeps the picture where its fx stood it
 // — the cels hold the file as it was laid, and the move is the row's own
 // keys now. F-374-Q7 (유저 2026-10-17, 「①은 스위치를 켜고 키로, ②③만
-// 굽는다」): which rows take it as keys, which bake it, and which wait.
+// 굽는다」): which rows take it as keys and which bake it.
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -714,8 +714,8 @@ void main() {
     expect(off.enabled, isFalse);
   });
 
-  group('referenceLetGo — keys, the cels, or waiting, every use of the '
-      'cel together (F-374-Q7 · Q10 · Q11)', () {
+  group('referenceLetGo — keys or the cels, every use of the cel '
+      'together (F-374-Q7 · Q10 · I-120-Q22)', () {
     final laid = TransformPose(center: middle);
     final fitted = TransformPose.uniform(center: middle, zoom: 0.5);
     final uneven = TransformTrack.empty().copyWith(
@@ -734,25 +734,19 @@ void main() {
     );
     const base = LayerId('a');
 
-    ReferenceLetGo wayOf(List<Layer> uses, {bool othersKeepKeys = false}) =>
-        referenceLetGo(
-          uses: [for (final use in uses) (cut: cutOf(use), layer: use)],
-          othersKeepKeys: othersKeepKeys,
-        );
-
     ReferenceMoveCarried goes(
       List<Layer> uses, {
       bool othersKeepKeys = false,
-    }) => switch (wayOf(uses, othersKeepKeys: othersKeepKeys)) {
-      final ReferenceMoveCarried way => way,
-      ReferenceMoveWaits(:final why) => fail('the uses wait: $why'),
-    };
+    }) => referenceLetGo(
+      uses: [for (final use in uses) (cut: cutOf(use), layer: use)],
+      othersKeepKeys: othersKeepKeys,
+    );
 
-    ReferenceWait? whyWaits(List<Layer> uses, {bool othersKeepKeys = false}) =>
-        switch (wayOf(uses, othersKeepKeys: othersKeepKeys)) {
-          ReferenceMoveWaits(:final why) => why,
-          ReferenceMoveCarried() => null,
-        };
+    /// Whether [uses] take the picture as shown, a position apiece.
+    bool framedAsShown(List<Layer> uses) {
+      final way = goes(uses);
+      return way.framed && way.uses.every((use) => use.asShown);
+    }
 
     test('a row its transform carries the move of takes it as keys — the '
         'track the carry makes, the switch as it was', () {
@@ -872,24 +866,25 @@ void main() {
       ]);
     });
 
-    test('🎯a still whose one cel has to take the picture takes it where '
-        'every use shows it at one place — and where they show it apart, '
-        'a use that is no reference among them, every use waits '
-        '(F-374-Q10: 「쓰임마다 참조 fx 가 다르면 한 셀에 담을 수 없어, '
-        '그때는 막힙니다」)', () {
+    test('🎯a still whose one cel has to take the picture takes it IN '
+        'PLACE where every use shows it at one place — and where they show '
+        'it apart, a use that is no reference among them, a picture a '
+        'place (🗣️I-120-Q22 「링크를 둔 채 셀을 나눠 굽는다」 — ↩️F-374-Q10 '
+        'waited there)', () {
       final attached = paper(laid: laid, pose: fitted, attachedTo: base);
       final copy = paper(id: 'copy', laid: laid, pose: fitted, own: kept);
 
       final way = goes([attached, copy]);
 
       expect([for (final use in way.uses) use.asShown], [true, true]);
+      expect(way.framed, isFalse, reason: 'one place: the cel in place');
       expect([for (final use in way.uses) use.track], [
         attached.transformTrack,
         kept,
       ]);
       expect(way.switchOn, isFalse);
       expect(
-        whyWaits([
+        framedAsShown([
           attached,
           paper(
             id: 'copy',
@@ -897,21 +892,21 @@ void main() {
             pose: TransformPose.uniform(center: middle, zoom: 0.25),
           ),
         ]),
-        ReferenceWait.usesApart,
+        isTrue,
       );
       expect(
-        whyWaits([
+        framedAsShown([
           attached,
           paper(id: 'drawn', laid: laid).copyWith(mediaReference: null),
         ]),
-        ReferenceWait.usesApart,
+        isTrue,
       );
     });
 
     test('a use whose still MOVES on a transform that cannot carry it takes '
         'every use with it, a use whose own could — the keys are all or '
-        'none — and where they move it apart, every use waits (F-374-Q10 · '
-        'I-120-Q5)', () {
+        'none — and where they move it apart, a picture a place too '
+        '(F-374-Q10 · I-120-Q5 · Q22)', () {
       final carriable = paper(laid: laid, fx: moving);
 
       final framed = goes([
@@ -922,21 +917,12 @@ void main() {
       expect([for (final use in framed.uses) use.asShown], [true, true]);
       expect(framed.uses.first.track, carriable.transformTrack);
       expect(
-        whyWaits([
+        framedAsShown([
           carriable,
           paper(id: 'copy', laid: laid, pose: fitted, attachedTo: base),
         ]),
-        ReferenceWait.usesApart,
-        reason: 'the cels would have to take a move one use makes',
-      );
-      expect(
-        whyWaits([
-          paper(laid: laid, fx: moving, attachedTo: base),
-          paper(id: 'copy', laid: laid, fx: turning, attachedTo: base),
-        ]),
-        ReferenceWait.usesApart,
-        reason: 'both stand the file where it is laid at frame 0, and part '
-            'after it',
+        isTrue,
+        reason: 'each use takes the move it makes',
       );
     });
 
@@ -1028,7 +1014,7 @@ void main() {
     /// How a rasterize lets go of cut `a`'s conte — a reference its fx fits,
     /// its switch off — on a track whose cut `b` has a conte keeping [kept]
     /// of its own: one head, two cuts' cels.
-    ReferenceLetGo wayOfTheConte({TransformTrack? kept}) {
+    ReferenceMoveCarried wayOfTheConte({TransformTrack? kept}) {
       final conte = paper(
         id: 'a-conte',
         laid: laid,

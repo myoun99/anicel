@@ -745,7 +745,6 @@ void main() {
     'imPictureOnly': (s) => s.imPictureOnly,
     'imSoundOnly': (s) => s.imSoundOnly,
     'bakeProgressRunning': (s) => s.bakeProgressRunning,
-    'rasterizeLeftReferences': (s) => s.rasterizeLeftReferences,
     'pasteProgressRunning': (s) => s.pasteProgressRunning,
     'duplicateProgressRunning': (s) => s.duplicateProgressRunning,
     'workProgressRunning': (s) => s.workProgressRunning,

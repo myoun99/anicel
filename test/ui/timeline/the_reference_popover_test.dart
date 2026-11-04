@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -24,16 +23,9 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
-import 'package:anicel/src/services/reference_move_carried.dart'
-    show ReferenceWait;
-import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart'
-    show DetailsDisclosure;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
-import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/text/model_vocabulary.dart'
-    show ReferenceWaitWords;
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
 import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
@@ -434,17 +426,18 @@ void main() {
         for (var at = 13; at < length; at += 1) baked.frames.last.id,
       ],
     );
-    expect(foldsOf(tester), isEmpty, reason: 'nothing waited');
 
     s.undo();
     expect(current(s, street), before);
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a row that waits stays the reference it is — no wait window '
-      'comes up for it, the notice that says why does: a 겸용 copy no key '
-      'carries the move of shows its picture elsewhere (F-374-Q10 · Q11 '
-      '「막고 경고」)', (tester) async {
+  testWidgets('🎯a 겸용 copy no key carries the move of, showing the picture '
+      'elsewhere, goes behind the window with its row — each use its own '
+      'cel, an animation layer — as ONE undo (🗣️I-120-Q22 「링크를 둔 채 '
+      '셀을 나눠 굽는다」 — ↩️F-374-Q11 left it a reference and said why)', (
+    tester,
+  ) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     final street = rows['bg_street.png']!;
     final copy = s.cutCommandCoordinator.linkDuplicateLayer(
@@ -453,69 +446,35 @@ void main() {
       insertionIndex: 0,
     );
     sheared(s, copy, PropertyTrack<double>().withKey(0, 30));
-    final before = current(s, street);
+    final before = [current(s, street), current(s, copy)];
     final menuContext = await hostedContext(tester);
 
-    unawaited(rasterizeReferenceRows(menuContext, s, [before]));
-    await tester.pumpAndSettle();
+    unawaited(rasterizeReferenceRows(menuContext, s, [before.first]));
+    await tester.pump();
+    expect(waitWindow, findsOneWidget);
 
-    expect(waitWindow, findsNothing);
-    expect(current(s, street), before);
-    expect(foldsOf(tester), {
-      ReferenceWait.usesApart.labelFor(AppText.language): [before.name],
-    });
-  });
-
-  testWidgets('🎯the notice says each reason once, in its own words, over '
-      'every row it was said of — under the one line that says the rows '
-      'stayed references (F-374-Q11)', (tester) async {
-    final menuContext = await hostedContext(tester);
-    Layer row(String name) =>
-        Layer(id: LayerId(name), name: name, frames: const []);
-
-    unawaited(
-      showReferenceWaits(menuContext, [
-        (row: row('a'), why: ReferenceWait.usesApart),
-        (row: row('b'), why: ReferenceWait.usesApart),
-      ]),
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, street).mediaReference == null,
     );
-    await tester.pumpAndSettle();
-
+    final baked = current(s, street);
+    final bakedCopy = current(s, copy);
+    expect(bakedCopy.mediaReference, isNull);
+    expect([baked.kind, bakedCopy.kind], [
+      LayerKind.animation,
+      LayerKind.animation,
+    ]);
+    expect(baked.frames, hasLength(2));
     expect(
-      find.text(AppText.strings.rasterizeLeftReferences),
-      findsOneWidget,
+      exposedFrameIdAt(baked.timeline, 0),
+      isNot(exposedFrameIdAt(bakedCopy.timeline, 0)),
     );
-    expect(foldsOf(tester), {
-      ReferenceWait.usesApart.labelFor(AppText.language): ['a', 'b'],
-    });
-  });
 
-  testWidgets('the notice says why in the program\'s language — a reason '
-      'reads its words from the tables, not its English (F-374-Q11)', (
-    tester,
-  ) async {
-    AppText.settings.value = const AppLanguageSettings(
-      programLanguage: AppLanguage.ko,
-      notationLanguage: AppLanguage.ko,
-    );
-    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
-    final menuContext = await hostedContext(tester);
-    final words = ReferenceWait.usesApart.labelFor(AppLanguage.ko);
-    expect(words, isNot(ReferenceWait.usesApart.label), reason: 'the premise');
-
-    unawaited(
-      showReferenceWaits(menuContext, [
-        (
-          row: Layer(id: const LayerId('a'), name: 'a', frames: const []),
-          why: ReferenceWait.usesApart,
-        ),
-      ]),
-    );
+    s.undo();
+    expect([current(s, street), current(s, copy)], before);
     await tester.pumpAndSettle();
-
-    expect(foldsOf(tester), {
-      words: ['a'],
-    });
   });
 
   test('the pool state is where the file\'s bytes live — carried or linked',
@@ -541,15 +500,3 @@ final popover = find.byKey(const ValueKey<String>('layer-reference-popover'));
 final waitWindow = find.byKey(
   const ValueKey<String>('reference-rasterize-progress'),
 );
-
-/// The folds of the notice a rasterize that left rows waiting puts up: what
-/// each says, over the rows it says it of.
-Map<String, List<String>> foldsOf(WidgetTester tester) => {
-  for (final fold in tester.widgetList<DetailsDisclosure>(
-    find.descendant(
-      of: find.byKey(const ValueKey<String>('reference-rasterize-waits')),
-      matching: find.byType(DetailsDisclosure),
-    ),
-  ))
-    fold.heading: fold.lines,
-};

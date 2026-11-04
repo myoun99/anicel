@@ -1069,7 +1069,8 @@ class ProjectImportDoors {
   /// carry it, each laid where the fx stands it at its position, a cel
   /// apiece wherever the picture or the move changes (「움직이는 참조는
   /// 움직이는 프레임마다 한 장」), the file laid whole past the wall
-  /// (F-374-Q8). A row that waits is left as it is.
+  /// (F-374-Q8) — each place the uses show a still at a picture of its own
+  /// (🗣️I-120-Q22 「링크를 둔 채 셀을 나눠 굽는다」).
   ///
   /// 🗣️F-374-Q10 (유저 2026-10-17, 「같은 셀을 보는 쓰임을 전부 같이」): the
   /// cel the row shows its file through is its 겸용 link group's, so every
@@ -1079,8 +1080,9 @@ class ProjectImportDoors {
   /// ⚠️HERE rather than beside [RasterizeLayerReferenceCommand], because
   /// this is where a file's pixels come in: the reader, the sound's clock,
   /// the duplicate fold and the bake tail are all this file's already, and
-  /// a second set of them is what this file exists to prevent. A still that
-  /// stands still takes its picture in its own cels ([bakeReferenceAsSeen]).
+  /// a second set of them is what this file exists to prevent. A still its
+  /// uses show standing still at one place takes its picture in its own
+  /// cels ([bakeReferenceAsSeen]).
   Future<bool> rasterizeReferenceFrames({
     required CutId cutId,
     required LayerId layerId,
@@ -1106,8 +1108,8 @@ class ProjectImportDoors {
     try {
       // Each file a use shows, opened once.
       for (final use in way.uses) {
-        final path = use.use.layer.mediaReference!.assetPath;
-        if (opened.containsKey(path)) {
+        final path = use.use.layer.mediaReference?.assetPath;
+        if (path == null || opened.containsKey(path)) {
           continue;
         }
         final file = await _openFile(use.use.layer);
@@ -1658,23 +1660,31 @@ class ProjectImportDoors {
   /// ([tailedName], I-78-Q10 「갈라진 곳은 꼬리 번호」, as an fx RASTERIZE
   /// names its parted pictures) — or as it is, where no use shows it, as an
   /// fx RASTERIZE leaves a cel no use shows. A movie's one cel has no name,
-  /// and neither have its pictures.
+  /// and neither have its pictures. A use that shows no file shows its cels
+  /// as they are, a picture of their own: each stays itself, and the
+  /// pictures the others take of it are all its tails (🗣️I-120-Q22).
   _FramedCels _framedCelsOf(
     ReferenceMoveCarried way,
     Map<String, _OpenFile> opened,
   ) {
     final made = <(FrameId, _ShownPicture), FrameId>{};
     final madeOf = <FrameId, List<Frame>>{};
+    final kept = <FrameId>{};
     final bakes = <PlannedCelBake>[];
     final standing = <FrameId, TransformPose>{};
     final celAt = <Map<int, FrameId>>[];
     for (final (:use, track: _, :asShown) in way.uses) {
       final shows = <int, FrameId>{};
+      final file = use.layer.mediaReference?.assetPath;
       for (final block in drawingBlocks(use.layer.timeline)) {
+        if (file == null) {
+          kept.add(block.frameId);
+          continue;
+        }
         final (:shown, :plan) = _plannedBlock(
           use,
           block,
-          info: opened[use.layer.mediaReference!.assetPath]!.info,
+          info: opened[file]!.info,
           asShown: asShown,
         );
         for (final MapEntry(key: position, value: exposure)
@@ -1700,14 +1710,15 @@ class ProjectImportDoors {
     final held = {for (final cel in bank.values) ?celNumberOf(cel.name)};
     return (
       frames: [
-        for (final cel in bank.values)
-          if (madeOf[cel.id] case final pictures?)
-            for (final (index, picture) in pictures.indexed)
-              picture.copyWith(
-                name: index == 0 ? cel.name : tailedName(held, cel.name),
-              )
-          else
-            cel,
+        for (final cel in bank.values) ...[
+          if (kept.contains(cel.id) || !madeOf.containsKey(cel.id)) cel,
+          for (final (index, picture) in (madeOf[cel.id] ?? []).indexed)
+            picture.copyWith(
+              name: index == 0 && !kept.contains(cel.id)
+                  ? cel.name
+                  : tailedName(held, cel.name),
+            ),
+        ],
       ],
       bakes: bakes,
       standing: standing,

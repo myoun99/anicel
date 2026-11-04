@@ -56,9 +56,11 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
 /// 🗣️I-120-Q11 (유저 2026-11-04 「래스터라이즈 버튼만 둔다(지금 참조
 /// 래스터라이즈와 같은 길), 스위치는 없음」): the reference header's
-/// RASTERIZE is the reference popover's 「래스터라이즈 · N장」 — the rows a
-/// press on [layer] acts on ([layerReferenceTargets]), rasterized the one
-/// way ([rasterizeReferenceRows]); lit off where it acts on none.
+/// RASTERIZE is what the reference popover's 「래스터라이즈 · N장」 was — and,
+/// by the answer's note (「참조 버튼의 래스터라이즈 버튼은 삭제 … 그래서
+/// 하나만 남기도록」), the one door to it: the rows a press on [layer] acts
+/// on ([layerReferenceTargets]), rasterized the one way
+/// ([rasterizeReferenceRows]); lit off where it acts on none.
 ({VoidCallback? press}) _referenceRasterize(
   BuildContext context,
   EditorSessionManager session,
