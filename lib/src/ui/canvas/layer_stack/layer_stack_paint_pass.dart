@@ -334,11 +334,11 @@ class _LayerStackPaintPass {
   /// with no screen around it, and only where [into] is not clipped away
   /// ([_reachOf]).
   ///
-  /// Drawn to keep its nodes' pictures, it is all that is held after
-  /// ([HeldSubtreeRasters.holdOnly]).
+  /// Drawn to hold only what it draws ([NodesKept.onlyDrawn]), it is all
+  /// that is held after ([HeldSubtreeRasters.holdOnly]).
   void paintFrame(Canvas into) {
     switch (_painter.held) {
-      case (:final rasters, keeps: true, below: _):
+      case (:final rasters, keeps: NodesKept.onlyDrawn, below: _):
         rasters.holdOnly(() => _paintFrame(into));
       case _:
         _paintFrame(into);
@@ -1109,7 +1109,7 @@ class _LayerStackPaintPass {
       keyOf: _drawsOf,
       pictureOf: _pictureOf,
       drawnOn: _drawnOn,
-      keeps: keeps,
+      keeps: keeps != NodesKept.none,
       below: below,
       cells: null,
     ),

@@ -338,6 +338,43 @@ void main() {
     });
   });
 
+  testWidgets('🚨a step patched in by the frame as a canvas stands lets go of '
+      'no folder it does not reach — the screen over the page finds it '
+      'still (F-533)', (tester) async {
+    await tester.runAsync(() async {
+      final s = session(count: 2, withPen: true);
+      addTearDown(s.dispose);
+      final pictures = s.playbackRig.framePictures;
+      final stood = drawn(s, count: 2);
+      await shown(s, stood);
+      final held = pictures.heldNodes;
+      final nodes = held.heldBytes - held.heldBelowBytes;
+      expect(nodes, greaterThan(0), reason: '⛔premise: the folder over it');
+
+      // A step past the corner of the page, away from every row's ink.
+      final step = ui.PictureRecorder();
+      pictures
+          .frameAsItStands(pictures.stackOf(stood), stood, live: onACanvas())
+          .drawing
+          .draw(ui.Canvas(step)..clipRect(const Rect.fromLTWH(26, 0, 6, 6)));
+      step.endRecording().dispose();
+      expect(held.heldBytes - held.heldBelowBytes, nodes);
+
+      debugSubtreeRasterCount = 0;
+      final screen = ui.PictureRecorder();
+      pictures
+          .frameAsItStands(pictures.stackOf(stood), stood, live: onACanvas())
+          .paintOnScreen(
+            ui.Canvas(screen),
+            const Size(32, 24),
+            viewport: CanvasViewport(),
+            devicePixelRatio: 1,
+          );
+      screen.endRecording().dispose();
+      expect(debugSubtreeRasterCount, 0, reason: 'found by the screen');
+    });
+  });
+
   testWidgets('🗣️what is held is the frame last drawn to hold them — what it '
       'held before it changed is let go of', (tester) async {
     await tester.runAsync(() async {

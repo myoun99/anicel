@@ -508,7 +508,11 @@ class FramePictures implements PlaybackPictures {
     drawingNow(
       nodes,
       picture,
-      held: (rasters: heldNodes, keeps: true, below: BelowThePen.asHeld),
+      held: (
+        rasters: heldNodes,
+        keeps: NodesKept.onlyDrawn,
+        below: BelowThePen.asHeld,
+      ),
     ).frame.drawing.draw(ui.Canvas(recorder));
     recorder.endRecording().dispose();
     heldNodes.heldAllOf(keyOfStack(nodes, picture));
@@ -580,7 +584,7 @@ class FramePictures implements PlaybackPictures {
                     picture,
                     held: (
                       rasters: rasters,
-                      keeps: true,
+                      keeps: NodesKept.onlyDrawn,
                       below: BelowThePen.whole,
                     ),
                   ).frame.drawing,
@@ -741,7 +745,7 @@ class FramePictures implements PlaybackPictures {
   /// A frame that finds its nodes' pictures in [rasters] and keeps none.
   static HeldNodePictures _findsIn(HeldSubtreeRasters rasters) => (
     rasters: rasters,
-    keeps: false,
+    keeps: NodesKept.none,
     below: BelowThePen.whole,
   );
 
@@ -804,7 +808,9 @@ class FramePictures implements PlaybackPictures {
   /// drawn here and laid at once ([makeShown]), and a folder the value lies
   /// in ran its chain in both. So it keeps what that lay would for that
   /// canvas (`keepsNodes`): whichever draws first spares the other, and a
-  /// value costs one chain.
+  /// value costs one chain. ⛔It lets go of none ([NodesKept.drawnWhole]): a
+  /// stroke's step is patched in by it, cut to the step, and what the step
+  /// does not reach is held all the same (F-533).
   StackedFrame frameAsItStands(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
@@ -820,7 +826,7 @@ class FramePictures implements PlaybackPictures {
       live: live,
       held: _holding(page, (
         rasters: heldNodes,
-        keeps: live != null,
+        keeps: live == null ? NodesKept.none : NodesKept.drawnWhole,
         below: BelowThePen.inCells,
       )),
     );
