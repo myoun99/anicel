@@ -28,7 +28,6 @@ import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/png_chunks.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
-import '../../helpers/wait_window.dart';
 
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재 보이는대로
 /// png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로 클립하는건
@@ -95,50 +94,37 @@ void main() {
     await tester.pump();
   }
 
+  bool noWindowUp() => find.byType(AppWindow).evaluate().isEmpty;
+
   /// The save labels that reached the screen, in the order they first did,
-  /// and whether the confirmation a PLACED save wears ever stood — while the
-  /// work runs on the real clock (a picture is drawn and written by real
-  /// IO, whose continuations only a pump drains) until [done].
-  Future<({List<String> labels, bool placedWindow})> watchUntil(
+  /// and whether any window stood — while the work runs on the real clock
+  /// (a picture is drawn and written by real IO, whose continuations only a
+  /// pump drains) until [done].
+  Future<({List<String> labels, bool windowStood})> watchUntil(
     WidgetTester tester,
     bool Function() done,
   ) async {
     final strings = AppText.strings;
-    final words = [
-      strings.savePrepareRunning,
-      strings.savePrepareDone,
-      strings.saveProgressRunning,
-      strings.saveProgressDone,
-    ];
+    final words = [strings.savePrepareRunning, strings.saveProgressRunning];
     final labels = <String>[];
-    var placedWindow = false;
+    var windowStood = false;
     await settleAsync(
       tester,
       done,
       beat: const Duration(milliseconds: 10),
       step: const Duration(milliseconds: 16),
-      everyFrame: () async {
+      everyFrame: () {
         for (final word in words) {
           if (!labels.contains(word) &&
               find.text(word).evaluate().isNotEmpty) {
             labels.add(word);
           }
         }
-        placedWindow |= find
-            .byKey(const ValueKey<String>('save-placed-dialog'))
-            .evaluate()
-            .isNotEmpty;
-        // What is watched for may be the done line itself: passed over in
-        // the frame it stands in, it is never seen again.
-        if (!done()) {
-          await passTheDoneLinger(tester);
-        }
+        windowStood |= !noWindowUp();
       },
     );
-    return (labels: labels, placedWindow: placedWindow);
+    return (labels: labels, windowStood: windowStood);
   }
-
-  bool noWindowUp() => find.byType(AppWindow).evaluate().isEmpty;
 
   /// [bytes] decoded: its size, and the RGBA of each of [points].
   Future<({int width, int height, List<List<int>> rgba})?> pixelsOf(
@@ -338,13 +324,7 @@ void main() {
     );
     expect(watched.labels, [
       AppText.strings.saveProgressRunning,
-      AppText.strings.saveProgressDone,
     ], reason: 'a save window answers with a path: the write IS the save');
-    expect(
-      watched.placedWindow,
-      isFalse,
-      reason: 'nothing was placed after it, so nothing confirms a placing',
-    );
     expect(
       session.projectFile.path,
       pathBefore,
@@ -520,8 +500,8 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('⛔a picture with no bytes to write is never called saved — '
-      'the window goes, and a notice says why', (tester) async {
+  testWidgets('⛔a picture with no bytes to write fails — the window goes, '
+      'and a notice says why', (tester) async {
     QaImageEncoder.debugForceAbsent = true;
     addTearDown(() => QaImageEncoder.debugForceAbsent = false);
     final target = '${folder.path}${Platform.pathSeparator}frame.jpg';
@@ -543,10 +523,14 @@ void main() {
       ),
     );
     await tester.pump();
-    final watched = await watchUntil(tester, () => said.evaluate().isNotEmpty);
+    await watchUntil(tester, () => said.evaluate().isNotEmpty);
 
     expect(said, findsOneWidget);
-    expect(watched.labels, isNot(contains(AppText.strings.saveProgressDone)));
+    expect(
+      find.byKey(const ValueKey<String>('save-progress-dialog')),
+      findsNothing,
+      reason: 'the window goes',
+    );
     expect(File(target).existsSync(), isFalse);
     session.playbackRig.prerenderScheduler.cancel();
   });
@@ -628,13 +612,13 @@ void main() {
     expect(folder.listSync(), hasLength(1), reason: 'nothing beside it');
     expect(watched.labels, [
       AppText.strings.saveProgressRunning,
-      AppText.strings.saveProgressDone,
-    ], reason: 'no picker after it to back out of: SAVED, never READY');
+    ], reason: 'no picker after it to back out of: SAVING, never READY');
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('🚨where the picker PLACES it (iPad), the write says READY and '
-      'SAVED waits for the picker — the order Save As keeps', (tester) async {
+  testWidgets('🚨where the picker PLACES it (iPad), the write says it is '
+      'getting READY, and no window follows the picker — the order Save As '
+      'keeps', (tester) async {
     FolderPicker.debugOperatingSystem = 'ios';
     final pickerOpened = Completer<void>();
     final letPickerAnswer = Completer<FolderGrant>();
@@ -665,7 +649,6 @@ void main() {
     );
     expect(beforePicker.labels, [
       AppText.strings.savePrepareRunning,
-      AppText.strings.savePrepareDone,
     ], reason: '🚨nothing is saved yet — backing out still drops the file');
 
     letPickerAnswer.complete(
@@ -674,14 +657,14 @@ void main() {
         kind: GrantKind.file,
       ),
     );
-    final afterPicker = await watchUntil(
-      tester,
-      () => find.text(AppText.strings.saveProgressDone).evaluate().isNotEmpty,
+    var rounds = 0;
+    final afterPicker = await watchUntil(tester, () => (rounds += 1) > 30);
+    expect(
+      afterPicker.windowStood,
+      isFalse,
+      reason: '🗣️no window follows the picker to say 「Saved」: no wait '
+          'window says its work is over (11-05)',
     );
-    expect(afterPicker.labels, contains(AppText.strings.saveProgressDone));
-    expect(afterPicker.placedWindow, isTrue);
-    await watchUntil(tester, noWindowUp);
-    expect(noWindowUp(), isTrue);
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

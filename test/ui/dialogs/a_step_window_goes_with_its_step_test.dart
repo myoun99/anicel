@@ -14,7 +14,7 @@ void main() {
   const stepKey = ValueKey<String>('take-the-step');
   const pressKey = ValueKey<String>('press-after');
 
-  testWidgets('a step\'s window never says it is over, and a press right '
+  testWidgets('a step\'s window goes with its step, and a press right '
       'after the step goes through', (tester) async {
     var steps = 0;
     var presses = 0;
@@ -45,9 +45,7 @@ void main() {
       ),
     );
     final window = find.byType(AppProgressDialog);
-    final checked = find.byKey(const ValueKey<String>('app-progress-done'));
     var framesUp = 0;
-    var everChecked = false;
 
     await tester.tap(find.byKey(stepKey));
     for (var frame = 0; frame < 10; frame += 1) {
@@ -55,7 +53,6 @@ void main() {
       if (window.evaluate().isNotEmpty) {
         framesUp += 1;
       }
-      everChecked = everChecked || checked.evaluate().isNotEmpty;
     }
 
     expect(
@@ -64,7 +61,6 @@ void main() {
       reason: '⛔CONTROL: the step stood behind a window',
     );
     expect(steps, 1);
-    expect(everChecked, isFalse, reason: '「로딩창만 보여주고」');
     expect(window, findsNothing, reason: '「끝나면 그냥 바로 사라짐」');
 
     await tester.tap(find.byKey(pressKey));

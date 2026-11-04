@@ -8,12 +8,10 @@ import 'settle_async.dart';
 
 /// Lends both clocks to work standing behind the app's wait window
 /// (`runWithAppProgress`) until the window is gone
-/// ([settleBehindTheWaitWindow]): the fake one for its frames and its
-/// `appProgressDoneLinger`, the real one for work that hops to a file or an
-/// isolate. The linger itself goes in one step ([passTheDoneLinger]).
+/// ([settleBehindTheWaitWindow]): the fake one for its frames, the real one
+/// for work that hops to a file or an isolate.
 ///
-/// ⛔A turning spinner never settles, so `pumpAndSettle` cannot be the wait,
-/// and a bare `pump()` never reaches the linger's end.
+/// ⛔A turning spinner never settles, so `pumpAndSettle` cannot be the wait.
 ///
 /// 🚨A TEST THAT WAITS HERE ENDS BY STOPPING PLAYBACK'S WARMER
 /// (`session.playbackRig.prerenderScheduler.cancel()`). The real clock this
@@ -35,7 +33,7 @@ List<double> watchTheBar(WidgetTester tester) {
   _listenFromItsFirstFrame(tester, (window) {
     final progress = window.progress;
     void record() {
-      if (progress.value.fraction case final fraction?) {
+      if (progress.value case final fraction?) {
         told.add(fraction);
       }
     }
@@ -103,7 +101,6 @@ Future<AppProgressDialog?> windowBehind(
 ) async {
   final stood = await stepBehind(tester, press);
   if (stood != null) {
-    await passTheDoneLinger(tester);
     await tester.pump();
     expect(
       find.byType(AppProgressDialog),
@@ -125,10 +122,9 @@ Future<void> waitOutTheWaitWindow(WidgetTester tester) async {
 
 /// [windowBehind]'s first half: [press], and frames until the step behind
 /// the window it put up is over and drawn, for a test that reads the frames
-/// the step landed in. A window with no done line goes with its step
+/// the step landed in. The window goes with its step
 /// (bundle-red-paste-behind-the-wait-window-Q1), so it is read on a frame
-/// it was up in; one with a done line is left on it ([passTheDoneLinger]
-/// lets it go).
+/// it was up in.
 Future<AppProgressDialog?> stepBehind(
   WidgetTester tester,
   Future<void> Function() press,
@@ -136,13 +132,7 @@ Future<AppProgressDialog?> stepBehind(
   final seen = _WindowSeen(tester);
   await press();
   final window = find.byType(AppProgressDialog);
-  final done = find.descendant(
-    of: window,
-    matching: find.byKey(const ValueKey<String>('app-progress-done')),
-  );
-  bool over() =>
-      done.evaluate().isNotEmpty ||
-      (seen.window != null && window.evaluate().isEmpty);
+  bool over() => seen.window != null && window.evaluate().isEmpty;
   // Frames counted, not settled: the spinner turns until the step is over,
   // and a canvas may keep an animation of its own going under it. A list
   // closing before its row runs takes a few of them.
@@ -210,16 +200,7 @@ Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
 
 /// [settleAsync] for work that may stand behind the app's wait window —
 /// an import, an open, a save — until [ready]: a round lends a turn of the
-/// real loop ([_hop]) and a frame 50ms on, and the window's done line goes
-/// in one step ([passTheDoneLinger]).
-///
-/// ⚠️For a wait that is NOT there to see the done line: the frame that
-/// draws the check is passed over unread. A test that watches for it
-/// watches frame by frame (Save As's `watchUntil`).
-///
-/// ⚠️The tap that starts the work is made OUTSIDE `runAsync`: in it the
-/// linger is 900ms of real time, which no step passes (10-20: a save, an
-/// open from the recents — each paid it whole).
+/// real loop ([_hop]) and a frame 50ms on.
 ///
 /// ↩️It answered whether [ready] came until 2026-10-31, and a wait that ran
 /// out went on quietly: a merge test whose button was cut off waited its
@@ -237,7 +218,6 @@ Future<void> settleBehindTheWaitWindow(
       ready,
       beat: _hop,
       step: const Duration(milliseconds: 50),
-      everyFrame: () => passTheDoneLinger(tester),
     ),
     isTrue,
     reason: reason,
@@ -256,28 +236,3 @@ Future<void> settleBehindTheWaitWindow(
 /// and 1ms alike. ⛔Not the shared beat: a window that waits for something
 /// NOT to happen (`lendBothClocks`) is as long as its beats.
 const _hop = Duration(milliseconds: 1);
-
-/// Pumps a wait window's done line ([appProgressDoneLinger]) in ONE step,
-/// once every [AppProgressDialog] standing SHOWS its work is over — its
-/// check drawn: from there the window waits on the frame clock alone, and
-/// a frame drawn on the way shows nothing the drawn one did not.
-///
-/// ⚠️Read off the screen, not off the window's `progress`: a value set
-/// between two frames is not drawn yet, and a jump then skips the one frame
-/// that says 「Saved」 (the iPad Save As test caught it).
-///
-/// 🔬↩️It was waited out a round at a time until 2026-10-20 — 50ms or 16ms
-/// of clock a round, each a real beat and a frame of the whole tree — and
-/// the linger alone was 0.97~1.12s of a test that imports one picture, all
-/// but 0.1s of it (card heavy-tests-save).
-Future<void> passTheDoneLinger(WidgetTester tester) async {
-  final windows = find.byType(AppProgressDialog);
-  final standing = windows.evaluate().length;
-  final checked = find.descendant(
-    of: windows,
-    matching: find.byKey(const ValueKey<String>('app-progress-done')),
-  );
-  if (standing > 0 && checked.evaluate().length == standing) {
-    await tester.pump(appProgressDoneLinger);
-  }
-}

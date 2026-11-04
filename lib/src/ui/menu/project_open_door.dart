@@ -434,7 +434,6 @@ final class ProjectOpenDoor {
         title: AppText.strings.fileOpenTitle,
         titleIcon: Icons.folder_open_outlined,
         runningLabel: AppText.strings.openProgressRunning,
-        doneLabel: AppText.strings.openProgressDone,
         windowKey: const ValueKey<String>('open-progress-dialog'),
         runningStatus: wait.status,
         onCancel: wait.cancel,

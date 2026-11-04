@@ -1758,7 +1758,6 @@ Future<bool> saveProjectShowingProgress(
       title: AppText.strings.commonSave,
       titleIcon: Icons.save_outlined,
       runningLabel: AppText.strings.saveProgressRunning,
-      doneLabel: AppText.strings.saveProgressDone,
       windowKey: const ValueKey<String>('save-progress-dialog'),
       runningStatus: line,
       task: (report) =>
@@ -1913,33 +1912,28 @@ Future<void> backUpFailedCopy(
   }
   final strings = AppText.strings;
   // ⚠️The order Save As keeps (유저 2026-08-31): where a picker PLACES a
-  // staged file, the window before it says 「Ready」 — nothing is backed up
-  // until the picker has put it somewhere — and 「Backed up」 comes after.
-  Future<void> backUpTo(
-    String destination, {
-    required String running,
-    required String done,
-  }) => runWithAppProgress<void>(
-    context: context,
-    title: strings.commonSave,
-    titleIcon: Icons.backup_outlined,
-    runningLabel: running,
-    doneLabel: done,
-    windowKey: const ValueKey<String>('failed-copy-backup-progress'),
-    task: (report) =>
-        session.projectDoor.backUpFailedCopy(chosen.copyPath, destination),
-  );
+  // staged file, the window before it says it is getting ready — nothing is
+  // backed up until the picker has put it somewhere. 🗣️↩️No window says
+  // 「Backed up」 after it any more: no wait window says its work is over
+  // (유저 11-05, bundle-red-paste-behind-the-wait-window-Q1 · Q2).
+  Future<void> backUpTo(String destination, {required String running}) =>
+      runWithAppProgress<void>(
+        context: context,
+        title: strings.commonSave,
+        titleIcon: Icons.backup_outlined,
+        runningLabel: running,
+        windowKey: const ValueKey<String>('failed-copy-backup-progress'),
+        task: (report) =>
+            session.projectDoor.backUpFailedCopy(chosen.copyPath, destination),
+      );
   try {
     final beside = folderOfPath(chosen.projectPath);
     final pick = await pickProjectSaveTarget(
       context,
       _backupNameFor(chosen),
       beside.isEmpty ? ensuredAppDocumentsDirectorySync() : beside,
-      stageArchive: (stagingPath) => backUpTo(
-        stagingPath,
-        running: strings.savePrepareRunning,
-        done: strings.savePrepareDone,
-      ),
+      stageArchive: (stagingPath) =>
+          backUpTo(stagingPath, running: strings.savePrepareRunning),
     );
     if (pick == null || !context.mounted) {
       return;
@@ -1948,33 +1942,15 @@ Future<void> backUpFailedCopy(
       // A backup is a copy to keep, not where the project saves from now
       // on: a working copy kept for a document it went into goes (PICK-7).
       ProviderDocuments.letGo(pick.path);
-      await _sayFailedCopyBackedUp(context);
       return;
     }
-    await backUpTo(
-      pick.path,
-      running: strings.failedCopyBackingUp,
-      done: strings.failedCopyBackedUp,
-    );
+    await backUpTo(pick.path, running: strings.failedCopyBackingUp);
   } on Object catch (error) {
     if (context.mounted) {
       showFileError(context, error);
     }
   }
 }
-
-/// The picker PLACED the staged backup, so it is backed up now — and now is
-/// when it says so: the other half of the order Save As keeps.
-Future<void> _sayFailedCopyBackedUp(BuildContext context) =>
-    runWithAppProgress<void>(
-      context: context,
-      title: AppText.strings.commonSave,
-      titleIcon: Icons.backup_outlined,
-      runningLabel: AppText.strings.failedCopyBackingUp,
-      doneLabel: AppText.strings.failedCopyBackedUp,
-      windowKey: const ValueKey<String>('failed-copy-backup-placed'),
-      task: (report) async => report(1),
-    );
 
 /// Which failed copy a backup is of: [copy] when the notice named one, the
 /// one there is, or the person's pick among several.
@@ -2164,7 +2140,7 @@ Future<void> promptSaveProjectAs(
     // the spot — behind the same progress window a save wears, because
     // a long-drawn session serializing whole is a save-sized wait and a
     // frozen screen before a picker reads as a hang.
-    // 🚨★★★**THIS WINDOW SAYS「READY」, NOT「SAVED」.**
+    // 🚨★★★**THIS WINDOW SAYS IT IS GETTING READY, NOT THAT IT SAVES.**
     //
     // 유저 2026-08-31, on an iPad: 「로딩창뜨고 저장이 완료됬습니다 뜨고
     // 픽커 뜨는데, 그게아니라 로딩창뜨고, **준비가 완료됐습니다** 띄우고
@@ -2176,6 +2152,10 @@ Future<void> promptSaveProjectAs(
     // person cancels there, the file this window just announced as
     // 「saved」is deleted. Announcing the end of the WRITE as the end of
     // the SAVE told them a thing that could still be undone.
+    // 🗣️↩️Neither 「Ready」 nor, once placed, 「Saved」 is said any more:
+    // no wait window says its work is over (유저 11-05,
+    // bundle-red-paste-behind-the-wait-window-Q1 · Q2). What stays is the
+    // running label — getting ready, not saving.
     // Its line names each stretch of the write, as a save's does (F-494).
     stageArchive: (stagingPath) async {
       final line = _SaveLine('');
@@ -2185,7 +2165,6 @@ Future<void> promptSaveProjectAs(
           title: AppText.strings.commonSave,
           titleIcon: Icons.save_outlined,
           runningLabel: AppText.strings.savePrepareRunning,
-          doneLabel: AppText.strings.savePrepareDone,
           windowKey: const ValueKey<String>('save-progress-dialog'),
           runningStatus: line,
           task: (report) async {
@@ -2231,16 +2210,7 @@ Future<void> promptSaveProjectAs(
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );
-    // 🚨AND NOW it is saved — so now is when it says so. The staging window
-    // above said 「Ready」; this is the other half of the order 유저
-    // 2026-08-31 asked for, and the only moment at which the sentence is
-    // true.
-    if (context.mounted) {
-      await _saySavedOncePlaced(context);
-    }
-    if (context.mounted) {
-      _tellWhatTheSaveCouldNotCarry(context, session);
-    }
+    _tellWhatTheSaveCouldNotCarry(context, session);
     return;
   }
   if (await saveProjectShowingProgress(context, session, path)) {
@@ -2249,21 +2219,6 @@ Future<void> promptSaveProjectAs(
     );
   }
 }
-
-/// The picker PLACED what was saved, so it is saved now — and now is when
-/// it says so: the other half of the order Save As keeps (유저 2026-08-31).
-/// There is no work left to do, so the window is a confirmation and lingers
-/// exactly as long as any other save's does.
-Future<void> _saySavedOncePlaced(BuildContext context) =>
-    runWithAppProgress<void>(
-      context: context,
-      title: AppText.strings.commonSave,
-      titleIcon: Icons.save_outlined,
-      runningLabel: AppText.strings.saveProgressRunning,
-      doneLabel: AppText.strings.saveProgressDone,
-      windowKey: const ValueKey<String>('save-placed-dialog'),
-      task: (report) async => report(1),
-    );
 
 /// 「다른 이름으로 저장」's picture: [_pictureSaveAsWrites] as ONE [format]
 /// file, where the person says — and the project stays the file it was. A
@@ -2291,11 +2246,12 @@ Future<void> saveFrameAsImage(
   );
   final strings = AppText.strings;
   // ⚠️The order Save As keeps (유저 2026-08-31): where the file is written
-  // into the app for a picker to place, the write ends 「Ready」, and
-  // 「Saved」 waits for the picker.
+  // into the app for a picker to place, the write is getting ready, not
+  // saving — and no window says it is over (유저 11-05,
+  // bundle-red-paste-behind-the-wait-window-Q1 · Q2).
   final staged = writtenFileIsStagedFirst;
   try {
-    final placed = await handWrittenFileToUser(
+    await handWrittenFileToUser(
       context,
       suggestedName: '$name.${format.fileExtension}',
       write: (path) => runWithAppProgress<bool>(
@@ -2305,19 +2261,15 @@ Future<void> saveFrameAsImage(
         runningLabel: staged
             ? strings.savePrepareRunning
             : strings.saveProgressRunning,
-        doneLabel: staged ? strings.savePrepareDone : strings.saveProgressDone,
         windowKey: const ValueKey<String>('save-progress-dialog'),
         task: (report) async {
           final written = await writePicture(path);
-          // ⛔Never 「Saved」 over no file: the throw takes the window down
-          // before it says so, and the notice below says why.
+          // ⛔No file is a failure, not a write: the throw takes the window
+          // down, and the notice below says why.
           return written ? true : throw const _NothingWritten();
         },
       ),
     );
-    if (placed != null && staged && context.mounted) {
-      await _saySavedOncePlaced(context);
-    }
   } on Object catch (error) {
     if (context.mounted) {
       showFileError(context, error);

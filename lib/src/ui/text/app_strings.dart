@@ -565,9 +565,7 @@ enum AppStrings {
   /// what is happening; this one is the answer to "did it save?", which is
   /// a question the app never used to answer at all.
   String get saveProgressRunning => _s('saveProgressRunning');
-  String get saveProgressDone => _s('saveProgressDone');
   String get savePrepareRunning => _s('savePrepareRunning');
-  String get savePrepareDone => _s('savePrepareDone');
 
   /// The stretch of a save the wait window's line names while it runs
   /// (F-494, [SaveStretch]): the media taken out set aside, the cels, the
@@ -594,7 +592,6 @@ enum AppStrings {
     SaveStretch.handingBack => saveStepHandingBack,
   };
   String get openProgressRunning => _s('openProgressRunning');
-  String get openProgressDone => _s('openProgressDone');
 
   /// '{sec}' is whole seconds waited. Names the CLOUD as the one doing
   /// the work — the app is not slow, the file is not here yet.
@@ -801,7 +798,6 @@ enum AppStrings {
   String get failedCopyPickTitle => _s('failedCopyPickTitle');
   String get failedCopyVanishOnClose => _s('failedCopyVanishOnClose');
   String get failedCopyBackingUp => _s('failedCopyBackingUp');
-  String get failedCopyBackedUp => _s('failedCopyBackedUp');
   String get closeProjectFailedCopyBody => _s('closeProjectFailedCopyBody');
 
   // --- Display (R11) ---
@@ -1152,7 +1148,6 @@ enum AppStrings {
   /// While the candidate folder is being read — which on a cloud folder
   /// means every same-size candidate is being fetched.
   String get mediaRelinkScanning => _s('mediaRelinkScanning');
-  String get mediaRelinkScanned => _s('mediaRelinkScanned');
   String get mediaRemove => _s('mediaRemove');
 
   /// F-118: removing a pool file something still uses — the question, and
@@ -1729,7 +1724,6 @@ enum AppStrings {
       _s('imFileCountTemplate').replaceAll('{n}', '$count');
   String get imStatusImporting => _s('imStatusImporting');
   String get imStatusNothing => _s('imStatusNothing');
-  String get imStatusDone => _s('imStatusDone');
 
   /// The stretch of a run the wait window's line names while it reports
   /// (F-494): a trimmed movie's piece encoded again, another kind's span
@@ -2512,9 +2506,7 @@ enum AppStrings {
     'commonSaveAs': 'Save as',
     'saveAsTitle': 'Save as',
     'saveProgressRunning': 'Saving…',
-    'saveProgressDone': 'Saved',
     'savePrepareRunning': 'Preparing…',
-    'savePrepareDone': 'Ready',
     'saveStepKeepingLeftBehind': 'Setting aside the media taken out…',
     'saveStepCels': 'Writing cels…',
     'saveStepChecking': 'Checking the files to carry…',
@@ -2524,7 +2516,6 @@ enum AppStrings {
     'saveStepCompacting': 'Closing up the gaps in the file…',
     'saveStepHandingBack': 'Handing the file back to its document…',
     'openProgressRunning': 'Opening…',
-    'openProgressDone': 'Opened',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
     'openWaitingStalledTemplate': 'Nothing has arrived for {sec}s',
     'resizeProgressRunning': 'Resizing…',
@@ -2713,7 +2704,6 @@ enum AppStrings {
     'failedCopyVanishOnClose':
         'Failed copies disappear when the program closes.',
     'failedCopyBackingUp': 'Backing up…',
-    'failedCopyBackedUp': 'Backed up',
     'closeProjectFailedCopyBody':
         'The work this project could not save is only in its failed copy '
         'inside the app, and the failed copy disappears when the program '
@@ -2821,7 +2811,6 @@ enum AppStrings {
     'mediaFindInFolder': 'Find in folder',
     'mediaRelinkFound': 'Found {m} of {n}. Relink them?',
     'mediaRelinkScanning': 'Reading that folder…',
-    'mediaRelinkScanned': 'Folder read',
     'mediaRemove': 'Delete media',
     'mediaRegisterInProject': 'Keep inside the project file',
     'mediaExportWav': 'Export as WAV',
@@ -3193,7 +3182,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n} files',
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
-    'imStatusDone': 'Imported',
     'imStepRecoding': 'Re-encoding the trimmed movie…',
     'imStepWritingSpan': 'Writing the trimmed span to a file…',
     'imStepCarrying': 'Keeping the file inside the project…',
@@ -3958,9 +3946,7 @@ enum AppStrings {
     'commonSaveAs': '名前を付けて保存',
     'saveAsTitle': '名前を付けて保存',
     'saveProgressRunning': '保存中…',
-    'saveProgressDone': '保存しました',
     'savePrepareRunning': '準備中…',
-    'savePrepareDone': '準備完了',
     'saveStepKeepingLeftBehind': '外したメディアを退避中…',
     'saveStepCels': 'セルを書き込み中…',
     'saveStepChecking': '格納するファイルを確認中…',
@@ -3970,7 +3956,6 @@ enum AppStrings {
     'saveStepCompacting': 'ファイルの空きを詰めています…',
     'saveStepHandingBack': '元の書類にファイルを渡しています…',
     'openProgressRunning': '読み込み中…',
-    'openProgressDone': '読み込みました',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
     'openWaitingStalledTemplate': '{sec}秒間、まだ届いていません',
     'resizeProgressRunning': 'サイズ変更中…',
@@ -4195,7 +4180,6 @@ enum AppStrings {
     'failedCopyPickTitle': 'バックアップする失敗版',
     'failedCopyVanishOnClose': '失敗版はプログラムを閉じると消えます。',
     'failedCopyBackingUp': 'バックアップ中…',
-    'failedCopyBackedUp': 'バックアップ完了',
     'closeProjectFailedCopyBody':
         'このプロジェクトが保存できなかった作業はアプリ内の失敗版にしかなく、失敗版はプログラムを閉じると消えます。残すには「名前を付けて保存」するか、ファイルメニューの「失敗版をバックアップ…」を使ってください。',
     'projectFileVanished':
@@ -4520,7 +4504,6 @@ enum AppStrings {
     'mediaFindInFolder': 'フォルダーから探す',
     'mediaRelinkFound': '{n} 件中 {m} 件が見つかりました。再リンクしますか？',
     'mediaRelinkScanning': 'フォルダーを読み込み中…',
-    'mediaRelinkScanned': '読み込みました',
     'mediaRemove': 'メディアを削除',
     'mediaRegisterInProject': 'プロジェクトファイルに取り込む',
     'mediaExportWav': 'WAVで書き出す',
@@ -4964,7 +4947,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n}個のファイル',
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
-    'imStatusDone': 'インポートしました',
     'imStepRecoding': 'トリミングした動画を再エンコード中…',
     'imStepWritingSpan': '切り出した範囲をファイルに書き出し中…',
     'imStepCarrying': 'ファイルをプロジェクトに埋め込み中…',
@@ -5857,9 +5839,7 @@ enum AppStrings {
     'commonSaveAs': '다른 이름으로 저장',
     'saveAsTitle': '다른 이름으로 저장',
     'saveProgressRunning': '저장 중…',
-    'saveProgressDone': '저장 완료',
     'savePrepareRunning': '준비 중…',
-    'savePrepareDone': '준비 완료',
     'saveStepKeepingLeftBehind': '빠진 미디어를 옮겨 두는 중…',
     'saveStepCels': '셀을 쓰는 중…',
     'saveStepChecking': '품을 파일을 확인하는 중…',
@@ -5869,7 +5849,6 @@ enum AppStrings {
     'saveStepCompacting': '파일의 빈 자리를 메우는 중…',
     'saveStepHandingBack': '원래 문서로 파일을 넘기는 중…',
     'openProgressRunning': '여는 중…',
-    'openProgressDone': '열기 완료',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
     'openWaitingStalledTemplate': '{sec}초째 도착하지 않았습니다',
     'resizeProgressRunning': '크기 변경 중…',
@@ -6086,7 +6065,6 @@ enum AppStrings {
     'failedCopyPickTitle': '백업할 실패본',
     'failedCopyVanishOnClose': '실패본은 프로그램을 닫으면 사라집니다.',
     'failedCopyBackingUp': '백업 중…',
-    'failedCopyBackedUp': '백업 완료',
     'closeProjectFailedCopyBody':
         '이 프로젝트가 저장하지 못한 작업은 앱 안의 실패본에만 있고, 실패본은 프로그램을 닫으면 사라집니다. 남기려면 「다른 이름으로 저장」하거나 파일 메뉴의 「실패본 백업…」을 쓰세요.',
     'projectFileVanished':
@@ -6413,7 +6391,6 @@ enum AppStrings {
     'mediaFindInFolder': '폴더에서 찾기',
     'mediaRelinkFound': '{n}개 중 {m}개를 찾았습니다. 다시 연결할까요?',
     'mediaRelinkScanning': '폴더를 읽는 중…',
-    'mediaRelinkScanned': '폴더를 읽었습니다',
     'mediaRemove': '미디어 삭제',
     'mediaRegisterInProject': '프로젝트 파일에 품기',
     'mediaExportWav': 'WAV로 내보내기',
@@ -6853,7 +6830,6 @@ enum AppStrings {
     'imFileCountTemplate': '파일 {n}개',
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
-    'imStatusDone': '임포트 완료',
     'imStepRecoding': '잘라 낸 동영상을 다시 인코딩하는 중…',
     'imStepWritingSpan': '잘라 낸 구간을 파일로 쓰는 중…',
     'imStepCarrying': '파일을 프로젝트에 품는 중…',
@@ -7764,9 +7740,7 @@ enum AppStrings {
     'commonSaveAs': 'Enregistrer sous',
     'saveAsTitle': 'Enregistrer sous',
     'saveProgressRunning': 'Enregistrement…',
-    'saveProgressDone': 'Enregistré',
     'savePrepareRunning': 'Préparation…',
-    'savePrepareDone': 'Prêt',
     'saveStepKeepingLeftBehind': 'Mise de côté des médias retirés…',
     'saveStepCels': 'Écriture des cellulos…',
     'saveStepChecking': 'Vérification des fichiers à intégrer…',
@@ -8020,7 +7994,6 @@ enum AppStrings {
     'failedCopyVanishOnClose':
         "Les copies d'échec disparaissent à la fermeture du programme.",
     'failedCopyBackingUp': 'Sauvegarde…',
-    'failedCopyBackedUp': 'Sauvegardé',
     'closeProjectFailedCopyBody':
         "Le travail que ce projet n'a pas pu enregistrer n'existe que dans "
         "sa copie d'échec à l'intérieur de l'app, et elle disparaît à la "
@@ -8874,7 +8847,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n} fichiers',
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
-    'imStatusDone': 'Importé',
     'imStepRecoding': 'Réencodage de la vidéo découpée…',
     'imStepWritingSpan': 'Écriture de la plage découpée dans un fichier…',
     'imStepCarrying': 'Intégration du fichier au projet…',
@@ -9512,9 +9484,7 @@ enum AppStrings {
     'drawingCursorPen': 'Stylo',
     'drawingCursorCrosshair': 'Réticule',
     'mediaRelinkScanning': 'Lecture du dossier…',
-    'mediaRelinkScanned': 'Dossier lu',
     'openProgressRunning': 'Ouverture…',
-    'openProgressDone': 'Ouvert',
     'openWaitingCloudTemplate': 'Téléchargement depuis le cloud · {sec} s',
     'openWaitingStalledTemplate': 'Rien reçu depuis {sec} s',
     'prefsDisplay': 'Affichage',
@@ -9804,9 +9774,7 @@ enum AppStrings {
     'commonSaveAs': '另存为',
     'saveAsTitle': '另存为',
     'saveProgressRunning': '正在保存…',
-    'saveProgressDone': '已保存',
     'savePrepareRunning': '正在准备…',
-    'savePrepareDone': '准备完成',
     'saveStepKeepingLeftBehind': '正在暂存移除的媒体…',
     'saveStepCels': '正在写入赛璐珞…',
     'saveStepChecking': '正在校验要内嵌的文件…',
@@ -10008,7 +9976,6 @@ enum AppStrings {
     'failedCopyPickTitle': '要备份的失败副本',
     'failedCopyVanishOnClose': '程序关闭后失败副本会消失。',
     'failedCopyBackingUp': '正在备份…',
-    'failedCopyBackedUp': '已备份',
     'closeProjectFailedCopyBody':
         '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
@@ -10746,7 +10713,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n} 个文件',
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',
-    'imStatusDone': '已导入',
     'imStepRecoding': '正在重新编码裁剪后的视频…',
     'imStepWritingSpan': '正在将裁剪的范围写入文件…',
     'imStepCarrying': '正在将文件内嵌到项目…',
@@ -11323,9 +11289,7 @@ enum AppStrings {
     'drawingCursorPen': '钢笔',
     'drawingCursorCrosshair': '十字',
     'mediaRelinkScanning': '正在读取该文件夹…',
-    'mediaRelinkScanned': '已读取文件夹',
     'openProgressRunning': '正在打开…',
-    'openProgressDone': '已打开',
     'openWaitingCloudTemplate': '正在从云端下载 · {sec} 秒',
     'openWaitingStalledTemplate': '已有 {sec} 秒未收到数据',
     'prefsDisplay': '显示',

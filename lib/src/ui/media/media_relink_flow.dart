@@ -73,7 +73,6 @@ Future<void> runMediaRelinkFlow(
     title: AppText.strings.mediaRelink,
     titleIcon: Icons.link_outlined,
     runningLabel: AppText.strings.mediaRelinkScanning,
-    doneLabel: AppText.strings.mediaRelinkScanned,
     windowKey: const ValueKey<String>('relink-scan-progress'),
     task: (_) => Isolate.run(() => _identitiesOf(candidates, wanted)),
   );

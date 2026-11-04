@@ -146,7 +146,7 @@ void main() {
     final progress = tester.widget<AppProgressDialog>(window).progress;
     final counted = <double>[];
     progress.addListener(() {
-      if (progress.value.fraction case final fraction?) {
+      if (progress.value case final fraction?) {
         counted.add(fraction);
       }
     });
@@ -1455,7 +1455,7 @@ void main() {
 
   testWidgets('🎯the run stands behind the app\'s wait window from its first '
       'frame — counting from 0%, its Cancel standing throughout and grey '
-      'with no wait to stop — and leaves on its check (F-282-Q1)', (
+      'with no wait to stop — and leaves when the run is over (F-282-Q1)', (
     tester,
   ) async {
     // 유저 2026-10-08: 「굽기 · 저장과 같은 기다림 창에」.
@@ -1493,22 +1493,35 @@ void main() {
     );
     expect(cancel, findsOneWidget, reason: 'the stop stands throughout');
 
-    final checked = await settleAsync(
+    // Each frame the window is up in: the stop stands, and while a file is
+    // placed rather than waited for it is grey.
+    var framesUp = 0;
+    var framesWithoutTheStop = 0;
+    var framesGrey = 0;
+    final gone = await settleAsync(
       tester,
-      () => find
-          .byKey(const ValueKey<String>('app-progress-done'))
-          .evaluate()
-          .isNotEmpty,
+      () => window.evaluate().isEmpty,
       step: const Duration(milliseconds: 20),
+      everyFrame: () {
+        if (window.evaluate().isEmpty) {
+          return;
+        }
+        framesUp += 1;
+        if (cancel.evaluate().isEmpty) {
+          framesWithoutTheStop += 1;
+        } else if (tester.widget<TextButton>(cancel).onPressed == null) {
+          framesGrey += 1;
+        }
+      },
     );
-    expect(checked, isTrue, reason: 'it says it is over');
-    expect(cancel, findsOneWidget, reason: 'still standing — not gone');
+    expect(gone, isTrue, reason: 'it leaves once the run is over');
+    expect(framesUp, greaterThan(0), reason: '⛔CONTROL: frames were read');
+    expect(framesWithoutTheStop, 0, reason: 'still standing — not gone');
     expect(
-      tester.widget<TextButton>(cancel).onPressed,
-      isNull,
+      framesGrey,
+      greaterThan(0),
       reason: 'nothing is being waited for: there is nothing to stop',
     );
-    await pumpPastTheWaitWindow(tester);
     expect(s.requireActiveCut.layers.length, layersBefore + 2);
     s.playbackRig.prerenderScheduler.cancel();
   });

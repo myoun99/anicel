@@ -6,6 +6,7 @@ import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/services/persistence/save_failure.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -202,7 +203,7 @@ void main() {
   });
 
   testWidgets('🎯where a picker PLACES the file (iPad), the backup is the '
-      'failed copy, staged, placed — and only then said to be backed up', (
+      'failed copy, staged, placed — and no window follows the picker', (
     tester,
   ) async {
     FolderPicker.debugOperatingSystem = 'ios';
@@ -220,10 +221,9 @@ void main() {
     };
     final (:session, :context) = await mounted(tester);
     final copy = keptCopy(session, 'take.anicel');
-    const saidBackedUp = ValueKey<String>('failed-copy-backup-placed');
 
     var done = false;
-    var said = false;
+    final windows = <Element>{};
     // A real copy crosses into an isolate, which needs real time.
     await tester.runAsync(() async {
       unawaited(
@@ -235,7 +235,7 @@ void main() {
             return true;
           }
           await tester.pump(const Duration(milliseconds: 16));
-          said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
+          windows.addAll(find.byType(AppProgressDialog).evaluate());
           return false;
         },
         beat: const Duration(milliseconds: 5),
@@ -245,7 +245,12 @@ void main() {
     expect(done, isTrue, reason: 'the backup never came back');
     expect(File(placed).readAsStringSync(), 'the work');
     expect(offeredAs, startsWith('take-'));
-    expect(said, isTrue, reason: 'placed, so now it says backed up');
+    expect(
+      windows,
+      hasLength(1),
+      reason: 'the staging write\'s window, and no window after the picker to '
+          'say 「Backed up」: no wait window says its work is over (11-05)',
+    );
   });
 
   testWidgets('a backup poured into a DOCUMENT (Drive on Android, PICK-7) '
@@ -270,10 +275,9 @@ void main() {
     };
     final (:session, :context) = await mounted(tester);
     final copy = keptCopy(session, 'take.anicel');
-    const saidBackedUp = ValueKey<String>('failed-copy-backup-placed');
 
     var done = false;
-    var said = false;
+    final windows = <Element>{};
     await tester.runAsync(() async {
       unawaited(
         backUpFailedCopy(context, session, copy: copy).then((_) => done = true),
@@ -284,7 +288,7 @@ void main() {
             return true;
           }
           await tester.pump(const Duration(milliseconds: 16));
-          said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
+          windows.addAll(find.byType(AppProgressDialog).evaluate());
           return false;
         },
         beat: const Duration(milliseconds: 5),
@@ -293,7 +297,11 @@ void main() {
 
     expect(done, isTrue, reason: 'the backup never came back');
     expect(poured, 'the work', reason: 'the document got the failed copy');
-    expect(said, isTrue, reason: 'placed, so now it says backed up');
+    expect(
+      windows,
+      hasLength(1),
+      reason: 'the staging write\'s window, and none after the picker',
+    );
     expect(ProviderDocuments.workingCopyOf(drive.uri), isNull);
   });
 
