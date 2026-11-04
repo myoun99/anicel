@@ -127,13 +127,18 @@ class FrameClipboard implements BringsMedia {
   /// key board's ([KeyClipboard]) — but where a band claims the press as
   /// cells ([LaneVerbs.bandClaimsThePress]), the lane is its row's, and the
   /// band's lanes ride with its cells (one-band-no-lane-tail-Q1).
+  ///
+  /// Null too on a row that holds no cels — the transition row, the camera
+  /// row, a folder's — as [storyboardPlace] is on its V and transition rows
+  /// (F-281). ↩️Such a row was a place whose verbs all stood down, until a
+  /// band read it as one that holds cels (2026-11-04).
   ClipboardPlace? get timelinePlace {
     if (_selection.timelineStandingRow is LaneRowAddress &&
         !_laneVerbs.bandClaimsThePress) {
       return null;
     }
     final row = _selection.activeLayer;
-    return row == null
+    return row == null || !row.kind.takesAuthoredCels
         ? null
         : ClipboardPlace._(
             row: row,
@@ -246,16 +251,24 @@ class FrameClipboard implements BringsMedia {
   /// the drawings it swept, and their keys banked nothing. That gate was the
   /// standing copy's (2026-07), kept when the band came — no one asked for
   /// where the sweep began to decide.
+  ///
+  /// The rows a band names it from are its seats ([_seatsOf]) — the rows a
+  /// copy takes. ↩️Every row the band names was read, and one that holds no
+  /// cels is none the cut's timeline holds: a band over the transition row
+  /// threw as it was swept (2026-11-04).
   Frame? _drawingNamedAt(ClipboardPlace place) {
     final band = place._band;
     if (band == null) {
       return place._cel;
     }
-    final stoodOn = place._row;
+    if (place._bandMissesTheRow) {
+      return null;
+    }
+    final stoodOn = place._row.id;
+    final seats = _seatsOf(place);
     for (final row in [
-      if (band.covers(stoodOn.id)) stoodOn,
-      for (final id in band.rows)
-        if (id != stoodOn.id) ?_project.rangeLayerById(id),
+      ...seats.where((seat) => seat.id == stoodOn),
+      ...seats.where((seat) => seat.id != stoodOn),
     ]) {
       final run = _runCopiedOff(
         row,
