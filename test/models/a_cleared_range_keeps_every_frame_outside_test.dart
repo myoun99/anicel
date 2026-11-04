@@ -166,6 +166,39 @@ void main() {
     expect(tail.keys.keys.last, 15, reason: 'the range\'s own key');
   });
 
+  test('a range a frame in from either end keeps that frame', () {
+    final track = numbers({
+      0: const PropertyKey(10),
+      29: const PropertyKey(100),
+    });
+    final now = cleared(track, start: 1, end: 29);
+    expectKept(track, now, start: 1, end: 29);
+    expect(now.keys.keys, [0, 1, 28, 29]);
+  });
+
+  test('a smooth key whose neighbour behind it the range moved keeps the '
+      'way out of it as it was', () {
+    final track = numbers({
+      0: const PropertyKey(0, outgoing: KeySide.auto),
+      10: const PropertyKey(
+        10,
+        incoming: KeySide.auto,
+        outgoing: KeySide.auto,
+      ),
+      20: const PropertyKey(0, incoming: KeySide.auto, outgoing: KeySide.auto),
+      29: const PropertyKey(10, incoming: KeySide.auto),
+    });
+    final now = cleared(track, start: 3, end: 6);
+    expectKept(track, now, start: 3, end: 6);
+    expect(
+      now.keys.keys,
+      [0, 2, 3, 5, 6, 10, 20, 29],
+      reason: 'no key a frame',
+    );
+    expect(now.keys[10]!.outgoing, isA<EaseSide>());
+    expect(now.keys[20]!.incoming, KeySide.auto, reason: 'it reads 10 and 29');
+  });
+
   test('a menu steps on: its keys hold whatever the edges cut', () {
     final track = numbers({
       0: const PropertyKey(1),
@@ -307,6 +340,41 @@ void main() {
         expect(got.x, closeTo(want.x, 1e-2), reason: '$time x');
         expect(got.y, closeTo(want.y, 1e-2), reason: '$time y');
       }
+    });
+
+    test('a bend paced by an ease keeps its path and its pace outside the '
+        'range that cuts it', () {
+      const ease = EaseSide(influence: 0.6, speed: 0);
+      final track = PropertyTrack<CanvasPoint>(
+        keys: {
+          0: PropertyKey(p(0, 0), path: KeyPath.auto),
+          10: PropertyKey(p(100, 0), path: KeyPath.auto, outgoing: ease),
+          20: PropertyKey(p(100, 100), path: KeyPath.auto, incoming: ease),
+        },
+      );
+      final now = clearedPath(track, start: 13, end: 17);
+      expectPlaces(track, now, start: 13, end: 17);
+      expect(now.keys.keys, [0, 10, 12, 13, 16, 17, 20], reason: 'cut, whole');
+      expect(now.keys[12]!.path, isA<JoinedPath>());
+    });
+
+    test('a smooth key on an edge whose neighbour the range moved bends as '
+        'it did', () {
+      final track = PropertyTrack<CanvasPoint>(
+        keys: {
+          0: PropertyKey(p(0, 0), path: KeyPath.auto),
+          10: PropertyKey(p(100, 0), path: KeyPath.auto),
+          20: PropertyKey(p(100, 100), path: KeyPath.auto),
+          29: PropertyKey(p(0, 100), path: KeyPath.auto),
+        },
+      );
+      final now = clearedPath(track, start: 11, end: 20);
+      expectPlaces(track, now, start: 11, end: 20);
+      expect(now.keys.keys, [0, 10, 11, 19, 20, 29]);
+      expect(
+        [now.keys[10]!.path, now.keys[20]!.path],
+        everyElement(isNot(isA<AutoPath>())),
+      );
     });
 
     test('a run of roving keys the range cuts keeps each of its frames — a '
