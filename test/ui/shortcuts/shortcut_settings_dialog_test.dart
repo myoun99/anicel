@@ -195,11 +195,13 @@ void main() {
 
       final keys = listed(tester);
       final after = keys.indexOf(headingKeyOf(tiles)) + 1;
-      final under = [
-        ...own,
-        for (final shelf in tiles.shelves) headingKeyOf(shelf),
-      ];
-      expect(keys.sublist(after, after + under.length), under);
+      expect(keys.sublist(after, after + own.length), own);
+      // The brush tools' shelves hold the library's brushes, none here.
+      expect(
+        keys[after + own.length],
+        headingKeyOf(ShortcutShelf.brushLibrary),
+        reason: 'the shelves on it come after its rows',
+      );
     });
 
     testWidgets('every shelf stands shut when the window opens: the places\' '
