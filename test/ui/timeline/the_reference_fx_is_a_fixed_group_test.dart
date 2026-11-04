@@ -31,6 +31,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
@@ -557,6 +558,40 @@ void main() {
 
     s.undo();
     expect(s.layerById(row.id)!.mediaReference, isNotNull);
+    await tester.runAsync(() async {
+      final blue = await writeSolidPng(
+        tempDir,
+        'blue.png',
+        width: 40,
+        height: 40,
+        rgba: 0x0000FFFF,
+      );
+      expect(
+        await s.importDoors.importImageFile(
+          path: blue,
+          destination: ImportDestination.activeCutLayer,
+          copyIntoProject: false,
+          fit: MediaFitMode.none,
+        ),
+        isTrue,
+      );
+    });
+    final other = s.requireActiveCut.layers.firstWhere(
+      (layer) => layer.mediaReference != null && layer.id != row.id,
+    );
+    s.rowSelectionVerbs.rowSelection.value = [
+      LayerRowAddress(row.id),
+      LayerRowAddress(other.id),
+    ];
+    rasterizeLaneGroupOf(context, s, row, header)!.press!();
+    await tester.pumpAndSettle();
+    expect(
+      [for (final id in [row.id, other.id]) s.layerById(id)!.mediaReference],
+      [null, null],
+      reason: 'pressed in the selection: the selection, as the popover does',
+    );
+
+    s.undo();
     s.cutVerbs.createLinkedCutFromActiveCut();
     expect(rasterizeLaneGroupOf(context, s, row, header)!.press, isNull);
     await stopTheWarmer(tester, s);
