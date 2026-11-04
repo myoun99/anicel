@@ -189,6 +189,21 @@ void main() {
     );
     expect(folderStructureProblem(stackOf(s)), isNull);
   });
+
+  test('a track\'s row picked first with the cut\'s — the cut\'s go in', () {
+    final s = session();
+    final rows = addRows(s, 2);
+    final se = s.layerStack.addSeLane();
+    select(s, [se, ...rows]);
+
+    final folder = addFolder(s);
+
+    expect(
+      [for (final id in rows) stackOf(s).byId(id)!.folderId],
+      everyElement(folder),
+    );
+    expect(folderStructureProblem(stackOf(s)), isNull);
+  });
 }
 
 /// The row [s] made with Add Layer's [kind], stood on.
