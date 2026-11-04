@@ -523,15 +523,22 @@ String takeLetters(File records, String reader, DateTime now) {
         'from': reader.trim(),
       }),
   ], now);
-  return lettersText(waiting, reader.trim(), unmarked: marked.refusal);
+  return lettersText(
+    waiting,
+    reader.trim(),
+    unmarked: marked.refusal,
+    shotsDir: boardShotsDir(records),
+  );
 }
 
 /// [letters] as a session reads them: who wrote each, on which card, when,
-/// and the words — then how to answer.
+/// the words and the card's screenshots in [shotsDir] ([shotsFor]) — then
+/// how to answer.
 String lettersText(
   List<BoardLetter> letters,
   String reader, {
   String? unmarked,
+  String shotsDir = '',
 }) {
   final out = StringBuffer()
     ..writeln('📨 보드에 「$reader」 앞으로 남은 전달 ${letters.length}건'
@@ -546,6 +553,9 @@ String lettersText(
       ..writeln('━ ${letter.entry.from} → ${letter.entry.to} · 카드 ${card.id}'
           '${card.title.isEmpty ? '' : ' 「${card.title}」'} · $when')
       ..writeln(letter.entry.text);
+    for (final line in shotLines(shotsFor(shotsDir, card.id))) {
+      out.writeln(line);
+    }
   }
   out
     ..writeln()

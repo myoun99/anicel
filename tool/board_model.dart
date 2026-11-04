@@ -466,6 +466,33 @@ List<UnreadField> unreadFields = const [];
 List<BoardCard> readBoard(File file, {DateTime? now}) =>
     BoardRecords.of(file).cards(now: now);
 
+/// Where the screenshots pasted on cards are kept: beside the records.
+String boardShotsDir(File records) => '${records.parent.path}/board-shots';
+
+/// The screenshots attached to card [id], by file name. A shot belongs to its
+/// card by that name alone (`<id>-<stamp>.png`, the server's `_saveShot`) and
+/// to no line of the records — so every reader of a card asks here: the page,
+/// the records a tool asks for, a letter (card card-shots-unseen-by-sessions,
+/// 11-04: a session read F-558 as having no screenshot because only the page
+/// asked).
+List<String> shotsFor(String shotsDir, String id) {
+  final dir = Directory(shotsDir);
+  if (!dir.existsSync()) return const [];
+  final out = <String>[];
+  for (final f in dir.listSync()) {
+    final name = f.path.split(RegExp(r'[\\/]')).last;
+    if (name.startsWith('$id-') && name.endsWith('.png')) out.add(name);
+  }
+  out.sort();
+  return out;
+}
+
+/// [shots] as a session reads them in text: one line each, the picture's
+/// address on the server that holds the records.
+List<String> shotLines(Iterable<String> shots) => [
+      for (final shot in shots) '📎 /shot/$shot',
+    ];
+
 /// One line of the records as the gate reads it by itself, beside the card it
 /// folds into — a line can be wrong in a way its card no longer shows (a
 /// stamp from the future, a hand-written `state`). [start] and [length] are
