@@ -1574,6 +1574,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// [session] is the project the store was made for, not whichever is on
   /// screen when a render lands — a render in flight across a tab switch
   /// finishes for the project that asked (I-7).
+  ///
+  /// 🚨A PICTURE IS MADE WHILE THE HAND RESTS, as warming is (R13-3,
+  /// [PlaybackPrerenderScheduler.untilQuiet]): each of its rows is composed
+  /// once the pen is up and the edits are quiet, so a stroke started while
+  /// it renders has the GPU to itself. A stroke changes its cut's picture,
+  /// so every stroke asked for one at once — every row of the cut composed
+  /// at canvas resolution, through the strokes after it (F-533).
   StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
       StoryboardCutThumbnailStore(
         render: (cut, frameIndex, width, region) =>
@@ -1582,6 +1589,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
               width: width,
               region: region,
+              giveWay: session.playbackRig.prerenderScheduler.untilQuiet,
             ),
         originalSize: () {
           final camera = session.camera.cameraFrameSize;

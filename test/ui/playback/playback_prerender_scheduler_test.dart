@@ -495,6 +495,34 @@ void main() {
     });
   });
 
+  testWidgets('untilQuiet is the gate warming stands behind: shut while a '
+      'hold is open and through the quiet window after it (F-533)', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final f = fixture();
+      final scheduler = PlaybackPrerenderScheduler(
+        pictures: f.pictures,
+        resolveCut: (_) => cut(),
+        idleDelay: const Duration(milliseconds: 300),
+      );
+      var quiet = false;
+
+      scheduler.beginInputHold();
+      unawaited(scheduler.untilQuiet().then((_) => quiet = true));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(quiet, isFalse, reason: 'a hold open, past the idle delay');
+
+      scheduler.endInputHold();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(quiet, isFalse, reason: 'the pen just up: the window is fresh');
+
+      expect(await pollUntil(() => quiet), isTrue);
+      scheduler.dispose();
+      f.layerImages.dispose();
+    });
+  });
+
   testWidgets('an invalidated frame re-warms with fresh content', (
     tester,
   ) async {

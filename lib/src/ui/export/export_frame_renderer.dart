@@ -933,12 +933,14 @@ class ExportFrameRenderer {
   /// [frameIndex] through its camera, or over the canvas [region] a conte
   /// cell's moving camera sweeps ([pictureView]) — [width] pixels wide, in
   /// the shape of what it shows, reduced as the canvas's display reduces
-  /// ([CameraFrameRenderService.renderThroughCamera]).
+  /// ([CameraFrameRenderService.renderThroughCamera]) — its rows each after
+  /// [giveWay].
   Future<ui.Image> renderPicture(
     Cut cut,
     int frameIndex, {
     required int width,
     ui.Rect? region,
+    Future<void> Function()? giveWay,
   }) async {
     final view = pictureView(
       _viewFor(cut, frameIndex, ExportSizeMode.camera),
@@ -952,6 +954,7 @@ class ExportFrameRenderer {
       cameraFrameSize: view.frameSize,
       canvasSize: cut.canvasSize,
       outputSize: view.frameSize.scaledToWidth(width),
+      giveWay: giveWay,
     );
   }
 

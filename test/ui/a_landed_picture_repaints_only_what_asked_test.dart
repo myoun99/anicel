@@ -5,16 +5,20 @@ import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
+import 'package:anicel/src/ui/media/viewer_render_tier.dart';
 import 'package:anicel/src/ui/sheet/sheet_image_cache.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
+import '../helpers/draw_on_current_frame.dart';
 import '../helpers/solid_png_fixture.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/poll_until.dart';
@@ -170,5 +174,67 @@ void main() {
       isTrue,
       reason: 'nothing rebuilt the sheet for a picture',
     );
+  });
+
+  testWidgets('🚨a panel\'s picture lands while the hand rests: none under a '
+      'pen that is down, and it comes once the pen is up (F-533)', (
+    tester,
+  ) async {
+    await pumpHome(tester, tab: 'timeline-mode-storyboard-button');
+    final painter =
+        tester
+                .widget<CustomPaint>(
+                  find
+                      .byWidgetPredicate(
+                        (widget) =>
+                            widget is CustomPaint &&
+                            widget.painter is StoryboardCutBlocksPainter,
+                      )
+                      .first,
+                )
+                .painter!
+            as StoryboardCutBlocksPainter;
+    final thumbnails = painter.thumbnails!;
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final camera = session.camera.cameraFrameSize;
+    final original = Size(
+      camera.width.toDouble(),
+      camera.height.toDouble(),
+    );
+    // A width no block on screen asked for: its picture is rendered anew.
+    final shownHeight = original.height;
+    final width = pictureRenderWidthFor(shownHeight, original);
+    bool landed(Cut cut) =>
+        thumbnails.resolve(cut, 0, shownHeight: shownHeight)?.width == width;
+
+    await tester.runAsync(() async {
+      // A row with ink: a picture with no row composes nothing to wait for.
+      drawOnCurrentFrame(session);
+      final cut = session.requireActiveCut;
+      session.setBrushInputActive(true);
+      // Asked inside the real clock: a render asked on the test's own
+      // clock waits behind a timer nothing turns.
+      expect(
+        landed(cut),
+        isFalse,
+        reason: 'the premise: not held at that width',
+      );
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(
+        landed(cut),
+        isFalse,
+        reason: 'a stroke in hand shares the GPU with no panel\'s picture',
+      );
+      expect(thumbnails.pending(), isTrue, reason: 'it waits, still asked');
+
+      session.setBrushInputActive(false);
+      expect(
+        await pollUntil(() => landed(cut)),
+        isTrue,
+        reason: 'the pen up and the edits quiet, the picture is made',
+      );
+    });
   });
 }

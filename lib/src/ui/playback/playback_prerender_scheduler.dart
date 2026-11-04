@@ -252,6 +252,18 @@ class PlaybackPrerenderScheduler {
   bool _isQuietNow() =>
       _inputHolds == 0 && DateTime.now().difference(_lastActivity) >= idleDelay;
 
+  /// Completes once no hold is open and [idleDelay] has passed since the
+  /// last edit — the gate warming stands behind, for any other render that
+  /// draws nothing the hand waits for to stand behind too (the panels'
+  /// pictures, F-533).
+  ///
+  /// 🔬A panel's picture that did not wait (11-05, S5_BA cut 352 with the
+  /// storyboard tab open): every row composed at canvas resolution after
+  /// each stroke, through the strokes after it — the Surface Pro 11's ink
+  /// p50 7.5 → 187–204 ms from the second stroke, its GPU memory swinging
+  /// a gigabyte; the main PC dropped a stroke's frames 1,006 → 92.
+  Future<void> untilQuiet() => _untilQuiet(() => _disposed);
+
   /// Outstanding gate/yield waits, cancellable as a group: [cancel],
   /// [follow] and [dispose] flush them so a parked walk resumes at once,
   /// sees its stale generation and exits — no timer outlives the scheduler
@@ -622,8 +634,11 @@ class PlaybackPrerenderScheduler {
       !has(demand.picturesAt(0) ?? const []) ||
       !has(demand.picturesAt(1) ?? const []);
 
-  Future<void> _idleGate(int generation) async {
-    while (!_isStale(generation)) {
+  Future<void> _idleGate(int generation) =>
+      _untilQuiet(() => _isStale(generation));
+
+  Future<void> _untilQuiet(bool Function() givenUp) async {
+    while (!givenUp()) {
       if (_isQuietNow()) {
         return;
       }

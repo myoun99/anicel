@@ -110,6 +110,11 @@ class CameraFrameRenderService {
   /// hands out is its own: this render draws it and never lets it go.
   /// Without it every row is composed here and let go when the render is
   /// done.
+  ///
+  /// [giveWay] is waited for before each row is composed — a panel's
+  /// picture stands behind a stroke the hand starts while it renders
+  /// ([PlaybackPrerenderScheduler.untilQuiet]). None for a render someone
+  /// is waiting on.
   Future<ui.Image> renderThroughCamera({
     List<CutFrameCompositeLayer> layers = const [],
     List<CompositeNode<CutFrameCompositeLayer>>? nodes,
@@ -121,6 +126,7 @@ class CameraFrameRenderService {
     bool cutsToTheCanvas = false,
     ProjectBackground? paper,
     RowPictures? rows,
+    Future<void> Function()? giveWay,
   }) async {
     assert(
       paper == null || cutsToTheCanvas,
@@ -190,6 +196,7 @@ class CameraFrameRenderService {
       // past its check by the AOT compiler — a null one kills the release
       // build (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
       final kept = rows;
+      final waitFor = giveWay;
       for (final node in list) {
         switch (node) {
           case CompositeLeaf(payload: _CameraLayer(:final layer)):
@@ -240,6 +247,9 @@ class CameraFrameRenderService {
                       : null,
                 ))!;
 
+            if (waitFor != null) {
+              await waitFor();
+            }
             if (kept != null) {
               layerImages[layer] = await kept.of(layer.surface, compose);
             } else {
