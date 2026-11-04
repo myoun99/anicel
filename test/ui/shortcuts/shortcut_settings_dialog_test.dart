@@ -983,6 +983,14 @@ void main() {
           findsOneWidget,
           reason: 'the line stays up, and shows where the key went',
         );
+        Color? inkOf(String id) => tester
+            .widget<TextButton>(keep(id, another))
+            .style
+            ?.foregroundColor
+            ?.resolve({});
+        final colors = Theme.of(tester.element(keep(d, another))).colorScheme;
+        expect(inkOf(c), colors.primary);
+        expect(inkOf(d), colors.onSurfaceVariant);
       });
 
       testWidgets('one key on three actions is more than a pair', (
