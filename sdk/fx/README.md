@@ -1,10 +1,10 @@
 # Anicel fx plugin SDK — spec 1
 
-Write effects for Anicel in C. A plugin is one C
-source built as a WebAssembly module (`.wasm`), which Anicel runs on every
-device it runs on — Windows, Mac, Linux, Android and iPad — in a sandbox
-with no files, no network and no environment. A desktop can also take a
-native build of the same source and run that instead.
+Write effects for Anicel in C. A plugin is one C source built as a
+WebAssembly module (`.wasm`), which Anicel runs on every device it runs on —
+Windows, Mac, Linux, Android, iPad and iPhone — in a sandbox with no files,
+no network and no environment. A desktop can also take a native build of
+the same source and run that instead.
 
 | Here | What it is |
 | --- | --- |
@@ -38,8 +38,10 @@ cmake -S example -B build \
 ```
 
 The module is then a WASI reactor: Anicel starts its C library
-(`_initialize`) before asking it anything, and links WASI with nothing
-behind it — a plugin that opens a file or reads the clock finds none.
+(`_initialize`) before asking it anything. WASI has no folder, no
+environment and no network behind it — a plugin that opens a file finds
+none. The clock is there, but a render must not read it: a frame draws the
+same picture whenever it is asked for, so use `frame->time`.
 
 ## Install it in Anicel
 
@@ -87,9 +89,9 @@ Things every plugin meets:
 - **Frames come in any order** — the app renders the frame a person moves
   to. A render that depends on the one before it is wrong on the next jump.
 - **Speed.** A desktop, Android and a Mac compile the module to machine
-  code as it opens. An iPad makes no machine code as it runs, so it
-  interprets the module — many times slower: keep the inner loop plain, and
-  ship a native build where a desktop should be fastest.
+  code as it opens. An iPad or an iPhone makes no machine code as it runs,
+  so it interprets the module — many times slower: keep the inner loop
+  plain, and ship a native build where a desktop should be fastest.
 
 ## The file
 

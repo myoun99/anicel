@@ -503,9 +503,11 @@ QA_EXPORT void *qa_fx_plugin_open_wasm(const uint8_t *bytes, int64_t length,
   }
   plugin->store = wasmtime_store_new(plugin->engine, NULL, NULL);
   wasmtime_context_t *context = wasmtime_store_context(plugin->store);
-  // WASI with nothing behind it — no folder, no network, no environment —
-  // so a module built against WASI's libc runs, and reaches nothing
+  // WASI with no folder, no network and no environment behind it, so a
+  // module built against WASI's libc runs and reaches no file
   // (I-132-Q5: 「앱은 샌드박스로 돌려 플러그인이 파일 · 네트워크를 못 건드린다」).
+  // 🔬Its clock still reads (a probe built by WASI SDK 34, 2026-11-04):
+  // the README tells a render to take frame->time instead.
   wasmtime_error_t *wasm_error =
       wasmtime_context_set_wasi(context, wasi_config_new());
   if (wasm_error != NULL) {
