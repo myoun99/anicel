@@ -36,9 +36,7 @@ Future<void> mergeLayerRows(
     return;
   }
   final strings = AppText.strings;
-  await bakeAfterAsking(
-    context,
-    session,
+  await bakeAfterAsking<LayerMergeChange>(context, session, (
     title: plan.result.name,
     icon: Icons.merge,
     windowKey: 'layer-merge-progress',
@@ -59,7 +57,7 @@ Future<void> mergeLayerRows(
     },
     pictures: plan.pictures,
     land: () => session.layerMerging.land(plan),
-  );
+  ));
 }
 
 /// What a bake asks before it changes how its rows look: its window's
@@ -72,30 +70,37 @@ typedef BakeQuestion = ({
   String accept,
 });
 
-/// A bake — a MERGE's (I-78), an fx RASTERIZE's (I-120): asked first
-/// where it changes how the rows look ([question], a line for each of
-/// [changes] in their order — none, and it goes ahead unasked), each of
-/// [pictures] drawn as the rows show it behind the one wait window heavy
-/// work shows ([runWithAppProgress]) — [title] under [icon], keyed
-/// [windowKey] — and [land]ed as one undo step.
+/// A bake as its press runs it ([bakeAfterAsking]) — a MERGE's (I-78), an
+/// fx RASTERIZE's (I-120): its wait window's [title] under [icon], keyed
+/// [windowKey]; what it asks first ([question]), a line for each of the
+/// [changes] it makes to how the rows look ([lineOf]); the [pictures] it
+/// lays, and how it [land]s.
+typedef Bake<C extends Enum> = ({
+  String title,
+  IconData icon,
+  String windowKey,
+  BakeQuestion question,
+  Set<C> changes,
+  String Function(C change) lineOf,
+  List<LayerMergePicture> pictures,
+  void Function() land,
+});
+
+/// [bake] pressed: asked first where it changes how the rows look — its
+/// changes in their order; none, and it goes ahead unasked — each of its
+/// pictures drawn as the rows show it behind the one wait window heavy
+/// work shows ([runWithAppProgress]), and landed as one undo step.
 Future<void> bakeAfterAsking<C extends Enum>(
   BuildContext context,
-  EditorSessionManager session, {
-  required String title,
-  required IconData icon,
-  required String windowKey,
-  required BakeQuestion question,
-  required Set<C> changes,
-  required String Function(C change) lineOf,
-  required List<LayerMergePicture> pictures,
-  required void Function() land,
-}) async {
-  if (changes.isNotEmpty &&
-      await _accepts(context, question, icon, [
-            for (final change in changes.sortedBy<num>((c) => c.index))
-              lineOf(change),
-          ]) !=
-          true) {
+  EditorSessionManager session,
+  Bake<C> bake,
+) async {
+  final lines = [
+    for (final change in bake.changes.sortedBy<num>((c) => c.index))
+      bake.lineOf(change),
+  ];
+  if (lines.isNotEmpty &&
+      await _accepts(context, bake.question, bake.icon, lines) != true) {
     return;
   }
   if (!context.mounted) {
@@ -104,14 +109,14 @@ Future<void> bakeAfterAsking<C extends Enum>(
   final strings = AppText.strings;
   await runWithAppProgress<void>(
     context: context,
-    title: title,
-    titleIcon: icon,
+    title: bake.title,
+    titleIcon: bake.icon,
     runningLabel: strings.bakeProgressRunning,
     doneLabel: strings.bakeProgressDone,
-    windowKey: ValueKey<String>(windowKey),
+    windowKey: ValueKey<String>(bake.windowKey),
     task: (report) async {
-      await layBakedPictures(session, pictures, report);
-      land();
+      await layBakedPictures(session, bake.pictures, report);
+      bake.land();
     },
   );
 }

@@ -66,9 +66,7 @@ Future<void> rasterizeFxGroup(
     return;
   }
   final strings = AppText.strings;
-  await bakeAfterAsking(
-    context,
-    session,
+  await bakeAfterAsking<FxBakeChange>(context, session, (
     title: strings.tlRasterizeFxTemplate.replaceAll('{name}', name),
     icon: Icons.texture_outlined,
     windowKey: 'fx-rasterize-progress',
@@ -85,5 +83,5 @@ Future<void> rasterizeFxGroup(
     },
     pictures: plan.pictures,
     land: () => session.layerMerging.landFx(plan),
-  );
+  ));
 }
