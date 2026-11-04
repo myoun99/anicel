@@ -5,7 +5,6 @@ import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/sheet_marks.dart';
 import '../../services/cel_surface_as_shown.dart';
-import '../../services/playback/frame_demand.dart' show FrameGhosts;
 import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../playback/camera_shot.dart' show outlineThrough;
@@ -13,6 +12,7 @@ import '../playback/frame_picture_view.dart';
 import '../canvas/outline_clipper.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart' show exportFrameGround;
+import '../panel_pictures.dart' show panelFrame;
 import '../sheet_painting.dart';
 import 'conte_fonts.dart';
 import 'conte_picture_ink.dart';
@@ -158,14 +158,9 @@ class ContePictureLive extends StatelessWidget {
         landings: session.playbackRig.prerenderScheduler.landings,
         pictures: session.playbackRig.framePictures,
       ),
-      // The frame its print is cut from, on the same page: the print and
-      // the live one are one picture (F-533-Q8, `PanelPictures`).
-      picture: (
-        cut: picture.cut,
-        frameIndex: picture.frame,
-        paintPaper: true,
-        ghosts: FrameGhosts.none,
-      ),
+      // The frame its print is cut from: the print and the live one are
+      // one picture (F-533-Q8).
+      picture: panelFrame(picture.cut, picture.frame),
       nodes: drawn.nodes,
       viewport: viewportOfSimilarity(canvasToBox)!,
       live: (

@@ -74,12 +74,7 @@ class PanelPictures {
     final nodes = session.editingCanvas
         .stackAt(cut: cut, frameIndex: frameIndex, drawingLayerId: null)
         .nodes;
-    final demanded = (
-      cut: cut,
-      frameIndex: frameIndex,
-      paintPaper: true,
-      ghosts: FrameGhosts.none,
-    );
+    final demanded = panelFrame(cut, frameIndex);
     final picture = await pictures.pictureOf(
       nodes,
       demanded,
@@ -162,3 +157,13 @@ class PanelPictures {
 }
 
 bool _stays() => false;
+
+/// The frame a panel of [cut] at [frameIndex] is cut from, and a conte
+/// picture drawn live stands on (`ContePictureLive`) — its print and it one
+/// picture: on its paper, no ghost, as a canvas standing on it shows it.
+DemandedPicture panelFrame(Cut cut, int frameIndex) => (
+  cut: cut,
+  frameIndex: frameIndex,
+  paintPaper: true,
+  ghosts: FrameGhosts.none,
+);
