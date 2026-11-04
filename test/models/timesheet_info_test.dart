@@ -68,19 +68,16 @@ void main() {
       ]);
     });
 
-    test('notation settings default to bar-off / SE-fill-on, round-trip and '
-        'stay absent from default JSON', () {
+    test('the action stretch line defaults off, round-trips, and stays absent '
+        'from default JSON', () {
       const defaults = TimesheetInfo.empty;
       expect(defaults.exposureBarThreshold, isNull);
-      expect(defaults.seEmptyFill, isTrue);
       expect(defaults.toJson().containsKey('exposureBarThreshold'), isFalse);
-      expect(defaults.toJson().containsKey('seEmptyFill'), isFalse);
 
-      const custom = TimesheetInfo(exposureBarThreshold: 3, seEmptyFill: false);
+      const custom = TimesheetInfo(exposureBarThreshold: 3);
       final restored = TimesheetInfo.fromJson(custom.toJson());
       expect(restored, custom);
       expect(restored.exposureBarThreshold, 3);
-      expect(restored.seEmptyFill, isFalse);
     });
 
     // F-430: 「액션란이랑 셀란 늘림선 따로따로 … 셀란은 기본 있음, 1코마」.
@@ -113,7 +110,7 @@ void main() {
       }
 
       const info = TimesheetInfo(cellExposureBarThreshold: 4);
-      expect(info.copyWith(seEmptyFill: false).cellExposureBarThreshold, 4);
+      expect(info.copyWith(staff: const {}).cellExposureBarThreshold, 4);
       expect(
         info
             .copyWith(cellExposureBarThreshold: () => null)
@@ -126,7 +123,7 @@ void main() {
     test('copyWith keeps and clears the exposure-bar threshold via the '
         'nullable closure', () {
       const info = TimesheetInfo(exposureBarThreshold: 3);
-      expect(info.copyWith(seEmptyFill: false).exposureBarThreshold, 3);
+      expect(info.copyWith(staff: const {}).exposureBarThreshold, 3);
       expect(
         info.copyWith(exposureBarThreshold: () => null).exposureBarThreshold,
         isNull,

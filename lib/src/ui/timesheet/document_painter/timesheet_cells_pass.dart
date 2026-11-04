@@ -354,22 +354,11 @@ class _TimesheetCellsPass {
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
+        // 🗣️F-557 (유저 2026-11-04): 「se블록이랑 se가 없는곳의 반투명
+        // 영역이랑 같은 층인게 맘에안듬 … 그래서 그냥 대사 없는 구간 칠하는
+        // 기능자체를 삭제」. ↩️An SE column washed its empty rows light gray
+        // while the sheet's toggle was on.
         if (cell.kind == TimesheetCellKind.empty) {
-          // SE columns mark their empty stretches the print-sheet way: a
-          // dotted center guide, washed light gray while the toggle is on —
-          // on every row the column shows, down to the line the cut is
-          // drawn to ([rowsShown]). 🗣️F-340 (유저 2026-10-11): 「OL여백으로
-          // 생긴 엔드라인은 … 진짜 엔드라인을 대체하는 방식인데, SE행이 아직
-          // 그 방식 안쓰는듯」. ↩️It stopped at the conte 尺.
-          if (seColumn) {
-            _painter._se.paintSeEmptyRow(
-              canvas,
-              columnLeft: columnLeft,
-              columnWidth: columnWidth,
-              centerX: centerX,
-              cellTop: cellTop,
-            );
-          }
           continue;
         }
         final slot = _CellSlot(

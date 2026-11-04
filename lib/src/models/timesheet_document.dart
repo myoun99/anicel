@@ -358,7 +358,6 @@ class TimesheetDocument {
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
     required this.cellExposureBarThreshold,
-    required this.seEmptyFill,
     required this.cutName,
     required this.scene,
     required this.fps,
@@ -526,7 +525,6 @@ class TimesheetDocument {
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
       cellExposureBarThreshold: info.cellExposureBarThreshold,
-      seEmptyFill: info.seEmptyFill,
       cutName: cut.name,
       scene: cut.metadata.scene,
       fps: fps,
@@ -688,10 +686,6 @@ class TimesheetDocument {
     TimesheetColumnKind.cel => cellExposureBarThreshold,
     TimesheetColumnKind.se || TimesheetColumnKind.camera => null,
   };
-
-  /// Whether SE columns wash their empty stretches light gray (mirrored
-  /// from [TimesheetInfo.seEmptyFill]).
-  final bool seEmptyFill;
 
   /// The header boxes the form prints, in printing order (the user hides
   /// boxes per project via [TimesheetInfo.hiddenFields]).

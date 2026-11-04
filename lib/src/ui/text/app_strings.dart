@@ -842,7 +842,6 @@ enum AppStrings {
   String get sheetStretchLineHelp => _s('sheetStretchLineHelp');
   String get sheetStretchLineOn => _s('sheetStretchLineOn');
   String get sheetStretchLineOff => _s('sheetStretchLineOff');
-  String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
   String get sheetLength => _s('sheetLength');
   String get sheetThreeSeconds => _s('sheetThreeSeconds');
   String get sheetSixSeconds => _s('sheetSixSeconds');
@@ -852,8 +851,6 @@ enum AppStrings {
     TimesheetSheetKind.threeSeconds => sheetThreeSeconds,
     TimesheetSheetKind.sixSeconds => sheetSixSeconds,
   };
-  String get sheetFillOn => _s('sheetFillOn');
-  String get sheetFillOff => _s('sheetFillOff');
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get conteCoverPage => _s('conteCoverPage');
   String get conteBlankPage => _s('conteBlankPage');
@@ -2726,12 +2723,9 @@ enum AppStrings {
         'Draw the line from the (N+1)th comma of N+ holds and × runs',
     'sheetStretchLineOn': 'On',
     'sheetStretchLineOff': 'Off',
-    'sheetSeEmptyFill': 'Empty SE stretches',
     'sheetLength': 'Sheet length',
     'sheetThreeSeconds': '3 sec',
     'sheetSixSeconds': '6 sec',
-    'sheetFillOn': 'Grayed',
-    'sheetFillOff': 'Blank',
     'sheetBrushAllow': 'Allow Brush',
     'conteCoverPage': 'Cover',
     'conteBlankPage': 'Blank page',
@@ -4171,12 +4165,9 @@ enum AppStrings {
     'sheetStretchLineHelp': 'N コマ以上の止め・× で (N+1) コマ目から線を引く',
     'sheetStretchLineOn': 'あり',
     'sheetStretchLineOff': 'なし',
-    'sheetSeEmptyFill': 'セリフのない区間',
     'sheetLength': 'シートの長さ',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
-    'sheetFillOn': '塗る',
-    'sheetFillOff': '塗らない',
     'sheetBrushAllow': 'ブラシを許可',
     'conteCoverPage': '表紙',
     'conteBlankPage': '白紙',
@@ -6044,12 +6035,9 @@ enum AppStrings {
     'sheetStretchLineHelp': 'N코마 이상 止め · ×에서 (N+1)번째 코마부터 선을 긋기',
     'sheetStretchLineOn': '있음',
     'sheetStretchLineOff': '없음',
-    'sheetSeEmptyFill': '대사 없는 구간',
     'sheetLength': '시트 길이',
     'sheetThreeSeconds': '3초',
     'sheetSixSeconds': '6초',
-    'sheetFillOn': '칠함',
-    'sheetFillOff': '비움',
     'sheetBrushAllow': '브러시 허용',
     'conteCoverPage': '표지',
     'conteBlankPage': '빈 용지',
@@ -7956,12 +7944,9 @@ enum AppStrings {
         'Tracer le trait à partir du (N+1)e comma des maintiens et des × de N+',
     'sheetStretchLineOn': 'Oui',
     'sheetStretchLineOff': 'Non',
-    'sheetSeEmptyFill': 'Plages sans dialogue',
     'sheetLength': 'Longueur de feuille',
     'sheetThreeSeconds': '3 s',
     'sheetSixSeconds': '6 s',
-    'sheetFillOn': 'Grisées',
-    'sheetFillOff': 'Vides',
     'sheetBrushAllow': 'Autoriser le pinceau',
     'conteCoverPage': 'Couverture',
     'conteBlankPage': 'Page blanche',
@@ -9917,12 +9902,9 @@ enum AppStrings {
     'sheetStretchLineHelp': '在 N 格以上的保持或 × 中，从第 (N+1) 格开始画线',
     'sheetStretchLineOn': '有',
     'sheetStretchLineOff': '无',
-    'sheetSeEmptyFill': '无台词区间',
     'sheetLength': '摄影表长度',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
-    'sheetFillOn': '置灰',
-    'sheetFillOff': '留空',
     'sheetBrushAllow': '允许画笔',
     'conteCoverPage': '封面',
     'conteBlankPage': '空白页',
