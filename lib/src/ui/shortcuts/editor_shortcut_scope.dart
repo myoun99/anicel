@@ -67,8 +67,12 @@ String shortcutTooltip(
     return label;
   }
   final keys = shortcutKeys(EditorShortcutScope.maybeOf(context), actionIds);
-  return keys == null ? label : '$label ($keys)';
+  return keys == null ? label : labelWithKeys(label, keys);
 }
+
+/// [label] with [keys] after it — 「Brush Tool (B)」: the one spelling of a
+/// name and its keys, a tooltip's and a shortcut clash's (I-158).
+String labelWithKeys(String label, String keys) => '$label ($keys)';
 
 /// The live keys of [actionIds] as one label — 「Ctrl+S」, 「B, E」 — or null
 /// when none of them is bound. ★The ONE spelling a button's tooltip and a

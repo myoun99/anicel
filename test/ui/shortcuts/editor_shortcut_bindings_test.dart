@@ -175,6 +175,87 @@ void main() {
     expect(bindings.conflictedActionIds, isEmpty);
   });
 
+  // 🗣️I-158 (유저 2026-11-04): 「펜(Y)이런식으로 이 텍스트를 버튼으로
+  // 만들어서, 이걸로 할당하는 기능 … 그거 버튼누르면 올가미채우기의 키가
+  // 사라지는식으로」.
+  group('🗣️I-158: a clash', () {
+    const spare = SingleActivator(LogicalKeyboardKey.f20);
+    const other = SingleActivator(LogicalKeyboardKey.f19);
+    const a = EditorActionIds.frameNext;
+    const b = EditorActionIds.framePrevious;
+    const c = EditorActionIds.toolEraser;
+    List<String> keysOf(EditorShortcutBindings bindings, String id) => [
+      for (final activator in bindings.activatorsFor(id))
+        activatorKey(activator),
+    ];
+
+    test('names its key and its holders, in the registry\'s order', () {
+      final bindings = EditorShortcutBindings();
+      addTearDown(bindings.dispose);
+      expect(bindings.keyClashes, isEmpty);
+      bindings
+        ..setActivators(b, const [spare])
+        ..setActivators(a, const [spare, other]);
+
+      final [clash] = bindings.keyClashes;
+      expect(activatorKey(clash.key), activatorKey(spare));
+      final registry = [for (final row in bindings.definitions) row.id];
+      expect(clash.holders, unorderedEquals([a, b]));
+      expect(
+        clash.holders,
+        [...clash.holders]..sort(
+          (x, y) => registry.indexOf(x).compareTo(registry.indexOf(y)),
+        ),
+      );
+      expect(bindings.conflictedActionIds, clash.holders.toSet());
+    });
+
+    test('given to one holder, leaves the others with the rest of their '
+        'keys, and ends', () {
+      final bindings = EditorShortcutBindings();
+      addTearDown(bindings.dispose);
+      bindings
+        ..setActivators(a, const [spare, other])
+        ..setActivators(b, const [spare])
+        ..setActivators(c, const [spare]);
+      var told = 0;
+      bindings.addListener(() => told++);
+
+      bindings.giveKeyTo(b, spare);
+
+      expect(keysOf(bindings, b), [activatorKey(spare)]);
+      expect(keysOf(bindings, a), [activatorKey(other)]);
+      expect(keysOf(bindings, c), isEmpty);
+      expect(bindings.keyClashes, isEmpty);
+      expect(told, 1, reason: 'one change, told once');
+    });
+
+    test('given to an action that lost it, takes it back', () {
+      final bindings = EditorShortcutBindings();
+      addTearDown(bindings.dispose);
+      bindings
+        ..setActivators(a, const [spare])
+        ..setActivators(b, const [spare])
+        ..giveKeyTo(b, spare)
+        ..giveKeyTo(a, spare);
+
+      expect(keysOf(bindings, a), [activatorKey(spare)]);
+      expect(keysOf(bindings, b), isEmpty);
+    });
+
+    test('given back to a holder as it shipped, records nothing over it', () {
+      final bindings = EditorShortcutBindings();
+      addTearDown(bindings.dispose);
+      final shipped = bindings.activatorsFor(c).first;
+      bindings.setActivators(a, [shipped]);
+
+      bindings.giveKeyTo(c, shipped);
+
+      expect(bindings.isOverridden(c), isFalse);
+      expect(keysOf(bindings, a), isEmpty);
+    });
+  });
+
   test('overrides persist through the store and restore on launch; '
       'unknown actions and malformed entries are dropped', () async {
     final directory = await Directory.systemTemp.createTemp('shortcuts-test');

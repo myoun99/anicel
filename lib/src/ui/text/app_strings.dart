@@ -1330,6 +1330,14 @@ enum AppStrings {
   String get shortcutTouch => _s('shortcutTouch');
   String get shortcutSearch => _s('shortcutSearch');
   String get shortcutConflictBanner => _s('shortcutConflictBanner');
+
+  /// What a clashing action's name does, pressed (I-158): [key] stays on
+  /// [name] alone and leaves [others].
+  String shortcutClashKeep(String key, String name, String others) =>
+      _s('shortcutClashKeepTemplate')
+          .replaceAll('{key}', key)
+          .replaceAll('{name}', name)
+          .replaceAll('{others}', others);
   String get shortcutRecordingHint => _s('shortcutRecordingHint');
 
   String get shortcutPresets => _s('shortcutPresets');
@@ -2922,6 +2930,7 @@ enum AppStrings {
     'shortcutSearch': 'Search actions',
     'shortcutConflictBanner':
         'Some actions share the same key — the highlighted bindings collide.',
+    'shortcutClashKeepTemplate': 'Keep {key} on {name} only — off {others}',
     'shortcutRecordingHint': 'Press keys… (Esc cancels)',
     'playbackMode': 'Playback mode',
     'playbackModeSkipFrames': 'Skip frames',
@@ -4590,6 +4599,7 @@ enum AppStrings {
     'shortcutConflictBanner':
         '同じキーを共有しているアクションがあります — 強調された割り当てが'
         '衝突しています。',
+    'shortcutClashKeepTemplate': '{key}を{name}だけに割り当て — {others}から解除',
     'shortcutRecordingHint': 'キーを押してください…（Escで中止）',
     'playbackMode': '再生方式',
     'playbackModeSkipFrames': 'フレームを飛ばす',
@@ -6458,6 +6468,7 @@ enum AppStrings {
     'shortcutTouch': '터치 단축키',
     'shortcutSearch': '동작 검색',
     'shortcutConflictBanner': '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
+    'shortcutClashKeepTemplate': '{name}에만 {key} 할당 — {others}에서 해제',
     'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
     'playbackMode': '재생 방식',
     'playbackModeSkipFrames': '건너뛰기',
@@ -8382,6 +8393,8 @@ enum AppStrings {
     'shortcutConflictBanner':
         'Certaines actions partagent la même touche — les assignations '
         'surlignées entrent en conflit.',
+    'shortcutClashKeepTemplate':
+        'Garder {key} pour {name} seul — retiré de {others}',
     'shortcutRecordingHint': 'Appuyez sur des touches… (Échap annule)',
     'playbackMode': 'Mode de lecture',
     'playbackModeSkipFrames': 'Sauter des images',
@@ -10315,6 +10328,7 @@ enum AppStrings {
     'shortcutTouch': '触摸快捷方式',
     'shortcutSearch': '搜索动作',
     'shortcutConflictBanner': '有动作共用同一按键 — 高亮的绑定发生冲突。',
+    'shortcutClashKeepTemplate': '仅将{key}分配给{name} — 从{others}移除',
     'shortcutRecordingHint': '请按键…（Esc 取消）',
     'playbackMode': '播放方式',
     'playbackModeSkipFrames': '跳帧',
