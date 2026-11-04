@@ -93,8 +93,8 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 /// frame where none does (Q3), asked nothing first (Q21 「경고 창을
 /// 없앤다」), with the hatch the reference rasterize's wears (Q10) — a bake
 /// ([bakeBehindTheWaitWindow]), saying after which rows it made free
-/// (Q18). One its pictures cannot hold bakes nothing, and says why
-/// ([FxBakeWaits]: Q6).
+/// (Q18). ↩️One its pictures could not hold in one cel the uses share
+/// baked nothing and said why, until Q20 parted the cel.
 Future<void> rasterizeFxGroup(
   BuildContext context,
   EditorSessionManager session,
@@ -103,13 +103,9 @@ Future<void> rasterizeFxGroup(
   String name, {
   BakedFrames? band,
 }) async {
-  switch (session.layerMerging.planOfFx(rowId, effectId, band: band)) {
-    case null:
-      return;
-    case FxBakeWaits(:final why):
-      await _sayWhy(context, why);
-    case final FxBakePlan plan:
-      await _bake(context, session, plan, name);
+  if (session.layerMerging.planOfFx(rowId, effectId, band: band)
+      case final plan?) {
+    await _bake(context, session, plan, name);
   }
 }
 
@@ -142,20 +138,5 @@ Future<void> _bake(
       '{names}',
       plan.freed.join(', '),
     ),
-  );
-}
-
-/// The notice over a press that bakes nothing, saying [why].
-Future<void> _sayWhy(BuildContext context, FxBakeWait why) {
-  final strings = AppText.strings;
-  return showAppNotice(
-    context,
-    windowKey: ValueKey<String>(switch (why) {
-      FxBakeWait.usesApart => 'fx-rasterize-uses-apart',
-    }),
-    title: strings.commonNotice,
-    message: switch (why) {
-      FxBakeWait.usesApart => strings.tlFxBakeUsesApart,
-    },
   );
 }

@@ -1040,11 +1040,6 @@ enum AppStrings {
   String get tlMergeChangeRiderUnder => _s('tlMergeChangeRiderUnder');
   String get tlMergeChangeWall => _s('tlMergeChangeWall');
 
-  /// The notice over a rasterize of a 겸용 row whose uses show a cel as
-  /// other pictures (🗣️I-120-Q6 「한 장에 못 담으면 막고 경고」): it baked
-  /// nothing, and why.
-  String get tlFxBakeUsesApart => _s('tlFxBakeUsesApart');
-
   /// The notice after a rasterize that made rows synced on the conte free,
   /// on timings of their own — `{names}` theirs (🗣️I-120-Q18 · Q20 「행
   /// 구조가 바뀌는건 안내문」).
@@ -3652,8 +3647,6 @@ enum AppStrings {
     'tlMergeChangeRiderOver': 'An attached layer comes to cover other pictures',
     'tlMergeChangeRiderUnder': 'An attached layer goes under other pictures',
     'tlMergeChangeWall': 'What lies past the pasteboard is cut off',
-    'tlFxBakeUsesApart':
-        'The linked layers show the same cel differently through this fx, and one cel holds one picture. Nothing was rasterized.',
     'tlFxBakeRowsFreedTemplate':
         'Rasterized, {names} came to show more than one picture in one panel of the conte, so it went from synced to free (its own timing).',
     'tlAttachDropsFxBody':
@@ -5540,8 +5533,6 @@ enum AppStrings {
     'tlMergeChangeRiderOver': 'アタッチレイヤーがほかの絵を覆うようになります',
     'tlMergeChangeRiderUnder': 'アタッチレイヤーがほかの絵の下に入ります',
     'tlMergeChangeWall': 'ペーストボードの外の部分が切り取られます',
-    'tlFxBakeUsesApart':
-        'リンクされたレイヤーがこの fx で同じセルを別々に見せているため、セル1枚に収められません。ラスタライズしませんでした。',
     'tlFxBakeRowsFreedTemplate':
         'ラスタライズで {names} がコンテのコマ1つに2枚以上の絵を見せるようになったため、シンクからフリー（自分のタイミング）に切り替えました。',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
@@ -7413,8 +7404,6 @@ enum AppStrings {
     'tlMergeChangeRiderOver': '어태치 레이어가 다른 그림을 덮게 됩니다',
     'tlMergeChangeRiderUnder': '어태치 레이어가 다른 그림 밑으로 들어갑니다',
     'tlMergeChangeWall': '페이스트보드 밖 부분이 잘립니다',
-    'tlFxBakeUsesApart':
-        '링크된 레이어들이 이 fx 로 같은 셀을 서로 다르게 보여서, 셀 한 장에 담을 수 없습니다. 래스터라이즈하지 않았습니다.',
     'tlFxBakeRowsFreedTemplate':
         '래스터라이즈로 {names} 이(가) 콘티 칸 하나에 그림을 둘 이상 보이게 되어, 싱크에서 프리(자기 타이밍)로 바꿨습니다.',
     'tlAttachDropsFxBody':
@@ -9433,8 +9422,6 @@ enum AppStrings {
         "Un calque attaché recouvrira d'autres dessins",
     'tlMergeChangeRiderUnder': "Un calque attaché passera sous d'autres dessins",
     'tlMergeChangeWall': 'Ce qui dépasse du fond est coupé',
-    'tlFxBakeUsesApart':
-        'Les calques liés montrent le même cellulo différemment avec ce fx, et un cellulo garde une seule image. Rien n’a été pixellisé.',
     'tlFxBakeRowsFreedTemplate':
         'Pixellisé, {names} montrait plus d’une image dans une même vignette du storyboard : il passe de synchronisé à libre (son propre minutage).',
     'tlAttachDropsFxBody':
@@ -11238,7 +11225,6 @@ enum AppStrings {
     'tlMergeChangeRiderOver': '附属图层会盖住其他画面',
     'tlMergeChangeRiderUnder': '附属图层会被压到其他画面下面',
     'tlMergeChangeWall': '超出底板的部分会被裁掉',
-    'tlFxBakeUsesApart': '链接的图层通过此 fx 将同一张赛璐珞显示得各不相同，一张赛璐珞只能容纳一幅画面。未进行栅格化。',
     'tlFxBakeRowsFreedTemplate': '栅格化后，{names} 在分镜的一格中显示了不止一幅画面，已从同步改为自由（自身时间）。',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',

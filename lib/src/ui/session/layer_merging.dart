@@ -141,9 +141,8 @@ class LayerMerging {
   }
 
   /// What RASTERIZE scoped to [band] — over every frame, where none does —
-  /// makes of [rowId]'s fx [effectId]: a bake, or why it bakes nothing
-  /// ([FxBakeWaits]) — which the press says; null where it bakes nothing.
-  FxBakeOutcome? planOfFx(
+  /// makes of [rowId]'s fx [effectId]: null where it bakes nothing.
+  FxBakePlan? planOfFx(
     LayerId rowId,
     EffectId? effectId, {
     BakedFrames? band,

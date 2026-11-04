@@ -1142,7 +1142,6 @@ void main() {
     'tlMergeChangeRiderOver': (s) => s.tlMergeChangeRiderOver,
     'tlMergeChangeRiderUnder': (s) => s.tlMergeChangeRiderUnder,
     'tlMergeChangeWall': (s) => s.tlMergeChangeWall,
-    'tlFxBakeUsesApart': (s) => s.tlFxBakeUsesApart,
     'tlFxBakeRowsFreedTemplate': (s) => s.tlFxBakeRowsFreedTemplate,
     'tlSetCommasN': (s) => s.tlSetCommasN,
     'tlSetCommaTemplate': (s) => s.tlSetCommaTemplate,
