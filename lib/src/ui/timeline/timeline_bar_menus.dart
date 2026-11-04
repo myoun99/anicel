@@ -329,10 +329,12 @@ class TimelineBarMenus {
       // being a tail on the layer menu.
       //
       // R5 #14: and the two FOLDER-making commands went with it. "Group
-      // into folder" wrapped the active layer; a folder is made EMPTY from
-      // the Add Layer menu now and filled by dropping rows on it, which is
-      // how every other app this user works in behaves. "New attach folder"
-      // goes for the same reason — the drag makes those too.
+      // into folder" wrapped the active layer; a folder is made from the
+      // Add Layer menu now, and holds the rows selected as it is made
+      // (🗣️F-563, 유저 2026-11-04: 「레이어 여러개 선택하고 폴더생성누르면
+      // 선택한 레이어들 폴더안에 들어가는식으로」 — ↩️it was born EMPTY, to be
+      // filled by dropping rows on it). "New attach folder" goes for the
+      // same reason — the drag makes those too.
       PanelFlyoutItem(
         keyValue: 'timeline-rasterize-layer-button',
         label: editorActionLabel(EditorActionIds.layerRasterize),

@@ -903,6 +903,7 @@ class EditorSessionManager extends ChangeNotifier
     dragPreview: dragPreview,
     soundCannotPlay: (filePath) => playbackRig.soundCannotPlay(filePath),
     soundsMoved: () => playbackRig.soundsMoved,
+    selectedLayers: () => rowSelectionVerbs.selectedLayerIds,
   );
 
   bool get canCopyFrameAtCurrentFrame => clipboard.canCopyFrameAtCurrentFrame;

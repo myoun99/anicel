@@ -28,14 +28,18 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart';
 import '../../models/se_audio_spans.dart';
-import '../../models/new_row_placement.dart' show conteRowPlacement;
+import '../../models/new_row_placement.dart'
+    show conteRowPlacement, newRowPlacement, seatAboveRow;
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
 import '../../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
+import '../timeline/layer_drop_policy.dart'
+    show layerDragRun, resolveLayerDropOnRow;
 import '../timeline/timeline_cel_content_source.dart' show RowNamingRevision;
+import '../timeline/timeline_section_policy.dart' show sectionedLayerOrder;
 import '../canvas/stroke_in_flight.dart';
 import '../timeline/timeline_drag_preview.dart'
     show
@@ -70,6 +74,7 @@ class LayerStack {
     required ValueListenable<TimelineDragPreview?> dragPreview,
     required SoundCannotPlay? Function(String filePath) soundCannotPlay,
     required Listenable Function() soundsMoved,
+    required List<LayerId> Function() selectedLayers,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -83,7 +88,8 @@ class LayerStack {
        _canvasStroke = canvasStroke,
        _dragPreview = dragPreview,
        _soundCannotPlay = soundCannotPlay,
-       _soundsMoved = soundsMoved;
+       _soundsMoved = soundsMoved,
+       _selectedLayers = selectedLayers;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -114,6 +120,10 @@ class LayerStack {
   /// (`PlaybackRig.soundsMoved`) — asked for at [attach], once the rig is
   /// there to give it.
   final Listenable Function() _soundsMoved;
+
+  /// The rows the row selection holds, as the layers its verbs act on
+  /// (`RowSelection.selectedLayerIds`) — what a new folder holds (F-563).
+  final List<LayerId> Function() _selectedLayers;
   Listenable? _soundsMovedHeard;
 
   /// Each row's sounds, block by block, read once per row as it stands —
@@ -211,23 +221,73 @@ class LayerStack {
           ),
         );
       case LayerKind.folder:
-        // R5 #14: a folder is ADDED now, and it is born EMPTY.
-        //
-        // It used to be MADE by wrapping the active row, and Add Layer with
-        // a folder selected quietly added a drawing cel instead. The user
-        // asked for the file-manager shape every other app they work in
-        // has: make the container, then put things in it by dropping them
-        // on it. The drop is this round's other half; without it an empty
-        // folder would be a room with no door, because a caret between
-        // rows cannot address the inside of a folder that has none (the
-        // "in" and the "below" are the same slot).
-        _layerVerbs.addRowAboveActive(
-          (cut) => createFolderLayer(id: layerId, name: nextFolderName(cut)),
-        );
+        // R5 #14: a folder is ADDED, not made by wrapping the active row —
+        // Add Layer with a folder selected used to add a drawing cel
+        // instead. What it holds is F-563's ([_addFolderHolding]).
+        _addFolderHolding(layerId, _selectedLayers());
       case LayerKind.camera:
         _controllers.layerController.addLayerWithDefaults(layerId: layerId);
     }
     _standOnTheNewRow();
+  }
+
+  /// 🗣️F-563 (유저 2026-11-04): 「레이어 여러개 선택하고 폴더생성누르면
+  /// 선택한 레이어들 폴더안에 들어가는식으로」. The new folder holds every row
+  /// of this cut the row selection holds — none when it holds none — put in
+  /// as a drag of them let go ON it puts them ([resolveLayerDropOnRow]),
+  /// and it is born right above them. One undo step. ↩️It was born EMPTY
+  /// whatever was selected, to be filled by dropping rows on it (R5 #14).
+  ///
+  /// ⛔Not a rule of how many are selected: one row selected goes in as
+  /// many do, and holding none, the folder is born where every new row is
+  /// ([LayerVerbs.placementAboveActive]). Where the drop law refuses the
+  /// rows, the folder is born holding none of them — a drag let go there
+  /// would have moved nothing either.
+  void _addFolderHolding(LayerId folderId, List<LayerId> selected) {
+    final cut = _project.requireActiveCut;
+    final listed = sectionedLayerOrder(cut.layers);
+    final held = {
+      for (final id in selected)
+        if (listed.byId(id) != null) id,
+    };
+    final run = held.isEmpty
+        ? null
+        : layerDragRun(listed, held.first, alsoMoving: held);
+    _project.historyManager.runAsOneStep('Add folder', () {
+      _layerVerbs.addRow(
+        (cut) => createFolderLayer(id: folderId, name: nextFolderName(cut)),
+        run == null
+            ? _layerVerbs.placementAboveActive
+            : (stack) => newRowPlacement(
+                stack,
+                seatAboveRow(stack, listed[run.endExclusive - 1].id),
+              ),
+      );
+      final now = _project.requireActiveCut;
+      final plan = run == null
+          ? null
+          : resolveLayerDropOnRow(
+              stack: sectionedLayerOrder(now.layers),
+              movingId: held.first,
+              targetId: folderId,
+              alsoMoving: held,
+            );
+      if (plan == null) {
+        return;
+      }
+      _project.cutCommandCoordinator.setLayerPlacement(
+        cutId: now.id,
+        order: plan.order,
+        folderIds: plan.folderIds,
+        movedIds: {
+          for (final layer in listed.sublist(run!.start, run.endExclusive))
+            layer.id,
+        },
+        attach: plan.attach,
+        description: 'Add folder',
+      );
+      _changes.refreshAfterCutCommand(preferredActiveLayerId: folderId);
+    });
   }
 
   /// 「Add layer ▸ SE」, answered with the new lane's id: the recorder opens
