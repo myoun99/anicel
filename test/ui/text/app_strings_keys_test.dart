@@ -530,6 +530,7 @@ void main() {
     'panelStoryboard': (s) => s.panelStoryboard,
     'panelTimeline': (s) => s.panelTimeline,
     'timelines': (s) => s.timelines,
+    'cuts': (s) => s.cuts,
     'timelineNew': (s) => s.timelineNew,
     'timelineRename': (s) => s.timelineRename,
     'timelineDuplicate': (s) => s.timelineDuplicate,

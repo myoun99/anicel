@@ -98,6 +98,9 @@ const ledger = <String, Why>{
   // one out of the list, as the shortcut window's presets are.
   "storyboard/timeline_list.dart | 'timeline-\${timeline.id.value}'":
       Why.aChoice,
+  // The timeline legend's list of cuts (I-154): which cut the playhead
+  // stands in, one out of the list, as the conte's timelines are.
+  "timeline/cut_list.dart | 'cut-list-\${cut.id.value}'": Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-\${option.keySlug}'":
       Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-none'": Why.aChoice,
