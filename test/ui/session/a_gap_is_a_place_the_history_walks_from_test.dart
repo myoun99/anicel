@@ -31,8 +31,11 @@ void main() {
       final places = HistoryPlaces()..placeNow = () => now;
       final entry = _Edit();
       places.stamp(entry);
-      expect(places.of(entry), cut, reason: '⛔전제');
+      places.settle();
+      expect(places.of(entry), cut, reason: '⛔전제: settled on the cut');
 
+      // Stamped again — as an undo moves it — with nothing left to settle,
+      // so the stamp alone says where.
       now = null;
       places.stamp(entry);
       expect(places.of(entry), isNull);
