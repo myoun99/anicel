@@ -240,6 +240,26 @@ void main() {
       expect(moved.dirty, now.bounds.inflate(1));
     });
 
+    testWidgets('a canvas that paints its own row marks it the same', (
+      tester,
+    ) async {
+      final live = liveOn(surfaceOf(const {}));
+      overlay.showFillRange(markOf(0, 0, side, side));
+      final recorder = ui.PictureRecorder();
+      live.paint(Canvas(recorder), const Size(side * 1.0, side * 1.0));
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(side, side);
+      picture.dispose();
+      final data = await tester.runAsync(image.toByteData);
+      image.dispose();
+      expect(pixelAt(data!.buffer.asUint8List(), 20, 4), [
+        0x80,
+        0x80,
+        0x80,
+        0x80,
+      ]);
+    });
+
     test('the live row reaches as far as its mark', () {
       final live = liveOn(surfaceOf(const {}));
       expect(live.drawnWorldRect, Rect.zero, reason: 'premise: nothing drawn');
