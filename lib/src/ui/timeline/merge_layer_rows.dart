@@ -51,7 +51,7 @@ Future<void> mergeLayerRows(
     doneLabel: strings.bakeProgressDone,
     windowKey: const ValueKey<String>('layer-merge-progress'),
     task: (report) async {
-      await _layPictures(session, plan, report);
+      await layBakedPictures(session, plan.pictures, report);
       session.layerMerging.land(plan);
     },
   );
@@ -127,31 +127,31 @@ Future<void> mergeBlocks(
   );
 }
 
-/// Each of [plan]'s pictures drawn of the cut it is made from, laid on its
-/// new cel in the cut that keeps it ([LayerMergePicture.into]) — a merge
-/// of a track's conte rows lays each cut's own (I-78-Q20), one cut's after
-/// another's.
-Future<void> _layPictures(
+/// Each of [pictures] drawn of the cut it is made from, laid on its new
+/// cel in the cut that keeps it ([LayerMergePicture.into]) — a merge of a
+/// track's conte rows lays each cut's own (I-78-Q20), one cut's after
+/// another's. A merge's pictures, and an fx RASTERIZE's (I-120).
+Future<void> layBakedPictures(
   EditorSessionManager session,
-  LayerMergePlan plan,
+  List<LayerMergePicture> pictures,
   void Function(double) report,
 ) async {
   final byCut = <CutId, List<LayerMergePicture>>{};
-  for (final picture in plan.pictures) {
+  for (final picture in pictures) {
     (byCut[picture.into.id] ??= []).add(picture);
   }
   var laid = 0;
-  for (final pictures in byCut.values) {
-    final laying = _Laying(session, pictures.first.into);
+  for (final ofCut in byCut.values) {
+    final laying = _Laying(session, ofCut.first.into);
     try {
-      for (final picture in pictures) {
+      for (final picture in ofCut) {
         await laying.lay(
           picture.rowId,
           picture.frameId,
           await laying.draw(picture.from, picture.frameIndex),
         );
         laid += 1;
-        report(doneShare(laid, plan.pictures.length));
+        report(doneShare(laid, pictures.length));
       }
     } finally {
       laying.dispose();

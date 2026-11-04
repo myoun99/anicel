@@ -906,6 +906,7 @@ class _StoryboardRailRows {
     }
     final onToggleEnabled = _state.widget.onToggleLaneGroupEnabled;
     final onSetBasis = _state.widget.onSetLaneGroupBasis;
+    final onRasterize = _state.widget.onRasterizeLaneGroup;
     final onReset = _state.widget.onResetLaneGroup;
     final lanes = _seLanes(track, slot);
     final labels = _state._rows.laneLabels(
@@ -919,6 +920,9 @@ class _StoryboardRailRows {
       onSetGroupBasis: onSetBasis == null
           ? null
           : (lane, basis) => onSetBasis(layer, lane, basis),
+      rasterizeGroup: onRasterize == null
+          ? null
+          : (lane) => onRasterize(layer, lane),
       onResetGroup: onReset == null ? null : (lane) => onReset(layer, lane),
       // The row exists or it does not; the open cut is not part of the
       // question (user, 2026-08-09).
@@ -1059,6 +1063,7 @@ class _StoryboardRailRows {
     final seek = _state.widget.onSeekCutFrame;
     final toggleEnabled = _state.widget.onToggleLaneGroupEnabled;
     final setBasis = _state.widget.onSetLaneGroupBasis;
+    final rasterize = _state.widget.onRasterizeLaneGroup;
     final reset = _state.widget.onResetLaneGroup;
     final rows = _state._rows.laneLabels(
       carrier: labels.shown.copyWith(id: projection.rowId),
@@ -1071,6 +1076,9 @@ class _StoryboardRailRows {
       onSetGroupBasis: stood == null || setBasis == null
           ? null
           : (lane, basis) => setBasis(stood.layer, lane, basis),
+      rasterizeGroup: stood == null || rasterize == null
+          ? null
+          : (lane) => rasterize(stood.layer, lane),
       onResetGroup: stood == null || reset == null
           ? null
           : (lane) => reset(stood.layer, lane),

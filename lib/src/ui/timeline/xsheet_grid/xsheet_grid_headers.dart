@@ -82,6 +82,7 @@ class _XSheetGridHeaders {
         onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
         onToggleLaneGroupEnabled: _state.widget.hooks.onToggleLaneGroupEnabled,
         onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
+        onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
         onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
         currentRowHooks: _state.widget.hooks.currentRowHooks,
         // The SAME answer the layer's own column header reads, so a

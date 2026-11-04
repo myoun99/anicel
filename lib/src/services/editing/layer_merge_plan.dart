@@ -625,7 +625,7 @@ List<List<int>> _oneLayerOf(LayerMergeTakings takings) {
 
 /// ONE cut's share of a merge: what it is baked of and drawn from, and the
 /// runs of its frames by the picture they show — a picture keyed as every
-/// cut keys it ([_runsByPicture]'s `keys`).
+/// cut keys it ([runsByPicture]'s `keys`).
 typedef _Part = ({
   LayerMergeTaking taking,
   CelReads reads,
@@ -651,7 +651,7 @@ _Part _partOf(
   final folders = _foldersLeft(taking, over, rows);
   // The result parts wherever a synced rider's picture does too: each
   // rides the result's cels one for one.
-  final runs = _runsByPicture(
+  final runs = runsByPicture(
     _cutWith(taking, folders, [
       ...rows,
       for (final rider in taking._riders)
@@ -798,7 +798,7 @@ _Made _madeOf(
   _Part part,
   _ResultOf of,
   FrameId Function(LayerId row) mintFrameId,
-  _WallCheck wall,
+  WallCheck wall,
 ) {
   final taking = part.taking;
   final row = _resultRow(of, taking._anchor, part.standing);
@@ -1159,7 +1159,7 @@ typedef _Cel = ({
 /// the order they first show. A run that shows nothing is none: the row is
 /// empty there. Each picture is keyed with the rows [keys] names named so
 /// ([_renamed]), its cels read as their own rows' all the same.
-List<List<CutFrameCompositeSpan>> _runsByPicture(
+List<List<CutFrameCompositeSpan>> runsByPicture(
   Cut shown,
   List<Layer> rows,
   BrushFrameRevisionResolver revisionOf, {
@@ -1249,7 +1249,7 @@ String? _nameTakenAt(
   int frameIndex,
 ) {
   final name = switch (_nameShownAt(shown, rows, frameIndex)) {
-    final number? => _tailClearOf(held, number),
+    final number? => tailClearOf(held, number),
     null => null,
   };
   if (name != null) {
@@ -1260,7 +1260,7 @@ String? _nameTakenAt(
 
 /// [number], or [number] with the first tail no name of [held] wears
 /// (Q10).
-String _tailClearOf(Set<String> held, String number) => firstUnusedName(
+String tailClearOf(Set<String> held, String number) => firstUnusedName(
   held,
   (index) => index == 1 ? number : '$number-$index',
 );
@@ -1306,7 +1306,7 @@ List<LayerMergePicture> _picturesOf(
 Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
   id: of.id,
   name: of.head.name,
-  kind: _kindHolding(of.head.kind, of.bank.length),
+  kind: kindHoldingPictures(of.head.kind, of.bank.length),
   mark: of.head.mark,
   onTimesheet: anchor.onTimesheet,
   folderId: folderId,
@@ -1327,7 +1327,7 @@ Layer _onTheConte(
   required List<_Cel>? following,
 }) {
   final riding = row.copyWith(
-    kind: _kindHolding(keeper.kind, row.frames.length),
+    kind: kindHoldingPictures(keeper.kind, row.frames.length),
     attachedToLayerId: conte.id,
     attachedPlacement: keeper.attachedPlacement,
     conteKey: keeper.conteKey,
@@ -1347,7 +1347,7 @@ Layer _onTheConte(
 /// The kind a row of [kind] is once it holds [pictures] cels: a picture
 /// row's own — a folder or an image that now holds more than one picture
 /// becoming a drawing row.
-LayerKind _kindHolding(LayerKind kind, int pictures) =>
+LayerKind kindHoldingPictures(LayerKind kind, int pictures) =>
     kind.isDrawingCel && !(kind.holdsSingleCel && pictures > 1)
     ? kind
     : LayerKind.animation;
@@ -1426,7 +1426,7 @@ typedef _Minting = ({
     );
   }
   final cels = _celsOf(
-    _runsByPicture(alone, [rider], minting.revisionOf),
+    runsByPicture(alone, [rider], minting.revisionOf),
     alone,
     [rider],
     (_) => minting.mintFrameId(rider.id),
@@ -1434,7 +1434,7 @@ typedef _Minting = ({
   return (
     row: rider.copyWith(
       attachedToLayerId: result.row.id,
-      kind: _kindHolding(rider.kind, cels.length),
+      kind: kindHoldingPictures(rider.kind, cels.length),
       frames: _framesOf(cels),
       timeline: _timelineOf(cels),
     ),
@@ -1450,7 +1450,7 @@ Set<LayerMergeChange> _changesOf(
   LayerMergeTaking taking,
   Set<LayerId> over,
   List<LayerMergePicture> drawn,
-  _WallCheck wall,
+  WallCheck wall,
 ) {
   final LayerMergeTaking(
     :cut,
@@ -1482,7 +1482,7 @@ Set<LayerMergeChange> _changesOf(
         ))
       LayerMergeChange.folder,
     ..._ridersLed(taking, over),
-    if (_cutAtTheWall(drawn, wall)) LayerMergeChange.wall,
+    if (picturesCutAtTheWall(drawn, wall)) LayerMergeChange.wall,
   };
 }
 
@@ -1505,14 +1505,14 @@ Set<LayerMergeChange> _ridersLed(LayerMergeTaking taking, Set<LayerId> over) {
 
 /// The wall a merge's pictures are drawn over, and where its cels' ink
 /// lies ([CelInkResolver]).
-typedef _WallCheck = ({PasteboardWall wall, CelInkResolver inkOf});
+typedef WallCheck = ({PasteboardWall wall, CelInkResolver inkOf});
 
 /// Whether a row a picture of [drawn] is drawn of shows a picture past the
 /// wall there — the part the merge, drawing the screen inside the wall,
 /// cuts off (I-78-Q15 · Q19). Read where the row SHOWS it at the picture's
 /// frame, as its cut paints it ([layerPlacementAt]): its keys, its folders'
 /// and a reference's fx move it from where its pixels are laid ([_laidOf]).
-bool _cutAtTheWall(List<LayerMergePicture> drawn, _WallCheck check) {
+bool picturesCutAtTheWall(List<LayerMergePicture> drawn, WallCheck check) {
   final (:wall, :inkOf) = check;
   for (final (:from, :frameIndex, into: _, rowId: _, frameId: _) in drawn) {
     for (final row in from.layers) {
@@ -1872,7 +1872,7 @@ String? _nameKept(String? name, List<Frame> kept) {
   if (shown == null) {
     return null;
   }
-  return _tailClearOf({for (final cel in kept) ?celNumberOf(cel.name)}, shown);
+  return tailClearOf({for (final cel in kept) ?celNumberOf(cel.name)}, shown);
 }
 
 /// [cut] holding [cel] of [row] alone and as it is — no look of the row's,

@@ -2,11 +2,14 @@ import '../../models/bitmap_surface.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
 import '../../services/commands/set_cut_layers_command.dart';
 import '../../services/commands/set_cuts_layers_command.dart';
+import '../../services/editing/fx_bake_plan.dart';
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/import/raster_cel_import.dart' show bakeCelSurface;
+import '../../services/project_lookup.dart' show cutWritingRow;
 import 'layer_verbs.dart';
 import 'range_selections.dart';
 import 'render_caches.dart';
@@ -16,7 +19,8 @@ import 'session_roles.dart';
 /// A press of MERGE as the session asks it and lands it (I-78): what it
 /// makes of the selected rows ([planLayerMerge]) or of the band's blocks
 /// ([planBlockMerge]), each picture laid on its new cel, and the rows made
-/// what it planned.
+/// what it planned — and a press of an fx group's RASTERIZE (I-120,
+/// [planFxBake]), whose pictures are baked and laid as a merge's are.
 ///
 /// The pictures are drawn by the press between the two: a frame of the cut
 /// drawn is a picture of the screen, and that is the UI's
@@ -87,18 +91,71 @@ class LayerMerging {
     if (taking == null) {
       return null;
     }
-    final store = _renderCaches.brushFrameStore;
     return planLayerMerge(
       taking,
-      readsOf: (cut) => (
-        revisionOf: (layerId, frameId) => store.sourceRevisionOf(
-          _project.brushFrameKeyForCut(cut, layerId, frameId),
-        ),
-        inkOf: (row, cel) => _renderCaches.celContentBounds(cut, row, cel),
-      ),
+      readsOf: _readsOf,
       mintFrameId: _frameIds.mintFrameId,
       reach: _project.repository.requireProject().pasteboardReach,
     );
+  }
+
+  /// How [cut]'s cels are read by a bake: what each holds, and where its
+  /// ink lies.
+  CelReads _readsOf(Cut cut) {
+    final store = _renderCaches.brushFrameStore;
+    return (
+      revisionOf: (layerId, frameId) => store.sourceRevisionOf(
+        _project.brushFrameKeyForCut(cut, layerId, frameId),
+      ),
+      inkOf: (row, cel) => _renderCaches.celContentBounds(cut, row, cel),
+    );
+  }
+
+  /// Whether RASTERIZE in [rowId]'s group header for [effectId] — the
+  /// transform's, where null — bakes anything: its light, from the taking
+  /// [planOfFx] plans from (I-120 round ②).
+  bool bakesFx(LayerId rowId, EffectId? effectId) =>
+      _takingOfFx(rowId, effectId) != null;
+
+  FxBakeTaking? _takingOfFx(LayerId rowId, EffectId? effectId) {
+    final project = _project.repository.requireProject();
+    final cutId = cutWritingRow(
+      project,
+      rowId,
+      standing: _project.activeCutOrNull?.id,
+    );
+    return cutId == null
+        ? null
+        : takeFxToBake(
+            project: project,
+            cutId: cutId,
+            rowId: rowId,
+            effectId: effectId,
+          );
+  }
+
+  /// What RASTERIZE makes of [rowId]'s fx [effectId] — null where it bakes
+  /// nothing.
+  FxBakePlan? planOfFx(LayerId rowId, EffectId? effectId) =>
+      switch (_takingOfFx(rowId, effectId)) {
+        null => null,
+        final taking => planFxBake(
+          taking,
+          reads: _readsOf(taking.cut),
+          mintFrameId: _frameIds.mintFrameId,
+          reach: _project.repository.requireProject().pasteboardReach,
+        ),
+      };
+
+  /// The row [plan] bakes made what it planned, in ONE undo step — or
+  /// nothing, when its cut has changed since it was planned.
+  bool landFx(FxBakePlan plan) {
+    if (!_lands(plan.cut, plan.layers, 'Rasterize fx')) {
+      return false;
+    }
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+    return true;
   }
 
   /// What MERGE makes of the band's blocks — null where it merges none.

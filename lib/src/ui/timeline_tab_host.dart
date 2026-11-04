@@ -13,6 +13,7 @@ import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
 import 'timeline/cut_list.dart' show cutListButton;
+import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
@@ -943,6 +944,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   basis,
                   description: 'Set ${lane.label} basis',
                 ),
+            onRasterizeLaneGroup: (layer, lane) =>
+                rasterizeLaneGroupOf(context, _session, layer, lane),
             // R5: AE's group Reset. The session owns the scope rule (the
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.

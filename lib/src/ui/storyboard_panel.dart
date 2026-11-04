@@ -100,6 +100,7 @@ import 'widgets/ellipsis_text.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
+        LaneGroupRasterize,
         LaneStretchWord,
         PropertyLaneEditCallbacks,
         PropertyLaneRow,
@@ -764,6 +765,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onResetTrackEffectGroup,
     this.onToggleLaneGroupEnabled,
     this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.laneGroupOnOf,
     this.onResetLaneGroup,
     this.seCommaDrag,
@@ -1567,6 +1569,10 @@ class StoryboardPanel extends StatefulWidget {
   /// timeline's own verb (I-120-Q10). Null leaves the chip out.
   final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
   onSetLaneGroupBasis;
+
+  /// An S row's group header RASTERIZE — the timeline's own (I-120). Null
+  /// leaves it out.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
 
   /// A LIVE read of a lane group's switch, by its header lane — for the
   /// column sweep, as [layerOnTimesheetOf] is.

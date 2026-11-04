@@ -158,6 +158,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
     this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
@@ -202,6 +203,11 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// is set; null leaves the chip out, as [onResetLaneGroup] does its reset.
   final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
   onSetLaneGroupBasis;
+
+  /// The group header's RASTERIZE (I-120 round ②) as the host answers it:
+  /// none for a header that has none, its press null where it bakes
+  /// nothing now (the slot stays, Q8). Null leaves it out everywhere.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5, AE's group Reset). Never deletes a key:
   /// it puts the group's members back to their defaults at the playhead —
@@ -925,6 +931,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       layerRailTrailingCells(
         axis: widget.axis,
         columns: widget.metrics.railColumns,
+        visibility: _groupRasterize(colorScheme),
         clip: _groupReset(colorScheme),
         fx: _groupFx(context),
         blend: _groupBasis(),
@@ -985,6 +992,27 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           'fx',
           style: fxGlyphStyle(context: context, active: enabled, fontSize: 11),
         ),
+      ),
+    );
+  }
+
+  /// 🗣️I-120-Q10 「A」: the group's RASTERIZE in the EYE column — a header
+  /// has no eye, so the column is free — wearing the hatch the reference
+  /// rasterize's window wears, its tooltip naming what it bakes.
+  Widget? _groupRasterize(ColorScheme colorScheme) {
+    final answer = widget.onRasterizeLaneGroup?.call(layer, lane);
+    if (answer == null) return null;
+    return RailGlyphButton(
+      name: '$_keyPrefix-lane-group-rasterize-${layer.id}-${lane.laneId}',
+      tooltip: AppText.strings.tlRasterizeFxTemplate.replaceAll(
+        '{name}',
+        lane.label,
+      ),
+      size: AppIconButtonSize.micro,
+      onPressed: answer.press,
+      glyph: RailIconGlyph(
+        Icons.texture_outlined,
+        color: colorScheme.onSurfaceVariant,
       ),
     );
   }

@@ -1049,6 +1049,12 @@ enum AppStrings {
   String get tlMergeChangeRiderUnder => _s('tlMergeChangeRiderUnder');
   String get tlMergeChangeWall => _s('tlMergeChangeWall');
 
+  /// The warning over an fx group's RASTERIZE (🗣️I-120-Q2 「순서가 바뀌면
+  /// 먼저 경고」), as the merge's is worded — each line one way it may part.
+  String get tlFxBakeChangesTitle => _s('tlFxBakeChangesTitle');
+  String get tlFxBakeChangesBody => _s('tlFxBakeChangesBody');
+  String get tlFxBakeChangeOrder => _s('tlFxBakeChangeOrder');
+
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
   /// ellipsized labels on device. ↩️The '…' stayed on menu ENTRIES that
@@ -2186,6 +2192,7 @@ enum AppStrings {
   String get railLayerBlendMode => _s('railLayerBlendMode');
   String get railFolderBlendMode => _s('railFolderBlendMode');
   String get tlFxBasisTemplate => _s('tlFxBasisTemplate');
+  String get tlRasterizeFxTemplate => _s('tlRasterizeFxTemplate');
   String get railHideLayer => _s('railHideLayer');
   String get railShowLayer => _s('railShowLayer');
   String get railBypassLayerFx => _s('railBypassLayerFx');
@@ -3537,6 +3544,7 @@ enum AppStrings {
     'railLayerBlendMode': 'Layer blend mode',
     'railFolderBlendMode': 'Folder blend mode',
     'tlFxBasisTemplate': '{name} applies per',
+    'tlRasterizeFxTemplate': 'Rasterize {name}',
     'railHideLayer': 'Hide layer',
     'railShowLayer': 'Show layer',
     'railBypassLayerFx': 'Bypass layer FX',
@@ -3662,6 +3670,11 @@ enum AppStrings {
     'tlMergeChangeRiderOver': 'An attached layer comes to cover other pictures',
     'tlMergeChangeRiderUnder': 'An attached layer goes under other pictures',
     'tlMergeChangeWall': 'What lies past the pasteboard is cut off',
+    'tlFxBakeChangesTitle': 'Rasterizing may change how it looks',
+    'tlFxBakeChangesBody':
+        'The rasterized pictures may look otherwise than they do now.',
+    'tlFxBakeChangeOrder':
+        'An fx that ran before it runs over the rasterized pictures',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
@@ -5394,6 +5407,7 @@ enum AppStrings {
     'railLayerBlendMode': 'レイヤーの合成モード',
     'railFolderBlendMode': 'フォルダーの合成モード',
     'tlFxBasisTemplate': '{name}の適用対象',
+    'tlRasterizeFxTemplate': '{name}をラスタライズ',
     'railHideLayer': 'レイヤーを隠す',
     'railShowLayer': 'レイヤーを表示',
     'railBypassLayerFx': 'レイヤーFXをバイパス',
@@ -5556,6 +5570,9 @@ enum AppStrings {
     'tlMergeChangeRiderOver': 'アタッチレイヤーがほかの絵を覆うようになります',
     'tlMergeChangeRiderUnder': 'アタッチレイヤーがほかの絵の下に入ります',
     'tlMergeChangeWall': 'ペーストボードの外の部分が切り取られます',
+    'tlFxBakeChangesTitle': 'ラスタライズすると見た目が変わることがあります',
+    'tlFxBakeChangesBody': 'ラスタライズした絵は、今と違って見えることがあります。',
+    'tlFxBakeChangeOrder': '先にかかっていた fx が、ラスタライズした絵の上にかかります',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -7272,6 +7289,7 @@ enum AppStrings {
     'railLayerBlendMode': '레이어 블렌드 모드',
     'railFolderBlendMode': '폴더 블렌드 모드',
     'tlFxBasisTemplate': '{name} 적용 대상',
+    'tlRasterizeFxTemplate': '{name} 래스터라이즈',
     'railHideLayer': '레이어 숨기기',
     'railShowLayer': '레이어 표시',
     'railBypassLayerFx': '레이어 FX 우회',
@@ -7435,6 +7453,9 @@ enum AppStrings {
     'tlMergeChangeRiderOver': '어태치 레이어가 다른 그림을 덮게 됩니다',
     'tlMergeChangeRiderUnder': '어태치 레이어가 다른 그림 밑으로 들어갑니다',
     'tlMergeChangeWall': '페이스트보드 밖 부분이 잘립니다',
+    'tlFxBakeChangesTitle': '래스터라이즈하면 겉보기가 달라질 수 있습니다',
+    'tlFxBakeChangesBody': '래스터라이즈한 그림은 지금과 다르게 보일 수 있습니다.',
+    'tlFxBakeChangeOrder': '먼저 걸리던 fx 가 래스터라이즈한 그림 위에 걸립니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
@@ -9307,6 +9328,7 @@ enum AppStrings {
     'railLayerBlendMode': 'Mode de fusion du calque',
     'railFolderBlendMode': 'Mode de fusion du dossier',
     'tlFxBasisTemplate': '{name} s’applique par',
+    'tlRasterizeFxTemplate': 'Pixelliser {name}',
     'railHideLayer': 'Masquer le calque',
     'railShowLayer': 'Afficher le calque',
     'railBypassLayerFx': 'Contourner les FX du calque',
@@ -9459,6 +9481,11 @@ enum AppStrings {
         "Un calque attaché recouvrira d'autres dessins",
     'tlMergeChangeRiderUnder': "Un calque attaché passera sous d'autres dessins",
     'tlMergeChangeWall': 'Ce qui dépasse du fond est coupé',
+    'tlFxBakeChangesTitle': 'La pixellisation peut changer son apparence',
+    'tlFxBakeChangesBody':
+        'Les images pixellisées peuvent paraître autrement qu’à présent.',
+    'tlFxBakeChangeOrder':
+        'Un fx appliqué avant lui s’applique sur les images pixellisées',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -11143,6 +11170,7 @@ enum AppStrings {
     'railLayerBlendMode': '图层混合模式',
     'railFolderBlendMode': '文件夹混合模式',
     'tlFxBasisTemplate': '{name}的应用对象',
+    'tlRasterizeFxTemplate': '栅格化{name}',
     'railHideLayer': '隐藏图层',
     'railShowLayer': '显示图层',
     'railBypassLayerFx': '旁通图层 FX',
@@ -11270,6 +11298,9 @@ enum AppStrings {
     'tlMergeChangeRiderOver': '附属图层会盖住其他画面',
     'tlMergeChangeRiderUnder': '附属图层会被压到其他画面下面',
     'tlMergeChangeWall': '超出底板的部分会被裁掉',
+    'tlFxBakeChangesTitle': '栅格化后外观可能会改变',
+    'tlFxBakeChangesBody': '栅格化后的画面可能与现在看起来不同。',
+    'tlFxBakeChangeOrder': '先前应用的 fx 将应用在栅格化后的画面上',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

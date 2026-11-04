@@ -183,6 +183,7 @@ class _LayerGridRailRows {
         onToggleLaneGroupEnabled:
             _state.widget.hooks.onToggleLaneGroupEnabled,
         onSetLaneGroupBasis: _state.widget.hooks.onSetLaneGroupBasis,
+        onRasterizeLaneGroup: _state.widget.hooks.onRasterizeLaneGroup,
         onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
         currentRowHooks: _state.widget.hooks.currentRowHooks,
         leadingInset: layerSectionLabelSlotWidth,

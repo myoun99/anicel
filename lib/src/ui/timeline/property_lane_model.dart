@@ -91,6 +91,12 @@ double scrubbedAngle(double degrees, Offset dragDelta) {
 String formatLaneColorValue(int? argb) =>
     argb == null ? 'none' : colorHexOf(argb);
 
+/// A group header's RASTERIZE as a host answers it for [layer]'s [lane]
+/// (I-120 round ②): null where the header has none; its press null where
+/// it bakes nothing now.
+typedef LaneGroupRasterize =
+    ({VoidCallback? press})? Function(Layer layer, PropertyLaneRow lane);
+
 class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,

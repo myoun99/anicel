@@ -296,6 +296,10 @@ class _StoryboardRowsAndLabels {
     /// The header's basis chip (I-120-Q10). Null leaves it out.
     void Function(PropertyLaneRow lane, FxBasis basis)? onSetGroupBasis,
 
+    /// The header's RASTERIZE (I-120), as [LaneGroupRasterize] answers it.
+    /// Null leaves it out.
+    ({VoidCallback? press})? Function(PropertyLaneRow lane)? rasterizeGroup,
+
     /// The header's RESET (R5, AE's group Reset). Null hides the button —
     /// a header whose group has no reset route must not show one.
     void Function(PropertyLaneRow lane)? onResetGroup,
@@ -347,6 +351,9 @@ class _StoryboardRowsAndLabels {
         onSetLaneGroupBasis: onSetGroupBasis == null
             ? null
             : (_, _, basis) => onSetGroupBasis(lane, basis),
+        onRasterizeLaneGroup: rasterizeGroup == null
+            ? null
+            : (_, lane) => rasterizeGroup(lane),
         onResetLaneGroup: onResetGroup == null || !lane.isGroupHeader
             ? null
             : (_, _) => onResetGroup(lane),

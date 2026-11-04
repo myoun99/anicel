@@ -164,6 +164,7 @@ class TimelinePanel extends StatefulWidget {
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
     this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -608,6 +609,9 @@ class TimelinePanel extends StatefulWidget {
   final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
   onSetLaneGroupBasis;
 
+  /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
+
   /// The group header's RESET (R5), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
 
@@ -800,6 +804,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onToggleLaneGroup: widget.onToggleLaneGroup,
       onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
       onSetLaneGroupBasis: widget.onSetLaneGroupBasis,
+      onRasterizeLaneGroup: widget.onRasterizeLaneGroup,
       onResetLaneGroup: widget.onResetLaneGroup,
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,

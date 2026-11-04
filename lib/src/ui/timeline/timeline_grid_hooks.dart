@@ -152,6 +152,7 @@ class TimelineGridHooks {
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
     this.onSetLaneGroupBasis,
+    this.onRasterizeLaneGroup,
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
@@ -584,6 +585,9 @@ class TimelineGridHooks {
   /// The group header's basis chip (I-120-Q10), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
   onSetLaneGroupBasis;
+
+  /// The group header's RASTERIZE (I-120), forwarded to the lane rows.
+  final LaneGroupRasterize? onRasterizeLaneGroup;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;

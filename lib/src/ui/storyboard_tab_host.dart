@@ -17,6 +17,7 @@ import 'conte/conte_sheet_builder.dart' show contePageHeadsOf;
 import 'storyboard/cut_link_window.dart';
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/instance_editor_commands.dart';
+import 'timeline/rasterize_fx_group.dart' show rasterizeLaneGroupOf;
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
@@ -1075,6 +1076,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           basis,
                           description: 'Set ${lane.label} basis',
                         ),
+                    onRasterizeLaneGroup: (layer, lane) =>
+                        rasterizeLaneGroupOf(context, _session, layer, lane),
                     onResetLaneGroup: (layer, lane) =>
                         _session.laneVerbs.resetLaneGroup(
                           layer.id,
