@@ -239,6 +239,9 @@ void main() {
       // The transform box's scale modifier, and the marquee's combine mode.
       'lib/src/ui/canvas/canvas_selection_layer.dart',
       'lib/src/ui/canvas/canvas_selection_layer.dart',
+      // Off the canvas: a notch turned with Alt zooms a sheet's frames
+      // (I-155 — After Effects' and Premiere Pro's zoom of time).
+      'lib/src/ui/input/wheel_law.dart',
       // The shortcut window, hearing a chord being typed in.
       'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
       // Off the canvas: a header graph's Alt-click on a line, which picks
