@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -174,8 +173,8 @@ abstract class RendersHeld implements FramePictureGpu {
   /// How many renders wait their turn.
   int get rendersWaiting => _waiting.length;
 
-  /// The scheduler's phase at each render asked for.
-  final List<SchedulerPhase> rendersAskedIn = [];
+  /// How many renders were asked for.
+  int rendersAsked = 0;
 
   /// Lets the render that has waited longest through.
   void letOneThrough() => _waiting.removeAt(0).complete();
@@ -191,7 +190,7 @@ abstract class RendersHeld implements FramePictureGpu {
 
   @override
   Future<ui.Image> render(ui.Picture picture, int width, int height) async {
-    rendersAskedIn.add(SchedulerBinding.instance.schedulerPhase);
+    rendersAsked += 1;
     if (holdsRenders) {
       final turn = Completer<void>();
       _waiting.add(turn);
