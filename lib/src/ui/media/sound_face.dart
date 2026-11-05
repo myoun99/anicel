@@ -19,7 +19,7 @@ import '../timeline/timeline_beat_lines.dart'
         timelineFrameMarkAt,
         timelineMarkGap;
 import '../timeline/timeline_frame_ruler_painter.dart'
-    show timelineFramePlaceLabel, timelineRulerPlayheadInk, timelineSecondsMark;
+    show timelineRulerPlayheadInk, timelineSecondsMark;
 import '../timeline/timeline_glyph_cache.dart' show timelineSecondsType;
 import '../timeline/timeline_ruler_playhead_writing.dart'
     show timelineMarkStandsDownFor;
@@ -264,10 +264,10 @@ class _SoundFaceState extends State<SoundFace> {
             currentFrame: widget.currentFrame,
             nearPerFrame: _nearPerFrame,
             kept: widget.kept,
-            place: timelineFramePlaceLabel(
-              frameIndex: widget.currentFrame,
+            place: TransportBar.placeOf(
+              currentFrame: widget.currentFrame,
               framesPerSecond: widget.framesPerSecond,
-              showSeconds: view.seconds,
+              seconds: view.seconds,
             ),
             ink: (
               band: AudioViewerDocument.ink,
@@ -331,7 +331,7 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
   final double nearPerFrame;
   final ({int first, int last})? kept;
 
-  /// What the playhead writes over its ruler ([timelineFramePlaceLabel]).
+  /// What the playhead writes over its ruler ([TransportBar.placeOf]).
   final String place;
   final _FaceInk ink;
   final TextStyle marks;

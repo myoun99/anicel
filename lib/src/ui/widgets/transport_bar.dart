@@ -295,6 +295,19 @@ class TransportBar extends StatelessWidget {
     );
   }
 
+  /// Where the playhead stands at [currentFrame], as the timeline's rulers
+  /// count it — the readout's first half, and what a sound's face writes
+  /// over its rulers (F-71): one place for the transport and what it runs.
+  static String placeOf({
+    required int currentFrame,
+    required int framesPerSecond,
+    required bool seconds,
+  }) => timelineFramePlaceLabel(
+    frameIndex: currentFrame,
+    framesPerSecond: framesPerSecond,
+    showSeconds: seconds,
+  );
+
   /// Where the playhead stands and how long the source runs, as the
   /// timeline's rulers count — `109 / 298`, or `4+13 / 12+10` under the
   /// seconds display: 🗣️F-71-Q1 (유저 2026-11-05) 「타임라인 룰러 선택을
@@ -304,10 +317,10 @@ class TransportBar extends StatelessWidget {
   /// long is `1+0`. ↩️It was the frame number padded to the count's digits
   /// (`001 / 298`), whatever the rulers showed.
   String _readout({required bool seconds}) {
-    final place = timelineFramePlaceLabel(
-      frameIndex: currentFrame,
+    final place = placeOf(
+      currentFrame: currentFrame,
       framesPerSecond: framesPerSecond,
-      showSeconds: seconds,
+      seconds: seconds,
     );
     final length = timelineDurationLabel(
       frameCount,

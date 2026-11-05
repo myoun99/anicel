@@ -86,7 +86,8 @@ void main() {
       // The transport's readout (🗣️F-71-Q1 「타임라인 룰러 선택을 따른다」):
       // the same seconds display, heard on the session's own choice, but
       // counted at the rate of what runs — a film's own, which the
-      // session's place (at the project's) cannot write.
+      // session's place (at the project's) cannot write. A sound's face
+      // writes the transport's place (F-71), asked of it there.
       'lib/src/ui/widgets/transport_bar.dart',
     ]));
   });
