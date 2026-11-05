@@ -84,6 +84,13 @@ fn at(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
     [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]
 }
 
+/// White as it lands over clear at a coverage: still white — a pixel is
+/// stored straight — at `alpha`. A q9 coverage c gives white the 16-bit
+/// alpha (c·65535 + 256) >> 9, stored as its byte (alpha + 128) / 257.
+fn white(alpha: u8) -> [u8; 4] {
+    [255, 255, 255, alpha]
+}
+
 #[test]
 fn an_empty_stream_is_the_background_word_as_it_is() {
     let engine = first_engine();
@@ -104,35 +111,19 @@ fn an_opaque_fill_replaces_its_box_and_stops_at_the_tile() {
     }
 }
 
-// (200, 100, 50) at 128 over clear: (200·128 + 127) / 255 = 100, 50, 25,
-// alpha 255 − (255·127 + 127) / 255 = 128. Again over that: (200·128 +
-// 100·127 + 127) / 255 = 150, 75, 38, alpha 255 − (127·127 + 127) / 255 =
-// 192.
+// (200, 100, 50) at 128 over clear keeps its colour at 128·257 = 32896.
+// Again over itself: the alpha out is 32896 + round(32896·32639 / 65535)
+// = 32896 + 16383 = 49279, a byte of (49279 + 128) / 257 = 192, and the
+// colour is the one colour both weights carry.
 #[test]
-fn a_translucent_fill_rounds_each_byte_half_up() {
+fn a_translucent_fill_lays_over_the_one_before() {
     let engine = first_engine();
     let fill = [FILL_RECT, 0, 0, 1, 1, rgba(200, 100, 50, 128)];
-    assert_eq!(clear_tile(engine, (1, 1), &fill), [100, 50, 25, 128]);
+    assert_eq!(clear_tile(engine, (1, 1), &fill), [200, 100, 50, 128]);
     assert_eq!(
         clear_tile(engine, (1, 1), &[fill, fill].concat()),
-        [150, 75, 38, 192],
+        [200, 100, 50, 192],
     );
-}
-
-// (200, 100, 50) at 100 over clear: 78, 39, 20 at 100. (10, 20, 30) at 50
-// over that: (10·50 + 78·205 + 127) / 255 = 65, (1000 + 39·205 + 127) /
-// 255 = 35, (1500 + 20·205 + 127) / 255 = 22, alpha 255 − (155·205 +
-// 127) / 255 = 255 − 125 = 130 — where the half up is a whole step.
-#[test]
-fn a_translucent_fill_over_a_translucent_one_rounds_its_alpha_half_up() {
-    let engine = first_engine();
-    let ops = [
-        [FILL_RECT, 0, 0, 1, 1, rgba(200, 100, 50, 100)],
-        [FILL_RECT, 0, 0, 1, 1, rgba(10, 20, 30, 50)],
-    ]
-    .concat();
-    assert_eq!(clear_tile(engine, (1, 1), &ops[..6]), [78, 39, 20, 100]);
-    assert_eq!(clear_tile(engine, (1, 1), &ops), [65, 35, 22, 130]);
 }
 
 #[test]
@@ -152,9 +143,9 @@ fn a_vertical_line_runs_its_length_down_and_a_horizontal_one_across() {
     assert_eq!(at(&horizontal, 5, 0, 3), [0; 4]);
 }
 
-// (10, 20, 30) opaque, its alpha scaled by the coverage: 128 gives
-// (255·128 + 127) / 255 = 128, so (10·128 + 127) / 255 = 5, 10, 15 at 128;
-// 64 gives 64, so 3, 5, 8 at 64; 255 lays it whole.
+// (10, 20, 30) opaque, its alpha scaled by the coverage: 65535 times
+// 128·257 is 32896, a byte of 128; 64 gives 64; 255 lays it whole. Over
+// clear the colour stays (10, 20, 30).
 #[test]
 fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
     let engine = first_engine();
@@ -170,12 +161,12 @@ fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
     .concat();
     let bytes = tile(engine, (5, 4), RGBA, 0, &ops, Some(&letters)).unwrap();
     assert_eq!(at(&bytes, 5, 1, 1), [0; 4]);
-    assert_eq!(at(&bytes, 5, 2, 1), [5, 10, 15, 128]);
+    assert_eq!(at(&bytes, 5, 2, 1), [10, 20, 30, 128]);
     assert_eq!(at(&bytes, 5, 3, 1), [10, 20, 30, 255]);
     assert_eq!(at(&bytes, 5, 1, 2), [10, 20, 30, 255]);
-    assert_eq!(at(&bytes, 5, 2, 2), [3, 5, 8, 64]);
+    assert_eq!(at(&bytes, 5, 2, 2), [10, 20, 30, 64]);
     assert_eq!(at(&bytes, 5, 3, 2), [0; 4]);
-    assert_eq!(at(&bytes, 5, 0, 3), [5, 10, 15, 128]);
+    assert_eq!(at(&bytes, 5, 0, 3), [10, 20, 30, 128]);
     assert_eq!(at(&bytes, 5, 1, 3), [10, 20, 30, 255]);
     assert_eq!(at(&bytes, 5, 2, 3), [0; 4], "past the atlas");
     assert_eq!(at(&bytes, 5, 3, 0), [0; 4], "before the atlas");
@@ -184,23 +175,22 @@ fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
 
 // A box from x = 1.25 to 3.25, four tall. On row 2, a pixel's coverage is
 // half a pixel less its centre's distance in: x 0 sits 0.75 out → none;
-// x 1, 0.25 in → 0.75 → (384·255 + 256) >> 9 = 191, which over clear is
-// 191 on every byte; x 2, 0.75 in → all; x 3, 0.25 out → 0.25 → 64; x 4,
-// 1.25 out → none.
+// x 1, 0.25 in → 0.75, 384 in q9 → 49151, a byte of 191; x 2, 0.75 in →
+// all; x 3, 0.25 out → 0.25 → 16384, a byte of 64; x 4, 1.25 out → none.
 #[test]
 fn a_rounded_box_covers_a_pixel_by_half_a_pixel_less_its_distance() {
     let engine = first_engine();
     let ops = [RRECT_FILL, q8(1.25), 0, q8(2.0), q8(4.0), 0, 0, WHITE];
     let bytes = clear_tile(engine, (6, 4), &ops);
     let row: Vec<[u8; 4]> = (0..5).map(|x| at(&bytes, 6, x, 2)).collect();
-    assert_eq!(row, [[0; 4], [191; 4], [255; 4], [64; 4], [0; 4]]);
+    assert_eq!(row, [[0; 4], white(191), [255; 4], white(64), [0; 4]]);
 }
 
 // An 8-pixel box rounding one corner by 2. Pixel (0, 0)'s centre is 1.5
 // in each way from the top left corner's centre at (2, 2): in q9 768 and
 // 768, isqrt_round(2·768²) = isqrt_round(1179648) = 1086 (√ = 1086.1),
-// less the radius 1024 is 62 out, so 256 − 62 = 194 covered → (194·255 +
-// 256) >> 9 = 97 — and so for each corner's pixel. The square corners
+// less the radius 1024 is 62 out, so 256 − 62 = 194 covered → 24832, a
+// byte of 97 — and so for each corner's pixel. The square corners
 // cover their pixels whole.
 #[test]
 fn a_corner_rounds_only_where_its_mask_says() {
@@ -211,7 +201,7 @@ fn a_corner_rounds_only_where_its_mask_says() {
         let ops = [RRECT_FILL, 0, 0, q8(8.0), q8(8.0), q8(2.0), mask, WHITE];
         let bytes = clear_tile(engine, (8, 8), &ops);
         for (corner, (x, y)) in corners.into_iter().enumerate() {
-            let pixel = if corner == bit { [97; 4] } else { [255; 4] };
+            let pixel = if corner == bit { white(97) } else { [255; 4] };
             assert_eq!(at(&bytes, 8, x, y), pixel, "mask {mask}, ({x}, {y})");
         }
     }
@@ -221,29 +211,29 @@ fn a_corner_rounds_only_where_its_mask_says() {
 // 0.5 past the corner's square, 1792 and 256 in q9 — farther than two
 // pixels, nearer than the radius and a half — so it is under the arc:
 // isqrt_round(1792² + 256²) = isqrt_round(3276800) = 1810 (√ = 1810.19),
-// 238 inside the radius 2048, so 256 + 238 = 494 → (494·255 + 256) >> 9
-// = 246, over clear 246 on every byte.
+// 238 inside the radius 2048, so 256 + 238 = 494 → 63231, a byte of
+// 246.
 #[test]
 fn a_corner_wider_than_two_pixels_covers_what_lies_under_its_arc() {
     let engine = first_engine();
     let ops = [RRECT_FILL, 0, 0, q8(16.0), q8(16.0), q8(4.0), 15, WHITE];
     let bytes = clear_tile(engine, (16, 16), &ops);
-    assert_eq!(at(&bytes, 16, 0, 3), [246; 4]);
-    assert_eq!(at(&bytes, 16, 3, 0), [246; 4]);
+    assert_eq!(at(&bytes, 16, 0, 3), white(246));
+    assert_eq!(at(&bytes, 16, 3, 0), white(246));
 }
 
 // An 8 x 2 box asking for corners of 4 gets 1, half its height: pixel
 // (0, 0) reaches 0.5 past the corner's square each way, 256 in q9,
 // isqrt_round(2·256²) = isqrt_round(131072) = 362, 150 inside the radius
-// 512, so 406 → (406·255 + 256) >> 9 = 202. Pixel (1, 0) is past the arc.
+// 512, so 406 → 51967, a byte of 202. Pixel (1, 0) is past the arc.
 #[test]
 fn a_corner_is_held_to_half_the_shorter_side() {
     let engine = first_engine();
     let ops = [RRECT_FILL, 0, 0, q8(8.0), q8(2.0), q8(4.0), 15, WHITE];
     let bytes = clear_tile(engine, (8, 2), &ops);
-    assert_eq!(at(&bytes, 8, 0, 0), [202; 4]);
-    assert_eq!(at(&bytes, 8, 0, 1), [202; 4]);
-    assert_eq!(at(&bytes, 8, 7, 1), [202; 4]);
+    assert_eq!(at(&bytes, 8, 0, 0), white(202));
+    assert_eq!(at(&bytes, 8, 0, 1), white(202));
+    assert_eq!(at(&bytes, 8, 7, 1), white(202));
     assert_eq!(at(&bytes, 8, 1, 0), [255; 4]);
 }
 
@@ -288,7 +278,7 @@ fn a_box_with_no_width_or_height_draws_nothing() {
 // outside the hole: all of it. Pixel (1, 4) is inside both: none. Pixel
 // (1, 1) is under both arcs: the box's covers it, the hole's 0.5 past its
 // square each way, isqrt_round(2·256²) = 362, 150 inside the radius 512,
-// so 406 of it — leaving 106 → (106·255 + 256) >> 9 = 53. An open side's
+// so 406 of it — leaving 106 → 13568, a byte of 53. An open side's
 // hole runs 3 pixels past it, so that side's stroke is gone.
 #[test]
 fn a_ring_leaves_its_hole_and_opens_the_sides_it_is_told() {
@@ -300,7 +290,7 @@ fn a_ring_leaves_its_hole_and_opens_the_sides_it_is_told() {
     assert_eq!(at(&closed, 8, 0, 4), [255; 4]);
     assert_eq!(at(&closed, 8, 1, 4), [0; 4]);
     assert_eq!(at(&closed, 8, 4, 4), [0; 4]);
-    assert_eq!(at(&closed, 8, 1, 1), [53; 4]);
+    assert_eq!(at(&closed, 8, 1, 1), white(53));
     // Left, top, right, bottom: the side it opens, and the one across.
     let sides = [(0, 4), (4, 0), (7, 4), (4, 7)];
     for (bit, open) in [1, 2, 4, 8].into_iter().enumerate() {
@@ -339,12 +329,12 @@ fn an_open_side_leaves_no_sliver_of_its_corner() {
 // A square ring's hole keeps square corners, however thin its line. With
 // a line of 205/256 its hole starts at 410 in q9, so pixel (0, 0) lies
 // 154 past the hole's corner each way: isqrt_round(2·154²) = 218, the
-// hole covers 38 of it, the ring 474 → (474·255 + 256) >> 9 = 236.
+// hole covers 38 of it, the ring 474 → 60671, a byte of 236.
 #[test]
 fn a_square_ring_has_a_square_hole() {
     let engine = first_engine();
     let ops = [RRECT_RING, 0, 0, q8(8.0), q8(8.0), 0, 0, 205, 0, WHITE];
-    assert_eq!(at(&clear_tile(engine, (8, 8), &ops), 8, 0, 0), [236; 4]);
+    assert_eq!(at(&clear_tile(engine, (8, 8), &ops), 8, 0, 0), white(236));
 }
 
 // A 3-pixel box with a 1.5-pixel line has a hole of nothing, centred on
@@ -362,7 +352,7 @@ fn a_ring_whose_line_fills_its_box_is_the_box() {
 // field takes: 2·33024² = 2181169152 is still a u32, isqrt_round gives
 // 46703 (√ = 46702.99), 13935 out: nothing. Pixel (19, 19) is 23296 each
 // way: isqrt_round(2·23296²) = isqrt_round(1085407232) = 32946 (√ =
-// 32945.52), 178 out, so 256 − 178 = 78 → (78·255 + 256) >> 9 = 39.
+// 32945.52), 178 out, so 256 − 178 = 78 → 9984, a byte of 39.
 #[test]
 fn the_largest_corner_is_taken_whole_and_a_larger_one_is_refused() {
     let engine = first_engine();
@@ -373,7 +363,7 @@ fn the_largest_corner_is_taken_whole_and_a_larger_one_is_refused() {
     };
     let bytes = clear_tile(engine, (24, 24), &corner(largest, 128.0));
     assert_eq!(at(&bytes, 24, 0, 0), [0; 4]);
-    assert_eq!(at(&bytes, 24, 19, 19), [39; 4]);
+    assert_eq!(at(&bytes, 24, 19, 19), white(39));
     assert_eq!(at(&bytes, 24, 23, 23), [255; 4]);
 
     let past = tile(engine, (24, 24), RGBA, 0, &corner(largest + 1, 129.0), None);

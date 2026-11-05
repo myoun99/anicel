@@ -1,20 +1,26 @@
 // A frame grid's tile (gpu-int-spec-timeline ①): the op stream the grids
 // write (timeline_grid_tile_ops.dart) drawn one thread a pixel, each
 // walking the ops in order and laying every one that reaches its pixel
-// by the byte-rounded integer source-over the grids have always used.
-// Laid in the shader, never by the hardware's blending, which a device
-// may round its own way.
+// over the last by the blend family's normal composite. Laid in the
+// shader, never by the hardware's blending, which a device may round its
+// own way.
+//
+// ↩️The C rasterizer's own byte-rounded premultiplied source-over was
+// carried here first; it answers the question blend_composite(normal)
+// answers, so it is that (관제 16:2x, CLAUDE.md absolute rule 1). The
+// pixel is straight on the 16-bit scale between ops and stored straight,
+// as every engine pixel is (blend.wgsl, 1a ①).
 //
 // Integers only, as fill.wgsl has why. A rounded rect's field is taken in
 // q9 — a pixel is 512 — so a q8 box's half is a whole word and a pixel's
 // centre is too; its one square root is isqrt_round.
 //
-// Needs shared/isqrt.wgsl before it.
+// Needs shared/isqrt.wgsl, blend/blend.wgsl and laid.wgsl before it.
 
 struct Params {
   width: u32,
   height: u32,
-  // The tile's bytes before any op, as an RGBA word: r | g<<8 | b<<16 |
+  // The tile's pixel before any op, as an RGBA word: r | g<<8 | b<<16 |
   // a<<24.
   background: u32,
   words: u32,
@@ -39,18 +45,6 @@ const OP_RRECT_RING: i32 = 6;
 // A pixel's whole width in q9, and half of it.
 const ONE: i32 = 512;
 const HALF: i32 = 256;
-
-// An op's straight colour at alpha `a` over `under`, premultiplied bytes:
-// opaque replaces outright, and a byte is rounded half up from the sum.
-fn over(under: vec4<u32>, rgba: u32, a: u32) -> vec4<u32> {
-  let rgb = vec3<u32>(rgba & 0xffu, (rgba >> 8u) & 0xffu, (rgba >> 16u) & 0xffu);
-  if (a >= 255u) {
-    return vec4<u32>(rgb, 255u);
-  }
-  let inv = 255u - a;
-  let mixed = (rgb * a + under.rgb * inv + vec3<u32>(127u)) / 255u;
-  return vec4<u32>(mixed, 255u - ((255u - under.a) * inv + 127u) / 255u);
-}
 
 // Whether `p` lies in the box from (x, y), `w` across and `h` down.
 fn inside(p: vec2<i32>, x: i32, y: i32, w: i32, h: i32) -> bool {
@@ -135,9 +129,9 @@ fn coverage(f: Field, p: vec2<i32>) -> i32 {
   return clamp(HALF - (outside + within - radius), 0, ONE);
 }
 
-// `rgba`'s alpha scaled by a q9 coverage, rounded half up.
+// `rgba`'s alpha on the 16-bit scale times a q9 coverage, rounded half up.
 fn covered(rgba: u32, c: i32) -> u32 {
-  return (u32(c) * (rgba >> 24u) + u32(HALF)) >> 9u;
+  return (u32(c) * (rgba >> 24u) * 257u + u32(HALF)) >> 9u;
 }
 
 @compute @workgroup_size(8, 8)
@@ -146,8 +140,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
     return;
   }
   let p = vec2<i32>(id.xy);
-  let bg = params.background;
-  var pixel = vec4<u32>(bg & 0xffu, (bg >> 8u) & 0xffu, (bg >> 16u) & 0xffu, bg >> 24u);
+  var pixel = blend_unpack8(params.background);
   var at = 0u;
   // The stream is whole and every op known (mod.rs checks it before a
   // pass), so each case moves `at` on by its own words.
@@ -156,7 +149,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
       case OP_FILL_RECT, OP_HLINE: {
         let rgba = bitcast<u32>(ops[at + 5u]);
         if (inside(p, ops[at + 1u], ops[at + 2u], ops[at + 3u], ops[at + 4u])) {
-          pixel = over(pixel, rgba, rgba >> 24u);
+          pixel = laid(pixel, rgba, (rgba >> 24u) * 257u);
         }
         at += 6u;
       }
@@ -164,7 +157,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
         // x, y, length, thickness: the length runs down.
         let rgba = bitcast<u32>(ops[at + 5u]);
         if (inside(p, ops[at + 1u], ops[at + 2u], ops[at + 4u], ops[at + 3u])) {
-          pixel = over(pixel, rgba, rgba >> 24u);
+          pixel = laid(pixel, rgba, (rgba >> 24u) * 257u);
         }
         at += 6u;
       }
@@ -180,7 +173,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
         if (inside(p, dest.x, dest.y, ops[at + 5u], ops[at + 6u])
             && all(source >= vec2<i32>(0)) && all(source < room)) {
           let c = textureLoad(atlas, source, 0).r;
-          pixel = over(pixel, rgba, ((rgba >> 24u) * c + 127u) / 255u);
+          pixel = laid(pixel, rgba, blend_mul((rgba >> 24u) * 257u, c * 257u));
         }
         at += 8u;
       }
@@ -189,7 +182,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
         if (ops[at + 3u] > 0 && ops[at + 4u] > 0) {
           let c = coverage(field_at(at), p);
           if (c > 0) {
-            pixel = over(pixel, rgba, covered(rgba, c));
+            pixel = laid(pixel, rgba, covered(rgba, c));
           }
         }
         at += 8u;
@@ -209,7 +202,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
             c -= coverage(hole, p);
           }
           if (c > 0) {
-            pixel = over(pixel, rgba, covered(rgba, c));
+            pixel = laid(pixel, rgba, covered(rgba, c));
           }
         }
         at += 10u;
@@ -219,7 +212,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
       }
     }
   }
-  let packed = pixel.r | (pixel.g << 8u) | (pixel.b << 16u) | (pixel.a << 24u);
+  let packed = blend_pack8(pixel);
   // The one float step, as fill.wgsl's: k/255 stored to an 8-bit unorm
   // texel comes back k on every device.
   textureStore(tile, id.xy, unpack4x8unorm(packed));
