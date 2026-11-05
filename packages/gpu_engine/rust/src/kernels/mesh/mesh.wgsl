@@ -66,7 +66,10 @@ fn mesh_clear(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 // A thread a pixel of the triangle's box: the triangle's order, where it
-// holds the centre and no earlier one does.
+// holds the centre and no earlier one does. The guard is not the device's
+// to keep: past the box's right a pixel the output cut off would land on
+// the next row, and past its bottom past the plane, which DX12 drops but
+// Metal would clamp onto the last word.
 @compute @workgroup_size(8, 8, 1)
 fn mesh_own(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= triangle.box_width || id.y >= triangle.box_height) {

@@ -17,7 +17,7 @@ mod tests;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{
-    Encoded, WIDE_WGSL, encode, fits, pipeline, plane, q, words_buffer,
+    Encoded, ResampleMap, ResampleMode, WIDE_WGSL, encode, fits, pipeline, plane, q, words_buffer,
 };
 
 /// mesh.wgsl's workgroup side.
@@ -37,20 +37,6 @@ pub(crate) struct MeshGrid {
     pub(crate) rows: u32,
     pub(crate) source: Vec<[f64; 2]>,
     pub(crate) destination: Vec<[f64; 2]>,
-}
-
-/// One triangle's destination to source map in R1's integers (1b R1):
-/// source x = a·x + b·y + c and source y = d·x + e·y + f for a destination
-/// point (x, y) of the canvas, the source counted from its left and top;
-/// every value Q.20.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Affine {
-    pub(crate) a: i32,
-    pub(crate) b: i32,
-    pub(crate) c: i64,
-    pub(crate) d: i32,
-    pub(crate) e: i32,
-    pub(crate) f: i64,
 }
 
 /// A triangle in Q.8: its order, its first corner, the edges to the other
@@ -227,6 +213,8 @@ fn within(triangle: &Triangle, [left, top, width, height]: [i64; 4]) -> Option<[
         let low = corners.iter().map(|corner| corner[axis]).min()? >> 8;
         let high = (corners.iter().map(|corner| corner[axis]).max()? + 255) >> 8;
         let (low, high) = (low.max(from), high.min(from + length));
+        // An empty span would dispatch no workgroup all the same; leaving
+        // the triangle out spares its words.
         (low < high).then_some((low, high - low))
     };
     let (x, w) = span(0, left, width)?;
@@ -234,9 +222,10 @@ fn within(triangle: &Triangle, [left, top, width, height]: [i64; 4]) -> Option<[
     Some([x, y, w, h])
 }
 
-/// Each triangle's map, in the mesh's order — none for one with no area, and
-/// for one past R1's range, which lands nothing (1b R1: |a| … under 2^11
-/// pixels). The source is counted from (`left`, `top`) on the canvas, which
+/// Each triangle's map, in the mesh's order, as R1 reads it with
+/// `radius_floor` and `mode` — none for a triangle with no area, and for one
+/// past R1's ranges, which lands nothing ([`ResampleMap::affine`] holds
+/// them). The source is counted from (`left`, `top`) on the canvas, which
 /// takes any value within the reach. None when a point or the source's
 /// corner is past the reach.
 ///
@@ -246,11 +235,16 @@ fn within(triangle: &Triangle, [left, top, width, height]: [i64; 4]) -> Option<[
 /// c = s0x·2^12 − rnd(a·d0x + b·d0y, 8) − q(left, 20), f likewise — the
 /// app's `selectionTriangleResampleTransform` measured from the canvas's
 /// origin rather than the triangle's box.
-pub(crate) fn affines(mesh: &MeshGrid, (left, top): (f64, f64)) -> Option<Vec<Option<Affine>>> {
+pub(crate) fn affines(
+    mesh: &MeshGrid,
+    (left, top): (f64, f64),
+    radius_floor: f64,
+    mode: ResampleMode,
+) -> Option<Vec<Option<ResampleMap>>> {
     let source = mesh.quantized(&mesh.source)?;
-    let origin = [quantized(left, 20)?, quantized(top, 20)?];
+    let origin = [i128::from(quantized(left, 20)?), i128::from(quantized(top, 20)?)];
     let triangles = mesh.triangles()?;
-    let affines = mesh.corners().into_iter().zip(&triangles).map(|([p0, p1, p2], triangle)| {
+    let maps = mesh.corners().into_iter().zip(&triangles).map(|([p0, p1, p2], triangle)| {
         if triangle.den == 0 {
             return None;
         }
@@ -258,23 +252,20 @@ pub(crate) fn affines(mesh: &MeshGrid, (left, top): (f64, f64)) -> Option<Vec<Op
         let f1 = [source[p1][0] - s0[0], source[p1][1] - s0[1]];
         let f2 = [source[p2][0] - s0[0], source[p2][1] - s0[1]];
         let ([e1x, e1y], [e2x, e2y]) = (triangle.e1, triangle.e2);
-        let scaled = |n: i64| {
-            let (n, d) = (i128::from(n) * Q20, i128::from(triangle.den));
-            let value = divr(n * d.signum(), d.abs());
-            (value.abs() < 1 << 31).then_some(value as i32)
+        let [d0x, d0y] = triangle.d0.map(i128::from);
+        let den = i128::from(triangle.den);
+        let scaled = |n: i64| divr(i128::from(n) * Q20 * den.signum(), den.abs());
+        let row = |f1: i64, f2: i64, s0: i64, origin: i128| {
+            let along = scaled(e2y * f1 - e1y * f2);
+            let down = scaled(e1x * f2 - e2x * f1);
+            let moved = along * d0x + down * d0y;
+            (along, down, (i128::from(s0) << 12) - rnd(moved, 8) - origin)
         };
-        let row = |f1: i64, f2: i64, s0: i64, origin: i64| {
-            let along = scaled(e2y * f1 - e1y * f2)?;
-            let down = scaled(e1x * f2 - e2x * f1)?;
-            let [d0x, d0y] = triangle.d0;
-            let moved = i64::from(along) * d0x + i64::from(down) * d0y;
-            Some((along, down, (s0 << 12) - rnd(moved, 8) - origin))
-        };
-        let (a, b, c) = row(f1[0], f2[0], s0[0], origin[0])?;
-        let (d, e, f) = row(f1[1], f2[1], s0[1], origin[1])?;
-        Some(Affine { a, b, c, d, e, f })
+        let (a, b, c) = row(f1[0], f2[0], s0[0], origin[0]);
+        let (d, e, f) = row(f1[1], f2[1], s0[1], origin[1]);
+        ResampleMap::affine([a, b, c, d, e, f], radius_floor, mode)
     });
-    Some(affines.collect())
+    Some(maps.collect())
 }
 
 /// divr(n, d) = ⌊(2n + d) / (2d)⌋ for d > 0 (1b 공통) — a half goes up.
@@ -283,7 +274,7 @@ fn divr(n: i128, d: i128) -> i128 {
 }
 
 /// rnd(x, k) = (x + 2^(k−1)) >> k, arithmetic (1b 공통).
-fn rnd(x: i64, k: u32) -> i64 {
+fn rnd(x: i128, k: u32) -> i128 {
     (x + (1 << (k - 1))) >> k
 }
 

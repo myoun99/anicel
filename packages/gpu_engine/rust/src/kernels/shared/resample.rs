@@ -98,11 +98,36 @@ impl ResampleMap {
             e: q(e, 20, NARROW)? as i32,
             g: q(g, 36, NARROW)? as i32,
             h: q(h, 36, NARROW)? as i32,
-            floor: q(radius_floor.min(CEILING), 16, NARROW)? as u32,
+            floor: floor(radius_floor)?,
             mode,
             c: q(c, 20, WIDE)?,
             f: q(f, 20, WIDE)?,
             i: q(i, 36, WIDE)?,
+        })
+    }
+
+    /// The affine map whose entries `[a, b, c, d, e, f]` are already Q.20 —
+    /// source x = a·x + b·y + c, source y = d·x + e·y + f — as R3 works each
+    /// triangle's out exactly (gpu-int-spec-canvas 1b R3), so they are not
+    /// rounded a second time through [`Self::new`]'s doubles. `None` past
+    /// the ranges `new` holds them to: that triangle lands nothing.
+    pub(crate) fn affine(
+        [a, b, c, d, e, f]: [i128; 6],
+        radius_floor: f64,
+        mode: ResampleMode,
+    ) -> Option<Self> {
+        Some(Self {
+            a: held(a, NARROW)? as i32,
+            b: held(b, NARROW)? as i32,
+            d: held(d, NARROW)? as i32,
+            e: held(e, NARROW)? as i32,
+            g: 0,
+            h: 0,
+            floor: floor(radius_floor)?,
+            mode,
+            c: held(c, WIDE)?,
+            f: held(f, WIDE)?,
+            i: ONE_36,
         })
     }
 
@@ -211,6 +236,17 @@ pub(crate) fn q(x: f64, k: u32, limit: f64) -> Option<i64> {
     (scaled.abs() < limit).then_some(scaled as i64)
 }
 
+/// `value`, already fixed point, when its magnitude is below `limit` — q's
+/// range, compared exactly.
+fn held(value: i128, limit: f64) -> Option<i64> {
+    (value.unsigned_abs() < limit as u128).then_some(value as i64)
+}
+
+/// Blend's radius floor in Q.16, at most [`CEILING`].
+fn floor(radius_floor: f64) -> Option<u32> {
+    Some(q(radius_floor.min(CEILING), 16, NARROW)? as u32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,6 +272,40 @@ mod tests {
         assert!(map([last, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]).is_some());
         assert!(map([2048.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]).is_none());
         assert!(map([1.0, 0.0, f64::NAN, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]).is_none());
+    }
+
+    /// An affine map Q.20 holds exactly is the same map from its integers as
+    /// from its doubles.
+    #[test]
+    fn an_affine_map_from_integers_is_new_s_map() {
+        let inverse = [0.25, -0.375, 7.0, -3.0, 0.375, -12.5, 0.0, 0.0, 1.0];
+        let made = ResampleMap::new(inverse, 2.5, ResampleMode::Pick, 10, 10);
+        let entries = [1 << 18, -3 << 17, 7 << 20, -3 << 20, 3 << 17, -25 << 19];
+        assert!(made.is_some());
+        assert_eq!(ResampleMap::affine(entries, 2.5, ResampleMode::Pick), made);
+        let moved = [1 << 20, 0, -5 << 20, 0, 1 << 20, 3 << 20];
+        let shifted = [1.0, 0.0, -5.0, 0.0, 1.0, 3.0, 0.0, 0.0, 1.0];
+        let nearest = ResampleMode::Nearest;
+        let ceiled = ResampleMap::affine(moved, 40.0, nearest);
+        assert_eq!(ceiled, ResampleMap::new(shifted, 40.0, nearest, 1, 1));
+        assert_eq!(ceiled.map(|m| m.floor), Some(16 << 16));
+    }
+
+    /// Each entry from integers is held to `new`'s range: a, b, d, e under
+    /// 2^31 either way — i32::MIN is past it —, c and f under 2^61.
+    #[test]
+    fn an_affine_map_from_integers_keeps_new_s_ranges() {
+        let map = |entries| ResampleMap::affine(entries, 1.0, ResampleMode::Blend);
+        let (narrow, wide) = ((1i128 << 31) - 1, (1i128 << 61) - 1);
+        assert!(map([narrow, -narrow, wide, -narrow, narrow, -wide]).is_some());
+        for at in 0..6 {
+            let past = if at == 2 || at == 5 { wide + 1 } else { narrow + 1 };
+            let mut entries = [1 << 20, 0, 0, 0, 1 << 20, 0];
+            entries[at] = past;
+            assert!(map(entries).is_none(), "{at} at {past}");
+            entries[at] = -past;
+            assert!(map(entries).is_none(), "{at} at -{past}");
+        }
     }
 
     #[test]

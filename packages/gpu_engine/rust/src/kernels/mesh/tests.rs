@@ -5,8 +5,9 @@
 
 use std::sync::OnceLock;
 
-use super::{Affine, MeshGrid, MeshOwners, affines};
+use super::{MeshGrid, MeshOwners, affines};
 use crate::device::Engine;
+use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 struct Rig {
@@ -68,6 +69,8 @@ fn drawn(mesh: &MeshGrid, at: (i32, i32), size: (u32, u32)) -> Vec<String> {
 }
 
 const SQUARE: [[f64; 2]; 4] = [[0.0, 0.0], [4.0, 0.0], [0.0, 4.0], [4.0, 4.0]];
+/// SQUARE turned over, right for left: its den is negative.
+const MIRRORED: [[f64; 2]; 4] = [[4.0, 0.0], [0.0, 0.0], [4.0, 4.0], [0.0, 4.0]];
 
 /// A cell's top-left triangle paints what it holds, the diagonal's centres
 /// with it; the bottom-right the rest; past the mesh nothing.
@@ -89,8 +92,15 @@ fn a_centre_on_the_mesh_s_edge_is_in() {
 /// A cell turned over holds its centres all the same, by den's sign.
 #[test]
 fn a_cell_turned_over_holds_its_centres() {
-    let mirrored = cell([[4.0, 0.0], [0.0, 0.0], [4.0, 4.0], [0.0, 4.0]]);
-    assert_eq!(drawn(&mirrored, (0, 0), (4, 4)), ["0000", "1000", "1100", "1110"]);
+    assert_eq!(drawn(&cell(MIRRORED), (0, 0), (4, 4)), ["0000", "1000", "1100", "1110"]);
+}
+
+/// A triangle 200 pixels on a side, its den past 2^31, holds its centres
+/// all the same.
+#[test]
+fn a_large_triangle_holds_its_centres() {
+    let large = cell(SQUARE.map(|[x, y]| [50.0 * x, 50.0 * y]));
+    assert_eq!(drawn(&large, (98, 98), (4, 4)), ["0000", "0001", "0011", "0111"]);
 }
 
 /// A triangle inside an earlier one paints nothing: its centres are the
@@ -129,6 +139,13 @@ fn the_output_reads_the_canvas_where_it_lies() {
     assert_eq!(drawn(&moved, (-3, 2), (3, 3)), ["000", "001", "011"]);
 }
 
+/// A mesh running past the output paints only the output: what it holds
+/// past the right edge is no pixel of the next row.
+#[test]
+fn a_mesh_past_the_output_paints_only_the_output() {
+    assert_eq!(drawn(&cell(MIRRORED), (0, 0), (2, 2)), ["00", "10"]);
+}
+
 #[test]
 fn a_mesh_or_an_output_past_the_reach_is_refused() {
     let reach = 1 << 15;
@@ -141,38 +158,52 @@ fn a_mesh_or_an_output_past_the_reach_is_refused() {
     assert!(owned(&far, (0, 0), (4, 4)).is_none());
     let short = dragged(1, 1, SQUARE[..3].to_vec());
     assert!(owned(&short, (0, 0), (4, 4)).is_none());
-    let none = dragged(0, 1, SQUARE[..2].to_vec());
-    assert!(owned(&none, (0, 0), (4, 4)).is_none());
+    let no_column = dragged(0, 1, SQUARE[..2].to_vec());
+    assert!(owned(&no_column, (0, 0), (4, 4)).is_none());
+    let no_row = dragged(1, 0, SQUARE[..2].to_vec());
+    assert!(owned(&no_row, (0, 0), (4, 4)).is_none());
 }
 
 // ---- The maps ----
 
-/// The map of a mesh resting on `source` dragged to `destination`, its
+/// The maps of a mesh resting on `source` dragged to `destination`, its
 /// source counted from `origin`.
-fn maps(source: [[f64; 2]; 4], destination: [[f64; 2]; 4], origin: (f64, f64)) -> Vec<Option<Affine>> {
+fn maps(
+    source: [[f64; 2]; 4],
+    destination: [[f64; 2]; 4],
+    origin: (f64, f64),
+) -> Vec<Option<ResampleMap>> {
     let mesh = MeshGrid {
         columns: 1,
         rows: 1,
         source: source.to_vec(),
         destination: destination.to_vec(),
     };
-    affines(&mesh, origin).expect("maps")
+    affines(&mesh, origin, 1.0, ResampleMode::Blend).expect("maps")
 }
 
-fn affine(a: i32, b: i32, c: i64, d: i32, e: i32, f: i64) -> Option<Affine> {
-    Some(Affine { a, b, c, d, e, f })
+/// The map whose entries are `[a, b, c, d, e, f]`, Q.20.
+fn map(entries: [i64; 6]) -> Option<ResampleMap> {
+    let map = ResampleMap::affine(entries.map(i128::from), 1.0, ResampleMode::Blend);
+    Some(map.expect("a map within R1's ranges"))
 }
 
-const ONE: i32 = 1 << 20;
+const ONE: i64 = 1 << 20;
 
-/// A mesh at rest maps each pixel to itself; the source's corner shifts
-/// what it reads.
+/// A mesh at rest maps each pixel to itself wherever it lies; the source's
+/// corner shifts what it reads.
 #[test]
 fn a_mesh_at_rest_maps_to_itself() {
-    let still = affine(ONE, 0, 0, 0, ONE, 0);
+    let still = map([ONE, 0, 0, 0, ONE, 0]);
     assert_eq!(maps(SQUARE, SQUARE, (0.0, 0.0)), [still, still]);
-    let from = affine(ONE, 0, -5 << 19, 0, ONE, 1 << 20);
+    let away = [[1.0, 3.0], [5.0, 3.0], [1.0, 7.0], [5.0, 7.0]];
+    assert_eq!(maps(away, away, (0.0, 0.0)), [still, still]);
+    let from = map([ONE, 0, -5 << 19, 0, ONE, 1 << 20]);
     assert_eq!(maps(SQUARE, SQUARE, (2.5, -1.0)), [from, from]);
+    let (floor, pick) = (2.5, ResampleMode::Pick);
+    let picked = ResampleMap::affine([ONE, 0, 0, 0, ONE, 0].map(i128::from), floor, pick);
+    let asked = affines(&cell(SQUARE), (0.0, 0.0), floor, pick).expect("maps");
+    assert_eq!(asked, [picked, picked]);
 }
 
 /// Dragged to twice its size, a mesh reads half a pixel a pixel from where
@@ -181,8 +212,15 @@ fn a_mesh_at_rest_maps_to_itself() {
 fn a_mesh_dragged_twice_as_large_reads_at_half() {
     let rest = [[10.0, 20.0], [14.0, 20.0], [10.0, 24.0], [14.0, 24.0]];
     let large = [[0.0, 0.0], [8.0, 0.0], [0.0, 8.0], [8.0, 8.0]];
-    let half = affine(ONE / 2, 0, 10 << 20, 0, ONE / 2, 20 << 20);
+    let half = map([ONE / 2, 0, 10 << 20, 0, ONE / 2, 20 << 20]);
     assert_eq!(maps(rest, large, (0.0, 0.0)), [half, half]);
+}
+
+/// Turned over, a mesh reads right to left: its den's sign turns the map.
+#[test]
+fn a_mesh_turned_over_reads_right_to_left() {
+    let flipped = map([-ONE, 0, 4 << 20, 0, ONE, 0]);
+    assert_eq!(maps(SQUARE, MIRRORED, (0.0, 0.0)), [flipped, flipped]);
 }
 
 /// The map's entries round as the spec's divr: to the nearest, a half up —
@@ -193,32 +231,33 @@ fn a_map_rounds_by_divr() {
     let unit = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
     let three = [[0.0, 0.0], [3.0, 0.0], [0.0, 3.0], [3.0, 3.0]];
     let third = 349_525;
-    let thirds = affine(third, 0, 0, 0, third, 0);
-    assert_eq!(maps(unit, three, (0.0, 0.0))[0], thirds);
+    assert_eq!(maps(unit, three, (0.0, 0.0))[0], map([third, 0, 0, 0, third, 0]));
     let turned = [[1.0, 0.0], [0.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-    assert_eq!(maps(turned, three, (0.0, 0.0))[0], affine(-third, 0, 1 << 20, 0, third, 0));
+    assert_eq!(maps(turned, three, (0.0, 0.0))[0], map([-third, 0, 1 << 20, 0, third, 0]));
     let hair = 1.0 / 256.0;
     let wide = [[0.0, 0.0], [8192.0, 0.0], [0.0, 8192.0], [8192.0, 8192.0]];
     let up = [[0.0, 0.0], [hair, 0.0], [0.0, hair], [hair, hair]];
-    assert_eq!(maps(up, wide, (0.0, 0.0))[0], affine(1, 0, 0, 0, 1, 0));
+    assert_eq!(maps(up, wide, (0.0, 0.0))[0], map([1, 0, 0, 0, 1, 0]));
     let down = [[0.0, 0.0], [-hair, 0.0], [0.0, hair], [-hair, hair]];
-    assert_eq!(maps(down, wide, (0.0, 0.0))[0], affine(0, 0, 0, 0, 1, 0));
+    assert_eq!(maps(down, wide, (0.0, 0.0))[0], map([0, 0, 0, 0, 1, 0]));
 }
 
-/// c rounds as the spec's rnd, a half up: a = −1 (Q.20) times a corner at
-/// x = 0.5 (Q.8) is −128 in Q.28, half a Q.20 step below 0, which rnd
-/// takes up to 0.
+/// c rounds as the spec's rnd, a half up and otherwise down: a = −1 (Q.20)
+/// times a corner at x = 0.5 (Q.8) is −128 in Q.28, half a Q.20 step below
+/// 0, which rnd takes up to 0; at x = 0.75 it is −192, which rnd floors to
+/// −1 rather than cutting toward 0.
 #[test]
 fn a_map_s_offset_rounds_by_rnd() {
     let hair = 1.0 / 256.0;
     let rest = [[0.0, 0.0], [-hair, 0.0], [0.0, 16.0], [-hair, 16.0]];
-    let dragged = [[0.5, 0.0], [4096.5, 0.0], [0.5, 4096.0], [4096.5, 4096.0]];
-    assert_eq!(maps(rest, dragged, (0.0, 0.0))[0], affine(-1, 0, 0, 0, 4096, 0));
+    let at = |x: f64| [[x, 0.0], [x + 4096.0, 0.0], [x, 4096.0], [x + 4096.0, 4096.0]];
+    assert_eq!(maps(rest, at(0.5), (0.0, 0.0))[0], map([-1, 0, 0, 0, 4096, 0]));
+    assert_eq!(maps(rest, at(0.75), (0.0, 0.0))[0], map([-1, 0, 1, 0, 4096, 0]));
 }
 
-/// A triangle with no area, or one whose map is past R1's range — 2^11
+/// A triangle with no area, or one whose map is past R1's ranges — 2^11
 /// source pixels a pixel or more, either way —, has no map: it lands
-/// nothing.
+/// nothing. The mesh hands R1 the exact entries, so the range is R1's own.
 #[test]
 fn a_triangle_with_no_map_lands_nothing() {
     let flat = [[0.5, 0.5], [1.5, 1.5], [2.5, 2.5], [3.5, 3.5]];
@@ -231,10 +270,10 @@ fn a_triangle_with_no_map_lands_nothing() {
     assert_eq!(maps(turned, thin, (0.0, 0.0)), [None, None]);
     let less = 8.0 - hair;
     let under = [[0.0, 0.0], [less, 0.0], [0.0, 1.0], [less, 1.0]];
-    let within = affine(2047 << 20, 0, 0, 0, ONE, 0);
-    assert_eq!(maps(under, thin, (0.0, 0.0))[0], within);
-    assert!(affines(&cell(SQUARE), (32768.0, 0.0)).is_none());
-    assert!(affines(&cell(SQUARE), (32767.0, 0.0)).is_some());
+    assert_eq!(maps(under, thin, (0.0, 0.0))[0], map([2047 << 20, 0, 0, 0, ONE, 0]));
+    let blend = ResampleMode::Blend;
+    assert!(affines(&cell(SQUARE), (32768.0, 0.0), 1.0, blend).is_none());
+    assert!(affines(&cell(SQUARE), (32767.0, 0.0), 1.0, blend).is_some());
 }
 
 // ---- The ledger ----
