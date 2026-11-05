@@ -265,29 +265,25 @@ void main() {
         'blocks part the rows (I-161-Q2 · I-162 ②)', () {
       // Six ACTION rows and four 動画 rows: ten cel tracks in the file.
       final ours = _sheet(_cut(cels: 6, inbetweens: 4));
+      expect(ours.sheetKind, TimesheetSheetKind.sixSeconds);
       expect(ours.xdtsForm, isNull);
       expect(ours.xdtsCelTracks, 10);
-      final onA3 = ours.xdtsFormOn(XdtsViewerSheet.a3SixSeconds);
-      expect(onA3.cellsColumns, 10);
+      final onA3 = XdtsSheetForm(
+        XdtsViewerSheet.a3SixSeconds,
+        cells: ours.xdtsCelTracks,
+      );
       expect(
         (onA3.pageWidth, onA3.pageHeight),
-        (
-          XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0).pageWidth +
-              2 * onA3.cellsColWidth * 2,
-          4134,
-        ),
-        reason: 'two columns past the template\'s eight, in both bodies',
+        (2923 + 2 * 79 * 2, 4134),
+        reason: 'two 79-pixel columns past the template\'s eight, in both '
+            'bodies',
       );
 
-      // On the viewer's own sheet the ink's paper IS the sheet's.
+      // On the viewer's own sheet the sheet and its ink count alike.
       final onB4 = _sheet(
         _cut(cels: 6, inbetweens: 4, kind: TimesheetSheetKind.xdtsB4SixSeconds),
       );
-      expect(
-        onB4.xdtsFormOn(XdtsViewerSheet.b4SixSeconds),
-        same(onB4.xdtsForm),
-      );
-      expect(onB4.xdtsFormOn(XdtsViewerSheet.a3SixSeconds).cellsColumns, 10);
+      expect(onB4.xdtsCelTracks, onB4.xdtsForm!.cellsColumns);
     });
 
     test('the B4 3-second sheet is one body of 72 rows, its camera block one '
