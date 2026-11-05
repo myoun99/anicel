@@ -879,13 +879,28 @@ void main() {
       await pen.moveBy(const Offset(1, 0));
       await tester.pump();
       expect(floods, hasLength(1), reason: 'inside its range: no new flood');
-      expect(identical(overlay.fillRange, first), isTrue);
+      final pushed = overlay.fillRange!;
+      expect(
+        identical(pushed.outline, first!.outline),
+        isTrue,
+        reason: 'nor its outline walked again',
+      );
+      // 🗣️F-568-Q1 a: 「커서가 움직인 만큼 무늬가 같이 밀린다」.
+      expect(first.shift, Offset.zero);
+      expect(pushed.shift.dx, isPositive, reason: 'its checker went with it');
+      expect(pushed.shift.dy, 0);
 
       await pen.moveBy(const Offset(120, 0));
       await tester.pump();
       expect(floods, hasLength(2), reason: 'past it: the flood from there');
-      expect(overlay.fillRange, isNotNull);
-      expect(identical(overlay.fillRange, first), isFalse);
+      final marked = overlay.fillRange!;
+      expect(identical(marked.outline, first.outline), isFalse);
+      expect(
+        marked.shift.dx / pushed.shift.dx,
+        moreOrLessEquals(121),
+        reason: 'the new range\'s checker pushed from where the press came '
+            'down, as far as it went',
+      );
 
       await pen.up();
       await tester.pumpAndSettle();

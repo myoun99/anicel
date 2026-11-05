@@ -43,7 +43,7 @@ class _BrushEditFill implements GradientRangeHold {
     final held = _state._heldForGradient;
     if (held != null) {
       if (_gradientOn) {
-        _state._fillPress = (pointer: pointer, range: held.range);
+        _state._fillPress = (pointer: pointer, from: at, range: held.range);
         _drag(held.range, from: at, to: at);
         return;
       }
@@ -54,7 +54,7 @@ class _BrushEditFill implements GradientRangeHold {
     if (_state.widget.fillRangeAt == null) {
       return;
     }
-    _state._fillPress = (pointer: pointer, range: null);
+    _state._fillPress = (pointer: pointer, from: at, range: null);
     reach(at);
   }
 
@@ -68,6 +68,9 @@ class _BrushEditFill implements GradientRangeHold {
   /// continuous fill's range takes the flood in beside what it holds
   /// ([FillRange.joining]) instead. A press dragging a held range's
   /// gradient takes the gradient's end there.
+  ///
+  /// The mark's checker goes with the press at every move, inside one
+  /// region as across them ([FillRangeMark.shift]).
   void reach(CanvasPoint at) {
     final held = _state._fillPress;
     if (held == null) {
@@ -79,8 +82,10 @@ class _BrushEditFill implements GradientRangeHold {
       _drag(gradient.range, from: drag.from, to: at);
       return;
     }
+    final shift = Offset(at.x - held.from.x, at.y - held.from.y);
     final fillRangeAt = _state.widget.fillRangeAt;
     if (fillRangeAt == null || (held.range?.covers(at) ?? false)) {
+      _push(shift);
       return;
     }
     // The seed and the axis come from the same pair the STROKE path uses —
@@ -100,11 +105,23 @@ class _BrushEditFill implements GradientRangeHold {
         : found == null
         ? kept
         : kept.joining(found);
-    _state._fillPress = (pointer: held.pointer, range: range);
+    _state._fillPress = (pointer: held.pointer, from: held.from, range: range);
     // What the range lays is its region: one that did not change (an open
-    // region joined, or none found) leaves the mark as it stands.
+    // region joined, or none found) leaves the mark's outline as it stands.
     if (!identical(range?.region, kept?.region)) {
-      _mark(range);
+      _mark(range, shift: shift);
+    } else {
+      _push(shift);
+    }
+  }
+
+  /// The mark as it stands, its checker pushed [shift] — its outline not
+  /// walked again ([FillRangeMark.shifted]).
+  void _push(Offset shift) {
+    final overlay = _state._overlay._overlayModel;
+    final mark = overlay.fillRange;
+    if (mark != null) {
+      overlay.showFillRange(mark.shifted(shift));
     }
   }
 
@@ -234,13 +251,14 @@ class _BrushEditFill implements GradientRangeHold {
   }
 
   /// [range] marked over the row it lands on ([FillRangeMark]) — cut by the
-  /// selection as the fill will be ([promoteFillDabs]'s `selection`).
-  void _mark(FillRange? range) {
+  /// selection as the fill will be ([promoteFillDabs]'s `selection`), its
+  /// checker pushed [shift] ([FillRangeMark.shift]).
+  void _mark(FillRange? range, {Offset shift = Offset.zero}) {
     final mark = range == null
         ? null
         : FillRangeMark(
             range.contoursWithin(_state.widget.selectionNow?.call()),
-          );
+          ).shifted(shift);
     _state._overlay._overlayModel.showFillRange(
       mark == null || mark.isEmpty ? null : mark,
     );

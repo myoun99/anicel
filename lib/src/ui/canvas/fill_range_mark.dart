@@ -27,8 +27,9 @@ final class FillRangeMark {
   /// The mark of [contours], closed outlines on the pixel grid in the space
   /// of the row the fill lands on (`FillRange.contoursWithin`).
   FillRangeMark(List<List<CanvasPoint>> contours)
-    : outline = _outlineOf(contours),
-      bounds = _boundsOf(contours);
+    : this._(_outlineOf(contours), _boundsOf(contours), Offset.zero);
+
+  FillRangeMark._(this.outline, this.bounds, this.shift);
 
   /// Every contour as one path: the fill carves the holes out, the walk
   /// winding a hole against its component.
@@ -37,8 +38,22 @@ final class FillRangeMark {
   /// Everything [paint] draws, in the row's space — [Rect.zero] for none.
   final Rect bounds;
 
+  /// How far the checker is pushed from the row's origin, in the row's
+  /// space: the press's move since it came down.
+  ///
+  /// 🗣️F-568-Q1 a (유저 2026-11-05 「커서가 움직인 만큼 무늬가 같이
+  /// 밀린다」): the cells go with the cursor, as far and the same way, and
+  /// stand while it stands. ⛔Not flowing of their own (b): that redrew the
+  /// range at every frame the press was held.
+  final Offset shift;
+
   /// Whether [paint] draws nothing.
   bool get isEmpty => bounds.isEmpty;
+
+  /// This mark with its checker pushed [shift] from the row's origin — the
+  /// outline as it is, walked once ([FillRangeMark.new]).
+  FillRangeMark shifted(Offset shift) =>
+      shift == this.shift ? this : FillRangeMark._(outline, bounds, shift);
 
   /// The checker over [outline]: one shader in one path — the vector the
   /// user asked for, as the ants are, with no picture of the range made.
@@ -49,11 +64,15 @@ final class FillRangeMark {
   /// side — a 4K range held at 5× would. Inside the outline, the shader
   /// goes through the one draw that covers only what shows
   /// ([drawShadedRect]).
+  ///
+  /// [shift] moves the canvas the shader is read in, not the shader: the
+  /// one paint serves every push.
   void paint(Canvas canvas) {
     canvas
       ..save()
-      ..clipPath(outline);
-    drawShadedRect(canvas, bounds, _checkerPaint);
+      ..clipPath(outline)
+      ..translate(shift.dx, shift.dy);
+    drawShadedRect(canvas, bounds.shift(-shift), _checkerPaint);
     canvas.restore();
   }
 

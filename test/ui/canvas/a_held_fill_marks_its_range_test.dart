@@ -233,6 +233,48 @@ void main() {
       expect(pixelAt(bytes, 16, 16)[3], 0, reason: 'its hole');
     });
 
+    testWidgets('🚨its checker pushed as far as the press moved, and the same '
+        'way — the outline where it was (F-568-Q1 a, 유저 2026-11-05 「커서가 '
+        '움직인 만큼 무늬가 같이 밀린다」)', (tester) async {
+      final nodes = [
+        CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, frameKey: keyOf('live')),
+        ),
+      ];
+      final live = liveOn(surfaceOf(const {}));
+      final mark = markOf(0, 0, 16, side);
+      Future<Uint8List> pushedBy(Offset shift) {
+        overlay.showFillRange(mark.shifted(shift));
+        return bytesOf(tester, frameOf(nodes, live: live));
+      }
+
+      const white = [0x80, 0x80, 0x80, 0x80];
+      const black = [0, 0, 0, 0x80];
+      final still = await pushedBy(Offset.zero);
+      expect(pixelAt(still, 2, 4), white, reason: 'premise: a white cell');
+      expect(pixelAt(still, 10, 4), black, reason: 'premise: a black one');
+
+      final across = await pushedBy(const Offset(3, 0));
+      expect(
+        pixelAt(across, 2, 4),
+        black,
+        reason: 'three pixels on, the black cell before it reaches here',
+      );
+      expect(pixelAt(across, 10, 4), white);
+
+      final down = await pushedBy(const Offset(0, 8));
+      expect(pixelAt(down, 2, 4), black, reason: 'a cell down, the rows trade');
+
+      final period = await pushedBy(const Offset(16, 16));
+      expect(pixelAt(period, 2, 4), white, reason: 'a whole period: as still');
+
+      expect(
+        pixelAt(across, 20, 4),
+        [0, 0, 0, 0],
+        reason: 'the outline does not go with it: nothing past the range',
+      );
+    });
+
     test('🚨a mark that moves is patched where it was and where it is', () {
       final nodes = [
         CompositeLeaf<CanvasStackRow>(
@@ -247,6 +289,13 @@ void main() {
       overlay.showFillRange(was);
       var moved = frame.movedSince(before);
       expect(moved.located, isTrue, reason: 'it is a patch');
+      expect(moved.dirty, was.bounds.inflate(1));
+
+      // Its checker is pushed (F-568): where it is, the outline unmoved.
+      before = frame.tokens!;
+      overlay.showFillRange(was.shifted(const Offset(3, 0)));
+      moved = frame.movedSince(before);
+      expect(moved.located, isTrue);
       expect(moved.dirty, was.bounds.inflate(1));
 
       // It moves to another region: where it was and where it is.
