@@ -99,7 +99,20 @@ echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$L
 [ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
 echo "test result: ok. 1 passed; 0 failed"
 EOF
-chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo"
+# `git` writes down every call that reaches the mirror (the remote named
+# backup) and whether it was let ask for a login, then hands every call,
+# that one too, to the real git.
+REAL_GIT="$(command -v git)"
+cat > "$E/bin/git" <<EOF
+#!/bin/bash
+case " \$* " in *" backup "*)
+  case " \$* " in *" push "*|*" fetch "*|*" ls-remote "*)
+    echo "\$* prompt=\${GIT_TERMINAL_PROMPT:-} gcm=\${GCM_INTERACTIVE:-}" >> "\$LANE_TEST_LOG.mirror" ;;
+  esac ;;
+esac
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/git"
 export PATH="$E/bin:$PATH"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 FAILS=0
@@ -430,6 +443,11 @@ O=$(LANE_TEST_CARGO=red out "$E/home" land surface11/row)
 has "a row this machine's GPU disagrees with refuses the stamped land" "$O" "this is refusal 8"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 check "and the turn is free" "$(ls -d "$E/home/.git/lane-land.turn" 2>/dev/null | wc -l | tr -d ' ')" 0
+
+say "U NOBODY IS ASKED FOR A LOGIN: every call that reached the mirror in this whole run"
+check "LIVENESS — the run reached the mirror, on both machines, every way" \
+  "$(grep -o ' \(push\|fetch\|ls-remote\) ' "$LANE_TEST_LOG.mirror" 2>/dev/null | sort -u | tr -d ' ' | tr '\n' ' ')" "fetch ls-remote push "
+check "and not one call could ask" "$(grep -v 'prompt=0 gcm=Never$' "$LANE_TEST_LOG.mirror" | head -3 | tr '\n' ' ')" ""
 
 echo
 echo "== $FAILS failed"

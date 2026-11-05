@@ -231,6 +231,31 @@ TRUNK=master
 # machine takes its copy of master from it (`sync`) — origin's master only
 # follows when a bundle is pushed; the mirror's follows every `land`.
 MIRROR=backup
+# How long one call to the mirror may take, in seconds — a push of the
+# trunk or of the lanes, a fetch. The trunk's landing chain gives its own
+# fetch the same.
+MIRROR_WAIT=120
+# Set by `backup` alone, never taken from the environment.
+MIRROR_ASKS=
+
+# EVERY CALL THAT REACHES THE MIRROR GOES THROUGH HERE, and none waits for
+# somebody who is not there: it asks for no login, and gives up after
+# MIRROR_WAIT. 관제 2026-11-05 (gpu-engine-skeleton): the mirror's login
+# lapsed at 23:40, and three `git-credential-manager get` stood waiting at
+# a login window nobody would see, the commands that started them gone. Only
+# the land's push refused to ask (lane-land-hangs-on-mirror-login,
+# 2026-09-24); `backup`, `sync`, `send` and `unsend` asked. The trunk's
+# landing chain has run its own calls this way since 2026-10-19.
+# ⚠️Save a `backup` run IN A TERMINAL, which sets MIRROR_ASKS: that is
+# where a person logs in again, and it asks them, with no limit. Run by a
+# session, whose input is no terminal, it asks nobody.
+mirror_git() {
+  if [ -n "${MIRROR_ASKS:-}" ]; then
+    git -C "$ROOT" "$@"
+  else
+    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never timeout "$MIRROR_WAIT" git -C "$ROOT" "$@"
+  fi
+}
 
 # WHICH MACHINE THIS IS. The one that holds the trunk says nothing; every
 # other clone has named itself (the header says what that changes).
@@ -417,7 +442,7 @@ mirror_trunk() {
     return 0
   }
   echo "lane: mirroring $TRUNK -> $MIRROR"
-  git -C "$ROOT" push --quiet "$MIRROR" "$TRUNK" && return 0
+  mirror_git push --quiet "$MIRROR" "$TRUNK" && return 0
   echo "lane: ⚠️THE MIRROR PUSH FAILED — $TRUNK is on this disk only." >&2
   echo "lane:   The merge landed; it is the COPY that is missing. Retry with:" >&2
   echo "lane:   bash tool/lane.sh backup" >&2
@@ -441,7 +466,9 @@ mirror_trunk() {
 # and that line stood under their two warnings — on the one command whose
 # whole job is the copy.
 cmd_backup() {
-  local missed=
+  local missed= MIRROR_ASKS=
+  # A person at a terminal is asked for a login (mirror_git says why).
+  [ -t 0 ] && MIRROR_ASKS=1
   mirror_trunk || missed=1
   git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || return 0
   if away; then
@@ -452,7 +479,7 @@ cmd_backup() {
     # anything. A master `sync` refuses is said, and is no reason not to
     # back up.
     (cmd_sync) || true
-    git -C "$ROOT" push --quiet "$MIRROR" \
+    mirror_git push --quiet "$MIRROR" \
       "+refs/heads/work/$MACHINE/*:refs/heads/work/$MACHINE/*" \
       || die "the open lanes did not reach $MIRROR — nothing was copied"
     echo "lane: mirrored $(git -C "$ROOT" for-each-ref \
@@ -467,7 +494,7 @@ cmd_backup() {
     --format='+%(refname):%(refname)' 'refs/heads/work/*')"
   if [ -n "$own" ]; then
     # shellcheck disable=SC2086
-    git -C "$ROOT" push --quiet "$MIRROR" $own || {
+    mirror_git push --quiet "$MIRROR" $own || {
       echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
       missed=1
     }
@@ -493,7 +520,7 @@ cmd_sync() {
   # a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08).
   local offers asked=
   offers="$(offers_here)" && asked=1
-  git -C "$ROOT" fetch --quiet "$MIRROR" "$TRUNK" \
+  mirror_git fetch --quiet "$MIRROR" "$TRUNK" \
     || die "could not fetch $TRUNK from $MIRROR"
   # ⚠️ASKED BEFORE THE MERGE, not left to it. `merge --ff-only` of a commit
   # this master is already AHEAD of succeeds — there is nothing to do — and
@@ -512,8 +539,7 @@ cmd_sync() {
 # (away) This machine's offers on the mirror, a ref a line — or a failure
 # when the mirror cannot be asked.
 offers_here() {
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" \
-    ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null
+  mirror_git ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null
 }
 
 # (away) Let go of the lanes that landed. A lane this machine sent, whose
@@ -611,11 +637,11 @@ cmd_send() {
   # The stamp travels only when it names the commit that is offered: one of
   # an earlier commit vouches for nothing here, and leaves the mirror.
   local stamped=; [ "$(gated_at "$name")" = "$head" ] && stamped=1
-  git -C "$ROOT" push --quiet "$MIRROR" \
+  mirror_git push --quiet "$MIRROR" \
     "+refs/heads/work/$name:refs/heads/sent/$name" \
     ${stamped:+"+$(gate_ref "$name"):refs/heads/gated/$name"} \
     || die "the lane did not reach $MIRROR"
-  [ -n "$stamped" ] || git -C "$ROOT" push --quiet "$MIRROR" \
+  [ -n "$stamped" ] || mirror_git push --quiet "$MIRROR" \
     --delete "gated/$name" >/dev/null 2>&1 || true
   # What was offered, so `landed_lanes_leave` can tell a lane that landed
   # from one that landed AND was worked on since.
@@ -635,11 +661,11 @@ cmd_unsend() {
   away || die "unsend is for an away machine — offers are made there"
   local name="${1:-}"; [ -n "$name" ] || die "unsend needs a name"
   name="$(lane_named "$name")" || exit 1
-  git -C "$ROOT" push --quiet "$MIRROR" --delete "sent/$name" 2>/dev/null \
+  mirror_git push --quiet "$MIRROR" --delete "sent/$name" 2>/dev/null \
     || die "nothing sent as $name on $MIRROR"
   # The stamp that went with the offer leaves with it; this machine's own
   # stays, and travels again if the same commit is sent again.
-  git -C "$ROOT" push --quiet "$MIRROR" --delete "gated/$name" >/dev/null 2>&1 || true
+  mirror_git push --quiet "$MIRROR" --delete "gated/$name" >/dev/null 2>&1 || true
   git -C "$ROOT" config --unset "branch.work/$name.sent" 2>/dev/null
   echo "lane: took back the offer of work/$name — the lane is as it was"
 }
@@ -662,15 +688,14 @@ cmd_receive() {
   [ -e "$p" ] && die "already there: $p (drop it first to take the lane again)"
   git -C "$ROOT" show-ref --verify --quiet "refs/heads/work/$name" \
     && die "a branch work/$name is already here (drop it first to take the lane again)"
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" fetch --quiet \
-    "$MIRROR" "refs/heads/sent/$name:refs/heads/work/$name" \
-    || die "nothing sent as $name on $MIRROR (or no saved login for it — \`backup\` asks for one)"
+  mirror_git fetch --quiet "$MIRROR" "refs/heads/sent/$name:refs/heads/work/$name" \
+    || die "nothing sent as $name on $MIRROR (or no saved login for it — \`backup\` in a terminal asks for one)"
   # The stamp its machine's `gate` made, when it sent one (MEASURED ONCE).
   # Whatever stamp an earlier lane of this name left here goes first: a
   # lane that arrives without one arrives unmeasured.
   git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" fetch --quiet \
-    "$MIRROR" "+refs/heads/gated/$name:$(gate_ref "$name")" >/dev/null 2>&1 || true
+  mirror_git fetch --quiet "$MIRROR" "+refs/heads/gated/$name:$(gate_ref "$name")" \
+    >/dev/null 2>&1 || true
   git -C "$ROOT" worktree add "$p" "work/$name" >/dev/null || die "worktree add failed"
   furnish "$p"
   echo "$p"
@@ -679,8 +704,7 @@ cmd_receive() {
 # What other machines have sent. A lane already received says so.
 cmd_incoming() {
   away && die "incoming is for the machine that holds the trunk"
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" ls-remote \
-    --heads "$MIRROR" 'refs/heads/sent/*/*' \
+  mirror_git ls-remote --heads "$MIRROR" 'refs/heads/sent/*/*' \
     | sed -n 's|.*refs/heads/sent/||p' \
     | while read -r name; do
         if git -C "$ROOT" show-ref --verify --quiet "refs/heads/work/$name"; then
@@ -1129,9 +1153,9 @@ cmd_land() {
   # saved login git-credential-manager waited for one: the land never
   # returned, the trunk's engine below was never rebuilt, and the copy was
   # never made (lane-land-hangs-on-mirror-login, 2026-09-24). Here the push
-  # fails at once and says to run `backup`, which still asks — a person can
-  # log in there.
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never mirror_trunk
+  # fails at once (mirror_git) and says to run `backup`, which still asks
+  # in a terminal — a person can log in there.
+  mirror_trunk
   # A landed lane is finished on the mirror too: its OFFER goes — that is
   # how the machine that sent it, and `incoming` here, see that it landed —
   # and so do its stamp and its copy. (A lane that was never there has
@@ -1143,8 +1167,7 @@ cmd_land() {
   # a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08).
   local gone
   for gone in "sent/$name" "gated/$name" "work/$name"; do
-    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" push --quiet \
-      "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
+    mirror_git push --quiet "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
   done
   # Refusal 6: the merge moved the trunk's C whenever this lane carried any,
   # and the trunk's engine follows it HERE, in the trunk's own directory and

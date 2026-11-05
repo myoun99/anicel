@@ -180,7 +180,7 @@ void main() {
         contains(r'"refs/heads/sent/$MACHINE/*"'),
         reason: 'it asks after the OFFERS, and only this machine\'s',
       );
-      expect(offers, contains('GIT_TERMINAL_PROMPT=0'));
+      expect(offers, contains('mirror_git ls-remote'));
       final sync = lane.codeOf('cmd_sync');
       expect(
         sync.join('\n'),
@@ -459,7 +459,7 @@ void main() {
       expect(names, greaterThan(merged));
       expect(deleted, greaterThan(names));
       expect(
-        at(land, 'GCM_INTERACTIVE=Never mirror_trunk'),
+        land.indexWhere((line) => line.trim() == 'mirror_trunk'),
         inExclusiveRange(merged, names),
         reason: '🚨the trunk reaches the mirror BEFORE the offer leaves it: '
             'the machine that sent the lane reads a gone offer as 「look in '
@@ -467,8 +467,7 @@ void main() {
             'a-lane-landed-during-a-sync-is-kept-as-turned-down)',
       );
       final push = land.sublist(names, deleted + 1).join('\n');
-      expect(push, contains('GIT_TERMINAL_PROMPT=0'));
-      expect(push, contains('GCM_INTERACTIVE=Never'));
+      expect(push, contains('mirror_git push'), reason: 'which asks nobody');
     });
   });
 
