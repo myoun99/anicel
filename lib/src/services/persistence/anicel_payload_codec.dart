@@ -84,24 +84,29 @@ Uint8List decompressAnicelPayload(int codec, Uint8List payload) =>
 /// as zstd's: a view of them kept past it reads [spoiledPayloadByte]
 /// rather than the picture, so a test that keeps one fails on either codec
 /// — not only on the one whose bytes are freed under it, and not by luck.
+/// ⛔Spoiled around the codecs, not inside either: a test can read a kept
+/// view only where it is not freed (deflate's), so a spoiling one codec
+/// skipped would show on no test.
 R readAnicelPayload<R>(
   int codec,
   Uint8List payload,
   R Function(Uint8List bytes) read,
-) {
-  R readOnce(Uint8List bytes) {
-    try {
-      return read(bytes);
-    } finally {
-      assert(_spoiled(bytes));
-    }
+) => _decompressed(codec, payload, (bytes) {
+  try {
+    return read(bytes);
+  } finally {
+    assert(_spoiled(bytes));
   }
+});
 
-  if (codec == anicelCodecZstd) {
-    return readZstdPayload(payload, 'payload', readOnce);
-  }
-  return readOnce(_inflated(payload));
-}
+/// [read] handed [payload] decompressed by the codec that wrote it.
+R _decompressed<R>(
+  int codec,
+  Uint8List payload,
+  R Function(Uint8List bytes) read,
+) => codec == anicelCodecZstd
+    ? readZstdPayload(payload, 'payload', read)
+    : read(_inflated(payload));
 
 /// What a decompressed payload's bytes read once its reader has returned,
 /// in a debug build ([readAnicelPayload]).
