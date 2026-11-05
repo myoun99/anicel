@@ -20,3 +20,4 @@ pub mod blend;
 pub mod composite;
 pub mod fill;
 pub mod shared;
+pub mod timeline;

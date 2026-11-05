@@ -42,5 +42,6 @@
 {"id":"fill/70x45-seed4294967295-bgra","fixture":"seed 4294967295","what":"the fill kernel's 70x45 bgra8unorm texture, rows top to bottom","hash":"906f3f1d","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"},
 {"id":"fill/70x45-seed4294967295-rgba","fixture":"seed 4294967295","what":"the fill kernel's 70x45 rgba8unorm texture, rows top to bottom","hash":"1ac59798","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"},
 {"id":"fill/70x45-seed7-bgra","fixture":"seed 7","what":"the fill kernel's 70x45 bgra8unorm texture, rows top to bottom","hash":"c297bb67","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"},
-{"id":"fill/70x45-seed7-rgba","fixture":"seed 7","what":"the fill kernel's 70x45 rgba8unorm texture, rows top to bottom","hash":"a7629259","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"}
+{"id":"fill/70x45-seed7-rgba","fixture":"seed 7","what":"the fill kernel's 70x45 rgba8unorm texture, rows top to bottom","hash":"a7629259","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"},
+{"id":"timeline/grid-96x28-mixed-rgba","fixture":"every grid op: fills, lines, rounded runs on fractional pixels, an open ring, a disc, letters, translucent ones over the others","what":"the frame grid tile kernel's 96x28 rgba8unorm texture, rows top to bottom","hash":"c379e96c","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"}
 ]}
