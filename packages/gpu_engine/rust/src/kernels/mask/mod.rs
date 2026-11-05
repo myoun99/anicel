@@ -39,7 +39,7 @@ pub(crate) struct MaskBox {
 
 impl MaskBox {
     /// A row's words of bytes.
-    fn stride(&self) -> u32 {
+    pub(crate) fn stride(&self) -> u32 {
         self.width.div_ceil(4)
     }
 

@@ -4,9 +4,14 @@
 //! the app's `overwriteCelPixels` run them, with no CPU copy of the law
 //! (`kernels/mod.rs`); cel_pixel.wgsl has it.
 //!
-//! The walk is the cel's tiles row by row, those it has none of left out:
-//! the app's `celPixelWalkFor` order. An undo replays its recipe by
-//! position, so the order is the contract.
+//! The walk is the cel's tiles row by row, those it has none of left out
+//! and, under a selection, those past its mask's box: the app's
+//! `celPixelWalkFor`. An undo replays its recipe by position, so the order
+//! is the contract.
+//!
+//! A selection's mask rides in what a pass is given, copied there on the
+//! GPU, not in a binding of its own: a device binds four storage buffers a
+//! stage at fewest (GLES), and the pass's own three and one page are four.
 //!
 //! A pass reads the cel's tiles from the pool's pages as they are stored,
 //! not through the executor's copy: 픽셀 비우기 leaves a colour under an
@@ -25,15 +30,25 @@ use std::collections::BTreeSet;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE_TEXELS, TileAt, TileSet};
+use crate::kernels::composite::{TILE, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
-use crate::kernels::shared::{Pages, TILE_WGSL, fits, pipeline, plane, words_buffer};
+use crate::kernels::mask::MaskBox;
+use crate::kernels::shared::{Pages, TILE_WGSL, fits, le_bytes, pipeline, plane, words_buffer};
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the new pixels, and the counts or the runs.
 const OWN_BUFFERS: u32 = 3;
 /// cel_pixel.wgsl's CEL_TILE_WORDS.
 const TILE_WORDS: usize = 5;
+
+/// The selection a pass walks: a byte plane (mask.wgsl's layout) over the
+/// box `size` whose top-left pixel is `at` on the cel — the app's
+/// `selectionMaskOnPasteboard`. A pass with none covers every pixel whole.
+pub(crate) struct Mask<'a> {
+    pub(crate) plane: &'a wgpu::Buffer,
+    pub(crate) at: (i32, i32),
+    pub(crate) size: MaskBox,
+}
 
 /// The channel a verb writes, as the app stages it (`CelPixelStage`): its
 /// bytes, where byte i sits in a pixel's word — byte `base + i · stride` —
@@ -118,18 +133,14 @@ impl Verb<'_> {
             .collect()
     }
 
-    /// cel_pixel.wgsl's `CelPass` past where a pass's tiles start, its
-    /// selector's tables and its incoming bytes are in what it is given.
-    fn words(&self, [tiles_at, tables_at, incoming_at]: [u32; 3]) -> [u32; 13] {
+    /// cel_pixel.wgsl's `CelPass` from `bytes` to `puts_runs`.
+    fn words(&self) -> [u32; 10] {
         let Channel { bytes, base, stride, takes_empty } = self.channel;
         let step = match self.incoming {
             Incoming::Value(_) => 0,
             Incoming::Recipe { step, .. } => step,
         };
         [
-            tiles_at,
-            tables_at,
-            incoming_at,
             bytes,
             base,
             stride,
@@ -158,11 +169,14 @@ pub(crate) struct Passed {
     pub(crate) runs: Vec<Vec<(u32, u32)>>,
 }
 
-/// A walked tile: where it is on the cel's grid, where it is stored.
+/// A walked tile: where it is on the cel's grid, where it is stored, and
+/// where its top-left pixel is in the mask's box — a word's two's
+/// complement, as the shader adds a pixel to it (0 with no mask).
 struct Walked {
     column: i32,
     row: i32,
     at: TileAt,
+    in_mask: [u32; 2],
 }
 
 /// The pass, compiled once for as many pages as the device lets it bind.
@@ -184,17 +198,19 @@ impl CelPixels {
         })
     }
 
-    /// Runs `verb` over `cel`, its tiles on the pool's `pool` pages; waits
-    /// for the GPU twice — for the counts that place each tile's pixels and
-    /// runs among the walk's, and for the runs.
+    /// Runs `verb` over `cel`, its tiles on the pool's `pool` pages, under
+    /// `mask` or over every pixel; waits for the GPU twice — for the counts
+    /// that place each tile's pixels and runs among the walk's, and for the
+    /// runs.
     pub(crate) fn run(
         &self,
         engine: &Engine,
         pool: &[wgpu::Buffer],
         cel: &TileSet,
+        mask: Option<&Mask>,
         verb: &Verb,
     ) -> Option<Passed> {
-        self.run_by(engine, pool, cel, verb, self.pages.per_pass())
+        self.run_by(engine, pool, cel, mask, verb, self.pages.per_pass())
     }
 
     /// `run`, binding `per_pass` pages a pass at most — a smaller device's
@@ -204,6 +220,7 @@ impl CelPixels {
         engine: &Engine,
         pool: &[wgpu::Buffer],
         cel: &TileSet,
+        mask: Option<&Mask>,
         verb: &Verb,
         per_pass: usize,
     ) -> Option<Passed> {
@@ -214,7 +231,7 @@ impl CelPixels {
             ));
         }
         verb.checked()?;
-        let walk = walk(cel, pool.len())?;
+        let walk = walk(cel, pool.len(), mask)?;
         let tiles: Vec<(i32, i32)> = walk.iter().map(|tile| (tile.column, tile.row)).collect();
         let out_bytes = (walk.len().max(1) as u64) * TILE_TEXELS * 4;
         fits(engine, &[out_bytes], std::iter::empty())?;
@@ -224,7 +241,7 @@ impl CelPixels {
         }
         let passes = passes(engine, &walk, per_pass);
         let counts = plane(engine, "cel pixel counts", walk.len() as u64 * 8);
-        let given = Given::of(engine, &walk, &passes, &vec![(0, 0); walk.len()], verb);
+        let given = Given::of(engine, &walk, &passes, verb, mask)?;
         self.encode(engine, pool, &passes, &given, &self.count, [None, Some(&counts)]);
         let (touched, runs): (Vec<u32>, Vec<u32>) = words(&engine.read_buffer(&counts)?)
             .chunks_exact(2)
@@ -247,7 +264,7 @@ impl CelPixels {
         let run_bytes = if verb.is_undo() { 16 } else { (all_runs * 8).max(16) };
         fits(engine, &[run_bytes], std::iter::empty())?;
         let put = plane(engine, "cel pixel runs", run_bytes);
-        let given = Given::of(engine, &walk, &passes, &starts, verb);
+        given.place(engine, &starts);
         self.encode(engine, pool, &passes, &given, &self.apply, [Some(&out), Some(&put)]);
         if verb.is_undo() {
             engine.wait()?;
@@ -344,9 +361,10 @@ fn lengths(
         .collect()
 }
 
-/// The walk: `cel`'s tiles row by row, those it has none of left out, each
-/// on one of the pool's `pool` pages.
-fn walk(cel: &TileSet, pool: usize) -> Option<Vec<Walked>> {
+/// The walk: `cel`'s tiles row by row, those it has none of and — under
+/// `mask` — those past its box left out, each on one of the pool's `pool`
+/// pages.
+fn walk(cel: &TileSet, pool: usize, mask: Option<&Mask>) -> Option<Vec<Walked>> {
     if cel.tiles.len() as u64 != u64::from(cel.columns) * u64::from(cel.rows) {
         return fail(format!(
             "{} tiles for a set of {} × {}",
@@ -354,6 +372,11 @@ fn walk(cel: &TileSet, pool: usize) -> Option<Vec<Walked>> {
             cel.columns,
             cel.rows
         ));
+    }
+    if let Some(mask) = mask
+        && mask.plane.size() < mask.size.bytes()
+    {
+        return fail(format!("{:?} is no mask of {} bytes", mask.size, mask.plane.size()));
     }
     let mut walk = Vec::new();
     for (index, tile) in cel.tiles.iter().enumerate() {
@@ -364,13 +387,27 @@ fn walk(cel: &TileSet, pool: usize) -> Option<Vec<Walked>> {
             return fail(format!("the cel names page {} of a pool of {pool}", at.page));
         }
         let index = index as u32;
-        walk.push(Walked {
-            column: cel.x0 + (index % cel.columns) as i32,
-            row: cel.y0 + (index / cel.columns) as i32,
-            at,
-        });
+        let column = cel.x0 + (index % cel.columns) as i32;
+        let row = cel.y0 + (index / cel.columns) as i32;
+        let in_mask = match mask {
+            None => [0, 0],
+            Some(Mask { at: (left, top), size, .. }) => {
+                match (within(column, *left, size.width), within(row, *top, size.height)) {
+                    (Some(x), Some(y)) => [x, y],
+                    _ => continue,
+                }
+            }
+        };
+        walk.push(Walked { column, row, at, in_mask });
     }
     Some(walk)
+}
+
+/// Where tile `tile`'s first pixel lies past pixel `from`, as a word's two's
+/// complement — none where the tile's pixels miss `from`'s `length`.
+fn within(tile: i32, from: i32, length: u32) -> Option<u32> {
+    let first = i64::from(tile) * i64::from(TILE) - i64::from(from);
+    (first < i64::from(length) && first + i64::from(TILE) > 0).then_some(first as u32)
 }
 
 /// One dispatch: the pages it binds, in binding order, and the walked tiles
@@ -411,36 +448,33 @@ fn passes(engine: &Engine, walk: &[Walked], per_pass: usize) -> Vec<Pass> {
 }
 
 /// What every pass is given — its tiles, the selector's key run, the
-/// incoming bytes — and each pass's `CelPass`.
+/// incoming bytes, where each walked tile's pixels and runs start among the
+/// walk's and the mask's bytes — and each pass's `CelPass`.
 struct Given {
     words: wgpu::Buffer,
+    /// In bytes.
+    starts_at: u64,
     uniforms: Vec<wgpu::Buffer>,
 }
 
 impl Given {
-    /// For `passes` over `walk`, each walked tile's pixels and runs starting
-    /// at `starts` among the walk's.
+    /// For `passes` over `walk` under `mask`, the starts not yet placed;
+    /// submits the copy of the mask's bytes.
     fn of(
         engine: &Engine,
         walk: &[Walked],
         passes: &[Pass],
-        starts: &[(u32, u32)],
         verb: &Verb,
-    ) -> Given {
+        mask: Option<&Mask>,
+    ) -> Option<Given> {
         let mut words: Vec<u32> = Vec::new();
         let mut tiles_at = Vec::with_capacity(passes.len());
         for pass in passes {
             tiles_at.push(words.len() as u32);
             for &(index, k) in &pass.tiles {
                 let tile = &walk[index];
-                let (touched, runs) = starts[index];
-                let entry: [u32; TILE_WORDS] = [
-                    k,
-                    u32::from(tile.at.slot),
-                    index as u32,
-                    touched,
-                    runs,
-                ];
+                let [x, y] = tile.in_mask;
+                let entry: [u32; TILE_WORDS] = [k, u32::from(tile.at.slot), index as u32, x, y];
                 words.extend(entry);
             }
         }
@@ -450,17 +484,51 @@ impl Given {
         }
         let incoming_at = words.len() as u32;
         words.extend(verb.incoming_words());
+        let starts_at = words.len() as u32;
+        words.resize(words.len() + walk.len() * 2, 0);
+        let mask_at = words.len() as u32;
+        let mask_bytes = mask.map_or(0, |mask| mask.size.bytes());
+        let size = u64::from(mask_at) * 4 + mask_bytes;
+        fits(engine, &[size], std::iter::empty())?;
+        let given = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cel pixels given"),
+            size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        engine.queue.write_buffer(&given, 0, &le_bytes(&words));
+        if let Some(mask) = mask {
+            let mut encoder = engine
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let at = u64::from(mask_at) * 4;
+            encoder.copy_buffer_to_buffer(mask.plane, 0, &given, at, mask_bytes);
+            engine.queue.submit([encoder.finish()]);
+        }
+        let shape = mask.map_or([0; 4], |Mask { size, .. }| {
+            [1, size.width, size.height, size.stride()]
+        });
         let uniforms = tiles_at
             .iter()
             .map(|&at| {
-                let words = verb.words([at, tables_at, incoming_at]);
+                let mut words = vec![at, tables_at, incoming_at, starts_at, mask_at];
+                words.extend(verb.words());
+                words.extend(shape);
                 words_buffer(engine, "cel pass", &words, wgpu::BufferUsages::UNIFORM)
             })
             .collect();
-        Given {
-            words: words_buffer(engine, "cel pixels given", &words, wgpu::BufferUsages::STORAGE),
+        Some(Given {
+            words: given,
+            starts_at: u64::from(starts_at) * 4,
             uniforms,
-        }
+        })
+    }
+
+    /// Places where each walked tile's pixels and runs start among the
+    /// walk's, for the apply entry's passes encoded after it.
+    fn place(&self, engine: &Engine, starts: &[(u32, u32)]) {
+        let words: Vec<u32> = starts.iter().flat_map(|&(touched, runs)| [touched, runs]).collect();
+        engine.queue.write_buffer(&self.words, self.starts_at, &le_bytes(&words));
     }
 }
 

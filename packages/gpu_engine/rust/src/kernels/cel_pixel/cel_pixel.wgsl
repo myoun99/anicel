@@ -26,10 +26,15 @@
 
 struct CelPass {
   // In `given`: this pass's tiles, CEL_TILE_WORDS each; the selector's key
-  // run (key.wgsl's layout); the incoming bytes, four a word, low first.
+  // run (key.wgsl's layout); the incoming bytes, four a word, low first;
+  // where each walked tile's pixels and runs start among the walk's, two
+  // words by its walk index (the apply entry's); the mask's bytes
+  // (mask.wgsl's layout).
   tiles_at: u32,
   tables_at: u32,
   incoming_at: u32,
+  starts_at: u32,
+  mask_at: u32,
   // The channel: its bytes, where byte i sits in a pixel's word (base + i ·
   // stride), and whether a pixel with no ink takes part.
   bytes: u32,
@@ -46,10 +51,17 @@ struct CelPass {
   threshold: u32,
   // 1: going forward, the runs are put.
   puts_runs: u32,
+  // 0, every pixel covered whole; or 1 under the mask: its box's pixels
+  // across and down, and a row's words.
+  masked: u32,
+  mask_width: u32,
+  mask_height: u32,
+  mask_stride: u32,
 }
 
 // A walked tile: the binding of its page, its slot, its index in the walk,
-// and where its pixels and runs start among all the walk's.
+// and where its top-left pixel is in the mask's box — a word's two's
+// complement each way.
 const CEL_TILE_WORDS: u32 = 5u;
 // No value: a value is three bytes at most.
 const CEL_NONE: u32 = 0xffffffffu;
@@ -87,9 +99,24 @@ fn cel_texel(tile: u32, x: u32, y: u32) -> u32 {
   return page_word(cel_tile(tile, 0u), cel_tile(tile, 1u) * TILE_TEXELS + y * TILE_SIDE + x);
 }
 
-// The coverage over pixel (x, y) of the tile: whole.
+// The coverage over pixel (x, y) of the tile: the mask's byte there, 0
+// past its box — a pixel before it wraps past either side.
+//
+// ⚠️The mask's bytes end what a pass is given, so a row past the box's
+// last is past the buffer, where DX12 reads 0 — the tests cannot see the
+// guard on rows there (mask.wgsl's head has the same); a column past the
+// box is within its row's last word, which they fill with 255.
 fn cel_coverage(tile: u32, x: u32, y: u32) -> u32 {
-  return 255u;
+  if (pass_.masked == 0u) {
+    return 255u;
+  }
+  let mx = cel_tile(tile, 3u) + x;
+  let my = cel_tile(tile, 4u) + y;
+  if (mx >= pass_.mask_width || my >= pass_.mask_height) {
+    return 0u;
+  }
+  let word = given[pass_.mask_at + my * pass_.mask_stride + mx / 4u];
+  return (word >> (mx % 4u * 8u)) & 0xffu;
 }
 
 // Where channel byte `i` sits in a pixel's word, in bits.
@@ -209,10 +236,11 @@ fn cel_count(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_
 fn cel_apply(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index) y: u32) {
   let tile = group.x;
   cel_rows(tile, y);
-  let row = cel_tile(tile, 2u) * TILE_TEXELS + y * TILE_SIDE;
-  let start = cel_tile(tile, 3u);
+  let index = cel_tile(tile, 2u);
+  let row = index * TILE_TEXELS + y * TILE_SIDE;
+  let start = given[pass_.starts_at + index * 2u];
   var rank = row_rank[y];
-  var run = (cel_tile(tile, 4u) + row_run[y]) * 2u;
+  var run = (given[pass_.starts_at + index * 2u + 1u] + row_run[y]) * 2u;
   var last = row_before[y];
   for (var x = 0u; x < TILE_SIDE; x++) {
     let texel = cel_texel(tile, x, y);

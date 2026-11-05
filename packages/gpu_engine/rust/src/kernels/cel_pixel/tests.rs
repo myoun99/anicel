@@ -7,11 +7,13 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
+use super::{CelPixels, Channel, Incoming, Mask, Passed, Selector, Verb};
 use crate::device::Engine;
 use crate::kernels::composite::tests::{Pool, mix};
 use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::effects::KeyRun;
+use crate::kernels::mask::MaskBox;
+use crate::kernels::shared::words_buffer;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 const SIDE: i32 = TILE as i32;
@@ -85,17 +87,69 @@ fn one(named: &[((i32, i32), u32)]) -> Cel {
 /// `verb` over `cel`, `per_pass` pages a pass or as many as the device
 /// binds: what it left, and its new pixels' words.
 fn run(cel: &Cel, verb: &Verb, per_pass: Option<usize>) -> Option<(Passed, Vec<u32>)> {
+    under(cel, None, verb, per_pass)
+}
+
+/// `run` under `mask`.
+fn under(
+    cel: &Cel,
+    mask: Option<&Mask>,
+    verb: &Verb,
+    per_pass: Option<usize>,
+) -> Option<(Passed, Vec<u32>)> {
     let Rig { engine, pass } = rig();
     let pages = cel.pool.upload(engine);
     let passed = match per_pass {
-        Some(per_pass) => pass.run_by(engine, &pages, &cel.set, verb, per_pass),
-        None => pass.run(engine, &pages, &cel.set, verb),
+        Some(per_pass) => pass.run_by(engine, &pages, &cel.set, mask, verb, per_pass),
+        None => pass.run(engine, &pages, &cel.set, mask, verb),
     }?;
     let out = read_buffer(engine, &passed.out)
         .chunks_exact(4)
         .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
         .collect();
     Some((passed, out))
+}
+
+/// A selection's mask: its plane over its box.
+struct Masked {
+    plane: wgpu::Buffer,
+    at: (i32, i32),
+    size: MaskBox,
+}
+
+impl Masked {
+    fn mask(&self) -> Mask<'_> {
+        Mask {
+            plane: &self.plane,
+            at: self.at,
+            size: self.size,
+        }
+    }
+}
+
+/// The mask over `size` pixels from `at` whose byte at the cel's pixel
+/// (x, y) is `coverage(x, y)` — and 255 past the box in a row's last word,
+/// which a pass must read as nothing all the same.
+fn masked(at: (i32, i32), size: (u32, u32), coverage: impl Fn(i32, i32) -> u8) -> Masked {
+    let mut words = Vec::new();
+    for y in 0..size.1 as i32 {
+        for word in 0..size.0.div_ceil(4) {
+            let byte = |i: u32| match word * 4 + i {
+                x if x < size.0 => u32::from(coverage(at.0 + x as i32, at.1 + y)),
+                _ => 255,
+            };
+            words.push((0..4).fold(0, |packed, i| packed | byte(i) << (8 * i)));
+        }
+    }
+    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+    Masked {
+        plane: words_buffer(rig().engine, "mask", &words, usage),
+        at,
+        size: MaskBox {
+            width: size.0,
+            height: size.1,
+        },
+    }
 }
 
 /// The cel `passed` left: its walked tiles holding `out`, on page 0.
@@ -457,6 +511,92 @@ fn an_undo_past_its_recipe_is_refused() {
     assert!(run(&one(&scene), &undo(3), None).is_some());
 }
 
+// ---- Under a selection ----
+
+/// Ink everywhere on rows 0 to 3 from x = 0 to 7.
+fn inked() -> Vec<((i32, i32), u32)> {
+    (0..4).flat_map(|y| (0..8).map(move |x| ((x, y), INK | 255 << 24))).collect()
+}
+
+/// The mask from (2, 1), 3 × 2: 255, 128, 0 over 64, 1, 255.
+fn feathered() -> Masked {
+    masked((2, 1), (3, 2), |x, y| [[255, 128, 0], [64, 1, 255]][(y - 1) as usize][(x - 2) as usize])
+}
+
+/// 색 변환 to (200, 100, 50) under `feathered` over `inked`: a whole
+/// coverage takes the colour, a partial one blends it into the old by
+/// `_blend`'s mul-div-255 — (10, 20, 30) at 128 makes (105, 60, 40), at 64
+/// (58, 40, 35), at 1 (11, 20, 30) —, and a 0 takes no part, nor does a
+/// pixel past the box, where the plane's row holds 255 past it; the alpha
+/// stays.
+#[test]
+fn a_mask_blends_the_value_by_its_coverage() {
+    let scene = inked();
+    let mask = feathered();
+    let (passed, out) =
+        under(&one(&scene), Some(&mask.mask()), &recolour(&[200, 100, 50]), None).expect("run");
+    assert_eq!(passed.tiles, [(0, 0)]);
+    assert_eq!(passed.touched, [5]);
+    assert_eq!(passed.runs, [vec![(rgb(10, 20, 30), 5)]]);
+    let changed = [
+        ((2, 1), rgba(200, 100, 50, 255)),
+        ((3, 1), rgba(105, 60, 40, 255)),
+        ((2, 2), rgba(58, 40, 35, 255)),
+        ((3, 2), rgba(11, 20, 30, 255)),
+        ((4, 2), rgba(200, 100, 50, 255)),
+    ];
+    assert_tile(&out, 0, (0, 0), &scene, &changed);
+}
+
+/// That recolour undone under the same mask: the recipe is assigned at
+/// every coverage, not blended — the pixel at 128 takes (10, 20, 30) back
+/// whole — and the pixels the mask leaves out stay as they are.
+#[test]
+fn an_undo_under_a_mask_assigns_its_recipe() {
+    let scene = inked();
+    let mask = feathered();
+    let forward = recolour(&[200, 100, 50]);
+    let (passed, out) = under(&one(&scene), Some(&mask.mask()), &forward, None).expect("run");
+    let undo = Verb {
+        incoming: Incoming::Recipe {
+            bytes: &[10, 20, 30],
+            step: 0,
+            count: 5,
+        },
+        ..recolour(&[])
+    };
+    let (undone, back) =
+        under(&after(&passed, &out), Some(&mask.mask()), &undo, None).expect("undo");
+    assert_eq!(undone.touched, [5]);
+    assert_tile(&back, 0, (0, 0), &scene, &[]);
+}
+
+/// A mask from (-3, -2), 6 × 3, whole, over a cel of 3 × 2 tiles from
+/// (-1, -1) inked everywhere: the walk takes the four tiles its box meets,
+/// in their order, and the pixels under it alone — a tile left of the
+/// canvas's origin reads the mask's first column at its pixel 125.
+#[test]
+fn a_mask_walks_the_tiles_its_box_meets() {
+    let ink = INK | 255 << 24;
+    let cel = cel((-1, -1), (3, 2), |_, _| ink, |_, _| Some(0));
+    let mask = masked((-3, -2), (6, 3), |_, _| 255);
+    let (passed, out) =
+        under(&cel, Some(&mask.mask()), &recolour(&[1, 2, 3]), None).expect("run");
+    assert_eq!(passed.tiles, [(-1, -1), (0, -1), (-1, 0), (0, 0)]);
+    assert_eq!(passed.touched, [6, 6, 3, 3]);
+    for (walked, &(column, row)) in passed.tiles.iter().enumerate() {
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                let at = (column * SIDE + x, row * SIDE + y);
+                let under = (-3..3).contains(&at.0) && (-2..1).contains(&at.1);
+                let wanted = if under { rgba(1, 2, 3, 255) } else { ink };
+                let put = out[walked * TEXELS + (y * SIDE + x) as usize];
+                assert_eq!(put, wanted, "({}, {})", at.0, at.1);
+            }
+        }
+    }
+}
+
 // ---- Pages and refusals ----
 
 /// A hashed cel on tiles spread over three pages, one tile missing: cut
@@ -547,7 +687,7 @@ fn a_cel_past_its_pool_or_its_size_is_refused() {
     let ink = one(&[((0, 0), INK | 255 << 24)]);
     let pages = ink.pool.upload(engine);
     let verb = recolour(&[1, 2, 3]);
-    assert!(pass.run(engine, &pages[..0], &ink.set, &verb).is_none());
+    assert!(pass.run(engine, &pages[..0], &ink.set, None, &verb).is_none());
     // Two columns of one row, holding one tile.
     let short = TileSet {
         x0: 0,
@@ -556,8 +696,22 @@ fn a_cel_past_its_pool_or_its_size_is_refused() {
         rows: 1,
         tiles: ink.set.tiles.clone(),
     };
-    assert!(pass.run(engine, &pages, &short, &verb).is_none());
-    assert!(pass.run_by(engine, &pages, &ink.set, &verb, 0).is_none());
+    assert!(pass.run(engine, &pages, &short, None, &verb).is_none());
+    assert!(pass.run_by(engine, &pages, &ink.set, None, &verb, 0).is_none());
+}
+
+/// A mask whose plane holds fewer bytes than its box's rows is refused;
+/// one that holds them is not.
+#[test]
+fn a_mask_past_its_plane_is_refused() {
+    let ink = one(&[((0, 0), INK | 255 << 24)]);
+    let mask = masked((0, 0), (5, 2), |_, _| 255);
+    let short = Mask {
+        size: MaskBox { width: 5, height: 3 },
+        ..mask.mask()
+    };
+    assert!(under(&ink, Some(&short), &recolour(&[1, 2, 3]), None).is_none());
+    assert!(under(&ink, Some(&mask.mask()), &recolour(&[1, 2, 3]), None).is_some());
 }
 
 // ---- The ledger ----
@@ -587,4 +741,28 @@ fn every_device_puts_the_pinned_verbs() {
         bytes.extend(out.into_iter().chain(runs).flat_map(u32::to_le_bytes));
     }
     assert_pinned("cel_pixel/verbs", &bytes);
+}
+
+/// The hashed cel through 색 변환 and 픽셀 비우기 under a mask over parts of
+/// five of its tiles, a quarter of its bytes 0, a quarter 255, the rest
+/// hashed.
+#[test]
+fn every_device_puts_the_verbs_under_a_mask() {
+    let cel = hashed_cel();
+    let mask = masked((-200, -60), (300, 150), |x, y| {
+        let h = mix(x as u32 ^ mix(y as u32 ^ 0xfea7));
+        match h & 3 {
+            0 => 0,
+            1 => 255,
+            _ => (h >> 8) as u8,
+        }
+    });
+    let mut bytes = Vec::new();
+    for verb in [recolour(&[1, 2, 3]), clear()] {
+        let (passed, out) = under(&cel, Some(&mask.mask()), &verb, None).expect("run");
+        assert_eq!(passed.tiles.len(), 5);
+        let runs = passed.runs.iter().flatten().flat_map(|&(value, length)| [value, length]);
+        bytes.extend(out.into_iter().chain(runs).flat_map(u32::to_le_bytes));
+    }
+    assert_pinned("cel_pixel/masked", &bytes);
 }

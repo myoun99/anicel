@@ -28,14 +28,18 @@ pub(crate) fn words_buffer(
     words: &[u32],
     usage: wgpu::BufferUsages,
 ) -> wgpu::Buffer {
-    let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
     engine
         .device
         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(label),
-            contents: &bytes,
+            contents: &le_bytes(words),
             usage,
         })
+}
+
+/// `words` as a buffer holds them: little-endian, one after another.
+pub(crate) fn le_bytes(words: &[u32]) -> Vec<u8> {
+    words.iter().flat_map(|word| word.to_le_bytes()).collect()
 }
 
 /// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
