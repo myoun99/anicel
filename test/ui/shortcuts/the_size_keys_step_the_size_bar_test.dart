@@ -43,12 +43,15 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    Future<void> pressShifted(
+    // As Windows delivers it: the key, with Shift held, typing [typed].
+    Future<void> typeUnderShift(
       WidgetTester tester,
       LogicalKeyboardKey key,
+      String typed,
     ) async {
       await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.sendKeyEvent(key);
+      await tester.sendKeyDownEvent(key, character: typed);
+      await tester.sendKeyUpEvent(key);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
       await tester.pumpAndSettle();
     }
@@ -160,10 +163,17 @@ void main() {
 
       await press(tester, LogicalKeyboardKey.numpadAdd);
       expect(hand().activeSize, rack[4], reason: 'the pad\'s +');
-      await pressShifted(tester, LogicalKeyboardKey.semicolon);
+      await typeUnderShift(tester, LogicalKeyboardKey.semicolon, '+');
       expect(hand().activeSize, rack[5], reason: '+ on a JIS keyboard');
-      await pressShifted(tester, LogicalKeyboardKey.equal);
+      await typeUnderShift(tester, LogicalKeyboardKey.equal, '+');
       expect(hand().activeSize, rack[6], reason: '+ on a US keyboard');
+      await typeUnderShift(tester, LogicalKeyboardKey.semicolon, ':');
+      expect(
+        hand().activeSize,
+        rack[6],
+        reason: '⛔the binding is the character, not the ; key: Shift on ; '
+            'types : on a US keyboard',
+      );
 
       await press(tester, LogicalKeyboardKey.numpadSubtract);
       expect(hand().activeSize, rack[5], reason: 'the pad\'s -');
@@ -198,7 +208,7 @@ void main() {
 
   group('a program\'s file', () {
     test('🚨TVPaint\'s keymap gives the two steps the keys it names, and its '
-        '+ is one a keyboard can press', () {
+        '+ is the character, as the preset\'s is', () {
       final keys = fileKeysOf([
         readTvpaintKeymap(
           '[keyboard]\n-=DecreaseToolsSize\n+=IncreaseToolsSize\n',
@@ -208,7 +218,7 @@ void main() {
         activatorKey(const SingleActivator(LogicalKeyboardKey.minus)),
       ]);
       expect(keys[EditorActionIds.brushSizeUp]!.map(activatorKey), [
-        activatorKey(const SingleActivator(LogicalKeyboardKey.numpadAdd)),
+        activatorKey(const SingleActivator(LogicalKeyboardKey.add)),
       ]);
     });
 

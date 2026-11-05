@@ -722,22 +722,24 @@ final Map<String, ProgramRow> _tvpaintRows = {
     ['ZoomRotateSub15'],
     [SingleActivator(LogicalKeyboardKey.pageDown, shift: true)],
   ),
-  // ツール オプション: サイズ拡大 / サイズ縮小, on `+` and `-`. A key event
-  // names the key, not what it types: `+` is Shift on `;` (JIS) or on `=`
-  // (US), so each stands here as it is pressed, the pad's first.
+  // ツール オプション: サイズ拡大 / サイズ縮小, on `+` and `-`. `+` is a
+  // character, pressed on whichever key types it under Shift — `;` on JIS,
+  // `=` on US (I-19, `pressableForms`). ↩️It stood as those two keys from
+  // 11-02, written on the premise that a key event names only the key.
+  // The pad's + and - beside them are mine from that day, kept so a key
+  // that pressed it still does.
   EditorActionIds.brushSizeUp: const ProgramRow(
     ['IncreaseToolsSize'],
     [
+      SingleActivator(LogicalKeyboardKey.add),
       SingleActivator(LogicalKeyboardKey.numpadAdd),
-      SingleActivator(LogicalKeyboardKey.semicolon, shift: true),
-      SingleActivator(LogicalKeyboardKey.equal, shift: true),
     ],
   ),
   EditorActionIds.brushSizeDown: const ProgramRow(
     ['DecreaseToolsSize'],
     [
-      SingleActivator(LogicalKeyboardKey.numpadSubtract),
       SingleActivator(LogicalKeyboardKey.minus),
+      SingleActivator(LogicalKeyboardKey.numpadSubtract),
     ],
   ),
   // ズーム: ズームイン / ズームアウト.
