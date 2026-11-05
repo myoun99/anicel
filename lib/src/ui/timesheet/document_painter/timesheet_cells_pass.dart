@@ -333,6 +333,20 @@ class _TimesheetCellsPass {
       final cells = displayCellsFor(spec);
       final columnLeft = left + _painter.layout.columnLeftInHalf(column);
       final columnWidth = _painter.layout.columnWidthFor(spec.kind);
+      if (_painter._xdts case final page? when _xdtsViewerWrites(spec)) {
+        page.notation.paintColumn(
+          canvas,
+          _xdtsViewerColumn(
+            cells,
+            kind: spec.kind,
+            duration: _painter.liveDrawnFrameCount,
+            pageFrames: _painter.document.pageFrameCount,
+          ),
+          _XdtsHalf(rows, startFrame: startFrame, rowCount: rowCount),
+          (left: columnLeft, width: columnWidth),
+        );
+        continue;
+      }
       final centerX = columnLeft + columnWidth / 2;
       final seColumn = spec.kind == TimesheetColumnKind.se;
       // How far before row 0 the block there began: the spill-in's head is
@@ -427,7 +441,7 @@ class _TimesheetCellsPass {
   void _paintHead(Canvas canvas, _CellSlot slot) {
     final mark = slot.cell.mark;
     if (mark != null) {
-      _paintMark(canvas, slot, mark);
+      _paintMark(canvas, slot.cellCenter, mark);
       return;
     }
     _painter._text(
@@ -440,10 +454,10 @@ class _TimesheetCellsPass {
     );
   }
 
-  /// An in-between mark, at the centre of its row.
-  void _paintMark(Canvas canvas, _CellSlot slot, InbetweenMark mark) =>
+  /// An in-between mark, at [center] — the centre of its row.
+  void _paintMark(Canvas canvas, Offset center, InbetweenMark mark) =>
       paintInbetweenMark(canvas, mark, (
-        center: Offset(slot.centerX, slot.cellCenterY),
+        center: center,
         size: const Size.square(timesheetInbetweenMarkRadius * 2),
       ), TimesheetDocumentPainter._ink);
 
@@ -522,7 +536,7 @@ class _TimesheetCellsPass {
         // Block-owned inbetween dot: FILLED ● (same glyph as the
         // timeline cells), not the legacy hollow ○.
         if (slot.cell.mark case final mark?) {
-          _paintMark(canvas, slot, mark);
+          _paintMark(canvas, slot.cellCenter, mark);
         }
       case TimesheetCellKind.repeatStart:
         _paintRepeatStart(canvas, slot);
@@ -624,22 +638,42 @@ class _TimesheetCellsPass {
 
 /// The cells of one column a paint over [shown] reads, half by half
 /// ([_columnRows]) — each run with the frame it starts on, and the start
-/// an SE share writes from.
+/// an SE share writes from; on an XDTS sheet, what the viewer's notation
+/// writes of a column it writes ([_XdtsHalf.printOf]), which reads the
+/// whole column: a line comes down from rows far above.
 List<Object?> _cellsShown(
   TimesheetDocument document,
   TimesheetDocumentLayout layout,
-  TimesheetColumnKind kind,
+  TimesheetColumn column,
   List<TimesheetCell> cells, {
   required Rect? shown,
   required int drawnFrameCount,
 }) {
+  final viewer = layout._form is _XdtsSheetForm && _xdtsViewerWrites(column)
+      ? _xdtsViewerColumn(
+          cells,
+          kind: column.kind,
+          duration: drawnFrameCount,
+          pageFrames: document.pageFrameCount,
+        )
+      : null;
   final read = <Object?>[];
   for (final page in _pagesShown(document, layout, shown)) {
     for (final strip in layout.halfStrips) {
       final startFrame = _halfStartFrame(document, page, strip.half);
+      if (viewer != null) {
+        read.add(
+          _XdtsHalf(
+            layout.halfRows(page.index),
+            startFrame: startFrame,
+            rowCount: strip.rowCount,
+          ).printOf(viewer, shown, drawnFrameCount),
+        );
+        continue;
+      }
       final reach = _columnRows(
         cells,
-        kind: kind,
+        kind: column.kind,
         startFrame: startFrame,
         rows: layout.halfRows(page.index),
         rowCount: strip.rowCount,
@@ -722,7 +756,7 @@ class _CellSlot {
   final double centerX;
   final double cellTop;
   final double cellBottom;
-  double get cellCenterY => (cellTop + cellBottom) / 2;
+  Offset get cellCenter => Offset(centerX, (cellTop + cellBottom) / 2);
   final bool seColumn;
 
   /// The top and the bottom of the span the cell lies in — from the row

@@ -559,8 +559,19 @@ class TimesheetDocument {
       // names — but the 動画 and 仕上げ ones, which fill the CELL block by
       // the same law (F-406 · F-431); unbacked slots stay blank
       // handwriting space.
+      // I-162-Q1 (유저 2026-11-05): 「XDTS 서식에서만 뷰어 표기」 — an XDTS
+      // sheet writes the block as the viewer does, from its data
+      // ([xdtsViewerNotation]): its 止メ and リピート, never our words.
       for (var slot = 0; slot < actionSlots; slot += 1)
-        _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet, unnamedMark),
+        _celRowColumn(
+          TimesheetColumnKind.action,
+          slot,
+          actionLayers,
+          rowCount,
+          playbackFrameCount,
+          dataSheet || xdtsForm != null,
+          unnamedMark,
+        ),
       for (var slot = 0; slot < seColumnSlots; slot += 1)
         _seColumn(
           slot,
@@ -684,35 +695,21 @@ class TimesheetDocument {
   }
 
   static TimesheetColumn _celRowColumn(TimesheetColumnKind kind, int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet, InbetweenMark unnamedMark) {
+    final layer = slot < animationLayers.length ? animationLayers[slot] : null;
+    List<TimesheetCell> cellsOf(Layer layer) => timesheetLayerCells(
+      layer: layer,
+      rowCount: rowCount,
+      playbackFrameCount: playbackFrameCount,
+      dataSheet: dataSheet,
+      unnamedMark: unnamedMark,
+    );
     return TimesheetColumn(
       kind: kind,
-      label: slot < animationLayers.length
-          ? animationLayers[slot].name
-          : '',
-      layerName: slot < animationLayers.length
-          ? animationLayers[slot].name
-          : null,
-      layerId: slot < animationLayers.length
-          ? animationLayers[slot].id
-          : null,
-      cells: slot < animationLayers.length
-          ? timesheetLayerCells(
-              layer: animationLayers[slot],
-              rowCount: rowCount,
-              playbackFrameCount: playbackFrameCount,
-              dataSheet: dataSheet,
-              unnamedMark: unnamedMark,
-            )
-          : _blankCells(rowCount),
-      previewCellsBuilder: slot < animationLayers.length
-          ? (layer) => timesheetLayerCells(
-              layer: layer,
-              rowCount: rowCount,
-              playbackFrameCount: playbackFrameCount,
-              dataSheet: dataSheet,
-              unnamedMark: unnamedMark,
-            )
-          : null,
+      label: layer?.name ?? '',
+      layerName: layer?.name,
+      layerId: layer?.id,
+      cells: layer == null ? _blankCells(rowCount) : cellsOf(layer),
+      previewCellsBuilder: layer == null ? null : cellsOf,
     );
   }
 

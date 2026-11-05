@@ -41,6 +41,7 @@ class _XdtsPage {
   late final _XdtsCountsPass counts = _XdtsCountsPass(this);
   late final _XdtsOverlapPass overlaps = _XdtsOverlapPass(this);
   late final _XdtsLogoPass logo = _XdtsLogoPass(this);
+  late final _XdtsNotationPass notation = _XdtsNotationPass(this);
 
   /// The viewer's line colour, which its form's words are printed in too.
   static const Color line = Color(0xFF9CC862);
