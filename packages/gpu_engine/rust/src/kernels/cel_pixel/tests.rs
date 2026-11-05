@@ -821,8 +821,20 @@ fn each_pass_binds_its_runs_from_where_a_binding_may_start() {
     let starts = super::starts(&passed.touched, &runs);
     let walk = super::walk(&cel.set, 3, None).expect("walk");
     let passes = super::runs(walk.iter().map(|tile| tile.at.page), 1, 1);
-    let given = super::Given::all(engine, &walk, &passes, &cut, None, Some(&starts));
-    let given = given.expect("given");
+    let mut encoder = engine
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let given = super::Given::all(
+        engine,
+        &mut encoder,
+        3,
+        &walk,
+        &passes,
+        &cut,
+        None,
+        Some(&starts),
+    )
+    .expect("given");
     let align = super::alignment(engine);
     for ((run, _), given) in passes.iter().zip(&given) {
         let bound = given.runs.clone().expect("a forward pass binds its runs");

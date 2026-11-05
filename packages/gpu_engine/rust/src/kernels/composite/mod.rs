@@ -57,7 +57,8 @@ use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::shared::{
     ISQRT_WGSL, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL,
-    Encoded, encode_on, page_table, pipeline, room, storage_format, whole, words_buffer,
+    Encoded, encode_on, le_bytes, page_table, pipeline, room, storage_format, whole,
+    words_buffer,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -489,10 +490,6 @@ fn compile(engine: &Engine, pages: &Pages, output: &str) -> wgpu::ComputePipelin
         &body,
     ];
     pipeline(engine, &sources, "composite")
-}
-
-fn le_bytes(words: &[u32]) -> Vec<u8> {
-    words.iter().flat_map(|word| word.to_le_bytes()).collect()
 }
 
 /// Fails unless every buffer the steps open is closed, none is closed that

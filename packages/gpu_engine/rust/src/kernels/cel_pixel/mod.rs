@@ -40,7 +40,8 @@ use crate::kernels::composite::{TILE, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
 use crate::kernels::mask::MaskBox;
 use crate::kernels::shared::{
-    Pages, TILE_WGSL, fits, le_bytes, pipeline, plane, room, runs, words_buffer,
+    Encoded, PREMULTIPLY_WGSL, Pages, TILE_WGSL, encode_on, fits, le_bytes, page_table, pipeline,
+    plane, room, runs, whole, words_buffer,
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
@@ -212,7 +213,8 @@ impl CelPixels {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let pages = Pages::new(engine, OWN_BUFFERS, OWN_BUFFERS + 1)?;
         let read = pages.source();
-        let sources = [KEY_WGSL, TILE_WGSL, &read, include_str!("cel_pixel.wgsl")];
+        let sources =
+            [KEY_WGSL, TILE_WGSL, PREMULTIPLY_WGSL, &read, include_str!("cel_pixel.wgsl")];
         Some(Self {
             count: pipeline(engine, &sources, "cel_count"),
             apply: pipeline(engine, &sources, "cel_apply"),
@@ -266,10 +268,20 @@ impl CelPixels {
         let counts_bytes = walk.len() as u64 * 8;
         fits(engine, &[counts_bytes], std::iter::empty())?;
         let counts = plane(engine, "cel pixel counts", counts_bytes);
-        let given = Given::all(engine, &walk, &cut, verb, mask, None)?;
-        self.encode(engine, pool, &cut, &given, &self.count, |_, _| {
-            [None, Some(counts.as_entire_binding())]
-        });
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let given = Given::all(engine, &mut encoder, pool.len(), &walk, &cut, verb, mask, None)?;
+        let counted: Vec<Encoded> = cut
+            .iter()
+            .zip(&given)
+            .map(|(pass, given)| {
+                let bound = [None, Some(counts.as_entire_binding())];
+                self.encoded(&self.count, pool, pass, given, bound)
+            })
+            .collect();
+        encode_on(engine, &mut encoder, &counted);
+        engine.queue.submit([encoder.finish()]);
         let (touched, runs): (Vec<u32>, Vec<u32>) = words(&engine.read_buffer(&counts)?)
             .chunks_exact(2)
             .map(|two| (two[0], two[1]))
@@ -293,15 +305,26 @@ impl CelPixels {
         let put_bytes = if verb.is_undo() { 16 } else { all_runs * 8 + alignment(engine) };
         made(engine, put_bytes)?;
         let put = plane(engine, "cel pixel runs", put_bytes);
-        let given = Given::all(engine, &walk, &cut, verb, mask, Some(&starts))?;
-        self.encode(engine, pool, &cut, &given, &self.apply, |(run, _), given| {
-            let out = range(&out, run.start as u64 * TILE_BYTES..run.end as u64 * TILE_BYTES);
-            let put = match &given.runs {
-                Some(runs) => range(&put, runs.clone()),
-                None => put.as_entire_binding(),
-            };
-            [Some(out), Some(put)]
-        });
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let given =
+            Given::all(engine, &mut encoder, pool.len(), &walk, &cut, verb, mask, Some(&starts))?;
+        let applied: Vec<Encoded> = cut
+            .iter()
+            .zip(&given)
+            .map(|(pass, given)| {
+                let (run, _) = pass;
+                let out = range(&out, run.start as u64 * TILE_BYTES..run.end as u64 * TILE_BYTES);
+                let put = match &given.runs {
+                    Some(runs) => range(&put, runs.clone()),
+                    None => put.as_entire_binding(),
+                };
+                self.encoded(&self.apply, pool, pass, given, [Some(out), Some(put)])
+            })
+            .collect();
+        encode_on(engine, &mut encoder, &applied);
+        engine.queue.submit([encoder.finish()]);
         if verb.is_undo() {
             engine.wait()?;
             return Some(Passed { tiles, out, touched, runs: Vec::new() });
@@ -310,51 +333,25 @@ impl CelPixels {
         Some(Passed { tiles, out, touched, runs })
     }
 
-    /// Encodes `pipeline` over each pass of `cut`, given each its `given`,
-    /// and submits it: the new pixels and the counts or runs bound at 2 and
-    /// 3 as `bound` gives them a pass.
-    fn encode<'a>(
-        &self,
-        engine: &Engine,
-        pool: &[wgpu::Buffer],
-        cut: &[Run],
-        given: &'a [Given],
-        pipeline: &wgpu::ComputePipeline,
-        bound: impl Fn(&Run, &'a Given) -> [Option<wgpu::BindingResource<'a>>; 2],
-    ) {
-        let layout = pipeline.get_bind_group_layout(0);
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        for (pass, given) in cut.iter().zip(given) {
-            let mut entries = vec![
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: given.uniform.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: given.words.as_entire_binding(),
-                },
-            ];
-            for (binding, resource) in (2..).zip(bound(pass, given)) {
-                if let Some(resource) = resource {
-                    entries.push(wgpu::BindGroupEntry { binding, resource });
-                }
+    /// `pipeline` over `pass`, given `given`, its tiles a workgroup each: the
+    /// new pixels and the counts or runs bound at 2 and 3 as `bound` has
+    /// them, and the pass's pages.
+    fn encoded<'a>(
+        &'a self,
+        pipeline: &'a wgpu::ComputePipeline,
+        pool: &'a [wgpu::Buffer],
+        (run, pages): &Run,
+        given: &'a Given,
+        bound: [Option<wgpu::BindingResource<'a>>; 2],
+    ) -> Encoded<'a> {
+        let mut entries = whole(&[(0, &given.uniform), (1, &given.words)]);
+        for (binding, resource) in (2..).zip(bound) {
+            if let Some(resource) = resource {
+                entries.push(wgpu::BindGroupEntry { binding, resource });
             }
-            let bound = pass.1.iter().map(|&page| &pool[usize::from(page)]);
-            entries.extend(self.pages.entries(bound));
-            let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("cel pixels"),
-                layout: &layout,
-                entries: &entries,
-            });
-            let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            compute.set_pipeline(pipeline);
-            compute.set_bind_group(0, &bind_group, &[]);
-            compute.dispatch_workgroups(pass.0.len() as u32, 1, 1);
         }
-        engine.queue.submit([encoder.finish()]);
+        entries.extend(self.pages.entries(pages.iter().map(|&page| &pool[usize::from(page)])));
+        Encoded { pipeline, bound: entries, groups: (run.len() as u32, 1, 1) }
     }
 }
 
@@ -517,32 +514,30 @@ struct Given {
 }
 
 impl Given {
-    /// Each pass of `cut` over `walk` under `mask`; the apply entry's, with
-    /// `starts`, the count entry's without. Submits the copies of the
-    /// mask's rows.
+    /// Each pass of `cut` over `walk` — its tiles on the pool's `pool`
+    /// pages — under `mask`; the apply entry's, with `starts`, the count
+    /// entry's without. The copies of the mask's rows are encoded on
+    /// `encoder`, before the passes that read them.
     fn all(
         engine: &Engine,
+        encoder: &mut wgpu::CommandEncoder,
+        pool: usize,
         walk: &[Walked],
         cut: &[Run],
         verb: &Verb,
         mask: Option<&Mask>,
         starts: Option<&[(u32, u32)]>,
     ) -> Option<Vec<Given>> {
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let given = cut
-            .iter()
-            .map(|pass| Given::of(engine, &mut encoder, walk, pass, verb, mask, starts))
-            .collect();
-        engine.queue.submit([encoder.finish()]);
-        given
+        cut.iter()
+            .map(|pass| Given::of(engine, encoder, pool, walk, pass, verb, mask, starts))
+            .collect()
     }
 
     /// `pass`'s, the copy of its rows of the mask encoded on `encoder`.
     fn of(
         engine: &Engine,
         encoder: &mut wgpu::CommandEncoder,
+        pool: usize,
         walk: &[Walked],
         (run, pages): &Run,
         verb: &Verb,
@@ -550,10 +545,10 @@ impl Given {
         starts: Option<&[(u32, u32)]>,
     ) -> Option<Given> {
         let rows = mask.map_or(0..0, |mask| band(walk, run, mask));
+        let table: Vec<u32> = page_table(pages, pool).collect();
         let mut words: Vec<u32> = Vec::with_capacity(run.len() * (TILE_WORDS + 2));
         for (index, tile) in walk.iter().enumerate().take(run.end).skip(run.start) {
-            let k = pages.iter().position(|&page| page == tile.at.page);
-            let k = k.expect("a run binds its tiles' pages") as u32;
+            let k = table[usize::from(tile.at.page)];
             let [x, y] = tile.in_mask;
             let slot = u32::from(tile.at.slot);
             let entry: [u32; TILE_WORDS] = [k, slot, index as u32, x, y.wrapping_sub(rows.start)];
