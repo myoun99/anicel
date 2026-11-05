@@ -561,7 +561,8 @@ impl Blurs {
     /// reaches — and of what it is given, a tile's place and, under `mask`,
     /// a tile row of the mask's rows at their worst. No test lays a cel past
     /// a binding (2 GB here, 32,768 tiles), so none tells a tile's bytes
-    /// from its words in this line (mutant r19, 11-06).
+    /// from its words in this line (mutant r19, 11-06), the mask's rows
+    /// from none (v21), or a finish under a mask cut as under none (v22).
     fn widest(&self, engine: &Engine, mask: Option<&Mask>) -> Option<(usize, usize)> {
         let band = mask.map_or(0, Mask::per_tile);
         let per_tile = (TILE_TEXELS * 4).max(TILE_PLACE_WORDS * 4 + band);
@@ -585,6 +586,10 @@ impl Blurs {
         let tile_bytes = TILE_TEXELS * 4;
         let mask = cover.and_then(|cover| cover.mask);
         let on = tiles.iter().map(|tile| Some(tile.at.page));
+        // Under a mask a pass reaches no more tile rows than it takes tiles,
+        // as it is given the mask's rows they lie on. No test lays a band
+        // past a binding (2 GB here), so none tells the rows from none
+        // (mutant v19, 11-06).
         let rows: Option<Vec<i32>> = mask.map(|_| tiles.iter().map(|tile| tile.row).collect());
         let runs = runs(on, rows.as_deref(), pages_per_pass, most);
         let mut encoder = engine
@@ -606,6 +611,10 @@ impl Blurs {
                         1,
                         words.len() as u32,
                         mask.size.width,
+                        // The rows here, not the box's: past them a pixel
+                        // reads past what the pass is given, which this
+                        // device reads as nothing — so no test here tells
+                        // the two apart (mutant v18, 11-06).
                         rows.len() as u32,
                         mask.size.stride(),
                         mask.at.0 as u32,

@@ -107,9 +107,8 @@ fn blur_move(x: i32, y: i32, to: vec4<u32>) {
     paper = dab_paper(tile, local.x, local.y);
   }
   let share = dab_source(plan[blur_block + BLUR_RECORD], x, y, 0u, paper);
-  // Where the dab lays nothing the pixel stays — by this line. Without it,
-  // blend_mul by NOTHING wraps to 0 for every difference a channel can
-  // make, so no test tells the two apart (mutant w03, 11-06).
+  // Where the dab lays nothing the pixel stays — by this line: NOTHING is
+  // no share, and blend_toward by it wraps and moves the pixel.
   if (share == NOTHING) {
     return;
   }

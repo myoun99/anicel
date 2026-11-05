@@ -95,6 +95,8 @@ impl Mask<'_> {
         let (low, high) = rows.fold((i32::MAX, i32::MIN), |(low, high), row| {
             (low.min(row), high.max(row))
         });
+        // An empty run's band, which would otherwise run backward. No run
+        // is empty, so no test here reaches this (mutant v24, 11-06).
         if low > high {
             return 0..0;
         }
