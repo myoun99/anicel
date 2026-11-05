@@ -24,6 +24,10 @@ use crate::kernels::shared::{
     Encoded, WIDE_WGSL, encode, fits, flat, pipeline, plane, q, whole, words_buffer,
 };
 
+/// `mask_byte_of` — a mask's byte at a pixel of its box, as every reader of
+/// a selection reads it; its host defines `mask_word`.
+pub(crate) const BYTE_WGSL: &str = include_str!("byte.wgsl");
+
 /// mask.wgsl's workgroup side.
 const GROUP: u32 = 8;
 /// The feather a mask takes is under this, in pixels: its ramp, 3 · Q.8,
@@ -111,7 +115,7 @@ pub(crate) struct MaskPasses {
 
 impl MaskPasses {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let source = [WIDE_WGSL, include_str!("mask.wgsl")];
+        let source = [WIDE_WGSL, BYTE_WGSL, include_str!("mask.wgsl")];
         let compile = |entry| pipeline(engine, &source, entry);
         Self {
             grow: compile("mask_grow"),

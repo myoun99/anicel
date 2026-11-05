@@ -17,7 +17,8 @@
 // drops a write — so the tests here cannot see the box's guards on rows
 // there; Metal clamps the index instead.
 //
-// Needs shared/wide.wgsl before it.
+// Needs shared/wide.wgsl and byte.wgsl before it; defines byte.wgsl's
+// `mask_word`.
 
 // The box, and the feather's ramp: 3 chamfer units a pixel, Q.8.
 struct Mask {
@@ -46,13 +47,13 @@ fn mask_inside(x: i32, y: i32) -> bool {
   return u32(x) < mask.width && u32(y) < mask.height;
 }
 
+fn mask_word(at: u32) -> u32 {
+  return bytes_in[at];
+}
+
 // The byte at (x, y); 0 past the box.
 fn mask_byte(x: i32, y: i32) -> u32 {
-  if (!mask_inside(x, y)) {
-    return 0u;
-  }
-  let word = bytes_in[u32(y) * mask.stride + u32(x) / 4u];
-  return (word >> (u32(x) % 4u * 8u)) & 0xffu;
+  return mask_byte_of(MaskPlane(0u, mask.width, mask.height, mask.stride), u32(x), u32(y));
 }
 
 // The distance at (x, y), inside the box.
