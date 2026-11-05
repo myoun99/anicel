@@ -7,8 +7,12 @@
 // it.
 //
 // 🚨The frame goes first here, as in the app: [settle] builds before the
-// warmer gets a turn. Pumped by time alone, the warmer lays the new key first
-// and no pin here is red without the fix.
+// warmer gets a turn. ⛔So no step here is pressed through frames pumped by
+// time (`windowBehind` pumps thirty when no window comes): the warmer then
+// gets its turn first, and the store holds NO picture under the frame's key
+// while the view shows the paste from the one it keeps itself (probe on the
+// Surface, 2026-11-05, before and after F-551) — every pin here red, and
+// nothing wrong on the screen.
 // 🚨On Flutter GPU, as in the app (the `gpu` tag): with nothing to write with,
 // every patch fails and a paste inside the page only ever proves a new lay.
 @Tags(['gpu'])
@@ -36,6 +40,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart'
+    show AppProgressDialog;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -44,7 +50,6 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/settle_async.dart';
-import '../../helpers/wait_window.dart' show windowBehind;
 
 void main() {
   const red = [255, 0, 0, 255];
@@ -309,12 +314,14 @@ void main() {
       s.pixelVerbs.cutToolHand!(pieceAt(-210, 10));
       await settle(tester);
 
-      final slot = tester
+      tester
           .widget<BrushCanvasPanel>(
             find.byKey(const ValueKey<String>('main-canvas-brush-host')),
           )
-          .cutPieceSlot!;
-      await windowBehind(tester, () async => slot.pasteAtOriginHandler!());
+          .cutPieceSlot!
+          .pasteAtOriginHandler!();
+      // 🗣️F-566: one piece on the one cel you stand on lands at once.
+      expect(find.byType(AppProgressDialog), findsNothing);
       await settle(tester);
 
       await expectThroughSolo(tester, s, pastTheX, pastTheY);
