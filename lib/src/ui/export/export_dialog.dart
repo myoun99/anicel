@@ -4988,12 +4988,16 @@ class ExportDialogState extends State<ExportDialog> {
               ),
             ],
           ),
-          _specToggle(
-            keyValue: 'export-tsformat-xdts-ink',
-            label: strings.exXdtsInk,
-            help: unread,
-            value: spec.sheetInk,
-            write: inkLive ? (value) => spec.copyWith(sheetInk: value) : null,
+          settingsHelpTooltip(
+            unread,
+            _specToggle(
+              keyValue: 'export-tsformat-xdts-ink',
+              label: strings.exXdtsInk,
+              value: spec.sheetInk,
+              write: inkLive
+                  ? (value) => spec.copyWith(sheetInk: value)
+                  : null,
+            ),
           ),
           // A list, not pills: four sheets' names cut each other to an
           // ellipsis in the settings column — the codec's way out
@@ -5254,13 +5258,11 @@ class ExportDialogState extends State<ExportDialog> {
   SettingsSwitchRow _specToggle({
     required String keyValue,
     required String label,
-    String? help,
     required bool value,
     required ExportTabSpec Function(bool value)? write,
   }) => SettingsSwitchRow(
     tileKey: ValueKey<String>(keyValue),
     label: label,
-    help: help,
     value: value,
     onChanged: _isExporting || write == null
         ? null

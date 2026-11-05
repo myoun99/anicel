@@ -401,6 +401,7 @@ void main() {
     'sheetStretchLineOff': (s) => s.sheetStretchLineOff,
     'sheetLength': (s) => s.sheetLength,
     'sheetXdtsPapers': (s) => s.sheetXdtsPapers,
+    'xdtsViewerRateRefused': (s) => s.xdtsViewerRateRefused,
     'sheetThreeSeconds': (s) => s.sheetThreeSeconds,
     'sheetSixSeconds': (s) => s.sheetSixSeconds,
     'sheetBrushAllow': (s) => s.sheetBrushAllow,
