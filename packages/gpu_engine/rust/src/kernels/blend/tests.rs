@@ -65,7 +65,7 @@ const fn wide(byte: u32) -> u32 {
 
 /// The device and the compiled cases every test here runs on.
 struct Rig {
-    engine: Engine,
+    engine: &'static Engine,
     pipeline: wgpu::ComputePipeline,
 }
 

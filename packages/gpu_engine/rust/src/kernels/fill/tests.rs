@@ -31,7 +31,7 @@ fn every_device_writes_the_pinned_bytes() {
     for (format, order) in [(BGRA, "bgra"), (RGBA, "rgba")] {
         for seed in [0, 7, u32::MAX] {
             let id = format!("fill/70x45-seed{seed}-{order}");
-            assert_pinned(&id, &filled(&engine, format, seed));
+            assert_pinned(&id, &filled(engine, format, seed));
         }
     }
 }
@@ -42,7 +42,7 @@ fn every_device_writes_the_pinned_bytes() {
 fn seed_zero_makes_the_first_texel_opaque_black() {
     let engine = first_engine();
     for format in [BGRA, RGBA] {
-        assert_eq!(filled(&engine, format, 0)[..4], [0, 0, 0, 0xff], "{format:?}");
+        assert_eq!(filled(engine, format, 0)[..4], [0, 0, 0, 0xff], "{format:?}");
     }
 }
 
@@ -50,7 +50,7 @@ fn seed_zero_makes_the_first_texel_opaque_black() {
 #[test]
 fn every_texel_is_opaque() {
     let engine = first_engine();
-    let bytes = filled(&engine, RGBA, 7);
+    let bytes = filled(engine, RGBA, 7);
     assert!(bytes.chunks_exact(4).all(|texel| texel[3] == 0xff));
 }
 
@@ -59,9 +59,9 @@ fn every_texel_is_opaque() {
 #[test]
 fn the_two_orders_differ_only_by_red_and_blue() {
     let engine = first_engine();
-    let swapped: Vec<u8> = filled(&engine, BGRA, 7)
+    let swapped: Vec<u8> = filled(engine, BGRA, 7)
         .chunks_exact(4)
         .flat_map(|texel| [texel[2], texel[1], texel[0], texel[3]])
         .collect();
-    assert_eq!(swapped, filled(&engine, RGBA, 7));
+    assert_eq!(swapped, filled(engine, RGBA, 7));
 }

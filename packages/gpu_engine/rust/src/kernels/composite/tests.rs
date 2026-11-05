@@ -21,7 +21,7 @@ const LINEAR_BURN: u32 = 13;
 const WHOLE: u32 = 65535;
 
 struct Rig {
-    engine: Engine,
+    engine: &'static Engine,
     composite: Composite,
 }
 
@@ -31,7 +31,7 @@ fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
-        let composite = Composite::new(&engine).expect("compile the composite");
+        let composite = Composite::new(engine).expect("compile the composite");
         Rig { engine, composite }
     })
 }

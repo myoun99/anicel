@@ -45,6 +45,7 @@ impl Engine {
         let request = adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("gpu_engine"),
             required_features,
+            required_limits: most_storage(&adapter),
             ..Default::default()
         });
         match pollster::block_on(request) {
@@ -118,6 +119,22 @@ impl Engine {
                 .copied()
                 .collect(),
         )
+    }
+}
+
+/// The defaults, but with the most `adapter` gives of the three limits a
+/// pool's pages are bounded by: storage buffers a stage, the size of one
+/// binding, the size of one buffer. That is 1a's ④ (브러시/렌더링,
+/// gpu-canonical-store 2026-11-05 13:19), which names these three. The
+/// composite reads `device.limits()`, and a bigger limit only means fewer
+/// passes, never other bytes (its tests pin every page count).
+fn most_storage(adapter: &wgpu::Adapter) -> wgpu::Limits {
+    let most = adapter.limits();
+    wgpu::Limits {
+        max_storage_buffers_per_shader_stage: most.max_storage_buffers_per_shader_stage,
+        max_storage_buffer_binding_size: most.max_storage_buffer_binding_size,
+        max_buffer_size: most.max_buffer_size,
+        ..wgpu::Limits::default()
     }
 }
 
@@ -202,4 +219,25 @@ pub unsafe extern "C" fn gpu_engine_video_memory(engine: *const Engine) -> u64 {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
     platform::video_memory(&engine.adapter).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::testing::first_engine;
+
+    #[test]
+    fn the_device_has_the_most_storage_the_adapter_gives() {
+        let engine = first_engine();
+        let (most, got) = (engine.adapter.limits(), engine.device.limits());
+        println!(
+            "{}: {} storage buffers a stage, {} B a binding, {} B a buffer",
+            engine.adapter.get_info().name,
+            got.max_storage_buffers_per_shader_stage,
+            got.max_storage_buffer_binding_size,
+            got.max_buffer_size,
+        );
+        assert_eq!(got.max_storage_buffers_per_shader_stage, most.max_storage_buffers_per_shader_stage);
+        assert_eq!(got.max_storage_buffer_binding_size, most.max_storage_buffer_binding_size);
+        assert_eq!(got.max_buffer_size, most.max_buffer_size);
+    }
 }
