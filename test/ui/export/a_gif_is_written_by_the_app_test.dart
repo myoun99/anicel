@@ -291,6 +291,45 @@ void main() {
       });
     });
 
+    // 🐞I-152 (2026-11-05): the package's black and white asked a dither's
+    // channels their brightness out of 255 against a half — every grey but
+    // black went white, and the ramp came out light.
+    test('🚨black and white cuts by brightness through a dither too: the '
+        'greys come out as dark as they went in', () async {
+      final undithered = pixelsOf(
+        await written(
+          'bw-none.gif',
+          await greys(),
+          settings: const ExportGifSettings(
+            reduction: ExportGifReduction.blackWhite,
+            dither: ExportGifDither.none,
+          ),
+        ),
+      ).where((p) => p.$1 == 0).length;
+      expect(undithered, 64, reason: 'the greys straddle the cut mid-row');
+      for (final dither in [
+        ExportGifDither.floydSteinberg,
+        ExportGifDither.stucki,
+        ExportGifDither.atkinson,
+      ]) {
+        final black = pixelsOf(
+          await written(
+            'bw-${dither.name}.gif',
+            await greys(),
+            settings: ExportGifSettings(
+              reduction: ExportGifReduction.blackWhite,
+              dither: dither,
+            ),
+          ),
+        ).where((p) => p.$1 == 0).length;
+        expect(
+          black,
+          closeTo(undithered, 2),
+          reason: '${dither.name}: a dither spreads the cut, not the mean',
+        );
+      }
+    });
+
     test('a neural net learns the colours near: not the octree\'s '
         'palette', () async {
       const eight = ExportGifSettings(colors: 8, dither: ExportGifDither.none);

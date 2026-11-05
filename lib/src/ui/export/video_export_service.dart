@@ -15,6 +15,7 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_encoder.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import '../../services/media/media_byte_source.dart' show MediaFileBytes;
+import 'gif_black_white_quantizer.dart';
 import 'gif_octree_quantizer.dart';
 import 'png_sequence_export_service.dart' show ExportWriteSummary;
 import '../../models/audio_pcm_scale.dart';
@@ -1013,7 +1014,7 @@ img.Quantizer _gifQuantizerOf(
     picture,
     numberOfColors: colors,
   ),
-  ExportGifReduction.blackWhite => img.BinaryQuantizer(),
+  ExportGifReduction.blackWhite => GifBlackWhiteQuantizer(),
 };
 
 img.DitherKernel _gifKernelOf(ExportGifDither dither) => switch (dither) {
