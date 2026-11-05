@@ -42,6 +42,13 @@ const COPY: u32 = 2;
 /// 1 in Q.20 and in Q.36.
 const ONE: i32 = 1 << 20;
 const ONE_36: i64 = 1 << 36;
+/// The w at and below which a pixel is outside, 2^-12 (resample.wgsl's
+/// RESAMPLE_W_FLOOR).
+const W_FLOOR: f64 = 1.0 / 4096.0;
+/// How far a pixel reads past where its centre lands, besides half its
+/// Jacobian's reach: Blend's tent spans 16 px either side, a landing
+/// rounds to a whole pixel, and one more for the doubles' rounding.
+const SLACK: f64 = 18.0;
 
 impl ResampleMap {
     /// Words one map takes, resample.wgsl's `ResampleMap` field by field.
@@ -95,6 +102,74 @@ impl ResampleMap {
             f: q(f, 20, WIDE)?,
             i: q(i, 36, WIDE)?,
         })
+    }
+
+    /// The whole-pixel move by (`dx`, `dy`): destination (x, y) is the
+    /// source's (x − dx, y − dy), copied word for word in either mode.
+    pub(crate) fn moved(dx: i32, dy: i32) -> Self {
+        Self {
+            a: ONE,
+            b: 0,
+            d: 0,
+            e: ONE,
+            g: 0,
+            h: 0,
+            floor: 1 << 16,
+            mode: ResampleMode::Blend,
+            c: -i64::from(dx) << 20,
+            f: -i64::from(dy) << 20,
+            i: ONE_36,
+        }
+    }
+
+    /// The source pixels that destination pixels `x0..x1` × `y0..y1` can
+    /// read, as `[left, top, right, bottom)`: exactly for a copy, else the
+    /// box around where the rectangle's corners land, widened by half the
+    /// widest Jacobian over it and [`SLACK`]. The Jacobian's numerators are
+    /// affine in x and y and w is linear, so both bounds sit at corners.
+    /// `None` where w comes near 0 at a corner — reads not bounded here.
+    pub(crate) fn reads(&self, x0: i64, y0: i64, x1: i64, y1: i64) -> Option<[i64; 4]> {
+        if self.is_copy() {
+            let (dx, dy) = (self.c >> 20, self.f >> 20);
+            return Some([x0 + dx, y0 + dy, x1 + dx, y1 + dy]);
+        }
+        let q20 = |v: f64| v / f64::from(ONE);
+        let q36 = |v: f64| v / ONE_36 as f64;
+        let (a, b, c) = (q20(f64::from(self.a)), q20(f64::from(self.b)), q20(self.c as f64));
+        let (d, e, f) = (q20(f64::from(self.d)), q20(f64::from(self.e)), q20(self.f as f64));
+        let (g, h, i) = (q36(f64::from(self.g)), q36(f64::from(self.h)), q36(self.i as f64));
+        let corners = [(x0, y0), (x1, y0), (x0, y1), (x1, y1)].map(|(x, y)| (x as f64, y as f64));
+        let mut least_w = f64::MAX;
+        let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        // |∂u/∂x| and |∂u/∂y| times w², then the same for v.
+        let mut slopes = [0.0f64; 4];
+        for (x, y) in corners {
+            let w = g * x + h * y + i;
+            least_w = least_w.min(w);
+            let (u, v) = ((a * x + b * y + c) / w, (d * x + e * y + f) / w);
+            (left, top, right, bottom) = (left.min(u), top.min(v), right.max(u), bottom.max(v));
+            let numerators = [
+                (a * h - g * b) * y + (a * i - g * c),
+                (b * g - h * a) * x + (b * i - h * c),
+                (d * h - g * e) * y + (d * i - g * f),
+                (e * g - h * d) * x + (e * i - h * f),
+            ];
+            for (slope, numerator) in slopes.iter_mut().zip(numerators) {
+                *slope = slope.max(numerator.abs());
+            }
+        }
+        if !(least_w > W_FLOOR) {
+            return None;
+        }
+        let squared = least_w * least_w;
+        let reach_u = (slopes[0] + slopes[1]) / squared / 2.0 + SLACK;
+        let reach_v = (slopes[2] + slopes[3]) / squared / 2.0 + SLACK;
+        Some([
+            (left - reach_u).floor() as i64,
+            (top - reach_v).floor() as i64,
+            (right + reach_u).ceil() as i64,
+            (bottom + reach_v).ceil() as i64,
+        ])
     }
 
     /// Whether the map moves by whole pixels and nothing else, so each pixel
