@@ -133,4 +133,30 @@ void main() {
       }
     });
   });
+
+  testWidgets('🚨what a panel makes stays within the playback line: past '
+      'it, let go of once the panel is drawn', (tester) async {
+    await tester.runAsync(() async {
+      final session = halfInked();
+      addTearDown(session.dispose);
+      // Less than one picture of the canvas.
+      session.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(
+        1024,
+      );
+      final cut = session.requireActiveCut;
+      final image = await PanelPictures(
+        session: session,
+      ).render(cut, 0, width: 16);
+      final bytes = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!;
+      image.dispose();
+      expect(bytes.getUint8((8 * 16 + 1) * 4), 0, reason: 'LIVENESS: drawn');
+      expect(
+        session.playbackRig.framePictures.store.estimatedBytes,
+        0,
+        reason: 'no room for it on the line',
+      );
+    });
+  });
 }
