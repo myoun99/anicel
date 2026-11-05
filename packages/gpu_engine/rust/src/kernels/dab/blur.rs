@@ -274,6 +274,9 @@ impl Blurs {
             .collect::<Option<_>>()?;
         let steps: Vec<Vec<Step>> = windows.iter().map(Window::steps).collect();
         let between_bytes = windows.iter().map(|window| window.between).max()?;
+        // No test lays a window past a binding here (2 GB) or a dispatch's
+        // groups, so none tells this line from its absence (mutants f01, f02,
+        // 11-06); a device of 128 MB refuses a dab of size 2000 by it.
         fits(engine, &[between_bytes], steps.iter().flatten().map(|step| step.groups))?;
         if self.between.as_ref().is_none_or(|buffer| buffer.size() < between_bytes) {
             self.between = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
