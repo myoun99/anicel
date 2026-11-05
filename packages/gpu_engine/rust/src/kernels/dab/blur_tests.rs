@@ -208,13 +208,19 @@ fn strips_of_a_dab_meet_with_no_seam() {
 }
 
 // A blur reads three radii past its dab: the stroke must hold every tile
-// that reaches, and a workgroup must have room for a strip's six radii and
-// at least one pixel — 170 is the last radius that fits 1024.
+// that reaches — a dab 2 px into a tile at radius 1 reads the one before
+// it, right, left, down or up —, and a workgroup must have room for a
+// strip's six radii and at least one pixel: 170 is the last radius that
+// fits 1024.
 #[test]
 fn a_blur_the_kernel_cannot_lay_is_refused() {
     let dab = |region| square(region, WHITE, 1.0);
     let lone = [(0, 0)];
     assert!(blurred(&lone, step_at(64), &[(dab([120, 60, 126, 64]), 1)], None).is_none());
+    assert!(blurred(&[(1, 0)], step_at(64), &[(dab([130, 60, 136, 64]), 1)], None).is_none());
+    assert!(blurred(&lone, step_at(64), &[(dab([60, 120, 64, 126]), 1)], None).is_none());
+    assert!(blurred(&[(0, 1)], step_at(64), &[(dab([60, 130, 64, 136]), 1)], None).is_none());
+    assert!(blurred(&[(1, 0)], step_at(64), &[(dab([131, 60, 136, 64]), 1)], None).is_some());
     assert!(blurred(&lone, step_at(64), &[(dab([60, 60, 68, 64]), 0)], None).is_none());
     let around: Vec<(i32, i32)> =
         (-5..6).flat_map(|row| (-5..6).map(move |column| (column, row))).collect();
