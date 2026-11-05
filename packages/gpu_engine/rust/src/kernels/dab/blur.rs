@@ -9,11 +9,11 @@
 //! (`blur_three.wgsl`), up to MOST_STRIPS_RADIUS; past it a pass a dispatch
 //! (`blur_pass.wgsl`, 01:13 ③).
 //!
-//! ⏳The picture made from the cel — every tile a dab's window meets — and
-//! the finished tile laid back on the cel (`qa_blur_result_tile`) are the
-//! next piece's: the executor reads the cel's tiles as a one-row copy plan,
-//! and the finished tiles go out as its output does (캔버스 베이스 11-06
-//! 02:29).
+//! The picture is made from the cel — every tile a dab's window meets — and
+//! finished back as the cel stores it (`qa_blur_result_tile`) by
+//! `blur_cel.wgsl`, the cel read as the executor copies a row whole and
+//! the finished tiles going out as its output does (캔버스 베이스 11-06
+//! 02:29) — no read of the pool of the blur's own.
 
 #[cfg(test)]
 #[path = "blur_tests.rs"]
@@ -24,19 +24,26 @@ use std::collections::HashMap;
 
 use wgpu::util::DeviceExt;
 
-use super::{Dab, Paper, Plans, StrokeTile, TILE};
+use super::{Dab, Paper, Plans, StrokeTile, TILE, bytes};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::blend::mode::NORMAL;
+use crate::kernels::composite::{self, Composite, Composited, TILE_TEXELS, TileSet};
 use crate::kernels::effects::blur::fits;
 use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
-use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
+use crate::kernels::shared::{ISQRT_WGSL, ResampleMap, TILE_WGSL, pipeline};
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
 const PASSES_AT: usize = 8;
 const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
+/// blur_cel.wgsl's BLUR_CEL_GROUP: the texels of a tile a workgroup takes.
+const CEL_GROUP: u64 = 256;
+/// The cel's copy has no edge: a stroke reaches past the canvas onto the
+/// pasteboard (BrushBlurPicture's wall), where the cel has tiles too.
+const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 
 /// The widest box a dab goes by strips. Past it a pass a dispatch is the
 /// faster: a strip's halo of 6r leaves it few of its 1024 pixels to put,
@@ -68,6 +75,9 @@ pub(crate) struct Blurs {
     rows: wgpu::ComputePipeline,
     columns: wgpu::ComputePipeline,
     pass: wgpu::ComputePipeline,
+    /// blur_cel.wgsl's two: the picture made from the cel, and finished.
+    filling: wgpu::ComputePipeline,
+    finishing: wgpu::ComputePipeline,
     plans: Plans,
     /// What one dispatch of a dab puts for the next: grown, never shrunk.
     between: Option<wgpu::Buffer>,
@@ -217,10 +227,13 @@ impl Blurs {
         let strips = [&strips[..], &[include_str!("blur_three.wgsl")]].concat();
         let passes = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, PASS_WGSL, blur];
         let passes = [&passes[..], &[include_str!("blur_pass.wgsl")]].concat();
+        let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, include_str!("blur_cel.wgsl")];
         Self {
             rows: pipeline(engine, &strips, "blur_rows_pass"),
             columns: pipeline(engine, &strips, "blur_columns_pass"),
             pass: pipeline(engine, &passes, "blur_pass_one"),
+            filling: pipeline(engine, &cel, "blur_fill"),
+            finishing: pipeline(engine, &cel, "blur_finish"),
             plans: Plans::new(),
             between: None,
         }
@@ -383,4 +396,112 @@ impl Blurs {
         engine.queue.submit([encoder.finish()]);
         Some(())
     }
+
+    /// Makes `tiles`' picture of the cel's (`blur_fill`): each tile of
+    /// `cel` — its tiles on the pool's `pages` — as the executor copies it
+    /// whole over nothing, premultiplied into the tile's slot of `picture`;
+    /// nothing where the cel has no tile. Submits the work, the caller
+    /// waits.
+    pub(crate) fn fill(
+        &self,
+        engine: &Engine,
+        executor: &Composite,
+        (pages, cel): (&[wgpu::Buffer], &TileSet),
+        tiles: &[StrokeTile],
+        picture: &wgpu::Buffer,
+    ) -> Option<()> {
+        let copied = copied(engine, executor, (pages, cel), tiles)?;
+        self.through_cel(engine, &self.filling, &copied.out, tiles, picture)
+    }
+
+    /// `tiles` finished (`blur_finish`): their picture stored as the cel
+    /// stores it — straight RGBA8, tile after tile in `tiles`' order, as
+    /// the executor's output is. Submits the work, the caller waits.
+    pub(crate) fn finish(
+        &self,
+        engine: &Engine,
+        tiles: &[StrokeTile],
+        picture: &wgpu::Buffer,
+    ) -> Option<wgpu::Buffer> {
+        let finished = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("blur finished"),
+            size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        self.through_cel(engine, &self.finishing, &finished, tiles, picture)?;
+        Some(finished)
+    }
+
+    /// One of blur_cel.wgsl's passes between `picture` and `cel`, `tiles`
+    /// one after another as the executor puts them.
+    fn through_cel(
+        &self,
+        engine: &Engine,
+        pass: &wgpu::ComputePipeline,
+        cel: &wgpu::Buffer,
+        tiles: &[StrokeTile],
+        picture: &wgpu::Buffer,
+    ) -> Option<()> {
+        // No tile, no pass: a binding holds a word at least.
+        if tiles.is_empty() {
+            return Some(());
+        }
+        let groups = ((TILE_TEXELS / CEL_GROUP) as u32, tiles.len() as u32);
+        fits(engine, &[], [groups].into_iter())?;
+        let slots: Vec<u32> = tiles.iter().map(|tile| tile.slot).collect();
+        let slots = engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("blur cel slots"),
+            contents: &bytes(&slots),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+        let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
+        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("blur cel"),
+            layout: &pass.get_bind_group_layout(0),
+            entries: &[
+                entry(0, cel.as_entire_binding()),
+                entry(1, picture.as_entire_binding()),
+                entry(2, slots.as_entire_binding()),
+            ],
+        });
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            compute.set_pipeline(pass);
+            compute.set_bind_group(0, &bind_group, &[]);
+            compute.dispatch_workgroups(groups.0, groups.1, 1);
+        }
+        engine.queue.submit([encoder.finish()]);
+        Some(())
+    }
+}
+
+/// `tiles` of `cel` — its tiles on the pool's `pages` — as the executor
+/// copies a row whole over nothing: its stored bytes, tile after tile.
+fn copied(
+    engine: &Engine,
+    executor: &Composite,
+    (pages, cel): (&[wgpu::Buffer], &TileSet),
+    tiles: &[StrokeTile],
+) -> Option<Composited> {
+    let steps = [composite::Step::Row {
+        set: 0,
+        keys: None,
+        map: ResampleMap::moved(0, 0),
+        opacity: 65535,
+        mode: NORMAL,
+    }];
+    let plan = composite::Plan {
+        pages,
+        sets: std::slice::from_ref(cel),
+        keys: &[],
+        steps: &steps,
+    };
+    let at: Vec<(i32, i32)> = tiles.iter().map(|tile| (tile.column, tile.row)).collect();
+    executor.run(engine, &plan, &at, NO_EDGE, executor.widest())
 }

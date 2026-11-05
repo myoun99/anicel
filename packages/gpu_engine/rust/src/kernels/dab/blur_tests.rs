@@ -6,10 +6,12 @@
 //! as it is.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use super::super::tests::{along, filled, grain, radial, soft, square, texture, words};
 use super::super::{Dab, Paper, StrokeTile};
 use super::{Blurs, MOST_STRIPS_RADIUS, Route, Ways, Window};
+use crate::kernels::composite::{Composite, TileAt, TileSet};
 use crate::testing::{assert_pinned, first_engine};
 
 const ONE: u32 = 65535;
@@ -321,4 +323,192 @@ fn every_device_blurs_the_pinned_strokes() {
     .collect();
     let on_paper = blurred(&tiles, hashed, &papered, Some(&paper)).unwrap();
     assert_pinned("dab/blur-paper-planes", &on_paper.bytes());
+}
+
+// ---- The cel ----
+
+/// A stroke tile's words: two a pixel.
+const TILE_WORDS: usize = (SIDE * SIDE * 2) as usize;
+/// What a picture holds before it is made of the cel.
+const JUNK: u32 = 0xdead_beef;
+
+/// One device's executor for every test here (composite's tests have why).
+fn executor() -> &'static Composite {
+    static EXECUTOR: OnceLock<Composite> = OnceLock::new();
+    EXECUTOR.get_or_init(|| Composite::new(first_engine()).expect("compile the composite"))
+}
+
+/// A cel whose stored pixel at (x, y) is `stored(x, y)`, on the tiles of
+/// `columns` × `rows` from `origin` but `holes`: its pages — one, a tile a
+/// slot — and the tile set naming them.
+fn cel_of(
+    stored: impl Fn(i32, i32) -> u32,
+    (x0, y0): (i32, i32),
+    (columns, rows): (u32, u32),
+    holes: &[(i32, i32)],
+) -> (Vec<wgpu::Buffer>, TileSet) {
+    let mut words = Vec::new();
+    let mut tiles = Vec::new();
+    for row in y0..y0 + rows as i32 {
+        for column in x0..x0 + columns as i32 {
+            if holes.contains(&(column, row)) {
+                tiles.push(None);
+                continue;
+            }
+            let slot = (words.len() / (SIDE * SIDE) as usize) as u16;
+            for y in 0..SIDE {
+                for x in 0..SIDE {
+                    words.push(stored(column * SIDE + x, row * SIDE + y));
+                }
+            }
+            tiles.push(Some(TileAt { page: 0, slot }));
+        }
+    }
+    let set = TileSet { x0, y0, columns, rows, tiles };
+    (vec![filled("test cel", &words)], set)
+}
+
+/// The stroke's `tiles`, each at the slot counted from the last — so none
+/// sits at its own index.
+fn stroke_of(tiles: &[(i32, i32)]) -> Vec<StrokeTile> {
+    let last = tiles.len() - 1;
+    let slot = |index: usize| (last - index) as u32;
+    tiles
+        .iter()
+        .enumerate()
+        .map(|(index, &(column, row))| StrokeTile { column, row, slot: slot(index) })
+        .collect()
+}
+
+/// `tiles` of `cel` made into a picture over junk, blurred under `dabs`
+/// and finished: the picture's words as it was made, and the finished
+/// tiles', tile after tile in `tiles`' order.
+fn rubbed(
+    cel: &(Vec<wgpu::Buffer>, TileSet),
+    tiles: &[(i32, i32)],
+    dabs: &[(Dab, u32)],
+) -> (Vec<u32>, Vec<u32>) {
+    let engine = first_engine();
+    let stroke = stroke_of(tiles);
+    let mut blurs = Blurs::new(engine);
+    let picture = filled("test picture", &vec![JUNK; tiles.len() * TILE_WORDS]);
+    blurs.fill(engine, executor(), (&cel.0, &cel.1), &stroke, &picture).unwrap();
+    let made = words(&picture);
+    blurs.blur(engine, &stroke, dabs, None, &picture).unwrap();
+    (made, words(&blurs.finish(engine, &stroke, &picture).unwrap()))
+}
+
+// A stroke tile is made of the cel's, each pixel premultiplied on the
+// 16-bit scale — round(c·a·257 / 255): (255, 128, 0, 128) is 32896, 16513
+// (4210688 / 255 = 16512.5), 0 and 32896; (200, 100, 50, 1) is 202
+// (51400 / 255 = 201.6), 101, 50 and 257; (7, 7, 7, 7) is 49 (12593 / 255
+// = 49.4) and 1799 — and of nothing where the cel has no tile.
+#[test]
+fn a_stroke_tile_is_made_of_the_cel_premultiplied() {
+    let stored = |x: i32, y: i32| match (x, y) {
+        (0, 0) => u32::from_le_bytes([255, 128, 0, 128]),
+        (1, 0) => u32::from_le_bytes([200, 100, 50, 1]),
+        (2, 0) => 0,
+        _ => u32::from_le_bytes([7; 4]),
+    };
+    let cel = cel_of(stored, (0, 0), (2, 1), &[(1, 0)]);
+    // (0, 0) at slot 1, the hole (1, 0) at slot 0.
+    let (made, _) = rubbed(&cel, &[(0, 0), (1, 0)], &[]);
+    let pixel = |slot: usize, texel: usize| {
+        let at = slot * TILE_WORDS + texel * 2;
+        let [low, high] = [made[at], made[at + 1]];
+        [low & 0xffff, low >> 16, high & 0xffff, high >> 16]
+    };
+    assert_eq!(pixel(1, 0), [32896, 16513, 0, 32896]);
+    assert_eq!(pixel(1, 1), [202, 101, 50, 257]);
+    assert_eq!(pixel(1, 2), [0; 4]);
+    assert_eq!(pixel(1, 3), [49, 49, 49, 1799]);
+    assert_eq!(pixel(1, TILE_WORDS / 2 - 1), [49, 49, 49, 1799]);
+    assert!((0..TILE_WORDS / 2).all(|texel| pixel(0, texel) == [0; 4]));
+}
+
+// Where no dab moved the picture a finished tile is the cel's own bytes:
+// every channel's byte under every alpha comes back from its premultiplied
+// form (blur_cel.wgsl has why) — and a pixel of no alpha is nothing, as
+// the pool holds it. Nothing where the cel has no tile.
+#[test]
+fn every_stored_pixel_comes_back_from_its_picture() {
+    // Tile (column, 0)'s texel t: alpha t / 256 + 64·column, and in red
+    // its column plus 128 on odd rows — every byte —, the byte's opposite
+    // in green, a third in blue.
+    let stored = |x: i32, y: i32| {
+        let alpha = (y * SIDE + x.rem_euclid(SIDE)) as u32 / 256 + 64 * x.div_euclid(SIDE) as u32;
+        let byte = x.rem_euclid(SIDE) as u32 + 128 * (y as u32 % 2);
+        if alpha == 0 {
+            return 0;
+        }
+        byte | (255 - byte) << 8 | (byte ^ 0x5a) << 16 | alpha << 24
+    };
+    let cel = cel_of(stored, (0, 0), (5, 1), &[(4, 0)]);
+    let tiles = [(2, 0), (4, 0), (0, 0), (3, 0), (1, 0)];
+    let (_, finished) = rubbed(&cel, &tiles, &[]);
+    for (index, &(column, _)) in tiles.iter().enumerate() {
+        for texel in 0..(SIDE * SIDE) {
+            let (x, y) = (column * SIDE + texel % SIDE, texel / SIDE);
+            let want = if column == 4 { 0 } else { stored(x, y) };
+            let got = finished[index * (SIDE * SIDE) as usize + texel as usize];
+            assert_eq!(got, want, "({x}, {y})");
+        }
+    }
+}
+
+// A finished pixel is its picture stored: a step of white, rubbed whole by
+// a dab of radius 1, holds the boxes' 2427, 9709, 24272, 41263, 55826 and
+// 63108 at x 61..66 — white under alphas of round(v / 257): 9 (9.4), 38
+// (37.8), 94 (94.4), 161 (160.6), 217 (217.2) and 246 (245.6). Past them,
+// and past the dab, the cel as it was.
+#[test]
+fn a_moved_pixel_finishes_as_its_picture_stored() {
+    let white = u32::from_le_bytes(WHITE);
+    let cel = cel_of(|x, _| if x >= 64 { white } else { 0 }, (0, 0), (1, 1), &[]);
+    let dab = square([60, 60, 68, 64], WHITE, 1.0);
+    let (_, finished) = rubbed(&cel, &[(0, 0)], &[(dab, 1)]);
+    let alphas = [0, 9, 38, 94, 161, 217, 246, 255];
+    for y in 59..65 {
+        for (x, &alpha) in (60..68).zip(&alphas) {
+            let moved = (60..64).contains(&y) && alpha != 0;
+            let want = match (moved, x >= 64) {
+                (true, _) => 0x00ff_ffff | alpha << 24,
+                (false, true) => white,
+                (false, false) => 0,
+            };
+            assert_eq!(finished[(y * SIDE + x) as usize], want, "({x}, {y})");
+        }
+    }
+}
+
+/// A stored pixel of a hashed cel: a quarter nothing, a quarter opaque, the
+/// rest any alpha but none — and no colour where no alpha, as the pool
+/// never holds (blend_pack8).
+fn stored_hashed(x: i32, y: i32) -> u32 {
+    let at = (x.wrapping_mul(83492791) ^ y.wrapping_mul(50331653)) as u32;
+    let hash = |salt: u32| (at ^ salt).wrapping_mul(2654435761) >> 8;
+    let alpha = match hash(0x51) & 3 {
+        0 => 0,
+        1 => 255,
+        _ => (hash(0x77) & 0xff) | 1,
+    };
+    if alpha == 0 {
+        return 0;
+    }
+    (hash(0x3c3c) & 0x00ff_ffff) | alpha << 24
+}
+
+#[test]
+fn every_device_finishes_the_pinned_stroke() {
+    let cel = cel_of(stored_hashed, (-1, 0), (4, 2), &[(2, 1)]);
+    let tiles: Vec<(i32, i32)> =
+        (0..2).flat_map(|row| (-1..3).map(move |column| (column, row))).collect();
+    let (coverage, pile, inner) = soft(13.77, 0.3);
+    let profile = radial(&coverage, &pile, 14.27, inner);
+    let dabs: Vec<(Dab, u32)> =
+        along(&profile, 24, |_, dab| dab.flow = 0.6).into_iter().map(|dab| (dab, 5)).collect();
+    let (_, finished) = rubbed(&cel, &tiles, &dabs);
+    let bytes: Vec<u8> = finished.iter().flat_map(|word| word.to_le_bytes()).collect();
+    assert_pinned("dab/blur-finished", &bytes);
 }

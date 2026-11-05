@@ -465,3 +465,35 @@ fn blend_pack8(pixel: vec4<u32>) -> u32 {
   return blend_to8(pixel.x) | (blend_to8(pixel.y) << 8u) | (blend_to8(pixel.z) << 16u)
     | (a << 24u);
 }
+
+// A stored pixel premultiplied on the 16-bit scale, as every blur reads one
+// (effects/blur/held.wgsl, the blur brush's picture — kernels/dab/
+// blur_cel.wgsl): C's qa_blur_premultiplied, round(c·a·257 / 255), which is
+// blend_mul(c·257, a·257) exactly. So a transparent pixel carries no colour
+// into its neighbours.
+fn blend_unpack8_premultiplied(texel: u32) -> vec4<u32> {
+  let pixel = blend_unpack8(texel);
+  return vec4<u32>(
+    blend_mul(pixel.x, pixel.w),
+    blend_mul(pixel.y, pixel.w),
+    blend_mul(pixel.z, pixel.w),
+    pixel.w,
+  );
+}
+
+// A premultiplied pixel as every blur stores one — as C's
+// qa_blur_result_tile stores it: its alpha rounded to a byte, each channel
+// over that alpha rounded once, and nothing where the alpha rounds to none.
+// (C's (2a + 257) / 514 is blend_to8's (a + 128) / 257, and its
+// (510c + a) / 2a is blend_over_alpha's (255c + ⌊a/2⌋) / a: for an odd a
+// they part only where a(2k − 1) = 510c, odd against even.)
+fn blend_pack8_premultiplied(pixel: vec4<u32>) -> u32 {
+  let alpha = blend_to8(pixel.w);
+  if (alpha == 0u) {
+    return 0u;
+  }
+  return blend_over_alpha(pixel.x * 255u, pixel.w)
+    | (blend_over_alpha(pixel.y * 255u, pixel.w) << 8u)
+    | (blend_over_alpha(pixel.z * 255u, pixel.w) << 16u)
+    | (alpha << 24u);
+}

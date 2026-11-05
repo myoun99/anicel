@@ -2,10 +2,10 @@
 // blur along a way (line.wgsl): where a pass reads and puts a pixel, the
 // grid's tiles, straight RGBA8, or a plane of two words a pixel, 16 bits a
 // channel; and the pixel between them, premultiplied on the 16-bit scale —
-// read from a stored word as C's qa_blur_premultiplied, round(c·a·257 /
-// 255), which is blend_mul(c·257, a·257) exactly, and stored back as C's
-// qa_blur_result_tile stores it. So a transparent pixel carries no colour
-// into its neighbours, and every blur reads and stores alike.
+// read from a stored word and stored back as every blur reads and stores
+// one (blend.wgsl's blend_unpack8_premultiplied and
+// blend_pack8_premultiplied, C's qa_blur_premultiplied and
+// qa_blur_result_tile).
 //
 // Needs shared/isqrt.wgsl, blend/blend.wgsl and shared/tile.wgsl before it.
 // The pass that follows binds 3 and up.
@@ -60,36 +60,16 @@ fn held_read(x: i32, y: i32) -> vec4<u32> {
     if (at < 0) {
       return vec4<u32>(0u);
     }
-    let pixel = blend_unpack8(pixels_in[at]);
-    return vec4<u32>(
-      blend_mul(pixel.x, pixel.w),
-      blend_mul(pixel.y, pixel.w),
-      blend_mul(pixel.z, pixel.w),
-      pixel.w,
-    );
+    return blend_unpack8_premultiplied(pixels_in[at]);
   }
   let at = held_plane_word(x, y, held.source_x0, held.source_y0, held.source_width, 2u);
   return blend_unpack16(vec2<u32>(pixels_in[at], pixels_in[at + 1u]));
 }
 
-// A blurred pixel as it is stored: its alpha rounded to a byte, each
-// channel over that alpha rounded once — and nothing where the alpha rounds
-// to none.
-fn held_stored(pixel: vec4<u32>) -> u32 {
-  let alpha = blend_to8(pixel.w);
-  if (alpha == 0u) {
-    return 0u;
-  }
-  return blend_over_alpha(pixel.x * 255u, pixel.w)
-    | (blend_over_alpha(pixel.y * 255u, pixel.w) << 8u)
-    | (blend_over_alpha(pixel.z * 255u, pixel.w) << 16u)
-    | (alpha << 24u);
-}
-
 // Puts `pixel` at (x, y) in the target — stored, among the tiles.
 fn held_write(x: i32, y: i32, pixel: vec4<u32>) {
   if (held.target_tiles == 1u) {
-    pixels_out[held_tile_word(x, y)] = held_stored(pixel);
+    pixels_out[held_tile_word(x, y)] = blend_pack8_premultiplied(pixel);
     return;
   }
   let at = held_plane_word(x, y, held.target_x0, held.target_y0, held.target_width, 2u);
