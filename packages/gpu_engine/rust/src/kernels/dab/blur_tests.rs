@@ -482,6 +482,19 @@ fn a_moved_pixel_finishes_as_its_picture_stored() {
     }
 }
 
+// Most of a stroke's dabs meet no tile it has not made yet: a fill of no
+// tiles, and a finish of none, run no pass.
+#[test]
+fn no_tile_to_make_or_finish_is_no_pass() {
+    let engine = first_engine();
+    let cel = cel_of(|_, _| 0, (0, 0), (1, 1), &[]);
+    let picture = filled("test picture", &[JUNK; 2]);
+    let blurs = Blurs::new(engine);
+    assert!(blurs.fill(engine, executor(), (&cel.0, &cel.1), &[], &picture).is_some());
+    assert!(blurs.finish(engine, &[], &picture).is_some());
+    assert_eq!(words(&picture), [JUNK; 2]);
+}
+
 /// A stored pixel of a hashed cel: a quarter nothing, a quarter opaque, the
 /// rest any alpha but none — and no colour where no alpha, as the pool
 /// never holds (blend_pack8).
