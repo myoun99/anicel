@@ -818,6 +818,7 @@ void main() {
     'toolCutPasteAtOrigin': (s) => s.toolCutPasteAtOrigin,
     'toolCutRegisterTip': (s) => s.toolCutRegisterTip,
     'toolCutDeletesSource': (s) => s.toolCutDeletesSource,
+    'toolCutRun': (s) => s.toolCutRun,
     'toolReadSource': (s) => s.toolReadSource,
     'toolReadsEveryVisibleLayer': (s) => s.toolReadsEveryVisibleLayer,
     'brushSettingsTitle': (s) => s.brushSettingsTitle,

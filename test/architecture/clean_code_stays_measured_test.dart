@@ -882,7 +882,17 @@ void main() {
   /// strata (`layers`). ⛔Not bundled to fit: the painter and
   /// `renderTimesheetPageImage` take the strata and the values' parts
   /// apart — two questions, and a Photoshop row asks only the one.
-  const wideSignatures = 461;
+  ///
+  /// ⚠️461 → 462 on 2026-11-05, named as the rule above asks (I-163, the
+  /// cut tool's 「표시」 reads 「다른 이름으로 저장」's picture): `_asShown`
+  /// (five) in `frame_image_file.dart` is the one render that picture is
+  /// drawn by, whether it is written (`writeFrameImage`) or held for a cut
+  /// (`shownFramePicture`) — the renderer, the frame, the spec, the guides'
+  /// ink and the paper, each the picture's own input. 🔬`clean_code_diff`
+  /// against the lane's base (`40d076f75`) names it added and nothing gone.
+  /// ⛔Not bundled to fit: the paper is the one input the two doors give
+  /// differently, and the 「one render」 pin counts the call it makes.
+  const wideSignatures = 462;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

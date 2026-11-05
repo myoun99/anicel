@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_choice.dart';
 
@@ -23,6 +24,7 @@ void main() {
     fillOpacity: 0.5,
     cutStampOpacity: 1.0,
     cutDeletesSource: true,
+    cutSource: CanvasReadSource.display,
   );
 
   test('a choice round-trips through its JSON, part by part', () {
@@ -41,6 +43,7 @@ void main() {
     expect(back.fillOpacity, 0.5);
     expect(back.cutStampOpacity, 1.0);
     expect(back.cutDeletesSource, isTrue, reason: 'I-90 「원본 삭제」');
+    expect(back.cutSource, CanvasReadSource.display, reason: 'I-163 대상');
   });
 
   test('nothing chosen writes nothing', () {
@@ -58,6 +61,7 @@ void main() {
       'fillOpacity': 1.5,
       'cutStampOpacity': 0.25,
       'cutDeletesSource': 'yes',
+      'cutSource': 'screen',
     });
     expect(back.tool, isNull, reason: 'a tool this build does not have');
     expect(
@@ -76,5 +80,6 @@ void main() {
     expect(back.fillOpacity, isNull, reason: 'past 1 is not an opacity');
     expect(back.cutStampOpacity, 0.25);
     expect(back.cutDeletesSource, isNull, reason: 'a word is not a switch');
+    expect(back.cutSource, isNull, reason: 'a 대상 this build does not have');
   });
 }

@@ -1886,6 +1886,7 @@ enum AppStrings {
   String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
   String get toolCutDeletesSource => _s('toolCutDeletesSource');
+  String get toolCutRun => _s('toolCutRun');
   String get toolReadSource => _s('toolReadSource');
   String get toolReadsEveryVisibleLayer => _s('toolReadsEveryVisibleLayer');
   String get brushSettingsTitle => _s('brushSettingsTitle');
@@ -3270,6 +3271,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': 'Paste at original position',
     'toolCutRegisterTip': 'Register as Tip',
     'toolCutDeletesSource': 'Delete original',
+    'toolCutRun': 'Run',
     'toolReadSource': 'Reference',
     'toolReadsEveryVisibleLayer': 'Every visible layer',
     'brushSettingsTitle': 'Brush Settings',
@@ -4296,6 +4298,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': 'メッシュワープ',
     'shortcutAction.tool-cut': '切り抜きツール',
     'shortcutAction.tool-cut-whole': '全体カット',
+    'shortcutAction.tool-cut-whole-run': '全体カットを実行',
     'shortcutAction.tool-cut-stamp': 'スタンプ',
     'shortcutAction.selection-deselect': '選択解除',
     'shortcutAction.layer-up': 'レイヤーを上へ',
@@ -5001,6 +5004,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
     'toolCutRegisterTip': '先端として登録',
     'toolCutDeletesSource': '元画像を削除',
+    'toolCutRun': '実行',
     'toolReadSource': '参照',
     'toolReadsEveryVisibleLayer': '表示中のすべてのレイヤー',
     'brushSettingsTitle': 'ブラシ設定',
@@ -6157,6 +6161,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': '메시 워프',
     'shortcutAction.tool-cut': '잘라내기 도구',
     'shortcutAction.tool-cut-whole': '전체 잘라내기',
+    'shortcutAction.tool-cut-whole-run': '전체 잘라내기 실행',
     'shortcutAction.tool-cut-stamp': '스탬프',
     'shortcutAction.selection-deselect': '선택 해제',
     'shortcutAction.layer-up': '위 레이어',
@@ -6855,6 +6860,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
     'toolCutRegisterTip': '팁으로 등록',
     'toolCutDeletesSource': '원본 삭제',
+    'toolCutRun': '실행',
     'toolReadSource': '참조',
     'toolReadsEveryVisibleLayer': '보이는 레이어 전부',
     'brushSettingsTitle': '브러시 설정',
@@ -8055,6 +8061,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': 'Déformation par grille',
     'shortcutAction.tool-cut': 'Outil découpe',
     'shortcutAction.tool-cut-whole': 'Découpe entière',
+    'shortcutAction.tool-cut-whole-run': 'Exécuter la découpe entière',
     'shortcutAction.tool-cut-stamp': 'Tampon',
     'shortcutAction.selection-deselect': 'Désélectionner',
     'shortcutAction.layer-up': 'Calque vers le haut',
@@ -8851,6 +8858,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
     'toolCutRegisterTip': 'Enregistrer comme pointe',
     'toolCutDeletesSource': "Supprimer l'original",
+    'toolCutRun': 'Exécuter',
     'toolReadSource': 'Référence',
     'toolReadsEveryVisibleLayer': 'Calques visibles',
     'brushSettingsTitle': 'Réglages de brosse',
@@ -10003,6 +10011,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': '网格变形',
     'shortcutAction.tool-cut': '裁剪工具',
     'shortcutAction.tool-cut-whole': '整体裁剪',
+    'shortcutAction.tool-cut-whole-run': '执行整体裁剪',
     'shortcutAction.tool-cut-stamp': '图章',
     'shortcutAction.selection-deselect': '取消选择',
     'shortcutAction.layer-up': '图层上移',
@@ -10682,6 +10691,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': '粘贴到原位置',
     'toolCutRegisterTip': '注册为笔尖',
     'toolCutDeletesSource': '删除原图',
+    'toolCutRun': '执行',
     'toolReadSource': '参考',
     'toolReadsEveryVisibleLayer': '所有可见图层',
     'brushSettingsTitle': '画笔设置',

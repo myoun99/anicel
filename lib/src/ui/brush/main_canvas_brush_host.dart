@@ -113,6 +113,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.textCommands,
     this.textToolOptions,
     this.cutPieceSlot,
+    this.onCutShown,
     this.lastStroke,
     this.onStrokeInputActiveChanged,
     this.strokeLander,
@@ -329,6 +330,14 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Where a finished cut lands — threaded down to the canvas panel.
   final CutPieceSlot? cutPieceSlot;
+
+  /// The cut that reads what is shown — threaded down to the canvas panel
+  /// ([BrushCanvasPanel.onCutShown]).
+  final void Function(
+    CanvasSelectionRegion outline, {
+    required bool takeWhatItCuts,
+  })?
+  onCutShown;
 
   /// The last drawing action — threaded down to the canvas panel, which
   /// records it and lays it down again for 확정.
@@ -617,6 +626,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       textCommands: widget.textCommands,
       textToolOptions: widget.textToolOptions,
       cutPieceSlot: widget.cutPieceSlot,
+      onCutShown: widget.onCutShown,
       lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
       strokeLander: widget.strokeLander,

@@ -181,6 +181,7 @@ import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
 import 'canvas/guide_overlay.dart' show guideColorOf, guideLinesOnPaper;
+import 'export/frame_image_file.dart' show shownFramePicture;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/property_lane_model.dart'
@@ -913,7 +914,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     press,
     tool: _brushTool,
     transform: _transformOptions,
-    cutWhole: widget.session.pixelVerbs.cutWhole,
   );
 
   /// The one piece the cut tool is holding.
@@ -1452,6 +1452,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
+    // I-163: what the cut tool's 「표시」 cuts out of — the save as's
+    // picture, its guides in this window's ink, read at the press.
+    session.pixelVerbs.shownPicture = () =>
+        shownFramePicture(session, guideInk: guideColorOf(context));
     session.textClipboard.canvasText = _canvasTextHand;
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
@@ -1610,6 +1614,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // this window's to report or to clear.
     session.pixelVerbs.pixelVerbCanvas = null;
     session.pixelVerbs.cutToolHand = null;
+    session.pixelVerbs.shownPicture = null;
     session.textClipboard.canvasText = null;
     session.memoryPressureTicks.removeListener(
       _storyboardThumbnails.respondToMemoryPressure,

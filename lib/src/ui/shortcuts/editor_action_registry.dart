@@ -814,6 +814,7 @@ abstract final class EditorActionIds {
   static const toolTransformMesh = 'tool-transform-mesh';
   static const toolCut = 'tool-cut';
   static const toolCutWhole = 'tool-cut-whole';
+  static const toolCutWholeRun = 'tool-cut-whole-run';
   static const toolCutStamp = 'tool-cut-stamp';
 
   /// One step of the size bar's ±, on the tool in hand (I-149).
@@ -1700,13 +1701,24 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   ..._shapeTileActions(CanvasTool.cut),
   // 🗣️I-28 (유저 2026-09-30): 「잘라내기 툴의 도구 라이브러리에 전체 잘라내기
-  // 신설」 — a tile that runs at the press (I-28-Q2), and so a key that does.
+  // 신설」. ↩️A tile that ran at the press (I-28-Q2), and so a key that did;
+  // I-163 (11-05) gave it its settings and a 「실행」, so it arms as the
+  // stamp does.
   const EditorActionDefinition(
     id: EditorActionIds.toolCutWhole,
     label: 'Whole Picture Cut',
     shelf: ShortcutShelf.toolTiles,
     defaultActivators: [],
-    toolPress: CutWholePress(),
+    toolPress: ToolTilePress(CanvasTool.cutWhole),
+  ),
+  // I-163: its settings' 「실행」 — what the key of 전체 잘라내기 was until the
+  // tile came to arm. No key of its own, as the tile has none.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolCutWholeRun,
+    label: 'Run Whole Picture Cut',
+    shelf: ShortcutShelf.toolTiles,
+    defaultActivators: [],
+    panelButton: true,
   ),
   // 🗣️I-53 (유저 2026-09-28): 「스탬프를 v로」. ↩️V alone was retired from
   // the move tool on 09-13 (「v 삭제하고 v 관련 잔재있으면 삭제」) — the

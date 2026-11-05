@@ -198,10 +198,14 @@ void main() {
       expect(canvasToolCuts(CanvasTool.cutStamp), isFalse);
       expect(canvasToolStamps(CanvasTool.cutStamp), isTrue);
       expect(canvasToolStamps(CanvasTool.cut), isFalse);
+      // I-163: 전체 잘라내기 runs from its settings — on the canvas it traces
+      // no outline and stamps nothing.
+      expect(canvasToolCuts(CanvasTool.cutWhole), isFalse);
+      expect(canvasToolStamps(CanvasTool.cutWhole), isFalse);
       for (final tool in CanvasTool.values) {
         expect(
           canvasToolUsesCutPiece(tool),
-          canvasToolCuts(tool) || canvasToolStamps(tool),
+          canvasToolRailGroup(tool) == CanvasTool.cut,
           reason: '$tool',
         );
       }

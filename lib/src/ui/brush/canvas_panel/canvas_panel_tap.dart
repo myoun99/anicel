@@ -326,11 +326,12 @@ class _CanvasPanelTap {
       case CanvasTool.eraser:
       // The selection/move tools mount their own drag layer, not the tap
       // layer. The CUT variants ride that same layer (canvasToolSelects),
-      // and the STAMP variant paints, so none of them want a tap handler
-      // here either.
+      // the STAMP variant paints and the WHOLE runs from its settings
+      // (I-163), so none of them want a tap handler here either.
       case CanvasTool.select:
       case CanvasTool.move:
       case CanvasTool.cut:
+      case CanvasTool.cutWhole:
       // The shape fill rides the same drag layer as select and cut — one
       // outline, three things to do with it.
       case CanvasTool.fillShape:

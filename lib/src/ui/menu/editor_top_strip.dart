@@ -58,14 +58,9 @@ import '../export/export_dialog.dart';
 import '../workspace/workspace_door_commands.dart';
 import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
-    show
-        ExportFrameTask,
-        ExportSizeMode,
-        sanitizeExportFileComponent,
-        unnamedExportName;
+    show ExportFrameTask, sanitizeExportFileComponent, unnamedExportName;
 import '../export/frame_image_file.dart';
 import '../../models/export_format_selection.dart';
-import '../../models/export_spec.dart' show ImageExportSpec;
 import '../panels/workspace_panels_menu.dart';
 import 'project_open_door.dart';
 import 'project_settings_menu.dart';
@@ -2312,21 +2307,7 @@ Future<bool> Function(String path) _pictureSaveAsWrites(
   ExportStillFormat format,
   Color guideInk,
 ) {
-  final spec = ImageExportSpec(
-    format: ExportFormatSelection(
-      kind: ExportMediaKind.still,
-      stillFormat: format,
-      // A format that keeps no alpha makes its file RGB itself
-      // ([ExportFormatSelection.effectiveChannels]).
-      channels: ExportChannels.rgba,
-      // ⚠️White where the paper lets the ground show in a file with no
-      // alpha — not the window's default ground
-      // ([defaultExportBackgroundArgb]), which answers what the export
-      // window starts on and may change on its own.
-      backgroundArgb: 0xFFFFFFFF,
-    ),
-    sizeMode: ExportSizeMode.canvas,
-  );
+  final spec = saveAsPictureSpec(format);
   final paper = session.projectSettings.projectBackground;
   return (path) => writeFrameImage(
     session,

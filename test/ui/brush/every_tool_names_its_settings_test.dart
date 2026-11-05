@@ -31,6 +31,8 @@ const Map<CanvasTool, String> _sectionKeys = <CanvasTool, String>{
   CanvasTool.move: 'tool-settings-move',
   CanvasTool.guide: 'guide-settings-none',
   CanvasTool.cut: 'tool-settings-cut-grab',
+  // I-163: the grab's settings — 대상 and 「원본 삭제」 — with 「실행」 under.
+  CanvasTool.cutWhole: 'tool-settings-cut-grab',
   CanvasTool.cutStamp: 'tool-settings-cut-stamp',
   CanvasTool.text: 'tool-settings-text',
   CanvasTool.shape: 'tool-settings-shape',

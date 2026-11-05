@@ -16,6 +16,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show SelectionMaskOptions;
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -66,6 +67,7 @@ void main() {
       CutPieceSlot slot,
       BrushEditCacheInvalidationSink sink,
       HistoryManager history,
+      List<({CanvasSelectionRegion outline, bool takeWhatItCuts})> shownCuts,
       Future<void> Function(
         CanvasTool tool, {
         CanvasShapeKind? shape,
@@ -74,6 +76,8 @@ void main() {
         bool rowTakesStrokes,
         bool celUnderThePlayhead,
         bool cutDeletesSource,
+        CanvasReadSource cutSource,
+        bool hostDrawsTheShown,
       })
       setTool,
     })
@@ -101,6 +105,8 @@ void main() {
     final commands = CanvasSelectionCommands();
     final slot = CutPieceSlot();
     final sink = BrushEditCacheInvalidationSink();
+    final shownCuts =
+        <({CanvasSelectionRegion outline, bool takeWhatItCuts})>[];
 
     Future<void> pumpWith(
       CanvasTool next, {
@@ -113,6 +119,10 @@ void main() {
       bool celUnderThePlayhead = true,
       // The cut tool's 「원본 삭제」 (I-90).
       bool cutDeletesSource = false,
+      // The cut tool's 대상 (I-163).
+      CanvasReadSource cutSource = CanvasReadSource.layer,
+      // False = a host that cannot draw what is shown.
+      bool hostDrawsTheShown = true,
     }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
@@ -132,7 +142,14 @@ void main() {
                 cutStampBlendMode: stampBlend,
                 cutStampOpacity: stampOpacity,
                 cutDeletesSource: cutDeletesSource,
+                cutSource: cutSource,
               )),
+              onCutShown: hostDrawsTheShown
+                  ? (outline, {required takeWhatItCuts}) => shownCuts.add((
+                      outline: outline,
+                      takeWhatItCuts: takeWhatItCuts,
+                    ))
+                  : null,
               selectionCommands: commands,
               selectionMaskOptions: softness,
               pieceGround: pieceGround,
@@ -166,6 +183,7 @@ void main() {
       slot: slot,
       sink: sink,
       history: history,
+      shownCuts: shownCuts,
       setTool: pumpWith,
     );
   }
@@ -351,6 +369,59 @@ void main() {
     await tester.pump();
     expect(inkAt(20), isNot(0), reason: 'the undo puts it back');
     expect(env.slot.piece, same(piece), reason: 'the hand is not history');
+  });
+
+  // 🗣️I-163 (유저 2026-11-05): 「대상 표시/레이어. 표시는 다른 레이어
+  // 포함해서 진짜 보이는」 — what is shown is the host's picture to cut, not
+  // the cel this panel stands on.
+  testWidgets('with 대상 「표시」 the outline goes to the host with 「원본 '
+      '삭제」 — the panel cuts nothing of its own cel and takes nothing off '
+      'it', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await env.setTool(
+      CanvasTool.cut,
+      cutSource: CanvasReadSource.display,
+      cutDeletesSource: true,
+    );
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+
+    expect(env.shownCuts, hasLength(1));
+    final sent = env.shownCuts.single;
+    expect(sent.takeWhatItCuts, isTrue);
+    expect(sent.outline.containsPoint(CanvasPoint(x: 20, y: 40)), isTrue);
+    expect(
+      sent.outline.containsPoint(CanvasPoint(x: 80, y: 40)),
+      isFalse,
+      reason: 'the outline as drawn, not the whole canvas',
+    );
+    expect(env.slot.isEmpty, isTrue, reason: 'the host fills the hand');
+    expect(
+      surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            20,
+            40,
+          ) ??
+          0,
+      isNot(0),
+      reason: 'the host takes it off every shown row, not the panel',
+    );
+    expect(env.history.undoCount, 0);
+  });
+
+  testWidgets('with 대상 「표시」 and a host that cannot draw what is shown, '
+      'the cut says it found nothing', (tester) async {
+    addTearDown(cursorNotices.clear);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await env.setTool(
+      CanvasTool.cut,
+      cutSource: CanvasReadSource.display,
+      hostDrawsTheShown: false,
+    );
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+
+    expect(env.slot.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
   });
 
   testWidgets('on a row that takes no strokes, 「원본 삭제」 takes nothing — '

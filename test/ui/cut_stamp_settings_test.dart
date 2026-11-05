@@ -49,6 +49,7 @@ void main() {
     VoidCallback? onRegisterAsTip,
     bool cutDeletesSource = false,
     ValueChanged<BrushToolState>? onChanged,
+    VoidCallback? onCutWhole,
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -69,12 +70,68 @@ void main() {
               cutPieceSlot: slot,
               onCutPasteAtOrigin: onPasteAtOrigin,
               onRegisterCutPieceAsTip: onRegisterAsTip,
+              onCutWhole: onCutWhole,
             ),
           ),
         ),
       ),
     );
   }
+
+  // 🗣️I-163 (유저 2026-11-05): the cut's sub-tools take the 대상 buttons
+  // 표시/레이어 — the control the fill and the eyedropper read through.
+  testWidgets('the grab and the whole cut offer the 대상, and a press is the '
+      'tool\'s own setting', (tester) async {
+    for (final tool in [CanvasTool.cut, CanvasTool.cutWhole]) {
+      final changes = <BrushToolState>[];
+      await pump(
+        tester,
+        tool: tool,
+        slot: CutPieceSlot(),
+        onChanged: changes.add,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(grabKey),
+          matching: find.byKey(const ValueKey<String>('cut-source-segments')),
+        ),
+        findsOneWidget,
+        reason: '$tool',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('cut-source-display')),
+      );
+      await tester.pump();
+      expect(changes.single.cutSource, CanvasReadSource.display);
+      expect(changes.single.tool, tool, reason: 'the rest stays');
+    }
+  });
+
+  // 🗣️I-163: 「전체 잘라내기는 즉시 실행이 아니라 옵션 … 아래에 「실행」」.
+  testWidgets('the whole cut runs at its 「실행」 — the decision of its '
+      'settings — and the outline cut has none', (tester) async {
+    var runs = 0;
+    const run = ValueKey<String>('cut-whole-run-button');
+    await pump(
+      tester,
+      tool: CanvasTool.cutWhole,
+      slot: CutPieceSlot(),
+      onCutWhole: () => runs++,
+    );
+    expect(tester.toolSettingAction(find.byKey(run)).decides, isTrue);
+    expect(runs, 0, reason: 'standing on the tool runs nothing');
+    await tester.tap(find.byKey(run));
+    await tester.pump();
+    expect(runs, 1);
+
+    await pump(
+      tester,
+      tool: CanvasTool.cut,
+      slot: CutPieceSlot(),
+      onCutWhole: () => runs++,
+    );
+    expect(find.byKey(run), findsNothing);
+  });
 
   // 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
   // 도구설정으로서 원본 삭제 불리언버튼 추가」. ↩️Until then the grab

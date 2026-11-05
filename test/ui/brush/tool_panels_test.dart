@@ -333,6 +333,8 @@ void main() {
         CanvasTool.fillShape: {ToolParameter.blend, ToolParameter.opacity},
         CanvasTool.cutStamp: {ToolParameter.blend, ToolParameter.opacity},
         CanvasTool.cut: {},
+        // I-163: it runs from its settings' 「실행」 — nothing is drawn.
+        CanvasTool.cutWhole: {},
         CanvasTool.select: {},
         CanvasTool.move: {},
         CanvasTool.guide: {},
@@ -382,6 +384,7 @@ void main() {
         CanvasTool.fillShape: CanvasTool.fill,
         CanvasTool.cut: CanvasTool.cut,
         CanvasTool.cutStamp: CanvasTool.cut,
+        CanvasTool.cutWhole: CanvasTool.cut,
         CanvasTool.guide: CanvasTool.guide,
         CanvasTool.select: CanvasTool.select,
         CanvasTool.move: CanvasTool.move,
@@ -805,12 +808,8 @@ void main() {
         app(
           ToolLibraryPanel(
             tool: CanvasTool.move,
-            onPress: (press) => pressTool(
-              press,
-              tool: tool,
-              transform: options,
-              cutWhole: ({required takeWhatItCuts}) {},
-            ),
+            onPress: (press) =>
+                pressTool(press, tool: tool, transform: options),
             brushLibrary: const SizedBox.shrink(),
             transformOptions: options,
           ),

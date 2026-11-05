@@ -1,6 +1,10 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'dart:typed_data';
+import 'dart:ui' show Rect;
+
+import 'package:flutter/foundation.dart' show ValueListenable, VoidCallback;
 
 import '../../models/attached_layer_resolve.dart' show attachedRowAsShown;
+import '../../models/bitmap_tile.dart' show inkBoundsOfWords;
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
@@ -15,17 +19,20 @@ import '../../models/pixel_verb_settings.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
+import '../../services/canvas_read_source.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
+import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/cut_piece_lift.dart'
-    show CutRead, cutPixelsTaken, readCutPiece;
+    show CutRead, buildCutPieceFromPicture, cutPixelsTaken, readCutPiece;
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/media/viewer_document.dart' show cropStraightRgba;
 import '../../services/piece_landing.dart';
 import '../../services/selection_placement.dart' show stampInArtwork;
 import '../brush/cut_into_the_hand.dart';
@@ -56,6 +63,15 @@ typedef PixelVerbCanvas = ({
   CanvasSelectionRegion? region,
   int argb,
   SelectionMaskOptions mask,
+});
+
+/// What a cut of what is shown read ([PixelVerbs.cutShown]): the cels it
+/// would clear, the area it cut — drawn on the canvas — and the piece, null
+/// when the area held nothing.
+typedef _ShownCut = ({
+  List<BrushFrameKey> shown,
+  CanvasSelectionRegion region,
+  CutPiece? piece,
 });
 
 /// The PIXEL VERBS — what the 색 편집 list does to the pixels of the cels
@@ -589,16 +605,181 @@ class PixelVerbs {
   /// [takeWhatItCuts] is the cut tool's 「원본 삭제」 (I-90,
   /// `BrushToolState.cutDeletesSource`): the picture leaves the cel, as one
   /// undo, once it is in the hand.
-  void cutWhole({required bool takeWhatItCuts}) {
+  ///
+  /// [source] is the cut tool's 대상 (I-163): under 「표시」 the whole is
+  /// the whole of what the canvas SHOWS ([cutShown]), and the cut has its
+  /// picture to work out [ahead] of the step that takes it; the cel's own
+  /// pixels need none.
+  ({WorkAhead? ahead, VoidCallback step}) cutWhole({
+    required CanvasReadSource source,
+    required bool takeWhatItCuts,
+  }) {
+    if (source == CanvasReadSource.display) {
+      return cutShown(null, takeWhatItCuts: takeWhatItCuts);
+    }
+    return (
+      ahead: null,
+      step: () {
+        final hand = cutToolHand;
+        if (hand == null) {
+          return;
+        }
+        final cut = _standingCut();
+        cutIntoTheHand(cut?.read.piece, hand);
+        if (cut != null && takeWhatItCuts) {
+          _takeOffTheCel(cut);
+        }
+      },
+    );
+  }
+
+  /// What 「표시」 cuts out of (I-163): 「다른 이름으로 저장」's picture, held
+  /// in memory instead of written — published by the workspace, which knows
+  /// the guides' ink. Null while no workspace is up, and a 「표시」 cut then
+  /// cuts nothing.
+  Future<({int width, int height, Uint8List rgba})?> Function()? shownPicture;
+
+  /// The cut tool's 「표시」 (I-163): through [outline] — drawn on the
+  /// canvas — or, with none, 전체 잘라내기's whole, out of what the canvas
+  /// SHOWS, every row at once as 「다른 이름으로 저장」 draws it
+  /// ([shownPicture]), into the cut tool's hand.
+  ///
+  /// 🗣️I-163 (유저 2026-11-05): 「표시」 is what is truly seen, the other
+  /// layers with it · Q1 「다른 이름으로 저장 한 장으로 통일 (스포이드도)」 ·
+  /// Q2 「보이는 레이어 전부의 그 영역」.
+  ///
+  /// ★The cut is the viewer's ([buildCutPieceFromPicture]) — a picture that
+  /// is not a cel, cut at its own pixels. Those pixels are the canvas's, so
+  /// the piece stands where it stood on the canvas, and the outline is cut
+  /// to the canvas as the picture is (backlog-21: 「캔버스영역으로 클립하는건
+  /// 당연」) — what is taken off is what was taken.
+  ///
+  /// [takeWhatItCuts] (「원본 삭제」) clears that area off every cel the
+  /// canvas showed that a pixel verb may touch ([_celsShown]) — 픽셀
+  /// 비우기, as one undo. 🗣️Q1's memo: 「잘라내기의 원본삭제는 fx같은
+  /// 삭제불가능한건 삭제안한다거나 그런식」 — a row no verb touches keeps
+  /// what it showed.
+  ///
+  /// The picture is rendered and cut [ahead], off the press; the [step]
+  /// puts the piece in the hand and takes it off the cels — the shape of
+  /// every step with work ahead of it, for the door that stands them
+  /// behind the app's wait window.
+  ({WorkAhead ahead, VoidCallback step}) cutShown(
+    CanvasSelectionRegion? outline, {
+    required bool takeWhatItCuts,
+  }) {
+    _ShownCut? read;
+    return (
+      ahead: (_) async => read = await _readShown(outline),
+      step: () => _takeShown(read, takeWhatItCuts: takeWhatItCuts),
+    );
+  }
+
+  /// What [cutShown] works out ahead: the cels it would clear — named
+  /// before the picture, which takes frames to come back — the outline cut
+  /// to the picture, and the piece. Null when no picture came.
+  Future<_ShownCut?> _readShown(CanvasSelectionRegion? outline) async {
+    final render = shownPicture;
+    if (render == null) {
+      return null;
+    }
+    final shown = _celsShown();
+    final picture = await render();
+    final region = picture == null
+        ? null
+        : (outline ?? _inkOf(picture))?.clippedTo(
+            Rect.fromLTWH(
+              0,
+              0,
+              picture.width.toDouble(),
+              picture.height.toDouble(),
+            ),
+          );
+    if (picture == null || region == null) {
+      return null;
+    }
+    return (
+      shown: shown,
+      region: region,
+      piece: await buildCutPieceFromPicture(
+        region: region,
+        picture: (width: picture.width, height: picture.height),
+        readRgba: (box) async => cropStraightRgba(
+          picture.rgba,
+          sourceWidth: picture.width,
+          box: box,
+        ),
+      ),
+    );
+  }
+
+  /// [read]'s piece into the cut tool's hand and, with [takeWhatItCuts],
+  /// its area off the cels it named.
+  void _takeShown(_ShownCut? read, {required bool takeWhatItCuts}) {
     final hand = cutToolHand;
     if (hand == null) {
       return;
     }
-    final cut = _standingCut();
-    cutIntoTheHand(cut?.read.piece, hand);
-    if (cut != null && takeWhatItCuts) {
-      _takeOffTheCel(cut);
+    cutIntoTheHand(read?.piece, hand);
+    final coordinator = _pixelEditing.coordinator;
+    if (read == null ||
+        read.piece == null ||
+        !takeWhatItCuts ||
+        coordinator == null) {
+      return;
     }
+    _project.historyManager.execute(
+      CelPixelOverwriteCommand.clearPixels(
+        coordinator: coordinator,
+        targets: _targetsFor(read.shown, read.region),
+        // Without the hub the canvas keeps the old composite until you
+        // leave the frame (see [runPixelVerb]).
+        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+      ),
+    );
+  }
+
+  /// The cels the canvas shows at the playhead that a pixel verb may touch,
+  /// each with a drawing in it — what 「표시」's 원본 삭제 clears.
+  ///
+  /// The session's own rows, eyes as the screen has them: what the canvas
+  /// shows is what 「표시」 cut (as [transformCelsUnderfoot] asks).
+  List<BrushFrameKey> _celsShown() {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    return [
+      for (final layer in cut.layers)
+        if (_celOf(cut, layer, null) case final key? when _holdsADrawing(key))
+          key,
+    ];
+  }
+
+  /// The box of [picture]'s ink as an outline — 전체 잘라내기's 「전체」 over
+  /// a picture — or null when it shows nothing.
+  static CanvasSelectionRegion? _inkOf(
+    ({int width, int height, Uint8List rgba}) picture,
+  ) {
+    final ink = inkBoundsOfWords(
+      picture.rgba.buffer.asUint32List(
+        picture.rgba.offsetInBytes,
+        picture.width * picture.height,
+      ),
+      width: picture.width,
+      height: picture.height,
+    );
+    if (ink.rightExclusive <= ink.left) {
+      return null;
+    }
+    return CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(
+        left: ink.left.toDouble(),
+        top: ink.top.toDouble(),
+        right: ink.rightExclusive.toDouble(),
+        bottom: ink.bottomExclusive.toDouble(),
+      ),
+    );
   }
 
   /// Whether the 색 편집 list's clipboard row [verb] has anything to do —

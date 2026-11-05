@@ -1159,7 +1159,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         press,
         tool: _brushTool,
         transform: _transformOptions,
-        cutWhole: _session.pixelVerbs.cutWhole,
       );
       return;
     }

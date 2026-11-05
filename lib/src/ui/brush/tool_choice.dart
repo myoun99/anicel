@@ -2,13 +2,15 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
+import '../../services/canvas_read_source.dart';
 import 'brush_tool_state.dart';
 import 'paint_tool_state_notifier.dart';
 
 /// What a person's tools were holding when the project was saved (F-123):
 /// the tool in hand, the brush each paint tool held, the tile each rail
 /// group was left on, the outline each tracing verb drags, the fill's and
-/// the stamp's blend and opacity, and whether a cut takes what it cuts.
+/// the stamp's blend and opacity, whether a cut takes what it cuts and what
+/// it reads.
 ///
 /// 유저 2026-09-13: 「저장시 마지막으로 고른 툴 상태(무슨 브러시인지, 무슨
 /// 지우개인지, 채우기툴에서 뭐 골라져있는지 등) … 존재안하는게 있으면 해당
@@ -39,6 +41,7 @@ class ToolChoice {
     this.fillOpacity,
     this.cutStampOpacity,
     this.cutDeletesSource,
+    this.cutSource,
   });
 
   final CanvasTool? tool;
@@ -60,6 +63,7 @@ class ToolChoice {
   final double? fillOpacity;
   final double? cutStampOpacity;
   final bool? cutDeletesSource;
+  final CanvasReadSource? cutSource;
 
   Map<String, Object?> toJson() => {
     if (tool != null) 'tool': tool!.name,
@@ -85,6 +89,7 @@ class ToolChoice {
     if (fillOpacity != null) 'fillOpacity': fillOpacity,
     if (cutStampOpacity != null) 'cutStampOpacity': cutStampOpacity,
     if (cutDeletesSource != null) 'cutDeletesSource': cutDeletesSource,
+    if (cutSource != null) 'cutSource': cutSource!.name,
   };
 
   /// The choice [json] holds; any part it does not hold readably is absent.
@@ -116,6 +121,7 @@ class ToolChoice {
       final bool deletes => deletes,
       _ => null,
     },
+    cutSource: CanvasReadSource.values.asNameMap()[_string(json['cutSource'])],
   );
 }
 
@@ -172,6 +178,7 @@ ToolChoice toolChoiceOf(PaintToolStateNotifier tools) {
     fillOpacity: live.fillOpacity,
     cutStampOpacity: live.cutStampOpacity,
     cutDeletesSource: live.cutDeletesSource,
+    cutSource: live.cutSource,
   );
 }
 
@@ -209,6 +216,7 @@ void resumeToolChoice(
     fillOpacity: choice.fillOpacity,
     cutStampOpacity: choice.cutStampOpacity,
     cutDeletesSource: choice.cutDeletesSource,
+    cutSource: choice.cutSource,
   );
   for (final tile in choice.railTiles.values) {
     tools.value = tools.value.copyWith(tool: tile);

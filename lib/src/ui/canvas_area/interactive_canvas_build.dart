@@ -406,6 +406,25 @@ class _InteractiveCanvasBuild {
       textCommands: _state.widget.canvasTextCommands,
       textToolOptions: _state.widget.textToolOptions,
       cutPieceSlot: _state.widget.cutPieceSlot,
+      // I-163: 「표시」 cuts what is shown — the session draws it, ahead,
+      // behind the app's wait window as every step with work ahead of it
+      // stands (F-53 · F-551).
+      onCutShown: (outline, {required takeWhatItCuts}) {
+        final cut = session.pixelVerbs.cutShown(
+          outline,
+          takeWhatItCuts: takeWhatItCuts,
+        );
+        unawaited(
+          takeBehindTheWaitWindow(
+            context,
+            cut.step,
+            window: AppWaitWindow.working(
+              editorActionLabel(EditorActionIds.toolCut),
+            ),
+            ahead: cut.ahead,
+          ),
+        );
+      },
       lastStroke: _state.widget.lastStroke,
       // R13-3: a live stroke holds the prerender warmer — composite
       // warming never shares the UI/raster threads with drawing.

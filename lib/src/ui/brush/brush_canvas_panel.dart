@@ -41,6 +41,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/dirty_region.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
+import '../../services/canvas_read_source.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/selection_clip.dart';
 import '../../services/cel_pixel_region.dart' show regionInArtworkSpace;
@@ -333,6 +334,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.cutPieceSlot,
     this.lastStroke,
     this.onCutContent,
+    this.onCutShown,
     this.oneFingerAction,
     this.runsTheSelectedTool = true,
     this.onStrokeInputActiveChanged,
@@ -1002,6 +1004,17 @@ class BrushCanvasPanel extends StatefulWidget {
   /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널의 잘라내기툴 사용 가능하도록」 —
   /// the media viewer answers it, at the page's own size.
   final ValueChanged<CanvasSelectionRegion>? onCutContent;
+
+  /// A finished cut outline while the cut tool reads what is SHOWN
+  /// ([BrushToolState.cutSource]) — the host cuts it out of the one picture
+  /// 「다른 이름으로 저장」 takes (I-163-Q1), and takes it off every visible
+  /// layer when [takeWhatItCuts]. Null = a host that cannot draw that
+  /// picture, and the cut says it found nothing.
+  final void Function(
+    CanvasSelectionRegion outline, {
+    required bool takeWhatItCuts,
+  })?
+  onCutShown;
 
   /// What one finger does in THIS panel when the host answers the slot
   /// itself ([CanvasViewportGestureLayer.oneFingerAction]) — and the
@@ -2555,6 +2568,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// with the tool's 「원본 삭제」 on, takes what it copied ([_takeOffTheCel]).
   void _cutPieceFrom(CanvasSelectionRegion outline) {
     final slot = widget.cutPieceSlot;
+    // 🗣️I-163 (유저 2026-11-05): 「대상 표시/레이어. 표시는 다른 레이어
+    // 포함해서 진짜 보이는」 — the pure pixels below are 「레이어」's.
+    if (_brush.cutSource == CanvasReadSource.display) {
+      final shown = widget.onCutShown;
+      if (shown == null) {
+        if (slot != null) {
+          cutIntoTheHand(null, slot.hold);
+        }
+        return;
+      }
+      shown(outline, takeWhatItCuts: _brush.cutDeletesSource);
+      return;
+    }
     // ★THE CEL QUESTION, NOT THE ROW'S (H19): a cut COPIES — it reads the
     // cel and writes nothing — so a lane, which refuses the STROKE, does
     // not refuse it. 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」
