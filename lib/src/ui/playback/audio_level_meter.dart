@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import 'canvas_playback_controller.dart';
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -28,22 +28,24 @@ import '../widgets/tick_layer.dart';
 class AudioLevelMeter extends StatelessWidget {
   const AudioLevelMeter({
     super.key,
-    required this.controller,
+    required this.frames,
     required this.resolvePeaks,
-    this.metering = true,
     this.refused = false,
   });
 
-  final CanvasPlaybackController controller;
+  /// The frame the run it meters has got to, null while that run plays
+  /// none: the bars are read again at each ([resolvePeaks]) — the canvas's
+  /// `globalFrameIndexListenable`, the viewer's `MediaRun.playedFrame`
+  /// (F-71-Q3, the one meter in the transport's sound cell).
+  ///
+  /// Null while this meter reads the peaks not at all. A transport row
+  /// keeps the meter's seat while another scope plays (F-111), and it must
+  /// not light up with that scope's sound.
+  final ValueListenable<int?>? frames;
 
-  /// The transport's [AudioDeviceTransport.meterPeaks] (injected so the
-  /// widget stays testable without a device).
+  /// The device's [QaAudioDevice.meterPeaks] as the run reads them
+  /// (injected so the widget stays testable without a device).
   final ({double left, double right}) Function() resolvePeaks;
-
-  /// Whether this meter reads the peaks at all. A transport row keeps the
-  /// meter's seat while another scope plays (F-111), and it must not light
-  /// up with that scope's sound.
-  final bool metering;
 
   /// Whether the output would not open: the well is red
   /// (playback-waits-for-its-sound-Q1, 유저 2026-10-17 — said on the
@@ -69,6 +71,7 @@ class AudioLevelMeter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final frame = FieldSlider.frameOf(height, enabled: true);
+    final frames = this.frames;
     return SizedBox(
       key: const ValueKey<String>('audio-level-meter'),
       width: width,
@@ -86,9 +89,9 @@ class AudioLevelMeter extends StatelessWidget {
           child: TickLayer(
             child: Semantics(
               label: AppText.strings.audioLevelMeter,
-              child: metering
+              child: frames != null
                   ? ValueListenableBuilder<int?>(
-                      valueListenable: controller.globalFrameIndexListenable,
+                      valueListenable: frames,
                       builder: (context, frame, _) {
                         final peaks = frame == null
                             ? (left: 0.0, right: 0.0)

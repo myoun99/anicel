@@ -94,11 +94,20 @@ class MediaRun {
       _clock.stop();
     }
     playingFlips.value = going;
+    _played.value = going ? frameAt(_surface.frameRate) : null;
   }
 
   /// Fires when this run starts or stops, and on nothing else — never per
   /// turned page (the actuation gate wraps the whole editor).
   final ValueNotifier<bool> playingFlips = ValueNotifier<bool>(false);
+
+  /// The frame this run has got to while it plays, null while it stands —
+  /// the canvas's `globalFrameIndexListenable`, which the transport's level
+  /// meter reads its bars again at (F-71-Q3). Set where the clock starts
+  /// and stops ([_runs]) and at each look ([_onTick]), so it cannot say a
+  /// run plays that does not.
+  ValueListenable<int?> get playedFrame => _played;
+  final ValueNotifier<int?> _played = ValueNotifier<int?>(null);
 
   bool get playing => _clock.isRunning;
 
@@ -241,6 +250,21 @@ class MediaRun {
   int frameCount(ProjectFrameRate rate) =>
       _waveform?.durationFrames(rate) ?? math.max(1, _pageCount);
 
+  /// How many of those frames the transport counts to a second — its
+  /// seconds and their ticks (F-71-Q1 · Q6): [rate]'s for a waveform, which
+  /// it counts in, and a document's own for its pages, which turn by it.
+  ///
+  /// ⚠️Mine: a document's rate rounded — what a 29.97 film counts to a
+  /// second, as [ProjectFrameRate.countingBase] counts 30 for the project's
+  /// 29.97. Pages that turn by no rate (a sequence of stills) count by
+  /// [rate]'s, as they are placed.
+  int countingBase(ProjectFrameRate rate) {
+    final own = _surface.document?.framesPerSecond;
+    return _waveform != null || own == null || own <= 0
+        ? rate.countingBase
+        : math.max(1, own.round());
+  }
+
   /// Where the playhead stands, in those frames: the page, or a waveform's
   /// seconds ([soundSeconds]) — a waveform is one page.
   int frameAt(ProjectFrameRate rate) => _waveform == null
@@ -292,6 +316,8 @@ class MediaRun {
     return TransportSound(
       level: loudness.level,
       muted: loudness.muted,
+      played: playedFrame,
+      peaks: () => sound.meterPeaks,
       onLevelChanged: (level) =>
           set(ViewerLoudness(level: level), settled: false),
       onLevelSettled: (level) =>
@@ -572,6 +598,9 @@ class MediaRun {
     if (_surface.mounted && frameAt(rate) != shown) {
       lookChangedWhatItShows();
     }
+    if (playing) {
+      _played.value = frameAt(rate);
+    }
   }
 
   /// 🚨★★★**THE PLAYHEAD WAITS. IT DOES NOT WALK PAST A FRAME THAT IS NOT
@@ -687,6 +716,7 @@ class MediaRun {
   void dispose() {
     stop();
     playingFlips.dispose();
+    _played.dispose();
   }
 }
 

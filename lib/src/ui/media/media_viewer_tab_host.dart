@@ -1129,6 +1129,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       child: TransportBar(
         keyPrefix: _key('transport'),
         frameCount: frameCount,
+        framesPerSecond: _run.countingBase(rate),
+        rulerView: widget.session.panelViews.rulerView,
         currentFrame: _run.frameAt(rate).clamp(0, frameCount - 1),
         playing: _run.playing,
         onSeek: (frame) => _run.seekToFrame(frame, rate),

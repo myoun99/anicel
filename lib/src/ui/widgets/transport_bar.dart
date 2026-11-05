@@ -1,12 +1,22 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../playback/audio_level_meter.dart';
 import '../repaint_props.dart';
 import '../text/app_strings.dart' show AppText;
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
+import '../timeline/frame_ruler_view.dart';
+import '../timeline/timeline_beat_lines.dart'
+    show timelineSecondLineEverySeconds;
+import '../timeline/timeline_frame_range_policy.dart'
+    show timelineDurationLabel;
+import '../timeline/timeline_frame_ruler_painter.dart'
+    show timelineFramePlaceLabel;
+import '../timeline/timeline_second.dart' show timelineSecondFrames;
 import 'app_icon_button.dart';
 import 'drag_value_label.dart';
 import 'field_slider.dart';
@@ -44,11 +54,19 @@ class TransportSound {
     required this.onLevelChanged,
     required this.onLevelSettled,
     required this.onMuteToggled,
+    required this.played,
+    required this.peaks,
   });
 
   /// 0..1.
   final double level;
   final bool muted;
+
+  /// The frame the thing has got to while it plays, null while it stands,
+  /// and the device's peaks — what the level meter beside the bar reads
+  /// ([AudioLevelMeter.frames], [AudioLevelMeter.resolvePeaks]).
+  final ValueListenable<int?> played;
+  final ({double left, double right}) Function() peaks;
 
   /// Every step of the bar under the hand, and once where the hand lets go
   /// — a surface whose sound is armed at a level arms it again on the
@@ -85,6 +103,8 @@ class TransportBar extends StatelessWidget {
   const TransportBar({
     super.key,
     required this.frameCount,
+    required this.framesPerSecond,
+    required this.rulerView,
     required this.currentFrame,
     required this.playing,
     required this.onSeek,
@@ -97,6 +117,14 @@ class TransportBar extends StatelessWidget {
   /// How many frames the source has. One means a still: every control
   /// still renders, and none of them can go anywhere.
   final int frameCount;
+
+  /// How many of those frames make a second — what the readout counts
+  /// seconds by and the seek track ticks them at.
+  final int framesPerSecond;
+
+  /// How the timeline's rulers count, which the readout follows
+  /// ([FrameRulerView.seconds]).
+  final ValueListenable<FrameRulerView> rulerView;
 
   /// A ZERO-based index. The readout adds one, because a person counts
   /// pages and frames from one.
@@ -200,6 +228,7 @@ class TransportBar extends StatelessWidget {
           child: TransportTrack(
             keyValue: _key('track'),
             frameCount: frameCount,
+            framesPerSecond: framesPerSecond,
             currentFrame: currentFrame,
             kept: kept == null
                 ? null
@@ -218,10 +247,13 @@ class TransportBar extends StatelessWidget {
                   id: _PlaySlot.readout,
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text(
-                      '${label(currentFrame)} / $frameCount',
-                      key: ValueKey<String>(_key('position')),
-                      style: _wordsIn(context, enabled: _lastFrame > 0),
+                    child: ValueListenableBuilder<FrameRulerView>(
+                      valueListenable: rulerView,
+                      builder: (context, view, _) => Text(
+                        _readout(seconds: view.seconds),
+                        key: ValueKey<String>(_key('position')),
+                        style: _wordsIn(context, enabled: _lastFrame > 0),
+                      ),
                     ),
                   ),
                 ),
@@ -258,6 +290,28 @@ class TransportBar extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  /// Where the playhead stands and how long the source runs, as the
+  /// timeline's rulers count — `109 / 298`, or `4+13 / 12+10` under the
+  /// seconds display: 🗣️F-71-Q1 (유저 2026-11-05) 「타임라인 룰러 선택을
+  /// 따른다」. Each by the ruler's own function: the place by the number
+  /// written over its frame, the length by every block's length label —
+  /// ⛔not one formula, since frame 24 of a second is `0+24` where 24 frames
+  /// long is `1+0`. ↩️It was the frame number padded to the count's digits
+  /// (`001 / 298`), whatever the rulers showed.
+  String _readout({required bool seconds}) {
+    final place = timelineFramePlaceLabel(
+      frameIndex: currentFrame,
+      framesPerSecond: framesPerSecond,
+      showSeconds: seconds,
+    );
+    final length = timelineDurationLabel(
+      frameCount,
+      showSeconds: seconds,
+      countingBase: framesPerSecond,
+    );
+    return '$place / $length';
   }
 
   /// First, back one, play, on one, last. The ends stop at IN and OUT where
@@ -312,9 +366,13 @@ class TransportBar extends StatelessWidget {
     );
   }
 
-  /// The speaker and the level beside it ([SoundLevelBar]). Muted, the bar
-  /// stands grey and is still the level a press of the speaker comes back
-  /// to.
+  /// The speaker, the level beside it ([SoundLevelBar]) and the level
+  /// meter after them. Muted, the bar stands grey and is still the level a
+  /// press of the speaker comes back to.
+  ///
+  /// 🗣️F-71-Q3 (유저 2026-11-05) 「재생 줄 소리 칸에」: the canvas's playback
+  /// meter, itself — its seat there whether or not anything sounds, and
+  /// silent while the thing does not play.
   Widget _soundCell() {
     final sound = this.sound;
     final muted = sound?.muted ?? false;
@@ -336,9 +394,16 @@ class TransportBar extends StatelessWidget {
           onChanged: sound?.onLevelChanged,
           onChangeEnd: sound?.onLevelSettled,
         ),
+        const SizedBox(width: 6),
+        AudioLevelMeter(
+          frames: sound?.played,
+          resolvePeaks: sound?.peaks ?? _silence,
+        ),
       ],
     );
   }
+
+  static ({double left, double right}) _silence() => (left: 0, right: 0);
 
   /// IN and its number, the span between the two handles, OUT's number and
   /// OUT.
@@ -576,6 +641,7 @@ class TransportTrack extends StatefulWidget {
   const TransportTrack({
     super.key,
     required this.frameCount,
+    required this.framesPerSecond,
     required this.currentFrame,
     required this.onSeek,
     this.kept,
@@ -584,6 +650,9 @@ class TransportTrack extends StatefulWidget {
   });
 
   final int frameCount;
+
+  /// Where its seconds' ticks stand ([TransportBar.framesPerSecond]).
+  final int framesPerSecond;
   final int currentFrame;
   final ValueChanged<int>? onSeek;
 
@@ -640,7 +709,10 @@ class _TransportTrackState extends State<TransportTrack> {
         position: _fractionOf(widget.currentFrame, _lastFrame),
         keptStart: kept == null ? null : _fractionOf(kept.first, _lastFrame),
         keptEnd: kept == null ? null : _fractionOf(kept.last, _lastFrame),
+        lastFrame: _lastFrame,
+        framesPerSecond: widget.framesPerSecond,
         wash: TransportBar.rangeWash,
+        tick: AppColors.hairlineStrong,
         enabled: _seek != null,
       ),
     );
@@ -652,22 +724,31 @@ class _SeekPainter extends CustomPainter with RepaintOnProps {
     required this.position,
     required this.keptStart,
     required this.keptEnd,
+    required this.lastFrame,
+    required this.framesPerSecond,
     required this.wash,
+    required this.tick,
     required this.enabled,
   });
 
   final double position;
   final double? keptStart;
   final double? keptEnd;
+  final int lastFrame;
+  final int framesPerSecond;
 
-  /// ⚠️A prop, not read in [paint]: the accent is live, and a painter that
+  /// ⚠️Props, not read in [paint]: the accent is live, and a painter that
   /// read it there would keep the old one until something else moved.
   final Color wash;
+  final Color tick;
   final bool enabled;
+
+  static const double _tickLength = 4;
 
   @override
   void paint(Canvas canvas, Size size) {
     _paintTrackGround(canvas, size, enabled: enabled);
+    _paintSeconds(canvas, size);
     final start = keptStart;
     final end = keptEnd;
     if (start != null && end != null) {
@@ -684,8 +765,44 @@ class _SeekPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
+  /// A short tick at the track's foot where each second begins — 🗣️F-71-Q6
+  /// (유저 2026-11-05) 「초마다 짧은 눈금」 — as many as the timeline rules
+  /// its second lines at this width of a frame
+  /// ([timelineSecondLineEverySeconds], I-22 「겹칠때 생략」): every second,
+  /// and a long source every 2, 5, 10 … seconds.
+  void _paintSeconds(Canvas canvas, Size size) {
+    if (lastFrame == 0 || size.width <= 0) {
+      return;
+    }
+    final frameExtent = size.width / lastFrame;
+    final step =
+        timelineSecondFrames(framesPerSecond) *
+        timelineSecondLineEverySeconds(frameExtent, framesPerSecond);
+    final ink = Paint()..color = dimmedIfDisabled(tick, enabled: enabled);
+    for (var frame = step; frame < lastFrame; frame += step) {
+      canvas.drawRect(
+        Rect.fromLTWH(
+          frame * frameExtent,
+          size.height - 1 - _tickLength,
+          1,
+          _tickLength,
+        ),
+        ink,
+      );
+    }
+  }
+
   @override
-  Object get props => (position, keptStart, keptEnd, wash, enabled);
+  Object get props => (
+    position,
+    keptStart,
+    keptEnd,
+    lastFrame,
+    framesPerSecond,
+    wash,
+    tick,
+    enabled,
+  );
 }
 
 /// Which handle a press on the range track took.

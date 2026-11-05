@@ -212,7 +212,7 @@ void main() {
       slot.position.value = 4;
       await tester.pump();
       expect(bar(tester).currentFrame, 4);
-      expect(find.text('05 / 12'), findsOneWidget);
+      expect(find.text('5 / 12'), findsOneWidget);
 
       await press(tester, 'step-forward');
       expect(slot.position.value, 5);
@@ -227,6 +227,17 @@ void main() {
       bar(tester).onSeek!(7);
       await tester.pump();
       expect(slot.position.value, 7);
+    });
+
+    // 🗣️F-71-Q1 · Q6 (유저 2026-11-05).
+    testWidgets('it counts seconds by the document\'s own rate, and writes '
+        'them as the timeline\'s rulers count', (tester) async {
+      await openPages(tester, pages: 12, framesPerSecond: 29.97);
+      expect(bar(tester).framesPerSecond, 30, reason: 'a 29.97 film counts 30');
+      expect(
+        bar(tester).rulerView,
+        same(session!.panelViews.rulerView),
+      );
     });
 
     testWidgets('play runs it and a second press stops it', (tester) async {
@@ -279,6 +290,21 @@ void main() {
         reason: 'the sound starts where the playhead was put',
       );
       await press(tester, 'play');
+    });
+
+    // 🗣️F-71-Q1 · Q3 (유저 2026-11-05).
+    testWidgets('its seconds are the project\'s, and its meter reads while '
+        'it plays and not while it stands', (tester) async {
+      await openSound(tester);
+      final rate = session!.projectSettings.projectFrameRate;
+      expect(bar(tester).framesPerSecond, rate.countingBase);
+      expect(bar(tester).sound!.played.value, isNull);
+
+      await press(tester, 'play');
+      expect(bar(tester).sound!.played.value, isNotNull);
+
+      await press(tester, 'play');
+      expect(bar(tester).sound!.played.value, isNull);
     });
 
     testWidgets('a seek while it runs picks the sound up from there', (

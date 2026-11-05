@@ -128,6 +128,7 @@ void main() {
         width: 400,
         child: TransportTrack(
           frameCount: 101,
+          framesPerSecond: 24,
           currentFrame: 0,
           onSeek: seeks.add,
         ),
@@ -154,6 +155,7 @@ void main() {
         width: 400,
         child: TransportTrack(
           frameCount: 101,
+          framesPerSecond: 24,
           currentFrame: 0,
           onSeek: seeks.add,
         ),

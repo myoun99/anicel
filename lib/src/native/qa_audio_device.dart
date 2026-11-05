@@ -621,6 +621,12 @@ final class QaAudioDevice {
   /// meter exists to make visible.
   double peakFor(int channel) => _peak(channel);
 
+  /// Both sides of [peakFor] as a level meter reads them — silence while
+  /// the device is not open. One read for the canvas's transport and the
+  /// viewer's sound (F-71-Q3), which play out of this one device.
+  ({double left, double right}) get meterPeaks =>
+      isOpen ? (left: peakFor(0), right: peakFor(1)) : (left: 0, right: 0);
+
   /// Opens the capture device and starts delivering into the C-side ring
   /// (AUDIO-PRO R5). Returns the delivered sample rate ([sampleRate] — the
   /// C converts from the device's native rate) or 0 on failure, which on

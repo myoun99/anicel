@@ -440,6 +440,8 @@ class _ImportPreviewState extends State<ImportPreview>
     final kept = _kept(frameCount);
     return TransportBar(
       frameCount: frameCount,
+      framesPerSecond: _run.countingBase(widget.frameRate),
+      rulerView: widget.session.panelViews.rulerView,
       currentFrame: _run.frameAt(widget.frameRate).clamp(0, frameCount - 1),
       playing: _run.playing,
       onSeek: (frame) => _run.seekToFrame(frame, widget.frameRate),

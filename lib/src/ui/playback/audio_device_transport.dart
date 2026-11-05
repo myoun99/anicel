@@ -309,10 +309,10 @@ class AudioDeviceTransport {
   /// playback — a silent meter, not a frozen one.
   ({double left, double right}) get meterPeaks {
     final device = _device;
-    if (!_carrying || device == null || !device.isOpen) {
+    if (!_carrying || device == null) {
       return (left: 0, right: 0);
     }
-    return (left: device.peakFor(0), right: device.peakFor(1));
+    return device.meterPeaks;
   }
 
   /// The inspector's evidence line (audio program 2D): everything the

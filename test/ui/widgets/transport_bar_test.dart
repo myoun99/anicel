@@ -1,6 +1,10 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/playback/audio_level_meter.dart';
+import 'package:anicel/src/ui/repaint_props.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
@@ -21,6 +25,16 @@ import '../../helpers/number_pad_keyboard.dart';
 void main() {
   const barWidth = 420.0;
 
+  /// The rulers counting frames — what a bar is mounted under unless a
+  /// test says otherwise.
+  final framesView = ValueNotifier<FrameRulerView>(FrameRulerView.frames);
+  tearDownAll(framesView.dispose);
+
+  /// A sound that is not playing, and the peaks of a device saying nothing.
+  final standing = ValueNotifier<int?>(null);
+  tearDownAll(standing.dispose);
+  ({double left, double right}) silent() => (left: 0, right: 0);
+
   ValueKey<String> k(String suffix) => ValueKey<String>('transport-$suffix');
 
   /// Mounts the bar at a known width, so a pixel is a frame the test can
@@ -36,6 +50,7 @@ void main() {
     TransportSound? sound,
     double width = barWidth,
     ThemeData? theme,
+    ValueListenable<FrameRulerView>? rulerView,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -46,6 +61,8 @@ void main() {
               width: width,
               child: TransportBar(
                 frameCount: frameCount,
+                framesPerSecond: 24,
+                rulerView: rulerView ?? framesView,
                 currentFrame: currentFrame,
                 playing: playing,
                 onSeek: onSeek,
@@ -222,6 +239,8 @@ void main() {
                     child: TransportBar(
                       keyPrefix: prefix,
                       frameCount: 10,
+                      framesPerSecond: 24,
+                      rulerView: framesView,
                       currentFrame: 0,
                       playing: false,
                       onSeek: _ignoreFrame,
@@ -256,7 +275,7 @@ void main() {
   });
 
   group('readout', () {
-    testWidgets('counts from one and pads to the source width', (tester) async {
+    testWidgets('counts from one', (tester) async {
       await pump(tester, frameCount: 96, currentFrame: 36);
       expect(find.text('37 / 96'), findsOneWidget);
     });
@@ -264,6 +283,47 @@ void main() {
     testWidgets('a still shows one of one', (tester) async {
       await pump(tester, frameCount: 1);
       expect(find.text('1 / 1'), findsOneWidget);
+    });
+
+    // 🗣️F-71-Q1 (유저 2026-11-05) 「타임라인 룰러 선택을 따른다」.
+    testWidgets('it follows the rulers: frames, then the seconds display — '
+        'the place as the ruler writes it over its frame, the length as a '
+        'block writes its own — and back, as the choice is made', (
+      tester,
+    ) async {
+      final view = ValueNotifier<FrameRulerView>(FrameRulerView.frames);
+      addTearDown(view.dispose);
+      await pump(tester, frameCount: 298, currentFrame: 108, rulerView: view);
+      expect(find.text('109 / 298'), findsOneWidget);
+
+      view.value = FrameRulerView.secondsPlusFrames;
+      await tester.pump();
+      expect(
+        find.text('4+13 / 12+10'),
+        findsOneWidget,
+        reason: 'frame 108 is the 13th of second 4 at 24 a second; 298 '
+            'frames run 12 seconds and 10',
+      );
+
+      view.value = FrameRulerView.pages;
+      await tester.pump();
+      expect(
+        find.text('109 / 298'),
+        findsOneWidget,
+        reason: 'the page view writes a place as the frames view does',
+      );
+    });
+
+    testWidgets('a place on a second\'s last frame is not a length: frame 24 '
+        'of the first second reads 0+24, and 24 frames long reads 1+0', (
+      tester,
+    ) async {
+      final view = ValueNotifier<FrameRulerView>(
+        FrameRulerView.secondsPlusFrames,
+      );
+      addTearDown(view.dispose);
+      await pump(tester, frameCount: 24, currentFrame: 23, rulerView: view);
+      expect(find.text('0+24 / 1+0'), findsOneWidget);
     });
   });
 
@@ -338,6 +398,52 @@ void main() {
         drawn(tester, 'track').where((r) => r.color == washArgb),
         isEmpty,
       );
+    });
+
+    /// The seconds' ticks [drawn] on the seek track — the short marks at
+    /// its foot.
+    List<Rect> ticks(WidgetTester tester) => [
+      for (final rect in drawn(tester, 'track'))
+        if (rect.color == AppColors.hairlineStrong.toARGB32() &&
+            rect.rect.height == 4)
+          rect.rect,
+    ];
+
+    // 🗣️F-71-Q6 (유저 2026-11-05) 「초마다 짧은 눈금」.
+    testWidgets('a tick stands at its foot where each second begins', (
+      tester,
+    ) async {
+      // Ten seconds at 24 a second: frames 0..240.
+      await pump(tester, frameCount: 241);
+      final track = tester.getSize(find.byKey(k('track')));
+      final marks = ticks(tester);
+      expect(
+        [for (final mark in marks) mark.left],
+        [
+          for (var second = 1; second < 10; second += 1)
+            moreOrLessEquals(track.width * second * 24 / 240),
+        ],
+        reason: 'none on the track\'s two ends',
+      );
+      for (final mark in marks) {
+        expect(mark.bottom, track.height - 1, reason: 'inside the hairline');
+      }
+    });
+
+    testWidgets('a long source ticks fewer seconds, as the timeline rules '
+        'its second lines (I-22 「겹칠때 생략」)', (tester) async {
+      // Ten minutes: a second is two thirds of a pixel across the track, so
+      // marks stand ten seconds apart — the timeline's rung at that width.
+      await pump(tester, frameCount: 24 * 600 + 1);
+      final track = tester.getSize(find.byKey(k('track')));
+      final marks = ticks(tester);
+      expect(marks, hasLength(59));
+      expect(marks.first.left, moreOrLessEquals(track.width / 60));
+    });
+
+    testWidgets('a source shorter than a second has no tick', (tester) async {
+      await pump(tester, frameCount: 24);
+      expect(ticks(tester), isEmpty);
     });
 
     testWidgets('a source with one frame has nowhere to seek to', (
@@ -467,6 +573,65 @@ void main() {
   });
 
   group('the sound', () {
+    /// What the level meter's bars stand at, left and right.
+    Object bars(WidgetTester tester) =>
+        (tester
+                    .widget<CustomPaint>(
+                      find.descendant(
+                        of: find.byType(AudioLevelMeter),
+                        matching: find.byType(CustomPaint),
+                      ),
+                    )
+                    .painter!
+                as RepaintOnProps)
+            .props;
+
+    // 🗣️F-71-Q3 (유저 2026-11-05) 「재생 줄 소리 칸에」.
+    testWidgets('the level meter stands after the bar, reads the device at '
+        'each frame the sound plays, and is silent while it stands', (
+      tester,
+    ) async {
+      final played = ValueNotifier<int?>(null);
+      addTearDown(played.dispose);
+      await pump(
+        tester,
+        frameCount: 10,
+        sound: TransportSound(
+          level: 1,
+          muted: false,
+          onLevelChanged: (_) {},
+          onLevelSettled: (_) {},
+          onMuteToggled: () {},
+          played: played,
+          peaks: () => (left: 0.5, right: 0.25),
+        ),
+      );
+      expect(
+        tester.getRect(find.byType(AudioLevelMeter)).left,
+        greaterThan(tester.getRect(find.byKey(k('volume'))).right),
+      );
+      expect(bars(tester), (0.0, 0.0), reason: 'standing: silent');
+
+      played.value = 3;
+      await tester.pump();
+      expect(bars(tester), (0.5, 0.25), reason: 'playing: the device');
+
+      played.value = null;
+      await tester.pump();
+      expect(bars(tester), (0.0, 0.0), reason: 'stopped: silent again');
+    });
+
+    testWidgets('with no sound the meter keeps its seat, and reads nothing', (
+      tester,
+    ) async {
+      await pump(tester, frameCount: 10);
+      expect(
+        tester.widget<AudioLevelMeter>(find.byType(AudioLevelMeter)).frames,
+        isNull,
+      );
+      expect(bars(tester), (0.0, 0.0));
+    });
+
     testWidgets('with no sound the cell stays where it is, off', (
       tester,
     ) async {
@@ -488,6 +653,8 @@ void main() {
         onLevelChanged: (_) {},
         onLevelSettled: (_) {},
         onMuteToggled: () => toggles += 1,
+        played: standing,
+        peaks: silent,
       );
       await pump(tester, frameCount: 10, sound: sound(muted: false));
       expect(find.railIcon(Icons.volume_up), findsOneWidget);
@@ -518,6 +685,8 @@ void main() {
           onLevelChanged: steps.add,
           onLevelSettled: settled.add,
           onMuteToggled: () {},
+          played: standing,
+          peaks: silent,
         ),
       );
       final bar = tester.getRect(find.byKey(k('volume')));

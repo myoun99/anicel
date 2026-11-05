@@ -129,6 +129,11 @@ class ViewerSound {
   /// Whether sound is actually coming out for the current file.
   bool get isCarrying => _device != null;
 
+  /// What the transport's level meter reads while this sound is coming out
+  /// ([QaAudioDevice.meterPeaks]) — silence while it is not.
+  ({double left, double right}) get meterPeaks =>
+      _device?.meterPeaks ?? (left: 0, right: 0);
+
   /// Starts [sourcePath] at [fromSeconds], as loud as [gain]
   /// ([ViewerLoudness.gain]) — once it is armed there ([prepare]), which
   /// it says.

@@ -285,9 +285,8 @@ class PlaybackTransportControls extends StatelessWidget {
 
   Padding _meter(bool metering) {
     AudioLevelMeter meter({bool refused = false}) => AudioLevelMeter(
-      controller: controller,
+      frames: metering ? controller.globalFrameIndexListenable : null,
       resolvePeaks: resolveMeterPeaks!,
-      metering: metering,
       refused: refused,
     );
     final without = playsWithout;
