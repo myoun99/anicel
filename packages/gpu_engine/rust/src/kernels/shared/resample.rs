@@ -37,6 +37,11 @@ const NARROW: f64 = 2_147_483_648.0;
 const WIDE: f64 = 2_305_843_009_213_693_952.0;
 /// Blend's radius ceiling, 16 px: a floor above it lands on it anyway.
 const CEILING: f64 = 16.0;
+/// resample.wgsl's mode for a map that copies words, whichever was asked.
+const COPY: u32 = 2;
+/// 1 in Q.20 and in Q.36.
+const ONE: i32 = 1 << 20;
+const ONE_36: i64 = 1 << 36;
 
 impl ResampleMap {
     /// Words one map takes, resample.wgsl's `ResampleMap` field by field.
@@ -85,6 +90,17 @@ impl ResampleMap {
         })
     }
 
+    /// Whether the map moves by whole pixels and nothing else, so each pixel
+    /// is one source word as it is — R1's integer copy, in either mode. The
+    /// one place it is decided: the kernel reads it as its mode, and a plan
+    /// that splits a row's reads by page asks it here.
+    pub(crate) fn is_copy(&self) -> bool {
+        let whole = |offset: i64| offset % i64::from(ONE) == 0;
+        let affine = self.g == 0 && self.h == 0 && self.i == ONE_36;
+        affine && self.a == ONE && self.e == ONE && self.b == 0 && self.d == 0
+            && whole(self.c) && whole(self.f)
+    }
+
     /// The words the kernel reads, i64s low word first.
     pub(crate) fn words(&self) -> [u32; Self::WORDS] {
         let (c, f, i) = (self.c as u64, self.f as u64, self.i as u64);
@@ -96,7 +112,7 @@ impl ResampleMap {
             self.g as u32,
             self.h as u32,
             self.floor,
-            self.mode as u32,
+            if self.is_copy() { COPY } else { self.mode as u32 },
             c as u32,
             (c >> 32) as u32,
             f as u32,
@@ -159,7 +175,38 @@ mod tests {
 
     #[test]
     fn an_affine_map_is_not_rescaled() {
+        // Mode 2: the identity copies.
         let m = map(IDENTITY).unwrap();
-        assert_eq!(m.words(), [1 << 20, 0, 0, 1 << 20, 0, 0, 65_536, 0, 0, 0, 0, 0, 0, 16]);
+        assert_eq!(m.words(), [1 << 20, 0, 0, 1 << 20, 0, 0, 65_536, 2, 0, 0, 0, 0, 0, 16]);
+    }
+
+    #[test]
+    fn a_whole_pixel_move_copies_in_either_mode() {
+        let mode = |inverse: [f64; 9], asked| {
+            ResampleMap::new(inverse, 1.0, asked, 100, 100).unwrap().words()[7]
+        };
+        let moved = [1.0, 0.0, -5.0, 0.0, 1.0, 3.0, 0.0, 0.0, 1.0];
+        assert_eq!(mode(moved, ResampleMode::Blend), COPY);
+        assert_eq!(mode(moved, ResampleMode::Pick), COPY);
+        // One part off a whole-pixel move each — a step of 2^-20 is one unit.
+        let unit = 1.0 / 1_048_576.0;
+        let under_q36 = 1.0 / (1u64 << 38) as f64;
+        let off = [
+            [1.0 + unit, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0, unit, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, -5.5, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, unit, 1.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 0.0, 1.0 - unit, 0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 0.0, 1.0, 3.0 + unit, 0.0, 0.0, 1.0],
+            // w falling from 1 at the left: i stays 1, g is not 0.
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, -unit, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -unit, 1.0],
+            // g = 2^-38 rounds to 0, but dividing by the right-hand w,
+            // 1 + 100 · 2^-38, leaves i 25 units under 1.
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, under_q36, 0.0, 1.0],
+        ];
+        for (n, inverse) in off.into_iter().enumerate() {
+            assert_eq!(mode(inverse, ResampleMode::Pick), ResampleMode::Pick as u32, "{n}");
+        }
     }
 }

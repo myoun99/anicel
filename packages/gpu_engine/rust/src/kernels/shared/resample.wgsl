@@ -16,6 +16,9 @@
 
 const RESAMPLE_BLEND: u32 = 0u;
 const RESAMPLE_PICK: u32 = 1u;
+// A whole-pixel translation in either mode, copied word for word — decided
+// once on the CPU (resample.rs), where the plan reading the map needs it too.
+const RESAMPLE_COPY: u32 = 2u;
 
 // 1 in Q.20, the matrix's scale.
 const RESAMPLE_ONE: i32 = 1048576;
@@ -40,6 +43,7 @@ struct ResampleMap {
   h: i32,
   // Blend's radius floor, Q.16.
   floor: u32,
+  // RESAMPLE_BLEND, RESAMPLE_PICK or RESAMPLE_COPY.
   mode: u32,
   // Q.20
   c: Wide,
@@ -66,12 +70,6 @@ struct ResamplePoint {
 fn resample_affine(map: ResampleMap) -> bool {
   // i = 1 in Q.36 is 2^36: the high word 16.
   return map.g == 0 && map.h == 0 && map.i.x == 0u && map.i.y == 16u;
-}
-
-// Whole-pixel translation: copied word for word.
-fn resample_is_copy(map: ResampleMap) -> bool {
-  return resample_affine(map) && map.a == RESAMPLE_ONE && map.e == RESAMPLE_ONE
-    && map.b == 0 && map.d == 0 && (map.c.x & 0xfffffu) == 0u && (map.f.x & 0xfffffu) == 0u;
 }
 
 // rnd(u, 16) without forming u + 2^15, which passes i32 near the edge.
@@ -448,7 +446,7 @@ fn resample_pick_sampled(map: ResampleMap, source: u32, point: ResamplePoint) ->
 // Destination pixel (x, y) — absolute, a clip already added — as a
 // straight RGBA8 word.
 fn resample(map: ResampleMap, source: u32, x: i32, y: i32) -> u32 {
-  if (resample_is_copy(map)) {
+  if (map.mode == RESAMPLE_COPY) {
     let sx = wide_add(wide(x), wide_shr(map.c, 20u));
     let sy = wide_add(wide(y), wide_shr(map.f, 20u));
     if (!wide_fits(sx) || !wide_fits(sy)) {
