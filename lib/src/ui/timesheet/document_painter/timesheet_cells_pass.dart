@@ -57,11 +57,11 @@ class _TimesheetCellsPass {
     required int rowCount,
   }) {
     final left = _painter.layout.halfLeft(pageIndex, half);
-    final rowsTop = _painter.layout.halfRowsTop(pageIndex);
-    final rowsBottom = rowsTop + rowCount * TimesheetDocumentLayout.rowHeight;
+    final rows = _painter.layout.halfRows(pageIndex);
+    final rowsBottom = rows.bottomOf(rowCount - 1);
     final right = left + _painter.layout.halfWidth;
     final columnsTop = _painter.layout.gridTop(pageIndex);
-    final lettersTop = rowsTop - TimesheetDocumentLayout.letterRowHeight;
+    final lettersTop = rows.top - TimesheetDocumentLayout.letterRowHeight;
 
     final lightPaint = Paint()
       ..color = TimesheetDocumentPainter._gridLight
@@ -73,11 +73,11 @@ class _TimesheetCellsPass {
       ..color = TimesheetDocumentPainter._gridBold
       ..strokeWidth = 1.6;
     final seRanges = _seColumnRanges(left);
-    final (firstRow, lastRow) = _rowsReached(_painter._cull, rowsTop, rowCount);
+    final (firstRow, lastRow) = rows.reached(_painter._cull, rowCount);
     final sheet = _HalfFrame(
       left: left,
       right: right,
-      rowsTop: rowsTop,
+      rows: rows,
       rowsBottom: rowsBottom,
       columnsTop: columnsTop,
       lettersTop: lettersTop,
@@ -131,7 +131,7 @@ class _TimesheetCellsPass {
         _paintHalfCells(
           canvas,
           left: left,
-          rowsTop: rowsTop,
+          rows: rows,
           startFrame: startFrame,
           rowCount: rowCount,
         );
@@ -175,7 +175,7 @@ class _TimesheetCellsPass {
       _paintHalfCells(
         canvas,
         left: left,
-        rowsTop: rowsTop,
+        rows: rows,
         startFrame: startFrame,
         rowCount: rowCount,
       );
@@ -191,12 +191,11 @@ class _TimesheetCellsPass {
         sheet.startFrame + row,
         fps: _painter.document.fps,
       );
-      final rowTop = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
       if (marks.number case final number?) {
         _painter._text(
           canvas,
           '$number',
-          Offset(sheet.numbersRight, rowTop + 4),
+          Offset(sheet.numbersRight, sheet.rows.topOf(row) + 4),
           fontSize: 8,
           color: TimesheetDocumentPainter._gridMedium,
           rightAlignedAtX: true,
@@ -206,10 +205,7 @@ class _TimesheetCellsPass {
         _painter._text(
           canvas,
           second,
-          Offset(
-            sheet.secondsRight,
-            rowTop + TimesheetDocumentLayout.rowHeight,
-          ),
+          Offset(sheet.secondsRight, sheet.rows.bottomOf(row)),
           fontSize: 10,
           bold: true,
           color: TimesheetDocumentPainter._gridBold,
@@ -225,7 +221,7 @@ class _TimesheetCellsPass {
   void _paintRowLines(Canvas canvas, _HalfFrame sheet) {
     for (var row = sheet.firstRow; row <= sheet.lastRow; row += 1) {
       final frame = sheet.startFrame + row;
-      final y = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
+      final y = sheet.rows.topOf(row);
       final Paint paint;
       if (frame % _painter.document.fps == 0 || row == sheet.rowCount) {
         paint = sheet.boldPaint;
@@ -320,7 +316,7 @@ class _TimesheetCellsPass {
   void _paintHalfCells(
     Canvas canvas, {
     required double left,
-    required double rowsTop,
+    required TimesheetRows rows,
     required int startFrame,
     required int rowCount,
   }) {
@@ -342,22 +338,21 @@ class _TimesheetCellsPass {
       // an earlier cut's (F-358).
       int leadOf(int blockStart) =>
           blockStart == 0 ? spec.spillInLeadFrames ?? 0 : 0;
-      final rows = _columnRows(
+      final reach = _columnRows(
         cells,
         kind: spec.kind,
         startFrame: startFrame,
-        rowsTop: rowsTop,
+        rows: rows,
         rowCount: rowCount,
         drawnFrameCount: _painter.liveDrawnFrameCount,
         shown: _painter._cull,
       );
-      final rowsShown = rows.rowCount;
-      for (var row = rows.from; row < rows.to; row += 1) {
+      final rowsShown = reach.rowCount;
+      for (var row = reach.from; row < reach.to; row += 1) {
         final frame = startFrame + row;
         final cell = cells[frame];
-        final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
-        final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
-        final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
+        final cellTop = rows.topOf(row);
+        final cellBottom = rows.bottomOf(row);
         // 🗣️F-557 (유저 2026-11-04): 「se블록이랑 se가 없는곳의 반투명
         // 영역이랑 같은 층인게 맘에안듬 … 그래서 그냥 대사 없는 구간 칠하는
         // 기능자체를 삭제」. ↩️An SE column washed its empty rows light gray
@@ -368,12 +363,12 @@ class _TimesheetCellsPass {
         final slot = _CellSlot(
           cell: cell,
           row: row,
+          rows: rows,
           columnLeft: columnLeft,
           columnWidth: columnWidth,
           centerX: centerX,
           cellTop: cellTop,
           cellBottom: cellBottom,
-          cellCenterY: cellCenterY,
           seColumn: seColumn,
           stretchFrom: _painter.document.stretchLineFrom(spec.kind),
           lead: leadOf(frame),
@@ -386,7 +381,7 @@ class _TimesheetCellsPass {
         // F-165: an entry that began in an earlier half writes the rest of
         // its dialogue here, from this half's top — its share of the words
         // laid over the whole span ([_TimesheetSePass.paintSeDialogueShare]).
-        if (rows.shareFrom case final from? when row == 0) {
+        if (reach.shareFrom case final from? when row == 0) {
           _painter._se.paintSeDialogueShare(
             canvas,
             start: cells[from],
@@ -395,7 +390,7 @@ class _TimesheetCellsPass {
             row: row,
             rowCount: rowsShown,
             centerX: centerX,
-            cellTop: cellTop,
+            rows: rows,
           );
         }
       }
@@ -418,7 +413,7 @@ class _TimesheetCellsPass {
         columnLeft: slot.columnLeft,
         columnWidth: slot.columnWidth,
         centerX: slot.centerX,
-        cellTop: slot.cellTop,
+        rows: slot.rows,
       );
     } else {
       _paintHead(canvas, slot);
@@ -484,8 +479,8 @@ class _TimesheetCellsPass {
         canvas,
         _painter.words.repeat,
         centerX: slot.centerX,
-        top: slot.cellTop + TimesheetDocumentLayout.rowHeight,
-        rows: wordRows,
+        top: slot.cellBottom,
+        bottom: slot.rows.bottomOf(slot.row + wordRows),
         columnWidth: slot.columnWidth,
       );
     }
@@ -540,7 +535,9 @@ class _TimesheetCellsPass {
           _painter.words.hold,
           centerX: slot.centerX,
           top: slot.cellTop,
-          rows: slot.cell.spanLength ?? 1,
+          bottom: slot.rows.bottomOf(
+            slot.row + (slot.cell.spanLength ?? 1) - 1,
+          ),
           columnWidth: slot.columnWidth,
         );
       case TimesheetCellKind.emptyRunStart:
@@ -581,32 +578,10 @@ class _TimesheetCellsPass {
   }
 }
 
-/// The rows of a half starting at [rowsTop] that a view of [shown] can
-/// reach — every row when [shown] is null.
-///
-/// This is OpenToonz's move — it turns the damage rect into a CELL
-/// INDEX RANGE (`xyRectToRange` → `r0..r1`) and iterates only those,
-/// with no offscreen cache for the grid at all. That is the shape of
-/// the finding that sent us here: a sheet grid is not expensive, and
-/// ours only looked expensive because it was drawing a whole B4
-/// document — ~334 lines and ~111 paragraphs — to fill a dock a few
-/// hundred pixels tall.
-///
-/// A row of slack each side, because a row's ink is allowed to reach a
-/// little past its own band (text baselines, the SE dotted guide).
-(int, int) _rowsReached(Rect? shown, double rowsTop, int rowCount) {
-  if (shown == null) {
-    return (0, rowCount);
-  }
-  const height = TimesheetDocumentLayout.rowHeight;
-  final first = ((shown.top - rowsTop) / height).floor() - 1;
-  final last = ((shown.bottom - rowsTop) / height).ceil() + 1;
-  return (first.clamp(0, rowCount), last.clamp(0, rowCount));
-}
-
 /// The rows of one column's half that a paint over [shown] writes: how
 /// many the column shows ([rowCount] but for an SE column's, cut at the
-/// drawn end), those a view of [shown] reaches ([_rowsReached]) from the
+/// drawn end), those a view of [shown] reaches ([TimesheetRows.reached])
+/// from the
 /// start of the span that reaches the first ([_spanStartRow]) to the
 /// column's last cell — and, where an SE entry came in from an earlier
 /// half, the frame it starts on: row 0 writes its share of the words
@@ -619,7 +594,7 @@ class _TimesheetCellsPass {
   List<TimesheetCell> cells, {
   required TimesheetColumnKind kind,
   required int startFrame,
-  required double rowsTop,
+  required TimesheetRows rows,
   required int rowCount,
   required int drawnFrameCount,
   required Rect? shown,
@@ -632,7 +607,7 @@ class _TimesheetCellsPass {
   final rowsShown = seColumn
       ? (drawnFrameCount - startFrame).clamp(0, rowCount)
       : rowCount;
-  final (first, last) = _rowsReached(shown, rowsTop, rowsShown);
+  final (first, last) = rows.reached(shown, rowsShown);
   final from = _spanStartRow(cells, startFrame, first);
   final to = math.min(last, cells.length - startFrame);
   final offset = seColumn && from == 0 && to > 0
@@ -661,20 +636,20 @@ List<Object?> _cellsShown(
   for (final page in _pagesShown(document, layout, shown)) {
     for (final strip in layout.halfStrips) {
       final startFrame = _halfStartFrame(document, page, strip.half);
-      final rows = _columnRows(
+      final reach = _columnRows(
         cells,
         kind: kind,
         startFrame: startFrame,
-        rowsTop: layout.halfRowsTop(page.index),
+        rows: layout.halfRows(page.index),
         rowCount: strip.rowCount,
         drawnFrameCount: drawnFrameCount,
         shown: shown,
       );
-      if (rows.from < rows.to) {
+      if (reach.from < reach.to) {
         read.add((
-          startFrame + rows.from,
-          ByList(cells.sublist(startFrame + rows.from, startFrame + rows.to)),
-          switch (rows.shareFrom) {
+          startFrame + reach.from,
+          ByList(cells.sublist(startFrame + reach.from, startFrame + reach.to)),
+          switch (reach.shareFrom) {
             final from? => cells[from],
             null => null,
           },
@@ -691,7 +666,7 @@ List<Object?> _cellsShown(
 /// 안보이면 대사 텍스트가 사라짐」. A span's START cell writes down the
 /// whole span — an SE entry its name and dialogue, a hold chain its word, a
 /// repeat chain its word — so culling the start row dropped ink the clip
-/// would have kept: the one thing [_rowsReached] may not
+/// would have kept: the one thing [TimesheetRows.reached] may not
 /// do. The rows a word runs down read as EMPTY, so the walk steps over
 /// empty rows up to the first cell that says where its span is.
 int _spanStartRow(List<TimesheetCell> cells, int startFrame, int firstRow) {
@@ -715,10 +690,8 @@ int _spanStartRow(List<TimesheetCell> cells, int startFrame, int firstRow) {
 }
 
 /// The top and the bottom of the grid [slot] is printed in — its half page.
-({double top, double bottom}) _gridOf(_CellSlot slot, {required int rowCount}) {
-  final top = slot.cellTop - slot.row * TimesheetDocumentLayout.rowHeight;
-  return (top: top, bottom: top + rowCount * TimesheetDocumentLayout.rowHeight);
-}
+({double top, double bottom}) _gridOf(_CellSlot slot, {required int rowCount}) =>
+    (top: slot.rows.top, bottom: slot.rows.bottomOf(rowCount - 1));
 
 /// One cell's place on the half page: the cell itself, its row, and the
 /// geometry the column and row give it. The per-kind painters read it
@@ -727,12 +700,12 @@ class _CellSlot {
   const _CellSlot({
     required this.cell,
     required this.row,
+    required this.rows,
     required this.columnLeft,
     required this.columnWidth,
     required this.centerX,
     required this.cellTop,
     required this.cellBottom,
-    required this.cellCenterY,
     required this.seColumn,
     required this.stretchFrom,
     required this.lead,
@@ -740,13 +713,26 @@ class _CellSlot {
 
   final TimesheetCell cell;
   final int row;
+
+  /// The rows of the half page the cell is printed on.
+  final TimesheetRows rows;
   final double columnLeft;
   final double columnWidth;
   final double centerX;
   final double cellTop;
   final double cellBottom;
-  final double cellCenterY;
+  double get cellCenterY => (cellTop + cellBottom) / 2;
   final bool seColumn;
+
+  /// The top and the bottom of the span the cell lies in — from the row
+  /// it began on, an earlier half's too, to the row it ends on.
+  ({double top, double bottom}) get span {
+    final first = row - (cell.spanOffset ?? 0);
+    return (
+      top: rows.topOf(first),
+      bottom: rows.bottomOf(first + (cell.spanLength ?? 1) - 1),
+    );
+  }
 
   /// Where a run in this column starts its stretch line, or null for none
   /// ([TimesheetDocument.stretchLineFrom]).
@@ -780,7 +766,7 @@ class _HalfFrame {
   const _HalfFrame({
     required this.left,
     required this.right,
-    required this.rowsTop,
+    required this.rows,
     required this.rowsBottom,
     required this.columnsTop,
     required this.lettersTop,
@@ -798,7 +784,7 @@ class _HalfFrame {
 
   final double left;
   final double right;
-  final double rowsTop;
+  final TimesheetRows rows;
   final double rowsBottom;
   final double columnsTop;
   final double lettersTop;

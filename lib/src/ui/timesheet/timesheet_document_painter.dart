@@ -511,8 +511,31 @@ class TimesheetDocumentLayout {
   /// Top edge of a global frame row.
   double frameRowTop(int frameIndex) {
     final position = positionOfFrame(frameIndex);
-    return halfRowsTop(position.page) + position.row * rowHeight;
+    return halfRows(position.page).topOf(position.row);
   }
+
+  /// Bottom edge of a global frame row.
+  double frameRowBottom(int frameIndex) {
+    final position = positionOfFrame(frameIndex);
+    return halfRows(position.page).bottomOf(position.row);
+  }
+
+  /// The rows of a half page of [pageIndex] — every half of a page lays
+  /// its rows level with the others'.
+  TimesheetRows halfRows(int pageIndex) =>
+      TimesheetRows._(halfRowsTop(pageIndex), this);
+
+  /// The top of row [row] of a half page, below the top of its first row
+  /// — of any row, before the first or past the last as well: where a span
+  /// that began in an earlier half began.
+  double _rowTopIn(int row) => row * rowHeight;
+
+  /// The bottom of row [row] of a half page, below the top of its first.
+  double _rowBottomIn(int row) => (row + 1) * rowHeight;
+
+  /// How many rows of a half page lie above [offset] below its first
+  /// row's top, a part of a row counted as such.
+  double _rowsAbove(double offset) => offset / rowHeight;
 
   /// The data-driven cut-end line (the paper's horizontal strikethrough,
   /// S2-0): the bottom edge of the LAST playback frame row, spanning its
@@ -531,7 +554,7 @@ class TimesheetDocumentLayout {
     return (
       page: position.page,
       half: position.half,
-      y: frameRowTop(lastFrame) + rowHeight,
+      y: frameRowBottom(lastFrame),
     );
   }
 
@@ -551,6 +574,46 @@ class TimesheetDocumentLayout {
 
   /// Logical size of the whole document: the stack of its pages.
   Size get documentSize => _stack.size;
+}
+
+/// Where the rows of a half page lie on the document — the ONE answer the
+/// form's rules, the values in the cells, the spans run down them and the
+/// playhead read, so none of them counts rows down by a height of its own.
+class TimesheetRows {
+  const TimesheetRows._(this.top, this._layout);
+
+  /// The top of the half's first row.
+  final double top;
+  final TimesheetDocumentLayout _layout;
+
+  /// The top of [row] — any row, before the first or past the last as
+  /// well ([TimesheetDocumentLayout._rowTopIn]).
+  double topOf(int row) => top + _layout._rowTopIn(row);
+
+  /// The bottom of [row].
+  double bottomOf(int row) => top + _layout._rowBottomIn(row);
+
+  /// The rows of [rowCount] that a view of [shown] can reach — every row
+  /// when [shown] is null.
+  ///
+  /// This is OpenToonz's move — it turns the damage rect into a CELL
+  /// INDEX RANGE (`xyRectToRange` → `r0..r1`) and iterates only those,
+  /// with no offscreen cache for the grid at all. That is the shape of
+  /// the finding that sent us here: a sheet grid is not expensive, and
+  /// ours only looked expensive because it was drawing a whole B4
+  /// document — ~334 lines and ~111 paragraphs — to fill a dock a few
+  /// hundred pixels tall.
+  ///
+  /// A row of slack each side, because a row's ink is allowed to reach a
+  /// little past its own band (text baselines, the SE dotted guide).
+  (int, int) reached(Rect? shown, int rowCount) {
+    if (shown == null) {
+      return (0, rowCount);
+    }
+    final first = _layout._rowsAbove(shown.top - top).floor() - 1;
+    final last = _layout._rowsAbove(shown.bottom - top).ceil() + 1;
+    return (first.clamp(0, rowCount), last.clamp(0, rowCount));
+  }
 }
 
 /// Clips to the panel and enters DOCUMENT SPACE — the prologue every
@@ -1029,10 +1092,10 @@ class TimesheetDocumentPainter extends CustomPainter
     String word, {
     required double centerX,
     required double top,
-    required int rows,
+    required double bottom,
     required double columnWidth,
   }) {
-    if (word.isEmpty || rows <= 0) {
+    if (word.isEmpty || bottom <= top) {
       return;
     }
     paintVerticalText(
@@ -1041,7 +1104,7 @@ class TimesheetDocumentPainter extends CustomPainter
       style: face.copyWith(color: _ink, fontSize: 10),
       centerX: centerX,
       top: top,
-      mainExtent: rows * TimesheetDocumentLayout.rowHeight,
+      mainExtent: bottom - top,
       naturalCellExtent: TimesheetDocumentLayout.rowHeight,
       setWord: paintScaledText,
       maxCellWidth: columnWidth - 2,
@@ -1258,11 +1321,11 @@ class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
     final position = layout.positionOfFrame(frame);
     final left = layout.halfLeft(position.page, position.half);
     canvas.drawRect(
-      Rect.fromLTWH(
+      Rect.fromLTRB(
         left,
         layout.frameRowTop(frame),
-        layout.halfWidth,
-        TimesheetDocumentLayout.rowHeight,
+        left + layout.halfWidth,
+        layout.frameRowBottom(frame),
       ),
       Paint()..color = _playhead,
     );
