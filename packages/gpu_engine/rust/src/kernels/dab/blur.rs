@@ -10,10 +10,13 @@
 //! the finished tile laid back on the cel (`qa_blur_result_tile`) are the
 //! next piece's: both read the pool's pages. A radius whose strip has no
 //! room in a workgroup's 16KB (r > 170, a brush past ~1000 px) goes a pass a
-//! dispatch, the Gaussian's way — also to come (01:13 ③), and with it where
-//! a dab's strips stop paying: on a whole picture a pass a dispatch wins past
-//! r 56 (gaussian.rs's MOST_STRIPS_RADIUS), but a dab's seven dispatches
-//! cost more than a picture's six, so its crossing is its own to measure.
+//! dispatch, the Gaussian's way — also to come (01:13 ③), and well short of
+//! that room: a strip's halo of 6r leaves it few pixels to put, so it reads
+//! the same line over again (11-06, the main PC's GPU, a dab — r 17: 49 µs,
+//! r 50: 131, r 100: 672, r 150: 4,281, r 167: 25,383; C at size 300, r 50:
+//! 683, growing with the size²). On a whole picture a pass a dispatch wins
+//! past r 56 (gaussian.rs's MOST_STRIPS_RADIUS); a dab's crossing is the
+//! ③ piece's to measure, somewhere past r 100.
 
 #[cfg(test)]
 #[path = "blur_tests.rs"]
