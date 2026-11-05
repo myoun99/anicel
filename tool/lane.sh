@@ -894,7 +894,7 @@ cmd_crate() {
     # lanes before it compiled (wgpu is minutes cold), and lands take turns.
     (cd "$p/packages/gpu_engine/rust" \
       && CARGO_TARGET_DIR="$ROOT/packages/gpu_engine/rust/target" \
-        cargo test --locked ${flag:+"$flag"}) >>"$log" 2>&1 || {
+        cargo test --locked --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
       grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
       die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
     }

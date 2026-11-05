@@ -121,7 +121,11 @@ void main() {
         at(crate, r'[ "$profile" = release ] && flag=--release'),
         isNot(-1),
       );
-      expect(at(crate, r'cargo test --locked ${flag:+"$flag"}'), isNot(-1));
+      expect(
+        at(crate, r'cargo test --locked --workspace ${flag:+"$flag"}'),
+        isNot(-1),
+        reason: 'every crate of the workspace, not its default members',
+      );
     });
 
     test('🚨are run from ONE place: the gate command runs nothing in the '
