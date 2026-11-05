@@ -1536,6 +1536,16 @@ fn a_surface_format_is_compiled_once() {
 /// far past it, one under it.
 const LOOKED_AT: [(i32, i32); 5] = [(0, 0), (1, 0), (2, 0), (5, 0), (0, 1)];
 
+/// The output tiles along a strip of four.
+const STRIP: [(i32, i32); 4] = [(0, 0), (1, 0), (2, 0), (3, 0)];
+
+/// Moved half a pixel, a pose other than a copy: a row reads its box
+/// widened by 16 px.
+fn half_a_pixel() -> ResampleMap {
+    let half = [1.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    ResampleMap::new(half, 1.0, ResampleMode::Blend, TILE, TILE).unwrap()
+}
+
 // A row is live on the output tiles where it reads a stored tile on its
 // pages. A strip of four tiles, each on the page of its column:
 // - moved two tiles left, a copy, it is a step a page: page 2 lays output
@@ -1549,7 +1559,7 @@ fn a_row_is_live_where_it_reads_a_stored_tile() {
     let sets = vec![pool.set(53, (0, 0), (4, 1), |c, _| Some(c as u16))];
     let live = |map: ResampleMap| {
         let steps = [with_map(0, map, WHOLE, NORMAL)];
-        let laid = super::lay(&steps, &sets, &LOOKED_AT, 4).expect("lay");
+        let laid = super::lay(&steps, &sets, &LOOKED_AT, 4, 4).expect("lay");
         laid.into_iter().map(|each| (each.pages, each.live)).collect::<Vec<_>>()
     };
     assert_eq!(
@@ -1559,9 +1569,70 @@ fn a_row_is_live_where_it_reads_a_stored_tile() {
             (vec![3], vec![false, true, false, false, false]),
         ]
     );
-    let half = [1.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-    let half = ResampleMap::new(half, 1.0, ResampleMode::Blend, TILE, TILE).unwrap();
-    assert_eq!(live(half), [(vec![0, 1, 2, 3], vec![true, true, true, false, true])]);
+    assert_eq!(live(half_a_pixel()), [(vec![0, 1, 2, 3], vec![true, true, true, false, true])]);
+}
+
+// A row in a pose other than a copy, reaching more pages than a pass binds,
+// is laid a group of output tiles at a time, a tile's pages never parted.
+// Moved half a pixel over the strip, output tile c reads the tiles either
+// side of it: 0 and 1, 0 to 2, 1 to 3, 2 and 3. At three pages a pass the
+// first two output tiles are one group and the last two another; at four,
+// all are one.
+#[test]
+fn a_row_s_output_tiles_are_grouped_by_the_pages_a_pass_binds() {
+    let mut pool = Pool::default();
+    let sets = vec![pool.set(53, (0, 0), (4, 1), |c, _| Some(c as u16))];
+    let steps = [with_map(0, half_a_pixel(), WHOLE, NORMAL)];
+    let groups = |pages_per_pass| {
+        let laid = super::lay(&steps, &sets, &STRIP, 4, pages_per_pass).expect("lay");
+        laid.into_iter().map(|each| (each.pages, each.live)).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        groups(3),
+        [
+            (vec![0, 1, 2], vec![true, true, false, false]),
+            (vec![1, 2, 3], vec![false, false, true, true]),
+        ]
+    );
+    assert_eq!(groups(4), [(vec![0, 1, 2, 3], vec![true; 4])]);
+}
+
+// Laid a group of output tiles at a time, a row lays what R1 resamples, a
+// pass a group; over a row under it, it composites as when one pass binds
+// every page, the stack kept between the groups. Two pages a pass take no
+// output tile reading three.
+#[test]
+fn a_row_laid_a_group_at_a_time_composites_as_in_one() {
+    let picture = picture_of(|x, y| texel(57, x, y), (4 * TILE, TILE));
+    let strip = |steps: Vec<Step>| {
+        let mut pool = Pool::default();
+        let sets = vec![
+            pool.set(57, (0, 0), (4, 1), |c, _| Some(c as u16)),
+            pool.set(58, (0, 0), (4, 1), |_, _| Some(4)),
+        ];
+        Scene {
+            pool,
+            sets,
+            keys: Vec::new(),
+            steps,
+            tiles: STRIP.to_vec(),
+        }
+    };
+    let alone = strip(vec![with_map(0, half_a_pixel(), WHOLE, NORMAL)]);
+    let (out, passes) = composite(&alone, within(3, usize::MAX));
+    assert!(out == resampled(&half_a_pixel(), &picture, &STRIP));
+    assert_eq!(passes, 2);
+    let over = strip(vec![
+        row(1, (0, 0), WHOLE, NORMAL),
+        with_map(0, half_a_pixel(), 50000, MULTIPLY),
+    ]);
+    let (out, passes) = composite(&over, within(3, usize::MAX));
+    assert!(out == widest(&over));
+    assert_eq!(passes, 3);
+    let Rig { engine, composite } = rig();
+    let pool = alone.pool.upload(engine);
+    let two = within(2, usize::MAX);
+    assert!(composite.run(engine, &alone.plan(&pool), &STRIP, EVERYWHERE, two).is_none());
 }
 
 // The kernel samples a row only where it is live: a row over two output
@@ -1583,7 +1654,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
     let tiles = [(0, 0), (1, 0)];
     let whole = composite.run(engine, &plan, &tiles, EVERYWHERE, composite.widest());
     let whole = read_buffer(engine, &whole.expect("composite").out);
-    let mut laid = super::lay(&steps, &sets, &tiles, 1).expect("lay");
+    let mut laid = super::lay(&steps, &sets, &tiles, 1, 1).expect("lay");
     laid[0].live[1] = false;
     let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("test out"),

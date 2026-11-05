@@ -19,12 +19,14 @@
 //! cut into passes, each binding the pages of its run of rows. A copied row
 //! whose tiles lie on several pages becomes one step per page: a pixel
 //! reads one tile of it, so exactly one of them lays it. Any other pose
-//! reads around where a pixel lands, so its row is one step binding every
-//! page it reaches; one reaching more than a pass binds waits for the
-//! round that lays a row first. A pass holds a window of the stack in its
-//! registers, [`DEPTH`] levels at most, so a tree nested deeper is cut
-//! where it leaves the window. Between passes the stack is kept on the
-//! 16-bit scale as it was, so the cuts change no value.
+//! reads around where a pixel lands, so an output tile's pages are never
+//! parted: its row is one step binding every page it reaches or, reaching
+//! more than a pass binds, a step for each group of output tiles whose
+//! pages a pass does bind. An output tile whose pixels alone reach more is
+//! refused. A pass holds a window of the stack in its registers, [`DEPTH`]
+//! levels at most, so a tree nested deeper is cut where it leaves the
+//! window. Between passes the stack is kept on the 16-bit scale as it was,
+//! so the cuts change no value.
 //!
 //! A row is sampled only on the output tiles where its pose reads a stored
 //! tile of it; on any other it would show nothing, so it is skipped there.
@@ -192,7 +194,8 @@ enum Target<'a> {
 }
 
 /// A step as the GPU reads it, the pages it lays a row from — one for a
-/// copied row's step, every one it reaches for any other pose — and, output
+/// copied row's step, every one its output tiles reach for any other
+/// pose's — and, output
 /// tile by output tile, whether it lays anything there: a row only where
 /// it reads a stored tile on its pages, any other step everywhere.
 struct Laid {
@@ -365,7 +368,7 @@ impl Composite {
             return fail(format!("{} stack levels a pass; one holds 2 to {DEPTH}", budget.levels));
         }
         check_depth(plan.steps, plan.sets.len(), plan.keys.len())?;
-        let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len())?;
+        let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         self.walk_laid(engine, plan, &laid, tiles, extent, pipeline, target, budget)
     }
 
@@ -591,13 +594,15 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize) -> Option<()> {
 
 /// `steps` as the GPU takes them: a row with the pages of the tiles its
 /// pose reads for the output tiles — a copied row once for each page, any
-/// other pose once for them all — and not at all where it reads none; each
-/// live on the output tiles where it reads a stored tile on its pages.
+/// other pose once for each group of them ([`grouped`]) — and not at all
+/// where it reads none; each live on the output tiles where it reads a
+/// stored tile on its pages.
 fn lay(
     steps: &[Step],
     sets: &[TileSet],
     tiles: &[(i32, i32)],
     page_count: usize,
+    pages_per_pass: usize,
 ) -> Option<Vec<Laid>> {
     let side = i64::from(TILE);
     let mut laid = Vec::new();
@@ -625,24 +630,55 @@ fn lay(
             }
             reads.push(read);
         }
-        let mut pages: Vec<u16> = reads.iter().flatten().copied().collect();
-        pages.sort_unstable();
-        pages.dedup();
         if map.is_copy() {
+            let mut pages: Vec<u16> = reads.iter().flatten().copied().collect();
+            pages.sort_unstable();
+            pages.dedup();
             laid.extend(pages.into_iter().map(|page| Laid {
                 step: *step,
                 pages: vec![page],
                 live: reads.iter().map(|read| read.contains(&page)).collect(),
             }));
-        } else if !pages.is_empty() {
-            laid.push(Laid {
-                step: *step,
-                pages,
-                live: reads.iter().map(|read| !read.is_empty()).collect(),
-            });
+        } else {
+            laid.extend(grouped(*step, &reads, pages_per_pass));
         }
     }
     Some(laid)
+}
+
+/// A row in a pose other than a copy, laid once for each group of the
+/// output tiles that read it, `reads` being the pages each reads: a tile
+/// joins the first group whose pages and its own a pass of `pages_per_pass`
+/// binds, or starts one. A pixel reads around where it lands, so a tile's
+/// pages are never parted; one tile reading more than a pass binds is a
+/// group of its own, which `cut` refuses.
+fn grouped(step: Step, reads: &[Vec<u16>], pages_per_pass: usize) -> Vec<Laid> {
+    let mut groups: Vec<Laid> = Vec::new();
+    for (tile, read) in reads.iter().enumerate() {
+        if read.is_empty() {
+            continue;
+        }
+        let joins = groups.iter().position(|group| {
+            let fresh = read.iter().filter(|page| !group.pages.contains(page)).count();
+            group.pages.len() + fresh <= pages_per_pass
+        });
+        let k = joins.unwrap_or_else(|| {
+            groups.push(Laid {
+                step,
+                pages: Vec::new(),
+                live: vec![false; reads.len()],
+            });
+            groups.len() - 1
+        });
+        let group = &mut groups[k];
+        for &page in read {
+            if !group.pages.contains(&page) {
+                group.pages.push(page);
+            }
+        }
+        group.live[tile] = true;
+    }
+    groups
 }
 
 /// `laid` cut into passes, in order. A pass ends where the next step would
