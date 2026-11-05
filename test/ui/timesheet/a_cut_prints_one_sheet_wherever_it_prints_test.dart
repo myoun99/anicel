@@ -112,8 +112,9 @@ void main() {
         as Map<String, dynamic>;
   }
 
-  /// What the one track of [table]'s field [fieldId] writes, by frame — a
-  /// track writes only the frames its value changes on.
+  /// What the one track of [table]'s field [fieldId] writes, by frame: the
+  /// last of its values — a cel's number, a line's words (a dialog's first
+  /// frame carries its speaker before them).
   Map<int, String> writtenOn(Map<String, dynamic> table, int fieldId) {
     final field = (table['fields'] as List<dynamic>)
         .cast<Map<String, dynamic>>()
@@ -127,15 +128,16 @@ void main() {
             (((entry['data'] as List<dynamic>).single
                             as Map<String, dynamic>)['values']
                         as List<dynamic>)
-                    .single
+                    .last
                 as String,
     };
   }
 
-  /// The frames [table]'s field [fieldId] writes a picture or a sound on.
+  /// The frames [table]'s field [fieldId] starts a picture or a sound on —
+  /// not the gaps, nor the hyphens a line lasts in.
   List<int> framesWritten(Map<String, dynamic> table, int fieldId) => [
     for (final MapEntry(:key, :value) in writtenOn(table, fieldId).entries)
-      if (value != xdtsNullCell) key,
+      if (value != xdtsNullCell && value != xdtsHyphen) key,
   ];
 
   test('the sheet runs on through the のりしろ the O.L asks of the cut', () {

@@ -55,6 +55,7 @@ Cut _cut() {
             id: const FrameId('se-f'),
             duration: 4,
             name: 'こんにちは',
+            seName: 'ミカ',
             strokes: const [],
           ),
         ],
@@ -155,14 +156,15 @@ void main() {
         ((fieldById(fieldId)['tracks'] as List<dynamic>).single
                 as Map<String, dynamic>)['frames']
             as List<dynamic>;
+    // A frame's values, joined by `|` where it carries two.
     (int, String) frameValue(Map<String, dynamic> entry) => (
       entry['frame'] as int,
       (((entry['data'] as List<dynamic>).single
-                      as Map<String, dynamic>)['values']
-                  as List<dynamic>)
-              .single
-          as String,
+                  as Map<String, dynamic>)['values']
+              as List<dynamic>)
+          .join('|'),
     );
+    const hyphen = 'SYMBOL_HYPHEN';
 
     // CELL: only value-change frames — named cel, gap, the unnamed cel's
     // mark as its tick, trailing gap.
@@ -174,20 +176,29 @@ void main() {
       (9, 'SYMBOL_NULL_CELL'),
     ]);
 
-    // DIALOG: a leading empty stretch precedes the serifu.
+    // DIALOG: a leading empty stretch precedes the serifu — its speaker and
+    // its line on its first frame, hyphens to its last (I-161-Q3).
     final dialog = trackFrames(3).cast<Map<String, dynamic>>();
     expect(dialog.map(frameValue), [
       (0, 'SYMBOL_NULL_CELL'),
-      (2, 'こんにちは'),
+      (2, 'ミカ|こんにちは'),
+      (3, hyphen),
+      (4, hyphen),
+      (5, hyphen),
       (6, 'SYMBOL_NULL_CELL'),
     ]);
 
-    // CAMERAWORK: vocabulary name with A→B, then free text, adjacent gap.
+    // CAMERAWORK: vocabulary name with A→B, then free text, adjacent gap —
+    // each lasting in hyphens.
     final camerawork = trackFrames(5).cast<Map<String, dynamic>>();
     expect(camerawork.map(frameValue), [
       (0, 'PAN (A→B)'),
+      for (var frame = 1; frame < 6; frame += 1) (frame, hyphen),
       (6, 'SYMBOL_NULL_CELL'),
       (8, 'ゆっくりFI'),
+      (9, hyphen),
+      (10, hyphen),
+      (11, hyphen),
     ]);
   });
 
@@ -344,8 +355,11 @@ void main() {
       [
         (0, 'SYMBOL_NULL_CELL'),
         (2, '(C→D)'),
+        (3, 'SYMBOL_HYPHEN'),
+        (4, 'SYMBOL_HYPHEN'),
         (5, 'SYMBOL_NULL_CELL'),
         (6, 'PAN'),
+        (7, 'SYMBOL_HYPHEN'),
         (8, 'SYMBOL_NULL_CELL'),
       ],
     );
@@ -596,17 +610,17 @@ void main() {
                 )['tracks']
                 as List<dynamic>)
             .cast<Map<String, dynamic>>();
+    // Where each line starts and stops, by its words — the hyphens that hold
+    // it between are the content test's.
     List<(int, String)> frameValues(Map<String, dynamic> track) => [
       for (final entry in (track['frames'] as List<dynamic>)
           .cast<Map<String, dynamic>>())
-        (
-          entry['frame'] as int,
-          (((entry['data'] as List<dynamic>).single
-                          as Map<String, dynamic>)['values']
-                      as List<dynamic>)
-                  .single
-              as String,
-        ),
+        if ((((entry['data'] as List<dynamic>).single
+                        as Map<String, dynamic>)['values']
+                    as List<dynamic>)
+                .last
+            case final String words when words != 'SYMBOL_HYPHEN')
+          (entry['frame'] as int, words),
     ];
 
     expect(frameValues(dialogTracks[0]), [
