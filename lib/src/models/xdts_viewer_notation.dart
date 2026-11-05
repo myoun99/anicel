@@ -73,12 +73,12 @@ typedef XdtsViewerNotation = ({
 /// sheet's DATA reading), its first [duration] frames: a drawing's number
 /// or mark where it starts, a breakdown mark where its block wears one,
 /// the null cell where a run of nothing starts — and null where the frame
-/// before holds on.
+/// before holds on. The XDTS file writes these values (`xdts_builder.dart`
+/// reads them here), so the sheet shows what the viewer reads.
 ///
 /// ⚠️Mine: a run of nothing writes its × up to the drawn end — the rows
-/// the XDTS is handed (`xdts_builder.dart`) — where our own sheets write
-/// it up to the conte end alone (`markEmptyRuns`); and a breakdown mark
-/// is written as the tick it is, which the XDTS file does not carry.
+/// the XDTS is handed — where our own sheets write it up to the conte end
+/// alone (`markEmptyRuns`).
 List<Object?> xdtsViewerFramesOf(
   List<TimesheetCell> cells, {
   required int duration,

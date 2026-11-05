@@ -14,6 +14,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/services/export/xdts_builder.dart';
 
@@ -90,6 +91,72 @@ Cut _cut() {
     ],
   );
 }
+
+/// The CELL track [content]'s one cel row writes: each frame it writes on,
+/// with its one value.
+List<(int, String)> _celValues(String content) {
+  final json =
+      jsonDecode(content.split('\n').skip(1).join('\n')) as Map<String, dynamic>;
+  final field =
+      (((json['timeTables'] as List<dynamic>).single
+                  as Map<String, dynamic>)['fields']
+              as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((field) => field['fieldId'] == xdtsFieldCell);
+  return [
+    for (final entry
+        in (((field['tracks'] as List<dynamic>).single
+                    as Map<String, dynamic>)['frames']
+                as List<dynamic>)
+            .cast<Map<String, dynamic>>())
+      (
+        entry['frame'] as int,
+        (((entry['data'] as List<dynamic>).single
+                        as Map<String, dynamic>)['values']
+                    as List<dynamic>)
+                .single
+            as String,
+      ),
+  ];
+}
+
+/// [_celValues] of a cut 8 frames long whose one cel row is [timeline],
+/// over the drawing `A1`.
+List<(int, String)> _celValuesOfRow(Map<int, TimelineExposure> timeline) =>
+    _celValues(
+      buildXdtsContent(
+        half: XdtsSheetHalf.genga,
+        cut: Cut(
+          id: const CutId('xdts-row'),
+          name: 'Cut 7',
+          duration: 8,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            Layer(
+              id: const LayerId('cel-a'),
+              name: 'A',
+              frames: [
+                Frame(
+                  id: const FrameId('a1'),
+                  duration: 1,
+                  name: 'A1',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('a2'),
+                  duration: 1,
+                  name: 'A2',
+                  strokes: const [],
+                ),
+              ],
+              timeline: timeline,
+            ),
+          ],
+        ),
+        cutLabel: '7',
+        unnamedMark: InbetweenMark.two,
+      ),
+    );
 
 void main() {
   test('the header writes the cut\'s own scene — 🗣️F-291-Q7 「컷의 신을 '
@@ -254,30 +321,7 @@ void main() {
         cutLabel: '5',
         unnamedMark: unnamedMark,
       );
-      final json =
-          jsonDecode(content.split('\n').skip(1).join('\n'))
-              as Map<String, dynamic>;
-      final field =
-          (((json['timeTables'] as List<dynamic>).single
-                      as Map<String, dynamic>)['fields']
-                  as List<dynamic>)
-              .cast<Map<String, dynamic>>()
-              .firstWhere((field) => field['fieldId'] == 0);
-      return [
-        for (final entry
-            in (((field['tracks'] as List<dynamic>).single
-                        as Map<String, dynamic>)['frames']
-                    as List<dynamic>)
-                .cast<Map<String, dynamic>>())
-          (
-            entry['frame'] as int,
-            (((entry['data'] as List<dynamic>).single
-                            as Map<String, dynamic>)['values']
-                        as List<dynamic>)
-                    .single
-                as String,
-          ),
-      ];
+      return _celValues(content);
     }
 
     expect(celValues(InbetweenMark.two), [
@@ -295,6 +339,72 @@ void main() {
         (6, 'SYMBOL_NULL_CELL'),
       ],
       reason: 'mark 1, the ○, is the format\'s first tick (I-130 order)',
+    );
+  });
+
+  // 타임라인/콘티 (I-162, 2026-11-05): the XDTS sheet draws a block's
+  // breakdown marks — the file wrote the block's head alone, so a viewer
+  // drew the line on through them.
+  test('a block\'s breakdown marks are written where the sheet draws them, '
+      'each as its tick', () {
+    expect(
+      _celValuesOfRow({
+        0: const TimelineExposure.drawing(
+          FrameId('a1'),
+          length: 6,
+          breakdownMarks: {2: InbetweenMark.one, 4: InbetweenMark.two},
+        ),
+      }),
+      [
+        (0, 'A1'),
+        (2, 'SYMBOL_TICK_1'),
+        (4, 'SYMBOL_TICK_2'),
+        (6, 'SYMBOL_NULL_CELL'),
+      ],
+    );
+  });
+
+  // R26 #26: a hold is the same cel exposed longer — one number, held on.
+  test('a held cel is written once however its hold was made, and a '
+      'repeat writes every round, as the sheet reads them', () {
+    TimelineExposure ghost(
+      FrameId id,
+      int length,
+      TimelineRunEdgeSide side,
+      TimelineRunEdgeMode mode,
+    ) => TimelineExposure.drawing(
+      id,
+      length: length,
+      ghostOf: TimelineRunEdgeGhost(side: side, mode: mode),
+    );
+    const a1 = FrameId('a1');
+    const a2 = FrameId('a2');
+
+    expect(
+      _celValuesOfRow({
+        0: const TimelineExposure.drawing(a1, length: 2),
+        2: ghost(a1, 3, TimelineRunEdgeSide.end, TimelineRunEdgeMode.hold),
+      }),
+      [(0, 'A1'), (5, 'SYMBOL_NULL_CELL')],
+      reason: 'an end hold',
+    );
+    expect(
+      _celValuesOfRow({
+        0: ghost(a1, 2, TimelineRunEdgeSide.start, TimelineRunEdgeMode.hold),
+        2: const TimelineExposure.drawing(a1, length: 2),
+      }),
+      [(0, 'A1'), (4, 'SYMBOL_NULL_CELL')],
+      reason: 'a front hold',
+    );
+    expect(
+      _celValuesOfRow({
+        0: const TimelineExposure.drawing(a1, length: 2),
+        2: const TimelineExposure.drawing(a2, length: 2),
+        4: ghost(a1, 2, TimelineRunEdgeSide.end, TimelineRunEdgeMode.repeat),
+        6: ghost(a2, 2, TimelineRunEdgeSide.end, TimelineRunEdgeMode.repeat),
+      }),
+      [(0, 'A1'), (2, 'A2'), (4, 'A1'), (6, 'A2')],
+      reason: 'an end repeat',
     );
   });
 

@@ -6,8 +6,10 @@ import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/timesheet_document.dart';
 import '../../models/transition_geometry.dart';
 import '../../models/xdts_sheet_half.dart';
+import '../../models/xdts_viewer_notation.dart';
 
 /// Builds an XDTS (exchange digital time sheet, OpenToonz/Toei) document
 /// for one cut, straight from the unified timeline model.
@@ -15,9 +17,10 @@ import '../../models/xdts_sheet_half.dart';
 /// Format (from OpenToonz `xdtsio`): the file opens with the identifier
 /// line, then JSON — `header{cut,scene}`, one timeTable with `duration`,
 /// `timeTableHeaders` (layer names per field) and `fields`, where a field
-/// is `fieldId` + `tracks` and a track writes each instruction at its first
-/// frame — a cel's held on, a dialog's and a camerawork's lasting in
-/// `SYMBOL_HYPHEN` ([_trackFrames]); an empty stretch starts with
+/// is `fieldId` + `tracks` and a track writes a value where one is written
+/// — a cel track what the XDTS sheet reads off its column, held on
+/// ([_cellTrackFrames]); a dialog's and a camerawork's at their first frame,
+/// lasting in `SYMBOL_HYPHEN` ([_trackFrames]); an empty stretch starts with
 /// `SYMBOL_NULL_CELL`. Field ids: CELL=0 (cels), DIALOG=3 (the SE/serifu
 /// column), CAMERAWORK=5 (camera instructions).
 const String xdtsFileIdentifier = 'exchangeDigitalTimeSheet Save Data';
@@ -109,8 +112,9 @@ String buildXdtsContent({
               'trackNo': track,
               'frames': _cellTrackFrames(
                 celLayers[track],
-                duration,
-                unnamedMark,
+                duration: duration,
+                playbackFrameCount: sources.playbackFrameCount,
+                unnamedMark: unnamedMark,
               ),
             },
         ],
@@ -186,13 +190,12 @@ Map<String, dynamic> _frameEntry(int frame, List<String> values) => {
 /// values its first frame carries.
 typedef _Span = ({int start, int endExclusive, List<String> values});
 
-/// The XDTS track rule, once: each span in [spans] writes its values at its
-/// start, a `SYMBOL_NULL_CELL` opens any gap before it, spans starting at or
-/// past [duration] are dropped, and the tail past the last span (or a track
-/// with no spans at all) closes with a null cell clamped inside the sheet.
-/// A cel holds its value on (readers hold values forward), while a field
-/// whose instruction [lastsWithHyphens] writes `SYMBOL_HYPHEN` on every
-/// frame after its first, to its end inside the sheet.
+/// The track rule of the dialog and camerawork fields: each span in [spans]
+/// writes its values at its start and `SYMBOL_HYPHEN` on every frame after
+/// it, to its end inside the sheet; a `SYMBOL_NULL_CELL` opens any gap
+/// before it, spans starting at or past [duration] are dropped, and the
+/// tail past the last span (or a track with no spans at all) closes with a
+/// null cell clamped inside the sheet.
 ///
 /// 🗣️I-161-Q3 (유저 2026-11-05): 「일단 데이터로서 내보낼수있는건 다
 /// 내보내고싶음」 — so the dialog and camerawork fields take the shape
@@ -206,9 +209,8 @@ typedef _Span = ({int start, int endExclusive, List<String> values});
 /// stops the producer as well, so a label nobody writes is never derived.
 List<Map<String, dynamic>> _trackFrames(
   Iterable<_Span> spans,
-  int duration, {
-  required bool lastsWithHyphens,
-}) {
+  int duration,
+) {
   final frames = <Map<String, dynamic>>[];
   var nextUncovered = 0;
   for (final span in spans) {
@@ -219,11 +221,9 @@ List<Map<String, dynamic>> _trackFrames(
       frames.add(_frameEntry(nextUncovered, const [xdtsNullCell]));
     }
     frames.add(_frameEntry(span.start, span.values));
-    if (lastsWithHyphens) {
-      final end = span.endExclusive < duration ? span.endExclusive : duration;
-      for (var frame = span.start + 1; frame < end; frame += 1) {
-        frames.add(_frameEntry(frame, const [xdtsHyphen]));
-      }
+    final end = span.endExclusive < duration ? span.endExclusive : duration;
+    for (var frame = span.start + 1; frame < end; frame += 1) {
+      frames.add(_frameEntry(frame, const [xdtsHyphen]));
     }
     nextUncovered = span.endExclusive;
   }
@@ -235,16 +235,43 @@ List<Map<String, dynamic>> _trackFrames(
   return frames;
 }
 
-/// A cel layer's track: each drawing's head ([_drawingSpans]), held on.
+/// A cel layer's track: the values the XDTS Viewer reads off its column,
+/// each on the frame it is written on — a drawing's number or mark where it
+/// starts, a breakdown mark where its block wears one, the null cell where
+/// a run of nothing starts — held on between them (readers hold values
+/// forward).
+///
+/// ⛔Read by the function the XDTS sheet draws the column by
+/// ([xdtsViewerFramesOf]), off the cells it draws ([timesheetLayerCells],
+/// the DATA cells the sheet's blocks print on an XDTS sheet —
+/// `TimesheetDocument.fromCut`), so the file is what the sheet shows (유저
+/// I-162 메모: 「보이는그대로 출력이 목표」). ↩️The file walked the drawing
+/// blocks on its own and wrote each one's head alone: the breakdown marks
+/// the sheet draws inside a block never reached it — a viewer drew the
+/// block's line on through them (타임라인/콘티, I-162 2026-11-05) — and a
+/// held cel's ghosts wrote its number again, one cel read as two (R26 #26).
 List<Map<String, dynamic>> _cellTrackFrames(
-  Layer layer,
-  int duration,
-  InbetweenMark unnamedMark,
-) => _trackFrames(
-  _drawingSpans(layer, unnamedMark, (_, head) => [head]),
-  duration,
-  lastsWithHyphens: false,
-);
+  Layer layer, {
+  required int duration,
+  required int playbackFrameCount,
+  required InbetweenMark unnamedMark,
+}) {
+  final frames = xdtsViewerFramesOf(
+    timesheetLayerCells(
+      layer: layer,
+      rowCount: duration,
+      playbackFrameCount: playbackFrameCount,
+      unnamedMark: unnamedMark,
+      dataSheet: true,
+    ),
+    duration: duration,
+  );
+  return [
+    for (var frame = 0; frame < frames.length; frame += 1)
+      if (frames[frame] case final value?)
+        _frameEntry(frame, [_xdtsValue(value)]),
+  ];
+}
 
 /// An SE layer's dialog track: each block's speaker — the name its accent
 /// box shows ([Frame.seName]), empty where it has none — and its line
@@ -262,10 +289,9 @@ List<Map<String, dynamic>> _dialogTrackFrames(
     (frame, head) => [frame.seName ?? '', head],
   ),
   duration,
-  lastsWithHyphens: true,
 );
 
-/// A cel/SE layer's drawing blocks as spans: each drawing's head where its
+/// An SE layer's drawing blocks as spans: each drawing's head where its
 /// block starts — what the printed sheet writes there ([drawingHeadOf]), as
 /// an XDTS value ([_xdtsHead]) — laid into the field's values by
 /// [valuesOf]; `?` for a drawing the layer does not hold.
@@ -301,7 +327,11 @@ Iterable<_Span> _drawingSpans(
   });
 }
 
-/// A drawing's [head] as an XDTS cell value: its cel number, or its mark
+/// A drawing's [head] as an XDTS cell value ([_xdtsValue]).
+String _xdtsHead(DrawingHead head) => _xdtsValue(head.mark ?? head.word);
+
+/// A value the viewer reads ([xdtsViewerFramesOf]) as an XDTS cell value:
+/// a cel number as it is, the null cell as `SYMBOL_NULL_CELL`, and a mark
 /// as the tick the format has for it. Mark 1 (○) is SYMBOL_TICK_1 and mark
 /// 2 (●) SYMBOL_TICK_2 — the order `xdtsio`'s spec names them in (中割り記号
 /// ○, 逆シート記号 ●) and the one the user checked against Toei's digital
@@ -309,10 +339,11 @@ Iterable<_Span> _drawingSpans(
 /// TICK_1 as a small dot, not a ○; the file still writes each mark by its
 /// shape — 🗣️I-161-Q9 (유저 2026-11-05): 「모양대로」 — and our sheet keeps
 /// its own ○ ● (I-161-Q6).
-String _xdtsHead(DrawingHead head) => switch (head.mark) {
-  null => head.word,
+String _xdtsValue(Object value) => switch (value) {
+  final String number => number,
   InbetweenMark.one => xdtsTick1,
   InbetweenMark.two => xdtsTick2,
+  _ => xdtsNullCell,
 };
 
 /// An instruction row's camerawork track: the event's writing (free text,
@@ -335,7 +366,6 @@ List<Map<String, dynamic>> _instructionTrackFrames(
       )
       .where((span) => span.values.single.isNotEmpty),
   duration,
-  lastsWithHyphens: true,
 );
 
 /// An instruction event's writing: free text, vocabulary-name fallback,

@@ -51,4 +51,26 @@ void main() {
           'it reads the story the printed sheet reads',
     );
   });
+
+  // The XDTS file wrote its cel tracks off the drawing blocks on its own,
+  // and lost the breakdown marks the XDTS sheet draws (I-162, 2026-11-05).
+  test('the XDTS file and the XDTS sheet read a cel column by one '
+      'function', () {
+    expect(
+      callersOf(
+        RegExp(r'\bxdtsViewerFramesOf\('),
+        definedIn: 'lib/src/models/xdts_viewer_notation.dart',
+      ),
+      containsAll([
+        endsWith('lib/src/services/export/xdts_builder.dart'),
+        endsWith(
+          'lib/src/ui/timesheet/document_painter/'
+          'timesheet_xdts_notation_pass.dart',
+        ),
+      ]),
+      reason:
+          'what the file writes is what the sheet shows — read it through '
+          'xdtsViewerFramesOf, never a second walk of the blocks',
+    );
+  });
 }
