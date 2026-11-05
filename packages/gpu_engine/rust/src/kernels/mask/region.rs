@@ -13,7 +13,7 @@ use super::MaskBox;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{
-    Encoded, WIDE_WGSL, encode, fits, pipeline, plane, q, words_buffer,
+    Encoded, WIDE_WGSL, encode, fits, flat, pipeline, plane, q, whole, words_buffer,
 };
 
 /// region.wgsl's workgroup side, and its scan's rows a workgroup.
@@ -183,15 +183,15 @@ impl RegionMask {
                 };
                 Encoded {
                     pipeline,
-                    bound,
-                    groups: groups(pass),
+                    bound: whole(&bound),
+                    groups: flat(groups(pass)),
                 }
             })
             .collect();
         encoded.push(Encoded {
             pipeline: &self.bytes,
-            bound: vec![(0, &words[passes.len()]), (4, &planes[1]), (5, &bytes)],
-            groups: out,
+            bound: whole(&[(0, &words[passes.len()]), (4, &planes[1]), (5, &bytes)]),
+            groups: flat(out),
         });
         encode(engine, &encoded);
         Some(bytes)

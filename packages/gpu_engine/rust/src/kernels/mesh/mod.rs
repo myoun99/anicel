@@ -17,7 +17,8 @@ mod tests;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{
-    Encoded, ResampleMap, ResampleMode, WIDE_WGSL, encode, fits, pipeline, plane, q, words_buffer,
+    Encoded, ResampleMap, ResampleMode, WIDE_WGSL, encode, fits, flat, pipeline, plane, q, whole,
+    words_buffer,
 };
 
 /// mesh.wgsl's workgroup side.
@@ -187,13 +188,13 @@ impl MeshOwners {
             .collect();
         let mut encoded = vec![Encoded {
             pipeline: &self.clear,
-            bound: vec![(0, &cleared), (1, &owners)],
-            groups: groups(output),
+            bound: whole(&[(0, &cleared), (1, &owners)]),
+            groups: flat(groups(output)),
         }];
         encoded.extend(boxes.iter().zip(&words).map(|(&(_, reach), words)| Encoded {
             pipeline: &self.own,
-            bound: vec![(0, words), (1, &owners)],
-            groups: groups(reach),
+            bound: whole(&[(0, words), (1, &owners)]),
+            groups: flat(groups(reach)),
         }));
         encode(engine, &encoded);
         Some(owners)

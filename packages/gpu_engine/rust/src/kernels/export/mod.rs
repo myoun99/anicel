@@ -39,7 +39,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, TILE_WGSL, encode, fits, pipeline, plane, words_buffer,
+    Encoded, TILE_WGSL, encode, fits, flat, pipeline, plane, whole, words_buffer,
 };
 
 /// The frame read: `frame_word`.
@@ -114,8 +114,8 @@ fn submit(
         engine,
         &[Encoded {
             pipeline,
-            bound: vec![(0, &params), (1, frame), (2, out)],
-            groups,
+            bound: whole(&[(0, &params), (1, frame), (2, out)]),
+            groups: flat(groups),
         }],
     );
 }
