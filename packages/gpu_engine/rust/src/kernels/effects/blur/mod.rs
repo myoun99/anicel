@@ -200,6 +200,8 @@ impl BoxBlur {
                 mapped_at_creation: false,
             })
         });
+        // Nothing at first (wgpu zeroes a new buffer) — what Repeat leaves
+        // outside its rectangle.
         let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("blur out"),
             size: bytes,
@@ -212,8 +214,6 @@ impl BoxBlur {
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        // Repeat puts nothing outside its rectangle.
-        encoder.clear_buffer(&out, 0, None);
         for (index, pass) in passes.iter().enumerate() {
             let from = match pass.from {
                 Held::Tiles => tiles,

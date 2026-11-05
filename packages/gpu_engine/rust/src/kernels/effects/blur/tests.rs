@@ -285,12 +285,13 @@ fn scenes() -> Vec<((u32, u32), Edge)> {
     ]
 }
 
+/// Wider than tall, so a tile counted by the wrong side lands elsewhere.
 #[test]
 fn every_device_blurs_the_pinned_picture() {
     let rect = TileRect {
         x0: -1,
         y0: 0,
-        columns: 2,
+        columns: 3,
         rows: 2,
     };
     let bytes: Vec<u8> = scenes()
