@@ -85,6 +85,9 @@ fn wave(@builtin(global_invocation_id) id: vec3<u32>) {
   // is longer than nothing.
   let shown = first.x < last.x || (first.x == last.x && first.y < last.y);
   let middle = across * 256u + 128u;
+  // A row past the strip has no lane: its lane would read past the table,
+  // and WGSL lets such a read return anything in it — a band there on some
+  // devices, though not on the one the tests run on.
   if (shown && middle < params.across_q8) {
     // The lane the row's middle falls in: no other lane's band reaches it,
     // each stopping a pixel inside its share.

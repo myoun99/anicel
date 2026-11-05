@@ -93,31 +93,32 @@ fn a_full_peak_reaches_a_pixel_short_of_its_share() {
     }
 }
 
-// A lane 40 pixels across reaches 20 − 1 = 19 pixels, 4864 in q8 — past
-// 4096, so `scaled` takes it in its two parts: 65535 · (4864 >> 12) =
-// 65535 high, 65535 · 768 + 32768 = 50363648 low, and (65535 >> 4) +
-// ((15 << 12) + 50363648) >> 16 = 4095 + 769 = 4864 — the band [256, 9984],
-// rows 1 to 38. Half scale: 32768 high, 25198592 low, 2048 + 384 = 2432 —
-// [2688, 7552], rows 10 and 29 by 128.
+// A lane 56 pixels across reaches 28 − 1 = 27 pixels, 6912 in q8 —
+// 0x1b00, past 4096 and with its 11th bit set, so `scaled` takes it in its
+// two parts: 65535 · (6912 >> 12) = 65535 high, 65535 · 2816 + 32768 =
+// 184579328 low, and (65535 >> 4) + ((15 << 12) + 184579328) >> 16 = 4095
+// + 2817 = 6912 — the band [256, 14080], rows 1 to 54. Half scale: 32768
+// high, 92307456 low, 2048 + 1408 = 3456 — [3712, 10624], rows 14 and 41
+// by 128.
 #[test]
 fn a_wide_lane_reaches_as_far_as_a_narrow_one_does_for_its_share() {
     let engine = first_engine();
     let view = WaveView {
-        across_q8: 40 * 256,
+        across_q8: 56 * 256,
         ..view()
     };
-    let full = lane(engine, (2, 40), &[FULL; 4], &view);
-    let rows: Vec<[u8; 4]> = (0..40).map(|y| at(&full, 2, 1, y)).collect();
-    let expected: Vec<[u8; 4]> = (0..40)
-        .map(|y| if (1..39).contains(&y) { ALL } else { NONE })
+    let full = lane(engine, (2, 56), &[FULL; 4], &view);
+    let rows: Vec<[u8; 4]> = (0..56).map(|y| at(&full, 2, 1, y)).collect();
+    let expected: Vec<[u8; 4]> = (0..56)
+        .map(|y| if (1..55).contains(&y) { ALL } else { NONE })
         .collect();
     assert_eq!(rows, expected);
-    let half = lane(engine, (2, 40), &[32768; 4], &view);
-    let rows: Vec<[u8; 4]> = (0..40).map(|y| at(&half, 2, 1, y)).collect();
-    let expected: Vec<[u8; 4]> = (0..40)
+    let half = lane(engine, (2, 56), &[32768; 4], &view);
+    let rows: Vec<[u8; 4]> = (0..56).map(|y| at(&half, 2, 1, y)).collect();
+    let expected: Vec<[u8; 4]> = (0..56)
         .map(|y| match y {
-            10 | 29 => white(128),
-            11..29 => ALL,
+            14 | 41 => white(128),
+            15..41 => ALL,
             _ => NONE,
         })
         .collect();
