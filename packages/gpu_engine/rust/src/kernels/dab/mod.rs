@@ -35,7 +35,7 @@ pub(crate) mod blur;
 mod tests;
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::device::Engine;
@@ -260,21 +260,23 @@ impl Piles {
     }
 }
 
-/// A plan kept from use to use: its head, the textures on it, then the
-/// last use's own words.
+/// A plan kept from use to use: its head and the last use's own words from
+/// its start, and the textures on it at its top, each placed under the one
+/// before.
 struct Plans {
     buffer: Option<wgpu::Buffer>,
     /// The words it holds.
     capacity: usize,
     /// Each texture on it, by id, at its place.
     placed: HashMap<u64, u32>,
-    /// Where the textures on it end.
-    end: usize,
+    /// Where the textures on it begin.
+    floor: usize,
 }
 
 impl Plans {
     fn new() -> Self {
-        Self { buffer: None, capacity: 0, placed: HashMap::new(), end: HEAD_WORDS }
+        // No room under a floor of 0: the first use makes the buffer.
+        Self { buffer: None, capacity: 0, placed: HashMap::new(), floor: 0 }
     }
 
     /// Writes the plan of `dabs` on `tiles` over `paper`, with the stroke's
@@ -289,50 +291,72 @@ impl Plans {
         second: Option<&Second>,
         more: impl Fn(&Plan) -> Option<Vec<u32>>,
     ) -> Option<&wgpu::Buffer> {
-        // The textures the plan reads that are not on it go after the ones
-        // that are; where that leaves no room for the use's own words, the
-        // plan starts over with the use's own, at twice what it takes.
+        // The head and the use's own words go from the plan's start, so one
+        // write sends both: a second write cost a pile 8 µs of some 107 to
+        // 129 (11-06, the main PC, by turns — wgpu makes a staging buffer a
+        // write).
+        // The textures the plan reads that are not on it go under the ones
+        // that are; where they would meet the use's words, the plan starts
+        // over with the use's own, at twice what it takes.
         let textures = textures_of(dabs, paper);
-        let planned_with_more = |end: usize, placed: &HashMap<u64, u32>| {
-            let mut plan = planned(tiles, dabs, paper, second, end, placed)?;
+        let planned_with_more = |placed: &HashMap<u64, u32>| {
+            let mut plan = planned(tiles, dabs, paper, second, HEAD_WORDS, placed)?;
             let words = more(&plan)?;
             plan.frame.extend(words);
             Some(plan)
         };
         let mut placed = self.placed.clone();
-        let mut end = self.end;
-        let mut fresh = placing(&textures, &mut placed, &mut end);
-        let mut plan = planned_with_more(end, &placed)?;
-        if self.buffer.is_none() || end + plan.frame.len() > self.capacity {
-            placed.clear();
-            end = HEAD_WORDS;
-            fresh = placing(&textures, &mut placed, &mut end);
-            plan = planned_with_more(end, &placed)?;
-            let words = end + plan.frame.len();
-            let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
-            if words > most {
-                return fail(format!("a plan of {words} words exceeds a binding's {most}"));
+        let mut floor = self.floor;
+        let kept = match placing(&textures, &mut placed, &mut floor) {
+            Some(fresh) => {
+                let plan = planned_with_more(&placed)?;
+                (HEAD_WORDS + plan.frame.len() <= floor).then_some((fresh, plan))
             }
-            self.capacity = (2 * words).min(most);
-            self.buffer = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("dab plan"),
-                size: self.capacity as u64 * 4,
-                // A uniform too: a pile's passes' own words are on it.
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::UNIFORM
-                    | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-        }
+            _ => None,
+        };
+        let (fresh, plan) = match kept {
+            Some(kept) => kept,
+            None => {
+                // The textures alone at the start, only to learn what the
+                // use's own words take.
+                let mut ids = HashSet::new();
+                let held: usize = textures
+                    .iter()
+                    .filter(|texture| ids.insert(texture.id))
+                    .map(|texture| texture.words.len())
+                    .sum();
+                (placed, floor) = (HashMap::new(), held);
+                placing(&textures, &mut placed, &mut floor)?;
+                let words = HEAD_WORDS + planned_with_more(&placed)?.frame.len() + held;
+                let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
+                if words > most {
+                    return fail(format!("a plan of {words} words exceeds a binding's {most}"));
+                }
+                self.capacity = (2 * words).min(most);
+                self.buffer = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("dab plan"),
+                    size: self.capacity as u64 * 4,
+                    // A uniform too: a pile's passes' own words are on it.
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::UNIFORM
+                        | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }));
+                (placed, floor) = (HashMap::new(), self.capacity);
+                let fresh = placing(&textures, &mut placed, &mut floor)?;
+                (fresh, planned_with_more(&placed)?)
+            }
+        };
         let buffer = self.buffer.as_ref()?;
         for texture in fresh {
             let at = u64::from(placed[&texture.id]) * 4;
             engine.queue.write_buffer(buffer, at, &bytes(&texture.words));
         }
-        engine.queue.write_buffer(buffer, 0, &bytes(&plan.head));
-        engine.queue.write_buffer(buffer, end as u64 * 4, &bytes(&plan.frame));
+        let mut words = plan.head.to_vec();
+        words.extend(&plan.frame);
+        engine.queue.write_buffer(buffer, 0, &bytes(&words));
         self.placed = placed;
-        self.end = end;
+        self.floor = floor;
         Some(buffer)
     }
 }
@@ -482,22 +506,23 @@ fn textures_of<'a>(dabs: &[Dab<'a>], paper: Option<&Paper<'a>>) -> Vec<&'a Textu
         .collect()
 }
 
-/// Places each of `textures` not yet `placed` from `end` on, moving `end`
-/// past it; gives the ones it placed.
+/// Places each of `textures` not yet `placed` under `floor`, moving `floor`
+/// to it; gives the ones it placed, or nothing where one would go under the
+/// plan's start.
 fn placing<'a>(
     textures: &[&'a Texture],
     placed: &mut HashMap<u64, u32>,
-    end: &mut usize,
-) -> Vec<&'a Texture> {
+    floor: &mut usize,
+) -> Option<Vec<&'a Texture>> {
     let mut fresh = Vec::new();
     for &texture in textures {
         if !placed.contains_key(&texture.id) {
-            placed.insert(texture.id, *end as u32);
-            *end += texture.words.len();
+            *floor = floor.checked_sub(texture.words.len())?;
+            placed.insert(texture.id, *floor as u32);
             fresh.push(texture);
         }
     }
-    fresh
+    Some(fresh)
 }
 
 fn bytes(words: &[u32]) -> Vec<u8> {
