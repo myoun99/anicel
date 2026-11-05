@@ -86,9 +86,17 @@ void main() {
               strokes: const [],
               name: 'あいうえお',
             ),
+            Frame(
+              id: const FrameId('s-2'),
+              duration: 1,
+              strokes: const [],
+              name: 'かきく',
+            ),
           ],
+          // The second runs past the cut's end: a `~` stands on its line.
           timeline: const {
             2: TimelineExposure.drawing(FrameId('s-1'), length: 8),
+            20: TimelineExposure.drawing(FrameId('s-2'), length: 8),
           },
         ),
         Layer(
@@ -234,11 +242,23 @@ void main() {
     };
     expect(where.keys, TimesheetContentPart.values, reason: 'every part');
 
+    final printedOf = <TimesheetContentPart, Uint8List>{};
     for (final MapEntry(key: part, value: rooms) in where.entries) {
-      final alphas = await printed(tester, {part});
+      final alphas = printedOf[part] = await printed(tester, {part});
       expect(inkOf(alphas), isNotNull, reason: '$part prints something');
       expect(outside(alphas, rooms), 0, reason: '$part prints in its room');
     }
+    // The 겸용 line hangs under the cut's name, in the header's room: the
+    // two share no pixel.
+    final values = printedOf[TimesheetContentPart.header]!;
+    final linked = printedOf[TimesheetContentPart.linkedCuts]!;
+    expect(
+      [
+        for (var i = 0; i < values.length; i += 1)
+          if (values[i] != 0 && linked[i] != 0) i,
+      ],
+      isEmpty,
+    );
   });
 
   testWidgets('🎯the parts together print the values whole, and nothing '
