@@ -12,6 +12,8 @@
 //! as many pages as are left past the kernel's own buffers, and a table
 //! tells it which binding holds each page of the pool.
 
+use std::ops::Range;
+
 use crate::device::Engine;
 use crate::fail;
 
@@ -132,4 +134,40 @@ pub(crate) fn page_table(bound: &[u16], pool: usize) -> impl Iterator<Item = u32
             .position(|&each| usize::from(each) == page)
             .map_or(NO_PAGE, |k| k as u32)
     })
+}
+
+/// Tiles in their order — each on the page `pages` names for it — cut into
+/// the runs a kernel's passes take, each with the pages it binds in the
+/// order they come (a page's k): a run ends where its next tile would
+/// bring it past `per_pass` pages or `most` tiles. The tiles keep their
+/// order, so a pass binds the range of a run in what it writes (dab/blur.rs:
+/// the cel's passes).
+///
+/// The second greedy cut by the pages a pass binds — the executor's `cut`
+/// (composite/mod.rs) is the first, which holds stack levels too: the two
+/// stay apart until a third comes (rule of three, CLAUDE.md absolute
+/// rule 1).
+pub(crate) fn runs(
+    pages: impl ExactSizeIterator<Item = u16>,
+    per_pass: usize,
+    most: usize,
+) -> Vec<(Range<usize>, Vec<u16>)> {
+    let count = pages.len();
+    let mut runs = Vec::new();
+    let mut first = 0;
+    let mut bound: Vec<u16> = Vec::new();
+    for (index, page) in pages.enumerate() {
+        let fresh = !bound.contains(&page);
+        if index - first == most || (fresh && bound.len() == per_pass) {
+            runs.push((first..index, std::mem::take(&mut bound)));
+            first = index;
+        }
+        if !bound.contains(&page) {
+            bound.push(page);
+        }
+    }
+    if first < count {
+        runs.push((first..count, bound));
+    }
+    runs
 }

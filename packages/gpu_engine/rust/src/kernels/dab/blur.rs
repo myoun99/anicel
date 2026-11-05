@@ -26,7 +26,6 @@ mod tests;
 
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::ops::Range;
 
 use wgpu::util::DeviceExt;
 
@@ -39,7 +38,9 @@ use crate::kernels::composite::{self, Composite, Composited, TILE_TEXELS, TileSe
 use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
-use crate::kernels::shared::{ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, fits, page_table, pipeline};
+use crate::kernels::shared::{
+    ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, fits, page_table, pipeline, runs,
+};
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
 const PASSES_AT: usize = 8;
@@ -587,7 +588,8 @@ impl Blurs {
     ) -> Option<()> {
         let tile_bytes = TILE_TEXELS * 4;
         let layout = pass.get_bind_group_layout(0);
-        let dispatches: Vec<(u32, wgpu::BindGroup)> = runs(tiles, pages_per_pass, most)
+        let on = tiles.iter().map(|tile| tile.at.page);
+        let dispatches: Vec<(u32, wgpu::BindGroup)> = runs(on, pages_per_pass, most)
             .into_iter()
             .map(|(run, pages)| {
                 let table: Vec<u32> = page_table(&pages, picture.len()).collect();
@@ -665,38 +667,6 @@ fn grown(engine: &Engine, slot: &mut Option<wgpu::Buffer>, bytes: u64, label: &s
             mapped_at_creation: false,
         }));
     }
-}
-
-/// `tiles` cut into the runs blur_cel.wgsl's passes take, in order, each
-/// with the pages it binds: a run ends where its next tile would bring it
-/// past `pages_per_pass` pages or `most` tiles.
-///
-/// The second greedy cut by the pages a pass binds — the executor's `cut`
-/// (composite/mod.rs) is the first, which holds stack levels too: the two
-/// stay apart until a third comes (rule of three, CLAUDE.md absolute
-/// rule 1).
-fn runs(
-    tiles: &[StrokeTile],
-    pages_per_pass: usize,
-    most: usize,
-) -> Vec<(Range<usize>, Vec<u16>)> {
-    let mut runs = Vec::new();
-    let mut first = 0;
-    let mut pages: Vec<u16> = Vec::new();
-    for (index, tile) in tiles.iter().enumerate() {
-        let fresh = !pages.contains(&tile.at.page);
-        if index - first == most || (fresh && pages.len() == pages_per_pass) {
-            runs.push((first..index, std::mem::take(&mut pages)));
-            first = index;
-        }
-        if !pages.contains(&tile.at.page) {
-            pages.push(tile.at.page);
-        }
-    }
-    if first < tiles.len() {
-        runs.push((first..tiles.len(), pages));
-    }
-    runs
 }
 
 /// `tiles` of `cel` — its tiles on the pool's `pages` — as the executor

@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use super::super::tests::{along, filled, grain, radial, soft, square, texture, words};
 use super::super::{Dab, Paper, StrokeTile};
-use super::{Blurs, MOST_STRIPS_RADIUS, Route, Ways, Window, runs};
+use super::{Blurs, MOST_STRIPS_RADIUS, Route, Ways, Window};
 use crate::kernels::composite::{Composite, TileAt, TileSet};
 use crate::testing::{assert_pinned, first_engine};
 
@@ -580,14 +580,12 @@ fn no_tile_to_make_or_finish_is_no_pass() {
     assert_eq!(words(&picture[0]), [JUNK; 2]);
 }
 
-// The cel's passes take a run of tiles a dispatch, cut where the next tile
-// would bring a run past the pages a pass binds or the tiles it takes, and
-// the runs make and finish what one does. Tiles on pages 0, 1, 0, 2, 2, 1
-// at two pages and three tiles a pass are the runs 0..3, on pages 0 and
-// 1, and 3..6, on 2 and 1; at one page a pass, five runs; at three pages
-// and two tiles, the tiles alone cut them: 0..2, 2..4 and 4..6.
+// The cel's passes take a run of tiles a dispatch (shared `runs`), and the
+// runs make and finish what one does: tiles on pages 0, 1, 0, 2, 2, 1 at
+// two pages and three tiles a pass, at one page, and at three pages and
+// two tiles.
 #[test]
-fn the_cels_passes_cut_where_a_run_has_no_more_room() {
+fn the_cels_runs_make_and_finish_what_one_pass_does() {
     let tiles: Vec<StrokeTile> = [0, 1, 0, 2, 2, 1]
         .into_iter()
         .enumerate()
@@ -596,12 +594,6 @@ fn the_cels_passes_cut_where_a_run_has_no_more_room() {
             StrokeTile { column: index as i32, row: 0, at }
         })
         .collect();
-    assert_eq!(runs(&tiles, 2, 3), [(0..3, vec![0, 1]), (3..6, vec![2, 1])]);
-    let one_a_pass =
-        [(0..1, vec![0]), (1..2, vec![1]), (2..3, vec![0]), (3..5, vec![2]), (5..6, vec![1])];
-    assert_eq!(runs(&tiles, 1, 6), one_a_pass);
-    let two_a_pass = [(0..2, vec![0, 1]), (2..4, vec![0, 2]), (4..6, vec![2, 1])];
-    assert_eq!(runs(&tiles, 3, 2), two_a_pass);
     let engine = first_engine();
     let cel = cel_of(stored_hashed, (0, 0), (6, 1), &[(4, 0)]);
     let blurs = Blurs::new(engine).expect("pages to bind");

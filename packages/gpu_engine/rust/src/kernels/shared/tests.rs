@@ -12,7 +12,7 @@ use wgpu::util::DeviceExt;
 use super::pages::NO_PAGE;
 use super::{
     PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, page_table,
-    pipeline,
+    pipeline, runs,
 };
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -1106,4 +1106,21 @@ fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
             .collect()
     };
     assert_eq!((words(&zeroth), words(&second)), (vec![1, 7, 3], vec![9, 5, 6]));
+}
+
+// Tiles in their order are cut where the next would bring a run past the
+// pages a pass binds or the tiles it takes. Tiles on pages 0, 1, 0, 2, 2, 1
+// at two pages and three tiles a pass are the runs 0..3, on pages 0 and
+// 1, and 3..6, on 2 and 1; at one page a pass, five runs; at three pages
+// and two tiles, the tiles alone cut them: 0..2, 2..4 and 4..6.
+#[test]
+fn runs_cut_where_the_next_tile_would_take_a_pass_past_its_room() {
+    let pages: [u16; 6] = [0, 1, 0, 2, 2, 1];
+    let two_by_three = [(0..3, vec![0, 1]), (3..6, vec![2, 1])];
+    assert_eq!(runs(pages.into_iter(), 2, 3), two_by_three);
+    let one_a_pass =
+        [(0..1, vec![0]), (1..2, vec![1]), (2..3, vec![0]), (3..5, vec![2]), (5..6, vec![1])];
+    assert_eq!(runs(pages.into_iter(), 1, 6), one_a_pass);
+    let two_a_pass = [(0..2, vec![0, 1]), (2..4, vec![0, 2]), (4..6, vec![2, 1])];
+    assert_eq!(runs(pages.into_iter(), 3, 2), two_a_pass);
 }

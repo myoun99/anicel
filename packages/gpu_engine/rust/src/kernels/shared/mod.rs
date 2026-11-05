@@ -24,7 +24,7 @@ pub(crate) mod tests;
 use crate::device::Engine;
 
 pub(crate) use dispatch::{Encoded, encode, fits, plane, words_buffer};
-pub(crate) use pages::{Pages, page_table};
+pub(crate) use pages::{Pages, page_table, runs};
 pub(crate) use resample::{ResampleMap, ResampleMode, q};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.
