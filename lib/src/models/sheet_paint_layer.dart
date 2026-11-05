@@ -56,7 +56,13 @@ enum SheetPaintLayer {
 /// spelled it for themselves, and a sheet's Photoshop rows (I-117) were
 /// about to spell it again.
 bool drawsSheetLayer(Set<SheetPaintLayer>? layers, SheetPaintLayer layer) =>
-    layers?.contains(layer) ?? true;
+    drawsAmong(layers, layer);
+
+/// Whether a print handed [named] draws [one]: those it names, or every one
+/// where it names none (null) — the strata a print is handed
+/// ([drawsSheetLayer]) and the parts of a timesheet's values it prints
+/// (`TimesheetContentPart`), read the one way.
+bool drawsAmong<T>(Set<T>? named, T one) => named?.contains(one) ?? true;
 
 /// The strata a sheet is BAKED in, bottom to top — each re-recorded only
 /// when what it prints changes (유저 2026-09-25: 「그림 수정하거나 텍스트

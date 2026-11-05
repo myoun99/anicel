@@ -811,7 +811,7 @@ class TimesheetDocumentPainter extends CustomPainter
   /// Whether this paint prints [part]'s values: the content stratum's, as
   /// [contentParts] names them.
   bool _drawsPart(TimesheetContentPart part) =>
-      _drawContent && (contentParts?.contains(part) ?? true);
+      _drawContent && drawsAmong(contentParts, part);
 
   /// Whether this paint prints the title of a column of [kind]: with its
   /// stratum ([TimesheetColumnKind.titleLayer]) — with its part too, where
