@@ -632,6 +632,15 @@ void main() {
       (0, 'SYMBOL_NULL_CELL'),
       (10, 'いくぞ'),
     ]);
+    expect(
+      [
+        for (final entry in dialogTracks[1]['frames'] as List<dynamic>)
+          (entry as Map<String, dynamic>)['frame'],
+      ],
+      [0, 10, 11],
+      reason: 'the line crossing the end lasts to the sheet\'s last frame, '
+          'and no further',
+    );
   });
 
   test('an empty cut still writes a valid sheet with a null-cell entry', () {
