@@ -31,7 +31,9 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::{ISQRT_WGSL, PREMULTIPLY_WGSL, pipeline, storage_format};
+use crate::kernels::shared::{
+    Encoded, ISQRT_WGSL, PREMULTIPLY_WGSL, encode_on, flat, pipeline, storage_format, whole,
+};
 use crate::kernels::timeline::LAID_WGSL;
 
 /// The most lanes a sound may bring.
@@ -266,37 +268,24 @@ impl WaveTile {
                 usage: wgpu::BufferUsages::STORAGE,
             });
         let tile_view = tile.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("wave"),
-            layout: &pipeline.get_bind_group_layout(0),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.params.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: peaks.words.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: edges.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&tile_view),
-                },
-            ],
+        let mut bound = whole(&[(0, &self.params), (1, &peaks.words), (2, &edges)]);
+        bound.push(wgpu::BindGroupEntry {
+            binding: 3,
+            resource: wgpu::BindingResource::TextureView(&tile_view),
         });
+        let groups = flat((tile.width().div_ceil(8), tile.height().div_ceil(8)));
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            pass.set_pipeline(&pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(tile.width().div_ceil(8), tile.height().div_ceil(8), 1);
-        }
+        encode_on(
+            engine,
+            &mut encoder,
+            &[Encoded {
+                pipeline: &pipeline,
+                bound,
+                groups,
+            }],
+        );
         let start = Instant::now();
         engine.queue.submit([encoder.finish()]);
         engine.wait()?;
