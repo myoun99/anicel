@@ -288,15 +288,18 @@ fn a_dab_the_strips_take_goes_by_them() {
 
 // A dab a pass a dispatch takes alternates between two planes, 12 by 10
 // here, each a binding of its own: what a binding holds is a plane, not
-// the two (gpu-canonical-store 11-06 03:09).
+// the two (gpu-canonical-store 11-06 03:09). The second holds what the
+// passes put on it: one plane bound twice reads what it writes, which a
+// small dab may not show (mutant w09, 11-06).
 #[test]
 fn a_dab_by_passes_lays_each_plane_on_a_binding_of_its_own() {
     let engine = first_engine();
-    let (lone, picture) = paged(&[(0, 0)], &[0; TILE_WORDS], 1);
+    let (lone, picture) = paged(&[(0, 0)], &[0x4000_2000; TILE_WORDS], 1);
     let dab = square([60, 60, 68, 64], WHITE, 1.0);
     let mut blurs = Blurs::new(engine).expect("pages to bind");
     let most = blurs.widest.pages.per_pass();
     blurs.blur_by(engine, &lone, &[(dab, 1)], None, &picture, (Route::Passes, most)).unwrap();
+    assert!(blurs.second.as_ref().is_some_and(|second| words(second).iter().any(|&w| w != 0)));
     let size = |plane: Option<wgpu::Buffer>| plane.map(|plane| plane.size());
     assert_eq!((size(blurs.between), size(blurs.second)), (Some(960), Some(960)));
 }

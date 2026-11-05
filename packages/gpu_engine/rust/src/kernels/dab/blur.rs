@@ -38,7 +38,7 @@ use crate::kernels::effects::blur::gaussian::{
 };
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table, pipeline,
-    runs, whole, words_buffer,
+    plane, runs, whole, words_buffer,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -617,12 +617,7 @@ fn on_the_picture(tiles: &[StrokeTile], picture: &[wgpu::Buffer]) -> Option<()> 
 /// less.
 fn grown(engine: &Engine, slot: &mut Option<wgpu::Buffer>, bytes: u64, label: &str) {
     if slot.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
-        *slot = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size: bytes,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        }));
+        *slot = Some(plane(engine, label, bytes));
     }
 }
 
