@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 
 use super::super::TileRect;
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
-use super::{BoxBlur, Edge, MOST_RADIUS, Route};
+use super::{BoxBlur, EDGE_NOTHING, Edge, MOST_RADIUS, Route, passes, strips};
 use crate::device::Engine;
 use crate::kernels::effects::tests::rgba;
 use crate::testing::{assert_pinned, first_engine};
@@ -185,6 +185,42 @@ fn repeat_reads_the_nearest_pixel_inside_and_puts_nothing_outside() {
     assert_eq!(blurred.row(21, 10..14), grey);
     for (x, y) in [(9, 20), (14, 21), (10, 19), (13, 22), (0, 0), (127, 127)] {
         assert_eq!(blurred.at(x, y), 0, "({x}, {y})");
+    }
+}
+
+/// A picture longer along a way than one strip holds is cut into strips —
+/// two of them here, each way — and they meet with no seam: both edges,
+/// rows and columns, put what a pass a dispatch puts.
+#[test]
+fn strips_of_a_long_picture_meet_with_no_seam() {
+    let wide = TileRect {
+        x0: -2,
+        y0: 0,
+        columns: 9,
+        rows: 1,
+    };
+    let tall = TileRect {
+        x0: 0,
+        y0: -1,
+        columns: 1,
+        rows: 9,
+    };
+    let scenes = [
+        (wide, (5, 3), Edge::Nothing, false),
+        (wide, (5, 3), Edge::Repeat([-250, 5, 880, 125]), false),
+        (tall, (3, 5), Edge::Nothing, true),
+        (tall, (3, 5), Edge::Repeat([5, -100, 120, 1020]), true),
+    ];
+    for (rect, radius, edge, down) in scenes {
+        let picture = match edge {
+            Edge::Nothing => rect.pixels(),
+            Edge::Repeat(inside) => inside,
+        };
+        let way = passes(picture, radius, EDGE_NOTHING);
+        let way = if down { &way[3..] } else { &way[..3] };
+        assert!(strips(way).expect("strips").groups.0 > 1, "{radius:?} {edge:?}");
+        let blurred = blur(rect, radius, edge, pattern).expect("blur");
+        assert!(blurred.words.iter().any(|&word| word != 0), "{radius:?} {edge:?}");
     }
 }
 
