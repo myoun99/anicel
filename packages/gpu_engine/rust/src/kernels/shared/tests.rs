@@ -710,6 +710,16 @@ fn sixteen_words_fill_the_slots_and_a_seventeenth_evicts() {
     }
     let map = one_map(affine(4.0, 0.0, 0.0, 0.0, 5.0, 0.0), ResampleMode::Pick, (1, 1));
     assert_eq!(window(&map, &picture, (1, 1), (0, 0)), [token(17)]);
+    // Six by three: sixteen words, then the sixteenth and the fifteenth
+    // again. The sixteenth has a slot of its own, so nothing is evicted and
+    // the tie of two goes to the fifteenth, met first.
+    let mut picture = Picture::filled(6, 3, 0);
+    let order = (1..=16).chain([16, 15]);
+    for (n, word) in order.enumerate() {
+        picture.put(n as u32 % 6, n as u32 / 6, token(word));
+    }
+    let map = one_map(affine(6.0, 0.0, 0.0, 0.0, 3.0, 0.0), ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&map, &picture, (1, 1), (0, 0)), [token(15)]);
 }
 
 #[test]
@@ -735,4 +745,31 @@ fn a_sixteen_times_reduction_weighs_areas_not_subsamples() {
     // A quarter turn: u follows y, v follows x — still axis-aligned.
     let turned = one_map(affine(0.0, 16.0, 0.25, 16.0, 0.0, 0.0), ResampleMode::Pick, (1, 1));
     assert_eq!(window(&turned, &picture, (1, 1), (0, 0)), [b]);
+}
+
+#[test]
+fn each_axis_steps_by_its_own_column_of_the_map() {
+    // Seventeen times along x, past the exact path: x steps 16 px (capped)
+    // and takes sixteen subsamples, landing on columns ⌊17(2k+1)/32⌋ — all
+    // but 8. Eight would land on the odd ones, ⌊17(2k+1)/16⌋. A on 1, 3, 5,
+    // 7 and 9, B elsewhere: sixteen give B 11 to 5, eight would give A 5 to
+    // 3. y steps 1 px and takes eight, all on the one row.
+    let (a, b) = (token(1), token(2));
+    let stripe = |k: u32| if k < 10 && k % 2 == 1 { a } else { b };
+    let mut across = Picture::filled(17, 1, 0);
+    for x in 0..17 {
+        across.put(x, 0, stripe(x));
+    }
+    let map = one_map(affine(17.0, 0.0, 0.0, 0.0, 1.0, 0.0), ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&map, &across, (1, 1), (0, 0)), [b]);
+    // A homography whose x runs down the rows: x's step is dv/dx = 17, and
+    // du/dy = 1/4 is y's. g = 2^-30 keeps it off the affine path while its
+    // Jacobian rounds to the affine one's.
+    let mut down = Picture::filled(1, 17, 0);
+    for y in 0..17 {
+        down.put(0, y, stripe(y));
+    }
+    let g = 1.0 / (1u64 << 30) as f64;
+    let map = one_map([0.0, 0.25, 0.375, 17.0, 0.0, 0.0, g, 0.0, 1.0], ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&map, &down, (1, 1), (0, 0)), [b]);
 }
