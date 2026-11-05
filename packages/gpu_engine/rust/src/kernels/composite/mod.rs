@@ -56,8 +56,8 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::shared::{
-    ISQRT_WGSL, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL,
-    Encoded, encode_on, le_bytes, page_table, pipeline, storage_format, tiles_a_pass, whole,
+    Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
+    WIDE_WGSL, encode_on, le_bytes, page_table, pipeline, storage_format, tiles_a_pass, whole,
     words_buffer,
 };
 
@@ -72,7 +72,10 @@ pub(crate) const DEPTH: usize = 8;
 const STEP_WORDS: usize = 12;
 const NO_TILE: u32 = u32::MAX;
 /// The plan and the work buffer: the storage buffers a pass binds besides
-/// its pages.
+/// its pages — and its pass's words, a uniform one. A device that binds
+/// sixteen pages past them binds them past one fewer as well, so no test
+/// here tells a count one short; a device of 19 buffers a stage would
+/// compile a pass binding twenty.
 const OWN_BUFFERS: u32 = 2;
 
 /// Where a stored tile is: a page of the pool, a slot in it.
@@ -224,7 +227,8 @@ pub(crate) struct Composite {
 
 impl Composite {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        let pages = Pages::new(engine, OWN_BUFFERS, OWN_BUFFERS + 1)?;
+        let own = Own { storage: OWN_BUFFERS, uniform: 1 };
+        let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let pipeline = compile(engine, &pages, include_str!("to_tiles.wgsl"));
         Some(Self {
             pipeline,

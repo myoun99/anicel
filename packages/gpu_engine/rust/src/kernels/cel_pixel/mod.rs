@@ -45,12 +45,13 @@ use crate::kernels::composite::{TILE, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
 use crate::kernels::mask::{BYTE_WGSL, MaskBox};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, Pages, TILE_WGSL, encode_on, fits, le_bytes, page_table, pipeline,
-    plane, runs, tiles_a_pass, whole, words_buffer,
+    Encoded, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, encode_on, fits, le_bytes, page_table,
+    pipeline, plane, runs, tiles_a_pass, whole, words_buffer,
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
-/// the new pixels, and the counts or the runs.
+/// the new pixels, and the counts or the runs — and the pass's words, a
+/// uniform one.
 const OWN_BUFFERS: u32 = 3;
 /// walk.wgsl — a walked tile, its pixels and what covers them, as the
 /// verbs and the lift read them.
@@ -219,7 +220,8 @@ pub(crate) struct CelPixels {
 
 impl CelPixels {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        let pages = Pages::new(engine, OWN_BUFFERS, OWN_BUFFERS + 1)?;
+        let own = Own { storage: OWN_BUFFERS, uniform: 1 };
+        let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let read = pages.source();
         let verbs = include_str!("cel_pixel.wgsl");
         let sources = [KEY_WGSL, TILE_WGSL, PREMULTIPLY_WGSL, &read, BYTE_WGSL, WALK_WGSL, verbs];

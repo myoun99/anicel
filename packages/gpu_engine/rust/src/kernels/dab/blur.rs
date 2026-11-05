@@ -27,7 +27,7 @@ mod tests;
 use std::cell::Cell;
 use std::collections::HashMap;
 
-use super::{Dab, Paper, Plans, StrokeTile, TILE};
+use super::{Dab, Paper, Plans, StrokeTile, TILE, of_pages, on_pages};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
@@ -37,8 +37,8 @@ use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table, pipeline,
-    plane, runs, tiles_a_pass, whole, words_buffer,
+    Encoded, ISQRT_WGSL, Own, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table,
+    pipeline, plane, runs, tiles_a_pass, whole, words_buffer,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -49,11 +49,12 @@ const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 /// — and the binding its pages begin at (blur.wgsl, blur_pass.wgsl). A
 /// device that binds sixteen pages past them binds them past two as well,
 /// so no test here tells a count one short (mutant r02, 11-06); a device of
-/// four storage buffers would compile a pass binding five.
-const OWN: u32 = 3;
+/// four storage buffers would compile a pass binding five. Past them the
+/// dab's words, a uniform one, so counted as well.
+const OWN: Own = Own { storage: 3, uniform: 1 };
 const PAGES_AT: u32 = 7;
 /// blur_cel.wgsl's: the cel and the slots, the pages from binding 2.
-const CEL_OWN: u32 = 2;
+const CEL_OWN: Own = Own { storage: 2, uniform: 0 };
 /// blur_cel.wgsl's BLUR_CEL_GROUP: the texels of a tile a workgroup takes.
 const CEL_GROUP: u64 = 256;
 /// The cel's copy has no edge: a stroke reaches past the canvas onto the
@@ -101,7 +102,10 @@ pub(crate) struct Blurs {
     /// pass binds: over sixteen a dab of 100 went a fifth slower than over
     /// one (11-06, the main PC: 46 µs a dab against 39.6; 37 before the
     /// pages). The executor's composite gains no more than 8% so, and binds
-    /// its widest alone (캔버스 베이스 11-06 04:35, the Surface).
+    /// its widest alone (캔버스 베이스 11-06 04:35, the Surface). The first
+    /// of two such choices — the other is the pile's (mod.rs's `Dabs::one`):
+    /// they stay apart until a third comes (rule of three, CLAUDE.md
+    /// absolute rule 1).
     one: Dispatches,
     widest: Dispatches,
     /// blur_cel.wgsl's two: the picture made from the cel, and finished;
@@ -296,7 +300,7 @@ impl Dispatches {
 
 impl Blurs {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN, usize::MAX)?;
+        let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN.storage, usize::MAX)?;
         let cel_paged = cel_pages.source();
         let cel_source = include_str!("blur_cel.wgsl");
         let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, cel_paged.as_str(), cel_source];
@@ -359,7 +363,7 @@ impl Blurs {
         if dabs.is_empty() {
             return Some(());
         }
-        on_the_picture(tiles, picture)?;
+        on_pages(tiles, picture)?;
         let at: HashMap<(i32, i32), usize> = tiles
             .iter()
             .enumerate()
@@ -424,7 +428,8 @@ impl Blurs {
         });
         let plan = plan?;
         // Each dispatch's own words: its dab's block and its pass, at an
-        // offset a binding may start at.
+        // offset a binding may start at — the first of two such uniforms,
+        // the other the pile's runs' (mod.rs).
         let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
         let count: usize = steps.iter().map(Vec::len).sum();
         let mut uniform = vec![0u32; stride * count];
@@ -464,8 +469,7 @@ impl Blurs {
                 if let (Entry::Pass, Some(second)) = (step.entry, second) {
                     bound.extend(whole(&[(6, second)]));
                 }
-                let read = window.pages.iter().map(|&page| &picture[usize::from(page)]);
-                bound.extend(way.pages.entries(read));
+                bound.extend(way.pages.entries(of_pages(picture, &window.pages)));
                 Encoded { pipeline: way.of(step.entry), bound, groups: flat(step.groups) }
             })
             .collect();
@@ -499,7 +503,7 @@ impl Blurs {
         picture: &[wgpu::Buffer],
         most: (usize, usize),
     ) -> Option<()> {
-        on_the_picture(tiles, picture)?;
+        on_pages(tiles, picture)?;
         let copied = copied(engine, executor, (pages, cel), tiles)?;
         self.through_cel(engine, &self.filling, &copied.out, (tiles, picture), most)
     }
@@ -524,7 +528,7 @@ impl Blurs {
         picture: &[wgpu::Buffer],
         most: (usize, usize),
     ) -> Option<wgpu::Buffer> {
-        on_the_picture(tiles, picture)?;
+        on_pages(tiles, picture)?;
         let finished = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("blur finished"),
             size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
@@ -584,28 +588,13 @@ impl Blurs {
                     }),
                 }];
                 bound.extend(whole(&[(1, slots)]));
-                let read = pages.iter().map(|&page| &picture[usize::from(page)]);
-                bound.extend(self.cel_pages.entries(read));
+                bound.extend(self.cel_pages.entries(of_pages(picture, pages)));
                 let groups = ((TILE_TEXELS / CEL_GROUP) as u32, run.len() as u32, 1);
                 Encoded { pipeline: pass, bound, groups }
             })
             .collect();
         encode(engine, &dispatches);
         Some(())
-    }
-}
-
-/// Whether every one of `tiles` is on a page of `picture`.
-fn on_the_picture(tiles: &[StrokeTile], picture: &[wgpu::Buffer]) -> Option<()> {
-    match tiles.iter().find(|tile| usize::from(tile.at.page) >= picture.len()) {
-        Some(tile) => fail(format!(
-            "tile ({}, {}) is on page {}; the picture has {}",
-            tile.column,
-            tile.row,
-            tile.at.page,
-            picture.len()
-        )),
-        None => Some(()),
     }
 }
 

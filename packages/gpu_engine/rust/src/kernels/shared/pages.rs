@@ -24,6 +24,17 @@ const MOST_PAGES: usize = 16;
 /// In a pass's table, a page of the pool the pass binds none of.
 pub(crate) const NO_PAGE: u32 = u32::MAX;
 
+/// The buffers a kernel binds a pass besides its pages: storage buffers,
+/// and uniform ones. A stage binds so many storage buffers, and so many
+/// buffers of every kind (wgpu 30's
+/// `max_buffers_and_acceleration_structures_per_shader_stage`, 28 unless
+/// asked for more): the pages take what both leave.
+#[derive(Clone, Copy)]
+pub(crate) struct Own {
+    pub(crate) storage: u32,
+    pub(crate) uniform: u32,
+}
+
 /// How a kernel binds pages: as many as a pass can on this device, from
 /// one binding on, and a blank one wherever a pass has fewer — to read, or
 /// to read and put.
@@ -31,14 +42,15 @@ pub(crate) struct Pages {
     first: u32,
     per_pass: usize,
     writable: bool,
+    name: &'static str,
     blank: wgpu::Buffer,
 }
 
 impl Pages {
-    /// For a kernel with `own` storage buffers besides its pages, whose
-    /// pages begin at binding `first` and are only read — or nothing, where
-    /// the device leaves it no page to bind.
-    pub(crate) fn new(engine: &Engine, own: u32, first: u32) -> Option<Pages> {
+    /// For a kernel with `own` buffers besides its pages, whose pages begin
+    /// at binding `first` and are only read — or nothing, where the device
+    /// leaves it no page to bind.
+    pub(crate) fn new(engine: &Engine, own: Own, first: u32) -> Option<Pages> {
         Self::bound(engine, (own, first), false, MOST_PAGES)
     }
 
@@ -48,19 +60,19 @@ impl Pages {
     /// pass binds is a case of every read and put. The pages past the ones
     /// a pass binds are blank, so no test tells a pass of fewer from one of
     /// the device's most — only the time (mutant p04, 11-06).
-    pub(crate) fn writable(engine: &Engine, own: u32, first: u32, most: usize) -> Option<Pages> {
+    pub(crate) fn writable(engine: &Engine, own: Own, first: u32, most: usize) -> Option<Pages> {
         Self::bound(engine, (own, first), true, most)
     }
 
     fn bound(
         engine: &Engine,
-        (own, first): (u32, u32),
+        (own, first): (Own, u32),
         writable: bool,
         most: usize,
     ) -> Option<Pages> {
-        let limit = engine.device.limits().max_storage_buffers_per_shader_stage;
-        if limit <= own {
-            return fail(format!("{limit} storage buffers a stage leave no page to bind"));
+        let per_pass = Self::room(engine, own).min(MOST_PAGES).min(most);
+        if per_pass == 0 {
+            return fail("the buffers a stage binds leave no page to bind");
         }
         let blank = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("blank page"),
@@ -68,8 +80,25 @@ impl Pages {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        let per_pass = ((limit - own) as usize).min(MOST_PAGES).min(most);
-        Some(Pages { first, per_pass, writable, blank })
+        Some(Pages { first, per_pass, writable, name: "page", blank })
+    }
+
+    /// How many buffers a stage binds past a kernel's `own`: what the
+    /// storage buffers leave, and what the buffers of every kind leave.
+    pub(crate) fn room(engine: &Engine, own: Own) -> usize {
+        let limits = engine.device.limits();
+        let storage = limits.max_storage_buffers_per_shader_stage.saturating_sub(own.storage);
+        let every = limits.max_buffers_and_acceleration_structures_per_shader_stage;
+        storage.min(every.saturating_sub(own.storage + own.uniform)) as usize
+    }
+
+    /// These pages under `name` — bound as `{name}{k}`, read by
+    /// `{name}_word` and put by `{name}_put` — for a kernel that binds more
+    /// than one set of pages, a page of each at the same k (pile.wgsl: a
+    /// stroke's planes, their view and its second plane). Unnamed they are
+    /// `page`.
+    pub(crate) fn named(self, name: &'static str) -> Self {
+        Self { name, ..self }
     }
 
     /// How many pages a pass binds.
@@ -83,30 +112,34 @@ impl Pages {
     }
 
     /// The WGSL that binds the pages and reads them: `page_word(k, index)`,
-    /// and where they are writable `page_put(k, index, word)`.
+    /// and where they are writable `page_put(k, index, word)` — by their
+    /// name where they have one ([`Pages::named`]).
     pub(crate) fn source(&self) -> String {
-        let access = if self.writable { "read_write" } else { "read" };
+        let (access, name) = (if self.writable { "read_write" } else { "read" }, self.name);
         let bindings: String = (0..self.per_pass)
             .map(|k| {
                 format!(
-                    "@group(0) @binding({}) var<storage, {access}> page{k}: array<u32>;\n",
+                    "@group(0) @binding({}) var<storage, {access}> {name}{k}: array<u32>;\n",
                     self.first as usize + k
                 )
             })
             .collect();
         let reads: String = (0..self.per_pass)
-            .map(|k| format!("case {k}u: {{\n      return page{k}[index];\n    }}\n    "))
+            .map(|k| format!("case {k}u: {{\n      return {name}{k}[index];\n    }}\n    "))
             .collect();
         let source = include_str!("pages.wgsl")
+            .replace("fn page_word", &format!("fn {name}_word"))
             .replace("//__PAGES__", &bindings)
             .replace("//__READS__", &reads);
         if !self.writable {
             return source;
         }
         let puts: String = (0..self.per_pass)
-            .map(|k| format!("case {k}u: {{\n      page{k}[index] = word;\n    }}\n    "))
+            .map(|k| format!("case {k}u: {{\n      {name}{k}[index] = word;\n    }}\n    "))
             .collect();
-        source + "\n" + &include_str!("page_put.wgsl").replace("//__PUTS__", &puts)
+        let put = include_str!("page_put.wgsl")
+            .replace("fn page_put", &format!("fn {name}_put"));
+        source + "\n" + &put.replace("//__PUTS__", &puts)
     }
 
     /// The bindings of a pass's `bound` pages, in order, the blank one past

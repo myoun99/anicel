@@ -3,6 +3,9 @@
 // stroke tile and walks the dabs that reach the tile in the stroke's order:
 // a dab reads what the ones before it left, so the order is the law. The
 // pixel is read once, piled in registers, and written back with its bytes.
+// The walk is pile.wgsl's, over the pages the stroke's tiles are kept on;
+// this file has what a dab lays, which the blur brush's dab reads too
+// (blur.wgsl).
 //
 // Integers only, every intermediate inside u32 or i32, as blend.wgsl. A dab
 // comes as integers — mod.rs turns the app's numbers into them, the one
@@ -18,14 +21,6 @@
 // that reach each, a dab's record's place a word; the records, DAB_WORDS
 // each; the tables, an entry a word. Every place is a word of the plan.
 @group(0) @binding(0) var<storage, read> plan: array<u32>;
-// The stroke tiles' planes, a slot TILE_TEXELS pixels, two words a pixel:
-// red and green, then blue and alpha, the low half first.
-@group(0) @binding(1) var<storage, read_write> planes: array<u32>;
-// Their bytes, the planes' view (blend_pack8, dab_shown), a word a pixel.
-@group(0) @binding(2) var<storage, read_write> view: array<u32>;
-// The second tip's plane, alpha alone, a word a pixel as the view — where
-// the stroke has a second tip; a word of nothing where it has none.
-@group(0) @binding(3) var<storage, read_write> levels: array<u32>;
 
 // The head: where the tiles start; the stroke's paper — its texture's
 // place, NO_TABLE for none; its side; a pixel's step across it in 1/65536
@@ -414,74 +409,4 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
   let colour = plan[at + DAB_COLOUR];
   let laid = vec4<u32>(colour & 0xffu, (colour >> 8u) & 0xffu, (colour >> 16u) & 0xffu, 0u) * 257u;
   return blend_composite(BLEND_NORMAL, vec4<u32>(laid.xyz, source), under);
-}
-
-// What a stroke with a second tip shows where its first plane stands
-// `first` high and its second `level` (qa_dual_view_rows, which has the
-// law): the second blended over the first by the stroke's mode at its
-// density — the second the source, the first the destination. Where the
-// first tip laid nothing, nothing shows.
-fn dab_shown(first: u32, level: u32) -> u32 {
-  if (first == 0u) {
-    return 0u;
-  }
-  let mode = plan[HEAD_SECOND];
-  let density = plan[HEAD_SECOND_DENSITY];
-  if (mode == BLEND_MULTIPLY) {
-    // ⛔MULTIPLY KEEPS ITS OWN LINE (qa_dual_view_rows): a·((1 − d) + d·s),
-    // the default written plainly — the general form is the same number
-    // and not the same rounding.
-    return blend_mul(first, W_ONE - density + blend_mul(density, level));
-  }
-  // Never past W_ONE, which the C engine's double could round to: as
-  // blend_mul only rises with what it multiplies, the two terms come to
-  // at most W_ONE − density and density.
-  return blend_mul(first, W_ONE - density) + blend_mul(density, blend_channel(mode, level, first));
-}
-
-@compute @workgroup_size(8, 8)
-fn walk(
-  @builtin(workgroup_id) group: vec3<u32>,
-  @builtin(local_invocation_id) local: vec3<u32>,
-) {
-  let tile = plan[HEAD_TILES] + group.z * TILE_WORDS;
-  let lx = group.x * 8u + local.x;
-  let ly = group.y * 8u + local.y;
-  let x = bitcast<i32>(plan[tile + TILE_COLUMN]) * i32(TILE_SIDE) + i32(lx);
-  let y = bitcast<i32>(plan[tile + TILE_ROW]) * i32(TILE_SIDE) + i32(ly);
-  let texel = plan[tile + TILE_SLOT] * TILE_TEXELS + tile_texel(lx, ly);
-  var pixel = blend_unpack16(vec2<u32>(planes[texel * 2u], planes[texel * 2u + 1u]));
-  var paper = 0u;
-  if (plan[HEAD_PAPER] != NO_TABLE) {
-    paper = dab_paper(tile, lx, ly);
-  }
-  let shown = plan[HEAD_SECOND] != NO_TABLE;
-  var level = 0u;
-  if (shown) {
-    level = levels[texel];
-  }
-  let first = plan[tile + TILE_FIRST];
-  let count = plan[tile + TILE_COUNT];
-  for (var k = 0u; k < count; k = k + 1u) {
-    let at = plan[first + k];
-    if ((plan[at + DAB_FLAGS] & DAB_SECOND) == 0u) {
-      pixel = dab_lay(at, x, y, pixel, paper);
-      continue;
-    }
-    // A second tip's dab piles its plane as any dab piles its alpha. On a
-    // stroke with no second plane it lays nothing (qa_dab_blend_tile).
-    let source = dab_source(at, x, y, level, paper);
-    if (source != NOTHING) {
-      level = blend_alpha_over(source, level);
-    }
-  }
-  let pair = blend_pack16(pixel);
-  planes[texel * 2u] = pair.x;
-  planes[texel * 2u + 1u] = pair.y;
-  if (shown) {
-    levels[texel] = level;
-    view[texel] = blend_pack8(vec4<u32>(pixel.xyz, dab_shown(pixel.w, level)));
-  } else {
-    view[texel] = blend_pack8(pixel);
-  }
 }

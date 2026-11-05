@@ -13,6 +13,7 @@ const RED: [u8; 4] = [200, 100, 50, 255];
 
 /// What a stroke's tiles hold after a pile: each pixel's plane as four
 /// channels, its byte word, and its second plane where it has one.
+#[derive(PartialEq)]
 struct Piled {
     planes: Vec<[u32; 4]>,
     view: Vec<u32>,
@@ -56,33 +57,52 @@ pub(super) fn words(buffer: &wgpu::Buffer) -> Vec<u32> {
         .collect()
 }
 
-/// What a test pile lays its dabs in: the planes, their view, and the
-/// second plane where the stroke has one.
+/// What a test pile lays its dabs in, a buffer a page: the planes, their
+/// view, and the second plane where the stroke has one.
 struct Buffers {
-    planes: wgpu::Buffer,
-    view: wgpu::Buffer,
-    levels: Option<wgpu::Buffer>,
+    planes: Vec<wgpu::Buffer>,
+    view: Vec<wgpu::Buffer>,
+    levels: Option<Vec<wgpu::Buffer>>,
+}
+
+/// How a test stroke keeps its tiles: on `pages` pages — tile i on page
+/// i % pages, at slot i / pages — a pass binding no more than `per_pass`.
+#[derive(Clone, Copy)]
+struct Kept {
+    pages: usize,
+    per_pass: usize,
+}
+
+/// One page, as many as a pass binds.
+const ONE_PAGE: Kept = Kept { pages: 1, per_pass: 1 };
+
+/// A kernel of the dab's, on a device that binds a page of each.
+fn new_dabs() -> Dabs {
+    Dabs::new(first_engine()).expect("pages to bind")
 }
 
 /// `dabs` piled by `kernel` over `paper`, with the `second` tip where there
-/// is one, on `tiles` (slots in their order) whose planes start as `under`,
-/// every pixel of every tile — or nothing, where the kernel refuses them.
+/// is one, on `tiles` kept as `kept` whose planes start as `under`, every
+/// pixel of every tile — or nothing, where the kernel refuses them.
 fn pile_into(
     kernel: &mut Dabs,
-    tiles: &[(i32, i32)],
+    (tiles, kept): (&[(i32, i32)], Kept),
     under: [u32; 4],
     paper: Option<&Paper>,
     second: Option<&Dual>,
     dabs: &[Dab],
 ) -> Option<Buffers> {
-    let texels = tiles.len() * TILE_TEXELS as usize;
+    let texels = tiles.len().div_ceil(kept.pages) * TILE_TEXELS as usize;
     let pair = [under[0] | under[1] << 16, under[2] | under[3] << 16];
-    let buffers = Buffers {
-        planes: filled("test planes", &pair.repeat(texels)),
-        view: filled("test view", &vec![0; texels]),
-        levels: second.map(|dual| filled("test levels", &vec![dual.level; texels])),
+    let paged = |label: &str, words: &[u32]| -> Vec<wgpu::Buffer> {
+        (0..kept.pages).map(|_| filled(label, words)).collect()
     };
-    let second = second.zip(buffers.levels.as_ref()).map(|(dual, plane)| Second {
+    let buffers = Buffers {
+        planes: paged("test planes", &pair.repeat(texels)),
+        view: paged("test view", &vec![0; texels]),
+        levels: second.map(|dual| paged("test levels", &vec![dual.level; texels])),
+    };
+    let second = second.zip(buffers.levels.as_deref()).map(|(dual, plane)| Second {
         plane,
         mode: dual.mode,
         density: dual.density,
@@ -90,16 +110,37 @@ fn pile_into(
     let stroke: Vec<StrokeTile> = tiles
         .iter()
         .enumerate()
-        .map(|(slot, &(column, row))| {
-            StrokeTile { column, row, at: TileAt { page: 0, slot: slot as u16 } }
+        .map(|(index, &(column, row))| {
+            let (page, slot) = ((index % kept.pages) as u16, (index / kept.pages) as u16);
+            StrokeTile { column, row, at: TileAt { page, slot } }
         })
         .collect();
     let engine = first_engine();
-    kernel.pile(engine, &stroke, dabs, paper, second.as_ref(), &buffers.planes, &buffers.view)?;
+    let pages = (&buffers.planes[..], &buffers.view[..]);
+    kernel.pile_by(engine, &stroke, dabs, (paper, second.as_ref()), pages, kept.per_pass)?;
     Some(buffers)
 }
 
-/// [`pile_into`], read back.
+/// What `buffers` hold — the `tiles` tiles of a stroke kept on `pages`
+/// pages — tile after tile in the stroke's order.
+fn read(buffers: &Buffers, pages: usize, tiles: usize) -> Piled {
+    let in_order = |paged: &[wgpu::Buffer], per_texel: usize| -> Vec<u32> {
+        let paged: Vec<Vec<u32>> = paged.iter().map(words).collect();
+        let tile = TILE_TEXELS as usize * per_texel;
+        (0..tiles)
+            .flat_map(|index| paged[index % pages][index / pages * tile..][..tile].to_vec())
+            .collect()
+    };
+    let planes = in_order(&buffers.planes, 2)
+        .chunks_exact(2)
+        .map(|pair| [pair[0] & 0xffff, pair[0] >> 16, pair[1] & 0xffff, pair[1] >> 16])
+        .collect();
+    let levels = buffers.levels.as_deref().map_or(Vec::new(), |levels| in_order(levels, 1));
+    Piled { planes, view: in_order(&buffers.view, 1), levels }
+}
+
+/// [`pile_into`] on one page, read back — and the same, to the bit, kept on
+/// three pages, a pass binding as many as the device lets, two, and one.
 fn pile_on(
     kernel: &mut Dabs,
     tiles: &[(i32, i32)],
@@ -108,13 +149,16 @@ fn pile_on(
     second: Option<&Dual>,
     dabs: &[Dab],
 ) -> Option<Piled> {
-    let buffers = pile_into(kernel, tiles, under, paper, second, dabs)?;
-    let planes = words(&buffers.planes)
-        .chunks_exact(2)
-        .map(|pair| [pair[0] & 0xffff, pair[0] >> 16, pair[1] & 0xffff, pair[1] >> 16])
-        .collect();
-    let levels = buffers.levels.as_ref().map_or(Vec::new(), words);
-    Some(Piled { planes, view: words(&buffers.view), levels })
+    let one = pile_into(kernel, (tiles, ONE_PAGE), under, paper, second, dabs)?;
+    let one = read(&one, 1, tiles.len());
+    let widest = kernel.widest.planes.per_pass();
+    for per_pass in [widest, widest.min(2), 1] {
+        let kept = Kept { pages: 3, per_pass };
+        let spread = pile_into(kernel, (tiles, kept), under, paper, second, dabs);
+        let spread = read(&spread.expect("a pile on pages"), kept.pages, tiles.len());
+        assert!(spread == one, "{per_pass} pages a pass");
+    }
+    Some(one)
 }
 
 fn laid(
@@ -128,7 +172,7 @@ fn laid(
 }
 
 fn tried(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Option<Piled> {
-    laid(&mut Dabs::new(first_engine()), tiles, under, None, dabs)
+    laid(&mut new_dabs(), tiles, under, None, dabs)
 }
 
 fn piled(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Piled {
@@ -137,7 +181,7 @@ fn piled(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Piled {
 
 /// `dabs` piled on one tile of nothing, the stroke's second tip `dual`.
 fn dual(dual: &Dual, dabs: &[Dab]) -> Piled {
-    let kernel = &mut Dabs::new(first_engine());
+    let kernel = &mut new_dabs();
     pile_on(kernel, &[(0, 0)], [0; 4], None, Some(dual), dabs).expect("pile")
 }
 
@@ -550,7 +594,7 @@ fn on_paper(density: f64) -> Dab<'static> {
 /// The alphas `dab` leaves over `paper` on pixels (0, 0), (1, 0), (0, 1)
 /// and (1, 1).
 fn papered(paper: &Paper, dab: Dab) -> [u32; 4] {
-    let piled = laid(&mut Dabs::new(first_engine()), &[(0, 0)], [0; 4], Some(paper), &[dab]);
+    let piled = laid(&mut new_dabs(), &[(0, 0)], [0; 4], Some(paper), &[dab]);
     let piled = piled.expect("pile");
     [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(x, y)| piled.at(0, x, y).0[3])
 }
@@ -564,7 +608,7 @@ fn the_paper_tiles_from_the_canvas_origin() {
     let grain = texture(&CORNERS, 2);
     let paper = Paper { texture: &grain, scale: 1.0, height: false };
     assert_eq!(papered(&paper, on_paper(1.0)), [ONE, 32896, 16448, 0]);
-    let piled = laid(&mut Dabs::new(first_engine()), &[(0, 0), (-1, 0)], [0; 4], Some(&paper), &[
+    let piled = laid(&mut new_dabs(), &[(0, 0), (-1, 0)], [0; 4], Some(&paper), &[
         on_paper(1.0),
     ]);
     let piled = piled.expect("pile");
@@ -612,7 +656,7 @@ fn a_paper_wraps_by_its_own_side() {
     let grain = texture(&[row, row, row].concat(), 3);
     let paper = Paper { texture: &grain, scale: 2.0, height: false };
     let dab = Dab { region: [-400, 0, 8, 4], ..on_paper(1.0) };
-    let kernel = &mut Dabs::new(first_engine());
+    let kernel = &mut new_dabs();
     let piled = laid(kernel, &[(0, 0), (-3, 0)], [0; 4], Some(&paper), &[dab]).expect("pile");
     assert_eq!([0, 1, 5].map(|x| piled.at(0, x, 0).0[3]), [49151, 57375, 16384]);
     assert_eq!(piled.at(1, 0, 0).0[3], 49151);
@@ -634,7 +678,7 @@ fn the_paper_runs_on_between_its_texels_and_across_the_tiles() {
     let paper = Paper { texture: &grain, scale: 2.0, height: false };
     let dab = Dab { region: [-4, 0, 132, 4], ..on_paper(1.0) };
     let tiles = [(0, 0), (1, 0), (-1, 0)];
-    let piled = laid(&mut Dabs::new(first_engine()), &tiles, [0; 4], Some(&paper), &[dab]);
+    let piled = laid(&mut new_dabs(), &tiles, [0; 4], Some(&paper), &[dab]);
     let piled = piled.expect("pile");
     let row = [0, 1, 2, 3].map(|x| piled.at(0, x, 0).0[3]);
     assert_eq!(row, [49151, 49151, 16384, 16384]);
@@ -649,7 +693,7 @@ fn a_paper_past_what_the_integers_hold_is_refused() {
     let grain = texture(&CORNERS, 2);
     for scale in [0.0, 1e-6, 200000.0] {
         let paper = Paper { texture: &grain, scale, height: false };
-        let kernel = &mut Dabs::new(first_engine());
+        let kernel = &mut new_dabs();
         assert!(laid(kernel, &[(0, 0)], [0; 4], Some(&paper), &[on_paper(1.0)]).is_none());
     }
 }
@@ -662,11 +706,11 @@ fn textures_stay_on_the_plan_from_pile_to_pile() {
     let small = texture(&CORNERS, 2);
     let large = texture(&bristles(), 32);
     let paper = Paper { texture: &small, scale: 1.0, height: false };
-    let kept = &mut Dabs::new(first_engine());
+    let kept = &mut new_dabs();
     for (texture, on) in [(&small, None), (&large, None), (&small, None), (&large, Some(&paper))] {
         let tip = [tipped(texture, 9.0, turn_of(1), [20.0, 20.0])];
         let by_kept = laid(kept, &[(0, 0)], [0; 4], on, &tip).expect("pile");
-        let fresh = &mut Dabs::new(first_engine());
+        let fresh = &mut new_dabs();
         let by_fresh = laid(fresh, &[(0, 0)], [0; 4], on, &tip).expect("pile");
         assert_eq!(by_kept.planes, by_fresh.planes);
         assert_eq!(by_kept.view, by_fresh.view);
@@ -767,7 +811,7 @@ fn the_second_tip_is_laid_over_the_first() {
 // the level to 32768 + 32768·32767/65535 = 49152, a byte of 191.
 #[test]
 fn a_pile_carries_on_from_the_planes_it_finds() {
-    let kernel = &mut Dabs::new(first_engine());
+    let kernel = &mut new_dabs();
     let red = widened(RED, ONE);
     let at = Dual { mode: MULTIPLY, density: 1.0, level: 32768 };
     let still = pile_on(kernel, &[(0, 0)], red, None, Some(&at), &[]).expect("pile");
@@ -787,7 +831,7 @@ fn a_second_tips_dab_takes_no_paper() {
     let paper = Paper { texture: &grain, scale: 1.0, height: false };
     let dabs = [on_paper(1.0), second(on_paper(1.0))];
     let at = Dual { mode: MULTIPLY, density: 1.0, level: 0 };
-    let kernel = &mut Dabs::new(first_engine());
+    let kernel = &mut new_dabs();
     let piled = pile_on(kernel, &[(0, 0)], [0; 4], Some(&paper), Some(&at), &dabs);
     let piled = piled.expect("pile");
     assert_eq!((piled.level(0, 1, 1), piled.at(0, 1, 1)), (ONE, ([0; 4], 0)));
@@ -802,7 +846,7 @@ fn a_second_tips_dab_takes_no_paper() {
 fn a_second_tip_shown_by_a_mode_of_three_channels_is_refused() {
     let shown = |mode| {
         let at = Dual { mode, density: 1.0, level: 0 };
-        let kernel = &mut Dabs::new(first_engine());
+        let kernel = &mut new_dabs();
         pile_on(kernel, &[(0, 0)], [0; 4], None, Some(&at), &[]).is_some()
     };
     assert_eq!([0, 20, 25, 29].map(shown), [false; 4]);
@@ -822,7 +866,7 @@ fn the_two_tips_dabs_land_in_any_order_between_them() {
     let woven: Vec<Dab> = seconds().zip(firsts()).flat_map(|(s, f)| [s, f]).collect();
     let at = Dual { mode: OVERLAY, density: 0.7, level: 0 };
     let tiles = [(0, 0), (1, 0)];
-    let kernel = &mut Dabs::new(first_engine());
+    let kernel = &mut new_dabs();
     let one = pile_on(kernel, &tiles, [0; 4], None, Some(&at), &grouped).expect("pile");
     let other = pile_on(kernel, &tiles, [0; 4], None, Some(&at), &woven).expect("pile");
     assert!(one.levels.iter().any(|&level| level != 0));
@@ -838,11 +882,12 @@ fn the_two_tips_dabs_land_in_any_order_between_them() {
 #[test]
 fn a_stroke_lands_on_its_cel_as_a_row() {
     let engine = first_engine();
-    let kernel = &mut Dabs::new(engine);
+    let kernel = &mut new_dabs();
     let dab = square([0, 0, 4, 4], RED, 0.5);
-    let stroke = pile_into(kernel, &[(0, 0)], [0; 4], None, None, &[dab]).expect("pile");
+    let stroke = pile_into(kernel, (&[(0, 0)], ONE_PAGE), [0; 4], None, None, &[dab]);
     let blue = 30 | 90 << 8 | 220 << 16 | 255 << 24;
-    let pages = [filled("test cel", &vec![blue; TILE_TEXELS as usize]), stroke.view];
+    let mut pages = vec![filled("test cel", &vec![blue; TILE_TEXELS as usize])];
+    pages.extend(stroke.expect("pile").view);
     let one = |page| {
         let tiles = vec![Some(TileAt { page, slot: 0 })];
         TileSet { x0: 0, y0: 0, columns: 1, rows: 1, tiles }
@@ -1046,7 +1091,7 @@ fn every_device_piles_the_pinned_strokes() {
             dab.centre = dab.centre.map(|c| c - 128.0);
             dab.region = dab.region.map(|edge| edge - 128);
         });
-        let kernel = &mut Dabs::new(first_engine());
+        let kernel = &mut new_dabs();
         let piled = laid(kernel, &across, [0; 4], Some(&paper), &dabs).expect("pile");
         let (planes, view) = bytes(&piled);
         assert_pinned(&format!("dab/{name}-planes"), &planes);
@@ -1073,7 +1118,7 @@ fn every_device_piles_the_pinned_strokes() {
             })
             .collect();
         let at = Dual { mode, density, level: 0 };
-        let kernel = &mut Dabs::new(first_engine());
+        let kernel = &mut new_dabs();
         let piled = pile_on(kernel, &tiles, [0; 4], None, Some(&at), &woven).expect("pile");
         assert_eq!(piled.planes, soft.planes);
         if mode == MULTIPLY {
@@ -1085,17 +1130,27 @@ fn every_device_piles_the_pinned_strokes() {
     }
 }
 
-// ⏳A pile binds the planes and their view whole, one page, until it pages
-// them as the blur its picture: a tile on another page is refused, and
-// nothing is put on this one.
+// A tile on a page past the planes' — or past their view's, or the second
+// plane's — is refused, and nothing is put on the pages there are; on a
+// page of each, it is piled.
 #[test]
-fn a_piles_tile_on_another_page_is_refused() {
+fn a_tile_past_the_strokes_pages_is_refused() {
     let engine = first_engine();
     let texels = TILE_TEXELS as usize;
-    let (planes, view) = (filled("test planes", &vec![0; 2 * texels]), filled("test view", &[0]));
     let stroke = [StrokeTile { column: 0, row: 0, at: TileAt { page: 1, slot: 0 } }];
     let dab = square([0, 0, 4, 4], RED, 1.0);
-    let kernel = &mut Dabs::new(engine);
-    assert!(kernel.pile(engine, &stroke, &[dab], None, None, &planes, &view).is_none());
-    assert!(words(&planes).iter().all(|&word| word == 0));
+    let kernel = &mut new_dabs();
+    let mut piles = |planes: usize, view: usize, levels: usize| {
+        let pages = |count| -> Vec<wgpu::Buffer> {
+            (0..count).map(|_| filled("test page", &vec![0; 2 * texels])).collect()
+        };
+        let (planes, view, levels) = (pages(planes), pages(view), pages(levels));
+        let second = Second { plane: &levels, mode: MULTIPLY, density: 1.0 };
+        let piled = kernel.pile(engine, &stroke, &[dab], None, Some(&second), (&planes, &view));
+        (piled.is_some(), planes.iter().all(|page| words(page).iter().all(|&word| word == 0)))
+    };
+    assert_eq!(piles(1, 2, 2), (false, true));
+    assert_eq!(piles(2, 1, 2), (false, true));
+    assert_eq!(piles(2, 2, 1), (false, true));
+    assert_eq!(piles(2, 2, 2), (true, false));
 }

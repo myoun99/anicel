@@ -1,6 +1,6 @@
 //! The dab kernel — 3단계 (gpu-canonical-store ⑥, 1a (3/3 보탬)): a
 //! stroke's dabs piled on its 16-bit plane on the GPU, and the plane's bytes
-//! beside it. `dab.wgsl` has the walk and the arithmetic; this file turns
+//! beside it. `dab.wgsl` has the arithmetic and `pile.wgsl` the walk; this file turns
 //! the app's numbers into the integers it reads — the one place a float
 //! becomes one (1a 보탬 「넘겨받기」). Rust never fuses a multiply and an
 //! add, and each number here is one rounding of one product, so every
@@ -18,6 +18,13 @@
 //! the plan while piles read it: a pile sends only its own words. (Sent
 //! every frame, a 256-texel tip cost three times the dabs it was laid by,
 //! 11-05.)
+//!
+//! A stroke's tiles are kept as the pool keeps a stored tile, a tile a slot
+//! of a page (shared/pages.rs; 캔버스 베이스 11-06 04:18, (가)): its planes,
+//! its view and its second plane each on a page of their own, at the same
+//! page and slot. A binding holds 128 MB on some devices, and one dab of
+//! 2000 reaches 1,089 tiles of 128 KB. A pass binds the pages of a run of
+//! the tiles (shared `runs`).
 
 // ⏳Nothing outside the tests calls it until the app's connection round,
 // which 관제 opens (gpu-canonical-store 21:41).
@@ -27,6 +34,7 @@ pub(crate) mod blur;
 #[cfg(test)]
 mod tests;
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -34,7 +42,9 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
-use crate::kernels::shared::{Encoded, ISQRT_WGSL, TILE_WGSL, encode, pipeline, whole};
+use crate::kernels::shared::{
+    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, runs, whole, words_buffer,
+};
 
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
@@ -42,6 +52,9 @@ const HEAD_WORDS: usize = 7;
 const TILE_WORDS: usize = 7;
 const DAB_WORDS: usize = 29;
 const NO_TABLE: u32 = u32::MAX;
+/// pile.wgsl's: the plan, the run, then the pages — of the planes, of their
+/// view and of the second plane, as many of each.
+const PILE_PAGES_AT: u32 = 2;
 
 // The C engine's flags (QA_DAB_FLAG_*), as dab.wgsl reads them.
 const ERASE: u32 = 1;
@@ -122,12 +135,13 @@ pub(crate) struct Paper<'a> {
 }
 
 /// A stroke's second tip (`BrushSecondStroke`, `qa_dual_view_rows`): the
-/// plane its dabs pile on — alpha alone, a word a pixel, a slot a tile as
-/// the planes —, and the view the stroke shows of the two: the second's
+/// plane its dabs pile on — alpha alone, a word a pixel, on pages as the
+/// planes, a tile at its page and slot —, and the view the stroke shows of
+/// the two: the second's
 /// level over the first's alpha by `mode`, the C engine's stroke blend id
 /// (one that blends a channel alone), at `density` (`BrushDualView`).
 pub(crate) struct Second<'a> {
-    pub(crate) plane: &'a wgpu::Buffer,
+    pub(crate) plane: &'a [wgpu::Buffer],
     pub(crate) mode: u32,
     pub(crate) density: f64,
 }
@@ -191,8 +205,8 @@ pub(crate) struct Dab<'a> {
 
 /// A tile of the stroke: its column and row on the canvas's grid, and where
 /// it is kept — a page of the stroke's planes, a slot in it, as the pool
-/// keeps a stored tile (캔버스 베이스 11-06 03:36). Its view is at the
-/// same slot.
+/// keeps a stored tile (캔버스 베이스 11-06 03:36). Its view, and its
+/// second plane where the stroke has one, are at the same page and slot.
 #[derive(Clone, Copy)]
 pub(crate) struct StrokeTile {
     pub(crate) column: i32,
@@ -200,11 +214,48 @@ pub(crate) struct StrokeTile {
     pub(crate) at: TileAt,
 }
 
+/// The dab kernel: its walk, compiled for the pages a pass binds, and the
+/// plan the walk reads.
 pub(crate) struct Dabs {
-    pipeline: wgpu::ComputePipeline,
+    /// The walk binding one page of each a pass, as a run of tiles on one
+    /// goes — nearly every pile —, and binding as many as the device lets.
+    /// The second of two such choices — the other is the blur brush's dab
+    /// (blur.rs's `Blurs::one`): they stay apart until a third comes (rule
+    /// of three, CLAUDE.md absolute rule 1).
+    one: Piles,
+    widest: Piles,
     plans: Plans,
-    /// What the second plane's binding holds for a stroke with one tip.
-    no_second: wgpu::Buffer,
+}
+
+/// The walk, compiled for the pages a pass of it binds: of the planes, of
+/// their view and of the second plane, a page of each at the same k.
+struct Piles {
+    planes: Pages,
+    view: Pages,
+    levels: Pages,
+    pipeline: wgpu::ComputePipeline,
+}
+
+impl Piles {
+    /// Binding no more than `most` pages of each a pass — or nothing, where
+    /// the device leaves it none: past the plan and the run's words, a
+    /// third of what a stage binds goes to each.
+    fn new(engine: &Engine, most: usize) -> Option<Self> {
+        let paged = |set: u32, each: usize, name| {
+            let own = Own { storage: 1 + 2 * each as u32, uniform: 1 };
+            let first = PILE_PAGES_AT + set * each as u32;
+            Some(Pages::writable(engine, own, first, each)?.named(name))
+        };
+        let widest = Pages::room(engine, Own { storage: 1, uniform: 1 }) / 3;
+        let planes = paged(0, widest.min(most), "planes")?;
+        let each = planes.per_pass();
+        let (view, levels) = (paged(1, each, "view")?, paged(2, each, "levels")?);
+        let paged = [planes.source(), view.source(), levels.source()];
+        let mut sources = vec![ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, include_str!("dab.wgsl")];
+        sources.extend(paged.iter().map(String::as_str));
+        sources.push(include_str!("pile.wgsl"));
+        Some(Self { pipeline: pipeline(engine, &sources, "walk"), planes, view, levels })
+    }
 }
 
 /// A plan kept from use to use: its head, the textures on it, then the
@@ -282,23 +333,21 @@ impl Plans {
 }
 
 impl Dabs {
-    pub(crate) fn new(engine: &Engine) -> Self {
-        let sources = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, include_str!("dab.wgsl")];
-        let pipeline = pipeline(engine, &sources, "walk");
-        let no_second = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("no second plane"),
-            size: 4,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-        Self { pipeline, plans: Plans::new(), no_second }
+    /// The kernel — or nothing, where the device binds too few storage
+    /// buffers a stage for a page of each.
+    pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        Some(Self {
+            one: Piles::new(engine, 1)?,
+            widest: Piles::new(engine, usize::MAX)?,
+            plans: Plans::new(),
+        })
     }
 
-    /// Piles `dabs`, in their order, on the stroke `tiles` — `planes` two
-    /// words a pixel, `view` one, a slot a tile — over `paper`, with the
-    /// stroke's `second` tip where it has one, and writes each tile's
-    /// bytes; submits the work, the caller waits. A dab's pixels on a tile
-    /// not among `tiles` are the caller's to have given.
+    /// Piles `dabs`, in their order, on the stroke `tiles` over `paper`, with
+    /// the stroke's `second` tip where it has one, and writes each tile's
+    /// bytes: `planes` two words a pixel and `view` one, a tile at its page
+    /// and slot of each. Submits the work, the caller waits. A dab's pixels
+    /// on a tile not among `tiles` are the caller's to have given.
     pub(crate) fn pile(
         &mut self,
         engine: &Engine,
@@ -306,41 +355,119 @@ impl Dabs {
         dabs: &[Dab],
         paper: Option<&Paper>,
         second: Option<&Second>,
-        planes: &wgpu::Buffer,
-        view: &wgpu::Buffer,
+        (planes, view): (&[wgpu::Buffer], &[wgpu::Buffer]),
+    ) -> Option<()> {
+        let pages_per_pass = self.widest.planes.per_pass();
+        self.pile_by(engine, tiles, dabs, (paper, second), (planes, view), pages_per_pass)
+    }
+
+    /// `pile`, a pass binding no more than `pages_per_pass` pages of each —
+    /// a test's fewer than the device's, to see the runs a smaller device
+    /// cuts.
+    fn pile_by(
+        &mut self,
+        engine: &Engine,
+        tiles: &[StrokeTile],
+        dabs: &[Dab],
+        (paper, second): (Option<&Paper>, Option<&Second>),
+        (planes, view): (&[wgpu::Buffer], &[wgpu::Buffer]),
+        pages_per_pass: usize,
     ) -> Option<()> {
         if tiles.is_empty() {
             return Some(());
         }
-        // ⏳A pile binds the planes and their view whole, one page, until it
-        // pages them as the blur its picture (gpu-canonical-store 11-06
-        // 03:40, C): a tile on another page is refused, never put on this.
-        if let Some(tile) = tiles.iter().find(|tile| tile.at.page != 0) {
-            return fail(format!(
-                "a pile binds one page; tile ({}, {}) is on page {}",
-                tile.column, tile.row, tile.at.page
-            ));
-        }
+        on_pages(tiles, planes)?;
+        on_pages(tiles, view)?;
         if let Some(second) = second {
             if !blends_a_channel(second.mode) {
                 return fail(format!("a second tip shown by mode {}", second.mode));
             }
+            on_pages(tiles, second.plane)?;
         }
-        let most = engine.device.limits().max_compute_workgroups_per_dimension;
-        if tiles.len() > most as usize {
-            return fail(format!("{} stroke tiles exceed a dispatch's {most}", tiles.len()));
+        // A pass a run of the tiles, in their order: on no more pages than it
+        // binds, and no more tiles than a dispatch reaches.
+        let most = engine.device.limits().max_compute_workgroups_per_dimension as usize;
+        let runs = runs(tiles.iter().map(|tile| tile.at.page), pages_per_pass, most);
+        // Each tile's k: its page's binding among its run's.
+        let ks: Option<Vec<u32>> = runs
+            .iter()
+            .flat_map(|(run, pages)| {
+                let k = |tile: &StrokeTile| pages.iter().position(|&page| page == tile.at.page);
+                tiles[run.clone()].iter().map(move |tile| k(tile).map(|k| k as u32))
+            })
+            .collect();
+        let ks = ks?;
+        let ks_at = Cell::new(0);
+        let plan = self.plans.write(engine, tiles, dabs, paper, second, |plan| {
+            ks_at.set(plan.end());
+            Some(ks.clone())
+        })?;
+        // Each pass's own words — where its run starts, and where the ks are
+        // — at an offset a binding may start at. The second of two such
+        // uniforms — the other is a blur dab's dispatches' (blur.rs): they
+        // stay apart until a third comes (rule of three, CLAUDE.md absolute
+        // rule 1).
+        let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
+        let mut uniform = vec![0u32; stride * runs.len()];
+        for (index, (run, _)) in runs.iter().enumerate() {
+            uniform[index * stride..][..2].copy_from_slice(&[run.start as u32, ks_at.get() as u32]);
         }
-        let plan = self.plans.write(engine, tiles, dabs, paper, second, |_| Some(Vec::new()))?;
-        let levels = second.map_or(&self.no_second, |second| second.plane);
-        let bound = whole(&[(0, plan), (1, planes), (2, view), (3, levels)]);
-        let groups = (TILE / 8) as u32;
-        let groups = (groups, groups, tiles.len() as u32);
-        encode(engine, &[Encoded { pipeline: &self.pipeline, bound, groups }]);
+        let uniform = words_buffer(engine, "dab runs", &uniform, wgpu::BufferUsages::UNIFORM);
+        let dispatches: Vec<Encoded> = runs
+            .iter()
+            .enumerate()
+            .map(|(index, (run, pages))| {
+                // A run on one page goes by the walk that binds one. The
+                // widest binds it too, so no test tells the two apart — only
+                // the time.
+                let way = if pages.len() == 1 { &self.one } else { &self.widest };
+                let mut bound = whole(&[(0, plan)]);
+                bound.push(wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &uniform,
+                        offset: (index * stride * 4) as u64,
+                        size: wgpu::BufferSize::new(16),
+                    }),
+                });
+                bound.extend(way.planes.entries(of_pages(planes, pages)));
+                bound.extend(way.view.entries(of_pages(view, pages)));
+                let levels = second.into_iter().flat_map(|second| of_pages(second.plane, pages));
+                bound.extend(way.levels.entries(levels));
+                let side = (TILE / 8) as u32;
+                let groups = (side, side, run.len() as u32);
+                Encoded { pipeline: &way.pipeline, bound, groups }
+            })
+            .collect();
+        encode(engine, &dispatches);
         Some(())
     }
 }
 
-// The textures a pile reads.
+/// Whether every one of `tiles` is on one of `pages`.
+fn on_pages(tiles: &[StrokeTile], pages: &[wgpu::Buffer]) -> Option<()> {
+    match tiles.iter().find(|tile| usize::from(tile.at.page) >= pages.len()) {
+        Some(tile) => fail(format!(
+            "tile ({}, {}) is on page {}; there are {}",
+            tile.column,
+            tile.row,
+            tile.at.page,
+            pages.len()
+        )),
+        None => Some(()),
+    }
+}
+
+/// The buffers of `pages` among `buffers`, in their order — what a pass
+/// binds of them.
+fn of_pages<'a>(
+    buffers: &'a [wgpu::Buffer],
+    pages: &'a [u16],
+) -> impl Iterator<Item = &'a wgpu::Buffer> + 'a {
+    pages.iter().map(|&page| &buffers[usize::from(page)])
+}
+
+/// The textures a pile reads.
 fn textures_of<'a>(dabs: &[Dab<'a>], paper: Option<&Paper<'a>>) -> Vec<&'a Texture> {
     dabs.iter()
         .filter_map(|dab| match dab.shape {

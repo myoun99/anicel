@@ -17,7 +17,8 @@ use crate::device::Engine;
 use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::mask::BYTE_WGSL;
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, Pages, TILE_WGSL, encode_on, pipeline, plane, runs, tiles_a_pass,
+    Encoded, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, encode_on, pipeline, plane, runs,
+    tiles_a_pass,
 };
 
 use super::{
@@ -26,7 +27,7 @@ use super::{
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
-/// the box's pixels and the flag.
+/// the box's pixels and the flag — and the lift's words, a uniform one.
 const OWN_BUFFERS: u32 = 3;
 
 /// The lift, compiled once for as many pages as the device lets it bind.
@@ -44,7 +45,8 @@ pub(crate) struct Lifted {
 
 impl Lift {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        let pages = Pages::new(engine, OWN_BUFFERS, OWN_BUFFERS + 1)?;
+        let own = Own { storage: OWN_BUFFERS, uniform: 1 };
+        let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let read = pages.source();
         let lift = include_str!("lift.wgsl");
         let sources = [TILE_WGSL, PREMULTIPLY_WGSL, &read, BYTE_WGSL, WALK_WGSL, lift];

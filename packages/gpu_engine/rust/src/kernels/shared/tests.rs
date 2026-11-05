@@ -11,7 +11,7 @@ use wgpu::util::DeviceExt;
 
 use super::pages::NO_PAGE;
 use super::{
-    PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, fits,
+    Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, fits,
     page_table, pipeline, runs, tiles_a_pass,
 };
 use crate::device::Engine;
@@ -997,7 +997,7 @@ fn every_device_premultiplies_as_the_app_does() {
 #[test]
 fn a_pass_reads_the_pages_it_binds_and_nothing_else() {
     let engine = first_engine();
-    let pages = Pages::new(engine, 2, 2).expect("a page to bind");
+    let pages = Pages::new(engine, Own { storage: 2, uniform: 0 }, 2).expect("a page to bind");
     let table: Vec<u32> = page_table(&[3, 1], 4).collect();
     assert_eq!(table, [NO_PAGE, 1, NO_PAGE, 0]);
     let source = pages.source();
@@ -1052,7 +1052,8 @@ fn a_pass_reads_the_pages_it_binds_and_nothing_else() {
 #[test]
 fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
     let engine = first_engine();
-    let pages = Pages::writable(engine, 1, 1, usize::MAX).expect("a page to bind");
+    let own = Own { storage: 1, uniform: 0 };
+    let pages = Pages::writable(engine, own, 1, usize::MAX).expect("a page to bind");
     let table: Vec<u32> = page_table(&[2, 0], 3).collect();
     assert_eq!(table, [1, NO_PAGE, 0]);
     let source = pages.source();

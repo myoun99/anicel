@@ -84,7 +84,7 @@ pub(crate) fn fits(
     Some(())
 }
 
-//// One dispatch as it is encoded: its pipeline, what it binds — a buffer
+/// One dispatch as it is encoded: its pipeline, what it binds — a buffer
 /// whole or a range of one, a texture's view, a kernel's pages — and its
 /// workgroups, across, down and deep.
 pub(crate) struct Encoded<'a> {
