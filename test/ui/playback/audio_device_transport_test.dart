@@ -1,3 +1,9 @@
+// The lap and play-once pins read the running device on time, and a crowd
+// starves the reader: each file carrying the tag runs alone
+// (tool/affected_tests.dart, transport-real-time-pins-fail-under-load).
+@Tags(['realtime'])
+library;
+
 import 'dart:developer' show Timeline;
 import 'dart:math' as math;
 import 'dart:typed_data';
