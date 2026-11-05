@@ -531,7 +531,7 @@ fn turn_of(k: u32) -> Turn {
         (12.0 / 13.0, -5.0 / 13.0),
     ];
     let (cos, sin) = frames[k as usize % frames.len()];
-    Turn { cos, sin, roundness: [1.0, 0.75, 0.5, 0.6][k as usize % 4] }
+    Turn { cos, sin, roundness: [1.0, 0.75, 0.5, 0.53][k as usize % 4] }
 }
 
 /// A 32 × 32 bitmap tip of hashed greys inside a circle, nothing outside.
