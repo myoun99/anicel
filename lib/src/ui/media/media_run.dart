@@ -92,9 +92,9 @@ class MediaRun {
       _clock.start(_surface.vsync);
     } else {
       _clock.stop();
+      _played.value = null;
     }
     playingFlips.value = going;
-    _played.value = going ? frameAt(_surface.frameRate) : null;
   }
 
   /// Fires when this run starts or stops, and on nothing else — never per
@@ -103,9 +103,9 @@ class MediaRun {
 
   /// The frame this run has got to while it plays, null while it stands —
   /// the canvas's `globalFrameIndexListenable`, which the transport's level
-  /// meter reads its bars again at (F-71-Q3). Set where the clock starts
-  /// and stops ([_runs]) and at each look ([_onTick]), so it cannot say a
-  /// run plays that does not.
+  /// meter reads its bars again at (F-71-Q3). Set at each look ([_onTick])
+  /// and let go where the clock stops ([_runs]), so it cannot say a run
+  /// plays that does not.
   ValueListenable<int?> get playedFrame => _played;
   final ValueNotifier<int?> _played = ValueNotifier<int?>(null);
 
