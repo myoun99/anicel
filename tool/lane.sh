@@ -309,6 +309,19 @@ furnish() {
   ensure_engine "$p" \
     || echo "lane: ⚠️this lane's engine is not built from its C — native results here describe other C" >&2
   (cd "$p" && flutter pub get >/dev/null 2>&1)
+  resolve_packages "$p"
+}
+
+# The packages the app does not depend on, which the merge gate still
+# analyzes — why, and the list, are in tool/resolve_packages.sh. Called
+# wherever the gate can next run on a tree: a furnished lane, the gates
+# themselves (a rebase can bring a package in), and the trunk after a land.
+# The checkout's own copy of the script, so its own list is what runs.
+resolve_packages() {
+  local p="$1"
+  [ -f "$p/tool/resolve_packages.sh" ] \
+    && bash "$p/tool/resolve_packages.sh" "$p" >/dev/null 2>&1
+  return 0
 }
 
 cmd_list() {
@@ -881,6 +894,7 @@ gates() {
   room_first "${3:-}"
   at_idle
   out="$(mktemp -d "${TMPDIR:-/tmp}/lane-gates.XXXXXX")"
+  resolve_packages "$p"
   echo "lane: flutter analyze (no arguments) and flutter test test/architecture, together"
   (cd "$p" && flutter analyze) > "$out/analyze" 2>&1 &
   analyze=$!
@@ -1047,6 +1061,7 @@ cmd_land() {
   # trunk engine that cannot be rebuilt now is the next `open`'s to fix.
   ensure_engine "$ROOT" \
     || echo "lane: ⚠️the trunk's engine is not built from the trunk's C — the next open tries again" >&2
+  resolve_packages "$ROOT"
 }
 
 { case "${1:-}" in

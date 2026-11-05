@@ -215,6 +215,10 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
+      # The packages the app does not depend on, which analyze still reads
+      # — why, and the list, are in the script (gpu-engine-skeleton-Q2).
+      - if: matrix.shard == 0
+        run: bash tool/resolve_packages.sh .
       # Once, not once per shard — it reads the whole package either way.
       # Kept INSIDE the matrix rather than split into its own job so that
       # deleting the guard can only make it run three times (noisy), never
