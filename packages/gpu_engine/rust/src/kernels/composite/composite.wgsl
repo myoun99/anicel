@@ -9,11 +9,11 @@
 // where the cuts fall changes no value.
 //
 // Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl,
-// shared/resample.wgsl and shared/tile.wgsl before it.
+// shared/resample.wgsl, shared/tile.wgsl and effects/key.wgsl before it.
 
 const NO_TILE: u32 = 0xffffffffu;
 const DEPTH: u32 = 8u;
-const STEP_WORDS: u32 = 11u;
+const STEP_WORDS: u32 = 12u;
 
 const STEP_ROW: u32 = 0u;
 const STEP_OPEN: u32 = 1u;
@@ -37,8 +37,8 @@ struct Pass {
 }
 
 @group(0) @binding(0) var<uniform> pass_: Pass;
-// Steps (STEP_WORDS each), then the rows' tile maps, their R1 maps, each
-// pass's table of pages, and the output tiles.
+// Steps (STEP_WORDS each), then the rows' tile maps, their key chains,
+// their R1 maps, each pass's table of pages, and the output tiles.
 @group(0) @binding(1) var<storage, read> plan: array<u32>;
 // The stack between passes, two words a level, then the output tiles.
 @group(0) @binding(2) var<storage, read_write> work: array<u32>;
@@ -54,13 +54,30 @@ fn page_word(k: u32, index: u32) -> u32 {
   }
 }
 
-// R1's source: the stored word of the row of step `at` at its own (x, y) —
-// nothing where it has no tile, where the tile's page is outside the
-// step's, or where this pass binds no such page.
+// key.wgsl's host: a chain's runs are in the plan.
+fn key_word(at: u32) -> u32 {
+  return plan[at];
+}
+
+// The keys of the row of step `at` over its stored `word`: each run of its
+// chain in order, every one against the word's own alpha.
+fn row_keyed(at: u32, word: u32) -> u32 {
+  let chain = plan[at + 11u];
+  let original = word >> 24u;
+  var keyed = word;
+  for (var run = 0u; run < plan[chain]; run++) {
+    keyed = key_rgba8(plan[chain + 1u + run], keyed, original);
+  }
+  return keyed;
+}
+
+// R1's source: the stored word of the row of step `at` at its own (x, y),
+// keyed — nothing where it has no tile, where the tile's page is outside
+// the step's, or where this pass binds no such page.
 //
 // A step: kind, mode, opacity, the first and last page it lays tiles from,
-// map_at, the map's first tile column and row, its columns and rows, and
-// where its R1 map is.
+// map_at, the map's first tile column and row, its columns and rows, where
+// its R1 map is, and where its key chain's list is.
 fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   let column = (x >> 7u) - bitcast<i32>(plan[at + 6u]);
   let row = (y >> 7u) - bitcast<i32>(plan[at + 7u]);
@@ -75,7 +92,8 @@ fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   }
   // A page the pass binds none of is NO_PAGE, no case of page_word's.
   let k = plan[pass_.pages_at + page];
-  return page_word(k, (entry & 0xffffu) * TILE_TEXELS + tile_texel(u32(x), u32(y)));
+  let index = (entry & 0xffffu) * TILE_TEXELS + tile_texel(u32(x), u32(y));
+  return row_keyed(at, page_word(k, index));
 }
 
 // What the row of step `at` shows at canvas pixel (x, y), straight on the

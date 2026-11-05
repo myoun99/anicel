@@ -10,7 +10,8 @@
 //! takes the five node kinds that close per pixel: a row in any pose R1
 //! takes (a whole-pixel move being its copy), a folder's buffer, a row over
 //! its backdrop (its own mode), a clipping group and its base made opaque.
-//! Adjustments and effects and a cel number's letters (drawn by the
+//! A row's colour keys run on its stored pixels, before R1 poses them.
+//! The other effects, adjustments and a cel number's letters (drawn by the
 //! engine's glyph path, then a row here) come in later rounds.
 //!
 //! The pages a pass can bind are few — `max_storage_buffers_per_shader_stage`
@@ -35,6 +36,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::shared::{ISQRT_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL};
 
 /// A tile's side in pixels (1a ①).
@@ -48,7 +50,7 @@ pub(crate) const DEPTH: usize = 8;
 /// The most pages one pass binds, whatever the device allows: each is a
 /// case of composite.wgsl's `page_word`.
 const MOST_PAGES: usize = 16;
-const STEP_WORDS: usize = 11;
+const STEP_WORDS: usize = 12;
 const NO_TILE: u32 = u32::MAX;
 /// A page a pass binds none of, in its table of pages.
 const NO_PAGE: u32 = u32::MAX;
@@ -105,14 +107,24 @@ impl TileSet {
     }
 }
 
+/// A row's colour keys: its runs, `KeyRun::words` each, in the chain's
+/// order. They are walked on the row's stored pixels before R1 poses them,
+/// as the app keys a cel before it is placed (캔버스 베이스,
+/// gpu-canonical-store 11-05 18:24), every run against the pixel's stored
+/// alpha.
+pub(crate) struct KeyChain {
+    pub(crate) runs: Vec<Vec<u32>>,
+}
+
 /// One step of a plan, bottom to top. An opacity is on the 16-bit scale
 /// (65535 is whole); a mode is blend.wgsl's id.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
-    /// Tile set `set` posed by `map` — canvas pixel to the row's own — laid
-    /// at `opacity` in `mode`.
+    /// Tile set `set`, keyed by chain `keys` if any, posed by `map` —
+    /// canvas pixel to the row's own — laid at `opacity` in `mode`.
     Row {
         set: usize,
+        keys: Option<usize>,
         map: ResampleMap,
         opacity: u32,
         mode: u32,
@@ -190,7 +202,16 @@ impl Composite {
         let body = include_str!("composite.wgsl")
             .replace("//__PAGES__", &bindings)
             .replace("//__READS__", &reads);
-        let source = [ISQRT_WGSL, BLEND_WGSL, WIDE_WGSL, RESAMPLE_WGSL, TILE_WGSL, &body].join("\n");
+        let source = [
+            ISQRT_WGSL,
+            BLEND_WGSL,
+            WIDE_WGSL,
+            RESAMPLE_WGSL,
+            TILE_WGSL,
+            KEY_WGSL,
+            &body,
+        ]
+        .join("\n");
         let module = engine
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -230,13 +251,14 @@ impl Composite {
 
     /// Composites `steps` over the output `tiles` (canvas tile columns and
     /// rows) and submits the work; the caller waits. `pages` is the pool,
-    /// `sets` the rows' tile sets. A `budget` under [`Composite::widest`]
-    /// cuts the run where a smaller device would.
+    /// `sets` the rows' tile sets, `keys` their key chains. A `budget` under
+    /// [`Composite::widest`] cuts the run where a smaller device would.
     pub(crate) fn run(
         &self,
         engine: &Engine,
         pages: &[wgpu::Buffer],
         sets: &[TileSet],
+        keys: &[KeyChain],
         steps: &[Step],
         tiles: &[(i32, i32)],
         budget: Budget,
@@ -248,10 +270,10 @@ impl Composite {
                 self.pages_per_pass
             ));
         }
-        check_depth(steps, sets.len())?;
+        check_depth(steps, sets.len(), keys.len())?;
         let laid = lay(steps, sets, tiles, pages.len())?;
         let batches = cut(&laid, pages_per_pass)?;
-        let encoded = encode(&laid, &batches, sets, tiles, pages.len());
+        let encoded = encode(&laid, &batches, sets, keys, tiles, pages.len());
         let plan = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -370,13 +392,18 @@ fn le_bytes(words: &[u32]) -> Vec<u8> {
 
 /// Fails unless every buffer the steps open is closed, none is closed that
 /// was not opened, the stack never passes [`DEPTH`] and every row names a
-/// tile set there is.
-fn check_depth(steps: &[Step], sets: usize) -> Option<()> {
+/// tile set and a key chain there are.
+fn check_depth(steps: &[Step], sets: usize, chains: usize) -> Option<()> {
     let mut depth = 0usize;
     for (index, step) in steps.iter().enumerate() {
         match *step {
             Step::Row { set, .. } if set >= sets => {
                 return fail(format!("step {index} lays tile set {set} of {sets}"));
+            }
+            Step::Row {
+                keys: Some(chain), ..
+            } if chain >= chains => {
+                return fail(format!("step {index} keys by chain {chain} of {chains}"));
             }
             Step::Row { .. } => {}
             Step::Open | Step::OpenOpaque if depth + 1 >= DEPTH => {
@@ -496,13 +523,15 @@ struct Plan {
     tables_at: u32,
 }
 
-/// The steps, then each tile set's map, each row's R1 map, each pass's
-/// table of pages — for every page of the pool the binding holding it, or
-/// NO_PAGE — and the output tiles.
+/// The steps, then each tile set's map, the key chains — an empty list,
+/// then each chain's list (how many runs, where each is) and its runs —
+/// each row's R1 map, each pass's table of pages — for every page of the
+/// pool the binding holding it, or NO_PAGE — and the output tiles.
 fn encode(
     laid: &[Laid],
     batches: &[Batch],
     sets: &[TileSet],
+    keys: &[KeyChain],
     tiles: &[(i32, i32)],
     page_count: usize,
 ) -> Plan {
@@ -517,12 +546,31 @@ fn encode(
             None => NO_TILE,
         }));
     }
-    let poses_at = maps_at + maps.len() as u32;
+    let chains_at = maps_at + maps.len() as u32;
+    // The empty list also keeps the plan from being empty, as a storage
+    // binding must hold something.
+    let mut chains: Vec<u32> = vec![0];
+    let mut chain_at = Vec::with_capacity(keys.len());
+    for chain in keys {
+        let list_at = chains_at + chains.len() as u32;
+        chain_at.push(list_at);
+        chains.push(chain.runs.len() as u32);
+        let mut run_at = list_at + 1 + chain.runs.len() as u32;
+        for run in &chain.runs {
+            chains.push(run_at);
+            run_at += run.len() as u32;
+        }
+        for run in &chain.runs {
+            chains.extend(run);
+        }
+    }
+    let poses_at = chains_at + chains.len() as u32;
     let mut poses: Vec<u32> = Vec::new();
     for each in laid {
         let step = match each.step {
             Step::Row {
                 set,
+                keys,
                 map,
                 opacity,
                 mode,
@@ -543,16 +591,18 @@ fn encode(
                     tiles.columns,
                     tiles.rows,
                     pose_at,
+                    keys.map_or(chains_at, |chain| chain_at[chain]),
                 ]
             }
-            Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         };
         words.extend(step);
     }
     words.extend(maps);
+    words.extend(chains);
     words.extend(poses);
     let tables_at = words.len() as u32;
     for batch in batches {
@@ -566,10 +616,6 @@ fn encode(
     }
     let tiles_at = words.len() as u32;
     words.extend(tiles.iter().flat_map(|&(column, row)| [column as u32, row as u32]));
-    if words.is_empty() {
-        // A storage binding holds something.
-        words.push(0);
-    }
     Plan {
         words: le_bytes(&words),
         tiles_at,

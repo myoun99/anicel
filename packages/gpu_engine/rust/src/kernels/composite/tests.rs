@@ -6,10 +6,11 @@
 use std::sync::OnceLock;
 
 use super::{
-    Batch, Budget, Composite, DEPTH, Laid, Step, TILE, TILE_TEXELS, TileAt, TileSet, check_depth,
-    cut,
+    Batch, Budget, Composite, DEPTH, KeyChain, Laid, Step, TILE, TILE_TEXELS, TileAt, TileSet,
+    check_depth, cut,
 };
 use crate::device::Engine;
+use crate::kernels::effects::KeyRun;
 use crate::kernels::shared::tests::{Picture, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -156,6 +157,28 @@ fn row(set: usize, (dx, dy): (i32, i32), opacity: u32, mode: u32) -> Step {
 fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
     Step::Row {
         set,
+        keys: None,
+        map,
+        opacity,
+        mode,
+    }
+}
+
+/// `row` keyed by chain `chain`.
+fn keyed(row: Step, chain: usize) -> Step {
+    let Step::Row {
+        set,
+        map,
+        opacity,
+        mode,
+        ..
+    } = row
+    else {
+        unreachable!("only a row is keyed");
+    };
+    Step::Row {
+        set,
+        keys: Some(chain),
         map,
         opacity,
         mode,
@@ -166,6 +189,7 @@ fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
 struct Scene {
     pool: Pool,
     sets: Vec<TileSet>,
+    keys: Vec<KeyChain>,
     steps: Vec<Step>,
     tiles: Vec<(i32, i32)>,
 }
@@ -176,7 +200,7 @@ fn composite(scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
     let Rig { engine, composite } = rig();
     let pages = scene.pool.upload(engine);
     let done = composite
-        .run(engine, &pages, &scene.sets, &scene.steps, &scene.tiles, budget)
+        .run(engine, &pages, &scene.sets, &scene.keys, &scene.steps, &scene.tiles, budget)
         .expect("composite");
     (read_buffer(engine, &done.out), done.passes)
 }
@@ -203,6 +227,63 @@ fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u8; 4] {
     bytes[texel * 4..texel * 4 + 4].try_into().unwrap()
 }
 
+// ---- Keys ----
+
+const KEY_RED: [u32; 3] = [200, 30, 40];
+const KEY_GREEN: [u32; 3] = [20, 220, 60];
+
+fn rgb(colour: [u32; 3]) -> u32 {
+    colour[0] | (colour[1] << 8) | (colour[2] << 16)
+}
+
+/// Maps a key could be handed: an erase reads its map at the alpha, a
+/// restore at what the chain took.
+fn nothing(_: u32) -> u32 {
+    0
+}
+fn half(alpha: u32) -> u32 {
+    alpha.div_ceil(2)
+}
+
+/// One run of one key, naming exactly `colour`: it erases by `map` — or,
+/// `restore`, gives back by it.
+fn key_run(colour: [u32; 3], restore: bool, map: fn(u32) -> u32) -> Vec<u32> {
+    let table = |byte: u32| {
+        let mut table = [0u32; 256];
+        table[byte as usize] = 1;
+        table
+    };
+    let maps: Vec<u8> = (0..256).map(|alpha| map(alpha) as u8).collect();
+    KeyRun {
+        red: &table(colour[0]),
+        green: &table(colour[1]),
+        blue: &table(colour[2]),
+        restores: u32::from(restore),
+        maps: &maps,
+    }
+    .words()
+}
+
+/// Row `seed`'s pixel, or — a third of the time — [`KEY_RED`] or
+/// [`KEY_GREEN`] at its alpha (whole where it has none).
+fn spotted(seed: u32, x: i32, y: i32) -> u32 {
+    let pixel = texel(seed, x, y);
+    let colour = match mix(seed ^ mix(x as u32 ^ mix(!y as u32))) % 6 {
+        0 => KEY_RED,
+        1 => KEY_GREEN,
+        _ => return pixel,
+    };
+    rgb(colour) | ((pixel >> 24).max(1) << 24)
+}
+
+/// `pixel` as one erasing key naming exactly `colour` leaves it: its alpha
+/// a by `map(a)`, unless it has none.
+fn keyed_by_hand(pixel: u32, colour: [u32; 3], map: fn(u32) -> u32) -> u32 {
+    if pixel & 0x00ff_ffff != rgb(colour) || pixel >> 24 == 0 {
+        return pixel;
+    }
+    (pixel & 0x00ff_ffff) | (map(pixel >> 24) << 24)
+}
 
 // ---- The ledger's scenes ----
 
@@ -218,6 +299,7 @@ fn rows() -> Scene {
     Scene {
         pool,
         sets,
+        keys: Vec::new(),
         steps: vec![
             row(0, (0, 0), WHOLE, NORMAL),
             row(1, (37, -50), 40000, MULTIPLY),
@@ -240,6 +322,7 @@ fn folders() -> Scene {
     Scene {
         pool,
         sets,
+        keys: Vec::new(),
         steps: vec![
             Step::Open,
             row(0, (0, 0), WHOLE, NORMAL),
@@ -275,6 +358,7 @@ fn clips() -> Scene {
     Scene {
         pool,
         sets,
+        keys: Vec::new(),
         steps: vec![
             row(0, (0, 0), WHOLE, NORMAL),
             Step::Open,
@@ -322,6 +406,7 @@ fn spanning() -> Scene {
     Scene {
         pool,
         sets,
+        keys: Vec::new(),
         steps,
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
     }
@@ -369,6 +454,7 @@ fn posed() -> Scene {
     Scene {
         pool,
         sets,
+        keys: Vec::new(),
         steps: vec![
             row(0, (3, -2), WHOLE, NORMAL),
             Step::Open,
@@ -396,13 +482,52 @@ fn pose_row(set: usize, name: &str, opacity: u32, mode: u32) -> Step {
     with_map(set, pose(name), opacity, mode)
 }
 
-fn scenes() -> [(&'static str, Scene); 5] {
+/// Rows keyed before they are posed, over one with no keys: in a folder, a
+/// moved row and a turn by one chain, and an exact Pick by a chain of two
+/// runs — the first erases, the second gives back half of it. Each row's
+/// tiles are on one page.
+fn keyed_rows() -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.drawn(|x, y| spotted(71, x, y), (0, 0), (2, 2), |_, _| Some(0)),
+        pool.drawn(|x, y| spotted(72, x, y), (0, 0), (2, 2), |_, _| Some(1)),
+        pool.drawn(|x, y| spotted(73, x, y), (-1, 0), (3, 2), |_, _| Some(2)),
+    ];
+    let keys = vec![
+        KeyChain {
+            runs: vec![key_run(KEY_RED, false, half)],
+        },
+        KeyChain {
+            runs: vec![key_run(KEY_GREEN, false, nothing), key_run(KEY_GREEN, true, half)],
+        },
+    ];
+    Scene {
+        pool,
+        sets,
+        keys,
+        steps: vec![
+            row(0, (4, -6), WHOLE, NORMAL),
+            Step::Open,
+            keyed(row(0, (-9, 3), 50000, MULTIPLY), 0),
+            keyed(pose_row(1, "turn", WHOLE, SCREEN), 0),
+            keyed(pose_row(2, "squeeze", 60000, NORMAL), 1),
+            Step::Close {
+                opacity: 45000,
+                mode: NORMAL,
+            },
+        ],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+fn scenes() -> [(&'static str, Scene); 6] {
     [
         ("rows", rows()),
         ("folders", folders()),
         ("clips", clips()),
         ("spanning", spanning()),
         ("posed", posed()),
+        ("keyed", keyed_rows()),
     ]
 }
 
@@ -467,6 +592,7 @@ fn a_row_alone_is_its_own_pixels_moved() {
     let scene = Scene {
         pool,
         sets,
+        keys: Vec::new(),
         steps: vec![row(0, (dx, dy), WHOLE, NORMAL)],
         tiles: vec![(0, 0), (1, 0), (0, 1), (-1, -1)],
     };
@@ -493,6 +619,7 @@ fn a_row_at_no_strength_lays_nothing() {
         let scene = Scene {
             pool,
             sets,
+            keys: Vec::new(),
             steps: vec![row(0, (0, 0), 0, mode)],
             tiles: vec![(0, 0)],
         };
@@ -509,6 +636,7 @@ fn a_folder_of_one_row_is_that_row() {
         Scene {
             pool,
             sets,
+            keys: Vec::new(),
             steps,
             tiles: vec![(0, 0), (1, 0)],
         }
@@ -548,6 +676,7 @@ fn clip(base_alpha: u32, clipped: u32, mode: u32, open: Step) -> Vec<u8> {
     widest(&Scene {
         pool,
         sets,
+        keys: Vec::new(),
         steps: vec![
             Step::Open,
             row(0, (0, 0), WHOLE, NORMAL),
@@ -632,6 +761,7 @@ fn a_posed_row_lays_what_r1_resamples() {
         let scene = Scene {
             pool,
             sets,
+            keys: Vec::new(),
             steps: vec![pose_row(0, name, WHOLE, NORMAL)],
             tiles: tiles.clone(),
         };
@@ -656,6 +786,7 @@ fn a_row_binds_the_pages_its_pixels_read() {
         Scene {
             pool,
             sets,
+            keys: Vec::new(),
             steps: vec![with_map(0, map, WHOLE, NORMAL)],
             tiles: vec![(0, 0)],
         }
@@ -675,10 +806,108 @@ fn a_row_binds_the_pages_its_pixels_read() {
             let Rig { engine, composite } = rig();
             let pool = scene.pool.upload(engine);
             let fewer = within(pages - 1, usize::MAX);
-            let run = composite.run(engine, &pool, &scene.sets, &scene.steps, &scene.tiles, fewer);
+            let run = composite.run(engine, &pool, &scene.sets, &[], &scene.steps, &scene.tiles, fewer);
             assert!(run.is_none(), "{n}");
         }
     }
+}
+
+// A row's keys run on its stored pixels, before R1 poses them (캔버스
+// 베이스, gpu-canonical-store 11-05 18:24): in any pose, a keyed row lays
+// what R1 resamples from the picture keyed by hand.
+#[test]
+fn a_row_is_keyed_before_its_pose() {
+    let picture = picture_of(|x, y| spotted(53, x, y), (2 * TILE, 2 * TILE));
+    let keyed_picture = Picture {
+        pixels: picture
+            .pixels
+            .iter()
+            .map(|&pixel| keyed_by_hand(pixel, KEY_RED, half))
+            .collect(),
+        ..picture
+    };
+    let tiles = vec![(0, 0), (1, 0), (0, 1), (1, 1)];
+    for name in ["move", "turn", "turn-pick", "shrink", "squeeze", "tilt", "blur"] {
+        let map = match name {
+            "move" => ResampleMap::moved(17, -5),
+            _ => pose(name),
+        };
+        let mut pool = Pool::default();
+        let sets = vec![pool.drawn(|x, y| spotted(53, x, y), (0, 0), (2, 2), |c, r| {
+            Some((r * 2 + c) as u16)
+        })];
+        let scene = Scene {
+            pool,
+            sets,
+            keys: vec![KeyChain {
+                runs: vec![key_run(KEY_RED, false, half)],
+            }],
+            steps: vec![keyed(with_map(0, map, WHOLE, NORMAL), 0)],
+            tiles: tiles.clone(),
+        };
+        assert!(widest(&scene) == resampled(&map, &keyed_picture, &tiles), "{name}");
+    }
+}
+
+// Each run of a chain goes in its order, against the alpha the row stored,
+// not what the runs before it left: erased to nothing and given back whole
+// is the stored alpha; given back first, there is nothing yet to give, so
+// the erase after it stands.
+#[test]
+fn every_run_of_a_chain_keys_against_the_stored_alpha() {
+    let stored = rgb(KEY_RED) | (200 << 24);
+    let chains = [
+        (vec![key_run(KEY_RED, false, nothing), key_run(KEY_RED, true, nothing)], 200),
+        (vec![key_run(KEY_RED, false, half), key_run(KEY_RED, true, half)], 150),
+        (vec![key_run(KEY_RED, true, nothing), key_run(KEY_RED, false, half)], 100),
+        (vec![key_run(KEY_RED, false, half), key_run(KEY_RED, false, half)], 50),
+    ];
+    for (n, (runs, alpha)) in chains.into_iter().enumerate() {
+        let mut pool = Pool::default();
+        let sets = vec![pool.drawn(move |_, _| stored, (0, 0), (1, 1), |_, _| Some(0))];
+        let scene = Scene {
+            pool,
+            sets,
+            keys: vec![KeyChain { runs }],
+            steps: vec![keyed(row(0, (0, 0), WHOLE, NORMAL), 0)],
+            tiles: vec![(0, 0)],
+        };
+        let want = rgb(KEY_RED) | (alpha << 24);
+        assert_eq!(pixel_at(&widest(&scene), &[(0, 0)], 7, 9), bytes_of(want), "chain {n}");
+    }
+}
+
+// Each row reads its own chain, and a row with none is not keyed: three
+// rows of the same two colours side by side, one erasing red, one green,
+// one neither.
+#[test]
+fn each_row_is_keyed_by_its_own_chain() {
+    let red = rgb(KEY_RED) | (0xff << 24);
+    let green = rgb(KEY_GREEN) | (0xff << 24);
+    let mut pool = Pool::default();
+    let pixel = move |x: i32, _: i32| if x.rem_euclid(2) == 0 { red } else { green };
+    let sets = vec![pool.drawn(pixel, (0, 0), (1, 1), |_, _| Some(0))];
+    let erase = |colour| KeyChain {
+        runs: vec![key_run(colour, false, nothing)],
+    };
+    let side = TILE as i32;
+    let scene = Scene {
+        pool,
+        sets,
+        keys: vec![erase(KEY_GREEN), erase(KEY_RED)],
+        steps: vec![
+            keyed(row(0, (0, 0), WHOLE, NORMAL), 1),
+            keyed(row(0, (side, 0), WHOLE, NORMAL), 0),
+            row(0, (2 * side, 0), WHOLE, NORMAL),
+        ],
+        tiles: vec![(0, 0), (1, 0), (2, 0)],
+    };
+    let out = widest(&scene);
+    let at = |column: i32, x: i32| pixel_at(&out, &scene.tiles, column * side + x, 3);
+    let none = [0, 0, 0, 0];
+    assert_eq!([at(0, 0), at(0, 1)], [none, bytes_of(green)]);
+    assert_eq!([at(1, 0), at(1, 1)], [bytes_of(red), none]);
+    assert_eq!([at(2, 0), at(2, 1)], [bytes_of(red), bytes_of(green)]);
 }
 
 // ---- The plan ----
@@ -689,21 +918,24 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
         opacity: WHOLE,
         mode: NORMAL,
     };
-    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1).is_some());
-    assert!(check_depth(&[Step::Open], 1).is_none());
-    assert!(check_depth(&[close], 1).is_none());
-    assert!(check_depth(&[Step::CloseAtop], 1).is_none());
-    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1).is_none());
+    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0).is_some());
+    assert!(check_depth(&[Step::Open], 1, 0).is_none());
+    assert!(check_depth(&[close], 1, 0).is_none());
+    assert!(check_depth(&[Step::CloseAtop], 1, 0).is_none());
+    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1, 0).is_none());
+    let keyed_by_the_second = keyed(row(0, (0, 0), WHOLE, NORMAL), 1);
+    assert!(check_depth(&[keyed_by_the_second], 1, 2).is_some());
+    assert!(check_depth(&[keyed_by_the_second], 1, 1).is_none());
     let deepest: Vec<Step> = (0..DEPTH - 1)
         .map(|_| Step::Open)
         .chain((0..DEPTH - 1).map(|_| close))
         .collect();
-    assert!(check_depth(&deepest, 0).is_some());
+    assert!(check_depth(&deepest, 0, 0).is_some());
     let deeper: Vec<Step> = (0..DEPTH)
         .map(|_| Step::OpenOpaque)
         .chain((0..DEPTH).map(|_| close))
         .collect();
-    assert!(check_depth(&deeper, 0).is_none());
+    assert!(check_depth(&deeper, 0, 0).is_none());
 }
 
 // Pages 0, 1 | 2, 0 | 3 at two a pass: a pass ends where a third page would

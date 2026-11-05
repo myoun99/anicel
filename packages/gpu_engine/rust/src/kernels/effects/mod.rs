@@ -7,7 +7,8 @@
 //! over a row's pixels, from the tables the app makes from its one
 //! definition (`CelColorKey`).
 
-// ⏳No caller outside the tests until the executor's rows run a chain
+// ⏳The executor's rows (kernels/composite) walk the keys, but nothing
+// outside the tests calls the executor until the app's bridge round
 // (gpu-canonical-store ⑧ 3 and 5).
 #![cfg_attr(not(test), allow(dead_code))]
 
