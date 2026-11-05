@@ -347,9 +347,9 @@ fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
         Shape::Round(_) => ((major * unit).ceil() as u32, (major * unit).ceil() as u32),
         _ => ((major * unit).round() as u32, (extent * unit).floor() as u32 + 1),
     };
-    // The minor axis is held to a bound over its reach before the stretch:
-    // what decides is the stretched axis against the major.
-    let minor = (f64::from(major) * dab.turn.roundness).ceil() as u32 + 1;
+    // The minor axis is held to its reach before the stretch — past it the
+    // stretch is past the major anyway; that keeps the product in u32.
+    let minor = (f64::from(major) * dab.turn.roundness).ceil() as u32;
     let inverse = (65536.0 / dab.turn.roundness).round() as u32;
     if u64::from(minor) * u64::from(inverse) + 32768 > u64::from(u32::MAX) {
         return fail(format!("a roundness of {} stretches past u32", dab.turn.roundness));
@@ -365,7 +365,7 @@ fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
     ]);
     if let Shape::Tip { texels, side, .. } = dab.shape {
         // 1a 보탬: t = 2(u + R)·side stays in u32 to a side of 16384.
-        if side == 0 || side > 16384 || texels.len() != (side * side) as usize || major == 0 {
+        if side > 16384 || texels.len() != (side * side) as usize || major == 0 {
             return fail(format!("a tip of side {side}, {} texels, radius {major}", texels.len()));
         }
         words[26] = tables.place(texels);

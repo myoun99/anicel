@@ -425,14 +425,17 @@ fn an_ellipse_reads_its_profile_at_the_stretched_distance() {
     assert_eq!(piled.at(0, 12, 10).0[3], 43690);
 }
 
-// A tip past 16384 texels a side, or squeezed so thin its stretch would
-// leave u32, is refused rather than read wrong.
+// A tip whose texels don't fill its side, one too small to reach a unit of
+// distance, or one squeezed so thin its stretch would leave u32 is refused
+// rather than read wrong. (Past 16384 texels a side it is refused too; such
+// a tip is 2 GiB of texels and doesn't fit a test.)
 #[test]
 fn a_tip_past_what_the_integers_hold_is_refused() {
-    let wide = tipped(&CORNERS, 20000, 1.0, Turn::STRAIGHT, [10.0, 10.0]);
-    assert!(tried(&[(0, 0)], [0; 4], &[wide]).is_none());
+    let refused = |dab: Dab| tried(&[(0, 0)], [0; 4], &[dab]).is_none();
+    assert!(refused(tipped(&CORNERS, 3, 1.0, Turn::STRAIGHT, [10.0, 10.0])));
+    assert!(refused(tipped(&CORNERS, 2, 0.001, Turn::STRAIGHT, [10.0, 10.0])));
     let thin = Turn { cos: 1.0, sin: 0.0, roundness: 1e-6 };
-    assert!(tried(&[(0, 0)], [0; 4], &[tipped(&CORNERS, 2, 1.0, thin, [10.0, 10.0])]).is_none());
+    assert!(refused(tipped(&CORNERS, 2, 1.0, thin, [10.0, 10.0])));
 }
 
 // A dab across a seam lays each tile its own part, and a tile on the
