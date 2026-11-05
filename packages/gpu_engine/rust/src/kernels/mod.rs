@@ -23,5 +23,6 @@ pub mod effects;
 pub mod export;
 pub mod fill;
 pub mod mask;
+pub mod mesh;
 pub mod shared;
 pub mod timeline;
