@@ -180,19 +180,21 @@ void main() {
     return count;
   }
 
-  /// Two channels, the first loud and the second silent.
-  AudioPeaks leftOnly() => AudioPeaks.ofChannels(
+  /// Two channels, the one numbered [loud] at full and the other silent.
+  AudioPeaks oneLoud(int loud) => AudioPeaks.ofChannels(
     bucketsPerSecond: 8,
     lanes: [
-      Float32List.fromList(List<double>.filled(8, 1)),
-      Float32List(8),
+      for (var channel = 0; channel < 2; channel += 1)
+        channel == loud
+            ? Float32List.fromList(List<double>.filled(8, 1))
+            : Float32List(8),
     ],
   );
 
   // 🗣️F-71-Q4 (유저 2026-11-05) 「L · R 두 줄」 — inside the block.
   test('🚨a channel draws its own band in its own half — the first on top, '
       'the second under it', () async {
-    final pixels = await paint(painter(peaks: leftOnly()));
+    final pixels = await paint(painter(peaks: oneLoud(0)));
     final half = size.toInt() ~/ 2;
     expect(
       inkInRow(pixels, half ~/ 2),
@@ -209,9 +211,22 @@ void main() {
     }
   });
 
+  test('the second channel draws in the lower half alone', () async {
+    final pixels = await paint(painter(peaks: oneLoud(1)));
+    final half = size.toInt() ~/ 2;
+    expect(
+      inkInRow(pixels, half + half ~/ 2),
+      greaterThan(0),
+      reason: 'the loud channel, around the lower half\'s middle',
+    );
+    for (var y = 0; y < half; y += 1) {
+      expect(inkInRow(pixels, y), 0, reason: 'the silent one, over it');
+    }
+  });
+
   test('🚨down a COLUMN the first channel is on the left', () async {
     final pixels = await paint(
-      painter(peaks: leftOnly(), axis: Axis.vertical),
+      painter(peaks: oneLoud(0), axis: Axis.vertical),
     );
     final half = size.toInt() ~/ 2;
     expect(inkInColumn(pixels, half ~/ 2), greaterThan(0));
