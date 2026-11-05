@@ -21,6 +21,10 @@ use super::{Dispatch, GROUP, Held, TileRect, compile, run};
 use crate::device::Engine;
 use crate::fail;
 
+/// The box law every blur of box passes runs: box.wgsl's `blur_mean` and
+/// `blur_slide`, and the `BoxPass` it reads.
+pub(crate) const BOX_WGSL: &str = include_str!("box.wgsl");
+
 /// The widest box: a pass sums 2·radius + 1 pixels of 65535 at most, and
 /// the sum stays a u32.
 pub(crate) const MOST_RADIUS: u32 = 32767;
@@ -86,7 +90,7 @@ pub(crate) struct BoxBlur {
 impl BoxBlur {
     pub(crate) fn new(engine: &Engine) -> Self {
         Self {
-            pipeline: compile(engine, &[], include_str!("gaussian.wgsl"), "box_blur"),
+            pipeline: compile(engine, &[BOX_WGSL], include_str!("gaussian.wgsl"), "box_blur"),
         }
     }
 
