@@ -1358,7 +1358,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// the preview's and the page-image export's one routine; they differ
   /// only in [outputSize] (the preview fits its pane, the file is the page
   /// at its paper's own pixels). [layers] draws a Photoshop document's row
-  /// (I-117), with the ink composed only where it is drawn.
+  /// (I-117), with the ink composed only where it is drawn; [contentParts]
+  /// those of the values alone — an XDTS Viewer's ink page.
   ///
   /// The ink is the page's windows of the panel's own walk
   /// ([timesheetInkWindows]) — until 2026-09-26 the timesheet exported no
@@ -1368,6 +1369,7 @@ class ExportDialogState extends State<ExportDialog> {
     required TextStyle face,
     CanvasSize? outputSize,
     Set<SheetPaintLayer>? layers,
+    Set<TimesheetContentPart>? contentParts,
   }) async {
     final (document, layout) = _sheetDocFor(task.cut);
     final page = layout.pageRect(task.pageIndex);
@@ -1397,6 +1399,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         images: images,
         layers: layers,
+        contentParts: contentParts,
       );
     } finally {
       images.dispose();
@@ -3413,7 +3416,8 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// [cut]'s ink folder [beside] its digital sheet (`xdts_viewer_ink.dart`):
-  /// each page of its timesheet with the handwriting alone, the page laid
+  /// each page of its timesheet with the handwriting and the values the
+  /// viewer does not print ([xdtsViewerUnprintedParts]), the page laid
   /// whole onto the viewer's paper — 🗣️I-161-Q2 (유저 2026-11-05): 「우리
   /// 용지를 뷰어 용지 크기에 맞춰 통째로 늘린다」 — and the viewer's settings
   /// for that paper. A folder already there is written over, page by page,
@@ -3446,7 +3450,8 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         face: face,
         outputSize: CanvasSize(width: width, height: height),
-        layers: const {SheetPaintLayer.ink},
+        layers: const {SheetPaintLayer.content, SheetPaintLayer.ink},
+        contentParts: xdtsViewerUnprintedParts,
       );
       try {
         final png = await image.toByteData(format: ui.ImageByteFormat.png);

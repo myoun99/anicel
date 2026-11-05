@@ -874,7 +874,15 @@ void main() {
   /// bundled to fit: the line reads the value at its own time and the
   /// column at another — one reading asked twice — and the switch and the
   /// basis are two questions the header answers.
-  const wideSignatures = 460;
+  ///
+  /// ⚠️460 → 461 on 2026-11-05, named as the rule above asks (I-161 Ⓒ, the
+  /// XDTS Viewer's ink page): the export's `_renderSheetPage` (five) took
+  /// the values' parts a page draws (`contentParts` — the dialog, the CAM
+  /// column and the 겸용 line, which the viewer does not print) beside its
+  /// strata (`layers`). ⛔Not bundled to fit: the painter and
+  /// `renderTimesheetPageImage` take the strata and the values' parts
+  /// apart — two questions, and a Photoshop row asks only the one.
+  const wideSignatures = 461;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

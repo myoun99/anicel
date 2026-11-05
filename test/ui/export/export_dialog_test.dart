@@ -19,6 +19,7 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -91,6 +92,8 @@ void main() {
   /// carries two authored cels (no brush artwork — surfaces stay empty).
   EditorSessionManager exportSession({
     ProjectFrameRate frameRate = ProjectFrameRate.fps24,
+    String celRow = 'A',
+    List<Layer> seLayers = const [],
   }) {
     return EditorSessionManager(
       initialProject: Project(
@@ -102,6 +105,7 @@ void main() {
           Track(
             id: const TrackId('track'),
             name: 'Track',
+            seLayers: seLayers,
             cuts: [
               Cut(
                 id: const CutId('cut'),
@@ -111,7 +115,7 @@ void main() {
                 layers: [
                   Layer(
                     id: const LayerId('layer'),
-                    name: 'A',
+                    name: celRow,
                     mark: const LayerMark(process: LayerProcess.key),
                     frames: [frame('f1'), frame('f2')],
                   ),
@@ -957,7 +961,7 @@ void main() {
     // off는 … 일반 xdts로 출력하기위함」 · Q2 「우리 용지를 뷰어 용지 크기에
     // 맞춰 통째로 늘린다」.
     testWidgets('잉크 출력: the digital sheet writes the XDTS Viewer\'s folder '
-        'beside it — each page\'s handwriting alone, the page laid whole on '
+        'beside it — each page\'s handwriting, the page laid whole on '
         'the viewer\'s paper, and the viewer\'s settings; off, the file '
         'alone', (tester) async {
       final session = exportSession();
@@ -1057,6 +1061,62 @@ void main() {
       ))!;
       addTearDown(onB4.dispose);
       expect((onB4.width, onB4.height), (2530, 3583));
+    });
+
+    // 🗣️I-161-Q3 (유저 2026-11-05): 「데이터로서 내보낼수있는건 다
+    // 내보내고싶음. 거기서 xdts뷰어용일때만 추가로 잉크로서 내보내게」.
+    testWidgets('잉크 출력: the ink page carries what the viewer does not '
+        'print of the sheet — a line of dialog — and nothing it does — the '
+        'cel rows\' names', (tester) async {
+      Future<List<int>> inkPage(EditorSessionManager session) async {
+        addTearDown(session.dispose);
+        AppExport.settings.value = AppExportSettings(
+          lastSpecs: const ExportTabSpecs(
+            cels: CelsExportSpec(
+              sheetFormat: ExportTimesheetFormat.xdts,
+              sheetInk: true,
+            ),
+          ),
+        );
+        final state = await pumpDialog(
+          tester,
+          session,
+          exportDirectoryPicker: () async => temp.path,
+        );
+        await switchTab(tester, 'timesheet');
+        await tester.runAsync(state.export);
+        await tester.pump();
+        return File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync();
+      }
+
+      final line = Layer(
+        id: const LayerId('se'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: [
+          Frame(
+            id: const FrameId('line'),
+            duration: 2,
+            strokes: const [],
+            name: 'こんにちは',
+            seName: 'ミカ',
+          ),
+        ],
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('line'), length: 2),
+        },
+      );
+      final plain = await inkPage(exportSession());
+      expect(
+        await inkPage(exportSession(seLayers: [line])),
+        isNot(plain),
+        reason: 'the dialog column is a blank grid in the viewer',
+      );
+      expect(
+        await inkPage(exportSession(celRow: 'B')),
+        plain,
+        reason: 'the viewer prints the cel rows from the file',
+      );
     });
 
     // 🗣️I-161-Q7 (유저 2026-11-05): 「24fps 가 아니면 잉크 버튼을 회색으로」.
