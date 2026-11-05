@@ -1,15 +1,13 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
-import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/pinned_fingerprints.dart';
 
 /// 🧭관제 (audio-same-across-devices ③, 2026-11-05): a conform rebuilt on
 /// another device holds the same samples (user, gpu-same-formula-Q2) — so
@@ -55,10 +53,15 @@ void main() {
       (format, channels, sampleRate, frames),
     );
     final samples = decoded.samples;
-    final crc = anicelCrc32(
-      samples.buffer.asUint8List(samples.offsetInBytes, samples.lengthInBytes),
+    expect(
+      fingerprintHex(
+        samples.buffer.asUint8List(
+          samples.offsetInBytes,
+          samples.lengthInBytes,
+        ),
+      ),
+      pinnedFingerprint(ledgerId),
     );
-    expect(crc.toRadixString(16).padLeft(8, '0'), pinnedFingerprint(ledgerId));
   }
 
   test('the MP3 decodes to the pinned samples', () {
@@ -107,14 +110,4 @@ Uint8List wholeNumberWav() {
     pcm[index * 2 + 1] = (seed >> 15) - 0x8000;
   }
   return wav16Bytes(pcm, sampleRate: 48000, channels: 2);
-}
-
-String? pinnedFingerprint(String id) {
-  final ledger = File('test/fixtures/fingerprints.json');
-  if (!ledger.existsSync()) return null;
-  final rows = (jsonDecode(ledger.readAsStringSync()) as Map)['rows'] as List;
-  for (final row in rows.cast<Map>()) {
-    if (row['id'] == id) return row['hash'] as String;
-  }
-  return null;
 }

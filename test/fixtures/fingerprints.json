@@ -1,4 +1,7 @@
 {"rows":[
+{"id":"audio/tone.flac-samples","fixture":"test/fixtures/tone.flac","what":"the decoded float32 samples, interleaved, as QaAudioDecoder hands them","hash":"e9616c02","pinned_on":"Surface Pro 11 (Intel x64) / qa_native, MSVC / 2026-11-05"},
+{"id":"audio/tone.mp3-samples","fixture":"test/fixtures/tone.mp3","what":"the decoded float32 samples, interleaved, as QaAudioDecoder hands them","hash":"e9b8ac4c","pinned_on":"Surface Pro 11 (Intel x64) / qa_native, MSVC / 2026-11-05"},
+{"id":"audio/whole-number.wav-samples","fixture":"wholeNumberWav() in test/services/audio/a_sound_decodes_alike_on_every_device_test.dart","what":"the decoded float32 samples, interleaved, as QaAudioDecoder hands them","hash":"f3b4dddf","pinned_on":"Surface Pro 11 (Intel x64) / qa_native, MSVC / 2026-11-05"},
 {"id":"fill/70x45-seed0-bgra","fixture":"seed 0","what":"the fill kernel's 70x45 bgra8unorm texture, rows top to bottom","hash":"45047c1e","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"},
 {"id":"fill/70x45-seed0-rgba","fixture":"seed 0","what":"the fill kernel's 70x45 rgba8unorm texture, rows top to bottom","hash":"b4e75422","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"},
 {"id":"fill/70x45-seed4294967295-bgra","fixture":"seed 4294967295","what":"the fill kernel's 70x45 bgra8unorm texture, rows top to bottom","hash":"906f3f1d","pinned_on":"NVIDIA GeForce RTX 4080 / DX12 / 2026-11-05"},
