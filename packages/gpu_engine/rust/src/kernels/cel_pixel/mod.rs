@@ -261,7 +261,8 @@ impl CelPixels {
         if walk.is_empty() {
             return Some(Passed { tiles, out, touched: Vec::new(), runs: Vec::new() });
         }
-        let cut = runs(walk.iter().map(|tile| Some(tile.at.page)), per_pass, most);
+        let rows: Option<Vec<i32>> = mask.map(|_| walk.iter().map(|tile| tile.row).collect());
+        let cut = runs(walk.iter().map(|tile| Some(tile.at.page)), rows.as_deref(), per_pass, most);
         let counts_bytes = walk.len() as u64 * 8;
         fits(engine, &[counts_bytes], std::iter::empty())?;
         let counts = plane(engine, "cel pixel counts", counts_bytes);

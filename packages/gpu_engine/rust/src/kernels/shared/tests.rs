@@ -1064,12 +1064,12 @@ fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
 fn runs_cut_where_the_next_tile_would_take_a_pass_past_its_room() {
     let pages = [0, 1, 0, 2, 2, 1].map(Some);
     let two_by_three = [(0..3, vec![0, 1]), (3..6, vec![2, 1])];
-    assert_eq!(runs(pages.into_iter(), 2, 3), two_by_three);
+    assert_eq!(runs(pages.into_iter(), None, 2, 3), two_by_three);
     let one_a_pass =
         [(0..1, vec![0]), (1..2, vec![1]), (2..3, vec![0]), (3..5, vec![2]), (5..6, vec![1])];
-    assert_eq!(runs(pages.into_iter(), 1, 6), one_a_pass);
+    assert_eq!(runs(pages.into_iter(), None, 1, 6), one_a_pass);
     let two_a_pass = [(0..2, vec![0, 1]), (2..4, vec![0, 2]), (4..6, vec![2, 1])];
-    assert_eq!(runs(pages.into_iter(), 3, 2), two_a_pass);
+    assert_eq!(runs(pages.into_iter(), None, 3, 2), two_a_pass);
 }
 
 // A tile on no page adds none to its run: tiles on none, 0, none, 1, none
@@ -1079,10 +1079,28 @@ fn runs_cut_where_the_next_tile_would_take_a_pass_past_its_room() {
 fn a_tile_on_no_page_takes_its_place_in_a_run_and_binds_none() {
     let pages = [None, Some(0), None, Some(1), None];
     let one_a_pass = [(0..3, vec![0]), (3..5, vec![1])];
-    assert_eq!(runs(pages.into_iter(), 1, 6), one_a_pass);
+    assert_eq!(runs(pages.into_iter(), None, 1, 6), one_a_pass);
     let pages = [None, None, Some(0), None];
     let two_a_pass = [(0..2, vec![]), (2..4, vec![0])];
-    assert_eq!(runs(pages.into_iter(), 1, 2), two_a_pass);
+    assert_eq!(runs(pages.into_iter(), None, 1, 2), two_a_pass);
+}
+
+// Under a selection a run reaches no more tile rows than it takes tiles,
+// lowest to highest, as a pass holds a tile row of the mask a tile: tiles
+// on rows 0, 0, 5, 6, 6 at three a pass are the runs 0..2 and 2..5, where
+// by their count alone they are 0..3 and 3..5; rows -2 and 1 at three are
+// a run each, and a run that leaves its first row keeps it — rows 0, 5, 1
+// at two are three runs.
+#[test]
+fn runs_under_a_selection_reach_no_more_tile_rows_than_tiles() {
+    let none = |count| std::iter::repeat_n(None, count);
+    let rows = [0, 0, 5, 6, 6];
+    assert_eq!(runs(none(5), None, 1, 3), [(0..3, vec![]), (3..5, vec![])]);
+    assert_eq!(runs(none(5), Some(rows.as_slice()), 1, 3), [(0..2, vec![]), (2..5, vec![])]);
+    assert_eq!(runs(none(2), Some(&[-2, 1][..]), 1, 3), [(0..1, vec![]), (1..2, vec![])]);
+    let three = [(0..1, vec![]), (1..2, vec![]), (2..3, vec![])];
+    assert_eq!(runs(none(3), Some(&[0, 5, 1][..]), 1, 2), three);
+    assert_eq!(runs(none(1), Some(&[7][..]), 1, 1), [(0..1, vec![])]);
 }
 
 // ---- A pass's reach ----

@@ -67,7 +67,7 @@ use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
-    WIDE_WGSL, encode_on, le_bytes, page_table, pipeline, storage_format, tiles_a_pass, whole,
+    WIDE_WGSL, encode_on, le_bytes, page_table, pipeline, runs, storage_format, tiles_a_pass, whole,
     words_buffer,
 };
 
@@ -434,7 +434,10 @@ impl Composite {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let [left, top, right, bottom] = extent.map(|edge| edge as u32);
         let mut passes = 0;
-        for run in chunked(tiles, chunk, plan.mask.is_some()) {
+        let rows: Option<Vec<i32>> =
+            plan.mask.map(|_| tiles.iter().map(|&(_, row)| row).collect());
+        // An output tile binds no page of the pool.
+        for (run, _) in runs(tiles.iter().map(|_| None), rows.as_deref(), 1, chunk) {
             let (first_tile, chunk_tiles) = (run.start, run.len());
             let out_at = kept * 2 * TILE_TEXELS * chunk_tiles as u64;
             let mask_at = out_at + waiting * TILE_TEXELS * chunk_tiles as u64;
@@ -531,29 +534,6 @@ fn compile(engine: &Engine, pages: &Pages, output: &str) -> wgpu::ComputePipelin
         &body,
     ];
     pipeline(engine, &sources, "composite")
-}
-
-/// The output tiles each pass takes, in order: `chunk` at most — and,
-/// `masked`, none whose tile rows run further than that, as a pass is given
-/// the mask's rows from its first tile row to its last.
-fn chunked(tiles: &[(i32, i32)], chunk: usize, masked: bool) -> Vec<Range<usize>> {
-    let mut runs = Vec::new();
-    let mut start = 0;
-    let mut rows = (i32::MAX, i32::MIN);
-    for (index, &(_, row)) in tiles.iter().enumerate() {
-        let wider = (rows.0.min(row), rows.1.max(row));
-        let span = i64::from(wider.1) - i64::from(wider.0) + 1;
-        if index - start == chunk || (masked && span > chunk as i64) {
-            runs.push(start..index);
-            (start, rows) = (index, (row, row));
-        } else {
-            rows = wider;
-        }
-    }
-    if start < tiles.len() {
-        runs.push(start..tiles.len());
-    }
-    runs
 }
 
 /// The canvas's pixel rows `tiles` lie on, from their first tile row to

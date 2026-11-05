@@ -559,7 +559,7 @@ impl Blurs {
     ) -> Option<()> {
         let tile_bytes = TILE_TEXELS * 4;
         let on = tiles.iter().map(|tile| Some(tile.at.page));
-        let runs = runs(on, pages_per_pass, most);
+        let runs = runs(on, None, pages_per_pass, most);
         let slots: Vec<wgpu::Buffer> = runs
             .iter()
             .map(|(run, pages)| {

@@ -173,17 +173,21 @@ pub(crate) fn page_table(bound: &[u16], pool: usize) -> impl Iterator<Item = u32
 /// none (the write path's tile with nothing stored) — cut into the runs a
 /// kernel's passes take, each with the pages it binds in the order they
 /// come (a page's k): a run ends where its next tile would bring it past
-/// `per_pass` pages or `most` tiles. A tile on no page adds none, so a run
+/// `per_pass` pages or `most` tiles — or, where `rows` gives each tile's
+/// tile row, past `most` tile rows from its lowest to its highest, as a
+/// pass under a selection is given the mask's rows its tiles lie on and
+/// holds a tile row of them a tile. A tile on no page adds none, so a run
 /// of such tiles alone binds none. The tiles keep their order, so a pass
 /// binds the range of a run in what it writes (dab/blur.rs: the cel's
 /// passes).
 ///
-/// The second greedy cut by the pages a pass binds — the executor's `cut`
-/// (composite/mod.rs) is the first, which holds stack levels too: the two
-/// stay apart until a third comes (rule of three, CLAUDE.md absolute
-/// rule 1).
+/// ⛔ONE CUT OF TILES: the executor cut its output tiles by the mask's rows
+/// on its own as a third greedy cut, and joined this one (R28, 11-06). The
+/// executor's `cut` (composite/mod.rs) cuts steps, holding stack levels,
+/// and stands apart.
 pub(crate) fn runs(
     pages: impl ExactSizeIterator<Item = Option<u16>>,
+    rows: Option<&[i32]>,
     per_pass: usize,
     most: usize,
 ) -> Vec<(Range<usize>, Vec<u16>)> {
@@ -191,14 +195,23 @@ pub(crate) fn runs(
     let mut runs = Vec::new();
     let mut first = 0;
     let mut bound: Vec<u16> = Vec::new();
+    // The tile rows the run reaches, lowest and highest.
+    let mut reach = (i32::MAX, i32::MIN);
     for (index, page) in pages.enumerate() {
         let fresh = page.filter(|page| !bound.contains(page));
-        if index - first == most || (fresh.is_some() && bound.len() == per_pass) {
+        let row = rows.map(|rows| rows[index]);
+        let wider = row.map(|row| (reach.0.min(row), reach.1.max(row)));
+        let tall = wider.is_some_and(|(low, high)| i64::from(high) - i64::from(low) >= most as i64);
+        if index - first == most || (fresh.is_some() && bound.len() == per_pass) || tall {
             runs.push((first..index, std::mem::take(&mut bound)));
             first = index;
+            reach = (i32::MAX, i32::MIN);
         }
         if let Some(page) = page.filter(|page| !bound.contains(page)) {
             bound.push(page);
+        }
+        if let Some(row) = row {
+            reach = (reach.0.min(row), reach.1.max(row));
         }
     }
     if first < count {

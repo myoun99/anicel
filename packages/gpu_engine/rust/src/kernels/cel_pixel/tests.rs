@@ -778,7 +778,7 @@ fn each_pass_binds_its_runs_from_where_a_binding_may_start() {
     let runs: Vec<u32> = passed.runs.iter().map(|runs| runs.len() as u32).collect();
     let starts = super::starts(&passed.touched, &runs);
     let walk = super::walk(&cel.set, 3, None).expect("walk");
-    let passes = super::runs(walk.iter().map(|tile| Some(tile.at.page)), 1, 1);
+    let passes = super::runs(walk.iter().map(|tile| Some(tile.at.page)), None, 1, 1);
     let align = super::alignment(engine);
     for (run, _) in &passes {
         let bound = super::bound_runs(engine, &starts, run);

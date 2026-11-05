@@ -96,7 +96,7 @@ impl Write {
         let changed_bytes = places.len() as u64 * 4;
         fits(engine, &[changed_bytes], std::iter::empty())?;
         let changed = plane(engine, "write changed", changed_bytes);
-        let cut = runs(places.iter().map(|place| place.map(|at| at.page)), per_pass, most);
+        let cut = runs(places.iter().map(|place| place.map(|at| at.page)), None, per_pass, most);
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());

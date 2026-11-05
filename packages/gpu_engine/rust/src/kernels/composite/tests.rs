@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use super::{
     Batch, Budget, Composite, DEPTH, KeyChain, Laid, Plan, Step, TILE, TILE_TEXELS, TileAt,
-    TileSet, check_depth, chunked, cut,
+    TileSet, check_depth, cut,
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN};
@@ -1882,19 +1882,6 @@ fn each_pass_reads_the_mask_s_rows_its_tiles_lie_on() {
             }
         }
     }
-}
-
-// A pass takes `chunk` output tiles at most — and under a mask none that
-// run over more tile rows than that, as it is given the mask's rows from
-// its first tile row to its last.
-#[test]
-fn a_pass_under_a_mask_takes_tiles_of_no_more_rows_than_tiles() {
-    let tiles = [(0, 0), (1, 0), (0, 5), (0, 6), (2, 6)];
-    assert_eq!(chunked(&tiles, 3, false), [0..3, 3..5]);
-    assert_eq!(chunked(&tiles, 3, true), [0..2, 2..5]);
-    assert_eq!(chunked(&[(0, -2), (0, 1)], 3, true), [0..1, 1..2]);
-    assert_eq!(chunked(&tiles[..1], 1, true), [0..1]);
-    assert!(chunked(&[], 3, true).is_empty());
 }
 
 // A masked row needs the plan's mask, and the mask a plane that holds its

@@ -418,7 +418,7 @@ impl Dabs {
         // A pass a run of the tiles, in their order: on no more pages than it
         // binds, and no more tiles than a dispatch reaches.
         let most = engine.device.limits().max_compute_workgroups_per_dimension as usize;
-        let runs = runs(tiles.iter().map(|tile| Some(tile.at.page)), pages_per_pass, most);
+        let runs = runs(tiles.iter().map(|tile| Some(tile.at.page)), None, pages_per_pass, most);
         // Each tile's k: its page's binding among its run's.
         let ks: Option<Vec<u32>> = runs
             .iter()

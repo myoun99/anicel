@@ -93,7 +93,9 @@ impl Lift {
         if walk.is_empty() {
             return Some(Lifted { rgba, anything: false });
         }
-        let cut = runs(walk.iter().map(|tile| Some(tile.at.page)), per_pass, most);
+        let rows: Vec<i32> = walk.iter().map(|tile| tile.row).collect();
+        let pages = walk.iter().map(|tile| Some(tile.at.page));
+        let cut = runs(pages, Some(rows.as_slice()), per_pass, most);
         let align = alignment(engine);
         let mut encoder = engine
             .device
