@@ -27,7 +27,9 @@ use super::{
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
-/// the box's pixels and the flag — and the lift's words, a uniform one.
+/// the box's pixels and the flag — and the lift's words, a uniform one. A
+/// device that binds sixteen pages past them binds them past one fewer as
+/// well, so no test here tells the uniform from none (mutant d03, 11-06).
 const OWN_BUFFERS: u32 = 3;
 
 /// The lift, compiled once for as many pages as the device lets it bind.

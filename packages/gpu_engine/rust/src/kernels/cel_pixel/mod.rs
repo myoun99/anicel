@@ -51,7 +51,9 @@ use crate::kernels::shared::{
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the new pixels, and the counts or the runs — and the pass's words, a
-/// uniform one.
+/// uniform one. A device that binds sixteen pages past them binds them past
+/// one fewer as well, so no test here tells the uniform from none (mutant
+/// d02, 11-06).
 const OWN_BUFFERS: u32 = 3;
 /// walk.wgsl — a walked tile, its pixels and what covers them, as the
 /// verbs and the lift read them.

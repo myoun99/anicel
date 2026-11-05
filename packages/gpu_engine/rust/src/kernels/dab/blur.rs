@@ -52,6 +52,7 @@ const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 /// four storage buffers would compile a pass binding five. Past them the
 /// dab's words, a uniform one, so counted as well.
 const OWN: Own = Own { storage: 3, uniform: 1 };
+/// Any binding past the dab's own, 0 to 3, does as well (mutant d04, 11-06).
 const PAGES_AT: u32 = 4;
 /// blur_cel.wgsl's: the cel and the slots, the pages from binding 2.
 const CEL_OWN: Own = Own { storage: 2, uniform: 0 };
