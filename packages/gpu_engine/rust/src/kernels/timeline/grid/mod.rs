@@ -23,7 +23,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::ISQRT_WGSL;
+use crate::kernels::shared::{ISQRT_WGSL, storage_format};
 use crate::kernels::timeline::LAID_WGSL;
 
 const FILL_RECT: i32 = 1;
@@ -52,15 +52,6 @@ pub(crate) struct GridTile {
     /// What the atlas binding holds for a stream with no letters.
     no_atlas: wgpu::Texture,
     pipelines: Vec<(wgpu::TextureFormat, wgpu::ComputePipeline)>,
-}
-
-/// The WGSL name of a format the pass can store to.
-fn storage_format(format: wgpu::TextureFormat) -> Option<&'static str> {
-    match format {
-        wgpu::TextureFormat::Bgra8Unorm => Some("bgra8unorm"),
-        wgpu::TextureFormat::Rgba8Unorm => Some("rgba8unorm"),
-        _ => None,
-    }
 }
 
 /// How far an op's places and lengths may reach either way: 2^28 — a

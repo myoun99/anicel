@@ -31,7 +31,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::ISQRT_WGSL;
+use crate::kernels::shared::{ISQRT_WGSL, storage_format};
 use crate::kernels::timeline::LAID_WGSL;
 
 /// The most lanes a sound may bring.
@@ -171,15 +171,6 @@ fn edge_of(view: &WaveView, buckets: u32, e: i64) -> [u32; 2] {
         return [buckets - 1, 0];
     }
     [bucket as u32, (((numer % denom) << 16) / denom) as u32]
-}
-
-/// The WGSL name of a format the pass can store to.
-fn storage_format(format: wgpu::TextureFormat) -> Option<&'static str> {
-    match format {
-        wgpu::TextureFormat::Bgra8Unorm => Some("bgra8unorm"),
-        wgpu::TextureFormat::Rgba8Unorm => Some("rgba8unorm"),
-        _ => None,
-    }
 }
 
 /// A waveform tile's pass, one pipeline per texture format it has been run

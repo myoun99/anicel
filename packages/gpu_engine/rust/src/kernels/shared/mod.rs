@@ -30,3 +30,13 @@ pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
 /// export kernels' frame (`kernels/export/frame.wgsl`) and the composite's
 /// rows and output tiles.
 pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
+
+/// The WGSL name of a surface's format, as a pass storing to it declares
+/// it: BGRA8 or RGBA8 unorm, what `platform::Surface` makes, and no other.
+pub(crate) fn storage_format(format: wgpu::TextureFormat) -> Option<&'static str> {
+    match format {
+        wgpu::TextureFormat::Bgra8Unorm => Some("bgra8unorm"),
+        wgpu::TextureFormat::Rgba8Unorm => Some("rgba8unorm"),
+        _ => None,
+    }
+}
