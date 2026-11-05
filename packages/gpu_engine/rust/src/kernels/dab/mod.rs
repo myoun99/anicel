@@ -239,7 +239,9 @@ struct Piles {
 impl Piles {
     /// Binding no more than `most` pages of each a pass — or nothing, where
     /// the device leaves it none: past the plan and the run's words, a
-    /// third of what a stage binds goes to each.
+    /// third of what a stage binds goes to each. Each set counts the stage's
+    /// other buffers as well, which a third leaves room for already, so no
+    /// test tells its uniform from none (mutant c05, 11-06).
     fn new(engine: &Engine, most: usize) -> Option<Self> {
         let paged = |set: u32, each: usize, name| {
             let own = Own { storage: 1 + 2 * each as u32, uniform: 1 };
