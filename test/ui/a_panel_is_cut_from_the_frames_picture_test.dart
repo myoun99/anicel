@@ -18,7 +18,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/panel_pictures.dart';
 
@@ -94,25 +93,25 @@ void main() {
   }
 
   testWidgets('🚨a panel of a frame the warmer has made is cut from that '
-      'picture: none is made for it, at any width', (tester) async {
+      'picture: none is made for it, at any width, and it stays', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final session = halfInked();
       addTearDown(session.dispose);
       final cut = session.requireActiveCut;
       final pictures = session.playbackRig.framePictures;
-      // The frame as a canvas standing on it shows it: on its paper, no
-      // ghost.
-      expect(
-        await pictures.make((
-          cut: cut,
-          frameIndex: 0,
-          paintPaper: true,
-          ghosts: FrameGhosts.none,
-        ), shouldAbort: () => false),
-        isTrue,
-      );
+      final scheduler = session.playbackRig.prerenderScheduler;
+      session.warmActiveCut();
+      for (
+        var i = 0;
+        i < 500 && !(scheduler.progress.value.isComplete && scheduler.isResting);
+        i += 1
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
       final held = pictures.store.estimatedBytes;
-      expect(held, greaterThan(0), reason: 'LIVENESS: the frame\'s picture');
+      expect(held, greaterThan(0), reason: 'LIVENESS: the warmer\'s pictures');
 
       for (final width in [16, 32]) {
         final image = await PanelPictures(
@@ -129,34 +128,52 @@ void main() {
           255,
           reason: 'paper',
         );
-        expect(pictures.store.estimatedBytes, held, reason: 'none made');
+        expect(
+          pictures.store.estimatedBytes,
+          held,
+          reason: 'none made, none let go',
+        );
       }
     });
   });
 
-  testWidgets('🚨what a panel makes stays within the playback line: past '
-      'it, let go of once the panel is drawn', (tester) async {
+  /// [cut]'s panel at frame 0 drawn, and whether it was: its left half ink.
+  Future<bool> drawn(EditorSessionManager session, Cut cut) async {
+    final image = await PanelPictures(
+      session: session,
+    ).render(cut, 0, width: 16);
+    final bytes = (await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!;
+    image.dispose();
+    return bytes.getUint8((8 * 16 + 1) * 4) == 0;
+  }
+
+  testWidgets('🚨a picture made for a panel alone is let go of once the '
+      'panel is drawn: no step of the run wants it', (tester) async {
     await tester.runAsync(() async {
       final session = halfInked();
       addTearDown(session.dispose);
-      // Less than one picture of the canvas.
-      session.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(
-        1024,
-      );
+      expect(await drawn(session, session.requireActiveCut), isTrue);
+      expect(session.playbackRig.framePictures.store.estimatedBytes, 0);
+    });
+  });
+
+  testWidgets('a picture a screen holds stays, once a panel is cut from it', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final session = halfInked();
+      addTearDown(session.dispose);
       final cut = session.requireActiveCut;
-      final image = await PanelPictures(
-        session: session,
-      ).render(cut, 0, width: 16);
-      final bytes = (await image.toByteData(
-        format: ui.ImageByteFormat.rawRgba,
-      ))!;
-      image.dispose();
-      expect(bytes.getUint8((8 * 16 + 1) * 4), 0, reason: 'LIVENESS: drawn');
-      expect(
-        session.playbackRig.framePictures.store.estimatedBytes,
-        0,
-        reason: 'no room for it on the line',
-      );
+      final pictures = session.playbackRig.framePictures;
+      final frame = panelFrame(cut, 0);
+      expect(await pictures.make(frame, shouldAbort: () => false), isTrue);
+      pictures.store.retainPin(pictures.keyOf(frame));
+      final held = pictures.store.estimatedBytes;
+      expect(held, greaterThan(0), reason: 'LIVENESS: the frame\'s picture');
+      expect(await drawn(session, cut), isTrue);
+      expect(pictures.store.estimatedBytes, held);
     });
   });
 }

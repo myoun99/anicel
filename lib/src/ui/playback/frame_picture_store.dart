@@ -580,6 +580,14 @@ class FramePictureStore<K extends Object> {
     }
   }
 
+  /// Lets go of [key]'s picture as [letGo] does, unless a screen holds it
+  /// ([retainPin]) — as the budget never lets one go ([enforceBudget]).
+  void letGoUnpinned(K key) {
+    if (!_pins.isPinned(key)) {
+      letGo(key);
+    }
+  }
+
   /// Declares a holder of [key]'s picture — one the screen draws. Balanced
   /// by [releasePin]; counts nest.
   void retainPin(K key) => _pins.retain(key);

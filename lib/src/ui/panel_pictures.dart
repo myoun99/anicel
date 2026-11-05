@@ -152,12 +152,14 @@ class PanelPictures {
     } finally {
       recorded.dispose();
       image?.dispose();
-      // 🚨What a panel made is held on the playback line as the warmer's
-      // pictures are, and no further: let go of past it, a picture no step
-      // wants first — a panel's (`letGoWantedLatest`). A store lays what it
-      // is asked and weighs nothing; the warmer weighs before it makes, and
-      // a storyboard of fifty cuts would have laid fifty frames past it.
-      session.playbackRig.playbackCache.enforcePlaybackCacheBudget();
+      // 🚨Cut, the picture is left as the panel found it: one a step of
+      // the run wants or a screen holds stays, and one made for the panel
+      // alone goes ([PlaybackCacheBudget.letGoUnwanted]).
+      if (picture != null) {
+        session.playbackRig.playbackCache.letGoUnwanted(
+          pictures.keyOfStack(nodes, demanded),
+        );
+      }
     }
   }
 }
