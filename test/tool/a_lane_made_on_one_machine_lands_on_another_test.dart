@@ -346,7 +346,7 @@ void main() {
           r'${stamped:+"+$(gate_ref "$name"):refs/heads/gated/$name"}',
         ),
       );
-      final unstamped = at(send, r'[ -n "$stamped" ] || git');
+      final unstamped = at(send, r'[ -n "$stamped" ] || mirror_git');
       expect(unstamped, greaterThan(pushed));
       expect(
         send.sublist(unstamped, unstamped + 2).join('\n'),

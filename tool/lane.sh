@@ -694,8 +694,8 @@ cmd_receive() {
   # Whatever stamp an earlier lane of this name left here goes first: a
   # lane that arrives without one arrives unmeasured.
   git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
-  mirror_git fetch --quiet "$MIRROR" "+refs/heads/gated/$name:$(gate_ref "$name")" \
-    >/dev/null 2>&1 || true
+  mirror_git fetch --quiet \
+    "$MIRROR" "+refs/heads/gated/$name:$(gate_ref "$name")" >/dev/null 2>&1 || true
   git -C "$ROOT" worktree add "$p" "work/$name" >/dev/null || die "worktree add failed"
   furnish "$p"
   echo "$p"
