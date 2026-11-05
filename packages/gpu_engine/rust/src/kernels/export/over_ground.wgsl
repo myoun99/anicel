@@ -68,11 +68,16 @@ fn pixel(index: u32) -> vec3<u32> {
 // bytes fill. A run may cross from one row into the next, as the bytes do.
 @compute @workgroup_size(64)
 fn over_ground_pass(@builtin(global_invocation_id) id: vec3<u32>) {
+  // Past a row's runs: the next row's own invocations write those words,
+  // so going on would only write them twice.
   if (id.x >= params.row_groups) {
     return;
   }
   let run = id.y * params.row_groups + id.x;
   let first = run * 4u;
+  // A run past the picture's last has its words past the buffer, and a
+  // store out of bounds may land anywhere in it (WGSL, invalid memory
+  // references): this device drops it, another may write the last word.
   if (first >= params.width * params.height) {
     return;
   }
