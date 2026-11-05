@@ -6,6 +6,7 @@ library;
 
 import 'sheet_paper.dart' show SheetPaperFormat;
 import 'timesheet_info.dart' show TimesheetHeaderField;
+import 'transition_geometry.dart' show CutTransitionHandles;
 
 /// The frames a second the XDTS Viewer counts its sheet in: fixed — it
 /// reads no rate from the file and makes its seconds of 24 frames.
@@ -18,6 +19,18 @@ const int xdtsViewerFps = 24;
 /// same answer greys the viewer's sheets in the timesheet's own picker
 /// (I-162-Q3) — 「이런 기준 법 사본화되있으면 통일하면서」.
 bool xdtsViewerReads(int fps) => fps == xdtsViewerFps;
+
+/// The O.L the viewer is told a cut carries at each end, in frames: twice
+/// the のりしろ its side draws ([CutTransitionHandles]).
+///
+/// The viewer takes half an O.L off each end of a sheet's frames for its
+/// 尺, so twice the のりしろ gives back the conte 尺 the app prints — 저장's
+/// call, not the user's (I-161); an O.L laid evenly across the cut is
+/// exactly that. ONE answer for the ink folder's `config.ini` and the O.L
+/// an XDTS sheet draws of itself (I-162-Q7, 유저 2026-11-05: 「뷰어의 OL
+/// 표시를 우리 O.L 로 채운다」).
+({int start, int end}) xdtsViewerOverlaps(CutTransitionHandles handles) =>
+    (start: handles.head * 2, end: handles.tail * 2);
 
 /// A box of an XDTS sheet's info header: the label the viewer prints over
 /// it — its template's (`EPISODE`, `SEQ.` …) as the viewer's Japanese says
@@ -228,6 +241,7 @@ enum XdtsViewerSheet {
     ],
     memo: (leftMm: 0, topMm: 14.4, widthMm: 243.5, heightMm: 28.2),
     logo: (leftMm: 0, topMm: 0, widthMm: 46.7, heightMm: 5.5),
+    overlapLength: (leftMm: 133.9, topMm: 13.4, widthMm: 72.2, heightMm: 3.5),
   );
 
   const XdtsViewerSheet(
@@ -267,6 +281,7 @@ enum XdtsViewerSheet {
     this.totalOverCurrent = true,
     required this.memo,
     required this.logo,
+    this.overlapLength,
   });
 
   /// The stored key.
@@ -355,6 +370,10 @@ enum XdtsViewerSheet {
   /// The places for the memo and for the logo.
   final XdtsDataField memo;
   final XdtsDataField logo;
+
+  /// The place the sheet writes a cut's O.L lengths in (`OverlapLength`) —
+  /// the Ponoc sheet's alone.
+  final XdtsDataField? overlapLength;
 
   /// The seconds a page holds, at the viewer's rate.
   int get pageSeconds => frameLength ~/ xdtsViewerFps;

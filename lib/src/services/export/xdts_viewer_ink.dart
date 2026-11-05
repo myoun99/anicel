@@ -53,20 +53,20 @@ const Set<TimesheetContentPart> xdtsViewerUnprintedParts = {
 /// blocks as the viewer does with it on (I-162 ②, 타임라인/콘티 11-05), and a
 /// page laid on a sheet of another width lands its values in other columns.
 ///
-/// An O.L is written as twice the のりしろ its side draws: the viewer takes
-/// half an O.L off each end of a sheet's frames for its 尺, so twice the
-/// のりしろ gives back the conte 尺 the app prints — my call, not the
-/// user's (I-161); an O.L laid evenly across the cut is exactly that.
+/// An O.L is written as [xdtsViewerOverlaps] says — the O.L the app's XDTS
+/// sheet draws of itself too.
 String xdtsViewerConfig({
   required XdtsViewerSheet sheet,
   required CutTransitionHandles handles,
-}) =>
-    '[General]\n'
-    'Version=1.3.0\n'
-    '\n'
-    '[FormatSettings]\n'
-    'TemplateName="${sheet.label}"\n'
-    'ExportArea=Cells\n'
-    'ExpandColumns=true\n'
-    'StartOverlapFrameLength=${handles.head * 2}\n'
-    'EndOverlapFrameLength=${handles.tail * 2}\n';
+}) {
+  final overlaps = xdtsViewerOverlaps(handles);
+  return '[General]\n'
+      'Version=1.3.0\n'
+      '\n'
+      '[FormatSettings]\n'
+      'TemplateName="${sheet.label}"\n'
+      'ExportArea=Cells\n'
+      'ExpandColumns=true\n'
+      'StartOverlapFrameLength=${overlaps.start}\n'
+      'EndOverlapFrameLength=${overlaps.end}\n';
+}

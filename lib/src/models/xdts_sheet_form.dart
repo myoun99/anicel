@@ -150,6 +150,12 @@ class XdtsSheetForm {
   late final XdtsPixelRect memo = _placeOf(template.memo);
   late final XdtsPixelRect logo = _placeOf(template.logo);
 
+  /// The O.L lengths' place, on a sheet that has one.
+  late final XdtsPixelRect? overlapLength = switch (template.overlapLength) {
+    null => null,
+    final field => _placeOf(field),
+  };
+
   /// [field] in pixels, each of its lengths rounded on its own.
   XdtsPixelRect _placeOf(XdtsDataField field) => (
     left: originLeft + px(field.leftMm),

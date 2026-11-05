@@ -26,6 +26,7 @@ import '../../models/timesheet_words.dart';
 import '../../models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
 import '../../models/xdts_sheet_form.dart';
+import '../../models/xdts_viewer_sheet.dart' show xdtsViewerOverlaps;
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
@@ -63,6 +64,7 @@ part 'document_painter/timesheet_sheet_forms.dart';
 part 'document_painter/timesheet_xdts_page.dart';
 part 'document_painter/timesheet_xdts_form_pass.dart';
 part 'document_painter/timesheet_xdts_counts_pass.dart';
+part 'document_painter/timesheet_xdts_overlap_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a portrait page
@@ -946,6 +948,9 @@ class TimesheetDocumentPainter extends CustomPainter
         if (_drawsPart(TimesheetContentPart.books)) {
           _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
         }
+      }
+      if (_drawsPart(TimesheetContentPart.overlaps)) {
+        _xdts?.overlaps.paintPage(canvas, page.index);
       }
     }
     if (_drawsPart(TimesheetContentPart.cutEnd)) {

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -20,6 +21,10 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/transition_geometry.dart';
+import 'package:anicel/src/models/xdts_sheet_form.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
+import 'package:anicel/src/services/export/xdts_viewer_ink.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
@@ -40,13 +45,18 @@ void main() {
 
   /// A cut of [cels] 原画 rows on [kind], the first exposing its drawings
   /// 1 and 2 six frames each, then [inbetweens] 動画 rows exposing a
-  /// drawing six frames — [duration] frames long.
+  /// drawing six frames — [duration] frames long from frame [at] of its
+  /// track, which [spans] cross.
   TimesheetDocument sheet({
     TimesheetSheetKind kind = TimesheetSheetKind.xdtsA3SixSeconds,
     int cels = 1,
     int inbetweens = 0,
     int duration = 30,
+    int at = 0,
+    List<TransitionSpan> spans = const [],
   }) => TimesheetDocument.fromCut(
+    cutStartFrame: at,
+    transitionSpans: spans,
     cut: Cut(
       id: const CutId('cut'),
       name: '12',
@@ -262,13 +272,15 @@ void main() {
 
   group('the print', () {
     /// [layers] of page 0 of [document] printed back at the viewer's own
-    /// pixels, from [origin] [size] large.
+    /// pixels, from [origin] [size] large — of its values, [parts] alone
+    /// where they are named.
     Future<(Uint8List, int)> printed(
       WidgetTester tester,
       TimesheetDocument document,
       Set<SheetPaintLayer> layers, {
       required Offset origin,
       required Size size,
+      Set<TimesheetContentPart>? parts,
     }) async {
       final layout = TimesheetDocumentLayout(document: document);
       final unit = unitOf(layout);
@@ -282,6 +294,7 @@ void main() {
         ),
         words: timesheetWordsIn(AppLanguage.ja),
         layers: layers,
+        contentParts: parts,
       );
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder)
@@ -394,6 +407,174 @@ void main() {
       // The stroke from (2776, 93) to (2604, 215).
       expect(inked(const Rect.fromLTRB(2764, 95, 2780, 100)), isTrue);
       expect(inked(const Rect.fromLTRB(2610, 200, 2630, 208)), isTrue);
+    });
+
+    // I-162-Q7 (유저 2026-11-05): 「뷰어의 OL 표시를 우리 O.L 로 채운다」.
+    group('the O.L, as the viewer draws the lengths it is told', () {
+      // From frame 10 of its track, 30 frames: an O.L from 6 to 14 crosses
+      // its start (4 frames of のりしろ, an O.L of 8 told), one from 37 to
+      // 43 its end (3, an O.L of 6) — 37 rows drawn, the end's O.L on
+      // rows 31 to 36.
+      const spans = [
+        (start: 6, length: 8, mark: CameraInstructionMarkType.ol),
+        (start: 37, length: 6, mark: CameraInstructionMarkType.ol),
+      ];
+      const origin = Offset(1200, 1000);
+      const size = Size(250, 1700);
+
+      Rect rowOf(XdtsSheetForm form, int row) => Rect.fromLTRB(
+        (form.bodyLeft(0) + form.cameraLeft).toDouble(),
+        (form.rowsTop + form.rowTop(row)).toDouble(),
+        (form.bodyLeft(0) + form.cameraLeft + form.cameraBlockWidth)
+            .toDouble(),
+        (form.rowsTop + form.rowBottom(row)).toDouble(),
+      );
+
+      test('the lengths told are twice the のりしろ each end draws — the '
+          'ink folder\'s settings say the same', () {
+        const handles = CutTransitionHandles(head: 4, tail: 3);
+        expect(xdtsViewerOverlaps(handles), (start: 8, end: 6));
+        final config = xdtsViewerConfig(
+          sheet: XdtsViewerSheet.a3SixSeconds,
+          handles: handles,
+        );
+        expect(config, contains('StartOverlapFrameLength=8\n'));
+        expect(config, contains('EndOverlapFrameLength=6\n'));
+      });
+
+      testWidgets('a grey mark across the camera block on every frame of '
+          'each O.L — full at its ends, a point at its middle — and none '
+          'past them', (tester) async {
+        final document = sheet(at: 10, spans: spans);
+        expect(document.drawnFrameCount, 37);
+        final form = document.xdtsForm!;
+        // The O.L alone: the cut's end line stands on row 37's top.
+        final print = await printed(
+          tester,
+          document,
+          SheetStratum.content.layers,
+          origin: origin,
+          size: size,
+          parts: const {TimesheetContentPart.overlaps},
+        );
+        bool inked(Rect rect) => inkedIn(print, origin, rect);
+        Rect centre(int row) => Rect.fromCenter(
+          center: rowOf(form, row).center,
+          width: 4,
+          height: 4,
+        );
+        Rect topLeft(int row) =>
+            Rect.fromLTWH(rowOf(form, row).left + 1, rowOf(form, row).top + 1,
+                4, 3);
+        Rect bottomLeft(int row) => Rect.fromLTWH(
+          rowOf(form, row).left + 1,
+          rowOf(form, row).bottom - 4,
+          4,
+          3,
+        );
+
+        for (final row in [0, 1, 2, 3, 4, 5, 6, 7, 31, 32, 33, 34, 35, 36]) {
+          expect(inked(centre(row)), isTrue, reason: 'row $row');
+        }
+        for (final row in [8, 30, 37]) {
+          expect(
+            inked(rowOf(form, row).deflate(2)),
+            isFalse,
+            reason: 'row $row',
+          );
+        }
+        expect(inked(topLeft(0)), isTrue);
+        expect(inked(topLeft(3)), isFalse);
+        expect(inked(bottomLeft(3)), isFalse);
+        expect(inked(bottomLeft(7)), isTrue);
+        expect(inked(topLeft(31)), isTrue);
+        expect(inked(bottomLeft(36)), isTrue);
+      });
+
+      testWidgets('none on a cut with no O.L, and none on the ink, which '
+          'the viewer draws them over itself', (tester) async {
+        final plain = await printed(
+          tester,
+          sheet(),
+          SheetStratum.content.layers,
+          origin: origin,
+          size: size,
+        );
+        final form = sheet().xdtsForm!;
+        expect(inkedIn(plain, origin, rowOf(form, 0).deflate(2)), isFalse);
+
+        final ink = await printed(
+          tester,
+          sheet(at: 10, spans: spans),
+          SheetStratum.content.layers,
+          origin: origin,
+          size: size,
+          parts: xdtsViewerUnprintedParts,
+        );
+        expect(inkedIn(ink, origin, rowOf(form, 0).deflate(2)), isFalse);
+      });
+
+      testWidgets('the Ponoc sheet writes the lengths in their place — no '
+          'other sheet has one', (tester) async {
+        const kind = TimesheetSheetKind.xdtsPonocSixSeconds;
+        final place = sheet(kind: kind).xdtsForm!.overlapLength!;
+        expect(place, (left: 1391, top: 171, width: 711, height: 34));
+        for (final other in [
+          TimesheetSheetKind.xdtsA3SixSeconds,
+          TimesheetSheetKind.xdtsB4ThreeSeconds,
+          TimesheetSheetKind.xdtsB4SixSeconds,
+        ]) {
+          expect(sheet(kind: other).xdtsForm!.overlapLength, isNull);
+        }
+        final box = Rect.fromLTWH(
+          place.left.toDouble(),
+          place.top.toDouble(),
+          place.width.toDouble(),
+          place.height.toDouble(),
+        );
+        const at = Offset(1380, 160);
+        const room = Size(740, 60);
+        final told = await printed(
+          tester,
+          sheet(kind: kind, at: 10, spans: spans),
+          SheetStratum.content.layers,
+          origin: at,
+          size: room,
+        );
+        // Both lengths, across the place's middle.
+        expect(
+          inkedIn(told, at, Rect.fromLTRB(box.left, box.top, box.center.dx,
+              box.bottom)),
+          isTrue,
+        );
+        expect(
+          inkedIn(told, at, Rect.fromLTRB(box.center.dx, box.top, box.right,
+              box.bottom)),
+          isTrue,
+        );
+        final startOnly = await printed(
+          tester,
+          sheet(kind: kind, at: 10, spans: [spans.first]),
+          SheetStratum.content.layers,
+          origin: at,
+          size: room,
+        );
+        expect(
+          inkedIn(startOnly, at, Rect.fromLTRB(box.left, box.top,
+              box.left + box.width / 8, box.bottom)),
+          isFalse,
+          reason: 'one length, half as long, on the middle',
+        );
+        expect(inkedIn(startOnly, at, box), isTrue);
+        final none = await printed(
+          tester,
+          sheet(kind: kind),
+          SheetStratum.content.layers,
+          origin: at,
+          size: room,
+        );
+        expect(inkedIn(none, at, box), isFalse);
+      });
     });
 
     // I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두

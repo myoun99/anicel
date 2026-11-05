@@ -125,6 +125,12 @@ enum TimesheetContentPart {
   /// The CAM block: the camera's keys and the instructions.
   camera,
 
+  /// The O.L an XDTS sheet draws of the cut as the viewer does — its marks
+  /// over the camera block, and the lengths the Ponoc sheet writes — which
+  /// the viewer prints itself from what its ink folder tells it
+  /// (`xdtsViewerOverlaps`, I-162-Q7).
+  overlaps,
+
   /// The cut's end line.
   cutEnd,
 }
