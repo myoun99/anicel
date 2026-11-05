@@ -438,7 +438,9 @@ if(NOT ANDROID AND NOT IOS)
   # symlink (windows/flutter/ephemeral/.plugin_symlinks/qa_native), where
   # three levels up is not the repository, and the CMake it runs (Visual
   # Studio's 3.31) leaves that symlink unresolved in REALPATH — 2026-11-04,
-  # the Windows app failed to generate twice. The app needs no example.
+  # the Windows app failed to generate twice. The app needs no example; the
+  # Linux and Windows ARM64 releases build this one target this way for the
+  # parity run against their engine (linux-release.yml).
   if(PROJECT_IS_TOP_LEVEL)
     add_library(qa_fx_sdk_example SHARED
       "${CMAKE_CURRENT_LIST_DIR}/../../../sdk/fx/example/shadow.c")
