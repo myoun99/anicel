@@ -25,19 +25,20 @@ typedef XdtsPixelRect = ({int left, int top, int width, int height});
 /// Every measure is from the paper's top-left corner unless it says
 /// otherwise; a body's are from the body's corner.
 class XdtsSheetForm {
-  /// [template] carrying [cells] cel columns in its CELL block: the
-  /// viewer's ExpandColumns widens the block an XDTS file's tracks are
-  /// drawn in to as many, and the paper with it, where the template has
+  /// [template] for a cut whose wider block carries [columns] cel columns:
+  /// the viewer's ExpandColumns widens the ACTION block and the CELL block
+  /// both to as many, and the paper with them, where the template has
   /// fewer.
   ///
-  /// 🗣️저장 (I-162, 2026-11-05): our XDTS is ONE file, its cel tracks in
-  /// the CELL field, named with no `_genga_ts` · `_douga_ts`, and its
-  /// `config.ini` says `ExportArea=Cells` · `ExpandColumns=true` — so the
-  /// viewer draws every track in the CELL block, widens that block alone,
-  /// and leaves the ACTION block as the template has it.
-  XdtsSheetForm(this.template, {required int cells})
-    : keyColumns = template.keyColAmount,
-      cellsColumns = math.max(cells, template.cellsColAmount);
+  /// 🗣️I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두
+  /// 파일로」 — our XDTS is a `_genga_ts` file and a `_douga_ts` one, and
+  /// the viewer opened on such a pair widens both blocks to the larger
+  /// file's tracks, 「原画動画ペアの場合は、一方しかデータが無くても両方
+  /// 拡張する」 (its `XSheetPDFTemplate::param`). ↩️It was one file of
+  /// every cel track, the CELL block alone widened (저장 2026-11-05).
+  XdtsSheetForm(this.template, {required int columns})
+    : keyColumns = math.max(columns, template.keyColAmount),
+      cellsColumns = math.max(columns, template.cellsColAmount);
 
   /// The viewer's sheet — the template its numbers are read from.
   final XdtsViewerSheet template;
@@ -72,9 +73,11 @@ class XdtsSheetForm {
   late final int bodyHeight = px(template.bodyHeightMm);
   late final int bodyHMargin = px(template.bodyHMarginMm);
 
-  /// The body's width — the template's, and the columns it widened by.
+  /// The body's width — the template's, and the columns each block
+  /// widened by.
   late final int bodyWidth =
       px(template.bodyWidthMm) +
+      (keyColumns - template.keyColAmount) * keyColWidth +
       (cellsColumns - template.cellsColAmount) * cellsColWidth;
 
   /// The paper: the template's, and the bodies' widening beside it.

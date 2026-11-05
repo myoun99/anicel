@@ -13,6 +13,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
@@ -36,11 +38,13 @@ import '../../helpers/app_faces.dart';
 void main() {
   setUpAll(loadTheAppFaces);
 
-  /// A cut of [cels] cel rows on [kind], the first exposing its drawings
-  /// 1 and 2 six frames each, [duration] frames long.
+  /// A cut of [cels] 原画 rows on [kind], the first exposing its drawings
+  /// 1 and 2 six frames each, then [inbetweens] 動画 rows exposing a
+  /// drawing six frames — [duration] frames long.
   TimesheetDocument sheet({
     TimesheetSheetKind kind = TimesheetSheetKind.xdtsA3SixSeconds,
     int cels = 1,
+    int inbetweens = 0,
     int duration = 30,
   }) => TimesheetDocument.fromCut(
     cut: Cut(
@@ -66,6 +70,19 @@ void main() {
                   }
                 : const {},
           ),
+        for (var index = 0; index < inbetweens; index += 1)
+          Layer(
+            id: LayerId('inbetween-$index'),
+            name: 'IB$index',
+            kind: LayerKind.animation,
+            mark: const LayerMark(process: LayerProcess.inbetween),
+            frames: [
+              Frame(id: FrameId('ib$index'), duration: 1, strokes: const []),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(FrameId('ib$index'), length: 6),
+            },
+          ),
       ],
     ),
     projectName: 'P',
@@ -79,7 +96,7 @@ void main() {
 
   group('the layout', () {
     test('the page is the template\'s paper at the timesheet\'s 150dpi — '
-        'widened as the viewer widens it for the CELL block\'s rows', () {
+        'widened as the viewer widens it for the blocks\' rows', () {
       expect(
         TimesheetDocumentLayout(document: sheet()).paperPixelSize,
         const CanvasSize(width: 1754, height: 2480),
@@ -95,15 +112,16 @@ void main() {
           reason: '$kind',
         );
       }
-      // Ten cel rows on A3's eight columns: 2923 + 2 × 79 × 2 viewer pixels.
+      // Ten 原画 rows: A3's seven ACTION columns and eight CELL ones both
+      // widen to ten — 2923 + 2 × (3 × 44 + 2 × 79) = 3503 viewer pixels.
       final wide = TimesheetDocumentLayout(document: sheet(cels: 10));
       expect(
         wide.paperPixelSize,
-        const CanvasSize(width: 1943, height: 2480),
+        const CanvasSize(width: 2102, height: 2480),
       );
       expect(
         wide.paperWidth * wide.paperScale,
-        closeTo(1943, 1e-6),
+        closeTo(2102, 1e-6),
       );
       // A pixel of the paper is a pixel of the page (F-294): the paper is
       // the form, to within one of its pixels.
@@ -378,22 +396,29 @@ void main() {
       expect(inked(const Rect.fromLTRB(2610, 200, 2630, 208)), isTrue);
     });
 
-    testWidgets('the values sit in the template\'s cells: a cel row\'s '
-        'drawing in the CELL block\'s first column, its name in the head '
-        'over it, the ACTION block blank', (tester) async {
+    // I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두
+    // 파일로」 — the viewer prints the 原画 file in the ACTION block and the
+    // 動画 file in the CELL block.
+    testWidgets('the values sit in the template\'s cells: a 原画 row\'s '
+        'drawing in the ACTION block\'s first column and a 動画 row\'s in '
+        'the CELL block\'s, each name in the head over it', (tester) async {
       const origin = Offset(80, 960);
       final print = await printed(
         tester,
-        sheet(),
+        sheet(inbetweens: 1),
         SheetStratum.content.layers,
         origin: origin,
         size: const Size(700, 120),
       );
       bool inked(Rect rect) => inkedIn(print, origin, rect);
 
+      // ACTION: 44-pixel columns from 89.
+      expect(inked(const Rect.fromLTRB(91, 1011, 131, 1049)), isTrue);
+      expect(inked(const Rect.fromLTRB(91, 979, 131, 1007)), isTrue);
+      expect(inked(const Rect.fromLTRB(135, 979, 395, 1049)), isFalse);
+      // CELL: 79-pixel columns from 574.
       expect(inked(const Rect.fromLTRB(576, 1011, 651, 1049)), isTrue);
       expect(inked(const Rect.fromLTRB(576, 979, 651, 1007)), isTrue);
-      expect(inked(const Rect.fromLTRB(91, 979, 395, 1049)), isFalse);
       expect(inked(const Rect.fromLTRB(655, 979, 730, 1049)), isFalse);
     });
 

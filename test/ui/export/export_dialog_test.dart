@@ -1072,10 +1072,10 @@ void main() {
       expect((onB4.width, onB4.height), (2530, 3583));
     });
 
-    // I-162 ② (타임라인/콘티 · 저장 2026-11-05): the viewer widens its CELL
-    // block for every cel track the file brings (`ExpandColumns=true`), and
-    // its paper with it — an ink page cut to the template's paper lands its
-    // values in other columns.
+    // I-162 ② (타임라인/콘티 · 저장 2026-11-05): the viewer widens its
+    // blocks for the tracks its files bring (`ExpandColumns=true`) — both,
+    // for a 原画 · 動画 pair (I-162-Q6) — and its paper with them; an ink
+    // page cut to the template's paper lands its values in other columns.
     testWidgets('잉크 출력: a cut with more cel tracks than the viewer\'s '
         'sheet holds lays its ink on the paper the viewer widens for '
         'them', (tester) async {
@@ -1101,9 +1101,13 @@ void main() {
         ),
       ))!;
       addTearDown(image.dispose);
-      // Ten cel tracks on the A3 sheet's eight: two 79-pixel columns more
-      // in each of its two bodies.
-      expect((image.width, image.height), (2923 + 2 * 79 * 2, 4134));
+      // Ten 原画 tracks on the A3 sheet: three 44-pixel ACTION columns past
+      // its seven and two 79-pixel CELL ones past its eight, in each of its
+      // two bodies.
+      expect(
+        (image.width, image.height),
+        (2923 + 2 * (3 * 44 + 2 * 79), 4134),
+      );
     });
 
     // 🗣️I-161-Q3 (유저 2026-11-05): 「데이터로서 내보낼수있는건 다

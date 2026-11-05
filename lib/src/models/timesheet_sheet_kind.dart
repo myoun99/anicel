@@ -75,21 +75,21 @@ enum TimesheetSheetKind {
   int get seColumns => xdts == null ? 2 : 1;
   int get cameraColumns => xdts?.cameraColAmount ?? 2;
 
-  /// The viewer's sheet laid out for [cells] rows in its CELL block, or
-  /// null on one of our own.
-  XdtsSheetForm? xdtsFormFor({required int cells}) => switch (xdts) {
+  /// The viewer's sheet laid out for [columns] rows in the wider of its
+  /// blocks, or null on one of our own.
+  XdtsSheetForm? xdtsFormFor({required int columns}) => switch (xdts) {
     null => null,
-    final template => XdtsSheetForm(template, cells: cells),
+    final template => XdtsSheetForm(template, columns: columns),
   };
 
   /// The ACTION block's columns and the CELL block's, for [actions] and
   /// [cells] rows on them: each block its own rows past [_celColumns] on
-  /// our own sheets, as the viewer widens them on an XDTS sheet
-  /// ([xdtsFormFor]).
+  /// our own sheets, and both the wider's on an XDTS sheet, as the viewer
+  /// widens them ([xdtsFormFor]).
   ({int action, int cel}) celBlockColumns({
     required int actions,
     required int cells,
-  }) => switch (xdtsFormFor(cells: cells)) {
+  }) => switch (xdtsFormFor(columns: math.max(actions, cells))) {
     final form? => (action: form.keyColumns, cel: form.cellsColumns),
     null => (
       action: math.max(_celColumns, actions),

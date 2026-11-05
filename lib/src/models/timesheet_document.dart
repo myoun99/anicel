@@ -415,7 +415,7 @@ class TimesheetDocument {
     this.transitionHandles = CutTransitionHandles.none,
     required this.sheetKind,
     required this.xdtsForm,
-    required this.xdtsCelTracks,
+    required this.xdtsColumns,
     required this.pageFrameCount,
     required this.columns,
     required this.books,
@@ -485,19 +485,15 @@ class TimesheetDocument {
     final playbackFrameCount = sources.playbackFrameCount;
     final drawnFrameCount = sources.drawnFrameCount;
     final sheetKind = printedSheetKindOf(cut, sources, fps: fps);
-    // 🗣️I-162 (유저 2026-11-05: 「서식 바꾸면 xdts의 해당 서식에서 보는거랑
-    // 똑같은 화면」): an XDTS sheet prints its rows where the viewer prints
-    // our XDTS file's — every cel row in the CELL block, the ACTION block
-    // left blank, as the one file the save lane writes is read (저장
-    // 2026-11-05, [XdtsSheetForm]). Our own sheets keep each row in its
-    // block (F-406).
-    final onXdts = sheetKind.xdts != null;
-    final actionLayers = onXdts ? const <Layer>[] : sources.actionLayers;
-    final cellLayers = onXdts ? sources.celLayers : sources.cellLayers;
+    // Every sheet keeps each row in its block (F-406) — an XDTS sheet too,
+    // where the viewer prints our 原画 file's in the ACTION block and our
+    // 動画 file's in the CELL block (I-162-Q6, [XdtsSheetForm]).
+    final actionLayers = sources.actionLayers;
+    final cellLayers = sources.cellLayers;
     final seColumnCount = sheetKind.seColumns;
     final cameraColumnCount = sheetKind.cameraColumns;
-    final xdtsCelTracks = sources.celLayers.length;
-    final xdtsForm = sheetKind.xdtsFormFor(cells: xdtsCelTracks);
+    final xdtsColumns = sources.celColumnsAcross;
+    final xdtsForm = sheetKind.xdtsFormFor(columns: xdtsColumns);
     final celBlocks = sheetKind.celBlockColumns(
       actions: actionLayers.length,
       cells: cellLayers.length,
@@ -602,12 +598,10 @@ class TimesheetDocument {
       transitionHandles: sources.handles,
       sheetKind: sheetKind,
       xdtsForm: xdtsForm,
-      xdtsCelTracks: xdtsCelTracks,
+      xdtsColumns: xdtsColumns,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
-      // The books tag the ACTION block's rows — on an XDTS sheet a blank
-      // block, as the viewer's is: none until I-162-Q4 says where.
-      books: onXdts ? const [] : List.unmodifiable(sources.actionBooks),
+      books: List.unmodifiable(sources.actionBooks),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
@@ -801,9 +795,9 @@ class TimesheetDocument {
   /// null on one of our own ([TimesheetSheetKind.xdts]).
   final XdtsSheetForm? xdtsForm;
 
-  /// The cel tracks our XDTS file writes ([SheetSources.celLayers]): what
-  /// the viewer widens its CELL block to, under the sheet and its ink.
-  final int xdtsCelTracks;
+  /// The wider block's cel rows ([SheetSources.celColumnsAcross]): what the
+  /// viewer widens both blocks to, under the sheet and its ink.
+  final int xdtsColumns;
 
   /// Rows per paper page ([TimesheetSheetKind.pageFramesAt]).
   final int pageFrameCount;

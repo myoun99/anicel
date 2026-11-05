@@ -3421,8 +3421,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// viewer does not print ([xdtsViewerUnprintedParts]), the page laid
   /// whole onto the viewer's paper — 🗣️I-161-Q2 (유저 2026-11-05): 「우리
   /// 용지를 뷰어 용지 크기에 맞춰 통째로 늘린다」 — the paper as wide as the
-  /// viewer widens it for the cut's cel tracks ([TimesheetDocument
-  /// .xdtsCelTracks]) — and the viewer's settings for that paper. A folder
+  /// viewer widens it for the cut's wider block ([TimesheetDocument
+  /// .xdtsColumns]) — and the viewer's settings for that paper. A folder
   /// already there is written over, page by page, as every export writes
   /// over its files — 🗣️I-161-Q10 (유저 2026-11-05): 「덮어쓴다」.
   Future<void> _writeXdtsInk(
@@ -3438,7 +3438,7 @@ class ExportDialogState extends State<ExportDialog> {
       '${xdtsInkFolderName(beside.uri.pathSegments.last)}',
     );
     await folder.create(recursive: true);
-    final paper = XdtsSheetForm(viewer, cells: document.xdtsCelTracks);
+    final paper = XdtsSheetForm(viewer, columns: document.xdtsColumns);
     final pageCount = document.pages.length;
     for (var page = 0; page < pageCount; page += 1) {
       final image = await _renderSheetPage(

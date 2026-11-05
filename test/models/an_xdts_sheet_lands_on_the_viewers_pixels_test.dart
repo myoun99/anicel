@@ -39,7 +39,7 @@ void main() {
   ];
 
   test('the A3 6-second sheet', () {
-    final form = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, columns: 0);
     expect((form.pageWidth, form.pageHeight), (2923, 4134));
     expect((form.originLeft, form.originTop), (89, 49));
     expect(lines(form, 0).x, [89, 397, 466, 574, 1206, 1443, 1442]);
@@ -56,7 +56,7 @@ void main() {
   });
 
   test('the B4 3-second sheet', () {
-    final form = XdtsSheetForm(XdtsViewerSheet.b4ThreeSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.b4ThreeSeconds, columns: 0);
     expect((form.pageWidth, form.pageHeight), (2530, 3583));
     expect((form.originLeft, form.originTop), (74, 59));
     expect(lines(form, 0).x, [74, 760, 824, 937, 2071, 2450, 2456]);
@@ -72,7 +72,7 @@ void main() {
   });
 
   test('the B4 6-second sheet', () {
-    final form = XdtsSheetForm(XdtsViewerSheet.b4SixSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.b4SixSeconds, columns: 0);
     expect((form.pageWidth, form.pageHeight), (2530, 3583));
     expect((form.originLeft, form.originTop), (94, 59));
     expect(lines(form, 0).x, [94, 290, 359, 457, 947, 1241, 1246]);
@@ -89,7 +89,7 @@ void main() {
   });
 
   test('the Ponoc 6-second sheet — its frame numbers have no column', () {
-    final form = XdtsSheetForm(XdtsViewerSheet.ponocSixSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.ponocSixSeconds, columns: 0);
     expect((form.pageWidth, form.pageHeight), (2530, 3583));
     expect((form.originLeft, form.originTop), (73, 39));
     expect(form.lastKeyColWidth, 0);
@@ -106,7 +106,7 @@ void main() {
 
   test('the rows by a second\'s double rule share its gap — the Ponoc '
       'sheet\'s, a second shorter than its rows, gives a pixel each', () {
-    final a3 = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0);
+    final a3 = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, columns: 0);
     // The A3 sheet's spec example: the second second's first row is
     // 2020…2065, reaching 3 px up into the gap.
     expect(a3.rowsTop + a3.rowTop(24), 2020);
@@ -115,7 +115,7 @@ void main() {
     expect(a3.rowsTop + a3.rowTop(1), 1009 + 42);
     final ponoc = XdtsSheetForm(
       XdtsViewerSheet.ponocSixSeconds,
-      cells: 0,
+      columns: 0,
     );
     expect(ponoc.heightAdjust, -1);
     expect(ponoc.rowBottom(23), 983);
@@ -133,7 +133,7 @@ void main() {
       XdtsViewerSheet.b4SixSeconds,
       XdtsViewerSheet.ponocSixSeconds,
     ]) {
-      final form = XdtsSheetForm(template, cells: 0);
+      final form = XdtsSheetForm(template, columns: 0);
       expect(form.rowTop(0), 0, reason: template.label);
       for (var row = 1; row < XdtsSheetForm.bodyRows; row += 1) {
         expect(
@@ -150,23 +150,32 @@ void main() {
     }
   });
 
-  test('more cel columns than the CELL block holds widen it to as many, '
-      'and the paper by the bodies\' widening — the ACTION block is left '
-      'as it is, as the viewer leaves it for our one-file XDTS', () {
-    final form = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 10);
-    expect((form.keyColumns, form.cellsColumns), (7, 10));
-    expect(form.bodyWidth, 1353 + 2 * 79);
-    expect(form.pageWidth, 2923 + 2 * 79 * 2);
+  // I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두
+  // 파일로」 — and the viewer widens both blocks of such a pair.
+  test('a block with more cel columns than it holds widens BOTH blocks to '
+      'as many, and the paper by the bodies\' widening — as the viewer '
+      'widens a 原画 · 動画 pair', () {
+    // A3: ACTION 7 columns of 44 px and the numbers' 69, CELL 8 of 79.
+    final form = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, columns: 10);
+    expect((form.keyColumns, form.cellsColumns), (10, 10));
+    expect(form.bodyWidth, 1353 + 3 * 44 + 2 * 79);
+    expect(form.pageWidth, 2923 + 2 * (3 * 44 + 2 * 79));
     expect(form.bodyLeft(1), 89 + form.bodyWidth + 69);
-    expect(form.cameraLeft, 377 + 108 + 10 * 79);
+    expect(form.dialogLeft, 10 * 44 + 69);
+    expect(form.cameraLeft, 10 * 44 + 69 + 108 + 10 * 79);
     expect(form.pageHeight, 4134);
     // The info header stands where it stood.
     expect(
       infoBoxes(form),
-      infoBoxes(XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0)),
+      infoBoxes(XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, columns: 0)),
     );
-    // A block that holds them is left as it is.
-    final fits = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 8);
+    // Each block past its own count only: eight widen the ACTION block's
+    // seven, and the CELL block holds them.
+    final eight = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, columns: 8);
+    expect((eight.keyColumns, eight.cellsColumns), (8, 8));
+    expect(eight.bodyWidth, 1353 + 44);
+    // Blocks that hold them are left as they are.
+    final fits = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, columns: 7);
     expect((fits.keyColumns, fits.cellsColumns), (7, 8));
     expect(fits.bodyWidth, 1353);
   });

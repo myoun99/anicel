@@ -224,9 +224,9 @@ void main() {
       );
     });
 
-    test('every cel row prints in the CELL block, in order, and the ACTION '
-        'block is the template\'s, blank — where the viewer prints our '
-        'one-file XDTS (저장 2026-11-05)', () {
+    test('each row prints in its block, as on our own sheets — 原画 in the '
+        'ACTION block, 動画 in the CELL block — where the viewer prints our '
+        '原画 file and our 動画 file (I-162-Q6)', () {
       final sheet = _sheet(
         _cut(
           cels: 2,
@@ -235,55 +235,89 @@ void main() {
         ),
       );
       expect(sheet.sheetKind, TimesheetSheetKind.xdtsA3SixSeconds);
-      expect(labels(sheet, TimesheetColumnKind.action), List.filled(7, ''));
-      expect(labels(sheet, TimesheetColumnKind.cel), [
+      expect(labels(sheet, TimesheetColumnKind.action), [
         'A',
         'B',
-        'IB0',
         ...List.filled(5, ''),
+      ]);
+      expect(labels(sheet, TimesheetColumnKind.cel), [
+        'IB0',
+        ...List.filled(7, ''),
       ]);
       expect(_count(sheet, TimesheetColumnKind.se), 1);
       expect(_count(sheet, TimesheetColumnKind.camera), 3);
       expect((sheet.pageFrameCount, sheet.halfFrameCount), (144, 72));
-      expect(sheet.xdtsForm!.cellsColumns, 8);
-      expect(sheet.books, isEmpty);
-    });
-
-    test('more cel rows than the CELL block holds widen it as the viewer '
-        'does — no 3-second sheet in its place', () {
-      final sheet = _sheet(
-        _cut(cels: 6, inbetweens: 4, kind: TimesheetSheetKind.xdtsB4SixSeconds),
+      expect(
+        (sheet.xdtsForm!.keyColumns, sheet.xdtsForm!.cellsColumns),
+        (7, 8),
       );
-      expect(sheet.sheetKind, TimesheetSheetKind.xdtsB4SixSeconds);
-      expect(_count(sheet, TimesheetColumnKind.action), 4);
-      expect(_count(sheet, TimesheetColumnKind.cel), 10);
-      expect(sheet.xdtsForm!.cellsColumns, 10);
     });
 
-    test('the paper a cut\'s ink is laid on is the viewer\'s, widened for '
-        'every cel track its XDTS writes — from our own sheet too, whose '
-        'blocks part the rows (I-161-Q2 · I-162 ②)', () {
-      // Six ACTION rows and four 動画 rows: ten cel tracks in the file.
-      final ours = _sheet(_cut(cels: 6, inbetweens: 4));
-      expect(ours.sheetKind, TimesheetSheetKind.sixSeconds);
+    test('more cel rows than a block holds widen both blocks to the wider, '
+        'as the viewer widens a pair — no 3-second sheet in its place', () {
+      // The B4 6-second sheet: ACTION 8, CELL 7.
+      for (final (cels, inbetweens, wider) in [(10, 3, 10), (1, 9, 9)]) {
+        final sheet = _sheet(
+          _cut(
+            cels: cels,
+            inbetweens: inbetweens,
+            kind: TimesheetSheetKind.xdtsB4SixSeconds,
+          ),
+        );
+        final reason = '$cels 原画, $inbetweens 動画';
+        expect(
+          sheet.sheetKind,
+          TimesheetSheetKind.xdtsB4SixSeconds,
+          reason: reason,
+        );
+        expect(
+          (
+            _count(sheet, TimesheetColumnKind.action),
+            _count(sheet, TimesheetColumnKind.cel),
+          ),
+          (wider, wider),
+          reason: reason,
+        );
+        expect(
+          (sheet.xdtsForm!.keyColumns, sheet.xdtsForm!.cellsColumns),
+          (wider, wider),
+          reason: reason,
+        );
+      }
+    });
+
+    test('the paper a cut\'s ink is laid on is the viewer\'s, both blocks '
+        'widened for the wider of its 原画 and 動画 files — from our own '
+        'sheet too (I-161-Q2 · I-162-Q6)', () {
+      // Ten ACTION rows and four 動画 rows: the 原画 file's ten tracks.
+      final ours = _sheet(_cut(cels: 10, inbetweens: 4));
+      expect(ours.sheetKind.xdts, isNull);
       expect(ours.xdtsForm, isNull);
-      expect(ours.xdtsCelTracks, 10);
+      expect(ours.xdtsColumns, 10);
       final onA3 = XdtsSheetForm(
         XdtsViewerSheet.a3SixSeconds,
-        cells: ours.xdtsCelTracks,
+        columns: ours.xdtsColumns,
       );
       expect(
         (onA3.pageWidth, onA3.pageHeight),
-        (2923 + 2 * 79 * 2, 4134),
-        reason: 'two 79-pixel columns past the template\'s eight, in both '
-            'bodies',
+        (2923 + 2 * (3 * 44 + 2 * 79), 4134),
+        reason: 'three 44-pixel ACTION columns past the template\'s seven '
+            'and two 79-pixel CELL ones past its eight, in both bodies',
       );
 
       // On the viewer's own sheet the sheet and its ink count alike.
       final onB4 = _sheet(
-        _cut(cels: 6, inbetweens: 4, kind: TimesheetSheetKind.xdtsB4SixSeconds),
+        _cut(
+          cels: 4,
+          inbetweens: 10,
+          kind: TimesheetSheetKind.xdtsB4SixSeconds,
+        ),
       );
-      expect(onB4.xdtsCelTracks, onB4.xdtsForm!.cellsColumns);
+      expect(onB4.xdtsColumns, 10);
+      expect(
+        (onB4.xdtsForm!.keyColumns, onB4.xdtsForm!.cellsColumns),
+        (10, 10),
+      );
     });
 
     test('the B4 3-second sheet is one body of 72 rows, its camera block one '

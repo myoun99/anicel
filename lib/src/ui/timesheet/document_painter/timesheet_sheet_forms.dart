@@ -233,7 +233,7 @@ final class _XdtsSheetForm extends _SheetForm {
   late final Size size = Size(_at(form.pageWidth), _at(form.pageHeight));
 
   /// The page IS the form: the paper at the timesheet's resolution, as
-  /// wide as the viewer widens it for the CELL block's rows — its pixels
+  /// wide as the viewer widens it for the blocks' rows — its pixels
   /// whole, and the page their measure, so a pixel of the ink is a pixel
   /// of the paper (F-294): a hair past the viewer's page at its right and
   /// its foot, where nothing is drawn.
