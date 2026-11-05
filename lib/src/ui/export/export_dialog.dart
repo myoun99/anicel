@@ -4943,8 +4943,7 @@ class ExportDialogState extends State<ExportDialog> {
             keyValue: 'export-tsformat-xdts-ink',
             label: strings.exXdtsInk,
             value: spec.sheetInk,
-            live: !pictured,
-            write: (value) => spec.copyWith(sheetInk: value),
+            write: pictured ? null : (value) => spec.copyWith(sheetInk: value),
           ),
         ],
       ),
@@ -5173,21 +5172,20 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// A toggle row bound to the tab's spec: DEAD while an export runs — and
-  /// where it is not [live], a row kept for a choice it waits on — and a
-  /// change writes the spec [write] answers. Six rows wrote that binding
-  /// out; a run in flight owns the spec, so one place says it — the same
-  /// law [_pill] states for the pills.
+  /// with no [write], a row kept for a choice it waits on — and a change
+  /// writes the spec [write] answers. Six rows wrote that binding out; a
+  /// run in flight owns the spec, so one place says it — the same law
+  /// [_pill] states for the pills.
   SettingsSwitchRow _specToggle({
     required String keyValue,
     required String label,
     required bool value,
-    required ExportTabSpec Function(bool value) write,
-    bool live = true,
+    required ExportTabSpec Function(bool value)? write,
   }) => SettingsSwitchRow(
     tileKey: ValueKey<String>(keyValue),
     label: label,
     value: value,
-    onChanged: _isExporting || !live
+    onChanged: _isExporting || write == null
         ? null
         : (value) => _updateSpec(write(value)),
   );

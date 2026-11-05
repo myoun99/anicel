@@ -626,6 +626,7 @@ void main() {
     'exApplyLayerFx': (s) => s.exApplyLayerFx,
     'exCelsLayersOut': (s) => s.exCelsLayersOut,
     'exMuxSeMix': (s) => s.exMuxSeMix,
+    'exXdtsInk': (s) => s.exXdtsInk,
     'exLabel': (s) => s.exLabel,
     'exApply': (s) => s.exApply,
     'exKinds': (s) => s.exKinds,
