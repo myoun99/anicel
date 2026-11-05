@@ -812,6 +812,12 @@ class TimesheetDocument {
   /// null on one of our own ([TimesheetSheetKind.xdts]).
   final XdtsSheetForm? xdtsForm;
 
+  /// The logo this sheet prints, a media pool path: the work's
+  /// ([logoAssetPath]) on an XDTS sheet, which has the viewer's logo place
+  /// (I-162-Q5), and none on one of our own or in a work with no logo —
+  /// what the values print and the one picture they wait on.
+  String? get printedLogo => xdtsForm == null ? null : logoAssetPath;
+
   /// The wider block's cel rows ([SheetSources.celColumnsAcross]): what the
   /// viewer widens both blocks to, under the sheet and its ink.
   final int xdtsColumns;

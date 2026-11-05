@@ -29,7 +29,7 @@ class _XdtsLogoPass {
   /// Page [pageIndex]'s logo, once its picture is read.
   void paintPage(Canvas canvas, int pageIndex) {
     final painter = _page._painter;
-    final path = painter.document.logoAssetPath;
+    final path = painter.document.printedLogo;
     final image = path == null ? null : painter.imageFor?.call(path);
     if (image == null) {
       return;

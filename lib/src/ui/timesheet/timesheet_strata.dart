@@ -159,12 +159,15 @@ class TimesheetStrata extends StatelessWidget {
         : timesheetInkWindows(layout: layout, cutId: cutId);
     return {
       SheetStratum.form: painterOf(SheetStratum.form),
-      // The values print a picture too — an XDTS sheet's logo — so a read
-      // that lands repaints them as it does the ink's photos.
+      // The values print a picture where the sheet prints a logo — an XDTS
+      // sheet's — so a read that lands repaints them there, as it does the
+      // ink's photos; elsewhere they print none and stay baked.
       SheetStratum.content: painterOf(
         SheetStratum.content,
         dragPreview: printed,
-        imageRepaint: imageRepaint,
+        imageRepaint: layout.document.printedLogo == null
+            ? null
+            : imageRepaint,
       ),
       if (ink != null)
         SheetStratum.ink: painterOf(
