@@ -344,7 +344,8 @@ fn soft(radius: f64, hardness: f64) -> (Vec<f64>, Vec<f64>, f64) {
 }
 
 /// A small circle's square tables under `radius`: what a ramp from the
-/// centre to the reach lays at each entry's (column, row), and what piles.
+/// centre to the reach lays at each entry's (column, row), and what piles —
+/// above it, as the app's tables hold their hardness above the edge.
 fn small(radius: f64) -> (Vec<f64>, Vec<f64>, u32) {
     let reach = radius + 0.5;
     let count = (reach * 16.0).ceil() as u32 + 2;
@@ -353,7 +354,7 @@ fn small(radius: f64) -> (Vec<f64>, Vec<f64>, u32) {
         ((rim - (x * x + y * y).sqrt()) / rim).clamp(0.0, 1.0)
     };
     let coverage = (0..count * count).map(|entry| at(entry, reach)).collect();
-    let pile = (0..count * count).map(|entry| at(entry, radius - 0.5)).collect();
+    let pile = (0..count * count).map(|entry| at(entry, reach + 1.0)).collect();
     (coverage, pile, count)
 }
 
@@ -404,6 +405,10 @@ fn every_device_piles_the_pinned_strokes() {
         .map(|entry| 1.0 - (1.0 - f64::from(entry.min(1024)) / 1024.0).sqrt())
         .collect();
     let blue = [30, 90, 220, 255];
+    let held = |_, dab: &mut Dab| {
+        dab.edge_held = true;
+        dab.opacity = 0.7;
+    };
     let strokes: Vec<(&str, Vec<Dab>)> = vec![
         ("soft", along(&profile, 24, |k, dab| {
             dab.flow = 0.35;
@@ -420,10 +425,8 @@ fn every_device_piles_the_pinned_strokes() {
         })),
         // Distances shifted a bit: a reach past 127 px.
         ("wide", along(&wide, 6, |_, dab| dab.flow = 0.3)),
-        ("small", along(&dot, 24, |_, dab| {
-            dab.edge_held = true;
-            dab.opacity = 0.7;
-        })),
+        // Each dot laid twice, so its edge meets the ceiling.
+        ("small", (0..2).flat_map(|_| along(&dot, 24, held)).collect()),
     ];
     for (name, dabs) in &strokes {
         let (planes, view) = bytes(&piled(&tiles, [0; 4], dabs));
