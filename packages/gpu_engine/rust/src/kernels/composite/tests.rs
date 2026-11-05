@@ -385,8 +385,10 @@ fn output_tiles_taken_a_few_at_a_time_composite_as_all_at_once() {
     for (name, scene) in scenes() {
         let whole = widest(&scene);
         for (pages, tiles) in [(most, 1), (most, 3), (1, 1), (1, 3)] {
-            let (cut, _) = composite(&scene, within(pages, tiles));
+            let (cut, passes) = composite(&scene, within(pages, tiles));
             assert!(cut == whole, "{name} at {pages} pages and {tiles} tiles a pass");
+            let runs = scene.tiles.len().div_ceil(tiles);
+            assert!(passes >= runs, "{name}: {passes} passes for {runs} runs of tiles");
         }
     }
 }
