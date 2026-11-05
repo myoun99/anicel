@@ -4,14 +4,12 @@
 //! the arithmetic and why each bound holds.
 //!
 //! It runs inside the kernels that blend: each prepends [`BLEND_WGSL`] to
-//! its own source, so there is one copy of the formula on the GPU and none
-//! on the CPU (`kernels/mod.rs`).
+//! its own source, after the shared files it needs, so there is one copy
+//! of the formula on the GPU and none on the CPU (`kernels/mod.rs`).
 
 #[cfg(test)]
 mod tests;
 
-/// The blend family's functions, for a kernel that blends to prepend.
-// No kernel prepends it yet: the stroke, stamp and row composites that will
-// are the next rounds of gpu-canonical-store's order.
-#[allow(dead_code)]
+/// The blend family's functions, for a kernel that blends to prepend after
+/// [`ISQRT_WGSL`](crate::kernels::shared::ISQRT_WGSL).
 pub(crate) const BLEND_WGSL: &str = include_str!("blend.wgsl");

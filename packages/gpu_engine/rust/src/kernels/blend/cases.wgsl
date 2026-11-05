@@ -2,7 +2,7 @@
 // of `tests.rs`, appended to blend.wgsl there. A case is nine words: what to
 // run, then src and dst as straight RGBA on the 16-bit scale. A mode id runs
 // blend_composite; the ids from 100 run one function each, reading what
-// they need from src.x, src.w and dst.x.
+// they need from src, src.x, src.w and dst.
 
 @group(0) @binding(0) var<storage, read> cases: array<u32>;
 @group(0) @binding(1) var<storage, read_write> results: array<vec4<u32>>;
@@ -12,6 +12,9 @@ const RUN_MUL: u32 = 101u;
 const RUN_DIV: u32 = 102u;
 const RUN_TO8: u32 = 103u;
 const RUN_SQRT: u32 = 104u;
+const RUN_ATOP: u32 = 105u;
+const RUN_PACK: u32 = 106u;
+const RUN_UNPACK: u32 = 107u;
 
 @compute @workgroup_size(64)
 fn run_cases(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -39,6 +42,15 @@ fn run_cases(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     case RUN_SQRT: {
       out.x = blend_sqrt(src.x);
+    }
+    case RUN_ATOP: {
+      out = blend_atop(src, dst);
+    }
+    case RUN_PACK: {
+      out.x = blend_pack8(src);
+    }
+    case RUN_UNPACK: {
+      out = blend_unpack8(src.x);
     }
     default: {
       out = blend_composite(run, src, dst);

@@ -8,6 +8,7 @@ use wgpu::util::DeviceExt;
 
 use super::BLEND_WGSL;
 use crate::device::Engine;
+use crate::kernels::shared::ISQRT_WGSL;
 use crate::testing::{assert_pinned, first_engine};
 
 // cases.wgsl's ids for one function each.
@@ -16,6 +17,9 @@ const MUL: u32 = 101;
 const DIV: u32 = 102;
 const TO8: u32 = 103;
 const SQRT: u32 = 104;
+const ATOP: u32 = 105;
+const PACK: u32 = 106;
+const UNPACK: u32 = 107;
 
 const NORMAL: u32 = 28;
 
@@ -73,7 +77,7 @@ fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
-        let source = format!("{BLEND_WGSL}\n{}", include_str!("cases.wgsl"));
+        let source = [ISQRT_WGSL, BLEND_WGSL, include_str!("cases.wgsl")].join("\n");
         let module = engine
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -225,6 +229,8 @@ fn every_device_composites_the_pinned_grid_in_every_mode() {
     }
     let cases: Vec<_> = grid.iter().map(|&(src, dst)| (ERASE, src, dst)).collect();
     assert_pinned("blend/grid-erase", &bytes(&run(&cases)));
+    let cases: Vec<_> = grid.iter().map(|&(src, dst)| (ATOP, src, dst)).collect();
+    assert_pinned("blend/grid-atop", &bytes(&run(&cases)));
 }
 
 // ---- By hand, from the formulas ----
@@ -381,4 +387,49 @@ fn the_eraser_takes_alpha_and_keeps_colour() {
         run(&[(ERASE, [0, 0, 0, wide(128)], dst), (ERASE, [0, 0, 0, 65535], dst)]),
         [[12345, 40000, 777, 32639], [0, 0, 0, 0]]
     );
+}
+
+// srcATop: the alpha out is the base's. On an opaque base it is normal
+// over it (half red over blue as above); on a half base an opaque source
+// is its own colour at the base's alpha; a clear source leaves the base;
+// where there is no base there is nothing.
+#[test]
+fn a_clipped_source_lands_by_the_base_alpha() {
+    let blue = [0, 0, 65535, 65535];
+    let half_blue = [0, 0, 65535, wide(128)];
+    let red = [65535, 0, 0, 65535];
+    assert_eq!(
+        run(&[
+            (ATOP, [65535, 0, 0, wide(128)], blue),
+            (ATOP, red, half_blue),
+            (ATOP, [65535, 0, 0, 0], half_blue),
+            (ATOP, red, [0, 0, 65535, 0]),
+        ]),
+        [
+            [32896, 0, 32639, 65535],
+            [65535, 0, 0, wide(128)],
+            half_blue,
+            [0, 0, 0, 0],
+        ]
+    );
+}
+
+// A stored pixel is RGBA8 with red in the low byte, each channel c·257 on
+// the wide scale; packing rounds each once, and an alpha that rounds to no
+// byte (128 does, 129 does not) takes the colour with it.
+#[test]
+fn a_pixel_is_stored_as_rgba8_and_read_back_wide() {
+    assert_eq!(
+        run(&[(UNPACK, [0x8040_2010, 0, 0, 0], [0; 4])]),
+        [[wide(0x10), wide(0x20), wide(0x40), wide(0x80)]]
+    );
+    let packed: Vec<u32> = run(&[
+        (PACK, [65535, 32896, 0, 65535], [0; 4]),
+        (PACK, [65535, 65535, 65535, 128], [0; 4]),
+        (PACK, [65535, 65535, 65535, 129], [0; 4]),
+    ])
+    .into_iter()
+    .map(|out| out[0])
+    .collect();
+    assert_eq!(packed, [0xff00_80ff, 0, 0x01ff_ffff]);
 }

@@ -10,6 +10,8 @@
 //
 // A channel and an alpha are on the 16-bit scale, 0..=65535 meaning 0..=1:
 // a byte c is c·257. Colour is straight, never premultiplied (1a ①).
+//
+// Needs shared/isqrt.wgsl before it.
 
 const W_ONE: u32 = 65535u;
 // A channel at or under this is "at most half" — the formulas' cs <= 0.5.
@@ -71,27 +73,10 @@ fn blend_to8(w: u32) -> u32 {
   return (w + 128u) / 257u;
 }
 
-// round(√(x/65535)) as a channel, x <= 65535: round(√(x·65535)), digit by
-// digit — no float, so no backend's square root. (r+1)² is never formed:
-// n - r² > r says the root rounds up.
+// round(√(x/65535)) as a channel, x <= 65535: round(√(x·65535)), and
+// x·65535 <= 65535² stays in u32.
 fn blend_sqrt(x: u32) -> u32 {
-  let n = x * W_ONE;
-  var rest = n;
-  var root = 0u;
-  var bit = 1u << 30u;
-  while (bit > rest) {
-    bit = bit >> 2u;
-  }
-  while (bit != 0u) {
-    if (rest >= root + bit) {
-      rest = rest - (root + bit);
-      root = (root >> 1u) + bit;
-    } else {
-      root = root >> 1u;
-    }
-    bit = bit >> 2u;
-  }
-  return select(root, root + 1u, rest > root);
+  return isqrt_round(x * W_ONE);
 }
 
 fn blend_burn(cs: u32, cd: u32) -> u32 {
@@ -413,4 +398,47 @@ fn blend_composite(mode: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
 // and a pixel left with no alpha holds no colour (blend_settled).
 fn blend_erase(a_s: u32, dst: vec4<u32>) -> vec4<u32> {
   return blend_settled(dst.xyz, blend_mul(dst.w, W_ONE - a_s));
+}
+
+// src laid on dst by dst's alpha — `srcATop`, what a clipping group lays
+// its clipped rows on its base with (I-92, drawClipAsImage): the alpha out
+// is the base's, and the colour src at its alpha over the base's. The two
+// weights are taken as under and ab - under, so they sum to ab exactly, as
+// blend_composite's three sum to ao.
+fn blend_atop(src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
+  let a_b = dst.w;
+  if (a_b == 0u) {
+    return vec4<u32>(0u);
+  }
+  let under = blend_mul(a_b, W_ONE - src.w);
+  let both = a_b - under;
+  return vec4<u32>(
+    blend_over_alpha(both * src.x + under * dst.x, a_b),
+    blend_over_alpha(both * src.y + under * dst.y, a_b),
+    blend_over_alpha(both * src.z + under * dst.z, a_b),
+    a_b,
+  );
+}
+
+// A stored pixel — straight RGBA8, red in the low byte (1a ①) — on the
+// 16-bit scale.
+fn blend_unpack8(texel: u32) -> vec4<u32> {
+  return vec4<u32>(
+    texel & 0xffu,
+    (texel >> 8u) & 0xffu,
+    (texel >> 16u) & 0xffu,
+    texel >> 24u,
+  ) * 257u;
+}
+
+// A pixel on the 16-bit scale as it is stored, each channel rounded once
+// (blend_to8); one whose alpha rounds to no byte holds no colour either
+// (blend_settled), so a stored pixel never keeps a colour no one sees.
+fn blend_pack8(pixel: vec4<u32>) -> u32 {
+  let a = blend_to8(pixel.w);
+  if (a == 0u) {
+    return 0u;
+  }
+  return blend_to8(pixel.x) | (blend_to8(pixel.y) << 8u) | (blend_to8(pixel.z) << 16u)
+    | (a << 24u);
 }

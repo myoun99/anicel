@@ -17,4 +17,6 @@
 //! hand from the formula, and mutation.
 
 pub mod blend;
+pub mod composite;
 pub mod fill;
+pub mod shared;
