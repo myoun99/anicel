@@ -993,3 +993,65 @@ fn a_pass_reads_the_pages_it_binds_and_nothing_else() {
         .collect();
     assert_eq!(words, [32, 11, 0, 0]);
 }
+
+// A pass puts on the pages it binds, the k-th by its k, and nowhere for a
+// page of the pool it binds none of. Here pool page 2 is bound first and
+// page 0 second, and the blank binding past them is one buffer many times.
+#[test]
+fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
+    let engine = first_engine();
+    let pages = Pages::writable(engine, 1, 1).expect("a page to bind");
+    let table: Vec<u32> = page_table(&[2, 0], 3).collect();
+    assert_eq!(table, [1, NO_PAGE, 0]);
+    let source = pages.source();
+    let kernel = [
+        "@group(0) @binding(0) var<storage, read> asks: array<u32>;",
+        &source,
+        "@compute @workgroup_size(1)",
+        "fn put_pages(@builtin(global_invocation_id) at: vec3<u32>) {",
+        "  let ask = at.x * 3u;",
+        "  page_put(asks[ask], asks[ask + 1u], asks[ask + 2u]);",
+        "}",
+    ];
+    let putter = pipeline(engine, &kernel, "put_pages");
+    // A word on page 0, one on page 2, and one on page 1, bound by none.
+    let asks = storage(engine, &[table[0], 1, 7, table[2], 0, 9, table[1], 2, 8]);
+    let page = |words: &[u32]| {
+        let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+        engine
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("page"),
+                contents: &bytes,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            })
+    };
+    let (zeroth, second) = (page(&[1, 2, 3]), page(&[4, 5, 6]));
+    let mut entries = vec![wgpu::BindGroupEntry {
+        binding: 0,
+        resource: asks.as_entire_binding(),
+    }];
+    entries.extend(pages.entries([&second, &zeroth]));
+    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("page puts"),
+        layout: &putter.get_bind_group_layout(0),
+        entries: &entries,
+    });
+    let mut encoder = engine
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+        pass.set_pipeline(&putter);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.dispatch_workgroups(3, 1, 1);
+    }
+    engine.queue.submit([encoder.finish()]);
+    let words = |buffer| -> Vec<u32> {
+        read_buffer(engine, buffer)
+            .chunks_exact(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .collect()
+    };
+    assert_eq!((words(&zeroth), words(&second)), (vec![1, 7, 3], vec![9, 5, 6]));
+}
