@@ -517,11 +517,35 @@ fn a_dab_takes_the_paper_by_its_density() {
 // 高さ: a dab reaches density × its coverage into the paper and touches it
 // where it stands above that floor, fully a quarter above: at ½ that is
 // (t − 32767)·4 — all of 255, 129·4 = 516 of 128·257, nothing below.
+// Fully is all: paper at 0.75 is (49151 − 32767)·4 = 65536 above, and
+// lays 65535.
 #[test]
 fn the_papers_height_cuts_where_it_stands_below_the_dab() {
     let grain = texture(&CORNERS, 2);
     let paper = Paper { texture: &grain, scale: 1.0, height: true };
     assert_eq!(papered(&paper, on_paper(0.5)), [ONE, 516, 0, 0]);
+    let high = texture(&[0.75; 4], 2);
+    let paper = Paper { texture: &high, scale: 1.0, height: true };
+    assert_eq!(papered(&paper, on_paper(0.5)), [ONE; 4]);
+}
+
+// A paper of any side wraps by its side, not by a power of two: three
+// texels a row, 255, 128 and nothing, at two pixels a texel. Pixel 0's
+// centre is ¾ of the way from texel −1, that is texel 2, to texel 0:
+// ⌊(65535·24576 + 16384)/32768⌋ = 49151. Pixel 1's is ¼ past texel 0:
+// 65535 + ⌊(−32639·8192 + 16384)/32768⌋ = 57375. Pixel 5's is ¼ past
+// texel 2: ⌊(65535·8192 + 16384)/32768⌋ = 16384. Pixel −384, 64 periods
+// left of the origin, is pixel 0.
+#[test]
+fn a_paper_wraps_by_its_own_side() {
+    let row = [1.0, 128.0 / 255.0, 0.0];
+    let grain = texture(&[row, row, row].concat(), 3);
+    let paper = Paper { texture: &grain, scale: 2.0, height: false };
+    let dab = Dab { region: [-400, 0, 8, 4], ..on_paper(1.0) };
+    let kernel = &mut Dabs::new(first_engine());
+    let piled = laid(kernel, &[(0, 0), (-3, 0)], [0; 4], Some(&paper), &[dab]).expect("pile");
+    assert_eq!([0, 1, 5].map(|x| piled.at(0, x, 0).0[3]), [49151, 57375, 16384]);
+    assert_eq!(piled.at(1, 0, 0).0[3], 49151);
 }
 
 /// A 2 × 2 paper of stripes down: 255 then nothing along each row.
