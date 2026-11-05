@@ -1111,3 +1111,65 @@ fn a_plan_is_cut_where_it_leaves_the_levels_a_pass_holds() {
     );
     assert_eq!(at(DEPTH), [(0, 7, 0, 0, 0)]);
 }
+
+// Up seven at four levels a pass, a pass per level past the third; down to
+// two, back up to five, and down to nothing. Where closing leaves a pass,
+// the next holds half its levels under the depth (2 to 5 at depth 4), so
+// the walk back up to five stays in it — held from the bottom (1 to 4), it
+// would take one pass more.
+#[test]
+fn a_pass_closing_out_of_its_levels_holds_the_depth_in_the_middle() {
+    let close = Step::Close {
+        opacity: WHOLE,
+        mode: NORMAL,
+    };
+    let a_row = row(0, (0, 0), WHOLE, NORMAL);
+    let steps: Vec<Step> = (0..7)
+        .map(|_| Step::Open)
+        .chain([a_row])
+        .chain((0..5).map(|_| close))
+        .chain((0..3).map(|_| Step::Open))
+        .chain([a_row])
+        .chain((0..5).map(|_| close))
+        .collect();
+    let plan: Vec<Laid> = steps
+        .into_iter()
+        .map(|step| Laid {
+            step,
+            pages: Vec::new(),
+        })
+        .collect();
+    let shape = |batch: &Batch| (batch.begin, batch.end, batch.base, batch.depth_in, batch.depth_out);
+    let batches: Vec<_> = cut(&plan, 1, 4).expect("a cut").iter().map(shape).collect();
+    assert_eq!(
+        batches,
+        [
+            (0, 3, 0, 0, 3),
+            (3, 4, 1, 3, 4),
+            (4, 5, 2, 4, 5),
+            (5, 6, 3, 5, 6),
+            (6, 11, 4, 6, 4),
+            (11, 20, 2, 4, 2),
+            (20, 22, 0, 2, 0),
+        ]
+    );
+}
+
+// A pass holds two levels at least — a buffer and the one it closes onto —
+// and no more than its registers.
+#[test]
+fn a_pass_holds_two_levels_to_depth() {
+    let Rig { engine, composite } = rig();
+    let mut pool = Pool::default();
+    let sets = vec![pool.set(45, (0, 0), (1, 1), |_, _| Some(0))];
+    let pages = pool.upload(engine);
+    let steps = [row(0, (0, 0), WHOLE, NORMAL)];
+    let run = |levels| {
+        let budget = Budget {
+            levels,
+            ..composite.widest()
+        };
+        composite.run(engine, &pages, &sets, &[], &steps, &[(0, 0)], budget).is_some()
+    };
+    assert_eq!([run(1), run(2), run(DEPTH), run(DEPTH + 1)], [false, true, true, false]);
+}
