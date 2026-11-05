@@ -55,6 +55,14 @@ const THREE_WORDS: usize = 32;
 /// r 120: 5.5, 2.7; r 170: 396, 3.4). Lanes summing runs of r or more
 /// instead were nowhere faster, and slower from r 32 on.
 ///
+/// The Surface (Arc 140V) crosses later, between 80 and 88 (캔버스 베이스
+/// 11-06 04:35 — ms, strips against a pass a dispatch: r 64: 21.7, 23.6;
+/// r 80: 25.0, 29.0; r 88: 32.0, 28.9; r 120: 55.7, 34.1; r 170: 4,459,
+/// 35.5): there 56 goes r 57 to 80 a pass a dispatch at up to 16% more.
+/// Kept at 56 — any one threshold costs one of the two devices in the band
+/// between them, both keep clear of the strips' cliff, and choosing it by
+/// device would be a rule of its own.
+///
 /// The second of two such choices — the other is the blur brush's dab
 /// (kernels/dab/blur.rs's MOST_STRIPS_RADIUS and Route): they stay apart,
 /// each threshold measured for its own use, until a third comes and one

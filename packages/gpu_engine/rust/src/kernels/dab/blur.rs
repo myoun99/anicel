@@ -70,6 +70,14 @@ const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 /// (gaussian.rs's 56): a dab's six dispatches cost more against its
 /// small window.
 ///
+/// The Surface (Arc 140V) crosses sooner, between 67 and 82 (캔버스 베이스
+/// 11-06 04:35 — µs, a dab of 128 px, strips against a pass a dispatch:
+/// r 60: 715, 980; r 75: 1,180, 1,174; r 82: 1,296, 1,236; r 90: 1,434,
+/// 1,260): there 90 goes r 68 to 90 by strips at up to 14% more. Kept at
+/// 90 — any one threshold costs one of the two devices in the band between
+/// them, both keep clear of the strips' cliff, and choosing it by device
+/// would be a rule of its own.
+///
 /// The second of two such choices — the other is the fx Gaussian's
 /// (effects/blur/gaussian.rs's MOST_STRIPS_RADIUS and Route): they stay
 /// apart, each threshold measured for its own use, until a third comes and
@@ -93,7 +101,8 @@ pub(crate) struct Blurs {
     /// lets. A page's words are read and put by a switch over the pages a
     /// pass binds: over sixteen a dab of 100 went a fifth slower than over
     /// one (11-06, the main PC: 46 µs a dab against 39.6; 37 before the
-    /// pages).
+    /// pages). The executor's composite gains no more than 8% so, and binds
+    /// its widest alone (캔버스 베이스 11-06 04:35, the Surface).
     one: Dispatches,
     widest: Dispatches,
     /// blur_cel.wgsl's two: the picture made from the cel, and finished;
