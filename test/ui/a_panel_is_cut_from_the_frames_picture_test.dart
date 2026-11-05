@@ -21,6 +21,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/panel_pictures.dart';
 
+import '../helpers/poll_until.dart';
+
 /// 🗣️F-533-Q8 (유저 2026-11-05): 「프레임 그림에서 잘라 쓴다」 · 「재료가 둘?
 /// … 최대한 하나로 통합하고싶음」 · 「콘티용지패널의 그림도 그렇고 최대한
 /// 하나만 쓰는방향으로 하자. 효율적으로」 — a panel's picture is cut from the
@@ -103,13 +105,13 @@ void main() {
       final pictures = session.playbackRig.framePictures;
       final scheduler = session.playbackRig.prerenderScheduler;
       session.warmActiveCut();
-      for (
-        var i = 0;
-        i < 500 && !(scheduler.progress.value.isComplete && scheduler.isResting);
-        i += 1
-      ) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
+      expect(
+        await pollUntil(
+          () => scheduler.progress.value.isComplete && scheduler.isResting,
+        ),
+        isTrue,
+        reason: 'the warmer rests',
+      );
       final held = pictures.store.estimatedBytes;
       expect(held, greaterThan(0), reason: 'LIVENESS: the warmer\'s pictures');
 
