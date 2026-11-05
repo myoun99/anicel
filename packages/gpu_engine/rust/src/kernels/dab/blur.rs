@@ -28,6 +28,7 @@ use super::{Dab, Paper, Plans, StrokeTile, TILE};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::effects::blur::fits;
 use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
@@ -272,12 +273,8 @@ impl Blurs {
             .map(|(dab, radius)| Window::of(dab, *radius, &at, route))
             .collect::<Option<_>>()?;
         let steps: Vec<Vec<Step>> = windows.iter().map(Window::steps).collect();
-        let most = engine.device.limits().max_compute_workgroups_per_dimension;
-        let groups = steps.iter().flatten().flat_map(|step| [step.groups.0, step.groups.1]);
-        if groups.into_iter().any(|count| count > most) {
-            return fail("a blur dab has more workgroups than a dispatch reaches");
-        }
         let between_bytes = windows.iter().map(|window| window.between).max()?;
+        fits(engine, &[between_bytes], steps.iter().flatten().map(|step| step.groups))?;
         if self.between.as_ref().is_none_or(|buffer| buffer.size() < between_bytes) {
             self.between = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("blur between"),

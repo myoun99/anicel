@@ -232,6 +232,20 @@ fn a_blur_the_kernel_cannot_lay_is_refused() {
     assert!(blurred(&lone, step_at(64), &[(dab([60, 60, 68, 64]), 0)], None).is_none());
 }
 
+// A dab the strips take goes by them: what its dispatches put between them
+// is the rows' blur — the dab's columns on the window's lines, 8 by 10
+// here — not a pass a dispatch's two planes, 12 by 10 each.
+#[test]
+fn a_dab_the_strips_take_goes_by_them() {
+    let engine = first_engine();
+    let picture = filled("test picture", &vec![0; (SIDE * SIDE * 2) as usize]);
+    let lone = [StrokeTile { column: 0, row: 0, slot: 0 }];
+    let dab = square([60, 60, 68, 64], WHITE, 1.0);
+    let mut blurs = Blurs::new(engine);
+    blurs.blur(engine, &lone, &[(dab, 1)], None, &picture).unwrap();
+    assert_eq!(blurs.between.map(|between| between.size()), Some(10 * 8 * 8));
+}
+
 // A dab goes by strips up to MOST_STRIPS_RADIUS and a pass a dispatch past
 // it — 171 too, which no strip of 1024 holds with its six radii. A box of
 // one grey leaves it as it is, whichever way the passes go.

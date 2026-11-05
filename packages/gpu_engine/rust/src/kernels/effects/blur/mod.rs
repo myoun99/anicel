@@ -130,7 +130,7 @@ fn checked(
 
 /// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
 /// each of `groups`.
-fn fits(
+pub(crate) fn fits(
     engine: &Engine,
     planes: &[u64],
     mut groups: impl Iterator<Item = (u32, u32)>,
