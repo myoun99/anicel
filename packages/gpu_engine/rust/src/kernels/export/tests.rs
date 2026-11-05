@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use super::{Nv12, Nv12Shape};
+use super::{Nv12, Nv12Shape, OverGround, OverGroundShape};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -14,10 +14,11 @@ use crate::testing::{assert_pinned, first_engine, read_buffer};
 struct Rig {
     engine: &'static Engine,
     nv12: Nv12,
+    over_ground: OverGround,
 }
 
-/// One device and one compiled pass for every test here, as the app opens
-/// one device (blend's tests have why).
+/// One device and one compiled pass each for every test here, as the app
+/// opens one device (blend's tests have why).
 fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
@@ -25,6 +26,7 @@ fn rig() -> &'static Rig {
         Rig {
             engine,
             nv12: Nv12::new(engine),
+            over_ground: OverGround::new(engine),
         }
     })
 }
@@ -84,7 +86,7 @@ fn shape(src_width: u32, src_height: u32) -> Nv12Shape {
 }
 
 fn nv12(frame: &wgpu::Buffer, shape: Nv12Shape) -> Vec<u8> {
-    let Rig { engine, nv12 } = rig();
+    let Rig { engine, nv12, .. } = rig();
     let out = nv12.run(engine, frame, shape).expect("nv12");
     read_buffer(engine, &out)
 }
@@ -213,7 +215,7 @@ fn every_device_writes_the_pinned_nv12() {
 #[test]
 fn a_frame_the_encoder_cannot_take_is_refused() {
     let frame = frame(4, 4, |_, _| WHITE);
-    let Rig { engine, nv12 } = rig();
+    let Rig { engine, nv12, .. } = rig();
     for bad in [
         Nv12Shape { width: 5, ..shape(4, 4) },
         Nv12Shape { height: 2, ..shape(4, 4) },
@@ -221,5 +223,143 @@ fn a_frame_the_encoder_cannot_take_is_refused() {
         Nv12Shape { width: 6, y_stride: 4, ..shape(4, 4) },
     ] {
         assert!(nv12.run(engine, &frame, bad).is_none(), "{bad:?}");
+    }
+}
+
+// ==== Over the ground ====
+
+/// The bytes the pass writes for a `width` x `height` picture over
+/// `ground`: its RGB, then zeros to the last whole word.
+fn over_ground(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Vec<u8> {
+    let Rig {
+        engine,
+        over_ground,
+        ..
+    } = rig();
+    let out = over_ground
+        .run(engine, frame, OverGroundShape { width, height }, ground)
+        .expect("over ground");
+    read_buffer(engine, &out)
+}
+
+/// The three bytes of the picture's pixel (x, y), `width` a row.
+fn rgb_at(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 3] {
+    let at = (y * width + x) as usize * 3;
+    [bytes[at], bytes[at + 1], bytes[at + 2]]
+}
+
+// ---- By hand, from the law (`_overGround` after the engine's premultiply) ----
+
+// Opaque: p = round(c·255 / 255) = c and nothing of the ground. 200 is one
+// the premultiply's second term carries: t = 51128, t >> 8 = 199, and
+// (51128 + 199) >> 8 = 200.
+#[test]
+fn an_opaque_pixel_is_its_own_colour() {
+    let bytes = over_ground(&frame(1, 1, |_, _| 0xff1e_c80a), 1, 1, [1, 2, 3]);
+    assert_eq!(bytes, [10, 200, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+// Clear: p = (0 + 128) >> 8 = 0, and the ground whole — g·255 / 255 = g —,
+// whatever colour the clear pixel keeps.
+#[test]
+fn a_clear_pixel_is_the_ground() {
+    let bytes = over_ground(&frame(1, 1, |_, _| 0x00ff_ffff), 1, 1, [12, 34, 56]);
+    assert_eq!(rgb_at(&bytes, 1, 0, 0), [12, 34, 56]);
+}
+
+// White at 128: t = 255·128 + 128 = 32768, p = (32768 + 128) >> 8 = 128.
+// Over black that is all; over white, + 255·127 / 255 = 127. Red at 128
+// over white: 128 + 127 for red, 0 + 127 for green and blue.
+#[test]
+fn half_a_colour_takes_half_the_ground() {
+    let halves = frame(2, 1, |x, _| if x == 0 { 0x80ff_ffff } else { 0x8000_00ff });
+    assert_eq!(rgb_at(&over_ground(&halves, 2, 1, [0, 0, 0]), 2, 0, 0), [128, 128, 128]);
+    let white = over_ground(&halves, 2, 1, [255, 255, 255]);
+    assert_eq!(rgb_at(&white, 2, 0, 0), [255, 255, 255]);
+    assert_eq!(rgb_at(&white, 2, 1, 0), [255, 127, 127]);
+}
+
+// Over a ground of red 100:
+// - black at 1: p = 0, and 100·254 / 255 = 99.6 floors to 99;
+// - 127 at 2: p = round(254 / 255) = 1 (t = 382, (382 + 1) >> 8), and
+//   100·253 / 255 = 99.2 floors to 99;
+// - 127 at 1: p = round(127 / 255) = 0 (t = 255, 255 >> 8).
+#[test]
+fn the_premultiply_rounds_and_the_ground_floors() {
+    let pixels = [0x0100_0000, 0x027f_7f7f, 0x017f_7f7f];
+    let bytes = over_ground(&frame(3, 1, |x, _| pixels[x as usize]), 3, 1, [100, 0, 0]);
+    assert_eq!(bytes[..9], [99, 0, 0, 100, 1, 1, 99, 0, 0]);
+}
+
+// ---- The bytes' order ----
+
+// 3 x 2: six pixels in two runs of four — the first crossing from the top
+// row into the next —, eighteen bytes in their order, then six zeros to
+// the second run's last word.
+#[test]
+fn runs_of_four_pixels_fill_whole_words_across_rows() {
+    let colour = |x: u32, y: u32| {
+        let r = (y * 3 + x) * 10 + 1;
+        0xff00_0000 | r | (r + 1) << 8 | (r + 2) << 16
+    };
+    let bytes = over_ground(&frame(3, 2, colour), 3, 2, [255, 255, 255]);
+    let mut wanted = Vec::new();
+    for index in 0..6u8 {
+        let r = index * 10 + 1;
+        wanted.extend([r, r + 1, r + 2]);
+    }
+    wanted.extend([0; 6]);
+    assert_eq!(bytes, wanted);
+}
+
+// Pixels on either side of a tile's edge, in both directions, land where
+// the picture has them: a red column at x = 128 and a red row at y = 128.
+// 130 is no multiple of 4, so most runs here cross a row.
+#[test]
+fn over_the_ground_reads_the_frame_across_its_tiles() {
+    let cross = |x, y| if x == 128 || y == 128 { RED } else { WHITE };
+    let bytes = over_ground(&frame(130, 130, cross), 130, 130, [0, 0, 0]);
+    for (x, y, rgb) in [
+        (127, 5, [255, 255, 255]),
+        (128, 5, [255, 0, 0]),
+        (129, 5, [255, 255, 255]),
+        (5, 127, [255, 255, 255]),
+        (5, 128, [255, 0, 0]),
+        (129, 129, [255, 255, 255]),
+    ] {
+        assert_eq!(rgb_at(&bytes, 130, x, y), rgb, "({x}, {y})");
+    }
+}
+
+// ---- The ledger ----
+
+// 197 x 131: two tiles each way, and 25,807 pixels — a last run of three;
+// 256 x 128: exact tiles and runs.
+#[test]
+fn every_device_writes_the_pinned_over_ground() {
+    for (width, height) in [(197, 131), (256, 128)] {
+        let shape = OverGroundShape { width, height };
+        let bytes = over_ground(&frame(width, height, mixed(11)), width, height, [0x12, 0x80, 0xed]);
+        let id = format!("export/over-ground-{width}x{height}");
+        assert_pinned(&id, &bytes[..shape.bytes() as usize]);
+    }
+}
+
+// ---- The shape ----
+
+#[test]
+fn an_empty_picture_or_a_short_frame_is_refused() {
+    let frame = frame(4, 4, |_, _| WHITE);
+    let Rig {
+        engine,
+        over_ground,
+        ..
+    } = rig();
+    for bad in [
+        OverGroundShape { width: 0, height: 4 },
+        OverGroundShape { width: 4, height: 0 },
+        OverGroundShape { width: 129, height: 4 },
+    ] {
+        assert!(over_ground.run(engine, &frame, bad, [0, 0, 0]).is_none(), "{bad:?}");
     }
 }
