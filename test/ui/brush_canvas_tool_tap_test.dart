@@ -885,10 +885,14 @@ void main() {
         isTrue,
         reason: 'nor its outline walked again',
       );
-      // 🗣️F-568-Q1 a: 「커서가 움직인 만큼 무늬가 같이 밀린다」.
+      // 🗣️F-568-Q1 a: 「커서가 움직인 만큼 무늬가 같이 밀린다」 — a canvas
+      // pixel to a logical one here.
       expect(first.shift, Offset.zero);
-      expect(pushed.shift.dx, isPositive, reason: 'its checker went with it');
-      expect(pushed.shift.dy, 0);
+      expect(
+        pushed.shift,
+        const Offset(1, 0),
+        reason: 'its checker went with it, as far and the same way',
+      );
 
       await pen.moveBy(const Offset(120, 0));
       await tester.pump();
@@ -896,8 +900,8 @@ void main() {
       final marked = overlay.fillRange!;
       expect(identical(marked.outline, first.outline), isFalse);
       expect(
-        marked.shift.dx / pushed.shift.dx,
-        moreOrLessEquals(121),
+        marked.shift,
+        const Offset(121, 0),
         reason: 'the new range\'s checker pushed from where the press came '
             'down, as far as it went',
       );
@@ -915,6 +919,33 @@ void main() {
         reason: 'and only that one',
       );
       expect(overlay.fillRange, isNull, reason: 'the result takes its place');
+    });
+
+    testWidgets('a continuous fill\'s checker goes with the press where it '
+        'floods nothing, too — its outline as it was (F-568)', (tester) async {
+      final (coordinator: _, :overlay, :floods) = await pumpHeld(
+        tester,
+        continuous: true,
+      );
+      final centre = tester.getCenter(
+        find.byKey(const ValueKey<String>('brush-canvas-view')),
+      );
+      final pen = await tester.startGesture(
+        centre,
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      final first = overlay.fillRange!;
+
+      await pen.moveBy(const Offset(0, 4000));
+      await tester.pump();
+      expect(floods, hasLength(1), reason: 'premise: past the wall, no flood');
+      final pushed = overlay.fillRange!;
+      expect(identical(pushed.outline, first.outline), isTrue);
+      expect(pushed.shift, const Offset(0, 4000));
+
+      await pen.up();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('🚨I-160-Q6 「연속 채우기」: every region the press passed over '
