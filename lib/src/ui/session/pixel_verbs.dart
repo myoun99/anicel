@@ -205,6 +205,10 @@ class PixelVerbs {
 
   /// The cels the canvas shows at the playhead that a pixel verb may reach —
   /// the solo's eyes, since the solo is what is on screen.
+  ///
+  /// ★ONE WALK, THREE ASKERS (2026-11-05): what a transform lifts beside
+  /// the row it stands on, what the colour edit list previews (I-164) and
+  /// what 「표시」's 원본 삭제 clears (I-163) each walked the rows for it.
   Set<BrushFrameKey> _celsTheCanvasShows(Cut cut) => {
     for (final layer in cut.layers) ?_celOf(cut, layer, null),
   };
@@ -778,17 +782,16 @@ class PixelVerbs {
   /// The cels the canvas shows at the playhead that a pixel verb may touch,
   /// each with a drawing in it — what 「표시」's 원본 삭제 clears.
   ///
-  /// The session's own rows, eyes as the screen has them: what the canvas
-  /// shows is what 「표시」 cut (as [transformCelsUnderfoot] asks).
+  /// What the canvas shows is what 「표시」 cut ([_celsTheCanvasShows], as
+  /// [transformCelsUnderfoot] and the colour edit preview ask).
   List<BrushFrameKey> _celsShown() {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return const [];
     }
     return [
-      for (final layer in cut.layers)
-        if (_celOf(cut, layer, null) case final key? when _holdsADrawing(key))
-          key,
+      for (final key in _celsTheCanvasShows(cut))
+        if (_holdsADrawing(key)) key,
     ];
   }
 
