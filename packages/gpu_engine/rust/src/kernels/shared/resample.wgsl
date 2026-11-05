@@ -403,8 +403,11 @@ fn resample_pick_sampled(map: ResampleMap, source: u32, point: ResamplePoint) ->
   var word = 0u;
   if (affine) {
     let span = vec2<i32>((point.extent + vec2<u32>(0x20000u)) >> vec2<u32>(17u));
-    let cells = u32(2 * span.x + 1) * u32(2 * span.y + 1);
-    if (cells <= nx * ny
+    // A side past 257 cells is past the 256 subsamples on its own, so
+    // capping it there keeps the product from wrapping into a probe of
+    // billions of cells without changing a comparison.
+    let side = 2u * min(vec2<u32>(span), vec2<u32>(128u)) + 1u;
+    if (side.x * side.y <= nx * ny
         && resample_flat(source, vec2<i32>(resample_round16(point.u), resample_round16(point.v)), span, &word)) {
       return word;
     }
