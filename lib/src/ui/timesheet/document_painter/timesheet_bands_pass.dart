@@ -68,7 +68,7 @@ class _TimesheetBandsPass {
   /// [box]'s value where the header's values print, and — under the cut's
   /// name — the cuts it is 겸용 with, where those do: they hang from where
   /// the name stands, printed or not. On an XDTS sheet the length and the
-  /// sheet count are written the viewer's way ([_XdtsFormPass.paintCount]).
+  /// sheet count are written the viewer's way ([_XdtsCountsPass]).
   void _paintHeaderValue(
     Canvas canvas,
     TimesheetHeaderBox box,
@@ -76,9 +76,9 @@ class _TimesheetBandsPass {
   ) {
     final field = box.field;
     final values = _painter._drawsPart(TimesheetContentPart.header);
-    if (_painter._xdts case final xdts? when _XdtsFormPass.counts(field)) {
+    if (_painter._xdts case final xdts? when _XdtsCountsPass.writes(field)) {
       if (values) {
-        xdts.paintCount(canvas, field, pageIndex);
+        xdts.counts.paint(canvas, field, pageIndex);
       }
       return;
     }

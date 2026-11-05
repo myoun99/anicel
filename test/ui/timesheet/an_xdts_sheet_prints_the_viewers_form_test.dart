@@ -399,4 +399,66 @@ void main() {
       expect(twelve(frames), isTrue);
     });
   });
+
+
+  test('our 6-second sheet and the Ponoc sheet can print the same columns '
+      'and pages — the form still re-records when the cut switches between '
+      'them', () {
+    // Eight cel rows, two SE rows, two instruction rows: 8 · 2 · 8 · 3
+    // columns on either, 144 frames a page.
+    TimesheetDocument shaped(TimesheetSheetKind kind) => TimesheetDocument
+        .fromCut(
+          cut: Cut(
+            id: const CutId('cut'),
+            name: '12',
+            duration: 24,
+            canvasSize: const CanvasSize(width: 1920, height: 1080),
+            metadata: CutMetadata(sheetKind: kind),
+            layers: [
+              for (var index = 0; index < 8; index += 1)
+                Layer(
+                  id: LayerId('cel-$index'),
+                  name: String.fromCharCode(65 + index),
+                  frames: const [],
+                ),
+              for (var index = 0; index < 2; index += 1)
+                Layer(
+                  id: LayerId('se-$index'),
+                  name: 'S${index + 1}',
+                  kind: LayerKind.se,
+                  frames: const [],
+                ),
+              for (var index = 0; index < 2; index += 1)
+                Layer(
+                  id: LayerId('cam-$index'),
+                  name: 'CAM${index + 1}',
+                  kind: LayerKind.instruction,
+                  frames: const [],
+                ),
+            ],
+          ),
+          projectName: 'P',
+          fps: 24,
+        );
+    List<(TimesheetColumnKind, int)> shapeOf(TimesheetDocument document) => [
+      for (final kind in TimesheetColumnKind.values)
+        (
+          kind,
+          document.columns.where((column) => column.kind == kind).length,
+        ),
+    ];
+    final ours = shaped(TimesheetSheetKind.sixSeconds);
+    final ponoc = shaped(TimesheetSheetKind.xdtsPonocSixSeconds);
+    expect(shapeOf(ponoc), shapeOf(ours), reason: '⛔전제: the same columns');
+    expect(ponoc.pageFrameCount, ours.pageFrameCount);
+
+    Object formOf(TimesheetDocument document) => TimesheetDocumentPainter(
+      document: document,
+      layout: TimesheetDocumentLayout(document: document),
+      face: const TextStyle(),
+      words: timesheetWordsIn(AppLanguage.ja),
+      layers: const {SheetPaintLayer.form},
+    ).props;
+    expect(formOf(ponoc), isNot(formOf(ours)));
+  });
 }

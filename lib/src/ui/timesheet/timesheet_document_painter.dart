@@ -60,7 +60,9 @@ part 'document_painter/timesheet_bands_pass.dart';
 part 'document_painter/timesheet_cells_pass.dart';
 part 'document_painter/timesheet_books_pass.dart';
 part 'document_painter/timesheet_sheet_forms.dart';
+part 'document_painter/timesheet_xdts_page.dart';
 part 'document_painter/timesheet_xdts_form_pass.dart';
+part 'document_painter/timesheet_xdts_counts_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a portrait page
@@ -806,10 +808,10 @@ class TimesheetDocumentPainter extends CustomPainter
   bool get _drawForm => _draws(SheetPaintLayer.form);
   bool get _drawContent => _draws(SheetPaintLayer.content);
 
-  /// The XDTS Viewer's form, where the sheet prints on one (I-162) — null
+  /// The XDTS Viewer's page, where the sheet prints on one (I-162) — null
   /// on our own, whose form the bands and the cells passes draw.
-  late final _XdtsFormPass? _xdts = switch (layout._form) {
-    final _XdtsSheetForm sheet => _XdtsFormPass(this, sheet),
+  late final _XdtsPage? _xdts = switch (layout._form) {
+    final _XdtsSheetForm sheet => _XdtsPage(this, sheet),
     _OurSheetForm() => null,
   };
 
@@ -927,7 +929,7 @@ class TimesheetDocumentPainter extends CustomPainter
     for (final page in _pagesShown(document, layout, _cull)) {
       _bands.paintPaper(canvas, page.index);
       if (_drawForm) {
-        _xdts?.paintPage(canvas, page.index);
+        _xdts?.formPass.paintPage(canvas, page.index);
       }
       _bands.paintHeaderBand(canvas, page.index);
       if (_drawsPart(TimesheetContentPart.memo)) {
