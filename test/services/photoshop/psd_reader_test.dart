@@ -142,6 +142,36 @@ void main() {
       );
     });
 
+    // 🧭관제 (gpu-export-path ③, 2026-11-05): NaN and −∞ 0, +∞ 255 — a
+    // round of either used to throw and fail the whole import.
+    test('🐞32-bit steps down to 8, cut at the ends, and a sample that is '
+        'no number stands at the end it leans to', () {
+      final values = [
+        0.0,
+        0.5,
+        1.0,
+        -0.25,
+        1.5,
+        double.nan,
+        double.infinity,
+        double.negativeInfinity,
+      ];
+      final raw = ByteData(values.length * 4);
+      for (final (index, value) in values.indexed) {
+        raw.setFloat32(index * 4, value);
+      }
+      expect(
+        psdPlaneToEightBit(
+          raw.buffer.asUint8List(),
+          width: values.length,
+          height: 1,
+          depth: 32,
+          bytesPerRow: values.length * 4,
+        ),
+        [0, 128, 255, 0, 255, 0, 255, 0],
+      );
+    });
+
     test('grayscale fills all three channels', () {
       final document = readPsdDocument(
         buildPsd(

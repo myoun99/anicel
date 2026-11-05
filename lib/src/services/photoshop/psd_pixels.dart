@@ -194,15 +194,30 @@ Uint8List psdPlaneToEightBit(
       for (var y = 0; y < height; y += 1) {
         final rowStart = y * bytesPerRow;
         for (var x = 0; x < width; x += 1) {
-          final value = view.getFloat32(rowStart + x * 4);
-          final scaled = (value * 255).round();
-          samples[y * width + x] = scaled < 0 ? 0 : (scaled > 255 ? 255 : scaled);
+          samples[y * width + x] = _eightBitOf(
+            view.getFloat32(rowStart + x * 4),
+          );
         }
       }
     default:
       throw FormatException('Unsupported Photoshop bit depth $depth.');
   }
   return samples;
+}
+
+/// A 32-bit sample [value] (1.0 = full) as 8 bits, cut to 0…255.
+///
+/// 🧭관제 (gpu-export-path ③, 2026-11-05): a sample that is no number
+/// stands at the end it leans to — NaN and −∞ 0, +∞ 255 — where `round`
+/// used to throw and take the whole import with it.
+int _eightBitOf(double value) {
+  if (value.isNaN || value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 255;
+  }
+  return (value * 255).round();
 }
 
 /// Turns colour planes into straight (un-premultiplied) RGBA8.
