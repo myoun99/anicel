@@ -105,6 +105,10 @@ void main() {
         wide.paperWidth * wide.paperScale,
         closeTo(1943, 1e-6),
       );
+      // A pixel of the paper is a pixel of the page (F-294): the paper is
+      // the form, to within one of its pixels.
+      expect(wide.paperWidth, closeTo(wide.formWidth, 1 / wide.paperScale));
+      expect(wide.paperHeight, closeTo(wide.formHeight, 1 / wide.paperScale));
     });
 
     test('the halves, the rows and the columns stand on the viewer\'s '
@@ -335,6 +339,9 @@ void main() {
       // the body's outline — and the second body's.
       expect(at(653, 1100), line);
       expect(at(640, 1100).a, 0);
+      // … and on up through the head's lower half, not its upper.
+      expect(at(653, 993), line);
+      expect(at(653, 960).a, 0);
       expect(at(466, 1100), line);
       expect(at(88, 1500), line);
       expect(at(1512, 1500), line);
@@ -347,6 +354,28 @@ void main() {
       expect(at(1690, 49), line);
       expect(at(1690, 93), line);
       expect(at(1663, 150), line);
+    });
+
+    testWidgets('the length\'s and the sheet count\'s marks stand in the '
+        'values\' row where the viewer sets them — 秒 at the left half\'s '
+        'right, ＋ under コマ from the left — and the stroke rises to the '
+        'right', (tester) async {
+      const origin = Offset(1600, 40);
+      final print = await printed(
+        tester,
+        sheet(),
+        {SheetPaintLayer.form},
+        origin: origin,
+        size: const Size(1300, 190),
+      );
+      bool inked(Rect rect) => inkedIn(print, origin, rect);
+
+      expect(inked(const Rect.fromLTRB(1880, 95, 1931, 150)), isTrue);
+      expect(inked(const Rect.fromLTRB(1935, 160, 1980, 200)), isTrue);
+      expect(inked(const Rect.fromLTRB(2100, 160, 2200, 210)), isFalse);
+      // The stroke from (2776, 93) to (2604, 215).
+      expect(inked(const Rect.fromLTRB(2764, 95, 2780, 100)), isTrue);
+      expect(inked(const Rect.fromLTRB(2610, 200, 2630, 208)), isTrue);
     });
 
     testWidgets('the values sit in the template\'s cells: a cel row\'s '
@@ -393,6 +422,10 @@ void main() {
       expect(thirty(frames), isTrue);
       expect(thirty(total), isTrue);
       expect(thirty(current), isTrue);
+      // On the values' row's middle, not the labels': the seconds reach its
+      // lower part, and the sheet this is stands under the stroke.
+      expect(thirty(const Rect.fromLTRB(1665, 170, 1931, 205)), isTrue);
+      expect(thirty(const Rect.fromLTRB(2691, 165, 2820, 200)), isTrue);
 
       final twelve = await printOf(12);
       expect(twelve(seconds), isFalse);
