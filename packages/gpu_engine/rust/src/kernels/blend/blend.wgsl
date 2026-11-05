@@ -443,6 +443,17 @@ fn blend_unpack8(texel: u32) -> vec4<u32> {
   ) * 257u;
 }
 
+// A pixel on the 16-bit scale as two words — red and green, blue and
+// alpha, the low half first — as the planes between passes hold it, and
+// back: the composite's work, a stroke's planes, a blur's.
+fn blend_unpack16(pair: vec2<u32>) -> vec4<u32> {
+  return vec4<u32>(pair.x & 0xffffu, pair.x >> 16u, pair.y & 0xffffu, pair.y >> 16u);
+}
+
+fn blend_pack16(pixel: vec4<u32>) -> vec2<u32> {
+  return vec2<u32>(pixel.x | (pixel.y << 16u), pixel.z | (pixel.w << 16u));
+}
+
 // A pixel on the 16-bit scale as it is stored, each channel rounded once
 // (blend_to8); one whose alpha rounds to no byte holds no colour either
 // (blend_settled), so a stored pixel never keeps a colour no one sees.

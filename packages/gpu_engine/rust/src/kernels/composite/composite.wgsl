@@ -121,15 +121,14 @@ fn level_at(level: u32, tile: u32, texel: u32) -> u32 {
 
 fn load(level: u32, tile: u32, texel: u32) -> vec4<u32> {
   let at = level_at(level, tile, texel);
-  let rg = work[at];
-  let ba = work[at + 1u];
-  return vec4<u32>(rg & 0xffffu, rg >> 16u, ba & 0xffffu, ba >> 16u);
+  return blend_unpack16(vec2<u32>(work[at], work[at + 1u]));
 }
 
 fn save(level: u32, tile: u32, texel: u32, pixel: vec4<u32>) {
   let at = level_at(level, tile, texel);
-  work[at] = pixel.x | (pixel.y << 16u);
-  work[at + 1u] = pixel.z | (pixel.w << 16u);
+  let pair = blend_pack16(pixel);
+  work[at] = pair.x;
+  work[at + 1u] = pair.y;
 }
 
 // A row or a buffer laid on the one under it at `opacity`, in `mode` — an

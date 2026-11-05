@@ -2,15 +2,18 @@
 //! C's `qa_blur_dab`; gpu-canonical-store D5, 01:13): the stroke's picture
 //! under each dab moved toward its blur by what the dab lays as paint onto
 //! nothing. `blur.wgsl` has the schedule; the passes are the fx Gaussian's
-//! box law (`effects/blur/box.wgsl`, the ranges gaussian.rs's `within`),
-//! the coverage the dab kernel's own (`dab_source`) — no second copy of
-//! either.
+//! box law and its strips (`effects/blur/box.wgsl`, `three.wgsl`; the
+//! ranges and the cut gaussian.rs's `within`), the coverage the dab
+//! kernel's own (`dab_source`) — no second copy of any.
 //!
 //! ⏳The picture made from the cel — every tile a dab's window meets — and
 //! the finished tile laid back on the cel (`qa_blur_result_tile`) are the
 //! next piece's: both read the pool's pages. A radius whose strip has no
 //! room in a workgroup's 16KB (r > 170, a brush past ~1000 px) goes a pass a
-//! dispatch, the Gaussian's way — also to come (01:13 ③).
+//! dispatch, the Gaussian's way — also to come (01:13 ③), and with it where
+//! a dab's strips stop paying: on a whole picture a pass a dispatch wins past
+//! r 56 (gaussian.rs's MOST_STRIPS_RADIUS), but a dab's seven dispatches
+//! cost more than a picture's six, so its crossing is its own to measure.
 
 #[cfg(test)]
 #[path = "blur_tests.rs"]
@@ -25,11 +28,9 @@ use super::{Dab, Paper, Plans, StrokeTile, TILE};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::effects::blur::gaussian::{BOX_WGSL, PASS_WORDS, within};
+use crate::kernels::effects::blur::gaussian::{BOX_WGSL, PASS_WORDS, Strips, THREE_WGSL, within};
 use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
 
-/// blur.wgsl's BLUR_ROOM: the pixels a workgroup's strip holds.
-const ROOM: i32 = 1024;
 /// blur.wgsl's block: the words before its passes, and before its grid.
 const PASSES_AT: usize = 8;
 const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
@@ -53,31 +54,14 @@ struct Window {
     passes: Vec<u32>,
     /// The first of the tiles it reads, and how many a row.
     first_tile: (i32, i32),
-    columns: usize,
+    tile_columns: usize,
     /// Each of those tiles' index among the stroke's, row after row.
     grid: Vec<usize>,
-    /// The lines and the run along that a workgroup of each dispatch takes,
-    /// and the workgroups.
-    rows: [u32; 2],
-    rows_groups: (u32, u32),
-    down: [u32; 2],
-    down_groups: (u32, u32),
+    /// How each dispatch is cut, a strip a workgroup.
+    rows: Strips,
+    columns: Strips,
     /// The bytes of the rows' blur between them.
     between: u64,
-}
-
-/// The cut of a way into strips of a workgroup each: the run along each
-/// takes — as much as its room holds past the `halo` its passes read beyond
-/// what they put, up to `along` — and the lines.
-fn strips(along: i32, halo: i32) -> Option<[u32; 2]> {
-    let run = along.min(ROOM - halo);
-    if run < 1 {
-        return fail(format!(
-            "a blur reading {halo} px past its strip leaves no room in a workgroup — a radius \
-             this large waits for the pass-a-dispatch way (gpu-canonical-store 01:13 ③)"
-        ));
-    }
-    Some([(ROOM / (run + halo)) as u32, run as u32])
 }
 
 impl Window {
@@ -85,21 +69,20 @@ impl Window {
         if radius == 0 {
             return fail("a blur of no radius changes no pixel");
         }
-        let passes = within(dab.region, radius);
+        let Some(within) = within(dab.region, radius) else {
+            return fail(format!(
+                "a blur of radius {radius} reads past its strip further than a workgroup has \
+                 room for — a radius this large waits for the pass-a-dispatch way \
+                 (gpu-canonical-store 01:13 ③)"
+            ));
+        };
         let r = radius as i32;
-        let pass = |index, field| word(&passes, index, field);
+        let pass = |index, field| word(&within.words, index, field);
         // The rows' first pass reads one radius past what it puts: that is
         // the window; its lines are the window's rows.
         let (left, right) = (pass(0, 2) - r, pass(0, 3) + r);
         let (top, bottom) = (pass(0, 4), pass(0, 5));
-        let (width, height) = (pass(2, 3) - pass(2, 2), pass(5, 3) - pass(5, 2));
-        // What a way's passes read beyond what its last puts.
-        let halo = |first: usize| {
-            let last = first + 2;
-            (pass(last, 2) - pass(first, 2)) + (pass(first, 3) - pass(last, 3)) + 2 * r
-        };
-        let rows = strips(width, halo(0))?;
-        let down = strips(height, halo(3))?;
+        let width = pass(2, 3) - pass(2, 2);
         let first_tile = (left.div_euclid(TILE), top.div_euclid(TILE));
         let (last_column, last_row) = ((right - 1).div_euclid(TILE), (bottom - 1).div_euclid(TILE));
         let mut grid = Vec::new();
@@ -116,17 +99,14 @@ impl Window {
                 }
             }
         }
-        let lines = (bottom - top) as u32;
         Some(Window {
             first_tile,
-            columns: (last_column - first_tile.0 + 1) as usize,
+            tile_columns: (last_column - first_tile.0 + 1) as usize,
             grid,
-            rows,
-            rows_groups: ((width as u32).div_ceil(rows[1]), lines.div_ceil(rows[0])),
-            down,
-            down_groups: ((width as u32).div_ceil(down[0]), (height as u32).div_ceil(down[1])),
-            between: u64::from(lines) * width as u64 * 8,
-            passes,
+            rows: within.rows,
+            columns: within.columns,
+            between: u64::from((bottom - top) as u32) * width as u64 * 8,
+            passes: within.words,
         })
     }
 }
@@ -139,6 +119,7 @@ impl Blurs {
             TILE_WGSL,
             include_str!("dab.wgsl"),
             BOX_WGSL,
+            THREE_WGSL,
             include_str!("blur.wgsl"),
         ];
         Self {
@@ -190,7 +171,7 @@ impl Blurs {
             .collect::<Option<_>>()?;
         let most = engine.device.limits().max_compute_workgroups_per_dimension;
         let groups = windows.iter().flat_map(|window| {
-            let ((a, b), (c, d)) = (window.rows_groups, window.down_groups);
+            let ((a, b), (c, d)) = (window.rows.groups, window.columns.groups);
             [a, b, c, d]
         });
         if groups.into_iter().any(|count| count > most) {
@@ -224,11 +205,11 @@ impl Blurs {
                     plan.record_at(index),
                     window.first_tile.0 as u32,
                     window.first_tile.1 as u32,
-                    window.columns as u32,
-                    window.rows[0],
-                    window.rows[1],
-                    window.down[0],
-                    window.down[1],
+                    window.tile_columns as u32,
+                    window.rows.lines,
+                    window.rows.run,
+                    window.columns.lines,
+                    window.columns.run,
                 ]);
                 words.extend(&window.passes);
                 words.extend(window.grid.iter().map(|&tile| plan.tile_at(tile)));
@@ -277,10 +258,11 @@ impl Blurs {
             for (window, [rows, columns]) in windows.iter().zip(&bind_groups) {
                 pass.set_pipeline(&self.rows);
                 pass.set_bind_group(0, rows, &[]);
-                pass.dispatch_workgroups(window.rows_groups.0, window.rows_groups.1, 1);
+                pass.dispatch_workgroups(window.rows.groups.0, window.rows.groups.1, 1);
                 pass.set_pipeline(&self.columns);
                 pass.set_bind_group(0, columns, &[]);
-                pass.dispatch_workgroups(window.down_groups.0, window.down_groups.1, 1);
+                let (along, across) = window.columns.groups;
+                pass.dispatch_workgroups(along, across, 1);
             }
         }
         engine.queue.submit([encoder.finish()]);

@@ -1,13 +1,15 @@
 //! The blur on a real GPU, checked against the ledger and against what the
 //! box passes give by hand — never against a CPU copy of them
 //! (`kernels/mod.rs` has why). Every hand case is worked on the 16-bit
-//! premultiplied scale, a pass's mean rounded half up, then stored.
+//! premultiplied scale, a pass's mean rounded half up, then stored. Each
+//! goes both ways a blur's passes go — a way's three in one dispatch, and a
+//! pass a dispatch — and both put the same pixels.
 
 use std::sync::OnceLock;
 
 use super::super::TileRect;
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
-use super::{BoxBlur, Edge, MOST_RADIUS};
+use super::{BoxBlur, Edge, MOST_RADIUS, Route};
 use crate::device::Engine;
 use crate::kernels::effects::tests::rgba;
 use crate::testing::{assert_pinned, first_engine};
@@ -30,8 +32,22 @@ fn rig() -> &'static Rig {
     })
 }
 
-/// The tiles of `rect` holding `pixel`, blurred — `None` where the blur
-/// refused them.
+/// The tiles of `rect` holding `pixel`, blurred, the passes going by
+/// `route` — `None` where the blur refused them.
+fn blur_by(
+    rect: TileRect,
+    radius: (u32, u32),
+    edge: Edge,
+    pixel: impl Fn(i32, i32) -> u32,
+    route: Route,
+) -> Option<Blurred> {
+    let Rig { engine, blur } = rig();
+    let out = blur.run_by(engine, &tiles(engine, rect, pixel), rect, radius, edge, route)?;
+    Some(Blurred::read(engine, rect, &out))
+}
+
+/// The tiles of `rect` holding `pixel`, blurred as a blur goes, once the
+/// passes a dispatch each are seen to put them alike.
 fn blur(
     rect: TileRect,
     radius: (u32, u32),
@@ -39,8 +55,17 @@ fn blur(
     pixel: impl Fn(i32, i32) -> u32,
 ) -> Option<Blurred> {
     let Rig { engine, blur } = rig();
-    let out = blur.run(engine, &tiles(engine, rect, pixel), rect, radius, edge)?;
-    Some(Blurred::read(engine, rect, &out))
+    let picture = tiles(engine, rect, &pixel);
+    let blurred = blur
+        .run(engine, &picture, rect, radius, edge)
+        .map(|out| Blurred::read(engine, rect, &out));
+    let passes = blur_by(rect, radius, edge, &pixel, Route::Passes);
+    assert_eq!(
+        blurred.as_ref().map(|blurred| &blurred.words),
+        passes.as_ref().map(|blurred| &blurred.words),
+        "{radius:?} {edge:?}"
+    );
+    blurred
 }
 
 /// One opaque pixel, three boxes of radius 1: the first spreads 65535 to
@@ -163,6 +188,19 @@ fn repeat_reads_the_nearest_pixel_inside_and_puts_nothing_outside() {
     }
 }
 
+/// A way whose strip has no room in a workgroup — three radii of 171 each
+/// side are more than its 1024 pixels — goes a pass a dispatch: a picture
+/// the same everywhere, its edge repeated, blurs to itself.
+#[test]
+fn a_radius_past_a_strips_room_goes_a_pass_a_dispatch() {
+    let grey = rgba(90, 120, 150, 255);
+    for radius in [(171, 1), (1, 171)] {
+        let blurred = blur(ONE_TILE, radius, Edge::Repeat([0, 0, 128, 128]), |_, _| grey)
+            .expect("blur");
+        assert!(blurred.words.iter().all(|&word| word == grey), "{radius:?}");
+    }
+}
+
 #[test]
 fn a_blur_of_no_radius_is_refused() {
     assert!(blur(ONE_TILE, (0, 0), Edge::Nothing, |_, _| WHITE).is_none());
@@ -198,12 +236,17 @@ fn scenes() -> Vec<((u32, u32), Edge)> {
     ]
 }
 
+/// The same pin either way the passes go (gpu-canonical-store 01:15 (b) ②).
 #[test]
 fn every_device_blurs_the_pinned_picture() {
-    let bytes: Vec<u8> = scenes()
-        .into_iter()
-        .flat_map(|(radius, edge)| blur(LEDGER_TILES, radius, edge, pattern).expect("blur").words)
-        .flat_map(|word| word.to_le_bytes())
-        .collect();
-    assert_pinned("effects/blur", &bytes);
+    for route in [Route::Strips, Route::Passes] {
+        let bytes: Vec<u8> = scenes()
+            .into_iter()
+            .flat_map(|(radius, edge)| {
+                blur_by(LEDGER_TILES, radius, edge, pattern, route).expect("blur").words
+            })
+            .flat_map(|word| word.to_le_bytes())
+            .collect();
+        assert_pinned("effects/blur", &bytes);
+    }
 }

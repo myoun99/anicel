@@ -69,9 +69,7 @@ fn held_read(x: i32, y: i32) -> vec4<u32> {
     );
   }
   let at = held_plane_word(x, y, held.source_x0, held.source_y0, held.source_width, 2u);
-  let rg = pixels_in[at];
-  let ba = pixels_in[at + 1u];
-  return vec4<u32>(rg & 0xffffu, rg >> 16u, ba & 0xffffu, ba >> 16u);
+  return blend_unpack16(vec2<u32>(pixels_in[at], pixels_in[at + 1u]));
 }
 
 // A blurred pixel as it is stored: its alpha rounded to a byte, each
@@ -95,6 +93,7 @@ fn held_write(x: i32, y: i32, pixel: vec4<u32>) {
     return;
   }
   let at = held_plane_word(x, y, held.target_x0, held.target_y0, held.target_width, 2u);
-  pixels_out[at] = pixel.x | (pixel.y << 16u);
-  pixels_out[at + 1u] = pixel.z | (pixel.w << 16u);
+  let pair = blend_pack16(pixel);
+  pixels_out[at] = pair.x;
+  pixels_out[at + 1u] = pair.y;
 }

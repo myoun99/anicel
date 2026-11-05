@@ -9,6 +9,10 @@
 //! pass is worked out a radius further out than the next one reads, as C
 //! gathers its window three radii out.
 //!
+//! A way's three passes go in one dispatch, a strip of them a workgroup, in
+//! its memory (three.wgsl), where a strip has room; past that room, a pass a
+//! dispatch (gpu-canonical-store 01:15 (b)). Both put the same pixels.
+//!
 //! ⏳The radius is the app's to give: how a Blurriness becomes a box radius
 //! is the bridge round's, beside the brush's (`BrushBlurPicture.
 //! blurRadiusOf` — three radii are the blur's reach).
@@ -24,14 +28,31 @@ use crate::fail;
 /// The box law every blur of box passes runs: box.wgsl's `blur_mean` and
 /// `blur_slide`, and the `BoxPass` it reads.
 pub(crate) const BOX_WGSL: &str = include_str!("box.wgsl");
+/// A way's three passes in one dispatch, over strips in a workgroup's
+/// memory: three.wgsl's `blur_way`, for what includes it to load and store.
+pub(crate) const THREE_WGSL: &str = include_str!("three.wgsl");
 /// The words of one `BoxPass`.
 pub(crate) const PASS_WORDS: usize = 9;
 
 /// The widest box: a pass sums 2·radius + 1 pixels of 65535 at most, and
 /// the sum stays a u32.
 pub(crate) const MOST_RADIUS: u32 = 32767;
-/// gaussian.wgsl's BLUR_RUN — the pixels one thread slides its sum along.
+/// gaussian_pass.wgsl's BLUR_RUN — the pixels one thread slides its sum
+/// along.
 const RUN: u32 = 64;
+/// three.wgsl's BLUR_ROOM: the pixels a workgroup's strip holds.
+const ROOM: i32 = 1024;
+/// gaussian_three.wgsl's words: a way's three passes, then its strips'
+/// lines and run — whole vec4s, as a uniform holds them.
+const THREE_WORDS: usize = 32;
+/// The widest box the Gaussian goes by strips. Past it a pass a dispatch is
+/// the faster: a strip's lanes each sum 2r + 1 pixels before sliding over a
+/// run of a few, and those sums outgrow what one dispatch a way saves
+/// (11-06, the main PC's GPU, a 2048² picture, strips against a pass a
+/// dispatch — r 50: 1.9 ms, 2.3; r 56: 1.9, 2.4; r 64: 2.5–2.8, 2.3–2.4;
+/// r 120: 5.5, 2.7; r 170: 396, 3.4). Lanes summing runs of r or more
+/// instead were nowhere faster, and slower from r 32 on.
+const MOST_STRIPS_RADIUS: u32 = 56;
 
 const EDGE_NONE: u32 = 0;
 const EDGE_NOTHING: u32 = 1;
@@ -47,9 +68,9 @@ pub(crate) enum Edge {
     Repeat([i32; 4]),
 }
 
-/// One dispatch of gaussian.wgsl: along the rows or down the columns, the
-/// pixels it writes — [first, end) along, lines [line_first, line_end)
-/// across — and its edge along.
+/// One pass: along the rows or down the columns, the pixels it writes —
+/// [first, end) along, lines [line_first, line_end) across — and its edge
+/// along.
 struct Pass {
     down: bool,
     radius: u32,
@@ -62,37 +83,118 @@ struct Pass {
 }
 
 impl Pass {
+    /// box.wgsl's `BoxPass`.
+    fn words(&self) -> [u32; PASS_WORDS] {
+        [
+            u32::from(self.down),
+            self.radius,
+            self.along[0] as u32,
+            self.along[1] as u32,
+            self.lines[0] as u32,
+            self.lines[1] as u32,
+            self.edge,
+            self.edge_along[0] as u32,
+            self.edge_along[1] as u32,
+        ]
+    }
+
+    /// What it reads along: a radius past what it writes, each side.
+    fn reads(&self) -> [i32; 2] {
+        let r = self.radius as i32;
+        [self.along[0] - r, self.along[1] + r]
+    }
+
+    /// Its own dispatch (gaussian_pass.wgsl).
     fn dispatch(&self) -> Dispatch {
         let runs = ((self.along[1] - self.along[0]) as u32).div_ceil(RUN);
         let lines = (self.lines[1] - self.lines[0]) as u32;
         Dispatch {
             from: self.from,
             to: self.to,
-            words: vec![
-                u32::from(self.down),
-                self.radius,
-                self.along[0] as u32,
-                self.along[1] as u32,
-                self.lines[0] as u32,
-                self.lines[1] as u32,
-                self.edge,
-                self.edge_along[0] as u32,
-                self.edge_along[1] as u32,
-            ],
+            words: self.words().to_vec(),
             groups: (runs.div_ceil(GROUP), lines.div_ceil(GROUP)),
         }
     }
 }
 
-/// The Gaussian's pass, compiled once.
+/// A way's three passes cut into strips of a workgroup each (three.wgsl's
+/// `blur_way`): the lines one takes and the run along, and the workgroups,
+/// along by across.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Strips {
+    pub(crate) lines: u32,
+    pub(crate) run: u32,
+    pub(crate) groups: (u32, u32),
+}
+
+/// The strips of `way`, its three passes: each runs as far along as its
+/// room holds past what the first pass reads beyond what the last puts, on
+/// as many lines as fit — none where that leaves no room.
+fn strips(way: &[Pass]) -> Option<Strips> {
+    let (first, last) = (way.first()?, way.last()?);
+    let reads = first.reads();
+    let along = last.along[1] - last.along[0];
+    let halo = reads[1] - reads[0] - along;
+    let run = along.min(ROOM - halo);
+    if run < 1 {
+        return None;
+    }
+    let lines = (ROOM / (run + halo)) as u32;
+    let across = (first.lines[1] - first.lines[0]) as u32;
+    Some(Strips {
+        lines,
+        run: run as u32,
+        groups: ((along as u32).div_ceil(run as u32), across.div_ceil(lines)),
+    })
+}
+
+/// The one dispatch of `way`'s three passes over `strips`
+/// (gaussian_three.wgsl).
+fn three(way: &[Pass], strips: Strips) -> Dispatch {
+    let mut words: Vec<u32> = way.iter().flat_map(Pass::words).collect();
+    words.extend([strips.lines, strips.run]);
+    words.resize(THREE_WORDS, 0);
+    Dispatch {
+        from: way[0].from,
+        to: way[2].to,
+        words,
+        groups: strips.groups,
+    }
+}
+
+/// How a blur's passes go: a way's three in one dispatch where a strip of
+/// them has room and a box is no wider than MOST_STRIPS_RADIUS — a pass a
+/// dispatch past that — or every pass a dispatch, as the tests send them
+/// too, to see both put the same pixels.
+#[derive(Clone, Copy)]
+enum Route {
+    Strips,
+    Passes,
+}
+
+/// The Gaussian's passes, compiled once: a pass a dispatch, and a way's
+/// three in one.
 pub(crate) struct BoxBlur {
-    pipeline: wgpu::ComputePipeline,
+    pass: wgpu::ComputePipeline,
+    three: wgpu::ComputePipeline,
 }
 
 impl BoxBlur {
     pub(crate) fn new(engine: &Engine) -> Self {
+        let gaussian = include_str!("gaussian.wgsl");
         Self {
-            pipeline: compile(engine, &[BOX_WGSL], include_str!("gaussian.wgsl"), "box_blur"),
+            pass: compile(
+                engine,
+                &[BOX_WGSL, gaussian],
+                include_str!("gaussian_pass.wgsl"),
+                "box_blur",
+            ),
+            three: compile(
+                engine,
+                &[BOX_WGSL, THREE_WGSL, gaussian],
+                include_str!("gaussian_three.wgsl"),
+                "box_three",
+            ),
         }
     }
 
@@ -107,6 +209,19 @@ impl BoxBlur {
         rect: TileRect,
         radius: (u32, u32),
         edge: Edge,
+    ) -> Option<wgpu::Buffer> {
+        self.run_by(engine, tiles, rect, radius, edge, Route::Strips)
+    }
+
+    /// `run`, the passes going by `route`.
+    fn run_by(
+        &self,
+        engine: &Engine,
+        tiles: &wgpu::Buffer,
+        rect: TileRect,
+        radius: (u32, u32),
+        edge: Edge,
+        route: Route,
     ) -> Option<wgpu::Buffer> {
         let (across, down) = radius;
         if across == 0 && down == 0 {
@@ -126,9 +241,20 @@ impl BoxBlur {
                 return fail(format!("{inside:?} is no rectangle inside {rect:?}"));
             }
         };
-        let dispatches: Vec<Dispatch> =
-            passes(picture, radius, kind).iter().map(Pass::dispatch).collect();
-        run(engine, &self.pipeline, tiles, rect, planes(picture, radius), &dispatches, None)
+        let passes = passes(picture, radius, kind);
+        let ways: Vec<&[Pass]> = passes.chunks(3).collect();
+        let strips: Option<Vec<Strips>> = ways
+            .iter()
+            .map(|way| strips(way).filter(|_| way[0].radius <= MOST_STRIPS_RADIUS))
+            .collect();
+        let (pipeline, dispatches): (_, Vec<Dispatch>) = match (route, strips) {
+            (Route::Strips, Some(strips)) => (
+                &self.three,
+                ways.iter().zip(strips).map(|(way, strips)| three(way, strips)).collect(),
+            ),
+            _ => (&self.pass, passes.iter().map(Pass::dispatch).collect()),
+        };
+        run(engine, pipeline, tiles, rect, planes(picture, radius), &dispatches, None)
     }
 }
 
@@ -138,18 +264,13 @@ impl BoxBlur {
 /// the picture each side, all the k + 1-th reads; the first of a way reads
 /// past the picture by `edge`. The first of all reads the tiles, the last
 /// puts them; between, the planes hold the 16-bit pixels.
-///
-/// Where past the picture is read as it is (EDGE_NONE — real pixels lie
-/// there, the blur brush's window), the rows are worked out as far as the
-/// columns' first pass reads: three radii past it, above and below.
 fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
     let [left, top, right, bottom] = picture;
     let (across, down) = radius;
-    let reach = if edge == EDGE_NONE { 3 * down as i32 } else { 0 };
     // A way's plane reaches two radii past the picture along it.
     let rows_plane = Held::Plane {
         x0: left - 2 * across as i32,
-        y0: top - reach,
+        y0: top,
         width: (right - left) as u32 + 4 * across,
     };
     let columns_plane = Held::Plane {
@@ -158,7 +279,7 @@ fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
         width: (right - left) as u32,
     };
     let ways = [
-        (false, across, [left, right], [top - reach, bottom + reach], rows_plane),
+        (false, across, [left, right], [top, bottom], rows_plane),
         (true, down, [top, bottom], [left, right], columns_plane),
     ];
     let mut passes: Vec<Pass> = Vec::new();
@@ -186,15 +307,30 @@ fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
     passes
 }
 
-/// The words of the passes blurring `picture` by `radius` either way where
-/// past it lie real pixels, read as they are: box.wgsl's `BoxPass` for each,
-/// the rows' three first. The blur brush's dab (kernels/dab/blur.rs), whose
-/// window holds the picture three radii past the dab each side.
-pub(crate) fn within(picture: [i32; 4], radius: u32) -> Vec<u32> {
-    passes(picture, (radius, radius), EDGE_NONE)
-        .iter()
-        .flat_map(|pass| pass.dispatch().words)
-        .collect()
+/// The passes blurring a picture by a radius either way where past it lie
+/// real pixels, read as they are: the blur brush's dab (kernels/dab/blur.rs),
+/// whose window holds the picture three radii past the dab each side.
+pub(crate) struct Within {
+    /// box.wgsl's `BoxPass` for each, the rows' three first.
+    pub(crate) words: Vec<u32>,
+    pub(crate) rows: Strips,
+    pub(crate) columns: Strips,
+}
+
+/// The passes blurring `picture` by `radius` within real pixels: the
+/// columns' three down the picture, and the rows' three along its columns
+/// on every line the columns' first reads — none where a strip of either
+/// way has no room.
+pub(crate) fn within(picture: [i32; 4], radius: u32) -> Option<Within> {
+    let [left, _, right, _] = picture;
+    let columns = passes(picture, (0, radius), EDGE_NONE);
+    let [top, bottom] = columns.first()?.reads();
+    let rows = passes([left, top, right, bottom], (radius, 0), EDGE_NONE);
+    Some(Within {
+        rows: strips(&rows)?,
+        columns: strips(&columns)?,
+        words: rows.iter().chain(&columns).flat_map(Pass::words).collect(),
+    })
 }
 
 /// The bytes a plane holds: the rows' passes' or the columns', whichever

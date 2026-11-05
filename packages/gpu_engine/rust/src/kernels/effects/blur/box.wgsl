@@ -6,11 +6,12 @@
 // are part of the law (BrushBlurPicture has its reasons); which pixels each
 // pass writes is gaussian.rs's `passes`.
 //
-// Written once for both schedules (gpu-canonical-store 01:13): the fx
-// Gaussian's, a pass a dispatch over a whole picture (gaussian.wgsl), and
-// the blur brush's, three passes a dispatch in workgroup memory over a
-// dab's window (kernels/dab/blur.wgsl). Each brings its own `blur_tap` —
-// the pixel at `p` along `line` — and `blur_put`.
+// Written once for both schedules (gpu-canonical-store 01:13, 01:15 (b)):
+// a pass a dispatch over a whole picture (gaussian_pass.wgsl), and three
+// passes a dispatch over strips in workgroup memory (three.wgsl) — the fx
+// Gaussian's where a strip has room, the blur brush's over a dab's window.
+// Each brings its own `blur_tap` — the pixel at `p` along `line` — and
+// `blur_put`.
 
 // One pass: along the rows (down 0) or the columns (down 1), the pixels it
 // writes — [first, end) along, lines [line_first, line_end) across — and
@@ -25,6 +26,21 @@ struct BoxPass {
   edge: u32,
   edge_first: i32,
   edge_end: i32,
+}
+
+// A pass from its words, in the order above (gaussian.rs's `Pass::words`).
+fn box_pass(words: array<u32, 9>) -> BoxPass {
+  return BoxPass(
+    words[0],
+    words[1],
+    bitcast<i32>(words[2]),
+    bitcast<i32>(words[3]),
+    bitcast<i32>(words[4]),
+    bitcast<i32>(words[5]),
+    words[6],
+    bitcast<i32>(words[7]),
+    bitcast<i32>(words[8]),
+  );
 }
 
 // round(sum / count), a half up: C's (2·sum + count) / (2·count), without
