@@ -44,32 +44,27 @@ class _XdtsLogoPass {
       fillsWidth ? slot.width : logo.width * scale,
       fillsWidth ? logo.height * scale : slot.height,
     );
-    final whole = Offset.zero & logo;
     // ⚠️Mine: what is clear in the logo stays clear — the alpha the darkness
     // gives is cut to the logo's own ([BlendMode.dstIn]), so a logo on a
     // clear ground prints its mark, not a block of the line colour.
-    _page.on(
-      canvas,
-      pageIndex,
-      () => canvas
-        ..saveLayer(into, Paint())
-        ..drawImageRect(
-          image,
-          whole,
-          into,
-          Paint()
-            ..filterQuality = FilterQuality.high
-            ..colorFilter = _darkness,
-        )
-        ..drawImageRect(
-          image,
-          whole,
-          into,
-          Paint()
-            ..filterQuality = FilterQuality.high
-            ..blendMode = BlendMode.dstIn,
-        )
-        ..restore(),
-    );
+    _page.on(canvas, pageIndex, () {
+      canvas.saveLayer(into, Paint());
+      _logoThrough(canvas, image, into, Paint()..colorFilter = _darkness);
+      _logoThrough(canvas, image, into, Paint()..blendMode = BlendMode.dstIn);
+      canvas.restore();
+    });
+  }
+
+  /// [image] in [into], the way every sheet prints a media image
+  /// ([paintSheetImageIn]), laid on what is under it through [layer].
+  static void _logoThrough(
+    Canvas canvas,
+    ui.Image image,
+    Rect into,
+    Paint layer,
+  ) {
+    canvas.saveLayer(into, layer);
+    paintSheetImageIn(canvas, image, into, FilterQuality.high);
+    canvas.restore();
   }
 }

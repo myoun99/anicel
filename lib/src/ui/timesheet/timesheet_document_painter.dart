@@ -53,7 +53,11 @@ import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet/sheet_line.dart';
 import '../sheet_painting.dart'
-    show paintSheetInkWindow, paintSheetPaper, sheetWordsSize;
+    show
+        paintSheetImageIn,
+        paintSheetInkWindow,
+        paintSheetPaper,
+        sheetWordsSize;
 import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
