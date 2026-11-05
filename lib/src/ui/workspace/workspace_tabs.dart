@@ -33,9 +33,9 @@ class _WorkspaceTabs {
   /// tool holds at the press.
   ///
   /// 🗣️F-53 · F-551: a step with work ahead of it — 「표시」's picture —
-  /// stands behind the app's wait window while the work runs: a wait that
-  /// says nothing cannot be told from nothing. The cel's own read has none
-  /// and is taken at once, as it was before (one block — F-566 「대상이 한
+  /// stands behind the app's wait window while the work runs, on one cel
+  /// too ([workAheadBehindTheWaitWindow]). The cel's own read has none and
+  /// is taken at once, as it was before (one block — F-566 「대상이 한
   /// 블록이면 안띄움」).
   void _runCutWhole(BuildContext context) {
     final tool = _state._brushTool.value;
@@ -49,7 +49,7 @@ class _WorkspaceTabs {
       return;
     }
     unawaited(
-      takeBehindTheWaitWindow(
+      workAheadBehindTheWaitWindow(
         context,
         cut.step,
         window: AppWaitWindow.working(

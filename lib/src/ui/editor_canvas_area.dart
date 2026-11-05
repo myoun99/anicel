@@ -68,7 +68,7 @@ import 'canvas/canvas_adjust_layer.dart';
 import 'cut_command_group.dart' show landCanvasAdjust;
 import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import 'dialogs/behind_the_wait_window.dart'
-    show resizeBehindTheWaitWindow, takeBehindTheWaitWindow;
+    show resizeBehindTheWaitWindow, workAheadBehindTheWaitWindow;
 import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
 import 'shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import 'session/canvas_adjust.dart' show CameraSizeDraft;

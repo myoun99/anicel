@@ -415,7 +415,7 @@ class _InteractiveCanvasBuild {
           takeWhatItCuts: takeWhatItCuts,
         );
         unawaited(
-          takeBehindTheWaitWindow(
+          workAheadBehindTheWaitWindow(
             context,
             cut.step,
             window: AppWaitWindow.working(
