@@ -48,6 +48,13 @@
 # architecture tests start while analyze still runs, and a red gate is shown
 # from the output it left, not run a second time to print it.
 #
+# 🆕And refusal 8 (2026-11-05, gpu-engine-skeleton — section T, 117 checks
+# in all): a lane pays for the crate it changed itself, not for crate
+# commits the trunk took after it was opened; and a lane stamped on another
+# machine still runs the crate's tests on this one before it merges.
+# ⚠️The script before THAT fails 4 of the 11 there: it refuses the Dart
+# lane, and lands a ledger row this machine's GPU never ran.
+#
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
 E="$(mktemp -d "${TMPDIR:-/tmp}/lane-test.XXXXXX")" || exit 2
