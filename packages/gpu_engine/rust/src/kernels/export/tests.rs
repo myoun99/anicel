@@ -756,3 +756,25 @@ fn png_refuses_an_empty_picture_or_a_short_source() {
         assert!(png.rgb(engine, &rgb, bad).is_none(), "{bad:?}");
     }
 }
+
+// ==== Every pass ====
+
+// A row past the device's workgroups down: the passes that take a row a
+// group are refused, not handed a dispatch the device cannot run (the
+// shared `fits`).
+#[test]
+fn a_picture_taller_than_a_dispatch_reaches_is_refused() {
+    let Rig {
+        engine,
+        over_ground,
+        clear,
+        png,
+        ..
+    } = rig();
+    let height = engine.device.limits().max_compute_workgroups_per_dimension + 1;
+    let tall = Picture { width: 1, height };
+    let frame = frame(1, height, |_, _| WHITE);
+    assert!(over_ground.run(engine, &frame, tall, [0, 0, 0], None).is_none());
+    assert!(clear.run(engine, &frame, tall, 128).is_none());
+    assert!(png.rgba(engine, &frame, tall).is_none());
+}

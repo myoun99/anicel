@@ -1,7 +1,7 @@
 //! A movie's frame as NV12, for its encoder (gpu-export-path ①a) —
 //! `nv12.wgsl` has the law and why each number is the one it is.
 
-use super::{Picture, compile, holds, submit};
+use super::{Picture, compile, holds, out_plane, submit};
 use crate::device::Engine;
 use crate::fail;
 
@@ -90,13 +90,8 @@ impl Nv12 {
             0,
             0,
         ];
-        let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("nv12 out"),
-            size: shape.bytes(),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
         let groups = ((shape.y_stride / 4).div_ceil(16), (shape.height / 2).div_ceil(8));
+        let out = out_plane(engine, "nv12 out", shape.bytes(), groups)?;
         submit(engine, &self.pipeline, &params, frame, &out, groups);
         Some(out)
     }

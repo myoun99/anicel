@@ -1,10 +1,9 @@
 //! Whether a frame is opaque, so its PDF picture goes without alpha
 //! (gpu-export-path ①d) — `opaque.wgsl` has the law.
 
-use wgpu::util::DeviceExt;
-
 use super::{Picture, compile, holds, submit};
 use crate::device::Engine;
+use crate::kernels::shared::words_buffer;
 
 /// The opaque pass.
 pub(crate) struct Opaque {
@@ -33,13 +32,11 @@ impl Opaque {
         let tiles = picture.tiles();
         holds(frame, tiles)?;
         let params = [tiles.0, picture.width, picture.height, 0];
-        let answer = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("opaque answer"),
-                contents: &255u32.to_le_bytes(),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            });
+        // No `fits`: the answer is a word, and its groups are the frame's
+        // tiles — a frame a binding holds has fewer than a dispatch reaches
+        // (2 GB is 32,768 tiles).
+        let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+        let answer = words_buffer(engine, "opaque answer", &[255], usage);
         submit(engine, &self.pipeline, &params, frame, &answer, tiles);
         Some(answer)
     }

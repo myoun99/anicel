@@ -2,7 +2,7 @@
 //! the law; `png_rgba.wgsl` and `png_rgb.wgsl` where a row's bytes come
 //! from.
 
-use super::{Picture, compile, holds, submit};
+use super::{Picture, compile, holds, out_plane, submit};
 use crate::device::Engine;
 use crate::fail;
 
@@ -52,7 +52,7 @@ impl PngFilter {
     ) -> Option<wgpu::Buffer> {
         picture.check()?;
         holds(frame, picture.tiles())?;
-        Some(Self::run(engine, &self.rgba, frame, picture, 4))
+        Self::run(engine, &self.rgba, frame, picture, 4)
     }
 
     /// [`Self::rgba`] for a PNG of three channels, from `rgb` — what the
@@ -68,7 +68,7 @@ impl PngFilter {
         if rgb.size() < needed {
             return fail(format!("its RGB takes {needed} bytes; the buffer has {}", rgb.size()));
         }
-        Some(Self::run(engine, &self.rgb, rgb, picture, 3))
+        Self::run(engine, &self.rgb, rgb, picture, 3)
     }
 
     fn run(
@@ -77,20 +77,16 @@ impl PngFilter {
         source: &wgpu::Buffer,
         picture: Picture,
         pixel_bytes: u32,
-    ) -> wgpu::Buffer {
+    ) -> Option<wgpu::Buffer> {
         let params = [
             picture.tiles().0,
             picture.width,
             picture.height,
             picture.png_row_words(pixel_bytes),
         ];
-        let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("png filter out"),
-            size: picture.png_bytes(pixel_bytes),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        submit(engine, pipeline, &params, source, &out, (1, picture.height));
-        out
+        let groups = (1, picture.height);
+        let out = out_plane(engine, "png filter out", picture.png_bytes(pixel_bytes), groups)?;
+        submit(engine, pipeline, &params, source, &out, groups);
+        Some(out)
     }
 }

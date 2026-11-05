@@ -1,7 +1,7 @@
 //! Which pixels of a GIF are its clear colour (gpu-export-path ①c) —
 //! `clear.wgsl` has the law.
 
-use super::{Picture, compile, holds, submit};
+use super::{Picture, compile, holds, out_plane, submit};
 use crate::device::Engine;
 
 impl Picture {
@@ -48,13 +48,8 @@ impl Clear {
             0,
             0,
         ];
-        let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("clear out"),
-            size: picture.clear_bytes(),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
         let groups = (row_words.div_ceil(64), picture.height);
+        let out = out_plane(engine, "clear out", picture.clear_bytes(), groups)?;
         submit(engine, &self.pipeline, &params, frame, &out, groups);
         Some(out)
     }

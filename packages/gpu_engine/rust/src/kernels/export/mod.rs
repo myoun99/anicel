@@ -17,8 +17,9 @@
 //! `tile.wgsl`, and runs as one pass over it ([`submit`]).
 
 // ⏳Nothing outside the tests calls it until the app's bridge round
-// (gpu-export-path, 관제 16:26 — the app connects after the bridges).
-#![cfg_attr(not(test), allow(dead_code))]
+// (gpu-export-path, 관제 16:26 — the app connects after the bridges), nor
+// the passes it names for the app.
+#![cfg_attr(not(test), allow(dead_code, unused_imports))]
 
 mod clear;
 mod nv12;
@@ -34,12 +35,12 @@ pub(crate) use opaque::Opaque;
 pub(crate) use over_ground::OverGround;
 pub(crate) use png::PngFilter;
 
-use wgpu::util::DeviceExt;
-
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
-use crate::kernels::shared::{TILE_WGSL, pipeline};
+use crate::kernels::shared::{
+    Encoded, TILE_WGSL, encode, fits, pipeline, plane, words_buffer,
+};
 
 /// The frame read: `frame_word`.
 const FRAME_WGSL: &str = include_str!("frame.wgsl");
@@ -89,50 +90,32 @@ fn holds(frame: &wgpu::Buffer, (columns, rows): (u32, u32)) -> Option<()> {
     Some(())
 }
 
+/// A new plane of `bytes` for a pass that runs in `groups` (across, down)
+/// to put in — none, with why, unless the device binds the one and
+/// reaches the other.
+fn out_plane(engine: &Engine, label: &str, bytes: u64, groups: (u32, u32)) -> Option<wgpu::Buffer> {
+    fits(engine, &[bytes], [groups].into_iter())?;
+    Some(plane(engine, label, bytes))
+}
+
 /// Runs `pipeline` over `frame` in `groups` (across, down) and submits the
 /// work; the caller waits. Its binding 0 is `params`, 1 the frame and 2
-/// `out`.
+/// `out` — the export's own bindings, on the shared plumbing.
 fn submit(
     engine: &Engine,
     pipeline: &wgpu::ComputePipeline,
     params: &[u32],
     frame: &wgpu::Buffer,
     out: &wgpu::Buffer,
-    (across, down): (u32, u32),
+    groups: (u32, u32),
 ) {
-    let params = engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("export params"),
-            contents: &params.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
-    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("export"),
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: params.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: frame.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: out.as_entire_binding(),
-            },
-        ],
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups(across, down, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
+    let params = words_buffer(engine, "export params", params, wgpu::BufferUsages::UNIFORM);
+    encode(
+        engine,
+        &[Encoded {
+            pipeline,
+            bound: vec![(0, &params), (1, frame), (2, out)],
+            groups,
+        }],
+    );
 }

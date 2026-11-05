@@ -3,7 +3,7 @@
 //! alpha cut (①c) — `over_ground.wgsl` has the law and why each number is
 //! the one it is.
 
-use super::{Picture, compile, holds, submit};
+use super::{Picture, compile, holds, out_plane, submit};
 use crate::device::Engine;
 use crate::kernels::shared::PREMULTIPLY_WGSL;
 
@@ -67,13 +67,8 @@ impl OverGround {
             0,
             0,
         ];
-        let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("over ground out"),
-            size: picture.rgb_words_bytes(),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
         let groups = (row_groups.div_ceil(64), picture.height);
+        let out = out_plane(engine, "over ground out", picture.rgb_words_bytes(), groups)?;
         submit(engine, &self.pipeline, &params, frame, &out, groups);
         Some(out)
     }
