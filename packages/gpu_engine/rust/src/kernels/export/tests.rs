@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture};
+use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture, PngFilter};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -17,6 +17,7 @@ struct Rig {
     over_ground: OverGround,
     opaque: Opaque,
     clear: Clear,
+    png: PngFilter,
 }
 
 /// One device and one compiled pass each for every test here, as the app
@@ -31,6 +32,7 @@ fn rig() -> &'static Rig {
             over_ground: OverGround::new(engine),
             opaque: Opaque::new(engine),
             clear: Clear::new(engine),
+            png: PngFilter::new(engine),
         }
     })
 }
@@ -547,5 +549,190 @@ fn clear_refuses_an_empty_picture_or_a_short_frame() {
         Picture { width: 129, height: 4 },
     ] {
         assert!(clear.run(engine, &frame, bad, 128).is_none(), "{bad:?}");
+    }
+}
+
+// ==== A PNG's filters ====
+
+/// Each row of the filtered `out` — its filter's byte, then its own —
+/// without the zeros that fill it out to a word, which it checks are there.
+fn png_rows(out: &[u8], picture: Picture, pixel_bytes: u32) -> Vec<Vec<u8>> {
+    let used = (picture.width * pixel_bytes) as usize + 1;
+    out.chunks_exact(picture.png_row_bytes(pixel_bytes) as usize)
+        .map(|row| {
+            assert!(row[used..].iter().all(|&byte| byte == 0), "filled out: {row:?}");
+            row[..used].to_vec()
+        })
+        .collect()
+}
+
+/// The filtered out of a PNG of four channels, the `width` x `height`
+/// picture in `frame`.
+fn png_rgba(frame: &wgpu::Buffer, width: u32, height: u32) -> Vec<u8> {
+    let Rig { engine, png, .. } = rig();
+    let out = png
+        .rgba(engine, frame, Picture { width, height })
+        .expect("png rgba");
+    read_buffer(engine, &out)
+}
+
+/// [`png_rgba`]'s rows, as [`png_rows`] has them.
+fn png_rgba_rows(frame: &wgpu::Buffer, width: u32, height: u32) -> Vec<Vec<u8>> {
+    png_rows(&png_rgba(frame, width, height), Picture { width, height }, 4)
+}
+
+/// The filtered out of a PNG of three channels: the picture in `frame`
+/// over `ground`.
+fn png_rgb(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Vec<u8> {
+    let Rig {
+        engine,
+        over_ground,
+        png,
+        ..
+    } = rig();
+    let picture = Picture { width, height };
+    let rgb = over_ground
+        .run(engine, frame, picture, ground, None)
+        .expect("over ground");
+    let out = png.rgb(engine, &rgb, picture).expect("png rgb");
+    read_buffer(engine, &out)
+}
+
+/// A picture whose rows are `rows` of red: the other channels 0, so their
+/// bytes are 0 under every filter, and its alpha `alpha`.
+fn reds(rows: &'static [&'static [u32]], alpha: u32) -> wgpu::Buffer {
+    let width = rows[0].len() as u32;
+    frame(width, rows.len() as u32, move |x, y| alpha << 24 | rows[y as usize][x as usize])
+}
+
+// ---- By hand, from the law (`PngImageData`) ----
+
+// One colour, (10, 200, 30, 255), three pixels by two. A pixel costs 10 +
+// 56 + 30 + 1 = 97 as it is. The top row: None 3·97; Sub 97, the first
+// pixel and then nothing; Up as None, nothing above; Avg 97 + 2·(5 + 100
+// + 15 + 128); Paeth 97 — on the top row a is nearest a + 0 − 0 —, a tie
+// to Sub, the lower. Below it Up leaves nothing.
+#[test]
+fn a_flat_picture_is_under_sub_and_then_up() {
+    let rows = png_rgba_rows(&frame(3, 2, |_, _| 0xff1e_c80a), 3, 2);
+    assert_eq!(rows[0], [1, 10, 200, 30, 255, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert_eq!(rows[1], [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+// Red (0, 150) over (50, 100). The top row costs 106 under every filter —
+// 150 is predicted from nothing by each —, so None, the lowest. Below, the
+// first pixel is 50 under each (a, b, c all 0); the second, x = 100 with
+// a = 50, b = 150, c = 0: None 100, Sub 50, Up 50, Avg (50 + 150) >> 1 =
+// 100 so 0, Paeth 50 (p = 200: pa 150, pb 50, pc 200, so b). Avg, at 50.
+#[test]
+fn a_tie_of_all_five_is_none_and_avg_wins_between_two() {
+    static ROWS: [&[u32]; 2] = [&[0, 150], &[50, 100]];
+    let rows = png_rgba_rows(&reds(&ROWS, 0), 2, 2);
+    assert_eq!(rows[0], [0, 0, 0, 0, 0, 150, 0, 0, 0]);
+    assert_eq!(rows[1], [3, 50, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+/// Red (50, 50, 128) over (10, 10, 50): Paeth takes each of b, a and c in
+/// turn on the lower row.
+static PAETH_ROWS: [&[u32]; 2] = [&[50, 50, 128], &[10, 10, 50]];
+
+// The top row: None 50 + 50 + 128 = 228, Sub 50 + 0 + 78 = 128, Up 228,
+// Avg 50 + 25 + 103 = 178, Paeth as Sub — Sub, the lower. Below:
+// - x = 10, a = c = 0, b = 50: None 10, Sub 10, Up 40, Avg 15, Paeth b
+//   (p = 50: pa 50, pb 0) 40;
+// - x = 10, a = 10, b = c = 50: None 10, Sub 0, Up 40, Avg 20, Paeth a
+//   (p = 10) 0;
+// - x = 50, a = 10, b = 128, c = 50: None 50, Sub 40, Up 78, Avg 19,
+//   Paeth c (p = 88: pa 78, pb 40, pc 38) 0.
+// None 70, Sub 50, Up 158, Avg 54, Paeth 40 — and Paeth's 40 is 216, a
+// byte read as signed: as it is, Sub would win.
+#[test]
+fn paeth_wins_where_it_takes_each_of_its_three() {
+    let rows = png_rgba_rows(&reds(&PAETH_ROWS, 0), 3, 2);
+    assert_eq!(rows[0], [1, 50, 0, 0, 0, 0, 0, 0, 0, 78, 0, 0, 0]);
+    assert_eq!(rows[1], [4, 216, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+// The same rows opaque, over the ground three bytes a pixel: the same
+// choices, a pixel three bytes to the left — and the lower row starts on
+// the ninth byte, inside a word.
+#[test]
+fn three_channels_take_the_same_filters_a_pixel_three_bytes_on() {
+    let rows = png_rows(
+        &png_rgb(&reds(&PAETH_ROWS, 0xff), 3, 2, [1, 2, 3]),
+        Picture { width: 3, height: 2 },
+        3,
+    );
+    assert_eq!(rows[0], [1, 50, 0, 0, 0, 0, 0, 78, 0, 0]);
+    assert_eq!(rows[1], [4, 216, 0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+// White with a red column at x = 128 and a red row at y = 128, read
+// across the frame's tiles:
+// - the top row: Sub 4 + 2 + 2 — white, then red − white and white − red
+//   by the column —, under None's 518 and Up's;
+// - 127 is 126 again, so Up, nothing;
+// - 128, red under white: Sub 2, its first pixel alone, under Up's 258;
+// - 129, white under red: Paeth 6 — b on the first pixel, a after, so
+//   only where the column turns — under Sub's 8.
+#[test]
+fn png_rows_read_the_frame_across_its_tiles() {
+    let cross = |x, y| if x == 128 || y == 128 { RED } else { WHITE };
+    let rows = png_rgba_rows(&frame(130, 130, cross), 130, 130);
+    let row = |filter: u8, pixels: &[(usize, [u8; 4])]| {
+        let mut row = vec![0; 1 + 130 * 4];
+        row[0] = filter;
+        for &(x, bytes) in pixels {
+            row[1 + x * 4..5 + x * 4].copy_from_slice(&bytes);
+        }
+        row
+    };
+    let turn = (128, [0, 1, 1, 0]);
+    let back = (129, [0, 255, 255, 0]);
+    assert_eq!(rows[0], row(1, &[(0, [255; 4]), turn, back]));
+    assert_eq!(rows[127], row(2, &[]));
+    assert_eq!(rows[128], row(1, &[(0, [255, 0, 0, 255])]));
+    assert_eq!(rows[129], row(4, &[(0, [0, 255, 255, 0]), turn, back]));
+}
+
+// ---- The ledger ----
+
+// 197 x 131: two tiles each way; a row of four channels is 788 bytes and
+// its out 792, of three 591 and 592.
+#[test]
+fn every_device_writes_the_pinned_png_rows() {
+    let (width, height) = (197, 131);
+    let frame = frame(width, height, mixed(11));
+    assert_pinned("export/png-rgba-197x131", &png_rgba(&frame, width, height));
+    let rgb = png_rgb(&frame, width, height, [0x12, 0x80, 0xed]);
+    assert_pinned("export/png-rgb-197x131", &rgb);
+}
+
+// ---- The shape ----
+
+#[test]
+fn png_refuses_an_empty_picture_or_a_short_source() {
+    let frame = frame(4, 4, |_, _| WHITE);
+    let Rig {
+        engine,
+        over_ground,
+        png,
+        ..
+    } = rig();
+    for bad in [
+        Picture { width: 0, height: 4 },
+        Picture { width: 4, height: 0 },
+        Picture { width: 129, height: 4 },
+    ] {
+        assert!(png.rgba(engine, &frame, bad).is_none(), "{bad:?}");
+    }
+    let rgb = over_ground
+        .run(engine, &frame, Picture { width: 4, height: 4 }, [0, 0, 0], None)
+        .expect("over ground");
+    for bad in [
+        Picture { width: 0, height: 4 },
+        Picture { width: 4, height: 5 },
+    ] {
+        assert!(png.rgb(engine, &rgb, bad).is_none(), "{bad:?}");
     }
 }

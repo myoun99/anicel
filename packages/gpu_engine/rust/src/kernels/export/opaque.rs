@@ -14,7 +14,7 @@ pub(crate) struct Opaque {
 impl Opaque {
     pub(crate) fn new(engine: &Engine) -> Self {
         Self {
-            pipeline: compile(engine, include_str!("opaque.wgsl"), "opaque_pass"),
+            pipeline: compile(engine, &[include_str!("opaque.wgsl")], "opaque_pass"),
         }
     }
 

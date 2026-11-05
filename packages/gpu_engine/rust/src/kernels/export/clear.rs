@@ -20,7 +20,7 @@ pub(crate) struct Clear {
 impl Clear {
     pub(crate) fn new(engine: &Engine) -> Self {
         Self {
-            pipeline: compile(engine, include_str!("clear.wgsl"), "clear_pass"),
+            pipeline: compile(engine, &[include_str!("clear.wgsl")], "clear_pass"),
         }
     }
 

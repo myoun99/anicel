@@ -5,6 +5,7 @@
 
 use super::{Picture, compile, holds, submit};
 use crate::device::Engine;
+use crate::kernels::shared::PREMULTIPLY_WGSL;
 
 impl Picture {
     /// The RGB bytes the writers read: three a pixel, row after row with
@@ -31,7 +32,11 @@ pub(crate) struct OverGround {
 impl OverGround {
     pub(crate) fn new(engine: &Engine) -> Self {
         Self {
-            pipeline: compile(engine, include_str!("over_ground.wgsl"), "over_ground_pass"),
+            pipeline: compile(
+                engine,
+                &[PREMULTIPLY_WGSL, include_str!("over_ground.wgsl")],
+                "over_ground_pass",
+            ),
         }
     }
 

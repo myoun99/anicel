@@ -8,8 +8,8 @@
 // still_image_encoders.dart): a premultiplied channel p over the ground's
 // g is p + g·(255 − a) / 255, the division flooring. The app reads p from
 // Flutter's premultiplied bytes; the frame here is straight, so p is the
-// engine's own premultiply first (qa_engine.c `qa_premultiply_pixel`,
-// SkMulDiv255Round): t = c·a + 128, p = (t + (t >> 8)) >> 8, round(c·a /
+// engine's own premultiply first — the shared `premultiply8`
+// (premultiply.wgsl, qa_engine.c `qa_premultiply_pixel`), round(c·a /
 // 255). An opaque pixel is its own colour — p = c and nothing of the
 // ground —, as the app's branch for it says. Integers only: a float step
 // may be fused or reassociated on one device and not another (fill.wgsl).
@@ -24,7 +24,7 @@
 // takes the place of. Cut at 0, none is under it and every pixel is its
 // own colour — a GIF that keeps no clear colour.
 //
-// Needs tile.wgsl and frame.wgsl before it.
+// Needs tile.wgsl, frame.wgsl and premultiply.wgsl before it.
 
 struct Params {
   // The frame's tiles a row.
@@ -51,12 +51,6 @@ fn byte_of(word: u32, shift: u32) -> u32 {
   return (word >> shift) & 0xffu;
 }
 
-// round(c·a / 255) for bytes.
-fn premultiplied(c: u32, a: u32) -> u32 {
-  let t = c * a + 128u;
-  return (t + (t >> 8u)) >> 8u;
-}
-
 // The alpha a writer takes: as it is, or cut.
 fn coverage(alpha: u32) -> u32 {
   if (params.cut > 255u) {
@@ -65,10 +59,10 @@ fn coverage(alpha: u32) -> u32 {
   return select(255u, 0u, alpha < params.cut);
 }
 
-fn laid(word: u32, shift: u32) -> u32 {
-  let alpha = coverage(word >> 24u);
-  return premultiplied(byte_of(word, shift), alpha)
-    + byte_of(params.ground, shift) * (255u - alpha) / 255u;
+// A channel of the `premultiplied` word, whose alpha is `alpha`, over the
+// ground's.
+fn laid(premultiplied: u32, alpha: u32, shift: u32) -> u32 {
+  return byte_of(premultiplied, shift) + byte_of(params.ground, shift) * (255u - alpha) / 255u;
 }
 
 // The picture's pixel `index`, counted row after row, over the ground; 0
@@ -79,7 +73,13 @@ fn pixel(index: u32) -> vec3<u32> {
     return vec3<u32>(0u);
   }
   let word = frame[frame_word(params.columns, index % params.width, index / params.width)];
-  return vec3<u32>(laid(word, 0u), laid(word, 8u), laid(word, 16u));
+  let alpha = coverage(word >> 24u);
+  let premultiplied = premultiply8((word & 0xffffffu) | (alpha << 24u));
+  return vec3<u32>(
+    laid(premultiplied, alpha, 0u),
+    laid(premultiplied, alpha, 8u),
+    laid(premultiplied, alpha, 16u),
+  );
 }
 
 // One invocation, four pixels in a run — the three words their twelve

@@ -63,7 +63,7 @@ pub(crate) struct Nv12 {
 impl Nv12 {
     pub(crate) fn new(engine: &Engine) -> Self {
         Self {
-            pipeline: compile(engine, include_str!("nv12.wgsl"), "nv12_pass"),
+            pipeline: compile(engine, &[include_str!("nv12.wgsl")], "nv12_pass"),
         }
     }
 

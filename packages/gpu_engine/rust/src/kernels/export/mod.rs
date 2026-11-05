@@ -10,6 +10,8 @@
 //!   `over_ground`'s with the alpha cut (①c).
 //! - `opaque` — whether a frame is opaque, so its PDF picture goes without
 //!   alpha (①d).
+//! - `png` — a PNG's rows under their filters, from the frame's RGBA or
+//!   from `over_ground`'s RGB (①e).
 //!
 //! Each kernel reads the frame through `frame.wgsl`, after the shared
 //! `tile.wgsl`, and runs as one pass over it ([`submit`]).
@@ -22,6 +24,7 @@ mod clear;
 mod nv12;
 mod opaque;
 mod over_ground;
+mod png;
 #[cfg(test)]
 mod tests;
 
@@ -29,6 +32,7 @@ pub(crate) use clear::Clear;
 pub(crate) use nv12::{Nv12, Nv12Shape};
 pub(crate) use opaque::Opaque;
 pub(crate) use over_ground::OverGround;
+pub(crate) use png::PngFilter;
 
 use wgpu::util::DeviceExt;
 
@@ -66,9 +70,10 @@ impl Picture {
     }
 }
 
-/// A kernel's pipeline: `own` after the frame read it calls.
-fn compile(engine: &Engine, own: &str, entry: &str) -> wgpu::ComputePipeline {
-    pipeline(engine, &[TILE_WGSL, FRAME_WGSL, own], entry)
+/// A kernel's pipeline: its `own` sources, in order, after the frame read
+/// they call.
+fn compile(engine: &Engine, own: &[&str], entry: &str) -> wgpu::ComputePipeline {
+    pipeline(engine, &[&[TILE_WGSL, FRAME_WGSL], own].concat(), entry)
 }
 
 /// None, with why, unless `frame` holds the tiles — a row of them, rows —
