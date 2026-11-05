@@ -45,8 +45,9 @@ fn held_tile_word(x: i32, y: i32) -> i32 {
   return i32(tile * TILE_TEXELS + tile_texel(u32(lx), u32(ly)));
 }
 
-fn held_plane_word(x: i32, y: i32, x0: i32, y0: i32, width: u32) -> u32 {
-  return (u32(y - y0) * width + u32(x - x0)) * 2u;
+// Where pixel (x, y) begins in a plane of `words` words a pixel.
+fn held_plane_word(x: i32, y: i32, x0: i32, y0: i32, width: u32, words: u32) -> u32 {
+  return (u32(y - y0) * width + u32(x - x0)) * words;
 }
 
 // The source's pixel (x, y), premultiplied on the 16-bit scale.
@@ -67,7 +68,7 @@ fn held_read(x: i32, y: i32) -> vec4<u32> {
       pixel.w,
     );
   }
-  let at = held_plane_word(x, y, held.source_x0, held.source_y0, held.source_width);
+  let at = held_plane_word(x, y, held.source_x0, held.source_y0, held.source_width, 2u);
   let rg = pixels_in[at];
   let ba = pixels_in[at + 1u];
   return vec4<u32>(rg & 0xffffu, rg >> 16u, ba & 0xffffu, ba >> 16u);
@@ -93,7 +94,7 @@ fn held_write(x: i32, y: i32, pixel: vec4<u32>) {
     pixels_out[held_tile_word(x, y)] = held_stored(pixel);
     return;
   }
-  let at = held_plane_word(x, y, held.target_x0, held.target_y0, held.target_width);
+  let at = held_plane_word(x, y, held.target_x0, held.target_y0, held.target_width, 2u);
   pixels_out[at] = pixel.x | (pixel.y << 16u);
   pixels_out[at + 1u] = pixel.z | (pixel.w << 16u);
 }

@@ -4,12 +4,14 @@
 //! (gpu-canonical-store ② (a)).
 //! - `gaussian` — fx Gaussian Blur, by the blur brush's box passes.
 //! - `line` — a blur along a way: fx Directional Blur and Radial Blur.
+//! - `lens` — fx Camera Lens Blur, so far its row sums and its light.
 //!
-//! Both read and store a pixel alike, and keep it premultiplied on the
+//! They read and store a pixel alike, and keep it premultiplied on the
 //! 16-bit scale in planes between their passes (`held.wgsl`) — one way in
 //! and one way out, so two blurs of one picture cannot store it apart.
 
 pub(crate) mod gaussian;
+pub(crate) mod lens;
 pub(crate) mod line;
 #[cfg(test)]
 mod pictures;
@@ -120,6 +122,112 @@ fn compile(engine: &Engine, more: &[&str], own: &str, entry: &str) -> wgpu::Comp
         })
 }
 
+/// Whether a blur can lay its passes at all: `tiles` hold `rect`, a
+/// binding holds each of `planes` (bytes), and a dispatch reaches each of
+/// `groups`.
+fn checked(
+    engine: &Engine,
+    tiles: &wgpu::Buffer,
+    rect: TileRect,
+    planes: &[u64],
+    mut groups: impl Iterator<Item = (u32, u32)>,
+) -> Option<()> {
+    if rect.tiles() == 0 || tiles.size() < rect.tiles() * TILE_TEXELS * 4 {
+        return fail(format!(
+            "{rect:?} is {} tiles; the buffer holds {} bytes",
+            rect.tiles(),
+            tiles.size()
+        ));
+    }
+    let limits = engine.device.limits();
+    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+    if let Some(plane) = planes.iter().find(|&&plane| plane > room) {
+        return fail(format!(
+            "a blur plane of {plane} bytes exceeds a binding of {room} — a picture this large \
+             waits for the round that cuts it into bands"
+        ));
+    }
+    let most = limits.max_compute_workgroups_per_dimension;
+    if groups.any(|(across, down)| across > most || down > most) {
+        return fail(format!("{rect:?} has more pixels than a dispatch reaches"));
+    }
+    Some(())
+}
+
+/// A buffer a pass reads or puts, of `bytes` — nothing at first: wgpu
+/// zeroes a new buffer.
+fn plane(engine: &Engine, label: &str, bytes: u64) -> wgpu::Buffer {
+    engine.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(label),
+        size: bytes,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    })
+}
+
+/// `words` as a buffer a pass reads them from, `usage` its kind.
+fn words_buffer(
+    engine: &Engine,
+    label: &str,
+    words: &[u32],
+    usage: wgpu::BufferUsages,
+) -> wgpu::Buffer {
+    let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+    engine
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(label),
+            contents: &bytes,
+            usage,
+        })
+}
+
+/// held.wgsl's `Held` for a pass reading `from` and putting `to` over
+/// `rect`'s tiles.
+fn held_words(from: Held, to: Held, rect: TileRect) -> Vec<u32> {
+    let grid = rect.pixels();
+    let mut words = Vec::with_capacity(12);
+    words.extend(from.words());
+    words.extend(to.words());
+    words.extend([grid[0] as u32, grid[1] as u32, rect.columns, rect.rows]);
+    words
+}
+
+/// One dispatch as it is encoded: its pipeline, each buffer at the binding
+/// it is bound to, and its workgroups.
+struct Encoded<'a> {
+    pipeline: &'a wgpu::ComputePipeline,
+    bound: Vec<(u32, &'a wgpu::Buffer)>,
+    groups: (u32, u32),
+}
+
+/// Encodes `dispatches` in order and submits them; the caller waits.
+fn encode(engine: &Engine, dispatches: &[Encoded]) {
+    let mut encoder = engine
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    for dispatch in dispatches {
+        let entries: Vec<wgpu::BindGroupEntry> = dispatch
+            .bound
+            .iter()
+            .map(|&(binding, buffer)| wgpu::BindGroupEntry {
+                binding,
+                resource: buffer.as_entire_binding(),
+            })
+            .collect();
+        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("blur"),
+            layout: &dispatch.pipeline.get_bind_group_layout(0),
+            entries: &entries,
+        });
+        let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+        compute.set_pipeline(dispatch.pipeline);
+        compute.set_bind_group(0, &bind_group, &[]);
+        compute.dispatch_workgroups(dispatch.groups.0, dispatch.groups.1, 1);
+    }
+    engine.queue.submit([encoder.finish()]);
+}
+
 /// Runs `dispatches` of `pipeline` over `tiles` — straight RGBA8 over
 /// `rect` — with planes of `plane` bytes between them, and `taps` bound
 /// fifth where given; returns the tiles the last one put, nothing where it
@@ -129,113 +237,49 @@ fn run(
     pipeline: &wgpu::ComputePipeline,
     tiles: &wgpu::Buffer,
     rect: TileRect,
-    plane: u64,
+    plane_bytes: u64,
     dispatches: &[Dispatch],
     taps: Option<&wgpu::Buffer>,
 ) -> Option<wgpu::Buffer> {
-    let bytes = rect.tiles() * TILE_TEXELS * 4;
-    if rect.tiles() == 0 || tiles.size() < bytes {
-        return fail(format!(
-            "{rect:?} is {} tiles; the buffer holds {} bytes",
-            rect.tiles(),
-            tiles.size()
-        ));
-    }
-    let limits = engine.device.limits();
-    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
-    if plane > room {
-        return fail(format!(
-            "a blur plane of {plane} bytes exceeds a binding of {room} — a picture this large \
-             waits for the round that cuts it into bands"
-        ));
-    }
-    let most = limits.max_compute_workgroups_per_dimension;
-    if dispatches.iter().any(|dispatch| dispatch.groups.0 > most || dispatch.groups.1 > most) {
-        return fail(format!("{rect:?} has more pixels than a dispatch reaches"));
-    }
+    checked(engine, tiles, rect, &[plane_bytes], dispatches.iter().map(|d| d.groups))?;
     // A pass between two others reads one plane and puts the other.
     let planes: Vec<wgpu::Buffer> = (0..if dispatches.len() > 1 { 2 } else { 0 })
-        .map(|_| {
-            engine.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("blur plane"),
-                size: plane,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            })
+        .map(|_| plane(engine, "blur plane", plane_bytes))
+        .collect();
+    // Nothing outside the pixels a blur puts.
+    let out = plane(engine, "blur out", rect.tiles() * TILE_TEXELS * 4);
+    let uniforms: Vec<[wgpu::Buffer; 2]> = dispatches
+        .iter()
+        .map(|dispatch| {
+            [
+                held_words(dispatch.from, dispatch.to, rect),
+                dispatch.words.clone(),
+            ]
+            .map(|words| words_buffer(engine, "blur pass", &words, wgpu::BufferUsages::UNIFORM))
         })
         .collect();
-    // Nothing at first (wgpu zeroes a new buffer) — what a blur leaves
-    // outside the pixels it puts.
-    let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("blur out"),
-        size: bytes,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let grid = rect.pixels();
-    let layout = pipeline.get_bind_group_layout(0);
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    for (index, dispatch) in dispatches.iter().enumerate() {
-        let from = match dispatch.from {
-            Held::Tiles => tiles,
-            Held::Plane { .. } => &planes[(index + 1) % 2],
-        };
-        let to = match dispatch.to {
-            Held::Tiles => &out,
-            Held::Plane { .. } => &planes[index % 2],
-        };
-        let mut held = Vec::with_capacity(12);
-        held.extend(dispatch.from.words());
-        held.extend(dispatch.to.words());
-        held.extend([grid[0] as u32, grid[1] as u32, rect.columns, rect.rows]);
-        let uniform = |label, words: &[u32]| {
-            let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-            engine
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(label),
-                    contents: &bytes,
-                    usage: wgpu::BufferUsages::UNIFORM,
-                })
-        };
-        let held = uniform("blur held", &held);
-        let own = uniform("blur pass", &dispatch.words);
-        let mut entries = vec![
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: held.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: from.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: to.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: own.as_entire_binding(),
-            },
-        ];
-        if let Some(taps) = taps {
-            entries.push(wgpu::BindGroupEntry {
-                binding: 4,
-                resource: taps.as_entire_binding(),
-            });
-        }
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("blur"),
-            layout: &layout,
-            entries: &entries,
-        });
-        let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        compute.set_pipeline(pipeline);
-        compute.set_bind_group(0, &bind_group, &[]);
-        compute.dispatch_workgroups(dispatch.groups.0, dispatch.groups.1, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
+    let encoded: Vec<Encoded> = dispatches
+        .iter()
+        .zip(&uniforms)
+        .enumerate()
+        .map(|(index, (dispatch, [held, own]))| {
+            let from = match dispatch.from {
+                Held::Tiles => tiles,
+                Held::Plane { .. } => &planes[(index + 1) % 2],
+            };
+            let to = match dispatch.to {
+                Held::Tiles => &out,
+                Held::Plane { .. } => &planes[index % 2],
+            };
+            let mut bound = vec![(0, held), (1, from), (2, to), (3, own)];
+            bound.extend(taps.map(|taps| (4, taps)));
+            Encoded {
+                pipeline,
+                bound,
+                groups: dispatch.groups,
+            }
+        })
+        .collect();
+    encode(engine, &encoded);
     Some(out)
 }

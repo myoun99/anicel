@@ -3,9 +3,7 @@
 
 use std::ops::Range;
 
-use wgpu::util::DeviceExt;
-
-use super::TileRect;
+use super::{TileRect, words_buffer};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::effects::tests::rgba;
@@ -50,14 +48,7 @@ pub(super) fn tiles(
             words[word_of(rect, x, y)] = pixel(x, y);
         }
     }
-    let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-    engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("blur cases"),
-            contents: &bytes,
-            usage: wgpu::BufferUsages::STORAGE,
-        })
+    words_buffer(engine, "blur cases", &words, wgpu::BufferUsages::STORAGE)
 }
 
 /// What a blur put over its tiles.

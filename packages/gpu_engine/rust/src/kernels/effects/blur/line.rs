@@ -18,9 +18,7 @@
 #[path = "line_tests.rs"]
 mod tests;
 
-use wgpu::util::DeviceExt;
-
-use super::{Dispatch, GROUP, Held, TileRect, compile, run};
+use super::{Dispatch, GROUP, Held, TileRect, compile, run, words_buffer};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{WIDE_WGSL, q};
@@ -159,14 +157,7 @@ impl LineBlur {
         if let Some(last) = dispatches.last_mut() {
             last.to = Held::Tiles;
         }
-        let bytes: Vec<u8> = taps.iter().flat_map(|word| word.to_le_bytes()).collect();
-        let taps = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("line blur taps"),
-                contents: &bytes,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let taps = words_buffer(engine, "line blur taps", &taps, wgpu::BufferUsages::STORAGE);
         let plane = u64::from((right - left) as u32) * u64::from((bottom - top) as u32) * 8;
         run(engine, &self.pipeline, tiles, rect, plane, &dispatches, Some(&taps))
     }
