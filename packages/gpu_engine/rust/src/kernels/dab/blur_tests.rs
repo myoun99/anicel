@@ -23,6 +23,12 @@ const SIDE: i32 = 128;
 ///   (167478 / 3) and 63108 (189323 / 3 = 63107.7).
 const STEP: [u32; 8] = [0, 2427, 9709, 24272, 41263, 55826, 63108, ONE];
 
+/// The step's pixels at e − 4 .. e + 3 moved 32768/65535 of the way to
+/// that blur, rounded half away from zero — up from nothing, down from
+/// white: 2427 → 1213.5 → 1214, 9709 → 4854.6 → 4855, 24272 → 12136.2 →
+/// 12136.
+const HALFWAY: [u32; 8] = [0, 1214, 4855, 12136, ONE - 12136, ONE - 4855, ONE - 1214, ONE];
+
 /// The step at `e` blurred, at `x`.
 fn stepped(x: i32, e: i32) -> u32 {
     match x - e {
@@ -106,17 +112,32 @@ fn a_dab_at_full_flow_puts_the_blur_itself() {
 }
 
 // A dab at half flow lays 32768 (0.5 on the 16-bit scale, rounded), so a
-// pixel moves 32768/65535 of the way to its blur, rounded half away from
-// zero — up from nothing, down from white: 2427 → 1213.5 → 1214, 9709 →
-// 4854.6 → 4855, 24272 → 12136.2 → 12136.
+// pixel moves 32768/65535 of the way to its blur.
 #[test]
 fn a_dab_moves_its_pixels_by_what_it_lays() {
     let dab = square([60, 60, 68, 64], WHITE, 0.5);
     let blurred = blurred(&[(0, 0)], step_at(64), &[(dab, 1)], None).unwrap();
-    let moved = [0, 1214, 4855, 12136, ONE - 12136, ONE - 4855, ONE - 1214, ONE];
     for y in 60..64 {
-        for (x, &value) in (60..68).zip(&moved) {
+        for (x, &value) in (60..68).zip(&HALFWAY) {
             assert_eq!(blurred.at(x, y), [value; 4], "({x}, {y})");
+        }
+    }
+}
+
+// What a dab lays is measured onto nothing, white and opaque
+// (BrushBlurPicture): its colour's own alpha does not thin it, and its
+// opacity is the level it would settle at over nothing — at 0.5 it lays
+// 32768, as half flow does, wherever the picture stands.
+#[test]
+fn a_dab_lays_what_it_would_onto_nothing() {
+    let thin = square([60, 60, 68, 64], [200, 100, 50, 128], 1.0);
+    let blurred_thin = blurred(&[(0, 0)], step_at(64), &[(thin, 1)], None).unwrap();
+    let settling = Dab { opacity: 0.5, ..square([60, 60, 68, 64], WHITE, 1.0) };
+    let blurred_half = blurred(&[(0, 0)], step_at(64), &[(settling, 1)], None).unwrap();
+    for y in 60..64 {
+        for x in 60..68 {
+            assert_eq!(blurred_thin.at(x, y), [stepped(x, 64); 4], "({x}, {y})");
+            assert_eq!(blurred_half.at(x, y), [HALFWAY[(x - 60) as usize]; 4], "({x}, {y})");
         }
     }
 }
@@ -237,8 +258,12 @@ fn every_device_blurs_the_pinned_strokes() {
     assert_pinned("dab/blur-planes", &plain.bytes());
     let grain = texture(&grain(), 32);
     let paper = Paper { texture: &grain, scale: 0.7, height: false };
+    // An eraser's dab, every third, and an opacity under one: what a blur
+    // dab lays is measured not erasing.
     let papered: Vec<(Dab, u32)> = along(&profile, 24, |k, dab| {
         dab.flow = 0.6;
+        dab.opacity = 0.7;
+        dab.erase = k % 3 == 0;
         dab.density = Some(0.3 + f64::from(k % 4) * 0.2);
     })
     .into_iter()
