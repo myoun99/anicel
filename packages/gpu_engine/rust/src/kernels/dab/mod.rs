@@ -43,7 +43,7 @@ use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, runs, whole, words_buffer,
+    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, runs, whole,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -315,7 +315,10 @@ impl Plans {
             self.buffer = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("dab plan"),
                 size: self.capacity as u64 * 4,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                // A uniform too: a pile's passes' own words are on it.
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::UNIFORM
+                    | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }));
         }
@@ -397,22 +400,27 @@ impl Dabs {
             })
             .collect();
         let ks = ks?;
-        let ks_at = Cell::new(0);
-        let plan = self.plans.write(engine, tiles, dabs, paper, second, |plan| {
-            ks_at.set(plan.end());
-            Some(ks.clone())
-        })?;
         // Each pass's own words — where its run starts, and where the ks are
-        // — at an offset a binding may start at. The second of two such
-        // uniforms — the other is a blur dab's dispatches' (blur.rs): they
-        // stay apart until a third comes (rule of three, CLAUDE.md absolute
-        // rule 1).
+        // — on the plan past the ks, at an offset a binding may start at: on
+        // a buffer of their own they cost a pile 5 to 7 µs more made anew,
+        // and 3 to 8 kept; on the plan, 3 to 5 over a pile that binds one
+        // page whole, of 106 to 121 (11-06, the main PC, by turns). The
+        // second of two such uniforms, the other a blur dab's dispatches'
+        // (blur.rs).
         let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
-        let mut uniform = vec![0u32; stride * runs.len()];
-        for (index, (run, _)) in runs.iter().enumerate() {
-            uniform[index * stride..][..2].copy_from_slice(&[run.start as u32, ks_at.get() as u32]);
-        }
-        let uniform = words_buffer(engine, "dab runs", &uniform, wgpu::BufferUsages::UNIFORM);
+        let runs_at = Cell::new(0);
+        let plan = self.plans.write(engine, tiles, dabs, paper, second, |plan| {
+            let ks_at = plan.end();
+            let at = (ks_at + ks.len()).next_multiple_of(stride);
+            runs_at.set(at);
+            let mut words = ks.clone();
+            words.resize(at - ks_at + stride * runs.len(), 0);
+            for (index, (run, _)) in runs.iter().enumerate() {
+                words[at - ks_at + index * stride..][..2]
+                    .copy_from_slice(&[run.start as u32, ks_at as u32]);
+            }
+            Some(words)
+        })?;
         let dispatches: Vec<Encoded> = runs
             .iter()
             .enumerate()
@@ -425,8 +433,8 @@ impl Dabs {
                 bound.push(wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &uniform,
-                        offset: (index * stride * 4) as u64,
+                        buffer: plan,
+                        offset: ((runs_at.get() + index * stride) * 4) as u64,
                         size: wgpu::BufferSize::new(16),
                     }),
                 });

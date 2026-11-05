@@ -409,7 +409,8 @@ impl Blurs {
                 Some(place)
             })
             .collect();
-        let blocks_at = Cell::new(0);
+        let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
+        let steps_at = Cell::new(0);
         let plan = self.plans.write(engine, tiles, &white, paper, None, |plan| {
             let mut words = Vec::new();
             for (index, window) in windows.iter().enumerate() {
@@ -423,25 +424,25 @@ impl Blurs {
                 words.extend(&window.passes);
                 words.extend(window.grid.iter().flat_map(|&(tile, k)| [plan.tile_at(tile), k]));
             }
-            blocks_at.set(plan.end());
+            // Each dispatch's own words — its dab's block and its pass — on
+            // the plan past the blocks, at an offset a binding may start at,
+            // as a pile's runs' are (mod.rs: on a buffer of their own they
+            // cost a pile 5 to 7 µs more made anew). The first of two such
+            // uniforms: they stay apart until a third comes (rule of three,
+            // CLAUDE.md absolute rule 1).
+            let blocks_at = plan.end();
+            let at = (blocks_at + words.len()).next_multiple_of(stride);
+            steps_at.set(at);
+            words.resize(at - blocks_at, 0);
+            for (place, steps) in places.iter().zip(&steps) {
+                for step in steps {
+                    words.extend([(blocks_at + place) as u32, step.pass]);
+                    words.resize(words.len() + stride - 2, 0);
+                }
+            }
             Some(words)
         });
         let plan = plan?;
-        // Each dispatch's own words: its dab's block and its pass, at an
-        // offset a binding may start at — the first of two such uniforms,
-        // the other the pile's runs' (mod.rs).
-        let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
-        let count: usize = steps.iter().map(Vec::len).sum();
-        let mut uniform = vec![0u32; stride * count];
-        let mut slot = 0;
-        for (place, steps) in places.iter().zip(&steps) {
-            let block = (blocks_at.get() + place) as u32;
-            for step in steps {
-                uniform[slot * stride..][..2].copy_from_slice(&[block, step.pass]);
-                slot += 1;
-            }
-        }
-        let uniform = words_buffer(engine, "blur dabs", &uniform, wgpu::BufferUsages::UNIFORM);
         // A dab whose window is on one page goes by the dispatches that bind
         // one. The widest bind it too, so no test tells the two apart — only
         // the time (`Blurs::one`; mutant r07, 11-06).
@@ -461,8 +462,8 @@ impl Blurs {
                 bound.push(wgpu::BindGroupEntry {
                     binding: 5,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &uniform,
-                        offset: (index * stride * 4) as u64,
+                        buffer: plan,
+                        offset: ((steps_at.get() + index * stride) * 4) as u64,
                         size: wgpu::BufferSize::new(16),
                     }),
                 });
