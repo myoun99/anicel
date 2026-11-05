@@ -8,8 +8,16 @@ final class Surface extends Opaque {}
 
 final class Fill extends Opaque {}
 
+/// The texture a kernel writes: a surface's, or a window's next image.
+final class Texture extends Opaque {}
+
+final class Window extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
+
+@Native<Pointer<Engine> Function()>(symbol: 'gpu_engine_open_sole')
+external Pointer<Engine> engineOpenSole();
 
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_close')
 external void engineClose(Pointer<Engine> engine);
@@ -44,6 +52,37 @@ external void surfaceFree(Pointer<Surface> surface);
 )
 external Pointer<Void> surfaceHandle(Pointer<Surface> surface);
 
+@Native<Pointer<Texture> Function(Pointer<Surface>)>(
+  symbol: 'gpu_engine_surface_texture',
+)
+external Pointer<Texture> surfaceTexture(Pointer<Surface> surface);
+
+@Native<
+  Pointer<Window> Function(Pointer<Engine>, Pointer<Void>, Uint32, Uint32)
+>(symbol: 'gpu_engine_window_new')
+external Pointer<Window> windowNew(
+  Pointer<Engine> engine,
+  Pointer<Void> native,
+  int width,
+  int height,
+);
+
+@Native<Bool Function(Pointer<Window>)>(symbol: 'gpu_engine_window_direct')
+external bool windowDirect(Pointer<Window> window);
+
+@Native<Pointer<Texture> Function(Pointer<Window>)>(
+  symbol: 'gpu_engine_window_target',
+)
+external Pointer<Texture> windowTarget(Pointer<Window> window);
+
+@Native<Bool Function(Pointer<Engine>, Pointer<Window>)>(
+  symbol: 'gpu_engine_window_present',
+)
+external bool windowPresent(Pointer<Engine> engine, Pointer<Window> window);
+
+@Native<Void Function(Pointer<Window>)>(symbol: 'gpu_engine_window_free')
+external void windowFree(Pointer<Window> window);
+
 @Native<Pointer<Fill> Function(Pointer<Engine>)>(symbol: 'gpu_engine_fill_new')
 external Pointer<Fill> fillNew(Pointer<Engine> engine);
 
@@ -51,12 +90,12 @@ external Pointer<Fill> fillNew(Pointer<Engine> engine);
 external void fillFree(Pointer<Fill> fill);
 
 @Native<
-  Int64 Function(Pointer<Fill>, Pointer<Engine>, Pointer<Surface>, Uint32)
+  Int64 Function(Pointer<Fill>, Pointer<Engine>, Pointer<Texture>, Uint32)
 >(symbol: 'gpu_engine_fill_run')
 external int fillRun(
   Pointer<Fill> fill,
   Pointer<Engine> engine,
-  Pointer<Surface> surface,
+  Pointer<Texture> texture,
   int seed,
 );
 

@@ -7,6 +7,10 @@ use crate::{copy_out, fail, platform};
 
 /// One wgpu device and its queue.
 pub struct Engine {
+    /// Kept for Android's window surfaces, which must come from the
+    /// instance the adapter came from.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) instance: wgpu::Instance,
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
@@ -15,16 +19,28 @@ pub struct Engine {
 impl Engine {
     /// Opens on the adapter whose LUID is `luid`.
     fn open(luid: u64) -> Option<Self> {
-        let adapter = platform::adapters()
+        let instance = platform::instance();
+        let adapter = platform::adapters(&instance)
             .into_iter()
             .find(|adapter| platform::adapter_luid(adapter) == Some(luid));
         match adapter {
-            Some(adapter) => Self::on(adapter),
+            Some(adapter) => Self::on(instance, adapter),
             None => fail(format!("no adapter has LUID {luid:#x}")),
         }
     }
 
-    pub(crate) fn on(adapter: wgpu::Adapter) -> Option<Self> {
+    /// Opens on the platform's only adapter; with none or several, which
+    /// one Flutter draws with is not known.
+    fn open_sole() -> Option<Self> {
+        let instance = platform::instance();
+        let mut adapters = platform::adapters(&instance);
+        if adapters.len() != 1 {
+            return fail(format!("{} adapters, not one", adapters.len()));
+        }
+        Self::on(instance, adapters.remove(0))
+    }
+
+    pub(crate) fn on(instance: wgpu::Instance, adapter: wgpu::Adapter) -> Option<Self> {
         let required_features = adapter.features() & wgpu::Features::BGRA8UNORM_STORAGE;
         let request = adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("gpu_engine"),
@@ -33,6 +49,7 @@ impl Engine {
         });
         match pollster::block_on(request) {
             Ok((device, queue)) => Some(Self {
+                instance,
                 adapter,
                 device,
                 queue,
@@ -104,11 +121,48 @@ impl Engine {
     }
 }
 
+/// A texture of the engine's own that a compute pass stores to and a copy
+/// reads — shared with nothing.
+#[cfg(any(test, target_os = "android"))]
+pub(crate) fn storage_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("storage"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    })
+}
+
+fn boxed(engine: Option<Engine>) -> *mut Engine {
+    engine.map_or(std::ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
+}
+
 /// Opens the engine on the adapter whose LUID is `luid` (high part in the
 /// upper 32 bits) — Flutter's own. Null on failure; see the last error.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open(luid: u64) -> *mut Engine {
-    Engine::open(luid).map_or(std::ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
+    boxed(Engine::open(luid))
+}
+
+/// Opens the engine on the platform's only adapter — Android's, where
+/// Flutter draws with the one GPU there is. Null on failure; see the last
+/// error.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_open_sole() -> *mut Engine {
+    boxed(Engine::open_sole())
 }
 
 /// # Safety

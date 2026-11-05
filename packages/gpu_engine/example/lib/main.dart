@@ -1,14 +1,19 @@
 // GPU ENGINE PROBE — stage 0 of the GPU engine (gpu-engine-skeleton): a
 // wgpu compute pass fills a texture that Flutter shows without a copy.
-// Measures on THIS device: whether ANGLE takes the texture as it is, the
-// round trip of a frame, video memory, and whether the screen shows the
-// very bytes the GPU wrote. Whether the GPU wrote the pinned bytes is the
-// crate's `cargo test`, against test/fixtures/fingerprints.json.
+// Measures on THIS device: whether Flutter takes the texture as it is
+// (Windows: whether ANGLE does; Android: whether the window's images take
+// compute stores), the round trip of a frame, memory, and whether the
+// screen shows the very bytes the GPU wrote. Whether the GPU wrote the
+// pinned bytes is the crate's `cargo test`, against
+// test/fixtures/fingerprints.json.
 //
 //   flutter run -d windows --release --dart-define=GPU_OUT=<dir>
+//   flutter run -d <android device> --release
 //
-// Writes `report.txt` into GPU_OUT and exits. The window opens behind
-// everything without taking focus. Measurement, not a feature.
+// Writes `report.txt` into GPU_OUT (default: gpu_probe_out in the system
+// temp folder — the app's own cache on Android), prints it, and exits. On
+// Windows the window opens behind everything without taking focus.
+// Measurement, not a feature.
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'dart:developer' show Timeline;
@@ -55,7 +60,9 @@ class _ProbeAppState extends State<_ProbeApp> {
   }
 
   Future<void> _run() async {
-    final out = Directory(_outDir.isEmpty ? 'gpu_probe_out' : _outDir);
+    final out = Directory(
+      _outDir.isEmpty ? '${Directory.systemTemp.path}/gpu_probe_out' : _outDir,
+    );
     await out.create(recursive: true);
     final report = StringBuffer();
     try {
@@ -65,12 +72,13 @@ class _ProbeAppState extends State<_ProbeApp> {
       report.writeln('FAILED: $e\n$st');
     }
     await File('${out.path}/report.txt').writeAsString(report.toString());
+    print('${out.path}/report.txt\n$report');
     exit(0);
   }
 
-  Future<void> _show(SharedTexture? texture, double side) async {
+  Future<void> _show(int? textureId, double side) async {
     setState(() {
-      _textureId = texture?.id;
+      _textureId = textureId;
       _textureSide = side;
     });
     for (var i = 0; i < 3; i++) {
@@ -80,13 +88,18 @@ class _ProbeAppState extends State<_ProbeApp> {
 
   Future<void> _measure(StringBuffer report) async {
     final engine = GpuEngine.onFlutterAdapter();
+    final luid = engine.adapterLuid;
     report
-      ..writeln('adapter: ${engine.adapterName} '
-          '(LUID ${_hex(engine.adapterLuid, digits: 16)})')
-      ..writeln('video memory at open: ${_mib(engine.videoMemoryBytes)}')
+      ..writeln('adapter: ${engine.adapterName}'
+          '${luid == null ? '' : ' (LUID ${_hex(luid, digits: 16)})'}')
+      ..writeln('video memory at open: ${_videoMemory(engine)}')
       ..writeln('process RSS at open: ${_mib(ProcessInfo.currentRss)}');
-    for (final bgra in [true, false]) {
-      await _measureOrder(report, engine, bgra: bgra);
+    if (Platform.isAndroid) {
+      await _measureWindow(report, engine);
+    } else {
+      for (final bgra in [true, false]) {
+        await _measureOrder(report, engine, bgra: bgra);
+      }
     }
     engine.close();
   }
@@ -106,7 +119,7 @@ class _ProbeAppState extends State<_ProbeApp> {
       return;
     }
     report.writeln('video memory with one $_side² surface: '
-        '${_mib(engine.videoMemoryBytes)}');
+        '${_videoMemory(engine)}');
 
     _reportWhatAngleSees(report, front);
     if (!await _checkScreen(report, engine, bgra: bgra)) {
@@ -116,14 +129,78 @@ class _ProbeAppState extends State<_ProbeApp> {
       return;
     }
 
-    await _roundTrip(report, '$label single', front, null);
+    final single = SharedTexture.register(front);
+    await _roundTrip(
+      report,
+      '$label single',
+      single.id,
+      fill: (i) => front.fill(_seed + i),
+      show: (_) => single.show(0),
+    );
+    await _unregister([single]);
+    // Two surfaces alternate: through one texture's two slots, so Flutter
+    // reopens a handle every frame — or as two textures the widget
+    // switches between, each opened once, since Flutter reopens only when
+    // a texture's handle changes (external_texture_d3d.cc:84;
+    // gpu-engine-feasibility ⑤).
     final back = engine.surface(_side, _side, bgra: bgra);
-    await _roundTrip(report, '$label double', front, back);
-    await _roundTrip(report, '$label two textures', front, back, apart: true);
-    report.writeln('video memory with two surfaces: '
-        '${_mib(engine.videoMemoryBytes)}');
+    GpuSurface slot(int i) => i.isOdd ? back : front;
+    final slots = SharedTexture.register(front, back: back);
+    await _roundTrip(
+      report,
+      '$label double',
+      slots.id,
+      fill: (i) => slot(i).fill(_seed + i),
+      show: (i) => slots.show(i & 1),
+    );
+    await _unregister([slots]);
+    final apart = [SharedTexture.register(front), SharedTexture.register(back)];
+    await _roundTrip(
+      report,
+      '$label two textures',
+      apart.first.id,
+      fill: (i) => slot(i).fill(_seed + i),
+      show: (i) {
+        final texture = apart[i & 1];
+        setState(() => _textureId = texture.id);
+        texture.show(0);
+      },
+    );
+    await _unregister(apart);
+    report.writeln('video memory with two surfaces: ${_videoMemory(engine)}');
     back.free();
     front.free();
+  }
+
+  /// Android's way to the screen: the engine presents into a window
+  /// Flutter made.
+  Future<void> _measureWindow(StringBuffer report, GpuEngine engine) async {
+    report.writeln('\n== window ==');
+    final written = _written(engine);
+    final shot = await engine.window(_shotSide, _shotSide);
+    report.writeln(shot.direct
+        ? "the window's images take compute stores: no copy"
+        : "the window's images take no stores: one GPU copy a frame");
+    shot
+      ..fill(_seed)
+      ..present();
+    final shown = await _screenShows(report, shot.textureId, written);
+    await shot.free();
+    if (!shown) {
+      report.writeln('not on screen: round trip not measured');
+      return;
+    }
+    final window = await engine.window(_side, _side);
+    await _roundTrip(
+      report,
+      'window',
+      window.textureId,
+      fill: (i) => window.fill(_seed + i),
+      show: (_) => window.present(),
+    );
+    report.writeln('process RSS with one $_side² window: '
+        '${_mib(ProcessInfo.currentRss)}');
+    await window.free();
   }
 
   // ANGLE takes a client texture as it is only when it is renderable and
@@ -162,24 +239,43 @@ class _ProbeAppState extends State<_ProbeApp> {
           : 'not renderable or not readable: ANGLE refuses it or copies it');
   }
 
-  /// Whether the screen shows exactly the bytes the GPU wrote. The screen
-  /// is read as RGBA, so it is compared with an RGBA surface the same pass
-  /// filled with the same seed — the crate's tests pin that the two orders
-  /// hold the same texels.
+  /// The fingerprint of what the fill pass writes for [_seed] on a
+  /// [_shotSide]² RGBA surface. The screen is read as RGBA, and the
+  /// crate's tests pin that the two orders hold the same texels.
+  int _written(GpuEngine engine) {
+    final reference = engine.surface(_shotSide, _shotSide, bgra: false);
+    reference.fill(_seed);
+    final written = reference.fingerprint();
+    reference.free();
+    return written;
+  }
+
+  /// Whether the screen shows exactly the bytes the GPU wrote, through a
+  /// shared texture.
   Future<bool> _checkScreen(
     StringBuffer report,
     GpuEngine engine, {
     required bool bgra,
   }) async {
-    final reference = engine.surface(_shotSide, _shotSide, bgra: false);
-    reference.fill(_seed);
-    final written = reference.fingerprint();
-    reference.free();
+    final written = _written(engine);
     final shot = engine.surface(_shotSide, _shotSide, bgra: bgra);
     shot.fill(_seed);
     final texture = SharedTexture.register(shot)..show(0);
+    final shown = await _screenShows(report, texture.id, written);
+    await _unregister([texture]);
+    shot.free();
+    return shown;
+  }
+
+  /// Whether texture [textureId], shown one texel per pixel, puts exactly
+  /// the bytes whose fingerprint is [written] on the screen.
+  Future<bool> _screenShows(
+    StringBuffer report,
+    int textureId,
+    int written,
+  ) async {
     final ratio = View.of(context).devicePixelRatio;
-    await _show(texture, _shotSide / ratio);
+    await _show(textureId, _shotSide / ratio);
     final boundary =
         _boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     final image = await boundary.toImage(pixelRatio: ratio);
@@ -187,9 +283,6 @@ class _ProbeAppState extends State<_ProbeApp> {
     final size = '${image.width}×${image.height}';
     image.dispose();
     await _show(null, 0);
-    texture.unregister();
-    await SchedulerBinding.instance.endOfFrame;
-    shot.free();
     if (bytes == null || size != '$_shotSide×$_shotSide') {
       report.writeln('screen: captured $size, not $_shotSide², not compared');
       return false;
@@ -200,24 +293,28 @@ class _ProbeAppState extends State<_ProbeApp> {
     return seen == written;
   }
 
-  /// Fill → show → the frame that shows it, [_frames] times. With [back],
-  /// the two surfaces alternate: through one texture's two slots, so
-  /// Flutter reopens a handle every frame — or, [apart], as two textures
-  /// the widget switches between, each opened once, since Flutter reopens
-  /// only when a texture's handle changes (external_texture_d3d.cc:84;
-  /// gpu-engine-feasibility ⑤).
+  Future<void> _unregister(List<SharedTexture> textures) async {
+    for (final texture in textures) {
+      texture.unregister();
+    }
+    await SchedulerBinding.instance.endOfFrame;
+  }
+
+  /// Fill → show → the frame that shows it, [_frames] times, with texture
+  /// [textureId] on screen: [fill] fills frame i and returns its
+  /// submit-to-done time, [show] hands it to Flutter. One frame more is
+  /// shown first, untimed, so the texture is on screen before the clock
+  /// starts.
   Future<void> _roundTrip(
     StringBuffer report,
     String label,
-    GpuSurface front,
-    GpuSurface? back, {
-    bool apart = false,
+    int textureId, {
+    required Duration Function(int i) fill,
+    required void Function(int i) show,
   }) async {
-    final textures = apart
-        ? [SharedTexture.register(front), SharedTexture.register(back!)]
-        : [SharedTexture.register(front, back: back)];
-    textures.first.show(0);
-    await _show(textures.first, 512);
+    fill(-1);
+    show(-1);
+    await _show(textureId, 512);
     final timings = <FrameTiming>[];
     void collect(List<FrameTiming> batch) => timings.addAll(batch);
     SchedulerBinding.instance.addTimingsCallback(collect);
@@ -226,16 +323,9 @@ class _ProbeAppState extends State<_ProbeApp> {
     final shownAt = <int>[];
     for (var i = 0; i < _frames; i++) {
       final start = Timeline.now;
-      final slot = back == null ? 0 : i & 1;
-      final surface = slot == 1 ? back! : front;
-      fills.add(surface.fill(_seed + i).inMicroseconds);
+      fills.add(fill(i).inMicroseconds);
       shownAt.add(Timeline.now);
-      if (apart) {
-        setState(() => _textureId = textures[slot].id);
-        textures[slot].show(0);
-      } else {
-        textures.first.show(slot);
-      }
+      show(i);
       await SchedulerBinding.instance.endOfFrame;
       periods.add(Timeline.now - start);
     }
@@ -243,10 +333,6 @@ class _ProbeAppState extends State<_ProbeApp> {
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     SchedulerBinding.instance.removeTimingsCallback(collect);
     await _show(null, 0);
-    for (final texture in textures) {
-      texture.unregister();
-    }
-    await SchedulerBinding.instance.endOfFrame;
 
     final raster = [for (final t in timings) t.rasterDuration.inMicroseconds];
     // The frame that shows a fill is the first whose raster STARTS after
@@ -302,6 +388,12 @@ String _hex(int value, {int digits = 8}) =>
     value.toUnsigned(digits * 4).toRadixString(16).padLeft(digits, '0');
 
 String _mib(int bytes) => '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
+
+/// The engine's video memory — which Android has no call to read.
+String _videoMemory(GpuEngine engine) {
+  final bytes = engine.videoMemoryBytes;
+  return bytes == 0 ? 'not readable here' : _mib(bytes);
+}
 
 /// p50 / p95 / max, in milliseconds.
 String _stats(List<int> micros) {

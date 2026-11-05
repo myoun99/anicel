@@ -21,9 +21,14 @@ dependencies:
 #   on by default since Flutter 3.47) and bound with @Native;
 # - the Windows texture shim is a classic plugin, because only a plugin's
 #   registration is handed the registrar that owns Flutter's textures and
-#   the DXGI adapter Flutter draws with.
+#   the DXGI adapter Flutter draws with;
+# - so is the Android one, for the same reason: only a plugin is handed
+#   the texture registry whose windows the engine presents into.
 flutter:
   plugin:
     platforms:
+      android:
+        package: com.myoun.gpu_engine
+        pluginClass: GpuEnginePlugin
       windows:
         pluginClass: GpuEnginePluginCApi

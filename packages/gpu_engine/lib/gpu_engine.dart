@@ -4,12 +4,16 @@ library;
 
 import 'dart:convert';
 import 'dart:ffi';
-import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart';
 
 import 'src/engine_ffi.dart' as rust;
 import 'src/texture_shim.dart' as shim;
+
+/// The Android plugin (android/src/main/kotlin/.../GpuEnginePlugin.kt).
+const _plugin = MethodChannel('gpu_engine');
 
 String _lastError() => using((arena) {
   const capacity = 1024;
@@ -19,26 +23,44 @@ String _lastError() => using((arena) {
   return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
 });
 
+/// A kernel's submit-to-done time from its C ABI, which gives -1 on
+/// failure.
+Duration _ran(int nanos) {
+  if (nanos < 0) {
+    throw StateError(_lastError());
+  }
+  return Duration(microseconds: nanos ~/ 1000);
+}
+
 /// One wgpu device on the adapter Flutter draws with.
 class GpuEngine {
   GpuEngine._(this._engine, this.adapterLuid);
 
-  /// Opens on Flutter's own adapter, so the shared texture lives on the
-  /// GPU that shows it.
+  /// Opens on Flutter's own adapter, so what the engine writes lives on
+  /// the GPU that shows it: on Windows the one Flutter names by LUID, on
+  /// Android the only one there is.
   factory GpuEngine.onFlutterAdapter() {
+    if (Platform.isAndroid) {
+      return GpuEngine._(_opened(rust.engineOpenSole()), null);
+    }
     final luid = shim.flutterAdapterLuid();
     if (luid == 0) {
       throw StateError('Flutter gave no graphics adapter');
     }
-    final engine = rust.engineOpen(luid);
+    return GpuEngine._(_opened(rust.engineOpen(luid)), luid);
+  }
+
+  static Pointer<rust.Engine> _opened(Pointer<rust.Engine> engine) {
     if (engine == nullptr) {
       throw StateError(_lastError());
     }
-    return GpuEngine._(engine, luid);
+    return engine;
   }
 
   final Pointer<rust.Engine> _engine;
-  final int adapterLuid;
+
+  /// The adapter's LUID where Flutter names its adapter by one (Windows).
+  final int? adapterLuid;
   Pointer<rust.Fill>? _fill;
 
   Pointer<rust.Fill> get _fillKernel => _fill ??= rust.fillNew(_engine);
@@ -51,7 +73,8 @@ class GpuEngine {
     return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
   });
 
-  /// This process's use of the adapter's local video memory, in bytes.
+  /// This process's use of the adapter's local video memory, in bytes; 0
+  /// where the platform cannot say (Android).
   int get videoMemoryBytes => rust.engineVideoMemory(_engine);
 
   /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra].
@@ -61,6 +84,28 @@ class GpuEngine {
       throw StateError(_lastError());
     }
     return GpuSurface._(this, surface, width, height, bgra);
+  }
+
+  /// A Flutter texture of [width] × [height] RGBA texels that the engine
+  /// presents into — Android's way to the screen.
+  Future<GpuWindow> window(int width, int height) async {
+    final made = (await _plugin.invokeMapMethod<String, int>('window', {
+      'width': width,
+      'height': height,
+    }))!;
+    final textureId = made['textureId']!;
+    final window = rust.windowNew(
+      _engine,
+      Pointer.fromAddress(made['window']!),
+      width,
+      height,
+    );
+    if (window == nullptr) {
+      final error = _lastError();
+      await _plugin.invokeMethod<void>('release', {'textureId': textureId});
+      throw StateError(error);
+    }
+    return GpuWindow._(this, window, textureId);
   }
 
   /// Frees the device; every surface must be freed first.
@@ -87,18 +132,14 @@ class GpuSurface {
 
   /// Fills the surface with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
-  Duration fill(int seed) {
-    final nanos = rust.fillRun(
+  Duration fill(int seed) => _ran(
+    rust.fillRun(
       _engine._fillKernel,
       _engine._engine,
-      _surface,
+      rust.surfaceTexture(_surface),
       seed,
-    );
-    if (nanos < 0) {
-      throw StateError(_lastError());
-    }
-    return Duration(microseconds: nanos ~/ 1000);
-  }
+    ),
+  );
 
   /// The CRC-32 of the surface's bytes, read back from the GPU — the
   /// fingerprint the ledger `test/fixtures/fingerprints.json` pins.
@@ -137,6 +178,48 @@ int fingerprintBytes(Uint8List bytes) => using((arena) {
   buffer.asTypedList(bytes.length).setAll(0, bytes);
   return rust.fingerprintBytes(buffer, bytes.length);
 });
+
+/// A Flutter texture the engine presents into: a SurfaceProducer's window,
+/// whose images Flutter shows without a copy (Android).
+class GpuWindow {
+  GpuWindow._(this._engine, this._window, this.textureId);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Window> _window;
+
+  /// What a `Texture` widget shows the window by.
+  final int textureId;
+
+  /// Whether the kernels store straight into the window's images; when
+  /// not, each present copies the engine's own texture into one.
+  bool get direct => rust.windowDirect(_window);
+
+  /// Fills the window's next image with the pattern for [seed] and waits
+  /// for the GPU; returns the submit-to-done time. [present] shows it.
+  Duration fill(int seed) {
+    final target = rust.windowTarget(_window);
+    if (target == nullptr) {
+      throw StateError(_lastError());
+    }
+    return _ran(
+      rust.fillRun(_engine._fillKernel, _engine._engine, target, seed),
+    );
+  }
+
+  /// Hands the image [fill] wrote to Flutter.
+  void present() {
+    if (!rust.windowPresent(_engine._engine, _window)) {
+      throw StateError(_lastError());
+    }
+  }
+
+  /// Frees the swapchain, then Flutter's producer: the window it presents
+  /// into must outlive it.
+  Future<void> free() async {
+    rust.windowFree(_window);
+    await _plugin.invokeMethod<void>('release', {'textureId': textureId});
+  }
+}
 
 /// A Flutter external texture that shows [front], or [back] once
 /// [show] picks slot 1.

@@ -8,7 +8,6 @@ use std::time::Instant;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::platform::Surface;
 
 /// The fill pass, one pipeline per texture format it has been run on.
 pub struct Fill {
@@ -74,8 +73,9 @@ impl Fill {
     /// Fills `texture` with the pattern for `seed` and waits until the GPU
     /// is done, because nothing else tells Flutter when to read it: the
     /// Windows descriptor has no fence, and ANGLE never takes a keyed
-    /// mutex itself. Returns the wall time from submit to completion, in
-    /// nanoseconds.
+    /// mutex itself; Android hands Flutter a fence, but Flutter waits on it
+    /// only from API 33 (FlutterRenderer.java:788-811). Returns the wall
+    /// time from submit to completion, in nanoseconds.
     pub(crate) fn run(&mut self, engine: &Engine, texture: &wgpu::Texture, seed: u32) -> Option<u64> {
         let pipeline = self.pipeline(engine, texture.format())?;
         let (width, height) = (texture.width(), texture.height());
@@ -134,21 +134,21 @@ pub unsafe extern "C" fn gpu_engine_fill_free(fill: *mut Fill) {
     }
 }
 
-/// Fills `surface` with the pattern for `seed` and waits for the GPU.
+/// Fills `texture` with the pattern for `seed` and waits for the GPU.
 /// Returns the submit-to-done time in nanoseconds, or -1 on failure.
 ///
 /// # Safety
-/// `fill`, `engine` and `surface` are live, and `fill` and `surface` were
+/// `fill`, `engine` and `texture` are live, and `fill` and `texture` were
 /// made on `engine`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_fill_run(
     fill: *mut Fill,
     engine: *const Engine,
-    surface: *const Surface,
+    texture: *const wgpu::Texture,
     seed: u32,
 ) -> i64 {
     // SAFETY: see the function's contract.
-    let (fill, engine, surface) = unsafe { (&mut *fill, &*engine, &*surface) };
-    fill.run(engine, &surface.texture, seed)
+    let (fill, engine, texture) = unsafe { (&mut *fill, &*engine, &*texture) };
+    fill.run(engine, texture, seed)
         .map_or(-1, |nanos| nanos as i64)
 }

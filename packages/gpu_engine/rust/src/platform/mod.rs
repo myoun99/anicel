@@ -1,13 +1,18 @@
-//! The texture Flutter shows: made on the engine's device and handed to
-//! Flutter's screen without a copy. One file per platform, each with the
-//! same face; Windows is stage 0's, the rest have no bridge yet.
+//! The way to Flutter's screen without a copy, one file per platform with
+//! the same face: Windows hands Flutter a texture the engine made
+//! (windows.rs); Android presents into a window Flutter made (android.rs);
+//! the rest have no bridge yet.
 
-#[cfg(not(windows))]
+#[cfg(target_os = "android")]
+mod android;
+#[cfg(not(any(windows, target_os = "android")))]
 mod unsupported;
 #[cfg(windows)]
 mod windows;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "android")]
+use self::android as native;
+#[cfg(not(any(windows, target_os = "android")))]
 use self::unsupported as native;
 #[cfg(windows)]
 use self::windows as native;
@@ -19,15 +24,21 @@ use std::ffi::c_void;
 use crate::device::Engine;
 use crate::fail;
 
-/// The adapters the engine may open on, through the platform's backend.
-pub(crate) fn adapters() -> Vec<wgpu::Adapter> {
+/// The instance the engine's adapters come from. The engine keeps it:
+/// Android's window surfaces must come from it too.
+pub(crate) fn instance() -> wgpu::Instance {
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
     desc.backends = native::BACKENDS;
-    let instance = wgpu::Instance::new(desc);
+    wgpu::Instance::new(desc)
+}
+
+/// The adapters the engine may open on, through the platform's backend.
+pub(crate) fn adapters(instance: &wgpu::Instance) -> Vec<wgpu::Adapter> {
     pollster::block_on(instance.enumerate_adapters(native::BACKENDS))
 }
 
-/// A texture kernels write and Flutter shows.
+/// A texture kernels write — and, where the platform shares textures,
+/// Flutter shows.
 pub struct Surface {
     pub(crate) texture: wgpu::Texture,
     shared: native::SharedHandle,
@@ -50,7 +61,8 @@ impl Surface {
 }
 
 /// Makes a `width` × `height` texture of BGRA or RGBA 8-bit unorm texels,
-/// shareable with Flutter. Null on failure; see the last error.
+/// shared with Flutter where the platform shares textures. Null on
+/// failure; see the last error.
 ///
 /// # Safety
 /// `engine` is live.
@@ -83,7 +95,18 @@ pub unsafe extern "C" fn gpu_engine_surface_free(surface: *mut Surface) {
     }
 }
 
-/// What Flutter opens the surface by — on Windows, an NT handle.
+/// The texture a kernel writes to fill `surface`.
+///
+/// # Safety
+/// `surface` is live; the texture lives as long as it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_surface_texture(surface: *const Surface) -> *const wgpu::Texture {
+    // SAFETY: see the function's contract.
+    &unsafe { &*surface }.texture
+}
+
+/// What Flutter opens the surface by — on Windows, an NT handle; null
+/// where the platform shares no texture.
 ///
 /// # Safety
 /// `surface` is live.

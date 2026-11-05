@@ -3,8 +3,8 @@
 //! (`kernels/mod.rs` has why).
 
 use super::Fill;
-use crate::device::Engine;
-use crate::testing::{assert_pinned, first_engine, storage_texture};
+use crate::device::{Engine, storage_texture};
+use crate::testing::{assert_pinned, first_engine};
 
 // 70 x 45: rows of 280 bytes are padded to 512 on readback, and neither
 // side is a multiple of the 8 x 8 workgroup.
@@ -15,7 +15,7 @@ const BGRA: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 const RGBA: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 fn filled(engine: &Engine, format: wgpu::TextureFormat, seed: u32) -> Vec<u8> {
-    let texture = storage_texture(engine, WIDTH, HEIGHT, format);
+    let texture = storage_texture(&engine.device, WIDTH, HEIGHT, format);
     Fill::new(engine).run(engine, &texture, seed).expect("fill");
     engine.read_texture(&texture).expect("read back")
 }

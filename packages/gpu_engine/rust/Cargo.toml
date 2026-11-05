@@ -31,6 +31,11 @@ windows = { version = "0.62", features = [
   "Win32_Graphics_Dxgi_Common",
 ] }
 
+# Android presents through Vulkan (platform/android.rs); Cargo adds this
+# feature to the wgpu above, on Android only.
+[target.'cfg(target_os = "android")'.dependencies]
+wgpu = { version = "=30.0.1", default-features = false, features = ["vulkan"] }
+
 # The tests read the ledger, test/fixtures/fingerprints.json.
 [dev-dependencies]
 serde_json = "1"
