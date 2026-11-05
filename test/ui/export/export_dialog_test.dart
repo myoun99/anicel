@@ -92,7 +92,7 @@ void main() {
   /// carries two authored cels (no brush artwork — surfaces stay empty).
   EditorSessionManager exportSession({
     ProjectFrameRate frameRate = ProjectFrameRate.fps24,
-    bool celsExposed = false,
+    bool celsExposed = true,
     List<Layer> seLayers = const [],
   }) {
     return EditorSessionManager(
@@ -118,18 +118,7 @@ void main() {
                     name: 'A',
                     mark: const LayerMark(process: LayerProcess.key),
                     frames: [frame('f1'), frame('f2')],
-                    timeline: celsExposed
-                        ? const {
-                            0: TimelineExposure.drawing(
-                              FrameId('f1'),
-                              length: 1,
-                            ),
-                            1: TimelineExposure.drawing(
-                              FrameId('f2'),
-                              length: 1,
-                            ),
-                          }
-                        : const {},
+                    timeline: celsExposed ? null : const {},
                   ),
                   createCameraLayer(cutId: const CutId('cut')),
                 ],
@@ -1120,14 +1109,14 @@ void main() {
       );
       // ⚠️By presence, not by spelling: the test face draws every letter
       // as the same square, so 「A」 and 「B」 are one picture.
-      final plain = await inkPage(exportSession());
+      final plain = await inkPage(exportSession(celsExposed: false));
       expect(
-        await inkPage(exportSession(seLayers: [line])),
+        await inkPage(exportSession(celsExposed: false, seLayers: [line])),
         isNot(plain),
         reason: 'the dialog column is a blank grid in the viewer',
       );
       expect(
-        await inkPage(exportSession(celsExposed: true)),
+        await inkPage(exportSession()),
         plain,
         reason: 'the viewer prints the cels from the file',
       );
