@@ -134,11 +134,13 @@ fn each_pixel_takes_its_owner_s_map_and_nothing_where_it_lands_nothing() {
 
 /// One map takes every pixel of a window anywhere in its output: a move by
 /// (3, −2) reads the picture there, nothing past it — and with no map,
-/// nothing at all.
+/// nothing at all. The buffer holds a row past the box, which no pixel
+/// reads.
 #[test]
 fn one_map_takes_every_pixel_of_the_window() {
     let Rig { engine, warp, .. } = rig();
-    let pixels = picture(4, 4);
+    let pixels = picture(4, 5);
+    assert!(pixels[16..].iter().any(|&word| word != 0));
     let buffer = boxed(&pixels);
     let source = Boxed { pixels: &buffer, size: (4, 4) };
     let window = Window { at: (2, -3), size: (6, 5) };

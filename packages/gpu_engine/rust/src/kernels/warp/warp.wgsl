@@ -38,8 +38,9 @@ const WARP_MAP_WORDS: u32 = 16u;
 @group(0) @binding(3) var<storage, read> picture: array<u32>;
 @group(0) @binding(4) var<storage, read_write> warped: array<u32>;
 
+// A pixel before the box wraps past either side, as a u32.
 fn resample_texel(source: u32, x: i32, y: i32) -> u32 {
-  if (x < 0 || y < 0 || u32(x) >= warp.width || u32(y) >= warp.height) {
+  if (u32(x) >= warp.width || u32(y) >= warp.height) {
     return 0u;
   }
   return picture[u32(y) * warp.width + u32(x)];
