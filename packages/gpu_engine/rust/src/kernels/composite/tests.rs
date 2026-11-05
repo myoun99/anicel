@@ -1051,6 +1051,7 @@ fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
     let laid = |pages: &[u16], step: Step| Laid {
         step,
         pages: pages.to_vec(),
+        live: Vec::new(),
     };
     let a_row = row(0, (0, 0), WHOLE, NORMAL);
     let close = Step::Close {
@@ -1096,6 +1097,7 @@ fn a_plan_is_cut_where_it_leaves_the_levels_a_pass_holds() {
     let laid = |step: Step| Laid {
         step,
         pages: Vec::new(),
+        live: Vec::new(),
     };
     let close = Step::Close {
         opacity: WHOLE,
@@ -1151,6 +1153,7 @@ fn a_pass_closing_out_of_its_levels_holds_the_depth_in_the_middle() {
         .map(|step| Laid {
             step,
             pages: Vec::new(),
+            live: Vec::new(),
         })
         .collect();
     let shape = |batch: &Batch| (batch.begin, batch.end, batch.base, batch.depth_in, batch.depth_out);
@@ -1525,4 +1528,120 @@ fn a_surface_format_is_compiled_once() {
     let surfaces = surfaces.unwrap_or_else(std::sync::PoisonError::into_inner);
     let rgba = surfaces.iter().filter(|(token, _)| *token == "rgba8unorm").count();
     assert_eq!(rgba, 1);
+}
+
+// ---- Where a row is live ----
+
+/// The output tiles the liveness tests look at: three along the strip, one
+/// far past it, one under it.
+const LOOKED_AT: [(i32, i32); 5] = [(0, 0), (1, 0), (2, 0), (5, 0), (0, 1)];
+
+// A row is live on the output tiles where it reads a stored tile on its
+// pages. A strip of four tiles, each on the page of its column:
+// - moved two tiles left, a copy, it is a step a page: page 2 lays output
+//   tile 0 alone, page 3 tile 1 alone, and nothing reaches tile 2 or past;
+// - moved half a pixel, any other pose, it reads its box widened by 16 px:
+//   every tile along the strip, the one under it by its top 16 px, and not
+//   the one far past it.
+#[test]
+fn a_row_is_live_where_it_reads_a_stored_tile() {
+    let mut pool = Pool::default();
+    let sets = vec![pool.set(53, (0, 0), (4, 1), |c, _| Some(c as u16))];
+    let live = |map: ResampleMap| {
+        let steps = [with_map(0, map, WHOLE, NORMAL)];
+        let laid = super::lay(&steps, &sets, &LOOKED_AT, 4).expect("lay");
+        laid.into_iter().map(|each| (each.pages, each.live)).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        live(ResampleMap::moved(-2 * TILE as i32, 0)),
+        [
+            (vec![2], vec![true, false, false, false, false]),
+            (vec![3], vec![false, true, false, false, false]),
+        ]
+    );
+    let half = [1.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    let half = ResampleMap::new(half, 1.0, ResampleMode::Blend, TILE, TILE).unwrap();
+    assert_eq!(live(half), [(vec![0, 1, 2, 3], vec![true, true, true, false, true])]);
+}
+
+// The kernel samples a row only where it is live: a row over two output
+// tiles, made dead on the second, lays its pixels on the first as a whole
+// run does, and nothing on the second.
+#[test]
+fn a_row_lays_nothing_where_it_is_not_live() {
+    let Rig { engine, composite } = rig();
+    let mut pool = Pool::default();
+    let sets = vec![pool.set(54, (0, 0), (2, 1), |_, _| Some(0))];
+    let pages = pool.upload(engine);
+    let steps = [row(0, (0, 0), WHOLE, NORMAL)];
+    let plan = Plan {
+        pages: &pages,
+        sets: &sets,
+        keys: &[],
+        steps: &steps,
+    };
+    let tiles = [(0, 0), (1, 0)];
+    let whole = composite.run(engine, &plan, &tiles, EVERYWHERE, composite.widest());
+    let whole = read_buffer(engine, &whole.expect("composite").out);
+    let mut laid = super::lay(&steps, &sets, &tiles, 1).expect("lay");
+    laid[0].live[1] = false;
+    let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("test out"),
+        size: 2 * TILE_TEXELS * 4,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    composite
+        .walk_laid(
+            engine,
+            &plan,
+            &laid,
+            &tiles,
+            EVERYWHERE,
+            &composite.pipeline,
+            &super::Target::Tiles(&out),
+            composite.widest(),
+        )
+        .expect("walk");
+    let culled = read_buffer(engine, &out);
+    let half = (TILE_TEXELS * 4) as usize;
+    assert!(culled[..half] == whole[..half], "the live tile");
+    assert!(whole[half..].iter().any(|&byte| byte != 0), "the row reaches the second tile");
+    assert!(culled[half..].iter().all(|&byte| byte == 0), "the dead tile");
+}
+
+// A step's bit is its own past the first word of steps: forty rows, two on
+// output tile 0 alone (steps 16 and 33, each where another word's or
+// another bit's step is dead there) and the rest on tile 1 alone. Tile 0
+// is the two rows by themselves, tile 1 the rest by themselves.
+#[test]
+fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
+    let Rig { engine, composite } = rig();
+    let mut pool = Pool::default();
+    let on_first = pool.set(55, (0, 0), (1, 1), |_, _| Some(0));
+    let on_second = pool.set(56, (1, 0), (1, 1), |_, _| Some(0));
+    let sets = vec![on_first, on_second];
+    let pages = pool.upload(engine);
+    let first = [16, 33];
+    let lays = |steps: &[Step]| {
+        let plan = Plan {
+            pages: &pages,
+            sets: &sets,
+            keys: &[],
+            steps,
+        };
+        let done = composite.run(engine, &plan, &[(0, 0), (1, 0)], EVERYWHERE, composite.widest());
+        read_buffer(engine, &done.expect("composite").out)
+    };
+    let step = |k: usize| {
+        let set = usize::from(!first.contains(&k));
+        row(set, (0, 0), 20000 + 1000 * k as u32, [NORMAL, MULTIPLY, SCREEN][k % 3])
+    };
+    let all: Vec<Step> = (0..40).map(step).collect();
+    let alone: Vec<Step> = first.iter().map(|&k| step(k)).collect();
+    let rest: Vec<Step> = (0..40).filter(|k| !first.contains(k)).map(step).collect();
+    let half = (TILE_TEXELS * 4) as usize;
+    let (together, by_first, by_rest) = (lays(&all), lays(&alone), lays(&rest));
+    assert!(together[..half] == by_first[..half], "tile 0");
+    assert!(together[half..] == by_rest[half..], "tile 1");
 }

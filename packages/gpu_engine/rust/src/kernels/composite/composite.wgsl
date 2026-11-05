@@ -29,7 +29,8 @@ const STEP_CLOSE: u32 = 3u;
 const STEP_CLOSE_ATOP: u32 = 4u;
 
 // One pass: the steps it runs, the stack depth it takes, the output tiles
-// it covers, where its table of pages is — which binding holds each page
+// it covers and the words each takes in the plan, where its table of pages
+// is — which binding holds each page
 // of the pool (mod.rs's NO_PAGE where it binds none) — the lowest stack
 // level it holds, and the output's pixels, [left, right) × [top, bottom).
 struct Pass {
@@ -39,6 +40,7 @@ struct Pass {
   first: u32,
   last: u32,
   tiles_at: u32,
+  tile_words: u32,
   tile_count: u32,
   out_at: u32,
   pages_at: u32,
@@ -157,8 +159,9 @@ fn composite(
   let lx = group.x * 16u + local.x;
   let ly = group.y * 16u + local.y;
   let texel = tile_texel(lx, ly);
-  let x = bitcast<i32>(plan[pass_.tiles_at + tile * 2u]) * i32(TILE_SIDE) + i32(lx);
-  let y = bitcast<i32>(plan[pass_.tiles_at + tile * 2u + 1u]) * i32(TILE_SIDE) + i32(ly);
+  let entry = pass_.tiles_at + tile * pass_.tile_words;
+  let x = bitcast<i32>(plan[entry]) * i32(TILE_SIDE) + i32(lx);
+  let y = bitcast<i32>(plan[entry + 1u]) * i32(TILE_SIDE) + i32(ly);
 
   // stack[i] is level base + i; `top` is the walk's depth less the base.
   var stack: array<vec4<u32>, DEPTH>;
@@ -173,10 +176,14 @@ fn composite(
   for (var step = pass_.step_begin; step < pass_.step_end; step++) {
     let at = step * STEP_WORDS;
     switch (plan[at]) {
+      // A row is sampled only on the output tiles where it reads a stored
+      // tile (its bit there, mod.rs's lay); anywhere else it shows nothing.
       case STEP_ROW: {
-        let shown = row_sample(at, x, y);
-        if (shown.w != 0u) {
-          stack[top] = laid(plan[at + 1u], plan[at + 2u], shown, stack[top]);
+        if (((plan[entry + 2u + step / 32u] >> (step % 32u)) & 1u) != 0u) {
+          let shown = row_sample(at, x, y);
+          if (shown.w != 0u) {
+            stack[top] = laid(plan[at + 1u], plan[at + 2u], shown, stack[top]);
+          }
         }
       }
       case STEP_OPEN: {
