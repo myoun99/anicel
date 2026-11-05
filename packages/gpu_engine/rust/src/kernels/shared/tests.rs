@@ -1000,7 +1000,7 @@ fn a_pass_reads_the_pages_it_binds_and_nothing_else() {
 #[test]
 fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
     let engine = first_engine();
-    let pages = Pages::writable(engine, 1, 1).expect("a page to bind");
+    let pages = Pages::writable(engine, 1, 1, usize::MAX).expect("a page to bind");
     let table: Vec<u32> = page_table(&[2, 0], 3).collect();
     assert_eq!(table, [1, NO_PAGE, 0]);
     let source = pages.source();

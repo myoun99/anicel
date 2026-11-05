@@ -37,16 +37,23 @@ impl Pages {
     /// pages begin at binding `first` and are only read — or nothing, where
     /// the device leaves it no page to bind.
     pub(crate) fn new(engine: &Engine, own: u32, first: u32) -> Option<Pages> {
-        Self::bound(engine, own, first, false)
+        Self::bound(engine, (own, first), false, MOST_PAGES)
     }
 
     /// [`Pages::new`] for a kernel that puts words on its pages too
-    /// (`page_put`).
-    pub(crate) fn writable(engine: &Engine, own: u32, first: u32) -> Option<Pages> {
-        Self::bound(engine, own, first, true)
+    /// (`page_put`), binding no more than `most` a pass: a kernel whose
+    /// passes mostly bind one compiles itself for one apart, as each page a
+    /// pass binds is a case of every read and put.
+    pub(crate) fn writable(engine: &Engine, own: u32, first: u32, most: usize) -> Option<Pages> {
+        Self::bound(engine, (own, first), true, most)
     }
 
-    fn bound(engine: &Engine, own: u32, first: u32, writable: bool) -> Option<Pages> {
+    fn bound(
+        engine: &Engine,
+        (own, first): (u32, u32),
+        writable: bool,
+        most: usize,
+    ) -> Option<Pages> {
         let limit = engine.device.limits().max_storage_buffers_per_shader_stage;
         if limit <= own {
             return fail(format!("{limit} storage buffers a stage leave no page to bind"));
@@ -57,7 +64,7 @@ impl Pages {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        let per_pass = ((limit - own) as usize).min(MOST_PAGES);
+        let per_pass = ((limit - own) as usize).min(MOST_PAGES).min(most);
         Some(Pages { first, per_pass, writable, blank })
     }
 

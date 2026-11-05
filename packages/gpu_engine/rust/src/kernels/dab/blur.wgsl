@@ -23,11 +23,10 @@
 
 // A dab's block in the plan, at the word `blur_dab.x` names: its record,
 // the window's first tile and its tiles a row, how many lines and how far
-// along a workgroup of each strip dispatch takes, where its table of pages
-// is — for each of the planes' pages, the binding that holds it or
-// NO_PAGE —, the six passes (gaussian.rs's `within`, the rows' three
-// first), then the place of each of the window's tiles' records, row after
-// row of them.
+// along a workgroup of each strip dispatch takes, the six passes
+// (gaussian.rs's `within`, the rows' three first), then for each of the
+// window's tiles, row after row of them, the place of its record and the
+// binding of its page.
 const BLUR_RECORD: u32 = 0u;
 const BLUR_TILE_COLUMN: u32 = 1u;
 const BLUR_TILE_ROW: u32 = 2u;
@@ -36,10 +35,9 @@ const BLUR_ROWS_LINES: u32 = 4u;
 const BLUR_ROWS_ALONG: u32 = 5u;
 const BLUR_COLUMNS_LINES: u32 = 6u;
 const BLUR_COLUMNS_ALONG: u32 = 7u;
-const BLUR_PAGES: u32 = 8u;
-const BLUR_PASSES: u32 = 9u;
+const BLUR_PASSES: u32 = 8u;
 const BLUR_PASS_WORDS: u32 = 9u;
-const BLUR_GRID: u32 = 63u;
+const BLUR_GRID: u32 = 62u;
 
 // What one dispatch of a dab puts for the next to read: the rows' blur, or
 // the planes a pass a dispatch alternates between.
@@ -66,12 +64,13 @@ fn blur_tile_of(v: i32) -> i32 {
   return (v - select(0, i32(TILE_SIDE) - 1, v < 0)) / i32(TILE_SIDE);
 }
 
-// The place of the record of the window's tile that holds (x, y).
+// Where the block holds the window's tile that holds (x, y): the place of
+// its record, then the binding of its page.
 fn blur_tile(x: i32, y: i32) -> u32 {
   let column = blur_tile_of(x) - bitcast<i32>(plan[blur_block + BLUR_TILE_COLUMN]);
   let row = blur_tile_of(y) - bitcast<i32>(plan[blur_block + BLUR_TILE_ROW]);
-  return plan[blur_block + BLUR_GRID + u32(row) * plan[blur_block + BLUR_TILE_COLUMNS]
-    + u32(column)];
+  let tiles = u32(row) * plan[blur_block + BLUR_TILE_COLUMNS] + u32(column);
+  return blur_block + BLUR_GRID + tiles * 2u;
 }
 
 // Where (x, y) is in its tile.
@@ -83,11 +82,6 @@ fn blur_local(tile: u32, x: i32, y: i32) -> vec2<u32> {
   );
 }
 
-// The binding of `tile`'s page.
-fn blur_page(tile: u32) -> u32 {
-  return plan[plan[blur_block + BLUR_PAGES] + plan[tile + TILE_PAGE]];
-}
-
 // The first of the two words of (x, y) on its page, on `tile`.
 fn blur_word(tile: u32, local: vec2<u32>) -> u32 {
   return (plan[tile + TILE_SLOT] * TILE_TEXELS + tile_texel(local.x, local.y)) * 2u;
@@ -95,8 +89,9 @@ fn blur_word(tile: u32, local: vec2<u32>) -> u32 {
 
 // The picture's pixel at (x, y).
 fn blur_picture(x: i32, y: i32) -> vec4<u32> {
-  let tile = blur_tile(x, y);
-  let k = blur_page(tile);
+  let held = blur_tile(x, y);
+  let tile = plan[held];
+  let k = plan[held + 1u];
   let at = blur_word(tile, blur_local(tile, x, y));
   return blend_unpack16(vec2<u32>(page_word(k, at), page_word(k, at + 1u)));
 }
@@ -116,7 +111,8 @@ fn blur_toward(was: u32, to: u32, share: u32) -> u32 {
 // The dab's pixel at (x, y) moved toward its blur `to` by what the dab
 // lays there onto nothing.
 fn blur_move(x: i32, y: i32, to: vec4<u32>) {
-  let tile = blur_tile(x, y);
+  let held = blur_tile(x, y);
+  let tile = plan[held];
   let local = blur_local(tile, x, y);
   var paper = 0u;
   if (plan[HEAD_PAPER] != NO_TABLE) {
@@ -129,7 +125,7 @@ fn blur_move(x: i32, y: i32, to: vec4<u32>) {
   if (share == NOTHING) {
     return;
   }
-  let k = blur_page(tile);
+  let k = plan[held + 1u];
   let at = blur_word(tile, local);
   let was = blend_unpack16(vec2<u32>(page_word(k, at), page_word(k, at + 1u)));
   let moved = blend_pack16(vec4<u32>(

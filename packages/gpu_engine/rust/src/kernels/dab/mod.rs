@@ -39,7 +39,7 @@ use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
 const HEAD_WORDS: usize = 7;
-const TILE_WORDS: usize = 8;
+const TILE_WORDS: usize = 7;
 const DAB_WORDS: usize = 29;
 const NO_TABLE: u32 = u32::MAX;
 
@@ -498,8 +498,8 @@ fn planned(
                 (paper_at(tile.column * TILE, step, side), paper_at(tile.row * TILE, step, side))
             }
         };
-        let (page, slot) = (u32::from(tile.at.page), u32::from(tile.at.slot));
-        words.extend([column, row, slot, first as u32, list.len() as u32, across, down, page]);
+        let slot = u32::from(tile.at.slot);
+        words.extend([column, row, slot, first as u32, list.len() as u32, across, down]);
         first += list.len();
     }
     for list in &lists {

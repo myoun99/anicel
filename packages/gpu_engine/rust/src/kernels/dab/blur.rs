@@ -43,7 +43,7 @@ use crate::kernels::effects::blur::gaussian::{
 use crate::kernels::shared::{ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, page_table, pipeline};
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
-const PASSES_AT: usize = 9;
+const PASSES_AT: usize = 8;
 const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 /// A dab's storage buffers besides the picture's pages — the plan, and the
 /// two planes a pass a dispatch alternates between, strips using the first
@@ -85,14 +85,18 @@ enum Route {
 }
 
 pub(crate) struct Blurs {
-    rows: wgpu::ComputePipeline,
-    columns: wgpu::ComputePipeline,
-    pass: wgpu::ComputePipeline,
-    /// blur_cel.wgsl's two: the picture made from the cel, and finished.
+    /// A dab's dispatches binding one page a pass, as a dab whose window is
+    /// on one goes — nearly every one —, and binding as many as the device
+    /// lets. A page's words are read and put by a switch over the pages a
+    /// pass binds: over sixteen a dab of 100 went a fifth slower than over
+    /// one (11-06, the main PC: 46 µs a dab against 39.6; 37 before the
+    /// pages).
+    one: Dispatches,
+    widest: Dispatches,
+    /// blur_cel.wgsl's two: the picture made from the cel, and finished;
+    /// and the picture's pages as they bind them.
     filling: wgpu::ComputePipeline,
     finishing: wgpu::ComputePipeline,
-    /// The picture's pages as a dab binds them, and as the cel's passes do.
-    pages: Pages,
     cel_pages: Pages,
     plans: Plans,
     /// What one dispatch of a dab puts for the next, and the plane a pass a
@@ -120,8 +124,9 @@ struct Window {
     /// The first of the tiles it reads, and how many a row.
     first_tile: (i32, i32),
     tile_columns: usize,
-    /// Each of those tiles' index among the stroke's, row after row.
-    grid: Vec<usize>,
+    /// Each of those tiles' index among the stroke's, row after row, and
+    /// the k of its page among `pages`.
+    grid: Vec<(usize, u32)>,
     /// The picture's pages those tiles are on, in binding order.
     pages: Vec<u16>,
     ways: Ways,
@@ -171,10 +176,12 @@ impl Window {
                          for"
                     ));
                 };
-                grid.push(index);
-                if !pages.contains(&tiles[index].at.page) {
-                    pages.push(tiles[index].at.page);
-                }
+                let page = tiles[index].at.page;
+                let k = pages.iter().position(|&bound| bound == page).unwrap_or_else(|| {
+                    pages.push(page);
+                    pages.len() - 1
+                });
+                grid.push((index, k as u32));
             }
         }
         Some(Window {
@@ -242,25 +249,51 @@ struct Step {
     groups: (u32, u32),
 }
 
-impl Blurs {
-    pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        let pages = Pages::writable(engine, OWN, PAGES_AT)?;
-        let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN)?;
+/// A dab's pipelines, compiled for the pages a pass of them binds.
+struct Dispatches {
+    pages: Pages,
+    rows: wgpu::ComputePipeline,
+    columns: wgpu::ComputePipeline,
+    pass: wgpu::ComputePipeline,
+}
+
+impl Dispatches {
+    /// Binding no more than `most` pages a pass.
+    fn new(engine: &Engine, most: usize) -> Option<Self> {
+        let pages = Pages::writable(engine, OWN, PAGES_AT, most)?;
         let (dab, blur) = (include_str!("dab.wgsl"), include_str!("blur.wgsl"));
         let paged = pages.source();
         let way = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, paged.as_str()];
         let strips = [&way[..], &[THREE_WGSL, blur, include_str!("blur_three.wgsl")]].concat();
         let passes = [&way[..], &[PASS_WGSL, blur, include_str!("blur_pass.wgsl")]].concat();
-        let cel_paged = cel_pages.source();
-        let cel_source = include_str!("blur_cel.wgsl");
-        let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, cel_paged.as_str(), cel_source];
         Some(Self {
             rows: pipeline(engine, &strips, "blur_rows_pass"),
             columns: pipeline(engine, &strips, "blur_columns_pass"),
             pass: pipeline(engine, &passes, "blur_pass_one"),
+            pages,
+        })
+    }
+
+    fn of(&self, entry: Entry) -> &wgpu::ComputePipeline {
+        match entry {
+            Entry::Rows => &self.rows,
+            Entry::Columns => &self.columns,
+            Entry::Pass => &self.pass,
+        }
+    }
+}
+
+impl Blurs {
+    pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN, usize::MAX)?;
+        let cel_paged = cel_pages.source();
+        let cel_source = include_str!("blur_cel.wgsl");
+        let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, cel_paged.as_str(), cel_source];
+        Some(Self {
+            one: Dispatches::new(engine, 1)?,
+            widest: Dispatches::new(engine, usize::MAX)?,
             filling: pipeline(engine, &cel, "blur_fill"),
             finishing: pipeline(engine, &cel, "blur_finish"),
-            pages,
             cel_pages,
             plans: Plans::new(),
             between: None,
@@ -283,7 +316,7 @@ impl Blurs {
         paper: Option<&Paper>,
         picture: &[wgpu::Buffer],
     ) -> Option<()> {
-        let pages_per_pass = self.pages.per_pass();
+        let pages_per_pass = self.widest.pages.per_pass();
         self.blur_by(engine, tiles, dabs, paper, picture, (Route::Strips, pages_per_pass))
     }
 
@@ -352,12 +385,12 @@ impl Blurs {
         }
         let white: Vec<Dab> = dabs.iter().map(|(dab, _)| *dab).collect();
         // Each dab's block, after the plan's own words: where it starts
-        // among the blocks. Its table of pages follows its grid.
+        // among the blocks.
         let places: Vec<usize> = windows
             .iter()
             .scan(0, |end, window| {
                 let place = *end;
-                *end += GRID_AT + window.grid.len() + picture.len();
+                *end += GRID_AT + 2 * window.grid.len();
                 Some(place)
             })
             .collect();
@@ -365,7 +398,6 @@ impl Blurs {
         let plan = self.plans.write(engine, tiles, &white, paper, None, |plan| {
             let mut words = Vec::new();
             for (index, window) in windows.iter().enumerate() {
-                let table_at = plan.end() + words.len() + GRID_AT + window.grid.len();
                 words.extend([
                     plan.record_at(index),
                     window.first_tile.0 as u32,
@@ -373,10 +405,8 @@ impl Blurs {
                     window.tile_columns as u32,
                 ]);
                 words.extend(window.strip_words());
-                words.push(table_at as u32);
                 words.extend(&window.passes);
-                words.extend(window.grid.iter().map(|&tile| plan.tile_at(tile)));
-                words.extend(page_table(&window.pages, picture.len()));
+                words.extend(window.grid.iter().flat_map(|&(tile, k)| [plan.tile_at(tile), k]));
             }
             blocks_at.set(plan.end());
             Some(words)
@@ -401,13 +431,15 @@ impl Blurs {
             contents: &uniform,
             usage: wgpu::BufferUsages::UNIFORM,
         });
-        let pipeline = |entry| match entry {
-            Entry::Rows => &self.rows,
-            Entry::Columns => &self.columns,
-            Entry::Pass => &self.pass,
-        };
+        // A dab whose window is on one page goes by the dispatches that bind
+        // one. The widest bind it too, so no test tells the two apart — only
+        // the time (`Blurs::one`).
+        let ways: Vec<&Dispatches> = windows
+            .iter()
+            .map(|window| if window.pages.len() == 1 { &self.one } else { &self.widest })
+            .collect();
         let (between, second) = (self.between.as_ref()?, self.second.as_ref());
-        let bound = |step: &Step, window: &Window, index: usize| {
+        let bound = |step: &Step, (window, way): (&Window, &Dispatches), index: usize| {
             let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
             let mut entries = vec![
                 entry(0, plan.as_entire_binding()),
@@ -422,27 +454,30 @@ impl Blurs {
                 entries.push(entry(6, second.as_entire_binding()));
             }
             let read = window.pages.iter().map(|&page| &picture[usize::from(page)]);
-            entries.extend(self.pages.entries(read));
+            entries.extend(way.pages.entries(read));
             engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("blur dab"),
-                layout: &pipeline(step.entry).get_bind_group_layout(0),
+                layout: &way.of(step.entry).get_bind_group_layout(0),
                 entries: &entries,
             })
         };
-        let dispatches: Vec<(&Step, wgpu::BindGroup)> = windows
+        let dispatches: Vec<(&Step, &wgpu::ComputePipeline, wgpu::BindGroup)> = windows
             .iter()
+            .zip(&ways)
             .zip(&steps)
-            .flat_map(|(window, steps)| steps.iter().map(move |step| (step, window)))
+            .flat_map(|((window, &way), steps)| steps.iter().map(move |step| (step, window, way)))
             .enumerate()
-            .map(|(index, (step, window))| (step, bound(step, window, index)))
+            .map(|(index, (step, window, way))| {
+                (step, way.of(step.entry), bound(step, (window, way), index))
+            })
             .collect();
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            for (step, bind_group) in &dispatches {
-                pass.set_pipeline(pipeline(step.entry));
+            for (step, pipeline, bind_group) in &dispatches {
+                pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, bind_group, &[]);
                 pass.dispatch_workgroups(step.groups.0, step.groups.1, 1);
             }

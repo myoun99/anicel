@@ -94,7 +94,7 @@ fn blurred(
     let blur = |route, count| {
         let (stroke, picture) = paged(tiles, &planes, count);
         let mut blurs = Blurs::new(engine).expect("pages to bind");
-        let most = blurs.pages.per_pass();
+        let most = blurs.widest.pages.per_pass();
         blurs
             .blur_by(engine, &stroke, dabs, paper, &picture, (route, most))
             .map(|()| unpaged(&stroke, &picture))
@@ -295,7 +295,7 @@ fn a_dab_by_passes_lays_each_plane_on_a_binding_of_its_own() {
     let (lone, picture) = paged(&[(0, 0)], &[0; TILE_WORDS], 1);
     let dab = square([60, 60, 68, 64], WHITE, 1.0);
     let mut blurs = Blurs::new(engine).expect("pages to bind");
-    let most = blurs.pages.per_pass();
+    let most = blurs.widest.pages.per_pass();
     blurs.blur_by(engine, &lone, &[(dab, 1)], None, &picture, (Route::Passes, most)).unwrap();
     let size = |plane: Option<wgpu::Buffer>| plane.map(|plane| plane.size());
     assert_eq!((size(blurs.between), size(blurs.second)), (Some(960), Some(960)));
