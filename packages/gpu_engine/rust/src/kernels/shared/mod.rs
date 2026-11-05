@@ -27,7 +27,6 @@ pub(crate) const WIDE_WGSL: &str = include_str!("wide.wgsl");
 /// `resample_texel`.
 pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
 /// `tile_texel` and the tile's size — where a pixel sits in a tile: the
-/// export kernels' frame (`kernels/export/frame.wgsl`). The composite
-/// writes the same index inline (composite.wgsl 74 · 111), its area's to
-/// fold in.
+/// export kernels' frame (`kernels/export/frame.wgsl`) and the composite's
+/// rows and output tiles.
 pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");

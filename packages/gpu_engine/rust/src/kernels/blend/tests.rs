@@ -2,14 +2,14 @@
 //! what the formulas give by hand — never against a CPU copy of them
 //! (`kernels/mod.rs` has why).
 
-use std::sync::{OnceLock, mpsc};
+use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
 use super::BLEND_WGSL;
 use crate::device::Engine;
 use crate::kernels::shared::ISQRT_WGSL;
-use crate::testing::{assert_pinned, first_engine};
+use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 // cases.wgsl's ids for one function each.
 const ERASE: u32 = 100;
@@ -120,12 +120,6 @@ fn run(cases: &[(u32, Rgba, Rgba)]) -> Vec<Rgba> {
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
-    let readback = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("blend readback"),
-        size,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
     let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("blend cases"),
         layout: &pipeline.get_bind_group_layout(0),
@@ -149,16 +143,8 @@ fn run(cases: &[(u32, Rgba, Rgba)]) -> Vec<Rgba> {
         pass.set_bind_group(0, &bind_group, &[]);
         pass.dispatch_workgroups((cases.len() as u32).div_ceil(64), 1, 1);
     }
-    encoder.copy_buffer_to_buffer(&results, 0, &readback, 0, size);
     engine.queue.submit([encoder.finish()]);
-    let (sender, receiver) = mpsc::channel();
-    readback.map_async(wgpu::MapMode::Read, .., move |result| {
-        let _ = sender.send(result);
-    });
-    engine.wait().expect("wait for the GPU");
-    receiver.recv().expect("map_async answered").expect("map");
-    let mapped = readback.get_mapped_range(..).expect("mapped range");
-    mapped
+    read_buffer(engine, &results)
         .chunks_exact(16)
         .map(|texel| {
             let word = |k: usize| u32::from_le_bytes(texel[k * 4..k * 4 + 4].try_into().unwrap());

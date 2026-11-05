@@ -8,10 +8,9 @@
 // between them the stack goes to `work` as it is, 16 bits a channel, so
 // where the cuts fall changes no value.
 //
-// Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl and
-// shared/resample.wgsl before it.
+// Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl,
+// shared/resample.wgsl and shared/tile.wgsl before it.
 
-const TILE_TEXELS: u32 = 16384u;
 const NO_TILE: u32 = 0xffffffffu;
 const DEPTH: u32 = 8u;
 const STEP_WORDS: u32 = 11u;
@@ -76,7 +75,7 @@ fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   }
   // A page the pass binds none of is NO_PAGE, no case of page_word's.
   let k = plan[pass_.pages_at + page];
-  return page_word(k, (entry & 0xffffu) * TILE_TEXELS + u32(y & 127) * 128u + u32(x & 127));
+  return page_word(k, (entry & 0xffffu) * TILE_TEXELS + tile_texel(u32(x), u32(y)));
 }
 
 // What the row of step `at` shows at canvas pixel (x, y), straight on the
@@ -125,9 +124,9 @@ fn composite(
   }
   let lx = group.x * 16u + local.x;
   let ly = group.y * 16u + local.y;
-  let texel = ly * 128u + lx;
-  let x = bitcast<i32>(plan[pass_.tiles_at + tile * 2u]) * 128 + i32(lx);
-  let y = bitcast<i32>(plan[pass_.tiles_at + tile * 2u + 1u]) * 128 + i32(ly);
+  let texel = tile_texel(lx, ly);
+  let x = bitcast<i32>(plan[pass_.tiles_at + tile * 2u]) * i32(TILE_SIDE) + i32(lx);
+  let y = bitcast<i32>(plan[pass_.tiles_at + tile * 2u + 1u]) * i32(TILE_SIDE) + i32(ly);
 
   var stack: array<vec4<u32>, DEPTH>;
   var depth = pass_.depth_in;

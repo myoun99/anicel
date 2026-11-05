@@ -5,13 +5,13 @@
 //! complement result", and the machine's integer operators ARE that
 //! definition, not a second spelling of any kernel's formula.
 
-use std::sync::{OnceLock, mpsc};
+use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
 use super::{RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL};
 use crate::device::Engine;
-use crate::testing::{assert_pinned, first_engine};
+use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 // cases.wgsl's ids.
 const ADD: u32 = 0;
@@ -93,17 +93,10 @@ fn dispatch(
     words: usize,
 ) -> Vec<u32> {
     let engine = rig().engine;
-    let size = (words.max(1) * 4) as u64;
     let results = engine.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("shared results"),
-        size,
+        size: (words.max(1) * 4) as u64,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let readback = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("shared readback"),
-        size,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
     let mut entries: Vec<_> = buffers
@@ -131,16 +124,8 @@ fn dispatch(
         pass.set_bind_group(0, &bind_group, &[]);
         pass.dispatch_workgroups(groups.0, groups.1, 1);
     }
-    encoder.copy_buffer_to_buffer(&results, 0, &readback, 0, size);
     engine.queue.submit([encoder.finish()]);
-    let (sender, receiver) = mpsc::channel();
-    readback.map_async(wgpu::MapMode::Read, .., move |result| {
-        let _ = sender.send(result);
-    });
-    engine.wait().expect("wait for the GPU");
-    receiver.recv().expect("map_async answered").expect("map");
-    let mapped = readback.get_mapped_range(..).expect("mapped range");
-    mapped
+    read_buffer(engine, &results)
         .chunks_exact(4)
         .take(words)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))

@@ -3,7 +3,7 @@
 //! the formulas give by hand — never against a CPU copy of them
 //! (`kernels/mod.rs` has why).
 
-use std::sync::{OnceLock, mpsc};
+use std::sync::OnceLock;
 
 use super::{
     Batch, Budget, Composite, DEPTH, Laid, Step, TILE, TILE_TEXELS, TileAt, TileSet, check_depth,
@@ -12,7 +12,7 @@ use super::{
 use crate::device::Engine;
 use crate::kernels::shared::tests::{Picture, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
-use crate::testing::{assert_pinned, first_engine};
+use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 const NORMAL: u32 = 28;
 const MULTIPLY: u32 = 3;
@@ -178,7 +178,7 @@ fn composite(scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
     let done = composite
         .run(engine, &pages, &scene.sets, &scene.steps, &scene.tiles, budget)
         .expect("composite");
-    (read(engine, &done.out), done.passes)
+    (read_buffer(engine, &done.out), done.passes)
 }
 
 fn widest(scene: &Scene) -> Vec<u8> {
@@ -188,27 +188,6 @@ fn widest(scene: &Scene) -> Vec<u8> {
 /// At most `pages` pages and `tiles` output tiles a pass.
 fn within(pages: usize, tiles: usize) -> Budget {
     Budget { pages, tiles }
-}
-
-fn read(engine: &Engine, buffer: &wgpu::Buffer) -> Vec<u8> {
-    let readback = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("composite readback"),
-        size: buffer.size(),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    encoder.copy_buffer_to_buffer(buffer, 0, &readback, 0, buffer.size());
-    engine.queue.submit([encoder.finish()]);
-    let (sender, receiver) = mpsc::channel();
-    readback.map_async(wgpu::MapMode::Read, .., move |result| {
-        let _ = sender.send(result);
-    });
-    engine.wait().expect("wait for the GPU");
-    receiver.recv().expect("map_async answered").expect("map");
-    readback.get_mapped_range(..).expect("mapped range").to_vec()
 }
 
 /// The output pixel at canvas (x, y): `bytes` is `tiles`' pixels, tile

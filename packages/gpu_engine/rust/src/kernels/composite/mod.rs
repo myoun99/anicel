@@ -35,7 +35,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::{ISQRT_WGSL, RESAMPLE_WGSL, ResampleMap, WIDE_WGSL};
+use crate::kernels::shared::{ISQRT_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL};
 
 /// A tile's side in pixels (1a ①).
 pub(crate) const TILE: u32 = 128;
@@ -190,7 +190,7 @@ impl Composite {
         let body = include_str!("composite.wgsl")
             .replace("//__PAGES__", &bindings)
             .replace("//__READS__", &reads);
-        let source = [ISQRT_WGSL, BLEND_WGSL, WIDE_WGSL, RESAMPLE_WGSL, &body].join("\n");
+        let source = [ISQRT_WGSL, BLEND_WGSL, WIDE_WGSL, RESAMPLE_WGSL, TILE_WGSL, &body].join("\n");
         let module = engine
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
