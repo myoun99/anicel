@@ -121,8 +121,14 @@ void main() {
                     frames: [frame('f1'), frame('f2')],
                     timeline: celsExposed
                         ? const {
-                            0: TimelineExposure.drawing(FrameId('f1')),
-                            1: TimelineExposure.drawing(FrameId('f2')),
+                            0: TimelineExposure.drawing(
+                              FrameId('f1'),
+                              length: 1,
+                            ),
+                            1: TimelineExposure.drawing(
+                              FrameId('f2'),
+                              length: 1,
+                            ),
                           }
                         : const {},
                   ),
