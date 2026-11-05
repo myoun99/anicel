@@ -445,7 +445,7 @@ mirror_trunk() {
   mirror_git push --quiet "$MIRROR" "$TRUNK" && return 0
   echo "lane: ⚠️THE MIRROR PUSH FAILED — $TRUNK is on this disk only." >&2
   echo "lane:   The merge landed; it is the COPY that is missing. Retry with:" >&2
-  echo "lane:   bash tool/lane.sh backup" >&2
+  echo "lane:   bash tool/lane.sh backup — in a terminal when the mirror wants a login" >&2
   # Said, and ANSWERED: `land` goes on whatever this returns — nothing of
   # its own depends on the copy — and `backup` fails on it.
   return 1
