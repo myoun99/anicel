@@ -185,8 +185,9 @@ fn an_empty_ring_selects_nothing() {
     assert_eq!(drawn(&empty, (0, 0), 3, 2), ["...", "..."]);
 }
 
-/// A crossing as far into the box as the reach allows: from the reach's
-/// left end to 3000.25, 35767 columns of the widest box.
+/// A crossing as far into the box as the reach allows: in the widest box,
+/// from the reach's left end to 3000.25 is 35767 columns, and to 32767.75
+/// every column but the first.
 #[test]
 fn a_crossing_lies_as_far_into_the_box_as_the_reach() {
     let wide = [shape(Replace, rect(-32767.0, 0.0, 3000.25, 1.0))];
@@ -194,6 +195,10 @@ fn a_crossing_lies_as_far_into_the_box_as_the_reach() {
     assert_eq!(bytes[0], 0);
     assert!(bytes[1..35768].iter().all(|&byte| byte == 255));
     assert!(bytes[35768..].iter().all(|&byte| byte == 0));
+    let widest = [shape(Replace, rect(-32767.0, 0.0, 32767.75, 1.0))];
+    let bytes = masked(&widest, (-32768, 0), 65536, 1).expect("the widest box");
+    assert_eq!(bytes[0], 0);
+    assert!(bytes[1..].iter().all(|&byte| byte == 255));
 }
 
 /// Even-odd: a polygon wound twice round a square selects nothing, and a

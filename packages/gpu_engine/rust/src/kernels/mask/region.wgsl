@@ -19,6 +19,10 @@
 // where a crossing right of every centre toggles. The mask comes out as a
 // byte plane, as mask.wgsl lays one.
 //
+// ⚠️A row past the box's last is past the plane, where DX12 reads 0 and
+// drops a write — so the tests here cannot see the box's guards on rows
+// there; Metal clamps the index instead.
+//
 // Needs shared/wide.wgsl before it.
 
 // The box in canvas pixels; a bit plane's words a row; the polygon a
@@ -61,15 +65,17 @@ fn region_first_right(a: vec2<i32>, b: vec2<i32>, y: i32) -> u32 {
   let rise = high.y - low.y;
   let crossing = wide_add(wide_mul_i32(low.x, rise), wide_mul_i32(high.x - low.x, y - low.y));
   let n = wide_sub(crossing, wide_mul_i32(256 * region.left + 128, rise));
-  if (!wide_less(Wide(0u, 0u), n)) {
+  if (wide_negative(n)) {
     return 0u;
   }
+  // Every column is left of a crossing past width·256D — and of one past
+  // (width − 1)·256D as well, so which of the two the check reads is free.
+  // Short of it the column is at most the width, 2^16: 17 bits.
   let column = 256u * u32(rise);
   if (wide_less(wide_mul_u32(column, region.width), n)) {
     return region.width;
   }
-  // The quotient is below the width, below 2^16.
-  return wide_div_floor(wide_sub(n, Wide(1u, 0u)), Wide(column, 0u), 16u) + 1u;
+  return wide_div_floor(wide_add(n, Wide(column - 1u, 0u)), Wide(column, 0u), 17u);
 }
 
 // A thread an edge of the polygon and a row of the box: the edge's toggle
