@@ -261,6 +261,10 @@ impl CelPixels {
         if walk.is_empty() {
             return Some(Passed { tiles, out, touched: Vec::new(), runs: Vec::new() });
         }
+        // Under a mask a pass reaches no more tile rows than it takes tiles,
+        // as it is given the mask's rows they lie on. No test lays a band
+        // past a binding — 2 GB here; 16384 across is 2 MB a tile row — so
+        // none tells the rows from none (mutant u04, 11-06).
         let rows: Option<Vec<i32>> = mask.map(|_| walk.iter().map(|tile| tile.row).collect());
         let cut = runs(walk.iter().map(|tile| Some(tile.at.page)), rows.as_deref(), per_pass, most);
         let counts_bytes = walk.len() as u64 * 8;

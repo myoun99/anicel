@@ -93,6 +93,9 @@ impl Lift {
         if walk.is_empty() {
             return Some(Lifted { rgba, anything: false });
         }
+        // A pass reaches no more tile rows than it takes tiles, as the verbs'
+        // do under a mask, and none tells the rows from none here either
+        // (mutant u05, 11-06; cel_pixel/mod.rs has why).
         let rows: Vec<i32> = walk.iter().map(|tile| tile.row).collect();
         let pages = walk.iter().map(|tile| Some(tile.at.page));
         let cut = runs(pages, Some(rows.as_slice()), per_pass, most);
