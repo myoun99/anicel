@@ -183,22 +183,22 @@ double _coverageAt(
   return covered;
 }
 
-/// Samples the color at [point] (P5 eyedropper); returns opaque ARGB.
+/// Samples the color at [point] (P5 eyedropper); returns opaque ARGB, or
+/// null where the visible picture has nothing to pick.
 ///
 /// [source] picks the reference (R28 #6) — the layers [layersReadBy]
 /// answers, the fill's answer too: `display` blends the shared composite
-/// visit's entries bottom-up over the paper with each entry's effective
-/// opacity, `layer` reads [activeLayerId]'s FINISHED pixels alone (its own
-/// chain applied; transparent artwork reads as the paper beneath, which is
-/// what Photoshop's "current layer" does once there is nothing to pick).
-/// Either way a POSED layer samples through the inverse of its pose, so the
-/// pick matches what the screen shows.
+/// visit's entries bottom-up with each entry's effective opacity, with no
+/// paper under them (I-163-Q6), `layer` reads [activeLayerId]'s FINISHED
+/// pixels alone (its own chain applied; transparent artwork reads as the
+/// paper beneath, which is what Photoshop's "current layer" does once there
+/// is nothing to pick). Either way a POSED layer samples through the
+/// inverse of its pose, so the pick matches what the screen shows.
 ///
 /// Works in every section and on every layer kind by construction: a row
-/// with no artwork simply contributes nothing and the paper shows through
-/// (an SE row picks the canvas color, which is the behaviour the user
-/// described).
-int sampleCompositeColor({
+/// with no artwork simply contributes nothing (an SE row read alone picks
+/// the canvas color, which is the behaviour the user described).
+int? sampleCompositeColor({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
@@ -209,7 +209,7 @@ int sampleCompositeColor({
 }) {
   final read = layersReadBy(source, activeLayerId);
   // The LAYER STACK accumulates on its own, PREMULTIPLIED, with its own
-  // coverage — the paper joins once at the end.
+  // coverage — the paper, for a read that has one, joins once at the end.
   //
   // ★ It used to start at the paper, which made an adjustment row compute
   // `filter(stack over paper)` while every paint route computes
@@ -307,16 +307,28 @@ int sampleCompositeColor({
     b = sourceB * alpha + b * (1 - alpha);
     coverage = alpha + coverage * (1 - alpha);
   }
+  // 🗣️I-163-Q6 (유저 2026-11-05): 「지금 합성에서 종이만 뺀다」 — the visible
+  // picture is read as this composite with the paper left out: where nothing
+  // is laid up there is no colour to pick, and a part-covered pixel picks
+  // its ink's own colour. ⛔The question was the display read's alone
+  // (I-163-Q4 · Q5 · Q6): the layer read keeps the paper under it.
+  if (read == null) {
+    return coverage <= 0
+        ? null
+        : _opaque(r / coverage, g / coverage, b / coverage);
+  }
   // The paper joins LAST, under the graded stack — the order the routes
   // paint in.
-  final paperR = argbRed(paperColor).toDouble();
-  final paperG = argbGreen(paperColor).toDouble();
-  final paperB = argbBlue(paperColor).toDouble();
-  final outR = r + paperR * (1 - coverage);
-  final outG = g + paperG * (1 - coverage);
-  final outB = b + paperB * (1 - coverage);
-  return 0xFF000000 |
-      (outR.round().clamp(0, 255) << 16) |
-      (outG.round().clamp(0, 255) << 8) |
-      outB.round().clamp(0, 255);
+  return _opaque(
+    r + argbRed(paperColor) * (1 - coverage),
+    g + argbGreen(paperColor) * (1 - coverage),
+    b + argbBlue(paperColor) * (1 - coverage),
+  );
 }
+
+/// The opaque ARGB of channels on the byte scale.
+int _opaque(double red, double green, double blue) =>
+    0xFF000000 |
+    (red.round().clamp(0, 255) << 16) |
+    (green.round().clamp(0, 255) << 8) |
+    blue.round().clamp(0, 255);

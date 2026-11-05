@@ -82,7 +82,7 @@ Future<ui.Image> _asShown(
 /// ⚠️ON NO PAPER: the save as writes the paper under its rows, and over an
 /// opaque paper every pixel of the canvas is ink — a cut would take the
 /// box it was drawn as. Where the paper is clear, the PNG keeps nothing, and
-/// this is that picture (I-163-Q4 asks whether 「표시」 reads the paper).
+/// this is that picture — 🗣️I-163-Q4 (유저 2026-11-05): 「둘 다 종이 없이」.
 Future<({int width, int height, Uint8List rgba})?> shownFramePicture(
   EditorSessionManager session, {
   required Color guideInk,

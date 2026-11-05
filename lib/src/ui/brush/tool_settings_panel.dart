@@ -1496,8 +1496,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
 /// R28 #6: the eyedropper's REFERENCE SOURCE — Photoshop's "current
 /// layer / all layers", Clip Studio's 참조원. The tool itself works in
 /// every section and on every layer kind; this only decides which pixels
-/// it reads. A row with nothing drawable (an SE row) simply reads the
-/// canvas color, which is what the user described.
+/// it reads. A row with nothing drawable (an SE row) read alone simply
+/// reads the canvas color, which is what the user described; 「표시」 has no
+/// paper under it (I-163-Q6), so a blank spot there picks nothing.
 class _EyedropperSettings extends StatelessWidget {
   const _EyedropperSettings({
     required this.source,

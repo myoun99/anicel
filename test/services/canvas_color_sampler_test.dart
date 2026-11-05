@@ -116,14 +116,19 @@ void main() {
   });
 
   group('sampleCompositeColor', () {
-    test('empty canvas samples the paper color', () {
-      final color = sampleCompositeColor(
+    // 🗣️I-163-Q6 (유저 2026-11-05): 「지금 합성에서 종이만 뺀다」.
+    test('an empty canvas picks nothing — the shown picture has no paper; '
+        'the active layer read alone reads the paper', () {
+      int? pick(CanvasReadSource source) => sampleCompositeColor(
         cut: cut([layer('a')]),
         frameIndex: 0,
         surfaceResolver: (_, _) => null,
         point: CanvasPoint(x: 3, y: 3),
+        source: source,
+        activeLayerId: const LayerId('a'),
       );
-      expect(color, canvasPaperColor);
+      expect(pick(CanvasReadSource.display), isNull);
+      expect(pick(CanvasReadSource.layer), canvasPaperColor);
     });
 
     test('an opaque pixel samples exactly', () {
@@ -139,33 +144,63 @@ void main() {
       expect(color, 0xFFFF0000);
     });
 
-    test('layer opacity blends over the paper', () {
+    test('a half-shown layer picks its own colour; read alone it blends over '
+        'the paper', () {
       final surface = surfaceWithPixels({
         (3, 3): [0xFF, 0x00, 0x00, 0xFF],
       });
-      final color = sampleCompositeColor(
+      int? pick(CanvasReadSource source) => sampleCompositeColor(
         cut: cut([layer('a', opacity: 0.5)]),
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: 3, y: 3),
+        source: source,
+        activeLayerId: const LayerId('a'),
       );
+      expect(pick(CanvasReadSource.display), 0xFFFF0000);
       // R28 #9: the paper is pure white now.
       // r = 255·0.5 + 255·0.5 = 255; g = b = 255·0.5 = 127.5 → 128.
-      expect(color, 0xFFFF8080);
+      expect(pick(CanvasReadSource.layer), 0xFFFF8080);
     });
 
-    test('pixel alpha blends over the paper', () {
+    test('a half-covered pixel picks its own colour; read alone it blends '
+        'over the paper', () {
       final surface = surfaceWithPixels({
         (3, 3): [0xFF, 0x00, 0x00, 0x80],
       });
-      final color = sampleCompositeColor(
+      int? pick(CanvasReadSource source) => sampleCompositeColor(
         cut: cut([layer('a')]),
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: 3, y: 3),
+        source: source,
+        activeLayerId: const LayerId('a'),
       );
+      expect(pick(CanvasReadSource.display), 0xFFFF0000);
       // α = 128/255: r = 255·α + 255·(1−α) = 255, g = b = 255·(1−α) ≈ 127.
-      expect(color, 0xFFFF7F7F);
+      expect(pick(CanvasReadSource.layer), 0xFFFF7F7F);
+    });
+
+    test('two half-shown inks pick the colour they make together, with '
+        'nothing under them', () {
+      final red = surfaceWithPixels({
+        (3, 3): [0xFF, 0x00, 0x00, 0xFF],
+      });
+      final blue = surfaceWithPixels({
+        (3, 3): [0x00, 0x00, 0xFF, 0xFF],
+      });
+      final color = sampleCompositeColor(
+        cut: cut([
+          layer('bottom', opacity: 0.5),
+          layer('top', opacity: 0.5),
+        ]),
+        frameIndex: 0,
+        surfaceResolver: (layer, _) => layer.id.value == 'bottom' ? red : blue,
+        point: CanvasPoint(x: 3, y: 3),
+      );
+      // Laid up: r = 255·0.5·0.5 = 63.75, b = 255·0.5 = 127.5, coverage
+      // 0.75 — the ink alone is r = 85, b = 170.
+      expect(color, 0xFF5500AA);
     });
 
     test('the top layer wins where opaque', () {
@@ -214,7 +249,7 @@ void main() {
         reason: 'the posed pixel is pickable where it is DRAWN; the old v1 '
             'skipped posed layers entirely and returned paper',
       );
-      // Where the scaled artwork has nothing, the paper still shows.
+      // Where the scaled artwork has nothing, there is nothing to pick.
       expect(
         sampleCompositeColor(
           cut: posed,
@@ -222,7 +257,7 @@ void main() {
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 6, y: 6),
         ),
-        canvasPaperColor,
+        isNull,
       );
       // With the row's TRANSFORM switch off (R8: the layer's own persisted
       // field) the pose drops out, so the pixel sits at its untransformed
@@ -247,7 +282,7 @@ void main() {
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 2, y: 2),
         ),
-        canvasPaperColor,
+        isNull,
       );
     });
 
@@ -285,7 +320,7 @@ void main() {
                 layer.id.value == 'bottom' ? red : blue,
             point: point,
           ),
-          point.x == 3 ? 0xFFFF0000 : canvasPaperColor,
+          point.x == 3 ? 0xFFFF0000 : isNull,
           reason: 'at $point',
         );
       }
@@ -341,7 +376,7 @@ void main() {
       );
     });
 
-    test('points outside the canvas sample the paper', () {
+    test('points outside the canvas pick nothing', () {
       final surface = surfaceWithPixels({
         (0, 0): [0xFF, 0x00, 0x00, 0xFF],
       });
@@ -351,11 +386,11 @@ void main() {
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: -2, y: 11),
       );
-      expect(color, canvasPaperColor);
+      expect(color, isNull);
     });
 
-    test('a row clipped to the layer below picks where its base is, and the '
-        'paper where it is not (I-92) — read alone, as drawn', () {
+    test('a row clipped to the layer below picks where its base is, and '
+        'nothing where it is not (I-92) — read alone, as drawn', () {
       final red = surfaceWithPixels({
         (3, 3): [0xFF, 0x00, 0x00, 0xFF],
       });
@@ -363,7 +398,7 @@ void main() {
         (3, 3): [0x00, 0x00, 0xFF, 0xFF],
         (5, 5): [0x00, 0x00, 0xFF, 0xFF],
       });
-      int pick(
+      int? pick(
         int x, {
         CanvasReadSource source = CanvasReadSource.display,
         bool clips = true,
@@ -377,7 +412,7 @@ void main() {
       );
 
       expect(pick(3), 0xFF0000FF);
-      expect(pick(5), canvasPaperColor);
+      expect(pick(5), isNull);
       expect(pick(5, clips: false), 0xFF0000FF, reason: 'control');
       expect(pick(5, source: CanvasReadSource.layer), 0xFF0000FF);
     });
@@ -447,8 +482,8 @@ void main() {
             source: source,
             activeLayerId: const LayerId('a'),
           ),
-          canvasPaperColor,
-          reason: 'the black was keyed out, so the paper is what is there',
+          source == CanvasReadSource.display ? isNull : canvasPaperColor,
+          reason: 'the black was keyed out, so nothing of the row is there',
         );
       }
     });

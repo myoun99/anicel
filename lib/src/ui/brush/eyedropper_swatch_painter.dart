@@ -23,8 +23,8 @@ class EyedropperSwatchPainter extends CustomPainter {
   /// The aim, panel-local.
   final ValueListenable<Offset?> position;
 
-  /// The composite colour under a panel-local point, or null off the
-  /// canvas — the swatch then paints nothing.
+  /// The composite colour under a panel-local point, or null where there is
+  /// none to pick — the swatch then shows its ring empty.
   final int? Function(Offset viewportPosition) sample;
 
   /// The swatch: a 26px disc. Its `BoxShadow` blurred 3px past the disc,
@@ -44,27 +44,40 @@ class EyedropperSwatchPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final at = position.value;
-    final color = at == null ? null : sample(at);
-    debugLastColor = color;
-    if (color == null) {
+    if (at == null) {
+      debugLastColor = null;
       return;
     }
+    final color = sample(at);
+    debugLastColor = color;
     final centre = Offset(size.width / 2, size.height / 2);
     const radius = _disc / 2;
-    canvas.drawCircle(
-      centre,
-      radius,
-      const BoxShadow(color: Colors.black38, blurRadius: 3).toPaint(),
-    );
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white;
+    final shadow = const BoxShadow(
+      color: Colors.black38,
+      blurRadius: 3,
+    ).toPaint();
+    if (color == null) {
+      // ⛔NO UI THAT POPS INTO EXISTENCE: where there is nothing to pick
+      // (I-163-Q6 — the display read has no paper under it) the swatch
+      // keeps its place, its ring empty, rather than vanishing over every
+      // blank stretch and coming back over ink.
+      canvas.drawCircle(
+        centre,
+        radius - 1,
+        shadow
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+      canvas.drawCircle(centre, radius - 1, ring);
+      return;
+    }
+    canvas.drawCircle(centre, radius, shadow);
     canvas.drawCircle(centre, radius, Paint()..color = Color(0xFF000000 | color));
-    canvas.drawCircle(
-      centre,
-      radius - 1,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = Colors.white,
-    );
+    canvas.drawCircle(centre, radius - 1, ring);
   }
 
   /// A fresh painter per panel build (the sampler is a closure) — the

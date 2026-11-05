@@ -15,7 +15,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// The unit suite for [sampleCompositeColor] passes surfaces in directly,
 /// so it could never catch a resolver that hands back nothing — which is
 /// exactly the failure the user saw ("그림이 있는 레이어인데도 뭐든
-/// #EDEDED"): every miss falls through to the paper color, silently.
+/// #EDEDED"): every miss fell through to the paper color, silently.
 void main() {
   testWidgets('R28 #7: a drawn cel samples its ink through the production '
       'resolver, at the frame the playhead is on', (tester) async {
@@ -64,7 +64,7 @@ void main() {
         ],
       );
 
-      int sampleAt(double x, double y) => sampleCompositeColor(
+      int? sampleAt(double x, double y) => sampleCompositeColor(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
@@ -77,11 +77,12 @@ void main() {
         sampleAt(centerX, centerY),
         0xFF000000,
         reason: 'R28 #7: the production resolver must see the drawn cel — '
-            'a null surface silently reads as paper',
+            'a null surface silently reads as nothing',
       );
 
-      // Far from the stroke: the paper, as before.
-      expect(sampleAt(20, 20), session.projectSettings.projectBackground.argb);
+      // Far from the stroke: nothing to pick — the shown picture has no
+      // paper under it (I-163-Q6).
+      expect(sampleAt(20, 20), isNull);
     });
   });
 }
