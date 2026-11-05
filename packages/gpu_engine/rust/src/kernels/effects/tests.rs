@@ -1,54 +1,58 @@
 //! The colour key walk on a real GPU, checked against what C's walk
 //! (`qa_key_rgba`) gives by hand over tables made for each case — never
 //! against a CPU copy of the walk (`kernels/mod.rs` has why). The tables
-//! are the app's to make; these are made to put one question each.
+//! are the app's to make; these are made to put one question each. Its
+//! case runner runs the colour matrix's cases too (`matrix_tests.rs`).
 
 use std::sync::OnceLock;
 
 use super::{KEY_WGSL, KEYS_PER_RUN, KeyRun};
-use crate::device::Engine;
 use crate::kernels::shared::{Encoded, encode, pipeline, plane, whole, words_buffer};
 use crate::testing::{first_engine, read_buffer};
 
-/// The device and the compiled cases every test here runs on.
-struct Rig {
-    engine: &'static Engine,
-    pipeline: wgpu::ComputePipeline,
-}
-
-/// One compile for the whole test process, on the tests' one device
-/// (blend's rig has the crash that taught both).
-fn rig() -> &'static Rig {
-    static RIG: OnceLock<Rig> = OnceLock::new();
+/// The key's cases, compiled once for the whole test process on the tests'
+/// one device (blend's rig has the crash that taught both).
+fn rig() -> &'static wgpu::ComputePipeline {
+    static RIG: OnceLock<wgpu::ComputePipeline> = OnceLock::new();
     RIG.get_or_init(|| {
-        let engine = first_engine();
         let sources = [KEY_WGSL, include_str!("cases.wgsl")];
-        let pipeline = pipeline(engine, &sources, "run_cases");
-        Rig { engine, pipeline }
+        pipeline(first_engine(), &sources, "run_cases")
     })
 }
 
-/// Walks each `(run, texel, original)` over `runs` on the GPU and returns
-/// the words that came out.
-fn walk(runs: &[u32], cases: &[(u32, u32, u32)]) -> Vec<u32> {
-    let Rig { engine, pipeline } = rig();
+/// Runs a pixel effect's cases — `pipeline` binding `tables` at 0, the
+/// cases' `words` at 1 and a word a case at 2, where `count` words come out
+/// — on the GPU and returns those words.
+pub(super) fn run_cases(
+    pipeline: &wgpu::ComputePipeline,
+    tables: &[u32],
+    words: &[u32],
+    count: usize,
+) -> Vec<u32> {
+    let engine = first_engine();
     let storage = |words: &[u32]| {
-        words_buffer(engine, "key cases", words, wgpu::BufferUsages::STORAGE)
+        words_buffer(engine, "effect cases", words, wgpu::BufferUsages::STORAGE)
     };
-    let runs = storage(runs);
-    let words: Vec<u32> = cases
-        .iter()
-        .flat_map(|&(run, texel, original)| [run, texel, original])
-        .collect();
-    let input = storage(&words);
-    let results = plane(engine, "key results", (cases.len() * 4) as u64);
-    let bound = whole(&[(0, &runs), (1, &input), (2, &results)]);
-    let groups = ((cases.len() as u32).div_ceil(64), 1, 1);
+    let tables = storage(tables);
+    let input = storage(words);
+    let results = plane(engine, "effect results", (count * 4) as u64);
+    let bound = whole(&[(0, &tables), (1, &input), (2, &results)]);
+    let groups = ((count as u32).div_ceil(64), 1, 1);
     encode(engine, &[Encoded { pipeline, bound, groups }]);
     read_buffer(engine, &results)
         .chunks_exact(4)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
         .collect()
+}
+
+/// Walks each `(run, texel, original)` over `runs` on the GPU and returns
+/// the words that came out.
+fn walk(runs: &[u32], cases: &[(u32, u32, u32)]) -> Vec<u32> {
+    let words: Vec<u32> = cases
+        .iter()
+        .flat_map(|&(run, texel, original)| [run, texel, original])
+        .collect();
+    run_cases(rig(), runs, &words, cases.len())
 }
 
 /// A straight RGBA8 word.

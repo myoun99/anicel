@@ -8,6 +8,9 @@
 //! - the colour key (`key.wgsl`): the walk C's `qa_key_rgba` makes over a
 //!   row's pixels, from the tables the app makes from its one definition
 //!   (`CelColorKey`);
+//! - the colour matrix (`matrix.wgsl`): fx Brightness & Contrast and
+//!   Hue/Saturation and an onion skin's tint, the one 4×5 matrix the app
+//!   folds them into, which Flutter's `ColorFilter.matrix` runs now;
 //! - the Gaussian (`blur::gaussian`): the blur brush's box passes, C's
 //!   `qa_blur_box`;
 //! - the blur along a way (`blur::line`): fx Directional and Radial Blur's
@@ -15,14 +18,19 @@
 //! - the lens blur (`blur::lens`): fx Camera Lens Blur's iris gathered over
 //!   its row sums and its light, the app's `iris_gather.frag`.
 
-// ⏳The executor's rows (kernels/composite) walk the keys, but nothing
-// outside the tests calls the executor or the blurs until the app's bridge
-// round (gpu-canonical-store ⑧ 3 and 5).
+// ⏳The executor's rows (kernels/composite) walk the keys, and its effects
+// round (brush/rendering) is to place the matrix; nothing outside the tests
+// calls the executor or the blurs until the app's bridge round
+// (gpu-canonical-store ⑧ 3 and 5).
 #![cfg_attr(not(test), allow(dead_code))]
 
 pub(crate) mod blur;
 #[cfg(test)]
+mod matrix_tests;
+#[cfg(test)]
 pub(crate) mod tests;
+
+use crate::kernels::shared::q;
 
 /// The colour key walk; its host defines `key_word` (the file's head has
 /// the run's layout).
@@ -62,4 +70,23 @@ impl KeyRun<'_> {
         );
         words
     }
+}
+
+/// The colour matrix over one straight pixel; its host defines
+/// `matrix_word` (the file's head has a matrix's words).
+pub(crate) const MATRIX_WGSL: &str = include_str!("matrix.wgsl");
+
+/// The words of one colour matrix.
+pub(crate) const MATRIX_WORDS: usize = 20;
+
+/// `matrix` — `ColorFilter.matrix`'s twenty: four rows of four multipliers
+/// and a translation in 0…255 units — as `matrix.wgsl` reads it, each
+/// q(·, 16) as an i32's bits; `None` where one is not a number below 2^15
+/// in magnitude, which no effect the app makes reaches.
+pub(crate) fn matrix_words(matrix: &[f64; MATRIX_WORDS]) -> Option<[u32; MATRIX_WORDS]> {
+    let mut words = [0; MATRIX_WORDS];
+    for (word, &value) in words.iter_mut().zip(matrix) {
+        *word = q(value, 16, 2f64.powi(31))? as i32 as u32;
+    }
+    Some(words)
 }
