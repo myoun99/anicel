@@ -165,3 +165,38 @@ pub fn video_memory(adapter: &wgpu::Adapter) -> Option<u64> {
         .ok()?;
     Some(info.CurrentUsage)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn SetDllDirectoryW(path: *const u16) -> i32;
+    }
+
+    /// Where the Windows SDK keeps a dxcompiler.dll of its own.
+    const SDK_DXC: &str = r"C:\Program Files (x86)\Windows Kits\10\Redist\D3D\x64";
+
+    // A dxcompiler.dll the DLL search can reach is what wgpu's `Auto`
+    // takes; DX12 has 64-bit integers only from shader model 6.0, which
+    // only DXC compiles (wgpu-hal-30.0.1/src/dx12/adapter.rs:391-394,
+    // 566-569).
+    #[test]
+    fn a_dxcompiler_the_pc_has_does_not_change_the_compiler() {
+        if !Path::new(SDK_DXC).join("dxcompiler.dll").exists() {
+            println!("no SDK dxcompiler.dll here: nothing to tempt the engine with");
+            return;
+        }
+        let path: Vec<u16> = SDK_DXC.encode_utf16().chain([0]).collect();
+        // SAFETY: a NUL-terminated path; null below restores the default.
+        unsafe { SetDllDirectoryW(path.as_ptr()) };
+        let instance = super::super::instance();
+        let int64 = super::super::adapters(&instance)
+            .iter()
+            .any(|adapter| adapter.features().contains(wgpu::Features::SHADER_INT64));
+        // SAFETY: null restores the default search.
+        unsafe { SetDllDirectoryW(std::ptr::null()) };
+        assert!(!int64, "the engine compiled with the PC's DXC");
+    }
+}
