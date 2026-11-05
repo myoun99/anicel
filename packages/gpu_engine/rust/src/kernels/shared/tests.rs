@@ -773,3 +773,17 @@ fn each_axis_steps_by_its_own_column_of_the_map() {
     let map = one_map([0.0, 0.25, 0.375, 17.0, 0.0, 0.0, g, 0.0, 1.0], ResampleMode::Pick, (1, 1));
     assert_eq!(window(&map, &down, (1, 1), (0, 0)), [b]);
 }
+
+#[test]
+fn a_preimage_under_a_pixel_still_votes() {
+    // Along x the source runs (0.35, −0.35), along y barely (0.01, 0.01): a
+    // sliver centred at (1.01, 1.08), just right of and below the corner of
+    // four words — in the bottom right one. Eight by eight subsamples: the
+    // four left of the middle land bottom left, the next two bottom right,
+    // the last two top right, so bottom left wins 32 to 16 and 16. The
+    // probe still looks one ring out, where the words differ.
+    let mut picture = Picture::filled(2, 2, 0);
+    picture.pixels.copy_from_slice(&[token(1), token(2), token(3), token(4)]);
+    let sliver = one_map(affine(0.35, 0.01, 0.83, -0.35, 0.01, 1.25), ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&sliver, &picture, (1, 1), (0, 0)), [token(3)]);
+}
