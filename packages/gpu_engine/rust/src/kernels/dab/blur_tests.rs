@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use super::super::tests::{along, filled, grain, radial, soft, square, texture, words};
 use super::super::{Dab, Paper, StrokeTile};
-use super::{Blurs, MOST_STRIPS_RADIUS, Route, Ways, Window};
+use super::{Blurs, MOST_STRIPS_RADIUS, Route, Ways, Window, runs};
 use crate::kernels::composite::{Composite, TileAt, TileSet};
 use crate::testing::{assert_pinned, first_engine};
 
@@ -73,7 +73,8 @@ impl Blurred {
 
 /// The picture on `tiles` (slots in their order) holding `pixel`, blurred
 /// under `dabs` over `paper` as a blur goes — or nothing, where the kernel
-/// refused them — once a pass a dispatch is seen to move them alike.
+/// refused them — once a pass a dispatch, and the picture on three pages,
+/// are seen to move them alike.
 fn blurred(
     tiles: &[(i32, i32)],
     pixel: impl Fn(i32, i32) -> [u32; 4],
@@ -89,21 +90,57 @@ fn blurred(
             }
         }
     }
-    let stroke: Vec<StrokeTile> = tiles
+    let engine = first_engine();
+    let blur = |route, count| {
+        let (stroke, picture) = paged(tiles, &planes, count);
+        let mut blurs = Blurs::new(engine).expect("pages to bind");
+        let most = blurs.pages.per_pass();
+        blurs
+            .blur_by(engine, &stroke, dabs, paper, &picture, (route, most))
+            .map(|()| unpaged(&stroke, &picture))
+    };
+    let (laid, by_passes, spread) =
+        (blur(Route::Strips, 1), blur(Route::Passes, 1), blur(Route::Strips, 3));
+    assert_eq!(laid.is_some(), by_passes.is_some());
+    assert_eq!(laid.is_some(), spread.is_some());
+    let planes = laid?;
+    assert!(by_passes.as_ref() == Some(&planes), "a pass a dispatch moved them apart");
+    assert!(spread.as_ref() == Some(&planes), "the picture's pages moved them apart");
+    Some(Blurred { tiles: tiles.to_vec(), planes })
+}
+
+/// The stroke on `tiles` kept on `count` pages, no more than it has tiles —
+/// tile i on page i % count, at slot i / count — and those pages holding
+/// `planes`, a tile's words after another in `tiles`' order.
+fn paged(
+    tiles: &[(i32, i32)],
+    planes: &[u32],
+    count: usize,
+) -> (Vec<StrokeTile>, Vec<wgpu::Buffer>) {
+    let count = count.min(tiles.len());
+    let mut pages = vec![Vec::new(); count];
+    let stroke = tiles
         .iter()
         .enumerate()
-        .map(|(slot, &(column, row))| StrokeTile { column, row, slot: slot as u32 })
+        .map(|(index, &(column, row))| {
+            pages[index % count].extend(&planes[index * TILE_WORDS..(index + 1) * TILE_WORDS]);
+            let at = TileAt { page: (index % count) as u16, slot: (index / count) as u16 };
+            StrokeTile { column, row, at }
+        })
         .collect();
-    let engine = first_engine();
-    let picture = filled("test picture", &planes);
-    let laid = Blurs::new(engine).blur(engine, &stroke, dabs, paper, &picture);
-    let passes = filled("test picture", &planes);
-    let by_passes =
-        Blurs::new(engine).blur_by(engine, &stroke, dabs, paper, &passes, Route::Passes);
-    assert_eq!(laid.is_some(), by_passes.is_some());
-    laid?;
-    assert!(words(&picture) == words(&passes), "a pass a dispatch moved them apart");
-    Some(Blurred { tiles: tiles.to_vec(), planes: words(&picture) })
+    (stroke, pages.iter().map(|words| filled("test picture", words)).collect())
+}
+
+/// `stroke`'s planes on `picture`, a tile's words after another in its order.
+fn unpaged(stroke: &[StrokeTile], picture: &[wgpu::Buffer]) -> Vec<u32> {
+    let pages: Vec<Vec<u32>> = picture.iter().map(words).collect();
+    stroke
+        .iter()
+        .flat_map(|tile| {
+            let at = usize::from(tile.at.slot) * TILE_WORDS;
+            pages[usize::from(tile.at.page)][at..at + TILE_WORDS].to_vec()
+        })
+        .collect()
 }
 
 // A dab at full flow lays all of itself, so its pixels take the blur whole:
@@ -236,16 +273,63 @@ fn a_blur_the_kernel_cannot_lay_is_refused() {
 
 // A dab the strips take goes by them: what its dispatches put between them
 // is the rows' blur — the dab's columns on the window's lines, 8 by 10
-// here — not a pass a dispatch's two planes, 12 by 10 each.
+// here — not a pass a dispatch's two planes, 12 by 10 each; and it lays no
+// second.
 #[test]
 fn a_dab_the_strips_take_goes_by_them() {
     let engine = first_engine();
-    let picture = filled("test picture", &vec![0; (SIDE * SIDE * 2) as usize]);
-    let lone = [StrokeTile { column: 0, row: 0, slot: 0 }];
+    let (lone, picture) = paged(&[(0, 0)], &[0; TILE_WORDS], 1);
     let dab = square([60, 60, 68, 64], WHITE, 1.0);
-    let mut blurs = Blurs::new(engine);
+    let mut blurs = Blurs::new(engine).expect("pages to bind");
     blurs.blur(engine, &lone, &[(dab, 1)], None, &picture).unwrap();
     assert_eq!(blurs.between.map(|between| between.size()), Some(10 * 8 * 8));
+    assert!(blurs.second.is_none());
+}
+
+// A dab a pass a dispatch takes alternates between two planes, 12 by 10
+// here, each a binding of its own: what a binding holds is a plane, not
+// the two (gpu-canonical-store 11-06 03:09).
+#[test]
+fn a_dab_by_passes_lays_each_plane_on_a_binding_of_its_own() {
+    let engine = first_engine();
+    let (lone, picture) = paged(&[(0, 0)], &[0; TILE_WORDS], 1);
+    let dab = square([60, 60, 68, 64], WHITE, 1.0);
+    let mut blurs = Blurs::new(engine).expect("pages to bind");
+    let most = blurs.pages.per_pass();
+    blurs.blur_by(engine, &lone, &[(dab, 1)], None, &picture, (Route::Passes, most)).unwrap();
+    let size = |plane: Option<wgpu::Buffer>| plane.map(|plane| plane.size());
+    assert_eq!((size(blurs.between), size(blurs.second)), (Some(960), Some(960)));
+}
+
+// A dab binds the pages its window is on: its blur reads across the whole
+// window, so they are never parted — a dab whose window is on more pages
+// than a pass binds is refused, one on no more goes.
+#[test]
+fn a_dab_on_more_pages_than_a_pass_binds_is_refused() {
+    let engine = first_engine();
+    let (stroke, picture) = paged(&[(0, 0), (1, 0)], &[0; 2 * TILE_WORDS], 2);
+    let mut blurs = Blurs::new(engine).expect("pages to bind");
+    let mut blur = |region, pages| {
+        let dab = (square(region, WHITE, 1.0), 1);
+        blurs.blur_by(engine, &stroke, &[dab], None, &picture, (Route::Strips, pages)).is_some()
+    };
+    assert!(!blur([124, 60, 130, 64], 1));
+    assert!(blur([124, 60, 130, 64], 2));
+    assert!(blur([60, 60, 68, 64], 1));
+}
+
+// A tile on a page the picture has not is refused, whatever is asked.
+#[test]
+fn a_tile_past_the_pictures_pages_is_refused() {
+    let engine = first_engine();
+    let (_, picture) = paged(&[(0, 0)], &[0; TILE_WORDS], 1);
+    let lone = [StrokeTile { column: 0, row: 0, at: TileAt { page: 1, slot: 0 } }];
+    let cel = cel_of(|_, _| 0, (0, 0), (1, 1), &[]);
+    let mut blurs = Blurs::new(engine).expect("pages to bind");
+    let dab = (square([60, 60, 68, 64], WHITE, 1.0), 1);
+    assert!(blurs.blur(engine, &lone, &[dab], None, &picture).is_none());
+    assert!(blurs.fill(engine, executor(), (&cel.0, &cel.1), &lone, &picture).is_none());
+    assert!(blurs.finish(engine, &lone, &picture).is_none());
 }
 
 // A dab goes by strips up to MOST_STRIPS_RADIUS and a pass a dispatch past
@@ -257,9 +341,10 @@ fn a_box_past_the_strips_widest_goes_a_pass_a_dispatch() {
         (-5..6).flat_map(|row| (-5..6).map(move |column| (column, row))).collect();
     let at: HashMap<(i32, i32), usize> =
         around.iter().enumerate().map(|(slot, &tile)| (tile, slot)).collect();
+    let (stroke, _) = paged(&around, &vec![0; around.len() * TILE_WORDS], 1);
     let middle = square([60, 60, 61, 61], WHITE, 1.0);
     let by_strips = |radius| {
-        Window::of(&middle, radius, &at, Route::Strips)
+        Window::of(&middle, radius, (&stroke, &at), Route::Strips)
             .map(|window| matches!(window.ways, Ways::Strips { .. }))
     };
     assert_eq!(by_strips(MOST_STRIPS_RADIUS), Some(true));
@@ -372,11 +457,11 @@ fn cel_of(
 /// sits at its own index.
 fn stroke_of(tiles: &[(i32, i32)]) -> Vec<StrokeTile> {
     let last = tiles.len() - 1;
-    let slot = |index: usize| (last - index) as u32;
+    let at = |index: usize| TileAt { page: 0, slot: (last - index) as u16 };
     tiles
         .iter()
         .enumerate()
-        .map(|(index, &(column, row))| StrokeTile { column, row, slot: slot(index) })
+        .map(|(index, &(column, row))| StrokeTile { column, row, at: at(index) })
         .collect()
 }
 
@@ -390,10 +475,10 @@ fn rubbed(
 ) -> (Vec<u32>, Vec<u32>) {
     let engine = first_engine();
     let stroke = stroke_of(tiles);
-    let mut blurs = Blurs::new(engine);
-    let picture = filled("test picture", &vec![JUNK; tiles.len() * TILE_WORDS]);
+    let mut blurs = Blurs::new(engine).expect("pages to bind");
+    let picture = [filled("test picture", &vec![JUNK; tiles.len() * TILE_WORDS])];
     blurs.fill(engine, executor(), (&cel.0, &cel.1), &stroke, &picture).unwrap();
-    let made = words(&picture);
+    let made = words(&picture[0]);
     blurs.blur(engine, &stroke, dabs, None, &picture).unwrap();
     (made, words(&blurs.finish(engine, &stroke, &picture).unwrap()))
 }
@@ -488,11 +573,45 @@ fn a_moved_pixel_finishes_as_its_picture_stored() {
 fn no_tile_to_make_or_finish_is_no_pass() {
     let engine = first_engine();
     let cel = cel_of(|_, _| 0, (0, 0), (1, 1), &[]);
-    let picture = filled("test picture", &[JUNK; 2]);
-    let blurs = Blurs::new(engine);
+    let picture = [filled("test picture", &[JUNK; 2])];
+    let blurs = Blurs::new(engine).expect("pages to bind");
     assert!(blurs.fill(engine, executor(), (&cel.0, &cel.1), &[], &picture).is_some());
     assert!(blurs.finish(engine, &[], &picture).is_some());
-    assert_eq!(words(&picture), [JUNK; 2]);
+    assert_eq!(words(&picture[0]), [JUNK; 2]);
+}
+
+// The cel's passes take a run of tiles a dispatch, cut where the next tile
+// would bring a run past the pages a pass binds or the tiles it takes, and
+// the runs make and finish what one does. Tiles on pages 0, 1, 0, 2, 2, 1
+// at two pages and three tiles a pass are the runs 0..3, on pages 0 and
+// 1, and 3..6, on 2 and 1; at one page a pass, five runs.
+#[test]
+fn the_cels_passes_cut_where_a_run_has_no_more_room() {
+    let tiles: Vec<StrokeTile> = [0, 1, 0, 2, 2, 1]
+        .into_iter()
+        .enumerate()
+        .map(|(index, page)| {
+            let at = TileAt { page, slot: index as u16 };
+            StrokeTile { column: index as i32, row: 0, at }
+        })
+        .collect();
+    assert_eq!(runs(&tiles, 2, 3), [(0..3, vec![0, 1]), (3..6, vec![2, 1])]);
+    let one_a_pass =
+        [(0..1, vec![0]), (1..2, vec![1]), (2..3, vec![0]), (3..5, vec![2]), (5..6, vec![1])];
+    assert_eq!(runs(&tiles, 1, 6), one_a_pass);
+    let engine = first_engine();
+    let cel = cel_of(stored_hashed, (0, 0), (6, 1), &[(4, 0)]);
+    let blurs = Blurs::new(engine).expect("pages to bind");
+    let made_and_finished = |most| {
+        let picture: Vec<wgpu::Buffer> =
+            (0..3).map(|_| filled("test picture", &vec![JUNK; 6 * TILE_WORDS])).collect();
+        blurs.fill_by(engine, executor(), (&cel.0, &cel.1), &tiles, &picture, most).unwrap();
+        let made: Vec<Vec<u32>> = picture.iter().map(words).collect();
+        (made, words(&blurs.finish_by(engine, &tiles, &picture, most).unwrap()))
+    };
+    let whole = made_and_finished(blurs.widest(engine));
+    assert!(made_and_finished((2, 3)) == whole);
+    assert!(made_and_finished((1, 6)) == whole);
 }
 
 /// A stored pixel of a hashed cel: a quarter nothing, a quarter opaque, the

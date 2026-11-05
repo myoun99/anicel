@@ -90,7 +90,9 @@ fn pile_into(
     let stroke: Vec<StrokeTile> = tiles
         .iter()
         .enumerate()
-        .map(|(slot, &(column, row))| StrokeTile { column, row, slot: slot as u32 })
+        .map(|(slot, &(column, row))| {
+            StrokeTile { column, row, at: TileAt { page: 0, slot: slot as u16 } }
+        })
         .collect();
     let engine = first_engine();
     kernel.pile(engine, &stroke, dabs, paper, second.as_ref(), &buffers.planes, &buffers.view)?;
@@ -1081,4 +1083,19 @@ fn every_device_piles_the_pinned_strokes() {
         }
         assert_pinned(&format!("dab/{name}-view"), &bytes(&piled).1);
     }
+}
+
+// ⏳A pile binds the planes and their view whole, one page, until it pages
+// them as the blur its picture: a tile on another page is refused, and
+// nothing is put on this one.
+#[test]
+fn a_piles_tile_on_another_page_is_refused() {
+    let engine = first_engine();
+    let texels = TILE_TEXELS as usize;
+    let (planes, view) = (filled("test planes", &vec![0; 2 * texels]), filled("test view", &[0]));
+    let stroke = [StrokeTile { column: 0, row: 0, at: TileAt { page: 1, slot: 0 } }];
+    let dab = square([0, 0, 4, 4], RED, 1.0);
+    let kernel = &mut Dabs::new(engine);
+    assert!(kernel.pile(engine, &stroke, &[dab], None, None, &planes, &view).is_none());
+    assert!(words(&planes).iter().all(|&word| word == 0));
 }

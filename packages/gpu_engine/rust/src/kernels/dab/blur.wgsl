@@ -4,8 +4,9 @@
 //
 //     picture ← picture + (blurred(picture) − picture) × laid
 //
-// rounded half away from zero. The picture is the stroke's planes (dab.wgsl's
-// binding 1): premultiplied, 16 bits a channel, a slot a tile. `blurred` is
+// rounded half away from zero. The picture is the stroke's planes on their
+// pages (shared/pages.wgsl, from binding 7): premultiplied, 16 bits a
+// channel, a tile a slot of a page. `blurred` is
 // box.wgsl's three passes along the rows, then three down the columns, at
 // the radius the dab's size sets; `laid` is dab.wgsl's `dab_source` over
 // nothing — the dab's own coverage law on its record, white and not
@@ -18,13 +19,15 @@
 // the dab's block, its window's tiles, and the move. Dabs follow one
 // another: each reads what the one before it moved.
 //
-// Needs dab.wgsl and box.wgsl before it.
+// Needs dab.wgsl, box.wgsl and the pages (pages.rs's `source`) before it.
 
 // A dab's block in the plan, at the word `blur_dab.x` names: its record,
 // the window's first tile and its tiles a row, how many lines and how far
-// along a workgroup of each strip dispatch takes, the six passes
-// (gaussian.rs's `within`, the rows' three first), then the place of each
-// of the window's tiles' records, row after row of them.
+// along a workgroup of each strip dispatch takes, where its table of pages
+// is — for each of the planes' pages, the binding that holds it or
+// NO_PAGE —, the six passes (gaussian.rs's `within`, the rows' three
+// first), then the place of each of the window's tiles' records, row after
+// row of them.
 const BLUR_RECORD: u32 = 0u;
 const BLUR_TILE_COLUMN: u32 = 1u;
 const BLUR_TILE_ROW: u32 = 2u;
@@ -33,9 +36,10 @@ const BLUR_ROWS_LINES: u32 = 4u;
 const BLUR_ROWS_ALONG: u32 = 5u;
 const BLUR_COLUMNS_LINES: u32 = 6u;
 const BLUR_COLUMNS_ALONG: u32 = 7u;
-const BLUR_PASSES: u32 = 8u;
+const BLUR_PAGES: u32 = 8u;
+const BLUR_PASSES: u32 = 9u;
 const BLUR_PASS_WORDS: u32 = 9u;
-const BLUR_GRID: u32 = 62u;
+const BLUR_GRID: u32 = 63u;
 
 // What one dispatch of a dab puts for the next to read: the rows' blur, or
 // the planes a pass a dispatch alternates between.
@@ -79,7 +83,12 @@ fn blur_local(tile: u32, x: i32, y: i32) -> vec2<u32> {
   );
 }
 
-// The first of the two words of (x, y) in the planes, on `tile`.
+// The binding of `tile`'s page.
+fn blur_page(tile: u32) -> u32 {
+  return plan[plan[blur_block + BLUR_PAGES] + plan[tile + TILE_PAGE]];
+}
+
+// The first of the two words of (x, y) on its page, on `tile`.
 fn blur_word(tile: u32, local: vec2<u32>) -> u32 {
   return (plan[tile + TILE_SLOT] * TILE_TEXELS + tile_texel(local.x, local.y)) * 2u;
 }
@@ -87,8 +96,9 @@ fn blur_word(tile: u32, local: vec2<u32>) -> u32 {
 // The picture's pixel at (x, y).
 fn blur_picture(x: i32, y: i32) -> vec4<u32> {
   let tile = blur_tile(x, y);
+  let k = blur_page(tile);
   let at = blur_word(tile, blur_local(tile, x, y));
-  return blend_unpack16(vec2<u32>(planes[at], planes[at + 1u]));
+  return blend_unpack16(vec2<u32>(page_word(k, at), page_word(k, at + 1u)));
 }
 
 // What `was` comes to moved toward `to` by `share` of the way, rounded
@@ -119,14 +129,15 @@ fn blur_move(x: i32, y: i32, to: vec4<u32>) {
   if (share == NOTHING) {
     return;
   }
+  let k = blur_page(tile);
   let at = blur_word(tile, local);
-  let was = blend_unpack16(vec2<u32>(planes[at], planes[at + 1u]));
+  let was = blend_unpack16(vec2<u32>(page_word(k, at), page_word(k, at + 1u)));
   let moved = blend_pack16(vec4<u32>(
     blur_toward(was.x, to.x, share),
     blur_toward(was.y, to.y, share),
     blur_toward(was.z, to.z, share),
     blur_toward(was.w, to.w, share),
   ));
-  planes[at] = moved.x;
-  planes[at + 1u] = moved.y;
+  page_put(k, at, moved.x);
+  page_put(k, at + 1u, moved.y);
 }

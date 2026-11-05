@@ -14,6 +14,11 @@
 //! `blur_cel.wgsl`, the cel read as the executor copies a row whole and
 //! the finished tiles going out as its output does (캔버스 베이스 11-06
 //! 02:29) — no read of the pool of the blur's own.
+//!
+//! The picture is kept on pages as the pool is (shared/pages.rs, 캔버스
+//! 베이스 11-06 03:36): a binding holds 128 MB on some devices, and one dab
+//! of 2000 reaches 1,089 tiles of 128 KB. A dab binds the pages its window
+//! reads; the cel's passes bind theirs, a run of tiles at a time.
 
 #[cfg(test)]
 #[path = "blur_tests.rs"]
@@ -21,6 +26,7 @@ mod tests;
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::ops::Range;
 
 use wgpu::util::DeviceExt;
 
@@ -34,11 +40,18 @@ use crate::kernels::effects::blur::fits;
 use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
-use crate::kernels::shared::{ISQRT_WGSL, ResampleMap, TILE_WGSL, pipeline};
+use crate::kernels::shared::{ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, page_table, pipeline};
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
-const PASSES_AT: usize = 8;
+const PASSES_AT: usize = 9;
 const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
+/// A dab's storage buffers besides the picture's pages — the plan, and the
+/// two planes a pass a dispatch alternates between, strips using the first
+/// — and the binding its pages begin at (blur.wgsl, blur_pass.wgsl).
+const OWN: u32 = 3;
+const PAGES_AT: u32 = 7;
+/// blur_cel.wgsl's: the cel and the slots, the pages from binding 2.
+const CEL_OWN: u32 = 2;
 /// blur_cel.wgsl's BLUR_CEL_GROUP: the texels of a tile a workgroup takes.
 const CEL_GROUP: u64 = 256;
 /// The cel's copy has no edge: a stroke reaches past the canvas onto the
@@ -78,9 +91,14 @@ pub(crate) struct Blurs {
     /// blur_cel.wgsl's two: the picture made from the cel, and finished.
     filling: wgpu::ComputePipeline,
     finishing: wgpu::ComputePipeline,
+    /// The picture's pages as a dab binds them, and as the cel's passes do.
+    pages: Pages,
+    cel_pages: Pages,
     plans: Plans,
-    /// What one dispatch of a dab puts for the next: grown, never shrunk.
+    /// What one dispatch of a dab puts for the next, and the plane a pass a
+    /// dispatch alternates with it: each grown, never shrunk.
     between: Option<wgpu::Buffer>,
+    second: Option<wgpu::Buffer>,
 }
 
 /// The `index`-th pass's word `word` among `passes` (box.wgsl's `BoxPass`:
@@ -104,9 +122,11 @@ struct Window {
     tile_columns: usize,
     /// Each of those tiles' index among the stroke's, row after row.
     grid: Vec<usize>,
+    /// The picture's pages those tiles are on, in binding order.
+    pages: Vec<u16>,
     ways: Ways,
-    /// The bytes one dispatch puts for the next: the rows' blur, or the
-    /// two planes a pass a dispatch alternates between.
+    /// The bytes one dispatch puts for the next: the rows' blur, or each of
+    /// the two planes a pass a dispatch alternates between.
     between: u64,
 }
 
@@ -114,7 +134,7 @@ impl Window {
     fn of(
         dab: &Dab,
         radius: u32,
-        at: &HashMap<(i32, i32), usize>,
+        (tiles, at): (&[StrokeTile], &HashMap<(i32, i32), usize>),
         route: Route,
     ) -> Option<Window> {
         let Some(within) = within(dab.region, radius) else {
@@ -136,22 +156,24 @@ impl Window {
         let between = match ways {
             // The rows' blur: the dab's columns on the window's lines.
             Ways::Strips { .. } => lines * (pass(2, 3) - pass(2, 2)) as u64 * 8,
-            // Two planes as the rows' first pass puts.
-            Ways::Passes(_) => 2 * lines * (pass(0, 3) - pass(0, 2)) as u64 * 8,
+            // A plane as the rows' first pass puts.
+            Ways::Passes(_) => lines * (pass(0, 3) - pass(0, 2)) as u64 * 8,
         };
         let first_tile = (left.div_euclid(TILE), top.div_euclid(TILE));
         let (last_column, last_row) = ((right - 1).div_euclid(TILE), (bottom - 1).div_euclid(TILE));
         let mut grid = Vec::new();
+        let mut pages = Vec::new();
         for row in first_tile.1..=last_row {
             for column in first_tile.0..=last_column {
-                match at.get(&(column, row)) {
-                    Some(&index) => grid.push(index),
-                    None => {
-                        return fail(format!(
-                            "a blur dab reads tile ({column}, {row}), which the stroke has no \
-                             slot for"
-                        ));
-                    }
+                let Some(&index) = at.get(&(column, row)) else {
+                    return fail(format!(
+                        "a blur dab reads tile ({column}, {row}), which the stroke has no slot \
+                         for"
+                    ));
+                };
+                grid.push(index);
+                if !pages.contains(&tiles[index].at.page) {
+                    pages.push(tiles[index].at.page);
                 }
             }
         }
@@ -159,6 +181,7 @@ impl Window {
             first_tile,
             tile_columns: (last_column - first_tile.0 + 1) as usize,
             grid,
+            pages,
             ways,
             between,
             passes: within.words,
@@ -220,51 +243,61 @@ struct Step {
 }
 
 impl Blurs {
-    pub(crate) fn new(engine: &Engine) -> Self {
-        let dab = include_str!("dab.wgsl");
-        let blur = include_str!("blur.wgsl");
-        let strips = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, THREE_WGSL, blur];
-        let strips = [&strips[..], &[include_str!("blur_three.wgsl")]].concat();
-        let passes = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, PASS_WGSL, blur];
-        let passes = [&passes[..], &[include_str!("blur_pass.wgsl")]].concat();
-        let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, include_str!("blur_cel.wgsl")];
-        Self {
+    pub(crate) fn new(engine: &Engine) -> Option<Self> {
+        let pages = Pages::writable(engine, OWN, PAGES_AT)?;
+        let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN)?;
+        let (dab, blur) = (include_str!("dab.wgsl"), include_str!("blur.wgsl"));
+        let paged = pages.source();
+        let way = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, paged.as_str()];
+        let strips = [&way[..], &[THREE_WGSL, blur, include_str!("blur_three.wgsl")]].concat();
+        let passes = [&way[..], &[PASS_WGSL, blur, include_str!("blur_pass.wgsl")]].concat();
+        let cel_paged = cel_pages.source();
+        let cel_source = include_str!("blur_cel.wgsl");
+        let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, cel_paged.as_str(), cel_source];
+        Some(Self {
             rows: pipeline(engine, &strips, "blur_rows_pass"),
             columns: pipeline(engine, &strips, "blur_columns_pass"),
             pass: pipeline(engine, &passes, "blur_pass_one"),
             filling: pipeline(engine, &cel, "blur_fill"),
             finishing: pipeline(engine, &cel, "blur_finish"),
+            pages,
+            cel_pages,
             plans: Plans::new(),
             between: None,
-        }
+            second: None,
+        })
     }
 
-    /// Blurs the stroke's `picture` — `tiles`' planes, two words a pixel, a
-    /// slot a tile — under each of `dabs`, in their order, at its box radius
-    /// (the app's `BrushBlurPicture.blurRadiusOf`), over `paper`; submits
-    /// the work, the caller waits. Every tile a dab's window meets — what
-    /// its blur reads, three radii past it each side — is the caller's to
-    /// have among `tiles`.
+    /// Blurs the stroke's `picture` — `tiles`' planes on its pages, two
+    /// words a pixel, a tile a slot of a page — under each of `dabs`, in
+    /// their order, at its box radius (the app's
+    /// `BrushBlurPicture.blurRadiusOf`), over `paper`; submits the work, the
+    /// caller waits. Every tile a dab's window meets — what its blur reads,
+    /// three radii past it each side — is the caller's to have among
+    /// `tiles`.
     pub(crate) fn blur(
         &mut self,
         engine: &Engine,
         tiles: &[StrokeTile],
         dabs: &[(Dab, u32)],
         paper: Option<&Paper>,
-        picture: &wgpu::Buffer,
+        picture: &[wgpu::Buffer],
     ) -> Option<()> {
-        self.blur_by(engine, tiles, dabs, paper, picture, Route::Strips)
+        let pages_per_pass = self.pages.per_pass();
+        self.blur_by(engine, tiles, dabs, paper, picture, (Route::Strips, pages_per_pass))
     }
 
-    /// `blur`, the passes going by `route`.
+    /// `blur`, the passes going by `route` and a dab binding no more than
+    /// `pages_per_pass` pages — a test's fewer than the device's, to see
+    /// where a smaller device refuses.
     fn blur_by(
         &mut self,
         engine: &Engine,
         tiles: &[StrokeTile],
         dabs: &[(Dab, u32)],
         paper: Option<&Paper>,
-        picture: &wgpu::Buffer,
-        route: Route,
+        picture: &[wgpu::Buffer],
+        (route, pages_per_pass): (Route, usize),
     ) -> Option<()> {
         // The colour is not the dab's to lay: white and opaque, it measures
         // its coverage alone; and it lays, never erases (BrushBlurPicture).
@@ -282,6 +315,7 @@ impl Blurs {
         if dabs.is_empty() {
             return Some(());
         }
+        on_the_picture(tiles, picture)?;
         let at: HashMap<(i32, i32), usize> = tiles
             .iter()
             .enumerate()
@@ -289,30 +323,41 @@ impl Blurs {
             .collect();
         let windows: Vec<Window> = dabs
             .iter()
-            .map(|(dab, radius)| Window::of(dab, *radius, &at, route))
+            .map(|(dab, radius)| Window::of(dab, *radius, (tiles, &at), route))
             .collect::<Option<_>>()?;
+        // A pixel reads around where it lands, all the way across the
+        // window, so a dab's pages are never parted: one whose window is on
+        // more pages than a pass binds is refused, as the executor refuses
+        // an output tile reading more (composite's `grouped`).
+        if let Some(window) = windows.iter().find(|window| window.pages.len() > pages_per_pass) {
+            return fail(format!(
+                "a blur dab reads {} pages of the picture; a pass binds {pages_per_pass}",
+                window.pages.len()
+            ));
+        }
         let steps: Vec<Vec<Step>> = windows.iter().map(Window::steps).collect();
         let between_bytes = windows.iter().map(|window| window.between).max()?;
         // No test lays a window past a binding here (2 GB) or a dispatch's
         // groups, so none tells this line from its absence (mutants f01, f02,
         // 11-06); a device of 128 MB refuses a dab of size 2000 by it.
         fits(engine, &[between_bytes], steps.iter().flatten().map(|step| step.groups))?;
-        if self.between.as_ref().is_none_or(|buffer| buffer.size() < between_bytes) {
-            self.between = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("blur between"),
-                size: between_bytes,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            }));
+        grown(engine, &mut self.between, between_bytes, "blur between");
+        let by_passes = windows
+            .iter()
+            .filter(|window| matches!(window.ways, Ways::Passes(_)))
+            .map(|window| window.between)
+            .max();
+        if let Some(bytes) = by_passes {
+            grown(engine, &mut self.second, bytes, "blur between second");
         }
         let white: Vec<Dab> = dabs.iter().map(|(dab, _)| *dab).collect();
         // Each dab's block, after the plan's own words: where it starts
-        // among the blocks.
+        // among the blocks. Its table of pages follows its grid.
         let places: Vec<usize> = windows
             .iter()
             .scan(0, |end, window| {
                 let place = *end;
-                *end += GRID_AT + window.grid.len();
+                *end += GRID_AT + window.grid.len() + picture.len();
                 Some(place)
             })
             .collect();
@@ -320,6 +365,7 @@ impl Blurs {
         let plan = self.plans.write(engine, tiles, &white, paper, None, |plan| {
             let mut words = Vec::new();
             for (index, window) in windows.iter().enumerate() {
+                let table_at = plan.end() + words.len() + GRID_AT + window.grid.len();
                 words.extend([
                     plan.record_at(index),
                     window.first_tile.0 as u32,
@@ -327,8 +373,10 @@ impl Blurs {
                     window.tile_columns as u32,
                 ]);
                 words.extend(window.strip_words());
+                words.push(table_at as u32);
                 words.extend(&window.passes);
                 words.extend(window.grid.iter().map(|&tile| plan.tile_at(tile)));
+                words.extend(page_table(&window.pages, picture.len()));
             }
             blocks_at.set(plan.end());
             Some(words)
@@ -353,41 +401,47 @@ impl Blurs {
             contents: &uniform,
             usage: wgpu::BufferUsages::UNIFORM,
         });
-        let between = self.between.as_ref()?;
-        let bound = |pipeline: &wgpu::ComputePipeline, index: usize| {
-            let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
-            engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("blur dab"),
-                layout: &pipeline.get_bind_group_layout(0),
-                entries: &[
-                    entry(0, plan.as_entire_binding()),
-                    entry(1, picture.as_entire_binding()),
-                    entry(4, between.as_entire_binding()),
-                    entry(5, wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &uniform,
-                        offset: index as u64 * align,
-                        size: wgpu::BufferSize::new(16),
-                    })),
-                ],
-            })
-        };
-        let steps: Vec<Step> = steps.into_iter().flatten().collect();
         let pipeline = |entry| match entry {
             Entry::Rows => &self.rows,
             Entry::Columns => &self.columns,
             Entry::Pass => &self.pass,
         };
-        let bind_groups: Vec<wgpu::BindGroup> = steps
+        let (between, second) = (self.between.as_ref()?, self.second.as_ref());
+        let bound = |step: &Step, window: &Window, index: usize| {
+            let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
+            let mut entries = vec![
+                entry(0, plan.as_entire_binding()),
+                entry(4, between.as_entire_binding()),
+                entry(5, wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform,
+                    offset: index as u64 * align,
+                    size: wgpu::BufferSize::new(16),
+                })),
+            ];
+            if let (Entry::Pass, Some(second)) = (step.entry, second) {
+                entries.push(entry(6, second.as_entire_binding()));
+            }
+            let read = window.pages.iter().map(|&page| &picture[usize::from(page)]);
+            entries.extend(self.pages.entries(read));
+            engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("blur dab"),
+                layout: &pipeline(step.entry).get_bind_group_layout(0),
+                entries: &entries,
+            })
+        };
+        let dispatches: Vec<(&Step, wgpu::BindGroup)> = windows
             .iter()
+            .zip(&steps)
+            .flat_map(|(window, steps)| steps.iter().map(move |step| (step, window)))
             .enumerate()
-            .map(|(slot, step)| bound(pipeline(step.entry), slot))
+            .map(|(index, (step, window))| (step, bound(step, window, index)))
             .collect();
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            for (step, bind_group) in steps.iter().zip(&bind_groups) {
+            for (step, bind_group) in &dispatches {
                 pass.set_pipeline(pipeline(step.entry));
                 pass.set_bind_group(0, bind_group, &[]);
                 pass.dispatch_workgroups(step.groups.0, step.groups.1, 1);
@@ -406,12 +460,26 @@ impl Blurs {
         &self,
         engine: &Engine,
         executor: &Composite,
+        cel: (&[wgpu::Buffer], &TileSet),
+        tiles: &[StrokeTile],
+        picture: &[wgpu::Buffer],
+    ) -> Option<()> {
+        self.fill_by(engine, executor, cel, tiles, picture, self.widest(engine))
+    }
+
+    /// `fill`, a pass taking no more than `most` (pages, tiles).
+    fn fill_by(
+        &self,
+        engine: &Engine,
+        executor: &Composite,
         (pages, cel): (&[wgpu::Buffer], &TileSet),
         tiles: &[StrokeTile],
-        picture: &wgpu::Buffer,
+        picture: &[wgpu::Buffer],
+        most: (usize, usize),
     ) -> Option<()> {
+        on_the_picture(tiles, picture)?;
         let copied = copied(engine, executor, (pages, cel), tiles)?;
-        self.through_cel(engine, &self.filling, &copied.out, tiles, picture)
+        self.through_cel(engine, &self.filling, &copied.out, (tiles, picture), most)
     }
 
     /// `tiles` finished (`blur_finish`): their picture stored as the cel
@@ -421,8 +489,20 @@ impl Blurs {
         &self,
         engine: &Engine,
         tiles: &[StrokeTile],
-        picture: &wgpu::Buffer,
+        picture: &[wgpu::Buffer],
     ) -> Option<wgpu::Buffer> {
+        self.finish_by(engine, tiles, picture, self.widest(engine))
+    }
+
+    /// `finish`, a pass taking no more than `most` (pages, tiles).
+    fn finish_by(
+        &self,
+        engine: &Engine,
+        tiles: &[StrokeTile],
+        picture: &[wgpu::Buffer],
+        most: (usize, usize),
+    ) -> Option<wgpu::Buffer> {
+        on_the_picture(tiles, picture)?;
         let finished = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("blur finished"),
             size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
@@ -431,54 +511,144 @@ impl Blurs {
                 | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        self.through_cel(engine, &self.finishing, &finished, tiles, picture)?;
+        self.through_cel(engine, &self.finishing, &finished, (tiles, picture), most)?;
         Some(finished)
     }
 
+    /// The most a pass of the cel's takes on this device: the pages it
+    /// binds, and the tiles of the cel a binding holds and a dispatch
+    /// reaches.
+    fn widest(&self, engine: &Engine) -> (usize, usize) {
+        let limits = engine.device.limits();
+        let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+        let reach = u64::from(limits.max_compute_workgroups_per_dimension);
+        let tiles = (room / (TILE_TEXELS * 4)).min(reach);
+        (self.cel_pages.per_pass(), tiles as usize)
+    }
+
     /// One of blur_cel.wgsl's passes between `picture` and `cel`, `tiles`
-    /// one after another as the executor puts them.
+    /// one after another as the executor puts them, a run of them a
+    /// dispatch ([`runs`]).
     fn through_cel(
         &self,
         engine: &Engine,
         pass: &wgpu::ComputePipeline,
         cel: &wgpu::Buffer,
-        tiles: &[StrokeTile],
-        picture: &wgpu::Buffer,
+        (tiles, picture): (&[StrokeTile], &[wgpu::Buffer]),
+        (pages_per_pass, most): (usize, usize),
     ) -> Option<()> {
-        // No tile, no pass: a binding holds a word at least.
-        if tiles.is_empty() {
-            return Some(());
-        }
-        let groups = ((TILE_TEXELS / CEL_GROUP) as u32, tiles.len() as u32);
-        fits(engine, &[], [groups].into_iter())?;
-        let slots: Vec<u32> = tiles.iter().map(|tile| tile.slot).collect();
-        let slots = engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("blur cel slots"),
-            contents: &bytes(&slots),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
-        let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("blur cel"),
-            layout: &pass.get_bind_group_layout(0),
-            entries: &[
-                entry(0, cel.as_entire_binding()),
-                entry(1, picture.as_entire_binding()),
-                entry(2, slots.as_entire_binding()),
-            ],
-        });
+        let tile_bytes = TILE_TEXELS * 4;
+        let layout = pass.get_bind_group_layout(0);
+        let dispatches: Vec<(u32, wgpu::BindGroup)> = runs(tiles, pages_per_pass, most)
+            .into_iter()
+            .map(|(run, pages)| {
+                let table: Vec<u32> = page_table(&pages, picture.len()).collect();
+                let slots: Vec<u32> = tiles[run.clone()]
+                    .iter()
+                    .flat_map(|tile| [table[usize::from(tile.at.page)], u32::from(tile.at.slot)])
+                    .collect();
+                let slots = engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("blur cel slots"),
+                    contents: &bytes(&slots),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
+                let mut entries = vec![
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: cel,
+                            offset: run.start as u64 * tile_bytes,
+                            size: wgpu::BufferSize::new(run.len() as u64 * tile_bytes),
+                        }),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: slots.as_entire_binding(),
+                    },
+                ];
+                let read = pages.iter().map(|&page| &picture[usize::from(page)]);
+                entries.extend(self.cel_pages.entries(read));
+                let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("blur cel"),
+                    layout: &layout,
+                    entries: &entries,
+                });
+                (run.len() as u32, bind_group)
+            })
+            .collect();
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute.set_pipeline(pass);
-            compute.set_bind_group(0, &bind_group, &[]);
-            compute.dispatch_workgroups(groups.0, groups.1, 1);
+            for (count, bind_group) in &dispatches {
+                compute.set_bind_group(0, bind_group, &[]);
+                compute.dispatch_workgroups((TILE_TEXELS / CEL_GROUP) as u32, *count, 1);
+            }
         }
         engine.queue.submit([encoder.finish()]);
         Some(())
     }
+}
+
+/// Whether every one of `tiles` is on a page of `picture`.
+fn on_the_picture(tiles: &[StrokeTile], picture: &[wgpu::Buffer]) -> Option<()> {
+    match tiles.iter().find(|tile| usize::from(tile.at.page) >= picture.len()) {
+        Some(tile) => fail(format!(
+            "tile ({}, {}) is on page {}; the picture has {}",
+            tile.column,
+            tile.row,
+            tile.at.page,
+            picture.len()
+        )),
+        None => Some(()),
+    }
+}
+
+/// `slot` holding a buffer of `bytes` at least, made anew where it holds
+/// less.
+fn grown(engine: &Engine, slot: &mut Option<wgpu::Buffer>, bytes: u64, label: &str) {
+    if slot.as_ref().is_none_or(|buffer| buffer.size() < bytes) {
+        *slot = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: bytes,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        }));
+    }
+}
+
+/// `tiles` cut into the runs blur_cel.wgsl's passes take, in order, each
+/// with the pages it binds: a run ends where its next tile would bring it
+/// past `pages_per_pass` pages or `most` tiles.
+///
+/// The second greedy cut by the pages a pass binds — the executor's `cut`
+/// (composite/mod.rs) is the first, which holds stack levels too: the two
+/// stay apart until a third comes (rule of three, CLAUDE.md absolute
+/// rule 1).
+fn runs(
+    tiles: &[StrokeTile],
+    pages_per_pass: usize,
+    most: usize,
+) -> Vec<(Range<usize>, Vec<u16>)> {
+    let mut runs = Vec::new();
+    let mut first = 0;
+    let mut pages: Vec<u16> = Vec::new();
+    for (index, tile) in tiles.iter().enumerate() {
+        let fresh = !pages.contains(&tile.at.page);
+        if index - first == most || (fresh && pages.len() == pages_per_pass) {
+            runs.push((first..index, std::mem::take(&mut pages)));
+            first = index;
+        }
+        if !pages.contains(&tile.at.page) {
+            pages.push(tile.at.page);
+        }
+    }
+    if first < tiles.len() {
+        runs.push((first..tiles.len(), pages));
+    }
+    runs
 }
 
 /// `tiles` of `cel` — its tiles on the pool's `pages` — as the executor

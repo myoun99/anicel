@@ -40,8 +40,9 @@ const HEAD_SECOND: u32 = 5u;
 const HEAD_SECOND_DENSITY: u32 = 6u;
 
 // A stroke tile: its column and row on the canvas's grid, its slot, where
-// its list starts and how long it is, and where on the paper its first
-// column and row lie, in 1/65536 texel.
+// its list starts and how long it is, where on the paper its first column
+// and row lie, in 1/65536 texel, and its page — the planes' page that holds
+// its slot (mod.rs's StrokeTile).
 const TILE_COLUMN: u32 = 0u;
 const TILE_ROW: u32 = 1u;
 const TILE_SLOT: u32 = 2u;
@@ -49,7 +50,8 @@ const TILE_FIRST: u32 = 3u;
 const TILE_COUNT: u32 = 4u;
 const TILE_PAPER_ACROSS: u32 = 5u;
 const TILE_PAPER_DOWN: u32 = 6u;
-const TILE_WORDS: u32 = 7u;
+const TILE_PAGE: u32 = 7u;
+const TILE_WORDS: u32 = 8u;
 
 // A dab's record. The centre is in 1/256 px; the region, the pixels it may
 // touch, [left, right) by [top, bottom). The colour is its three bytes,

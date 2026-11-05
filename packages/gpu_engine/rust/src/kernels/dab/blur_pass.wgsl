@@ -2,26 +2,31 @@
 // effects/blur/pass.wgsl): six dispatches over the dab's window, the rows'
 // three then the columns' three, each reading what the one before put —
 // the way a dab goes whose strips would put too few of the pixels they
-// read. The passes alternate between two planes, the halves of
-// `blur_between`, each laid as the rows' first pass puts: the window's
-// lines, the dab's columns two radii out each side. The first pass reads
-// the picture; the last moves the dab's pixels (blur.wgsl's `blur_move`).
+// read. The passes alternate between two planes, `blur_between` and
+// `blur_between_second`, each laid as the rows' first pass puts: the
+// window's lines, the dab's columns two radii out each side. The first pass
+// reads the picture; the last moves the dab's pixels (blur.wgsl's
+// `blur_move`).
 //
 // Needs blur.wgsl and effects/blur/pass.wgsl before it.
+
+// The plane the passes alternate with `blur_between`, a binding of its own:
+// the two together pass what one binding holds on some devices — a dab of
+// 2000 lays two of 107 MB, a binding 128 MB (gpu-canonical-store 11-06
+// 03:09).
+@group(0) @binding(6) var<storage, read_write> blur_between_second: array<u32>;
 
 // The dispatch's pass, the `blur_dab.y`-th of the block's six.
 var<private> blur_k: u32;
 var<private> blur_now: BoxPass;
-// The planes' first pixel and line, and their width and lines.
+// The planes' first pixel and line, and their width.
 var<private> blur_plane_x0: i32;
 var<private> blur_plane_y0: i32;
 var<private> blur_plane_width: u32;
-var<private> blur_plane_lines: u32;
 
-// The first of the two words of (x, y) in plane `half`.
-fn blur_plane(half: u32, x: i32, y: i32) -> u32 {
-  let row = half * blur_plane_lines + u32(y - blur_plane_y0);
-  return (row * blur_plane_width + u32(x - blur_plane_x0)) * 2u;
+// The first of the two words of (x, y) in a plane.
+fn blur_plane(x: i32, y: i32) -> u32 {
+  return (u32(y - blur_plane_y0) * blur_plane_width + u32(x - blur_plane_x0)) * 2u;
 }
 
 // (x, y) of `p` along `line`, by the pass's way.
@@ -36,8 +41,11 @@ fn blur_tap(line: i32, p: i32) -> vec4<u32> {
   if (blur_k == 0u) {
     return blur_picture(at.x, at.y);
   }
-  let word = blur_plane((blur_k - 1u) % 2u, at.x, at.y);
-  return blend_unpack16(vec2<u32>(blur_between[word], blur_between[word + 1u]));
+  let word = blur_plane(at.x, at.y);
+  if ((blur_k - 1u) % 2u == 0u) {
+    return blend_unpack16(vec2<u32>(blur_between[word], blur_between[word + 1u]));
+  }
+  return blend_unpack16(vec2<u32>(blur_between_second[word], blur_between_second[word + 1u]));
 }
 
 fn blur_put(line: i32, p: i32, mean: vec4<u32>) {
@@ -46,10 +54,15 @@ fn blur_put(line: i32, p: i32, mean: vec4<u32>) {
     blur_move(at.x, at.y, mean);
     return;
   }
-  let word = blur_plane(blur_k % 2u, at.x, at.y);
+  let word = blur_plane(at.x, at.y);
   let pair = blend_pack16(mean);
-  blur_between[word] = pair.x;
-  blur_between[word + 1u] = pair.y;
+  if (blur_k % 2u == 0u) {
+    blur_between[word] = pair.x;
+    blur_between[word + 1u] = pair.y;
+    return;
+  }
+  blur_between_second[word] = pair.x;
+  blur_between_second[word + 1u] = pair.y;
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -61,6 +74,5 @@ fn blur_pass_one(@builtin(global_invocation_id) id: vec3<u32>) {
   blur_plane_x0 = rows.first;
   blur_plane_y0 = rows.line_first;
   blur_plane_width = u32(rows.end - rows.first);
-  blur_plane_lines = u32(rows.line_end - rows.line_first);
   blur_run(blur_now, id);
 }

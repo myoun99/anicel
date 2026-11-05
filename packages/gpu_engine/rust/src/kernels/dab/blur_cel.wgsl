@@ -18,14 +18,15 @@
 // (R28), and the cel's copy with them: until then a finished tile is the
 // picture all the way.
 //
-// Needs blend.wgsl and tile.wgsl before it.
+// Needs blend.wgsl, tile.wgsl and the pages (pages.rs's `source`) before
+// it.
 
-// The cel's tiles as the copy put them, or the finished tiles; the
-// stroke's picture, two words a pixel, a slot a tile; and the slot in the
-// picture of each of those tiles.
+// The cel's tiles as the copy put them, or the finished tiles; and where
+// each of those tiles is kept in the picture — the binding of its page, its
+// slot. The picture is the stroke's planes on their pages, from binding 2:
+// two words a pixel, a tile a slot of a page.
 @group(0) @binding(0) var<storage, read_write> blur_cel: array<u32>;
-@group(0) @binding(1) var<storage, read_write> blur_planes: array<u32>;
-@group(0) @binding(2) var<storage, read> blur_slots: array<u32>;
+@group(0) @binding(1) var<storage, read> blur_slots: array<u32>;
 
 const BLUR_CEL_GROUP: u32 = 256u;
 
@@ -35,10 +36,15 @@ fn blur_cel_word(group: vec3<u32>, lane: u32) -> u32 {
   return group.y * TILE_TEXELS + group.x * BLUR_CEL_GROUP + lane;
 }
 
-// The first of the two words of that texel in the picture.
+// The binding of tile y's page.
+fn blur_cel_page(group: vec3<u32>) -> u32 {
+  return blur_slots[group.y * 2u];
+}
+
+// The first of the two words of that texel on its page.
 fn blur_cel_plane(group: vec3<u32>, lane: u32) -> u32 {
   let texel = group.x * BLUR_CEL_GROUP + lane;
-  return (blur_slots[group.y] * TILE_TEXELS + texel) * 2u;
+  return (blur_slots[group.y * 2u + 1u] * TILE_TEXELS + texel) * 2u;
 }
 
 @compute @workgroup_size(256)
@@ -47,9 +53,10 @@ fn blur_fill(
   @builtin(local_invocation_index) lane: u32,
 ) {
   let pair = blend_pack16(blend_unpack8_premultiplied(blur_cel[blur_cel_word(group, lane)]));
+  let k = blur_cel_page(group);
   let at = blur_cel_plane(group, lane);
-  blur_planes[at] = pair.x;
-  blur_planes[at + 1u] = pair.y;
+  page_put(k, at, pair.x);
+  page_put(k, at + 1u, pair.y);
 }
 
 @compute @workgroup_size(256)
@@ -57,7 +64,8 @@ fn blur_finish(
   @builtin(workgroup_id) group: vec3<u32>,
   @builtin(local_invocation_index) lane: u32,
 ) {
+  let k = blur_cel_page(group);
   let at = blur_cel_plane(group, lane);
-  let own = blend_unpack16(vec2<u32>(blur_planes[at], blur_planes[at + 1u]));
+  let own = blend_unpack16(vec2<u32>(page_word(k, at), page_word(k, at + 1u)));
   blur_cel[blur_cel_word(group, lane)] = blend_pack8_premultiplied(own);
 }

@@ -33,12 +33,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
+use crate::kernels::composite::TileAt;
 use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
 
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
 const HEAD_WORDS: usize = 7;
-const TILE_WORDS: usize = 7;
+const TILE_WORDS: usize = 8;
 const DAB_WORDS: usize = 29;
 const NO_TABLE: u32 = u32::MAX;
 
@@ -188,13 +189,15 @@ pub(crate) struct Dab<'a> {
     pub(crate) density: Option<f64>,
 }
 
-/// A tile of the stroke: its column and row on the canvas's grid, and its
-/// slot in the planes and their view.
+/// A tile of the stroke: its column and row on the canvas's grid, and where
+/// it is kept — a page of the stroke's planes, a slot in it, as the pool
+/// keeps a stored tile (캔버스 베이스 11-06 03:36). Its view is at the
+/// same slot.
 #[derive(Clone, Copy)]
 pub(crate) struct StrokeTile {
     pub(crate) column: i32,
     pub(crate) row: i32,
-    pub(crate) slot: u32,
+    pub(crate) at: TileAt,
 }
 
 pub(crate) struct Dabs {
@@ -308,6 +311,15 @@ impl Dabs {
     ) -> Option<()> {
         if tiles.is_empty() {
             return Some(());
+        }
+        // ⏳A pile binds the planes and their view whole, one page, until it
+        // pages them as the blur its picture (gpu-canonical-store 11-06
+        // 03:40, C): a tile on another page is refused, never put on this.
+        if let Some(tile) = tiles.iter().find(|tile| tile.at.page != 0) {
+            return fail(format!(
+                "a pile binds one page; tile ({}, {}) is on page {}",
+                tile.column, tile.row, tile.at.page
+            ));
         }
         if let Some(second) = second {
             if !blends_a_channel(second.mode) {
@@ -486,7 +498,8 @@ fn planned(
                 (paper_at(tile.column * TILE, step, side), paper_at(tile.row * TILE, step, side))
             }
         };
-        words.extend([column, row, tile.slot, first as u32, list.len() as u32, across, down]);
+        let (page, slot) = (u32::from(tile.at.page), u32::from(tile.at.slot));
+        words.extend([column, row, slot, first as u32, list.len() as u32, across, down, page]);
         first += list.len();
     }
     for list in &lists {
