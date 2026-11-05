@@ -4,6 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../core/color_matrix.dart'
+    show luminanceB, luminanceG, luminanceR;
+import '../../core/contain_rect.dart' show containFit;
 import '../../core/page_stack.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -65,6 +68,7 @@ part 'document_painter/timesheet_xdts_page.dart';
 part 'document_painter/timesheet_xdts_form_pass.dart';
 part 'document_painter/timesheet_xdts_counts_pass.dart';
 part 'document_painter/timesheet_xdts_overlap_pass.dart';
+part 'document_painter/timesheet_xdts_logo_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a portrait page
@@ -940,6 +944,9 @@ class TimesheetDocumentPainter extends CustomPainter
         _xdts?.formPass.paintPage(canvas, page.index);
       }
       _bands.paintHeaderBand(canvas, page.index);
+      if (_drawsPart(TimesheetContentPart.logo)) {
+        _xdts?.logo.paintPage(canvas, page.index);
+      }
       if (_drawsPart(TimesheetContentPart.memo)) {
         _bands.paintMemoBand(canvas, page.index);
       }

@@ -305,15 +305,13 @@ final class _XdtsSheetForm extends _SheetForm {
   }
 
   /// The info header's boxes, their values set in the row under the
-  /// labels — and the title on the logo's place (I-162-Q2: 「채운다(제목은
-  /// 로고 자리에)」; whether the company logo stands there is I-162-Q5).
+  /// labels. The viewer's form has no box for the title: its logo place
+  /// prints the company logo ([_XdtsLogoPass], I-162-Q5 「회사 로고를
+  /// 찍는다」). ↩️The title stood there (I-162-Q2: 「채운다(제목은 로고
+  /// 자리에)」) until that answer.
   @override
   List<TimesheetHeaderBox> headerBoxes(List<TimesheetHeaderField> shown) {
-    final logo = form.logo;
-    final title = _rectAt(logo.left, logo.top, logo.width, logo.height);
     return [
-      if (shown.contains(TimesheetHeaderField.title))
-        (field: TimesheetHeaderField.title, rect: title, value: title),
       for (final place in form.info)
         if (shown.contains(place.box.field))
           (

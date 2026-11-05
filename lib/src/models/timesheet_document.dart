@@ -104,6 +104,10 @@ enum TimesheetContentPart {
   /// The header band's values — the drawn length under the duration too.
   header,
 
+  /// The company logo an XDTS sheet prints in the viewer's logo place
+  /// ([TimesheetDocument.logoAssetPath], I-162-Q5).
+  logo,
+
   /// The cuts the cut is 겸용 with, under its name (F-558).
   linkedCuts,
 
@@ -407,6 +411,7 @@ class TimesheetDocument {
     required this.title,
     required this.episode,
     required this.artist,
+    required this.logoAssetPath,
     required this.pageMemos,
     required this.rightPageMemos,
     required this.pageFixedLines,
@@ -584,6 +589,7 @@ class TimesheetDocument {
       title: info.titleOr(projectName),
       episode: info.episode,
       artist: cut.metadata.staffNameFor(sheetArtistMark),
+      logoAssetPath: info.logoAssetPath,
       pageMemos: cut.metadata.pageNotes,
       rightPageMemos: cut.metadata.rightPageNotes,
       pageFixedLines:
@@ -716,6 +722,11 @@ class TimesheetDocument {
   final String title;
   final String episode;
   final String artist;
+
+  /// The work's company logo, a media pool path — the one the conte and
+  /// the envelope print ([TimesheetInfo.logoAssetPath]); null where it has
+  /// none.
+  final String? logoAssetPath;
 
   /// The Direction memo printed in each page's memo band, by page
   /// ([CutMetadata.pageNotes]) — editable in place on the sheet, the

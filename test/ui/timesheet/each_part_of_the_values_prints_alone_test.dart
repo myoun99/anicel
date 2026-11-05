@@ -226,6 +226,9 @@ void main() {
     final end = layout.cutEndLineFor(document.drawnFrameCount);
     final where = {
       TimesheetContentPart.header: [header],
+      // The company logo is an XDTS sheet's, in the viewer's logo place
+      // (an_xdts_sheet_prints_the_viewers_form_test): ours has none.
+      TimesheetContentPart.logo: const <Rect>[],
       TimesheetContentPart.linkedCuts: [
         Rect.fromLTRB(cutBox.left - 12, cutBox.top, cutBox.right, memo.bottom),
       ],

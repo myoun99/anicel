@@ -65,8 +65,9 @@ class TimesheetStrata extends StatelessWidget {
   /// windows; null prints none.
   final ({TimesheetInkController controller, bool live})? ink;
 
-  /// The pool files the ink's photos are drawn from (I-97), and what says
-  /// one has landed — the ink stratum's alone to hear.
+  /// The pool files the sheet's pictures are drawn from — the ink's photos
+  /// (I-97) and an XDTS sheet's logo (I-162-Q5) — and what says one has
+  /// landed, for the strata that print them.
   final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
@@ -158,9 +159,12 @@ class TimesheetStrata extends StatelessWidget {
         : timesheetInkWindows(layout: layout, cutId: cutId);
     return {
       SheetStratum.form: painterOf(SheetStratum.form),
+      // The values print a picture too — an XDTS sheet's logo — so a read
+      // that lands repaints them as it does the ink's photos.
       SheetStratum.content: painterOf(
         SheetStratum.content,
         dragPreview: printed,
+        imageRepaint: imageRepaint,
       ),
       if (ink != null)
         SheetStratum.ink: painterOf(

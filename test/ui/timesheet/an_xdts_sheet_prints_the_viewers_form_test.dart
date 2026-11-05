@@ -25,6 +25,8 @@ import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/models/xdts_sheet_form.dart';
 import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/services/export/xdts_viewer_ink.dart';
+import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
+    show SheetImageLookup;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
@@ -46,7 +48,7 @@ void main() {
   /// A cut of [cels] 原画 rows on [kind], the first exposing its drawings
   /// 1 and 2 six frames each, then [inbetweens] 動画 rows exposing a
   /// drawing six frames — [duration] frames long from frame [at] of its
-  /// track, which [spans] cross.
+  /// track, which [spans] cross — of a work whose logo is [logo].
   TimesheetDocument sheet({
     TimesheetSheetKind kind = TimesheetSheetKind.xdtsA3SixSeconds,
     int cels = 1,
@@ -54,6 +56,7 @@ void main() {
     int duration = 30,
     int at = 0,
     List<TransitionSpan> spans = const [],
+    String? logo,
   }) => TimesheetDocument.fromCut(
     cutStartFrame: at,
     transitionSpans: spans,
@@ -97,7 +100,7 @@ void main() {
     ),
     projectName: 'P',
     fps: 24,
-    info: const TimesheetInfo(title: 'T', episode: '3'),
+    info: TimesheetInfo(title: 'T', episode: '3', logoAssetPath: logo),
   );
 
   /// A viewer pixel's length on the sheet: its frame row is 18 units.
@@ -188,9 +191,11 @@ void main() {
       expect(last, inInclusiveRange(41, 43));
     });
 
+    // I-162-Q5 (유저 2026-11-05): 「회사 로고를 찍는다」 — the logo's place
+    // prints the company logo, and the title, which the form has no box
+    // for, is not printed. ↩️It stood on the logo's place (I-162-Q2).
     test('the header\'s boxes are the template\'s — each value in the row '
-        'under its label — and the title stands on the logo\'s place '
-        '(I-162-Q2)', () {
+        'under its label — and none is the title', () {
       final layout = TimesheetDocumentLayout(document: sheet());
       final unit = unitOf(layout);
       final page = layout.pageRect(0).topLeft;
@@ -203,8 +208,12 @@ void main() {
       final boxes = {
         for (final box in layout.headerFieldBoxes(0)) box.field: box,
       };
+      expect(
+        layout.document.visibleHeaderFields,
+        contains(TimesheetHeaderField.title),
+        reason: 'the premise: the work shows its title',
+      );
       expect(boxes.keys, [
-        TimesheetHeaderField.title,
         TimesheetHeaderField.episode,
         TimesheetHeaderField.scene,
         TimesheetHeaderField.cut,
@@ -227,17 +236,13 @@ void main() {
         const Rect.fromLTWH(1663, 93, 541, 123),
       );
       expect(
-        near(pixels(boxes[TimesheetHeaderField.title]!.value)),
-        const Rect.fromLTWH(89, 49, 502, 167),
-      );
-      expect(
         near(pixels(layout.memoBandRect(0))),
         const Rect.fromLTWH(89, 275, 2776, 640),
       );
     });
 
     test('a hidden field\'s box keeps its place in the form and prints no '
-        'value — the title too', () {
+        'value', () {
       final document = TimesheetDocument.fromCut(
         cut: Cut(
           id: const CutId('cut'),
@@ -252,17 +257,10 @@ void main() {
         projectName: 'P',
         fps: 24,
         info: const TimesheetInfo(
-          hiddenFields: {
-            TimesheetHeaderField.title,
-            TimesheetHeaderField.episode,
-          },
+          hiddenFields: {TimesheetHeaderField.episode},
         ),
       );
       final layout = TimesheetDocumentLayout(document: document);
-      expect(
-        [for (final box in layout.headerFieldBoxes(0)) box.field],
-        isNot(contains(TimesheetHeaderField.title)),
-      );
       expect(
         [for (final box in layout.headerFieldBoxes(0)) box.field],
         isNot(contains(TimesheetHeaderField.episode)),
@@ -281,6 +279,7 @@ void main() {
       required Offset origin,
       required Size size,
       Set<TimesheetContentPart>? parts,
+      SheetImageLookup? imageFor,
     }) async {
       final layout = TimesheetDocumentLayout(document: document);
       final unit = unitOf(layout);
@@ -295,6 +294,7 @@ void main() {
         words: timesheetWordsIn(AppLanguage.ja),
         layers: layers,
         contentParts: parts,
+        imageFor: imageFor,
       );
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder)
@@ -342,6 +342,34 @@ void main() {
     }
 
     const line = ui.Color(0xFF9CC862);
+
+    /// A square logo in three bands: black, mid grey, and white over clear.
+    Future<ui.Image> logoImage(WidgetTester tester) async {
+      final image = (await tester.runAsync(() {
+        final recorder = ui.PictureRecorder();
+        ui.Canvas(recorder)
+          ..drawRect(
+            const Rect.fromLTWH(0, 0, 8, 24),
+            Paint()..color = const Color(0xFF000000),
+          )
+          ..drawRect(
+            const Rect.fromLTWH(8, 0, 8, 24),
+            Paint()..color = const Color(0xFF808080),
+          )
+          ..drawRect(
+            const Rect.fromLTWH(16, 0, 8, 12),
+            Paint()..color = const Color(0xFFFFFFFF),
+          );
+        final picture = recorder.endRecording();
+        return picture.toImage(24, 24).whenComplete(picture.dispose);
+      }))!;
+      addTearDown(image.dispose);
+      return image;
+    }
+
+    /// The logo [image] as the pool hands it, at `logo.png`.
+    SheetImageLookup logoAt(ui.Image image) =>
+        (path, {width}) => path == 'logo.png' ? image : null;
 
     testWidgets('the form\'s rules land on the viewer\'s pixels, in its line '
         'colour — row rules thin and thick by the sixth, none across the '
@@ -647,7 +675,9 @@ void main() {
           kind: TimesheetSheetKind.xdtsPonocSixSeconds,
           at: 10,
           spans: spans,
+          logo: 'logo.png',
         );
+        final logo = logoAt(await logoImage(tester));
         final form = document.xdtsForm!;
         final place = form.overlapLength!;
         // The whole page across, down past the end's O.L.
@@ -663,6 +693,7 @@ void main() {
             origin: Offset.zero,
             size: room,
             parts: parts,
+            imageFor: logo,
           );
           return Uint8List.fromList([
             for (var i = 3; i < bytes.length; i += 4) bytes[i],
@@ -719,6 +750,142 @@ void main() {
           }
         }
         expect([missing, stray], [0, 0]);
+      });
+    });
+
+    // I-162-Q5 (유저 2026-11-05): 「회사 로고를 찍는다」.
+    group('the company logo, as the viewer prints its own', () {
+      // A3's logo place: 51 by 17 millimetres from the info header's
+      // corner. The square logo fills its height, a band a third of it.
+      const place = Rect.fromLTWH(89, 49, 502, 167);
+      const third = 167 / 3;
+      final origin = place.topLeft - const Offset(4, 4);
+      final room = place.size + const Offset(8, 8);
+      Rect band(int index, double top, double bottom) => Rect.fromLTRB(
+        place.left + third * index + 6,
+        place.top + top,
+        place.left + third * (index + 1) - 6,
+        place.top + bottom,
+      );
+
+      testWidgets('from the place\'s corner, as large as fits, its shape '
+          'kept — in the line colour, as opaque as it is dark, and clear '
+          'where it is clear', (tester) async {
+        final logo = logoAt(await logoImage(tester));
+        final document = sheet(logo: 'logo.png');
+        final form = document.xdtsForm!;
+        expect(
+          form.logo,
+          (left: 89, top: 49, width: 502, height: 167),
+          reason: 'the premise',
+        );
+        Future<(Uint8List, int)> of(Set<TimesheetContentPart>? parts) =>
+            printed(
+              tester,
+              document,
+              SheetStratum.content.layers,
+              origin: origin,
+              size: room,
+              parts: parts,
+              imageFor: logo,
+            );
+        final print = await of(null);
+        bool inked(Rect rect) => inkedIn(print, origin, rect);
+        ui.Color at(Offset point) =>
+            pixelAt(print, origin, point.dx.toInt(), point.dy.toInt());
+
+        final black = band(0, 6, 161);
+        expect(at(black.center), line, reason: 'black: the line colour');
+        expect(
+          at(band(1, 6, 161).center).a,
+          closeTo(0.5, 0.03),
+          reason: 'mid grey: half of it',
+        );
+        expect(inked(band(2, 6, 77)), isFalse, reason: 'white: nothing');
+        expect(inked(band(2, 90, 161)), isFalse, reason: 'clear: nothing');
+        expect(
+          inked(Rect.fromLTRB(place.left, black.top, place.left + 3,
+              black.bottom)),
+          isTrue,
+          reason: 'from the corner',
+        );
+        expect(
+          inked(Rect.fromLTRB(place.left + place.height + 3, place.top,
+              place.right, place.bottom)),
+          isFalse,
+          reason: 'its shape kept, so the rest of the place is blank',
+        );
+        expect(
+          inked(Rect.fromLTRB(place.left, place.bottom + 1, place.right,
+              place.bottom + 4)),
+          isFalse,
+          reason: 'as large as fits, and no larger',
+        );
+
+        // It is a part of its own, which the header's values are not.
+        final alone = await of(const {TimesheetContentPart.logo});
+        expect(inkedIn(alone, origin, black), isTrue);
+        final values = await of(const {TimesheetContentPart.header});
+        expect(inkedIn(values, origin, place), isFalse);
+      });
+
+      testWidgets('a work with no logo, or one not read yet, leaves the place '
+          'blank — and the title is not printed there', (tester) async {
+        Future<bool> inkedWith(
+          TimesheetDocument document,
+          SheetImageLookup? imageFor,
+        ) async => inkedIn(
+          await printed(
+            tester,
+            document,
+            SheetStratum.content.layers,
+            origin: origin,
+            size: room,
+            imageFor: imageFor,
+          ),
+          origin,
+          place,
+        );
+
+        expect(sheet().title, 'T', reason: 'the premise: a title');
+        expect(await inkedWith(sheet(), null), isFalse);
+        expect(
+          await inkedWith(sheet(logo: 'logo.png'), (path, {width}) => null),
+          isFalse,
+        );
+      });
+
+      testWidgets('our sheets print none', (tester) async {
+        final logo = logoAt(await logoImage(tester));
+        final document = sheet(
+          kind: TimesheetSheetKind.sixSeconds,
+          logo: 'logo.png',
+        );
+        final layout = TimesheetDocumentLayout(document: document);
+        final size = layout.documentSize;
+        final recorder = ui.PictureRecorder();
+        final canvas = ui.Canvas(recorder)..scale(0.25);
+        TimesheetDocumentPainter(
+          document: document,
+          layout: layout,
+          face: const TextStyle(),
+          words: timesheetWordsIn(AppLanguage.ja),
+          layers: SheetStratum.content.layers,
+          contentParts: const {TimesheetContentPart.logo},
+          imageFor: logo,
+        ).paint(canvas, size);
+        final picture = recorder.endRecording();
+        final bytes = (await tester.runAsync(() async {
+          final image = await picture.toImage(
+            (size.width / 4).ceil(),
+            (size.height / 4).ceil(),
+          );
+          final data = await image.toByteData();
+          image.dispose();
+          return data!.buffer.asUint8List();
+        }))!;
+        picture.dispose();
+        expect(bytes.any((byte) => byte != 0), isFalse);
       });
     });
 

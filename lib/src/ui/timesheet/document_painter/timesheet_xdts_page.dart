@@ -12,8 +12,9 @@ typedef _XdtsWordsSet = ({
 /// AN XDTS SHEET'S PAGE IN THE VIEWER'S OWN PIXELS (I-162, 유저 2026-11-05:
 /// 「서식 바꾸면 xdts의 해당 서식에서 보는거랑 똑같은 화면」) — where its form
 /// ([_XdtsFormPass]), the values the viewer writes into it
-/// ([_XdtsCountsPass]) and the O.L it draws ([_XdtsOverlapPass]) are
-/// drawn, and how the words are set there.
+/// ([_XdtsCountsPass]), the O.L it draws ([_XdtsOverlapPass]) and the
+/// logo it prints ([_XdtsLogoPass]) are drawn, and how the words are set
+/// there.
 ///
 /// 🚨Everything drawn on it is measured in the 250dpi whole pixels
 /// [XdtsSheetForm] lays the page in, and the page is scaled to the sheet's
@@ -39,6 +40,7 @@ class _XdtsPage {
   late final _XdtsFormPass formPass = _XdtsFormPass(this);
   late final _XdtsCountsPass counts = _XdtsCountsPass(this);
   late final _XdtsOverlapPass overlaps = _XdtsOverlapPass(this);
+  late final _XdtsLogoPass logo = _XdtsLogoPass(this);
 
   /// The viewer's line colour, which its form's words are printed in too.
   static const Color line = Color(0xFF9CC862);
