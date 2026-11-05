@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::shared::storage_format;
+use crate::kernels::shared::{pipeline, storage_format};
 
 /// The fill pass, one pipeline per texture format it has been run on.
 pub struct Fill {
@@ -42,22 +42,7 @@ impl Fill {
             return fail(format!("the fill pass cannot store to {format:?}"));
         };
         let source = include_str!("fill.wgsl").replace("__FORMAT__", token);
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("fill"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = engine
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("fill"),
-                layout: None,
-                module: &module,
-                entry_point: Some("fill"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let pipeline = pipeline(engine, &[&source], "fill");
         self.pipelines.push((format, pipeline.clone()));
         Some(pipeline)
     }

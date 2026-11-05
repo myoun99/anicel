@@ -13,6 +13,8 @@
 // after (gpu-canonical-store 14:51).
 #![cfg_attr(not(test), allow(dead_code, unused_imports))]
 
+#[cfg(test)]
+mod one_builder;
 mod resample;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -36,7 +38,8 @@ pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
 pub(crate) const PREMULTIPLY_WGSL: &str = include_str!("premultiply.wgsl");
 
 /// The pipeline of `sources`, one after another, whose entry point is
-/// `entry` — its bindings as that entry uses them.
+/// `entry` — its bindings as that entry uses them. The crate's one builder:
+/// `one_builder.rs` holds the copies left, on a ledger.
 pub(crate) fn pipeline(engine: &Engine, sources: &[&str], entry: &str) -> wgpu::ComputePipeline {
     let source = sources.join("\n");
     let module = engine

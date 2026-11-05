@@ -226,6 +226,7 @@ fn beside_engine() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use crate::kernels::shared::pipeline;
     use crate::testing::first_engine;
 
     // The shape R1's vote table was first written in (gpu-canonical-store,
@@ -280,18 +281,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     fn the_engine_compiles_what_fxc_cannot() {
         let engine = first_engine();
         let scope = engine.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let module = engine.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("fxc cannot"),
-            source: wgpu::ShaderSource::Wgsl(FXC_CANNOT.into()),
-        });
-        let _pipeline = engine.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("fxc cannot"),
-            layout: None,
-            module: &module,
-            entry_point: Some("main"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
+        let _pipeline = pipeline(engine, &[FXC_CANNOT], "main");
         let error = pollster::block_on(scope.pop());
         assert!(error.is_none(), "{error:?}");
     }
