@@ -65,6 +65,8 @@ fn region_first_right(a: vec2<i32>, b: vec2<i32>, y: i32) -> u32 {
   let rise = high.y - low.y;
   let crossing = wide_add(wide_mul_i32(low.x, rise), wide_mul_i32(high.x - low.x, y - low.y));
   let n = wide_sub(crossing, wide_mul_i32(256 * region.left + 128, rise));
+  // A crossing left of the first centre has no column left of it — nor
+  // has one on it, which the division below says as well.
   if (wide_negative(n)) {
     return 0u;
   }
