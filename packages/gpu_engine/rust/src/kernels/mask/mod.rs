@@ -22,6 +22,7 @@ use std::ops::Range;
 
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::composite::TILE;
 use crate::kernels::shared::{
     Encoded, WIDE_WGSL, encode, fits, flat, pipeline, plane, q, whole, words_buffer,
 };
@@ -85,10 +86,32 @@ impl Mask<'_> {
         Some(())
     }
 
-    /// The rows of its box among the canvas's pixel rows `pixels`.
-    pub(crate) fn band(&self, pixels: Range<i64>) -> Range<u32> {
-        let row = |y: i64| (y - i64::from(self.at.1)).clamp(0, i64::from(self.size.height)) as u32;
-        row(pixels.start)..row(pixels.end)
+    /// The rows of its box that tiles on the canvas's tile `rows` lie on,
+    /// from the lowest of them to the highest — what a pass over those
+    /// tiles is given of it. ⛔ONE BAND: the cel pixel verbs and the
+    /// executor's masked rows took theirs from here, and the blur's finish
+    /// came as a third (11-06).
+    pub(crate) fn band(&self, rows: impl Iterator<Item = i32>) -> Range<u32> {
+        let (low, high) = rows.fold((i32::MAX, i32::MIN), |(low, high), row| {
+            (low.min(row), high.max(row))
+        });
+        if low > high {
+            return 0..0;
+        }
+        let side = i64::from(TILE);
+        let box_row = |row: i32| {
+            let y = i64::from(row) * side - i64::from(self.at.1);
+            y.clamp(0, i64::from(self.size.height)) as u32
+        };
+        box_row(low)..box_row(high + 1)
+    }
+
+    /// The most bytes of its plane a pass is given for each tile it may
+    /// take: a tile's rows across the box's whole width, as `runs` reaches
+    /// no more tile rows than tiles. ⛔ONE BUDGET: the executor, the cel
+    /// pixel verbs and the blur's finish each held a copy (11-06).
+    pub(crate) fn per_tile(&self) -> u64 {
+        u64::from(self.size.stride()) * 4 * u64::from(TILE)
     }
 
     /// The bytes of the box's `rows` in its plane, as a pass is given them.

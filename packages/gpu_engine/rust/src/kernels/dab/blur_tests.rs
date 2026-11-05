@@ -10,13 +10,17 @@ use std::sync::OnceLock;
 
 use super::super::tests::{along, filled, grain, radial, soft, square, texture, words};
 use super::super::{Dab, Paper, StrokeTile};
-use super::{Blurs, MOST_STRIPS_RADIUS, Route, Ways, Window};
+use super::{Blurs, Cover, MOST_STRIPS_RADIUS, Route, Ways, Window};
 use crate::kernels::composite::{Composite, TileAt, TileSet};
+use crate::kernels::mask::tests::masked;
+use crate::kernels::mask::{Mask, MaskBox};
 use crate::testing::{assert_pinned, first_engine};
 
 const ONE: u32 = 65535;
 const WHITE: [u8; 4] = [255; 4];
 const SIDE: i32 = 128;
+/// A finish all the way to the picture: the tool whole, no selection.
+const WHOLE: Cover = Cover { opacity: ONE, mask: None };
 
 /// A step from nothing to 65535 at e, blurred by three boxes of radius 1,
 /// at e − 4 .. e + 3 (past them it is the step itself):
@@ -332,7 +336,8 @@ fn a_tile_past_the_pictures_pages_is_refused() {
     let dab = (square([60, 60, 68, 64], WHITE, 1.0), 1);
     assert!(blurs.blur(engine, &lone, &[dab], None, &picture).is_none());
     assert!(blurs.fill(engine, executor(), (&cel.0, &cel.1), &lone, &picture).is_none());
-    assert!(blurs.finish(engine, &lone, &picture).is_none());
+    let finished = blurs.finish(engine, executor(), (&cel.0, &cel.1), (&lone, &picture), WHOLE);
+    assert!(finished.is_none());
 }
 
 // A dab goes by strips up to MOST_STRIPS_RADIUS and a pass a dispatch past
@@ -483,7 +488,8 @@ fn rubbed(
     blurs.fill(engine, executor(), (&cel.0, &cel.1), &stroke, &picture).unwrap();
     let made = words(&picture[0]);
     blurs.blur(engine, &stroke, dabs, None, &picture).unwrap();
-    (made, words(&blurs.finish(engine, &stroke, &picture).unwrap()))
+    let finished = blurs.finish(engine, executor(), (&cel.0, &cel.1), (&stroke, &picture), WHOLE);
+    (made, words(&finished.unwrap()))
 }
 
 // A stroke tile is made of the cel's, each pixel premultiplied on the
@@ -579,7 +585,7 @@ fn no_tile_to_make_or_finish_is_no_pass() {
     let picture = [filled("test picture", &[JUNK; 2])];
     let blurs = Blurs::new(engine).expect("pages to bind");
     assert!(blurs.fill(engine, executor(), (&cel.0, &cel.1), &[], &picture).is_some());
-    assert!(blurs.finish(engine, &[], &picture).is_some());
+    assert!(blurs.finish(engine, executor(), (&cel.0, &cel.1), (&[], &picture), WHOLE).is_some());
     assert_eq!(words(&picture[0]), [JUNK; 2]);
 }
 
@@ -607,15 +613,18 @@ fn the_cels_runs_make_and_finish_what_one_pass_does() {
             (0..3).map(|_| filled("test picture", &vec![JUNK; 6 * TILE_WORDS])).collect();
         blurs.fill_by(engine, executor(), (&cel.0, &cel.1), &tiles, &picture, most).unwrap();
         let made: Vec<Vec<u32>> = picture.iter().map(words).collect();
-        (made, words(&blurs.finish_by(engine, &tiles, &picture, most).unwrap()))
+        let cel = (&cel.0[..], &cel.1);
+        let finished = blurs.finish_by(engine, executor(), cel, (&tiles, &picture), WHOLE, most);
+        (made, words(&finished.unwrap()))
     };
-    let whole = made_and_finished(blurs.widest(engine).expect("widest"));
+    let whole = made_and_finished(blurs.widest(engine, None).expect("widest"));
     let on_one: Vec<StrokeTile> = (0..6)
         .map(|slot| StrokeTile { column: slot, row: 0, at: TileAt { page: 0, slot: slot as u16 } })
         .collect();
     let picture = [filled("test picture", &vec![JUNK; 6 * TILE_WORDS])];
     blurs.fill(engine, executor(), (&cel.0, &cel.1), &on_one, &picture).unwrap();
-    assert!(words(&blurs.finish(engine, &on_one, &picture).unwrap()) == whole.1);
+    let finished = blurs.finish(engine, executor(), (&cel.0, &cel.1), (&on_one, &picture), WHOLE);
+    assert!(words(&finished.unwrap()) == whole.1);
     assert!(made_and_finished((2, 3)) == whole);
     assert!(made_and_finished((1, 6)) == whole);
     assert!(made_and_finished((3, 2)) == whole);
@@ -650,4 +659,121 @@ fn every_device_finishes_the_pinned_stroke() {
     let (_, finished) = rubbed(&cel, &tiles, &dabs);
     let bytes: Vec<u8> = finished.iter().flat_map(|word| word.to_le_bytes()).collect();
     assert_pinned("dab/blur-finished", &bytes);
+}
+
+// ---- The cover ----
+
+/// `tiles` of `from` made into a picture, left as it was made, and
+/// finished onto `onto` under `cover`, a pass taking no more than `most`
+/// (the widest where none): the finished tiles' words, or none where the
+/// finish is refused.
+fn covered(
+    (from, onto): (&(Vec<wgpu::Buffer>, TileSet), &(Vec<wgpu::Buffer>, TileSet)),
+    tiles: &[(i32, i32)],
+    cover: Cover,
+    most: Option<(usize, usize)>,
+) -> Option<Vec<u32>> {
+    let engine = first_engine();
+    let stroke = stroke_of(tiles);
+    let blurs = Blurs::new(engine).expect("pages to bind");
+    let picture = [filled("test picture", &vec![JUNK; tiles.len() * TILE_WORDS])];
+    blurs.fill(engine, executor(), (&from.0, &from.1), &stroke, &picture).unwrap();
+    let (onto, stroke) = ((&onto.0[..], &onto.1), (&stroke[..], &picture[..]));
+    let finished = match most {
+        Some(most) => blurs.finish_by(engine, executor(), onto, stroke, cover, most),
+        None => blurs.finish(engine, executor(), onto, stroke, cover),
+    };
+    Some(words(&finished?))
+}
+
+// A finish is covered as a row is laid (R28): the tool's opacity under the
+// selection's byte at the pixel. Red (200, 100, 50) made into a picture
+// and finished onto opaque blue (50, 100, 200) moves 32896 / 65535 of the
+// way where the byte is 128 — 12850 + round(38550 · 32896 / 65535) =
+// 32201 in red, so (125, 100, 125, 255) stored —, all of it where the
+// byte is 255, and none where it is 0, past the box, or in the padding of
+// a row's last word.
+#[test]
+fn a_finish_is_covered_by_the_selection_s_byte() {
+    let red = u32::from_le_bytes([200, 100, 50, 255]);
+    let blue = u32::from_le_bytes([50, 100, 200, 255]);
+    let from = cel_of(|_, _| red, (0, 0), (1, 1), &[]);
+    let onto = cel_of(|_, _| blue, (0, 0), (1, 1), &[]);
+    // 61 across, 32..93: a row's last word holds three bytes past the box.
+    let mask = masked((32, 16), (61, 40), |x, _| match x {
+        32..64 => 128,
+        64..80 => 255,
+        _ => 0,
+    });
+    let cover = Cover { opacity: ONE, mask: Some(&mask.mask()) };
+    let finished = covered((&from, &onto), &[(0, 0)], cover, None).unwrap();
+    let at = |x: i32, y: i32| finished[(y * SIDE + x) as usize];
+    let half = u32::from_le_bytes([125, 100, 125, 255]);
+    for (x, y, want) in [(32, 16, half), (63, 55, half), (64, 16, red), (79, 55, red)] {
+        assert_eq!(at(x, y), want, "({x}, {y})");
+    }
+    for (x, y) in [(80, 20), (92, 20), (93, 20), (95, 20), (31, 20), (40, 15), (40, 56)] {
+        assert_eq!(at(x, y), blue, "({x}, {y})");
+    }
+}
+
+// A selection's byte and the tool's opacity are one cover (blend_cover):
+// under a byte of 128 a whole opacity finishes as 32896 under none, and
+// 32768 as 16448 — round(32768 · 32896 / 65535).
+#[test]
+fn a_selection_s_byte_and_the_opacity_are_one_cover() {
+    let from = cel_of(stored_hashed, (0, 0), (2, 1), &[]);
+    let onto = cel_of(|x, y| stored_hashed(y, x), (0, 0), (2, 1), &[]);
+    let mask = masked((0, 0), (256, 128), |_, _| 128);
+    let half = mask.mask();
+    let finish = |opacity, mask: Option<&Mask>| {
+        covered((&from, &onto), &[(1, 0), (0, 0)], Cover { opacity, mask }, None).unwrap()
+    };
+    assert!(finish(ONE, Some(&half)) == finish(32896, None));
+    assert!(finish(32768, Some(&half)) == finish(16448, None));
+    assert!(finish(32896, None) != finish(16448, None));
+}
+
+// A pass is given the rows of the mask its tiles lie on, however they are
+// cut (shared `runs`): over tiles on three tile rows in no order, under a
+// box from (-37, 51) of bytes all or nothing, every finished pixel is the
+// picture's where its byte is 255 and the cel's where it is 0 or no box
+// covers it — a pass a tile, two, three, and the widest.
+#[test]
+fn each_pass_reads_the_mask_s_rows_its_tiles_lie_on() {
+    let onto_stored = |x: i32, y: i32| stored_hashed(y + 1000, x);
+    let from = cel_of(stored_hashed, (0, 0), (3, 3), &[]);
+    let onto = cel_of(onto_stored, (0, 0), (3, 3), &[]);
+    let tiles = [(1, 2), (0, 0), (2, 1), (0, 2), (1, 0), (2, 2), (0, 1)];
+    let all = |x: i32, y: i32| (x.wrapping_mul(73) ^ y.wrapping_mul(151)) & 4 != 0;
+    let mask = masked((-37, 51), (300, 290), |x, y| if all(x, y) { 255 } else { 0 });
+    let inside = |x: i32, y: i32| (-37..263).contains(&x) && (51..341).contains(&y);
+    let cover = Cover { opacity: ONE, mask: Some(&mask.mask()) };
+    for most in [None, Some((1, 1)), Some((1, 2)), Some((1, 3))] {
+        let finished = covered((&from, &onto), &tiles, cover, most).unwrap();
+        for (index, &(column, row)) in tiles.iter().enumerate() {
+            for texel in 0..SIDE * SIDE {
+                let (x, y) = (column * SIDE + texel % SIDE, row * SIDE + texel / SIDE);
+                let covered = inside(x, y) && all(x, y);
+                let want = if covered { stored_hashed(x, y) } else { onto_stored(x, y) };
+                let got = finished[index * (SIDE * SIDE) as usize + texel as usize];
+                assert_eq!(got, want, "({x}, {y}) at {most:?}");
+            }
+        }
+    }
+}
+
+// A finish under a selection needs a plane that holds its box: 12 bytes
+// for a box of 24 is refused.
+#[test]
+fn a_finish_under_a_mask_needs_a_plane_that_holds_its_box() {
+    let cel = cel_of(stored_hashed, (0, 0), (1, 1), &[]);
+    let mask = masked((0, 0), (4, 3), |_, _| 255);
+    let short = Mask { size: MaskBox { width: 5, height: 3 }, ..mask.mask() };
+    let finish = |mask: &Mask| {
+        let cover = Cover { opacity: ONE, mask: Some(mask) };
+        covered((&cel, &cel), &[(0, 0)], cover, None)
+    };
+    assert!(finish(&short).is_none());
+    assert!(finish(&mask.mask()).is_some());
 }

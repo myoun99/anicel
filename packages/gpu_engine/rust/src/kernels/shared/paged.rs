@@ -34,8 +34,7 @@ pub(crate) struct Given {
 }
 
 impl Given {
-    /// `words`, `band`'s bytes of its buffer after them — copied there on
-    /// `encoder`, before the passes that read them —, and `uniform`.
+    /// [`given`] `words` and `band`, and `uniform`.
     pub(crate) fn new(
         engine: &Engine,
         encoder: &mut wgpu::CommandEncoder,
@@ -43,24 +42,37 @@ impl Given {
         band: Option<(&wgpu::Buffer, Range<u64>)>,
         uniform: &[u32],
     ) -> Option<Given> {
-        let copied = band.as_ref().map_or(0, |(_, bytes)| bytes.end - bytes.start);
-        let size = words.len() as u64 * 4 + copied;
-        fits(engine, &[size], std::iter::empty())?;
-        let given = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pass given"),
-            size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        engine.queue.write_buffer(&given, 0, &le_bytes(words));
-        if let Some((from, bytes)) = band {
-            encoder.copy_buffer_to_buffer(from, bytes.start, &given, size - copied, copied);
-        }
         Some(Given {
-            words: given,
+            words: given(engine, encoder, words, band)?,
             uniform: words_buffer(engine, "pass uniform", uniform, wgpu::BufferUsages::UNIFORM),
         })
     }
+}
+
+/// What a pass is given: `words`, and `band`'s bytes of its buffer after
+/// them — a selection's rows, copied there on `encoder`, before the passes
+/// that read them. The blur's cel passes, shaped apart, are given theirs by
+/// it too.
+pub(crate) fn given(
+    engine: &Engine,
+    encoder: &mut wgpu::CommandEncoder,
+    words: &[u32],
+    band: Option<(&wgpu::Buffer, Range<u64>)>,
+) -> Option<wgpu::Buffer> {
+    let copied = band.as_ref().map_or(0, |(_, bytes)| bytes.end - bytes.start);
+    let size = words.len() as u64 * 4 + copied;
+    fits(engine, &[size], std::iter::empty())?;
+    let given = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("pass given"),
+        size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    engine.queue.write_buffer(&given, 0, &le_bytes(words));
+    if let Some((from, bytes)) = band {
+        encoder.copy_buffer_to_buffer(from, bytes.start, &given, size - copied, copied);
+    }
+    Some(given)
 }
 
 /// `pipeline` over `pass`, given `given`, its tiles a workgroup each: what

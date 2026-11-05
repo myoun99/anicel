@@ -34,7 +34,7 @@ pub(crate) use dispatch::{
     Encoded, encode, encode_on, fits, flat, le_bytes, plane, range, room, tiles_a_pass, whole,
     words_buffer,
 };
-pub(crate) use paged::{Given, Run, cut_by, encoded};
+pub(crate) use paged::{Given, Run, cut_by, encoded, given};
 pub(crate) use pages::{NO_PAGE, Own, Pages, page_table, runs};
 pub(crate) use resample::{ResampleMap, ResampleMode, q};
 

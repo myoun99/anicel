@@ -36,9 +36,10 @@ use crate::kernels::composite::{self, Composite, Composited, TILE_TEXELS, TileSe
 use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
+use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table,
-    pipeline, plane, range, runs, tiles_a_pass, whole, words_buffer,
+    Encoded, ISQRT_WGSL, Own, Pages, ResampleMap, TILE_WGSL, encode, encode_on, fits, flat,
+    given, page_table, pipeline, plane, range, runs, tiles_a_pass, whole,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -54,10 +55,24 @@ const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 const OWN: Own = Own { storage: 3, uniform: 1 };
 /// Any binding past the dab's own, 0 to 3, does as well (mutant d04, 11-06).
 const PAGES_AT: u32 = 4;
-/// blur_cel.wgsl's: the cel and the slots, the pages from binding 2.
+/// blur_cel.wgsl's: the cel and what a pass is given, the pages from
+/// binding 2.
 const CEL_OWN: Own = Own { storage: 2, uniform: 0 };
 /// blur_cel.wgsl's BLUR_CEL_GROUP: the texels of a tile a workgroup takes.
 const CEL_GROUP: u64 = 256;
+/// blur_cel.wgsl's BLUR_COVER_WORDS and BLUR_TILE_WORDS: what a pass is
+/// given before its tiles, and for each of them.
+const COVER_WORDS: usize = 8;
+const TILE_PLACE_WORDS: u64 = 4;
+
+/// How far a finish moves a pixel of the cel toward the picture: the tool's
+/// `opacity` (65535 whole) under the selection's `mask` where one covers
+/// the stroke — resultTile's mask, as a paint stroke's row is laid (R28).
+#[derive(Clone, Copy)]
+pub(crate) struct Cover<'a> {
+    pub(crate) opacity: u32,
+    pub(crate) mask: Option<&'a Mask<'a>>,
+}
 /// The cel's copy has no edge: a stroke reaches past the canvas onto the
 /// pasteboard (BrushBlurPicture's wall), where the cel has tiles too.
 const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
@@ -304,7 +319,7 @@ impl Blurs {
         let cel_pages = Pages::writable(engine, CEL_OWN, CEL_OWN.storage, usize::MAX)?;
         let cel_paged = cel_pages.source();
         let cel_source = include_str!("blur_cel.wgsl");
-        let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, cel_paged.as_str(), cel_source];
+        let cel = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, cel_paged.as_str(), BYTE_WGSL, cel_source];
         Some(Self {
             one: Dispatches::new(engine, 1)?,
             widest: Dispatches::new(engine, usize::MAX)?,
@@ -486,7 +501,7 @@ impl Blurs {
         tiles: &[StrokeTile],
         picture: &[wgpu::Buffer],
     ) -> Option<()> {
-        self.fill_by(engine, executor, cel, tiles, picture, self.widest(engine)?)
+        self.fill_by(engine, executor, cel, tiles, picture, self.widest(engine, None)?)
     }
 
     /// `fill`, a pass taking no more than `most` (pages, tiles).
@@ -501,90 +516,123 @@ impl Blurs {
     ) -> Option<()> {
         on_pages(tiles, picture)?;
         let copied = copied(engine, executor, (pages, cel), tiles)?;
-        self.through_cel(engine, &self.filling, &copied.out, (tiles, picture), most)
+        self.through_cel(engine, &self.filling, &copied.out, (tiles, picture), None, most)
     }
 
-    /// `tiles` finished (`blur_finish`): their picture stored as the cel
-    /// stores it — straight RGBA8, tile after tile in `tiles`' order, as
-    /// the executor's output is. Submits the work, the caller waits.
+    /// `tiles` finished (`blur_finish`): each pixel of `cel` — its tiles on
+    /// the pool's pages, copied as the executor copies a row whole — moved
+    /// toward the picture by `cover`, stored as the cel stores it: straight
+    /// RGBA8, tile after tile in `tiles`' order, as the executor's output
+    /// is. Submits the work, the caller waits.
     pub(crate) fn finish(
         &self,
         engine: &Engine,
-        tiles: &[StrokeTile],
-        picture: &[wgpu::Buffer],
+        executor: &Composite,
+        cel: (&[wgpu::Buffer], &TileSet),
+        (tiles, picture): (&[StrokeTile], &[wgpu::Buffer]),
+        cover: Cover,
     ) -> Option<wgpu::Buffer> {
-        self.finish_by(engine, tiles, picture, self.widest(engine)?)
+        let most = self.widest(engine, cover.mask)?;
+        self.finish_by(engine, executor, cel, (tiles, picture), cover, most)
     }
 
     /// `finish`, a pass taking no more than `most` (pages, tiles).
     fn finish_by(
         &self,
         engine: &Engine,
-        tiles: &[StrokeTile],
-        picture: &[wgpu::Buffer],
+        executor: &Composite,
+        (pages, cel): (&[wgpu::Buffer], &TileSet),
+        (tiles, picture): (&[StrokeTile], &[wgpu::Buffer]),
+        cover: Cover,
         most: (usize, usize),
     ) -> Option<wgpu::Buffer> {
         on_pages(tiles, picture)?;
-        let finished = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("blur finished"),
-            size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        self.through_cel(engine, &self.finishing, &finished, (tiles, picture), most)?;
-        Some(finished)
+        if let Some(mask) = cover.mask {
+            mask.checked()?;
+        }
+        let copied = copied(engine, executor, (pages, cel), tiles)?;
+        let finishing = &self.finishing;
+        self.through_cel(engine, finishing, &copied.out, (tiles, picture), Some(cover), most)?;
+        Some(copied.out)
     }
 
     /// The most a pass of the cel's takes on this device: the pages it
     /// binds, and the tiles of the cel a binding holds and a dispatch
-    /// reaches. No test lays a cel past a binding (2 GB here, 32,768
-    /// tiles), so none tells a tile's bytes from its words in this line
-    /// (mutant r19, 11-06).
-    fn widest(&self, engine: &Engine) -> Option<(usize, usize)> {
-        Some((self.cel_pages.per_pass(), tiles_a_pass(engine, TILE_TEXELS * 4, 0)?))
+    /// reaches — and of what it is given, a tile's place and, under `mask`,
+    /// a tile row of the mask's rows at their worst. No test lays a cel past
+    /// a binding (2 GB here, 32,768 tiles), so none tells a tile's bytes
+    /// from its words in this line (mutant r19, 11-06).
+    fn widest(&self, engine: &Engine, mask: Option<&Mask>) -> Option<(usize, usize)> {
+        let band = mask.map_or(0, Mask::per_tile);
+        let per_tile = (TILE_TEXELS * 4).max(TILE_PLACE_WORDS * 4 + band);
+        let most = tiles_a_pass(engine, per_tile, COVER_WORDS as u64 * 4)?;
+        Some((self.cel_pages.per_pass(), most))
     }
 
     /// One of blur_cel.wgsl's passes between `picture` and `cel`, `tiles`
     /// one after another as the executor puts them, a run of them a
-    /// dispatch ([`runs`]).
+    /// dispatch ([`runs`]), each given the finish's `cover` and the rows of
+    /// its mask the run's tiles lie on.
     fn through_cel(
         &self,
         engine: &Engine,
         pass: &wgpu::ComputePipeline,
         cel: &wgpu::Buffer,
         (tiles, picture): (&[StrokeTile], &[wgpu::Buffer]),
+        cover: Option<Cover>,
         (pages_per_pass, most): (usize, usize),
     ) -> Option<()> {
         let tile_bytes = TILE_TEXELS * 4;
+        let mask = cover.and_then(|cover| cover.mask);
         let on = tiles.iter().map(|tile| Some(tile.at.page));
-        let runs = runs(on, None, pages_per_pass, most);
-        let slots: Vec<wgpu::Buffer> = runs
+        let rows: Option<Vec<i32>> = mask.map(|_| tiles.iter().map(|tile| tile.row).collect());
+        let runs = runs(on, rows.as_deref(), pages_per_pass, most);
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let given: Vec<wgpu::Buffer> = runs
             .iter()
             .map(|(run, pages)| {
+                let ran = &tiles[run.clone()];
                 let table: Vec<u32> = page_table(pages, picture.len()).collect();
-                let slots: Vec<u32> = tiles[run.clone()]
-                    .iter()
-                    .flat_map(|tile| [table[usize::from(tile.at.page)], u32::from(tile.at.slot)])
-                    .collect();
-                words_buffer(engine, "blur cel slots", &slots, wgpu::BufferUsages::STORAGE)
+                let mut words = vec![0; COVER_WORDS];
+                words.extend(ran.iter().flat_map(|tile| {
+                    let k = table[usize::from(tile.at.page)];
+                    [k, u32::from(tile.at.slot), tile.column as u32, tile.row as u32]
+                }));
+                let band = mask.map(|mask| {
+                    let rows = mask.band(ran.iter().map(|tile| tile.row));
+                    let shape = [
+                        1,
+                        words.len() as u32,
+                        mask.size.width,
+                        rows.len() as u32,
+                        mask.size.stride(),
+                        mask.at.0 as u32,
+                        (mask.at.1 + rows.start as i32) as u32,
+                    ];
+                    words[1..COVER_WORDS].copy_from_slice(&shape);
+                    mask.rows(&rows)
+                });
+                words[0] = cover.map_or(0, |cover| cover.opacity);
+                given(engine, &mut encoder, &words, band)
             })
-            .collect();
+            .collect::<Option<_>>()?;
         let dispatches: Vec<Encoded> = runs
             .iter()
-            .zip(&slots)
-            .map(|((run, pages), slots)| {
+            .zip(&given)
+            .map(|((run, pages), given)| {
                 let bytes = run.start as u64 * tile_bytes..run.end as u64 * tile_bytes;
                 let resource = range(cel, bytes);
                 let mut bound = vec![wgpu::BindGroupEntry { binding: 0, resource }];
-                bound.extend(whole(&[(1, slots)]));
+                bound.extend(whole(&[(1, given)]));
                 bound.extend(self.cel_pages.entries(of_pages(picture, pages)));
                 let groups = ((TILE_TEXELS / CEL_GROUP) as u32, run.len() as u32, 1);
                 Encoded { pipeline: pass, bound, groups }
             })
             .collect();
-        encode(engine, &dispatches);
+        encode_on(engine, &mut encoder, &dispatches);
+        engine.queue.submit([encoder.finish()]);
         Some(())
     }
 }

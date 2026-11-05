@@ -55,7 +55,6 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
-use std::ops::Range;
 use std::sync::{Mutex, PoisonError};
 
 use wgpu::util::DeviceExt;
@@ -412,9 +411,7 @@ impl Composite {
         // out; a surface takes its pixels from the last pass itself.
         let waiting = u64::from(matches!(target, Target::Tiles(_)));
         let held = (kept * 2 + waiting) * TILE_TEXELS * 4;
-        // A tile's rows of the mask at their worst: a tile row of the box's
-        // whole width.
-        let band = plan.mask.map_or(0, |mask| u64::from(mask.size.stride()) * 4 * u64::from(TILE));
+        let band = plan.mask.map_or(0, Mask::per_tile);
         let per_tile = held + band;
         let chunk = tiles_a_pass(engine, per_tile, 0)?.min(budget.tiles).min(tiles.len().max(1));
         if chunk == 0 {
@@ -442,7 +439,7 @@ impl Composite {
             let out_at = kept * 2 * TILE_TEXELS * chunk_tiles as u64;
             let mask_at = out_at + waiting * TILE_TEXELS * chunk_tiles as u64;
             let shape = plan.mask.map_or([0; 6], |mask| {
-                let rows = mask.band(pixel_rows(&tiles[run.clone()]));
+                let rows = mask.band(tiles[run.clone()].iter().map(|&(_, row)| row));
                 let (plane, bytes) = mask.rows(&rows);
                 if !bytes.is_empty() {
                     let length = bytes.end - bytes.start;
@@ -534,15 +531,6 @@ fn compile(engine: &Engine, pages: &Pages, output: &str) -> wgpu::ComputePipelin
         &body,
     ];
     pipeline(engine, &sources, "composite")
-}
-
-/// The canvas's pixel rows `tiles` lie on, from their first tile row to
-/// their last.
-fn pixel_rows(tiles: &[(i32, i32)]) -> Range<i64> {
-    let side = i64::from(TILE);
-    let first = tiles.iter().map(|&(_, row)| i64::from(row)).min().unwrap_or(0);
-    let last = tiles.iter().map(|&(_, row)| i64::from(row)).max().unwrap_or(-1);
-    first * side..(last + 1) * side
 }
 
 /// Fails where a row is masked and the plan has no mask, or where the mask's

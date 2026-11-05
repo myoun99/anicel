@@ -96,18 +96,6 @@ fn blur_picture(x: i32, y: i32) -> vec4<u32> {
   return blend_unpack16(vec2<u32>(page_word(k, at), page_word(k, at + 1u)));
 }
 
-// What `was` comes to moved toward `to` by `share` of the way, rounded
-// half away from zero: round(d·share / 65535) has no tie, 65535 being odd.
-// The law of blend.wgsl's `blend_clip_toward(to, was, share, 65535)`; two
-// so far, so they stay apart until a third comes (rule of three, 캔버스
-// 베이스 11-06 02:29).
-fn blur_toward(was: u32, to: u32, share: u32) -> u32 {
-  if (to >= was) {
-    return was + blend_mul(to - was, share);
-  }
-  return was - blend_mul(was - to, share);
-}
-
 // The dab's pixel at (x, y) moved toward its blur `to` by what the dab
 // lays there onto nothing.
 fn blur_move(x: i32, y: i32, to: vec4<u32>) {
@@ -128,12 +116,7 @@ fn blur_move(x: i32, y: i32, to: vec4<u32>) {
   let k = plan[held + 1u];
   let at = blur_word(tile, local);
   let was = blend_unpack16(vec2<u32>(page_word(k, at), page_word(k, at + 1u)));
-  let moved = blend_pack16(vec4<u32>(
-    blur_toward(was.x, to.x, share),
-    blur_toward(was.y, to.y, share),
-    blur_toward(was.z, to.z, share),
-    blur_toward(was.w, to.w, share),
-  ));
+  let moved = blend_pack16(blend_toward4(was, to, share));
   page_put(k, at, moved.x);
   page_put(k, at + 1u, moved.y);
 }

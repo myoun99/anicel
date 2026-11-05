@@ -346,7 +346,7 @@ fn most(engine: &Engine, mask: Option<&Mask>, verb: &Verb) -> Option<usize> {
         Incoming::Recipe { step, .. } => u64::from(step),
         Incoming::Value(_) => 0,
     };
-    let band = mask.map_or(0, |mask| u64::from(mask.size.stride()) * 4 * u64::from(TILE));
+    let band = mask.map_or(0, Mask::per_tile);
     let given = TILE_WORDS as u64 * 4 + 8 + step * TILE_TEXELS + band;
     let runs = if verb.is_undo() { 0 } else { TILE_TEXELS * 8 };
     let per_tile = TILE_BYTES.max(runs).max(given);
@@ -455,11 +455,9 @@ fn within(tile: i32, from: i32, length: u32) -> Option<u32> {
     (first < i64::from(length) && first + i64::from(TILE) > 0).then_some(first as u32)
 }
 
-/// The rows of `mask`'s box that `run`'s tiles lie on: from its first
-/// tile's row to its last's, as the walk goes row by row.
+/// The rows of `mask`'s box that `run`'s tiles lie on.
 fn band(walk: &[Walked], run: &Range<usize>, mask: &Mask) -> Range<u32> {
-    let y = |row: i32| i64::from(row) * i64::from(TILE);
-    mask.band(y(walk[run.start].row)..y(walk[run.end - 1].row + 1))
+    mask.band(walk[run.clone()].iter().map(|tile| tile.row))
 }
 
 /// `pass`'s tiles as walk.wgsl reads them, on the pool's `pool` pages: a

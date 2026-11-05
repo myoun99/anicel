@@ -258,13 +258,27 @@ fn blend_set_sat(c: vec3<u32>, s: u32) -> vec3<u32> {
   );
 }
 
-// ClipColor's move of one channel toward the luminosity l: l + (v - l)·k/n,
-// on magnitudes. |v - l| and k are at most 65535, so the product and its
-// rounding fit u32.
-fn blend_clip_toward(v: i32, l: i32, k: u32, n: u32) -> i32 {
-  let offset = v - l;
+// `start` moved toward `to` by k/n of the way: start + (to - start)·k/n,
+// rounded on magnitudes — half away from zero, and with n = 65535, odd, no
+// half at all. |to - start| and k are at most 65535, so the product and its
+// rounding fit u32. ⛔ONE MOVE: ClipColor's toward the luminosity and a
+// blur dab's toward its blur each spelled it, and the blur's finish came as
+// a third (11-06, rule of three).
+fn blend_toward(start: i32, to: i32, k: u32, n: u32) -> i32 {
+  let offset = to - start;
   let moved = i32((u32(abs(offset)) * k + n / 2u) / n);
-  return l + select(moved, -moved, offset < 0);
+  return start + select(moved, -moved, offset < 0);
+}
+
+// A pixel on the 16-bit scale moved toward `to` by `share` / 65535, every
+// channel by the same share.
+fn blend_toward4(start: vec4<u32>, to: vec4<u32>, share: u32) -> vec4<u32> {
+  return vec4<u32>(
+    u32(blend_toward(i32(start.x), i32(to.x), share, W_ONE)),
+    u32(blend_toward(i32(start.y), i32(to.y), share, W_ONE)),
+    u32(blend_toward(i32(start.z), i32(to.z), share, W_ONE)),
+    u32(blend_toward(i32(start.w), i32(to.w), share, W_ONE)),
+  );
 }
 
 // SetLum(c, l) with its ClipColor. The luminosity after the shift is l
@@ -279,18 +293,18 @@ fn blend_set_lum(c: vec3<u32>, l: u32) -> vec3<u32> {
   if (low < 0 && lum - low != 0) {
     let n = u32(lum - low);
     v = vec3<i32>(
-      blend_clip_toward(v.x, lum, l, n),
-      blend_clip_toward(v.y, lum, l, n),
-      blend_clip_toward(v.z, lum, l, n),
+      blend_toward(lum, v.x, l, n),
+      blend_toward(lum, v.y, l, n),
+      blend_toward(lum, v.z, l, n),
     );
   }
   if (high > i32(W_ONE) && high - lum != 0) {
     let n = u32(high - lum);
     let k = W_ONE - l;
     v = vec3<i32>(
-      blend_clip_toward(v.x, lum, k, n),
-      blend_clip_toward(v.y, lum, k, n),
-      blend_clip_toward(v.z, lum, k, n),
+      blend_toward(lum, v.x, k, n),
+      blend_toward(lum, v.y, k, n),
+      blend_toward(lum, v.z, k, n),
     );
   }
   return vec3<u32>(clamp(v, vec3<i32>(0), vec3<i32>(i32(W_ONE))));
