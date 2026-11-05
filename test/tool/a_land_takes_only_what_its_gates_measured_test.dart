@@ -57,6 +57,22 @@ void main() {
       expect(all, contains(r'cmd_crate "$name"'));
     });
 
+    // 관제 2026-11-05 (i163-dropper-no-paper): a red architecture run with no
+    // [E] line showed nothing, and its output was removed.
+    test('a red gate keeps its whole output in the lane, and shows its tail '
+        'when no test says [E]', () {
+      final kept = at(
+        gates,
+        r'cp "$out/architecture" "$p/build/lane-architecture.log"',
+      );
+      expect(kept, isNot(-1));
+      expect(at(gates, r'rm -rf "$out"'), greaterThan(kept));
+      expect(
+        at(gates, r'tail -20 "$p/build/lane-architecture.log"'),
+        isNot(-1),
+      );
+    });
+
     // 관제 2026-11-05: the grid kernel's X3507 was red in release alone — a
     // debug build's wgpu compiles shaders with optimizations skipped.
     test('🚨the crate\'s tests run in release as well as debug', () {

@@ -949,19 +949,29 @@ gates() {
   architecture=$!
   wait "$analyze"; analyzed=$?
   wait "$architecture"; tested=$?
+  # A red gate keeps its whole output in the lane, beside the native and
+  # crate logs. 관제 2026-11-05 (i163-dropper-no-paper): an architecture run
+  # went red with no [E] line, the folder was removed, and the same tree
+  # was green again — which test it was is lost for good.
+  mkdir -p "$p/build"
+  cp "$out/analyze" "$p/build/lane-analyze.log"
+  cp "$out/architecture" "$p/build/lane-architecture.log"
+  rm -rf "$out"
   if [ "$analyzed" -ne 0 ]; then
-    tail -20 "$out/analyze" >&2
-    rm -rf "$out"
-    die "analyze is not clean — this is refusal 3"
+    tail -20 "$p/build/lane-analyze.log" >&2
+    die "analyze is not clean — this is refusal 3; the whole log: $p/build/lane-analyze.log"
   fi
   if [ "$tested" -ne 0 ]; then
-    grep -A4 '\[E\]' "$out/architecture" | head -20 >&2
-    rm -rf "$out"
-    die "the architecture gate is red
+    if grep -q '\[E\]' "$p/build/lane-architecture.log"; then
+      grep -A4 '\[E\]' "$p/build/lane-architecture.log" | head -20 >&2
+    else
+      # Red without [E]: a crash, or a run that never reported a test.
+      tail -20 "$p/build/lane-architecture.log" >&2
+    fi
+    die "the architecture gate is red; the whole log: $p/build/lane-architecture.log
   A 'grew past' failure is the lane's. A 'ceiling is slack' failure is the
   trunk's: land the lane, then lower the ceiling to the measured number."
   fi
-  rm -rf "$out"
 
   # Refusal 5. Only a lane that touched the C pays for it — its parity run
   # outside the machine's line, as the architecture tests above run.
