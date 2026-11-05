@@ -55,6 +55,13 @@ impl ResampleMap {
     /// `None` when nothing lands anywhere: a matrix past the spec's ranges
     /// (a reduction past 2048 times), or a homography with no positive w
     /// at the output's corners, where w <= 0 is outside.
+    ///
+    /// A g or h past an i32 (|g| >= 2^-5 a pixel) lands nothing too —
+    /// canvas base agreed (gpu-int-spec-canvas 16:48). Divided through, w is
+    /// at most 1 inside, so it changes by more than 1/32 a pixel and what
+    /// shows (w > 2^-12) is a band under 32 px a row: what is lost is a
+    /// perspective piece whose vanishing line comes within 32 px of the
+    /// output's edge, as rare as a reduction past 2048 times.
     pub(crate) fn new(
         inverse: [f64; 9],
         radius_floor: f64,

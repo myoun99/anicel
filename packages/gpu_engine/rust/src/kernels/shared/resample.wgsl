@@ -292,7 +292,10 @@ fn resample_cover(s: i32, position: i32, extent: u32) -> i32 {
 // Pick where the preimage is an axis-aligned rectangle: each tap weighs
 // the area it shares with it, so nothing is quantised and a tie is real.
 fn resample_pick_exact(source: u32, point: ResamplePoint) -> u32 {
-  let reach = vec2<i32>((point.extent + vec2<u32>(0x2ffffu)) >> vec2<u32>(17u));
+  // ⌈ext / 2^17⌉: a covered pixel is never further from the centre one.
+  // The spec's ⌈(ext + 2^16) / 2^17⌉ looks one ring more for no value —
+  // canvas base let it go for the speed (gpu-int-spec-canvas 16:48).
+  let reach = vec2<i32>((point.extent + vec2<u32>(0x1ffffu)) >> vec2<u32>(17u));
   let centre = vec2<i32>(resample_round16(point.u), resample_round16(point.v));
   var word = 0u;
   if (resample_flat(source, centre, reach, &word)) {
