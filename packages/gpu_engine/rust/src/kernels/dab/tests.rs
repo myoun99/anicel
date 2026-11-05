@@ -673,6 +673,17 @@ fn a_second_tips_dab_piles_its_own_plane_and_alone_shows_nothing() {
     assert_eq!(piled(&[(0, 0)], [0; 4], &[second_square(0.5)]).at(0, 1, 1), ([0; 4], 0));
 }
 
+// A second tip's dab settles against its own plane: at opacity ½ it lifts
+// its level to 32768 over red laid whole — which would have stopped it —
+// and laid again it lays nothing.
+#[test]
+fn a_second_tips_dab_settles_against_its_own_plane() {
+    let half = || Dab { opacity: 0.5, ..second_square(1.0) };
+    let at = Dual { mode: MULTIPLY, density: 1.0, level: 0 };
+    let piled = dual(&at, &[square([0, 0, 4, 4], RED, 1.0), half(), half()]);
+    assert_eq!(piled.level(0, 1, 1), 32768);
+}
+
 // Multiply, the default: the first tip's alpha times (1 − d) + d·level.
 // Red laid whole under a level of 32768 on the left shows round(32768/257)
 // = 128 at a density of 1, and nothing where the second laid nothing; at
