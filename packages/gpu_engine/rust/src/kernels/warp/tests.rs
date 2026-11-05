@@ -158,6 +158,38 @@ fn one_map_takes_every_pixel_of_the_window() {
     assert_eq!(words(&read_buffer(engine, &none)), [0; 42]);
 }
 
+/// A mirror at full size — C6's flip, which the app makes as a reorder of
+/// rows and columns (`CutPiece.flippedImage`) before any scale — puts every
+/// word as it is in every mode, though R1 takes a mirror through the mode's
+/// own path and not as its copy; past the box there is nothing.
+#[test]
+fn a_mirror_at_full_size_puts_every_word_as_it_is() {
+    let Rig { engine, warp, .. } = rig();
+    let (width, height) = (7, 5);
+    let pixels = picture(width, height);
+    let buffer = boxed(&pixels);
+    let source = Boxed { pixels: &buffer, size: (width, height) };
+    let window = Window { at: (-1, -1), size: (width + 2, height + 2) };
+    let flip = |on: bool, side: u32| if on { (-1.0, f64::from(side)) } else { (1.0, 0.0) };
+    let back = |on: bool, side: u32, at: i32| if on { side as i32 - 1 - at } else { at };
+    for (across, down) in [(true, false), (false, true), (true, true)] {
+        let ((a, c), (e, f)) = (flip(across, width), flip(down, height));
+        let inverse = [a, 0.0, c, 0.0, e, f, 0.0, 0.0, 1.0];
+        let wanted: Vec<u32> = (-1..height as i32 + 1)
+            .flat_map(|y| (-1..width as i32 + 1).map(move |x| (x, y)))
+            .map(|(x, y)| (back(across, width, x), back(down, height, y)))
+            .map(|(x, y)| at(&pixels, (width, height), x, y))
+            .collect();
+        for mode in [ResampleMode::Blend, ResampleMode::Pick, ResampleMode::Nearest] {
+            let map = ResampleMap::new(inverse, 1.0, mode, width, height).expect("a mirror lands");
+            assert!(!map.is_copy(), "a mirror is not R1's copy");
+            let warped = warp.one(engine, &source, Some(&map), window).expect("warp");
+            let warped = words(&read_buffer(engine, &warped));
+            assert_eq!(warped, wanted, "{mode:?}, across {across}, down {down}");
+        }
+    }
+}
+
 /// A warp refuses a picture its buffer does not hold, a window of no
 /// pixels and owners short of the window.
 #[test]
