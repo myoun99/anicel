@@ -32,10 +32,12 @@ void main() {
       code.indexWhere((line) => line.contains(text));
 
   /// The lines of [code] that run something IN the lane: flutter from
-  /// inside it, and the native build and tests.
+  /// inside it, the native build and tests, and the GPU engine crate's.
   List<int> runsIn(List<String> code) => [
     for (var i = 0; i < code.length; i++)
-      if (code[i].contains(r'(cd "$p" &&') || code[i].contains('cmd_native'))
+      if (code[i].contains(r'(cd "$p" &&') ||
+          code[i].contains('cmd_native') ||
+          code[i].contains('cmd_crate'))
         i,
   ];
 
@@ -44,11 +46,27 @@ void main() {
     late final gates = codeOf('gates');
 
     test('LIVENESS — analyze with no arguments, the architecture tests, '
-        'and the native build of a lane that touched the C', () {
+        'the native build of a lane that touched the C, and the crate\'s '
+        'tests of a lane that touched the crate or its ledger', () {
       final all = gates.join('\n');
       expect(all, contains(r'(cd "$p" && flutter analyze)'));
       expect(all, contains(r'(cd "$p" && flutter test test/architecture)'));
       expect(all, contains(r'cmd_native "$name"'));
+      expect(all, contains('-- packages/gpu_engine/rust'));
+      expect(all, contains('test/fixtures/fingerprints.json)"'));
+      expect(all, contains(r'cmd_crate "$name"'));
+    });
+
+    // 관제 2026-11-05: the grid kernel's X3507 was red in release alone — a
+    // debug build's wgpu compiles shaders with optimizations skipped.
+    test('🚨the crate\'s tests run in release as well as debug', () {
+      final crate = codeOf('cmd_crate');
+      expect(at(crate, 'for profile in debug release; do'), isNot(-1));
+      expect(
+        at(crate, r'[ "$profile" = release ] && flag=--release'),
+        isNot(-1),
+      );
+      expect(at(crate, r'cargo test --locked ${flag:+"$flag"}'), isNot(-1));
     });
 
     test('🚨are run from ONE place: neither the land nor the gate command '

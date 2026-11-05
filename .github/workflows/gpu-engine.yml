@@ -13,6 +13,12 @@ name: GPU engine on Metal, Mesa and WARP
 # the pinned DXC lands, so the run count is kept in one place; the
 # suspension's likeliest trigger was macOS-runner crons (apple-nightly.yml
 # has the history).
+#
+# Every job runs the tests twice, debug then release, as a land does
+# (tool/lane.sh, refusal 8 — 관제 2026-11-05): a debug build's wgpu turns
+# InstanceFlags::DEBUG on and compiles shaders with optimizations skipped,
+# so only release compiles the shaders the app ships (the grid kernel's
+# X3507 was red in release alone). Debug keeps the validation layers.
 on:
   workflow_dispatch:
 
@@ -35,6 +41,7 @@ jobs:
       # machine that builds the engine.
       - run: rustup show
       - run: cargo test --locked
+      - run: cargo test --locked --release
 
   linux:
     name: crate tests on lavapipe (Linux)
@@ -49,6 +56,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
       - run: rustup show
       - run: cargo test --locked
+      - run: cargo test --locked --release
 
   # The ARM64 Windows build ships the arm64 dxcompiler.dll, and no machine
   # of ours can load it (the Surface Pro 11 is Intel x64) — 관제
@@ -58,12 +66,13 @@ jobs:
   windows-arm64:
     name: crate tests on WARP (Windows ARM64)
     runs-on: windows-11-arm
-    # A release build keeps WARP's CPU rasteriser to minutes.
-    timeout-minutes: 45
+    # Two cold builds of wgpu, and WARP rasterises on the CPU.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
     steps:
       - uses: actions/checkout@v5
       - run: rustup show
+      - run: cargo test --locked
       - run: cargo test --locked --release

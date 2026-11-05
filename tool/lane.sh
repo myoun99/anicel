@@ -100,7 +100,9 @@
 #    tests hold every kernel to (test/fixtures/fingerprints.json), had only
 #    the `cargo test` its author ran by hand behind it (저장 · 관제
 #    2026-11-05, gpu-engine-skeleton). Such a lane runs the crate's tests
-#    here, on this machine's GPU; a lane that touched neither pays nothing.
+#    here, on this machine's GPU, in debug and in release — the shaders a
+#    debug build compiles are not the ones the app ships (cmd_crate says
+#    why); a lane that touched neither pays nothing.
 #    The machine's Rust must be on PATH — the main PC keeps it on D:, the
 #    Surface on C:, neither on the default PATH — and a land that cannot
 #    find cargo refuses rather than skipping. `bash tool/lane.sh crate
@@ -838,18 +840,28 @@ cmd_crate() {
   command -v cargo >/dev/null 2>&1 || die "cargo is not on PATH — this is refusal 8
   The lane changed the GPU engine crate or its ledger. Put this machine's
   Rust on PATH, with its RUSTUP_HOME and CARGO_HOME, and run it again."
-  local log="$p/build/lane-crate.log"
+  local log="$p/build/lane-crate.log" profile flag
   mkdir -p "$p/build"
-  echo "lane: crate — the GPU engine's tests"
-  # The trunk's target folder: every lane reuses what the trunk and the
-  # lanes before it compiled (wgpu is minutes cold), and lands take turns.
-  (cd "$p/packages/gpu_engine/rust" \
-    && CARGO_TARGET_DIR="$ROOT/packages/gpu_engine/rust/target" cargo test --locked) \
-    >"$log" 2>&1 || {
-    grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
-    die "the GPU engine crate's tests are red — this is refusal 8; the whole log: $log"
-  }
-  echo "lane: crate — green ($(grep -a '^test result' "$log" | tail -1))"
+  : >"$log"
+  # Both builds (관제 2026-11-05, gpu-engine-skeleton). A debug build's wgpu
+  # turns InstanceFlags::DEBUG on, and on DX12 that compiles every shader
+  # with optimizations skipped (wgpu-hal 30, dx12/shader_compilation.rs) —
+  # the grid kernel's X3507 failed in release alone, with debug green on the
+  # same tree. Release compiles the shaders the app ships; debug keeps the
+  # validation layers.
+  for profile in debug release; do
+    flag=; [ "$profile" = release ] && flag=--release
+    echo "lane: crate — the GPU engine's tests ($profile)"
+    # The trunk's target folder: every lane reuses what the trunk and the
+    # lanes before it compiled (wgpu is minutes cold), and lands take turns.
+    (cd "$p/packages/gpu_engine/rust" \
+      && CARGO_TARGET_DIR="$ROOT/packages/gpu_engine/rust/target" \
+        cargo test --locked ${flag:+"$flag"}) >>"$log" 2>&1 || {
+      grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
+      die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
+    }
+    echo "lane: crate — $profile green ($(grep -a '^test result' "$log" | tail -1))"
+  done
 }
 
 # Is the lane's working tree exactly its commits? Printing what is not.
