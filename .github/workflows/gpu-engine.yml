@@ -1,16 +1,18 @@
-name: GPU engine on Metal and Mesa
+name: GPU engine on Metal, Mesa and WARP
 
 # The GPU engine crate's tests — every ledger row, and each bridge's test
-# that the bytes Flutter is handed are the kernel's — on the two platforms
-# no machine of ours runs: macOS (Metal) and Linux (Mesa's software
-# Vulkan, lavapipe). wgpu runs its own GPU tests on these two runner
-# shapes (gfx-rs/wgpu .github/workflows/ci.yml, gpu-test).
+# that the bytes Flutter is handed are the kernel's — where no machine of
+# ours runs them: macOS (Metal), Linux (Mesa's software Vulkan, lavapipe)
+# and ARM64 Windows (WARP, with the arm64 dxcompiler.dll). wgpu runs its
+# own GPU tests on the first two runner shapes (gfx-rs/wgpu
+# .github/workflows/ci.yml, gpu-test).
 #
 # ⛔workflow_dispatch ONLY — no cron, no push or pull_request trigger
 # (유저, gpu-engine-skeleton-Q5 2026-11-05: 「손으로 거는 CI 하나를 만든다」).
-# The control tower dispatches it when a Mac or Linux bridge or a kernel
-# lands, so the run count is kept in one place; the suspension's likeliest
-# trigger was macOS-runner crons (apple-nightly.yml has the history).
+# The control tower dispatches it when a Mac or Linux bridge, a kernel or
+# the pinned DXC lands, so the run count is kept in one place; the
+# suspension's likeliest trigger was macOS-runner crons (apple-nightly.yml
+# has the history).
 on:
   workflow_dispatch:
 
@@ -47,3 +49,21 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
       - run: rustup show
       - run: cargo test --locked
+
+  # The ARM64 Windows build ships the arm64 dxcompiler.dll, and no machine
+  # of ours can load it (the Surface Pro 11 is Intel x64) — 관제
+  # 2026-11-05, gpu-engine-feasibility. The runner has no GPU, so the tests
+  # run on WARP, Windows' software D3D12. The kernels are integer-only: a
+  # ledger row WARP reproduces differently fails like any other.
+  windows-arm64:
+    name: crate tests on WARP (Windows ARM64)
+    runs-on: windows-11-arm
+    # A release build keeps WARP's CPU rasteriser to minutes.
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: packages/gpu_engine/rust
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show
+      - run: cargo test --locked --release
