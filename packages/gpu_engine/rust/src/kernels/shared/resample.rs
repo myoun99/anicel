@@ -198,9 +198,11 @@ impl ResampleMap {
     }
 }
 
-/// q(x, k), when its magnitude is below `limit`. Scaling by a power of two
-/// is exact, so the one rounding is round()'s.
-fn q(x: f64, k: u32, limit: f64) -> Option<i64> {
+/// q(x, k), when its magnitude is below `limit`: the integer specs' one
+/// way a double the CPU worked out becomes fixed point (gpu-int-spec-canvas
+/// 1b 공통) — R1's maps, a blur along a way's taps. Scaling by a power of
+/// two is exact, so the one rounding is round()'s.
+pub(crate) fn q(x: f64, k: u32, limit: f64) -> Option<i64> {
     let scaled = (x * (1u64 << k) as f64).round();
     (scaled.abs() < limit).then_some(scaled as i64)
 }

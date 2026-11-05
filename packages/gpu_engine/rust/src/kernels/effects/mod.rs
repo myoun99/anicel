@@ -8,10 +8,13 @@
 //! - the colour key (`key.wgsl`): the walk C's `qa_key_rgba` makes over a
 //!   row's pixels, from the tables the app makes from its one definition
 //!   (`CelColorKey`);
-//! - the Gaussian (`blur`): the blur brush's box passes, C's `qa_blur_box`.
+//! - the Gaussian (`blur::gaussian`): the blur brush's box passes, C's
+//!   `qa_blur_box`;
+//! - the blur along a way (`blur::line`): fx Directional and Radial Blur's
+//!   taps, the app's `directional_blur.frag`.
 
 // ⏳The executor's rows (kernels/composite) walk the keys, but nothing
-// outside the tests calls the executor or the blur until the app's bridge
+// outside the tests calls the executor or the blurs until the app's bridge
 // round (gpu-canonical-store ⑧ 3 and 5).
 #![cfg_attr(not(test), allow(dead_code))]
 

@@ -17,7 +17,7 @@ mod resample;
 #[cfg(test)]
 pub(crate) mod tests;
 
-pub(crate) use resample::{ResampleMap, ResampleMode};
+pub(crate) use resample::{ResampleMap, ResampleMode, q};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.
 pub(crate) const ISQRT_WGSL: &str = include_str!("isqrt.wgsl");

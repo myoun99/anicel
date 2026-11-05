@@ -3,16 +3,14 @@
 //! (`kernels/mod.rs` has why). Every hand case is worked on the 16-bit
 //! premultiplied scale, a pass's mean rounded half up, then stored.
 
-use std::ops::Range;
 use std::sync::OnceLock;
 
-use wgpu::util::DeviceExt;
-
-use super::{BoxBlur, Edge, MOST_RADIUS, TileRect};
+use super::super::TileRect;
+use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
+use super::{BoxBlur, Edge, MOST_RADIUS};
 use crate::device::Engine;
-use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::effects::tests::rgba;
-use crate::testing::{assert_pinned, first_engine, read_buffer};
+use crate::testing::{assert_pinned, first_engine};
 
 struct Rig {
     engine: &'static Engine,
@@ -32,46 +30,6 @@ fn rig() -> &'static Rig {
     })
 }
 
-/// Where canvas pixel (x, y) is among the words of `rect`'s tiles.
-fn word_of(rect: TileRect, x: i32, y: i32) -> usize {
-    let side = TILE as i32;
-    let (lx, ly) = (x - rect.x0 * side, y - rect.y0 * side);
-    let tile = (ly / side) as u64 * u64::from(rect.columns) + (lx / side) as u64;
-    (tile * TILE_TEXELS) as usize + (ly % side * side + lx % side) as usize
-}
-
-/// What a blur put over its tiles.
-struct Blurred {
-    rect: TileRect,
-    words: Vec<u32>,
-}
-
-impl Blurred {
-    fn at(&self, x: i32, y: i32) -> u32 {
-        self.words[word_of(self.rect, x, y)]
-    }
-
-    fn row(&self, y: i32, xs: Range<i32>) -> Vec<u32> {
-        xs.map(|x| self.at(x, y)).collect()
-    }
-
-    fn column(&self, x: i32, ys: Range<i32>) -> Vec<u32> {
-        ys.map(|y| self.at(x, y)).collect()
-    }
-}
-
-/// `rect`'s tiles holding `pixel(x, y)` at each canvas pixel.
-fn tiles(rect: TileRect, pixel: impl Fn(i32, i32) -> u32) -> Vec<u32> {
-    let [left, top, right, bottom] = rect.pixels();
-    let mut words = vec![0; (rect.tiles() * TILE_TEXELS) as usize];
-    for y in top..bottom {
-        for x in left..right {
-            words[word_of(rect, x, y)] = pixel(x, y);
-        }
-    }
-    words
-}
-
 /// The tiles of `rect` holding `pixel`, blurred — `None` where the blur
 /// refused them.
 fn blur(
@@ -81,38 +39,8 @@ fn blur(
     pixel: impl Fn(i32, i32) -> u32,
 ) -> Option<Blurred> {
     let Rig { engine, blur } = rig();
-    let words = tiles(rect, pixel);
-    let input = engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("blur cases"),
-            contents: &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
-    let out = blur.run(engine, &input, rect, radius, edge)?;
-    let words = read_buffer(engine, &out)
-        .chunks_exact(4)
-        .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
-        .collect();
-    Some(Blurred { rect, words })
-}
-
-const ONE_TILE: TileRect = TileRect {
-    x0: 0,
-    y0: 0,
-    columns: 1,
-    rows: 1,
-};
-
-const WHITE: u32 = rgba(255, 255, 255, 255);
-
-/// White at alpha `a`, which a blur of white keeps white: every channel is
-/// its alpha, premultiplied.
-fn white(alphas: &[u32]) -> Vec<u32> {
-    alphas
-        .iter()
-        .map(|&a| if a == 0 { 0 } else { rgba(255, 255, 255, a) })
-        .collect()
+    let out = blur.run(engine, &tiles(engine, rect, pixel), rect, radius, edge)?;
+    Some(Blurred::read(engine, rect, &out))
 }
 
 /// One opaque pixel, three boxes of radius 1: the first spreads 65535 to
@@ -258,21 +186,6 @@ fn a_repeat_reaching_past_the_tiles_or_holding_nothing_is_refused() {
 
 // ---- The ledger ----
 
-/// Blocks of nothing, of opaque and of any alpha, colour in every channel
-/// but none where there is no alpha — as a stored pixel never holds.
-fn pattern(x: i32, y: i32) -> u32 {
-    let (u, v) = (x.rem_euclid(256) as u32, y.rem_euclid(256) as u32);
-    let alpha = match (u / 16 + v / 16) % 4 {
-        0 => 0,
-        1 => 255,
-        _ => (u * 5 + v * 11) & 255,
-    };
-    if alpha == 0 {
-        return 0;
-    }
-    rgba((u * 7 + v * 3) & 255, (u * v) & 255, u ^ v, alpha)
-}
-
 /// Each way alone and both, both edges, and radii of more than a run's
 /// pixels at the edges of runs.
 fn scenes() -> Vec<((u32, u32), Edge)> {
@@ -285,18 +198,11 @@ fn scenes() -> Vec<((u32, u32), Edge)> {
     ]
 }
 
-/// Wider than tall, so a tile counted by the wrong side lands elsewhere.
 #[test]
 fn every_device_blurs_the_pinned_picture() {
-    let rect = TileRect {
-        x0: -1,
-        y0: 0,
-        columns: 3,
-        rows: 2,
-    };
     let bytes: Vec<u8> = scenes()
         .into_iter()
-        .flat_map(|(radius, edge)| blur(rect, radius, edge, pattern).expect("blur").words)
+        .flat_map(|(radius, edge)| blur(LEDGER_TILES, radius, edge, pattern).expect("blur").words)
         .flat_map(|word| word.to_le_bytes())
         .collect();
     assert_pinned("effects/blur", &bytes);
