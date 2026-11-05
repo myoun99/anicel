@@ -11,8 +11,8 @@ use wgpu::util::DeviceExt;
 
 use super::pages::NO_PAGE;
 use super::{
-    PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, page_table,
-    pipeline, runs,
+    PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, fits,
+    page_table, pipeline, runs,
 };
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -1123,4 +1123,20 @@ fn runs_cut_where_the_next_tile_would_take_a_pass_past_its_room() {
     assert_eq!(runs(pages.into_iter(), 1, 6), one_a_pass);
     let two_a_pass = [(0..2, vec![0, 1]), (2..4, vec![0, 2]), (4..6, vec![2, 1])];
     assert_eq!(runs(pages.into_iter(), 3, 2), two_a_pass);
+}
+
+// ---- A pass's reach ----
+
+#[test]
+fn a_plane_past_a_binding_or_a_dispatch_past_its_groups_is_refused() {
+    let engine = first_engine();
+    let limits = engine.device.limits();
+    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+    let most = limits.max_compute_workgroups_per_dimension;
+    let none = std::iter::empty;
+    assert!(fits(engine, &[1, room], none()).is_some());
+    assert!(fits(engine, &[1, room + 1], none()).is_none());
+    assert!(fits(engine, &[], [(most, 1), (1, most)].into_iter()).is_some());
+    assert!(fits(engine, &[], [(1, 1), (most + 1, 1)].into_iter()).is_none());
+    assert!(fits(engine, &[], [(1, most + 1)].into_iter()).is_none());
 }

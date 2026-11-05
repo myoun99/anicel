@@ -23,13 +23,11 @@ mod tests;
 
 use std::collections::BTreeSet;
 
-use wgpu::util::DeviceExt;
-
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
-use crate::kernels::shared::{Pages, TILE_WGSL, pipeline};
+use crate::kernels::shared::{Pages, TILE_WGSL, fits, pipeline, plane, words_buffer};
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the new pixels, and the counts or the runs.
@@ -219,13 +217,13 @@ impl CelPixels {
         let walk = walk(cel, pool.len())?;
         let tiles: Vec<(i32, i32)> = walk.iter().map(|tile| (tile.column, tile.row)).collect();
         let out_bytes = (walk.len().max(1) as u64) * TILE_TEXELS * 4;
-        fits(engine, out_bytes)?;
-        let out = storage(engine, "cel pixels out", out_bytes);
+        fits(engine, &[out_bytes], std::iter::empty())?;
+        let out = plane(engine, "cel pixels out", out_bytes);
         if walk.is_empty() {
             return Some(Passed { tiles, out, touched: Vec::new(), runs: Vec::new() });
         }
         let passes = passes(engine, &walk, per_pass);
-        let counts = storage(engine, "cel pixel counts", walk.len() as u64 * 8);
+        let counts = plane(engine, "cel pixel counts", walk.len() as u64 * 8);
         let given = Given::of(engine, &walk, &passes, &vec![(0, 0); walk.len()], verb);
         self.encode(engine, pool, &passes, &given, &self.count, [None, Some(&counts)]);
         let (touched, runs): (Vec<u32>, Vec<u32>) = words(&engine.read_buffer(&counts)?)
@@ -247,8 +245,8 @@ impl CelPixels {
         let starts = starts(&touched, &runs);
         let all_runs: u64 = runs.iter().map(|&each| u64::from(each)).sum();
         let run_bytes = if verb.is_undo() { 16 } else { (all_runs * 8).max(16) };
-        fits(engine, run_bytes)?;
-        let put = storage(engine, "cel pixel runs", run_bytes);
+        fits(engine, &[run_bytes], std::iter::empty())?;
+        let put = plane(engine, "cel pixel runs", run_bytes);
         let given = Given::of(engine, &walk, &passes, &starts, verb);
         self.encode(engine, pool, &passes, &given, &self.apply, [Some(&out), Some(&put)]);
         if verb.is_undo() {
@@ -456,44 +454,14 @@ impl Given {
             .iter()
             .map(|&at| {
                 let words = verb.words([at, tables_at, incoming_at]);
-                buffer(engine, "cel pass", &words, wgpu::BufferUsages::UNIFORM)
+                words_buffer(engine, "cel pass", &words, wgpu::BufferUsages::UNIFORM)
             })
             .collect();
         Given {
-            words: buffer(engine, "cel pixels given", &words, wgpu::BufferUsages::STORAGE),
+            words: words_buffer(engine, "cel pixels given", &words, wgpu::BufferUsages::STORAGE),
             uniforms,
         }
     }
-}
-
-/// Fails where a buffer of `size` bytes is past what one binding holds.
-fn fits(engine: &Engine, size: u64) -> Option<()> {
-    let limits = engine.device.limits();
-    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
-    if size > room {
-        return fail(format!("a cel pixel pass's {size} bytes exceed a binding of {room}"));
-    }
-    Some(())
-}
-
-/// A buffer a pass puts, of `bytes` — zeroes at first — that a copy reads.
-fn storage(engine: &Engine, label: &str, bytes: u64) -> wgpu::Buffer {
-    engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some(label),
-        size: bytes,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    })
-}
-
-/// `words` as a buffer of `usage`.
-fn buffer(engine: &Engine, label: &str, words: &[u32], usage: wgpu::BufferUsages) -> wgpu::Buffer {
-    let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-    engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(label),
-        contents: if bytes.is_empty() { &[0; 4] } else { &bytes },
-        usage,
-    })
 }
 
 fn words(bytes: &[u8]) -> Vec<u32> {

@@ -560,16 +560,6 @@ fn a_cel_past_its_pool_or_its_size_is_refused() {
     assert!(pass.run_by(engine, &pages, &ink.set, &verb, 0).is_none());
 }
 
-/// A buffer one binding holds passes; one byte more is refused.
-#[test]
-fn a_buffer_past_a_binding_is_refused() {
-    let engine = rig().engine;
-    let limits = engine.device.limits();
-    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
-    assert!(super::fits(engine, room).is_some());
-    assert!(super::fits(engine, room + 1).is_none());
-}
-
 // ---- The ledger ----
 
 /// The hashed cel through 색 변환, 색 삭제 within 40 of one of its colours,
