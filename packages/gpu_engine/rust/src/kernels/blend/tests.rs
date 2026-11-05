@@ -180,8 +180,12 @@ fn composite(mode: u32, src: Rgba, dst: Rgba) -> Rgba {
 
 /// Colours of every kind a blend meets: black, white, primaries, greys
 /// either side of half, bytes near the ends, and three that no byte widens
-/// to — the stroke's wide plane holds those.
-const COLOURS: [[u32; 3]; 8] = [
+/// to — the stroke's wide plane holds those. The last sits on the edges
+/// where a mode changes branch: 32767 is the last channel under W_HALF and
+/// 32768 the first over, 16383 the last that soft light cubes (at 16384 the
+/// cube and the root agree, 32768 both). Without it the grid passed with
+/// W_HALF moved by one (11-05 mutant).
+const COLOURS: [[u32; 3]; 9] = [
     [0, 0, 0],
     [65535, 65535, 65535],
     [65535, 0, 0],
@@ -190,6 +194,7 @@ const COLOURS: [[u32; 3]; 8] = [
     [wide(127), wide(128), wide(129)],
     [wide(1), wide(254), wide(200)],
     [12345, 40000, 777],
+    [32767, 32768, 16383],
 ];
 
 /// Alphas from none to whole, half either side, and one no byte gives.
