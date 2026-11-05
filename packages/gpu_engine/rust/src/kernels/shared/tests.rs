@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use super::{RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL};
+use super::{PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL};
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
@@ -36,6 +36,7 @@ struct Rig {
     engine: &'static Engine,
     wide: wgpu::ComputePipeline,
     window: wgpu::ComputePipeline,
+    premultiply: wgpu::ComputePipeline,
 }
 
 /// One compile for the whole test process, on the tests' one device
@@ -44,7 +45,13 @@ fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
-        let source = [WIDE_WGSL, RESAMPLE_WGSL, include_str!("cases.wgsl")].join("\n");
+        let source = [
+            WIDE_WGSL,
+            RESAMPLE_WGSL,
+            PREMULTIPLY_WGSL,
+            include_str!("cases.wgsl"),
+        ]
+        .join("\n");
         let module = engine
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -65,10 +72,12 @@ fn rig() -> &'static Rig {
         };
         let wide = pipeline("run_wide");
         let window = pipeline("run_window");
+        let premultiply = pipeline("run_premultiply");
         Rig {
             engine,
             wide,
             window,
+            premultiply,
         }
     })
 }
@@ -777,4 +786,60 @@ fn a_preimage_under_a_pixel_still_votes() {
     picture.pixels.copy_from_slice(&[token(1), token(2), token(3), token(4)]);
     let sliver = one_map(affine(0.35, 0.01, 0.83, -0.35, 0.01, 1.25), ResampleMode::Pick, (1, 1));
     assert_eq!(window(&sliver, &picture, (1, 1), (0, 0)), [token(3)]);
+}
+
+// ---- The premultiply ----
+
+/// `words` premultiplied on the GPU (premultiply.wgsl).
+pub(crate) fn premultiplied(words: &[u32]) -> Vec<u32> {
+    let Rig {
+        engine,
+        premultiply,
+        ..
+    } = rig();
+    let pixels = storage(engine, words);
+    dispatch(premultiply, &[(1, &pixels)], (words.len().div_ceil(64) as u32, 1), words.len())
+}
+
+fn rgba([r, g, b, a]: [u32; 4]) -> u32 {
+    r | (g << 8) | (b << 16) | (a << 24)
+}
+
+#[test]
+fn a_premultiplied_byte_rounds_as_skia_does() {
+    let cases = [
+        // 25728, 12928 and 6528 over 255: 100.4, 50.2, 25.1.
+        ([200, 100, 50, 128], [100, 50, 25, 128]),
+        // Half a step rounds up: 128 / 255 is 1, where dividing gives 0.
+        ([1, 1, 1, 128], [1, 1, 1, 128]),
+        // Where the word is opaque, its bytes; 254 · 254 / 255 is 253.0,
+        // which the shifted product alone, 252, misses.
+        ([255, 0, 128, 255], [255, 0, 128, 255]),
+        ([254, 254, 3, 254], [253, 253, 3, 254]),
+        // 3 · 85 is 255 exactly; 255 · 85 / 255 is 85; 128 · 85 / 255 is
+        // 42.7.
+        ([3, 255, 128, 85], [1, 85, 43, 85]),
+        // No alpha, no colour.
+        ([90, 80, 70, 0], [0, 0, 0, 0]),
+    ];
+    let words: Vec<u32> = cases.iter().map(|&(straight, _)| rgba(straight)).collect();
+    let want: Vec<u32> = cases.iter().map(|&(_, premultiplied)| rgba(premultiplied)).collect();
+    assert_eq!(premultiplied(&words), want);
+}
+
+/// Every alpha (outer) by every byte c (inner) as R c, G 255 − c, B 7c mod
+/// 256 — the words of the ledger row the app's own premultiply pins too
+/// (test/core/the_small_shared_laws_test.dart).
+fn every_byte_by_every_alpha() -> Vec<u32> {
+    (0..256u32)
+        .flat_map(|alpha| (0..256u32).map(move |c| rgba([c, 255 - c, (7 * c) % 256, alpha])))
+        .collect()
+}
+
+// The GPU shows the bytes the app shows: one ledger row, pinned here and by
+// premultiplyRgbaInPlace, so the two are one law by the ledger with no CPU
+// copy in the engine.
+#[test]
+fn every_device_premultiplies_as_the_app_does() {
+    assert_pinned("surface/premultiply", &bytes(&premultiplied(&every_byte_by_every_alpha())));
 }

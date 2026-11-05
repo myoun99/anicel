@@ -10,8 +10,13 @@
 // value. A pass holds the levels from its base up; the ones under it wait
 // in `work`.
 //
+// The last pass puts each pixel by `put` — to_tiles.wgsl's, into output
+// tiles, or to_surface.wgsl's, onto a surface — and only those inside the
+// output's pixels as they are.
+//
 // Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl,
-// shared/resample.wgsl, shared/tile.wgsl and effects/key.wgsl before it.
+// shared/resample.wgsl, shared/tile.wgsl, effects/key.wgsl and
+// shared/premultiply.wgsl before it.
 
 const NO_TILE: u32 = 0xffffffffu;
 const DEPTH: u32 = 8u;
@@ -25,8 +30,8 @@ const STEP_CLOSE_ATOP: u32 = 4u;
 
 // One pass: the steps it runs, the stack depth it takes, the output tiles
 // it covers, where its table of pages is — which binding holds each page
-// of the pool (mod.rs's NO_PAGE where it binds none) — and the lowest
-// stack level it holds.
+// of the pool (mod.rs's NO_PAGE where it binds none) — the lowest stack
+// level it holds, and the output's pixels, [left, right) × [top, bottom).
 struct Pass {
   step_begin: u32,
   step_end: u32,
@@ -38,6 +43,10 @@ struct Pass {
   out_at: u32,
   pages_at: u32,
   base: u32,
+  left: i32,
+  top: i32,
+  right: i32,
+  bottom: i32,
 }
 
 @group(0) @binding(0) var<uniform> pass_: Pass;
@@ -47,6 +56,7 @@ struct Pass {
 // The stack between passes, two words a level, then the output tiles.
 @group(0) @binding(2) var<storage, read_write> work: array<u32>;
 //__PAGES__
+//__OUTPUT__
 
 // A word of the page this pass bound as its k-th.
 fn page_word(k: u32, index: u32) -> u32 {
@@ -193,7 +203,8 @@ fn composite(
     }
   }
   if (pass_.last == 1u) {
-    work[pass_.out_at + tile * TILE_TEXELS + texel] = blend_pack8(stack[0]);
+    let inside = x >= pass_.left && x < pass_.right && y >= pass_.top && y < pass_.bottom;
+    put(tile, texel, x, y, inside, blend_pack8(stack[0]));
   } else {
     for (var i = 0u; i <= top; i++) {
       save(pass_.base + i, tile, texel, stack[i]);

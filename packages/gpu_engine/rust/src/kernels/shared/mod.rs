@@ -30,6 +30,8 @@ pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
 /// export kernels' frame (`kernels/export/frame.wgsl`) and the composite's
 /// rows and output tiles.
 pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
+/// `premultiply8` — a straight word as a surface Flutter shows holds it.
+pub(crate) const PREMULTIPLY_WGSL: &str = include_str!("premultiply.wgsl");
 
 /// The WGSL name of a surface's format, as a pass storing to it declares
 /// it: BGRA8 or RGBA8 unorm, what `platform::Surface` makes, and no other.

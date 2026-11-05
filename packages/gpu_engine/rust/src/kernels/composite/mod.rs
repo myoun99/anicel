@@ -25,6 +25,15 @@
 //! registers, [`DEPTH`] levels at most, so a tree nested deeper is cut
 //! where it leaves the window. Between passes the stack is kept on the
 //! 16-bit scale as it was, so the cuts change no value.
+//!
+//! A run puts its pixels as output tiles — straight, nothing outside the
+//! output's extent, a page a later run can lay as a row — or on a surface
+//! Flutter shows, premultiplied, inside a rectangle of it
+//! ([`Composite::show`]). The screen is the second with one row: the
+//! canvas's composite tiles posed by the camera. The canvas is composited
+//! on its own grid first, so a magnified screen shows the canvas's pixels
+//! — the result's — and a pan or a zoom runs the screen alone
+//! (gpu-canonical-store ④⑤).
 
 // ⏳Nothing outside the tests calls it until the app's bridge round
 // (gpu-canonical-store 14:49 — the app connects after the bridges land).
@@ -33,13 +42,17 @@
 #[cfg(test)]
 mod tests;
 
+use std::sync::{Mutex, PoisonError};
+
 use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
-use crate::kernels::shared::{ISQRT_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL};
+use crate::kernels::shared::{
+    ISQRT_WGSL, PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL, storage_format,
+};
 
 /// A tile's side in pixels (1a ①).
 pub(crate) const TILE: u32 = 128;
@@ -153,10 +166,26 @@ pub(crate) struct Budget {
 }
 
 /// What a run left: every output tile's pixels, straight RGBA8, tile after
-/// tile in the order asked, and how many passes it took.
+/// tile in the order asked — a page a later run can lay as a row, as the
+/// screen lays the canvas's — and how many passes it took.
 pub(crate) struct Composited {
     pub(crate) out: wgpu::Buffer,
     pub(crate) passes: usize,
+}
+
+/// What a plan lays: the pool's pages, the rows' tile sets and key chains,
+/// and the steps, bottom to top.
+pub(crate) struct Plan<'a> {
+    pub(crate) pages: &'a [wgpu::Buffer],
+    pub(crate) sets: &'a [TileSet],
+    pub(crate) keys: &'a [KeyChain],
+    pub(crate) steps: &'a [Step],
+}
+
+/// Where a run's last pass puts its pixels.
+enum Target<'a> {
+    Tiles(&'a wgpu::Buffer),
+    Surface(wgpu::TextureView),
 }
 
 /// A step as the GPU reads it, and the pages it lays a row from — one for a
@@ -177,10 +206,12 @@ struct Batch {
     pages: Vec<u16>,
 }
 
-/// The composite pass, compiled once for as many pages as the device lets
-/// a pass bind.
+/// The composite pass, compiled for as many pages as the device lets a pass
+/// bind: once to put output tiles, and once for each surface format the
+/// first time one is shown.
 pub(crate) struct Composite {
     pipeline: wgpu::ComputePipeline,
+    surfaces: Mutex<Vec<(&'static str, wgpu::ComputePipeline)>>,
     pages_per_pass: usize,
     /// Bound where a pass has fewer pages than the pipeline has bindings.
     blank: wgpu::Buffer,
@@ -193,46 +224,7 @@ impl Composite {
             return fail(format!("{limit} storage buffers a stage leave no page to bind"));
         }
         let pages_per_pass = ((limit - OWN_BUFFERS) as usize).min(MOST_PAGES);
-        let bindings: String = (0..pages_per_pass)
-            .map(|k| {
-                format!(
-                    "@group(0) @binding({}) var<storage, read> page{k}: array<u32>;\n",
-                    k + OWN_BUFFERS as usize + 1
-                )
-            })
-            .collect();
-        let reads: String = (0..pages_per_pass)
-            .map(|k| format!("case {k}u: {{\n      return page{k}[index];\n    }}\n    "))
-            .collect();
-        let body = include_str!("composite.wgsl")
-            .replace("//__PAGES__", &bindings)
-            .replace("//__READS__", &reads);
-        let source = [
-            ISQRT_WGSL,
-            BLEND_WGSL,
-            WIDE_WGSL,
-            RESAMPLE_WGSL,
-            TILE_WGSL,
-            KEY_WGSL,
-            &body,
-        ]
-        .join("\n");
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("composite"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = engine
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("composite"),
-                layout: None,
-                module: &module,
-                entry_point: Some("composite"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let pipeline = compile(engine, pages_per_pass, include_str!("to_tiles.wgsl"));
         let blank = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("composite blank page"),
             size: 16,
@@ -241,6 +233,7 @@ impl Composite {
         });
         Some(Self {
             pipeline,
+            surfaces: Mutex::new(Vec::new()),
             pages_per_pass,
             blank,
         })
@@ -255,20 +248,106 @@ impl Composite {
         }
     }
 
-    /// Composites `steps` over the output `tiles` (canvas tile columns and
-    /// rows) and submits the work; the caller waits. `pages` is the pool,
-    /// `sets` the rows' tile sets, `keys` their key chains. A `budget` under
+    /// Composites `plan` over the output `tiles` (canvas tile columns and
+    /// rows), with nothing outside `extent` — the output's pixels, [left,
+    /// top, right, bottom): a canvas's picture ends at the canvas — and
+    /// submits the work; the caller waits. A `budget` under
     /// [`Composite::widest`] cuts the run where a smaller device would.
     pub(crate) fn run(
         &self,
         engine: &Engine,
-        pages: &[wgpu::Buffer],
-        sets: &[TileSet],
-        keys: &[KeyChain],
-        steps: &[Step],
+        plan: &Plan,
         tiles: &[(i32, i32)],
+        extent: [i32; 4],
         budget: Budget,
     ) -> Option<Composited> {
+        let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("composite out"),
+            size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let target = Target::Tiles(&out);
+        let passes = self.walk(engine, plan, tiles, extent, &self.pipeline, &target, budget)?;
+        Some(Composited { out, passes })
+    }
+
+    /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
+    /// right, bottom), the output's pixels being the surface's own — and
+    /// leaves the rest of it as it was, the other panels of an atlas;
+    /// submits the work, the caller waits, and returns how many passes it
+    /// took. The screen is this with one row: the canvas's composite posed
+    /// by the camera (gpu-canonical-store ④⑤).
+    pub(crate) fn show(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        surface: &wgpu::Texture,
+        rect: [u32; 4],
+        budget: Budget,
+    ) -> Option<usize> {
+        let [left, top, right, bottom] = rect;
+        if left >= right || top >= bottom || right > surface.width() || bottom > surface.height() {
+            return fail(format!(
+                "{rect:?} is no rectangle of a {} × {} surface",
+                surface.width(),
+                surface.height()
+            ));
+        }
+        let pipeline = self.surface_pipeline(engine, surface.format())?;
+        let tiles: Vec<(i32, i32)> = (top / TILE..bottom.div_ceil(TILE))
+            .flat_map(|row| {
+                (left / TILE..right.div_ceil(TILE)).map(move |column| (column as i32, row as i32))
+            })
+            .collect();
+        let target = Target::Surface(surface.create_view(&Default::default()));
+        let extent = rect.map(|edge| edge as i32);
+        self.walk(engine, plan, &tiles, extent, &pipeline, &target, budget)
+    }
+
+    /// The surface's binding: past the plan, the work buffer and the pages.
+    fn surface_binding(&self) -> u32 {
+        OWN_BUFFERS + 1 + self.pages_per_pass as u32
+    }
+
+    /// The pass that stores to a surface of `format`, compiled the first
+    /// time one is shown.
+    fn surface_pipeline(
+        &self,
+        engine: &Engine,
+        format: wgpu::TextureFormat,
+    ) -> Option<wgpu::ComputePipeline> {
+        let Some(token) = storage_format(format) else {
+            return fail(format!("the composite cannot store to {format:?}"));
+        };
+        let mut surfaces = self.surfaces.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((_, pipeline)) = surfaces.iter().find(|(made, _)| *made == token) {
+            return Some(pipeline.clone());
+        }
+        let output = include_str!("to_surface.wgsl")
+            .replace("__BINDING__", &self.surface_binding().to_string())
+            .replace("__FORMAT__", token);
+        let pipeline = compile(engine, self.pages_per_pass, &output);
+        surfaces.push((token, pipeline.clone()));
+        Some(pipeline)
+    }
+
+    /// Walks `plan` over the output `tiles` in passes of `pipeline`, whose
+    /// last puts each pixel to `target` — inside `extent`, as it is;
+    /// outside, nothing or nowhere — and submits the work; returns how many
+    /// passes it took.
+    fn walk(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        tiles: &[(i32, i32)],
+        extent: [i32; 4],
+        pipeline: &wgpu::ComputePipeline,
+        target: &Target,
+        budget: Budget,
+    ) -> Option<usize> {
         let pages_per_pass = budget.pages;
         if pages_per_pass == 0 || pages_per_pass > self.pages_per_pass {
             return fail(format!(
@@ -279,11 +358,12 @@ impl Composite {
         if !(2..=DEPTH).contains(&budget.levels) {
             return fail(format!("{} stack levels a pass; one holds 2 to {DEPTH}", budget.levels));
         }
-        check_depth(steps, sets.len(), keys.len())?;
-        let laid = lay(steps, sets, tiles, pages.len())?;
+        let page_count = plan.pages.len();
+        check_depth(plan.steps, plan.sets.len(), plan.keys.len())?;
+        let laid = lay(plan.steps, plan.sets, tiles, page_count)?;
         let batches = cut(&laid, pages_per_pass, budget.levels)?;
-        let encoded = encode(&laid, &batches, sets, keys, tiles, pages.len());
-        let plan = engine
+        let encoded = encode(&laid, &batches, plan.sets, plan.keys, tiles, page_count);
+        let steps = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("composite plan"),
@@ -296,32 +376,31 @@ impl Composite {
             .map(|batch| batch.depth_out as u64 + 1)
             .max()
             .unwrap_or(0);
-        let per_tile = (kept * 2 + 1) * TILE_TEXELS * 4;
+        // Output tiles wait in `work` past the stack until they are copied
+        // out; a surface takes its pixels from the last pass itself.
+        let waiting = u64::from(matches!(target, Target::Tiles(_)));
+        let per_tile = (kept * 2 + waiting) * TILE_TEXELS * 4;
         let limits = engine.device.limits();
         let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
-        let chunk = (room / per_tile)
-            .min(u64::from(limits.max_compute_workgroups_per_dimension))
+        let most = u64::from(limits.max_compute_workgroups_per_dimension)
             .min(budget.tiles as u64)
-            .min(tiles.len().max(1) as u64) as usize;
+            .min(tiles.len().max(1) as u64);
+        let chunk = room.checked_div(per_tile).map_or(most, |fits| fits.min(most)) as usize;
         if chunk == 0 {
             return fail(format!("one tile's work ({per_tile} bytes) exceeds a binding"));
         }
         let work = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("composite work"),
-            size: chunk as u64 * per_tile,
+            // A binding holds something, even where nothing waits.
+            size: (chunk as u64 * per_tile).max(16),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("composite out"),
-            size: (tiles.len().max(1) as u64) * TILE_TEXELS * 4,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let layout = self.pipeline.get_bind_group_layout(0);
+        let layout = pipeline.get_bind_group_layout(0);
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let [left, top, right, bottom] = extent.map(|edge| edge as u32);
         let mut passes = 0;
         for (first_tile, chunk_tiles) in (0..tiles.len())
             .step_by(chunk)
@@ -338,8 +417,12 @@ impl Composite {
                     encoded.tiles_at + 2 * first_tile as u32,
                     chunk_tiles as u32,
                     out_at as u32,
-                    encoded.tables_at + (index * pages.len()) as u32,
+                    encoded.tables_at + (index * page_count) as u32,
                     batch.base as u32,
+                    left,
+                    top,
+                    right,
+                    bottom,
                 ];
                 let uniform = engine
                     .device
@@ -355,7 +438,7 @@ impl Composite {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: plan.as_entire_binding(),
+                        resource: steps.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
@@ -364,12 +447,18 @@ impl Composite {
                 ];
                 for k in 0..self.pages_per_pass {
                     let page = match batch.pages.get(k) {
-                        Some(&page) => &pages[usize::from(page)],
+                        Some(&page) => &plan.pages[usize::from(page)],
                         None => &self.blank,
                     };
                     entries.push(wgpu::BindGroupEntry {
                         binding: k as u32 + OWN_BUFFERS + 1,
                         resource: page.as_entire_binding(),
+                    });
+                }
+                if let Target::Surface(view) = target {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: self.surface_binding(),
+                        resource: wgpu::BindingResource::TextureView(view),
                     });
                 }
                 let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -378,22 +467,71 @@ impl Composite {
                     entries: &entries,
                 });
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-                pass.set_pipeline(&self.pipeline);
+                pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, &bind_group, &[]);
                 pass.dispatch_workgroups(TILE / 16, TILE / 16, chunk_tiles as u32);
                 passes += 1;
             }
-            encoder.copy_buffer_to_buffer(
-                &work,
-                out_at * 4,
-                &out,
-                first_tile as u64 * TILE_TEXELS * 4,
-                chunk_tiles as u64 * TILE_TEXELS * 4,
-            );
+            if let Target::Tiles(out) = target {
+                encoder.copy_buffer_to_buffer(
+                    &work,
+                    out_at * 4,
+                    out,
+                    first_tile as u64 * TILE_TEXELS * 4,
+                    chunk_tiles as u64 * TILE_TEXELS * 4,
+                );
+            }
         }
         engine.queue.submit([encoder.finish()]);
-        Some(Composited { out, passes })
+        Some(passes)
     }
+}
+
+/// The composite pass for `pages_per_pass` pages, putting each pixel by
+/// `output`'s `put` — to_tiles.wgsl's or to_surface.wgsl's.
+fn compile(engine: &Engine, pages_per_pass: usize, output: &str) -> wgpu::ComputePipeline {
+    let bindings: String = (0..pages_per_pass)
+        .map(|k| {
+            format!(
+                "@group(0) @binding({}) var<storage, read> page{k}: array<u32>;\n",
+                k + OWN_BUFFERS as usize + 1
+            )
+        })
+        .collect();
+    let reads: String = (0..pages_per_pass)
+        .map(|k| format!("case {k}u: {{\n      return page{k}[index];\n    }}\n    "))
+        .collect();
+    let body = include_str!("composite.wgsl")
+        .replace("//__PAGES__", &bindings)
+        .replace("//__READS__", &reads)
+        .replace("//__OUTPUT__", output);
+    let source = [
+        ISQRT_WGSL,
+        BLEND_WGSL,
+        WIDE_WGSL,
+        RESAMPLE_WGSL,
+        TILE_WGSL,
+        KEY_WGSL,
+        PREMULTIPLY_WGSL,
+        &body,
+    ]
+    .join("\n");
+    let module = engine
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("composite"),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
+    engine
+        .device
+        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("composite"),
+            layout: None,
+            module: &module,
+            entry_point: Some("composite"),
+            compilation_options: Default::default(),
+            cache: None,
+        })
 }
 
 fn le_bytes(words: &[u32]) -> Vec<u8> {
@@ -545,7 +683,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
 
 /// The plan buffer's words, where its output tiles start, and where its
 /// passes' tables of pages do, one after another.
-struct Plan {
+struct Encoded {
     words: Vec<u8>,
     tiles_at: u32,
     tables_at: u32,
@@ -562,7 +700,7 @@ fn encode(
     keys: &[KeyChain],
     tiles: &[(i32, i32)],
     page_count: usize,
-) -> Plan {
+) -> Encoded {
     let mut words: Vec<u32> = Vec::with_capacity(laid.len() * STEP_WORDS);
     let maps_at = (laid.len() * STEP_WORDS) as u32;
     let mut map_at = Vec::with_capacity(sets.len());
@@ -644,7 +782,7 @@ fn encode(
     }
     let tiles_at = words.len() as u32;
     words.extend(tiles.iter().flat_map(|&(column, row)| [column as u32, row as u32]));
-    Plan {
+    Encoded {
         words: le_bytes(&words),
         tiles_at,
         tables_at,

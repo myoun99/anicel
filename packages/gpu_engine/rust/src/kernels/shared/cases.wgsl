@@ -1,10 +1,12 @@
 // The shared functions run on what a test hands in — the GPU half of
-// `tests.rs`, appended to wide.wgsl and resample.wgsl there.
+// `tests.rs`, appended there to wide.wgsl, resample.wgsl and
+// premultiply.wgsl.
 //
 // `run_wide`: a case is six words — what to run, a and b as two words
 // each, low first, and a count k — and comes back as four, lowest first.
 // `run_window`: one job — the map's words, the source's size, the window's
 // size and where it sits in the whole output — over the pixels handed in.
+// `run_premultiply`: each of the pixels handed in, premultiplied.
 
 @group(0) @binding(0) var<storage, read> job: array<u32>;
 @group(0) @binding(1) var<storage, read> pixels: array<u32>;
@@ -131,4 +133,11 @@ fn run_window(@builtin(global_invocation_id) id: vec3<u32>) {
   let x = bitcast<i32>(job[MAP_WORDS + 4u]) + i32(id.x);
   let y = bitcast<i32>(job[MAP_WORDS + 5u]) + i32(id.y);
   results[id.y * columns + id.x] = resample(map, 0u, x, y);
+}
+
+@compute @workgroup_size(64)
+fn run_premultiply(@builtin(global_invocation_id) id: vec3<u32>) {
+  if (id.x < arrayLength(&pixels)) {
+    results[id.x] = premultiply8(pixels[id.x]);
+  }
 }

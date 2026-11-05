@@ -6,12 +6,12 @@
 use std::sync::OnceLock;
 
 use super::{
-    Batch, Budget, Composite, DEPTH, KeyChain, Laid, Step, TILE, TILE_TEXELS, TileAt, TileSet,
-    check_depth, cut,
+    Batch, Budget, Composite, DEPTH, KeyChain, Laid, Plan, Step, TILE, TILE_TEXELS, TileAt,
+    TileSet, check_depth, cut,
 };
 use crate::device::Engine;
 use crate::kernels::effects::KeyRun;
-use crate::kernels::shared::tests::{Picture, window};
+use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
@@ -22,6 +22,8 @@ const OVERLAY: u32 = 8;
 const DIFFERENCE: u32 = 11;
 const LINEAR_BURN: u32 = 13;
 const WHOLE: u32 = 65535;
+/// An output with no edge: every pixel of every output tile as it is.
+const EVERYWHERE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 
 struct Rig {
     engine: &'static Engine,
@@ -194,13 +196,25 @@ struct Scene {
     tiles: Vec<(i32, i32)>,
 }
 
+impl Scene {
+    /// The scene's plan over `pages`, its pool uploaded.
+    fn plan<'a>(&'a self, pages: &'a [wgpu::Buffer]) -> Plan<'a> {
+        Plan {
+            pages,
+            sets: &self.sets,
+            keys: &self.keys,
+            steps: &self.steps,
+        }
+    }
+}
+
 /// Composites `scene` within `budget`; returns the output's bytes and how
 /// many passes it took.
 fn composite(scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
     let Rig { engine, composite } = rig();
     let pages = scene.pool.upload(engine);
     let done = composite
-        .run(engine, &pages, &scene.sets, &scene.keys, &scene.steps, &scene.tiles, budget)
+        .run(engine, &scene.plan(&pages), &scene.tiles, EVERYWHERE, budget)
         .expect("composite");
     (read_buffer(engine, &done.out), done.passes)
 }
@@ -902,7 +916,7 @@ fn a_row_binds_the_pages_its_pixels_read() {
             let Rig { engine, composite } = rig();
             let pool = scene.pool.upload(engine);
             let fewer = within(pages - 1, usize::MAX);
-            let run = composite.run(engine, &pool, &scene.sets, &[], &scene.steps, &scene.tiles, fewer);
+            let run = composite.run(engine, &scene.plan(&pool), &scene.tiles, EVERYWHERE, fewer);
             assert!(run.is_none(), "{n}");
         }
     }
@@ -1164,12 +1178,351 @@ fn a_pass_holds_two_levels_to_depth() {
     let sets = vec![pool.set(45, (0, 0), (1, 1), |_, _| Some(0))];
     let pages = pool.upload(engine);
     let steps = [row(0, (0, 0), WHOLE, NORMAL)];
+    let plan = Plan {
+        pages: &pages,
+        sets: &sets,
+        keys: &[],
+        steps: &steps,
+    };
     let run = |levels| {
         let budget = Budget {
             levels,
             ..composite.widest()
         };
-        composite.run(engine, &pages, &sets, &[], &steps, &[(0, 0)], budget).is_some()
+        composite.run(engine, &plan, &[(0, 0)], EVERYWHERE, budget).is_some()
     };
     assert_eq!([run(1), run(2), run(DEPTH), run(DEPTH + 1)], [false, true, true, false]);
+}
+
+// ---- The screen ----
+
+/// The screen's canvas: 200 × 150 on a grid of 2 × 2 tiles, so its right
+/// and bottom edges fall inside a tile, with rows drawn past them.
+const CANVAS: [i32; 4] = [0, 0, 200, 150];
+const SCREEN_SIZE: (u32, u32) = (300, 200);
+const NO_TURN: (f64, f64) = (1.0, 0.0);
+
+/// The canvas's plan: a row of noise under one at most strengths, moved
+/// across and multiplied, both drawn on every pixel of every tile.
+fn canvas_scene() -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.set(61, (0, 0), (2, 2), |_, _| Some(0)),
+        pool.set(62, (0, 0), (2, 2), |c, r| Some(1 + ((r * 2 + c) % 2) as u16)),
+    ];
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        steps: vec![row(0, (0, 0), WHOLE, NORMAL), row(1, (-30, 20), 40000, MULTIPLY)],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+/// The canvas composited, ending at its edge: the page it left, and its
+/// pixels as R1's harness takes a source.
+fn composited_canvas() -> (wgpu::Buffer, Picture) {
+    let Rig { engine, composite } = rig();
+    let scene = canvas_scene();
+    let pages = scene.pool.upload(engine);
+    let plan = scene.plan(&pages);
+    let done = composite
+        .run(engine, &plan, &scene.tiles, CANVAS, composite.widest())
+        .expect("composite the canvas");
+    let bytes = read_buffer(engine, &done.out);
+    let word = |x, y| u32::from_le_bytes(pixel_at(&bytes, &scene.tiles, x, y));
+    (done.out, picture_of(word, (2 * TILE, 2 * TILE)))
+}
+
+/// The canvas's composite as the screen's one tile set: slot i of its page
+/// is its output tile i, row by row.
+fn canvas_set() -> TileSet {
+    TileSet {
+        x0: 0,
+        y0: 0,
+        columns: 2,
+        rows: 2,
+        tiles: (0..4).map(|slot| Some(TileAt { page: 0, slot })).collect(),
+    }
+}
+
+/// The camera's map, screen pixel to canvas pixel: the canvas `zoom` times
+/// larger, turned by (cos, sin) — none, or a 3-4-5 or 5-12-13 turn, whose
+/// entries IEEE alone rounds — mirrored left to right if `mirror`, its
+/// origin at `pan` on the screen.
+fn camera(
+    zoom: f64,
+    (cos, sin): (f64, f64),
+    mirror: bool,
+    (x, y): (f64, f64),
+    mode: ResampleMode,
+) -> ResampleMap {
+    let flip = if mirror { -1.0 } else { 1.0 };
+    let (a, b) = (flip * cos / zoom, flip * sin / zoom);
+    let (d, e) = (-sin / zoom, cos / zoom);
+    let inverse = [a, b, -(a * x + b * y), d, e, -(d * x + e * y), 0.0, 0.0, 1.0];
+    ResampleMap::new(inverse, 1.0, mode, SCREEN_SIZE.0, SCREEN_SIZE.1).expect("a camera lands")
+}
+
+/// The screen tests' cameras, by ④: Pick at 100% and over — moved, turned
+/// twice as large, mirrored half again as large — and Blend under it —
+/// halved off the pixel grid, turned at under a third.
+fn cameras() -> [(&'static str, ResampleMap); 5] {
+    use ResampleMode::{Blend, Pick};
+    [
+        ("moved", camera(1.0, NO_TURN, false, (37.0, -12.0), Pick)),
+        ("turned", camera(2.0, (0.8, 0.6), false, (150.0, 20.0), Pick)),
+        ("mirrored", camera(1.5, NO_TURN, true, (290.0, 10.0), Pick)),
+        ("halved", camera(0.5, NO_TURN, false, (100.25, 60.5), Blend)),
+        ("spun", camera(0.3, (12.0 / 13.0, 5.0 / 13.0), false, (150.0, 30.0), Blend)),
+    ]
+}
+
+/// A surface a test can fill first and read back.
+fn surface((width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
+    rig().engine.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("test surface"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::STORAGE_BINDING
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+/// The canvas's composite `page` shown through `map` on `texture`, inside
+/// `rect`; the whole texture read back, row after row.
+fn shown(
+    page: &wgpu::Buffer,
+    map: ResampleMap,
+    texture: &wgpu::Texture,
+    rect: [u32; 4],
+) -> Vec<u8> {
+    let Rig { engine, composite } = rig();
+    let sets = [canvas_set()];
+    let steps = [with_map(0, map, WHOLE, NORMAL)];
+    let plan = Plan {
+        pages: std::slice::from_ref(page),
+        sets: &sets,
+        keys: &[],
+        steps: &steps,
+    };
+    composite.show(engine, &plan, texture, rect, composite.widest()).expect("show");
+    engine.read_texture(texture).expect("read the surface back")
+}
+
+fn whole_screen() -> [u32; 4] {
+    [0, 0, SCREEN_SIZE.0, SCREEN_SIZE.1]
+}
+
+/// What the screen must hold through `map`: R1's harness over the canvas's
+/// pixels, premultiplied by the GPU's one premultiply.
+fn screen_by_r1(map: &ResampleMap, canvas: &Picture) -> Vec<u8> {
+    let straight = window(map, canvas, SCREEN_SIZE, (0, 0));
+    premultiplied(&straight).into_iter().flat_map(bytes_of).collect()
+}
+
+// The screen shows what R1 resamples of the canvas's composite, as the
+// app's one premultiply leaves it: the executor's one row sample, reading
+// the composite's own tiles as a page, put on a surface — at 100% as a
+// whole-pixel copy, magnified turned and mirrored (Pick), reduced (Blend);
+// past the canvas's edges inside its tiles, nothing.
+#[test]
+fn the_screen_shows_what_r1_resamples_of_the_canvas() {
+    let (page, canvas) = composited_canvas();
+    assert!(cameras()[0].1.is_copy(), "100% moved is R1's copy");
+    for (name, map) in cameras() {
+        let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
+        let screen = shown(&page, map, &texture, whole_screen());
+        assert!(screen == screen_by_r1(&map, &canvas), "{name}");
+    }
+}
+
+#[test]
+fn every_device_shows_the_pinned_screens() {
+    let (page, _) = composited_canvas();
+    let screens: Vec<u8> = cameras()
+        .into_iter()
+        .flat_map(|(_, map)| {
+            let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
+            shown(&page, map, &texture, whole_screen())
+        })
+        .collect();
+    assert_pinned("composite/screen", &screens);
+}
+
+// A canvas's picture ends at the canvas though its tiles reach on: past the
+// extent its output tiles hold nothing, and inside, what they hold with no
+// edge — on all four sides, the canvas set in from the top left too.
+#[test]
+fn an_output_holds_nothing_past_its_extent() {
+    let Rig { engine, composite } = rig();
+    let scene = canvas_scene();
+    let pages = scene.pool.upload(engine);
+    let plan = scene.plan(&pages);
+    let run = |extent| {
+        let done = composite.run(engine, &plan, &scene.tiles, extent, composite.widest());
+        read_buffer(engine, &done.expect("composite").out)
+    };
+    let whole = run(EVERYWHERE);
+    let ended = run([3, 5, 200, 150]);
+    for y in 0..2 * TILE as i32 {
+        for x in 0..2 * TILE as i32 {
+            let inside = (3..200).contains(&x) && (5..150).contains(&y);
+            let want = if inside { pixel_at(&whole, &scene.tiles, x, y) } else { [0; 4] };
+            assert_eq!(pixel_at(&ended, &scene.tiles, x, y), want, "({x}, {y})");
+        }
+    }
+}
+
+// A surface is written inside the rectangle shown and nowhere else — an
+// atlas's other panels stay as they were — and inside, as the surface
+// shown whole holds it there. The rectangle crosses a tile's edge.
+#[test]
+fn a_surface_is_written_inside_its_rectangle_only() {
+    let (page, _) = composited_canvas();
+    let (width, height) = SCREEN_SIZE;
+    let (_, turned) = cameras()[1];
+    let rgba = wgpu::TextureFormat::Rgba8Unorm;
+    let whole = shown(&page, turned, &surface(SCREEN_SIZE, rgba), whole_screen());
+    let marked = surface(SCREEN_SIZE, rgba);
+    let marker = [9u8, 99, 199, 249];
+    rig().engine.queue.write_texture(
+        marked.as_image_copy(),
+        &marker.repeat((width * height) as usize),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(height),
+        },
+        marked.size(),
+    );
+    let rect = [37, 21, 167, 161];
+    let part = shown(&page, turned, &marked, rect);
+    for y in 0..height {
+        for x in 0..width {
+            let at = ((y * width + x) * 4) as usize;
+            let inside = (rect[0]..rect[2]).contains(&x) && (rect[1]..rect[3]).contains(&y);
+            let want = if inside { &whole[at..at + 4] } else { &marker[..] };
+            assert_eq!(&part[at..at + 4], want, "({x}, {y})");
+        }
+    }
+}
+
+// Windows' surface is BGRA: the same pixels, red and blue swapped, byte for
+// byte. A device that cannot store BGRA makes no BGRA surface either
+// (platform::Surface), so there is nothing to show on it.
+#[test]
+fn a_bgra_surface_holds_the_rgba_pixels_red_and_blue_swapped() {
+    if !rig().engine.device.features().contains(wgpu::Features::BGRA8UNORM_STORAGE) {
+        return;
+    }
+    let (page, _) = composited_canvas();
+    let on = |map, format| shown(&page, map, &surface(SCREEN_SIZE, format), whole_screen());
+    for (name, map) in cameras() {
+        let rgba = on(map, wgpu::TextureFormat::Rgba8Unorm);
+        let bgra = on(map, wgpu::TextureFormat::Bgra8Unorm);
+        let swapped: Vec<u8> =
+            rgba.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+        assert!(bgra == swapped, "{name}");
+    }
+}
+
+// Where the canvas is half clear the screen holds it premultiplied, as the
+// app's own upload does: (200, 100, 50) at 128 is (100, 50, 25) — moved
+// ten pixels in, its 100 × 100 and nothing round it.
+#[test]
+fn the_screen_holds_the_canvas_premultiplied() {
+    let Rig { engine, composite } = rig();
+    let mut pool = Pool::default();
+    let sets = vec![pool.drawn(|_, _| 0x8032_64c8, (0, 0), (1, 1), |_, _| Some(0))];
+    let scene = Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        steps: vec![row(0, (0, 0), WHOLE, NORMAL)],
+        tiles: vec![(0, 0)],
+    };
+    let pages = scene.pool.upload(engine);
+    let plan = scene.plan(&pages);
+    let canvas = composite.run(engine, &plan, &scene.tiles, [0, 0, 100, 100], composite.widest());
+    let canvas = canvas.expect("composite the canvas");
+    let sets = [TileSet {
+        x0: 0,
+        y0: 0,
+        columns: 1,
+        rows: 1,
+        tiles: vec![Some(TileAt { page: 0, slot: 0 })],
+    }];
+    let steps = [row(0, (10, 10), WHOLE, NORMAL)];
+    let screen = Plan {
+        pages: std::slice::from_ref(&canvas.out),
+        sets: &sets,
+        keys: &[],
+        steps: &steps,
+    };
+    let texture = surface((TILE, TILE), wgpu::TextureFormat::Rgba8Unorm);
+    let whole = [0, 0, TILE, TILE];
+    composite.show(engine, &screen, &texture, whole, composite.widest()).expect("show");
+    let read = engine.read_texture(&texture).expect("read the surface back");
+    let at = |x: u32, y: u32| -> [u8; 4] {
+        read[((y * TILE + x) * 4) as usize..][..4].try_into().unwrap()
+    };
+    for (x, y) in [(10, 10), (109, 10), (10, 109), (109, 109)] {
+        assert_eq!(at(x, y), [100, 50, 25, 128], "({x}, {y})");
+    }
+    for (x, y) in [(9, 50), (110, 50), (50, 9), (50, 110)] {
+        assert_eq!(at(x, y), [0; 4], "({x}, {y})");
+    }
+}
+
+// A rectangle is shown only where it is one, on the surface; a surface only
+// in a format a pass stores to.
+#[test]
+fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
+    let Rig { engine, composite } = rig();
+    let (page, _) = composited_canvas();
+    let sets = [canvas_set()];
+    let steps = [row(0, (0, 0), WHOLE, NORMAL)];
+    let plan = Plan {
+        pages: std::slice::from_ref(&page),
+        sets: &sets,
+        keys: &[],
+        steps: &steps,
+    };
+    let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
+    let show = |texture: &wgpu::Texture, rect| {
+        composite.show(engine, &plan, texture, rect, composite.widest()).is_some()
+    };
+    let (width, height) = SCREEN_SIZE;
+    assert!(show(&texture, [0, 0, width, height]));
+    assert!(!show(&texture, [0, 0, width + 1, height]));
+    assert!(!show(&texture, [0, 0, width, height + 1]));
+    assert!(!show(&texture, [5, 0, 5, height]));
+    assert!(!show(&texture, [0, 7, width, 7]));
+    let wide = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba16Float);
+    assert!(!show(&wide, [0, 0, width, height]));
+}
+
+// A surface's pass is compiled the first time its format is shown and kept:
+// a screen shows every frame, and a compile is far dearer than a frame.
+#[test]
+fn a_surface_format_is_compiled_once() {
+    let (page, _) = composited_canvas();
+    let (_, moved) = cameras()[0];
+    for _ in 0..2 {
+        shown(&page, moved, &surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm), whole_screen());
+    }
+    let surfaces = rig().composite.surfaces.lock();
+    let surfaces = surfaces.unwrap_or_else(std::sync::PoisonError::into_inner);
+    let rgba = surfaces.iter().filter(|(token, _)| *token == "rgba8unorm").count();
+    assert_eq!(rgba, 1);
 }
