@@ -178,7 +178,10 @@ class TransportBar extends StatelessWidget {
   static double buttonRowHeightIn(BuildContext context) =>
       _playRowHeight + FieldSlider.growthIn(context);
 
-  static const double _inset = 8;
+  /// How far in from the bar's sides its rows stand — the seek track's
+  /// ends, which a sound's face lines its own up with (`SoundFace`).
+  static const double trackInset = 8;
+  static const double _inset = trackInset;
   static const double _gap = 8;
   static const double _seekRowHeight = 25;
   static const double _playRowHeight = 28;
@@ -193,7 +196,7 @@ class TransportBar extends StatelessWidget {
   /// ↩️A fixed 76 for the word and the number: room for In/Out and 인/아웃,
   /// while アウト and Sortie were drawn scaled down to fit it.
   static double _rangeEndWidthIn(BuildContext context) =>
-      TextMeasure(context, _wordsStyleIn(context)).widest([
+      TextMeasure(context, wordsStyleIn(context)).widest([
         AppText.strings.transportIn,
         AppText.strings.transportOut,
       ]) +
@@ -495,12 +498,12 @@ class TransportBar extends StatelessWidget {
   /// The bar's words — set solid, so a counting readout does not shiver —
   /// in the dim ink, or that ink off.
   TextStyle _wordsIn(BuildContext context, {required bool enabled}) =>
-      _wordsStyleIn(context).copyWith(
+      wordsStyleIn(context).copyWith(
         color: dimmedIfDisabled(AppColors.textDim, enabled: enabled),
       );
 
   /// The words' face, whatever their ink — what an end is measured in.
-  static TextStyle _wordsStyleIn(BuildContext context) =>
+  static TextStyle wordsStyleIn(BuildContext context) =>
       (Theme.of(context).textTheme.labelSmall ?? const TextStyle()).copyWith(
         fontFeatures: const [FontFeature.tabularFigures()],
       );

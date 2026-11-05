@@ -85,6 +85,7 @@ import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
+import 'canvas_stage.dart';
 import 'pasteboard_reach_row.dart';
 import '../../models/app_input_settings.dart';
 import '../debug/input_inspector.dart' show InputInspector;
@@ -347,6 +348,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.toolCursorsEnabled = true,
     this.toolInputEnabled = true,
     this.hasContentToView = true,
+    this.panbars = true,
     this.oneToOneOnPill = false,
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
@@ -1123,6 +1125,13 @@ class BrushCanvasPanel extends StatefulWidget {
   /// operate right now" (false DISABLES it in place).
   final bool hasContentToView;
 
+  /// Whether the view wears its panbars. False only where what is shown
+  /// pans with nothing — a sound's face, whose lower row follows the
+  /// playhead: 🗣️F-71-Q7 (유저 2026-11-05) 「아래 줄 배율은 알약으로,
+  /// 스크롤바 없음」. Its lanes go with them, and so does what they hid of
+  /// the window ([CanvasStage]).
+  final bool panbars;
+
   /// Whether the pill keeps its 1:1 out where it is seen, as the floor's
   /// does — folded only for room — instead of behind the gear.
   ///
@@ -1292,6 +1301,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// second scope at the workspace's floor: the floor would then be said
   /// twice, and a floor stood up without one would draw the thin bar.
   late double _lane;
+
+  /// How thick the panbars' own lanes stand: [_lane], or none where the
+  /// view wears no panbars ([BrushCanvasPanel.panbars]).
+  double get _panbarLane => widget.panbars ? _lane : 0;
 
   /// The MERGED-mode surface painter, kept ALIVE across rebuilds.
   ///
@@ -2285,7 +2298,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   Widget _buildViewportContent(BuildContext context) {
     final override = widget.contentOverride;
     if (override != null) {
-      return override(context, _viewportState._viewport);
+      return CanvasStage(
+        rect: _stage(context),
+        child: override(context, _viewportState._viewport),
+      );
     }
 
     final coordinator = widget.coordinator!;
@@ -2407,7 +2423,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         _floorCover +
         (_onFloor
             ? EdgeInsets.zero
-            : _CanvasEditorPanelShell.dockedLanesOf(_lane)) +
+            : _CanvasEditorPanelShell.dockedLanesOf(_panbarLane)) +
         EdgeInsets.only(
           top: _pillBand,
           bottom: _CanvasEditorPanelShell.transportCover(
@@ -2421,6 +2437,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       left: _leftPillBesideRail
           ? covered.left + pill
           : math.max(covered.left, pill),
+    );
+  }
+
+  /// The window the content is seen through, less the band its document's
+  /// name stands in — what the content may stand on ([CanvasStage]).
+  Rect _stage(BuildContext context) {
+    final window = _viewportState._resolvedVisibleRect();
+    final name = widget.documentName == null
+        ? 0.0
+        : _CanvasEditorPanelShell.documentNameBandIn(context);
+    return Rect.fromLTRB(
+      window.left,
+      window.top,
+      window.right,
+      math.max(window.top, window.bottom - name),
     );
   }
 
@@ -3445,6 +3476,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   static double _capsuleBand(double thickness) =>
       _capsuleMargin + thickness + _capsuleMargin;
 
+  /// The band the document's name stands in along the window's foot: the
+  /// name and the margin under it ([_LeftEdgeSeat]'s `nameBottom`).
+  static double documentNameBandIn(BuildContext context) =>
+      _CanvasDocumentName.heightIn(context) + _capsuleMargin;
+
   /// What [transport] hides of the artwork's bottom edge — a docked panel's
   /// band and the rule over it; the floor's capsule, its margin on either
   /// side, and whatever lies on that edge under it ([floorOverlay]).
@@ -3512,7 +3548,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final bool onFloor;
 
   /// How thick its panbars are — the floor's capsule across, a docked
-  /// panel's lane: the seat's ([AppScrollbarLaneScope], F-440).
+  /// panel's lane: the seat's ([AppScrollbarLaneScope], F-440). Zero where
+  /// the view wears none ([BrushCanvasPanel.panbars]).
   final double lane;
 
   /// The horizontal panbar: its own capsule on the floor's bottom edge, its
@@ -3647,10 +3684,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
             ),
           ),
         ),
-        if (onFloor)
-          _floorCapsules()
-        else
-          ..._dockedLanes(colorScheme),
+        if (!onFloor)
+          ..._dockedLanes(colorScheme)
+        // No lane, no panbars ([BrushCanvasPanel.panbars]).
+        else if (lane > 0)
+          _floorCapsules(),
         if (documentName != null || leftPill != null) _leftEdge(context),
         Positioned(
           // The pill answers the same way the horizontal bar does (유저,
@@ -3870,35 +3908,39 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       child: bar,
     );
     return [
-      Positioned(
-        top: 0,
-        right: 0,
-        bottom: lane + _transportCover,
-        width: lane,
-        child: strip(
-          'canvas-panbar-vertical',
-          Border(left: ring),
-          rightStripBar,
+      // No lane, no panbars ([BrushCanvasPanel.panbars]) — the transport
+      // under them stands as it does.
+      if (lane > 0) ...[
+        Positioned(
+          top: 0,
+          right: 0,
+          bottom: lane + _transportCover,
+          width: lane,
+          child: strip(
+            'canvas-panbar-vertical',
+            Border(left: ring),
+            rightStripBar,
+          ),
         ),
-      ),
-      Positioned(
-        left: 0,
-        right: lane,
-        bottom: _transportCover,
-        height: lane,
-        child: strip(
-          'canvas-panbar-horizontal',
-          Border(top: ring),
-          horizontalStripBar,
+        Positioned(
+          left: 0,
+          right: lane,
+          bottom: _transportCover,
+          height: lane,
+          child: strip(
+            'canvas-panbar-horizontal',
+            Border(top: ring),
+            horizontalStripBar,
+          ),
         ),
-      ),
-      Positioned(
-        right: 0,
-        bottom: _transportCover,
-        width: lane,
-        height: lane,
-        child: strip('canvas-panbar-corner', const Border()),
-      ),
+        Positioned(
+          right: 0,
+          bottom: _transportCover,
+          width: lane,
+          height: lane,
+          child: strip('canvas-panbar-corner', const Border()),
+        ),
+      ],
       if (transport case final transport?)
         Positioned(
           left: 0,
@@ -3932,6 +3974,19 @@ class _CanvasDocumentName extends StatelessWidget {
   /// See [BrushCanvasPanel.documentAbsent].
   final bool absent;
 
+  static const EdgeInsets _padding = EdgeInsets.symmetric(
+    horizontal: 7,
+    vertical: 2,
+  );
+
+  /// How tall the plate stands: its line, set as it is set, and its padding.
+  static double heightIn(BuildContext context) =>
+      TextMeasure(
+        context,
+        Theme.of(context).textTheme.labelSmall,
+      ).size(TextMeasure.everyScript).height +
+      _padding.vertical;
+
   @override
   Widget build(BuildContext context) => PressesGoThrough(
     child: Align(
@@ -3943,7 +3998,7 @@ class _CanvasDocumentName extends StatelessWidget {
           shape: AppShapes.container(AppShapes.wellRadius),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          padding: _padding,
           child: EllipsisText(
             name,
             maxLines: 1,

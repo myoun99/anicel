@@ -504,11 +504,11 @@ void main() {
     await settleAsync(
       tester,
       () => tester.any(
-        find.byKey(const ValueKey<String>('import-preview-marks')),
+        find.byKey(const ValueKey<String>('import-preview-face')),
       ),
     );
     expect(
-      find.byKey(const ValueKey<String>('import-preview-marks')),
+      find.byKey(const ValueKey<String>('import-preview-face')),
       findsOneWidget,
       reason: 'the preview shows what lands — the sound',
     );

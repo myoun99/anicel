@@ -129,7 +129,7 @@ class _PanelBuild {
           // The capsules float INSIDE what the panels left over.
           cover: _state._floorCover,
           onFloor: _state._onFloor,
-          lane: _state._lane,
+          lane: _state._panbarLane,
           leftRailBand: _state._floor?.leftRailBand,
           rightRailBand: _state._floor?.rightRailBand,
           bottomOverlaySpan: _state._floor?.bottomOverlaySpan ?? 0,
