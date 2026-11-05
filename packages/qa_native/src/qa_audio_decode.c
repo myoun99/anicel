@@ -78,6 +78,18 @@
 #define DR_FLAC_NO_STDIO
 #define DR_MP3_NO_STDIO
 
+// 🧭관제 (audio-same-across-devices ③, 2026-11-05): ONE MP3 path on every
+// device, because a conform rebuilt on another device must hold the same
+// samples (user, gpu-same-formula-Q2). dr_mp3 takes SSE on x64 and NEON on
+// ARM64, and the two round the synthesis to 16 bits by different rules —
+// SSE `_mm_cvtps_epi32` to even, NEON `+0.5` then toward zero — so a sum
+// that is exactly half lands on different samples: 32 of the 86,400 SIMD
+// lanes of test/fixtures/tone.mp3, counted on x64 (2026-11-05). The scalar
+// path is the same C on both; it cost 7% on x64 (0.655 → 0.701 ms per second
+// of sound, MSVC /O2). dr_flac and dr_wav keep theirs: their SIMD is integer
+// work and exact conversions, and the same fixtures pin them.
+#define DR_MP3_NO_SIMD
+
 #include "third_party/dr_libs/dr_flac.h"
 #include "third_party/dr_libs/dr_mp3.h"
 #include "third_party/dr_libs/dr_wav.h"
