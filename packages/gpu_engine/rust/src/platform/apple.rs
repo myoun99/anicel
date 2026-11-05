@@ -12,10 +12,12 @@
 //!   Flutter's own macOS surfaces use (macos/framework/Source/
 //!   FlutterSurface.mm:94-136), minus the render-target use no kernel
 //!   needs.
-//! - An IOSurface is shared across Metal devices, so the picture is right
-//!   even where Flutter and wgpu would pick different GPUs (a dual-GPU
-//!   Intel Mac: FlutterRenderer.mm:46-56 against wgpu-hal-30.0.1/src/
-//!   metal/mod.rs:200-205) — only slower there.
+//! - Which device Flutter draws with is not handed to plugins, so the
+//!   engine opens only where there is one (device.rs, `open_sole`): a
+//!   dual-GPU Intel Mac, where Flutter takes the integrated GPU and wgpu
+//!   lists the discrete one first (FlutterRenderer.mm:46-56 against
+//!   wgpu-hal-30.0.1/src/metal/mod.rs:200-205), opens none until the
+//!   plugin round says how to match them.
 
 use std::ffi::c_void;
 use std::ptr::{self, NonNull};
@@ -50,6 +52,9 @@ pub struct SharedHandle {
 }
 
 impl SharedHandle {
+    /// Not retained for the caller: `copyPixelBuffer` hands Flutter a
+    /// reference Flutter releases (FlutterDarwinExternalTextureMetal.mm:
+    /// 84-87), so the plugin retains this before returning it.
     pub fn raw(&self) -> *mut c_void {
         CFRetained::as_ptr(&self.pixels).as_ptr().cast()
     }

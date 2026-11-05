@@ -29,6 +29,7 @@ windows = { version = "0.62", features = [
   "Win32_Graphics_Direct3D12",
   "Win32_Graphics_Dxgi",
   "Win32_Graphics_Dxgi_Common",
+  "Win32_System_LibraryLoader",
 ] }
 
 # Android presents through Vulkan (platform/android.rs); Cargo adds this
@@ -84,6 +85,10 @@ ash = "0.38"
 # The Linux test maps the dma-buf to read what Flutter is handed.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 libc = "0.2"
+
+# build.rs checks the pinned dxcompiler.dll against its SHA-256.
+[build-dependencies]
+sha2 = "0.10"
 
 # The tests read the ledger, test/fixtures/fingerprints.json.
 [dev-dependencies]

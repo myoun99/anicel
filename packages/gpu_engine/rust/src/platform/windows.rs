@@ -15,9 +15,11 @@
 //!   it is handed over without a barrier wgpu cannot express.
 //! - ALLOW_UNORDERED_ACCESS: the compute pass stores into it.
 
-use std::ffi::c_void;
+use std::ffi::{OsString, c_void};
+use std::os::windows::ffi::OsStringExt;
+use std::path::PathBuf;
 
-use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, HMODULE};
 use windows::Win32::Graphics::Direct3D12::{
     D3D12_HEAP_FLAG_SHARED, D3D12_HEAP_PROPERTIES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_DESC,
     D3D12_RESOURCE_DIMENSION_TEXTURE2D, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
@@ -28,6 +30,10 @@ use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::DXGI_MEMORY_SEGMENT_GROUP_LOCAL;
+use windows::Win32::System::LibraryLoader::{
+    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+    GetModuleFileNameW, GetModuleHandleExW,
+};
 use windows::core::PCWSTR;
 use wgpu::hal::api::Dx12;
 
@@ -166,37 +172,143 @@ pub fn video_memory(adapter: &wgpu::Adapter) -> Option<u64> {
     Some(info.CurrentUsage)
 }
 
+/// The pinned DXC (rust/build.rs), named by its full path — never wgpu's
+/// `Auto`, which takes whatever dxcompiler.dll the DLL search reaches and
+/// FXC when there is none (wgpu-hal-30.0.1/src/dx12/instance.rs:64-90).
+/// A file that is not there opens no DX12 adapter at all rather than FXC
+/// (instance.rs:50-57). gpu-engine-feasibility-Q4 (유저 2026-11-05:
+/// 「DXC 로 바꾼다」).
+pub fn shader_compiler() -> wgpu::Dx12Compiler {
+    wgpu::Dx12Compiler::DynamicDxc {
+        dxc_path: dxcompiler().to_string_lossy().into_owned(),
+    }
+}
+
+/// cargo test's engine is the test binary, beside which nothing installs
+/// the DLL: it takes build.rs's checked copy.
+#[cfg(test)]
+fn dxcompiler() -> PathBuf {
+    PathBuf::from(env!("GPU_ENGINE_DXC"))
+}
+
+#[cfg(not(test))]
+fn dxcompiler() -> PathBuf {
+    beside_engine()
+}
+
+/// dxcompiler.dll beside the module this code is in: Flutter installs
+/// every bundled code asset in one folder (windows/CMakeLists.txt,
+/// NATIVE_ASSETS_DIR), and the build hook ships dxcompiler.dll as one.
+/// Empty if the module cannot be named — a path that loads nothing.
+fn beside_engine() -> PathBuf {
+    let mut module = HMODULE::default();
+    let here = PCWSTR(beside_engine as fn() -> PathBuf as *const u16);
+    // SAFETY: `here` is an address inside this module; the handle is not
+    // counted, so there is nothing to release.
+    let found = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            here,
+            &mut module,
+        )
+    };
+    if found.is_err() {
+        return PathBuf::new();
+    }
+    let mut name = vec![0u16; 32_768];
+    // SAFETY: writes at most `name.len()` units.
+    let length = unsafe { GetModuleFileNameW(Some(module), &mut name) } as usize;
+    if length == 0 || length == name.len() {
+        return PathBuf::new();
+    }
+    PathBuf::from(OsString::from_wide(&name[..length])).with_file_name("dxcompiler.dll")
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use crate::testing::first_engine;
 
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn SetDllDirectoryW(path: *const u16) -> i32;
+    // R1's shape (gpu-canonical-store, 브러시/렌더링 2026-11-05): indexed
+    // writes into arrays inside a struct passed by pointer. FXC fails it
+    // with X3500 · X3511 (reproduced on this PC, 보드/인프라 2026-11-05);
+    // DXC compiles it.
+    const FXC_CANNOT: &str = r#"
+struct Wide { lo: u32, hi: u32 }
+struct Table { keys: array<u32, 16>, weights: array<Wide, 16>, slots: u32, evicted: bool }
+@group(0) @binding(0) var<storage, read_write> out: array<u32>;
+
+fn vote(t: ptr<function, Table>, token: u32, w: Wide) {
+  var slot = 16u;
+  for (var s = 0u; s < (*t).slots; s = s + 1u) {
+    if (slot == 16u && (*t).keys[s] == token) { slot = s; }
+  }
+  if (slot == 16u) {
+    if ((*t).slots < 16u) {
+      slot = (*t).slots;
+      (*t).slots = (*t).slots + 1u;
+      (*t).keys[slot] = token;
+      (*t).weights[slot] = Wide(0u, 0u);
+    } else {
+      (*t).evicted = true;
+      return;
+    }
+  }
+  (*t).weights[slot].lo = (*t).weights[slot].lo + w.lo;
+  (*t).weights[slot].hi = (*t).weights[slot].hi + w.hi;
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+  var t: Table;
+  for (var y = 0u; y < 8u; y = y + 1u) {
+    for (var x = 0u; x < 8u; x = x + 1u) {
+      vote(&t, (id.x * 31u + x * 7u + y) % 23u, Wide(x + y, 0u));
+    }
+  }
+  var best = 0u;
+  for (var s = 0u; s < t.slots; s = s + 1u) {
+    if (t.weights[s].lo > t.weights[best].lo) { best = s; }
+  }
+  out[id.x] = t.keys[best];
+}
+"#;
+
+    #[test]
+    fn the_engine_compiles_what_fxc_cannot() {
+        let engine = first_engine();
+        let scope = engine.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let module = engine.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("fxc cannot"),
+            source: wgpu::ShaderSource::Wgsl(FXC_CANNOT.into()),
+        });
+        let _pipeline = engine.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("fxc cannot"),
+            layout: None,
+            module: &module,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        let error = pollster::block_on(scope.pop());
+        assert!(error.is_none(), "{error:?}");
     }
 
-    /// Where the Windows SDK keeps a dxcompiler.dll of its own.
-    const SDK_DXC: &str = r"C:\Program Files (x86)\Windows Kits\10\Redist\D3D\x64";
-
-    // A dxcompiler.dll the DLL search can reach is what wgpu's `Auto`
-    // takes; DX12 has 64-bit integers only from shader model 6.0, which
-    // only DXC compiles (wgpu-hal-30.0.1/src/dx12/adapter.rs:391-394,
-    // 566-569).
     #[test]
-    fn a_dxcompiler_the_pc_has_does_not_change_the_compiler() {
-        if !Path::new(SDK_DXC).join("dxcompiler.dll").exists() {
-            println!("no SDK dxcompiler.dll here: nothing to tempt the engine with");
-            return;
-        }
-        let path: Vec<u16> = SDK_DXC.encode_utf16().chain([0]).collect();
-        // SAFETY: a NUL-terminated path; null below restores the default.
-        unsafe { SetDllDirectoryW(path.as_ptr()) };
-        let instance = super::super::instance();
-        let int64 = super::super::adapters(&instance)
-            .iter()
-            .any(|adapter| adapter.features().contains(wgpu::Features::SHADER_INT64));
-        // SAFETY: null restores the default search.
-        unsafe { SetDllDirectoryW(std::ptr::null()) };
-        assert!(!int64, "the engine compiled with the PC's DXC");
+    fn a_missing_dxcompiler_opens_no_adapter() {
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = super::BACKENDS;
+        desc.backend_options.dx12.shader_compiler = wgpu::Dx12Compiler::DynamicDxc {
+            dxc_path: r"C:\nowhere\dxcompiler.dll".into(),
+        };
+        let instance = wgpu::Instance::new(desc);
+        assert!(super::super::adapters(&instance).is_empty());
+    }
+
+    // The test binary is the module here, so the engine's own lookup
+    // answers with the test binary's folder.
+    #[test]
+    fn dxcompiler_is_looked_for_beside_the_engine() {
+        let exe = std::env::current_exe().expect("the test binary's path");
+        assert_eq!(super::beside_engine(), exe.with_file_name("dxcompiler.dll"));
     }
 }

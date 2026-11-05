@@ -48,13 +48,10 @@ use crate::fail;
 pub(crate) fn instance() -> wgpu::Instance {
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
     desc.backends = native::BACKENDS;
-    // ⛔NOT wgpu's `Auto`: it compiles with DXC when the PC happens to have
-    // a dxcompiler.dll on its DLL search path and with FXC when not
-    // (wgpu-hal-30.0.1/src/dx12/instance.rs:64-90), so the same build
-    // would take two compilers on two PCs. FXC until
-    // gpu-engine-feasibility-Q4 says DXC (보드/인프라, 2026-11-05). Only
-    // DX12 reads it.
-    desc.backend_options.dx12.shader_compiler = wgpu::Dx12Compiler::Fxc;
+    #[cfg(windows)]
+    {
+        desc.backend_options.dx12.shader_compiler = windows::shader_compiler();
+    }
     wgpu::Instance::new(desc)
 }
 
@@ -131,8 +128,10 @@ pub unsafe extern "C" fn gpu_engine_surface_texture(surface: *const Surface) -> 
     &unsafe { &*surface }.texture
 }
 
-/// What Flutter opens the surface by — on Windows, an NT handle; null
-/// where the platform shares no texture.
+/// What Flutter opens the surface by — on Windows, an NT handle; on iOS
+/// and macOS, a CVPixelBuffer the caller does not own (retain it before
+/// handing it to Flutter); on Linux, the `DmaBuf` that describes the
+/// plane; null where the platform shares no texture.
 ///
 /// # Safety
 /// `surface` is live.

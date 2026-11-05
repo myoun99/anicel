@@ -15,6 +15,14 @@
 //!   (vulkan/adapter.rs:1344-1356).
 //! - The LINEAR modifier: every EGL dma-buf importer takes it, so the
 //!   plugin needs no modifier list of its own (보드/인프라, 2026-11-05).
+//! - No release of the image to VK_QUEUE_FAMILY_FOREIGN_EXT: wgpu records
+//!   no such barrier and leaves it to its caller (wgpu-hal-30.0.1/src/
+//!   vulkan/device.rs:813-820). A LINEAR image has no compression for one
+//!   to resolve, and the engine waits for the GPU before Flutter reads.
+//! - Which GPU Flutter's EGL draws with is not handed to plugins, so the
+//!   engine opens only where Vulkan lists one device (device.rs,
+//!   `open_sole`); a PC with a GPU and Mesa's lavapipe lists two and opens
+//!   none until the plugin round says how to match them.
 
 use std::ffi::c_void;
 use std::os::fd::{FromRawFd, OwnedFd};
@@ -297,6 +305,9 @@ mod tests {
 
     // What Flutter's EGL imports is the dma-buf, not the wgpu texture: the
     // kernel's bytes must be in it, row for row, where the plane says.
+    // Read by mapping it, which lavapipe's memory allows; a GPU whose
+    // device-local memory the CPU cannot map would refuse the mmap with
+    // the bridge itself sound.
     #[test]
     fn flutter_is_handed_the_bytes_the_kernel_wrote() {
         let engine = first_engine();
