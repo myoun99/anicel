@@ -34,6 +34,10 @@ fn fill(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= params.width || id.y >= params.height) {
     return;
   }
+  // Opaque, so the word is the same straight and premultiplied: Flutter
+  // reads a surface premultiplied, and this pass needs no premultiply.wgsl
+  // (관제 asked, 보드/인프라 2026-11-05, gpu-engine-skeleton). A fill with
+  // alpha under 255 would.
   let packed = (mix32(id.x ^ mix32(id.y ^ mix32(params.seed))) & 0x00ffffffu)
       | 0xff000000u;
   // The one float step, and why it cannot move a byte: unpack gives k/255

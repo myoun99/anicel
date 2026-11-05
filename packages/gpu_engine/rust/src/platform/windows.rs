@@ -228,10 +228,13 @@ fn beside_engine() -> PathBuf {
 mod tests {
     use crate::testing::first_engine;
 
-    // R1's shape (gpu-canonical-store, 브러시/렌더링 2026-11-05): indexed
-    // writes into arrays inside a struct passed by pointer. FXC fails it
-    // with X3500 · X3511 (reproduced on this PC, 보드/인프라 2026-11-05);
-    // DXC compiles it.
+    // The shape R1's vote table was first written in (gpu-canonical-store,
+    // 브러시/렌더링 2026-11-05): indexed writes into arrays inside a struct
+    // passed by pointer. FXC fails it with X3500 · X3511 (reproduced on this
+    // PC, 보드/인프라 2026-11-05); DXC compiles it. R1 itself keeps the table
+    // at module scope (shared/resample.wgsl) — the struct measured slower
+    // under DXC too (브러시/렌더링 2026-11-05) — so this asks the compiler,
+    // not R1.
     const FXC_CANNOT: &str = r#"
 struct Wide { lo: u32, hi: u32 }
 struct Table { keys: array<u32, 16>, weights: array<Wide, 16>, slots: u32, evicted: bool }
