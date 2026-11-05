@@ -18,6 +18,8 @@ import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
 import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
 import '../../services/export/xdts_viewer_ink.dart';
+import '../../models/timesheet_sheet_kind.dart';
+import '../../models/xdts_viewer_sheet.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -581,7 +583,7 @@ class ExportDialogState extends State<ExportDialog> {
     required String keyValue,
     required String label,
     required bool selected,
-    required VoidCallback onPick,
+    required VoidCallback? onPick,
   }) => PillItem(
     keyValue: keyValue,
     label: label,
@@ -1031,6 +1033,9 @@ class ExportDialogState extends State<ExportDialog> {
   // --- plans ----------------------------------------------------------------
 
   Cut get _activeCut => _anchorCut!;
+
+  /// The frames a second the project counts in (`Project.fps`).
+  int get _projectFps => _session.repository.requireProject().fps;
 
   /// The FULL sequence axis (untrimmed, gapless): what the transport runs
   /// over and the in/out marks live on (cut-local frames under the cut
@@ -3218,7 +3223,11 @@ class ExportDialogState extends State<ExportDialog> {
         for (final sheet in plan.writtenDocuments)
           if (isDigitalSheet(sheet))
             _AfterFile.whole(
-              () => _writeXdts(sheet, inkFace: spec.sheetInk ? face : null),
+              () => _writeXdts(
+                sheet,
+                inkFace: spec.writesSheetInk(fps: _projectFps) ? face : null,
+                viewerSheetFor: spec.viewerSheetFor,
+              ),
             )
           else if (sheet.kind == ExportCelKind.video)
             _cutFilmFile(sheet),
@@ -3376,11 +3385,13 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// The digital sheet of a cut's timesheet, at [sheet]'s file — and, given
-  /// the [inkFace] its words are set in ([CelsExportSpec.sheetInk]), its
-  /// pages' handwriting beside it as the XDTS Viewer reads it.
+  /// the [inkFace] its words are set in ([CelsExportSpec.writesSheetInk]),
+  /// its pages' handwriting beside it as the XDTS Viewer reads it, laid on
+  /// the viewer sheet [viewerSheetFor] gives the cut's.
   Future<void> _writeXdts(
     ExportDocumentSheet sheet, {
     required TextStyle? inkFace,
+    required XdtsViewerSheet Function(TimesheetSheetKind kind) viewerSheetFor,
   }) async {
     final cut = sheet.of;
     final content = cutXdtsContent(
@@ -3392,7 +3403,12 @@ class ExportDialogState extends State<ExportDialog> {
     await file.parent.create(recursive: true);
     await file.writeAsString(content, flush: true);
     if (inkFace != null) {
-      await _writeXdtsInk(cut, beside: file, face: inkFace);
+      await _writeXdtsInk(
+        cut,
+        beside: file,
+        face: inkFace,
+        viewerSheetFor: viewerSheetFor,
+      );
     }
   }
 
@@ -3400,14 +3416,17 @@ class ExportDialogState extends State<ExportDialog> {
   /// each page of its timesheet with the handwriting alone, the page laid
   /// whole onto the viewer's paper — 🗣️I-161-Q2 (유저 2026-11-05): 「우리
   /// 용지를 뷰어 용지 크기에 맞춰 통째로 늘린다」 — and the viewer's settings
-  /// for that paper.
+  /// for that paper. A folder already there is written over, page by page,
+  /// as every export writes over its files — 🗣️I-161-Q10 (유저 2026-11-05):
+  /// 「덮어쓴다」.
   Future<void> _writeXdtsInk(
     Cut cut, {
     required File beside,
     required TextStyle face,
+    required XdtsViewerSheet Function(TimesheetSheetKind kind) viewerSheetFor,
   }) async {
     final (document, _) = _sheetDocFor(cut);
-    final viewer = XdtsViewerSheet.of(document.sheetKind);
+    final viewer = viewerSheetFor(document.sheetKind);
     final folder = Directory(
       '${beside.parent.path}${Platform.pathSeparator}'
       '${xdtsInkFolderName(beside.uri.pathSegments.last)}',
@@ -4898,17 +4917,21 @@ class ExportDialogState extends State<ExportDialog> {
   );
 
   /// 타임시트 형식: its pages as pictures — PNG or JPG — or the digital sheet,
-  /// with or without its handwriting (잉크 출력, I-161) — a switch whose row
-  /// stands under either, live under the digital sheet alone.
+  /// with or without its handwriting (잉크 출력, I-161) laid on the viewer
+  /// sheet picked under it — rows that stand under either, live under the
+  /// digital sheet alone, in a project the viewer reads (I-161-Q7).
   ExportAccordion _sheetFormatAccordion(CelsExportSpec spec) {
     final pictured = spec.sheetFormat == ExportTimesheetFormat.sheetImage;
+    final inkLive = !pictured && xdtsViewerReads(_projectFps);
+    final viewer = spec.viewerSheetFor(_sheetDocFor(_activeCut).$1.sheetKind);
     final strings = AppText.strings;
     return ExportAccordion(
       title: strings.exTimesheetFormat,
       summary: pictured
           ? ExportPaperFormatModule.summarize(spec.sheetImage)
-          : spec.sheetInk
-          ? 'XDTS · ${strings.exXdtsInk}'
+          : spec.writesSheetInk(fps: _projectFps)
+          ? 'XDTS · ${strings.exXdtsInk} · '
+                '${strings.exXdtsViewerSheet(viewer)}'
           : 'XDTS',
       expansion: _expansion('sheet-format', open: true),
       child: Column(
@@ -4943,7 +4966,23 @@ class ExportDialogState extends State<ExportDialog> {
             keyValue: 'export-tsformat-xdts-ink',
             label: strings.exXdtsInk,
             value: spec.sheetInk,
-            write: pictured ? null : (value) => spec.copyWith(sheetInk: value),
+            write: inkLive ? (value) => spec.copyWith(sheetInk: value) : null,
+          ),
+          ExportModuleRow.strip(
+            caption: ExportCaption.paper,
+            strip: PillStrip(
+              items: [
+                for (final sheet in XdtsViewerSheet.values)
+                  _pill(
+                    keyValue: 'export-tsformat-xdts-sheet-${sheet.jsonValue}',
+                    label: strings.exXdtsViewerSheet(sheet),
+                    selected: sheet == viewer,
+                    onPick: inkLive && spec.sheetInk
+                        ? () => _updateSpec(spec.copyWith(viewerSheet: sheet))
+                        : null,
+                  ),
+              ],
+            ),
           ),
         ],
       ),

@@ -294,8 +294,9 @@ Iterable<_Span> _drawingSpans(
 /// 2 (●) SYMBOL_TICK_2 — the order `xdtsio`'s spec names them in (中割り記号
 /// ○, 逆シート記号 ●) and the one the user checked against Toei's digital
 /// sheet and Clip Studio (I-130, 2026-10-25). The XDTS viewer draws
-/// TICK_1 as a small dot; whether our sheet copies that is I-161-Q6's, not
-/// the file's.
+/// TICK_1 as a small dot, not a ○; the file still writes each mark by its
+/// shape — 🗣️I-161-Q9 (유저 2026-11-05): 「모양대로」 — and our sheet keeps
+/// its own ○ ● (I-161-Q6).
 String _xdtsHead(DrawingHead head) => switch (head.mark) {
   null => head.word,
   InbetweenMark.one => xdtsTick1,

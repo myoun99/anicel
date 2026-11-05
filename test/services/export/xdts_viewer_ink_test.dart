@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/services/export/xdts_viewer_ink.dart';
 
 /// The XDTS Viewer's ink folder, as its sources read it (I-161): where the
@@ -16,23 +16,6 @@ void main() {
   test('a page\'s picture counts from 1 — 0 is a sheet\'s back', () {
     expect(xdtsInkPageFileName(0), '1.png');
     expect(xdtsInkPageFileName(2), '3.png');
-  });
-
-  test('each sheet of the app lays its ink on the viewer sheet of its '
-      'seconds, at the viewer\'s 250 dpi', () {
-    expect(
-      XdtsViewerSheet.of(TimesheetSheetKind.threeSeconds),
-      XdtsViewerSheet.b4ThreeSeconds,
-    );
-    expect(
-      XdtsViewerSheet.of(TimesheetSheetKind.sixSeconds),
-      XdtsViewerSheet.a3SixSeconds,
-    );
-    expect(XdtsViewerSheet.b4ThreeSeconds.pixelSize, (
-      width: 2530,
-      height: 3583,
-    ));
-    expect(XdtsViewerSheet.a3SixSeconds.pixelSize, (width: 2923, height: 4134));
   });
 
   test('the settings name the template, the cells area and each end\'s '

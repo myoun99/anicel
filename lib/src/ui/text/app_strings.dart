@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/timesheet_sheet_kind.dart';
+import '../../models/xdts_viewer_sheet.dart';
 import '../../services/persistence/save_stretch.dart';
 import '../audio/sound_cannot_play.dart' show SoundCannotPlay;
 
@@ -1439,6 +1440,13 @@ enum AppStrings {
   String get exApplyLayerFx => _s('exApplyLayerFx');
   String get exMuxSeMix => _s('exMuxSeMix');
   String get exXdtsInk => _s('exXdtsInk');
+
+  /// A sheet of the XDTS Viewer's, as the export names it — its paper and
+  /// the seconds a page holds (「A3 6초」, I-161-Q8).
+  String exXdtsViewerSheet(XdtsViewerSheet sheet) =>
+      _s('exXdtsViewerSheetTemplate')
+          .replaceAll('{paper}', sheet.paper)
+          .replaceAll('{seconds}', '${sheet.pageSeconds}');
   String get exLabel => _s('exLabel');
   String get exApply => _s('exApply');
   String get exKinds => _s('exKinds');
@@ -3003,6 +3011,7 @@ enum AppStrings {
     'exApplyLayerFx': 'Layer FX',
     'exMuxSeMix': 'Mux the SE mix into the video',
     'exXdtsInk': 'Ink output',
+    'exXdtsViewerSheetTemplate': '{paper} {seconds} sec',
     'exLabel': 'Label',
     'exApply': 'Apply',
     'exKinds': 'Kinds to export',
@@ -4651,6 +4660,7 @@ enum AppStrings {
     'exApplyLayerFx': 'レイヤーFX',
     'exMuxSeMix': 'SEミックスを動画に多重化',
     'exXdtsInk': 'インク出力',
+    'exXdtsViewerSheetTemplate': '{paper} {seconds}秒',
     'exLabel': 'ラベル',
     'exApply': '適用',
     'exKinds': '書き出す種類',
@@ -6508,6 +6518,7 @@ enum AppStrings {
     'exApplyLayerFx': '레이어 FX',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
     'exXdtsInk': '잉크 출력',
+    'exXdtsViewerSheetTemplate': '{paper} {seconds}초',
     'exLabel': '라벨',
     'exApply': '적용',
     'exKinds': '내보낼 종류',
@@ -8423,6 +8434,7 @@ enum AppStrings {
     'exApplyLayerFx': 'FX de calque',
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
     'exXdtsInk': "Sortie de l'encre",
+    'exXdtsViewerSheetTemplate': '{paper} {seconds} s',
     'exLabel': 'Étiquette',
     'exApply': 'Appliquer',
     'exKinds': 'Types à exporter',
@@ -10340,6 +10352,7 @@ enum AppStrings {
     'exApplyLayerFx': '图层 FX',
     'exMuxSeMix': '将 SE 混音封装进视频',
     'exXdtsInk': '墨迹输出',
+    'exXdtsViewerSheetTemplate': '{paper} {seconds}秒',
     'exLabel': '标签',
     'exApply': '应用',
     'exKinds': '导出种类',

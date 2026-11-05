@@ -9,8 +9,8 @@
 /// them on in that folder's `config.ini`.
 library;
 
-import '../../models/timesheet_sheet_kind.dart';
 import '../../models/transition_geometry.dart';
+import '../../models/xdts_viewer_sheet.dart';
 
 /// The folder the viewer reads [xdtsFileName]'s ink from: the name less
 /// its `.xdts`, and less the `_genga_ts` / `_douga_ts` a genga or douga
@@ -26,42 +26,6 @@ String xdtsInkFolderName(String xdtsFileName) {
 /// from 1 (0 is a sheet's back, which the app has none of), one picture a
 /// page while every column fits it.
 String xdtsInkPageFileName(int pageIndex) => '${pageIndex + 1}.png';
-
-/// A sheet the viewer lays ink on: its template's label — the name its
-/// `config.ini` picks it by — and its paper in millimetres.
-enum XdtsViewerSheet {
-  b4ThreeSeconds(
-    label: 'B4 size, 3 seconds sheet',
-    widthMm: 257,
-    heightMm: 364,
-  ),
-  a3SixSeconds(label: 'A3 size, 6 seconds sheet', widthMm: 297, heightMm: 420);
-
-  const XdtsViewerSheet({
-    required this.label,
-    required this.widthMm,
-    required this.heightMm,
-  });
-
-  final String label;
-  final double widthMm;
-  final double heightMm;
-
-  /// The pixels a page's ink picture is: the paper at the viewer's 250 dpi
-  /// (`MyParams::PDF_Resolution`).
-  ({int width, int height}) get pixelSize => (
-    width: (widthMm / 25.4 * 250).round(),
-    height: (heightMm / 25.4 * 250).round(),
-  );
-
-  /// The viewer sheet a page of the app's [kind] is laid on: the one sheet
-  /// of its seconds the viewer has — of the three 6-second ones, the A3 the
-  /// app's paper is (I-161-Q8).
-  static XdtsViewerSheet of(TimesheetSheetKind kind) => switch (kind) {
-    TimesheetSheetKind.threeSeconds => b4ThreeSeconds,
-    TimesheetSheetKind.sixSeconds => a3SixSeconds,
-  };
-}
 
 /// The viewer's `config.ini` for a sheet laid on [sheet] that draws
 /// [handles] of のりしろ: the template, the cells area and the O.L each

@@ -7,6 +7,8 @@ import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 
 void main() {
   group('SequenceExportSpec', () {
@@ -79,6 +81,7 @@ void main() {
       expect(spec.attach, isTrue);
       expect(spec.sheetOnly, isFalse);
       expect(spec.sheetInk, isFalse, reason: 'a plain XDTS (I-161)');
+      expect(spec.viewerSheet, isNull, reason: 'each cut its own sheet\'s');
       expect(spec.toJson().keys, unorderedEquals(['format', 'naming']));
       expect(CelsExportSpec.fromJson(spec.toJson()), spec);
     });
@@ -114,15 +117,54 @@ void main() {
         sheetOnly: true,
         scope: ExportScopeKind.project,
         sheetInk: true,
+        viewerSheet: XdtsViewerSheet.ponocSixSeconds,
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
       expect(restored.sheetInk, isTrue);
+      expect(restored.viewerSheet, XdtsViewerSheet.ponocSixSeconds);
       expect(restored.kinds, {ExportCelKind.conte, ExportCelKind.direction});
       expect(restored.take, 3);
       expect(restored.base, isFalse);
       expect(restored.attach, isTrue);
       expect(restored.naming.projectFolder, isTrue);
+    });
+
+    test('🗣️I-161-Q7: the ink is written with the digital sheet that asks '
+        'for it, in a project of the viewer\'s 24 frames a second alone', () {
+      const inked = CelsExportSpec(
+        sheetFormat: ExportTimesheetFormat.xdts,
+        sheetInk: true,
+      );
+      expect(inked.writesSheetInk(fps: 24), isTrue);
+      expect(inked.writesSheetInk(fps: 25), isFalse);
+      expect(inked.writesSheetInk(fps: 30), isFalse);
+      expect(
+        inked.copyWith(sheetInk: false).writesSheetInk(fps: 24),
+        isFalse,
+      );
+      expect(
+        inked
+            .copyWith(sheetFormat: ExportTimesheetFormat.sheetImage)
+            .writesSheetInk(fps: 24),
+        isFalse,
+        reason: 'pictures carry their ink on the page',
+      );
+    });
+
+    test('🗣️I-161-Q8: the viewer sheet picked here, else the cut\'s own '
+        'sheet\'s', () {
+      const spec = CelsExportSpec();
+      expect(
+        spec.viewerSheetFor(TimesheetSheetKind.threeSeconds),
+        XdtsViewerSheet.a3SixSeconds,
+      );
+      expect(
+        spec
+            .copyWith(viewerSheet: XdtsViewerSheet.b4ThreeSeconds)
+            .viewerSheetFor(TimesheetSheetKind.sixSeconds),
+        XdtsViewerSheet.b4ThreeSeconds,
+      );
     });
 
     test('🗣️I-153: the folders\' names keep what they wear, and a bare one '

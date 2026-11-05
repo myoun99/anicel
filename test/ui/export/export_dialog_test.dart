@@ -23,10 +23,12 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -44,6 +46,7 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/boolean_dot_probe.dart';
@@ -87,12 +90,15 @@ void main() {
   /// Two cuts (2 + 3 frames) on the active track, a third cut on another
   /// track that exports must never touch. The first cut's drawing layer
   /// carries two authored cels (no brush artwork — surfaces stay empty).
-  EditorSessionManager exportSession() {
+  EditorSessionManager exportSession({
+    ProjectFrameRate frameRate = ProjectFrameRate.fps24,
+  }) {
     return EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
         cameraSize: const CanvasSize(width: 32, height: 18),
+        frameRate: frameRate,
         tracks: [
           Track(
             id: const TrackId('track'),
@@ -978,12 +984,24 @@ void main() {
       await tester.pump();
       expect(filesWrittenUnder(temp), ['_TSCut.xdts'], reason: 'a plain XDTS');
 
+      // 🗣️I-161-Q8: the cut's own sheet's viewer sheet stands picked — the
+      // app's 6-second sheet, the A3 — and the row is dead with no ink.
+      Pill sheetPill(XdtsViewerSheet sheet) => tester.widget<Pill>(
+        find.byKey(
+          ValueKey<String>('export-tsformat-xdts-sheet-${sheet.jsonValue}'),
+        ),
+      );
+      expect(sheetPill(XdtsViewerSheet.a3SixSeconds).selected, isTrue);
+      expect(sheetPill(XdtsViewerSheet.b4ThreeSeconds).selected, isFalse);
+      expect(sheetPill(XdtsViewerSheet.b4ThreeSeconds).onTap, isNull);
+
       await tester.ensureVisible(ink);
       await tester.pump();
       expect(tester.booleanDotIn(ink).enabled, isTrue);
       await tester.pressRingIn(ink);
       await tester.pump();
       expect(state.debugSpecs.cels.sheetInk, isTrue);
+      expect(sheetPill(XdtsViewerSheet.b4ThreeSeconds).onTap, isNotNull);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), [
@@ -1015,6 +1033,66 @@ void main() {
         0,
         reason: 'no paper and no form: the viewer draws its own sheet under it',
       );
+
+      // Another sheet picked: its paper, its name in the settings — the
+      // folder written over (I-161-Q10).
+      final b4 = find.byKey(
+        const ValueKey<String>('export-tsformat-xdts-sheet-b4-3s'),
+      );
+      await tester.ensureVisible(b4);
+      await tester.pump();
+      await tester.tap(b4);
+      await tester.pump();
+      expect(
+        state.debugSpecs.cels.viewerSheet,
+        XdtsViewerSheet.b4ThreeSeconds,
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(
+        File('${temp.path}/_TSCut_xdts/config.ini').readAsStringSync(),
+        contains('TemplateName="B4 size, 3 seconds sheet"'),
+      );
+      final onB4 = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(onB4.dispose);
+      expect((onB4.width, onB4.height), (2530, 3583));
+    });
+
+    // 🗣️I-161-Q7 (유저 2026-11-05): 「24fps 가 아니면 잉크 버튼을 회색으로」.
+    testWidgets('잉크 출력: in a project the viewer does not count — 25 '
+        'frames a second — the switch is dead and a sheet asked for its ink '
+        'is written plain', (tester) async {
+      final session = exportSession(
+        frameRate: const ProjectFrameRate.integer(25),
+      );
+      addTearDown(session.dispose);
+      // Kept on from a project the viewer counts.
+      AppExport.settings.value = AppExportSettings(
+        lastSpecs: const ExportTabSpecs(
+          cels: CelsExportSpec(
+            sheetFormat: ExportTimesheetFormat.xdts,
+            sheetInk: true,
+          ),
+        ),
+      );
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      final ink = find.byKey(const ValueKey<String>('export-tsformat-xdts-ink'));
+      await tester.ensureVisible(ink);
+      await tester.pump();
+      expect(tester.booleanDotIn(ink).enabled, isFalse);
+      expect(state.debugSpecs.cels.sheetInk, isTrue);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesWrittenUnder(temp), ['_TSCut.xdts']);
     });
 
     testWidgets('a photo laid on the sheet rides its PNG, drawn from its '
