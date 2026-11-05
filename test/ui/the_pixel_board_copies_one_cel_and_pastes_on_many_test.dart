@@ -17,6 +17,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/wait_window.dart' show reachesManyBlocks;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -283,6 +284,12 @@ void main() {
 
     selectAcross(session, 1, 3);
     await tester.pump();
+    // 🗣️F-566 「복수선택 동작이면 띄움」: what the wait window measures is the
+    // cels the paste lays on — the range's, not the one you stand on.
+    final lands = session.pixelVerbs.pixelClipboardVerbCels(
+      PixelClipboardVerb.pasteAbove,
+    );
+    expect(reachesManyBlocks(lands), isTrue, reason: 'two cels of the range');
     session.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
     await tester.pump();
 

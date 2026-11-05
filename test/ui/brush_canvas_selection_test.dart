@@ -1971,7 +1971,12 @@ void main() {
       ),
     );
     await tester.pump();
-    await windowBehind(tester, () async => env.commands.applyTransform());
+    // 🗣️F-566: it lands on the cel it lifted and the one the ladder names
+    // beside it — two blocks, so it waits behind the window.
+    expect(
+      await windowBehind(tester, () async => env.commands.applyTransform()),
+      isNotNull,
+    );
     await tester.pump();
 
     expect(
