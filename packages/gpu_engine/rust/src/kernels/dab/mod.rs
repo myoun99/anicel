@@ -148,7 +148,7 @@ impl Dabs {
         if tiles.len() > most as usize {
             return fail(format!("{} stroke tiles exceed a dispatch's {most}", tiles.len()));
         }
-        let words = planned(tiles, dabs);
+        let words = planned(tiles, dabs)?;
         let plan = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -191,20 +191,30 @@ impl Dabs {
 
 /// The plan dab.wgsl reads: the tiles, each tile's list, the records, the
 /// tables — each table once, however many dabs read it.
-fn planned(tiles: &[StrokeTile], dabs: &[Dab]) -> Vec<u32> {
+fn planned(tiles: &[StrokeTile], dabs: &[Dab]) -> Option<Vec<u32>> {
     let at: HashMap<(i32, i32), usize> = tiles
         .iter()
         .enumerate()
         .map(|(index, tile)| ((tile.column, tile.row), index))
         .collect();
+    // A dab's tiles are looked for within the stroke's, however far its
+    // region runs.
+    let columns = tiles.iter().map(|tile| tile.column);
+    let rows = tiles.iter().map(|tile| tile.row);
+    let (first_column, last_column) = (columns.clone().min()?, columns.max()?);
+    let (first_row, last_row) = (rows.clone().min()?, rows.max()?);
     let mut lists = vec![Vec::new(); tiles.len()];
     for (index, dab) in dabs.iter().enumerate() {
-        let [left, top, right, bottom] = laid_region(dab);
+        let [left, top, right, bottom] = dab.region;
         if right <= left || bottom <= top {
             continue;
         }
-        for row in top.div_euclid(TILE)..=(bottom - 1).div_euclid(TILE) {
-            for column in left.div_euclid(TILE)..=(right - 1).div_euclid(TILE) {
+        let down = top.div_euclid(TILE).max(first_row)
+            ..=(bottom - 1).div_euclid(TILE).min(last_row);
+        for row in down {
+            let across = left.div_euclid(TILE).max(first_column)
+                ..=(right - 1).div_euclid(TILE).min(last_column);
+            for column in across {
                 if let Some(&tile) = at.get(&(column, row)) {
                     lists[tile].push(index);
                 }
@@ -226,10 +236,10 @@ fn planned(tiles: &[StrokeTile], dabs: &[Dab]) -> Vec<u32> {
     }
     let mut tables = Tables { words: Vec::new(), at: tables_at, placed: HashMap::new() };
     for dab in dabs {
-        words.extend(record(dab, &mut tables));
+        words.extend(record(dab, &mut tables)?);
     }
     words.extend(tables.words);
-    words
+    Some(words)
 }
 
 /// The tables the records point at, each placed once.
@@ -259,23 +269,6 @@ fn wide(value: f64) -> u32 {
     (value * 65535.0).round() as u32
 }
 
-/// The dab's region, cut to its reach where it is round: the integer
-/// bounds of 1a 보탬's geometry hold there, and past the reach a round tip
-/// lays nothing.
-fn laid_region(dab: &Dab) -> [i32; 4] {
-    let [left, top, right, bottom] = dab.region;
-    let Shape::Round(profile) = dab.shape else {
-        return dab.region;
-    };
-    let [cx, cy] = dab.centre;
-    [
-        left.max((cx - profile.reach).floor() as i32),
-        top.max((cy - profile.reach).floor() as i32),
-        right.min((cx + profile.reach).ceil() as i32),
-        bottom.min((cy + profile.reach).ceil() as i32),
-    ]
-}
-
 /// A scale as `per_unit` × 2^point in an integer under [`SCALE_BOUND`],
 /// the point as far as it goes.
 fn fixed(per_unit: f64) -> (u32, u32) {
@@ -286,8 +279,8 @@ fn fixed(per_unit: f64) -> (u32, u32) {
     ((per_unit * f64::from(1u32 << point)).round() as u32, point)
 }
 
-fn record(dab: &Dab, tables: &mut Tables) -> [u32; DAB_WORDS] {
-    let [left, top, right, bottom] = laid_region(dab);
+fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
+    let [left, top, right, bottom] = dab.region;
     let [red, green, blue, alpha] = dab.colour.map(u32::from);
     let (threshold, contrast) = match dab.edge {
         Edge::Threshold => (THRESHOLD, 256),
@@ -320,6 +313,12 @@ fn record(dab: &Dab, tables: &mut Tables) -> [u32; DAB_WORDS] {
         let shift = (32 - reach8.leading_zeros()).saturating_sub(15);
         let unit = 256.0 / f64::from(1u32 << shift);
         let (scale, point) = fixed(profile.scale / unit);
+        if point < 15 {
+            // A unit of distance over four entries: no tip the app draws,
+            // whose tables hold 16 entries a pixel at most and whose unit
+            // is 1/32 px or finer to its size of 2000.
+            return fail(format!("a tip of {} entries a pixel at shift {shift}", profile.scale));
+        }
         words[13..].copy_from_slice(&[
             shift,
             (profile.reach * unit).ceil() as u32,
@@ -331,5 +330,5 @@ fn record(dab: &Dab, tables: &mut Tables) -> [u32; DAB_WORDS] {
             tables.place(profile.pile),
         ]);
     }
-    words
+    Some(words)
 }

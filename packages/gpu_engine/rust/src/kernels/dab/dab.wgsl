@@ -93,17 +93,12 @@ fn dab_shrunk(d: i32, shift: u32) -> i32 {
 
 // Where a distance lands in the dab's tables: the entry, and the next 15
 // bits of the way to the one after, cut. The distance is under 2^15 and the
-// scale under 2^17, so their product stays in u32.
+// scale under 2^17, so their product stays in u32; the point is 15 or more
+// (mod.rs refuses a table finer than that).
 fn dab_entry(at: u32, distance: u32) -> vec2<u32> {
   let position = distance * plan[at + DAB_SCALE];
   let point = plan[at + DAB_POINT];
-  var f15: u32;
-  if (point >= 15u) {
-    f15 = position >> (point - 15u);
-  } else {
-    f15 = position << (15u - point);
-  }
-  return vec2<u32>(position >> point, f15 & 0x7fffu);
+  return vec2<u32>(position >> point, (position >> (point - 15u)) & 0x7fffu);
 }
 
 // A square table at (across, down): along the row, then down.
@@ -120,16 +115,18 @@ fn dab_square(table: u32, row: u32, across: vec2<u32>, down: vec2<u32>) -> u32 {
 // only where the tip holds an edge (DAB_EDGE_HELD), and 0 elsewhere, as
 // the C engine leaves it.
 fn dab_round(at: u32, flags: u32, dx: i32, dy: i32) -> vec2<u32> {
+  // Nothing at or past the reach along either axis — and so no square
+  // below overflows, however far the region runs: the reach is under 2^15.
   let reach = plan[at + DAB_REACH];
+  let across = u32(abs(dx));
+  let down = u32(abs(dy));
+  if (across >= reach || down >= reach) {
+    return vec2<u32>(0u);
+  }
   let held = (flags & DAB_EDGE_HELD) != 0u;
   let row = plan[at + DAB_ROW];
   if (row != 0u) {
     // A small circle, read by its square's whole area at (|dx|, |dy|).
-    let across = u32(abs(dx));
-    let down = u32(abs(dy));
-    if (across >= reach || down >= reach) {
-      return vec2<u32>(0u);
-    }
     let i = dab_entry(at, across);
     let j = dab_entry(at, down);
     var pile = 0u;
@@ -139,8 +136,8 @@ fn dab_round(at: u32, flags: u32, dx: i32, dy: i32) -> vec2<u32> {
     return vec2<u32>(dab_square(plan[at + DAB_COVERAGE], row, i, j), pile);
   }
   // round(√n) >= reach exactly when n + reach > reach², so a pixel past
-  // the reach takes no root. |dx|, |dy| <= 2^15, so n <= 2^31.
-  let n = u32(dx * dx) + u32(dy * dy);
+  // the reach takes no root.
+  let n = across * across + down * down;
   if (n + reach > reach * reach) {
     return vec2<u32>(0u);
   }
