@@ -5,12 +5,14 @@
 //! - `gaussian` — fx Gaussian Blur, by the blur brush's box passes.
 //! - `line` — a blur along a way: fx Directional Blur and Radial Blur.
 //! - `lens` — fx Camera Lens Blur, so far its row sums and its light.
+//! - `iris` — the lens blur's iris, the table its gather reads rows by.
 //!
 //! They read and store a pixel alike, and keep it premultiplied on the
 //! 16-bit scale in planes between their passes (`held.wgsl`) — one way in
 //! and one way out, so two blurs of one picture cannot store it apart.
 
 pub(crate) mod gaussian;
+pub(crate) mod iris;
 pub(crate) mod lens;
 pub(crate) mod line;
 #[cfg(test)]
@@ -97,13 +99,19 @@ struct Dispatch {
 /// A blur's pipeline: held.wgsl and what it needs, then `own`, whose entry
 /// point is `entry` — after `more`, what `own` alone needs.
 fn compile(engine: &Engine, more: &[&str], own: &str, entry: &str) -> wgpu::ComputePipeline {
-    let source = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL]
+    let sources: Vec<&str> = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL]
         .iter()
         .chain(more)
         .chain(&[include_str!("held.wgsl"), own])
         .copied()
-        .collect::<Vec<_>>()
-        .join("\n");
+        .collect();
+    pipeline(engine, &sources, entry)
+}
+
+/// The pipeline of `sources`, one after another, whose entry point is
+/// `entry` — for a pass that keeps no pixel, so takes no held.wgsl.
+fn pipeline(engine: &Engine, sources: &[&str], entry: &str) -> wgpu::ComputePipeline {
+    let source = sources.join("\n");
     let module = engine
         .device
         .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -130,7 +138,7 @@ fn checked(
     tiles: &wgpu::Buffer,
     rect: TileRect,
     planes: &[u64],
-    mut groups: impl Iterator<Item = (u32, u32)>,
+    groups: impl Iterator<Item = (u32, u32)>,
 ) -> Option<()> {
     if rect.tiles() == 0 || tiles.size() < rect.tiles() * TILE_TEXELS * 4 {
         return fail(format!(
@@ -139,6 +147,16 @@ fn checked(
             tiles.size()
         ));
     }
+    fits(engine, planes, groups)
+}
+
+/// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
+/// each of `groups`.
+fn fits(
+    engine: &Engine,
+    planes: &[u64],
+    mut groups: impl Iterator<Item = (u32, u32)>,
+) -> Option<()> {
     let limits = engine.device.limits();
     let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
     if let Some(plane) = planes.iter().find(|&&plane| plane > room) {
@@ -149,7 +167,7 @@ fn checked(
     }
     let most = limits.max_compute_workgroups_per_dimension;
     if groups.any(|(across, down)| across > most || down > most) {
-        return fail(format!("{rect:?} has more pixels than a dispatch reaches"));
+        return fail("a pass has more workgroups than a dispatch reaches");
     }
     Some(())
 }

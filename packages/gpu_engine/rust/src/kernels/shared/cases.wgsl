@@ -29,6 +29,8 @@ const RUN_FITS: u32 = 13u;
 const RUN_SAMPLES: u32 = 14u;
 const RUN_SUBSAMPLE: u32 = 15u;
 const RUN_WALK: u32 = 16u;
+const RUN_DIV_FLOOR: u32 = 17u;
+const RUN_ISQRT: u32 = 18u;
 
 const MAP_WORDS: u32 = 15u;
 
@@ -89,6 +91,12 @@ fn run_wide(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     case RUN_DIVR: {
       out = Wide128(wide_divr(a, b, k), 0u, 0u, 0u);
+    }
+    case RUN_DIV_FLOOR: {
+      out = Wide128(wide_div_floor(a, b, k), 0u, 0u, 0u);
+    }
+    case RUN_ISQRT: {
+      out = Wide128(wide_isqrt(a), 0u, 0u, 0u);
     }
     case RUN_LESS: {
       out = Wide128(flag(wide_less(a, b)), flag(wide_below(a, b)), 0u, 0u);

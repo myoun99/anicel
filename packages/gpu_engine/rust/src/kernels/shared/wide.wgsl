@@ -204,19 +204,46 @@ fn wide_pow2_over(e: u32, d: Wide) -> Wide {
   return quotient;
 }
 
-// divr(n, d) = ⌊(2n + d) / (2d)⌋ for n >= 0 and d > 0, when the quotient is
-// below 2^bits and 2d · 2^(bits-1) fits in 64 bits — restoring division,
-// one quotient bit at a time.
-fn wide_divr(n: Wide, d: Wide, bits: u32) -> u32 {
-  var rest = wide_add(wide_shl(n, 1u), d);
-  let twice = wide_shl(d, 1u);
+// ⌊n / d⌋ for n >= 0 and d > 0, when the quotient is below 2^bits and
+// d · 2^(bits-1) fits in 64 bits — restoring division, one quotient bit at
+// a time.
+fn wide_div_floor(n: Wide, d: Wide, bits: u32) -> u32 {
+  var rest = n;
   var quotient = 0u;
   for (var k = i32(bits) - 1; k >= 0; k = k - 1) {
-    let step = wide_shl(twice, u32(k));
+    let step = wide_shl(d, u32(k));
     if (!wide_below(rest, step)) {
       rest = wide_sub(rest, step);
       quotient = quotient | (1u << u32(k));
     }
   }
   return quotient;
+}
+
+// divr(n, d) = ⌊(2n + d) / (2d)⌋ for n >= 0 and d > 0, when the quotient is
+// below 2^bits and 2d · 2^(bits-1) fits in 64 bits.
+fn wide_divr(n: Wide, d: Wide, bits: u32) -> u32 {
+  return wide_div_floor(wide_add(wide_shl(n, 1u), d), wide_shl(d, 1u), bits);
+}
+
+// ⌊√n⌋ for 0 <= n < 2^62, digit by digit from 2^60, the top digit such an
+// n has — a digit above n only halves a root of nothing, so there is no
+// walk down to it first. ⚠️isqrt.wgsl's isqrt_round is the same walk on
+// one word, rounded — two, so not yet one function (rule of 3, CLAUDE.md
+// 절대명령 1: the third merges them).
+fn wide_isqrt(n: Wide) -> u32 {
+  var rest = n;
+  var root = Wide(0u, 0u);
+  var bit = Wide(0u, 1u << 28u);
+  while (bit.x != 0u || bit.y != 0u) {
+    let next = wide_add(root, bit);
+    if (!wide_below(rest, next)) {
+      rest = wide_sub(rest, next);
+      root = wide_add(wide_shr(root, 1u), bit);
+    } else {
+      root = wide_shr(root, 1u);
+    }
+    bit = wide_shr(bit, 2u);
+  }
+  return root.x;
 }

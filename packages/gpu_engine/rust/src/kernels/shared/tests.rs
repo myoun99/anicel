@@ -31,6 +31,8 @@ const FITS: u32 = 13;
 const SAMPLES: u32 = 14;
 const SUBSAMPLE: u32 = 15;
 const WALK: u32 = 16;
+const DIV_FLOOR: u32 = 17;
+const ISQRT: u32 = 18;
 
 /// The device and the compiled cases every test here runs on.
 struct Rig {
@@ -304,6 +306,36 @@ fn divisions_are_the_machines() {
     check(&cases, |n, d, _| {
         i128::from(((2 * n as u128 + d as u128) / (2 * d as u128)) as u32)
     });
+
+    // ⌊n / d⌋ wherever its quotient and d · 2^(bits-1) fit — with bits
+    // just enough, and with seven to spare, as the iris table asks for 15.
+    let mut cases = Vec::new();
+    for (&n, &d) in operands(6, 300).iter().zip(operands(7, 300).iter()) {
+        let (n, d) = (n.unsigned_abs() >> 1, d.unsigned_abs() >> 1);
+        if d == 0 {
+            continue;
+        }
+        let least = (64 - (n / d).leading_zeros()).max(1);
+        for bits in [least, least + 7] {
+            if bits <= 32 && u128::from(d) << (bits - 1) < 1 << 64 {
+                cases.push((DIV_FLOOR, n as i64, d as i64, bits));
+            }
+        }
+    }
+    assert!(cases.len() > 100, "{} floor division cases", cases.len());
+    check(&cases, |n, d, _| i128::from(n / d));
+}
+
+#[test]
+fn a_square_root_is_the_machines() {
+    // ⌊√n⌋ below 2^62: about every square, and the most.
+    let mut roots: Vec<u64> = operands(8, 300).iter().map(|n| n.unsigned_abs() >> 2).collect();
+    for k in [1u64, 2, 3, 0xffff, 0x1_0000, (1 << 31) - 1] {
+        roots.extend([k * k - 1, k * k, k * k + 1]);
+    }
+    roots.push((1 << 62) - 1);
+    let cases: Vec<_> = roots.iter().map(|&n| (ISQRT, n as i64, 0, 0)).collect();
+    check(&cases, |n, _, _| i128::from((n as u64).isqrt()));
 }
 
 // ---- R1's own pieces, by hand ----

@@ -8,8 +8,8 @@
 //! Q.16: so a pixel read with no light is read as the other blurs read it
 //! (캔버스 베이스 11-05 — the threshold is a channel, 65535 at one).
 //!
-//! ⏳The iris (iris_table and iris_gather) and the light's way back to a
-//! stored pixel come next, in a round of their own.
+//! ⏳The iris's table is iris.rs; its gather (iris_gather) and the light's
+//! way back to a stored pixel come next, in a round of their own.
 
 #[cfg(test)]
 #[path = "lens_tests.rs"]
