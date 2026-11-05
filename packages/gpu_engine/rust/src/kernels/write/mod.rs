@@ -61,6 +61,9 @@ impl Write {
         put: &wgpu::Buffer,
         places: &[Option<TileAt>],
     ) -> Option<Vec<bool>> {
+        // A pass binds its tiles put, a tile's bytes each. No test puts tiles
+        // past a binding (2 GB here, 32,768 tiles), so none tells a tile's
+        // bytes from a word in this line (mutant m14, 11-06).
         let most = tiles_a_pass(engine, TILE_BYTES, 0)?;
         self.changed_by(engine, pool, put, places, (self.pages.per_pass(), most))
     }
@@ -80,6 +83,9 @@ impl Write {
         for at in places.iter().flatten() {
             stored(pool, at)?;
         }
+        // A write of no tiles asks the GPU nothing. Without the return, wgpu
+        // makes, copies and maps a buffer of nothing and answers the same, so
+        // no test tells the two apart (mutant m13, 11-06).
         if places.is_empty() {
             return Some(Vec::new());
         }

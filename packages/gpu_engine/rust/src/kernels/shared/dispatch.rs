@@ -110,6 +110,11 @@ pub(crate) fn whole<'a>(bound: &[(u32, &'a wgpu::Buffer)]) -> Vec<wgpu::BindGrou
 /// share. ⛔ONE: the blur's cel passes and its steps' uniforms, the cel
 /// pixel verbs and the lift each wrote it, and the write path came as
 /// another (11-06).
+///
+/// A binding with no size takes the rest of the buffer, and every user's
+/// shader reads it the same, so no test tells the size from none — it is
+/// what keeps a pass's binding within a binding's room on a buffer longer
+/// than one (mutant d01, 11-06).
 pub(crate) fn range(buffer: &wgpu::Buffer, bytes: Range<u64>) -> wgpu::BindingResource<'_> {
     wgpu::BindingResource::Buffer(wgpu::BufferBinding {
         buffer,
