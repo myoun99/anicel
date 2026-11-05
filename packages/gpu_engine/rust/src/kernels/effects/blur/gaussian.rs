@@ -31,14 +31,16 @@ pub(crate) const BOX_WGSL: &str = include_str!("box.wgsl");
 /// A way's three passes in one dispatch, over strips in a workgroup's
 /// memory: three.wgsl's `blur_way`, for what includes it to load and store.
 pub(crate) const THREE_WGSL: &str = include_str!("three.wgsl");
+/// A pass a dispatch, a thread sliding its sum along a run: pass.wgsl's
+/// `blur_run`, for what includes it to tap and put.
+pub(crate) const PASS_WGSL: &str = include_str!("pass.wgsl");
 /// The words of one `BoxPass`.
 pub(crate) const PASS_WORDS: usize = 9;
 
 /// The widest box: a pass sums 2·radius + 1 pixels of 65535 at most, and
 /// the sum stays a u32.
 pub(crate) const MOST_RADIUS: u32 = 32767;
-/// gaussian_pass.wgsl's BLUR_RUN — the pixels one thread slides its sum
-/// along.
+/// pass.wgsl's BLUR_RUN — the pixels one thread slides its sum along.
 const RUN: u32 = 64;
 /// three.wgsl's BLUR_ROOM: the pixels a workgroup's strip holds.
 const ROOM: i32 = 1024;
@@ -104,7 +106,7 @@ impl Pass {
         [self.along[0] - r, self.along[1] + r]
     }
 
-    /// Its own dispatch (gaussian_pass.wgsl).
+    /// Its own dispatch (pass.wgsl).
     fn dispatch(&self) -> Dispatch {
         let runs = ((self.along[1] - self.along[0]) as u32).div_ceil(RUN);
         let lines = (self.lines[1] - self.lines[0]) as u32;
@@ -185,7 +187,7 @@ impl BoxBlur {
         Self {
             pass: compile(
                 engine,
-                &[BOX_WGSL, gaussian],
+                &[BOX_WGSL, PASS_WGSL, gaussian],
                 include_str!("gaussian_pass.wgsl"),
                 "box_blur",
             ),
@@ -313,23 +315,26 @@ fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
 pub(crate) struct Within {
     /// box.wgsl's `BoxPass` for each, the rows' three first.
     pub(crate) words: Vec<u32>,
-    pub(crate) rows: Strips,
-    pub(crate) columns: Strips,
+    /// Each way cut into strips — none where a strip has no room.
+    pub(crate) rows: Option<Strips>,
+    pub(crate) columns: Option<Strips>,
+    /// Each pass's workgroups, gone a pass a dispatch (pass.wgsl).
+    pub(crate) groups: Vec<(u32, u32)>,
 }
 
 /// The passes blurring `picture` by `radius` within real pixels: the
 /// columns' three down the picture, and the rows' three along its columns
-/// on every line the columns' first reads — none where a strip of either
-/// way has no room.
+/// on every line the columns' first reads — none for a radius of 0.
 pub(crate) fn within(picture: [i32; 4], radius: u32) -> Option<Within> {
     let [left, _, right, _] = picture;
     let columns = passes(picture, (0, radius), EDGE_NONE);
     let [top, bottom] = columns.first()?.reads();
     let rows = passes([left, top, right, bottom], (radius, 0), EDGE_NONE);
     Some(Within {
-        rows: strips(&rows)?,
-        columns: strips(&columns)?,
+        rows: strips(&rows),
+        columns: strips(&columns),
         words: rows.iter().chain(&columns).flat_map(Pass::words).collect(),
+        groups: rows.iter().chain(&columns).map(|pass| pass.dispatch().groups).collect(),
     })
 }
 

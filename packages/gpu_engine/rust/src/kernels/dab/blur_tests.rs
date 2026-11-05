@@ -2,11 +2,14 @@
 //! hand and against the ledger — never against a CPU copy of them
 //! (`kernels/mod.rs` has why). Every hand case is a step from nothing to
 //! white, premultiplied — its four channels alike — blurred by boxes of
-//! radius 1, each mean rounded half up.
+//! radius 1, each mean rounded half up; or one grey, which any box leaves
+//! as it is.
+
+use std::collections::HashMap;
 
 use super::super::tests::{along, filled, grain, radial, soft, square, texture, words};
 use super::super::{Dab, Paper, StrokeTile};
-use super::Blurs;
+use super::{Blurs, MOST_STRIPS_RADIUS, Route, Ways, Window};
 use crate::testing::{assert_pinned, first_engine};
 
 const ONE: u32 = 65535;
@@ -67,7 +70,8 @@ impl Blurred {
 }
 
 /// The picture on `tiles` (slots in their order) holding `pixel`, blurred
-/// under `dabs` over `paper` — or nothing, where the kernel refused them.
+/// under `dabs` over `paper` as a blur goes — or nothing, where the kernel
+/// refused them — once a pass a dispatch is seen to move them alike.
 fn blurred(
     tiles: &[(i32, i32)],
     pixel: impl Fn(i32, i32) -> [u32; 4],
@@ -83,14 +87,20 @@ fn blurred(
             }
         }
     }
-    let picture = filled("test picture", &planes);
     let stroke: Vec<StrokeTile> = tiles
         .iter()
         .enumerate()
         .map(|(slot, &(column, row))| StrokeTile { column, row, slot: slot as u32 })
         .collect();
     let engine = first_engine();
-    Blurs::new(engine).blur(engine, &stroke, dabs, paper, &picture)?;
+    let picture = filled("test picture", &planes);
+    let laid = Blurs::new(engine).blur(engine, &stroke, dabs, paper, &picture);
+    let passes = filled("test picture", &planes);
+    let by_passes =
+        Blurs::new(engine).blur_by(engine, &stroke, dabs, paper, &passes, Route::Passes);
+    assert_eq!(laid.is_some(), by_passes.is_some());
+    laid?;
+    assert!(words(&picture) == words(&passes), "a pass a dispatch moved them apart");
     Some(Blurred { tiles: tiles.to_vec(), planes: words(&picture) })
 }
 
@@ -209,9 +219,7 @@ fn strips_of_a_dab_meet_with_no_seam() {
 
 // A blur reads three radii past its dab: the stroke must hold every tile
 // that reaches — a dab 2 px into a tile at radius 1 reads the one before
-// it, right, left, down or up —, and a workgroup must have room for a
-// strip's six radii and at least one pixel: 170 is the last radius that
-// fits 1024.
+// it, right, left, down or up. A radius of 0 blurs nothing.
 #[test]
 fn a_blur_the_kernel_cannot_lay_is_refused() {
     let dab = |region| square(region, WHITE, 1.0);
@@ -222,11 +230,33 @@ fn a_blur_the_kernel_cannot_lay_is_refused() {
     assert!(blurred(&[(0, 1)], step_at(64), &[(dab([60, 130, 64, 136]), 1)], None).is_none());
     assert!(blurred(&[(1, 0)], step_at(64), &[(dab([131, 60, 136, 64]), 1)], None).is_some());
     assert!(blurred(&lone, step_at(64), &[(dab([60, 60, 68, 64]), 0)], None).is_none());
+}
+
+// A dab goes by strips up to MOST_STRIPS_RADIUS and a pass a dispatch past
+// it — 171 too, which no strip of 1024 holds with its six radii. A box of
+// one grey leaves it as it is, whichever way the passes go.
+#[test]
+fn a_box_past_the_strips_widest_goes_a_pass_a_dispatch() {
     let around: Vec<(i32, i32)> =
         (-5..6).flat_map(|row| (-5..6).map(move |column| (column, row))).collect();
-    let middle = dab([60, 60, 61, 61]);
-    assert!(blurred(&around, step_at(64), &[(middle, 170)], None).is_some());
-    assert!(blurred(&around, step_at(64), &[(middle, 171)], None).is_none());
+    let at: HashMap<(i32, i32), usize> =
+        around.iter().enumerate().map(|(slot, &tile)| (tile, slot)).collect();
+    let middle = square([60, 60, 61, 61], WHITE, 1.0);
+    let by_strips = |radius| {
+        Window::of(&middle, radius, &at, Route::Strips)
+            .map(|window| matches!(window.ways, Ways::Strips { .. }))
+    };
+    assert_eq!(by_strips(MOST_STRIPS_RADIUS), Some(true));
+    assert_eq!(by_strips(MOST_STRIPS_RADIUS + 1), Some(false));
+    let grey = [20000, 30000, 40000, 50000];
+    for radius in [MOST_STRIPS_RADIUS, MOST_STRIPS_RADIUS + 1, 171] {
+        let blurred = blurred(&around, |_, _| grey, &[(middle, radius)], None).unwrap();
+        for y in 58..63 {
+            for x in 58..63 {
+                assert_eq!(blurred.at(x, y), grey, "{radius} ({x}, {y})");
+            }
+        }
+    }
 }
 
 // A second tip's dab lays nothing on a stroke with no second plane, so it

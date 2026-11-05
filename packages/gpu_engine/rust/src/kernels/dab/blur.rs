@@ -1,22 +1,19 @@
 //! The blur brush's dab on the GPU (I-75 흐리기 — `BrushBlurPicture.blurDab`,
 //! C's `qa_blur_dab`; gpu-canonical-store D5, 01:13): the stroke's picture
 //! under each dab moved toward its blur by what the dab lays as paint onto
-//! nothing. `blur.wgsl` has the schedule; the passes are the fx Gaussian's
-//! box law and its strips (`effects/blur/box.wgsl`, `three.wgsl`; the
-//! ranges and the cut gaussian.rs's `within`), the coverage the dab
-//! kernel's own (`dab_source`) — no second copy of any.
+//! nothing. `blur.wgsl` has what a dab reads and moves; the passes are the
+//! fx Gaussian's box law and its two schedules (`effects/blur/box.wgsl`,
+//! `three.wgsl`, `pass.wgsl`; the ranges and the cut gaussian.rs's
+//! `within`), the coverage the dab kernel's own (`dab_source`) — no second
+//! copy of any. A dab goes by strips, a way's three passes a dispatch
+//! (`blur_three.wgsl`), up to MOST_STRIPS_RADIUS; past it a pass a dispatch
+//! (`blur_pass.wgsl`, 01:13 ③).
 //!
 //! ⏳The picture made from the cel — every tile a dab's window meets — and
 //! the finished tile laid back on the cel (`qa_blur_result_tile`) are the
-//! next piece's: both read the pool's pages. A radius whose strip has no
-//! room in a workgroup's 16KB (r > 170, a brush past ~1000 px) goes a pass a
-//! dispatch, the Gaussian's way — also to come (01:13 ③), and well short of
-//! that room: a strip's halo of 6r leaves it few pixels to put, so it reads
-//! the same line over again (11-06, the main PC's GPU, a dab — r 17: 49 µs,
-//! r 50: 131, r 100: 672, r 150: 4,281, r 167: 25,383; C at size 300, r 50:
-//! 683, growing with the size²). On a whole picture a pass a dispatch wins
-//! past r 56 (gaussian.rs's MOST_STRIPS_RADIUS); a dab's crossing is the
-//! ③ piece's to measure, somewhere past r 100.
+//! next piece's: the executor reads the cel's tiles as a one-row copy plan,
+//! and the finished tiles go out as its output does (캔버스 베이스 11-06
+//! 02:29).
 
 #[cfg(test)]
 #[path = "blur_tests.rs"]
@@ -31,18 +28,41 @@ use super::{Dab, Paper, Plans, StrokeTile, TILE};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::effects::blur::gaussian::{BOX_WGSL, PASS_WORDS, Strips, THREE_WGSL, within};
+use crate::kernels::effects::blur::gaussian::{
+    BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
+};
 use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
 const PASSES_AT: usize = 8;
 const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 
+/// The widest box a dab goes by strips. Past it a pass a dispatch is the
+/// faster: a strip's halo of 6r leaves it few of its 1024 pixels to put,
+/// so it reads the same line over again (11-06, the main PC's GPU, a dab,
+/// µs by strips against a pass a dispatch — r 75: 248, 497; r 90: 517,
+/// 637; r 100: 705, 642; r 120: 1,121, 730; r 150: 4,255, 1,016; r 167:
+/// 25,374, 1,328). The Gaussian's crossing on a whole picture is lower
+/// (gaussian.rs's 56): a dab's six dispatches cost more against its
+/// small window.
+const MOST_STRIPS_RADIUS: u32 = 90;
+
+/// How a dab's passes go: by strips where a strip of them has room and the
+/// box is no wider than MOST_STRIPS_RADIUS — a pass a dispatch past that —
+/// or every pass a dispatch, as the tests send them too, to see both move
+/// the same pixels.
+#[derive(Clone, Copy)]
+enum Route {
+    Strips,
+    Passes,
+}
+
 pub(crate) struct Blurs {
     rows: wgpu::ComputePipeline,
     columns: wgpu::ComputePipeline,
+    pass: wgpu::ComputePipeline,
     plans: Plans,
-    /// The rows' blur between a dab's two dispatches: grown, never shrunk.
+    /// What one dispatch of a dab puts for the next: grown, never shrunk.
     between: Option<wgpu::Buffer>,
 }
 
@@ -52,7 +72,14 @@ fn word(passes: &[u32], index: usize, word: usize) -> i32 {
     passes[index * PASS_WORDS + word] as i32
 }
 
-/// What a dab's blur reads and how its two dispatches cut it.
+/// How a dab's passes are dispatched: a way's three a dispatch, each way cut
+/// into strips; or each pass a dispatch of these workgroups.
+enum Ways {
+    Strips { rows: Strips, columns: Strips },
+    Passes(Vec<(u32, u32)>),
+}
+
+/// What a dab's blur reads and how its dispatches cut it.
 struct Window {
     passes: Vec<u32>,
     /// The first of the tiles it reads, and how many a row.
@@ -60,24 +87,21 @@ struct Window {
     tile_columns: usize,
     /// Each of those tiles' index among the stroke's, row after row.
     grid: Vec<usize>,
-    /// How each dispatch is cut, a strip a workgroup.
-    rows: Strips,
-    columns: Strips,
-    /// The bytes of the rows' blur between them.
+    ways: Ways,
+    /// The bytes one dispatch puts for the next: the rows' blur, or the
+    /// two planes a pass a dispatch alternates between.
     between: u64,
 }
 
 impl Window {
-    fn of(dab: &Dab, radius: u32, at: &HashMap<(i32, i32), usize>) -> Option<Window> {
-        if radius == 0 {
-            return fail("a blur of no radius changes no pixel");
-        }
+    fn of(
+        dab: &Dab,
+        radius: u32,
+        at: &HashMap<(i32, i32), usize>,
+        route: Route,
+    ) -> Option<Window> {
         let Some(within) = within(dab.region, radius) else {
-            return fail(format!(
-                "a blur of radius {radius} reads past its strip further than a workgroup has \
-                 room for — a radius this large waits for the pass-a-dispatch way \
-                 (gpu-canonical-store 01:13 ③)"
-            ));
+            return fail("a blur of no radius changes no pixel");
         };
         let r = radius as i32;
         let pass = |index, field| word(&within.words, index, field);
@@ -85,7 +109,19 @@ impl Window {
         // the window; its lines are the window's rows.
         let (left, right) = (pass(0, 2) - r, pass(0, 3) + r);
         let (top, bottom) = (pass(0, 4), pass(0, 5));
-        let width = pass(2, 3) - pass(2, 2);
+        let lines = u64::from((bottom - top) as u32);
+        let ways = match (route, within.rows, within.columns) {
+            (Route::Strips, Some(rows), Some(columns)) if radius <= MOST_STRIPS_RADIUS => {
+                Ways::Strips { rows, columns }
+            }
+            _ => Ways::Passes(within.groups),
+        };
+        let between = match ways {
+            // The rows' blur: the dab's columns on the window's lines.
+            Ways::Strips { .. } => lines * (pass(2, 3) - pass(2, 2)) as u64 * 8,
+            // Two planes as the rows' first pass puts.
+            Ways::Passes(_) => 2 * lines * (pass(0, 3) - pass(0, 2)) as u64 * 8,
+        };
         let first_tile = (left.div_euclid(TILE), top.div_euclid(TILE));
         let (last_column, last_row) = ((right - 1).div_euclid(TILE), (bottom - 1).div_euclid(TILE));
         let mut grid = Vec::new();
@@ -106,28 +142,78 @@ impl Window {
             first_tile,
             tile_columns: (last_column - first_tile.0 + 1) as usize,
             grid,
-            rows: within.rows,
-            columns: within.columns,
-            between: u64::from((bottom - top) as u32) * width as u64 * 8,
+            ways,
+            between,
             passes: within.words,
         })
     }
+
+    /// The words a strip dispatch reads of the block: each way's lines and
+    /// run a workgroup — nothing a pass a dispatch reads.
+    fn strip_words(&self) -> [u32; 4] {
+        match &self.ways {
+            Ways::Strips { rows, columns } => [rows.lines, rows.run, columns.lines, columns.run],
+            Ways::Passes(_) => [0; 4],
+        }
+    }
+
+    /// Its dispatches, in order.
+    fn steps(&self) -> Vec<Step> {
+        match &self.ways {
+            Ways::Strips { rows, columns } => vec![
+                Step {
+                    entry: Entry::Rows,
+                    pass: 0,
+                    groups: rows.groups,
+                },
+                Step {
+                    entry: Entry::Columns,
+                    pass: 0,
+                    groups: columns.groups,
+                },
+            ],
+            Ways::Passes(groups) => groups
+                .iter()
+                .enumerate()
+                .map(|(pass, &groups)| Step {
+                    entry: Entry::Pass,
+                    pass: pass as u32,
+                    groups,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// The blur's entry points: a way's three by strips, rows or columns
+/// (blur_three.wgsl), or one pass (blur_pass.wgsl).
+#[derive(Clone, Copy)]
+enum Entry {
+    Rows,
+    Columns,
+    Pass,
+}
+
+/// One dispatch of a dab: its entry, the pass it is of the block's six (a
+/// pass a dispatch), and its workgroups.
+struct Step {
+    entry: Entry,
+    pass: u32,
+    groups: (u32, u32),
 }
 
 impl Blurs {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let sources = [
-            ISQRT_WGSL,
-            BLEND_WGSL,
-            TILE_WGSL,
-            include_str!("dab.wgsl"),
-            BOX_WGSL,
-            THREE_WGSL,
-            include_str!("blur.wgsl"),
-        ];
+        let dab = include_str!("dab.wgsl");
+        let blur = include_str!("blur.wgsl");
+        let strips = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, THREE_WGSL, blur];
+        let strips = [&strips[..], &[include_str!("blur_three.wgsl")]].concat();
+        let passes = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, dab, BOX_WGSL, PASS_WGSL, blur];
+        let passes = [&passes[..], &[include_str!("blur_pass.wgsl")]].concat();
         Self {
-            rows: pipeline(engine, &sources, "blur_rows_pass"),
-            columns: pipeline(engine, &sources, "blur_columns_pass"),
+            rows: pipeline(engine, &strips, "blur_rows_pass"),
+            columns: pipeline(engine, &strips, "blur_columns_pass"),
+            pass: pipeline(engine, &passes, "blur_pass_one"),
             plans: Plans::new(),
             between: None,
         }
@@ -146,6 +232,19 @@ impl Blurs {
         dabs: &[(Dab, u32)],
         paper: Option<&Paper>,
         picture: &wgpu::Buffer,
+    ) -> Option<()> {
+        self.blur_by(engine, tiles, dabs, paper, picture, Route::Strips)
+    }
+
+    /// `blur`, the passes going by `route`.
+    fn blur_by(
+        &mut self,
+        engine: &Engine,
+        tiles: &[StrokeTile],
+        dabs: &[(Dab, u32)],
+        paper: Option<&Paper>,
+        picture: &wgpu::Buffer,
+        route: Route,
     ) -> Option<()> {
         // The colour is not the dab's to lay: white and opaque, it measures
         // its coverage alone; and it lays, never erases (BrushBlurPicture).
@@ -170,13 +269,11 @@ impl Blurs {
             .collect();
         let windows: Vec<Window> = dabs
             .iter()
-            .map(|(dab, radius)| Window::of(dab, *radius, &at))
+            .map(|(dab, radius)| Window::of(dab, *radius, &at, route))
             .collect::<Option<_>>()?;
+        let steps: Vec<Vec<Step>> = windows.iter().map(Window::steps).collect();
         let most = engine.device.limits().max_compute_workgroups_per_dimension;
-        let groups = windows.iter().flat_map(|window| {
-            let ((a, b), (c, d)) = (window.rows.groups, window.columns.groups);
-            [a, b, c, d]
-        });
+        let groups = steps.iter().flatten().flat_map(|step| [step.groups.0, step.groups.1]);
         if groups.into_iter().any(|count| count > most) {
             return fail("a blur dab has more workgroups than a dispatch reaches");
         }
@@ -209,11 +306,8 @@ impl Blurs {
                     window.first_tile.0 as u32,
                     window.first_tile.1 as u32,
                     window.tile_columns as u32,
-                    window.rows.lines,
-                    window.rows.run,
-                    window.columns.lines,
-                    window.columns.run,
                 ]);
+                words.extend(window.strip_words());
                 words.extend(&window.passes);
                 words.extend(window.grid.iter().map(|&tile| plan.tile_at(tile)));
             }
@@ -221,11 +315,19 @@ impl Blurs {
             Some(words)
         });
         let plan = plan?;
+        // Each dispatch's own words: its dab's block and its pass.
         let align = u64::from(engine.device.limits().min_uniform_buffer_offset_alignment);
-        let mut uniform = vec![0u8; align as usize * windows.len()];
-        for (index, place) in places.iter().enumerate() {
+        let count: usize = steps.iter().map(Vec::len).sum();
+        let mut uniform = vec![0u8; align as usize * count];
+        let mut slot = 0;
+        for (place, steps) in places.iter().zip(&steps) {
             let block = (blocks_at.get() + place) as u32;
-            uniform[index * align as usize..][..4].copy_from_slice(&block.to_le_bytes());
+            for step in steps {
+                let at = &mut uniform[slot * align as usize..];
+                at[..4].copy_from_slice(&block.to_le_bytes());
+                at[4..8].copy_from_slice(&step.pass.to_le_bytes());
+                slot += 1;
+            }
         }
         let uniform = engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("blur dabs"),
@@ -250,22 +352,26 @@ impl Blurs {
                 ],
             })
         };
-        let bind_groups: Vec<[wgpu::BindGroup; 2]> = (0..windows.len())
-            .map(|index| [bound(&self.rows, index), bound(&self.columns, index)])
+        let steps: Vec<Step> = steps.into_iter().flatten().collect();
+        let pipeline = |entry| match entry {
+            Entry::Rows => &self.rows,
+            Entry::Columns => &self.columns,
+            Entry::Pass => &self.pass,
+        };
+        let bind_groups: Vec<wgpu::BindGroup> = steps
+            .iter()
+            .enumerate()
+            .map(|(slot, step)| bound(pipeline(step.entry), slot))
             .collect();
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            for (window, [rows, columns]) in windows.iter().zip(&bind_groups) {
-                pass.set_pipeline(&self.rows);
-                pass.set_bind_group(0, rows, &[]);
-                pass.dispatch_workgroups(window.rows.groups.0, window.rows.groups.1, 1);
-                pass.set_pipeline(&self.columns);
-                pass.set_bind_group(0, columns, &[]);
-                let (along, across) = window.columns.groups;
-                pass.dispatch_workgroups(along, across, 1);
+            for (step, bind_group) in steps.iter().zip(&bind_groups) {
+                pass.set_pipeline(pipeline(step.entry));
+                pass.set_bind_group(0, bind_group, &[]);
+                pass.dispatch_workgroups(step.groups.0, step.groups.1, 1);
             }
         }
         engine.queue.submit([encoder.finish()]);

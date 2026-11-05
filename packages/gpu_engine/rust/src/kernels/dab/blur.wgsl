@@ -11,20 +11,20 @@
 // nothing — the dab's own coverage law on its record, white and not
 // erasing, as the app measures it with the dab kernel on an empty scratch.
 //
-// A dab is two dispatches (gpu-canonical-store 01:13), a way's three passes
-// each, a strip a workgroup in workgroup memory (effects/blur/three.wgsl):
-// `blur_rows_pass` blurs the rows over the dab's window into `blur_rows`,
-// and `blur_columns_pass` blurs the columns of that down the dab, its last
-// pass moving the dab's pixels. Dabs follow one another: each reads what
-// the one before it moved.
+// A dab goes one of two ways (gpu-canonical-store 01:13): a way's three
+// passes a dispatch, a strip a workgroup in workgroup memory
+// (blur_three.wgsl), or a pass a dispatch (blur_pass.wgsl) where a strip's
+// halo would leave it too few pixels to put. This file is what both read:
+// the dab's block, its window's tiles, and the move. Dabs follow one
+// another: each reads what the one before it moved.
 //
-// Needs dab.wgsl, box.wgsl and three.wgsl before it.
+// Needs dab.wgsl and box.wgsl before it.
 
 // A dab's block in the plan, at the word `blur_dab.x` names: its record,
 // the window's first tile and its tiles a row, how many lines and how far
-// along a workgroup of each dispatch takes, the six passes (gaussian.rs's
-// `within`, the rows' three first), then the place of each of the window's
-// tiles' records, row after row of them.
+// along a workgroup of each strip dispatch takes, the six passes
+// (gaussian.rs's `within`, the rows' three first), then the place of each
+// of the window's tiles' records, row after row of them.
 const BLUR_RECORD: u32 = 0u;
 const BLUR_TILE_COLUMN: u32 = 1u;
 const BLUR_TILE_ROW: u32 = 2u;
@@ -37,17 +37,15 @@ const BLUR_PASSES: u32 = 8u;
 const BLUR_PASS_WORDS: u32 = 9u;
 const BLUR_GRID: u32 = 62u;
 
-// The rows' blur of the dab's columns over its window, a window row after
-// another, from one dispatch to the next.
-@group(0) @binding(4) var<storage, read_write> blur_rows: array<u32>;
-// Where the dab's block is.
+// What one dispatch of a dab puts for the next to read: the rows' blur, or
+// the planes a pass a dispatch alternates between.
+@group(0) @binding(4) var<storage, read_write> blur_between: array<u32>;
+// Where the dab's block is, and — a pass a dispatch — which of its passes
+// this dispatch is.
 @group(0) @binding(5) var<uniform> blur_dab: vec4<u32>;
 
-// The dab's block, and the rows' blur's first pixel and line and its width.
+// The dab's block.
 var<private> blur_block: u32;
-var<private> blur_rows_x0: i32;
-var<private> blur_rows_y0: i32;
-var<private> blur_rows_width: u32;
 
 // The block's `index`-th pass.
 fn blur_pass(block: u32, index: u32) -> BoxPass {
@@ -57,15 +55,6 @@ fn blur_pass(block: u32, index: u32) -> BoxPass {
     words[i] = plan[at + i];
   }
   return box_pass(words);
-}
-
-// The block's way whose first pass is its `first`-th.
-fn blur_passes(block: u32, first: u32) -> array<BoxPass, 3> {
-  return array<BoxPass, 3>(
-    blur_pass(block, first),
-    blur_pass(block, first + 1u),
-    blur_pass(block, first + 2u),
-  );
 }
 
 // The tile along a way that holds pixel `v`.
@@ -95,45 +84,11 @@ fn blur_word(tile: u32, local: vec2<u32>) -> u32 {
   return (plan[tile + TILE_SLOT] * TILE_TEXELS + tile_texel(local.x, local.y)) * 2u;
 }
 
-// The first of the two words of (x, y) in the rows' blur.
-fn blur_between(x: i32, y: i32) -> u32 {
-  return (u32(y - blur_rows_y0) * blur_rows_width + u32(x - blur_rows_x0)) * 2u;
-}
-
-// The dab's block, and where the rows' blur keeps its pixels: the rows'
-// lines, the dab's columns.
-fn blur_begin() {
-  blur_block = blur_dab.x;
-  let first = blur_pass(blur_block, 0u);
-  let last = blur_pass(blur_block, 2u);
-  blur_rows_x0 = last.first;
-  blur_rows_y0 = first.line_first;
-  blur_rows_width = u32(last.end - last.first);
-}
-
-// What a way's first pass reads: the rows' the picture, the columns' the
-// rows' blur.
-fn blur_load(first: BoxPass, line: i32, p: i32) -> vec4<u32> {
-  if (first.down == 0u) {
-    let tile = blur_tile(p, line);
-    let at = blur_word(tile, blur_local(tile, p, line));
-    return blend_unpack16(vec2<u32>(planes[at], planes[at + 1u]));
-  }
-  let at = blur_between(line, p);
-  return blend_unpack16(vec2<u32>(blur_rows[at], blur_rows[at + 1u]));
-}
-
-// What a way's last pass puts: the rows' into the rows' blur; the
-// columns', the dab's pixel moved toward it.
-fn blur_store(last: BoxPass, line: i32, p: i32, pixel: vec4<u32>) {
-  if (last.down == 0u) {
-    let at = blur_between(p, line);
-    let pair = blend_pack16(pixel);
-    blur_rows[at] = pair.x;
-    blur_rows[at + 1u] = pair.y;
-    return;
-  }
-  blur_move(line, p, pixel);
+// The picture's pixel at (x, y).
+fn blur_picture(x: i32, y: i32) -> vec4<u32> {
+  let tile = blur_tile(x, y);
+  let at = blur_word(tile, blur_local(tile, x, y));
+  return blend_unpack16(vec2<u32>(planes[at], planes[at + 1u]));
 }
 
 // What `was` comes to moved toward `to` by `share` of the way, rounded
@@ -174,30 +129,4 @@ fn blur_move(x: i32, y: i32, to: vec4<u32>) {
   ));
   planes[at] = moved.x;
   planes[at + 1u] = moved.y;
-}
-
-// The rows' three passes over the dab's window: workgroup (x, y) takes
-// strip x along the dab's columns, band y of the window's rows.
-@compute @workgroup_size(256)
-fn blur_rows_pass(
-  @builtin(workgroup_id) group: vec3<u32>,
-  @builtin(local_invocation_index) lane: u32,
-) {
-  blur_begin();
-  let run = plan[blur_block + BLUR_ROWS_ALONG];
-  let lines = plan[blur_block + BLUR_ROWS_LINES];
-  blur_way(blur_passes(blur_block, 0u), group.x, group.y, run, lines, lane);
-}
-
-// The columns' three passes down the dab, then its pixels moved: workgroup
-// (x, y) takes strip x down the dab's rows, band y of its columns.
-@compute @workgroup_size(256)
-fn blur_columns_pass(
-  @builtin(workgroup_id) group: vec3<u32>,
-  @builtin(local_invocation_index) lane: u32,
-) {
-  blur_begin();
-  let run = plan[blur_block + BLUR_COLUMNS_ALONG];
-  let lines = plan[blur_block + BLUR_COLUMNS_LINES];
-  blur_way(blur_passes(blur_block, 3u), group.x, group.y, run, lines, lane);
 }
