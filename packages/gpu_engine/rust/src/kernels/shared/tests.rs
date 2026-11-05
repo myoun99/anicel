@@ -30,6 +30,7 @@ const LESS: u32 = 12;
 const FITS: u32 = 13;
 const SAMPLES: u32 = 14;
 const SUBSAMPLE: u32 = 15;
+const WALK: u32 = 16;
 
 /// The device and the compiled cases every test here runs on.
 struct Rig {
@@ -339,6 +340,18 @@ fn a_subsample_sits_at_its_cell_centre_from_the_pixel_centre() {
     let got: Vec<_> = wide(&runs).iter().map(|&o| o as u32 as i32).collect();
     let want: Vec<_> = cases.iter().map(|&(_, _, o)| o).collect();
     assert_eq!(got, want);
+}
+
+// Pick walks a row's subsamples by resample_subsample's quotient with its
+// remainder carried; each is the divided one, at every count it samples at.
+// A count of 9 to 15 is where a carry falls between subsamples.
+#[test]
+fn a_walked_subsample_is_the_divided_one() {
+    let cases: Vec<(i64, u32)> =
+        (1..=16u32).flat_map(|n| (0..i64::from(n)).map(move |s| (s, n))).collect();
+    let walked: Vec<_> = cases.iter().map(|&(s, n)| (WALK, s, 0, n)).collect();
+    let divided: Vec<_> = cases.iter().map(|&(s, n)| (SUBSAMPLE, s, 0, n)).collect();
+    assert_eq!(wide(&walked), wide(&divided));
 }
 
 // ---- R1 on pictures ----

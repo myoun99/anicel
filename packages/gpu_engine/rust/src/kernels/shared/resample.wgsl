@@ -372,28 +372,72 @@ fn resample_subsample(s: u32, n: u32) -> i32 {
   return i32(((2u * s + 1u) * 65536u + n) / (2u * n)) - 32768;
 }
 
-// Where one subsample lands: the centre moved by the map's linear part —
-// a homography's Jacobian at the pixel centre standing in for it.
-fn resample_landing(map: ResampleMap, source: u32, point: ResamplePoint, ox: i32, oy: i32) -> u32 {
+// resample_subsample(s, n) for s = 0, 1, … in turn, with no division a
+// subsample: each s adds 2^17 to the numerator, so the quotient grows by
+// 2^17 / 2n and the remainder carries.
+struct ResampleOffsets {
+  quotient: u32,
+  remainder: u32,
+  step: u32,
+  carry: u32,
+  twice: u32,
+}
+
+fn resample_offsets(n: u32) -> ResampleOffsets {
+  let twice = 2u * n;
+  let first = 65536u + n;
+  return ResampleOffsets(first / twice, first % twice, 131072u / twice, 131072u % twice, twice);
+}
+
+// The next subsample's offset from the pixel centre, Q.16.
+fn resample_next_offset(offsets: ptr<function, ResampleOffsets>) -> i32 {
+  let offset = i32((*offsets).quotient) - 32768;
+  (*offsets).quotient += (*offsets).step;
+  (*offsets).remainder += (*offsets).carry;
+  if ((*offsets).remainder >= (*offsets).twice) {
+    (*offsets).remainder -= (*offsets).twice;
+    (*offsets).quotient += 1u;
+  }
+  return offset;
+}
+
+// The part of a subsample's move its row's offset `oy` gives, unrounded:
+// b·oy and e·oy (Q.20), or a homography's du/dy·oy and dv/dy·oy (Q.16).
+// Taken once a row, as the row's subsamples all share it.
+fn resample_row_move(map: ResampleMap, point: ResamplePoint, oy: i32) -> array<Wide, 2> {
+  if (resample_affine(map)) {
+    return array<Wide, 2>(wide_mul_i32(map.b, oy), wide_mul_i32(map.e, oy));
+  }
+  return array<Wide, 2>(wide_mul(point.du_dy, wide(oy)), wide_mul(point.dv_dy, wide(oy)));
+}
+
+// Where one subsample lands, as a source pixel: the centre moved by the
+// map's linear part — a homography's Jacobian at the pixel centre standing
+// in for it — at offset `ox` in a row whose move is `row`. False where it
+// lands outside.
+fn resample_landing(
+  map: ResampleMap,
+  point: ResamplePoint,
+  ox: i32,
+  row: array<Wide, 2>,
+  at: ptr<function, vec2<i32>>,
+) -> bool {
   var du: Wide;
   var dv: Wide;
   if (resample_affine(map)) {
-    du = wide_round(wide_add(wide_mul_i32(map.a, ox), wide_mul_i32(map.b, oy)), 20u);
-    dv = wide_round(wide_add(wide_mul_i32(map.d, ox), wide_mul_i32(map.e, oy)), 20u);
+    du = wide_round(wide_add(wide_mul_i32(map.a, ox), row[0]), 20u);
+    dv = wide_round(wide_add(wide_mul_i32(map.d, ox), row[1]), 20u);
   } else {
-    du = wide_round(wide_add(wide_mul(point.du_dx, wide(ox)), wide_mul(point.du_dy, wide(oy))), 16u);
-    dv = wide_round(wide_add(wide_mul(point.dv_dx, wide(ox)), wide_mul(point.dv_dy, wide(oy))), 16u);
+    du = wide_round(wide_add(wide_mul(point.du_dx, wide(ox)), row[0]), 16u);
+    dv = wide_round(wide_add(wide_mul(point.dv_dx, wide(ox)), row[1]), 16u);
   }
   let su = wide_add(wide(point.u), du);
   let sv = wide_add(wide(point.v), dv);
   if (!resample_within(su) || !resample_within(sv)) {
-    return 0u;
+    return false;
   }
-  return resample_texel(
-    source,
-    resample_round16(bitcast<i32>(su.x)),
-    resample_round16(bitcast<i32>(sv.x)),
-  );
+  *at = vec2<i32>(resample_round16(bitcast<i32>(su.x)), resample_round16(bitcast<i32>(sv.x)));
+  return true;
 }
 
 // |du/dx| or the like, capped at 16 px for the step length.
@@ -437,17 +481,50 @@ fn resample_pick_sampled(map: ResampleMap, source: u32, point: ResamplePoint) ->
       return word;
     }
   }
+  // The source pixel read last and its word: neighbouring subsamples land
+  // on few pixels, and a read is the host's whole walk to its tile.
+  var read_at = vec2<i32>(0, 0);
+  var read_word = 0u;
+  var read_any = false;
   loop {
     resample_slots = 0u;
     resample_evicted = false;
     for (var round = 0; round < 2; round = round + 1) {
+      // A run of subsamples on one word votes once, by its count: the vote
+      // adds, and a token met again finds its own slot, so the table is
+      // the one they fill one by one.
+      var run_token = 0u;
+      var run_count = 0u;
+      let first = resample_offsets(nx);
       for (var sy = 0u; sy < ny; sy = sy + 1u) {
-        let oy = resample_subsample(sy, ny);
+        let row = resample_row_move(map, point, resample_subsample(sy, ny));
+        var offsets = first;
         for (var sx = 0u; sx < nx; sx = sx + 1u) {
-          let token = resample_landing(map, source, point, resample_subsample(sx, nx), oy);
-          resample_vote(token, Wide(1u, 0u), round == 1);
+          var at: vec2<i32>;
+          var token = 0u;
+          let ox = resample_next_offset(&offsets);
+          if (resample_landing(map, point, ox, row, &at)) {
+            if (!read_any || any(at != read_at)) {
+              read_word = resample_texel(source, at.x, at.y);
+              read_at = at;
+              read_any = true;
+            }
+            token = read_word;
+          }
+          // An empty run holds token 0 with no count, so it takes the first
+          // subsample either way.
+          if (token == run_token) {
+            run_count = run_count + 1u;
+          } else {
+            if (run_count != 0u) {
+              resample_vote(run_token, Wide(run_count, 0u), round == 1);
+            }
+            run_token = token;
+            run_count = 1u;
+          }
         }
       }
+      resample_vote(run_token, Wide(run_count, 0u), round == 1);
       if (!resample_evicted || round == 1) {
         break;
       }

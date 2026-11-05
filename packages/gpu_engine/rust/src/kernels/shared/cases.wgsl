@@ -28,6 +28,7 @@ const RUN_LESS: u32 = 12u;
 const RUN_FITS: u32 = 13u;
 const RUN_SAMPLES: u32 = 14u;
 const RUN_SUBSAMPLE: u32 = 15u;
+const RUN_WALK: u32 = 16u;
 
 const MAP_WORDS: u32 = 15u;
 
@@ -100,6 +101,15 @@ fn run_wide(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     case RUN_SUBSAMPLE: {
       out = Wide128(bitcast<u32>(resample_subsample(a.x, k)), 0u, 0u, 0u);
+    }
+    // Subsample a.x of k, walked to from the first (resample_next_offset).
+    case RUN_WALK: {
+      var offsets = resample_offsets(k);
+      var offset = 0i;
+      for (var s = 0u; s <= a.x; s = s + 1u) {
+        offset = resample_next_offset(&offsets);
+      }
+      out = Wide128(bitcast<u32>(offset), 0u, 0u, 0u);
     }
     default: {
     }
