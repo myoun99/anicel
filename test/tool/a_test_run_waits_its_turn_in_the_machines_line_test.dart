@@ -518,6 +518,91 @@ void main() {
     });
   });
 
+  // ⚠️A lock ANOTHER process holds needs a second process, which no test
+  // may spawn: here the sweep is pinned to ask `ended`, and the lock itself
+  // was measured (11-05, flutter-test-temp-left-behind — a PowerShell
+  // holding one folder's lock kept it while the dead run's beside it went).
+  group("a run's temp goes with it", () {
+    late Directory parent;
+    setUp(() => parent = Directory.systemTemp.createTempSync('queue_tmp'));
+    tearDown(() => deleteTempQuietly(parent));
+    final later = DateTime.now().add(const Duration(hours: 1));
+
+    Directory leftBy(String name, {bool locked = true}) {
+      final folder = Directory('${parent.path}/$name/flutter_tools.x')
+        ..createSync(recursive: true);
+      if (locked) {
+        File('${parent.path}/$name/$kRunTempLock').writeAsStringSync('1\n');
+      }
+      return folder.parent;
+    }
+
+    test('the child is started in a folder of its own, which goes when it '
+        'ends', () {
+      final temp = RunTemp.take(parent: parent);
+      expect(temp.folder.parent.path, parent.path);
+      expect(temp.environment, {
+        'TMP': temp.folder.path,
+        'TEMP': temp.folder.path,
+        'TMPDIR': temp.folder.path,
+      });
+      Directory(
+        '${temp.folder.path}/flutter_tools.x/flutter_test_compiler.y',
+      ).createSync(recursive: true);
+      temp.end();
+      expect(temp.folder.existsSync(), isFalse);
+    });
+
+    test('a folder whose run ended goes with the next run to take one — its '
+        'lock free, or never taken', () {
+      final freed = leftBy('${kRunTempPrefix}1_1');
+      final neverLocked = leftBy('${kRunTempPrefix}2_1', locked: false);
+      final temp = RunTemp.take(parent: parent, now: later);
+      expect(freed.existsSync(), isFalse);
+      expect(neverLocked.existsSync(), isFalse);
+      expect(temp.folder.existsSync(), isTrue, reason: 'its own stays');
+      temp.end();
+    });
+
+    test("⛔what is no ended run's folder stays: one that may not be locked "
+        "yet, one of this process, another tool's", () {
+      final young = leftBy('${kRunTempPrefix}1_1');
+      sweepEndedRunTemps(parent);
+      expect(young.existsSync(), isTrue, reason: 'younger than it settles');
+
+      final own = leftBy('$kRunTempPrefix${pid}_1');
+      final others = [leftBy('flutter_tools.1'), leftBy('qa_run_1_1')];
+      final held = leftBy('${kRunTempPrefix}3_1');
+      sweepEndedRunTemps(
+        parent,
+        now: later,
+        ended: (lock) =>
+            !lock.parent.path.endsWith('${kRunTempPrefix}3_1') &&
+            runHasEnded(lock),
+      );
+      expect(held.existsSync(), isTrue, reason: 'its run holds the lock');
+      expect(young.existsSync(), isFalse, reason: 'the same one, settled');
+      expect(own.existsSync(), isTrue, reason: 'a POSIX lock is the process\'s');
+      for (final other in others) {
+        expect(other.existsSync(), isTrue, reason: other.path);
+      }
+    });
+
+    test('⛔every tool that starts a `flutter test` starts it in a temp of its '
+        'own and ends that with it', () {
+      for (final tool in [
+        'tool/test_queue.dart',
+        'tool/affected_tests.dart',
+        'tool/mutation_run.dart',
+      ]) {
+        final source = File(tool).readAsStringSync();
+        expect(source, contains('RunTemp.take()'), reason: tool);
+        expect(source, contains('environment: temp.environment'), reason: tool);
+        expect(source, contains('temp.end()'), reason: tool);
+      }
+    });
+  });
+
   group('who is still in line', () {
     late Directory line;
     setUp(() => line = Directory.systemTemp.createTempSync('queue_fx'));

@@ -1472,6 +1472,27 @@ Future<_BatchResult> _flutterTest(
   required String report,
   required BatchKind kind,
 }) async {
+  final temp = RunTemp.take();
+  try {
+    return await _flutterTestIn(
+      temp,
+      files,
+      concurrency: concurrency,
+      report: report,
+      kind: kind,
+    );
+  } finally {
+    temp.end();
+  }
+}
+
+Future<_BatchResult> _flutterTestIn(
+  RunTemp temp,
+  List<String> files, {
+  required int? concurrency,
+  required String report,
+  required BatchKind kind,
+}) async {
   final process = await Process.start(
     Platform.isWindows ? 'flutter.bat' : 'flutter',
     flutterTestArguments(
@@ -1480,6 +1501,7 @@ Future<_BatchResult> _flutterTest(
       report: report,
       kind: kind,
     ),
+    environment: temp.environment,
     runInShell: true,
   );
   var ranTests = false;

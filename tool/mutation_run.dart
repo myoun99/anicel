@@ -47,6 +47,7 @@ import 'dart:io';
 import 'import_graph.dart';
 import 'mutations.dart';
 import 'process_tree.dart';
+import 'test_queue.dart';
 
 /// How long one suite may take before the run is called a timeout.
 ///
@@ -463,10 +464,21 @@ Future<Verdict> _runNamers(List<String> ordered) async {
 }
 
 Future<Verdict> _runSuite(List<String> namers) async {
-  final process = await Process.start('flutter', [
-    'test',
-    ...namers,
-  ], runInShell: true);
+  final temp = RunTemp.take();
+  try {
+    return await _runSuiteIn(temp, namers);
+  } finally {
+    temp.end();
+  }
+}
+
+Future<Verdict> _runSuiteIn(RunTemp temp, List<String> namers) async {
+  final process = await Process.start(
+    'flutter',
+    ['test', ...namers],
+    environment: temp.environment,
+    runInShell: true,
+  );
   final buffer = StringBuffer();
   final done = Completer<int>();
   unawaited(
