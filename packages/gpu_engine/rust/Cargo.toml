@@ -9,6 +9,9 @@ publish = false
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
+# The fingerprint: the same CRC-32 as the app's anicelCrc32, not a hash of
+# our own (gpu-engine-skeleton, 2026-11-05).
+crc32fast = "1"
 pollster = "0.4"
 wgpu = { version = "=30.0.1", default-features = false, features = [
   "std",
@@ -27,3 +30,7 @@ windows = { version = "0.62", features = [
   "Win32_Graphics_Dxgi",
   "Win32_Graphics_Dxgi_Common",
 ] }
+
+# The tests read the ledger, test/fixtures/fingerprints.json.
+[dev-dependencies]
+serde_json = "1"

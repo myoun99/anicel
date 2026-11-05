@@ -1,10 +1,12 @@
-// Bindings to the Rust engine (rust/src/lib.rs). hook/build.dart ships the
-// crate as this library's code asset, which is what @Native resolves to.
+// Bindings to the Rust engine (rust/src/). hook/build.dart ships the crate
+// as this library's code asset, which is what @Native resolves to.
 import 'dart:ffi';
 
 final class Engine extends Opaque {}
 
 final class Surface extends Opaque {}
+
+final class Fill extends Opaque {}
 
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
@@ -42,31 +44,35 @@ external void surfaceFree(Pointer<Surface> surface);
 )
 external Pointer<Void> surfaceHandle(Pointer<Surface> surface);
 
-@Native<Int64 Function(Pointer<Engine>, Pointer<Surface>, Uint32)>(
-  symbol: 'gpu_engine_fill',
-)
-external int surfaceFill(
+@Native<Pointer<Fill> Function(Pointer<Engine>)>(symbol: 'gpu_engine_fill_new')
+external Pointer<Fill> fillNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Fill>)>(symbol: 'gpu_engine_fill_free')
+external void fillFree(Pointer<Fill> fill);
+
+@Native<
+  Int64 Function(Pointer<Fill>, Pointer<Engine>, Pointer<Surface>, Uint32)
+>(symbol: 'gpu_engine_fill_run')
+external int fillRun(
+  Pointer<Fill> fill,
   Pointer<Engine> engine,
   Pointer<Surface> surface,
   int seed,
 );
 
-@Native<Bool Function(Pointer<Engine>, Pointer<Surface>, Pointer<Uint64>)>(
-  symbol: 'gpu_engine_read_hash',
+@Native<Bool Function(Pointer<Engine>, Pointer<Surface>, Pointer<Uint32>)>(
+  symbol: 'gpu_engine_surface_fingerprint',
 )
-external bool surfaceReadHash(
+external bool surfaceFingerprint(
   Pointer<Engine> engine,
   Pointer<Surface> surface,
-  Pointer<Uint64> hash,
+  Pointer<Uint32> fingerprint,
 );
 
-@Native<Uint64 Function(Uint32, Uint32, Uint32, Bool)>(
-  symbol: 'gpu_engine_expected_hash',
+@Native<Uint32 Function(Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_fingerprint_bytes',
 )
-external int expectedHash(int width, int height, int seed, bool bgra);
-
-@Native<Uint64 Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_hash_bytes')
-external int hashBytes(Pointer<Uint8> bytes, int length);
+external int fingerprintBytes(Pointer<Uint8> bytes, int length);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);

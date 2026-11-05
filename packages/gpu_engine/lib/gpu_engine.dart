@@ -39,6 +39,9 @@ class GpuEngine {
 
   final Pointer<rust.Engine> _engine;
   final int adapterLuid;
+  Pointer<rust.Fill>? _fill;
+
+  Pointer<rust.Fill> get _fillKernel => _fill ??= rust.fillNew(_engine);
 
   String get adapterName => using((arena) {
     const capacity = 256;
@@ -61,7 +64,13 @@ class GpuEngine {
   }
 
   /// Frees the device; every surface must be freed first.
-  void close() => rust.engineClose(_engine);
+  void close() {
+    final fill = _fill;
+    if (fill != null) {
+      rust.fillFree(fill);
+    }
+    rust.engineClose(_engine);
+  }
 }
 
 /// A texture the compute pass fills and Flutter shows.
@@ -79,17 +88,23 @@ class GpuSurface {
   /// Fills the surface with the pattern for [seed] and waits for the GPU;
   /// returns the submit-to-done time.
   Duration fill(int seed) {
-    final nanos = rust.surfaceFill(_engine._engine, _surface, seed);
+    final nanos = rust.fillRun(
+      _engine._fillKernel,
+      _engine._engine,
+      _surface,
+      seed,
+    );
     if (nanos < 0) {
       throw StateError(_lastError());
     }
     return Duration(microseconds: nanos ~/ 1000);
   }
 
-  /// The FNV-1a hash of the surface's bytes, read back from the GPU.
-  int readHash() => using((arena) {
-    final hash = arena<Uint64>();
-    if (!rust.surfaceReadHash(_engine._engine, _surface, hash)) {
+  /// The CRC-32 of the surface's bytes, read back from the GPU — the
+  /// fingerprint the ledger `test/fixtures/fingerprints.json` pins.
+  int fingerprint() => using((arena) {
+    final hash = arena<Uint32>();
+    if (!rust.surfaceFingerprint(_engine._engine, _surface, hash)) {
       throw StateError(_lastError());
     }
     return hash.value;
@@ -115,15 +130,12 @@ class GpuSurface {
   void free() => rust.surfaceFree(_surface);
 }
 
-/// The hash a surface's bytes must have for [seed], worked out on the CPU.
-int expectedSurfaceHash(int width, int height, int seed, {required bool bgra}) =>
-    rust.expectedHash(width, height, seed, bgra);
-
-/// The FNV-1a hash of [bytes], by the engine's own code.
-int hashBytes(Uint8List bytes) => using((arena) {
+/// The fingerprint of [bytes] by the engine's own code — for bytes read off
+/// Flutter's screen, so they are compared as the GPU's are.
+int fingerprintBytes(Uint8List bytes) => using((arena) {
   final buffer = arena<Uint8>(bytes.length);
   buffer.asTypedList(bytes.length).setAll(0, bytes);
-  return rust.hashBytes(buffer, bytes.length);
+  return rust.fingerprintBytes(buffer, bytes.length);
 });
 
 /// A Flutter external texture that shows [front], or [back] once

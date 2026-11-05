@@ -1,8 +1,9 @@
 // GPU ENGINE PROBE — stage 0 of the GPU engine (gpu-engine-skeleton): a
 // wgpu compute pass fills a texture that Flutter shows without a copy.
 // Measures on THIS device: whether ANGLE takes the texture as it is, the
-// round trip of a frame, video memory, and whether the GPU's bytes — and
-// the screen's — are the ones the CPU says they must be.
+// round trip of a frame, video memory, and whether the screen shows the
+// very bytes the GPU wrote. Whether the GPU wrote the pinned bytes is the
+// crate's `cargo test`, against test/fixtures/fingerprints.json.
 //
 //   flutter run -d windows --release --dart-define=GPU_OUT=<dir>
 //
@@ -21,7 +22,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 const _outDir = String.fromEnvironment('GPU_OUT', defaultValue: '');
 
-/// The surface the hash and the round trip are measured on.
+/// The surface the round trip is measured on.
 const _side = 1024;
 
 /// The surface read back off the screen, shown one texel per pixel.
@@ -81,7 +82,7 @@ class _ProbeAppState extends State<_ProbeApp> {
     final engine = GpuEngine.onFlutterAdapter();
     report
       ..writeln('adapter: ${engine.adapterName} '
-          '(LUID ${_hex(engine.adapterLuid)})')
+          '(LUID ${_hex(engine.adapterLuid, digits: 16)})')
       ..writeln('video memory at open: ${_mib(engine.videoMemoryBytes)}')
       ..writeln('process RSS at open: ${_mib(ProcessInfo.currentRss)}');
     for (final bgra in [true, false]) {
@@ -106,12 +107,6 @@ class _ProbeAppState extends State<_ProbeApp> {
     }
     report.writeln('video memory with one $_side² surface: '
         '${_mib(engine.videoMemoryBytes)}');
-
-    front.fill(_seed);
-    final hash = front.readHash();
-    final expected = expectedSurfaceHash(_side, _side, _seed, bgra: bgra);
-    report.writeln('GPU bytes ${_hex(hash)} vs CPU ${_hex(expected)}: '
-        '${hash == expected ? 'MATCH' : 'MISMATCH'}');
 
     _reportWhatAngleSees(report, front);
     if (!await _checkScreen(report, engine, bgra: bgra)) {
@@ -166,12 +161,19 @@ class _ProbeAppState extends State<_ProbeApp> {
           : 'not renderable or not readable: ANGLE refuses it or copies it');
   }
 
-  /// Whether the screen shows exactly the bytes the CPU expects.
+  /// Whether the screen shows exactly the bytes the GPU wrote. The screen
+  /// is read as RGBA, so it is compared with an RGBA surface the same pass
+  /// filled with the same seed — the crate's tests pin that the two orders
+  /// hold the same texels.
   Future<bool> _checkScreen(
     StringBuffer report,
     GpuEngine engine, {
     required bool bgra,
   }) async {
+    final reference = engine.surface(_shotSide, _shotSide, bgra: false);
+    reference.fill(_seed);
+    final written = reference.fingerprint();
+    reference.free();
     final shot = engine.surface(_shotSide, _shotSide, bgra: bgra);
     shot.fill(_seed);
     final texture = SharedTexture.register(shot)..show(0);
@@ -191,16 +193,10 @@ class _ProbeAppState extends State<_ProbeApp> {
       report.writeln('screen: captured $size, not $_shotSide², not compared');
       return false;
     }
-    final seen = hashBytes(bytes.buffer.asUint8List());
-    final expected = expectedSurfaceHash(
-      _shotSide,
-      _shotSide,
-      _seed,
-      bgra: false,
-    );
-    report.writeln('screen bytes ${_hex(seen)} vs CPU ${_hex(expected)}: '
-        '${seen == expected ? 'MATCH' : 'MISMATCH'}');
-    return seen == expected;
+    final seen = fingerprintBytes(bytes.buffer.asUint8List());
+    report.writeln('screen bytes ${_hex(seen)} vs GPU ${_hex(written)}: '
+        '${seen == written ? 'MATCH' : 'MISMATCH'}');
+    return seen == written;
   }
 
   /// Fill → show → the frame that shows it, [_frames] times. With [back],
@@ -286,8 +282,8 @@ class _ProbeAppState extends State<_ProbeApp> {
   }
 }
 
-String _hex(int value) =>
-    value.toUnsigned(64).toRadixString(16).padLeft(16, '0');
+String _hex(int value, {int digits = 8}) =>
+    value.toUnsigned(digits * 4).toRadixString(16).padLeft(digits, '0');
 
 String _mib(int bytes) => '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
 

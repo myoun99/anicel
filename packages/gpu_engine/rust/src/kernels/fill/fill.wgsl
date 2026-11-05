@@ -5,8 +5,8 @@
 // device"): WGSL fixes u32 multiplication to wrap modulo 2^32 (§6.2.3)
 // and shifts to take their amount modulo 32 (§8.10), while float ops may
 // be fused or reassociated (§Reassociation and Fusion) with no switch in
-// WGSL or wgpu to stop it. `pattern.rs` is the CPU side of the same
-// formula, kept as the oracle the bytes are checked against.
+// WGSL or wgpu to stop it. The bytes are pinned in the ledger
+// test/fixtures/fingerprints.json; `tests.rs` beside this file checks them.
 
 struct Params {
   seed: u32,

@@ -31,6 +31,10 @@ use windows::Win32::Graphics::Dxgi::DXGI_MEMORY_SEGMENT_GROUP_LOCAL;
 use windows::core::PCWSTR;
 use wgpu::hal::api::Dx12;
 
+/// Flutter's ANGLE sits on D3D11, which opens a D3D12 resource by NT
+/// handle; no other wgpu backend makes one.
+pub const BACKENDS: wgpu::Backends = wgpu::Backends::DX12;
+
 /// The NT handle Flutter opens the texture by. Closing it does not free
 /// the texture — wgpu and ANGLE each hold their own reference.
 pub struct SharedHandle(HANDLE);
