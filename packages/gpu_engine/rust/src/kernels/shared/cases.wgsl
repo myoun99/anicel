@@ -4,8 +4,6 @@
 //
 // `run_wide`: a case is six words — what to run, a and b as two words
 // each, low first, and a count k — and comes back as four, lowest first.
-// `run_window`: one job — the map's words, the source's size, the window's
-// size and where it sits in the whole output — over the pixels handed in.
 // `run_premultiply`: each of the pixels handed in, premultiplied.
 // `run_divide`: a case is eight words — n as four and d as two, low first,
 // the quotient's bits, and 1 where it rounds — and comes back as the
@@ -34,8 +32,6 @@ const RUN_SUBSAMPLE: u32 = 15u;
 const RUN_WALK: u32 = 16u;
 const RUN_DIV_FLOOR: u32 = 17u;
 const RUN_ISQRT: u32 = 18u;
-
-const MAP_WORDS: u32 = 15u;
 
 fn low(a: Wide) -> Wide128 {
   return Wide128(a, 0u, 0u);
@@ -131,29 +127,11 @@ fn run_wide(@builtin(global_invocation_id) id: vec3<u32>) {
   results[i * 4u + 3u] = out.w;
 }
 
+// No case here reads a source: R1 over a picture runs on the warp's pass
+// (kernels/warp), the one that reads a box — this only lets resample.wgsl
+// compile beside the cases.
 fn resample_texel(source: u32, x: i32, y: i32) -> u32 {
-  let width = i32(job[MAP_WORDS]);
-  let height = i32(job[MAP_WORDS + 1u]);
-  if (x < 0 || y < 0 || x >= width || y >= height) {
-    return 0u;
-  }
-  return pixels[u32(y * width + x)];
-}
-
-@compute @workgroup_size(8, 8, 1)
-fn run_window(@builtin(global_invocation_id) id: vec3<u32>) {
-  let columns = job[MAP_WORDS + 2u];
-  let rows = job[MAP_WORDS + 3u];
-  if (id.x >= columns || id.y >= rows) {
-    return;
-  }
-  let map = resample_map(array<u32, 15>(
-    job[0], job[1], job[2], job[3], job[4], job[5], job[6], job[7],
-    job[8], job[9], job[10], job[11], job[12], job[13], job[14],
-  ));
-  let x = bitcast<i32>(job[MAP_WORDS + 4u]) + i32(id.x);
-  let y = bitcast<i32>(job[MAP_WORDS + 5u]) + i32(id.y);
-  results[id.y * columns + id.x] = resample(map, 0u, x, y);
+  return 0u;
 }
 
 @compute @workgroup_size(64)

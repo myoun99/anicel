@@ -15,6 +15,7 @@ use super::{
     encode, fits, flat, page_table, pipeline, runs, tiles_a_pass, whole,
 };
 use crate::device::Engine;
+use crate::kernels::warp::{Boxed, Warp, Window};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 // cases.wgsl's ids.
@@ -38,11 +39,12 @@ const WALK: u32 = 16;
 const DIV_FLOOR: u32 = 17;
 const ISQRT: u32 = 18;
 
-/// The device and the compiled cases every test here runs on.
+/// The device and the compiled cases every test here runs on, and the warp
+/// that runs R1 over a picture.
 struct Rig {
     engine: &'static Engine,
     wide: wgpu::ComputePipeline,
-    window: wgpu::ComputePipeline,
+    warp: Warp,
     premultiply: wgpu::ComputePipeline,
     divide: wgpu::ComputePipeline,
 }
@@ -56,13 +58,12 @@ fn rig() -> &'static Rig {
         let sources = [WIDE_WGSL, RESAMPLE_WGSL, PREMULTIPLY_WGSL, include_str!("cases.wgsl")];
         let pipeline = |entry: &str| pipeline(engine, &sources, entry);
         let wide = pipeline("run_wide");
-        let window = pipeline("run_window");
         let premultiply = pipeline("run_premultiply");
         let divide = pipeline("run_divide");
         Rig {
             engine,
             wide,
-            window,
+            warp: Warp::new(engine),
             premultiply,
             divide,
         }
@@ -456,20 +457,22 @@ fn fixture() -> Picture {
     picture
 }
 
-/// The window of `size` at `clip` in an output the map was made for.
+/// The window of `size` at `clip` in an output the map was made for, as
+/// the warp's one-map pass puts it (kernels/warp).
 pub(crate) fn window(
     map: &ResampleMap,
     picture: &Picture,
     size: (u32, u32),
     clip: (i32, i32),
 ) -> Vec<u32> {
-    let Rig { engine, window, .. } = rig();
-    let mut job = map.words().to_vec();
-    job.extend([picture.width, picture.height, size.0, size.1, clip.0 as u32, clip.1 as u32]);
-    let job = storage(engine, &job);
+    let Rig { engine, warp, .. } = rig();
     let pixels = storage(engine, &picture.pixels);
-    let groups = (size.0.div_ceil(8), size.1.div_ceil(8));
-    dispatch(window, &[(0, &job), (1, &pixels)], groups, (size.0 * size.1) as usize)
+    let source = Boxed { pixels: &pixels, size: (picture.width, picture.height) };
+    let warped = warp.one(engine, &source, Some(map), Window { at: clip, size }).expect("warp");
+    read_buffer(engine, &warped)
+        .chunks_exact(4)
+        .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+        .collect()
 }
 
 /// A scene: an inverse map over an output of `size`.
