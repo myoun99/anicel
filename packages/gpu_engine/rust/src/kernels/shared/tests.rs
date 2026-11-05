@@ -11,8 +11,8 @@ use wgpu::util::DeviceExt;
 
 use super::pages::NO_PAGE;
 use super::{
-    Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, fits,
-    page_table, pipeline, runs, tiles_a_pass,
+    Encoded, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL,
+    encode, fits, flat, page_table, pipeline, runs, tiles_a_pass, whole,
 };
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -95,32 +95,9 @@ fn dispatch(
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
-    let mut entries: Vec<_> = buffers
-        .iter()
-        .map(|&(binding, buffer)| wgpu::BindGroupEntry {
-            binding,
-            resource: buffer.as_entire_binding(),
-        })
-        .collect();
-    entries.push(wgpu::BindGroupEntry {
-        binding: 2,
-        resource: results.as_entire_binding(),
-    });
-    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("shared cases"),
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &entries,
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups(groups.0, groups.1, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
+    let mut bound = whole(buffers);
+    bound.extend(whole(&[(2, &results)]));
+    encode(engine, &[Encoded { pipeline, bound, groups: flat(groups) }]);
     read_buffer(engine, &results)
         .chunks_exact(4)
         .take(words)
@@ -1019,26 +996,9 @@ fn a_pass_reads_the_pages_it_binds_and_nothing_else() {
         mapped_at_creation: false,
     });
     let (third, first) = (storage(engine, &[30, 31, 32]), storage(engine, &[10, 11]));
-    let mut entries = vec![
-        wgpu::BindGroupEntry { binding: 0, resource: asks.as_entire_binding() },
-        wgpu::BindGroupEntry { binding: 1, resource: got.as_entire_binding() },
-    ];
-    entries.extend(pages.entries([&third, &first]));
-    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("page words"),
-        layout: &reader.get_bind_group_layout(0),
-        entries: &entries,
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        pass.set_pipeline(&reader);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups(4, 1, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
+    let mut bound = whole(&[(0, &asks), (1, &got)]);
+    bound.extend(pages.entries([&third, &first]));
+    encode(engine, &[Encoded { pipeline: &reader, bound, groups: flat((4, 1)) }]);
     let words: Vec<u32> = read_buffer(engine, &got)
         .chunks_exact(4)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
@@ -1080,26 +1040,9 @@ fn a_pass_puts_on_the_pages_it_binds_and_nowhere_else() {
             })
     };
     let (zeroth, second) = (page(&[1, 2, 3]), page(&[4, 5, 6]));
-    let mut entries = vec![wgpu::BindGroupEntry {
-        binding: 0,
-        resource: asks.as_entire_binding(),
-    }];
-    entries.extend(pages.entries([&second, &zeroth]));
-    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("page puts"),
-        layout: &putter.get_bind_group_layout(0),
-        entries: &entries,
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        pass.set_pipeline(&putter);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups(3, 1, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
+    let mut bound = whole(&[(0, &asks)]);
+    bound.extend(pages.entries([&second, &zeroth]));
+    encode(engine, &[Encoded { pipeline: &putter, bound, groups: flat((3, 1)) }]);
     let words = |buffer| -> Vec<u32> {
         read_buffer(engine, buffer)
             .chunks_exact(4)

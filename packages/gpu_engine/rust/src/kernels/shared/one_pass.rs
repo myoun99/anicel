@@ -13,10 +13,7 @@ const CALL: &str = concat!("begin_compute", "_pass(");
 const HOME: &str = "kernels/shared/dispatch.rs";
 
 /// The copies still standing, and whose they are.
-const LEDGER: &[(&str, &str)] = &[
-    ("kernels/blend/tests.rs", "브러시/렌더링"),
-    ("kernels/shared/tests.rs", "브러시/렌더링"),
-];
+const LEDGER: &[(&str, &str)] = &[];
 
 #[test]
 fn a_compute_pass_is_opened_by_encode_on_or_a_copy_on_the_ledger() {

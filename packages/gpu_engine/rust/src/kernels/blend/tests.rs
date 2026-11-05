@@ -9,7 +9,7 @@ use wgpu::util::DeviceExt;
 use super::BLEND_WGSL;
 use super::mode::NORMAL;
 use crate::device::Engine;
-use crate::kernels::shared::{ISQRT_WGSL, pipeline};
+use crate::kernels::shared::{Encoded, ISQRT_WGSL, encode, flat, pipeline, whole};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 // cases.wgsl's ids for one function each.
@@ -104,30 +104,9 @@ fn run(cases: &[(u32, Rgba, Rgba)]) -> Vec<Rgba> {
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
-    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("blend cases"),
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: input.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: results.as_entire_binding(),
-            },
-        ],
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        pass.set_pipeline(&pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups((cases.len() as u32).div_ceil(64), 1, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
+    let bound = whole(&[(0, &input), (1, &results)]);
+    let groups = flat(((cases.len() as u32).div_ceil(64), 1));
+    encode(engine, &[Encoded { pipeline, bound, groups }]);
     read_buffer(engine, &results)
         .chunks_exact(16)
         .map(|texel| {
