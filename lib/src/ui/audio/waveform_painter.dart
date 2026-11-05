@@ -170,33 +170,38 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     _bandsReckoned += 1;
     final lanes = peaks.lanes;
     final share = extentAcross(axis, size) / lanes.length;
+    final shown = (
+      extent: extentAlong(axis, size),
+      first: firstShown,
+      to: shownTo,
+    );
     final path = Path();
     var drawn = false;
     for (var lane = 0; lane < lanes.length; lane += 1) {
       drawn |= _addLane(
         path,
         lanes[lane],
-        mainExtent: extentAlong(axis, size),
-        center: share * (lane + 0.5),
-        maxAmplitude: math.max(0.0, share / 2 - 1),
-        firstShown: firstShown,
-        shownTo: shownTo,
+        shown: shown,
+        across: (
+          center: share * (lane + 0.5),
+          reach: math.max(0.0, share / 2 - 1),
+        ),
       );
     }
     return drawn ? path : null;
   }
 
-  /// One lane's band, mirrored around [center] across the strip, added to
-  /// [path] — false where it has no bucket to draw.
+  /// One lane's band added to [path], mirrored around its [across] center
+  /// and reaching as far as its reach at full amplitude, over the buckets
+  /// [shown] on a strip that long — false where it has no bucket to draw.
   bool _addLane(
     Path path,
     Float32List envelope, {
-    required double mainExtent,
-    required double center,
-    required double maxAmplitude,
-    required int firstShown,
-    required double shownTo,
+    required ({double extent, int first, double to}) shown,
+    required ({double center, double reach}) across,
   }) {
+    final (extent: mainExtent, first: firstShown, to: shownTo) = shown;
+    final (:center, reach: maxAmplitude) = across;
     final pixelsPerBucket = _pixelsPerBucket;
     final leadingPixels = _leadingPixels;
     final envelopeGain = math.min(1.0, gain);
