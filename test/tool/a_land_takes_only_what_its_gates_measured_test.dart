@@ -37,7 +37,8 @@ void main() {
     for (var i = 0; i < code.length; i++)
       if (code[i].contains(r'(cd "$p" &&') ||
           code[i].contains('cmd_native') ||
-          code[i].contains('cmd_crate'))
+          code[i].contains('cmd_crate') ||
+          code[i].contains('crate_gate'))
         i,
   ];
 
@@ -51,10 +52,36 @@ void main() {
       final all = gates.join('\n');
       expect(all, contains(r'(cd "$p" && flutter analyze)'));
       expect(all, contains(r'(cd "$p" && flutter test test/architecture)'));
+      expect(all, contains(r'lane_touched "$p" packages/qa_native/src'));
       expect(all, contains(r'cmd_native "$name"'));
-      expect(all, contains('-- packages/gpu_engine/rust'));
-      expect(all, contains('test/fixtures/fingerprints.json)"'));
-      expect(all, contains(r'cmd_crate "$name"'));
+      expect(all, contains(r'crate_gate "$name" "$p"'));
+      final crate = codeOf('crate_gate').join('\n');
+      expect(
+        crate,
+        contains(
+          r'lane_touched "$p" packages/gpu_engine/rust '
+          'test/fixtures/fingerprints.json',
+        ),
+      );
+      expect(crate, contains(r'cmd_crate "$name"'));
+    });
+
+    // 저장 2026-11-05: four Dart files, opened before the trunk took crate
+    // commits, were refused for want of cargo — two dots read the trunk's
+    // commits as the lane's.
+    test('🚨a lane pays for what IT changed: three dots, from where it left '
+        'the trunk', () {
+      expect(
+        at(
+          codeOf('lane_touched'),
+          r'diff --name-only "$TRUNK"...HEAD -- "$@"',
+        ),
+        isNot(-1),
+      );
+      expect(
+        File('tool/lane.sh').readAsStringSync(),
+        isNot(contains(r'diff --name-only "$TRUNK" HEAD')),
+      );
     });
 
     // 관제 2026-11-05 (i163-dropper-no-paper): a red architecture run with no
@@ -85,16 +112,23 @@ void main() {
       expect(at(crate, r'cargo test --locked ${flag:+"$flag"}'), isNot(-1));
     });
 
-    test('🚨are run from ONE place: neither the land nor the gate command '
-        'runs anything in the lane by itself', () {
+    test('🚨are run from ONE place: the gate command runs nothing in the '
+        'lane by itself, and the land only the crate\'s tests', () {
       for (final command in ['cmd_land', 'cmd_gate']) {
-        expect(runsIn(codeOf(command)), isEmpty, reason: command);
         expect(
           at(codeOf(command), r'gates "$name" "$p"'),
           isNot(-1),
           reason: '$command runs them through the one function',
         );
       }
+      expect(runsIn(codeOf('cmd_gate')), isEmpty);
+      final land = codeOf('cmd_land');
+      expect(
+        [for (final i in runsIn(land)) land[i].trim()],
+        [r'crate_gate "$name" "$p"'],
+        reason: 'a stamped land runs refusal 8 — the same function the '
+            'gates run it through',
+      );
     });
 
     // 2026-10-08 (card a-sent-lane-is-gated-once): the script measured
@@ -231,6 +265,20 @@ void main() {
         isNot(contains('git ')),
         reason: 'the stamped road does nothing to the lane on its way to '
             'the merge',
+      );
+    });
+
+    test('🚨a stamped land still runs the crate\'s tests HERE, and asks '
+        'again of its commit before the merge', () {
+      // 관제 2026-11-05: surface11/fx-line-box pinned a ledger row on the
+      // Surface's GPU and landed on its stamp, this machine's never asked.
+      final stamped = at(land, r'if [ "$(gated_at "$name")" = "$head" ] \');
+      final otherwise = land.indexWhere((line) => line.trim() == 'else');
+      final crate = at(land, r'crate_gate "$name" "$p"');
+      expect(crate, inExclusiveRange(stamped, otherwise));
+      expect(
+        at(land, r'unmoved_since "$p" "$head" land'),
+        inExclusiveRange(crate, otherwise),
       );
     });
 

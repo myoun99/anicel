@@ -103,6 +103,11 @@
 #    here, on this machine's GPU, in debug and in release — the shaders a
 #    debug build compiles are not the ones the app ships (cmd_crate says
 #    why); a lane that touched neither pays nothing.
+#    ⚠️A STAMP DOES NOT STAND FOR IT. The ledger says every GPU gives the
+#    same bytes, and a row pinned on one GPU is a claim only another can
+#    check — so a stamped land still runs it, here (관제 2026-11-05: the
+#    Surface's surface11/fx-line-box pinned effects/line-blur and landed on
+#    its stamp, with this machine's GPU never asked).
 #    The machine's Rust must be on PATH — the main PC keeps it on D:, the
 #    Surface on C:, neither on the default PATH — and a land that cannot
 #    find cargo refuses rather than skipping. `bash tool/lane.sh crate
@@ -175,7 +180,8 @@
 #     for the trunk's machine to do both once more.
 #   · `land` does not measure twice: a lane that still sits on master and
 #     whose stamp names its very commit merges as it is. A master that
-#     moved is what it always was — rebase, every gate, once.
+#     moved is what it always was — rebase, every gate, once. ⚠️Save
+#     refusal 8, whose answer is this machine's GPU's (2026-11-05, above).
 # ⚠️A stamp says 「the gates passed on THIS commit」 and nothing about any
 # other: one more commit, or a rebase, and it names nothing.
 #
@@ -923,7 +929,7 @@ at_idle() {
 }
 
 # THE GATES A LANDING STANDS BEHIND, on the lane at $2 as it is checked
-# out — refusals 3 and 5. `land` runs them after its rebase and `gate` on a
+# out — refusals 3, 5 and 8. `land` runs them after its rebase and `gate` on a
 # lane as it stands: the same lines, so a stamp vouches for exactly what a
 # land would have measured. $3 says which of the two is asking, for the
 # room alone.
@@ -975,12 +981,30 @@ gates() {
 
   # Refusal 5. Only a lane that touched the C pays for it — its parity run
   # outside the machine's line, as the architecture tests above run.
-  if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
+  if lane_touched "$p" packages/qa_native/src; then
     cmd_native "$name" gates
   fi
-  # Refusal 8. Only a lane that touched the crate or its ledger pays for it.
-  if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/gpu_engine/rust \
-    test/fixtures/fingerprints.json)" ]; then
+  crate_gate "$name" "$p"
+}
+
+# Did the lane at $1 itself change anything under the paths that follow?
+# THREE dots: from where the lane left the trunk to the lane. After a
+# land's rebase that is the trunk; a `gate` measures a lane as it stands.
+# ↩️Two dots compared the trunk's tip with the lane, so a lane opened
+# before the trunk took crate commits read them as its own: the Surface's
+# surface11/xdts-viewer-frames, four Dart files, was refused for want of
+# cargo (저장 2026-11-05).
+lane_touched() {
+  local p="$1"; shift
+  [ -n "$(git -C "$p" diff --name-only "$TRUNK"...HEAD -- "$@")" ]
+}
+
+# Refusal 8, for a lane that touched the crate or its ledger. `gates` asks
+# it, and so does a stamped land: the header says why a stamp does not
+# stand for it.
+crate_gate() {
+  local name="$1" p="$2"
+  if lane_touched "$p" packages/gpu_engine/rust test/fixtures/fingerprints.json; then
     cmd_crate "$name"
   fi
 }
@@ -1064,11 +1088,17 @@ cmd_land() {
 
   # MEASURED ONCE: the gates passed on this very commit, and the trunk has
   # not moved from under it — the tree that merges is the tree that was
-  # measured, and measuring it again would say the same.
+  # measured, and measuring it again would say the same. Save refusal 8:
+  # on another machine's GPU it may not (the header).
   local head; head="$(git -C "$p" rev-parse HEAD)"
   if [ "$(gated_at "$name")" = "$head" ] \
     && git -C "$p" merge-base --is-ancestor "$TRUNK" HEAD; then
-    echo "lane: work/$name was gated at ${head:0:10} and sits on $TRUNK as it stands — not measured again"
+    echo "lane: work/$name was gated at ${head:0:10} and sits on $TRUNK as it stands — not measured again, save refusal 8"
+    # The stamp says nothing of where it was made: a lane gated and landed
+    # here pays one more run of the crate (minutes) — rare, since this
+    # machine's lanes land without a `gate`.
+    crate_gate "$name" "$p"
+    unmoved_since "$p" "$head" land
   else
     echo "lane: rebasing work/$name onto $TRUNK"
     git -C "$p" rebase "$TRUNK" >/dev/null 2>&1 || die "REBASE CONFLICT in $p

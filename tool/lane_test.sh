@@ -84,7 +84,15 @@ esac
 echo "runs=0 free_gb=9 room=yes"
 exit 0
 EOF
-chmod +x "$E/bin/flutter" "$E/bin/dart"
+# `cargo` writes down which lane it ran in — the crate is three folders
+# down — and fails when LANE_TEST_CARGO says red.
+cat > "$E/bin/cargo" <<'EOF'
+#!/bin/bash
+echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$LANE_TEST_LOG"
+[ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
+echo "test result: ok. 1 passed; 0 failed"
+EOF
+chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo"
 export PATH="$E/bin:$PATH"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 FAILS=0
@@ -380,6 +388,41 @@ O=$(LANE_TEST_FLUTTER=red_arch out "$E/home" land ta)
 has "a red architecture test refuses the land" "$O" "the architecture gate is red"
 has "and shows what failed" "$O" "[E] the red one"
 check "and the architecture tests ran once" "$(grep -c 'flutter test test/architecture' "$LANE_TEST_LOG")" 1
+
+say "T REFUSAL 8: a lane pays for the crate IT changed — and a stamp made elsewhere does not answer for this machine's GPU"
+cargo_runs() { grep -c "$1 cargo test" "$LANE_TEST_LOG"; }
+quiet "$E/home" open dart4; commit "$HW/lane-dart4" d.txt "four Dart files"
+quiet "$E/home" open kern; mkdir -p "$HW/lane-kern/packages/gpu_engine/rust"
+commit "$HW/lane-kern" packages/gpu_engine/rust/k.wgsl "a kernel"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" land kern)
+has "a lane that changed the crate lands" "$O" "merged work/kern"
+check "and its tests ran, debug and release" "$(cargo_runs lane-kern)" 2
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" gate dart4)
+has "a lane opened before the trunk took the crate is gated" "$O" "gated work/dart4"
+check "and the trunk's crate is not taken for its own" "$(cargo_runs lane-dart4)" 0
+quiet "$E/away" sync
+quiet "$E/away" open line; mkdir -p "$AW/lane-surface11-line/test/fixtures"
+commit "$AW/lane-surface11-line" test/fixtures/fingerprints.json "a row pinned there"
+quiet "$E/away" gate line; quiet "$E/away" send line
+quiet "$E/home" receive surface11/line
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" land surface11/line)
+has "a stamped lane on an unmoved trunk is not measured again" "$O" "not measured again"
+check "no gate ran" "$(gates_run)" 0
+check "but the crate's tests ran here, debug and release" "$(cargo_runs lane-surface11-line)" 2
+has "and it lands" "$O" "merged work/surface11/line"
+quiet "$E/away" sync
+quiet "$E/away" open row; mkdir -p "$AW/lane-surface11-row/test/fixtures"
+commit "$AW/lane-surface11-row" test/fixtures/fingerprints.json "a row this GPU disagrees with"
+quiet "$E/away" gate row; quiet "$E/away" send row
+quiet "$E/home" receive surface11/row
+BEFORE=$(git -C "$E/home" rev-parse master)
+O=$(LANE_TEST_CARGO=red out "$E/home" land surface11/row)
+has "a row this machine's GPU disagrees with refuses the stamped land" "$O" "this is refusal 8"
+check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+check "and the turn is free" "$(ls -d "$E/home/.git/lane-land.turn" 2>/dev/null | wc -l | tr -d ' ')" 0
 
 echo
 echo "== $FAILS failed"
