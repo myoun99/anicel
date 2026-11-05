@@ -4,9 +4,11 @@
 // one composited by the blend family on the 16-bit scale, with no rounding
 // between rows. The pixel is rounded to a byte once, at the end.
 //
-// A walk the pages cannot all be bound for is cut into passes (mod.rs);
-// between them the stack goes to `work` as it is, 16 bits a channel, so
-// where the cuts fall changes no value.
+// A walk the pages cannot all be bound for, or nested deeper than the
+// registers hold, is cut into passes (mod.rs); between them the stack goes
+// to `work` as it is, 16 bits a channel, so where the cuts fall changes no
+// value. A pass holds the levels from its base up; the ones under it wait
+// in `work`.
 //
 // Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl,
 // shared/resample.wgsl, shared/tile.wgsl and effects/key.wgsl before it.
@@ -21,9 +23,10 @@ const STEP_OPEN_OPAQUE: u32 = 2u;
 const STEP_CLOSE: u32 = 3u;
 const STEP_CLOSE_ATOP: u32 = 4u;
 
-// One pass: the steps it runs, the stack depth it takes and leaves, the
-// output tiles it covers, and where its table of pages is — which binding
-// holds each page of the pool (mod.rs's NO_PAGE where it binds none).
+// One pass: the steps it runs, the stack depth it takes, the output tiles
+// it covers, where its table of pages is — which binding holds each page
+// of the pool (mod.rs's NO_PAGE where it binds none) — and the lowest
+// stack level it holds.
 struct Pass {
   step_begin: u32,
   step_end: u32,
@@ -34,6 +37,7 @@ struct Pass {
   tile_count: u32,
   out_at: u32,
   pages_at: u32,
+  base: u32,
 }
 
 @group(0) @binding(0) var<uniform> pass_: Pass;
@@ -146,13 +150,14 @@ fn composite(
   let x = bitcast<i32>(plan[pass_.tiles_at + tile * 2u]) * i32(TILE_SIDE) + i32(lx);
   let y = bitcast<i32>(plan[pass_.tiles_at + tile * 2u + 1u]) * i32(TILE_SIDE) + i32(ly);
 
+  // stack[i] is level base + i; `top` is the walk's depth less the base.
   var stack: array<vec4<u32>, DEPTH>;
-  var depth = pass_.depth_in;
+  var top = pass_.depth_in - pass_.base;
   if (pass_.first == 1u) {
     stack[0] = vec4<u32>(0u);
   } else {
-    for (var level = 0u; level <= depth; level++) {
-      stack[level] = load(level, tile, texel);
+    for (var i = 0u; i <= top; i++) {
+      stack[i] = load(pass_.base + i, tile, texel);
     }
   }
   for (var step = pass_.step_begin; step < pass_.step_end; step++) {
@@ -161,28 +166,28 @@ fn composite(
       case STEP_ROW: {
         let shown = row_sample(at, x, y);
         if (shown.w != 0u) {
-          stack[depth] = laid(plan[at + 1u], plan[at + 2u], shown, stack[depth]);
+          stack[top] = laid(plan[at + 1u], plan[at + 2u], shown, stack[top]);
         }
       }
       case STEP_OPEN: {
-        depth += 1u;
-        stack[depth] = vec4<u32>(0u);
+        top += 1u;
+        stack[top] = vec4<u32>(0u);
       }
       // The clip's base under it, its alpha made whole: where the base is
       // not, its colour is nothing — black (drawOpaque).
       case STEP_OPEN_OPAQUE: {
-        depth += 1u;
-        stack[depth] = vec4<u32>(stack[depth - 1u].xyz, W_ONE);
+        top += 1u;
+        stack[top] = vec4<u32>(stack[top - 1u].xyz, W_ONE);
       }
       case STEP_CLOSE: {
-        let closed = stack[depth];
-        depth -= 1u;
-        stack[depth] = laid(plan[at + 1u], plan[at + 2u], closed, stack[depth]);
+        let closed = stack[top];
+        top -= 1u;
+        stack[top] = laid(plan[at + 1u], plan[at + 2u], closed, stack[top]);
       }
       case STEP_CLOSE_ATOP: {
-        let closed = stack[depth];
-        depth -= 1u;
-        stack[depth] = blend_atop(closed, stack[depth]);
+        let closed = stack[top];
+        top -= 1u;
+        stack[top] = blend_atop(closed, stack[top]);
       }
       default: {}
     }
@@ -190,8 +195,8 @@ fn composite(
   if (pass_.last == 1u) {
     work[pass_.out_at + tile * TILE_TEXELS + texel] = blend_pack8(stack[0]);
   } else {
-    for (var level = 0u; level <= depth; level++) {
-      save(level, tile, texel, stack[level]);
+    for (var i = 0u; i <= top; i++) {
+      save(pass_.base + i, tile, texel, stack[i]);
     }
   }
 }

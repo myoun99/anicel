@@ -21,7 +21,9 @@
 //! reads one tile of it, so exactly one of them lays it. Any other pose
 //! reads around where a pixel lands, so its row is one step binding every
 //! page it reaches; one reaching more than a pass binds waits for the
-//! round that lays a row first. Between passes the stack is kept on the
+//! round that lays a row first. A pass holds a window of the stack in its
+//! registers, [`DEPTH`] levels at most, so a tree nested deeper is cut
+//! where it leaves the window. Between passes the stack is kept on the
 //! 16-bit scale as it was, so the cuts change no value.
 
 // ⏳Nothing outside the tests calls it until the app's bridge round
@@ -43,9 +45,9 @@ use crate::kernels::shared::{ISQRT_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, 
 pub(crate) const TILE: u32 = 128;
 /// A tile's pixels — and its words, one RGBA8 pixel to a word.
 pub(crate) const TILE_TEXELS: u64 = (TILE * TILE) as u64;
-/// How deep folders and clips may nest — the walk's stack, composite.wgsl's
-/// DEPTH. A deeper tree is laid by running its inside first, the way an
-/// effect's buffer will be (a later round).
+/// The most stack levels a pass holds in its registers — composite.wgsl's
+/// DEPTH. Folders and clips nest deeper by cutting passes where the walk
+/// leaves the levels a pass holds; the rest wait in the work buffer.
 pub(crate) const DEPTH: usize = 8;
 /// The most pages one pass binds, whatever the device allows: each is a
 /// case of composite.wgsl's `page_word`.
@@ -140,12 +142,14 @@ pub(crate) enum Step {
     CloseAtop,
 }
 
-/// What one pass may take: pages to bind, and output tiles — as many as
-/// the work buffer, stack and all, fits in one binding.
+/// What one pass may take: pages to bind, output tiles — as many as the
+/// work buffer, stack and all, fits in one binding — and stack levels to
+/// hold, 2 (a buffer and the one it closes onto) to [`DEPTH`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Budget {
     pub(crate) pages: usize,
     pub(crate) tiles: usize,
+    pub(crate) levels: usize,
 }
 
 /// What a run left: every output tile's pixels, straight RGBA8, tile after
@@ -163,10 +167,11 @@ struct Laid {
 }
 
 /// A run of steps one pass takes: the pages it binds, in binding order,
-/// and the stack depth it starts at.
+/// the lowest stack level it holds, and the depth it starts at.
 struct Batch {
     begin: usize,
     end: usize,
+    base: usize,
     depth_in: usize,
     depth_out: usize,
     pages: Vec<u16>,
@@ -246,6 +251,7 @@ impl Composite {
         Budget {
             pages: self.pages_per_pass,
             tiles: usize::MAX,
+            levels: DEPTH,
         }
     }
 
@@ -270,9 +276,12 @@ impl Composite {
                 self.pages_per_pass
             ));
         }
+        if !(2..=DEPTH).contains(&budget.levels) {
+            return fail(format!("{} stack levels a pass; one holds 2 to {DEPTH}", budget.levels));
+        }
         check_depth(steps, sets.len(), keys.len())?;
         let laid = lay(steps, sets, tiles, pages.len())?;
-        let batches = cut(&laid, pages_per_pass)?;
+        let batches = cut(&laid, pages_per_pass, budget.levels)?;
         let encoded = encode(&laid, &batches, sets, keys, tiles, pages.len());
         let plan = engine
             .device
@@ -282,12 +291,12 @@ impl Composite {
                 usage: wgpu::BufferUsages::STORAGE,
             });
         // The stack is kept between passes only; one pass keeps none.
-        let levels = batches[..batches.len() - 1]
+        let kept = batches[..batches.len() - 1]
             .iter()
             .map(|batch| batch.depth_out as u64 + 1)
             .max()
             .unwrap_or(0);
-        let per_tile = (levels * 2 + 1) * TILE_TEXELS * 4;
+        let per_tile = (kept * 2 + 1) * TILE_TEXELS * 4;
         let limits = engine.device.limits();
         let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
         let chunk = (room / per_tile)
@@ -318,7 +327,7 @@ impl Composite {
             .step_by(chunk)
             .map(|first| (first, (tiles.len() - first).min(chunk)))
         {
-            let out_at = levels * 2 * TILE_TEXELS * chunk_tiles as u64;
+            let out_at = kept * 2 * TILE_TEXELS * chunk_tiles as u64;
             for (index, batch) in batches.iter().enumerate() {
                 let words = [
                     (batch.begin) as u32,
@@ -330,6 +339,7 @@ impl Composite {
                     chunk_tiles as u32,
                     out_at as u32,
                     encoded.tables_at + (index * pages.len()) as u32,
+                    batch.base as u32,
                 ];
                 let uniform = engine
                     .device
@@ -391,8 +401,8 @@ fn le_bytes(words: &[u32]) -> Vec<u8> {
 }
 
 /// Fails unless every buffer the steps open is closed, none is closed that
-/// was not opened, the stack never passes [`DEPTH`] and every row names a
-/// tile set and a key chain there are.
+/// was not opened, and every row names a tile set and a key chain there
+/// are.
 fn check_depth(steps: &[Step], sets: usize, chains: usize) -> Option<()> {
     let mut depth = 0usize;
     for (index, step) in steps.iter().enumerate() {
@@ -406,9 +416,6 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize) -> Option<()> {
                 return fail(format!("step {index} keys by chain {chain} of {chains}"));
             }
             Step::Row { .. } => {}
-            Step::Open | Step::OpenOpaque if depth + 1 >= DEPTH => {
-                return fail(format!("step {index} opens a buffer past depth {DEPTH}"));
-            }
             Step::Open | Step::OpenOpaque => depth += 1,
             Step::Close { .. } | Step::CloseAtop if depth == 0 => {
                 return fail(format!("step {index} closes a buffer that is not open"));
@@ -466,13 +473,17 @@ fn lay(
     Some(laid)
 }
 
-/// `laid` cut into passes of at most `pages_per_pass` pages each, in order —
-/// none where one step reads more pages than a pass binds.
-fn cut(laid: &[Laid], pages_per_pass: usize) -> Option<Vec<Batch>> {
+/// `laid` cut into passes, in order. A pass ends where the next step would
+/// bind more than `pages_per_pass` pages, or reach outside the `levels`
+/// stack levels it holds — opening past the top, or closing onto a level
+/// under its base. The next pass then holds the levels around the depth
+/// there. None where one step reads more pages than a pass binds.
+fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>> {
     let mut batches = Vec::new();
     let mut batch = Batch {
         begin: 0,
         end: 0,
+        base: 0,
         depth_in: 0,
         depth_out: 0,
         pages: Vec::new(),
@@ -486,12 +497,29 @@ fn cut(laid: &[Laid], pages_per_pass: usize) -> Option<Vec<Batch>> {
             ));
         }
         let fresh = each.pages.iter().filter(|page| !batch.pages.contains(page)).count();
-        if batch.pages.len() + fresh > pages_per_pass {
+        // The levels the step reads and writes, lowest and highest.
+        let (low, high) = match each.step {
+            Step::Open | Step::OpenOpaque => (depth, depth + 1),
+            Step::Close { .. } | Step::CloseAtop => (depth - 1, depth),
+            Step::Row { .. } => (depth, depth),
+        };
+        let outside = low < batch.base || high >= batch.base + levels;
+        if batch.pages.len() + fresh > pages_per_pass || outside {
+            // Half the levels under the depth, but never so low that `high`
+            // is past the top. Half is at least one, so `low` is held too.
+            let base = if outside {
+                depth
+                    .saturating_sub(levels / 2)
+                    .max((high + 1).saturating_sub(levels))
+            } else {
+                batch.base
+            };
             batch.end = index;
             batch.depth_out = depth;
             let next = Batch {
                 begin: index,
                 end: index,
+                base,
                 depth_in: depth,
                 depth_out: depth,
                 pages: Vec::new(),

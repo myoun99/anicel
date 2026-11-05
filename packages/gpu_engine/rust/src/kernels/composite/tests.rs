@@ -211,7 +211,11 @@ fn widest(scene: &Scene) -> Vec<u8> {
 
 /// At most `pages` pages and `tiles` output tiles a pass.
 fn within(pages: usize, tiles: usize) -> Budget {
-    Budget { pages, tiles }
+    Budget {
+        pages,
+        tiles,
+        levels: DEPTH,
+    }
 }
 
 /// The output pixel at canvas (x, y): `bytes` is `tiles`' pixels, tile
@@ -520,7 +524,49 @@ fn keyed_rows() -> Scene {
     }
 }
 
-fn scenes() -> [(&'static str, Scene); 6] {
+/// Buffers nested twelve deep, past what a pass holds: going in, a row at
+/// every depth in its own mode, every third buffer a clip's scope over the
+/// one it opens on; a posed row at the bottom; coming out, each closed at
+/// its own strength and mode, and rows laid on the way out too.
+fn deep() -> Scene {
+    let modes = [NORMAL, MULTIPLY, SCREEN, OVERLAY, DIFFERENCE, LINEAR_BURN];
+    let mut pool = Pool::default();
+    let sets: Vec<TileSet> = (0..6u32)
+        .map(|n| pool.set(91 + n, (0, 0), (2, 2), |_, _| Some((n % 3) as u16)))
+        .collect();
+    let mut steps = Vec::new();
+    let mut opened = Vec::new();
+    for d in 0..12usize {
+        let shift = (d as i32 * 7 - 30, 11 - d as i32 * 5);
+        steps.push(row(d % 6, shift, 30000 + d as u32 * 3000, modes[d % 6]));
+        let clip = d % 3 == 2;
+        steps.push(if clip { Step::OpenOpaque } else { Step::Open });
+        opened.push(clip);
+    }
+    steps.push(pose_row(5, "turn", WHOLE, NORMAL));
+    for d in (0..12usize).rev() {
+        steps.push(if opened[d] {
+            Step::CloseAtop
+        } else {
+            Step::Close {
+                opacity: 65535 - d as u32 * 2500,
+                mode: modes[(d + 3) % 6],
+            }
+        });
+        if d % 4 == 1 {
+            steps.push(row((d + 2) % 6, (d as i32 - 6, d as i32 * 3), 50000, modes[(d + 1) % 6]));
+        }
+    }
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        steps,
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+fn scenes() -> [(&'static str, Scene); 7] {
     [
         ("rows", rows()),
         ("folders", folders()),
@@ -528,6 +574,7 @@ fn scenes() -> [(&'static str, Scene); 6] {
         ("spanning", spanning()),
         ("posed", posed()),
         ("keyed", keyed_rows()),
+        ("deep", deep()),
     ]
 }
 
@@ -540,17 +587,31 @@ fn every_device_composites_the_pinned_scenes() {
 
 // 관제 (gpu-canonical-store 13:2x): cut into passes any way the device's
 // pages allow, a plan composites to the bytes it does in one — the stack
-// between passes is kept as it was, 16 bits a channel.
+// between passes is kept as it was, 16 bits a channel. So it does held a
+// few levels at a time, down to the two a close needs.
 #[test]
 fn a_plan_cut_into_passes_composites_as_in_one() {
     let most = rig().composite.widest().pages;
     for (name, scene) in scenes() {
-        let whole = widest(&scene);
+        let (whole, passes) = composite(&scene, rig().composite.widest());
+        if name == "deep" {
+            assert!(passes > 1, "a tree past what a pass holds was never cut");
+        }
         for pages in 1..most {
             let (cut, passes) = composite(&scene, within(pages, usize::MAX));
             assert!(cut == whole, "{name} at {pages} pages a pass");
             if name == "spanning" && pages == 1 {
                 assert!(passes > 1, "the folder was never cut");
+            }
+        }
+        for levels in 2..DEPTH {
+            for pages in [1, most] {
+                let budget = Budget {
+                    levels,
+                    ..within(pages, usize::MAX)
+                };
+                let (cut, _) = composite(&scene, budget);
+                assert!(cut == whole, "{name} at {levels} levels and {pages} pages a pass");
             }
         }
     }
@@ -651,6 +712,41 @@ fn a_folder_of_one_row_is_that_row() {
         },
     ]));
     assert!(alone == folded);
+}
+
+// Twelve folders around one row, each closed whole and normal, are that
+// row — however few stack levels a pass holds.
+#[test]
+fn folders_nested_past_what_a_pass_holds_are_their_row() {
+    let scene = |steps: Vec<Step>| {
+        let mut pool = Pool::default();
+        let sets = vec![pool.set(44, (0, 0), (2, 1), |_, _| Some(0))];
+        Scene {
+            pool,
+            sets,
+            keys: Vec::new(),
+            steps,
+            tiles: vec![(0, 0), (1, 0)],
+        }
+    };
+    let a_row = row(0, (9, 9), 40000, NORMAL);
+    let close = Step::Close {
+        opacity: WHOLE,
+        mode: NORMAL,
+    };
+    let alone = widest(&scene(vec![a_row]));
+    let nested: Vec<Step> = (0..12)
+        .map(|_| Step::Open)
+        .chain([a_row])
+        .chain((0..12).map(|_| close))
+        .collect();
+    for levels in [2, 3, DEPTH] {
+        let budget = Budget {
+            levels,
+            ..rig().composite.widest()
+        };
+        assert!(composite(&scene(nested.clone()), budget).0 == alone, "{levels} levels");
+    }
 }
 
 /// A base: nothing on the left half of every tile, a grey of byte 128 at
@@ -926,16 +1022,12 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
     let keyed_by_the_second = keyed(row(0, (0, 0), WHOLE, NORMAL), 1);
     assert!(check_depth(&[keyed_by_the_second], 1, 2).is_some());
     assert!(check_depth(&[keyed_by_the_second], 1, 1).is_none());
-    let deepest: Vec<Step> = (0..DEPTH - 1)
-        .map(|_| Step::Open)
-        .chain((0..DEPTH - 1).map(|_| close))
-        .collect();
-    assert!(check_depth(&deepest, 0, 0).is_some());
+    // Past what a pass holds is a plan like any other: it is cut there.
     let deeper: Vec<Step> = (0..DEPTH)
         .map(|_| Step::OpenOpaque)
         .chain((0..DEPTH).map(|_| close))
         .collect();
-    assert!(check_depth(&deeper, 0, 0).is_none());
+    assert!(check_depth(&deeper, 0, 0).is_some());
 }
 
 // Pages 0, 1 | 2, 0 | 3 at two a pass: a pass ends where a third page would
@@ -969,7 +1061,7 @@ fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
             batch.pages.clone(),
         )
     };
-    let batches: Vec<_> = cut(&plan, 2).expect("a cut").iter().map(shape).collect();
+    let batches: Vec<_> = cut(&plan, 2, DEPTH).expect("a cut").iter().map(shape).collect();
     assert_eq!(
         batches,
         [
@@ -978,4 +1070,44 @@ fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
             (6, 7, 0, 0, vec![3]),
         ]
     );
+}
+
+// Three buffers deep around a row: a pass ends where a step would open past
+// the levels it holds or close onto one under its base, and the next holds
+// the levels around the depth there. At three levels a pass the inside runs
+// from level 1 and the last close from 0 again; at two, nearly every open
+// and close takes a pass of its own.
+#[test]
+fn a_plan_is_cut_where_it_leaves_the_levels_a_pass_holds() {
+    let laid = |step: Step| Laid {
+        step,
+        pages: Vec::new(),
+    };
+    let close = Step::Close {
+        opacity: WHOLE,
+        mode: NORMAL,
+    };
+    let plan = [
+        laid(Step::Open),
+        laid(Step::Open),
+        laid(Step::OpenOpaque),
+        laid(row(0, (0, 0), WHOLE, NORMAL)),
+        laid(Step::CloseAtop),
+        laid(close),
+        laid(close),
+    ];
+    let shape = |batch: &Batch| (batch.begin, batch.end, batch.base, batch.depth_in, batch.depth_out);
+    let at = |levels| -> Vec<_> { cut(&plan, 1, levels).expect("a cut").iter().map(shape).collect() };
+    assert_eq!(at(3), [(0, 2, 0, 0, 2), (2, 6, 1, 2, 1), (6, 7, 0, 1, 0)]);
+    assert_eq!(
+        at(2),
+        [
+            (0, 1, 0, 0, 1),
+            (1, 2, 1, 1, 2),
+            (2, 5, 2, 2, 2),
+            (5, 6, 1, 2, 1),
+            (6, 7, 0, 1, 0),
+        ]
+    );
+    assert_eq!(at(DEPTH), [(0, 7, 0, 0, 0)]);
 }
