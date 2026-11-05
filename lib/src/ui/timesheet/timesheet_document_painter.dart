@@ -689,6 +689,7 @@ class TimesheetDocumentPainter extends CustomPainter
     this.viewport,
     required this.words,
     this.layers,
+    this.contentParts,
     this.dragPreview,
     this.cutId,
     this.effectiveRatio = 1.0,
@@ -782,6 +783,11 @@ class TimesheetDocumentPainter extends CustomPainter
   /// the paper is the sheet under both.
   final Set<SheetPaintLayer>? layers;
 
+  /// Which parts of the values the content stratum prints; null = all of
+  /// them — the panel, and every export but the XDTS viewer's ink pages
+  /// ([TimesheetContentPart]).
+  final Set<TimesheetContentPart>? contentParts;
+
   /// The session's scoped drag channel (UI-R10 #9, replacing the UI-R9
   /// patch overlay): while a timeline drag targets an ACTION column's
   /// layer, THAT column's cells re-derive from the preview layer at paint
@@ -801,6 +807,19 @@ class TimesheetDocumentPainter extends CustomPainter
   bool get _drawPaper => _draws(SheetPaintLayer.paper);
   bool get _drawForm => _draws(SheetPaintLayer.form);
   bool get _drawContent => _draws(SheetPaintLayer.content);
+
+  /// Whether this paint prints [part]'s values: the content stratum's, as
+  /// [contentParts] names them.
+  bool _drawsPart(TimesheetContentPart part) =>
+      _drawContent && (contentParts?.contains(part) ?? true);
+
+  /// Whether this paint prints the title of a column of [kind]: with its
+  /// stratum ([TimesheetColumnKind.titleLayer]) — with its part too, where
+  /// that is the values'.
+  bool _drawsTitleOf(TimesheetColumnKind kind) =>
+      kind.titleLayer == SheetPaintLayer.content
+      ? _drawsPart(kind.contentPart)
+      : _draws(kind.titleLayer);
 
   /// The cut's length as this PAINT should print it: the in-flight drag's
   /// duration while one is targeting this cut, the document's otherwise.
@@ -900,7 +919,7 @@ class TimesheetDocumentPainter extends CustomPainter
     for (final page in _pagesShown(document, layout, _cull)) {
       _bands.paintPaper(canvas, page.index);
       _bands.paintHeaderBand(canvas, page.index);
-      if (_drawContent) {
+      if (_drawsPart(TimesheetContentPart.memo)) {
         _bands.paintMemoBand(canvas, page.index);
       }
       for (final strip in layout.halfStrips) {
@@ -911,13 +930,15 @@ class TimesheetDocumentPainter extends CustomPainter
           startFrame: _halfStartFrame(document, page, strip.half),
           rowCount: strip.rowCount,
         );
-        if (_drawContent) {
+        if (_drawsPart(TimesheetContentPart.books)) {
           _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
         }
       }
     }
-    if (_drawContent) {
+    if (_drawsPart(TimesheetContentPart.cutEnd)) {
       _bands.paintCutEndLine(canvas);
+    }
+    if (_drawsPart(TimesheetContentPart.se)) {
       _se.paintSeCrossingMarks(canvas);
     }
     if (_draws(SheetPaintLayer.ink)) {
@@ -1177,6 +1198,7 @@ class TimesheetDocumentPainter extends CustomPainter
     words,
     accent,
     cutId,
+    contentParts == null ? null : BySet(contentParts!),
     ByIdentity(dragPreview),
   );
 

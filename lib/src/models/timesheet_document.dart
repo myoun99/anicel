@@ -78,6 +78,54 @@ enum TimesheetColumnKind {
     action || cel => SheetPaintLayer.content,
     se || camera => SheetPaintLayer.form,
   };
+
+  /// The part of the values a column of this kind prints in.
+  TimesheetContentPart get contentPart => switch (this) {
+    action => TimesheetContentPart.action,
+    cel => TimesheetContentPart.cel,
+    se => TimesheetContentPart.se,
+    camera => TimesheetContentPart.camera,
+  };
+}
+
+/// Where on the sheet a value its CONTENT stratum
+/// ([SheetPaintLayer.content]) prints stands — every value in exactly one,
+/// so a print can hand some of them over alone.
+///
+/// 🗣️I-161-Q3 · Q4 (유저 2026-11-05: 「채운다(잉크 PNG 에도 싣는다)」 ·
+/// 「우리 서식에서 하는거처럼 컷번호밑에 겸용컷 써준다」): the XDTS
+/// viewer prints the cel columns itself and leaves the dialogue and camera
+/// columns blank for the hand, so the ink page an export lays over it
+/// carries the SE and CAM columns and the 겸용 line, and none of what the
+/// viewer prints. Which parts those are is the export's to say; the sheet
+/// answers for each one.
+enum TimesheetContentPart {
+  /// The header band's values — the drawn length under the duration too.
+  header,
+
+  /// The cuts the cut is 겸용 with, under its name (F-558).
+  linkedCuts,
+
+  /// The memo band: each page's memos and the lines it writes of itself.
+  memo,
+
+  /// The ACTION block: its rows' names and their cells.
+  action,
+
+  /// The CELL block: its rows' names and their cells.
+  cel,
+
+  /// The books the ACTION block marks between its columns.
+  books,
+
+  /// The SE block: its entries, and the `~` where a sound crosses the cut.
+  se,
+
+  /// The CAM block: the camera's keys and the instructions.
+  camera,
+
+  /// The cut's end line.
+  cutEnd,
 }
 
 /// One cell of a timesheet column (one frame row).

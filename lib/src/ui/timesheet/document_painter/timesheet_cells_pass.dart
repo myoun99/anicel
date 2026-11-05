@@ -290,7 +290,7 @@ class _TimesheetCellsPass {
       final kind = _painter.document.columns[column].kind;
       // Unbacked slots print nothing — no placeholder letters.
       if (_painter.document.columns[column].label.isEmpty ||
-          !_painter._draws(kind.titleLayer)) {
+          !_painter._drawsTitleOf(kind)) {
         continue;
       }
       final columnLeft = sheet.left + _painter.layout.columnLeftInHalf(column);
@@ -315,7 +315,8 @@ class _TimesheetCellsPass {
   /// The CONTENT stratum of one half (UI-R10 #9): every column's cell
   /// texts/marks/lines, with in-flight drag previews substituted per
   /// column — this is what re-prints per drag step while the form
-  /// underneath never re-records.
+  /// underneath never re-records — each where its part prints
+  /// ([TimesheetColumnKind.contentPart]).
   void _paintHalfCells(
     Canvas canvas, {
     required double left,
@@ -329,6 +330,9 @@ class _TimesheetCellsPass {
       column += 1
     ) {
       final spec = _painter.document.columns[column];
+      if (!_painter._drawsPart(spec.kind.contentPart)) {
+        continue;
+      }
       final cells = displayCellsFor(spec);
       final columnLeft = left + _painter.layout.columnLeftInHalf(column);
       final columnWidth = _painter.layout.columnWidthFor(spec.kind);

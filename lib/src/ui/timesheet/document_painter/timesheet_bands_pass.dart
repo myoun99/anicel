@@ -54,29 +54,49 @@ class _TimesheetBandsPass {
           centeredAtX: true,
         );
       }
-      if (_painter._drawContent) {
-        final value = TimesheetDocumentPainter.headerValueRect(box.rect);
-        final line = sheetLine(
-          headerFieldValue(box.field, pageIndex),
-          TimesheetDocumentPainter.wordsStyle(
-            _painter.face,
-            fontSize: TimesheetDocumentPainter.headerValueSize,
-            bold: true,
-          ),
-        );
-        final place = SheetLinePlace.of(
-          line.size,
-          value,
-          SheetTextForm.centredLine,
-        )..paint(canvas, line);
-        line.dispose();
-        if (box.field == TimesheetHeaderField.time && _owesNoriShiro) {
-          _paintDrawnLength(canvas, value);
-        }
-        if (box.field == TimesheetHeaderField.cut) {
-          _paintLinkedCuts(canvas, place.rect, value);
-        }
+      _paintHeaderValue(canvas, box.field, box.rect, pageIndex);
+    }
+  }
+
+  /// [field]'s value in its [box] where the header's values print, and —
+  /// under the cut's name — the cuts it is 겸용 with, where those do: they
+  /// hang from where the name stands, printed or not.
+  void _paintHeaderValue(
+    Canvas canvas,
+    TimesheetHeaderField field,
+    Rect box,
+    int pageIndex,
+  ) {
+    final values = _painter._drawsPart(TimesheetContentPart.header);
+    final linked =
+        field == TimesheetHeaderField.cut &&
+        _painter._drawsPart(TimesheetContentPart.linkedCuts);
+    if (!values && !linked) {
+      return;
+    }
+    final value = TimesheetDocumentPainter.headerValueRect(box);
+    final line = sheetLine(
+      headerFieldValue(field, pageIndex),
+      TimesheetDocumentPainter.wordsStyle(
+        _painter.face,
+        fontSize: TimesheetDocumentPainter.headerValueSize,
+        bold: true,
+      ),
+    );
+    final place = SheetLinePlace.of(
+      line.size,
+      value,
+      SheetTextForm.centredLine,
+    );
+    if (values) {
+      place.paint(canvas, line);
+      if (field == TimesheetHeaderField.time && _owesNoriShiro) {
+        _paintDrawnLength(canvas, value);
       }
+    }
+    line.dispose();
+    if (linked) {
+      _paintLinkedCuts(canvas, place.rect, value);
     }
   }
 
