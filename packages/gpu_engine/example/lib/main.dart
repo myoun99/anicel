@@ -119,6 +119,7 @@ class _ProbeAppState extends State<_ProbeApp> {
     await _roundTrip(report, '$label single', front, null);
     final back = engine.surface(_side, _side, bgra: bgra);
     await _roundTrip(report, '$label double', front, back);
+    await _roundTrip(report, '$label two textures', front, back, apart: true);
     report.writeln('video memory with two surfaces: '
         '${_mib(engine.videoMemoryBytes)}');
     back.free();
@@ -200,15 +201,23 @@ class _ProbeAppState extends State<_ProbeApp> {
   }
 
   /// Fill → show → the frame that shows it, [_frames] times. With [back],
-  /// the two surfaces alternate, so Flutter reopens a handle every frame.
+  /// the two surfaces alternate: through one texture's two slots, so
+  /// Flutter reopens a handle every frame — or, [apart], as two textures
+  /// the widget switches between, each opened once, since Flutter reopens
+  /// only when a texture's handle changes (external_texture_d3d.cc:84;
+  /// gpu-engine-feasibility ⑤).
   Future<void> _roundTrip(
     StringBuffer report,
     String label,
     GpuSurface front,
-    GpuSurface? back,
-  ) async {
-    final texture = SharedTexture.register(front, back: back)..show(0);
-    await _show(texture, 512);
+    GpuSurface? back, {
+    bool apart = false,
+  }) async {
+    final textures = apart
+        ? [SharedTexture.register(front), SharedTexture.register(back!)]
+        : [SharedTexture.register(front, back: back)];
+    textures.first.show(0);
+    await _show(textures.first, 512);
     final timings = <FrameTiming>[];
     void collect(List<FrameTiming> batch) => timings.addAll(batch);
     SchedulerBinding.instance.addTimingsCallback(collect);
@@ -221,7 +230,12 @@ class _ProbeAppState extends State<_ProbeApp> {
       final surface = slot == 1 ? back! : front;
       fills.add(surface.fill(_seed + i).inMicroseconds);
       shownAt.add(Timeline.now);
-      texture.show(slot);
+      if (apart) {
+        setState(() => _textureId = textures[slot].id);
+        textures[slot].show(0);
+      } else {
+        textures.first.show(slot);
+      }
       await SchedulerBinding.instance.endOfFrame;
       periods.add(Timeline.now - start);
     }
@@ -229,7 +243,9 @@ class _ProbeAppState extends State<_ProbeApp> {
     await Future<void>.delayed(const Duration(milliseconds: 1500));
     SchedulerBinding.instance.removeTimingsCallback(collect);
     await _show(null, 0);
-    texture.unregister();
+    for (final texture in textures) {
+      texture.unregister();
+    }
     await SchedulerBinding.instance.endOfFrame;
 
     final raster = [for (final t in timings) t.rasterDuration.inMicroseconds];
