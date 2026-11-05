@@ -18,8 +18,8 @@ void main() {
     expect(xdtsInkPageFileName(2), '3.png');
   });
 
-  test('the settings name the template, the cells area and each end\'s '
-      'O.L — twice the のりしろ the sheet draws there', () {
+  test('the settings name the template, the cells area, the widening and '
+      'each end\'s O.L — twice the のりしろ the sheet draws there', () {
     expect(
       xdtsViewerConfig(
         sheet: XdtsViewerSheet.b4ThreeSeconds,
@@ -31,6 +31,7 @@ void main() {
       '[FormatSettings]\n'
       'TemplateName="B4 size, 3 seconds sheet"\n'
       'ExportArea=Cells\n'
+      'ExpandColumns=true\n'
       'StartOverlapFrameLength=12\n'
       'EndOverlapFrameLength=6\n',
     );

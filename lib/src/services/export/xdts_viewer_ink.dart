@@ -43,9 +43,15 @@ const Set<TimesheetContentPart> xdtsViewerUnprintedParts = {
 };
 
 /// The viewer's `config.ini` for a sheet laid on [sheet] that draws
-/// [handles] of のりしろ: the template, the cells area and the O.L each
-/// end — every other setting the viewer's own default. `Version` says
-/// which page names it reads (1A, 1B from 1.2.0).
+/// [handles] of のりしろ: the template, the cells area, the columns
+/// widened past the template's and the O.L each end — every other setting
+/// the viewer's own default. `Version` says which page names it reads (1A,
+/// 1B from 1.2.0).
+///
+/// The widening is written, not left to the viewer's own setting, which a
+/// folder's file falls back to: the app's XDTS sheet pages widen their
+/// blocks as the viewer does with it on (I-162 ②, 타임라인/콘티 11-05), and a
+/// page laid on a sheet of another width lands its values in other columns.
 ///
 /// An O.L is written as twice the のりしろ its side draws: the viewer takes
 /// half an O.L off each end of a sheet's frames for its 尺, so twice the
@@ -61,5 +67,6 @@ String xdtsViewerConfig({
     '[FormatSettings]\n'
     'TemplateName="${sheet.label}"\n'
     'ExportArea=Cells\n'
+    'ExpandColumns=true\n'
     'StartOverlapFrameLength=${handles.head * 2}\n'
     'EndOverlapFrameLength=${handles.tail * 2}\n';

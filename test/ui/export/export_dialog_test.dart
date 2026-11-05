@@ -93,6 +93,7 @@ void main() {
   EditorSessionManager exportSession({
     ProjectFrameRate frameRate = ProjectFrameRate.fps24,
     String celRow = 'A',
+    bool celsExposed = false,
     List<Layer> seLayers = const [],
   }) {
     return EditorSessionManager(
@@ -118,6 +119,12 @@ void main() {
                     name: celRow,
                     mark: const LayerMark(process: LayerProcess.key),
                     frames: [frame('f1'), frame('f2')],
+                    timeline: celsExposed
+                        ? const {
+                            0: TimelineExposure.drawing(FrameId('f1')),
+                            1: TimelineExposure.drawing(FrameId('f2')),
+                          }
+                        : const {},
                   ),
                   createCameraLayer(cutId: const CutId('cut')),
                 ],
@@ -1106,14 +1113,14 @@ void main() {
           0: TimelineExposure.drawing(FrameId('line'), length: 2),
         },
       );
-      final plain = await inkPage(exportSession());
+      final plain = await inkPage(exportSession(celsExposed: true));
       expect(
-        await inkPage(exportSession(seLayers: [line])),
+        await inkPage(exportSession(celsExposed: true, seLayers: [line])),
         isNot(plain),
         reason: 'the dialog column is a blank grid in the viewer',
       );
       expect(
-        await inkPage(exportSession(celRow: 'B')),
+        await inkPage(exportSession(celsExposed: true, celRow: 'B')),
         plain,
         reason: 'the viewer prints the cel rows from the file',
       );
