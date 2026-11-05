@@ -9,7 +9,11 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use super::{PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, pipeline};
+use super::pages::NO_PAGE;
+use super::{
+    PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, page_table,
+    pipeline,
+};
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
@@ -930,4 +934,62 @@ fn every_byte_by_every_alpha() -> Vec<u32> {
 #[test]
 fn every_device_premultiplies_as_the_app_does() {
     assert_pinned("surface/premultiply", &bytes(&premultiplied(&every_byte_by_every_alpha())));
+}
+
+// ---- The pool's pages ----
+
+// A pass reads the pages it binds, the k-th by its k, and nothing of a page
+// of the pool it binds none of: the table holds NO_PAGE for it, and
+// page_word reads 0 there. Here pool page 3 is bound first and page 1
+// second.
+#[test]
+fn a_pass_reads_the_pages_it_binds_and_nothing_else() {
+    let engine = first_engine();
+    let pages = Pages::new(engine, 2, 2).expect("a page to bind");
+    let table: Vec<u32> = page_table(&[3, 1], 4).collect();
+    assert_eq!(table, [NO_PAGE, 1, NO_PAGE, 0]);
+    let source = pages.source();
+    let kernel = [
+        "@group(0) @binding(0) var<storage, read> asks: array<u32>;",
+        "@group(0) @binding(1) var<storage, read_write> got: array<u32>;",
+        &source,
+        "@compute @workgroup_size(1)",
+        "fn read_pages(@builtin(global_invocation_id) at: vec3<u32>) {",
+        "  got[at.x] = page_word(asks[at.x * 2u], asks[at.x * 2u + 1u]);",
+        "}",
+    ];
+    let reader = pipeline(engine, &kernel, "read_pages");
+    let asks = storage(engine, &[table[3], 2, table[1], 1, table[0], 0, table[2], 1]);
+    let got = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("page words"),
+        size: 16,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    let (third, first) = (storage(engine, &[30, 31, 32]), storage(engine, &[10, 11]));
+    let mut entries = vec![
+        wgpu::BindGroupEntry { binding: 0, resource: asks.as_entire_binding() },
+        wgpu::BindGroupEntry { binding: 1, resource: got.as_entire_binding() },
+    ];
+    entries.extend(pages.entries([&third, &first]));
+    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("page words"),
+        layout: &reader.get_bind_group_layout(0),
+        entries: &entries,
+    });
+    let mut encoder = engine
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+        pass.set_pipeline(&reader);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.dispatch_workgroups(4, 1, 1);
+    }
+    engine.queue.submit([encoder.finish()]);
+    let words: Vec<u32> = read_buffer(engine, &got)
+        .chunks_exact(4)
+        .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+        .collect();
+    assert_eq!(words, [32, 11, 0, 0]);
 }

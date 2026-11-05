@@ -15,7 +15,7 @@ use crate::fail;
 const MOST_PAGES: usize = 16;
 
 /// In a pass's table, a page of the pool the pass binds none of.
-const NO_PAGE: u32 = u32::MAX;
+pub(crate) const NO_PAGE: u32 = u32::MAX;
 
 /// How a kernel binds pages: as many as a pass can on this device, from
 /// one binding on, and a blank one wherever a pass has fewer.
