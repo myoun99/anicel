@@ -67,6 +67,11 @@ impl Ink {
 
     /// Each of `cel`'s tiles, its tiles on the pool's `pool` pages, in the
     /// walk's order, and where it holds ink. Waits for the GPU.
+    ///
+    /// ⚠️A pass's tiles end where a dispatch reaches (65,535 workgroups)
+    /// long before what they are given fills a binding (1.3 MB of 128 MB at
+    /// the least), so no test tells a tile's given bytes from fewer (mutant
+    /// i19, 11-06). It stays: it is the bound, as the lift's is.
     pub(crate) fn run(
         &self,
         engine: &Engine,
@@ -88,6 +93,12 @@ impl Ink {
     ) -> Option<Vec<TileInk>> {
         cut_by(&self.pages, (per_pass, most))?;
         let walk = walk(cel, pool.len(), None)?;
+        // ⚠️DX12 makes a buffer of nothing and reads it back, so no test
+        // tells this return from its absence (mutant i23, 11-06); nor does
+        // one walk the eight million tiles whose boxes pass a binding of
+        // 128 MB (mutant i21). Both stay: the verbs and the lift make no
+        // buffer of nothing either, and past the binding a device would
+        // refuse it where this refuses the cel.
         if walk.is_empty() {
             return Some(Vec::new());
         }

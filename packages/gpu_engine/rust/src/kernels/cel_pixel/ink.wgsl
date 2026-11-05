@@ -22,6 +22,12 @@ const INK_LANES: u32 = 256u;
 var<workgroup> least: array<atomic<u32>, 2>;
 var<workgroup> greatest: array<atomic<u32>, 2>;
 
+// ⚠️No test here tells either barrier from none (mutants i11 · i12,
+// 11-06): on this device lane 0 has set the start long before another lane
+// has read its 64 words, and has read the fold after the others put
+// theirs. Each stays: without it the start could land after a fold, or
+// the fold be read before it is whole, on a device that runs a lane's
+// subgroup later (export/opaque.wgsl holds its word the same way).
 @compute @workgroup_size(256, 1, 1)
 fn ink_box(
   @builtin(workgroup_id) group: vec3<u32>,
@@ -37,6 +43,8 @@ fn ink_box(
   workgroupBarrier();
   var low = vec2<u32>(TILE_SIDE);
   var high = vec2<u32>(0u);
+  // Neighbouring lanes read neighbouring words. Reading down the columns
+  // instead finds the same box (mutant i08, 11-06) — slower, not wrong.
   for (var i = lane; i < TILE_TEXELS; i += INK_LANES) {
     let at = vec2<u32>(i % TILE_SIDE, i / TILE_SIDE);
     if ((walk_texel(tile, at.x, at.y) >> 24u) != 0u) {
