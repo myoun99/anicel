@@ -25,16 +25,21 @@
 // bindings) before it; defines key.wgsl's `key_word`.
 
 struct CelPass {
-  // In `given`: this pass's tiles, CEL_TILE_WORDS each; the selector's key
-  // run (key.wgsl's layout); the incoming bytes, four a word, low first;
-  // where each walked tile's pixels and runs start among the walk's, two
-  // words by its walk index (the apply entry's); the mask's bytes
-  // (mask.wgsl's layout).
-  tiles_at: u32,
+  // In `given`, after this pass's tiles, CEL_TILE_WORDS each: the
+  // selector's key run (key.wgsl's layout); the incoming bytes, four a
+  // word, low first; where each of the pass's tiles' pixels and runs start
+  // among the walk's, two words a tile (the apply entry's); the mask's rows
+  // the pass's tiles lie on (mask.wgsl's layout).
   tables_at: u32,
   incoming_at: u32,
   starts_at: u32,
   mask_at: u32,
+  // The walk index of the pass's first tile — the first of the new pixels
+  // bound —, of the pixel the incoming bytes start at, and the word the
+  // runs bound start at among all the walk's.
+  first: u32,
+  touched_first: u32,
+  runs_base: u32,
   // The channel: its bytes, where byte i sits in a pixel's word (base + i ·
   // stride), and whether a pixel with no ink takes part.
   bytes: u32,
@@ -52,7 +57,7 @@ struct CelPass {
   // 1: going forward, the runs are put.
   puts_runs: u32,
   // 0, every pixel covered whole; or 1 under the mask: its box's pixels
-  // across and down, and a row's words.
+  // across, the rows of it the pass is given, and a row's words.
   masked: u32,
   mask_width: u32,
   mask_height: u32,
@@ -91,7 +96,7 @@ var<workgroup> row_before: array<u32, 128>;
 var<workgroup> tile_counts: vec2<u32>;
 
 fn cel_tile(tile: u32, word: u32) -> u32 {
-  return given[pass_.tiles_at + tile * CEL_TILE_WORDS + word];
+  return given[tile * CEL_TILE_WORDS + word];
 }
 
 // Pixel (x, y) of the tile, as stored.
@@ -166,7 +171,8 @@ fn cel_written(texel: u32, coverage: u32, index: u32) -> u32 {
   for (var i = 0u; i < pass_.bytes; i++) {
     let shift = cel_shift(i);
     let older = (texel >> shift) & 0xffu;
-    let source = cel_incoming(select(i, index * pass_.step + i, pass_.is_undo != 0u));
+    let nth = (index - pass_.touched_first) * pass_.step + i;
+    let source = cel_incoming(select(i, nth, pass_.is_undo != 0u));
     // No byte is under a cut of 0 — C's `threshold > 0 &&` before the same
     // test says nothing more.
     let wanted = select(source, 0u, older < pass_.threshold);
@@ -237,10 +243,11 @@ fn cel_apply(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_
   let tile = group.x;
   cel_rows(tile, y);
   let index = cel_tile(tile, 2u);
-  let row = index * TILE_TEXELS + y * TILE_SIDE;
-  let start = given[pass_.starts_at + index * 2u];
+  let local = index - pass_.first;
+  let row = local * TILE_TEXELS + y * TILE_SIDE;
+  let start = given[pass_.starts_at + local * 2u];
   var rank = row_rank[y];
-  var run = (given[pass_.starts_at + index * 2u + 1u] + row_run[y]) * 2u;
+  var run = (given[pass_.starts_at + local * 2u + 1u] + row_run[y]) * 2u - pass_.runs_base;
   var last = row_before[y];
   for (var x = 0u; x < TILE_SIDE; x++) {
     let texel = cel_texel(tile, x, y);

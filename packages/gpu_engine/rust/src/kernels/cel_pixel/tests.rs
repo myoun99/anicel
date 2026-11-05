@@ -84,10 +84,10 @@ fn one(named: &[((i32, i32), u32)]) -> Cel {
     cel((0, 0), (1, 1), move |x, y| named.get(&(x, y)).copied().unwrap_or(0), |_, _| Some(0))
 }
 
-/// `verb` over `cel`, `per_pass` pages a pass or as many as the device
-/// binds: what it left, and its new pixels' words.
-fn run(cel: &Cel, verb: &Verb, per_pass: Option<usize>) -> Option<(Passed, Vec<u32>)> {
-    under(cel, None, verb, per_pass)
+/// `verb` over `cel`, its passes cut at `cut`'s pages and tiles or as the
+/// device cuts them: what it left, and its new pixels' words.
+fn run(cel: &Cel, verb: &Verb, cut: Option<(usize, usize)>) -> Option<(Passed, Vec<u32>)> {
+    under(cel, None, verb, cut)
 }
 
 /// `run` under `mask`.
@@ -95,12 +95,12 @@ fn under(
     cel: &Cel,
     mask: Option<&Mask>,
     verb: &Verb,
-    per_pass: Option<usize>,
+    cut: Option<(usize, usize)>,
 ) -> Option<(Passed, Vec<u32>)> {
     let Rig { engine, pass } = rig();
     let pages = cel.pool.upload(engine);
-    let passed = match per_pass {
-        Some(per_pass) => pass.run_by(engine, &pages, &cel.set, mask, verb, per_pass),
+    let passed = match cut {
+        Some(cut) => pass.run_by(engine, &pages, &cel.set, mask, verb, cut),
         None => pass.run(engine, &pages, &cel.set, mask, verb),
     }?;
     let out = read_buffer(engine, &passed.out)
@@ -155,10 +155,11 @@ fn masked(at: (i32, i32), size: (u32, u32), coverage: impl Fn(i32, i32) -> u8) -
 /// The cel `passed` left: its walked tiles holding `out`, on page 0.
 fn after(passed: &Passed, out: &[u32]) -> Cel {
     let tiles = passed.tiles.clone();
-    let (columns, rows) = (
-        tiles.iter().map(|tile| tile.0).max().unwrap() + 1,
-        tiles.iter().map(|tile| tile.1).max().unwrap() + 1,
-    );
+    let span = |at: fn(&(i32, i32)) -> i32| {
+        let first = tiles.iter().map(at).min().unwrap();
+        (first, (tiles.iter().map(at).max().unwrap() - first + 1) as u32)
+    };
+    let ((x0, columns), (y0, rows)) = (span(|tile| tile.0), span(|tile| tile.1));
     let out = out.to_vec();
     let pixel = move |x: i32, y: i32| {
         let tile = (x.div_euclid(SIDE), y.div_euclid(SIDE));
@@ -166,7 +167,7 @@ fn after(passed: &Passed, out: &[u32]) -> Cel {
         out[walked * TEXELS + (y.rem_euclid(SIDE) * SIDE + x.rem_euclid(SIDE)) as usize]
     };
     let walked = passed.tiles.clone();
-    cel((0, 0), (columns as u32, rows as u32), pixel, move |column, row| {
+    cel((x0, y0), (columns, rows), pixel, move |column, row| {
         walked.contains(&(column, row)).then_some(0)
     })
 }
@@ -599,45 +600,115 @@ fn a_mask_walks_the_tiles_its_box_meets() {
 
 // ---- Pages and refusals ----
 
-/// A hashed cel on tiles spread over three pages, one tile missing: cut
-/// into passes of one page or two, it puts what one pass puts.
+/// The cuts the passes below take: pages a pass and tiles a pass.
+const CUTS: [(usize, usize); 5] = [(1, 6), (2, 6), (3, 1), (3, 2), (1, 1)];
+
+/// The hashed cel on one page, in one pass of all its tiles: what the
+/// cuts are held against, not against each other — a cut that binds every
+/// tile's page wrong is wrong in every cut alike (브러시/렌더링's u06).
+fn in_one_pass(mask: Option<&Mask>, verb: &Verb) -> (Passed, Vec<u32>) {
+    under(&hashed_cel_on(|_| 0), mask, verb, Some((1, 6))).expect("one pass")
+}
+
+/// The hashed cel on tiles spread over three pages, cut into passes by
+/// its pages and by its tiles: 2치화 puts what it puts on one page in one
+/// pass — each pass binding its own new pixels, its runs from where a
+/// binding may start, and its tiles' starts —, and so does 색 변환 under a
+/// mask over both rows of tiles, each pass given its own rows of it.
 #[test]
-fn a_cel_on_many_pages_cut_into_passes_puts_what_one_puts() {
+fn a_cel_cut_into_passes_puts_what_one_pass_puts() {
     let cel = hashed_cel();
     let cut = Verb {
         threshold: 100,
         incoming: Incoming::Value(&[255]),
         ..clear()
     };
-    let (whole, out) = run(&cel, &cut, None).expect("whole");
+    let (whole, out) = in_one_pass(None, &cut);
     assert!(whole.tiles.len() == 5 && whole.runs.iter().all(|runs| runs.len() > 100));
-    for per_pass in [1, 2] {
-        let (cut_up, cut_out) = run(&cel, &cut, Some(per_pass)).expect("cut up");
-        assert_eq!(cut_up.runs, whole.runs, "{per_pass} a pass");
-        assert!(cut_out == out, "{per_pass} a pass");
+    let mask = masked((-200, -60), (300, 150), |x, y| (x * 7 + y * 3) as u8);
+    let (whole_under, out_under) = in_one_pass(Some(&mask.mask()), &recolour(&[1, 2, 3]));
+    assert_eq!(whole_under.tiles.len(), 5);
+    for cut_by in CUTS {
+        let (cut_up, cut_out) = run(&cel, &cut, Some(cut_by)).expect("cut up");
+        assert_eq!(cut_up.runs, whole.runs, "{cut_by:?}");
+        assert!(cut_out == out, "{cut_by:?}");
+        let verb = recolour(&[1, 2, 3]);
+        let (under_up, under_out) = under(&cel, Some(&mask.mask()), &verb, Some(cut_by))
+            .expect("cut up under the mask");
+        assert_eq!(under_up.runs, whole_under.runs, "{cut_by:?} under the mask");
+        assert!(under_out == out_under, "{cut_by:?} under the mask");
     }
 }
 
-/// Six tiles from (-2, -1), (0, 0) missing, on pages by column; each
-/// pixel hashed — a quarter empty with a colour under it, a quarter of
-/// one of four colours.
-fn hashed_cel() -> Cel {
-    let pixel = |x: i32, y: i32| {
-        let h = mix(x as u32 ^ mix(y as u32 ^ 0x5eed));
-        let colour = match h & 3 {
-            0 => [rgb(10, 20, 30), rgb(200, 10, 10), rgb(12, 18, 33), rgb(90, 90, 90)]
-                [(h >> 2 & 3) as usize],
-            _ => mix(h) & 0x00ff_ffff,
-        };
-        let alpha = match h >> 4 & 3 {
-            0 => 0,
-            1 => 255,
-            _ => h >> 24,
-        };
-        colour | alpha << 24
+/// 2치화 over the hashed cel undone by its runs laid flat, cut into passes
+/// by its pages and its tiles: each pass reads its own pixels' part of the
+/// recipe, and every pixel is back as the cel held it.
+#[test]
+fn an_undo_cut_into_passes_reads_each_pass_its_part_of_the_recipe() {
+    let cut = Verb {
+        threshold: 100,
+        incoming: Incoming::Value(&[255]),
+        ..clear()
     };
-    cel((-2, -1), (3, 2), pixel, |column, row| {
-        ((column, row) != (0, 0)).then_some(column.rem_euclid(3) as u16)
+    let (passed, out) = in_one_pass(None, &cut);
+    let recipe: Vec<u8> = passed
+        .runs
+        .iter()
+        .flatten()
+        .flat_map(|&(value, length)| std::iter::repeat_n(value as u8, length as usize))
+        .collect();
+    let count = recipe.len() as u64;
+    let undo = Verb {
+        incoming: Incoming::Recipe {
+            bytes: &recipe,
+            step: 1,
+            count,
+        },
+        ..clear()
+    };
+    let cut_cel = after(&passed, &out);
+    for cut_by in CUTS {
+        let (undone, back) = run(&cut_cel, &undo, Some(cut_by)).expect("undo");
+        assert_eq!(undone.tiles, passed.tiles, "{cut_by:?}");
+        for (walked, &(column, row)) in undone.tiles.iter().enumerate() {
+            for y in 0..SIDE {
+                for x in 0..SIDE {
+                    let at = (column * SIDE + x, row * SIDE + y);
+                    let put = back[walked * TEXELS + (y * SIDE + x) as usize];
+                    assert_eq!(put, hashed(at.0, at.1), "{cut_by:?} at {at:?}");
+                }
+            }
+        }
+    }
+}
+
+/// The hashed cel's pixel at (x, y): a quarter empty with a colour under
+/// it, a quarter of one of four colours.
+fn hashed(x: i32, y: i32) -> u32 {
+    let h = mix(x as u32 ^ mix(y as u32 ^ 0x5eed));
+    let colour = match h & 3 {
+        0 => [rgb(10, 20, 30), rgb(200, 10, 10), rgb(12, 18, 33), rgb(90, 90, 90)]
+            [(h >> 2 & 3) as usize],
+        _ => mix(h) & 0x00ff_ffff,
+    };
+    let alpha = match h >> 4 & 3 {
+        0 => 0,
+        1 => 255,
+        _ => h >> 24,
+    };
+    colour | alpha << 24
+}
+
+/// Six tiles from (-2, -1) of `hashed` pixels, (0, 0) missing, on pages by
+/// column.
+fn hashed_cel() -> Cel {
+    hashed_cel_on(|column| column.rem_euclid(3) as u16)
+}
+
+/// The hashed cel, each tile on the page `page` gives its column.
+fn hashed_cel_on(page: impl Fn(i32) -> u16) -> Cel {
+    cel((-2, -1), (3, 2), hashed, move |column, row| {
+        ((column, row) != (0, 0)).then_some(page(column))
     })
 }
 
@@ -697,7 +768,8 @@ fn a_cel_past_its_pool_or_its_size_is_refused() {
         tiles: ink.set.tiles.clone(),
     };
     assert!(pass.run(engine, &pages, &short, None, &verb).is_none());
-    assert!(pass.run_by(engine, &pages, &ink.set, None, &verb, 0).is_none());
+    assert!(pass.run_by(engine, &pages, &ink.set, None, &verb, (0, 1)).is_none());
+    assert!(pass.run_by(engine, &pages, &ink.set, None, &verb, (1, 0)).is_none());
 }
 
 /// A mask whose plane holds fewer bytes than its box's rows is refused;

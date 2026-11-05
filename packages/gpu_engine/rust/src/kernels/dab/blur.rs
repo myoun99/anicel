@@ -38,7 +38,7 @@ use crate::kernels::effects::blur::gaussian::{
 };
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table, pipeline,
-    plane, runs, whole, words_buffer,
+    plane, room, runs, whole, words_buffer,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -544,7 +544,7 @@ impl Blurs {
     /// (mutant r19, 11-06).
     fn widest(&self, engine: &Engine) -> (usize, usize) {
         let limits = engine.device.limits();
-        let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+        let room = room(engine);
         let reach = u64::from(limits.max_compute_workgroups_per_dimension);
         let tiles = (room / (TILE_TEXELS * 4)).min(reach);
         (self.cel_pages.per_pass(), tiles as usize)

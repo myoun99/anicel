@@ -57,7 +57,7 @@ use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::shared::{
     ISQRT_WGSL, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL,
-    Encoded, encode_on, page_table, pipeline, storage_format, whole, words_buffer,
+    Encoded, encode_on, page_table, pipeline, room, storage_format, whole, words_buffer,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -389,7 +389,7 @@ impl Composite {
         let waiting = u64::from(matches!(target, Target::Tiles(_)));
         let per_tile = (kept * 2 + waiting) * TILE_TEXELS * 4;
         let limits = engine.device.limits();
-        let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+        let room = room(engine);
         let most = u64::from(limits.max_compute_workgroups_per_dimension)
             .min(budget.tiles as u64)
             .min(tiles.len().max(1) as u64);

@@ -42,6 +42,12 @@ pub(crate) fn le_bytes(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|word| word.to_le_bytes()).collect()
 }
 
+/// The bytes one binding holds on this device: no more than a buffer does.
+pub(crate) fn room(engine: &Engine) -> u64 {
+    let limits = engine.device.limits();
+    u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size)
+}
+
 /// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
 /// each of `groups`.
 pub(crate) fn fits(
@@ -50,7 +56,7 @@ pub(crate) fn fits(
     mut groups: impl Iterator<Item = (u32, u32)>,
 ) -> Option<()> {
     let limits = engine.device.limits();
-    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+    let room = room(engine);
     if let Some(plane) = planes.iter().find(|&&plane| plane > room) {
         return fail(format!(
             "a plane of {plane} bytes exceeds a binding of {room} — a picture this large \
