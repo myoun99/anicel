@@ -19,9 +19,7 @@ const CALL: &str = concat!("create_compute", "_pipeline(");
 const BUILDER: &str = "kernels/shared/mod.rs";
 
 /// The copies still standing, and whose they are.
-const LEDGER: &[(&str, &str)] = &[
-    ("kernels/effects/tests.rs", "캔버스 베이스 패널"),
-];
+const LEDGER: &[(&str, &str)] = &[];
 
 /// Every `.rs` file under `dir` that calls [`CALL`], relative to `root`.
 fn callers(dir: &Path, root: &Path, found: &mut BTreeSet<String>) {
