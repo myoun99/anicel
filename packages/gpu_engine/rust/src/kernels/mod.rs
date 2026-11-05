@@ -16,4 +16,5 @@
 //! device that ran it, reproduced by every other —, cases worked out by
 //! hand from the formula, and mutation.
 
+pub mod blend;
 pub mod fill;
