@@ -6,7 +6,8 @@
 use std::sync::{OnceLock, mpsc};
 
 use super::{
-    Batch, Composite, DEPTH, Laid, Step, TILE, TILE_TEXELS, TileAt, TileSet, check_depth, cut,
+    Batch, Budget, Composite, DEPTH, Laid, Step, TILE, TILE_TEXELS, TileAt, TileSet, check_depth,
+    cut,
 };
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine};
@@ -163,19 +164,24 @@ struct Scene {
     tiles: Vec<(i32, i32)>,
 }
 
-/// Composites `scene` with at most `pages_per_pass` pages a pass; returns
-/// the output's bytes and how many passes it took.
-fn composite(scene: &Scene, pages_per_pass: usize) -> (Vec<u8>, usize) {
+/// Composites `scene` within `budget`; returns the output's bytes and how
+/// many passes it took.
+fn composite(scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
     let Rig { engine, composite } = rig();
     let pages = scene.pool.upload(engine);
     let done = composite
-        .run(engine, &pages, &scene.sets, &scene.steps, &scene.tiles, pages_per_pass)
+        .run(engine, &pages, &scene.sets, &scene.steps, &scene.tiles, budget)
         .expect("composite");
     (read(engine, &done.out), done.passes)
 }
 
 fn widest(scene: &Scene) -> Vec<u8> {
-    composite(scene, rig().composite.pages_per_pass()).0
+    composite(scene, rig().composite.widest()).0
+}
+
+/// At most `pages` pages and `tiles` output tiles a pass.
+fn within(pages: usize, tiles: usize) -> Budget {
+    Budget { pages, tiles }
 }
 
 fn read(engine: &Engine, buffer: &wgpu::Buffer) -> Vec<u8> {
@@ -357,15 +363,30 @@ fn every_device_composites_the_pinned_scenes() {
 // between passes is kept as it was, 16 bits a channel.
 #[test]
 fn a_plan_cut_into_passes_composites_as_in_one() {
-    let most = rig().composite.pages_per_pass();
+    let most = rig().composite.widest().pages;
     for (name, scene) in scenes() {
-        let (whole, _) = composite(&scene, most);
+        let whole = widest(&scene);
         for pages in 1..most {
-            let (cut, passes) = composite(&scene, pages);
+            let (cut, passes) = composite(&scene, within(pages, usize::MAX));
             assert!(cut == whole, "{name} at {pages} pages a pass");
             if name == "spanning" && pages == 1 {
                 assert!(passes > 1, "the folder was never cut");
             }
+        }
+    }
+}
+
+// The same where a binding holds fewer output tiles than the scene has:
+// each run of tiles composites by itself, the last one short, and lands in
+// its place among the others — with the stack kept between passes or not.
+#[test]
+fn output_tiles_taken_a_few_at_a_time_composite_as_all_at_once() {
+    let most = rig().composite.widest().pages;
+    for (name, scene) in scenes() {
+        let whole = widest(&scene);
+        for (pages, tiles) in [(most, 1), (most, 3), (1, 1), (1, 3)] {
+            let (cut, _) = composite(&scene, within(pages, tiles));
+            assert!(cut == whole, "{name} at {pages} pages and {tiles} tiles a pass");
         }
     }
 }

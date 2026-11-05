@@ -103,6 +103,14 @@ pub(crate) enum Step {
     CloseAtop,
 }
 
+/// What one pass may take: pages to bind, and output tiles — as many as
+/// the work buffer, stack and all, fits in one binding.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Budget {
+    pub(crate) pages: usize,
+    pub(crate) tiles: usize,
+}
+
 /// What a run left: every output tile's pixels, straight RGBA8, tile after
 /// tile in the order asked, and how many passes it took.
 pub(crate) struct Composited {
@@ -186,15 +194,18 @@ impl Composite {
         })
     }
 
-    /// The most pages one pass binds on this device.
-    pub(crate) fn pages_per_pass(&self) -> usize {
-        self.pages_per_pass
+    /// All this device lets a pass take.
+    pub(crate) fn widest(&self) -> Budget {
+        Budget {
+            pages: self.pages_per_pass,
+            tiles: usize::MAX,
+        }
     }
 
     /// Composites `steps` over the output `tiles` (canvas tile columns and
     /// rows) and submits the work; the caller waits. `pages` is the pool,
-    /// `sets` the rows' tile sets. `pages_per_pass` may be fewer than the
-    /// device's, to cut the plan where a smaller device would.
+    /// `sets` the rows' tile sets. A `budget` under [`Composite::widest`]
+    /// cuts the run where a smaller device would.
     pub(crate) fn run(
         &self,
         engine: &Engine,
@@ -202,8 +213,9 @@ impl Composite {
         sets: &[TileSet],
         steps: &[Step],
         tiles: &[(i32, i32)],
-        pages_per_pass: usize,
+        budget: Budget,
     ) -> Option<Composited> {
+        let pages_per_pass = budget.pages;
         if pages_per_pass == 0 || pages_per_pass > self.pages_per_pass {
             return fail(format!(
                 "{pages_per_pass} pages a pass; this device binds 1 to {}",
@@ -232,6 +244,7 @@ impl Composite {
         let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
         let chunk = (room / per_tile)
             .min(u64::from(limits.max_compute_workgroups_per_dimension))
+            .min(budget.tiles as u64)
             .min(tiles.len().max(1) as u64) as usize;
         if chunk == 0 {
             return fail(format!("one tile's work ({per_tile} bytes) exceeds a binding"));
