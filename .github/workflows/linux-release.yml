@@ -93,6 +93,22 @@ jobs:
       # bundle's own bytes: the bundle copies it unchanged (install(FILES)),
       # and a build that ever stops doing so fails here rather than checks
       # another file.
+      #
+      # The SDK's example, which the fx pin opens beside that engine
+      # (an_fx_plugin_answers_through_the_engine), is made only by the
+      # engine's own build — packages/qa_native/src/CMakeLists.txt builds it
+      # where that file is the top of the build, as CI and the lane gate run
+      # it, and never in the app's (run 41951941230 failed on it). So that
+      # build makes it here, the one target, and it goes beside the engine.
+      # It ships in nothing, and a missing one fails the pin, never skips it.
+      - name: The SDK example beside the engine
+        run: |
+          set -euo pipefail
+          cmake -S packages/qa_native/src -B build/fx-sdk-example -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/fx-sdk-example --target qa_fx_sdk_example
+          cp build/fx-sdk-example/libqa_fx_sdk_example.so \
+            build/linux/x64/release/plugins/qa_native/shared/
       - name: Parity against the shipped engine
         env:
           # A missing engine must FAIL rather than skip: a skipped parity
