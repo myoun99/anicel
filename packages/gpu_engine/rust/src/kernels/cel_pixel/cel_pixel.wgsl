@@ -21,12 +21,11 @@
 // of them (cel_pixel/mod.rs adds them up between the two), puts the tile's
 // new pixels and its runs.
 //
-// Needs effects/key.wgsl, shared/tile.wgsl, shared/premultiply.wgsl and
-// shared/pages.wgsl (with its bindings) before it; defines key.wgsl's
-// `key_word`.
+// Needs effects/key.wgsl, shared/premultiply.wgsl and walk.wgsl (with what
+// it needs) before it; defines key.wgsl's `key_word`.
 
 struct CelPass {
-  // In `given`, after this pass's tiles, CEL_TILE_WORDS each: the
+  // In `given`, after this pass's tiles, WALK_TILE_WORDS each: the
   // selector's key run (key.wgsl's layout); the incoming bytes, four a
   // word, low first; where each of the pass's tiles' pixels and runs start
   // among the walk's, two words a tile (the apply entry's); the mask's rows
@@ -65,15 +64,10 @@ struct CelPass {
   mask_stride: u32,
 }
 
-// A walked tile: the binding of its page, its slot, its index in the walk,
-// and where its top-left pixel is in the mask's box — a word's two's
-// complement each way.
-const CEL_TILE_WORDS: u32 = 5u;
 // No value: a value is three bytes at most.
 const CEL_NONE: u32 = 0xffffffffu;
 
 @group(0) @binding(0) var<uniform> pass_: CelPass;
-@group(0) @binding(1) var<storage, read> given: array<u32>;
 // The walked tiles' new pixels, tile after tile in walk order.
 @group(0) @binding(2) var<storage, read_write> tiles_out: array<u32>;
 // The count entry's two counts a walked tile; the apply entry's runs — a
@@ -96,35 +90,14 @@ var<workgroup> row_run: array<u32, 128>;
 var<workgroup> row_before: array<u32, 128>;
 var<workgroup> tile_counts: vec2<u32>;
 
-fn cel_tile(tile: u32, word: u32) -> u32 {
-  return given[tile * CEL_TILE_WORDS + word];
-}
-
-// Pixel (x, y) of the tile, as stored.
-fn cel_texel(tile: u32, x: u32, y: u32) -> u32 {
-  return page_word(cel_tile(tile, 0u), cel_tile(tile, 1u) * TILE_TEXELS + y * TILE_SIDE + x);
-}
-
-// The coverage over pixel (x, y) of the tile: the mask's byte there, 0
-// past its box — a pixel before it wraps past either side.
-//
-// ⚠️The mask's rows end what a pass is given, so a row past them is past
-// the buffer, where DX12 reads 0 — the tests cannot see the guard on rows
-// there, nor that `mask_height` is the pass's rows and not the box's
-// (mutants c03 · w07, 11-06; mask.wgsl's head has the same); a device that
-// clamps (Metal) would read the last word. A column past the box is within
-// its row's last word, which the tests fill with 255.
+// The coverage over pixel (x, y) of the tile: every pixel's whole with no
+// mask.
 fn cel_coverage(tile: u32, x: u32, y: u32) -> u32 {
   if (pass_.masked == 0u) {
     return 255u;
   }
-  let mx = cel_tile(tile, 3u) + x;
-  let my = cel_tile(tile, 4u) + y;
-  if (mx >= pass_.mask_width || my >= pass_.mask_height) {
-    return 0u;
-  }
-  let word = given[pass_.mask_at + my * pass_.mask_stride + mx / 4u];
-  return (word >> (mx % 4u * 8u)) & 0xffu;
+  let mask = MaskPlane(pass_.mask_at, pass_.mask_width, pass_.mask_height, pass_.mask_stride);
+  return walk_coverage(mask, tile, x, y);
 }
 
 // Where channel byte `i` sits in a pixel's word, in bits.
@@ -192,7 +165,7 @@ fn cel_rows(tile: u32, y: u32) {
   var last = CEL_NONE;
   var starts = 0u;
   for (var x = 0u; x < TILE_SIDE; x++) {
-    let texel = cel_texel(tile, x, y);
+    let texel = walk_texel(tile, x, y);
     if (!cel_takes_part(texel, cel_coverage(tile, x, y))) {
       continue;
     }
@@ -234,7 +207,7 @@ fn cel_count(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_
   let tile = group.x;
   cel_rows(tile, y);
   if (y == 0u) {
-    let at = cel_tile(tile, 2u) * 2u;
+    let at = walk_tile(tile, 2u) * 2u;
     put[at] = tile_counts.x;
     put[at + 1u] = tile_counts.y;
   }
@@ -244,7 +217,7 @@ fn cel_count(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_
 fn cel_apply(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index) y: u32) {
   let tile = group.x;
   cel_rows(tile, y);
-  let index = cel_tile(tile, 2u);
+  let index = walk_tile(tile, 2u);
   let local = index - pass_.first;
   let row = local * TILE_TEXELS + y * TILE_SIDE;
   let start = given[pass_.starts_at + local * 2u];
@@ -252,7 +225,7 @@ fn cel_apply(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_
   var run = (given[pass_.starts_at + local * 2u + 1u] + row_run[y]) * 2u - pass_.runs_base;
   var last = row_before[y];
   for (var x = 0u; x < TILE_SIDE; x++) {
-    let texel = cel_texel(tile, x, y);
+    let texel = walk_texel(tile, x, y);
     let coverage = cel_coverage(tile, x, y);
     if (!cel_takes_part(texel, coverage)) {
       tiles_out[row + x] = texel;

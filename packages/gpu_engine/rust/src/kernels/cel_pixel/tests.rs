@@ -16,7 +16,7 @@ use crate::kernels::mask::MaskBox;
 use crate::kernels::shared::words_buffer;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
-const SIDE: i32 = TILE as i32;
+pub(super) const SIDE: i32 = TILE as i32;
 const TEXELS: usize = (TILE * TILE) as usize;
 /// 색 변환's channel: R, G and B; a pixel with no ink takes no part.
 const COLOUR: Channel = Channel {
@@ -49,7 +49,7 @@ fn rig() -> &'static Rig {
     })
 }
 
-fn rgba(red: u32, green: u32, blue: u32, alpha: u32) -> u32 {
+pub(super) fn rgba(red: u32, green: u32, blue: u32, alpha: u32) -> u32 {
     red | green << 8 | blue << 16 | alpha << 24
 }
 
@@ -59,14 +59,14 @@ fn rgb(red: u32, green: u32, blue: u32) -> u32 {
 }
 
 /// A cel: its pool and its tile set.
-struct Cel {
-    pool: Pool,
-    set: TileSet,
+pub(super) struct Cel {
+    pub(super) pool: Pool,
+    pub(super) set: TileSet,
 }
 
 /// The cel whose pixel at (x, y) is `pixel(x, y)`, over the tiles of
 /// `size` from `origin`, each on the page `place` gives it or none.
-fn cel(
+pub(super) fn cel(
     origin: (i32, i32),
     size: (u32, u32),
     pixel: impl Fn(i32, i32) -> u32,
@@ -79,7 +79,7 @@ fn cel(
 
 /// The cel of tile (0, 0) alone, on page 0, its pixels `named` and nothing
 /// elsewhere.
-fn one(named: &[((i32, i32), u32)]) -> Cel {
+pub(super) fn one(named: &[((i32, i32), u32)]) -> Cel {
     let named: HashMap<(i32, i32), u32> = named.iter().copied().collect();
     cel((0, 0), (1, 1), move |x, y| named.get(&(x, y)).copied().unwrap_or(0), |_, _| Some(0))
 }
@@ -111,14 +111,14 @@ fn under(
 }
 
 /// A selection's mask: its plane over its box.
-struct Masked {
+pub(super) struct Masked {
     plane: wgpu::Buffer,
     at: (i32, i32),
     size: MaskBox,
 }
 
 impl Masked {
-    fn mask(&self) -> Mask<'_> {
+    pub(super) fn mask(&self) -> Mask<'_> {
         Mask {
             plane: &self.plane,
             at: self.at,
@@ -130,7 +130,11 @@ impl Masked {
 /// The mask over `size` pixels from `at` whose byte at the cel's pixel
 /// (x, y) is `coverage(x, y)` — and 255 past the box in a row's last word,
 /// which a pass must read as nothing all the same.
-fn masked(at: (i32, i32), size: (u32, u32), coverage: impl Fn(i32, i32) -> u8) -> Masked {
+pub(super) fn masked(
+    at: (i32, i32),
+    size: (u32, u32),
+    coverage: impl Fn(i32, i32) -> u8,
+) -> Masked {
     let mut words = Vec::new();
     for y in 0..size.1 as i32 {
         for word in 0..size.0.div_ceil(4) {
@@ -238,8 +242,8 @@ fn selector(tables: &[[u32; 256]; 3], keeps_matches: bool) -> Selector<'_> {
 
 // ---- Going forward ----
 
-const INK: u32 = 0x00_1e_14_0a; // rgb(10, 20, 30)
-const OTHER: u32 = 0x00_46_3c_32; // rgb(50, 60, 70)
+pub(super) const INK: u32 = 0x00_1e_14_0a; // rgb(10, 20, 30)
+pub(super) const OTHER: u32 = 0x00_46_3c_32; // rgb(50, 60, 70)
 
 /// 색 변환 over ink A on row 0 at 0..4 and 5..7, an empty pixel holding a
 /// colour between them, B at 7 and at the start of row 1, A again on row 2:
@@ -601,7 +605,7 @@ fn a_mask_walks_the_tiles_its_box_meets() {
 // ---- Pages and refusals ----
 
 /// The cuts the passes below take: pages a pass and tiles a pass.
-const CUTS: [(usize, usize); 5] = [(1, 6), (2, 6), (3, 1), (3, 2), (1, 1)];
+pub(super) const CUTS: [(usize, usize); 5] = [(1, 6), (2, 6), (3, 1), (3, 2), (1, 1)];
 
 /// The hashed cel on one page, in one pass of all its tiles: what the
 /// cuts are held against, not against each other — a cut that binds every
@@ -684,7 +688,7 @@ fn an_undo_cut_into_passes_reads_each_pass_its_part_of_the_recipe() {
 
 /// The hashed cel's pixel at (x, y): a quarter empty with a colour under
 /// it, a quarter of one of four colours.
-fn hashed(x: i32, y: i32) -> u32 {
+pub(super) fn hashed(x: i32, y: i32) -> u32 {
     let h = mix(x as u32 ^ mix(y as u32 ^ 0x5eed));
     let colour = match h & 3 {
         0 => [rgb(10, 20, 30), rgb(200, 10, 10), rgb(12, 18, 33), rgb(90, 90, 90)]
@@ -701,12 +705,12 @@ fn hashed(x: i32, y: i32) -> u32 {
 
 /// Six tiles from (-2, -1) of `hashed` pixels, (0, 0) missing, on pages by
 /// column.
-fn hashed_cel() -> Cel {
+pub(super) fn hashed_cel() -> Cel {
     hashed_cel_on(|column| column.rem_euclid(3) as u16)
 }
 
 /// The hashed cel, each tile on the page `page` gives its column.
-fn hashed_cel_on(page: impl Fn(i32) -> u16) -> Cel {
+pub(super) fn hashed_cel_on(page: impl Fn(i32) -> u16) -> Cel {
     cel((-2, -1), (3, 2), hashed, move |column, row| {
         ((column, row) != (0, 0)).then_some(page(column))
     })
@@ -821,23 +825,9 @@ fn each_pass_binds_its_runs_from_where_a_binding_may_start() {
     let starts = super::starts(&passed.touched, &runs);
     let walk = super::walk(&cel.set, 3, None).expect("walk");
     let passes = super::runs(walk.iter().map(|tile| tile.at.page), 1, 1);
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    let given = super::Given::all(
-        engine,
-        &mut encoder,
-        3,
-        &walk,
-        &passes,
-        &cut,
-        None,
-        Some(&starts),
-    )
-    .expect("given");
     let align = super::alignment(engine);
-    for ((run, _), given) in passes.iter().zip(&given) {
-        let bound = given.runs.clone().expect("a forward pass binds its runs");
+    for (run, _) in &passes {
+        let bound = super::bound_runs(engine, &starts, run);
         let (first, end) = (u64::from(starts[run.start].1) * 8, u64::from(starts[run.end].1) * 8);
         assert!(bound.start % align == 0 && bound.start <= first, "{run:?}: {bound:?}");
         assert!(first < bound.start + align && end <= bound.end, "{run:?}: {bound:?}");
