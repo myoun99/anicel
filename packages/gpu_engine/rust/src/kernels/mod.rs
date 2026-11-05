@@ -18,6 +18,7 @@
 
 pub mod blend;
 pub mod composite;
+pub mod dab;
 pub mod effects;
 pub mod export;
 pub mod fill;
