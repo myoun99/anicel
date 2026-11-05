@@ -1,13 +1,28 @@
 import 'sheet_paper.dart' show SheetPaperFormat;
+import 'timesheet_info.dart' show TimesheetHeaderField;
 
-/// What a box of an XDTS sheet's info header holds, as its template names
-/// it (`InfoFormats\i\infoType`): nothing the viewer writes, the cut, the
-/// length, or the sheet count — total over current, or current over total.
-enum XdtsInfoType { none, scene, time, sheet, sheetInverted }
+/// A box of an XDTS sheet's info header: the label the viewer prints over
+/// it — its template's (`EPISODE`, `SEQ.` …) as the viewer's Japanese says
+/// it (`第　　話`, `シーン` …) — its width, and which of our header's values
+/// it holds (I-162-Q2: 「채운다」).
+///
+/// The viewer writes only the length and the sheet count in its boxes
+/// (`InfoFormats\i\infoType`) and leaves the rest to the pen; its `SCENE`
+/// box is the cut's, as a Japanese sheet's カット is.
+typedef XdtsInfoBox = ({
+  String label,
+  double widthMm,
+  TimesheetHeaderField field,
+});
 
-/// A box of an XDTS sheet's info header: the label its template gives it
-/// (`EPISODE`, `SEQ.` …), its width, and what it holds.
-typedef XdtsInfoBox = ({String label, double widthMm, XdtsInfoType type});
+/// A place an XDTS sheet's template sets out from the margin's corner
+/// (`DataFields\<name>`) — the viewer draws no edge round it.
+typedef XdtsDataField = ({
+  double leftMm,
+  double topMm,
+  double widthMm,
+  double heightMm,
+});
 
 /// A sheet form the XDTS Viewer prints an XDTS file on — one of the
 /// `xsheettemplates/*.ini` its release carries, held as the numbers the
@@ -22,10 +37,11 @@ typedef XdtsInfoBox = ({String label, double widthMm, XdtsInfoType type});
 /// boxes are OpenToonz's presets of the same files, which the release's
 /// B4 6-second one matches line for line.
 ///
-/// Only what the sheet draws is held: the places the viewer sets out for a
-/// memo, its logo, the date and the overlap's length (`DataFields`) — none
-/// of them printed here yet (I-162-Q2) — the memo's line count and the
-/// extra cel columns of a sheet that does not widen are the viewer's own
+/// Only what the sheet draws is held: of the places the viewer sets out
+/// (`DataFields`), the memo's and the logo's, which our values fill
+/// (I-162-Q2) — not the date's or the overlap's length, which the viewer
+/// writes only into its own export. The memo's line count and the extra
+/// cel columns of a sheet that does not widen are the viewer's own
 /// business.
 class XdtsSheetTemplate {
   const XdtsSheetTemplate({
@@ -61,6 +77,9 @@ class XdtsSheetTemplate {
     required this.infoTitleHeightMm,
     required this.infoBodyHeightMm,
     required this.info,
+    this.totalOverCurrent = true,
+    required this.memo,
+    required this.logo,
   });
 
   /// What the viewer lists it by — and what a `config.ini` names it by
@@ -138,6 +157,22 @@ class XdtsSheetTemplate {
   /// The info header's boxes, left to right.
   final List<XdtsInfoBox> info;
 
+  /// Whether the sheet box writes the sheets the cut fills over the one
+  /// it is on (`SheetInv`), or the one over them all (`Sheet`).
+  final bool totalOverCurrent;
+
+  /// The places for the memo and for the logo.
+  final XdtsDataField memo;
+  final XdtsDataField logo;
+
+  /// The viewer's Japanese for its boxes' labels (`TranslateInfoLabel`).
+  static const String _episode = '第　　話';
+  static const String _seq = 'シーン';
+  static const String _scene = 'カット';
+  static const String _time = 'タイム';
+  static const String _name = '原画';
+  static const String _sheet = 'シート';
+
   /// `a3_6sec.ini`.
   static const XdtsSheetTemplate a3SixSeconds = XdtsSheetTemplate(
     label: 'A3 size, 6 seconds sheet',
@@ -166,13 +201,15 @@ class XdtsSheetTemplate {
     infoTitleHeightMm: 4.5,
     infoBodyHeightMm: 12.5,
     info: [
-      (label: 'EPISODE', widthMm: 36, type: XdtsInfoType.none),
-      (label: 'SEQ.', widthMm: 30, type: XdtsInfoType.none),
-      (label: 'SCENE', widthMm: 38, type: XdtsInfoType.scene),
-      (label: 'TIME', widthMm: 55, type: XdtsInfoType.time),
-      (label: 'NAME', widthMm: 32, type: XdtsInfoType.none),
-      (label: 'SHEET', widthMm: 35, type: XdtsInfoType.sheetInverted),
+      (label: _episode, widthMm: 36, field: TimesheetHeaderField.episode),
+      (label: _seq, widthMm: 30, field: TimesheetHeaderField.scene),
+      (label: _scene, widthMm: 38, field: TimesheetHeaderField.cut),
+      (label: _time, widthMm: 55, field: TimesheetHeaderField.time),
+      (label: _name, widthMm: 32, field: TimesheetHeaderField.name),
+      (label: _sheet, widthMm: 35, field: TimesheetHeaderField.sheet),
     ],
+    memo: (leftMm: 0, topMm: 23, widthMm: 282, heightMm: 65),
+    logo: (leftMm: 0, topMm: 0, widthMm: 51, heightMm: 17),
   );
 
   /// `b4_3sec.ini`.
@@ -203,13 +240,15 @@ class XdtsSheetTemplate {
     infoTitleHeightMm: 4.5,
     infoBodyHeightMm: 8.5,
     info: [
-      (label: 'EPISODE', widthMm: 26.5, type: XdtsInfoType.none),
-      (label: 'SEQ.', widthMm: 18, type: XdtsInfoType.none),
-      (label: 'SCENE', widthMm: 18.5, type: XdtsInfoType.scene),
-      (label: 'TIME', widthMm: 40, type: XdtsInfoType.time),
-      (label: 'NAME', widthMm: 26, type: XdtsInfoType.none),
-      (label: 'SHEET', widthMm: 26, type: XdtsInfoType.sheetInverted),
+      (label: _episode, widthMm: 26.5, field: TimesheetHeaderField.episode),
+      (label: _seq, widthMm: 18, field: TimesheetHeaderField.scene),
+      (label: _scene, widthMm: 18.5, field: TimesheetHeaderField.cut),
+      (label: _time, widthMm: 40, field: TimesheetHeaderField.time),
+      (label: _name, widthMm: 26, field: TimesheetHeaderField.name),
+      (label: _sheet, widthMm: 26, field: TimesheetHeaderField.sheet),
     ],
+    memo: (leftMm: 0, topMm: 14, widthMm: 242, heightMm: 18.5),
+    logo: (leftMm: 0, topMm: 0, widthMm: 87, heightMm: 13),
   );
 
   /// `b4_6sec.ini`.
@@ -240,13 +279,16 @@ class XdtsSheetTemplate {
     infoTitleHeightMm: 4.5,
     infoBodyHeightMm: 8.5,
     info: [
-      (label: 'EPISODE', widthMm: 26, type: XdtsInfoType.none),
-      (label: 'SEQ.', widthMm: 18.5, type: XdtsInfoType.none),
-      (label: 'SCENE', widthMm: 18.5, type: XdtsInfoType.scene),
-      (label: 'TIME', widthMm: 40, type: XdtsInfoType.time),
-      (label: 'NAME', widthMm: 26, type: XdtsInfoType.none),
-      (label: 'SHEET', widthMm: 26, type: XdtsInfoType.sheet),
+      (label: _episode, widthMm: 26, field: TimesheetHeaderField.episode),
+      (label: _seq, widthMm: 18.5, field: TimesheetHeaderField.scene),
+      (label: _scene, widthMm: 18.5, field: TimesheetHeaderField.cut),
+      (label: _time, widthMm: 40, field: TimesheetHeaderField.time),
+      (label: _name, widthMm: 26, field: TimesheetHeaderField.name),
+      (label: _sheet, widthMm: 26, field: TimesheetHeaderField.sheet),
     ],
+    totalOverCurrent: false,
+    memo: (leftMm: 0, topMm: 14, widthMm: 239, heightMm: 20.5),
+    logo: (leftMm: 0, topMm: 0, widthMm: 84, heightMm: 13),
   );
 
   /// `ponoc_6sec.ini` — the sheet the viewer opens an XDTS file on when
@@ -283,10 +325,12 @@ class XdtsSheetTemplate {
     infoTitleHeightMm: 3.4,
     infoBodyHeightMm: 9.3,
     info: [
-      (label: 'SCENE', widthMm: 36.9, type: XdtsInfoType.scene),
-      (label: 'TIME', widthMm: 40.3, type: XdtsInfoType.time),
-      (label: 'NAME', widthMm: 25.6, type: XdtsInfoType.none),
-      (label: 'SHEET', widthMm: 25.6, type: XdtsInfoType.sheetInverted),
+      (label: _scene, widthMm: 36.9, field: TimesheetHeaderField.cut),
+      (label: _time, widthMm: 40.3, field: TimesheetHeaderField.time),
+      (label: _name, widthMm: 25.6, field: TimesheetHeaderField.name),
+      (label: _sheet, widthMm: 25.6, field: TimesheetHeaderField.sheet),
     ],
+    memo: (leftMm: 0, topMm: 14.4, widthMm: 243.5, heightMm: 28.2),
+    logo: (leftMm: 0, topMm: 0, widthMm: 46.7, heightMm: 5.5),
   );
 }

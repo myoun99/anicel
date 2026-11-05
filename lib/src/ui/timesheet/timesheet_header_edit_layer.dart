@@ -91,7 +91,7 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
               SheetTextTarget(
                 keyValue: 'timesheet-${box.field.name}-edit-p$page',
                 box: box.rect,
-                textRect: TimesheetDocumentPainter.headerValueRect(box.rect),
+                textRect: box.value,
                 text: printed,
                 style: TimesheetDocumentPainter.wordsStyle(
                   face,

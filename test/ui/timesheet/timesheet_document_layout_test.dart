@@ -210,7 +210,7 @@ void main() {
       // allotment.
       expect(
         crowded.columnWidthFor(TimesheetColumnKind.camera) * 6,
-        moreOrLessEquals(TimesheetDocumentLayout.cameraGroupWidth),
+        moreOrLessEquals(TimesheetDocumentLayout.cameraColumnWidth * 2),
       );
       expect(
         base.columnWidthFor(TimesheetColumnKind.camera),
@@ -253,7 +253,7 @@ void main() {
       expect(crowded.halfWidth, moreOrLessEquals(base.halfWidth));
       expect(
         crowded.columnWidthFor(TimesheetColumnKind.se) * 6,
-        moreOrLessEquals(TimesheetDocumentLayout.seGroupWidth),
+        moreOrLessEquals(TimesheetDocumentLayout.seColumnWidth * 2),
       );
       expect(
         base.columnWidthFor(TimesheetColumnKind.se),

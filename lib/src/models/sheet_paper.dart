@@ -98,6 +98,12 @@ class SheetPaperFit {
     required this.inset,
   });
 
+  /// A form that is its paper whole, [sheet] large in its own units and
+  /// [scale] of the paper's pixels a unit — the XDTS Viewer's sheets,
+  /// which carry their paper with them (I-162).
+  const SheetPaperFit.whole({required this.scale, required this.sheet})
+    : inset = Offset.zero;
+
   factory SheetPaperFit._on(Size form, Size pixels) {
     final (:scale, :fillsWidth) = containFit(form, pixels);
     // The side the form fills is the form's own measure — the paper's

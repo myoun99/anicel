@@ -25,6 +25,7 @@ import '../../models/timesheet_sheet_kind.dart';
 import '../../models/timesheet_words.dart';
 import '../../models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
+import '../../models/xdts_sheet_form.dart';
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
@@ -58,6 +59,8 @@ part 'document_painter/timesheet_se_pass.dart';
 part 'document_painter/timesheet_bands_pass.dart';
 part 'document_painter/timesheet_cells_pass.dart';
 part 'document_painter/timesheet_books_pass.dart';
+part 'document_painter/timesheet_sheet_forms.dart';
+part 'document_painter/timesheet_xdts_form_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a portrait page
@@ -104,17 +107,6 @@ class TimesheetDocumentLayout {
   static const double celColumnWidth = 24;
   static const double cameraColumnWidth = 36;
 
-  /// The CAM group's FIXED total width — the paper must never widen
-  /// when a cut carries more instruction rows (user rule): extra CAM
-  /// columns split this allotment into narrower cells instead.
-  static const double cameraGroupWidth = cameraColumnWidth * 2;
-
-  /// R27 #32: the SE group's FIXED total width, the CAM rule applied to
-  /// the sound columns — adding SE tracks must not lengthen the paper
-  /// either. Past the base two slots the extra columns split this
-  /// allotment into narrower cells.
-  static const double seGroupWidth = seColumnWidth * 2;
-
   /// Bare frame numbers print in this space LEFT of each half — no boxed
   /// rail inside the columns (removed by user direction).
   static const double frameNumberGutterWidth = 24;
@@ -153,76 +145,70 @@ class TimesheetDocumentLayout {
     return count;
   }
 
-  int get _cameraColumnCount => _columnCountOf(TimesheetColumnKind.camera);
-
   /// The strips a page lays side by side ([TimesheetSheetKind.strips]).
   int get _strips => document.sheetKind.strips;
 
-  int get _seColumnCount => _columnCountOf(TimesheetColumnKind.se);
+  /// The form the rows are laid on: the cut's sheet kind's — our own, or
+  /// the XDTS Viewer's ([TimesheetDocument.xdtsForm]).
+  late final _SheetForm _form = switch (document.xdtsForm) {
+    final xdts? => _XdtsSheetForm(xdts),
+    null => _OurSheetForm(this),
+  };
 
-  /// Per-column width — the same on either sheet: the 3-second sheet
-  /// prints more cells, not wider ones (F-252, 유저 2026-10-08). ↩️Its
-  /// columns printed about half again as wide (`columnScaleOf`).
+  /// Per-column width — the same on either of our sheets: the 3-second
+  /// sheet prints more cells, not wider ones (F-252, 유저 2026-10-08).
+  /// ↩️Its columns printed about half again as wide (`columnScaleOf`).
   ///
-  /// Instance-level because the CAM and SE cells share a fixed group
-  /// allotment ([cameraGroupWidth] / [seGroupWidth]): past the base two
-  /// slots each column in that group narrows so the paper width stays put.
+  /// The SE and the CAM columns share a FIXED group allotment — the slots
+  /// the sheet prints with none behind them ([TimesheetSheetKind.seColumns]
+  /// · [TimesheetSheetKind.cameraColumns]) — and past them each narrows,
+  /// so the paper keeps its width: a cut carrying more instruction rows
+  /// must never widen it (user rule), nor more SE tracks lengthen it (R27
+  /// #32, the CAM rule applied to the sound columns). On an XDTS sheet the
+  /// dialogue column and the camera block keep the template's widths so.
   double columnWidthFor(TimesheetColumnKind kind) {
-    if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
-      return cameraGroupWidth / _cameraColumnCount;
-    }
-    if (kind == TimesheetColumnKind.se && _seColumnCount > 2) {
-      return seGroupWidth / _seColumnCount;
-    }
-    return switch (kind) {
-      TimesheetColumnKind.action => actionColumnWidth,
-      TimesheetColumnKind.se => seColumnWidth,
-      TimesheetColumnKind.cel => celColumnWidth,
-      TimesheetColumnKind.camera => cameraColumnWidth,
+    final width = _form.columnWidth(kind);
+    final slots = switch (kind) {
+      TimesheetColumnKind.se => document.sheetKind.seColumns,
+      TimesheetColumnKind.camera => document.sheetKind.cameraColumns,
+      TimesheetColumnKind.action || TimesheetColumnKind.cel => null,
     };
+    final count = _columnCountOf(kind);
+    return slots != null && count > slots ? width * slots / count : width;
   }
 
-  double get columnsHeaderHeight => groupRowHeight + letterRowHeight;
+  /// The head over a half's rows: our group and letter rows, or an XDTS
+  /// sheet's block heads.
+  double get columnsHeaderHeight => _form.headHeight;
 
-  /// x of a column within its half (a plain prefix sum — frame numbers
-  /// live in the gutter left of the half, not between columns).
+  /// x of a column within its half: a prefix sum — and past the ACTION
+  /// block, the frame numbers' column an XDTS sheet keeps there (ours
+  /// print theirs in the gutter left of the half).
   double columnLeftInHalf(int columnIndex) {
     var x = 0.0;
     for (var index = 0; index < columnIndex; index += 1) {
       x += columnWidthFor(document.columns[index].kind);
     }
-    return x;
+    return columnIndex < _columnCountOf(TimesheetColumnKind.action)
+        ? x
+        : x + _form.numbersColumnWidth;
   }
 
-  /// Width of a half's column area (the number gutter sits outside it).
+  /// Width of a half's column area (our number gutter sits outside it).
   double get halfWidth {
-    var width = 0.0;
+    var width = _form.numbersColumnWidth;
     for (final column in document.columns) {
       width += columnWidthFor(column.kind);
     }
     return width;
   }
 
-  /// The printed form's width: its strips, the gap between them and the
-  /// padding round them.
-  double get formWidth =>
-      pagePadding * 2 +
-      (frameNumberGutterWidth + halfWidth) * _strips +
-      halfGap * (_strips - 1);
+  /// The printed form's width and height.
+  double get formWidth => _form.size.width;
+  double get formHeight => _form.size.height;
 
-  /// What the form prints over its rows, and the padding round it all: the
-  /// header band, the memo band and the gap under them.
-  static const double _formHeadHeight =
-      pagePadding * 2 + headerBandHeight + memoBandHeight + headerGap;
-
-  /// The printed form's height: its head and a page's body.
-  double get formHeight => _formHeadHeight + _bodyHeight;
-
-  /// The form on the timesheet's paper (`SheetPaper.timesheet`): as large
-  /// as fits, centred.
-  late final SheetPaperFit _onPaper = SheetPaper.timesheet.around(
-    Size(formWidth, formHeight),
-  );
+  /// The form on its paper.
+  SheetPaperFit get _onPaper => _form.onPaper;
 
   /// THE PAPER'S PIXELS A SHEET UNIT TAKES (F-294) — what the panel shows
   /// the sheet at (`SheetCanvasPanel.paperScale`) and the grade its
@@ -239,7 +225,7 @@ class TimesheetDocumentLayout {
 
   /// The paper of one page, in pixels — what a page's handwriting is kept
   /// on, pixel for pixel.
-  CanvasSize get paperPixelSize => SheetPaper.timesheet.pixelSize;
+  CanvasSize get paperPixelSize => _form.paperPixelSize;
 
   /// The paper's width: the sheet's.
   double get paperWidth => _onPaper.sheet.width;
@@ -261,11 +247,6 @@ class TimesheetDocumentLayout {
       if (halfRowCount(half) > 0) (half: half, rowCount: halfRowCount(half)),
   ];
 
-  int get _maxHalfRows =>
-      halfRowCount(0) > halfRowCount(1) ? halfRowCount(0) : halfRowCount(1);
-
-  double get _bodyHeight => columnsHeaderHeight + _maxHalfRows * rowHeight;
-
   /// The paper's height: the sheet's.
   double get paperHeight => _onPaper.sheet.height;
 
@@ -283,27 +264,21 @@ class TimesheetDocumentLayout {
   Rect pageRect(int pageIndex) =>
       Rect.fromLTWH(paperLeft, pageTop(pageIndex), paperWidth, paperHeight);
 
-  /// Left edge of a half's column area (past its number gutter).
+  /// Left edge of a half's column area (past our number gutter).
   double halfLeft(int pageIndex, int half) =>
-      paperLeft +
-      _onPaper.inset.dx +
-      pagePadding +
-      frameNumberGutterWidth +
-      half * (frameNumberGutterWidth + halfWidth + halfGap);
+      paperLeft + _onPaper.inset.dx + _form.halfLeft(half, halfWidth);
 
   /// Top of a half's first row.
   double halfRowsTop(int pageIndex) =>
-      pageTop(pageIndex) +
-      _onPaper.inset.dy +
-      pagePadding +
-      headerBandHeight +
-      memoBandHeight +
-      headerGap +
-      columnsHeaderHeight;
+      pageTop(pageIndex) + _onPaper.inset.dy + _form.rowsTop;
 
   /// Top of the grid — its column header's top edge.
   double gridTop(int pageIndex) =>
       halfRowsTop(pageIndex) - columnsHeaderHeight;
+
+  /// Top of the row the columns' titles print on, at the head's foot.
+  double lettersTop(int pageIndex) =>
+      halfRowsTop(pageIndex) - _form.titleRowHeight;
 
   /// A book's tag (D24): its height, the step between two stacked, the size
   /// its words print at, and what it keeps clear of the memo band's bottom.
@@ -336,63 +311,26 @@ class TimesheetDocumentLayout {
     ];
   }
 
-  /// Width fractions of the header boxes when all print; hiding boxes
-  /// renormalizes the rest over the band. Proportions follow the user's
-  /// reference sheets (R7-⑥): a slim Ep.no box, the Title clearly widest,
-  /// then compact Cut/Duration/Name/Page boxes.
-  static const Map<TimesheetHeaderField, double> _headerFieldFractions = {
-    TimesheetHeaderField.episode: 0.08,
-    TimesheetHeaderField.title: 0.32,
-    TimesheetHeaderField.scene: 0.10,
-    TimesheetHeaderField.cut: 0.11,
-    TimesheetHeaderField.time: 0.12,
-    TimesheetHeaderField.name: 0.17,
-    TimesheetHeaderField.sheet: 0.10,
-  };
-
-  /// The header band rect of a page — its LEFT edge sits on the grid's
-  /// left bold line (the paper form's header table left-aligns with the
-  /// ACTION block; the number gutter stays outside both — user fix), its
-  /// right edge on half 1's right bold line.
-  Rect headerBandRect(int pageIndex) {
-    final form = formRect(pageIndex);
-    final left = form.left + pagePadding + frameNumberGutterWidth;
-    return Rect.fromLTWH(
-      left,
-      form.top + pagePadding,
-      form.right - pagePadding - left,
-      headerBandHeight,
-    );
-  }
+  /// The header band rect of a page ([_SheetForm.headerBand]).
+  Rect headerBandRect(int pageIndex) =>
+      _form.headerBand.shift(formRect(pageIndex).topLeft);
 
   /// The visible header boxes of a page, in printing order — shared by the
   /// painter and the tap-to-edit layer.
-  List<({TimesheetHeaderField field, Rect rect})> headerFieldBoxes(
-    int pageIndex,
-  ) {
+  List<TimesheetHeaderBox> headerFieldBoxes(int pageIndex) {
     final fields = document.visibleHeaderFields;
     if (fields.isEmpty) {
       return const [];
     }
-    final band = headerBandRect(pageIndex);
-    var total = 0.0;
-    for (final field in fields) {
-      total += _headerFieldFractions[field]!;
-    }
-    final boxes = <({TimesheetHeaderField field, Rect rect})>[];
-    var x = band.left;
-    for (var index = 0; index < fields.length; index += 1) {
-      // The last box closes exactly on the band edge (no rounding drift).
-      final right = index == fields.length - 1
-          ? band.right
-          : x + band.width * (_headerFieldFractions[fields[index]]! / total);
-      boxes.add((
-        field: fields[index],
-        rect: Rect.fromLTRB(x, band.top, right, band.bottom),
-      ));
-      x = right;
-    }
-    return boxes;
+    final corner = formRect(pageIndex).topLeft;
+    return [
+      for (final box in _form.headerBoxes(fields))
+        (
+          field: box.field,
+          rect: box.rect.shift(corner),
+          value: box.value.shift(corner),
+        ),
+    ];
   }
 
   /// What a header box prints that someone TYPED — the work's title and
@@ -411,12 +349,9 @@ class TimesheetDocumentLayout {
     TimesheetHeaderField.time || TimesheetHeaderField.sheet => null,
   };
 
-  /// The memo band rect of a page — directly under the header band, same
-  /// grid-aligned edges.
-  Rect memoBandRect(int pageIndex) {
-    final band = headerBandRect(pageIndex);
-    return Rect.fromLTWH(band.left, band.bottom, band.width, memoBandHeight);
-  }
+  /// The memo band rect of a page ([_SheetForm.memoBand]).
+  Rect memoBandRect(int pageIndex) =>
+      _form.memoBand.shift(formRect(pageIndex).topLeft);
 
   /// The text space of [side] of page [pageIndex]'s memo band: half of the
   /// band's, a memo of its own on each side ([SheetMemoSide]).
@@ -528,14 +463,14 @@ class TimesheetDocumentLayout {
   /// The top of row [row] of a half page, below the top of its first row
   /// — of any row, before the first or past the last as well: where a span
   /// that began in an earlier half began.
-  double _rowTopIn(int row) => row * rowHeight;
+  double _rowTopIn(int row) => _form.rowTopIn(row);
 
   /// The bottom of row [row] of a half page, below the top of its first.
-  double _rowBottomIn(int row) => (row + 1) * rowHeight;
+  double _rowBottomIn(int row) => _form.rowBottomIn(row);
 
   /// How many rows of a half page lie above [offset] below its first
   /// row's top, a part of a row counted as such.
-  double _rowsAbove(double offset) => offset / rowHeight;
+  double _rowsAbove(double offset) => _form.rowsAbove(offset);
 
   /// The data-driven cut-end line (the paper's horizontal strikethrough,
   /// S2-0): the bottom edge of the LAST playback frame row, spanning its
@@ -871,6 +806,16 @@ class TimesheetDocumentPainter extends CustomPainter
   bool get _drawForm => _draws(SheetPaintLayer.form);
   bool get _drawContent => _draws(SheetPaintLayer.content);
 
+  /// The XDTS Viewer's form, where the sheet prints on one (I-162) — null
+  /// on our own, whose form the bands and the cells passes draw.
+  late final _XdtsFormPass? _xdts = switch (layout._form) {
+    final _XdtsSheetForm sheet => _XdtsFormPass(this, sheet),
+    _OurSheetForm() => null,
+  };
+
+  /// Whether this paint draws OUR form — the stratum, on one of our sheets.
+  bool get _drawsOurForm => _drawForm && _xdts == null;
+
   /// Whether this paint prints [part]'s values: the content stratum's, as
   /// [contentParts] names them.
   bool _drawsPart(TimesheetContentPart part) =>
@@ -981,6 +926,9 @@ class TimesheetDocumentPainter extends CustomPainter
     // Every page on screen, one under another.
     for (final page in _pagesShown(document, layout, _cull)) {
       _bands.paintPaper(canvas, page.index);
+      if (_drawForm) {
+        _xdts?.paintPage(canvas, page.index);
+      }
       _bands.paintHeaderBand(canvas, page.index);
       if (_drawsPart(TimesheetContentPart.memo)) {
         _bands.paintMemoBand(canvas, page.index);
@@ -1229,7 +1177,8 @@ class TimesheetDocumentPainter extends CustomPainter
   /// What the paper and the form print from — the sheet's SHAPE: the
   /// columns and the letters the form prints over them
   /// ([TimesheetColumnKind.titleLayer]), the pages, the header boxes, the
-  /// frame rate and the notation. A value typed on the sheet is not in it,
+  /// frame rate, the sheet's kind (our form or the XDTS Viewer's) and the
+  /// notation. A value typed on the sheet is not in it,
   /// nor a cel row's name.
   Object get _formShape => (
     ByList([
@@ -1245,6 +1194,7 @@ class TimesheetDocumentPainter extends CustomPainter
     ]),
     document.pageFrameCount,
     document.fps,
+    document.sheetKind,
     ByList(document.visibleHeaderFields),
     words,
   );

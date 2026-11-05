@@ -6,6 +6,10 @@ import 'xdts_sheet_template.dart';
 /// paper's corner: its template box, its left and its width.
 typedef XdtsInfoPlace = ({XdtsInfoBox box, int left, int width});
 
+/// A place on an XDTS sheet in the viewer's pixels, from the paper's
+/// corner.
+typedef XdtsPixelRect = ({int left, int top, int width, int height});
+
 /// Whether a sheet counting [fps] frames a second lays its seconds as the
 /// XDTS Viewer does, 24 rows each — [fps] the frames a second COUNTS
 /// (`ProjectFrameRate.countingBase`), so a 23.976 project's 24 is.
@@ -145,6 +149,19 @@ class XdtsSheetForm {
   late final int infoTop = originTop + px(template.infoOriginTopMm);
   late final int infoTitleBottom = infoTop + px(template.infoTitleHeightMm);
   late final int infoBottom = infoTitleBottom + px(template.infoBodyHeightMm);
+
+  /// The memo's place and the logo's — the template's, which the CELL
+  /// block's widening does not move.
+  late final XdtsPixelRect memo = _placeOf(template.memo);
+  late final XdtsPixelRect logo = _placeOf(template.logo);
+
+  /// [field] in pixels, each of its lengths rounded on its own.
+  XdtsPixelRect _placeOf(XdtsDataField field) => (
+    left: originLeft + px(field.leftMm),
+    top: originTop + px(field.topMm),
+    width: px(field.widthMm),
+    height: px(field.heightMm),
+  );
 
   /// The info header's boxes, left to right.
   late final List<XdtsInfoPlace> info = () {

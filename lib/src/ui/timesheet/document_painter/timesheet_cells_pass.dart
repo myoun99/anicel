@@ -61,7 +61,7 @@ class _TimesheetCellsPass {
     final rowsBottom = rows.bottomOf(rowCount - 1);
     final right = left + _painter.layout.halfWidth;
     final columnsTop = _painter.layout.gridTop(pageIndex);
-    final lettersTop = rows.top - TimesheetDocumentLayout.letterRowHeight;
+    final lettersTop = _painter.layout.lettersTop(pageIndex);
 
     final lightPaint = Paint()
       ..color = TimesheetDocumentPainter._gridLight
@@ -97,7 +97,7 @@ class _TimesheetCellsPass {
 
     // Group titles + letter row (printed form).
     _paintColumnTitles(canvas, sheet);
-    if (_painter._drawForm) {
+    if (_painter._drawsOurForm) {
       canvas.drawLine(
         Offset(left, columnsTop),
         Offset(right, columnsTop),
@@ -115,9 +115,10 @@ class _TimesheetCellsPass {
     // real Toei sheet leaves the S strip clean; its vertical borders and
     // the table's outer edges stay), so interior lines draw in segments
     // skipping the SE ranges.
-    if (!_painter._drawForm) {
-      // No form: no grid — and the cells only where the values are printed,
-      // as the form's own branch below asks.
+    if (!_painter._drawsOurForm) {
+      // No form of ours — none, or the XDTS Viewer's, which its own pass
+      // rules: no grid here — and the cells only where the values are
+      // printed, as the form's own branch below asks.
       //
       // 🚨F-269 (유저 2026-10-03): 「off해서 껐는데 글자가 남아있고, 글자가
       // 연하게 됬을뿐」 · 「다른탭 갔다 돌아오면 정상적으로 사라져있음」. This
@@ -275,7 +276,7 @@ class _TimesheetCellsPass {
   /// letter row, each where its stratum draws
   /// ([TimesheetColumnKind.titleLayer]).
   void _paintColumnTitles(Canvas canvas, _HalfFrame sheet) {
-    if (_painter._drawForm) {
+    if (_painter._drawsOurForm) {
       _painter._bands.paintGroupTitles(canvas, sheet.left, sheet.columnsTop);
     }
     for (
