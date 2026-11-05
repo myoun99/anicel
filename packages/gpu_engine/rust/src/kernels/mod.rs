@@ -17,6 +17,7 @@
 //! hand from the formula, and mutation.
 
 pub mod blend;
+pub mod cel_pixel;
 pub mod composite;
 pub mod dab;
 pub mod effects;

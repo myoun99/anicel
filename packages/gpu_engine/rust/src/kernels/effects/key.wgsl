@@ -30,6 +30,14 @@ fn key_map(map: u32, alpha: u32) -> u32 {
   return (key_word(map + (alpha >> 2u)) >> ((alpha & 3u) * 8u)) & 0xffu;
 }
 
+// The keys of the run at `run` that name a pixel of colour `rgb` (bytes):
+// bit k for key k, within its tolerance on all three channels. The cel
+// pixel pass's selector asks it too (kernels/cel_pixel — 색 삭제 · 색 유지).
+fn key_naming(run: u32, rgb: vec3<u32>) -> u32 {
+  return key_word(run + rgb.x) & key_word(run + KEY_GREEN + rgb.y)
+    & key_word(run + KEY_BLUE + rgb.z);
+}
+
 // What the run at `run` leaves of `alpha` on a pixel of colour `rgb`
 // (bytes) whose alpha was `original` before the run — a restore gives back
 // to it, so `alpha` is never above it. A pixel empty before the run stays
@@ -38,8 +46,7 @@ fn key_alpha(run: u32, rgb: vec3<u32>, alpha: u32, original: u32) -> u32 {
   if (original == 0u) {
     return alpha;
   }
-  var naming = key_word(run + rgb.x) & key_word(run + KEY_GREEN + rgb.y)
-    & key_word(run + KEY_BLUE + rgb.z);
+  var naming = key_naming(run, rgb);
   var restoring = key_word(run + KEY_RESTORES);
   var next = alpha;
   var map = run + KEY_MAPS;

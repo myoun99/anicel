@@ -45,7 +45,7 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::sync::{Mutex, PoisonError};
 

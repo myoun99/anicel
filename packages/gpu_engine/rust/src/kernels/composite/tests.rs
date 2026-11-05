@@ -39,7 +39,7 @@ fn rig() -> &'static Rig {
 // ---- Rows to composite ----
 
 /// A well-mixed u32 (lowbias32), for pictures no formula here can predict.
-fn mix(mut h: u32) -> u32 {
+pub(crate) fn mix(mut h: u32) -> u32 {
     h ^= h >> 16;
     h = h.wrapping_mul(0x7feb_352d);
     h ^= h >> 15;
@@ -63,9 +63,10 @@ fn texel(seed: u32, x: i32, y: i32) -> u32 {
     (mix(h) & 0x00ff_ffff) | (alpha << 24)
 }
 
-/// The pool a test fills: pages of whole tiles.
+/// The pool a test fills: pages of whole tiles — the cel pixel pass's tests
+/// (kernels/cel_pixel) fill theirs with it too.
 #[derive(Default)]
-struct Pool {
+pub(crate) struct Pool {
     pages: Vec<Vec<u32>>,
 }
 
@@ -106,7 +107,7 @@ impl Pool {
     }
 
     /// [`Pool::set`] for a row whose pixels are `pixel`'s.
-    fn drawn(
+    pub(crate) fn drawn(
         &mut self,
         pixel: impl Fn(i32, i32) -> u32,
         (x0, y0): (i32, i32),
@@ -128,7 +129,7 @@ impl Pool {
         }
     }
 
-    fn upload(&self, engine: &Engine) -> Vec<wgpu::Buffer> {
+    pub(crate) fn upload(&self, engine: &Engine) -> Vec<wgpu::Buffer> {
         use wgpu::util::DeviceExt;
         self.pages
             .iter()

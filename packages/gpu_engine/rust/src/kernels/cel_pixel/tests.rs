@@ -1,0 +1,553 @@
+//! The cel pixel pass on a real GPU, checked against what C's pass gives
+//! by hand and against the ledger — never against a CPU copy of it
+//! (`kernels/mod.rs` has why). A cel's tiles are filled as the executor's
+//! tests fill theirs (`Pool`); every scene names its pixels one by one, and
+//! every pixel it does not name is nothing.
+
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
+use crate::device::Engine;
+use crate::kernels::composite::tests::{Pool, mix};
+use crate::kernels::composite::{TILE, TileSet};
+use crate::kernels::effects::KeyRun;
+use crate::testing::{assert_pinned, first_engine, read_buffer};
+
+const SIDE: i32 = TILE as i32;
+const TEXELS: usize = (TILE * TILE) as usize;
+/// 색 변환's channel: R, G and B; a pixel with no ink takes no part.
+const COLOUR: Channel = Channel {
+    bytes: 3,
+    base: 0,
+    stride: 1,
+    takes_empty: false,
+};
+/// The alpha verbs' channel: every pixel covered takes part.
+const ALPHA: Channel = Channel {
+    bytes: 1,
+    base: 3,
+    stride: 0,
+    takes_empty: true,
+};
+
+struct Rig {
+    engine: &'static Engine,
+    pass: CelPixels,
+}
+
+/// One device and one compiled pass for every test here (blend's tests
+/// have why).
+fn rig() -> &'static Rig {
+    static RIG: OnceLock<Rig> = OnceLock::new();
+    RIG.get_or_init(|| {
+        let engine = first_engine();
+        let pass = CelPixels::new(engine).expect("compile the cel pixel pass");
+        Rig { engine, pass }
+    })
+}
+
+fn rgba(red: u32, green: u32, blue: u32, alpha: u32) -> u32 {
+    red | green << 8 | blue << 16 | alpha << 24
+}
+
+/// A colour's value as a run holds it: the channel's byte i in bits 8i.
+fn rgb(red: u32, green: u32, blue: u32) -> u32 {
+    red | green << 8 | blue << 16
+}
+
+/// A cel: its pool and its tile set.
+struct Cel {
+    pool: Pool,
+    set: TileSet,
+}
+
+/// The cel whose pixel at (x, y) is `pixel(x, y)`, over the tiles of
+/// `size` from `origin`, each on the page `place` gives it or none.
+fn cel(
+    origin: (i32, i32),
+    size: (u32, u32),
+    pixel: impl Fn(i32, i32) -> u32,
+    place: impl Fn(i32, i32) -> Option<u16>,
+) -> Cel {
+    let mut pool = Pool::default();
+    let set = pool.drawn(pixel, origin, size, place);
+    Cel { pool, set }
+}
+
+/// The cel of tile (0, 0) alone, on page 0, its pixels `named` and nothing
+/// elsewhere.
+fn one(named: &[((i32, i32), u32)]) -> Cel {
+    let named: HashMap<(i32, i32), u32> = named.iter().copied().collect();
+    cel((0, 0), (1, 1), move |x, y| named.get(&(x, y)).copied().unwrap_or(0), |_, _| Some(0))
+}
+
+/// `verb` over `cel`, `per_pass` pages a pass or as many as the device
+/// binds: what it left, and its new pixels' words.
+fn run(cel: &Cel, verb: &Verb, per_pass: Option<usize>) -> Option<(Passed, Vec<u32>)> {
+    let Rig { engine, pass } = rig();
+    let pages = cel.pool.upload(engine);
+    let passed = match per_pass {
+        Some(per_pass) => pass.run_by(engine, &pages, &cel.set, verb, per_pass),
+        None => pass.run(engine, &pages, &cel.set, verb),
+    }?;
+    let out = read_buffer(engine, &passed.out)
+        .chunks_exact(4)
+        .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
+        .collect();
+    Some((passed, out))
+}
+
+/// The cel `passed` left: its walked tiles holding `out`, on page 0.
+fn after(passed: &Passed, out: &[u32]) -> Cel {
+    let tiles = passed.tiles.clone();
+    let (columns, rows) = (
+        tiles.iter().map(|tile| tile.0).max().unwrap() + 1,
+        tiles.iter().map(|tile| tile.1).max().unwrap() + 1,
+    );
+    let out = out.to_vec();
+    let pixel = move |x: i32, y: i32| {
+        let tile = (x.div_euclid(SIDE), y.div_euclid(SIDE));
+        let walked = tiles.iter().position(|&each| each == tile).expect("a walked tile");
+        out[walked * TEXELS + (y.rem_euclid(SIDE) * SIDE + x.rem_euclid(SIDE)) as usize]
+    };
+    let walked = passed.tiles.clone();
+    cel((0, 0), (columns as u32, rows as u32), pixel, move |column, row| {
+        walked.contains(&(column, row)).then_some(0)
+    })
+}
+
+/// Fails unless the walked tile `tile` of `out` holds `scene`'s pixels but
+/// for `changed`, which hold what it gives.
+fn assert_tile(
+    out: &[u32],
+    tile: usize,
+    origin: (i32, i32),
+    scene: &[((i32, i32), u32)],
+    changed: &[((i32, i32), u32)],
+) {
+    let scene: HashMap<(i32, i32), u32> = scene.iter().copied().collect();
+    let changed: HashMap<(i32, i32), u32> = changed.iter().copied().collect();
+    for y in 0..SIDE {
+        for x in 0..SIDE {
+            let at = (origin.0 + x, origin.1 + y);
+            let wanted = changed.get(&at).or(scene.get(&at)).copied().unwrap_or(0);
+            let put = out[tile * TEXELS + (y * SIDE + x) as usize];
+            assert_eq!(put, wanted, "({}, {}): {put:#010x} for {wanted:#010x}", at.0, at.1);
+        }
+    }
+}
+
+fn recolour(value: &[u8]) -> Verb<'_> {
+    Verb {
+        channel: COLOUR,
+        selector: None,
+        threshold: 0,
+        incoming: Incoming::Value(value),
+    }
+}
+
+fn clear() -> Verb<'static> {
+    Verb {
+        channel: ALPHA,
+        selector: None,
+        threshold: 0,
+        incoming: Incoming::Value(&[0]),
+    }
+}
+
+/// A run of one key naming the colours within `tolerance` of `key` on
+/// every channel — the tables `CelColorKey.matches` makes.
+fn tables(key: [u32; 3], tolerance: u32) -> [[u32; 256]; 3] {
+    key.map(|channel| {
+        let mut table = [0u32; 256];
+        for (byte, bit) in table.iter_mut().enumerate() {
+            *bit = u32::from((byte as u32).abs_diff(channel) <= tolerance);
+        }
+        table
+    })
+}
+
+fn selector(tables: &[[u32; 256]; 3], keeps_matches: bool) -> Selector<'_> {
+    Selector {
+        key: KeyRun {
+            red: &tables[0],
+            green: &tables[1],
+            blue: &tables[2],
+            restores: 0,
+            maps: &[],
+        },
+        keeps_matches,
+    }
+}
+
+// ---- Going forward ----
+
+const INK: u32 = 0x00_1e_14_0a; // rgb(10, 20, 30)
+const OTHER: u32 = 0x00_46_3c_32; // rgb(50, 60, 70)
+
+/// 색 변환 over ink A on row 0 at 0..4 and 5..7, an empty pixel holding a
+/// colour between them, B at 7 and at the start of row 1, A again on row 2:
+/// the ink takes the new colour under its own alpha, the empty pixel takes
+/// no part, and the runs go A × 6 — across the empty pixel —, B × 2 —
+/// across the row's end —, A × 1.
+#[test]
+fn a_recolour_takes_the_ink_and_keeps_its_alpha() {
+    let a = |alpha: u32| INK | alpha << 24;
+    let b = |alpha: u32| OTHER | alpha << 24;
+    let scene = [
+        ((0, 0), a(200)),
+        ((1, 0), a(200)),
+        ((2, 0), a(255)),
+        ((3, 0), a(1)),
+        ((4, 0), rgba(9, 9, 9, 0)),
+        ((5, 0), a(200)),
+        ((6, 0), a(77)),
+        ((7, 0), b(128)),
+        ((0, 1), b(255)),
+        ((3, 2), a(9)),
+    ];
+    let (passed, out) = run(&one(&scene), &recolour(&[1, 2, 3]), None).expect("run");
+    assert_eq!(passed.tiles, [(0, 0)]);
+    assert_eq!(passed.touched, [9]);
+    assert_eq!(passed.runs, [vec![(INK, 6), (OTHER, 2), (INK, 1)]]);
+    let new = |alpha| rgba(1, 2, 3, alpha);
+    let changed = [
+        ((0, 0), new(200)),
+        ((1, 0), new(200)),
+        ((2, 0), new(255)),
+        ((3, 0), new(1)),
+        ((5, 0), new(200)),
+        ((6, 0), new(77)),
+        ((7, 0), new(128)),
+        ((0, 1), new(255)),
+        ((3, 2), new(9)),
+    ];
+    assert_tile(&out, 0, (0, 0), &scene, &changed);
+}
+
+/// 픽셀 비우기 takes every pixel and empties it, its colour left under the
+/// alpha of 0 — and 색 삭제 after it still names those pixels by that
+/// colour, as the stored bytes hold it.
+#[test]
+fn a_clear_keeps_the_colour_that_a_selector_names_after_it() {
+    let scene = [
+        ((0, 0), INK | 255 << 24),
+        ((1, 0), INK | 255 << 24),
+        ((3, 0), rgba(40, 50, 60, 7)),
+    ];
+    let (passed, out) = run(&one(&scene), &clear(), None).expect("clear");
+    assert_eq!(passed.touched, [TEXELS as u32]);
+    // Every pixel's alpha, in walk order: 255, 255, 0 at (2, 0), 7, then
+    // the rest of the tile's 0s.
+    assert_eq!(passed.runs, [vec![(255, 2), (0, 1), (7, 1), (0, TEXELS as u32 - 4)]]);
+    let changed = [((0, 0), INK), ((1, 0), INK), ((3, 0), rgba(40, 50, 60, 0))];
+    assert_tile(&out, 0, (0, 0), &scene, &changed);
+
+    let key = tables([10, 20, 30], 0);
+    let delete = Verb {
+        selector: Some(selector(&key, false)),
+        ..clear()
+    };
+    let (again, _) = run(&after(&passed, &out), &delete, None).expect("delete");
+    assert_eq!(again.touched, [2]);
+    assert_eq!(again.runs, [vec![(0, 2)]]);
+}
+
+/// 2치화 at 128: an alpha at or over the cut goes whole, one under it
+/// empty; the colour stays.
+#[test]
+fn a_cut_makes_the_alpha_whole_or_nothing() {
+    let grey = |alpha| rgba(5, 6, 7, alpha);
+    let alphas = [0, 1, 127, 128, 129, 255];
+    let scene: Vec<((i32, i32), u32)> =
+        alphas.iter().enumerate().map(|(x, &alpha)| ((x as i32, 0), grey(alpha))).collect();
+    let cut = Verb {
+        threshold: 128,
+        incoming: Incoming::Value(&[255]),
+        ..clear()
+    };
+    let (passed, out) = run(&one(&scene), &cut, None).expect("run");
+    let rest = TEXELS as u32 - 6;
+    let runs = [(0, 1), (1, 1), (127, 1), (128, 1), (129, 1), (255, 1), (0, rest)];
+    assert_eq!(passed.runs, [runs.to_vec()]);
+    let changed = [
+        ((0, 0), grey(0)),
+        ((1, 0), grey(0)),
+        ((2, 0), grey(0)),
+        ((3, 0), grey(255)),
+        ((4, 0), grey(255)),
+        ((5, 0), grey(255)),
+    ];
+    assert_tile(&out, 0, (0, 0), &scene, &changed);
+}
+
+/// 색 삭제 and 색 유지 by a key of (100, 150, 200) within 2: the key names
+/// a pixel by its colour alone — one off by 2 on every channel, one with
+/// no alpha — and 색 유지 takes the others, nothing included.
+#[test]
+fn a_selector_names_its_pixels_by_colour_alone() {
+    let scene = [
+        ((0, 0), rgba(100, 150, 200, 255)),
+        ((1, 0), rgba(102, 148, 202, 90)),
+        ((2, 0), rgba(103, 150, 200, 255)),
+        ((3, 0), rgba(100, 150, 200, 0)),
+    ];
+    let key = tables([100, 150, 200], 2);
+    let delete = Verb {
+        selector: Some(selector(&key, false)),
+        ..clear()
+    };
+    let (passed, out) = run(&one(&scene), &delete, None).expect("delete");
+    assert_eq!(passed.touched, [3]);
+    assert_eq!(passed.runs, [vec![(255, 1), (90, 1), (0, 1)]]);
+    let changed = [((0, 0), rgba(100, 150, 200, 0)), ((1, 0), rgba(102, 148, 202, 0))];
+    assert_tile(&out, 0, (0, 0), &scene, &changed);
+
+    let keep = Verb {
+        selector: Some(selector(&key, true)),
+        ..clear()
+    };
+    let (passed, out) = run(&one(&scene), &keep, None).expect("keep");
+    assert_eq!(passed.touched, [TEXELS as u32 - 3]);
+    assert_eq!(passed.runs, [vec![(255, 1), (0, TEXELS as u32 - 4)]]);
+    assert_tile(&out, 0, (0, 0), &scene, &[((2, 0), rgba(103, 150, 200, 0))]);
+}
+
+/// Two tiles of one ink everywhere: a run ends at its tile, as C's — the
+/// app's recipe builder joins them.
+#[test]
+fn a_run_ends_with_its_tile() {
+    let ink = cel((0, 0), (2, 1), |_, _| INK | 255 << 24, |_, _| Some(0));
+    let (passed, _) = run(&ink, &recolour(&[1, 2, 3]), None).expect("run");
+    let whole = vec![(INK, TEXELS as u32)];
+    assert_eq!(passed.runs, [whole.clone(), whole]);
+}
+
+/// The walk goes row by row over the cel's tiles, past the one it has none
+/// of, each tile counting its own pixels and runs.
+#[test]
+fn the_walk_goes_row_by_row_past_a_missing_tile() {
+    // Tile (c, r) holds c + 2 + 3r pixels of ink, one run.
+    let pixel = |x: i32, y: i32| {
+        let (column, row) = (x.div_euclid(SIDE), y.div_euclid(SIDE));
+        let inked = column + 2 + 3 * row;
+        if y.rem_euclid(SIDE) == 0 && x.rem_euclid(SIDE) < inked { INK | 255 << 24 } else { 0 }
+    };
+    let cel = cel((-1, 0), (3, 2), pixel, |column, row| ((column, row) != (0, 0)).then_some(0));
+    let (passed, _) = run(&cel, &recolour(&[1, 2, 3]), None).expect("run");
+    assert_eq!(passed.tiles, [(-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]);
+    assert_eq!(passed.touched, [1, 3, 4, 5, 6]);
+    let runs: Vec<Vec<(u32, u32)>> = [1, 3, 4, 5, 6].map(|count| vec![(INK, count)]).to_vec();
+    assert_eq!(passed.runs, runs);
+}
+
+/// A cel of no tiles walks none.
+#[test]
+fn a_cel_of_no_tiles_walks_none() {
+    let empty = cel((0, 0), (2, 2), |_, _| INK | 255 << 24, |_, _| None);
+    let (passed, _) = run(&empty, &recolour(&[1, 2, 3]), None).expect("run");
+    assert!(passed.tiles.is_empty() && passed.touched.is_empty() && passed.runs.is_empty());
+}
+
+// ---- Undo ----
+
+/// A recolour over two tiles, then its undo by the recipe laid flat in
+/// walk order: the second tile's pixel reads the recipe's third entry, and
+/// every pixel is back as it was.
+#[test]
+fn an_undo_puts_the_recipe_back_in_walk_order() {
+    let scene = [
+        ((0, 0), rgba(10, 20, 30, 200)),
+        ((1, 0), rgba(11, 21, 31, 255)),
+        ((128, 0), rgba(12, 22, 32, 100)),
+    ];
+    let named: HashMap<(i32, i32), u32> = scene.iter().copied().collect();
+    let two = cel((0, 0), (2, 1), move |x, y| named.get(&(x, y)).copied().unwrap_or(0), |_, _| {
+        Some(0)
+    });
+    let (passed, out) = run(&two, &recolour(&[1, 2, 3]), None).expect("forward");
+    let first = vec![(rgb(10, 20, 30), 1), (rgb(11, 21, 31), 1)];
+    assert_eq!(passed.runs, [first, vec![(rgb(12, 22, 32), 1)]]);
+    let recipe = [10, 20, 30, 11, 21, 31, 12, 22, 32];
+    let undo = Verb {
+        incoming: Incoming::Recipe {
+            bytes: &recipe,
+            step: 3,
+            count: 3,
+        },
+        ..recolour(&[])
+    };
+    let (undone, back) = run(&after(&passed, &out), &undo, None).expect("undo");
+    assert_eq!(undone.touched, [2, 1]);
+    assert!(undone.runs.is_empty());
+    assert_tile(&back, 0, (0, 0), &scene, &[]);
+    assert_tile(&back, 1, (128, 0), &scene, &[]);
+}
+
+/// A uniform recipe — one value stepped 0 — puts that value back on every
+/// pixel it walks.
+#[test]
+fn a_uniform_recipe_is_one_value_for_every_pixel() {
+    let scene = [((0, 0), INK | 200 << 24), ((5, 3), INK | 9 << 24)];
+    let (passed, out) = run(&one(&scene), &recolour(&[1, 2, 3]), None).expect("forward");
+    let undo = Verb {
+        incoming: Incoming::Recipe {
+            bytes: &[10, 20, 30],
+            step: 0,
+            count: 2,
+        },
+        ..recolour(&[])
+    };
+    let (_, back) = run(&after(&passed, &out), &undo, None).expect("undo");
+    assert_tile(&back, 0, (0, 0), &scene, &[]);
+}
+
+/// An undo whose walk goes past its recipe is refused, as the app refuses
+/// it; one that ends on it is not.
+#[test]
+fn an_undo_past_its_recipe_is_refused() {
+    let scene = [((0, 0), INK | 255 << 24), ((1, 0), INK | 255 << 24), ((2, 0), INK | 255 << 24)];
+    let undo = |count| Verb {
+        incoming: Incoming::Recipe {
+            bytes: &[10, 20, 30],
+            step: 0,
+            count,
+        },
+        ..recolour(&[])
+    };
+    assert!(run(&one(&scene), &undo(2), None).is_none());
+    assert!(run(&one(&scene), &undo(3), None).is_some());
+}
+
+// ---- Pages and refusals ----
+
+/// A hashed cel on tiles spread over three pages, one tile missing: cut
+/// into passes of one page or two, it puts what one pass puts.
+#[test]
+fn a_cel_on_many_pages_cut_into_passes_puts_what_one_puts() {
+    let cel = hashed_cel();
+    let cut = Verb {
+        threshold: 100,
+        incoming: Incoming::Value(&[255]),
+        ..clear()
+    };
+    let (whole, out) = run(&cel, &cut, None).expect("whole");
+    assert!(whole.tiles.len() == 5 && whole.runs.iter().all(|runs| runs.len() > 100));
+    for per_pass in [1, 2] {
+        let (cut_up, cut_out) = run(&cel, &cut, Some(per_pass)).expect("cut up");
+        assert_eq!(cut_up.runs, whole.runs, "{per_pass} a pass");
+        assert!(cut_out == out, "{per_pass} a pass");
+    }
+}
+
+/// Six tiles from (-2, -1), (0, 0) missing, on pages by column; each
+/// pixel hashed — a quarter empty with a colour under it, a quarter of
+/// one of four colours.
+fn hashed_cel() -> Cel {
+    let pixel = |x: i32, y: i32| {
+        let h = mix(x as u32 ^ mix(y as u32 ^ 0x5eed));
+        let colour = match h & 3 {
+            0 => [rgb(10, 20, 30), rgb(200, 10, 10), rgb(12, 18, 33), rgb(90, 90, 90)]
+                [(h >> 2 & 3) as usize],
+            _ => mix(h) & 0x00ff_ffff,
+        };
+        let alpha = match h >> 4 & 3 {
+            0 => 0,
+            1 => 255,
+            _ => h >> 24,
+        };
+        colour | alpha << 24
+    };
+    cel((-2, -1), (3, 2), pixel, |column, row| {
+        ((column, row) != (0, 0)).then_some(column.rem_euclid(3) as u16)
+    })
+}
+
+#[test]
+fn a_verb_the_pass_cannot_read_is_refused() {
+    let ink = one(&[((0, 0), INK | 255 << 24)]);
+    let channel = |bytes, base, stride| Verb {
+        channel: Channel {
+            bytes,
+            base,
+            stride,
+            takes_empty: false,
+        },
+        ..recolour(&[1, 2, 3])
+    };
+    for verb in [channel(0, 0, 1), channel(4, 0, 1), channel(3, 2, 1), channel(2, 3, 1)] {
+        assert!(run(&ink, &verb, None).is_none(), "{:?}", verb.channel);
+    }
+    let alpha = Verb {
+        incoming: Incoming::Value(&[0]),
+        ..channel(1, 3, 0)
+    };
+    assert!(run(&ink, &alpha, None).is_some());
+    assert!(run(&ink, &recolour(&[1, 2]), None).is_none());
+    let past = Verb {
+        threshold: 256,
+        ..clear()
+    };
+    assert!(run(&ink, &past, None).is_none());
+    let recipe = |threshold, bytes: &'static [u8]| Verb {
+        threshold,
+        incoming: Incoming::Recipe {
+            bytes,
+            step: 3,
+            count: 3,
+        },
+        ..recolour(&[])
+    };
+    assert!(run(&ink, &recipe(1, &[0; 9]), None).is_none());
+    assert!(run(&ink, &recipe(0, &[0; 8]), None).is_none());
+    assert!(run(&ink, &recipe(0, &[0; 9]), None).is_some());
+}
+
+#[test]
+fn a_cel_past_its_pool_or_its_size_is_refused() {
+    let Rig { engine, pass } = rig();
+    let ink = one(&[((0, 0), INK | 255 << 24)]);
+    let pages = ink.pool.upload(engine);
+    let verb = recolour(&[1, 2, 3]);
+    assert!(pass.run(engine, &pages[..0], &ink.set, &verb).is_none());
+    // Two columns of one row, holding one tile.
+    let short = TileSet {
+        x0: 0,
+        y0: 0,
+        columns: 2,
+        rows: 1,
+        tiles: ink.set.tiles.clone(),
+    };
+    assert!(pass.run(engine, &pages, &short, &verb).is_none());
+    assert!(pass.run_by(engine, &pages, &ink.set, &verb, 0).is_none());
+}
+
+// ---- The ledger ----
+
+/// The hashed cel through 색 변환, 색 삭제 within 40 of one of its colours,
+/// and 2치화 at 100.
+#[test]
+fn every_device_puts_the_pinned_verbs() {
+    let cel = hashed_cel();
+    let key = tables([10, 20, 30], 40);
+    let verbs = [
+        recolour(&[1, 2, 3]),
+        Verb {
+            selector: Some(selector(&key, false)),
+            ..clear()
+        },
+        Verb {
+            threshold: 100,
+            incoming: Incoming::Value(&[255]),
+            ..clear()
+        },
+    ];
+    let mut bytes = Vec::new();
+    for verb in &verbs {
+        let (passed, out) = run(&cel, verb, None).expect("run");
+        let runs = passed.runs.iter().flatten().flat_map(|&(value, length)| [value, length]);
+        bytes.extend(out.into_iter().chain(runs).flat_map(u32::to_le_bytes));
+    }
+    assert_pinned("cel_pixel/verbs", &bytes);
+}

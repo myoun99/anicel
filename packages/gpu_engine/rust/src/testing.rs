@@ -1,6 +1,6 @@
 //! What the GPU tests share.
 
-use std::sync::{OnceLock, mpsc};
+use std::sync::OnceLock;
 
 use crate::device::Engine;
 use crate::{fingerprint, platform};
@@ -23,28 +23,11 @@ pub fn first_engine() -> &'static Engine {
     })
 }
 
-/// `buffer`'s bytes once the GPU is done with all that was submitted. The
-/// buffer is `COPY_SRC`. Blend's and the composite's tests each read one
-/// back the same way, the export's tests a third, so the hand is here.
+/// `buffer`'s bytes once the GPU is done with all that was submitted — the
+/// engine's own read-back (`Engine::read_buffer`), which the cel pixel pass
+/// hands the app its runs by. The buffer is `COPY_SRC`.
 pub fn read_buffer(engine: &Engine, buffer: &wgpu::Buffer) -> Vec<u8> {
-    let readback = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("test readback"),
-        size: buffer.size(),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    encoder.copy_buffer_to_buffer(buffer, 0, &readback, 0, buffer.size());
-    engine.queue.submit([encoder.finish()]);
-    let (sender, receiver) = mpsc::channel();
-    readback.map_async(wgpu::MapMode::Read, .., move |result| {
-        let _ = sender.send(result);
-    });
-    engine.wait().expect("wait for the GPU");
-    receiver.recv().expect("map_async answered").expect("map");
-    readback.get_mapped_range(..).expect("mapped range").to_vec()
+    engine.read_buffer(buffer).expect("read back")
 }
 
 /// Fails unless `bytes` are the ones the ledger pinned as `id`.

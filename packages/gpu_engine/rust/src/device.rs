@@ -76,12 +76,7 @@ impl Engine {
         let row = texture.width() * texel;
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let padded = row.div_ceil(align) * align;
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("readback"),
-            size: u64::from(padded) * u64::from(texture.height()),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let buffer = self.readback(u64::from(padded) * u64::from(texture.height()));
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -98,6 +93,42 @@ impl Engine {
             texture.size(),
         );
         self.queue.submit([encoder.finish()]);
+        let mapped = self.mapped(&buffer)?;
+        Some(
+            mapped
+                .chunks(padded as usize)
+                .flat_map(|line| &line[..row as usize])
+                .copied()
+                .collect(),
+        )
+    }
+
+    /// The bytes of `buffer` — `COPY_SRC` — once the GPU is done with all
+    /// that was submitted: what a verb hands back to the app (the cel pixel
+    /// pass's counts and runs) and what the tests read.
+    pub(crate) fn read_buffer(&self, buffer: &wgpu::Buffer) -> Option<Vec<u8>> {
+        let readback = self.readback(buffer.size());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_buffer_to_buffer(buffer, 0, &readback, 0, buffer.size());
+        self.queue.submit([encoder.finish()]);
+        self.mapped(&readback)
+    }
+
+    /// A buffer of `size` bytes a copy puts and the CPU maps.
+    fn readback(&self, size: u64) -> wgpu::Buffer {
+        self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback"),
+            size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        })
+    }
+
+    /// `buffer`'s bytes, mapped once the GPU is done with all that was
+    /// submitted.
+    fn mapped(&self, buffer: &wgpu::Buffer) -> Option<Vec<u8>> {
         let (sender, receiver) = mpsc::channel();
         buffer.map_async(wgpu::MapMode::Read, .., move |result| {
             let _ = sender.send(result);
@@ -108,17 +139,10 @@ impl Engine {
             Ok(Err(error)) => return fail(format!("map_async: {error}")),
             Err(error) => return fail(format!("map_async never answered: {error}")),
         }
-        let mapped = match buffer.get_mapped_range(..) {
-            Ok(view) => view,
-            Err(error) => return fail(format!("get_mapped_range: {error}")),
-        };
-        Some(
-            mapped
-                .chunks(padded as usize)
-                .flat_map(|line| &line[..row as usize])
-                .copied()
-                .collect(),
-        )
+        match buffer.get_mapped_range(..) {
+            Ok(view) => Some(view.to_vec()),
+            Err(error) => fail(format!("get_mapped_range: {error}")),
+        }
     }
 }
 
