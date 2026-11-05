@@ -171,6 +171,29 @@ fn a_nested_selection_folds_as_one_operand() {
         nested(Subtract, vec![shape(Replace, whole()), nested(Subtract, vec![shape(Add, b())])]),
     ];
     assert_eq!(drawn(&twice, (0, 0), 6, 3), ["......", "..####", "..####"]);
+    let side_by_side = [
+        nested(Replace, vec![shape(Replace, a())]),
+        nested(Intersect, vec![shape(Add, b())]),
+    ];
+    assert_eq!(drawn(&side_by_side, (0, 0), 6, 3), ["......", "..##..", "......"]);
+}
+
+/// A ring of no points selects nothing, as no edge crosses a row.
+#[test]
+fn an_empty_ring_selects_nothing() {
+    let empty = [copies(Replace, vec![Vec::new()])];
+    assert_eq!(drawn(&empty, (0, 0), 3, 2), ["...", "..."]);
+}
+
+/// A crossing as far into the box as the reach allows: from the reach's
+/// left end to 3000.25, 35767 columns of the widest box.
+#[test]
+fn a_crossing_lies_as_far_into_the_box_as_the_reach() {
+    let wide = [shape(Replace, rect(-32767.0, 0.0, 3000.25, 1.0))];
+    let bytes = masked(&wide, (-32768, 0), 65536, 1).expect("the widest box");
+    assert_eq!(bytes[0], 0);
+    assert!(bytes[1..35768].iter().all(|&byte| byte == 255));
+    assert!(bytes[35768..].iter().all(|&byte| byte == 0));
 }
 
 /// Even-odd: a polygon wound twice round a square selects nothing, and a
