@@ -31,14 +31,15 @@ const FITS: u32 = 13;
 const SAMPLES: u32 = 14;
 const SUBSAMPLE: u32 = 15;
 
+/// The device and the compiled cases every test here runs on.
 struct Rig {
-    engine: Engine,
+    engine: &'static Engine,
     wide: wgpu::ComputePipeline,
     window: wgpu::ComputePipeline,
 }
 
-/// One device and one compile for the whole test process (blend's tests
-/// have the crash that taught it).
+/// One compile for the whole test process, on the tests' one device
+/// (blend's rig has the crash that taught both).
 fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
@@ -91,7 +92,7 @@ fn dispatch(
     groups: (u32, u32),
     words: usize,
 ) -> Vec<u32> {
-    let engine = &rig().engine;
+    let engine = rig().engine;
     let size = (words.max(1) * 4) as u64;
     let results = engine.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("shared results"),
