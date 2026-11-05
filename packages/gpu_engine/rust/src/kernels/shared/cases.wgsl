@@ -7,6 +7,9 @@
 // `run_window`: one job — the map's words, the source's size, the window's
 // size and where it sits in the whole output — over the pixels handed in.
 // `run_premultiply`: each of the pixels handed in, premultiplied.
+// `run_divide`: a case is eight words — n as four and d as two, low first,
+// the quotient's bits, and 1 where it rounds — and comes back as the
+// quotient's two.
 
 @group(0) @binding(0) var<storage, read> job: array<u32>;
 @group(0) @binding(1) var<storage, read> pixels: array<u32>;
@@ -151,6 +154,23 @@ fn run_window(@builtin(global_invocation_id) id: vec3<u32>) {
   let x = bitcast<i32>(job[MAP_WORDS + 4u]) + i32(id.x);
   let y = bitcast<i32>(job[MAP_WORDS + 5u]) + i32(id.y);
   results[id.y * columns + id.x] = resample(map, 0u, x, y);
+}
+
+@compute @workgroup_size(64)
+fn run_divide(@builtin(global_invocation_id) id: vec3<u32>) {
+  let i = id.x;
+  if (i * 2u >= arrayLength(&results)) {
+    return;
+  }
+  let at = i * 8u;
+  let n = Wide128(job[at], job[at + 1u], job[at + 2u], job[at + 3u]);
+  let d = Wide(job[at + 4u], job[at + 5u]);
+  var quotient = wide128_div(n, d, job[at + 6u]);
+  if (job[at + 7u] == 1u) {
+    quotient = wide128_divr(n, d, job[at + 6u]);
+  }
+  results[i * 2u] = quotient.x;
+  results[i * 2u + 1u] = quotient.y;
 }
 
 @compute @workgroup_size(64)

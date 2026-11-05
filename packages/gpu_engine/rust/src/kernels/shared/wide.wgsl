@@ -108,15 +108,14 @@ fn wide_mul_i32(a: i32, b: i32) -> Wide {
   return select(product, wide_neg(product), (a < 0) != (b < 0));
 }
 
+fn wide128_add(a: Wide128, b: Wide128) -> Wide128 {
+  let low = wide_add(a.xy, b.xy);
+  let carry = select(0u, 1u, wide_below(low, a.xy));
+  return Wide128(low, wide_add(wide_add(a.zw, b.zw), Wide(carry, 0u)));
+}
+
 fn wide128_neg(p: Wide128) -> Wide128 {
-  let n = ~p;
-  let w0 = n.x + 1u;
-  var carry = select(0u, 1u, w0 == 0u);
-  let w1 = n.y + carry;
-  carry = select(0u, 1u, carry == 1u && w1 == 0u);
-  let w2 = n.z + carry;
-  carry = select(0u, 1u, carry == 1u && w2 == 0u);
-  return Wide128(w0, w1, w2, n.w + carry);
+  return wide128_add(~p, Wide128(1u, 0u, 0u, 0u));
 }
 
 // The exact product of two i64: the magnitudes' four u32 products summed
@@ -170,14 +169,7 @@ fn wide128_shr(p: Wide128, k: u32) -> Wide128 {
 // rnd(p, k) of a 128-bit value, 1 <= k < 64.
 fn wide128_round(p: Wide128, k: u32) -> Wide128 {
   let half = wide_shl(Wide(1u, 0u), k - 1u);
-  let w0 = p.x + half.x;
-  let c0 = select(0u, 1u, w0 < p.x);
-  let s1 = p.y + half.y;
-  let w1 = s1 + c0;
-  let c1 = select(0u, 1u, s1 < p.y) + select(0u, 1u, w1 < s1);
-  let w2 = p.z + c1;
-  let c2 = select(0u, 1u, w2 < p.z);
-  return wide128_shr(Wide128(w0, w1, w2, p.w + c2), k);
+  return wide128_shr(wide128_add(p, Wide128(half, 0u, 0u)), k);
 }
 
 // Whether p is an i64 — the high words only repeat its sign.
@@ -186,44 +178,54 @@ fn wide128_fits(p: Wide128) -> bool {
   return p.z == sign && p.w == sign;
 }
 
-// ⌊2^e / d⌋ for d > 0, one quotient bit at a time; the quotient must fit
-// in 63 bits. The rest stays below d, so doubling it never overflows.
-fn wide_pow2_over(e: u32, d: Wide) -> Wide {
-  var rest = Wide(0u, 0u);
+// ⌊n / d⌋ for n >= 0 and 0 < d < 2^63, when the quotient is below 2^bits
+// (1 <= bits <= 64) — restoring division, n's low `bits` bits shifted in
+// one at a time under n >> bits: the rest stays below d, so every step is
+// on two words whatever n's width. ⛔THE ONE LONG DIVISION (CLAUDE.md
+// 절대명령 1): ⌊2^e / d⌋'s and a 64-bit dividend's were two walks of their
+// own until the lens blur's mean, a 128-bit dividend, made the third
+// (11-05) — every division below is this one.
+fn wide128_div(n: Wide128, d: Wide, bits: u32) -> Wide {
+  var rest = n.zw;
+  if (bits < 64u) {
+    rest = wide128_shr(n, bits).xy;
+  }
   var quotient = Wide(0u, 0u);
-  for (var bit = i32(e); bit >= 0; bit = bit - 1) {
+  for (var k = bits; k > 0u; k = k - 1u) {
+    let at = k - 1u;
     rest = wide_shl(rest, 1u);
-    if (u32(bit) == e) {
-      rest.x = rest.x | 1u;
-    }
+    rest.x = rest.x | ((n[at / 32u] >> (at % 32u)) & 1u);
     if (!wide_below(rest, d)) {
       rest = wide_sub(rest, d);
-      quotient = wide_add(quotient, wide_shl(Wide(1u, 0u), u32(bit)));
+      quotient[at / 32u] = quotient[at / 32u] | (1u << (at % 32u));
     }
   }
   return quotient;
 }
 
-// ⌊n / d⌋ for n >= 0 and d > 0, when the quotient is below 2^bits and
-// d · 2^(bits-1) fits in 64 bits — restoring division, one quotient bit at
-// a time.
+// divr(n, d) = ⌊(2n + d) / (2d)⌋ for n >= 0 and 0 < d < 2^62, when the
+// quotient is below 2^bits.
+fn wide128_divr(n: Wide128, d: Wide, bits: u32) -> Wide {
+  return wide128_div(wide128_add(wide128_add(n, n), Wide128(d, 0u, 0u)), wide_shl(d, 1u), bits);
+}
+
+// ⌊2^e / d⌋ for 0 < d < 2^63 and e < 128, when the quotient fits in 63 bits.
+fn wide_pow2_over(e: u32, d: Wide) -> Wide {
+  var power = Wide128(0u, 0u, 0u, 0u);
+  power[e / 32u] = 1u << (e % 32u);
+  return wide128_div(power, d, 64u);
+}
+
+// ⌊n / d⌋ of an unsigned n, 0 < d < 2^63, when the quotient is below 2^bits
+// (bits <= 32).
 fn wide_div_floor(n: Wide, d: Wide, bits: u32) -> u32 {
-  var rest = n;
-  var quotient = 0u;
-  for (var k = i32(bits) - 1; k >= 0; k = k - 1) {
-    let step = wide_shl(d, u32(k));
-    if (!wide_below(rest, step)) {
-      rest = wide_sub(rest, step);
-      quotient = quotient | (1u << u32(k));
-    }
-  }
-  return quotient;
+  return wide128_div(Wide128(n, 0u, 0u), d, bits).x;
 }
 
-// divr(n, d) = ⌊(2n + d) / (2d)⌋ for n >= 0 and d > 0, when the quotient is
-// below 2^bits and 2d · 2^(bits-1) fits in 64 bits.
+// divr(n, d) of an unsigned n, 0 < d < 2^62, when the quotient is below
+// 2^bits (bits <= 32).
 fn wide_divr(n: Wide, d: Wide, bits: u32) -> u32 {
-  return wide_div_floor(wide_add(wide_shl(n, 1u), d), wide_shl(d, 1u), bits);
+  return wide128_divr(Wide128(n, 0u, 0u), d, bits).x;
 }
 
 // ⌊√n⌋ for 0 <= n < 2^62, digit by digit from 2^60, the top digit such an

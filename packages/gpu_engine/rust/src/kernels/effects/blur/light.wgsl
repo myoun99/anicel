@@ -9,9 +9,11 @@
 // t · tint: t = luma · gain · (luma − threshold), tint its own colour over
 // the luma by the saturation and white by the rest — as bright as each
 // other. Then premultiplied, which past 65535 a boosted channel may be:
-// the sums are wide.
+// the sums are wide. And back (`light_stored`): what the blur gathered, as
+// a picture stores it — ⛔both ways here, lens_light.glsl's ONE COPY: a
+// pixel read one way and stored another would seam.
 //
-// Needs shared/wide.wgsl and blend/blend.wgsl before it.
+// Needs shared/wide.wgsl, blend/blend.wgsl and held.wgsl.
 
 // sRGB's curve to linear light, round(65535 · c(byte / 255)), worked out
 // once (no libm here) — gpu-int-spec-canvas 1b (4/4) ①: a table in the
@@ -61,6 +63,13 @@ struct Light {
   linear: u32,
 }
 
+// Rec. 709's luma of a colour, its weights summing to 2^16 — on the 16-bit
+// scale or on bytes alike: the light's, and a blur map's where it reads one
+// (iris_gather.wgsl). At most 65536 · 65535 + 2^15: a u32.
+fn light_luma(colour: vec3<u32>) -> u32 {
+  return (13933u * colour.x + 46871u * colour.y + 4732u * colour.z + 32768u) >> 16u;
+}
+
 // A stored word as the lens blur sums it: premultiplied on the 16-bit
 // scale, a boosted channel up to 101 times 65535.
 fn light_read(word: u32, light: Light) -> vec4<u32> {
@@ -79,8 +88,7 @@ fn light_read(word: u32, light: Light) -> vec4<u32> {
       LIGHT_LINEAR[(word >> 16u) & 0xffu],
     );
   }
-  // At most 65536 · 65535 + 2^15: a u32.
-  let luma = (13933u * colour.x + 46871u * colour.y + 4732u * colour.z + 32768u) >> 16u;
+  let luma = light_luma(colour);
   var lit = colour;
   // No gain or no luma past the threshold boosts by nothing, as the sums
   // below would also say — they are skipped, not changed (so `>=` here
@@ -108,4 +116,45 @@ fn light_read(word: u32, light: Light) -> vec4<u32> {
     }
   }
   return premultiplied;
+}
+
+// What a lens blur gathered — premultiplied on the 16-bit scale, a boosted
+// channel past 65535 — as a picture stores it: no brighter than white, no
+// colour past its alpha. ⚠️LIGHT PAST ITS ALPHA COVERS (🗣️I-132-Q20 a,
+// 유저 2026-10-28): the alpha rises to the brightest channel, so a lamp's
+// bokeh shows over a clear cel as over a dark one. A gather of no boost
+// holds no channel past its alpha, and is stored as every blur stores it
+// (held_stored); in linear light each straight channel is put back through
+// sRGB's curve.
+fn light_stored(gathered: vec4<u32>, light: Light) -> u32 {
+  let brightest = max(gathered.x, max(gathered.y, gathered.z));
+  let alpha = min(max(gathered.w, brightest), 65535u);
+  let covered = vec4<u32>(min(gathered.xyz, vec3<u32>(alpha)), alpha);
+  if (light.linear == 0u) {
+    return held_stored(covered);
+  }
+  let byte = blend_to8(alpha);
+  if (byte == 0u) {
+    return 0u;
+  }
+  var word = byte << 24u;
+  for (var c = 0u; c < 3u; c++) {
+    let straight = wide_divr(wide_mul_u32(covered[c], 65535u), Wide(alpha, 0u), 16u);
+    word = word | (light_encoded(straight) << (c * 8u));
+  }
+  return word;
+}
+
+// The byte whose LIGHT_LINEAR lies nearest `straight`, a tie going up: how
+// many of the midpoints between the table's neighbours lie at or below it,
+// found a bit at a time — the table read back, no second one.
+fn light_encoded(straight: u32) -> u32 {
+  var byte = 0u;
+  for (var step = 128u; step > 0u; step = step >> 1u) {
+    let next = byte + step;
+    if (next <= 255u && (LIGHT_LINEAR[next - 1u] + LIGHT_LINEAR[next] + 1u) >> 1u <= straight) {
+      byte = next;
+    }
+  }
+  return byte;
 }

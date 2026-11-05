@@ -74,15 +74,18 @@ impl Laid {
 fn laid(iris: Iris, radius: f64, focus: Option<Focus>) -> Option<Laid> {
     let Rig { engine, table } = rig();
     let out = table.run(engine, iris, radius, focus)?;
-    let words = read_buffer(engine, &out)
+    let words = read_buffer(engine, &out.table)
         .chunks_exact(4)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
         .collect();
-    Some(Laid {
+    let laid = Laid {
         reach: radius.floor() as i32,
         levels: if focus.is_some() { 256 } else { 1 },
         words,
-    })
+    };
+    let said = (laid.reach as u32, laid.rows() as u32, laid.levels as u32);
+    assert_eq!((out.reach, out.rows, out.levels), said);
+    Some(laid)
 }
 
 /// An iris turned by `rotation` (clockwise), each turn the host's cosine

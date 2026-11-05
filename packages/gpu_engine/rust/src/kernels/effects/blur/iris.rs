@@ -77,11 +77,13 @@ pub(crate) struct Focus {
     pub(crate) inverts: bool,
 }
 
-/// The words a table is laid by: its pass's, its sides' and its shapes'.
+/// The words a table is laid by — its pass's, its sides' and its shapes' —
+/// and its reach, rows and levels.
 struct Words {
     pass: Vec<u32>,
     sides: Vec<u32>,
     shapes: Vec<u32>,
+    reach: u32,
     rows: u32,
     levels: u32,
 }
@@ -167,6 +169,7 @@ impl Iris {
             pass,
             sides,
             shapes,
+            reach,
             rows,
             levels,
         })
@@ -202,6 +205,15 @@ impl Iris {
     }
 }
 
+/// A table laid, and what it is read by: its rows either way of a pixel,
+/// all its rows, and its levels.
+pub(crate) struct IrisLaid {
+    pub(crate) table: wgpu::Buffer,
+    pub(crate) reach: u32,
+    pub(crate) rows: u32,
+    pub(crate) levels: u32,
+}
+
 /// The table's two passes, compiled once.
 pub(crate) struct IrisTable {
     rows: wgpu::ComputePipeline,
@@ -229,7 +241,7 @@ impl IrisTable {
         iris: Iris,
         radius: f64,
         focus: Option<Focus>,
-    ) -> Option<wgpu::Buffer> {
+    ) -> Option<IrisLaid> {
         let Some(words) = iris.words(radius, focus) else {
             return fail(format!(
                 "{iris:?} {radius} out, {focus:?}, is past what an iris takes"
@@ -261,6 +273,11 @@ impl IrisTable {
                 },
             ],
         );
-        Some(table)
+        Some(IrisLaid {
+            table,
+            reach: words.reach,
+            rows: words.rows,
+            levels: words.levels,
+        })
     }
 }

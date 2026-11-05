@@ -44,6 +44,7 @@ struct Rig {
     wide: wgpu::ComputePipeline,
     window: wgpu::ComputePipeline,
     premultiply: wgpu::ComputePipeline,
+    divide: wgpu::ComputePipeline,
 }
 
 /// One compile for the whole test process, on the tests' one device
@@ -57,11 +58,13 @@ fn rig() -> &'static Rig {
         let wide = pipeline("run_wide");
         let window = pipeline("run_window");
         let premultiply = pipeline("run_premultiply");
+        let divide = pipeline("run_divide");
         Rig {
             engine,
             wide,
             window,
             premultiply,
+            divide,
         }
     })
 }
@@ -270,7 +273,7 @@ fn divisions_are_the_machines() {
     cases.push((POW2_OVER, 1 << 37, 0, 74));
     check(&cases, |d, _, e| (1i128 << e) / i128::from(d));
 
-    // divr(n, d) wherever its quotient and 2d · 2^(bits-1) fit.
+    // divr(n, d) of d below 2^62 wherever its quotient fits a word.
     let mut cases = Vec::new();
     for (&n, &d) in operands(4, 300).iter().zip(operands(5, 300).iter()) {
         let (n, d) = (n.unsigned_abs() >> 2, d.unsigned_abs() >> 2);
@@ -279,7 +282,7 @@ fn divisions_are_the_machines() {
         }
         let quotient = (2 * u128::from(n) + u128::from(d)) / (2 * u128::from(d));
         let bits = (128 - quotient.leading_zeros()).max(1);
-        if bits <= 32 && (2 * u128::from(d)) << (bits - 1) < 1 << 64 {
+        if bits <= 32 {
             cases.push((DIVR, n as i64, d as i64, bits));
         }
     }
@@ -288,8 +291,8 @@ fn divisions_are_the_machines() {
         i128::from(((2 * n as u128 + d as u128) / (2 * d as u128)) as u32)
     });
 
-    // ⌊n / d⌋ wherever its quotient and d · 2^(bits-1) fit — with bits
-    // just enough, and with seven to spare, as the iris table asks for 15.
+    // ⌊n / d⌋ of d below 2^63 wherever its quotient fits a word — with bits
+    // just enough, and with seven to spare, as the iris table asks for 14.
     let mut cases = Vec::new();
     for (&n, &d) in operands(6, 300).iter().zip(operands(7, 300).iter()) {
         let (n, d) = (n.unsigned_abs() >> 1, d.unsigned_abs() >> 1);
@@ -298,13 +301,62 @@ fn divisions_are_the_machines() {
         }
         let least = (64 - (n / d).leading_zeros()).max(1);
         for bits in [least, least + 7] {
-            if bits <= 32 && u128::from(d) << (bits - 1) < 1 << 64 {
+            if bits <= 32 {
                 cases.push((DIV_FLOOR, n as i64, d as i64, bits));
             }
         }
     }
     assert!(cases.len() > 100, "{} floor division cases", cases.len());
     check(&cases, |n, d, _| i128::from(n / d));
+}
+
+/// Runs each `(n, d, bits, rounded)` through wide128_div — wide128_divr
+/// where it rounds — and returns the quotients.
+fn divide(cases: &[(u128, u64, u32, bool)]) -> Vec<u64> {
+    let Rig { engine, divide, .. } = rig();
+    let words: Vec<u32> = cases
+        .iter()
+        .flat_map(|&(n, d, bits, rounded)| {
+            let n = [0, 32, 64, 96].map(|at| (n >> at) as u32);
+            [n[0], n[1], n[2], n[3], d as u32, (d >> 32) as u32, bits, u32::from(rounded)]
+        })
+        .collect();
+    let job = storage(engine, &words);
+    let groups = (cases.len() as u32).div_ceil(64);
+    dispatch(divide, &[(0, &job)], (groups, 1), cases.len() * 2)
+        .chunks_exact(2)
+        .map(|w| u64::from(w[0]) | u64::from(w[1]) << 32)
+        .collect()
+}
+
+/// The one long division on a 128-bit dividend: n = q·d + r, r below d,
+/// for quotients of every width to 64 bits, and divr of each that rounds
+/// within its bits — and the lens blur's own, a sum past 2^64 over a weight
+/// near 2^44.
+#[test]
+fn a_wide_dividend_divides_as_the_machine_does() {
+    let mut cases = vec![((1 << 67) - 12_345, (1 << 44) + 3, 24, true)];
+    let triples = operands(9, 160).into_iter().zip(operands(10, 160)).zip(operands(11, 160));
+    for (i, ((d, q), r)) in triples.enumerate() {
+        let d = d.unsigned_abs() >> 1;
+        if d == 0 {
+            continue;
+        }
+        let bits = (i % 64) as u32 + 1;
+        let q = u128::from(q as u64) & ((1 << bits) - 1);
+        let n = q * u128::from(d) + u128::from(r.unsigned_abs() % d);
+        cases.push((n, d, bits, false));
+        let rounded = (2 * n + u128::from(d)) / (2 * u128::from(d));
+        if d < 1 << 62 && rounded < 1 << bits {
+            cases.push((n, d, bits, true));
+        }
+    }
+    assert!(cases.len() > 200, "{} cases", cases.len());
+    for (&(n, d, bits, rounded), got) in cases.iter().zip(divide(&cases)) {
+        let d = u128::from(d);
+        let want = if rounded { (2 * n + d) / (2 * d) } else { n / d };
+        assert_eq!(u128::from(got), want, "n {n} d {d} bits {bits} rounded {rounded}");
+    }
 }
 
 #[test]
