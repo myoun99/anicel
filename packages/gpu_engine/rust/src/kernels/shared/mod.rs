@@ -5,7 +5,23 @@
 //!
 //! A kernel prepends the files it uses, each once, in the order their
 //! heads ask — a function prepended twice does not compile, so a second
-//! copy has nowhere to hide. Each is pinned through its users' tests.
+//! copy has nowhere to hide. Each is pinned through its users' tests, or
+//! here in `tests.rs` while a user reaches only part of it.
+
+// ⏳R1 has no caller outside the tests until the executor's rows and the
+// canvas's transforms take it (gpu-canonical-store 14:51).
+#![cfg_attr(not(test), allow(dead_code, unused_imports))]
+
+mod resample;
+#[cfg(test)]
+mod tests;
+
+pub(crate) use resample::{ResampleMap, ResampleMode};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.
 pub(crate) const ISQRT_WGSL: &str = include_str!("isqrt.wgsl");
+/// Signed 64- and 128-bit integers on u32 words.
+pub(crate) const WIDE_WGSL: &str = include_str!("wide.wgsl");
+/// R1, the integer resample — after [`WIDE_WGSL`]; its host defines
+/// `resample_texel`.
+pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
