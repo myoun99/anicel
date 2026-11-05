@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use wgpu::util::DeviceExt;
 
 use super::BLEND_WGSL;
+use super::mode::NORMAL;
 use crate::device::Engine;
 use crate::kernels::shared::{ISQRT_WGSL, pipeline};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -20,8 +21,6 @@ const SQRT: u32 = 104;
 const ATOP: u32 = 105;
 const PACK: u32 = 106;
 const UNPACK: u32 = 107;
-
-const NORMAL: u32 = 28;
 
 /// Every mode of blend.wgsl's table, with the name its ledger row carries.
 const MODES: [(u32, &str); 29] = [

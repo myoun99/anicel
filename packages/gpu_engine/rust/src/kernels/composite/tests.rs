@@ -10,17 +10,12 @@ use super::{
     TileSet, check_depth, cut,
 };
 use crate::device::Engine;
+use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN};
 use crate::kernels::effects::KeyRun;
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
-const NORMAL: u32 = 28;
-const MULTIPLY: u32 = 3;
-const SCREEN: u32 = 6;
-const OVERLAY: u32 = 8;
-const DIFFERENCE: u32 = 11;
-const LINEAR_BURN: u32 = 13;
 const WHOLE: u32 = 65535;
 /// An output with no edge: every pixel of every output tile as it is.
 const EVERYWHERE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];

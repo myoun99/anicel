@@ -329,6 +329,13 @@ fn blend_over_alpha(numerator: u32, alpha: u32) -> u32 {
   return min((numerator + alpha / 2u) / alpha, W_ONE);
 }
 
+// The alpha out of a_s laid over a_d: as + ad(1-as) — every composite's,
+// behind's with the two the other way, and what a second tip's dab piles
+// its plane by (dab.wgsl).
+fn blend_alpha_over(a_s: u32, a_d: u32) -> u32 {
+  return a_s + blend_mul(a_d, W_ONE - a_s);
+}
+
 // src over dst in `mode` — the W3C composite on straight alpha:
 // (as(1-ad)·cs + ad(1-as)·cd + as·ad·B) / ao, ao = as + ad(1-as). The
 // third weight is taken as as - as(1-ad), so the three sum to ao with no
@@ -342,7 +349,7 @@ fn blend_composite(mode: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
   if (mode == BLEND_BEHIND) {
     // dst over src: the destination's own weight is ad, the source's the
     // rest of the alpha out.
-    let a_o = a_d + blend_mul(a_s, W_ONE - a_d);
+    let a_o = blend_alpha_over(a_d, a_s);
     if (a_o == 0u) {
       return vec4<u32>(0u);
     }
@@ -354,8 +361,8 @@ fn blend_composite(mode: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
       a_o,
     );
   }
-  let under = blend_mul(a_d, W_ONE - a_s);
-  let a_o = a_s + under;
+  let a_o = blend_alpha_over(a_s, a_d);
+  let under = a_o - a_s;
   if (a_o == 0u) {
     return vec4<u32>(0u);
   }

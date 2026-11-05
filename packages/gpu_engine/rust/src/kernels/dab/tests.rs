@@ -2,7 +2,8 @@
 //! what the formula gives by hand — never against a CPU copy of it
 //! (`kernels/mod.rs` has why).
 
-use super::{Dab, Dabs, Edge, Paper, RoundProfile, Shape, StrokeTile, Texture, Turn};
+use super::{Dab, Dabs, Edge, Paper, RoundProfile, Second, Shape, StrokeTile, Texture, Turn};
+use crate::kernels::blend::mode::{GLOW_ADD, MULTIPLY, OVERLAY, SCREEN, SUBTRACT};
 use crate::kernels::composite::TILE_TEXELS;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
@@ -10,10 +11,11 @@ const ONE: u32 = 65535;
 const RED: [u8; 4] = [200, 100, 50, 255];
 
 /// What a stroke's tiles hold after a pile: each pixel's plane as four
-/// channels, and its byte word.
+/// channels, its byte word, and its second plane where it has one.
 struct Piled {
     planes: Vec<[u32; 4]>,
     view: Vec<u32>,
+    levels: Vec<u32>,
 }
 
 impl Piled {
@@ -22,45 +24,56 @@ impl Piled {
         let texel = slot * TILE_TEXELS as usize + y * 128 + x;
         (self.planes[texel], self.view[texel])
     }
+
+    /// The second plane at pixel (x, y) of the tile in slot `slot`.
+    fn level(&self, slot: usize, x: usize, y: usize) -> u32 {
+        self.levels[slot * TILE_TEXELS as usize + y * 128 + x]
+    }
 }
 
-/// `dabs` piled by `kernel` over `paper` on `tiles` (slots in their order)
-/// whose planes start as `under`, every pixel of every tile — or nothing,
-/// where the kernel refuses them.
-fn laid(
+/// A test stroke's second tip: the mode and density it is shown by, and
+/// the level its plane starts at, every pixel.
+struct Dual {
+    mode: u32,
+    density: f64,
+    level: u32,
+}
+
+/// `dabs` piled by `kernel` over `paper`, with the `second` tip where there
+/// is one, on `tiles` (slots in their order) whose planes start as `under`,
+/// every pixel of every tile — or nothing, where the kernel refuses them.
+fn pile_on(
     kernel: &mut Dabs,
     tiles: &[(i32, i32)],
     under: [u32; 4],
     paper: Option<&Paper>,
+    second: Option<&Dual>,
     dabs: &[Dab],
 ) -> Option<Piled> {
     let engine = first_engine();
     let texels = tiles.len() * TILE_TEXELS as usize;
-    let words: Vec<u8> = (0..texels)
-        .flat_map(|_| [under[0] | under[1] << 16, under[2] | under[3] << 16])
-        .flat_map(u32::to_le_bytes)
-        .collect();
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    let planes = wgpu::util::DeviceExt::create_buffer_init(
-        &engine.device,
-        &wgpu::util::BufferInitDescriptor {
-            label: Some("test planes"),
-            contents: &words,
-            usage,
-        },
-    );
-    let view = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("test view"),
-        size: texels as u64 * 4,
-        usage,
-        mapped_at_creation: false,
+    let filled = |label, words: Vec<u32>| {
+        let contents: Vec<u8> = words.into_iter().flat_map(u32::to_le_bytes).collect();
+        let descriptor =
+            wgpu::util::BufferInitDescriptor { label: Some(label), contents: &contents, usage };
+        wgpu::util::DeviceExt::create_buffer_init(&engine.device, &descriptor)
+    };
+    let pair = [under[0] | under[1] << 16, under[2] | under[3] << 16];
+    let planes = filled("test planes", pair.repeat(texels));
+    let view = filled("test view", vec![0; texels]);
+    let plane = second.map(|dual| filled("test levels", vec![dual.level; texels]));
+    let second = second.zip(plane.as_ref()).map(|(dual, plane)| Second {
+        plane,
+        mode: dual.mode,
+        density: dual.density,
     });
     let stroke: Vec<StrokeTile> = tiles
         .iter()
         .enumerate()
         .map(|(slot, &(column, row))| StrokeTile { column, row, slot: slot as u32 })
         .collect();
-    kernel.pile(engine, &stroke, dabs, paper, &planes, &view)?;
+    kernel.pile(engine, &stroke, dabs, paper, second.as_ref(), &planes, &view)?;
     let words = |buffer: &wgpu::Buffer| -> Vec<u32> {
         read_buffer(engine, buffer)
             .chunks_exact(4)
@@ -71,7 +84,18 @@ fn laid(
         .chunks_exact(2)
         .map(|pair| [pair[0] & 0xffff, pair[0] >> 16, pair[1] & 0xffff, pair[1] >> 16])
         .collect();
-    Some(Piled { planes, view: words(&view) })
+    let levels = plane.as_ref().map_or(Vec::new(), |plane| words(plane));
+    Some(Piled { planes, view: words(&view), levels })
+}
+
+fn laid(
+    kernel: &mut Dabs,
+    tiles: &[(i32, i32)],
+    under: [u32; 4],
+    paper: Option<&Paper>,
+    dabs: &[Dab],
+) -> Option<Piled> {
+    pile_on(kernel, tiles, under, paper, None, dabs)
 }
 
 fn tried(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Option<Piled> {
@@ -80,6 +104,12 @@ fn tried(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Option<Piled> {
 
 fn piled(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Piled {
     tried(tiles, under, dabs).expect("pile")
+}
+
+/// `dabs` piled on one tile of nothing, the stroke's second tip `dual`.
+fn dual(dual: &Dual, dabs: &[Dab]) -> Piled {
+    let kernel = &mut Dabs::new(first_engine());
+    pile_on(kernel, &[(0, 0)], [0; 4], None, Some(dual), dabs).expect("pile")
 }
 
 /// A square dab of `colour` over `region` at full opacity and `flow`.
@@ -93,11 +123,17 @@ fn square(region: [i32; 4], colour: [u8; 4], flow: f64) -> Dab<'static> {
         edge: Edge::Contrast(1.0),
         edge_held: false,
         erase: false,
+        second: false,
         shape: Shape::Square,
         turn: Turn::STRAIGHT,
         evening: None,
-        density: 1.0,
+        density: Some(1.0),
     }
+}
+
+/// `dab` as the second tip's: no texture (`BrushSecondStroke`).
+fn second(dab: Dab) -> Dab {
+    Dab { second: true, density: None, ..dab }
 }
 
 fn word([red, green, blue, alpha]: [u32; 4]) -> u32 {
@@ -474,7 +510,7 @@ fn a_tip_past_what_the_integers_hold_is_refused() {
 /// A square dab of red at full flow over [-4, 0) to [4, 4), taking `density`
 /// of the paper.
 fn on_paper(density: f64) -> Dab<'static> {
-    Dab { density, ..square([-4, 0, 4, 4], RED, 1.0) }
+    Dab { density: Some(density), ..square([-4, 0, 4, 4], RED, 1.0) }
 }
 
 /// The alphas `dab` leaves over `paper` on pixels (0, 0), (1, 0), (0, 1)
@@ -616,6 +652,135 @@ fn a_dab_across_tiles_lays_each_its_part() {
     assert_eq!(piled.at(1, 3, 0), ([0; 4], 0));
 }
 
+/// A square of the second tip at `flow` over [0, 0) to (4, 4).
+fn second_square(flow: f64) -> Dab<'static> {
+    second(square([0, 0, 4, 4], [0, 0, 0, 255], flow))
+}
+
+// A second tip's dab piles on its own plane — flow ½ lays 32768 — and moves
+// no word of the first; where the first tip laid nothing, nothing shows,
+// whatever the mode (screen would show the level itself). An erasing
+// stroke's second tip piles all the same: it never erases. On a stroke
+// with no second plane it lays nothing.
+#[test]
+fn a_second_tips_dab_piles_its_own_plane_and_alone_shows_nothing() {
+    let screen = Dual { mode: SCREEN, density: 1.0, level: 0 };
+    for erase in [false, true] {
+        let piled = dual(&screen, &[Dab { erase, ..second_square(0.5) }]);
+        assert_eq!((piled.level(0, 1, 1), piled.at(0, 1, 1)), (32768, ([0; 4], 0)));
+        assert_eq!(piled.level(0, 4, 4), 0);
+    }
+    assert_eq!(piled(&[(0, 0)], [0; 4], &[second_square(0.5)]).at(0, 1, 1), ([0; 4], 0));
+}
+
+// Multiply, the default: the first tip's alpha times (1 − d) + d·level.
+// Red laid whole under a level of 32768 on the left shows round(32768/257)
+// = 128 at a density of 1, and nothing where the second laid nothing; at
+// ½, 32767 + 16384 = 49151, a byte of 191, and 32767, 127, beside it; at 0
+// the first tip alone. The planes are the first tip's whatever is shown.
+#[test]
+fn the_stroke_shows_its_first_tip_through_its_second() {
+    let dabs = [square([0, 0, 4, 4], RED, 1.0), second(square([0, 0, 2, 4], RED, 0.5))];
+    let shown = |density| {
+        let piled = dual(&Dual { mode: MULTIPLY, density, level: 0 }, &dabs);
+        assert_eq!(piled.at(0, 2, 0).0, widened(RED, ONE));
+        [0, 2].map(|x| piled.at(0, x, 0).1)
+    };
+    assert_eq!(shown(1.0), [word([200, 100, 50, 128]), 0]);
+    assert_eq!(shown(0.5), [word([200, 100, 50, 191]), word([200, 100, 50, 127])]);
+    assert_eq!(shown(0.0), [word([200, 100, 50, 255]); 2]);
+}
+
+// ⛔Multiply keeps its own line: red at flow 0.8, 52428, under a level of
+// 16384 at ½ shows 52428·(32767 + 8192)/65535 = 32767, a byte of 127. The
+// general form, 52428·32767/65535 + 32768·(16384·52428/65535)/65535, comes
+// to 32768 and 128.
+#[test]
+fn multiply_shows_by_its_own_line() {
+    let dabs = [square([0, 0, 4, 4], RED, 0.8), second_square(0.25)];
+    let piled = dual(&Dual { mode: MULTIPLY, density: 0.5, level: 0 }, &dabs);
+    assert_eq!(piled.at(0, 1, 1).1, word([200, 100, 50, 127]));
+}
+
+// The second tip is the source, the first the destination: subtract takes
+// the second from the first — 65535 − 16384 = 49151, 191, at a density of
+// 1, where the other way round would show nothing; at ½, 32767 + 24576 =
+// 57343, 223.
+#[test]
+fn the_second_tip_is_laid_over_the_first() {
+    let dabs = [square([0, 0, 4, 4], RED, 1.0), second_square(0.25)];
+    let shown = |density| dual(&Dual { mode: SUBTRACT, density, level: 0 }, &dabs).at(0, 1, 1).1;
+    assert_eq!(shown(1.0), word([200, 100, 50, 191]));
+    assert_eq!(shown(0.5), word([200, 100, 50, 223]));
+}
+
+// A pile carries on from what the planes hold: red laid whole over a level
+// of 32768 shows 128 with no dab at all, and a second tip's dab at ½ raises
+// the level to 32768 + 32768·32767/65535 = 49152, a byte of 191.
+#[test]
+fn a_pile_carries_on_from_the_planes_it_finds() {
+    let kernel = &mut Dabs::new(first_engine());
+    let red = widened(RED, ONE);
+    let at = Dual { mode: MULTIPLY, density: 1.0, level: 32768 };
+    let still = pile_on(kernel, &[(0, 0)], red, None, Some(&at), &[]).expect("pile");
+    assert_eq!(still.at(0, 5, 5), (red, word([200, 100, 50, 128])));
+    let piled = pile_on(kernel, &[(0, 0)], red, None, Some(&at), &[second_square(0.5)]);
+    let piled = piled.expect("pile");
+    assert_eq!((piled.level(0, 1, 1), piled.at(0, 1, 1).1), (49152, word([200, 100, 50, 191])));
+}
+
+// A second tip's dab takes no paper: on a paper of CORNERS its plane is
+// laid whole at pixel (1, 1), where the paper is 0 and the first tip's
+// dab, taking all of it, lays nothing — so nothing shows there. At (0, 0)
+// both lay whole, and the stroke shows red whole.
+#[test]
+fn a_second_tips_dab_takes_no_paper() {
+    let grain = texture(&CORNERS, 2);
+    let paper = Paper { texture: &grain, scale: 1.0, height: false };
+    let dabs = [on_paper(1.0), second(on_paper(1.0))];
+    let at = Dual { mode: MULTIPLY, density: 1.0, level: 0 };
+    let kernel = &mut Dabs::new(first_engine());
+    let piled = pile_on(kernel, &[(0, 0)], [0; 4], Some(&paper), Some(&at), &dabs);
+    let piled = piled.expect("pile");
+    assert_eq!((piled.level(0, 1, 1), piled.at(0, 1, 1)), (ONE, ([0; 4], 0)));
+    assert_eq!(piled.at(0, 0, 0).1, word([200, 100, 50, 255]));
+}
+
+// A mode that does not blend a channel alone has no way to show a level,
+// and is refused: behind (0), the six that mix the three channels (20 to
+// 25), and what is past the table. Add (1), divide (19), glow dodge (26)
+// and normal (28) blend one alone.
+#[test]
+fn a_second_tip_shown_by_a_mode_of_three_channels_is_refused() {
+    let shown = |mode| {
+        let at = Dual { mode, density: 1.0, level: 0 };
+        let kernel = &mut Dabs::new(first_engine());
+        pile_on(kernel, &[(0, 0)], [0; 4], None, Some(&at), &[]).is_some()
+    };
+    assert_eq!([0, 20, 25, 29].map(shown), [false; 4]);
+    assert_eq!([1, 19, 26, 28].map(shown), [true; 4]);
+}
+
+// The order the two tips' dabs come in moves no byte: each plane piles its
+// own tip's dabs in their order, and the view is the two planes'.
+#[test]
+fn the_two_tips_dabs_land_in_any_order_between_them() {
+    let (coverage, pile, inner) = soft(9.0, 0.3);
+    let profile = radial(&coverage, &pile, 9.5, inner);
+    let bristle = texture(&bristles(), 32);
+    let firsts = || along(&profile, 8, |_, dab| dab.flow = 0.4);
+    let seconds = || (0..8).map(|k| second(tipped(&bristle, 6.0, turn_of(k), on_curve(k))));
+    let grouped: Vec<Dab> = firsts().into_iter().chain(seconds()).collect();
+    let woven: Vec<Dab> = seconds().zip(firsts()).flat_map(|(s, f)| [s, f]).collect();
+    let at = Dual { mode: OVERLAY, density: 0.7, level: 0 };
+    let tiles = [(0, 0), (1, 0)];
+    let kernel = &mut Dabs::new(first_engine());
+    let one = pile_on(kernel, &tiles, [0; 4], None, Some(&at), &grouped).expect("pile");
+    let other = pile_on(kernel, &tiles, [0; 4], None, Some(&at), &woven).expect("pile");
+    assert!(one.levels.iter().any(|&level| level != 0));
+    assert_eq!((one.planes, one.levels, one.view), (other.planes, other.levels, other.view));
+}
+
 /// A soft round tip of `radius` under `hardness`, filled the way
 /// `RoundTipProfile` fills its tables: 16 entries a pixel, two past the
 /// reach; 1 to the inner radius and falling from there to nothing at the
@@ -743,11 +908,12 @@ fn every_device_piles_the_pinned_strokes() {
         dab.edge_held = true;
         dab.opacity = 0.7;
     };
+    let painted = |k, dab: &mut Dab| {
+        dab.flow = 0.35;
+        dab.colour = if k % 2 == 0 { RED } else { blue };
+    };
     let strokes: Vec<(&str, Vec<Dab>)> = vec![
-        ("soft", along(&profile, 24, |k, dab| {
-            dab.flow = 0.35;
-            dab.colour = if k % 2 == 0 { RED } else { blue };
-        })),
+        ("soft", along(&profile, 24, painted)),
         ("held", along(&profile, 24, |k, dab| {
             dab.edge_held = true;
             dab.opacity = 0.4 + f64::from(k % 5) * 0.15;
@@ -792,7 +958,7 @@ fn every_device_piles_the_pinned_strokes() {
             dab.flow = 0.5;
             dab.edge_held = true;
             dab.opacity = 0.8;
-            dab.density = 0.3 + f64::from(k % 4) * 0.2;
+            dab.density = Some(0.3 + f64::from(k % 4) * 0.2);
             dab.centre = dab.centre.map(|c| c - 128.0);
             dab.region = dab.region.map(|edge| edge - 128);
         });
@@ -801,5 +967,36 @@ fn every_device_piles_the_pinned_strokes() {
         let (planes, view) = bytes(&piled);
         assert_pinned(&format!("dab/{name}-planes"), &planes);
         assert_pinned(&format!("dab/{name}-view"), &view);
+    }
+    // The soft stroke with a second tip as BrushSecondStroke lays one: the
+    // bristle tip along the same curve, whole, each of its dabs after the
+    // first's. The first plane is the soft stroke's own; its second, and the
+    // view of the two by multiply, the default, by subtract, which takes the
+    // order, and by add (glow), whose B saturates.
+    let soft = piled(&tiles, [0; 4], &along(&profile, 24, painted));
+    let views = [
+        ("dual", MULTIPLY, 0.8),
+        ("dual-subtract", SUBTRACT, 0.6),
+        ("dual-glow-add", GLOW_ADD, 0.5),
+    ];
+    for (name, mode, density) in views {
+        let woven: Vec<Dab> = along(&profile, 24, painted)
+            .into_iter()
+            .zip(0..24)
+            .flat_map(|(first, k)| {
+                let tip = tipped(&bristle, 9.0, turn_of(k), on_curve(k));
+                [first, second(Dab { colour: [0, 0, 0, 255], ..tip })]
+            })
+            .collect();
+        let at = Dual { mode, density, level: 0 };
+        let kernel = &mut Dabs::new(first_engine());
+        let piled = pile_on(kernel, &tiles, [0; 4], None, Some(&at), &woven).expect("pile");
+        assert_eq!(piled.planes, soft.planes);
+        if mode == MULTIPLY {
+            let levels: Vec<u8> =
+                piled.levels.iter().flat_map(|&level| (level as u16).to_le_bytes()).collect();
+            assert_pinned("dab/dual-levels", &levels);
+        }
+        assert_pinned(&format!("dab/{name}-view"), &bytes(&piled).1);
     }
 }

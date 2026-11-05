@@ -21,17 +21,23 @@
 // The stroke tiles' planes, a slot TILE_TEXELS pixels, two words a pixel:
 // red and green, then blue and alpha, the low half first.
 @group(0) @binding(1) var<storage, read_write> planes: array<u32>;
-// Their bytes, the planes' view (blend_pack8), a word a pixel.
+// Their bytes, the planes' view (blend_pack8, dab_shown), a word a pixel.
 @group(0) @binding(2) var<storage, read_write> view: array<u32>;
+// The second tip's plane, alpha alone, a word a pixel as the view — where
+// the stroke has a second tip; a word of nothing where it has none.
+@group(0) @binding(3) var<storage, read_write> levels: array<u32>;
 
-// The head: where the tiles start, and the stroke's paper — its texture's
+// The head: where the tiles start; the stroke's paper — its texture's
 // place, NO_TABLE for none; its side; a pixel's step across it in 1/65536
-// texel; and 1 where its height cuts (高さ).
+// texel; and 1 where its height cuts (高さ) —; and the view of its second
+// tip — the mode, NO_TABLE for none, and the density.
 const HEAD_TILES: u32 = 0u;
 const HEAD_PAPER: u32 = 1u;
 const HEAD_PAPER_SIDE: u32 = 2u;
 const HEAD_PAPER_STEP: u32 = 3u;
 const HEAD_PAPER_HEIGHT: u32 = 4u;
+const HEAD_SECOND: u32 = 5u;
+const HEAD_SECOND_DENSITY: u32 = 6u;
 
 // A stroke tile: its column and row on the canvas's grid, its slot, where
 // its list starts and how long it is, and where on the paper its first
@@ -89,7 +95,8 @@ const DAB_PILE: u32 = 25u;
 // dab, and its side.
 const DAB_TIP: u32 = 26u;
 const DAB_SIDE: u32 = 27u;
-// How much of the paper it takes, on the 16-bit scale.
+// How much of the paper it takes, on the 16-bit scale — NO_TABLE where it
+// takes none.
 const DAB_DENSITY: u32 = 28u;
 
 // The C engine's flags (QA_DAB_FLAG_*), the ones this kernel reads.
@@ -97,8 +104,11 @@ const DAB_ERASE: u32 = 1u;
 const DAB_ROUND: u32 = 2u;
 const DAB_THRESHOLD: u32 = 32u;
 const DAB_EDGE_HELD: u32 = 128u;
+const DAB_SECOND: u32 = 256u;
 
 const NO_TABLE: u32 = 0xffffffffu;
+// What dab_source gives where a dab lays nothing: no alpha is as high.
+const NOTHING: u32 = 0xffffffffu;
 
 // low to high by f15/32768, rounded — every table read's last step. Signed:
 // a table may fall. |high - low|·32767 stays under 2^31.
@@ -300,11 +310,18 @@ fn dab_even(at: u32, whole: u32) -> u32 {
   return dab_between(table + index, f15);
 }
 
-// The dab whose record is at `at` laid on `under`, the pixel at (x, y).
-fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
+// Whether the dab erases: a second tip's dab piles over, never erases
+// (qa_dab_blend_tile).
+fn dab_erases(flags: u32) -> bool {
+  return (flags & (DAB_ERASE | DAB_SECOND)) == DAB_ERASE;
+}
+
+// What the dab whose record is at `at` lays at the pixel (x, y) over a
+// stroke standing `under` high there: its source alpha, or NOTHING.
+fn dab_source(at: u32, x: i32, y: i32, under: u32, paper: u32) -> u32 {
   if (x < bitcast<i32>(plan[at + DAB_LEFT]) || x >= bitcast<i32>(plan[at + DAB_RIGHT])
       || y < bitcast<i32>(plan[at + DAB_TOP]) || y >= bitcast<i32>(plan[at + DAB_BOTTOM])) {
-    return under;
+    return NOTHING;
   }
   let flags = plan[at + DAB_FLAGS];
   // A square dab covers its region whole.
@@ -320,11 +337,11 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
     // below overflows, however far the region runs.
     let guard = plan[at + DAB_GUARD];
     if (u32(abs(dx)) >= guard || u32(abs(dy)) >= guard) {
-      return under;
+      return NOTHING;
     }
     let turned = dab_turned(at, dx, dy);
     if (turned.z == 0) {
-      return under;
+      return NOTHING;
     }
     if (tip != NO_TABLE) {
       cover = dab_tip(at, tip, turned.x, turned.y);
@@ -334,12 +351,12 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
       pile = laid.y;
     }
     if (cover == 0u) {
-      return under;
+      return NOTHING;
     }
   }
   cover = dab_edge(at, flags, cover);
   if (cover == 0u) {
-    return under;
+    return NOTHING;
   }
   // 🚨THE EDGE DOES NOT PILE (qa_dab_blend_tile's `ceiling`): the share of
   // the dab's opacity the stroke may come up to here.
@@ -349,8 +366,8 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
   }
   // The paper, after the edge and its ceiling (qa_dab_blend_spans): it
   // takes from what the dab covers, not from how high the stroke may come.
-  if (plan[HEAD_PAPER] != NO_TABLE) {
-    let density = plan[at + DAB_DENSITY];
+  let density = plan[at + DAB_DENSITY];
+  if (plan[HEAD_PAPER] != NO_TABLE && density != NO_TABLE) {
     if (plan[HEAD_PAPER_HEIGHT] != 0u) {
       // 高さ: touched where the paper stands above the dab's floor, fully
       // a quarter above it (paperHeightBand).
@@ -363,34 +380,63 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
   let opacity = plan[at + DAB_OPACITY];
   let effective = blend_mul(opacity, cover);
   if (effective == 0u) {
-    return under;
+    return NOTHING;
   }
   let norm = plan[at + DAB_NORM];
   let flow = plan[at + DAB_FLOW];
-  let erase = (flags & DAB_ERASE) != 0u;
-  var source: u32;
-  if (erase || (opacity == W_ONE && ceiling == W_ONE)) {
-    source = dab_even(at, blend_mul(blend_mul(norm, effective), flow));
-  } else {
-    // 🚨A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (qa_dab_source_alpha):
-    // it raises the stroke towards it, never past.
-    let settle = blend_mul(opacity, ceiling);
-    if (under.w >= settle) {
-      return under;
-    }
-    var share = W_ONE;
-    if (cover < ceiling) {
-      share = blend_div(cover, ceiling);
-    }
-    let whole = dab_even(at, blend_mul(blend_mul(norm, share), flow));
-    source = blend_mul(whole, blend_div(settle - under.w, W_ONE - under.w));
+  if (dab_erases(flags) || (opacity == W_ONE && ceiling == W_ONE)) {
+    return dab_even(at, blend_mul(blend_mul(norm, effective), flow));
   }
-  if (erase) {
+  // 🚨A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (qa_dab_source_alpha): it
+  // raises the stroke towards it, never past.
+  let settle = blend_mul(opacity, ceiling);
+  if (under >= settle) {
+    return NOTHING;
+  }
+  var share = W_ONE;
+  if (cover < ceiling) {
+    share = blend_div(cover, ceiling);
+  }
+  let whole = dab_even(at, blend_mul(blend_mul(norm, share), flow));
+  return blend_mul(whole, blend_div(settle - under, W_ONE - under));
+}
+
+// The first tip's dab whose record is at `at` laid on `under`, the pixel at
+// (x, y).
+fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
+  let source = dab_source(at, x, y, under.w, paper);
+  if (source == NOTHING) {
+    return under;
+  }
+  if (dab_erases(plan[at + DAB_FLAGS])) {
     return blend_erase(source, under);
   }
   let colour = plan[at + DAB_COLOUR];
   let laid = vec4<u32>(colour & 0xffu, (colour >> 8u) & 0xffu, (colour >> 16u) & 0xffu, 0u) * 257u;
   return blend_composite(BLEND_NORMAL, vec4<u32>(laid.xyz, source), under);
+}
+
+// What a stroke with a second tip shows where its first plane stands
+// `first` high and its second `level` (qa_dual_view_rows, which has the
+// law): the second blended over the first by the stroke's mode at its
+// density — the second the source, the first the destination. Where the
+// first tip laid nothing, nothing shows.
+fn dab_shown(first: u32, level: u32) -> u32 {
+  if (first == 0u) {
+    return 0u;
+  }
+  let mode = plan[HEAD_SECOND];
+  let density = plan[HEAD_SECOND_DENSITY];
+  if (mode == BLEND_MULTIPLY) {
+    // ⛔MULTIPLY KEEPS ITS OWN LINE (qa_dual_view_rows): a·((1 − d) + d·s),
+    // the default written plainly — the general form is the same number
+    // and not the same rounding.
+    return blend_mul(first, W_ONE - density + blend_mul(density, level));
+  }
+  // Never past W_ONE, which the C engine's double could round to: as
+  // blend_mul only rises with what it multiplies, the two terms come to
+  // at most W_ONE − density and density.
+  return blend_mul(first, W_ONE - density) + blend_mul(density, blend_channel(mode, level, first));
 }
 
 @compute @workgroup_size(8, 8)
@@ -411,12 +457,32 @@ fn walk(
   if (plan[HEAD_PAPER] != NO_TABLE) {
     paper = dab_paper(tile, lx, ly);
   }
+  let shown = plan[HEAD_SECOND] != NO_TABLE;
+  var level = 0u;
+  if (shown) {
+    level = levels[texel];
+  }
   let first = plan[tile + TILE_FIRST];
   let count = plan[tile + TILE_COUNT];
   for (var k = 0u; k < count; k = k + 1u) {
-    pixel = dab_lay(plan[first + k], x, y, pixel, paper);
+    let at = plan[first + k];
+    if ((plan[at + DAB_FLAGS] & DAB_SECOND) == 0u) {
+      pixel = dab_lay(at, x, y, pixel, paper);
+      continue;
+    }
+    // A second tip's dab piles its plane as any dab piles its alpha. On a
+    // stroke with no second plane it lays nothing (qa_dab_blend_tile).
+    let source = dab_source(at, x, y, level, paper);
+    if (source != NOTHING) {
+      level = blend_alpha_over(source, level);
+    }
   }
   planes[texel * 2u] = pixel.x | (pixel.y << 16u);
   planes[texel * 2u + 1u] = pixel.z | (pixel.w << 16u);
-  view[texel] = blend_pack8(pixel);
+  if (shown) {
+    levels[texel] = level;
+    view[texel] = blend_pack8(vec4<u32>(pixel.xyz, dab_shown(pixel.w, level)));
+  } else {
+    view[texel] = blend_pack8(pixel);
+  }
 }

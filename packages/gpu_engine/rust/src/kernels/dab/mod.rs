@@ -10,8 +10,8 @@
 //! small circle's square tables, turned and squeezed where it is an
 //! ellipse — and a bitmap tip, turned and squeezed the same way; the edge,
 //! the ceiling, the paper, the share and the level a dab settles at, over
-//! and erase. The second tip comes in the lane after (design (1), 11-05
-//! 21:53).
+//! and erase; and a second tip, whose dabs pile on a plane of their own,
+//! alpha alone, the stroke's bytes then the view of the two planes.
 //!
 //! A texture — a tip's or the paper's — goes to the GPU once and stays on
 //! the plan while piles read it: a pile sends only its own words. (Sent
@@ -30,12 +30,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
 
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
-const HEAD_WORDS: usize = 5;
+const HEAD_WORDS: usize = 7;
 const TILE_WORDS: usize = 7;
 const DAB_WORDS: usize = 29;
 const NO_TABLE: u32 = u32::MAX;
@@ -45,6 +45,7 @@ const ERASE: u32 = 1;
 const ROUND: u32 = 2;
 const THRESHOLD: u32 = 32;
 const EDGE_HELD: u32 = 128;
+const SECOND: u32 = 256;
 
 /// A scale is kept under this, so a distance under 2^15 times it stays in
 /// u32 (1a 보탬 기하).
@@ -116,6 +117,24 @@ pub(crate) struct Paper<'a> {
     pub(crate) height: bool,
 }
 
+/// A stroke's second tip (`BrushSecondStroke`, `qa_dual_view_rows`): the
+/// plane its dabs pile on — alpha alone, a word a pixel, a slot a tile as
+/// the planes —, and the view the stroke shows of the two: the second's
+/// level over the first's alpha by `mode`, the C engine's stroke blend id
+/// (one that blends a channel alone), at `density` (`BrushDualView`).
+pub(crate) struct Second<'a> {
+    pub(crate) plane: &'a wgpu::Buffer,
+    pub(crate) mode: u32,
+    pub(crate) density: f64,
+}
+
+/// The modes blend.wgsl's `blend_channel` reads as themselves: not behind,
+/// nor the six that mix the three channels, which a level alone has none
+/// of.
+fn blends_a_channel(id: u32) -> bool {
+    id <= mode::NORMAL && !matches!(id, mode::BEHIND | mode::DARKER_COLOR..=mode::LUMINOSITY)
+}
+
 /// How a round or bitmap tip turns and squeezes (`BrushDabTipGeometry`):
 /// its frame's cosine and sine, and its minor axis over its major.
 pub(crate) struct Turn {
@@ -150,13 +169,17 @@ pub(crate) struct Dab<'a> {
     /// Whether the tip holds an edge that does not pile (`tipHoldsAnEdge`).
     pub(crate) edge_held: bool,
     pub(crate) erase: bool,
+    /// Whether it is the second tip's (`BrushDab.second`): it piles on the
+    /// second plane, and never erases.
+    pub(crate) second: bool,
     pub(crate) shape: Shape<'a>,
     pub(crate) turn: Turn,
     /// The table it lays its share through, 1026 entries, or none.
     pub(crate) evening: Option<&'a [f64]>,
     /// How much of the paper it takes (`textureDensity`), where the stroke
-    /// has paper.
-    pub(crate) density: f64,
+    /// has paper — or none, a dab with no texture: a second tip's
+    /// (`BrushSecondStroke` gives it none).
+    pub(crate) density: Option<f64>,
 }
 
 /// A tile of the stroke: its column and row on the canvas's grid, and its
@@ -179,30 +202,52 @@ pub(crate) struct Dabs {
     placed: HashMap<u64, u32>,
     /// Where the textures on it end.
     end: usize,
+    /// What the second plane's binding holds for a stroke with one tip.
+    no_second: wgpu::Buffer,
 }
 
 impl Dabs {
     pub(crate) fn new(engine: &Engine) -> Self {
         let sources = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, include_str!("dab.wgsl")];
         let pipeline = pipeline(engine, &sources, "walk");
-        Self { pipeline, plan: None, capacity: 0, placed: HashMap::new(), end: HEAD_WORDS }
+        let no_second = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("no second plane"),
+            size: 4,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+        Self {
+            pipeline,
+            plan: None,
+            capacity: 0,
+            placed: HashMap::new(),
+            end: HEAD_WORDS,
+            no_second,
+        }
     }
 
     /// Piles `dabs`, in their order, on the stroke `tiles` — `planes` two
-    /// words a pixel, `view` one, a slot a tile — over `paper`, and writes
-    /// each tile's bytes; submits the work, the caller waits. A dab's
-    /// pixels on a tile not among `tiles` are the caller's to have given.
+    /// words a pixel, `view` one, a slot a tile — over `paper`, with the
+    /// stroke's `second` tip where it has one, and writes each tile's
+    /// bytes; submits the work, the caller waits. A dab's pixels on a tile
+    /// not among `tiles` are the caller's to have given.
     pub(crate) fn pile(
         &mut self,
         engine: &Engine,
         tiles: &[StrokeTile],
         dabs: &[Dab],
         paper: Option<&Paper>,
+        second: Option<&Second>,
         planes: &wgpu::Buffer,
         view: &wgpu::Buffer,
     ) -> Option<()> {
         if tiles.is_empty() {
             return Some(());
+        }
+        if let Some(second) = second {
+            if !blends_a_channel(second.mode) {
+                return fail(format!("a second tip shown by mode {}", second.mode));
+            }
         }
         let most = engine.device.limits().max_compute_workgroups_per_dimension;
         if tiles.len() > most as usize {
@@ -215,12 +260,12 @@ impl Dabs {
         let mut placed = self.placed.clone();
         let mut end = self.end;
         let mut fresh = placing(&textures, &mut placed, &mut end);
-        let mut plan = planned(tiles, dabs, paper, end, &placed)?;
+        let mut plan = planned(tiles, dabs, paper, second, end, &placed)?;
         if self.plan.is_none() || end + plan.frame.len() > self.capacity {
             placed.clear();
             end = HEAD_WORDS;
             fresh = placing(&textures, &mut placed, &mut end);
-            plan = planned(tiles, dabs, paper, end, &placed)?;
+            plan = planned(tiles, dabs, paper, second, end, &placed)?;
             let words = end + plan.frame.len();
             let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
             if words > most {
@@ -258,6 +303,12 @@ impl Dabs {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: view.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: second
+                        .map_or(&self.no_second, |second| second.plane)
+                        .as_entire_binding(),
                 },
             ],
         });
@@ -322,6 +373,7 @@ fn planned(
     tiles: &[StrokeTile],
     dabs: &[Dab],
     paper: Option<&Paper>,
+    second: Option<&Second>,
     frame_at: usize,
     textures: &HashMap<u64, u32>,
 ) -> Option<Plan> {
@@ -358,16 +410,18 @@ fn planned(
         None => None,
         Some(paper) => Some((paper, paper_step(paper)?)),
     };
-    let head = match paper {
-        None => [frame_at as u32, NO_TABLE, 0, 0, 0],
-        Some((paper, step)) => [
-            frame_at as u32,
+    let mut head = [frame_at as u32, NO_TABLE, 0, 0, 0, NO_TABLE, 0];
+    if let Some((paper, step)) = paper {
+        head[1..5].copy_from_slice(&[
             textures[&paper.texture.id],
             paper.texture.side,
             step,
             u32::from(paper.height),
-        ],
-    };
+        ]);
+    }
+    if let Some(second) = second {
+        head[5..].copy_from_slice(&[second.mode, wide(second.density)]);
+    }
     let listed: usize = lists.iter().map(Vec::len).sum();
     let records_at = frame_at + tiles.len() * TILE_WORDS + listed;
     let tables_at = records_at + dabs.len() * DAB_WORDS;
@@ -465,6 +519,7 @@ fn record(
     let flags = threshold
         | if dab.erase { ERASE } else { 0 }
         | if dab.edge_held { EDGE_HELD } else { 0 }
+        | if dab.second { SECOND } else { 0 }
         | if matches!(dab.shape, Shape::Round(_)) { ROUND } else { 0 };
     let mut words = [0u32; DAB_WORDS];
     words[..13].copy_from_slice(&[
@@ -483,7 +538,7 @@ fn record(
         dab.evening.map_or(NO_TABLE, |table| tables.place(table)),
     ]);
     words[26] = NO_TABLE;
-    words[28] = wide(dab.density);
+    words[28] = dab.density.map_or(NO_TABLE, wide);
     // How far from the centre anything is laid, and the major axis's reach.
     let (extent, major) = match dab.shape {
         Shape::Square => return Some(words),
