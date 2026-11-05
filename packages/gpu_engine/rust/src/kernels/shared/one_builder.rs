@@ -20,10 +20,6 @@ const BUILDER: &str = "kernels/shared/mod.rs";
 
 /// The copies still standing, and whose they are.
 const LEDGER: &[(&str, &str)] = &[
-    ("kernels/blend/tests.rs", "브러시/렌더링"),
-    ("kernels/composite/mod.rs", "브러시/렌더링"),
-    ("kernels/dab/mod.rs", "브러시/렌더링"),
-    ("kernels/shared/tests.rs", "브러시/렌더링"),
     ("kernels/effects/tests.rs", "캔버스 베이스 패널"),
 ];
 

@@ -8,7 +8,7 @@ use wgpu::util::DeviceExt;
 
 use super::BLEND_WGSL;
 use crate::device::Engine;
-use crate::kernels::shared::ISQRT_WGSL;
+use crate::kernels::shared::{ISQRT_WGSL, pipeline};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 // cases.wgsl's ids for one function each.
@@ -77,23 +77,8 @@ fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
-        let source = [ISQRT_WGSL, BLEND_WGSL, include_str!("cases.wgsl")].join("\n");
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("blend cases"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = engine
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("blend cases"),
-                layout: None,
-                module: &module,
-                entry_point: Some("run_cases"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let sources = [ISQRT_WGSL, BLEND_WGSL, include_str!("cases.wgsl")];
+        let pipeline = pipeline(engine, &sources, "run_cases");
         Rig { engine, pipeline }
     })
 }

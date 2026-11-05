@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use super::{PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL};
+use super::{PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, pipeline};
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
@@ -48,31 +48,8 @@ fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
-        let source = [
-            WIDE_WGSL,
-            RESAMPLE_WGSL,
-            PREMULTIPLY_WGSL,
-            include_str!("cases.wgsl"),
-        ]
-        .join("\n");
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("shared cases"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = |entry: &str| {
-            engine
-                .device
-                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some(entry),
-                    layout: None,
-                    module: &module,
-                    entry_point: Some(entry),
-                    compilation_options: Default::default(),
-                    cache: None,
-                })
-        };
+        let sources = [WIDE_WGSL, RESAMPLE_WGSL, PREMULTIPLY_WGSL, include_str!("cases.wgsl")];
+        let pipeline = |entry: &str| pipeline(engine, &sources, entry);
         let wide = pipeline("run_wide");
         let window = pipeline("run_window");
         let premultiply = pipeline("run_premultiply");

@@ -56,7 +56,8 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::shared::{
-    ISQRT_WGSL, PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL, storage_format,
+    ISQRT_WGSL, PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL, pipeline,
+    storage_format,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -530,7 +531,7 @@ fn compile(engine: &Engine, pages_per_pass: usize, output: &str) -> wgpu::Comput
         .replace("//__PAGES__", &bindings)
         .replace("//__READS__", &reads)
         .replace("//__OUTPUT__", output);
-    let source = [
+    let sources = [
         ISQRT_WGSL,
         BLEND_WGSL,
         WIDE_WGSL,
@@ -539,24 +540,8 @@ fn compile(engine: &Engine, pages_per_pass: usize, output: &str) -> wgpu::Comput
         KEY_WGSL,
         PREMULTIPLY_WGSL,
         &body,
-    ]
-    .join("\n");
-    let module = engine
-        .device
-        .create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("composite"),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        });
-    engine
-        .device
-        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("composite"),
-            layout: None,
-            module: &module,
-            entry_point: Some("composite"),
-            compilation_options: Default::default(),
-            cache: None,
-        })
+    ];
+    pipeline(engine, &sources, "composite")
 }
 
 fn le_bytes(words: &[u32]) -> Vec<u8> {

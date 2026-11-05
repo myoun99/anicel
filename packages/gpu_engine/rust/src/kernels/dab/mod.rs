@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL};
+use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
 
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
@@ -183,23 +183,8 @@ pub(crate) struct Dabs {
 
 impl Dabs {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let source = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, include_str!("dab.wgsl")].join("\n");
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("dab"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = engine
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("dab"),
-                layout: None,
-                module: &module,
-                entry_point: Some("walk"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let sources = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL, include_str!("dab.wgsl")];
+        let pipeline = pipeline(engine, &sources, "walk");
         Self { pipeline, plan: None, capacity: 0, placed: HashMap::new(), end: HEAD_WORDS }
     }
 
