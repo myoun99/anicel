@@ -30,7 +30,8 @@ pub(crate) mod tests;
 use crate::device::Engine;
 
 pub(crate) use dispatch::{
-    Encoded, encode, encode_on, fits, flat, le_bytes, plane, room, whole, words_buffer,
+    Encoded, encode, encode_on, fits, flat, le_bytes, plane, room, tiles_a_pass, whole,
+    words_buffer,
 };
 pub(crate) use pages::{Pages, page_table, runs};
 pub(crate) use resample::{ResampleMap, ResampleMode, q};

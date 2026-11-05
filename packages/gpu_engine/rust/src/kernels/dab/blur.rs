@@ -38,7 +38,7 @@ use crate::kernels::effects::blur::gaussian::{
 };
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table, pipeline,
-    plane, room, runs, whole, words_buffer,
+    plane, runs, tiles_a_pass, whole, words_buffer,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -486,7 +486,7 @@ impl Blurs {
         tiles: &[StrokeTile],
         picture: &[wgpu::Buffer],
     ) -> Option<()> {
-        self.fill_by(engine, executor, cel, tiles, picture, self.widest(engine))
+        self.fill_by(engine, executor, cel, tiles, picture, self.widest(engine)?)
     }
 
     /// `fill`, a pass taking no more than `most` (pages, tiles).
@@ -513,7 +513,7 @@ impl Blurs {
         tiles: &[StrokeTile],
         picture: &[wgpu::Buffer],
     ) -> Option<wgpu::Buffer> {
-        self.finish_by(engine, tiles, picture, self.widest(engine))
+        self.finish_by(engine, tiles, picture, self.widest(engine)?)
     }
 
     /// `finish`, a pass taking no more than `most` (pages, tiles).
@@ -542,12 +542,8 @@ impl Blurs {
     /// reaches. No test lays a cel past a binding (2 GB here, 32,768
     /// tiles), so none tells a tile's bytes from its words in this line
     /// (mutant r19, 11-06).
-    fn widest(&self, engine: &Engine) -> (usize, usize) {
-        let limits = engine.device.limits();
-        let room = room(engine);
-        let reach = u64::from(limits.max_compute_workgroups_per_dimension);
-        let tiles = (room / (TILE_TEXELS * 4)).min(reach);
-        (self.cel_pages.per_pass(), tiles as usize)
+    fn widest(&self, engine: &Engine) -> Option<(usize, usize)> {
+        Some((self.cel_pages.per_pass(), tiles_a_pass(engine, TILE_TEXELS * 4, 0)?))
     }
 
     /// One of blur_cel.wgsl's passes between `picture` and `cel`, `tiles`

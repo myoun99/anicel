@@ -48,6 +48,20 @@ pub(crate) fn room(engine: &Engine) -> u64 {
     u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size)
 }
 
+/// The most tiles a pass takes on this device, a workgroup each, with
+/// `per_tile` bytes each in a binding past `fixed` of its own: as many as a
+/// dispatch reaches and the binding holds. Fails where one tile's do not
+/// fit. ⛔ONE COUNT: the composite, the blur dabs, the cel pixel verbs and
+/// the lift each worked it out (11-06, rule of three).
+pub(crate) fn tiles_a_pass(engine: &Engine, per_tile: u64, fixed: u64) -> Option<usize> {
+    let reach = u64::from(engine.device.limits().max_compute_workgroups_per_dimension);
+    let held = room(engine).saturating_sub(fixed).checked_div(per_tile);
+    match held.unwrap_or(reach).min(reach) {
+        0 => fail(format!("one tile's {per_tile} bytes exceed a binding")),
+        most => Some(most as usize),
+    }
+}
+
 /// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
 /// each of `groups`.
 pub(crate) fn fits(

@@ -609,7 +609,7 @@ fn the_cels_runs_make_and_finish_what_one_pass_does() {
         let made: Vec<Vec<u32>> = picture.iter().map(words).collect();
         (made, words(&blurs.finish_by(engine, &tiles, &picture, most).unwrap()))
     };
-    let whole = made_and_finished(blurs.widest(engine));
+    let whole = made_and_finished(blurs.widest(engine).expect("widest"));
     let on_one: Vec<StrokeTile> = (0..6)
         .map(|slot| StrokeTile { column: slot, row: 0, at: TileAt { page: 0, slot: slot as u16 } })
         .collect();
