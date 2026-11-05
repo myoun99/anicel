@@ -311,23 +311,35 @@ void main() {
         after: (f) => after[f],
       );
       expect(split.flaky, {'test/same_test.dart'});
-      expect(split.moved, {
-        'test/fixed_test.dart',
-        'test/gone_test.dart',
-        'test/unkeyed_test.dart',
-      });
+      expect(split.moved, {'test/fixed_test.dart'});
+      expect(split.unkeyed, {'test/gone_test.dart', 'test/unkeyed_test.dart'});
     });
 
-    test('⛔with no key on either side nothing is flaky — the red stands', () {
+    test('⛔with no key on either side nothing is flaky — the red stands, '
+        'and it is not said to have changed (CI keeps no key, 11-05)', () {
       const files = ['test/a_test.dart'];
+      for (final split in [
+        splitGreenAgain(files, before: null, after: (_) => 'k'),
+        splitGreenAgain(files, before: (_) => 'k', after: null),
+      ]) {
+        expect(split.unkeyed, {'test/a_test.dart'});
+        expect(split.flaky, isEmpty);
+        expect(split.moved, isEmpty);
+      }
+    });
+
+    test('a cache that cannot open names what it could not read', () {
+      final unread = <String>[];
       expect(
-        splitGreenAgain(files, before: null, after: (_) => 'k').moved,
-        {'test/a_test.dart'},
+        ResultCache.open(
+          Directory.systemTemp.path,
+          const {},
+          const {},
+          unread: unread.add,
+        ),
+        isNull,
       );
-      expect(
-        splitGreenAgain(files, before: (_) => 'k', after: null).moved,
-        {'test/a_test.dart'},
-      );
+      expect(unread, containsAll(['the machine folder', "the engine's stamp"]));
     });
 
     test('the records stand beside the times', () {

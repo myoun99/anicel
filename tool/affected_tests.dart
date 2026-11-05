@@ -523,16 +523,26 @@ void _sayReds(String? to, Iterable<String> reds) {
 
 /// This machine's result records for this checkout ([ResultCache]), keyed
 /// through [imports] — the whole graph from [kGraphRoots] when not given.
-ResultCache? _openCache([Map<String, Set<String>>? imports]) {
+ResultCache? _openCache([Map<String, Set<String>>? imports]) => _cacheOr(
+  imports ?? buildImportGraph(roots: kGraphRoots),
+  (unread) => _report('no result record this time — $unread could not be '
+      'read — so every file runs.'),
+);
+
+/// [ResultCache.open] for this checkout through [imports]; when none can
+/// be opened, [say] hears what could not be read.
+ResultCache? _cacheOr(
+  Map<String, Set<String>> imports,
+  void Function(String unread) say,
+) {
+  final unread = <String>[];
   final cache = ResultCache.open(
     Directory.current.path,
     Platform.environment,
-    imports ?? buildImportGraph(roots: kGraphRoots),
+    imports,
+    unread: unread.add,
   );
-  if (cache == null) {
-    _report('no result record this time — the machine folder, git, Flutter '
-        "or the engine's stamp could not be read — so every file runs.");
-  }
+  if (cache == null) say(unread.join(', '));
   return cache;
 }
 
@@ -589,10 +599,10 @@ void _keep(ResultCache? cache, List<SuiteRun> runs) {
 /// The key of what each test reads in this checkout as it is NOW — the
 /// bytes and the imports measured again ([ResultCache.open]) — or null when
 /// no key can be made.
-String? Function(String file)? _keysNow() => ResultCache.open(
-  Directory.current.path,
-  Platform.environment,
+String? Function(String file)? _keysNow() => _cacheOr(
   buildImportGraph(roots: kGraphRoots),
+  (unread) => _report('what the reds read cannot be keyed now — $unread '
+      'could not be read.'),
 )?.keyFor;
 
 String? _flagValue(List<String> args, String name) {
@@ -944,6 +954,7 @@ Future<int> _runTests(
   final runsOf = <int, List<SuiteRun>>{};
   final flaky = <String>{};
   final moved = <String>{};
+  final unkeyed = <String>{};
   final unrun = <String>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
@@ -1037,9 +1048,12 @@ Future<int> _runTests(
     );
     flaky.addAll(split.flaky);
     moved.addAll(split.moved);
+    unkeyed.addAll(split.unkeyed);
     _keep(cache, [
       for (final run in again)
-        if (!split.moved.contains(run.path)) run,
+        if (!split.moved.contains(run.path) &&
+            !split.unkeyed.contains(run.path))
+          run,
     ]);
   }
 
@@ -1076,6 +1090,12 @@ Future<int> _runTests(
         'went on (a landing into this checkout?), so they are no flake and '
         'their red stands: ${(moved.toList()..sort()).join(', ')}. Run them '
         'again.');
+  }
+  if (unkeyed.isNotEmpty) {
+    _report('⚠️red, then green — but this run has no key of what they read '
+        '(the line saying what could not be read is above), so nothing says '
+        'it held still: they are no flake and their red stands: '
+        '${(unkeyed.toList()..sort()).join(', ')}.');
   }
   final held = <String>{};
   final onMaster = MasterRecords.of(Platform.environment)?.reds ?? const {};

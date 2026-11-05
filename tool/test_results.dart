@@ -137,12 +137,18 @@ String keyOf(
 
 /// What lies outside the checkout that every result depends on — Flutter
 /// as `flutter.version.json` describes it, and the engine's stamp — or
-/// null when either cannot be read. ⛔Then nothing is taken from the
-/// record: a key that cannot see Flutter change would keep its greens
-/// across an upgrade.
-String? outsideInputs(String root, Map<String, String> environment) {
+/// null when either cannot be read, each one [unread] is told of. ⛔Then
+/// nothing is taken from the record: a key that cannot see Flutter change
+/// would keep its greens across an upgrade.
+String? outsideInputs(
+  String root,
+  Map<String, String> environment, {
+  void Function(String what)? unread,
+}) {
   final flutter = _flutterVersion(environment);
   final engine = engineStampOf(root);
+  if (flutter == null) unread?.call("Flutter's version");
+  if (engine == null) unread?.call("the engine's stamp");
   return flutter == null || engine == null
       ? null
       : 'flutter $flutter\nengine $engine';
@@ -302,7 +308,14 @@ bool quarantined(
 /// [greenAgain] — files red in a run and green when run once more — told
 /// apart by whether what each reads was the same when the run began
 /// ([before]) and after the second run ([after]): the same, it is flaky;
-/// changed, or a key either side cannot give, its red stands.
+/// changed (`moved`), or a key either side cannot give (`unkeyed`), its
+/// red stands.
+///
+/// 🚨`moved` AND `unkeyed` ARE TWO ANSWERS (card ci-reruns-never-call-a-
+/// flake, 2026-11-05). They were one set, and the run said of it 「what they
+/// read changed while this run went on」 — on CI, which keeps no key at all,
+/// every red-then-green was reported as a change nobody made. A set that
+/// answers two questions says the wrong one half the time.
 ///
 /// 🗣️Q4 b is 「같은 입력으로 한 번 빨갛고 다시 돌려 초록인 테스트」 — the same
 /// inputs, measured, not assumed. 🧪2026-10-28 (card
@@ -310,19 +323,24 @@ bool quarantined(
 /// checkout while affected_tests ran there, the two reds it fixed went
 /// green on the second run, and both were quarantined as flaky — the keys
 /// had been taken when the run began and nothing measured them again.
-({Set<String> flaky, Set<String> moved}) splitGreenAgain(
+({Set<String> flaky, Set<String> moved, Set<String> unkeyed}) splitGreenAgain(
   Iterable<String> greenAgain, {
   required String? Function(String file)? before,
   required String? Function(String file)? after,
 }) {
   final flaky = <String>{};
   final moved = <String>{};
+  final unkeyed = <String>{};
   for (final file in greenAgain) {
     final was = before?.call(file);
-    final same = was != null && was == after?.call(file);
-    (same ? flaky : moved).add(file);
+    final now = after?.call(file);
+    if (was == null || now == null) {
+      unkeyed.add(file);
+    } else {
+      (was == now ? flaky : moved).add(file);
+    }
   }
-  return (flaky: flaky, moved: moved);
+  return (flaky: flaky, moved: moved, unkeyed: unkeyed);
 }
 
 /// This machine's records for the checkout at [root], keyed as the
@@ -332,18 +350,24 @@ class ResultCache {
 
   /// The cache for the checkout at [root] whose Dart files import each
   /// other as [imports] — or null when no key can be made: no machine
-  /// folder, git that cannot say, or Flutter or the engine unread.
+  /// folder, git that cannot say, or Flutter or the engine unread, each
+  /// one [unread] is told of.
   static ResultCache? open(
     String root,
     Map<String, String> environment,
-    Map<String, Set<String>> imports,
-  ) {
+    Map<String, Set<String>> imports, {
+    void Function(String what)? unread,
+  }) {
     final greens = greenRecord(environment);
     final flaky = flakyRecord(environment);
-    final outside = outsideInputs(root, environment);
+    if (greens == null || flaky == null) unread?.call('the machine folder');
+    final outside = outsideInputs(root, environment, unread: unread);
     if (greens == null || flaky == null || outside == null) return null;
     final ids = contentIds(root);
-    if (ids == null) return null;
+    if (ids == null) {
+      unread?.call('git');
+      return null;
+    }
     final inputs = Inputs(
       imports: imports,
       files: ids.keys,
