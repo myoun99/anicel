@@ -5,11 +5,9 @@
 
 use std::sync::OnceLock;
 
-use wgpu::util::DeviceExt;
-
 use super::{KEY_WGSL, KEYS_PER_RUN, KeyRun};
 use crate::device::Engine;
-use crate::kernels::shared::pipeline;
+use crate::kernels::shared::{Encoded, encode, pipeline, plane, whole, words_buffer};
 use crate::testing::{first_engine, read_buffer};
 
 /// The device and the compiled cases every test here runs on.
@@ -30,61 +28,23 @@ fn rig() -> &'static Rig {
     })
 }
 
-fn storage(engine: &Engine, words: &[u32]) -> wgpu::Buffer {
-    let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-    engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("key cases"),
-            contents: &bytes,
-            usage: wgpu::BufferUsages::STORAGE,
-        })
-}
-
 /// Walks each `(run, texel, original)` over `runs` on the GPU and returns
 /// the words that came out.
 fn walk(runs: &[u32], cases: &[(u32, u32, u32)]) -> Vec<u32> {
     let Rig { engine, pipeline } = rig();
-    let runs = storage(engine, runs);
+    let storage = |words: &[u32]| {
+        words_buffer(engine, "key cases", words, wgpu::BufferUsages::STORAGE)
+    };
+    let runs = storage(runs);
     let words: Vec<u32> = cases
         .iter()
         .flat_map(|&(run, texel, original)| [run, texel, original])
         .collect();
-    let input = storage(engine, &words);
-    let results = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("key results"),
-        size: (cases.len() * 4) as u64,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("key cases"),
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: runs.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: input.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: results.as_entire_binding(),
-            },
-        ],
-    });
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups((cases.len() as u32).div_ceil(64), 1, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
+    let input = storage(&words);
+    let results = plane(engine, "key results", (cases.len() * 4) as u64);
+    let bound = whole(&[(0, &runs), (1, &input), (2, &results)]);
+    let groups = ((cases.len() as u32).div_ceil(64), 1, 1);
+    encode(engine, &[Encoded { pipeline, bound, groups }]);
     read_buffer(engine, &results)
         .chunks_exact(4)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
