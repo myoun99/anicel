@@ -1,18 +1,23 @@
 //! The way to Flutter's screen without a copy, one file per platform with
 //! the same face: Windows hands Flutter a texture the engine made
-//! (windows.rs); Android presents into a window Flutter made (android.rs);
-//! the rest have no bridge yet.
+//! (windows.rs), and so do iOS and macOS, through an IOSurface (apple.rs);
+//! Android presents into a window Flutter made (android.rs); the rest have
+//! no bridge yet.
 
 #[cfg(target_os = "android")]
 mod android;
-#[cfg(not(any(windows, target_os = "android")))]
+#[cfg(target_vendor = "apple")]
+mod apple;
+#[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
 mod unsupported;
 #[cfg(windows)]
 mod windows;
 
 #[cfg(target_os = "android")]
 use self::android as native;
-#[cfg(not(any(windows, target_os = "android")))]
+#[cfg(target_vendor = "apple")]
+use self::apple as native;
+#[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
 use self::unsupported as native;
 #[cfg(windows)]
 use self::windows as native;

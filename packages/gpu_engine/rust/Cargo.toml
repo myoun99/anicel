@@ -36,6 +36,44 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "android")'.dependencies]
 wgpu = { version = "=30.0.1", default-features = false, features = ["vulkan"] }
 
+# Apple shows the engine through an IOSurface (platform/apple.rs); Cargo
+# adds Metal to the wgpu above, on Apple only. The objc2 majors are
+# wgpu-hal 30's own, so the Metal types this crate makes are the ones it
+# wraps.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+wgpu = { version = "=30.0.1", default-features = false, features = ["metal"] }
+objc2 = "0.6"
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "CFDictionary",
+  "CFNumber",
+  "CFString",
+] }
+objc2-core-video = { version = "0.3", default-features = false, features = [
+  "std",
+  "CVBase",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+  "CVPixelBufferIOSurface",
+  "CVReturn",
+  "objc2-io-surface",
+] }
+objc2-io-surface = { version = "0.3", default-features = false, features = [
+  "std",
+  "IOSurfaceRef",
+  "objc2-core-foundation",
+] }
+objc2-metal = { version = "0.3", default-features = false, features = [
+  "std",
+  "MTLAllocation",
+  "MTLDevice",
+  "MTLPixelFormat",
+  "MTLResource",
+  "MTLTexture",
+  "objc2-io-surface",
+] }
+
 # The tests read the ledger, test/fixtures/fingerprints.json.
 [dev-dependencies]
 serde_json = "1"
