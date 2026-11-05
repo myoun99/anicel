@@ -213,6 +213,15 @@ class CutVerbs {
     for (final cutId in cutIds) ...?_project.cutById(cutId)?.layers,
   ]);
 
+  /// The drawings [unlinkCuts] frees of the cuts [cutIds] — the linked
+  /// ones' — the wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> drawingsUnlinkedOf(Iterable<CutId> cutIds) =>
+      drawingsOfCuts(cutIds.where(cutIsLinked));
+
+  /// The drawings [duplicateActiveCut] copies — of the cuts in hand — the
+  /// wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> get drawingsDuplicated => drawingsOfCuts(cutsInHand);
+
   /// THE CUTS IN HAND: the selected ones — a band's, in track order — else
   /// the cut you stand in. What a duplicate copies (F-455-Q1), a delete
   /// lifts ([deleteActiveCut]) and the board takes (I-150, `CutClipboard`).

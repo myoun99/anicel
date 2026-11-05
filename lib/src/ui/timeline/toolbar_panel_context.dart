@@ -248,7 +248,6 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
           EditorActionIds.editPasteIndependent,
           pasteIndependentFrame,
           blocks: () => drawingsPasted,
-          window: AppWaitWindow.pasting,
           ahead: () => independentPasteAhead,
         )
       : null;
@@ -269,19 +268,17 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
           EditorActionIds.editDuplicate,
           duplicate,
           blocks: () => drawingsDuplicated,
-          window: AppWaitWindow.duplicating,
         )
       : null;
 
-  /// [press] behind the window [window] makes of [actionId]'s name where it
-  /// lands on more than one of [blocks] — or, holding something [ahead] of
-  /// it, behind it whatever it lands on — each asked as it is pressed; at
-  /// once where the panel has no [waitIn].
+  /// [press] behind [actionId]'s window ([_windowOf]) where it lands on more
+  /// than one of [blocks] — or, holding something [ahead] of it, behind it
+  /// whatever it lands on — each asked as it is pressed; at once where the
+  /// panel has no [waitIn].
   void Function() _behindTheWaitWindow(
     String actionId,
     void Function() press, {
     required Iterable<Object> Function() blocks,
-    AppWaitWindow Function(String title) window = AppWaitWindow.working,
     WorkAhead? Function()? ahead,
   }) => () {
     final context = waitIn;
@@ -289,7 +286,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       press();
       return;
     }
-    final named = window(editorActionLabel(actionId));
+    final named = _windowOf(actionId);
     final held = ahead?.call();
     unawaited(
       held == null
@@ -307,6 +304,14 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
             ),
     );
   };
+
+  /// The window [actionId]'s press stands behind, under the action's name:
+  /// 붙여넣기's and 복제's own, the work window for the rest.
+  static AppWaitWindow _windowOf(String actionId) => (switch (actionId) {
+    EditorActionIds.editPasteIndependent => AppWaitWindow.pasting,
+    EditorActionIds.editDuplicate => AppWaitWindow.duplicating,
+    _ => AppWaitWindow.working,
+  })(editorActionLabel(actionId));
 
   /// Whether 병합 has anything to merge here — the button's gate and the
   /// key's, read off the one ladder ([mergeSubject]).
@@ -1504,31 +1509,19 @@ class StoryboardToolbarPanelContext
   /// band's verbs and this rung never asked it — two panels of one cel
   /// under a band lit the timeline's button and left this one dark.
   @override
-  bool get canUnlink {
-    final cuts = _unlinkCutIds;
-    return cuts.isNotEmpty
-        ? cuts.any(session.cutVerbs.cutIsLinked)
-        : _timelinesCells?.canUnlink ?? false;
-  }
+  bool get canUnlink => _unlinkCutIds.isEmpty
+      ? _timelinesCells?.canUnlink ?? false
+      : _unlinkCutIds.any(session.cutVerbs.cutIsLinked);
 
   @override
-  void unlink() {
-    final cuts = _unlinkCutIds;
-    if (cuts.isNotEmpty) {
-      session.cutVerbs.unlinkCuts(cuts);
-      return;
-    }
-    _timelinesCells?.unlink();
-  }
+  void unlink() => _unlinkCutIds.isEmpty
+      ? _timelinesCells?.unlink()
+      : session.cutVerbs.unlinkCuts(_unlinkCutIds);
 
   @override
-  Iterable<Object> get drawingsUnlinked {
-    final cuts = _unlinkCutIds;
-    final verbs = session.cutVerbs;
-    return cuts.isNotEmpty
-        ? verbs.drawingsOfCuts(cuts.where(verbs.cutIsLinked))
-        : _timelinesCells?.drawingsUnlinked ?? const [];
-  }
+  Iterable<Object> get drawingsUnlinked => _unlinkCutIds.isEmpty
+      ? _timelinesCells?.drawingsUnlinked ?? const []
+      : session.cutVerbs.drawingsUnlinkedOf(_unlinkCutIds);
 
   /// 🗣️F-455 — the cut pill's 컷 복제 came here, cuts being this panel's
   /// noun (R5q1): the selected cuts, else the cut you stand on (유저 확정
@@ -1546,9 +1539,8 @@ class StoryboardToolbarPanelContext
       : session.cutVerbs.duplicateActiveCut();
 
   @override
-  Iterable<Object> get drawingsDuplicated => _duplicatesEffects
-      ? const []
-      : session.cutVerbs.drawingsOfCuts(session.cutVerbs.cutsInHand);
+  Iterable<Object> get drawingsDuplicated =>
+      _duplicatesEffects ? const [] : session.cutVerbs.drawingsDuplicated;
 
   bool get _duplicatesEffects =>
       session.storyboardRows.storyboardSelectedCutIds.isEmpty &&

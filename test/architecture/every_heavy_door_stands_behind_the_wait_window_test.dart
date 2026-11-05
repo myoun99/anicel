@@ -31,6 +31,12 @@ void main() {
   RegExp throughItsParameters(String head) =>
       RegExp('${RegExp.escape(head)}[\\s\\S]*?\\}\\)');
 
+  /// [head] where a body follows it: an interface's bare declaration of the
+  /// same name (`void pasteLinkedFrame();`) has none, and the first `{`
+  /// after it is another member's.
+  RegExp whereItsBodyOpens(String head) =>
+      RegExp('${RegExp.escape(head)}(?=[^;{]*\\{)');
+
   for (final (path, head, :named) in [
     ('lib/src/ui/canvas/canvas_selection_layer.dart',
         'void _confirmBehindTheWaitWindow()', named: false),
@@ -50,10 +56,11 @@ void main() {
     ('lib/src/ui/timeline/toolbar_panel_context.dart',
         'void pasteLinkedFrame()', named: false),
     ('lib/src/ui/timeline/timeline_bar_menus.dart',
-        'static void _behindTheWaitWindow(', named: false),
+        'static void _behindTheWaitWindow(', named: true),
   ]) {
     test('$head — ${path.split('/').last} — behind the window', () {
-      final signature = named ? throughItsParameters(head) : head;
+      final signature =
+          named ? throughItsParameters(head) : whereItsBodyOpens(head);
       expect(waits(sourceBodyOf(read(path), signature)), isTrue);
     });
   }
