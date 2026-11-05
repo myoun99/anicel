@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -14,6 +15,15 @@ import '../timeline/memo_token.dart';
 /// X-sheet columns). The widget's main-axis extent is expected to be
 /// `durationFrames(frameRate) * pixelsPerFrame` — each bucket maps to
 /// `pixelsPerFrame * fps / bucketsPerSecond` pixels.
+///
+/// A band per channel ([AudioPeaks.lanes]), each in its own equal share of
+/// the block across [axis] — the first on top, or on the left down a
+/// column. 🗣️F-71-Q4 (유저 2026-11-05) 「L · R 두 줄」, its note 「블록
+/// 안에서 두줄로 보여준다거나? 그런부분 알아서」 — so inside the block, as
+/// Premiere and DaVinci stack a clip's channels, wherever a sound is drawn
+/// (the viewer, the timeline's SE rows, the sheet's SE columns, the offset
+/// strip). ⛔Mine: no setting that folds them to one, and no drawing that
+/// changes with a panel's state — the same sound looks one way.
 class WaveformPainter extends CustomPainter with RepaintOnProps {
   const WaveformPainter({
     required this.peaks,
@@ -153,23 +163,46 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   /// How far into the file main-axis 0 stands — the clip's trim.
   double get _leadingPixels => leadingFrames * pixelsPerFrame;
 
-  /// The band over the buckets from [firstShown] to the first at or past
-  /// [shownTo], on a strip of [size] — null where there is none.
+  /// The bands over the buckets from [firstShown] to the first at or past
+  /// [shownTo], a lane's in each share of a strip of [size] — null where
+  /// there is none.
   Path? _bandOf(Size size, int firstShown, double shownTo) {
     _bandsReckoned += 1;
+    final lanes = peaks.lanes;
+    final share = extentAcross(axis, size) / lanes.length;
+    final path = Path();
+    var drawn = false;
+    for (var lane = 0; lane < lanes.length; lane += 1) {
+      drawn |= _addLane(
+        path,
+        lanes[lane],
+        mainExtent: extentAlong(axis, size),
+        center: share * (lane + 0.5),
+        maxAmplitude: math.max(0.0, share / 2 - 1),
+        firstShown: firstShown,
+        shownTo: shownTo,
+      );
+    }
+    return drawn ? path : null;
+  }
+
+  /// One lane's band, mirrored around [center] across the strip, added to
+  /// [path] — false where it has no bucket to draw.
+  bool _addLane(
+    Path path,
+    Float32List envelope, {
+    required double mainExtent,
+    required double center,
+    required double maxAmplitude,
+    required int firstShown,
+    required double shownTo,
+  }) {
     final pixelsPerBucket = _pixelsPerBucket;
     final leadingPixels = _leadingPixels;
-    final mainExtent = extentAlong(axis, size);
-    final crossExtent = extentAcross(axis, size);
-    final center = crossExtent / 2;
-    final maxAmplitude = (crossExtent / 2) - 1;
-
     final envelopeGain = math.min(1.0, gain);
-
-    final path = Path();
     final top = <Offset>[];
     final bottom = <Offset>[];
-    for (var bucket = firstShown; bucket < peaks.peaks.length; bucket += 1) {
+    for (var bucket = firstShown; bucket < envelope.length; bucket += 1) {
       var main = bucket * pixelsPerBucket - leadingPixels;
       var lastSample = false;
       // The offset usually lands MID-bucket: clamp the edge samples onto
@@ -183,7 +216,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
         main = mainExtent;
         lastSample = true;
       }
-      final amplitude = peaks.peaks[bucket] * maxAmplitude * envelopeGain;
+      final amplitude = envelope[bucket] * maxAmplitude * envelopeGain;
       top.add(offsetAlong(axis, along: main, across: center - amplitude));
       bottom.add(offsetAlong(axis, along: main, across: center + amplitude));
       if (lastSample || main >= shownTo) {
@@ -191,7 +224,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       }
     }
     if (top.isEmpty) {
-      return null;
+      return false;
     }
     path.moveTo(top.first.dx, top.first.dy);
     for (final point in top.skip(1)) {
@@ -201,7 +234,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       path.lineTo(point.dx, point.dy);
     }
     path.close();
-    return path;
+    return true;
   }
 
   @override

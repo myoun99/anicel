@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/audio_peaks_extractor.dart'
+    show AudioPeaks;
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/track_se_display.dart';
@@ -133,12 +135,12 @@ void main() {
 
   // REC1-D: the METER folds a stereo frame the way the TAKE will. Three of
   // the four modes are the take's own fold (average / left / right); the
-  // fourth — device — is the meter's own rule, because the take keeps every
-  // channel and the meter needs one scalar, so it takes the loudest.
+  // fourth — device — keeps every channel in the take, so it is a lane per
+  // channel, as its file will be drawn (F-71-Q4).
   group('the live meter folds a stereo frame', () {
     /// One bucket of 1200 frames, every frame carrying (left, right), read
-    /// back as the single peak that lands.
-    Future<double> peakOf(
+    /// back as the envelope that lands.
+    Future<AudioPeaks> livePeaks(
       VoiceInputChannelMode mode, {
       required double left,
       required double right,
@@ -166,8 +168,16 @@ void main() {
       )!;
       await manager.voiceRecording.stopVoiceRecordingAndPlace();
       manager.dispose();
-      return peaks.peaks.first;
+      return peaks;
     }
+
+    /// [livePeaks] as the single peak that lands.
+    Future<double> peakOf(
+      VoiceInputChannelMode mode, {
+      required double left,
+      required double right,
+    }) async =>
+        (await livePeaks(mode, left: left, right: right)).peaks.first;
 
     test('monoMix averages the pair', () async {
       expect(
@@ -208,13 +218,31 @@ void main() {
       );
     });
 
-    test('⛔device is the METER\'s own rule: the loudest channel, not the '
-        'fold — the take keeps both', () async {
+    test('⛔device is not a fold — the take keeps both, so each is its own '
+        'lane, and the loudest is the one envelope', () async {
+      final peaks = await livePeaks(
+        VoiceInputChannelMode.device,
+        left: 0.4,
+        right: -0.8,
+      );
       expect(
-        await peakOf(VoiceInputChannelMode.device, left: 0.4, right: -0.8),
+        [for (final lane in peaks.lanes) lane.first],
+        [closeTo(0.4, 1e-6), closeTo(0.8, 1e-6)],
+      );
+      expect(
+        peaks.peaks.first,
         closeTo(0.8, 1e-6),
         reason: 'an average would have answered 0.2 and a side pick 0.4',
       );
+    });
+
+    test('a fold keeps one lane', () async {
+      final peaks = await livePeaks(
+        VoiceInputChannelMode.monoMix,
+        left: 0.4,
+        right: 0.8,
+      );
+      expect(peaks.lanes, hasLength(1));
     });
   });
 

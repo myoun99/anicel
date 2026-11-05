@@ -169,6 +169,57 @@ void main() {
     expect(inkInColumn(quietVertical, size.toInt() ~/ 2), greaterThan(0));
   });
 
+  /// How many pixels of row [y] carry ink.
+  int inkInRow(Uint32List pixels, int y) {
+    var count = 0;
+    for (var x = 0; x < size.toInt(); x += 1) {
+      if (pixels[y * size.toInt() + x] != 0) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  /// Two channels, the first loud and the second silent.
+  AudioPeaks leftOnly() => AudioPeaks.ofChannels(
+    bucketsPerSecond: 8,
+    lanes: [
+      Float32List.fromList(List<double>.filled(8, 1)),
+      Float32List(8),
+    ],
+  );
+
+  // 🗣️F-71-Q4 (유저 2026-11-05) 「L · R 두 줄」 — inside the block.
+  test('🚨a channel draws its own band in its own half — the first on top, '
+      'the second under it', () async {
+    final pixels = await paint(painter(peaks: leftOnly()));
+    final half = size.toInt() ~/ 2;
+    expect(
+      inkInRow(pixels, half ~/ 2),
+      greaterThan(0),
+      reason: 'the loud channel, around the top half\'s middle',
+    );
+    expect(
+      inkInColumn(pixels, 2),
+      inInclusiveRange(half - 4, half),
+      reason: 'it stands in its half, not across the row',
+    );
+    for (var y = half; y < size.toInt(); y += 1) {
+      expect(inkInRow(pixels, y), 0, reason: 'the silent one, under it');
+    }
+  });
+
+  test('🚨down a COLUMN the first channel is on the left', () async {
+    final pixels = await paint(
+      painter(peaks: leftOnly(), axis: Axis.vertical),
+    );
+    final half = size.toInt() ~/ 2;
+    expect(inkInColumn(pixels, half ~/ 2), greaterThan(0));
+    for (var x = half; x < size.toInt(); x += 1) {
+      expect(inkInColumn(pixels, x), 0);
+    }
+  });
+
   /// 🚨★★★**THE SECONDS ENTRANCE IS THE SAME PAINTER, PIXEL FOR PIXEL.**
   ///
   /// The media viewer thinks in seconds and the timeline in frames, and a

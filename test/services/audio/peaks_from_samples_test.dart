@@ -173,7 +173,40 @@ void main() {
     );
 
     expect(folded.peaks, whole.peaks);
+    expect(folded.lanes, whole.lanes);
     expect(whole.peaks, hasLength(143), reason: '1001 / 7, the last whole');
+  });
+
+  // 🗣️F-71-Q4 (유저 2026-11-05) 「L · R 두 줄」.
+  group('a lane per channel', () {
+    test('each channel keeps its own envelope, in the file\'s order, and the '
+        'loudest of them is still the one envelope', () {
+      final samples = interleave(
+        List<double>.filled(2400, 0.3),
+        [...List<double>.filled(1200, 0.0), ...List<double>.filled(1200, -0.9)],
+      );
+      final peaks = peaksFromSamples(
+        samples: samples,
+        channels: 2,
+        sampleRate: rate,
+        bucketsPerSecond: buckets,
+      );
+      expect(peaks.lanes, hasLength(2));
+      expect(peaks.lanes[0], [closeTo(0.3, 1e-6), closeTo(0.3, 1e-6)]);
+      expect(peaks.lanes[1], [0, closeTo(0.9, 1e-6)]);
+      expect(peaks.peaks, [closeTo(0.3, 1e-6), closeTo(0.9, 1e-6)]);
+    });
+
+    test('a mono sound is one lane, its envelope', () {
+      final peaks = peaksFromSamples(
+        samples: constant(0.5, 1200),
+        channels: 1,
+        sampleRate: rate,
+        bucketsPerSecond: buckets,
+      );
+      expect(peaks.lanes, hasLength(1));
+      expect(peaks.lanes.single, same(peaks.peaks));
+    });
   });
 
   group('degenerate input', () {
