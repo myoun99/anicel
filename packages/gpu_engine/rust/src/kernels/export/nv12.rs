@@ -1,13 +1,9 @@
 //! A movie's frame as NV12, for its encoder (gpu-export-path ①a) —
 //! `nv12.wgsl` has the law and why each number is the one it is.
 
-use wgpu::util::DeviceExt;
-
-use super::FRAME_WGSL;
+use super::{Picture, compile, holds, submit};
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_TEXELS};
-use crate::kernels::shared::TILE_WGSL;
 
 /// A picture and the encoder's frame it is written into.
 #[derive(Clone, Copy, Debug)]
@@ -23,9 +19,12 @@ pub(crate) struct Nv12Shape {
 }
 
 impl Nv12Shape {
-    /// The frame's tiles a row and its rows of tiles.
-    fn tiles(&self) -> (u32, u32) {
-        (self.src_width.div_ceil(TILE), self.src_height.div_ceil(TILE))
+    /// The picture in the composite's frame.
+    fn picture(&self) -> Picture {
+        Picture {
+            width: self.src_width,
+            height: self.src_height,
+        }
     }
 
     /// The NV12 bytes: `height` Y rows, then `height / 2` CbCr rows.
@@ -63,24 +62,9 @@ pub(crate) struct Nv12 {
 
 impl Nv12 {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let source = [TILE_WGSL, FRAME_WGSL, include_str!("nv12.wgsl")].join("\n");
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("nv12"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = engine
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("nv12"),
-                layout: None,
-                module: &module,
-                entry_point: Some("nv12_pass"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
-        Self { pipeline }
+        Self {
+            pipeline: compile(engine, include_str!("nv12.wgsl"), "nv12_pass"),
+        }
     }
 
     /// Converts `frame` — the composite's output tiles for the picture,
@@ -94,16 +78,10 @@ impl Nv12 {
         shape: Nv12Shape,
     ) -> Option<wgpu::Buffer> {
         shape.check()?;
-        let (columns, rows) = shape.tiles();
-        let needed = u64::from(columns * rows) * TILE_TEXELS * 4;
-        if frame.size() < needed {
-            return fail(format!(
-                "{columns}x{rows} tiles take {needed} bytes; the frame has {}",
-                frame.size()
-            ));
-        }
-        let words = [
-            columns,
+        let picture = shape.picture();
+        holds(frame, picture.tiles())?;
+        let params = [
+            picture.tiles().0,
             shape.src_width,
             shape.src_height,
             shape.width,
@@ -112,51 +90,14 @@ impl Nv12 {
             0,
             0,
         ];
-        let params = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("nv12 params"),
-                contents: &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
         let out = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("nv12 out"),
             size: shape.bytes(),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("nv12"),
-            layout: &self.pipeline.get_bind_group_layout(0),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: params.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: frame.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: out.as_entire_binding(),
-                },
-            ],
-        });
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(
-                (shape.y_stride / 4).div_ceil(16),
-                (shape.height / 2).div_ceil(8),
-                1,
-            );
-        }
-        engine.queue.submit([encoder.finish()]);
+        let groups = ((shape.y_stride / 4).div_ceil(16), (shape.height / 2).div_ceil(8));
+        submit(engine, &self.pipeline, &params, frame, &out, groups);
         Some(out)
     }
 }

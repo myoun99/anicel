@@ -24,7 +24,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
-use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL};
+use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
 
 /// The workgroup's side in both passes' shaders.
 const GROUP: u32 = 8;
@@ -106,28 +106,6 @@ fn compile(engine: &Engine, more: &[&str], own: &str, entry: &str) -> wgpu::Comp
         .copied()
         .collect();
     pipeline(engine, &sources, entry)
-}
-
-/// The pipeline of `sources`, one after another, whose entry point is
-/// `entry` — for a pass that keeps no pixel, so takes no held.wgsl.
-fn pipeline(engine: &Engine, sources: &[&str], entry: &str) -> wgpu::ComputePipeline {
-    let source = sources.join("\n");
-    let module = engine
-        .device
-        .create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(entry),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        });
-    engine
-        .device
-        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some(entry),
-            layout: None,
-            module: &module,
-            entry_point: Some(entry),
-            compilation_options: Default::default(),
-            cache: None,
-        })
 }
 
 /// Whether a blur can lay its passes at all: `tiles` hold `rect`, a

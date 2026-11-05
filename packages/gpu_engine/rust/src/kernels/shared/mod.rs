@@ -17,6 +17,8 @@ mod resample;
 #[cfg(test)]
 pub(crate) mod tests;
 
+use crate::device::Engine;
+
 pub(crate) use resample::{ResampleMap, ResampleMode, q};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.
@@ -32,6 +34,28 @@ pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
 pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
 /// `premultiply8` — a straight word as a surface Flutter shows holds it.
 pub(crate) const PREMULTIPLY_WGSL: &str = include_str!("premultiply.wgsl");
+
+/// The pipeline of `sources`, one after another, whose entry point is
+/// `entry` — its bindings as that entry uses them.
+pub(crate) fn pipeline(engine: &Engine, sources: &[&str], entry: &str) -> wgpu::ComputePipeline {
+    let source = sources.join("\n");
+    let module = engine
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(entry),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
+    engine
+        .device
+        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some(entry),
+            layout: None,
+            module: &module,
+            entry_point: Some(entry),
+            compilation_options: Default::default(),
+            cache: None,
+        })
+}
 
 /// The WGSL name of a surface's format, as a pass storing to it declares
 /// it: BGRA8 or RGBA8 unorm, what `platform::Surface` makes, and no other.

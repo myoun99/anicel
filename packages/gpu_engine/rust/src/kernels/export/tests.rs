@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use super::{Nv12, Nv12Shape, OverGround, OverGroundShape};
+use super::{Nv12, Nv12Shape, Opaque, OverGround, Picture};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -15,6 +15,7 @@ struct Rig {
     engine: &'static Engine,
     nv12: Nv12,
     over_ground: OverGround,
+    opaque: Opaque,
 }
 
 /// One device and one compiled pass each for every test here, as the app
@@ -27,6 +28,7 @@ fn rig() -> &'static Rig {
             engine,
             nv12: Nv12::new(engine),
             over_ground: OverGround::new(engine),
+            opaque: Opaque::new(engine),
         }
     })
 }
@@ -53,8 +55,18 @@ fn mix(mut h: u32) -> u32 {
 /// The composite's output tiles for a `width` x `height` picture, asked
 /// row by row from its top-left tile; [`PAST`] where a tile runs past it.
 fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> wgpu::Buffer {
+    frame_past(width, height, PAST, pixel)
+}
+
+/// [`frame`] with `past` where a tile runs past the picture.
+fn frame_past(
+    width: u32,
+    height: u32,
+    past: u32,
+    pixel: impl Fn(u32, u32) -> u32,
+) -> wgpu::Buffer {
     let (columns, rows) = (width.div_ceil(TILE), height.div_ceil(TILE));
-    let mut words = vec![PAST; (u64::from(columns * rows) * TILE_TEXELS) as usize];
+    let mut words = vec![past; (u64::from(columns * rows) * TILE_TEXELS) as usize];
     for y in 0..height {
         for x in 0..width {
             let tile = (y / TILE) * columns + x / TILE;
@@ -237,7 +249,7 @@ fn over_ground(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -
         ..
     } = rig();
     let out = over_ground
-        .run(engine, frame, OverGroundShape { width, height }, ground)
+        .run(engine, frame, Picture { width, height }, ground)
         .expect("over ground");
     read_buffer(engine, &out)
 }
@@ -338,10 +350,10 @@ fn over_the_ground_reads_the_frame_across_its_tiles() {
 #[test]
 fn every_device_writes_the_pinned_over_ground() {
     for (width, height) in [(197, 131), (256, 128)] {
-        let shape = OverGroundShape { width, height };
+        let picture = Picture { width, height };
         let bytes = over_ground(&frame(width, height, mixed(11)), width, height, [0x12, 0x80, 0xed]);
         let id = format!("export/over-ground-{width}x{height}");
-        assert_pinned(&id, &bytes[..shape.bytes() as usize]);
+        assert_pinned(&id, &bytes[..picture.rgb_bytes() as usize]);
     }
 }
 
@@ -356,10 +368,65 @@ fn an_empty_picture_or_a_short_frame_is_refused() {
         ..
     } = rig();
     for bad in [
-        OverGroundShape { width: 0, height: 4 },
-        OverGroundShape { width: 4, height: 0 },
-        OverGroundShape { width: 129, height: 4 },
+        Picture { width: 0, height: 4 },
+        Picture { width: 4, height: 0 },
+        Picture { width: 129, height: 4 },
     ] {
         assert!(over_ground.run(engine, &frame, bad, [0, 0, 0]).is_none(), "{bad:?}");
+    }
+}
+
+// ==== Opaque ====
+
+/// The pass's answer for the `width` x `height` picture in `frame`.
+fn opaque(frame: &wgpu::Buffer, width: u32, height: u32) -> u32 {
+    let Rig { engine, opaque, .. } = rig();
+    let out = opaque
+        .run(engine, frame, Picture { width, height })
+        .expect("opaque");
+    let bytes = read_buffer(engine, &out);
+    u32::from_le_bytes(bytes[..4].try_into().unwrap())
+}
+
+/// Mixed colours, every one opaque.
+fn opaque_mixed(x: u32, y: u32) -> u32 {
+    mixed(11)(x, y) | 0xff00_0000
+}
+
+// 197 x 131: two tiles each way, so four groups answer. Past the picture
+// the tiles are clear, as the composite leaves them — and not read.
+#[test]
+fn a_picture_whose_every_pixel_is_opaque_is_opaque() {
+    assert_eq!(opaque(&frame_past(197, 131, 0, opaque_mixed), 197, 131), 255);
+}
+
+// One pixel at 254 in each tile, and at each end of a tile's texels: the
+// group that holds it and the invocation that reads it, each, tell.
+#[test]
+fn one_pixel_short_of_opaque_anywhere_is_not_opaque() {
+    for at in [(0, 0), (127, 127), (128, 0), (5, 129), (196, 130)] {
+        let picture = |x, y| {
+            let pixel = opaque_mixed(x, y);
+            if (x, y) == at { pixel & 0xfeff_ffff } else { pixel }
+        };
+        assert!(opaque(&frame_past(197, 131, 0, picture), 197, 131) < 255, "{at:?}");
+    }
+}
+
+#[test]
+fn a_clear_pixel_is_not_opaque() {
+    assert!(opaque(&frame(1, 1, |_, _| 0x00ff_ffff), 1, 1) < 255);
+}
+
+#[test]
+fn an_empty_picture_or_a_short_frame_is_not_asked() {
+    let frame = frame(4, 4, |_, _| WHITE);
+    let Rig { engine, opaque, .. } = rig();
+    for bad in [
+        Picture { width: 0, height: 4 },
+        Picture { width: 4, height: 0 },
+        Picture { width: 129, height: 4 },
+    ] {
+        assert!(opaque.run(engine, &frame, bad).is_none(), "{bad:?}");
     }
 }
