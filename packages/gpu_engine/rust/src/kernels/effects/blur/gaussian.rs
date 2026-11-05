@@ -54,6 +54,12 @@ const THREE_WORDS: usize = 32;
 /// dispatch — r 50: 1.9 ms, 2.3; r 56: 1.9, 2.4; r 64: 2.5–2.8, 2.3–2.4;
 /// r 120: 5.5, 2.7; r 170: 396, 3.4). Lanes summing runs of r or more
 /// instead were nowhere faster, and slower from r 32 on.
+///
+/// The second of two such choices — the other is the blur brush's dab
+/// (kernels/dab/blur.rs's MOST_STRIPS_RADIUS and Route): they stay apart,
+/// each threshold measured for its own use, until a third comes and one
+/// function beside `strips` takes the threshold (rule of three, 캔버스
+/// 베이스 11-06 03:05).
 const MOST_STRIPS_RADIUS: u32 = 56;
 
 const EDGE_NONE: u32 = 0;

@@ -46,6 +46,12 @@ const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 /// 25,374, 1,328). The Gaussian's crossing on a whole picture is lower
 /// (gaussian.rs's 56): a dab's six dispatches cost more against its
 /// small window.
+///
+/// The second of two such choices — the other is the fx Gaussian's
+/// (effects/blur/gaussian.rs's MOST_STRIPS_RADIUS and Route): they stay
+/// apart, each threshold measured for its own use, until a third comes and
+/// one function beside `strips` takes the threshold (rule of three, 캔버스
+/// 베이스 11-06 03:05).
 const MOST_STRIPS_RADIUS: u32 = 90;
 
 /// How a dab's passes go: by strips where a strip of them has room and the
