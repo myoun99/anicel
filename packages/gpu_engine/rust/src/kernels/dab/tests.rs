@@ -701,9 +701,11 @@ fn a_paper_past_what_the_integers_hold_is_refused() {
 // A texture goes to the GPU once and is read from there by every pile
 // after; where the plan has no room for a pile, it starts over with what
 // that pile reads. Each pile by one kernel lays what a new kernel lays.
+// The small texture ends on a texel the large one doesn't start with, so
+// one placed a word into the one above it shows (mutant o06, 11-06).
 #[test]
 fn textures_stay_on_the_plan_from_pile_to_pile() {
-    let small = texture(&CORNERS, 2);
+    let small = texture(&[0.25, 0.5, 0.75, 1.0], 2);
     let large = texture(&bristles(), 32);
     let paper = Paper { texture: &small, scale: 1.0, height: false };
     let kept = &mut new_dabs();

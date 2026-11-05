@@ -262,7 +262,9 @@ impl Piles {
 
 /// A plan kept from use to use: its head and the last use's own words from
 /// its start, and the textures on it at its top, each placed under the one
-/// before.
+/// before. A plan made anew lays what a kept one lays, so no test here tells
+/// keeping from starting over sooner or from placing again (mutants o07,
+/// o08, 11-06): keeping is for the writes it saves (`write`).
 struct Plans {
     buffer: Option<wgpu::Buffer>,
     /// The words it holds.
@@ -508,7 +510,8 @@ fn textures_of<'a>(dabs: &[Dab<'a>], paper: Option<&Paper<'a>>) -> Vec<&'a Textu
 
 /// Places each of `textures` not yet `placed` under `floor`, moving `floor`
 /// to it; gives the ones it placed, or nothing where one would go under the
-/// plan's start.
+/// plan's start. A floor stopped at 0 does as well: the use's own words,
+/// checked next, never fit under it (mutant o02, 11-06).
 fn placing<'a>(
     textures: &[&'a Texture],
     placed: &mut HashMap<u64, u32>,
