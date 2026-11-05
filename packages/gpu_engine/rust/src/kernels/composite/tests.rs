@@ -660,30 +660,46 @@ fn a_posed_row_lays_what_r1_resamples() {
     }
 }
 
-// A posed row binds the pages its pixels can read and no more. Four tiles
-// in a strip, each on its own page, under the first output tile with a
-// 16 px tent half a pixel left: the second tile is read up to 15 px in,
-// past where the tile's corners land, the third and fourth not at all —
-// two pages a pass, and a pass of one cannot take the row.
+// A row binds the pages its pixels can read and no more. Four tiles in a
+// strip, each on a page of its own, under the first output tile:
+// - moved left two tiles, it shows the third — one page;
+// - under a 16 px tent half a pixel left, the second is read up to 15 px in,
+//   past where the output tile's corners land, the rest not at all — two
+//   pages, and a pass of one cannot take the row;
+// - ten times larger from x = 100 with the same tent, the corners land by
+//   112.8 and the tent reaches 128, one pixel into the second.
 #[test]
-fn a_posed_row_binds_the_pages_it_reads() {
+fn a_row_binds_the_pages_its_pixels_read() {
     let picture = picture_of(|x, y| texel(52, x, y), (4 * TILE, TILE));
-    let mut pool = Pool::default();
-    let sets = vec![pool.set(52, (0, 0), (4, 1), |c, _| Some(c as u16))];
-    let scene = Scene {
-        pool,
-        sets,
-        steps: vec![pose_row(0, "blur", WHOLE, NORMAL)],
-        tiles: vec![(0, 0)],
+    let strip = |map: ResampleMap| {
+        let mut pool = Pool::default();
+        let sets = vec![pool.set(52, (0, 0), (4, 1), |c, _| Some(c as u16))];
+        Scene {
+            pool,
+            sets,
+            steps: vec![with_map(0, map, WHOLE, NORMAL)],
+            tiles: vec![(0, 0)],
+        }
     };
-    let (out, passes) = composite(&scene, within(2, usize::MAX));
-    assert!(out == resampled(&pose("blur"), &picture, &scene.tiles));
-    assert_eq!(passes, 1);
-    let Rig { engine, composite } = rig();
-    let pages = scene.pool.upload(engine);
-    let one_page = within(1, usize::MAX);
-    let refused = composite.run(engine, &pages, &scene.sets, &scene.steps, &scene.tiles, one_page);
-    assert!(refused.is_none());
+    let magnify = [0.1, 0.0, 100.0, 0.0, 0.1, 50.0, 0.0, 0.0, 1.0];
+    let cases = [
+        (ResampleMap::moved(-2 * TILE as i32, 0), 1),
+        (pose("blur"), 2),
+        (ResampleMap::new(magnify, 16.0, ResampleMode::Blend, TILE, TILE).unwrap(), 2),
+    ];
+    for (n, (map, pages)) in cases.into_iter().enumerate() {
+        let scene = strip(map);
+        let (out, passes) = composite(&scene, within(pages, usize::MAX));
+        assert!(out == resampled(&map, &picture, &scene.tiles), "{n}");
+        assert_eq!(passes, 1, "{n}");
+        if pages > 1 {
+            let Rig { engine, composite } = rig();
+            let pool = scene.pool.upload(engine);
+            let fewer = within(pages - 1, usize::MAX);
+            let run = composite.run(engine, &pool, &scene.sets, &scene.steps, &scene.tiles, fewer);
+            assert!(run.is_none(), "{n}");
+        }
+    }
 }
 
 // ---- The plan ----

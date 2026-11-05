@@ -42,17 +42,15 @@ const COPY: u32 = 2;
 /// 1 in Q.20 and in Q.36.
 const ONE: i32 = 1 << 20;
 const ONE_36: i64 = 1 << 36;
-/// The w at and below which a pixel is outside, 2^-12 (resample.wgsl's
-/// RESAMPLE_W_FLOOR).
-const W_FLOOR: f64 = 1.0 / 4096.0;
-/// How far a pixel reads past where its centre lands, besides half its
-/// Jacobian's reach: Blend's tent spans 16 px either side, a landing
-/// rounds to a whole pixel, and one more for the doubles' rounding.
-const SLACK: f64 = 18.0;
+/// How far past the box where an affine map's corners land a pixel can
+/// read: Blend's tent reaches under 15.5 px past where a centre lands, and
+/// every centre lands inside the box; the half pixel more is the doubles'.
+/// Pick reads inside each pixel's own preimage.
+const SLACK: f64 = 16.0;
 
 impl ResampleMap {
     /// Words one map takes, resample.wgsl's `ResampleMap` field by field.
-    pub(crate) const WORDS: usize = 14;
+    pub(crate) const WORDS: usize = 15;
 
     /// The map of `inverse` — destination point to source point, row-major
     /// with the homogeneous row last, pixel (x, y) spanning x..x+1 — over a
@@ -123,53 +121,48 @@ impl ResampleMap {
     }
 
     /// The source pixels that destination pixels `x0..x1` × `y0..y1` can
-    /// read, as `[left, top, right, bottom)`: exactly for a copy, else the
-    /// box around where the rectangle's corners land, widened by half the
-    /// widest Jacobian over it and [`SLACK`]. The Jacobian's numerators are
-    /// affine in x and y and w is linear, so both bounds sit at corners.
-    /// `None` where w comes near 0 at a corner — reads not bounded here.
+    /// read, as `[left, top, right, bottom)`: exactly for a copy, the box
+    /// where the rectangle's corners land widened by [`SLACK`] for any other
+    /// affine map, and `None` — unbounded here — for a homography.
+    ///
+    /// ⚠️A homography's subsamples land by its Jacobian at the pixel's
+    /// centre, so past its own preimage — by more than a slack only near its
+    /// horizon under reductions of thousands of times. Its row binds all its
+    /// tiles instead of carrying a bound that no test could reach and so no
+    /// mutant could check (11-05); a cel's tiles share one page (설계 ④).
     pub(crate) fn reads(&self, x0: i64, y0: i64, x1: i64, y1: i64) -> Option<[i64; 4]> {
         if self.is_copy() {
             let (dx, dy) = (self.c >> 20, self.f >> 20);
             return Some([x0 + dx, y0 + dy, x1 + dx, y1 + dy]);
         }
-        let q20 = |v: f64| v / f64::from(ONE);
-        let q36 = |v: f64| v / ONE_36 as f64;
-        let (a, b, c) = (q20(f64::from(self.a)), q20(f64::from(self.b)), q20(self.c as f64));
-        let (d, e, f) = (q20(f64::from(self.d)), q20(f64::from(self.e)), q20(self.f as f64));
-        let (g, h, i) = (q36(f64::from(self.g)), q36(f64::from(self.h)), q36(self.i as f64));
-        let corners = [(x0, y0), (x1, y0), (x0, y1), (x1, y1)].map(|(x, y)| (x as f64, y as f64));
-        let mut least_w = f64::MAX;
-        let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        // |∂u/∂x| and |∂u/∂y| times w², then the same for v.
-        let mut slopes = [0.0f64; 4];
-        for (x, y) in corners {
-            let w = g * x + h * y + i;
-            least_w = least_w.min(w);
-            let (u, v) = ((a * x + b * y + c) / w, (d * x + e * y + f) / w);
-            (left, top, right, bottom) = (left.min(u), top.min(v), right.max(u), bottom.max(v));
-            let numerators = [
-                (a * h - g * b) * y + (a * i - g * c),
-                (b * g - h * a) * x + (b * i - h * c),
-                (d * h - g * e) * y + (d * i - g * f),
-                (e * g - h * d) * x + (e * i - h * f),
-            ];
-            for (slope, numerator) in slopes.iter_mut().zip(numerators) {
-                *slope = slope.max(numerator.abs());
-            }
-        }
-        if !(least_w > W_FLOOR) {
+        if !self.is_affine() {
             return None;
         }
-        let squared = least_w * least_w;
-        let reach_u = (slopes[0] + slopes[1]) / squared / 2.0 + SLACK;
-        let reach_v = (slopes[2] + slopes[3]) / squared / 2.0 + SLACK;
+        let one = f64::from(ONE);
+        let at = |x: i64, y: i64| {
+            let (x, y) = (x as f64, y as f64);
+            (
+                (f64::from(self.a) * x + f64::from(self.b) * y + self.c as f64) / one,
+                (f64::from(self.d) * x + f64::from(self.e) * y + self.f as f64) / one,
+            )
+        };
+        let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for (u, v) in [at(x0, y0), at(x1, y0), at(x0, y1), at(x1, y1)] {
+            (left, top, right, bottom) = (left.min(u), top.min(v), right.max(u), bottom.max(v));
+        }
         Some([
-            (left - reach_u).floor() as i64,
-            (top - reach_v).floor() as i64,
-            (right + reach_u).ceil() as i64,
-            (bottom + reach_v).ceil() as i64,
+            (left - SLACK).floor() as i64,
+            (top - SLACK).floor() as i64,
+            (right + SLACK).ceil() as i64,
+            (bottom + SLACK).ceil() as i64,
         ])
+    }
+
+    /// Whether the map is affine — no homogeneous row but (0, 0, 1). The one
+    /// place it is decided: the kernel reads it as its last word, and a plan
+    /// bounding a row's reads asks it here.
+    pub(crate) fn is_affine(&self) -> bool {
+        self.g == 0 && self.h == 0 && self.i == ONE_36
     }
 
     /// Whether the map moves by whole pixels and nothing else, so each pixel
@@ -178,8 +171,7 @@ impl ResampleMap {
     /// that splits a row's reads by page asks it here.
     pub(crate) fn is_copy(&self) -> bool {
         let whole = |offset: i64| offset % i64::from(ONE) == 0;
-        let affine = self.g == 0 && self.h == 0 && self.i == ONE_36;
-        affine && self.a == ONE && self.e == ONE && self.b == 0 && self.d == 0
+        self.is_affine() && self.a == ONE && self.e == ONE && self.b == 0 && self.d == 0
             && whole(self.c) && whole(self.f)
     }
 
@@ -201,6 +193,7 @@ impl ResampleMap {
             (f >> 32) as u32,
             i as u32,
             (i >> 32) as u32,
+            u32::from(!self.is_affine()),
         ]
     }
 }
@@ -257,9 +250,9 @@ mod tests {
 
     #[test]
     fn an_affine_map_is_not_rescaled() {
-        // Mode 2: the identity copies.
+        // Mode 2: the identity copies. The last word 0: affine.
         let m = map(IDENTITY).unwrap();
-        assert_eq!(m.words(), [1 << 20, 0, 0, 1 << 20, 0, 0, 65_536, 2, 0, 0, 0, 0, 0, 16]);
+        assert_eq!(m.words(), [1 << 20, 0, 0, 1 << 20, 0, 0, 65_536, 2, 0, 0, 0, 0, 0, 16, 0]);
     }
 
     #[test]

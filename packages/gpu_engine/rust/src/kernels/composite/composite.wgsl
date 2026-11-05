@@ -84,10 +84,10 @@ fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
 // for every pose, a whole-pixel move being its copy.
 fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
   let m = plan[at + 10u];
-  let map = resample_map(array<u32, 14>(
+  let map = resample_map(array<u32, 15>(
     plan[m], plan[m + 1u], plan[m + 2u], plan[m + 3u], plan[m + 4u], plan[m + 5u], plan[m + 6u],
     plan[m + 7u], plan[m + 8u], plan[m + 9u], plan[m + 10u], plan[m + 11u], plan[m + 12u],
-    plan[m + 13u],
+    plan[m + 13u], plan[m + 14u],
   ));
   return blend_unpack8(resample(map, at, x, y));
 }

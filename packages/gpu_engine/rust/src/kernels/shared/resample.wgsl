@@ -50,11 +50,14 @@ struct ResampleMap {
   f: Wide,
   // Q.36
   i: Wide,
+  // 0 when g = h = 0 and i = 1, so the map is affine — decided once on the
+  // CPU (resample.rs), where the plan reading the map needs it too.
+  projective: u32,
 }
 
-// The map from the 14 words resample.rs's ResampleMap::words lays down, in
+// The map from the 15 words resample.rs's ResampleMap::words lays down, in
 // the order a host keeps them — the one place that order is read.
-fn resample_map(w: array<u32, 14>) -> ResampleMap {
+fn resample_map(w: array<u32, 15>) -> ResampleMap {
   return ResampleMap(
     bitcast<i32>(w[0]),
     bitcast<i32>(w[1]),
@@ -67,6 +70,7 @@ fn resample_map(w: array<u32, 14>) -> ResampleMap {
     Wide(w[8], w[9]),
     Wide(w[10], w[11]),
     Wide(w[12], w[13]),
+    w[14],
   );
 }
 
@@ -86,8 +90,7 @@ struct ResamplePoint {
 }
 
 fn resample_affine(map: ResampleMap) -> bool {
-  // i = 1 in Q.36 is 2^36: the high word 16.
-  return map.g == 0 && map.h == 0 && map.i.x == 0u && map.i.y == 16u;
+  return map.projective == 0u;
 }
 
 // rnd(u, 16) without forming u + 2^15, which passes i32 near the edge.
