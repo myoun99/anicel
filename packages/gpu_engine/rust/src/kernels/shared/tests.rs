@@ -603,6 +603,29 @@ fn words_with_no_alpha_blend_to_nothing() {
     assert!(window(&map, &picture, (6, 6), (0, 0)).iter().all(|&w| w == 0));
 }
 
+// A reach of one word blends to that word even with no alpha, where the
+// tent alone gives 0, and where no tap weighs anything.
+// - Shifted a quarter pixel, output (1, 1) taps source (1, 1) and (2, 1);
+//   its reach, a pixel round the centre, is 0..=2 both ways, the rest under
+//   no weight. One colour under no alpha everywhere is that word; one other
+//   word in the reach, under no weight, and the tent's 0 it is.
+// - Under a radius floor of a quarter pixel, four times larger, most output
+//   pixels weigh no tap; inside one opaque word, every pixel is that word.
+#[test]
+fn a_reach_of_one_word_blends_to_that_word_whatever_the_taps_weigh() {
+    let clear = 0x00ab_cdef;
+    let mut picture = Picture::filled(4, 3, clear);
+    let quarter = one_map(affine(1.0, 0.0, 0.25, 0.0, 1.0, 0.0), ResampleMode::Blend, (4, 3));
+    assert_eq!(window(&quarter, &picture, (1, 1), (1, 1)), [clear]);
+    picture.put(0, 0, 0x0012_3456);
+    assert_eq!(window(&quarter, &picture, (1, 1), (1, 1)), [0]);
+    let word = 0xff40_8020;
+    let enlarge = affine(0.25, 0.0, 4.0, 0.0, 0.25, 4.0);
+    let thin = ResampleMap::new(enlarge, 0.25, ResampleMode::Blend, 8, 8).expect("a map");
+    let out = window(&thin, &Picture::filled(12, 12, word), (8, 8), (0, 0));
+    assert!(out.iter().all(|&w| w == word), "{out:x?}");
+}
+
 #[test]
 fn pick_takes_the_word_covering_most_and_the_first_met_on_a_tie() {
     // Halving: output (0, 0) is source 0..2 × 0..2, each pixel a quarter.

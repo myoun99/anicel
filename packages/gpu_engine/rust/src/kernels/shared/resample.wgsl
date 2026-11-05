@@ -194,19 +194,26 @@ fn resample_offset(s: i32, shift: u32, position: i32, twice: bool) -> i32 {
 // Blend: the tent mean. Every tap within the radius weighs
 // rnd(max(0, R − |s · 2^16 − u|), 8) per axis — the spec's 1 − d/R scaled
 // by R, which is every tap's alike and cancels.
+//
+// The spec answers a reach of one word with that word. Where its taps hold
+// alpha, the tent mean already is that word — divr(A·W, W) = A and
+// divr(C·A·W, A·W) = C — so the taps are walked once, and the reach again
+// only where they hold no alpha, which they cannot tell from 0: where a
+// tap read a word with colour, or none weighed anything. Probing first
+// read a reach twice wherever it failed late: forty turned cels of sparse
+// lines over clear took 16.9 ms so, 4.5 walked once, and 6.1 probing every
+// clear reach (a 2048² canvas, RTX 4080, 2026-11-05).
 fn resample_blend(map: ResampleMap, source: u32, point: ResamplePoint) -> u32 {
   let radius = min(max(point.extent, vec2<u32>(map.floor)), vec2<u32>(RESAMPLE_CEILING));
   let reach = vec2<i32>((radius + vec2<u32>(0xffffu)) >> vec2<u32>(16u));
   let centre = vec2<i32>(resample_round16(point.u), resample_round16(point.v));
-  var word = 0u;
-  if (resample_flat(source, centre, reach, &word)) {
-    return word;
-  }
   var red = Wide(0u, 0u);
   var green = Wide(0u, 0u);
   var blue = Wide(0u, 0u);
   var alpha = Wide(0u, 0u);
   var weight = Wide(0u, 0u);
+  // Every word a tap read, or-ed together.
+  var seen = 0u;
   for (var dy = -reach.y; dy <= reach.y; dy = dy + 1) {
     let sy = centre.y + dy;
     let near_y = i32(radius.y) - abs(resample_offset(sy, 16u, point.v, false));
@@ -223,6 +230,7 @@ fn resample_blend(map: ResampleMap, source: u32, point: ResamplePoint) -> u32 {
       }
       let w = wx * wy;
       let texel = resample_texel(source, sx, sy);
+      seen = seen | texel;
       let held = (texel >> 24u) * w;
       red = wide_add(red, wide_mul_u32(texel & 0xffu, held));
       green = wide_add(green, wide_mul_u32((texel >> 8u) & 0xffu, held));
@@ -231,7 +239,13 @@ fn resample_blend(map: ResampleMap, source: u32, point: ResamplePoint) -> u32 {
       weight = wide_add(weight, Wide(w, 0u));
     }
   }
-  if (all(alpha == Wide(0u, 0u)) || all(weight == Wide(0u, 0u))) {
+  // No weight is no alpha too.
+  if (all(alpha == Wide(0u, 0u))) {
+    var word = 0u;
+    let unweighed = all(weight == Wide(0u, 0u));
+    if ((seen != 0u || unweighed) && resample_flat(source, centre, reach, &word)) {
+      return word;
+    }
     return 0u;
   }
   let a = wide_divr(alpha, weight, 8u);
