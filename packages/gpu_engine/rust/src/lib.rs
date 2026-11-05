@@ -456,3 +456,39 @@ pub unsafe extern "C" fn gpu_engine_hash_bytes(bytes: *const u8, length: usize) 
 pub unsafe extern "C" fn gpu_engine_last_error(buffer: *mut u8, capacity: usize) -> usize {
     LAST_ERROR.with(|last| copy_out(&last.borrow(), buffer, capacity))
 }
+
+#[cfg(all(test, windows))]
+mod gpu_tests {
+    use super::*;
+
+    fn first_dx12_luid() -> u64 {
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = wgpu::Backends::DX12;
+        let instance = wgpu::Instance::new(desc);
+        pollster::block_on(instance.enumerate_adapters(wgpu::Backends::DX12))
+            .iter()
+            .find_map(adapter_luid)
+            .expect("this test needs a DX12 adapter")
+    }
+
+    // 70 x 45: rows of 280 bytes are padded to 512 on readback, and
+    // neither side is a multiple of the 8 x 8 workgroup.
+    #[test]
+    fn the_gpu_writes_the_bytes_the_cpu_expects() {
+        let mut engine = Engine::open(first_dx12_luid()).expect("open");
+        let bgra = engine.device.features().contains(wgpu::Features::BGRA8UNORM_STORAGE);
+        let orders: &[Order] = if bgra { &[Order::Bgra, Order::Rgba] } else { &[Order::Rgba] };
+        for &order in orders {
+            let surface = engine.surface(70, 45, order).expect("surface");
+            for seed in [0, 7, u32::MAX] {
+                engine.fill(&surface, seed).expect("fill");
+                assert_eq!(
+                    engine.read_hash(&surface),
+                    Some(pattern::expected_hash(70, 45, seed, order)),
+                    "{order:?}, seed {seed}",
+                );
+            }
+        }
+        assert!(bgra, "the adapter cannot store bgra8unorm; only RGBA was checked");
+    }
+}
