@@ -613,12 +613,14 @@ fn copied(
         // on this scale — so no test tells the two apart (mutant r04, 11-06).
         opacity: 65535,
         mode: NORMAL,
+        masked: false,
     }];
     let plan = composite::Plan {
         pages,
         sets: std::slice::from_ref(cel),
         keys: &[],
         steps: &steps,
+        mask: None,
     };
     let at: Vec<(i32, i32)> = tiles.iter().map(|tile| (tile.column, tile.row)).collect();
     executor.run(engine, &plan, &at, NO_EDGE, executor.widest())

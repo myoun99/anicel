@@ -7,13 +7,13 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use super::{CelPixels, Channel, Incoming, Mask, Passed, Selector, Verb};
+use super::{CelPixels, Channel, Incoming, Passed, Selector, Verb};
 use crate::device::Engine;
 use crate::kernels::composite::tests::{Pool, mix};
 use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::effects::KeyRun;
-use crate::kernels::mask::MaskBox;
-use crate::kernels::shared::words_buffer;
+use crate::kernels::mask::tests::{Masked, masked};
+use crate::kernels::mask::{Mask, MaskBox};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 pub(super) const SIDE: i32 = TILE as i32;
@@ -108,52 +108,6 @@ fn under(
         .map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]]))
         .collect();
     Some((passed, out))
-}
-
-/// A selection's mask: its plane over its box.
-pub(super) struct Masked {
-    plane: wgpu::Buffer,
-    at: (i32, i32),
-    size: MaskBox,
-}
-
-impl Masked {
-    pub(super) fn mask(&self) -> Mask<'_> {
-        Mask {
-            plane: &self.plane,
-            at: self.at,
-            size: self.size,
-        }
-    }
-}
-
-/// The mask over `size` pixels from `at` whose byte at the cel's pixel
-/// (x, y) is `coverage(x, y)` — and 255 past the box in a row's last word,
-/// which a pass must read as nothing all the same.
-pub(super) fn masked(
-    at: (i32, i32),
-    size: (u32, u32),
-    coverage: impl Fn(i32, i32) -> u8,
-) -> Masked {
-    let mut words = Vec::new();
-    for y in 0..size.1 as i32 {
-        for word in 0..size.0.div_ceil(4) {
-            let byte = |i: u32| match word * 4 + i {
-                x if x < size.0 => u32::from(coverage(at.0 + x as i32, at.1 + y)),
-                _ => 255,
-            };
-            words.push((0..4).fold(0, |packed, i| packed | byte(i) << (8 * i)));
-        }
-    }
-    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    Masked {
-        plane: words_buffer(rig().engine, "mask", &words, usage),
-        at,
-        size: MaskBox {
-            width: size.0,
-            height: size.1,
-        },
-    }
 }
 
 /// The cel `passed` left: its walked tiles holding `out`, on page 0.

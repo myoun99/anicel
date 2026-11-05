@@ -7,11 +7,12 @@ use std::sync::OnceLock;
 use super::{Lift, Lifted};
 use crate::device::Engine;
 use crate::kernels::cel_pixel::tests::{
-    CUTS, Cel, INK, Masked, OTHER, SIDE, hashed, hashed_cel, hashed_cel_on, masked, one, rgba,
+    CUTS, Cel, INK, OTHER, SIDE, hashed, hashed_cel, hashed_cel_on, one, rgba,
 };
-use crate::kernels::cel_pixel::{Mask, words};
+use crate::kernels::cel_pixel::words;
 use crate::kernels::composite::tests::mix;
-use crate::kernels::mask::MaskBox;
+use crate::kernels::mask::tests::{Masked, masked};
+use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::{plane, room};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 

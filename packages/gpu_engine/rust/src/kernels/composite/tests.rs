@@ -7,11 +7,13 @@ use std::sync::OnceLock;
 
 use super::{
     Batch, Budget, Composite, DEPTH, KeyChain, Laid, Plan, Step, TILE, TILE_TEXELS, TileAt,
-    TileSet, check_depth, cut,
+    TileSet, check_depth, chunked, cut,
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN};
 use crate::kernels::effects::KeyRun;
+use crate::kernels::mask::tests::masked;
+use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -163,6 +165,7 @@ fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
         map,
         opacity,
         mode,
+        masked: false,
     }
 }
 
@@ -173,6 +176,7 @@ fn keyed(row: Step, chain: usize) -> Step {
         map,
         opacity,
         mode,
+        masked,
         ..
     } = row
     else {
@@ -184,6 +188,7 @@ fn keyed(row: Step, chain: usize) -> Step {
         map,
         opacity,
         mode,
+        masked,
     }
 }
 
@@ -204,6 +209,7 @@ impl Scene {
             sets: &self.sets,
             keys: &self.keys,
             steps: &self.steps,
+            mask: None,
         }
     }
 }
@@ -1186,6 +1192,7 @@ fn a_pass_holds_two_levels_to_depth() {
         sets: &sets,
         keys: &[],
         steps: &steps,
+        mask: None,
     };
     let run = |levels| {
         let budget = Budget {
@@ -1318,6 +1325,7 @@ fn shown(
         sets: &sets,
         keys: &[],
         steps: &steps,
+        mask: None,
     };
     composite.show(engine, &plan, texture, rect, composite.widest()).expect("show");
     engine.read_texture(texture).expect("read the surface back")
@@ -1472,6 +1480,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
         sets: &sets,
         keys: &[],
         steps: &steps,
+        mask: None,
     };
     let texture = surface((TILE, TILE), wgpu::TextureFormat::Rgba8Unorm);
     let whole = [0, 0, TILE, TILE];
@@ -1501,6 +1510,7 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
         sets: &sets,
         keys: &[],
         steps: &steps,
+        mask: None,
     };
     let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
     let show = |texture: &wgpu::Texture, rect| {
@@ -1651,6 +1661,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
         sets: &sets,
         keys: &[],
         steps: &steps,
+        mask: None,
     };
     let tiles = [(0, 0), (1, 0)];
     let whole = composite.run(engine, &plan, &tiles, EVERYWHERE, composite.widest());
@@ -1701,6 +1712,7 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
             sets: &sets,
             keys: &[],
             steps,
+            mask: None,
         };
         let done = composite.run(engine, &plan, &[(0, 0), (1, 0)], EVERYWHERE, composite.widest());
         read_buffer(engine, &done.expect("composite").out)
@@ -1716,4 +1728,187 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
     let (together, by_first, by_rest) = (lays(&all), lays(&alone), lays(&rest));
     assert!(together[..half] == by_first[..half], "tile 0");
     assert!(together[half..] == by_rest[half..], "tile 1");
+}
+
+// ---- Under a selection (R28) ----
+
+/// `row` laid under the plan's mask.
+fn masked_row(row: Step) -> Step {
+    let Step::Row {
+        set,
+        keys,
+        map,
+        opacity,
+        mode,
+        ..
+    } = row
+    else {
+        unreachable!("only a row is masked");
+    };
+    Step::Row {
+        set,
+        keys,
+        map,
+        opacity,
+        mode,
+        masked: true,
+    }
+}
+
+/// Composites `scene` under `mask` within `budget`: the output's bytes, or
+/// none where the plan is refused.
+fn under(scene: &Scene, mask: Option<&Mask>, budget: Budget) -> Option<Vec<u8>> {
+    let Rig { engine, composite } = rig();
+    let pages = scene.pool.upload(engine);
+    let plan = Plan {
+        mask,
+        ..scene.plan(&pages)
+    };
+    let done = composite.run(engine, &plan, &scene.tiles, EVERYWHERE, budget)?;
+    Some(read_buffer(engine, &done.out))
+}
+
+const BLUE: u32 = 30 | 90 << 8 | 220 << 16 | 255 << 24;
+const RED: u32 = 200 | 100 << 8 | 50 << 16 | 255 << 24;
+
+/// Opaque blue on tile (0, 0) under red laid whole, normal, under the
+/// plan's mask.
+fn red_over_blue() -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.drawn(|_, _| BLUE, (0, 0), (1, 1), |_, _| Some(0)),
+        pool.drawn(|_, _| RED, (0, 0), (1, 1), |_, _| Some(0)),
+    ];
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        steps: vec![row(0, (0, 0), WHOLE, NORMAL), masked_row(row(1, (0, 0), WHOLE, NORMAL))],
+        tiles: vec![(0, 0)],
+    }
+}
+
+// A masked row is laid at its opacity under the mask's byte at the output
+// pixel: red whole under 128 lands on opaque blue as red at 128 does —
+// (200·32896 + 30·32639)/65535, 115, and the like (a stroke at 128 lands
+// the same, dab/tests.rs) — whole under 255, and not at all under 0 or
+// past the box, [1, 6) each way, though the plane holds 255 past its
+// width.
+#[test]
+fn a_masked_row_is_laid_under_the_mask_s_byte() {
+    let mask = masked((1, 1), (5, 5), |x, y| match (x, y) {
+        (1, 1) => 128,
+        (2, 2) => 0,
+        _ => 255,
+    });
+    let scene = red_over_blue();
+    let out = under(&scene, Some(&mask.mask()), rig().composite.widest()).expect("composite");
+    let at = |x, y| pixel_at(&out, &scene.tiles, x, y);
+    let (red, blue) = (bytes_of(RED), bytes_of(BLUE));
+    assert_eq!(at(1, 1), [115, 95, 135, 255]);
+    assert_eq!([at(3, 3), at(5, 5)], [red; 2]);
+    assert_eq!([at(2, 2), at(0, 0), at(6, 5), at(5, 6), at(100, 3)], [blue; 5]);
+}
+
+// Under a mask of 255 a row is laid as under none, in every mode and at
+// every opacity: 255 leaves the opacity as it is, so a row under no mask
+// takes the same multiply.
+#[test]
+fn a_row_under_a_whole_mask_lays_as_under_none() {
+    let mut scene = rows();
+    scene.steps = scene.steps.into_iter().map(masked_row).collect();
+    let mask = masked((-128, 0), (384, 256), |_, _| 255);
+    let out = under(&scene, Some(&mask.mask()), rig().composite.widest());
+    assert!(out == Some(widest(&rows())));
+}
+
+// A mask's byte and a row's opacity are one cover: under 128, a row at
+// 32768 lays as one at round(32768·32896/65535) = 16448 under none.
+#[test]
+fn a_mask_s_byte_and_a_row_s_opacity_are_one_cover() {
+    let mask = masked((-128, 0), (384, 256), |_, _| 128);
+    for mode in [NORMAL, MULTIPLY, SCREEN, DIFFERENCE] {
+        let topped = |opacity, laid: fn(Step) -> Step| {
+            let mut scene = rows();
+            scene.steps[2] = laid(row(2, (-129, 3), opacity, mode));
+            scene
+        };
+        let budget = rig().composite.widest();
+        let by_mask = under(&topped(32768, masked_row), Some(&mask.mask()), budget);
+        assert!(by_mask == Some(widest(&topped(16448, |row| row))), "mode {mode}");
+    }
+}
+
+/// Tiles of three tile rows, in no order, of a row laid whole, normal, and
+/// `top` over it.
+fn three_rows(top: Option<Step>) -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.set(61, (-1, 0), (3, 3), |_, _| Some(0)),
+        pool.set(62, (-1, 0), (3, 3), |c, r| Some((c + r).rem_euclid(2) as u16)),
+    ];
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        steps: [Some(row(0, (0, 0), WHOLE, NORMAL)), top].into_iter().flatten().collect(),
+        tiles: vec![(1, 2), (-1, 0), (0, 2), (0, 0), (1, 1), (-1, 2)],
+    }
+}
+
+// Under a mask of 0 and 255 alone, each output pixel is the plan's with
+// the masked row or without it — where the box starts and ends inside a
+// tile, whatever order the output tiles come in, and however few a pass
+// takes: each pass reads the mask's rows its own tiles lie on.
+#[test]
+fn each_pass_reads_the_mask_s_rows_its_tiles_lie_on() {
+    let coverage = |x: i32, y: i32| [0, 255][(mix(x as u32 ^ mix(y as u32)) & 1) as usize];
+    let mask = masked((-60, 70), (300, 300), coverage);
+    let top = row(1, (0, 0), WHOLE, SCREEN);
+    let (with, without) = (widest(&three_rows(Some(top))), widest(&three_rows(None)));
+    let scene = three_rows(Some(masked_row(top)));
+    let most = rig().composite.widest().pages;
+    let side = TILE as i32;
+    for budget in [rig().composite.widest(), within(most, 1), within(most, 2), within(1, 4)] {
+        let out = under(&scene, Some(&mask.mask()), budget).expect("composite");
+        for &(column, tile_row) in &scene.tiles {
+            for y in tile_row * side..(tile_row + 1) * side {
+                for x in column * side..(column + 1) * side {
+                    let inside = (-60..240).contains(&x) && (70..370).contains(&y);
+                    let want = if inside && coverage(x, y) == 255 { &with } else { &without };
+                    let got = pixel_at(&out, &scene.tiles, x, y);
+                    assert_eq!(got, pixel_at(want, &scene.tiles, x, y), "({x}, {y}) at {budget:?}");
+                }
+            }
+        }
+    }
+}
+
+// A pass takes `chunk` output tiles at most — and under a mask none that
+// run over more tile rows than that, as it is given the mask's rows from
+// its first tile row to its last.
+#[test]
+fn a_pass_under_a_mask_takes_tiles_of_no_more_rows_than_tiles() {
+    let tiles = [(0, 0), (1, 0), (0, 5), (0, 6), (2, 6)];
+    assert_eq!(chunked(&tiles, 3, false), [0..3, 3..5]);
+    assert_eq!(chunked(&tiles, 3, true), [0..2, 2..5]);
+    assert_eq!(chunked(&[(0, -2), (0, 1)], 3, true), [0..1, 1..2]);
+    assert_eq!(chunked(&tiles[..1], 1, true), [0..1]);
+    assert!(chunked(&[], 3, true).is_empty());
+}
+
+// A masked row needs the plan's mask, and the mask a plane that holds its
+// box: 12 bytes for a box of 24 is refused.
+#[test]
+fn a_masked_row_needs_a_mask_that_holds_its_box() {
+    let scene = red_over_blue();
+    let budget = rig().composite.widest();
+    assert!(under(&scene, None, budget).is_none());
+    let mask = masked((0, 0), (4, 3), |_, _| 255);
+    let short = Mask {
+        size: MaskBox { width: 5, height: 3 },
+        ..mask.mask()
+    };
+    assert!(under(&scene, Some(&short), budget).is_none());
+    assert!(under(&scene, Some(&mask.mask()), budget).is_some());
 }

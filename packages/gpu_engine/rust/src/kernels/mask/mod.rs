@@ -16,7 +16,9 @@
 
 pub(crate) mod region;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
+
+use std::ops::Range;
 
 use crate::device::Engine;
 use crate::fail;
@@ -60,6 +62,39 @@ impl MaskBox {
     /// A pass's workgroups over words of `per` pixels.
     fn groups(&self, per: u32) -> (u32, u32) {
         (self.width.div_ceil(per).div_ceil(GROUP), self.height.div_ceil(GROUP))
+    }
+}
+
+/// A selection as a pass reads it: a byte plane (mask.wgsl's layout) over
+/// the box `size` whose top-left pixel is `at` on the canvas — the app's
+/// `selectionMaskOnPasteboard`. A pass is given the rows of it it reads,
+/// copied on the GPU. ⛔ONE MASK: the cel pixel verbs and the lift took it
+/// from here, and the executor's masked rows came as a third (11-06).
+pub(crate) struct Mask<'a> {
+    pub(crate) plane: &'a wgpu::Buffer,
+    pub(crate) at: (i32, i32),
+    pub(crate) size: MaskBox,
+}
+
+impl Mask<'_> {
+    /// Fails where the plane holds less than its box.
+    pub(crate) fn checked(&self) -> Option<()> {
+        if self.plane.size() < self.size.bytes() {
+            return fail(format!("{:?} is no mask of {} bytes", self.size, self.plane.size()));
+        }
+        Some(())
+    }
+
+    /// The rows of its box among the canvas's pixel rows `pixels`.
+    pub(crate) fn band(&self, pixels: Range<i64>) -> Range<u32> {
+        let row = |y: i64| (y - i64::from(self.at.1)).clamp(0, i64::from(self.size.height)) as u32;
+        row(pixels.start)..row(pixels.end)
+    }
+
+    /// The bytes of the box's `rows` in its plane, as a pass is given them.
+    pub(crate) fn rows(&self, rows: &Range<u32>) -> (&wgpu::Buffer, Range<u64>) {
+        let stride = u64::from(self.size.stride()) * 4;
+        (self.plane, u64::from(rows.start) * stride..u64::from(rows.end) * stride)
     }
 }
 

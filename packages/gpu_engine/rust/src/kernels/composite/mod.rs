@@ -31,6 +31,14 @@
 //! A row is sampled only on the output tiles where its pose reads a stored
 //! tile of it; on any other it would show nothing, so it is skipped there.
 //!
+//! A row may be laid under the plan's selection (R28 — a stroke landing on
+//! its cel under one): its opacity under the mask's byte at the output
+//! pixel, nothing past the box, by blend.wgsl's `blend_cover`; a row under
+//! none takes 255 by the same multiply. A pass is given the rows of the
+//! mask its output tiles lie on, copied into `work` on the GPU and not
+//! bound on their own, as the cel pixel verbs are given theirs — so a
+//! pass's output tiles span no more tile rows than it takes tiles.
+//!
 //! A run puts its pixels as output tiles — straight, nothing outside the
 //! output's extent, a page a later run can lay as a row — or on a surface
 //! Flutter shows, premultiplied, inside a rectangle of it
@@ -47,6 +55,7 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
+use std::ops::Range;
 use std::sync::{Mutex, PoisonError};
 
 use wgpu::util::DeviceExt;
@@ -55,6 +64,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
+use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
     WIDE_WGSL, encode_on, le_bytes, page_table, pipeline, storage_format, tiles_a_pass, whole,
@@ -72,7 +82,7 @@ pub(crate) const TILE_BYTES: u64 = TILE_TEXELS * 4;
 /// DEPTH. Folders and clips nest deeper by cutting passes where the walk
 /// leaves the levels a pass holds; the rest wait in the work buffer.
 pub(crate) const DEPTH: usize = 8;
-const STEP_WORDS: usize = 12;
+const STEP_WORDS: usize = 13;
 const NO_TILE: u32 = u32::MAX;
 /// The plan and the work buffer: the storage buffers a pass binds besides
 /// its pages — and its pass's words, a uniform one. A device that binds
@@ -144,13 +154,15 @@ pub(crate) struct KeyChain {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
     /// Tile set `set`, keyed by chain `keys` if any, posed by `map` —
-    /// canvas pixel to the row's own — laid at `opacity` in `mode`.
+    /// canvas pixel to the row's own — laid at `opacity` in `mode`, under
+    /// the plan's mask where `masked`.
     Row {
         set: usize,
         keys: Option<usize>,
         map: ResampleMap,
         opacity: u32,
         mode: u32,
+        masked: bool,
     },
     /// Opens a transparent buffer: a folder's, a clip's base or its scope.
     Open,
@@ -182,12 +194,15 @@ pub(crate) struct Composited {
 }
 
 /// What a plan lays: the pool's pages, the rows' tile sets and key chains,
-/// and the steps, bottom to top.
+/// the steps, bottom to top, and the selection its masked rows are laid
+/// under — one a plan: the stroke being drawn is the row there is one for
+/// (R28, 11-06 06:51).
 pub(crate) struct Plan<'a> {
     pub(crate) pages: &'a [wgpu::Buffer],
     pub(crate) sets: &'a [TileSet],
     pub(crate) keys: &'a [KeyChain],
     pub(crate) steps: &'a [Step],
+    pub(crate) mask: Option<&'a Mask<'a>>,
 }
 
 /// Where a run's last pass puts its pixels.
@@ -360,6 +375,7 @@ impl Composite {
             return fail(format!("{} stack levels a pass; one holds 2 to {DEPTH}", budget.levels));
         }
         check_depth(plan.steps, plan.sets.len(), plan.keys.len())?;
+        check_mask(plan)?;
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         self.walk_laid(engine, plan, &laid, tiles, extent, pipeline, target, budget)
     }
@@ -395,7 +411,11 @@ impl Composite {
         // Output tiles wait in `work` past the stack until they are copied
         // out; a surface takes its pixels from the last pass itself.
         let waiting = u64::from(matches!(target, Target::Tiles(_)));
-        let per_tile = (kept * 2 + waiting) * TILE_TEXELS * 4;
+        let held = (kept * 2 + waiting) * TILE_TEXELS * 4;
+        // A tile's rows of the mask at their worst: a tile row of the box's
+        // whole width.
+        let band = plan.mask.map_or(0, |mask| u64::from(mask.size.stride()) * 4 * u64::from(TILE));
+        let per_tile = held + band;
         let chunk = tiles_a_pass(engine, per_tile, 0)?.min(budget.tiles).min(tiles.len().max(1));
         if chunk == 0 {
             return fail("a budget of no tiles a pass");
@@ -404,7 +424,9 @@ impl Composite {
             label: Some("composite work"),
             // A binding holds something, even where nothing waits.
             size: (chunk as u64 * per_tile).max(16),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let mut encoder = engine
@@ -412,16 +434,31 @@ impl Composite {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let [left, top, right, bottom] = extent.map(|edge| edge as u32);
         let mut passes = 0;
-        for (first_tile, chunk_tiles) in (0..tiles.len())
-            .step_by(chunk)
-            .map(|first| (first, (tiles.len() - first).min(chunk)))
-        {
+        for run in chunked(tiles, chunk, plan.mask.is_some()) {
+            let (first_tile, chunk_tiles) = (run.start, run.len());
             let out_at = kept * 2 * TILE_TEXELS * chunk_tiles as u64;
+            let mask_at = out_at + waiting * TILE_TEXELS * chunk_tiles as u64;
+            let shape = plan.mask.map_or([0; 6], |mask| {
+                let rows = mask.band(pixel_rows(&tiles[run.clone()]));
+                let (plane, bytes) = mask.rows(&rows);
+                if !bytes.is_empty() {
+                    let length = bytes.end - bytes.start;
+                    encoder.copy_buffer_to_buffer(plane, bytes.start, &work, mask_at * 4, length);
+                }
+                [
+                    mask_at as u32,
+                    mask.size.width,
+                    rows.len() as u32,
+                    mask.size.stride(),
+                    mask.at.0 as u32,
+                    (mask.at.1 + rows.start as i32) as u32,
+                ]
+            });
             let uniforms: Vec<wgpu::Buffer> = batches
                 .iter()
                 .enumerate()
                 .map(|(index, batch)| {
-                    let words = [
+                    let mut words = vec![
                         (batch.begin) as u32,
                         batch.end as u32,
                         batch.depth_in as u32,
@@ -438,6 +475,7 @@ impl Composite {
                         right,
                         bottom,
                     ];
+                    words.extend(shape);
                     words_buffer(engine, "composite pass", &words, wgpu::BufferUsages::UNIFORM)
                 })
                 .collect();
@@ -488,10 +526,54 @@ fn compile(engine: &Engine, pages: &Pages, output: &str) -> wgpu::ComputePipelin
         TILE_WGSL,
         KEY_WGSL,
         PREMULTIPLY_WGSL,
+        BYTE_WGSL,
         &pages,
         &body,
     ];
     pipeline(engine, &sources, "composite")
+}
+
+/// The output tiles each pass takes, in order: `chunk` at most — and,
+/// `masked`, none whose tile rows run further than that, as a pass is given
+/// the mask's rows from its first tile row to its last.
+fn chunked(tiles: &[(i32, i32)], chunk: usize, masked: bool) -> Vec<Range<usize>> {
+    let mut runs = Vec::new();
+    let mut start = 0;
+    let mut rows = (i32::MAX, i32::MIN);
+    for (index, &(_, row)) in tiles.iter().enumerate() {
+        let wider = (rows.0.min(row), rows.1.max(row));
+        let span = i64::from(wider.1) - i64::from(wider.0) + 1;
+        if index - start == chunk || (masked && span > chunk as i64) {
+            runs.push(start..index);
+            (start, rows) = (index, (row, row));
+        } else {
+            rows = wider;
+        }
+    }
+    if start < tiles.len() {
+        runs.push(start..tiles.len());
+    }
+    runs
+}
+
+/// The canvas's pixel rows `tiles` lie on, from their first tile row to
+/// their last.
+fn pixel_rows(tiles: &[(i32, i32)]) -> Range<i64> {
+    let side = i64::from(TILE);
+    let first = tiles.iter().map(|&(_, row)| i64::from(row)).min().unwrap_or(0);
+    let last = tiles.iter().map(|&(_, row)| i64::from(row)).max().unwrap_or(-1);
+    first * side..(last + 1) * side
+}
+
+/// Fails where a row is masked and the plan has no mask, or where the mask's
+/// plane holds less than its box.
+fn check_mask(plan: &Plan) -> Option<()> {
+    let masked = plan.steps.iter().position(|step| matches!(step, Step::Row { masked: true, .. }));
+    match (plan.mask, masked) {
+        (Some(mask), _) => mask.checked(),
+        (None, Some(index)) => fail(format!("step {index} is masked and the plan has no mask")),
+        (None, None) => Some(()),
+    }
 }
 
 /// Fails unless every buffer the steps open is closed, none is closed that
@@ -745,6 +827,7 @@ fn plan_words(
                 map,
                 opacity,
                 mode,
+                masked,
             } => {
                 let pose_at = poses_at + poses.len() as u32;
                 poses.extend(map.words());
@@ -763,12 +846,13 @@ fn plan_words(
                     tiles.rows,
                     pose_at,
                     keys.map_or(chains_at, |chain| chain_at[chain]),
+                    u32::from(masked),
                 ]
             }
-            Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         };
         words.extend(step);
     }

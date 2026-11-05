@@ -44,7 +44,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
-use crate::kernels::mask::{BYTE_WGSL, MaskBox};
+use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, Run, TILE_WGSL, cut_by, encode_on, encoded,
     fits, page_table, pipeline, plane, range, runs, tiles_a_pass,
@@ -61,23 +61,6 @@ const OWN_BUFFERS: u32 = 3;
 const WALK_WGSL: &str = include_str!("walk.wgsl");
 /// walk.wgsl's WALK_TILE_WORDS.
 const TILE_WORDS: usize = 5;
-
-/// The selection a pass walks: a byte plane (mask.wgsl's layout) over the
-/// box `size` whose top-left pixel is `at` on the cel — the app's
-/// `selectionMaskOnPasteboard`. A pass with none covers every pixel whole.
-pub(crate) struct Mask<'a> {
-    pub(crate) plane: &'a wgpu::Buffer,
-    pub(crate) at: (i32, i32),
-    pub(crate) size: MaskBox,
-}
-
-impl Mask<'_> {
-    /// The bytes of the box's `rows` in its plane, as a pass is given them.
-    fn rows(&self, rows: &Range<u32>) -> (&wgpu::Buffer, Range<u64>) {
-        let stride = u64::from(self.size.stride()) * 4;
-        (self.plane, u64::from(rows.start) * stride..u64::from(rows.end) * stride)
-    }
-}
 
 /// The channel a verb writes, as the app stages it (`CelPixelStage`): its
 /// bytes, where byte i sits in a pixel's word — byte `base + i · stride` —
@@ -430,10 +413,8 @@ fn walk(cel: &TileSet, pool: usize, mask: Option<&Mask>) -> Option<Vec<Walked>> 
             cel.rows
         ));
     }
-    if let Some(mask) = mask
-        && mask.plane.size() < mask.size.bytes()
-    {
-        return fail(format!("{:?} is no mask of {} bytes", mask.size, mask.plane.size()));
+    if let Some(mask) = mask {
+        mask.checked()?;
     }
     let mut walk = Vec::new();
     for (index, tile) in cel.tiles.iter().enumerate() {
@@ -470,11 +451,8 @@ fn within(tile: i32, from: i32, length: u32) -> Option<u32> {
 /// The rows of `mask`'s box that `run`'s tiles lie on: from its first
 /// tile's row to its last's, as the walk goes row by row.
 fn band(walk: &[Walked], run: &Range<usize>, mask: &Mask) -> Range<u32> {
-    let from = |row: i32| {
-        let y = i64::from(row) * i64::from(TILE) - i64::from(mask.at.1);
-        y.clamp(0, i64::from(mask.size.height)) as u32
-    };
-    from(walk[run.start].row)..from(walk[run.end - 1].row + 1)
+    let y = |row: i32| i64::from(row) * i64::from(TILE);
+    mask.band(y(walk[run.start].row)..y(walk[run.end - 1].row + 1))
 }
 
 /// `pass`'s tiles as walk.wgsl reads them, on the pool's `pool` pages: a

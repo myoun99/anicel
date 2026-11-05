@@ -66,6 +66,14 @@ fn blend_mul(a: u32, b: u32) -> u32 {
   return (t + (t >> 16u)) >> 16u;
 }
 
+// An opacity under a coverage byte — a selection's at a pixel, 255 where
+// none covers it: R28's mul255(m, o) on the 16-bit scale, 255 leaving the
+// opacity as it is. ⛔ONE COVER: the executor's rows take it, and a blur's
+// finish is to (브러시/렌더링 · 캔버스 베이스, gpu-canonical-store 11-06).
+fn blend_cover(opacity: u32, byte: u32) -> u32 {
+  return blend_mul(opacity, byte * 257u);
+}
+
 // round(n·65535 / d) — the ratio n/d as a channel — for n <= d, d > 0.
 // n·65535 + d/2 is at most 4,294,868,992.
 fn blend_div(n: u32, d: u32) -> u32 {

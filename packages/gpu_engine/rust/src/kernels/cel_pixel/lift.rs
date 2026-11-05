@@ -15,13 +15,13 @@ mod tests;
 
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TileSet};
-use crate::kernels::mask::BYTE_WGSL;
+use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, cut_by, encode_on, encoded,
     pipeline, plane, range, runs, tiles_a_pass,
 };
 
-use super::{Mask, TILE_WORDS, WALK_WGSL, alignment, band, entries, made, walk, words};
+use super::{TILE_WORDS, WALK_WGSL, alignment, band, entries, made, walk, words};
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the box's pixels and the flag — and the lift's words, a uniform one. A

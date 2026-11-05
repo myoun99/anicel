@@ -15,12 +15,13 @@
 // output's pixels as they are.
 //
 // Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl,
-// shared/resample.wgsl, shared/tile.wgsl, effects/key.wgsl and
-// shared/premultiply.wgsl before it.
+// shared/resample.wgsl, shared/tile.wgsl, effects/key.wgsl,
+// shared/premultiply.wgsl and mask/byte.wgsl before it; defines byte.wgsl's
+// `mask_word`.
 
 const NO_TILE: u32 = 0xffffffffu;
 const DEPTH: u32 = 8u;
-const STEP_WORDS: u32 = 12u;
+const STEP_WORDS: u32 = 13u;
 
 const STEP_ROW: u32 = 0u;
 const STEP_OPEN: u32 = 1u;
@@ -32,7 +33,10 @@ const STEP_CLOSE_ATOP: u32 = 4u;
 // it covers and the words each takes in the plan, where its table of pages
 // is — which binding holds each page
 // of the pool (shared/pages.rs's NO_PAGE where it binds none) — the lowest stack
-// level it holds, and the output's pixels, [left, right) × [top, bottom).
+// level it holds, the output's pixels, [left, right) × [top, bottom), and
+// the rows of the plan's mask its output tiles lie on: where in `work`
+// they start, its box's pixels across, the rows there, a row's words, and
+// the canvas pixel the first of them starts at.
 struct Pass {
   step_begin: u32,
   step_end: u32,
@@ -49,16 +53,28 @@ struct Pass {
   top: i32,
   right: i32,
   bottom: i32,
+  mask_at: u32,
+  mask_width: u32,
+  mask_height: u32,
+  mask_stride: u32,
+  mask_left: i32,
+  mask_top: i32,
 }
 
 @group(0) @binding(0) var<uniform> pass_: Pass;
 // Steps (STEP_WORDS each), then the rows' tile maps, their key chains,
 // their R1 maps, each pass's table of pages, and the output tiles.
 @group(0) @binding(1) var<storage, read> plan: array<u32>;
-// The stack between passes, two words a level, then the output tiles.
+// The stack between passes, two words a level, then the output tiles,
+// then the pass's rows of the mask.
 @group(0) @binding(2) var<storage, read_write> work: array<u32>;
 // The pages, and page_word, come before this (shared/pages.wgsl).
 //__OUTPUT__
+
+// byte.wgsl's host: the pass's rows of the mask are in `work`.
+fn mask_word(at: u32) -> u32 {
+  return work[at];
+}
 
 // key.wgsl's host: a chain's runs are in the plan.
 fn key_word(at: u32) -> u32 {
@@ -83,7 +99,8 @@ fn row_keyed(at: u32, word: u32) -> u32 {
 //
 // A step: kind, mode, opacity, the first and last page it lays tiles from,
 // map_at, the map's first tile column and row, its columns and rows, where
-// its R1 map is, and where its key chain's list is.
+// its R1 map is, where its key chain's list is, and whether the plan's
+// mask covers it.
 fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   let column = (x >> 7u) - bitcast<i32>(plan[at + 6u]);
   let row = (y >> 7u) - bitcast<i32>(plan[at + 7u]);
@@ -115,6 +132,18 @@ fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
   return blend_unpack8(resample(map, at, x, y));
 }
 
+// The coverage the row of step `at` is laid by at canvas pixel (x, y): the
+// plan's mask's byte there where it covers the row — nothing past its box
+// — and 255 where it does not, so a row under no mask is laid at its
+// opacity by the same multiply (R28, gpu-canonical-store 11-06 06:51).
+fn row_cover(at: u32, x: i32, y: i32) -> u32 {
+  if (plan[at + 12u] == 0u) {
+    return 255u;
+  }
+  let mask = MaskPlane(pass_.mask_at, pass_.mask_width, pass_.mask_height, pass_.mask_stride);
+  return mask_byte_of(mask, u32(x - pass_.mask_left), u32(y - pass_.mask_top));
+}
+
 fn level_at(level: u32, tile: u32, texel: u32) -> u32 {
   return ((level * pass_.tile_count + tile) * TILE_TEXELS + texel) * 2u;
 }
@@ -131,11 +160,11 @@ fn save(level: u32, tile: u32, texel: u32, pixel: vec4<u32>) {
   work[at + 1u] = pair.y;
 }
 
-// A row or a buffer laid on the one under it at `opacity`, in `mode` — an
-// eraser's taking its alpha off what is under it, as a stroke of the
-// eraser lands on its cel.
-fn laid(mode: u32, opacity: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
-  let alpha = blend_mul(src.w, opacity);
+// A row or a buffer laid on the one under it at `opacity` under the
+// coverage byte `cover` (blend_cover), in `mode` — an eraser's taking its
+// alpha off what is under it, as a stroke of the eraser lands on its cel.
+fn laid(mode: u32, opacity: u32, cover: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
+  let alpha = blend_mul(src.w, blend_cover(opacity, cover));
   if (mode == BLEND_ERASE) {
     return blend_erase(alpha, dst);
   }
@@ -177,7 +206,8 @@ fn composite(
         if (((plan[entry + 2u + step / 32u] >> (step % 32u)) & 1u) != 0u) {
           let shown = row_sample(at, x, y);
           if (shown.w != 0u) {
-            stack[top] = laid(plan[at + 1u], plan[at + 2u], shown, stack[top]);
+            let cover = row_cover(at, x, y);
+            stack[top] = laid(plan[at + 1u], plan[at + 2u], cover, shown, stack[top]);
           }
         }
       }
@@ -194,7 +224,7 @@ fn composite(
       case STEP_CLOSE: {
         let closed = stack[top];
         top -= 1u;
-        stack[top] = laid(plan[at + 1u], plan[at + 2u], closed, stack[top]);
+        stack[top] = laid(plan[at + 1u], plan[at + 2u], 255u, closed, stack[top]);
       }
       case STEP_CLOSE_ATOP: {
         let closed = stack[top];

@@ -4,7 +4,7 @@
 
 use std::sync::OnceLock;
 
-use super::{Finish, MOST_FEATHER, MaskBox, MaskPasses};
+use super::{Finish, MOST_FEATHER, Mask, MaskBox, MaskPasses};
 use crate::device::Engine;
 use crate::kernels::shared::words_buffer;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -36,12 +36,12 @@ fn finish(grow: i32, feather: f64, anti_alias: bool) -> Finish {
 }
 
 /// A mask read back: its box and its bytes, row after row, padding gone.
-struct Mask {
+struct Finished {
     size: MaskBox,
     bytes: Vec<u8>,
 }
 
-impl Mask {
+impl Finished {
     fn at(&self, x: u32, y: u32) -> u8 {
         self.bytes[(y * self.size.width + x) as usize]
     }
@@ -65,9 +65,56 @@ fn laid(size: MaskBox, byte: impl Fn(u32, u32) -> u8) -> Vec<u32> {
     words
 }
 
+/// A selection's mask: its plane over its box. The cel pixel verbs, the
+/// lift and the executor's masked rows read theirs from here.
+pub(crate) struct Masked {
+    plane: wgpu::Buffer,
+    at: (i32, i32),
+    size: MaskBox,
+}
+
+impl Masked {
+    pub(crate) fn mask(&self) -> Mask<'_> {
+        Mask {
+            plane: &self.plane,
+            at: self.at,
+            size: self.size,
+        }
+    }
+}
+
+/// The mask over `size` pixels from `at` whose byte at the canvas's pixel
+/// (x, y) is `coverage(x, y)` — and 255 past the box in a row's last word,
+/// which a pass must read as nothing all the same.
+pub(crate) fn masked(
+    at: (i32, i32),
+    size: (u32, u32),
+    coverage: impl Fn(i32, i32) -> u8,
+) -> Masked {
+    let mut words = Vec::new();
+    for y in 0..size.1 as i32 {
+        for word in 0..size.0.div_ceil(4) {
+            let byte = |i: u32| match word * 4 + i {
+                x if x < size.0 => u32::from(coverage(at.0 + x as i32, at.1 + y)),
+                _ => 255,
+            };
+            words.push((0..4).fold(0, |packed, i| packed | byte(i) << (8 * i)));
+        }
+    }
+    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+    Masked {
+        plane: words_buffer(first_engine(), "mask", &words, usage),
+        at,
+        size: MaskBox {
+            width: size.0,
+            height: size.1,
+        },
+    }
+}
+
 /// The mask of `byte` over `size` finished by `finish`, or none where it
 /// was refused.
-fn finished(size: MaskBox, finish: Finish, byte: impl Fn(u32, u32) -> u8) -> Option<Mask> {
+fn finished(size: MaskBox, finish: Finish, byte: impl Fn(u32, u32) -> u8) -> Option<Finished> {
     let Rig { engine, passes } = rig();
     let storage = wgpu::BufferUsages::STORAGE;
     let mask = words_buffer(engine, "mask in", &laid(size, byte), storage);
@@ -80,7 +127,7 @@ fn finished(size: MaskBox, finish: Finish, byte: impl Fn(u32, u32) -> u8) -> Opt
         .flat_map(|row| &row[..size.width as usize])
         .copied()
         .collect();
-    Some(Mask { size, bytes })
+    Some(Finished { size, bytes })
 }
 
 fn square(side: u32) -> MaskBox {
