@@ -583,7 +583,7 @@ class ExportDialogState extends State<ExportDialog> {
     required String keyValue,
     required String label,
     required bool selected,
-    required VoidCallback? onPick,
+    required VoidCallback onPick,
   }) => PillItem(
     keyValue: keyValue,
     label: label,
@@ -4968,20 +4968,28 @@ class ExportDialogState extends State<ExportDialog> {
             value: spec.sheetInk,
             write: inkLive ? (value) => spec.copyWith(sheetInk: value) : null,
           ),
-          ExportModuleRow.strip(
+          // A list, not pills: four sheets' names cut each other to an
+          // ellipsis in the settings column — the codec's way out
+          // (video-export-speed-Q1).
+          ExportModuleRow(
             caption: ExportCaption.paper,
-            strip: PillStrip(
-              items: [
-                for (final sheet in XdtsViewerSheet.values)
-                  _pill(
-                    keyValue: 'export-tsformat-xdts-sheet-${sheet.jsonValue}',
-                    label: strings.exXdtsViewerSheet(sheet),
-                    selected: sheet == viewer,
-                    onPick: inkLive && spec.sheetInk
-                        ? () => _updateSpec(spec.copyWith(viewerSheet: sheet))
-                        : null,
-                  ),
-              ],
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: PanelFlyoutButton(
+                key: const ValueKey<String>('export-tsformat-xdts-sheet'),
+                label: strings.exXdtsViewerSheet(viewer),
+                enabled: !_isExporting && inkLive && spec.sheetInk,
+                entriesBuilder: () =>
+                    XdtsViewerSheet.values.asFlyoutValueChoices(
+                      current: viewer,
+                      choiceOf: (sheet) => PanelFlyoutChoice(
+                        key: 'export-tsformat-xdts-sheet-${sheet.jsonValue}',
+                        label: strings.exXdtsViewerSheet(sheet),
+                      ),
+                      onPicked: (sheet) =>
+                          _updateSpec(spec.copyWith(viewerSheet: sheet)),
+                    ),
+              ),
             ),
           ),
         ],

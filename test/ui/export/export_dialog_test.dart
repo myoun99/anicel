@@ -46,7 +46,6 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
-import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/boolean_dot_probe.dart';
@@ -986,14 +985,14 @@ void main() {
 
       // 🗣️I-161-Q8: the cut's own sheet's viewer sheet stands picked — the
       // app's 6-second sheet, the A3 — and the row is dead with no ink.
-      Pill sheetPill(XdtsViewerSheet sheet) => tester.widget<Pill>(
-        find.byKey(
-          ValueKey<String>('export-tsformat-xdts-sheet-${sheet.jsonValue}'),
-        ),
+      PanelFlyoutButton sheetButton() => tester.widget<PanelFlyoutButton>(
+        find.byKey(const ValueKey<String>('export-tsformat-xdts-sheet')),
       );
-      expect(sheetPill(XdtsViewerSheet.a3SixSeconds).selected, isTrue);
-      expect(sheetPill(XdtsViewerSheet.b4ThreeSeconds).selected, isFalse);
-      expect(sheetPill(XdtsViewerSheet.b4ThreeSeconds).onTap, isNull);
+      expect(
+        sheetButton().label,
+        AppText.strings.exXdtsViewerSheet(XdtsViewerSheet.a3SixSeconds),
+      );
+      expect(sheetButton().enabled, isFalse);
 
       await tester.ensureVisible(ink);
       await tester.pump();
@@ -1001,7 +1000,7 @@ void main() {
       await tester.pressRingIn(ink);
       await tester.pump();
       expect(state.debugSpecs.cels.sheetInk, isTrue);
-      expect(sheetPill(XdtsViewerSheet.b4ThreeSeconds).onTap, isNotNull);
+      expect(sheetButton().enabled, isTrue);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), [
@@ -1036,13 +1035,11 @@ void main() {
 
       // Another sheet picked: its paper, its name in the settings — the
       // folder written over (I-161-Q10).
-      final b4 = find.byKey(
-        const ValueKey<String>('export-tsformat-xdts-sheet-b4-3s'),
+      await pickFromExportList(
+        tester,
+        'export-tsformat-xdts-sheet',
+        'export-tsformat-xdts-sheet-b4-3s',
       );
-      await tester.ensureVisible(b4);
-      await tester.pump();
-      await tester.tap(b4);
-      await tester.pump();
       expect(
         state.debugSpecs.cels.viewerSheet,
         XdtsViewerSheet.b4ThreeSeconds,
