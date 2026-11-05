@@ -116,6 +116,10 @@ void main() {
     info: const TimesheetInfo(title: 'T'),
     instructionDefById: CameraInstructionSet.standard.defById,
     linkedCuts: const ['13', '14'],
+    // An O.L across the cut's end, which the camera block writes.
+    transitionSpans: const [
+      (start: 20, length: 8, mark: CameraInstructionMarkType.ol),
+    ],
   );
   final layout = TimesheetDocumentLayout(document: document);
   final size = layout.documentSize;
@@ -217,7 +221,9 @@ void main() {
         .headerFieldBoxes(0)
         .firstWhere((box) => box.field == TimesheetHeaderField.cut)
         .rect;
-    final end = layout.cutEndLineFor(document.playbackFrameCount);
+    // Under the のりしろ the O.L draws past the cut.
+    expect(document.drawnFrameCount, 28, reason: 'the premise');
+    final end = layout.cutEndLineFor(document.drawnFrameCount);
     final where = {
       TimesheetContentPart.header: [header],
       TimesheetContentPart.linkedCuts: [
@@ -231,6 +237,10 @@ void main() {
       ],
       TimesheetContentPart.se: blockOf(TimesheetColumnKind.se),
       TimesheetContentPart.camera: blockOf(TimesheetColumnKind.camera),
+      // The viewer's marks of the O.L are an XDTS sheet's
+      // (an_xdts_sheet_prints_the_viewers_form_test): ours writes its O.L
+      // in the camera block.
+      TimesheetContentPart.overlaps: const <Rect>[],
       TimesheetContentPart.cutEnd: [
         Rect.fromLTRB(
           layout.halfLeft(0, end.half),
@@ -245,7 +255,11 @@ void main() {
     final printedOf = <TimesheetContentPart, Uint8List>{};
     for (final MapEntry(key: part, value: rooms) in where.entries) {
       final alphas = printedOf[part] = await printed(tester, {part});
-      expect(inkOf(alphas), isNotNull, reason: '$part prints something');
+      expect(
+        inkOf(alphas) != null,
+        rooms.isNotEmpty,
+        reason: '$part prints something where it has a room',
+      );
       expect(outside(alphas, rooms), 0, reason: '$part prints in its room');
     }
     // The 겸용 line hangs under the cut's name, in the header's room: the

@@ -636,6 +636,90 @@ void main() {
         );
         expect(inkedIn(none, at, box), isFalse);
       });
+
+      // The ink prints the parts the viewer leaves to the hand
+      // ([xdtsViewerUnprintedParts]): a part that strayed, or a value no
+      // part printed, would be lost from it or printed twice.
+      testWidgets('the O.L prints in its own room — over the camera block '
+          'and in the lengths\' place — and the parts together print the '
+          'values whole, and nothing beside them', (tester) async {
+        final document = sheet(
+          kind: TimesheetSheetKind.xdtsPonocSixSeconds,
+          at: 10,
+          spans: spans,
+        );
+        final form = document.xdtsForm!;
+        final place = form.overlapLength!;
+        // The whole page across, down past the end's O.L.
+        final room = Size(
+          form.pageWidth.toDouble(),
+          (form.rowsTop + form.rowBottom(40)).toDouble(),
+        );
+        Future<Uint8List> alphasOf(Set<TimesheetContentPart>? parts) async {
+          final (bytes, _) = await printed(
+            tester,
+            document,
+            SheetStratum.content.layers,
+            origin: Offset.zero,
+            size: room,
+            parts: parts,
+          );
+          return Uint8List.fromList([
+            for (var i = 3; i < bytes.length; i += 4) bytes[i],
+          ]);
+        }
+
+        final width = room.width.toInt();
+        final rooms = [
+          Rect.fromLTRB(
+            rowOf(form, 0).left,
+            rowOf(form, 0).top,
+            rowOf(form, 36).right,
+            rowOf(form, 36).bottom,
+          ),
+          Rect.fromLTWH(
+            place.left.toDouble(),
+            place.top.toDouble(),
+            place.width.toDouble(),
+            place.height.toDouble(),
+          ),
+        ];
+        final overlaps = await alphasOf(const {TimesheetContentPart.overlaps});
+        var strayed = 0;
+        var marked = 0;
+        for (var i = 0; i < overlaps.length; i += 1) {
+          if (overlaps[i] == 0) {
+            continue;
+          }
+          marked += 1;
+          final pixel = Offset(i % width + 0.5, i ~/ width + 0.5);
+          if (!rooms.any((rect) => rect.inflate(1).contains(pixel))) {
+            strayed += 1;
+          }
+        }
+        expect(marked, greaterThan(0), reason: 'the premise');
+        expect(strayed, 0);
+
+        final whole = await alphasOf(null);
+        final inked = Uint8List(whole.length);
+        for (final part in TimesheetContentPart.values) {
+          final alphas = await alphasOf({part});
+          for (var i = 0; i < alphas.length; i += 1) {
+            inked[i] |= alphas[i];
+          }
+        }
+        var missing = 0;
+        var stray = 0;
+        for (var i = 0; i < whole.length; i += 1) {
+          if (whole[i] != 0 && inked[i] == 0) {
+            missing += 1;
+          }
+          if (whole[i] == 0 && inked[i] != 0) {
+            stray += 1;
+          }
+        }
+        expect([missing, stray], [0, 0]);
+      });
     });
 
     // I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두
