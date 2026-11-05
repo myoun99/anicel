@@ -7,22 +7,27 @@ import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 /// the one rate it reads.
 void main() {
   test('🗣️I-161-Q8: both of the app\'s own sheets lay their ink on the A3 '
-      '6-second sheet', () {
+      '6-second sheet, and each of the viewer\'s on itself', () {
+    expect(
+      TimesheetSheetKind.sixSeconds.viewerSheet,
+      XdtsViewerSheet.a3SixSeconds,
+    );
+    expect(
+      TimesheetSheetKind.threeSeconds.viewerSheet,
+      XdtsViewerSheet.a3SixSeconds,
+    );
     for (final kind in TimesheetSheetKind.values) {
-      expect(XdtsViewerSheet.of(kind), XdtsViewerSheet.a3SixSeconds);
+      if (kind.xdts case final sheet?) {
+        expect(kind.viewerSheet, sheet);
+      }
     }
   });
 
-  test('each sheet is its paper at the viewer\'s 250 dpi — Ponoc\'s on '
-      'JIS B4 like the B4 ones', () {
-    expect(XdtsViewerSheet.a3SixSeconds.pixelSize, (width: 2923, height: 4134));
-    for (final b4 in [
-      XdtsViewerSheet.b4SixSeconds,
-      XdtsViewerSheet.b4ThreeSeconds,
-      XdtsViewerSheet.ponocSixSeconds,
-    ]) {
-      expect(b4.pixelSize, (width: 2530, height: 3583));
-    }
+  test('every sheet of the viewer\'s is one the timesheet prints on '
+      '(I-162) — one list, not two', () {
+    expect({
+      for (final kind in TimesheetSheetKind.values) ?kind.xdts,
+    }, XdtsViewerSheet.values.toSet());
   });
 
   test('the labels are the templates\' own, as config.ini names them', () {

@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'xdts_sheet_form.dart';
-import 'xdts_sheet_template.dart';
+import 'xdts_viewer_sheet.dart';
 
 /// Which paper a cut's timesheet prints on (유저 2026-09-25, 사진 TOEI_3sec ·
 /// TOEI_book): the 6-second sheet lays two 3-second strips side by side, 8
@@ -22,12 +22,12 @@ import 'xdts_sheet_template.dart';
 enum TimesheetSheetKind {
   sixSeconds('6s', strips: 2, celColumns: 8),
   threeSeconds('3s', strips: 1, celColumns: 19),
-  xdtsA3SixSeconds('xdts-a3-6s', xdts: XdtsSheetTemplate.a3SixSeconds),
-  xdtsB4ThreeSeconds('xdts-b4-3s', xdts: XdtsSheetTemplate.b4ThreeSeconds),
-  xdtsB4SixSeconds('xdts-b4-6s', xdts: XdtsSheetTemplate.b4SixSeconds),
+  xdtsA3SixSeconds('xdts-a3-6s', xdts: XdtsViewerSheet.a3SixSeconds),
+  xdtsB4ThreeSeconds('xdts-b4-3s', xdts: XdtsViewerSheet.b4ThreeSeconds),
+  xdtsB4SixSeconds('xdts-b4-6s', xdts: XdtsViewerSheet.b4SixSeconds),
   xdtsPonocSixSeconds(
     'xdts-ponoc-6s',
-    xdts: XdtsSheetTemplate.ponocSixSeconds,
+    xdts: XdtsViewerSheet.ponocSixSeconds,
   );
 
   const TimesheetSheetKind(
@@ -42,7 +42,14 @@ enum TimesheetSheetKind {
   final String jsonValue;
 
   /// The viewer's sheet this one prints as, or null for one of our own.
-  final XdtsSheetTemplate? xdts;
+  final XdtsViewerSheet? xdts;
+
+  /// The viewer's sheet a cut printed on this one lays its ink on unless
+  /// the export picks another: its own, on one of the viewer's — the A3
+  /// 6-second sheet on ours. 🗣️I-161-Q8 (유저 2026-11-05): 「기본값은 현재
+  /// 타임시트용지패널에서 선택된 서식을 기본으로하고 그게 애니셀서식이면 A3
+  /// 6초를 기본값으로」.
+  XdtsViewerSheet get viewerSheet => xdts ?? XdtsViewerSheet.a3SixSeconds;
 
   final int _strips;
 
@@ -105,7 +112,7 @@ enum TimesheetSheetKind {
 /// export and the format window's switch all ask:
 ///
 /// - [chosen] while it can;
-/// - an XDTS sheet only at the viewer's 24 a second ([xdtsCountsSecondsAt])
+/// - an XDTS sheet only at the viewer's 24 a second ([xdtsViewerReads])
 ///   — the 6-second sheet otherwise (I-162-Q3, 「답 전까지는 1」);
 /// - the 6-second sheet while a strip holds the columns, the 3-second
 ///   sheet once it cannot (유저 2026-09-25, timesheet-sheet-capacity-Q1
@@ -116,7 +123,7 @@ TimesheetSheetKind sheetKindFor(
   required int celColumns,
   required int fps,
 }) {
-  final printable = chosen.xdts == null || xdtsCountsSecondsAt(fps)
+  final printable = chosen.xdts == null || xdtsViewerReads(fps)
       ? chosen
       : TimesheetSheetKind.sixSeconds;
   return printable == TimesheetSheetKind.sixSeconds &&

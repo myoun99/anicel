@@ -17,11 +17,11 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
-import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/sheet_sources.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/models/xdts_sheet_form.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
 /// A cut of [cels] ACTION rows and [inbetweens] 動画 ones, the CELL
@@ -260,6 +260,36 @@ void main() {
       expect(sheet.xdtsForm!.cellsColumns, 10);
     });
 
+    test('the paper a cut\'s ink is laid on is the viewer\'s, widened for '
+        'every cel track its XDTS writes — from our own sheet too, whose '
+        'blocks part the rows (I-161-Q2 · I-162 ②)', () {
+      // Six ACTION rows and four 動画 rows: ten cel tracks in the file.
+      final ours = _sheet(_cut(cels: 6, inbetweens: 4));
+      expect(ours.xdtsForm, isNull);
+      expect(ours.xdtsCelTracks, 10);
+      final onA3 = ours.xdtsFormOn(XdtsViewerSheet.a3SixSeconds);
+      expect(onA3.cellsColumns, 10);
+      expect(
+        (onA3.pageWidth, onA3.pageHeight),
+        (
+          XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0).pageWidth +
+              2 * onA3.cellsColWidth * 2,
+          4134,
+        ),
+        reason: 'two columns past the template\'s eight, in both bodies',
+      );
+
+      // On the viewer's own sheet the ink's paper IS the sheet's.
+      final onB4 = _sheet(
+        _cut(cels: 6, inbetweens: 4, kind: TimesheetSheetKind.xdtsB4SixSeconds),
+      );
+      expect(
+        onB4.xdtsFormOn(XdtsViewerSheet.b4SixSeconds),
+        same(onB4.xdtsForm),
+      );
+      expect(onB4.xdtsFormOn(XdtsViewerSheet.a3SixSeconds).cellsColumns, 10);
+    });
+
     test('the B4 3-second sheet is one body of 72 rows, its camera block one '
         'column', () {
       final sheet = _sheet(
@@ -272,7 +302,7 @@ void main() {
     });
 
     test('off the viewer\'s 24 a second a cut that chose one prints on our '
-        'sheets (I-162-Q3) — 23.976 counts 24', () {
+        'sheets (I-162-Q3) — [xdtsViewerReads] is the rate', () {
       for (final kind in TimesheetSheetKind.values) {
         if (kind.xdts == null) {
           continue;
@@ -294,15 +324,6 @@ void main() {
         );
         expect(_sheet(_cut(cels: 3, kind: kind)).sheetKind, kind);
       }
-      // The frames a second the project COUNTS.
-      expect(
-        xdtsCountsSecondsAt(const ProjectFrameRate.ntsc(24).countingBase),
-        isTrue,
-      );
-      expect(
-        xdtsCountsSecondsAt(const ProjectFrameRate.ntsc(30).countingBase),
-        isFalse,
-      );
     });
   });
 }

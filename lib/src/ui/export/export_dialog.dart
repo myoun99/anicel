@@ -3419,10 +3419,11 @@ class ExportDialogState extends State<ExportDialog> {
   /// each page of its timesheet with the handwriting and the values the
   /// viewer does not print ([xdtsViewerUnprintedParts]), the page laid
   /// whole onto the viewer's paper — 🗣️I-161-Q2 (유저 2026-11-05): 「우리
-  /// 용지를 뷰어 용지 크기에 맞춰 통째로 늘린다」 — and the viewer's settings
-  /// for that paper. A folder already there is written over, page by page,
-  /// as every export writes over its files — 🗣️I-161-Q10 (유저 2026-11-05):
-  /// 「덮어쓴다」.
+  /// 용지를 뷰어 용지 크기에 맞춰 통째로 늘린다」 — the paper as wide as the
+  /// viewer widens it for the cut's cel tracks ([TimesheetDocument
+  /// .xdtsFormOn]) — and the viewer's settings for that paper. A folder
+  /// already there is written over, page by page, as every export writes
+  /// over its files — 🗣️I-161-Q10 (유저 2026-11-05): 「덮어쓴다」.
   Future<void> _writeXdtsInk(
     Cut cut, {
     required File beside,
@@ -3436,7 +3437,7 @@ class ExportDialogState extends State<ExportDialog> {
       '${xdtsInkFolderName(beside.uri.pathSegments.last)}',
     );
     await folder.create(recursive: true);
-    final (:width, :height) = viewer.pixelSize;
+    final paper = document.xdtsFormOn(viewer);
     final pageCount = document.pages.length;
     for (var page = 0; page < pageCount; page += 1) {
       final image = await _renderSheetPage(
@@ -3449,7 +3450,10 @@ class ExportDialogState extends State<ExportDialog> {
           fileName: xdtsInkPageFileName(page),
         ),
         face: face,
-        outputSize: CanvasSize(width: width, height: height),
+        outputSize: CanvasSize(
+          width: paper.pageWidth,
+          height: paper.pageHeight,
+        ),
         layers: const {SheetPaintLayer.content, SheetPaintLayer.ink},
         contentParts: xdtsViewerUnprintedParts,
       );
@@ -4936,7 +4940,7 @@ class ExportDialogState extends State<ExportDialog> {
           ? ExportPaperFormatModule.summarize(spec.sheetImage)
           : spec.writesSheetInk(fps: _projectFps)
           ? 'XDTS · ${strings.exXdtsInk} · '
-                '${strings.exXdtsViewerSheet(viewer)}'
+                '${strings.xdtsViewerSheetName(viewer)}'
           : 'XDTS',
       expansion: _expansion('sheet-format', open: true),
       child: Column(
@@ -4982,14 +4986,14 @@ class ExportDialogState extends State<ExportDialog> {
               alignment: Alignment.centerLeft,
               child: PanelFlyoutButton(
                 key: const ValueKey<String>('export-tsformat-xdts-sheet'),
-                label: strings.exXdtsViewerSheet(viewer),
+                label: strings.xdtsViewerSheetName(viewer),
                 enabled: !_isExporting && inkLive && spec.sheetInk,
                 entriesBuilder: () =>
                     XdtsViewerSheet.values.asFlyoutValueChoices(
                       current: viewer,
                       choiceOf: (sheet) => PanelFlyoutChoice(
                         key: 'export-tsformat-xdts-sheet-${sheet.jsonValue}',
-                        label: strings.exXdtsViewerSheet(sheet),
+                        label: strings.xdtsViewerSheetName(sheet),
                       ),
                       onPicked: (sheet) =>
                           _updateSpec(spec.copyWith(viewerSheet: sheet)),

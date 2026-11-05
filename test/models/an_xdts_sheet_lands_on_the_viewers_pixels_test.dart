@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/xdts_sheet_form.dart';
-import 'package:anicel/src/models/xdts_sheet_template.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 
 /// I-162 (유저 2026-11-05): 「서식 바꾸면 xdts의 해당 서식에서 보는거랑
 /// 똑같은 화면이었으면해」 — an XDTS sheet is laid out as the XDTS Viewer
@@ -39,7 +39,7 @@ void main() {
   ];
 
   test('the A3 6-second sheet', () {
-    final form = XdtsSheetForm(XdtsSheetTemplate.a3SixSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0);
     expect((form.pageWidth, form.pageHeight), (2923, 4134));
     expect((form.originLeft, form.originTop), (89, 49));
     expect(lines(form, 0).x, [89, 397, 466, 574, 1206, 1443, 1442]);
@@ -56,7 +56,7 @@ void main() {
   });
 
   test('the B4 3-second sheet', () {
-    final form = XdtsSheetForm(XdtsSheetTemplate.b4ThreeSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.b4ThreeSeconds, cells: 0);
     expect((form.pageWidth, form.pageHeight), (2530, 3583));
     expect((form.originLeft, form.originTop), (74, 59));
     expect(lines(form, 0).x, [74, 760, 824, 937, 2071, 2450, 2456]);
@@ -72,7 +72,7 @@ void main() {
   });
 
   test('the B4 6-second sheet', () {
-    final form = XdtsSheetForm(XdtsSheetTemplate.b4SixSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.b4SixSeconds, cells: 0);
     expect((form.pageWidth, form.pageHeight), (2530, 3583));
     expect((form.originLeft, form.originTop), (94, 59));
     expect(lines(form, 0).x, [94, 290, 359, 457, 947, 1241, 1246]);
@@ -89,7 +89,7 @@ void main() {
   });
 
   test('the Ponoc 6-second sheet — its frame numbers have no column', () {
-    final form = XdtsSheetForm(XdtsSheetTemplate.ponocSixSeconds, cells: 0);
+    final form = XdtsSheetForm(XdtsViewerSheet.ponocSixSeconds, cells: 0);
     expect((form.pageWidth, form.pageHeight), (2530, 3583));
     expect((form.originLeft, form.originTop), (73, 39));
     expect(form.lastKeyColWidth, 0);
@@ -106,7 +106,7 @@ void main() {
 
   test('the rows by a second\'s double rule share its gap — the Ponoc '
       'sheet\'s, a second shorter than its rows, gives a pixel each', () {
-    final a3 = XdtsSheetForm(XdtsSheetTemplate.a3SixSeconds, cells: 0);
+    final a3 = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0);
     // The A3 sheet's spec example: the second second's first row is
     // 2020…2065, reaching 3 px up into the gap.
     expect(a3.rowsTop + a3.rowTop(24), 2020);
@@ -114,7 +114,7 @@ void main() {
     expect(a3.rowsTop + a3.rowBottom(23), 2020);
     expect(a3.rowsTop + a3.rowTop(1), 1009 + 42);
     final ponoc = XdtsSheetForm(
-      XdtsSheetTemplate.ponocSixSeconds,
+      XdtsViewerSheet.ponocSixSeconds,
       cells: 0,
     );
     expect(ponoc.heightAdjust, -1);
@@ -128,10 +128,10 @@ void main() {
 
   test('the rows tile a body: each starts where the one before ends', () {
     for (final template in [
-      XdtsSheetTemplate.a3SixSeconds,
-      XdtsSheetTemplate.b4ThreeSeconds,
-      XdtsSheetTemplate.b4SixSeconds,
-      XdtsSheetTemplate.ponocSixSeconds,
+      XdtsViewerSheet.a3SixSeconds,
+      XdtsViewerSheet.b4ThreeSeconds,
+      XdtsViewerSheet.b4SixSeconds,
+      XdtsViewerSheet.ponocSixSeconds,
     ]) {
       final form = XdtsSheetForm(template, cells: 0);
       expect(form.rowTop(0), 0, reason: template.label);
@@ -153,7 +153,7 @@ void main() {
   test('more cel columns than the CELL block holds widen it to as many, '
       'and the paper by the bodies\' widening — the ACTION block is left '
       'as it is, as the viewer leaves it for our one-file XDTS', () {
-    final form = XdtsSheetForm(XdtsSheetTemplate.a3SixSeconds, cells: 10);
+    final form = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 10);
     expect((form.keyColumns, form.cellsColumns), (7, 10));
     expect(form.bodyWidth, 1353 + 2 * 79);
     expect(form.pageWidth, 2923 + 2 * 79 * 2);
@@ -163,10 +163,10 @@ void main() {
     // The info header stands where it stood.
     expect(
       infoBoxes(form),
-      infoBoxes(XdtsSheetForm(XdtsSheetTemplate.a3SixSeconds, cells: 0)),
+      infoBoxes(XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 0)),
     );
     // A block that holds them is left as it is.
-    final fits = XdtsSheetForm(XdtsSheetTemplate.a3SixSeconds, cells: 8);
+    final fits = XdtsSheetForm(XdtsViewerSheet.a3SixSeconds, cells: 8);
     expect((fits.keyColumns, fits.cellsColumns), (7, 8));
     expect(fits.bodyWidth, 1353);
   });

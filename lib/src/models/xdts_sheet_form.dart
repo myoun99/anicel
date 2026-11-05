@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'xdts_sheet_template.dart';
+import 'xdts_viewer_sheet.dart';
 
 /// A box of an XDTS sheet's info header as the viewer lays it, from the
 /// paper's corner: its template box, its left and its width.
@@ -10,16 +10,7 @@ typedef XdtsInfoPlace = ({XdtsInfoBox box, int left, int width});
 /// corner.
 typedef XdtsPixelRect = ({int left, int top, int width, int height});
 
-/// Whether a sheet counting [fps] frames a second lays its seconds as the
-/// XDTS Viewer does, 24 rows each — [fps] the frames a second COUNTS
-/// (`ProjectFrameRate.countingBase`), so a 23.976 project's 24 is.
-///
-/// The viewer's XDTS file carries no rate: it reads every one as 24 a
-/// second (I-162-Q3, I-161-Q7: 「24의 기준이 23.976도 들어가지? 이런 기준 법
-/// 사본화되있으면 통일하면서」 — one answer for the sheet and its export).
-bool xdtsCountsSecondsAt(int fps) => fps == XdtsSheetForm.rowsPerSecond;
-
-/// An XDTS sheet template ([XdtsSheetTemplate]) laid out as the XDTS
+/// A sheet of the XDTS Viewer's ([XdtsViewerSheet]) laid out as the XDTS
 /// Viewer lays it for our XDTS file, in the viewer's own pixels — so a
 /// sheet drawn on it lands on the viewer's page line for line, and the
 /// handwriting written on one lands on the other's cells (I-161-Q2).
@@ -48,7 +39,8 @@ class XdtsSheetForm {
     : keyColumns = template.keyColAmount,
       cellsColumns = math.max(cells, template.cellsColAmount);
 
-  final XdtsSheetTemplate template;
+  /// The viewer's sheet — the template its numbers are read from.
+  final XdtsViewerSheet template;
 
   /// The ACTION block's columns and the CELL block's, widened.
   final int keyColumns;
@@ -62,9 +54,9 @@ class XdtsSheetForm {
   static int px(double mm) => (mm * dpi / 25.4).round();
 
   /// Seconds a body holds, and the rows a second holds: the viewer counts
-  /// 24 frames a second whatever the file was made at.
+  /// 24 frames a second whatever the file was made at ([xdtsViewerFps]).
   static const int bodySeconds = 3;
-  static const int rowsPerSecond = 24;
+  static const int rowsPerSecond = xdtsViewerFps;
 
   /// Frames a body holds.
   static const int bodyRows = bodySeconds * rowsPerSecond;
@@ -87,9 +79,9 @@ class XdtsSheetForm {
 
   /// The paper: the template's, and the bodies' widening beside it.
   late final int pageWidth =
-      px(template.paper.widthMm) +
+      px(template.paperFormat.widthMm) +
       (bodyWidth - px(template.bodyWidthMm)) * template.bodyAmount;
-  late final int pageHeight = px(template.paper.heightMm);
+  late final int pageHeight = px(template.paperFormat.heightMm);
 
   /// The corner the sheet is drawn from: the margin's.
   late final int originLeft = px(template.marginLeftMm);

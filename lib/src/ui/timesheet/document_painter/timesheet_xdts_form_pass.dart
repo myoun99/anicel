@@ -140,7 +140,7 @@ class _XdtsFormPass {
 
   /// The sheet count's marks: the stroke between its two numbers, and 枚 ·
   /// 枚目 by the one over and the one under — which is which the template
-  /// says ([XdtsSheetTemplate.totalOverCurrent]).
+  /// says ([XdtsViewerSheet.totalOverCurrent]).
   void _paintSheetMarks(Canvas canvas, XdtsPixelRect box) {
     final right = box.left + box.width - 1;
     final bottom = box.top + box.height - 1;
@@ -201,53 +201,57 @@ class _XdtsFormPass {
   void _bodyWall(Canvas canvas, double x) =>
       _rule(canvas, Offset(x, _bodyTop), Offset(x, _bodyBottom), _thin);
 
+  /// A rule across [block] at [y].
+  void _across(Canvas canvas, _XdtsBlock block, double y, Paint pen) =>
+      _rule(
+        canvas,
+        Offset(block.left, y),
+        Offset(block.left + block.width, y),
+        pen,
+      );
+
+  /// The first [count] of [block]'s walls, a column apart from its left,
+  /// down [span].
+  void _walls(
+    Canvas canvas,
+    _XdtsBlock block,
+    int count,
+    ({double top, double bottom}) span,
+  ) {
+    for (var wall = 1; wall <= count; wall += 1) {
+      final x = block.left + wall * block.columnWidth;
+      _rule(canvas, Offset(x, span.top), Offset(x, span.bottom), _thin);
+    }
+  }
+
   /// [block]'s head: the rule halving it, the thick rule closing it, and
   /// the walls between its columns in its lower half.
   void _paintHeadGrid(Canvas canvas, _XdtsBlock block) {
-    final right = block.left + block.width;
-    _rule(
+    _across(canvas, block, _headMiddle, _thin);
+    _across(canvas, block, _headBottom, _thick);
+    _walls(
       canvas,
-      Offset(block.left, _headMiddle),
-      Offset(right, _headMiddle),
-      _thin,
+      block,
+      block.columns - 1,
+      (top: _headMiddle, bottom: _headBottom),
     );
-    _rule(
-      canvas,
-      Offset(block.left, _headBottom),
-      Offset(right, _headBottom),
-      _thick,
-    );
-    for (var column = 1; column < block.columns; column += 1) {
-      final x = block.left + column * block.columnWidth;
-      _rule(canvas, Offset(x, _headMiddle), Offset(x, _headBottom), _thin);
-    }
   }
 
   /// [block]'s rows: each row's rule, thick on every sixth, and a second's
   /// double rule — then [walls] walls a column apart down them.
   void _paintRowGrid(Canvas canvas, _XdtsBlock block, {required int walls}) {
     final rowsTop = _form.rowsTop.toDouble();
-    final right = block.left + block.width;
     for (var second = 0; second < XdtsSheetForm.bodySeconds; second += 1) {
       final secondTop = rowsTop + second * _form.secondHeight;
       for (var row = 1; row <= XdtsSheetForm.rowsPerSecond; row += 1) {
         final y = secondTop + row * _form.rowHeight;
-        _rule(
-          canvas,
-          Offset(block.left, y),
-          Offset(right, y),
-          row % 6 == 0 ? _thick : _thin,
-        );
+        _across(canvas, block, y, row % 6 == 0 ? _thick : _thin);
       }
-      final y = secondTop + _form.secondHeight;
-      _rule(canvas, Offset(block.left, y), Offset(right, y), _thick);
+      _across(canvas, block, secondTop + _form.secondHeight, _thick);
     }
     final rowsBottom =
         rowsTop + XdtsSheetForm.bodySeconds * _form.secondHeight;
-    for (var wall = 1; wall <= walls; wall += 1) {
-      final x = block.left + wall * block.columnWidth;
-      _rule(canvas, Offset(x, rowsTop), Offset(x, rowsBottom), _thin);
-    }
+    _walls(canvas, block, walls, (top: rowsTop, bottom: rowsBottom));
   }
 
   /// Where [block] writes its name small: its head's upper half.
@@ -402,12 +406,7 @@ class _XdtsFormPass {
         _page.spread(canvas, _cameraWord, _upperHead(block), size: _smallName);
       }
     } else {
-      _rule(
-        canvas,
-        Offset(left, _headBottom),
-        Offset(left + block.width, _headBottom),
-        _thick,
-      );
+      _across(canvas, block, _headBottom, _thick);
       if (template.drawCameraHeaderLabel) {
         _page.spread(
           canvas,
@@ -417,8 +416,6 @@ class _XdtsFormPass {
         );
       }
     }
-    if (template.drawCameraGrid) {
-      _paintRowGrid(canvas, block, walls: block.columns - 1);
-    }
+    _paintRowGrid(canvas, block, walls: block.columns - 1);
   }
 }

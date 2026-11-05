@@ -487,7 +487,7 @@ class CelsExportSpec extends ExportTabSpec {
 
   /// The viewer sheet a cut printed on [kind] lays its ink on.
   XdtsViewerSheet viewerSheetFor(TimesheetSheetKind kind) =>
-      viewerSheet ?? XdtsViewerSheet.of(kind);
+      viewerSheet ?? kind.viewerSheet;
 
   /// 컷봉투 형식: the paper a cut envelope is written on (유저 2026-10-05:
   /// 「기존의 컷봉투탭에 있던 용지는 컷크기/실측용지 이거는 컷봉투 형식안에

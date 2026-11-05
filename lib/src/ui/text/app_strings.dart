@@ -840,15 +840,17 @@ enum AppStrings {
   String get sheetXdtsPapers => _s('sheetXdtsPapers');
 
   /// What the paper a timesheet prints on is called — the XDTS Viewer's
-  /// sheets by their paper (or the studio a sheet is named for) and their
-  /// length, under their own field ([sheetXdtsPapers]).
+  /// sheets as the export names them ([xdtsViewerSheetName]), under their
+  /// own field ([sheetXdtsPapers]).
   String sheetKindName(TimesheetSheetKind kind) => switch (kind) {
     TimesheetSheetKind.threeSeconds => sheetThreeSeconds,
     TimesheetSheetKind.sixSeconds => sheetSixSeconds,
-    TimesheetSheetKind.xdtsA3SixSeconds => 'A3 $sheetSixSeconds',
-    TimesheetSheetKind.xdtsB4ThreeSeconds => 'B4 $sheetThreeSeconds',
-    TimesheetSheetKind.xdtsB4SixSeconds => 'B4 $sheetSixSeconds',
-    TimesheetSheetKind.xdtsPonocSixSeconds => 'Ponoc $sheetSixSeconds',
+    TimesheetSheetKind.xdtsA3SixSeconds ||
+    TimesheetSheetKind.xdtsB4ThreeSeconds ||
+    TimesheetSheetKind.xdtsB4SixSeconds ||
+    TimesheetSheetKind.xdtsPonocSixSeconds => xdtsViewerSheetName(
+      kind.viewerSheet,
+    ),
   };
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get conteCoverPage => _s('conteCoverPage');
@@ -1449,10 +1451,10 @@ enum AppStrings {
   String get exMuxSeMix => _s('exMuxSeMix');
   String get exXdtsInk => _s('exXdtsInk');
 
-  /// A sheet of the XDTS Viewer's, as the export names it — its paper and
-  /// the seconds a page holds (「A3 6초」, I-161-Q8).
-  String exXdtsViewerSheet(XdtsViewerSheet sheet) =>
-      _s('exXdtsViewerSheetTemplate')
+  /// A sheet of the XDTS Viewer's, as the export and the timesheet's paper
+  /// name it — its paper and the seconds a page holds (「A3 6초」, I-161-Q8).
+  String xdtsViewerSheetName(XdtsViewerSheet sheet) =>
+      _s('xdtsViewerSheetTemplate')
           .replaceAll('{paper}', sheet.paper)
           .replaceAll('{seconds}', '${sheet.pageSeconds}');
   String get exLabel => _s('exLabel');
@@ -3021,7 +3023,7 @@ enum AppStrings {
     'exApplyLayerFx': 'Layer FX',
     'exMuxSeMix': 'Mux the SE mix into the video',
     'exXdtsInk': 'Ink output',
-    'exXdtsViewerSheetTemplate': '{paper} {seconds} sec',
+    'xdtsViewerSheetTemplate': '{paper} {seconds} sec',
     'exLabel': 'Label',
     'exApply': 'Apply',
     'exKinds': 'Kinds to export',
@@ -4672,7 +4674,7 @@ enum AppStrings {
     'exApplyLayerFx': 'レイヤーFX',
     'exMuxSeMix': 'SEミックスを動画に多重化',
     'exXdtsInk': 'インク出力',
-    'exXdtsViewerSheetTemplate': '{paper} {seconds}秒',
+    'xdtsViewerSheetTemplate': '{paper} {seconds}秒',
     'exLabel': 'ラベル',
     'exApply': '適用',
     'exKinds': '書き出す種類',
@@ -6532,7 +6534,7 @@ enum AppStrings {
     'exApplyLayerFx': '레이어 FX',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
     'exXdtsInk': '잉크 출력',
-    'exXdtsViewerSheetTemplate': '{paper} {seconds}초',
+    'xdtsViewerSheetTemplate': '{paper} {seconds}초',
     'exLabel': '라벨',
     'exApply': '적용',
     'exKinds': '내보낼 종류',
@@ -8450,7 +8452,7 @@ enum AppStrings {
     'exApplyLayerFx': 'FX de calque',
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
     'exXdtsInk': "Sortie de l'encre",
-    'exXdtsViewerSheetTemplate': '{paper} {seconds} s',
+    'xdtsViewerSheetTemplate': '{paper} {seconds} s',
     'exLabel': 'Étiquette',
     'exApply': 'Appliquer',
     'exKinds': 'Types à exporter',
@@ -10370,7 +10372,7 @@ enum AppStrings {
     'exApplyLayerFx': '图层 FX',
     'exMuxSeMix': '将 SE 混音封装进视频',
     'exXdtsInk': '墨迹输出',
-    'exXdtsViewerSheetTemplate': '{paper} {seconds}秒',
+    'xdtsViewerSheetTemplate': '{paper} {seconds}秒',
     'exLabel': '标签',
     'exApply': '应用',
     'exKinds': '导出种类',

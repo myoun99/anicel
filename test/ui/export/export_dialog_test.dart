@@ -94,6 +94,7 @@ void main() {
     ProjectFrameRate frameRate = ProjectFrameRate.fps24,
     bool celsExposed = true,
     List<Layer> seLayers = const [],
+    int moreCels = 0,
   }) {
     return EditorSessionManager(
       initialProject: Project(
@@ -120,6 +121,13 @@ void main() {
                     frames: [frame('f1'), frame('f2')],
                     timeline: celsExposed ? null : const {},
                   ),
+                  for (var index = 0; index < moreCels; index += 1)
+                    Layer(
+                      id: LayerId('more-$index'),
+                      name: 'K$index',
+                      mark: const LayerMark(process: LayerProcess.key),
+                      frames: const [],
+                    ),
                   createCameraLayer(cutId: const CutId('cut')),
                 ],
               ),
@@ -995,7 +1003,7 @@ void main() {
       );
       expect(
         sheetButton().label,
-        AppText.strings.exXdtsViewerSheet(XdtsViewerSheet.a3SixSeconds),
+        AppText.strings.xdtsViewerSheetName(XdtsViewerSheet.a3SixSeconds),
       );
       expect(sheetButton().enabled, isFalse);
 
@@ -1062,6 +1070,40 @@ void main() {
       ))!;
       addTearDown(onB4.dispose);
       expect((onB4.width, onB4.height), (2530, 3583));
+    });
+
+    // I-162 ② (타임라인/콘티 · 저장 2026-11-05): the viewer widens its CELL
+    // block for every cel track the file brings (`ExpandColumns=true`), and
+    // its paper with it — an ink page cut to the template's paper lands its
+    // values in other columns.
+    testWidgets('잉크 출력: a cut with more cel tracks than the viewer\'s '
+        'sheet holds lays its ink on the paper the viewer widens for '
+        'them', (tester) async {
+      final session = exportSession(moreCels: 9);
+      addTearDown(session.dispose);
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await pickPaperFormat(tester, 'export-tsformat', 'xdts');
+      final ink = find.byKey(const ValueKey<String>('export-tsformat-xdts-ink'));
+      await tester.ensureVisible(ink);
+      await tester.pump();
+      await tester.pressRingIn(ink);
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      // Ten cel tracks on the A3 sheet's eight: two 79-pixel columns more
+      // in each of its two bodies.
+      expect((image.width, image.height), (2923 + 2 * 79 * 2, 4134));
     });
 
     // 🗣️I-161-Q3 (유저 2026-11-05): 「데이터로서 내보낼수있는건 다

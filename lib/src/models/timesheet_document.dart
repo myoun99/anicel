@@ -24,6 +24,7 @@ import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
 import 'xdts_sheet_form.dart';
+import 'xdts_viewer_sheet.dart';
 
 /// The colour label whose worker on the cut a sheet's 作業者 box names —
 /// 러프원화 (유저 2026-10-05, F-291: 「타임시트에 적히는 이름 기준이
@@ -415,6 +416,7 @@ class TimesheetDocument {
     this.transitionHandles = CutTransitionHandles.none,
     required this.sheetKind,
     required this.xdtsForm,
+    required this.xdtsCelTracks,
     required this.pageFrameCount,
     required this.columns,
     required this.books,
@@ -495,7 +497,7 @@ class TimesheetDocument {
     final cellLayers = onXdts ? sources.celLayers : sources.cellLayers;
     final seColumnCount = sheetKind.seColumns;
     final cameraColumnCount = sheetKind.cameraColumns;
-    final xdtsForm = sheetKind.xdtsFormFor(cells: cellLayers.length);
+    final xdtsForm = sheetKind.xdtsFormFor(cells: sources.celLayers.length);
     final celBlocks = sheetKind.celBlockColumns(
       actions: actionLayers.length,
       cells: cellLayers.length,
@@ -600,6 +602,7 @@ class TimesheetDocument {
       transitionHandles: sources.handles,
       sheetKind: sheetKind,
       xdtsForm: xdtsForm,
+      xdtsCelTracks: sources.celLayers.length,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
       // The books tag the ACTION block's rows — on an XDTS sheet a blank
@@ -797,6 +800,19 @@ class TimesheetDocument {
   /// The XDTS Viewer's sheet the cut prints on, laid out for its columns —
   /// null on one of our own ([TimesheetSheetKind.xdts]).
   final XdtsSheetForm? xdtsForm;
+
+  /// The cel tracks our XDTS file writes the cut's rows as
+  /// ([SheetSources.celLayers]) — what the viewer widens its CELL block to.
+  final int xdtsCelTracks;
+
+  /// The XDTS Viewer's [sheet] laid out as the viewer lays it for the
+  /// cut's XDTS file: the one the sheet prints on ([xdtsForm]), or the one
+  /// the export lays the cut's ink on — every column the file brings, so
+  /// the ink page is the page the viewer widens (I-161-Q2 · I-162 ②).
+  XdtsSheetForm xdtsFormOn(XdtsViewerSheet sheet) => switch (xdtsForm) {
+    final form? when form.template == sheet => form,
+    _ => XdtsSheetForm(sheet, cells: xdtsCelTracks),
+  };
 
   /// Rows per paper page ([TimesheetSheetKind.pageFramesAt]).
   final int pageFrameCount;

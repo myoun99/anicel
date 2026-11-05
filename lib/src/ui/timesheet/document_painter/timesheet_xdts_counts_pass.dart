@@ -65,7 +65,7 @@ class _XdtsCountsPass {
 
   /// The sheets the cut fills, centred, and the one this is, from the
   /// left — over and under the stroke as the marks say
-  /// ([XdtsSheetTemplate.totalOverCurrent]).
+  /// ([XdtsViewerSheet.totalOverCurrent]).
   void _paintSheetCount(Canvas canvas, XdtsPixelRect box, int pageIndex) {
     final width = 3 * (box.width ~/ 8).toDouble();
     final height = (box.height ~/ 2 + _XdtsPage.px(1)).toDouble();
