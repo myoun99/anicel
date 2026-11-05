@@ -320,7 +320,7 @@ void main() {
               file.setPositionSync(ref.dataOffset);
               final blob = AnicelCelBlob(file.readSync(ref.length));
               expect(blob.key, cel, reason: 'the entry wears its own key');
-              return pixelsOf(blob.decode().toSurface());
+              return pixelsOf(blob.toSurface());
             }(),
         };
       } finally {

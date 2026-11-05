@@ -917,7 +917,7 @@ class BrushFrameStore {
     if (blob == null) {
       return null;
     }
-    final surface = _behind(blob.decode().toSurface());
+    final surface = _behind(blob.toSurface());
     if (read == CelRead.use) {
       _keepThawed(key, surface);
     }
@@ -1797,7 +1797,7 @@ class BrushFrameStore {
         : AnicelCelBlob.ofSurface(
             key,
             resizeBitmapSurfaceCanvas(
-              _behind(blob.decode().toSurface()),
+              _behind(blob.toSurface()),
               size,
             ),
           );
@@ -1807,7 +1807,7 @@ class BrushFrameStore {
       copy.bytes,
     );
     if (path == null) {
-      storeBakedSurface(key, copy.decode().toSurface());
+      storeBakedSurface(key, copy.toSurface());
       return size;
     }
     _keepCopy(key, () => _keepCold(key, _parkedRef(path, copy)));
@@ -2265,7 +2265,7 @@ class BrushFrameStore {
     if (blob == null) {
       return null;
     }
-    final was = blob.decode().toSurface();
+    final was = blob.toSurface();
     final cut = rewrite(was);
     if (cut == null) {
       return (rewrite: null);

@@ -123,7 +123,7 @@ void main() {
         anicelCodecDeflate,
         reason: 'no engine means the payload must be readable by dart:io',
       );
-      expect(blob.decode().key, key);
+      expect(blob.decoded((back) => back.key), key);
     });
 
     test('and a deflate payload decompresses without the engine', () {

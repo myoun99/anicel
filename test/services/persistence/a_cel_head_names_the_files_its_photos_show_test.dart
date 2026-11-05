@@ -99,7 +99,7 @@ void main() {
       ['C:/pool/elsewhere.png'],
       reason: 'the CONTROL — the head says what it was handed',
     );
-    expect(blob.decode().toSurface().photos, picture.photos);
+    expect(blob.toSurface().photos, picture.photos);
   });
 
   test('🚨a re-keyed cel keeps its index: the stream it splices through '
@@ -121,6 +121,6 @@ void main() {
     expect(moved.key, elsewhere, reason: 'the CONTROL — it was re-keyed');
     expect(moved.photoPaths, ['C:/pool/a.png']);
     expect(AnicelCelBlob(moved.bytes).photoPaths, ['C:/pool/a.png']);
-    expect(moved.decode().toSurface().photos, picture.photos);
+    expect(moved.toSurface().photos, picture.photos);
   });
 }

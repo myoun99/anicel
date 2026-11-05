@@ -185,7 +185,7 @@ void main() {
 
     test('🚨reads back with its texts — ids, settings, order and every '
         'plate byte', () {
-      final read = AnicelCelBlob.ofSurface(key, picture).decode().toSurface();
+      final read = AnicelCelBlob.ofSurface(key, picture).toSurface();
 
       expect(read, picture);
       expect(read.texts.map((text) => text.id), [3, 4]);
@@ -229,7 +229,7 @@ void main() {
         body: compressed.bytes,
       );
 
-      expect(AnicelCelBlob(blob.bytes).decode().toSurface(), picture);
+      expect(AnicelCelBlob(blob.bytes).toSurface(), picture);
     });
   });
 

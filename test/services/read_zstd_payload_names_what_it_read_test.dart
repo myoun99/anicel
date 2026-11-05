@@ -8,13 +8,17 @@ import 'package:anicel/src/services/persistence/zstd_payload.dart';
 /// whole-project cut walk, is `updateCutAnywhere` now and is pinned in
 /// `project_tree_editor_test.dart`.
 void main() {
-  group('decompressZstdPayload', () {
+  group('readZstdPayload', () {
     test('🚨with no engine it is a FormatException NAMING what could not be '
         'read — "no engine" is something the user can act on, and it must '
         'not reach the screen as "corrupt"', () {
       // The engine is optional at runtime, and this test bench has none.
       expect(
-        () => decompressZstdPayload(Uint8List.fromList([1, 2, 3]), 'drawing'),
+        () => readZstdPayload(
+          Uint8List.fromList([1, 2, 3]),
+          'drawing',
+          (_) => 0,
+        ),
         throwsA(
           isA<FormatException>().having(
             (error) => error.message,
@@ -27,7 +31,7 @@ void main() {
 
     test('the name travels — a caller says what it was reading', () {
       expect(
-        () => decompressZstdPayload(Uint8List(0), 'sound'),
+        () => readZstdPayload(Uint8List(0), 'sound', (_) => 0),
         throwsA(
           isA<FormatException>().having(
             (error) => error.message,

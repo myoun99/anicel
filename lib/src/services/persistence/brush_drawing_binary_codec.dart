@@ -458,7 +458,7 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
 /// knows how much head there is ([AnicelCelBlob.headerLengthOf]).
 ///
 /// 🚨★★★**THE INDEX IS NOT THE PHOTOS.** The stream holds them, and a
-/// decode reads them there and nowhere else ([AnicelCelBlob.decode]). The
+/// decode reads them there and nowhere else ([AnicelCelBlob.decoded]). The
 /// index is for the readers that read a head and nothing more — the open
 /// path's refs (`AnicelCelFileRef.photoPaths`), what the media pool asks of
 /// a cel it will not decode (I-97 E: 사용 중 · 제거 · 다시 연결). It is
@@ -650,7 +650,7 @@ class AnicelCelBlob {
 
   /// The pool files this cel's photos name — the index its head carries for
   /// a reader that reads nothing else. ⛔Not the photos themselves, which
-  /// [decode] reads off the stream.
+  /// [decoded] reads off the stream.
   late final List<String> photoPaths;
 
   /// Whether the picture this blob holds shows anything (v4) — what its
@@ -662,12 +662,21 @@ class AnicelCelBlob {
 
   int get byteLength => bytes.length;
 
-  AnicelCelEntry decode() => decodeCelEntry(
-    decompressAnicelPayload(
-      codec,
-      Uint8List.sublistView(bytes, _deflatedOffset),
-    ),
+  /// What [read] makes of the cel this blob holds.
+  ///
+  /// 🚨★★★**THE ENTRY LIVES ONLY WHILE [read] RUNS.** Its tiles' pixels are
+  /// views of the decompressed bytes, freed when it returns
+  /// ([readAnicelPayload]), so [read] lays them somewhere of its own — a
+  /// surface ([toSurface]), the tile blocks ([layCelEntry]) — and never
+  /// answers the entry, or anything holding a view of it.
+  R decoded<R>(R Function(AnicelCelEntry entry) read) => readAnicelPayload(
+    codec,
+    Uint8List.sublistView(bytes, _deflatedOffset),
+    (inflated) => read(decodeCelEntry(inflated)),
   );
+
+  /// The cel this blob holds, as a surface of its own.
+  BitmapSurface toSurface() => decoded((entry) => entry.toSurface());
 }
 
 class _ByteWriter {

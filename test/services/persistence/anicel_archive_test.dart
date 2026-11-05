@@ -72,7 +72,7 @@ void main() {
           'R20-A1: the archive entry IS the cold blob byte-for-byte '
           '(STORE mode) — cold cels save with zero re-encode',
     );
-    final reopened = contents.cels.single.decode().toSurface();
+    final reopened = contents.cels.single.toSurface();
     expect(reopened.canvasSize, surface.canvasSize);
     expect(reopened.tileSize, 8);
     expect(
@@ -146,7 +146,7 @@ void main() {
     );
 
     final blob = AnicelCelBlob.ofSurface(key, surface);
-    final reopened = AnicelCelBlob(blob.bytes).decode().toSurface();
+    final reopened = AnicelCelBlob(blob.bytes).toSurface();
     expect(
       reopened.tiles[TileCoord(x: -1, y: -2)]!.pixels,
       pixels,
