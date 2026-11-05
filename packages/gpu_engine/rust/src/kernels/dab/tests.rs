@@ -2,7 +2,7 @@
 //! what the formula gives by hand — never against a CPU copy of it
 //! (`kernels/mod.rs` has why).
 
-use super::{Dab, Dabs, Edge, RoundProfile, Shape, StrokeTile};
+use super::{Dab, Dabs, Edge, RoundProfile, Shape, StrokeTile, Turn};
 use crate::kernels::composite::TILE_TEXELS;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
@@ -84,6 +84,7 @@ fn square(region: [i32; 4], colour: [u8; 4], flow: f64) -> Dab<'static> {
         edge_held: false,
         erase: false,
         shape: Shape::Square,
+        turn: Turn::STRAIGHT,
         evening: None,
     }
 }
@@ -313,6 +314,103 @@ fn a_small_circle_is_read_by_its_square_tables() {
     assert_eq!(piled.at(0, 12, 10).0[3], 0);
 }
 
+/// A bitmap tip of `radius` over `texels`, `side` a side, turned by `turn`,
+/// at `centre`, over the box the app gives it (`dirtyRegionForBrushDab`):
+/// the turned rectangle's half extents.
+fn tipped<'a>(texels: &'a [f64], side: u32, radius: f64, turn: Turn, centre: [f64; 2]) -> Dab<'a> {
+    let minor = radius * turn.roundness;
+    let half = [
+        radius * turn.cos.abs() + minor * turn.sin.abs(),
+        radius * turn.sin.abs() + minor * turn.cos.abs(),
+    ];
+    let [cx, cy] = centre;
+    Dab {
+        centre,
+        region: [
+            (cx - half[0]).floor() as i32,
+            (cy - half[1]).floor() as i32,
+            (cx + half[0]).ceil() as i32,
+            (cy + half[1]).ceil() as i32,
+        ],
+        shape: Shape::Tip { texels, side, radius },
+        turn,
+        ..square([0; 4], RED, 1.0)
+    }
+}
+
+/// A 2 × 2 tip, row after row: 255, 128 over 64, 0.
+const CORNERS: [f64; 4] = [1.0, 128.0 / 255.0, 64.0 / 255.0, 0.0];
+
+/// The alphas a dab of [`CORNERS`] leaves on pixels (9, 9), (10, 9),
+/// (9, 10) and (10, 10).
+fn corners(turn: Turn, centre: [f64; 2]) -> [u32; 4] {
+    let piled = piled(&[(0, 0)], [0; 4], &[tipped(&CORNERS, 2, 1.0, turn, centre)]);
+    [(9, 9), (10, 9), (9, 10), (10, 10)].map(|(x, y)| piled.at(0, x, y).0[3])
+}
+
+// A tip two texels a side over a 2 px dab centred on a pixel corner: each
+// pixel's centre is a texel's centre, t = 2(u + R)·side − 2R lands on whole
+// texels, and the pixels take the texels as they are — 255·257, 128·257,
+// 64·257 and nothing.
+#[test]
+fn a_bitmap_tip_lays_its_texels_on_the_pixels_they_fall_on() {
+    assert_eq!(corners(Turn::STRAIGHT, [10.0, 10.0]), [ONE, 32896, 16448, 0]);
+}
+
+// An eighth of a pixel right, pixel 9's centre is 7/8 of the way from
+// texel −1 (nothing) to texel 0: ⌊(65535·28672 + 16384)/32768⌋ = 57343;
+// pixel 10's, 7/8 from 255·257 to 128·257:
+// 65535 + ⌊(−32639·28672 + 16384)/32768⌋ = 36976.
+#[test]
+fn a_bitmap_tip_is_read_between_its_texels() {
+    let alphas = corners(Turn::STRAIGHT, [10.125, 10.0]);
+    assert_eq!(alphas[..2], [57343, 36976]);
+}
+
+// A quarter turn (cos 0, sin 1): u = −dy and v = dx, so the texel under
+// pixel (9, 10) is the one a straight tip lays on (9, 9), and so round.
+#[test]
+fn a_bitmap_tip_turns_with_its_frame() {
+    let quarter = Turn { cos: 0.0, sin: 1.0, roundness: 1.0 };
+    assert_eq!(corners(quarter, [10.0, 10.0]), [32896, 0, ONE, 16448]);
+}
+
+// At a roundness of ½ the minor axis stretches twice: half a pixel up is a
+// whole radius up, halfway between texel row −1 and row 0, so the top
+// pixels lay half their texels — 32768 and 16448 — and the bottom ones the
+// lower row's half.
+#[test]
+fn a_bitmap_tip_squeezes_along_its_minor_axis() {
+    let squeezed = Turn { cos: 1.0, sin: 0.0, roundness: 0.5 };
+    assert_eq!(corners(squeezed, [10.0, 10.0]), [32768, 16448, 8224, 0]);
+}
+
+// An ellipse reads its profile at the stretched distance: at a roundness
+// of ½ the pixel 1 px under the centre is 2 px out — entry 32, 43690 —
+// where a circle's would be within its inner radius, and the pixel 2 px
+// under is at the reach.
+#[test]
+fn an_ellipse_reads_its_profile_at_the_stretched_distance() {
+    let (coverage, pile) = ramp();
+    let profile = radial(&coverage, &pile, 4.0, 1.0);
+    let squeezed = Turn { cos: 1.0, sin: 0.0, roundness: 0.5 };
+    let dab = Dab { turn: squeezed, ..round(&profile, [10.5, 10.5]) };
+    let piled = piled(&[(0, 0)], [0; 4], &[dab]);
+    assert_eq!(piled.at(0, 10, 11).0[3], 43690);
+    assert_eq!(piled.at(0, 10, 12).0[3], 0);
+    assert_eq!(piled.at(0, 12, 10).0[3], 43690);
+}
+
+// A tip past 16384 texels a side, or squeezed so thin its stretch would
+// leave u32, is refused rather than read wrong.
+#[test]
+fn a_tip_past_what_the_integers_hold_is_refused() {
+    let wide = tipped(&CORNERS, 20000, 1.0, Turn::STRAIGHT, [10.0, 10.0]);
+    assert!(tried(&[(0, 0)], [0; 4], &[wide]).is_none());
+    let thin = Turn { cos: 1.0, sin: 0.0, roundness: 1e-6 };
+    assert!(tried(&[(0, 0)], [0; 4], &[tipped(&CORNERS, 2, 1.0, thin, [10.0, 10.0])]).is_none());
+}
+
 // A dab across a seam lays each tile its own part, and a tile on the
 // pasteboard's side of the origin is laid like any other.
 #[test]
@@ -367,10 +465,46 @@ fn along<'a>(
 ) -> Vec<Dab<'a>> {
     (0..count)
         .map(|k| {
-            let t = f64::from(k);
-            let mut dab = round(profile, [20.0 + t * 9.37, 60.0 + t * t * 0.41 - t * 3.13]);
+            let mut dab = round(profile, on_curve(k));
             edit(k, &mut dab);
             dab
+        })
+        .collect()
+}
+
+/// The curve the ledger's strokes follow, dab `k`'s centre on it.
+fn on_curve(k: u32) -> [f64; 2] {
+    let t = f64::from(k);
+    [20.0 + t * 9.37, 60.0 + t * t * 0.41 - t * 3.13]
+}
+
+/// Dab `k`'s turn: seven frames whose cosines and sines are exact ratios
+/// (Pythagorean triples), so no device's sine table enters the ledger, and
+/// four roundnesses.
+fn turn_of(k: u32) -> Turn {
+    let frames = [
+        (1.0, 0.0),
+        (0.6, 0.8),
+        (5.0 / 13.0, 12.0 / 13.0),
+        (0.0, 1.0),
+        (-8.0 / 17.0, 15.0 / 17.0),
+        (-0.8, -0.6),
+        (12.0 / 13.0, -5.0 / 13.0),
+    ];
+    let (cos, sin) = frames[k as usize % frames.len()];
+    Turn { cos, sin, roundness: [1.0, 0.75, 0.5, 0.4][k as usize % 4] }
+}
+
+/// A 32 × 32 bitmap tip of hashed greys inside a circle, nothing outside.
+fn bristles() -> Vec<f64> {
+    (0..32 * 32)
+        .map(|texel: u32| {
+            let (x, y) = (texel % 32, texel / 32);
+            let (dx, dy) = (f64::from(x) - 15.5, f64::from(y) - 15.5);
+            if dx * dx + dy * dy > 225.0 {
+                return 0.0;
+            }
+            f64::from(((x * 73 + y * 151) ^ (x * y * 29)) % 256) / 255.0
         })
         .collect()
 }
@@ -405,6 +539,7 @@ fn every_device_piles_the_pinned_strokes() {
         .map(|entry| 1.0 - (1.0 - f64::from(entry.min(1024)) / 1024.0).sqrt())
         .collect();
     let blue = [30, 90, 220, 255];
+    let bristle = bristles();
     let held = |_, dab: &mut Dab| {
         dab.edge_held = true;
         dab.opacity = 0.7;
@@ -427,6 +562,13 @@ fn every_device_piles_the_pinned_strokes() {
         ("wide", along(&wide, 6, |_, dab| dab.flow = 0.3)),
         // Each dot laid twice, so its edge meets the ceiling.
         ("small", (0..2).flat_map(|_| along(&dot, 24, held)).collect()),
+        ("ellipse", along(&profile, 24, |k, dab| {
+            dab.flow = 0.5;
+            dab.turn = turn_of(k);
+        })),
+        ("tip", (0..24)
+            .map(|k| Dab { flow: 0.5, ..tipped(&bristle, 32, 12.0, turn_of(k), on_curve(k)) })
+            .collect()),
     ];
     for (name, dabs) in &strokes {
         let (planes, view) = bytes(&piled(&tiles, [0; 4], dabs));

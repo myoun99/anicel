@@ -6,10 +6,12 @@
 //! add, and each number here is one rounding of one product, so every
 //! device makes the same integers.
 //!
-//! D1 lays a square dab and a round tip — its profile along the radius, or
-//! a small circle's square tables —, the edge, the ceiling, the share and
-//! the level a dab settles at, over and erase. A tip's bitmap, the paper
-//! and the second tip come in the lanes after (design (1), 11-05 21:53).
+//! It lays a square dab, a round tip — its profile along the radius, or a
+//! small circle's square tables, turned and squeezed where it is an
+//! ellipse — and a bitmap tip, turned and squeezed the same way; the edge,
+//! the ceiling, the share and the level a dab settles at, over and erase.
+//! The paper and the second tip come in the lanes after (design (1), 11-05
+//! 21:53).
 
 // ⏳Nothing outside the tests calls it until the app's connection round,
 // which 관제 opens (gpu-canonical-store 21:41).
@@ -30,7 +32,7 @@ use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL};
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
 const TILE_WORDS: usize = 5;
-const DAB_WORDS: usize = 21;
+const DAB_WORDS: usize = 28;
 const NO_TABLE: u32 = u32::MAX;
 
 // The C engine's flags (QA_DAB_FLAG_*), as dab.wgsl reads them.
@@ -66,6 +68,26 @@ pub(crate) enum Shape<'a> {
     /// All of its region.
     Square,
     Round(&'a RoundProfile<'a>),
+    /// A bitmap of `side` texels a side, row after row on 0..=1, over
+    /// [-radius, radius] each way of the tip's own frame.
+    Tip {
+        texels: &'a [f64],
+        side: u32,
+        radius: f64,
+    },
+}
+
+/// How a round or bitmap tip turns and squeezes (`BrushDabTipGeometry`):
+/// its frame's cosine and sine, and its minor axis over its major.
+pub(crate) struct Turn {
+    pub(crate) cos: f64,
+    pub(crate) sin: f64,
+    pub(crate) roundness: f64,
+}
+
+impl Turn {
+    /// A tip that does not turn or squeeze — a circle's.
+    pub(crate) const STRAIGHT: Turn = Turn { cos: 1.0, sin: 0.0, roundness: 1.0 };
 }
 
 /// The brush's edge (`brushDabEdgeLaw`).
@@ -90,6 +112,7 @@ pub(crate) struct Dab<'a> {
     pub(crate) edge_held: bool,
     pub(crate) erase: bool,
     pub(crate) shape: Shape<'a>,
+    pub(crate) turn: Turn,
     /// The table it lays its share through, 1026 entries, or none.
     pub(crate) evening: Option<&'a [f64]>,
 }
@@ -306,12 +329,49 @@ fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
         contrast,
         dab.evening.map_or(NO_TABLE, |table| tables.place(table)),
     ]);
+    words[26] = NO_TABLE;
+    // How far from the centre anything is laid, and the major axis's reach.
+    let (extent, major) = match dab.shape {
+        Shape::Square => return Some(words),
+        Shape::Round(profile) => (profile.reach, profile.reach),
+        Shape::Tip { radius, .. } => (radius * (1.0 + dab.turn.roundness), radius),
+    };
+    // 1a 보탬 기하: distances are taken shifted s bits off 1/256 px, s the
+    // least that keeps one under 2^15 within the extent.
+    let reach8 = (extent * 256.0).ceil() as u32 + 256;
+    let shift = (32 - reach8.leading_zeros()).saturating_sub(15);
+    let unit = 256.0 / f64::from(1u32 << shift);
+    // A round tip lays nothing at its reach; a bitmap's texels reach its
+    // radius itself.
+    let (major, guard) = match dab.shape {
+        Shape::Round(_) => ((major * unit).ceil() as u32, (major * unit).ceil() as u32),
+        _ => ((major * unit).round() as u32, (extent * unit).floor() as u32 + 1),
+    };
+    // The minor axis is held to a bound over its reach before the stretch:
+    // what decides is the stretched axis against the major.
+    let minor = (f64::from(major) * dab.turn.roundness).ceil() as u32 + 1;
+    let inverse = (65536.0 / dab.turn.roundness).round() as u32;
+    if u64::from(minor) * u64::from(inverse) + 32768 > u64::from(u32::MAX) {
+        return fail(format!("a roundness of {} stretches past u32", dab.turn.roundness));
+    }
+    words[13..20].copy_from_slice(&[
+        shift,
+        guard,
+        (dab.turn.cos * 32768.0).round() as i32 as u32,
+        (dab.turn.sin * 32768.0).round() as i32 as u32,
+        inverse,
+        major,
+        minor,
+    ]);
+    if let Shape::Tip { texels, side, .. } = dab.shape {
+        // 1a 보탬: t = 2(u + R)·side stays in u32 to a side of 16384.
+        if side == 0 || side > 16384 || texels.len() != (side * side) as usize || major == 0 {
+            return fail(format!("a tip of side {side}, {} texels, radius {major}", texels.len()));
+        }
+        words[26] = tables.place(texels);
+        words[27] = side;
+    }
     if let Shape::Round(profile) = dab.shape {
-        // 1a 보탬 기하: distances are taken shifted s bits off 1/256 px,
-        // s the least that keeps one under 2^15 within the reach.
-        let reach8 = (profile.reach * 256.0).ceil() as u32 + 256;
-        let shift = (32 - reach8.leading_zeros()).saturating_sub(15);
-        let unit = 256.0 / f64::from(1u32 << shift);
         let (scale, point) = fixed(profile.scale / unit);
         if point < 15 {
             // A unit of distance over four entries: no tip the app draws,
@@ -319,9 +379,7 @@ fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
             // is 1/32 px or finer to its size of 2000.
             return fail(format!("a tip of {} entries a pixel at shift {shift}", profile.scale));
         }
-        words[13..].copy_from_slice(&[
-            shift,
-            (profile.reach * unit).ceil() as u32,
+        words[20..26].copy_from_slice(&[
             (profile.inner * unit).floor() as i32 as u32,
             scale,
             point,

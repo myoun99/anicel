@@ -49,19 +49,33 @@ const DAB_OPACITY: u32 = 9u;
 const DAB_FLOW: u32 = 10u;
 const DAB_CONTRAST: u32 = 11u;
 const DAB_EVENING: u32 = 12u;
-// A round tip's: the shift its distances are taken at (1a 보탬 기하), its
-// reach and inner radius at that shift — the inner one signed, under 0
-// where it has none —, the tables' entries per unit of a distance in
-// Q(DAB_POINT), the entries a row holds where the tables are square (0
-// where they run along the radius), and the two tables.
+// A round tip's or a bitmap tip's, distances in units of the shift they
+// are taken at (1a 보탬 기하): the shift; the guard, at or past which along
+// either axis nothing is laid; the turn's cosine and sine in Q15 and the
+// roundness's inverse in Q16; the most the major axis and the minor —
+// before it is stretched — reach, the major's being a round tip's reach
+// and a bitmap's radius.
 const DAB_SHIFT: u32 = 13u;
-const DAB_REACH: u32 = 14u;
-const DAB_INNER: u32 = 15u;
-const DAB_SCALE: u32 = 16u;
-const DAB_POINT: u32 = 17u;
-const DAB_ROW: u32 = 18u;
-const DAB_COVERAGE: u32 = 19u;
-const DAB_PILE: u32 = 20u;
+const DAB_GUARD: u32 = 14u;
+const DAB_COS: u32 = 15u;
+const DAB_SIN: u32 = 16u;
+const DAB_INVERSE: u32 = 17u;
+const DAB_MAJOR: u32 = 18u;
+const DAB_MINOR: u32 = 19u;
+// A round tip's: its inner radius — signed, under 0 where it has none —,
+// the tables' entries per unit of a distance in Q(DAB_POINT), the entries a
+// row holds where the tables are square (0 where they run along the
+// radius), and the two tables.
+const DAB_INNER: u32 = 20u;
+const DAB_SCALE: u32 = 21u;
+const DAB_POINT: u32 = 22u;
+const DAB_ROW: u32 = 23u;
+const DAB_COVERAGE: u32 = 24u;
+const DAB_PILE: u32 = 25u;
+// A bitmap tip's: its texels, a side's worth a row, NO_TABLE for any other
+// dab, and its side.
+const DAB_TIP: u32 = 26u;
+const DAB_SIDE: u32 = 27u;
 
 // The C engine's flags (QA_DAB_FLAG_*), the ones this kernel reads.
 const DAB_ERASE: u32 = 1u;
@@ -111,18 +125,76 @@ fn dab_square(table: u32, row: u32, across: vec2<u32>, down: vec2<u32>) -> u32 {
   );
 }
 
-// What a round tip lays at (dx, dy) and what of it piles — the pile read
+// (dx, dy) in the tip's own frame: turned, its minor axis stretched to the
+// major — or nothing past the tip, as qa_dab_blend_tile culls it: either
+// axis past the major's reach. The minor is first held to its own reach,
+// which keeps the stretch's product in u32. |dx|, |dy| are under the guard,
+// under 2^15, so each product of the turn stays under 2^30. A circle turns
+// by nothing and stretches by 1 (cos 32768, sin 0, inverse 65536), and
+// comes out as it went in, to the bit.
+fn dab_turned(at: u32, dx: i32, dy: i32) -> vec3<i32> {
+  let cos = bitcast<i32>(plan[at + DAB_COS]);
+  let sin = bitcast<i32>(plan[at + DAB_SIN]);
+  let u = (dx * cos - dy * sin + 16384) >> 15u;
+  let v = (dx * sin + dy * cos + 16384) >> 15u;
+  let major = plan[at + DAB_MAJOR];
+  if (u32(abs(u)) > major || u32(abs(v)) > plan[at + DAB_MINOR]) {
+    return vec3<i32>(0, 0, 0);
+  }
+  let stretched = (u32(abs(v)) * plan[at + DAB_INVERSE] + 32768u) >> 16u;
+  if (stretched > major) {
+    return vec3<i32>(0, 0, 0);
+  }
+  return vec3<i32>(u, select(i32(stretched), -i32(stretched), v < 0), 1);
+}
+
+// Where u lands on a bitmap tip of `side` texels over [-radius, radius]:
+// one past its texel — t = 2(u + radius)·side − 2·radius over 4·radius
+// texels (1a 보탬), a texel on so that it is never under 0 —, and the next
+// 15 bits of the way to the one after, cut. 4·radius is under 2^17 and the
+// side at most 16384, so t and the remainder's shift stay in u32.
+fn dab_texel(u: i32, radius: u32, side: u32) -> vec2<u32> {
+  let span = 4u * radius;
+  let t = 2u * u32(u + i32(radius)) * side + 2u * radius;
+  return vec2<u32>(t / span, ((t % span) << 15u) / span);
+}
+
+// The tip's texel one past (column, row) — 0 off the tip, as the C engine
+// reads one.
+fn dab_tip_texel(tip: u32, side: u32, column: u32, row: u32) -> u32 {
+  if (column == 0u || row == 0u || column > side || row > side) {
+    return 0u;
+  }
+  return plan[tip + (row - 1u) * side + column - 1u];
+}
+
+// What a bitmap tip lays at (u, v), between its four nearest texels: along
+// the row, then down (qa_sample_tip_scalar).
+fn dab_tip(at: u32, tip: u32, u: i32, v: i32) -> u32 {
+  let radius = plan[at + DAB_MAJOR];
+  let side = plan[at + DAB_SIDE];
+  let x = dab_texel(u, radius, side);
+  let y = dab_texel(v, radius, side);
+  let top = dab_lerp(
+    dab_tip_texel(tip, side, x.x, y.x),
+    dab_tip_texel(tip, side, x.x + 1u, y.x),
+    x.y,
+  );
+  let bottom = dab_lerp(
+    dab_tip_texel(tip, side, x.x, y.x + 1u),
+    dab_tip_texel(tip, side, x.x + 1u, y.x + 1u),
+    x.y,
+  );
+  return dab_lerp(top, bottom, y.y);
+}
+
+// What a round tip lays at (u, v) and what of it piles — the pile read
 // only where the tip holds an edge (DAB_EDGE_HELD), and 0 elsewhere, as
 // the C engine leaves it.
-fn dab_round(at: u32, flags: u32, dx: i32, dy: i32) -> vec2<u32> {
-  // Nothing at or past the reach along either axis — and so no square
-  // below overflows, however far the region runs: the reach is under 2^15.
-  let reach = plan[at + DAB_REACH];
-  let across = u32(abs(dx));
-  let down = u32(abs(dy));
-  if (across >= reach || down >= reach) {
-    return vec2<u32>(0u);
-  }
+fn dab_round(at: u32, flags: u32, u: i32, v: i32) -> vec2<u32> {
+  let reach = plan[at + DAB_MAJOR];
+  let across = u32(abs(u));
+  let down = u32(abs(v));
   let held = (flags & DAB_EDGE_HELD) != 0u;
   let row = plan[at + DAB_ROW];
   if (row != 0u) {
@@ -187,14 +259,29 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>) -> vec4<u32> {
   // A square dab covers its region whole.
   var cover = W_ONE;
   var pile = 0u;
-  if ((flags & DAB_ROUND) != 0u) {
+  let tip = plan[at + DAB_TIP];
+  if ((flags & DAB_ROUND) != 0u || tip != NO_TABLE) {
     // The pixel's centre from the dab's, in 1/256 px, then shifted.
     let shift = plan[at + DAB_SHIFT];
     let dx = dab_shrunk(x * 256 + 128 - bitcast<i32>(plan[at + DAB_CX]), shift);
     let dy = dab_shrunk(y * 256 + 128 - bitcast<i32>(plan[at + DAB_CY]), shift);
-    let laid = dab_round(at, flags, dx, dy);
-    cover = laid.x;
-    pile = laid.y;
+    // Nothing at or past the guard along either axis — and so nothing
+    // below overflows, however far the region runs.
+    let guard = plan[at + DAB_GUARD];
+    if (u32(abs(dx)) >= guard || u32(abs(dy)) >= guard) {
+      return under;
+    }
+    let turned = dab_turned(at, dx, dy);
+    if (turned.z == 0) {
+      return under;
+    }
+    if (tip != NO_TABLE) {
+      cover = dab_tip(at, tip, turned.x, turned.y);
+    } else {
+      let laid = dab_round(at, flags, turned.x, turned.y);
+      cover = laid.x;
+      pile = laid.y;
+    }
     if (cover == 0u) {
       return under;
     }
