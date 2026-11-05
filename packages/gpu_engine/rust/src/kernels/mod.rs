@@ -22,5 +22,6 @@ pub mod dab;
 pub mod effects;
 pub mod export;
 pub mod fill;
+pub mod mask;
 pub mod shared;
 pub mod timeline;
