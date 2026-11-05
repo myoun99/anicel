@@ -545,16 +545,14 @@ class TimelineBarMenus {
     ),
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
     // in its own row — the value the row's command runs with.
-    knob: switch (verb) {
+    knob: _previewed(verb, switch (verb) {
       CelPixelVerb.binarize => _byteKnob(
-        verb,
         'shared-binarize-cut',
         lowest: PixelVerbSettings.lowestBinarizeThreshold,
         read: (settings) => settings.binarizeThreshold,
         write: (settings, byte) => settings.copyWith(binarizeThreshold: byte),
       ),
       CelPixelVerb.deleteColour => _byteKnob(
-        verb,
         'shared-delete-colour-tolerance',
         lowest: 0,
         read: (settings) => settings.deleteColourTolerance,
@@ -562,31 +560,22 @@ class TimelineBarMenus {
             settings.copyWith(deleteColourTolerance: byte),
       ),
       CelPixelVerb.keepColour => _byteKnob(
-        verb,
         'shared-keep-colour-tolerance',
         lowest: 0,
         read: (settings) => settings.keepColourTolerance,
         write: (settings, byte) => settings.copyWith(keepColourTolerance: byte),
       ),
       CelPixelVerb.replaceColour || CelPixelVerb.clearPixels => null,
-    },
+    }),
   );
 
-  /// The bar of a knob that runs a row's verb — as short as a byte's bar
-  /// reads (I-164: 「수치 막대는 최대한 컴팩트하게」).
-  static const double _byteBarWidth = 56;
-
-  /// A byte from [lowest] to 255 that [verb]'s row runs with: the live
+  /// A byte from [lowest] to 255 that a row's verb runs with: the live
   /// value follows the bar as it goes, and the app's settings keep it when
   /// it is let go — a drag is not a disk write per step.
   ///
-  /// 🗣️I-164 (유저 2026-11-05): 「그런거는 프리뷰버튼 두도록 … 그 막대
-  /// 오른쪽에 두도록. 누르면 프리뷰로 보임. 프리뷰는 한번에 하나만」 — the
-  /// ring right of the bar shows the canvas as the row would leave it
-  /// (`PixelVerbPreview`); turning one on turns the other off, so they are
-  /// a pick-one group.
+  /// As short as a byte's bar reads (I-164: 「수치 막대는 최대한
+  /// 컴팩트하게」).
   PanelFlyoutKnob _byteKnob(
-    CelPixelVerb verb,
     String keyValue, {
     required int lowest,
     required int Function(PixelVerbSettings settings) read,
@@ -595,29 +584,43 @@ class TimelineBarMenus {
   }) {
     PixelVerbSettings at(double value) =>
         write(PixelVerbSettings.settings.value, value.round());
+    return PanelFlyoutKnob(
+      listenable: PixelVerbSettings.settings,
+      width: 56,
+      builder: (_) => FieldSlider(
+        key: ValueKey<String>(keyValue),
+        value: read(PixelVerbSettings.settings.value).toDouble(),
+        min: lowest.toDouble(),
+        max: 255,
+        divisions: 255 - lowest,
+        onChanged: (value) => PixelVerbSettings.settings.value = at(value),
+        onChangeEnd: (value) =>
+            session.appSettings.setPixelVerbSettings(at(value)),
+      ),
+    );
+  }
+
+  /// [bar], and right of it the ring that shows the canvas as [verb]'s row
+  /// would leave it (`PixelVerbPreview`) — null for a row with no number.
+  ///
+  /// 🗣️I-164 (유저 2026-11-05): 「색변환의 수치 지정해서 하는 버튼들. 삭제나
+  /// 남기기나 2치화. 그런거는 프리뷰버튼 두도록 … 그 막대 오른쪽에 두도록.
+  /// 누르면 프리뷰로 보임. 프리뷰는 한번에 하나만」 — so the ring rides the
+  /// bar, and turning one on turns the other off: a pick-one group.
+  PanelFlyoutKnob? _previewed(CelPixelVerb verb, PanelFlyoutKnob? bar) {
+    if (bar == null) {
+      return null;
+    }
     final preview = session.pixelVerbPreview;
     return PanelFlyoutKnob(
-      listenable: Listenable.merge([PixelVerbSettings.settings, preview]),
-      width: _byteBarWidth + 4 + AppIconButtonSize.bar.maxWidth,
-      builder: (_) => Row(
+      listenable: Listenable.merge([?bar.listenable, preview]),
+      width: bar.width + 4 + AppIconButtonSize.bar.maxWidth,
+      builder: (context) => Row(
         spacing: 4,
         children: [
-          SizedBox(
-            width: _byteBarWidth,
-            child: FieldSlider(
-              key: ValueKey<String>(keyValue),
-              value: read(PixelVerbSettings.settings.value).toDouble(),
-              min: lowest.toDouble(),
-              max: 255,
-              divisions: 255 - lowest,
-              onChanged: (value) =>
-                  PixelVerbSettings.settings.value = at(value),
-              onChangeEnd: (value) =>
-                  session.appSettings.setPixelVerbSettings(at(value)),
-            ),
-          ),
+          SizedBox(width: bar.width, child: bar.builder(context)),
           BooleanDotButton(
-            keyValue: '$keyValue-preview',
+            keyValue: '${pixelVerbActionIdFor(verb)}-preview',
             value: preview.verb == verb,
             inPickOneGroup: true,
             tooltip: AppText.strings.commonPreview,

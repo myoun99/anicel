@@ -19,8 +19,10 @@ import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 /// The pictures are the row's own command, run and kept
 /// ([previewOf] — `PixelVerbs.previewOf`): what shows is what lands. They
 /// are made when the canvas asks for them ([cels]) and kept until what
-/// they are made of moves ([inputs]: the knobs, and the history the cels
-/// change by), so a drag of a knob makes one a frame.
+/// they are made of moves ([inputs]: the knobs, and every write to a cel —
+/// `BrushFrameStore.celPixelRevision`, the one signal every surface write
+/// bumps, followed as the canvas follows it), so a drag of a knob makes
+/// one a frame.
 final class PixelVerbPreview extends ChangeNotifier {
   PixelVerbPreview({
     required Map<BrushFrameKey, BitmapSurface> Function(CelPixelVerb verb)

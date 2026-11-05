@@ -56,7 +56,7 @@ void main() {
     ('lib/src/ui/timeline/toolbar_panel_context.dart',
         'void pasteLinkedFrame()', named: false),
     ('lib/src/ui/timeline/timeline_bar_menus.dart',
-        'static void _behindTheWaitWindow(', named: true),
+        'void _behindTheWaitWindow(', named: true),
   ]) {
     test('$head — ${path.split('/').last} — behind the window', () {
       final signature =

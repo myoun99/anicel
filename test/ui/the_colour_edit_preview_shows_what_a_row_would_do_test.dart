@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 
 import '../helpers/wait_window.dart' show windowBehind;
@@ -36,13 +38,30 @@ void main() {
   const a = LayerId('row-a');
   const b = LayerId('row-b');
   const knobs = [
-    'shared-binarize-cut',
-    'shared-delete-colour-tolerance',
-    'shared-keep-colour-tolerance',
+    (
+      bar: 'shared-binarize-cut',
+      ring: '${EditorActionIds.editBinarize}-preview',
+    ),
+    (
+      bar: 'shared-delete-colour-tolerance',
+      ring: '${EditorActionIds.editDeleteColour}-preview',
+    ),
+    (
+      bar: 'shared-keep-colour-tolerance',
+      ring: '${EditorActionIds.editKeepColour}-preview',
+    ),
   ];
-  const binarizeRing = ValueKey<String>('shared-binarize-cut-preview');
+  const binarizeRing = ValueKey<String>(
+    '${EditorActionIds.editBinarize}-preview',
+  );
+  const allShown = TimelineFrameRangeSelection(
+    layerId: a,
+    layerIds: [a, b],
+    startIndex: 0,
+    endIndexExclusive: 1,
+  );
 
-  /// Two drawing rows of one cel each.
+  /// Two drawing rows, a cel at each of the first two frames.
   Project fixture() {
     final base = createDefaultProject();
     final track = base.tracks.first;
@@ -52,10 +71,12 @@ void main() {
       id: id,
       name: id.value,
       frames: [
-        Frame(id: FrameId('${id.value}-0'), duration: 1, strokes: const []),
+        for (var at = 0; at < 2; at += 1)
+          Frame(id: FrameId('${id.value}-$at'), duration: 1, strokes: const []),
       ],
       timeline: {
-        0: TimelineExposure.drawing(FrameId('${id.value}-0'), length: 1),
+        for (var at = 0; at < 2; at += 1)
+          at: TimelineExposure.drawing(FrameId('${id.value}-$at'), length: 1),
       },
     );
     return base.copyWith(
@@ -74,17 +95,25 @@ void main() {
     );
   }
 
-  BrushFrameKey celOf(EditorSessionManager session, LayerId row) =>
-      session.brushFrameKeyForCut(
-        session.requireActiveCut,
-        row,
-        FrameId('${row.value}-0'),
-      );
+  BrushFrameKey celOf(
+    EditorSessionManager session,
+    LayerId row, {
+    int at = 0,
+  }) => session.brushFrameKeyForCut(
+    session.requireActiveCut,
+    row,
+    FrameId('${row.value}-$at'),
+  );
 
-  /// [row]'s cel inked at [alpha] over its first tile — under 2치화's cut
-  /// at rest, so its preview empties it.
-  void ink(EditorSessionManager session, LayerId row, {int alpha = 100}) {
-    final key = celOf(session, row);
+  /// [row]'s cel at frame [at] inked at [alpha] over its first tile — under
+  /// 2치화's cut at rest, so its preview empties it.
+  void ink(
+    EditorSessionManager session,
+    LayerId row, {
+    int alpha = 100,
+    int at = 0,
+  }) {
+    final key = celOf(session, row, at: at);
     final coordinator = session.pixelEditing.coordinator!;
     final base = coordinator.currentSurfaceOf(key);
     final size = base.tileSize;
@@ -115,9 +144,21 @@ void main() {
       .widget<FramePictureView>(find.byType(FramePictureView).first)
       .live!;
 
-  /// Stands on row A's cel with both rows' cels inked and a range across
-  /// both, and opens the 색 편집 list.
-  Future<EditorSessionManager> openTheList(WidgetTester tester) async {
+  bool ringOn(WidgetTester tester, Key ring) => tester
+      .widget<BooleanDotButton>(
+        find.ancestor(
+          of: find.byKey(ring),
+          matching: find.byType(BooleanDotButton),
+        ),
+      )
+      .value;
+
+  /// Stands on row A's first cel with both rows' first cels inked and
+  /// [range] (both of them, by default), and opens the 색 편집 list.
+  Future<EditorSessionManager> openTheList(
+    WidgetTester tester, {
+    TimelineFrameRangeSelection range = allShown,
+  }) async {
     addTearDown(
       () => PixelVerbSettings.settings.value = const PixelVerbSettings(),
     );
@@ -134,12 +175,7 @@ void main() {
     session.selectFrameIndex(0);
     ink(session, a);
     ink(session, b);
-    session.frameRangeSelection.value = const TimelineFrameRangeSelection(
-      layerId: a,
-      layerIds: [a, b],
-      startIndex: 0,
-      endIndexExclusive: 1,
-    );
+    session.frameRangeSelection.value = range;
     await tester.pumpAndSettle();
     final head = find.byKey(
       const ValueKey<String>('shared-colour-edit-button'),
@@ -156,18 +192,18 @@ void main() {
     await openTheList(tester);
 
     for (final knob in knobs) {
-      final bar = find.byKey(ValueKey<String>(knob));
-      final ring = find.byKey(ValueKey<String>('$knob-preview'));
-      expect(ring, findsOneWidget, reason: knob);
+      final bar = find.byKey(ValueKey<String>(knob.bar));
+      final ring = find.byKey(ValueKey<String>(knob.ring));
+      expect(ring, findsOneWidget, reason: knob.ring);
       expect(
         tester.getRect(ring).left,
         greaterThanOrEqualTo(tester.getRect(bar).right),
-        reason: '$knob: 「그 막대 오른쪽에」',
+        reason: '${knob.bar}: 「그 막대 오른쪽에」',
       );
       expect(
         tester.getSize(bar).width,
         lessThanOrEqualTo(56),
-        reason: '$knob: 「수치 막대는 최대한 컴팩트하게」',
+        reason: '${knob.bar}: 「수치 막대는 최대한 컴팩트하게」',
       );
     }
     expect(
@@ -188,12 +224,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(preview.verb, CelPixelVerb.binarize);
+    expect(ringOn(tester, binarizeRing), isTrue, reason: 'its ring is lit');
     final cels = preview.cels();
     expect(cels.keys, {celOf(session, a), celOf(session, b)});
     expect(
       alphaOf(live(tester).activeSurfacePainter!.surface),
       0,
       reason: 'the row stood on, by its painter: under the cut, emptied',
+    );
+    expect(
+      live(tester).liftedRows.keys,
+      [celOf(session, b)],
+      reason: 'A is its painter\'s, and drawn there only',
     );
     final other = live(tester).liftedRows[celOf(session, b)];
     expect(other?.float, isNull, reason: 'B in its own slot, nothing over it');
@@ -216,7 +258,9 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('shared-keep-colour-tolerance-preview')),
+      find.byKey(
+        const ValueKey<String>('${EditorActionIds.editKeepColour}-preview'),
+      ),
     );
     await tester.pumpAndSettle();
     expect(
@@ -225,17 +269,75 @@ void main() {
       reason: '「프리뷰는 한번에 하나만」',
     );
     expect(
-      tester
-          .widget<BooleanDotButton>(
-            find.ancestor(
-              of: find.byKey(binarizeRing),
-              matching: find.byType(BooleanDotButton),
-            ),
-          )
-          .value,
+      ringOn(tester, binarizeRing),
       isFalse,
       reason: '2치화\'s ring went off',
     );
+  });
+
+  testWidgets('a cel written while its preview is on is previewed as it now '
+      'stands — the pictures follow the cels, whoever writes them', (
+    tester,
+  ) async {
+    final session = await openTheList(tester);
+    await tester.tap(find.byKey(binarizeRing));
+    await tester.pumpAndSettle();
+    expect(
+      alphaOf(live(tester).activeSurfacePainter!.surface),
+      0,
+      reason: '⛔premise: under the cut, emptied',
+    );
+
+    ink(session, a, alpha: 200);
+    await tester.pumpAndSettle();
+
+    expect(
+      alphaOf(live(tester).activeSurfacePainter!.surface),
+      255,
+      reason: 'over the cut now, 2치화 fills it',
+    );
+    expect(session.canUndo, isFalse, reason: 'written past the history');
+  });
+
+  testWidgets('a cel of the range the canvas does not show is left out of '
+      'the preview — the row still reaches it', (tester) async {
+    final session = await openTheList(
+      tester,
+      range: const TimelineFrameRangeSelection(
+        layerId: a,
+        layerIds: [a],
+        startIndex: 0,
+        endIndexExclusive: 2,
+      ),
+    );
+    ink(session, a, at: 1);
+    expect(
+      session.pixelVerbs.pixelVerbCellKeys(),
+      containsAll([celOf(session, a), celOf(session, a, at: 1)]),
+      reason: '⛔premise: the row reaches both of A\'s cels',
+    );
+
+    await tester.tap(find.byKey(binarizeRing));
+    await tester.pumpAndSettle();
+
+    expect(session.pixelVerbPreview.cels().keys, [celOf(session, a)]);
+  });
+
+  testWidgets('where the row would not run, there is nothing to show', (
+    tester,
+  ) async {
+    final session = await openTheList(tester);
+    expect(
+      session.pixelVerbs.previewOf(CelPixelVerb.binarize),
+      isNotEmpty,
+      reason: '⛔premise',
+    );
+
+    session.brushInputActive.value = true;
+
+    expect(session.pixelVerbs.canRunPixelVerb, isFalse, reason: '⛔premise');
+    expect(session.pixelVerbs.previewOf(CelPixelVerb.binarize), isEmpty);
+    session.brushInputActive.value = false;
   });
 
   testWidgets('leaving the list ends its preview: the canvas draws the cels '

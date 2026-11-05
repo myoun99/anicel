@@ -1367,7 +1367,10 @@ class EditorSessionManager extends ChangeNotifier
   /// cels change.
   late final PixelVerbPreview pixelVerbPreview = PixelVerbPreview(
     previewOf: pixelVerbs.previewOf,
-    inputs: Listenable.merge([PixelVerbSettings.settings, historyManager]),
+    inputs: Listenable.merge([
+      PixelVerbSettings.settings,
+      renderCaches.brushFrameStore.celPixelRevision,
+    ]),
     coordinator: () => pixelEditing.coordinator,
   );
 

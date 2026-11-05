@@ -1529,14 +1529,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _installedReinputHandler = _reinputLastStroke;
     widget.lastStroke?.reinputHandler = _installedReinputHandler;
     _bindCelPixelRevision();
-    // What the preview shows is cels too — drawn again as it turns.
-    widget.pixelVerbPreview?.addListener(_handleCelPixelsChanged);
     _syncIdleAnts();
   }
 
   /// The cel-edit signal this panel listens on, remembered so it can be
   /// released from the object it was taken on.
   ValueListenable<int>? _listenedCelPixels;
+
+  /// The colour edit list's preview this panel listens on, remembered the
+  /// same way ([_listenedCelPixels]).
+  PixelVerbPreview? _listenedPreview;
 
   /// 🚨★★★A CEL EDIT HAS TO REACH THE CANVAS THE SAME WAY WHOEVER MADE IT.
   ///
@@ -1562,13 +1564,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// [BrushFrameStore.celPixelRevision] is the ONE thing every surface write
   /// bumps, `markCelEdited` being the only mutation signal there is. So the
   /// panel follows the fact rather than the caller.
+  ///
+  /// And what the colour edit list's preview shows is cels too — drawn
+  /// again as it turns (I-164).
   void _bindCelPixelRevision() {
     final next = widget.coordinator?.frameStore.celPixelRevision;
-    if (identical(next, _listenedCelPixels)) {
-      return;
-    }
-    _listenedCelPixels?.removeListener(_handleCelPixelsChanged);
-    _listenedCelPixels = next?..addListener(_handleCelPixelsChanged);
+    rebindListener(_listenedCelPixels, next, _handleCelPixelsChanged);
+    _listenedCelPixels = next;
+    final preview = widget.pixelVerbPreview;
+    rebindListener(_listenedPreview, preview, _handleCelPixelsChanged);
+    _listenedPreview = preview;
   }
 
   void _handleCelPixelsChanged() {
@@ -1666,7 +1671,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // the viewport: the widget's may already point somewhere else.
     _listenedCelPixels?.removeListener(_handleCelPixelsChanged);
     _listenedCelPixels = null;
-    widget.pixelVerbPreview?.removeListener(_handleCelPixelsChanged);
+    _listenedPreview?.removeListener(_handleCelPixelsChanged);
+    _listenedPreview = null;
     _stopHearingTheHand();
     // ⛔ONLY the panel's own. `_viewportNotifier` may BE the owner's — the
     // whole point of the controller — and disposing that would kill the
@@ -1931,11 +1937,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didUpdateWidget(oldWidget);
     // The coordinator can be swapped under us; the signal travels with it.
     _bindCelPixelRevision();
-    rebindListener(
-      oldWidget.pixelVerbPreview,
-      widget.pixelVerbPreview,
-      _handleCelPixelsChanged,
-    );
     // A host that passes its own colours can change them without the scope
     // moving; `didChangeDependencies` alone would never hear that.
     if (oldWidget.canvasBase != widget.canvasBase ||
