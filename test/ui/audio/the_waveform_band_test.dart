@@ -365,6 +365,13 @@ void main() {
       // The columns the clip shows, and not one more.
       expect(bounds.left, 1600);
       expect(bounds.right, 1664);
+      // A clip edge inside a column still shows that column.
+      final halfway = _BandSpy(
+        clip: const Rect.fromLTRB(1600.5, 0, 1663.5, size),
+      );
+      band.paint(halfway, const Size(3200, size));
+      expect(halfway.band!.getBounds().left, 1600);
+      expect(halfway.band!.getBounds().right, 1664);
 
       // A clip that shows none of it — before its start — draws nothing.
       final before = _BandSpy(clip: const Rect.fromLTRB(-100, 0, -10, size));
@@ -435,16 +442,25 @@ void main() {
     });
 
     test('the strip\'s own end cuts the band', () async {
-      // The sound runs 56 px; its strip is 40 px long.
-      final recorder = ui.PictureRecorder();
-      painter().paint(Canvas(recorder), const Size(40, size));
-      final picture = recorder.endRecording();
-      final image = await picture.toImage(size.toInt(), size.toInt());
-      final pixels = (await image.toByteData())!.buffer.asUint32List();
-      image.dispose();
-      picture.dispose();
-      expect(thicknessAt(pixels, 39), closeTo(inkOf(1), 0.6));
-      expect(thicknessAt(pixels, 40), 0);
+      // The sound runs 56 px; its strip is 40 px long, then 39.5.
+      Future<Uint32List> strip(double length) async {
+        final recorder = ui.PictureRecorder();
+        painter().paint(Canvas(recorder), Size(length, size));
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(size.toInt(), size.toInt());
+        final pixels = (await image.toByteData())!.buffer.asUint32List();
+        image.dispose();
+        picture.dispose();
+        return pixels;
+      }
+
+      final whole = await strip(40);
+      expect(thicknessAt(whole, 39), closeTo(inkOf(1), 0.6));
+      expect(thicknessAt(whole, 40), 0);
+      // An end inside a column cuts that column where the strip ends.
+      final half = await strip(39.5);
+      expect(thicknessAt(half, 39), closeTo(inkOf(1) / 2, 1));
+      expect(thicknessAt(half, 40), 0);
     });
 
     test('🚨a column is a DEVICE pixel, not a logical one', () async {
