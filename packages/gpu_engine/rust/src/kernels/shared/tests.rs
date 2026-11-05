@@ -12,7 +12,7 @@ use wgpu::util::DeviceExt;
 use super::pages::NO_PAGE;
 use super::{
     PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, ResampleMode, WIDE_WGSL, fits,
-    page_table, pipeline, runs,
+    page_table, pipeline, runs, tiles_a_pass,
 };
 use crate::device::Engine;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -1139,4 +1139,28 @@ fn a_plane_past_a_binding_or_a_dispatch_past_its_groups_is_refused() {
     assert!(fits(engine, &[], [(most, 1), (1, most)].into_iter()).is_some());
     assert!(fits(engine, &[], [(1, 1), (most + 1, 1)].into_iter()).is_none());
     assert!(fits(engine, &[], [(1, most + 1)].into_iter()).is_none());
+}
+
+// A pass takes as many tiles as its binding holds past what it binds of
+// its own, a tile's bytes each — at a tile so large, and so placed, that
+// the binding ends the pass short of a dispatch's reach and its own bytes
+// cost a tile —; a dispatch's reach where a tile takes nothing of it; and
+// none, refused, where one tile does not fit.
+#[test]
+fn a_pass_takes_the_tiles_its_binding_holds_past_its_own() {
+    let engine = first_engine();
+    let limits = engine.device.limits();
+    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+    let reach = u64::from(limits.max_compute_workgroups_per_dimension);
+    let fixed = 4096;
+    let per_tile = (room / reach + 1..)
+        .find(|&per_tile| room % per_tile < fixed)
+        .expect("a tile whose bytes leave less than its own over");
+    let most = tiles_a_pass(engine, per_tile, fixed).expect("a tile fits") as u64;
+    assert_eq!(most, (room - fixed) / per_tile);
+    assert!(most < room / per_tile, "{most} of {per_tile} past {fixed} in {room}");
+    assert_eq!(tiles_a_pass(engine, 0, fixed), Some(reach as usize));
+    assert_eq!(tiles_a_pass(engine, 1, 0), Some(reach as usize));
+    assert_eq!(tiles_a_pass(engine, room, 0), Some(1));
+    assert!(tiles_a_pass(engine, room, 1).is_none());
 }

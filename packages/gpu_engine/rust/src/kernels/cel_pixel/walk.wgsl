@@ -33,9 +33,10 @@ fn walk_texel(tile: u32, x: u32, y: u32) -> u32 {
 // ⚠️The mask's rows end what a pass is given, so a row past them is past
 // the buffer, where DX12 reads 0 — the tests cannot see byte.wgsl's guard
 // on rows there, nor that `mask.height` is the pass's rows and not the
-// box's (mutants c03 · w07, 11-06; mask.wgsl's head has the same); a
-// device that clamps (Metal) would read the last word. A column past the
-// box is within its row's last word, which the tests fill with 255.
+// box's (mutants c03 · w07 in the verbs, b03 · r02 in the lift, 11-06;
+// mask.wgsl's head has the same); a device that clamps (Metal) would read
+// the last word. A column past the box is within its row's last word,
+// which the tests fill with 255.
 fn walk_coverage(mask: MaskPlane, tile: u32, x: u32, y: u32) -> u32 {
   return mask_byte_of(mask, walk_tile(tile, 3u) + x, walk_tile(tile, 4u) + y);
 }

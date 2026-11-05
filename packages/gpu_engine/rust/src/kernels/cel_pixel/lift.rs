@@ -137,6 +137,13 @@ impl Lift {
 /// holds at a tile's worst — the box's rows it lies on, and in what it is
 /// given its entry and its rows of the mask — past the box's rows bound
 /// from where a binding may start.
+///
+/// ⚠️What a tile is given passes its rows of the box only under a box one
+/// pixel wide (532 bytes to 512), and there a dispatch's reach ends a pass
+/// long before a binding does on any device wgpu runs (128 MB over 65,535
+/// groups is 2,048 bytes a tile) — so no test tells the `max` from its
+/// absence (mutant r06, 11-06). It stays: it is the bound, and `fits`
+/// refuses a pass given more than a binding all the same.
 fn most(engine: &Engine, mask: &Mask) -> Option<usize> {
     let rows = u64::from(TILE);
     let lifted = rows * u64::from(mask.size.width) * 4;

@@ -51,9 +51,9 @@ fn lifted(
 }
 
 /// Over tile (0, 0): ink under alpha 200, another colour, a colour under
-/// alpha 0, ink under alpha 1 — then a pixel the mask leaves out and one
-/// with nothing — in a box of 3 × 2 from (2, 1), and ink just past its
-/// right edge, where the mask's last word holds 255.
+/// alpha 0, ink under alpha 1, ink the mask leaves out and another colour
+/// under alpha 50 — the box's last pixel — in a box of 3 × 2 from (2, 1),
+/// and ink just past its right edge, where the mask's last word holds 255.
 fn scene() -> (Cel, Masked) {
     let cel = one(&[
         ((2, 1), INK | 200 << 24),
@@ -62,6 +62,7 @@ fn scene() -> (Cel, Masked) {
         ((5, 1), INK | 255 << 24),
         ((2, 2), INK | 1 << 24),
         ((3, 2), OTHER | 90 << 24),
+        ((4, 2), OTHER | 50 << 24),
     ]);
     let coverage = [[255, 128, 255], [1, 0, 200]];
     let mask = masked((2, 1), (3, 2), move |x, y| coverage[(y - 1) as usize][(x - 2) as usize]);
@@ -69,39 +70,40 @@ fn scene() -> (Cel, Masked) {
 }
 
 /// A pixel the mask covers at all travels whole — its colour and its alpha
-/// as they are, under a coverage of 128 or of 1 alike; one with no ink, one
-/// the mask leaves out, and one past the box stay where they are.
+/// as they are, under a coverage of 128, 200 or 1 alike; one with no ink,
+/// one the mask leaves out, and one past the box stay where they are.
 #[test]
 fn a_lift_takes_each_covered_pixel_whole() {
     let (cel, mask) = scene();
     let (words, anything) = lifted(&cel, &mask, true, None).expect("lift");
     let row = [INK | 200 << 24, OTHER | 255 << 24, 0];
-    assert_eq!(words, [row, [INK | 1 << 24, 0, 0]].concat());
+    assert_eq!(words, [row, [INK | 1 << 24, 0, OTHER | 50 << 24]].concat());
     assert!(anything);
 }
 
 /// Under a feather the alpha is scaled by the coverage, as the premultiply
-/// rounds: 200 under 255 stays 200, 255 under 128 is 128, and 1 under 1 is
-/// 0 — a pixel taken with its colour and no alpha, which the app's gather
-/// counts as taken all the same.
+/// rounds: 200 under 255 stays 200, 255 under 128 is 128, 50 under 200 is
+/// 39, and 1 under 1 is 0 — a pixel taken with its colour and no alpha,
+/// which the app's gather counts as taken all the same.
 #[test]
 fn a_feathered_lift_scales_each_alpha_by_its_coverage() {
     let (cel, mask) = scene();
     let (words, anything) = lifted(&cel, &mask, false, None).expect("lift");
     let row = [INK | 200 << 24, OTHER | 128 << 24, 0];
-    assert_eq!(words, [row, [INK, 0, 0]].concat());
+    assert_eq!(words, [row, [INK, 0, OTHER | 39 << 24]].concat());
     assert!(anything);
 }
 
-/// A box over ink the mask leaves out and a pixel with none takes nothing,
-/// and so does one over no tile of the cel: nothing is laid, and nothing
-/// was taken.
+/// A box over ink the mask leaves out takes nothing, and so does one over a
+/// colour under alpha 0 — with ink past its edge in the mask's last word —
+/// and one over no tile of the cel: nothing is laid, and nothing was taken.
 #[test]
 fn a_lift_over_nothing_takes_nothing() {
     let (cel, _) = scene();
-    let out = masked((3, 2), (2, 1), |x, _| if x == 3 { 0 } else { 255 });
+    let out = masked((3, 2), (2, 1), |_, _| 0);
+    let inkless = masked((4, 1), (1, 1), |_, _| 255);
     let past = masked((300, 0), (5, 4), |_, _| 255);
-    for (mask, pixels) in [(out, 2), (past, 20)] {
+    for (mask, pixels) in [(out, 2), (inkless, 1), (past, 20)] {
         let (words, anything) = lifted(&cel, &mask, true, None).expect("lift");
         assert_eq!(words, vec![0; pixels]);
         assert!(!anything);
