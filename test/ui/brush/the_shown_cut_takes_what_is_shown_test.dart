@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -19,9 +20,13 @@ import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+
+import '../../helpers/rail_group_button.dart';
+import '../../helpers/wait_window.dart' show pumpPastTheWaitWindow;
 
 /// 🗣️I-163 (유저 2026-11-05): the cut tool's 대상 「표시」 is what is truly
 /// seen, the other layers with it · Q1 「다른 이름으로 저장 한 장으로 통일
@@ -170,6 +175,97 @@ void main() {
     await tester.pump();
     return slot;
   }
+
+  /// The window's tool switched to [tool] reading what is SHOWN, with
+  /// 「원본 삭제」 on.
+  Future<EditorWorkspace> armShown(WidgetTester tester, CanvasTool tool) async {
+    final workspace = tester.widget<EditorWorkspace>(
+      find.byType(EditorWorkspace),
+    );
+    workspace.brushTool!.value = workspace.brushTool!.value.copyWith(
+      tool: tool,
+      cutSource: CanvasReadSource.display,
+      cutDeletesSource: true,
+    );
+    await tester.pumpAndSettle();
+    return workspace;
+  }
+
+  /// What the press put up, waited out: the wait window the shown picture
+  /// is worked out behind (F-53 · F-551).
+  Future<void> waitOutTheShownPicture(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('work-progress-dialog')),
+      findsOneWidget,
+      reason: 'the shown picture is work ahead of the step',
+    );
+    await pumpPastTheWaitWindow(tester);
+    session.playbackRig.prerenderScheduler.cancel();
+  }
+
+  testWidgets('「실행」 under 「표시」 takes what is shown off every shown row, '
+      'behind the wait window, into the window\'s own hand', (tester) async {
+    final session = await pump(tester);
+    square(session, a, 10, 10);
+    square(session, b, 100, 10);
+    square(session, hidden, 50, 50);
+    final workspace = await armShown(tester, CanvasTool.cutWhole);
+    final run = find.byKey(const ValueKey<String>('cut-whole-run-button'));
+    // The tool settings ship closed, and they scroll.
+    await pressToolSettingsButton(tester);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(run);
+    await tester.pumpAndSettle();
+
+    await tester.tap(run);
+    await waitOutTheShownPicture(tester, session);
+
+    expect(drawn(session, a), isFalse);
+    expect(drawn(session, b), isFalse);
+    expect(drawn(session, hidden), isTrue, reason: 'not shown, not cut');
+    expect(
+      workspace.brushTool!.value.tool,
+      CanvasTool.cutStamp,
+      reason: 'the window\'s own hand took it, and the stamp follows',
+    );
+  });
+
+  testWidgets('an outline drawn on the canvas under 「표시」 takes what it '
+      'holds off every shown row, behind the wait window', (tester) async {
+    final session = await pump(tester);
+    square(session, a, 10, 10);
+    square(session, b, 100, 10);
+    square(session, hidden, 50, 50);
+    final workspace = await armShown(tester, CanvasTool.cut);
+    // Over the whole view, from a pixel in — the canvas is fitted to it, a
+    // screen pixel some three of the canvas's, and the squares are ten in.
+    final layer = find.byKey(const ValueKey<String>('canvas-selection-layer'));
+    final from = tester.getTopLeft(layer) + const Offset(1, 1);
+    final to = tester.getBottomRight(layer) - const Offset(4, 4);
+
+    final gesture = await tester.startGesture(
+      from,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await gesture.moveTo(Offset.lerp(from, to, 0.5)!);
+    await tester.pump();
+    await gesture.moveTo(to);
+    await tester.pump();
+    await gesture.up();
+    await waitOutTheShownPicture(tester, session);
+
+    expect(drawn(session, a), isFalse);
+    expect(drawn(session, b), isFalse);
+    expect(drawn(session, hidden), isTrue, reason: 'not shown, not cut');
+    expect(workspace.brushTool!.value.tool, CanvasTool.cutStamp);
+  });
 
   testWidgets('the whole of what is shown: every shown row in one piece, '
       'where it stands on the canvas — no paper, no hidden row', (
