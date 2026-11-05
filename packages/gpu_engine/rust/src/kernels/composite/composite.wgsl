@@ -8,12 +8,13 @@
 // between them the stack goes to `work` as it is, 16 bits a channel, so
 // where the cuts fall changes no value.
 //
-// Needs shared/isqrt.wgsl and blend/blend.wgsl before it.
+// Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl and
+// shared/resample.wgsl before it.
 
 const TILE_TEXELS: u32 = 16384u;
 const NO_TILE: u32 = 0xffffffffu;
 const DEPTH: u32 = 8u;
-const STEP_WORDS: u32 = 12u;
+const STEP_WORDS: u32 = 11u;
 
 const STEP_ROW: u32 = 0u;
 const STEP_OPEN: u32 = 1u;
@@ -21,8 +22,9 @@ const STEP_OPEN_OPAQUE: u32 = 2u;
 const STEP_CLOSE: u32 = 3u;
 const STEP_CLOSE_ATOP: u32 = 4u;
 
-// One pass: the steps it runs, the stack depth it takes and leaves, and
-// the output tiles it covers.
+// One pass: the steps it runs, the stack depth it takes and leaves, the
+// output tiles it covers, and where its table of pages is — which binding
+// holds each page of the pool (mod.rs's NO_PAGE where it binds none).
 struct Pass {
   step_begin: u32,
   step_end: u32,
@@ -32,10 +34,12 @@ struct Pass {
   tiles_at: u32,
   tile_count: u32,
   out_at: u32,
+  pages_at: u32,
 }
 
 @group(0) @binding(0) var<uniform> pass_: Pass;
-// Steps (STEP_WORDS each), then the rows' tile maps, then the output tiles.
+// Steps (STEP_WORDS each), then the rows' tile maps, their R1 maps, each
+// pass's table of pages, and the output tiles.
 @group(0) @binding(1) var<storage, read> plan: array<u32>;
 // The stack between passes, two words a level, then the output tiles.
 @group(0) @binding(2) var<storage, read_write> work: array<u32>;
@@ -51,28 +55,41 @@ fn page_word(k: u32, index: u32) -> u32 {
   }
 }
 
-// What the row of step `at` shows at canvas pixel (x, y), straight on the
-// 16-bit scale — nothing where it has no tile, or its tile is on a page
-// another pass binds. ⭐THE ONE PLACE A ROW IS SAMPLED: a whole-pixel move
-// here; R1 (gpu-int-spec-canvas) takes its place for every other pose.
+// R1's source: the stored word of the row of step `at` at its own (x, y) —
+// nothing where it has no tile, where the tile's page is outside the
+// step's, or where this pass binds no such page.
 //
-// A step: kind, mode, opacity, k, page, map_at, the map's first tile
-// column and row, its columns and rows, dx, dy.
-fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
-  let sx = x - bitcast<i32>(plan[at + 10u]);
-  let sy = y - bitcast<i32>(plan[at + 11u]);
-  let column = (sx >> 7u) - bitcast<i32>(plan[at + 6u]);
-  let row = (sy >> 7u) - bitcast<i32>(plan[at + 7u]);
+// A step: kind, mode, opacity, the first and last page it lays tiles from,
+// map_at, the map's first tile column and row, its columns and rows, and
+// where its R1 map is.
+fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
+  let column = (x >> 7u) - bitcast<i32>(plan[at + 6u]);
+  let row = (y >> 7u) - bitcast<i32>(plan[at + 7u]);
   let columns = plan[at + 8u];
   if (column < 0 || row < 0 || u32(column) >= columns || u32(row) >= plan[at + 9u]) {
-    return vec4<u32>(0u);
+    return 0u;
   }
   let entry = plan[plan[at + 5u] + u32(row) * columns + u32(column)];
-  if (entry == NO_TILE || (entry >> 16u) != plan[at + 4u]) {
-    return vec4<u32>(0u);
+  let page = entry >> 16u;
+  if (entry == NO_TILE || page < plan[at + 3u] || page > plan[at + 4u]) {
+    return 0u;
   }
-  let texel = (entry & 0xffffu) * TILE_TEXELS + u32(sy & 127) * 128u + u32(sx & 127);
-  return blend_unpack8(page_word(plan[at + 3u], texel));
+  // A page the pass binds none of is NO_PAGE, no case of page_word's.
+  let k = plan[pass_.pages_at + page];
+  return page_word(k, (entry & 0xffffu) * TILE_TEXELS + u32(y & 127) * 128u + u32(x & 127));
+}
+
+// What the row of step `at` shows at canvas pixel (x, y), straight on the
+// 16-bit scale. ⭐THE ONE PLACE A ROW IS SAMPLED: R1 (gpu-int-spec-canvas)
+// for every pose, a whole-pixel move being its copy.
+fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
+  let m = plan[at + 10u];
+  let map = resample_map(array<u32, 14>(
+    plan[m], plan[m + 1u], plan[m + 2u], plan[m + 3u], plan[m + 4u], plan[m + 5u], plan[m + 6u],
+    plan[m + 7u], plan[m + 8u], plan[m + 9u], plan[m + 10u], plan[m + 11u], plan[m + 12u],
+    plan[m + 13u],
+  ));
+  return blend_unpack8(resample(map, at, x, y));
 }
 
 fn level_at(level: u32, tile: u32, texel: u32) -> u32 {

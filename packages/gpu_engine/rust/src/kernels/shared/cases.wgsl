@@ -124,19 +124,10 @@ fn run_window(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= columns || id.y >= rows) {
     return;
   }
-  let map = ResampleMap(
-    bitcast<i32>(job[0]),
-    bitcast<i32>(job[1]),
-    bitcast<i32>(job[2]),
-    bitcast<i32>(job[3]),
-    bitcast<i32>(job[4]),
-    bitcast<i32>(job[5]),
-    job[6],
-    job[7],
-    Wide(job[8], job[9]),
-    Wide(job[10], job[11]),
-    Wide(job[12], job[13]),
-  );
+  let map = resample_map(array<u32, 14>(
+    job[0], job[1], job[2], job[3], job[4], job[5], job[6],
+    job[7], job[8], job[9], job[10], job[11], job[12], job[13],
+  ));
   let x = bitcast<i32>(job[MAP_WORDS + 4u]) + i32(id.x);
   let y = bitcast<i32>(job[MAP_WORDS + 5u]) + i32(id.y);
   results[id.y * columns + id.x] = resample(map, 0u, x, y);

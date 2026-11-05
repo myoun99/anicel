@@ -10,6 +10,8 @@ use super::{
     cut,
 };
 use crate::device::Engine;
+use crate::kernels::shared::tests::{Picture, window};
+use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::{assert_pinned, first_engine};
 
 const NORMAL: u32 = 28;
@@ -146,11 +148,15 @@ impl Pool {
     }
 }
 
+/// Tile set `set` moved by (`dx`, `dy`) whole pixels.
 fn row(set: usize, (dx, dy): (i32, i32), opacity: u32, mode: u32) -> Step {
+    with_map(set, ResampleMap::moved(dx, dy), opacity, mode)
+}
+
+fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
     Step::Row {
         set,
-        dx,
-        dy,
+        map,
         opacity,
         mode,
     }
@@ -342,12 +348,82 @@ fn spanning() -> Scene {
     }
 }
 
-fn scenes() -> [(&'static str, Scene); 4] {
+/// Poses R1 takes, canvas pixel to the row's own, over a canvas of two by
+/// two tiles. No sin or cos: the spec's 대조 필요 ①.
+fn pose(name: &str) -> ResampleMap {
+    use ResampleMode::{Blend, Pick};
+    let affine = |a, b, c, d, e, f| [a, b, c, d, e, f, 0.0, 0.0, 1.0];
+    // 1.3 times larger, a 3-4-5 turn.
+    let turn = affine(0.8 / 1.3, -0.6 / 1.3, 60.0, 0.6 / 1.3, 0.8 / 1.3, -20.0);
+    // Twice smaller, the other turn.
+    let shrink = affine(1.6, -1.2, 30.0, 1.2, 1.6, -90.0);
+    let tilt = [1.1, -0.3, 14.0, 0.05, 1.2, 1.0, 0.002, -0.001, 1.0];
+    let (inverse, floor, mode) = match name {
+        "turn" => (turn, 1.0, Blend),
+        "turn-pick" => (turn, 1.0, Pick),
+        "shrink" => (shrink, 1.0, Blend),
+        "shrink-pick" => (shrink, 1.0, Pick),
+        // Axis-aligned: Pick's exact path.
+        "squeeze" => (affine(1.7, 0.0, 3.3, 0.0, 1.7, -5.1), 1.0, Pick),
+        "tilt" => (tilt, 1.0, Blend),
+        "tilt-pick" => (tilt, 1.0, Pick),
+        // A 16 px tent half a pixel up and left.
+        "blur" => (affine(1.0, 0.0, -0.5, 0.0, 1.0, -0.5), 16.0, Blend),
+        _ => unreachable!("{name}"),
+    };
+    ResampleMap::new(inverse, floor, mode, 2 * TILE, 2 * TILE).expect("a map that lands")
+}
+
+/// Rows posed every way R1 takes among moved ones: in a folder, a turn in
+/// multiply and an exact Pick in screen; in a clip whose base is moved, a
+/// tilt in overlay over the base made opaque. Each posed row's tiles are
+/// on one page, so it composites at one page a pass.
+fn posed() -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.set(61, (0, 0), (2, 2), |_, _| Some(0)),
+        pool.set(62, (0, 0), (2, 2), |_, _| Some(1)),
+        pool.set(63, (-1, 0), (3, 2), |_, _| Some(2)),
+        pool.set(64, (0, 0), (2, 1), |_, _| Some(3)),
+        pool.set(65, (0, 0), (2, 2), |_, _| Some(1)),
+    ];
+    Scene {
+        pool,
+        sets,
+        steps: vec![
+            row(0, (3, -2), WHOLE, NORMAL),
+            Step::Open,
+            pose_row(1, "turn", 50000, MULTIPLY),
+            pose_row(2, "squeeze", WHOLE, SCREEN),
+            Step::Close {
+                opacity: 45000,
+                mode: NORMAL,
+            },
+            Step::Open,
+            row(3, (0, 10), WHOLE, NORMAL),
+            Step::OpenOpaque,
+            pose_row(4, "tilt", 60000, OVERLAY),
+            Step::CloseAtop,
+            Step::Close {
+                opacity: WHOLE,
+                mode: NORMAL,
+            },
+        ],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+fn pose_row(set: usize, name: &str, opacity: u32, mode: u32) -> Step {
+    with_map(set, pose(name), opacity, mode)
+}
+
+fn scenes() -> [(&'static str, Scene); 5] {
     [
         ("rows", rows()),
         ("folders", folders()),
         ("clips", clips()),
         ("spanning", spanning()),
+        ("posed", posed()),
     ]
 }
 
@@ -531,6 +607,85 @@ fn a_clipped_multiply_reads_the_base_made_opaque() {
     assert_eq!(pixel_at(&plain, &[(0, 0)], 1, 1), [0, 0, 0, 0]);
 }
 
+/// `pixel` over `size` from canvas (0, 0), as R1's own harness takes a
+/// source: nothing past it, as nothing is past a tile set.
+fn picture_of(pixel: impl Fn(i32, i32) -> u32, (width, height): (u32, u32)) -> Picture {
+    let mut picture = Picture::filled(width, height, 0);
+    for y in 0..height {
+        for x in 0..width {
+            picture.put(x, y, pixel(x as i32, y as i32));
+        }
+    }
+    picture
+}
+
+/// What R1's harness resamples over output `tiles`, as the executor lays
+/// them out — what a row alone, whole and normal, must lay.
+fn resampled(map: &ResampleMap, picture: &Picture, tiles: &[(i32, i32)]) -> Vec<u8> {
+    let side = TILE as i32;
+    tiles
+        .iter()
+        .flat_map(|&(column, row)| window(map, picture, (TILE, TILE), (column * side, row * side)))
+        .flat_map(u32::to_le_bytes)
+        .collect()
+}
+
+// A row in any pose lays what R1 resamples: the executor's one sample is
+// R1's own, reading the row through its tile map, every tile here on a
+// page of its own — out to output tiles the row does not reach.
+#[test]
+fn a_posed_row_lays_what_r1_resamples() {
+    let picture = picture_of(|x, y| texel(51, x, y), (2 * TILE, 2 * TILE));
+    let tiles = vec![(0, 0), (1, 0), (0, 1), (1, 1), (-1, 0), (2, 1)];
+    let names = [
+        "turn",
+        "turn-pick",
+        "shrink",
+        "shrink-pick",
+        "squeeze",
+        "tilt",
+        "tilt-pick",
+        "blur",
+    ];
+    for name in names {
+        let mut pool = Pool::default();
+        let sets = vec![pool.set(51, (0, 0), (2, 2), |c, r| Some((r * 2 + c) as u16))];
+        let scene = Scene {
+            pool,
+            sets,
+            steps: vec![pose_row(0, name, WHOLE, NORMAL)],
+            tiles: tiles.clone(),
+        };
+        assert!(widest(&scene) == resampled(&pose(name), &picture, &tiles), "{name}");
+    }
+}
+
+// A posed row binds the pages its pixels can read and no more. Four tiles
+// in a strip, each on its own page, under the first output tile with a
+// 16 px tent half a pixel left: the second tile is read up to 15 px in,
+// past where the tile's corners land, the third and fourth not at all —
+// two pages a pass, and a pass of one cannot take the row.
+#[test]
+fn a_posed_row_binds_the_pages_it_reads() {
+    let picture = picture_of(|x, y| texel(52, x, y), (4 * TILE, TILE));
+    let mut pool = Pool::default();
+    let sets = vec![pool.set(52, (0, 0), (4, 1), |c, _| Some(c as u16))];
+    let scene = Scene {
+        pool,
+        sets,
+        steps: vec![pose_row(0, "blur", WHOLE, NORMAL)],
+        tiles: vec![(0, 0)],
+    };
+    let (out, passes) = composite(&scene, within(2, usize::MAX));
+    assert!(out == resampled(&pose("blur"), &picture, &scene.tiles));
+    assert_eq!(passes, 1);
+    let Rig { engine, composite } = rig();
+    let pages = scene.pool.upload(engine);
+    let one_page = within(1, usize::MAX);
+    let refused = composite.run(engine, &pages, &scene.sets, &scene.steps, &scene.tiles, one_page);
+    assert!(refused.is_none());
+}
+
 // ---- The plan ----
 
 #[test]
@@ -560,20 +715,23 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
 // be bound, and starts at the depth the last one left.
 #[test]
 fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
-    let laid = |page: Option<u16>, step: Step| Laid { step, page };
+    let laid = |pages: &[u16], step: Step| Laid {
+        step,
+        pages: pages.to_vec(),
+    };
     let a_row = row(0, (0, 0), WHOLE, NORMAL);
     let close = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
     };
     let plan = [
-        laid(Some(0), a_row),
-        laid(None, Step::Open),
-        laid(Some(1), a_row),
-        laid(Some(2), a_row),
-        laid(None, close),
-        laid(Some(0), a_row),
-        laid(Some(3), a_row),
+        laid(&[0], a_row),
+        laid(&[], Step::Open),
+        laid(&[1], a_row),
+        laid(&[2], a_row),
+        laid(&[], close),
+        laid(&[0], a_row),
+        laid(&[3], a_row),
     ];
     let shape = |batch: &Batch| {
         (
@@ -584,7 +742,7 @@ fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
             batch.pages.clone(),
         )
     };
-    let batches: Vec<_> = cut(&plan, 2).iter().map(shape).collect();
+    let batches: Vec<_> = cut(&plan, 2).expect("a cut").iter().map(shape).collect();
     assert_eq!(
         batches,
         [

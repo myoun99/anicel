@@ -52,6 +52,24 @@ struct ResampleMap {
   i: Wide,
 }
 
+// The map from the 14 words resample.rs's ResampleMap::words lays down, in
+// the order a host keeps them — the one place that order is read.
+fn resample_map(w: array<u32, 14>) -> ResampleMap {
+  return ResampleMap(
+    bitcast<i32>(w[0]),
+    bitcast<i32>(w[1]),
+    bitcast<i32>(w[2]),
+    bitcast<i32>(w[3]),
+    bitcast<i32>(w[4]),
+    bitcast<i32>(w[5]),
+    w[6],
+    w[7],
+    Wide(w[8], w[9]),
+    Wide(w[10], w[11]),
+    Wide(w[12], w[13]),
+  );
+}
+
 // Where a destination pixel's centre lands and what its preimage spans.
 struct ResamplePoint {
   // Q.16, the pixel's own centre at 0.5: rnd(u, 16) is the nearest pixel.

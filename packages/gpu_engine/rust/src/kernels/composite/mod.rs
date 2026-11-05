@@ -7,18 +7,21 @@
 //!
 //! The plan is the composite tree flattened into steps, bottom to top
 //! ([`Step`]); the tree itself stays the app's (composite_tree.dart). E1
-//! takes the five node kinds that close per pixel: a row moved by whole
-//! pixels, a folder's buffer, a row over its backdrop (its own mode), a
-//! clipping group and its base made opaque. Adjustments and effects, a
-//! cel number's letters (drawn by the engine's glyph path, then a row
-//! here) and every pose but a whole-pixel move come in later rounds.
+//! takes the five node kinds that close per pixel: a row in any pose R1
+//! takes (a whole-pixel move being its copy), a folder's buffer, a row over
+//! its backdrop (its own mode), a clipping group and its base made opaque.
+//! Adjustments and effects and a cel number's letters (drawn by the
+//! engine's glyph path, then a row here) come in later rounds.
 //!
 //! The pages a pass can bind are few — `max_storage_buffers_per_shader_stage`
 //! less the plan and the work buffer, 2 where GLES reports 4 — so a plan is
-//! cut into passes, each binding the pages of its run of rows. A row whose
-//! tiles lie on several pages becomes one step per page: a pixel reads one
-//! tile of a row, so exactly one of them lays it. Between passes the stack
-//! is kept on the 16-bit scale as it was, so the cuts change no value.
+//! cut into passes, each binding the pages of its run of rows. A copied row
+//! whose tiles lie on several pages becomes one step per page: a pixel
+//! reads one tile of it, so exactly one of them lays it. Any other pose
+//! reads around where a pixel lands, so its row is one step binding every
+//! page it reaches; one reaching more than a pass binds waits for the
+//! round that lays a row first. Between passes the stack is kept on the
+//! 16-bit scale as it was, so the cuts change no value.
 
 // ⏳Nothing outside the tests calls it until the app's bridge round
 // (gpu-canonical-store 14:49 — the app connects after the bridges land).
@@ -32,7 +35,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::ISQRT_WGSL;
+use crate::kernels::shared::{ISQRT_WGSL, RESAMPLE_WGSL, ResampleMap, WIDE_WGSL};
 
 /// A tile's side in pixels (1a ①).
 pub(crate) const TILE: u32 = 128;
@@ -45,8 +48,10 @@ pub(crate) const DEPTH: usize = 8;
 /// The most pages one pass binds, whatever the device allows: each is a
 /// case of composite.wgsl's `page_word`.
 const MOST_PAGES: usize = 16;
-const STEP_WORDS: usize = 12;
+const STEP_WORDS: usize = 11;
 const NO_TILE: u32 = u32::MAX;
+/// A page a pass binds none of, in its table of pages.
+const NO_PAGE: u32 = u32::MAX;
 /// The plan and the work buffer: the storage buffers a pass binds besides
 /// its pages.
 const OWN_BUFFERS: u32 = 2;
@@ -77,18 +82,38 @@ impl TileSet {
         }
         self.tiles[(r as u32 * self.columns + c as u32) as usize]
     }
+
+    /// The tiles of the set under the pixels `[left, top, right, bottom)`,
+    /// or all of them for `None`.
+    fn under(&self, pixels: Option<[i64; 4]>) -> impl Iterator<Item = TileAt> + '_ {
+        let side = i64::from(TILE);
+        // In tiles, ends excluded.
+        let first = (i64::from(self.x0), i64::from(self.y0));
+        let end = (first.0 + i64::from(self.columns), first.1 + i64::from(self.rows));
+        let [left, top, right, bottom] = match pixels {
+            None => [first.0, first.1, end.0, end.1],
+            Some([l, t, r, b]) => [
+                l.div_euclid(side).max(first.0),
+                t.div_euclid(side).max(first.1),
+                (r.saturating_sub(1).div_euclid(side) + 1).min(end.0),
+                (b.saturating_sub(1).div_euclid(side) + 1).min(end.1),
+            ],
+        };
+        (top..bottom)
+            .flat_map(move |row| (left..right).map(move |column| (column, row)))
+            .filter_map(|(column, row)| self.at(column as i32, row as i32))
+    }
 }
 
 /// One step of a plan, bottom to top. An opacity is on the 16-bit scale
 /// (65535 is whole); a mode is blend.wgsl's id.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
-    /// Tile set `set` moved by (`dx`, `dy`) whole pixels, laid at `opacity`
-    /// in `mode`.
+    /// Tile set `set` posed by `map` — canvas pixel to the row's own — laid
+    /// at `opacity` in `mode`.
     Row {
         set: usize,
-        dx: i32,
-        dy: i32,
+        map: ResampleMap,
         opacity: u32,
         mode: u32,
     },
@@ -118,10 +143,11 @@ pub(crate) struct Composited {
     pub(crate) passes: usize,
 }
 
-/// A step as the GPU reads it, and the page it lays a row from.
+/// A step as the GPU reads it, and the pages it lays a row from — one for a
+/// copied row's step, every one it reaches for any other pose.
 struct Laid {
     step: Step,
-    page: Option<u16>,
+    pages: Vec<u16>,
 }
 
 /// A run of steps one pass takes: the pages it binds, in binding order,
@@ -164,7 +190,7 @@ impl Composite {
         let body = include_str!("composite.wgsl")
             .replace("//__PAGES__", &bindings)
             .replace("//__READS__", &reads);
-        let source = [ISQRT_WGSL, BLEND_WGSL, &body].join("\n");
+        let source = [ISQRT_WGSL, BLEND_WGSL, WIDE_WGSL, RESAMPLE_WGSL, &body].join("\n");
         let module = engine
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -224,8 +250,8 @@ impl Composite {
         }
         check_depth(steps, sets.len())?;
         let laid = lay(steps, sets, tiles, pages.len())?;
-        let batches = cut(&laid, pages_per_pass);
-        let encoded = encode(&laid, &batches, sets, tiles);
+        let batches = cut(&laid, pages_per_pass)?;
+        let encoded = encode(&laid, &batches, sets, tiles, pages.len());
         let plan = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -281,6 +307,7 @@ impl Composite {
                     encoded.tiles_at + 2 * first_tile as u32,
                     chunk_tiles as u32,
                     out_at as u32,
+                    encoded.tables_at + (index * pages.len()) as u32,
                 ];
                 let uniform = engine
                     .device
@@ -368,53 +395,53 @@ fn check_depth(steps: &[Step], sets: usize) -> Option<()> {
     Some(())
 }
 
-/// `steps` as the GPU takes them: a row once for each page holding a tile
-/// that lands on an output tile, and not at all where none does.
+/// `steps` as the GPU takes them: a row with the pages of the tiles its
+/// pose reads for the output tiles — a copied row once for each page, any
+/// other pose once for them all — and not at all where it reads none.
 fn lay(
     steps: &[Step],
     sets: &[TileSet],
     tiles: &[(i32, i32)],
     page_count: usize,
 ) -> Option<Vec<Laid>> {
-    let tile = TILE as i32;
+    let side = i64::from(TILE);
     let mut laid = Vec::new();
     for step in steps {
-        let Step::Row { set, dx, dy, .. } = *step else {
+        let Step::Row { set, map, .. } = *step else {
             laid.push(Laid {
                 step: *step,
-                page: None,
+                pages: Vec::new(),
             });
             continue;
         };
         let mut pages: Vec<u16> = Vec::new();
         for &(column, row) in tiles {
-            // An output tile's pixels, moved back to the row's own: they
-            // fall on at most two tile columns and two tile rows of it.
-            let (left, top) = (column * tile - dx, row * tile - dy);
-            for source_row in [top.div_euclid(tile), (top + tile - 1).div_euclid(tile)] {
-                for source_column in [left.div_euclid(tile), (left + tile - 1).div_euclid(tile)] {
-                    if let Some(at) = sets[set].at(source_column, source_row) {
-                        if usize::from(at.page) >= page_count {
-                            return fail(format!("tile set {set} names page {}", at.page));
-                        }
-                        if !pages.contains(&at.page) {
-                            pages.push(at.page);
-                        }
-                    }
+            let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
+            for at in sets[set].under(map.reads(x0, y0, x0 + side, y0 + side)) {
+                if usize::from(at.page) >= page_count {
+                    return fail(format!("tile set {set} names page {}", at.page));
+                }
+                if !pages.contains(&at.page) {
+                    pages.push(at.page);
                 }
             }
         }
         pages.sort_unstable();
-        laid.extend(pages.into_iter().map(|page| Laid {
-            step: *step,
-            page: Some(page),
-        }));
+        if map.is_copy() {
+            laid.extend(pages.into_iter().map(|page| Laid {
+                step: *step,
+                pages: vec![page],
+            }));
+        } else if !pages.is_empty() {
+            laid.push(Laid { step: *step, pages });
+        }
     }
     Some(laid)
 }
 
-/// `laid` cut into passes of at most `pages_per_pass` pages each, in order.
-fn cut(laid: &[Laid], pages_per_pass: usize) -> Vec<Batch> {
+/// `laid` cut into passes of at most `pages_per_pass` pages each, in order —
+/// none where one step reads more pages than a pass binds.
+fn cut(laid: &[Laid], pages_per_pass: usize) -> Option<Vec<Batch>> {
     let mut batches = Vec::new();
     let mut batch = Batch {
         begin: 0,
@@ -425,20 +452,27 @@ fn cut(laid: &[Laid], pages_per_pass: usize) -> Vec<Batch> {
     };
     let mut depth = 0usize;
     for (index, each) in laid.iter().enumerate() {
-        if let Some(page) = each.page {
+        if each.pages.len() > pages_per_pass {
+            return fail(format!(
+                "a row reads {} pages at once; a pass binds {pages_per_pass}",
+                each.pages.len()
+            ));
+        }
+        let fresh = each.pages.iter().filter(|page| !batch.pages.contains(page)).count();
+        if batch.pages.len() + fresh > pages_per_pass {
+            batch.end = index;
+            batch.depth_out = depth;
+            let next = Batch {
+                begin: index,
+                end: index,
+                depth_in: depth,
+                depth_out: depth,
+                pages: Vec::new(),
+            };
+            batches.push(std::mem::replace(&mut batch, next));
+        }
+        for &page in &each.pages {
             if !batch.pages.contains(&page) {
-                if batch.pages.len() == pages_per_pass {
-                    batch.end = index;
-                    batch.depth_out = depth;
-                    let next = Batch {
-                        begin: index,
-                        end: index,
-                        depth_in: depth,
-                        depth_out: depth,
-                        pages: Vec::new(),
-                    };
-                    batches.push(std::mem::replace(&mut batch, next));
-                }
                 batch.pages.push(page);
             }
         }
@@ -451,18 +485,27 @@ fn cut(laid: &[Laid], pages_per_pass: usize) -> Vec<Batch> {
     batch.end = laid.len();
     batch.depth_out = depth;
     batches.push(batch);
-    batches
+    Some(batches)
 }
 
-/// The plan buffer's words, and where its output tiles start.
+/// The plan buffer's words, where its output tiles start, and where its
+/// passes' tables of pages do, one after another.
 struct Plan {
     words: Vec<u8>,
     tiles_at: u32,
+    tables_at: u32,
 }
 
-/// The steps (each with its page's binding in its pass), then each tile
-/// set's map, then the output tiles.
-fn encode(laid: &[Laid], batches: &[Batch], sets: &[TileSet], tiles: &[(i32, i32)]) -> Plan {
+/// The steps, then each tile set's map, each row's R1 map, each pass's
+/// table of pages — for every page of the pool the binding holding it, or
+/// NO_PAGE — and the output tiles.
+fn encode(
+    laid: &[Laid],
+    batches: &[Batch],
+    sets: &[TileSet],
+    tiles: &[(i32, i32)],
+    page_count: usize,
+) -> Plan {
     let mut words: Vec<u32> = Vec::with_capacity(laid.len() * STEP_WORDS);
     let maps_at = (laid.len() * STEP_WORDS) as u32;
     let mut map_at = Vec::with_capacity(sets.len());
@@ -474,43 +517,53 @@ fn encode(laid: &[Laid], batches: &[Batch], sets: &[TileSet], tiles: &[(i32, i32
             None => NO_TILE,
         }));
     }
-    for batch in batches {
-        for each in &laid[batch.begin..batch.end] {
-            let step = match each.step {
-                Step::Row {
-                    set,
-                    dx,
-                    dy,
-                    opacity,
+    let poses_at = maps_at + maps.len() as u32;
+    let mut poses: Vec<u32> = Vec::new();
+    for each in laid {
+        let step = match each.step {
+            Step::Row {
+                set,
+                map,
+                opacity,
+                mode,
+            } => {
+                let pose_at = poses_at + poses.len() as u32;
+                poses.extend(map.words());
+                let pages = || each.pages.iter().copied().map(u32::from);
+                let tiles = &sets[set];
+                [
+                    0,
                     mode,
-                } => {
-                    let page = each.page.expect("a laid row has its page");
-                    let k = batch.pages.iter().position(|&bound| bound == page);
-                    let tiles = &sets[set];
-                    [
-                        0,
-                        mode,
-                        opacity,
-                        k.expect("a pass binds its rows' pages") as u32,
-                        u32::from(page),
-                        map_at[set],
-                        tiles.x0 as u32,
-                        tiles.y0 as u32,
-                        tiles.columns,
-                        tiles.rows,
-                        dx as u32,
-                        dy as u32,
-                    ]
-                }
-                Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            };
-            words.extend(step);
-        }
+                    opacity,
+                    pages().min().expect("a laid row has its pages"),
+                    pages().max().expect("a laid row has its pages"),
+                    map_at[set],
+                    tiles.x0 as u32,
+                    tiles.y0 as u32,
+                    tiles.columns,
+                    tiles.rows,
+                    pose_at,
+                ]
+            }
+            Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        words.extend(step);
     }
     words.extend(maps);
+    words.extend(poses);
+    let tables_at = words.len() as u32;
+    for batch in batches {
+        words.extend((0..page_count).map(|page| {
+            batch
+                .pages
+                .iter()
+                .position(|&bound| usize::from(bound) == page)
+                .map_or(NO_PAGE, |k| k as u32)
+        }));
+    }
     let tiles_at = words.len() as u32;
     words.extend(tiles.iter().flat_map(|&(column, row)| [column as u32, row as u32]));
     if words.is_empty() {
@@ -520,5 +573,6 @@ fn encode(laid: &[Laid], batches: &[Batch], sets: &[TileSet], tiles: &[(i32, i32
     Plan {
         words: le_bytes(&words),
         tiles_at,
+        tables_at,
     }
 }

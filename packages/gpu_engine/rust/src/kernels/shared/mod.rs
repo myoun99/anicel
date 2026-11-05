@@ -8,13 +8,14 @@
 //! copy has nowhere to hide. Each is pinned through its users' tests, or
 //! here in `tests.rs` while a user reaches only part of it.
 
-// ⏳R1 has no caller outside the tests until the executor's rows and the
-// canvas's transforms take it (gpu-canonical-store 14:51).
+// ⏳R1's caller, the executor's rows (kernels/composite), is reached only
+// by tests until the app's bridge round, and the canvas's transforms come
+// after (gpu-canonical-store 14:51).
 #![cfg_attr(not(test), allow(dead_code, unused_imports))]
 
 mod resample;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub(crate) use resample::{ResampleMap, ResampleMode};
 

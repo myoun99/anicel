@@ -350,14 +350,14 @@ fn a_subsample_sits_at_its_cell_centre_from_the_pixel_centre() {
 // ---- R1 on pictures ----
 
 /// A straight RGBA8 picture, row after row.
-struct Picture {
-    width: u32,
-    height: u32,
-    pixels: Vec<u32>,
+pub(crate) struct Picture {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) pixels: Vec<u32>,
 }
 
 impl Picture {
-    fn filled(width: u32, height: u32, word: u32) -> Self {
+    pub(crate) fn filled(width: u32, height: u32, word: u32) -> Self {
         Picture {
             width,
             height,
@@ -365,7 +365,7 @@ impl Picture {
         }
     }
 
-    fn put(&mut self, x: u32, y: u32, word: u32) {
+    pub(crate) fn put(&mut self, x: u32, y: u32, word: u32) {
         self.pixels[(y * self.width + x) as usize] = word;
     }
 
@@ -408,7 +408,12 @@ fn fixture() -> Picture {
 }
 
 /// The window of `size` at `clip` in an output the map was made for.
-fn window(map: &ResampleMap, picture: &Picture, size: (u32, u32), clip: (i32, i32)) -> Vec<u32> {
+pub(crate) fn window(
+    map: &ResampleMap,
+    picture: &Picture,
+    size: (u32, u32),
+    clip: (i32, i32),
+) -> Vec<u32> {
     let Rig { engine, window, .. } = rig();
     let mut job = map.words().to_vec();
     job.extend([picture.width, picture.height, size.0, size.1, clip.0 as u32, clip.1 as u32]);
