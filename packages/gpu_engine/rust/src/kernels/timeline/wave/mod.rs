@@ -31,7 +31,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::{ISQRT_WGSL, PREMULTIPLY_WGSL, storage_format};
+use crate::kernels::shared::{ISQRT_WGSL, PREMULTIPLY_WGSL, pipeline, storage_format};
 use crate::kernels::timeline::LAID_WGSL;
 
 /// The most lanes a sound may bring.
@@ -206,23 +206,11 @@ impl WaveTile {
             return fail(format!("the wave pass cannot store to {format:?}"));
         };
         let body = include_str!("wave.wgsl").replace("__FORMAT__", token);
-        let source = [ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, PREMULTIPLY_WGSL, &body].join("\n");
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("wave"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = engine
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("wave"),
-                layout: None,
-                module: &module,
-                entry_point: Some("wave"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let pipeline = pipeline(
+            engine,
+            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, PREMULTIPLY_WGSL, &body],
+            "wave",
+        );
         self.pipelines.push((format, pipeline.clone()));
         Some(pipeline)
     }
