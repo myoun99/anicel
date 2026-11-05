@@ -17,8 +17,6 @@ const LEDGER: &[(&str, &str)] = &[
     ("kernels/blend/tests.rs", "브러시/렌더링"),
     ("kernels/shared/tests.rs", "브러시/렌더링"),
     ("kernels/effects/tests.rs", "캔버스 베이스 패널"),
-    ("kernels/timeline/grid/mod.rs", "타임라인/콘티"),
-    ("kernels/timeline/wave/mod.rs", "타임라인/콘티"),
 ];
 
 #[test]
