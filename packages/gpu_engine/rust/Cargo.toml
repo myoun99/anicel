@@ -1,0 +1,29 @@
+[package]
+name = "gpu_engine"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[lib]
+# Both kinds are required by native_toolchain_rust.
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+pollster = "0.4"
+wgpu = { version = "=30.0.1", default-features = false, features = [
+  "std",
+  "parking_lot",
+  "dx12",
+  "wgsl",
+] }
+
+# The same major as wgpu-hal 30's own `windows`, so the D3D12 types this
+# crate makes are the ones wgpu-hal wraps.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+] }
