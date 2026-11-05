@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::shared::{pipeline, storage_format};
+use crate::kernels::shared::{Encoded, encode_on, flat, pipeline, storage_format, whole};
 
 /// The fill pass, one pipeline per texture format it has been run on.
 pub struct Fill {
@@ -62,29 +62,16 @@ impl Fill {
             .collect();
         engine.queue.write_buffer(&self.params, 0, &params);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("fill"),
-            layout: &pipeline.get_bind_group_layout(0),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.params.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-            ],
+        let mut bound = whole(&[(0, &self.params)]);
+        bound.push(wgpu::BindGroupEntry {
+            binding: 1,
+            resource: wgpu::BindingResource::TextureView(&view),
         });
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            pass.set_pipeline(&pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
-        }
+        let groups = flat((width.div_ceil(8), height.div_ceil(8)));
+        encode_on(engine, &mut encoder, &[Encoded { pipeline: &pipeline, bound, groups }]);
         let start = Instant::now();
         engine.queue.submit([encoder.finish()]);
         engine.wait()?;

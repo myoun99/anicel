@@ -99,7 +99,8 @@ pub(crate) fn flat((across, down): (u32, u32)) -> (u32, u32, u32) {
 /// dispatch sees what the ones before it put (wgpu orders a pass's
 /// dispatches as it would passes). Submitting is the caller's: a kernel
 /// that copies between its dispatches, or times the GPU's work alone,
-/// submits where it does now.
+/// submits where it does now. The crate's one compute pass: `one_pass.rs`
+/// holds the copies left, on a ledger.
 pub(crate) fn encode_on(
     engine: &Engine,
     encoder: &mut wgpu::CommandEncoder,

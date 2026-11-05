@@ -17,9 +17,13 @@ mod dispatch;
 #[cfg(test)]
 mod one_builder;
 #[cfg(test)]
+mod one_pass;
+#[cfg(test)]
 mod one_premultiply;
 mod pages;
 mod resample;
+#[cfg(test)]
+mod source_scan;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -50,7 +54,7 @@ pub(crate) const PREMULTIPLY_WGSL: &str = include_str!("premultiply.wgsl");
 
 /// The pipeline of `sources`, one after another, whose entry point is
 /// `entry` — its bindings as that entry uses them. The crate's one builder:
-/// `one_builder.rs` holds the copies left, on a ledger.
+/// `one_builder.rs` reads the source for a copy.
 pub(crate) fn pipeline(engine: &Engine, sources: &[&str], entry: &str) -> wgpu::ComputePipeline {
     let source = sources.join("\n");
     let module = engine
