@@ -123,6 +123,46 @@ void main() {
       expect(_inks(key), 'v${'~' * 8}${'_' * 4}');
       expect(key.words, isEmpty);
     });
+
+    test('a mark or a held frame that breaks the round is not written: the '
+        'repeat ends on the last number before it', () {
+      final marked = _repeated('12', 30, 'o3');
+      expect(xdtsViewerRepeats(_track(marked)), [
+        (start: 0, round: 2, end: 29),
+      ]);
+      expect(_inks(_key(marked)), 'vvb${':' * 8}${'_' * 18}vvv');
+      final held = _repeated('12', 30, '.3');
+      expect(xdtsViewerRepeats(_track(held)), [
+        (start: 0, round: 2, end: 29),
+      ]);
+      expect(_inks(_key(held)), 'vvb${':' * 8}${'_' * 18}v_v');
+    });
+
+    test('a round whose first number comes twice in it is not one: the '
+        'repeat starts a frame later, where the first comes once', () {
+      expect(xdtsViewerRepeats(_track(_repeated('1213', 40, '4'))), [
+        (start: 1, round: 4, end: 40),
+      ]);
+    });
+
+    test('a round whose first number came already since the last repeat '
+        'is not one either', () {
+      expect(xdtsViewerRepeats(_track('13${_repeated('12', 30, '4')}')), [
+        (start: 3, round: 2, end: 32),
+      ]);
+    });
+
+    test('a round comes round twice at least: 24 frames past a round of 25 '
+        'are not enough', () {
+      final round = [for (var number = 1; number <= 25; number += 1) number];
+      List<Object?> track(int past) => [
+        for (final number in round) '$number',
+        for (final number in round.take(past)) '$number',
+        '99',
+      ];
+      expect(xdtsViewerRepeats(track(24)), isEmpty);
+      expect(xdtsViewerRepeats(track(25)), [(start: 0, round: 25, end: 50)]);
+    });
   });
 
   test('an empty track writes nothing', () {

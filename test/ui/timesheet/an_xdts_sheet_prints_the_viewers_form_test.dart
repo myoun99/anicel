@@ -28,6 +28,7 @@ import 'package:anicel/src/services/export/xdts_viewer_ink.dart';
 import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
     show SheetImageLookup;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 
@@ -1168,6 +1169,13 @@ void main() {
         final sheet = await sheetOf(tester, document);
         expect(sheet.at(sheet.cell(15).center), predicate(dark));
         expect(sheet.at(sheet.cell(19).center), predicate(dark));
+        final last = sheet.cell(29);
+        expect(
+          sheet.at(Offset(last.left + 3, last.bottom)),
+          predicate(dark),
+          reason: 'and its end mark under the last frame — the viewer\'s, '
+              'not our hold line',
+        );
       });
 
       testWidgets('the column ends under its last frame with the end mark, '
@@ -1240,8 +1248,11 @@ void main() {
         expect(sheet.at(Offset(x, cell(10).top + 3)), predicate(blue));
         expect(sheet.anyIn(cell(11).deflate(1), anything), isFalse);
         expect(
-          sheet.at(Offset(x, cell(4).top + 3)),
-          isNot(predicate(blue)),
+          sheet.anyIn(
+            Rect.fromLTRB(x - 1, cell(3).top, x + 1, cell(5).bottom),
+            blue,
+          ),
+          isFalse,
           reason: 'the word\'s white ground over the dashes',
         );
         expect(
@@ -1424,6 +1435,38 @@ void main() {
           printOf(later, from: 5, kind: TimesheetSheetKind.sixSeconds),
           reason: 'our sheet prints the cells in view',
         );
+      });
+
+      test('a drag that lengthens the cut writes the same cells to its new '
+          'end, as the longer cut does', () {
+        Object printOf(TimesheetDocument document, TimelineDragPreview? drag) {
+          final layout = TimesheetDocumentLayout(document: document);
+          final rows = layout.halfRows(0);
+          return timesheetDragPrint(
+            document: document,
+            layout: layout,
+            shown: Rect.fromLTRB(
+              0,
+              rows.topOf(30) + 1,
+              layout.documentSize.width,
+              rows.bottomOf(32) - 1,
+            ),
+            cutId: const CutId('cut'),
+            preview: drag,
+          );
+        }
+
+        final timeline = {0: cel('1', 12)};
+        final short = written(timeline);
+        final shortPrint = printOf(short, null);
+        expect(
+          printOf(
+            short,
+            CutTrimDragPreview(previewDurations: {const CutId('cut'): 40}),
+          ),
+          printOf(written(timeline, duration: 40), null),
+        );
+        expect(printOf(short, null), shortPrint, reason: 'and back');
       });
     });
   });
