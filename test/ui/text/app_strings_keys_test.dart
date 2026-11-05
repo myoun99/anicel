@@ -400,6 +400,7 @@ void main() {
     'sheetStretchLineOn': (s) => s.sheetStretchLineOn,
     'sheetStretchLineOff': (s) => s.sheetStretchLineOff,
     'sheetLength': (s) => s.sheetLength,
+    'sheetXdtsPapers': (s) => s.sheetXdtsPapers,
     'sheetThreeSeconds': (s) => s.sheetThreeSeconds,
     'sheetSixSeconds': (s) => s.sheetSixSeconds,
     'sheetBrushAllow': (s) => s.sheetBrushAllow,

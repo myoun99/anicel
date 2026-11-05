@@ -239,13 +239,23 @@ String sheetBookLabel(Layer layer) {
   return '${layer.name}${picture?.celNumber ?? ''}';
 }
 
-/// The paper [cut] prints its timesheet on: the kind it chose, while a
-/// strip holds the cel columns its [sources] lay ([sheetKindFor]).
-TimesheetSheetKind printedSheetKindOf(Cut cut, SheetSources sources) =>
-    sheetKindFor(cut.metadata.sheetKind, celColumns: sources.celColumnsAcross);
+/// The paper [cut] prints its timesheet on at [fps]: the kind it chose,
+/// while that can print the cel columns its [sources] lay ([sheetKindFor]).
+TimesheetSheetKind printedSheetKindOf(
+  Cut cut,
+  SheetSources sources, {
+  required int fps,
+}) => sheetKindFor(
+  cut.metadata.sheetKind,
+  celColumns: sources.celColumnsAcross,
+  fps: fps,
+);
 
 /// How many frames a page of [cut]'s timesheet holds at [fps] — its paper's
 /// ([printedSheetKindOf]), the page the timeline's page view counts by:
 /// 🗣️I-81-Q1 (유저 2026-10-30 「그 컷의 X시트 장을 따른다」).
-int sheetPageFramesOf(Cut cut, int fps) =>
-    printedSheetKindOf(cut, SheetSources.of(cut: cut)).pageSeconds * fps;
+int sheetPageFramesOf(Cut cut, int fps) => printedSheetKindOf(
+  cut,
+  SheetSources.of(cut: cut),
+  fps: fps,
+).pageFramesAt(fps);

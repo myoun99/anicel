@@ -23,6 +23,7 @@ import 'timesheet_info.dart';
 import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
+import 'xdts_sheet_form.dart';
 
 /// The colour label whose worker on the cut a sheet's 作業者 box names —
 /// 러프원화 (유저 2026-10-05, F-291: 「타임시트에 적히는 이름 기준이
@@ -413,6 +414,7 @@ class TimesheetDocument {
     required this.playbackFrameCount,
     this.transitionHandles = CutTransitionHandles.none,
     required this.sheetKind,
+    required this.xdtsForm,
     required this.pageFrameCount,
     required this.columns,
     required this.books,
@@ -462,8 +464,6 @@ class TimesheetDocument {
     // `cutSheetDocument` reads.
     List<String> linkedCuts = const [],
   }) {
-    const seColumnCount = 2;
-    const cameraColumnCount = 2;
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
     }
@@ -483,11 +483,26 @@ class TimesheetDocument {
     );
     final playbackFrameCount = sources.playbackFrameCount;
     final drawnFrameCount = sources.drawnFrameCount;
-    final actionLayers = sources.actionLayers;
-    final cellLayers = sources.cellLayers;
-    final sheetKind = printedSheetKindOf(cut, sources);
-    final celColumnCount = sheetKind.celColumns;
-    final pageFrameCount = (pageSeconds ?? sheetKind.pageSeconds) * fps;
+    final sheetKind = printedSheetKindOf(cut, sources, fps: fps);
+    // 🗣️I-162 (유저 2026-11-05: 「서식 바꾸면 xdts의 해당 서식에서 보는거랑
+    // 똑같은 화면」): an XDTS sheet prints its rows where the viewer prints
+    // our XDTS file's — every cel row in the CELL block, the ACTION block
+    // left blank, as the one file the save lane writes is read (저장
+    // 2026-11-05, [XdtsSheetForm]). Our own sheets keep each row in its
+    // block (F-406).
+    final onXdts = sheetKind.xdts != null;
+    final actionLayers = onXdts ? const <Layer>[] : sources.actionLayers;
+    final cellLayers = onXdts ? sources.celLayers : sources.cellLayers;
+    final seColumnCount = sheetKind.seColumns;
+    final cameraColumnCount = sheetKind.cameraColumns;
+    final xdtsForm = sheetKind.xdtsFormFor(cells: cellLayers.length);
+    final celBlocks = sheetKind.celBlockColumns(
+      actions: actionLayers.length,
+      cells: cellLayers.length,
+    );
+    final pageFrameCount = pageSeconds == null
+        ? sheetKind.pageFramesAt(fps)
+        : pageSeconds * fps;
     final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);
     final rowCount = pageCount * pageFrameCount;
 
@@ -528,7 +543,7 @@ class TimesheetDocument {
       rowCount: rowCount,
       instructionDefById: instructionDefById,
     );
-    final actionSlots = _slotCount(celColumnCount, actionLayers);
+    final actionSlots = celBlocks.action;
     final seColumnSlots = _slotCount(seColumnCount, seSlots);
     final columns = <TimesheetColumn>[
       // The cel rows fill the ACTION block in order, headed by their real
@@ -552,7 +567,7 @@ class TimesheetDocument {
       // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
       // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」 —
       // the CELL block prints its data whichever way the sheet reads.
-      for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
+      for (var slot = 0; slot < celBlocks.cel; slot += 1)
         _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, true, unnamedMark),
       // CAM block: slot 0 keeps the camera transform keyframes; the
       // instruction rows (CAM 2 …) follow in layer order, growing the block
@@ -584,9 +599,12 @@ class TimesheetDocument {
       playbackFrameCount: playbackFrameCount,
       transitionHandles: sources.handles,
       sheetKind: sheetKind,
+      xdtsForm: xdtsForm,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
-      books: List.unmodifiable(sources.actionBooks),
+      // The books tag the ACTION block's rows — on an XDTS sheet a blank
+      // block, as the viewer's is: none until I-162-Q4 says where.
+      books: onXdts ? const [] : List.unmodifiable(sources.actionBooks),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
@@ -776,7 +794,11 @@ class TimesheetDocument {
   /// when the cut's cel layers outgrow the 6-second one ([sheetKindFor]).
   final TimesheetSheetKind sheetKind;
 
-  /// Rows per paper page (pageSeconds × fps).
+  /// The XDTS Viewer's sheet the cut prints on, laid out for its columns —
+  /// null on one of our own ([TimesheetSheetKind.xdts]).
+  final XdtsSheetForm? xdtsForm;
+
+  /// Rows per paper page ([TimesheetSheetKind.pageFramesAt]).
   final int pageFrameCount;
 
   final List<TimesheetColumn> columns;

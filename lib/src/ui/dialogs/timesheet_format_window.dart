@@ -44,13 +44,15 @@ class TimesheetFormatWindow extends StatefulWidget {
 
   final TimesheetInfo initialInfo;
 
-  /// The cut the sheet shows: the paper it chose, and the cel columns its
-  /// sheet prints — what decides whether the 6-second sheet holds them
-  /// ([sheetKindFits]) — the words that say which cut, and the fixed text it
-  /// keeps (null for the format's). Null in the gap.
+  /// The cut the sheet shows: the paper it chose, the cel columns its
+  /// sheet prints and the frames a second it counts — what decides which
+  /// papers it can print on ([sheetKindFits]) — the words that say which
+  /// cut, and the fixed text it keeps (null for the format's). Null in the
+  /// gap.
   final ({
     TimesheetSheetKind kind,
     int celColumns,
+    int fps,
     String words,
     bool? fixedText,
   })?
@@ -122,30 +124,32 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     Navigator.of(context).pop(format);
   }
 
-  /// The paper the cut prints on: one strip, one of its two pills lit —
-  /// the paper the sheet prints on now. A paper the cut's cel columns do
-  /// not fit keeps its pill and takes no tap (유저 2026-09-25,
-  /// timesheet-sheet-capacity-Q1 「3초 시트로 고정(6초 끔)」); in the gap
-  /// neither does.
-  Widget _paper() {
+  /// The papers the cut prints on, [kinds] of them in a strip, the one the
+  /// sheet prints on now lit — one choice across our sheets' strip and the
+  /// XDTS Viewer's (I-162). A paper the cut cannot print on keeps its pill
+  /// and takes no tap (유저 2026-09-25, timesheet-sheet-capacity-Q1 「3초
+  /// 시트로 고정(6초 끔)」 — and an XDTS sheet off the viewer's 24 a second,
+  /// I-162-Q3); in the gap none does.
+  Widget _papers(List<TimesheetSheetKind> kinds) {
     final sheet = widget.sheet;
     final chosen = _kind;
     final printed = sheet == null || chosen == null
         ? TimesheetSheetKind.sixSeconds
-        : sheetKindFor(chosen, celColumns: sheet.celColumns);
+        : sheetKindFor(chosen, celColumns: sheet.celColumns, fps: sheet.fps);
     return PillStrip(
       items: [
-        for (final kind in const [
-          TimesheetSheetKind.threeSeconds,
-          TimesheetSheetKind.sixSeconds,
-        ])
+        for (final kind in kinds)
           PillItem(
             keyValue: 'timesheet-format-paper-${kind.jsonValue}',
             label: AppText.strings.sheetKindName(kind),
             selected: kind == printed,
             onTap:
                 sheet != null &&
-                    sheetKindFits(kind, celColumns: sheet.celColumns)
+                    sheetKindFits(
+                      kind,
+                      celColumns: sheet.celColumns,
+                      fps: sheet.fps,
+                    )
                 ? () => setState(() => _kind = kind)
                 : null,
           ),
@@ -258,7 +262,23 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
           children: [
             AppWindowField(
               label: strings.sheetLength,
-              child: Align(alignment: Alignment.centerLeft, child: _paper()),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _papers(const [
+                  TimesheetSheetKind.threeSeconds,
+                  TimesheetSheetKind.sixSeconds,
+                ]),
+              ),
+            ),
+            AppWindowField(
+              label: strings.sheetXdtsPapers,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _papers([
+                  for (final kind in TimesheetSheetKind.values)
+                    if (kind.xdts != null) kind,
+                ]),
+              ),
             ),
             AppWindowField(
               label: strings.sheetVisibleBoxes,

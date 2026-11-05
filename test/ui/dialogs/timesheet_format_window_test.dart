@@ -28,7 +28,13 @@ Future<void> _openWindow(
   WidgetTester tester,
   TimesheetInfo initial,
   void Function(TimesheetInfo? result) onResult, {
-  ({TimesheetSheetKind kind, int celColumns, String words, bool? fixedText})?
+  ({
+    TimesheetSheetKind kind,
+    int celColumns,
+    int fps,
+    String words,
+    bool? fixedText,
+  })?
   sheet,
   void Function(TimesheetFormat? format)? onFormat,
 }) async {
@@ -282,10 +288,17 @@ void main() {
     const button = 'timesheet-format-cut-fixed-text';
     const cutButton = ValueKey<String>(button);
 
-    ({TimesheetSheetKind kind, int celColumns, String words, bool? fixedText})
+    ({
+      TimesheetSheetKind kind,
+      int celColumns,
+      int fps,
+      String words,
+      bool? fixedText,
+    })
     keeping(bool? fixedText) => (
       kind: TimesheetSheetKind.sixSeconds,
       celColumns: 3,
+      fps: 24,
       words: 'c1',
       fixedText: fixedText,
     );
@@ -366,7 +379,13 @@ void main() {
         tester,
         TimesheetInfo.empty,
         (_) {},
-        sheet: (kind: six, celColumns: 3, words: 'c1', fixedText: null),
+        sheet: (
+          kind: six,
+          celColumns: 3,
+          fps: 24,
+          words: 'c1',
+          fixedText: null,
+        ),
         onFormat: (saved) => format = saved,
       );
       expect(_pill(tester, paper(six)).selected, isTrue);
@@ -388,7 +407,13 @@ void main() {
         tester,
         TimesheetInfo.empty,
         (_) {},
-        sheet: (kind: six, celColumns: 9, words: 'c1', fixedText: null),
+        sheet: (
+          kind: six,
+          celColumns: 9,
+          fps: 24,
+          words: 'c1',
+          fixedText: null,
+        ),
         onFormat: (saved) => format = saved,
       );
       expect(_pill(tester, paper(three)).selected, isTrue);
@@ -420,6 +445,81 @@ void main() {
 
       await _press(tester, _save);
       expect(format!.kind, isNull);
+    });
+
+    // I-162: the XDTS Viewer's four sheets, one choice with ours.
+    const xdts = [
+      TimesheetSheetKind.xdtsA3SixSeconds,
+      TimesheetSheetKind.xdtsB4ThreeSeconds,
+      TimesheetSheetKind.xdtsB4SixSeconds,
+      TimesheetSheetKind.xdtsPonocSixSeconds,
+    ];
+
+    testWidgets('the XDTS Viewer\'s sheets stand in a strip of their own, '
+        'however many cel columns the cut carries — one lit with ours, and '
+        'the one picked goes out with the save', (tester) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty,
+        (_) {},
+        sheet: (
+          kind: six,
+          celColumns: 30,
+          fps: 24,
+          words: 'c1',
+          fixedText: null,
+        ),
+        onFormat: (saved) => format = saved,
+      );
+      for (final kind in xdts) {
+        expect(_pill(tester, paper(kind)).onTap, isNotNull, reason: '$kind');
+        expect(_pill(tester, paper(kind)).selected, isFalse, reason: '$kind');
+      }
+      expect(_pill(tester, paper(three)).selected, isTrue);
+
+      await _press(tester, paper(TimesheetSheetKind.xdtsB4SixSeconds));
+      for (final kind in TimesheetSheetKind.values) {
+        expect(
+          _pill(tester, paper(kind)).selected,
+          kind == TimesheetSheetKind.xdtsB4SixSeconds,
+          reason: '$kind',
+        );
+      }
+      await _press(tester, _save);
+      expect(format!.kind, TimesheetSheetKind.xdtsB4SixSeconds);
+    });
+
+    testWidgets('off the viewer\'s 24 a second the XDTS sheets keep their '
+        'place and take no tap, and a cut that chose one prints on the '
+        '6-second sheet (I-162-Q3)', (tester) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty,
+        (_) {},
+        sheet: (
+          kind: TimesheetSheetKind.xdtsA3SixSeconds,
+          celColumns: 3,
+          fps: 30,
+          words: 'c1',
+          fixedText: null,
+        ),
+        onFormat: (saved) => format = saved,
+      );
+      for (final kind in xdts) {
+        expect(find.byKey(paper(kind)), findsOneWidget);
+        expect(_pill(tester, paper(kind)).onTap, isNull, reason: '$kind');
+        expect(_pill(tester, paper(kind)).selected, isFalse, reason: '$kind');
+      }
+      expect(_pill(tester, paper(six)).selected, isTrue);
+
+      await _press(tester, _save);
+      expect(
+        format!.kind,
+        TimesheetSheetKind.xdtsA3SixSeconds,
+        reason: 'what the cut chose, for when the project counts 24 again',
+      );
     });
   });
 }

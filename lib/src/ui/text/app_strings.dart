@@ -837,10 +837,18 @@ enum AppStrings {
   String get sheetThreeSeconds => _s('sheetThreeSeconds');
   String get sheetSixSeconds => _s('sheetSixSeconds');
 
-  /// What the paper a timesheet prints on is called.
+  String get sheetXdtsPapers => _s('sheetXdtsPapers');
+
+  /// What the paper a timesheet prints on is called — the XDTS Viewer's
+  /// sheets by their paper (or the studio a sheet is named for) and their
+  /// length, under their own field ([sheetXdtsPapers]).
   String sheetKindName(TimesheetSheetKind kind) => switch (kind) {
     TimesheetSheetKind.threeSeconds => sheetThreeSeconds,
     TimesheetSheetKind.sixSeconds => sheetSixSeconds,
+    TimesheetSheetKind.xdtsA3SixSeconds => 'A3 $sheetSixSeconds',
+    TimesheetSheetKind.xdtsB4ThreeSeconds => 'B4 $sheetThreeSeconds',
+    TimesheetSheetKind.xdtsB4SixSeconds => 'B4 $sheetSixSeconds',
+    TimesheetSheetKind.xdtsPonocSixSeconds => 'Ponoc $sheetSixSeconds',
   };
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get conteCoverPage => _s('conteCoverPage');
@@ -2742,6 +2750,7 @@ enum AppStrings {
     'sheetStretchLineOn': 'On',
     'sheetStretchLineOff': 'Off',
     'sheetLength': 'Sheet length',
+    'sheetXdtsPapers': 'XDTS Viewer sheet',
     'sheetThreeSeconds': '3 sec',
     'sheetSixSeconds': '6 sec',
     'sheetBrushAllow': 'Allow Brush',
@@ -4169,6 +4178,7 @@ enum AppStrings {
     'sheetStretchLineOn': 'あり',
     'sheetStretchLineOff': 'なし',
     'sheetLength': 'シートの長さ',
+    'sheetXdtsPapers': 'XDTS Viewer 用紙',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
     'sheetBrushAllow': 'ブラシを許可',
@@ -6029,6 +6039,7 @@ enum AppStrings {
     'sheetStretchLineOn': '있음',
     'sheetStretchLineOff': '없음',
     'sheetLength': '시트 길이',
+    'sheetXdtsPapers': 'XDTS 뷰어 용지',
     'sheetThreeSeconds': '3초',
     'sheetSixSeconds': '6초',
     'sheetBrushAllow': '브러시 허용',
@@ -7924,6 +7935,7 @@ enum AppStrings {
     'sheetStretchLineOn': 'Oui',
     'sheetStretchLineOff': 'Non',
     'sheetLength': 'Longueur de feuille',
+    'sheetXdtsPapers': 'Feuille XDTS Viewer',
     'sheetThreeSeconds': '3 s',
     'sheetSixSeconds': '6 s',
     'sheetBrushAllow': 'Autoriser le pinceau',
@@ -9874,6 +9886,7 @@ enum AppStrings {
     'sheetStretchLineOn': '有',
     'sheetStretchLineOff': '无',
     'sheetLength': '摄影表长度',
+    'sheetXdtsPapers': 'XDTS Viewer 用纸',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
     'sheetBrushAllow': '允许画笔',

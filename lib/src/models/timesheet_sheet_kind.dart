@@ -1,3 +1,8 @@
+import 'dart:math' as math;
+
+import 'xdts_sheet_form.dart';
+import 'xdts_sheet_template.dart';
+
 /// Which paper a cut's timesheet prints on (유저 2026-09-25, 사진 TOEI_3sec ·
 /// TOEI_book): the 6-second sheet lays two 3-second strips side by side, 8
 /// cel columns a strip; the 3-second sheet is one strip across the same
@@ -7,34 +12,83 @@
 /// ↩️It printed 12 cel columns half again as wide
 /// (timesheet-3s-columns-Q1: 「사진대로 ACTION 12 · CELL 12」).
 ///
+/// And the XDTS Viewer's four sheets (I-162, 유저 2026-11-05: 「타임시트
+/// 서식에 우리식 3초/6초에 추가로 xdts의 서식같은거 다 타입으로 구현하자 …
+/// 서식 바꾸면 xdts의 해당 서식에서 보는거랑 똑같은 화면」): each prints as
+/// the viewer prints its [xdts] template.
+///
 /// Each CUT keeps its own (timesheet-sheet-kind-scope-Q1: 「컷마다 따로」);
 /// the 6-second sheet unless the cut says otherwise.
 enum TimesheetSheetKind {
   sixSeconds('6s', strips: 2, celColumns: 8),
-  threeSeconds('3s', strips: 1, celColumns: 19);
+  threeSeconds('3s', strips: 1, celColumns: 19),
+  xdtsA3SixSeconds('xdts-a3-6s', xdts: XdtsSheetTemplate.a3SixSeconds),
+  xdtsB4ThreeSeconds('xdts-b4-3s', xdts: XdtsSheetTemplate.b4ThreeSeconds),
+  xdtsB4SixSeconds('xdts-b4-6s', xdts: XdtsSheetTemplate.b4SixSeconds),
+  xdtsPonocSixSeconds(
+    'xdts-ponoc-6s',
+    xdts: XdtsSheetTemplate.ponocSixSeconds,
+  );
 
   const TimesheetSheetKind(
     this.jsonValue, {
-    required this.strips,
-    required this.celColumns,
-  });
+    int strips = 0,
+    int celColumns = 0,
+    this.xdts,
+  }) : _strips = strips,
+       _celColumns = celColumns;
 
   /// The stored key.
   final String jsonValue;
 
-  /// The 3-second strips a page lays side by side.
-  final int strips;
+  /// The viewer's sheet this one prints as, or null for one of our own.
+  final XdtsSheetTemplate? xdts;
 
-  /// The ACTION and the CELL blocks' columns a strip carries. A block with
-  /// more cel rows grows past them (F-406: the CELL block by the ACTION
-  /// block's law).
-  final int celColumns;
+  final int _strips;
 
-  /// Seconds of rows a strip holds, on either sheet.
+  /// The ACTION and the CELL blocks' columns a strip of one of our own
+  /// sheets carries. A block with more cel rows grows past them (F-406: the
+  /// CELL block by the ACTION block's law).
+  final int _celColumns;
+
+  /// The 3-second strips a page lays side by side — an XDTS sheet's
+  /// bodies.
+  int get strips => xdts?.bodyAmount ?? _strips;
+
+  /// Seconds of rows a strip holds, on our own sheets.
   static const int stripSeconds = 3;
 
-  /// Seconds of rows a page holds.
-  int get pageSeconds => strips * stripSeconds;
+  /// The frames a page holds at [fps]: seconds of rows on our own sheets,
+  /// and an XDTS sheet's own count — the viewer counts 24 a second.
+  int pageFramesAt(int fps) =>
+      xdts?.frameLength ?? strips * stripSeconds * fps;
+
+  /// The SE columns a strip prints with no SE row behind them — an XDTS
+  /// sheet's one dialogue column — and the camera block's.
+  int get seColumns => xdts == null ? 2 : 1;
+  int get cameraColumns => xdts?.cameraColAmount ?? 2;
+
+  /// The viewer's sheet laid out for [cells] rows in its CELL block, or
+  /// null on one of our own.
+  XdtsSheetForm? xdtsFormFor({required int cells}) => switch (xdts) {
+    null => null,
+    final template => XdtsSheetForm(template, cells: cells),
+  };
+
+  /// The ACTION block's columns and the CELL block's, for [actions] and
+  /// [cells] rows on them: each block its own rows past [_celColumns] on
+  /// our own sheets, as the viewer widens them on an XDTS sheet
+  /// ([xdtsFormFor]).
+  ({int action, int cel}) celBlockColumns({
+    required int actions,
+    required int cells,
+  }) => switch (xdtsFormFor(cells: cells)) {
+    final form? => (action: form.keyColumns, cel: form.cellsColumns),
+    null => (
+      action: math.max(_celColumns, actions),
+      cel: math.max(_celColumns, cells),
+    ),
+  };
 
   static TimesheetSheetKind fromJson(Object? json) {
     for (final kind in values) {
@@ -47,18 +101,34 @@ enum TimesheetSheetKind {
 }
 
 /// The sheet a cut that chose [chosen] prints on, carrying [celColumns] cel
-/// columns: [chosen] while a 6-second strip holds them, the 3-second sheet
-/// once it cannot (유저 2026-09-25, timesheet-sheet-capacity-Q1 「3초
-/// 시트로 고정(6초 끔)」) — the one question the sheet, its export and the
-/// format window's switch all ask.
+/// columns at [fps] frames a second — the one question the sheet, its
+/// export and the format window's switch all ask:
+///
+/// - [chosen] while it can;
+/// - an XDTS sheet only at the viewer's 24 a second ([xdtsCountsSecondsAt])
+///   — the 6-second sheet otherwise (I-162-Q3, 「답 전까지는 1」);
+/// - the 6-second sheet while a strip holds the columns, the 3-second
+///   sheet once it cannot (유저 2026-09-25, timesheet-sheet-capacity-Q1
+///   「3초 시트로 고정(6초 끔)」). An XDTS sheet widens for them as the
+///   viewer does.
 TimesheetSheetKind sheetKindFor(
   TimesheetSheetKind chosen, {
   required int celColumns,
-}) => celColumns > TimesheetSheetKind.sixSeconds.celColumns
-    ? TimesheetSheetKind.threeSeconds
-    : chosen;
+  required int fps,
+}) {
+  final printable = chosen.xdts == null || xdtsCountsSecondsAt(fps)
+      ? chosen
+      : TimesheetSheetKind.sixSeconds;
+  return printable == TimesheetSheetKind.sixSeconds &&
+          celColumns > TimesheetSheetKind.sixSeconds._celColumns
+      ? TimesheetSheetKind.threeSeconds
+      : printable;
+}
 
-/// Whether a cut carrying [celColumns] cel columns can print on [kind]
-/// ([sheetKindFor]) — the format window offers only these.
-bool sheetKindFits(TimesheetSheetKind kind, {required int celColumns}) =>
-    sheetKindFor(kind, celColumns: celColumns) == kind;
+/// Whether a cut carrying [celColumns] cel columns at [fps] can print on
+/// [kind] ([sheetKindFor]) — the format window offers only these.
+bool sheetKindFits(
+  TimesheetSheetKind kind, {
+  required int celColumns,
+  required int fps,
+}) => sheetKindFor(kind, celColumns: celColumns, fps: fps) == kind;

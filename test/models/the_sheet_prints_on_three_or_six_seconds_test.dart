@@ -17,9 +17,11 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/sheet_sources.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/xdts_sheet_form.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
 /// A cut of [cels] ACTION rows and [inbetweens] 動画 ones, the CELL
@@ -112,11 +114,11 @@ void main() {
       TimesheetSheetKind.threeSeconds,
     );
     expect(
-      sheetKindFits(TimesheetSheetKind.sixSeconds, celColumns: 9),
+      sheetKindFits(TimesheetSheetKind.sixSeconds, celColumns: 9, fps: 24),
       isFalse,
     );
     expect(
-      sheetKindFits(TimesheetSheetKind.threeSeconds, celColumns: 9),
+      sheetKindFits(TimesheetSheetKind.threeSeconds, celColumns: 9, fps: 24),
       isTrue,
     );
 
@@ -173,6 +175,8 @@ void main() {
       _cut(cels: 3, kind: TimesheetSheetKind.threeSeconds),
       _cut(cels: 9),
       _cut(cels: 1, inbetweens: 9),
+      _cut(cels: 3, kind: TimesheetSheetKind.xdtsA3SixSeconds),
+      _cut(cels: 9, kind: TimesheetSheetKind.xdtsB4ThreeSeconds),
     ]) {
       for (final fps in [24, 30]) {
         expect(
@@ -188,5 +192,117 @@ void main() {
     }
     expect(sheetPageFramesOf(_cut(cels: 3), 24), 144);
     expect(sheetPageFramesOf(_cut(cels: 9), 24), 72);
+    expect(
+      sheetPageFramesOf(
+        _cut(cels: 9, kind: TimesheetSheetKind.xdtsB4ThreeSeconds),
+        24,
+      ),
+      72,
+    );
+  });
+
+  // I-162 (유저 2026-11-05): 「타임시트 서식에 우리식 3초/6초에 추가로 xdts의
+  // 서식같은거 다 타입으로 구현하자 … 서식 바꾸면 xdts의 해당 서식에서
+  // 보는거랑 똑같은 화면」.
+  group('the XDTS Viewer\'s sheets', () {
+    List<String> labels(TimesheetDocument sheet, TimesheetColumnKind kind) => [
+      for (final column in sheet.columns)
+        if (column.kind == kind) column.label,
+    ];
+
+    test('a cut keeps an XDTS sheet it chose, by its own key', () {
+      for (final kind in TimesheetSheetKind.values) {
+        final metadata = CutMetadata(sheetKind: kind);
+        expect(CutMetadata.fromJson(metadata.toJson()), metadata);
+      }
+      expect(
+        [
+          for (final kind in TimesheetSheetKind.values)
+            if (kind.xdts != null) kind.jsonValue,
+        ],
+        ['xdts-a3-6s', 'xdts-b4-3s', 'xdts-b4-6s', 'xdts-ponoc-6s'],
+      );
+    });
+
+    test('every cel row prints in the CELL block, in order, and the ACTION '
+        'block is the template\'s, blank — where the viewer prints our '
+        'one-file XDTS (저장 2026-11-05)', () {
+      final sheet = _sheet(
+        _cut(
+          cels: 2,
+          inbetweens: 1,
+          kind: TimesheetSheetKind.xdtsA3SixSeconds,
+        ),
+      );
+      expect(sheet.sheetKind, TimesheetSheetKind.xdtsA3SixSeconds);
+      expect(labels(sheet, TimesheetColumnKind.action), List.filled(7, ''));
+      expect(labels(sheet, TimesheetColumnKind.cel), [
+        'A',
+        'B',
+        'IB0',
+        ...List.filled(5, ''),
+      ]);
+      expect(_count(sheet, TimesheetColumnKind.se), 1);
+      expect(_count(sheet, TimesheetColumnKind.camera), 3);
+      expect((sheet.pageFrameCount, sheet.halfFrameCount), (144, 72));
+      expect(sheet.xdtsForm!.cellsColumns, 8);
+      expect(sheet.books, isEmpty);
+    });
+
+    test('more cel rows than the CELL block holds widen it as the viewer '
+        'does — no 3-second sheet in its place', () {
+      final sheet = _sheet(
+        _cut(cels: 6, inbetweens: 4, kind: TimesheetSheetKind.xdtsB4SixSeconds),
+      );
+      expect(sheet.sheetKind, TimesheetSheetKind.xdtsB4SixSeconds);
+      expect(_count(sheet, TimesheetColumnKind.action), 4);
+      expect(_count(sheet, TimesheetColumnKind.cel), 10);
+      expect(sheet.xdtsForm!.cellsColumns, 10);
+    });
+
+    test('the B4 3-second sheet is one body of 72 rows, its camera block one '
+        'column', () {
+      final sheet = _sheet(
+        _cut(cels: 3, kind: TimesheetSheetKind.xdtsB4ThreeSeconds),
+      );
+      expect((sheet.pageFrameCount, sheet.halfFrameCount), (72, 72));
+      expect(_count(sheet, TimesheetColumnKind.action), 14);
+      expect(_count(sheet, TimesheetColumnKind.cel), 14);
+      expect(_count(sheet, TimesheetColumnKind.camera), 1);
+    });
+
+    test('off the viewer\'s 24 a second a cut that chose one prints on our '
+        'sheets (I-162-Q3) — 23.976 counts 24', () {
+      for (final kind in TimesheetSheetKind.values) {
+        if (kind.xdts == null) {
+          continue;
+        }
+        final at30 = TimesheetDocument.fromCut(
+          cut: _cut(cels: 3, kind: kind),
+          projectName: 'P',
+          fps: 30,
+        );
+        expect(at30.sheetKind, TimesheetSheetKind.sixSeconds);
+        expect(at30.xdtsForm, isNull);
+        expect(
+          TimesheetDocument.fromCut(
+            cut: _cut(cels: 9, kind: kind),
+            projectName: 'P',
+            fps: 25,
+          ).sheetKind,
+          TimesheetSheetKind.threeSeconds,
+        );
+        expect(_sheet(_cut(cels: 3, kind: kind)).sheetKind, kind);
+      }
+      // The frames a second the project COUNTS.
+      expect(
+        xdtsCountsSecondsAt(const ProjectFrameRate.ntsc(24).countingBase),
+        isTrue,
+      );
+      expect(
+        xdtsCountsSecondsAt(const ProjectFrameRate.ntsc(30).countingBase),
+        isFalse,
+      );
+    });
   });
 }
