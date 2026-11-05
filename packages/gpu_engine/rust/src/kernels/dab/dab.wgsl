@@ -110,6 +110,16 @@ const NO_TABLE: u32 = 0xffffffffu;
 // What dab_source gives where a dab lays nothing: no alpha is as high.
 const NOTHING: u32 = 0xffffffffu;
 
+// A pixel of the planes — four channels, 16 bits each — from its two words,
+// and its two words from it.
+fn dab_four(pair: vec2<u32>) -> vec4<u32> {
+  return vec4<u32>(pair.x & 0xffffu, pair.x >> 16u, pair.y & 0xffffu, pair.y >> 16u);
+}
+
+fn dab_pair(pixel: vec4<u32>) -> vec2<u32> {
+  return vec2<u32>(pixel.x | (pixel.y << 16u), pixel.z | (pixel.w << 16u));
+}
+
 // low to high by f15/32768, rounded — every table read's last step. Signed:
 // a table may fall. |high - low|·32767 stays under 2^31.
 fn dab_lerp(low: u32, high: u32, f15: u32) -> u32 {
@@ -450,9 +460,7 @@ fn walk(
   let x = bitcast<i32>(plan[tile + TILE_COLUMN]) * i32(TILE_SIDE) + i32(lx);
   let y = bitcast<i32>(plan[tile + TILE_ROW]) * i32(TILE_SIDE) + i32(ly);
   let texel = plan[tile + TILE_SLOT] * TILE_TEXELS + tile_texel(lx, ly);
-  let low = planes[texel * 2u];
-  let high = planes[texel * 2u + 1u];
-  var pixel = vec4<u32>(low & 0xffffu, low >> 16u, high & 0xffffu, high >> 16u);
+  var pixel = dab_four(vec2<u32>(planes[texel * 2u], planes[texel * 2u + 1u]));
   var paper = 0u;
   if (plan[HEAD_PAPER] != NO_TABLE) {
     paper = dab_paper(tile, lx, ly);
@@ -477,8 +485,9 @@ fn walk(
       level = blend_alpha_over(source, level);
     }
   }
-  planes[texel * 2u] = pixel.x | (pixel.y << 16u);
-  planes[texel * 2u + 1u] = pixel.z | (pixel.w << 16u);
+  let pair = dab_pair(pixel);
+  planes[texel * 2u] = pair.x;
+  planes[texel * 2u + 1u] = pair.y;
   if (shown) {
     levels[texel] = level;
     view[texel] = blend_pack8(vec4<u32>(pixel.xyz, dab_shown(pixel.w, level)));

@@ -24,6 +24,8 @@ use crate::fail;
 /// The box law every blur of box passes runs: box.wgsl's `blur_mean` and
 /// `blur_slide`, and the `BoxPass` it reads.
 pub(crate) const BOX_WGSL: &str = include_str!("box.wgsl");
+/// The words of one `BoxPass`.
+pub(crate) const PASS_WORDS: usize = 9;
 
 /// The widest box: a pass sums 2·radius + 1 pixels of 65535 at most, and
 /// the sum stays a u32.
@@ -136,13 +138,18 @@ impl BoxBlur {
 /// the picture each side, all the k + 1-th reads; the first of a way reads
 /// past the picture by `edge`. The first of all reads the tiles, the last
 /// puts them; between, the planes hold the 16-bit pixels.
+///
+/// Where past the picture is read as it is (EDGE_NONE — real pixels lie
+/// there, the blur brush's window), the rows are worked out as far as the
+/// columns' first pass reads: three radii past it, above and below.
 fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
     let [left, top, right, bottom] = picture;
     let (across, down) = radius;
+    let reach = if edge == EDGE_NONE { 3 * down as i32 } else { 0 };
     // A way's plane reaches two radii past the picture along it.
     let rows_plane = Held::Plane {
         x0: left - 2 * across as i32,
-        y0: top,
+        y0: top - reach,
         width: (right - left) as u32 + 4 * across,
     };
     let columns_plane = Held::Plane {
@@ -151,7 +158,7 @@ fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
         width: (right - left) as u32,
     };
     let ways = [
-        (false, across, [left, right], [top, bottom], rows_plane),
+        (false, across, [left, right], [top - reach, bottom + reach], rows_plane),
         (true, down, [top, bottom], [left, right], columns_plane),
     ];
     let mut passes: Vec<Pass> = Vec::new();
@@ -177,6 +184,17 @@ fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
         last.to = Held::Tiles;
     }
     passes
+}
+
+/// The words of the passes blurring `picture` by `radius` either way where
+/// past it lie real pixels, read as they are: box.wgsl's `BoxPass` for each,
+/// the rows' three first. The blur brush's dab (kernels/dab/blur.rs), whose
+/// window holds the picture three radii past the dab each side.
+pub(crate) fn within(picture: [i32; 4], radius: u32) -> Vec<u32> {
+    passes(picture, (radius, radius), EDGE_NONE)
+        .iter()
+        .flat_map(|pass| pass.dispatch().words)
+        .collect()
 }
 
 /// The bytes a plane holds: the rows' passes' or the columns', whichever

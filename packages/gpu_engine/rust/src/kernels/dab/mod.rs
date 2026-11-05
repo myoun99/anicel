@@ -11,7 +11,8 @@
 //! ellipse — and a bitmap tip, turned and squeezed the same way; the edge,
 //! the ceiling, the paper, the share and the level a dab settles at, over
 //! and erase; and a second tip, whose dabs pile on a plane of their own,
-//! alpha alone, the stroke's bytes then the view of the two planes.
+//! alpha alone, the stroke's bytes then the view of the two planes. The
+//! blur brush's dab (`blur`) reads its coverage off the same records.
 //!
 //! A texture — a tip's or the paper's — goes to the GPU once and stays on
 //! the plan while piles read it: a pile sends only its own words. (Sent
@@ -22,6 +23,7 @@
 // which 관제 opens (gpu-canonical-store 21:41).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod blur;
 #[cfg(test)]
 mod tests;
 
@@ -99,6 +101,7 @@ impl Texture {
 }
 
 /// What a dab covers before its edge.
+#[derive(Clone, Copy)]
 pub(crate) enum Shape<'a> {
     /// All of its region.
     Square,
@@ -137,6 +140,7 @@ fn blends_a_channel(id: u32) -> bool {
 
 /// How a round or bitmap tip turns and squeezes (`BrushDabTipGeometry`):
 /// its frame's cosine and sine, and its minor axis over its major.
+#[derive(Clone, Copy)]
 pub(crate) struct Turn {
     pub(crate) cos: f64,
     pub(crate) sin: f64,
@@ -149,6 +153,7 @@ impl Turn {
 }
 
 /// The brush's edge (`brushDabEdgeLaw`).
+#[derive(Clone, Copy)]
 pub(crate) enum Edge {
     /// 없음: a cut at half.
     Threshold,
@@ -157,6 +162,7 @@ pub(crate) enum Edge {
 }
 
 /// A dab as the app has it (`qa_dab_spec`).
+#[derive(Clone, Copy)]
 pub(crate) struct Dab<'a> {
     pub(crate) centre: [f64; 2],
     /// The pixels it may touch, [left, top, right, bottom).
@@ -193,17 +199,83 @@ pub(crate) struct StrokeTile {
 
 pub(crate) struct Dabs {
     pipeline: wgpu::ComputePipeline,
-    /// The plan, kept from pile to pile: its head, the textures on it, then
-    /// the last pile's own words.
-    plan: Option<wgpu::Buffer>,
+    plans: Plans,
+    /// What the second plane's binding holds for a stroke with one tip.
+    no_second: wgpu::Buffer,
+}
+
+/// A plan kept from use to use: its head, the textures on it, then the
+/// last use's own words.
+struct Plans {
+    buffer: Option<wgpu::Buffer>,
     /// The words it holds.
     capacity: usize,
     /// Each texture on it, by id, at its place.
     placed: HashMap<u64, u32>,
     /// Where the textures on it end.
     end: usize,
-    /// What the second plane's binding holds for a stroke with one tip.
-    no_second: wgpu::Buffer,
+}
+
+impl Plans {
+    fn new() -> Self {
+        Self { buffer: None, capacity: 0, placed: HashMap::new(), end: HEAD_WORDS }
+    }
+
+    /// Writes the plan of `dabs` on `tiles` over `paper`, with the stroke's
+    /// `second` tip where it has one, and after it the words `more` makes
+    /// of it; gives the buffer that holds it.
+    fn write(
+        &mut self,
+        engine: &Engine,
+        tiles: &[StrokeTile],
+        dabs: &[Dab],
+        paper: Option<&Paper>,
+        second: Option<&Second>,
+        more: impl Fn(&Plan) -> Option<Vec<u32>>,
+    ) -> Option<&wgpu::Buffer> {
+        // The textures the plan reads that are not on it go after the ones
+        // that are; where that leaves no room for the use's own words, the
+        // plan starts over with the use's own, at twice what it takes.
+        let textures = textures_of(dabs, paper);
+        let planned_with_more = |end: usize, placed: &HashMap<u64, u32>| {
+            let mut plan = planned(tiles, dabs, paper, second, end, placed)?;
+            let words = more(&plan)?;
+            plan.frame.extend(words);
+            Some(plan)
+        };
+        let mut placed = self.placed.clone();
+        let mut end = self.end;
+        let mut fresh = placing(&textures, &mut placed, &mut end);
+        let mut plan = planned_with_more(end, &placed)?;
+        if self.buffer.is_none() || end + plan.frame.len() > self.capacity {
+            placed.clear();
+            end = HEAD_WORDS;
+            fresh = placing(&textures, &mut placed, &mut end);
+            plan = planned_with_more(end, &placed)?;
+            let words = end + plan.frame.len();
+            let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
+            if words > most {
+                return fail(format!("a plan of {words} words exceeds a binding's {most}"));
+            }
+            self.capacity = (2 * words).min(most);
+            self.buffer = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("dab plan"),
+                size: self.capacity as u64 * 4,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        let buffer = self.buffer.as_ref()?;
+        for texture in fresh {
+            let at = u64::from(placed[&texture.id]) * 4;
+            engine.queue.write_buffer(buffer, at, &bytes(&texture.words));
+        }
+        engine.queue.write_buffer(buffer, 0, &bytes(&plan.head));
+        engine.queue.write_buffer(buffer, end as u64 * 4, &bytes(&plan.frame));
+        self.placed = placed;
+        self.end = end;
+        Some(buffer)
+    }
 }
 
 impl Dabs {
@@ -216,14 +288,7 @@ impl Dabs {
             usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
-        Self {
-            pipeline,
-            plan: None,
-            capacity: 0,
-            placed: HashMap::new(),
-            end: HEAD_WORDS,
-            no_second,
-        }
+        Self { pipeline, plans: Plans::new(), no_second }
     }
 
     /// Piles `dabs`, in their order, on the stroke `tiles` — `planes` two
@@ -253,41 +318,7 @@ impl Dabs {
         if tiles.len() > most as usize {
             return fail(format!("{} stroke tiles exceed a dispatch's {most}", tiles.len()));
         }
-        // The textures the pile reads that are not on the plan go after the
-        // ones that are; where that leaves no room for the pile, the plan
-        // starts over with the pile's own, at twice what the pile takes.
-        let textures = textures_of(dabs, paper);
-        let mut placed = self.placed.clone();
-        let mut end = self.end;
-        let mut fresh = placing(&textures, &mut placed, &mut end);
-        let mut plan = planned(tiles, dabs, paper, second, end, &placed)?;
-        if self.plan.is_none() || end + plan.frame.len() > self.capacity {
-            placed.clear();
-            end = HEAD_WORDS;
-            fresh = placing(&textures, &mut placed, &mut end);
-            plan = planned(tiles, dabs, paper, second, end, &placed)?;
-            let words = end + plan.frame.len();
-            let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
-            if words > most {
-                return fail(format!("a pile of {words} words exceeds a binding's {most}"));
-            }
-            self.capacity = (2 * words).min(most);
-            self.plan = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("dab plan"),
-                size: self.capacity as u64 * 4,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-        }
-        let buffer = self.plan.as_ref()?;
-        for texture in fresh {
-            let at = u64::from(placed[&texture.id]) * 4;
-            engine.queue.write_buffer(buffer, at, &bytes(&texture.words));
-        }
-        engine.queue.write_buffer(buffer, 0, &bytes(&plan.head));
-        engine.queue.write_buffer(buffer, end as u64 * 4, &bytes(&plan.frame));
-        self.placed = placed;
-        self.end = end;
+        let buffer = self.plans.write(engine, tiles, dabs, paper, second, |_| Some(Vec::new()))?;
         let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("dab"),
             layout: &self.pipeline.get_bind_group_layout(0),
@@ -364,6 +395,25 @@ fn bytes(words: &[u32]) -> Vec<u8> {
 struct Plan {
     head: [u32; HEAD_WORDS],
     frame: Vec<u32>,
+    /// Where the dabs' records begin, a record a dab in their order.
+    records_at: usize,
+}
+
+impl Plan {
+    /// The place of the tile record of the `index`-th of the plan's tiles.
+    fn tile_at(&self, index: usize) -> u32 {
+        (self.head[0] as usize + index * TILE_WORDS) as u32
+    }
+
+    /// The place of the `index`-th dab's record.
+    fn record_at(&self, index: usize) -> u32 {
+        (self.records_at + index * DAB_WORDS) as u32
+    }
+
+    /// Where the words past the plan's own go.
+    fn end(&self) -> usize {
+        self.head[0] as usize + self.frame.len()
+    }
 }
 
 /// The plan dab.wgsl reads past the textures: the tiles, each tile's list,
@@ -447,7 +497,7 @@ fn planned(
         words.extend(record(dab, &mut tables, textures)?);
     }
     words.extend(tables.words);
-    Some(Plan { head, frame: words })
+    Some(Plan { head, frame: words, records_at })
 }
 
 /// The paper's step, a pixel's worth of it in 1/65536 texel — or nothing,

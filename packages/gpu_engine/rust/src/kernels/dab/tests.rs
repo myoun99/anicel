@@ -41,7 +41,7 @@ struct Dual {
 }
 
 /// A buffer of `words` that a kernel binds and a test reads back.
-fn filled(label: &str, words: &[u32]) -> wgpu::Buffer {
+pub(super) fn filled(label: &str, words: &[u32]) -> wgpu::Buffer {
     let contents: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
     let descriptor =
@@ -49,7 +49,7 @@ fn filled(label: &str, words: &[u32]) -> wgpu::Buffer {
     wgpu::util::DeviceExt::create_buffer_init(&first_engine().device, &descriptor)
 }
 
-fn words(buffer: &wgpu::Buffer) -> Vec<u32> {
+pub(super) fn words(buffer: &wgpu::Buffer) -> Vec<u32> {
     read_buffer(first_engine(), buffer)
         .chunks_exact(4)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
@@ -140,7 +140,7 @@ fn dual(dual: &Dual, dabs: &[Dab]) -> Piled {
 }
 
 /// A square dab of `colour` over `region` at full opacity and `flow`.
-fn square(region: [i32; 4], colour: [u8; 4], flow: f64) -> Dab<'static> {
+pub(super) fn square(region: [i32; 4], colour: [u8; 4], flow: f64) -> Dab<'static> {
     Dab {
         centre: [0.0, 0.0],
         region,
@@ -237,13 +237,18 @@ fn ramp() -> (Vec<f64>, Vec<f64>) {
 }
 
 /// A profile along the radius, 16 entries a pixel.
-fn radial<'a>(coverage: &'a [f64], pile: &'a [f64], reach: f64, inner: f64) -> RoundProfile<'a> {
+pub(super) fn radial<'a>(
+    coverage: &'a [f64],
+    pile: &'a [f64],
+    reach: f64,
+    inner: f64,
+) -> RoundProfile<'a> {
     RoundProfile { coverage, pile, scale: 16.0, reach, inner, row_length: 0 }
 }
 
 /// A round dab at `centre` over its radius's box, as the app gives it
 /// (`dirtyRegionForBrushDab`) — the radius half a pixel inside the reach.
-fn round<'a>(profile: &'a RoundProfile<'a>, centre: [f64; 2]) -> Dab<'a> {
+pub(super) fn round<'a>(profile: &'a RoundProfile<'a>, centre: [f64; 2]) -> Dab<'a> {
     let radius = profile.reach - 0.5;
     let [cx, cy] = centre;
     Dab {
@@ -418,7 +423,7 @@ fn tipped<'a>(texture: &'a Texture, radius: f64, turn: Turn, centre: [f64; 2]) -
 /// A 2 × 2 tip, row after row: 255, 128 over 64, 0.
 const CORNERS: [f64; 4] = [1.0, 128.0 / 255.0, 64.0 / 255.0, 0.0];
 
-fn texture(texels: &[f64], side: u32) -> Texture {
+pub(super) fn texture(texels: &[f64], side: u32) -> Texture {
     Texture::new(texels, side).expect("texture")
 }
 
@@ -862,7 +867,7 @@ fn a_stroke_lands_on_its_cel_as_a_row() {
 /// `RoundTipProfile` fills its tables: 16 entries a pixel, two past the
 /// reach; 1 to the inner radius and falling from there to nothing at the
 /// reach; the pile, the hardness ramp. Its tables and inner radius.
-fn soft(radius: f64, hardness: f64) -> (Vec<f64>, Vec<f64>, f64) {
+pub(super) fn soft(radius: f64, hardness: f64) -> (Vec<f64>, Vec<f64>, f64) {
     let reach = radius + 0.5;
     let count = (reach * 16.0).ceil() as usize + 2;
     let hard = radius * hardness;
@@ -892,7 +897,7 @@ fn small(radius: f64) -> (Vec<f64>, Vec<f64>, u32) {
 
 /// A stroke's dabs along a curve, `edit` making each its own: centres in
 /// no step of a whole pixel, so every one lands between pixels its own way.
-fn along<'a>(
+pub(super) fn along<'a>(
     profile: &'a RoundProfile<'a>,
     count: u32,
     edit: impl Fn(u32, &mut Dab<'a>),
@@ -944,7 +949,7 @@ fn bristles() -> Vec<f64> {
 }
 
 /// A 32 × 32 paper grain of hashed greys.
-fn grain() -> Vec<f64> {
+pub(super) fn grain() -> Vec<f64> {
     (0..32 * 32u32)
         .map(|texel| f64::from((texel.wrapping_mul(2654435761) >> 24) & 0xff) / 255.0)
         .collect()
