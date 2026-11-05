@@ -224,16 +224,18 @@ fn within_the_inner_radius_a_round_tip_lays_one() {
 
 // However far a round dab's region runs, nothing past its reach is laid:
 // pixel 266 is 65536/256 px from a centre of 10.5, right or down, whose
-// square would overflow u32 to nothing.
+// square would overflow u32 to nothing; pixel 522 is 131072/256 px, whose
+// turn, times 2^15, would wrap i32 back to the centre.
 #[test]
 fn a_round_dab_lays_nothing_past_its_reach_however_far_its_region_runs() {
     let (coverage, pile) = ramp();
     let profile = radial(&coverage, &pile, 4.0, 1.0);
     let dab = Dab { region: [-1000, -1000, 1000, 1000], ..round(&profile, [10.5, 10.5]) };
-    let piled = piled(&[(0, 0), (2, 0), (0, 2)], [0; 4], &[dab]);
+    let piled = piled(&[(0, 0), (2, 0), (0, 2), (4, 0), (0, 4)], [0; 4], &[dab]);
     assert_eq!(piled.at(0, 10, 10).0[3], ONE);
-    assert_eq!(piled.at(1, 10, 10), ([0; 4], 0));
-    assert_eq!(piled.at(2, 10, 10), ([0; 4], 0));
+    for slot in 1..5 {
+        assert_eq!(piled.at(slot, 10, 10), ([0; 4], 0));
+    }
 }
 
 // A tip whose distances would read more than four entries a unit is
@@ -371,24 +373,34 @@ fn a_bitmap_tip_is_read_between_its_texels() {
 // Half a pixel left, pixel 9 is halfway between texels 0 and 1 —
 // 65535 + ⌊(−32639·16384 + 16384)/32768⌋ = 49216 — and pixel 10's centre
 // is the tip's very edge, u = R: it is kept, as the C engine keeps it, and
-// lays half its last texel, 16448.
+// lays half its last texel, 16448. Past the edge nothing is laid, though
+// the read would still give some of the last texel: from a centre of
+// 10.25, pixel 11's is 1¼ px out, a quarter of 128·257 by the read.
 #[test]
 fn a_bitmap_tip_lays_up_to_its_very_edge() {
     let alphas = corners(Turn::STRAIGHT, [9.5, 10.0]);
     assert_eq!(alphas[..2], [49216, 16448]);
+    let past = tipped(&CORNERS, 2, 1.0, Turn::STRAIGHT, [10.25, 10.0]);
+    assert_eq!(piled(&[(0, 0)], [0; 4], &[past]).at(0, 11, 9), ([0; 4], 0));
 }
 
 // A tip 1/64 as thin as it is long lays nothing 4 px off its major axis:
 // that pixel's 1024 times the stretch, 2^22, is 2^32 — which in u32 is
 // nothing, the tip's very middle — so the minor axis is held to its own
-// reach before it is stretched.
+// reach before it is stretched. A tip thinner than a unit keeps its
+// outermost column: at 1/512 a radius of 1 px reaches 256.5 units, so the
+// guard is one past 256, and pixel 11, whose centre is the edge, lays half
+// of half the top-right texel, 8224.
 #[test]
 fn a_thin_tip_lays_nothing_off_its_minor_axis() {
     let thin = Turn { cos: 1.0, sin: 0.0, roundness: 1.0 / 64.0 };
     let dab = Dab { region: [0, 0, 20, 20], ..tipped(&CORNERS, 2, 8.0, thin, [10.5, 10.5]) };
-    let piled = piled(&[(0, 0)], [0; 4], &[dab]);
-    assert_ne!(piled.at(0, 10, 10).0[3], 0);
-    assert_eq!(piled.at(0, 10, 14), ([0; 4], 0));
+    let piled_thin = piled(&[(0, 0)], [0; 4], &[dab]);
+    assert_ne!(piled_thin.at(0, 10, 10).0[3], 0);
+    assert_eq!(piled_thin.at(0, 10, 14), ([0; 4], 0));
+    let thinner = Turn { cos: 1.0, sin: 0.0, roundness: 1.0 / 512.0 };
+    let dab = tipped(&CORNERS, 2, 1.0, thinner, [10.5, 10.5]);
+    assert_eq!(piled(&[(0, 0)], [0; 4], &[dab]).at(0, 11, 10).0[3], 8224);
 }
 
 // A quarter turn (cos 0, sin 1): u = −dy and v = dx, so the texel under
@@ -519,7 +531,7 @@ fn turn_of(k: u32) -> Turn {
         (12.0 / 13.0, -5.0 / 13.0),
     ];
     let (cos, sin) = frames[k as usize % frames.len()];
-    Turn { cos, sin, roundness: [1.0, 0.75, 0.5, 0.4][k as usize % 4] }
+    Turn { cos, sin, roundness: [1.0, 0.75, 0.5, 0.6][k as usize % 4] }
 }
 
 /// A 32 × 32 bitmap tip of hashed greys inside a circle, nothing outside.
@@ -594,7 +606,7 @@ fn every_device_piles_the_pinned_strokes() {
             dab.turn = turn_of(k);
         })),
         ("tip", (0..24)
-            .map(|k| Dab { flow: 0.5, ..tipped(&bristle, 32, 12.2, turn_of(k), on_curve(k)) })
+            .map(|k| Dab { flow: 0.5, ..tipped(&bristle, 32, 12.3, turn_of(k), on_curve(k)) })
             .collect()),
     ];
     for (name, dabs) in &strokes {
