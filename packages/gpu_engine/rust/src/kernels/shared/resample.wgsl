@@ -16,9 +16,10 @@
 
 const RESAMPLE_BLEND: u32 = 0u;
 const RESAMPLE_PICK: u32 = 1u;
-// A whole-pixel translation in either mode, copied word for word — decided
+// A whole-pixel translation in any mode, copied word for word — decided
 // once on the CPU (resample.rs), where the plan reading the map needs it too.
 const RESAMPLE_COPY: u32 = 2u;
+const RESAMPLE_NEAREST: u32 = 3u;
 
 // 1 in Q.20, the matrix's scale.
 const RESAMPLE_ONE: i32 = 1048576;
@@ -578,6 +579,12 @@ fn resample(map: ResampleMap, source: u32, x: i32, y: i32) -> u32 {
   }
   if (map.mode == RESAMPLE_BLEND) {
     return resample_blend(map, source, point);
+  }
+  // Nearest: the word under the spec's point p, floor(p) a side. u is p
+  // less a half, so floor(p) is rnd(u, 16) — a centre on a border reads
+  // the pixel right of it and under it.
+  if (map.mode == RESAMPLE_NEAREST) {
+    return resample_texel(source, resample_round16(point.u), resample_round16(point.v));
   }
   let axis_aligned = (map.b == 0 && map.d == 0) || (map.a == 0 && map.e == 0);
   if (resample_affine(map) && axis_aligned

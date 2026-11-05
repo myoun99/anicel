@@ -5,13 +5,17 @@
 //! (gpu-int-spec-canvas 1b (1/4) R1). Only + − × ÷ on doubles, which IEEE
 //! fixes on every device.
 
-/// R1's two modes, resample.wgsl's ids.
+/// R1's three modes, resample.wgsl's ids (2 is the copy any of them takes).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ResampleMode {
     /// The tent mean.
     Blend = 0,
     /// The area vote: the one source word covering most of the preimage.
     Pick = 1,
+    /// The one source word where the pixel's centre lands — the screen's at
+    /// 100% and over, as the app's `FilterQuality.none` is today (canvas
+    /// base, gpu-int-spec-canvas 11-05 21:39).
+    Nearest = 3,
 }
 
 /// The destination-to-source map in the kernel's integers.
@@ -45,7 +49,7 @@ const ONE_36: i64 = 1 << 36;
 /// How far past the box where an affine map's corners land a pixel can
 /// read: Blend's tent reaches under 15.5 px past where a centre lands, and
 /// every centre lands inside the box; the half pixel more is the doubles'.
-/// Pick reads inside each pixel's own preimage.
+/// Pick reads inside each pixel's own preimage, Nearest at its centre.
 const SLACK: f64 = 16.0;
 
 impl ResampleMap {
@@ -265,6 +269,7 @@ mod tests {
         let moved = [1.0, 0.0, -5.0, 0.0, 1.0, 3.0, 0.0, 0.0, 1.0];
         assert_eq!(mode(moved, ResampleMode::Blend), COPY);
         assert_eq!(mode(moved, ResampleMode::Pick), COPY);
+        assert_eq!(mode(moved, ResampleMode::Nearest), COPY);
         // One part off a whole-pixel move each — a step of 2^-20 is one unit.
         let unit = 1.0 / 1_048_576.0;
         let under_q36 = 1.0 / (1u64 << 38) as f64;

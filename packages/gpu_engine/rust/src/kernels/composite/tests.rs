@@ -1267,15 +1267,16 @@ fn camera(
     ResampleMap::new(inverse, 1.0, mode, SCREEN_SIZE.0, SCREEN_SIZE.1).expect("a camera lands")
 }
 
-/// The screen tests' cameras, by ④: Pick at 100% and over — moved, turned
-/// twice as large, mirrored half again as large — and Blend under it —
-/// halved off the pixel grid, turned at under a third.
+/// The screen tests' cameras, by ④ as canvas base set it (11-05 21:39):
+/// Nearest at 100% and over — moved, turned twice as large, mirrored half
+/// again as large — and Blend under it — halved off the pixel grid, turned
+/// at under a third.
 fn cameras() -> [(&'static str, ResampleMap); 5] {
-    use ResampleMode::{Blend, Pick};
+    use ResampleMode::{Blend, Nearest};
     [
-        ("moved", camera(1.0, NO_TURN, false, (37.0, -12.0), Pick)),
-        ("turned", camera(2.0, (0.8, 0.6), false, (150.0, 20.0), Pick)),
-        ("mirrored", camera(1.5, NO_TURN, true, (290.0, 10.0), Pick)),
+        ("moved", camera(1.0, NO_TURN, false, (37.0, -12.0), Nearest)),
+        ("turned", camera(2.0, (0.8, 0.6), false, (150.0, 20.0), Nearest)),
+        ("mirrored", camera(1.5, NO_TURN, true, (290.0, 10.0), Nearest)),
         ("halved", camera(0.5, NO_TURN, false, (100.25, 60.5), Blend)),
         ("spun", camera(0.3, (12.0 / 13.0, 5.0 / 13.0), false, (150.0, 30.0), Blend)),
     ]
@@ -1336,7 +1337,7 @@ fn screen_by_r1(map: &ResampleMap, canvas: &Picture) -> Vec<u8> {
 // The screen shows what R1 resamples of the canvas's composite, as the
 // app's one premultiply leaves it: the executor's one row sample, reading
 // the composite's own tiles as a page, put on a surface — at 100% as a
-// whole-pixel copy, magnified turned and mirrored (Pick), reduced (Blend);
+// whole-pixel copy, magnified turned and mirrored (Nearest), reduced (Blend);
 // past the canvas's edges inside its tiles, nothing.
 #[test]
 fn the_screen_shows_what_r1_resamples_of_the_canvas() {

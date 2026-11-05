@@ -486,7 +486,11 @@ fn scenes() -> Vec<Scene> {
     ]
 }
 
-const MODES: [(ResampleMode, &str); 2] = [(ResampleMode::Blend, "blend"), (ResampleMode::Pick, "pick")];
+const MODES: [(ResampleMode, &str); 3] = [
+    (ResampleMode::Blend, "blend"),
+    (ResampleMode::Pick, "pick"),
+    (ResampleMode::Nearest, "nearest"),
+];
 
 fn map_of(scene: &Scene, mode: ResampleMode) -> ResampleMap {
     ResampleMap::new(scene.inverse, 1.0, mode, scene.size.0, scene.size.1).expect("a map that lands")
@@ -505,7 +509,7 @@ fn every_device_resamples_the_pinned_scenes() {
             assert_pinned(&format!("resample/{}-{mode_name}", scene.name), &bytes(&out));
         }
     }
-    // A whole-pixel move copies, in either mode.
+    // A whole-pixel move copies, in any mode.
     let moved = ResampleMap::new(affine(1.0, 0.0, -7.0, 0.0, 1.0, 5.0), 1.0, ResampleMode::Blend, 48, 40);
     let out = window(&moved.unwrap(), &picture, (48, 40), (0, 0));
     assert_pinned("resample/move", &bytes(&out));
@@ -611,6 +615,45 @@ fn words_with_no_alpha_blend_to_nothing() {
 //   word in the reach, under no weight, and the tent's 0 it is.
 // - Under a radius floor of a quarter pixel, four times larger, most output
 //   pixels weigh no tap; inside one opaque word, every pixel is that word.
+// Nearest reads the one word where a pixel's centre lands, floor(p) a
+// side (canvas base, gpu-int-spec-canvas 11-05 21:39), over a picture of
+// sixteen words:
+// - turned a quarter (x' = 4 − y, y' = x), output (x, y)'s centre lands at
+//   (3.5 − y, x + 0.5): the word at (3 − y, x);
+// - twice smaller, the centre (2x + 1, 2y + 1) lands on a border both ways
+//   and reads right of it and under it;
+// - three and a half pixels on, it lands past the picture: nothing.
+#[test]
+fn nearest_reads_the_word_where_the_centre_lands() {
+    let word = |x: u32, y: u32| 0xff00_0000 | (y * 4 + x) * 0x0001_0101;
+    let mut picture = Picture::filled(4, 4, 0);
+    for y in 0..4 {
+        for x in 0..4 {
+            picture.put(x, y, word(x, y));
+        }
+    }
+    let nearest = |inverse, size| {
+        window(&one_map(inverse, ResampleMode::Nearest, size), &picture, size, (0, 0))
+    };
+    let turned: Vec<u32> = (0..4).flat_map(|y| (0..4).map(move |x| word(3 - y, x))).collect();
+    assert_eq!(nearest(affine(0.0, -1.0, 4.0, 1.0, 0.0, 0.0), (4, 4)), turned);
+    let halved = [word(1, 1), word(3, 1), word(1, 3), word(3, 3)];
+    assert_eq!(nearest(affine(2.0, 0.0, 0.0, 0.0, 2.0, 0.0), (2, 2)), halved);
+    assert_eq!(nearest(affine(1.0, 0.0, 3.5, 0.0, 1.0, 0.0), (1, 1)), [0]);
+}
+
+// Enlarged on the axes, Nearest is what Pick picks — what the screen
+// showed by Pick before canvas base gave it Nearest: a pixel's preimage is
+// cut at most once a side, and the longer part holds its centre. The
+// enlarge scene lands no centre on a border, so Pick breaks no tie.
+#[test]
+fn an_enlargement_on_the_axes_picks_what_is_nearest() {
+    let picture = fixture();
+    let scene = scenes().into_iter().find(|scene| scene.name == "enlarge").expect("enlarge");
+    let by = |mode| window(&map_of(&scene, mode), &picture, scene.size, (0, 0));
+    assert_eq!(by(ResampleMode::Nearest), by(ResampleMode::Pick));
+}
+
 #[test]
 fn a_reach_of_one_word_blends_to_that_word_whatever_the_taps_weigh() {
     let clear = 0x00ab_cdef;
