@@ -19,8 +19,9 @@ void main() {
   });
 
   test('the settings name the template, the widening and each end\'s O.L — '
-      'twice the のりしろ the sheet draws there — and no area: the files\' '
-      'names give theirs (I-162-Q6)', () {
+      'twice the のりしろ the sheet draws there — no area: the files\' '
+      'names give theirs (I-162-Q6) — and an empty logo: the ink carries '
+      'the work\'s (I-162-Q5)', () {
     expect(
       xdtsViewerConfig(
         sheet: XdtsViewerSheet.b4ThreeSeconds,
@@ -32,6 +33,7 @@ void main() {
       '[FormatSettings]\n'
       'TemplateName="B4 size, 3 seconds sheet"\n'
       'ExpandColumns=true\n'
+      'LogoPath=\n'
       'StartOverlapFrameLength=12\n'
       'EndOverlapFrameLength=6\n',
     );

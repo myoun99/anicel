@@ -40,7 +40,10 @@ String xdtsInkPageFileName(int pageIndex) => '${pageIndex + 1}.png';
 /// 🗣️I-161-Q3 (유저 2026-11-05): 「데이터로서 내보낼수있는건 다 내보내고싶음.
 /// 거기서 xdts뷰어용일때만 추가로 잉크로서 내보내게」 · Q4: 「컷번호밑에 겸용컷
 /// 써준다거나 … 똑같이」 — under the cut's name, as our sheet writes it.
+/// The company logo too: [xdtsViewerConfig] keeps the viewer from printing
+/// its own there (🗣️I-162-Q5, 유저 2026-11-05: 「회사 로고를 찍는다」).
 const Set<TimesheetContentPart> xdtsViewerUnprintedParts = {
+  TimesheetContentPart.logo,
   TimesheetContentPart.se,
   TimesheetContentPart.camera,
   TimesheetContentPart.linkedCuts,
@@ -48,8 +51,8 @@ const Set<TimesheetContentPart> xdtsViewerUnprintedParts = {
 
 /// The viewer's `config.ini` for a sheet laid on [sheet] that draws
 /// [handles] of のりしろ: the template, the columns widened past the
-/// template's and the O.L each end — every other setting the viewer's own
-/// default. `Version` says which page names it reads (1A, 1B from 1.2.0).
+/// template's, no logo and the O.L each end — every other setting the
+/// viewer's own default. `Version` says which page names it reads (1A, 1B from 1.2.0).
 ///
 /// No `ExportArea`: a file whose name carries its block
 /// ([XdtsSheetHalf.nameMark]) is laid by its name, and the viewer does not
@@ -63,6 +66,13 @@ const Set<TimesheetContentPart> xdtsViewerUnprintedParts = {
 ///
 /// An O.L is written as [xdtsViewerOverlaps] says — the O.L the app's XDTS
 /// sheet draws of itself too.
+///
+/// `LogoPath` is written empty, and the viewer then prints no logo: the
+/// ink carries the work's ([xdtsViewerUnprintedParts]). A key left out
+/// keeps the logo of the viewer's own settings (myparams.cpp 412), and a
+/// path cannot name a file in this folder — a relative one is read from
+/// the viewer's resources (`MyParams::logoPath`) — my call, not the user's
+/// (I-162-Q5, the viewer's sources as 타임라인/콘티 and I read them 11-05).
 String xdtsViewerConfig({
   required XdtsViewerSheet sheet,
   required CutTransitionHandles handles,
@@ -74,6 +84,7 @@ String xdtsViewerConfig({
       '[FormatSettings]\n'
       'TemplateName="${sheet.label}"\n'
       'ExpandColumns=true\n'
+      'LogoPath=\n'
       'StartOverlapFrameLength=${overlaps.start}\n'
       'EndOverlapFrameLength=${overlaps.end}\n';
 }

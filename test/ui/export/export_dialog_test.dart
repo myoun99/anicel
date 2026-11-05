@@ -13,6 +13,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
@@ -28,7 +29,10 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/xdts_sheet_form.dart';
 import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -95,6 +99,8 @@ void main() {
     bool celsExposed = true,
     List<Layer> seLayers = const [],
     int moreCels = 0,
+    TimesheetSheetKind sheetKind = TimesheetSheetKind.sixSeconds,
+    String? logo,
   }) {
     return EditorSessionManager(
       initialProject: Project(
@@ -102,6 +108,7 @@ void main() {
         name: 'Project',
         cameraSize: const CanvasSize(width: 32, height: 18),
         frameRate: frameRate,
+        timesheetInfo: TimesheetInfo(logoAssetPath: logo),
         tracks: [
           Track(
             id: const TrackId('track'),
@@ -113,6 +120,7 @@ void main() {
                 name: 'Cut',
                 duration: 2,
                 canvasSize: const CanvasSize(width: 8, height: 8),
+                metadata: CutMetadata(sheetKind: sheetKind),
                 layers: [
                   Layer(
                     id: const LayerId('layer'),
@@ -1181,6 +1189,72 @@ void main() {
       );
     });
 
+    // 🗣️I-162-Q5 (유저 2026-11-05): 「회사 로고를 찍는다」 — the viewer told
+    // to print none of its own (`LogoPath=`), the ink carries the work's.
+    testWidgets('잉크 출력: a cut on an XDTS sheet carries the work\'s logo in '
+        'the viewer\'s logo place, in the viewer\'s line colour — and the '
+        'viewer is told to print none of its own', (tester) async {
+      final black = (await tester.runAsync(
+        () => writeSolidPng(temp, 'logo.png', rgba: 0x000000FF),
+      ))!;
+      AppExport.settings.value = AppExportSettings(
+        lastSpecs: const ExportTabSpecs(
+          cels: CelsExportSpec(
+            sheetFormat: ExportTimesheetFormat.xdts,
+            sheetInk: true,
+          ),
+        ),
+      );
+      // The logo is square: it fills the place's height from its left.
+      final place = XdtsSheetForm(
+        XdtsViewerSheet.a3SixSeconds,
+        columns: 1,
+      ).logo;
+      Future<List<int>> logoPlaceOf(String? logo) async {
+        final session = exportSession(
+          sheetKind: TimesheetSheetKind.xdtsA3SixSeconds,
+          logo: logo,
+        );
+        addTearDown(session.dispose);
+        final state = await pumpDialog(
+          tester,
+          session,
+          exportDirectoryPicker: () async => temp.path,
+        );
+        await switchTab(tester, 'timesheet');
+        await tester.runAsync(state.export);
+        await tester.pump();
+        final image = (await tester.runAsync(
+          () => decodeImageFromList(
+            File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+          ),
+        ))!;
+        addTearDown(image.dispose);
+        final data = (await tester.runAsync(
+          () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+        ))!;
+        final x = place.left + place.height ~/ 2;
+        final y = place.top + place.height ~/ 2;
+        final at = (y * image.width + x) * 4;
+        return [for (var i = 0; i < 4; i += 1) data.getUint8(at + i)];
+      }
+
+      expect(
+        await logoPlaceOf(black),
+        [0x9C, 0xC8, 0x62, 255],
+        reason: 'a black logo, opaque in the line colour',
+      );
+      expect(
+        File('${temp.path}/_TSCut_xdts/config.ini').readAsStringSync(),
+        contains('LogoPath=\n'),
+      );
+      expect(
+        (await logoPlaceOf(null))[3],
+        0,
+        reason: 'no logo, a blank place',
+      );
+    });
+
     // 🗣️I-161-Q7 (유저 2026-11-05): 「24fps 가 아니면 잉크 버튼을 회색으로」.
     testWidgets('잉크 출력: in a project the viewer does not count — 25 '
         'frames a second — the switch is dead and a sheet asked for its ink '
@@ -1272,7 +1346,8 @@ void main() {
       expect((data.getUint8(at + 1), data.getUint8(at + 2)), (255, 255));
     });
 
-    testWidgets('writes one xdts per cut under the project scope',
+    testWidgets('writes each cut\'s 原画 · 動画 xdts pair under the project '
+        'scope',
         (tester) async {
       final state = await pumpDialog(
         tester,
