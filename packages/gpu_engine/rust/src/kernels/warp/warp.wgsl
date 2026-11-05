@@ -46,6 +46,13 @@ fn resample_texel(source: u32, x: i32, y: i32) -> u32 {
   return picture[u32(y) * warp.width + u32(x)];
 }
 
+// ⚠️Three lines no test here tells from a wrong one (mutants x10 · y05 ·
+// x06, 11-06): a lane past a row's end would put the next row's first
+// pixel, racing the lane that owns it, and the tests' windows end in
+// nothing either side; one map's owners are a word of 0, which a read
+// past them gives back as well (WGSL's bounds); and an owner past the
+// table — none's u32::MAX — reads 0 past it on DX12, where Metal would
+// clamp onto the last map's word. Each stays: it is the bound.
 @compute @workgroup_size(8, 8, 1)
 fn warp_window(@builtin(global_invocation_id) id: vec3<u32>) {
   if (id.x >= warp.columns || id.y >= warp.rows) {

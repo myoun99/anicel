@@ -137,8 +137,8 @@ fn each_pixel_takes_its_owner_s_map_and_nothing_where_it_lands_nothing() {
 
 /// One map takes every pixel of a window anywhere in its output: a move by
 /// (3, −2) reads the picture there, nothing past it — and with no map,
-/// nothing at all. The buffer holds a row past the box, which no pixel
-/// reads.
+/// nothing at all. The buffer holds a row past the box, which the window
+/// reaches and no pixel reads.
 #[test]
 fn one_map_takes_every_pixel_of_the_window() {
     let Rig { engine, warp, .. } = rig();
@@ -146,16 +146,16 @@ fn one_map_takes_every_pixel_of_the_window() {
     assert!(pixels[16..].iter().any(|&word| word != 0));
     let buffer = boxed(&pixels);
     let source = Boxed { pixels: &buffer, size: (4, 4) };
-    let window = Window { at: (2, -3), size: (6, 5) };
+    let window = Window { at: (2, -3), size: (6, 7) };
     let moved = ResampleMap::moved(3, -2);
     let warped = warp.one(engine, &source, Some(&moved), window).expect("warp");
-    let wanted: Vec<u32> = (-3..2)
+    let wanted: Vec<u32> = (-3..4)
         .flat_map(|y| (2..8).map(move |x| (x, y)))
         .map(|(x, y)| at(&pixels, (4, 4), x - 3, y + 2))
         .collect();
     assert_eq!(words(&read_buffer(engine, &warped)), wanted);
     let none = warp.one(engine, &source, None, window).expect("warp");
-    assert_eq!(words(&read_buffer(engine, &none)), [0; 30]);
+    assert_eq!(words(&read_buffer(engine, &none)), [0; 42]);
 }
 
 /// A warp refuses a picture its buffer does not hold, a window of no
