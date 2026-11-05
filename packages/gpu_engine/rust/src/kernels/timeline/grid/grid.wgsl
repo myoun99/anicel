@@ -8,14 +8,24 @@
 // ↩️The C rasterizer's own byte-rounded premultiplied source-over was
 // carried here first; it answers the question blend_composite(normal)
 // answers, so it is that (관제 16:2x, CLAUDE.md absolute rule 1). The
-// pixel is straight on the 16-bit scale between ops and stored straight,
-// as every engine pixel is (blend.wgsl, 1a ①).
+// pixel is straight on the 16-bit scale between ops, as every engine
+// pixel is (blend.wgsl, 1a ①).
+//
+// ⚠️Mine (11-05, 관제 20:29 asked it settled before the app is wired): it
+// is STORED premultiplied, by the app's one premultiply (premultiply.wgsl)
+// — the tile is no engine pixel another pass reads, it is a surface
+// Flutter shows, and Flutter reads one premultiplied. The tiles are clear
+// (timeline_grid_tile_ops.dart, background 0), so a translucent run or an
+// edge's coverage stored straight would show brighter than it is. The
+// wave tile is stored the same way, for the same reason. ↩️Stored
+// straight; no pixel had reached a screen yet.
 //
 // Integers only, as fill.wgsl has why. A rounded rect's field is taken in
 // q9 — a pixel is 512 — so a q8 box's half is a whole word and a pixel's
 // centre is too; its one square root is isqrt_round.
 //
-// Needs shared/isqrt.wgsl, blend/blend.wgsl and laid.wgsl before it.
+// Needs shared/isqrt.wgsl, blend/blend.wgsl, laid.wgsl and
+// shared/premultiply.wgsl before it.
 
 struct Params {
   width: u32,
@@ -212,7 +222,7 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
       }
     }
   }
-  let packed = blend_pack8(pixel);
+  let packed = premultiply8(blend_pack8(pixel));
   // The one float step, as fill.wgsl's: k/255 stored to an 8-bit unorm
   // texel comes back k on every device.
   textureStore(tile, id.xy, unpack4x8unorm(packed));

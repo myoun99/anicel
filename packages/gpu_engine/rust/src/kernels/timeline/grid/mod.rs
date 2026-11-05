@@ -23,7 +23,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::shared::{ISQRT_WGSL, storage_format};
+use crate::kernels::shared::{ISQRT_WGSL, PREMULTIPLY_WGSL, storage_format};
 use crate::kernels::timeline::LAID_WGSL;
 
 const FILL_RECT: i32 = 1;
@@ -153,7 +153,7 @@ impl GridTile {
             return fail(format!("the grid pass cannot store to {format:?}"));
         };
         let body = include_str!("grid.wgsl").replace("__FORMAT__", token);
-        let source = [ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, &body].join("\n");
+        let source = [ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, PREMULTIPLY_WGSL, &body].join("\n");
         let module = engine
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {

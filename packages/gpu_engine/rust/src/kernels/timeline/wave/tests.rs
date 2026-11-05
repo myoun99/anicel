@@ -69,11 +69,12 @@ fn column(bytes: &[u8], (width, height): (u32, u32), x: u32) -> Vec<[u8; 4]> {
     (0..height).map(|y| at(bytes, width, x, y)).collect()
 }
 
-/// White as it lands over clear, straight, at `alpha`. A q8 overlap o of a
-/// row gives it the 16-bit alpha (o·65535 + 128) >> 8, stored as the byte
-/// (alpha + 128) / 257.
+/// White as it lands over clear at `alpha`, stored premultiplied: every
+/// channel `alpha`, 255·a / 255. A q8 overlap o of a row gives it the
+/// 16-bit alpha (o·65535 + 128) >> 8, stored as the byte (alpha + 128) /
+/// 257.
 fn white(alpha: u8) -> [u8; 4] {
-    [255, 255, 255, alpha]
+    [alpha; 4]
 }
 
 const NONE: [u8; 4] = [0; 4];

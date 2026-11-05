@@ -84,18 +84,21 @@ fn at(bytes: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
     [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]
 }
 
-/// White as it lands over clear at a coverage: still white — a pixel is
-/// stored straight — at `alpha`. A q9 coverage c gives white the 16-bit
+/// White as it lands over clear at a coverage, stored premultiplied: every
+/// channel `alpha`, 255·a / 255. A q9 coverage c gives white the 16-bit
 /// alpha (c·65535 + 256) >> 9, stored as its byte (alpha + 128) / 257.
 fn white(alpha: u8) -> [u8; 4] {
-    [255, 255, 255, alpha]
+    [alpha; 4]
 }
 
+// Premultiplied as premultiply.wgsl rounds: a channel k at alpha 128 is
+// p = 128k + 128, then (p + (p >> 8)) >> 8 — 0x10: 2176 → 8, 0x20: 4224 →
+// 16, 0x40: 8320 → 32.
 #[test]
-fn an_empty_stream_is_the_background_word_as_it_is() {
+fn an_empty_stream_is_the_background_word_premultiplied() {
     let engine = first_engine();
     let bytes = tile(engine, (5, 3), RGBA, 0x8040_2010, &[], None).unwrap();
-    assert!(bytes.chunks_exact(4).all(|pixel| pixel == [0x10, 0x20, 0x40, 0x80]));
+    assert!(bytes.chunks_exact(4).all(|pixel| pixel == [8, 16, 32, 0x80]));
 }
 
 #[test]
@@ -114,15 +117,17 @@ fn an_opaque_fill_replaces_its_box_and_stops_at_the_tile() {
 // (200, 100, 50) at 128 over clear keeps its colour at 128·257 = 32896.
 // Again over itself: the alpha out is 32896 + round(32896·32639 / 65535)
 // = 32896 + 16383 = 49279, a byte of (49279 + 128) / 257 = 192, and the
-// colour is the one colour both weights carry.
+// colour is the one colour both weights carry. Stored premultiplied
+// (p = ka + 128, then (p + (p >> 8)) >> 8): at 128, 25728 → 100, 12928 →
+// 50, 6528 → 25; at 192, 38528 → 151, 19328 → 75, 9728 → 38.
 #[test]
 fn a_translucent_fill_lays_over_the_one_before() {
     let engine = first_engine();
     let fill = [FILL_RECT, 0, 0, 1, 1, rgba(200, 100, 50, 128)];
-    assert_eq!(clear_tile(engine, (1, 1), &fill), [200, 100, 50, 128]);
+    assert_eq!(clear_tile(engine, (1, 1), &fill), [100, 50, 25, 128]);
     assert_eq!(
         clear_tile(engine, (1, 1), &[fill, fill].concat()),
-        [200, 100, 50, 192],
+        [151, 75, 38, 192],
     );
 }
 
@@ -145,7 +150,8 @@ fn a_vertical_line_runs_its_length_down_and_a_horizontal_one_across() {
 
 // (10, 20, 30) opaque, its alpha scaled by the coverage: 65535 times
 // 128·257 is 32896, a byte of 128; 64 gives 64; 255 lays it whole. Over
-// clear the colour stays (10, 20, 30).
+// clear the colour stays (10, 20, 30), stored premultiplied: at 128 it is
+// 1408, 2688, 3968 → (5, 10, 15); at 64, 768, 1408, 2048 → (3, 5, 8).
 #[test]
 fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
     let engine = first_engine();
@@ -161,12 +167,12 @@ fn a_letter_scales_its_colour_by_the_atlas_and_stops_at_its_edges() {
     .concat();
     let bytes = tile(engine, (5, 4), RGBA, 0, &ops, Some(&letters)).unwrap();
     assert_eq!(at(&bytes, 5, 1, 1), [0; 4]);
-    assert_eq!(at(&bytes, 5, 2, 1), [10, 20, 30, 128]);
+    assert_eq!(at(&bytes, 5, 2, 1), [5, 10, 15, 128]);
     assert_eq!(at(&bytes, 5, 3, 1), [10, 20, 30, 255]);
     assert_eq!(at(&bytes, 5, 1, 2), [10, 20, 30, 255]);
-    assert_eq!(at(&bytes, 5, 2, 2), [10, 20, 30, 64]);
+    assert_eq!(at(&bytes, 5, 2, 2), [3, 5, 8, 64]);
     assert_eq!(at(&bytes, 5, 3, 2), [0; 4]);
-    assert_eq!(at(&bytes, 5, 0, 3), [10, 20, 30, 128]);
+    assert_eq!(at(&bytes, 5, 0, 3), [5, 10, 15, 128]);
     assert_eq!(at(&bytes, 5, 1, 3), [10, 20, 30, 255]);
     assert_eq!(at(&bytes, 5, 2, 3), [0; 4], "past the atlas");
     assert_eq!(at(&bytes, 5, 3, 0), [0; 4], "before the atlas");
