@@ -1,0 +1,49 @@
+name: GPU engine on Metal and Mesa
+
+# The GPU engine crate's tests — every ledger row, and each bridge's test
+# that the bytes Flutter is handed are the kernel's — on the two platforms
+# no machine of ours runs: macOS (Metal) and Linux (Mesa's software
+# Vulkan, lavapipe). wgpu runs its own GPU tests on these two runner
+# shapes (gfx-rs/wgpu .github/workflows/ci.yml, gpu-test).
+#
+# ⛔workflow_dispatch ONLY — no cron, no push or pull_request trigger
+# (유저, gpu-engine-skeleton-Q5 2026-11-05: 「손으로 거는 CI 하나를 만든다」).
+# The control tower dispatches it when a Mac or Linux bridge or a kernel
+# lands, so the run count is kept in one place; the suspension's likeliest
+# trigger was macOS-runner crons (apple-nightly.yml has the history).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: gpu-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: crate tests on Metal (macOS)
+    runs-on: macos-latest
+    # A cold build of wgpu and the tests is minutes; 30 bounds a hang.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/gpu_engine/rust
+    steps:
+      - uses: actions/checkout@v5
+      # rustup reads rust-toolchain.toml: the pinned compiler, as on every
+      # machine that builds the engine.
+      - run: rustup show
+      - run: cargo test --locked
+
+  linux:
+    name: crate tests on lavapipe (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/gpu_engine/rust
+    steps:
+      - uses: actions/checkout@v5
+      # The runner has no GPU: lavapipe is Mesa's Vulkan on the CPU.
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+      - run: rustup show
+      - run: cargo test --locked
