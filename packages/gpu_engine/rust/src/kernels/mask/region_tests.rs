@@ -107,6 +107,14 @@ fn a_slanted_edge_through_centres_keeps_the_half_open_rule() {
     assert_eq!(drawn(&right, (0, 0), 4, 4), ["####", ".###", "..##", "...#"]);
 }
 
+/// A crossing a hair right of a centre — the least Q.8 lets an edge lean,
+/// 1/256 of a pixel over 513 rows of Q.8 — leaves that pixel left of it.
+#[test]
+fn a_crossing_a_hair_right_of_a_centre_passes_it() {
+    let leaning = vec![[1.5, 0.49609375], [1.50390625, 2.5], [4.0, 2.5], [4.0, 0.49609375]];
+    assert_eq!(drawn(&[shape(Replace, leaning)], (0, 0), 5, 3), ["..##.", "..##.", "....."]);
+}
+
 /// A vertex on a row's scanline is crossed by one of its two edges only:
 /// the diamond's top and bottom meet nothing, its sides a row each.
 #[test]
