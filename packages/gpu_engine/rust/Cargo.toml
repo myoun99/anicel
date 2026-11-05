@@ -93,3 +93,22 @@ sha2 = "0.10"
 # The tests read the ledger, test/fixtures/fingerprints.json.
 [dev-dependencies]
 serde_json = "1"
+
+# THE APP'S NATIVE C MOVES HERE, A MODULE TO A CRATE (native-to-rust, 유저
+# 2026-11-06 via 관제: no C left — what we wrote, third_party, .m, .cpp).
+# A lane moves one module whole, the C it calls with it, and touches only
+# its own folder under native/: these globs take a new crate in without a
+# line here, and `cargo test` in this folder runs every crate. Until the
+# connection round each module's Rust is held to the C byte for byte
+# (native/oracle); that round links the modules into this library and
+# deletes the C.
+# ⚠️ONE LIBRARY, AND IT MUST NAME WHAT IT CARRIES. A crate this one depends
+# on but never names is not linked, and its extern "C" functions are not
+# exported — measured 2026-11-06 on a scratch workspace: the dependency
+# alone exported nothing, `extern crate` or `pub use` exported them.
+# ⚠️THE LOCK IS SHARED: two lanes that add crates both touch Cargo.lock.
+# On a rebase conflict there, take the trunk's lock and let Cargo add the
+# lane's crates back (`cargo build --offline`) — never resolve it by hand.
+[workspace]
+members = ["native/*"]
+default-members = [".", "native/*"]

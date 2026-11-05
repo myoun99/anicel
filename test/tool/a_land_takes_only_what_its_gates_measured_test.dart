@@ -63,7 +63,19 @@ void main() {
           'test/fixtures/fingerprints.json',
         ),
       );
+      expect(crate, contains('    packages/qa_native/src; then'));
       expect(crate, contains(r'cmd_crate "$name"'));
+    });
+
+    // native-to-rust (관제 2026-11-06): the native crates are held to the
+    // engine the C builds — a key built from other C holds them to the
+    // wrong answers.
+    test('🚨the crate\'s tests are held to this lane\'s C: its engine is '
+        'built from it before cargo runs', () {
+      final crate = codeOf('cmd_crate');
+      final ensured = at(crate, r'ensure_engine "$p" || die');
+      expect(ensured, isNot(-1));
+      expect(ensured, lessThan(at(crate, 'cargo test --locked')));
     });
 
     // 저장 2026-11-05: four Dart files, opened before the trunk took crate

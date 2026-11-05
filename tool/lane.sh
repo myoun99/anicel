@@ -108,6 +108,11 @@
 #    check — so a stamped land still runs it, here (관제 2026-11-05: the
 #    Surface's surface11/fx-line-box pinned effects/line-blur and landed on
 #    its stamp, with this machine's GPU never asked).
+#    🆕AND THE C IS THEIR ANSWER KEY (native-to-rust, 2026-11-06): the
+#    native crates are held to the engine the C builds, so a lane that
+#    changed packages/qa_native/src runs them too, and every run builds the
+#    lane's engine from the lane's C first (refusal 6) — a key built from
+#    other C would hold the Rust to the wrong answers.
 #    The machine's Rust must be on PATH — the main PC keeps it on D:, the
 #    Surface on C:, neither on the default PATH — and a land that cannot
 #    find cargo refuses rather than skipping. `bash tool/lane.sh crate
@@ -868,8 +873,11 @@ cmd_crate() {
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
   command -v cargo >/dev/null 2>&1 || die "cargo is not on PATH — this is refusal 8
-  The lane changed the GPU engine crate or its ledger. Put this machine's
-  Rust on PATH, with its RUSTUP_HOME and CARGO_HOME, and run it again."
+  The lane changed the GPU engine crate, its ledger or the C. Put this
+  machine's Rust on PATH, with its RUSTUP_HOME and CARGO_HOME, and run it again."
+  # The native crates' answer key (native/oracle): the lane's own engine.
+  ensure_engine "$p" || die "the engine is not built from this lane's C — this is refusal 8
+  The native crates are compared with it. See above."
   local log="$p/build/lane-crate.log" profile flag
   mkdir -p "$p/build"
   : >"$log"
@@ -1028,7 +1036,8 @@ lane_touched() {
 # stand for it.
 crate_gate() {
   local name="$1" p="$2"
-  if lane_touched "$p" packages/gpu_engine/rust test/fixtures/fingerprints.json; then
+  if lane_touched "$p" packages/gpu_engine/rust test/fixtures/fingerprints.json \
+    packages/qa_native/src; then
     cmd_crate "$name"
   fi
 }

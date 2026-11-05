@@ -19,6 +19,10 @@ name: GPU engine on Metal, Mesa and WARP
 # InstanceFlags::DEBUG on and compiles shaders with optimizations skipped,
 # so only release compiles the shaders the app ships (the grid kernel's
 # X3507 was red in release alone). Debug keeps the validation layers.
+#
+# And every job builds the C engine first: the native crates (native/*,
+# native-to-rust 2026-11-06) are held to it byte for byte, through
+# QA_ENGINE_PATH, and a missing engine fails them (native/oracle).
 on:
   workflow_dispatch:
 
@@ -35,8 +39,15 @@ jobs:
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
+    env:
+      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.dylib
     steps:
       - uses: actions/checkout@v5
+      - name: Build the C engine, the native crates' answer key
+        working-directory: ${{ github.workspace }}
+        run: |
+          cmake -S packages/qa_native/src -B build/native_standalone -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native_standalone --config Release
       # rustup reads rust-toolchain.toml: the pinned compiler, as on every
       # machine that builds the engine.
       - run: rustup show
@@ -50,8 +61,15 @@ jobs:
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
+    env:
+      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
     steps:
       - uses: actions/checkout@v5
+      - name: Build the C engine, the native crates' answer key
+        working-directory: ${{ github.workspace }}
+        run: |
+          cmake -S packages/qa_native/src -B build/native_standalone -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native_standalone --config Release
       # The runner has no GPU: lavapipe is Mesa's Vulkan on the CPU.
       - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
       - run: rustup show
@@ -71,8 +89,15 @@ jobs:
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
+    env:
+      QA_ENGINE_PATH: ${{ github.workspace }}\build\native_standalone\Release\qa_engine.dll
     steps:
       - uses: actions/checkout@v5
+      - name: Build the C engine, the native crates' answer key
+        working-directory: ${{ github.workspace }}
+        run: |
+          cmake -S packages/qa_native/src -B build/native_standalone -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native_standalone --config Release
       - run: rustup show
       - run: cargo test --locked
       - run: cargo test --locked --release

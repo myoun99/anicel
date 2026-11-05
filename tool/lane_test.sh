@@ -53,7 +53,10 @@
 # commits the trunk took after it was opened; and a lane stamped on another
 # machine still runs the crate's tests on this one before it merges.
 # ⚠️The script before THAT fails 4 of the 11 there: it refuses the Dart
-# lane, and lands a ledger row this machine's GPU never ran.
+# lane, and lands a ledger row this machine's GPU never ran. 🆕Since
+# native-to-rust (2026-11-06) it also holds that a crate lane is refused,
+# before any crate test, when its engine — the native crates' answer key —
+# is not built from its C.
 #
 # 🆕And the mirror's login (2026-11-05, gpu-engine-skeleton — section U,
 # 119 checks in all): a `git` in front of the real one writes down every
@@ -89,6 +92,10 @@ EOF
 cat > "$E/bin/dart" <<'EOF'
 #!/bin/bash
 echo "$(basename "$PWD") dart $(basename "$1")${2:+ $2}" >> "$LANE_TEST_LOG"
+# Asked whether an engine is built from its C, it says no when
+# LANE_TEST_ENGINE says stale.
+[ "$(basename "$1")" = native_engine_provenance.dart ] && [ "${LANE_TEST_ENGINE:-}" = stale ] \
+  && { echo "0000 not built from its C"; exit 1; }
 [ "$(basename "$1")" = flutter_room.dart ] || exit 0
 case "${LANE_TEST_ROOM:-ok}" in
   full) mkdir "$LANE_TEST_LOG.asked" 2>/dev/null && { echo "runs=4 free_gb=9 room=no"; exit 1; } ;;
@@ -449,6 +456,14 @@ O=$(LANE_TEST_CARGO=red out "$E/home" land surface11/row)
 has "a row this machine's GPU disagrees with refuses the stamped land" "$O" "this is refusal 8"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 check "and the turn is free" "$(ls -d "$E/home/.git/lane-land.turn" 2>/dev/null | wc -l | tr -d ' ')" 0
+quiet "$E/home" open stale; mkdir -p "$HW/lane-stale/packages/gpu_engine/rust"
+commit "$HW/lane-stale" packages/gpu_engine/rust/s.wgsl "a kernel beside an engine of other C"
+: > "$LANE_TEST_LOG"; BEFORE=$(git -C "$E/home" rev-parse master)
+O=$(LANE_TEST_ENGINE=stale out "$E/home" land stale)
+has "a crate lane whose engine is not built from its C is refused — the native crates' answer key" \
+  "$O" "not built from this lane's C — this is refusal 8"
+check "before a crate test ran" "$(cargo_runs lane-stale)" 0
+check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 
 say "U NOBODY IS ASKED FOR A LOGIN: every call that reached the mirror in this whole run"
 check "LIVENESS — the run reached the mirror, on both machines, every way" \
