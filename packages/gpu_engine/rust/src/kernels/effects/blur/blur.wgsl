@@ -78,6 +78,9 @@ fn blur_plane_word(x: i32, y: i32, x0: i32, y0: i32, width: u32) -> u32 {
 fn blur_read(x: i32, y: i32) -> vec4<u32> {
   if (pass_.source_tiles == 1u) {
     let at = blur_tile_word(x, y);
+    // Past the grid, nothing — by this line: a read past a buffer gives what
+    // the device likes (WGSL), 0 on the Surface's DX12, so no test there
+    // tells this line from its absence (mutant b11, 11-05).
     if (at < 0) {
       return vec4<u32>(0u);
     }

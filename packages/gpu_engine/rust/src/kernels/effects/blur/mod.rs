@@ -163,6 +163,10 @@ impl BoxBlur {
         }
         let grid = rect.pixels();
         let (picture, kind) = match edge {
+            // The columns' first pass reads the rows' plane, which ends at
+            // the picture: past it is nothing by this edge, not by what a
+            // read past a plane happens to give — 0 on the Surface, where
+            // no test tells EDGE_NONE from it (mutant b19, 11-05).
             Edge::Nothing => (grid, EDGE_NOTHING),
             Edge::Repeat(inside) => {
                 let [left, top, right, bottom] = inside;
