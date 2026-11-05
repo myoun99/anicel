@@ -196,20 +196,25 @@ fn a_rounded_box_covers_a_pixel_by_half_a_pixel_less_its_distance() {
     assert_eq!(row, [[0; 4], [191; 4], [255; 4], [64; 4], [0; 4]]);
 }
 
-// An 8-pixel box rounding its top left by 2. Pixel (0, 0)'s centre is
-// 1.5 in each way from the corner's centre at (2, 2): in q9 768 and 768,
-// isqrt_round(2·768²) = isqrt_round(1179648) = 1086 (√ = 1086.1), less
-// the radius 1024 is 62 out, so 256 − 62 = 194 covered → (194·255 + 256)
-// >> 9 = 97. The square corners cover their pixels whole.
+// An 8-pixel box rounding one corner by 2. Pixel (0, 0)'s centre is 1.5
+// in each way from the top left corner's centre at (2, 2): in q9 768 and
+// 768, isqrt_round(2·768²) = isqrt_round(1179648) = 1086 (√ = 1086.1),
+// less the radius 1024 is 62 out, so 256 − 62 = 194 covered → (194·255 +
+// 256) >> 9 = 97 — and so for each corner's pixel. The square corners
+// cover their pixels whole.
 #[test]
 fn a_corner_rounds_only_where_its_mask_says() {
     let engine = first_engine();
-    let ops = [RRECT_FILL, 0, 0, q8(8.0), q8(8.0), q8(2.0), 1, WHITE];
-    let bytes = clear_tile(engine, (8, 8), &ops);
-    assert_eq!(at(&bytes, 8, 0, 0), [97; 4]);
-    assert_eq!(at(&bytes, 8, 7, 0), [255; 4]);
-    assert_eq!(at(&bytes, 8, 0, 7), [255; 4]);
-    assert_eq!(at(&bytes, 8, 7, 7), [255; 4]);
+    // Top left, top right, bottom left, bottom right.
+    let corners = [(0, 0), (7, 0), (0, 7), (7, 7)];
+    for (bit, mask) in [1, 2, 4, 8].into_iter().enumerate() {
+        let ops = [RRECT_FILL, 0, 0, q8(8.0), q8(8.0), q8(2.0), mask, WHITE];
+        let bytes = clear_tile(engine, (8, 8), &ops);
+        for (corner, (x, y)) in corners.into_iter().enumerate() {
+            let pixel = if corner == bit { [97; 4] } else { [255; 4] };
+            assert_eq!(at(&bytes, 8, x, y), pixel, "mask {mask}, ({x}, {y})");
+        }
+    }
 }
 
 // A 16-pixel box rounding every corner by 4. Pixel (0, 3) reaches 3.5 and
