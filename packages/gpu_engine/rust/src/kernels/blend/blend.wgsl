@@ -59,12 +59,6 @@ fn blend_mul(a: u32, b: u32) -> u32 {
   return (t + (t >> 16u)) >> 16u;
 }
 
-// sign(a) · blend_mul(|a|, b), for |a|, b <= 65535.
-fn blend_mul_signed(a: i32, b: u32) -> i32 {
-  let m = i32(blend_mul(u32(abs(a)), b));
-  return select(m, -m, a < 0);
-}
-
 // round(n·65535 / d) — the ratio n/d as a channel — for n <= d, d > 0.
 // n·65535 + d/2 is at most 4,294,868,992.
 fn blend_div(n: u32, d: u32) -> u32 {
