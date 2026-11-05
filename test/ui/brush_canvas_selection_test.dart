@@ -2914,18 +2914,20 @@ void main() {
     Offset around(double degrees) =>
         anchor + Offset.fromDirection(degrees * math.pi / 180, 50);
     final origin = tester.getTopLeft(find.byKey(layerKey));
-    final gesture = await tester.startGesture(origin + around(90));
+    // Round its upper right: under the box stands its pill (I-165), and a
+    // press there is the pill's.
+    final gesture = await tester.startGesture(origin + around(-50));
     await tester.pump();
     final turned = <double>[];
     for (var step = 1; step <= 6; step += 1) {
-      await gesture.moveTo(origin + around(90 + step * 10.0));
+      await gesture.moveTo(origin + around(-50 + step * 10.0));
       await tester.pump();
       turned.add(env.commands.transformValues!.rotationDegrees);
     }
     // A pen reports moves while the hand holds still. The same point again
     // must turn nothing — measured about a centre the turn carries round,
     // it turned the box again, and back: the flip between two positions.
-    await gesture.moveTo(origin + around(150));
+    await gesture.moveTo(origin + around(10));
     await tester.pump();
     final stillHand = env.commands.transformValues!.rotationDegrees;
     await gesture.up();

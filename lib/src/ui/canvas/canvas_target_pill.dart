@@ -136,9 +136,14 @@ class _UnderTheTarget extends SingleChildLayoutDelegate {
 
   final Rect target;
 
+  /// As wide as its buttons, whatever room the panel has: past the edge it
+  /// is past the edge (F-332), and that holds for its width as for its
+  /// place. ↩️It was given at most the panel's width, and a narrow panel
+  /// squeezed the transform box's pill over its own buttons once I-165 made
+  /// them five.
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      constraints.loosen();
+      BoxConstraints(maxHeight: constraints.maxHeight);
 
   @override
   Offset getPositionForChild(Size size, Size childSize) =>

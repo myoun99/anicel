@@ -186,6 +186,37 @@ void main() {
     );
   });
 
+  testWidgets('a picture held whole for a box is no selection, and wears no '
+      'pill', (tester) async {
+    final env = await pumpPanel(tester);
+    env.commands.setRegion(square, implicit: true);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(selectionPill), findsNothing);
+  });
+
+  testWidgets('a box opened under the Select tool wears its own pill alone', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester);
+    await select(tester, env.commands);
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(find.byKey(boxPill), findsOneWidget, reason: 'the premise');
+    expect(find.byKey(selectionPill), findsNothing);
+  });
+
+  testWidgets('an outline clicked in a vertex at a time is not finished '
+      'either', (tester) async {
+    final env = await pumpPanel(tester);
+    await select(tester, env.commands);
+    env.commands.addPolygonPoint(CanvasPoint(x: 500, y: 400));
+    await tester.pump();
+    await tester.pump();
+    expect(env.commands.polygonPoints, isNotEmpty, reason: 'the premise');
+    expect(find.byKey(selectionPill), findsNothing);
+  });
+
   testWidgets('it stands where the box\'s pill stands over the same '
       'selection — under its middle', (tester) async {
     final env = await pumpPanel(tester);

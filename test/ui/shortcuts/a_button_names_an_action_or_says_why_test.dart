@@ -136,6 +136,9 @@ const ledger = <String, Why>{
   "brush/tool_settings_panel.dart | 'cut-flip-horizontal-button'":
       Why.aSetting,
   "brush/tool_settings_panel.dart | 'cut-flip-vertical-button'": Why.aSetting,
+  // The canvas pills' 안티앨리어스 (I-165): a switch of the Select tool's
+  // mask, or of the transform settings' smoothing, lit while it is on.
+  'canvas/canvas_selection_layer.dart | keyValue': Why.aSetting,
 
   // ── THE DOOR TO A SECOND LEVEL ──────────────────────────────────────
   // A value's pencil: it opens the value's number pad and runs nothing.
