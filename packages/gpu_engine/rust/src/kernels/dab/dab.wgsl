@@ -26,7 +26,7 @@
 
 // The head: where the tiles start, and the stroke's paper — its texture's
 // place, NO_TABLE for none; its side; a pixel's step across it in 1/65536
-// texel, under the side's 2^16; and 1 where its height cuts (高さ).
+// texel; and 1 where its height cuts (高さ).
 const HEAD_TILES: u32 = 0u;
 const HEAD_PAPER: u32 = 1u;
 const HEAD_PAPER_SIDE: u32 = 2u;
@@ -206,14 +206,16 @@ fn dab_tip(at: u32, tip: u32, u: i32, v: i32) -> u32 {
 // Pixel `local` of a tile on the paper, along one axis: the texel before
 // its centre, and the next 15 bits of the way to the one after, cut. The
 // tile's first pixel lies at `phase`; each pixel on is a step further —
-// c(x) = ((2x + 1)·step >> 1) mod side·2^16 (mod.rs's paper_at) — the step
-// taken a texel and a fraction apart so every term stays in u32: the
-// phase and the texels each under side·2^16 ≤ 2^30, the fraction's
-// product under 2^23.
+// c(x) = ((2x + 1)·step >> 1) mod side·2^16 (mod.rs's paper_at). The step
+// is taken a texel and a fraction apart, the texels wrapped by the side,
+// so every term stays in u32: the phase, the texels and the texel added
+// to keep half a texel back above 0 each under side·2^16 ≤ 2^30, the
+// fraction's product under 2^23. What a whole number of sides more adds
+// the side wraps away when read.
 fn dab_paper_along(phase: u32, local: u32, side: u32) -> vec2<u32> {
   let step = plan[HEAD_PAPER_STEP];
   let texels = (local * (step >> 16u)) % side;
-  let at = (phase + (texels << 16u) + local * (step & 0xffffu)) % (side << 16u);
+  let at = phase + (texels << 16u) + local * (step & 0xffffu);
   let before = at + (side << 16u) - 32768u;
   return vec2<u32>((before >> 16u) % side, (before & 0xffffu) >> 1u);
 }
@@ -356,9 +358,6 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
       cover = u32(clamp(touched, 0, 65535));
     } else {
       cover = blend_mul(cover, W_ONE - density + blend_mul(density, paper));
-    }
-    if (cover == 0u) {
-      return under;
     }
   }
   let opacity = plan[at + DAB_OPACITY];

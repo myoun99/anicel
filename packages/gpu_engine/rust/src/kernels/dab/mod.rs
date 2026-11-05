@@ -25,7 +25,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::device::Engine;
@@ -229,23 +229,12 @@ impl Dabs {
         let textures = textures_of(dabs, paper);
         let mut placed = self.placed.clone();
         let mut end = self.end;
-        let mut fresh = Vec::new();
-        for &texture in &textures {
-            if !placed.contains_key(&texture.id) {
-                placed.insert(texture.id, end as u32);
-                end += texture.words.len();
-                fresh.push(texture);
-            }
-        }
+        let mut fresh = placing(&textures, &mut placed, &mut end);
         let mut plan = planned(tiles, dabs, paper, end, &placed)?;
         if self.plan.is_none() || end + plan.frame.len() > self.capacity {
             placed.clear();
             end = HEAD_WORDS;
-            for &texture in &textures {
-                placed.insert(texture.id, end as u32);
-                end += texture.words.len();
-            }
-            fresh = textures;
+            fresh = placing(&textures, &mut placed, &mut end);
             plan = planned(tiles, dabs, paper, end, &placed)?;
             let words = end + plan.frame.len();
             let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
@@ -302,17 +291,33 @@ impl Dabs {
     }
 }
 
-/// The textures a pile reads, each once.
+/// The textures a pile reads.
 fn textures_of<'a>(dabs: &[Dab<'a>], paper: Option<&Paper<'a>>) -> Vec<&'a Texture> {
-    let mut seen = HashSet::new();
     dabs.iter()
         .filter_map(|dab| match dab.shape {
             Shape::Tip { texture, .. } => Some(texture),
             _ => None,
         })
         .chain(paper.map(|paper| paper.texture))
-        .filter(|texture| seen.insert(texture.id))
         .collect()
+}
+
+/// Places each of `textures` not yet `placed` from `end` on, moving `end`
+/// past it; gives the ones it placed.
+fn placing<'a>(
+    textures: &[&'a Texture],
+    placed: &mut HashMap<u64, u32>,
+    end: &mut usize,
+) -> Vec<&'a Texture> {
+    let mut fresh = Vec::new();
+    for &texture in textures {
+        if !placed.contains_key(&texture.id) {
+            placed.insert(texture.id, *end as u32);
+            *end += texture.words.len();
+            fresh.push(texture);
+        }
+    }
+    fresh
 }
 
 fn bytes(words: &[u32]) -> Vec<u8> {
@@ -364,18 +369,19 @@ fn planned(
             }
         }
     }
+    let paper = match paper {
+        None => None,
+        Some(paper) => Some((paper, paper_step(paper)?)),
+    };
     let head = match paper {
         None => [frame_at as u32, NO_TABLE, 0, 0, 0],
-        Some(paper) => {
-            let step = paper_step(paper)?;
-            [
-                frame_at as u32,
-                textures[&paper.texture.id],
-                paper.texture.side,
-                (step % (u64::from(paper.texture.side) << 16)) as u32,
-                u32::from(paper.height),
-            ]
-        }
+        Some((paper, step)) => [
+            frame_at as u32,
+            textures[&paper.texture.id],
+            paper.texture.side,
+            step,
+            u32::from(paper.height),
+        ],
     };
     let listed: usize = lists.iter().map(Vec::len).sum();
     let records_at = frame_at + tiles.len() * TILE_WORDS + listed;
@@ -386,8 +392,7 @@ fn planned(
         let (column, row) = (tile.column as u32, tile.row as u32);
         let (across, down) = match paper {
             None => (0, 0),
-            Some(paper) => {
-                let step = paper_step(paper)?;
+            Some((paper, step)) => {
                 let side = paper.texture.side;
                 (paper_at(tile.column * TILE, step, side), paper_at(tile.row * TILE, step, side))
             }
@@ -408,18 +413,18 @@ fn planned(
 
 /// The paper's step, a pixel's worth of it in 1/65536 texel — or nothing,
 /// for a scale whose step is no whole part or leaves u32.
-fn paper_step(paper: &Paper) -> Option<u64> {
+fn paper_step(paper: &Paper) -> Option<u32> {
     let step = (65536.0 / paper.scale).round();
     if !(1.0..=f64::from(u32::MAX)).contains(&step) {
         return fail(format!("a paper at a scale of {}", paper.scale));
     }
-    Some(step as u64)
+    Some(step as u32)
 }
 
 /// Where the centre of pixel `x` lies on paper of `side` texels taken
 /// `step` parts of 1/65536 texel a pixel: c(x) = ((2x + 1)·step >> 1)
 /// mod side·2^16 — the law dab.wgsl carries on pixel by pixel from here.
-fn paper_at(x: i32, step: u64, side: u32) -> u32 {
+fn paper_at(x: i32, step: u32, side: u32) -> u32 {
     let doubled = (2 * i128::from(x) + 1) * i128::from(step);
     doubled.div_euclid(2).rem_euclid(i128::from(side) << 16) as u32
 }

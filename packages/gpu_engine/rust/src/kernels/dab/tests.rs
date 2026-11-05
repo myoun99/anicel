@@ -756,20 +756,24 @@ fn every_device_piles_the_pinned_strokes() {
         dab.flow = 0.5;
     }));
     assert_pinned("dab/erase-view", &bytes(&erased).1);
-    // The held stroke on a grain tiled at ¾ px a texel — a step of a texel
-    // and a fraction — its dabs taking the grain by turns: multiplied, and
-    // by its height.
+    // The held stroke on a grain tiled at 0.7 px a texel — a step of a
+    // texel and a fraction, rounded up — its dabs taking the grain by turns:
+    // multiplied, and by its height. It is drawn a tile up and left, across
+    // the canvas's origin, where the paper's phase is taken below 0.
     let grain = texture(&grain(), 32);
+    let across = [(-1, -1), (0, -1), (-1, 0), (0, 0)];
     for (name, height) in [("paper", false), ("paper-height", true)] {
-        let paper = Paper { texture: &grain, scale: 0.75, height };
+        let paper = Paper { texture: &grain, scale: 0.7, height };
         let dabs = along(&profile, 24, |k, dab| {
             dab.flow = 0.5;
             dab.edge_held = true;
             dab.opacity = 0.8;
             dab.density = 0.3 + f64::from(k % 4) * 0.2;
+            dab.centre = dab.centre.map(|c| c - 128.0);
+            dab.region = dab.region.map(|edge| edge - 128);
         });
         let kernel = &mut Dabs::new(first_engine());
-        let piled = laid(kernel, &tiles, [0; 4], Some(&paper), &dabs).expect("pile");
+        let piled = laid(kernel, &across, [0; 4], Some(&paper), &dabs).expect("pile");
         let (planes, view) = bytes(&piled);
         assert_pinned(&format!("dab/{name}-planes"), &planes);
         assert_pinned(&format!("dab/{name}-view"), &view);
