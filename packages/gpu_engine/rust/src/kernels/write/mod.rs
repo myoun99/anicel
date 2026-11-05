@@ -34,7 +34,9 @@ use crate::kernels::shared::{
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the tiles put and the changed words — and the pass's words, a uniform
-/// one.
+/// one. A device that binds sixteen pages past them binds them past one
+/// fewer as well, so no test here tells the uniform from none (mutant m17,
+/// 11-06), as in the cel pixel passes (d02 · d03).
 const OWN_BUFFERS: u32 = 3;
 
 /// The write path's test, compiled once for as many pages as the device
