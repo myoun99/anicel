@@ -13,6 +13,10 @@
 // plane and puts another, so a pixel never reads what its neighbour put
 // in the same pass.
 //
+// ⚠️A row past the box's last is past the plane, where DX12 reads 0 and
+// drops a write — so the tests here cannot see the box's guards on rows
+// there; Metal clamps the index instead.
+//
 // Needs shared/wide.wgsl before it.
 
 // The box, and the feather's ramp: 3 chamfer units a pixel, Q.8.
@@ -37,8 +41,9 @@ const MASK_EDGE: u32 = 3u;
 @group(0) @binding(3) var<storage, read> distances_in: array<u32>;
 @group(0) @binding(4) var<storage, read_write> distances_out: array<u32>;
 
+// Whether (x, y) is in the box — a negative wraps past either side.
 fn mask_inside(x: i32, y: i32) -> bool {
-  return x >= 0 && y >= 0 && u32(x) < mask.width && u32(y) < mask.height;
+  return u32(x) < mask.width && u32(y) < mask.height;
 }
 
 // The byte at (x, y); 0 past the box.
@@ -71,31 +76,29 @@ fn mask_grown(x: i32, y: i32) -> u32 {
   return select(0u, 255u, any(mask_sides(x, y) != vec4<u32>(0u)));
 }
 
-// A shrink's generation: a pixel out, or touching one out on a side —
-// past the box is out — goes out; the rest keep their byte.
+// A shrink's generation: a pixel touching one out on a side — past the
+// box is out — goes out; the rest keep their byte, and one out its 0.
 fn mask_shrunk(x: i32, y: i32) -> u32 {
-  let centre = mask_byte(x, y);
-  return select(centre, 0u, centre == 0u || any(mask_sides(x, y) == vec4<u32>(0u)));
+  return select(mask_byte(x, y), 0u, any(mask_sides(x, y) == vec4<u32>(0u)));
 }
 
-// The boundary soften: where the four sides are not all the pixel's own,
-// (3 · centre + sides) / 7 rounded — 7 being odd, never a half, so the
-// app's double rounding gives these bytes at every sum. ⚠️INSIDE THE
-// OUTLINE ONLY (유저 2026-08-27, softenMaskBoundary's head): it never rises
-// past the pixel's own byte, so a selection lifts no ring of its
-// neighbour's art.
+// The boundary soften: (3 · centre + sides) / 7, rounded — 7 being odd, a
+// sum is never a half over it, so + 3 rounds it as the app's double
+// rounding does. A pixel whose four sides are its own sums to its own byte
+// (the app skips it). ⚠️INSIDE THE OUTLINE ONLY (유저 2026-08-27,
+// softenMaskBoundary's head): it never rises past the pixel's own byte, so
+// a selection lifts no ring of its neighbour's art.
 fn mask_softened(x: i32, y: i32) -> u32 {
   let centre = mask_byte(x, y);
   let sides = mask_sides(x, y);
   let around = sides.x + sides.y + sides.z + sides.w;
-  if (around == centre * 4u) {
-    return centre;
-  }
-  return min(((3u * centre + around) * 2u + 7u) / 14u, centre);
+  return min((3u * centre + around + 3u) / 7u, centre);
 }
 
 // The feather's alpha at (x, y): nothing out; in, its distance over the
-// ramp, rounded — or whole at the ramp and past it.
+// ramp, rounded — or whole at the ramp and past it, which spares the
+// division a ramp of 0 (a feather under half a Q.8 step); at the ramp the
+// division would be 255 as well.
 fn mask_feathered(x: i32, y: i32) -> u32 {
   if (mask_byte(x, y) == 0u) {
     return 0u;
@@ -113,7 +116,9 @@ fn mask_feathered(x: i32, y: i32) -> u32 {
 // calls reach).
 
 // Pixel `k` of the word thread `id` puts, `per` to a word: its (x, y) —
-// past the box's last column where the row's last word is not full.
+// past the box's last column where the row's last word is not full. A
+// thread stops there for its work alone: what it put would land in the
+// row's padding, which no pass reads.
 fn mask_pixel(id: vec3<u32>, k: u32, per: u32) -> vec2<i32> {
   return vec2<i32>(i32(id.x * per + k), i32(id.y));
 }
@@ -196,21 +201,25 @@ fn mask_seeded(x: i32, y: i32) -> u32 {
   return distance;
 }
 
-// A generation of the chamfer: the least of the pixel's own distance and
-// each neighbour's in the box, 3 across a side and 4 across a corner. Run
-// to its end it is the app's two passes, byte for byte (대조 ② closed
-// 11-05: 6000 random masks).
+// A generation of the chamfer: the least of the pixel's own distance and,
+// over the 3 × 3 about it, each in the box 3 across a side or 4 across a
+// corner on — the pixel itself among them, never nearer than its own, so
+// a distance never grows past MASK_FAR. Run to its end it is the app's two
+// passes, byte for byte (대조 ② closed 11-05: 6000 random masks).
+// A distance past the box is no neighbour. The selection cannot see that —
+// its edge starts at MASK_EDGE, no farther than a step from anything — but
+// ⏳the fill's finish starts no edge.
 fn mask_relaxed(x: i32, y: i32) -> u32 {
   var best = mask_distance(x, y);
   for (var dy = -1; dy <= 1; dy++) {
     for (var dx = -1; dx <= 1; dx++) {
-      if ((dx != 0 || dy != 0) && mask_inside(x + dx, y + dy)) {
+      if (mask_inside(x + dx, y + dy)) {
         let step = select(3u, 4u, dx != 0 && dy != 0);
         best = min(best, mask_distance(x + dx, y + dy) + step);
       }
     }
   }
-  return min(best, MASK_FAR);
+  return best;
 }
 
 fn mask_put_distance_words(id: vec3<u32>) -> bool {

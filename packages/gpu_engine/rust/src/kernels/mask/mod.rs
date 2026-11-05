@@ -24,7 +24,8 @@ use crate::kernels::shared::{
 
 /// mask.wgsl's workgroup side.
 const GROUP: u32 = 8;
-/// The most feather a mask takes, in pixels: its ramp, 3 · Q.8, is a word.
+/// The feather a mask takes is under this, in pixels: its ramp, 3 · Q.8,
+/// is a word.
 const MOST_FEATHER: f64 = (u32::MAX / 3 / 256) as f64;
 
 /// A mask's box: its pixels across and down.
@@ -76,7 +77,7 @@ impl Finish {
 
 /// A pass: a stencil of a pixel's sides on the bytes, a distance's start
 /// or generation, or the feather's ramp over the distances.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Step {
     Grow,
     Shrink,
@@ -148,54 +149,53 @@ impl MaskPasses {
             return fail("a hard mask has no pass to run: it is finished as it is");
         }
         let way = if finish.grow > 0 { Step::Grow } else { Step::Shrink };
-        let mut steps = vec![(way, 0); finish.grow.unsigned_abs() as usize];
+        let mut steps = vec![way; finish.grow.unsigned_abs() as usize];
         if let Some(feather) = feather {
             // A pixel the ramp does not make whole lies under feather / 256
             // pixels from where its distance starts, a pixel nearer each
             // generation: ⌈feather / 256⌉ − 1 settle every one of them, and
-            // the rest stay at or past the ramp.
+            // the rest stay at or past the ramp. And a distance travels no
+            // more pixels than the box's longer side, so past that many
+            // generations every one has settled, however wide the feather.
             let generations = feather.div_ceil(256).saturating_sub(1);
-            steps.push((Step::Seed, 0));
-            steps.extend((0..generations).map(|_| (Step::Relax, 0)));
-            steps.push((Step::Feather, 3 * feather));
+            let generations = generations.min(size.width.max(size.height));
+            steps.push(Step::Seed);
+            steps.extend((0..generations).map(|_| Step::Relax));
+            steps.push(Step::Feather);
         }
         if finish.anti_alias {
-            steps.push((Step::Soften, 0));
+            steps.push(Step::Soften);
         }
-        self.run(engine, mask, size, &steps)
+        let ramp = feather.map_or(0, |feather| 3 * feather);
+        self.run(engine, mask, size, &steps, ramp)
     }
 
-    /// Runs `steps` — each with its ramp — over `mask` in order, each
-    /// reading what the one before put, and returns the bytes the last byte
-    /// pass put; `steps` holds one.
+    /// Runs `steps` over `mask` in order, each reading what the one before
+    /// put — the feather's over `ramp` —, and returns the bytes the last
+    /// byte pass put; `steps` holds one.
     fn run(
         &self,
         engine: &Engine,
         mask: &wgpu::Buffer,
         size: MaskBox,
-        steps: &[(Step, u32)],
+        steps: &[Step],
+        ramp: u32,
     ) -> Option<wgpu::Buffer> {
-        let feathers = steps.iter().any(|&(step, _)| matches!(step, Step::Seed));
+        let feathers = steps.contains(&Step::Seed);
         let distance_bytes = if feathers { size.distance_bytes() } else { 0 };
-        let groups = steps.iter().map(|&(step, _)| size.groups(step.per_word()));
+        let groups = steps.iter().map(|step| size.groups(step.per_word()));
         fits(engine, &[size.bytes(), distance_bytes], groups)?;
         let bytes = [0, 1].map(|_| plane(engine, "mask", size.bytes()));
         let distances: Vec<wgpu::Buffer> = (0..if feathers { 2 } else { 0 })
             .map(|_| plane(engine, "mask distances", distance_bytes))
             .collect();
-        let uniform = wgpu::BufferUsages::UNIFORM;
-        let words: Vec<wgpu::Buffer> = steps
-            .iter()
-            .map(|&(_, ramp)| {
-                let words = [size.width, size.height, size.stride(), ramp];
-                words_buffer(engine, "mask pass", &words, uniform)
-            })
-            .collect();
+        let words = [size.width, size.height, size.stride(), ramp];
+        let words = &words_buffer(engine, "mask", &words, wgpu::BufferUsages::UNIFORM);
         // The byte plane the next pass reads — none: `mask` itself — and
         // the distance plane.
         let (mut bytes_at, mut distances_at) = (None, 0);
         let mut encoded = Vec::with_capacity(steps.len());
-        for (&(step, _), words) in steps.iter().zip(&words) {
+        for &step in steps {
             let from = bytes_at.map_or(mask, |at: usize| &bytes[at]);
             let to = bytes_at.map_or(0, |at| 1 - at);
             let (pipeline, bound) = match step {

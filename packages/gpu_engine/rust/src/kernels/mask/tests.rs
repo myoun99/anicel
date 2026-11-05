@@ -113,7 +113,8 @@ fn a_grow_comes_in_a_side_at_a_time() {
 }
 
 /// A shrink takes a pixel out where a side touches one out — past the box
-/// is out, so its edge goes first — and keeps the byte of the rest.
+/// is out, so its edge goes first, a row ending on a word's last byte too
+/// — and keeps the byte of the rest.
 #[test]
 fn a_shrink_takes_the_sides_and_the_box_edge() {
     let size = MaskBox {
@@ -137,6 +138,11 @@ fn a_shrink_takes_the_sides_and_the_box_edge() {
     let whole = |_, _| 255;
     assert_eq!(finished(size, finish(-3, 0.0, false), whole).expect("three").inside(), 3);
     assert_eq!(finished(size, finish(-4, 0.0, false), whole).expect("four").inside(), 0);
+    let words = MaskBox {
+        width: 8,
+        height: 3,
+    };
+    assert_eq!(finished(words, finish(-1, 0.0, false), whole).expect("words").inside(), 6);
 }
 
 /// The feather ramps a pixel in over its distance from the nearest one out
@@ -184,6 +190,15 @@ fn the_feather_ramps_in_from_the_edge_and_each_hole() {
     assert!(small.bytes.iter().all(|&byte| byte == 255));
 }
 
+/// A distance past a byte: feathered over 100 pixels, the middle of a
+/// whole 181-pixel square lies 3 + 90 · 3 from out — 273 of the ramp's
+/// 300 · 3, 232.
+#[test]
+fn a_wide_feather_ramps_over_distances_past_a_byte() {
+    let mask = finished(square(181), finish(0, 100.0, false), |_, _| 255).expect("wide");
+    assert_eq!(mask.at(90, 90), 232);
+}
+
 /// The soften is (3 · centre + sides) / 7 where the sides differ — 182 at
 /// a square's corner, 219 mid side — and never lights a pixel out: one
 /// beside the square stays 0, where the unclamped soften would be 36.
@@ -218,6 +233,15 @@ fn the_finish_grows_then_feathers_then_softens() {
     assert_eq!(mask.inside(), 5);
 }
 
+/// The widest feather it takes ramps a small mask out to nothing — over
+/// as many generations as the box is long, not one a pixel of feather.
+#[test]
+fn the_widest_feather_is_taken() {
+    let widest = finish(0, MOST_FEATHER - 1.0, false);
+    let mask = finished(square(9), widest, |_, _| 255).expect("widest");
+    assert_eq!(mask.inside(), 0);
+}
+
 #[test]
 fn a_mask_past_its_range_is_refused() {
     let Rig { engine, passes } = rig();
@@ -225,12 +249,13 @@ fn a_mask_past_its_range_is_refused() {
     let storage = wgpu::BufferUsages::STORAGE;
     let mask = words_buffer(engine, "mask in", &laid(size, |_, _| 255), storage);
     let refused = [
-        (square(0), finish(1, 0.0, false)),
+        (MaskBox { width: 0, height: 8 }, finish(1, 0.0, false)),
+        (MaskBox { width: 8, height: 0 }, finish(1, 0.0, false)),
         (square(9), finish(1, 0.0, false)),
         (size, finish(0, 0.0, false)),
         (size, finish(0, -2.0, false)),
         (size, finish(0, f64::NAN, false)),
-        (size, finish(0, MOST_FEATHER + 1.0, false)),
+        (size, finish(0, MOST_FEATHER, false)),
     ];
     for (size, finish) in refused {
         assert!(passes.selection(engine, &mask, size, finish).is_none(), "{size:?} {finish:?}");
