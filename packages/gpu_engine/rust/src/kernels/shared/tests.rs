@@ -243,6 +243,11 @@ fn sums_and_products_are_the_machines() {
     });
     check(&pairs(MUL, |_| 0), |a, b, _| low(a.wrapping_mul(b)));
     check(&pairs(MUL128, |_| 0), |a, b, _| i128::from(a) * i128::from(b));
+    // The one carry no random pair reached (11-05 mutant): 2·0x55555555 +
+    // 0x55555555 fills the third column, and the second carries into it.
+    let (a, b) = (0x2_ffff_ffff_i64, 0x5555_5555_ffff_ffff_i64);
+    let cases = [(MUL128, a, b, 0), (MUL128, -a, b, 0), (MUL128, b, a, 0)];
+    check(&cases, |a, b, _| i128::from(a) * i128::from(b));
 }
 
 #[test]
@@ -447,9 +452,18 @@ fn scenes() -> Vec<Scene> {
         // A gentle homography.
         Scene {
             name: "perspective",
-            inverse: [1.1, 0.2, 2.0, 0.05, 1.2, 1.0, 0.004, 0.002, 1.0],
+            inverse: [1.1, -0.3, 14.0, 0.05, 1.2, 1.0, 0.004, -0.002, 1.0],
             size: (48, 40),
         },
+        // A homography six times smaller, whose Jacobian's columns and
+        // rows give the subsample counts apart.
+        Scene {
+            name: "dive",
+            inverse: [6.0, 3.0, -20.0, 0.5, 6.0, -25.0, 0.004, 0.003, 1.0],
+            size: (10, 8),
+        },
+        // A 3-4-5 turn six times smaller: twelve subsamples an axis.
+        Scene { name: "spin", inverse: affine(4.8, -3.6, 20.0, 3.6, 4.8, -30.0), size: (10, 10) },
         // A strong one, shrinking 2.4 times towards its far side.
         Scene {
             name: "tilt",
@@ -598,12 +612,127 @@ fn pick_takes_the_word_covering_most_and_the_first_met_on_a_tie() {
 fn a_homography_at_its_horizon_is_outside() {
     // w = (63x − 31) / 2048: 1 at the right edge of 33 columns, exactly
     // 2^-12 at pixel 0's centre, where W = 2^25 — outside, though the
-    // point it would map to (1023.5, 0.5) is in the source. Pixel 1 is in.
-    // The second row is the third, so v stays at 0.5.
+    // point it would map to, (2047.5, 0.5), is in the source and its tent
+    // all one word. Pixel 1 is in. The second row is the third, so v stays
+    // at 0.5.
     let word = 0xff20_4080;
-    let picture = Picture::filled(1100, 3, word);
+    let picture = Picture::filled(2100, 3, word);
     let (g, i) = (63.0 / 2048.0, -31.0 / 2048.0);
-    let map = one_map([1.0, 0.0, 0.0, g, 0.0, i, g, 0.0, i], ResampleMode::Pick, (33, 1));
-    let out = window(&map, &picture, (2, 1), (0, 0));
-    assert_eq!(out, [0, word]);
+    let map = one_map([1.0, 0.0, 0.0, g, 0.0, i, g, 0.0, i], ResampleMode::Blend, (33, 1));
+    assert_eq!(window(&map, &picture, (2, 1), (0, 0)), [0, word]);
+}
+
+#[test]
+fn a_projection_past_an_i64_is_outside() {
+    // w = (23x − 11) / 1024 over 45 columns is 2^-11 at pixel 0, inside,
+    // but c = 2^40 px puts its point at 2^51 px: rnd(N · r, 42) is
+    // 2^67 + 2^26, past an i64. Its low 64 bits alone would be 2^26 —
+    // (1023.5, 0.5), a point in the source.
+    let word = 0xff20_4080;
+    let picture = Picture::filled(2100, 3, word);
+    let (g, i) = (23.0 / 1024.0, -11.0 / 1024.0);
+    let far = (1u64 << 40) as f64;
+    let map = one_map([1.0, 0.0, far, g, 0.0, i, g, 0.0, i], ResampleMode::Blend, (45, 1));
+    assert_eq!(window(&map, &picture, (1, 1), (0, 0)), [0]);
+}
+
+#[test]
+fn a_subsample_past_2_to_the_31_votes_for_nothing() {
+    // w = (11x − 5) / 512 over 47 columns is 2^-10 at pixel 0, where
+    // a = 128 and c = −64 make u = −0.5 and du/dx = 128 · 1024 = 2^17 px:
+    // the sixteen columns of subsamples land 4096 px apart, from −61440 to
+    // 61440. Four land in the source (4096 … 28672), four more past −2^15
+    // px — nothing, though their low 32 bits would wrap into the source
+    // and tie the vote. With dv/dy = 0 the rows take 8: 32 of 128 for the
+    // word, so nothing wins.
+    let word = 0xff20_4080;
+    let picture = Picture::filled(32768, 2, word);
+    let (g, i) = (11.0 / 512.0, -5.0 / 512.0);
+    let map = one_map([128.0, 0.0, -64.0, g, 0.0, i, g, 0.0, i], ResampleMode::Pick, (47, 1));
+    assert_eq!(window(&map, &picture, (1, 1), (0, 0)), [0]);
+}
+
+#[test]
+fn a_half_pixel_move_is_not_a_copy() {
+    // c = 0.5: the tent sits on the edge between the two, 128 each —
+    // red 255·128/256 = 127.5 rounds up. The same down the rows with f.
+    let (red, blue) = (0xff00_00ffu32, 0xffff_0000u32);
+    let mut across = Picture::filled(2, 1, red);
+    across.put(1, 0, blue);
+    let map = one_map(affine(1.0, 0.0, 0.5, 0.0, 1.0, 0.0), ResampleMode::Blend, (1, 1));
+    assert_eq!(window(&map, &across, (1, 1), (0, 0)), [0xff80_0080]);
+    let mut down = Picture::filled(1, 2, red);
+    down.put(0, 1, blue);
+    let map = one_map(affine(1.0, 0.0, 0.0, 0.0, 1.0, 0.5), ResampleMode::Blend, (1, 1));
+    assert_eq!(window(&map, &down, (1, 1), (0, 0)), [0xff80_0080]);
+}
+
+#[test]
+fn a_tent_weight_on_a_half_rounds_up() {
+    // f = 2^-9 px puts v at 128 in Q.16: rows weigh rnd(65408, 8) = 256
+    // and rnd(128, 8) = 1, both halves. Red over blue:
+    //   red 255·256/257 = 254.0, blue 255/257 = 0.99 → 1.
+    let (red, blue) = (0xff00_00ffu32, 0xffff_0000u32);
+    let mut down = Picture::filled(1, 2, red);
+    down.put(0, 1, blue);
+    let nudge = 1.0 / 512.0;
+    let map = one_map(affine(1.0, 0.0, 0.0, 0.0, 1.0, nudge), ResampleMode::Blend, (1, 1));
+    assert_eq!(window(&map, &down, (1, 1), (0, 0)), [0xff01_00fe]);
+    let mut across = Picture::filled(2, 1, red);
+    across.put(1, 0, blue);
+    let map = one_map(affine(1.0, 0.0, nudge, 0.0, 1.0, 0.0), ResampleMode::Blend, (1, 1));
+    assert_eq!(window(&map, &across, (1, 1), (0, 0)), [0xff01_00fe]);
+}
+
+/// Opaque word `n` of a run no two of which match.
+fn token(n: u32) -> u32 {
+    0xff00_0000 | (n * 0x0010_3050)
+}
+
+#[test]
+fn sixteen_words_fill_the_slots_and_a_seventeenth_evicts() {
+    // A quarter of four by four, every word once: sixteen slots hold them
+    // all, the tie goes to the one met first.
+    let mut picture = Picture::filled(4, 4, 0);
+    for n in 0..16 {
+        picture.put(n % 4, n / 4, token(n + 1));
+    }
+    let quarter = one_map(affine(4.0, 0.0, 0.0, 0.0, 4.0, 0.0), ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&quarter, &picture, (1, 1), (0, 0)), [token(1)]);
+    // Four by five, row by row: sixteen words, then the seventeenth three
+    // times and the first again. The seventeenth takes the lightest slot
+    // (the first, lowest index), the first comes back in the next; the
+    // recount gives 3, 2 and 1s.
+    let mut picture = Picture::filled(4, 5, 0);
+    let order = (1..=16).chain([17, 17, 17, 1]);
+    for (n, word) in order.enumerate() {
+        picture.put(n as u32 % 4, n as u32 / 4, token(word));
+    }
+    let map = one_map(affine(4.0, 0.0, 0.0, 0.0, 5.0, 0.0), ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&map, &picture, (1, 1), (0, 0)), [token(17)]);
+}
+
+#[test]
+fn a_sixteen_times_reduction_weighs_areas_not_subsamples() {
+    // 16 px is the exact path's widest. The preimage [−0.25, 15.75] across
+    // covers column 0 by 0.75 and column 16 by 0.25: A (column 0) has 0.75,
+    // B (columns 1 and 16) 1.25 — B. Subsampled, columns 0 … 15 would get
+    // 16 votes each and the tie go to A, met first. The same on its side.
+    let (a, b) = (token(1), token(2));
+    let mut picture = Picture::filled(17, 17, 0);
+    for y in 0..17 {
+        for x in 0..17 {
+            let word = match x {
+                0 => a,
+                1 | 16 => b,
+                _ => token(x + 1),
+            };
+            picture.put(x, y, word);
+        }
+    }
+    let across = one_map(affine(16.0, 0.0, 0.25, 0.0, 16.0, 0.0), ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&across, &picture, (1, 1), (0, 0)), [b]);
+    // A quarter turn: u follows y, v follows x — still axis-aligned.
+    let turned = one_map(affine(0.0, 16.0, 0.25, 16.0, 0.0, 0.0), ResampleMode::Pick, (1, 1));
+    assert_eq!(window(&turned, &picture, (1, 1), (0, 0)), [b]);
 }
