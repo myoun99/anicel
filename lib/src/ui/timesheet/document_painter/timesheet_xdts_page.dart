@@ -67,29 +67,30 @@ class _XdtsPage {
     height: form.infoBottom - form.infoTitleBottom,
   );
 
-  /// The largest size up to [start] that sets [text] within [room] across,
-  /// but never below the viewer's floor — the sheet's one shrinking law
-  /// ([sheetWordsSize]).
-  double fitSize(String text, {required double start, required double room}) {
-    final size = sheetWordsSize(
-      SheetWords(
-        SheetPaintLayer.form,
-        text: text,
-        slot: Rect.fromLTWH(0, 0, room, start),
-        size: start,
-        argb: line.toARGB32(),
-        fit: SheetWordsFit.shrink,
-      ),
-      (size, {required bold, required color}) =>
-          TimesheetDocumentPainter.wordsStyle(
-            _painter.face,
-            fontSize: size,
-            color: color,
-            bold: bold,
-          ),
-    );
-    return math.max(size, px(2).toDouble());
-  }
+  /// The largest size up to [start] that sets [text] within [room] across
+  /// — the sheet's one shrinking law ([sheetWordsSize]).
+  double shrunk(String text, {required double start, required double room}) =>
+      sheetWordsSize(
+        SheetWords(
+          SheetPaintLayer.form,
+          text: text,
+          slot: Rect.fromLTWH(0, 0, room, start),
+          size: start,
+          argb: line.toARGB32(),
+          fit: SheetWordsFit.shrink,
+        ),
+        (size, {required bold, required color}) =>
+            TimesheetDocumentPainter.wordsStyle(
+              _painter.face,
+              fontSize: size,
+              color: color,
+              bold: bold,
+            ),
+      );
+
+  /// [shrunk], but never below the viewer's floor for a box's words.
+  double fitSize(String text, {required double start, required double room}) =>
+      math.max(shrunk(text, start: start, room: room), px(2).toDouble());
 
   /// The size a header box's marks are set at — the length's 秒 · コマ · ＋,
   /// the sheet count's 枚 · 枚目: from half the box's height less a

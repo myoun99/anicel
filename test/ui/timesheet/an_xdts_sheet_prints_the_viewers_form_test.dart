@@ -954,8 +954,15 @@ void main() {
     // 최대한 서식대로 보여주는게 목표. 보이는그대로 출력이 목표니까」.
     group('the cel columns, written as the viewer writes them', () {
       /// A drawing named [name] exposed [length] frames.
-      TimelineExposure cel(String name, int length) =>
-          TimelineExposure.drawing(FrameId(name), length: length);
+      TimelineExposure cel(
+        String name,
+        int length, {
+        Map<int, InbetweenMark> breakdowns = const {},
+      }) => TimelineExposure.drawing(
+        FrameId(name),
+        length: length,
+        breakdownMarks: breakdowns,
+      );
 
       /// The cels 1 and 2 a frame each, over and over to frame 30.
       Map<int, TimelineExposure> alternating() => {
@@ -986,7 +993,7 @@ void main() {
                   ? const LayerMark(process: LayerProcess.inbetween)
                   : LayerMark.none,
               frames: [
-                for (final name in ['1', '2', '3'])
+                for (final name in ['1', '2', '3', '8888'])
                   Frame(
                     id: FrameId(name),
                     name: name,
@@ -1082,6 +1089,15 @@ void main() {
         final cell = sheet.cell;
 
         expect(sheet.anyIn(cell(0), dark), isTrue, reason: 'its number');
+        final stem = cell(0).center.dx;
+        for (final share in [0.3, 0.7]) {
+          final y = cell(0).top + cell(0).height * share;
+          expect(
+            sheet.anyIn(Rect.fromLTRB(stem - 4, y, stem + 4, y + 2), dark),
+            isTrue,
+            reason: 'the 1 a row less a millimetre tall, at $share of it',
+          );
+        }
         expect(sheet.at(cell(4).center), predicate(dark), reason: 'a line');
         expect(
           sheet.anyIn(
@@ -1115,6 +1131,22 @@ void main() {
           sheet.at(Offset(cell(16).center.dx, cell(16).top + 1)),
           predicate(dark),
           reason: 'the wave',
+        );
+        Rect lowRightOf(int row) => Rect.fromLTRB(
+          cell(row).center.dx + 3.5,
+          cell(row).top + cell(row).height * 0.72,
+          cell(row).center.dx + 6,
+          cell(row).top + cell(row).height * 0.8,
+        );
+        expect(
+          sheet.anyIn(lowRightOf(16), anything),
+          isTrue,
+          reason: 'the wave bows right low in its row',
+        );
+        expect(
+          sheet.anyIn(lowRightOf(4), anything),
+          isFalse,
+          reason: 'a line does not',
         );
         expect(sheet.anyIn(cell(20).deflate(1), dark), isTrue);
         expect(
@@ -1156,6 +1188,19 @@ void main() {
           isTrue,
           reason: 'its hatch, corner to corner',
         );
+        for (final hatch in [
+          Offset(below.left + below.width / 4, below.top + below.height / 4),
+          Offset(below.right - below.width / 4, below.bottom - below.height / 4),
+        ]) {
+          expect(
+            sheet.anyIn(
+              Rect.fromCenter(center: hatch, width: 3, height: 3),
+              anything,
+            ),
+            isTrue,
+            reason: 'a hatch through $hatch',
+          );
+        }
         final next = sheet.cell(29, column: 1);
         expect(
           sheet.anyIn(
@@ -1212,8 +1257,69 @@ void main() {
           isTrue,
           reason: 'the word',
         );
+        expect(
+          sheet.anyIn(
+            Rect.fromLTRB(
+              cell(5).left,
+              cell(5).top + 12,
+              cell(5).right,
+              cell(6).bottom,
+            ),
+            dark,
+          ),
+          isTrue,
+          reason: 'リピート runs four letters down',
+        );
         expect(sheet.anyIn(cell(30), dark), isTrue);
         expect(sheet.anyIn(cell(30), blue), isFalse);
+      });
+
+      testWidgets('a repeat that restarts on the null cell writes its × in '
+          'blue, a pixel thin', (tester) async {
+        final sheet = await sheetOf(
+          tester,
+          written({
+            for (var frame = 1; frame < 30; frame += 2) frame: cel('1', 1),
+          }),
+        );
+        final restart = sheet.cell(2);
+        bool bluish(ui.Color pixel) =>
+            pixel.a > 0 &&
+            pixel.b > pixel.r + 0.2 &&
+            pixel.b > pixel.g + 0.2;
+
+        expect(
+          sheet.at(restart.topLeft + const Offset(3, 3)),
+          predicate(bluish),
+        );
+        expect(sheet.at(restart.topLeft + const Offset(3, 6)).a, 0);
+      });
+
+      testWidgets('a value too wide for its cell shrinks into it, and a mark '
+          'is our own ○ ● on its row\'s middle', (tester) async {
+        final sheet = await sheetOf(
+          tester,
+          written({
+            0: cel('8888', 3),
+            3: cel('1', 6, breakdowns: {2: InbetweenMark.two}),
+          }),
+        );
+        final cell = sheet.cell;
+
+        expect(sheet.anyIn(cell(0), dark), isTrue);
+        expect(
+          sheet.anyIn(cell(0, column: 1).deflate(1), anything),
+          isFalse,
+          reason: 'within its own cell',
+        );
+        expect(
+          sheet.anyIn(
+            Rect.fromCenter(center: cell(5).center, width: 4, height: 4),
+            dark,
+          ),
+          isTrue,
+          reason: 'the mark',
+        );
       });
 
       testWidgets('one value held through the whole column: 止メ under it, '
@@ -1243,11 +1349,13 @@ void main() {
         }
       });
 
-      test('the drag print reads what the notation writes in view, which a '
-          'change far above it moves', () {
+      test('the drag print reads what the notation writes in view — its '
+          'values, its inks and its words — which a change above it moves', () {
+        /// The print of a view of rows [from] and the next of [timeline].
         Object printOf(
           Map<int, TimelineExposure> timeline, {
-          required TimesheetSheetKind kind,
+          required int from,
+          TimesheetSheetKind kind = TimesheetSheetKind.xdtsA3SixSeconds,
         }) {
           final document = written(timeline, kind: kind);
           final layout = TimesheetDocumentLayout(document: document);
@@ -1257,14 +1365,42 @@ void main() {
             layout: layout,
             shown: Rect.fromLTRB(
               0,
-              rows.topOf(11) + 1,
+              rows.topOf(from) + 1,
               layout.documentSize.width,
-              rows.bottomOf(12) - 1,
+              rows.bottomOf(from + 1) - 1,
             ),
             cutId: null,
             preview: null,
           );
         }
+
+        /// The cells a view of rows [from] and the next reaches — a row of
+        /// slack each side — on [kind].
+        List<TimesheetCell> reached(
+          Map<int, TimelineExposure> timeline,
+          int from, {
+          TimesheetSheetKind kind = TimesheetSheetKind.xdtsA3SixSeconds,
+        }) => written(
+          timeline,
+          kind: kind,
+        ).columns.first.cells.sublist(from - 1, from + 3);
+
+        final one = {0: cel('1', 12)};
+        expect(
+          printOf(one, from: 0),
+          isNot(printOf({0: cel('2', 12)}, from: 0)),
+          reason: 'the value it writes',
+        );
+
+        final marked = {
+          0: cel('1', 12, breakdowns: {2: InbetweenMark.two}),
+        };
+        expect(reached(one, 9), reached(marked, 9), reason: '⛔전제');
+        expect(
+          printOf(one, from: 9),
+          isNot(printOf(marked, from: 9)),
+          reason: 'the line a mark above lasts down into it',
+        );
 
         // The repeat starts its first round on the cel 2, a frame later.
         final later = {...alternating(), 0: cel('3', 1)};
@@ -1272,23 +1408,21 @@ void main() {
           TimesheetSheetKind.sixSeconds,
           TimesheetSheetKind.xdtsA3SixSeconds,
         ]) {
-          List<TimesheetCell> inView(Map<int, TimelineExposure> timeline) =>
-              written(timeline, kind: kind).columns.first.cells.sublist(9, 15);
           expect(
-            inView(alternating()),
-            inView(later),
+            reached(alternating(), 5, kind: kind),
+            reached(later, 5, kind: kind),
             reason: '⛔전제: the same cells in view',
           );
         }
         expect(
-          printOf(alternating(), kind: TimesheetSheetKind.sixSeconds),
-          printOf(later, kind: TimesheetSheetKind.sixSeconds),
-          reason: 'our sheet prints the cells in view',
+          printOf(alternating(), from: 5),
+          isNot(printOf(later, from: 5)),
+          reason: 'リピート hangs into it a row lower',
         );
         expect(
-          printOf(alternating(), kind: TimesheetSheetKind.xdtsA3SixSeconds),
-          isNot(printOf(later, kind: TimesheetSheetKind.xdtsA3SixSeconds)),
-          reason: 'the dashes from the cel 2 reach the eleventh row',
+          printOf(alternating(), from: 5, kind: TimesheetSheetKind.sixSeconds),
+          printOf(later, from: 5, kind: TimesheetSheetKind.sixSeconds),
+          reason: 'our sheet prints the cells in view',
         );
       });
     });

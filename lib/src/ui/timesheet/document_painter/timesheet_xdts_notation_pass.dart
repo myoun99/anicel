@@ -115,9 +115,11 @@ class _XdtsHalf {
 /// primitives it calls, xdts_viewer v1.3.0); the drawing is our own.
 ///
 /// ⚠️Mine: a value too wide for its cell shrinks by the sheet's one law
-/// ([_XdtsPage.fitSize]) where the viewer squeezes it across, and a mark is
-/// our own ○ ● (I-162-Q6) where the viewer draws its tick. The words are
-/// the viewer's Japanese, as the form's are ([_XdtsPage]).
+/// ([_XdtsPage.shrunk] — 유저 2026-09-25: 「길어져서 다 안들어가면 크기
+/// 작게하는방향, 기본적으로 그렇게」) where the viewer squeezes it across —
+/// with no floor, as the viewer's cell has none: it stays in its cell. A
+/// mark is our own ○ ● (I-162-Q6) where the viewer draws its tick. The
+/// words are the viewer's Japanese, as the form's are ([_XdtsPage]).
 class _XdtsNotationPass {
   _XdtsNotationPass(this._page);
 
@@ -219,7 +221,7 @@ class _XdtsNotationPass {
       case final InbetweenMark mark:
         _painter._cells._paintMark(canvas, cell.center, mark);
       case final String number:
-        final size = _page.fitSize(
+        final size = _page.shrunk(
           number,
           start: _letterPixels.toDouble(),
           room: cell.width / _page.sheet.unit - 1,
