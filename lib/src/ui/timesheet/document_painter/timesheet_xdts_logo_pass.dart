@@ -1,7 +1,7 @@
 part of '../timesheet_document_painter.dart';
 
 /// THE COMPANY LOGO AN XDTS SHEET PRINTS (I-162-Q5, 유저 2026-11-05:
-/// 「회사 로고를 찍는다」) — the work's ([TimesheetDocument.logoAssetPath]),
+/// 「회사 로고를 찍는다」) — the work's ([TimesheetDocument.printedLogo]),
 /// in the viewer's logo place as the viewer prints its own: as large as
 /// fits, its shape kept, from the place's top-left corner, in the line
 /// colour alone, as opaque as the logo is dark. A work with no logo leaves

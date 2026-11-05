@@ -71,6 +71,12 @@ class TimesheetStrata extends StatelessWidget {
   final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
+  /// What says a picture the values print has landed: where the sheet
+  /// prints a logo ([TimesheetDocument.printedLogo]), the pictures'; where
+  /// it prints none, nothing — the values stay baked.
+  Listenable? get _valuesHear =>
+      layout.document.printedLogo == null ? null : imageRepaint;
+
   /// What the content stratum PRINTS of a drag over the view of [shown]
   /// ([timesheetDragPrint]).
   Object _printOf(TimelineDragPreview? preview, Rect? shown) =>
@@ -159,15 +165,11 @@ class TimesheetStrata extends StatelessWidget {
         : timesheetInkWindows(layout: layout, cutId: cutId);
     return {
       SheetStratum.form: painterOf(SheetStratum.form),
-      // The values print a picture where the sheet prints a logo — an XDTS
-      // sheet's — so a read that lands repaints them there, as it does the
-      // ink's photos; elsewhere they print none and stay baked.
+      // The values print a picture too, where the sheet prints a logo.
       SheetStratum.content: painterOf(
         SheetStratum.content,
         dragPreview: printed,
-        imageRepaint: layout.document.printedLogo == null
-            ? null
-            : imageRepaint,
+        imageRepaint: _valuesHear,
       ),
       if (ink != null)
         SheetStratum.ink: painterOf(

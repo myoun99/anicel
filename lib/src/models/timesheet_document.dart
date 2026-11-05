@@ -105,7 +105,7 @@ enum TimesheetContentPart {
   header,
 
   /// The company logo an XDTS sheet prints in the viewer's logo place
-  /// ([TimesheetDocument.logoAssetPath], I-162-Q5).
+  /// ([TimesheetDocument.printedLogo], I-162-Q5).
   logo,
 
   /// The cuts the cut is 겸용 with, under its name (F-558).
@@ -411,7 +411,7 @@ class TimesheetDocument {
     required this.title,
     required this.episode,
     required this.artist,
-    required this.logoAssetPath,
+    required this.printedLogo,
     required this.pageMemos,
     required this.rightPageMemos,
     required this.pageFixedLines,
@@ -589,7 +589,7 @@ class TimesheetDocument {
       title: info.titleOr(projectName),
       episode: info.episode,
       artist: cut.metadata.staffNameFor(sheetArtistMark),
-      logoAssetPath: info.logoAssetPath,
+      printedLogo: xdtsForm == null ? null : info.logoAssetPath,
       pageMemos: cut.metadata.pageNotes,
       rightPageMemos: cut.metadata.rightPageNotes,
       pageFixedLines:
@@ -723,10 +723,10 @@ class TimesheetDocument {
   final String episode;
   final String artist;
 
-  /// The work's company logo, a media pool path — the one the conte and
-  /// the envelope print ([TimesheetInfo.logoAssetPath]); null where it has
-  /// none.
-  final String? logoAssetPath;
+  /// The logo this sheet prints, a media pool path: the work's, the one the
+  /// conte and the envelope print ([TimesheetInfo.logoAssetPath]), on an
+  /// XDTS sheet (I-162-Q5); none on one of our own or in a work with none.
+  final String? printedLogo;
 
   /// The Direction memo printed in each page's memo band, by page
   /// ([CutMetadata.pageNotes]) — editable in place on the sheet, the
@@ -811,12 +811,6 @@ class TimesheetDocument {
   /// The XDTS Viewer's sheet the cut prints on, laid out for its columns —
   /// null on one of our own ([TimesheetSheetKind.xdts]).
   final XdtsSheetForm? xdtsForm;
-
-  /// The logo this sheet prints, a media pool path: the work's
-  /// ([logoAssetPath]) on an XDTS sheet, which has the viewer's logo place
-  /// (I-162-Q5), and none on one of our own or in a work with no logo —
-  /// what the values print and the one picture they wait on.
-  String? get printedLogo => xdtsForm == null ? null : logoAssetPath;
 
   /// The wider block's cel rows ([SheetSources.celColumnsAcross]): what the
   /// viewer widens both blocks to, under the sheet and its ink.
