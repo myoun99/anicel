@@ -15,12 +15,14 @@
 
 #[cfg(test)]
 mod one_builder;
+mod pages;
 mod resample;
 #[cfg(test)]
 pub(crate) mod tests;
 
 use crate::device::Engine;
 
+pub(crate) use pages::{Pages, page_table};
 pub(crate) use resample::{ResampleMap, ResampleMode, q};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.

@@ -31,7 +31,7 @@ const STEP_CLOSE_ATOP: u32 = 4u;
 // One pass: the steps it runs, the stack depth it takes, the output tiles
 // it covers and the words each takes in the plan, where its table of pages
 // is — which binding holds each page
-// of the pool (mod.rs's NO_PAGE where it binds none) — the lowest stack
+// of the pool (shared/pages.rs's NO_PAGE where it binds none) — the lowest stack
 // level it holds, and the output's pixels, [left, right) × [top, bottom).
 struct Pass {
   step_begin: u32,
@@ -57,18 +57,8 @@ struct Pass {
 @group(0) @binding(1) var<storage, read> plan: array<u32>;
 // The stack between passes, two words a level, then the output tiles.
 @group(0) @binding(2) var<storage, read_write> work: array<u32>;
-//__PAGES__
+// The pages, and page_word, come before this (shared/pages.wgsl).
 //__OUTPUT__
-
-// A word of the page this pass bound as its k-th.
-fn page_word(k: u32, index: u32) -> u32 {
-  switch (k) {
-    //__READS__
-    default: {
-      return 0u;
-    }
-  }
-}
 
 // key.wgsl's host: a chain's runs are in the plan.
 fn key_word(at: u32) -> u32 {

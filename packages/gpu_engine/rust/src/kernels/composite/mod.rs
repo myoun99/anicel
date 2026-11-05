@@ -56,8 +56,8 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::shared::{
-    ISQRT_WGSL, PREMULTIPLY_WGSL, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL, pipeline,
-    storage_format,
+    ISQRT_WGSL, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL,
+    page_table, pipeline, storage_format,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -68,13 +68,8 @@ pub(crate) const TILE_TEXELS: u64 = (TILE * TILE) as u64;
 /// DEPTH. Folders and clips nest deeper by cutting passes where the walk
 /// leaves the levels a pass holds; the rest wait in the work buffer.
 pub(crate) const DEPTH: usize = 8;
-/// The most pages one pass binds, whatever the device allows: each is a
-/// case of composite.wgsl's `page_word`.
-const MOST_PAGES: usize = 16;
 const STEP_WORDS: usize = 12;
 const NO_TILE: u32 = u32::MAX;
-/// A page a pass binds none of, in its table of pages.
-const NO_PAGE: u32 = u32::MAX;
 /// The plan and the work buffer: the storage buffers a pass binds besides
 /// its pages.
 const OWN_BUFFERS: u32 = 2;
@@ -222,37 +217,25 @@ struct Batch {
 pub(crate) struct Composite {
     pipeline: wgpu::ComputePipeline,
     surfaces: Mutex<Vec<(&'static str, wgpu::ComputePipeline)>>,
-    pages_per_pass: usize,
-    /// Bound where a pass has fewer pages than the pipeline has bindings.
-    blank: wgpu::Buffer,
+    /// The pages of the pool a pass binds, past the plan and the work.
+    pages: Pages,
 }
 
 impl Composite {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        let limit = engine.device.limits().max_storage_buffers_per_shader_stage;
-        if limit <= OWN_BUFFERS {
-            return fail(format!("{limit} storage buffers a stage leave no page to bind"));
-        }
-        let pages_per_pass = ((limit - OWN_BUFFERS) as usize).min(MOST_PAGES);
-        let pipeline = compile(engine, pages_per_pass, include_str!("to_tiles.wgsl"));
-        let blank = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("composite blank page"),
-            size: 16,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
+        let pages = Pages::new(engine, OWN_BUFFERS, OWN_BUFFERS + 1)?;
+        let pipeline = compile(engine, &pages, include_str!("to_tiles.wgsl"));
         Some(Self {
             pipeline,
             surfaces: Mutex::new(Vec::new()),
-            pages_per_pass,
-            blank,
+            pages,
         })
     }
 
     /// All this device lets a pass take.
     pub(crate) fn widest(&self) -> Budget {
         Budget {
-            pages: self.pages_per_pass,
+            pages: self.pages.per_pass(),
             tiles: usize::MAX,
             levels: DEPTH,
         }
@@ -319,7 +302,7 @@ impl Composite {
 
     /// The surface's binding: past the plan, the work buffer and the pages.
     fn surface_binding(&self) -> u32 {
-        OWN_BUFFERS + 1 + self.pages_per_pass as u32
+        self.pages.end()
     }
 
     /// The pass that stores to a surface of `format`, compiled the first
@@ -339,7 +322,7 @@ impl Composite {
         let output = include_str!("to_surface.wgsl")
             .replace("__BINDING__", &self.surface_binding().to_string())
             .replace("__FORMAT__", token);
-        let pipeline = compile(engine, self.pages_per_pass, &output);
+        let pipeline = compile(engine, &self.pages, &output);
         surfaces.push((token, pipeline.clone()));
         Some(pipeline)
     }
@@ -359,10 +342,10 @@ impl Composite {
         budget: Budget,
     ) -> Option<usize> {
         let pages_per_pass = budget.pages;
-        if pages_per_pass == 0 || pages_per_pass > self.pages_per_pass {
+        if pages_per_pass == 0 || pages_per_pass > self.pages.per_pass() {
             return fail(format!(
                 "{pages_per_pass} pages a pass; this device binds 1 to {}",
-                self.pages_per_pass
+                self.pages.per_pass()
             ));
         }
         if !(2..=DEPTH).contains(&budget.levels) {
@@ -471,16 +454,8 @@ impl Composite {
                         resource: work.as_entire_binding(),
                     },
                 ];
-                for k in 0..self.pages_per_pass {
-                    let page = match batch.pages.get(k) {
-                        Some(&page) => &plan.pages[usize::from(page)],
-                        None => &self.blank,
-                    };
-                    entries.push(wgpu::BindGroupEntry {
-                        binding: k as u32 + OWN_BUFFERS + 1,
-                        resource: page.as_entire_binding(),
-                    });
-                }
+                let bound = batch.pages.iter().map(|&page| &plan.pages[usize::from(page)]);
+                entries.extend(self.pages.entries(bound));
                 if let Target::Surface(view) = target {
                     entries.push(wgpu::BindGroupEntry {
                         binding: self.surface_binding(),
@@ -513,24 +488,11 @@ impl Composite {
     }
 }
 
-/// The composite pass for `pages_per_pass` pages, putting each pixel by
-/// `output`'s `put` — to_tiles.wgsl's or to_surface.wgsl's.
-fn compile(engine: &Engine, pages_per_pass: usize, output: &str) -> wgpu::ComputePipeline {
-    let bindings: String = (0..pages_per_pass)
-        .map(|k| {
-            format!(
-                "@group(0) @binding({}) var<storage, read> page{k}: array<u32>;\n",
-                k + OWN_BUFFERS as usize + 1
-            )
-        })
-        .collect();
-    let reads: String = (0..pages_per_pass)
-        .map(|k| format!("case {k}u: {{\n      return page{k}[index];\n    }}\n    "))
-        .collect();
-    let body = include_str!("composite.wgsl")
-        .replace("//__PAGES__", &bindings)
-        .replace("//__READS__", &reads)
-        .replace("//__OUTPUT__", output);
+/// The composite pass binding `pages`, putting each pixel by `output`'s
+/// `put` — to_tiles.wgsl's or to_surface.wgsl's.
+fn compile(engine: &Engine, pages: &Pages, output: &str) -> wgpu::ComputePipeline {
+    let pages = pages.source();
+    let body = include_str!("composite.wgsl").replace("//__OUTPUT__", output);
     let sources = [
         ISQRT_WGSL,
         BLEND_WGSL,
@@ -539,6 +501,7 @@ fn compile(engine: &Engine, pages_per_pass: usize, output: &str) -> wgpu::Comput
         TILE_WGSL,
         KEY_WGSL,
         PREMULTIPLY_WGSL,
+        &pages,
         &body,
     ];
     pipeline(engine, &sources, "composite")
@@ -831,13 +794,7 @@ fn encode(
     words.extend(poses);
     let tables_at = words.len() as u32;
     for batch in batches {
-        words.extend((0..page_count).map(|page| {
-            batch
-                .pages
-                .iter()
-                .position(|&bound| usize::from(bound) == page)
-                .map_or(NO_PAGE, |k| k as u32)
-        }));
+        words.extend(page_table(&batch.pages, page_count));
     }
     let tiles_at = words.len() as u32;
     let masks = laid.len().div_ceil(32);
