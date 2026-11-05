@@ -1181,6 +1181,7 @@ void main() {
     'autoNameStartField': (s) => s.autoNameStartField,
     'projectFpsTitle': (s) => s.projectFpsTitle,
     'projectFpsField': (s) => s.projectFpsField,
+    'projectFpsRecommended': (s) => s.projectFpsRecommended,
   };
 
   for (final language in AppLanguage.values) {

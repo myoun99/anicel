@@ -38,6 +38,15 @@ class ProjectFrameRate {
 
   static const ProjectFrameRate fps24 = ProjectFrameRate.integer(24);
 
+  /// The rate a project is best based on: 23.976 — a new project starts on
+  /// it, and the picker marks it. 🗣️new-project-default-fps-23976 (유저
+  /// 2026-10-06): 「프로젝트 기본 fps 23.976으로하자」 · 🗣️F-567 (유저
+  /// 2026-11-05): 「23.976 오른쪽에 추천 … 24가 아니라 23.976을 베이스로 해야
+  /// 영상 임포트할때도 소리 안어긋나서」. A getter, not a constant: as a
+  /// constant every `ntsc(24)` that means 23.976 itself would be pressed to
+  /// read as the recommendation (`use_named_constants`).
+  static ProjectFrameRate get recommended => const ProjectFrameRate.ntsc(24);
+
   /// The picker's menu, in the order it shows them.
   static const List<ProjectFrameRate> presets = [
     ProjectFrameRate.integer(8),

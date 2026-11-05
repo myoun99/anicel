@@ -2245,6 +2245,7 @@ enum AppStrings {
   String get autoNameStartField => _s('autoNameStartField');
   String get projectFpsTitle => _s('projectFpsTitle');
   String get projectFpsField => _s('projectFpsField');
+  String get projectFpsRecommended => _s('projectFpsRecommended');
 
   static AppStrings of(AppLanguage language) => switch (language) {
     AppLanguage.en => _en,
@@ -3687,6 +3688,7 @@ enum AppStrings {
     'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Project frame rate',
     'projectFpsField': 'Frames per second',
+    'projectFpsRecommended': 'Recommended',
     'autoNameStartField': 'Start number',
   };
 
@@ -5547,6 +5549,7 @@ enum AppStrings {
     'frameRulerPages': 'ページ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
     'projectFpsField': '1秒あたりのフレーム数',
+    'projectFpsRecommended': 'おすすめ',
     'autoNameStartField': '開始番号',
   };
 
@@ -7400,6 +7403,7 @@ enum AppStrings {
     'frameRulerPages': '페이지',
     'projectFpsTitle': '프로젝트 프레임레이트',
     'projectFpsField': '초당 프레임 수',
+    'projectFpsRecommended': '추천',
     'autoNameStartField': '시작 번호',
   };
 
@@ -9434,6 +9438,7 @@ enum AppStrings {
     'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Fréquence du projet',
     'projectFpsField': 'Images par seconde',
+    'projectFpsRecommended': 'Recommandé',
     'autoNameStartField': 'Numéro de départ',
   };
 
@@ -11232,6 +11237,7 @@ enum AppStrings {
     'frameRulerPages': '页',
     'projectFpsTitle': '项目帧率',
     'projectFpsField': '每秒帧数',
+    'projectFpsRecommended': '推荐',
     'autoNameStartField': '起始编号',
   };
 }

@@ -270,11 +270,16 @@ class _ChoiceRow extends StatelessWidget {
     required this.label,
     required this.current,
     required this.onTap,
+    this.mark,
   });
 
   final String label;
   final bool current;
   final VoidCallback onTap;
+
+  /// A word to the label's right — 「추천」 on the rate a project is best
+  /// based on (F-567).
+  final String? mark;
 
   @override
   Widget build(BuildContext context) {
@@ -290,12 +295,21 @@ class _ChoiceRow extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: current ? AppColors.accent : AppColors.text,
+              child: Text.rich(
+                TextSpan(
+                  text: label,
+                  style: TextStyle(
+                    color: current ? AppColors.accent : AppColors.text,
+                  ),
+                  children: [
+                    if (mark case final mark?)
+                      TextSpan(
+                        text: '  $mark',
+                        style: TextStyle(color: AppColors.textDim),
+                      ),
+                  ],
                 ),
+                style: const TextStyle(fontSize: 12),
               ),
             ),
           ),
@@ -356,6 +370,9 @@ class _FpsWindowState extends State<_FpsWindow> {
                     : 'timeline-fps-${preset.numerator}-${preset.denominator}',
               ),
               label: preset.label,
+              mark: preset == ProjectFrameRate.recommended
+                  ? strings.projectFpsRecommended
+                  : null,
               current: preset == widget.current,
               onTap: () => Navigator.of(context).pop(preset),
             ),

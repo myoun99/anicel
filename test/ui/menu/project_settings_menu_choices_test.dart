@@ -197,6 +197,35 @@ void main() {
       find.byKey(const ValueKey<String>('project-fps-field')),
       findsOneWidget,
     );
+
+    // 🗣️F-567 (유저 2026-11-05): 「23.976 오른쪽에 추천」 — that row
+    // alone.
+    final recommended = AppText.strings.projectFpsRecommended;
+    for (final preset in ProjectSettingsMenu.fpsPresets) {
+      final row = find.byKey(
+        ValueKey<String>(
+          preset.isInteger
+              ? 'timeline-fps-${preset.numerator}'
+              : 'timeline-fps-${preset.numerator}-${preset.denominator}',
+        ),
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.textContaining(recommended),
+        ),
+        preset == ProjectFrameRate.recommended ? findsOneWidget : findsNothing,
+        reason: preset.label,
+      );
+    }
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('timeline-fps-24000-1001')),
+        matching: find.text('23.976 fps  $recommended'),
+      ),
+      findsOneWidget,
+      reason: 'the mark to the rate\'s right',
+    );
   });
 
   testWidgets('the camera row opens the size window, and applying writes '
