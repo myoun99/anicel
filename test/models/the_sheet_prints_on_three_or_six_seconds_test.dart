@@ -115,13 +115,22 @@ void main() {
       TimesheetSheetKind.threeSeconds,
     );
     expect(
-      sheetKindFits(TimesheetSheetKind.sixSeconds, celColumns: 9, fps: 24),
-      isFalse,
+      sheetKindRefusal(TimesheetSheetKind.sixSeconds, celColumns: 8, fps: 24),
+      isNull,
     );
     expect(
-      sheetKindFits(TimesheetSheetKind.threeSeconds, celColumns: 9, fps: 24),
-      isTrue,
+      sheetKindRefusal(TimesheetSheetKind.sixSeconds, celColumns: 9, fps: 24),
+      TimesheetSheetRefusal.celColumns,
     );
+    for (final kind in TimesheetSheetKind.values) {
+      if (kind != TimesheetSheetKind.sixSeconds) {
+        expect(
+          sheetKindRefusal(kind, celColumns: 40, fps: 24),
+          isNull,
+          reason: '$kind widens for them',
+        );
+      }
+    }
 
     final crowded = _sheet(_cut(cels: 21));
     expect(_count(crowded, TimesheetColumnKind.action), 21);
@@ -378,6 +387,17 @@ void main() {
           TimesheetSheetKind.threeSeconds,
         );
         expect(_sheet(_cut(cels: 3, kind: kind)).sheetKind, kind);
+        expect(
+          sheetKindRefusal(kind, celColumns: 3, fps: 30),
+          TimesheetSheetRefusal.viewerRate,
+        );
+        expect(sheetKindRefusal(kind, celColumns: 3, fps: 24), isNull);
+      }
+      for (final ours in [
+        TimesheetSheetKind.sixSeconds,
+        TimesheetSheetKind.threeSeconds,
+      ]) {
+        expect(sheetKindRefusal(ours, celColumns: 3, fps: 30), isNull);
       }
     });
   });

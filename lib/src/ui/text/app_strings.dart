@@ -852,6 +852,26 @@ enum AppStrings {
       kind.viewerSheet,
     ),
   };
+
+  /// Why a cut carrying [celColumns] cel columns cannot print on a paper
+  /// ([sheetKindRefusal]) — the tooltip a greyed paper wears (I-162-Q3,
+  /// 유저 2026-11-05: 「회색일때 툴팁으로 이유 표시」).
+  String sheetKindRefused(
+    TimesheetSheetRefusal refusal, {
+    required int celColumns,
+  }) => switch (refusal) {
+    TimesheetSheetRefusal.viewerRate => xdtsViewerRateRefused,
+    TimesheetSheetRefusal.celColumns => _s('sheetSixSecondsFull')
+        .replaceAll(
+          '{most}',
+          '${TimesheetSheetKind.sixSeconds.blockColumns}',
+        )
+        .replaceAll('{n}', '$celColumns'),
+  };
+
+  /// Why the viewer's sheets and the ink laid on them are shut in a
+  /// project the viewer does not read true ([xdtsViewerReads]).
+  String get xdtsViewerRateRefused => _s('xdtsViewerRateRefused');
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get conteCoverPage => _s('conteCoverPage');
   String get conteBlankPage => _s('conteBlankPage');
@@ -2754,6 +2774,10 @@ enum AppStrings {
     'sheetStretchLineOff': 'Off',
     'sheetLength': 'Sheet length',
     'sheetXdtsPapers': 'XDTS Viewer sheet',
+    'xdtsViewerRateRefused':
+        'The XDTS Viewer counts 24 frames a second — 24 fps projects only',
+    'sheetSixSecondsFull': 'A 6 sec block holds {most} columns — this cut '
+        'has {n}',
     'sheetThreeSeconds': '3 sec',
     'sheetSixSeconds': '6 sec',
     'sheetBrushAllow': 'Allow Brush',
@@ -4183,6 +4207,8 @@ enum AppStrings {
     'sheetStretchLineOff': 'なし',
     'sheetLength': 'シートの長さ',
     'sheetXdtsPapers': 'XDTS Viewer 用紙',
+    'xdtsViewerRateRefused': 'XDTS Viewer は1秒を24コマで数えます — 24fps のプロジェクトのみ',
+    'sheetSixSecondsFull': '6秒シートは1ブロック{most}列まで — このカットは{n}列',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
     'sheetBrushAllow': 'ブラシを許可',
@@ -6046,6 +6072,8 @@ enum AppStrings {
     'sheetStretchLineOff': '없음',
     'sheetLength': '시트 길이',
     'sheetXdtsPapers': 'XDTS 뷰어 용지',
+    'xdtsViewerRateRefused': 'XDTS 뷰어는 1초를 24코마로 셉니다 — 24fps 프로젝트에서만',
+    'sheetSixSecondsFull': '6초 시트는 한 블록에 {most}열까지 — 이 컷은 {n}열',
     'sheetThreeSeconds': '3초',
     'sheetSixSeconds': '6초',
     'sheetBrushAllow': '브러시 허용',
@@ -7944,6 +7972,11 @@ enum AppStrings {
     'sheetStretchLineOff': 'Non',
     'sheetLength': 'Longueur de feuille',
     'sheetXdtsPapers': 'Feuille XDTS Viewer',
+    'xdtsViewerRateRefused':
+        'Le XDTS Viewer compte 24 images par seconde — projets à 24 i/s '
+        'seulement',
+    'sheetSixSecondsFull': 'Un bloc de 6 s tient {most} colonnes — ce plan '
+        'en a {n}',
     'sheetThreeSeconds': '3 s',
     'sheetSixSeconds': '6 s',
     'sheetBrushAllow': 'Autoriser le pinceau',
@@ -9897,6 +9930,8 @@ enum AppStrings {
     'sheetStretchLineOff': '无',
     'sheetLength': '摄影表长度',
     'sheetXdtsPapers': 'XDTS Viewer 用纸',
+    'xdtsViewerRateRefused': 'XDTS Viewer 按每秒24格计数 — 仅限24fps项目',
+    'sheetSixSecondsFull': '6秒表每栏最多{most}列 — 本镜头有{n}列',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
     'sheetBrushAllow': '允许画笔',

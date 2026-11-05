@@ -53,6 +53,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/draw_on_current_frame.dart';
@@ -1000,6 +1001,18 @@ void main() {
         isFalse,
         reason: 'its row stands under a picture sheet, dead',
       );
+      expect(
+        find.ancestor(of: ink, matching: find.anyTooltip),
+        findsNothing,
+        reason: 'the viewer counts this project — no reason to give',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('export-tsformat-xdts-sheet')),
+          matching: find.anyTooltip,
+        ),
+        findsNothing,
+      );
       await pickPaperFormat(tester, 'export-tsformat', 'xdts');
       await tester.runAsync(state.export);
       await tester.pump();
@@ -1283,6 +1296,21 @@ void main() {
       await tester.pump();
       expect(tester.booleanDotIn(ink).enabled, isFalse);
       expect(state.debugSpecs.cels.sheetInk, isTrue);
+      // I-162-Q3 (유저 2026-11-05): 「회색일때 툴팁으로 이유 표시」 — the
+      // timesheet's paper's reason, word for word.
+      const why =
+          'The XDTS Viewer counts 24 frames a second — 24 fps projects only';
+      expect(
+        find.ancestor(of: ink, matching: find.tooltipSaying(why)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('export-tsformat-xdts-sheet')),
+          matching: find.tooltipSaying(why),
+        ),
+        findsOneWidget,
+      );
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), [

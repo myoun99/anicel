@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/ime_draft.dart';
 
 const _bar = ValueKey<String>('timesheet-format-stretch-line-action');
@@ -75,6 +76,17 @@ Future<void> _press(WidgetTester tester, ValueKey<String> key) async {
 
 Pill _pill(WidgetTester tester, ValueKey<String> key) =>
     tester.widget<Pill>(find.byKey(key));
+
+/// What the pill under [key] says when the pointer rests on it — null
+/// where it says nothing.
+String? _tooltip(WidgetTester tester, ValueKey<String> key) => switch (find
+    .ancestor(of: find.byKey(key), matching: find.anyTooltip)
+    .evaluate()
+    .toList()) {
+  [] => null,
+  [final tip] => tooltipOf(tip.widget),
+  _ => fail('more than one tooltip round $key'),
+};
 
 ValueKey<String> _box(TimesheetHeaderField field) =>
     ValueKey<String>('timesheet-format-visible-${field.name}');
@@ -399,9 +411,8 @@ void main() {
     });
 
     testWidgets('a cut whose cel columns outgrow the 6-second strip prints on '
-        'the 3-second sheet — 6초 keeps its place and takes no tap', (
-      tester,
-    ) async {
+        'the 3-second sheet — 6초 keeps its place, takes no tap and says '
+        'why (I-162-Q3)', (tester) async {
       TimesheetFormat? format;
       await _openWindow(
         tester,
@@ -420,6 +431,15 @@ void main() {
       expect(_pill(tester, paper(six)).selected, isFalse);
       expect(_pill(tester, paper(six)).onTap, isNull);
       expect(_pill(tester, paper(three)).onTap, isNotNull);
+      expect(
+        _tooltip(tester, paper(six)),
+        'A 6 sec block holds 8 columns — this cut has 9',
+      );
+      for (final kind in TimesheetSheetKind.values) {
+        if (kind != six) {
+          expect(_tooltip(tester, paper(kind)), isNull, reason: '$kind');
+        }
+      }
 
       await _press(tester, _save);
       expect(
@@ -441,6 +461,7 @@ void main() {
       for (final kind in TimesheetSheetKind.values) {
         expect(find.byKey(paper(kind)), findsOneWidget);
         expect(_pill(tester, paper(kind)).onTap, isNull);
+        expect(_tooltip(tester, paper(kind)), isNull, reason: '$kind');
       }
 
       await _press(tester, _save);
@@ -475,6 +496,7 @@ void main() {
       for (final kind in xdts) {
         expect(_pill(tester, paper(kind)).onTap, isNotNull, reason: '$kind');
         expect(_pill(tester, paper(kind)).selected, isFalse, reason: '$kind');
+        expect(_tooltip(tester, paper(kind)), isNull, reason: '$kind');
       }
       expect(_pill(tester, paper(three)).selected, isTrue);
 
@@ -491,8 +513,8 @@ void main() {
     });
 
     testWidgets('off the viewer\'s 24 a second the XDTS sheets keep their '
-        'place and take no tap, and a cut that chose one prints on the '
-        '6-second sheet (I-162-Q3)', (tester) async {
+        'place, take no tap and say why, and a cut that chose one prints on '
+        'the 6-second sheet (I-162-Q3)', (tester) async {
       TimesheetFormat? format;
       await _openWindow(
         tester,
@@ -511,8 +533,15 @@ void main() {
         expect(find.byKey(paper(kind)), findsOneWidget);
         expect(_pill(tester, paper(kind)).onTap, isNull, reason: '$kind');
         expect(_pill(tester, paper(kind)).selected, isFalse, reason: '$kind');
+        expect(
+          _tooltip(tester, paper(kind)),
+          'The XDTS Viewer counts 24 frames a second — 24 fps projects only',
+          reason: '$kind',
+        );
       }
       expect(_pill(tester, paper(six)).selected, isTrue);
+      expect(_tooltip(tester, paper(six)), isNull);
+      expect(_tooltip(tester, paper(three)), isNull);
 
       await _press(tester, _save);
       expect(

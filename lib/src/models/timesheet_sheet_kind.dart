@@ -36,7 +36,7 @@ enum TimesheetSheetKind {
     int celColumns = 0,
     this.xdts,
   }) : _strips = strips,
-       _celColumns = celColumns;
+       blockColumns = celColumns;
 
   /// The stored key.
   final String jsonValue;
@@ -56,7 +56,7 @@ enum TimesheetSheetKind {
   /// The ACTION and the CELL blocks' columns a strip of one of our own
   /// sheets carries. A block with more cel rows grows past them (F-406: the
   /// CELL block by the ACTION block's law).
-  final int _celColumns;
+  final int blockColumns;
 
   /// The 3-second strips a page lays side by side — an XDTS sheet's
   /// bodies.
@@ -83,7 +83,7 @@ enum TimesheetSheetKind {
   };
 
   /// The ACTION block's columns and the CELL block's, for [actions] and
-  /// [cells] rows on them: each block its own rows past [_celColumns] on
+  /// [cells] rows on them: each block its own rows past [blockColumns] on
   /// our own sheets, and both the wider's on an XDTS sheet, as the viewer
   /// widens them ([xdtsFormFor]).
   ({int action, int cel}) celBlockColumns({
@@ -92,8 +92,8 @@ enum TimesheetSheetKind {
   }) => switch (xdtsFormFor(columns: math.max(actions, cells))) {
     final form? => (action: form.keyColumns, cel: form.cellsColumns),
     null => (
-      action: math.max(_celColumns, actions),
-      cel: math.max(_celColumns, cells),
+      action: math.max(blockColumns, actions),
+      cel: math.max(blockColumns, cells),
     ),
   };
 
@@ -107,35 +107,55 @@ enum TimesheetSheetKind {
   }
 }
 
-/// The sheet a cut that chose [chosen] prints on, carrying [celColumns] cel
-/// columns at [fps] frames a second — the one question the sheet, its
-/// export and the format window's switch all ask:
-///
-/// - [chosen] while it can;
-/// - an XDTS sheet only at the viewer's 24 a second ([xdtsViewerReads])
-///   — the 6-second sheet otherwise (I-162-Q3, 「답 전까지는 1」);
-/// - the 6-second sheet while a strip holds the columns, the 3-second
-///   sheet once it cannot (유저 2026-09-25, timesheet-sheet-capacity-Q1
-///   「3초 시트로 고정(6초 끔)」). An XDTS sheet widens for them as the
-///   viewer does.
+/// Why a cut cannot print on a sheet — and the sheet it prints on instead.
+enum TimesheetSheetRefusal {
+  /// An XDTS sheet off the viewer's 24 a second ([xdtsViewerReads]): the
+  /// 6-second sheet. 🗣️I-162-Q3 (유저 2026-11-05): 「24 계열에서만
+  /// 고른다(아니면 회색)」.
+  viewerRate(TimesheetSheetKind.sixSeconds),
+
+  /// More cel columns in a block than the 6-second strip holds: the
+  /// 3-second sheet (유저 2026-09-25, timesheet-sheet-capacity-Q1 「3초
+  /// 시트로 고정(6초 끔)」). An XDTS sheet widens for them as the viewer
+  /// does, and the 3-second sheet as F-406 does.
+  celColumns(TimesheetSheetKind.threeSeconds);
+
+  const TimesheetSheetRefusal(this.instead);
+
+  final TimesheetSheetKind instead;
+}
+
+/// Why a cut carrying [celColumns] cel columns at [fps] frames a second
+/// cannot print on [kind], or null where it can — the one question the
+/// sheet, its export and the format window's paper all ask: the format
+/// window greys a refused paper and says this of it (I-162-Q3, 유저
+/// 2026-11-05: 「회색일때 툴팁으로 이유 표시」).
+TimesheetSheetRefusal? sheetKindRefusal(
+  TimesheetSheetKind kind, {
+  required int celColumns,
+  required int fps,
+}) {
+  if (kind.xdts != null && !xdtsViewerReads(fps)) {
+    return TimesheetSheetRefusal.viewerRate;
+  }
+  if (kind == TimesheetSheetKind.sixSeconds && celColumns > kind.blockColumns) {
+    return TimesheetSheetRefusal.celColumns;
+  }
+  return null;
+}
+
+/// The sheet a cut that chose [chosen] prints on: [chosen] while it can,
+/// and the sheet each refusal names instead until one can
+/// ([sheetKindRefusal]).
 TimesheetSheetKind sheetKindFor(
   TimesheetSheetKind chosen, {
   required int celColumns,
   required int fps,
-}) {
-  final printable = chosen.xdts == null || xdtsViewerReads(fps)
-      ? chosen
-      : TimesheetSheetKind.sixSeconds;
-  return printable == TimesheetSheetKind.sixSeconds &&
-          celColumns > TimesheetSheetKind.sixSeconds._celColumns
-      ? TimesheetSheetKind.threeSeconds
-      : printable;
-}
-
-/// Whether a cut carrying [celColumns] cel columns at [fps] can print on
-/// [kind] ([sheetKindFor]) — the format window offers only these.
-bool sheetKindFits(
-  TimesheetSheetKind kind, {
-  required int celColumns,
-  required int fps,
-}) => sheetKindFor(kind, celColumns: celColumns, fps: fps) == kind;
+}) => switch (sheetKindRefusal(chosen, celColumns: celColumns, fps: fps)) {
+  null => chosen,
+  final refusal => sheetKindFor(
+    refusal.instead,
+    celColumns: celColumns,
+    fps: fps,
+  ),
+};

@@ -46,7 +46,7 @@ class TimesheetFormatWindow extends StatefulWidget {
 
   /// The cut the sheet shows: the paper it chose, the cel columns its
   /// sheet prints and the frames a second it counts — what decides which
-  /// papers it can print on ([sheetKindFits]) — the words that say which
+  /// papers it can print on ([sheetKindRefusal]) — the words that say which
   /// cut, and the fixed text it keeps (null for the format's). Null in the
   /// gap.
   final ({
@@ -126,35 +126,40 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
 
   /// The papers the cut prints on, [kinds] of them in a strip, the one the
   /// sheet prints on now lit — one choice across our sheets' strip and the
-  /// XDTS Viewer's (I-162). A paper the cut cannot print on keeps its pill
-  /// and takes no tap (유저 2026-09-25, timesheet-sheet-capacity-Q1 「3초
-  /// 시트로 고정(6초 끔)」 — and an XDTS sheet off the viewer's 24 a second,
-  /// I-162-Q3); in the gap none does.
+  /// XDTS Viewer's (I-162). A paper the cut cannot print on keeps its pill,
+  /// takes no tap and says why ([sheetKindRefusal]); in the gap none takes
+  /// one.
   Widget _papers(List<TimesheetSheetKind> kinds) {
     final sheet = widget.sheet;
     final chosen = _kind;
     final printed = sheet == null || chosen == null
         ? TimesheetSheetKind.sixSeconds
         : sheetKindFor(chosen, celColumns: sheet.celColumns, fps: sheet.fps);
-    return PillStrip(
-      items: [
-        for (final kind in kinds)
-          PillItem(
-            keyValue: 'timesheet-format-paper-${kind.jsonValue}',
-            label: AppText.strings.sheetKindName(kind),
-            selected: kind == printed,
-            onTap:
-                sheet != null &&
-                    sheetKindFits(
-                      kind,
-                      celColumns: sheet.celColumns,
-                      fps: sheet.fps,
-                    )
-                ? () => setState(() => _kind = kind)
-                : null,
-          ),
-      ],
-    );
+    PillItem paper(TimesheetSheetKind kind) {
+      final refusal = sheet == null
+          ? null
+          : sheetKindRefusal(
+              kind,
+              celColumns: sheet.celColumns,
+              fps: sheet.fps,
+            );
+      return PillItem(
+        keyValue: 'timesheet-format-paper-${kind.jsonValue}',
+        label: AppText.strings.sheetKindName(kind),
+        selected: kind == printed,
+        tooltip: sheet == null || refusal == null
+            ? null
+            : AppText.strings.sheetKindRefused(
+                refusal,
+                celColumns: sheet.celColumns,
+              ),
+        onTap: sheet != null && refusal == null
+            ? () => setState(() => _kind = kind)
+            : null,
+      );
+    }
+
+    return PillStrip(items: [for (final kind in kinds) paper(kind)]);
   }
 
   void _toggleField(TimesheetHeaderField field) => setState(() {

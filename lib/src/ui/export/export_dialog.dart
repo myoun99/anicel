@@ -4941,12 +4941,16 @@ class ExportDialogState extends State<ExportDialog> {
   /// 타임시트 형식: its pages as pictures — PNG or JPG — or the digital sheet,
   /// with or without its handwriting (잉크 출력, I-161) laid on the viewer
   /// sheet picked under it — rows that stand under either, live under the
-  /// digital sheet alone, in a project the viewer reads (I-161-Q7).
+  /// digital sheet alone, in a project the viewer reads (I-161-Q7), and
+  /// saying why where it does not, as the timesheet's own paper does
+  /// (I-162-Q3: 「회색일때 툴팁으로 이유 표시」).
   ExportAccordion _sheetFormatAccordion(CelsExportSpec spec) {
     final pictured = spec.sheetFormat == ExportTimesheetFormat.sheetImage;
-    final inkLive = !pictured && xdtsViewerReads(_projectFps);
+    final read = xdtsViewerReads(_projectFps);
+    final inkLive = !pictured && read;
     final viewer = spec.viewerSheetFor(_sheetDocFor(_activeCut).$1.sheetKind);
     final strings = AppText.strings;
+    final unread = read ? null : strings.xdtsViewerRateRefused;
     return ExportAccordion(
       title: strings.exTimesheetFormat,
       summary: pictured
@@ -4987,6 +4991,7 @@ class ExportDialogState extends State<ExportDialog> {
           _specToggle(
             keyValue: 'export-tsformat-xdts-ink',
             label: strings.exXdtsInk,
+            help: unread,
             value: spec.sheetInk,
             write: inkLive ? (value) => spec.copyWith(sheetInk: value) : null,
           ),
@@ -5000,6 +5005,7 @@ class ExportDialogState extends State<ExportDialog> {
               child: PanelFlyoutButton(
                 key: const ValueKey<String>('export-tsformat-xdts-sheet'),
                 label: strings.xdtsViewerSheetName(viewer),
+                tooltip: unread,
                 enabled: !_isExporting && inkLive && spec.sheetInk,
                 entriesBuilder: () =>
                     XdtsViewerSheet.values.asFlyoutValueChoices(
@@ -5248,11 +5254,13 @@ class ExportDialogState extends State<ExportDialog> {
   SettingsSwitchRow _specToggle({
     required String keyValue,
     required String label,
+    String? help,
     required bool value,
     required ExportTabSpec Function(bool value)? write,
   }) => SettingsSwitchRow(
     tileKey: ValueKey<String>(keyValue),
     label: label,
+    help: help,
     value: value,
     onChanged: _isExporting || write == null
         ? null
