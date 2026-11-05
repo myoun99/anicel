@@ -2,7 +2,7 @@
 //! what the formula gives by hand — never against a CPU copy of it
 //! (`kernels/mod.rs` has why).
 
-use super::{Dab, Dabs, Edge, RoundProfile, Shape, StrokeTile, Turn};
+use super::{Dab, Dabs, Edge, Paper, RoundProfile, Shape, StrokeTile, Texture, Turn};
 use crate::kernels::composite::TILE_TEXELS;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
@@ -24,10 +24,16 @@ impl Piled {
     }
 }
 
-/// `dabs` piled on `tiles` (slots in their order) whose planes start as
-/// `under`, every pixel of every tile — or nothing, where the kernel
-/// refuses them.
-fn tried(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Option<Piled> {
+/// `dabs` piled by `kernel` over `paper` on `tiles` (slots in their order)
+/// whose planes start as `under`, every pixel of every tile — or nothing,
+/// where the kernel refuses them.
+fn laid(
+    kernel: &mut Dabs,
+    tiles: &[(i32, i32)],
+    under: [u32; 4],
+    paper: Option<&Paper>,
+    dabs: &[Dab],
+) -> Option<Piled> {
     let engine = first_engine();
     let texels = tiles.len() * TILE_TEXELS as usize;
     let words: Vec<u8> = (0..texels)
@@ -54,7 +60,7 @@ fn tried(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Option<Piled> {
         .enumerate()
         .map(|(slot, &(column, row))| StrokeTile { column, row, slot: slot as u32 })
         .collect();
-    Dabs::new(engine).pile(engine, &stroke, dabs, &planes, &view)?;
+    kernel.pile(engine, &stroke, dabs, paper, &planes, &view)?;
     let words = |buffer: &wgpu::Buffer| -> Vec<u32> {
         read_buffer(engine, buffer)
             .chunks_exact(4)
@@ -66,6 +72,10 @@ fn tried(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Option<Piled> {
         .map(|pair| [pair[0] & 0xffff, pair[0] >> 16, pair[1] & 0xffff, pair[1] >> 16])
         .collect();
     Some(Piled { planes, view: words(&view) })
+}
+
+fn tried(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Option<Piled> {
+    laid(&mut Dabs::new(first_engine()), tiles, under, None, dabs)
 }
 
 fn piled(tiles: &[(i32, i32)], under: [u32; 4], dabs: &[Dab]) -> Piled {
@@ -86,6 +96,7 @@ fn square(region: [i32; 4], colour: [u8; 4], flow: f64) -> Dab<'static> {
         shape: Shape::Square,
         turn: Turn::STRAIGHT,
         evening: None,
+        density: 1.0,
     }
 }
 
@@ -320,7 +331,7 @@ fn a_small_circle_is_read_by_its_square_tables() {
 /// A bitmap tip of `radius` over `texels`, `side` a side, turned by `turn`,
 /// at `centre`, over the box the app gives it (`dirtyRegionForBrushDab`):
 /// the turned rectangle's half extents.
-fn tipped<'a>(texels: &'a [f64], side: u32, radius: f64, turn: Turn, centre: [f64; 2]) -> Dab<'a> {
+fn tipped<'a>(texture: &'a Texture, radius: f64, turn: Turn, centre: [f64; 2]) -> Dab<'a> {
     let minor = radius * turn.roundness;
     let half = [
         radius * turn.cos.abs() + minor * turn.sin.abs(),
@@ -335,7 +346,7 @@ fn tipped<'a>(texels: &'a [f64], side: u32, radius: f64, turn: Turn, centre: [f6
             (cx + half[0]).ceil() as i32,
             (cy + half[1]).ceil() as i32,
         ],
-        shape: Shape::Tip { texels, side, radius },
+        shape: Shape::Tip { texture, radius },
         turn,
         ..square([0; 4], RED, 1.0)
     }
@@ -344,10 +355,15 @@ fn tipped<'a>(texels: &'a [f64], side: u32, radius: f64, turn: Turn, centre: [f6
 /// A 2 × 2 tip, row after row: 255, 128 over 64, 0.
 const CORNERS: [f64; 4] = [1.0, 128.0 / 255.0, 64.0 / 255.0, 0.0];
 
+fn texture(texels: &[f64], side: u32) -> Texture {
+    Texture::new(texels, side).expect("texture")
+}
+
 /// The alphas a dab of [`CORNERS`] leaves on pixels (9, 9), (10, 9),
 /// (9, 10) and (10, 10).
 fn corners(turn: Turn, centre: [f64; 2]) -> [u32; 4] {
-    let piled = piled(&[(0, 0)], [0; 4], &[tipped(&CORNERS, 2, 1.0, turn, centre)]);
+    let tip = texture(&CORNERS, 2);
+    let piled = piled(&[(0, 0)], [0; 4], &[tipped(&tip, 1.0, turn, centre)]);
     [(9, 9), (10, 9), (9, 10), (10, 10)].map(|(x, y)| piled.at(0, x, y).0[3])
 }
 
@@ -380,7 +396,8 @@ fn a_bitmap_tip_is_read_between_its_texels() {
 fn a_bitmap_tip_lays_up_to_its_very_edge() {
     let alphas = corners(Turn::STRAIGHT, [9.5, 10.0]);
     assert_eq!(alphas[..2], [49216, 16448]);
-    let past = tipped(&CORNERS, 2, 1.0, Turn::STRAIGHT, [10.25, 10.0]);
+    let tip = texture(&CORNERS, 2);
+    let past = tipped(&tip, 1.0, Turn::STRAIGHT, [10.25, 10.0]);
     assert_eq!(piled(&[(0, 0)], [0; 4], &[past]).at(0, 11, 9), ([0; 4], 0));
 }
 
@@ -394,12 +411,13 @@ fn a_bitmap_tip_lays_up_to_its_very_edge() {
 #[test]
 fn a_thin_tip_lays_nothing_off_its_minor_axis() {
     let thin = Turn { cos: 1.0, sin: 0.0, roundness: 1.0 / 64.0 };
-    let dab = Dab { region: [0, 0, 20, 20], ..tipped(&CORNERS, 2, 8.0, thin, [10.5, 10.5]) };
+    let tip = texture(&CORNERS, 2);
+    let dab = Dab { region: [0, 0, 20, 20], ..tipped(&tip, 8.0, thin, [10.5, 10.5]) };
     let piled_thin = piled(&[(0, 0)], [0; 4], &[dab]);
     assert_ne!(piled_thin.at(0, 10, 10).0[3], 0);
     assert_eq!(piled_thin.at(0, 10, 14), ([0; 4], 0));
     let thinner = Turn { cos: 1.0, sin: 0.0, roundness: 1.0 / 512.0 };
-    let dab = tipped(&CORNERS, 2, 1.0, thinner, [10.5, 10.5]);
+    let dab = tipped(&tip, 1.0, thinner, [10.5, 10.5]);
     assert_eq!(piled(&[(0, 0)], [0; 4], &[dab]).at(0, 11, 10).0[3], 8224);
 }
 
@@ -437,17 +455,128 @@ fn an_ellipse_reads_its_profile_at_the_stretched_distance() {
     assert_eq!(piled.at(0, 12, 10).0[3], 43690);
 }
 
-// A tip whose texels don't fill its side, one too small to reach a unit of
-// distance, or one squeezed so thin its stretch would leave u32 is refused
-// rather than read wrong. (Past 16384 texels a side it is refused too; such
-// a tip is 2 GiB of texels and doesn't fit a test.)
+// A texture whose texels don't fill its side, or of no side, a tip too
+// small to reach a unit of distance, or one squeezed so thin its stretch
+// would leave u32 is refused rather than read wrong. (Past 16384 texels a
+// side a texture is refused too; it is 2 GiB of texels and doesn't fit a
+// test.)
 #[test]
 fn a_tip_past_what_the_integers_hold_is_refused() {
+    assert!(Texture::new(&CORNERS, 3).is_none());
+    assert!(Texture::new(&[], 0).is_none());
     let refused = |dab: Dab| tried(&[(0, 0)], [0; 4], &[dab]).is_none();
-    assert!(refused(tipped(&CORNERS, 3, 1.0, Turn::STRAIGHT, [10.0, 10.0])));
-    assert!(refused(tipped(&CORNERS, 2, 0.001, Turn::STRAIGHT, [10.0, 10.0])));
+    let tip = texture(&CORNERS, 2);
+    assert!(refused(tipped(&tip, 0.001, Turn::STRAIGHT, [10.0, 10.0])));
     let thin = Turn { cos: 1.0, sin: 0.0, roundness: 1e-6 };
-    assert!(refused(tipped(&CORNERS, 2, 1.0, thin, [10.0, 10.0])));
+    assert!(refused(tipped(&tip, 1.0, thin, [10.0, 10.0])));
+}
+
+/// A square dab of red at full flow over [-4, 0) to [4, 4), taking `density`
+/// of the paper.
+fn on_paper(density: f64) -> Dab<'static> {
+    Dab { density, ..square([-4, 0, 4, 4], RED, 1.0) }
+}
+
+/// The alphas `dab` leaves over `paper` on pixels (0, 0), (1, 0), (0, 1)
+/// and (1, 1).
+fn papered(paper: &Paper, dab: Dab) -> [u32; 4] {
+    let piled = laid(&mut Dabs::new(first_engine()), &[(0, 0)], [0; 4], Some(paper), &[dab]);
+    let piled = piled.expect("pile");
+    [(0, 0), (1, 0), (0, 1), (1, 1)].map(|(x, y)| piled.at(0, x, y).0[3])
+}
+
+// At a texel a pixel, pixel (x, y)'s centre is texel (x mod 2, y mod 2)'s
+// own: the paper tiles from the canvas's origin, and a dab taking all of
+// it lays it — 255, 128 over 64, and nothing where it is 0. Left of the
+// origin it tiles on: pixel −1 is texel 1.
+#[test]
+fn the_paper_tiles_from_the_canvas_origin() {
+    let grain = texture(&CORNERS, 2);
+    let paper = Paper { texture: &grain, scale: 1.0, height: false };
+    assert_eq!(papered(&paper, on_paper(1.0)), [ONE, 32896, 16448, 0]);
+    let piled = laid(&mut Dabs::new(first_engine()), &[(0, 0), (-1, 0)], [0; 4], Some(&paper), &[
+        on_paper(1.0),
+    ]);
+    let piled = piled.expect("pile");
+    assert_eq!(piled.at(0, 2, 2).0[3], ONE);
+    assert_eq!(piled.at(0, 1, 1), ([0; 4], 0));
+    assert_eq!(piled.at(1, 127, 0).0[3], 32896);
+    assert_eq!(piled.at(1, 126, 0).0[3], ONE);
+}
+
+// A dab takes the paper by its density: at ½ it keeps half of what the
+// paper takes away — 32767 + round(32768·t/65535), 49215 over 128·257,
+// 40991 over 64·257, 32767 over nothing.
+#[test]
+fn a_dab_takes_the_paper_by_its_density() {
+    let grain = texture(&CORNERS, 2);
+    let paper = Paper { texture: &grain, scale: 1.0, height: false };
+    assert_eq!(papered(&paper, on_paper(0.5)), [ONE, 49215, 40991, 32767]);
+}
+
+// 高さ: a dab reaches density × its coverage into the paper and touches it
+// where it stands above that floor, fully a quarter above: at ½ that is
+// (t − 32767)·4 — all of 255, 129·4 = 516 of 128·257, nothing below.
+#[test]
+fn the_papers_height_cuts_where_it_stands_below_the_dab() {
+    let grain = texture(&CORNERS, 2);
+    let paper = Paper { texture: &grain, scale: 1.0, height: true };
+    assert_eq!(papered(&paper, on_paper(0.5)), [ONE, 516, 0, 0]);
+}
+
+/// A 2 × 2 paper of stripes down: 255 then nothing along each row.
+const STRIPES: [f64; 4] = [1.0, 0.0, 1.0, 0.0];
+
+// At two pixels a texel the paper is read between its texels, wrapping.
+// Pixel 0's centre is ¾ of the way from texel −1, that is texel 1, to
+// texel 0: ⌊(65535·24576 + 16384)/32768⌋ = 49151. Pixel 1's is ¼ past
+// texel 0: 65535 + ⌊(−65535·8192 + 16384)/32768⌋ = 49151. Pixel 2's is ¾
+// past texel 0: 65535 + ⌊(−65535·24576 + 16384)/32768⌋ = 16384. Pixel 3's
+// is ¼ past texel 1: ⌊(65535·8192 + 16384)/32768⌋ = 16384. It runs on
+// across the tiles: pixel 128 is pixel 0, pixel −1 is pixel 3.
+#[test]
+fn the_paper_runs_on_between_its_texels_and_across_the_tiles() {
+    let grain = texture(&STRIPES, 2);
+    let paper = Paper { texture: &grain, scale: 2.0, height: false };
+    let dab = Dab { region: [-4, 0, 132, 4], ..on_paper(1.0) };
+    let tiles = [(0, 0), (1, 0), (-1, 0)];
+    let piled = laid(&mut Dabs::new(first_engine()), &tiles, [0; 4], Some(&paper), &[dab]);
+    let piled = piled.expect("pile");
+    let row = [0, 1, 2, 3].map(|x| piled.at(0, x, 0).0[3]);
+    assert_eq!(row, [49151, 49151, 16384, 16384]);
+    assert_eq!(piled.at(1, 0, 0).0[3], 49151);
+    assert_eq!(piled.at(2, 127, 0).0[3], 16384);
+}
+
+// A paper at no whole part of a texel a pixel, or past u32 of them, is
+// refused.
+#[test]
+fn a_paper_past_what_the_integers_hold_is_refused() {
+    let grain = texture(&CORNERS, 2);
+    for scale in [0.0, 1e-6, 200000.0] {
+        let paper = Paper { texture: &grain, scale, height: false };
+        let kernel = &mut Dabs::new(first_engine());
+        assert!(laid(kernel, &[(0, 0)], [0; 4], Some(&paper), &[on_paper(1.0)]).is_none());
+    }
+}
+
+// A texture goes to the GPU once and is read from there by every pile
+// after; where the plan has no room for a pile, it starts over with what
+// that pile reads. Each pile by one kernel lays what a new kernel lays.
+#[test]
+fn textures_stay_on_the_plan_from_pile_to_pile() {
+    let small = texture(&CORNERS, 2);
+    let large = texture(&bristles(), 32);
+    let paper = Paper { texture: &small, scale: 1.0, height: false };
+    let kept = &mut Dabs::new(first_engine());
+    for (texture, on) in [(&small, None), (&large, None), (&small, None), (&large, Some(&paper))] {
+        let tip = [tipped(texture, 9.0, turn_of(1), [20.0, 20.0])];
+        let by_kept = laid(kept, &[(0, 0)], [0; 4], on, &tip).expect("pile");
+        let fresh = &mut Dabs::new(first_engine());
+        let by_fresh = laid(fresh, &[(0, 0)], [0; 4], on, &tip).expect("pile");
+        assert_eq!(by_kept.planes, by_fresh.planes);
+        assert_eq!(by_kept.view, by_fresh.view);
+    }
 }
 
 // A dab across a seam lays each tile its own part, and a tile on the
@@ -548,6 +677,13 @@ fn bristles() -> Vec<f64> {
         .collect()
 }
 
+/// A 32 × 32 paper grain of hashed greys.
+fn grain() -> Vec<f64> {
+    (0..32 * 32u32)
+        .map(|texel| f64::from((texel.wrapping_mul(2654435761) >> 24) & 0xff) / 255.0)
+        .collect()
+}
+
 fn bytes(piled: &Piled) -> (Vec<u8>, Vec<u8>) {
     let planes = piled
         .planes
@@ -578,7 +714,7 @@ fn every_device_piles_the_pinned_strokes() {
         .map(|entry| 1.0 - (1.0 - f64::from(entry.min(1024)) / 1024.0).sqrt())
         .collect();
     let blue = [30, 90, 220, 255];
-    let bristle = bristles();
+    let bristle = texture(&bristles(), 32);
     let held = |_, dab: &mut Dab| {
         dab.edge_held = true;
         dab.opacity = 0.7;
@@ -606,7 +742,7 @@ fn every_device_piles_the_pinned_strokes() {
             dab.turn = turn_of(k);
         })),
         ("tip", (0..24)
-            .map(|k| Dab { flow: 0.5, ..tipped(&bristle, 32, 12.3, turn_of(k), on_curve(k)) })
+            .map(|k| Dab { flow: 0.5, ..tipped(&bristle, 12.3, turn_of(k), on_curve(k)) })
             .collect()),
     ];
     for (name, dabs) in &strokes {
@@ -620,4 +756,22 @@ fn every_device_piles_the_pinned_strokes() {
         dab.flow = 0.5;
     }));
     assert_pinned("dab/erase-view", &bytes(&erased).1);
+    // The held stroke on a grain tiled at ¾ px a texel — a step of a texel
+    // and a fraction — its dabs taking the grain by turns: multiplied, and
+    // by its height.
+    let grain = texture(&grain(), 32);
+    for (name, height) in [("paper", false), ("paper-height", true)] {
+        let paper = Paper { texture: &grain, scale: 0.75, height };
+        let dabs = along(&profile, 24, |k, dab| {
+            dab.flow = 0.5;
+            dab.edge_held = true;
+            dab.opacity = 0.8;
+            dab.density = 0.3 + f64::from(k % 4) * 0.2;
+        });
+        let kernel = &mut Dabs::new(first_engine());
+        let piled = laid(kernel, &tiles, [0; 4], Some(&paper), &dabs).expect("pile");
+        let (planes, view) = bytes(&piled);
+        assert_pinned(&format!("dab/{name}-planes"), &planes);
+        assert_pinned(&format!("dab/{name}-view"), &view);
+    }
 }

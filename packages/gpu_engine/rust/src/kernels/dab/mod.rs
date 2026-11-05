@@ -9,9 +9,14 @@
 //! It lays a square dab, a round tip — its profile along the radius, or a
 //! small circle's square tables, turned and squeezed where it is an
 //! ellipse — and a bitmap tip, turned and squeezed the same way; the edge,
-//! the ceiling, the share and the level a dab settles at, over and erase.
-//! The paper and the second tip come in the lanes after (design (1), 11-05
+//! the ceiling, the paper, the share and the level a dab settles at, over
+//! and erase. The second tip comes in the lane after (design (1), 11-05
 //! 21:53).
+//!
+//! A texture — a tip's or the paper's — goes to the GPU once and stays on
+//! the plan while piles read it: a pile sends only its own words. (Sent
+//! every frame, a 256-texel tip cost three times the dabs it was laid by,
+//! 11-05.)
 
 // ⏳Nothing outside the tests calls it until the app's connection round,
 // which 관제 opens (gpu-canonical-store 21:41).
@@ -20,9 +25,8 @@
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
-
-use wgpu::util::DeviceExt;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::device::Engine;
 use crate::fail;
@@ -31,8 +35,9 @@ use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL};
 
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
-const TILE_WORDS: usize = 5;
-const DAB_WORDS: usize = 28;
+const HEAD_WORDS: usize = 5;
+const TILE_WORDS: usize = 7;
+const DAB_WORDS: usize = 29;
 const NO_TABLE: u32 = u32::MAX;
 
 // The C engine's flags (QA_DAB_FLAG_*), as dab.wgsl reads them.
@@ -63,18 +68,52 @@ pub(crate) struct RoundProfile<'a> {
     pub(crate) row_length: u32,
 }
 
+/// A bitmap the kernel reads — a tip's or the paper's: `side` texels a
+/// side, row after row, on the 16-bit scale. Made once; every pile that
+/// reads it after the first finds it on the GPU.
+pub(crate) struct Texture {
+    /// Which texture it is, for the plan to know it again.
+    id: u64,
+    side: u32,
+    words: Vec<u32>,
+}
+
+impl Texture {
+    /// `texels` on 0..=1, row after row — or nothing, where the texels
+    /// don't fill the side or the side is past what the integers hold: a
+    /// tip's t = 2(u + R)·side and the paper's 2^16 parts a texel stay in
+    /// u32 to a side of 16384 (1a 보탬). The paper wraps by its side, so
+    /// a texture has one.
+    pub(crate) fn new(texels: &[f64], side: u32) -> Option<Texture> {
+        if side == 0 || side > 16384 || texels.len() != side as usize * side as usize {
+            return fail(format!("a texture of side {side} and {} texels", texels.len()));
+        }
+        static MADE: AtomicU64 = AtomicU64::new(0);
+        Some(Texture {
+            id: MADE.fetch_add(1, Ordering::Relaxed),
+            side,
+            words: texels.iter().map(|&texel| wide(texel)).collect(),
+        })
+    }
+}
+
 /// What a dab covers before its edge.
 pub(crate) enum Shape<'a> {
     /// All of its region.
     Square,
     Round(&'a RoundProfile<'a>),
-    /// A bitmap of `side` texels a side, row after row on 0..=1, over
-    /// [-radius, radius] each way of the tip's own frame.
-    Tip {
-        texels: &'a [f64],
-        side: u32,
-        radius: f64,
-    },
+    /// A bitmap over [-radius, radius] each way of the tip's own frame.
+    Tip { texture: &'a Texture, radius: f64 },
+}
+
+/// The paper a stroke is drawn on (`BrushDab.texture*`): its texture,
+/// tiled from the canvas's origin at `scale` px a texel, and how a dab
+/// meets it — 高さ, its height cutting the coverage (`paperHeightCoverage`),
+/// or else multiplying it.
+pub(crate) struct Paper<'a> {
+    pub(crate) texture: &'a Texture,
+    pub(crate) scale: f64,
+    pub(crate) height: bool,
 }
 
 /// How a round or bitmap tip turns and squeezes (`BrushDabTipGeometry`):
@@ -115,6 +154,9 @@ pub(crate) struct Dab<'a> {
     pub(crate) turn: Turn,
     /// The table it lays its share through, 1026 entries, or none.
     pub(crate) evening: Option<&'a [f64]>,
+    /// How much of the paper it takes (`textureDensity`), where the stroke
+    /// has paper.
+    pub(crate) density: f64,
 }
 
 /// A tile of the stroke: its column and row on the canvas's grid, and its
@@ -128,6 +170,15 @@ pub(crate) struct StrokeTile {
 
 pub(crate) struct Dabs {
     pipeline: wgpu::ComputePipeline,
+    /// The plan, kept from pile to pile: its head, the textures on it, then
+    /// the last pile's own words.
+    plan: Option<wgpu::Buffer>,
+    /// The words it holds.
+    capacity: usize,
+    /// Each texture on it, by id, at its place.
+    placed: HashMap<u64, u32>,
+    /// Where the textures on it end.
+    end: usize,
 }
 
 impl Dabs {
@@ -149,18 +200,19 @@ impl Dabs {
                 compilation_options: Default::default(),
                 cache: None,
             });
-        Self { pipeline }
+        Self { pipeline, plan: None, capacity: 0, placed: HashMap::new(), end: HEAD_WORDS }
     }
 
     /// Piles `dabs`, in their order, on the stroke `tiles` — `planes` two
-    /// words a pixel, `view` one, a slot a tile — and writes each tile's
-    /// bytes; submits the work, the caller waits. A dab's pixels on a tile
-    /// not among `tiles` are the caller's to have given.
+    /// words a pixel, `view` one, a slot a tile — over `paper`, and writes
+    /// each tile's bytes; submits the work, the caller waits. A dab's
+    /// pixels on a tile not among `tiles` are the caller's to have given.
     pub(crate) fn pile(
-        &self,
+        &mut self,
         engine: &Engine,
         tiles: &[StrokeTile],
         dabs: &[Dab],
+        paper: Option<&Paper>,
         planes: &wgpu::Buffer,
         view: &wgpu::Buffer,
     ) -> Option<()> {
@@ -171,21 +223,59 @@ impl Dabs {
         if tiles.len() > most as usize {
             return fail(format!("{} stroke tiles exceed a dispatch's {most}", tiles.len()));
         }
-        let words = planned(tiles, dabs)?;
-        let plan = engine
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        // The textures the pile reads that are not on the plan go after the
+        // ones that are; where that leaves no room for the pile, the plan
+        // starts over with the pile's own, at twice what the pile takes.
+        let textures = textures_of(dabs, paper);
+        let mut placed = self.placed.clone();
+        let mut end = self.end;
+        let mut fresh = Vec::new();
+        for &texture in &textures {
+            if !placed.contains_key(&texture.id) {
+                placed.insert(texture.id, end as u32);
+                end += texture.words.len();
+                fresh.push(texture);
+            }
+        }
+        let mut plan = planned(tiles, dabs, paper, end, &placed)?;
+        if self.plan.is_none() || end + plan.frame.len() > self.capacity {
+            placed.clear();
+            end = HEAD_WORDS;
+            for &texture in &textures {
+                placed.insert(texture.id, end as u32);
+                end += texture.words.len();
+            }
+            fresh = textures;
+            plan = planned(tiles, dabs, paper, end, &placed)?;
+            let words = end + plan.frame.len();
+            let most = engine.device.limits().max_storage_buffer_binding_size as usize / 4;
+            if words > most {
+                return fail(format!("a pile of {words} words exceeds a binding's {most}"));
+            }
+            self.capacity = (2 * words).min(most);
+            self.plan = Some(engine.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("dab plan"),
-                contents: &words.iter().flat_map(|word| word.to_le_bytes()).collect::<Vec<_>>(),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+                size: self.capacity as u64 * 4,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        let buffer = self.plan.as_ref()?;
+        for texture in fresh {
+            let at = u64::from(placed[&texture.id]) * 4;
+            engine.queue.write_buffer(buffer, at, &bytes(&texture.words));
+        }
+        engine.queue.write_buffer(buffer, 0, &bytes(&plan.head));
+        engine.queue.write_buffer(buffer, end as u64 * 4, &bytes(&plan.frame));
+        self.placed = placed;
+        self.end = end;
         let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("dab"),
             layout: &self.pipeline.get_bind_group_layout(0),
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: plan.as_entire_binding(),
+                    resource: buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -212,9 +302,39 @@ impl Dabs {
     }
 }
 
-/// The plan dab.wgsl reads: the tiles, each tile's list, the records, the
-/// tables — each table once, however many dabs read it.
-fn planned(tiles: &[StrokeTile], dabs: &[Dab]) -> Option<Vec<u32>> {
+/// The textures a pile reads, each once.
+fn textures_of<'a>(dabs: &[Dab<'a>], paper: Option<&Paper<'a>>) -> Vec<&'a Texture> {
+    let mut seen = HashSet::new();
+    dabs.iter()
+        .filter_map(|dab| match dab.shape {
+            Shape::Tip { texture, .. } => Some(texture),
+            _ => None,
+        })
+        .chain(paper.map(|paper| paper.texture))
+        .filter(|texture| seen.insert(texture.id))
+        .collect()
+}
+
+fn bytes(words: &[u32]) -> Vec<u8> {
+    words.iter().flat_map(|word| word.to_le_bytes()).collect()
+}
+
+/// What a pile sends: the plan's head, and its own words from `frame_at`.
+struct Plan {
+    head: [u32; HEAD_WORDS],
+    frame: Vec<u32>,
+}
+
+/// The plan dab.wgsl reads past the textures: the tiles, each tile's list,
+/// the records, the tables — each table once, however many dabs read it.
+/// Every place is a word of the whole plan.
+fn planned(
+    tiles: &[StrokeTile],
+    dabs: &[Dab],
+    paper: Option<&Paper>,
+    frame_at: usize,
+    textures: &HashMap<u64, u32>,
+) -> Option<Plan> {
     let at: HashMap<(i32, i32), usize> = tiles
         .iter()
         .enumerate()
@@ -244,14 +364,35 @@ fn planned(tiles: &[StrokeTile], dabs: &[Dab]) -> Option<Vec<u32>> {
             }
         }
     }
+    let head = match paper {
+        None => [frame_at as u32, NO_TABLE, 0, 0, 0],
+        Some(paper) => {
+            let step = paper_step(paper)?;
+            [
+                frame_at as u32,
+                textures[&paper.texture.id],
+                paper.texture.side,
+                (step % (u64::from(paper.texture.side) << 16)) as u32,
+                u32::from(paper.height),
+            ]
+        }
+    };
     let listed: usize = lists.iter().map(Vec::len).sum();
-    let records_at = tiles.len() * TILE_WORDS + listed;
+    let records_at = frame_at + tiles.len() * TILE_WORDS + listed;
     let tables_at = records_at + dabs.len() * DAB_WORDS;
-    let mut words = Vec::with_capacity(tables_at);
-    let mut first = tiles.len() * TILE_WORDS;
+    let mut words = Vec::with_capacity(tables_at - frame_at);
+    let mut first = frame_at + tiles.len() * TILE_WORDS;
     for (tile, list) in tiles.iter().zip(&lists) {
         let (column, row) = (tile.column as u32, tile.row as u32);
-        words.extend([column, row, tile.slot, first as u32, list.len() as u32]);
+        let (across, down) = match paper {
+            None => (0, 0),
+            Some(paper) => {
+                let step = paper_step(paper)?;
+                let side = paper.texture.side;
+                (paper_at(tile.column * TILE, step, side), paper_at(tile.row * TILE, step, side))
+            }
+        };
+        words.extend([column, row, tile.slot, first as u32, list.len() as u32, across, down]);
         first += list.len();
     }
     for list in &lists {
@@ -259,13 +400,31 @@ fn planned(tiles: &[StrokeTile], dabs: &[Dab]) -> Option<Vec<u32>> {
     }
     let mut tables = Tables { words: Vec::new(), at: tables_at, placed: HashMap::new() };
     for dab in dabs {
-        words.extend(record(dab, &mut tables)?);
+        words.extend(record(dab, &mut tables, textures)?);
     }
     words.extend(tables.words);
-    Some(words)
+    Some(Plan { head, frame: words })
 }
 
-/// The tables the records point at, each placed once.
+/// The paper's step, a pixel's worth of it in 1/65536 texel — or nothing,
+/// for a scale whose step is no whole part or leaves u32.
+fn paper_step(paper: &Paper) -> Option<u64> {
+    let step = (65536.0 / paper.scale).round();
+    if !(1.0..=f64::from(u32::MAX)).contains(&step) {
+        return fail(format!("a paper at a scale of {}", paper.scale));
+    }
+    Some(step as u64)
+}
+
+/// Where the centre of pixel `x` lies on paper of `side` texels taken
+/// `step` parts of 1/65536 texel a pixel: c(x) = ((2x + 1)·step >> 1)
+/// mod side·2^16 — the law dab.wgsl carries on pixel by pixel from here.
+fn paper_at(x: i32, step: u64, side: u32) -> u32 {
+    let doubled = (2 * i128::from(x) + 1) * i128::from(step);
+    doubled.div_euclid(2).rem_euclid(i128::from(side) << 16) as u32
+}
+
+// The tables the records point at, each placed once.
 struct Tables {
     words: Vec<u32>,
     /// Where the plan's tables begin.
@@ -302,7 +461,11 @@ fn fixed(per_unit: f64) -> (u32, u32) {
     ((per_unit * f64::from(1u32 << point)).round() as u32, point)
 }
 
-fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
+fn record(
+    dab: &Dab,
+    tables: &mut Tables,
+    textures: &HashMap<u64, u32>,
+) -> Option<[u32; DAB_WORDS]> {
     let [left, top, right, bottom] = dab.region;
     let [red, green, blue, alpha] = dab.colour.map(u32::from);
     let (threshold, contrast) = match dab.edge {
@@ -330,6 +493,7 @@ fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
         dab.evening.map_or(NO_TABLE, |table| tables.place(table)),
     ]);
     words[26] = NO_TABLE;
+    words[28] = wide(dab.density);
     // How far from the centre anything is laid, and the major axis's reach.
     let (extent, major) = match dab.shape {
         Shape::Square => return Some(words),
@@ -363,13 +527,12 @@ fn record(dab: &Dab, tables: &mut Tables) -> Option<[u32; DAB_WORDS]> {
         major,
         minor,
     ]);
-    if let Shape::Tip { texels, side, .. } = dab.shape {
-        // 1a 보탬: t = 2(u + R)·side stays in u32 to a side of 16384.
-        if side > 16384 || texels.len() != (side * side) as usize || major == 0 {
-            return fail(format!("a tip of side {side}, {} texels, radius {major}", texels.len()));
+    if let Shape::Tip { texture, radius } = dab.shape {
+        if major == 0 {
+            return fail(format!("a tip of radius {radius} reaches no unit"));
         }
-        words[26] = tables.place(texels);
-        words[27] = side;
+        words[26] = textures[&texture.id];
+        words[27] = texture.side;
     }
     if let Shape::Round(profile) = dab.shape {
         let (scale, point) = fixed(profile.scale / unit);

@@ -13,9 +13,10 @@
 //
 // Needs shared/isqrt.wgsl, blend/blend.wgsl and shared/tile.wgsl before it.
 
-// The plan: the stroke tiles, TILE_WORDS each; the lists of the dabs that
-// reach each, a dab's record's place a word; the records, DAB_WORDS each;
-// the tables, an entry a word. Every place is a word of the plan.
+// The plan: its head; the textures, kept from pile to pile; then the
+// pile's own — the stroke tiles, TILE_WORDS each; the lists of the dabs
+// that reach each, a dab's record's place a word; the records, DAB_WORDS
+// each; the tables, an entry a word. Every place is a word of the plan.
 @group(0) @binding(0) var<storage, read> plan: array<u32>;
 // The stroke tiles' planes, a slot TILE_TEXELS pixels, two words a pixel:
 // red and green, then blue and alpha, the low half first.
@@ -23,14 +24,26 @@
 // Their bytes, the planes' view (blend_pack8), a word a pixel.
 @group(0) @binding(2) var<storage, read_write> view: array<u32>;
 
-// A stroke tile: its column and row on the canvas's grid, its slot, and
-// where its list starts and how long it is.
+// The head: where the tiles start, and the stroke's paper — its texture's
+// place, NO_TABLE for none; its side; a pixel's step across it in 1/65536
+// texel, under the side's 2^16; and 1 where its height cuts (高さ).
+const HEAD_TILES: u32 = 0u;
+const HEAD_PAPER: u32 = 1u;
+const HEAD_PAPER_SIDE: u32 = 2u;
+const HEAD_PAPER_STEP: u32 = 3u;
+const HEAD_PAPER_HEIGHT: u32 = 4u;
+
+// A stroke tile: its column and row on the canvas's grid, its slot, where
+// its list starts and how long it is, and where on the paper its first
+// column and row lie, in 1/65536 texel.
 const TILE_COLUMN: u32 = 0u;
 const TILE_ROW: u32 = 1u;
 const TILE_SLOT: u32 = 2u;
 const TILE_FIRST: u32 = 3u;
 const TILE_COUNT: u32 = 4u;
-const TILE_WORDS: u32 = 5u;
+const TILE_PAPER_ACROSS: u32 = 5u;
+const TILE_PAPER_DOWN: u32 = 6u;
+const TILE_WORDS: u32 = 7u;
 
 // A dab's record. The centre is in 1/256 px; the region, the pixels it may
 // touch, [left, right) by [top, bottom). The colour is its three bytes,
@@ -76,6 +89,8 @@ const DAB_PILE: u32 = 25u;
 // dab, and its side.
 const DAB_TIP: u32 = 26u;
 const DAB_SIDE: u32 = 27u;
+// How much of the paper it takes, on the 16-bit scale.
+const DAB_DENSITY: u32 = 28u;
 
 // The C engine's flags (QA_DAB_FLAG_*), the ones this kernel reads.
 const DAB_ERASE: u32 = 1u;
@@ -188,6 +203,40 @@ fn dab_tip(at: u32, tip: u32, u: i32, v: i32) -> u32 {
   return dab_lerp(top, bottom, y.y);
 }
 
+// Pixel `local` of a tile on the paper, along one axis: the texel before
+// its centre, and the next 15 bits of the way to the one after, cut. The
+// tile's first pixel lies at `phase`; each pixel on is a step further —
+// c(x) = ((2x + 1)·step >> 1) mod side·2^16 (mod.rs's paper_at) — the step
+// taken a texel and a fraction apart so every term stays in u32: the
+// phase and the texels each under side·2^16 ≤ 2^30, the fraction's
+// product under 2^23.
+fn dab_paper_along(phase: u32, local: u32, side: u32) -> vec2<u32> {
+  let step = plan[HEAD_PAPER_STEP];
+  let texels = (local * (step >> 16u)) % side;
+  let at = (phase + (texels << 16u) + local * (step & 0xffffu)) % (side << 16u);
+  let before = at + (side << 16u) - 32768u;
+  return vec2<u32>((before >> 16u) % side, (before & 0xffffu) >> 1u);
+}
+
+// What the paper stands at pixel (lx, ly) of the tile at `tile`: between
+// its four nearest texels, along the row, then down, wrapping as it tiles
+// the canvas (sampleBrushTipMaskTiledCoverageLattice). Every dab on the
+// pixel meets the same paper, so it is read once, before the walk.
+fn dab_paper(tile: u32, lx: u32, ly: u32) -> u32 {
+  let paper = plan[HEAD_PAPER];
+  let side = plan[HEAD_PAPER_SIDE];
+  let x = dab_paper_along(plan[tile + TILE_PAPER_ACROSS], lx, side);
+  let y = dab_paper_along(plan[tile + TILE_PAPER_DOWN], ly, side);
+  let next = (x.x + 1u) % side;
+  let row = paper + y.x * side;
+  let below = paper + ((y.x + 1u) % side) * side;
+  return dab_lerp(
+    dab_lerp(plan[row + x.x], plan[row + next], x.y),
+    dab_lerp(plan[below + x.x], plan[below + next], x.y),
+    y.y,
+  );
+}
+
 // What a round tip lays at (u, v) and what of it piles — the pile read
 // only where the tip holds an edge (DAB_EDGE_HELD), and 0 elsewhere, as
 // the C engine leaves it.
@@ -250,7 +299,7 @@ fn dab_even(at: u32, whole: u32) -> u32 {
 }
 
 // The dab whose record is at `at` laid on `under`, the pixel at (x, y).
-fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>) -> vec4<u32> {
+fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>, paper: u32) -> vec4<u32> {
   if (x < bitcast<i32>(plan[at + DAB_LEFT]) || x >= bitcast<i32>(plan[at + DAB_RIGHT])
       || y < bitcast<i32>(plan[at + DAB_TOP]) || y >= bitcast<i32>(plan[at + DAB_BOTTOM])) {
     return under;
@@ -296,6 +345,22 @@ fn dab_lay(at: u32, x: i32, y: i32, under: vec4<u32>) -> vec4<u32> {
   if ((flags & DAB_EDGE_HELD) != 0u && pile > cover) {
     ceiling = blend_div(cover, pile);
   }
+  // The paper, after the edge and its ceiling (qa_dab_blend_spans): it
+  // takes from what the dab covers, not from how high the stroke may come.
+  if (plan[HEAD_PAPER] != NO_TABLE) {
+    let density = plan[at + DAB_DENSITY];
+    if (plan[HEAD_PAPER_HEIGHT] != 0u) {
+      // 高さ: touched where the paper stands above the dab's floor, fully
+      // a quarter above it (paperHeightBand).
+      let touched = (i32(paper) + i32(blend_mul(density, cover)) - 65535) * 4;
+      cover = u32(clamp(touched, 0, 65535));
+    } else {
+      cover = blend_mul(cover, W_ONE - density + blend_mul(density, paper));
+    }
+    if (cover == 0u) {
+      return under;
+    }
+  }
   let opacity = plan[at + DAB_OPACITY];
   let effective = blend_mul(opacity, cover);
   if (effective == 0u) {
@@ -334,7 +399,7 @@ fn walk(
   @builtin(workgroup_id) group: vec3<u32>,
   @builtin(local_invocation_id) local: vec3<u32>,
 ) {
-  let tile = group.z * TILE_WORDS;
+  let tile = plan[HEAD_TILES] + group.z * TILE_WORDS;
   let lx = group.x * 8u + local.x;
   let ly = group.y * 8u + local.y;
   let x = bitcast<i32>(plan[tile + TILE_COLUMN]) * i32(TILE_SIDE) + i32(lx);
@@ -343,10 +408,14 @@ fn walk(
   let low = planes[texel * 2u];
   let high = planes[texel * 2u + 1u];
   var pixel = vec4<u32>(low & 0xffffu, low >> 16u, high & 0xffffu, high >> 16u);
+  var paper = 0u;
+  if (plan[HEAD_PAPER] != NO_TABLE) {
+    paper = dab_paper(tile, lx, ly);
+  }
   let first = plan[tile + TILE_FIRST];
   let count = plan[tile + TILE_COUNT];
   for (var k = 0u; k < count; k = k + 1u) {
-    pixel = dab_lay(plan[first + k], x, y, pixel);
+    pixel = dab_lay(plan[first + k], x, y, pixel, paper);
   }
   planes[texel * 2u] = pixel.x | (pixel.y << 16u);
   planes[texel * 2u + 1u] = pixel.z | (pixel.w << 16u);
