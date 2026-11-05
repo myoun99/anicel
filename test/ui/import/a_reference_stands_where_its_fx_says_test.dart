@@ -1217,6 +1217,36 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });
+
+    testWidgets('no door rasterizes from a row that shows no file — not '
+        'even the use of its cel that does', (tester) async {
+      final (s, row) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      s.repository.replaceLayer(
+        layer: s.layerById(copy)!.copyWith(mediaReference: null),
+      );
+      final before = rowOf(s, row);
+
+      s.editingCanvas.rasterizeLayerReferences([copy]);
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.bakeReferenceAsSeen(
+            cutId: s.requireActiveCut.id,
+            layerId: copy,
+          ),
+        ),
+        isFalse,
+      );
+      expect(await rasterizeFrames(tester, s, s.layerById(copy)!), isFalse);
+
+      expect(rowOf(s, row), before);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
   });
 
   group('a movie', () {
