@@ -82,7 +82,9 @@ pub(crate) const MATRIX_WORDS: usize = 20;
 /// `matrix` — `ColorFilter.matrix`'s twenty: four rows of four multipliers
 /// and a translation in 0…255 units — as `matrix.wgsl` reads it, each
 /// q(·, 16) as an i32's bits; `None` where one is not a number below 2^15
-/// in magnitude, which no effect the app makes reaches.
+/// in magnitude. One effect's matrix stays far inside — Contrast's widest
+/// multiplier is 2, Brightness & Contrast's translation under 640 — but a
+/// chain folds into one, so fifteen Contrasts at +100 would reach it.
 pub(crate) fn matrix_words(matrix: &[f64; MATRIX_WORDS]) -> Option<[u32; MATRIX_WORDS]> {
     let mut words = [0; MATRIX_WORDS];
     for (word, &value) in words.iter_mut().zip(matrix) {
