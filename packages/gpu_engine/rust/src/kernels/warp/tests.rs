@@ -59,18 +59,18 @@ fn mesh(columns: u32, rows: u32, source: &[[f64; 2]], destination: &[[f64; 2]]) 
     }
 }
 
-/// `mesh`'s warp of `pixels` — a box `size` whose top-left pixel is at the
-/// canvas's origin — into `window`, in `mode`.
+/// `mesh`'s warp of `pixels` — a box `size` whose top-left pixel is at
+/// `source_at` on the canvas — into `window`, in `mode`.
 fn meshed(
     mesh: &MeshGrid,
-    (pixels, size): (&[u32], (u32, u32)),
+    (pixels, size, source_at): (&[u32], (u32, u32), (f64, f64)),
     window: Window,
     mode: ResampleMode,
 ) -> Option<Vec<u32>> {
     let Rig { engine, warp, .. } = rig();
     let pixels = boxed(pixels);
     let picture = Boxed { pixels: &pixels, size };
-    let warped = warp.mesh(engine, mesh, &picture, (0.0, 0.0), window, 1.0, mode)?;
+    let warped = warp.mesh(engine, mesh, &picture, source_at, window, 1.0, mode)?;
     Some(words(&read_buffer(engine, &warped)))
 }
 
@@ -91,18 +91,20 @@ fn at(pixels: &[u32], (width, height): (u32, u32), x: i32, y: i32) -> u32 {
 const SQUARE: [[f64; 2]; 4] = [[0.0, 0.0], [4.0, 0.0], [0.0, 4.0], [4.0, 4.0]];
 
 /// A mesh at rest copies the picture under it word for word, its maps
-/// moving by no pixel; past the mesh there is nothing.
+/// moving by no pixel, wherever on the canvas the two lie; past the mesh
+/// there is nothing.
 #[test]
 fn a_mesh_at_rest_copies_the_picture_under_it() {
     let pixels = picture(4, 4);
-    let window = Window { at: (-1, -1), size: (6, 6) };
-    let rest = mesh(1, 1, &SQUARE, &SQUARE);
-    let warped = meshed(&rest, (&pixels, (4, 4)), window, ResampleMode::Blend).expect("warp");
+    let square = SQUARE.map(|[x, y]| [x + 10.0, y - 20.0]);
+    let rest = mesh(1, 1, &square, &square);
+    let window = Window { at: (9, -21), size: (6, 6) };
+    let warped = meshed(&rest, (&pixels, (4, 4), (10.0, -20.0)), window, ResampleMode::Blend);
     let wanted: Vec<u32> = (-1..5)
         .flat_map(|y| (-1..5).map(move |x| (x, y)))
         .map(|(x, y)| at(&pixels, (4, 4), x, y))
         .collect();
-    assert_eq!(warped, wanted);
+    assert_eq!(warped.expect("warp"), wanted);
 }
 
 /// A pixel takes the map of the triangle that owns it: here the bottom
@@ -120,7 +122,8 @@ fn each_pixel_takes_its_owner_s_map_and_nothing_where_it_lands_nothing() {
     let window = Window { at: (-1, -1), size: (6, 6) };
     let owned = owners(&folded, window);
     assert!(owned.contains(&0) && owned.contains(&1) && owned.contains(&u32::MAX));
-    let warped = meshed(&folded, (&pixels, (4, 4)), window, ResampleMode::Blend).expect("warp");
+    let warped = meshed(&folded, (&pixels, (4, 4), (0.0, 0.0)), window, ResampleMode::Blend);
+    let warped = warped.expect("warp");
     let wanted: Vec<u32> = owned
         .iter()
         .enumerate()
@@ -190,7 +193,7 @@ fn every_device_warps_the_pinned_mesh() {
     let window = Window { at: (-2, -2), size: (36, 36) };
     let mut bytes = Vec::new();
     for mode in [ResampleMode::Blend, ResampleMode::Pick] {
-        let warped = meshed(&warp, (&pixels, (32, 32)), window, mode).expect("warp");
+        let warped = meshed(&warp, (&pixels, (32, 32), (0.0, 0.0)), window, mode).expect("warp");
         for (x, y) in [(0, 0), (2, 3), (9, 1), (1, 9)] {
             let index = ((y + 2) * 36 + x + 2) as usize;
             assert_eq!(warped[index], at(&pixels, (32, 32), x, y), "{mode:?} at ({x}, {y})");
