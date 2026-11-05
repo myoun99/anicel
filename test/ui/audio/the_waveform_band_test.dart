@@ -185,9 +185,7 @@ void main() {
     bucketsPerSecond: 8,
     lanes: [
       for (var channel = 0; channel < 2; channel += 1)
-        channel == loud
-            ? Float32List.fromList(List<double>.filled(8, 1))
-            : Float32List(8),
+        Float32List.fromList(List<double>.filled(8, channel == loud ? 1 : 0)),
     ],
   );
 
