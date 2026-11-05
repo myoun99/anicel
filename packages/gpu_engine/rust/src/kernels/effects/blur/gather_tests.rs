@@ -141,9 +141,11 @@ fn the_fringe_pushes_the_core_light_to_the_edge() {
     assert_eq!(half.row(64, 61..68), [0, edge, centre, centre, centre, edge, 0]);
 }
 
-/// At half a pixel out the outline and the core cover the pixel alone:
-/// there is nowhere to push the light to, so even the most fringe leaves
-/// every pixel as it was.
+/// Where the outline and the core cover the same pixels there is nowhere
+/// to push the light to, so even the most fringe blurs as none: at half a
+/// pixel out each covers the pixel alone, every pixel as it was; at 2 out
+/// the same 3 × 3 (half sides 1.41 and 1.13), one white pixel spread over
+/// it — alpha 28.
 #[test]
 fn a_fringe_with_nowhere_to_go_keeps_the_light() {
     let opaque = |x, y| pattern(x, y) | 0xff00_0000;
@@ -151,6 +153,9 @@ fn a_fringe_with_nowhere_to_go_keeps_the_light() {
     for (x, y) in [(0, 0), (17, 40), (64, 64), (127, 3)] {
         assert_eq!(blur.at(x, y), opaque(x, y), "({x}, {y})");
     }
+    let spread = rgba(255, 255, 255, 28);
+    let blur = whole(&Lens { fringe: MOST_FRINGE, ..lens(2.0) }, one_white((64, 64)));
+    assert_eq!(blur.row(64, 62..67), [0, spread, spread, spread, 0]);
 }
 
 /// A blur map names each pixel's level: the radius times how far its value
@@ -258,6 +263,30 @@ fn in_linear_light_the_mean_is_of_light() {
             assert_eq!(alone.at(x, y), every(x, y), "({x}, {y})");
         }
     }
+    // Spread under a byte's alpha it is clear: alpha 1 over 9 is 29 of 65535.
+    let faint = one_white((64, 64));
+    let faint = move |x, y| faint(x, y) & rgba(255, 255, 255, 1);
+    assert_eq!(whole(&Lens { light: linear, ..lens(1.5) }, faint).at(65, 65), 0);
+}
+
+/// A row's sums run past 32 bits where boosted light lies along it: 649
+/// white pixels at gain 100, 6619035 a channel each, pass 2^32 by the last.
+/// 21 past it a square 30 out (43 × 43) covers that last alone, read across
+/// the pass — 6619035 / 1849 → 3580, grey 14 — and 20 past it the last two.
+#[test]
+fn a_row_summed_past_32_bits_reads_whole() {
+    let rect = TileRect {
+        columns: 8,
+        ..ONE_TILE
+    };
+    let lamp = Light {
+        gain: 100.0,
+        threshold: 0.0,
+        ..Light::STORED
+    };
+    let row = |x, y| if y == 64 && x < 649 { WHITE } else { grey(0) };
+    let blur = blurred(rect, rect.pixels(), &Lens { light: lamp, ..lens(30.0) }, row, None);
+    assert_eq!(blur.expect("blur").row(64, 668..671), [grey(28), grey(14), grey(0)]);
 }
 
 /// A boosted light spread over what is clear covers it (🗣️I-132-Q20 a): a

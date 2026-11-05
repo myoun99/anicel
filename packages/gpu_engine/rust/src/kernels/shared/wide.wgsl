@@ -213,7 +213,7 @@ fn wide128_divr(n: Wide128, d: Wide, bits: u32) -> Wide {
 fn wide_pow2_over(e: u32, d: Wide) -> Wide {
   var power = Wide128(0u, 0u, 0u, 0u);
   power[e / 32u] = 1u << (e % 32u);
-  return wide128_div(power, d, 64u);
+  return wide128_div(power, d, 63u);
 }
 
 // ⌊n / d⌋ of an unsigned n, 0 < d < 2^63, when the quotient is below 2^bits

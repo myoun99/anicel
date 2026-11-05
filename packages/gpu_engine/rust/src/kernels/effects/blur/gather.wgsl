@@ -82,17 +82,17 @@ fn gather_add_pixel(sum: ptr<function, array<Wide, 4>>, x: i32, y: i32, count: i
 }
 
 // Row y's pixels from column a to b summed, as the edge has it: nothing
-// past the picture, or past the paper its edge pixels again.
+// past the paper — the picture, where none repeats — or its edge pixels
+// again.
 fn gather_row(a: i32, b: i32, y: i32) -> array<Wide, 4> {
-  if (gather.repeats == 0u) {
-    return gather_between(a, b, gather.picture_left, gather.picture_right - 1, y);
-  }
   let first = gather.paper_left;
   let last = gather.paper_right - 1;
   var sum = gather_between(a, b, first, last, y);
-  // An edge pixel is read where the row reaches past it — only there, for
-  // its light's work: a count of none adds nothing, so no value tells these
-  // guards from their absence.
+  if (gather.repeats == 0u) {
+    return sum;
+  }
+  // How far the row reaches past each edge — none or less where it ends
+  // short of it (a count of none would add nothing: `>= 0` is one guard).
   let before = min(b, first - 1) - a + 1;
   if (before > 0) {
     gather_add_pixel(&sum, first, y, before);
@@ -130,22 +130,23 @@ fn gather_run(level: u32, k: u32, row: u32) -> vec2<i32> {
 fn iris_gather(@builtin(global_invocation_id) id: vec3<u32>) {
   let x = gather.picture_left + i32(id.x);
   let y = gather.picture_top + i32(id.y);
-  if (x >= gather.picture_right || y >= gather.picture_bottom) {
-    return;
-  }
-  // Off the paper it repeats, nothing is drawn — the tiles out hold
-  // nothing already.
+  // Only the paper is drawn — the picture, where none repeats: the tiles
+  // out hold nothing past it already.
   let on_paper = x >= gather.paper_left && x < gather.paper_right
     && y >= gather.paper_top && y < gather.paper_bottom;
-  if (gather.repeats == 1u && !on_paper) {
+  if (!on_paper) {
     return;
   }
   let level = gather_level(x, y);
   let head = gather.levels * 2u * gather.rows * 2u + level * 4u;
+  // The level's own reach, and the core only where a fringe pushes from it
+  // — for the work alone: past its reach a level's runs are empty, and
+  // what is not pushed the core does not weigh (gather mutants g20 and
+  // g21, 11-05: no value tells either from the table's whole reach).
   let reach = i32(gather_table[head]);
   let fringed = gather.fringe > 0u;
   let on_outline = gather_table[head + 1u];
-  let on_core = select(0u, gather_table[head + 2u], fringed);
+  let on_core = gather_table[head + 2u];
   var outline = array<Wide, 4>();
   var core = array<Wide, 4>();
   for (var dy = -reach; dy <= reach; dy++) {
@@ -182,7 +183,7 @@ fn iris_gather(@builtin(global_invocation_id) id: vec3<u32>) {
         wide128_neg(wide_mul128(core[c], Wide(pushed, 0u))),
       );
       // A mean of pixels, so no channel past the brightest: under 2^23.
-      mean[c] = wide128_divr(kept, weight, 24u).x;
+      mean[c] = wide128_divr(kept, weight, 23u).x;
     }
   } else {
     // An iris that covers no centre — a blur map's in focus — is the pixel.

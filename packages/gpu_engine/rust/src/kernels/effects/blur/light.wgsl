@@ -129,6 +129,9 @@ fn light_read(word: u32, light: Light) -> vec4<u32> {
 fn light_stored(gathered: vec4<u32>, light: Light) -> u32 {
   let brightest = max(gathered.x, max(gathered.y, gathered.z));
   let alpha = min(max(gathered.w, brightest), 65535u);
+  // Past white a channel is cut to it: in linear light the division's bound
+  // below — no byte tells it from its absence, the curve and held_stored
+  // stopping at white too (gather mutant l5, 11-05).
   let covered = vec4<u32>(min(gathered.xyz, vec3<u32>(alpha)), alpha);
   if (light.linear == 0u) {
     return held_stored(covered);
