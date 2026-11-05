@@ -583,7 +583,9 @@ fn no_tile_to_make_or_finish_is_no_pass() {
 // The cel's passes take a run of tiles a dispatch (shared `runs`), and the
 // runs make and finish what one does: tiles on pages 0, 1, 0, 2, 2, 1 at
 // two pages and three tiles a pass, at one page, and at three pages and
-// two tiles.
+// two tiles. What they finish is the cel the tiles kept on one page finish:
+// a run that took its tiles' pages for others' would make the picture on
+// the wrong pages, and the same ones however it is cut (mutant u06, 11-06).
 #[test]
 fn the_cels_runs_make_and_finish_what_one_pass_does() {
     let tiles: Vec<StrokeTile> = [0, 1, 0, 2, 2, 1]
@@ -605,6 +607,12 @@ fn the_cels_runs_make_and_finish_what_one_pass_does() {
         (made, words(&blurs.finish_by(engine, &tiles, &picture, most).unwrap()))
     };
     let whole = made_and_finished(blurs.widest(engine));
+    let on_one: Vec<StrokeTile> = (0..6)
+        .map(|slot| StrokeTile { column: slot, row: 0, at: TileAt { page: 0, slot: slot as u16 } })
+        .collect();
+    let picture = [filled("test picture", &vec![JUNK; 6 * TILE_WORDS])];
+    blurs.fill(engine, executor(), (&cel.0, &cel.1), &on_one, &picture).unwrap();
+    assert!(words(&blurs.finish(engine, &on_one, &picture).unwrap()) == whole.1);
     assert!(made_and_finished((2, 3)) == whole);
     assert!(made_and_finished((1, 6)) == whole);
     assert!(made_and_finished((3, 2)) == whole);
