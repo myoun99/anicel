@@ -2,7 +2,7 @@
 //! what the formula gives by hand — never against a CPU copy of it
 //! (`kernels/mod.rs` has why). Each hand case writes its sums out.
 
-use super::{GridTile, MOST_RADIUS_Q9, MOST_REACH};
+use super::{GridTile, MOST_RADIUS_Q9};
 use crate::device::{Engine, storage_texture};
 use crate::testing::{assert_pinned, first_engine};
 
@@ -389,11 +389,13 @@ fn a_stream_the_pass_cannot_draw_is_refused() {
     assert!(refused(&[RRECT_FILL, 0, 0, 256, 256, -1, 15, WHITE]), "below square");
 }
 
-// Each op's places and lengths, one at a time at the bound either way —
+// Each op's places and lengths, one at a time at 2²⁸ either way — the bound
+// inside which nothing the field sums can wrap (mod.rs) —
 // refused there, drawn a step inside it.
 #[test]
 fn a_place_or_length_past_the_reach_is_refused() {
     let engine = first_engine();
+    let reach = 1 << 28;
     let letters = atlas(engine, 1, 1, &[255]);
     let drawn = |ops: &[i32]| tile(engine, (4, 4), RGBA, 0, ops, Some(&letters)).is_some();
     let ops: [&[i32]; 6] = [
@@ -416,10 +418,10 @@ fn a_place_or_length_past_the_reach_is_refused() {
         assert!(drawn(op), "{op:?}");
         for &word in words {
             for (value, takes) in [
-                (MOST_REACH, false),
-                (-MOST_REACH, false),
-                (MOST_REACH - 1, true),
-                (1 - MOST_REACH, true),
+                (reach, false),
+                (-reach, false),
+                (reach - 1, true),
+                (1 - reach, true),
             ] {
                 let mut moved = op.to_vec();
                 moved[word] = value;
