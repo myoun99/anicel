@@ -310,8 +310,12 @@ fn a_ring_leaves_its_hole_and_opens_the_sides_it_is_told() {
         assert_eq!(at(&bytes, 8, kept.0, kept.1), [255; 4], "open {open}");
         assert_eq!(at(&closed, 8, gone.0, gone.1), [255; 4], "closed");
     }
-    let no_line = clear_tile(engine, (8, 8), &ring(0, 0.0));
-    assert!(no_line.iter().all(|&byte| byte == 0));
+    // No line, or one below none, leaves nothing of the box — whichever
+    // sides it opens.
+    for (open, line) in [(0, 0.0), (0, -1.0), (15, 0.0), (5, -1.0)] {
+        let bytes = clear_tile(engine, (8, 8), &ring(open, line));
+        assert!(bytes.iter().all(|&byte| byte == 0), "open {open}, line {line}");
+    }
 }
 
 // A 16-pixel box rounded by 6, open on the left with a 1-pixel line: the

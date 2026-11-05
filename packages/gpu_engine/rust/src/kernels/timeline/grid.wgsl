@@ -170,7 +170,9 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
       }
       case OP_GLYPH: {
         // dest x, y, atlas x, y, w, h: the atlas window laid at the
-        // destination, its coverage scaling the colour's alpha.
+        // destination, its coverage scaling the colour's alpha. Clipped to
+        // the atlas here, not left to the device: WGSL lets a load outside
+        // a texture return any texel inside it — a neighbour's letter.
         let rgba = bitcast<u32>(ops[at + 7u]);
         let dest = vec2<i32>(ops[at + 1u], ops[at + 2u]);
         let source = vec2<i32>(ops[at + 3u], ops[at + 4u]) + p - dest;
@@ -194,10 +196,12 @@ fn grid(@builtin(global_invocation_id) id: vec3<u32>) {
       }
       case OP_RRECT_RING: {
         // The box's coverage less its hole's: x, y, w, h, radius, corner
-        // mask, line, open mask.
+        // mask, line, open mask. A ring with no line needs no case of its
+        // own: its hole is the box grown by -line, corners and all, and
+        // covers every pixel at least as much as the box does.
         let rgba = bitcast<u32>(ops[at + 9u]);
         let line = 2 * ops[at + 7u];
-        if (ops[at + 3u] > 0 && ops[at + 4u] > 0 && line > 0) {
+        if (ops[at + 3u] > 0 && ops[at + 4u] > 0) {
           let box = field_at(at);
           var c = coverage(box, p);
           let hole = hole_of(box, line, ops[at + 8u]);
