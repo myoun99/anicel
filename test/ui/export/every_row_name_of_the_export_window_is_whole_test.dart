@@ -22,9 +22,6 @@ import '../../helpers/app_faces.dart';
 /// folded accordion or another format holds counted too — so every control
 /// starts at one x and no name gives its end up. ↩️The column stood 54 in
 /// every language: 「ビットレート」 had 54 of its 60 px, 「Channels」 54 of 61.
-///
-/// ⚠️Chinese is set in the OS's face (`AppTypography.familyFor`), which the
-/// test bed does not have: what it measures there is the test font.
 void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
@@ -69,10 +66,7 @@ void main() {
     fail('an accordion would not stay open');
   }
 
-  for (final language in [
-    for (final language in AppLanguage.values)
-      if (AppTypography.familyFor(language) != null) language,
-  ]) {
+  for (final language in AppLanguage.values) {
     testWidgets('🚨every row name stands whole, in one column as wide as the '
         'widest — ${language.name}', (tester) async {
       await loadTheAppFaces();

@@ -26,7 +26,7 @@ import '../ui/theme/app_theme.dart';
 /// [AppTypography]'s alone (`the_app_has_one_face_test`), and they are
 /// Flutter's family names, which a font file need not carry. The runner
 /// loads the files in order — the first speaks, the rest fill in what it
-/// lacks — and none at all means the OS's face (Chinese, as in the app).
+/// lacks — and none at all (the manifest unread) means the OS's face.
 ///
 /// The Windows and Linux runners hear the first frame from their own
 /// embedders (`SetNextFrameCallback`, FlView's "first-frame") and close
@@ -93,8 +93,8 @@ abstract final class LaunchSplash {
       return;
     }
     final families = [
-      ?AppTypography.familyFor(AppText.language),
-      ...?AppTypography.fallbackFor(AppText.language),
+      AppTypography.familyFor(AppText.language),
+      ...AppTypography.fallbackFor(AppText.language),
     ];
     try {
       _faceFilesLine = faceFiles(

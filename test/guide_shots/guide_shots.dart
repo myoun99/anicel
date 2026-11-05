@@ -90,91 +90,6 @@ late Directory scratch;
 Future<void> loadMonospace() =>
     loadFace('monospace', weightsOf(AppTypography.bundledFiles));
 
-/// The faces a run in [language] draws in: the app's own — and for
-/// Chinese, which the app leaves to the OS ([AppTypography.familyFor]), the
-/// faces a Chinese Windows PC shows it in.
-///
-/// There Segoe UI, the face Windows' text theme names, draws the Latin, and
-/// a character a face lacks falls back to the PC's Chinese UI face,
-/// Microsoft YaHei UI. A test has no system faces and no fallback between
-/// faces (the first run drew every letter as a box), so YaHei UI — whose
-/// Latin is drawn after Segoe UI's — stands where Windows would reach it:
-/// under the theme's name, and behind BIZ UDPGothic in Nanum Gothic's place
-/// for the canvas's letters. Hangul, which Nanum or Windows would draw, is
-/// boxes in a Chinese run: YaHei UI has none.
-///
-/// ⛔Test-only on purpose: the app's Chinese face is the OS's until the user
-/// decides on bundling one, and the guide shows what that OS shows.
-Future<void> loadTheFacesOf(AppLanguage language) async {
-  if (language != AppLanguage.zhHans) {
-    return loadTheAppFaces();
-  }
-  final fonts = '${Platform.environment['WINDIR'] ?? r'C:\Windows'}/Fonts';
-  final yaHeiUi = [
-    for (final file in ['msyh.ttc', 'msyhbd.ttc'])
-      _secondFace(File('$fonts/$file').readAsBytesSync()),
-  ];
-  await loadFace(
-    AppTypography.bundledFamily,
-    weightsOf(AppTypography.bundledFiles),
-  );
-  await loadFace(AppTypography.bundledFallback.single, yaHeiUi);
-  await loadFace(_windowsFace, yaHeiUi);
-}
-
-/// The face Windows' text theme names — Segoe UI.
-final _windowsFace = Typography.material2021(
-  platform: TargetPlatform.windows,
-).black.bodyMedium!.fontFamily!;
-
-/// [theme] with the face Windows prints a face-less style in named where
-/// its slots name none.
-///
-/// The slots that set a whole text style ([AppTypography.inTheAppFace]) name
-/// no face in Chinese, which the app leaves to the OS: a Windows PC prints
-/// them in Segoe UI, its default, and a test in its own boxes — no face
-/// loaded under any name reaches a style that names none (measured). In
-/// every other language they name the app's face and this leaves them be.
-ThemeData _facedAsOnWindows(ThemeData theme) {
-  TextStyle? named(TextStyle? style) =>
-      style?.copyWith(fontFamily: style.fontFamily ?? _windowsFace);
-  ButtonStyle? button(ButtonStyle? style) => style?.copyWith(
-    textStyle: WidgetStateProperty.resolveWith(
-      (states) => named(style.textStyle?.resolve(states)),
-    ),
-  );
-  return theme.copyWith(
-    textButtonTheme: TextButtonThemeData(
-      style: button(theme.textButtonTheme.style),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: button(theme.filledButtonTheme.style),
-    ),
-    tooltipTheme: theme.tooltipTheme.copyWith(
-      textStyle: named(theme.tooltipTheme.textStyle),
-    ),
-  );
-}
-
-/// The second face of a font collection, as a collection of one: a loaded
-/// collection is read at its first face, and in `msyh.ttc` that is
-/// Microsoft YaHei — YaHei UI is the second.
-///
-/// The header is `ttcf`, a version, a count and an offset per face, and
-/// each face's tables stay where they are (offsets from the file's start),
-/// so the one entry pointed at the second face is the whole change.
-/// Version 1 has nothing after the offsets.
-ByteData _secondFace(Uint8List collection) {
-  final data = ByteData.sublistView(collection);
-  if (data.getUint32(0) != 0x74746366 || data.getUint32(8) < 2) {
-    throw StateError('not a collection of two faces or more');
-  }
-  return data
-    ..setUint32(4, 0x00010000)
-    ..setUint32(8, 1)
-    ..setUint32(12, data.getUint32(16));
-}
-
 final shotKey = GlobalKey();
 const window = Size(1920, 1080);
 
@@ -263,7 +178,7 @@ Future<void> pumpApp(
     RepaintBoundary(
       key: shotKey,
       child: MaterialApp(
-        theme: _facedAsOnWindows(buildAppTheme()),
+        theme: buildAppTheme(),
         debugShowCheckedModeBanner: false,
         home: HomePage(initialProject: project),
       ),
@@ -1676,7 +1591,7 @@ Future<void> closeWindow(WidgetTester tester) async {
 /// Every scene of the guide in [language] — the body of a `<lang>_test.dart`.
 void guideShots(AppLanguage language) {
   setUpAll(() async {
-    await loadTheFacesOf(language);
+    await loadTheAppFaces();
     await loadMonospace();
     await loadIcons();
   });

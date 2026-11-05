@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import 'package:flutter/services.dart' show FontLoader, rootBundle;
 
-/// Loads the app's own faces — BIZ UDPGothic and 나눔고딕, both weights,
-/// by the names and files `AppTypography` declares (the ones `pubspec.yaml`
-/// ships) — so a test measures text the way the app lays it out.
+/// Loads the app's own faces — BIZ UDPGothic and 나눔고딕, both weights, and
+/// the Chinese UI's Noto Sans SC — by the names and files `AppTypography`
+/// declares (the ones `pubspec.yaml` ships) — so a test measures text the
+/// way the app lays it out, in every language.
 ///
 /// ⚠️flutter_test does not load the app's fonts. Without this every glyph is
 /// measured in the test font, and a box that clips in BIZ UDPGothic can pass
@@ -16,6 +18,9 @@ Future<void> loadTheAppFaces() async {
   for (final (family, files) in _faces) {
     await loadFace(family, weightsOf(files));
   }
+  await loadFace(AppTypography.familyFor(AppLanguage.zhHans), [
+    ByteData.view(File(AppTypography.chineseFile).readAsBytesSync().buffer),
+  ]);
 }
 
 /// [weights] — one face's files, read whole — under the name [family].
