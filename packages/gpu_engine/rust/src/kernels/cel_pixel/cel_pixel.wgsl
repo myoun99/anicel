@@ -107,10 +107,12 @@ fn cel_texel(tile: u32, x: u32, y: u32) -> u32 {
 // The coverage over pixel (x, y) of the tile: the mask's byte there, 0
 // past its box — a pixel before it wraps past either side.
 //
-// ⚠️The mask's bytes end what a pass is given, so a row past the box's
-// last is past the buffer, where DX12 reads 0 — the tests cannot see the
-// guard on rows there (mask.wgsl's head has the same); a column past the
-// box is within its row's last word, which they fill with 255.
+// ⚠️The mask's rows end what a pass is given, so a row past them is past
+// the buffer, where DX12 reads 0 — the tests cannot see the guard on rows
+// there, nor that `mask_height` is the pass's rows and not the box's
+// (mutants c03 · w07, 11-06; mask.wgsl's head has the same); a device that
+// clamps (Metal) would read the last word. A column past the box is within
+// its row's last word, which the tests fill with 255.
 fn cel_coverage(tile: u32, x: u32, y: u32) -> u32 {
   if (pass_.masked == 0u) {
     return 255u;

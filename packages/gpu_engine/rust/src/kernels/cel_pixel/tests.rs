@@ -772,18 +772,79 @@ fn a_cel_past_its_pool_or_its_size_is_refused() {
     assert!(pass.run_by(engine, &pages, &ink.set, None, &verb, (1, 0)).is_none());
 }
 
-/// A mask whose plane holds fewer bytes than its box's rows is refused;
+/// A mask whose plane holds a word fewer than its box's rows is refused;
 /// one that holds them is not.
 #[test]
 fn a_mask_past_its_plane_is_refused() {
     let ink = one(&[((0, 0), INK | 255 << 24)]);
-    let mask = masked((0, 0), (5, 2), |_, _| 255);
+    // 12 bytes for a box of 16.
+    let narrow = masked((0, 0), (4, 3), |_, _| 255);
     let short = Mask {
-        size: MaskBox { width: 5, height: 3 },
-        ..mask.mask()
+        size: MaskBox { width: 5, height: 2 },
+        ..narrow.mask()
     };
     assert!(under(&ink, Some(&short), &recolour(&[1, 2, 3]), None).is_none());
+    let mask = masked((0, 0), (5, 2), |_, _| 255);
     assert!(under(&ink, Some(&mask.mask()), &recolour(&[1, 2, 3]), None).is_some());
+}
+
+/// The most tiles a pass takes fit a binding at their worst, and one more
+/// would not unless a dispatch reaches no more: going forward a tile's
+/// worst is its runs, a pixel's value and rank each.
+#[test]
+fn a_pass_takes_as_many_tiles_as_a_binding_holds_at_their_worst() {
+    let engine = rig().engine;
+    let limits = engine.device.limits();
+    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+    let reach = u64::from(limits.max_compute_workgroups_per_dimension);
+    let runs = TEXELS as u64 * 8;
+    let most = super::most(engine, None, &recolour(&[1, 2, 3])).expect("most") as u64;
+    assert!(most * runs <= room, "{most} tiles of {runs} bytes in {room}");
+    // What a pass is given besides its tiles is a few kilobytes.
+    assert!(most == reach || (most + 1) * runs + 65536 > room, "{most} of {reach}");
+}
+
+/// The hashed cel's 2치화 cut a tile a pass: each pass binds its own runs,
+/// from where a binding may start at or under its first — within an
+/// alignment of it — to past its last.
+#[test]
+fn each_pass_binds_its_runs_from_where_a_binding_may_start() {
+    let Rig { engine, .. } = rig();
+    let cel = hashed_cel();
+    let cut = Verb {
+        threshold: 100,
+        incoming: Incoming::Value(&[255]),
+        ..clear()
+    };
+    let (passed, _) = run(&cel, &cut, Some((1, 1))).expect("run");
+    let runs: Vec<u32> = passed.runs.iter().map(|runs| runs.len() as u32).collect();
+    let starts = super::starts(&passed.touched, &runs);
+    let walk = super::walk(&cel.set, 3, None).expect("walk");
+    let passes = super::runs(walk.iter().map(|tile| tile.at.page), 1, 1);
+    let given = super::Given::all(engine, &walk, &passes, &cut, None, Some(&starts));
+    let given = given.expect("given");
+    let align = super::alignment(engine);
+    for ((run, _), given) in passes.iter().zip(&given) {
+        let bound = given.runs.clone().expect("a forward pass binds its runs");
+        let (first, end) = (u64::from(starts[run.start].1) * 8, u64::from(starts[run.end].1) * 8);
+        assert!(bound.start % align == 0 && bound.start <= first, "{run:?}: {bound:?}");
+        assert!(first < bound.start + align && end <= bound.end, "{run:?}: {bound:?}");
+    }
+}
+
+/// A mask's box that ends on a tile's edge, or starts on one, walks no tile
+/// past it: over 2 × 2 tiles from (0, 0), a box from (0, 0) 128 across and
+/// down walks tile (0, 0) alone, and one from (128, 128) tile (1, 1).
+#[test]
+fn a_box_on_a_tile_edge_walks_no_tile_past_it() {
+    let ink = INK | 255 << 24;
+    let cel = cel((0, 0), (2, 2), |_, _| ink, |_, _| Some(0));
+    for (at, walked) in [((0, 0), (0, 0)), ((128, 128), (1, 1))] {
+        let mask = masked(at, (128, 128), |_, _| 255);
+        let verb = recolour(&[1, 2, 3]);
+        let (passed, _) = under(&cel, Some(&mask.mask()), &verb, None).expect("run");
+        assert_eq!(passed.tiles, [walked], "{at:?}");
+    }
 }
 
 // ---- The ledger ----
