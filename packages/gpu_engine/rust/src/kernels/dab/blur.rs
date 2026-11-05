@@ -52,7 +52,7 @@ const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 /// four storage buffers would compile a pass binding five. Past them the
 /// dab's words, a uniform one, so counted as well.
 const OWN: Own = Own { storage: 3, uniform: 1 };
-const PAGES_AT: u32 = 7;
+const PAGES_AT: u32 = 4;
 /// blur_cel.wgsl's: the cel and the slots, the pages from binding 2.
 const CEL_OWN: Own = Own { storage: 2, uniform: 0 };
 /// blur_cel.wgsl's BLUR_CEL_GROUP: the texels of a tile a workgroup takes.
@@ -458,9 +458,9 @@ impl Blurs {
             .flat_map(|((window, &way), steps)| steps.iter().map(move |step| (step, window, way)))
             .enumerate()
             .map(|(index, (step, window, way))| {
-                let mut bound = whole(&[(0, plan), (4, between)]);
+                let mut bound = whole(&[(0, plan), (1, between)]);
                 bound.push(wgpu::BindGroupEntry {
-                    binding: 5,
+                    binding: 2,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: plan,
                         offset: ((steps_at.get() + index * stride) * 4) as u64,
@@ -468,7 +468,7 @@ impl Blurs {
                     }),
                 });
                 if let (Entry::Pass, Some(second)) = (step.entry, second) {
-                    bound.extend(whole(&[(6, second)]));
+                    bound.extend(whole(&[(3, second)]));
                 }
                 bound.extend(way.pages.entries(of_pages(picture, &window.pages)));
                 Encoded { pipeline: way.of(step.entry), bound, groups: flat(step.groups) }

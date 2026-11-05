@@ -14,7 +14,7 @@
 // the two together pass what one binding holds on some devices — a dab of
 // 2000 lays two of 107 MB, a binding 128 MB (gpu-canonical-store 11-06
 // 03:09).
-@group(0) @binding(6) var<storage, read_write> blur_between_second: array<u32>;
+@group(0) @binding(3) var<storage, read_write> blur_between_second: array<u32>;
 
 // The dispatch's pass, the `blur_dab.y`-th of the block's six.
 var<private> blur_k: u32;

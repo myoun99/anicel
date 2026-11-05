@@ -5,7 +5,7 @@
 //     picture ← picture + (blurred(picture) − picture) × laid
 //
 // rounded half away from zero. The picture is the stroke's planes on their
-// pages (shared/pages.wgsl, from binding 7): premultiplied, 16 bits a
+// pages (shared/pages.wgsl, from binding 4): premultiplied, 16 bits a
 // channel, a tile a slot of a page. `blurred` is
 // box.wgsl's three passes along the rows, then three down the columns, at
 // the radius the dab's size sets; `laid` is dab.wgsl's `dab_source` over
@@ -41,10 +41,10 @@ const BLUR_GRID: u32 = 62u;
 
 // What one dispatch of a dab puts for the next to read: the rows' blur, or
 // the planes a pass a dispatch alternates between.
-@group(0) @binding(4) var<storage, read_write> blur_between: array<u32>;
+@group(0) @binding(1) var<storage, read_write> blur_between: array<u32>;
 // Where the dab's block is, and — a pass a dispatch — which of its passes
 // this dispatch is.
-@group(0) @binding(5) var<uniform> blur_dab: vec4<u32>;
+@group(0) @binding(2) var<uniform> blur_dab: vec4<u32>;
 
 // The dab's block.
 var<private> blur_block: u32;
