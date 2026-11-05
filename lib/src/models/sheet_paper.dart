@@ -5,16 +5,24 @@ import 'canvas_size.dart';
 
 /// A paper format: its sheet standing upright, in millimetres.
 enum SheetPaperFormat {
-  a4(widthMm: 210, heightMm: 297),
-  a3(widthMm: 297, heightMm: 420);
+  a4('A4', widthMm: 210, heightMm: 297),
+  a3('A3', widthMm: 297, heightMm: 420),
 
-  const SheetPaperFormat({required this.widthMm, required this.heightMm});
+  /// JIS B4 — the B4 the Japanese studios' sheets print on, and the one the
+  /// XDTS Viewer's B4 sheets mean (I-162), not ISO's 250 × 353.
+  jisB4('B4', widthMm: 257, heightMm: 364);
+
+  const SheetPaperFormat(
+    this.label, {
+    required this.widthMm,
+    required this.heightMm,
+  });
+
+  /// What the format is called where a sheet says its paper: `A4`.
+  final String label;
 
   final double widthMm;
   final double heightMm;
-
-  /// What the format is called where a sheet says its paper: `A4`.
-  String get label => name.toUpperCase();
 }
 
 /// A sheet panel's PAPER: a format at a resolution — and so a size in
