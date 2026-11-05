@@ -43,7 +43,9 @@ impl Pages {
     /// [`Pages::new`] for a kernel that puts words on its pages too
     /// (`page_put`), binding no more than `most` a pass: a kernel whose
     /// passes mostly bind one compiles itself for one apart, as each page a
-    /// pass binds is a case of every read and put.
+    /// pass binds is a case of every read and put. The pages past the ones
+    /// a pass binds are blank, so no test tells a pass of fewer from one of
+    /// the device's most — only the time (mutant p04, 11-06).
     pub(crate) fn writable(engine: &Engine, own: u32, first: u32, most: usize) -> Option<Pages> {
         Self::bound(engine, (own, first), true, most)
     }

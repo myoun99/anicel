@@ -47,7 +47,10 @@ const PASSES_AT: usize = 8;
 const GRID_AT: usize = PASSES_AT + 6 * PASS_WORDS;
 /// A dab's storage buffers besides the picture's pages — the plan, and the
 /// two planes a pass a dispatch alternates between, strips using the first
-/// — and the binding its pages begin at (blur.wgsl, blur_pass.wgsl).
+/// — and the binding its pages begin at (blur.wgsl, blur_pass.wgsl). A
+/// device that binds sixteen pages past them binds them past two as well,
+/// so no test here tells a count one short (mutant r02, 11-06); a device of
+/// four storage buffers would compile a pass binding five.
 const OWN: u32 = 3;
 const PAGES_AT: u32 = 7;
 /// blur_cel.wgsl's: the cel and the slots, the pages from binding 2.
@@ -433,7 +436,7 @@ impl Blurs {
         });
         // A dab whose window is on one page goes by the dispatches that bind
         // one. The widest bind it too, so no test tells the two apart — only
-        // the time (`Blurs::one`).
+        // the time (`Blurs::one`; mutant r07, 11-06).
         let ways: Vec<&Dispatches> = windows
             .iter()
             .map(|window| if window.pages.len() == 1 { &self.one } else { &self.widest })
@@ -552,7 +555,9 @@ impl Blurs {
 
     /// The most a pass of the cel's takes on this device: the pages it
     /// binds, and the tiles of the cel a binding holds and a dispatch
-    /// reaches.
+    /// reaches. No test lays a cel past a binding (2 GB here, 32,768
+    /// tiles), so none tells a tile's bytes from its words in this line
+    /// (mutant r19, 11-06).
     fn widest(&self, engine: &Engine) -> (usize, usize) {
         let limits = engine.device.limits();
         let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);

@@ -584,7 +584,8 @@ fn no_tile_to_make_or_finish_is_no_pass() {
 // would bring a run past the pages a pass binds or the tiles it takes, and
 // the runs make and finish what one does. Tiles on pages 0, 1, 0, 2, 2, 1
 // at two pages and three tiles a pass are the runs 0..3, on pages 0 and
-// 1, and 3..6, on 2 and 1; at one page a pass, five runs.
+// 1, and 3..6, on 2 and 1; at one page a pass, five runs; at three pages
+// and two tiles, the tiles alone cut them: 0..2, 2..4 and 4..6.
 #[test]
 fn the_cels_passes_cut_where_a_run_has_no_more_room() {
     let tiles: Vec<StrokeTile> = [0, 1, 0, 2, 2, 1]
@@ -599,6 +600,8 @@ fn the_cels_passes_cut_where_a_run_has_no_more_room() {
     let one_a_pass =
         [(0..1, vec![0]), (1..2, vec![1]), (2..3, vec![0]), (3..5, vec![2]), (5..6, vec![1])];
     assert_eq!(runs(&tiles, 1, 6), one_a_pass);
+    let two_a_pass = [(0..2, vec![0, 1]), (2..4, vec![0, 2]), (4..6, vec![2, 1])];
+    assert_eq!(runs(&tiles, 3, 2), two_a_pass);
     let engine = first_engine();
     let cel = cel_of(stored_hashed, (0, 0), (6, 1), &[(4, 0)]);
     let blurs = Blurs::new(engine).expect("pages to bind");
@@ -612,6 +615,7 @@ fn the_cels_passes_cut_where_a_run_has_no_more_room() {
     let whole = made_and_finished(blurs.widest(engine));
     assert!(made_and_finished((2, 3)) == whole);
     assert!(made_and_finished((1, 6)) == whole);
+    assert!(made_and_finished((3, 2)) == whole);
 }
 
 /// A stored pixel of a hashed cel: a quarter nothing, a quarter opaque, the
