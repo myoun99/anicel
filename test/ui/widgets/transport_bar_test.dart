@@ -129,10 +129,11 @@ void main() {
       final last = tester.getRect(find.byKey(k('last')));
       final mute = tester.getRect(find.byKey(k('mute')));
       final volume = tester.getRect(find.byKey(k('volume')));
+      final meter = tester.getRect(find.byType(AudioLevelMeter));
 
       expect(track.left, bar.left + 8);
       expect(track.right, bar.right - 8);
-      for (final under in [readout, first, play, last, mute, volume]) {
+      for (final under in [readout, first, play, last, mute, volume, meter]) {
         expect(under.top, greaterThanOrEqualTo(track.bottom));
       }
       expect(readout.left, bar.left + 8, reason: 'the readout leads the row');
@@ -143,7 +144,8 @@ void main() {
         reason: 'the buttons hold the middle',
       );
       expect(mute.left, greaterThan(last.right));
-      expect(volume.right, bar.right - 8, reason: 'the sound ends the row');
+      expect(meter.left, greaterThan(volume.right));
+      expect(meter.right, bar.right - 8, reason: 'the sound ends the row');
     });
 
     testWidgets('IN and OUT stand in a third row, and only where a span is '
