@@ -311,11 +311,11 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time
   /// mask knobs.
-  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
+  final ValueNotifier<SelectionMaskOptions>? selectionMaskOptions;
 
   /// Forwarded to [BrushCanvasPanel]: the transform tool's settings (mode,
   /// scale anchor, resampler, mesh grid).
-  final ValueListenable<TransformToolOptions>? transformOptions;
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// Forwarded to [BrushCanvasPanel]: the P8 rotate/flip shortcut channel.
   final CanvasViewCommands? viewCommands;

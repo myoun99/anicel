@@ -134,6 +134,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../canvas/canvas_capsule.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/flip_glyph.dart';
 import '../widgets/page_turn_bar.dart';
 import '../widgets/tick_layer.dart';
 import '../text/readout_text.dart' show columnValueOf, readoutText;
@@ -960,13 +961,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// the shape fill at once, gradient or not.
   final FillRange? Function(CanvasSelectionRegion area)? shapeFillRangeFor;
 
-  /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
-  /// Null/absent keeps the classic byte-preserving hard mask.
-  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
+  /// R26 (C2): the Select tool's lift-time mask knobs — read at lift, and
+  /// turned by the pill under a finished selection (I-165). Null/absent
+  /// keeps the classic byte-preserving hard mask.
+  final ValueNotifier<SelectionMaskOptions>? selectionMaskOptions;
 
   /// The transform tool's settings — mode, scale anchor, resampler, mesh
-  /// grid. Null keeps the defaults, which is what focused tests want.
-  final ValueListenable<TransformToolOptions>? transformOptions;
+  /// grid — turned by the box's pill too (I-165). Null keeps the defaults,
+  /// which is what focused tests want.
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// The app-level rotate/flip shortcut channel (P8); the panel binds its
   /// viewport-center handlers while mounted.
@@ -2211,6 +2214,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // waiting for the next gesture.
               transformOptions:
                   transformOptions,
+              onTransformOptionsChanged:
+                  switch (widget.transformOptions) {
+                    null => null,
+                    final owner =>
+                      (options) => owner.value = options,
+                  },
+              maskOptions:
+                  widget.selectionMaskOptions,
             ),
         ),
       ))),

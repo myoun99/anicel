@@ -35,6 +35,9 @@ import '../dialogs/app_progress_dialog.dart' show AppWaitWindow;
 import '../dialogs/behind_the_wait_window.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
+import '../text/app_strings.dart' show AppText;
+import '../widgets/app_icon_button.dart';
+import '../widgets/flip_glyph.dart';
 import 'box_chrome.dart' show SelectionTransformChrome;
 import 'box_on_screen.dart';
 import 'canvas_touch_contacts.dart';
@@ -116,6 +119,8 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
     this.transformOptions = TransformToolOptions.defaults,
+    this.onTransformOptionsChanged,
+    this.maskOptions,
     this.oneFingerAction,
   });
 
@@ -133,6 +138,16 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// All of it is a property of the TOOL, not a declaration about the
   /// layer's content — nothing here inspects the picture to decide.
   final TransformToolOptions transformOptions;
+
+  /// Where the box's pill turns [transformOptions]' 안티앨리어스 — the
+  /// transform settings' switch's own value (I-165). Null: that button is
+  /// refused.
+  final ValueChanged<TransformToolOptions>? onTransformOptionsChanged;
+
+  /// The Select tool's mask knobs (R26 #16), whose 안티앨리어스 the pill under
+  /// a finished selection turns — the settings' switch's own value (I-165).
+  /// Null: that button is refused.
+  final ValueNotifier<SelectionMaskOptions>? maskOptions;
 
   ResampleMode get _resampleMode => transformOptions.resampleMode;
 
@@ -3641,10 +3656,118 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // ⚠️Its own [Positioned.fill]: the pill is laid out against
             // the layer's SIZE, and this is the only child that needs it.
             Positioned.fill(child: _confirmPill(displayShape, chrome)),
+          if (_selectionFinished && displayShape != null)
+            Positioned.fill(child: _selectionPill(displayShape)),
         ],
       ),
     );
   }
+
+  /// Whether the Select tool's selection stands finished — no box open
+  /// over it, and no outline being traced into it.
+  bool get _selectionFinished =>
+      widget.tool == CanvasSelectionTool.select &&
+      _transform == null &&
+      _drag == null &&
+      _hasSelection &&
+      (widget.selectionCommands?.polygonPoints.isEmpty ?? true);
+
+  /// 선택 해제 · 캔버스 안 선택 반전 · 캔버스 밖도 선택 반전 · 안티앨리어스,
+  /// side by side in the pill under a finished selection.
+  ///
+  /// 🗣️I-165 (유저 2026-11-05): 「선택된 상태. 도구에서 선택도구사용해서
+  /// 선택이 완료된 상태에서 변형도구처럼 아래에 알약으로 버튼배치. 내용은
+  /// 선택해제버튼, 캔버스 안/밖 선택반전, 안티앨리어스 적용/미적용 버튼.」
+  ///
+  /// Each is a door the app already had, pressed as it is there: the rail's
+  /// 선택 해제 and its key ([CanvasSelectionCommands.deselect]), the Select
+  /// tool's settings' two walls (I-108) and their keys
+  /// ([CanvasSelectionCommands.invertSelection]), and the settings'
+  /// 안티앨리어스 switch ([CanvasSelectionLayer.maskOptions]).
+  Widget _selectionPill(CanvasSelectionRegion displayShape) {
+    final commands = widget.selectionCommands;
+    VoidCallback? invert(InvertReach reach) => commands == null
+        ? null
+        : () => commands.invertSelection(
+            pasteboard: widget.pasteboard,
+            reach: reach,
+          );
+    final mask = widget.maskOptions;
+    return CanvasTargetPill(
+      keyValue: 'selection-pill',
+      target: _pillTarget(displayShape, null),
+      children: [
+        AppIconButton(
+          keyValue: 'selection-pill-deselect',
+          shortcuts: const [EditorActionIds.selectionDeselect],
+          tooltip: editorActionLabel(EditorActionIds.selectionDeselect),
+          icon: const Icon(Icons.deselect),
+          onPressed: commands?.deselect,
+        ),
+        AppIconButton(
+          keyValue: 'selection-pill-invert-in-canvas',
+          shortcuts: const [EditorActionIds.selectionInvertInCanvas],
+          tooltip: editorActionLabel(EditorActionIds.selectionInvertInCanvas),
+          icon: const _InvertGlyph(wall: Icons.crop_square),
+          onPressed: invert(InvertReach.canvas),
+        ),
+        AppIconButton(
+          keyValue: 'selection-pill-invert',
+          shortcuts: const [EditorActionIds.selectionInvert],
+          tooltip: editorActionLabel(EditorActionIds.selectionInvert),
+          icon: const _InvertGlyph(wall: Icons.crop_free),
+          onPressed: invert(InvertReach.pasteboard),
+        ),
+        if (mask == null)
+          _antiAliasButton('selection-pill-anti-alias', on: false)
+        else
+          ValueListenableBuilder(
+            valueListenable: mask,
+            builder: (context, options, _) => _antiAliasButton(
+              'selection-pill-anti-alias',
+              on: options.antiAlias,
+              onChanged: (on) => mask.value = options.copyWith(antiAlias: on),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 안티앨리어스 as a pill's button, lit while [on] — the one both pills
+  /// wear, each turning its own tool's switch (I-165: 「안티앨리어스
+  /// 적용/미적용 버튼」, and on the box 「추가로 안티앨리어스」).
+  Widget _antiAliasButton(
+    String keyValue, {
+    required bool on,
+    ValueChanged<bool>? onChanged,
+  }) => AppIconButton(
+    keyValue: keyValue,
+    tooltip: AppText.strings.brAntiAlias,
+    icon: const Icon(Icons.blur_linear),
+    isSelected: on,
+    onPressed: onChanged == null ? null : () => onChanged(!on),
+  );
+
+  /// 좌우반전 / 상하반전 on the box's pill — the transform settings' two
+  /// (F-527), pressed the same: [_flipTransform], under their keys.
+  Widget _flipButton({required bool horizontal}) => AppIconButton(
+    keyValue: horizontal
+        ? 'selection-move-flip-horizontal'
+        : 'selection-move-flip-vertical',
+    shortcuts: [
+      if (horizontal)
+        EditorActionIds.transformFlipHorizontal
+      else
+        EditorActionIds.transformFlipVertical,
+    ],
+    tooltip: horizontal
+        ? AppText.strings.trFlipHorizontal
+        : AppText.strings.trFlipVertical,
+    icon: flipGlyph(horizontal: horizontal),
+    onPressed: _canEditTransform()
+        ? () => _flipTransform(horizontal: horizontal)
+        : null,
+  );
 
   /// 확정 and 취소, side by side in the pill under the box.
   ///
@@ -3668,16 +3791,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   Widget _confirmPill(
     CanvasSelectionRegion displayShape,
     SelectionTransformChrome? chrome,
-  ) => CanvasTargetPill(
-    keyValue: 'selection-confirm-pill',
-    target: _pillTarget(displayShape, chrome),
-    children: targetPillVerbs(
-      'selection-move',
-      onConfirm: _applyAction() == null ? null : _applyTransform,
-      onCancel: _cancelTransform,
-      changed: _sessionHasChanges,
-    ),
-  );
+  ) {
+    final turn = widget.onTransformOptionsChanged;
+    final options = widget.transformOptions;
+    return CanvasTargetPill(
+      keyValue: 'selection-confirm-pill',
+      target: _pillTarget(displayShape, chrome),
+      children: [
+        // 🗣️I-165 (유저 2026-11-05): 「그리고 변형도구도 이제부터 알약에
+        // 추가로 안티앨리어스,좌우반전,상하반전 버튼 배치.」
+        _antiAliasButton(
+          'selection-move-anti-alias',
+          on: options.antiAlias,
+          onChanged: turn == null
+              ? null
+              : (on) => turn(options.withAntiAlias(on)),
+        ),
+        _flipButton(horizontal: true),
+        _flipButton(horizontal: false),
+        ...targetPillVerbs(
+          'selection-move',
+          onConfirm: _applyAction() == null ? null : _applyTransform,
+          onCancel: _cancelTransform,
+          changed: _sessionHasChanges,
+        ),
+      ],
+    );
+  }
 
   /// What the pill stands under: the box's outline as the screen draws it,
   /// or the shape where no box is drawn.
@@ -3912,4 +4052,25 @@ SelectionVisibleRect canvasShownPadded(
     right: bounds.right + padding,
     bottom: bounds.bottom + padding,
   );
+}
+
+/// 선택 반전's glyph: the reversal ([Icons.invert_colors]) inside [wall] —
+/// the canvas whole for the canvas's own inside, its corners alone for past
+/// it (I-165 · I-108's two walls).
+class _InvertGlyph extends StatelessWidget {
+  const _InvertGlyph({required this.wall});
+
+  final IconData wall;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = IconTheme.of(context).size ?? 24;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Icon(wall),
+        Icon(Icons.invert_colors, size: size / 2),
+      ],
+    );
+  }
 }

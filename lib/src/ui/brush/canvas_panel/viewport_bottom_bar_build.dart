@@ -459,7 +459,7 @@ class _BottomBarBuild {
           keyValue: 'canvas-viewport-flip-vertical',
           tooltip: AppText.strings.viewFlipVertical,
           shortcuts: const [EditorActionIds.canvasFlipVertical],
-          icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+          icon: flipGlyph(horizontal: false),
           onPressed: _bar.onFlipVertical,
           isSelected: viewport.flipVertical,
         ),
@@ -490,7 +490,7 @@ class _BottomBarBuild {
     keyValue: 'canvas-viewport-flip',
     tooltip: AppText.strings.viewFlipHorizontal,
     shortcuts: const [EditorActionIds.canvasFlipHorizontal],
-    icon: const Icon(Icons.flip),
+    icon: flipGlyph(horizontal: true),
     onPressed: _bar.onFlipHorizontal,
     isSelected: viewport.flipHorizontal,
   );

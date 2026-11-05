@@ -13,7 +13,6 @@ import '../../services/canvas_flood_fill.dart';
 import '../../services/fill_gradient.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
-import '../../services/resample/resample_kernel.dart';
 import '../../services/transform_box_law.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
@@ -1445,16 +1444,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
               SettingsSwitchRow(
                 tileKey: const ValueKey<String>('move-antialias-switch'),
                 label: strings.brAntiAlias,
-                value: options.resampleMode == ResampleMode.blend,
+                value: options.antiAlias,
                 onChanged: onOptions == null
                     ? null
-                    : (value) => onOptions(
-                        options.copyWith(
-                          resampleMode: value
-                              ? ResampleMode.blend
-                              : ResampleMode.pick,
-                        ),
-                      ),
+                    : (value) => onOptions(options.withAntiAlias(value)),
               ),
             ],
           ),

@@ -317,11 +317,11 @@ class EditorCanvasArea extends StatefulWidget {
 
   /// The Select tool's lift-time mask knobs (R26); null keeps the
   /// classic byte-preserving hard mask.
-  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
+  final ValueNotifier<SelectionMaskOptions>? selectionMaskOptions;
 
   /// The transform tool's settings (mode, scale anchor, resampler, mesh
   /// grid); null keeps the defaults.
-  final ValueListenable<TransformToolOptions>? transformOptions;
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// What the canvas shows of the session: the area hears the session only
   /// when this changes ([SlicedListenableBuilder]).
