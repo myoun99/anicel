@@ -53,6 +53,9 @@ fn around(y: u32, i: u32) -> Around {
   if (i >= PIXEL_BYTES) {
     near.a = row_byte(y, i - PIXEL_BYTES);
   }
+  // The top row has nothing above it: row y − 1 would wrap past the
+  // source, and a load out of bounds may give any word of it (WGSL, invalid
+  // memory references). This device gives 0, so no test here sees it go.
   if (y > 0u) {
     near.b = row_byte(y - 1u, i);
     if (i >= PIXEL_BYTES) {
@@ -63,7 +66,9 @@ fn around(y: u32, i: u32) -> Around {
 }
 
 // The Paeth predictor: of a, b and c, the one nearest a + b − c, a tie to
-// the earlier (`pngPaeth`).
+// the earlier (`pngPaeth`). Spelled as the law is: pa = pb with pa <= pc
+// only when a = b, so `pa < pb` would answer the same — `<=` stays, read
+// beside the law.
 fn paeth(a: u32, b: u32, c: u32) -> u32 {
   let p = i32(a) + i32(b) - i32(c);
   let pa = abs(p - i32(a));

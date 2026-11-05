@@ -653,6 +653,26 @@ fn paeth_wins_where_it_takes_each_of_its_three() {
     assert_eq!(rows[1], [4, 216, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 }
 
+// Red (50, 60, 50, 30) over (30, 30, 60, 30): Paeth's two ties, each on
+// the byte it decides. The top row: Sub 50 + 10 + 10 + 20 = 90, Paeth as
+// Sub, None and Up 190, Avg 110 — Sub. Below:
+// - x = 30, a = c = 0, b = 50: Paeth b (p = 50), 20; Avg 5;
+// - x = 30, a = 30, b = 60, c = 50: p = 40, pa = pc = 10 — a, the earlier,
+//   so 0 (c would be 20); Sub 0, Avg 15;
+// - x = 60, a = 30, b = 50, c = 60: Paeth a (p = 20: pa 10), 30; Up 10,
+//   Avg 20;
+// - x = 30, a = 60, b = 30, c = 50: p = 40, pb = pc = 10 — b, the earlier,
+//   so 0 (c would be 20); Up 0, Avg 15.
+// None 150, Sub 90, Up 60, Avg 55, Paeth 50: either tie to the later
+// costs Paeth 20 and the row goes to Avg.
+#[test]
+fn paeth_breaks_a_tie_to_the_earlier() {
+    static ROWS: [&[u32]; 2] = [&[50, 60, 50, 30], &[30, 30, 60, 30]];
+    let rows = png_rgba_rows(&reds(&ROWS, 0), 4, 2);
+    assert_eq!(rows[0], [1, 50, 0, 0, 0, 10, 0, 0, 0, 246, 0, 0, 0, 236, 0, 0, 0]);
+    assert_eq!(rows[1], [4, 236, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0]);
+}
+
 // The same rows opaque, over the ground three bytes a pixel: the same
 // choices, a pixel three bytes to the left — and the lower row starts on
 // the ninth byte, inside a word.
