@@ -19,8 +19,8 @@ mod gather_tests;
 
 use super::iris::{Focus, Iris, IrisTable};
 use super::{
-    Encoded, GROUP, Held, TileRect, checked, compile, encode, fits, held_words, plane,
-    words_buffer,
+    Encoded, GROUP, Held, TileRect, checked, compile, encode, fits, flat, held_words, plane,
+    whole, words_buffer,
 };
 use crate::device::Engine;
 use crate::fail;
@@ -135,13 +135,13 @@ impl LensSums {
             &[
                 Encoded {
                     pipeline: &self.runs,
-                    bound: vec![(0, &held), (1, tiles), (2, &sums), (3, &own), (4, &totals)],
-                    groups,
+                    bound: whole(&[(0, &held), (1, tiles), (2, &sums), (3, &own), (4, &totals)]),
+                    groups: flat(groups),
                 },
                 Encoded {
                     pipeline: &self.carry,
-                    bound: vec![(0, &held), (2, &sums), (3, &own), (4, &totals)],
-                    groups,
+                    bound: whole(&[(0, &held), (2, &sums), (3, &own), (4, &totals)]),
+                    groups: flat(groups),
                 },
             ],
         );
@@ -259,8 +259,8 @@ impl LensBlur {
             engine,
             &[Encoded {
                 pipeline: &self.gather,
-                bound,
-                groups,
+                bound: whole(&bound),
+                groups: flat(groups),
             }],
         );
         Some(out)

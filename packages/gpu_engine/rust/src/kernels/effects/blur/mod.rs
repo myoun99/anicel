@@ -24,7 +24,7 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, TILE_WGSL, encode, fits, pipeline, plane, words_buffer,
+    Encoded, ISQRT_WGSL, TILE_WGSL, encode, fits, flat, pipeline, plane, whole, words_buffer,
 };
 
 /// The workgroup's side in both passes' shaders.
@@ -187,8 +187,8 @@ fn run(
             bound.extend(taps.map(|taps| (4, taps)));
             Encoded {
                 pipeline,
-                bound,
-                groups: dispatch.groups,
+                bound: whole(&bound),
+                groups: flat(dispatch.groups),
             }
         })
         .collect();

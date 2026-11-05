@@ -34,7 +34,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
-use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
+use crate::kernels::shared::{Encoded, ISQRT_WGSL, TILE_WGSL, encode, pipeline, whole};
 
 /// A tile's side in pixels (1a ①).
 const TILE: i32 = 128;
@@ -330,47 +330,17 @@ impl Dabs {
         if tiles.len() > most as usize {
             return fail(format!("{} stroke tiles exceed a dispatch's {most}", tiles.len()));
         }
-        let buffer = self.plans.write(engine, tiles, dabs, paper, second, |_| Some(Vec::new()))?;
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("dab"),
-            layout: &self.pipeline.get_bind_group_layout(0),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: planes.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: view.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: second
-                        .map_or(&self.no_second, |second| second.plane)
-                        .as_entire_binding(),
-                },
-            ],
-        });
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
-            let groups = (TILE / 8) as u32;
-            pass.dispatch_workgroups(groups, groups, tiles.len() as u32);
-        }
-        engine.queue.submit([encoder.finish()]);
+        let plan = self.plans.write(engine, tiles, dabs, paper, second, |_| Some(Vec::new()))?;
+        let levels = second.map_or(&self.no_second, |second| second.plane);
+        let bound = whole(&[(0, plan), (1, planes), (2, view), (3, levels)]);
+        let groups = (TILE / 8) as u32;
+        let groups = (groups, groups, tiles.len() as u32);
+        encode(engine, &[Encoded { pipeline: &self.pipeline, bound, groups }]);
         Some(())
     }
 }
 
-/// The textures a pile reads.
+// The textures a pile reads.
 fn textures_of<'a>(dabs: &[Dab<'a>], paper: Option<&Paper<'a>>) -> Vec<&'a Texture> {
     dabs.iter()
         .filter_map(|dab| match dab.shape {

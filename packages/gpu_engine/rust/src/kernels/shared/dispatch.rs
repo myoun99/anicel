@@ -60,12 +60,58 @@ pub(crate) fn fits(
     Some(())
 }
 
-/// One dispatch as it is encoded: its pipeline, each buffer at the binding
-/// it is bound to, and its workgroups.
+//// One dispatch as it is encoded: its pipeline, what it binds — a buffer
+/// whole or a range of one, a texture's view, a kernel's pages — and its
+/// workgroups, across, down and deep.
 pub(crate) struct Encoded<'a> {
     pub(crate) pipeline: &'a wgpu::ComputePipeline,
-    pub(crate) bound: Vec<(u32, &'a wgpu::Buffer)>,
-    pub(crate) groups: (u32, u32),
+    pub(crate) bound: Vec<wgpu::BindGroupEntry<'a>>,
+    pub(crate) groups: (u32, u32, u32),
+}
+
+/// `bound`, each buffer whole at its binding — what most passes bind.
+pub(crate) fn whole<'a>(bound: &[(u32, &'a wgpu::Buffer)]) -> Vec<wgpu::BindGroupEntry<'a>> {
+    bound
+        .iter()
+        .map(|&(binding, buffer)| wgpu::BindGroupEntry {
+            binding,
+            resource: buffer.as_entire_binding(),
+        })
+        .collect()
+}
+
+/// Workgroups across and down, one deep — a pass over a plane.
+pub(crate) fn flat((across, down): (u32, u32)) -> (u32, u32, u32) {
+    (across, down, 1)
+}
+
+/// Encodes `dispatches` in order on `encoder`, in one compute pass — each
+/// dispatch sees what the ones before it put (wgpu orders a pass's
+/// dispatches as it would passes). Submitting is the caller's: a kernel
+/// that copies between its dispatches, or times the GPU's work alone,
+/// submits where it does now.
+pub(crate) fn encode_on(
+    engine: &Engine,
+    encoder: &mut wgpu::CommandEncoder,
+    dispatches: &[Encoded],
+) {
+    let bind_groups: Vec<wgpu::BindGroup> = dispatches
+        .iter()
+        .map(|dispatch| {
+            engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &dispatch.pipeline.get_bind_group_layout(0),
+                entries: &dispatch.bound,
+            })
+        })
+        .collect();
+    let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+    for (dispatch, bind_group) in dispatches.iter().zip(&bind_groups) {
+        let (across, down, deep) = dispatch.groups;
+        compute.set_pipeline(dispatch.pipeline);
+        compute.set_bind_group(0, bind_group, &[]);
+        compute.dispatch_workgroups(across, down, deep);
+    }
 }
 
 /// Encodes `dispatches` in order and submits them; the caller waits.
@@ -73,24 +119,6 @@ pub(crate) fn encode(engine: &Engine, dispatches: &[Encoded]) {
     let mut encoder = engine
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    for dispatch in dispatches {
-        let entries: Vec<wgpu::BindGroupEntry> = dispatch
-            .bound
-            .iter()
-            .map(|&(binding, buffer)| wgpu::BindGroupEntry {
-                binding,
-                resource: buffer.as_entire_binding(),
-            })
-            .collect();
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &dispatch.pipeline.get_bind_group_layout(0),
-            entries: &entries,
-        });
-        let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        compute.set_pipeline(dispatch.pipeline);
-        compute.set_bind_group(0, &bind_group, &[]);
-        compute.dispatch_workgroups(dispatch.groups.0, dispatch.groups.1, 1);
-    }
+    encode_on(engine, &mut encoder, dispatches);
     engine.queue.submit([encoder.finish()]);
 }

@@ -25,7 +25,7 @@ mod tests;
 
 use std::ops::RangeInclusive;
 
-use super::{Encoded, GROUP, encode, fits, pipeline, plane, words_buffer};
+use super::{Encoded, GROUP, encode, fits, flat, pipeline, plane, whole, words_buffer};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{WIDE_WGSL, q};
@@ -263,13 +263,13 @@ impl IrisTable {
             &[
                 Encoded {
                     pipeline: &self.rows,
-                    bound: vec![(0, &pass), (1, &sides), (2, &shapes), (3, &table)],
-                    groups: row_groups,
+                    bound: whole(&[(0, &pass), (1, &sides), (2, &shapes), (3, &table)]),
+                    groups: flat(row_groups),
                 },
                 Encoded {
                     pipeline: &self.heads,
-                    bound: vec![(0, &pass), (2, &shapes), (3, &table)],
-                    groups: head_groups,
+                    bound: whole(&[(0, &pass), (2, &shapes), (3, &table)]),
+                    groups: flat(head_groups),
                 },
             ],
         );

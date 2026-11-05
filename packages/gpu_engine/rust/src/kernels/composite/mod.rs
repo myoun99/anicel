@@ -57,7 +57,7 @@ use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::shared::{
     ISQRT_WGSL, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL, WIDE_WGSL,
-    page_table, pipeline, storage_format,
+    Encoded, encode_on, page_table, pipeline, storage_format, whole, words_buffer,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -370,12 +370,12 @@ impl Composite {
     ) -> Option<usize> {
         let page_count = plan.pages.len();
         let batches = cut(laid, budget.pages, budget.levels)?;
-        let encoded = encode(laid, &batches, plan.sets, plan.keys, tiles, page_count);
+        let written = plan_words(laid, &batches, plan.sets, plan.keys, tiles, page_count);
         let steps = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("composite plan"),
-                contents: &encoded.words,
+                contents: &written.words,
                 usage: wgpu::BufferUsages::STORAGE,
             });
         // The stack is kept between passes only; one pass keeps none.
@@ -404,7 +404,6 @@ impl Composite {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let layout = pipeline.get_bind_group_layout(0);
         let mut encoder = engine
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -415,64 +414,49 @@ impl Composite {
             .map(|first| (first, (tiles.len() - first).min(chunk)))
         {
             let out_at = kept * 2 * TILE_TEXELS * chunk_tiles as u64;
-            for (index, batch) in batches.iter().enumerate() {
-                let words = [
-                    (batch.begin) as u32,
-                    batch.end as u32,
-                    batch.depth_in as u32,
-                    u32::from(index == 0),
-                    u32::from(index == batches.len() - 1),
-                    encoded.tiles_at + encoded.tile_words * first_tile as u32,
-                    encoded.tile_words,
-                    chunk_tiles as u32,
-                    out_at as u32,
-                    encoded.tables_at + (index * page_count) as u32,
-                    batch.base as u32,
-                    left,
-                    top,
-                    right,
-                    bottom,
-                ];
-                let uniform = engine
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("composite pass"),
-                        contents: &le_bytes(&words),
-                        usage: wgpu::BufferUsages::UNIFORM,
-                    });
-                let mut entries = vec![
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: uniform.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: steps.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: work.as_entire_binding(),
-                    },
-                ];
-                let bound = batch.pages.iter().map(|&page| &plan.pages[usize::from(page)]);
-                entries.extend(self.pages.entries(bound));
-                if let Target::Surface(view) = target {
-                    entries.push(wgpu::BindGroupEntry {
-                        binding: self.surface_binding(),
-                        resource: wgpu::BindingResource::TextureView(view),
-                    });
-                }
-                let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("composite"),
-                    layout: &layout,
-                    entries: &entries,
-                });
-                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(0, &bind_group, &[]);
-                pass.dispatch_workgroups(TILE / 16, TILE / 16, chunk_tiles as u32);
-                passes += 1;
-            }
+            let uniforms: Vec<wgpu::Buffer> = batches
+                .iter()
+                .enumerate()
+                .map(|(index, batch)| {
+                    let words = [
+                        (batch.begin) as u32,
+                        batch.end as u32,
+                        batch.depth_in as u32,
+                        u32::from(index == 0),
+                        u32::from(index == batches.len() - 1),
+                        written.tiles_at + written.tile_words * first_tile as u32,
+                        written.tile_words,
+                        chunk_tiles as u32,
+                        out_at as u32,
+                        written.tables_at + (index * page_count) as u32,
+                        batch.base as u32,
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    ];
+                    words_buffer(engine, "composite pass", &words, wgpu::BufferUsages::UNIFORM)
+                })
+                .collect();
+            let dispatches: Vec<Encoded> = batches
+                .iter()
+                .zip(&uniforms)
+                .map(|(batch, uniform)| {
+                    let mut bound = whole(&[(0, uniform), (1, &steps), (2, &work)]);
+                    let pages = batch.pages.iter().map(|&page| &plan.pages[usize::from(page)]);
+                    bound.extend(self.pages.entries(pages));
+                    if let Target::Surface(view) = target {
+                        bound.push(wgpu::BindGroupEntry {
+                            binding: self.surface_binding(),
+                            resource: wgpu::BindingResource::TextureView(view),
+                        });
+                    }
+                    let groups = (TILE / 16, TILE / 16, chunk_tiles as u32);
+                    Encoded { pipeline, bound, groups }
+                })
+                .collect();
+            encode_on(engine, &mut encoder, &dispatches);
+            passes += dispatches.len();
             if let Target::Tiles(out) = target {
                 encoder.copy_buffer_to_buffer(
                     &work,
@@ -702,7 +686,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
 /// The plan buffer's words, where its output tiles start and how many words
 /// each takes, and where its passes' tables of pages start, one after
 /// another.
-struct Encoded {
+struct PlanWords {
     words: Vec<u8>,
     tiles_at: u32,
     tile_words: u32,
@@ -715,14 +699,14 @@ struct Encoded {
 /// pool the binding holding it, or NO_PAGE — and the output tiles: each its
 /// column and row, then a bit a step, step k bit k % 32 of word k / 32,
 /// set where the step is live there.
-fn encode(
+fn plan_words(
     laid: &[Laid],
     batches: &[Batch],
     sets: &[TileSet],
     keys: &[KeyChain],
     tiles: &[(i32, i32)],
     page_count: usize,
-) -> Encoded {
+) -> PlanWords {
     let mut words: Vec<u32> = Vec::with_capacity(laid.len() * STEP_WORDS);
     let maps_at = (laid.len() * STEP_WORDS) as u32;
     let mut map_at = Vec::with_capacity(sets.len());
@@ -806,7 +790,7 @@ fn encode(
         }
         words.extend(mask);
     }
-    Encoded {
+    PlanWords {
         words: le_bytes(&words),
         tiles_at,
         tile_words: 2 + masks as u32,

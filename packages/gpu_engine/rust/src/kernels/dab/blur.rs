@@ -27,9 +27,7 @@ mod tests;
 use std::cell::Cell;
 use std::collections::HashMap;
 
-use wgpu::util::DeviceExt;
-
-use super::{Dab, Paper, Plans, StrokeTile, TILE, bytes};
+use super::{Dab, Paper, Plans, StrokeTile, TILE};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
@@ -39,7 +37,8 @@ use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
 use crate::kernels::shared::{
-    ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, fits, page_table, pipeline, runs,
+    Encoded, ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table, pipeline,
+    runs, whole, words_buffer,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -424,25 +423,20 @@ impl Blurs {
             Some(words)
         });
         let plan = plan?;
-        // Each dispatch's own words: its dab's block and its pass.
-        let align = u64::from(engine.device.limits().min_uniform_buffer_offset_alignment);
+        // Each dispatch's own words: its dab's block and its pass, at an
+        // offset a binding may start at.
+        let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
         let count: usize = steps.iter().map(Vec::len).sum();
-        let mut uniform = vec![0u8; align as usize * count];
+        let mut uniform = vec![0u32; stride * count];
         let mut slot = 0;
         for (place, steps) in places.iter().zip(&steps) {
             let block = (blocks_at.get() + place) as u32;
             for step in steps {
-                let at = &mut uniform[slot * align as usize..];
-                at[..4].copy_from_slice(&block.to_le_bytes());
-                at[4..8].copy_from_slice(&step.pass.to_le_bytes());
+                uniform[slot * stride..][..2].copy_from_slice(&[block, step.pass]);
                 slot += 1;
             }
         }
-        let uniform = engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("blur dabs"),
-            contents: &uniform,
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
+        let uniform = words_buffer(engine, "blur dabs", &uniform, wgpu::BufferUsages::UNIFORM);
         // A dab whose window is on one page goes by the dispatches that bind
         // one. The widest bind it too, so no test tells the two apart — only
         // the time (`Blurs::one`; mutant r07, 11-06).
@@ -451,50 +445,31 @@ impl Blurs {
             .map(|window| if window.pages.len() == 1 { &self.one } else { &self.widest })
             .collect();
         let (between, second) = (self.between.as_ref()?, self.second.as_ref());
-        let bound = |step: &Step, (window, way): (&Window, &Dispatches), index: usize| {
-            let entry = |binding, resource| wgpu::BindGroupEntry { binding, resource };
-            let mut entries = vec![
-                entry(0, plan.as_entire_binding()),
-                entry(4, between.as_entire_binding()),
-                entry(5, wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &uniform,
-                    offset: index as u64 * align,
-                    size: wgpu::BufferSize::new(16),
-                })),
-            ];
-            if let (Entry::Pass, Some(second)) = (step.entry, second) {
-                entries.push(entry(6, second.as_entire_binding()));
-            }
-            let read = window.pages.iter().map(|&page| &picture[usize::from(page)]);
-            entries.extend(way.pages.entries(read));
-            engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("blur dab"),
-                layout: &way.of(step.entry).get_bind_group_layout(0),
-                entries: &entries,
-            })
-        };
-        let dispatches: Vec<(&Step, &wgpu::ComputePipeline, wgpu::BindGroup)> = windows
+        let dispatches: Vec<Encoded> = windows
             .iter()
             .zip(&ways)
             .zip(&steps)
             .flat_map(|((window, &way), steps)| steps.iter().map(move |step| (step, window, way)))
             .enumerate()
             .map(|(index, (step, window, way))| {
-                (step, way.of(step.entry), bound(step, (window, way), index))
+                let mut bound = whole(&[(0, plan), (4, between)]);
+                bound.push(wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &uniform,
+                        offset: (index * stride * 4) as u64,
+                        size: wgpu::BufferSize::new(16),
+                    }),
+                });
+                if let (Entry::Pass, Some(second)) = (step.entry, second) {
+                    bound.extend(whole(&[(6, second)]));
+                }
+                let read = window.pages.iter().map(|&page| &picture[usize::from(page)]);
+                bound.extend(way.pages.entries(read));
+                Encoded { pipeline: way.of(step.entry), bound, groups: flat(step.groups) }
             })
             .collect();
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            for (step, pipeline, bind_group) in &dispatches {
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(0, bind_group, &[]);
-                pass.dispatch_workgroups(step.groups.0, step.groups.1, 1);
-            }
-        }
-        engine.queue.submit([encoder.finish()]);
+        encode(engine, &dispatches);
         Some(())
     }
 
@@ -587,57 +562,39 @@ impl Blurs {
         (pages_per_pass, most): (usize, usize),
     ) -> Option<()> {
         let tile_bytes = TILE_TEXELS * 4;
-        let layout = pass.get_bind_group_layout(0);
         let on = tiles.iter().map(|tile| tile.at.page);
-        let dispatches: Vec<(u32, wgpu::BindGroup)> = runs(on, pages_per_pass, most)
-            .into_iter()
+        let runs = runs(on, pages_per_pass, most);
+        let slots: Vec<wgpu::Buffer> = runs
+            .iter()
             .map(|(run, pages)| {
-                let table: Vec<u32> = page_table(&pages, picture.len()).collect();
+                let table: Vec<u32> = page_table(pages, picture.len()).collect();
                 let slots: Vec<u32> = tiles[run.clone()]
                     .iter()
                     .flat_map(|tile| [table[usize::from(tile.at.page)], u32::from(tile.at.slot)])
                     .collect();
-                let slots = engine.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("blur cel slots"),
-                    contents: &bytes(&slots),
-                    usage: wgpu::BufferUsages::STORAGE,
-                });
-                let mut entries = vec![
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: cel,
-                            offset: run.start as u64 * tile_bytes,
-                            size: wgpu::BufferSize::new(run.len() as u64 * tile_bytes),
-                        }),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: slots.as_entire_binding(),
-                    },
-                ];
-                let read = pages.iter().map(|&page| &picture[usize::from(page)]);
-                entries.extend(self.cel_pages.entries(read));
-                let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("blur cel"),
-                    layout: &layout,
-                    entries: &entries,
-                });
-                (run.len() as u32, bind_group)
+                words_buffer(engine, "blur cel slots", &slots, wgpu::BufferUsages::STORAGE)
             })
             .collect();
-        let mut encoder = engine
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        {
-            let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            compute.set_pipeline(pass);
-            for (count, bind_group) in &dispatches {
-                compute.set_bind_group(0, bind_group, &[]);
-                compute.dispatch_workgroups((TILE_TEXELS / CEL_GROUP) as u32, *count, 1);
-            }
-        }
-        engine.queue.submit([encoder.finish()]);
+        let dispatches: Vec<Encoded> = runs
+            .iter()
+            .zip(&slots)
+            .map(|((run, pages), slots)| {
+                let mut bound = vec![wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: cel,
+                        offset: run.start as u64 * tile_bytes,
+                        size: wgpu::BufferSize::new(run.len() as u64 * tile_bytes),
+                    }),
+                }];
+                bound.extend(whole(&[(1, slots)]));
+                let read = pages.iter().map(|&page| &picture[usize::from(page)]);
+                bound.extend(self.cel_pages.entries(read));
+                let groups = ((TILE_TEXELS / CEL_GROUP) as u32, run.len() as u32, 1);
+                Encoded { pipeline: pass, bound, groups }
+            })
+            .collect();
+        encode(engine, &dispatches);
         Some(())
     }
 }

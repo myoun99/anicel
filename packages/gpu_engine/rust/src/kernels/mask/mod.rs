@@ -21,7 +21,7 @@ mod tests;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::{
-    Encoded, WIDE_WGSL, encode, fits, pipeline, plane, q, words_buffer,
+    Encoded, WIDE_WGSL, encode, fits, flat, pipeline, plane, q, whole, words_buffer,
 };
 
 /// mask.wgsl's workgroup side.
@@ -229,8 +229,8 @@ impl MaskPasses {
             };
             encoded.push(Encoded {
                 pipeline,
-                bound,
-                groups: size.groups(step.per_word()),
+                bound: whole(&bound),
+                groups: flat(size.groups(step.per_word())),
             });
         }
         encode(engine, &encoded);
