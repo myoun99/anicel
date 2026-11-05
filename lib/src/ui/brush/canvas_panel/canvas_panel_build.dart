@@ -343,7 +343,7 @@ class _PanelBuild {
               _state._activeSurfacePainter(),
               (
                 liveRow: _state._selectionFloat,
-                liftedRows: _state._lift.liftedRows,
+                liftedRows: _state._rowsHeldBeside(),
               ),
             ),
           ),

@@ -471,7 +471,7 @@ void main() {
     final stack = canvasOf(tester);
     final floats = [
       if (rows != _Rows.folder) stack.live!.floatOverlay?.value,
-      for (final lifted in stack.live!.liftedRows.values) lifted.float.value,
+      for (final lifted in stack.live!.liftedRows.values) lifted.float?.value,
     ];
     expect(
       [

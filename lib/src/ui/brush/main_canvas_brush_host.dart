@@ -44,6 +44,7 @@ import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../session/pixel_verb_preview.dart';
 
 /// Production main-canvas Brush host for HomePage integration.
 ///
@@ -114,6 +115,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.textToolOptions,
     this.cutPieceSlot,
     this.onCutShown,
+    this.pixelVerbPreview,
     this.lastStroke,
     this.onStrokeInputActiveChanged,
     this.strokeLander,
@@ -338,6 +340,9 @@ class MainCanvasBrushHost extends StatefulWidget {
     required bool takeWhatItCuts,
   })?
   onCutShown;
+  /// The colour edit list's preview — threaded down to the canvas panel
+  /// ([BrushCanvasPanel.pixelVerbPreview]).
+  final PixelVerbPreview? pixelVerbPreview;
 
   /// The last drawing action — threaded down to the canvas panel, which
   /// records it and lays it down again for 확정.
@@ -627,6 +632,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       textToolOptions: widget.textToolOptions,
       cutPieceSlot: widget.cutPieceSlot,
       onCutShown: widget.onCutShown,
+      pixelVerbPreview: widget.pixelVerbPreview,
       lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
       strokeLander: widget.strokeLander,

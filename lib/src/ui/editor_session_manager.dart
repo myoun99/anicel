@@ -57,6 +57,7 @@ import '../models/timesheet_sheet_kind.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/project.dart';
 import '../models/pill_subject.dart';
+import '../models/pixel_verb_settings.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -181,6 +182,7 @@ import 'session/exposure_verbs.dart';
 import 'session/block_naming.dart';
 import 'session/cell_instances.dart';
 import 'session/cell_verbs.dart';
+import 'session/pixel_verb_preview.dart';
 import 'session/pixel_verbs.dart';
 import 'session/rail_legends.dart';
 import 'session/folders_and_attachments.dart';
@@ -1360,6 +1362,15 @@ class EditorSessionManager extends ChangeNotifier
   // when I-55 doubled the family. Callers name it, as they name [cells].
   late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels, solo: visibilitySolo, brushInputActive: brushInputActive, liveStrokeDraws: layerStack.liveStrokeDraws);
 
+  /// The list's preview (I-164): what a row would do to the cels on the
+  /// canvas, shown and not written — made again when a knob turns or the
+  /// cels change.
+  late final PixelVerbPreview pixelVerbPreview = PixelVerbPreview(
+    previewOf: pixelVerbs.previewOf,
+    inputs: Listenable.merge([PixelVerbSettings.settings, historyManager]),
+    coordinator: () => pixelEditing.coordinator,
+  );
+
   // ── the rail legends: what each panel's header opens, for a key (I-40) ──
   final RailLegends railLegends = RailLegends();
 
@@ -1698,6 +1709,9 @@ class EditorSessionManager extends ChangeNotifier
     () => historyManager.removeListener(refreshLiveAudioSchedule),
     () => historyManager.removeListener(_railFollowsTheDocument),
     () => historyManager.removeListener(renderCaches.framesMoved),
+    // Off the history it listens to, and its view off the stores, before
+    // either goes.
+    pixelVerbPreview.dispose,
     () => opacityVerbs.dragPreview.removeListener(
       playbackRig.prerenderScheduler.notifyEditActivity,
     ),

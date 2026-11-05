@@ -4,6 +4,7 @@ import 'dart:ui' show Rect;
 import 'package:flutter/foundation.dart' show ValueListenable, VoidCallback;
 
 import '../../models/attached_layer_resolve.dart' show attachedRowAsShown;
+import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart' show inkBoundsOfWords;
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_frame_key.dart';
@@ -188,9 +189,8 @@ class PixelVerbs {
     if (cut == null) {
       return null;
     }
-    // What the canvas SHOWS — the solo's eyes, since the solo is what is on
-    // screen. A cel the ladder names that is not shown lands at the confirm.
-    final shown = {for (final layer in cut.layers) ?_celOf(cut, layer, null)};
+    // A cel the ladder names that is not shown lands at the confirm.
+    final shown = _celsTheCanvasShows(cut);
     final standing = _standingCel(cut);
     final lifted = {
       ?standing,
@@ -202,6 +202,12 @@ class PixelVerbs {
     }
     return [for (final key in lifted) (key: key, live: key == standing)];
   }
+
+  /// The cels the canvas shows at the playhead that a pixel verb may reach —
+  /// the solo's eyes, since the solo is what is on screen.
+  Set<BrushFrameKey> _celsTheCanvasShows(Cut cut) => {
+    for (final layer in cut.layers) ?_celOf(cut, layer, null),
+  };
 
   /// 🚨A PIXEL VERB NEEDS A DRAWING TO ACT ON. 유저 2026-08-27: 「색변환은
   /// 레이어에 그림이 존재 해야 활성화시키는게 맞고. 픽셀삭제는 그림이
@@ -400,48 +406,78 @@ class PixelVerbs {
   ///
   /// One undo step across every cel, however many the ladder named.
   void runPixelVerb(CelPixelVerb verb) {
-    final coordinator = _pixelEditing.coordinator;
-    if (coordinator == null || !canRunPixelVerb) {
+    if (!canRunPixelVerb) {
       return;
     }
     final keys = pixelVerbCellKeys();
     if (keys.isEmpty) {
       return;
     }
+    if (_commandFor(verb, keys) case final command?) {
+      _project.historyManager.execute(command);
+    }
+  }
+
+  /// What [verb]'s row would do to the cels of [pixelVerbCellKeys] the
+  /// canvas shows, written nowhere — the colour edit list's preview
+  /// (I-164), by its press's own command ([CelPixelOverwriteCommand.
+  /// preview]). Empty where the row could not run.
+  Map<BrushFrameKey, BitmapSurface> previewOf(CelPixelVerb verb) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null || !canRunPixelVerb) {
+      return const {};
+    }
+    final shown = _celsTheCanvasShows(cut);
+    final keys = [
+      for (final key in pixelVerbCellKeys())
+        if (shown.contains(key)) key,
+    ];
+    return keys.isEmpty
+        ? const {}
+        : _commandFor(verb, keys)?.preview() ?? const {};
+  }
+
+  /// [verb]'s command over [keys], as a press runs it — null with no
+  /// coordinator.
+  CelPixelOverwriteCommand? _commandFor(
+    CelPixelVerb verb,
+    List<BrushFrameKey> keys,
+  ) {
+    final coordinator = _pixelEditing.coordinator;
+    if (coordinator == null) {
+      return null;
+    }
     // Read ONCE, at the moment of the press — see [PixelVerbCanvas].
     final canvas = pixelVerbCanvas?.call();
-    _project.historyManager.execute(
-      CelPixelOverwriteCommand.forVerb(
-        coordinator: coordinator,
-        targets: _targetsFor(keys, canvas?.region),
-        verb: verb,
-        // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional on
-        // `restoreSurfaceSnapshot`, and omitting it silently falls to a
-        // no-op — the pixels change, every cache keeps serving the old
-        // composite, and the edit appears only after leaving the frame and
-        // coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데 캔버스쪽에서
-        // 라이브로 갱신안되서 다른 프레임 갔다가 와야 반영되있어. 이런 캔버스
-        // 조작은 바로바로 반영되야지」.
-        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
-        // Read at the MOMENT OF THE PRESS — the bar does not hold the brush
-        // colour, it asks for it. ⛔The fallback is the brush's own default,
-        // not white or transparent: a press with no publisher wired must
-        // still do the thing the user asked for, in the colour they would
-        // have got.
-        argb: canvas?.argb ?? 0xFF000000,
-        // 🚨THE SELECTION'S SOFTNESS TRAVELS WITH IT. A Ctrl+T lift on the
-        // same marquee already honoured 확장·페더·AA and these verbs did
-        // not, so one outline meant two things. Read at the press for
-        // the same reason the colour is (the panel can change it while the
-        // popover is open). ⛔The fallback is `none`, which is also every
-        // option's own default — a host with nothing wired behaves exactly
-        // as it did. 유저 확정 2026-09-09 (`pixel-verbs-mask-options` = 가).
-        options:
-            canvas?.mask ?? SelectionMaskOptions.none,
-        // What the list's knobs hold (I-13) — read at the press too, since
-        // a knob turns while the list is open.
-        settings: PixelVerbSettings.settings.value,
-      ),
+    return CelPixelOverwriteCommand.forVerb(
+      coordinator: coordinator,
+      targets: _targetsFor(keys, canvas?.region),
+      verb: verb,
+      // 🚨WITHOUT THIS THE CANVAS DOES NOT REDRAW. The sink is optional on
+      // `restoreSurfaceSnapshot`, and omitting it silently falls to a
+      // no-op — the pixels change, every cache keeps serving the old
+      // composite, and the edit appears only after leaving the frame and
+      // coming back. 유저 2026-08-27: 「버튼 누르면 작동은하는데 캔버스쪽에서
+      // 라이브로 갱신안되서 다른 프레임 갔다가 와야 반영되있어. 이런 캔버스
+      // 조작은 바로바로 반영되야지」.
+      cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+      // Read at the MOMENT OF THE PRESS — the bar does not hold the brush
+      // colour, it asks for it. ⛔The fallback is the brush's own default,
+      // not white or transparent: a press with no publisher wired must
+      // still do the thing the user asked for, in the colour they would
+      // have got.
+      argb: canvas?.argb ?? 0xFF000000,
+      // 🚨THE SELECTION'S SOFTNESS TRAVELS WITH IT. A Ctrl+T lift on the
+      // same marquee already honoured 확장·페더·AA and these verbs did
+      // not, so one outline meant two things. Read at the press for
+      // the same reason the colour is (the panel can change it while the
+      // popover is open). ⛔The fallback is `none`, which is also every
+      // option's own default — a host with nothing wired behaves exactly
+      // as it did. 유저 확정 2026-09-09 (`pixel-verbs-mask-options` = 가).
+      options: canvas?.mask ?? SelectionMaskOptions.none,
+      // What the list's knobs hold (I-13) — read at the press too, since
+      // a knob turns while the list is open.
+      settings: PixelVerbSettings.settings.value,
     );
   }
 

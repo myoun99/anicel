@@ -76,6 +76,7 @@ import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/landing_preview.dart';
 import '../canvas/selection_float_overlay.dart';
+import '../session/pixel_verb_preview.dart';
 import '../canvas/canvas_line_hold.dart';
 import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart';
@@ -333,6 +334,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.textCommands,
     this.textToolOptions,
     this.cutPieceSlot,
+    this.pixelVerbPreview,
     this.lastStroke,
     this.onCutContent,
     this.onCutShown,
@@ -993,6 +995,12 @@ class BrushCanvasPanel extends StatefulWidget {
   /// (the cut variants are then inert rather than crashing).
   final CutPieceSlot? cutPieceSlot;
 
+  /// The colour edit list's preview (I-164): the cels it holds are drawn as
+  /// the row would leave them — this row's by its painter, the others in
+  /// their own slots as a lift's are ([LiftedCel]). Null in hosts with no
+  /// list.
+  final PixelVerbPreview? pixelVerbPreview;
+
   /// The last drawing action: every stroke this canvas lands is held here,
   /// and 확정 lays it down again through the same funnel. Null in hosts
   /// that are not the cut's canvas — 재입력 lays on 「지금 레이어·지금
@@ -1313,6 +1321,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The State keeps the entry points its build tree calls.
   late final _CanvasPanelToolCursor _toolCursor = _CanvasPanelToolCursor(this);
 
+  /// The rows the composite draws from a surface held beside the one this
+  /// canvas draws ([CanvasFloats.liftedRows]): a lift's (I-37 · F-329), and
+  /// the colour edit list's preview's, with nothing floating (I-164). The
+  /// row this canvas draws takes its own through [_activeSurfacePainter].
+  Map<BrushFrameKey, LiftedCel> _rowsHeldBeside() {
+    final previewed = widget.pixelVerbPreview?.cels() ?? const {};
+    if (previewed.isEmpty) {
+      return _lift.liftedRows;
+    }
+    final own = widget.coordinator?.activeFrameKey;
+    return {
+      for (final MapEntry(:key, :value) in previewed.entries)
+        if (key != own) key: (surface: value, float: null),
+      ..._lift.liftedRows,
+    };
+  }
+
   BitmapSurfacePainter? _activeSurfacePainter() {
     // ★THE CEL QUESTION, NOT THE ROW'S (H19): a lane refuses the STROKE,
     // it does not empty the canvas.
@@ -1347,10 +1372,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // text laid in as it is shown — typed, dragged or set differently, and
     // not on its cel until it lands (`CelTextSession`). The two never meet:
     // each is its own tool's, and another tool in hand lands either.
+    //
+    // And the colour edit list's preview (I-164), which the list holds
+    // while it is open — over the canvas, so no tool runs under it.
     final held = identity == null
         ? null
         : _lift.holedSurfaceFor(identity.key) ??
-              _text.shownSurfaceFor(identity.key, identity.surface);
+              _text.shownSurfaceFor(identity.key, identity.surface) ??
+              widget.pixelVerbPreview?.cels()[identity.key];
     // F-344: what floats over the text tool's hole, made for the cel this
     // painter draws.
     _text.floatOver(identity);
@@ -1500,6 +1529,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _installedReinputHandler = _reinputLastStroke;
     widget.lastStroke?.reinputHandler = _installedReinputHandler;
     _bindCelPixelRevision();
+    // What the preview shows is cels too — drawn again as it turns.
+    widget.pixelVerbPreview?.addListener(_handleCelPixelsChanged);
     _syncIdleAnts();
   }
 
@@ -1635,6 +1666,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // the viewport: the widget's may already point somewhere else.
     _listenedCelPixels?.removeListener(_handleCelPixelsChanged);
     _listenedCelPixels = null;
+    widget.pixelVerbPreview?.removeListener(_handleCelPixelsChanged);
     _stopHearingTheHand();
     // ⛔ONLY the panel's own. `_viewportNotifier` may BE the owner's — the
     // whole point of the controller — and disposing that would kill the
@@ -1899,6 +1931,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didUpdateWidget(oldWidget);
     // The coordinator can be swapped under us; the signal travels with it.
     _bindCelPixelRevision();
+    rebindListener(
+      oldWidget.pixelVerbPreview,
+      widget.pixelVerbPreview,
+      _handleCelPixelsChanged,
+    );
     // A host that passes its own colours can change them without the scope
     // moving; `didChangeDependencies` alone would never hear that.
     if (oldWidget.canvasBase != widget.canvasBase ||

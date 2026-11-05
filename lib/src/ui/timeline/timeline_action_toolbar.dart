@@ -940,6 +940,9 @@ class TimelineActionToolbar extends StatelessWidget {
                 ? () => showPanelFlyout(
                     context,
                     entries: _menus.colourEdit(context),
+                    // 🗣️I-164: 「그 색 편집 앵커창 나가면 사라짐. 즉
+                    // 체크해제됨」 — a row chosen ends it where it lands.
+                    onDismissed: () => session.pixelVerbPreview.verb = null,
                   )
                 : null,
           ),

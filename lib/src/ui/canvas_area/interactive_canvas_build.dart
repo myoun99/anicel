@@ -425,6 +425,7 @@ class _InteractiveCanvasBuild {
           ),
         );
       },
+      pixelVerbPreview: session.pixelVerbPreview,
       lastStroke: _state.widget.lastStroke,
       // R13-3: a live stroke holds the prerender warmer — composite
       // warming never shares the UI/raster threads with drawing.

@@ -833,7 +833,10 @@ class BrushFrameStore {
   ///
   /// ⛔The TOOL still owns the lifetime — it mints the token and releases
   /// it on confirm, revert or landing. This owns only the DISCIPLINE.
-  final Map<int, ({int Function() bytes, void Function() reclaim})>
+  ///
+  /// Any object is a token: a lift's count, or a holder that is one view
+  /// itself (the colour edit list's preview, I-164).
+  final Map<Object, ({int Function() bytes, void Function() reclaim})>
   _reclaimableViews = {};
 
   /// Holds [token]'s derived view under the store's discipline: [bytes]
@@ -842,14 +845,14 @@ class BrushFrameStore {
   /// ⚠️[reclaim] must leave the holder able to rebuild — it is called on a
   /// memory warning, not at the end of the session.
   void holdReclaimableView(
-    int token, {
+    Object token, {
     required int Function() bytes,
     required void Function() reclaim,
   }) {
     _reclaimableViews[token] = (bytes: bytes, reclaim: reclaim);
   }
 
-  void releaseReclaimableView(int token) {
+  void releaseReclaimableView(Object token) {
     _reclaimableViews.remove(token);
   }
 

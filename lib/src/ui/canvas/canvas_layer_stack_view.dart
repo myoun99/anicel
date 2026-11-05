@@ -139,7 +139,7 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
 /// and its float.
 typedef _LiftedRowPaint = ({
   BitmapSurfacePainter surface,
-  SelectionFloatOverlay float,
+  SelectionFloatOverlay? float,
 });
 
 /// One non-active layer to composite around the interactive canvas.
@@ -852,7 +852,7 @@ final class _LayerStackPainter {
   ) => Listenable.merge(<Listenable?>[
     activeSurfacePainter,
     floatOverlay,
-    for (final lifted in liftedRows.values) ...[lifted.surface, lifted.float],
+    for (final lifted in liftedRows.values) ...[lifted.surface, ?lifted.float],
   ]);
 
   /// The last line the T12 probe in [_LayerStackPaintPass.paint] emitted.

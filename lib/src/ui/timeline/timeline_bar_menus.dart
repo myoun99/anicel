@@ -18,7 +18,9 @@ import '../session/effects_and_fx.dart' show EffectChainHolder;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../widgets/boolean_dot.dart' show BooleanDotButton;
 import '../widgets/field_slider.dart';
+import '../widgets/icon_button_box.dart' show AppIconButtonSize;
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
 import 'layer_name_commands.dart' show renameActiveLayerWithDialog;
@@ -485,7 +487,11 @@ class TimelineBarMenus {
 
   /// [run], a row of the colour edit list, behind the wait window under
   /// [actionId]'s name when it lands on more than one of [blocks] (F-566).
-  static void _behindTheWaitWindow(
+  ///
+  /// 🗣️I-164: the list's preview is over once a row is chosen — 「그 색 편집
+  /// 앵커창 나가면 사라짐」 — and it goes where the row's step lands, so the
+  /// canvas never shows the cels as they were between the two.
+  void _behindTheWaitWindow(
     BuildContext context,
     String actionId,
     VoidCallback run, {
@@ -494,7 +500,10 @@ class TimelineBarMenus {
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        run,
+        () {
+          run();
+          session.pixelVerbPreview.verb = null;
+        },
         window: AppWaitWindow.working(editorActionLabel(actionId)),
         blocks: blocks,
       ),
@@ -538,12 +547,14 @@ class TimelineBarMenus {
     // in its own row — the value the row's command runs with.
     knob: switch (verb) {
       CelPixelVerb.binarize => _byteKnob(
+        verb,
         'shared-binarize-cut',
         lowest: PixelVerbSettings.lowestBinarizeThreshold,
         read: (settings) => settings.binarizeThreshold,
         write: (settings, byte) => settings.copyWith(binarizeThreshold: byte),
       ),
       CelPixelVerb.deleteColour => _byteKnob(
+        verb,
         'shared-delete-colour-tolerance',
         lowest: 0,
         read: (settings) => settings.deleteColourTolerance,
@@ -551,6 +562,7 @@ class TimelineBarMenus {
             settings.copyWith(deleteColourTolerance: byte),
       ),
       CelPixelVerb.keepColour => _byteKnob(
+        verb,
         'shared-keep-colour-tolerance',
         lowest: 0,
         read: (settings) => settings.keepColourTolerance,
@@ -560,10 +572,21 @@ class TimelineBarMenus {
     },
   );
 
-  /// A byte from [lowest] to 255 that a row's verb runs with: the live
+  /// The bar of a knob that runs a row's verb — as short as a byte's bar
+  /// reads (I-164: 「수치 막대는 최대한 컴팩트하게」).
+  static const double _byteBarWidth = 56;
+
+  /// A byte from [lowest] to 255 that [verb]'s row runs with: the live
   /// value follows the bar as it goes, and the app's settings keep it when
   /// it is let go — a drag is not a disk write per step.
+  ///
+  /// 🗣️I-164 (유저 2026-11-05): 「그런거는 프리뷰버튼 두도록 … 그 막대
+  /// 오른쪽에 두도록. 누르면 프리뷰로 보임. 프리뷰는 한번에 하나만」 — the
+  /// ring right of the bar shows the canvas as the row would leave it
+  /// (`PixelVerbPreview`); turning one on turns the other off, so they are
+  /// a pick-one group.
   PanelFlyoutKnob _byteKnob(
+    CelPixelVerb verb,
     String keyValue, {
     required int lowest,
     required int Function(PixelVerbSettings settings) read,
@@ -572,17 +595,37 @@ class TimelineBarMenus {
   }) {
     PixelVerbSettings at(double value) =>
         write(PixelVerbSettings.settings.value, value.round());
+    final preview = session.pixelVerbPreview;
     return PanelFlyoutKnob(
-      listenable: PixelVerbSettings.settings,
-      builder: (_) => FieldSlider(
-        key: ValueKey<String>(keyValue),
-        value: read(PixelVerbSettings.settings.value).toDouble(),
-        min: lowest.toDouble(),
-        max: 255,
-        divisions: 255 - lowest,
-        onChanged: (value) => PixelVerbSettings.settings.value = at(value),
-        onChangeEnd: (value) =>
-            session.appSettings.setPixelVerbSettings(at(value)),
+      listenable: Listenable.merge([PixelVerbSettings.settings, preview]),
+      width: _byteBarWidth + 4 + AppIconButtonSize.bar.maxWidth,
+      builder: (_) => Row(
+        spacing: 4,
+        children: [
+          SizedBox(
+            width: _byteBarWidth,
+            child: FieldSlider(
+              key: ValueKey<String>(keyValue),
+              value: read(PixelVerbSettings.settings.value).toDouble(),
+              min: lowest.toDouble(),
+              max: 255,
+              divisions: 255 - lowest,
+              onChanged: (value) =>
+                  PixelVerbSettings.settings.value = at(value),
+              onChangeEnd: (value) =>
+                  session.appSettings.setPixelVerbSettings(at(value)),
+            ),
+          ),
+          BooleanDotButton(
+            keyValue: '$keyValue-preview',
+            value: preview.verb == verb,
+            inPickOneGroup: true,
+            tooltip: AppText.strings.commonPreview,
+            onChanged: session.pixelVerbs.canRunPixelVerb
+                ? (on) => preview.verb = on ? verb : null
+                : null,
+          ),
+        ],
       ),
     );
   }

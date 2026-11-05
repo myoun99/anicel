@@ -446,7 +446,11 @@ typedef SelectionFloatOverlay = ValueNotifier<SelectionFloatPaint?>;
 /// ⚠️A SURFACE, not a painter: the composite draws it as its row's cel is
 /// shown — through the seam, with that row's keys (`celSurfaceAsShown`) —
 /// which the composite knows from the row and the lift does not.
-typedef LiftedCel = ({BitmapSurface surface, SelectionFloatOverlay float});
+///
+/// [float] is null where nothing floats over the surface: the colour edit
+/// list's preview holds the cel as its row would leave it, and that is all
+/// it holds (I-164).
+typedef LiftedCel = ({BitmapSurface surface, SelectionFloatOverlay? float});
 
 /// Draws [SelectionFloatPaint]s for hosts with NO composite behind them (the
 /// conte, the timesheet, the cut envelope, and tests that mount the selection
