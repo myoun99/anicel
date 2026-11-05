@@ -3158,6 +3158,14 @@ class ExportDialogState extends State<ExportDialog> {
     final digital = spec.sheetFormat == ExportTimesheetFormat.xdts;
     bool isDigitalSheet(ExportDocumentSheet sheet) =>
         digital && sheet.kind == ExportCelKind.timesheet;
+    // A cut's two digital files share one ink folder
+    // ([xdtsInkFolderName]): the first of them the run writes lays it.
+    final inkedCuts = <CutId>{};
+    final inkingSheets = {
+      for (final sheet in plan.writtenDocuments)
+        if (isDigitalSheet(sheet) && inkedCuts.add(sheet.of.id)) sheet,
+    };
+    final writesInk = spec.writesSheetInk(fps: _projectFps);
     // 🚨THE FILES THAT ARE ON, not every planned one. ↩️The run walked the
     // list the window PREVIEWS, so a cel whose switch was off was counted
     // out of the headline and written all the same (found reading the run
@@ -3229,7 +3237,9 @@ class ExportDialogState extends State<ExportDialog> {
             _AfterFile.whole(
               () => _writeXdts(
                 sheet,
-                inkFace: spec.writesSheetInk(fps: _projectFps) ? face : null,
+                inkFace: writesInk && inkingSheets.contains(sheet)
+                    ? face
+                    : null,
                 viewerSheetFor: spec.viewerSheetFor,
               ),
             )
@@ -3388,10 +3398,11 @@ class ExportDialogState extends State<ExportDialog> {
     return sounds;
   }
 
-  /// The digital sheet of a cut's timesheet, at [sheet]'s file — and, given
-  /// the [inkFace] its words are set in ([CelsExportSpec.writesSheetInk]),
-  /// its pages' handwriting beside it as the XDTS Viewer reads it, laid on
-  /// the viewer sheet [viewerSheetFor] gives the cut's.
+  /// One of the digital sheet files of a cut's timesheet ([sheet]'s half),
+  /// at its file — and, given the [inkFace] its words are set in
+  /// ([CelsExportSpec.writesSheetInk]), its pages' handwriting beside it as
+  /// the XDTS Viewer reads it, laid on the viewer sheet [viewerSheetFor]
+  /// gives the cut's.
   Future<void> _writeXdts(
     ExportDocumentSheet sheet, {
     required TextStyle? inkFace,
@@ -3401,6 +3412,7 @@ class ExportDialogState extends State<ExportDialog> {
     final content = cutXdtsContent(
       _session,
       cut: cut,
+      half: sheet.half!,
       cutStartFrame: _trackStartOf(cut),
     );
     final file = File(_joinLocation(sheet.fileName));

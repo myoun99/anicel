@@ -728,7 +728,8 @@ void main() {
       await tester.pickExportProjectScope();
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(statusText(tester), '파일 2개 내보냈습니다.');
+      // Two cuts, each written as its 原画 and 動画 pair (I-162-Q6).
+      expect(statusText(tester), '파일 4개 내보냈습니다.');
     });
 
     testWidgets('video: the audio summary and the finished sentence', (
@@ -994,7 +995,11 @@ void main() {
       await pickPaperFormat(tester, 'export-tsformat', 'xdts');
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesWrittenUnder(temp), ['_TSCut.xdts'], reason: 'a plain XDTS');
+      expect(
+        filesWrittenUnder(temp),
+        ['_TSCut_douga_ts.xdts', '_TSCut_genga_ts.xdts'],
+        reason: 'a plain XDTS: its blocks\' two files (I-162-Q6)',
+      );
 
       // 🗣️I-161-Q8: the cut's own sheet's viewer sheet stands picked — the
       // app's 6-second sheet, the A3 — and the row is dead with no ink.
@@ -1014,10 +1019,18 @@ void main() {
       await tester.pump();
       expect(state.debugSpecs.cels.sheetInk, isTrue);
       expect(sheetButton().enabled, isTrue);
+      final partsBefore = state.debugSheetPartsMade;
       await tester.runAsync(state.export);
       await tester.pump();
+      expect(
+        state.debugSheetPartsMade - partsBefore,
+        1,
+        reason: 'the page\'s saved ink drawn once for the pair, not a file',
+      );
+      // One ink folder for the pair, beside both (I-162-Q6).
       expect(filesWrittenUnder(temp), [
-        '_TSCut.xdts',
+        '_TSCut_douga_ts.xdts',
+        '_TSCut_genga_ts.xdts',
         '_TSCut_xdts/1.png',
         '_TSCut_xdts/config.ini',
       ]);
@@ -1198,7 +1211,10 @@ void main() {
       expect(state.debugSpecs.cels.sheetInk, isTrue);
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesWrittenUnder(temp), ['_TSCut.xdts']);
+      expect(filesWrittenUnder(temp), [
+        '_TSCut_douga_ts.xdts',
+        '_TSCut_genga_ts.xdts',
+      ]);
     });
 
     testWidgets('a photo laid on the sheet rides its PNG, drawn from its '
@@ -1271,11 +1287,15 @@ void main() {
 
       // Each in its cut's folder, which the project scope holds (I-153).
       expect(filesWrittenUnder(temp), [
-        'Cut B/_TSCut B.xdts',
-        'Cut/_TSCut.xdts',
+        'Cut B/_TSCut B_douga_ts.xdts',
+        'Cut B/_TSCut B_genga_ts.xdts',
+        'Cut/_TSCut_douga_ts.xdts',
+        'Cut/_TSCut_genga_ts.xdts',
       ]);
-      expect(statusText(tester), 'Exported 2 files.');
-      final content = File('${temp.path}/Cut/_TSCut.xdts').readAsStringSync();
+      expect(statusText(tester), 'Exported 4 files.');
+      final content = File(
+        '${temp.path}/Cut/_TSCut_genga_ts.xdts',
+      ).readAsStringSync();
       expect(content, contains('exchangeDigitalTimeSheet'));
     });
   });
@@ -1426,10 +1446,11 @@ void main() {
       await switchTab(tester, 'timesheet');
       await pickPaperFormat(tester, 'export-tsformat', 'xdts');
 
-      // The fixture's cut is named 'Cut', so the file is _TSCut.xdts — the
-      // same name the run actually writes.
-      expect(tester.exportFirstFileName, '_TSCut.xdts');
-      expect(tester.exportPreviewName, '_TSCut.xdts');
+      // The fixture's cut is named 'Cut', so the first file is its ACTION
+      // block's, _TSCut_genga_ts.xdts — the same name the run actually
+      // writes (I-162-Q6).
+      expect(tester.exportFirstFileName, '_TSCut_genga_ts.xdts');
+      expect(tester.exportPreviewName, '_TSCut_genga_ts.xdts');
     });
 
     testWidgets('the preview shows the rendered picture once it lands',

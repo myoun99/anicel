@@ -312,7 +312,7 @@ void main() {
           .exportOverrides
           .deltaFor(cutId)!
           .skippedPages,
-      {(document: ExportCelKind.timesheet, page: 0)},
+      {(document: ExportCelKind.timesheet, page: 0, half: null)},
     );
 
     await tester.pressInCelsBoard(
@@ -356,7 +356,7 @@ void main() {
           .exportOverrides
           .deltaFor(cutId)!
           .skippedPages,
-      {(document: ExportCelKind.envelope, page: 0)},
+      {(document: ExportCelKind.envelope, page: 0, half: null)},
     );
 
     await tester.pressInCelsBoard(
@@ -540,8 +540,9 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('the digital sheet is ONE file of the same run — written, '
-      'counted, and named TS and its cut', (tester) async {
+  // 🗣️I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두 파일로」.
+  testWidgets('the digital sheet is its blocks\' TWO files of the same run — '
+      'written, counted, and named TS, its cut and its block', (tester) async {
     final temp = Directory.systemTemp.createTempSync('qa-cels-xdts');
     deleteAfterSessionEnds(temp);
     final session = film();
@@ -556,25 +557,31 @@ void main() {
       ),
       into: temp,
     );
-    expect(listed(tester), ['A1.png', 'A2.png', '_TS301.xdts']);
+    const pair = ['_TS301_genga_ts.xdts', '_TS301_douga_ts.xdts'];
+    expect(listed(tester), ['A1.png', 'A2.png', ...pair]);
 
     await tester.runAsync(state.export);
     await tester.pump();
 
-    expect(filesWrittenUnder(temp), ['A1.png', 'A2.png', '_TS301.xdts']);
     expect(
-      File('${temp.path}/_TS301.xdts').readAsStringSync(),
-      contains('exchangeDigitalTimeSheet'),
+      filesWrittenUnder(temp),
+      unorderedEquals(['A1.png', 'A2.png', ...pair]),
     );
-    expect(textOf(tester, 'export-status'), 'Exported 3 files.');
+    for (final name in pair) {
+      expect(
+        File('${temp.path}/$name').readAsStringSync(),
+        contains('exchangeDigitalTimeSheet'),
+        reason: name,
+      );
+    }
+    expect(textOf(tester, 'export-status'), 'Exported 4 files.');
     session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨a timesheet that runs over several pages is a file a PAGE: '
       'a block each, numbered — turned off one by one, stood on one by one, '
-      'written one by one — and its digital sheet is still ONE file', (
-    tester,
-  ) async {
+      'written one by one — and its digital sheet is its blocks\' two files, '
+      'which no page turned off reaches', (tester) async {
     final temp = Directory.systemTemp.createTempSync('qa-cels-sheet-pages');
     deleteAfterSessionEnds(temp);
     // 300 frames at 24 a second: three pages of 144.
@@ -621,10 +628,14 @@ void main() {
     expect(filesWrittenUnder(temp), ['_TS301_1.png', '_TS301_3.png']);
     expect(textOf(tester, 'export-status'), 'Exported 2 files.');
 
-    // The digital sheet holds every page in its one file.
+    // The digital sheet holds every page in each of its two files, and the
+    // second page's off is no file of it (I-162-Q6).
     await pickPaperFormat(tester, 'export-tsformat', 'xdts');
-    expect(tester.celsBoardBlocksOf('document-timesheet'), [('301', true)]);
-    expect(listed(tester), ['_TS301.xdts']);
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [
+      (layerProcessAbbrev(LayerProcess.key), true),
+      (layerProcessAbbrev(LayerProcess.inbetween), true),
+    ]);
+    expect(listed(tester), ['_TS301_genga_ts.xdts', '_TS301_douga_ts.xdts']);
     session.playbackRig.prerenderScheduler.cancel();
   });
 

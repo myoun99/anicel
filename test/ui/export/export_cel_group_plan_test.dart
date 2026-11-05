@@ -28,6 +28,8 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerProcessAbbrev;
 
 import '../../helpers/every_frame_drawn.dart';
 import '../../helpers/export_cels_alone.dart';
@@ -2034,8 +2036,10 @@ void main() {
         3,
         spec: documents.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
       );
+      // 🗣️I-162-Q6: its blocks' two files, whatever its pages.
       expect(documentFiles(digital), [
-        '_TSCUT1.xdts',
+        '_TSCUT1_genga_ts.xdts',
+        '_TSCUT1_douga_ts.xdts',
         '_CUTCUT1_envelope.png',
       ]);
     });
@@ -2052,6 +2056,23 @@ void main() {
         ],
       );
       expect(paged(1).documents.first.word, 'CUT1');
+      // The digital sheet's two files say their blocks' stages, as a row's
+      // label does (I-162-Q6).
+      final digital = paged(
+        3,
+        spec: documents.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
+      );
+      expect(
+        [
+          for (final sheet in digital.documents)
+            if (sheet.kind == ExportCelKind.timesheet)
+              (sheet.word, sheet.fullName),
+        ],
+        [
+          (layerProcessAbbrev(LayerProcess.key), 'TSCUT1_genga_ts'),
+          (layerProcessAbbrev(LayerProcess.inbetween), 'TSCUT1_douga_ts'),
+        ],
+      );
       // No two blocks of the list answer to one id.
       final ids = [for (final sheet in paged(3).documents) sheet.idValue];
       expect(ids.toSet(), hasLength(ids.length));
@@ -2101,9 +2122,9 @@ void main() {
     // every page and took their names.
     test('a document\'s files turned off — every page, as its row\'s switch '
         'turns them — stay planned under their names and are not written', () {
-      const sheet1 = (document: ExportCelKind.timesheet, page: 0);
-      const sheet2 = (document: ExportCelKind.timesheet, page: 1);
-      const envelope = (document: ExportCelKind.envelope, page: 0);
+      const sheet1 = (document: ExportCelKind.timesheet, page: 0, half: null);
+      const sheet2 = (document: ExportCelKind.timesheet, page: 1, half: null);
+      const envelope = (document: ExportCelKind.envelope, page: 0, half: null);
       final hand = ExportProjectOverrides().withCelsDelta(
         const CutId('cut'),
         ExportCelsCutDelta()
@@ -2133,7 +2154,7 @@ void main() {
         overrides: ExportProjectOverrides().withCelsDelta(
           const CutId('cut'),
           ExportCelsCutDelta().withPageSkipped(
-            (document: ExportCelKind.timesheet, page: 0),
+            (document: ExportCelKind.timesheet, page: 0, half: null),
             true,
           ),
         ),
@@ -2266,6 +2287,7 @@ void main() {
           ExportCelsCutDelta().withPageSkipped((
             document: ExportCelKind.timesheet,
             page: 0,
+            half: null,
           ), true),
         ),
       );

@@ -11,7 +11,10 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/services/export/xdts_builder.dart';
 
 Cut _cut() {
@@ -98,6 +101,7 @@ void main() {
     final json =
         jsonDecode(
               buildXdtsContent(
+                half: XdtsSheetHalf.genga,
                 cut: inScene,
                 cutLabel: '3',
                 unnamedMark: InbetweenMark.two,
@@ -110,6 +114,7 @@ void main() {
   test('XDTS content: identifier line + spec-shaped JSON with CELL/DIALOG/'
       'CAMERAWORK fields', () {
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: _cut(),
       cutLabel: '3',
       unnamedMark: InbetweenMark.two,
@@ -209,6 +214,7 @@ void main() {
       'with none — blank or spaces alike — the picked mark as its tick', () {
     List<(int, String)> celValues(InbetweenMark unnamedMark) {
       final content = buildXdtsContent(
+        half: XdtsSheetHalf.genga,
         cut: Cut(
           id: const CutId('xdts-heads'),
           name: 'Cut 5',
@@ -297,6 +303,7 @@ void main() {
   test('CAMERAWORK: a span that writes nothing is the empty cell it shows, '
       'and one with no mark writes only its A→B', () {
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: Cut(
         id: const CutId('xdts-none'),
         name: 'Cut 4',
@@ -391,6 +398,7 @@ void main() {
     final json =
         jsonDecode(
               buildXdtsContent(
+                half: XdtsSheetHalf.genga,
                 cut: hidden,
                 cutLabel: '3',
                 unnamedMark: InbetweenMark.two,
@@ -440,6 +448,7 @@ void main() {
     );
 
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: withImage,
       cutLabel: '3',
       unnamedMark: InbetweenMark.two,
@@ -487,6 +496,7 @@ void main() {
     final json =
         jsonDecode(
               buildXdtsContent(
+                half: XdtsSheetHalf.genga,
                 cut: withAttach,
                 cutLabel: '3',
                 unnamedMark: InbetweenMark.two,
@@ -524,6 +534,7 @@ void main() {
     );
 
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: Cut(
         id: const CutId('windowed'),
         name: 'Cut 7',
@@ -645,6 +656,7 @@ void main() {
 
   test('an empty cut still writes a valid sheet with a null-cell entry', () {
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: Cut(
         id: const CutId('empty'),
         name: 'Empty',
@@ -676,5 +688,77 @@ void main() {
             as List<dynamic>;
     expect(frames, hasLength(1));
     expect((frames.single as Map<String, dynamic>)['frame'], 0);
+  });
+
+  // 🗣️I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두 파일로」.
+  test('a cut is two files by its sheet\'s blocks: the 原画 one holds the '
+      'ACTION rows, the 動画 one the CELL rows, and each the whole of the '
+      'rest', () {
+    final cut = _cut();
+    final withInbetween = cut.copyWith(
+      layers: [
+        ...cut.layers,
+        Layer(
+          id: const LayerId('cel-b'),
+          name: 'B',
+          mark: const LayerMark(process: LayerProcess.inbetween),
+          frames: [
+            Frame(
+              id: const FrameId('b1'),
+              duration: 2,
+              name: 'B1',
+              strokes: const [],
+            ),
+          ],
+          timeline: {
+            1: const TimelineExposure.drawing(FrameId('b1'), length: 2),
+          },
+        ),
+      ],
+    );
+    Map<String, dynamic> tableOf(XdtsSheetHalf half) {
+      final content = buildXdtsContent(
+        half: half,
+        cut: withInbetween,
+        cutLabel: '3',
+        unnamedMark: InbetweenMark.two,
+        instructionDefById: CameraInstructionSet.standard.defById,
+      );
+      final json =
+          jsonDecode(content.split('\n').skip(1).join('\n'))
+              as Map<String, dynamic>;
+      return (json['timeTables'] as List<dynamic>).single
+          as Map<String, dynamic>;
+    }
+
+    List<dynamic> fieldOf(Map<String, dynamic> table, int fieldId) => [
+      for (final field in table['fields'] as List<dynamic>)
+        if ((field as Map<String, dynamic>)['fieldId'] == fieldId)
+          field['tracks'],
+    ];
+    List<String> celNames(Map<String, dynamic> table) => [
+      for (final header in table['timeTableHeaders'] as List<dynamic>)
+        if ((header as Map<String, dynamic>)['fieldId'] == xdtsFieldCell)
+          ...(header['names'] as List<dynamic>).cast<String>(),
+    ];
+
+    final genga = tableOf(XdtsSheetHalf.genga);
+    final douga = tableOf(XdtsSheetHalf.douga);
+    expect(celNames(genga), ['A']);
+    expect(celNames(douga), ['B']);
+    expect(genga['duration'], douga['duration']);
+    for (final field in [xdtsFieldDialog, xdtsFieldCamerawork]) {
+      expect(fieldOf(genga, field), hasLength(1), reason: 'field $field');
+      expect(
+        fieldOf(douga, field),
+        fieldOf(genga, field),
+        reason: 'field $field',
+      );
+    }
+    expect(
+      [for (final half in XdtsSheetHalf.values) half.nameMark],
+      ['_genga_ts', '_douga_ts'],
+      reason: 'the marks the viewer finds a file\'s block by',
+    );
   });
 }

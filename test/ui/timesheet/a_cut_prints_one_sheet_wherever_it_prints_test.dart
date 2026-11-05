@@ -19,6 +19,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/services/export/xdts_builder.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -98,13 +99,19 @@ void main() {
     ];
   }
 
-  /// The one time table of the XDTS [cut] exports.
+  /// The one time table of the XDTS [cut] exports for its ACTION block's
+  /// rows — the fixtures' cel rows are all 原画.
   Map<String, dynamic> xdtsTableOf(
     EditorSessionManager s,
     Cut cut, {
     required int cutStartFrame,
   }) {
-    final xdts = cutXdtsContent(s, cut: cut, cutStartFrame: cutStartFrame);
+    final xdts = cutXdtsContent(
+      s,
+      cut: cut,
+      half: XdtsSheetHalf.genga,
+      cutStartFrame: cutStartFrame,
+    );
     final json =
         jsonDecode(xdts.substring(xdts.indexOf('\n') + 1))
             as Map<String, dynamic>;

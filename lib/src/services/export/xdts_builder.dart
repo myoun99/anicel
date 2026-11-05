@@ -7,6 +7,7 @@ import '../../models/layer.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/transition_geometry.dart';
+import '../../models/xdts_sheet_half.dart';
 
 /// Builds an XDTS (exchange digital time sheet, OpenToonz/Toei) document
 /// for one cut, straight from the unified timeline model.
@@ -32,6 +33,9 @@ const String xdtsTick2 = 'SYMBOL_TICK_2';
 
 String buildXdtsContent({
   required Cut cut,
+
+  /// Which of the cut's two files ([XdtsSheetHalf]).
+  required XdtsSheetHalf half,
   /// The cut NUMBER as the sheet writes it — which is the cut's NAME, a
   /// free string the user owns ('39', '39A', '39B/40'). It used to be the
   /// cut's 1-based position, so reordering cuts silently renumbered every
@@ -73,7 +77,7 @@ String buildXdtsContent({
   // O.L arrives into — its own frame 0 that much before its conte — lost
   // its last のりしろ rows, the pictures and the sounds on them.
   final duration = sources.drawnFrameCount;
-  final celLayers = sources.celLayers;
+  final celLayers = xdtsCelLayersOf(half, sources);
   final seLayers = [for (final slot in sources.seLayers) slot.layer];
   final instructionLayers = sources.instructionLayers;
 
@@ -162,6 +166,14 @@ String buildXdtsContent({
   return '$xdtsFileIdentifier\n'
       '${const JsonEncoder.withIndent('  ').convert(json)}\n';
 }
+
+/// The rows of [sources] [half]'s cel field holds: the ACTION block's for
+/// the 原画 file, the CELL block's for the 動画 file.
+List<Layer> xdtsCelLayersOf(XdtsSheetHalf half, SheetSources sources) =>
+    switch (half) {
+      XdtsSheetHalf.genga => sources.actionLayers,
+      XdtsSheetHalf.douga => sources.cellLayers,
+    };
 
 Map<String, dynamic> _frameEntry(int frame, List<String> values) => {
   'frame': frame,

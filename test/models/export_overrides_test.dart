@@ -11,6 +11,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
 void main() {
@@ -220,9 +221,9 @@ void main() {
     });
 
     group('the cut\'s documents (F-289)', () {
-      const page0 = (document: ExportCelKind.timesheet, page: 0);
-      const page2 = (document: ExportCelKind.timesheet, page: 2);
-      const envelope = (document: ExportCelKind.envelope, page: 0);
+      const page0 = (document: ExportCelKind.timesheet, page: 0, half: null);
+      const page2 = (document: ExportCelKind.timesheet, page: 2, half: null);
+      const envelope = (document: ExportCelKind.envelope, page: 0, half: null);
 
       test('a file of a document is turned off and back on, one at a time — '
           'no row exception: the label does not read 「커스텀」 for it', () {
@@ -284,6 +285,30 @@ void main() {
           ],
         });
         expect(strange.skippedPages, {envelope});
+      });
+
+      // 🗣️I-162-Q6: the digital sheet is two files, which are no pages.
+      test('a digital sheet file turned off is its own — no page of the '
+          'sheet, whichever its place — and it round-trips after the pages',
+          () {
+        const page1 = (document: ExportCelKind.timesheet, page: 1, half: null);
+        const douga = (
+          document: ExportCelKind.timesheet,
+          page: 1,
+          half: XdtsSheetHalf.douga,
+        );
+        expect(
+          ExportCelsCutDelta().withPageSkipped(page1, true).skippedPages,
+          isNot(contains(douga)),
+        );
+        final both = ExportCelsCutDelta()
+            .withPageSkipped(douga, true)
+            .withPageSkipped(page2, true);
+        expect(both.toJson()['skippedPages'], [
+          {'document': 'timesheet', 'page': 2},
+          {'document': 'timesheet', 'page': 1, 'half': 'douga'},
+        ]);
+        expect(ExportCelsCutDelta.fromJson(both.toJson()), both);
       });
     });
   });

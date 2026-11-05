@@ -2,6 +2,7 @@ import '../../models/app_frame_grid_settings.dart';
 import '../../models/cut.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timesheet_document.dart';
+import '../../models/xdts_sheet_half.dart';
 import '../../services/commands/link_mirror.dart';
 import '../../services/export/xdts_builder.dart';
 import '../conte/conte_sheet_builder.dart';
@@ -81,13 +82,16 @@ TimesheetDocument cutSheetDocument(
 /// same axis as [cutSheetDocument] hands it — the two sheets must read one
 /// story. In a cut an O.L arrives into, that is the のりしろ before its
 /// conte: the DIALOG tracks count from its own frame 0, as its cel tracks
-/// do (I-73-ol-sheet-columns).
+/// do (I-73-ol-sheet-columns). It is two files, its sheet's two blocks
+/// ([half]).
 String cutXdtsContent(
   EditorSessionManager session, {
   required Cut cut,
+  required XdtsSheetHalf half,
   required int cutStartFrame,
 }) => buildXdtsContent(
   cut: cut,
+  half: half,
   cutLabel: cut.name,
   unnamedMark: AppFrameGridSettings.settings.value.unnamedMark,
   instructionDefById: session.camera.cameraInstructionSet.defById,

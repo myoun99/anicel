@@ -3,6 +3,7 @@ import 'cut_id.dart';
 import 'export_cel_kind.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
+import 'xdts_sheet_half.dart';
 
 /// One drawing of a cut, named by the row it stands on and the cel it is —
 /// what the Cels tab's list switches, and what a direction is laid over.
@@ -12,8 +13,15 @@ typedef ExportCelRef = ({LayerId row, FrameId cel});
 typedef ExportDirectionOver = ({ExportCelRef cel, ExportCelRef direction});
 
 /// One file of one of the cut's documents ([ExportCelKind.isDocument]): a
-/// page of its timesheet, from 0 — and 0 for a document that is one file.
-typedef ExportDocumentPage = ({ExportCelKind document, int page});
+/// page of its timesheet, from 0 — and 0 for a document that is one file —
+/// or one of its digital sheet's two files ([half]), which are no page of
+/// it: a page turned off is not a digital file turned off, whichever form
+/// the sheet is written in next.
+typedef ExportDocumentPage = ({
+  ExportCelKind document,
+  int page,
+  XdtsSheetHalf? half,
+});
 
 /// The Cels tab's per-cut MANUAL EXCEPTIONS (v10 ⑥ "규칙 적용 후 델타"):
 /// what the user hand-flipped away from the preset rules' outcome for one
@@ -225,11 +233,17 @@ class ExportCelsCutDelta {
       'skippedPages': [
         for (final page
             in skippedPages.toList()..sort(
-              (a, b) => a.document == b.document
-                  ? a.page.compareTo(b.page)
-                  : a.document.index.compareTo(b.document.index),
+              (a, b) => a.document != b.document
+                  ? a.document.index.compareTo(b.document.index)
+                  : a.half != b.half
+                  ? (a.half?.index ?? -1).compareTo(b.half?.index ?? -1)
+                  : a.page.compareTo(b.page),
             ))
-          {'document': page.document.jsonValue, 'page': page.page},
+          {
+            'document': page.document.jsonValue,
+            'page': page.page,
+            if (page.half case final half?) 'half': half.jsonValue,
+          },
       ],
     if (directionOver.isNotEmpty)
       'directionOver': [
@@ -250,7 +264,11 @@ class ExportCelsCutDelta {
       skippedPages: {
         for (final page in pages.cast<Map<String, dynamic>>())
           if (ExportCelKind.fromJson(page['document']) case final document?)
-            (document: document, page: (page['page'] as num).toInt()),
+            (
+              document: document,
+              page: (page['page'] as num).toInt(),
+              half: XdtsSheetHalf.fromJson(page['half']),
+            ),
       },
       layerOverrides: {
         for (final entry in raw.entries)

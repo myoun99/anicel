@@ -12,14 +12,18 @@ library;
 
 import '../../models/timesheet_document.dart' show TimesheetContentPart;
 import '../../models/transition_geometry.dart';
+import '../../models/xdts_sheet_half.dart';
 import '../../models/xdts_viewer_sheet.dart';
 
 /// The folder the viewer reads [xdtsFileName]'s ink from: the name less
-/// its `.xdts`, and less the `_genga_ts` / `_douga_ts` a genga or douga
-/// sheet's name carries (in any case), with `_xdts` after it — the
-/// viewer's `MyParams::getImageFolderPath`.
+/// its `.xdts`, and less the mark a genga or douga sheet's name carries
+/// ([XdtsSheetHalf.nameMark], in any case), with `_xdts` after it — the
+/// viewer's `MyParams::getImageFolderPath`. A cut's two files share one.
 String xdtsInkFolderName(String xdtsFileName) {
-  final pairSuffix = RegExp('_(genga|douga)_ts', caseSensitive: false);
+  final pairSuffix = RegExp(
+    [for (final half in XdtsSheetHalf.values) half.nameMark].join('|'),
+    caseSensitive: false,
+  );
   final name = xdtsFileName.replaceAll(pairSuffix, '');
   return '${name.substring(0, name.length - '.xdts'.length)}_xdts';
 }
@@ -43,10 +47,14 @@ const Set<TimesheetContentPart> xdtsViewerUnprintedParts = {
 };
 
 /// The viewer's `config.ini` for a sheet laid on [sheet] that draws
-/// [handles] of のりしろ: the template, the cells area, the columns
-/// widened past the template's and the O.L each end — every other setting
-/// the viewer's own default. `Version` says which page names it reads (1A,
-/// 1B from 1.2.0).
+/// [handles] of のりしろ: the template, the columns widened past the
+/// template's and the O.L each end — every other setting the viewer's own
+/// default. `Version` says which page names it reads (1A, 1B from 1.2.0).
+///
+/// No `ExportArea`: a file whose name carries its block
+/// ([XdtsSheetHalf.nameMark]) is laid by its name, and the viewer does not
+/// read the setting for it (`isAreaSpecified`, 타임라인/콘티's reading, I-162
+/// 11-05). ↩️`ExportArea=Cells`, from when a cut was one file.
 ///
 /// The widening is written, not left to the viewer's own setting, which a
 /// folder's file falls back to: the app's XDTS sheet pages widen their
@@ -65,7 +73,6 @@ String xdtsViewerConfig({
       '\n'
       '[FormatSettings]\n'
       'TemplateName="${sheet.label}"\n'
-      'ExportArea=Cells\n'
       'ExpandColumns=true\n'
       'StartOverlapFrameLength=${overlaps.start}\n'
       'EndOverlapFrameLength=${overlaps.end}\n';
