@@ -914,6 +914,12 @@ class TimesheetDocumentPainter extends CustomPainter
   @visibleForTesting
   static bool debugDisableCulling = false;
 
+  /// The words an XDTS sheet writes of [overlaps] in its O.L lengths'
+  /// place, for a test to read as words rather than as ink.
+  @visibleForTesting
+  static String xdtsOverlapWords(({int start, int end}) overlaps) =>
+      _XdtsOverlapPass.wordsOf(overlaps);
+
   /// The document-space rectangle the panel can actually show, or null
   /// when culling is off ([timesheetShown]). Set once at the top of
   /// [paint], read by the three row loops and the page skip.

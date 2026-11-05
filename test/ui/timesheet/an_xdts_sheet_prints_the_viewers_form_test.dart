@@ -430,6 +430,22 @@ void main() {
         (form.rowsTop + form.rowBottom(row)).toDouble(),
       );
 
+      test('the lengths are written as the viewer writes them — each end '
+          'that has one, in its seconds and its frames', () {
+        expect(
+          TimesheetDocumentPainter.xdtsOverlapWords((start: 8, end: 30)),
+          '（前O.L. 0秒+8コマ）  （後O.L. 1秒+6コマ）',
+        );
+        expect(
+          TimesheetDocumentPainter.xdtsOverlapWords((start: 48, end: 0)),
+          '（前O.L. 2秒+0コマ） ',
+        );
+        expect(
+          TimesheetDocumentPainter.xdtsOverlapWords((start: 0, end: 6)),
+          ' （後O.L. 0秒+6コマ）',
+        );
+      });
+
       test('the lengths told are twice the のりしろ each end draws — the '
           'ink folder\'s settings say the same', () {
         const handles = CutTransitionHandles(head: 4, tail: 3);
@@ -483,12 +499,26 @@ void main() {
             reason: 'row $row',
           );
         }
+        Rect topRight(int row) => Rect.fromLTWH(
+          rowOf(form, row).right - 5,
+          rowOf(form, row).top + 1,
+          4,
+          3,
+        );
         expect(inked(topLeft(0)), isTrue);
+        expect(inked(topRight(0)), isTrue);
         expect(inked(topLeft(3)), isFalse);
+        expect(inked(topRight(3)), isFalse);
         expect(inked(bottomLeft(3)), isFalse);
         expect(inked(bottomLeft(7)), isTrue);
         expect(inked(topLeft(31)), isTrue);
         expect(inked(bottomLeft(36)), isTrue);
+        expect(
+          pixelAt(print, origin, centre(0).center.dx.toInt(),
+              centre(0).center.dy.toInt()),
+          const ui.Color(0xFFA0A0A4),
+          reason: 'the viewer\'s grey',
+        );
       });
 
       testWidgets('none on a cut with no O.L, and none on the ink, which '
@@ -566,6 +596,37 @@ void main() {
           reason: 'one length, half as long, on the middle',
         );
         expect(inkedIn(startOnly, at, box), isTrue);
+        // Two lengths reach about twice as far out as one; the words stand
+        // as tall as the place less half a millimetre lets them.
+        double? firstInked(
+          (Uint8List, int) print,
+          Iterable<double> lines,
+          Rect Function(double) line,
+        ) {
+          for (final at0 in lines) {
+            if (inkedIn(print, at, line(at0))) {
+              return at0;
+            }
+          }
+          return null;
+        }
+        Iterable<double> from(double start, double end, double step) sync* {
+          for (var x = start; step > 0 ? x < end : x > end; x += step) {
+            yield x;
+          }
+        }
+        Rect column(double x) =>
+            Rect.fromLTRB(x, box.top, x + 1, box.bottom);
+        Rect row(double y) => Rect.fromLTRB(box.left, y, box.right, y + 1);
+        final bothLeft =
+            firstInked(told, from(box.left, box.right, 1), column)!;
+        final oneLeft =
+            firstInked(startOnly, from(box.left, box.right, 1), column)!;
+        expect(oneLeft - bothLeft, greaterThan(box.width / 6));
+        final top = firstInked(told, from(box.top, box.bottom, 1), row)!;
+        final bottom =
+            firstInked(told, from(box.bottom - 1, box.top, -1), row)!;
+        expect(bottom - top, greaterThan(box.height * 0.6));
         final none = await printed(
           tester,
           sheet(kind: kind),

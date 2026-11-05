@@ -68,6 +68,20 @@ class _XdtsOverlapPass {
     );
   }
 
+  /// The lengths in the viewer's words: each end's that has one, in its
+  /// seconds and its frames past them.
+  static String wordsOf(({int start, int end}) overlaps) {
+    String said(String side, int frames) =>
+        '（$side ${frames ~/ XdtsSheetForm.rowsPerSecond}'
+        '${_XdtsFormPass._secondsWord}+'
+        '${frames % XdtsSheetForm.rowsPerSecond}'
+        '${_XdtsFormPass._framesWord}）';
+    return [
+      if (overlaps.start > 0) '${said(_startWord, overlaps.start)} ',
+      if (overlaps.end > 0) ' ${said(_endWord, overlaps.end)}',
+    ].join();
+  }
+
   /// The lengths as the viewer writes them, on the middle of their place
   /// as large as it is less half a millimetre.
   void _paintLengths(Canvas canvas, ({int start, int end}) overlaps) {
@@ -75,18 +89,9 @@ class _XdtsOverlapPass {
     if (place == null) {
       return;
     }
-    String said(String side, int frames) =>
-        '（$side ${frames ~/ XdtsSheetForm.rowsPerSecond}'
-        '${_XdtsFormPass._secondsWord}+'
-        '${frames % XdtsSheetForm.rowsPerSecond}'
-        '${_XdtsFormPass._framesWord}）';
-    final text = [
-      if (overlaps.start > 0) '${said(_startWord, overlaps.start)} ',
-      if (overlaps.end > 0) ' ${said(_endWord, overlaps.end)}',
-    ].join();
     _page.words(
       canvas,
-      text,
+      wordsOf(overlaps),
       Rect.fromLTWH(
         place.left.toDouble(),
         place.top.toDouble(),
