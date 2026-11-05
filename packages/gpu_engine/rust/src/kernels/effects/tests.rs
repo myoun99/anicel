@@ -9,6 +9,7 @@ use wgpu::util::DeviceExt;
 
 use super::{KEY_WGSL, KEYS_PER_RUN, KeyRun};
 use crate::device::Engine;
+use crate::kernels::shared::pipeline;
 use crate::testing::{first_engine, read_buffer};
 
 /// The device and the compiled cases every test here runs on.
@@ -23,23 +24,8 @@ fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
-        let source = [KEY_WGSL, include_str!("cases.wgsl")].join("\n");
-        let module = engine
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("key cases"),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-        let pipeline = engine
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("key cases"),
-                layout: None,
-                module: &module,
-                entry_point: Some("run_cases"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let sources = [KEY_WGSL, include_str!("cases.wgsl")];
+        let pipeline = pipeline(engine, &sources, "run_cases");
         Rig { engine, pipeline }
     })
 }
