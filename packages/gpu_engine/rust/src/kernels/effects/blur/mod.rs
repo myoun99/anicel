@@ -19,13 +19,13 @@ pub(crate) mod line;
 #[cfg(test)]
 mod pictures;
 
-use wgpu::util::DeviceExt;
-
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
-use crate::kernels::shared::{ISQRT_WGSL, TILE_WGSL, pipeline};
+use crate::kernels::shared::{
+    Encoded, ISQRT_WGSL, TILE_WGSL, encode, fits, pipeline, plane, words_buffer,
+};
 
 /// The workgroup's side in both passes' shaders.
 const GROUP: u32 = 8;
@@ -129,56 +129,6 @@ fn checked(
     fits(engine, planes, groups)
 }
 
-/// Whether a binding holds each of `planes` (bytes) and a dispatch reaches
-/// each of `groups`.
-pub(crate) fn fits(
-    engine: &Engine,
-    planes: &[u64],
-    mut groups: impl Iterator<Item = (u32, u32)>,
-) -> Option<()> {
-    let limits = engine.device.limits();
-    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
-    if let Some(plane) = planes.iter().find(|&&plane| plane > room) {
-        return fail(format!(
-            "a blur plane of {plane} bytes exceeds a binding of {room} — a picture this large \
-             waits for the round that cuts it into bands"
-        ));
-    }
-    let most = limits.max_compute_workgroups_per_dimension;
-    if groups.any(|(across, down)| across > most || down > most) {
-        return fail("a pass has more workgroups than a dispatch reaches");
-    }
-    Some(())
-}
-
-/// A buffer a pass reads or puts, of `bytes` — nothing at first: wgpu
-/// zeroes a new buffer.
-fn plane(engine: &Engine, label: &str, bytes: u64) -> wgpu::Buffer {
-    engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some(label),
-        size: bytes,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    })
-}
-
-/// `words` as a buffer a pass reads them from, `usage` its kind.
-fn words_buffer(
-    engine: &Engine,
-    label: &str,
-    words: &[u32],
-    usage: wgpu::BufferUsages,
-) -> wgpu::Buffer {
-    let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-    engine
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(label),
-            contents: &bytes,
-            usage,
-        })
-}
-
 /// held.wgsl's `Held` for a pass reading `from` and putting `to` over
 /// `rect`'s tiles.
 fn held_words(from: Held, to: Held, rect: TileRect) -> Vec<u32> {
@@ -188,41 +138,6 @@ fn held_words(from: Held, to: Held, rect: TileRect) -> Vec<u32> {
     words.extend(to.words());
     words.extend([grid[0] as u32, grid[1] as u32, rect.columns, rect.rows]);
     words
-}
-
-/// One dispatch as it is encoded: its pipeline, each buffer at the binding
-/// it is bound to, and its workgroups.
-struct Encoded<'a> {
-    pipeline: &'a wgpu::ComputePipeline,
-    bound: Vec<(u32, &'a wgpu::Buffer)>,
-    groups: (u32, u32),
-}
-
-/// Encodes `dispatches` in order and submits them; the caller waits.
-fn encode(engine: &Engine, dispatches: &[Encoded]) {
-    let mut encoder = engine
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    for dispatch in dispatches {
-        let entries: Vec<wgpu::BindGroupEntry> = dispatch
-            .bound
-            .iter()
-            .map(|&(binding, buffer)| wgpu::BindGroupEntry {
-                binding,
-                resource: buffer.as_entire_binding(),
-            })
-            .collect();
-        let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("blur"),
-            layout: &dispatch.pipeline.get_bind_group_layout(0),
-            entries: &entries,
-        });
-        let mut compute = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-        compute.set_pipeline(dispatch.pipeline);
-        compute.set_bind_group(0, &bind_group, &[]);
-        compute.dispatch_workgroups(dispatch.groups.0, dispatch.groups.1, 1);
-    }
-    engine.queue.submit([encoder.finish()]);
 }
 
 /// Runs `dispatches` of `pipeline` over `tiles` — straight RGBA8 over

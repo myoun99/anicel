@@ -13,6 +13,7 @@
 // after (gpu-canonical-store 14:51).
 #![cfg_attr(not(test), allow(dead_code, unused_imports))]
 
+mod dispatch;
 #[cfg(test)]
 mod one_builder;
 mod pages;
@@ -22,6 +23,7 @@ pub(crate) mod tests;
 
 use crate::device::Engine;
 
+pub(crate) use dispatch::{Encoded, encode, fits, plane, words_buffer};
 pub(crate) use pages::{Pages, page_table};
 pub(crate) use resample::{ResampleMap, ResampleMode, q};
 

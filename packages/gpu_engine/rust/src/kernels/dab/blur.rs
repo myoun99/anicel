@@ -36,11 +36,10 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::{self, Composite, Composited, TILE_TEXELS, TileSet};
-use crate::kernels::effects::blur::fits;
 use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
-use crate::kernels::shared::{ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, page_table, pipeline};
+use crate::kernels::shared::{ISQRT_WGSL, Pages, ResampleMap, TILE_WGSL, fits, page_table, pipeline};
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
 const PASSES_AT: usize = 8;
