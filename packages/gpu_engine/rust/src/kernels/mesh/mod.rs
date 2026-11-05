@@ -3,9 +3,8 @@
 //! no CPU copy of a GPU formula (`kernels/mod.rs`): which triangle paints
 //! each pixel (`MeshOwners`, mesh.wgsl) and each triangle's destination to
 //! source map (`affines`, once a triangle on the CPU, exact in i128 as the
-//! spec puts it). ⏳The pass reading the picture through them — each pixel
-//! by its triangle's map, through R1 — comes with the pool
-//! (gpu-canonical-store, 11-06 01:00).
+//! spec puts it). The warp (kernels/warp) reads the picture through them,
+//! each pixel by its triangle's map through R1.
 
 // ⏳Nothing outside the tests reads a mesh until the canvas's verbs come to
 // the engine (gpu-canonical-store, stage 4).
