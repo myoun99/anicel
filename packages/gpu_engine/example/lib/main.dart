@@ -114,7 +114,12 @@ class _ProbeAppState extends State<_ProbeApp> {
         '${hash == expected ? 'MATCH' : 'MISMATCH'}');
 
     _reportWhatAngleSees(report, front);
-    await _checkScreen(report, engine, bgra: bgra);
+    if (!await _checkScreen(report, engine, bgra: bgra)) {
+      // Timing a texture Flutter does not draw would measure nothing.
+      report.writeln('not on screen: round trip not measured');
+      front.free();
+      return;
+    }
 
     await _roundTrip(report, '$label single', front, null);
     final back = engine.surface(_side, _side, bgra: bgra);
@@ -156,11 +161,13 @@ class _ProbeAppState extends State<_ProbeApp> {
       ..writeln('D3D11 sees DXGI format ${seen.format}, bind $bind, '
           'misc $misc')
       ..writeln(direct
-          ? 'ANGLE reads it as it is (renderable and readable): no copy'
-          : 'ANGLE would refuse it or copy it');
+          ? 'renderable and readable: ANGLE needs no copy of its own '
+              '(the format must still be its config\'s)'
+          : 'not renderable or not readable: ANGLE refuses it or copies it');
   }
 
-  Future<void> _checkScreen(
+  /// Whether the screen shows exactly the bytes the CPU expects.
+  Future<bool> _checkScreen(
     StringBuffer report,
     GpuEngine engine, {
     required bool bgra,
@@ -182,7 +189,7 @@ class _ProbeAppState extends State<_ProbeApp> {
     shot.free();
     if (bytes == null || size != '$_shotSide×$_shotSide') {
       report.writeln('screen: captured $size, not $_shotSide², not compared');
-      return;
+      return false;
     }
     final seen = hashBytes(bytes.buffer.asUint8List());
     final expected = expectedSurfaceHash(
@@ -193,6 +200,7 @@ class _ProbeAppState extends State<_ProbeApp> {
     );
     report.writeln('screen bytes ${_hex(seen)} vs CPU ${_hex(expected)}: '
         '${seen == expected ? 'MATCH' : 'MISMATCH'}');
+    return seen == expected;
   }
 
   /// Fill → show → the frame that shows it, [_frames] times. With [back],
@@ -229,14 +237,18 @@ class _ProbeAppState extends State<_ProbeApp> {
     await SchedulerBinding.instance.endOfFrame;
 
     final raster = [for (final t in timings) t.rasterDuration.inMicroseconds];
+    // The frame that shows a fill is the first whose raster STARTS after
+    // it, because Flutter reads the texture while rastering; a raster
+    // already running when the fill landed shows the one before.
     // Timeline.now and FrameTiming both read the monotonic clock; the
     // latency is trusted only if every match lands within a second.
     final latencies = <int>[];
     for (final shown in shownAt) {
       for (final t in timings) {
-        final finish = t.timestampInMicroseconds(ui.FramePhase.rasterFinish);
-        if (finish >= shown) {
-          latencies.add(finish - shown);
+        if (t.timestampInMicroseconds(ui.FramePhase.rasterStart) >= shown) {
+          latencies.add(
+            t.timestampInMicroseconds(ui.FramePhase.rasterFinish) - shown,
+          );
           break;
         }
       }
