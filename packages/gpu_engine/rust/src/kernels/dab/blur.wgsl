@@ -138,6 +138,9 @@ fn blur_store(last: BoxPass, line: i32, p: i32, pixel: vec4<u32>) {
 
 // What `was` comes to moved toward `to` by `share` of the way, rounded
 // half away from zero: round(d·share / 65535) has no tie, 65535 being odd.
+// The law of blend.wgsl's `blend_clip_toward(to, was, share, 65535)`; two
+// so far, so they stay apart until a third comes (rule of three, 캔버스
+// 베이스 11-06 02:29).
 fn blur_toward(was: u32, to: u32, share: u32) -> u32 {
   if (to >= was) {
     return was + blend_mul(to - was, share);

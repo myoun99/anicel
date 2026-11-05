@@ -224,15 +224,18 @@ fn strips_of_a_long_picture_meet_with_no_seam() {
     }
 }
 
-/// A way whose strip has no room in a workgroup — three radii of 171 each
-/// side are more than its 1024 pixels — goes a pass a dispatch: a picture
-/// the same everywhere, its edge repeated, blurs to itself.
+/// A box past MOST_STRIPS_RADIUS goes a pass a dispatch, whether a strip of
+/// it has room (57) or none (171 — three radii each side are more than a
+/// strip's 1024 pixels): a picture the same everywhere, its edge repeated,
+/// blurs to itself.
 #[test]
-fn a_radius_past_a_strips_room_goes_a_pass_a_dispatch() {
+fn a_box_past_the_strips_widest_goes_a_pass_a_dispatch() {
+    let inside = [0, 0, 128, 128];
+    assert!(strips(&passes(inside, (57, 0), EDGE_NOTHING)).is_some());
+    assert!(strips(&passes(inside, (171, 0), EDGE_NOTHING)).is_none());
     let grey = rgba(90, 120, 150, 255);
-    for radius in [(171, 1), (1, 171)] {
-        let blurred = blur(ONE_TILE, radius, Edge::Repeat([0, 0, 128, 128]), |_, _| grey)
-            .expect("blur");
+    for radius in [(57, 1), (1, 57), (171, 1), (1, 171)] {
+        let blurred = blur(ONE_TILE, radius, Edge::Repeat(inside), |_, _| grey).expect("blur");
         assert!(blurred.words.iter().all(|&word| word == grey), "{radius:?}");
     }
 }
