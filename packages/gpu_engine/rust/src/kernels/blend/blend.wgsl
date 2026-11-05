@@ -4,9 +4,10 @@
 // stroke shown and the same stroke landed cannot differ.
 //
 // Integer ops only, and every intermediate inside u32: WGSL core has no
-// 64-bit integer, and DX12 runs it through FXC, which has none either
-// (gpu-engine-feasibility ③). Floats may be fused or reassociated per
-// backend (gpu-engine-skeleton), so none is used.
+// 64-bit integer — wgpu's SHADER_INT64 is a feature a device may lack —
+// and when this was decided DX12 ran FXC, which had none at all
+// (gpu-engine-feasibility ③; DXC since its Q4). Floats may be fused or
+// reassociated per backend (gpu-engine-skeleton), so none is used.
 //
 // A channel and an alpha are on the 16-bit scale, 0..=65535 meaning 0..=1:
 // a byte c is c·257. Colour is straight, never premultiplied (1a ①).

@@ -244,9 +244,12 @@ fn resample_blend(map: ResampleMap, source: u32, point: ResamplePoint) -> u32 {
   return (a << 24u) | (b << 16u) | (g << 8u) | r;
 }
 
-// Pick's vote table, the invocation's own. At module scope rather than
-// handed down by pointer: FXC (DX12) copies an inout struct whole at every
-// call and could not compile its indexed writes (RTX 4080, 2026-11-05).
+// Pick's vote table, the invocation's own. At module scope rather than a
+// struct handed down by pointer, for the speed: subsampled Pick ran
+// 7.4 ms with the struct where this runs 5.0, exact Pick and Blend the
+// same (a 1.3x turn over a megapixel of noise; DXC, RTX 4080,
+// 2026-11-05). FXC, which first forced this, is gone
+// (gpu-engine-feasibility-Q4).
 var<private> resample_keys: array<u32, 16>;
 var<private> resample_weights: array<Wide, 16>;
 var<private> resample_slots: u32;
