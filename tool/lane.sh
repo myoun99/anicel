@@ -5,6 +5,7 @@
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
 #   bash tool/lane.sh gate  <name>     run the land's gates on a lane as it stands, and stamp it
 #   bash tool/lane.sh native <name>    build the lane's C, run its tests and parity
+#   bash tool/lane.sh crate <name>     run the GPU engine crate's tests in the lane
 #   bash tool/lane.sh engine [<name>]  this checkout's engine (or a lane's) built from its own C
 #   bash tool/lane.sh furnish <dir>    a worktree that is not a lane, made ready to run as `open` makes one
 #   bash tool/lane.sh backup           copy the trunk and every open lane to the mirror
@@ -22,7 +23,7 @@
 # every time. The account is suspended, so origin is frozen and LOCAL master is
 # the trunk — that is not a workaround to remember, it is what `open` does.
 #
-# ⛔THE SEVEN THINGS THIS REFUSES TO LET YOU DO
+# ⛔THE EIGHT THINGS THIS REFUSES TO LET YOU DO
 #
 # 1. Run a git command in a worktree that is not one. `git worktree remove`
 #    fails on Windows whenever a file is locked, and it leaves the DIRECTORY
@@ -93,6 +94,17 @@
 #    does the tree hold exactly the lane's commits — and whether HEAD is
 #    still the commit the rebase made. On either no it refuses and the lane
 #    stays as it is: commit the edit (or discard it) and land again.
+# 8. Land Rust that nobody tested. `flutter analyze` does not read Rust, and
+#    no suite loads the GPU engine crate — it is no dependency of the app —
+#    so a lane that changed packages/gpu_engine/rust, or the ledger its
+#    tests hold every kernel to (test/fixtures/fingerprints.json), had only
+#    the `cargo test` its author ran by hand behind it (저장 · 관제
+#    2026-11-05, gpu-engine-skeleton). Such a lane runs the crate's tests
+#    here, on this machine's GPU; a lane that touched neither pays nothing.
+#    The machine's Rust must be on PATH — the main PC keeps it on D:, the
+#    Surface on C:, neither on the default PATH — and a land that cannot
+#    find cargo refuses rather than skipping. `bash tool/lane.sh crate
+#    <name>` runs the same thing without landing.
 #
 # ⚠️WHAT THIS CANNOT DO FOR YOU: judge a LAW COLLISION. Two lanes that never
 # touch the same file still invent the same law under two names — seven times in
@@ -817,6 +829,29 @@ cmd_native() {
   echo "lane: native — green ($(wc -l <"$list") parity files)"
 }
 
+# Refusal 8, runnable on its own. The header says why it is there.
+cmd_crate() {
+  local name="${1:-}"; [ -n "$name" ] || die "crate needs a name"
+  name="$(lane_named "$name")" || exit 1
+  local p; p="$(lane_path "$name")"
+  require_worktree "$p"
+  command -v cargo >/dev/null 2>&1 || die "cargo is not on PATH — this is refusal 8
+  The lane changed the GPU engine crate or its ledger. Put this machine's
+  Rust on PATH, with its RUSTUP_HOME and CARGO_HOME, and run it again."
+  local log="$p/build/lane-crate.log"
+  mkdir -p "$p/build"
+  echo "lane: crate — the GPU engine's tests"
+  # The trunk's target folder: every lane reuses what the trunk and the
+  # lanes before it compiled (wgpu is minutes cold), and lands take turns.
+  (cd "$p/packages/gpu_engine/rust" \
+    && CARGO_TARGET_DIR="$ROOT/packages/gpu_engine/rust/target" cargo test --locked) \
+    >"$log" 2>&1 || {
+    grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
+    die "the GPU engine crate's tests are red — this is refusal 8; the whole log: $log"
+  }
+  echo "lane: crate — green ($(grep -a '^test result' "$log" | tail -1))"
+}
+
 # Is the lane's working tree exactly its commits? Printing what is not.
 # `land` asks it twice — before the rebase, and after the gates (refusal 7) —
 # and both times through this one function, so the two answers cannot drift.
@@ -920,6 +955,11 @@ gates() {
   # outside the machine's line, as the architecture tests above run.
   if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
     cmd_native "$name" gates
+  fi
+  # Refusal 8. Only a lane that touched the crate or its ledger pays for it.
+  if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/gpu_engine/rust \
+    test/fixtures/fingerprints.json)" ]; then
+    cmd_crate "$name"
   fi
 }
 
@@ -1068,6 +1108,7 @@ cmd_land() {
   open) shift; cmd_open "$@" ;;
   land) shift; cmd_land "$@" ;;
   native) shift; cmd_native "$@" ;;
+  crate) shift; cmd_crate "$@" ;;
   engine) shift; cmd_engine "$@" ;;
   furnish) shift; cmd_furnish "$@" ;;
   backup) shift; cmd_backup "$@" ;;
@@ -1080,5 +1121,5 @@ cmd_land() {
   receive) shift; cmd_receive "$@" ;;
   incoming) shift; cmd_incoming "$@" ;;
   gate) shift; cmd_gate "$@" ;;
-  *) sed -n '2,19p' "$0"; exit 2 ;;
+  *) sed -n '2,20p' "$0"; exit 2 ;;
 esac; exit; }

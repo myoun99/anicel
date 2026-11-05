@@ -82,11 +82,14 @@ Set<String> pathsReadAsText(String source) => {
 };
 
 /// The roots a test reads a file under by spelling its path
-/// ([pathsReadAsText]): the Dart sources, and the platform folders the
-/// app's shells live in.
+/// ([pathsReadAsText]): the Dart sources, the platform folders the app's
+/// shells live in, and the packages beside the app — a scan reads the GPU
+/// engine's by path (its example's plugin registrants), while every suite
+/// reads only `kEngineSources`.
 const kTextRoots = [
   'lib', 'test', 'tool', //
   'android', 'ios', 'linux', 'macos', 'windows',
+  'packages',
 ];
 
 final _sourcePathLiteral = RegExp(

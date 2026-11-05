@@ -67,7 +67,7 @@ import 'test_seconds.dart';
 /// ([kEveryTestReads], [kEveryTestReadsUnder]) — and the analysis options.
 ///
 /// Dependencies and toolchain change what every file compiles to; the native
-/// sources (`packages/`) sit behind FFI where no import edge reaches them,
+/// sources ([kEngineSources]) sit behind FFI where no import edge reaches them,
 /// and the assets and shaders the pubspec bundles reach every suite the same
 /// way; and `test/flutter_test_config.dart` is loaded by flutter_test before
 /// every suite in the tree while nothing imports it — an edge the graph
@@ -720,12 +720,8 @@ bool forcesFullRun(String path, {bool near = false}) =>
           prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
     );
 
-/// Whether [path] is one of the engine's sources — the C behind FFI that no
-/// import edge reaches.
+/// Whether [path] is one of the engine's sources ([kEngineSources]).
 bool changesTheEngine(String path) => path.startsWith(kEngineSources);
-
-/// Where the engine's sources live.
-const kEngineSources = 'packages/';
 
 /// The tests that exercise the engine: `tool/native_parity_tests.sh`'s
 /// answer, asked rather than copied (the one answer — its header), or null

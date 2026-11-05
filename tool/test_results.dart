@@ -45,8 +45,21 @@ const kEveryTestReads = [
 
 /// Folders every test may read without naming them: the assets and shaders
 /// the pubspec bundles into every test, and the native package the engine
-/// is built from.
-const kEveryTestReadsUnder = ['assets/', 'shaders/', 'packages/'];
+/// is built from ([kEngineSources]).
+const kEveryTestReadsUnder = ['assets/', 'shaders/', kEngineSources];
+
+/// Where the engine's sources live: the native core the app depends on by
+/// path (pubspec.yaml, `qa_native`) — the C behind FFI that no import edge
+/// reaches.
+///
+/// ⛔Not the whole of `packages/`. `packages/gpu_engine` is no dependency of
+/// the app, so no suite loads it, and a suite that reads it as text names it
+/// (`kTextRoots`). Until 2026-11-05 this was `packages/`: a lane that
+/// changed only the GPU engine's Rust, WGSL and ledger ran 218 files with
+/// 165 parity tests and held the Surface's line for forty minutes (저장 ·
+/// 관제, gpu-engine-skeleton). The crate's own tests are the land's
+/// (tool/lane.sh, refusal 8).
+const kEngineSources = 'packages/qa_native/';
 
 const kTestConfig = 'test/flutter_test_config.dart';
 
