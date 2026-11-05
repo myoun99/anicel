@@ -140,7 +140,9 @@ fn cel_written(texel: u32, coverage: u32, index: u32) -> u32 {
     let shift = cel_shift(i);
     let older = (texel >> shift) & 0xffu;
     let source = cel_incoming(select(i, index * pass_.step + i, pass_.is_undo != 0u));
-    let wanted = select(source, 0u, pass_.threshold > 0u && older < pass_.threshold);
+    // No byte is under a cut of 0 — C's `threshold > 0 &&` before the same
+    // test says nothing more.
+    let wanted = select(source, 0u, older < pass_.threshold);
     let whole = pass_.is_undo != 0u || coverage == 255u;
     let byte = select(cel_blend(older, wanted, coverage), wanted, whole);
     out = (out & ~(0xffu << shift)) | (byte << shift);
@@ -220,6 +222,10 @@ fn cel_apply(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_
       continue;
     }
     let value = cel_value(texel);
+    // An undo binds four words where the runs go, which nothing reads: past
+    // them a write is the device's to drop (DX12) or clamp (Metal) onto
+    // them, so no test tells this guard from its absence — it keeps the
+    // writes off.
     if (value != last && pass_.puts_runs != 0u) {
       put[run] = value;
       put[run + 1u] = rank;

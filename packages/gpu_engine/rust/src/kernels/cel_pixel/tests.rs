@@ -284,7 +284,8 @@ fn a_cut_makes_the_alpha_whole_or_nothing() {
 
 /// 색 삭제 and 색 유지 by a key of (100, 150, 200) within 2: the key names
 /// a pixel by its colour alone — one off by 2 on every channel, one with
-/// no alpha — and 색 유지 takes the others, nothing included.
+/// no alpha, none off by 3 on any one channel — and 색 유지 takes the
+/// others, nothing included.
 #[test]
 fn a_selector_names_its_pixels_by_colour_alone() {
     let scene = [
@@ -292,6 +293,8 @@ fn a_selector_names_its_pixels_by_colour_alone() {
         ((1, 0), rgba(102, 148, 202, 90)),
         ((2, 0), rgba(103, 150, 200, 255)),
         ((3, 0), rgba(100, 150, 200, 0)),
+        ((4, 0), rgba(100, 153, 200, 255)),
+        ((5, 0), rgba(100, 150, 197, 255)),
     ];
     let key = tables([100, 150, 200], 2);
     let delete = Verb {
@@ -310,8 +313,40 @@ fn a_selector_names_its_pixels_by_colour_alone() {
     };
     let (passed, out) = run(&one(&scene), &keep, None).expect("keep");
     assert_eq!(passed.touched, [TEXELS as u32 - 3]);
-    assert_eq!(passed.runs, [vec![(255, 1), (0, TEXELS as u32 - 4)]]);
-    assert_tile(&out, 0, (0, 0), &scene, &[((2, 0), rgba(103, 150, 200, 0))]);
+    // 255 at (2, 0), (4, 0) and (5, 0) — (3, 0) named between them —, then
+    // the rest of the tile's 0s.
+    assert_eq!(passed.runs, [vec![(255, 3), (0, TEXELS as u32 - 6)]]);
+    let changed = [
+        ((2, 0), rgba(103, 150, 200, 0)),
+        ((4, 0), rgba(100, 153, 200, 0)),
+        ((5, 0), rgba(100, 150, 197, 0)),
+    ];
+    assert_tile(&out, 0, (0, 0), &scene, &changed);
+}
+
+/// A channel of two bytes four apart — green and alpha —: each pixel with
+/// ink takes the value's first byte on its green and its second on its
+/// alpha, and a run holds them as one value, green in its low byte.
+#[test]
+fn a_channel_reads_and_writes_its_bytes_where_its_base_and_stride_put_them() {
+    let scene = [
+        ((0, 0), rgba(10, 20, 30, 200)),
+        ((1, 0), rgba(10, 20, 30, 200)),
+        ((2, 0), rgba(1, 2, 3, 0)),
+    ];
+    let green_alpha = Verb {
+        channel: Channel {
+            bytes: 2,
+            base: 1,
+            stride: 2,
+            takes_empty: false,
+        },
+        ..recolour(&[7, 9])
+    };
+    let (passed, out) = run(&one(&scene), &green_alpha, None).expect("run");
+    assert_eq!(passed.runs, [vec![(20 | 200 << 8, 2)]]);
+    let changed = [((0, 0), rgba(10, 7, 30, 9)), ((1, 0), rgba(10, 7, 30, 9))];
+    assert_tile(&out, 0, (0, 0), &scene, &changed);
 }
 
 /// Two tiles of one ink everywhere: a run ends at its tile, as C's — the
@@ -328,17 +363,17 @@ fn a_run_ends_with_its_tile() {
 /// of, each tile counting its own pixels and runs.
 #[test]
 fn the_walk_goes_row_by_row_past_a_missing_tile() {
-    // Tile (c, r) holds c + 2 + 3r pixels of ink, one run.
+    // Tile (c, r) holds c + 5 + 3r pixels of ink, one run.
     let pixel = |x: i32, y: i32| {
         let (column, row) = (x.div_euclid(SIDE), y.div_euclid(SIDE));
-        let inked = column + 2 + 3 * row;
+        let inked = column + 5 + 3 * row;
         if y.rem_euclid(SIDE) == 0 && x.rem_euclid(SIDE) < inked { INK | 255 << 24 } else { 0 }
     };
-    let cel = cel((-1, 0), (3, 2), pixel, |column, row| ((column, row) != (0, 0)).then_some(0));
+    let cel = cel((-1, -1), (3, 2), pixel, |column, row| ((column, row) != (0, 0)).then_some(0));
     let (passed, _) = run(&cel, &recolour(&[1, 2, 3]), None).expect("run");
-    assert_eq!(passed.tiles, [(-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]);
-    assert_eq!(passed.touched, [1, 3, 4, 5, 6]);
-    let runs: Vec<Vec<(u32, u32)>> = [1, 3, 4, 5, 6].map(|count| vec![(INK, count)]).to_vec();
+    assert_eq!(passed.tiles, [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0)]);
+    assert_eq!(passed.touched, [1, 2, 3, 4, 6]);
+    let runs: Vec<Vec<(u32, u32)>> = [1, 2, 3, 4, 6].map(|count| vec![(INK, count)]).to_vec();
     assert_eq!(passed.runs, runs);
 }
 
@@ -353,13 +388,15 @@ fn a_cel_of_no_tiles_walks_none() {
 // ---- Undo ----
 
 /// A recolour over two tiles, then its undo by the recipe laid flat in
-/// walk order: the second tile's pixel reads the recipe's third entry, and
-/// every pixel is back as it was.
+/// walk order: the second tile's pixel reads the recipe's fourth entry —
+/// past the first tile's three pixels, not its two runs —, and every pixel
+/// is back as it was.
 #[test]
 fn an_undo_puts_the_recipe_back_in_walk_order() {
     let scene = [
         ((0, 0), rgba(10, 20, 30, 200)),
-        ((1, 0), rgba(11, 21, 31, 255)),
+        ((1, 0), rgba(10, 20, 30, 255)),
+        ((2, 0), rgba(11, 21, 31, 255)),
         ((128, 0), rgba(12, 22, 32, 100)),
     ];
     let named: HashMap<(i32, i32), u32> = scene.iter().copied().collect();
@@ -367,19 +404,19 @@ fn an_undo_puts_the_recipe_back_in_walk_order() {
         Some(0)
     });
     let (passed, out) = run(&two, &recolour(&[1, 2, 3]), None).expect("forward");
-    let first = vec![(rgb(10, 20, 30), 1), (rgb(11, 21, 31), 1)];
+    let first = vec![(rgb(10, 20, 30), 2), (rgb(11, 21, 31), 1)];
     assert_eq!(passed.runs, [first, vec![(rgb(12, 22, 32), 1)]]);
-    let recipe = [10, 20, 30, 11, 21, 31, 12, 22, 32];
+    let recipe = [10, 20, 30, 10, 20, 30, 11, 21, 31, 12, 22, 32];
     let undo = Verb {
         incoming: Incoming::Recipe {
             bytes: &recipe,
             step: 3,
-            count: 3,
+            count: 4,
         },
         ..recolour(&[])
     };
     let (undone, back) = run(&after(&passed, &out), &undo, None).expect("undo");
-    assert_eq!(undone.touched, [2, 1]);
+    assert_eq!(undone.touched, [3, 1]);
     assert!(undone.runs.is_empty());
     assert_tile(&back, 0, (0, 0), &scene, &[]);
     assert_tile(&back, 1, (128, 0), &scene, &[]);
@@ -521,6 +558,16 @@ fn a_cel_past_its_pool_or_its_size_is_refused() {
     };
     assert!(pass.run(engine, &pages, &short, &verb).is_none());
     assert!(pass.run_by(engine, &pages, &ink.set, &verb, 0).is_none());
+}
+
+/// A buffer one binding holds passes; one byte more is refused.
+#[test]
+fn a_buffer_past_a_binding_is_refused() {
+    let engine = rig().engine;
+    let limits = engine.device.limits();
+    let room = u64::from(limits.max_storage_buffer_binding_size).min(limits.max_buffer_size);
+    assert!(super::fits(engine, room).is_some());
+    assert!(super::fits(engine, room + 1).is_none());
 }
 
 // ---- The ledger ----
