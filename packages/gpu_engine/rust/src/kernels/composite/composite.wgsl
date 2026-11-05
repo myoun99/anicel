@@ -132,9 +132,15 @@ fn save(level: u32, tile: u32, texel: u32, pixel: vec4<u32>) {
   work[at + 1u] = pixel.z | (pixel.w << 16u);
 }
 
-// A buffer closed onto the one under it at `opacity`, in `mode`.
+// A row or a buffer laid on the one under it at `opacity`, in `mode` — an
+// eraser's taking its alpha off what is under it, as a stroke of the
+// eraser lands on its cel.
 fn laid(mode: u32, opacity: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
-  return blend_composite(mode, vec4<u32>(src.xyz, blend_mul(src.w, opacity)), dst);
+  let alpha = blend_mul(src.w, opacity);
+  if (mode == BLEND_ERASE) {
+    return blend_erase(alpha, dst);
+  }
+  return blend_composite(mode, vec4<u32>(src.xyz, alpha), dst);
 }
 
 @compute @workgroup_size(16, 16, 1)

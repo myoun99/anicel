@@ -52,6 +52,10 @@ const BLEND_LUMINOSITY: u32 = 25u;
 const BLEND_GLOW_DODGE: u32 = 26u;
 const BLEND_GLOW_ADD: u32 = 27u;
 const BLEND_NORMAL: u32 = 28u;
+// The eraser, which the C engine's table never had — a stroke lands by it
+// (compositeStrokePixelsOntoBitmapSurface) — laid by blend_erase, not
+// blend_composite.
+const BLEND_ERASE: u32 = 29u;
 
 // round(a·b / 65535), for a, b <= 65535. With t = a·b + 32768,
 // (t + (t >> 16)) >> 16 is that rounding exactly; t + (t >> 16) is at most

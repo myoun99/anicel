@@ -3,8 +3,9 @@
 //! (`kernels/mod.rs` has why).
 
 use super::{Dab, Dabs, Edge, Paper, RoundProfile, Second, Shape, StrokeTile, Texture, Turn};
-use crate::kernels::blend::mode::{GLOW_ADD, MULTIPLY, OVERLAY, SCREEN, SUBTRACT};
-use crate::kernels::composite::TILE_TEXELS;
+use crate::kernels::blend::mode::{ERASE, GLOW_ADD, MULTIPLY, NORMAL, OVERLAY, SCREEN, SUBTRACT};
+use crate::kernels::composite::{Composite, Plan, Step, TILE_TEXELS, TileAt, TileSet};
+use crate::kernels::shared::ResampleMap;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 const ONE: u32 = 65535;
@@ -39,31 +40,49 @@ struct Dual {
     level: u32,
 }
 
+/// A buffer of `words` that a kernel binds and a test reads back.
+fn filled(label: &str, words: &[u32]) -> wgpu::Buffer {
+    let contents: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+    let descriptor =
+        wgpu::util::BufferInitDescriptor { label: Some(label), contents: &contents, usage };
+    wgpu::util::DeviceExt::create_buffer_init(&first_engine().device, &descriptor)
+}
+
+fn words(buffer: &wgpu::Buffer) -> Vec<u32> {
+    read_buffer(first_engine(), buffer)
+        .chunks_exact(4)
+        .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+        .collect()
+}
+
+/// What a test pile lays its dabs in: the planes, their view, and the
+/// second plane where the stroke has one.
+struct Buffers {
+    planes: wgpu::Buffer,
+    view: wgpu::Buffer,
+    levels: Option<wgpu::Buffer>,
+}
+
 /// `dabs` piled by `kernel` over `paper`, with the `second` tip where there
 /// is one, on `tiles` (slots in their order) whose planes start as `under`,
 /// every pixel of every tile — or nothing, where the kernel refuses them.
-fn pile_on(
+fn pile_into(
     kernel: &mut Dabs,
     tiles: &[(i32, i32)],
     under: [u32; 4],
     paper: Option<&Paper>,
     second: Option<&Dual>,
     dabs: &[Dab],
-) -> Option<Piled> {
-    let engine = first_engine();
+) -> Option<Buffers> {
     let texels = tiles.len() * TILE_TEXELS as usize;
-    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
-    let filled = |label, words: Vec<u32>| {
-        let contents: Vec<u8> = words.into_iter().flat_map(u32::to_le_bytes).collect();
-        let descriptor =
-            wgpu::util::BufferInitDescriptor { label: Some(label), contents: &contents, usage };
-        wgpu::util::DeviceExt::create_buffer_init(&engine.device, &descriptor)
-    };
     let pair = [under[0] | under[1] << 16, under[2] | under[3] << 16];
-    let planes = filled("test planes", pair.repeat(texels));
-    let view = filled("test view", vec![0; texels]);
-    let plane = second.map(|dual| filled("test levels", vec![dual.level; texels]));
-    let second = second.zip(plane.as_ref()).map(|(dual, plane)| Second {
+    let buffers = Buffers {
+        planes: filled("test planes", &pair.repeat(texels)),
+        view: filled("test view", &vec![0; texels]),
+        levels: second.map(|dual| filled("test levels", &vec![dual.level; texels])),
+    };
+    let second = second.zip(buffers.levels.as_ref()).map(|(dual, plane)| Second {
         plane,
         mode: dual.mode,
         density: dual.density,
@@ -73,19 +92,27 @@ fn pile_on(
         .enumerate()
         .map(|(slot, &(column, row))| StrokeTile { column, row, slot: slot as u32 })
         .collect();
-    kernel.pile(engine, &stroke, dabs, paper, second.as_ref(), &planes, &view)?;
-    let words = |buffer: &wgpu::Buffer| -> Vec<u32> {
-        read_buffer(engine, buffer)
-            .chunks_exact(4)
-            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
-            .collect()
-    };
-    let planes = words(&planes)
+    let engine = first_engine();
+    kernel.pile(engine, &stroke, dabs, paper, second.as_ref(), &buffers.planes, &buffers.view)?;
+    Some(buffers)
+}
+
+/// [`pile_into`], read back.
+fn pile_on(
+    kernel: &mut Dabs,
+    tiles: &[(i32, i32)],
+    under: [u32; 4],
+    paper: Option<&Paper>,
+    second: Option<&Dual>,
+    dabs: &[Dab],
+) -> Option<Piled> {
+    let buffers = pile_into(kernel, tiles, under, paper, second, dabs)?;
+    let planes = words(&buffers.planes)
         .chunks_exact(2)
         .map(|pair| [pair[0] & 0xffff, pair[0] >> 16, pair[1] & 0xffff, pair[1] >> 16])
         .collect();
-    let levels = plane.as_ref().map_or(Vec::new(), |plane| words(plane));
-    Some(Piled { planes, view: words(&view), levels })
+    let levels = buffers.levels.as_ref().map_or(Vec::new(), words);
+    Some(Piled { planes, view: words(&buffers.view), levels })
 }
 
 fn laid(
@@ -793,6 +820,42 @@ fn the_two_tips_dabs_land_in_any_order_between_them() {
     let other = pile_on(kernel, &tiles, [0; 4], None, Some(&at), &woven).expect("pile");
     assert!(one.levels.iter().any(|&level| level != 0));
     assert_eq!((one.planes, one.levels, one.view), (other.planes, other.levels, other.view));
+}
+
+// A stroke lands on its cel as a row of the executor, the pile's own view
+// the page the row reads: red at 128 over opaque blue lands (115, 95, 135)
+// in normal — (200·32896 + 30·32639)/65535 and the like — and (27, 63,
+// 131) in multiply; an eraser takes its 128 off the blue, which keeps
+// 65535·32639/65535 = 32639, a byte of 127, and its colour — at half its
+// strength, 16448 off, 49087 and 191. Past the stroke the cel is as it was.
+#[test]
+fn a_stroke_lands_on_its_cel_as_a_row() {
+    let engine = first_engine();
+    let kernel = &mut Dabs::new(engine);
+    let dab = square([0, 0, 4, 4], RED, 0.5);
+    let stroke = pile_into(kernel, &[(0, 0)], [0; 4], None, None, &[dab]).expect("pile");
+    let blue = 30 | 90 << 8 | 220 << 16 | 255 << 24;
+    let pages = [filled("test cel", &vec![blue; TILE_TEXELS as usize]), stroke.view];
+    let one = |page| {
+        let tiles = vec![Some(TileAt { page, slot: 0 })];
+        TileSet { x0: 0, y0: 0, columns: 1, rows: 1, tiles }
+    };
+    let sets = [one(0), one(1)];
+    let composite = Composite::new(engine).expect("compile the composite");
+    let lands = |mode, opacity| {
+        let map = ResampleMap::moved(0, 0);
+        let row = |set, mode, opacity| Step::Row { set, keys: None, map, opacity, mode };
+        let steps = [row(0, NORMAL, ONE), row(1, mode, opacity)];
+        let plan = Plan { pages: &pages, sets: &sets, keys: &[], steps: &steps };
+        let done = composite.run(engine, &plan, &[(0, 0)], [0, 0, 128, 128], composite.widest());
+        let bytes = read_buffer(engine, &done.expect("composite").out);
+        [1, 5].map(|at| bytes[(at * 128 + at) * 4..][..4].to_vec())
+    };
+    let cel = vec![30, 90, 220, 255];
+    assert_eq!(lands(NORMAL, ONE), [vec![115, 95, 135, 255], cel.clone()]);
+    assert_eq!(lands(MULTIPLY, ONE), [vec![27, 63, 131, 255], cel.clone()]);
+    assert_eq!(lands(ERASE, ONE), [vec![30, 90, 220, 127], cel.clone()]);
+    assert_eq!(lands(ERASE, 32768), [vec![30, 90, 220, 191], cel]);
 }
 
 /// A soft round tip of `radius` under `hardness`, filled the way

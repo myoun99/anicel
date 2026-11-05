@@ -29,4 +29,5 @@ pub(crate) mod mode {
     pub(crate) const LUMINOSITY: u32 = 25;
     pub(crate) const GLOW_ADD: u32 = 27;
     pub(crate) const NORMAL: u32 = 28;
+    pub(crate) const ERASE: u32 = 29;
 }
