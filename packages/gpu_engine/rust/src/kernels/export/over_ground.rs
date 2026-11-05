@@ -1,6 +1,7 @@
 //! A still's frame over its format's background as RGB24, for the writers
-//! that keep no alpha (gpu-export-path ①b) — `over_ground.wgsl` has the
-//! law and why each number is the one it is.
+//! that keep no alpha (gpu-export-path ①b), and a GIF's colours with its
+//! alpha cut (①c) — `over_ground.wgsl` has the law and why each number is
+//! the one it is.
 
 use super::{Picture, compile, holds, submit};
 use crate::device::Engine;
@@ -19,6 +20,9 @@ impl Picture {
     }
 }
 
+/// The pass's cut where there is none: past every alpha.
+const NO_CUT: u32 = 256;
+
 /// The over-the-ground pass.
 pub(crate) struct OverGround {
     pipeline: wgpu::ComputePipeline,
@@ -33,15 +37,17 @@ impl OverGround {
 
     /// Lays `frame` — the composite's output tiles for the picture, asked
     /// row by row from its top-left tile — over `ground` (red, green,
-    /// blue) and submits the work; the caller waits. Returns the buffer
-    /// the RGB bytes are at the start of ([`Picture::rgb_bytes`] of them),
-    /// to be copied out for reading.
+    /// blue), its alpha `cut` where a GIF cuts it (none: its shades), and
+    /// submits the work; the caller waits. Returns the buffer the RGB
+    /// bytes are at the start of ([`Picture::rgb_bytes`] of them), to be
+    /// copied out for reading.
     pub(crate) fn run(
         &self,
         engine: &Engine,
         frame: &wgpu::Buffer,
         picture: Picture,
         ground: [u8; 3],
+        cut: Option<u8>,
     ) -> Option<wgpu::Buffer> {
         picture.check()?;
         holds(frame, picture.tiles())?;
@@ -52,7 +58,7 @@ impl OverGround {
             picture.height,
             row_groups,
             u32::from_le_bytes([ground[0], ground[1], ground[2], 0]),
-            0,
+            cut.map_or(NO_CUT, u32::from),
             0,
             0,
         ];

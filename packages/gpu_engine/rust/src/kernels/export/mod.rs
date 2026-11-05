@@ -6,6 +6,8 @@
 //! - `nv12` — a movie's frame for its encoder (①a).
 //! - `over_ground` — a still's frame over its format's background, for the
 //!   writers that keep no alpha (①b).
+//! - `clear` — a GIF's clear pixels, a bit each; its colours are
+//!   `over_ground`'s with the alpha cut (①c).
 //! - `opaque` — whether a frame is opaque, so its PDF picture goes without
 //!   alpha (①d).
 //!
@@ -16,12 +18,14 @@
 // (gpu-export-path, 관제 16:26 — the app connects after the bridges).
 #![cfg_attr(not(test), allow(dead_code))]
 
+mod clear;
 mod nv12;
 mod opaque;
 mod over_ground;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use clear::Clear;
 pub(crate) use nv12::{Nv12, Nv12Shape};
 pub(crate) use opaque::Opaque;
 pub(crate) use over_ground::OverGround;

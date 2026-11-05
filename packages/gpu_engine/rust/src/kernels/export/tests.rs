@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
-use super::{Nv12, Nv12Shape, Opaque, OverGround, Picture};
+use super::{Clear, Nv12, Nv12Shape, Opaque, OverGround, Picture};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
@@ -16,6 +16,7 @@ struct Rig {
     nv12: Nv12,
     over_ground: OverGround,
     opaque: Opaque,
+    clear: Clear,
 }
 
 /// One device and one compiled pass each for every test here, as the app
@@ -29,6 +30,7 @@ fn rig() -> &'static Rig {
             nv12: Nv12::new(engine),
             over_ground: OverGround::new(engine),
             opaque: Opaque::new(engine),
+            clear: Clear::new(engine),
         }
     })
 }
@@ -243,13 +245,24 @@ fn a_frame_the_encoder_cannot_take_is_refused() {
 /// The bytes the pass writes for a `width` x `height` picture over
 /// `ground`: its RGB, then zeros to the last whole word.
 fn over_ground(frame: &wgpu::Buffer, width: u32, height: u32, ground: [u8; 3]) -> Vec<u8> {
+    cut_over_ground(frame, width, height, ground, None)
+}
+
+/// [`over_ground`] with the alpha `cut`.
+fn cut_over_ground(
+    frame: &wgpu::Buffer,
+    width: u32,
+    height: u32,
+    ground: [u8; 3],
+    cut: Option<u8>,
+) -> Vec<u8> {
     let Rig {
         engine,
         over_ground,
         ..
     } = rig();
     let out = over_ground
-        .run(engine, frame, Picture { width, height }, ground)
+        .run(engine, frame, Picture { width, height }, ground, cut)
         .expect("over ground");
     read_buffer(engine, &out)
 }
@@ -372,7 +385,7 @@ fn an_empty_picture_or_a_short_frame_is_refused() {
         Picture { width: 4, height: 0 },
         Picture { width: 129, height: 4 },
     ] {
-        assert!(over_ground.run(engine, &frame, bad, [0, 0, 0]).is_none(), "{bad:?}");
+        assert!(over_ground.run(engine, &frame, bad, [0, 0, 0], None).is_none(), "{bad:?}");
     }
 }
 
@@ -428,5 +441,110 @@ fn an_empty_picture_or_a_short_frame_is_not_asked() {
         Picture { width: 129, height: 4 },
     ] {
         assert!(opaque.run(engine, &frame, bad).is_none(), "{bad:?}");
+    }
+}
+
+// ==== A GIF ====
+
+// Cut at 128, the app's half: red at 128 is laid whole — its own red and
+// none of the white ground, where its shades would take 127 of it; at 127
+// it is clear, so the ground, whose place the GIF's clear colour takes.
+#[test]
+fn a_gif_lays_a_half_covered_pixel_whole_and_one_under_half_clear() {
+    let pixels = [0x8000_00ff, 0x7f00_00ff];
+    let frame = frame(2, 1, |x, _| pixels[x as usize]);
+    let bytes = cut_over_ground(&frame, 2, 1, [255, 255, 255], Some(128));
+    assert_eq!(bytes[..6], [255, 0, 0, 255, 255, 255]);
+}
+
+// Cut at 0, no pixel is under it: a GIF that keeps no clear colour takes
+// each pixel's own colour — a clear one's (30, 10, 20) too.
+#[test]
+fn cut_at_nothing_every_pixel_is_its_own_colour() {
+    let pixels = [0x0014_0a1e, 0x8000_00ff];
+    let frame = frame(2, 1, |x, _| pixels[x as usize]);
+    let bytes = cut_over_ground(&frame, 2, 1, [99, 99, 99], Some(0));
+    assert_eq!(bytes[..6], [30, 10, 20, 255, 0, 0]);
+}
+
+/// The clear bits the pass writes for a `width` x `height` picture cut at
+/// `cut`, a word of 32 pixels each.
+fn clear_bits(frame: &wgpu::Buffer, width: u32, height: u32, cut: u8) -> Vec<u32> {
+    let Rig { engine, clear, .. } = rig();
+    let out = clear
+        .run(engine, frame, Picture { width, height }, cut)
+        .expect("clear");
+    read_buffer(engine, &out)
+        .chunks_exact(4)
+        .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+        .collect()
+}
+
+// Under the cut is clear: 127 is under 128 and 128 is not; 0 is, 255 is
+// not. Pixels 0 and 2.
+#[test]
+fn a_pixel_under_the_cut_is_clear() {
+    let alphas = [127, 128, 0, 255];
+    let frame = frame(4, 1, |x, _| alphas[x as usize] << 24 | 0x00ff_ffff);
+    assert_eq!(clear_bits(&frame, 4, 1, 128), [0b0101]);
+}
+
+// 6 x 6: 36 pixels, clear where the count is a multiple of 3 — bits 0, 3,
+// …, 30 of the first word, and of the second bit 1 (pixel 33) alone,
+// though the tile is clear past the picture's last pixel.
+#[test]
+fn clear_bits_run_in_the_picture_order_across_rows() {
+    let picture = |x: u32, y: u32| if (y * 6 + x) % 3 == 0 { 0 } else { WHITE };
+    let frame = frame_past(6, 6, 0, picture);
+    assert_eq!(clear_bits(&frame, 6, 6, 128), [0x4924_9249, 0b10]);
+}
+
+// A clear column at x = 128 and a clear row at y = 128, read where the
+// picture has them, on either side of a tile's edge.
+#[test]
+fn clear_bits_read_the_frame_across_its_tiles() {
+    let cross = |x, y| if x == 128 || y == 128 { 0 } else { WHITE };
+    let words = clear_bits(&frame(130, 130, cross), 130, 130, 128);
+    let clear = |x: u32, y: u32| {
+        let index = y * 130 + x;
+        words[(index / 32) as usize] >> (index % 32) & 1 == 1
+    };
+    for (x, y, wanted) in [
+        (127, 5, false),
+        (128, 5, true),
+        (129, 5, false),
+        (5, 127, false),
+        (5, 128, true),
+        (128, 129, true),
+        (129, 129, false),
+    ] {
+        assert_eq!(clear(x, y), wanted, "({x}, {y})");
+    }
+}
+
+// 197 x 131, cut at 128: its colours and its clear bits — 25,807 pixels,
+// so the last word of each is part filled.
+#[test]
+fn every_device_writes_the_pinned_gif() {
+    let (width, height) = (197, 131);
+    let picture = Picture { width, height };
+    let frame = frame(width, height, mixed(11));
+    let rgb = cut_over_ground(&frame, width, height, [0, 0, 0], Some(128));
+    assert_pinned("export/gif-rgb-197x131", &rgb[..picture.rgb_bytes() as usize]);
+    let words = clear_bits(&frame, width, height, 128);
+    let bits: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+    assert_pinned("export/gif-clear-197x131", &bits);
+}
+
+#[test]
+fn clear_refuses_an_empty_picture_or_a_short_frame() {
+    let frame = frame(4, 4, |_, _| WHITE);
+    let Rig { engine, clear, .. } = rig();
+    for bad in [
+        Picture { width: 0, height: 4 },
+        Picture { width: 4, height: 0 },
+        Picture { width: 129, height: 4 },
+    ] {
+        assert!(clear.run(engine, &frame, bad, 128).is_none(), "{bad:?}");
     }
 }

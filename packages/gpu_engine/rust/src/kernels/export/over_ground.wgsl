@@ -15,6 +15,15 @@
 // may be fused or reassociated on one device and not another (fill.wgsl).
 // p <= a and g·(255 − a) / 255 <= 255 − a, so the sum is a byte.
 //
+// A GIF takes its colours the same way, with its alpha cut (①c): its
+// pixel is clear or not, so the app lays one under half covered clear and
+// the rest whole, each in the colour it was laid with — no matte to blend
+// an edge into (`_gifPictureOf`, video_export_service.dart). Cut at a
+// level, a pixel is 0 under it and 255 at or over it: over the ground it
+// is then its own colour or the ground's, which the GIF's clear colour
+// takes the place of. Cut at 0, none is under it and every pixel is its
+// own colour — a GIF that keeps no clear colour.
+//
 // Needs tile.wgsl and frame.wgsl before it.
 
 struct Params {
@@ -28,7 +37,8 @@ struct Params {
   row_groups: u32,
   // The background: red in the low byte, as the frame's words.
   ground: u32,
-  pad0: u32,
+  // Where the alpha is cut; past 255, nowhere — its shades are laid.
+  cut: u32,
   pad1: u32,
   pad2: u32,
 }
@@ -47,8 +57,16 @@ fn premultiplied(c: u32, a: u32) -> u32 {
   return (t + (t >> 8u)) >> 8u;
 }
 
+// The alpha a writer takes: as it is, or cut.
+fn coverage(alpha: u32) -> u32 {
+  if (params.cut > 255u) {
+    return alpha;
+  }
+  return select(255u, 0u, alpha < params.cut);
+}
+
 fn laid(word: u32, shift: u32) -> u32 {
-  let alpha = word >> 24u;
+  let alpha = coverage(word >> 24u);
   return premultiplied(byte_of(word, shift), alpha)
     + byte_of(params.ground, shift) * (255u - alpha) / 255u;
 }
