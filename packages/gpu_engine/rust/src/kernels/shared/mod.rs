@@ -43,8 +43,9 @@ pub(crate) const RESAMPLE_WGSL: &str = include_str!("resample.wgsl");
 /// rows and output tiles.
 pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
 /// `premultiply8` — a straight word as a surface Flutter shows holds it,
-/// and as the export lays it over a ground. `one_premultiply.rs` keeps it
-/// the one.
+/// and as the export lays it over a ground — and its rounding,
+/// `div255_round`, which the cel pixel blend takes too. `one_premultiply.rs`
+/// keeps it the one.
 pub(crate) const PREMULTIPLY_WGSL: &str = include_str!("premultiply.wgsl");
 
 /// The pipeline of `sources`, one after another, whose entry point is

@@ -21,8 +21,9 @@
 // of them (cel_pixel/mod.rs adds them up between the two), puts the tile's
 // new pixels and its runs.
 //
-// Needs effects/key.wgsl, shared/tile.wgsl and shared/pages.wgsl (with its
-// bindings) before it; defines key.wgsl's `key_word`.
+// Needs effects/key.wgsl, shared/tile.wgsl, shared/premultiply.wgsl and
+// shared/pages.wgsl (with its bindings) before it; defines key.wgsl's
+// `key_word`.
 
 struct CelPass {
   // In `given`, after this pass's tiles, CEL_TILE_WORDS each: the
@@ -162,8 +163,7 @@ fn cel_incoming(at: u32) -> u32 {
 // `older + (incoming - older) * coverage / 255`, the integer mul-div-255:
 // C's `qa_cel_pixel_blend`, the app's `_blend`.
 fn cel_blend(older: u32, incoming: u32, coverage: u32) -> u32 {
-  let scaled = incoming * coverage + older * (255u - coverage) + 128u;
-  return (scaled + (scaled >> 8u)) >> 8u;
+  return div255_round(incoming * coverage + older * (255u - coverage));
 }
 
 // `texel`, taking part under `coverage`, as the pass leaves it — `index`
