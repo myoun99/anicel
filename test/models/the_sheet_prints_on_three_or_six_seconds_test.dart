@@ -15,6 +15,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/sheet_sources.dart';
@@ -251,6 +252,30 @@ void main() {
         (sheet.xdtsForm!.keyColumns, sheet.xdtsForm!.cellsColumns),
         (7, 8),
       );
+    });
+
+    test('the books mark the ACTION block\'s rows, as on our own sheets', () {
+      Cut booked(TimesheetSheetKind kind) => Cut(
+        id: const CutId('cut'),
+        name: '1',
+        duration: 24,
+        canvasSize: const CanvasSize(width: 1920, height: 1080),
+        metadata: CutMetadata(sheetKind: kind),
+        layers: [
+          Layer(id: const LayerId('a'), name: 'A', frames: const []),
+          Layer(
+            id: const LayerId('book'),
+            name: 'BOOK',
+            kind: LayerKind.image,
+            mark: const LayerMark(process: LayerProcess.art),
+            frames: const [],
+          ),
+          Layer(id: const LayerId('b'), name: 'B', frames: const []),
+        ],
+      );
+      final ours = _sheet(booked(TimesheetSheetKind.sixSeconds)).books;
+      expect(ours, isNotEmpty);
+      expect(_sheet(booked(TimesheetSheetKind.xdtsA3SixSeconds)).books, ours);
     });
 
     test('more cel rows than a block holds widen both blocks to the wider, '
