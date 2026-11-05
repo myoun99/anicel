@@ -481,12 +481,13 @@ fn clear_bits(frame: &wgpu::Buffer, width: u32, height: u32, cut: u8) -> Vec<u32
 }
 
 // Under the cut is clear: 127 is under 128 and 128 is not; 0 is, 255 is
-// not. Pixels 0 and 2.
+// not — pixels 0 and 2. Cut at 1, only 0 is under it.
 #[test]
 fn a_pixel_under_the_cut_is_clear() {
     let alphas = [127, 128, 0, 255];
     let frame = frame(4, 1, |x, _| alphas[x as usize] << 24 | 0x00ff_ffff);
     assert_eq!(clear_bits(&frame, 4, 1, 128), [0b0101]);
+    assert_eq!(clear_bits(&frame, 4, 1, 1), [0b0100]);
 }
 
 // 6 x 6: 36 pixels, clear where the count is a multiple of 3 — bits 0, 3,
