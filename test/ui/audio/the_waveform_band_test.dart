@@ -16,14 +16,9 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart' show rectAlong;
 /// gain narrows it. A test asserting on the painter's fields instead
 /// would pass while the drawing moved.
 ///
-/// ⚠️The two edge CLAMPS (a bucket landing before 0 or past the window)
-/// resisted every fixture: the band is a filled polygon, so moving a
-/// vertex just off-canvas leaves the same region covered — even with a
-/// fade measuring from the clamped position, while the band drew fades
-/// (they went with I-140). Measured 2026-09-05; they shape the vertex list
-/// rather than the pixels, so what pins them is reading the code, not this
-/// file. Said here so the next reader does not take their mutants' survival
-/// for "the clamps do nothing".
+/// The band is gpu-int-spec-timeline ②'s, a device column at a time (관제
+/// F-71 ⑤): the group at the end pins each part of that definition by the
+/// thickness it leaves in a column.
 void main() {
   const size = 64.0;
   const rate = ProjectFrameRate.fps24;
@@ -75,11 +70,13 @@ void main() {
     Axis axis = Axis.horizontal,
     int leadingFrames = 0,
     double gain = 1.0,
+    double devicePixelRatio = 1,
   }) => WaveformPainter(
     peaks: peaks ?? loud(),
     frameRate: rate,
     pixelsPerFrame: pixelsPerFrame,
     color: ink,
+    devicePixelRatio: devicePixelRatio,
     axis: axis,
     leadingFrames: leadingFrames,
     gain: gain,
@@ -249,6 +246,7 @@ void main() {
         frameRate: rate,
         pixelsPerFrame: 2,
         color: ink,
+        devicePixelRatio: 1,
       ),
     );
     final bySeconds = await paint(
@@ -256,6 +254,7 @@ void main() {
         peaks: loud(),
         pixelsPerSecond: 2 * rate.approximateFps,
         color: ink,
+        devicePixelRatio: 1,
       ),
     );
 
@@ -350,6 +349,7 @@ void main() {
         frameRate: rate,
         pixelsPerFrame: size / 24,
         color: ink,
+        devicePixelRatio: 1,
       );
       final whole = _BandSpy(clip: Rect.largest);
       band.paint(whole, const Size(3200, size));
@@ -362,15 +362,117 @@ void main() {
         reason: 'LIVENESS: unclipped, the band runs its whole length',
       );
       final bounds = clipped.band!.getBounds();
-      // A bucket is 8px here: the band may run a bucket or two past each
-      // edge to cross into the clip on its own segment, and no further.
-      expect(bounds.left, inInclusiveRange(1600 - 16, 1600));
-      expect(bounds.right, inInclusiveRange(1664, 1664 + 16));
+      // The columns the clip shows, and not one more.
+      expect(bounds.left, 1600);
+      expect(bounds.right, 1664);
 
       // A clip that shows none of it — before its start — draws nothing.
       final before = _BandSpy(clip: const Rect.fromLTRB(-100, 0, -10, size));
       band.paint(before, const Size(3200, size));
       expect(before.band, isNull);
+    });
+  });
+
+  /// gpu-int-spec-timeline ②, part by part. One lane on a 64 px row: its
+  /// center at 32 and its reach 31 (`share / 2 − 1`), so a column standing
+  /// at height h is 2 · 31 · h px of ink thick.
+  group('a column stands as high as the line through its buckets reaches '
+      'inside it', () {
+    /// A column's ink in pixels: its alpha summed down it, in [pixels]
+    /// [width] wide.
+    double thicknessAt(Uint32List pixels, int x, {int width = 64}) {
+      var alpha = 0;
+      for (var y = 0; y < pixels.length ~/ width; y += 1) {
+        alpha += pixels[y * width + x] >>> 24;
+      }
+      return alpha / 255;
+    }
+
+    double inkOf(double height) => 2 * 31 * height;
+
+    test('zoomed out, a column takes the highest bucket inside it', () async {
+      // 256 buckets a second on 64 px a second: four buckets a pixel.
+      // Column 0 is buckets 0 to 4 — its ends 0.2 and 0.5, and 0.9 between.
+      // Column 1 is buckets 4 to 8 — its ends 0.5 and 0.1, and 0.1 between.
+      final values = List<double>.filled(256, 0.25);
+      values.setAll(0, const [0.2, 0.9, 0.1, 0.3, 0.5, 0.1, 0.1, 0.1, 0.1]);
+      final pixels = await paint(
+        painter(peaks: peaksOf(values, bucketsPerSecond: 256)),
+      );
+      expect(thicknessAt(pixels, 0), closeTo(inkOf(0.9), 0.6));
+      expect(thicknessAt(pixels, 1), closeTo(inkOf(0.5), 0.6));
+    });
+
+    test('zoomed in, a column takes the line at its far end', () async {
+      // Eight pixels a bucket, rising from 0.2 to 1.0 over the first:
+      // column 0 ends at bucket 0.125 (0.3) and column 4 at 0.625 (0.7).
+      final rising = peaksOf(const [0.2, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+      final pixels = await paint(painter(peaks: rising));
+      expect(thicknessAt(pixels, 0), closeTo(inkOf(0.3), 0.6));
+      expect(thicknessAt(pixels, 4), closeTo(inkOf(0.7), 0.6));
+    });
+
+    test('⛔a silent stretch draws nothing — no line down the center',
+        () async {
+      // Silent up to bucket 2 (16 px), then rising to 1.0 at bucket 3.
+      final pixels = await paint(
+        painter(peaks: peaksOf(const [0, 0, 0, 1, 0, 0, 0, 0])),
+      );
+      for (var x = 0; x < 16; x += 1) {
+        expect(thicknessAt(pixels, x), 0, reason: 'column $x is silent');
+      }
+      expect(thicknessAt(pixels, 16), closeTo(inkOf(0.125), 0.6));
+    });
+
+    test('the band runs from the first bucket to the last, and no further',
+        () async {
+      // Eight buckets eight pixels apart: the last stands at 56 px.
+      final eight = await paint(painter());
+      expect(thicknessAt(eight, 55), closeTo(inkOf(1), 0.6));
+      expect(thicknessAt(eight, 56), 0);
+      // A sound of one bucket has no stretch at all.
+      expect(inkTotal(await paint(painter(peaks: peaksOf(const [1])))), 0);
+    });
+
+    test('the strip\'s own end cuts the band', () async {
+      // The sound runs 56 px; its strip is 40 px long.
+      final recorder = ui.PictureRecorder();
+      painter().paint(Canvas(recorder), const Size(40, size));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(size.toInt(), size.toInt());
+      final pixels = (await image.toByteData())!.buffer.asUint32List();
+      image.dispose();
+      picture.dispose();
+      expect(thicknessAt(pixels, 39), closeTo(inkOf(1), 0.6));
+      expect(thicknessAt(pixels, 40), 0);
+    });
+
+    test('🚨a column is a DEVICE pixel, not a logical one', () async {
+      // Eight logical pixels a bucket, rising from 0 to 1: a logical pixel
+      // is two device columns at a ratio of 2, ending at buckets 1/16 and
+      // 1/8; at a ratio of 1 both halves are one column ending at 1/8.
+      Future<Uint32List> twice(double ratio) async {
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder)..scale(2);
+        painter(
+          peaks: peaksOf(const [0, 1, 1, 1, 1, 1, 1, 1]),
+          devicePixelRatio: ratio,
+        ).paint(canvas, const Size(size, size));
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(128, 128);
+        final pixels = (await image.toByteData())!.buffer.asUint32List();
+        image.dispose();
+        picture.dispose();
+        return pixels;
+      }
+
+      Matcher device(double height) => closeTo(2 * inkOf(height), 0.6);
+      final columns = await twice(2);
+      expect(thicknessAt(columns, 0, width: 128), device(1 / 16));
+      expect(thicknessAt(columns, 1, width: 128), device(1 / 8));
+      final halves = await twice(1);
+      expect(thicknessAt(halves, 0, width: 128), device(1 / 8));
+      expect(thicknessAt(halves, 1, width: 128), device(1 / 8));
     });
   });
 }

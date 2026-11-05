@@ -30,11 +30,13 @@ void main() {
     double gain = 1.0,
     int leadingFrames = 0,
     Axis axis = Axis.horizontal,
+    double devicePixelRatio = 1,
   }) => WaveformPainter(
     peaks: peaks,
     frameRate: rate,
     pixelsPerFrame: canvas / 24,
     color: ink,
+    devicePixelRatio: devicePixelRatio,
     axis: axis,
     leadingFrames: leadingFrames,
     gain: gain,
@@ -96,6 +98,11 @@ void main() {
       'its painter (the axis)',
       (peaks) => paint(painter(peaks)),
       (peaks) => paint(painter(peaks, axis: Axis.vertical)),
+    ),
+    (
+      'its painter (the pixel ratio)',
+      (peaks) => paint(painter(peaks)),
+      (peaks) => paint(painter(peaks, devicePixelRatio: 2)),
     ),
     (
       'its size',

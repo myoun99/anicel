@@ -7,6 +7,7 @@ import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../brush/canvas_stage.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
 import '../text/laid_out_glyph.dart';
 import '../theme/app_theme.dart';
@@ -264,6 +265,7 @@ class _SoundFaceState extends State<SoundFace> {
             currentFrame: widget.currentFrame,
             nearPerFrame: _nearPerFrame,
             kept: widget.kept,
+            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
             place: TransportBar.placeOf(
               currentFrame: widget.currentFrame,
               framesPerSecond: widget.framesPerSecond,
@@ -317,6 +319,7 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
     required this.currentFrame,
     required this.nearPerFrame,
     required this.kept,
+    required this.devicePixelRatio,
     required this.place,
     required this.ink,
     required this.marks,
@@ -330,6 +333,9 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
   final int currentFrame;
   final double nearPerFrame;
   final ({int first, int last})? kept;
+
+  /// What a column of the bands is ([WaveformPainter.devicePixelRatio]).
+  final double devicePixelRatio;
 
   /// What the playhead writes over its ruler ([TransportBar.placeOf]).
   final String place;
@@ -448,6 +454,7 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
       frameRate: frameRate,
       pixelsPerFrame: row.perFrame,
       color: ink.band,
+      devicePixelRatio: devicePixelRatio,
     ).paint(
       canvas,
       Size(
@@ -576,6 +583,7 @@ class _SoundFacePainter extends CustomPainter with RepaintOnProps {
     currentFrame,
     nearPerFrame,
     kept,
+    devicePixelRatio,
     place,
     ink,
     marks,

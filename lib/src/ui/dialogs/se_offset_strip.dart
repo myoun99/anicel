@@ -8,6 +8,7 @@ import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/audio_slide.dart';
 import '../audio/waveform_painter.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineFrameCellWidth;
 import '../timeline/timeline_se_row_visual.dart' show SePaperSpan;
@@ -127,6 +128,7 @@ class _SeOffsetStripState extends State<SeOffsetStrip> {
     frameRate: widget.frameRate,
     pixelsPerFrame: _pixelsPerFrame,
     color: color,
+    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
     leadingFrames: _offset,
   );
 

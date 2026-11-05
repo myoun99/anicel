@@ -101,6 +101,8 @@ class AudioViewerDocument implements ViewerDocument {
           ? 0
           : size.width / peaks.durationSeconds,
       color: ink,
+      // Drawn at the pixels asked: one of them is a column.
+      devicePixelRatio: 1,
     ).paint(canvas, size);
     final picture = recorder.endRecording();
     try {

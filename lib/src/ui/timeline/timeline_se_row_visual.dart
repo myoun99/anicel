@@ -16,6 +16,7 @@ import '../../models/track_se_window.dart' show seSoundRunsPast;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
 import '../audio/waveform_painter.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
 import '../text/dialogue_fit_layout.dart'
@@ -577,6 +578,7 @@ class _AudioClipStrip extends StatelessWidget {
               frameRate: frameRate,
               pixelsPerFrame: audibleFrames <= 0 ? 0 : main / audibleFrames,
               color: color,
+              devicePixelRatio: EffectiveDevicePixelRatio.of(context),
               axis: axis,
               leadingFrames: leadingFrames,
               gain: gain,
