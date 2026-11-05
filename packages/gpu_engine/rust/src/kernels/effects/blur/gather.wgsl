@@ -154,6 +154,9 @@ fn iris_gather(@builtin(global_invocation_id) id: vec3<u32>) {
     if (gather.repeats == 1u) {
       row_y = clamp(row_y, gather.paper_top, gather.paper_bottom - 1);
     } else if (row_y < gather.picture_top || row_y >= gather.picture_bottom) {
+      // Never read: past the plane a device reads 0 — DX12 here, so no
+      // test of this machine tells this from its absence (gather mutant
+      // g28, 11-05) — or any word of it (Metal clamps the index).
       continue;
     }
     let row = u32(dy + i32(gather.reach));

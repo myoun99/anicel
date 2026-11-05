@@ -194,10 +194,11 @@ fn a_blur_map_names_each_pixel_level() {
 }
 
 /// Where the map is in focus each pixel is itself, its neighbours blurred
-/// by theirs: left of x = 64 in focus, the rest at the most radius.
+/// by theirs: the white pixel and those left of it in focus, the rest at
+/// the most radius.
 #[test]
 fn a_pixel_in_focus_is_itself() {
-    let edge: &dyn Fn(i32, i32) -> u32 = &|x, _| if x < 64 { 0 } else { WHITE };
+    let edge: &dyn Fn(i32, i32) -> u32 = &|x, _| if x <= 64 { 0 } else { WHITE };
     let focus = Focus {
         focal: 0.0,
         inverts: false,
@@ -205,7 +206,7 @@ fn a_pixel_in_focus_is_itself() {
     let map: Map = (edge, MapChannel::Red, focus);
     let blur = blurred(ONE_TILE, ONE_TILE.pixels(), &lens(1.5), one_white((64, 64)), Some(map));
     let spread = rgba(255, 255, 255, 28);
-    assert_eq!(blur.expect("blur").row(64, 62..67), [0, 0, spread, spread, 0]);
+    assert_eq!(blur.expect("blur").row(64, 62..67), [0, 0, WHITE, spread, 0]);
 }
 
 /// AE's Repeat Edge Pixels: past the paper its edge pixels are read again —
@@ -292,15 +293,22 @@ fn a_row_summed_past_32_bits_reads_whole() {
 /// A boosted light spread over what is clear covers it (🗣️I-132-Q20 a): a
 /// white lamp at gain 1 is 131070 a channel, a ninth of it 14563 — past the
 /// ninth of its alpha, 7282 — so its bokeh is stored at alpha 57, not 28.
+/// Past white it is white: at gain 9 the lamp alone is 655350, in either
+/// light.
 #[test]
 fn light_past_its_alpha_covers() {
-    let gain = Light {
-        gain: 1.0,
+    let gain = |gain: f64, linear: bool| Light {
+        gain,
         threshold: 0.0,
+        linear,
         ..Light::STORED
     };
-    let blur = whole(&Lens { light: gain, ..lens(1.5) }, one_white((64, 64)));
+    let blur = whole(&Lens { light: gain(1.0, false), ..lens(1.5) }, one_white((64, 64)));
     assert_eq!(blur.at(65, 64), rgba(255, 255, 255, 57));
+    for linear in [false, true] {
+        let lamp = Lens { light: gain(9.0, linear), ..lens(0.5) };
+        assert_eq!(whole(&lamp, one_white((64, 64))).at(64, 64), WHITE, "linear {linear}");
+    }
 }
 
 #[test]
