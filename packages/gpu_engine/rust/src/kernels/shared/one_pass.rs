@@ -16,7 +16,6 @@ const HOME: &str = "kernels/shared/dispatch.rs";
 const LEDGER: &[(&str, &str)] = &[
     ("kernels/blend/tests.rs", "브러시/렌더링"),
     ("kernels/shared/tests.rs", "브러시/렌더링"),
-    ("kernels/effects/tests.rs", "캔버스 베이스 패널"),
 ];
 
 #[test]
