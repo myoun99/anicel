@@ -28,12 +28,14 @@
 //! The lift (`lift`, R4 · C) reads a cel under a selection the same way:
 //! it walks here, its passes are shaped as the verbs' are
 //! (`shared::paged`), and its shader reads a walked tile through
-//! walk.wgsl, as the verbs' does.
+//! walk.wgsl, as the verbs' does. So does the ink scan (`ink`, R4b), which
+//! walks a whole cel.
 
 // ⏳Nothing outside the tests runs it until the app's bridge round
 // (gpu-canonical-store ⑧).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod ink;
 pub(crate) mod lift;
 #[cfg(test)]
 mod tests;
