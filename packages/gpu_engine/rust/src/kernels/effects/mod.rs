@@ -1,19 +1,23 @@
 //! The effects a row's chain runs (gpu-canonical-store ⑥, by the integer
-//! spec gpu-int-spec-canvas 1b (3/4) (4/4)): each a WGSL library the
-//! executor's passes prepend, with no CPU copy of its formula
-//! (`kernels/mod.rs`).
+//! spec gpu-int-spec-canvas 1b (3/4) (4/4)), with no CPU copy of a formula
+//! (`kernels/mod.rs`): a WGSL library the executor's passes prepend where a
+//! pixel's effect reads that pixel alone, a pass of its own where it reads
+//! its neighbours.
 //!
-//! So far the colour key (`key.wgsl`): the walk C's `qa_key_rgba` makes
-//! over a row's pixels, from the tables the app makes from its one
-//! definition (`CelColorKey`).
+//! So far:
+//! - the colour key (`key.wgsl`): the walk C's `qa_key_rgba` makes over a
+//!   row's pixels, from the tables the app makes from its one definition
+//!   (`CelColorKey`);
+//! - the Gaussian (`blur`): the blur brush's box passes, C's `qa_blur_box`.
 
 // ⏳The executor's rows (kernels/composite) walk the keys, but nothing
-// outside the tests calls the executor until the app's bridge round
-// (gpu-canonical-store ⑧ 3 and 5).
+// outside the tests calls the executor or the blur until the app's bridge
+// round (gpu-canonical-store ⑧ 3 and 5).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod blur;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 /// The colour key walk; its host defines `key_word` (the file's head has
 /// the run's layout).

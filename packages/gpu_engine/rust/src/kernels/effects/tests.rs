@@ -3,13 +3,13 @@
 //! against a CPU copy of the walk (`kernels/mod.rs` has why). The tables
 //! are the app's to make; these are made to put one question each.
 
-use std::sync::{OnceLock, mpsc};
+use std::sync::OnceLock;
 
 use wgpu::util::DeviceExt;
 
 use super::{KEY_WGSL, KEYS_PER_RUN, KeyRun};
 use crate::device::Engine;
-use crate::testing::first_engine;
+use crate::testing::{first_engine, read_buffer};
 
 /// The device and the compiled cases every test here runs on.
 struct Rig {
@@ -65,17 +65,10 @@ fn walk(runs: &[u32], cases: &[(u32, u32, u32)]) -> Vec<u32> {
         .flat_map(|&(run, texel, original)| [run, texel, original])
         .collect();
     let input = storage(engine, &words);
-    let size = (cases.len() * 4) as u64;
     let results = engine.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("key results"),
-        size,
+        size: (cases.len() * 4) as u64,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        mapped_at_creation: false,
-    });
-    let readback = engine.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("key readback"),
-        size,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
     let bind_group = engine.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -105,23 +98,15 @@ fn walk(runs: &[u32], cases: &[(u32, u32, u32)]) -> Vec<u32> {
         pass.set_bind_group(0, &bind_group, &[]);
         pass.dispatch_workgroups((cases.len() as u32).div_ceil(64), 1, 1);
     }
-    encoder.copy_buffer_to_buffer(&results, 0, &readback, 0, size);
     engine.queue.submit([encoder.finish()]);
-    let (sender, receiver) = mpsc::channel();
-    readback.map_async(wgpu::MapMode::Read, .., move |result| {
-        let _ = sender.send(result);
-    });
-    engine.wait().expect("wait for the GPU");
-    receiver.recv().expect("map_async answered").expect("map");
-    let mapped = readback.get_mapped_range(..).expect("mapped range");
-    mapped
+    read_buffer(engine, &results)
         .chunks_exact(4)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
         .collect()
 }
 
 /// A straight RGBA8 word.
-const fn rgba(r: u32, g: u32, b: u32, a: u32) -> u32 {
+pub(crate) const fn rgba(r: u32, g: u32, b: u32, a: u32) -> u32 {
     r | (g << 8) | (b << 16) | (a << 24)
 }
 
