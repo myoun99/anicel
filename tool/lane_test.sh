@@ -55,6 +55,12 @@
 # ⚠️The script before THAT fails 4 of the 11 there: it refuses the Dart
 # lane, and lands a ledger row this machine's GPU never ran.
 #
+# 🆕And the mirror's login (2026-11-05, gpu-engine-skeleton — section U,
+# 119 checks in all): a `git` in front of the real one writes down every
+# call of the whole run that reached the mirror, and none of them could ask
+# for a login. ⚠️The script before THAT fails 1 of the 2 there: its backup
+# pushed master, and its sync fetched it, free to ask.
+#
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
 E="$(mktemp -d "${TMPDIR:-/tmp}/lane-test.XXXXXX")" || exit 2
