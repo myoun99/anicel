@@ -5,6 +5,8 @@
 //! kernel to need them (11-05) — a kernel's own module adds its bindings,
 //! never its own plumbing.
 
+use std::ops::Range;
+
 use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
@@ -102,6 +104,18 @@ pub(crate) fn whole<'a>(bound: &[(u32, &'a wgpu::Buffer)]) -> Vec<wgpu::BindGrou
             resource: buffer.as_entire_binding(),
         })
         .collect()
+}
+
+/// `bytes` of `buffer` as a binding — a pass's part of a plane its passes
+/// share. ⛔ONE: the blur's cel passes and its steps' uniforms, the cel
+/// pixel verbs and the lift each wrote it, and the write path came as
+/// another (11-06).
+pub(crate) fn range(buffer: &wgpu::Buffer, bytes: Range<u64>) -> wgpu::BindingResource<'_> {
+    wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+        buffer,
+        offset: bytes.start,
+        size: wgpu::BufferSize::new(bytes.end - bytes.start),
+    })
 }
 
 /// Workgroups across and down, one deep — a pass over a plane.

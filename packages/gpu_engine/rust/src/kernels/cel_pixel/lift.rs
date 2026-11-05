@@ -17,14 +17,11 @@ use crate::device::Engine;
 use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::mask::BYTE_WGSL;
 use crate::kernels::shared::{
-    Encoded, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, encode_on, pipeline, plane, runs,
-    tiles_a_pass,
+    Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, cut_by, encode_on, encoded,
+    pipeline, plane, range, runs, tiles_a_pass,
 };
 
-use super::{
-    Given, Mask, TILE_WORDS, WALK_WGSL, alignment, band, cut_by, encoded, entries, made, range,
-    walk, words,
-};
+use super::{Mask, TILE_WORDS, WALK_WGSL, alignment, band, entries, made, walk, words};
 
 /// The storage buffers a pass binds besides its pages: what it is given,
 /// the box's pixels and the flag — and the lift's words, a uniform one. A
@@ -96,7 +93,7 @@ impl Lift {
         if walk.is_empty() {
             return Some(Lifted { rgba, anything: false });
         }
-        let cut = runs(walk.iter().map(|tile| tile.at.page), per_pass, most);
+        let cut = runs(walk.iter().map(|tile| Some(tile.at.page)), per_pass, most);
         let align = alignment(engine);
         let mut encoder = engine
             .device
@@ -118,7 +115,7 @@ impl Lift {
                 (first / 4) as u32,
                 u32::from(whole),
             ];
-            given.push(Given::new(engine, &mut encoder, &words, Some((mask, &rows)), &uniform)?);
+            given.push(Given::new(engine, &mut encoder, &words, Some(mask.rows(&rows)), &uniform)?);
             lifted.push(first..u64::from(rows.end) * row);
         }
         let dispatches: Vec<Encoded> = cut

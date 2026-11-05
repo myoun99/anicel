@@ -43,7 +43,7 @@ use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, runs, whole,
+    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, whole,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -392,7 +392,7 @@ impl Dabs {
         // A pass a run of the tiles, in their order: on no more pages than it
         // binds, and no more tiles than a dispatch reaches.
         let most = engine.device.limits().max_compute_workgroups_per_dimension as usize;
-        let runs = runs(tiles.iter().map(|tile| tile.at.page), pages_per_pass, most);
+        let runs = runs(tiles.iter().map(|tile| Some(tile.at.page)), pages_per_pass, most);
         // Each tile's k: its page's binding among its run's.
         let ks: Option<Vec<u32>> = runs
             .iter()
@@ -432,14 +432,8 @@ impl Dabs {
                 // the time.
                 let way = if pages.len() == 1 { &self.one } else { &self.widest };
                 let mut bound = whole(&[(0, plan)]);
-                bound.push(wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: plan,
-                        offset: ((runs_at.get() + index * stride) * 4) as u64,
-                        size: wgpu::BufferSize::new(16),
-                    }),
-                });
+                let at = ((runs_at.get() + index * stride) * 4) as u64;
+                bound.push(wgpu::BindGroupEntry { binding: 1, resource: range(plan, at..at + 16) });
                 bound.extend(way.planes.entries(of_pages(planes, pages)));
                 bound.extend(way.view.entries(of_pages(view, pages)));
                 let levels = second.into_iter().flat_map(|second| of_pages(second.plane, pages));

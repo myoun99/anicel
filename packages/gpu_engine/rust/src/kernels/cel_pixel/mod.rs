@@ -26,8 +26,9 @@
 //! the ones the recipe's walk took (캔버스 베이스 11-06 04:39 ①).
 //!
 //! The lift (`lift`, R4 · C) reads a cel under a selection the same way:
-//! it walks, cuts its passes and builds what they are given here, and its
-//! shader reads a walked tile through walk.wgsl, as the verbs' does.
+//! it walks here, its passes are shaped as the verbs' are
+//! (`shared::paged`), and its shader reads a walked tile through
+//! walk.wgsl, as the verbs' does.
 
 // ⏳Nothing outside the tests runs it until the app's bridge round
 // (gpu-canonical-store ⑧).
@@ -41,12 +42,12 @@ use std::ops::Range;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_TEXELS, TileAt, TileSet};
+use crate::kernels::composite::{TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::effects::{KEY_WGSL, KeyRun};
 use crate::kernels::mask::{BYTE_WGSL, MaskBox};
 use crate::kernels::shared::{
-    Encoded, Own, PREMULTIPLY_WGSL, Pages, TILE_WGSL, encode_on, fits, le_bytes, page_table,
-    pipeline, plane, runs, tiles_a_pass, whole, words_buffer,
+    Encoded, Given, Own, PREMULTIPLY_WGSL, Pages, Run, TILE_WGSL, cut_by, encode_on, encoded,
+    fits, page_table, pipeline, plane, range, runs, tiles_a_pass,
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
@@ -60,8 +61,6 @@ const OWN_BUFFERS: u32 = 3;
 const WALK_WGSL: &str = include_str!("walk.wgsl");
 /// walk.wgsl's WALK_TILE_WORDS.
 const TILE_WORDS: usize = 5;
-/// A tile's new pixels, straight RGBA8.
-const TILE_BYTES: u64 = TILE_TEXELS * 4;
 
 /// The selection a pass walks: a byte plane (mask.wgsl's layout) over the
 /// box `size` whose top-left pixel is `at` on the cel — the app's
@@ -70,6 +69,14 @@ pub(crate) struct Mask<'a> {
     pub(crate) plane: &'a wgpu::Buffer,
     pub(crate) at: (i32, i32),
     pub(crate) size: MaskBox,
+}
+
+impl Mask<'_> {
+    /// The bytes of the box's `rows` in its plane, as a pass is given them.
+    fn rows(&self, rows: &Range<u32>) -> (&wgpu::Buffer, Range<u64>) {
+        let stride = u64::from(self.size.stride()) * 4;
+        (self.plane, u64::from(rows.start) * stride..u64::from(rows.end) * stride)
+    }
 }
 
 /// The channel a verb writes, as the app stages it (`CelPixelStage`): its
@@ -271,7 +278,7 @@ impl CelPixels {
         if walk.is_empty() {
             return Some(Passed { tiles, out, touched: Vec::new(), runs: Vec::new() });
         }
-        let cut = runs(walk.iter().map(|tile| tile.at.page), per_pass, most);
+        let cut = runs(walk.iter().map(|tile| Some(tile.at.page)), per_pass, most);
         let counts_bytes = walk.len() as u64 * 8;
         fits(engine, &[counts_bytes], std::iter::empty())?;
         let counts = plane(engine, "cel pixel counts", counts_bytes);
@@ -340,38 +347,6 @@ impl CelPixels {
     }
 }
 
-/// Fails unless a pass binds 1 to the `pages`' pages and takes a tile.
-fn cut_by(pages: &Pages, (per_pass, most): (usize, usize)) -> Option<()> {
-    if per_pass == 0 || per_pass > pages.per_pass() || most == 0 {
-        return fail(format!(
-            "{per_pass} pages and {most} tiles a pass; this device binds 1 to {} pages",
-            pages.per_pass()
-        ));
-    }
-    Some(())
-}
-
-/// `pipeline` over `pass` of a walk, given `given`, its tiles a workgroup
-/// each: what the kernel puts bound at 2 and 3 as `own` has it, and the
-/// pass's pages among `pages`.
-fn encoded<'a>(
-    pages: &'a Pages,
-    pipeline: &'a wgpu::ComputePipeline,
-    pool: &'a [wgpu::Buffer],
-    (run, bound): &Run,
-    given: &'a Given,
-    own: [Option<wgpu::BindingResource<'a>>; 2],
-) -> Encoded<'a> {
-    let mut entries = whole(&[(0, &given.uniform), (1, &given.words)]);
-    for (binding, resource) in (2..).zip(own) {
-        if let Some(resource) = resource {
-            entries.push(wgpu::BindGroupEntry { binding, resource });
-        }
-    }
-    entries.extend(pages.entries(bound.iter().map(|&page| &pool[usize::from(page)])));
-    Encoded { pipeline, bound: entries, groups: (run.len() as u32, 1, 1) }
-}
-
 /// The most walked tiles a pass takes on this device: as many as a dispatch
 /// reaches and as a binding holds at a tile's worst — its new pixels, its
 /// runs (a pixel's value and rank each), and in what it is given its entry,
@@ -405,15 +380,6 @@ fn made(engine: &Engine, bytes: u64) -> Option<()> {
 /// Where a binding may start in a storage buffer, in bytes.
 fn alignment(engine: &Engine) -> u64 {
     u64::from(engine.device.limits().min_storage_buffer_offset_alignment)
-}
-
-/// `bytes` of `buffer` as a binding.
-fn range(buffer: &wgpu::Buffer, bytes: Range<u64>) -> wgpu::BindingResource<'_> {
-    wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-        buffer,
-        offset: bytes.start,
-        size: wgpu::BufferSize::new(bytes.end - bytes.start),
-    })
 }
 
 /// Where each walked tile's pixels and runs start among the walk's, from
@@ -501,10 +467,6 @@ fn within(tile: i32, from: i32, length: u32) -> Option<u32> {
     (first < i64::from(length) && first + i64::from(TILE) > 0).then_some(first as u32)
 }
 
-/// A pass: its run of the walk, and the pages it binds — a page's k its
-/// place among them ([`runs`]).
-type Run = (Range<usize>, Vec<u16>);
-
 /// The rows of `mask`'s box that `run`'s tiles lie on: from its first
 /// tile's row to its last's, as the walk goes row by row.
 fn band(walk: &[Walked], run: &Range<usize>, mask: &Mask) -> Range<u32> {
@@ -513,47 +475,6 @@ fn band(walk: &[Walked], run: &Range<usize>, mask: &Mask) -> Range<u32> {
         y.clamp(0, i64::from(mask.size.height)) as u32
     };
     from(walk[run.start].row)..from(walk[run.end - 1].row + 1)
-}
-
-/// What a pass over a run of a walk is given — its tiles, then the
-/// kernel's own words, then its rows of the mask — and its uniform.
-struct Given {
-    words: wgpu::Buffer,
-    uniform: wgpu::Buffer,
-}
-
-impl Given {
-    /// `words`, `mask`'s `rows` after them — copied there on `encoder`,
-    /// before the passes that read them —, and `uniform`.
-    fn new(
-        engine: &Engine,
-        encoder: &mut wgpu::CommandEncoder,
-        words: &[u32],
-        mask: Option<(&Mask, &Range<u32>)>,
-        uniform: &[u32],
-    ) -> Option<Given> {
-        let (stride, band) = mask.map_or((0, 0), |(mask, rows)| {
-            let stride = u64::from(mask.size.stride()) * 4;
-            (stride, u64::from(rows.end - rows.start) * stride)
-        });
-        let size = words.len() as u64 * 4 + band;
-        fits(engine, &[size], std::iter::empty())?;
-        let given = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("walked tiles given"),
-            size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        engine.queue.write_buffer(&given, 0, &le_bytes(words));
-        if let Some((mask, rows)) = mask {
-            let from = u64::from(rows.start) * stride;
-            encoder.copy_buffer_to_buffer(mask.plane, from, &given, size - band, band);
-        }
-        Some(Given {
-            words: given,
-            uniform: words_buffer(engine, "walked pass", uniform, wgpu::BufferUsages::UNIFORM),
-        })
-    }
 }
 
 /// `pass`'s tiles as walk.wgsl reads them, on the pool's `pool` pages: a
@@ -638,7 +559,7 @@ impl Verb<'_> {
         uniform.extend([touched_first, runs_base]);
         uniform.extend(self.words());
         uniform.extend(shape);
-        Given::new(engine, encoder, &words, mask.map(|mask| (mask, &rows)), &uniform)
+        Given::new(engine, encoder, &words, mask.map(|mask| mask.rows(&rows)), &uniform)
     }
 }
 

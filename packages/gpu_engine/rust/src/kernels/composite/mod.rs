@@ -65,6 +65,9 @@ use crate::kernels::shared::{
 pub(crate) const TILE: u32 = 128;
 /// A tile's pixels — and its words, one RGBA8 pixel to a word.
 pub(crate) const TILE_TEXELS: u64 = (TILE * TILE) as u64;
+/// A tile's bytes, straight RGBA8 — as the pool stores it and a pass puts
+/// it.
+pub(crate) const TILE_BYTES: u64 = TILE_TEXELS * 4;
 /// The most stack levels a pass holds in its registers — composite.wgsl's
 /// DEPTH. Folders and clips nest deeper by cutting passes where the walk
 /// leaves the levels a pass holds; the rest wait in the work buffer.

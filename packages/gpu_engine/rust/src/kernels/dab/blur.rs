@@ -38,7 +38,7 @@ use crate::kernels::effects::blur::gaussian::{
 };
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, Pages, ResampleMap, TILE_WGSL, encode, fits, flat, page_table,
-    pipeline, plane, runs, tiles_a_pass, whole, words_buffer,
+    pipeline, plane, range, runs, tiles_a_pass, whole, words_buffer,
 };
 
 /// blur.wgsl's block: the words before its passes, and before its grid.
@@ -460,14 +460,8 @@ impl Blurs {
             .enumerate()
             .map(|(index, (step, window, way))| {
                 let mut bound = whole(&[(0, plan), (1, between)]);
-                bound.push(wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: plan,
-                        offset: ((steps_at.get() + index * stride) * 4) as u64,
-                        size: wgpu::BufferSize::new(16),
-                    }),
-                });
+                let at = ((steps_at.get() + index * stride) * 4) as u64;
+                bound.push(wgpu::BindGroupEntry { binding: 2, resource: range(plan, at..at + 16) });
                 if let (Entry::Pass, Some(second)) = (step.entry, second) {
                     bound.extend(whole(&[(3, second)]));
                 }
@@ -564,7 +558,7 @@ impl Blurs {
         (pages_per_pass, most): (usize, usize),
     ) -> Option<()> {
         let tile_bytes = TILE_TEXELS * 4;
-        let on = tiles.iter().map(|tile| tile.at.page);
+        let on = tiles.iter().map(|tile| Some(tile.at.page));
         let runs = runs(on, pages_per_pass, most);
         let slots: Vec<wgpu::Buffer> = runs
             .iter()
@@ -581,14 +575,9 @@ impl Blurs {
             .iter()
             .zip(&slots)
             .map(|((run, pages), slots)| {
-                let mut bound = vec![wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: cel,
-                        offset: run.start as u64 * tile_bytes,
-                        size: wgpu::BufferSize::new(run.len() as u64 * tile_bytes),
-                    }),
-                }];
+                let bytes = run.start as u64 * tile_bytes..run.end as u64 * tile_bytes;
+                let resource = range(cel, bytes);
+                let mut bound = vec![wgpu::BindGroupEntry { binding: 0, resource }];
                 bound.extend(whole(&[(1, slots)]));
                 bound.extend(self.cel_pages.entries(of_pages(picture, pages)));
                 let groups = ((TILE_TEXELS / CEL_GROUP) as u32, run.len() as u32, 1);

@@ -169,19 +169,21 @@ pub(crate) fn page_table(bound: &[u16], pool: usize) -> impl Iterator<Item = u32
     })
 }
 
-/// Tiles in their order — each on the page `pages` names for it — cut into
-/// the runs a kernel's passes take, each with the pages it binds in the
-/// order they come (a page's k): a run ends where its next tile would
-/// bring it past `per_pass` pages or `most` tiles. The tiles keep their
-/// order, so a pass binds the range of a run in what it writes (dab/blur.rs:
-/// the cel's passes).
+/// Tiles in their order — each on the page `pages` names for it, or on
+/// none (the write path's tile with nothing stored) — cut into the runs a
+/// kernel's passes take, each with the pages it binds in the order they
+/// come (a page's k): a run ends where its next tile would bring it past
+/// `per_pass` pages or `most` tiles. A tile on no page adds none, so a run
+/// of such tiles alone binds none. The tiles keep their order, so a pass
+/// binds the range of a run in what it writes (dab/blur.rs: the cel's
+/// passes).
 ///
 /// The second greedy cut by the pages a pass binds — the executor's `cut`
 /// (composite/mod.rs) is the first, which holds stack levels too: the two
 /// stay apart until a third comes (rule of three, CLAUDE.md absolute
 /// rule 1).
 pub(crate) fn runs(
-    pages: impl ExactSizeIterator<Item = u16>,
+    pages: impl ExactSizeIterator<Item = Option<u16>>,
     per_pass: usize,
     most: usize,
 ) -> Vec<(Range<usize>, Vec<u16>)> {
@@ -190,12 +192,12 @@ pub(crate) fn runs(
     let mut first = 0;
     let mut bound: Vec<u16> = Vec::new();
     for (index, page) in pages.enumerate() {
-        let fresh = !bound.contains(&page);
-        if index - first == most || (fresh && bound.len() == per_pass) {
+        let fresh = page.filter(|page| !bound.contains(page));
+        if index - first == most || (fresh.is_some() && bound.len() == per_pass) {
             runs.push((first..index, std::mem::take(&mut bound)));
             first = index;
         }
-        if !bound.contains(&page) {
+        if let Some(page) = page.filter(|page| !bound.contains(page)) {
             bound.push(page);
         }
     }
