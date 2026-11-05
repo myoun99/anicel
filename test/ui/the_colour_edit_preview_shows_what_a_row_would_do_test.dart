@@ -54,6 +54,9 @@ void main() {
   const binarizeRing = ValueKey<String>(
     '${EditorActionIds.editBinarize}-preview',
   );
+  const keepRing = ValueKey<String>(
+    '${EditorActionIds.editKeepColour}-preview',
+  );
   const allShown = TimelineFrameRangeSelection(
     layerId: a,
     layerIds: [a, b],
@@ -257,11 +260,7 @@ void main() {
       reason: 'at its cut now, 2치화 fills it — the preview follows the knob',
     );
 
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('${EditorActionIds.editKeepColour}-preview'),
-      ),
-    );
+    await tester.tap(find.byKey(keepRing));
     await tester.pumpAndSettle();
     expect(
       preview.verb,
@@ -273,6 +272,10 @@ void main() {
       isFalse,
       reason: '2치화\'s ring went off',
     );
+
+    await tester.tap(find.byKey(keepRing));
+    await tester.pumpAndSettle();
+    expect(preview.verb, isNull, reason: 'a lit ring pressed turns it off');
   });
 
   testWidgets('a cel written while its preview is on is previewed as it now '
