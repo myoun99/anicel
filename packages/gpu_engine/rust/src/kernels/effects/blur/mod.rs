@@ -4,7 +4,8 @@
 //! (gpu-canonical-store ② (a)).
 //! - `gaussian` — fx Gaussian Blur, by the blur brush's box passes.
 //! - `line` — a blur along a way: fx Directional Blur and Radial Blur.
-//! - `lens` — fx Camera Lens Blur, so far its row sums and its light.
+//! - `lens` — fx Camera Lens Blur: its row sums, its light, and the mean
+//!   of each pixel's iris over them.
 //! - `iris` — the lens blur's iris, the table its gather reads rows by.
 //!
 //! They read and store a pixel alike, and keep it premultiplied on the

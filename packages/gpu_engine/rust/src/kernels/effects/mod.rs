@@ -11,7 +11,9 @@
 //! - the Gaussian (`blur::gaussian`): the blur brush's box passes, C's
 //!   `qa_blur_box`;
 //! - the blur along a way (`blur::line`): fx Directional and Radial Blur's
-//!   taps, the app's `directional_blur.frag`.
+//!   taps, the app's `directional_blur.frag`;
+//! - the lens blur (`blur::lens`): fx Camera Lens Blur's iris gathered over
+//!   its row sums and its light, the app's `iris_gather.frag`.
 
 // ⏳The executor's rows (kernels/composite) walk the keys, but nothing
 // outside the tests calls the executor or the blurs until the app's bridge
