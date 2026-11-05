@@ -112,6 +112,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onLiftRequested,
     this.onLiftConfirmed,
     this.onLiftReverted,
+    this.confirmLandsOn,
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
     this.transformOptions = TransformToolOptions.defaults,
@@ -316,6 +317,10 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// nothing lands in history.
   final void Function(int liftToken)? onLiftReverted;
 
+  /// The cels a confirm of the open session would land on, asked as 확정 is
+  /// pressed: its wait window's measure (F-566). Null for a host that lands
+  /// on the one cel it shows.
+  final Iterable<Object> Function()? confirmLandsOn;
 
   @override
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
@@ -1362,7 +1367,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// 확정 pressed — Enter, the rail's ↵, the tool settings' 적용, the box's ✓
   /// — lands the session behind the app's wait window, under 확정's name:
   /// every cel of a range or a folder is drawn again (🗣️F-551, 유저
-  /// 2026-11-04 · Q1 「전부 늘 띄운다」).
+  /// 2026-11-04). A cel's own lands at once (🗣️F-566: 「변형도 셀 하나만
+  /// 할때는 진행창안띄움」).
   void _confirmBehindTheWaitWindow() {
     unawaited(
       takeBehindTheWaitWindow(
@@ -1371,6 +1377,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.confirm),
         ),
+        blocks: widget.confirmLandsOn?.call() ?? const [],
       ),
     );
   }

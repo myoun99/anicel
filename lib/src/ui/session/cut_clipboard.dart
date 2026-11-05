@@ -6,6 +6,7 @@ import '../../services/commands/cut_insertion.dart' show CutLanding;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
+import '../../services/wait_window.dart' show drawingsOf;
 import 'cut_copies.dart';
 import 'cut_placement.dart';
 import 'cut_verbs.dart';
@@ -88,6 +89,18 @@ class CutClipboard implements BringsMedia {
   ];
 
   bool get canCopy => _cutsInHand.isNotEmpty;
+
+  /// The drawings a copy — or a 잘라내기, which lifts all of them or none —
+  /// takes: every row's of each cut in hand, the wait window's measure
+  /// (`reachesManyBlocks`).
+  Iterable<Object> get drawingsInHand =>
+      drawingsOf([for (final cut in _cutsInHand) ...cut.layers]);
+
+  /// The drawings a paste of the cuts on the board puts down, linked or not.
+  Iterable<Object> get drawingsHeld => drawingsOf([
+    for (final cut in _board._copy?.cuts ?? const <_CopiedCut>[])
+      ...cut.source.layers,
+  ]);
 
   void copy() {
     final cuts = _cutsInHand;

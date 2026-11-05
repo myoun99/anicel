@@ -281,6 +281,49 @@ class FrameClipboard implements BringsMedia {
     return null;
   }
 
+  /// The drawings a copy — or a cut — at [place] takes, each on its row:
+  /// standing, the one the cursor's cell shows; under a band, every one its
+  /// run holds on each row it seats ([_seatsOf]) — the wait window's
+  /// measure (`reachesManyBlocks`).
+  Iterable<Object> drawingsTakenAt(ClipboardPlace? place) sync* {
+    if (place == null || place._bandMissesTheRow) {
+      return;
+    }
+    final band = place._band;
+    if (band == null) {
+      if (place._cel case final cel?) {
+        yield (place._row.id, cel.id);
+      }
+      return;
+    }
+    for (final row in _seatsOf(place)) {
+      final run = _runCopiedOff(
+        row,
+        index: band.startOn(row.id),
+        count: band.length,
+      );
+      for (final exposure in run.exposures.values) {
+        if (exposure.frameId case final cel?) {
+          yield (row.id, cel);
+        }
+      }
+    }
+  }
+
+  /// The drawings a paste at [place] lays down — linked or not — each on
+  /// the row it lands on ([_landingsOn]).
+  Iterable<Object> drawingsPastedAt(ClipboardPlace? place) sync* {
+    final copied = _copiedFrame;
+    if (place == null || copied == null || place._bandMissesTheRow) {
+      return;
+    }
+    for (final landing in _landingsOn(place, copied)) {
+      for (final cel in landing.cels) {
+        yield (landing.target.id, cel.id);
+      }
+    }
+  }
+
   bool get canPasteLinkedFrameAtCurrentFrame =>
       canPasteLinkedAt(timelinePlace);
 

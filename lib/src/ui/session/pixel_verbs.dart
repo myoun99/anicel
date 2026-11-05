@@ -614,6 +614,18 @@ class PixelVerbs {
         PixelClipboardVerb.pasteBelow => _canPastePixels,
       };
 
+  /// The cels the 색 편집 list's clipboard row [verb] lands on — a cut or a
+  /// copy reads the one you stand on, a paste lands on every cel the ladder
+  /// names ([pieceGround]) — for the wait window's measure
+  /// (`reachesManyBlocks`).
+  Iterable<BrushFrameKey> pixelClipboardVerbCels(PixelClipboardVerb verb) =>
+      switch (verb) {
+        PixelClipboardVerb.cut ||
+        PixelClipboardVerb.copy => [?_standingDrawing()],
+        PixelClipboardVerb.pasteAbove ||
+        PixelClipboardVerb.pasteBelow => _cellsTheLadderNames(),
+      };
+
   /// Both pastes' one gate: something on the board, and a cel the ladder
   /// names — a blank one will do.
   bool get _canPastePixels =>

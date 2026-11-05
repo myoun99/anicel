@@ -2173,6 +2173,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _lift.handleLiftConfirmed,
               onLiftReverted:
                   _lift.handleLiftReverted,
+              confirmLandsOn: () => _lift.confirmLandsOn,
               // R26 #13 follow-up: the implicit
               // whole-picture box frames the
               // cel's tight ink bounds.
@@ -3110,8 +3111,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// selection's softness ([_landStamp]). ↩️It asked for a cel under the
   /// playhead first; the ground answers that now, as it does for the paste.
   ///
-  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: behind the app's wait
-  /// window, under the button's name.
+  /// 🗣️F-551 (유저 2026-11-04): behind the app's wait window, under the
+  /// button's name — where it lands on more than one cel (F-566).
   void pasteCutPieceAtOrigin() {
     final piece = widget.cutPieceSlot?.piece;
     if (piece == null) {
@@ -3120,6 +3121,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // ONE dab for every row: the piece goes back where it was cut from,
     // whichever row takes it.
     final dab = buildCutPasteDab(piece, opacity: _brush.cutStampOpacity);
+    final coordinator = widget.coordinator;
     unawaited(
       takeBehindTheWaitWindow(
         context,
@@ -3131,6 +3133,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         window: AppWaitWindow.working(
           editorActionLabel(EditorActionIds.cutStampPasteAtOrigin),
         ),
+        blocks: coordinator == null
+            ? const []
+            : _pieceGround(coordinator).cels,
       ),
     );
   }

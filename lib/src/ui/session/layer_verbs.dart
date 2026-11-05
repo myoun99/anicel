@@ -11,6 +11,7 @@ import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutsBeyondItsSync;
 import '../../services/commands/track_se_layer_commands.dart';
+import '../../services/wait_window.dart' show drawingsOf;
 import '../../services/project_lookup.dart'
     show cutWritingRow, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
@@ -355,6 +356,30 @@ class LayerVerbs {
   bool get _activeLayerTakesACopy {
     final activeLayer = _selection.activeLayer;
     return activeLayer != null && layerTakesACopyBesideIt(activeLayer);
+  }
+
+  /// The drawings [duplicateActiveLayer] copies — of the selected rows it
+  /// may copy, else of the row you stand on — the wait window's measure
+  /// (`reachesManyBlocks`).
+  Iterable<Object> get drawingsDuplicated {
+    final selected = duplicatableSelectedLayerIds();
+    if (selected.isNotEmpty) {
+      return drawingsOfRows(selected);
+    }
+    final activeLayer = _selection.activeLayer;
+    return activeLayer != null && layerTakesACopyBesideIt(activeLayer)
+        ? drawingsOf([activeLayer])
+        : const [];
+  }
+
+  /// The drawings the rows [layerIds] names hold in the cut stood in — the
+  /// wait window's measure for a verb that takes rows whole.
+  Iterable<Object> drawingsOfRows(Iterable<LayerId> layerIds) {
+    final ids = layerIds.toSet();
+    return drawingsOf([
+      for (final layer in _project.activeCutOrNull?.layers ?? const <Layer>[])
+        if (ids.contains(layer.id)) layer,
+    ]);
   }
 
   /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and

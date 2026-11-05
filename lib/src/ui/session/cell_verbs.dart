@@ -274,6 +274,17 @@ class CellVerbs {
   bool get canUnlinkCells =>
       _clipboard.sharedCelsIn(_unlinkRuns()).isNotEmpty;
 
+  /// The cels that press gives a copy of their own, each on its row — the
+  /// wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> get celsUnlinked sync* {
+    for (final MapEntry(key: row, value: cels)
+        in _clipboard.sharedCelsIn(_unlinkRuns()).entries) {
+      for (final cel in cels) {
+        yield (row, cel);
+      }
+    }
+  }
+
   /// 링크 독립 on the frame axis ([FrameClipboard.unlinkRuns]).
   void unlinkCells() => _clipboard.unlinkRuns(_unlinkRuns());
 }

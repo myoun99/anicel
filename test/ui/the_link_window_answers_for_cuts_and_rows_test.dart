@@ -202,7 +202,9 @@ void main() {
                   LinkWindow(
                     kind: kind,
                     targets: targets,
-                    action: action,
+                    action: action == null
+                        ? null
+                        : (step: action, landsOn: () => const []),
                     actionOffReason: 'why not',
                   ),
                 ),

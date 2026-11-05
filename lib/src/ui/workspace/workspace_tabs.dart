@@ -33,8 +33,9 @@ class _WorkspaceTabs {
   /// onto [paper] off the frame's clock, then laid on the cels through the
   /// paste's door as one undo. Null with no paper to bake onto.
   ///
-  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the bake and the lay
-  /// behind the app's wait window, under the button's name.
+  /// 🗣️F-551 (유저 2026-11-04): the bake and the lay behind the app's wait
+  /// window, under the button's name — the bake works ahead, off the frame's
+  /// clock, so on one cel too ([workAheadBehindTheWaitWindow]).
   ValueChanged<DrawingGuide>? _guideRasterizer(
     BuildContext context,
     CanvasSize? paper,
@@ -46,7 +47,7 @@ class _WorkspaceTabs {
     return (guide) {
       CutPiece? picture;
       unawaited(
-        takeBehindTheWaitWindow(
+        workAheadBehindTheWaitWindow(
           context,
           () {
             if (picture case final baked?) {

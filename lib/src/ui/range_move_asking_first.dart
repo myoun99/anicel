@@ -18,24 +18,20 @@ import 'text/place_lines.dart' show drawingPlaceLines;
 /// the move. Link lands the move with them joined, as one undo; Cancel puts
 /// the blocks back where they were and writes nothing.
 ///
-/// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: a release that trades
-/// pictures between cels (F-330) — every picture read in and written again
-/// — lets go behind the app's wait window.
+/// 🗣️F-551 (유저 2026-11-04): a release that trades pictures between cels
+/// (F-330) — every picture read in and written again — lets go behind the
+/// app's wait window, where it trades more than one (F-566).
 Future<void> releaseRangeMoveAskingFirst(
   BuildContext context,
   EditorSessionManager session,
 ) async {
   CarriedNameJoins? joins;
-  void release() => joins = session.rangeMove.endFrameRangeMoveDrag();
-  if (session.rangeMove.releaseTradesPictures) {
-    await takeBehindTheWaitWindow(
-      context,
-      release,
-      window: AppWaitWindow.working(AppText.strings.pictureTradeTitle),
-    );
-  } else {
-    release();
-  }
+  await takeBehindTheWaitWindow(
+    context,
+    () => joins = session.rangeMove.endFrameRangeMoveDrag(),
+    window: AppWaitWindow.working(AppText.strings.pictureTradeTitle),
+    blocks: session.rangeMove.picturesTheReleaseTrades,
+  );
   final asked = joins;
   if (asked == null || !context.mounted) {
     return;

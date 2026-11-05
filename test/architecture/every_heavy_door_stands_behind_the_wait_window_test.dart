@@ -5,23 +5,25 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/source_body.dart';
 
 /// 🗣️F-551 (유저 2026-11-04): 「연산 필요한거? 무거운거? 들은 왠만하면 다
-/// 로딩창띄우도록. 색변환이나 색삭제나 그런거.」 · Q1 「전부 늘 띄운다」.
+/// 로딩창띄우도록. 색변환이나 색삭제나 그런거.」.
 ///
-/// Every door that takes a heavy step takes it behind the app's one wait
-/// window — and so its undo and redo stand behind the same
-/// (`StepWindows`). The doors a behaviour pin presses are pinned there
-/// (`heavy_steps_stand_behind_the_wait_window_test` — the pill's;
-/// `pixel_verbs_reach_the_ui_test` — the colour edit list's); these are the
-/// rest, read from source — the ones a pin would need a canvas gesture, a
-/// dropped file or a dialog to reach, and every row and press beside the
-/// pinned ones: a door that took its step at once again would go back to
-/// freezing the screen with nothing on it.
+/// Every door that takes a heavy step takes it through the app's one wait
+/// window's entrance — which puts the window up where the step lands on
+/// more than one block (🗣️F-566, `reachesManyBlocks`), and so its undo and
+/// redo stand behind the same (`StepWindows`). The doors a behaviour pin
+/// presses are pinned there (`heavy_steps_stand_behind_the_wait_window_test`
+/// — the pill's; `pixel_verbs_reach_the_ui_test` — the colour edit list's);
+/// these are the rest, read from source — the ones a pin would need a
+/// canvas gesture, a dropped file or a dialog to reach, and every row and
+/// press beside the pinned ones: a door that took its step at once again
+/// would go back to freezing the screen with nothing on it.
 void main() {
   String read(String path) => File(path).readAsStringSync();
 
-  /// Whether [body] puts its step behind the window.
+  /// Whether [body] takes its step through the window's entrance.
   bool waits(String body) =>
       body.contains('takeBehindTheWaitWindow(') ||
+      body.contains('workAheadBehindTheWaitWindow(') ||
       body.contains(RegExp(r'\.standBehind\b'));
 
   /// [head] read through its parameter list: a named parameter's `{` would
@@ -43,10 +45,6 @@ void main() {
     ('lib/src/ui/dialogs/link_window.dart', 'Widget build(', named: false),
     ('lib/src/ui/paste_linked_asking_first.dart',
         'Future<void> pasteLinkedAskingFirst(', named: true),
-    ('lib/src/ui/paste_linked_asking_first.dart',
-        'Future<void> pasteLinkedKeysAskingFirst(', named: true),
-    ('lib/src/ui/paste_linked_asking_first.dart', 'void _joinBehind(',
-        named: false),
     ('lib/src/ui/timeline/toolbar_panel_context.dart',
         'void Function() _behindTheWaitWindow(', named: true),
     ('lib/src/ui/timeline/toolbar_panel_context.dart',

@@ -65,9 +65,10 @@ class LinkWindow extends StatelessWidget {
   final List<String> targets;
 
   /// What the button does — 링크 해제, or 동기 해제 (I-150-Q6, 유저
-  /// 2026-11-04 「동기 해제 = 독립 컷」); null keeps it in place, off, with
-  /// [actionOffReason] as its tooltip.
-  final VoidCallback? action;
+  /// 2026-11-04 「동기 해제 = 독립 컷」) — and the drawings that gives a copy
+  /// of their own, its wait window's measure (F-566); null keeps it in
+  /// place, off, with [actionOffReason] as its tooltip.
+  final ({VoidCallback step, Iterable<Object> Function() landsOn})? action;
   final String? actionOffReason;
 
   @override
@@ -112,10 +113,10 @@ class LinkWindow extends StatelessWidget {
           }),
           emphasis: AppWindowActionEmphasis.primary,
           tooltip: action == null ? actionOffReason : null,
-          // 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the window
-          // closes and the button's step is taken behind the app's wait
-          // window, under the button's name — put up where this window
-          // stood, which is gone.
+          // 🗣️F-551 (유저 2026-11-04): the window closes and the button's
+          // step is taken behind the app's wait window, under the button's
+          // name — put up where this window stood, which is gone — where
+          // it reaches more than one drawing (F-566).
           onPressed: action == null
               ? null
               : () {
@@ -123,8 +124,9 @@ class LinkWindow extends StatelessWidget {
                   unawaited(
                     takeBehindTheWaitWindow(
                       navigator.context,
-                      action,
+                      action.step,
                       window: AppWaitWindow.working(label),
+                      blocks: action.landsOn(),
                     ),
                   );
                 },

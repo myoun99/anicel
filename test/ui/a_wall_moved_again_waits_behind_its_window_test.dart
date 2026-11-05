@@ -15,6 +15,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/command.dart' show WorkAhead;
 import 'package:anicel/src/ui/dialogs/behind_the_wait_window.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart';
@@ -100,16 +101,19 @@ void main() {
     expect(window, findsNothing);
   }
 
-  /// [move] taken as its door takes it, behind the window named [title].
+  /// [move] taken as its door takes it, behind the window named [title],
+  /// with what its door works out [ahead] of it.
   Future<void> moveTheWall(
     WidgetTester tester,
     VoidCallback move, {
     required String title,
+    required WorkAhead ahead,
   }) async {
     final moved = resizeBehindTheWaitWindow(
       tester.element(find.byType(EditorCanvasArea)),
       move,
       title: title,
+      ahead: ahead,
     );
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 950));
@@ -134,6 +138,11 @@ void main() {
         anchor: CanvasResizeAnchor.center,
       ),
       title: AppText.strings.canvasSizeTitle,
+      ahead: (report) => session.cutVerbs.resizeActiveCutCanvasAhead(
+        resized,
+        anchor: CanvasResizeAnchor.center,
+        report: report,
+      ),
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
@@ -169,6 +178,10 @@ void main() {
         PasteboardSize.oneAndAHalf,
       ),
       title: AppText.strings.pasteboardTitle,
+      ahead: (report) => session.projectSettings.cutPasteboardAhead(
+        size: PasteboardSize.oneAndAHalf,
+        report: report,
+      ),
     );
     expect(store.bakedSurfaceOrNull(key)?.tileAt(past), isNull);
 

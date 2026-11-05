@@ -30,6 +30,9 @@ void main() {
                     context,
                     () => steps += 1,
                     window: AppWaitWindow.working('work'),
+                    // Two blocks: a step that stands behind the window
+                    // (F-566).
+                    blocks: const ['A1', 'B1'],
                   ),
                   child: const Text('step'),
                 ),

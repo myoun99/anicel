@@ -20,11 +20,17 @@ Future<void> showCutLinkWindow(
   LinkKind.link => LinkWindow(
     kind: kind,
     targets: session.cutVerbs.linkedCutLines(cutId),
-    action: () => session.cutVerbs.unlinkCuts([cutId]),
+    action: (
+      step: () => session.cutVerbs.unlinkCuts([cutId]),
+      landsOn: () => session.cutVerbs.drawingsOfCuts([cutId]),
+    ),
   ),
   LinkKind.sync => LinkWindow(
     kind: kind,
     targets: session.cutVerbs.syncedCutLines(cutId),
-    action: () => session.cutVerbs.unsyncCut(cutId),
+    action: (
+      step: () => session.cutVerbs.unsyncCut(cutId),
+      landsOn: () => session.cutVerbs.drawingsOfCuts([cutId]),
+    ),
   ),
 });

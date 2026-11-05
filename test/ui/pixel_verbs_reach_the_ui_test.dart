@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart'
     show CelPixelVerb;
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
@@ -458,11 +459,47 @@ void main() {
   const redo = ValueKey<String>('redo-button');
 
   testWidgets(
-    '🗣️F-551: 픽셀 비우기 stands behind the wait window under its own name '
-    '— 「색변환이나 색삭제나 그런거」 — and so do its undo and redo',
+    '🗣️F-566: 픽셀 비우기 on the one cel you stand on is taken at once — 「대상이 '
+    '한 블록이면 안띄움」 — and so are its undo and redo',
     (tester) async {
       final session = await pump(tester);
       final drawn = await standOnAnInkedCel(tester, session);
+
+      expect(await clearPixelsFromTheHead(tester), isNull);
+      expect(drawn(), isFalse, reason: 'the step was taken');
+
+      expect(await windowBehindTheTap(tester, undo), isNull);
+      expect(drawn(), isTrue);
+      expect(await windowBehindTheTap(tester, redo), isNull);
+      expect(drawn(), isFalse);
+    },
+  );
+
+  testWidgets(
+    '🗣️F-551 · F-566: 픽셀 비우기 over a range of two blocks stands behind the '
+    'wait window under its own name — 「대상이 여러블록일때만 띄우도록」 — and '
+    'so do its undo and redo (F-566-Q1 「처음 실행을 따른다」)',
+    (tester) async {
+      final session = await pump(tester);
+      final drawn = await standOnAnInkedCel(tester, session);
+      final row = session.activeLayerId!;
+      final cut = session.requireActiveCut;
+      final second = session.brushFrameKeyForCut(
+        cut,
+        row,
+        FrameId('${row.value}-cel-2'),
+      );
+      bool bothDrawn() =>
+          drawn() &&
+          session.renderCaches.brushFrameStore.celHasRenderableContent(second);
+      // Frames 1 and 2 of the row stood on: two blocks.
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: row,
+        startIndex: 1,
+        endIndexExclusive: 3,
+      );
+      await tester.pumpAndSettle();
+      expect(bothDrawn(), isTrue, reason: '⛔fixture');
 
       final cleared = await clearPixelsFromTheHead(tester);
       expect(
@@ -474,10 +511,9 @@ void main() {
       );
       expect(drawn(), isFalse, reason: 'the step it stood over was taken');
 
-      // Q1 「전부 늘 띄운다」: the step is as heavy back as it was forth.
       final undone = await windowBehindTheTap(tester, undo);
       expect(undone?.title, cleared?.title);
-      expect(drawn(), isTrue);
+      expect(bothDrawn(), isTrue);
 
       final redone = await windowBehindTheTap(tester, redo);
       expect(redone?.title, cleared?.title);

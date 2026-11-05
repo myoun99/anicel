@@ -3414,6 +3414,16 @@ class EditorSessionManager extends ChangeNotifier
     cells: () => cells.canUnlinkCells,
   );
 
+  /// The drawings [unlinkSelectionSubject] gives a copy of their own — the
+  /// wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> get drawingsUnlinked => switch (unlinkSubject) {
+    PillSubject.layers => layerVerbs.drawingsOfRows(
+      layerVerbs.linkedSelectedLayerIds(),
+    ),
+    PillSubject.cells => cells.celsUnlinked,
+    PillSubject.cuts || PillSubject.nothing => const [],
+  };
+
   /// Runs whatever [unlinkSubject] names — one undo step either way.
   void unlinkSelectionSubject() {
     switch (unlinkSubject) {

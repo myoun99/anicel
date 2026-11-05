@@ -3,6 +3,7 @@ import '../timeline/timeline_drag_preview.dart'
     show BlockMoveDragPreview, TimelineDragPreview, celPixelsHungBy;
 import 'dart:collection';
 
+import '../../models/cel_rekey.dart' show CelPictureMove;
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -154,12 +155,12 @@ class FrameRangeMoveDragVerbs {
     LayerId? targetLayerId,
   }) => _drag?.update(frameDelta: frameDelta, targetLayerId: targetLayerId);
 
-  /// Whether letting the drag go trades pictures between cels (F-330): the
-  /// pictures its last step shows moving ([celPixelsHungBy]) — each read
-  /// in and written again where it goes.
-  bool get releaseTradesPictures =>
-      _drag != null &&
-      celPixelsHungBy(_roles.dragPreview.value).pictures.isNotEmpty;
+  /// The pictures letting the drag go trades between cels (F-330): those
+  /// its last step shows moving ([celPixelsHungBy]) — each read in and
+  /// written again where it goes. None with no drag.
+  List<CelPictureMove> get picturesTheReleaseTrades => _drag == null
+      ? const []
+      : celPixelsHungBy(_roles.dragPreview.value).pictures;
 
   /// Commits the range move as ONE undo step (layer updates + the brush
   /// re-key on cross-layer carries), mirroring the block-move commit.

@@ -449,7 +449,7 @@ class TimelineBarMenus {
   ///
   /// 🗣️F-551 (유저 2026-11-04): 「색변환이나 색삭제나 그런거」 — every row
   /// runs behind the app's wait window, put up in [context], under the
-  /// row's own name (Q1 「전부 늘 띄운다」).
+  /// row's own name — where it lands on more than one block (F-566).
   List<PanelFlyoutEntry> colourEdit(BuildContext context) => [
     PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
     for (final verb in CelPixelVerb.values)
@@ -478,22 +478,25 @@ class TimelineBarMenus {
           context,
           pixelClipboardActionIdFor(verb),
           () => session.pixelVerbs.runPixelClipboardVerb(verb),
+          blocks: session.pixelVerbs.pixelClipboardVerbCels(verb),
         ),
       ),
   ];
 
   /// [run], a row of the colour edit list, behind the wait window under
-  /// [actionId]'s name.
+  /// [actionId]'s name when it lands on more than one of [blocks] (F-566).
   static void _behindTheWaitWindow(
     BuildContext context,
     String actionId,
-    VoidCallback run,
-  ) {
+    VoidCallback run, {
+    required Iterable<Object> blocks,
+  }) {
     unawaited(
       takeBehindTheWaitWindow(
         context,
         run,
         window: AppWaitWindow.working(editorActionLabel(actionId)),
+        blocks: blocks,
       ),
     );
   }
@@ -529,6 +532,7 @@ class TimelineBarMenus {
       context,
       pixelVerbActionIdFor(verb),
       () => session.pixelVerbs.runPixelVerb(verb),
+      blocks: session.pixelVerbs.pixelVerbCellKeys(),
     ),
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
     // in its own row — the value the row's command runs with.
