@@ -4,6 +4,7 @@
 //! (S2a, the app's `dilateMask4` · `erodeMask4`), feather (S2b, its
 //! `chamferDistance34` and `_featherMask`'s ramp) and anti-alias inside the
 //! outline (S2c, `softenMaskBoundary`), in `buildSelectionMask`'s order.
+//! The hard mask itself is `region`'s (S1, the app's `maskFor`).
 //!
 //! A mask is a plane of bytes over its box (`MaskBox`) — the app's
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
@@ -13,6 +14,7 @@
 // the engine (gpu-canonical-store, stage 4).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod region;
 #[cfg(test)]
 mod tests;
 
