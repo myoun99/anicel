@@ -28,12 +28,13 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE_BYTES, TileAt};
 use crate::kernels::shared::{
-    Encoded, Given, NO_PAGE, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits, page_table,
-    pipeline, plane, range, runs, tiles_a_pass,
+    Encoded, Given, NO_PAGE, Own, Pages, TILE_WGSL, cut_by, encode_on, encoded, fits,
+    page_table, pipeline, plane, range, runs, tiles_a_pass,
 };
 
 /// The storage buffers a pass binds besides its pages: what it is given,
-/// the tiles put and the changed words.
+/// the tiles put and the changed words — and the pass's words, a uniform
+/// one.
 const OWN_BUFFERS: u32 = 3;
 
 /// The write path's test, compiled once for as many pages as the device
@@ -45,7 +46,8 @@ pub(crate) struct Write {
 
 impl Write {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
-        let pages = Pages::new(engine, OWN_BUFFERS, OWN_BUFFERS + 1)?;
+        let own = Own { storage: OWN_BUFFERS, uniform: 1 };
+        let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
         let read = pages.source();
         let sources = [TILE_WGSL, &read, include_str!("write.wgsl")];
         Some(Self { changed: pipeline(engine, &sources, "write_changed"), pages })

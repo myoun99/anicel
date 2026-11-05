@@ -107,9 +107,9 @@ pub(crate) fn whole<'a>(bound: &[(u32, &'a wgpu::Buffer)]) -> Vec<wgpu::BindGrou
 }
 
 /// `bytes` of `buffer` as a binding — a pass's part of a plane its passes
-/// share. ⛔ONE: the blur's cel passes and its steps' uniforms, the cel
-/// pixel verbs and the lift each wrote it, and the write path came as
-/// another (11-06).
+/// share. ⛔ONE: the blur's cel passes and its dispatches' words, the
+/// pile's passes' words, the cel pixel verbs and the lift each wrote it,
+/// and the write path came as another (11-06).
 ///
 /// A binding with no size takes the rest of the buffer, and every user's
 /// shader reads it the same, so no test tells the size from none — it is
