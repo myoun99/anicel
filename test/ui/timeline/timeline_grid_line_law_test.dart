@@ -58,6 +58,28 @@ void main() {
     );
   });
 
+  test('frame 0 is a second\'s head, and the grid rules no line there — its '
+      'boundary is the grid\'s own edge', () {
+    // The mark is a second's: a sound's face rules it beside its 0 (F-71).
+    expect(
+      timelineFrameMarkAt(
+        frameIndex: 0,
+        frameCellExtent: 24,
+        framesPerSecond: 24,
+      ),
+      TimelineFrameMark.second,
+    );
+    expect(
+      timelineFrameBoundaryLineInk(
+        frameIndex: 0,
+        frameCellExtent: 24,
+        framesPerSecond: 24,
+        colorScheme: scheme,
+      ),
+      isNull,
+    );
+  });
+
   test('the grid rules its second line where the ruler writes a second — a '
       'nonsense rate included', () {
     // One answer to 「does a second begin here」: the ruler reads a nonsense
