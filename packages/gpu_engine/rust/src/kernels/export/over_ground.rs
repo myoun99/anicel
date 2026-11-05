@@ -44,10 +44,6 @@ impl OverGroundShape {
         if width == 0 || height == 0 {
             return fail(format!("a picture is not empty, not {width}x{height}"));
         }
-        // The pass counts a pixel's index, and four past it, in a u32.
-        if self.pixels() + 4 > u64::from(u32::MAX) {
-            return fail(format!("{width}x{height} pixels are more than a u32 counts"));
-        }
         Some(())
     }
 }
