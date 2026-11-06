@@ -76,19 +76,19 @@ fn a_stamp_is_its_colour_under_the_mask_s_byte() {
 }
 
 // The row is every tile the box meets, row after row on the canvas's grid
-// — a box across a tile corner and past the canvas's left meets four —,
-// each a pixel the colour whole inside the box and nothing past it.
+// — a box across the canvas's corner meets the four about it —, each a
+// pixel the colour whole inside the box and nothing past it.
 #[test]
 fn a_stamp_s_tiles_are_every_tile_its_box_meets() {
-    let (left, top, width, height) = (-3, 120, 6, 10);
+    let (left, top, width, height) = (-3, -8, 6, 10);
     let mask = masked((left, top), (width, height), |_, _| 255);
     let stamped = stamp(&mask.mask(), 0, usize::MAX);
     let set = &stamped.set;
-    assert_eq!((set.x0, set.y0, set.columns, set.rows), (-1, 0, 2, 2));
+    assert_eq!((set.x0, set.y0, set.columns, set.rows), (-1, -1, 2, 2));
     let slots: Vec<_> = (0..4).map(|slot| Some(TileAt { page: 0, slot })).collect();
     assert_eq!(set.tiles, slots);
     let read = pages(&stamped);
-    for y in 0..256 {
+    for y in -128..128 {
         for x in -128..128 {
             let inside = (left..left + width as i32).contains(&x)
                 && (top..top + height as i32).contains(&y);
