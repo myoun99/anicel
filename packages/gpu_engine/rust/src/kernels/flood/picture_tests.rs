@@ -55,15 +55,15 @@ fn words(buffer: &wgpu::Buffer) -> Vec<u32> {
         .collect()
 }
 
-/// Blue over tiles (-2, -1) to (2, 3), shown over (-3, 120) to (130, 260):
-/// the grid from tile (-1, 0), three across and three down.
+/// Blue over tiles (-2, -1) to (2, 3), shown over (-3, -8) to (130, 250):
+/// the grid from tile (-1, -1), three across and three down.
 fn blue_shown() -> Shown {
     let CompositeRig { engine, composite } = composite_rig();
     let mut pool = Pool::default();
     let sets = [pool.drawn(|_, _| BLUE, (-2, -1), (5, 5), |_, _| Some(0))];
     let pages = pool.upload(engine);
     let steps = [laid(0, WHOLE)];
-    let extent = [-3, 120, 130, 260];
+    let extent = [-3, -8, 130, 250];
     Shown::of(engine, composite, &plan(&pages, &sets, &steps), extent).expect("shown")
 }
 
@@ -78,7 +78,7 @@ fn a_picture_is_what_the_plan_shows_on_the_tiles_its_box_meets() {
         left: 125,
         top: 120,
         right: 258,
-        bottom: 260,
+        bottom: 378,
     };
     assert_eq!(picture.inside, inside);
     let read = words(&shown.out);
@@ -87,7 +87,7 @@ fn a_picture_is_what_the_plan_shows_on_the_tiles_its_box_meets() {
         for x in 0..3 * side {
             let tile = (y / side) * 3 + x / side;
             let texel = (tile as u64 * TILE_TEXELS) as usize + ((y % side) * side + x % side) as usize;
-            let shows = (125..258).contains(&x) && (120..260).contains(&y);
+            let shows = (125..258).contains(&x) && (120..378).contains(&y);
             assert_eq!(read[texel], if shows { BLUE } else { 0 }, "({x}, {y})");
         }
     }
@@ -98,10 +98,10 @@ fn a_picture_is_what_the_plan_shows_on_the_tiles_its_box_meets() {
 #[test]
 fn a_press_and_a_fill_go_between_the_canvas_and_the_picture() {
     let shown = blue_shown();
-    assert_eq!(shown.on_grid((-3, 120)), Some((125, 120)));
-    assert_eq!(shown.on_grid((-128, 0)), Some((0, 0)));
-    assert_eq!(shown.on_grid((255, 383)), Some((383, 383)));
-    let off = [(-129, 0), (256, 0), (0, -1), (0, 384)].map(|at| shown.on_grid(at));
+    assert_eq!(shown.on_grid((-3, -8)), Some((125, 120)));
+    assert_eq!(shown.on_grid((-128, -128)), Some((0, 0)));
+    assert_eq!(shown.on_grid((255, 255)), Some((383, 383)));
+    let off = [(-129, 0), (256, 0), (0, -129), (0, 256)].map(|at| shown.on_grid(at));
     assert_eq!(off, [None; 4]);
     let finished = Finished {
         mask: plane(composite_rig().engine, "finished", 16),
@@ -113,7 +113,7 @@ fn a_press_and_a_fill_go_between_the_canvas_and_the_picture() {
         },
     };
     let mask = shown.on_canvas(&finished);
-    assert_eq!((mask.at, mask.size.width, mask.size.height), ((-3, 130), 5, 3));
+    assert_eq!((mask.at, mask.size.width, mask.size.height), ((-3, 2), 5, 3));
 }
 
 // A box that ends on a tile's edge shows no tile past it: a box of three
