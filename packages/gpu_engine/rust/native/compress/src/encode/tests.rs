@@ -227,16 +227,18 @@ fn a_cel_seen_again_is_reached_back_as_far_as_the_window() {
 
 // A block sent as its byte repeated hands the next block the repeat
 // offsets and tables it was handed, as a stored block does: the block
-// after it is coded against the block before.
+// after it is coded against the block before — a short one, with too few
+// sequences to pay for tables of its own, repeating that block's.
 #[test]
 fn a_run_s_block_hands_on_what_it_was_handed() {
     for kind in ["text", "cel", "mixed"] {
         let piece = |seed: u64| kinds(131_072, seed).into_iter().find(|(name, _)| *name == kind).expect("a kind").1;
-        let mut data = piece(1);
-        data.extend(std::iter::repeat_n(7u8, 131_072));
-        data.extend(piece(2));
-        data.extend(piece(3));
-        same_frame(&data, &format!("{kind}, a block of 7s, {kind} twice"));
+        for after in [300, 3000, 131_072] {
+            let mut data = piece(1);
+            data.extend(std::iter::repeat_n(7u8, 131_072));
+            data.extend_from_slice(&piece(2)[..after]);
+            same_frame(&data, &format!("{kind}, a block of 7s, {after} bytes of {kind}"));
+        }
     }
 }
 
