@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -131,6 +132,30 @@ void main() {
       },
     );
     expect(warned, [4], reason: 'the marker pass takes the same window');
+  });
+
+  test('the sound warnings line only the block inside the window', () {
+    // The same three blocks, each with a take that clipped.
+    final layer = layerWith(timeline, kind: LayerKind.se).copyWith(
+      audioClips: [
+        for (final frame in ['f1', 'f2', 'f3'])
+          AudioClip(
+            filePath: '$frame.wav',
+            frameId: FrameId(frame),
+            clipped: true,
+          ),
+      ],
+    );
+    final lined = timelineRowBlockWarnings(
+      layer: layer,
+      frameStartIndex: windowStart,
+      frameEndIndexExclusive: windowEnd,
+      crossAxisExtent: 0,
+      axis: Axis.horizontal,
+      color: const Color(0xFFFF0000),
+      sounds: (clipped: 'clipped take', cannotPlay: null),
+    ).whereType<TimelineFrameSpan>().map((s) => s.placement.startIndex);
+    expect(lined, [4]);
   });
 
   test('a track range selection overlaps the same half-open way', () {
