@@ -438,18 +438,18 @@ class StoryboardCutBlocksPainter extends CustomPainter
       entry.cutId: next.startFrame,
   };
 
-  /// The frame span worth drawing — the full track under the classic
-  /// contract, the bucket-derived window (shared policy) when the row is
-  /// self-windowing.
+  /// The frame span worth drawing — the axis's frames under the classic
+  /// contract, the bucket's window clipped to them when the row is
+  /// self-windowing: the window every painter on a frame axis draws
+  /// ([visibleFrameWindowFor]).
   ({int startIndex, int endIndexExclusive}) visibleFrameWindow() {
-    final bucket = windowBucket;
-    if (bucket == null || viewportMainExtent <= 0 || _cellExtent <= 0) {
-      return (startIndex: 0, endIndexExclusive: 1 << 30);
-    }
-    return timelineFrameWindowFor(
-      bucket: bucket.value,
-      cellExtent: _cellExtent,
-      viewportExtent: viewportMainExtent,
+    final frames = geometry.value;
+    return visibleFrameWindowFor(
+      bucket: windowBucket,
+      viewportMainExtent: frames.viewExtentPx,
+      cellExtent: frames.frameCellExtent,
+      frameStartIndex: frames.frameStartIndex,
+      frameEndIndexExclusive: frames.frameEndIndexExclusive,
     );
   }
 
