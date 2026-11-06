@@ -780,6 +780,89 @@ fn a_row_alone_is_its_own_pixels_moved() {
     }
 }
 
+// ---- Solids ----
+
+/// A thinned paper, straight: alpha 128.
+const PAPER: u32 = 0x80_30_c0_f0;
+/// Where it lies — its edges on no tile's.
+const PAPER_RECT: [i32; 4] = [-30, 20, 200, 140];
+
+fn on_the_paper(x: i32, y: i32) -> bool {
+    let [left, top, right, bottom] = PAPER_RECT;
+    x >= left && x < right && y >= top && y < bottom
+}
+
+// Over nothing a solid lands its own colour at its own alpha on the pixels
+// of its rect, and nothing past them.
+#[test]
+fn a_solid_over_nothing_is_its_colour_on_its_rect() {
+    let scene = Scene {
+        pool: Pool::default(),
+        sets: Vec::new(),
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps: vec![Step::Solid { colour: PAPER, rect: PAPER_RECT }],
+        tiles: vec![(-1, 0), (0, 0), (1, 0), (0, 1), (1, 1)],
+    };
+    let out = widest(&scene);
+    let side = TILE as i32;
+    for &(column, tile_row) in &scene.tiles {
+        for y in tile_row * side..(tile_row + 1) * side {
+            for x in column * side..(column + 1) * side {
+                let want = if on_the_paper(x, y) { PAPER } else { 0 };
+                assert_eq!(pixel_at(&out, &scene.tiles, x, y), bytes_of(want), "({x}, {y})");
+            }
+        }
+    }
+}
+
+/// `paper` under a multiply row and a folder of a screen row closed in
+/// multiply at a strength — the paper a solid, or the row of its colour
+/// that set 0 holds, on two pages.
+fn papered(paper: Step) -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.drawn(
+            |x, y| if on_the_paper(x, y) { PAPER } else { 0 },
+            (-1, 0),
+            (3, 2),
+            |column, _| Some((column + 1) as u16 % 2),
+        ),
+        pool.set(5, (-1, 0), (3, 2), |_, _| Some(0)),
+        pool.set(6, (0, 0), (2, 2), |_, _| Some(1)),
+    ];
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps: vec![
+            paper,
+            row(1, (3, -5), 50000, MULTIPLY),
+            Step::Open,
+            row(2, (-7, 2), WHOLE, SCREEN),
+            Step::Close {
+                opacity: 40000,
+                mode: MULTIPLY,
+                matrix: None,
+            },
+        ],
+        tiles: vec![(-1, 0), (0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)],
+    }
+}
+
+// What lies over a solid reads it as it reads a row of its colour there —
+// in one pass or cut into many.
+#[test]
+fn a_solid_lays_as_a_row_of_its_colour_does() {
+    let solid = papered(Step::Solid { colour: PAPER, rect: PAPER_RECT });
+    let whole = widest(&papered(row(0, (0, 0), WHOLE, NORMAL)));
+    assert!(widest(&solid) == whole);
+    for budget in [within(1, usize::MAX), within(1, 1), Budget { levels: 2, ..within(1, 1) }] {
+        assert!(composite(&solid, budget).0 == whole, "{budget:?}");
+    }
+}
+
 // A row at no strength lays nothing, in any mode.
 #[test]
 fn a_row_at_no_strength_lays_nothing() {

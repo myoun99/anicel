@@ -33,6 +33,7 @@ const STEP_OPEN: u32 = 1u;
 const STEP_OPEN_OPAQUE: u32 = 2u;
 const STEP_CLOSE: u32 = 3u;
 const STEP_CLOSE_ATOP: u32 = 4u;
+const STEP_SOLID: u32 = 5u;
 
 // One pass: the steps it runs, the stack depth it takes, the output tiles
 // it covers and the words each takes in the plan, where its table of pages
@@ -256,6 +257,18 @@ fn composite(
         let closed = stack[top];
         top -= 1u;
         stack[top] = blend_atop(closed, stack[top]);
+      }
+      // A colour over its rect, laid as a row of it is (mod.rs's
+      // Step::Solid).
+      case STEP_SOLID: {
+        let x0 = bitcast<i32>(plan[at + 2u]);
+        let y0 = bitcast<i32>(plan[at + 3u]);
+        let x1 = bitcast<i32>(plan[at + 4u]);
+        let y1 = bitcast<i32>(plan[at + 5u]);
+        if (x >= x0 && x < x1 && y >= y0 && y < y1) {
+          let colour = blend_unpack8(plan[at + 1u]);
+          stack[top] = laid(BLEND_NORMAL, W_ONE, 255u, colour, stack[top]);
+        }
       }
       default: {}
     }

@@ -9,7 +9,8 @@
 //! ([`Step`]); the tree itself stays the app's (composite_tree.dart). E1
 //! takes the five node kinds that close per pixel: a row in any pose R1
 //! takes (a whole-pixel move being its copy), a folder's buffer, a row over
-//! its backdrop (its own mode), a clipping group and its base made opaque.
+//! its backdrop (its own mode), a clipping group and its base made opaque —
+//! and a colour over a rectangle, the paper and a camera render's ground.
 //! A row's colour keys run on its stored pixels, before R1 poses them; its
 //! colour matrix — the app's colour effects folded into one — on what R1
 //! lays, after (캔버스 베이스, gpu-canonical-store 11-06 07:48). A buffer
@@ -229,6 +230,14 @@ pub(crate) enum Step {
     },
     /// Closes a clip's scope onto its base by the base's alpha (srcATop).
     CloseAtop,
+    /// Lays `colour` — straight RGBA8, A<<24|B<<16|G<<8|R, its alpha its
+    /// strength — over the canvas pixels `rect`, [left, top, right,
+    /// bottom), in normal, as a row of that colour there lays it: the paper
+    /// under a cut's rows and a camera render's ground under them, each the
+    /// bottom row of the root (`onUnderlay`) that a blend there reads
+    /// (gpu-canonical-store 11-05 19:53 ⑦: the solid row's step, made for
+    /// the bridge round).
+    Solid { colour: u32, rect: [i32; 4] },
 }
 
 /// What one pass may take: pages to bind, output tiles — as many as the
@@ -854,7 +863,7 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> O
             } if matrix >= matrices => {
                 return fail(format!("step {index} runs matrix {matrix} of {matrices}"));
             }
-            Step::Row { .. } => {}
+            Step::Row { .. } | Step::Solid { .. } => {}
             Step::Open | Step::OpenOpaque => depth += 1,
             Step::Close { .. } | Step::CloseAtop if depth == 0 => {
                 return fail(format!("step {index} closes a buffer that is not open"));
@@ -986,7 +995,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         let (low, high) = match each.step {
             Step::Open | Step::OpenOpaque => (depth, depth + 1),
             Step::Close { .. } | Step::CloseAtop => (depth - 1, depth),
-            Step::Row { .. } => (depth, depth),
+            Step::Row { .. } | Step::Solid { .. } => (depth, depth),
         };
         let outside = low < batch.base || high >= batch.base + levels;
         if batch.pages.len() + fresh > pages_per_pass || outside {
@@ -1022,7 +1031,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         match each.step {
             Step::Open | Step::OpenOpaque => depth += 1,
             Step::Close { .. } | Step::CloseAtop => depth -= 1,
-            Step::Row { .. } => {}
+            Step::Row { .. } | Step::Solid { .. } => {}
         }
     }
     batch.end = laid.len();
@@ -1135,6 +1144,13 @@ fn plan_words(
                 matrix,
             } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, matrix_at(matrix)],
             Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Solid {
+                colour,
+                rect: [left, top, right, bottom],
+            } => {
+                let [left, top, right, bottom] = [left, top, right, bottom].map(|edge| edge as u32);
+                [5, colour, left, top, right, bottom, 0, 0, 0, 0, 0, 0, 0, 0]
+            }
         };
         words.extend(step);
     }
