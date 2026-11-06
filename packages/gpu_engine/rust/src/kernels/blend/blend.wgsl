@@ -447,6 +447,9 @@ fn blend_erase(a_s: u32, dst: vec4<u32>) -> vec4<u32> {
 // as + ad <= 65535 keeps as·cs + ad·cd + ao/2 inside u32.
 fn blend_plus(src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
   let a_o = src.w + dst.w;
+  // Without it nothing plus nothing still comes out nothing — WGSL's x / 0
+  // is x, and x is 0 there — so no test tells it gone (mutant p02, 11-07);
+  // kept so the case does not rest on that rule.
   if (a_o == 0u) {
     return vec4<u32>(0u);
   }
