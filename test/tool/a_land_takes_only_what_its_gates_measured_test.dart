@@ -136,6 +136,26 @@ void main() {
       );
     });
 
+    // 관제 2026-11-07: told `cargo fetch --locked`, the Surface fetched 29
+    // crates for Linux, the Mac and Android that nobody had allowed.
+    test('🚨a crate not downloaded is named, and fetched, for this '
+        'machine\'s platform alone', () {
+      expect(
+        at(
+          codeOf('cmd_crate'),
+          r'cargo fetch --locked --target $(host_triple))',
+        ),
+        isNot(-1),
+      );
+      final list = codeOf('crates_not_here');
+      expect(at(list, r'bash "$ROOT/tool/run.sh" crates_for_host'), isNot(-1));
+      expect(
+        at(list, 'cargo metadata --locked --offline --no-deps'),
+        isNot(-1),
+        reason: 'the members\' manifests, read without opening a crate',
+      );
+    });
+
     test('🚨are run from ONE place: the gate command runs nothing in the '
         'lane by itself, and the land only the crate\'s tests', () {
       for (final command in ['cmd_land', 'cmd_gate']) {

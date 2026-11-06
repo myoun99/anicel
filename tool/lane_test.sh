@@ -81,6 +81,14 @@
 # refusal of the gates'. A `flutter` that writes down every call that could
 # download finds none in the whole run. ⚠️The script before THAT fails 10 of
 # the 15 there: it resolves online, and lands.
+# 🆕And this platform's crates (2026-11-07, native-memory-safety — section
+# T's last case, 151 checks in all): of the crates not downloaded, refusal 8
+# names those this machine's build takes — for its cfg, for its triple,
+# through a member's manifest and through a crate's index entry — and none
+# for another platform, and offers to fetch this platform's alone; the
+# list is the real tool's (crates_for_host.dart), behind the stand-in
+# `dart`. ⚠️The script before THAT fails 5 of the 8 there: it names every
+# platform's, and offers to fetch them all.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -134,6 +142,9 @@ echo "$(basename "$PWD") dart $(basename "$1")${2:+ $2}" >> "$LANE_TEST_LOG"
 # LANE_TEST_ENGINE says stale.
 [ "$(basename "$1")" = native_engine_provenance.dart ] && [ "${LANE_TEST_ENGINE:-}" = stale ] \
   && { echo "0000 not built from its C"; exit 1; }
+# Asked which crates a build takes, it is the real tool: its list is what
+# refusal 8 is checked for.
+[ "$(basename "$1")" = crates_for_host.dart ] && exec "$LANE_TEST_DART" "$@"
 [ "$(basename "$1")" = flutter_room.dart ] || exit 0
 case "${LANE_TEST_ROOM:-ok}" in
   full) mkdir "$LANE_TEST_LOG.asked" 2>/dev/null && { echo "runs=4 free_gb=9 room=no"; exit 1; } ;;
@@ -151,6 +162,16 @@ EOF
 cat > "$E/bin/cargo" <<'EOF'
 #!/bin/bash
 echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$LANE_TEST_LOG"
+# Asked for the members' manifests, it answers as the absent lane's
+# workspace would: one member, one of its dependencies for Android and one
+# for Windows.
+if [ "$1" = metadata ]; then
+  printf '%s\n' '{"packages":[{"name":"gpu_engine","version":"0.1.0","dependencies":[' \
+    '{"name":"cpal","kind":null,"target":null},{"name":"have","kind":null,"target":null},' \
+    '{"name":"android-only","kind":null,"target":"cfg(target_os = \"android\")"},' \
+    '{"name":"windows-only","kind":null,"target":"cfg(windows)"}]}]}'
+  exit 0
+fi
 if [ "${LANE_TEST_CARGO:-ok}" = absent ]; then
   case " $* " in
     *" --offline "*|*" --frozen "*)
@@ -174,6 +195,15 @@ echo "$(basename "$PWD") cmake $*" >> "$LANE_TEST_LOG"
 exit 0
 EOF
 printf '#!/bin/bash\nexit 0\n' > "$E/bin/ctest"
+# `rustc` answers for a machine of its own: its host, and its cfg.
+cat > "$E/bin/rustc" <<'EOF'
+#!/bin/bash
+case "$*" in
+  -vV) printf 'rustc 1.0.0\nhost: x86_64-lane-test\n' ;;
+  "--print cfg") printf 'target_os="windows"\nwindows\n' ;;
+  *) exit 1 ;;
+esac
+EOF
 # `git` writes down every call that reaches the mirror (the remote named
 # backup) and whether it was let ask for a login, then hands every call,
 # that one too, to the real git.
@@ -187,7 +217,17 @@ case " \$* " in *" backup "*)
 esac
 exec "$REAL_GIT" "\$@"
 EOF
-chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/cmake" "$E/bin/ctest" "$E/bin/git"
+chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/cmake" "$E/bin/ctest" "$E/bin/git" \
+  "$E/bin/rustc"
+# The SDK's own dart, past its launcher, as tool/run.sh calls it: the
+# launcher, with these stand-ins first on PATH, cannot tell its engine's
+# version and runs nothing.
+REAL_FLUTTER="$(command -v flutter)"
+for LANE_TEST_DART in "${REAL_FLUTTER%/*}/cache/dart-sdk/bin/dart.exe" \
+  "${REAL_FLUTTER%/*}/cache/dart-sdk/bin/dart" "$(command -v dart)"; do
+  [ -x "$LANE_TEST_DART" ] && break
+done
+export LANE_TEST_DART
 export PATH="$E/bin:$PATH"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 FAILS=0
@@ -217,9 +257,11 @@ git init -q -b master "$E/home" 2>/dev/null
 mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/home/a.txt"
 # The launcher the gates ask the room through, and the stamp law it reads.
 # No tool sources beside them, so it hands every call to the stand-in `dart`.
-# And the turn every cargo building in the shared target takes.
+# And the turn every cargo building in the shared target takes, and what
+# works out the crates a build takes.
 cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" \
-  "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$E/home/tool/"
+  "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$(dirname "${BASH_SOURCE[0]}")/crates_for_host.dart" \
+  "$E/home/tool/"
 # And the parity selector the gate of a lane that changed the C asks.
 printf '#!/bin/bash\necho test/parity_test.dart\n' > "$E/home/tool/native_parity_tests.sh"
 # And the packages the app does not depend on, with one to resolve.
@@ -227,7 +269,7 @@ cp "$(dirname "${BASH_SOURCE[0]}")/resolve_packages.sh" "$E/home/tool/"
 mkdir -p "$E/home/packages/gpu_engine"; echo "name: gpu_engine" > "$E/home/packages/gpu_engine/pubspec.yaml"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
 git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh tool/native_parity_tests.sh \
-  tool/resolve_packages.sh packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
+  tool/crates_for_host.dart tool/resolve_packages.sh packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
 git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
@@ -551,29 +593,55 @@ O=$(LANE_TEST_CARGO=empty out "$E/home" land none)
 has "a crate run that passed no test is refused, though it exits 0" \
   "$O" "ran no test in debug — this is refusal 8"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
-# A lock of two crates from the registry and the workspace's own, and a
-# machine that downloaded one of them.
+# A lock of seven crates from the registry and the workspace's own, and a
+# machine that downloaded one of them. Of the six not here, four are built
+# for this machine's platform — cpal; windows-only, which the member
+# declares for Windows; dasp_sample through cpal's index entry, and
+# host-only, which that entry declares for this machine's triple — and two
+# for others': android-only, which the member declares for Android, and
+# alsa, which cpal's index entry declares for Linux.
 quiet "$E/home" open absent; mkdir -p "$HW/lane-absent/packages/gpu_engine/rust"
-printf '%s\n' '[[package]]' 'name = "cpal"' 'version = "0.18.2"' \
-  'source = "registry+https://github.com/rust-lang/crates.io-index"' '' \
-  '[[package]]' 'name = "have"' 'version = "1.0.0"' \
-  'source = "registry+https://github.com/rust-lang/crates.io-index"' '' \
+REGISTRY='source = "registry+https://github.com/rust-lang/crates.io-index"'
+printf '%s\n' '[[package]]' 'name = "alsa"' 'version = "0.11.0"' "$REGISTRY" '' \
+  '[[package]]' 'name = "android-only"' 'version = "1.0.0"' "$REGISTRY" '' \
+  '[[package]]' 'name = "cpal"' 'version = "0.18.2"' "$REGISTRY" \
+  'dependencies = [' ' "alsa",' ' "dasp_sample",' ' "host-only",' ']' '' \
+  '[[package]]' 'name = "dasp_sample"' 'version = "0.11.0"' "$REGISTRY" '' \
   '[[package]]' 'name = "gpu_engine"' 'version = "0.1.0"' \
+  'dependencies = [' ' "android-only",' ' "cpal",' ' "have",' ' "windows-only",' ']' '' \
+  '[[package]]' 'name = "have"' 'version = "1.0.0"' "$REGISTRY" '' \
+  '[[package]]' 'name = "host-only"' 'version = "1.0.0"' "$REGISTRY" '' \
+  '[[package]]' 'name = "windows-only"' 'version = "1.0.0"' "$REGISTRY" \
   > "$HW/lane-absent/packages/gpu_engine/rust/Cargo.lock"
 git -C "$HW/lane-absent" add packages/gpu_engine/rust/Cargo.lock
 git -C "$HW/lane-absent" commit -q -m "a crate this machine has not downloaded"
 mkdir -p "$E/cargo-home/registry/cache/index.crates.io-0"
 : > "$E/cargo-home/registry/cache/index.crates.io-0/have-1.0.0.crate"
+# The index entries cargo resolved them from, as its cache keeps them: a
+# header, then a version and its JSON, each ended by a zero byte.
+entry() {  # entry <folder under .cache> <name> <version> <deps JSON>
+  mkdir -p "$E/cargo-home/registry/index/index.crates.io-0/.cache/$1"
+  printf '\003\002\0\0\0etag\0%s\0%s\0' "$3" \
+    "{\"name\":\"$2\",\"vers\":\"$3\",\"deps\":[$4],\"cksum\":\"0\",\"features\":{}}" \
+    > "$E/cargo-home/registry/index/index.crates.io-0/.cache/$1/$2"
+}
+entry cp/al cpal 0.18.2 '{"name":"alsa","req":"^0.11","target":"cfg(target_os = \"linux\")","kind":"normal"},{"name":"dasp_sample","req":"^0.11","target":null,"kind":"normal"},{"name":"host-only","req":"^1","target":"x86_64-lane-test","kind":"normal"}'
+entry da/sp dasp_sample 0.11.0 ''
+entry ha/ve have 1.0.0 ''
 BEFORE=$(git -C "$E/home" rev-parse master)
 # Spelled as Windows spells it, where it can be: the main PC's is D:\rust\cargo.
 HOME_SPELT="$(cygpath -w "$E/cargo-home" 2>/dev/null || echo "$E/cargo-home")"
 O=$(CARGO_HOME="$HOME_SPELT" LANE_TEST_CARGO=absent out "$E/home" land absent)
-has "a crate lane whose lock names a crate not downloaded here is refused" \
-  "$O" "has not downloaded every crate the lock names — this is refusal 8"
-has "and it names the crate" "$O" "Not here: cpal-0.18.2 "
+has "a crate lane whose build takes a crate not downloaded here is refused" \
+  "$O" "has not downloaded every crate its build takes — this is refusal 8"
+has "and it names the crates this machine's build takes, for its cfg, its triple and through a crate" \
+  "$O" "Not here: cpal-0.18.2 dasp_sample-0.11.0 host-only-1.0.0 windows-only-1.0.0 "
 lacks "and not the one that is here" "$O" "have-1.0.0"
 lacks "nor the workspace's own" "$O" "gpu_engine-0.1.0"
-has "and the command that would download it" "$O" "cargo fetch --locked"
+lacks "nor one a member takes for another platform" "$O" "android-only"
+lacks "nor one a crate takes for another platform" "$O" "alsa"
+has "and the command that would download this platform's alone" "$O" \
+  "cargo fetch --locked --target x86_64-lane-test)"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 
 say "U NOBODY IS ASKED FOR A LOGIN: every call that reached the mirror in this whole run"

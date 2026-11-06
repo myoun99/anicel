@@ -911,13 +911,27 @@ cmd_native() {
   echo "lane: native — green ($(wc -l <"$list") parity files)"
 }
 
-# The crates the lock at $1 takes from a registry that this machine has not
-# downloaded: what `cargo fetch --locked` would download, every platform's.
+# The crates this machine's build of the workspace at $1 takes from a
+# registry and has not downloaded: what `cargo fetch --locked --target
+# <host_triple>` would download. ↩️The lock's every crate, every
+# platform's, until 2026-11-07 — the Surface was told to fetch them all and
+# 29 crates nobody had allowed came down with its four (관제,
+# native-memory-safety). Why the list is not cargo's own, and how it was
+# measured against cargo's: tool/crates_for_host.dart.
 crates_not_here() {
-  local home="${CARGO_HOME:-$HOME/.cargo}"
-  awk '/^name = /{ n = $3 } /^version = /{ v = $3 }
-    /^source = "registry\+/{ gsub(/"/, "", n); gsub(/"/, "", v); print n "-" v }' "$1" \
+  local home="${CARGO_HOME:-$HOME/.cargo}" facts
+  facts="$(mktemp -d "${TMPDIR:-/tmp}/lane-crates.XXXXXX")"
+  rustc --print cfg >"$facts/cfg" \
+    && (cd "$1" && cargo metadata --locked --offline --no-deps --format-version 1) >"$facts/members.json" \
+    && bash "$ROOT/tool/run.sh" crates_for_host "$1/Cargo.lock" "$facts/members.json" \
+      "$facts/cfg" "$(host_triple)" "$home/registry/index" \
     | grep -vxF -f <(ls "$home"/registry/cache/*/ 2>/dev/null | sed -n 's/\.crate$//p')
+  rm -rf "$facts"
+}
+
+# The platform this machine builds for when cargo is given none.
+host_triple() {
+  rustc -vV | tr -d '\r' | sed -n 's/^host: //p'
 }
 
 # Refusal 8, runnable on its own. The header says why it is there.
@@ -950,15 +964,15 @@ cmd_crate() {
     # every cargo building there takes (tool/cargo_turn.sh says why).
     # Offline — the law is above resolve_offline. Cargo names one missing
     # crate at a time, and not always the one: with cpal gone it said no
-    # `symphonia` was found, so the list comes from the lock.
+    # `symphonia` was found, so the list is crates_not_here's.
     (cd "$p/packages/gpu_engine/rust" \
       && bash "$ROOT/tool/cargo_turn.sh" \
         test --locked --offline --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
       tail -n +$((from + 1)) "$log" | grep -aqE 'offline mode|--offline was specified' \
         && not_downloaded \
-          "this machine has not downloaded every crate the lock names — this is refusal 8" \
-          "$(crates_not_here "$p/packages/gpu_engine/rust/Cargo.lock" | tr '\n' ' ')" \
-          "(cd $p/packages/gpu_engine/rust && cargo fetch --locked)" "$log"
+          "this machine has not downloaded every crate its build takes — this is refusal 8" \
+          "$(crates_not_here "$p/packages/gpu_engine/rust" | tr '\n' ' ')" \
+          "(cd $p/packages/gpu_engine/rust && cargo fetch --locked --target $(host_triple))" "$log"
       grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
       die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
     }
