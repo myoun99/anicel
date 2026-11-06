@@ -353,7 +353,7 @@ fn a_frame_of_other_channels_is_passed_over() {
     // stream's, and a packet that does not decode is passed over: twenty
     // frames, less the standard lead. ⚠️The C's dr_mp3 kept the four in
     // their place, as noise — whether they keep it here is the board's
-    // (audio-mp3-channel-change).
+    // (native-to-rust-Q8).
     let mut mono = mp3_frames(4);
     mono.chunks_exact_mut(417).for_each(|frame| frame[3] = 0xC0);
     let file = TempFile::new("mixed.mp3", &[mp3_frames(12), mono, mp3_frames(8)].concat());
