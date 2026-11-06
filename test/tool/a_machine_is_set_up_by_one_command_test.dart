@@ -405,6 +405,54 @@ void main() {
       final once = settingsWith(written, holder);
       expect(jsonEncode(settingsWith(once, holder)), jsonEncode(once));
     });
+
+    // 유저 2026-11-07 (gpu-engine-skeleton-Q7): a session started before
+    // Rust was installed kept a second cargo home on C:.
+    test('🚨the Rust homes the machine\'s own settings hold are handed to '
+        'every session, beside what was there', () {
+      final settings = settingsWith(
+        written,
+        holder,
+        machine: machineVariables(
+          (name) => {
+            'CARGO_HOME': r'D:\rust\cargo',
+            'RUSTUP_HOME': ' ',
+          }[name],
+        ),
+      );
+      expect(settings['env'], {
+        'THEIRS': 'kept',
+        'ANICEL_BOARD': 'http://localhost:4321',
+        'ANICEL_BOARD_TOKEN_FILE': 'C:/local/board/.board-token',
+        'ANICEL_BOARD_FOLDER': 'C:/local/board',
+        'CARGO_HOME': 'D:/rust/cargo',
+      });
+    });
+  });
+
+  group('what Windows keeps for the user', () {
+    const printed = '\r\nHKEY_CURRENT_USER\\Environment\r\n'
+        '    CARGO_HOME    REG_SZ    D:\\rust\\cargo\r\n'
+        '    Path    REG_EXPAND_SZ    %USERPROFILE%\\bin;D:\\rust\\cargo\\bin\r\n'
+        '\r\n';
+    String expand(String variable) =>
+        {'USERPROFILE': r'C:\Users\me'}[variable] ?? '?';
+
+    test('a plain value is read as it is', () {
+      expect(registryValue(printed, 'CARGO_HOME', expand), r'D:\rust\cargo');
+    });
+
+    test('an expandable one has its variables expanded', () {
+      expect(
+        registryValue(printed, 'Path', expand),
+        r'C:\Users\me\bin;D:\rust\cargo\bin',
+      );
+    });
+
+    test('and one it does not hold is none', () {
+      expect(registryValue(printed, 'RUSTUP_HOME', expand), isNull);
+      expect(registryValue(printed, 'CARGO', expand), isNull);
+    });
   });
 
   group('what is asked for', () {

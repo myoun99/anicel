@@ -1,5 +1,6 @@
 // Sets up THIS MACHINE'S clone for its sessions: the hooks, the memory
-// folder and the board's address, written into `.claude/settings.local.json`
+// folder, the board's address and, on Windows, the Rust homes its own
+// settings hold ([kMachineVariables]), written into `.claude/settings.local.json`
 // — the one settings file that is this machine's alone (git ignores it).
 // And two things in the clone's own git settings: where its git hooks are,
 // and — only where the clone has none — the author it commits as, the
@@ -80,6 +81,66 @@ Map<String, String> environmentFor(MachineSetup setup) => {
   'ANICEL_BOARD_TOKEN_FILE': '${setup.board}/.board-token',
   'ANICEL_BOARD_FOLDER': setup.board,
 };
+
+/// The variables this machine's own settings hold and a session may not
+/// have been handed: the Rust toolchain's homes.
+///
+/// 유저 2026-11-07 (gpu-engine-skeleton-Q7): 「세션 설정에 두 변수를 적는다
+/// — install.dart 가 이 기계의 윈도 설정에서 읽어 적게」. The desktop app
+/// hands a session the environment it was itself started with: on the main
+/// PC it started on 10-29 and Rust went onto D: on 11-05, so every session's
+/// cargo kept a second home on C: (`~/.cargo`, `~/.rustup`) while the
+/// landing chain read D: — a crate one session fetched was missing to the
+/// other, and a land was refused for it. Off Windows a session's shell
+/// reads the login profile, which holds them already.
+const kMachineVariables = ['CARGO_HOME', 'RUSTUP_HOME'];
+
+/// [kMachineVariables] as [read] finds them, the ones it has, slashed.
+Map<String, String> machineVariables(String? Function(String name) read) => {
+  for (final name in kMachineVariables)
+    if (read(name) case final value? when value.trim().isNotEmpty)
+      name: slashed(value.trim()),
+};
+
+/// [name]'s value in what `reg query HKCU\Environment /v <name>` printed,
+/// with the `%VARIABLE%`s of an expandable value [expand]ed; null when it
+/// printed none.
+String? registryValue(
+  String printed,
+  String name,
+  String Function(String variable) expand,
+) {
+  final line = RegExp(
+    '^\\s+${RegExp.escape(name)}\\s+(REG_SZ|REG_EXPAND_SZ)\\s+(.*?)\\s*\$',
+    multiLine: true,
+    caseSensitive: false,
+  ).firstMatch(printed);
+  if (line == null) return null;
+  final value = line.group(2)!;
+  return line.group(1)!.toUpperCase() == 'REG_SZ'
+      ? value
+      : value.replaceAllMapped(
+          RegExp('%([^%]+)%'),
+          (variable) => expand(variable.group(1)!),
+        );
+}
+
+/// [name] as Windows keeps it for this user, whatever this process was
+/// handed.
+String? windowsUserVariable(String name) {
+  final asked = Process.runSync('reg', [
+    'query',
+    r'HKCU\Environment',
+    '/v',
+    name,
+  ]);
+  if (asked.exitCode != 0) return null;
+  return registryValue(
+    '${asked.stdout}',
+    name,
+    (variable) => Platform.environment[variable] ?? '%$variable%',
+  );
+}
 
 /// The hooks of a session on this machine — all of them.
 Map<String, dynamic> hooksFor(MachineSetup setup) {
@@ -213,17 +274,20 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
 }
 
 /// [existing] as this machine's settings: the hooks written whole, the
-/// memory folder and the board's variables set, and everything else kept.
+/// memory folder, the board's variables and the [machine]'s own
+/// ([machineVariables]) set, and everything else kept.
 Map<String, dynamic> settingsWith(
   Map<String, dynamic> existing,
-  MachineSetup setup,
-) => {
+  MachineSetup setup, {
+  Map<String, String> machine = const {},
+}) => {
   ...existing,
   'hooks': hooksFor(setup),
   'autoMemoryDirectory': setup.memory,
   'env': {
     ...?(existing['env'] as Map?)?.cast<String, dynamic>(),
     ...environmentFor(setup),
+    ...machine,
   },
 };
 
@@ -330,9 +394,13 @@ void main(List<String> args) {
 
   final file = File(settingsPathOf(setup));
   final before = file.existsSync() ? file.readAsStringSync() : '{}';
+  final variables = Platform.isWindows
+      ? machineVariables(windowsUserVariable)
+      : const <String, String>{};
   final settings = settingsWith(
     jsonDecode(before) as Map<String, dynamic>,
     setup,
+    machine: variables,
   );
   final after = '${const JsonEncoder.withIndent('  ').convert(settings)}\n';
   if (args.contains('--dry')) {
@@ -366,6 +434,9 @@ void main(List<String> args) {
   stdout.writeln('  보드 폴더    ${setup.board}');
   stdout.writeln('  메모리 폴더  ${setup.memory}');
   stdout.writeln('  보드 주소    ${boardAddressOf(setup)}');
+  for (final variable in variables.entries) {
+    stdout.writeln('  ${variable.key.padRight(11)} ${variable.value}');
+  }
   if (given.isNotEmpty) {
     stdout.writeln('  커밋 작성자  ${given.values.join(' · ')} — 이 클론에 '
         '없어서, 본진의 커밋과 같은 것을 이 클론에만 넣었습니다.');
