@@ -79,6 +79,13 @@ pub unsafe extern "C" fn qa_zstd_decompressed_size(src: *const u8, src_size: i64
     }
 }
 
+/// Every frame of `src` decompressed into `dst` (`ZSTD_decompress`): the
+/// bytes written, or None when it does not decode — for the crates that
+/// read zstd themselves.
+pub fn decompress(dst: &mut [u8], src: &[u8]) -> Option<usize> {
+    frame::decompress(dst, src).ok()
+}
+
 /// Decompresses into `dst`, answering the byte count, or 0 on failure.
 ///
 /// # Safety

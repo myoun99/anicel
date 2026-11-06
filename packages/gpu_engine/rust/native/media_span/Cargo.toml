@@ -1,0 +1,13 @@
+[package]
+name = "media_span"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# A framed span's blocks are zstd frames.
+[dependencies]
+compress = { path = "../compress" }
+
+# The C answer key: the engine's qa_media_span_* (native/oracle).
+[dev-dependencies]
+oracle = { path = "../oracle" }
