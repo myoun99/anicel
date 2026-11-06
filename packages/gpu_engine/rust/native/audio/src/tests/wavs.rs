@@ -346,20 +346,130 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
     }
 }
 
+/// `count` MPEG-1 Layer III frames, 128 kbit/s at 44.1 kHz, of one channel
+/// for each of `gains` — each granule of each channel one spectral line, at
+/// that channel's global gain, so that they sound and two channels differ.
+/// Stereo is plain stereo (not joint), and each frame's main data starts in
+/// it: a frame decodes alone.
+fn tone_frames(count: usize, gains: &[u32]) -> Vec<u8> {
+    let channels = gains.len();
+    let mut bits = Bits::default();
+    bits.put(0, 9); // main_data_begin
+    bits.put(0, if channels == 1 { 5 } else { 3 }); // private bits
+    bits.put(0, 4 * channels as u32); // scfsi
+    for _granule in 0..2 {
+        for &gain in gains {
+            // part2_3_length: three bits of Huffman code; one pair of big
+            // values; table 1 for the first region; long blocks.
+            bits.put(3, 12);
+            bits.put(1, 9);
+            bits.put(gain, 8);
+            bits.put(0, 4 + 1);
+            bits.put(1, 5);
+            bits.put(0, 5 + 5 + 4 + 3 + 3);
+        }
+    }
+    // Table 1's code for the pair (1, 0) — `01` — and the 1's sign, +.
+    for _ in 0..2 * channels {
+        bits.put(0b010, 3);
+    }
+    let body = bits.bytes();
+    let mut frame = vec![0u8; 417];
+    frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, if channels == 1 { 0xC0 } else { 0x00 }]);
+    frame[4..4 + body.len()].copy_from_slice(&body);
+    frame.repeat(count)
+}
+
+/// Bits written from the top of each byte down.
+#[derive(Default)]
+struct Bits {
+    bits: Vec<bool>,
+}
+
+impl Bits {
+    fn put(&mut self, value: u32, count: u32) {
+        self.bits.extend((0..count).rev().map(|k| value >> k & 1 == 1));
+    }
+
+    fn bytes(&self) -> Vec<u8> {
+        let byte = |bits: &[bool]| bits.iter().enumerate().fold(0, |b, (k, &on)| b | u8::from(on) << (7 - k));
+        self.bits.chunks(8).map(byte).collect()
+    }
+}
+
+/// The interleaved samples a whole MP3 of `bytes` reads as, and its
+/// channels.
+fn mp3_read(bytes: &[u8]) -> (Vec<f32>, i32) {
+    let file = TempFile::new("pieces.mp3", bytes);
+    let read = rust_window(&Span::whole(file.path()), 0, -1);
+    assert_eq!(read.format, crate::FORMAT_MP3);
+    (read.samples, read.channels)
+}
+
+/// The frames of the standard lead that every sound here loses at its
+/// start (`start::MP3_STANDARD_LEAD`).
+const LEAD: usize = 1105;
+
 #[test]
-fn a_frame_of_other_channels_is_passed_over() {
-    // Twelve stereo frames, four of one channel, eight stereo again.
-    // symphonia's decoder refuses a frame of other channels than its
-    // stream's, and a packet that does not decode is passed over: twenty
-    // frames, less the standard lead. ⚠️The C's dr_mp3 kept the four in
-    // their place, as noise — whether they keep it here is the board's
-    // (native-to-rust-Q8).
-    let mut mono = mp3_frames(4);
-    mono.chunks_exact_mut(417).for_each(|frame| frame[3] = 0xC0);
-    let file = TempFile::new("mixed.mp3", &[mp3_frames(12), mono, mp3_frames(8)].concat());
-    let rust = rust_window(&Span::whole(file.path()), 0, -1);
-    assert_eq!((rust.format, rust.channels), (crate::FORMAT_MP3, 2));
-    assert_eq!(rust.samples.len(), (20 * 1152 - 1105) * 2);
+fn a_mono_piece_of_a_stereo_mp3_is_heard_in_both_at_0_707() {
+    // Twelve stereo frames of silence, four mono frames that sound, eight
+    // of silence again: the four are read by a decoder of their own, in
+    // their place, at 1/√2 in both channels (native-to-rust-Q8 · Q9).
+    let piece = tone_frames(4, &[230]);
+    let (alone, _) = mp3_read(&piece);
+    assert!(alone.iter().any(|&s| s != 0.0), "the piece sounds");
+    let (read, channels) = mp3_read(&[mp3_frames(12), piece, mp3_frames(8)].concat());
+    assert_eq!(channels, 2);
+    assert_eq!(read.len(), (24 * 1152 - LEAD) * 2, "every frame in its place");
+    // The piece's frame j stands at 12 · 1152 + j, less the lead; read
+    // alone, its first frames are the lead.
+    let at = 12 * 1152 - LEAD;
+    for (j, &sample) in alone.iter().enumerate() {
+        let frame = at + LEAD + j;
+        let both = [read[2 * frame], read[2 * frame + 1]];
+        assert_eq!(both, [std::f32::consts::FRAC_1_SQRT_2 * sample; 2], "frame {j} of the piece");
+    }
+    assert!(read[..2 * at].iter().chain(&read[2 * (at + 4 * 1152)..]).all(|&s| s == 0.0), "silence around it");
+}
+
+#[test]
+fn a_stereo_piece_of_a_mono_mp3_is_mixed_at_0_707_each() {
+    // The other way: a mono sound stays mono, as its first piece is, and a
+    // stereo piece in it is its two channels at 1/√2 each
+    // (native-to-rust-Q10). The two channels differ, so that each counts.
+    let mono_silence = || {
+        let mut frames = mp3_frames(1);
+        frames[3] = 0xC0;
+        frames
+    };
+    let piece = tone_frames(4, &[230, 222]);
+    let (alone, two) = mp3_read(&piece);
+    assert_eq!(two, 2);
+    assert!(alone.chunks_exact(2).any(|lr| lr[0] != lr[1]), "the channels differ");
+    let (read, channels) = mp3_read(&[mono_silence().repeat(12), piece, mono_silence().repeat(8)].concat());
+    assert_eq!(channels, 1);
+    assert_eq!(read.len(), 24 * 1152 - LEAD, "every frame in its place");
+    let share = std::f32::consts::FRAC_1_SQRT_2;
+    let at = 12 * 1152 - LEAD;
+    for (j, lr) in alone.chunks_exact(2).enumerate() {
+        assert_eq!(read[at + LEAD + j], share * lr[0] + share * lr[1], "frame {j} of the piece");
+    }
+}
+
+#[test]
+fn a_piece_nothing_reads_is_its_length_of_silence() {
+    // A Layer II frame among Layer III ones: the reader hands it on, and no
+    // decoder here reads it — so it keeps its 1,152 frames as silence, and
+    // the frames after it keep theirs (native-to-rust-Q8).
+    // Layer II's 128 kbit/s is its eighth bitrate, where Layer III's is its
+    // ninth: so the frame keeps its 417 bytes.
+    let mut frames = [mp3_frames(12), tone_frames(12, &[230, 230])].concat();
+    frames[11 * 417 + 1..11 * 417 + 3].copy_from_slice(&[0xFD, 0x80]);
+    let (read, channels) = mp3_read(&frames);
+    assert_eq!(channels, 2);
+    assert_eq!(read.len(), (24 * 1152 - LEAD) * 2, "every frame in its place");
+    let (tone, _) = mp3_read(&[mp3_frames(12), tone_frames(12, &[230, 230])].concat());
+    assert_eq!(read, tone, "the broken frame was silence where it stands");
 }
 
 #[test]

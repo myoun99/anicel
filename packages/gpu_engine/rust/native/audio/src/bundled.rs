@@ -11,9 +11,11 @@
 use symphonia::core::audio::sample::Sample;
 use symphonia::core::audio::{Audio, AudioBuffer, GenericAudioBufferRef};
 use symphonia::core::codecs::audio::well_known::{CODEC_ID_AAC, CODEC_ID_ALAC, CODEC_ID_FLAC, CODEC_ID_VORBIS};
-use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
+use symphonia::core::codecs::audio::{AudioCodecParameters, AudioDecoder, AudioDecoderOptions};
 use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
 use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
+use symphonia::core::packet::Packet;
+use symphonia::core::units::TimeBase;
 use symphonia::default::formats::{
     AdtsReader, AiffReader, FlacReader, IsoMp4Reader, MpaReader, OggReader, WavReader,
 };
@@ -27,9 +29,18 @@ use crate::{FORMAT_AAC, FORMAT_ALAC, FORMAT_FLAC, FORMAT_MP3, FORMAT_VORBIS, FOR
 /// A reader's audio track and the decoder of it.
 struct Bundled {
     reader: Box<dyn FormatReader>,
+    /// The decoder of the piece last read: the stream's own, until a piece
+    /// it refuses is read by a new one (`Decode for Bundled`).
     decoder: Box<dyn AudioDecoder>,
+    /// What a new decoder is made from.
+    params: AudioCodecParameters,
+    options: AudioDecoderOptions,
     track: u32,
+    time_base: Option<TimeBase>,
+    /// The stream's channels and rate: its first piece's, whatever the
+    /// pieces after are (as FFmpeg keeps its first, native-to-rust-Q10).
     channels: usize,
+    rate: u32,
 }
 
 /// `container` from `origin` on, as a symphonia reader is handed it.
@@ -48,18 +59,19 @@ impl Bundled {
     /// decoder here for it, or it has no channels.
     fn new(reader: Box<dyn FormatReader>, gapless: bool) -> Option<Bundled> {
         let track = reader.first_track(TrackType::Audio)?;
-        let params = track.codec_params.as_ref()?.audio()?;
+        let params = track.codec_params.as_ref()?.audio()?.clone();
         let options = AudioDecoderOptions::default().gapless(gapless);
-        let decoder = get_codecs().make_audio_decoder(params, &options).ok()?;
-        let track = track.id;
+        let decoder = get_codecs().make_audio_decoder(&params, &options).ok()?;
+        let (track, time_base) = (track.id, track.time_base);
         let channels = decoder.codec_params().channels.as_ref()?.count();
-        (channels > 0).then_some(Bundled { reader, decoder, track, channels })
+        let rate = decoder.codec_params().sample_rate?;
+        (channels > 0).then_some(Bundled { reader, decoder, params, options, track, time_base, channels, rate })
     }
 
     /// The rate the decoder hands back — what it read of its codec's own
     /// header, where it has one.
     fn sample_rate(&self) -> Option<i32> {
-        i32::try_from(self.decoder.codec_params().sample_rate?).ok()
+        i32::try_from(self.rate).ok()
     }
 
     /// Opened as `format`, its sound starting where `start` says.
@@ -68,6 +80,123 @@ impl Bundled {
         let channels = self.channels as i32;
         Some(Opened { decoder: Box::new(self), format, channels, sample_rate, start })
     }
+
+    /// `packet`, which the decoder in hand refused, read by a new one — and
+    /// the new one reads the pieces after it, when it reads this one at the
+    /// stream's rate. symphonia's decoders refuse a piece of other channels
+    /// or another rate than the first they read (`symphonia-bundle-mp3`
+    /// 0.6.1 `decode_inner`), so a piece that changes them takes a decoder
+    /// of its own, and so does the piece that changes them back.
+    fn afresh(&mut self, packet: &Packet, block: &mut Vec<f32>) -> Piece {
+        let Ok(mut decoder) = get_codecs().make_audio_decoder(&self.params, &self.options) else {
+            return Piece::Unread;
+        };
+        let piece = match decoder.decode(packet) {
+            Ok(buffer) => piece(buffer, block, self.channels, self.rate),
+            Err(_) => return Piece::Unread,
+        };
+        if matches!(piece, Piece::Read(_)) {
+            self.decoder = decoder;
+        }
+        piece
+    }
+
+    /// A piece nothing here reads, kept in its place as silence
+    /// (native-to-rust-Q8, the user's answer 2026-11-06 — 「깨진 프레임은
+    /// 무음으로 자리를 지킨다」): the frames its packet lasts, `dur` in the
+    /// track's time base. symphonia 0.6.1's `dur` is the packet's whole
+    /// block (`trimmed_dur` takes off the builder's own trims, which are
+    /// none: packet.rs:340), and a piece inside a sound is trimmed of
+    /// nothing — so it is the frames a decode of it would have handed back.
+    fn silence(&self, packet: &Packet, block: &mut Vec<f32>) -> usize {
+        let lasts = u128::from(packet.dur.get());
+        let frames = match self.time_base {
+            Some(base) => {
+                lasts * u128::from(base.numer.get()) * u128::from(self.rate) / u128::from(base.denom.get())
+            }
+            None => lasts,
+        };
+        let frames = usize::try_from(frames).unwrap_or(0);
+        block.clear();
+        block.resize(frames * self.channels, 0.0);
+        frames
+    }
+}
+
+/// What became of a packet.
+enum Piece {
+    /// Its frames, in the stream's channels.
+    Read(usize),
+    /// Read at another rate than the stream's.
+    OtherRate,
+    /// Nothing here reads it.
+    Unread,
+    /// Read, but in channels nothing here puts in the stream's.
+    End,
+}
+
+/// The share of a channel that each channel on the other side takes, when
+/// a piece is put in other channels than its own: FFmpeg's, the user's
+/// answers (native-to-rust-Q9 「FFmpeg 처럼 양쪽에 0.707(−3dB)로 넣는다」 ·
+/// Q10 「FFmpeg 처럼 모노로 섞는다 — 왼쪽 · 오른쪽 각 0.707」, 2026-11-06).
+/// `libswresample/rematrix.c` `build_matrix` gives M_SQRT1_2 both ways, and
+/// rescales the matrix only for integer sound — this sound is float.
+const SHARE: f32 = std::f32::consts::FRAC_1_SQRT_2;
+
+/// A decoded piece in `channels` into `block` — passed over when it is at
+/// another rate than `rate` (⚠️until the board answers native-to-rust-Q11,
+/// as it was before).
+fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usize, rate: u32) -> Piece {
+    let spec = buffer.spec();
+    if spec.rate() != rate {
+        return Piece::OtherRate;
+    }
+    let own = spec.channels().count();
+    let frames = match buffer {
+        GenericAudioBufferRef::U8(buffer) => interleave(buffer, block, convert::u8),
+        // AIFF's 8-bit sound is signed, and dr_wav read it as a WAV
+        // holds it, offset binary.
+        GenericAudioBufferRef::S8(buffer) => interleave(buffer, block, |s| convert::u8(s as u8 ^ 0x80)),
+        GenericAudioBufferRef::S16(buffer) => interleave(buffer, block, convert::s16),
+        GenericAudioBufferRef::S24(buffer) => interleave(buffer, block, |s| convert::s24(s.inner())),
+        GenericAudioBufferRef::S32(buffer) => interleave(buffer, block, convert::s32),
+        GenericAudioBufferRef::F32(buffer) => interleave(buffer, block, |s| s),
+        GenericAudioBufferRef::F64(buffer) => interleave(buffer, block, convert::f64),
+        // No reader here hands unsigned sound wider than 8 bits.
+        _ => return Piece::End,
+    };
+    if fit(block, frames, own, channels) { Piece::Read(frames) } else { Piece::End }
+}
+
+/// The `frames` of `own` channels at the head of `block`, put in `channels`:
+/// a piece of one channel in both of two, a piece of two mixed into one, at
+/// [`SHARE`]. ⚠️Between any others it cannot be — no reader here hands one
+/// (MPEG audio is one channel or two, and AAC of more than two is refused
+/// at its opening); were one to, its block would be shorter than the
+/// stream's channels read it, a panic past the C boundary, so the sound
+/// ends there instead.
+fn fit(block: &mut Vec<f32>, frames: usize, own: usize, channels: usize) -> bool {
+    match (own, channels) {
+        _ if own == channels => {}
+        (1, 2) => {
+            block.resize(frames * 2, 0.0);
+            // From the end, so that no sample is written over before it is
+            // read.
+            for frame in (0..frames).rev() {
+                let sample = SHARE * block[frame];
+                block[2 * frame] = sample;
+                block[2 * frame + 1] = sample;
+            }
+        }
+        (2, 1) => {
+            for frame in 0..frames {
+                block[frame] = SHARE * block[2 * frame] + SHARE * block[2 * frame + 1];
+            }
+            block.truncate(frames);
+        }
+        _ => return false,
+    }
+    true
 }
 
 /// Every sample of `buffer` through `convert`, interleaved into `block`.
@@ -85,38 +214,27 @@ fn interleave<S: Sample>(buffer: &AudioBuffer<S>, block: &mut Vec<f32>, convert:
 }
 
 impl Decode for Bundled {
-    /// ⚠️A packet that does not decode is passed over, as the C's decoders
-    /// passed over a frame they could not read; one the reader cannot read
-    /// ends the sound.
+    /// Every piece keeps its place: one the decoder in hand refuses is read
+    /// by a new one (`afresh`) and put in the stream's channels (`fit`), and
+    /// one nothing reads is its length of silence (native-to-rust-Q8 · Q9 ·
+    /// Q10). ⚠️A piece at another rate than the stream's is passed over, as
+    /// it was, until the board answers native-to-rust-Q11. One the reader
+    /// cannot read ends the sound.
     fn next(&mut self, block: &mut Vec<f32>) -> usize {
         loop {
             let Ok(Some(packet)) = self.reader.next_packet() else { return 0 };
             if packet.track_id != self.track {
                 continue;
             }
-            // symphonia's decoders refuse a packet of other channels than
-            // their stream's, so it is passed over here — ⚠️where dr_mp3 kept
-            // its place, as noise (board native-to-rust-Q8).
-            let Ok(buffer) = self.decoder.decode(&packet) else { continue };
-            // ⚠️No decoder here hands one back (measured 2026-11-06: the
-            // check never answers). Were one to, its block would be shorter
-            // than the stream's channels read it — a panic past the C
-            // boundary — so the sound ends there instead.
-            if buffer.spec().channels().count() != self.channels {
-                return 0;
-            }
-            let frames = match buffer {
-                GenericAudioBufferRef::U8(buffer) => interleave(buffer, block, convert::u8),
-                // AIFF's 8-bit sound is signed, and dr_wav read it as a WAV
-                // holds it, offset binary.
-                GenericAudioBufferRef::S8(buffer) => interleave(buffer, block, |s| convert::u8(s as u8 ^ 0x80)),
-                GenericAudioBufferRef::S16(buffer) => interleave(buffer, block, convert::s16),
-                GenericAudioBufferRef::S24(buffer) => interleave(buffer, block, |s| convert::s24(s.inner())),
-                GenericAudioBufferRef::S32(buffer) => interleave(buffer, block, convert::s32),
-                GenericAudioBufferRef::F32(buffer) => interleave(buffer, block, |s| s),
-                GenericAudioBufferRef::F64(buffer) => interleave(buffer, block, convert::f64),
-                // No reader here hands unsigned sound wider than 8 bits.
-                _ => return 0,
+            let piece = match self.decoder.decode(&packet) {
+                Ok(buffer) => piece(buffer, block, self.channels, self.rate),
+                Err(_) => self.afresh(&packet, block),
+            };
+            let frames = match piece {
+                Piece::Read(frames) => frames,
+                Piece::OtherRate => continue,
+                Piece::Unread => self.silence(&packet, block),
+                Piece::End => return 0,
             };
             if frames > 0 {
                 return frames;
