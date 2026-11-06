@@ -90,6 +90,8 @@ void main() {
     store.markCelEdited(a, backTo: back);
     expect(store.sourceRevisionOf(a), back);
     expect(store.revisionsLastLeft, {left});
+    store.markCelEdited(a, backTo: back);
+    expect(store.revisionsLastLeft, isEmpty, reason: 'at it already');
   });
 
   test('⛔a cel the pasteboard\'s wall cuts names nothing: its undo lays the '
