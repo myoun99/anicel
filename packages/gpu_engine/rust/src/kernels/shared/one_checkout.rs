@@ -31,6 +31,14 @@ const FIXED: &str = concat!("env!(\"CARGO", "_MANIFEST_DIR\")");
 const READ: &str = "std::env::var(\"CARGO_MANIFEST_DIR\")";
 
 #[test]
+fn this_build_was_made_in_the_checkout_it_runs_in() {
+    let built = option_env!("QA_CHECKOUT").expect("LIVENESS — .cargo/config.toml sets QA_CHECKOUT");
+    let runs = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let real = |dir: &str| std::fs::canonicalize(dir).unwrap_or_else(|e| panic!("{dir}: {e}"));
+    assert_eq!(real(built), real(&runs), "a build another checkout made ran here");
+}
+
+#[test]
 fn every_crate_is_built_from_the_checkout_it_runs_in() {
     let built_here = files_under(".", "rs", |text| text.contains(BUILT_HERE));
     let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
