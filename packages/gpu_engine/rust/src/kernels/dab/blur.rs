@@ -666,6 +666,7 @@ fn copied(
         set: 0,
         keys: None,
         map: ResampleMap::moved(0, 0),
+        matrix: None,
         // Whole. 65534 copies the same bytes — a stored byte's step is 257
         // on this scale — so no test tells the two apart (mutant r04, 11-06).
         opacity: 65535,
@@ -676,6 +677,7 @@ fn copied(
         pages,
         sets: std::slice::from_ref(cel),
         keys: &[],
+        matrices: &[],
         steps: &steps,
         mask: None,
     };

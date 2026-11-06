@@ -10,7 +10,9 @@
 //! takes the five node kinds that close per pixel: a row in any pose R1
 //! takes (a whole-pixel move being its copy), a folder's buffer, a row over
 //! its backdrop (its own mode), a clipping group and its base made opaque.
-//! A row's colour keys run on its stored pixels, before R1 poses them.
+//! A row's colour keys run on its stored pixels, before R1 poses them; its
+//! colour matrix — the app's colour effects folded into one — on what R1
+//! lays, after (캔버스 베이스, gpu-canonical-store 11-06 07:48).
 //! The other effects, adjustments and a cel number's letters (drawn by the
 //! engine's glyph path, then a row here) come in later rounds.
 //!
@@ -62,7 +64,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::effects::KEY_WGSL;
+use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
@@ -82,8 +84,10 @@ pub(crate) const TILE_BYTES: u64 = TILE_TEXELS * 4;
 /// holds; the rest wait in the work buffer. A pass is compiled to hold the
 /// levels its plan's passes reach (composite.wgsl's DEPTH), these at most.
 pub(crate) const DEPTH: usize = 8;
-const STEP_WORDS: usize = 13;
+const STEP_WORDS: usize = 14;
 const NO_TILE: u32 = u32::MAX;
+/// A row's matrix place where it runs none (composite.wgsl's NO_MATRIX).
+const NO_MATRIX: u32 = u32::MAX;
 /// The plan and the work buffer: the storage buffers a pass binds besides
 /// its pages — and its pass's words, a uniform one. A device that binds
 /// sixteen pages past them binds them past one fewer as well, so no test
@@ -154,12 +158,14 @@ pub(crate) struct KeyChain {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
     /// Tile set `set`, keyed by chain `keys` if any, posed by `map` —
-    /// canvas pixel to the row's own — laid at `opacity` in `mode`, under
-    /// the plan's mask where `masked`.
+    /// canvas pixel to the row's own —, through colour matrix `matrix` if
+    /// any, laid at `opacity` in `mode`, under the plan's mask where
+    /// `masked`.
     Row {
         set: usize,
         keys: Option<usize>,
         map: ResampleMap,
+        matrix: Option<usize>,
         opacity: u32,
         mode: u32,
         masked: bool,
@@ -193,14 +199,16 @@ pub(crate) struct Composited {
     pub(crate) passes: usize,
 }
 
-/// What a plan lays: the pool's pages, the rows' tile sets and key chains,
-/// the steps, bottom to top, and the selection its masked rows are laid
+/// What a plan lays: the pool's pages, the rows' tile sets, key chains and
+/// colour matrices (`effects::matrix_words`), the steps, bottom to top, and
+/// the selection its masked rows are laid
 /// under — one a plan: the stroke being drawn is the row there is one for
 /// (R28, 11-06 06:51).
 pub(crate) struct Plan<'a> {
     pub(crate) pages: &'a [wgpu::Buffer],
     pub(crate) sets: &'a [TileSet],
     pub(crate) keys: &'a [KeyChain],
+    pub(crate) matrices: &'a [[u32; MATRIX_WORDS]],
     pub(crate) steps: &'a [Step],
     pub(crate) mask: Option<&'a Mask<'a>>,
 }
@@ -434,7 +442,7 @@ impl Composite {
         if !(2..=DEPTH).contains(&budget.levels) {
             return fail(format!("{} stack levels a pass; one holds 2 to {DEPTH}", budget.levels));
         }
-        check_depth(plan.steps, plan.sets.len(), plan.keys.len())?;
+        check_depth(plan.steps, plan.sets.len(), plan.keys.len(), plan.matrices.len())?;
         check_mask(plan)?;
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         self.walk_laid(engine, plan, &laid, tiles, extent, surface, target, budget)
@@ -454,7 +462,8 @@ impl Composite {
     ) -> Option<usize> {
         let page_count = plan.pages.len();
         let batches = cut(laid, budget.pages, budget.levels)?;
-        let written = plan_words(laid, &batches, plan.sets, plan.keys, tiles, page_count);
+        let written =
+            plan_words(laid, &batches, plan.sets, plan.keys, plan.matrices, tiles, page_count);
         // One level at least: a walk starts on one.
         let levels = batches.iter().fold(1, |most, batch| most.max(batch.levels()));
         let pipeline = &self.pass(engine, Compiled { surface, modes: written.modes, levels });
@@ -645,6 +654,7 @@ fn compile(
         RESAMPLE_WGSL,
         TILE_WGSL,
         KEY_WGSL,
+        MATRIX_WGSL,
         PREMULTIPLY_WGSL,
         BYTE_WGSL,
         pages,
@@ -667,7 +677,7 @@ fn check_mask(plan: &Plan) -> Option<()> {
 /// Fails unless every buffer the steps open is closed, none is closed that
 /// was not opened, and every row names a tile set and a key chain there
 /// are.
-fn check_depth(steps: &[Step], sets: usize, chains: usize) -> Option<()> {
+fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> Option<()> {
     let mut depth = 0usize;
     for (index, step) in steps.iter().enumerate() {
         match *step {
@@ -678,6 +688,11 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize) -> Option<()> {
                 keys: Some(chain), ..
             } if chain >= chains => {
                 return fail(format!("step {index} keys by chain {chain} of {chains}"));
+            }
+            Step::Row {
+                matrix: Some(matrix), ..
+            } if matrix >= matrices => {
+                return fail(format!("step {index} runs matrix {matrix} of {matrices}"));
             }
             Step::Row { .. } => {}
             Step::Open | Step::OpenOpaque => depth += 1,
@@ -869,7 +884,7 @@ struct PlanWords {
 
 /// The steps, then each tile set's map, the key chains — an empty list,
 /// then each chain's list (how many runs, where each is) and its runs —
-/// each row's R1 map, each pass's table of pages — for every page of the
+/// the colour matrices, each row's R1 map, each pass's table of pages — for every page of the
 /// pool the binding holding it, or NO_PAGE — and the output tiles: each its
 /// column and row, then a bit a step, step k bit k % 32 of word k / 32,
 /// set where the step is live there.
@@ -878,6 +893,7 @@ fn plan_words(
     batches: &[Batch],
     sets: &[TileSet],
     keys: &[KeyChain],
+    matrices: &[[u32; MATRIX_WORDS]],
     tiles: &[(i32, i32)],
     page_count: usize,
 ) -> PlanWords {
@@ -910,7 +926,8 @@ fn plan_words(
             chains.extend(run);
         }
     }
-    let poses_at = chains_at + chains.len() as u32;
+    let matrices_at = chains_at + chains.len() as u32;
+    let poses_at = matrices_at + (matrices.len() * MATRIX_WORDS) as u32;
     let mut poses: Vec<u32> = Vec::new();
     let mut modes = ResampleModes::default();
     for each in laid {
@@ -919,6 +936,7 @@ fn plan_words(
                 set,
                 keys,
                 map,
+                matrix,
                 opacity,
                 mode,
                 masked,
@@ -943,17 +961,19 @@ fn plan_words(
                     pose_at,
                     keys.map_or(chains_at, |chain| chain_at[chain]),
                     u32::from(masked),
+                    matrix.map_or(NO_MATRIX, |at| matrices_at + (at * MATRIX_WORDS) as u32),
                 ]
             }
-            Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         };
         words.extend(step);
     }
     words.extend(maps);
     words.extend(chains);
+    words.extend(matrices.iter().flatten());
     words.extend(poses);
     let tables_at = words.len() as u32;
     for batch in batches {

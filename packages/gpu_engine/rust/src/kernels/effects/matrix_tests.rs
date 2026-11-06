@@ -12,7 +12,7 @@ use crate::kernels::composite::tests::mix;
 use crate::kernels::shared::pipeline;
 use crate::testing::{assert_pinned, first_engine};
 
-type Matrix = [f64; MATRIX_WORDS];
+pub(crate) type Matrix = [f64; MATRIX_WORDS];
 
 /// The matrix's cases, compiled once for the whole test process.
 fn compiled() -> &'static wgpu::ComputePipeline {
@@ -38,14 +38,14 @@ fn through(matrices: &[Matrix], cases: &[(usize, u32)]) -> Vec<u32> {
 }
 
 /// Every pixel of `pixels` through `matrix`.
-fn each(matrix: Matrix, pixels: &[u32]) -> Vec<u32> {
+pub(crate) fn each(matrix: Matrix, pixels: &[u32]) -> Vec<u32> {
     let cases: Vec<_> = pixels.iter().map(|&texel| (0, texel)).collect();
     through(&[matrix], &cases)
 }
 
 /// Colour rows that scale their own channel by `scale` and add `offset`,
 /// the alpha row the identity — Brightness & Contrast's shape.
-fn graded(scale: f64, offset: f64) -> Matrix {
+pub(crate) fn graded(scale: f64, offset: f64) -> Matrix {
     let mut matrix = [0.0; MATRIX_WORDS];
     for row in 0..3 {
         matrix[row * 6] = scale;

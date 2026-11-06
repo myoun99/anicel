@@ -26,7 +26,7 @@
 
 pub(crate) mod blur;
 #[cfg(test)]
-mod matrix_tests;
+pub(crate) mod matrix_tests;
 #[cfg(test)]
 pub(crate) mod tests;
 

@@ -11,7 +11,8 @@ use super::{
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN};
-use crate::kernels::effects::KeyRun;
+use crate::kernels::effects::matrix_tests::{Matrix, each, graded};
+use crate::kernels::effects::{KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
@@ -175,6 +176,7 @@ fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
         set,
         keys: None,
         map,
+        matrix: None,
         opacity,
         mode,
         masked: false,
@@ -182,26 +184,21 @@ fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
 }
 
 /// `row` keyed by chain `chain`.
-fn keyed(row: Step, chain: usize) -> Step {
-    let Step::Row {
-        set,
-        map,
-        opacity,
-        mode,
-        masked,
-        ..
-    } = row
-    else {
+fn keyed(mut row: Step, chain: usize) -> Step {
+    let Step::Row { keys, .. } = &mut row else {
         unreachable!("only a row is keyed");
     };
-    Step::Row {
-        set,
-        keys: Some(chain),
-        map,
-        opacity,
-        mode,
-        masked,
-    }
+    *keys = Some(chain);
+    row
+}
+
+/// `row` through matrix `matrix`.
+fn matrixed(mut row: Step, at: usize) -> Step {
+    let Step::Row { matrix, .. } = &mut row else {
+        unreachable!("only a row runs a matrix");
+    };
+    *matrix = Some(at);
+    row
 }
 
 /// A plan, what it lays and where it is looked at.
@@ -209,6 +206,7 @@ struct Scene {
     pool: Pool,
     sets: Vec<TileSet>,
     keys: Vec<KeyChain>,
+    matrices: Vec<[u32; MATRIX_WORDS]>,
     steps: Vec<Step>,
     tiles: Vec<(i32, i32)>,
 }
@@ -220,6 +218,7 @@ impl Scene {
             pages,
             sets: &self.sets,
             keys: &self.keys,
+            matrices: &self.matrices,
             steps: &self.steps,
             mask: None,
         }
@@ -344,6 +343,7 @@ fn rows() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![
             row(0, (0, 0), WHOLE, NORMAL),
             row(1, (37, -50), 40000, MULTIPLY),
@@ -367,6 +367,7 @@ fn folders() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![
             Step::Open,
             row(0, (0, 0), WHOLE, NORMAL),
@@ -403,6 +404,7 @@ fn clips() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![
             row(0, (0, 0), WHOLE, NORMAL),
             Step::Open,
@@ -451,6 +453,7 @@ fn spanning() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps,
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
     }
@@ -499,6 +502,7 @@ fn posed() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![
             row(0, (3, -2), WHOLE, NORMAL),
             Step::Open,
@@ -549,12 +553,57 @@ fn keyed_rows() -> Scene {
         pool,
         sets,
         keys,
+        matrices: Vec::new(),
         steps: vec![
             row(0, (4, -6), WHOLE, NORMAL),
             Step::Open,
             keyed(row(0, (-9, 3), 50000, MULTIPLY), 0),
             keyed(pose_row(1, "turn", WHOLE, SCREEN), 0),
             keyed(pose_row(2, "squeeze", 60000, NORMAL), 1),
+            Step::Close {
+                opacity: 45000,
+                mode: NORMAL,
+            },
+        ],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+/// A contrast of 2 about the middle, which clamps — so what it makes of a
+/// mix is not the mix of what it makes.
+fn contrast() -> Matrix {
+    graded(2.0, -128.0)
+}
+
+/// Rows through colour matrices, over one through none: two rows share a
+/// contrast; in a folder, a keyed turn through a tint — its key before
+/// its pose, its matrix after — and a Blend shrink through the contrast.
+fn matrixed_rows() -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.drawn(|x, y| spotted(81, x, y), (0, 0), (2, 2), |_, _| Some(0)),
+        pool.drawn(|x, y| texel(82, x, y), (0, 0), (2, 2), |_, _| Some(1)),
+        pool.drawn(|x, y| spotted(83, x, y), (-1, 0), (3, 2), |_, _| Some(2)),
+    ];
+    let mut tint = [0.0; MATRIX_WORDS];
+    tint[4] = 200.0;
+    tint[9] = 60.0;
+    tint[14] = 30.0;
+    tint[18] = 0.5;
+    let words = |matrix: &Matrix| matrix_words(matrix).expect("a matrix in range");
+    Scene {
+        pool,
+        sets,
+        keys: vec![KeyChain {
+            runs: vec![key_run(KEY_RED, false, half)],
+        }],
+        matrices: vec![words(&contrast()), words(&tint)],
+        steps: vec![
+            row(0, (4, -6), WHOLE, NORMAL),
+            matrixed(row(1, (-3, 2), 50000, MULTIPLY), 0),
+            Step::Open,
+            matrixed(keyed(pose_row(2, "turn", WHOLE, SCREEN), 0), 1),
+            matrixed(pose_row(1, "shrink", 60000, NORMAL), 0),
             Step::Close {
                 opacity: 45000,
                 mode: NORMAL,
@@ -601,12 +650,13 @@ fn deep() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps,
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
     }
 }
 
-fn scenes() -> [(&'static str, Scene); 7] {
+fn scenes() -> [(&'static str, Scene); 8] {
     [
         ("rows", rows()),
         ("folders", folders()),
@@ -615,6 +665,7 @@ fn scenes() -> [(&'static str, Scene); 7] {
         ("posed", posed()),
         ("keyed", keyed_rows()),
         ("deep", deep()),
+        ("matrices", matrixed_rows()),
     ]
 }
 
@@ -694,6 +745,7 @@ fn a_row_alone_is_its_own_pixels_moved() {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![row(0, (dx, dy), WHOLE, NORMAL)],
         tiles: vec![(0, 0), (1, 0), (0, 1), (-1, -1)],
     };
@@ -721,6 +773,7 @@ fn a_row_at_no_strength_lays_nothing() {
             pool,
             sets,
             keys: Vec::new(),
+            matrices: Vec::new(),
             steps: vec![row(0, (0, 0), 0, mode)],
             tiles: vec![(0, 0)],
         };
@@ -738,6 +791,7 @@ fn a_folder_of_one_row_is_that_row() {
             pool,
             sets,
             keys: Vec::new(),
+            matrices: Vec::new(),
             steps,
             tiles: vec![(0, 0), (1, 0)],
         }
@@ -765,6 +819,7 @@ fn folders_nested_past_what_a_pass_holds_are_their_row() {
             pool,
             sets,
             keys: Vec::new(),
+            matrices: Vec::new(),
             steps,
             tiles: vec![(0, 0), (1, 0)],
         }
@@ -813,6 +868,7 @@ fn clip(base_alpha: u32, clipped: u32, mode: u32, open: Step) -> Vec<u8> {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![
             Step::Open,
             row(0, (0, 0), WHOLE, NORMAL),
@@ -898,6 +954,7 @@ fn a_posed_row_lays_what_r1_resamples() {
             pool,
             sets,
             keys: Vec::new(),
+            matrices: Vec::new(),
             steps: vec![pose_row(0, name, WHOLE, NORMAL)],
             tiles: tiles.clone(),
         };
@@ -923,6 +980,7 @@ fn a_row_binds_the_pages_its_pixels_read() {
             pool,
             sets,
             keys: Vec::new(),
+            matrices: Vec::new(),
             steps: vec![with_map(0, map, WHOLE, NORMAL)],
             tiles: vec![(0, 0)],
         }
@@ -978,10 +1036,51 @@ fn a_row_is_keyed_before_its_pose() {
             keys: vec![KeyChain {
                 runs: vec![key_run(KEY_RED, false, half)],
             }],
+            matrices: Vec::new(),
             steps: vec![keyed(with_map(0, map, WHOLE, NORMAL), 0)],
             tiles: tiles.clone(),
         };
         assert!(widest(&scene) == resampled(&map, &keyed_picture, &tiles), "{name}");
+    }
+}
+
+// A row's colour matrix runs on what R1 lays — the app's paint filter runs
+// on what is drawn (캔버스 베이스, gpu-canonical-store 11-06 07:48) —, so
+// in a pose that mixes pixels a matrix that clamps lays what it makes of
+// the mix: R1's window through the matrix, and nothing where that leaves
+// no alpha.
+#[test]
+fn a_row_s_matrix_runs_on_what_r1_lays() {
+    let picture = picture_of(|x, y| texel(57, x, y), (2 * TILE, 2 * TILE));
+    let tiles = vec![(0, 0), (1, 0), (0, 1), (1, 1)];
+    for name in ["move", "turn", "turn-pick", "shrink", "squeeze", "tilt", "blur"] {
+        let map = match name {
+            "move" => ResampleMap::moved(17, -5),
+            _ => pose(name),
+        };
+        let mut pool = Pool::default();
+        let sets = vec![pool.drawn(|x, y| texel(57, x, y), (0, 0), (2, 2), |c, r| {
+            Some((r * 2 + c) as u16)
+        })];
+        let scene = Scene {
+            pool,
+            sets,
+            keys: Vec::new(),
+            matrices: vec![matrix_words(&contrast()).expect("a matrix in range")],
+            steps: vec![matrixed(with_map(0, map, WHOLE, NORMAL), 0)],
+            tiles: tiles.clone(),
+        };
+        let side = TILE as i32;
+        let posed: Vec<u32> = tiles
+            .iter()
+            .flat_map(|&(c, r)| window(&map, &picture, (TILE, TILE), (c * side, r * side)))
+            .collect();
+        let want: Vec<u8> = each(contrast(), &posed)
+            .into_iter()
+            .map(|word| if word >> 24 == 0 { 0 } else { word })
+            .flat_map(u32::to_le_bytes)
+            .collect();
+        assert!(widest(&scene) == want, "{name}");
     }
 }
 
@@ -1005,6 +1104,7 @@ fn every_run_of_a_chain_keys_against_the_stored_alpha() {
             pool,
             sets,
             keys: vec![KeyChain { runs }],
+            matrices: Vec::new(),
             steps: vec![keyed(row(0, (0, 0), WHOLE, NORMAL), 0)],
             tiles: vec![(0, 0)],
         };
@@ -1031,6 +1131,7 @@ fn each_row_is_keyed_by_its_own_chain() {
         pool,
         sets,
         keys: vec![erase(KEY_GREEN), erase(KEY_RED)],
+        matrices: Vec::new(),
         steps: vec![
             keyed(row(0, (0, 0), WHOLE, NORMAL), 1),
             keyed(row(0, (side, 0), WHOLE, NORMAL), 0),
@@ -1054,20 +1155,23 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
         opacity: WHOLE,
         mode: NORMAL,
     };
-    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0).is_some());
-    assert!(check_depth(&[Step::Open], 1, 0).is_none());
-    assert!(check_depth(&[close], 1, 0).is_none());
-    assert!(check_depth(&[Step::CloseAtop], 1, 0).is_none());
-    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1, 0).is_none());
+    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0, 0).is_some());
+    assert!(check_depth(&[Step::Open], 1, 0, 0).is_none());
+    assert!(check_depth(&[close], 1, 0, 0).is_none());
+    assert!(check_depth(&[Step::CloseAtop], 1, 0, 0).is_none());
+    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1, 0, 0).is_none());
     let keyed_by_the_second = keyed(row(0, (0, 0), WHOLE, NORMAL), 1);
-    assert!(check_depth(&[keyed_by_the_second], 1, 2).is_some());
-    assert!(check_depth(&[keyed_by_the_second], 1, 1).is_none());
+    assert!(check_depth(&[keyed_by_the_second], 1, 2, 0).is_some());
+    assert!(check_depth(&[keyed_by_the_second], 1, 1, 0).is_none());
+    let through_the_second = matrixed(row(0, (0, 0), WHOLE, NORMAL), 1);
+    assert!(check_depth(&[through_the_second], 1, 0, 2).is_some());
+    assert!(check_depth(&[through_the_second], 1, 0, 1).is_none());
     // Past what a pass holds is a plan like any other: it is cut there.
     let deeper: Vec<Step> = (0..DEPTH)
         .map(|_| Step::OpenOpaque)
         .chain((0..DEPTH).map(|_| close))
         .collect();
-    assert!(check_depth(&deeper, 0, 0).is_some());
+    assert!(check_depth(&deeper, 0, 0, 0).is_some());
 }
 
 // Pages 0, 1 | 2, 0 | 3 at two a pass: a pass ends where a third page would
@@ -1211,6 +1315,7 @@ fn a_pass_holds_two_levels_to_depth() {
         pages: &pages,
         sets: &sets,
         keys: &[],
+        matrices: &[],
         steps: &steps,
         mask: None,
     };
@@ -1244,6 +1349,7 @@ fn canvas_scene() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![row(0, (0, 0), WHOLE, NORMAL), row(1, (-30, 20), 40000, MULTIPLY)],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
     }
@@ -1354,6 +1460,7 @@ fn shown_on(
         pages: std::slice::from_ref(page),
         sets: &sets,
         keys: &[],
+        matrices: &[],
         steps: &steps,
         mask: None,
     };
@@ -1490,6 +1597,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![row(0, (0, 0), WHOLE, NORMAL)],
         tiles: vec![(0, 0)],
     };
@@ -1509,6 +1617,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
         pages: std::slice::from_ref(&canvas.out),
         sets: &sets,
         keys: &[],
+        matrices: &[],
         steps: &steps,
         mask: None,
     };
@@ -1539,6 +1648,7 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
         pages: std::slice::from_ref(&page),
         sets: &sets,
         keys: &[],
+        matrices: &[],
         steps: &steps,
         mask: None,
     };
@@ -1699,6 +1809,7 @@ fn a_row_laid_a_group_at_a_time_composites_as_in_one() {
             pool,
             sets,
             keys: Vec::new(),
+            matrices: Vec::new(),
             steps,
             tiles: STRIP.to_vec(),
         }
@@ -1734,6 +1845,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
         pages: &pages,
         sets: &sets,
         keys: &[],
+        matrices: &[],
         steps: &steps,
         mask: None,
     };
@@ -1785,6 +1897,7 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
             pages: &pages,
             sets: &sets,
             keys: &[],
+            matrices: &[],
             steps,
             mask: None,
         };
@@ -1807,26 +1920,12 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
 // ---- Under a selection (R28) ----
 
 /// `row` laid under the plan's mask.
-fn masked_row(row: Step) -> Step {
-    let Step::Row {
-        set,
-        keys,
-        map,
-        opacity,
-        mode,
-        ..
-    } = row
-    else {
+fn masked_row(mut row: Step) -> Step {
+    let Step::Row { masked, .. } = &mut row else {
         unreachable!("only a row is masked");
     };
-    Step::Row {
-        set,
-        keys,
-        map,
-        opacity,
-        mode,
-        masked: true,
-    }
+    *masked = true;
+    row
 }
 
 /// Composites `scene` under `mask` within `budget`: the output's bytes, or
@@ -1857,6 +1956,7 @@ fn red_over_blue() -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: vec![row(0, (0, 0), WHOLE, NORMAL), masked_row(row(1, (0, 0), WHOLE, NORMAL))],
         tiles: vec![(0, 0)],
     }
@@ -1925,6 +2025,7 @@ fn three_rows(top: Option<Step>) -> Scene {
         pool,
         sets,
         keys: Vec::new(),
+        matrices: Vec::new(),
         steps: [Some(row(0, (0, 0), WHOLE, NORMAL)), top].into_iter().flatten().collect(),
         tiles: vec![(1, 2), (-1, 0), (0, 2), (0, 0), (1, 1), (-1, 2)],
     }

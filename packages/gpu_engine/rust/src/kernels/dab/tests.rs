@@ -899,10 +899,17 @@ fn a_stroke_lands_on_its_cel_as_a_row() {
     let lands = |mode, opacity| {
         let map = ResampleMap::moved(0, 0);
         let row = |set, mode, opacity| {
-            Step::Row { set, keys: None, map, opacity, mode, masked: false }
+            Step::Row { set, keys: None, map, matrix: None, opacity, mode, masked: false }
         };
         let steps = [row(0, NORMAL, ONE), row(1, mode, opacity)];
-        let plan = Plan { pages: &pages, sets: &sets, keys: &[], steps: &steps, mask: None };
+        let plan = Plan {
+            pages: &pages,
+            sets: &sets,
+            keys: &[],
+            matrices: &[],
+            steps: &steps,
+            mask: None,
+        };
         let done = composite.run(engine, &plan, &[(0, 0)], [0, 0, 128, 128], composite.widest());
         let bytes = read_buffer(engine, &done.expect("composite").out);
         [1, 5].map(|at| bytes[(at * 128 + at) * 4..][..4].to_vec())

@@ -16,15 +16,17 @@
 //
 // Needs shared/isqrt.wgsl, blend/blend.wgsl, shared/wide.wgsl,
 // shared/resample.wgsl, shared/tile.wgsl, effects/key.wgsl,
-// shared/premultiply.wgsl and mask/byte.wgsl before it; defines byte.wgsl's
-// `mask_word`.
+// effects/matrix.wgsl, shared/premultiply.wgsl and mask/byte.wgsl before
+// it; defines byte.wgsl's `mask_word`.
 
 const NO_TILE: u32 = 0xffffffffu;
 // The stack levels a pass holds: as many as its plan's passes reach
 // (mod.rs `Compiled`), as a pass pays for the levels compiled into it
 // whether it reaches them or not.
 const DEPTH: u32 = __DEPTH__u;
-const STEP_WORDS: u32 = 13u;
+const STEP_WORDS: u32 = 14u;
+// A row's matrix place where it runs none (mod.rs's NO_MATRIX).
+const NO_MATRIX: u32 = 0xffffffffu;
 
 const STEP_ROW: u32 = 0u;
 const STEP_OPEN: u32 = 1u;
@@ -65,7 +67,8 @@ struct Pass {
 }
 
 @group(0) @binding(0) var<uniform> pass_: Pass;
-// Steps (STEP_WORDS each), then the rows' tile maps, their key chains,
+// Steps (STEP_WORDS each), then the rows' tile maps, their key chains and
+// colour matrices,
 // their R1 maps, each pass's table of pages, and the output tiles.
 @group(0) @binding(1) var<storage, read> plan: array<u32>;
 // The stack between passes, two words a level, then the output tiles,
@@ -81,6 +84,11 @@ fn mask_word(at: u32) -> u32 {
 
 // key.wgsl's host: a chain's runs are in the plan.
 fn key_word(at: u32) -> u32 {
+  return plan[at];
+}
+
+// matrix.wgsl's host: a row's matrix is in the plan.
+fn matrix_word(at: u32) -> u32 {
   return plan[at];
 }
 
@@ -102,8 +110,8 @@ fn row_keyed(at: u32, word: u32) -> u32 {
 //
 // A step: kind, mode, opacity, the first and last page it lays tiles from,
 // map_at, the map's first tile column and row, its columns and rows, where
-// its R1 map is, where its key chain's list is, and whether the plan's
-// mask covers it.
+// its R1 map is, where its key chain's list is, whether the plan's mask
+// covers it, and where its colour matrix is.
 fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   let column = (x >> 7u) - bitcast<i32>(plan[at + 6u]);
   let row = (y >> 7u) - bitcast<i32>(plan[at + 7u]);
@@ -124,7 +132,10 @@ fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
 
 // What the row of step `at` shows at canvas pixel (x, y), straight on the
 // 16-bit scale. ⭐THE ONE PLACE A ROW IS SAMPLED: R1 (gpu-int-spec-canvas)
-// for every pose, a whole-pixel move being its copy.
+// for every pose, a whole-pixel move being its copy — then the row's
+// colour matrix, where it runs one, on what R1 lays: the app folds a
+// row's colour effects into its paint's filter, which runs on what is
+// drawn (resolveCompositeEffectPaint; 캔버스 베이스 11-06 07:48).
 fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
   let m = plan[at + 10u];
   let map = resample_map(array<u32, 15>(
@@ -132,7 +143,12 @@ fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
     plan[m + 7u], plan[m + 8u], plan[m + 9u], plan[m + 10u], plan[m + 11u], plan[m + 12u],
     plan[m + 13u], plan[m + 14u],
   ));
-  return blend_unpack8(resample(map, at, x, y));
+  var word = resample(map, at, x, y);
+  let matrix = plan[at + 13u];
+  if (matrix != NO_MATRIX) {
+    word = matrix_rgba8(matrix, word);
+  }
+  return blend_unpack8(word);
 }
 
 // The coverage the row of step `at` is laid by at canvas pixel (x, y): the
