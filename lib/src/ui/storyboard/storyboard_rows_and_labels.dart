@@ -85,11 +85,15 @@ class _StoryboardRowsAndLabels {
         : displayEffects.indexOf(parsed.effectId);
     final extent = _laneExtentOf(chain.rowId, at.lane);
     final address = LaneRowAddress(chain.rowId, at.lane.laneId);
+    // The row is a still region of its own, inside its target, as the
+    // timeline's rail rows are ([layerRowDragWrapper]): the caret a target
+    // draws hangs across the row's boundary.
+    final content = stillRow(row);
     if (hooks == null || chainId == null || slot < 0) {
       return selectOnly(
         LaneRowSubject(chain.rowId, at.lane.laneId),
         extent,
-        row,
+        content,
       );
     }
     return LayerRowDragTarget(
@@ -120,7 +124,7 @@ class _StoryboardRowsAndLabels {
       // the row the rail draws, which a projection row's chain is not.
       onSelectCrossed: _spanOnSelect(),
       selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(address),
-      child: row,
+      child: content,
     );
   }
 
@@ -204,10 +208,12 @@ class _StoryboardRowsAndLabels {
     Widget Function(Widget label) wrap,
   ) {
     final piece = label.piece;
+    // The row is a still region of its own, inside the wrapper [wrap] puts
+    // on it, as the timeline's rail rows are ([layerRowDragWrapper]).
     final row = _kept.keep(
       key,
       (inputs, piece.runtimeType, piece.facts),
-      () => wrap(piece),
+      () => wrap(stillRow(piece)),
     );
     return switch (label.wears) {
       final wears? => _wearing(wears, row),

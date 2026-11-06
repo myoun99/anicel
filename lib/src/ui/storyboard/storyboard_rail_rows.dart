@@ -2972,56 +2972,61 @@ class _StoryboardRailRows {
     _WindowedRows rows,
   ) {
     final entries = strip.entries;
+    // Each row a still region of its own, as the timeline's cells rows are
+    // ([stillRow]): the strips hang nothing across a row's boundary.
     return rows.lay([
-      // The CAMERA row heads the group (I-73 ④) — a row of the CUTS, so it
-      // is built on them as this step lays them, like the V row below.
-      if (_showsCameraRow(track))
-        () => [_cameraStripRow(track, strip, width, scale)],
-      // Prebuilt from the RAW project outside the drag-preview builder
-      // (R10-③): identical instances per step = subtree rebuilds skipped.
-      // The transition row and the S rows are both track-global, so both
-      // qualify — a cut trim cannot change either.
-      for (final unit in trackGlobalRows) () => unit,
-      // The filter hides the V row as the rail does — the strip and its
-      // lanes with it, or every row under it parts from its label.
-      if (_filterAllowsTrackRow(track))
-        () => [
-          _StoryboardTrackRow(
-            trackId: track.id,
-            layoutEntries: entries,
-            onRowFramePress: _state.widget.onRowFramePress,
-            onDropMediaAsset: _state.widget.onDropMediaAsset,
-            acceptsMediaAsset: _state.widget.acceptsMediaAsset,
-            laneHeight: _in.trackLaneHeight,
-            width: width,
-            stripEdges: _state.widget.stripEdges,
-            cutMove: _state.widget.cutMove,
-            cutSelect: _state.widget.cutSelect,
-            thumbnails: _state.widget.thumbnails,
-            timelineScale: scale,
-            frameGeometry: _state._frameGeometry,
-            hoveredCutId: _state._hoveredCutId,
-            standingCutId: _state._standing.standingCutOn(track),
-            windowBucket: _state._horizontalWindowBucket,
-            railSweepAt: _railSweepOn(track.id),
-            showSeconds: _state.widget.showSeconds,
-            projectFrameRate: _state.widget.projectFrameRate,
-            linkedCutIds: _state.widget.linkedCutIds,
-            syncedCutIds: _state.widget.syncedCutIds,
-            onOpenCutLinks: _state.widget.onOpenCutLinks,
-            onEditCutBlock: _state.widget.onEditCutBlock,
-          ),
-          if (track.lanesExpanded)
-            for (final strip in _trackTransformLaneStrips(
-              track,
-              index,
-              entries,
-              width,
-              scale,
-            ))
-              strip,
-        ],
-      ..._conteStripRows(track, strip, width, scale),
+      for (final laid in <_RowUnit>[
+        // The CAMERA row heads the group (I-73 ④) — a row of the CUTS, so
+        // it is built on them as this step lays them, like the V row below.
+        if (_showsCameraRow(track))
+          () => [_cameraStripRow(track, strip, width, scale)],
+        // Prebuilt from the RAW project outside the drag-preview builder
+        // (R10-③): identical instances per step = subtree rebuilds skipped.
+        // The transition row and the S rows are both track-global, so both
+        // qualify — a cut trim cannot change either.
+        for (final unit in trackGlobalRows) () => unit,
+        // The filter hides the V row as the rail does — the strip and its
+        // lanes with it, or every row under it parts from its label.
+        if (_filterAllowsTrackRow(track))
+          () => [
+            _StoryboardTrackRow(
+              trackId: track.id,
+              layoutEntries: entries,
+              onRowFramePress: _state.widget.onRowFramePress,
+              onDropMediaAsset: _state.widget.onDropMediaAsset,
+              acceptsMediaAsset: _state.widget.acceptsMediaAsset,
+              laneHeight: _in.trackLaneHeight,
+              width: width,
+              stripEdges: _state.widget.stripEdges,
+              cutMove: _state.widget.cutMove,
+              cutSelect: _state.widget.cutSelect,
+              thumbnails: _state.widget.thumbnails,
+              timelineScale: scale,
+              frameGeometry: _state._frameGeometry,
+              hoveredCutId: _state._hoveredCutId,
+              standingCutId: _state._standing.standingCutOn(track),
+              windowBucket: _state._horizontalWindowBucket,
+              railSweepAt: _railSweepOn(track.id),
+              showSeconds: _state.widget.showSeconds,
+              projectFrameRate: _state.widget.projectFrameRate,
+              linkedCutIds: _state.widget.linkedCutIds,
+              syncedCutIds: _state.widget.syncedCutIds,
+              onOpenCutLinks: _state.widget.onOpenCutLinks,
+              onEditCutBlock: _state.widget.onEditCutBlock,
+            ),
+            if (track.lanesExpanded)
+              for (final strip in _trackTransformLaneStrips(
+                track,
+                index,
+                entries,
+                width,
+                scale,
+              ))
+                strip,
+          ],
+        ..._conteStripRows(track, strip, width, scale),
+      ])
+        () => [for (final row in laid()) stillRow(row)],
     ]);
   }
 

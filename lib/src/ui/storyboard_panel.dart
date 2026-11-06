@@ -114,6 +114,7 @@ import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_edges.dart';
 import 'timeline/timeline_visible_range.dart';
 import 'timeline/held_row_pin.dart';
+import 'timeline/still_row.dart';
 import 'timeline/window_move_keep.dart';
 import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
