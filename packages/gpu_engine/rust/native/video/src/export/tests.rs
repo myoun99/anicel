@@ -153,49 +153,126 @@ fn temp(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("video-export-{}-{name}.mp4", std::process::id()))
 }
 
-/// `movie` with the clock taken out: the creation and modification times
-/// the muxer stamps into each `mvhd`, `tkhd` and `mdhd` — the seconds the
-/// file was finished in, which two writers a second apart never share. How
-/// many it found comes back too, so a mask that found none says so.
-fn without_the_clock(mut movie: Vec<u8>) -> (Vec<u8>, usize) {
-    let mut stamped = 0;
-    let mut boxes = vec![(0, movie.len())];
-    while let Some((mut at, end)) = boxes.pop() {
-        while at + 8 <= end {
-            let size = u32::from_be_bytes(movie[at..at + 4].try_into().unwrap()) as usize;
-            if size < 8 || at + size > end {
-                break;
-            }
-            match &movie[at + 4..at + 8] {
-                b"moov" | b"trak" | b"mdia" => boxes.push((at + 8, at + size)),
-                b"mvhd" | b"tkhd" | b"mdhd" => {
-                    // Version 0 keeps the two times in 32 bits, 1 in 64.
-                    let times = if movie[at + 8] == 1 { 16 } else { 8 };
-                    movie[at + 12..at + 12 + times].fill(0);
-                    stamped += 1;
-                }
-                _ => {}
-            }
-            at += size;
-        }
-    }
-    (movie, stamped)
+fn be32(movie: &[u8], at: usize) -> usize {
+    u32::from_be_bytes(movie[at..at + 4].try_into().unwrap()) as usize
 }
 
-/// The C's movie and the Rust's of `shape`, the same but for the clock.
+/// The boxes directly in `movie[start..end]`: each one's type and span.
+fn children(movie: &[u8], start: usize, end: usize) -> Vec<([u8; 4], usize, usize)> {
+    let mut boxes = Vec::new();
+    let mut at = start;
+    while at + 8 <= end {
+        let size = be32(movie, at);
+        assert!(size >= 8 && at + size <= end, "a box at {at} runs past its parent");
+        boxes.push((movie[at + 4..at + 8].try_into().unwrap(), at, at + size));
+        at += size;
+    }
+    boxes
+}
+
+/// The span of the box `path` leads to under `movie[start..end]`.
+fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Option<(usize, usize)> {
+    let (first, rest) = path.split_first()?;
+    let (_, at, until) = children(movie, start, end).into_iter().find(|(kind, ..)| kind == *first)?;
+    if rest.is_empty() { Some((at, until)) } else { find(movie, at + 8, until, rest) }
+}
+
+/// A track's samples in order: its sample sizes, laid along its chunks.
+fn samples(movie: &[u8], start: usize, end: usize) -> Vec<u8> {
+    let (table, table_end) = find(movie, start, end, &[b"mdia", b"minf", b"stbl"]).expect("a sample table");
+    let at = |kind: &[u8; 4]| find(movie, table + 8, table_end, &[kind]).map(|(at, _)| at);
+    let sizes_at = at(b"stsz").expect("sample sizes");
+    let uniform = be32(movie, sizes_at + 12);
+    let sizes: Vec<usize> =
+        (0..be32(movie, sizes_at + 16)).map(|k| if uniform != 0 { uniform } else { be32(movie, sizes_at + 20 + 4 * k) }).collect();
+    let chunks_at = at(b"stco").expect("32-bit chunk offsets");
+    let runs_at = at(b"stsc").expect("samples per chunk");
+    let runs: Vec<(usize, usize)> =
+        (0..be32(movie, runs_at + 12)).map(|k| (be32(movie, runs_at + 16 + 12 * k), be32(movie, runs_at + 20 + 12 * k))).collect();
+    let mut bytes = Vec::new();
+    let mut sample = 0;
+    for chunk in 0..be32(movie, chunks_at + 12) {
+        let per_chunk = runs.iter().take_while(|(first, _)| *first <= chunk + 1).last().expect("a run from chunk 1").1;
+        let mut at = be32(movie, chunks_at + 16 + 4 * chunk);
+        for size in &sizes[sample..sample + per_chunk] {
+            bytes.extend_from_slice(&movie[at..at + size]);
+            at += size;
+        }
+        sample += per_chunk;
+    }
+    assert_eq!(sample, sizes.len(), "every sample lies in a chunk");
+    bytes
+}
+
+/// A movie as its writer decides it: every box but the media data and the
+/// chunk tables, the clock taken out, and each track's samples in order.
+///
+/// The clock is the creation and modification times the muxer stamps into
+/// each `mvhd`, `tkhd` and `mdhd` — the seconds the file was finished in,
+/// which two writers a second apart never share. How the samples are cut
+/// into chunks is the muxer's too: the C's own fixture movie comes out of
+/// it two ways (2026-11-06, 30 runs: its 47 sound samples chunked
+/// 15/15/17 in half of them, 15/16/16 in the other half, every sample the
+/// same) — the cut follows when the sound encoder's output reaches it.
+struct Movie {
+    boxes: Vec<([u8; 4], Vec<u8>)>,
+    tracks: Vec<Vec<u8>>,
+    /// The boxes the clock was taken out of, so a mask that found none
+    /// says so.
+    stamped: usize,
+}
+
+fn read_into(movie: &[u8], start: usize, end: usize, into: &mut Movie) {
+    for (kind, at, until) in children(movie, start, end) {
+        match &kind {
+            b"moov" | b"mdia" | b"minf" | b"stbl" => read_into(movie, at + 8, until, into),
+            b"trak" => {
+                read_into(movie, at + 8, until, into);
+                into.tracks.push(samples(movie, at + 8, until));
+            }
+            b"mdat" | b"stco" | b"stsc" => {}
+            b"mvhd" | b"tkhd" | b"mdhd" => {
+                let mut body = movie[at..until].to_vec();
+                // Version 0 keeps the two times in 32 bits, 1 in 64.
+                let times = if body[8] == 1 { 16 } else { 8 };
+                body[12..12 + times].fill(0);
+                into.stamped += 1;
+                into.boxes.push((kind, body));
+            }
+            _ => into.boxes.push((kind, movie[at..until].to_vec())),
+        }
+    }
+}
+
+fn read_movie(movie: &[u8]) -> Movie {
+    let mut read = Movie { boxes: Vec::new(), tracks: Vec::new(), stamped: 0 };
+    read_into(movie, 0, movie.len(), &mut read);
+    read
+}
+
+/// The C's movie and the Rust's of `shape`: the same boxes and the same
+/// samples, byte for byte.
 fn same_movie(name: &str, shape: Shape, frames: i32) {
     let (c, rust) = (c(), rust());
-    let (theirs, stamped) = without_the_clock(c.movie(&temp(&format!("{name}-c")), shape, frames));
-    let (ours, _) = without_the_clock(rust.movie(&temp(&format!("{name}-rust")), shape, frames));
+    let theirs = read_movie(&c.movie(&temp(&format!("{name}-c")), shape, frames));
+    let ours = read_movie(&rust.movie(&temp(&format!("{name}-rust")), shape, frames));
     let tracks = if shape.channels > 0 { 2 } else { 1 };
-    assert_eq!(stamped, 1 + 2 * tracks, "{name}: the clock is where the mask looks");
-    let first = theirs.iter().zip(&ours).position(|(a, b)| a != b);
-    assert!(
-        ours.len() == theirs.len() && first.is_none(),
-        "{name}: {} bytes against the C's {}, first apart at {first:?}",
-        ours.len(),
-        theirs.len()
-    );
+    assert_eq!(theirs.stamped, 1 + 2 * tracks, "{name}: the clock is where the mask looks");
+    assert_eq!(theirs.tracks.len(), tracks, "{name}: every track's samples are read");
+    let kinds = |movie: &Movie| movie.boxes.iter().map(|(kind, _)| String::from_utf8_lossy(kind).into_owned()).collect::<Vec<_>>();
+    assert_eq!(kinds(&ours), kinds(&theirs), "{name}: the boxes");
+    for ((kind, ours), (_, theirs)) in ours.boxes.iter().zip(&theirs.boxes) {
+        assert!(ours == theirs, "{name}: the {} box", String::from_utf8_lossy(kind));
+    }
+    for (k, (ours, theirs)) in ours.tracks.iter().zip(&theirs.tracks).enumerate() {
+        let first = ours.iter().zip(theirs).position(|(a, b)| a != b);
+        assert!(
+            ours.len() == theirs.len() && first.is_none(),
+            "{name}: track {k}'s samples, {} bytes against the C's {}, first apart at {first:?}",
+            ours.len(),
+            theirs.len()
+        );
+    }
 }
 
 // The fixtures' movie, which the hardware law keeps in software; an odd,
@@ -204,9 +281,9 @@ fn same_movie(name: &str, shape: Shape, frames: i32) {
 // (on the Intel machine the law was measured on, asking there fails at
 // Finalize); an exact NTSC fraction with mono sound at another rate and a
 // bitrate named; one named past the ceiling; a Korean name. Each byte for
-// byte with the C's.
+// byte with the C's, but for the clock and the chunking (`Movie`).
 #[test]
-fn the_movie_is_the_c_s_but_for_its_clock() {
+fn the_movie_is_the_c_s_but_for_its_clock_and_chunking() {
     let _one = one_at_a_time();
     // SAFETY: no arguments.
     if unsafe { (c().supported)() } == 0 {
