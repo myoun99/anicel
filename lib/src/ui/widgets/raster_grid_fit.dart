@@ -157,18 +157,18 @@ class RasterGridFit {
   /// is a sum of its ancestors' offsets times the ratio, rounded on the
   /// grid of the largest number it passed through. 🔬A conte row at 150%
   /// scrolled sideways by whole device pixels read 0 at device 1042 and
-  /// 7.6e-14 at 1021, a pixel's width across 1024 — one image dropped and
-  /// the row drawn live; and a sum that lands an ulp short of a whole pixel
-  /// floors to the one before it, a phase of a whole pixel less an ulp.
+  /// 7.6e-14 at 1021, either side of 1024 — its image dropped and the row
+  /// drawn live; and a sum that lands an ulp short of a whole pixel floors
+  /// to the one before it, a phase of a whole pixel less an ulp.
   ///
   /// ⛔Not `DeviceGrid`'s relative slack: that floors a POSITION something
-  /// is laid out at, where any overshoot shows. A phase is in [0, 1), and
-  /// what is in its last bits is the coordinate's rounding — a few ulps of
-  /// it, under 2e-9 of a pixel at a million pixels — so a fixed step far
-  /// above that and far below a visible edge serves every coordinate: an
-  /// edge moved by 1/65536 of a pixel changes its coverage by less than a
-  /// 255th of a level. A phase that rounds up to the next pixel is that
-  /// pixel's zero.
+  /// is laid out at, where any overshoot shows. A phase lies between 0 and
+  /// 1, and what is in its last bits is the coordinate's rounding — a few
+  /// ulps of it, under 2e-9 of a pixel at a million pixels — so a fixed
+  /// step far above that and far below a visible edge serves every
+  /// coordinate: an edge moved by 1/65536 of a pixel changes its coverage
+  /// by less than a 255th of a level. A phase that rounds up to the next
+  /// pixel is that pixel's zero.
   static double _phaseOf(double device) {
     final steps = ((device - device.floorToDouble()) / _phaseStep)
         .roundToDouble();

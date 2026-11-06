@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 
@@ -1071,63 +1072,74 @@ void main() {
       });
     }
 
-    testWidgets('scrolled by whole device pixels keeps its image wherever '
-        'the sum that places it rounds', (tester) async {
-      // 🔬11-07, a conte row at 150% scrolled sideways 14 px a frame: its
-      // device x crossed 1024, the sum that placed it rounded on a coarser
-      // grid, and the same pixels read a phase of 7.6e-14 against the 0
-      // its image was taken on — the image dropped, the row drawn live.
-      tester.view.devicePixelRatio = 1.5;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final scroll = ScrollController();
-      addTearDown(scroll.dispose);
-      await tester.pumpWidget(
-        Directionality(
-          textDirection: TextDirection.ltr,
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: 1200,
-              height: _height,
-              child: SingleChildScrollView(
-                controller: scroll,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: 3000,
-                  height: _height,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: 1400 + 2 / 3,
-                        top: 0,
-                        width: _width,
-                        height: _height,
-                        child: StillRaster(debugLabel: 'test', child: _box()),
-                      ),
-                    ],
+    for (final axis in Axis.values) {
+      testWidgets('scrolled ${axis.name} by whole device pixels keeps its '
+          'image wherever the sum that places it rounds', (tester) async {
+        // 🔬11-07, a conte row at 150% scrolled sideways 14 px a frame: its
+        // device x crossed 1024, the sum that placed it rounded on a
+        // coarser grid, and the same pixels read a phase of 7.6e-14
+        // against the 0 its image was taken on — the image dropped, the
+        // row drawn live.
+        tester.view.devicePixelRatio = 1.5;
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final scroll = ScrollController();
+        addTearDown(scroll.dispose);
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: sizedAlong(
+                axis,
+                along: 1200,
+                across: _height,
+                child: SingleChildScrollView(
+                  controller: scroll,
+                  scrollDirection: axis,
+                  child: sizedAlong(
+                    axis,
+                    along: 3000,
+                    across: _height,
+                    child: Stack(
+                      children: [
+                        placedAlong(
+                          axis,
+                          along: 1400 + 2 / 3,
+                          across: 0,
+                          alongExtent: _height,
+                          acrossExtent: _height,
+                          child: StillRaster(
+                            debugLabel: 'test',
+                            child: _box(),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      final region = _region(tester);
-      final moved = <String>[];
-      // Two logical pixels are three device pixels: every step lands on
-      // the pixels it left, the region's device x passing 1024 on the way.
-      for (var offset = 700.0; offset <= 760; offset += 2) {
-        scroll.jumpTo(offset);
-        await _untilImage(tester);
-        final taken = region.debugCaptureCount;
-        scroll.jumpTo(offset + 2);
-        await _frame(tester);
-        if (!region.debugDrawnFromImage || region.debugCaptureCount != taken) {
-          moved.add('$offset → ${offset + 2}');
+        );
+        final region = _region(tester);
+        final moved = <String>[];
+        // Two logical pixels are three device pixels: every step lands on
+        // the pixels it left, the region's device corner passing 1024 on
+        // the way.
+        for (var offset = 700.0; offset <= 760; offset += 2) {
+          scroll.jumpTo(offset);
+          await _untilImage(tester);
+          final taken = region.debugCaptureCount;
+          scroll.jumpTo(offset + 2);
+          await _frame(tester);
+          if (!region.debugDrawnFromImage ||
+              region.debugCaptureCount != taken) {
+            moved.add('$offset → ${offset + 2}');
+          }
         }
-      }
-      expect(moved, isEmpty, reason: 'dropped its image scrolled');
-    });
+        expect(moved, isEmpty, reason: 'dropped its image scrolled');
+      });
+    }
 
     testWidgets('on whole device pixels reads no phase where its sum lands '
         'an ulp short of one', (tester) async {
