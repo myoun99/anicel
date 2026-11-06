@@ -786,6 +786,8 @@ fn a_row_alone_is_its_own_pixels_moved() {
 const PAPER: u32 = 0x80_30_c0_f0;
 /// Where it lies — its edges on no tile's.
 const PAPER_RECT: [i32; 4] = [-30, 20, 200, 140];
+/// A camera render's ground, opaque.
+const GROUND: u32 = 0xff_10_60_a0;
 
 fn on_the_paper(x: i32, y: i32) -> bool {
     let [left, top, right, bottom] = PAPER_RECT;
@@ -816,9 +818,9 @@ fn a_solid_over_nothing_is_its_colour_on_its_rect() {
     }
 }
 
-/// `paper` under a multiply row and a folder of a screen row closed in
-/// multiply at a strength — the paper a solid, or the row of its colour
-/// that set 0 holds, on two pages.
+/// `paper` over a camera render's ground and under a multiply row and a
+/// folder of a screen row closed in multiply at a strength — the paper a
+/// solid, or the row of its colour that set 0 holds, on two pages.
 fn papered(paper: Step) -> Scene {
     let mut pool = Pool::default();
     let sets = vec![
@@ -837,6 +839,10 @@ fn papered(paper: Step) -> Scene {
         keys: Vec::new(),
         matrices: Vec::new(),
         steps: vec![
+            Step::Solid {
+                colour: GROUND,
+                rect: [-128, 0, 256, 256],
+            },
             paper,
             row(1, (3, -5), 50000, MULTIPLY),
             Step::Open,
