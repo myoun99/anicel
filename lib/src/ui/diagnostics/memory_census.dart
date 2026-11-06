@@ -12,6 +12,7 @@ import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/iris_blur_shader.dart';
 import '../editor_session_manager.dart';
+import '../text/canvas_letter_plate.dart' as letter_plates;
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
 import '../widgets/static_raster.dart';
@@ -340,10 +341,14 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // as engine overhead until 2026-10-17 (card
     // census-misses-bake-once-images): no field of theirs had the shape the
     // census ratchet looked for.
+    // And the plates of the letters a picture holds — a cel number's, a
+    // name tag's — rastered once and drawn from after (card
+    // cel-number-letters-drawn-as-vectors, 2026-11-07).
     if (textures)
       MemoryCensusItem(
         id: 'textImages',
-        bytes: BakedWords.instance.imageBytes,
+        bytes:
+            BakedWords.instance.imageBytes + letter_plates.letterPlateBytes,
       ),
     if (textures)
       MemoryCensusItem(

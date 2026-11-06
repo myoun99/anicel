@@ -101,31 +101,45 @@ void main() {
     );
   });
 
-  testWidgets('a cel number draws, at every paint, the letters it laid out '
+  testWidgets('a cel number draws, at every paint, the plate it made '
       'once', (tester) async {
-    List<ui.Paragraph> paint(CelNumberLetters letters) =>
-        _drawnBy((canvas) => paintCelNumber(canvas, letters));
+    final first = celNumberPlate(_letters('C4'))!;
 
-    final first = paint(_letters('C4'));
-
-    expect(first, isNotEmpty, reason: 'LIVENESS: the letters painted');
-    final again = paint(
-      _letters('C4', center: CanvasPoint(x: 10, y: 90)),
+    expect(
+      celNumberPlate(_letters('C4'))!.image,
+      same(first.image),
+      reason: '🚨a second paint rastered the same letters again',
     );
-    expect(again, hasLength(first.length));
-    for (var i = 0; i < first.length; i += 1) {
-      expect(
-        identical(again[i], first[i]),
-        isTrue,
-        reason: '🚨a second paint laid pass $i out again',
-      );
-    }
+    expect(
+      celNumberPlate(_letters('C4', center: CanvasPoint(x: 10, y: 90)))!
+          .worldRect,
+      isNot(first.worldRect),
+      reason: '⛔전제: letters standing elsewhere are a plate of their own',
+    );
+  });
+
+  testWidgets('a font registered since makes the plate again', (tester) async {
+    final before = celNumberPlate(_letters('D5'))!.image;
+
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      SystemChannels.system.name,
+      SystemChannels.system.codec.encodeMessage(<String, Object?>{
+        'type': 'fontsChange',
+      }),
+      (_) {},
+    );
+
+    expect(
+      celNumberPlate(_letters('D5'))!.image,
+      isNot(same(before)),
+      reason: '🚨a plate rastered before the fonts changed outlived them',
+    );
   });
 
   testWidgets('letters pushed out by as many others as are kept are let go '
       'of', (tester) async {
     final drawn = _drawnBy(
-      (canvas) => paintCelNumber(canvas, _letters('pushed out')),
+      (canvas) => celNumberLayoutOf(_letters('pushed out')).paint(canvas),
     );
     expect(drawn, isNotEmpty, reason: 'LIVENESS: the letters painted');
     expect(drawn.first.debugDisposed, isFalse, reason: 'held');

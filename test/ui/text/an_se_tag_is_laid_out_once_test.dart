@@ -18,14 +18,27 @@ import '../../helpers/dart_sources.dart';
 /// goes, and let them go, though the tag had not changed
 /// (`textCelLaidOut`).
 ///
-/// The oracle is the paragraph a paint DRAWS: blocks laid out once are the
-/// same paragraph at every paint, and still alive to be drawn.
-class _Paragraphs implements ui.Canvas {
-  final drawn = <ui.Paragraph>[];
+/// The oracle is the picture a paint DRAWS: the tag's blocks are one plate
+/// (`keptLetterPlate`, card cel-number-letters-drawn-as-vectors), keyed by
+/// the blocks laid out — so blocks laid out once are the same plate at every
+/// paint, and still alive to be drawn.
+class _Images implements ui.Canvas {
+  final drawn = <ui.Image>[];
 
   @override
-  void drawParagraph(ui.Paragraph paragraph, ui.Offset offset) =>
-      drawn.add(paragraph);
+  void drawImageRect(
+    ui.Image image,
+    ui.Rect src,
+    ui.Rect dst,
+    ui.Paint paint,
+  ) => drawn.add(image);
+
+  @override
+  void drawImage(ui.Image image, ui.Offset offset, ui.Paint paint) =>
+      drawn.add(image);
+
+  @override
+  ui.Rect getLocalClipBounds() => ui.Rect.largest;
 
   @override
   int getSaveCount() => 1;
@@ -52,8 +65,8 @@ ResolvedSeNameTag _tag(String name) => ResolvedSeNameTag(
   delivery: const TextCelContent(text: 'OFF', style: SeNameTag.defaultStyle),
 );
 
-List<ui.Paragraph> _painted(ResolvedSeNameTag tag) {
-  final canvas = _Paragraphs();
+List<ui.Image> _painted(ResolvedSeNameTag tag) {
+  final canvas = _Images();
   paintSeNameTags(canvas, tags: [tag], canvasSize: _canvas, rasterScale: 1);
   return canvas.drawn;
 }
@@ -62,22 +75,19 @@ void main() {
   testWidgets('a tag painted again draws the blocks it laid out, still '
       'held', (tester) async {
     final first = _painted(_tag('タモツ'));
-    expect(first, isNotEmpty, reason: 'LIVENESS: the tag painted');
+    expect(first, hasLength(1), reason: 'LIVENESS: the tag painted, whole');
 
     final again = _painted(_tag('タモツ'));
-    expect(again, hasLength(first.length));
-    for (var i = 0; i < first.length; i += 1) {
-      expect(
-        identical(again[i], first[i]),
-        isTrue,
-        reason: '🚨a second paint laid paragraph $i out again',
-      );
-      expect(
-        again[i].debugDisposed,
-        isFalse,
-        reason: '🚨a kept block was let go of by the paint that drew it',
-      );
-    }
+    expect(
+      identical(again.single, first.single),
+      isTrue,
+      reason: '🚨a second paint laid the blocks out, or rastered them, again',
+    );
+    expect(
+      again.single.debugDisposed,
+      isFalse,
+      reason: '🚨a kept plate was let go of by the paint that drew it',
+    );
   });
 
   test('nothing in the app lays a text block out but the one that keeps '

@@ -8,7 +8,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../services/import/cel_picture.dart' show EnginePicture;
 import '../../services/import/raster_cel_import.dart';
-import '../canvas/raster_picture.dart';
+import 'canvas_letter_plate.dart';
 import 'cel_text_layout.dart';
 
 /// How a set text is turned into its plate — [bakeCelTextPlate]'s shape.
@@ -77,16 +77,10 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   if (window.isEmpty) {
     return const {};
   }
-  final recorder = ui.PictureRecorder();
-  layout.paint(ui.Canvas(recorder)..translate(-window.left, -window.top));
-  // A DEFERRED raster ([rasterPicture]): it is rastered by the pass that
+  // A DEFERRED raster ([letterPlateOver]): it is rastered by the pass that
   // draws it, so the bake waits on the engine for the tiles' pixels and not
   // once more for this. It is drawn 1:1 on whole pixels, which copies.
-  final set = rasterPicture(
-    recorder,
-    window.width.round(),
-    window.height.round(),
-  );
+  final set = letterPlateOver(window, layout.paint);
   final BitmapSurface cut;
   try {
     cut = await layCelPicture(

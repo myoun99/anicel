@@ -500,6 +500,11 @@ const _imageHolders = <String, String>{
   // — 2026-10-31, a camera lens blur's table kept for its next gather.
   'lib/src/ui/canvas/iris_blur_shader.dart → _kept': 'counted:tableBytes',
 
+  // — 2026-11-07, the plates of the letters a picture holds (card
+  // cel-number-letters-drawn-as-vectors).
+  'lib/src/ui/text/canvas_letter_plate.dart → _plates':
+      'counted:letterPlateBytes',
+
   // — 2026-10-31, a plugin anywhere in a chain (I-132-Q34 a).
   'lib/src/ui/canvas/fx_plugin_stages.dart → _stages':
       'one recording through its plugins: each step\'s input read back and '

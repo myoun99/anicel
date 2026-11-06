@@ -258,8 +258,9 @@ class CameraFrameRenderService {
             await composeImages(children);
           // The base it paints again is composed with its clip.
           case CompositeOpaque():
-          // Letters, not a picture: the row they are written on is composed
-          // as its own leaf.
+          // Letters, whose plate is made where they are drawn
+          // ([celNumberPlate]): the row they are written on is composed as
+          // its own leaf.
           case CompositeCelNumber():
             break;
         }

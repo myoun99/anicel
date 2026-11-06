@@ -3,12 +3,14 @@ import 'dart:ui';
 
 import '../../core/collection_equality.dart';
 import '../../models/composite_tree.dart';
+import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/layer_id.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/cel_number_paint.dart';
-import 'layer_image_draw.dart' show withLayerPlacement;
+import 'display_resample.dart' show filterQualityForDisplayScale;
+import 'layer_image_draw.dart' show drawPosedLayerImage;
 import 'subtree_image_composite.dart';
 
 /// What a walk of a composite tree asks of its route — the only things the
@@ -319,16 +321,28 @@ class _CompositeTreeWalk<L> {
     switch (node) {
       case CompositeLeaf(:final payload):
         route.paintRow(canvas, payload, rasterScale, null, within);
-      // A row's letters lie where the row does (I-65).
+      // A row's letters lie where the row does (I-65), a picture on its
+      // paper laid as the row's is ([celNumberPlate]): under its placement,
+      // sampled at the filter its pixels are.
       case CompositeCelNumber(
         on: CompositeLeaf(:final payload),
         :final letters,
       ):
-        withLayerPlacement(
-          canvas,
-          placement: route.placementOf(payload),
-          body: () => paintCelNumber(canvas, letters),
-        );
+        if (celNumberPlate(letters) case final plate?) {
+          drawPosedLayerImage(
+            canvas,
+            pieces: [plate],
+            extent: plate.worldRect,
+            placement: route.placementOf(payload),
+            opacity: 1,
+            blendMode: LayerBlendMode.normal,
+            // A plate at canvas resolution lands 1:1 only where the scale
+            // is 1, and the filter there is `none`: a copy either way.
+            texelScale: null,
+            filterQuality: filterQualityForDisplayScale(rasterScale),
+            paper: route.paper,
+          );
+        }
       case final CompositeGroup<L> group:
         _group(canvas, group, rasterScale, within);
       case final CompositeAdjustment<L> adjustment:

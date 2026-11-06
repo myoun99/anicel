@@ -1,14 +1,19 @@
 import 'dart:ui' as ui;
 
+import '../../core/collection_equality.dart';
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/text_cel_style.dart' show TextCelContent;
 import '../../services/composite_effect_paint.dart';
-import '../../services/layer_pose_matrix.dart' show placementMatrix;
 import '../../services/se_name_tag_plan.dart';
+import '../canvas/display_resample.dart'
+    show filterQualityForDisplayScale, wholeLevelPixelsOutward;
+import '../canvas/image_pieces.dart';
+import '../canvas/layer_image_draw.dart' show drawPosedLayerImage;
 import '../canvas/subtree_image_composite.dart';
+import 'canvas_letter_plate.dart';
 import 'text_cel_render.dart';
 
 /// Draws the SE name tags (R5b, §6-z15) — the one implementation every
@@ -22,7 +27,8 @@ import 'text_cel_render.dart';
 /// tag's own [ResolvedSeNameTag.placement] before it paints (I-67-Q1,
 /// F-387). Positions and sizes below are the tag's own. [rasterScale] is
 /// how many device pixels a canvas pixel covers under that transform — the
-/// scale a tag that has to be one picture rasters at.
+/// scale its plate is sampled at, and a tag that has to be one picture
+/// rasters at.
 ///
 /// GEOMETRY (R5 #7, the user's rule, corrected twice on the mockup):
 /// the tag's stored position is the name BOX's exact geometric centre, and
@@ -64,22 +70,33 @@ void paintSeNameTags(
 ///
 /// A tag the row composites plainly draws straight on: a raster of it would
 /// be the same pixels.
+///
+/// Its picture is its plate ([_plateOf]), drawn by the draw that lays a
+/// row's picture ([drawPosedLayerImage]) — under
+/// [ResolvedSeNameTag.placement], sampled at the display's filter for the
+/// scale it lands at.
 void _composite(
   ui.Canvas canvas,
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
   required double rasterScale,
 }) {
-  final layouts = _layoutsOf(tag, canvasSize: canvasSize);
-  final placement = placementMatrix(tag.placement);
-  void paintTag(ui.Canvas into) {
-    into.save();
-    into.transform(placement.storage);
-    for (final layout in layouts) {
-      layout.paint(into);
-    }
-    into.restore();
+  final plate = _plateOf(tag, canvasSize: canvasSize);
+  if (plate == null) {
+    return;
   }
+  void paintTag(ui.Canvas into, double scale) => drawPosedLayerImage(
+    into,
+    pieces: [plate],
+    extent: plate.worldRect,
+    placement: tag.placement,
+    opacity: 1,
+    blendMode: LayerBlendMode.normal,
+    // As a cel number's plate: a copy wherever it lands 1:1.
+    texelScale: null,
+    filterQuality: filterQualityForDisplayScale(scale),
+    paper: canvasSize.canvasRect,
+  );
 
   final effects = resolveCompositeEffectPlan(
     tag.effects,
@@ -88,28 +105,22 @@ void _composite(
   if (tag.opacity >= 1 &&
       effects.isSingleDraw &&
       effects.finalPaint.isEmpty) {
-    paintTag(canvas);
+    paintTag(canvas, rasterScale);
     return;
   }
-  if (layouts.isEmpty) {
-    return;
-  }
-  final drawn = layouts
-      .map((layout) => layout.paintBounds)
-      .reduce((union, rect) => union.expandToInclude(rect));
   drawSubtreeAsImage(
     canvas: canvas,
     bounds: effectBufferBounds(
       subtreeBufferBounds(
         CompositeLeaf(tag),
         within: canvas.getLocalClipBounds(),
-        extentOf: (_) => drawn,
+        extentOf: (_) => plate.worldRect,
         placementOf: (tag) => tag.placement,
       ),
       effects.outsetPixels,
     ),
     rasterScale: rasterScale,
-    paintSubtree: (into, _) => paintTag(into),
+    paintSubtree: paintTag,
     compose: (blit) => blit(
       layerCompositePaint(
         opacity: tag.opacity,
@@ -122,6 +133,52 @@ void _composite(
     paper: canvasSize.canvasRect,
     cell: rasterCellFor(effects.outsetPixels),
   );
+}
+
+/// [tag]'s blocks ([_layoutsOf]) as one plate in its own space, on whole
+/// pixels — null for a tag with none.
+///
+/// 🚨★★★CANVAS PIXELS, LAID AS A ROW'S PICTURE IS (card
+/// cel-number-letters-drawn-as-vectors, 유저 2026-11-07 「지금까지가 셀번호가
+/// 벡터엿던게 버그야. 통일하지 않았던거니까」): the letters a picture holds are
+/// a plate ([keptLetterPlate]), as a cel number's are. ↩️The blocks were
+/// drawn as vectors under the placement, at the screen's or the file's
+/// resolution. 🚨Draw it at once ([keptLetterPlate]).
+ImagePiece? _plateOf(
+  ResolvedSeNameTag tag, {
+  required CanvasSize canvasSize,
+}) {
+  final layouts = _layoutsOf(tag, canvasSize: canvasSize);
+  if (layouts.isEmpty) {
+    return null;
+  }
+  final drawn = wholeLevelPixelsOutward(
+    layouts
+        .map((layout) => layout.paintBounds)
+        .reduce((union, rect) => union.expandToInclude(rect)),
+    0,
+  );
+  final plate = keptLetterPlate(_Blocks(layouts), drawn, (into) {
+    for (final layout in layouts) {
+      layout.paint(into);
+    }
+  });
+  return (image: plate, worldRect: drawn);
+}
+
+/// The blocks a tag's plate is drawn from ([_layoutsOf]) — the same kept
+/// layouts, the same pixels.
+final class _Blocks {
+  const _Blocks(this.layouts);
+
+  final List<TextCelLayout> layouts;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Blocks && listEquals(other.layouts, layouts);
+
+  @override
+  int get hashCode => Object.hashAll(layouts);
 }
 
 /// [tag]'s text blocks, laid out where they stand in the tag's own space —
