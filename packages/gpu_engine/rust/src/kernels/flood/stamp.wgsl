@@ -25,7 +25,7 @@ struct Stamp {
   columns: u32,
   // The stamp's tile this pass puts first, at the page's first slot.
   first: u32,
-  // The colour, red in the low byte; what lies above blue is not read.
+  // The colour, red in the low byte, its top byte 0.
   colour: u32,
   unused_0: u32,
   unused_1: u32,
@@ -50,5 +50,5 @@ fn flood_stamp(@builtin(global_invocation_id) id: vec3<u32>) {
   let plane = MaskPlane(0u, stamp.width, stamp.height, stamp.stride);
   let byte = mask_byte_of(plane, u32(x - stamp.left), u32(y - stamp.top));
   page[id.z * TILE_TEXELS + tile_texel(id.x, id.y)] =
-    select(0u, (stamp.colour & 0xffffffu) | (byte << 24u), byte != 0u);
+    select(0u, stamp.colour | (byte << 24u), byte != 0u);
 }

@@ -5,8 +5,8 @@
 use super::Stamped;
 use super::super::tests::{Rig, rig};
 use crate::kernels::composite::{TILE, TileAt};
-use crate::kernels::mask::Mask;
 use crate::kernels::mask::tests::masked;
+use crate::kernels::mask::{Mask, MaskBox};
 use crate::testing::read_buffer;
 
 const ORANGE: [u8; 3] = [200, 100, 50];
@@ -112,6 +112,17 @@ fn a_stamp_past_a_page_goes_on_the_next() {
     assert!(read_paged.concat() == read_whole.concat());
 }
 
+// A box that ends on a tile's edge meets no tile past it: a tile's own
+// box is that tile alone.
+#[test]
+fn a_box_ending_on_a_tile_s_edge_meets_no_tile_past_it() {
+    let side = TILE as i32;
+    let mask = masked((side, -side), (TILE, TILE), |_, _| 255);
+    let stamped = stamp(&mask.mask(), 0, usize::MAX);
+    let set = &stamped.set;
+    assert_eq!((set.x0, set.y0, set.columns, set.rows), (1, -1, 1, 1));
+}
+
 // A box with no pixels meets no tile, and puts no page.
 #[test]
 fn an_empty_mask_stamps_no_tile() {
@@ -119,4 +130,16 @@ fn an_empty_mask_stamps_no_tile() {
     let stamped = stamp(&mask.mask(), 0, usize::MAX);
     assert_eq!((stamped.set.columns, stamped.set.rows), (0, 1));
     assert!(stamped.set.tiles.is_empty() && stamped.pages.is_empty());
+}
+
+// A plane that holds less than its box is refused, not read past.
+#[test]
+fn a_mask_short_of_its_box_is_refused() {
+    let Rig { engine, flood, .. } = rig();
+    let short = masked((0, 0), (4, 1), |_, _| 255);
+    let mask = Mask {
+        size: MaskBox { width: 4, height: 2 },
+        ..short.mask()
+    };
+    assert!(flood.stamp(engine, &mask, ORANGE, 0).is_none());
 }

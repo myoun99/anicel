@@ -40,6 +40,7 @@ impl Flood {
         colour: [u8; 3],
         first_page: u16,
     ) -> Option<Stamped> {
+        // A pass a page, a tile a workgroup deep — and a slot is a u16.
         let most = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
         self.stamp_by(engine, mask, colour, first_page, most)
     }
