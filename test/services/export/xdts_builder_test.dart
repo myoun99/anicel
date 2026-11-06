@@ -871,4 +871,34 @@ void main() {
       reason: 'the marks the viewer finds a file\'s block by',
     );
   });
+
+  // I-161 ④ (서피스 검증 2026-11-07): XDTS Viewer v1.3.0 closed on a 動画
+  // file written without a cel field, and on its 原画 pair too.
+  test('a file whose block has no row still writes the cel field, empty — '
+      'the viewer has no sheet without one', () {
+    // _cut() has its one picture row in the ACTION block: the 動画 file
+    // holds no row.
+    final content = buildXdtsContent(
+      half: XdtsSheetHalf.douga,
+      cut: _cut(),
+      cutLabel: '3',
+      unnamedMark: InbetweenMark.two,
+      instructionDefById: CameraInstructionSet.standard.defById,
+    );
+    final json =
+        jsonDecode(content.split('\n').skip(1).join('\n'))
+            as Map<String, dynamic>;
+    final timeTable =
+        (json['timeTables'] as List<dynamic>).single as Map<String, dynamic>;
+    List<Map<String, dynamic>> cel(String key) => [
+      for (final entry in timeTable[key] as List<dynamic>)
+        if ((entry as Map<String, dynamic>)['fieldId'] == xdtsFieldCell) entry,
+    ];
+    expect(cel('timeTableHeaders'), [
+      {'fieldId': xdtsFieldCell, 'names': <String>[]},
+    ]);
+    expect(cel('fields'), [
+      {'fieldId': xdtsFieldCell, 'tracks': <Map<String, dynamic>>[]},
+    ]);
+  });
 }

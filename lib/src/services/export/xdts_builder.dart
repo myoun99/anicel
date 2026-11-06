@@ -84,12 +84,18 @@ String buildXdtsContent({
   final seLayers = [for (final slot in sources.seLayers) slot.layer];
   final instructionLayers = sources.instructionLayers;
 
+  // 🚨THE CEL FIELD IS WRITTEN WITH NO ROW TO HOLD as well (I-161 ④,
+  // 서피스 검증 2026-11-07): XDTS Viewer v1.3.0 finds it by its id and has
+  // no sheet without it — a 動画 file of a cut with no CELL rows closed the
+  // viewer as it opened, and so did its 原画 file, which opens its pair
+  // (`getCellField` indexes `m_fields[-1]`, xdts_viewer mywindow.cpp). An
+  // empty one draws the sheet's length with nothing in it. ↩️A field with
+  // no row was left out (07-08), when one file held every row.
   final timeTableHeaders = <Map<String, dynamic>>[
-    if (celLayers.isNotEmpty)
-      {
-        'fieldId': xdtsFieldCell,
-        'names': [for (final layer in celLayers) layer.name],
-      },
+    {
+      'fieldId': xdtsFieldCell,
+      'names': [for (final layer in celLayers) layer.name],
+    },
     if (seLayers.isNotEmpty)
       {
         'fieldId': xdtsFieldDialog,
@@ -103,22 +109,21 @@ String buildXdtsContent({
   ];
 
   final fields = <Map<String, dynamic>>[
-    if (celLayers.isNotEmpty)
-      {
-        'fieldId': xdtsFieldCell,
-        'tracks': [
-          for (var track = 0; track < celLayers.length; track += 1)
-            {
-              'trackNo': track,
-              'frames': _cellTrackFrames(
-                celLayers[track],
-                duration: duration,
-                playbackFrameCount: sources.playbackFrameCount,
-                unnamedMark: unnamedMark,
-              ),
-            },
-        ],
-      },
+    {
+      'fieldId': xdtsFieldCell,
+      'tracks': [
+        for (var track = 0; track < celLayers.length; track += 1)
+          {
+            'trackNo': track,
+            'frames': _cellTrackFrames(
+              celLayers[track],
+              duration: duration,
+              playbackFrameCount: sources.playbackFrameCount,
+              unnamedMark: unnamedMark,
+            ),
+          },
+      ],
+    },
     if (seLayers.isNotEmpty)
       {
         'fieldId': xdtsFieldDialog,
