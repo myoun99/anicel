@@ -249,15 +249,20 @@ impl Window {
         }
     }
 
-    /// Its rows' and its columns' workgroups, where it goes by strips on
-    /// one page with no more than MOST_IN_TURN of them — a dab that goes in
-    /// turn with the dabs about it on that page.
+    /// Its rows' and its columns' workgroups, where it goes by strips with
+    /// no more than MOST_IN_TURN of them — a dab that goes in turn with the
+    /// dabs about it on the pages it binds.
+    ///
+    /// Each way of such a dab is one strip along: a second leaves room for
+    /// one line a band, and a window's lines are seven and more (its
+    /// columns' three radii up and down). So only its bands go one after
+    /// another, and no test reaches a second strip (mutant t09, 11-06).
     fn in_turn(&self) -> Option<[u32; 4]> {
         let Ways::Strips { rows, columns } = &self.ways else {
             return None;
         };
         let ((rx, ry), (cx, cy)) = (rows.groups, columns.groups);
-        (self.pages.len() == 1 && rx * ry + cx * cy <= MOST_IN_TURN).then_some([rx, ry, cx, cy])
+        (rx * ry + cx * cy <= MOST_IN_TURN).then_some([rx, ry, cx, cy])
     }
 
     /// Its dispatches, in order.
@@ -307,7 +312,7 @@ struct Step {
     groups: (u32, u32),
 }
 
-/// One dispatch of a blur: a run of dabs going in turn on one page, or a
+/// One dispatch of a blur: a run of dabs going in turn on the same pages, or a
 /// step of a dab going apart.
 enum Planned<'a> {
     InTurn(Range<usize>),
@@ -463,7 +468,7 @@ impl Blurs {
             })
             .collect();
         // The dispatches: each dab's steps, but a run of dabs that go in turn
-        // on one page one dispatch.
+        // on the same pages one dispatch.
         let mut planned: Vec<Planned> = Vec::new();
         for (index, window) in windows.iter().enumerate() {
             if window.in_turn().is_none() {

@@ -260,6 +260,24 @@ fn strips_of_a_dab_meet_with_no_seam() {
     }
 }
 
+// Small dabs go in turn, a run of them a dispatch, and put what their
+// dispatches would: 18 px at radius 3 is two bands of its rows and one of
+// its columns. Along a stroke across two tiles their windows lie on the
+// first tile, on both and on the second, so where the picture keeps the
+// two on pages of their own a run breaks where its dabs' pages change.
+#[test]
+fn small_dabs_in_turn_put_what_their_dispatches_put() {
+    let tiles = [(0, 0), (1, 0)];
+    let dabs: Vec<(Dab, u32)> =
+        (0..8).map(|k| (square([100 + 6 * k, 50, 118 + 6 * k, 68], WHITE, 0.7), 3)).collect();
+    let (stroke, _) = paged(&tiles, &vec![0; tiles.len() * TILE_WORDS], 1);
+    let at: HashMap<(i32, i32), usize> =
+        tiles.iter().enumerate().map(|(slot, &tile)| (tile, slot)).collect();
+    let window = Window::of(&dabs[0].0, 3, (&stroke, &at), Route::Strips).unwrap();
+    assert_eq!(window.in_turn(), Some([1, 2, 1, 1]));
+    assert!(blurred(&tiles, hashed, &dabs, None).is_some());
+}
+
 // A blur reads three radii past its dab: the stroke must hold every tile
 // that reaches — a dab 2 px into a tile at radius 1 reads the one before
 // it, right, left, down or up. A radius of 0 blurs nothing.
