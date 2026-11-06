@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/crates_for_host.dart';
+import '../helpers/temp_dir.dart';
 
 /// 관제 2026-11-07 (native-memory-safety): refusal 8 named every crate the
 /// lock names and offered `cargo fetch --locked` — the Surface fetched 29
@@ -123,7 +124,7 @@ void main() {
   group('the index entry a crate was resolved from', () {
     late Directory index;
     setUp(() => index = Directory.systemTemp.createTempSync('crates-index'));
-    tearDown(() => index.deleteSync(recursive: true));
+    tearDown(() => deleteTempQuietly(index));
 
     void entry(String at, String name, List<String> versions) {
       final file = File('${index.path}/index.crates.io-0/.cache/$at/$name')
