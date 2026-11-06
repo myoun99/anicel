@@ -140,7 +140,9 @@ class RowSelection {
       anchor: anchor,
       rowDelta: rowDelta,
     );
-    if (span.isNotEmpty) {
+    // A move inside a row spans what it spanned: a new list of the same
+    // rows would tell every listener the selection moved.
+    if (span.isNotEmpty && !listEquals(span, rowSelection.value)) {
       rowSelection.value = span;
     }
   }

@@ -48,6 +48,26 @@ bool laneBandStandsOn(
 String? lanePinOf(Layer layer, PropertyLaneRow? lane) =>
     lane?.curve == null ? null : laneGroupKey(layer.id, lane!.laneId);
 
+/// The part of [selection] the open graphs of [graphs] read — the lanes it
+/// holds in a group a graph stands open for, which each draws as picked
+/// ([seatLaneGraphs]). Empty while no graph is open.
+///
+/// 🔬What a host builds the rows again for when the selection moves (11-06,
+/// S5_BA 컷352, 디버그): the timeline's host built its whole panel at every
+/// step of a rail sweep — the grid, both viewports, the header and the
+/// scrollbars painted again, and the dock drawn live instead of from its
+/// image, 8ms of raster a frame. The bands hear the selection themselves
+/// ([TimelineRowSelectionBands]); the rows are built from this slice alone.
+Set<TimelineRowAddress> selectionSeatedIn(
+  Iterable<TimelineRowAddress> selection,
+  LaneGraphsView graphs,
+) => {
+  for (final row in selection)
+    if (row case LaneRowAddress(:final layerId, :final laneId)
+        when graphs.open.containsKey(_groupKeyOfLane(layerId, laneId)))
+      row,
+};
+
 /// [rows] with every member lane of an OPEN graph seated in it — the graph
 /// [graphs] holds open for the lane's group ([laneGroupOf]), with which of
 /// the group's lanes [selection] holds and [graphs] pins.
@@ -79,13 +99,14 @@ List<TimelineDisplayRow> seatLaneGraphs(
   }
   List<String> idsOf(Iterable<TimelineDisplayRow> seated) =>
       List.unmodifiable([for (final row in seated) row.lane!.laneId]);
+  final picked = selectionSeatedIn(selection, graphs);
   final seats = {
     for (final MapEntry(:key, :value) in lanes.entries)
       key: TimelineGraphSeat(
         groupKey: key,
         graph: open[key]!,
         lanes: idsOf(value),
-        picked: idsOf(value.where((row) => selection.contains(row.address))),
+        picked: idsOf(value.where((row) => picked.contains(row.address))),
         pinned: idsOf(
           value.where(
             (row) => graphs.pinned.contains(

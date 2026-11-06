@@ -130,7 +130,7 @@ class TimelineGridHooks {
     this.currentRowHooks,
     this.rowDragHooks,
     this.onRowSelectionSpan,
-    this.selectedRows = const {},
+    this.rowSelection,
     this.runEdit,
     this.readyRunsIn,
     this.expandedLaneLayerIds = const {},
@@ -484,9 +484,14 @@ class TimelineGridHooks {
   final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan;
 
-  /// ⑨: the rows currently in the selection, as layer ids — what the rail
-  /// washes and what the row verbs act on.
-  final Set<TimelineRowAddress> selectedRows;
+  /// ⑨: the rows in the selection, as addresses — what the rail's bands
+  /// draw ([TimelineRowSelectionBands]), on a listener of their own. Null
+  /// draws no band (a grid mounted with no session).
+  ///
+  /// A channel, not a value: a span grows per pointer move inside a
+  /// gesture, and a value handed down is a host built again for it — the
+  /// rows read only the part an open graph picks ([selectionSeatedIn]).
+  final ValueListenable<List<TimelineRowAddress>>? rowSelection;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -710,7 +715,7 @@ class TimelineGridHooks {
         fxEnabledOf: isLayerFxEnabled,
       ),
       laneGraphs,
-      selection: selectedRows,
+      selection: {...?rowSelection?.value},
     );
     return lanesPrecedeLayer ? laneRunsMovedAhead(rows) : rows;
   }

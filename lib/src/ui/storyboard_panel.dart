@@ -2469,7 +2469,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                 ),
                                 // The row selection, over the LAYER area
                                 // as the timeline's rail lays it (A2) —
-                                // its own listener, since a span grows
+                                // heard by the bands, since a span grows
                                 // per pointer move inside a gesture.
                                 if (widget.rowSelection case final selection?)
                                   Positioned(
@@ -2477,16 +2477,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     top: 0,
                                     right: 0,
                                     bottom: 0,
-                                    child:
-                                        ValueListenableBuilder<
-                                          List<TimelineRowAddress>
-                                        >(
-                                          valueListenable: selection,
-                                          builder: (context, selected, _) =>
-                                              _railRows.rowSelectionBands(
-                                                selected,
-                                              ),
-                                        ),
+                                    child: _railRows.rowSelectionBands(
+                                      selection,
+                                    ),
                                   ),
                                 // A pool file let go on the rail: the layer
                                 // area's law — a sound by the SE rows' rule, a

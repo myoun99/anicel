@@ -1871,19 +1871,16 @@ class _StoryboardRailRows {
   }
 
   /// The ROW SELECTION over this rail, as the timeline's rail draws it —
-  /// one band over each run of [selected] rows, laid on the table the rail
-  /// is drawn from (F-322: 「타임라인이랑 완벽통일」). ↩️This rail drew none,
-  /// so a span it selected could not be seen.
-  Widget rowSelectionBands(List<TimelineRowAddress> selected) {
+  /// one band over each run of the rows [selection] holds, laid on the
+  /// table the rail is drawn from (F-322: 「타임라인이랑 완벽통일」).
+  /// ↩️This rail drew none, so a span it selected could not be seen.
+  Widget rowSelectionBands(
+    ValueListenable<List<TimelineRowAddress>> selection,
+  ) {
     final table = _railTable();
     return TimelineRowSelectionBands(
-      selectedFlags: [
-        for (final slot in table.slots)
-          switch (_standingAddressOf(slot)) {
-            final address? => selected.contains(address),
-            null => false,
-          },
-      ],
+      selection: selection,
+      rows: [for (final slot in table.slots) _standingAddressOf(slot)],
       edges: table.edges,
       crossExtent: _state._naturalRailWidth - layerSectionLabelSlotWidth,
     );
