@@ -93,6 +93,9 @@
 # 153 checks in all): the crates' tests run past a red crate, release runs
 # after a red debug, and the refusal names both. ⚠️The script before THAT
 # fails both: it stops at debug's red.
+# 🆕And where it looked (same day — sections T and V, 155 checks in all): a
+# refusal to download names the cargo home or the pub cache it read. ⚠️The
+# script before THAT fails both: it names what is missing, not from where.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -650,6 +653,7 @@ lacks "nor one a member takes for another platform" "$O" "android-only"
 lacks "nor one a crate takes for another platform" "$O" "alsa"
 has "and the command that would download this platform's alone" "$O" \
   "cargo fetch --locked --target x86_64-lane-test)"
+has "and the cargo home it looked in" "$O" "Looked in: $HOME_SPELT/registry/cache "
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 
 say "U NOBODY IS ASKED FOR A LOGIN: every call that reached the mirror in this whole run"
@@ -675,6 +679,7 @@ O=$(PUB_CACHE="$E/pub-cache" LANE_TEST_FLUTTER=absent out "$E/home" land pubs)
 has "a lane whose lock names a package not downloaded here is refused" \
   "$O" "has not downloaded every package the locks name — this is refusal 3"
 has "and it names the package" "$O" "Not here: args-2.5.0 "
+has "and the pub cache it looked in" "$O" "Looked in: $E/pub-cache/hosted "
 lacks "and not the one that is here" "$O" "have-1.0.0"
 lacks "nor the SDK's" "$O" "flutter-0.0.0"
 has "and the command that would download it" "$O" "flutter pub get)"

@@ -383,7 +383,7 @@ resolve_offline() {
   [ -n "$missing" ] || return 0
   not_downloaded \
     "this machine has not downloaded every package the locks name${2:+ — this is refusal $2}" \
-    "$missing" "(cd $p && flutter pub get)" "$log"
+    "$missing" "$(pub_cache)/hosted" "(cd $p && flutter pub get)" "$log"
 }
 
 # The packages the app does not depend on, which the merge gate still
@@ -400,8 +400,8 @@ resolve_packages() {
 # The packages the locks of the checkout at $1 take from a pub host that
 # this machine's pub cache lacks: what `flutter pub get` would download.
 packages_not_here() {
-  local cache="${PUB_CACHE:-${LOCALAPPDATA:+$LOCALAPPDATA/Pub/Cache}}" lock
-  cache="${cache:-$HOME/.pub-cache}"
+  local cache lock
+  cache="$(pub_cache)"
   for lock in $(git -C "$1" ls-files -- pubspec.lock '*/pubspec.lock'); do
     awk '/^  [^ ]+:$/ { n = $1; sub(/:$/, "", n); h = 0 }
       /^    source: hosted$/ { h = 1 }
@@ -409,14 +409,29 @@ packages_not_here() {
   done | sort -u | grep -vxF -f <(ls "$cache"/hosted/*/ 2>/dev/null)
 }
 
+# The pub cache pub reads here, and the cargo home cargo reads: what each
+# would download into, and where a refusal says it looked.
+pub_cache() {
+  local cache="${PUB_CACHE:-${LOCALAPPDATA:+$LOCALAPPDATA/Pub/Cache}}"
+  printf '%s\n' "${cache:-$HOME/.pub-cache}"
+}
+cargo_home() {
+  printf '%s\n' "${CARGO_HOME:-$HOME/.cargo}"
+}
+
 # What a refusal to download says — the law is above resolve_offline: what
-# is missing, and what would fetch it once the user says yes.
-not_downloaded() {  # not_downloaded <head> <missing> <command> <log>
+# is missing, where it was looked for, and what would fetch it once the
+# user says yes. 🆕Where (관제 2026-11-07, gpu-engine-skeleton): the main
+# PC has two cargo homes — a session's shell, started before Rust was
+# installed, reads none from the machine's settings and falls back to C: —
+# and a list that does not say which one it read cannot be checked.
+not_downloaded() {  # not_downloaded <head> <missing> <looked in> <command> <log>
   die "$1
   A download is the user's to allow, in chat.
   Not here: $2
-  With their yes: $3
-  The whole log: $4"
+  Looked in: $3
+  With their yes: $4
+  The whole log: $5"
 }
 
 cmd_list() {
@@ -919,7 +934,8 @@ cmd_native() {
 # native-memory-safety). Why the list is not cargo's own, and how it was
 # measured against cargo's: tool/crates_for_host.dart.
 crates_not_here() {
-  local home="${CARGO_HOME:-$HOME/.cargo}" facts
+  local home facts
+  home="$(cargo_home)"
   facts="$(mktemp -d "${TMPDIR:-/tmp}/lane-crates.XXXXXX")"
   rustc --print cfg >"$facts/cfg" \
     && (cd "$1" && cargo metadata --locked --offline --no-deps --format-version 1) >"$facts/members.json" \
@@ -977,6 +993,7 @@ cmd_crate() {
         && not_downloaded \
           "this machine has not downloaded every crate its build takes — this is refusal 8" \
           "$(crates_not_here "$p/packages/gpu_engine/rust" | tr '\n' ' ')" \
+          "$(cargo_home)/registry/cache" \
           "(cd $p/packages/gpu_engine/rust && cargo fetch --locked --target $(host_triple))" "$log"
       tail -n +$((from + 1)) "$log" | grep -aE '^test .*FAILED|panicked|^error' | head -15 >&2
       echo "lane: crate — $profile red" >&2
