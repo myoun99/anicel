@@ -255,7 +255,8 @@ fn render(plugin: &Opened, amount: f64, with_map: bool) -> (i32, Vec<u8>) {
     let (input, map) = (input(), map());
     let mut out = vec![0xEE; IN_H * OUT_STRIDE];
     let values = [amount, 0.0, 0.0, 0.0, if with_map { 0.0 } else { -1.0 }, 0.0, 0.0, 0.0];
-    let job = job(&input, &mut out, &values, &[map_layer(&map)]);
+    let layers = [map_layer(&map)];
+    let job = job(&input, &mut out, &values, &layers);
     (plugin.render(&job), out)
 }
 
@@ -292,7 +293,8 @@ fn the_sample_answers_as_the_c_host_does_and_as_worked_out_here() {
         let packed_input = packed(&input, IN_STRIDE);
         let mut out = vec![0xEE; IN_H * IN_W * 4];
         let values = [80.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let mut job = job(&packed_input, &mut out, &values, &[map_layer(&map)]);
+        let layers = [map_layer(&map)];
+        let mut job = job(&packed_input, &mut out, &values, &layers);
         (job.input.stride, job.output_stride) = (IN_W as i32 * 4, IN_W as i32 * 4);
         assert_eq!(plugin.render(&job), OK, "{who}: rows with no padding");
         assert_eq!(out, packed(&expected(80.0, true), OUT_STRIDE), "{who}: rows with no padding");
