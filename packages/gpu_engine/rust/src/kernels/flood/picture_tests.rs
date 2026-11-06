@@ -116,6 +116,19 @@ fn a_press_and_a_fill_go_between_the_canvas_and_the_picture() {
     assert_eq!((mask.at, mask.size.width, mask.size.height), ((-3, 130), 5, 3));
 }
 
+// A box that ends on a tile's edge shows no tile past it: a box of three
+// whole tiles is those three.
+#[test]
+fn a_box_ending_on_a_tile_s_edge_shows_no_tile_past_it() {
+    let CompositeRig { engine, composite } = composite_rig();
+    let pages = Pool::default().upload(engine);
+    let extent = [-128, 0, 256, 128];
+    let shown = Shown::of(engine, composite, &plan(&pages, &[], &[]), extent).expect("shown");
+    let picture = shown.picture();
+    assert_eq!((picture.across, picture.down), (3, 1));
+    assert_eq!([shown.on_grid((256, 0)), shown.on_grid((0, 128))], [None; 2]);
+}
+
 // A box with no pixel shows nothing to read, and is refused.
 #[test]
 fn a_box_of_no_pixel_is_refused() {
@@ -130,22 +143,24 @@ fn a_box_of_no_pixel_is_refused() {
 // The eyedropper picks what shows: red at 128 over opaque blue is the
 // masked red's bytes in the composite's tests, 115 and all; red at 128 over
 // nothing its own colour (I-163-Q6: a part-covered pixel picks its ink's);
-// and nothing where nothing is laid — a pixel of alpha 0, or no tile.
+// and nothing where nothing is laid — a pixel of alpha 0, or no tile. The
+// canvas's last column has no pixel past it to end a box, and is refused.
 #[test]
 fn the_eyedropper_picks_what_the_plan_shows_or_nothing() {
     let CompositeRig { engine, composite } = composite_rig();
     let mut pool = Pool::default();
     let sets = [
-        pool.drawn(|x, y| holed(&[(7, 7), (9, 9)], BLUE, x, y), (0, 0), (1, 1), |_, _| Some(0)),
-        pool.drawn(|x, y| holed(&[(7, 7)], RED, x, y), (0, 0), (1, 1), |_, _| Some(0)),
+        pool.drawn(|x, y| holed(&[(7, 3), (9, 4)], BLUE, x, y), (0, 0), (1, 1), |_, _| Some(0)),
+        pool.drawn(|x, y| holed(&[(7, 3)], RED, x, y), (0, 0), (1, 1), |_, _| Some(0)),
     ];
     let pages = pool.upload(engine);
     let steps = [laid(0, WHOLE), laid(1, 32896)];
     let plan = plan(&pages, &sets, &steps);
     let at = |point| pick(engine, composite, &plan, point).expect("pick");
-    assert_eq!(at((1, 1)), Some([115, 95, 135]));
-    assert_eq!(at((9, 9)), Some(ORANGE));
-    assert_eq!([at((7, 7)), at((200, 3)), at((-1, 0))], [None; 3]);
+    assert_eq!([at((1, 2)), at((3, 7))], [Some([115, 95, 135]); 2]);
+    assert_eq!(at((9, 4)), Some(ORANGE));
+    assert_eq!([at((7, 3)), at((200, 3)), at((-1, 0))], [None; 3]);
+    assert!(pick(engine, composite, &plan, (i32::MAX, 0)).is_none());
 }
 
 // The whole fill on the engine, as a tap lays it (stage 5): what the plan
