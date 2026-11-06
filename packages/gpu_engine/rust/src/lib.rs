@@ -9,6 +9,11 @@
 //! - `fingerprint` — the CRC-32 pinned bytes are compared by.
 //! - `testing` — what the GPU tests share.
 
+// The checkout this crate is built from, different in each: a build that
+// another checkout left in the shared target folder is built again here,
+// never run as this one's (kernels/shared/one_checkout.rs).
+const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
+
 mod device;
 mod fingerprint;
 mod kernels;

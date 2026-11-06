@@ -21,6 +21,11 @@
 //! function the engine does not export — a header's `static` — is held to
 //! through the export that calls it.
 
+// The checkout this crate is built from, different in each: a build that
+// another checkout left in the shared target folder is built again here,
+// never run as this one's (gpu_engine's kernels/shared/one_checkout.rs).
+const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
+
 use std::sync::OnceLock;
 
 use libloading::Library;

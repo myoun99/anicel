@@ -35,6 +35,11 @@
 //! downloaded, which is the person's to allow (native-to-rust-Q3) — so
 //! `qa_fx_plugin_open_wasm` answers as the C host built without it does.
 
+// The checkout this crate is built from, different in each: a build that
+// another checkout left in the shared target folder is built again here,
+// never run as this one's (gpu_engine's kernels/shared/one_checkout.rs).
+const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
+
 mod frame;
 mod job;
 mod native;

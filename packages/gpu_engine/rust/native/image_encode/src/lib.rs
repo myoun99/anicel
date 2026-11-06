@@ -17,6 +17,11 @@
 //!   - output is a buffer handed to Dart, released with
 //!     `qa_image_encode_free` (never with Dart's allocator).
 
+// The checkout this crate is built from, different in each: a build that
+// another checkout left in the shared target folder is built again here,
+// never run as this one's (gpu_engine's kernels/shared/one_checkout.rs).
+const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
+
 mod jpeg;
 #[cfg(test)]
 mod tests;
