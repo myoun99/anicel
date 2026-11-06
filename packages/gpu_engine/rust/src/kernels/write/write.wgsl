@@ -35,11 +35,20 @@ fn write_changed(
   let tile = group.x;
   let k = given[tile * 2u];
   let at = given[tile * 2u + 1u] * TILE_TEXELS;
+  // A lane that has found its tile unlike reads no more of the stored one,
+  // and one that holds both bits reads no more at all — the same bits, read
+  // as little as the one-bit test read (브러시/렌더링 08:20 review). No test
+  // tells either from reading on: the bytes are the same.
   var bits = 0u;
   for (var i = lane; i < TILE_TEXELS; i += WRITE_LANES) {
     let word = put[tile * TILE_TEXELS + i];
-    bits |= select(0u, WRITE_DIFFERS, word != page_word(k, at + i));
+    if ((bits & WRITE_DIFFERS) == 0u && word != page_word(k, at + i)) {
+      bits |= WRITE_DIFFERS;
+    }
     bits |= select(0u, WRITE_INKED, (word >> 24u) != 0u);
+    if (bits == (WRITE_DIFFERS | WRITE_INKED)) {
+      break;
+    }
   }
   if (bits != 0u) {
     atomicOr(&changed[written.x + tile], bits);
