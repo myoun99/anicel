@@ -222,6 +222,33 @@ fn each_shape_stands_where_its_own_placement_puts_it() {
 }
 
 #[test]
+fn a_letter_stands_where_its_own_placement_puts_it() {
+    // 「A」 at 20 px as it is, moved 7 right and 3 down, and mirrored about
+    // x = 30 — x' = 30 - x: the same cover each time, carried along, a
+    // level or two off where the raster rounds the other way (🔬at most 2).
+    let set = |at: Affine| {
+        let placed = [Placed {
+            at,
+            shape: Shape::Letters(run("A", 20 * 64, (0, 20 * 64), 0)),
+        }];
+        covered(faces(), &placed, Paint::Fill, IDENTITY).expect("a cover")
+    };
+    let upright = set(IDENTITY);
+    let [left, top, right, bottom] = upright.at;
+    let width = (right - left) as usize;
+    let close = |a: &[u8], b: &[u8]| a.len() == b.len() && a.iter().zip(b).all(|(&a, &b)| a.abs_diff(b) <= 2);
+
+    let moved = set(Affine { e: 7.0, f: 3.0, ..IDENTITY });
+    assert_eq!(moved.at, [left + 7, top + 3, right + 7, bottom + 3]);
+    assert!(close(&moved.bytes, &upright.bytes));
+
+    let mirrored = set(Affine { a: -1.0, e: 30.0, ..IDENTITY });
+    assert_eq!(mirrored.at, [30 - right, top, 30 - left, bottom]);
+    let mirrored_back: Vec<u8> = mirrored.bytes.chunks(width).flat_map(|row| row.iter().rev().copied()).collect();
+    assert!(close(&mirrored_back, &upright.bytes));
+}
+
+#[test]
 fn pieces_wound_either_way_cover_once_where_they_cross() {
     // A box mirrored into place — x' = 6 - x — winds against one that is
     // not: laid as they came, the two would cancel where they cross, as a
