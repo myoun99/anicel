@@ -123,8 +123,10 @@ mod window {
     /// A window the app's would be found as: of the runner's class, shown,
     /// in this process. It draws nothing — the compositor has no picture of
     /// a window without a redirection bitmap — and stands one pixel tall
-    /// across the virtual screen at the primary's top, under every screen
-    /// that row crosses, in nobody's way for the second it stands.
+    /// across the virtual screen's right half at the primary's top, under
+    /// every screen that row crosses, in nobody's way for the second it
+    /// stands. The right half, so its client area is away from the origin a
+    /// reading in client coordinates would put it at.
     pub(super) struct AppWindow(HWND);
 
     unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -147,14 +149,15 @@ mod window {
                 };
                 // 0 when an earlier test registered it: the class is there.
                 RegisterClassW(&kind);
+                let width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
                 let window = CreateWindowExW(
                     WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                     class,
                     w!(""),
                     WS_POPUP,
-                    GetSystemMetrics(SM_XVIRTUALSCREEN),
+                    GetSystemMetrics(SM_XVIRTUALSCREEN) + width / 2,
                     0,
-                    GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                    width - width / 2,
                     1,
                     None,
                     None,
