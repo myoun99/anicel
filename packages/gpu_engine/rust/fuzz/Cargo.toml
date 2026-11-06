@@ -14,6 +14,7 @@ cargo-fuzz = true
 [workspace]
 
 [dependencies]
+audio = { path = "../native/audio" }
 compress = { path = "../native/compress" }
 libfuzzer-sys = "0.4"
 
@@ -22,6 +23,13 @@ libfuzzer-sys = "0.4"
 [[bin]]
 name = "compress_decompress"
 path = "fuzz_targets/compress_decompress.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "audio_stream"
+path = "fuzz_targets/audio_stream.rs"
 test = false
 doc = false
 bench = false
