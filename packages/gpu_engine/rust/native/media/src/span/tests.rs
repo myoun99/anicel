@@ -142,7 +142,7 @@ fn windows(size: i64, block: i64) -> Vec<(i64, usize)> {
 
 // A medium as its own bytes in a span of an archive: every window is the
 // C's, and so is what refuses — a span past the file's end, a negative
-// one, a file that is not there, a path past what Windows widens.
+// one, a file that is not there.
 #[test]
 fn a_plain_span_reads_as_the_c_reads_it() {
     let bytes = medium(5000);
@@ -161,19 +161,32 @@ fn a_plain_span_reads_as_the_c_reads_it() {
         }
     }
     assert!(both(&format!("{path}.missing"), 0, 1, false).is_none());
-    // A file that is there, under a path of more wide characters than the
-    // C's buffer holds: refused rather than cut, by both.
+    // The C's file shuts out deleting while it is open.
+    drop(spans);
+    std::fs::remove_file(path).expect("cleanup");
+}
+
+// A file that is there, under a path of more wide characters than the C's
+// buffer holds: refused rather than cut, by both.
+// 🚨ON WINDOWS ONLY, where the buffer is: a path is made wide on Windows
+// alone (path.rs — `WIDE` and `wide` are `cfg(windows)`, as the C's
+// `qa_widen_path` is), and elsewhere its bytes go to the OS as they are.
+// Nor is such a file there to be asked for elsewhere: the Mac refused the
+// deep folder itself, its names 255 bytes and its paths 1024 (`File name
+// too long`, CI run 42280088098, 관제 native-to-rust 11-07 04:42), and
+// Linux's ext4 names are 255 bytes as well.
+#[cfg(windows)]
+#[test]
+fn a_path_past_the_wide_buffer_is_refused_by_both() {
+    let bytes = medium(5000);
     let top = std::env::temp_dir().join(format!("미디어-스팬-{}-길다", std::process::id()));
     let deep = (0..5).fold(top.clone(), |dir, k| dir.join(char::from_u32(0xAC00 + k).expect("Hangul").to_string().repeat(200)));
     std::fs::create_dir_all(&deep).expect("a deep folder");
     let far = deep.join("medium.bin");
     std::fs::write(&far, &bytes).expect("a file far down");
     assert!(far.to_str().expect("UTF-8").encode_utf16().count() >= 1024, "LIVENESS — past the buffer");
-    assert!(both(far.to_str().expect("UTF-8"), 0, length, false).is_none());
+    assert!(both(far.to_str().expect("UTF-8"), 0, bytes.len() as i64, false).is_none());
     std::fs::remove_dir_all(&top).expect("cleanup");
-    // The C's file shuts out deleting while it is open.
-    drop(spans);
-    std::fs::remove_file(path).expect("cleanup");
 }
 
 // Framed media at the block sizes the writer has used and others — one
