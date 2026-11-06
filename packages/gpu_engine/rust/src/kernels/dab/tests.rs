@@ -899,7 +899,16 @@ fn a_stroke_lands_on_its_cel_as_a_row() {
     let lands = |mode, opacity| {
         let map = ResampleMap::moved(0, 0);
         let row = |set, mode, opacity| {
-            Step::Row { set, keys: None, map, matrix: None, opacity, mode, masked: false }
+            Step::Row {
+                set,
+                keys: None,
+                chain: None,
+                map,
+                matrix: None,
+                opacity,
+                mode,
+                masked: false,
+            }
         };
         let steps = [row(0, NORMAL, ONE), row(1, mode, opacity)];
         let plan = Plan {
@@ -907,6 +916,7 @@ fn a_stroke_lands_on_its_cel_as_a_row() {
             sets: &sets,
             keys: &[],
             matrices: &[],
+            chains: &[],
             steps: &steps,
             mask: None,
         };

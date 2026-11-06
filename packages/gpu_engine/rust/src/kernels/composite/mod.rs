@@ -16,7 +16,17 @@
 //! lays, after (캔버스 베이스, gpu-canonical-store 11-06 07:48). A buffer
 //! may close through one too — an adjustment's colour-only chain over its
 //! scope.
-//! The other effects, adjustments past a matrix and a cel number's letters (drawn by the
+//! A row or a buffer may carry an effect chain past colour — the blurs the
+//! app's chain lays before its final paint (kernels/chain). The executor
+//! runs each before it walks the steps, the innermost first, as the app
+//! rasters a folder's rows before its chain runs on them
+//! (`drawSubtreeAsImage`): a row's over its stored tiles in its own space,
+//! before its pose; a buffer's over its rows composited alone on the
+//! canvas, put as bytes as the app's raster is. What a chain puts is laid
+//! as a row in its place — a buffer's at its close's opacity, mode and
+//! matrix, which the app's final paint is (`layerCompositePaint`) — so the
+//! walk meets no chain.
+//! Adjustments past a matrix and a cel number's letters (drawn by the
 //! engine's glyph path, then a row here) come in later rounds.
 //!
 //! The pages a pass can bind are few — `max_storage_buffers_per_shader_stage`
@@ -66,19 +76,23 @@
 // (gpu-canonical-store 14:49 — the app connects after the bridges land).
 #![cfg_attr(not(test), allow(dead_code))]
 
+#[cfg(test)]
+mod chained_tests;
 pub(crate) mod halvings;
 #[cfg(test)]
 pub(crate) mod tests;
 
 use std::ops::Range;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::blend::mode::NORMAL;
+use crate::kernels::blend::mode::{NORMAL, PLUS};
+use crate::kernels::chain::{Chain, Chained, laid_as, tiles_of};
+use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
@@ -103,6 +117,10 @@ const STEP_WORDS: usize = 14;
 const NO_TILE: u32 = u32::MAX;
 /// A row's matrix place where it runs none (composite.wgsl's NO_MATRIX).
 const NO_MATRIX: u32 = u32::MAX;
+/// An output with no edge: every pixel of every output tile as it is.
+pub(crate) const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
+/// Whole, on the 16-bit scale of an opacity and a mix.
+pub(crate) const WHOLE: u32 = 65535;
 /// The plan and the work buffer: the storage buffers a pass binds besides
 /// its pages — and its pass's words, a uniform one. A device that binds
 /// sixteen pages past them binds them past one fewer as well, so no test
@@ -215,13 +233,15 @@ pub(crate) struct Through<'a> {
 /// among them.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
-    /// Tile set `set`, keyed by chain `keys` if any, posed by `map` —
-    /// canvas pixel to the row's own —, through colour matrix `matrix` if
-    /// any, laid at `opacity` in `mode`, under the plan's mask where
-    /// `masked`.
+    /// Tile set `set`, keyed by chain `keys` if any or run through effect
+    /// chain `chain` if any, posed by `map` — canvas pixel to the row's
+    /// own —, through colour matrix `matrix` if any, laid at `opacity` in
+    /// `mode`, under the plan's mask where `masked`. Keys and an effect
+    /// chain are not both named: the chain's key runs are its ops.
     Row {
         set: usize,
         keys: Option<usize>,
+        chain: Option<usize>,
         map: ResampleMap,
         matrix: Option<usize>,
         opacity: u32,
@@ -238,11 +258,14 @@ pub(crate) enum Step {
     /// mix folded into the matrix (`resolveAdjustmentScopePass`). The
     /// matrix runs on bytes, so the buffer is rounded to them first, as a
     /// stored pixel is — as the app's scope is, drawn to its layer's
-    /// bytes before the filter runs.
+    /// bytes before the filter runs. Through effect chain `chain` before
+    /// the matrix, if one is named, at its mix: a folder's or an
+    /// adjustment's, on a buffer opened on nothing ([`Step::Open`]).
     Close {
         opacity: u32,
         mode: u32,
         matrix: Option<usize>,
+        chain: Option<BufferChain>,
     },
     /// Closes a clip's scope onto its base by the base's alpha (srcATop).
     CloseAtop,
@@ -265,6 +288,17 @@ pub(crate) enum Step {
     Mark { map: ResampleMap, shift: [i32; 2] },
 }
 
+/// A buffer's effect chain: chain `chain` of the plan, and how much of what
+/// it puts the close lays against the buffer it ran on — an adjustment's
+/// mix, (1−m)·U + m·F in one buffer, the second added by plus
+/// (`composeAdjustmentScope`); whole for a folder's, which lays what its
+/// chain puts alone. A row has no mix: its chain is an index alone.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BufferChain {
+    pub(crate) chain: usize,
+    pub(crate) mix: u32,
+}
+
 /// What one pass may take: pages to bind, output tiles — as many as the
 /// work buffer, stack and all, fits in one binding — and stack levels to
 /// hold, 2 (a buffer and the one it closes onto) to [`DEPTH`].
@@ -283,9 +317,9 @@ pub(crate) struct Composited {
     pub(crate) passes: usize,
 }
 
-/// What a plan lays: the pool's pages, the rows' tile sets, key chains and
-/// colour matrices (`effects::matrix_words`), the steps, bottom to top, and
-/// the selection its masked steps are laid
+/// What a plan lays: the pool's pages, the rows' tile sets, key chains,
+/// colour matrices (`effects::matrix_words`) and effect chains, the steps,
+/// bottom to top, and the selection its masked steps are laid
 /// under — one a plan: the stroke being drawn is the row there is one for
 /// (R28, 11-06 06:51), and a range mark's range is on that row.
 pub(crate) struct Plan<'a> {
@@ -293,6 +327,7 @@ pub(crate) struct Plan<'a> {
     pub(crate) sets: &'a [TileSet],
     pub(crate) keys: &'a [KeyChain],
     pub(crate) matrices: &'a [[u32; MATRIX_WORDS]],
+    pub(crate) chains: &'a [Chained<'a>],
     pub(crate) steps: &'a [Step],
     pub(crate) mask: Option<&'a Mask<'a>>,
 }
@@ -341,6 +376,9 @@ pub(crate) struct Composite {
     passes: Arc<Mutex<Passes>>,
     /// The pages of the pool a pass binds, past the plan and the work.
     pages: Pages,
+    /// The effect chains' blurs, compiled where a plan first names a chain,
+    /// not where the engine starts: most plans name none.
+    chain: OnceLock<Chain>,
 }
 
 impl Composite {
@@ -350,6 +388,7 @@ impl Composite {
         let composite = Self {
             passes: Arc::default(),
             pages,
+            chain: OnceLock::new(),
         };
         // The tiles' full pass is compiled here, where the engine starts, not
         // under a canvas's first composite — as before passes came apart.
@@ -427,6 +466,7 @@ impl Composite {
         let steps = [Step::Row {
             set: 0,
             keys: through.keys.map(|_| 0),
+            chain: None,
             map: ResampleMap::moved(0, 0),
             matrix: through.matrix.map(|_| 0),
             // Whole. 65534 copies the same bytes — a stored byte's step is 257
@@ -440,11 +480,11 @@ impl Composite {
             sets: std::slice::from_ref(set),
             keys: through.keys.map_or(&[], std::slice::from_ref),
             matrices: through.matrix.map_or(&[], std::slice::from_ref),
+            chains: &[],
             steps: &steps,
             mask: None,
         };
-        let no_edge = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
-        self.run(engine, &plan, tiles, no_edge, budget)
+        self.run(engine, &plan, tiles, NO_EDGE, budget)
     }
 
     /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
@@ -580,8 +620,25 @@ impl Composite {
         if !(2..=DEPTH).contains(&budget.levels) {
             return fail(format!("{} stack levels a pass; one holds 2 to {DEPTH}", budget.levels));
         }
-        check_depth(plan.steps, plan.sets.len(), plan.keys.len(), plan.matrices.len())?;
+        check_depth(
+            plan.steps,
+            plan.sets.len(),
+            plan.keys.len(),
+            plan.matrices.len(),
+            plan.chains.len(),
+        )?;
         check_mask(plan)?;
+        if plan.steps.iter().any(|step| chain_of(step).is_some()) {
+            let (pages, sets, steps) = self.chained(engine, plan, budget)?;
+            let plan = Plan {
+                pages: &pages,
+                sets: &sets,
+                chains: &[],
+                steps: &steps,
+                ..*plan
+            };
+            return self.walk(engine, &plan, tiles, extent, surface, target, budget);
+        }
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
         if laid.iter().all(|each| each.pages.len() <= pages_per_pass) {
             return self.walk_laid(engine, plan, &laid, tiles, extent, surface, target, budget);
@@ -652,6 +709,114 @@ impl Composite {
             gathered.push(each);
         }
         Some((pages, sets, gathered))
+    }
+
+    /// `plan`'s steps with every effect chain run, the innermost first, and
+    /// the pages and tile sets they then lay. A chained row's tiles over its
+    /// chain's rectangle, as they are stored ([`Composite::copied`]), go
+    /// through the chain and are laid as a set of their own. A chained
+    /// buffer's steps — from its open to its close, their own chains run —
+    /// are composited alone over its chain's rectangle, through the chain,
+    /// and laid as one row in their place, unposed, at the close's opacity,
+    /// mode and matrix — or, at a mix under whole, as the app's crossfade
+    /// lays an adjustment's scope (`composeAdjustmentScope`): in a buffer
+    /// of their own, closed at the close's opacity and mode, the steps' tiles
+    /// at the rest of the mix and what the chain put added by plus at the
+    /// mix, through the matrix. Alone with no edge: the walk holds a buffer
+    /// whole and cuts only what a run puts to its extent.
+    fn chained(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        budget: Budget,
+    ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>)> {
+        // A slot is a u16.
+        let held = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
+        let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
+        let mut steps: Vec<Step> = Vec::with_capacity(plan.steps.len());
+        // Where in `steps` each buffer open there was opened, and whether
+        // on nothing.
+        let mut opens: Vec<(usize, bool)> = Vec::new();
+        for (index, step) in plan.steps.iter().enumerate() {
+            let Some(at) = chain_of(step) else {
+                match step {
+                    Step::Open => opens.push((steps.len(), true)),
+                    Step::OpenOpaque => opens.push((steps.len(), false)),
+                    Step::Close { .. } | Step::CloseAtop => {
+                        opens.pop();
+                    }
+                    Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+                }
+                steps.push(*step);
+                continue;
+            };
+            let chained = &plan.chains[at];
+            let read = tiles_of(chained.rect);
+            // ⚠️No test reaches this refusal, as none reaches `gathered`'s:
+            // a page holds 2048 tiles at WebGPU's least binding.
+            if read.len() > held {
+                let count = read.len();
+                return fail(format!("step {index} chains {count} tiles; a page holds {held}"));
+            }
+            let under = match *step {
+                Step::Row { set, .. } => self.copied(engine, &pages, &sets[set], &read, budget)?,
+                _ => {
+                    // A buffer opened on the one under it holds what is under
+                    // it, which its steps alone do not lay.
+                    let Some((open, true)) = opens.pop() else {
+                        return fail(format!("step {index} chains a buffer opened on another"));
+                    };
+                    let alone = steps.split_off(open + 1);
+                    steps.truncate(open);
+                    let plan = Plan {
+                        pages: &pages,
+                        sets: &sets,
+                        chains: &[],
+                        steps: &alone,
+                        ..*plan
+                    };
+                    self.run(engine, &plan, &read, NO_EDGE, budget)?
+                }
+            };
+            let (ops, rect) = (&chained.ops, chained.rect);
+            let chain = self.chain.get_or_init(|| Chain::new(engine));
+            // A chain reads its tiles and puts others: what it read stays.
+            let put = chain.run(engine, self, under.out.clone(), rect, ops)?;
+            let put = laid_on(&mut pages, &mut sets, put, rect)?;
+            match *step {
+                Step::Close {
+                    opacity,
+                    mode,
+                    matrix,
+                    chain: Some(BufferChain { mix, .. }),
+                } if mix < WHOLE => {
+                    let read = laid_on(&mut pages, &mut sets, under.out, rect)?;
+                    let laid = |set, opacity, mode, matrix| Step::Row {
+                        set,
+                        keys: None,
+                        chain: None,
+                        map: ResampleMap::moved(0, 0),
+                        matrix,
+                        opacity,
+                        mode,
+                        masked: false,
+                    };
+                    steps.extend([
+                        Step::Open,
+                        laid(read, WHOLE - mix, NORMAL, None),
+                        laid(put, mix, PLUS, matrix),
+                        Step::Close {
+                            opacity,
+                            mode,
+                            matrix: None,
+                            chain: None,
+                        },
+                    ]);
+                }
+                _ => steps.push(unchained(*step, put)),
+            }
+        }
+        Some((pages, sets, steps))
     }
 
     /// [`Composite::walk`] from the steps as `lay` laid them.
@@ -909,6 +1074,73 @@ fn check_mask(plan: &Plan) -> Option<()> {
     }
 }
 
+/// The effect chain a step names: a row's, or a buffer's close's.
+fn chain_of(step: &Step) -> Option<usize> {
+    match *step {
+        Step::Row { chain, .. } => chain,
+        Step::Close { chain, .. } => chain.map(|named| named.chain),
+        _ => None,
+    }
+}
+
+/// `put` — tiles over `rect` — on a page past `pages`, laid as a tile set
+/// past `sets`: that set. Nothing where the page is past what a plan names.
+fn laid_on(
+    pages: &mut Vec<wgpu::Buffer>,
+    sets: &mut Vec<TileSet>,
+    put: wgpu::Buffer,
+    rect: TileRect,
+) -> Option<usize> {
+    let Ok(page) = u16::try_from(pages.len()) else {
+        return fail("a chain's page is past what a plan names");
+    };
+    pages.push(put);
+    sets.push(laid_as(rect, page));
+    Some(sets.len() - 1)
+}
+
+/// What chained `step` lays once its chain has put tile set `set`: a row
+/// from that set, as it was posed; a buffer's close a row of it, unposed,
+/// at the close's opacity, mode and matrix.
+fn unchained(step: Step, set: usize) -> Step {
+    match step {
+        Step::Row {
+            keys,
+            map,
+            matrix,
+            opacity,
+            mode,
+            masked,
+            ..
+        } => Step::Row {
+            set,
+            keys,
+            chain: None,
+            map,
+            matrix,
+            opacity,
+            mode,
+            masked,
+        },
+        Step::Close {
+            opacity,
+            mode,
+            matrix,
+            ..
+        } => Step::Row {
+            set,
+            keys: None,
+            chain: None,
+            map: ResampleMap::moved(0, 0),
+            matrix,
+            opacity,
+            mode,
+            masked: false,
+        },
+        other => other,
+    }
+}
+
 /// The map of a step laid under the plan's mask — a masked row's, or a
 /// range mark's — which takes canvas pixels to where it reads the mask.
 fn masked_map(step: &Step) -> Option<ResampleMap> {
@@ -946,9 +1178,16 @@ fn read_band(mask: &Mask, maps: &[ResampleMap], tiles: &[(i32, i32)]) -> Range<u
 }
 
 /// Fails unless every buffer the steps open is closed, none is closed that
-/// was not opened, and every row names a tile set and a key chain there
-/// are.
-fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> Option<()> {
+/// was not opened, every step names a tile set, a key chain, a matrix and an
+/// effect chain there are, no row names both keys and an effect chain, and
+/// no buffer mixes its chain past whole.
+fn check_depth(
+    steps: &[Step],
+    sets: usize,
+    keys: usize,
+    matrices: usize,
+    chains: usize,
+) -> Option<()> {
     let mut depth = 0usize;
     for (index, step) in steps.iter().enumerate() {
         match *step {
@@ -957,8 +1196,8 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> O
             }
             Step::Row {
                 keys: Some(chain), ..
-            } if chain >= chains => {
-                return fail(format!("step {index} keys by chain {chain} of {chains}"));
+            } if chain >= keys => {
+                return fail(format!("step {index} keys by chain {chain} of {keys}"));
             }
             Step::Row {
                 matrix: Some(matrix), ..
@@ -967,6 +1206,30 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> O
                 matrix: Some(matrix), ..
             } if matrix >= matrices => {
                 return fail(format!("step {index} runs matrix {matrix} of {matrices}"));
+            }
+            Step::Row {
+                chain: Some(chain), ..
+            }
+            | Step::Close {
+                chain: Some(BufferChain { chain, .. }),
+                ..
+            } if chain >= chains => {
+                return fail(format!("step {index} runs effect chain {chain} of {chains}"));
+            }
+            Step::Close {
+                chain: Some(BufferChain { mix, .. }),
+                ..
+            } if mix > WHOLE => {
+                return fail(format!("step {index} mixes its chain at {mix}, past whole"));
+            }
+            // Both run on the stored pixels before the pose, so neither
+            // order would be the plan's: a chain's key runs are its ops.
+            Step::Row {
+                keys: Some(_),
+                chain: Some(_),
+                ..
+            } => {
+                return fail(format!("step {index} names keys and an effect chain"));
             }
             Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
             Step::Open | Step::OpenOpaque => depth += 1,
@@ -1220,6 +1483,8 @@ fn plan_words(
             Step::Row {
                 set,
                 keys,
+                // Run before the walk ([`Composite::chained`]): none is left.
+                chain: _,
                 map,
                 matrix,
                 opacity,
@@ -1252,6 +1517,7 @@ fn plan_words(
                 opacity,
                 mode,
                 matrix,
+                chain: _,
             } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, matrix_at(matrix)],
             Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             Step::Solid {

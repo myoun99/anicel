@@ -9,11 +9,12 @@
 //!
 //! A colour matrix and a key run are the executor's own row laid over
 //! nothing ([`Composite::copied_through`]); a blur is its kernel's
-//! (`effects::blur`). What the chain puts is laid as a row
-//! ([`laid_as`]): a row's chain runs in the row's own space, before its
-//! pose, and a folder's on the canvas (`withLayerPlacement`,
-//! layer_stack_paint_pass.dart). A plug-in's step is the host's: a plan
-//! cuts its chain there.
+//! (`effects::blur`). A plan names a chain on a row or on a buffer's close
+//! ([`Chained`]), and the executor runs it before it walks the steps,
+//! laying what it puts as a row ([`laid_as`]): a row's chain runs in the
+//! row's own space, before its pose, and a folder's on the canvas
+//! (`withLayerPlacement`, layer_stack_paint_pass.dart). A plug-in's step is
+//! the host's: a plan cuts its chain there.
 //!
 //! A chain that is nothing but a key run is the row's own keys
 //! (`Step::Row`'s `keys`), and a final paint of colour alone the row's own
@@ -60,6 +61,14 @@ pub(crate) enum Op<'a> {
         lens: Lens,
         map: Option<BlurMap<'a>>,
     },
+}
+
+/// A chain as a plan names it (`Plan`'s `chains`): its ops, in the order
+/// the app runs its steps, and the ONE rectangle of tiles they all run over
+/// — a row's in its own space, a folder's on the canvas.
+pub(crate) struct Chained<'a> {
+    pub(crate) ops: Vec<Op<'a>>,
+    pub(crate) rect: TileRect,
 }
 
 /// The chain's blurs, compiled once; its colour runs on the executor's.

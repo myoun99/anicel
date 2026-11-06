@@ -7,14 +7,13 @@ use super::super::tests::rig;
 use super::super::{Extent, Finished};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::tests::{Pool, Rig as CompositeRig, rig as composite_rig};
-use crate::kernels::composite::{Plan, Step, TILE, TILE_TEXELS, TileSet};
+use crate::kernels::composite::{Plan, Step, TILE, TILE_TEXELS, TileSet, WHOLE};
 use crate::kernels::dab::stamp::tests::stamps;
 use crate::kernels::dab::stamp::{Paint, Source};
 use crate::kernels::shared::{ResampleMap, plane};
 use crate::kernels::write::Write;
 use crate::testing::read_buffer;
 
-const WHOLE: u32 = 65535;
 const BLUE: u32 = 30 | 90 << 8 | 220 << 16 | 255 << 24;
 const RED: u32 = 200 | 100 << 8 | 50 << 16 | 255 << 24;
 const BLACK: u32 = 255 << 24;
@@ -25,6 +24,7 @@ fn laid(set: usize, opacity: u32) -> Step {
     Step::Row {
         set,
         keys: None,
+        chain: None,
         map: ResampleMap::moved(0, 0),
         matrix: None,
         opacity,
@@ -39,6 +39,7 @@ fn plan<'a>(pages: &'a [wgpu::Buffer], sets: &'a [TileSet], steps: &'a [Step]) -
         sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps,
         mask: None,
     }

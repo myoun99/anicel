@@ -292,6 +292,7 @@ fn row(map: ResampleMap) -> Step {
     Step::Row {
         set: 0,
         keys: None,
+        chain: None,
         map,
         matrix: None,
         opacity: 65535,
@@ -307,6 +308,7 @@ fn plan<'a>(tiles: Tiles<'a>, steps: &'a [Step]) -> Plan<'a> {
         sets: std::slice::from_ref(tiles.set),
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps,
         mask: None,
     }

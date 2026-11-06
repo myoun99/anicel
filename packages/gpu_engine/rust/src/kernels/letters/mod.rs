@@ -32,7 +32,9 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::chain::tiles_of;
-use crate::kernels::composite::{Composite, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
+use crate::kernels::composite::{
+    Composite, NO_EDGE, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet,
+};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::shared::ResampleMap;
 
@@ -143,6 +145,7 @@ pub(crate) fn lettered(engine: &Engine, composite: &Composite, layers: &[Layer])
         .map(|(set, layer)| Step::Row {
             set,
             keys: None,
+            chain: None,
             map: ResampleMap::moved(0, 0),
             matrix: None,
             opacity: (layer.colour >> 24) * 257,
@@ -155,11 +158,11 @@ pub(crate) fn lettered(engine: &Engine, composite: &Composite, layers: &[Layer])
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
-    let no_edge = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
-    let done = composite.run(engine, &plan, &tiles, no_edge, composite.widest())?;
+    let done = composite.run(engine, &plan, &tiles, NO_EDGE, composite.widest())?;
     Some(Lettered { rect, tiles: done.out })
 }
 

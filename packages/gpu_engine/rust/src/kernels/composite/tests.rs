@@ -6,8 +6,8 @@
 use std::sync::OnceLock;
 
 use super::{
-    Batch, Budget, Compiled, Composite, DEPTH, KeyChain, Laid, Plan, Step, TILE, TILE_TEXELS,
-    TileAt, TileSet, check_depth, cut,
+    Batch, Budget, Compiled, Composite, DEPTH, KeyChain, Laid, NO_EDGE, Plan, Step, TILE,
+    TILE_TEXELS, TileAt, TileSet, WHOLE, check_depth, cut,
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{
@@ -23,10 +23,6 @@ use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode, ResampleModes, words_buffer};
 use crate::kernels::warp::Boxed;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
-
-const WHOLE: u32 = 65535;
-/// An output with no edge: every pixel of every output tile as it is.
-const EVERYWHERE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 
 pub(crate) struct Rig {
     pub(crate) engine: &'static Engine,
@@ -173,14 +169,15 @@ impl Pool {
 }
 
 /// Tile set `set` moved by (`dx`, `dy`) whole pixels.
-fn row(set: usize, (dx, dy): (i32, i32), opacity: u32, mode: u32) -> Step {
+pub(crate) fn row(set: usize, (dx, dy): (i32, i32), opacity: u32, mode: u32) -> Step {
     with_map(set, ResampleMap::moved(dx, dy), opacity, mode)
 }
 
-fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
+pub(crate) fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
     Step::Row {
         set,
         keys: None,
+        chain: None,
         map,
         matrix: None,
         opacity,
@@ -190,7 +187,7 @@ fn with_map(set: usize, map: ResampleMap, opacity: u32, mode: u32) -> Step {
 }
 
 /// `row` keyed by chain `chain`.
-fn keyed(mut row: Step, chain: usize) -> Step {
+pub(crate) fn keyed(mut row: Step, chain: usize) -> Step {
     let Step::Row { keys, .. } = &mut row else {
         unreachable!("only a row is keyed");
     };
@@ -199,7 +196,7 @@ fn keyed(mut row: Step, chain: usize) -> Step {
 }
 
 /// `row` through matrix `matrix`.
-fn matrixed(mut row: Step, at: usize) -> Step {
+pub(crate) fn matrixed(mut row: Step, at: usize) -> Step {
     let Step::Row { matrix, .. } = &mut row else {
         unreachable!("only a row runs a matrix");
     };
@@ -225,6 +222,7 @@ impl Scene {
             sets: &self.sets,
             keys: &self.keys,
             matrices: &self.matrices,
+            chains: &[],
             steps: &self.steps,
             mask: None,
         }
@@ -241,7 +239,7 @@ fn composite_on(rig: &Rig, scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
     let Rig { engine, composite } = rig;
     let pages = scene.pool.upload(engine);
     let done = composite
-        .run(engine, &scene.plan(&pages), &scene.tiles, EVERYWHERE, budget)
+        .run(engine, &scene.plan(&pages), &scene.tiles, NO_EDGE, budget)
         .expect("composite");
     (read_buffer(engine, &done.out), done.passes)
 }
@@ -384,11 +382,13 @@ fn folders() -> Scene {
                 opacity: 30000,
                 mode: MULTIPLY,
                 matrix: None,
+                chain: None,
             },
             Step::Close {
                 opacity: 50000,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
             row(3, (-3, 100), WHOLE, LINEAR_BURN),
         ],
@@ -425,6 +425,7 @@ fn clips() -> Scene {
                 opacity: 45000,
                 mode: SCREEN,
                 matrix: None,
+                chain: None,
             },
             Step::Open,
             row(4, (0, 0), WHOLE, NORMAL),
@@ -435,6 +436,7 @@ fn clips() -> Scene {
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -458,6 +460,7 @@ fn spanning() -> Scene {
         opacity: 60000,
         mode: DIFFERENCE,
         matrix: None,
+        chain: None,
     });
     steps.push(row(6, (3, 3), WHOLE, modes[6]));
     Scene {
@@ -472,7 +475,7 @@ fn spanning() -> Scene {
 
 /// Poses R1 takes, canvas pixel to the row's own, over a canvas of two by
 /// two tiles. No sin or cos: the spec's 대조 필요 ①.
-fn pose(name: &str) -> ResampleMap {
+pub(crate) fn pose(name: &str) -> ResampleMap {
     use ResampleMode::{Blend, Pick};
     let affine = |a, b, c, d, e, f| [a, b, c, d, e, f, 0.0, 0.0, 1.0];
     // 1.3 times larger, a 3-4-5 turn.
@@ -535,6 +538,7 @@ fn posed() -> Scene {
                 opacity: 45000,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
             Step::Open,
             row(3, (0, 10), WHOLE, NORMAL),
@@ -545,6 +549,7 @@ fn posed() -> Scene {
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -589,6 +594,7 @@ fn keyed_rows() -> Scene {
                 opacity: 45000,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -635,6 +641,7 @@ fn matrixed_rows() -> Scene {
                 opacity: 45000,
                 mode: NORMAL,
                 matrix: Some(0),
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -669,6 +676,7 @@ fn deep() -> Scene {
                 opacity: 65535 - d as u32 * 2500,
                 mode: modes[(d + 3) % 6],
                 matrix: None,
+                chain: None,
             }
         });
         if d % 4 == 1 {
@@ -863,6 +871,7 @@ fn papered(paper: Step) -> Scene {
                 opacity: 40000,
                 mode: MULTIPLY,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(-1, 0), (0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)],
@@ -922,6 +931,7 @@ fn a_folder_of_one_row_is_that_row() {
             opacity: WHOLE,
             mode: NORMAL,
             matrix: None,
+            chain: None,
         },
     ]));
     assert!(alone == folded);
@@ -948,6 +958,7 @@ fn folders_nested_past_what_a_pass_holds_are_their_row() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let alone = widest(&scene(vec![a_row]));
     let nested: Vec<Step> = (0..12)
@@ -989,6 +1000,7 @@ fn crossfaded(u: impl Fn(i32, i32) -> u32, f: impl Fn(i32, i32) -> u32, mix: u32
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0)],
@@ -1075,6 +1087,7 @@ fn clip(base_alpha: u32, clipped: u32, mode: u32, open: Step) -> Vec<u8> {
                 opacity: WHOLE,
                 mode: NORMAL,
                 matrix: None,
+                chain: None,
             },
         ],
         tiles: vec![(0, 0)],
@@ -1310,6 +1323,7 @@ fn a_buffer_closing_through_a_matrix_lays_its_bytes_through_it() {
                 opacity,
                 mode,
                 matrix,
+                chain: None,
             },
         ]
     };
@@ -1401,32 +1415,34 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
-    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0, 0).is_some());
-    assert!(check_depth(&[Step::Open], 1, 0, 0).is_none());
-    assert!(check_depth(&[close], 1, 0, 0).is_none());
-    assert!(check_depth(&[Step::CloseAtop], 1, 0, 0).is_none());
-    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1, 0, 0).is_none());
+    assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0, 0, 0).is_some());
+    assert!(check_depth(&[Step::Open], 1, 0, 0, 0).is_none());
+    assert!(check_depth(&[close], 1, 0, 0, 0).is_none());
+    assert!(check_depth(&[Step::CloseAtop], 1, 0, 0, 0).is_none());
+    assert!(check_depth(&[row(1, (0, 0), WHOLE, NORMAL)], 1, 0, 0, 0).is_none());
     let keyed_by_the_second = keyed(row(0, (0, 0), WHOLE, NORMAL), 1);
-    assert!(check_depth(&[keyed_by_the_second], 1, 2, 0).is_some());
-    assert!(check_depth(&[keyed_by_the_second], 1, 1, 0).is_none());
+    assert!(check_depth(&[keyed_by_the_second], 1, 2, 0, 0).is_some());
+    assert!(check_depth(&[keyed_by_the_second], 1, 1, 0, 0).is_none());
     let through_the_second = matrixed(row(0, (0, 0), WHOLE, NORMAL), 1);
-    assert!(check_depth(&[through_the_second], 1, 0, 2).is_some());
-    assert!(check_depth(&[through_the_second], 1, 0, 1).is_none());
+    assert!(check_depth(&[through_the_second], 1, 0, 2, 0).is_some());
+    assert!(check_depth(&[through_the_second], 1, 0, 1, 0).is_none());
     let closed_through_the_second = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: Some(1),
+        chain: None,
     };
     let scope = [Step::Open, closed_through_the_second];
-    assert!(check_depth(&scope, 1, 0, 2).is_some());
-    assert!(check_depth(&scope, 1, 0, 1).is_none());
+    assert!(check_depth(&scope, 1, 0, 2, 0).is_some());
+    assert!(check_depth(&scope, 1, 0, 1, 0).is_none());
     // Past what a pass holds is a plan like any other: it is cut there.
     let deeper: Vec<Step> = (0..DEPTH)
         .map(|_| Step::OpenOpaque)
         .chain((0..DEPTH).map(|_| close))
         .collect();
-    assert!(check_depth(&deeper, 0, 0, 0).is_some());
+    assert!(check_depth(&deeper, 0, 0, 0, 0).is_some());
 }
 
 // Pages 0, 1 | 2, 0 | 3 at two a pass: a pass ends where a third page would
@@ -1443,6 +1459,7 @@ fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let plan = [
         laid(&[0], a_row),
@@ -1489,6 +1506,7 @@ fn a_plan_is_cut_where_it_leaves_the_levels_a_pass_holds() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let plan = [
         laid(Step::Open),
@@ -1526,6 +1544,7 @@ fn a_pass_closing_out_of_its_levels_holds_the_depth_in_the_middle() {
         opacity: WHOLE,
         mode: NORMAL,
         matrix: None,
+        chain: None,
     };
     let a_row = row(0, (0, 0), WHOLE, NORMAL);
     let steps: Vec<Step> = (0..7)
@@ -1574,6 +1593,7 @@ fn a_pass_holds_two_levels_to_depth() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -1582,7 +1602,7 @@ fn a_pass_holds_two_levels_to_depth() {
             levels,
             ..composite.widest()
         };
-        composite.run(engine, &plan, &[(0, 0)], EVERYWHERE, budget).is_some()
+        composite.run(engine, &plan, &[(0, 0)], NO_EDGE, budget).is_some()
     };
     assert_eq!([run(1), run(2), run(DEPTH), run(DEPTH + 1)], [false, true, true, false]);
 }
@@ -1719,6 +1739,7 @@ fn shown_on(
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -1779,7 +1800,7 @@ fn an_output_holds_nothing_past_its_extent() {
         let done = composite.run(engine, &plan, &scene.tiles, extent, composite.widest());
         read_buffer(engine, &done.expect("composite").out)
     };
-    let whole = run(EVERYWHERE);
+    let whole = run(NO_EDGE);
     let ended = run([3, 5, 200, 150]);
     for y in 0..2 * TILE as i32 {
         for x in 0..2 * TILE as i32 {
@@ -1876,6 +1897,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -1907,6 +1929,7 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
@@ -2146,11 +2169,12 @@ fn a_row_lays_nothing_where_it_is_not_live() {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
     let tiles = [(0, 0), (1, 0)];
-    let whole = composite.run(engine, &plan, &tiles, EVERYWHERE, composite.widest());
+    let whole = composite.run(engine, &plan, &tiles, NO_EDGE, composite.widest());
     let whole = read_buffer(engine, &whole.expect("composite").out);
     let mut laid = super::lay(&steps, &sets, &tiles, 1, 1).expect("lay");
     laid[0].live[1] = false;
@@ -2166,7 +2190,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
             &plan,
             &laid,
             &tiles,
-            EVERYWHERE,
+            NO_EDGE,
             None,
             &super::Target::Tiles(&out),
             composite.widest(),
@@ -2198,10 +2222,11 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
             sets: &sets,
             keys: &[],
             matrices: &[],
+            chains: &[],
             steps,
             mask: None,
         };
-        let done = composite.run(engine, &plan, &[(0, 0), (1, 0)], EVERYWHERE, composite.widest());
+        let done = composite.run(engine, &plan, &[(0, 0), (1, 0)], NO_EDGE, composite.widest());
         read_buffer(engine, &done.expect("composite").out)
     };
     let step = |k: usize| {
@@ -2220,7 +2245,7 @@ fn a_row_s_bit_is_its_own_past_a_word_of_steps() {
 // ---- Under a selection (R28) ----
 
 /// `row` laid under the plan's mask.
-fn masked_row(mut row: Step) -> Step {
+pub(crate) fn masked_row(mut row: Step) -> Step {
     let Step::Row { masked, .. } = &mut row else {
         unreachable!("only a row is masked");
     };
@@ -2241,7 +2266,7 @@ fn under_on(rig: &Rig, scene: &Scene, mask: Option<&Mask>, budget: Budget) -> Op
         mask,
         ..scene.plan(&pages)
     };
-    let done = composite.run(engine, &plan, &scene.tiles, EVERYWHERE, budget)?;
+    let done = composite.run(engine, &plan, &scene.tiles, NO_EDGE, budget)?;
     Some(read_buffer(engine, &done.out))
 }
 
@@ -2561,12 +2586,13 @@ fn stamped_on_blue(source: &Source, mode: u32) -> (Vec<u8>, [(i32, i32); 2]) {
         sets: &sets,
         keys: &[],
         matrices: &[],
+        chains: &[],
         steps: &steps,
         mask: None,
     };
     let tiles = [(0, 0), (1, 0)];
     let budget = composite.widest();
-    let done = composite.run(engine, &plan, &tiles, EVERYWHERE, budget).expect("composite");
+    let done = composite.run(engine, &plan, &tiles, NO_EDGE, budget).expect("composite");
     (read_buffer(engine, &done.out), tiles)
 }
 
