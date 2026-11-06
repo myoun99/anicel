@@ -20,6 +20,15 @@ name: GPU engine on Metal, Mesa and WARP
 # so only release compiles the shaders the app ships (the grid kernel's
 # X3507 was red in release alone). Debug keeps the validation layers.
 #
+# 🚨ONE RED HIDES NOTHING (관제 2026-11-07, gpu-engine-skeleton): the first
+# run (42274856506) stopped the macOS and Linux jobs at a pin of the first
+# crate, `audio`, and not one GPU kernel test ran — cargo stops at the first
+# test binary that fails. So every run is --no-fail-fast, naming every red
+# at its end; the GPU kernels (the root crate, gpu_engine) and the native
+# crates (native/*) are a step each, so each shows its own result; and each
+# test step runs once the toolchain is in place, whatever the step before
+# it said — debug's red does not keep release from running.
+#
 # And every job builds the C engine first: the native crates (native/*,
 # native-to-rust 2026-11-06) are held to it byte for byte, through
 # QA_ENGINE_PATH, and a missing engine fails them (native/oracle). It is
@@ -52,9 +61,20 @@ jobs:
       - uses: ./.github/actions/native-engine
       # rustup reads rust-toolchain.toml: the pinned compiler, as on every
       # machine that builds the engine.
-      - run: rustup show
-      - run: cargo test --locked --workspace
-      - run: cargo test --locked --workspace --release
+      - id: toolchain
+        run: rustup show
+      - name: GPU kernels (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine
+      - name: native crates (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine
+      - name: GPU kernels (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine --release
+      - name: native crates (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine --release
 
   linux:
     name: crate tests on lavapipe (Linux)
@@ -75,9 +95,20 @@ jobs:
       # audio device's cpal builds against ALSA (native-to-rust-Q7), which
       # alsa-sys finds through pkg-config; its tests open the null device.
       - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libasound2-dev pkg-config
-      - run: rustup show
-      - run: cargo test --locked --workspace
-      - run: cargo test --locked --workspace --release
+      - id: toolchain
+        run: rustup show
+      - name: GPU kernels (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine
+      - name: native crates (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine
+      - name: GPU kernels (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine --release
+      - name: native crates (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine --release
 
   # The ARM64 Windows build ships the arm64 dxcompiler.dll, and no machine
   # of ours can load it (the Surface Pro 11 is Intel x64) — 관제
@@ -100,6 +131,17 @@ jobs:
         with:
           sdk: 3.13.3
       - uses: ./.github/actions/native-engine
-      - run: rustup show
-      - run: cargo test --locked --workspace
-      - run: cargo test --locked --workspace --release
+      - id: toolchain
+        run: rustup show
+      - name: GPU kernels (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine
+      - name: native crates (debug)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine
+      - name: GPU kernels (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast -p gpu_engine --release
+      - name: native crates (release)
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine --release
