@@ -177,15 +177,21 @@ pub(crate) struct Scales {
     pressure: f64,
     /// How many units the azimuth's full circle counts — tenths of a degree
     /// on every driver seen, but the axis says so — and the altitude that is
-    /// a right angle.
-    /// ⛔Both ZERO while the device declares no orientation. These defaulted
-    /// to 900 once, and a pen with no tilt sensor then read altitude 0/900 on
-    /// every packet: lying flat, a lean nobody measured (desktop-pen-tilt).
-    azimuth_span: i32,
-    altitude_max: i32,
-    /// How many units the twist's full circle counts — ZERO while the device
+    /// a right angle; None while the device declares no orientation.
+    /// ⛔These defaulted to 900 once, and a pen with no tilt sensor then read
+    /// altitude 0/900 on every packet: lying flat, a lean nobody measured
+    /// (desktop-pen-tilt).
+    lean: Option<(i32, i32)>,
+    /// How many units the twist's full circle counts; None while the device
     /// declares no twist axis, which is most pens: an Art Pen's barrel turns.
-    twist_span: i32,
+    twist: Option<i32>,
+}
+
+/// How many units a full circle of `axis` counts, when it declares one. A
+/// range so wide its count wraps declares none, as it did in the C.
+fn circle(axis: Axis) -> Option<i32> {
+    let units = axis.max.wrapping_sub(axis.min).wrapping_add(1);
+    (axis.max > axis.min && units > 0).then_some(units)
 }
 
 impl Scales {
@@ -194,17 +200,11 @@ impl Scales {
             Some(axis) if axis.max > axis.min => 1.0 / f64::from(axis.max.wrapping_sub(axis.min)),
             _ => 1.0 / 1023.0,
         };
-        let mut scales = Self { pressure, azimuth_span: 0, altitude_max: 0, twist_span: 0 };
-        if let Some([azimuth, altitude, twist]) = orientation {
-            if azimuth.max > azimuth.min && altitude.max > 0 {
-                scales.azimuth_span = azimuth.max.wrapping_sub(azimuth.min).wrapping_add(1);
-                scales.altitude_max = altitude.max;
-            }
-            if twist.max > twist.min {
-                scales.twist_span = twist.max.wrapping_sub(twist.min).wrapping_add(1);
-            }
-        }
-        scales
+        let lean = orientation.and_then(|[azimuth, altitude, _]| {
+            circle(azimuth).filter(|_| altitude.max > 0).map(|span| (span, altitude.max))
+        });
+        let twist = orientation.and_then(|[_, _, twist]| circle(twist));
+        Self { pressure, lean, twist }
     }
 
     /// A packet's record: pressure 0..1; the pen top's compass bearing in
@@ -216,21 +216,21 @@ impl Scales {
     /// wrong one); the twist about the barrel in degrees 0..360, clockwise as
     /// Wintab's orTwist runs; and 1 when the device declares a twist.
     pub(crate) fn record(&self, packet: &Packet) -> [f32; 8] {
-        let oriented = self.altitude_max > 0 && self.azimuth_span > 0;
-        let twisted = self.twist_span > 0;
         let pressure = (f64::from(packet.normal_pressure) * self.pressure).clamp(0.0, 1.0);
         let turn = |units: i32, span: i32| (f64::from(units) * 360.0 / f64::from(span)) as f32;
-        let lean = packet.orientation;
-        [
-            pressure as f32,
-            if oriented { turn(lean.azimuth, self.azimuth_span) } else { 0.0 },
-            if oriented { lean.altitude as f32 / self.altitude_max as f32 } else { 0.0 },
-            packet.time as f32,
-            packet.buttons as f32,
-            if oriented { 1.0 } else { 0.0 },
-            if twisted { turn(lean.twist, self.twist_span) } else { 0.0 },
-            if twisted { 1.0 } else { 0.0 },
-        ]
+        let pose = packet.orientation;
+        let (bearing, altitude, oriented) = match self.lean {
+            Some((span, right)) => {
+                (turn(pose.azimuth, span), pose.altitude as f32 / right as f32, 1.0)
+            }
+            None => (0.0, 0.0, 0.0),
+        };
+        let (twist, twisted) = match self.twist {
+            Some(span) => (turn(pose.twist, span), 1.0),
+            None => (0.0, 0.0),
+        };
+        let time = packet.time as f32;
+        [pressure as f32, bearing, altitude, time, packet.buttons as f32, oriented, twist, twisted]
     }
 }
 

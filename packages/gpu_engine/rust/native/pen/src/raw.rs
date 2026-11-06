@@ -270,12 +270,12 @@ fn angle_in(
     axis.degrees(raw)
 }
 
-static STARTED: AtomicBool = AtomicBool::new(false);
+pub(crate) static STARTED: AtomicBool = AtomicBool::new(false);
 // The latest decoded report. The counter lets Dart tell "nothing new" from
 // "a report that happens to repeat the previous flags".
-static FLAGS: AtomicI32 = AtomicI32::new(0);
+pub(crate) static FLAGS: AtomicI32 = AtomicI32::new(0);
 static SEQUENCE: AtomicI32 = AtomicI32::new(0);
-static POSE: AtomicI64 = AtomicI64::new(0);
+pub(crate) static POSE: AtomicI64 = AtomicI64::new(0);
 
 struct Observer {
     hid: Option<Hid>,
@@ -489,7 +489,8 @@ pub(crate) fn hid_reports(words: &[u64], size: usize) -> Option<(isize, &[u8], u
     // `count` strides on from the first without a look at the size it was
     // handed (native-memory-safety).
     let first = offset_of!(RAWINPUT, data) + offset_of!(RAWHID, bRawData);
-    let reports = bytes.get(first..first.checked_add(count.checked_mul(stride)?)?)?;
+    // Two 32-bit counts: their product and the offset fit a 64-bit size.
+    let reports = bytes.get(first..first + count * stride)?;
     Some((raw.header.hDevice.0 as isize, reports, stride))
 }
 

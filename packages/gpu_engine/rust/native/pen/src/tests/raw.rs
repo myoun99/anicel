@@ -6,13 +6,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::offset_of;
-use std::sync::{Mutex, PoisonError};
+use std::sync::atomic::Ordering;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::UI::Input::{RAWHID, RAWINPUT};
 
-use crate::raw::{Device, Hid, ValueCaps, hid_reports};
-use crate::report::snapshot;
+use crate::raw::{Device, FLAGS, Hid, POSE, STARTED, ValueCaps, hid_reports};
+use crate::report::{pose, snapshot};
 
 /// The `qpr_*` exports of one observer.
 #[derive(Clone, Copy)]
@@ -56,6 +57,20 @@ fn polled(observer: Observer, cap: i32) -> (i32, usize) {
     (answer, written)
 }
 
+/// A process registers one window per collection: one observer at a time.
+fn one_at_a_time() -> MutexGuard<'static, ()> {
+    static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+    ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// What a poll of seven floats reads, a report's whole.
+fn seven(observer: Observer) -> [f32; 7] {
+    let mut out = [f32::NAN; 7];
+    // SAFETY: room for seven floats.
+    assert_eq!(unsafe { (observer.poll)(out.as_mut_ptr(), 7) }, 1, "a live observer");
+    out
+}
+
 #[derive(Debug, PartialEq)]
 struct Life {
     abi: i32,
@@ -84,15 +99,42 @@ fn life(observer: Observer) -> Life {
 
 #[test]
 fn the_observers_life_is_the_cs() {
-    // A process registers one window per collection: one observer at a time.
-    static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
-    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+    let _turn = one_at_a_time();
     let theirs = life(c());
     let ours = life(RUST);
     assert_eq!(ours, theirs);
     assert_eq!((theirs.abi, theirs.started), (3, [1, 1]), "LIVENESS — the C's observer started");
     let written: Vec<_> = theirs.live.iter().map(|(_, written)| *written).collect();
     assert_eq!(written, [0, 0, 0, 2, 2, 2, 5, 5, 7, 7], "answers worked out here");
+}
+
+#[test]
+fn the_latest_report_is_forgotten_at_stop() {
+    let _turn = one_at_a_time();
+    assert_eq!(crate::qpr_start(), 1);
+    // A report no pen makes: all five buttons, and a lean and a twist.
+    FLAGS.store(0x1F, Ordering::SeqCst);
+    POSE.store(pose(Some((10.0, 20.0)), Some(30.0)), Ordering::SeqCst);
+    let heard = seven(RUST);
+    assert_eq!((heard[0], &heard[2..]), (31.0, &[10.0, 20.0, 1.0, 30.0, 1.0][..]));
+    crate::qpr_stop();
+    assert_eq!(crate::qpr_start(), 1);
+    let after = seven(RUST);
+    crate::qpr_stop();
+    assert_ne!(after[0], heard[0], "its buttons, stopped and started");
+    assert_ne!(&after[2..], &heard[2..], "its pose, stopped and started");
+}
+
+#[test]
+fn a_start_while_the_last_observer_winds_down_starts_none() {
+    let _turn = one_at_a_time();
+    assert_eq!(crate::qpr_start(), 1);
+    // As while its thread has not yet ended.
+    STARTED.store(false, Ordering::SeqCst);
+    assert_eq!(crate::qpr_start(), 0, "a second observer beside the first");
+    STARTED.store(true, Ordering::SeqCst);
+    crate::qpr_stop();
+    assert!(!STARTED.load(Ordering::SeqCst), "LIVENESS — the first ended");
 }
 
 /// What the HID parser answers, and what it was handed.
@@ -103,6 +145,8 @@ struct Parser {
     /// How many usages it says it wrote, when not as many as it did.
     claims: Option<u32>,
     caps: HashMap<u16, Vec<ValueCaps>>,
+    /// Whether it writes the declarations and says it wrote none.
+    says_none: bool,
     values: HashMap<u16, u32>,
     /// The reports and the first word of the device's data it was handed.
     reports: Vec<Vec<u8>>,
@@ -165,7 +209,7 @@ unsafe extern "system" fn get_specific_value_caps(
         unsafe {
             let given = declared.len().min(*length as usize);
             caps.copy_from_nonoverlapping(declared.as_ptr(), given);
-            *length = given as u16;
+            *length = if parser.says_none { 0 } else { given as u16 };
         }
         SUCCESS
     })
@@ -294,6 +338,9 @@ fn the_first_declaration_is_the_pens() {
     let mut parser = pen();
     parser.caps.insert(0x3D, vec![]);
     assert_eq!(read(parser, HID, &[1]).map(|read| read[4]), Some(0.0), "declared nowhere");
+    let parser = Parser { says_none: true, ..pen() };
+    let read = read(parser, HID, &[1]);
+    assert_eq!(read, Some([5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), "written, and said to be none");
 }
 
 #[test]
