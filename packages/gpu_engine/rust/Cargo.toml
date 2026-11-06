@@ -122,3 +122,28 @@ serde_json = "1"
 [workspace]
 members = ["native/*"]
 default-members = [".", "native/*"]
+# The vendored crates below are patched in, not members: `cargo test` here
+# runs this workspace's tests, not theirs.
+exclude = ["vendor"]
+
+# 🚨SYMPHONIA IS OURS TO PATCH (유저 native-to-rust-Q14, 2026-11-07: 「고친
+# 사본을 묶는다」 — 「릴리즈할때 리포 링크 공개할예정」, so this repository
+# is where the modified source is offered, as MPL-2.0 asks). A sound
+# decodes alike on every device (유저 gpu-same-formula-Q2), and symphonia
+# made its tables and some of each frame's values with Rust's `f32`/`f64`
+# `sin` · `cos` · `tan` · `powf` · `exp` · `atan` — the device's own maths
+# library, which rounds its last place differently from OS to OS: the
+# first CI run (42274856506) decoded the AAC fixture alike on Linux x64
+# and Windows ARM64 and otherwise on Windows x64, and the MP3 otherwise on
+# the Mac. Those fifteen places call `libm` instead — the same Rust on
+# every OS, as zeno's does above — and each file says so under its MPL
+# header. No setting of symphonia's picks this; ⚠️EVERY UPGRADE OF
+# SYMPHONIA DOES IT AGAIN: copy the new release's four crates here, route
+# every std maths call in them through `libm` (grep their `src` for
+# `.sin()` · `.cos()` · `.tan()` · `powf` · `.exp()` · `.atan()`), and
+# pin the new fingerprints (native/audio/src/tests/pins.rs).
+[patch.crates-io]
+symphonia-core = { path = "vendor/symphonia-core" }
+symphonia-codec-aac = { path = "vendor/symphonia-codec-aac" }
+symphonia-bundle-mp3 = { path = "vendor/symphonia-bundle-mp3" }
+symphonia-codec-vorbis = { path = "vendor/symphonia-codec-vorbis" }

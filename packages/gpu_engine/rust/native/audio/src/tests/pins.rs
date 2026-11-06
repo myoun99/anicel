@@ -9,10 +9,15 @@
 //! The FLAC's and the WAV's are the ledger's own — the C's samples, to the
 //! bit. The rest are this decoder's: what the C's computed differs within a
 //! decoder's rounding (`the_fixtures_decode_as_the_c_decodes_them`).
-//! ⚠️Those three are where a device could differ: symphonia makes its
-//! tables with the platform's own `sin` · `cos` · `powf`, and AAC's 4/3
-//! power table in `f32`. A pin the Linux or mac job does not hold is that,
-//! found — not a test to loosen.
+//! ⚠️Those three were where a device differed, and the first CI run
+//! (42274856506) found it: symphonia made its tables and some of each
+//! frame's values with the device's own maths library — the AAC decoded
+//! alike on Linux x64 and Windows ARM64 and otherwise on Windows x64, where
+//! these were first pinned; the MP3 otherwise on the Mac. The vendored
+//! symphonia calls `libm` there instead (the workspace's `[patch]`, 유저
+//! native-to-rust-Q14), and these are its fingerprints, one for every
+//! device. A pin a job does not hold is a maths call still left to the
+//! device — not a test to loosen, nor to split by platform.
 
 use std::ffi::CString;
 use std::path::Path;
@@ -66,10 +71,10 @@ fn a_sound_decodes_alike_on_every_device() {
     use crate::{FORMAT_AAC, FORMAT_FLAC, FORMAT_MP3, FORMAT_VORBIS, FORMAT_WAV};
     for (name, format, frames, pinned) in [
         ("tone.flac", FORMAT_FLAC, 44_100, "e9616c02"),
-        ("tone.mp3", FORMAT_MP3, 44_975, "61e7d29e"),
+        ("tone.mp3", FORMAT_MP3, 44_975, "12cc326d"),
         ("tone.ogg", FORMAT_VORBIS, 22_050, "7ef2a0f4"),
-        ("tone.m4a", FORMAT_AAC, 22_050, "7383f2de"),
-        ("tone_with_video.mp4", FORMAT_AAC, 22_528, "76f94a7b"),
+        ("tone.m4a", FORMAT_AAC, 22_050, "459586bd"),
+        ("tone_with_video.mp4", FORMAT_AAC, 22_528, "258b85e4"),
     ] {
         assert_eq!(fingerprint(&fixture(name)), (format, frames, pinned.to_string()), "{name}");
     }

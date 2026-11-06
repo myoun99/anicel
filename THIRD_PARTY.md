@@ -13,7 +13,31 @@ Dart SDK are licensed by Google under the BSD 3-Clause license.
 
 ## Vendored native sources
 
-None yet.
+### Symphonia (four crates, modified)
+
+The Rust audio decoders of the engine's audio crate
+(`packages/gpu_engine/rust/native/audio`): `symphonia-core`,
+`symphonia-codec-aac`, `symphonia-bundle-mp3` and `symphonia-codec-vorbis`
+**0.6.1**, as published on crates.io from
+`github.com/pdeljanov/Symphonia` commit
+`ee35874b571a35a9a6e15d3bc9a3aaf8f11fbeee` (each folder's
+`.cargo_vcs_info.json`). Vendored at `packages/gpu_engine/rust/vendor/` and
+used through the workspace's `[patch.crates-io]`; symphonia's other crates
+come from crates.io unmodified. **Mozilla Public License 2.0** — the text
+is each folder's `LICENSE`.
+
+**Modified** (유저 native-to-rust-Q14, 2026-11-07), so that a sound decodes
+to the same samples on every device: fifteen source files call the `libm`
+crate where they called Rust's float methods (`sin` · `cos` · `tan` ·
+`powf` · `exp` · `atan`, which use the device's maths library); the four
+`lib.rs` read `QA_CHECKOUT` as every crate of the workspace does; the four
+`Cargo.toml` depend on `libm`. Each modified source file says so under its
+MPL header. As MPL-2.0 asks, the source of these files is offered with the
+app: it is this repository, which the release links to (유저 Q14).
+
+Not in a shipped binary yet — the audio crate is linked into the engine in
+the connection round. That round adds an MPL-2.0 entry to the app's
+About ▸ licenses screen, saying where the source is.
 
 > When native third-party sources are vendored into `native/` (or into a
 > platform plugin package), each one gets an entry here with: what it is,

@@ -19,6 +19,8 @@ mod one_builder;
 #[cfg(test)]
 mod one_checkout;
 #[cfg(test)]
+mod one_maths;
+#[cfg(test)]
 mod one_pass;
 #[cfg(test)]
 mod one_premultiply;
