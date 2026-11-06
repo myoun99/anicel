@@ -1,7 +1,7 @@
 //! The letters' layers laid on a real GPU — every value worked out by hand
 //! from the executor's formula (`kernels/mod.rs` has why no CPU copy).
 
-use super::{Cover, Layer, Lettered, lettered};
+use super::{Cover, Layer, Lettered, lettered, paged, rect_of};
 use crate::kernels::chain::tiles_of;
 use crate::kernels::composite::tests::{pixel_at, rig};
 use crate::testing::read_buffer;
@@ -106,6 +106,29 @@ fn a_cover_the_hard_cut_drops_whole_holds_no_tile() {
     ])
     .expect("laid");
     assert_eq!(picture.rect.columns, 1, "the dropped layer's tile is no tile of the picture");
+}
+
+#[test]
+fn a_cover_ending_on_a_tiles_edge_takes_no_tile_past_it() {
+    let rect = rect_of(&[layer(RED, false, (127, 127), &[255])]).expect("a rectangle");
+    assert_eq!((rect.x0, rect.y0, rect.columns, rect.rows), (0, 0, 1, 1));
+}
+
+#[test]
+fn a_tile_a_layer_covers_nothing_of_is_stored_as_none() {
+    // The layer's set names no slot there, so the page holds the one tile
+    // it covers and the executor reads nothing for the other.
+    let layers = [
+        layer(RED, false, (0, 0), &[255]),
+        layer(WHITE, false, (200, 0), &[255]),
+    ];
+    let rect = rect_of(&layers).expect("a rectangle");
+    let (pages, sets) = paged(rig().engine, &layers, rect, &tiles_of(rect)).expect("paged");
+    let slots = |set: &crate::kernels::composite::TileSet| set.tiles.iter().flatten().count();
+    assert_eq!((slots(&sets[0]), slots(&sets[1])), (1, 1));
+    assert_eq!(sets[0].tiles[1], None);
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].size(), 2 * crate::kernels::composite::TILE_BYTES);
 }
 
 #[test]
