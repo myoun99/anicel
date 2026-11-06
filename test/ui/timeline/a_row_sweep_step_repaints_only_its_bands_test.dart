@@ -185,6 +185,17 @@ void main() {
         await tester.pump();
       }
       debugOnRebuildDirtyWidget = null;
+      // What the sweep holds is drawn where it was swept: one band from the
+      // row pressed to the fifth, and not past it.
+      final band = find.descendant(
+        of: find.byType(TimelineRowSelectionBands),
+        matching: find.byType(DecoratedBox),
+      );
+      expect(band, findsOneWidget, reason: 'LIVENESS: one band for the run');
+      final covered = tester.getRect(band);
+      expect(covered.contains(first), isTrue, reason: 'the row pressed');
+      expect(covered.contains(first + step * 4), isTrue, reason: 'the fifth');
+      expect(covered.contains(first + step * 5), isFalse, reason: 'past it');
       await gesture.up();
       await tester.pumpAndSettle();
 
