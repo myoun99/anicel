@@ -14,6 +14,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
+    show LayerRowDragTarget;
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart'
     show InstantTapRegion;
 import 'package:anicel/src/ui/widgets/static_raster.dart';
@@ -334,6 +336,26 @@ void main() {
       }
     }
     expect(seen, isNotEmpty, reason: '⛔premise: the carry draws its lines');
+    // The line BEFORE a row is drawn in its own target's stack, over the
+    // row above (the line after one, over every row — `RailRowLines`): a
+    // region around a target would cut it at the row's edge. No carry here
+    // lands before a row, so the targets are asked where they stand.
+    final targets = find.descendant(
+      of: rail,
+      matching: find.byType(LayerRowDragTarget),
+    );
+    expect(targets, findsWidgets, reason: '⛔premise: the rail\'s targets');
+    for (final target in targets.evaluate()) {
+      expect(
+        find.ancestor(
+          of: find.byElementPredicate((each) => identical(each, target)),
+          matching: find.byType(StillRaster),
+        ),
+        findsNothing,
+        reason: '${(target.widget as LayerRowDragTarget).subject} stands '
+            'inside a row\'s region',
+      );
+    }
 
     for (final r in regionsOf(tester)) {
       final box = Offset.zero & r.region.size;
