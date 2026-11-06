@@ -517,6 +517,36 @@ void main() {
     );
   });
 
+  /// 🧪The roundtrip above builds its OWN settings, so the app's one call —
+  /// HomePage's — is where a store can go missing with every test green: a
+  /// mutant that dropped the GPU choice's line there survived (2026-11-06),
+  /// and the setting would have stopped persisting while its row went on
+  /// looking like it worked.
+  test('the app hands its settings every store they take', () {
+    final taken = {
+      for (final match in RegExp(
+        r'^\s+\w+\? (\w+Store),\r?$',
+        multiLine: true,
+      ).allMatches(
+        librarySource('lib/src/ui/session/editor_app_settings.dart'),
+      ))
+        match.group(1)!,
+    };
+    expect(taken, hasLength(greaterThan(10)), reason: 'source scan failed');
+    final home = librarySource('lib/src/ui/home_page.dart');
+    final start = home.indexOf('_appSettings = EditorAppSettings(');
+    expect(start, isNonNegative, reason: 'premise: HomePage makes them');
+    final call = home.substring(start, home.indexOf(')..restore();', start));
+    final given = {
+      for (final match in RegExp(
+        r'^\s+(\w+Store):',
+        multiLine: true,
+      ).allMatches(call))
+        match.group(1)!,
+    };
+    expect(taken.difference(given), isEmpty);
+  });
+
   test('🎯the usage statistics\' day carries the four settings as '
       'Preferences shows them (유저 2026-10-29, I-70-Q8: 「정한 목록만」)', () async {
     TestWidgetsFlutterBinding.ensureInitialized();
