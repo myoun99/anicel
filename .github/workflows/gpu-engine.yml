@@ -95,6 +95,21 @@ jobs:
       # audio device's cpal builds against ALSA (native-to-rust-Q7), which
       # alsa-sys finds through pkg-config; its tests open the null device.
       - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libasound2-dev pkg-config
+      # The Linux bridge exports a dma-buf through
+      # VK_EXT_image_drm_format_modifier, and lavapipe offers it only when
+      # llvmpipe can open /dev/udmabuf — without it llvmpipe imports
+      # dma-bufs and exports none (Mesa 25.2.8, this runner's
+      # mesa-vulkan-drivers: llvmpipe/lp_screen.c, lavapipe/lvp_device.c).
+      # The first run's bridge test stopped there (관제 2026-11-07, run
+      # 42274856506), so the runner's user is lent the device. A lend that
+      # fails is shown and stops nothing: the bridge test then says why.
+      - name: lend lavapipe /dev/udmabuf
+        continue-on-error: true
+        run: |
+          ls -l /dev/udmabuf || true
+          sudo modprobe udmabuf
+          sudo chown "$USER" /dev/udmabuf
+          ls -l /dev/udmabuf
       - id: toolchain
         run: rustup show
       - name: GPU kernels (debug)
