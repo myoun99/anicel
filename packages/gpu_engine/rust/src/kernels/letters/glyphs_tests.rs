@@ -127,6 +127,11 @@ fn letters_a_face_joins_are_joined_across_clusters() {
     let (f, i) = (path_of(&[("f", 640, 3200)]), path_of(&[("i", 640, 6400)]));
     assert_ne!(f, joined);
     assert_eq!(path_of(&[("f", 640, 3200), ("i", 640, 6400)]), [f, i].concat());
+    // A cluster stands where the app put it, not where the advance ends:
+    // letters spaced out (6 px a letter in the app, on the device) come
+    // over with the room in their origins.
+    let (a, one) = (path_of(&[("A", 0, 3200)]), path_of(&[("1", 64 * 50, 3200)]));
+    assert_eq!(path_of(&[("A", 0, 3200), ("1", 64 * 50, 3200)]), [a, one].concat());
 }
 
 /// 🚨THE ENGINE'S HALF OF `test/fixtures/canvas_letter_clusters.json`
