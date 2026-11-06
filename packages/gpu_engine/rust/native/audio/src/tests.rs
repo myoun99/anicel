@@ -341,12 +341,14 @@ fn a_bare_aac_stream_reads_as_its_movie_reads() {
 
 #[test]
 fn a_movie_is_what_its_head_says() {
-    // The m4a with its first box named something no movie opens with: the
-    // movie's reader would find its sound all the same, but where that
-    // sound starts is read only of a movie by its head — so neither reads.
+    // The m4a with its first box named something no movie opens with, and
+    // its file type said last instead: the movie's reader would find its
+    // sound all the same, but where that sound starts is read only of a
+    // movie by its head — so neither reads.
     let mut bytes = std::fs::read(fixture("tone.m4a")).expect("the fixture");
     assert_eq!(&bytes[4..8], b"ftyp");
     bytes[4..8].copy_from_slice(b"uuid");
+    bytes.extend_from_slice(b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00M4A isom");
     let renamed = TempFile::new("renamed.m4a", &bytes);
     assert_eq!(rust_window(&Span::whole(renamed.path()), 0, -1).format, crate::FORMAT_UNKNOWN);
 }
