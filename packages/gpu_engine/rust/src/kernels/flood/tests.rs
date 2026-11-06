@@ -4,7 +4,7 @@
 
 use std::sync::OnceLock;
 
-use super::{Bounds, Extent, Finished, Flood, Flooded, Picture};
+use super::{Bounds, Extent, Finished, Flood, Flooded, MOST_GAP, Picture};
 use crate::device::Engine;
 use crate::kernels::composite::TILE;
 use crate::kernels::mask::MaskPasses;
@@ -95,12 +95,16 @@ fn flood_inside(
     seed: (u32, u32),
     tolerance: u32,
 ) -> Filled {
+    read_back(flooded(grid, inside, colour, seed, tolerance))
+}
+
+fn read_back(flooded: Flooded) -> Filled {
     let Flooded {
         filled,
         stride,
         bounds,
         ..
-    } = flooded(grid, inside, colour, seed, tolerance);
+    } = flooded;
     let bytes = read_buffer(rig().engine, &filled);
     let words = bytes
         .chunks_exact(4)
@@ -111,6 +115,28 @@ fn flood_inside(
         stride,
         bounds,
     }
+}
+
+/// What a fill seeded at `seed` that closes gaps of `gap` pixels reaches
+/// over the whole of a grid of `grid` tiles of `colour`, or none where it
+/// was refused.
+fn gap_closed(
+    (across, down): (u32, u32),
+    colour: impl Fn(u32, u32) -> Rgba,
+    seed: (u32, u32),
+    tolerance: u32,
+    gap: u32,
+) -> Option<Filled> {
+    let Rig { engine, flood, masks } = rig();
+    let tiles = tiles(engine, (across, down), colour);
+    let picture = Picture {
+        tiles: &tiles,
+        across,
+        down,
+        inside: extent(0, 0, across * TILE, down * TILE),
+    };
+    let flooded = flood.gap_closed(engine, masks, &picture, seed, tolerance, gap)?;
+    Some(read_back(flooded))
 }
 
 fn flooded(
@@ -437,6 +463,95 @@ fn a_fill_neither_expanded_nor_anti_aliased_is_its_flood_cropped() {
     let (crop, rows) = finished((2, 2), colour, (3, 250), 0, (0, false));
     assert_eq!(crop, extent(0, 0, 150, 256));
     assert!(rows.iter().all(|row| row.iter().all(|&byte| byte == 255)));
+}
+
+// ---- The gap close ----
+//
+// By hand, a 3-4 chamfer distance over a step (dx, dy) is 3 · max + min.
+
+/// Whether `filled` holds exactly the pixels `hand` names over one tile,
+/// and their box.
+fn assert_fills(filled: &Filled, hand: impl Fn(u32, u32) -> bool, box_: Bounds) {
+    let mut count = 0;
+    for y in 0..TILE {
+        for x in 0..TILE {
+            assert_eq!(filled.at(x, y), hand(x, y), "({x}, {y})");
+            count += u32::from(hand(x, y));
+        }
+    }
+    assert_eq!(filled.count(), count);
+    assert_eq!(filled.bounds, box_);
+}
+
+#[test]
+fn a_gap_close_leaks_through_no_gap_narrower_than_its_reach() {
+    // A wall down column 60 with a gap at rows 60 and 61, and a gap of 2:
+    // what floods lies past 6 from the wall — x ≤ 57, and (58, 60) and
+    // (58, 61), 3 · 2 + 1 = 7 from its ends — and nothing in the gap's
+    // three columns does. Taken back within 6 of that: x ≤ 59, and the
+    // gap's own two pixels, 6 from (58, 60) and (58, 61); (61, 60) is 9.
+    let colour = |x: u32, y: u32| if x == 60 && y != 60 && y != 61 { WALL } else { [0, 0, 0, 255] };
+    let closed = gap_closed((1, 1), colour, (10, 10), 0, 2).expect("a gap close");
+    let hand = |x: u32, y: u32| x <= 59 || (x == 60 && (y == 60 || y == 61));
+    assert_fills(&closed, hand, bounds(0, 60, 0, 127));
+    let leaked = flood((1, 1), colour, (10, 10), 0);
+    assert_eq!(leaked.count(), TILE * TILE - (TILE - 2));
+}
+
+#[test]
+fn a_seed_by_a_line_halves_its_gap_until_it_floods() {
+    // The seed lies 6 from the wall down column 10: a gap of 4 halves to 2
+    // — 6 is not past 6 — and to 1, whose threshold 3 the seed lies past.
+    // The wall's one-pixel gap at row 100 is closed at that: (9, 100) is
+    // 4 from its ends and floods, the gap itself is 3 from it.
+    let colour = |x: u32, y: u32| if x == 10 && y != 100 { WALL } else { [0, 0, 0, 255] };
+    let closed = gap_closed((1, 1), colour, (8, 50), 0, 4).expect("a gap close");
+    assert_fills(&closed, |x, y| x <= 9 || (x, y) == (10, 100), bounds(0, 10, 0, 127));
+}
+
+#[test]
+fn the_canvas_edge_is_no_barrier_to_a_gap_close() {
+    // A wall along row 64 from column 3 leaves three pixels at the edge:
+    // (0, 64) lies 9 from the wall, past a gap of 2's 6, so the fill goes
+    // through — as an edge at 3 would have closed it.
+    let colour = |x: u32, y: u32| if y == 64 && x >= 3 { WALL } else { [0, 0, 0, 255] };
+    let closed = gap_closed((1, 1), colour, (64, 10), 0, 2).expect("a gap close");
+    assert_fills(&closed, |x, y| y != 64 || x < 3, bounds(0, 127, 0, 127));
+}
+
+#[test]
+fn a_gap_of_0_floods_as_a_plain_fill() {
+    for (seed, tolerance) in [((0, 0), 6), ((200, 130), 12)] {
+        let plain = flood((3, 2), patches, seed, tolerance);
+        let closed = gap_closed((3, 2), patches, seed, tolerance, 0).expect("a gap close");
+        assert_eq!(closed.words, plain.words, "{seed:?} within {tolerance}");
+        assert_eq!(closed.bounds, plain.bounds, "{seed:?} within {tolerance}");
+    }
+}
+
+#[test]
+fn a_gap_past_a_word_s_third_is_refused() {
+    let colour = |_, _| [0, 0, 0, 255];
+    assert!(gap_closed((1, 1), colour, (5, 5), 0, MOST_GAP + 1).is_none());
+    let widest = gap_closed((1, 1), colour, (5, 5), 0, MOST_GAP).expect("the widest gap");
+    assert_eq!(widest.count(), TILE * TILE);
+}
+
+#[test]
+fn every_device_closes_the_pinned_gaps() {
+    let mut bytes = Vec::new();
+    for gap in [1, 3, 8] {
+        let filled = gap_closed((3, 2), patches, (200, 130), 12, gap).expect("a gap close");
+        bytes.extend(filled.words.iter().flat_map(|word| word.to_le_bytes()));
+        let Bounds {
+            left,
+            right,
+            top,
+            bottom,
+        } = filled.bounds;
+        bytes.extend([left, right, top, bottom].iter().flat_map(|word| word.to_le_bytes()));
+    }
+    assert_pinned("flood/patches-gap-closed", &bytes);
 }
 
 #[test]

@@ -32,8 +32,9 @@ struct Flood {
   across: u32,
   down: u32,
   stride: u32,
+  // The gap close's gap in pixels — the app's `gapClosePx`.
+  gap: u32,
   unused_0: u32,
-  unused_1: u32,
 }
 
 @group(0) @binding(0) var<uniform> flood: Flood;
@@ -66,6 +67,12 @@ struct Crop {
 @group(0) @binding(8) var<uniform> crop: Crop;
 @group(0) @binding(9) var<storage, read_write> mask_out: array<u32>;
 
+// The gap close's (`_gapCloseFloodRegion`): distances over the picture's
+// box, kernels/mask's, and the distance a pixel must lie past to flood —
+// flood_gap puts it.
+@group(0) @binding(10) var<storage, read> distances: array<u32>;
+@group(0) @binding(11) var<storage, read_write> erode_past: u32;
+
 const FLOOD_TILE: u32 = 128u;
 const FLOOD_TILE_WORDS: u32 = 4u;
 
@@ -93,7 +100,7 @@ fn flood_pixel(x: u32, y: u32) -> u32 {
 // and the seed, in a plane that holds nothing yet.
 @compute @workgroup_size(8, 8, 1)
 fn flood_tolerance(@builtin(global_invocation_id) id: vec3<u32>) {
-  if (id.x >= flood.stride || id.y >= flood.down * FLOOD_TILE) {
+  if (!flood_plane_word(id)) {
     return;
   }
   let seed = flood_pixel(flood.seed_x, flood.seed_y);
@@ -299,4 +306,75 @@ fn flood_mask(@builtin(global_invocation_id) id: vec3<u32>) {
     word |= (bit * 255u) << (k * 8u);
   }
   mask_out[id.y * crop.bytes + id.x] = word;
+}
+
+// ---- The gap close (`_gapCloseFloodRegion`) ----
+//
+// A flood that does not leak through a gap narrower than about twice the
+// gap: it floods only what lies farther than 3 × gap chamfer units from
+// every pixel that may not fill — the gap halved until the seed does —,
+// then takes back what may fill within as much of what it flooded: to the
+// real barriers again, and a little into a gap's mouth, as CSP's does.
+// The distances are kernels/mask's chamfer over the picture's box, the
+// canvas edge no barrier, run `gap` generations: every one the threshold
+// tells apart is the app's (MaskPasses::distances has why).
+
+// The distance at the grid's (x, y), inside the picture's box. ⛔TWO
+// READINGS of the plane's layout, this and mask.wgsl's `mask_distance`;
+// a third joins them (CLAUDE.md's rule of three).
+fn flood_distance(x: u32, y: u32) -> u32 {
+  let column = x - flood.left;
+  let row = (y - flood.top) * ((flood.right - flood.left + 1u) / 2u);
+  let word = distances[row + column / 2u];
+  return (word >> (column % 2u * 16u)) & 0xffffu;
+}
+
+// The seed's survival, one thread: the gap halved until the seed lies
+// farther than 3 × gap from what may not fill — a fill pressed by a line
+// still floods, its gap narrower — and the threshold, 3 × that.
+@compute @workgroup_size(1, 1, 1)
+fn flood_gap() {
+  let seed = flood_distance(flood.seed_x, flood.seed_y);
+  var gap = flood.gap;
+  while (gap > 0u && seed <= 3u * gap) {
+    gap /= 2u;
+  }
+  erode_past = 3u * gap;
+}
+
+// A word of what may fill whose distance lies past the threshold, or —
+// `past` false — within it. Nothing may fill outside the box, so no
+// distance is read there.
+fn flood_by_distance(id: vec3<u32>, past: bool) -> u32 {
+  let may = fillable[id.y * flood.stride + id.x];
+  var word = 0u;
+  for (var k = 0u; k < 32u; k++) {
+    if (((may >> k) & 1u) != 0u && (flood_distance(id.x * 32u + k, id.y) > erode_past) == past) {
+      word |= 1u << k;
+    }
+  }
+  return word;
+}
+
+// Whether thread `id` puts a word of a plane of bits.
+fn flood_plane_word(id: vec3<u32>) -> bool {
+  return id.x < flood.stride && id.y < flood.down * FLOOD_TILE;
+}
+
+// What the gap close floods: what may fill, past the threshold from every
+// pixel that may not.
+@compute @workgroup_size(8, 8, 1)
+fn flood_eroded(@builtin(global_invocation_id) id: vec3<u32>) {
+  if (flood_plane_word(id)) {
+    fillable_out[id.y * flood.stride + id.x] = flood_by_distance(id, true);
+  }
+}
+
+// What the gap close fills: what may fill, within the threshold of what
+// it flooded — the flooded among them, at 0.
+@compute @workgroup_size(8, 8, 1)
+fn flood_regrown(@builtin(global_invocation_id) id: vec3<u32>) {
+  if (flood_plane_word(id)) {
+    filled_out[id.y * flood.stride + id.x] = flood_by_distance(id, false);
+  }
 }

@@ -2,7 +2,9 @@
 //! pixels the app's `floodFillRegion` fills — 4-joined to the seed through
 //! pixels within the tolerance of the seed's colour — as a plane of bits,
 //! and their box; then that finished as the app finishes it, a mask of
-//! bytes over a box of its own (`kernels/mask`'s grow and soften).
+//! bytes over a box of its own (`kernels/mask`'s grow and soften). A fill
+//! that closes gaps (`_gapCloseFloodRegion`) floods the same way over what
+//! lies past its gap from every barrier, by `kernels/mask`'s distances.
 //! flood.wgsl has the planes and why any order of spreading gives the
 //! app's bytes.
 //!
@@ -30,6 +32,8 @@ use crate::kernels::shared::{pipeline, plane, range, whole, words_buffer};
 const ROUNDS: usize = 8;
 /// The bytes between two rounds' flags: a storage binding's offset steps.
 const FLAG_STEP: u64 = 256;
+/// The widest gap a fill closes: 3 × it, its threshold, is a word.
+const MOST_GAP: u32 = u32::MAX / 3;
 
 /// The picture a fill reads: the composite's output tiles over a grid of
 /// `across` × `down` tiles, row after row, and the box in the grid's pixels
@@ -82,6 +86,21 @@ pub(crate) struct Flood {
     round: wgpu::ComputePipeline,
     bounds: wgpu::ComputePipeline,
     mask: wgpu::ComputePipeline,
+    gap: wgpu::ComputePipeline,
+    eroded: wgpu::ComputePipeline,
+    regrown: wgpu::ComputePipeline,
+}
+
+/// What a flood starts from: its words, the plane of what may fill and
+/// the two of what has filled — the first holding the seed —, a plane's
+/// row of words and bytes, and the workgroups that put a plane's words.
+struct Begun {
+    words: wgpu::Buffer,
+    fillable: wgpu::Buffer,
+    filled: [wgpu::Buffer; 2],
+    stride: u32,
+    bytes: u64,
+    groups: (u32, u32),
 }
 
 impl Flood {
@@ -92,6 +111,9 @@ impl Flood {
             round: pipeline(engine, &source, "flood_round"),
             bounds: pipeline(engine, &source, "flood_bounds"),
             mask: pipeline(engine, &source, "flood_mask"),
+            gap: pipeline(engine, &source, "flood_gap"),
+            eroded: pipeline(engine, &source, "flood_eroded"),
+            regrown: pipeline(engine, &source, "flood_regrown"),
         }
     }
 
@@ -102,9 +124,119 @@ impl Flood {
         &self,
         engine: &Engine,
         picture: &Picture,
-        (x, y): (u32, u32),
+        seed: (u32, u32),
         tolerance: u32,
     ) -> Option<Flooded> {
+        let Begun {
+            words,
+            fillable,
+            filled,
+            stride,
+            ..
+        } = self.begin(engine, picture, seed, tolerance, 0)?;
+        let filled = self.spread(engine, &words, &fillable, filled, picture)?;
+        let bounds = self.bounds(engine, &words, &filled, (picture.across, picture.down))?;
+        Some(Flooded {
+            filled,
+            stride,
+            bounds,
+            inside: picture.inside,
+        })
+    }
+
+    /// What a fill seeded at `(x, y)` that closes gaps of `gap` pixels
+    /// reaches in `picture` (`_gapCloseFloodRegion`): it floods, as
+    /// [`Flood::region`] does, only what lies farther than 3 × gap chamfer
+    /// units from every pixel off the tolerance — the gap halved until the
+    /// seed does —, so it leaks through no gap narrower than about twice
+    /// that; then it takes back what may fill within as much of what it
+    /// flooded. A gap of 0 floods as [`Flood::region`] does. Waits for the
+    /// GPU between rounds.
+    pub(crate) fn gap_closed(
+        &self,
+        engine: &Engine,
+        masks: &MaskPasses,
+        picture: &Picture,
+        seed: (u32, u32),
+        tolerance: u32,
+        gap: u32,
+    ) -> Option<Flooded> {
+        if gap > MOST_GAP {
+            return fail(format!("a gap of {gap} pixels is past {MOST_GAP}"));
+        }
+        let Begun {
+            words,
+            fillable,
+            filled,
+            stride,
+            bytes,
+            groups,
+        } = self.begin(engine, picture, seed, tolerance, gap)?;
+        let inside = picture.inside;
+        let (may, size) = self.cropped(engine, &fillable, stride, inside)?;
+        let barriers = masks.distances(engine, &may, size, 0, gap)?;
+        let storage = wgpu::BufferUsages::STORAGE;
+        let erode_past = words_buffer(engine, "flood erode past", &[0], storage);
+        let eroded = plane(engine, "flood eroded", bytes);
+        encode(
+            engine,
+            &[
+                Encoded {
+                    pipeline: &self.gap,
+                    bound: whole(&[(0, &words), (10, &barriers), (11, &erode_past)]),
+                    groups: (1, 1, 1),
+                },
+                Encoded {
+                    pipeline: &self.eroded,
+                    bound: whole(&[
+                        (0, &words),
+                        (1, &fillable),
+                        (6, &eroded),
+                        (10, &barriers),
+                        (11, &erode_past),
+                    ]),
+                    groups: flat(groups),
+                },
+            ],
+        );
+        let flooded = self.spread(engine, &words, &eroded, filled, picture)?;
+        let (reached, _) = self.cropped(engine, &flooded, stride, inside)?;
+        let grown = masks.distances(engine, &reached, size, 255, gap)?;
+        let filled = plane(engine, "flood filled", bytes);
+        encode(
+            engine,
+            &[Encoded {
+                pipeline: &self.regrown,
+                bound: whole(&[
+                    (0, &words),
+                    (1, &fillable),
+                    (3, &filled),
+                    (10, &grown),
+                    (11, &erode_past),
+                ]),
+                groups: flat(groups),
+            }],
+        );
+        let bounds = self.bounds(engine, &words, &filled, (picture.across, picture.down))?;
+        Some(Flooded {
+            filled,
+            stride,
+            bounds,
+            inside,
+        })
+    }
+
+    /// The planes a flood seeded at `(x, y)` within `tolerance` starts
+    /// from, its seed filled and what may fill put — where `picture` holds
+    /// the seed. `gap` is the gap close's, 0 for a plain flood.
+    fn begin(
+        &self,
+        engine: &Engine,
+        picture: &Picture,
+        (x, y): (u32, u32),
+        tolerance: u32,
+        gap: u32,
+    ) -> Option<Begun> {
         let Picture {
             tiles,
             across,
@@ -134,18 +266,40 @@ impl Flood {
         let words_groups = (stride.div_ceil(8), (down * TILE).div_ceil(8));
         let groups = [words_groups, (across, down)].into_iter();
         fits(engine, &[picture_bytes, bytes], groups)?;
-        let words = [left, top, right, bottom, x, y, tolerance, across, down, stride, 0, 0];
-        let words = &words_buffer(engine, "flood", &words, wgpu::BufferUsages::UNIFORM);
+        let words = [left, top, right, bottom, x, y, tolerance, across, down, stride, gap, 0];
+        let words = words_buffer(engine, "flood", &words, wgpu::BufferUsages::UNIFORM);
         let fillable = plane(engine, "flood fillable", bytes);
         let filled = [0, 1].map(|_| plane(engine, "flood filled", bytes));
         encode(
             engine,
             &[Encoded {
                 pipeline: &self.tolerance,
-                bound: whole(&[(0, words), (3, &filled[0]), (5, tiles), (6, &fillable)]),
+                bound: whole(&[(0, &words), (3, &filled[0]), (5, tiles), (6, &fillable)]),
                 groups: flat(words_groups),
             }],
         );
+        Some(Begun {
+            words,
+            fillable,
+            filled,
+            stride,
+            bytes,
+            groups: words_groups,
+        })
+    }
+
+    /// `filled` — the first holding what has filled — spread through
+    /// `fillable` round after round until one moves nothing, as `words`
+    /// read; the plane the last round put. Waits for the GPU between rounds.
+    fn spread(
+        &self,
+        engine: &Engine,
+        words: &wgpu::Buffer,
+        fillable: &wgpu::Buffer,
+        filled: [wgpu::Buffer; 2],
+        picture: &Picture,
+    ) -> Option<wgpu::Buffer> {
+        let tiles = (picture.across, picture.down);
         let flags = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("flood moved"),
             size: FLAG_STEP * ROUNDS as u64,
@@ -164,7 +318,7 @@ impl Flood {
                 .map(|round| {
                     let (from, to) = (&filled[(at + round) % 2], &filled[(at + round + 1) % 2]);
                     let step = round as u64 * FLAG_STEP;
-                    let mut bound = whole(&[(0, words), (1, &fillable), (2, from), (3, to)]);
+                    let mut bound = whole(&[(0, words), (1, fillable), (2, from), (3, to)]);
                     bound.push(wgpu::BindGroupEntry {
                         binding: 4,
                         resource: range(&flags, step..step + 4),
@@ -172,7 +326,7 @@ impl Flood {
                     Encoded {
                         pipeline: &self.round,
                         bound,
-                        groups: flat((across, down)),
+                        groups: flat(tiles),
                     }
                 })
                 .collect();
@@ -188,14 +342,7 @@ impl Flood {
                 break;
             }
         }
-        let filled = filled.into_iter().nth(at)?;
-        let bounds = self.bounds(engine, words, &filled, (across, down))?;
-        Some(Flooded {
-            filled,
-            stride,
-            bounds,
-            inside,
-        })
+        filled.into_iter().nth(at)
     }
 
     /// `flooded` finished as the app finishes a fill
@@ -224,38 +371,44 @@ impl Flood {
             right: bounds.right.saturating_add(past).min(inside.right),
             bottom: bounds.bottom.saturating_add(past).min(inside.bottom),
         };
-        let size = MaskBox {
-            width: crop.right - crop.left,
-            height: crop.bottom - crop.top,
-        };
-        let groups = (size.stride().div_ceil(8), size.height.div_ceil(8));
-        fits(engine, &[size.bytes()], [groups].into_iter())?;
-        let words = [
-            crop.left,
-            crop.top,
-            size.width,
-            size.height,
-            flooded.stride,
-            size.stride(),
-            0,
-            0,
-        ];
-        let words = &words_buffer(engine, "flood crop", &words, wgpu::BufferUsages::UNIFORM);
-        let cropped = plane(engine, "flood mask", size.bytes());
-        encode(
-            engine,
-            &[Encoded {
-                pipeline: &self.mask,
-                bound: whole(&[(2, &flooded.filled), (8, words), (9, &cropped)]),
-                groups: flat(groups),
-            }],
-        );
+        let (cropped, size) = self.cropped(engine, &flooded.filled, flooded.stride, crop)?;
         let mask = if expand == 0 && !anti_alias {
             cropped
         } else {
             masks.fill(engine, &cropped, size, expand, anti_alias)?
         };
         Some(Finished { mask, crop })
+    }
+
+    /// `bits` — a plane of bits, `stride` words a row — as a mask of bytes
+    /// over `crop`, 255 where a bit is set and 0 where not: what a fill is
+    /// finished from, and what the gap close measures distances over.
+    /// Submits the work; the caller waits.
+    fn cropped(
+        &self,
+        engine: &Engine,
+        bits: &wgpu::Buffer,
+        stride: u32,
+        crop: Extent,
+    ) -> Option<(wgpu::Buffer, MaskBox)> {
+        let size = MaskBox {
+            width: crop.right - crop.left,
+            height: crop.bottom - crop.top,
+        };
+        let groups = (size.stride().div_ceil(8), size.height.div_ceil(8));
+        fits(engine, &[size.bytes()], [groups].into_iter())?;
+        let words = [crop.left, crop.top, size.width, size.height, stride, size.stride(), 0, 0];
+        let words = &words_buffer(engine, "flood crop", &words, wgpu::BufferUsages::UNIFORM);
+        let cropped = plane(engine, "flood mask", size.bytes());
+        encode(
+            engine,
+            &[Encoded {
+                pipeline: &self.mask,
+                bound: whole(&[(2, bits), (8, words), (9, &cropped)]),
+                groups: flat(groups),
+            }],
+        );
+        Some((cropped, size))
     }
 
     /// The box of what `filled` holds.
