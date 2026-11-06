@@ -53,7 +53,7 @@ struct Bundled {
 /// resampler the timeline conforms a sound with, `audio_mix`'s). A run is
 /// fed as its pieces come, so a conversion of it is the whole run's, bit
 /// for bit; it ends where a piece of another rate, or nothing, comes.
-struct Other {
+pub(crate) struct Other {
     rate: u32,
     resampler: Resampler,
 }
@@ -65,10 +65,18 @@ const STOPBAND_DB: f64 = 120.0;
 const BANDWIDTH: f64 = 0.90;
 
 impl Other {
+    /// A run of `channels` at `rate` converted to `to` — none on bad
+    /// geometry.
+    pub(crate) fn new(channels: usize, rate: u32, to: u32) -> Option<Other> {
+        let resampler = Resampler::new(channels, rate as i32, to as i32, STOPBAND_DB, BANDWIDTH)?;
+        Some(Other { rate, resampler })
+    }
+
     /// The `frames` of `channels` at the head of `block` handed over, and
-    /// `block` made what of the run is ready now: how many frames — none
+    /// `block` made what of the run is ready now — all of it, so that the
+    /// run holds no more than its filter reads: how many frames — none
     /// where the memory ran out.
-    fn feed(&mut self, block: &mut Vec<f32>, frames: usize, channels: usize) -> Option<usize> {
+    pub(crate) fn feed(&mut self, block: &mut Vec<f32>, frames: usize, channels: usize) -> Option<usize> {
         if !self.resampler.push(&block[..frames * channels]) {
             return None;
         }
@@ -159,14 +167,15 @@ impl Bundled {
     /// place as silence, as one nothing reads does (Q8).
     fn convert(&mut self, block: &mut Vec<f32>, frames: usize, rate: u32) -> usize {
         let tail = if self.other.as_ref().is_some_and(|other| other.rate == rate) { Vec::new() } else { self.run_end() };
-        let (from, to) = (rate as i32, self.rate as i32);
         if self.other.is_none() {
-            self.other = Resampler::new(self.channels, from, to, STOPBAND_DB, BANDWIDTH)
-                .map(|resampler| Other { rate, resampler });
+            self.other = Other::new(self.channels, rate, self.rate);
         }
         let converted = match self.other.as_mut().and_then(|other| other.feed(block, frames, self.channels)) {
             Some(converted) => converted,
-            None => self.quiet(block, usize::try_from(resample_frames(frames as i64, from, to)).unwrap_or(0)),
+            None => {
+                let lasts = resample_frames(frames as i64, rate as i32, self.rate as i32);
+                self.quiet(block, usize::try_from(lasts).unwrap_or(0))
+            }
         };
         Self::ahead(tail, block, self.channels) + converted
     }

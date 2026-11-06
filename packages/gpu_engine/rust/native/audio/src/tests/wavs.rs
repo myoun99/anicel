@@ -566,6 +566,24 @@ fn a_piece_at_a_third_rate_ends_the_run_before_it() {
 }
 
 #[test]
+fn a_run_hands_back_what_is_ready_as_its_pieces_come() {
+    // 22.05 kHz to 44.1 kHz: each piece of 576 frames makes 1,152 once the
+    // filter has what it reads. A block that kept a piece's size would hand
+    // back half of them and keep the rest, the run holding more with each
+    // piece; handed all that is ready, it holds no more than its filter.
+    use crate::bundled::Other;
+    let mut other = Other::new(2, 22_050, 44_100).expect("a conversion");
+    let mut handed = 0;
+    for _ in 0..200 {
+        let mut block = vec![0.25; 576 * 2];
+        let got = other.feed(&mut block, 576, 2).expect("room for it");
+        assert_eq!(block.len(), 2 * got, "the block holds what it hands");
+        handed += got;
+    }
+    assert!(handed > 200 * 1152 - 1152, "all but what the filter still reads: {handed}");
+}
+
+#[test]
 fn a_piece_nothing_reads_is_its_length_of_silence() {
     // A Layer II frame among Layer III ones: the reader hands it on, and no
     // decoder here reads it — so it keeps its 1,152 frames as silence, and
