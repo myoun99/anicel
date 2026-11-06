@@ -646,7 +646,9 @@ impl Composite {
             plan_words(laid, &batches, plan.sets, plan.keys, plan.matrices, tiles, page_count);
         // One level at least: a walk starts on one.
         let levels = batches.iter().fold(1, |most, batch| most.max(batch.levels()));
-        let pipeline = &self.pass(engine, Compiled { surface, modes: written.modes, levels });
+        let masked = laid.iter().any(|each| masked_map(&each.step).is_some());
+        let wanted = Compiled { surface, modes: written.modes, levels, masked };
+        let pipeline = &self.pass(engine, wanted);
         let steps = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -791,20 +793,22 @@ impl Composite {
 
 /// What a composite pass is compiled for: where it puts its pixels — the
 /// output tiles, or a surface of the format `surface` names —, the R1
-/// modes its plan's maps hold, the rest compiled out (resample.wgsl), and
-/// the stack levels its plan's passes reach.
+/// modes its plan's maps hold, the rest compiled out (resample.wgsl), the
+/// stack levels its plan's passes reach, and whether it lays a step under
+/// the plan's mask (composite.wgsl's `composite_with_mask`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Compiled {
     surface: Option<&'static str>,
     modes: ResampleModes,
     levels: usize,
+    masked: bool,
 }
 
 impl Compiled {
     /// The pass for `surface`'s output that takes any plan: every mode,
-    /// every level.
+    /// every level, masked steps.
     fn full(surface: Option<&'static str>) -> Self {
-        Self { surface, modes: ResampleModes::ALL, levels: DEPTH }
+        Self { surface, modes: ResampleModes::ALL, levels: DEPTH, masked: true }
     }
 }
 
@@ -863,7 +867,9 @@ fn compile(
         pages,
         &body,
     ];
-    pipeline_with(engine, &sources, "composite", &compiled.modes.constants())
+    let [blend, pick, nearest] = compiled.modes.constants();
+    let masked = ("composite_with_mask", f64::from(u8::from(compiled.masked)));
+    pipeline_with(engine, &sources, "composite", &[blend, pick, nearest, masked])
 }
 
 /// Fails where a step is masked and the plan has no mask, or where the

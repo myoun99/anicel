@@ -1867,6 +1867,7 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
         surface: Some("rgba8unorm"),
         modes: ResampleModes::default().with(&turned.words()),
         levels: 1,
+        masked: false,
     };
     let taken = apart().composite.pass(apart().engine, own);
     let passes = apart().composite.passes.lock();
@@ -1877,10 +1878,10 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
     assert_eq!(passes.made(own), Some(taken));
 }
 
-// A plan's pass compiled for its own R1 modes and stack levels, on a
-// thread, composites what the full one does, which serves until it is
-// made: once made, every pinned scene and screen comes out the same from
-// it.
+// A plan's pass compiled for its own R1 modes, stack levels and masked
+// steps, on a thread, composites what the full one does, which serves
+// until it is made: once made, every pinned scene and screen comes out the
+// same from it, and a turned row under a mask.
 #[test]
 fn a_pass_compiled_for_a_plan_composites_as_the_full_one() {
     let scenes = scenes();
@@ -1892,19 +1893,28 @@ fn a_pass_compiled_for_a_plan_composites_as_the_full_one() {
         };
         cameras().into_iter().flat_map(shown_by).collect()
     };
+    let mask = masked(SPOTTED_AT, SPOTTED_SIZE, spotted_byte);
+    let white = over_blue(|_, _| 0xffff_ffff, masked_row(pose_row(1, "turn", WHOLE, NORMAL)));
+    let under_the_mask = || under_on(apart(), &white, Some(&mask.mask()), apart().composite.widest());
     scenes.iter().for_each(|(_, scene)| drop(widest_on(apart(), scene)));
     drop(screens());
+    let by_the_full = under_the_mask();
     apart().composite.settle();
     for (name, scene) in &scenes {
         assert_pinned(&format!("composite/{name}"), &widest_on(apart(), scene));
     }
     assert_pinned("composite/screen", &screens());
-    // The rows scene's maps are all copies and it opens no group: a pass
-    // compiled for no mode, holding one level.
-    let copies = Compiled { surface: None, modes: ResampleModes::default(), levels: 1 };
+    assert!(under_the_mask() == by_the_full);
+    // The rows scene's maps are all copies and it opens no group and lays
+    // nothing under a mask: a pass compiled for no mode, holding one level,
+    // with no mask. The masked turn is one level, Blend's, with the mask.
+    let copies = Compiled { surface: None, modes: ResampleModes::default(), levels: 1, masked: false };
+    let turned = ResampleModes::default().with(&pose("turn").words());
+    let masked_turn = Compiled { modes: turned, masked: true, ..copies };
     let passes = apart().composite.passes.lock();
     let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
     assert!(passes.made(copies).is_some());
+    assert!(passes.made(masked_turn).is_some());
 }
 
 // ---- Where a row is live ----
@@ -2145,7 +2155,11 @@ fn masked_row(mut row: Step) -> Step {
 /// Composites `scene` under `mask` within `budget`: the output's bytes, or
 /// none where the plan is refused.
 fn under(scene: &Scene, mask: Option<&Mask>, budget: Budget) -> Option<Vec<u8>> {
-    let Rig { engine, composite } = rig();
+    under_on(rig(), scene, mask, budget)
+}
+
+fn under_on(rig: &Rig, scene: &Scene, mask: Option<&Mask>, budget: Budget) -> Option<Vec<u8>> {
+    let Rig { engine, composite } = rig;
     let pages = scene.pool.upload(engine);
     let plan = Plan {
         mask,

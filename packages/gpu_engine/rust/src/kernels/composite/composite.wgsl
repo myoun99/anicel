@@ -118,7 +118,7 @@ fn row_keyed(at: u32, word: u32) -> u32 {
 // covers it, and where its colour matrix is. A close: kind, mode, opacity,
 // then nothing up to the last word: where the matrix it closes through is.
 fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
-  if ((at & MASK_SOURCE) != 0u) {
+  if (composite_with_mask && (at & MASK_SOURCE) != 0u) {
     let mask = MaskPlane(pass_.mask_at, pass_.mask_width, pass_.mask_height, pass_.mask_stride);
     return mask_byte_of(mask, u32(x - pass_.mask_left), u32(y - pass_.mask_top)) << 24u;
   }
@@ -168,6 +168,15 @@ fn step_map(at: u32) -> ResampleMap {
 // binding holds 2^31 words of plan.
 const MASK_SOURCE: u32 = 0x80000000u;
 
+// Whether a pass meets a step under the plan's mask, fixed when its
+// pipeline is made as R1's modes are (mod.rs's Compiled): a pass with none
+// has the mask's source and the mark compiled out. No byte changes — a
+// pass meets only the steps it was compiled for — but time: holding them,
+// a pass for sixteen turned Pick rows and no mask took 34.0 ms over 1024²
+// where it takes 32.6, as before they were (RTX 4080, DX12, 2026-11-06).
+// No test here can see it.
+override composite_with_mask: bool = true;
+
 // The coverage step `at` is laid by at canvas pixel (x, y): the plan's mask
 // read as the step's pixels are, through its own map by R1 in its mode.
 // The mask is a plane in the step's own space — a posed row reads its
@@ -179,7 +188,7 @@ const MASK_SOURCE: u32 = 0x80000000u;
 // second R1 for every row, so it is laid at its opacity by the same
 // multiply (R28, gpu-canonical-store 11-06 06:51).
 fn step_cover(at: u32, x: i32, y: i32) -> u32 {
-  if (plan[at + 12u] == 0u) {
+  if (!composite_with_mask || plan[at + 12u] == 0u) {
     return 255u;
   }
   return resample(step_map(at), at | MASK_SOURCE, x, y) >> 24u;
@@ -336,7 +345,7 @@ fn composite(
       // A range mark's checker under the range (mod.rs's Step::Mark).
       case STEP_MARK: {
         let cover = step_cover(at, x, y);
-        if (cover != 0u) {
+        if (composite_with_mask && cover != 0u) {
           stack[top] = laid(BLEND_NORMAL, W_ONE, cover, mark_colour(at, x, y), stack[top]);
         }
       }
