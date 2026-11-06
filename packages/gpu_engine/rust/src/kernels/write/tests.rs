@@ -130,6 +130,23 @@ fn a_tile_with_no_ink_left_is_cleared() {
     );
 }
 
+/// A lane that meets its tile's ink in a word the same as the stored one,
+/// and only then a word unlike it with no ink, still answers inked: the
+/// unlike word adds to what the lane holds and takes none of it away. Here
+/// the two are the first lane's first and second words, the tile's first
+/// and its 256th (write.wgsl's lanes take words 256 apart); every other
+/// word is the stored 0.
+#[test]
+fn a_lane_keeps_the_ink_it_met_before_an_unlike_word() {
+    const INK: u32 = 0x80ff_0000;
+    let mut pool = Pool::default();
+    let stored = |x, y| if (x, y) == (0, 0) { INK } else { 0 };
+    let set = pool.drawn(stored, (0, 0), (1, 1), |_, _| Some(0));
+    let mut tile = only(0, INK);
+    tile[2 * TILE as usize] = 1;
+    assert_eq!(changed(&pool, &set, &[tile], None).expect("changed"), [Inked]);
+}
+
 /// Where nothing is stored, a tile of nothing is the same — it is not
 /// written and takes no slot —, and one with a word of anything at its
 /// first, a middle or its last word is changed: inked where that word's
