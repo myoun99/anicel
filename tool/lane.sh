@@ -878,7 +878,7 @@ cmd_crate() {
   # The native crates' answer key (native/oracle): the lane's own engine.
   ensure_engine "$p" || die "the engine is not built from this lane's C — this is refusal 8
   The native crates are compared with it. See above."
-  local log="$p/build/lane-crate.log" profile flag
+  local log="$p/build/lane-crate.log" profile flag from
   mkdir -p "$p/build"
   : >"$log"
   # Both builds (관제 2026-11-05, gpu-engine-skeleton). A debug build's wgpu
@@ -890,6 +890,7 @@ cmd_crate() {
   for profile in debug release; do
     flag=; [ "$profile" = release ] && flag=--release
     echo "lane: crate — the GPU engine's tests ($profile)"
+    from=$(wc -l <"$log")
     # The trunk's target folder: every lane reuses what the trunk and the
     # lanes before it compiled (wgpu is minutes cold), and lands take turns.
     (cd "$p/packages/gpu_engine/rust" \
@@ -898,7 +899,10 @@ cmd_crate() {
       grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
       die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
     }
-    echo "lane: crate — $profile green ($(grep -a '^test result' "$log" | tail -1))"
+    # Each crate of the workspace says its own `test result`, the last one
+    # a doc-test of nothing ("0 passed"): what passed is their sum.
+    echo "lane: crate — $profile green ($(tail -n +$((from + 1)) "$log" \
+      | grep -a '^test result' | awk '{ n += $4 } END { print n + 0 }') passed)"
   done
 }
 

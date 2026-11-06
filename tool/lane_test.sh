@@ -106,12 +106,14 @@ echo "runs=0 free_gb=9 room=yes"
 exit 0
 EOF
 # `cargo` writes down which lane it ran in — the crate is three folders
-# down — and fails when LANE_TEST_CARGO says red.
+# down — and fails when LANE_TEST_CARGO says red. Green, it answers as a
+# workspace of two crates does: two tests, then a doc-test run of none.
 cat > "$E/bin/cargo" <<'EOF'
 #!/bin/bash
 echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$LANE_TEST_LOG"
 [ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
-echo "test result: ok. 1 passed; 0 failed"
+echo "test result: ok. 2 passed; 0 failed"
+echo "test result: ok. 0 passed; 0 failed"
 EOF
 # `cmake` and `ctest`, for a lane that changed the C (refusal 5): the
 # engine builds — red when LANE_TEST_ENGINE says stale, so a stale engine
@@ -444,6 +446,8 @@ commit "$HW/lane-kern" packages/gpu_engine/rust/k.wgsl "a kernel"
 O=$(out "$E/home" land kern)
 has "a lane that changed the crate lands" "$O" "merged work/kern"
 check "and its tests ran, debug and release" "$(cargo_runs lane-kern)" 2
+has "and each says what passed in all the crates, debug" "$O" "debug green (2 passed)"
+has "and release, its own run alone" "$O" "release green (2 passed)"
 : > "$LANE_TEST_LOG"
 O=$(out "$E/home" gate dart4)
 has "a lane opened before the trunk took the crate is gated" "$O" "gated work/dart4"
