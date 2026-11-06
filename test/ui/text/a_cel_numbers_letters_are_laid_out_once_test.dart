@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_number_letters.dart';
+import 'package:anicel/src/ui/text/canvas_letter_plate.dart'
+    show letterPlateBytesKept;
 import 'package:anicel/src/ui/text/cel_number_paint.dart';
 import 'package:anicel/src/ui/text/text_cel_render.dart'
     show textCelLayoutsKept;
@@ -134,6 +136,30 @@ void main() {
       isNot(same(before)),
       reason: '🚨a plate rastered before the fonts changed outlived them',
     );
+  });
+
+  testWidgets('a plate pushed out by the bytes kept is let go of', (
+    tester,
+  ) async {
+    final small = celNumberPlate(_letters('E6'))!.image;
+    expect(small.debugDisposed, isFalse, reason: 'held');
+
+    // One plate heavier than all the bytes kept: every older one goes.
+    final heavy = celNumberPlate(
+      _letters('E6', scale: CanvasPoint(x: 30, y: 30)),
+    )!.image;
+    expect(
+      heavy.width * heavy.height * 4,
+      greaterThan(letterPlateBytesKept),
+      reason: '⛔전제: the heavy plate alone outweighs what is kept',
+    );
+
+    expect(
+      small.debugDisposed,
+      isTrue,
+      reason: '🚨a plate let go of kept its raster',
+    );
+    expect(heavy.debugDisposed, isFalse, reason: 'the newest is kept');
   });
 
   testWidgets('letters pushed out by as many others as are kept are let go '
