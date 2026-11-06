@@ -7,7 +7,6 @@
 mod wasm;
 
 use std::ffi::{CString, c_char, c_void};
-use std::path::PathBuf;
 
 use super::*;
 
@@ -68,10 +67,7 @@ fn hosts() -> [Host; 2] {
 /// A plugin the engine's build made beside the engine (CMakeLists.txt: the
 /// sample, the two builds of it a host refuses, and the SDK's example).
 fn built(name: &str) -> CString {
-    oracle::engine();
-    let engine = PathBuf::from(std::env::var("QA_ENGINE_PATH").expect("the engine's path"));
-    let path = engine.with_file_name(libloading::library_filename(name));
-    assert!(path.is_file(), "no {} beside the engine — `bash tool/lane.sh engine`", path.display());
+    let path = oracle::beside(name);
     CString::new(path.to_str().expect("a UTF-8 path")).expect("a path with no NUL")
 }
 

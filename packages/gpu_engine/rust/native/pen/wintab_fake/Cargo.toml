@@ -1,0 +1,12 @@
+[package]
+name = "wintab_fake"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# A library named as the tablet driver's is: the pen's tests load it first,
+# and then the C's LoadLibraryW("wintab32.dll") and the Rust's find it
+# loaded — never the machine's own driver.
+[lib]
+name = "wintab32"
+crate-type = ["cdylib", "rlib"]

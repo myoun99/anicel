@@ -41,14 +41,16 @@ fn this_build_was_made_in_the_checkout_it_runs_in() {
 #[test]
 fn every_crate_is_built_from_the_checkout_it_runs_in() {
     let built_here = files_under(".", "rs", |text| text.contains(BUILT_HERE));
-    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
-    let native = std::fs::read_dir(format!("{crate_dir}/native")).expect("native/");
-    let mut roots = vec!["src/lib.rs".to_owned()];
-    for entry in native {
-        let name = entry.expect("a directory entry").file_name();
-        roots.push(format!("native/{}/src/lib.rs", name.to_string_lossy()));
+    // Every crate's, the ones a crate of `native/` keeps for its tests as
+    // well (native/pen/wintab_fake): a path dependency is the workspace's.
+    let manifests = files_under(".", "toml", |text| text.contains("[package]"));
+    let roots: Vec<_> = manifests
+        .iter()
+        .map(|manifest| manifest.replace("Cargo.toml", "src/lib.rs"))
+        .collect();
+    for root in ["src/lib.rs", "native/oracle/src/lib.rs", "native/pen/wintab_fake/src/lib.rs"] {
+        assert!(roots.contains(&root.to_owned()), "LIVENESS — {roots:?}");
     }
-    assert!(roots.contains(&"native/oracle/src/lib.rs".to_owned()), "LIVENESS — {roots:?}");
     let missing: Vec<_> = roots.iter().filter(|root| !built_here.contains(*root)).collect();
     assert!(missing.is_empty(), "read {BUILT_HERE} at the top, as src/lib.rs does: {missing:?}");
 }
