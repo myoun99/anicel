@@ -1012,15 +1012,9 @@ checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
 name = "media"
 version = "0.0.1"
 dependencies = [
- "windows",
-]
-
-[[package]]
-name = "media_span"
-version = "0.0.1"
-dependencies = [
  "compress",
  "oracle",
+ "windows",
 ]
 
 [[package]]

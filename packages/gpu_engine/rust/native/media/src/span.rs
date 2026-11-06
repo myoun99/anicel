@@ -1,8 +1,7 @@
 //! The one reader of a medium stored in a span of a file — as its own
 //! bytes, or framed in zstd blocks — read a window at a time: the engine's
-//! `qa_media_span.c`, in Rust (native-to-rust, 저장). See that file's header
-//! for why there is one reader and for the framed layout, which Dart's
-//! `writeMediaBlob` writes:
+//! `qa_media_span.c`. See `qa_media_span.h` for why there is one reader,
+//! and for the framed layout, which Dart's `writeMediaBlob` writes:
 //!
 //! ```text
 //!   u32  blockBytes   uncompressed bytes per block
@@ -16,15 +15,9 @@
 //! the tests hold every export to the engine's, the reads and what they
 //! cost alike.
 
-// The checkout this crate is built from, different in each: a build that
-// another checkout left in the shared target folder is built again here,
-// never run as this one's (gpu_engine's kernels/shared/one_checkout.rs).
-const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
-
 use std::ffi::{CStr, c_char};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::PathBuf;
 
 /// Bytes before the block lengths: blockBytes, totalLength, blockCount.
 const PREFIX: i64 = 16;
@@ -63,36 +56,16 @@ fn u32_at(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(bytes[at..at + 4].try_into().expect("4 bytes"))
 }
 
-/// A path as the C opens one (`qa_open_path_read`): on Windows UTF-8 made
-/// wide once — an ill-formed sequence replaced, a path of 1024 wide
-/// characters or more refused rather than cut, since half a path names a
-/// different file — and its bytes as they are everywhere else.
-fn path_of(bytes: &[u8]) -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        let text = String::from_utf8_lossy(bytes);
-        if text.encode_utf16().count() >= 1024 {
-            return None;
-        }
-        Some(PathBuf::from(text.into_owned()))
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::ffi::OsStrExt;
-        Some(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
-    }
-}
-
 impl Span {
     /// The medium stored in `[offset, offset + length)` of `path` — its own
     /// bytes, or a framed blob of them. None when the span is not inside
     /// the file, or a framed header does not hold together with the span
     /// it sits in.
-    pub fn open(path: &[u8], offset: i64, length: i64, framed: bool) -> Option<Span> {
+    pub fn open(path: &CStr, offset: i64, length: i64, framed: bool) -> Option<Span> {
         if offset < 0 || length < 0 {
             return None;
         }
-        let mut file = File::open(path_of(path)?).ok()?;
+        let mut file = File::open(crate::path::file(path)?).ok()?;
         // ⛔The span must be INSIDE the file. One that promises bytes the
         // file cannot supply is a truncated medium, which reads as a corrupt
         // one rather than as a span that was wrong.
@@ -264,7 +237,7 @@ pub unsafe extern "C" fn qa_media_span_open(utf8_path: *const c_char, offset: i6
         return std::ptr::null_mut();
     }
     // SAFETY: the caller's contract.
-    let path = unsafe { CStr::from_ptr(utf8_path) }.to_bytes();
+    let path = unsafe { CStr::from_ptr(utf8_path) };
     Span::open(path, offset, length, framed != 0).map_or(std::ptr::null_mut(), |span| Box::into_raw(Box::new(span)))
 }
 

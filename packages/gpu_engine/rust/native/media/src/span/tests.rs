@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use oracle::export;
 
-use crate::Span;
+use super::Span;
 
 type Open = unsafe extern "C" fn(*const c_char, i64, i64, i32) -> *mut u8;
 type Size = unsafe extern "C" fn(*const u8) -> i64;
@@ -106,7 +106,7 @@ fn archive(blob: &[u8]) -> (Vec<u8>, i64) {
 /// each says, held to the C's.
 fn both(path: &str, offset: i64, length: i64, framed: bool) -> Option<(CSpan, Span)> {
     let theirs = CSpan::open(path, offset, length, framed);
-    let ours = Span::open(path.as_bytes(), offset, length, framed);
+    let ours = Span::open(&CString::new(path).expect("no NUL"), offset, length, framed);
     let what = format!("{path} [{offset}, +{length}) framed {framed}");
     assert_eq!(ours.is_some(), !theirs.0.is_null(), "{what}: opened");
     let ours = ours?;
@@ -161,8 +161,16 @@ fn a_plain_span_reads_as_the_c_reads_it() {
         }
     }
     assert!(both(&format!("{path}.missing"), 0, 1, false).is_none());
-    let long = std::env::temp_dir().join("가".repeat(1100));
-    assert!(both(long.to_str().expect("UTF-8"), 0, 1, false).is_none());
+    // A file that is there, under a path of more wide characters than the
+    // C's buffer holds: refused rather than cut, by both.
+    let top = std::env::temp_dir().join(format!("미디어-스팬-{}-길다", std::process::id()));
+    let deep = (0..5).fold(top.clone(), |dir, k| dir.join(char::from_u32(0xAC00 + k).expect("Hangul").to_string().repeat(200)));
+    std::fs::create_dir_all(&deep).expect("a deep folder");
+    let far = deep.join("medium.bin");
+    std::fs::write(&far, &bytes).expect("a file far down");
+    assert!(far.to_str().expect("UTF-8").encode_utf16().count() >= 1024, "LIVENESS — past the buffer");
+    assert!(both(far.to_str().expect("UTF-8"), 0, length, false).is_none());
+    std::fs::remove_dir_all(&top).expect("cleanup");
     // The C's file shuts out deleting while it is open.
     drop(spans);
     std::fs::remove_file(path).expect("cleanup");
@@ -210,12 +218,15 @@ fn a_framed_span_that_does_not_hold_together_is_refused_as_the_c_refuses_it() {
     let block = 4096;
     let medium = medium(3 * block + 100);
     let blob = framed(&medium, block);
-    let lengths: Vec<u32> = (0..4).map(|k| crate::u32_at(&blob, 16 + 4 * k)).collect();
+    let lengths: Vec<u32> = (0..4).map(|k| super::u32_at(&blob, 16 + 4 * k)).collect();
     let second = 32 + lengths[0] as usize;
+    // One block of the largest size trusted, so its count still holds when
+    // the size goes past it.
+    let largest = framed(&medium, 64 << 20);
     let mut broken = vec![
         ("block size 0", with_u32(&blob, 0, 0)),
-        ("block size past the bound", with_u32(&blob, 0, 64 * 1024 * 1024 + 1)),
-        ("block size at the bound", with_u32(&blob, 0, 64 * 1024 * 1024)),
+        ("block size at the bound", largest.clone()),
+        ("block size past the bound", with_u32(&largest, 0, (64 << 20) + 1)),
         ("a count too many", with_u32(&blob, 12, 5)),
         ("a count too few", with_u32(&blob, 12, 3)),
         ("a length past a signed size", with_u32(&blob, 8, 0x8000_0000)),
@@ -263,24 +274,24 @@ fn a_framed_span_that_does_not_hold_together_is_refused_as_the_c_refuses_it() {
 fn nothing_is_read_from_nothing() {
     // SAFETY: null spans and pointers are what is being asked about.
     unsafe {
-        assert_eq!(crate::qa_media_span_open(std::ptr::null(), 0, 1, 0), std::ptr::null_mut());
-        assert_eq!(crate::qa_media_span_size(std::ptr::null()), 0);
+        assert_eq!(super::qa_media_span_open(std::ptr::null(), 0, 1, 0), std::ptr::null_mut());
+        assert_eq!(super::qa_media_span_size(std::ptr::null()), 0);
         let mut out = [0u8; 4];
-        assert_eq!(crate::qa_media_span_read(std::ptr::null_mut(), 0, out.as_mut_ptr(), 4), 0);
+        assert_eq!(super::qa_media_span_read(std::ptr::null_mut(), 0, out.as_mut_ptr(), 4), 0);
         let (mut blocks, mut bytes) = (7, 7);
-        crate::qa_media_span_stats(std::ptr::null(), &mut blocks, &mut bytes);
+        super::qa_media_span_stats(std::ptr::null(), &mut blocks, &mut bytes);
         assert_eq!((blocks, bytes), (0, 0));
-        crate::qa_media_span_close(std::ptr::null_mut());
+        super::qa_media_span_close(std::ptr::null_mut());
     }
     let bytes = medium(64);
     let path = file("null-out", &bytes);
     let name = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
     // SAFETY: a span of ours, read into nothing, closed once.
     unsafe {
-        let span = crate::qa_media_span_open(name.as_ptr(), 0, 64, 0);
+        let span = super::qa_media_span_open(name.as_ptr(), 0, 64, 0);
         assert!(!span.is_null());
-        assert_eq!(crate::qa_media_span_read(span, 0, std::ptr::null_mut(), 4), 0);
-        crate::qa_media_span_close(span);
+        assert_eq!(super::qa_media_span_read(span, 0, std::ptr::null_mut(), 4), 0);
+        super::qa_media_span_close(span);
     }
     std::fs::remove_file(path).expect("cleanup");
 }

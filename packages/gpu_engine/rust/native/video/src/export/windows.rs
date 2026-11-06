@@ -6,7 +6,6 @@
 
 use std::sync::Mutex;
 
-use windows::Win32::Globalization::{CP_UTF8, MULTI_BYTE_TO_WIDE_CHAR_FLAGS, MultiByteToWideChar};
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::core::{GUID, PCWSTR, Result};
@@ -15,10 +14,6 @@ use super::{CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error
 use crate::hardware_law;
 
 pub const SUPPORTED: bool = true;
-
-/// The longest output path, in UTF-16 units with its NUL, the writer is
-/// handed — the C's buffer.
-const WIDE_PATH: usize = 1024;
 
 /// 100 ns units per second, Media Foundation's clock.
 const TICKS: i64 = 10_000_000;
@@ -110,13 +105,10 @@ pub fn open(job: &Job) -> bool {
         set_error("video export: Media Foundation failed to start");
         return false;
     }
-    let mut wide = [0u16; WIDE_PATH];
-    // SAFETY: both buffers are the slices' own lengths; the NUL goes along,
-    // so the wide path ends in one.
-    if unsafe { MultiByteToWideChar(CP_UTF8, MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0), path.to_bytes_with_nul(), Some(&mut wide)) } == 0 {
+    let Some(wide) = media::path::wide(path) else {
         set_error("video export: the output path did not convert");
         return false;
-    }
+    };
     let (width, height) = (job.width + (job.width & 1), job.height + (job.height & 1));
     let hevc = job.codec == CODEC_HEVC;
     // SAFETY: `wide` is NUL-terminated.

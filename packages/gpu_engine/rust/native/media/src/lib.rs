@@ -1,7 +1,7 @@
-//! What the engine's audio and video codecs share of the OS media stacks —
-//! the engine's `qa_win_media_foundation.c`, in Rust (native-to-rust, 저장).
-//! The span reader (`qa_media_span.c`) and each OS's serving of it join here
-//! with the decoders that read through them.
+//! What the engine's audio and video codecs share — the engine's
+//! `qa_win_media_foundation.c`, `qa_platform_path.h` and `qa_media_span.c`,
+//! in Rust (native-to-rust, 저장). Each OS's serving of a span joins here
+//! with the decoders that read through it.
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
@@ -10,3 +10,5 @@ const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
 #[cfg(windows)]
 pub mod media_foundation;
+pub mod path;
+pub mod span;
