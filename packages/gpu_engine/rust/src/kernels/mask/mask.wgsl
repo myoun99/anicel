@@ -26,14 +26,20 @@ struct Mask {
   height: u32,
   stride: u32,
   ramp: u32,
+  // Whether the soften keeps inside the outline — softenMaskBoundary's
+  // `insideOutlineOnly`: the selection's does, the fill's does not.
+  inside_outline_only: u32,
+  unused_0: u32,
+  unused_1: u32,
+  unused_2: u32,
 }
 
 // The farthest distance — chamferDistance34's `infinity`.
 const MASK_FAR: u32 = 60000u;
 // The distance the box's edge lies at: a pixel on it ramps as if the one
 // past it were out (`_featherMask`'s border, the selection's). ⏳The fill's
-// finish (stage 5) starts its distances at another byte with no edge, and
-// softens without the selection's clamp — they come as words of their own.
+// gap close (stage 5) starts its distances at another byte with no edge —
+// they come as words of their own.
 const MASK_EDGE: u32 = 3u;
 
 @group(0) @binding(0) var<uniform> mask: Mask;
@@ -86,14 +92,17 @@ fn mask_shrunk(x: i32, y: i32) -> u32 {
 // The boundary soften: (3 · centre + sides) / 7, rounded — 7 being odd, a
 // sum is never a half over it, so + 3 rounds it as the app's double
 // rounding does. A pixel whose four sides are its own sums to its own byte
-// (the app skips it). ⚠️INSIDE THE OUTLINE ONLY (유저 2026-08-27,
-// softenMaskBoundary's head): it never rises past the pixel's own byte, so
-// a selection lifts no ring of its neighbour's art.
+// (the app skips it). ⚠️THE SELECTION'S INSIDE THE OUTLINE ONLY (유저
+// 2026-08-27, softenMaskBoundary's head): it never rises past the pixel's
+// own byte, so a selection lifts no ring of its neighbour's art. ⛔The
+// fill's rises (canvas_flood_fill.dart's ⛔UNCLAMPED): paint that stops dead
+// on the outline reads as a hard edge, so its ramp goes a pixel past it.
 fn mask_softened(x: i32, y: i32) -> u32 {
   let centre = mask_byte(x, y);
   let sides = mask_sides(x, y);
   let around = sides.x + sides.y + sides.z + sides.w;
-  return min((3u * centre + around + 3u) / 7u, centre);
+  let softened = (3u * centre + around + 3u) / 7u;
+  return select(softened, min(softened, centre), mask.inside_outline_only != 0u);
 }
 
 // The feather's alpha at (x, y): nothing out; in, its distance over the

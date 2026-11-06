@@ -4,7 +4,10 @@
 //! (S2a, the app's `dilateMask4` · `erodeMask4`), feather (S2b, its
 //! `chamferDistance34` and `_featherMask`'s ramp) and anti-alias inside the
 //! outline (S2c, `softenMaskBoundary`), in `buildSelectionMask`'s order.
-//! The hard mask itself is `region`'s (S1, the app's `maskFor`).
+//! The hard mask itself is `region`'s (S1, the app's `maskFor`). A bucket
+//! fill finishes what it flooded with the same grow and soften
+//! (`_cropAndFinishFloodRegion`, gpu-canonical-store stage 5), its soften
+//! past the outline as well.
 //!
 //! A mask is a plane of bytes over its box (`MaskBox`) — the app's
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
@@ -63,6 +66,14 @@ impl MaskBox {
     /// A pass's workgroups over words of `per` pixels.
     fn groups(&self, per: u32) -> (u32, u32) {
         (self.width.div_ceil(per).div_ceil(GROUP), self.height.div_ceil(GROUP))
+    }
+
+    /// Fails unless it holds a pixel and `mask` holds its plane.
+    fn held_by(&self, mask: &wgpu::Buffer) -> Option<()> {
+        if self.width == 0 || self.height == 0 || mask.size() < self.bytes() {
+            return fail(format!("{self:?} is no mask of {} bytes", mask.size()));
+        }
+        Some(())
     }
 }
 
@@ -141,6 +152,15 @@ impl Finish {
     }
 }
 
+/// What a run's passes read past the box — the app's arguments to the
+/// functions they are: the feather's ramp, 3 chamfer units a pixel, Q.8,
+/// and softenMaskBoundary's `insideOutlineOnly`.
+#[derive(Clone, Copy)]
+struct Knobs {
+    ramp: u32,
+    inside_outline_only: bool,
+}
+
 /// A pass: a stencil of a pixel's sides on the bytes, a distance's start
 /// or generation, or the feather's ramp over the distances.
 #[derive(Clone, Copy, PartialEq)]
@@ -199,9 +219,7 @@ impl MaskPasses {
         size: MaskBox,
         finish: Finish,
     ) -> Option<wgpu::Buffer> {
-        if size.width == 0 || size.height == 0 || mask.size() < size.bytes() {
-            return fail(format!("{size:?} is no mask of {} bytes", mask.size()));
-        }
+        size.held_by(mask)?;
         // In Q.8 pixels.
         let feather = match finish.feather {
             px if px > 0.0 => match q(px, 8, MOST_FEATHER * 256.0) {
@@ -232,20 +250,51 @@ impl MaskPasses {
         if finish.anti_alias {
             steps.push(Step::Soften);
         }
-        let ramp = feather.map_or(0, |feather| 3 * feather);
-        self.run(engine, mask, size, &steps, ramp)
+        let knobs = Knobs {
+            ramp: feather.map_or(0, |feather| 3 * feather),
+            inside_outline_only: true,
+        };
+        self.run(engine, mask, size, &steps, knobs)
+    }
+
+    /// `mask` — bytes over `size`, 255 where a fill flooded — finished as
+    /// the fill finishes it (`_cropAndFinishFloodRegion`): grown `expand`
+    /// generations, then, where it anti-aliases, softened past its outline
+    /// as well as in. A new plane — or none where neither runs, whose mask
+    /// is finished as it is. Submits the work; the caller waits.
+    pub(crate) fn fill(
+        &self,
+        engine: &Engine,
+        mask: &wgpu::Buffer,
+        size: MaskBox,
+        expand: u32,
+        anti_alias: bool,
+    ) -> Option<wgpu::Buffer> {
+        size.held_by(mask)?;
+        let mut steps = vec![Step::Grow; expand as usize];
+        if anti_alias {
+            steps.push(Step::Soften);
+        }
+        if steps.is_empty() {
+            return fail("a fill neither expanded nor anti-aliased is finished as it is");
+        }
+        let knobs = Knobs {
+            ramp: 0,
+            inside_outline_only: false,
+        };
+        self.run(engine, mask, size, &steps, knobs)
     }
 
     /// Runs `steps` over `mask` in order, each reading what the one before
-    /// put — the feather's over `ramp` —, and returns the bytes the last
-    /// byte pass put; `steps` holds one.
+    /// put and all reading `knobs`, and returns the bytes the last byte
+    /// pass put; `steps` holds one.
     fn run(
         &self,
         engine: &Engine,
         mask: &wgpu::Buffer,
         size: MaskBox,
         steps: &[Step],
-        ramp: u32,
+        knobs: Knobs,
     ) -> Option<wgpu::Buffer> {
         let feathers = steps.contains(&Step::Seed);
         let distance_bytes = if feathers { size.distance_bytes() } else { 0 };
@@ -255,7 +304,8 @@ impl MaskPasses {
         let distances: Vec<wgpu::Buffer> = (0..if feathers { 2 } else { 0 })
             .map(|_| plane(engine, "mask distances", distance_bytes))
             .collect();
-        let words = [size.width, size.height, size.stride(), ramp];
+        let inside = u32::from(knobs.inside_outline_only);
+        let words = [size.width, size.height, size.stride(), knobs.ramp, inside, 0, 0, 0];
         let words = &words_buffer(engine, "mask", &words, wgpu::BufferUsages::UNIFORM);
         // The byte plane the next pass reads — none: `mask` itself — and
         // the distance plane.

@@ -1,8 +1,10 @@
 //! A bucket fill's reach on the GPU (gpu-canonical-store stage 5): the
 //! pixels the app's `floodFillRegion` fills — 4-joined to the seed through
 //! pixels within the tolerance of the seed's colour — as a plane of bits,
-//! and their box. flood.wgsl has the planes and why any order of spreading
-//! gives the app's bytes.
+//! and their box; then that finished as the app finishes it, a mask of
+//! bytes over a box of its own (`kernels/mask`'s grow and soften).
+//! flood.wgsl has the planes and why any order of spreading gives the
+//! app's bytes.
 //!
 //! The picture the fill reads is what the screen shows — the composite's
 //! output tiles (유저 gpu-canonical-store-Q1, 11-06): the fill and the
@@ -20,6 +22,7 @@ mod tests;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES};
+use crate::kernels::mask::{MaskBox, MaskPasses};
 use crate::kernels::shared::{Encoded, PREMULTIPLY_WGSL, encode, encode_on, fits, flat};
 use crate::kernels::shared::{pipeline, plane, range, whole, words_buffer};
 
@@ -39,7 +42,7 @@ pub(crate) struct Picture<'a> {
 }
 
 /// A box of pixels: its left and top, and its right and bottom past it.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Extent {
     pub(crate) left: u32,
     pub(crate) top: u32,
@@ -48,11 +51,19 @@ pub(crate) struct Extent {
 }
 
 /// The pixels a flood filled: a plane of bits over the picture's grid,
-/// `stride` words a row.
+/// `stride` words a row, inside the picture's box.
 pub(crate) struct Flooded {
     pub(crate) filled: wgpu::Buffer,
     pub(crate) stride: u32,
     pub(crate) bounds: Bounds,
+    pub(crate) inside: Extent,
+}
+
+/// A finished fill: the mask it lays its colour through, bytes over
+/// `crop` (mask.wgsl's layout) — the app's `FloodFillRegion`.
+pub(crate) struct Finished {
+    pub(crate) mask: wgpu::Buffer,
+    pub(crate) crop: Extent,
 }
 
 /// The filled pixels' least and most x and y — the app's `minX`, `maxX`,
@@ -70,6 +81,7 @@ pub(crate) struct Flood {
     tolerance: wgpu::ComputePipeline,
     round: wgpu::ComputePipeline,
     bounds: wgpu::ComputePipeline,
+    mask: wgpu::ComputePipeline,
 }
 
 impl Flood {
@@ -79,6 +91,7 @@ impl Flood {
             tolerance: pipeline(engine, &source, "flood_tolerance"),
             round: pipeline(engine, &source, "flood_round"),
             bounds: pipeline(engine, &source, "flood_bounds"),
+            mask: pipeline(engine, &source, "flood_mask"),
         }
     }
 
@@ -181,7 +194,68 @@ impl Flood {
             filled,
             stride,
             bounds,
+            inside,
         })
+    }
+
+    /// `flooded` finished as the app finishes a fill
+    /// (`_cropAndFinishFloodRegion`): cropped to its box grown by what the
+    /// finish reaches (`fillFinishReach` — the expand, and a pixel more
+    /// where it anti-aliases: its ramp spreads a pixel past its own edge),
+    /// cut at the picture's box, then grown `expand` generations and
+    /// softened past its outline where it anti-aliases. Submits the work;
+    /// the caller waits.
+    pub(crate) fn finish(
+        &self,
+        engine: &Engine,
+        masks: &MaskPasses,
+        flooded: &Flooded,
+        expand: u32,
+        anti_alias: bool,
+    ) -> Option<Finished> {
+        let (bounds, inside) = (flooded.bounds, flooded.inside);
+        let reach = expand.saturating_add(u32::from(anti_alias));
+        // The bounds' right and bottom are the last pixels filled; the
+        // crop's lie past its own.
+        let past = reach.saturating_add(1);
+        let crop = Extent {
+            left: bounds.left.saturating_sub(reach).max(inside.left),
+            top: bounds.top.saturating_sub(reach).max(inside.top),
+            right: bounds.right.saturating_add(past).min(inside.right),
+            bottom: bounds.bottom.saturating_add(past).min(inside.bottom),
+        };
+        let size = MaskBox {
+            width: crop.right - crop.left,
+            height: crop.bottom - crop.top,
+        };
+        let groups = (size.stride().div_ceil(8), size.height.div_ceil(8));
+        fits(engine, &[size.bytes()], [groups].into_iter())?;
+        let words = [
+            crop.left,
+            crop.top,
+            size.width,
+            size.height,
+            flooded.stride,
+            size.stride(),
+            0,
+            0,
+        ];
+        let words = &words_buffer(engine, "flood crop", &words, wgpu::BufferUsages::UNIFORM);
+        let cropped = plane(engine, "flood mask", size.bytes());
+        encode(
+            engine,
+            &[Encoded {
+                pipeline: &self.mask,
+                bound: whole(&[(2, &flooded.filled), (8, words), (9, &cropped)]),
+                groups: flat(groups),
+            }],
+        );
+        let mask = if expand == 0 && !anti_alias {
+            cropped
+        } else {
+            masks.fill(engine, &cropped, size, expand, anti_alias)?
+        };
+        Some(Finished { mask, crop })
     }
 
     /// The box of what `filled` holds.

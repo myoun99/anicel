@@ -49,6 +49,23 @@ struct Flood {
 // The filled pixels' least and most x, then y.
 @group(0) @binding(7) var<storage, read_write> bounds: array<atomic<u32>, 4>;
 
+// The box a fill is finished in, in the grid's pixels — its right and
+// bottom past it —, and the words a row of a plane of bits, and of the
+// mask of bytes over the box (mask.wgsl's layout).
+struct Crop {
+  left: u32,
+  top: u32,
+  width: u32,
+  height: u32,
+  bits: u32,
+  bytes: u32,
+  unused_0: u32,
+  unused_1: u32,
+}
+
+@group(0) @binding(8) var<uniform> crop: Crop;
+@group(0) @binding(9) var<storage, read_write> mask_out: array<u32>;
+
 const FLOOD_TILE: u32 = 128u;
 const FLOOD_TILE_WORDS: u32 = 4u;
 
@@ -257,4 +274,26 @@ fn flood_bounds(
     atomicMin(&bounds[2], atomicLoad(&tile_box[2]));
     atomicMax(&bounds[3], atomicLoad(&tile_box[3]));
   }
+}
+
+// A word of the mask a fill is finished from: four of the box's pixels,
+// 255 where the flood filled and 0 where it did not — the app's `filled`
+// cropped (`_cropAndFinishFloodRegion`).
+@compute @workgroup_size(8, 8, 1)
+fn flood_mask(@builtin(global_invocation_id) id: vec3<u32>) {
+  if (id.x >= crop.bytes || id.y >= crop.height) {
+    return;
+  }
+  let y = crop.top + id.y;
+  var word = 0u;
+  for (var k = 0u; k < 4u; k++) {
+    let x = id.x * 4u + k;
+    if (x >= crop.width) {
+      break;
+    }
+    let at = crop.left + x;
+    let bit = (filled_in[y * crop.bits + at / 32u] >> (at % 32u)) & 1u;
+    word |= (bit * 255u) << (k * 8u);
+  }
+  mask_out[id.y * crop.bytes + id.x] = word;
 }

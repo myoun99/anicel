@@ -4,15 +4,17 @@
 
 use std::sync::OnceLock;
 
-use super::{Bounds, Extent, Flood, Flooded, Picture};
+use super::{Bounds, Extent, Finished, Flood, Flooded, Picture};
 use crate::device::Engine;
 use crate::kernels::composite::TILE;
+use crate::kernels::mask::MaskPasses;
 use crate::kernels::shared::words_buffer;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 struct Rig {
     engine: &'static Engine,
     flood: Flood,
+    masks: MaskPasses,
 }
 
 /// One device and one compile for every test here (blend's tests have
@@ -24,6 +26,7 @@ fn rig() -> &'static Rig {
         Rig {
             engine,
             flood: Flood::new(engine),
+            masks: MaskPasses::new(engine),
         }
     })
 }
@@ -86,26 +89,19 @@ fn flood(
 }
 
 fn flood_inside(
-    (across, down): (u32, u32),
+    grid: (u32, u32),
     inside: Extent,
     colour: impl Fn(u32, u32) -> Rgba,
     seed: (u32, u32),
     tolerance: u32,
 ) -> Filled {
-    let Rig { engine, flood } = rig();
-    let tiles = tiles(engine, (across, down), colour);
-    let picture = Picture {
-        tiles: &tiles,
-        across,
-        down,
-        inside,
-    };
     let Flooded {
         filled,
         stride,
         bounds,
-    } = flood.region(engine, &picture, seed, tolerance).expect("a flood");
-    let bytes = read_buffer(engine, &filled);
+        ..
+    } = flooded(grid, inside, colour, seed, tolerance);
+    let bytes = read_buffer(rig().engine, &filled);
     let words = bytes
         .chunks_exact(4)
         .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
@@ -115,6 +111,52 @@ fn flood_inside(
         stride,
         bounds,
     }
+}
+
+fn flooded(
+    (across, down): (u32, u32),
+    inside: Extent,
+    colour: impl Fn(u32, u32) -> Rgba,
+    seed: (u32, u32),
+    tolerance: u32,
+) -> Flooded {
+    let Rig { engine, flood, .. } = rig();
+    let tiles = tiles(engine, (across, down), colour);
+    let picture = Picture {
+        tiles: &tiles,
+        across,
+        down,
+        inside,
+    };
+    flood.region(engine, &picture, seed, tolerance).expect("a flood")
+}
+
+/// A finished fill read back: its crop, and its mask's bytes row after
+/// row, padding gone.
+fn finished(
+    grid: (u32, u32),
+    colour: impl Fn(u32, u32) -> Rgba,
+    seed: (u32, u32),
+    tolerance: u32,
+    (expand, anti_alias): (u32, bool),
+) -> (Extent, Vec<Vec<u8>>) {
+    let Rig { engine, flood, masks } = rig();
+    let whole = Extent {
+        left: 0,
+        top: 0,
+        right: grid.0 * TILE,
+        bottom: grid.1 * TILE,
+    };
+    let flooded = flooded(grid, whole, colour, seed, tolerance);
+    let Finished { mask, crop } =
+        flood.finish(engine, masks, &flooded, expand, anti_alias).expect("a finish");
+    let width = (crop.right - crop.left) as usize;
+    let stride = width.div_ceil(4) * 4;
+    let bytes = read_buffer(engine, &mask);
+    let rows = (0..(crop.bottom - crop.top) as usize)
+        .map(|row| bytes[row * stride..row * stride + width].to_vec())
+        .collect();
+    (crop, rows)
 }
 
 fn bounds(left: u32, right: u32, top: u32, bottom: u32) -> Bounds {
@@ -202,12 +244,17 @@ fn pixels_compare_premultiplied() {
     assert_eq!(probed([255, 0, 0, 128], &probes[2..], 64), [true, true]);
 }
 
+/// Squares of two colours a pixel each: a fill within 0 fills its seed
+/// alone.
+fn checker(x: u32, y: u32) -> Rgba {
+    if (x + y) % 2 == 0 { [9, 9, 9, 255] } else { [200, 9, 9, 255] }
+}
+
 #[test]
 fn diagonal_neighbours_never_join() {
-    let colour = |x: u32, y: u32| if (x + y) % 2 == 0 { [9, 9, 9, 255] } else { [200, 9, 9, 255] };
     // A seed in each of a tile row's four words.
     for seed in [(127, 127), (128, 128), (0, 255), (200, 61), (45, 3)] {
-        let filled = flood((2, 2), colour, seed, 0);
+        let filled = flood((2, 2), checker, seed, 0);
         assert_eq!(filled.count(), 1, "{seed:?}");
         assert!(filled.at(seed.0, seed.1), "{seed:?}");
         assert_eq!(filled.bounds, bounds(seed.0, seed.0, seed.1, seed.1));
@@ -258,7 +305,7 @@ fn nothing_past_the_picture_s_box_fills() {
 
 #[test]
 fn a_seed_off_the_box_or_a_box_off_the_grid_is_refused() {
-    let Rig { engine, flood } = rig();
+    let Rig { engine, flood, .. } = rig();
     let tiles = tiles(engine, (1, 1), |_, _| [0, 0, 0, 255]);
     let picture = |left, top, right, bottom| Picture {
         tiles: &tiles,
@@ -309,4 +356,86 @@ fn every_device_floods_the_pinned_regions() {
         bytes.extend([left, right, top, bottom].iter().flat_map(|word| word.to_le_bytes()));
     }
     assert_pinned("flood/patches", &bytes);
+}
+
+fn extent(left: u32, top: u32, right: u32, bottom: u32) -> Extent {
+    Extent {
+        left,
+        top,
+        right,
+        bottom,
+    }
+}
+
+#[test]
+fn an_expand_grows_a_lone_pixel_a_diamond_a_generation_at_a_time() {
+    let (crop, rows) = finished((2, 2), checker, (200, 61), 0, (2, false));
+    assert_eq!(crop, extent(198, 59, 203, 64));
+    let within = |x: i32, y: i32| (x - 2).abs() + (y - 2).abs() <= 2;
+    let hand: Vec<Vec<u8>> =
+        (0..5).map(|y| (0..5).map(|x| if within(x, y) { 255 } else { 0 }).collect()).collect();
+    assert_eq!(rows, hand);
+}
+
+#[test]
+fn the_fill_s_ramp_spreads_a_pixel_past_its_outline() {
+    // (3 · 255 + 3) / 7 = 109 at the pixel and (255 + 3) / 7 = 36 beside it,
+    // where the selection's soften would keep 0.
+    let (crop, rows) = finished((2, 2), checker, (200, 61), 0, (0, true));
+    assert_eq!(crop, extent(199, 60, 202, 63));
+    assert_eq!(rows, [[0, 36, 0], [36, 109, 36], [0, 36, 0]]);
+}
+
+#[test]
+fn an_expanded_fill_softens_over_what_it_grew() {
+    // Grown once, the pixel and its four sides are in. Softened, a side is
+    // (3 · 255 + 255 + 3) / 7 = 146, a pixel between two sides
+    // (2 · 255 + 3) / 7 = 73, one past a side 36, and the pixel itself
+    // (7 · 255 + 3) / 7 = 255.
+    let (crop, rows) = finished((2, 2), checker, (200, 61), 0, (1, true));
+    assert_eq!(crop, extent(198, 59, 203, 64));
+    let hand = [
+        [0, 0, 36, 0, 0],
+        [0, 73, 146, 73, 0],
+        [36, 146, 255, 146, 36],
+        [0, 73, 146, 73, 0],
+        [0, 0, 36, 0, 0],
+    ];
+    assert_eq!(rows, hand);
+}
+
+#[test]
+fn a_fill_is_finished_inside_the_picture_s_box() {
+    // At a corner of the grid the crop is cut at its edges, and past them
+    // there is nothing to grow from or soften with: the pixel itself is
+    // (3 · 255 + 2 · 255 + 3) / 7 = 182.
+    let (crop, rows) = finished((2, 2), checker, (0, 0), 0, (1, true));
+    assert_eq!(crop, extent(0, 0, 3, 3));
+    assert_eq!(rows, [[182, 146, 36], [146, 73, 0], [36, 0, 0]]);
+    let (crop, rows) = finished((2, 2), checker, (255, 255), 0, (1, true));
+    assert_eq!(crop, extent(253, 253, 256, 256));
+    assert_eq!(rows, [[0, 0, 36], [0, 73, 146], [36, 146, 182]]);
+}
+
+#[test]
+fn a_fill_neither_expanded_nor_anti_aliased_is_its_flood_cropped() {
+    let colour = |x: u32, _| if x == 150 { WALL } else { [0, 0, 0, 255] };
+    let (crop, rows) = finished((2, 2), colour, (3, 250), 0, (0, false));
+    assert_eq!(crop, extent(0, 0, 150, 256));
+    assert!(rows.iter().all(|row| row.iter().all(|&byte| byte == 255)));
+}
+
+#[test]
+fn every_device_finishes_the_pinned_fill() {
+    let (crop, rows) = finished((3, 2), patches, (200, 130), 12, (2, true));
+    let Extent {
+        left,
+        top,
+        right,
+        bottom,
+    } = crop;
+    let corners = [left, top, right, bottom];
+    let mut bytes: Vec<u8> = corners.iter().flat_map(|word| word.to_le_bytes()).collect();
+    bytes.extend(rows.concat());
+    assert_pinned("flood/patches-finished", &bytes);
 }
