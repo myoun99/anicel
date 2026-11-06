@@ -2232,6 +2232,17 @@ fn a_moved_masked_row_reads_its_mask_where_it_moves() {
     assert_eq!([at(4, 3), at(1, 1), at(2, 1), at(8, 6), at(7, 7)], [blue; 5]);
 }
 
+// A plan's mask no step is laid under changes nothing: no pass reads a row
+// of it.
+#[test]
+fn a_mask_no_step_lies_under_changes_nothing() {
+    let mut scene = red_over_blue();
+    scene.steps[1] = row(1, (0, 0), WHOLE, NORMAL);
+    let mask = masked((1, 1), (5, 5), |_, _| 0);
+    let got = under(&scene, Some(&mask.mask()), rig().composite.widest());
+    assert!(got == Some(widest(&scene)));
+}
+
 /// A mask's box, off the tile grid, and its bytes there, each its own.
 const SPOTTED_AT: (i32, i32) = (-40, 20);
 const SPOTTED_SIZE: (u32, u32) = (250, 200);
@@ -2356,16 +2367,14 @@ fn a_mark_lays_its_checker_where_its_range_is() {
 
 // A mark lies in its row's space: moved by (5, -3), its cells and its range
 // move with it; moved a quarter of a pixel right and half a pixel up under
-// R1's tent, its cells move as much and its range's edge is resampled.
+// R1's tent, its cells move as much, and wherever the tent reads one cell
+// it lays what a row of its cells lays under its range posed so — the
+// range's edge resampled as a masked row's is.
 #[test]
 fn a_mark_lies_in_its_row_s_space() {
     let range = range();
     let moved = Step::Mark { map: ResampleMap::moved(5, -3), shift: [0, 0] };
-    let (moved, _) = marked(vec![moved], &range.mask());
-    let quarter = [1.0, 0.0, 0.25, 0.0, 1.0, -0.5, 0.0, 0.0, 1.0];
-    let map = ResampleMap::new(quarter, 1.0, ResampleMode::Blend, 2 * TILE, 2 * TILE)
-        .expect("a map that lands");
-    let (posed, tiles) = marked(vec![Step::Mark { map, shift: [0, 0] }], &range.mask());
+    let (moved, tiles) = marked(vec![moved], &range.mask());
     for y in 0..TILE as i32 {
         for x in 0..2 * TILE as i32 {
             let want = match in_range(x - 5, y + 3) {
@@ -2373,18 +2382,42 @@ fn a_mark_lies_in_its_row_s_space() {
                 false => [0; 4],
             };
             assert_eq!(pixel_at(&moved, &tiles, x, y), want, "moved ({x}, {y})");
-            // The centre lands at (x + 3/4, y), where the tent reaches a
-            // pixel either way.
-            let (u, v) = ((i64::from(x) << 16) + (3 << 14), i64::from(y) << 16);
-            let corners = [(-1, -1), (1, -1), (-1, 1), (1, 1)];
-            let want = match corners.iter().filter(|(dx, dy)| in_range(x + dx, y + dy)).count() {
-                4 => checker((u, v), [0, 0]),
-                0 => [0; 4],
-                _ => continue,
-            };
-            assert_eq!(pixel_at(&posed, &tiles, x, y), want, "a quarter ({x}, {y})");
         }
     }
+    let quarter = [1.0, 0.0, 0.25, 0.0, 1.0, -0.5, 0.0, 0.0, 1.0];
+    let map = ResampleMap::new(quarter, 1.0, ResampleMode::Blend, 2 * TILE, 2 * TILE)
+        .expect("a map that lands");
+    let (posed, _) = marked(vec![Step::Mark { map, shift: [0, 0] }], &range.mask());
+    let cell = |u, v| checker((centre(u), centre(v)), [0, 0]);
+    let mut pool = Pool::default();
+    let sets = vec![pool.drawn(|u, v| u32::from_le_bytes(cell(u, v)), (0, 0), (2, 1), |_, _| {
+        Some(0)
+    })];
+    let cells = Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps: vec![masked_row(with_map(0, map, WHOLE, NORMAL))],
+        tiles: tiles.clone(),
+    };
+    let want = under(&cells, Some(&range.mask()), rig().composite.widest()).expect("composite");
+    let mut edges = 0;
+    for y in 0..TILE as i32 {
+        for x in 0..2 * TILE as i32 {
+            // The centre lands at (x + 3/4, y): the tent reads pixels x and
+            // x + 1 across, y - 1 and y down.
+            let at = checker(((i64::from(x) << 16) + (3 << 14), i64::from(y) << 16), [0, 0]);
+            let read = [(x, y - 1), (x + 1, y - 1), (x, y), (x + 1, y)];
+            if read.iter().all(|&(u, v)| cell(u, v) == at) {
+                let got = pixel_at(&posed, &tiles, x, y);
+                assert_eq!(got, pixel_at(&want, &tiles, x, y), "a quarter ({x}, {y})");
+                edges += usize::from((1..128).contains(&got[3]));
+            }
+        }
+    }
+    // Not evidence — that the comparison reaches the range's edge at all.
+    assert!(edges > 0);
 }
 
 // A mark lays its colours in normal over what is under it, as a row of
