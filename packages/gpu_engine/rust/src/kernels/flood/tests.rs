@@ -121,7 +121,19 @@ fn read_back(flooded: Flooded) -> Filled {
 /// over the whole of a grid of `grid` tiles of `colour`, or none where it
 /// was refused.
 fn gap_closed(
+    grid: (u32, u32),
+    colour: impl Fn(u32, u32) -> Rgba,
+    seed: (u32, u32),
+    tolerance: u32,
+    gap: u32,
+) -> Option<Filled> {
+    let whole = extent(0, 0, grid.0 * TILE, grid.1 * TILE);
+    gap_closed_inside(grid, whole, colour, seed, tolerance, gap)
+}
+
+fn gap_closed_inside(
     (across, down): (u32, u32),
+    inside: Extent,
     colour: impl Fn(u32, u32) -> Rgba,
     seed: (u32, u32),
     tolerance: u32,
@@ -133,7 +145,7 @@ fn gap_closed(
         tiles: &tiles,
         across,
         down,
-        inside: extent(0, 0, across * TILE, down * TILE),
+        inside,
     };
     let flooded = flood.gap_closed(engine, masks, &picture, seed, tolerance, gap)?;
     Some(read_back(flooded))
@@ -483,19 +495,34 @@ fn assert_fills(filled: &Filled, hand: impl Fn(u32, u32) -> bool, box_: Bounds) 
     assert_eq!(filled.bounds, box_);
 }
 
+/// A wall down column 60 with a gap at rows 60 and 61.
+fn gapped_wall(x: u32, y: u32) -> Rgba {
+    if x == 60 && y != 60 && y != 61 { WALL } else { [0, 0, 0, 255] }
+}
+
+/// What a gap of 2 fills left of [`gapped_wall`]: what floods lies past 6
+/// from the wall — x ≤ 57, and (58, 60) and (58, 61), 3 · 2 + 1 = 7 from
+/// its ends — and nothing in the gap's three columns does. Taken back
+/// within 6 of that: x ≤ 59, and the gap's own two pixels, 6 from (58, 60)
+/// and (58, 61); (61, 60) is 9.
+fn left_of_the_gapped_wall(x: u32, y: u32) -> bool {
+    x <= 59 || (x == 60 && (y == 60 || y == 61))
+}
+
 #[test]
 fn a_gap_close_leaks_through_no_gap_narrower_than_its_reach() {
-    // A wall down column 60 with a gap at rows 60 and 61, and a gap of 2:
-    // what floods lies past 6 from the wall — x ≤ 57, and (58, 60) and
-    // (58, 61), 3 · 2 + 1 = 7 from its ends — and nothing in the gap's
-    // three columns does. Taken back within 6 of that: x ≤ 59, and the
-    // gap's own two pixels, 6 from (58, 60) and (58, 61); (61, 60) is 9.
-    let colour = |x: u32, y: u32| if x == 60 && y != 60 && y != 61 { WALL } else { [0, 0, 0, 255] };
-    let closed = gap_closed((1, 1), colour, (10, 10), 0, 2).expect("a gap close");
-    let hand = |x: u32, y: u32| x <= 59 || (x == 60 && (y == 60 || y == 61));
-    assert_fills(&closed, hand, bounds(0, 60, 0, 127));
-    let leaked = flood((1, 1), colour, (10, 10), 0);
+    let closed = gap_closed((1, 1), gapped_wall, (10, 10), 0, 2).expect("a gap close");
+    assert_fills(&closed, left_of_the_gapped_wall, bounds(0, 60, 0, 127));
+    let leaked = flood((1, 1), gapped_wall, (10, 10), 0);
     assert_eq!(leaked.count(), TILE * TILE - (TILE - 2));
+}
+
+#[test]
+fn a_gap_close_measures_over_a_box_of_any_width() {
+    // A box a column short of its tile: a row of distances ends mid word.
+    let inside = extent(0, 0, TILE - 1, TILE);
+    let closed = gap_closed_inside((1, 1), inside, gapped_wall, (10, 10), 0, 2);
+    assert_fills(&closed.expect("a gap close"), left_of_the_gapped_wall, bounds(0, 60, 0, 127));
 }
 
 #[test]
