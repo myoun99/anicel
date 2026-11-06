@@ -4,6 +4,7 @@
 
 use super::{Shown, pick};
 use super::super::tests::rig;
+use super::super::stamp::Paint;
 use super::super::{Extent, Finished};
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::composite::tests::{Pool, Rig as CompositeRig, rig as composite_rig};
@@ -188,7 +189,8 @@ fn a_fill_floods_what_shows_and_lands_on_its_cel() {
     let flooded = fills.flood.region(engine, &shown.picture(), seed, 0).expect("flood");
     let finished = fills.flood.finish(engine, &fills.masks, &flooded, 0, false).expect("finish");
     let mask = shown.on_canvas(&finished);
-    let stamped = fills.flood.stamp(engine, &mask, ORANGE, pages.len() as u16).expect("stamp");
+    let paint = Paint::Colour(ORANGE);
+    let stamped = fills.flood.stamp(engine, &mask, &paint, pages.len() as u16).expect("stamp");
     pages.extend(stamped.pages);
     sets.push(stamped.set);
     let steps = [laid(0, WHOLE), laid(1, WHOLE)];

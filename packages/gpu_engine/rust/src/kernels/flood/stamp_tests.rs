@@ -2,8 +2,8 @@
 //! stamp holds by hand — never against a CPU copy of it (`kernels/mod.rs`
 //! has why). How the executor lays it is composite's tests'.
 
-use super::Stamped;
 use super::super::tests::{Rig, rig};
+use super::{Gradient, Paint, Shape, Stamped};
 use crate::kernels::composite::{TILE, TileAt};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
@@ -12,6 +12,8 @@ use crate::testing::read_buffer;
 const ORANGE: [u8; 3] = [200, 100, 50];
 /// ORANGE as a stamp's word at alpha 0: R in the low byte.
 const ORANGE_WORD: u32 = 0x0032_64c8;
+const BLACK: [u8; 4] = [0, 0, 0, 255];
+const RED: [u8; 4] = [255, 0, 0, 255];
 
 /// Each of `stamped`'s pages read back, as words.
 fn pages(stamped: &Stamped) -> Vec<Vec<u32>> {
@@ -30,7 +32,26 @@ fn pages(stamped: &Stamped) -> Vec<Vec<u32>> {
 
 fn stamp(mask: &Mask, first_page: u16, per_page: usize) -> Stamped {
     let Rig { engine, flood, .. } = rig();
-    flood.stamp_by(engine, mask, ORANGE, first_page, per_page).expect("stamp")
+    let paint = Paint::Colour(ORANGE);
+    flood.stamp_by(engine, mask, &paint, first_page, per_page).expect("stamp")
+}
+
+/// `mask` stamped under `gradient`, or none where it is refused.
+fn graded(mask: &Mask, gradient: &Gradient) -> Option<Stamped> {
+    let Rig { engine, flood, .. } = rig();
+    flood.stamp(engine, mask, &Paint::Gradient(gradient), 0)
+}
+
+/// A gradient of `shape` from `from` to `to`, `start` to `end`.
+fn gradient(shape: Shape, from: (f64, f64), to: (f64, f64), ends: [[u8; 4]; 2]) -> Gradient {
+    let [start, end] = ends;
+    Gradient {
+        shape,
+        from,
+        to,
+        start,
+        end,
+    }
 }
 
 /// The word of canvas pixel (`x`, `y`) on its tile `at` of `stamped`, its
@@ -144,5 +165,123 @@ fn a_mask_short_of_its_box_is_refused() {
         size: MaskBox { width: 4, height: 2 },
         ..short.mask()
     };
-    assert!(flood.stamp(engine, &mask, ORANGE, 0).is_none());
+    assert!(flood.stamp(engine, &mask, &Paint::Colour(ORANGE), 0).is_none());
+}
+
+// ---- Under a gradient (I-160) ----
+
+/// The word `stamped` holds at each of `points`.
+fn graded_words(stamped: &Stamped, points: &[(i32, i32)]) -> Vec<u32> {
+    let read = pages(stamped);
+    points.iter().map(|&point| word(stamped, &read, 0, point)).collect()
+}
+
+/// Red at `level`, whole.
+fn red(level: u32) -> u32 {
+    level | 255 << 24
+}
+
+// A line's stop at a pixel is its centre's projection onto it, the nearest
+// of 1024 from `from` to `to`, a half going up, and a stop's channel the
+// nearest level between the ends: from (0, 0) to (1023, 0) pixel x's centre
+// lies x + ½ along — stop x + 1 —, so black to red is round(255·(x + 1) /
+// 1023) there (2: 765/1023 → 1, 511: 128, 1021: 254.75 → 255); the first
+// behind `from`, the last past `to`.
+#[test]
+fn a_line_s_stop_is_the_nearest_to_a_pixel_s_centre() {
+    let mask = masked((-8, 0), (1048, 1), |_, _| 255);
+    let line = gradient(Shape::Line, (0.0, 0.0), (1023.0, 0.0), [BLACK, RED]);
+    let stamped = graded(&mask.mask(), &line).expect("stamp");
+    let points = [(-8, 0), (0, 0), (1, 0), (2, 0), (511, 0), (1021, 0), (1022, 0), (1039, 0)];
+    let want = [0, 0, 0, 1, 128, 255, 255, 255].map(red);
+    assert_eq!(graded_words(&stamped, &points), want);
+}
+
+// A circle's stop at a pixel is its centre's distance from `from` over the
+// radius, the nearest, a half going up: from the centre of (0, 0) out 2046,
+// pixel (x, y) lies at stop round(√(x² + y²) / 2) — (5, 0) at 2.5, stop 3,
+// red round(765/1023) = 1; (6, 8) at 5, (600, 800) at 500, red 125 —, and
+// the last at the radius and past it.
+#[test]
+fn a_circle_s_stop_is_the_nearest_to_a_pixel_s_distance() {
+    let mask = masked((-8, -8), (2100, 1010), |_, _| 255);
+    let circle = gradient(Shape::Circle, (0.5, 0.5), (2046.5, 0.5), [BLACK, RED]);
+    let stamped = graded(&mask.mask(), &circle).expect("stamp");
+    let points = [(0, 0), (5, 0), (6, 8), (-6, -8), (600, 800), (2046, 0), (2000, 1000)];
+    let want = [0, 1, 1, 1, 125, 255, 255].map(red);
+    assert_eq!(graded_words(&stamped, &points), want);
+}
+
+// A stop's alpha is under the mask's byte, a clear stop keeps its colour
+// as the app's stamp does, and none of the mask is nothing: orange to
+// clear along (0, 0)–(1023, 0) is alpha 255 at stop 1, 255 − 128 = 127 at
+// stop 512 (round(−127.6)), 0 at the last — under a byte of 128, 128 and
+// round(63.75) = 64.
+#[test]
+fn a_stop_s_alpha_is_under_the_mask_s_byte() {
+    let mask = masked((0, 0), (1023, 3), |x, y| match (x, y) {
+        (_, 1) => 0,
+        (0, _) | (_, 2) => 128,
+        _ => 255,
+    });
+    let [r, g, b] = ORANGE;
+    let clear = gradient(Shape::Line, (0.0, 0.0), (1023.0, 0.0), [[r, g, b, 255], [r, g, b, 0]]);
+    let stamped = graded(&mask.mask(), &clear).expect("stamp");
+    let points = [(0, 0), (511, 0), (511, 2), (1022, 0), (0, 1), (511, 1)];
+    let orange = |alpha: u32| ORANGE_WORD | alpha << 24;
+    let want = [orange(128), orange(127), orange(64), orange(0), 0, 0];
+    assert_eq!(graded_words(&stamped, &points), want);
+}
+
+// A gradient of no length lays its first stop everywhere, a line or a
+// circle (I-160-Q5: a press that never moved is a gradient too).
+#[test]
+fn a_gradient_of_no_length_lays_its_start() {
+    let mask = masked((-5, -5), (10, 10), |_, _| 255);
+    for shape in [Shape::Line, Shape::Circle] {
+        let still = gradient(shape, (0.25, 0.25), (0.25, 0.25), [BLACK, RED]);
+        let stamped = graded(&mask.mask(), &still).expect("stamp");
+        let points = [(-5, -5), (0, 0), (4, 4)];
+        assert_eq!(graded_words(&stamped, &points), [red(0); 3]);
+    }
+}
+
+// An end lies at its nearest 1/256 px: 0.6 of one from `from` is a line
+// of one, every centre past it — the end's colour from pixel 0 on —, and
+// 0.4 of one no line, its start everywhere.
+#[test]
+fn an_end_lies_at_its_nearest_256th_of_a_pixel() {
+    let mask = masked((-2, 0), (4, 1), |_, _| 255);
+    let points = [(-1, 0), (0, 0), (1, 0)];
+    for (along, want) in [(0.6, [0, 255, 255]), (0.4, [0, 0, 0])] {
+        let short = gradient(Shape::Line, (0.0, 0.0), (along / 256.0, 0.0), [BLACK, RED]);
+        let stamped = graded(&mask.mask(), &short).expect("stamp");
+        assert_eq!(graded_words(&stamped, &points), want.map(red), "{along}");
+    }
+}
+
+// An end, or a box, past what the sums hold is refused, as is an end that
+// is no number; one on the reach is not.
+#[test]
+fn a_gradient_past_its_reach_is_refused() {
+    let mask = masked((0, 0), (4, 4), |_, _| 255);
+    let (reach, far) = (65536.0, 65536.5);
+    let ends = [
+        ((far, 0.0), (0.0, 0.0)),
+        ((0.0, 0.0), (0.0, -far)),
+        ((f64::NAN, 0.0), (0.0, 0.0)),
+        ((0.0, 0.0), (f64::INFINITY, 0.0)),
+    ];
+    for (from, to) in ends {
+        let past = gradient(Shape::Line, from, to, [BLACK, RED]);
+        assert!(graded(&mask.mask(), &past).is_none(), "{from:?} {to:?}");
+    }
+    let on = gradient(Shape::Line, (-reach, 0.0), (0.0, reach), [BLACK, RED]);
+    assert!(graded(&mask.mask(), &on).is_some());
+    let near = gradient(Shape::Line, (0.0, 0.0), (1.0, 0.0), [BLACK, RED]);
+    let boxes = [((65530, 0), 7, true), ((-65537, 0), 4, true), ((65530, 0), 6, false)];
+    for (at, width, past) in boxes {
+        let boxed = masked(at, (width, 1), |_, _| 255);
+        assert_eq!(graded(&boxed.mask(), &near).is_none(), past, "{at:?} {width}");
+    }
 }

@@ -6,8 +6,8 @@
 //! that closes gaps (`_gapCloseFloodRegion`) floods the same way over what
 //! lies past its gap from every barrier, by `kernels/mask`'s distances.
 //! flood.wgsl has the planes and why any order of spreading gives the
-//! app's bytes. What a fill finished is laid in its colour as a stroke row
-//! (`stamp`).
+//! app's bytes. What a fill finished is laid in its colour, or its
+//! gradient's, as a stroke row (`stamp`).
 //!
 //! The picture the fill reads is what the screen shows — the composite's
 //! output tiles (유저 gpu-canonical-store-Q1, 11-06): the fill and the
@@ -29,7 +29,7 @@ use crate::fail;
 use crate::kernels::composite::{TILE, TILE_BYTES};
 use crate::kernels::mask::{BYTE_WGSL, MaskBox, MaskPasses};
 use crate::kernels::shared::{Encoded, PREMULTIPLY_WGSL, TILE_WGSL, encode, encode_on, fits};
-use crate::kernels::shared::{flat, pipeline, plane, range, whole, words_buffer};
+use crate::kernels::shared::{WIDE_WGSL, flat, pipeline, plane, range, whole, words_buffer};
 
 /// The rounds encoded between two looks at whether one moved nothing.
 const ROUNDS: usize = 8;
@@ -93,6 +93,7 @@ pub(crate) struct Flood {
     eroded: wgpu::ComputePipeline,
     regrown: wgpu::ComputePipeline,
     stamp: wgpu::ComputePipeline,
+    graded: wgpu::ComputePipeline,
 }
 
 /// What a flood starts from: its words, the plane of what may fill and
@@ -110,7 +111,13 @@ struct Begun {
 impl Flood {
     pub(crate) fn new(engine: &Engine) -> Self {
         let source = [PREMULTIPLY_WGSL, include_str!("flood.wgsl")];
-        let stamp = [TILE_WGSL, BYTE_WGSL, include_str!("stamp.wgsl")];
+        let stamp = [
+            TILE_WGSL,
+            WIDE_WGSL,
+            PREMULTIPLY_WGSL,
+            BYTE_WGSL,
+            include_str!("stamp.wgsl"),
+        ];
         Self {
             tolerance: pipeline(engine, &source, "flood_tolerance"),
             round: pipeline(engine, &source, "flood_round"),
@@ -120,6 +127,7 @@ impl Flood {
             eroded: pipeline(engine, &source, "flood_eroded"),
             regrown: pipeline(engine, &source, "flood_regrown"),
             stamp: pipeline(engine, &stamp, "flood_stamp"),
+            graded: pipeline(engine, &stamp, "flood_stamp_graded"),
         }
     }
 

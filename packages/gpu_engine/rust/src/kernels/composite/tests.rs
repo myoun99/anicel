@@ -14,7 +14,7 @@ use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVE
 use crate::kernels::effects::matrix_tests::{Matrix, each, graded};
 use crate::kernels::effects::{KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::flood::Flood;
-use crate::kernels::flood::stamp::Stamped;
+use crate::kernels::flood::stamp::{Paint, Stamped};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
@@ -2085,7 +2085,7 @@ fn a_fill_s_stamp_lands_as_its_colour_under_its_mask() {
     let mut pool = Pool::default();
     let blue_set = pool.drawn(|_, _| BLUE, (0, 0), (1, 1), |_, _| Some(0));
     let mut pages = pool.upload(engine);
-    let stamped = Flood::new(engine).stamp(engine, &mask.mask(), [r, g, b], 1);
+    let stamped = Flood::new(engine).stamp(engine, &mask.mask(), &Paint::Colour([r, g, b]), 1);
     let Stamped { pages: stamp_pages, set } = stamped.expect("stamp");
     pages.extend(stamp_pages);
     let sets = [blue_set, set];
