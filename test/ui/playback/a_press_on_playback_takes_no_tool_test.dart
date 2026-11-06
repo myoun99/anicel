@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -17,6 +19,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/panel_finders.dart';
 
 /// Board `playback-tap-taken-by-tool-layer`, through the real app — T28-c
@@ -105,11 +108,35 @@ void main() {
     originTop: 0,
   );
 
+  /// The cel under the playhead inked all over in [laid], so that a press
+  /// anywhere on the canvas has a colour under it to pick: where nothing is
+  /// laid the eyedropper picks nothing (I-163-Q6, 유저 2026-11-05).
+  void inkAllOver(EditorSessionManager session, int laid) {
+    final selection = session.editingCanvas.activeBrushEditorSelection!;
+    final cut = session.requireActiveCut;
+    final size = cut.canvasSize;
+    inkCelIn(
+      session.renderCaches.brushFrameStore,
+      session.brushFrameKeyForCut(cut, selection.layerId, selection.frameId),
+      canvasSize: size,
+      at: CanvasPoint(x: size.width / 2, y: size.height / 2),
+      size: 2.0 * (size.width + size.height),
+      tipShape: BrushTipShape.square,
+      color: laid,
+    );
+  }
+
+  // ↩️It pressed a blank cel and took the paper's colour for the pick: past
+  // I-163-Q6 nothing lies there to pick, so the stopped press picked nothing
+  // and the playing press's 「picks nothing」 proved nothing either.
   testWidgets('the eyedropper TOOL: a mouse press on the playing canvas stops '
       'it and picks nothing — and stopped, the same press picks', (
     tester,
   ) async {
+    const laid = 0xFFC82828;
     final session = await pumpEditor(tester);
+    inkAllOver(session, laid);
+    await tester.pumpAndSettle();
     final tools = await arm(tester, CanvasTool.eyedropper);
     await play(tester, session);
 
@@ -123,7 +150,8 @@ void main() {
     expect(
       tools.value.color,
       ink,
-      reason: '「입력 일 안함」 — no colour was picked off the playing picture',
+      reason: '「입력 일 안함」 — no colour was picked off the playing picture, '
+          'though one lies under the press',
     );
     await settle(tester, session);
 
@@ -131,9 +159,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tools.value.color,
-      isNot(ink),
-      reason: 'the canvas is back and so is the tool: this press picked, '
-          'which is what the press above did not do',
+      laid,
+      reason: 'the canvas is back and so is the tool: this press picked the '
+          'colour under it, which is what the press above did not do',
     );
   });
 
