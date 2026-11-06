@@ -200,6 +200,14 @@ pub(crate) struct KeyChain {
     pub(crate) runs: Vec<Vec<u32>>,
 }
 
+/// What a copy is laid through ([`Composite::copied_through`]): a key
+/// chain, a colour matrix, either or both.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Through<'a> {
+    pub(crate) keys: Option<&'a KeyChain>,
+    pub(crate) matrix: Option<&'a [u32; MATRIX_WORDS]>,
+}
+
 /// One step of a plan, bottom to top. An opacity is on the 16-bit scale
 /// (65535 is whole); a mode is blend.wgsl's id, the eraser's among them.
 #[derive(Clone, Copy, Debug)]
@@ -398,11 +406,26 @@ impl Composite {
         tiles: &[(i32, i32)],
         budget: Budget,
     ) -> Option<Composited> {
+        self.copied_through(engine, pages, set, tiles, Through::default(), budget)
+    }
+
+    /// [`Composite::copied`], keyed by `through.keys` and through
+    /// `through.matrix` as a row is — an effect chain's colour steps
+    /// (kernels/chain).
+    pub(crate) fn copied_through(
+        &self,
+        engine: &Engine,
+        pages: &[wgpu::Buffer],
+        set: &TileSet,
+        tiles: &[(i32, i32)],
+        through: Through,
+        budget: Budget,
+    ) -> Option<Composited> {
         let steps = [Step::Row {
             set: 0,
-            keys: None,
+            keys: through.keys.map(|_| 0),
             map: ResampleMap::moved(0, 0),
-            matrix: None,
+            matrix: through.matrix.map(|_| 0),
             // Whole. 65534 copies the same bytes — a stored byte's step is 257
             // on this scale — so no test tells the two apart (mutant r04, 11-06).
             opacity: 65535,
@@ -412,8 +435,8 @@ impl Composite {
         let plan = Plan {
             pages,
             sets: std::slice::from_ref(set),
-            keys: &[],
-            matrices: &[],
+            keys: through.keys.map_or(&[], std::slice::from_ref),
+            matrices: through.matrix.map_or(&[], std::slice::from_ref),
             steps: &steps,
             mask: None,
         };

@@ -18,6 +18,7 @@
 
 pub mod blend;
 pub mod cel_pixel;
+pub mod chain;
 pub mod composite;
 pub mod dab;
 pub mod effects;

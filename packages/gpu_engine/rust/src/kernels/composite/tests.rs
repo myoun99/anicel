@@ -71,7 +71,7 @@ pub(crate) fn mix(mut h: u32) -> u32 {
 /// Row `seed`'s stored pixel at its own (x, y): a quarter nothing, a
 /// quarter opaque, the rest any alpha — and no colour where no alpha, as a
 /// stored pixel never holds (blend_pack8).
-fn texel(seed: u32, x: i32, y: i32) -> u32 {
+pub(crate) fn texel(seed: u32, x: i32, y: i32) -> u32 {
     let h = mix(seed.wrapping_mul(0x9e37_79b9) ^ mix(x as u32 ^ mix(y as u32)));
     let alpha = match h & 3 {
         0 => 0,
@@ -265,7 +265,7 @@ fn within(pages: usize, tiles: usize) -> Budget {
 
 /// The output pixel at canvas (x, y): `bytes` is `tiles`' pixels, tile
 /// after tile, rows of 128 in each.
-fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u8; 4] {
+pub(crate) fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u8; 4] {
     let side = TILE as i32;
     let tile = tiles
         .iter()
@@ -278,7 +278,7 @@ fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u8; 4] {
 
 // ---- Keys ----
 
-const KEY_RED: [u32; 3] = [200, 30, 40];
+pub(crate) const KEY_RED: [u32; 3] = [200, 30, 40];
 const KEY_GREEN: [u32; 3] = [20, 220, 60];
 
 fn rgb(colour: [u32; 3]) -> u32 {
@@ -290,13 +290,13 @@ fn rgb(colour: [u32; 3]) -> u32 {
 fn nothing(_: u32) -> u32 {
     0
 }
-fn half(alpha: u32) -> u32 {
+pub(crate) fn half(alpha: u32) -> u32 {
     alpha.div_ceil(2)
 }
 
 /// One run of one key, naming exactly `colour`: it erases by `map` — or,
 /// `restore`, gives back by it.
-fn key_run(colour: [u32; 3], restore: bool, map: fn(u32) -> u32) -> Vec<u32> {
+pub(crate) fn key_run(colour: [u32; 3], restore: bool, map: fn(u32) -> u32) -> Vec<u32> {
     let table = |byte: u32| {
         let mut table = [0u32; 256];
         table[byte as usize] = 1;
@@ -315,7 +315,7 @@ fn key_run(colour: [u32; 3], restore: bool, map: fn(u32) -> u32) -> Vec<u32> {
 
 /// Row `seed`'s pixel, or — a third of the time — [`KEY_RED`] or
 /// [`KEY_GREEN`] at its alpha (whole where it has none).
-fn spotted(seed: u32, x: i32, y: i32) -> u32 {
+pub(crate) fn spotted(seed: u32, x: i32, y: i32) -> u32 {
     let pixel = texel(seed, x, y);
     let colour = match mix(seed ^ mix(x as u32 ^ mix(!y as u32))) % 6 {
         0 => KEY_RED,
@@ -327,7 +327,7 @@ fn spotted(seed: u32, x: i32, y: i32) -> u32 {
 
 /// `pixel` as one erasing key naming exactly `colour` leaves it: its alpha
 /// a by `map(a)`, unless it has none.
-fn keyed_by_hand(pixel: u32, colour: [u32; 3], map: fn(u32) -> u32) -> u32 {
+pub(crate) fn keyed_by_hand(pixel: u32, colour: [u32; 3], map: fn(u32) -> u32) -> u32 {
     if pixel & 0x00ff_ffff != rgb(colour) || pixel >> 24 == 0 {
         return pixel;
     }
@@ -597,7 +597,7 @@ fn keyed_rows() -> Scene {
 
 /// A contrast of 2 about the middle, which clamps — so what it makes of a
 /// mix is not the mix of what it makes.
-fn contrast() -> Matrix {
+pub(crate) fn contrast() -> Matrix {
     graded(2.0, -128.0)
 }
 
