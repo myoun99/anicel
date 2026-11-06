@@ -21,8 +21,12 @@ pub fn hex(fingerprint: u32) -> String {
 /// row, or the ledger cannot be read.
 #[cfg(test)]
 pub fn pinned(id: &str) -> String {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../test/fixtures/fingerprints.json");
-    let text = std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"));
+    // Read when the test runs, never fixed when it is built: a lane that
+    // changes the ledger alone is measured on its own rows
+    // (kernels/shared/one_checkout.rs).
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let path = format!("{crate_dir}/../../../test/fixtures/fingerprints.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
     let ledger: serde_json::Value =
         serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"));
     ledger["rows"]

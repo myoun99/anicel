@@ -878,7 +878,7 @@ cmd_crate() {
   # The native crates' answer key (native/oracle): the lane's own engine.
   ensure_engine "$p" || die "the engine is not built from this lane's C — this is refusal 8
   The native crates are compared with it. See above."
-  local log="$p/build/lane-crate.log" profile flag from
+  local log="$p/build/lane-crate.log" profile flag from passed
   mkdir -p "$p/build"
   : >"$log"
   # Both builds (관제 2026-11-05, gpu-engine-skeleton). A debug build's wgpu
@@ -901,8 +901,13 @@ cmd_crate() {
     }
     # Each crate of the workspace says its own `test result`, the last one
     # a doc-test of nothing ("0 passed"): what passed is their sum.
-    echo "lane: crate — $profile green ($(tail -n +$((from + 1)) "$log" \
-      | grep -a '^test result' | awk '{ n += $4 } END { print n + 0 }') passed)"
+    passed=$(tail -n +$((from + 1)) "$log" | grep -a '^test result' \
+      | awk '{ n += $4 } END { print n + 0 }')
+    # ⛔A RUN THAT PASSED NO TEST IS NOT GREEN (관제 2026-11-06): it exits 0
+    # as a run of every test does.
+    [ "$passed" -gt 0 ] \
+      || die "the GPU engine crate ran no test in $profile — this is refusal 8; the whole log: $log"
+    echo "lane: crate — $profile green ($passed passed)"
   done
 }
 

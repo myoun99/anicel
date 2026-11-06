@@ -63,8 +63,12 @@ mod tests {
     fn the_engine_answers_with_the_abi_its_c_declares() {
         // SAFETY: qa_engine.c — `int32_t qa_engine_abi_version(void)`.
         let abi = unsafe { export::<extern "C" fn() -> i32>("qa_engine_abi_version") }();
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../qa_native/src/qa_engine.c");
-        let c = std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"));
+        // This checkout's C, read when the test runs: every checkout builds
+        // into the trunk's one target folder, and a test built in a lane runs
+        // on the trunk (gpu_engine's kernels/shared/one_checkout.rs).
+        let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+        let path = format!("{crate_dir}/../../../../qa_native/src/qa_engine.c");
+        let c = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
         let declared: i32 = c
             .split("qa_engine_abi_version(void) { return ")
             .nth(1)

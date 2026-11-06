@@ -12,9 +12,22 @@ use std::path::Path;
 /// Every `.{extension}` file under the crate's `src/` whose text `holds`,
 /// as its path under `src/`.
 pub(super) fn files_where(extension: &str, holds: impl Fn(&str) -> bool) -> BTreeSet<String> {
-    let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+    files_under("src", extension, holds)
+}
+
+/// The same under the crate's folder `dir` — `.` is this crate with the
+/// crates of its workspace (`native/*`) — as each file's path under `dir`.
+/// A `target` folder is build output, and is passed over.
+pub(super) fn files_under(
+    dir: &str,
+    extension: &str,
+    holds: impl Fn(&str) -> bool,
+) -> BTreeSet<String> {
+    // Read when the test runs, never fixed when it is built (one_checkout.rs).
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let root = Path::new(&crate_dir).join(dir);
     let mut found = BTreeSet::new();
-    walk(root, root, extension, &holds, &mut found);
+    walk(&root, &root, extension, &holds, &mut found);
     found
 }
 
@@ -30,7 +43,9 @@ fn walk(
     for entry in entries {
         let path = entry.expect("a directory entry").path();
         if path.is_dir() {
-            walk(&path, root, extension, holds, found);
+            if !path.ends_with("target") {
+                walk(&path, root, extension, holds, found);
+            }
         } else if path.extension().is_some_and(|own| own == extension) {
             let text = std::fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("{}: {error}", path.display()));

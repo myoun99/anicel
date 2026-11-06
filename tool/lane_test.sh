@@ -57,7 +57,8 @@
 # native-to-rust (2026-11-06) it also holds that a crate lane is refused,
 # before any crate test, when its engine — the native crates' answer key —
 # is not built from its C; and that a lane that changed only the C runs
-# the crates' tests too, held to it.
+# the crates' tests too, held to it. And a run that passed no test is
+# refused, though it exits 0.
 #
 # 🆕And the mirror's login (2026-11-05, gpu-engine-skeleton — section U,
 # 119 checks in all): a `git` in front of the real one writes down every
@@ -107,12 +108,13 @@ exit 0
 EOF
 # `cargo` writes down which lane it ran in — the crate is three folders
 # down — and fails when LANE_TEST_CARGO says red. Green, it answers as a
-# workspace of two crates does: two tests, then a doc-test run of none.
+# workspace of two crates does: two tests, then a doc-test run of none —
+# or, when LANE_TEST_CARGO says empty, the doc-tests alone.
 cat > "$E/bin/cargo" <<'EOF'
 #!/bin/bash
 echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$LANE_TEST_LOG"
 [ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
-echo "test result: ok. 2 passed; 0 failed"
+[ "${LANE_TEST_CARGO:-ok}" = empty ] || echo "test result: ok. 2 passed; 0 failed"
 echo "test result: ok. 0 passed; 0 failed"
 EOF
 # `cmake` and `ctest`, for a lane that changed the C (refusal 5): the
@@ -488,6 +490,13 @@ commit "$HW/lane-cfile" packages/qa_native/src/c.c "C that a module's Rust is he
 O=$(out "$E/home" land cfile)
 has "a lane that changed only the C lands" "$O" "merged work/cfile"
 check "and the crates were held to it, debug and release" "$(cargo_runs lane-cfile)" 2
+quiet "$E/home" open none; mkdir -p "$HW/lane-none/packages/gpu_engine/rust"
+commit "$HW/lane-none" packages/gpu_engine/rust/n.wgsl "a kernel whose crate ran no test"
+: > "$LANE_TEST_LOG"; BEFORE=$(git -C "$E/home" rev-parse master)
+O=$(LANE_TEST_CARGO=empty out "$E/home" land none)
+has "a crate run that passed no test is refused, though it exits 0" \
+  "$O" "ran no test in debug — this is refusal 8"
+check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 
 say "U NOBODY IS ASKED FOR A LOGIN: every call that reached the mirror in this whole run"
 check "LIVENESS — the run reached the mirror, on both machines, every way" \
