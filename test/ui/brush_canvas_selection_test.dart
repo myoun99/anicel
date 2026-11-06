@@ -3985,6 +3985,98 @@ void main() {
     });
   });
 
+  /// 🚨F-570 (유저 2026-11-06): 「선택도구 사용 후 변형도구의 자유변형시
+  /// 제대로 왼쪽 중앙 꼭짓점 사각형 클릭했는데 안쪽 클릭한것처럼 그림 자체가
+  /// 이동하는 동작 실행됨 … 일반변형시에는 문제없는거보니 자유변형만 뭔가 법이
+  /// 다른가? 확인하고 통일」.
+  ///
+  /// A selection whose bounds fall between pixels, seen at 8×: the lift
+  /// rounds it out to whole pixels, and 퍼스 · 메쉬 stood on that wider rect
+  /// while the closed box — and 일반 — stood on the selection. The press
+  /// opened the box, was asked again of the opened one, and missed the grip
+  /// that had moved under it.
+  group('🚨F-570: a press opens the box where it was drawn and takes the '
+      'grip drawn there, in every mode', () {
+    const zoom = 8.0;
+    // A corner is dragged out along its diagonal, which a uniform scale
+    // follows too; an edge's middle straight out.
+    const grips = {
+      1: ('the top-right corner', Offset(15, -15)),
+      5: ('the right edge\'s middle', Offset(15, 0)),
+    };
+    for (final mode in TransformMode.values) {
+      for (final MapEntry(key: index, value: (name, by)) in grips.entries) {
+        // A closed 메쉬 box offers its corners alone.
+        if (mode == TransformMode.mesh && index >= 4) {
+          continue;
+        }
+        testWidgets('$mode · $name', (tester) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            transformMode: mode,
+            viewport: seedFromRender(tester, CanvasViewport(zoom: zoom)),
+          );
+          await dragOnLayer(
+            tester,
+            const Offset(24.3, 24.3) * zoom,
+            const Offset(66.6, 66.6) * zoom,
+          );
+          await env.setTool(CanvasTool.move);
+          final drawn = chromeOnScreen(tester)!;
+          // On the square drawn for it, off its middle, toward the inside.
+          final press = drawn.handles[index] + const Offset(-3, 3);
+          final origin = tester.getTopLeft(find.byKey(layerKey));
+          final gesture = await tester.startGesture(origin + press);
+          await tester.pump();
+
+          // A 메쉬 outline walks its grid's edge, so its points are more than
+          // the closed box's four: the rect they span is what is compared.
+          Rect spanned(List<Offset> outline) => outline
+              .skip(1)
+              .fold(
+                Rect.fromPoints(outline.first, outline.first),
+                (rect, point) => rect.expandToInclude(
+                  Rect.fromPoints(point, point),
+                ),
+              );
+          final opened = spanned(chromeOnScreen(tester)!.box);
+          final closed = spanned(drawn.box);
+          for (final (side, now, before) in [
+            ('left', opened.left, closed.left),
+            ('top', opened.top, closed.top),
+            ('right', opened.right, closed.right),
+            ('bottom', opened.bottom, closed.bottom),
+          ]) {
+            expect(
+              (now - before).abs(),
+              lessThan(0.01),
+              reason: 'opening the box moved its $side side',
+            );
+          }
+
+          await gesture.moveTo(origin + press + by);
+          await tester.pump();
+          final values = env.commands.transformValues!;
+          expect(
+            (values.tx, values.ty),
+            (0, 0),
+            reason: 'the press took the grip, not the move inside it',
+          );
+          final reached = drawn.handles[index] + by;
+          expect(
+            chromeOnScreen(tester)!.handles.any(
+              (handle) => (handle - reached).distance < 0.5,
+            ),
+            isTrue,
+            reason: 'the grip pressed followed the hand',
+          );
+          await gesture.up();
+          await tester.pump();
+        });
+      }
+    }
+  });
+
   testWidgets('mode switches carry the box: a 퍼스 warp survives a trip '
       'through 일반 and back', (tester) async {
     final env = await pumpSelectionPanel(
@@ -4080,9 +4172,10 @@ void main() {
       env.commands.beginTransform();
       await tester.pump();
 
-      // Stamp rect (20,20)-(71,71): its bottom-right is a quad corner in
-      // 퍼스 and the grid's last point in 메쉬.
-      await dragOnLayer(tester, const Offset(71, 71), const Offset(120, 120));
+      // The box (20,20)-(70,70): its bottom-right is a quad corner in 퍼스
+      // and the grid's last point in 메쉬 (F-570 — the box 일반 draws, not
+      // the lifted pixels' (20,20)-(71,71)).
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(120, 120));
       final pulled = antsOnScreen(tester)!.transformChrome!.box;
       expect(
         pulled,
@@ -4090,7 +4183,7 @@ void main() {
         reason: 'the premise: the outline grew to the pulled corner',
       );
 
-      // Inside the grown outline, past the box it was pulled from (x > 71).
+      // Inside the grown outline, past the box it was pulled from (x > 70).
       await dragOnLayer(tester, const Offset(85, 80), const Offset(95, 80));
       final moved = antsOnScreen(tester)!.transformChrome!.box;
       expect(moved, hasLength(pulled.length));

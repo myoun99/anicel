@@ -1737,9 +1737,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   FloatWarp _warpOver(BrushDab? float) => FloatWarp(
     box: _box,
-    base: stampRectHolding([
-      for (final floating in _floats) ?stampRectOf(floating.stamp),
-    ]),
     float: float,
     options: widget.transformOptions,
     pasteboard: widget.pasteboard.region,
@@ -2075,8 +2072,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!changes) {
       return false;
     }
-    // ⚠️Both read BEFORE the stamps are replaced: the quad and the mesh
-    // stand on the rect they make ([FloatWarp.base]).
     final region = _region;
     final landedRegion = region == null ? null : _regionThroughOpenBox(region);
     final carry = floatWarp.carry;
@@ -2106,7 +2101,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R20-D2: an open quad carries the outline through its homography.
     final warpCorners = warp.warpCorners;
     if (warpCorners != null) {
-      final base = warp.stampRectCorners();
+      final base = warp.baseCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       return h == null
           ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
@@ -3992,7 +3987,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         ? region.mapped(transform.apply)
         : region;
     if (warpCorners != null && region != null) {
-      final base = floatWarp.stampRectCorners();
+      final base = floatWarp.baseCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       displayShape = h == null
           ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))

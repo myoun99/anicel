@@ -50,7 +50,6 @@ import 'transform_box.dart';
 class FloatWarp {
   const FloatWarp({
     required this.box,
-    required this.base,
     required this.float,
     required this.options,
     required this.pasteboard,
@@ -59,16 +58,29 @@ class FloatWarp {
   /// The open box, or null when no box is up.
   final TransformBox? box;
 
-  /// The rect the box stands on: what the session floats, all of it — the
-  /// one float's own rect when a cel is lifted, the rect holding every
-  /// float when many rows are — a folder's, a range's (I-37 · F-329,
-  /// [stampRectHolding]). The quad's corners and the mesh's grid are laid
-  /// over it, so every float rides the one mapping of the canvas ([carry]).
-  /// Null outside a move session.
-  final StampRect? base;
+  /// The rect the box stands on — the box's own ([TransformBox.baseRect]),
+  /// in every mode. The quad's corners and the mesh's grid are laid over
+  /// it, so every float rides the one mapping of the canvas ([carry]),
+  /// a folder's and a range's alike (I-37 · F-329). Null when no box is up.
+  ///
+  /// 🚨★★★**THE BOX 일반 DRAWS, NOT THE PIXELS UNDER IT** (F-570, 유저
+  /// 2026-11-06: 「선택도구 사용 후 변형도구의 자유변형시 제대로 왼쪽 중앙
+  /// 꼭짓점 사각형 클릭했는데 안쪽 클릭한것처럼 그림 자체가 이동하는 동작
+  /// 실행됨 … 자유변형만 뭔가 법이 다른가? 확인하고 통일」; F-570-Q1
+  /// 「퍼스 · 메쉬도 선택 사각형 위에 세운다」).
+  ///
+  /// ↩️It was the rect holding every float, and a float is the lifted
+  /// pixels' box: the selection's bounds rounded out to whole pixels and
+  /// widened by a grow or a feather. 일반 stood on the selection's bounds,
+  /// so pressing a 퍼스 grip opened the box onto a wider rect and the same
+  /// press, asked again of the opened box, landed off the grip that had
+  /// moved — inside, which is the move. What a float holds past the box
+  /// follows the mapping on past its edge, as another cel's picture does
+  /// (H41, [StampCarry]).
+  StampRect? get base => box?.baseRect;
 
-  /// The float THIS warp resamples — one of those [base] holds — or null
-  /// when only the box is asked about (its chrome, its carry).
+  /// The float THIS warp resamples — one of the session's — or null when
+  /// only the box is asked about (its chrome, its carry).
   final BrushDab? float;
 
   /// Which of 일반/퍼스/메쉬 is armed, and how pixels are resampled.
@@ -84,13 +96,13 @@ class FloatWarp {
   /// The [base]'s corners (TL/TR/BR/BL) — the quad's BASE. Initializing
   /// corners as affine(base) makes an untouched quad exactly identity for
   /// [transformStampDabQuad].
-  List<CanvasPoint>? stampRectCorners() {
+  List<CanvasPoint>? baseCorners() {
     final rect = base;
     return rect == null ? null : cornersOfStampRect(rect);
   }
 
   /// The mesh grid's BASE points over the [base], row-major — the mesh's
-  /// equivalent of [stampRectCorners].
+  /// equivalent of [baseCorners].
   List<CanvasPoint>? meshBasePoints({
     required int columns,
     required int rows,
@@ -131,7 +143,7 @@ class FloatWarp {
     final corners = box?.warp.corners;
     return options.mode != TransformMode.perspective || corners == null
         ? null
-        : _placedPoints(stampRectCorners(), corners);
+        : _placedPoints(baseCorners(), corners);
   }
 
   /// The mesh control points as drawn.
@@ -157,8 +169,8 @@ class FloatWarp {
   List<CanvasPoint>? get meshPoints =>
       BoxWarp.offsetsAreZero(box?.warp.mesh) ? null : placedMeshPoints;
 
-  /// The output rect the open warp would produce — the same rect the
-  /// three transform functions compute for themselves.
+  /// The output rect the open warp makes of the box ([base]) — the rect
+  /// the three transform functions compute for a float that stands on it.
   ///
   /// The layer needs it to answer one question before resampling: would a
   /// window actually be smaller than the whole? If not, it asks for NO
@@ -166,6 +178,12 @@ class FloatWarp {
   /// selections are that case, and losing the reuse for all of them
   /// would have traded a big win on the whole picture for a second full
   /// resample on every ordinary Enter.
+  ///
+  /// ⚠️A float reaching past the box (F-570 — the whole pixels its edge
+  /// rounds out to, a grow, a feather) lands a little past this rect. That
+  /// only ever answers 「no window」 for a picture whose last pixels are
+  /// just off screen, and resamples it whole: the transform functions cut
+  /// their own window from their own rect, so nothing shown is cut.
   ({int left, int top, int width, int height})? outputRect() {
     final mesh = placedMeshPoints;
     if (mesh != null) {
@@ -176,7 +194,7 @@ class FloatWarp {
       return selectionWarpOutputRect(quad);
     }
     final affine = _affine;
-    final base = stampRectCorners();
+    final base = baseCorners();
     if (affine == null || base == null || affine.isIdentity) {
       return null;
     }
@@ -233,9 +251,6 @@ class FloatWarp {
   /// carried through ([StampCarry]): every float, and the picture of every
   /// other cel a confirm over a frame range reaches. Null when there is
   /// nothing to resample — the identity, or no box at all.
-  ///
-  /// ⚠️Read while the floats are still the PENDING stamps: the quad and the
-  /// mesh stand on the rect they make ([base]).
   StampCarry? get carry {
     final rect = base;
     if (rect == null) {

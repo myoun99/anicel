@@ -296,7 +296,7 @@ void main() {
     expect(
       (carry! as QuadCarry).base,
       cornersOfStampRect((left: 40, top: 40, width: 200, height: 100)),
-      reason: 'the quad stands on what the floats hold together',
+      reason: 'the quad stands on the one box, framing what the floats hold',
     );
     final [landedA, landedB] = env.confirmed.single;
     for (final (landed, lifted) in [(landedA, a), (landedB, b)]) {

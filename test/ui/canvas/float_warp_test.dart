@@ -68,7 +68,6 @@ void main() {
     TransformMode mode = TransformMode.normal,
   }) => FloatWarp(
     box: box,
-    base: stampRectOf(float()),
     float: float(),
     options: TransformToolOptions(mode: mode),
     pasteboard: wall,
@@ -132,19 +131,40 @@ void main() {
       expect(warp(meshBox(), mode: TransformMode.mesh).carry, isA<MeshCarry>());
     });
 
-    test('I-37: over several floats it stands on what holds them all — a '
-        'float is carried through that, not through its own rect', () {
-      const base = (left: 80.0, top: 40.0, width: 100.0, height: 60.0);
-      final over = FloatWarp(
-        box: quadBox(),
-        base: base,
-        float: float(),
-        options: const TransformToolOptions(mode: TransformMode.perspective),
-        pasteboard: wall,
+    test('🚨F-570: 퍼스 and 메쉬 stand on the box 일반 draws, not on the '
+        'pixels the float holds past it', () {
+      // The float is 40×20 at (80, 40); the box framing the selection it
+      // was lifted from is 30×10 inside it — the lift rounds out to whole
+      // pixels and a grow or a feather widens it.
+      TransformBox inside() => TransformBox(
+        affine: SelectionAffine(pivot: CanvasPoint(x: 100, y: 50)),
+        baseWidth: 30,
+        baseHeight: 10,
+      );
+      const drawn = (left: 85.0, top: 45.0, width: 30.0, height: 10.0);
+      final quad = warp(
+        inside()..warp.corners = [CanvasPoint(x: 5, y: -3), zero, zero, zero],
+        mode: TransformMode.perspective,
+      );
+      final mesh = warp(
+        inside()
+          ..warp.meshColumns = 2
+          ..warp.meshRows = 2
+          ..warp.mesh = [
+            for (var i = 0; i < 9; i += 1)
+              if (i == 4) CanvasPoint(x: 3, y: 2) else zero,
+          ],
+        mode: TransformMode.mesh,
       );
 
-      expect(over.stampRectCorners(), cornersOfStampRect(base));
-      expect((over.carry! as QuadCarry).base, cornersOfStampRect(base));
+      expect(quad.baseCorners(), cornersOfStampRect(drawn));
+      expect((quad.carry! as QuadCarry).base, cornersOfStampRect(drawn));
+      expect(
+        quad.placedCorners!.skip(1),
+        cornersOfStampRect(drawn).skip(1),
+        reason: 'the corners no offset moved are the box\'s own',
+      );
+      expect((mesh.carry! as MeshCarry).base, drawn);
     });
 
     test('a box that changes no pixel carries nothing', () {
@@ -231,7 +251,6 @@ void main() {
     final lifted = float();
     FloatWarp over(TransformBox box) => FloatWarp(
       box: box,
-      base: stampRectOf(lifted),
       float: lifted,
       options: TransformToolOptions.defaults,
       pasteboard: wall,

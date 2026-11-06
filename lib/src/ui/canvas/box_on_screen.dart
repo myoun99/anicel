@@ -75,7 +75,7 @@ class BoxOnScreen {
   /// The two QUAD corners an edge handle carries in 퍼스 (F-42).
   ///
   /// Corner order is the quad's own — TL/TR/BR/BL, as
-  /// [FloatWarp.stampRectCorners] builds it — so an edge is the pair that
+  /// [FloatWarp.baseCorners] builds it — so an edge is the pair that
   /// bounds it. Null for anything that is not an edge, which is how the
   /// caller falls through to the affine path for the rotate knob and the
   /// inside grab.
