@@ -128,11 +128,20 @@ void main() {
         isNot(-1),
       );
       expect(
-        at(crate, r'test --locked --offline --workspace ${flag:+"$flag"}'),
+        at(
+          crate,
+          'test --locked --offline --no-fail-fast --workspace '
+          r'${flag:+"$flag"}',
+        ),
         isNot(-1),
         reason: 'every crate of the workspace, not its default members — '
-            'and offline: a download is the user\'s to allow (관제 '
-            '2026-11-06)',
+            'offline: a download is the user\'s to allow (관제 2026-11-06) '
+            '— and past a red one, as the CI runs them (관제 2026-11-07)',
+      );
+      expect(
+        at(crate, r'red="$red $profile"'),
+        lessThan(at(crate, 'tests are red in')),
+        reason: 'release runs after a red debug, and the refusal names both',
       );
     });
 

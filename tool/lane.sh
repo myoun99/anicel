@@ -946,7 +946,7 @@ cmd_crate() {
   # The native crates' answer key (native/oracle): the lane's own engine.
   ensure_engine "$p" || die "the engine is not built from this lane's C — this is refusal 8
   The native crates are compared with it. See above."
-  local log="$p/build/lane-crate.log" profile flag from passed
+  local log="$p/build/lane-crate.log" profile flag from passed red=
   mkdir -p "$p/build"
   : >"$log"
   # Both builds (관제 2026-11-05, gpu-engine-skeleton). A debug build's wgpu
@@ -955,6 +955,11 @@ cmd_crate() {
   # the grid kernel's X3507 failed in release alone, with debug green on the
   # same tree. Release compiles the shaders the app ships; debug keeps the
   # validation layers.
+  # 🚨ONE RED HIDES NOTHING (관제 2026-11-07, gpu-engine-skeleton): every
+  # crate runs past a red one (--no-fail-fast) and release runs after a red
+  # debug, as the GPU engine's CI runs them (.github/workflows/gpu-engine.yml
+  # says why) — a gate that named the first red alone refused again, for
+  # the next one, once that was fixed.
   for profile in debug release; do
     flag=; [ "$profile" = release ] && flag=--release
     echo "lane: crate — the GPU engine's tests ($profile)"
@@ -967,14 +972,16 @@ cmd_crate() {
     # `symphonia` was found, so the list is crates_not_here's.
     (cd "$p/packages/gpu_engine/rust" \
       && bash "$ROOT/tool/cargo_turn.sh" \
-        test --locked --offline --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
+        test --locked --offline --no-fail-fast --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
       tail -n +$((from + 1)) "$log" | grep -aqE 'offline mode|--offline was specified' \
         && not_downloaded \
           "this machine has not downloaded every crate its build takes — this is refusal 8" \
           "$(crates_not_here "$p/packages/gpu_engine/rust" | tr '\n' ' ')" \
           "(cd $p/packages/gpu_engine/rust && cargo fetch --locked --target $(host_triple))" "$log"
-      grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
-      die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
+      tail -n +$((from + 1)) "$log" | grep -aE '^test .*FAILED|panicked|^error' | head -15 >&2
+      echo "lane: crate — $profile red" >&2
+      red="$red $profile"
+      continue
     }
     # Each crate of the workspace says its own `test result`, the last one
     # a doc-test of nothing ("0 passed"): what passed is their sum.
@@ -986,6 +993,8 @@ cmd_crate() {
       || die "the GPU engine crate ran no test in $profile — this is refusal 8; the whole log: $log"
     echo "lane: crate — $profile green ($passed passed)"
   done
+  [ -z "$red" ] \
+    || die "the GPU engine crate's tests are red in$red — this is refusal 8; the whole log: $log"
 }
 
 # Is the lane's working tree exactly its commits? Printing what is not.

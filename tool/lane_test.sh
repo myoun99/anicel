@@ -89,6 +89,10 @@
 # list is the real tool's (crates_for_host.dart), behind the stand-in
 # `dart`. ⚠️The script before THAT fails 5 of the 8 there: it names every
 # platform's, and offers to fetch them all.
+# 🆕And one red hides nothing (same day, gpu-engine-skeleton — section T,
+# 153 checks in all): the crates' tests run past a red crate, release runs
+# after a red debug, and the refusal names both. ⚠️The script before THAT
+# fails both: it stops at debug's red.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -567,8 +571,12 @@ commit "$AW/lane-surface11-row" test/fixtures/fingerprints.json "a row this GPU 
 quiet "$E/away" gate row; quiet "$E/away" send row
 quiet "$E/home" receive surface11/row
 BEFORE=$(git -C "$E/home" rev-parse master)
+: > "$LANE_TEST_LOG"
 O=$(LANE_TEST_CARGO=red out "$E/home" land surface11/row)
 has "a row this machine's GPU disagrees with refuses the stamped land" "$O" "this is refusal 8"
+check "every crate ran past a red one, and release after a red debug" \
+  "$(grep -c 'lane-surface11-row cargo test .*--no-fail-fast' "$LANE_TEST_LOG")" 2
+has "and the refusal names both" "$O" "tests are red in debug release — this is refusal 8"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 check "and the turn is free" "$(ls -d "$E/home/.git/lane-land.turn" 2>/dev/null | wc -l | tr -d ' ')" 0
 quiet "$E/home" open stale; mkdir -p "$HW/lane-stale/packages/gpu_engine/rust"
