@@ -70,6 +70,10 @@ const _blue = Color(0xFF1E88E5);
 
 /// A box that is its own repaint boundary, so a property of a layer ABOVE
 /// it can change while its picture stays exactly the one it was.
+/// How a region is moved: its scroll view's offset, its own place, or the
+/// place of a boundary above it.
+enum _Moved { scrolled, itself, byAncestor }
+
 Widget _box({Color color = _red}) =>
     RepaintBoundary(child: ColoredBox(color: color));
 
@@ -1072,74 +1076,96 @@ void main() {
       });
     }
 
-    for (final axis in Axis.values) {
-      testWidgets('scrolled ${axis.name} by whole device pixels keeps its '
-          'image wherever the sum that places it rounds', (tester) async {
-        // 🔬11-07, a conte row at 150% scrolled sideways 14 px a frame: its
-        // device x crossed 1024, the sum that placed it rounded on a
-        // coarser grid, and the same pixels read a phase of 7.6e-14
-        // against the 0 its image was taken on — the image dropped, the
-        // row drawn live.
-        tester.view.devicePixelRatio = 1.5;
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final scroll = ScrollController();
-        addTearDown(scroll.dispose);
-        await tester.pumpWidget(
-          Directionality(
-            textDirection: TextDirection.ltr,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: sizedAlong(
-                axis,
-                along: 1200,
-                across: _height,
-                child: SingleChildScrollView(
-                  controller: scroll,
-                  scrollDirection: axis,
-                  child: sizedAlong(
-                    axis,
-                    along: 3000,
-                    across: _height,
-                    child: Stack(
-                      children: [
-                        placedAlong(
-                          axis,
-                          along: 1400 + 2 / 3,
-                          across: 0,
-                          alongExtent: _height,
-                          acrossExtent: _height,
-                          child: StillRaster(
-                            debugLabel: 'test',
-                            child: _box(),
-                          ),
-                        ),
-                      ],
+    group('moved by whole device pixels, its corner across 1024,', () {
+      // 🔬11-07, a conte row at 150% scrolled sideways 14 px a frame: its
+      // device x crossed 1024, the sum that placed it rounded on a
+      // coarser grid, and the same pixels read a phase of 7.6e-14 against
+      // the 0 its image was taken on — the image dropped, the row drawn
+      // live. One law reads every region, so every way one is moved, on
+      // both axes, at each ratio the screens here run at.
+      const at = 1400 + 2 / 3;
+      for (final ratio in const [1.0, 1.25, 1.5, 2.0]) {
+        for (final axis in Axis.values) {
+          for (final moved in _Moved.values) {
+            testWidgets('${moved.name} ${axis.name} at $ratio keeps its '
+                'image', (tester) async {
+              tester.view.devicePixelRatio = ratio;
+              addTearDown(tester.view.resetDevicePixelRatio);
+              final scroll = ScrollController();
+              addTearDown(scroll.dispose);
+              Widget placed(double along) {
+                final region = StillRaster(debugLabel: 'test', child: _box());
+                return placedAlong(
+                  axis,
+                  along: along,
+                  across: 0,
+                  alongExtent: _height,
+                  acrossExtent: _height,
+                  child: moved == _Moved.byAncestor
+                      ? RepaintBoundary(child: region)
+                      : region,
+                );
+              }
+
+              Future<void> pumpAt(double offset) => tester.pumpWidget(
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: sizedAlong(
+                      axis,
+                      along: 1600,
+                      across: _height,
+                      child: moved == _Moved.scrolled
+                          ? SingleChildScrollView(
+                              controller: scroll,
+                              scrollDirection: axis,
+                              child: sizedAlong(
+                                axis,
+                                along: 3000,
+                                across: _height,
+                                child: Stack(children: [placed(at)]),
+                              ),
+                            )
+                          : Stack(
+                              clipBehavior: Clip.none,
+                              children: [placed(at - offset)],
+                            ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          ),
-        );
-        final region = _region(tester);
-        final moved = <String>[];
-        // Two logical pixels are three device pixels: every step lands on
-        // the pixels it left, the region's device corner passing 1024 on
-        // the way.
-        for (var offset = 700.0; offset <= 760; offset += 2) {
-          scroll.jumpTo(offset);
-          await _untilImage(tester);
-          final taken = region.debugCaptureCount;
-          scroll.jumpTo(offset + 2);
-          await _frame(tester);
-          if (!region.debugDrawnFromImage ||
-              region.debugCaptureCount != taken) {
-            moved.add('$offset → ${offset + 2}');
+              );
+              Future<void> moveTo(double offset) async {
+                if (moved == _Moved.scrolled) {
+                  scroll.jumpTo(offset);
+                } else {
+                  await pumpAt(offset);
+                }
+              }
+
+              // Four logical pixels are whole device pixels at each of
+              // these ratios: every step lands on the pixels it left.
+              final first = (at - 1024 / ratio - 40).floorToDouble();
+              await pumpAt(first);
+              final dropped = <String>[];
+              for (var offset = first; offset < first + 80; offset += 4) {
+                await moveTo(offset);
+                await _untilImage(tester);
+                final region = _region(tester);
+                final taken = region.debugCaptureCount;
+                await moveTo(offset + 4);
+                await _frame(tester);
+                if (!region.debugDrawnFromImage ||
+                    region.debugCaptureCount != taken) {
+                  dropped.add('$offset → ${offset + 4}');
+                }
+              }
+              expect(dropped, isEmpty, reason: 'dropped its image');
+            });
           }
         }
-        expect(moved, isEmpty, reason: 'dropped its image scrolled');
-      });
-    }
+      }
+    });
 
     testWidgets('on whole device pixels reads no phase where its sum lands '
         'an ulp short of one', (tester) async {
