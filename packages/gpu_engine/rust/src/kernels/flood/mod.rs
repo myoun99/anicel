@@ -13,12 +13,13 @@
 //! output tiles (유저 gpu-canonical-store-Q1, 11-06): the fill and the
 //! eyedropper read one picture with the screen, blend modes, folders and
 //! effects as they show, where the app summed the layers by a rule of its
-//! own.
+//! own. `picture` makes it, and picks the eyedropper's pixel of it.
 
 // ⏳Nothing outside the tests floods until the fill comes to the engine
 // (gpu-canonical-store, stage 5's connection).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod picture;
 pub(crate) mod stamp;
 #[cfg(test)]
 mod tests;

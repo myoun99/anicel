@@ -14,11 +14,11 @@ use crate::testing::{assert_pinned, first_engine, read_buffer};
 pub(super) struct Rig {
     pub(super) engine: &'static Engine,
     pub(super) flood: Flood,
-    masks: MaskPasses,
+    pub(super) masks: MaskPasses,
 }
 
-/// One device and one compile for every test here and the stamp's
-/// (blend's tests have why).
+/// One device and one compile for every test here, the stamp's and the
+/// picture's (blend's tests have why).
 pub(super) fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {

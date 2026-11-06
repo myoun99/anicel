@@ -25,9 +25,9 @@ const WHOLE: u32 = 65535;
 /// An output with no edge: every pixel of every output tile as it is.
 const EVERYWHERE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 
-struct Rig {
-    engine: &'static Engine,
-    composite: Composite,
+pub(crate) struct Rig {
+    pub(crate) engine: &'static Engine,
+    pub(crate) composite: Composite,
 }
 
 impl Rig {
@@ -38,9 +38,10 @@ impl Rig {
     }
 }
 
-/// One device and one compiled pass for every test here, as the app opens
-/// one device (blend's tests have why).
-fn rig() -> &'static Rig {
+/// One device and one compiled pass for every test here and the fill's
+/// picture's (kernels/flood), as the app opens one device (blend's tests
+/// have why).
+pub(crate) fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(Rig::new)
 }
