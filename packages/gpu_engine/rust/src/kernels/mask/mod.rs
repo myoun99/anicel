@@ -7,7 +7,8 @@
 //! The hard mask itself is `region`'s (S1, the app's `maskFor`). A bucket
 //! fill finishes what it flooded with the same grow and soften
 //! (`_cropAndFinishFloodRegion`, gpu-canonical-store stage 5), its soften
-//! past the outline as well.
+//! past the outline as well, and its gap close measures by the feather's
+//! distances (`_gapCloseFloodRegion`).
 //!
 //! A mask is a plane of bytes over its box (`MaskBox`) — the app's
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
@@ -39,6 +40,12 @@ const GROUP: u32 = 8;
 /// The feather a mask takes is under this, in pixels: its ramp, 3 · Q.8,
 /// is a word.
 const MOST_FEATHER: f64 = (u32::MAX / 3 / 256) as f64;
+/// The distance the box's edge lies at in the selection's feather — a
+/// pixel on it ramps as if the one past it were out (`_featherMask`'s
+/// `borderDistance`) — and in the fill's gap close, where the canvas edge
+/// is no barrier: none, which no distance passes.
+const SELECTION_EDGE: u32 = 3;
+const NO_EDGE: u32 = u32::MAX;
 
 /// A mask's box: its pixels across and down.
 #[derive(Clone, Copy, Debug)]
@@ -154,11 +161,20 @@ impl Finish {
 
 /// What a run's passes read past the box — the app's arguments to the
 /// functions they are: the feather's ramp, 3 chamfer units a pixel, Q.8,
-/// and softenMaskBoundary's `insideOutlineOnly`.
+/// softenMaskBoundary's `insideOutlineOnly`, and chamferDistance34's
+/// `zeroWhen` and `borderDistance`.
 #[derive(Clone, Copy)]
 struct Knobs {
     ramp: u32,
     inside_outline_only: bool,
+    zero_when: u8,
+    border: u32,
+}
+
+/// What a run put last: its bytes, and its distances where it measured.
+struct Put {
+    bytes: Option<wgpu::Buffer>,
+    distances: Option<wgpu::Buffer>,
 }
 
 /// A pass: a stencil of a pixel's sides on the bytes, a distance's start
@@ -253,8 +269,10 @@ impl MaskPasses {
         let knobs = Knobs {
             ramp: feather.map_or(0, |feather| 3 * feather),
             inside_outline_only: true,
+            zero_when: 0,
+            border: SELECTION_EDGE,
         };
-        self.run(engine, mask, size, &steps, knobs)
+        self.run(engine, mask, size, &steps, knobs)?.bytes
     }
 
     /// `mask` — bytes over `size`, 255 where a fill flooded — finished as
@@ -281,13 +299,46 @@ impl MaskPasses {
         let knobs = Knobs {
             ramp: 0,
             inside_outline_only: false,
+            zero_when: 0,
+            border: NO_EDGE,
         };
-        self.run(engine, mask, size, &steps, knobs)
+        self.run(engine, mask, size, &steps, knobs)?.bytes
+    }
+
+    /// The 3-4 chamfer distance (`chamferDistance34`, in mask.wgsl's layout)
+    /// from every pixel of `mask` — bytes over `size` — to the nearest whose
+    /// byte is `zero_when`, as the fill's gap close measures it
+    /// (`_gapCloseFloodRegion`): the box's edge is no barrier. Relaxed
+    /// `generations` times: a distance a path of no more steps reaches —
+    /// every one up to 3 × `generations`, a step being 3 or 4 — is the
+    /// app's, and the rest lie no nearer than theirs. Submits the work; the
+    /// caller waits.
+    pub(crate) fn distances(
+        &self,
+        engine: &Engine,
+        mask: &wgpu::Buffer,
+        size: MaskBox,
+        zero_when: u8,
+        generations: u32,
+    ) -> Option<wgpu::Buffer> {
+        size.held_by(mask)?;
+        // A distance travels no more pixels than the box's longer side
+        // (the feather's bound, in `selection`).
+        let generations = generations.min(size.width.max(size.height));
+        let mut steps = vec![Step::Seed];
+        steps.extend((0..generations).map(|_| Step::Relax));
+        let knobs = Knobs {
+            ramp: 0,
+            inside_outline_only: false,
+            zero_when,
+            border: NO_EDGE,
+        };
+        self.run(engine, mask, size, &steps, knobs)?.distances
     }
 
     /// Runs `steps` over `mask` in order, each reading what the one before
-    /// put and all reading `knobs`, and returns the bytes the last byte
-    /// pass put; `steps` holds one.
+    /// put and all reading `knobs`, and returns what the last byte pass and
+    /// the last distance pass put.
     fn run(
         &self,
         engine: &Engine,
@@ -295,17 +346,31 @@ impl MaskPasses {
         size: MaskBox,
         steps: &[Step],
         knobs: Knobs,
-    ) -> Option<wgpu::Buffer> {
-        let feathers = steps.contains(&Step::Seed);
-        let distance_bytes = if feathers { size.distance_bytes() } else { 0 };
+    ) -> Option<Put> {
+        let puts_bytes = steps.iter().any(|step| step.per_word() == 4);
+        let measures = steps.contains(&Step::Seed);
+        let byte_bytes = if puts_bytes { size.bytes() } else { 0 };
+        let distance_bytes = if measures { size.distance_bytes() } else { 0 };
         let groups = steps.iter().map(|step| size.groups(step.per_word()));
-        fits(engine, &[size.bytes(), distance_bytes], groups)?;
-        let bytes = [0, 1].map(|_| plane(engine, "mask", size.bytes()));
-        let distances: Vec<wgpu::Buffer> = (0..if feathers { 2 } else { 0 })
+        fits(engine, &[byte_bytes, distance_bytes], groups)?;
+        let bytes: Vec<wgpu::Buffer> = (0..if puts_bytes { 2 } else { 0 })
+            .map(|_| plane(engine, "mask", byte_bytes))
+            .collect();
+        let distances: Vec<wgpu::Buffer> = (0..if measures { 2 } else { 0 })
             .map(|_| plane(engine, "mask distances", distance_bytes))
             .collect();
         let inside = u32::from(knobs.inside_outline_only);
-        let words = [size.width, size.height, size.stride(), knobs.ramp, inside, 0, 0, 0];
+        let zero_when = u32::from(knobs.zero_when);
+        let words = [
+            size.width,
+            size.height,
+            size.stride(),
+            knobs.ramp,
+            inside,
+            zero_when,
+            knobs.border,
+            0,
+        ];
         let words = &words_buffer(engine, "mask", &words, wgpu::BufferUsages::UNIFORM);
         // The byte plane the next pass reads — none: `mask` itself — and
         // the distance plane.
@@ -348,7 +413,9 @@ impl MaskPasses {
             });
         }
         encode(engine, &encoded);
-        let [first, second] = bytes;
-        Some(if bytes_at == Some(1) { second } else { first })
+        Some(Put {
+            bytes: bytes_at.and_then(|at| bytes.into_iter().nth(at)),
+            distances: distances.into_iter().nth(distances_at),
+        })
     }
 }

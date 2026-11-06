@@ -309,6 +309,75 @@ fn a_mask_past_its_range_is_refused() {
     }
 }
 
+// ---- The gap close's distances ----
+
+/// The distances from the pixels of `byte` over `size` whose byte is
+/// `zero_when`, relaxed `generations` times, row after row, padding gone.
+fn measured(
+    size: MaskBox,
+    zero_when: u8,
+    generations: u32,
+    byte: impl Fn(u32, u32) -> u8,
+) -> Vec<Vec<u16>> {
+    let Rig { engine, passes } = rig();
+    let storage = wgpu::BufferUsages::STORAGE;
+    let mask = words_buffer(engine, "mask in", &laid(size, byte), storage);
+    let out = passes.distances(engine, &mask, size, zero_when, generations).expect("distances");
+    let read = read_buffer(engine, &out);
+    let stride = (size.width.div_ceil(2) * 4) as usize;
+    read.chunks(stride)
+        .take(size.height as usize)
+        .map(|row| {
+            row.chunks_exact(2)
+                .take(size.width as usize)
+                .map(|half| u16::from_le_bytes([half[0], half[1]]))
+                .collect()
+        })
+        .collect()
+}
+
+fn row(bytes: &'static [u8]) -> (MaskBox, impl Fn(u32, u32) -> u8) {
+    let size = MaskBox {
+        width: bytes.len() as u32,
+        height: 1,
+    };
+    (size, move |x: u32, _| bytes[x as usize])
+}
+
+/// Past the box is no neighbour: the row's last pixel reads no distance
+/// in its word's other half, and the box's edge starts none of its own.
+#[test]
+fn a_gap_close_distance_reads_nothing_past_the_box() {
+    let (size, bytes) = row(&[0, 255, 255]);
+    assert_eq!(measured(size, 0, 2, bytes), [[0, 3, 6]]);
+}
+
+/// It is measured from the byte it is told — from what may not fill, then
+/// from what flooded.
+#[test]
+fn a_distance_is_measured_from_the_byte_it_names() {
+    let (size, bytes) = row(&[255, 0, 0, 7]);
+    assert_eq!(measured(size, 255, 3, &bytes), [[0, 3, 6, 9]]);
+    assert_eq!(measured(size, 0, 3, bytes), [[3, 0, 0, 3]]);
+}
+
+/// A side is 3 and a corner 4.
+#[test]
+fn a_corner_is_a_step_of_4() {
+    let mask = measured(square(3), 0, 1, |x, y| if (x, y) == (1, 1) { 0 } else { 255 });
+    assert_eq!(mask, [[4, 3, 4], [3, 0, 3], [4, 3, 4]]);
+}
+
+/// A generation settles a pixel more: past them, a distance is still the
+/// farthest, no nearer than the app's — and past the box's longer side
+/// every one has settled, however many are asked for.
+#[test]
+fn a_distance_settles_a_pixel_a_generation() {
+    let (size, bytes) = row(&[0, 9, 9, 9, 9]);
+    assert_eq!(measured(size, 0, 2, &bytes), [[0, 3, 6, 60000, 60000]]);
+    assert_eq!(measured(size, 0, u32::MAX, bytes), [[0, 3, 6, 9, 12]]);
+}
+
 // ---- The ledger ----
 
 /// Two discs and a stripe of lines, a few bytes partly in, over a box whose

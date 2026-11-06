@@ -2,7 +2,8 @@
 // generation of the 4-neighbour grow or shrink (S2a — the app's
 // mask_morphology.dart), the boundary soften (S2c — softenMaskBoundary),
 // and the feather (S2b): the 3-4 chamfer distance (chamferDistance34)
-// relaxed a generation at a time, then the ramp over it.
+// relaxed a generation at a time, then the ramp over it. The fill's gap
+// close measures by the same distances (_gapCloseFloodRegion).
 //
 // A mask is a plane of bytes over its box, `width` × `height`, four to a
 // word with the leftmost in the low byte, each row `stride` words — the
@@ -29,18 +30,20 @@ struct Mask {
   // Whether the soften keeps inside the outline — softenMaskBoundary's
   // `insideOutlineOnly`: the selection's does, the fill's does not.
   inside_outline_only: u32,
+  // Where a distance starts — chamferDistance34's `zeroWhen` and
+  // `borderDistance`: the byte of the pixels it is measured from, and the
+  // distance the box's edge lies at. The selection's feather measures from
+  // what is out, its edge 3 (`_featherMask`: a pixel on it ramps as if the
+  // one past it were out); the fill's gap close from what may not fill and
+  // then from what it flooded, with no edge — u32's most, which no
+  // distance passes (the canvas edge is no barrier).
+  zero_when: u32,
+  border: u32,
   unused_0: u32,
-  unused_1: u32,
-  unused_2: u32,
 }
 
 // The farthest distance — chamferDistance34's `infinity`.
 const MASK_FAR: u32 = 60000u;
-// The distance the box's edge lies at: a pixel on it ramps as if the one
-// past it were out (`_featherMask`'s border, the selection's). ⏳The fill's
-// gap close (stage 5) starts its distances at another byte with no edge —
-// they come as words of their own.
-const MASK_EDGE: u32 = 3u;
 
 @group(0) @binding(0) var<uniform> mask: Mask;
 @group(0) @binding(1) var<storage, read> bytes_in: array<u32>;
@@ -200,13 +203,13 @@ fn mask_feather(@builtin(global_invocation_id) id: vec3<u32>) {
   bytes_out[id.y * mask.stride + id.x] = word;
 }
 
-// A distance's start: 0 where the mask is out, the farthest elsewhere,
-// and on the box's edge no farther than MASK_EDGE.
+// A distance's start: 0 where the byte is `zero_when`, the farthest
+// elsewhere, and on the box's edge no farther than `border`.
 fn mask_seeded(x: i32, y: i32) -> u32 {
-  var distance = select(MASK_FAR, 0u, mask_byte(x, y) == 0u);
+  var distance = select(MASK_FAR, 0u, mask_byte(x, y) == mask.zero_when);
   let edge = x == 0 || y == 0 || u32(x) + 1u == mask.width || u32(y) + 1u == mask.height;
   if (edge) {
-    distance = min(distance, MASK_EDGE);
+    distance = min(distance, mask.border);
   }
   return distance;
 }
@@ -216,9 +219,10 @@ fn mask_seeded(x: i32, y: i32) -> u32 {
 // corner on — the pixel itself among them, never nearer than its own, so
 // a distance never grows past MASK_FAR. Run to its end it is the app's two
 // passes, byte for byte (대조 ② closed 11-05: 6000 random masks).
-// A distance past the box is no neighbour. The selection cannot see that —
-// its edge starts at MASK_EDGE, no farther than a step from anything — but
-// ⏳the fill's finish starts no edge.
+// A distance past the box is no neighbour, as the app's passes read none
+// past its edge. The selection cannot see that — its edge starts at 3, no
+// farther than a step from anything — but the gap close starts no edge,
+// and a pixel at the end of a row would read the row's padding.
 fn mask_relaxed(x: i32, y: i32) -> u32 {
   var best = mask_distance(x, y);
   for (var dy = -1; dy <= 1; dy++) {
