@@ -925,27 +925,71 @@ fn opened(side: fn(&Devices) -> &Option<Opened>) -> Option<u64> {
     side(&devices()).as_ref().map(|opened| opened.open)
 }
 
+/// The null device `side` names loses its device, as the system's default
+/// changing under it would.
+fn lose(side: fn(&Devices) -> &Option<Opened>) {
+    let devices = devices();
+    let Some(Opened { running: Running::Null(thread), .. }) = side(&devices) else {
+        panic!("premise: a null device");
+    };
+    thread.lose();
+}
+
 #[test]
 fn an_output_that_lost_its_device_plays_on_from_the_default() {
     let _serial = serial();
     let schedule = Schedule::new();
-    assert_eq!(qa_audio_device_open(48_000, 2, 1, -1), 48_000);
+    // A geometry of its own: the one opened again is the transport's.
+    assert_eq!(qa_audio_device_open(44_100, 1, 1, -1), 44_100);
+    let latency = qa_audio_device_latency_samples();
     assert!(PLAYBACK.set_schedule(&schedule.clips, &schedule.sources, &schedule.keys));
     qa_audio_device_play(0, 0, 0, 0);
     assert!(within(|| qa_audio_device_position() > 0), "premise: the run plays");
     let lost = opened(|devices| &devices.playback).expect("premise: an output");
     let before = qa_audio_device_position();
-    reopen_output(lost);
-    let reopened = opened(|devices| &devices.playback);
-    assert!(reopened.is_some_and(|open| open != lost), "opened again: {reopened:?}");
+    lose(|devices| &devices.playback);
+    assert!(within(|| opened(|devices| &devices.playback).is_some_and(|open| open != lost)), "not opened again");
     assert_eq!((qa_audio_device_is_open(), qa_audio_device_is_playing()), (1, 1), "the run plays on…");
     assert!(qa_audio_device_position() >= before, "…from where it was");
-    assert!(within(|| qa_audio_device_position() > before + 4_800), "…on the device opened again");
+    assert!(within(|| qa_audio_device_position() > before + 4_410), "…on the device opened again");
+    assert_eq!(qa_audio_device_latency_samples(), latency, "…at the rate it ran at");
+    let reopened = opened(|devices| &devices.playback);
     reopen_output(lost);
     assert_eq!(opened(|devices| &devices.playback), reopened, "an ask for an output since opened again does nothing");
     qa_audio_device_close();
     reopen_output(reopened.unwrap());
     assert_eq!((opened(|devices| &devices.playback), qa_audio_device_is_open()), (None, 0), "…nor for one closed");
+}
+
+#[test]
+fn a_device_chosen_by_name_that_lost_it_is_not_moved() {
+    let _serial = serial();
+    assert_eq!(qa_audio_device_count(0, 1), 1);
+    assert_eq!(qa_audio_device_open(48_000, 2, 1, 0), 48_000);
+    let chosen = opened(|devices| &devices.playback);
+    qa_audio_device_play(0, 0, 0, 0);
+    lose(|devices| &devices.playback);
+    // A block in flight when it was lost is handed whole.
+    thread::sleep(Duration::from_millis(30));
+    let before = qa_audio_device_position();
+    thread::sleep(Duration::from_millis(100));
+    assert_eq!(opened(|devices| &devices.playback), chosen, "the device chosen stays the one chosen…");
+    assert_eq!(qa_audio_device_position(), before, "…and, lost, hands nothing more");
+    qa_audio_device_close();
+}
+
+#[test]
+fn a_device_with_no_default_to_open_again_on_is_closed() {
+    let _serial = serial();
+    assert_eq!(qa_audio_device_open(48_000, 2, 1, -1), 48_000);
+    assert_eq!(qa_audio_capture_start(48_000, 1, -1), 48_000);
+    qa_audio_device_play(0, 0, 0, 0);
+    let (output, capture) = (opened(|devices| &devices.playback), opened(|devices| &devices.capture));
+    devices().context = None;
+    reopen_output(output.unwrap());
+    reopen_input(capture.unwrap());
+    assert_eq!((qa_audio_device_is_open(), qa_audio_device_is_playing(), qa_audio_capture_is_open()), (0, 0, 0));
+    assert_eq!((opened(|devices| &devices.playback), opened(|devices| &devices.capture)), (None, None));
 }
 
 #[test]
@@ -955,9 +999,9 @@ fn a_capture_that_lost_its_device_counts_on_from_the_default() {
     assert!(within(|| qa_audio_capture_frames() > 0), "premise: the take runs");
     let lost = opened(|devices| &devices.capture).expect("premise: a capture");
     let before = qa_audio_capture_frames();
-    reopen_input(lost);
+    lose(|devices| &devices.capture);
+    assert!(within(|| opened(|devices| &devices.capture).is_some_and(|open| open != lost)), "not opened again");
     let reopened = opened(|devices| &devices.capture);
-    assert!(reopened.is_some_and(|open| open != lost), "opened again: {reopened:?}");
     assert_eq!(qa_audio_capture_is_open(), 1);
     assert!(qa_audio_capture_frames() >= before, "the take goes on counting…");
     assert!(within(|| qa_audio_capture_frames() > before + 4_800), "…from the device opened again");

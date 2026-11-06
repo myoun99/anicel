@@ -144,7 +144,7 @@ impl Context {
                     // Handed up to a full buffer ahead of what the wall has played.
                     paced(stop, sample_rate, period, period as i64 * NULL_PERIODS, || render(&mut buffer));
                 };
-                Some(Built::null(body, sample_rate, channels))
+                Some(Built::null(body, index.is_none().then_some(lost), sample_rate, channels))
             }
             Picked::System(device) => {
                 let build = |rate: i32| {
@@ -192,7 +192,7 @@ impl Context {
                     // Delivered once the wall has taken it in: silence.
                     paced(stop, sample_rate, period, 0, || deliver(&buffer));
                 };
-                Some(Built::null(body, sample_rate, NULL_CHANNELS))
+                Some(Built::null(body, index.is_none().then_some(lost), sample_rate, NULL_CHANNELS))
             }
             Picked::System(device) => {
                 let native = device.default_input_config().ok()?;
@@ -321,8 +321,15 @@ enum Starting {
 }
 
 impl Built {
-    fn null(body: impl FnOnce(&AtomicBool) + Send + 'static, sample_rate: i32, channels: i32) -> Built {
-        let start = move || NullThread::spawn(body);
+    /// A null device running `body` on its thread; opened on the default,
+    /// it asks for `lost` when it loses its device ([`NullThread::lose`]).
+    fn null(
+        body: impl FnOnce(&AtomicBool) + Send + 'static,
+        lost: Option<impl Fn() + Send + 'static>,
+        sample_rate: i32,
+        channels: i32,
+    ) -> Built {
+        let start = move || NullThread::spawn(body, lost);
         Built { device: Starting::Null(Box::new(start)), sample_rate, channels }
     }
 
@@ -346,22 +353,49 @@ pub(crate) enum Running {
 
 /// The null backend's device thread.
 pub(crate) struct NullThread {
-    stop: Arc<AtomicBool>,
+    told: Arc<Told>,
     thread: Option<JoinHandle<()>>,
 }
 
+/// What a null device's thread is told: to stop — its drop — or that its
+/// device is lost.
+#[derive(Default)]
+struct Told {
+    stop: AtomicBool,
+    lost: AtomicBool,
+}
+
 impl NullThread {
-    fn spawn(body: impl FnOnce(&AtomicBool) + Send + 'static) -> Option<NullThread> {
-        let stop = Arc::new(AtomicBool::new(false));
-        let seen = Arc::clone(&stop);
-        let thread = thread::Builder::new().name("null audio device".into()).spawn(move || body(&seen)).ok()?;
-        Some(NullThread { stop, thread: Some(thread) })
+    fn spawn(
+        body: impl FnOnce(&AtomicBool) + Send + 'static,
+        lost: Option<impl Fn() + Send + 'static>,
+    ) -> Option<NullThread> {
+        let told = Arc::new(Told::default());
+        let seen = Arc::clone(&told);
+        let run = move || {
+            body(&seen.stop);
+            // As a system stream's error is: said on the device's own
+            // thread, which runs no more.
+            if let Some(lost) = lost.filter(|_| seen.lost.load(SeqCst)) {
+                lost();
+            }
+        };
+        let thread = thread::Builder::new().name("null audio device".into()).spawn(run).ok()?;
+        Some(NullThread { told, thread: Some(thread) })
+    }
+
+    /// Its device lost, as the system's default changing under a stream
+    /// loses it: the thread says so, and runs no more.
+    #[cfg(test)]
+    pub(crate) fn lose(&self) {
+        self.told.lost.store(true, SeqCst);
+        self.told.stop.store(true, SeqCst);
     }
 }
 
 impl Drop for NullThread {
     fn drop(&mut self) {
-        self.stop.store(true, SeqCst);
+        self.told.stop.store(true, SeqCst);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }

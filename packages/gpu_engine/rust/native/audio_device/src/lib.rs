@@ -51,7 +51,7 @@ struct Devices {
 
 /// A device running, and the open that made it.
 struct Opened {
-    #[expect(dead_code, reason = "held for its drop, which unmakes the device")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "held for its drop, which unmakes the device"))]
     running: Running,
     open: u64,
 }
