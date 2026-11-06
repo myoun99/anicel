@@ -71,6 +71,18 @@ void main() {
       );
     });
 
+    test('and a CI workflow read by name', () {
+      expect(
+        pathsReadAsText("const workflow = '.github/workflows/gpu-engine.yml';"),
+        {'.github/workflows/gpu-engine.yml'},
+      );
+      expect(
+        pathsReadAsText("'x.github/a.yml' '.githubs' 'Xgithub/a.yml'"),
+        isEmpty,
+        reason: 'its dot is a dot',
+      );
+    });
+
     test('⛔what only looks like a root is not one', () {
       expect(
         pathsReadAsText("import 'package:anicel/src/ui/x.dart';"),

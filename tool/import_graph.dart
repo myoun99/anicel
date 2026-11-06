@@ -85,15 +85,19 @@ Set<String> pathsReadAsText(String source) => {
 /// ([pathsReadAsText]): the Dart sources, the platform folders the app's
 /// shells live in, and the packages beside the app — a scan reads the GPU
 /// engine's by path (its example's plugin registrants), while every suite
-/// reads only `kEngineSources`.
+/// reads only `kEngineSources`. 🆕And the CI's own files (2026-11-07): four
+/// scans read workflows by path, and a change to one ran none of them — the
+/// GPU engine's job split that day was 「no test reaches」.
 const kTextRoots = [
   'lib', 'test', 'tool', //
   'android', 'ios', 'linux', 'macos', 'windows',
-  'packages',
+  'packages', '.github',
 ];
 
+final _textRoot = kTextRoots.map(RegExp.escape).join('|');
+
 final _sourcePathLiteral = RegExp(
-  '''['"]((?:${kTextRoots.join('|')})(?:/[A-Za-z0-9_/.\\-]*)?)'''
+  '''['"]((?:$_textRoot)(?:/[A-Za-z0-9_/.\\-]*)?)'''
   r'''(?:\$[^'"]*)?['"]''',
 );
 
