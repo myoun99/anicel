@@ -56,7 +56,8 @@
 # lane, and lands a ledger row this machine's GPU never ran. 🆕Since
 # native-to-rust (2026-11-06) it also holds that a crate lane is refused,
 # before any crate test, when its engine — the native crates' answer key —
-# is not built from its C.
+# is not built from its C; and that a lane that changed only the C runs
+# the crates' tests too, held to it.
 #
 # 🆕And the mirror's login (2026-11-05, gpu-engine-skeleton — section U,
 # 119 checks in all): a `git` in front of the real one writes down every
@@ -112,6 +113,16 @@ echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$L
 [ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
 echo "test result: ok. 1 passed; 0 failed"
 EOF
+# `cmake` and `ctest`, for a lane that changed the C (refusal 5): the
+# engine builds — red when LANE_TEST_ENGINE says stale, so a stale engine
+# stays stale — and the C tests pass.
+cat > "$E/bin/cmake" <<'EOF'
+#!/bin/bash
+echo "$(basename "$PWD") cmake $*" >> "$LANE_TEST_LOG"
+[ "${LANE_TEST_ENGINE:-}" = stale ] && exit 1
+exit 0
+EOF
+printf '#!/bin/bash\nexit 0\n' > "$E/bin/ctest"
 # `git` writes down every call that reaches the mirror (the remote named
 # backup) and whether it was let ask for a login, then hands every call,
 # that one too, to the real git.
@@ -125,7 +136,7 @@ case " \$* " in *" backup "*)
 esac
 exec "$REAL_GIT" "\$@"
 EOF
-chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/git"
+chmod +x "$E/bin/flutter" "$E/bin/dart" "$E/bin/cargo" "$E/bin/cmake" "$E/bin/ctest" "$E/bin/git"
 export PATH="$E/bin:$PATH"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 FAILS=0
@@ -156,8 +167,10 @@ mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/hom
 # The launcher the gates ask the room through, and the stamp law it reads.
 # No tool sources beside them, so it hands every call to the stand-in `dart`.
 cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" "$E/home/tool/"
+# And the parity selector the gate of a lane that changed the C asks.
+printf '#!/bin/bash\necho test/parity_test.dart\n' > "$E/home/tool/native_parity_tests.sh"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/native_parity_tests.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
 git clone -q -o backup "$E/mirror.git" "$E/away"
@@ -464,6 +477,13 @@ has "a crate lane whose engine is not built from its C is refused — the native
   "$O" "not built from this lane's C — this is refusal 8"
 check "before a crate test ran" "$(cargo_runs lane-stale)" 0
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+mkdir -p "$E/home/build/native_standalone"  # the trunk's engine, which `open` copies
+quiet "$E/home" open cfile; mkdir -p "$HW/lane-cfile/packages/qa_native/src"
+commit "$HW/lane-cfile" packages/qa_native/src/c.c "C that a module's Rust is held to"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" land cfile)
+has "a lane that changed only the C lands" "$O" "merged work/cfile"
+check "and the crates were held to it, debug and release" "$(cargo_runs lane-cfile)" 2
 
 say "U NOBODY IS ASKED FOR A LOGIN: every call that reached the mirror in this whole run"
 check "LIVENESS — the run reached the mirror, on both machines, every way" \
