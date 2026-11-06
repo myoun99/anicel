@@ -1528,7 +1528,8 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
 
 // A pass is compiled the first time a plan needs its output and modes, and
 // kept: a screen shows every frame, and a compile is far dearer than a
-// frame.
+// frame. Shown again while its own is compiling, a screen takes the pass
+// for every mode — one, too — and starts no second compile.
 #[test]
 fn a_pass_is_compiled_once_for_its_output_and_modes() {
     let (page, _) = composited_canvas();
@@ -1536,15 +1537,15 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
     for _ in 0..2 {
         let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
         shown(&page, turned, &texture, whole_screen());
-        rig().composite.settle();
     }
-    let compiled = Compiled {
-        surface: Some("rgba8unorm"),
-        modes: ResampleModes::default().with(&turned.words()),
-    };
+    rig().composite.settle();
+    let modes = ResampleModes::default().with(&turned.words());
     let passes = rig().composite.passes.lock();
     let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
-    assert_eq!(passes.made.iter().filter(|(made, _)| *made == compiled).count(), 1);
+    for modes in [modes, ResampleModes::ALL] {
+        let compiled = Compiled { surface: Some("rgba8unorm"), modes };
+        assert_eq!(passes.made.iter().filter(|(made, _)| *made == compiled).count(), 1);
+    }
 }
 
 // A plan's pass compiled for its own R1 modes, on a thread, composites what
@@ -1568,6 +1569,11 @@ fn a_pass_compiled_for_a_plan_s_modes_composites_as_the_one_for_every_mode() {
         assert_pinned(&format!("composite/{name}"), &widest(scene));
     }
     assert_pinned("composite/screen", &screens());
+    // The rows scene's maps are all copies: a pass compiled for no mode.
+    let copies = Compiled { surface: None, modes: ResampleModes::default() };
+    let passes = rig().composite.passes.lock();
+    let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert!(passes.made(copies).is_some());
 }
 
 // ---- Where a row is live ----

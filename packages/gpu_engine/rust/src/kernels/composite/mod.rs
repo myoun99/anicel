@@ -379,7 +379,7 @@ impl Composite {
     /// Waits for the passes threads are compiling.
     #[cfg(test)]
     pub(crate) fn settle(&self) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         while !self.passes.lock().unwrap_or_else(PoisonError::into_inner).making.is_empty() {
             assert!(std::time::Instant::now() < deadline, "a pass compiled apart never came");
             std::thread::sleep(std::time::Duration::from_millis(1));
