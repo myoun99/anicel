@@ -67,6 +67,7 @@ fn every_wav_reads_as_the_c_reads_it() {
         ("24-bit stereo".into(), wav(1, 2, 24, 24, 3000, 6)),
         ("32-bit stereo".into(), wav(1, 2, 32, 32, 3000, 7)),
         ("12 bits in 16".into(), wav(1, 2, 12, 16, 3000, 8)),
+        ("no frames".into(), wav(1, 2, 16, 16, 0, 1)),
         ("a-law".into(), wav(6, 2, 8, 8, 2000, 9)),
         ("mu-law".into(), wav(7, 2, 8, 8, 2000, 10)),
         ("32-bit floats".into(), float_wav(32, 2000)),
@@ -116,11 +117,12 @@ fn families(tag: u16, channels: u16, bits: u16, frames: usize) -> [(&'static str
 
 /// `data` of `format` as an RF64, a Wave64 and a RIFX, with a chunk of
 /// something else first when `junk` — one whose size is odd, and no
-/// multiple of eight, so that each family's padding is what finds the next.
+/// multiple of eight, so that each family's padding is what finds the next
+/// — and a list after the data, which is no sound.
 fn families_of(format: &[u8], data: &[u8], junk: bool) -> [(&'static str, Vec<u8>); 3] {
     let other: &[u8] = &[1, 2, 3, 4, 5];
     let mut chunks: Vec<(&[u8; 4], &[u8])> = if junk { vec![(b"JUNK", other)] } else { Vec::new() };
-    chunks.extend([(b"fmt ", format), (b"data", data)]);
+    chunks.extend([(b"fmt ", format), (b"data", data), (b"LIST", b"INFOisft")]);
 
     let mut ds64 = Vec::new();
     ds64.extend_from_slice(&0u64.to_le_bytes());
@@ -129,7 +131,8 @@ fn families_of(format: &[u8], data: &[u8], junk: bool) -> [(&'static str, Vec<u8
     ds64.extend_from_slice(&0u32.to_le_bytes());
     let mut rf64 = riff(b"WAVE", &[&[(b"ds64", &ds64[..])], &chunks[..]].concat());
     rf64[..8].copy_from_slice(b"RF64\xFF\xFF\xFF\xFF");
-    let data_size_at = rf64.len() - data.len() - data.len() % 2 - 4;
+    // The data chunk says all ones, and its size is in the ds64.
+    let data_size_at = rf64.windows(4).position(|name| name == b"data").expect("a data chunk") + 4;
     rf64[data_size_at..data_size_at + 4].copy_from_slice(&[0xFF; 4]);
 
     let guid = |name: &[u8; 4]| {
@@ -277,11 +280,18 @@ fn every_aiff_reads_as_the_c_reads_it() {
 }
 
 /// `count` MPEG-1 Layer III frames of silence — a header and zeros, no side
-/// information, so every granule decodes to silence (the C's own test).
+/// information, so every granule decodes to silence (the C's own test):
+/// 128 kbit/s at 44.1 kHz.
 fn mp3_frames(count: usize) -> Vec<u8> {
-    let mut bytes = vec![0u8; count * 417];
-    for frame in bytes.chunks_exact_mut(417) {
-        frame[..3].copy_from_slice(&[0xFF, 0xFB, 0x90]);
+    mp3_frames_at(count, 0x90, 417)
+}
+
+/// The same at another bitrate: the header's third byte, and the frame's
+/// bytes at it.
+fn mp3_frames_at(count: usize, rate_byte: u8, frame_bytes: usize) -> Vec<u8> {
+    let mut bytes = vec![0u8; count * frame_bytes];
+    for frame in bytes.chunks_exact_mut(frame_bytes) {
+        frame[..3].copy_from_slice(&[0xFF, 0xFB, rate_byte]);
     }
     bytes
 }
@@ -317,6 +327,9 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
     };
     for (what, bytes) in [
         ("no tag", mp3_frames(24)),
+        // 320 kbit/s first, then 128: a length guessed from the first
+        // frame's bitrate would cut the sound short.
+        ("no tag, two bitrates", [mp3_frames_at(20, 0xE0, 1044), mp3_frames(4)].concat()),
         ("a LAME tag", tagged_mp3_frames(24, None, 0)),
         ("a LAME tag counting the frames", tagged_mp3_frames(24, Some(23), 0)),
         ("a LAME tag with padding", tagged_mp3_frames(24, Some(23), 700)),

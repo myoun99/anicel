@@ -108,9 +108,6 @@ impl Stream {
     /// short container decodes as a corrupt file, which is a much worse
     /// answer than 「that span is not in there」.
     pub fn open(path: &CStr, offset: i64, length: i64, framed: bool) -> Option<Stream> {
-        if offset < 0 || length <= 0 {
-            return None;
-        }
         let container = Container::new(Span::open(path, offset, length, framed)?);
         OPENERS.iter().find_map(|open| Stream::begin(&container, open(&container)?))
     }

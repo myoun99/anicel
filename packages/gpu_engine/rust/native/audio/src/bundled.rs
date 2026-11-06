@@ -20,7 +20,7 @@ use symphonia::default::formats::{
 use symphonia::default::get_codecs;
 
 use crate::container::{Container, Cursor};
-use crate::start::{MP3_STANDARD_LEAD, Start, head_is_a_movie_box, mp3_may_try, past_id3};
+use crate::start::{MP3_STANDARD_LEAD, Start, head_is_a_movie_box, is_adts, mp3_may_try, past_id3};
 use crate::stream::{Decode, Opened};
 use crate::{FORMAT_AAC, FORMAT_ALAC, FORMAT_FLAC, FORMAT_MP3, FORMAT_VORBIS, FORMAT_WAV, convert, wav_family};
 
@@ -96,10 +96,12 @@ impl Decode for Bundled {
             }
             // symphonia's decoders refuse a packet of other channels than
             // their stream's, so it is passed over here — ⚠️where dr_mp3 kept
-            // its place, as noise (board audio-mp3-channel-change).
+            // its place, as noise (board native-to-rust-Q8).
             let Ok(buffer) = self.decoder.decode(&packet) else { continue };
-            // Were one handed back all the same, its block would be read as
-            // the stream's channels: the sound ends there instead.
+            // ⚠️No decoder here hands one back (measured 2026-11-06: the
+            // check never answers). Were one to, its block would be shorter
+            // than the stream's channels read it — a panic past the C
+            // boundary — so the sound ends there instead.
             if buffer.spec().channels().count() != self.channels {
                 return 0;
             }
@@ -165,7 +167,13 @@ pub(crate) fn open_ogg(container: &Container) -> Option<Opened> {
 /// that does say so, and AAC of more than two channels, symphonia refuses
 /// itself.
 fn plain_aac(bundled: Bundled) -> Option<Bundled> {
-    bundled.sample_rate().is_some_and(|rate| rate > 24_000).then_some(bundled)
+    bundled.sample_rate().is_some_and(|rate| !core_may_hide_sbr(rate)).then_some(bundled)
+}
+
+/// Whether an AAC core of `rate` may be the half of an HE-AAC stream that
+/// does not say so — the standard's own bound, 24 kHz.
+pub(crate) fn core_may_hide_sbr(rate: i32) -> bool {
+    rate <= 24_000
 }
 
 /// A movie's (MP4 · M4A · MOV) AAC or ALAC — where its sound starts is the
@@ -184,7 +192,14 @@ pub(crate) fn open_movie_codec(container: &Container) -> Option<Opened> {
 
 /// A bare AAC stream (ADTS), behind an ID3 tag or not — its standard lead is
 /// AAC's (`start::container_start`).
+///
+/// 🚨Only one whose first frame header is where the stream starts
+/// (`is_adts`), the one rule its lead is taken by: the reader looks for a
+/// frame's sync wherever it is, and would find one in anything.
 pub(crate) fn open_adts(container: &Container) -> Option<Opened> {
+    if !is_adts(container) {
+        return None;
+    }
     let reader = AdtsReader::try_new(source(container, past_id3(container), true), FormatOptions::default()).ok()?;
     plain_aac(Bundled::new(Box::new(reader), false)?)?.opened(FORMAT_AAC, Start::default())
 }

@@ -7,7 +7,8 @@ use crate::FORMAT_MOVIE_PCM;
 /// How a writer stores a movie's sound: the description's type, its
 /// version and the bits it says, the bytes of a sample, and where an `enda`
 /// of 1 is (0 nowhere, 1 in a `wave`, 2 the description's own); a
-/// version-2 description's flags, and the frames it says a packet holds.
+/// version-2 description's flags, and the frames it says a packet holds;
+/// whether a version-1 description leaves its own four fields out.
 #[derive(Clone, Copy)]
 struct Sound {
     kind: &'static [u8; 4],
@@ -17,9 +18,11 @@ struct Sound {
     enda: u8,
     flags: u32,
     packet_frames: u32,
+    cut_short: bool,
 }
 
-const SOWT: Sound = Sound { kind: b"sowt", version: 0, bits: 16, sample_bytes: 2, enda: 0, flags: 0, packet_frames: 1 };
+const SOWT: Sound =
+    Sound { kind: b"sowt", version: 0, bits: 16, sample_bytes: 2, enda: 0, flags: 0, packet_frames: 1, cut_short: false };
 
 /// How a movie lays its sound out: the frames of each chunk, the bytes of
 /// something else before each, whether the movie box comes first, the
@@ -28,7 +31,9 @@ const SOWT: Sound = Sound { kind: b"sowt", version: 0, bits: 16, sample_bytes: 2
 /// each one's self flag), the ticks a sample lasts, and how many
 /// descriptions; the movie's clock, whether its headers are the 64-bit
 /// kind (version 1), whether its data box says a 64-bit size, and the text
-/// of an iTunes note in it, in an ISO `meta` or a QuickTime one.
+/// of an iTunes note in it, in an ISO `meta` or a QuickTime one; how many
+/// runs the sample-to-chunk table says it has (None: the ones it has), and
+/// the handler of a track of something else before the sound's.
 #[derive(Clone)]
 struct Layout {
     chunks: Vec<usize>,
@@ -44,6 +49,8 @@ struct Layout {
     long_headers: bool,
     wide_mdat: bool,
     itunes: Option<(&'static str, bool)>,
+    runs_said: Option<u32>,
+    track_before: Option<&'static [u8; 4]>,
 }
 
 impl Default for Layout {
@@ -62,6 +69,8 @@ impl Default for Layout {
             long_headers: false,
             wide_mdat: false,
             itunes: None,
+            runs_said: None,
+            track_before: None,
         }
     }
 }
@@ -135,12 +144,13 @@ fn description(sound: &Sound, channels: u16, rate: u32, reference: u16) -> Vec<u
         body.extend_from_slice(&(sound.bits as u16).to_be_bytes());
         body.extend_from_slice(&[0, 0, 0, 0]);
         body.extend_from_slice(&(rate << 16).to_be_bytes());
-        if sound.version == 1 {
+        if sound.version == 1 && !sound.cut_short {
             let frame = (usize::from(channels) * sound.sample_bytes) as u32;
             body.extend_from_slice(&be32(&[1, sound.sample_bytes as u32, frame, sound.sample_bytes as u32]));
         }
     }
-    let enda = full(b"enda", &[0, 1]);
+    // An `enda` is no full box: its body is the 16-bit flag alone.
+    let enda = atom(b"enda", &[0, 1]);
     match sound.enda {
         1 => body.extend(atom(b"wave", &enda)),
         2 => body.extend(enda),
@@ -162,14 +172,15 @@ fn movie_naming(sound: &Sound, channels: u16, layout: &Layout, reference: u16) -
     let samples = noise(frames * frame_bytes, 5);
     let ftyp = atom(b"ftyp", b"qt  \0\0\0\0qt  ");
 
-    let moov = |offsets: &[u64]| {
-        let mvhd = header(b"mvhd", layout.long_headers, layout.movie_scale, 0, &[vec![0, 1, 0, 0], vec![0u8; 76]].concat());
+    // A track of `handler`, its descriptions of `kind`.
+    let trak = |offsets: &[u64], handler: &[u8; 4], kind: &'static [u8; 4]| {
         let mdhd = header(b"mdhd", layout.long_headers, RATE, frames as u32, &[0u8; 4]);
-        let mut hdlr = b"mhlrsoun".to_vec();
+        let mut hdlr = b"mhlr".to_vec();
+        hdlr.extend_from_slice(handler);
         hdlr.extend(vec![0u8; 13]);
         let mut stsd = be32(&[layout.descriptions]);
         for _ in 0..layout.descriptions {
-            stsd.extend(description(sound, channels, RATE, reference));
+            stsd.extend(description(&Sound { kind, ..*sound }, channels, RATE, reference));
         }
         let mut runs = Vec::new();
         for (index, &chunk) in layout.chunks.iter().enumerate() {
@@ -177,7 +188,7 @@ fn movie_naming(sound: &Sound, channels: u16, layout: &Layout, reference: u16) -
                 runs.push((index + 1, chunk));
             }
         }
-        let mut stsc = be32(&[runs.len() as u32]);
+        let mut stsc = be32(&[layout.runs_said.unwrap_or(runs.len() as u32)]);
         runs.iter().for_each(|&(first, frames)| stsc.extend(be32(&[first as u32, frames as u32, 1])));
         let mut chunk_table = be32(&[offsets.len() as u32]);
         for &offset in offsets {
@@ -216,7 +227,15 @@ fn movie_naming(sound: &Sound, channels: u16, layout: &Layout, reference: u16) -
             trak.extend(atom(b"edts", &full(b"elst", &elst)));
         }
         trak.extend(atom(b"mdia", &mdia));
-        let mut moov = [mvhd, atom(b"trak", &trak)].concat();
+        atom(b"trak", &trak)
+    };
+    let moov = |offsets: &[u64]| {
+        let mvhd = header(b"mvhd", layout.long_headers, layout.movie_scale, 0, &[vec![0, 1, 0, 0], vec![0u8; 76]].concat());
+        let mut moov = mvhd;
+        if let Some(handler) = layout.track_before {
+            moov.extend(trak(offsets, handler, handler));
+        }
+        moov.extend(trak(offsets, b"soun", sound.kind));
         if let Some((text, iso)) = layout.itunes {
             moov.extend(itunes_note(text, iso));
         }
@@ -300,6 +319,8 @@ fn every_layout_of_a_movie_s_sound_reads_as_the_c_reads_it() {
         ("a 64-bit data box", Layout { wide_mdat: true, ..reel.clone() }),
         ("an edit holding back 1,024", Layout { edits: vec![(1024, 600)], ..reel.clone() }),
         ("an edit past the sound", Layout { edits: vec![(5000, 0)], ..reel.clone() }),
+        ("an edit of no duration", Layout { edits: vec![(300, 0)], ..reel.clone() }),
+        ("a track of time codes before the sound's", Layout { track_before: Some(b"tmcd"), ..reel.clone() }),
         ("an empty edit only", Layout { edits: vec![(-1, 600)], ..reel.clone() }),
         ("an empty edit, then one holding back 300", Layout { edits: vec![(-1, 600), (300, 4)], ..reel.clone() }),
         // 1 tick of a clock of 70 is 685.7 frames, kept as 686.
@@ -355,11 +376,23 @@ fn a_movie_whose_sound_this_does_not_read_is_left_as_the_c_leaves_it() {
         ("lpcm, two frames a packet", Sound { packet_frames: 2, ..lpcm }, reel.clone(), 1),
         ("lpcm of 12 bits", Sound { bits: 12, ..lpcm }, reel.clone(), 1),
         ("lpcm, unsigned 16", Sound { flags: 0, ..lpcm }, reel.clone(), 1),
+        ("a version-1 description cut short", Sound { version: 1, cut_short: true, ..SOWT }, reel.clone(), 1),
+        ("more runs said than the table holds", SOWT, Layout { runs_said: Some(1000), ..reel.clone() }, 1),
     ] {
-        let file = TempFile::new("refused.mov", &movie_naming(&sound, 2, &layout, reference));
-        let span = Span::whole(file.path());
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        assert_ne!(rust.format, FORMAT_MOVIE_PCM, "{what}");
-        assert_ne!(c.format, FORMAT_MOVIE_PCM, "{what}: the C's");
+        expect_refused(what, &movie_naming(&sound, 2, &layout, reference));
     }
+    // A sample table that says it runs past the box it is in.
+    let mut past = movie(&SOWT, 2, &reel);
+    let at = past.windows(4).position(|kind| kind == b"stbl").expect("a sample table") - 4;
+    let size = u32::from_be_bytes(past[at..at + 4].try_into().expect("4 bytes")) + 100;
+    past[at..at + 4].copy_from_slice(&size.to_be_bytes());
+    expect_refused("a sample table past its box", &past);
+}
+
+fn expect_refused(what: &str, bytes: &[u8]) {
+    let file = TempFile::new("refused.mov", bytes);
+    let span = Span::whole(file.path());
+    let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
+    assert_ne!(rust.format, FORMAT_MOVIE_PCM, "{what}");
+    assert_ne!(c.format, FORMAT_MOVIE_PCM, "{what}: the C's");
 }

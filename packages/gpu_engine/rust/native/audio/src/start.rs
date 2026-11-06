@@ -353,7 +353,7 @@ fn written_by_media_foundation(container: &Container, size: i64) -> bool {
 
 /// Whether `container` is a bare ADTS stream — AAC with no box to say
 /// anything in — by its first frame header, behind an ID3 tag or not.
-fn is_adts(container: &Container) -> bool {
+pub(crate) fn is_adts(container: &Container) -> bool {
     let mut head = [0u8; 2];
     container.read_at(past_id3(container), &mut head);
     // Twelve sync bits, then layer 00: an MPEG audio frame's layer is never

@@ -186,12 +186,18 @@ pub(crate) fn fixture(name: &str) -> PathBuf {
 
 /// An ID3v2 tag of `size` bytes of nothing, a footer after it when `footer`.
 pub(crate) fn id3(size: u8, footer: bool) -> Vec<u8> {
+    id3_holding(&vec![0u8; usize::from(size & 0x7F)], footer)
+}
+
+/// An ID3v2 tag holding `payload` (under 128 bytes).
+fn id3_holding(payload: &[u8], footer: bool) -> Vec<u8> {
+    let size = payload.len() as u8;
     let mut tag = b"ID3\x04\x00".to_vec();
-    tag.extend_from_slice(&[if footer { 0x10 } else { 0 }, 0, 0, 0, size & 0x7F]);
-    tag.extend(vec![0u8; usize::from(size & 0x7F)]);
+    tag.extend_from_slice(&[if footer { 0x10 } else { 0 }, 0, 0, 0, size]);
+    tag.extend_from_slice(payload);
     if footer {
         tag.extend_from_slice(b"3DI\x04\x00\x10\x00\x00\x00");
-        tag.push(size & 0x7F);
+        tag.push(size);
     }
     tag
 }
@@ -261,8 +267,8 @@ fn the_fixtures_decode_as_the_c_decodes_them() {
     }
 }
 
-/// The AAC of `movie` as a bare ADTS stream behind an ID3 tag: each packet
-/// behind the header an ADTS frame carries.
+/// The AAC of `movie` as a bare ADTS stream: each packet behind the header
+/// an ADTS frame carries.
 fn adts_of(movie: &Path) -> Vec<u8> {
     use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
     use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
@@ -275,7 +281,7 @@ fn adts_of(movie: &Path) -> Vec<u8> {
     let rate = rates.iter().position(|&rate| Some(rate) == params.sample_rate).expect("a rate ADTS names") as u8;
     let channels = params.channels.as_ref().expect("channels").count() as u8;
     let id = track.id;
-    let mut bytes = id3(40, false);
+    let mut bytes = Vec::new();
     while let Ok(Some(packet)) = reader.next_packet() {
         if packet.track_id != id {
             continue;
@@ -301,7 +307,8 @@ fn adts_of(movie: &Path) -> Vec<u8> {
 #[test]
 fn a_bare_aac_stream_reads_as_its_movie_reads() {
     let movie = fixture("tone.m4a");
-    let adts = TempFile::new("tone.aac", &adts_of(&movie));
+    let frames = adts_of(&movie);
+    let adts = TempFile::new("tone.aac", &[id3(40, false), frames.clone()].concat());
     let span = Span::whole(adts.path());
     let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
     // The same packets from the same start — AAC's standard lead, which the
@@ -318,6 +325,36 @@ fn a_bare_aac_stream_reads_as_its_movie_reads() {
         assert_eq!(rust.samples.len(), c.samples.len(), "the frames the C hands back");
         assert!(largest_difference(&rust.samples, &c.samples) <= 0.001);
     }
+
+    // A tag that holds what looks like a frame is passed over whole: the
+    // stream starts after it.
+    let fake = [0xFF, 0xF1, 0x50, 0x80, 0x02, 0x1F, 0xFC, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let tagged = TempFile::new("tone.aac", &[id3_holding(&fake, false), frames.clone()].concat());
+    let past_the_tag = rust_window(&Span::whole(tagged.path()), 0, -1);
+    assert!(past_the_tag.samples.iter().map(|s| s.to_bits()).eq(rust.samples.iter().map(|s| s.to_bits())));
+
+    // Frames behind something that is no tag are no bare stream: its start
+    // is where its first frame says nothing of (`start::is_adts`).
+    let behind = TempFile::new("tone.aac", &[vec![0x11; 100], frames].concat());
+    assert_eq!(rust_window(&Span::whole(behind.path()), 0, -1).format, crate::FORMAT_UNKNOWN);
+}
+
+#[test]
+fn a_movie_is_what_its_head_says() {
+    // The m4a with its first box named something no movie opens with: the
+    // movie's reader would find its sound all the same, but where that
+    // sound starts is read only of a movie by its head — so neither reads.
+    let mut bytes = std::fs::read(fixture("tone.m4a")).expect("the fixture");
+    assert_eq!(&bytes[4..8], b"ftyp");
+    bytes[4..8].copy_from_slice(b"uuid");
+    let renamed = TempFile::new("renamed.m4a", &bytes);
+    assert_eq!(rust_window(&Span::whole(renamed.path()), 0, -1).format, crate::FORMAT_UNKNOWN);
+}
+
+#[test]
+fn an_aac_core_of_24_khz_or_less_may_hide_its_sbr() {
+    assert!(crate::bundled::core_may_hide_sbr(24_000));
+    assert!(!crate::bundled::core_may_hide_sbr(32_000));
 }
 
 type Open = unsafe extern "C" fn(*const c_char, i64, i64, i32, *mut i32, *mut i32, *mut i32) -> *mut c_void;
