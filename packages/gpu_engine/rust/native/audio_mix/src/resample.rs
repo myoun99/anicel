@@ -314,6 +314,9 @@ pub unsafe extern "C" fn qa_audio_resample(
         return 0;
     };
     let output_frames = design.ready_end(input_frames, true);
+    if output_frames == 0 {
+        return 0;
+    }
     // SAFETY: the caller's contract.
     let (held, out) = unsafe {
         (

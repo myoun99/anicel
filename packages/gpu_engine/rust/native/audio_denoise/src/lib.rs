@@ -84,14 +84,15 @@ pub unsafe extern "C" fn qa_audio_denoise_f32(
 ) -> i32 {
     // What the take is and is not is `denoise`'s to say; this door only
     // turns the pointer into a slice — never a null one, nor a negative
-    // or overflowing length.
+    // or overflowing length, nor an empty one: a slice of nothing still
+    // wants an aligned pointer, and the C reads none for no frames.
     let (Ok(frames), Ok(channels)) = (usize::try_from(frames), usize::try_from(channels)) else {
         return 0;
     };
     let Some(len) = frames.checked_mul(channels) else {
         return 0;
     };
-    if samples.is_null() {
+    if samples.is_null() || len == 0 {
         return 0;
     }
     // SAFETY: the caller's contract.

@@ -277,7 +277,18 @@ fn the_filter_lengths_and_frame_counts_are_the_c_s() {
     let rates = [-1, 0, 1, 7, 8_000, 22_050, 44_100, 47_999, 48_000, 96_000, 192_000];
     for input in rates {
         for output in rates {
-            for (stopband, bandwidth) in [(120.0, 0.9), (80.0, 0.95), (40.0, 0.5), (20.0, 0.8), (120.0, 1.0)] {
+            // The default, Kaiser's three branches and their seam at 50,
+            // the shortest filter (15) and the longest (no transition).
+            for (stopband, bandwidth) in [
+                (120.0, 0.9),
+                (80.0, 0.95),
+                (50.0, 0.9),
+                (40.0, 0.5),
+                (20.0, 0.8),
+                (20.0, 0.5),
+                (10.0, 0.5),
+                (120.0, 1.0),
+            ] {
                 let asked = (input, output, stopband, bandwidth);
                 assert_eq!((taps.rust)(input, output, stopband, bandwidth), (taps.c)(input, output, stopband, bandwidth), "{asked:?}");
             }
@@ -287,6 +298,7 @@ fn the_filter_lengths_and_frame_counts_are_the_c_s() {
         }
     }
     assert_eq!(qa_audio_resample_taps(44_100, 48_000, 120.0, 0.9) % 2, 1, "LIVENESS: odd");
+    assert_eq!(qa_audio_resample_taps(48_000, 96_000, 20.0, 0.5), 15, "LIVENESS: the shortest");
 }
 
 /// A sound of `frames` x `channels`: tones and noise.
@@ -301,12 +313,31 @@ fn sound(frames: usize, channels: usize, seed: u32) -> Vec<f32> {
 }
 
 fn resampled(f: Resample, samples: &[f32], channels: i32, input: i32, output: i32) -> Vec<u32> {
+    resampled_at(f, samples, channels, (input, output), (120.0, 0.9))
+}
+
+/// `samples` converted whole by `f` at `quality` (stopband, bandwidth).
+fn resampled_at(f: Resample, samples: &[f32], channels: i32, rates: (i32, i32), quality: (f64, f64)) -> Vec<u32> {
     let frames = samples.len() as i64 / i64::from(channels);
-    let mut out = vec![f32::NAN; (qa_audio_resample_frames(frames, input, output) * i64::from(channels)) as usize];
+    let mut out = vec![f32::NAN; (qa_audio_resample_frames(frames, rates.0, rates.1) * i64::from(channels)) as usize];
     // SAFETY: `out` is sized by resample_frames.
-    let written = unsafe { f(samples.as_ptr(), frames, channels, input, output, 120.0, 0.9, out.as_mut_ptr()) };
+    let written =
+        unsafe { f(samples.as_ptr(), frames, channels, rates.0, rates.1, quality.0, quality.1, out.as_mut_ptr()) };
     assert_eq!(written * i64::from(channels), out.len() as i64);
     out.iter().map(|v| v.to_bits()).collect()
+}
+
+#[test]
+fn a_filter_of_every_quality_converts_as_the_c_s() {
+    let resample = Both::of("qa_audio_resample", qa_audio_resample as Resample);
+    let take = sound(9_001, 2, 21);
+    // Kaiser's three branches and their seam, and the shortest filter.
+    for quality in [(80.0, 0.95), (50.0, 0.9), (40.0, 0.9), (30.0, 0.8), (20.0, 0.5), (10.0, 0.5)] {
+        for rates in [(44_100, 48_000), (48_000, 96_000)] {
+            let rust = resampled_at(resample.rust, &take, 2, rates, quality);
+            assert_eq!(rust, resampled_at(resample.c, &take, 2, rates, quality), "{rates:?} at {quality:?}");
+        }
+    }
 }
 
 #[test]
@@ -353,6 +384,26 @@ fn both_refuse_the_same_conversions() {
     unsafe {
         close(ptr::null_mut());
         qa_audio_resampler_close(ptr::null_mut());
+    }
+    for side in [Stream::c(), Stream::rust()] {
+        let resampler = (side.open)(1, 44_100, 48_000, 120.0, 0.9);
+        // SAFETY: `resampler` is open; each null below is a refusal.
+        unsafe {
+            assert_eq!((side.push)(resampler, ptr::null(), 5), 0, "five frames from nowhere");
+            assert_eq!((side.push)(resampler, take.as_ptr(), -1), 0);
+            assert_eq!((side.push)(ptr::null_mut(), take.as_ptr(), 5), 0);
+            assert_eq!((side.push)(resampler, ptr::null(), 0), 1, "nothing, from nowhere, is taken");
+            assert_eq!((side.push)(resampler, take.as_ptr(), 64), 1);
+            assert_eq!((side.held)(resampler), 64, "LIVENESS: the refused pushes held nothing");
+            (side.end)(resampler);
+            assert_eq!((side.pull)(resampler, ptr::null_mut(), 8), 0);
+            assert_eq!((side.pull)(resampler, out.as_mut_ptr(), 0), 0);
+            assert_eq!((side.pull)(ptr::null_mut(), out.as_mut_ptr(), 8), 0);
+            assert_eq!(((side.held)(ptr::null()), (side.ready)(ptr::null())), (0, 0));
+            (side.end)(ptr::null_mut());
+            assert_eq!((side.pull)(resampler, out.as_mut_ptr(), 256), 69, "LIVENESS: what was taken comes out");
+            (side.close)(resampler);
+        }
     }
 }
 

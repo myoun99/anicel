@@ -84,11 +84,11 @@ fn envelope_at(keys: &[EnvelopeKey], position: i64) -> f64 {
     }
     for pair in keys.windows(2) {
         let (a, b) = (pair[0], pair[1]);
+        // ⛔The C's `span <= 0` return is not ported: a pair is reached
+        // only with a.sample ≤ position < b.sample, so its span is at
+        // least one (a mutant returning a's gain there lived, 11-06).
         if position < b.sample {
             let span = (b.sample - a.sample) as f64;
-            if span <= 0.0 {
-                return b.gain;
-            }
             let t = (position - a.sample) as f64 / span;
             return a.gain + (b.gain - a.gain) * t;
         }
@@ -218,6 +218,9 @@ pub fn bus_to_int16(bus: &[f64], out: &mut [i16]) {
 /// # Safety
 /// `items` is null or points at `count` values.
 unsafe fn slice_or_empty<'a, T>(items: *const T, count: i32) -> &'a [T] {
+    // No slice of nothing: an empty one still wants an aligned pointer,
+    // and the C reads none when the count is 0 (so a mutant dropping
+    // `count > 0` lives on every aligned pointer — kept on purpose).
     match usize::try_from(count) {
         // SAFETY: the caller's contract.
         Ok(count) if count > 0 && !items.is_null() => unsafe { slice::from_raw_parts(items, count) },
@@ -263,6 +266,7 @@ pub unsafe extern "C" fn qa_audio_mix(
     let (Ok(samples), Ok(channels)) = (usize::try_from(sample_count), usize::try_from(out_channels)) else {
         return;
     };
+    // An empty bus is no slice (see `slice_or_empty`).
     if out.is_null() || samples == 0 || channels == 0 {
         return;
     }
@@ -282,14 +286,13 @@ pub unsafe extern "C" fn qa_audio_mix(
 /// `bus` and `out` are null or point at `count` values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_audio_bus_to_float(bus: *const f64, count: i32, out: *mut f32) {
-    if out.is_null() {
+    // SAFETY: the caller's contract.
+    let bus = unsafe { slice_or_empty(bus, count) };
+    if out.is_null() || bus.is_empty() {
         return;
     }
     // SAFETY: the caller's contract.
-    unsafe {
-        let bus = slice_or_empty(bus, count);
-        bus_to_float(bus, slice::from_raw_parts_mut(out, bus.len()));
-    }
+    bus_to_float(bus, unsafe { slice::from_raw_parts_mut(out, bus.len()) });
 }
 
 /// [`bus_to_int16`] for C.
@@ -298,12 +301,11 @@ pub unsafe extern "C" fn qa_audio_bus_to_float(bus: *const f64, count: i32, out:
 /// `bus` and `out` are null or point at `count` values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_audio_bus_to_int16(bus: *const f64, count: i32, out: *mut i16) {
-    if out.is_null() {
+    // SAFETY: the caller's contract.
+    let bus = unsafe { slice_or_empty(bus, count) };
+    if out.is_null() || bus.is_empty() {
         return;
     }
     // SAFETY: the caller's contract.
-    unsafe {
-        let bus = slice_or_empty(bus, count);
-        bus_to_int16(bus, slice::from_raw_parts_mut(out, bus.len()));
-    }
+    bus_to_int16(bus, unsafe { slice::from_raw_parts_mut(out, bus.len()) });
 }
