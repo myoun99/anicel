@@ -18,10 +18,15 @@
 // layout hands the engine its letters there).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod glyphs;
+#[cfg(test)]
+mod glyphs_tests;
 #[cfg(test)]
 mod tests;
 
 use wgpu::util::DeviceExt;
+
+use glyphs::{Affine, Faces, Paint, Shape, covered};
 
 use crate::device::Engine;
 use crate::fail;
@@ -82,6 +87,38 @@ impl Layer {
         let [left, top, right, bottom] = self.cover.at;
         (top..bottom).any(|y| (left..right).any(|x| self.word(x, y) != 0))
     }
+}
+
+/// One pass as the app paints it: its shapes, how, in what colour.
+pub(crate) struct Pass {
+    /// Straight RGBA8, A<<24|B<<16|G<<8|R.
+    pub(crate) colour: u32,
+    pub(crate) hard: bool,
+    pub(crate) paint: Paint,
+    pub(crate) shapes: Vec<Shape>,
+}
+
+/// `passes`, bottom to top, set in `faces` and laid on the grid by
+/// `to_grid`: each pass's cover ([`covered`]) laid as a layer
+/// ([`lettered`]). Submits the work; the caller waits.
+pub(crate) fn set(
+    engine: &Engine,
+    composite: &Composite,
+    faces: &Faces,
+    to_grid: Affine,
+    passes: &[Pass],
+) -> Option<Lettered> {
+    let layers: Vec<Layer> = passes
+        .iter()
+        .filter_map(|pass| {
+            Some(Layer {
+                colour: pass.colour,
+                hard: pass.hard,
+                cover: covered(faces, &pass.shapes, pass.paint, to_grid)?,
+            })
+        })
+        .collect();
+    lettered(engine, composite, &layers)
 }
 
 /// The picture of letters: straight RGBA8 tiles over `rect`, tile after

@@ -28,7 +28,7 @@ fn laid(layers: &[Layer]) -> Option<Lettered> {
 }
 
 /// What `picture` holds at (`x`, `y`), A<<24|B<<16|G<<8|R.
-fn at(picture: &Lettered, x: i32, y: i32) -> u32 {
+pub(super) fn at(picture: &Lettered, x: i32, y: i32) -> u32 {
     let bytes = read_buffer(rig().engine, &picture.tiles);
     u32::from_le_bytes(pixel_at(&bytes, &tiles_of(picture.rect), x, y))
 }
