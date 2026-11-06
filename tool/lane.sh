@@ -41,7 +41,9 @@
 #    two ENDS of one type are each green alone (2026-09-07, a required parameter
 #    on one side and a fixture on the other). (Measured ONCE: a lane whose
 #    gates passed on the very commit that merges is not measured a second
-#    time — see MEASURED ONCE below.)
+#    time — see MEASURED ONCE below.) Both run on what the lane resolved
+#    from this machine's pub cache, and a package not there refuses the
+#    land rather than being downloaded (resolve_offline says why).
 # 4. Leave master behind. `land` fast-forwards master last, so the next lane
 #    someone opens is based on what just landed.
 # 5. Land C that nobody compiled. `flutter analyze` does not read C, and the
@@ -358,8 +360,30 @@ furnish() {
   # checkout holds C nobody has committed.
   ensure_engine "$p" \
     || echo "lane: ⚠️this lane's engine is not built from its C — native results here describe other C" >&2
-  (cd "$p" && flutter pub get >/dev/null 2>&1)
-  resolve_packages "$p"
+  resolve_offline "$p"
+}
+
+# ⛔NOTHING HERE DOWNLOADS (관제 2026-11-06, native-memory-safety): a
+# download is the user's to allow, in chat. The Surface's crate gate
+# fetched cpal and dasp_sample from crates.io before anyone was asked, and
+# `pub get` — here, and inside `flutter analyze` and `flutter test`
+# whenever a pubspec is newer than its resolution — does the same for a
+# package a lane adds. So the app at $1 and the packages it does not
+# depend on resolve from this machine's pub cache alone, the gates run
+# with --no-pub, and a miss is refused with what is missing; $2 is the
+# refusal it is, when it is one. Anything else pub could not resolve is
+# left as it was: the gates' analyze reads it as errors.
+resolve_offline() {
+  local p="$1" log="$1/build/lane-pub.log" rc=0 missing
+  mkdir -p "$p/build"
+  (cd "$p" && flutter pub get --offline) >"$log" 2>&1 || rc=1
+  resolve_packages "$p" >>"$log" 2>&1 || rc=1
+  [ "$rc" -eq 0 ] && return 0
+  missing="$(packages_not_here "$p" | tr '\n' ' ')"
+  [ -n "$missing" ] || return 0
+  not_downloaded \
+    "this machine has not downloaded every package the locks name${2:+ — this is refusal $2}" \
+    "$missing" "(cd $p && flutter pub get)" "$log"
 }
 
 # The packages the app does not depend on, which the merge gate still
@@ -369,9 +393,30 @@ furnish() {
 # The checkout's own copy of the script, so its own list is what runs.
 resolve_packages() {
   local p="$1"
-  [ -f "$p/tool/resolve_packages.sh" ] \
-    && bash "$p/tool/resolve_packages.sh" "$p" >/dev/null 2>&1
-  return 0
+  [ ! -f "$p/tool/resolve_packages.sh" ] \
+    || bash "$p/tool/resolve_packages.sh" "$p" --offline
+}
+
+# The packages the locks of the checkout at $1 take from a pub host that
+# this machine's pub cache lacks: what `flutter pub get` would download.
+packages_not_here() {
+  local cache="${PUB_CACHE:-${LOCALAPPDATA:+$LOCALAPPDATA/Pub/Cache}}" lock
+  cache="${cache:-$HOME/.pub-cache}"
+  for lock in $(git -C "$1" ls-files -- pubspec.lock '*/pubspec.lock'); do
+    awk '/^  [^ ]+:$/ { n = $1; sub(/:$/, "", n); h = 0 }
+      /^    source: hosted$/ { h = 1 }
+      h && /^    version: / { v = $2; gsub(/"/, "", v); print n "-" v }' "$1/$lock"
+  done | sort -u | grep -vxF -f <(ls "$cache"/hosted/*/ 2>/dev/null)
+}
+
+# What a refusal to download says — the law is above resolve_offline: what
+# is missing, and what would fetch it once the user says yes.
+not_downloaded() {  # not_downloaded <head> <missing> <command> <log>
+  die "$1
+  A download is the user's to allow, in chat.
+  Not here: $2
+  With their yes: $3
+  The whole log: $4"
 }
 
 cmd_list() {
@@ -903,20 +948,17 @@ cmd_crate() {
     # The trunk's target folder: every lane reuses what the trunk and the
     # lanes before it compiled (wgpu is minutes cold) — in its turn, which
     # every cargo building there takes (tool/cargo_turn.sh says why).
-    # Offline (관제 2026-11-06, native-memory-safety): a download is the
-    # user's to allow, in chat — the Surface's gate fetched cpal and
-    # dasp_sample from crates.io before anyone was asked. Cargo names one
-    # missing crate at a time, and not always the one: with cpal gone it
-    # said no `symphonia` was found, so the list comes from the lock.
+    # Offline — the law is above resolve_offline. Cargo names one missing
+    # crate at a time, and not always the one: with cpal gone it said no
+    # `symphonia` was found, so the list comes from the lock.
     (cd "$p/packages/gpu_engine/rust" \
       && bash "$ROOT/tool/cargo_turn.sh" \
         test --locked --offline --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
       tail -n +$((from + 1)) "$log" | grep -aqE 'offline mode|--offline was specified' \
-        && die "this machine has not downloaded every crate the lock names — this is refusal 8
-  The gate builds offline: a download is the user's to allow, in chat.
-  Not here: $(crates_not_here "$p/packages/gpu_engine/rust/Cargo.lock" | tr '\n' ' ')
-  With their yes: (cd $p/packages/gpu_engine/rust && cargo fetch --locked)
-  The whole log: $log"
+        && not_downloaded \
+          "this machine has not downloaded every crate the lock names — this is refusal 8" \
+          "$(crates_not_here "$p/packages/gpu_engine/rust/Cargo.lock" | tr '\n' ' ')" \
+          "(cd $p/packages/gpu_engine/rust && cargo fetch --locked)" "$log"
       grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
       die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
     }
@@ -1008,12 +1050,12 @@ gates() {
   local name="$1" p="$2" out analyze architecture analyzed tested
   room_first "${3:-}"
   at_idle
+  resolve_offline "$p" 3
   out="$(mktemp -d "${TMPDIR:-/tmp}/lane-gates.XXXXXX")"
-  resolve_packages "$p"
   echo "lane: flutter analyze (no arguments) and flutter test test/architecture, together"
-  (cd "$p" && flutter analyze) > "$out/analyze" 2>&1 &
+  (cd "$p" && flutter analyze --no-pub) > "$out/analyze" 2>&1 &
   analyze=$!
-  (cd "$p" && flutter test test/architecture) > "$out/architecture" 2>&1 &
+  (cd "$p" && flutter test --no-pub test/architecture) > "$out/architecture" 2>&1 &
   architecture=$!
   wait "$analyze"; analyzed=$?
   wait "$architecture"; tested=$?
@@ -1215,7 +1257,8 @@ cmd_land() {
   # trunk engine that cannot be rebuilt now is the next `open`'s to fix.
   ensure_engine "$ROOT" \
     || echo "lane: ⚠️the trunk's engine is not built from the trunk's C — the next open tries again" >&2
-  resolve_packages "$ROOT"
+  # A package missing here is the next open's to name.
+  resolve_packages "$ROOT" >/dev/null 2>&1 || true
 }
 
 { case "${1:-}" in

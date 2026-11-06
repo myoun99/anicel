@@ -481,7 +481,11 @@ void main() {
         expect(code, isNot(contains('ensure_engine')), reason: function);
       }
       final furnish = lane.codeOf('furnish').join('\n');
-      expect(furnish, contains('flutter pub get'));
+      expect(furnish, contains(r'resolve_offline "$p"'));
+      expect(
+        lane.codeOf('resolve_offline').join('\n'),
+        contains('flutter pub get --offline'),
+      );
       expect(furnish, contains(r'ensure_engine "$p"'));
     });
 

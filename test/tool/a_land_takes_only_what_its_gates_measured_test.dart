@@ -50,8 +50,14 @@ void main() {
         'the native build of a lane that touched the C, and the crate\'s '
         'tests of a lane that touched the crate or its ledger', () {
       final all = gates.join('\n');
-      expect(all, contains(r'(cd "$p" && flutter analyze)'));
-      expect(all, contains(r'(cd "$p" && flutter test test/architecture)'));
+      // Offline (관제 2026-11-06): what the lane resolved from this
+      // machine's pub cache, and neither gate resolves it again.
+      expect(all, contains(r'resolve_offline "$p" 3'));
+      expect(all, contains(r'(cd "$p" && flutter analyze --no-pub)'));
+      expect(
+        all,
+        contains(r'(cd "$p" && flutter test --no-pub test/architecture)'),
+      );
       expect(all, contains(r'lane_touched "$p" packages/qa_native/src'));
       expect(all, contains(r'cmd_native "$name"'));
       expect(all, contains(r'crate_gate "$name" "$p"'));

@@ -75,6 +75,12 @@
 # ↩️And the turn every cargo takes (tool/cargo_turn.sh) is copied into the
 # scratch trunk: since the gates took it (948f1c65d) every crate run here
 # was red for want of it, the script under test and the one before alike.
+# 🆕And pub the same (section V, 146 checks in all): a lane resolves
+# offline, its gates run with --no-pub, and a package its locks name that
+# this machine has not downloaded refuses the land — and the open, as no
+# refusal of the gates'. A `flutter` that writes down every call that could
+# download finds none in the whole run. ⚠️The script before THAT fails 9 of
+# the 12 there: it resolves online, and lands.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -87,6 +93,21 @@ cat > "$E/bin/flutter" <<'EOF'
 echo "$(basename "$PWD") flutter $*" >> "$LANE_TEST_LOG"
 [ -z "${LANE_TEST_PRIORITY:-}" ] || powershell.exe -NoProfile -Command \
   "(Get-Process -Id $(cat /proc/$$/winpid)).PriorityClass" | tr -d '\r' >> "$LANE_TEST_LOG.priority"
+# A `pub get` not offline, and an analyze or a test that runs one itself,
+# could download: each is written down where no section clears it. When
+# LANE_TEST_FLUTTER says absent, a package is not in the cache, and an
+# offline `pub get` fails as pub does.
+case " $* " in
+  *" pub get "*) case " $* " in
+      *" --offline "*) [ "${LANE_TEST_FLUTTER:-ok}" = absent ] && {
+          echo "Because app depends on args any which doesn't exist (could not find package args in cache), version solving failed."
+          exit 69
+        } ;;
+      *) echo "could download: flutter $*" >> "$LANE_TEST_LOG.downloads" ;;
+    esac ;;
+  *" --no-pub "*) ;;
+  " analyze "*|" test "*) echo "could download: flutter $*" >> "$LANE_TEST_LOG.downloads" ;;
+esac
 case "${LANE_TEST_FLUTTER:-ok}" in
   slow) [ "$1" = analyze ] && sleep 5 ;;
   red) [ "$1" = analyze ] && exit 1 ;;
@@ -180,7 +201,7 @@ out() {  # out <dir> <lane.sh args...>: the command's output and exit, on one li
   (cd "$d" && bash tool/lane.sh "$@" 2>&1 | grep -v "^Preparing worktree" | tr '\n' ' '; echo "[exit ${PIPESTATUS[0]}]")
 }
 quiet() { local d=$1; shift; (cd "$d" && bash tool/lane.sh "$@" >/dev/null 2>&1); }
-gates_run() { grep -c "flutter analyze\|flutter test test/architecture" "$LANE_TEST_LOG"; }
+gates_run() { grep -c "flutter analyze\|flutter test.* test/architecture" "$LANE_TEST_LOG"; }
 mirror_heads() { git -C "$E/mirror.git" for-each-ref --format='%(refname:short)' refs/heads | tr '\n' ' '; }
 commit() { echo "$3" > "$1/$2"; git -C "$1" add "$2" 2>/dev/null; git -C "$1" commit -q -m "$3" 2>/dev/null; }
 stamp() { git -C "$1" rev-parse -q --verify "refs/lane-gated/$2" 2>/dev/null || echo none; }
@@ -196,8 +217,13 @@ cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_s
   "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$E/home/tool/"
 # And the parity selector the gate of a lane that changed the C asks.
 printf '#!/bin/bash\necho test/parity_test.dart\n' > "$E/home/tool/native_parity_tests.sh"
+# And the packages the app does not depend on, with one to resolve.
+cp "$(dirname "${BASH_SOURCE[0]}")/resolve_packages.sh" "$E/home/tool/"
+mkdir -p "$E/home/packages/gpu_engine"; echo "name: gpu_engine" > "$E/home/packages/gpu_engine/pubspec.yaml"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh tool/native_parity_tests.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh tool/native_parity_tests.sh \
+  tool/resolve_packages.sh packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
+git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
 git clone -q -o backup "$E/mirror.git" "$E/away"
@@ -449,7 +475,7 @@ quiet "$E/home" open tg; commit "$HW/lane-tg" tg.txt "tg"
 O=$(LANE_TEST_FLUTTER=together out "$E/home" land tg)
 has "it lands" "$O" "merged work/tg"
 check "the architecture tests start while analyze still runs" \
-  "$(grep -m1 -o 'flutter test test/architecture\|analyze done' "$LANE_TEST_LOG")" "flutter test test/architecture"
+  "$(grep -m1 -o 'test/architecture\|analyze done' "$LANE_TEST_LOG")" "test/architecture"
 quiet "$E/home" open tr; commit "$HW/lane-tr" tr.txt "tr"
 : > "$LANE_TEST_LOG"
 O=$(LANE_TEST_FLUTTER=red out "$E/home" land tr)
@@ -460,7 +486,7 @@ quiet "$E/home" open ta; commit "$HW/lane-ta" ta.txt "ta"
 O=$(LANE_TEST_FLUTTER=red_arch out "$E/home" land ta)
 has "a red architecture test refuses the land" "$O" "the architecture gate is red"
 has "and shows what failed" "$O" "[E] the red one"
-check "and the architecture tests ran once" "$(grep -c 'flutter test test/architecture' "$LANE_TEST_LOG")" 1
+check "and the architecture tests ran once" "$(grep -c 'flutter test.* test/architecture' "$LANE_TEST_LOG")" 1
 
 say "T REFUSAL 8: a lane pays for the crate IT changed — and a stamp made elsewhere does not answer for this machine's GPU"
 cargo_runs() { grep -c "$1 cargo test" "$LANE_TEST_LOG"; }
@@ -550,8 +576,39 @@ check "LIVENESS — the run reached the mirror, on both machines, every way" \
   "$(grep -o ' \(push\|fetch\|ls-remote\) ' "$LANE_TEST_LOG.mirror" 2>/dev/null | sort -u | tr -d ' ' | tr '\n' ' ')" "fetch ls-remote push "
 check "and not one call could ask" "$(grep -v 'prompt=0 gcm=Never$' "$LANE_TEST_LOG.mirror" | head -3 | tr '\n' ' ')" ""
 
-say "V NOTHING IS DOWNLOADED: a gate builds offline, in this whole run"
-check "not one crate was downloaded" "$(cat "$LANE_TEST_LOG.downloads" 2>/dev/null | head -3 | tr '\n' ' ')" ""
+say "V NOTHING IS DOWNLOADED: a lane resolves offline, and its gates run on what it resolved"
+# A lock of two packages from pub and one from the SDK, and a machine whose
+# pub cache has one of them.
+quiet "$E/home" open pubs
+printf '%s\n' 'packages:' '  args:' '    dependency: transitive' '    description:' \
+  '      name: args' '      url: "https://pub.dev"' '    source: hosted' '    version: "2.5.0"' \
+  '  flutter:' '    dependency: "direct main"' '    description: flutter' '    source: sdk' \
+  '    version: "0.0.0"' '  have:' '    dependency: transitive' '    description:' \
+  '      name: have' '      url: "https://pub.dev"' '    source: hosted' '    version: "1.0.0"' \
+  'sdks:' '  dart: ">=3.5.0 <4.0.0"' > "$HW/lane-pubs/pubspec.lock"
+git -C "$HW/lane-pubs" add pubspec.lock
+git -C "$HW/lane-pubs" commit -q -m "a package this machine has not downloaded"
+mkdir -p "$E/pub-cache/hosted/pub.dev/have-1.0.0"
+: > "$LANE_TEST_LOG"; BEFORE=$(git -C "$E/home" rev-parse master)
+O=$(PUB_CACHE="$E/pub-cache" LANE_TEST_FLUTTER=absent out "$E/home" land pubs)
+has "a lane whose lock names a package not downloaded here is refused" \
+  "$O" "has not downloaded every package the locks name — this is refusal 3"
+has "and it names the package" "$O" "Not here: args-2.5.0 "
+lacks "and not the one that is here" "$O" "have-1.0.0"
+lacks "nor the SDK's" "$O" "flutter-0.0.0"
+has "and the command that would download it" "$O" "flutter pub get)"
+check "before a gate ran" "$(gates_run)" 0
+check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+O=$(out "$E/home" land pubs)
+has "with the package here, it lands" "$O" "merged work/pubs"
+O=$(PUB_CACHE="$E/pub-cache" LANE_TEST_FLUTTER=absent out "$E/home" open pubs2)
+has "and a lane cut from that trunk is refused too, naming it" "$O" "Not here: args-2.5.0 "
+lacks "where opening a lane is no refusal of the gates'" "$O" "this is refusal"
+# The whole run: every open, receive, gate and land above.
+check "not one crate or package could be downloaded" \
+  "$(cat "$LANE_TEST_LOG.downloads" 2>/dev/null | head -3 | tr '\n' ' ')" ""
+check "LIVENESS — and the packages the app does not depend on were resolved" \
+  "$(grep -q 'pub get --offline --directory packages/gpu_engine' "$LANE_TEST_LOG" && echo resolved)" resolved
 
 echo
 echo "== $FAILS failed"

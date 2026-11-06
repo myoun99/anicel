@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # THE PACKAGES THE APP DOES NOT DEPEND ON, resolved in their own folders.
 #
-#   bash tool/resolve_packages.sh <checkout>
+#   bash tool/resolve_packages.sh <checkout> [<flags for pub get>...]
 #
 # `flutter analyze` with no arguments -- the merge gate -- descends into
 # them, but the root's `pub get` never resolves them, so a checkout that has
@@ -11,11 +11,15 @@
 # One `pub get` there resolves its example/ too.
 #
 # The one list, read by both places the gate runs: tool/lane.sh
-# (resolve_packages) and CI's analyze job.
+# (resolve_packages) and CI's analyze job. The lanes pass --offline — a
+# download is the user's to allow, in chat (관제 2026-11-06,
+# native-memory-safety; tool/lane.sh resolve_offline) — and CI passes
+# nothing: its runner starts with no packages at all.
 set -u
 
 checkout="${1:-.}"
+[ $# -eq 0 ] || shift
 for package in packages/gpu_engine; do
   [ -f "$checkout/$package/pubspec.yaml" ] || continue
-  (cd "$checkout" && flutter pub get --directory "$package") || exit 1
+  (cd "$checkout" && flutter pub get "$@" --directory "$package") || exit 1
 done
