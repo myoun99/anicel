@@ -352,6 +352,12 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
 /// Stereo is plain stereo (not joint), and each frame's main data starts in
 /// it: a frame decodes alone.
 fn tone_frames(count: usize, gains: &[u32]) -> Vec<u8> {
+    tone_frames_at(count, gains, 0x90, 417)
+}
+
+/// The same at another rate: the header's third byte, and the frame's bytes
+/// at it.
+fn tone_frames_at(count: usize, gains: &[u32], rate_byte: u8, frame_bytes: usize) -> Vec<u8> {
     let channels = gains.len();
     let mut bits = Bits::default();
     bits.put(0, 9); // main_data_begin
@@ -374,8 +380,8 @@ fn tone_frames(count: usize, gains: &[u32]) -> Vec<u8> {
         bits.put(0b010, 3);
     }
     let body = bits.bytes();
-    let mut frame = vec![0u8; 417];
-    frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, if channels == 1 { 0xC0 } else { 0x00 }]);
+    let mut frame = vec![0u8; frame_bytes];
+    frame[..4].copy_from_slice(&[0xFF, 0xFB, rate_byte, if channels == 1 { 0xC0 } else { 0x00 }]);
     frame[4..4 + body.len()].copy_from_slice(&body);
     frame.repeat(count)
 }
@@ -487,15 +493,76 @@ fn a_piece_lasts_its_time_at_the_stream_s_rate() {
     assert_eq!(frames_lasting(777, None, 48_000), 777);
 }
 
+type Resample = unsafe extern "C" fn(*const f32, i64, i32, i32, i32, f64, f64, *mut f32) -> i64;
+type ResampleFrames = extern "C" fn(i64, i32, i32) -> i64;
+
+/// Interleaved `samples` of `channels` at `from` as the C conforms a whole
+/// sound to `to`.
+fn c_conformed(samples: &[f32], channels: usize, from: i32, to: i32) -> Vec<f32> {
+    // SAFETY: each type above is its export's C declaration in qa_engine.c.
+    let (frames_of, resample) = unsafe {
+        (oracle::export::<ResampleFrames>("qa_audio_resample_frames"), oracle::export::<Resample>("qa_audio_resample"))
+    };
+    let frames = (samples.len() / channels) as i64;
+    let mut out = vec![0.0; frames_of(frames, from, to) as usize * channels];
+    // SAFETY: `out` holds the frames qa_audio_resample_frames answers.
+    let written = unsafe { resample(samples.as_ptr(), frames, channels as i32, from, to, 120.0, 0.90, out.as_mut_ptr()) };
+    out.truncate(written as usize * channels);
+    out
+}
+
+/// A piece of MPEG frames as a decoder reads it from its first frame on —
+/// read alone, with the lead that takes put back: the piece opens with
+/// frames of silence enough for it.
+fn decoded(piece: &[u8]) -> Vec<f32> {
+    let (alone, channels) = mp3_read(piece);
+    [vec![0.0; LEAD * channels as usize], alone].concat()
+}
+
+/// Two frames of silence, then four that sound — a channel for each of
+/// `gains` — at the rate of a header's third byte.
+fn piece_at(rate_byte: u8, frame_bytes: usize, gains: &[u32]) -> Vec<u8> {
+    let mut silence = tone_frames_at(2, gains, rate_byte, frame_bytes);
+    silence.chunks_exact_mut(frame_bytes).for_each(|frame| frame[4..].fill(0));
+    [silence, tone_frames_at(4, gains, rate_byte, frame_bytes)].concat()
+}
+
 #[test]
-fn a_piece_at_another_rate_is_passed_over_until_the_resampler_lands() {
-    // Four frames at 48 kHz (384 bytes at 128 kbit/s) in a 44.1 kHz sound:
-    // a decoder of their own reads them, at their rate — and they are
-    // passed over, as before, until the resampler native-to-rust-Q11
-    // answers with (the one 타임라인/콘티 are porting) is here.
-    let (read, channels) = mp3_read(&[mp3_frames(12), mp3_frames_at(4, 0x94, 384), mp3_frames(8)].concat());
+fn a_piece_at_another_rate_is_heard_at_the_stream_s() {
+    // Six frames at 48 kHz (384 bytes at 128 kbit/s) amid a 44.1 kHz sound,
+    // and six at 32 kHz (576) at its end: each read by a decoder of its own
+    // and put in the sound's rate as the C conforms a whole sound — what a
+    // conversion fed piece by piece writes, bit for bit — and the sound's
+    // frames after it keep their place (native-to-rust-Q11).
+    for (what, rate, piece, after) in [
+        ("amid it", 48_000, piece_at(0x94, 384, &[230, 222]), 8),
+        ("at its end", 32_000, piece_at(0x98, 576, &[230, 222]), 0),
+    ] {
+        let conformed = c_conformed(&decoded(&piece), 2, rate, 44_100);
+        assert!(conformed.chunks_exact(2).any(|lr| lr[0] != lr[1]), "{what}: the channels differ");
+        let (read, channels) = mp3_read(&[mp3_frames(12), piece, mp3_frames(after)].concat());
+        assert_eq!(channels, 2);
+        let at = 12 * 1152 - LEAD;
+        assert_eq!(read.len(), 2 * at + conformed.len() + 2 * after * 1152, "{what}: every frame in its place");
+        assert_eq!(read[2 * at..2 * at + conformed.len()], conformed, "{what}: the piece");
+        assert!(read[..2 * at].iter().chain(&read[2 * at + conformed.len()..]).all(|&s| s == 0.0), "{what}: around it");
+    }
+}
+
+#[test]
+fn a_piece_at_a_third_rate_ends_the_run_before_it() {
+    // 48 kHz, then 32 kHz of one channel, then the sound's 44.1 kHz: the
+    // first run is converted to its end where the second starts, and the
+    // second's one channel is in both at 1/√2 before it is converted
+    // (native-to-rust-Q11 · Q12).
+    let (first, second) = (piece_at(0x94, 384, &[230, 222]), piece_at(0x98, 576, &[230]));
+    let widened: Vec<f32> = decoded(&second).iter().flat_map(|&s| [std::f32::consts::FRAC_1_SQRT_2 * s; 2]).collect();
+    let conformed = [c_conformed(&decoded(&first), 2, 48_000, 44_100), c_conformed(&widened, 2, 32_000, 44_100)].concat();
+    let (read, channels) = mp3_read(&[mp3_frames(12), first, second, mp3_frames(8)].concat());
     assert_eq!(channels, 2);
-    assert_eq!(read.len(), (20 * 1152 - LEAD) * 2);
+    let at = 12 * 1152 - LEAD;
+    assert_eq!(read.len(), 2 * at + conformed.len() + 2 * 8 * 1152, "every frame in its place");
+    assert_eq!(read[2 * at..2 * at + conformed.len()], conformed, "the two runs");
 }
 
 #[test]

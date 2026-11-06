@@ -96,6 +96,7 @@ dependencies = [
 name = "audio"
 version = "0.0.1"
 dependencies = [
+ "audio_mix",
  "media",
  "oracle",
  "symphonia",

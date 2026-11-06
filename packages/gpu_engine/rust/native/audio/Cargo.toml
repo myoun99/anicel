@@ -6,6 +6,9 @@ publish = false
 
 [dependencies]
 media = { path = "../media" }
+# The one resampler a sound is conformed with: a piece at another rate is
+# put in the stream's with it (native-to-rust-Q11).
+audio_mix = { path = "../audio_mix" }
 
 # The bundled decoders (native-to-rust-Q4, the user: 「오디오는 symphonia
 # 하나로」). ⛔Its defaults stay off: `opt-simd` sums the FFT in another

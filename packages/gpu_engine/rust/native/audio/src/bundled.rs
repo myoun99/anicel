@@ -8,6 +8,7 @@
 //! says it (`start` — the MP3's LAME tag, a movie's edit list), symphonia
 //! is told no: told yes as well, the frames are taken off twice.
 
+use audio_mix::{Resampler, resample_frames};
 use symphonia::core::audio::sample::Sample;
 use symphonia::core::audio::{Audio, AudioBuffer, GenericAudioBufferRef};
 use symphonia::core::codecs::audio::well_known::{CODEC_ID_AAC, CODEC_ID_ALAC, CODEC_ID_FLAC, CODEC_ID_VORBIS};
@@ -42,6 +43,38 @@ struct Bundled {
     channels: usize,
     /// The stream's rate: its first piece's, whatever the pieces after are.
     rate: u32,
+    /// The pieces at another rate being read now, converted to `rate`.
+    other: Option<Other>,
+}
+
+/// A run of pieces at one rate other than the stream's, and the conversion
+/// of them to the stream's (native-to-rust-Q11, the user's answer
+/// 2026-11-06: 「FFmpeg 처럼 첫 조각의 레이트로 바꿔 넣는다」 — the one
+/// resampler the timeline conforms a sound with, `audio_mix`'s). A run is
+/// fed as its pieces come, so a conversion of it is the whole run's, bit
+/// for bit; it ends where a piece of another rate, or nothing, comes.
+struct Other {
+    rate: u32,
+    resampler: Resampler,
+}
+
+/// ⚠️TEMPORARY until 타임라인/콘티's `mono-on-stereo` lands
+/// `audio_mix::DEFAULT_STOPBAND_DB` · `DEFAULT_BANDWIDTH`: the conform's
+/// own, `audio_resampler_reference.dart`'s.
+const STOPBAND_DB: f64 = 120.0;
+const BANDWIDTH: f64 = 0.90;
+
+impl Other {
+    /// The `frames` of `channels` at the head of `block` handed over, and
+    /// `block` made what of the run is ready now: how many frames — none
+    /// where the memory ran out.
+    fn feed(&mut self, block: &mut Vec<f32>, frames: usize, channels: usize) -> Option<usize> {
+        if !self.resampler.push(&block[..frames * channels]) {
+            return None;
+        }
+        block.resize(usize::try_from(self.resampler.ready()).ok()? * channels, 0.0);
+        usize::try_from(self.resampler.pull(block)).ok()
+    }
 }
 
 /// `container` from `origin` on, as a symphonia reader is handed it.
@@ -66,7 +99,7 @@ impl Bundled {
         let (track, time_base) = (track.id, track.time_base);
         let channels = decoder.codec_params().channels.as_ref()?.count();
         let rate = decoder.codec_params().sample_rate?;
-        (channels > 0).then_some(Bundled { reader, decoder, params, options, track, time_base, channels, rate })
+        (channels > 0).then_some(Bundled { reader, decoder, params, options, track, time_base, channels, rate, other: None })
     }
 
     /// The rate the decoder hands back — what it read of its codec's own
@@ -83,20 +116,20 @@ impl Bundled {
     }
 
     /// `packet`, which the decoder in hand refused, read by a new one — and
-    /// the new one reads the pieces after it, when it reads this one at the
-    /// stream's rate. symphonia's decoders refuse a piece of other channels
-    /// or another rate than the first they read (`symphonia-bundle-mp3`
-    /// 0.6.1 `decode_inner`), so a piece that changes them takes a decoder
-    /// of its own, and so does the piece that changes them back.
+    /// the new one reads the pieces after it. symphonia's decoders refuse a
+    /// piece of other channels or another rate than the first they read
+    /// (`symphonia-bundle-mp3` 0.6.1 `decode_inner`), so a piece that
+    /// changes them takes a decoder of its own, and so does the piece that
+    /// changes them back.
     fn afresh(&mut self, packet: &Packet, block: &mut Vec<f32>) -> Piece {
         let Ok(mut decoder) = get_codecs().make_audio_decoder(&self.params, &self.options) else {
             return Piece::Unread;
         };
         let piece = match decoder.decode(packet) {
-            Ok(buffer) => piece(buffer, block, self.channels, self.rate),
+            Ok(buffer) => piece(buffer, block, self.channels),
             Err(_) => return Piece::Unread,
         };
-        if matches!(piece, Piece::Read(_)) {
+        if matches!(piece, Piece::Read { .. }) {
             self.decoder = decoder;
         }
         piece
@@ -110,9 +143,54 @@ impl Bundled {
     /// none: packet.rs:340), and a piece inside a sound is trimmed of
     /// nothing — so it is the frames a decode of it would have handed back.
     fn silence(&self, packet: &Packet, block: &mut Vec<f32>) -> usize {
-        let frames = frames_lasting(packet.dur.get(), self.time_base, self.rate);
+        self.quiet(block, frames_lasting(packet.dur.get(), self.time_base, self.rate))
+    }
+
+    /// `block` made `frames` of silence.
+    fn quiet(&self, block: &mut Vec<f32>, frames: usize) -> usize {
         block.clear();
         block.resize(frames * self.channels, 0.0);
+        frames
+    }
+
+    /// The `frames` of a piece at `rate` at the head of `block`, converted
+    /// to the stream's by the run of pieces at it — behind what a run at
+    /// another rate still held. A piece no conversion is had for keeps its
+    /// place as silence, as one nothing reads does (Q8).
+    fn convert(&mut self, block: &mut Vec<f32>, frames: usize, rate: u32) -> usize {
+        let tail = if self.other.as_ref().is_some_and(|other| other.rate == rate) { Vec::new() } else { self.run_end() };
+        let (from, to) = (rate as i32, self.rate as i32);
+        if self.other.is_none() {
+            self.other = Resampler::new(self.channels, from, to, STOPBAND_DB, BANDWIDTH)
+                .map(|resampler| Other { rate, resampler });
+        }
+        let converted = match self.other.as_mut().and_then(|other| other.feed(block, frames, self.channels)) {
+            Some(converted) => converted,
+            None => self.quiet(block, usize::try_from(resample_frames(frames as i64, from, to)).unwrap_or(0)),
+        };
+        Self::ahead(tail, block, self.channels) + converted
+    }
+
+    /// What the run of pieces at another rate still holds, the run over.
+    fn run_end(&mut self) -> Vec<f32> {
+        let Some(mut other) = self.other.take() else { return Vec::new() };
+        other.resampler.end();
+        let mut tail = vec![0.0; usize::try_from(other.resampler.ready()).unwrap_or(0) * self.channels];
+        other.resampler.pull(&mut tail);
+        tail
+    }
+
+    /// The `frames` of the stream's rate in `block`, behind what the run of
+    /// pieces at another rate before them still held.
+    fn after_run(&mut self, block: &mut Vec<f32>, frames: usize) -> usize {
+        let tail = self.run_end();
+        Self::ahead(tail, block, self.channels) + frames
+    }
+
+    /// `tail` put ahead of what `block` holds: its frames.
+    fn ahead(tail: Vec<f32>, block: &mut Vec<f32>, channels: usize) -> usize {
+        let frames = tail.len() / channels;
+        block.splice(0..0, tail);
         frames
     }
 }
@@ -132,10 +210,8 @@ pub(crate) fn frames_lasting(lasts: u64, base: Option<TimeBase>, rate: u32) -> u
 
 /// What became of a packet.
 enum Piece {
-    /// Its frames, in the stream's channels.
-    Read(usize),
-    /// Read at another rate than the stream's.
-    OtherRate,
+    /// Its frames, in the stream's channels, at its rate.
+    Read { frames: usize, rate: u32 },
     /// Nothing here reads it, or puts it in the stream's channels.
     Unread,
     /// Read as sound no reader here hands.
@@ -150,16 +226,10 @@ enum Piece {
 /// who port the mixer, and this agree on the one place it is kept.
 const SHARE: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
-/// A decoded piece in `channels` into `block` — passed over when it is at
-/// another rate than `rate` (⚠️native-to-rust-Q11 answers: resampled to
-/// it, by the one resampler 타임라인/콘티 are porting — until it lands, as
-/// it was before).
-fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usize, rate: u32) -> Piece {
+/// A decoded piece in `channels` into `block`.
+fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usize) -> Piece {
     let spec = buffer.spec();
-    if spec.rate() != rate {
-        return Piece::OtherRate;
-    }
-    let own = spec.channels().count();
+    let (own, rate) = (spec.channels().count(), spec.rate());
     let frames = match buffer {
         GenericAudioBufferRef::U8(buffer) => interleave(buffer, block, convert::u8),
         // AIFF's 8-bit sound is signed, and dr_wav read it as a WAV
@@ -173,7 +243,7 @@ fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usiz
         // No reader here hands unsigned sound wider than 8 bits.
         _ => return Piece::End,
     };
-    if fit(block, frames, own, channels) { Piece::Read(frames) } else { Piece::Unread }
+    if fit(block, frames, own, channels) { Piece::Read { frames, rate } } else { Piece::Unread }
 }
 
 /// The `frames` of `own` channels at the head of `block`, put in `channels`:
@@ -216,25 +286,30 @@ fn interleave<S: Sample>(buffer: &AudioBuffer<S>, block: &mut Vec<f32>, convert:
 
 impl Decode for Bundled {
     /// Every piece keeps its place: one the decoder in hand refuses is read
-    /// by a new one (`afresh`) and put in the stream's channels (`fit`), and
-    /// one nothing reads is its length of silence (native-to-rust-Q8 · Q12 ·
-    /// Q13). ⚠️A piece at another rate than the stream's is passed over, as
-    /// it was, until the resampler native-to-rust-Q11 answers with lands.
-    /// One the reader cannot read ends the sound.
+    /// by a new one (`afresh`), put in the stream's channels (`fit`) and
+    /// converted to its rate (`convert`), and one nothing reads is its
+    /// length of silence (native-to-rust-Q8 · Q11 · Q12 · Q13). One the
+    /// reader cannot read ends the sound.
     fn next(&mut self, block: &mut Vec<f32>) -> usize {
         loop {
-            let Ok(Some(packet)) = self.reader.next_packet() else { return 0 };
+            let Ok(Some(packet)) = self.reader.next_packet() else {
+                block.clear();
+                return self.after_run(block, 0);
+            };
             if packet.track_id != self.track {
                 continue;
             }
             let piece = match self.decoder.decode(&packet) {
-                Ok(buffer) => piece(buffer, block, self.channels, self.rate),
+                Ok(buffer) => piece(buffer, block, self.channels),
                 Err(_) => self.afresh(&packet, block),
             };
             let frames = match piece {
-                Piece::Read(frames) => frames,
-                Piece::OtherRate => continue,
-                Piece::Unread => self.silence(&packet, block),
+                Piece::Read { frames, rate } if rate == self.rate => self.after_run(block, frames),
+                Piece::Read { frames, rate } => self.convert(block, frames, rate),
+                Piece::Unread => {
+                    let frames = self.silence(&packet, block);
+                    self.after_run(block, frames)
+                }
                 Piece::End => return 0,
             };
             if frames > 0 {
