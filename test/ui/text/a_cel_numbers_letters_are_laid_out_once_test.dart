@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/ui/text/canvas_letter_plate.dart'
-    show letterPlateBytesKept;
+    show letterPlateBytes, letterPlateBytesKept;
 import 'package:anicel/src/ui/text/cel_number_paint.dart';
 import 'package:anicel/src/ui/text/text_cel_render.dart'
     show textCelLayoutsKept;
@@ -160,6 +160,11 @@ void main() {
       reason: '🚨a plate let go of kept its raster',
     );
     expect(heavy.debugDisposed, isFalse, reason: 'the newest is kept');
+    expect(
+      letterPlateBytes,
+      heavy.width * heavy.height * 4,
+      reason: '🚨the census reads another weight than the plate kept',
+    );
   });
 
   testWidgets('letters pushed out by as many others as are kept are let go '

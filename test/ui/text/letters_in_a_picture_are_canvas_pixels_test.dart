@@ -60,7 +60,9 @@ void main() {
         shot: const LayerPlacement.identity(),
         content: TextCelContent(
           text: 'タロウ',
-          style: SeNameTag.defaultStyle.copyWith(fontSize: 17),
+          // A size between pixels: what the tag may paint ends between
+          // them too, and its plate still lies on whole ones.
+          style: SeNameTag.defaultStyle.copyWith(fontSize: 17.5),
           position: const ui.Offset(60.4, 30.7),
         ),
       ),
