@@ -6,8 +6,8 @@
 use std::sync::OnceLock;
 
 use super::{
-    Batch, Budget, Composite, DEPTH, KeyChain, Laid, Plan, Step, TILE, TILE_TEXELS, TileAt,
-    TileSet, check_depth, cut,
+    Batch, Budget, Compiled, Composite, DEPTH, KeyChain, Laid, Plan, Step, TILE, TILE_TEXELS,
+    TileAt, TileSet, check_depth, cut,
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN};
@@ -15,7 +15,7 @@ use crate::kernels::effects::KeyRun;
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
-use crate::kernels::shared::{ResampleMap, ResampleMode};
+use crate::kernels::shared::{ResampleMap, ResampleMode, ResampleModes};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 const WHOLE: u32 = 65535;
@@ -1526,19 +1526,48 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
     assert!(!show(&wide, [0, 0, width, height]));
 }
 
-// A surface's pass is compiled the first time its format is shown and kept:
-// a screen shows every frame, and a compile is far dearer than a frame.
+// A pass is compiled the first time a plan needs its output and modes, and
+// kept: a screen shows every frame, and a compile is far dearer than a
+// frame.
 #[test]
-fn a_surface_format_is_compiled_once() {
+fn a_pass_is_compiled_once_for_its_output_and_modes() {
     let (page, _) = composited_canvas();
-    let (_, moved) = cameras()[0];
+    let (_, turned) = cameras()[1];
     for _ in 0..2 {
-        shown(&page, moved, &surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm), whole_screen());
+        let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
+        shown(&page, turned, &texture, whole_screen());
+        rig().composite.settle();
     }
-    let surfaces = rig().composite.surfaces.lock();
-    let surfaces = surfaces.unwrap_or_else(std::sync::PoisonError::into_inner);
-    let rgba = surfaces.iter().filter(|(token, _)| *token == "rgba8unorm").count();
-    assert_eq!(rgba, 1);
+    let compiled = Compiled {
+        surface: Some("rgba8unorm"),
+        modes: ResampleModes::default().with(&turned.words()),
+    };
+    let passes = rig().composite.passes.lock();
+    let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert_eq!(passes.made.iter().filter(|(made, _)| *made == compiled).count(), 1);
+}
+
+// A plan's pass compiled for its own R1 modes, on a thread, composites what
+// the one compiled for every mode does, which serves until it is made: once
+// made, every pinned scene and screen comes out the same from it.
+#[test]
+fn a_pass_compiled_for_a_plan_s_modes_composites_as_the_one_for_every_mode() {
+    let scenes = scenes();
+    let (page, _) = composited_canvas();
+    let screens = || -> Vec<u8> {
+        let shown_by = |(_, map)| {
+            let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
+            shown(&page, map, &texture, whole_screen())
+        };
+        cameras().into_iter().flat_map(shown_by).collect()
+    };
+    scenes.iter().for_each(|(_, scene)| drop(widest(scene)));
+    drop(screens());
+    rig().composite.settle();
+    for (name, scene) in &scenes {
+        assert_pinned(&format!("composite/{name}"), &widest(scene));
+    }
+    assert_pinned("composite/screen", &screens());
 }
 
 // ---- Where a row is live ----
@@ -1681,7 +1710,7 @@ fn a_row_lays_nothing_where_it_is_not_live() {
             &laid,
             &tiles,
             EVERYWHERE,
-            &composite.pipeline,
+            None,
             &super::Target::Tiles(&out),
             composite.widest(),
         )

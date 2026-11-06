@@ -55,7 +55,7 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use wgpu::util::DeviceExt;
 
@@ -66,8 +66,8 @@ use crate::kernels::effects::KEY_WGSL;
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
-    WIDE_WGSL, encode_on, le_bytes, page_table, pipeline, runs, storage_format, tiles_a_pass, whole,
-    words_buffer,
+    ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, runs, storage_format,
+    tiles_a_pass, whole, words_buffer,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -233,11 +233,10 @@ struct Batch {
 }
 
 /// The composite pass, compiled for as many pages as the device lets a pass
-/// bind: once to put output tiles, and once for each surface format the
-/// first time one is shown.
+/// bind, once for each output and set of R1 modes ([`Compiled`]).
 pub(crate) struct Composite {
-    pipeline: wgpu::ComputePipeline,
-    surfaces: Mutex<Vec<(&'static str, wgpu::ComputePipeline)>>,
+    /// Shared with the threads that compile passes apart.
+    passes: Arc<Mutex<Passes>>,
     /// The pages of the pool a pass binds, past the plan and the work.
     pages: Pages,
 }
@@ -246,12 +245,12 @@ impl Composite {
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let own = Own { storage: OWN_BUFFERS, uniform: 1 };
         let pages = Pages::new(engine, own, OWN_BUFFERS + 1)?;
-        let pipeline = compile(engine, &pages, include_str!("to_tiles.wgsl"));
-        Some(Self {
-            pipeline,
-            surfaces: Mutex::new(Vec::new()),
+        let composite = Self {
+            passes: Arc::default(),
             pages,
-        })
+        };
+        composite.pass(engine, Compiled { surface: None, modes: ResampleModes::ALL });
+        Some(composite)
     }
 
     /// All this device lets a pass take.
@@ -285,7 +284,7 @@ impl Composite {
             mapped_at_creation: false,
         });
         let target = Target::Tiles(&out);
-        let passes = self.walk(engine, plan, tiles, extent, &self.pipeline, &target, budget)?;
+        let passes = self.walk(engine, plan, tiles, extent, None, &target, budget)?;
         Some(Composited { out, passes })
     }
 
@@ -311,7 +310,9 @@ impl Composite {
                 surface.height()
             ));
         }
-        let pipeline = self.surface_pipeline(engine, surface.format())?;
+        let Some(token) = storage_format(surface.format()) else {
+            return fail(format!("the composite cannot store to {:?}", surface.format()));
+        };
         let tiles: Vec<(i32, i32)> = (top / TILE..bottom.div_ceil(TILE))
             .flat_map(|row| {
                 (left / TILE..right.div_ceil(TILE)).map(move |column| (column as i32, row as i32))
@@ -319,7 +320,7 @@ impl Composite {
             .collect();
         let target = Target::Surface(surface.create_view(&Default::default()));
         let extent = rect.map(|edge| edge as i32);
-        self.walk(engine, plan, &tiles, extent, &pipeline, &target, budget)
+        self.walk(engine, plan, &tiles, extent, Some(token), &target, budget)
     }
 
     /// The surface's binding: past the plan, the work buffer and the pages.
@@ -327,39 +328,75 @@ impl Composite {
         self.pages.end()
     }
 
-    /// The pass that stores to a surface of `format`, compiled the first
-    /// time one is shown.
-    fn surface_pipeline(
-        &self,
-        engine: &Engine,
-        format: wgpu::TextureFormat,
-    ) -> Option<wgpu::ComputePipeline> {
-        let Some(token) = storage_format(format) else {
-            return fail(format!("the composite cannot store to {format:?}"));
-        };
-        let mut surfaces = self.surfaces.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some((_, pipeline)) = surfaces.iter().find(|(made, _)| *made == token) {
-            return Some(pipeline.clone());
+    /// The pass for `wanted`'s output that reads maps of `wanted`'s modes:
+    /// the one compiled for those modes once a thread has made it, and
+    /// until then the one compiled for every mode, which composites the
+    /// same bytes, slower. A compile takes seconds where a frame takes
+    /// milliseconds (1.7 s to 6 s cold on this PC, 11-06), so no plan waits
+    /// on one but an output's first, compiled for every mode where it is
+    /// first asked for — the tiles' in `new` — as before modes came apart.
+    fn pass(&self, engine: &Engine, wanted: Compiled) -> wgpu::ComputePipeline {
+        let every = Compiled { modes: ResampleModes::ALL, ..wanted };
+        let mut passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(pipeline) = passes.made(wanted) {
+            return pipeline;
         }
-        let output = include_str!("to_surface.wgsl")
-            .replace("__BINDING__", &self.surface_binding().to_string())
-            .replace("__FORMAT__", token);
-        let pipeline = compile(engine, &self.pages, &output);
-        surfaces.push((token, pipeline.clone()));
-        Some(pipeline)
+        if wanted != every && !passes.making.contains(&wanted) {
+            passes.making.push(wanted);
+            self.compile_apart(engine, wanted);
+        }
+        if let Some(pipeline) = passes.made(every) {
+            return pipeline;
+        }
+        let pipeline = compile(engine, &self.pages.source(), &self.output(every), every.modes);
+        passes.made.push((every, pipeline.clone()));
+        pipeline
     }
 
-    /// Walks `plan` over the output `tiles` in passes of `pipeline`, whose
-    /// last puts each pixel to `target` — inside `extent`, as it is;
-    /// outside, nothing or nowhere — and submits the work; returns how many
-    /// passes it took.
+    /// `wanted`'s pass compiled on a thread of its own, kept once made.
+    fn compile_apart(&self, engine: &Engine, wanted: Compiled) {
+        let (engine, passes) = (engine.clone(), Arc::clone(&self.passes));
+        let (pages, output) = (self.pages.source(), self.output(wanted));
+        std::thread::spawn(move || {
+            let pipeline = compile(&engine, &pages, &output, wanted.modes);
+            let mut passes = passes.lock().unwrap_or_else(PoisonError::into_inner);
+            passes.making.retain(|making| *making != wanted);
+            passes.made.push((wanted, pipeline));
+        });
+    }
+
+    /// What `compiled`'s pass puts its pixels by: to_tiles.wgsl's `put`, or
+    /// to_surface.wgsl's for its surface's format.
+    fn output(&self, compiled: Compiled) -> String {
+        match compiled.surface {
+            None => include_str!("to_tiles.wgsl").to_string(),
+            Some(token) => include_str!("to_surface.wgsl")
+                .replace("__BINDING__", &self.surface_binding().to_string())
+                .replace("__FORMAT__", token),
+        }
+    }
+
+    /// Waits for the passes threads are compiling.
+    #[cfg(test)]
+    pub(crate) fn settle(&self) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+        while !self.passes.lock().unwrap_or_else(PoisonError::into_inner).making.is_empty() {
+            assert!(std::time::Instant::now() < deadline, "a pass compiled apart never came");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    /// Walks `plan` over the output `tiles` in passes whose last puts each
+    /// pixel to `target` — the output tiles, or a surface of the format
+    /// `surface` names —, inside `extent` as it is and outside nothing or
+    /// nowhere, and submits the work; returns how many passes it took.
     fn walk(
         &self,
         engine: &Engine,
         plan: &Plan,
         tiles: &[(i32, i32)],
         extent: [i32; 4],
-        pipeline: &wgpu::ComputePipeline,
+        surface: Option<&'static str>,
         target: &Target,
         budget: Budget,
     ) -> Option<usize> {
@@ -376,7 +413,7 @@ impl Composite {
         check_depth(plan.steps, plan.sets.len(), plan.keys.len())?;
         check_mask(plan)?;
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
-        self.walk_laid(engine, plan, &laid, tiles, extent, pipeline, target, budget)
+        self.walk_laid(engine, plan, &laid, tiles, extent, surface, target, budget)
     }
 
     /// [`Composite::walk`] from the steps as `lay` laid them.
@@ -387,13 +424,14 @@ impl Composite {
         laid: &[Laid],
         tiles: &[(i32, i32)],
         extent: [i32; 4],
-        pipeline: &wgpu::ComputePipeline,
+        surface: Option<&'static str>,
         target: &Target,
         budget: Budget,
     ) -> Option<usize> {
         let page_count = plan.pages.len();
         let batches = cut(laid, budget.pages, budget.levels)?;
         let written = plan_words(laid, &batches, plan.sets, plan.keys, tiles, page_count);
+        let pipeline = &self.pass(engine, Compiled { surface, modes: written.modes });
         let steps = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -513,10 +551,37 @@ impl Composite {
     }
 }
 
-/// The composite pass binding `pages`, putting each pixel by `output`'s
-/// `put` — to_tiles.wgsl's or to_surface.wgsl's.
-fn compile(engine: &Engine, pages: &Pages, output: &str) -> wgpu::ComputePipeline {
-    let pages = pages.source();
+/// What a composite pass is compiled for: where it puts its pixels — the
+/// output tiles, or a surface of the format `surface` names — and the R1
+/// modes its plan's maps hold, the rest compiled out (resample.wgsl).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Compiled {
+    surface: Option<&'static str>,
+    modes: ResampleModes,
+}
+
+/// The composite passes made so far, and those a thread is compiling.
+#[derive(Default)]
+struct Passes {
+    made: Vec<(Compiled, wgpu::ComputePipeline)>,
+    making: Vec<Compiled>,
+}
+
+impl Passes {
+    fn made(&self, compiled: Compiled) -> Option<wgpu::ComputePipeline> {
+        let made = self.made.iter().find(|(made, _)| *made == compiled);
+        made.map(|(_, pipeline)| pipeline.clone())
+    }
+}
+
+/// The composite pass binding the pages `pages` declares, putting each
+/// pixel by `output`'s `put` and reading maps of `modes` alone.
+fn compile(
+    engine: &Engine,
+    pages: &str,
+    output: &str,
+    modes: ResampleModes,
+) -> wgpu::ComputePipeline {
     let body = include_str!("composite.wgsl").replace("//__OUTPUT__", output);
     let sources = [
         ISQRT_WGSL,
@@ -527,10 +592,10 @@ fn compile(engine: &Engine, pages: &Pages, output: &str) -> wgpu::ComputePipelin
         KEY_WGSL,
         PREMULTIPLY_WGSL,
         BYTE_WGSL,
-        &pages,
+        pages,
         &body,
     ];
-    pipeline(engine, &sources, "composite")
+    pipeline_with(engine, &sources, "composite", &modes.constants())
 }
 
 /// Fails where a row is masked and the plan has no mask, or where the mask's
@@ -733,13 +798,14 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
 }
 
 /// The plan buffer's words, where its output tiles start and how many words
-/// each takes, and where its passes' tables of pages start, one after
-/// another.
+/// each takes, where its passes' tables of pages start, one after another,
+/// and the R1 modes its rows' maps hold.
 struct PlanWords {
     words: Vec<u8>,
     tiles_at: u32,
     tile_words: u32,
     tables_at: u32,
+    modes: ResampleModes,
 }
 
 /// The steps, then each tile set's map, the key chains — an empty list,
@@ -787,6 +853,7 @@ fn plan_words(
     }
     let poses_at = chains_at + chains.len() as u32;
     let mut poses: Vec<u32> = Vec::new();
+    let mut modes = ResampleModes::default();
     for each in laid {
         let step = match each.step {
             Step::Row {
@@ -798,7 +865,9 @@ fn plan_words(
                 masked,
             } => {
                 let pose_at = poses_at + poses.len() as u32;
-                poses.extend(map.words());
+                let pose = map.words();
+                modes = modes.with(&pose);
+                poses.extend(pose);
                 let pages = || each.pages.iter().copied().map(u32::from);
                 let tiles = &sets[set];
                 [
@@ -846,5 +915,6 @@ fn plan_words(
         tiles_at,
         tile_words: 2 + masks as u32,
         tables_at,
+        modes,
     }
 }

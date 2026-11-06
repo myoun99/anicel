@@ -43,6 +43,8 @@ const WIDE: f64 = 2_305_843_009_213_693_952.0;
 const CEILING: f64 = 16.0;
 /// resample.wgsl's mode for a map that copies words, whichever was asked.
 const COPY: u32 = 2;
+/// Where a map's mode is among its words (resample.wgsl's `resample_map`).
+const MODE_WORD: usize = 7;
 /// 1 in Q.20 and in Q.36.
 const ONE: i32 = 1 << 20;
 const ONE_36: i64 = 1 << 36;
@@ -227,6 +229,42 @@ impl ResampleMap {
     }
 }
 
+/// The R1 modes a pass's maps hold, as their own mode words say — what
+/// resample.wgsl's overrides compile in. The copy is in every pass, as
+/// [`ResampleMap::words`] makes a whole-pixel move one whatever was asked.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ResampleModes(u32);
+
+impl ResampleModes {
+    /// Every mode.
+    pub(crate) const ALL: Self = Self(
+        1 << ResampleMode::Blend as u32
+            | 1 << ResampleMode::Pick as u32
+            | 1 << ResampleMode::Nearest as u32,
+    );
+
+    /// These and the mode of `words`, a map's as [`ResampleMap::words`]
+    /// wrote them — none for the copy, in every pass. A pass's modes are
+    /// taken from the very words it is handed, so no map of a mode left
+    /// out can reach it (캔버스 베이스 11-06).
+    pub(crate) fn with(self, words: &[u32; ResampleMap::WORDS]) -> Self {
+        match words[MODE_WORD] {
+            COPY => self,
+            mode => Self(self.0 | 1 << mode),
+        }
+    }
+
+    /// resample.wgsl's overrides for these modes.
+    pub(crate) fn constants(self) -> [(&'static str, f64); 3] {
+        let has = |mode: ResampleMode| f64::from(self.0 >> mode as u32 & 1);
+        [
+            ("resample_with_blend", has(ResampleMode::Blend)),
+            ("resample_with_pick", has(ResampleMode::Pick)),
+            ("resample_with_nearest", has(ResampleMode::Nearest)),
+        ]
+    }
+}
+
 /// q(x, k), when its magnitude is below `limit`: the integer specs' one
 /// way a double the CPU worked out becomes fixed point (gpu-int-spec-canvas
 /// 1b 공통) — R1's maps, a blur along a way's taps. Scaling by a power of
@@ -360,5 +398,30 @@ mod tests {
         for (n, inverse) in off.into_iter().enumerate() {
             assert_eq!(mode(inverse, ResampleMode::Pick), ResampleMode::Pick as u32, "{n}");
         }
+    }
+
+    // A pass's modes are its maps' mode words: a whole-pixel move asked of
+    // any mode is the copy every pass holds, and adds none; the three
+    // others together are every mode, each its own override.
+    #[test]
+    fn a_map_adds_its_mode_word_to_a_pass_s_modes() {
+        let moved = |mode| ResampleMap::new(IDENTITY, 1.0, mode, 10, 10).unwrap();
+        let turned = |mode| {
+            let inverse = [0.8, -0.6, 3.0, 0.6, 0.8, 1.0, 0.0, 0.0, 1.0];
+            ResampleMap::new(inverse, 1.0, mode, 10, 10).unwrap()
+        };
+        let none = ResampleModes::default();
+        for mode in [ResampleMode::Blend, ResampleMode::Pick, ResampleMode::Nearest] {
+            assert_eq!(none.with(&moved(mode).words()), none, "{mode:?}");
+        }
+        let of = |mode| none.with(&turned(mode).words()).constants().map(|(_, on)| on);
+        assert_eq!(of(ResampleMode::Blend), [1.0, 0.0, 0.0]);
+        assert_eq!(of(ResampleMode::Pick), [0.0, 1.0, 0.0]);
+        assert_eq!(of(ResampleMode::Nearest), [0.0, 0.0, 1.0]);
+        let every = [ResampleMode::Blend, ResampleMode::Pick, ResampleMode::Nearest]
+            .into_iter()
+            .fold(none, |modes, mode| modes.with(&turned(mode).words()));
+        assert_eq!(every, ResampleModes::ALL);
+        assert_eq!(ResampleModes::ALL.constants().map(|(_, on)| on), [1.0; 3]);
     }
 }

@@ -6,6 +6,7 @@ use std::sync::mpsc;
 use crate::{copy_out, fail, platform};
 
 /// One wgpu device and its queue.
+#[derive(Clone)]
 pub struct Engine {
     /// Kept for Android's window surfaces, which must come from the
     /// instance the adapter came from.

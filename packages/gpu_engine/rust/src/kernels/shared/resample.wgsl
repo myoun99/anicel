@@ -31,6 +31,17 @@ const RESAMPLE_SLOTS: u32 = 16u;
 // How far a tied Pick vote refines, per axis.
 const RESAMPLE_REFINE: u32 = 16u;
 
+// The modes a host's pass may meet, fixed when its pipeline is made: a mode
+// it never meets is compiled out, as what a pass holds compiled costs it
+// whether it runs or not — Pick's vote table alone held a 1080p composite
+// of no row at 321 µs of GPU where it holds 150 without (RTX 4080, DX12,
+// 브러시/렌더링 11-06). All in unless the host says, and the copy always;
+// a host hands a pass only maps of the modes it compiled in (the executor
+// takes them from the words it hands it, resample.rs `ResampleModes`).
+override resample_with_blend: bool = true;
+override resample_with_pick: bool = true;
+override resample_with_nearest: bool = true;
+
 // The map as the CPU quantised it once: x' = a·x + b·y + c and the rest,
 // a homography divided through by its largest w at the output's corners.
 struct ResampleMap {
@@ -573,18 +584,25 @@ fn resample(map: ResampleMap, source: u32, x: i32, y: i32) -> u32 {
     }
     return resample_texel(source, bitcast<i32>(sx.x), bitcast<i32>(sy.x));
   }
+  // No other map reaches a pass compiled for the copy alone.
+  if (!resample_with_blend && !resample_with_pick && !resample_with_nearest) {
+    return 0u;
+  }
   var point: ResamplePoint;
   if (!resample_locate(map, x, y, &point)) {
     return 0u;
   }
-  if (map.mode == RESAMPLE_BLEND) {
+  if (resample_with_blend && map.mode == RESAMPLE_BLEND) {
     return resample_blend(map, source, point);
   }
   // Nearest: the word under the spec's point p, floor(p) a side. u is p
   // less a half, so floor(p) is rnd(u, 16) — a centre on a border reads
   // the pixel right of it and under it.
-  if (map.mode == RESAMPLE_NEAREST) {
+  if (resample_with_nearest && map.mode == RESAMPLE_NEAREST) {
     return resample_texel(source, resample_round16(point.u), resample_round16(point.v));
+  }
+  if (!resample_with_pick) {
+    return 0u;
   }
   let axis_aligned = (map.b == 0 && map.d == 0) || (map.a == 0 && map.e == 0);
   if (resample_affine(map) && axis_aligned

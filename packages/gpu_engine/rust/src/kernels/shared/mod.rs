@@ -38,7 +38,7 @@ pub(crate) use dispatch::{
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};
 pub(crate) use pages::{NO_PAGE, Own, Pages, page_table, runs};
-pub(crate) use resample::{ResampleMap, ResampleMode, q};
+pub(crate) use resample::{ResampleMap, ResampleMode, ResampleModes, q};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.
 pub(crate) const ISQRT_WGSL: &str = include_str!("isqrt.wgsl");
@@ -61,6 +61,17 @@ pub(crate) const PREMULTIPLY_WGSL: &str = include_str!("premultiply.wgsl");
 /// `entry` — its bindings as that entry uses them. The crate's one builder:
 /// `one_builder.rs` reads the source for a copy.
 pub(crate) fn pipeline(engine: &Engine, sources: &[&str], entry: &str) -> wgpu::ComputePipeline {
+    pipeline_with(engine, sources, entry, &[])
+}
+
+/// [`pipeline`] with its sources' `override` constants named in
+/// `constants` set; the rest keep their defaults.
+pub(crate) fn pipeline_with(
+    engine: &Engine,
+    sources: &[&str],
+    entry: &str,
+    constants: &[(&str, f64)],
+) -> wgpu::ComputePipeline {
     let source = sources.join("\n");
     let module = engine
         .device
@@ -75,7 +86,10 @@ pub(crate) fn pipeline(engine: &Engine, sources: &[&str], entry: &str) -> wgpu::
             layout: None,
             module: &module,
             entry_point: Some(entry),
-            compilation_options: Default::default(),
+            compilation_options: wgpu::PipelineCompilationOptions {
+                constants,
+                ..Default::default()
+            },
             cache: None,
         })
 }
