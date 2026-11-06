@@ -308,3 +308,20 @@ fn passes_are_set_outline_under_fill_on_the_gpu() {
     assert_eq!(pixel_of(&picture, 5, 5), 0xFFFF_FFFF);
     assert_eq!(pixel_of(&picture, -3, 5), 0, "past the outline, nothing");
 }
+
+#[test]
+fn a_hard_pass_is_cut_on_the_gpu() {
+    // Three and a half pixels: the half is 127, under the cut.
+    let rig = rig();
+    let pass = |hard: bool| Pass {
+        colour: 0xFF20_30D0,
+        hard,
+        paint: Paint::Fill,
+        shapes: vec![Shape::Rect([0, 0, 3 * 64 + 32, 64])],
+    };
+    let smooth = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(false)]).expect("set");
+    let hard = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(true)]).expect("set");
+    assert_eq!(pixel_of(&smooth, 3, 0), 127 << 24 | 0x0020_30D0);
+    assert_eq!(pixel_of(&hard, 3, 0), 0);
+    assert_eq!(pixel_of(&hard, 2, 0), 0xFF20_30D0);
+}

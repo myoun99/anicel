@@ -142,9 +142,6 @@ pub(crate) fn covered(faces: &Faces, shapes: &[Shape], paint: Paint, to_grid: Af
             Shape::Rect(rect) => boxed(rect, &mut path),
         }
     }
-    if path.is_empty() {
-        return None;
-    }
     let mut mask = Mask::new(&path[..]);
     let transform = Transform::new(to_grid.a, to_grid.b, to_grid.c, to_grid.d, to_grid.e, to_grid.f);
     mask.transform(Some(transform));
@@ -196,9 +193,12 @@ pub(super) fn letters(faces: &Faces, run: &Run, path: &mut Vec<Command>) {
             let mut buffer = Buffer::new();
             buffer.push_str(&text);
             buffer.guess_segment_properties();
-            if shape(&ShaperFont::new(font), &mut buffer, ShapeOptions::new()).is_err() {
-                continue;
-            }
+            // harfrust refuses only a misuse (shape.rs: a buffer already
+            // shaped, no direction, a plan of another), and a fresh buffer
+            // whose direction was guessed is none — the guess falls back
+            // to left to right (buffer.rs `guess_segment_properties`).
+            shape(&ShaperFont::new(font), &mut buffer, ShapeOptions::new())
+                .expect("a fresh buffer, its direction guessed, shapes");
             for (glyph, position) in buffer.glyph_infos().iter().zip(buffer.glyph_positions()) {
                 let place = Place {
                     x: pen + f64::from(position.x_offset) * scale,
