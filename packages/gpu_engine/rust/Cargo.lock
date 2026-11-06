@@ -299,6 +299,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "image_encode"
+version = "0.0.1"
+dependencies = [
+ "oracle",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
