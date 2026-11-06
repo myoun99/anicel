@@ -870,7 +870,6 @@ cmd_native() {
 # downloaded: what `cargo fetch --locked` would download, every platform's.
 crates_not_here() {
   local home="${CARGO_HOME:-$HOME/.cargo}"
-  command -v cygpath >/dev/null 2>&1 && home="$(cygpath -u "$home")"
   awk '/^name = /{ n = $3 } /^version = /{ v = $3 }
     /^source = "registry\+/{ gsub(/"/, "", n); gsub(/"/, "", v); print n "-" v }' "$1" \
     | grep -vxF -f <(ls "$home"/registry/cache/*/ 2>/dev/null | sed -n 's/\.crate$//p')
