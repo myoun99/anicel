@@ -263,6 +263,32 @@ fn room_the_module_does_not_have_is_refused() {
     }
 }
 
+/// Room the module gives flush against the end of its memory is taken: the
+/// host asks for all it will lay there and all the plugin is told it may
+/// write.
+#[test]
+fn room_up_to_the_end_of_the_module_s_memory_is_taken() {
+    let flush = module(
+        "",
+        [
+            QUIET[0],
+            "(i32.sub (i32.const 65536) (local.get 0))",
+            "(memory.fill (local.get 0) (i32.const 65) (local.get 1)) (local.get 1)",
+            "(i32.load offset=96 (local.get 0))",
+            QUIET[4],
+        ],
+    );
+    for host in wasm_hosts() {
+        let flush = opened(host, &flush);
+        let who = host.name;
+        let mut room = [0 as c_char; 8];
+        assert_eq!(flush.describe(&mut room), 8, "{who}: describe");
+        assert_eq!(room, [65; 8], "{who}: described");
+        assert_eq!(flush.reach(&[], 9, 0.0, 1.0), 9, "{who}: reach");
+        assert_eq!(render(&flush, 80.0, true).0, OK, "{who}: render");
+    }
+}
+
 /// A trap in any question answers it as one, and a render's non-zero as a
 /// failure.
 #[test]
