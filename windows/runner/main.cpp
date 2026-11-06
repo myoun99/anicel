@@ -2,6 +2,8 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -78,6 +80,47 @@ bool HandToTheRunningWindow(const std::vector<std::string>& files) {
   return true;
 }
 
+// 🗣️connection-round-checklist-Q4 (유저 2026-11-06): 「환경설정에 GPU 고르기를
+// 넣는다 — 자동 · 절전 · 고성능」. The engine takes its GPU preference when it
+// is made, before Dart runs, so the runner reads the choice from the very
+// settings file Preferences ▸ System writes — not a copy left for the
+// runner, which could say something else. Dart's `AppGpuSettingsStore`
+// writes it as {"version":1,"preference":"<AppGpuPreference name>"}
+// (`the_runner_reads_the_gpu_setting_test` holds the spelling on both
+// sides). A missing, unreadable or unknown file is no preference: the OS
+// picks, as it did before there was a choice.
+flutter::GpuPreference GpuPreferenceOfTheSettings() {
+  wchar_t app_data[MAX_PATH];
+  const DWORD length =
+      ::GetEnvironmentVariable(L"APPDATA", app_data, MAX_PATH);
+  if (length == 0 || length >= MAX_PATH) {
+    return flutter::GpuPreference::NoPreference;
+  }
+  std::ifstream file(std::wstring(app_data, length) +
+                         L"\\anicel\\Settings\\gpu_settings.json",
+                     std::ios::binary);
+  const std::string text((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+  // The key's value is the next quoted word after it.
+  const std::string key = "\"preference\"";
+  const size_t at = text.find(key);
+  const size_t open =
+      at == std::string::npos ? at : text.find('"', at + key.size());
+  const size_t close =
+      open == std::string::npos ? open : text.find('"', open + 1);
+  if (close == std::string::npos) {
+    return flutter::GpuPreference::NoPreference;
+  }
+  const std::string name = text.substr(open + 1, close - open - 1);
+  if (name == "lowPower") {
+    return flutter::GpuPreference::LowPowerPreference;
+  }
+  if (name == "highPerformance") {
+    return flutter::GpuPreference::HighPerformancePreference;
+  }
+  return flutter::GpuPreference::NoPreference;
+}
+
 }  // namespace
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -96,6 +139,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // A frame's one picture is patched where it stands through Flutter GPU
   // (one-picture-per-frame, D7-2-Q3 유저 2026-10-24) — off unless asked for.
   project.set_enable_flutter_gpu(true);
+  project.set_gpu_preference(GpuPreferenceOfTheSettings());
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();

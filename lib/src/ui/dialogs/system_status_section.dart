@@ -1,12 +1,15 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../diagnostics/memory_census.dart';
 import '../editor_session_manager.dart';
+import '../../models/app_gpu_settings.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/runtime_path_report.dart';
-import '../../services/usage_stats/usage_stats.dart';
+import '../session/editor_app_settings.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import '../widgets/settings_rows.dart';
 import 'usage_stats_switch_row.dart';
 
 /// Preferences ▸ System: the live runtime-path report — which
@@ -23,20 +26,23 @@ import 'usage_stats_switch_row.dart';
 /// Above the report, the usage statistics' switch (I-70-Q3: on or off any
 /// time in 환경설정): what the app tells about itself, beside what it is
 /// running — the tab that already answers 「what is going on inside the
-/// app」, rather than a tab of its own for one row.
+/// app」, rather than a tab of its own for one row. And the GPU choice
+/// ([GpuPreferenceRow] — 유저 「설정의 시스템같은데서」, board
+/// `gpu-choice-in-preferences`): which GPU the app runs on is this tab's
+/// question too.
 class SystemStatusSection extends StatelessWidget {
   const SystemStatusSection({
     super.key,
     required this.openSessions,
-    required this.usageStats,
+    required this.appSettings,
   });
 
   /// Every open project — the census adds them all up (I-7).
   final Iterable<EditorSessionManager> openSessions;
 
-  /// What the usage statistics' switch turns on or off
-  /// ([UsageStatsSwitchRow]).
-  final UsageStats usageStats;
+  /// What the usage statistics' switch ([UsageStatsSwitchRow]) and the GPU
+  /// choice ([GpuPreferenceRow]) set.
+  final EditorAppSettings appSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +52,8 @@ class SystemStatusSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        UsageStatsSwitchRow(usageStats: usageStats),
+        UsageStatsSwitchRow(usageStats: appSettings.usageStats),
+        GpuPreferenceRow(appSettings: appSettings),
         const SizedBox(height: 10),
         Text(
           AppText.strings.systemStatusHelp,
@@ -76,6 +83,80 @@ class SystemStatusSection extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The GPU choice's row ([AppGpuSettings]) — on every platform, in the same
+/// place; where the platform's Flutter takes no choice
+/// ([AppGpu.choosableHere]) it stands dimmed and its tooltip says why
+/// (gpu-choice-in-preferences-Q1, 유저 2026-11-06: 「맥 · 리눅스에도 줄은
+/// 두되 흐리게(고를 수 없음)」 · 「호버 툴팁으로 이유 표시」). A tablet's
+/// one GPU stands under the same law.
+///
+/// The engine takes the choice when it is made, before Dart runs, so a pick
+/// this run did not start with ([AppGpu.startedWith]) says so in a WARNING
+/// under the row (the card: 「재시작 필요는 경고로만」). Its line is kept while
+/// there is nothing to warn of, so the report under it does not jump.
+class GpuPreferenceRow extends StatelessWidget {
+  const GpuPreferenceRow({super.key, required this.appSettings});
+
+  final EditorAppSettings appSettings;
+
+  static const pickerKey = 'settings-gpu-preference';
+  static const nextLaunchKey = ValueKey<String>('settings-gpu-next-launch');
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<AppGpuSettings>(
+        valueListenable: AppGpu.settings,
+        builder: (context, settings, _) {
+          final strings = AppText.strings;
+          final started = AppGpu.startedWith;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              settingsEnumPickerRow(
+                keyValue: pickerKey,
+                label: strings.gpuPreferenceLabel,
+                help: _helpHere(),
+                value: settings.preference,
+                values: AppGpuPreference.values,
+                labelOf: _labelOf,
+                onPicked: AppGpu.choosableHere ? _pick : null,
+              ),
+              Text(
+                started != null && settings.preference != started
+                    ? strings.gpuPreferenceNextLaunch
+                    : '',
+                key: nextLaunchKey,
+                style: TextStyle(fontSize: 11, color: AppColors.danger),
+              ),
+            ],
+          );
+        },
+      );
+
+  void _pick(AppGpuPreference preference) =>
+      appSettings.setGpuSettings(AppGpuSettings(preference: preference));
+
+  /// What the row's tooltip says here: what the choice is where it can be
+  /// made, and why it cannot where it cannot.
+  static String _helpHere() {
+    final strings = AppText.strings;
+    if (AppGpu.choosableHere) return strings.gpuPreferenceHelp;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.macOS => strings.gpuPreferenceNotOnMacOS,
+      TargetPlatform.linux => strings.gpuPreferenceDriverPicks,
+      _ => strings.gpuPreferenceOneGpu,
+    };
+  }
+
+  static String _labelOf(AppGpuPreference preference) => switch (preference) {
+    AppGpuPreference.auto => AppText.strings.gpuPreferenceAuto,
+    AppGpuPreference.lowPower => AppText.strings.gpuPreferenceLowPower,
+    AppGpuPreference.highPerformance =>
+      AppText.strings.gpuPreferenceHighPerformance,
+  };
 }
 
 /// What the app is holding, what the OS will still give it, and whether

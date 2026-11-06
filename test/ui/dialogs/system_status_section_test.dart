@@ -1,11 +1,16 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_gpu_settings.dart';
 import 'package:anicel/src/ui/dialogs/system_status_section.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// Preferences ▸ System (user rule 07-22): every runtime-selected
 /// implementation path is REPORTED — the report's subsystem roster is a
@@ -83,7 +88,7 @@ void main() {
           body: SingleChildScrollView(
             child: SystemStatusSection(
               openSessions: [session],
-              usageStats: session.appSettings.usageStats,
+              appSettings: session.appSettings,
             ),
           ),
         ),
@@ -100,5 +105,129 @@ void main() {
       );
       expect(find.text(entry.subsystem), findsOneWidget);
     }
+  });
+
+  // 🗣️connection-round-checklist-Q4 (유저 2026-11-06): 「환경설정에 GPU 고르기를
+  // 넣는다 — 자동 · 절전 · 고성능」 — where the platform's Flutter takes one.
+  group('the GPU choice', () {
+    final picker = find.byKey(
+      const ValueKey<String>(GpuPreferenceRow.pickerKey),
+    );
+    String row(AppGpuPreference preference) =>
+        '${GpuPreferenceRow.pickerKey}-${preference.name}';
+    final warning = find.byKey(GpuPreferenceRow.nextLaunchKey);
+
+    tearDown(AppGpu.debugReset);
+
+    Future<void> pump(WidgetTester tester) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SystemStatusSection(
+                openSessions: [session],
+                appSettings: session.appSettings,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    bool warns(WidgetTester tester) {
+      final said = tester.widget<Text>(warning).data!;
+      expect(said, anyOf('', AppText.strings.gpuPreferenceNextLaunch));
+      return said.isNotEmpty;
+    }
+
+    Future<void> pick(WidgetTester tester, AppGpuPreference to) async {
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(row(to))));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('is auto, power saving and high performance; a pick is the '
+        'setting, and one the run did not start with warns in a line kept '
+        'for it', (tester) async {
+      AppGpu.noteStartedWith(AppGpuPreference.auto);
+      await pump(tester);
+      expect(
+        [
+          for (final entry
+              in tester.widget<PanelFlyoutButton>(picker).entriesBuilder())
+            if (entry is PanelFlyoutItem) (entry.keyValue, entry.label),
+        ],
+        [
+          (row(AppGpuPreference.auto), AppText.strings.gpuPreferenceAuto),
+          (
+            row(AppGpuPreference.lowPower),
+            AppText.strings.gpuPreferenceLowPower,
+          ),
+          (
+            row(AppGpuPreference.highPerformance),
+            AppText.strings.gpuPreferenceHighPerformance,
+          ),
+        ],
+      );
+      expect(warns(tester), isFalse);
+      final kept = tester.getSize(find.byType(GpuPreferenceRow));
+
+      await pick(tester, AppGpuPreference.highPerformance);
+      expect(
+        AppGpu.settings.value,
+        const AppGpuSettings(preference: AppGpuPreference.highPerformance),
+      );
+      expect(warns(tester), isTrue);
+      expect(tester.getSize(find.byType(GpuPreferenceRow)), kept);
+
+      await pick(tester, AppGpuPreference.auto);
+      expect(AppGpu.settings.value, const AppGpuSettings());
+      expect(warns(tester), isFalse, reason: 'back to what the run has');
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+    String tooltipOf(WidgetTester tester) => tester
+        .widget<AppTooltip>(
+          find.ancestor(of: picker, matching: find.byType(AppTooltip)),
+        )
+        .message;
+
+    testWidgets('where it can be made, its tooltip says what it is', (
+      tester,
+    ) async {
+      await pump(tester);
+      expect(tester.widget<PanelFlyoutButton>(picker).enabled, isTrue);
+      expect(tooltipOf(tester), AppText.strings.gpuPreferenceHelp);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+    // 🗣️gpu-choice-in-preferences-Q1 (유저 2026-11-06): 「맥 · 리눅스에도
+    // 줄은 두되 흐리게(고를 수 없음)」 · 「호버 툴팁으로 이유 표시」.
+    final whyNot = <TargetPlatform, String Function()>{
+      TargetPlatform.macOS: () => AppText.strings.gpuPreferenceNotOnMacOS,
+      TargetPlatform.linux: () => AppText.strings.gpuPreferenceDriverPicks,
+      TargetPlatform.iOS: () => AppText.strings.gpuPreferenceOneGpu,
+      TargetPlatform.android: () => AppText.strings.gpuPreferenceOneGpu,
+    };
+    final elsewhere = TargetPlatformVariant(whyNot.keys.toSet());
+    testWidgets('where the platform\'s Flutter takes none, the row stands '
+        'in its place, dimmed, its tooltip saying why', (tester) async {
+      await pump(tester);
+      expect(find.byType(GpuPreferenceRow), findsOneWidget);
+      expect(tester.widget<PanelFlyoutButton>(picker).enabled, isFalse);
+      expect(tooltipOf(tester), whyNot[defaultTargetPlatform]!());
+
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(ValueKey<String>(row(AppGpuPreference.highPerformance))),
+        findsNothing,
+        reason: 'no list to pick from',
+      );
+      expect(AppGpu.settings.value, const AppGpuSettings());
+    }, variant: elsewhere);
   });
 }

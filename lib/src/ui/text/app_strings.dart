@@ -918,6 +918,16 @@ enum AppStrings {
   String get instructionEditorColor => _s('instructionEditorColor');
   String get instructionEditorMark => _s('instructionEditorMark');
   String get systemStatusHelp => _s('systemStatusHelp');
+  String get gpuPreferenceLabel => _s('gpuPreferenceLabel');
+  String get gpuPreferenceHelp => _s('gpuPreferenceHelp');
+  String get gpuPreferenceAuto => _s('gpuPreferenceAuto');
+  String get gpuPreferenceLowPower => _s('gpuPreferenceLowPower');
+  String get gpuPreferenceHighPerformance =>
+      _s('gpuPreferenceHighPerformance');
+  String get gpuPreferenceNextLaunch => _s('gpuPreferenceNextLaunch');
+  String get gpuPreferenceNotOnMacOS => _s('gpuPreferenceNotOnMacOS');
+  String get gpuPreferenceDriverPicks => _s('gpuPreferenceDriverPicks');
+  String get gpuPreferenceOneGpu => _s('gpuPreferenceOneGpu');
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlNoLayers => _s('tlNoLayers');
@@ -2821,6 +2831,17 @@ enum AppStrings {
     'instructionEditorIcon': 'Icon',
     'instructionEditorColor': 'Color',
     'instructionEditorMark': 'Mark',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp':
+        'Which kind of GPU Anicel asks Windows for when it starts, on a '
+        'computer with more than one.',
+    'gpuPreferenceAuto': 'Automatic',
+    'gpuPreferenceLowPower': 'Power saving',
+    'gpuPreferenceHighPerformance': 'High performance',
+    'gpuPreferenceNextLaunch': 'Takes effect the next time Anicel starts.',
+    'gpuPreferenceNotOnMacOS': 'On macOS, Anicel cannot pick its GPU.',
+    'gpuPreferenceDriverPicks': 'On Linux, the graphics driver picks the GPU.',
+    'gpuPreferenceOneGpu': 'This device has one GPU.',
     'systemStatusHelp':
         'Which implementation each subsystem is running right now. Fallback paths keep the app working but usually run slower — the names are searchable if you want the details.',
     'cutCommands': 'Cut commands',
@@ -4252,6 +4273,15 @@ enum AppStrings {
     'instructionEditorIcon': 'アイコン',
     'instructionEditorColor': '色',
     'instructionEditorMark': '記号',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp': 'GPU が複数あるコンピューターで、Anicel の起動時に Windows に求める GPU の種類。',
+    'gpuPreferenceAuto': '自動',
+    'gpuPreferenceLowPower': '省電力',
+    'gpuPreferenceHighPerformance': '高パフォーマンス',
+    'gpuPreferenceNextLaunch': '次回の起動から反映されます。',
+    'gpuPreferenceNotOnMacOS': 'macOS では Anicel は GPU を選べません。',
+    'gpuPreferenceDriverPicks': 'Linux ではグラフィックドライバーが GPU を選びます。',
+    'gpuPreferenceOneGpu': 'このデバイスの GPU は 1 つです。',
     'systemStatusHelp':
         '各サブシステムが今どの実装で動いているかです。フォールバック経路でもアプリは動きますが、たいていは遅くなります — 詳しく知りたいときは名前で検索できます。',
     'shortcutShelf.canvas': 'カンバス',
@@ -6117,6 +6147,15 @@ enum AppStrings {
     'instructionEditorIcon': '아이콘',
     'instructionEditorColor': '색',
     'instructionEditorMark': '기호',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp': 'GPU 가 여럿인 컴퓨터에서 애니셀이 시작할 때 Windows 에 청할 GPU 의 종류.',
+    'gpuPreferenceAuto': '자동',
+    'gpuPreferenceLowPower': '절전',
+    'gpuPreferenceHighPerformance': '고성능',
+    'gpuPreferenceNextLaunch': '다음 실행부터 적용됩니다.',
+    'gpuPreferenceNotOnMacOS': 'macOS 에서는 애니셀이 GPU 를 고를 수 없습니다.',
+    'gpuPreferenceDriverPicks': '리눅스에서는 그래픽 드라이버가 GPU 를 고릅니다.',
+    'gpuPreferenceOneGpu': '이 기기는 GPU 가 하나입니다.',
     'systemStatusHelp':
         '각 서브시스템이 지금 어떤 구현으로 돌고 있는지입니다. 폴백 경로에서도 앱은 동작하지만 대개 더 느립니다 — 자세히 알고 싶으면 이름으로 검색할 수 있습니다.',
     'shortcutShelf.canvas': '캔버스',
@@ -8020,6 +8059,18 @@ enum AppStrings {
     'instructionEditorIcon': 'Icône',
     'instructionEditorColor': 'Couleur',
     'instructionEditorMark': 'Repère',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp':
+        'Le type de GPU qu’Anicel demande à Windows au démarrage, sur un '
+        'ordinateur qui en a plusieurs.',
+    'gpuPreferenceAuto': 'Automatique',
+    'gpuPreferenceLowPower': 'Économie d’énergie',
+    'gpuPreferenceHighPerformance': 'Hautes performances',
+    'gpuPreferenceNextLaunch': 'Prend effet au prochain démarrage d’Anicel.',
+    'gpuPreferenceNotOnMacOS': 'Sur macOS, Anicel ne peut pas choisir son GPU.',
+    'gpuPreferenceDriverPicks':
+        'Sous Linux, c’est le pilote graphique qui choisit le GPU.',
+    'gpuPreferenceOneGpu': 'Cet appareil n’a qu’un GPU.',
     'systemStatusHelp':
         'Quelle implémentation chaque sous-système exécute en ce moment. Les chemins de repli gardent l\'application fonctionnelle mais tournent en général plus lentement — les noms sont cherchables si vous voulez les détails.',
     'shortcutShelf.canvas': 'Canevas',
@@ -9975,6 +10026,15 @@ enum AppStrings {
     'instructionEditorIcon': '图标',
     'instructionEditorColor': '颜色',
     'instructionEditorMark': '记号',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp': '在有多个 GPU 的电脑上，Anicel 启动时向 Windows 请求的 GPU 类型。',
+    'gpuPreferenceAuto': '自动',
+    'gpuPreferenceLowPower': '节能',
+    'gpuPreferenceHighPerformance': '高性能',
+    'gpuPreferenceNextLaunch': '下次启动 Anicel 时生效。',
+    'gpuPreferenceNotOnMacOS': '在 macOS 上，Anicel 无法选择 GPU。',
+    'gpuPreferenceDriverPicks': '在 Linux 上，由显卡驱动选择 GPU。',
+    'gpuPreferenceOneGpu': '此设备只有一个 GPU。',
     'systemStatusHelp': '每个子系统当前运行的是哪一种实现。回退路径仍能让应用正常工作，但通常更慢 — 想了解细节可以按名称搜索。',
     'shortcutShelf.canvas': '画布',
     'shortcutShelf.tools': '工具',
