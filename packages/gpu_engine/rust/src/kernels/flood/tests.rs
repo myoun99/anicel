@@ -205,7 +205,8 @@ fn pixels_compare_premultiplied() {
 #[test]
 fn diagonal_neighbours_never_join() {
     let colour = |x: u32, y: u32| if (x + y) % 2 == 0 { [9, 9, 9, 255] } else { [200, 9, 9, 255] };
-    for seed in [(127, 127), (128, 128), (0, 255), (200, 61)] {
+    // A seed in each of a tile row's four words.
+    for seed in [(127, 127), (128, 128), (0, 255), (200, 61), (45, 3)] {
         let filled = flood((2, 2), colour, seed, 0);
         assert_eq!(filled.count(), 1, "{seed:?}");
         assert!(filled.at(seed.0, seed.1), "{seed:?}");

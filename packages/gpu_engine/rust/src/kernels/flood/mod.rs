@@ -104,9 +104,11 @@ impl Flood {
             right,
             bottom,
         } = inside;
-        if left >= right || top >= bottom || right > across * TILE || bottom > down * TILE {
+        if right > across * TILE || bottom > down * TILE {
             return fail(format!("{inside:?} is no box of {across} × {down} tiles"));
         }
+        // A box that holds the seed holds a pixel at least (mutant r06,
+        // 11-06: an empty box was refused twice).
         if x < left || x >= right || y < top || y >= bottom {
             return fail(format!("a seed at ({x}, {y}) is off the picture's {inside:?}"));
         }

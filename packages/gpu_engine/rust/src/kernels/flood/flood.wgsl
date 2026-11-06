@@ -110,18 +110,19 @@ fn flood_down_bits(seeds: u32, fill: u32) -> u32 {
 }
 
 // A row's seeds spread along it through `fill`, word to word: each run the
-// seeds touch, whole. A seed stays where `fill` is not — the seed itself.
+// seeds touch, whole. Seeds lie in `fill` — the seed is within its own
+// tolerance and in the box, and every other came through `fill` — so the
+// carries see no bit past it (mutants f15 · f16, 11-06).
 fn flood_along(seeds: vec4<u32>, fill: vec4<u32>) -> vec4<u32> {
-  let held = seeds & fill;
-  let r0 = flood_up_bits(held.x, fill.x);
-  let r1 = flood_up_bits(held.y | ((r0 >> 31u) & fill.y), fill.y);
-  let r2 = flood_up_bits(held.z | ((r1 >> 31u) & fill.z), fill.z);
-  let r3 = flood_up_bits(held.w | ((r2 >> 31u) & fill.w), fill.w);
-  let l3 = flood_down_bits(held.w, fill.w);
-  let l2 = flood_down_bits(held.z | ((l3 << 31u) & fill.z), fill.z);
-  let l1 = flood_down_bits(held.y | ((l2 << 31u) & fill.y), fill.y);
-  let l0 = flood_down_bits(held.x | ((l1 << 31u) & fill.x), fill.x);
-  return vec4<u32>(r0 | l0, r1 | l1, r2 | l2, r3 | l3) | seeds;
+  let r0 = flood_up_bits(seeds.x, fill.x);
+  let r1 = flood_up_bits(seeds.y | ((r0 >> 31u) & fill.y), fill.y);
+  let r2 = flood_up_bits(seeds.z | ((r1 >> 31u) & fill.z), fill.z);
+  let r3 = flood_up_bits(seeds.w | ((r2 >> 31u) & fill.w), fill.w);
+  let l3 = flood_down_bits(seeds.w, fill.w);
+  let l2 = flood_down_bits(seeds.z | ((l3 << 31u) & fill.z), fill.z);
+  let l1 = flood_down_bits(seeds.y | ((l2 << 31u) & fill.y), fill.y);
+  let l0 = flood_down_bits(seeds.x | ((l1 << 31u) & fill.x), fill.x);
+  return vec4<u32>(r0 | l0, r1 | l1, r2 | l2, r3 | l3);
 }
 
 fn flood_fillable_row(at: u32) -> vec4<u32> {
