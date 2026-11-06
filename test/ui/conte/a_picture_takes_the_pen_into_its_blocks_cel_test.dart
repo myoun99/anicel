@@ -1344,7 +1344,7 @@ void main() {
         CanvasPoint(x: 320, y: 170),
         CanvasViewport(zoom: 0.35, panX: 5.61, panY: 21.47),
         null,
-        CanvasSize(width: 641, height: 367),
+        const CanvasSize(width: 641, height: 367),
       ),
     ]) {
       testWidgets('🎯the brush switch takes the live picture from its real '
