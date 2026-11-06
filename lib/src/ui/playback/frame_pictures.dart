@@ -206,6 +206,30 @@ class FramePictures implements PlaybackPictures {
     aheadNodes.clear();
   }
 
+  /// Lets go of every frame's picture made of a revision the cels' store
+  /// last left for good ([BrushFrameStore.revisionsLastLeft]) — asked for
+  /// by no key again — but the ones a screen holds ([FramePictureStore
+  /// .letGoUnpinnedWhere]). Told at every pixel edit
+  /// ([BrushFrameStore.celPixelRevision]).
+  ///
+  /// 🔬F-569 (2026-11-06, S5_BA cut 352, Windows, profile): 30 fills on a
+  /// cel two frames show left 30 pictures of the other frame, 21 MB each —
+  /// the store grew 2757 → 3390 MB and let none go at rest, under a budget
+  /// of 6 GB.
+  void letGoOfLeftRevisions() {
+    final left = layerImages.frameStore.revisionsLastLeft;
+    if (left.isEmpty) {
+      return;
+    }
+    store.letGoUnpinnedWhere(
+      (key) => preorderNodes(key.signature.nodes).any(
+        (node) =>
+            node is CompositeLeafSignature &&
+            left.contains(node.layer.sourceRevision),
+      ),
+    );
+  }
+
   /// A frame drawn on [page] as [pictures] say, its rows signed as its key
   /// signs them.
   ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})

@@ -588,6 +588,22 @@ class FramePictureStore<K extends Object> {
     }
   }
 
+  /// Lets go of every picture under a key [dead] says none will ask for
+  /// again — but one a screen holds under any of its keys, and one a patch
+  /// is on its way into (a stroke's landing moves it to a key of its own):
+  /// those go as their screen leaves them.
+  void letGoUnpinnedWhere(bool Function(K key) dead) {
+    final kept = <_Entry<K>>{
+      for (final key in _pins.keys) ?_entries[key],
+      for (final becoming in _becoming.values) becoming.entry,
+    };
+    final going = [
+      for (final MapEntry(:key, value: entry) in _entries.entries)
+        if (!kept.contains(entry) && dead(key)) entry,
+    ];
+    going.forEach(_letGo);
+  }
+
   /// Declares a holder of [key]'s picture — one the screen draws. Balanced
   /// by [releasePin]; counts nest.
   void retainPin(K key) => _pins.retain(key);

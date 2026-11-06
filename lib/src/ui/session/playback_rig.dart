@@ -385,6 +385,11 @@ class PlaybackRig implements PlaybackRun {
     // may have changed: a picture landed, one was given up on, or it has
     // come to rest — which is what a run that renders first waits for.
     prerenderScheduler.changes.addListener(playback.lookAgain);
+    // A picture made of a revision an edit left is asked for by no key
+    // again (F-569).
+    _renderCaches.brushFrameStore.celPixelRevision.addListener(
+      framePictures.letGoOfLeftRevisions,
+    );
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -403,6 +408,9 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    _renderCaches.brushFrameStore.celPixelRevision.removeListener(
+      framePictures.letGoOfLeftRevisions,
+    );
     prerenderScheduler.changes.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(

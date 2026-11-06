@@ -58,6 +58,28 @@ void main() {
     store.dispose();
   });
 
+  // 🗣️F-569: what no key will ask for again goes at once — but what a
+  // screen holds, and what is on its way under a key of its own.
+  test('the pictures a test names are let go of, but one a screen holds '
+      'and one a move takes on to another key', () async {
+    final store = FramePictureStore<String>(gpu: _RecordingGpu());
+    for (final key in ['gone', 'shown', 'moving', 'kept']) {
+      await _layed(store, key, 8);
+    }
+    store.retainPin('shown');
+    expect(store.move(from: 'moving', to: 'moved'), isTrue);
+
+    store.letGoUnpinnedWhere((key) => key != 'kept');
+
+    expect(store.holds('gone'), isFalse);
+    expect(store.holds('shown'), isTrue);
+    expect(store.holds('kept'), isTrue);
+    expect(await store.landingOf('moved'), isTrue);
+    expect(store.holds('moved'), isTrue);
+    store.releasePin('shown');
+    store.dispose();
+  });
+
   group('a patch', () {
     test('answers to the new key only once its texels are in the picture, '
         'at every level — the old key shows what it was until then',

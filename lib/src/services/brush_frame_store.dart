@@ -219,14 +219,14 @@ class BrushFrameStore {
     final named = <BrushFrameKey, WallCut>{};
     for (final MapEntry(:key, value: picture) in cut.entries) {
       final cel = _canonicalize(key);
-      named[key] = (
-        picture: picture,
-        revision: getOrCreateFrame(cel).sourceRevision,
-      );
+      final revision = getOrCreateFrame(cel).sourceRevision;
+      named[key] = (picture: picture, revision: revision);
       _update(cel, _markCacheDirty);
+      // Named, not left: the undo gives it back ([revisionsLastLeft]).
+      _leaving.remove(revision);
     }
     if (cut.isNotEmpty) {
-      celPixelRevision.value += 1;
+      _announcePixels();
     }
     _announceCrossings();
     _scheduleCooling();
@@ -428,7 +428,46 @@ class BrushFrameStore {
   /// cached-ness (the rulers' green bar) therefore has no token to compare
   /// and must simply re-read after any edit; this is that signal. Keep the
   /// listeners cheap: this fires as often as the user draws.
+  ///
+  /// What a bump left for good is named with it ([revisionsLastLeft]) — the
+  /// frames' pictures let go of what they made of it (F-569).
   final ValueNotifier<int> celPixelRevision = ValueNotifier<int>(0);
+
+  /// The revisions the last bump of [celPixelRevision] left for good: each
+  /// named one content of one cel ([_nextRevision]), which no cel holds now
+  /// and no undo gives back — so a picture made of one is asked for by no
+  /// key again, and a cache that kept it kept it for nothing.
+  ///
+  /// 🗣️F-569 (유저 2026-11-05 「메모리가 7000까지 상승」): a fill on a cel
+  /// two frames show moved the picture of the frame drawn on and left the
+  /// other frame's, laid again at every fill, under the revision it left —
+  /// 🔬one picture of 21 MB a fill until the playback budget (6 GB on the
+  /// main PC), which a Surface's GPU holds in its RAM.
+  ///
+  /// ⛔Not one [adoptPasteboardReach] names: its undo lays those pixels back
+  /// under the revision that named them, and the frame's picture of them
+  /// answers again (F-432 ④). ⛔Not the seeded one ([_seeded]): every cel a
+  /// file gives starts at it, so it names no one content.
+  Set<int> get revisionsLastLeft => _revisionsLastLeft;
+  Set<int> _revisionsLastLeft = const {};
+
+  /// The revisions left since the last bump — what [_announcePixels] tells.
+  final Set<int> _leaving = {};
+
+  /// [revision] is left for good — where it named one content.
+  void _leave(int revision) {
+    if (revision > _seeded) {
+      _leaving.add(revision);
+    }
+  }
+
+  /// One bump of [celPixelRevision], naming the revisions left since the
+  /// last in [revisionsLastLeft].
+  void _announcePixels() {
+    _revisionsLastLeft = Set.unmodifiable(_leaving);
+    _leaving.clear();
+    celPixelRevision.value += 1;
+  }
 
   /// Keys last seen holding a picture — the crossing detector's memory.
   final Set<BrushFrameKey> _celsWithContent = {};
@@ -482,8 +521,12 @@ class BrushFrameStore {
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
   }
 
+  /// The revision every cel a file gives is seeded at ([_restoreAll]) — and
+  /// so the last before the first [_nextRevision] gives.
+  static const int _seeded = 1;
+
   /// The revision [_nextRevision] gave last.
-  int _lastRevision = 1;
+  int _lastRevision = _seeded;
 
   /// 🚨A REVISION NO CEL OF THIS STORE HAS HELD — every content a cel
   /// takes is given one: a frame's picture is kept under its cels'
@@ -582,8 +625,9 @@ class BrushFrameStore {
     _fitMovieCels();
     _displayCaches.remove(key);
     final state = getOrCreateFrame(key);
+    _leave(state.sourceRevision);
     _frames[key] = state.copyWith(sourceRevision: _nextRevision());
-    celPixelRevision.value += 1;
+    _announcePixels();
   }
 
   /// Lets the least recently used movie pictures go until they and the hot
@@ -1359,7 +1403,7 @@ class BrushFrameStore {
     for (final entry in cels.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
         key: entry.key,
-        sourceRevision: 1,
+        sourceRevision: _seeded,
       );
       place(entry.key, entry.value);
       _noteCelContent(entry.key);
@@ -1860,6 +1904,7 @@ class BrushFrameStore {
       final state = _frames.remove(from);
       final revision = state == null ? null : _nextRevision();
       if (state != null) {
+        _leave(state.sourceRevision);
         _frames[to] = state.copyWithKey(to).copyWith(sourceRevision: revision);
       }
       // 🚨F-313 (유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로
@@ -1951,7 +1996,7 @@ class BrushFrameStore {
       _recordCelContent(key);
     }
     if (edited) {
-      celPixelRevision.value += 1;
+      _announcePixels();
     }
     _announceCrossings();
     _scheduleCooling();
@@ -2390,8 +2435,9 @@ class BrushFrameStore {
       (state) => _markCacheDirty(state, revision: backTo),
     );
     // The composite caches this edit just invalidated have no event of
-    // their own (they self-validate by signature) — see [celPixelRevision].
-    celPixelRevision.value += 1;
+    // their own (they self-validate by signature) — see [celPixelRevision],
+    // which names the revision it left ([revisionsLastLeft]).
+    _announcePixels();
     return next;
   }
 
@@ -2403,6 +2449,9 @@ class BrushFrameStore {
       inactivePreviewDirty: true,
       sourceRevision: revision ?? _nextRevision(),
     );
+    if (next.sourceRevision != state.sourceRevision) {
+      _leave(state.sourceRevision);
+    }
     final existing = _displayCaches[state.key];
     if (existing != null) {
       _displayCaches[state.key] = existing.copyWith(
