@@ -895,8 +895,8 @@ cmd_crate() {
     # lanes before it compiled (wgpu is minutes cold) — in its turn, which
     # every cargo building there takes (tool/cargo_turn.sh says why).
     (cd "$p/packages/gpu_engine/rust" \
-      && bash "$ROOT/tool/cargo_turn.sh" test --locked --workspace \
-        ${flag:+"$flag"}) >>"$log" 2>&1 || {
+      && bash "$ROOT/tool/cargo_turn.sh" \
+        test --locked --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
       grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
       die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
     }

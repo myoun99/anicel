@@ -75,7 +75,7 @@ void main() {
       final crate = codeOf('cmd_crate');
       final ensured = at(crate, r'ensure_engine "$p" || die');
       expect(ensured, isNot(-1));
-      expect(ensured, lessThan(at(crate, 'cargo test --locked')));
+      expect(ensured, lessThan(at(crate, r'"$ROOT/tool/cargo_turn.sh"')));
     });
 
     // 저장 2026-11-05: four Dart files, opened before the trunk took crate
@@ -122,7 +122,7 @@ void main() {
         isNot(-1),
       );
       expect(
-        at(crate, r'cargo test --locked --workspace ${flag:+"$flag"}'),
+        at(crate, r'test --locked --workspace ${flag:+"$flag"}'),
         isNot(-1),
         reason: 'every crate of the workspace, not its default members',
       );

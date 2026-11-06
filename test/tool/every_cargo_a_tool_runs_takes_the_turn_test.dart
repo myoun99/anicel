@@ -41,6 +41,6 @@ void main() {
 
   test('and the land\'s crate gate builds through it', () {
     final lane = File('tool/lane.sh').readAsStringSync();
-    expect(lane, contains('bash "\$ROOT/$turn" test --locked --workspace'));
+    expect(lane, contains('&& bash "\$ROOT/$turn" \\'));
   });
 }
