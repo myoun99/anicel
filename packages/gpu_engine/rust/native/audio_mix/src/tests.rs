@@ -5,11 +5,11 @@
 use std::ptr;
 
 use crate::bus::{
-    Clip, EnvelopeKey, Source, qa_audio_bus_to_float, qa_audio_bus_to_int16, qa_audio_clip_sizeof,
+    Clip, EnvelopeKey, MONO_ON_STEREO, Source, qa_audio_bus_to_float, qa_audio_bus_to_int16, qa_audio_clip_sizeof,
     qa_audio_envelope_key_sizeof, qa_audio_mix, qa_audio_source_sizeof,
 };
 use crate::resample::{
-    Resampler, qa_audio_resample, qa_audio_resample_frames, qa_audio_resample_taps, qa_audio_resampler_close,
+    DEFAULT_BANDWIDTH, DEFAULT_STOPBAND_DB, Resampler, qa_audio_resample, qa_audio_resample_frames, qa_audio_resample_taps, qa_audio_resampler_close,
     qa_audio_resampler_end, qa_audio_resampler_held, qa_audio_resampler_open, qa_audio_resampler_pull,
     qa_audio_resampler_push, qa_audio_resampler_ready,
 };
@@ -220,6 +220,32 @@ fn a_bus_that_cannot_be_written_is_left_alone_and_no_clips_is_silence() {
     }
 }
 
+#[test]
+fn a_mono_source_lies_on_a_stereo_bus_at_minus_3_db_a_side_and_stereo_at_unity() {
+    let mix = Both::of("qa_audio_mix", qa_audio_mix as Mix);
+    let mono = [0.5f32; 4];
+    let stereo = [0.5f32, 0.25, 0.5, 0.25, 0.5, 0.25, 0.5, 0.25];
+    let sources = vec![
+        Source { source_start: 0, length: 4, channels: 1, reserved: 0, samples: mono.as_ptr() },
+        Source { source_start: 0, length: 4, channels: 2, reserved: 0, samples: stereo.as_ptr() },
+    ];
+    let center = Clip { gain: 1.0, end_sample: 4, pan_left: 1.0, pan_right: 1.0, ..Clip::default() };
+    let hard_left = Clip { pan_left: std::f64::consts::SQRT_2, pan_right: 0.0, ..center };
+    let heard = |f: Mix, clip: Clip, source_index: i32, channels: i32| {
+        let clip = Clip { source_index, ..clip };
+        let schedule = Schedule { _samples: Vec::new(), sources: sources.clone(), clips: vec![clip], keys: Vec::new() };
+        mixed(f, &schedule, 0, 4, channels)[..channels as usize].to_vec()
+    };
+    assert_eq!(MONO_ON_STEREO, 0.7071067811865476, "-3 dB: 20 log10 = {}", 20.0 * MONO_ON_STEREO.log10());
+    for f in [mix.c, mix.rust] {
+        assert_eq!(heard(f, center, 0, 2), [0.5 * MONO_ON_STEREO; 2], "mono at center");
+        assert_eq!(heard(f, hard_left, 0, 2), [0.5 * (std::f64::consts::SQRT_2 * MONO_ON_STEREO), 0.0], "mono at a hard pan");
+        assert_eq!(heard(f, center, 1, 2), [0.5, 0.25], "stereo at center");
+        assert_eq!(heard(f, center, 0, 1), [0.5], "mono on a mono bus");
+        assert_eq!(heard(f, center, 1, 1), [0.5], "stereo on a mono bus");
+    }
+}
+
 /// The values a bus reaches, and its edges.
 fn bus_values() -> Vec<f64> {
     let mut values = vec![
@@ -299,6 +325,17 @@ fn the_filter_lengths_and_frame_counts_are_the_c_s() {
     }
     assert_eq!(qa_audio_resample_taps(44_100, 48_000, 120.0, 0.9) % 2, 1, "LIVENESS: odd");
     assert_eq!(qa_audio_resample_taps(48_000, 96_000, 20.0, 0.5), 15, "LIVENESS: the shortest");
+}
+
+#[test]
+fn the_default_quality_is_the_dart_references() {
+    let dart = include_str!("../../../../../../lib/src/services/audio/audio_resampler_reference.dart");
+    let declared = |name: &str| -> f64 {
+        let line = dart.lines().find(|line| line.starts_with(&format!("const double {name} = "))).expect(name);
+        line.trim_end_matches(';').rsplit(' ').next().and_then(|value| value.parse().ok()).expect(line)
+    };
+    assert_eq!(DEFAULT_STOPBAND_DB, declared("defaultResamplerStopbandDb"));
+    assert_eq!(DEFAULT_BANDWIDTH, declared("defaultResamplerBandwidth"));
 }
 
 /// A sound of `frames` x `channels`: tones and noise.

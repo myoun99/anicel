@@ -18,8 +18,8 @@ import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 /// carries the numbers to the C verbatim).
 void main() {
   group('equalPowerPanGains (compensated: center is UNITY)', () {
-    test('center passes through at unity — the fallback path cannot pan, '
-        'so center-panned sound must not change level between paths', () {
+    test('center passes through at unity — a stereo source at center plays '
+        'as it was recorded (native-to-rust-Q12)', () {
       final center = equalPowerPanGains(0);
       expect(center.left, closeTo(1.0, 1e-12));
       expect(center.right, closeTo(1.0, 1e-12));
@@ -88,7 +88,7 @@ void main() {
       sampleCount: 4,
       outChannels: 2,
     );
-    expect(stereo[0], 0.5, reason: 'left carries');
+    expect(stereo[0], 0.5 * audioMonoOnStereo, reason: 'left carries');
     expect(stereo[1], 0.0, reason: 'right silent — hard left');
 
     final mono = mixAudioReference(
@@ -99,6 +99,50 @@ void main() {
       outChannels: 1,
     );
     expect(mono[0], 0.5, reason: 'a mono bus ignores pan');
+  });
+
+  test('a mono source lies on a stereo bus at -3 dB a side and pans by '
+      'Pro Tools\' law from there; a stereo source keeps unity '
+      '(native-to-rust-Q12)', () {
+    final mono = AudioMixSource(
+      samples: Float32List.fromList([0.5, 0.5]),
+      channels: 1,
+    );
+    final stereo = AudioMixSource(
+      samples: Float32List.fromList([0.5, 0.25, 0.5, 0.25]),
+      channels: 2,
+    );
+    List<double> heard(AudioMixSource source, double pan) {
+      final gains = equalPowerPanGains(pan);
+      return mixAudioReference(
+        clips: [
+          AudioMixClip(
+            sourceIndex: 0,
+            startSample: 0,
+            endSample: 2,
+            panLeft: gains.left,
+            panRight: gains.right,
+          ),
+        ],
+        sources: [source],
+        startSample: 0,
+        sampleCount: 1,
+        outChannels: 2,
+      ).toList();
+    }
+
+    expect(audioMonoOnStereo, 0.7071067811865476);
+    final decibels = 20 * math.log(audioMonoOnStereo) / math.ln10;
+    expect(decibels, closeTo(-3.01, 1e-2));
+    final center = heard(mono, 0);
+    expect(center[0], closeTo(0.5 * audioMonoOnStereo, 1e-12));
+    expect(center[1], closeTo(0.5 * audioMonoOnStereo, 1e-12));
+    final hardLeft = heard(mono, -1);
+    expect(hardLeft[0], closeTo(0.5, 1e-12), reason: 'one side at unity');
+    expect(hardLeft[1], closeTo(0, 1e-12));
+    final asRecorded = heard(stereo, 0);
+    expect(asRecorded[0], closeTo(0.5, 1e-12), reason: 'stereo as recorded');
+    expect(asRecorded[1], closeTo(0.25, 1e-12));
   });
 
   test('the envelope multiplies with gain and fades in the clip volume', () {

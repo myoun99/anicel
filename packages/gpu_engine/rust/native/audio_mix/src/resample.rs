@@ -22,6 +22,14 @@ use std::slice;
 /// The longest prototype a design makes.
 const MAX_TAPS: i64 = 131_071;
 
+/// The quality a sound is conformed at — the Dart reference's
+/// `defaultResamplerStopbandDb` and `defaultResamplerBandwidth` (their
+/// reasons are there), for a conversion Rust starts itself (native/audio's
+/// pieces at another rate, native-to-rust-Q11). The C takes both from its
+/// caller and keeps none. A test holds them to the Dart's.
+pub const DEFAULT_STOPBAND_DB: f64 = 120.0;
+pub const DEFAULT_BANDWIDTH: f64 = 0.90;
+
 fn gcd(a: i64, b: i64) -> i64 {
     let (mut x, mut y) = (a.abs(), b.abs());
     while y != 0 {

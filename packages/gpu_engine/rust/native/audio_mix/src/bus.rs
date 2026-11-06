@@ -61,6 +61,19 @@ pub struct EnvelopeKey {
     pub gain: f64,
 }
 
+/// A mono sound laid on two speakers: each side at -3 dB, before its pan
+/// moves it — 0.707 a side at center, 1 on one side at a hard pan.
+///
+/// 🚨native-to-rust-Q12 (user 2026-11-06: 「프로툴처럼 모노는 어디서든
+/// −3dB(0.707) — 믹서도 바꾼다」): Pro Tools' default pan depth for a mono
+/// track on a stereo output (-3.0 dB), FFmpeg's mono-to-stereo 0.707.
+/// EVERYWHERE: a mono file the mixer spreads and a mono piece the decoder
+/// spreads inside a stereo sound (native/audio) are one sound at one
+/// level, so both read this. Only the level moves — no sample's position
+/// does. A stereo source keeps unity. The C's `QA_AUDIO_MONO_ON_STEREO`
+/// and Dart's `audioMonoOnStereo` are its twins.
+pub const MONO_ON_STEREO: f64 = std::f64::consts::FRAC_1_SQRT_2;
+
 /// The fade ramp's shape: linear, or the equal-power sqrt curve (sum of
 /// squares constant across a crossfade). sqrt, not sin: IEEE 754 rounds
 /// sqrt correctly, so every side makes the same bits.
@@ -163,6 +176,8 @@ pub unsafe fn mix(
         }
         // SAFETY: the caller's contract.
         let samples = unsafe { slice::from_raw_parts(source.samples, length * channels) };
+        let spread = if channels == 1 { MONO_ON_STEREO } else { 1.0 };
+        let (left, right) = (clip.pan_left * spread, clip.pan_right * spread);
         for position in clip.start_sample.max(start_sample)..clip.end_sample.min(block_end) {
             let source_index = clip.source_offset + (position - clip.start_sample);
             let Ok(offset) = usize::try_from(source_index - source.source_start) else {
@@ -179,8 +194,8 @@ pub unsafe fn mix(
                 // passes through. The order of the products is the Dart
                 // reference's.
                 let factor = match (out_channels, channel) {
-                    (2, 0) => clip.pan_left,
-                    (2, _) => clip.pan_right,
+                    (2, 0) => left,
+                    (2, _) => right,
                     _ => 1.0,
                 };
                 *destination += f64::from(frame[source_channel(channels, channel)]) * volume * factor;

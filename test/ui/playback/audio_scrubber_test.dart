@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
@@ -605,7 +606,7 @@ void main() {
 
       expect(
         device.peakFor(0),
-        closeTo(0.25, 0.01),
+        closeTo(0.25 * audioMonoOnStereo, 0.01),
         reason: 'five seconds behind where the window stood: ↩️the scrubber '
             'moved it only past half the playing lead (15 s) either way, and '
             'this slice played silence',

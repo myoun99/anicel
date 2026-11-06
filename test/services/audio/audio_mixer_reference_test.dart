@@ -197,7 +197,8 @@ void main() {
   });
 
   group('channels', () {
-    test('a mono source feeds every output channel', () {
+    test('a mono source feeds every output channel, at -3 dB a side on a '
+        'stereo bus (native-to-rust-Q12)', () {
       final bus = mixAudioReference(
         clips: const [AudioMixClip(sourceIndex: 0, startSample: 0, endSample: 2)],
         sources: [constantSource(0.5, 4)],
@@ -205,7 +206,7 @@ void main() {
         sampleCount: 2,
         outChannels: 2,
       );
-      expect(bus.toList(), [0.5, 0.5, 0.5, 0.5]);
+      expect(bus.toList(), List.filled(4, 0.5 * audioMonoOnStereo));
     });
 
     test('a stereo source maps straight across', () {

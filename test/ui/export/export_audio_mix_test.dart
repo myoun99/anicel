@@ -24,6 +24,8 @@ void main() {
   tearDown(() => deleteTempQuietly(directory));
 
   const rate = ProjectFrameRate.integer(10);
+  // One int16 step: what a level loses on the way through the WAV.
+  const step = 1 / 32768;
 
   AudioMixSource constantSource(double value, int frames) {
     final samples = Float32List(frames);
@@ -59,11 +61,14 @@ void main() {
     // -shortest to trim.
     expect(wav.samples.length ~/ wav.channels, 48000);
     // Before the clip: silence. Inside: the mono source on BOTH channels
-    // at unity (0.5 survives the int16 round-trip bit-exactly). After:
+    // at -3 dB a side (native-to-rust-Q12), to one int16 step. After:
     // silence again.
     expect(wav.samples[2 * 4800 * 2 - 2], 0);
-    expect(wav.samples[5 * 4800 * 2], 0.5);
-    expect(wav.samples[5 * 4800 * 2 + 1], 0.5);
+    expect(wav.samples[5 * 4800 * 2], closeTo(0.5 * audioMonoOnStereo, step));
+    expect(
+      wav.samples[5 * 4800 * 2 + 1],
+      closeTo(0.5 * audioMonoOnStereo, step),
+    );
     expect(wav.samples[9 * 4800 * 2], 0);
   });
 
@@ -78,12 +83,12 @@ void main() {
       rate: rate,
       totalFrames: 10,
       sampleRate: 48000,
-      resolveSource: (_) async => constantSource(0.6, 48000),
+      resolveSource: (_) async => constantSource(0.8, 48000),
       outputPath: path,
     );
     final wav = readWav16(File(path).readAsBytesSync());
-    // 0.6 + 0.6 = 1.2 on the bus; the int16 output stage clamps to just
-    // under full scale (32767/32768).
+    // (0.8 + 0.8) x 0.707 = 1.13 a side on the bus; the int16 output
+    // stage clamps to just under full scale (32767/32768).
     expect(wav.samples[24000], closeTo(32767 / 32768, 1e-6));
   });
 
@@ -109,10 +114,16 @@ void main() {
       final wav = readWav16(File(path).readAsBytesSync());
       expect(wav.samples[0], 0, reason: 'the ramp starts at silence');
       // Halfway up the 5-frame ramp (~frame 2.5 = sample 12000): half
-      // the level.
-      expect(wav.samples[12000 * 2], closeTo(0.4, 0.01));
+      // the level — a mono source's, -3 dB a side.
+      expect(
+        wav.samples[12000 * 2],
+        closeTo(0.4 * audioMonoOnStereo, 0.01),
+      );
       // Past the ramp: full level.
-      expect(wav.samples[8 * 4800 * 2], closeTo(0.8, 0.001));
+      expect(
+        wav.samples[8 * 4800 * 2],
+        closeTo(0.8 * audioMonoOnStereo, 0.001),
+      );
     },
   );
 
@@ -122,7 +133,8 @@ void main() {
     await writeExportAudioMixWav(
       schedule: const [
         // Hard-left pan: the compensated law puts sqrt2 x gain on the
-        // left and NOTHING on the right.
+        // left and NOTHING on the right — on a mono source, which lies at
+        // -3 dB a side, that is unity (Pro Tools' law).
         ScheduledAudioClip(
           filePath: 'a',
           startFrame: 0,
@@ -144,15 +156,18 @@ void main() {
       outputPath: path,
     );
     final wav = readWav16(File(path).readAsBytesSync());
-    // Panned clip, mid-clip sample: left = 0.5 x sqrt2, right = 0.
-    expect(wav.samples[24000 * 2 - 2], closeTo(0.5 * 1.41421, 0.001));
+    // Panned clip, mid-clip sample: left = 0.5 x sqrt2 x 0.707, right = 0.
+    expect(wav.samples[24000 * 2 - 2], closeTo(0.5, 0.001));
     expect(
       wav.samples[24000 * 2 - 1],
       0,
       reason: 'a hard-left clip must leave the right channel empty',
     );
     // The half-volume clip: half gain on both sides.
-    expect(wav.samples[7 * 4800 * 2], closeTo(0.25, 0.001));
+    expect(
+      wav.samples[7 * 4800 * 2],
+      closeTo(0.25 * audioMonoOnStereo, 0.001),
+    );
   });
 
   test('a STREAMING source renders byte-for-byte what the resident render '
@@ -241,7 +256,7 @@ void main() {
     );
     expect(written, isTrue);
     final wav = readWav16(File(path).readAsBytesSync());
-    expect(wav.samples[2 * 4800 * 2], 0.5);
+    expect(wav.samples[2 * 4800 * 2], closeTo(0.5 * audioMonoOnStereo, step));
     expect(wav.samples[7 * 4800 * 2], 0, reason: 'the missing clip is silent');
 
     expect(

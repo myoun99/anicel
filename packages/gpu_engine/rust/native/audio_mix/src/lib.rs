@@ -24,5 +24,5 @@ mod resample;
 #[cfg(test)]
 mod tests;
 
-pub use bus::{Clip, EnvelopeKey, Source, bus_to_float, bus_to_int16, mix, slice_or_empty};
-pub use resample::{Resampler, resample_frames, resample_taps};
+pub use bus::{Clip, EnvelopeKey, MONO_ON_STEREO, Source, bus_to_float, bus_to_int16, mix, slice_or_empty};
+pub use resample::{DEFAULT_BANDWIDTH, DEFAULT_STOPBAND_DB, Resampler, resample_frames, resample_taps};
