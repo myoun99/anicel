@@ -332,9 +332,30 @@ void main() {
       required Finder block,
       required MouseCursor arrows,
       required Matcher lineDrag,
+      required Offset offTheGrips,
     }) async {
       final under = tester.getRect(grip).intersect(tester.getRect(block));
       expect(under.isEmpty, isFalse, reason: '⛔전제: the grip is on it');
+
+      // Only the hover goes under: a press that never moves is no drag of
+      // the grip's, and it must not fall to the block either.
+      Object? picked() => (
+        session.currentFrameIndex,
+        session.frameRangeSelection.value,
+      );
+      Future<void> tapAt(Offset at) async {
+        await mouse!.down(at);
+        await tester.pump(const Duration(milliseconds: 16));
+        await mouse!.up();
+        await tester.pumpAndSettle();
+      }
+
+      await hoverAt(tester, const Offset(4, 4));
+      final before = picked();
+      await tapAt(under.center);
+      expect(picked(), before, reason: 'a tap under the grip is no block\'s');
+      await tapAt(offTheGrips);
+      expect(picked(), isNot(before), reason: '⛔전제: one on it is');
 
       await hoverAt(tester, const Offset(4, 4));
       expect(find.text(warning()), findsNothing, reason: 'off the block');
@@ -377,18 +398,25 @@ void main() {
       );
       session.selectCut(cut.id);
       await tester.pumpAndSettle();
+      final block = find.byKey(
+        ValueKey<String>(
+          'storyboard-transition-paper-${rowId(session)}-$start',
+        ),
+      );
+      final paper = tester.getRect(block);
 
       await underTheEndGrip(
         tester,
         session,
         grip: find.byKey(const ValueKey('storyboard-cut-end-handle')),
-        block: find.byKey(
-          ValueKey<String>(
-            'storyboard-transition-paper-${rowId(session)}-$start',
-          ),
-        ),
+        block: block,
         arrows: SystemMouseCursors.resizeColumn,
         lineDrag: isA<MovieEndDragPreview>(),
+        // The fade's third frame of six: inside the cut, off both its grips.
+        offTheGrips: Offset(
+          paper.left + paper.width / 6 * 2.5,
+          paper.center.dy,
+        ),
       );
     });
 
@@ -396,6 +424,13 @@ void main() {
       testWidgets('on the cut\'s row — under the cut end\'s grip'
           '${xsheet ? ' (X-sheet)' : ''}', (tester) async {
         final session = await theCutView(tester, xsheet: xsheet);
+        final block = find.byKey(
+          ValueKey<String>(
+            '${surfaceOf(xsheet: xsheet)}-instruction-${rowId(session)}-'
+            '${crossingOf(session)}',
+          ),
+        );
+        final axis = xsheet ? Axis.vertical : Axis.horizontal;
         await underTheEndGrip(
           tester,
           session,
@@ -403,16 +438,12 @@ void main() {
             of: find.byType(TimelineTabHost),
             matching: find.byKey(const ValueKey('timeline-cut-end-handle')),
           ),
-          block: find.byKey(
-            ValueKey<String>(
-              '${surfaceOf(xsheet: xsheet)}-instruction-${rowId(session)}-'
-              '${crossingOf(session)}',
-            ),
-          ),
+          block: block,
           arrows: xsheet
               ? SystemMouseCursors.resizeRow
               : SystemMouseCursors.resizeColumn,
           lineDrag: isA<CutTrimDragPreview>(),
+          offTheGrips: onTheBlock(tester, block, TimelineTabHost, axis: axis),
         );
       });
     }
