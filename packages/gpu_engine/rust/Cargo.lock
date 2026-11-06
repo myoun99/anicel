@@ -224,6 +224,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fx_plugin"
+version = "0.0.1"
+dependencies = [
+ "libloading",
+ "oracle",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

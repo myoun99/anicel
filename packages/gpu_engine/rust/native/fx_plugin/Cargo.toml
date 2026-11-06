@@ -1,0 +1,13 @@
+[package]
+name = "fx_plugin"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# Opens a native plugin: wgpu-hal's own major, already in the lock.
+[dependencies]
+libloading = "0.8"
+
+# The C host this crate replaces, the answer key until the connection round.
+[dev-dependencies]
+oracle = { path = "../oracle" }
