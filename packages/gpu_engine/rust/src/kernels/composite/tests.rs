@@ -11,7 +11,7 @@ use super::{
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{
-    DIFFERENCE, ERASE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN,
+    DIFFERENCE, ERASE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, PLUS, SCREEN,
 };
 use crate::kernels::dab::stamp::tests::stamps;
 use crate::kernels::dab::stamp::{Paint, Source, Stamped};
@@ -962,6 +962,82 @@ fn folders_nested_past_what_a_pass_holds_are_their_row() {
         };
         assert!(composite(&scene(nested.clone()), budget).0 == alone, "{levels} levels");
     }
+}
+
+// ---- A crossfade ----
+
+/// An adjustment's scope `u` crossfaded at `mix` with `f`, the scope through
+/// its chain, as the app's crossfade buffer adds them
+/// (composite_effect_paint.dart, resolveAdjustmentScopePass): `u` at
+/// 1 − mix, `f` added by plus at mix, the buffer closed whole and normal.
+fn crossfaded(u: impl Fn(i32, i32) -> u32, f: impl Fn(i32, i32) -> u32, mix: u32) -> Vec<u8> {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.drawn(u, (0, 0), (2, 1), |_, _| Some(0)),
+        pool.drawn(f, (0, 0), (2, 1), |_, _| Some(1)),
+    ];
+    widest(&Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps: vec![
+            Step::Open,
+            row(0, (0, 0), WHOLE - mix, NORMAL),
+            row(1, (0, 0), mix, PLUS),
+            Step::Close {
+                opacity: WHOLE,
+                mode: NORMAL,
+                matrix: None,
+            },
+        ],
+        tiles: vec![(0, 0), (1, 0)],
+    })
+}
+
+/// `pixel` laid alone, whole and normal: its stored bytes
+/// ([`a_row_alone_is_its_own_pixels_moved`]).
+fn alone(pixel: impl Fn(i32, i32) -> u32) -> Vec<u8> {
+    let mut pool = Pool::default();
+    let sets = vec![pool.drawn(pixel, (0, 0), (2, 1), |_, _| Some(0))];
+    widest(&Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps: vec![row(0, (0, 0), WHOLE, NORMAL)],
+        tiles: vec![(0, 0), (1, 0)],
+    })
+}
+
+// "(1−m)·U + m·F exactly": the two passes' alphas sum back to the scope's
+// own and its colour is their weights' over that sum, so a scope whose chain
+// changed nothing comes back as itself at any mix — and at the ends the
+// crossfade is the scope and its chain.
+#[test]
+fn a_crossfade_adds_its_two_passes_back_to_the_scope() {
+    let scope = |x, y| texel(101, x, y);
+    let chained = |x, y| texel(102, x, y);
+    for mix in [0, 1, 12345, 32768, 65534, WHOLE] {
+        assert!(crossfaded(scope, scope, mix) == alone(scope), "mix {mix}");
+    }
+    assert!(crossfaded(scope, chained, 0) == alone(scope));
+    assert!(crossfaded(scope, chained, WHOLE) == alone(chained));
+}
+
+// Opaque red to opaque blue at 32896: red is laid at 32639, blue added at
+// 32896 — whole between them —, so red 32639 and blue 32896, bytes 127 and
+// 128. Half red to half blue the same way: 32896 times 32639 is 16383 and
+// times 32896 16513, which sum to the half again; red 16383·65535 over it
+// is 32638 and blue 32897, bytes 127 and 128 again.
+#[test]
+fn a_crossfade_mixes_the_premultiplied_colours() {
+    let solid = |colour: u32| move |_: i32, _: i32| colour;
+    let opaque = crossfaded(solid(0xff00_00ff), solid(0xffff_0000), 32896);
+    let half = crossfaded(solid(0x8000_00ff), solid(0x80ff_0000), 32896);
+    let tiles = [(0, 0), (1, 0)];
+    assert_eq!(pixel_at(&opaque, &tiles, 70, 3), [127, 0, 128, 255]);
+    assert_eq!(pixel_at(&half, &tiles, 200, 100), [127, 0, 128, 128]);
 }
 
 /// A base: nothing on the left half of every tile, a grey of byte 128 at

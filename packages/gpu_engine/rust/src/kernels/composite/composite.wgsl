@@ -255,11 +255,15 @@ fn save(level: u32, tile: u32, texel: u32, pixel: vec4<u32>) {
 
 // A row or a buffer laid on the one under it at `opacity` under the
 // coverage byte `cover` (blend_cover), in `mode` — an eraser's taking its
-// alpha off what is under it, as a stroke of the eraser lands on its cel.
+// alpha off what is under it, as a stroke of the eraser lands on its cel,
+// and a plus adding itself to it, as a crossfade's second pass does.
 fn laid(mode: u32, opacity: u32, cover: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
   let alpha = blend_mul(src.w, blend_cover(opacity, cover));
   if (mode == BLEND_ERASE) {
     return blend_erase(alpha, dst);
+  }
+  if (mode == BLEND_PLUS) {
+    return blend_plus(vec4<u32>(src.xyz, alpha), dst);
   }
   return blend_composite(mode, vec4<u32>(src.xyz, alpha), dst);
 }

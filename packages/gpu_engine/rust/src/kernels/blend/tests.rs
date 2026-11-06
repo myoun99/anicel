@@ -21,6 +21,7 @@ const SQRT: u32 = 104;
 const ATOP: u32 = 105;
 const PACK: u32 = 106;
 const UNPACK: u32 = 107;
+const PLUS: u32 = 108;
 
 /// Every mode of blend.wgsl's table, with the name its ledger row carries.
 const MODES: [(u32, &str); 29] = [
@@ -335,6 +336,39 @@ fn the_eraser_takes_alpha_and_keeps_colour() {
     assert_eq!(
         run(&[(ERASE, [0, 0, 0, wide(128)], dst), (ERASE, [0, 0, 0, 65535], dst)]),
         [[12345, 40000, 777, 32639], [0, 0, 0, 0]]
+    );
+}
+
+// Plus sums the premultiplied colours over the alphas summed. Half red plus
+// the half of blue left is whole: red 32896·65535 and blue 32639·65535 over
+// it. Over nothing it is the source, two equal colours give that colour,
+// and nothing plus nothing is nothing. It divides once: 1 at 40000 plus 4
+// at 25535 is 142140 over 65535, 2 — each premultiplied apart and summed is
+// 1 + 2. Past one the alpha is whole and each premultiplied sum is held:
+// opaque red plus half blue is red and 32896 of blue, white plus white
+// white.
+#[test]
+fn plus_adds_the_premultiplied_colours_and_the_alphas() {
+    let white = [65535; 4];
+    assert_eq!(
+        run(&[
+            (PLUS, [65535, 0, 0, wide(128)], [0, 0, 65535, 65535 - wide(128)]),
+            (PLUS, SOME, [65535, 0, 32896, 0]),
+            (PLUS, [12345, 40000, 777, 12345], [12345, 40000, 777, 20000]),
+            (PLUS, [65535, 1, 2, 0], [3, 65535, 4, 0]),
+            (PLUS, [1, 0, 0, 40000], [4, 0, 0, 25535]),
+            (PLUS, [65535, 0, 0, 65535], [0, 0, 65535, wide(128)]),
+            (PLUS, white, white),
+        ]),
+        [
+            [32896, 0, 32639, 65535],
+            SOME,
+            [12345, 40000, 777, 32345],
+            [0, 0, 0, 0],
+            [2, 0, 0, 65535],
+            [65535, 0, 32896, 65535],
+            white,
+        ]
     );
 }
 

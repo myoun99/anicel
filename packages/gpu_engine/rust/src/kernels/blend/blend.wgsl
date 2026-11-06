@@ -56,6 +56,11 @@ const BLEND_NORMAL: u32 = 28u;
 // (compositeStrokePixelsOntoBitmapSurface) — laid by blend_erase, not
 // blend_composite.
 const BLEND_ERASE: u32 = 29u;
+// Plus, which no table of the app's has: Flutter's BlendMode.plus, the
+// executor's own — a crossfade adds its second pass onto its first by it
+// (composite_effect_paint.dart, resolveAdjustmentScopePass) — laid by
+// blend_plus, not blend_composite.
+const BLEND_PLUS: u32 = 30u;
 
 // round(a·b / 65535), for a, b <= 65535. With t = a·b + 32768,
 // (t + (t >> 16)) >> 16 is that rounding exactly; t + (t >> 16) is at most
@@ -432,6 +437,33 @@ fn blend_composite(mode: u32, src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
 // and a pixel left with no alpha holds no colour (blend_settled).
 fn blend_erase(a_s: u32, dst: vec4<u32>) -> vec4<u32> {
   return blend_settled(dst.xyz, blend_mul(dst.w, W_ONE - a_s));
+}
+
+// src plus dst — Porter-Duff plus: the premultiplied colours summed over the
+// alphas summed, each sum held at one. Where the alphas sum to one at most,
+// as a crossfade's two passes always do, it is one division over the alpha
+// out, so two equal colours give that colour back whatever the alphas; past
+// one the alpha out is whole, so a colour is its premultiplied sum, held.
+// as + ad <= 65535 keeps as·cs + ad·cd + ao/2 inside u32.
+fn blend_plus(src: vec4<u32>, dst: vec4<u32>) -> vec4<u32> {
+  let a_o = src.w + dst.w;
+  if (a_o == 0u) {
+    return vec4<u32>(0u);
+  }
+  if (a_o <= W_ONE) {
+    return vec4<u32>(
+      blend_over_alpha(src.w * src.x + dst.w * dst.x, a_o),
+      blend_over_alpha(src.w * src.y + dst.w * dst.y, a_o),
+      blend_over_alpha(src.w * src.z + dst.w * dst.z, a_o),
+      a_o,
+    );
+  }
+  return vec4<u32>(
+    min(blend_mul(src.w, src.x) + blend_mul(dst.w, dst.x), W_ONE),
+    min(blend_mul(src.w, src.y) + blend_mul(dst.w, dst.y), W_ONE),
+    min(blend_mul(src.w, src.z) + blend_mul(dst.w, dst.z), W_ONE),
+    W_ONE,
+  );
 }
 
 // src laid on dst by dst's alpha — `srcATop`, what a clipping group lays

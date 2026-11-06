@@ -15,6 +15,7 @@ const RUN_SQRT: u32 = 104u;
 const RUN_ATOP: u32 = 105u;
 const RUN_PACK: u32 = 106u;
 const RUN_UNPACK: u32 = 107u;
+const RUN_PLUS: u32 = 108u;
 
 @compute @workgroup_size(64)
 fn run_cases(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -51,6 +52,9 @@ fn run_cases(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     case RUN_UNPACK: {
       out = blend_unpack8(src.x);
+    }
+    case RUN_PLUS: {
+      out = blend_plus(src, dst);
     }
     default: {
       out = blend_composite(run, src, dst);

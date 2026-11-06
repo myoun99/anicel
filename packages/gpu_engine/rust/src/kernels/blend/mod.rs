@@ -1,7 +1,7 @@
 //! The blend family (gpu-canonical-store ⑥): one integer formula for what a
 //! dab piles, a stamp lands and a stroke or a row composites — every mode
-//! of the C engine's stroke table, normal and the eraser. `blend.wgsl` has
-//! the arithmetic and why each bound holds.
+//! of the C engine's stroke table, normal, the eraser and the executor's
+//! plus. `blend.wgsl` has the arithmetic and why each bound holds.
 //!
 //! It runs inside the kernels that blend: each prepends [`BLEND_WGSL`] to
 //! its own source, after the shared files it needs, so there is one copy
@@ -30,4 +30,5 @@ pub(crate) mod mode {
     pub(crate) const GLOW_ADD: u32 = 27;
     pub(crate) const NORMAL: u32 = 28;
     pub(crate) const ERASE: u32 = 29;
+    pub(crate) const PLUS: u32 = 30;
 }

@@ -209,7 +209,8 @@ pub(crate) struct Through<'a> {
 }
 
 /// One step of a plan, bottom to top. An opacity is on the 16-bit scale
-/// (65535 is whole); a mode is blend.wgsl's id, the eraser's among them.
+/// (65535 is whole); a mode is blend.wgsl's id, the eraser's and plus
+/// among them.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Step {
     /// Tile set `set`, keyed by chain `keys` if any, posed by `map` —
