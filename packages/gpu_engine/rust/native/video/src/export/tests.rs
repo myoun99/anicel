@@ -203,7 +203,8 @@ fn same_movie(name: &str, shape: Shape, frames: i32) {
 // side past the failed one — and the side that failed, held off hardware
 // (on the Intel machine the law was measured on, asking there fails at
 // Finalize); an exact NTSC fraction with mono sound at another rate and a
-// bitrate named; a Korean name. Each byte for byte with the C's.
+// bitrate named; one named past the ceiling; a Korean name. Each byte for
+// byte with the C's.
 #[test]
 fn the_movie_is_the_c_s_but_for_its_clock() {
     let _one = one_at_a_time();
@@ -218,6 +219,7 @@ fn the_movie_is_the_c_s_but_for_its_clock() {
     same_movie("the-failed-side", Shape { width: 48, height: 64, channels: 0, ..MOVIE }, 6);
     let ntsc = Shape { width: 96, height: 64, fps: (24000, 1001), sample_rate: 44100, channels: 1, bitrate_bps: 3_000_000, ..MOVIE };
     same_movie("ntsc-mono", ntsc, 12);
+    same_movie("past-the-ceiling", Shape { width: 64, height: 64, bitrate_bps: 80_000_000, ..MOVIE }, 6);
     same_movie("영상", MOVIE, 3);
     // SAFETY: no arguments.
     if unsafe { (c().probe)(0, 1) } == 1 {
