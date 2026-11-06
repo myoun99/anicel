@@ -99,7 +99,7 @@ void main() {
 
   test('the instruction overlays mark only the span inside the window', () {
     // The same three blocks as spans, and BOTH passes — the marks and the
-    // crossing markers — are asked once and read the same answer.
+    // crossing markers — read the one window walk.
     final layer = layerWith(timeline).copyWith(
       kind: LayerKind.instruction,
       instructions: {
@@ -118,17 +118,17 @@ void main() {
     expect(marked, [4]);
 
     final warned = <int>[];
-    timelineRowInstructionOverlays(
+    timelineRowCrossingWarnings(
       layer: layer,
       frameStartIndex: windowStart,
       frameEndIndexExclusive: windowEnd,
       axis: Axis.horizontal,
-      defById: CameraInstructionSet.standard.defById,
-      crossingWarningTooltip: (start) {
+      tooltip: (start) {
         warned.add(start);
         return null;
       },
-      crossingWarningColor: const Color(0xFFFF0000),
+      color: const Color(0xFFFF0000),
+      crossAxisExtent: 0,
     );
     expect(warned, [4], reason: 'the marker pass takes the same window');
   });

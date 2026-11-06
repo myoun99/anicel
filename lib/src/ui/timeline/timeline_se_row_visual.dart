@@ -1,4 +1,5 @@
 import '../widgets/app_tooltip.dart';
+import '../widgets/ellipsis_text.dart' show PressesGoThrough;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -417,6 +418,15 @@ const double timelineBlockWarningBarThickness = 2;
 /// pointer finds. It summons on the hover alone: a long press on a block is
 /// the block's drag, and a tooltip's recognizer would take that press from
 /// it in the arena (the panel tabs' tooltip, for the same reason).
+///
+/// 🚨AND ANYWHERE MEANS OVER WHAT THE ROW STACKS ON THE BLOCK (the hands-on
+/// check, 10-30): the grips on its edges and the movie's end handle cover
+/// whole frames at a low zoom — the conte's 80% — and a stack asks no layer
+/// under the one a pointer hits, so the block's first frame and the frames
+/// past the end line said nothing. A host mounts the warnings LAST, over
+/// the grips, and the hover is all they hear ([PressesGoThrough]): a press
+/// is the grip's or the block's under them. ↩️They sat under the grips, and
+/// over a conte SE row's blocks they took the press from the block.
 Widget timelineBlockWarningBar({
   required int blockStart,
   required int blockEndExclusive,
@@ -433,21 +443,23 @@ Widget timelineBlockWarningBar({
     ),
     child: KeyedSubtree(
       key: markerKey,
-      child: AppTooltip(
-        message: tooltip,
-        triggerMode: TooltipTriggerMode.manual,
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: sizedAlong(
-            axis,
-            along: double.infinity,
-            across: timelineBlockWarningBarThickness,
-            child: CustomPaint(
-              painter: _WarningBarPainter(
-                color: color,
-                axis: axis,
-                frameCount: blockEndExclusive - blockStart,
-                crossAxisExtent: crossAxisExtent,
+      child: PressesGoThrough(
+        child: AppTooltip(
+          message: tooltip,
+          triggerMode: TooltipTriggerMode.manual,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: sizedAlong(
+              axis,
+              along: double.infinity,
+              across: timelineBlockWarningBarThickness,
+              child: CustomPaint(
+                painter: _WarningBarPainter(
+                  color: color,
+                  axis: axis,
+                  frameCount: blockEndExclusive - blockStart,
+                  crossAxisExtent: crossAxisExtent,
+                ),
               ),
             ),
           ),

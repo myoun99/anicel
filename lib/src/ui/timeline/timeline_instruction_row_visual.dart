@@ -116,13 +116,6 @@ _instructionSpansIn(
 
 /// The mark/label overlays for every instruction span intersecting the
 /// visible window.
-///
-/// [crossingWarningTooltip] is the D26 marker's resolver — the
-/// seClipMarkerTooltip threading convention: null (or a null answer for a
-/// span's start key) mounts nothing, a string mounts the shared red
-/// warning line on that span's block with that hover text. The block
-/// itself keeps drawing either way — a warning must have something to sit
-/// on, and the refusal is the EFFECT's, never the display's.
 List<Widget> timelineRowInstructionOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -130,67 +123,64 @@ List<Widget> timelineRowInstructionOverlays({
   required Axis axis,
   required CameraInstructionDef? Function(String instructionId) defById,
   String keyPrefix = 'timeline',
-  String? Function(int spanStartKey)? crossingWarningTooltip,
-  Color? crossingWarningColor,
-  double crossAxisExtent = 0,
-}) {
-  assert(
-    crossingWarningTooltip == null || crossingWarningColor != null,
-    'a crossing warning needs its ink — pass colorScheme.error, the SE '
-    'clip marker convention',
-  );
-  // The two passes draw over exactly the same spans, so the window is
-  // asked once and both walk the answer.
-  final visible = _instructionSpansIn(
+}) => [
+  for (final span in _instructionSpansIn(
     layer,
     frameStartIndex,
     frameEndIndexExclusive,
-  );
-  final overlays = <Widget>[];
-  for (final span in visible) {
-    final start = span.start;
-    final endExclusive = span.endExclusive;
-    overlays.add(
-      TimelineFrameSpan(
-        placement: TimelineFrameSpanPlacement(
-          startIndex: start,
-          endIndexExclusive: endExclusive,
+  ))
+    TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: span.start,
+        endIndexExclusive: span.endExclusive,
+      ),
+      child: IgnorePointer(
+        key: ValueKey<String>(
+          '$keyPrefix-instruction-${layer.id}-${span.start}',
         ),
-        child: IgnorePointer(
-          key: ValueKey<String>('$keyPrefix-instruction-${layer.id}-$start'),
-          child: _InstructionSpan(axis, layer, span.event, defById),
+        child: _InstructionSpan(axis, layer, span.event, defById),
+      ),
+    ),
+];
+
+/// The D26 marker on every instruction span intersecting the visible window
+/// that [tooltip] warns of — the seClipMarkerTooltip threading convention:
+/// a null answer for a span's start key mounts nothing, a string mounts the
+/// shared red warning line on that span's block with that hover text. The
+/// block itself keeps drawing either way — a warning must have something to
+/// sit on, and the refusal is the EFFECT's, never the display's.
+///
+/// Its own layer, LAST on the row ([timelineBlockWarningBar]): over every
+/// span, so a warning is never painted under a neighbouring block's body,
+/// and over the grips, so a hover on them reaches it.
+List<Widget> timelineRowCrossingWarnings({
+  required Layer layer,
+  required int frameStartIndex,
+  required int frameEndIndexExclusive,
+  required Axis axis,
+  required String? Function(int spanStartKey) tooltip,
+  required Color color,
+  required double crossAxisExtent,
+  String keyPrefix = 'timeline',
+}) => [
+  for (final span in _instructionSpansIn(
+    layer,
+    frameStartIndex,
+    frameEndIndexExclusive,
+  ))
+    if (tooltip(span.start) case final says?)
+      timelineBlockWarningBar(
+        blockStart: span.start,
+        blockEndExclusive: span.endExclusive,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+        tooltip: says,
+        color: color,
+        markerKey: ValueKey<String>(
+          '$keyPrefix-instruction-crossing-${layer.id}-${span.start}',
         ),
       ),
-    );
-  }
-  // Markers AFTER every span, so a warning is never painted under a
-  // neighbouring block's body.
-  final resolveWarning = crossingWarningTooltip;
-  if (resolveWarning != null) {
-    for (final span in visible) {
-      final start = span.start;
-      final endExclusive = span.endExclusive;
-      final tooltip = resolveWarning(start);
-      if (tooltip == null) {
-        continue;
-      }
-      overlays.add(
-        timelineBlockWarningBar(
-          blockStart: start,
-          blockEndExclusive: endExclusive,
-          crossAxisExtent: crossAxisExtent,
-          axis: axis,
-          tooltip: tooltip,
-          color: crossingWarningColor!,
-          markerKey: ValueKey<String>(
-            '$keyPrefix-instruction-crossing-${layer.id}-$start',
-          ),
-        ),
-      );
-    }
-  }
-  return overlays;
-}
+];
 
 /// Edge grips over instruction spans: reuses the exposure grip widget and
 /// callback shape — the session dispatches instruction rows to the span

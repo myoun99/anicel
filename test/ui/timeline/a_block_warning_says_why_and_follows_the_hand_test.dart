@@ -169,16 +169,41 @@ void main() {
         );
         expect(find.text(warning()), findsNothing, reason: 'a clean fade');
 
+        final block = find.byKey(
+          ValueKey<String>('$surface-instruction-$id-$crossing'),
+        );
         await hoverAt(
           tester,
           onTheBlock(
             tester,
-            find.byKey(ValueKey<String>('$surface-instruction-$id-$crossing')),
+            block,
             TimelineTabHost,
             axis: xsheet ? Axis.vertical : Axis.horizontal,
           ),
         );
         expect(find.text(warning()), findsOneWidget);
+
+        // …and on its start grip, which a pointer meets first (10-30).
+        final grip = tester
+            .getRect(
+              find.descendant(
+                of: find.byType(TimelineTabHost),
+                matching: find.byWidgetPredicate(
+                  (widget) =>
+                      widget is TimelineBlockEdgeGrip &&
+                      widget.layer.id ==
+                          session.activeTrack.transitionLayer.id &&
+                      widget.edge == TimelineBlockEdge.start &&
+                      widget.blockStartIndex == crossing,
+                ),
+              ),
+            )
+            .intersect(tester.getRect(block));
+        expect(grip.isEmpty, isFalse, reason: '⛔전제: the grip is on it');
+        await hoverAt(tester, const Offset(4, 4));
+        expect(find.text(warning()), findsNothing, reason: 'off the block');
+        await hoverAt(tester, grip.center);
+        expect(find.text(warning()), findsOneWidget, reason: 'on its grip');
       });
     }
 
@@ -222,6 +247,77 @@ void main() {
         ),
       );
       expect(find.text(warning()), findsOneWidget);
+    });
+
+    // The hands-on check (10-30, the conte at its 80%): a cut alone, its F.O
+    // run past its end — the movie's — and the playhead on the fade's first
+    // frame. The conte said nothing on the playhead's column: the fade's
+    // start grip covers that frame whole at this zoom, and the warning lay
+    // under it. ⚠️Nor just past the end line, under the MOVIE's end handle —
+    // the panel's, over every row — which is F-495-Q1's to answer.
+    testWidgets('on the conte\'s row — under its start grip, where the '
+        'playhead stood, and past the movie\'s end', (tester) async {
+      final session = await pumpStoryboardHost(
+        tester,
+        createDefaultProject(),
+        surface: wide,
+      );
+      final cut = session.repository.requireProject().tracks.first.cuts.first;
+      final end = cut.duration;
+      final start = end - 3;
+      session.transitions.updateTransitionInstructions(
+        SplayTreeMap<int, InstructionEvent>.from({
+          start: const InstructionEvent(instructionId: 'fo', length: 6),
+        }),
+      );
+      session.selectCut(cut.id);
+      session.selectFrameIndex(start);
+      await tester.pumpAndSettle();
+      final block = tester.getRect(
+        find.byKey(
+          ValueKey<String>(
+            'storyboard-transition-paper-${rowId(session)}-$start',
+          ),
+        ),
+      );
+      final cell = block.width / 6;
+      Offset onFrame(int frame) =>
+          Offset(block.left + cell * (frame - start + 0.5), block.center.dy);
+      bool covers(Finder finder, Offset at) =>
+          tester.getRect(finder).contains(at);
+      final startGrip = find.byWidgetPredicate(
+        (widget) =>
+            widget is TimelineBlockEdgeGrip &&
+            widget.edge == TimelineBlockEdge.start &&
+            widget.blockStartIndex == start,
+      );
+      expect(
+        covers(
+          find.byKey(const ValueKey('storyboard-playhead')),
+          onFrame(start),
+        ),
+        isTrue,
+        reason: '⛔전제: the playhead stands on the fade\'s first frame',
+      );
+      expect(covers(startGrip, onFrame(start)), isTrue, reason: '⛔전제');
+      expect(
+        covers(
+          find.byKey(const ValueKey('storyboard-cut-end-handle')),
+          onFrame(end + 2),
+        ),
+        isFalse,
+        reason: '⛔전제: past the end handle',
+      );
+
+      for (final (where, frame) in [
+        ('the playhead\'s column, under the start grip', start),
+        ('past the movie\'s end', end + 2),
+      ]) {
+        await hoverAt(tester, const Offset(4, 4));
+        expect(find.text(warning()), findsNothing, reason: 'off the block');
+        await hoverAt(tester, onFrame(frame));
+        expect(find.text(warning()), findsOneWidget, reason: where);
+      }
     });
   });
 

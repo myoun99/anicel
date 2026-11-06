@@ -248,7 +248,10 @@ import 'timeline/timeline_frame_range_policy.dart'
 import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
 import 'timeline/timeline_instruction_row_visual.dart'
-    show timelineRowInstructionEdgeGrips, timelineRowInstructionOverlays;
+    show
+        timelineRowCrossingWarnings,
+        timelineRowInstructionEdgeGrips,
+        timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
@@ -4059,9 +4062,10 @@ class _StoryboardTransitionRow extends KeptPiece
     }
     spans.add(_runLabels(context, layer));
     // The marks, from the direction row's own overlay builder. Each mark
-    // takes no pointer of its own; a warning's hover reaches its block
-    // (F-495). ↩️The whole layer took none, and the warning's tooltip,
-    // added inside it later (D26), could never be hovered here.
+    // takes no pointer of its own. ↩️The whole layer took none, and the
+    // warning's tooltip, added inside it later (D26), could never be
+    // hovered here (F-495) — the warnings ride a layer of their own now,
+    // last.
     final defById = this.defById;
     if (defById != null && _frameEndExclusive > 0) {
       spans.add(
@@ -4077,11 +4081,6 @@ class _StoryboardTransitionRow extends KeptPiece
               axis: Axis.horizontal,
               defById: defById,
               keyPrefix: 'storyboard',
-              // D26: the refusal marker on the AUTHORING axis too — the
-              // one predicate, answered by global key here.
-              crossingWarningTooltip: crossingTooltip,
-              crossingWarningColor: Theme.of(context).colorScheme.error,
-              crossAxisExtent: height,
             ),
           ),
         ),
@@ -4181,6 +4180,31 @@ class _StoryboardTransitionRow extends KeptPiece
           ),
         );
       }
+    }
+    // D26: the refusal marker on the AUTHORING axis too — the one
+    // predicate, answered by global key here — over the grips, so a hover
+    // on them reaches it ([timelineBlockWarningBar]).
+    final crossingTooltip = this.crossingTooltip;
+    if (crossingTooltip != null && _frameEndExclusive > 0) {
+      spans.add(
+        Positioned.fill(
+          child: TimelineFixedFrameSpanLayer(
+            geometry: _geometry,
+            crossAxisExtent: height,
+            axis: Axis.horizontal,
+            children: timelineRowCrossingWarnings(
+              layer: layer,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: _frameEndExclusive,
+              axis: Axis.horizontal,
+              tooltip: crossingTooltip,
+              color: Theme.of(context).colorScheme.error,
+              crossAxisExtent: height,
+              keyPrefix: 'storyboard',
+            ),
+          ),
+        ),
+      );
     }
     return SizedBox(
       key: ValueKey<String>('storyboard-transition-row-${trackId.value}'),

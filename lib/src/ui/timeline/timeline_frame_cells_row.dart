@@ -308,6 +308,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // Grips ride ABOVE the chrome so the edges keep comma-drag priority.
         if (_mountsSpanGrips) _shownSpans(_spanGrips),
         ?_assetDropTarget(),
+        // The block warnings over all of it: a hover anywhere on a block
+        // reaches them, a press goes through (F-495).
+        if (_mountsWarnings) _shownSpans(_blockWarnings),
       ],
     );
     // THE row's box (zoom round): it reports the row's content extent, as it
@@ -480,9 +483,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// SE rows: audio clips painted over the paper cells (clipped to the
   /// row's drawing blocks — no block, no waveform), the sheet's writing on
   /// the blocks (name box at the block start plus the dialogue fitted across
-  /// the span), the block warnings — a take that clipped (REC1-D — the
-  /// tooltip string doubles as the switch) and a sound that cannot be
-  /// played ([soundCannotPlay]) — the cut-boundary `~` marks (UI-R7 #6: a
+  /// the span), the cut-boundary `~` marks (UI-R7 #6: a
   /// sound running past the cut end / spilling in from the previous cut
   /// announces its other half), and the media-browser drop targets (sound →
   /// block frame).
@@ -494,7 +495,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final layer = shows.shown;
     if (!layerKindUsesSeSheetCells(layer.kind)) return const [];
     final peaksFor = audioPeaksFor;
-    final clipTooltip = seClipMarkerTooltip;
     final onDropAsset = onDropMediaAssetOnSeBlock;
     final spillInLeadFrames = shows.world.spillInLeadFrames;
     return [
@@ -517,16 +517,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
         axis: axis,
         spillInLeadFrames: spillInLeadFrames,
         cutId: shows.world.cutId,
-        keyPrefix: keyPrefix,
-      ),
-      ...timelineRowSoundWarningOverlays(
-        layer: layer,
-        frameStartIndex: frames.frameStartIndex,
-        frameEndIndexExclusive: frames.frameEndIndexExclusive,
-        crossAxisExtent: crossAxisExtent,
-        axis: axis,
-        warnings: (clipped: clipTooltip, cannotPlay: soundCannotPlay),
-        color: Theme.of(context).colorScheme.error,
         keyPrefix: keyPrefix,
       ),
       ...timelineRowSeContinuationMarks(
@@ -570,13 +560,53 @@ class TimelineFrameCellsRow extends StatelessWidget {
       axis: axis,
       defById: defById,
       keyPrefix: keyPrefix,
-      // D26: the crossing-fade refusal wears the SE clip marker's own red
-      // corner + tooltip, always-on (a refusal warning takes no settings
-      // gate — style reuse is not switch reuse).
-      crossingWarningTooltip: instructionCrossingTooltip,
-      crossingWarningColor: Theme.of(context).colorScheme.error,
-      crossAxisExtent: crossAxisExtent,
     );
+  }
+
+  /// Whether [layer]'s kind warns on its blocks — the rows whose warnings
+  /// [_blockWarnings] builds.
+  bool get _mountsWarnings =>
+      layerKindUsesSeSheetCells(layer.kind) ||
+      (layer.kind.carriesInstructions && instructionCrossingTooltip != null);
+
+  /// The block warnings: on SE rows a take that clipped (REC1-D — the
+  /// tooltip string doubles as the switch) and a sound that cannot be
+  /// played ([soundCannotPlay]); on instruction rows the D26 crossing-fade
+  /// refusal, always-on (a refusal warning takes no settings gate — style
+  /// reuse is not switch reuse). Over everything else the row stacks
+  /// ([timelineBlockWarningBar]).
+  List<Widget> _blockWarnings(BuildContext context, _Shows shows) {
+    final layer = shows.shown;
+    final frames = geometry.value;
+    final color = Theme.of(context).colorScheme.error;
+    final crossing = instructionCrossingTooltip;
+    return [
+      if (layerKindUsesSeSheetCells(layer.kind))
+        ...timelineRowSoundWarningOverlays(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          crossAxisExtent: crossAxisExtent,
+          axis: axis,
+          warnings: (
+            clipped: seClipMarkerTooltip,
+            cannotPlay: soundCannotPlay,
+          ),
+          color: color,
+          keyPrefix: keyPrefix,
+        ),
+      if (layer.kind.carriesInstructions && crossing != null)
+        ...timelineRowCrossingWarnings(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          axis: axis,
+          tooltip: crossing,
+          color: color,
+          crossAxisExtent: crossAxisExtent,
+          keyPrefix: keyPrefix,
+        ),
+    ];
   }
 
   /// The CAMERA row's union key markers (B4): THE shared lane key marker
