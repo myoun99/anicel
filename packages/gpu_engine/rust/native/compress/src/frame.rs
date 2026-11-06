@@ -8,7 +8,7 @@ use crate::huffman;
 use crate::sequences::{self, Entropy, Sequence};
 use crate::xxhash::xxh64;
 
-const BLOCK_SIZE_MAX: usize = 128 << 10;
+pub(crate) const BLOCK_SIZE_MAX: usize = 128 << 10;
 /// `WILDCOPY_OVERLENGTH`.
 const OVERLENGTH: usize = 32;
 /// `ZSTD_LITBUFFEREXTRASIZE`: the literals the C keeps outside the output.
@@ -317,9 +317,9 @@ fn block(frame: &mut Frame, out: &mut [u8], at: usize, src: &[u8]) -> Result<usi
     Ok(op + last - at)
 }
 
-const BLOCK_RAW: usize = 0;
-const BLOCK_RLE: usize = 1;
-const BLOCK_COMPRESSED: usize = 2;
+pub(crate) const BLOCK_RAW: usize = 0;
+pub(crate) const BLOCK_RLE: usize = 1;
+pub(crate) const BLOCK_COMPRESSED: usize = 2;
 
 /// `ZSTD_decompressFrame`: what the frame at the start of `src` decoded to
 /// in `out`, and the bytes it took.

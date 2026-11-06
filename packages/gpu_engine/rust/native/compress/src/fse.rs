@@ -6,7 +6,7 @@
 use crate::Corrupt;
 use crate::bits::{Bits, Status, highbit};
 
-const MIN_TABLE_LOG: i32 = 5;
+pub(crate) const MIN_TABLE_LOG: i32 = 5;
 const ABSOLUTE_MAX_TABLE_LOG: i32 = 15;
 
 fn le32(src: &[u8], at: isize) -> u32 {

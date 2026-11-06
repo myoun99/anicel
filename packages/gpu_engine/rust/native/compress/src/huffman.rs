@@ -12,11 +12,11 @@ use crate::Corrupt;
 use crate::bits::{Bits, Status, highbit};
 use crate::fse;
 
-const TABLE_LOG_MAX: u32 = 12;
+pub(crate) const TABLE_LOG_MAX: u32 = 12;
 /// `HUF_DECODER_FAST_TABLELOG`: tables are widened to it, and the fast
 /// loop takes only tables of exactly it.
 const FAST_TABLE_LOG: u32 = 11;
-const SYMBOLS: usize = 256;
+pub(crate) const SYMBOLS: usize = 256;
 
 #[derive(Clone, Copy, Default)]
 struct X1 {

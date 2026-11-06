@@ -8,13 +8,13 @@ pub const UNKNOWN: u64 = u64::MAX;
 /// The bytes are not a frame header, or not all of one.
 pub const ERROR: u64 = u64::MAX - 1;
 
-const MAGIC: u32 = 0xFD2F_B528;
+pub(crate) const MAGIC: u32 = 0xFD2F_B528;
 pub(crate) const SKIPPABLE_START: u32 = 0x184D_2A50;
 pub(crate) const SKIPPABLE_MASK: u32 = 0xFFFF_FFF0;
 /// Magic number and frame header descriptor.
 pub(crate) const PREFIX: usize = 5;
 pub(crate) const SKIPPABLE_HEADER: usize = 8;
-const WINDOW_LOG_MIN: u32 = 10;
+pub(crate) const WINDOW_LOG_MIN: u32 = 10;
 const WINDOW_LOG_MAX: u32 = 31;
 const DICT_ID_BYTES: [usize; 4] = [0, 1, 2, 4];
 const CONTENT_SIZE_BYTES: [usize; 4] = [0, 2, 4, 8];

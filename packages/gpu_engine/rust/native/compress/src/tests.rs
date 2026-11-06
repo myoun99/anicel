@@ -12,7 +12,7 @@ type Size = unsafe extern "C" fn(*const u8, i64) -> i64;
 type Bound = extern "C" fn(i64) -> i64;
 
 /// The C's frame of `data` at `level`.
-fn compressed(data: &[u8], level: i32) -> Vec<u8> {
+pub(crate) fn compressed(data: &[u8], level: i32) -> Vec<u8> {
     // SAFETY: qa_compress.c's declarations.
     let (bound, compress) = unsafe { (export::<Bound>("qa_zstd_compress_bound"), export::<Compress>("qa_zstd_compress")) };
     let mut frame = vec![0u8; bound(data.len().max(1) as i64) as usize];
@@ -49,17 +49,17 @@ fn same_answer(frame: &[u8], capacity: usize, what: &str) -> i64 {
 }
 
 /// xorshift64: the same "random" bytes on every machine.
-struct Noise(u64);
+pub(crate) struct Noise(pub(crate) u64);
 
 impl Noise {
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
         self.0 ^= self.0 << 17;
         self.0
     }
 
-    fn below(&mut self, bound: usize) -> usize {
+    pub(crate) fn below(&mut self, bound: usize) -> usize {
         (self.next() % bound as u64) as usize
     }
 }
@@ -67,7 +67,7 @@ impl Noise {
 /// Inputs that take each path of a frame: raw and RLE blocks, literals
 /// raw, RLE, and Huffman-coded in one stream and four, single- and
 /// double-symbol, offsets near and far, long runs and repeats.
-fn kinds(size: usize, seed: u64) -> Vec<(&'static str, Vec<u8>)> {
+pub(crate) fn kinds(size: usize, seed: u64) -> Vec<(&'static str, Vec<u8>)> {
     let mut noise = Noise(seed | 1);
     let random: Vec<u8> = (0..size).map(|_| noise.next() as u8).collect();
     let words = [&b"stroke "[..], b"cel ", b"timeline ", b"onion skin ", b"brush ", b"layer ", b"\n", b"frame 0012 "];

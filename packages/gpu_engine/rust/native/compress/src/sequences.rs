@@ -9,19 +9,19 @@ use crate::Corrupt;
 use crate::bits::{Bits, highbit};
 use crate::fse;
 
-const LL_BASE: [u32; 36] = [
+pub(crate) const LL_BASE: [u32; 36] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 40, 48, 64, 0x80, 0x100, 0x200,
     0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000,
 ];
-const LL_BITS: [u8; 36] = [
+pub(crate) const LL_BITS: [u8; 36] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 ];
-const ML_BASE: [u32; 53] = [
+pub(crate) const ML_BASE: [u32; 53] = [
     3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
     33, 34, 35, 37, 39, 41, 43, 47, 51, 59, 67, 83, 99, 0x83, 0x103, 0x203, 0x403, 0x803, 0x1003, 0x2003, 0x4003,
     0x8003, 0x10003,
 ];
-const ML_BITS: [u8; 53] = [
+pub(crate) const ML_BITS: [u8; 53] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2,
     3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 ];
@@ -57,20 +57,20 @@ const OF_DEFAULT: [i16; 29] = [1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1
 
 /// The three codes: their largest symbol, largest table log, value bases,
 /// extra bits, and default distribution (log 6, 5, 6).
-struct Code {
-    max_symbol: u32,
-    max_log: u32,
+pub(crate) struct Code {
+    pub(crate) max_symbol: u32,
+    pub(crate) max_log: u32,
     base: &'static [u32],
     bits: &'static [u8],
-    default: &'static [i16],
-    default_log: u32,
+    pub(crate) default: &'static [i16],
+    pub(crate) default_log: u32,
 }
 
-const LITERAL_LENGTHS: Code =
+pub(crate) const LITERAL_LENGTHS: Code =
     Code { max_symbol: 35, max_log: 9, base: &LL_BASE, bits: &LL_BITS, default: &LL_DEFAULT, default_log: 6 };
-const OFFSETS: Code =
+pub(crate) const OFFSETS: Code =
     Code { max_symbol: 31, max_log: 8, base: &OF_BASE, bits: &OF_BITS, default: &OF_DEFAULT, default_log: 5 };
-const MATCH_LENGTHS: Code =
+pub(crate) const MATCH_LENGTHS: Code =
     Code { max_symbol: 52, max_log: 9, base: &ML_BASE, bits: &ML_BITS, default: &ML_DEFAULT, default_log: 6 };
 
 /// One cell of a sequence table (`ZSTD_seqSymbol`).
@@ -139,9 +139,9 @@ impl Entropy {
     }
 }
 
-const BASIC: u8 = 0;
-const RLE: u8 = 1;
-const COMPRESSED: u8 = 2;
+pub(crate) const BASIC: u8 = 0;
+pub(crate) const RLE: u8 = 1;
+pub(crate) const COMPRESSED: u8 = 2;
 
 /// `ZSTD_buildSeqTable`: the bytes the description took.
 fn read_table(choice: &mut Choice, kind: u8, code: &Code, src: &[u8], repeatable: bool) -> Result<usize, Corrupt> {

@@ -24,6 +24,7 @@
 const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
 mod bits;
+mod encode;
 mod frame;
 pub mod frame_header;
 mod fse;
@@ -101,6 +102,13 @@ pub unsafe extern "C" fn qa_zstd_decompress(dst: *mut u8, dst_capacity: i64, src
         (std::slice::from_raw_parts_mut(dst, dst_capacity as usize), std::slice::from_raw_parts(src, src_size as usize))
     };
     frame::decompress(dst, src).map_or(0, |written| written as i64)
+}
+
+/// `src` compressed at level 9 into `dst` — the frame the engine's
+/// `qa_zstd_compress(…, 9)` writes: the bytes written, or None when they do
+/// not fit (`qa_zstd_compress_bound` is room enough) or `src` is empty.
+pub fn compress(dst: &mut [u8], src: &[u8]) -> Option<usize> {
+    encode::compress(dst, src)
 }
 
 #[cfg(test)]
