@@ -163,6 +163,85 @@ fn a_players_end_silences_only_its_own_run() {
     assert_eq!(racer.transport.peak(0), 0.0);
 }
 
+#[test]
+fn a_seek_in_the_lead_is_heard_where_it_lands() {
+    // A seek starts no run: the lead before the run's first sample is the
+    // run's alone, and where a seek lands is heard.
+    let racer = Racer::new();
+    racer.transport.play(1000, 0, false, FRAMES as i64);
+    racer.transport.seek(0);
+    assert_eq!(racer.pull(FRAMES), FRAMES);
+}
+
+#[test]
+fn a_schedule_replaced_mid_block_is_not_freed_under_it() {
+    // The callback still reads the slot it said: the replacement waits it
+    // out, bounded, and leaves the old slot to the next replacement.
+    let racer = Racer::new();
+    let old = buffer::new(64);
+    let source = |samples| Source { source_start: 0, length: 64, channels: 1, reserved: 0, samples };
+    assert!(racer.transport.set_schedule(&[], &[source(old)], &[]));
+    assert_eq!(buffer::holds(old), 2, "premise: its maker and the slot");
+    racer.transport.play(0, 0, false, 0);
+    racer.between.set(Some(|transport| {
+        assert!(transport.set_schedule(&[], &[], &[]));
+    }));
+    racer.pull(FRAMES);
+    assert_eq!(buffer::holds(old), 2, "freed under the block that read it");
+    assert!(racer.transport.set_schedule(&[], &[], &[]));
+    assert_eq!(buffer::holds(old), 1, "the next replacement frees it");
+    buffer::release(old);
+    racer.transport.close(|| {});
+}
+
+// --- The capture's ring ---------------------------------------------------
+
+/// A capture of `channels` at 100Hz — a ring of 800 frames — with
+/// `frames` delivered, counting up from 1.
+fn a_ring(channels: i32, frames: usize) -> crate::capture::Capture {
+    let ring = crate::capture::Capture::new();
+    assert!(ring.open(channels, 100));
+    let delivered: Vec<f32> = (1..=frames * channels as usize).map(|value| value as f32).collect();
+    ring.deliver(&delivered);
+    ring
+}
+
+#[test]
+fn a_full_ring_drops_whole_frames_and_counts_them() {
+    let ring = a_ring(2, 700);
+    ring.deliver(&[0.5; 2 * 250]);
+    assert_eq!((ring.frames(), ring.dropped_frames()), (800, 150));
+    // A drain of a frame and a half leaves room for a frame and a half: the
+    // half is not taken.
+    let mut out = [0.0f32; 3];
+    assert_eq!(ring.read(&mut out), 3);
+    ring.deliver(&[0.25; 2 * 2]);
+    assert_eq!((ring.frames(), ring.dropped_frames()), (801, 151));
+    // What it hands back is what it took: from the fourth float on, and
+    // the half frame's room left untaken.
+    let mut rest = vec![0.0f32; 2 * 800];
+    assert_eq!(ring.read(&mut rest), 2 * 800 - 3 + 2);
+    assert_eq!(rest[0], 4.0);
+    assert_eq!(&rest[1_396..1_398], &[1_400.0, 0.5]);
+    assert_eq!(&rest[1_596..1_600], &[0.5, 0.25, 0.25, 0.0]);
+    ring.close();
+}
+
+#[test]
+fn the_ring_hands_back_what_it_took_across_its_end() {
+    let ring = a_ring(1, 600);
+    let mut out = vec![0.0f32; 500];
+    assert_eq!(ring.read(&mut out), 500);
+    let more: Vec<f32> = (601..=1_200).map(|value| value as f32).collect();
+    ring.deliver(&more);
+    let mut out = vec![0.0f32; 2_000];
+    assert_eq!(ring.read(&mut out), 700);
+    let want: Vec<f32> = (501..=1_200).map(|value| value as f32).collect();
+    assert_eq!(&out[..700], &want[..]);
+    assert_eq!((ring.frames(), ring.dropped_frames()), (1_200, 0));
+    ring.close();
+}
+
 // --- What a callback hands, against the C's mix bus -----------------------
 
 /// A schedule over buffers of this crate's, which the C's mix reads as
@@ -364,8 +443,12 @@ impl Doors {
         seen.push(i64::from((self.holds)(made)));
         seen.push((self.new)(-1).is_null() as i64);
         let empty = (self.new)(0);
+        let another = (self.new)(0);
         seen.push(i64::from((self.holds)(empty)));
+        seen.push((empty != another) as i64);
         (self.release)(empty);
+        seen.push(i64::from((self.holds)(another)));
+        (self.release)(another);
         // Samples that are no buffer's — with zeros before them, where the C
         // looks for a buffer's head.
         let mut padded = vec![0.0f32; 24];
@@ -493,6 +576,7 @@ impl Output {
             say("refused", (self.open)(rate, channels, 1, -1).to_string());
         }
         say("a bogus index", (self.open)(48_000, 2, 1, 999).to_string());
+        say("one past the list", (self.open)(48_000, 2, 1, 1).to_string());
         say("open", (self.open)(48_000, 2, 1, 0).to_string());
         say("geometry", format!("{} {} {} {}", (self.is_open)(), (self.sample_rate)(), (self.channels)(), (self.latency)()));
         say("again, another rate", (self.open)(44_100, 1, 1, -1).to_string());
@@ -630,6 +714,7 @@ impl Capture {
         say("a point with none open", format!("{:?}", self.point()));
         say("refused", format!("{} {}", (self.start)(0, 1, -1), (self.start)(-1, 1, -1)));
         say("a bogus index", format!("{} {}", (self.start)(48_000, 1, 9_999), (self.is_open)()));
+        say("one past the list", format!("{} {}", (self.start)(48_000, 1, 1), (self.is_open)()));
         say("start", (self.start)(44_100, 1, 0).to_string());
         say("geometry", geometry());
         say("again", (self.start)(48_000, 1, -1).to_string());
