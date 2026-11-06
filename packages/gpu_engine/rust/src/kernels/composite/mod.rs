@@ -26,11 +26,15 @@
 //! reads around where a pixel lands, so an output tile's pages are never
 //! parted: its row is one step binding every page it reaches or, reaching
 //! more than a pass binds, a step for each group of output tiles whose
-//! pages a pass does bind. An output tile whose pixels alone reach more is
-//! refused. A pass holds a window of the stack in its registers, [`DEPTH`]
-//! levels at most, so a tree nested deeper is cut where it leaves the
-//! window. Between passes the stack is kept on the 16-bit scale as it was,
-//! so the cuts change no value.
+//! pages a pass does bind. An output tile whose pixels alone reach more
+//! reads its row's tiles under it gathered first onto a page of their own,
+//! as a row copied whole lays them — their stored bytes, so the gathering
+//! changes no value (11-06 — it was the last plan refused: a row its pose
+//! shrinks reads many tiles under one output tile, and on a device of two
+//! pages a pass their pages are soon more). A pass holds a window of the
+//! stack in its registers, [`DEPTH`] levels at most, so a tree nested
+//! deeper is cut where it leaves the window. Between passes the stack is
+//! kept on the 16-bit scale as it was, so the cuts change no value.
 //!
 //! A row is sampled only on the output tiles where its pose reads a stored
 //! tile of it; on any other it would show nothing, so it is skipped there.
@@ -66,6 +70,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
@@ -107,6 +112,7 @@ pub(crate) struct TileAt {
 /// A row's picture on the canvas's tile grid: the tiles of the rectangle
 /// whose top-left tile is column `x0`, row `y0`, row by row. `None` is a
 /// tile with nothing on it.
+#[derive(Clone)]
 pub(crate) struct TileSet {
     pub(crate) x0: i32,
     pub(crate) y0: i32,
@@ -127,6 +133,14 @@ impl TileSet {
     /// The tiles of the set under the pixels `[left, top, right, bottom)`,
     /// or all of them for `None`.
     fn under(&self, pixels: Option<[i64; 4]>) -> impl Iterator<Item = TileAt> + '_ {
+        self.placed_under(pixels).map(|(_, at)| at)
+    }
+
+    /// `under`'s tiles, each at its column and row, row after row.
+    fn placed_under(
+        &self,
+        pixels: Option<[i64; 4]>,
+    ) -> impl Iterator<Item = ((i32, i32), TileAt)> + '_ {
         let side = i64::from(TILE);
         // In tiles, ends excluded.
         let first = (i64::from(self.x0), i64::from(self.y0));
@@ -141,8 +155,33 @@ impl TileSet {
             ],
         };
         (top..bottom)
-            .flat_map(move |row| (left..right).map(move |column| (column, row)))
-            .filter_map(|(column, row)| self.at(column as i32, row as i32))
+            .flat_map(move |row| (left..right).map(move |column| (column as i32, row as i32)))
+            .filter_map(|(column, row)| Some(((column, row), self.at(column, row)?)))
+    }
+}
+
+/// The tile set of `tiles` — row after row, each row's from the left — at
+/// slot after slot of `page`.
+fn placed_on(page: u16, tiles: &[(i32, i32)]) -> TileSet {
+    let x0 = tiles.iter().map(|&(column, _)| column).min().unwrap_or(0);
+    let x1 = tiles.iter().map(|&(column, _)| column).max().unwrap_or(x0 - 1);
+    let y0 = tiles.first().map_or(0, |&(_, row)| row);
+    let y1 = tiles.last().map_or(y0 - 1, |&(_, row)| row);
+    let (columns, rows) = ((x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32);
+    let mut placed = vec![None; columns as usize * rows as usize];
+    for (slot, &(column, row)) in tiles.iter().enumerate() {
+        let at = (row - y0) as usize * columns as usize + (column - x0) as usize;
+        placed[at] = Some(TileAt {
+            page,
+            slot: slot as u16,
+        });
+    }
+    TileSet {
+        x0,
+        y0,
+        columns,
+        rows,
+        tiles: placed,
     }
 }
 
@@ -320,6 +359,45 @@ impl Composite {
         Some(Composited { out, passes })
     }
 
+    /// `tiles` of `set` — its tiles on `pages` — as a row copied whole over
+    /// nothing lays them: their stored bytes, tile after tile in `tiles`'
+    /// order, nothing for a tile the set has none of, and no edge — a
+    /// stroke reaches past the canvas onto the pasteboard
+    /// (BrushBlurPicture's wall), where a cel has tiles too. The blur
+    /// brush's picture is made of it (dab/blur.rs), and a row whose pages
+    /// under one output tile a pass cannot bind is read from it
+    /// ([`Composite::gathered`]). Submits the work; the caller waits.
+    pub(crate) fn copied(
+        &self,
+        engine: &Engine,
+        pages: &[wgpu::Buffer],
+        set: &TileSet,
+        tiles: &[(i32, i32)],
+        budget: Budget,
+    ) -> Option<Composited> {
+        let steps = [Step::Row {
+            set: 0,
+            keys: None,
+            map: ResampleMap::moved(0, 0),
+            matrix: None,
+            // Whole. 65534 copies the same bytes — a stored byte's step is 257
+            // on this scale — so no test tells the two apart (mutant r04, 11-06).
+            opacity: 65535,
+            mode: NORMAL,
+            masked: false,
+        }];
+        let plan = Plan {
+            pages,
+            sets: std::slice::from_ref(set),
+            keys: &[],
+            matrices: &[],
+            steps: &steps,
+            mask: None,
+        };
+        let no_edge = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
+        self.run(engine, &plan, tiles, no_edge, budget)
+    }
+
     /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
     /// right, bottom), the output's pixels being the surface's own — and
     /// leaves the rest of it as it was, the other panels of an atlas;
@@ -456,7 +534,69 @@ impl Composite {
         check_depth(plan.steps, plan.sets.len(), plan.keys.len(), plan.matrices.len())?;
         check_mask(plan)?;
         let laid = lay(plan.steps, plan.sets, tiles, plan.pages.len(), pages_per_pass)?;
-        self.walk_laid(engine, plan, &laid, tiles, extent, surface, target, budget)
+        if laid.iter().all(|each| each.pages.len() <= pages_per_pass) {
+            return self.walk_laid(engine, plan, &laid, tiles, extent, surface, target, budget);
+        }
+        let (pages, sets, laid) = self.gathered(engine, plan, laid, tiles, budget)?;
+        let plan = Plan {
+            pages: &pages,
+            sets: &sets,
+            ..*plan
+        };
+        self.walk_laid(engine, &plan, &laid, tiles, extent, surface, target, budget)
+    }
+
+    /// `laid` with each step reading more pages than a pass binds — a row
+    /// under an output tile reaching them alone, a group of its own
+    /// ([`grouped`]) — reading instead its row's tiles under that tile,
+    /// gathered by [`Composite::copied`] onto a page past `plan`'s: the
+    /// pages, the tile sets and the steps to walk. Nothing where a tile
+    /// reaches more tiles than a page holds.
+    fn gathered(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        laid: Vec<Laid>,
+        tiles: &[(i32, i32)],
+        budget: Budget,
+    ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Laid>)> {
+        let side = i64::from(TILE);
+        // A slot is a u16.
+        let held = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
+        let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
+        let mut gathered = Vec::with_capacity(laid.len());
+        for mut each in laid {
+            if each.pages.len() <= budget.pages {
+                gathered.push(each);
+                continue;
+            }
+            let Step::Row { set, map, .. } = &mut each.step else {
+                return fail("only a row reads pages");
+            };
+            let mut read: Vec<(i32, i32)> = Vec::new();
+            for (_, &(column, row)) in each.live.iter().zip(tiles).filter(|(live, _)| **live) {
+                let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
+                let under = plan.sets[*set].placed_under(map.reads(x0, y0, x0 + side, y0 + side));
+                read.extend(under.map(|(place, _)| place));
+            }
+            // Row after row, as the set they make holds them.
+            read.sort_unstable_by_key(|&(column, row)| (row, column));
+            read.dedup();
+            if read.len() > held {
+                let reads = read.len();
+                return fail(format!("a row reads {reads} tiles at once; a page holds {held}"));
+            }
+            let Ok(page) = u16::try_from(pages.len()) else {
+                return fail("a gathered page is past what a plan names");
+            };
+            let copied = self.copied(engine, plan.pages, &plan.sets[*set], &read, budget)?;
+            pages.push(copied.out);
+            sets.push(placed_on(page, &read));
+            *set = sets.len() - 1;
+            each.pages = vec![page];
+            gathered.push(each);
+        }
+        Some((pages, sets, gathered))
     }
 
     /// [`Composite::walk`] from the steps as `lay` laid them.
@@ -781,7 +921,7 @@ fn lay(
 /// joins the first group whose pages and its own a pass of `pages_per_pass`
 /// binds, or starts one. A pixel reads around where it lands, so a tile's
 /// pages are never parted; one tile reading more than a pass binds is a
-/// group of its own, which `cut` refuses.
+/// group of its own, which the walk reads gathered ([`Composite::gathered`]).
 fn grouped(step: Step, reads: &[Vec<u16>], pages_per_pass: usize) -> Vec<Laid> {
     let mut groups: Vec<Laid> = Vec::new();
     for (tile, read) in reads.iter().enumerate() {

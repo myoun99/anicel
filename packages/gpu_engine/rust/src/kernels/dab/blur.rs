@@ -31,14 +31,13 @@ use super::{Dab, Paper, Plans, StrokeTile, TILE, of_pages, on_pages};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::blend::mode::NORMAL;
-use crate::kernels::composite::{self, Composite, Composited, TILE_TEXELS, TileSet};
+use crate::kernels::composite::{Composite, Composited, TILE_TEXELS, TileSet};
 use crate::kernels::effects::blur::gaussian::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, ResampleMap, TILE_WGSL, encode, encode_on, fits, flat,
+    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, encode_on, fits, flat,
     given, page_table, pipeline, plane, range, runs, tiles_a_pass, whole,
 };
 
@@ -73,9 +72,6 @@ pub(crate) struct Cover<'a> {
     pub(crate) opacity: u32,
     pub(crate) mask: Option<&'a Mask<'a>>,
 }
-/// The cel's copy has no edge: a stroke reaches past the canvas onto the
-/// pasteboard (BrushBlurPicture's wall), where the cel has tiles too.
-const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 
 /// The widest box a dab goes by strips. Past it a pass a dispatch is the
 /// faster: a strip's halo of 6r leaves it few of its 1024 pixels to put,
@@ -655,32 +651,14 @@ fn grown(engine: &Engine, slot: &mut Option<wgpu::Buffer>, bytes: u64, label: &s
 }
 
 /// `tiles` of `cel` — its tiles on the pool's `pages` — as the executor
-/// copies a row whole over nothing: its stored bytes, tile after tile.
+/// copies a row whole over nothing (`Composite::copied`): its stored
+/// bytes, tile after tile.
 fn copied(
     engine: &Engine,
     executor: &Composite,
     (pages, cel): (&[wgpu::Buffer], &TileSet),
     tiles: &[StrokeTile],
 ) -> Option<Composited> {
-    let steps = [composite::Step::Row {
-        set: 0,
-        keys: None,
-        map: ResampleMap::moved(0, 0),
-        matrix: None,
-        // Whole. 65534 copies the same bytes — a stored byte's step is 257
-        // on this scale — so no test tells the two apart (mutant r04, 11-06).
-        opacity: 65535,
-        mode: NORMAL,
-        masked: false,
-    }];
-    let plan = composite::Plan {
-        pages,
-        sets: std::slice::from_ref(cel),
-        keys: &[],
-        matrices: &[],
-        steps: &steps,
-        mask: None,
-    };
     let at: Vec<(i32, i32)> = tiles.iter().map(|tile| (tile.column, tile.row)).collect();
-    executor.run(engine, &plan, &at, NO_EDGE, executor.widest())
+    executor.copied(engine, pages, cel, &at, executor.widest())
 }

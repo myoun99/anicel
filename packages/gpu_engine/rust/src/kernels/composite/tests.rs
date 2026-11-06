@@ -987,7 +987,7 @@ fn a_posed_row_lays_what_r1_resamples() {
 // - moved left two tiles, it shows the third — one page;
 // - under a 16 px tent half a pixel left, the second is read up to 15 px in,
 //   past where the output tile's corners land, the rest not at all — two
-//   pages, and a pass of one cannot take the row;
+//   pages, which a pass of one takes gathered onto one;
 // - ten times larger from x = 100 with the same tent, the corners land by
 //   112.8 and the tent reaches 128, one pixel into the second.
 #[test]
@@ -1013,16 +1013,14 @@ fn a_row_binds_the_pages_its_pixels_read() {
     ];
     for (n, (map, pages)) in cases.into_iter().enumerate() {
         let scene = strip(map);
+        let laid = super::lay(&scene.steps, &scene.sets, &scene.tiles, 4, 4).expect("lay");
+        let bound: Vec<usize> = laid.iter().map(|each| each.pages.len()).collect();
+        assert_eq!(bound, [pages], "{n}");
         let (out, passes) = composite(&scene, within(pages, usize::MAX));
         assert!(out == resampled(&map, &picture, &scene.tiles), "{n}");
         assert_eq!(passes, 1, "{n}");
-        if pages > 1 {
-            let Rig { engine, composite } = rig();
-            let pool = scene.pool.upload(engine);
-            let fewer = within(pages - 1, usize::MAX);
-            let run = composite.run(engine, &scene.plan(&pool), &scene.tiles, EVERYWHERE, fewer);
-            assert!(run.is_none(), "{n}");
-        }
+        let (fewer, _) = composite(&scene, within(pages.max(2) - 1, usize::MAX));
+        assert!(fewer == out, "{n}");
     }
 }
 
@@ -1882,8 +1880,7 @@ fn a_row_s_output_tiles_are_grouped_by_the_pages_a_pass_binds() {
 
 // Laid a group of output tiles at a time, a row lays what R1 resamples, a
 // pass a group; over a row under it, it composites as when one pass binds
-// every page, the stack kept between the groups. Two pages a pass take no
-// output tile reading three.
+// every page, the stack kept between the groups.
 #[test]
 fn a_row_laid_a_group_at_a_time_composites_as_in_one() {
     let picture = picture_of(|x, y| texel(57, x, y), (4 * TILE, TILE));
@@ -1913,10 +1910,43 @@ fn a_row_laid_a_group_at_a_time_composites_as_in_one() {
     let (out, passes) = composite(&over, within(3, usize::MAX));
     assert!(out == widest(&over));
     assert_eq!(passes, 3);
-    let Rig { engine, composite } = rig();
-    let pool = alone.pool.upload(engine);
-    let two = within(2, usize::MAX);
-    assert!(composite.run(engine, &alone.plan(&pool), &STRIP, EVERYWHERE, two).is_none());
+}
+
+// An output tile reading more pages than a pass binds reads its row's
+// tiles under it gathered onto a page of their own, their stored bytes: a
+// grid of three by two tiles, each on its own page, moved half a pixel
+// each way — an output tile reads the tiles about it, up to six pages —
+// composites at two pages a pass, and at one, as when one pass binds them
+// all: alone, R1's resample, and over a row under it.
+#[test]
+fn an_output_tile_reading_past_a_pass_s_pages_reads_them_gathered() {
+    let both = [1.0, 0.0, 0.5, 0.0, 1.0, 0.5, 0.0, 0.0, 1.0];
+    let half = ResampleMap::new(both, 1.0, ResampleMode::Blend, TILE, TILE).unwrap();
+    let picture = picture_of(|x, y| texel(61, x, y), (3 * TILE, 2 * TILE));
+    let tiles = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)];
+    let grid = |steps: Vec<Step>| {
+        let mut pool = Pool::default();
+        let sets = vec![
+            pool.set(61, (0, 0), (3, 2), |c, r| Some((r * 3 + c) as u16)),
+            pool.set(62, (0, 0), (3, 2), |_, _| Some(6)),
+        ];
+        Scene {
+            pool,
+            sets,
+            keys: Vec::new(),
+            matrices: Vec::new(),
+            steps,
+            tiles: tiles.to_vec(),
+        }
+    };
+    let alone = grid(vec![with_map(0, half, WHOLE, NORMAL)]);
+    let over = grid(vec![row(1, (0, 0), WHOLE, NORMAL), with_map(0, half, 50000, MULTIPLY)]);
+    let (whole, under) = (widest(&alone), widest(&over));
+    assert!(whole == resampled(&half, &picture, &tiles));
+    for pages in [1, 2] {
+        assert!(composite(&alone, within(pages, usize::MAX)).0 == whole, "{pages} alone");
+        assert!(composite(&over, within(pages, usize::MAX)).0 == under, "{pages} over");
+    }
 }
 
 // The kernel samples a row only where it is live: a row over two output
