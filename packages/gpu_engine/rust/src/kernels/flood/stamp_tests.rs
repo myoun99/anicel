@@ -316,9 +316,15 @@ fn a_gradient_past_its_reach_is_refused() {
     let on = gradient(Shape::Line, (-reach, 0.0), (0.0, reach), [BLACK, RED]);
     assert!(graded(&mask.mask(), &on).is_some());
     let near = gradient(Shape::Line, (0.0, 0.0), (1.0, 0.0), [BLACK, RED]);
-    let boxes = [((65530, 0), 7, true), ((-65537, 0), 4, true), ((65530, 0), 6, false)];
-    for (at, width, past) in boxes {
-        let boxed = masked(at, (width, 1), |_, _| 255);
-        assert_eq!(graded(&boxed.mask(), &near).is_none(), past, "{at:?} {width}");
+    let boxes = [
+        ((65530, 0), (7, 1), true),
+        ((-65537, 0), (4, 1), true),
+        ((0, 65534), (1, 3), true),
+        ((0, -65537), (1, 4), true),
+        ((65530, 65535), (6, 1), false),
+    ];
+    for (at, size, past) in boxes {
+        let boxed = masked(at, size, |_, _| 255);
+        assert_eq!(graded(&boxed.mask(), &near).is_none(), past, "{at:?} {size:?}");
     }
 }
