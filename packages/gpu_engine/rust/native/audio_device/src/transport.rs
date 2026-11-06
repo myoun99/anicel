@@ -476,6 +476,10 @@ impl Transport {
     /// — (the samples handed when that callback returned, when it was asked
     /// for them) — or none: no callback has spoken since the last arm, and
     /// there is only the stair to read.
+    ///
+    /// 🧪MUTATION: without the look at an odd sequence the tests pass — a
+    /// torn point needs the writer stopped between its stores, where no
+    /// test can stand (the capture's line is the same). This note holds it.
     pub(crate) fn clock(&self) -> Option<(i64, i64)> {
         for _ in 0..16 {
             let before = self.clock_seq.load(SeqCst);

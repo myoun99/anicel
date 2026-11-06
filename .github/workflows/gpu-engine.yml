@@ -71,8 +71,10 @@ jobs:
         with:
           sdk: 3.13.3
       - uses: ./.github/actions/native-engine
-      # The runner has no GPU: lavapipe is Mesa's Vulkan on the CPU.
-      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+      # The runner has no GPU: lavapipe is Mesa's Vulkan on the CPU. The
+      # audio device's cpal builds against ALSA (native-to-rust-Q7), which
+      # alsa-sys finds through pkg-config; its tests open the null device.
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libasound2-dev pkg-config
       - run: rustup show
       - run: cargo test --locked --workspace
       - run: cargo test --locked --workspace --release

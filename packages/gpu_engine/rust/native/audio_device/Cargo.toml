@@ -14,6 +14,13 @@ cpal = "0.18.2"
 # clock_gettime(CLOCK_MONOTONIC), the clock the C's lines are drawn on.
 libc = "0.2"
 
+# F-190's session (native-to-rust-Q7 ②): the binding cpal reads the session
+# through, with the features cpal turns on — no crate cpal does not bring.
+[target.'cfg(target_os = "ios")'.dependencies.objc2-avf-audio]
+version = "0.3"
+default-features = false
+features = ["std", "AVAudioSession", "AVAudioSessionTypes"]
+
 # The C answer key: the engine's qa_audio_buffer_*, its transport's doors
 # and its null device (native/oracle).
 [dev-dependencies]

@@ -19,12 +19,13 @@ mod tests;
 
 use std::ffi::c_char;
 use std::slice;
-use std::sync::atomic::{AtomicI64, Ordering::SeqCst};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering::SeqCst};
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::thread;
 
 use audio_mix::{Clip, EnvelopeKey, Source, slice_or_empty};
 
-use backend::{Backend, Context, Direction, Running};
+use backend::{Backend, Built, Context, Direction, Running};
 use capture::Capture;
 use transport::{MAX_BLOCK, Transport};
 
@@ -44,9 +45,21 @@ static DEVICES: Mutex<Devices> = Mutex::new(Devices { context: None, playback: N
 
 struct Devices {
     context: Option<Context>,
-    playback: Option<Running>,
-    capture: Option<Running>,
+    playback: Option<Opened>,
+    capture: Option<Opened>,
 }
+
+/// A device running, and the open that made it.
+struct Opened {
+    #[expect(dead_code, reason = "held for its drop, which unmakes the device")]
+    running: Running,
+    open: u64,
+}
+
+/// Each open of a device, the output's or the capture's — again on a new
+/// default too: what a lost device's ask names, so an ask for one since
+/// opened again or closed finds it gone.
+static OPENS: AtomicU64 = AtomicU64::new(0);
 
 fn devices() -> MutexGuard<'static, Devices> {
     DEVICES.lock().unwrap_or_else(PoisonError::into_inner)
@@ -58,9 +71,86 @@ impl Devices {
     fn context(&mut self, backend: Backend) -> Option<&mut Context> {
         let matches = self.context.as_ref().is_some_and(|context| context.backend == backend);
         if !matches && self.playback.is_none() {
-            self.context = Some(Context::new(backend));
+            // The old one ends before the new one begins: on iOS both are
+            // the app's one session.
+            self.context = None;
+            self.context = Context::new(backend);
         }
         self.context.as_mut()
+    }
+}
+
+/// The output's callback for `channels`: the transport rendered through a
+/// mix bus of its own — or none when the memory is not there.
+fn playback_render(channels: i32) -> Option<impl FnMut(&mut [f32]) + Send + 'static> {
+    let lanes = channels as usize;
+    let mut bus = Vec::new();
+    bus.try_reserve_exact(MAX_BLOCK * lanes).ok()?;
+    bus.resize(MAX_BLOCK * lanes, 0.0);
+    Some(move |out: &mut [f32]| PLAYBACK.render(out, lanes, &mut bus, &transport::mix_slot))
+}
+
+/// The output of `index` at `(sample_rate, channels)`, made and not yet
+/// started, as open `open`.
+fn build_output(context: &mut Context, index: Option<usize>, geometry: (i32, i32), open: u64) -> Option<Built> {
+    let lost = move || follow_default(move || reopen_output(open));
+    context.build_playback(index, geometry, &PLAYBACK_LATENCY, || playback_render(geometry.1), lost)
+}
+
+/// The capture of `index` at `sample_rate`, made and not yet started, as
+/// open `open`.
+fn build_input(context: &mut Context, index: Option<usize>, sample_rate: i32, open: u64) -> Option<Built> {
+    let lost = move || follow_default(move || reopen_input(open));
+    context.build_capture(index, sample_rate, &CAPTURE_LATENCY, |input| CAPTURE.deliver(input), lost)
+}
+
+/// 🚨A DEVICE OPENED ON THE SYSTEM'S DEFAULT FOLLOWS IT
+/// (native-to-rust-Q7 ①, user 2026-11-06). miniaudio moved such a device
+/// to each new default; cpal's stays on the one it opened and says it lost
+/// it (`backend::on_error`). So the lost device is opened again on the
+/// default — on a thread of its own, never the device's, which waits for
+/// nothing — with the transport or the ring untouched: what played plays
+/// on where it was, and a take goes on counting.
+fn follow_default(reopen: impl FnOnce() + Send + 'static) {
+    thread::spawn(reopen);
+}
+
+/// The output open `open` made, opened again on the system's default.
+/// ⛔Only at the rate and channels the transport runs at — Dart conformed
+/// every sound to them: a default that will not take them closes the
+/// output, which Dart's next arm opens again, and conforms to. An ask for
+/// an output since opened again or closed does nothing.
+fn reopen_output(open: u64) {
+    let mut devices = devices();
+    let Some(lost) = devices.playback.take_if(|opened| opened.open == open) else {
+        return;
+    };
+    let geometry = (PLAYBACK.sample_rate(), PLAYBACK.channels());
+    let next = OPENS.fetch_add(1, SeqCst) + 1;
+    let built = devices.context.as_mut().and_then(|context| build_output(context, None, geometry, next));
+    // The lost device's callback ends before the new one's starts: two
+    // would both move the transport.
+    drop(lost);
+    match built.filter(|built| (built.sample_rate, built.channels) == geometry).and_then(Built::start) {
+        Some(running) => devices.playback = Some(Opened { running, open: next }),
+        None => PLAYBACK.close(|| {}),
+    }
+}
+
+/// The capture open `open` made, opened again on the system's default —
+/// as the output's, at the ring's rate and channels or not at all.
+fn reopen_input(open: u64) {
+    let mut devices = devices();
+    let Some(lost) = devices.capture.take_if(|opened| opened.open == open) else {
+        return;
+    };
+    let geometry = (CAPTURE.sample_rate(), CAPTURE.channels());
+    let next = OPENS.fetch_add(1, SeqCst) + 1;
+    let built = devices.context.as_mut().and_then(|context| build_input(context, None, geometry.0, next));
+    drop(lost);
+    match built.filter(|built| (built.sample_rate, built.channels) == geometry).and_then(Built::start) {
+        Some(running) => devices.capture = Some(Opened { running, open: next }),
+        None => CAPTURE.close(),
     }
 }
 
@@ -170,7 +260,8 @@ pub unsafe extern "C" fn qa_audio_device_describe(
 /// Opens the output: `backend` 0 the OS's, 1 the null backend;
 /// `device_index` from the last listing, -1 the system's default — a stale
 /// or bad index FAILS rather than opening something else. The device's
-/// sample rate, or 0 when it did not open. Open already, the open one's.
+/// sample rate — the one asked for, or the device's own when it refuses
+/// that one — or 0 when it did not open. Open already, the open one's.
 #[unsafe(no_mangle)]
 pub extern "C" fn qa_audio_device_open(sample_rate: i32, channels: i32, backend: i32, device_index: i32) -> i32 {
     let mut devices = devices();
@@ -183,15 +274,8 @@ pub extern "C" fn qa_audio_device_open(sample_rate: i32, channels: i32, backend:
     let Some(context) = devices.context(Backend::of(backend)) else {
         return 0;
     };
-    let lanes = channels as usize;
-    let mut bus = Vec::new();
-    if bus.try_reserve_exact(MAX_BLOCK * lanes).is_err() {
-        return 0;
-    }
-    bus.resize(MAX_BLOCK * lanes, 0.0);
-    let render = move |out: &mut [f32]| PLAYBACK.render(out, lanes, &mut bus, &transport::mix_slot);
-    let Some(built) = context.build_playback(index_of(device_index), sample_rate, channels, &PLAYBACK_LATENCY, render)
-    else {
+    let open = OPENS.fetch_add(1, SeqCst) + 1;
+    let Some(built) = build_output(context, index_of(device_index), (sample_rate, channels), open) else {
         return 0;
     };
     PLAYBACK.open(built.sample_rate, built.channels);
@@ -199,15 +283,15 @@ pub extern "C" fn qa_audio_device_open(sample_rate: i32, channels: i32, backend:
         PLAYBACK.not_started();
         return 0;
     };
-    devices.playback = Some(running);
+    devices.playback = Some(Opened { running, open });
     PLAYBACK.sample_rate()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn qa_audio_device_close() {
     let mut devices = devices();
-    if let Some(running) = devices.playback.take() {
-        PLAYBACK.close(|| drop(running));
+    if let Some(opened) = devices.playback.take() {
+        PLAYBACK.close(|| drop(opened));
     }
 }
 
@@ -327,7 +411,8 @@ pub extern "C" fn qa_audio_clock_now_us() -> i64 {
 // --- Capture --------------------------------------------------------------
 
 /// Opens the capture at `sample_rate` — the project's, so what lands in
-/// the ring needs no conform — of the device's own channel count (read
+/// the ring needs no conform, unless the device refuses it and runs at its
+/// own — of the device's own channel count (read
 /// [`qa_audio_capture_channels`] after), and starts it delivering into the
 /// ring. `device_index` as the output's. The delivered rate, or 0 — which
 /// on macOS, iOS and Android includes "no microphone permission".
@@ -340,8 +425,8 @@ pub extern "C" fn qa_audio_capture_start(sample_rate: i32, backend: i32, device_
     let Some(context) = devices.context(Backend::of(backend)) else {
         return 0;
     };
-    let deliver = |input: &[f32]| CAPTURE.deliver(input);
-    let Some(built) = context.build_capture(index_of(device_index), sample_rate, &CAPTURE_LATENCY, deliver) else {
+    let open = OPENS.fetch_add(1, SeqCst) + 1;
+    let Some(built) = build_input(context, index_of(device_index), sample_rate, open) else {
         return 0;
     };
     if !CAPTURE.open(built.channels, built.sample_rate) {
@@ -351,7 +436,7 @@ pub extern "C" fn qa_audio_capture_start(sample_rate: i32, backend: i32, device_
         CAPTURE.close();
         return 0;
     };
-    devices.capture = Some(running);
+    devices.capture = Some(Opened { running, open });
     CAPTURE.sample_rate()
 }
 
@@ -375,8 +460,8 @@ pub unsafe extern "C" fn qa_audio_capture_read(out: *mut f32, max_floats: i32) -
 #[unsafe(no_mangle)]
 pub extern "C" fn qa_audio_capture_stop() {
     let mut devices = devices();
-    if let Some(running) = devices.capture.take() {
-        drop(running);
+    if let Some(opened) = devices.capture.take() {
+        drop(opened);
         CAPTURE.close();
     }
 }

@@ -7,7 +7,8 @@
 use std::cell::Cell;
 use std::ffi::c_char;
 use std::ptr;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicI32, Ordering::SeqCst};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -768,7 +769,8 @@ fn the_null_device_plays_and_stamps_its_clock() {
     assert!(after_seek == 0 || point[0] > 100_000, "a point of the arm before the seek: {point:?}");
     assert!(within(|| qa_audio_device_position() > 100_000), "the run goes on from the seek");
     // SAFETY: two values.
-    assert!(within(|| unsafe { qa_audio_device_clock(point.as_mut_ptr()) } == 1), "premise: the seek's arm has a point");
+    let spoke = within(|| unsafe { qa_audio_device_clock(point.as_mut_ptr()) } == 1);
+    assert!(spoke, "premise: the seek's arm has a point");
     let run = qa_audio_device_play(200_000, 0, 0, 0);
     // SAFETY: two values.
     let after_play = unsafe { qa_audio_device_clock(point.as_mut_ptr()) };
@@ -914,6 +916,88 @@ fn capture_runs_beside_playback() {
     qa_audio_capture_stop();
     assert_eq!(qa_audio_device_is_open(), 1, "the output is never touched");
     qa_audio_device_close();
+}
+
+// --- Following the system's default (native-to-rust-Q7) -------------------
+
+/// The open that made the device `side` names now.
+fn opened(side: fn(&Devices) -> &Option<Opened>) -> Option<u64> {
+    side(&devices()).as_ref().map(|opened| opened.open)
+}
+
+#[test]
+fn an_output_that_lost_its_device_plays_on_from_the_default() {
+    let _serial = serial();
+    let schedule = Schedule::new();
+    assert_eq!(qa_audio_device_open(48_000, 2, 1, -1), 48_000);
+    assert!(PLAYBACK.set_schedule(&schedule.clips, &schedule.sources, &schedule.keys));
+    qa_audio_device_play(0, 0, 0, 0);
+    assert!(within(|| qa_audio_device_position() > 0), "premise: the run plays");
+    let lost = opened(|devices| &devices.playback).expect("premise: an output");
+    let before = qa_audio_device_position();
+    reopen_output(lost);
+    let reopened = opened(|devices| &devices.playback);
+    assert!(reopened.is_some_and(|open| open != lost), "opened again: {reopened:?}");
+    assert_eq!((qa_audio_device_is_open(), qa_audio_device_is_playing()), (1, 1), "the run plays on…");
+    assert!(qa_audio_device_position() >= before, "…from where it was");
+    assert!(within(|| qa_audio_device_position() > before + 4_800), "…on the device opened again");
+    reopen_output(lost);
+    assert_eq!(opened(|devices| &devices.playback), reopened, "an ask for an output since opened again does nothing");
+    qa_audio_device_close();
+    reopen_output(reopened.unwrap());
+    assert_eq!((opened(|devices| &devices.playback), qa_audio_device_is_open()), (None, 0), "…nor for one closed");
+}
+
+#[test]
+fn a_capture_that_lost_its_device_counts_on_from_the_default() {
+    let _serial = serial();
+    assert_eq!(qa_audio_capture_start(48_000, 1, -1), 48_000);
+    assert!(within(|| qa_audio_capture_frames() > 0), "premise: the take runs");
+    let lost = opened(|devices| &devices.capture).expect("premise: a capture");
+    let before = qa_audio_capture_frames();
+    reopen_input(lost);
+    let reopened = opened(|devices| &devices.capture);
+    assert!(reopened.is_some_and(|open| open != lost), "opened again: {reopened:?}");
+    assert_eq!(qa_audio_capture_is_open(), 1);
+    assert!(qa_audio_capture_frames() >= before, "the take goes on counting…");
+    assert!(within(|| qa_audio_capture_frames() > before + 4_800), "…from the device opened again");
+    reopen_input(lost);
+    assert_eq!(opened(|devices| &devices.capture), reopened, "an ask for a capture since opened again does nothing");
+    qa_audio_capture_stop();
+}
+
+#[test]
+fn only_a_stream_on_the_default_that_lost_its_device_asks_again() {
+    use cpal::ErrorKind::{DeviceBusy, DeviceNotAvailable, StreamInvalidated};
+    let asked = |follows: bool, kind: cpal::ErrorKind| {
+        let asks = Arc::new(AtomicI32::new(0));
+        let counted = Arc::clone(&asks);
+        let mut errors = crate::backend::on_error(follows, move || {
+            counted.fetch_add(1, SeqCst);
+        });
+        errors(kind.into());
+        asks.load(SeqCst)
+    };
+    assert_eq!(asked(true, StreamInvalidated), 1, "the default changed under it");
+    assert_eq!(asked(true, DeviceNotAvailable), 1, "no default is left");
+    assert_eq!(asked(true, DeviceBusy), 0, "any other error is not a lost device");
+    assert_eq!(asked(false, StreamInvalidated), 0, "a device chosen by name stays the one chosen");
+}
+
+#[test]
+fn a_refused_rate_opens_at_the_devices_own() {
+    use crate::backend::at_rate_or_its_own;
+    let takes = |taken: i32| move |rate: i32| (rate == taken).then_some(rate);
+    assert_eq!(at_rate_or_its_own(48_000, || Some(44_100), takes(48_000)), Some((48_000, 48_000)));
+    assert_eq!(at_rate_or_its_own(48_000, || Some(44_100), takes(44_100)), Some((44_100, 44_100)));
+    assert_eq!(at_rate_or_its_own(48_000, || Some(48_000), takes(44_100)), None, "its own is the one refused");
+    assert_eq!(at_rate_or_its_own(48_000, || None, takes(44_100)), None, "it has none to say");
+    let mut tried = Vec::new();
+    let refused = at_rate_or_its_own(48_000, || Some(44_100), |rate| {
+        tried.push(rate);
+        None::<()>
+    });
+    assert_eq!((refused, &tried[..]), (None, &[48_000, 44_100][..]), "the asked rate first, its own once");
 }
 
 // --- The clock ------------------------------------------------------------

@@ -60,12 +60,16 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    pub(crate) fn new(backend: Backend) -> Context {
+    /// The context of `backend` — or none when the OS's will not come up.
+    pub(crate) fn new(backend: Backend) -> Option<Context> {
         let host = match backend {
             Backend::Null => None,
-            Backend::System => Some(cpal::default_host()),
+            Backend::System => {
+                session::begin()?;
+                Some(cpal::default_host())
+            }
         };
-        Context { backend, host, playback: Vec::new(), capture: Vec::new() }
+        Some(Context { backend, host, playback: Vec::new(), capture: Vec::new() })
     }
 
     /// Lists the devices again, the cache with them; false when the OS
@@ -117,20 +121,24 @@ impl Context {
         }
     }
 
-    /// A playback device of `channels` at `sample_rate`, made and not yet
-    /// started: `render` fills each buffer it asks for, interleaved.
-    pub(crate) fn build_playback(
+    /// A playback device of `channels` at `sample_rate` — or at the
+    /// device's own rate when it refuses that one ([`at_rate_or_its_own`]) —
+    /// made and not yet started. `make_render` makes the callback that fills
+    /// each buffer it asks for, interleaved; `lost` is asked for when the
+    /// system's default, opened as `index` none, is lost ([`on_error`]).
+    pub(crate) fn build_playback<R: FnMut(&mut [f32]) + Send + 'static>(
         &mut self,
         index: Option<usize>,
-        sample_rate: i32,
-        channels: i32,
+        (sample_rate, channels): (i32, i32),
         latency: &'static AtomicI64,
-        mut render: impl FnMut(&mut [f32]) + Send + 'static,
+        make_render: impl Fn() -> Option<R>,
+        lost: impl Fn() + Clone + Send + 'static,
     ) -> Option<Built> {
         match self.pick(Direction::Playback, index)? {
             Picked::Null => {
                 let period = null_period(sample_rate);
                 latency.store(period as i64 * NULL_PERIODS, SeqCst);
+                let mut render = make_render()?;
                 let mut buffer = vec![0.0f32; period * channels as usize];
                 let body = move |stop: &AtomicBool| {
                     // Handed up to a full buffer ahead of what the wall has played.
@@ -139,33 +147,41 @@ impl Context {
                 Some(Built::null(body, sample_rate, channels))
             }
             Picked::System(device) => {
-                let config = cpal::StreamConfig {
-                    channels: u16::try_from(channels).ok()?,
-                    sample_rate: u32::try_from(sample_rate).ok()?,
-                    buffer_size: cpal::BufferSize::Default,
+                let build = |rate: i32| {
+                    let config = cpal::StreamConfig {
+                        channels: u16::try_from(channels).ok()?,
+                        sample_rate: u32::try_from(rate).ok()?,
+                        buffer_size: cpal::BufferSize::Default,
+                    };
+                    let mut render = make_render()?;
+                    let callback = move |out: &mut [f32], info: &cpal::OutputCallbackInfo| {
+                        let stamp = info.timestamp();
+                        report(latency, stamp.playback.duration_since(stamp.callback), rate);
+                        render(out);
+                    };
+                    latency.store(0, SeqCst);
+                    let errors = on_error(index.is_none(), lost.clone());
+                    device.build_output_stream::<f32, _, _>(config, callback, errors, None).ok()
                 };
-                let callback = move |out: &mut [f32], info: &cpal::OutputCallbackInfo| {
-                    let stamp = info.timestamp();
-                    report(latency, stamp.playback.duration_since(stamp.callback), sample_rate);
-                    render(out);
-                };
-                latency.store(0, SeqCst);
-                let stream = device.build_output_stream::<f32, _, _>(config, callback, |_| {}, None).ok()?;
+                let own = || Some(device.default_output_config().ok()?.sample_rate() as i32);
+                let (stream, sample_rate) = at_rate_or_its_own(sample_rate, own, build)?;
                 latency.fetch_max(stream.buffer_size().map_or(0, i64::from), SeqCst);
                 Some(Built { device: Starting::System(stream), sample_rate, channels })
             }
         }
     }
 
-    /// A capture device at `sample_rate`, of its own channel count, made
-    /// and not yet started: `deliver` takes each buffer it fills,
-    /// interleaved.
+    /// A capture device at `sample_rate` — or at its own rate, as the
+    /// playback's — of its own channel count, made and not yet started:
+    /// `deliver` takes each buffer it fills, interleaved. `lost` as the
+    /// playback's.
     pub(crate) fn build_capture(
         &mut self,
         index: Option<usize>,
         sample_rate: i32,
         latency: &'static AtomicI64,
-        mut deliver: impl FnMut(&[f32]) + Send + 'static,
+        deliver: fn(&[f32]),
+        lost: impl Fn() + Clone + Send + 'static,
     ) -> Option<Built> {
         match self.pick(Direction::Capture, index)? {
             Picked::Null => {
@@ -180,23 +196,110 @@ impl Context {
             }
             Picked::System(device) => {
                 let native = device.default_input_config().ok()?;
-                let config = cpal::StreamConfig {
-                    channels: native.channels(),
-                    sample_rate: u32::try_from(sample_rate).ok()?,
-                    buffer_size: cpal::BufferSize::Default,
+                let build = |rate: i32| {
+                    let config = cpal::StreamConfig {
+                        channels: native.channels(),
+                        sample_rate: u32::try_from(rate).ok()?,
+                        buffer_size: cpal::BufferSize::Default,
+                    };
+                    let callback = move |input: &[f32], info: &cpal::InputCallbackInfo| {
+                        let stamp = info.timestamp();
+                        report(latency, stamp.callback.duration_since(stamp.capture), rate);
+                        deliver(input);
+                    };
+                    latency.store(0, SeqCst);
+                    let errors = on_error(index.is_none(), lost.clone());
+                    device.build_input_stream::<f32, _, _>(config, callback, errors, None).ok()
                 };
-                let callback = move |input: &[f32], info: &cpal::InputCallbackInfo| {
-                    let stamp = info.timestamp();
-                    report(latency, stamp.callback.duration_since(stamp.capture), sample_rate);
-                    deliver(input);
-                };
-                latency.store(0, SeqCst);
-                let stream = device.build_input_stream::<f32, _, _>(config, callback, |_| {}, None).ok()?;
+                let own = || Some(native.sample_rate() as i32);
+                let (stream, sample_rate) = at_rate_or_its_own(sample_rate, own, build)?;
                 latency.fetch_max(stream.buffer_size().map_or(0, i64::from), SeqCst);
                 Some(Built { device: Starting::System(stream), sample_rate, channels: i32::from(native.channels()) })
             }
         }
     }
+}
+
+impl Drop for Context {
+    fn drop(&mut self) {
+        if self.host.is_some() {
+            session::end();
+        }
+    }
+}
+
+/// The stream `build` makes at `asked`, and that rate — or, refused, the
+/// one it makes at the device's `own` rate when that is another, and that
+/// rate. ↩️miniaudio converted a refused rate itself; cpal does not, so the
+/// rate the device runs at goes back to the caller, who conforms to it, as
+/// the doors always said a device's rate might (`qa_audio_device_open`).
+pub(crate) fn at_rate_or_its_own<T>(
+    asked: i32,
+    own: impl FnOnce() -> Option<i32>,
+    mut build: impl FnMut(i32) -> Option<T>,
+) -> Option<(T, i32)> {
+    if let Some(built) = build(asked) {
+        return Some((built, asked));
+    }
+    let own = own().filter(|&own| own != asked)?;
+    build(own).map(|built| (built, own))
+}
+
+/// A stream's error callback. A stream opened on the system's default
+/// whose device is lost asks for `lost`: cpal's WASAPI stream never moves
+/// to a new default, and says it lost the old one instead — invalidated,
+/// or unavailable when no default is left. ⚠️On the device's thread: `lost`
+/// waits for nothing.
+pub(crate) fn on_error(
+    follows: bool,
+    lost: impl Fn() + Send + 'static,
+) -> impl FnMut(cpal::Error) + Send + 'static {
+    use cpal::ErrorKind::{DeviceNotAvailable, StreamInvalidated};
+    move |error| {
+        if follows && matches!(error.kind(), StreamInvalidated | DeviceNotAvailable) {
+            lost();
+        }
+    }
+}
+
+/// F-190 (user 2026-09-27: a Bluetooth headset plays every other app, and
+/// this one out of the speaker). iOS keeps ONE audio session per app, and
+/// the C set it to PlayAndRecord — the voice take needs the input — with
+/// DefaultToSpeaker and AllowBluetoothA2DP: under PlayAndRecord a headset
+/// is an allowed output only when the session says so. cpal sets no
+/// category at all (native-to-rust-Q7 ②), so the context does, and
+/// activates the session as miniaudio's did; elsewhere there is none.
+#[cfg(target_os = "ios")]
+mod session {
+    use objc2_avf_audio::{AVAudioSession, AVAudioSessionCategoryOptions, AVAudioSessionCategoryPlayAndRecord};
+
+    /// The session set and active — or none, and the OS's context does not
+    /// come up, as the C's did not.
+    pub(super) fn begin() -> Option<()> {
+        // SAFETY: the app's one session, and a category the framework
+        // defines.
+        unsafe {
+            let session = AVAudioSession::sharedInstance();
+            let options =
+                AVAudioSessionCategoryOptions::DefaultToSpeaker | AVAudioSessionCategoryOptions::AllowBluetoothA2DP;
+            session.setCategory_withOptions_error(AVAudioSessionCategoryPlayAndRecord?, options).ok()?;
+            session.setActive_error(true).ok()
+        }
+    }
+
+    pub(super) fn end() {
+        // SAFETY: as above.
+        let _ = unsafe { AVAudioSession::sharedInstance().setActive_error(false) };
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+mod session {
+    pub(super) fn begin() -> Option<()> {
+        Some(())
+    }
+
+    pub(super) fn end() {}
 }
 
 enum Picked {

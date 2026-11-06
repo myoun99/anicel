@@ -115,6 +115,7 @@ dependencies = [
  "audio_mix",
  "cpal",
  "libc",
+ "objc2-avf-audio",
  "oracle",
 ]
 
