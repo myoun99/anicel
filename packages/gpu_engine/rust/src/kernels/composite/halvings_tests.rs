@@ -267,12 +267,12 @@ fn inside([left, top, right, bottom]: [i32; 4], x: i32, y: i32) -> bool {
 
 // Kept stages are made again on the tiles that read a change, down every
 // stage: red stripes against stage 1's tile edges, each read across the
-// edge by the tent's reach past it alone — just right of x = 256; just over
-// y = 256 and just left of x = 256 far from it, both marked before the
-// screen reads; just under y = 256 — leave every stage as stages made anew
-// over the changed composite. A change not marked, on the tiles the last
-// stripe was made again on, leaves every stage as it was: the stages over
-// it are kept, not made again.
+// edge by the tent's reach past it alone — just right of x = 256, just over
+// y = 256, just left of x = 256, just under y = 256 — and two dots in stage
+// 1's opposite corner tiles, both marked before the screen reads, leave
+// every stage as stages made anew over the changed composite. A change not
+// marked, on the tiles the last stripe was made again on, leaves every
+// stage as it was: the stages over it are kept, not made again.
 #[test]
 fn a_kept_stage_is_made_again_where_the_composite_changed() {
     let far = camera(0.01, (1.0, 0.0), (20.75, 18.0));
@@ -282,7 +282,9 @@ fn a_kept_stage_is_made_again_where_the_composite_changed() {
     drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
     let rounds = [
         vec![[256, 120, 258, 200]],
-        vec![[100, 254, 200, 256], [254, 20, 256, 60]],
+        vec![[100, 254, 200, 256]],
+        vec![[254, 20, 256, 60]],
+        vec![[20, 20, 22, 22], [500, 280, 502, 282]],
         vec![[300, 256, 400, 258]],
     ];
     for stripes in rounds {
