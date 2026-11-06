@@ -171,11 +171,14 @@ class TvppBuilder {
   }
 
   /// [lockedTracks] are the indexes of [audio] locked in TVPaint.
+  /// [timestamp] is false as the builds of 2023 and 2025 write a clip:
+  /// with no TMST after its FCFG.
   void clipConfig({
     String cameraData = '',
     List<(String path, double offset, double volume, bool mute)> audio =
         const [],
     Set<int> lockedTracks = const {},
+    bool timestamp = true,
   }) {
     final sb = StringBuffer('\u{FEFF}[info]\ncreationos=TEST\n');
     if (audio.isNotEmpty) {
@@ -194,8 +197,27 @@ class TvppBuilder {
       sb.write('\n[cameradata]\n$cameraData');
     }
     chunk('FCFG', utf8.encode(sb.toString()));
-    chunk('TMST', List.filled(118, 0));
+    if (timestamp) {
+      chunk('TMST', List.filled(118, 0));
+    }
   }
+
+  /// The two record heads the builds of 2023 and 2025 open a clip's
+  /// property block with — a GUID of TVPaint's own and a u64 each, the
+  /// GUIDs as a file of theirs holds them (あるふぁYOU_MV, 2026-11-07).
+  void recordHeads() {
+    for (final guid in const [
+      [0x33, 0x89, 0xb8, 0x46, 0xbc, 0x40, 0x11, 0xd7, 0x9e, 0xfe],
+      [0x33, 0x87, 0xe3, 0x4a, 0xbc, 0x40, 0x11, 0xd7, 0x8e, 0xe6],
+    ]) {
+      _out.add(guid);
+      _out.add(const [0x00, 0x10, 0x5a, 0xaf, 0xaa, 0xab]);
+      _out.add(const [0, 0, 0, 0, 0, 0, 0x01, 0x48]);
+    }
+  }
+
+  /// Bytes as they are, outside any chunk.
+  void raw(List<int> bytes) => _out.add(bytes);
 
   static List<int> _u16(int v) => [(v >> 8) & 0xff, v & 0xff];
 
