@@ -113,15 +113,21 @@ ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) =>
 /// It multiplies by the scale and divides back, which is exact whenever the
 /// scale is a power of two, so every level grid lands to the bit where the
 /// copy that divided by the level's step put it.
+///
+/// [noise] is how far, in cells, a side may lie past a grid line and still
+/// be on it: a line reached through other operands — a box's logical
+/// pixels, a raster's device ones — lands a few ulps off it. Zero: a side
+/// is on a line only to the bit.
 ui.Rect rectOutwardOnGrid(
   ui.Rect bounds,
   double scale, {
   ui.Offset origin = ui.Offset.zero,
+  double noise = 0,
 }) {
   double down(double value, double start) =>
-      start + ((value - start) * scale).floorToDouble() / scale;
+      start + ((value - start) * scale + noise).floorToDouble() / scale;
   double up(double value, double start) =>
-      start + ((value - start) * scale).ceilToDouble() / scale;
+      start + ((value - start) * scale - noise).ceilToDouble() / scale;
   return ui.Rect.fromLTRB(
     down(bounds.left, origin.dx),
     down(bounds.top, origin.dy),

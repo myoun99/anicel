@@ -150,8 +150,9 @@ void main() {
   });
 
   testWidgets('a picture a canvas pixel off the grid is the display\'s '
-      'reduction there — read from the picture\'s own chain at that phase, '
-      'with the filter the display uses', (tester) async {
+      'reduction there — moved onto its pixels as the display moves a view, '
+      'and read from the picture\'s own chain with the filter the display '
+      'uses', (tester) async {
     // Four columns inked, four clear, and the region's one-pixel step puts
     // every output pixel a quarter of a level's texel off it.
     bool inked(int x) => (x ~/ 4).isEven;
@@ -163,55 +164,62 @@ void main() {
     );
     // The display's draw of the same ink: its one picture at canvas
     // resolution — on its paper, as the frame's picture holds it — a
-    // quarter, a canvas pixel to the left.
-    final shown = (await tester.runAsync(() async {
-      final ink = ui.PictureRecorder();
-      final into = ui.Canvas(ink)
-        ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src);
-      for (var x = 0; x < size; x += 1) {
-        if (inked(x)) {
-          into.drawRect(
-            ui.Rect.fromLTWH(x.toDouble(), 0, 1, size.toDouble()),
-            ui.Paint()..color = const ui.Color(0xFF000000),
-          );
-        }
-      }
-      final inkPicture = ink.endRecording();
-      final picture = await inkPicture.toImage(size, size);
-      inkPicture.dispose();
-      final reduced = ui.PictureRecorder();
-      ui.Canvas(reduced)
-        // Paper past the canvas too: the panel's ground.
-        ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src)
-        ..scale(0.25)
-        ..translate(-1, 0)
-        ..drawImage(
-          picture,
-          ui.Offset.zero,
-          ui.Paint()..filterQuality = filterQualityForDisplayScale(0.25),
-        );
-      final reducedPicture = reduced.endRecording();
-      final image = await reducedPicture.toImage(32, 18);
-      reducedPicture.dispose();
-      picture.dispose();
-      final bytes = (await image.toByteData(
-        format: ui.ImageByteFormat.rawRgba,
-      ))!;
-      image.dispose();
-      return [
-        for (var x = 0; x < 32; x += 1)
-          255 - bytes.getUint8((9 * 32 + x) * 4),
-      ];
-    }))!;
+    // quarter, a canvas pixel to the left: [phase] device pixels, which
+    // the display moves a view by whole pixels from
+    // (`renderSnappedViewport`).
+    Future<List<int>> shownAt(double phase) async =>
+        (await tester.runAsync(() async {
+          final ink = ui.PictureRecorder();
+          final into = ui.Canvas(ink)
+            ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src);
+          for (var x = 0; x < size; x += 1) {
+            if (inked(x)) {
+              into.drawRect(
+                ui.Rect.fromLTWH(x.toDouble(), 0, 1, size.toDouble()),
+                ui.Paint()..color = const ui.Color(0xFF000000),
+              );
+            }
+          }
+          final inkPicture = ink.endRecording();
+          final picture = await inkPicture.toImage(size, size);
+          inkPicture.dispose();
+          final reduced = ui.PictureRecorder();
+          ui.Canvas(reduced)
+            // Paper past the canvas too: the panel's ground.
+            ..drawColor(const ui.Color(0xFFFFFFFF), ui.BlendMode.src)
+            ..translate(phase, 0)
+            ..scale(0.25)
+            ..drawImage(
+              picture,
+              ui.Offset.zero,
+              ui.Paint()..filterQuality = filterQualityForDisplayScale(0.25),
+            );
+          final reducedPicture = reduced.endRecording();
+          final image = await reducedPicture.toImage(32, 18);
+          reducedPicture.dispose();
+          picture.dispose();
+          final bytes = (await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          ))!;
+          image.dispose();
+          return [
+            for (var x = 0; x < 32; x += 1)
+              255 - bytes.getUint8((9 * 32 + x) * 4),
+          ];
+        }))!;
+    final betweenPixels = await shownAt(-0.25);
     expect(
-      shown.toSet().length,
+      betweenPixels.toSet().length,
       greaterThan(2),
-      reason: 'LIVENESS: off the grid the display blends the columns',
+      reason: 'LIVENESS: off the grid the columns blend',
     );
-    expect(row, shown);
+    expect(row, await shownAt(0));
     // ↩️Whole or clear, as a level had them: the print was laid texel for
     // pixel from the halved picture, while the display drew below 100%
-    // from a level — until one-picture-per-frame ②-5b-3.
+    // from a level — until one-picture-per-frame ②-5b-3. ↩️Then a quarter
+    // of a pixel to the left (`betweenPixels`), drawn as a film draws a row
+    // — until it was drawn as its live one is
+    // (conte-picture-print-and-live-part-at-edges).
   });
 
   test('the print is laid into its shot with the display\'s own filter for '

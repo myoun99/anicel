@@ -1,18 +1,16 @@
 import 'dart:ui' as ui;
 
+import '../models/canvas_size.dart';
+import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
-import '../models/layer_blend_mode.dart';
-import '../models/pasteboard_bounds.dart' show PasteboardBounds;
-import '../services/camera_frame_corners.dart' show pictureView;
+import '../services/camera_frame_corners.dart' show CameraView, pictureView;
 import '../services/camera_projection_matrix.dart';
-import '../services/layer_pose_paint.dart' show applyCameraProjection;
 import '../services/playback/frame_demand.dart';
 import '../services/viewport_transform_matrix.dart' show viewportOfSimilarity;
-import 'canvas/display_resample.dart' show filterQualityForDisplayScale;
-import 'canvas/layer_image_draw.dart' show drawPosedLayerImage;
 import 'editor_session_manager.dart';
 import 'export/export_frame_renderer.dart' show exportFrameGround;
-import 'playback/camera_shot.dart' show outlineThrough, shotClipOnScreen;
+import 'playback/camera_shot.dart' show clipToTheCanvas;
+import 'playback/frame_picture_view.dart' show drawFramePicture;
 
 /// A panel's picture — a storyboard block's, a conte cell's, on screen and
 /// on a page written to a file: [render]s [cut] at a frame through its
@@ -31,14 +29,25 @@ import 'playback/camera_shot.dart' show outlineThrough, shotClipOnScreen;
 /// `EditingCanvas._underTheCutsFx`): a frame the canvas shows under them is
 /// a picture of its own.
 ///
-/// Drawn through the camera as a film draws a row's picture
-/// ([CameraFrameRenderService.renderThroughCamera]: its projection, the
-/// display's filter for the scale, a texel copy where the camera moves
-/// pixels whole), cut at the canvas's edge as a film is
-/// (「페이스트보드는 포함 안 시킴」), on [exportFrameGround]. A frame there is
-/// no picture to cut from — its page alone, one a canvas holds as its own
-/// over what no cel stores — is drawn as its cels stand
-/// ([FramePictures.drawingNow]), as a screen draws it.
+/// Drawn where the camera lays the canvas on the raster as a conte
+/// picture's live one draws it ([drawFramePicture]: the view snapped, the
+/// display's filter for the scale), cut at the canvas's edge as it is
+/// ([clipToTheCanvas]; a film shows no pasteboard either, 「페이스트보드는
+/// 포함 안 시킴」), on [exportFrameGround]. A frame there is no picture to
+/// cut from — its page alone, one a canvas holds as its own over what no
+/// cel stores — is drawn as its cels stand ([FramePictures.drawingNow]),
+/// through the same view.
+///
+/// 🚨★★★THE PRINT IS ITS LIVE ONE (conte-picture-print-and-live-part-at-
+/// edges, 유저 11-07 「0 으로 맞춘다」 — F-215 「on하든off하든 바뀌는게
+/// 없어야」). ↩️It was drawn as a film draws a row's picture
+/// ([CameraFrameRenderService.renderThroughCamera]: the camera's projection
+/// unsnapped, a texel copy where it moved pixels whole) and cut on the
+/// camera's own outline: 🔬half a pixel from the live one wherever the
+/// camera put the canvas between pixels — every slanted line in an
+/// odd-sized shot — and an edge's pixel apart where it saw past the canvas.
+/// So a panel is a film's frame only where the camera lands on whole
+/// pixels; elsewhere it is that frame snapped to the panel's grid.
 ///
 /// ↩️It was composed again for the panel, every row at the canvas's size
 /// (`ExportFrameRenderer.renderPicture`) — 🔬S5_BA cut 352, 68 rows: about
@@ -63,10 +72,7 @@ class PanelPictures {
     required int width,
     ui.Rect? region,
   }) async {
-    final view = pictureView((
-      pose: session.camera.cameraPoseForCut(cut, frameIndex),
-      frameSize: session.camera.cameraFrameSize,
-    ), region);
+    final view = panelView(session, cut, frameIndex, region);
     final output = view.frameSize.scaledToWidth(width);
     await giveWay?.call();
     await session.movieCels.hydrate(cut, frameIndex);
@@ -85,59 +91,29 @@ class PanelPictures {
               .readInStack(nodes, demanded)
               .then((_) => pictures.drawingNow(nodes, demanded))
         : null;
-    final projection = cameraProjectionMatrix(
-      view.pose,
-      view.frameSize,
-      outputSize: output,
-    );
-    final scale = output.width / view.frameSize.width * view.pose.zoom;
+    final onTheRaster = panelViewOnRaster(view, output);
     final frame = ui.Offset.zero &
         ui.Size(output.width.toDouble(), output.height.toDouble());
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder, frame)
       ..drawRect(frame, ui.Paint()..color = exportFrameGround);
-    final shot = shotClipOnScreen(
-      outlineThrough(cut.canvasSize, projection),
-      // An output pixel is the device's.
-      1,
-    );
-    canvas.clipPath(
-      ui.Path()..addPolygon(shot.corners, true),
-      doAntiAlias: shot.behavior == ui.Clip.antiAlias,
-    );
+    clipToTheCanvas(canvas, cut.canvasSize, onTheRaster, 1);
     // Its own handle: the picture's image is let go of when a write
     // replaces it, or the budget the picture.
     final image = picture?.image.clone();
     if (picture != null) {
-      applyCameraProjection(
+      drawFramePicture(
         canvas,
-        view.pose,
-        view.frameSize,
-        outputSize: output,
-      );
-      drawPosedLayerImage(
-        canvas,
-        pieces: [(image: image!, worldRect: picture.extent)],
-        extent: picture.extent,
-        placement: null,
-        opacity: 1,
-        blendMode: LayerBlendMode.normal,
-        paper: cut.canvasSize.canvasRect,
-        texelScale:
-            cameraMovesPixelsWhole(
-              view.pose,
-              view.frameSize,
-              outputSize: output,
-            )
-            ? scale
-            : null,
-        filterQuality: filterQualityForDisplayScale(scale),
+        image!,
+        picture.extent,
+        viewport: onTheRaster,
+        devicePixelRatio: 1,
       );
     } else {
       asItStands!.frame.paintOnScreen(
         canvas,
         frame.size,
-        viewport: viewportOfSimilarity(projection)!,
+        viewport: onTheRaster,
         devicePixelRatio: 1,
       );
     }
@@ -165,6 +141,35 @@ class PanelPictures {
 }
 
 bool _stays() => false;
+
+/// What a panel of [cut] at [frameIndex] shows ([pictureView]): its camera
+/// at the frame, or the canvas [region] a conte cell's moving camera
+/// sweeps.
+CameraView panelView(
+  EditorSessionManager session,
+  Cut cut,
+  int frameIndex,
+  ui.Rect? region,
+) => pictureView((
+  pose: session.camera.cameraPoseForCut(cut, frameIndex),
+  frameSize: session.camera.cameraFrameSize,
+), region);
+
+/// Where [view] lays the canvas on a panel's raster of [output] pixels —
+/// its camera's projection onto it, a device pixel the raster's: what a
+/// panel's print is drawn through, and its live one (`ContePictureLive`).
+///
+/// 🚨ONE SPELLING OF IT (conte-picture-print-and-live-part-at-edges, 유저
+/// 11-07 「0 으로 맞춘다」). ↩️The live one reached the same map by another
+/// road — through the paper, the slot's scale and then the box's — and
+/// stood its camera at the middle of the frame's height scaled to the
+/// box, where the print's stands at the middle of its raster's rounded
+/// height: apart wherever the raster's height is rounded (a camera frame
+/// or a moving camera's region off the raster's aspect).
+CanvasViewport panelViewOnRaster(CameraView view, CanvasSize output) =>
+    viewportOfSimilarity(
+      cameraProjectionMatrix(view.pose, view.frameSize, outputSize: output),
+    )!;
 
 /// The frame a panel of [cut] at [frameIndex] is cut from, and a conte
 /// picture drawn live stands on (`ContePictureLive`) — its print and it one

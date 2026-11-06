@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/composite_tree.dart';
 import '../../services/playback/frame_demand.dart';
@@ -20,9 +20,9 @@ import '../canvas/canvas_layer_stack_view.dart'
         StackedFrame,
         waitsForItsPlugins;
 import '../canvas/display_resample.dart';
-import '../canvas/outline_clipper.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
+import 'camera_shot.dart' show clipToTheCanvas;
 import 'frame_picture_store.dart';
 import 'frame_pictures.dart';
 import 'stacked_frame_picture.dart';
@@ -78,7 +78,7 @@ class FramePictureView extends StatefulWidget {
     this.alreadyShown = false,
     this.drawnLive = const {},
     this.ground,
-    this.cut,
+    this.cutAtCanvas,
     this.standPace,
   });
 
@@ -155,12 +155,12 @@ class FramePictureView extends StatefulWidget {
   /// (「on하든off하든 바뀌는게 없어야」 · 「직전 완성 그림에 머문다」).
   final Color? ground;
 
-  /// The outline what the view draws is cut to, on screen — the canvas in
-  /// a conte picture's camera frame — and not its [ground], which lies
-  /// across the whole view as the print's does: cut to it too, the print a
-  /// live picture takes over from showed past the canvas (🔬F-215's switch
-  /// pin, 10-31). Null: nothing is cut.
-  final List<Offset>? cut;
+  /// The canvas what the view draws is cut to ([clipToTheCanvas]) — a
+  /// conte picture's, in its camera frame — and not its [ground], which
+  /// lies across the whole view as the print's does: cut to it too, the
+  /// print a live picture takes over from showed past the canvas (🔬F-215's
+  /// switch pin, 10-31). Null: nothing is cut.
+  final CanvasSize? cutAtCanvas;
 
   /// When this view's frames as they stand go out — a pace of its own where
   /// null: a test's raster thread is in the test's hands.
@@ -1092,7 +1092,7 @@ class _FramePictureViewState extends State<FramePictureView> {
           standing: _standing,
           waits: _waits,
           ground: widget.ground,
-          cut: widget.cut,
+          cutAtCanvas: widget.cutAtCanvas,
           catchUp: _catchUpAtPaint,
           viewport: widget.viewport,
           devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -1104,6 +1104,42 @@ class _FramePictureViewState extends State<FramePictureView> {
   }
 }
 
+/// [image], a frame's picture over [extent] ([FramePicture]), where
+/// [viewport] lays the canvas on a screen of [devicePixelRatio]: through
+/// the snapped view every canvas-space painter draws through
+/// ([applyViewportTransform]), resampled by the display's law
+/// ([drawOnTheDisplay]), nothing past [extent].
+///
+/// 🚨★★★A CONTE PICTURE'S PRINT IS DRAWN BY THIS, AS ITS LIVE ONE IS
+/// (conte-picture-print-and-live-part-at-edges, 유저 11-07 「0 으로
+/// 맞춘다」 — F-215 「on하든off하든 바뀌는게 없어야」): the panel draws the
+/// frame's picture where its camera lays it on its raster (`PanelPictures`),
+/// with a device pixel the raster's. ↩️It drew the picture through the
+/// camera as a film draws a row — the camera's own projection, unsnapped —
+/// while the live one and its own frame drawn as it stands snapped it:
+/// 🔬where the camera put the canvas between pixels (an odd-sized raster,
+/// a camera off the grid) the two came out half a pixel apart, every
+/// slanted line in the shot.
+void drawFramePicture(
+  Canvas canvas,
+  ui.Image image,
+  Rect extent, {
+  required CanvasViewport viewport,
+  required double devicePixelRatio,
+}) {
+  canvas.save();
+  applyViewportTransform(canvas, viewport, devicePixelRatio: devicePixelRatio);
+  drawOnTheDisplay(
+    canvas,
+    image,
+    Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+    extent,
+    viewport: viewport,
+    devicePixelRatio: devicePixelRatio,
+  );
+  canvas.restore();
+}
+
 class _FramePicturePainter extends CustomPainter {
   _FramePicturePainter({
     required this.shown,
@@ -1111,7 +1147,7 @@ class _FramePicturePainter extends CustomPainter {
     required this.standing,
     required this.waits,
     required this.ground,
-    required this.cut,
+    required this.cutAtCanvas,
     required this.catchUp,
     required this.viewport,
     required this.devicePixelRatio,
@@ -1134,8 +1170,9 @@ class _FramePicturePainter extends CustomPainter {
   /// Laid under what is drawn, where anything is ([FramePictureView.ground]).
   final Color? ground;
 
-  /// What is drawn is cut to, and not [ground] ([FramePictureView.cut]).
-  final List<Offset>? cut;
+  /// What is drawn is cut to, and not [ground]
+  /// ([FramePictureView.cutAtCanvas]).
+  final CanvasSize? cutAtCanvas;
 
   /// Puts what the live rows moved into [standing] or the picture shown
   /// before it is read ([_FramePictureViewState._catchUp]).
@@ -1162,16 +1199,17 @@ class _FramePicturePainter extends CustomPainter {
     if (ground != null && (shown != null || asItStands != null)) {
       canvas.drawColor(ground, BlendMode.srcOver);
     }
-    if (cut case final corners?) {
-      canvas.clipPath(OutlineClipper(corners).getClip(size));
+    if (cutAtCanvas case final canvasSize?) {
+      clipToTheCanvas(canvas, canvasSize, viewport, devicePixelRatio);
     }
     if (shown case (:final picture, :final image)) {
-      applyViewportTransform(
+      drawFramePicture(
         canvas,
-        viewport,
+        image,
+        picture.extent,
+        viewport: viewport,
         devicePixelRatio: devicePixelRatio,
       );
-      _paintPicture(canvas, picture, image);
     } else if (asItStands case final frame?) {
       frame.paintOnScreen(
         canvas,
@@ -1183,26 +1221,13 @@ class _FramePicturePainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// The picture as its store says it is drawn ([FramePicture]): its image
-  /// where its extent lies, and nothing past it.
-  void _paintPicture(Canvas canvas, FramePicture picture, ui.Image image) {
-    drawOnTheDisplay(
-      canvas,
-      image,
-      Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
-      picture.extent,
-      viewport: viewport,
-      devicePixelRatio: devicePixelRatio,
-    );
-  }
-
   @override
   bool shouldRepaint(_FramePicturePainter oldDelegate) =>
       !identical(oldDelegate.shown?.image, shown?.image) ||
       !identical(oldDelegate.asItStands, asItStands) ||
       oldDelegate.waits != waits ||
       oldDelegate.ground != ground ||
-      !listEquals(oldDelegate.cut, cut) ||
+      oldDelegate.cutAtCanvas != cutAtCanvas ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }

@@ -164,13 +164,24 @@ class ShotClip extends StatelessWidget {
 /// A turned outline has no whole pixels to grow to: each of its edges goes
 /// out a pixel's diagonal, past every pixel the edge crossed, and stays
 /// anti-aliased.
+///
+/// 🚨An edge ON a whole pixel stays there, however it was reached
+/// (conte-picture-print-and-live-part-at-edges): 🔬a conte picture's live
+/// one, through its box's logical pixels at a ratio of 1.25, put the
+/// canvas's foot at 313.00000000000006 where its print, in the raster's
+/// own pixels, put it at 313 — out to whole pixels, a row of what lies
+/// past the canvas more.
 ({List<Offset> corners, Clip behavior}) shotClipOnScreen(
   List<Offset> outline,
   double devicePixelRatio,
 ) {
   final square = _squareBounds(outline);
   if (square != null) {
-    final whole = rectOutwardOnGrid(square, devicePixelRatio);
+    final whole = rectOutwardOnGrid(
+      square,
+      devicePixelRatio,
+      noise: _onAPixelWithin,
+    );
     return (
       corners: [
         whole.topLeft,
@@ -186,6 +197,39 @@ class ShotClip extends StatelessWidget {
     behavior: Clip.antiAlias,
   );
 }
+
+/// [canvas] cut to [size]'s canvas where [view] lays it on a screen of
+/// [devicePixelRatio]: its outline where the view's painters draw it
+/// ([outlineOnScreen]), out to the whole device pixels around it
+/// ([shotClipOnScreen]).
+///
+/// 🚨★★★ONE CUT FOR A CONTE PICTURE'S PRINT AND ITS LIVE ONE
+/// (conte-picture-print-and-live-part-at-edges, 유저 11-07 「0 으로
+/// 맞춘다」 — F-215 「on하든off하든 바뀌는게 없어야」). ↩️The print cut on
+/// the camera's own outline out to whole pixels, the live one on its box's
+/// outline anti-aliased, and neither on the snapped outline its picture
+/// was drawn on: where the camera saw past the canvas, the edge's pixel
+/// came out apart.
+void clipToTheCanvas(
+  Canvas canvas,
+  CanvasSize size,
+  CanvasViewport view,
+  double devicePixelRatio,
+) {
+  final cut = shotClipOnScreen(
+    outlineOnScreen(size, view, devicePixelRatio),
+    devicePixelRatio,
+  );
+  canvas.clipPath(
+    Path()..addPolygon(cut.corners, true),
+    doAntiAlias: cut.behavior == Clip.antiAlias,
+  );
+}
+
+/// How near a whole device pixel an edge of a shot lies on it
+/// ([shotClipOnScreen]) — far past the rounding two ways of reaching it
+/// carry, and nothing an eye or a sample could tell from it.
+const _onAPixelWithin = 1e-6;
 
 /// [outline]'s bounds when every edge of it runs level or plumb — a rect,
 /// for a convex outline — or null.

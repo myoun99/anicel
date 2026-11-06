@@ -28,6 +28,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart'
+    show renderSnappedViewport;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
@@ -56,6 +58,28 @@ void main() {
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
     return data!.buffer.asUint8List();
+  }
+
+  /// [pose] where a panel of [output] pixels stands it: the camera's
+  /// projection onto the panel moved by the whole pixels the screen moves
+  /// a view by ([renderSnappedViewport]) — a panel's picture is the film's
+  /// frame through it (conte-picture-print-and-live-part-at-edges, 유저
+  /// 11-07 「0 으로 맞춘다」: the print is drawn as its live one is). No turn.
+  CameraPose standingForAPanel(
+    CameraPose pose,
+    CanvasSize frameSize,
+    CanvasSize output,
+  ) {
+    final view = panelViewOnRaster((pose: pose, frameSize: frameSize), output);
+    final snapped = renderSnappedViewport(view, 1);
+    final scale = output.width / frameSize.width * pose.zoom;
+    return CameraPose(
+      center: CanvasPoint(
+        x: pose.center.x + (view.panX - snapped.panX) / scale,
+        y: pose.center.y + (view.panY - snapped.panY) / scale,
+      ),
+      zoom: pose.zoom,
+    );
   }
 
   /// The pixel at ([x], [y]) of [bytes], a picture [width] pixels wide.
@@ -146,7 +170,11 @@ void main() {
     );
 
     /// The grid's cut through a camera at [zoom], its centre between pixels.
-    EditorSessionManager session(double zoom) {
+    CameraPose poseAt(double zoom) =>
+        CameraPose(center: CanvasPoint(x: 121.3, y: 79.6), zoom: zoom);
+
+    /// The grid's cut through a camera at [pose].
+    EditorSessionManager session(CameraPose pose) {
       final s = EditorSessionManager(
         initialProject: Project(
           id: const ProjectId('project'),
@@ -162,14 +190,7 @@ void main() {
                   name: 'Cut',
                   duration: 1,
                   canvasSize: canvas,
-                  camera: CutCamera(
-                    keyframes: {
-                      0: CameraPose(
-                        center: CanvasPoint(x: 121.3, y: 79.6),
-                        zoom: zoom,
-                      ),
-                    },
-                  ),
+                  camera: CutCamera(keyframes: {0: pose}),
                   layers: [
                     row('block'),
                     row('lines'),
@@ -187,49 +208,82 @@ void main() {
       return s;
     }
 
+    /// A picture of the sequence of [s]'s cut.
+    Future<Uint8List> stillOf(EditorSessionManager s) async {
+      final renderer = ExportFrameRenderer(session: s);
+      addTearDown(renderer.dispose);
+      return bytesOf(
+        await renderer.renderComposite(
+          ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+          ExportSizeMode.camera,
+        ),
+      );
+    }
+
     /// The cut's frame as a film's frame, a picture of the sequence and a
-    /// panel's picture as wide as the film.
-    Future<({Uint8List video, Uint8List still, Uint8List panel})> routes(
-      double zoom,
-    ) async {
-      final s = session(zoom);
+    /// panel's picture as wide as the film — and the picture of the
+    /// sequence through the camera where the panel stands it
+    /// ([standingForAPanel]).
+    Future<
+      ({
+        Uint8List video,
+        Uint8List still,
+        Uint8List panel,
+        Uint8List stillWhereThePanelIs,
+      })
+    >
+    routes(double zoom) async {
+      final s = session(poseAt(zoom));
       addTearDown(s.dispose);
       final renderer = ExportFrameRenderer(session: s);
       addTearDown(renderer.dispose);
       final cut = s.requireActiveCut;
       final task = ExportFrameTask(cut: cut, frameIndex: 0);
+      final where = session(
+        standingForAPanel(poseAt(zoom), frameSize, frameSize),
+      );
+      addTearDown(where.dispose);
       return (
         video: await bytesOf(
           await renderer.videoRun([task], ExportSizeMode.camera).frame(0),
         ),
-        still: await bytesOf(
-          await renderer.renderComposite(task, ExportSizeMode.camera),
-        ),
+        still: await stillOf(s),
         panel: await bytesOf(
           await PanelPictures(
             session: s,
           ).render(cut, 0, width: frameSize.width),
         ),
+        stillWhereThePanelIs: await stillOf(where),
       );
     }
 
     for (final zoom in [0.47, 0.42, 0.94]) {
-      testWidgets('🎯at a zoom of $zoom, a film\'s frame, a picture of the '
-          'sequence and a panel\'s picture are one picture', (tester) async {
+      testWidgets('🎯at a zoom of $zoom, a film\'s frame and a picture of the '
+          'sequence are one picture, and a panel\'s picture is it through '
+          'the camera the panel\'s pixels stand', (tester) async {
         await tester.runAsync(() async {
-          final (:video, :still, :panel) = await routes(zoom);
+          final (:video, :still, :panel, :stillWhereThePanelIs) = await routes(
+            zoom,
+          );
           expect(still.length, frameSize.width * frameSize.height * 4);
           expect(panel.length, still.length);
+          expect(
+            standingForAPanel(poseAt(zoom), frameSize, frameSize).center,
+            isNot(poseAt(zoom).center),
+            reason: 'LIVENESS: the camera stands between the panel\'s pixels',
+          );
 
           // The panel is cut from the frame's one picture, composed on its
           // paper and then reduced (F-533-Q8); a still reduces each row and
           // then composes them on its ground: rounded apart wherever a
           // pixel takes a line in part, by a few levels at most.
           // ↩️Byte for byte while a panel was a still of its own
-          // (`ExportFrameRenderer.renderPicture`).
+          // (`ExportFrameRenderer.renderPicture`). ↩️Beside the still at its
+          // own camera, while a panel was drawn as a film draws a row —
+          // until conte-picture-print-and-live-part-at-edges.
           var panelMost = 0;
           for (var i = 0; i < still.length; i += 1) {
-            final apart = (panel[i] - still[i]).abs();
+            final apart = (panel[i] - stillWhereThePanelIs[i]).abs();
             panelMost = apart > panelMost ? apart : panelMost;
           }
           expect(panelMost, lessThanOrEqualTo(3), reason: 'one reduction');
@@ -250,7 +304,8 @@ void main() {
         'film with its own ink — none lost between the samples, none '
         'doubled', (tester) async {
       await tester.runAsync(() async {
-        final (:video, still: _, panel: _) = await routes(0.42);
+        final (:video, still: _, panel: _, stillWhereThePanelIs: _) =
+            await routes(0.42);
         // The film's second row: canvas rows 49.8–52.2, between the lines
         // across at 45 and 54.
         const y = 1;
@@ -494,14 +549,18 @@ void main() {
       });
 
       testWidgets('🎯through a camera at $where, the cut takes nothing of a '
-          'pixel the canvas covers in part: a picture of the sequence is '
-          'the panel\'s picture, cut where the film is', (tester) async {
+          'pixel the canvas covers in part: a picture of the sequence '
+          'through the camera where a panel stands it is the panel\'s '
+          'picture, cut where the film is', (tester) async {
         await tester.runAsync(() async {
           final (s, renderer) = filmAt(pose);
           final cut = s.requireActiveCut;
+          final (where, whereThePanelIs) = filmAt(
+            standingForAPanel(pose, canvas, canvas),
+          );
           final still = await bytesOf(
-            await renderer.renderComposite(
-              ExportFrameTask(cut: cut, frameIndex: 0),
+            await whereThePanelIs.renderComposite(
+              ExportFrameTask(cut: where.requireActiveCut, frameIndex: 0),
               ExportSizeMode.camera,
             ),
           );
@@ -531,7 +590,10 @@ void main() {
           // 안 시킴」), and cut there as playback's shot cuts it
           // (`ShotClip`), until one-picture-per-frame ②-5b-3. Then only
           // where the canvas lies, a panel being cut nowhere — until it was
-          // cut from the frame's picture where the film is (F-533-Q8).
+          // cut from the frame's picture where the film is (F-533-Q8). Then
+          // beside the still at its own camera, while a panel was drawn as a
+          // film draws a row — until it was drawn as its live one is
+          // (conte-picture-print-and-live-part-at-edges).
           expect(apart, isEmpty);
         });
       });

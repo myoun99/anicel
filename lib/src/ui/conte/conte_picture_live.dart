@@ -5,14 +5,14 @@ import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/sheet_marks.dart';
 import '../../services/cel_surface_as_shown.dart';
-import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
-import '../playback/camera_shot.dart' show outlineThrough;
+import '../canvas/canvas_zoom_scale.dart';
 import '../playback/frame_picture_view.dart';
 import '../canvas/outline_clipper.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart' show exportFrameGround;
-import '../panel_pictures.dart' show panelFrame;
+import '../panel_pictures.dart'
+    show panelFrame, panelView, panelViewOnRaster;
 import '../sheet_painting.dart';
 import 'conte_fonts.dart';
 import 'conte_picture_ink.dart';
@@ -99,14 +99,19 @@ class ContePictureLive extends StatelessWidget {
       raster.width / effectiveRatio,
       raster.height / effectiveRatio,
     );
-    final frame = picture.mark.frame;
-    // The canvas → the raster: through the paper, the picture's frame
-    // filling the raster's width as the print's camera fills its own.
-    final rasterPerPaper = box.width / frame.width;
-    final canvasToBox =
-        Matrix4.diagonal3Values(rasterPerPaper, rasterPerPaper, 1)
-          ..multiply(Matrix4.translationValues(-frame.left, -frame.top, 0))
-          ..multiply(picture.window.canvasToPaper);
+    // The canvas on the raster as its print lays it there, in the box's
+    // logical pixels.
+    final onTheRaster = CanvasZoomScale(effectiveRatio).fromDevice(
+      panelViewOnRaster(
+        panelView(
+          session,
+          picture.cut,
+          picture.frame,
+          picture.mark.canvasRegion,
+        ),
+        raster,
+      ),
+    );
     final laid = pictureLaid(picture.mark, viewport);
     return ClipPath(
       clipper: _shotOf(picture),
@@ -131,7 +136,7 @@ class ContePictureLive extends StatelessWidget {
                 laid,
                 effectiveRatio,
               ),
-              child: _composite(picture, canvasToBox),
+              child: _composite(picture, onTheRaster),
             ),
           ),
         ],
@@ -140,9 +145,9 @@ class ContePictureLive extends StatelessWidget {
   }
 
   /// What [picture]'s raster holds: the frame's ground, and its canvas
-  /// composited through [canvasToBox] — the canvas into the raster — cut
-  /// to the canvas's outline.
-  Widget _composite(ContePicture picture, Matrix4 canvasToBox) {
+  /// composited where [onTheRaster] lays it — the canvas into the raster —
+  /// cut to the canvas's outline.
+  Widget _composite(ContePicture picture, CanvasViewport onTheRaster) {
     final window = picture.window;
     final drawn = session.editingCanvas.stackAt(
       cut: picture.cut,
@@ -162,7 +167,7 @@ class ContePictureLive extends StatelessWidget {
       // one picture (F-533-Q8).
       picture: panelFrame(picture.cut, picture.frame),
       nodes: drawn.nodes,
-      viewport: viewportOfSimilarity(canvasToBox)!,
+      viewport: onTheRaster,
       live: (
         activeSurfacePainter: BitmapSurfacePainter(
           surface: celSurfaceAsShown(
@@ -190,7 +195,7 @@ class ContePictureLive extends StatelessWidget {
       // that waits for its plugins, its picture not made yet), so the print
       // shows — and the layers cut at the canvas, as the print's are.
       ground: exportFrameGround,
-      cut: outlineThrough(picture.cut.canvasSize, canvasToBox),
+      cutAtCanvas: picture.cut.canvasSize,
     );
   }
 
