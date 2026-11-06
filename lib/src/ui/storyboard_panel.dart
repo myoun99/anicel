@@ -3208,7 +3208,19 @@ class _StoryboardLabelShell extends StatelessWidget {
     // 버튼은 탭다운, 헤더쪽은 손떼면」). ↩️Only this rail's swipe columns were
     // on the press, so its type button acted on the release while the twirl
     // and the fx switch beside it acted on the press (I-89 ①).
-    return PressFireScope(fireOn: PressFire.down, child: strip);
+    //
+    // 🚨On a layer of its own, in its own size, as the timeline's row stands
+    // ([TimelineLayerControlsRow.build]): a stand lights or unlights the row,
+    // and its keep's bare boundary repainted outside every tick — the dock
+    // drawn live on the click (a-row-pick-breaks-the-timeline-dock-image,
+    // 11-06).
+    return SizedBox(
+      width: StoryboardPanel.railWidthIn(context),
+      height: height,
+      child: TickLayer(
+        child: PressFireScope(fireOn: PressFire.down, child: strip),
+      ),
+    );
   }
 
   Widget _surface(BuildContext context) {

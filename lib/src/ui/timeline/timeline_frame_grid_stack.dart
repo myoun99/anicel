@@ -123,9 +123,13 @@ class TimelineFrameGridStack extends StatelessWidget {
         // short of ([timelineRowPaperExtent]). 유저 2026-09-24 made the frame
         // lines on a block a switch (on by default): where it is on, the
         // paper carries this sheet's own lines ([timelineBlockFrameLine]).
+        // 🚨On a layer that is a tick's, not a bare boundary: a stand
+        // rebuilds the sheet for the two rows' grounds, and rebuilt in the
+        // grid's layout scope it laid the rows' viewport out again and
+        // repainted it (a-row-pick-breaks-the-timeline-dock-image, 11-06).
         if (gridSheet != null)
           Positioned.fill(
-            child: IgnorePointer(child: RepaintBoundary(child: gridSheet)),
+            child: IgnorePointer(child: TickLayer(child: gridSheet)),
           ),
         rowsBody,
         _playheadSlot(),
