@@ -139,9 +139,14 @@ impl Entropy {
     }
 }
 
+/// A table's modes (`SymbolEncodingType_e`), the compressor's too.
 pub(crate) const BASIC: u8 = 0;
 pub(crate) const RLE: u8 = 1;
 pub(crate) const COMPRESSED: u8 = 2;
+pub(crate) const REPEAT: u8 = 3;
+
+/// `LONGNBSEQ`: from this many sequences on, the count takes three bytes.
+pub(crate) const LONG_COUNT: usize = 0x7F00;
 
 /// `ZSTD_buildSeqTable`: the bytes the description took.
 fn read_table(choice: &mut Choice, kind: u8, code: &Code, src: &[u8], repeatable: bool) -> Result<usize, Corrupt> {
@@ -172,9 +177,11 @@ fn read_table(choice: &mut Choice, kind: u8, code: &Code, src: &[u8], repeatable
             *choice = Choice::Own(build(&counts[..=max_symbol as usize], log, code));
             Ok(size)
         }
-        _ => {
+        REPEAT => {
             if repeatable { Ok(0) } else { Err(Corrupt) }
         }
+        // Two bits leave no fifth mode.
+        _ => Err(Corrupt),
     }
 }
 
@@ -188,7 +195,7 @@ pub(crate) fn read_header(entropy: &mut Entropy, src: &[u8]) -> Result<(usize, u
         if src.len() < 3 {
             return Err(Corrupt);
         }
-        (usize::from(u16::from_le_bytes([src[1], src[2]])) + 0x7F00, 3)
+        (usize::from(u16::from_le_bytes([src[1], src[2]])) + LONG_COUNT, 3)
     } else {
         let second = usize::from(*src.get(1).ok_or(Corrupt)?);
         (((first - 0x80) << 8) + second, 2)

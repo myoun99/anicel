@@ -61,9 +61,12 @@ struct Literals {
     raw: Option<usize>,
 }
 
-const RAW: u8 = 0;
-const COMPRESSED: u8 = 2;
-const REPEAT: u8 = 3;
+/// A literals section's kinds (`SymbolEncodingType_e` as the literals
+/// read it), the compressor's too.
+pub(crate) const RAW: u8 = 0;
+pub(crate) const RLE: u8 = 1;
+pub(crate) const COMPRESSED: u8 = 2;
+pub(crate) const REPEAT: u8 = 3;
 
 /// `ZSTD_decodeLiteralsBlock`.
 fn literals(frame: &mut Frame, src: &[u8], capacity: usize) -> Result<Literals, Corrupt> {

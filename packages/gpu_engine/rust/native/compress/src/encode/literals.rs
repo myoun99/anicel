@@ -3,10 +3,7 @@
 
 use super::huffman::{self, Table};
 use super::{Repeat, TooSmall};
-use crate::sequences::{BASIC, COMPRESSED, RLE};
-
-/// `set_repeat`: the previous block's tree.
-const REPEAT: u8 = 3;
+use crate::frame::{COMPRESSED, RAW, REPEAT, RLE};
 
 /// The tree a block hands the next (`ZSTD_hufCTables_t`).
 #[derive(Clone)]
@@ -38,7 +35,7 @@ fn stored(out: &mut [u8], src: &[u8]) -> Result<usize, TooSmall> {
     if src.len() + length > out.len() {
         return Err(TooSmall);
     }
-    header(out, BASIC, src.len());
+    header(out, RAW, src.len());
     out[length..length + src.len()].copy_from_slice(src);
     Ok(length + src.len())
 }

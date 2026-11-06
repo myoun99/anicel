@@ -144,13 +144,16 @@ fn write_block_header(out: &mut [u8], last: bool, kind: usize, size: usize) {
 /// What a coded block hands the next (`ZSTD_compressedBlockState_t`).
 #[derive(Clone)]
 struct Block {
-    reps: [u32; 3],
+    /// The first two of the C's three repeat offsets: lazy2 reads and
+    /// writes only those, so the third — 8 at level 9 always, read by no
+    /// one — is not kept (저장 review 2026-11-06).
+    reps: [u32; 2],
     entropy: Entropy,
 }
 
 impl Block {
     fn new() -> Self {
-        Block { reps: [1, 4, 8], entropy: Entropy::new() }
+        Block { reps: [1, 4], entropy: Entropy::new() }
     }
 }
 

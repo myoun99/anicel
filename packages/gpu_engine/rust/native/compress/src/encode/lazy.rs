@@ -48,7 +48,10 @@ fn read64(src: &[u8], at: usize) -> u64 {
 
 /// `PREFETCH_L1`: the line holding `at` asked for ahead of its use. A hint
 /// only — it reads nothing and never faults, so the bytes come out the same
-/// without it, as on a target with none here.
+/// without it, as on a target with none here. Kept for speed, measured:
+/// rows read cold were one of the four causes of the row finder taking 1.4
+/// times the C's time on a 1 MiB cel, 1.02–1.22 times with all four gone
+/// (캔버스 베이스 2026-11-06).
 #[inline(always)]
 fn prefetch<T>(at: &T) {
     let at = (at as *const T).cast::<i8>();
@@ -568,7 +571,7 @@ impl Finder {
     /// `ZSTD_compressBlock_lazy_generic` at depth 2: the block's sequences
     /// into `store`, the repeat offsets carried in `reps`; the literals
     /// left after the last match.
-    pub(super) fn parse(&mut self, src: &[u8], block: Range<usize>, reps: &mut [u32; 3], store: &mut Store) -> usize {
+    pub(super) fn parse(&mut self, src: &[u8], block: Range<usize>, reps: &mut [u32; 2], store: &mut Store) -> usize {
         let Range { start: istart, end: iend } = block;
         let rows = matches!(self.search, Search::Rows(_));
         let limit = iend as isize - 8 - if rows { CACHE as isize } else { 0 };

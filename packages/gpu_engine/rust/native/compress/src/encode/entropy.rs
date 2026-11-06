@@ -10,13 +10,10 @@ use super::stream::Stream;
 use super::{Error, Repeat, TooSmall};
 use crate::bits::highbit;
 use crate::sequences::{
-    BASIC, COMPRESSED, Code, LITERAL_LENGTHS, LL_BASE, LL_BITS, MATCH_LENGTHS, ML_BASE, ML_BITS, OFFSETS, RLE,
+    BASIC, COMPRESSED, Code, LITERAL_LENGTHS, LL_BASE, LL_BITS, LONG_COUNT, MATCH_LENGTHS, ML_BASE, ML_BITS, OFFSETS,
+    REPEAT, RLE,
 };
 
-/// `set_repeat`.
-const REPEAT: u8 = 3;
-/// `LONGNBSEQ`.
-const LONG_COUNT: usize = 0x7F00;
 /// `DefaultMaxOff`: the default offset table stops at code 28.
 const DEFAULT_MAX_OFFSET: u32 = 28;
 /// `SUSPECT_UNCOMPRESSIBLE_LITERAL_RATIO`.
