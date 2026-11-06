@@ -7,10 +7,10 @@ use std::sync::OnceLock;
 
 use super::{Chain, Op, laid_as, reaching, tiles_of};
 use crate::kernels::composite::tests::{
-    KEY_RED, Pool, contrast, half, key_run, keyed_by_hand, pixel_at, rig as composite_rig, spotted,
-    texel,
+    KEY_GREEN, KEY_RED, Pool, contrast, half, key_run, keyed_by_hand, pixel_at, rig as composite_rig,
+    spotted, texel,
 };
-use crate::kernels::composite::{TILE, TileAt};
+use crate::kernels::composite::{KeyChain, TILE, TileAt};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::Edge;
 use crate::kernels::effects::blur::iris::{Focus, Iris};
@@ -130,14 +130,18 @@ fn a_colour_matrix_is_the_executor_s_row_through_it() {
     assert_same(&held(&out), &want);
 }
 
-/// A run of keys keys every pixel it reads against that pixel's alpha.
+/// A run of keys keys every pixel it reads against that pixel's alpha, in
+/// each of the executor's runs it is held in — two here, as a run of more
+/// keys than one of them holds is.
 #[test]
 fn a_key_run_keys_what_it_reads() {
     let picture = |x, y| spotted(92, x, y);
-    let out = chained(tiles(picture), &[Op::Keys(key_run(KEY_RED, false, half))]).expect("chain");
-    let want: Vec<u32> = pixels()
-        .map(|(x, y)| keyed_by_hand(picture(x, y), KEY_RED, half))
-        .collect();
+    let keys = KeyChain {
+        runs: vec![key_run(KEY_RED, false, half), key_run(KEY_GREEN, false, half)],
+    };
+    let out = chained(tiles(picture), &[Op::Keys(keys)]).expect("chain");
+    let keyed = |pixel| keyed_by_hand(keyed_by_hand(pixel, KEY_RED, half), KEY_GREEN, half);
+    let want: Vec<u32> = pixels().map(|(x, y)| keyed(picture(x, y))).collect();
     assert_same(&held(&out), &want);
 }
 
@@ -201,7 +205,9 @@ fn a_chain_runs_its_ops_one_after_another() {
     let ops = || {
         let tint = matrix_words(&graded(0.5, 40.0)).expect("a matrix in range");
         vec![
-            Op::Keys(key_run(KEY_RED, false, half)),
+            Op::Keys(KeyChain {
+                runs: vec![key_run(KEY_RED, false, half)],
+            }),
             Op::Matrix(matrix_words(&contrast()).expect("a matrix in range")),
             Op::Gaussian {
                 radius: (3, 2),

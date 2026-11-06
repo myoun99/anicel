@@ -279,7 +279,7 @@ pub(crate) fn pixel_at(bytes: &[u8], tiles: &[(i32, i32)], x: i32, y: i32) -> [u
 // ---- Keys ----
 
 pub(crate) const KEY_RED: [u32; 3] = [200, 30, 40];
-const KEY_GREEN: [u32; 3] = [20, 220, 60];
+pub(crate) const KEY_GREEN: [u32; 3] = [20, 220, 60];
 
 fn rgb(colour: [u32; 3]) -> u32 {
     colour[0] | (colour[1] << 8) | (colour[2] << 16)

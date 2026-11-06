@@ -14,6 +14,13 @@
 //! pose, and a folder's on the canvas (`withLayerPlacement`,
 //! layer_stack_paint_pass.dart). A plug-in's step is the host's: a plan
 //! cuts its chain there.
+//!
+//! A chain that is nothing but a key run is the row's own keys
+//! (`Step::Row`'s `keys`), and a final paint of colour alone the row's own
+//! matrix: a plan lays the row so and runs no chain. That is no second
+//! way — the op is that row laid over nothing, the same code, and keys a
+//! stored word as R1 then reads it (캔버스 베이스 패널,
+//! connection-round-checklist 11-07 00:39).
 
 // ⏳Nothing outside the tests runs it until the connection round
 // (connection-round-checklist 11-06 23:57 — the app's chain is cut into
@@ -36,11 +43,12 @@ use crate::kernels::effects::blur::line::{LineBlur, LinePass};
 pub(crate) enum Op<'a> {
     /// A colour matrix's words (`effects::matrix_words`).
     Matrix([u32; MATRIX_WORDS]),
-    /// One run of colour keys (`KeyRun::words`), every key against the
-    /// alpha of what the run reads — a key right after a key joins its run,
-    /// and a run after anything else reads what that put (the app's
-    /// `KeyRun`).
-    Keys(Vec<u32>),
+    /// A run of colour keys, keyed as a row's are (`KeyChain`): every key
+    /// against the alpha of what the op reads, a run longer than
+    /// `KEYS_PER_RUN` in the executor's runs of it — a key right after a key
+    /// joins its run, and a run after anything else reads what that put (the
+    /// app's `KeyRun`).
+    Keys(KeyChain),
     /// fx Gaussian Blur by box passes of `radius` across and down.
     Gaussian { radius: (u32, u32), edge: Edge },
     /// fx Directional or Radial Blur's passes over `plate`.
@@ -108,10 +116,7 @@ impl Chain {
         };
         match op {
             Op::Matrix(matrix) => coloured(Through { keys: None, matrix: Some(matrix) }),
-            Op::Keys(run) => {
-                let keys = KeyChain { runs: vec![run.clone()] };
-                coloured(Through { keys: Some(&keys), matrix: None })
-            }
+            Op::Keys(keys) => coloured(Through { keys: Some(keys), matrix: None }),
             Op::Gaussian { radius, edge } => self.gaussian.run(engine, tiles, rect, *radius, *edge),
             Op::Line { plate, passes } => self.line.run(engine, tiles, rect, *plate, passes),
             Op::Lens { picture, lens, map } => {
