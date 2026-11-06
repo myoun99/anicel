@@ -377,9 +377,14 @@ fn a_movie_whose_sound_this_does_not_read_is_left_as_the_c_leaves_it() {
         ("lpcm of 12 bits", Sound { bits: 12, ..lpcm }, reel.clone(), 1),
         ("lpcm, unsigned 16", Sound { flags: 0, ..lpcm }, reel.clone(), 1),
         ("a version-1 description cut short", Sound { version: 1, cut_short: true, ..SOWT }, reel.clone(), 1),
-        // The movie box first, so that bytes enough follow the table for a
-        // read of all it says to land.
-        ("more runs said than the table holds", SOWT, Layout { runs_said: Some(1000), movie_first: true, ..reel.clone() }, 1),
+        // The movie box first, and sound enough after it, so that a read of
+        // all the table says would land.
+        (
+            "more runs said than the table holds",
+            SOWT,
+            Layout { runs_said: Some(1000), movie_first: true, chunks: vec![1000, 1000, 345], ..reel.clone() },
+            1,
+        ),
     ] {
         expect_refused(what, &movie_naming(&sound, 2, &layout, reference));
     }
