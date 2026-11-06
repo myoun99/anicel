@@ -311,3 +311,24 @@ fn a_kept_stage_is_made_again_where_the_composite_changed() {
     drop(shown(&mut anew, canvas, far));
     assert!(stage_bytes(&anew) != made, "the change not marked is one a stage shows");
 }
+
+/// An empty change marks nothing: beside a real one far off, the tiles
+/// between them — over a change no one marked — are not made again.
+#[test]
+fn an_empty_change_marks_nothing() {
+    let far = camera(0.01, (1.0, 0.0), (20.75, 18.0));
+    let real = [500, 280, 502, 282];
+    let red = move |x, y| if inside(real, x, y) { 0xff00_00ff } else { noise(71)(x, y) };
+    let between = move |x, y| if inside([250, 140, 260, 150], x, y) { 0 } else { red(x, y) };
+    let mut kept = Halvings::new(CANVAS, 1.0).expect("halvings");
+    let (pages, set, _) = composite_of(noise(71), CANVAS);
+    drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
+    let (pages, set, _) = composite_of(between, CANVAS);
+    kept.changed([20, 20, 20, 60]);
+    kept.changed(real);
+    drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
+    let (pages, set, _) = composite_of(red, CANVAS);
+    let mut anew = Halvings::new(CANVAS, 1.0).expect("halvings");
+    drop(shown(&mut anew, Tiles { pages: &pages, set: &set }, far));
+    assert!(stage_bytes(&kept) == stage_bytes(&anew));
+}

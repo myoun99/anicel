@@ -139,8 +139,13 @@ impl Halvings {
     }
     /// The composite changed over its pixels `rect`, [left, top, right,
     /// bottom): the stages made over it are made again there when next
-    /// read.
+    /// read. An empty `rect` marks nothing — joined, its corner would
+    /// widen the mark to reach it (canvas base, 11-07 04:17).
     pub(crate) fn changed(&mut self, rect: [i32; 4]) {
+        let [left, top, right, bottom] = rect;
+        if left >= right || top >= bottom {
+            return;
+        }
         if let Some(first) = self.stages.first_mut() {
             first.behind = Some(joined(first.behind, rect.map(i64::from)));
         }
