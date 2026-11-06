@@ -24,5 +24,5 @@ mod resample;
 #[cfg(test)]
 mod tests;
 
-pub use bus::{Clip, EnvelopeKey, Source, bus_to_float, bus_to_int16, mix};
+pub use bus::{Clip, EnvelopeKey, Source, bus_to_float, bus_to_int16, mix, slice_or_empty};
 pub use resample::{Resampler, resample_frames, resample_taps};

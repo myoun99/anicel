@@ -217,7 +217,7 @@ pub fn bus_to_int16(bus: &[f64], out: &mut [i16]) {
 ///
 /// # Safety
 /// `items` is null or points at `count` values.
-unsafe fn slice_or_empty<'a, T>(items: *const T, count: i32) -> &'a [T] {
+pub unsafe fn slice_or_empty<'a, T>(items: *const T, count: i32) -> &'a [T] {
     // No slice of nothing: an empty one still wants an aligned pointer,
     // and the C reads none when the count is 0 (so a mutant dropping
     // `count > 0` lives on every aligned pointer — kept on purpose).
