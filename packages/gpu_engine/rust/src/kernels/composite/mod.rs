@@ -249,6 +249,9 @@ impl Composite {
             passes: Arc::default(),
             pages,
         };
+        // The tiles' pass for every mode is compiled here, where the engine
+        // starts, not under a canvas's first composite — as before modes
+        // came apart. Only when the compile is paid changes; no test sees it.
         composite.pass(engine, Compiled { surface: None, modes: ResampleModes::ALL });
         Some(composite)
     }
@@ -338,19 +341,19 @@ impl Composite {
     fn pass(&self, engine: &Engine, wanted: Compiled) -> wgpu::ComputePipeline {
         let every = Compiled { modes: ResampleModes::ALL, ..wanted };
         let mut passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
+        let for_every = passes.made(every).unwrap_or_else(|| {
+            let pipeline = compile(engine, &self.pages.source(), &self.output(every), every.modes);
+            passes.0.push((every, Some(pipeline.clone())));
+            pipeline
+        });
         if let Some(pipeline) = passes.made(wanted) {
             return pipeline;
         }
-        if wanted != every && !passes.making.contains(&wanted) {
-            passes.making.push(wanted);
+        if !passes.asked(wanted) {
+            passes.0.push((wanted, None));
             self.compile_apart(engine, wanted);
         }
-        if let Some(pipeline) = passes.made(every) {
-            return pipeline;
-        }
-        let pipeline = compile(engine, &self.pages.source(), &self.output(every), every.modes);
-        passes.made.push((every, pipeline.clone()));
-        pipeline
+        for_every
     }
 
     /// `wanted`'s pass compiled on a thread of its own, kept once made.
@@ -360,8 +363,10 @@ impl Composite {
         std::thread::spawn(move || {
             let pipeline = compile(&engine, &pages, &output, wanted.modes);
             let mut passes = passes.lock().unwrap_or_else(PoisonError::into_inner);
-            passes.making.retain(|making| *making != wanted);
-            passes.made.push((wanted, pipeline));
+            let asked = passes.0.iter_mut().find(|(asked, _)| *asked == wanted);
+            if let Some((_, made)) = asked {
+                *made = Some(pipeline);
+            }
         });
     }
 
@@ -380,7 +385,11 @@ impl Composite {
     #[cfg(test)]
     pub(crate) fn settle(&self) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-        while !self.passes.lock().unwrap_or_else(PoisonError::into_inner).making.is_empty() {
+        let making = || {
+            let passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
+            passes.0.iter().any(|(_, made)| made.is_none())
+        };
+        while making() {
             assert!(std::time::Instant::now() < deadline, "a pass compiled apart never came");
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
@@ -560,17 +569,19 @@ struct Compiled {
     modes: ResampleModes,
 }
 
-/// The composite passes made so far, and those a thread is compiling.
+/// Every composite pass asked for, and its pipeline once made — none while
+/// a thread compiles it.
 #[derive(Default)]
-struct Passes {
-    made: Vec<(Compiled, wgpu::ComputePipeline)>,
-    making: Vec<Compiled>,
-}
+struct Passes(Vec<(Compiled, Option<wgpu::ComputePipeline>)>);
 
 impl Passes {
+    fn asked(&self, compiled: Compiled) -> bool {
+        self.0.iter().any(|(asked, _)| *asked == compiled)
+    }
+
     fn made(&self, compiled: Compiled) -> Option<wgpu::ComputePipeline> {
-        let made = self.made.iter().find(|(made, _)| *made == compiled);
-        made.map(|(_, pipeline)| pipeline.clone())
+        let asked = self.0.iter().find(|(asked, _)| *asked == compiled);
+        asked.and_then(|(_, made)| made.clone())
     }
 }
 

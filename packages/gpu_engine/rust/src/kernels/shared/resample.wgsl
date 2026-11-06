@@ -584,7 +584,12 @@ fn resample(map: ResampleMap, source: u32, x: i32, y: i32) -> u32 {
     }
     return resample_texel(source, bitcast<i32>(sx.x), bitcast<i32>(sy.x));
   }
-  // No other map reaches a pass compiled for the copy alone.
+  // No other map reaches a pass compiled for the copy alone. This and the
+  // mode guards below change no byte — a pass meets only maps of the modes
+  // it was compiled for — but time: they let the compiler drop a mode's
+  // code, and this one locate's too (a 1080p composite of no row, 11-06:
+  // 110 µs of GPU compiled for the copy alone, 321 for every mode). No
+  // test here can see them; GPU timestamps can.
   if (!resample_with_blend && !resample_with_pick && !resample_with_nearest) {
     return 0u;
   }

@@ -1529,7 +1529,8 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
 // A pass is compiled the first time a plan needs its output and modes, and
 // kept: a screen shows every frame, and a compile is far dearer than a
 // frame. Shown again while its own is compiling, a screen takes the pass
-// for every mode — one, too — and starts no second compile.
+// for every mode — one, too — and starts no second compile; once its own
+// is made, that is the one it takes.
 #[test]
 fn a_pass_is_compiled_once_for_its_output_and_modes() {
     let (page, _) = composited_canvas();
@@ -1539,13 +1540,17 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
         shown(&page, turned, &texture, whole_screen());
     }
     rig().composite.settle();
-    let modes = ResampleModes::default().with(&turned.words());
+    let own = Compiled {
+        surface: Some("rgba8unorm"),
+        modes: ResampleModes::default().with(&turned.words()),
+    };
+    let taken = rig().composite.pass(rig().engine, own);
     let passes = rig().composite.passes.lock();
     let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
-    for modes in [modes, ResampleModes::ALL] {
-        let compiled = Compiled { surface: Some("rgba8unorm"), modes };
-        assert_eq!(passes.made.iter().filter(|(made, _)| *made == compiled).count(), 1);
+    for compiled in [own, Compiled { modes: ResampleModes::ALL, ..own }] {
+        assert_eq!(passes.0.iter().filter(|(asked, _)| *asked == compiled).count(), 1);
     }
+    assert_eq!(passes.made(own), Some(taken));
 }
 
 // A plan's pass compiled for its own R1 modes, on a thread, composites what
