@@ -382,7 +382,10 @@ const double timelineBlockWarningBarThickness = 2;
 /// past the end line said nothing. A host mounts the warnings LAST, over
 /// the grips, and the hover is all they hear ([PressesGoThrough]): a press
 /// is the grip's or the block's under them. ↩️They sat under the grips, and
-/// over a conte SE row's blocks they took the press from the block.
+/// over a conte SE row's blocks they took the press from the block. The
+/// movie's end handle is the panel's, over every row, so no row lays them
+/// over it: there the hover goes under the handle ([HoverGoesUnder] —
+/// F-495-Q1, 유저 2026-11-07 「잡이 위에서도 블록 툴팁을 띄운다」).
 Widget timelineBlockWarningBar({
   required int blockStart,
   required int blockEndExclusive,

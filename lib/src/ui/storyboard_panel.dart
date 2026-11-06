@@ -2524,7 +2524,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               child: DeviceGridScrollBody(
                                 controller: _horizontalController,
                                 axisDirection: AxisDirection.right,
-                                child: Stack(
+                                // F-495-Q1: the movie's end handle lies
+                                // over every row, and a block's warning
+                                // under it still hears the hover
+                                // ([HoverGoesUnder]).
+                                child: HoverUnderScope(child: Stack(
                                   children: [
                                     // THE grid sheet under the rows (D8/D38
                                     // — the storyboard's own copy of the
@@ -2630,7 +2634,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     if (frame.totalFrames > 0)
                                       _movieEndMarks(frame),
                                   ],
-                                ),
+                                )),
                               ),
                             ),
                           ),

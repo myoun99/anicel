@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../widgets/ellipsis_text.dart' show HoverUnderScope;
 import '../widgets/tick_layer.dart';
 import 'axis_turn.dart' show alongBox;
 import 'timeline_beat_lines.dart';
@@ -109,7 +110,7 @@ class TimelineFrameGridStack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gridSheet = this.gridSheet;
-    return Stack(
+    final stack = Stack(
       children: [
         // D32 (2026-08-18): the grid sits UNDER the rows — an opaque beat
         // line glowing over a blue paper block was the report. This is
@@ -154,6 +155,9 @@ class TimelineFrameGridStack extends StatelessWidget {
         ),
       ],
     );
+    // F-495-Q1: the grip lies over every row, and a block's warning under
+    // it still hears the hover ([HoverGoesUnder]).
+    return HoverUnderScope(child: stack);
   }
 
   /// The playhead rides its OWN layer: a cursor move repaints just that

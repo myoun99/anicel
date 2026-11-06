@@ -7,6 +7,7 @@ import 'timeline_drag_preview.dart';
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'axis_turn.dart';
 import '../widgets/owning_axis_grip.dart';
+import '../widgets/ellipsis_text.dart' show HoverGoesUnder;
 
 /// The timeline end-line drag's session hooks (UI-R18 #14): the red
 /// cut-end boundary line grows a grip that end-trims the ACTIVE cut —
@@ -258,23 +259,26 @@ class _EndLineGripState extends State<EndLineGrip> {
   @override
   Widget build(BuildContext context) {
     final horizontal = widget.axis == Axis.horizontal;
-    return MouseRegion(
-      cursor: horizontal
-          ? SystemMouseCursors.resizeColumn
-          : SystemMouseCursors.resizeRow,
-      // 🚨THE THIRD GRIP OF ONE LAW (F-163 재발, 유저 2026-09-23: 「버튼은
-      // 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」). ↩️A plain
-      // one-axis drag, so a pull across it walked over to the scroller, and
-      // it took no finger while touch scrolls the timeline (UI-R22F) — the
-      // comma grips' two faults exactly, fixed the way they were.
-      child: OwningAxisGrip(
-        axis: widget.axis,
-        configure: (recognizer) => recognizer
-          ..dragStartBehavior = DragStartBehavior.down
-          ..onStart = ((_) => _start())
-          ..onUpdate = ((details) => _update(details.primaryDelta!))
-          ..onEnd = ((_) => _end())
-          ..onCancel = _cancel,
+    // F-495-Q1: a block's warning under the grip still hears the hover.
+    return HoverGoesUnder(
+      child: MouseRegion(
+        cursor: horizontal
+            ? SystemMouseCursors.resizeColumn
+            : SystemMouseCursors.resizeRow,
+        // 🚨THE THIRD GRIP OF ONE LAW (F-163 재발, 유저 2026-09-23: 「버튼은
+        // 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」). ↩️A plain
+        // one-axis drag, so a pull across it walked over to the scroller,
+        // and it took no finger while touch scrolls the timeline (UI-R22F)
+        // — the comma grips' two faults exactly, fixed the way they were.
+        child: OwningAxisGrip(
+          axis: widget.axis,
+          configure: (recognizer) => recognizer
+            ..dragStartBehavior = DragStartBehavior.down
+            ..onStart = ((_) => _start())
+            ..onUpdate = ((details) => _update(details.primaryDelta!))
+            ..onEnd = ((_) => _end())
+            ..onCancel = _cancel,
+        ),
       ),
     );
   }
