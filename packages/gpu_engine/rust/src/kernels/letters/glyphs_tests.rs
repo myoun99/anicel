@@ -5,12 +5,14 @@ use std::sync::OnceLock;
 
 use zeno::{Command, Vector};
 
-use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Run, Shape, boxed, by_family, covered, letters, shaped};
+use super::glyphs::{
+    Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, boxed, by_family, covered, letters, shaped,
+};
 use super::tests::at as pixel_of;
 use super::{Pass, set};
 use crate::kernels::composite::tests::rig;
 
-const IDENTITY: Affine = Affine {
+pub(super) const IDENTITY: Affine = Affine {
     a: 1.0,
     b: 0.0,
     c: 0.0,
@@ -19,7 +21,12 @@ const IDENTITY: Affine = Affine {
     f: 0.0,
 };
 
-fn file(name: &str) -> Vec<u8> {
+/// `shapes`, each standing in the layout as it is.
+pub(super) fn here(shapes: Vec<Shape>) -> Vec<Placed> {
+    shapes.into_iter().map(|shape| Placed { at: IDENTITY, shape }).collect()
+}
+
+pub(super) fn file(name: &str) -> Vec<u8> {
     let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
     let path = format!("{dir}/../../../assets/fonts/{name}");
     std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"))
@@ -27,13 +34,13 @@ fn file(name: &str) -> Vec<u8> {
 
 /// The app's canvas letters' families, in their order: BIZ UDPGothic,
 /// 나눔고딕, Noto Sans SC (app_theme.dart; engine-canvas-letters-Q2).
-fn faces() -> &'static Faces {
+pub(super) fn faces() -> &'static Faces {
     static FACES: OnceLock<Faces> = OnceLock::new();
     FACES.get_or_init(|| {
         Faces::new(vec![
-            Family::of_two(file("BIZUDPGothic-Regular.ttf"), file("BIZUDPGothic-Bold.ttf")).unwrap(),
-            Family::of_two(file("NanumGothic-Regular.ttf"), file("NanumGothic-Bold.ttf")).unwrap(),
-            Family::of_one_variable(file("NotoSansSC-Variable.ttf")).unwrap(),
+            Family::of_files(vec![file("BIZUDPGothic-Regular.ttf"), file("BIZUDPGothic-Bold.ttf")]).unwrap(),
+            Family::of_files(vec![file("NanumGothic-Regular.ttf"), file("NanumGothic-Bold.ttf")]).unwrap(),
+            Family::of_files(vec![file("NotoSansSC-Variable.ttf")]).unwrap(),
         ])
         .unwrap()
     })
@@ -41,7 +48,7 @@ fn faces() -> &'static Faces {
 
 /// `text`, one cluster a letter `step` 64ths apart, at `size` 64ths, from
 /// (`x`, `y`) 64ths.
-fn run(text: &str, size: i32, (x, y): (i32, i32), step: i32) -> Run {
+pub(super) fn run(text: &str, size: i32, (x, y): (i32, i32), step: i32) -> Run {
     Run {
         size,
         bold: false,
@@ -58,17 +65,17 @@ fn run(text: &str, size: i32, (x, y): (i32, i32), step: i32) -> Run {
 }
 
 fn filled(shapes: Vec<Shape>, to_grid: Affine) -> super::Cover {
-    covered(faces(), &shapes, Paint::Fill, to_grid).expect("a cover")
+    covered(faces(), &here(shapes), Paint::Fill, to_grid).expect("a cover")
 }
 
-fn ink(cover: &super::Cover) -> u64 {
+pub(super) fn ink(cover: &super::Cover) -> u64 {
     cover.bytes.iter().map(|&byte| u64::from(byte)).sum()
 }
 
 #[test]
 fn a_letter_goes_to_the_first_family_that_has_it() {
     let families = |text: &str| -> Vec<usize> {
-        by_family(faces(), text, false).into_iter().map(|(family, _)| family).collect()
+        by_family(faces(), text, (false, false)).into_iter().map(|(family, _)| family).collect()
     };
     assert_eq!(families("A"), [0], "BIZ UDPGothic has Latin");
     assert_eq!(families("カ"), [0]);
@@ -78,7 +85,7 @@ fn a_letter_goes_to_the_first_family_that_has_it() {
     assert_eq!(families("业"), [2], "a simplified character neither has");
     assert_eq!(families("😊"), [0], "one none has: the first's empty box");
     // A family's letters are one run, shaped together.
-    assert_eq!(by_family(faces(), "AB셀业", false), [(0, "AB".into()), (1, "셀".into()), (2, "业".into())]);
+    assert_eq!(by_family(faces(), "AB셀业", (false, false)), [(0, "AB".into()), (1, "셀".into()), (2, "业".into())]);
 }
 
 #[test]
@@ -118,7 +125,7 @@ fn letters_a_face_joins_are_joined_across_clusters() {
                 origin: [x, y],
             })
             .collect();
-        letters(faces(), &Run { size: 40 * 64, bold: false, italic: false, clusters }, &mut path);
+        letters(faces(), &Run { size: 40 * 64, bold: false, italic: false, clusters }, Paint::Fill, IDENTITY, &mut path);
         path
     };
     let joined = path_of(&[("fi", 640, 3200)]);
@@ -161,7 +168,7 @@ fn harfrusts_advances_meet_the_apps_clusters() {
                 origin: [(left * 64.0).round() as i32, 0],
             })
             .collect();
-        let (ours, apps) = (shaped(faces(), &whole, bold, size), shaped(faces(), &split, bold, size));
+        let (ours, apps) = (shaped(faces(), &whole, (bold, false), size), shaped(faces(), &split, (bold, false), size));
         let ids = |set: &[super::glyphs::Set]| set.iter().map(|glyph| glyph.id.to_u32()).collect::<Vec<_>>();
         assert_eq!(ids(&ours), ids(&apps));
         for (glyph, (ours, apps)) in ours.iter().zip(&apps).enumerate() {
@@ -206,7 +213,7 @@ fn shapes_of_one_pass_that_overlap_cover_once() {
 fn a_letters_contours_are_closed_and_keep_their_curves() {
     for text in ["O", "셀", "业"] {
         let mut path = Vec::new();
-        letters(faces(), &run(text, 64 * 64, (0, 100 * 64), 0), &mut path);
+        letters(faces(), &run(text, 64 * 64, (0, 100 * 64), 0), Paint::Fill, IDENTITY, &mut path);
         let count = |of: fn(&Command) -> bool| path.iter().filter(|command| of(command)).count();
         let (moves, closes) = (count(|c| matches!(c, Command::MoveTo(_))), count(|c| matches!(c, Command::Close)));
         assert!(moves > 0 && moves == closes, "{text}: {moves} contours, {closes} closed");
@@ -269,7 +276,7 @@ fn a_box_winds_as_a_letters_outer_contour_does() {
     // Hangul — "I", and "ㅣ".
     for text in ["I", "ㅣ"] {
         let mut letter = Vec::new();
-        letters(faces(), &run(text, 64 * 64, (0, 100 * 64), 0), &mut letter);
+        letters(faces(), &run(text, 64 * 64, (0, 100 * 64), 0), Paint::Fill, IDENTITY, &mut letter);
         assert_eq!(wound(&letter), wound(&boxed_path), "{text}");
     }
 }
@@ -277,7 +284,7 @@ fn a_box_winds_as_a_letters_outer_contour_does() {
 #[test]
 fn an_outline_reaches_half_its_width_past_the_fill() {
     let shapes = || vec![Shape::Rect([0, 0, 10 * 64, 10 * 64])];
-    let stroked = covered(faces(), &shapes(), Paint::Stroke { width: 4 * 64 }, IDENTITY).expect("a cover");
+    let stroked = covered(faces(), &here(shapes()), Paint::Stroke { width: 4 * 64 }, IDENTITY).expect("a cover");
     assert_eq!(stroked.at, [-2, -2, 12, 12]);
     let row = |y: i32| &stroked.bytes[((y + 2) * 14) as usize..((y + 3) * 14) as usize];
     // Across the middle: two pixels outside, two inside, nothing between.
@@ -296,7 +303,7 @@ fn a_placement_scales_the_outline_with_the_letters() {
     // Strokes first, then the transform: twice the grid, twice the width.
     let shapes = || vec![Shape::Rect([0, 0, 10 * 64, 10 * 64])];
     let twice = Affine { a: 2.0, d: 2.0, ..IDENTITY };
-    let stroked = covered(faces(), &shapes(), Paint::Stroke { width: 2 * 64 }, twice).expect("a cover");
+    let stroked = covered(faces(), &here(shapes()), Paint::Stroke { width: 2 * 64 }, twice).expect("a cover");
     assert_eq!(stroked.at, [-2, -2, 22, 22]);
 }
 
@@ -339,9 +346,9 @@ fn a_letter_no_family_has_draws_the_first_familys_box() {
 
 #[test]
 fn nothing_to_draw_is_no_cover() {
-    assert!(covered(faces(), &[Shape::Letters(run(" ", 30 * 64, (0, 2000), 0))], Paint::Fill, IDENTITY).is_none());
+    assert!(covered(faces(), &here(vec![Shape::Letters(run(" ", 30 * 64, (0, 2000), 0))]), Paint::Fill, IDENTITY).is_none());
     assert!(covered(faces(), &[], Paint::Fill, IDENTITY).is_none());
-    assert!(covered(faces(), &[Shape::Rect([320, 320, 320, 320])], Paint::Fill, IDENTITY).is_none());
+    assert!(covered(faces(), &here(vec![Shape::Rect([320, 320, 320, 320])]), Paint::Fill, IDENTITY).is_none());
 }
 
 #[test]
@@ -358,13 +365,13 @@ fn passes_are_set_outline_under_fill_on_the_gpu() {
                 colour: 0xFF20_2020,
                 hard: false,
                 paint: Paint::Stroke { width: 4 * 64 },
-                shapes: shapes(),
+                shapes: here(shapes()),
             },
             Pass {
                 colour: 0xFFFF_FFFF,
                 hard: false,
                 paint: Paint::Fill,
-                shapes: shapes(),
+                shapes: here(shapes()),
             },
         ],
     )
@@ -383,7 +390,7 @@ fn a_hard_pass_is_cut_on_the_gpu() {
         colour: 0xFF20_30D0,
         hard,
         paint: Paint::Fill,
-        shapes: vec![Shape::Rect([0, 0, 3 * 64 + 32, 64])],
+        shapes: here(vec![Shape::Rect([0, 0, 3 * 64 + 32, 64])]),
     };
     let smooth = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(false)]).expect("set");
     let hard = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(true)]).expect("set");

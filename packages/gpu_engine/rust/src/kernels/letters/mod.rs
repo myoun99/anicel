@@ -22,11 +22,13 @@ pub(crate) mod glyphs;
 #[cfg(test)]
 mod glyphs_tests;
 #[cfg(test)]
+mod families_tests;
+#[cfg(test)]
 mod tests;
 
 use wgpu::util::DeviceExt;
 
-use glyphs::{Affine, Faces, Paint, Shape, covered};
+use glyphs::{Affine, Faces, Paint, Placed, covered};
 
 use crate::device::Engine;
 use crate::fail;
@@ -97,7 +99,7 @@ pub(crate) struct Pass {
     pub(crate) colour: u32,
     pub(crate) hard: bool,
     pub(crate) paint: Paint,
-    pub(crate) shapes: Vec<Shape>,
+    pub(crate) shapes: Vec<Placed>,
 }
 
 /// `passes`, bottom to top, set in `faces` and laid on the grid by
