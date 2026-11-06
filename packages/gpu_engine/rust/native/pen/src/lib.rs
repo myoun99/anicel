@@ -1,22 +1,32 @@
 //! The pen, beside the OS pointer (native-to-rust; the C was
-//! qa_tablet_win.c, qa_penraw_win.c and qa_pen_hid_axis.h): what the
-//! tablet DRIVER says of the pen (Wintab — `qat_*`) and what its HID report
-//! says (Raw Input — `qpr_*`). Windows only, as the C was: Dart's bridge
-//! (lib/src/native/qa_tablet_bridge.dart) opens them nowhere else.
+//! qa_tablet_win.c, qa_penraw_win.c, qa_pen_hid_axis.h and
+//! qa_pen_ledger_apple.m).
 //!
-//! Each half keeps the C's ABI — `qat_abi_version` 2, `qpr_abi_version` 3 —
-//! and is looked up apart: the Raw Input observer shipped later, and a
-//! library without it still gives the tablet.
+//! On Windows: what the tablet DRIVER says of the pen (Wintab — `qat_*`)
+//! and what its HID report says (Raw Input — `qpr_*`), as Dart's bridge
+//! (lib/src/native/qa_tablet_bridge.dart) opens them there alone. Each half
+//! keeps the C's ABI — `qat_abi_version` 2, `qpr_abi_version` 3 — and is
+//! looked up apart: the Raw Input observer shipped later, and a library
+//! without it still gives the tablet.
+//!
+//! On Apple: the PEN LEDGER (`qa_pen_ledger_*`, H43) — what UIKit or AppKit
+//! said of each pen sample, read by the sample's own timestamp
+//! (lib/src/native/qa_pen_ledger.dart).
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
 // never run as this one's (gpu_engine's kernels/shared/one_checkout.rs).
 const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
-// The law and the report's word have no platform in them, and run their
-// cases on every host; the readers that use them are Windows'.
+#[cfg(target_vendor = "apple")]
+mod apple;
+// The laws, the report's word and the ledger have no platform in them, and
+// run their cases on every host; the readers that use them are Windows' and
+// Apple's.
 #[cfg_attr(not(windows), allow(dead_code))]
 mod hid_axis;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+mod ledger;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod report;
 #[cfg(windows)]
@@ -126,4 +136,50 @@ pub unsafe extern "C" fn qpr_poll(out: *mut f32, cap: i32) -> i32 {
     // SAFETY: see the function's contract; no more than 7 are written.
     let out = unsafe { std::slice::from_raw_parts_mut(out, cap.min(7) as usize) };
     i32::from(raw::poll(out))
+}
+
+/// Starts whatever the platform needs to keep the ledger: the event
+/// monitor on macOS; nothing on iOS, where the Runner writes. Safe to call
+/// again.
+#[cfg(target_vendor = "apple")]
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_pen_ledger_start() {
+    apple::start();
+}
+
+/// The FORCE the ledger holds for the sample Flutter stamped `micros` (see
+/// `ledger::Ledger::value`): the value, or -1 none, -2 an estimate, -3 no
+/// pressure, -4 a final estimate.
+#[cfg(target_vendor = "apple")]
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_pen_ledger_value(micros: i64) -> f64 {
+    ledger::ledger().value(micros)
+}
+
+/// The ALTITUDE the ledger holds for the sample Flutter stamped `micros`
+/// (see `ledger::Ledger::altitude`): radians, or -1 none, -2 an estimate,
+/// -4 a final estimate.
+#[cfg(target_vendor = "apple")]
+#[unsafe(no_mangle)]
+pub extern "C" fn qa_pen_ledger_altitude(micros: i64) -> f64 {
+    ledger::ledger().altitude(micros)
+}
+
+/// AppKit's TILT of the sample Flutter stamped `micros`, into `xy`: 1 when
+/// the ledger holds one, 0 when it holds none.
+///
+/// # Safety
+/// `xy` is two writable `f64`s.
+#[cfg(target_vendor = "apple")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qa_pen_ledger_tilt(micros: i64, xy: *mut f64) -> i32 {
+    let Some((x, y)) = ledger::ledger().tilt(micros) else {
+        return 0;
+    };
+    // SAFETY: see the function's contract.
+    unsafe {
+        xy.write(x);
+        xy.add(1).write(y);
+    }
+    1
 }
