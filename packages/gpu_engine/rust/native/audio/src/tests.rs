@@ -18,6 +18,53 @@ type Free = unsafe extern "C" fn(*mut f32);
 type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
 type Bound = extern "C" fn(i64) -> i64;
 
+/// 🚨The most one request of these tests asks the heap for: past it the
+/// request is refused, and the tests stop there (`handle_alloc_error`)
+/// rather than take the machine's memory before they fail — as a decoder
+/// that sizes a buffer by a file's word would (native-memory-safety-Q5: 5.9
+/// GB for one piece of a file of 1,040 bytes). No test here asks for a
+/// gigabyte.
+const ROOM: usize = 1 << 30;
+
+/// The system's allocator, refusing a request past [ROOM].
+struct Room;
+
+// SAFETY: the system's allocator, or null — which a caller must meet for
+// any request.
+unsafe impl std::alloc::GlobalAlloc for Room {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if layout.size() > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        if layout.size() > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.alloc_zeroed(layout) }
+    }
+
+    unsafe fn realloc(&self, at: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        if size > ROOM {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.realloc(at, layout, size) }
+    }
+
+    unsafe fn dealloc(&self, at: *mut u8, layout: std::alloc::Layout) {
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.dealloc(at, layout) }
+    }
+}
+
+#[global_allocator]
+static ROOM_ONLY: Room = Room;
+
 /// What a decode answered.
 #[derive(Debug, Clone)]
 pub(crate) struct Decoded {
@@ -479,4 +526,17 @@ fn what_is_not_a_sound_is_refused_as_the_c_refuses_it() {
     }
     let missing = std::env::temp_dir().join("오디오-없는-파일.wav");
     assert_eq!(rust_window(&Span { path: &missing, offset: 0, length: 100, framed: false }, 0, -1).format, 0);
+}
+
+#[test]
+fn a_broken_piece_is_silence_no_longer_than_a_decode_of_it_hands_back() {
+    // The fuzz run's ALAC (run 42274861215, sha1 ec4c17b7…df183): its one
+    // piece is broken, and its table says the piece lasts 1,476,395,408
+    // frames — 51 hours at 8 kHz. A decode of a piece of it hands back the
+    // 4,096 frames its cookie says at most, so the broken one is 4,096 of
+    // silence (native-memory-safety-Q5).
+    let sound = rust_window(&Span::whole(&fixture("alac_piece_said_to_last_51_hours.m4a")), 0, -1);
+    assert_eq!((sound.format, sound.channels, sound.rate), (crate::FORMAT_ALAC, 1, 8000));
+    assert_eq!(sound.samples.len(), 4096);
+    assert!(sound.samples.iter().all(|&s| s == 0.0), "silence");
 }

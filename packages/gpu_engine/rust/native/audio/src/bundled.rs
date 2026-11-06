@@ -144,8 +144,23 @@ impl Bundled {
     /// block (`trimmed_dur` takes off the builder's own trims, which are
     /// none: packet.rs:340), and a piece inside a sound is trimmed of
     /// nothing — so it is the frames a decode of it would have handed back.
+    ///
+    /// 🚨★**NO LONGER THAN ONE DECODE OF IT HANDS BACK** (user 2026-11-07,
+    /// native-memory-safety-Q5: 「코덱이 한 조각에 낼 수 있는 만큼까지만
+    /// 무음으로」). `dur` is the container's word, and a container may say
+    /// anything: the fuzz run's ALAC of 1,040 bytes said a piece lasts
+    /// 1,476,395,408 frames — 51 hours at 8 kHz — and this took 5.9 GB at
+    /// once for it. A piece that reads hands back its decoder's frames
+    /// whatever the container says, so a piece that does not keeps the place
+    /// a decode of it could have: the most the decoder's buffer holds. Every
+    /// decoder here sizes it as it is made, but the MP3 one, which sizes it
+    /// at the header of the first piece it is handed — before anything of
+    /// the piece can be refused: its reader hands on only a frame whose
+    /// header it parsed with the decoder's own parser, cut to the length
+    /// that header says (symphonia-bundle-mp3 `read_mpeg_frame`).
     fn silence(&self, packet: &Packet, block: &mut Vec<f32>) -> usize {
-        self.quiet(block, frames_lasting(packet.dur.get(), self.time_base, self.rate))
+        let lasts = frames_lasting(packet.dur.get(), self.time_base, self.rate);
+        self.quiet(block, lasts.min(self.decoder.last_decoded().capacity()))
     }
 
     /// `block` made `frames` of silence.
