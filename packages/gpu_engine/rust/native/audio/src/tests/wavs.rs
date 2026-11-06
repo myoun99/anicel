@@ -457,6 +457,16 @@ fn a_stereo_piece_of_a_mono_mp3_is_mixed_at_0_707_each() {
 }
 
 #[test]
+fn a_piece_at_another_rate_is_passed_over_until_the_board_says() {
+    // Four frames at 48 kHz (384 bytes at 128 kbit/s) in a 44.1 kHz sound:
+    // a decoder of their own reads them, at their rate — and they are
+    // passed over, as before, until native-to-rust-Q11 is answered.
+    let (read, channels) = mp3_read(&[mp3_frames(12), mp3_frames_at(4, 0x94, 384), mp3_frames(8)].concat());
+    assert_eq!(channels, 2);
+    assert_eq!(read.len(), (20 * 1152 - LEAD) * 2);
+}
+
+#[test]
 fn a_piece_nothing_reads_is_its_length_of_silence() {
     // A Layer II frame among Layer III ones: the reader hands it on, and no
     // decoder here reads it — so it keeps its 1,152 frames as silence, and
