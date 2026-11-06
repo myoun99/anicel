@@ -184,6 +184,11 @@ fn expected(amount: f64, with_map: bool) -> Vec<u8> {
     out
 }
 
+/// The C test's rows, `stride` apart in `bytes`, with no padding.
+fn packed(bytes: &[u8], stride: usize) -> Vec<u8> {
+    bytes.chunks(stride).flat_map(|row| &row[..IN_W * 4]).copied().collect()
+}
+
 /// A job with nothing in it.
 fn empty() -> RenderJob {
     let none = Picture {
@@ -283,6 +288,15 @@ fn the_sample_answers_as_the_c_host_does_and_as_worked_out_here() {
             assert_eq!(answer, OK, "{who}: amount {amount}, map {with_map}");
             assert_eq!(out, expected(amount, with_map), "{who}: amount {amount}, map {with_map}");
         }
+        let (input, map) = (input(), map());
+        let packed_input = packed(&input, IN_STRIDE);
+        let mut out = vec![0xEE; IN_H * IN_W * 4];
+        let values = [80.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        let mut job = job(&packed_input, &mut out, &values, &[map_layer(&map)]);
+        (job.input.stride, job.output_stride) = (IN_W as i32 * 4, IN_W as i32 * 4);
+        assert_eq!(plugin.render(&job), OK, "{who}: rows with no padding");
+        assert_eq!(out, packed(&expected(80.0, true), OUT_STRIDE), "{who}: rows with no padding");
+
         assert_eq!(render(&plugin, -5.0, true).0, FAILED, "{who}: the plugin's failure");
         assert_eq!(plugin.render(&empty()), BAD_JOB, "{who}: a job with nothing in it");
         // SAFETY: an open plugin.
@@ -354,6 +368,76 @@ fn the_sdk_example_answers_as_the_c_host_does() {
     if let Some(at) = (0..c.len()).find(|&at| c[at] != rust[at]) {
         panic!("the hosts part at byte {at} of {}", c.len());
     }
+}
+
+/// A job with no values and no layers, their pointers null, is taken as the
+/// C host takes it. The sample reads two values anyway, from where the
+/// frame says they lie — with none there, the input's first pixels, which
+/// both hosts lay in the same place — so its answer is the same on both.
+#[test]
+fn a_job_with_no_values_and_no_layers_is_taken_as_the_c_host_takes_it() {
+    let input = input();
+    let answers = hosts().map(|host| {
+        let plugin = Opened::new(host, "qa_fx_plugin_sample");
+        let mut out = vec![0xEE; IN_H * OUT_STRIDE];
+        let job = RenderJob {
+            values: std::ptr::null(),
+            value_count: 0,
+            layers: std::ptr::null(),
+            layer_count: 0,
+            ..job(&input, &mut out, &[], &[])
+        };
+        (plugin.render(&job), out)
+    });
+    assert_ne!(answers[0].0, BAD_JOB, "LIVENESS — the C host takes it");
+    assert_eq!(answers[0], answers[1]);
+}
+
+/// Bytes this thread holds from the heap, so a test sees a host give back
+/// what it took — a leak answers like a host that frees.
+struct Counting;
+
+thread_local! {
+    static HELD: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
+}
+
+fn held() -> isize {
+    HELD.with(std::cell::Cell::get)
+}
+
+fn count(bytes: isize) {
+    let _ = HELD.try_with(|held| held.set(held.get() + bytes));
+}
+
+// SAFETY: the system's allocator, counted.
+unsafe impl std::alloc::GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        count(layout.size() as isize);
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, at: *mut u8, layout: std::alloc::Layout) {
+        count(-(layout.size() as isize));
+        // SAFETY: the caller's contract.
+        unsafe { std::alloc::System.dealloc(at, layout) }
+    }
+}
+
+#[global_allocator]
+static COUNTING: Counting = Counting;
+
+/// A plugin opened, asked and closed leaves the heap as it found it.
+#[test]
+fn a_closed_plugin_gives_back_what_the_host_took() {
+    built("qa_fx_plugin_sample");
+    let before = held();
+    {
+        let plugin = Opened::new(RUST, "qa_fx_plugin_sample");
+        assert_eq!(render(&plugin, 80.0, true).0, OK);
+        assert!(held() > before, "LIVENESS — the host holds its plugin and room");
+    }
+    assert_eq!(held(), before);
 }
 
 /// A library the host must not open — none at all, one that is not there,

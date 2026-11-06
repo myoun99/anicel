@@ -164,3 +164,129 @@ impl Laying<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Plan, lay, lay_reach, take_output};
+    use crate::job::{Picture, RenderJob, read};
+
+    fn word(block: &[u8], at: usize) -> u32 {
+        u32::from_le_bytes(block[at..at + 4].try_into().expect("four bytes"))
+    }
+
+    fn double(block: &[u8], at: usize) -> f64 {
+        f64::from_le_bytes(block[at..at + 8].try_into().expect("eight bytes"))
+    }
+
+    /// The six words of the image whose place in the frame is `at`.
+    fn image(block: &[u8], at: usize) -> [u32; 6] {
+        std::array::from_fn(|index| word(block, at + index * 4))
+    }
+
+    fn picture(pixels: &[u8], (width, height, stride): (i32, i32, i32), at: (i32, i32)) -> Picture {
+        Picture { pixels: pixels.as_ptr(), width, height, stride, left: at.0, top: at.1 }
+    }
+
+    /// A render and then a reach laid in one room of stale bytes, read back
+    /// by the header's own numbers (anicel_fx_plugin.h: the frame 104 bytes,
+    /// input at 8, output at 32, value_count at 56, layer_count at 64, time
+    /// at 72, frame_index at 96; an image 24 bytes, a value 32): every part
+    /// where the frame says, each on 16 bytes and none on another, the
+    /// pictures packed, the output cleared — and the reach's images empty,
+    /// nothing of the render left in its frame.
+    #[test]
+    fn a_frame_is_laid_where_the_spec_says_and_keeps_nothing_of_the_last() {
+        let input: Vec<u8> = (0..32).collect();
+        let first: Vec<u8> = (100..112).collect();
+        let second: Vec<u8> = (200..212).collect();
+        let layers = [picture(&first, (2, 1, 12), (5, -6)), picture(&second, (1, 2, 8), (-7, 8))];
+        let values = [1.5, 2.5, 3.5, 4.5, -1.0, 0.25, 0.0, 9.0];
+        let mut out = vec![0xEE; 2 * 16];
+        let job = RenderJob {
+            input: picture(&input, (3, 2, 16), (-4, 7)),
+            output: out.as_mut_ptr(),
+            output_stride: 16,
+            value_count: 2,
+            values: values.as_ptr(),
+            layers: layers.as_ptr(),
+            layer_count: 2,
+            frame_index: 9,
+            time: 0.375,
+            frame_rate: 24.0,
+            scale: 0.5,
+        };
+        // SAFETY: every pointer holds what it says.
+        let mut job = unsafe { read(&job) }.expect("a job");
+        let plan = Plan::of(&job).expect("a plan");
+        let mut block = vec![0x5A; plan.total];
+        lay(&mut block, &plan, &job);
+
+        assert_eq!([word(&block, 0), word(&block, 4)], [1, 1], "spec 1, RGBA8 premultiplied");
+        assert_eq!([word(&block, 56), word(&block, 64)], [2, 2], "two values, two layers");
+        let at_72 = [72, 80, 88].map(|at| double(&block, at));
+        assert_eq!(at_72, [0.375, 24.0, 0.5], "time, frame rate, scale");
+        assert_eq!([word(&block, 96), word(&block, 100)], [9, 0], "the index; reserved");
+        let (values_at, layers_at) = (word(&block, 60) as usize, word(&block, 68) as usize);
+        let laid: Vec<f64> = (0..8).map(|index| double(&block, values_at + index * 8)).collect();
+        assert_eq!(laid, values);
+
+        let [input_at, w, h, stride, left, top] = image(&block, 8);
+        assert_eq!([w, h, stride, left, top], [3, 2, 12, -4i32 as u32, 7], "the input");
+        let input_at = input_at as usize;
+        assert_eq!(block[input_at..input_at + 12], input[..12]);
+        assert_eq!(block[input_at + 12..input_at + 24], input[16..28]);
+        let [output_at, w, h, stride, left, top] = image(&block, 32);
+        assert_eq!([w, h, stride, left, top], [3, 2, 12, -4i32 as u32, 7], "the output");
+        let output_at = output_at as usize;
+        assert!(block[output_at..output_at + 24].iter().all(|&byte| byte == 0), "cleared");
+
+        let [first_at, w, h, stride, left, top] = image(&block, layers_at);
+        assert_eq!([w, h, stride, left, top], [2, 1, 8, 5, -6i32 as u32], "the first layer");
+        let [second_at, w, h, stride, left, top] = image(&block, layers_at + 24);
+        assert_eq!([w, h, stride, left, top], [1, 2, 4, -7i32 as u32, 8], "the second layer");
+        let (first_at, second_at) = (first_at as usize, second_at as usize);
+        assert_eq!(block[first_at..first_at + 8], first[..8]);
+        assert_eq!(block[second_at..second_at + 8], [200, 201, 202, 203, 208, 209, 210, 211]);
+
+        let mut parts = [
+            (values_at, 64),
+            (layers_at, 48),
+            (input_at, 24),
+            (output_at, 24),
+            (first_at, 8),
+            (second_at, 8),
+        ];
+        parts.sort();
+        assert!(parts[0].0 >= 104, "after the frame");
+        assert!(parts.iter().all(|&(at, _)| at % 16 == 0), "on 16 bytes: {parts:?}");
+        assert!(parts.windows(2).all(|two| two[0].0 + two[0].1 <= two[1].0), "{parts:?}");
+        let (last, bytes) = parts[5];
+        assert!(last + bytes <= plan.total, "inside the plan");
+
+        let answer: Vec<u8> = (0..24).map(|byte| byte + 50).collect();
+        block[output_at..output_at + 24].copy_from_slice(&answer);
+        take_output(&block, &plan, &mut job);
+        drop(job);
+        assert_eq!(out[..12], answer[..12]);
+        assert_eq!(out[16..28], answer[12..]);
+        assert!(out[12..16].iter().chain(&out[28..]).all(|&byte| byte == 0xEE), "padding");
+
+        let head = crate::job::Head {
+            values: &values[..4],
+            frame_index: -2,
+            time: 1.25,
+            frame_rate: 12.0,
+            scale: 2.0,
+        };
+        lay_reach(&mut block, &head);
+        assert_eq!([word(&block, 0), word(&block, 4), word(&block, 56)], [1, 1, 1]);
+        assert_eq!([word(&block, 64), word(&block, 68)], [0, 0], "no layers");
+        assert!(block[8..56].iter().all(|&byte| byte == 0), "the images empty");
+        assert_eq!([72, 80, 88].map(|at| double(&block, at)), [1.25, 12.0, 2.0]);
+        assert_eq!([word(&block, 96), word(&block, 100)], [-2i32 as u32, 0]);
+        let values_at = word(&block, 60) as usize;
+        assert!(values_at >= 104 && values_at % 16 == 0, "after the frame, on 16 bytes");
+        let laid: Vec<f64> = (0..4).map(|index| double(&block, values_at + index * 8)).collect();
+        assert_eq!(laid, values[..4]);
+    }
+}
