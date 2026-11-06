@@ -1,0 +1,10 @@
+[package]
+name = "media"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# Media Foundation's one start (media_foundation.rs); the crate is already
+# in the lock as wgpu-hal's major.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Media_MediaFoundation"] }

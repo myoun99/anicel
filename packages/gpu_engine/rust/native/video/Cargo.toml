@@ -1,0 +1,25 @@
+[package]
+name = "video"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[dependencies]
+media = { path = "../media" }
+
+# Media Foundation's writer, and the same UTF-8 → UTF-16 call the C made of
+# the output path; the crate is already in the lock as wgpu-hal's major.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Globalization",
+  "Win32_Media_MediaFoundation",
+  "Win32_System_Com",
+] }
+
+# open/close of the output file the NDK muxer writes into.
+[target.'cfg(target_os = "android")'.dependencies]
+libc = "0.2"
+
+# The C answer key: the engine's qa_video_export_* (native/oracle).
+[dev-dependencies]
+oracle = { path = "../oracle" }
