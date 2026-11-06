@@ -179,6 +179,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "display"
+version = "0.0.1"
+dependencies = [
+ "oracle",
+ "windows",
+]
+
+[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

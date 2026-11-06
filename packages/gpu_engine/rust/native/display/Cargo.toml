@@ -1,0 +1,27 @@
+[package]
+name = "display"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# The compositor, the display configuration and the windows under them:
+# wgpu-hal's own `windows`, already in the lock. Its features are its own
+# modules and pull no crate in.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Devices_Display",
+    "Win32_Foundation",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Performance",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# The C this crate replaces (qa_display.c, qa_display_compose.cpp), the
+# answer key until the connection round.
+[dev-dependencies]
+oracle = { path = "../oracle" }
