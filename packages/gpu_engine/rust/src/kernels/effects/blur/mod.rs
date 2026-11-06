@@ -43,7 +43,7 @@ pub(crate) struct TileRect {
 
 impl TileRect {
     /// Its pixels, [left, top, right, bottom).
-    fn pixels(&self) -> [i32; 4] {
+    pub(crate) fn pixels(&self) -> [i32; 4] {
         let side = TILE as i32;
         [
             self.x0 * side,

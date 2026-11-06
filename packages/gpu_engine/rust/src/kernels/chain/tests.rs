@@ -5,7 +5,7 @@
 
 use std::sync::OnceLock;
 
-use super::{Chain, Op, laid_as, reaching, tiles_of};
+use super::{Chain, MapTiles, Op, laid_as, reaching, tiles_of};
 use crate::kernels::composite::tests::{
     KEY_GREEN, KEY_RED, Pool, contrast, half, key_run, keyed_by_hand, pixel_at, rig as composite_rig,
     spotted, texel,
@@ -91,7 +91,7 @@ fn square() -> Iris {
 
 /// A lens blur 3 pixels out, nothing past its picture — so the picture an op
 /// names is the one it blurs over (a paper repeated hid it, mutant c08).
-fn lens() -> Lens {
+pub(crate) fn lens() -> Lens {
     Lens {
         iris: square(),
         radius: 3.0,
@@ -189,7 +189,11 @@ fn each_blur_of_a_chain_is_its_kernel_s() {
     let mapped = Op::Lens {
         picture: PICTURE,
         lens: lens(),
-        map: Some(map),
+        map: Some(BlurMap {
+            tiles: MapTiles::Laid(map.tiles),
+            channel: map.channel,
+            focus: map.focus,
+        }),
     };
     assert_same(&blurred(mapped), &by_lens(Some(map)));
     assert_ne!(by_lens(Some(map)), by_lens(None));
@@ -221,7 +225,7 @@ fn a_chain_runs_its_ops_one_after_another() {
                 picture: PICTURE,
                 lens: lens(),
                 map: Some(BlurMap {
-                    tiles: &map_tiles,
+                    tiles: MapTiles::Laid(&map_tiles),
                     channel: MapChannel::Luminance,
                     focus: Focus {
                         focal: 128.0,
@@ -249,6 +253,27 @@ fn a_chain_runs_its_ops_one_after_another() {
 #[test]
 fn a_chain_of_no_op_is_refused() {
     assert!(chained(tiles(|_, _| 0), &[]).is_none());
+}
+
+/// A map drawn from rows is the executor's to draw before the chain runs
+/// (`Composite::chained`): a chain handed one refuses it, and reads it as
+/// no map nowhere.
+#[test]
+fn a_chain_refuses_a_map_still_to_be_drawn() {
+    let map = BlurMap {
+        tiles: MapTiles::Drawn(&[]),
+        channel: MapChannel::Red,
+        focus: Focus {
+            focal: 0.0,
+            inverts: false,
+        },
+    };
+    let op = Op::Lens {
+        picture: PICTURE,
+        lens: lens(),
+        map: Some(map),
+    };
+    assert!(chained(tiles(|x, y| texel(95, x, y)), &[op]).is_none());
 }
 
 /// A chain runs over its output's tiles grown by whole tiles, as many each

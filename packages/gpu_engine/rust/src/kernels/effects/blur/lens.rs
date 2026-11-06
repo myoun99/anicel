@@ -224,11 +224,13 @@ pub(crate) enum MapChannel {
     Luminance = 4,
 }
 
-/// A blur map — the app's `IrisMap`: its tiles, straight RGBA8 over the
-/// blur's own rectangle, the channel it is read through, and its focus.
+/// A blur map — the app's `IrisMap`: its tiles — straight RGBA8 over the
+/// blur's own rectangle as the kernel reads them, or what a chain draws
+/// them from (kernels/chain) —, the channel it is read through, and its
+/// focus.
 #[derive(Clone, Copy)]
-pub(crate) struct BlurMap<'a> {
-    pub(crate) tiles: &'a wgpu::Buffer,
+pub(crate) struct BlurMap<T> {
+    pub(crate) tiles: T,
     pub(crate) channel: MapChannel,
     pub(crate) focus: Focus,
 }
@@ -276,7 +278,7 @@ impl LensBlur {
         rect: TileRect,
         picture: [i32; 4],
         lens: &Lens,
-        map: Option<BlurMap>,
+        map: Option<BlurMap<&wgpu::Buffer>>,
     ) -> Option<wgpu::Buffer> {
         self.run_in(engine, tiles, rect, picture, (lens, map), room(engine))
     }
@@ -291,7 +293,7 @@ impl LensBlur {
         tiles: &wgpu::Buffer,
         rect: TileRect,
         picture: [i32; 4],
-        (lens, map): (&Lens, Option<BlurMap>),
+        (lens, map): (&Lens, Option<BlurMap<&wgpu::Buffer>>),
         room: u64,
     ) -> Option<wgpu::Buffer> {
         let in_range = (0.0..=MOST_FRINGE).contains(&lens.fringe);

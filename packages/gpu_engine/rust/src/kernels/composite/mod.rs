@@ -91,7 +91,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::blend::mode::{NORMAL, PLUS};
-use crate::kernels::chain::{Chain, Chained, laid_as, tiles_of};
+use crate::kernels::chain::{Chain, Chained, laid_as, tiles_of, with_drawn};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
@@ -216,6 +216,7 @@ fn placed_on(page: u16, tiles: &[(i32, i32)]) -> TileSet {
 /// as the app keys a cel before it is placed (캔버스 베이스,
 /// gpu-canonical-store 11-05 18:24), every run against the pixel's stored
 /// alpha.
+#[derive(Clone)]
 pub(crate) struct KeyChain {
     pub(crate) runs: Vec<Vec<u32>>,
 }
@@ -723,7 +724,9 @@ impl Composite {
     /// of their own, closed at the close's opacity and mode, the steps' tiles
     /// at the rest of the mix and what the chain put added by plus at the
     /// mix, through the matrix. Alone with no edge: the walk holds a buffer
-    /// whole and cuts only what a run puts to its extent.
+    /// whole and cuts only what a run puts to its extent. A lens blur's map
+    /// drawn from the rows it reads (`MapTiles::Drawn`) is those rows drawn
+    /// so over the chain's rectangle first, as they show by themselves.
     fn chained(
         &self,
         engine: &Engine,
@@ -778,10 +781,26 @@ impl Composite {
                     self.run(engine, &plan, &read, NO_EDGE, budget)?
                 }
             };
-            let (ops, rect) = (&chained.ops, chained.rect);
+            // Each map a lens blur reads from rows, drawn alone over the
+            // rectangle as they show by themselves — their own chains run.
+            let mut drawn = Vec::with_capacity(chained.ops.len());
+            for op in &chained.ops {
+                let Some(rows) = op.map_rows() else {
+                    drawn.push(None);
+                    continue;
+                };
+                let plan = Plan {
+                    pages: &pages,
+                    sets: &sets,
+                    steps: rows,
+                    ..*plan
+                };
+                drawn.push(Some(self.run(engine, &plan, &read, NO_EDGE, budget)?.out));
+            }
+            let (ops, rect) = (with_drawn(&chained.ops, &drawn), chained.rect);
             let chain = self.chain.get_or_init(|| Chain::new(engine));
             // A chain reads its tiles and puts others: what it read stays.
-            let put = chain.run(engine, self, under.out.clone(), rect, ops)?;
+            let put = chain.run(engine, self, under.out.clone(), rect, &ops)?;
             let put = laid_on(&mut pages, &mut sets, put, rect)?;
             match *step {
                 Step::Close {

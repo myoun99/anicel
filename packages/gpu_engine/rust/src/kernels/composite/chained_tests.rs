@@ -8,9 +8,12 @@ use std::sync::OnceLock;
 use super::tests::{Pool, contrast, keyed, masked_row, matrixed, pose, rig, row, texel, with_map};
 use super::{BufferChain, Budget, NO_EDGE, Plan, Step, TileSet, WHOLE, check_depth};
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, PLUS, SCREEN};
-use crate::kernels::chain::{Chain, Chained, Op, laid_as, tiles_of};
+use crate::kernels::chain::tests::lens;
+use crate::kernels::chain::{Chain, Chained, MapTiles, Op, laid_as, tiles_of};
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::Edge;
+use crate::kernels::effects::blur::iris::Focus;
+use crate::kernels::effects::blur::lens::{BlurMap, MapChannel};
 use crate::kernels::effects::{MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::Mask;
 use crate::kernels::mask::tests::masked;
@@ -271,6 +274,58 @@ fn a_buffer_chained_at_a_mix_crossfades_its_rows_with_what_its_chain_puts() {
         close(45000, SCREEN, None),
     ];
     assert!(got == laying.widest(&[], &crossfade, None));
+}
+
+/// A lens blur over [`RECT`] whose map, read by its luma, is `tiles`.
+fn lensed(tiles: MapTiles<'_>) -> Vec<Op<'_>> {
+    let map = BlurMap {
+        tiles,
+        channel: MapChannel::Luminance,
+        focus: Focus {
+            focal: 128.0,
+            inverts: false,
+        },
+    };
+    let picture = RECT.pixels();
+    vec![Op::Lens {
+        picture,
+        lens: lens(),
+        map: Some(map),
+    }]
+}
+
+// A lens blur's map drawn from rows is those rows drawn alone over the
+// chain's rectangle as they show by themselves — a chained one through its
+// own chain — and a row that draws nothing is a map with nothing on it.
+#[test]
+fn a_map_drawn_from_rows_is_those_rows_drawn_alone_over_the_rectangle() {
+    let mut laying = Laying::new(&[((0, 0), (2, 2)), ((0, 0), (2, 1)), ((-1, 0), (3, 2))]);
+    let base = row(0, (0, 0), WHOLE, NORMAL);
+    let reader = chained(row(1, (0, 0), WHOLE, NORMAL), 0);
+    let map_rows = [chained(row(2, (4, -3), 50000, NORMAL), 1)];
+    let nothing: [Step; 0] = [];
+    fn reading(rows: &[Step]) -> [Chained<'_>; 2] {
+        [
+            Chained {
+                ops: lensed(MapTiles::Drawn(rows)),
+                rect: RECT,
+            },
+            Chained {
+                ops: across(),
+                rect: RECT,
+            },
+        ]
+    }
+    let got = laying.widest(&reading(&map_rows), &[base, reader], None);
+    let got_nothing = laying.widest(&reading(&nothing), &[base, reader], None);
+    assert!(got != got_nothing, "the map");
+    let map_put = laying.row_by_hand(2, RECT, &across());
+    let map = laying.alone(&[row(map_put, (4, -3), 50000, NORMAL)], RECT);
+    let put = laying.row_by_hand(1, RECT, &lensed(MapTiles::Laid(&map)));
+    assert!(got == laying.widest(&[], &[base, row(put, (0, 0), WHOLE, NORMAL)], None));
+    let blank = laying.alone(&nothing, RECT);
+    let put = laying.row_by_hand(1, RECT, &lensed(MapTiles::Laid(&blank)));
+    assert!(got_nothing == laying.widest(&[], &[base, row(put, (0, 0), WHOLE, NORMAL)], None));
 }
 
 // A folder's rows' chains run before its own, and a folder in it before it:

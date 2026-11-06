@@ -29,11 +29,11 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{Composite, KeyChain, TILE, TileAt, TileSet, Through};
+use crate::kernels::composite::{Composite, KeyChain, Step, TILE, TileAt, TileSet, Through};
 use crate::kernels::effects::MATRIX_WORDS;
 use crate::kernels::effects::blur::TileRect;
 use crate::kernels::effects::blur::gaussian::{BoxBlur, Edge};
@@ -41,6 +41,7 @@ use crate::kernels::effects::blur::lens::{BlurMap, Lens, LensBlur};
 use crate::kernels::effects::blur::line::{LineBlur, LinePass};
 
 /// One op of a chain, its kernel's own parameters.
+#[derive(Clone)]
 pub(crate) enum Op<'a> {
     /// A colour matrix's words (`effects::matrix_words`).
     Matrix([u32; MATRIX_WORDS]),
@@ -55,12 +56,67 @@ pub(crate) enum Op<'a> {
     /// fx Directional or Radial Blur's passes over `plate`.
     Line { plate: [i32; 4], passes: Vec<LinePass> },
     /// fx Camera Lens Blur over `picture`, through the blur map where one
-    /// is named.
+    /// is named — its tiles laid, or drawn from the rows it reads
+    /// ([`MapTiles`]).
     Lens {
         picture: [i32; 4],
         lens: Lens,
-        map: Option<BlurMap<'a>>,
+        map: Option<BlurMap<MapTiles<'a>>>,
     },
+}
+
+/// What a lens blur's map is read from: tiles laid over the chain's
+/// rectangle, or the steps that draw the rows the effect names, which the
+/// executor draws alone over that rectangle, where they show by
+/// themselves, before the chain runs (`CompositeReadsRows`; the app's
+/// `_rowOnTheGrid`, which keeps none). No steps is a row that draws
+/// nothing at this frame: a map with nothing on it.
+#[derive(Clone, Copy)]
+pub(crate) enum MapTiles<'a> {
+    Laid(&'a wgpu::Buffer),
+    Drawn(&'a [Step]),
+}
+
+impl<'a> Op<'a> {
+    /// The steps this op's map is drawn from, where it names a map drawn
+    /// so.
+    pub(crate) fn map_rows(&self) -> Option<&'a [Step]> {
+        match self {
+            Op::Lens {
+                map:
+                    Some(BlurMap {
+                        tiles: MapTiles::Drawn(rows),
+                        ..
+                    }),
+                ..
+            } => Some(rows),
+            _ => None,
+        }
+    }
+}
+
+/// `ops` with each map drawn from steps ([`Op::map_rows`]) laid as the
+/// tiles `drawn` holds at that op's place.
+pub(crate) fn with_drawn<'b>(ops: &[Op<'b>], drawn: &'b [Option<wgpu::Buffer>]) -> Vec<Op<'b>> {
+    let laid = |(op, drawn): (&Op<'b>, &'b Option<wgpu::Buffer>)| match (op, drawn) {
+        (
+            Op::Lens {
+                picture,
+                lens,
+                map: Some(map),
+            },
+            Some(tiles),
+        ) => Op::Lens {
+            picture: *picture,
+            lens: *lens,
+            map: Some(BlurMap {
+                tiles: MapTiles::Laid(tiles),
+                ..*map
+            }),
+        },
+        (other, _) => other.clone(),
+    };
+    ops.iter().zip(drawn).map(laid).collect()
 }
 
 /// A chain as a plan names it (`Plan`'s `chains`): its ops, in the order
@@ -129,7 +185,23 @@ impl Chain {
             Op::Gaussian { radius, edge } => self.gaussian.run(engine, tiles, rect, *radius, *edge),
             Op::Line { plate, passes } => self.line.run(engine, tiles, rect, *plate, passes),
             Op::Lens { picture, lens, map } => {
-                self.lens.run(engine, tiles, rect, *picture, lens, *map)
+                let map = match *map {
+                    None => None,
+                    Some(BlurMap {
+                        tiles: MapTiles::Laid(laid),
+                        channel,
+                        focus,
+                    }) => Some(BlurMap {
+                        tiles: laid,
+                        channel,
+                        focus,
+                    }),
+                    Some(BlurMap {
+                        tiles: MapTiles::Drawn(_),
+                        ..
+                    }) => return fail("a map drawn from rows is the executor's to draw first"),
+                };
+                self.lens.run(engine, tiles, rect, *picture, lens, map)
             }
         }
     }
