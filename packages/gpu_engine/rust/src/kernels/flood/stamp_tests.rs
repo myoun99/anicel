@@ -123,13 +123,16 @@ fn a_box_ending_on_a_tile_s_edge_meets_no_tile_past_it() {
     assert_eq!((set.x0, set.y0, set.columns, set.rows), (1, -1, 1, 1));
 }
 
-// A box with no pixels meets no tile, and puts no page.
+// A box with no pixels meets no tile, and puts no page — none across, or
+// none down.
 #[test]
 fn an_empty_mask_stamps_no_tile() {
-    let mask = masked((40, 40), (0, 3), |_, _| 255);
-    let stamped = stamp(&mask.mask(), 0, usize::MAX);
-    assert_eq!((stamped.set.columns, stamped.set.rows), (0, 1));
-    assert!(stamped.set.tiles.is_empty() && stamped.pages.is_empty());
+    for (size, tiles) in [((0, 3), (0, 1)), ((3, 0), (1, 0))] {
+        let mask = masked((40, 40), size, |_, _| 255);
+        let stamped = stamp(&mask.mask(), 0, usize::MAX);
+        assert_eq!((stamped.set.columns, stamped.set.rows), tiles);
+        assert!(stamped.set.tiles.is_empty() && stamped.pages.is_empty());
+    }
 }
 
 // A plane that holds less than its box is refused, not read past.
