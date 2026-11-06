@@ -45,12 +45,10 @@ impl Axis {
         let mut logical = i64::from(raw);
         if self.logical_min < 0
             && self.bit_size > 0
-            && self.bit_size < 32
+            && self.bit_size <= 32
             && raw & (1 << (self.bit_size - 1)) != 0
         {
             logical -= 1 << self.bit_size;
-        } else if self.logical_min < 0 && self.bit_size == 32 {
-            logical = i64::from(raw as i32);
         }
         // HID: a physical range of 0..0 is the logical range again.
         let mut value = logical as f64;

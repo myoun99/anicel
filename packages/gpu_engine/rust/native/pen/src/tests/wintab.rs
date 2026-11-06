@@ -385,16 +385,18 @@ fn a_pen_with_no_lean_or_turn_reads_as_none() {
     let _window = AppWindow::show();
     let packets = [packet(512, 900, 450, 270)];
     // No orientation axes; then an azimuth without an altitude, and a
-    // twist of no span; then no pressure axis at all.
+    // twist of no span; then an altitude without an azimuth; then no
+    // pressure axis at all, and one of no span.
     let bare = Script { has_pressure: true, pressure: axis(0, 1023), ..installed(&packets) };
     let flat = Script {
         has_orientation: true,
         orientation: [axis(0, 3599), axis(-900, 0), axis(5, 5)],
         ..bare
     };
+    let aimless = Script { orientation: [axis(5, 5), axis(-900, 900), axis(0, 0)], ..flat };
     let unscaled = Script { has_pressure: false, ..flat };
     let narrow = Script { pressure: axis(7, 7), ..bare };
-    for script in [bare, flat, unscaled, narrow] {
+    for script in [bare, flat, aimless, unscaled, narrow] {
         let record = &held(driver, &script, &[64]).polls[0].1[..8];
         let want = [(512.0 * (1.0 / 1023.0)) as f32, 0.0, 0.0, 123_456.0, 3.0, 0.0, 0.0, 0.0];
         assert_eq!(record, bits(want));

@@ -213,17 +213,17 @@ fn caps(bit_size: u16, logical: (i32, i32), units_exp: u32) -> ValueCaps {
     caps
 }
 
-/// A pen whose tilts count in hundredths and whose twist in degrees.
+/// A pen whose X Tilt counts in hundredths of a degree, its Y Tilt in
+/// degrees over a byte, and its twist in degrees.
 fn pen() -> Parser {
-    let tilt = caps(16, (-9000, 9000), 0x0E);
     Parser {
         usages: vec![0x42, 0x45],
         caps: HashMap::from([
-            (0x3D, vec![tilt]),
-            (0x3E, vec![tilt]),
+            (0x3D, vec![caps(16, (-9000, 9000), 0x0E)]),
+            (0x3E, vec![caps(8, (-90, 90), 0)]),
             (0x41, vec![caps(9, (0, 359), 0)]),
         ]),
-        values: HashMap::from([(0x3D, 4500), (0x3E, 0x1_0000 - 3000), (0x41, 270)]),
+        values: HashMap::from([(0x3D, 4500), (0x3E, 0x100 - 30), (0x41, 270)]),
         ..Parser::default()
     }
 }

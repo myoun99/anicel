@@ -72,6 +72,9 @@ fn the_fields_and_units_a_descriptor_may_declare() {
     // Radians (SI Rotation) come out in degrees.
     let radians = axis(16, (-157, 157), (-157, 157), 0x12, 0x0E);
     expect_degrees("radians", &radians, 157, 1.57 * 180.0 / std::f64::consts::PI);
+    // Beyond the C's cases: a physical range that starts at zero is one.
+    let from_zero = axis(8, (0, 255), (0, 360), 0x14, 0);
+    expect_degrees("a physical range from zero", &from_zero, 255, 360.0);
 }
 
 #[test]
@@ -82,5 +85,8 @@ fn what_does_not_declare_an_angle_says_none() {
     expect_no_angle("a length is not an angle", &linear, 4500);
     let squared = axis(16, (-9000, 9000), (-9000, 9000), 0x24, 0x0E);
     expect_no_angle("degrees squared is not an angle", &squared, 4500);
+    // Beyond the C's cases: nor is the SI system's.
+    let si_squared = axis(16, (-9000, 9000), (-9000, 9000), 0x22, 0x0E);
+    expect_no_angle("radians squared is not an angle", &si_squared, 4500);
     expect_no_angle("an empty logical range", &axis(16, (0, 0), (0, 0), 0x14, 0), 0);
 }
