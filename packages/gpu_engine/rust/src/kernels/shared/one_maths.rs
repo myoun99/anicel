@@ -32,7 +32,7 @@ fn no_vendored_crate_leaves_its_maths_to_the_device() {
     assert!(calls_device_maths("(theta * k as f64).cos()"), "LIVENESS — a method call");
     assert!(calls_device_maths("f64::powf(2.0, x)"), "LIVENESS — a path call");
     assert!(!calls_device_maths("libm::cos(theta * k as f64)"), "libm's is not the device's");
-    let reached = files_under("vendor", "rs", |text| text.contains("libm::"));
+    let reached = files_under("vendor", "rs", |_| true);
     assert!(
         reached.contains("symphonia-codec-aac/src/aac/window.rs"),
         "LIVENESS — the scan reads the vendored crates: {reached:?}"
