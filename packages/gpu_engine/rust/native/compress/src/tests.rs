@@ -446,8 +446,9 @@ fn nothing_to_decode_is_refused() {
 
 /// The C's predefined sequence table `name`, as zstd.c prints it.
 fn c_default_table(name: &str) -> Vec<sequences::Cell> {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../qa_native/src/third_party/zstd/zstd.c");
-    let c = std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"));
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let path = format!("{crate_dir}/../../../../qa_native/src/third_party/zstd/zstd.c");
+    let c = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
     let start = c.find(&format!("static const ZSTD_seqSymbol {name}[")).unwrap_or_else(|| panic!("zstd.c declares {name}"));
     let body = &c[start..start + c[start..].find("};").expect("the table ends")];
     // Past the declaration, the array's own brace and the header cell.
