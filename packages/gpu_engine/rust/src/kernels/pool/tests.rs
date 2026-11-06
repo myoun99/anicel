@@ -34,9 +34,12 @@ fn a_page_holds_what_a_binding_does_and_no_more_than_128_mib() {
     let pool = Pool::new(engine).expect("pool");
     assert_eq!(pool.slots() as u64, room(engine).min(128 << 20) / TILE_BYTES);
     assert!(pool.pages().is_empty());
-    assert!(Pool::sized(0, MOST_NAMED).is_none());
-    assert!(Pool::sized(MOST_NAMED + 1, MOST_NAMED).is_none());
-    assert!(Pool::sized(MOST_NAMED, MOST_NAMED).is_some());
+    // A page has as many slots as a u16 names, and at least one.
+    let named = usize::from(u16::MAX) + 1;
+    assert!(Pool::sized(0, 1).is_none());
+    assert!(Pool::sized(1, 1).is_some());
+    assert!(Pool::sized(named, 1).is_some());
+    assert!(Pool::sized(named + 1, 1).is_none());
 }
 
 // A cel's tiles go on its own pages, the first of them with room first; a

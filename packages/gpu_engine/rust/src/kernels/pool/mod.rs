@@ -64,6 +64,9 @@ impl Pool {
     /// at most.
     pub(crate) fn new(engine: &Engine) -> Option<Self> {
         let slots = (room(engine).min(MOST_PAGE_BYTES) / TILE_BYTES) as usize;
+        // ⚠️No test reaches the pages' bound: 65,536 pages to make. It
+        // stands so a page past what a TileAt names is refused, not named
+        // as another.
         Self::sized(slots, MOST_NAMED)
     }
 
