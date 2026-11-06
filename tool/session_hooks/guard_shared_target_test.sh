@@ -14,13 +14,19 @@ t() { # name, command as JSON string text, expected(block|allow)
   printf '%s  %-46s got=%-5s want=%s\n' "$mark" "$1" "$got" "$3"
 }
 
-TRUNK=/c/Users/gunoo/Documents/anicel
-LANE=/c/Users/gunoo/Documents/anicel/.claude/worktrees/lane-x
+# The checkout the guard sits in is the trunk it guards, wherever that is.
+TRUNK="$(cd "$(dirname "$G")/../.." && pwd)"
+LANE="$TRUNK/.claude/worktrees/lane-x"
+# Its Windows spelling as a JSON string holds it — each `\` doubled; the
+# bash spelling where there is no other.
+WIN="$(cd "$TRUNK" && pwd -W 2>/dev/null || pwd)"
+WIN_JSON="$(printf '%s' "$WIN" | sed 's#/#\\\\\\\\#g')"
 
 # --- must BLOCK: a building cargo on the shared folder ---
 t "target in the variable"     "export CARGO_TARGET_DIR=$TRUNK/packages/gpu_engine/rust/target; ( cd $LANE/packages/gpu_engine/rust && cargo test --release )" block
 t "target as a prefix word"    "CARGO_TARGET_DIR=$TRUNK/packages/gpu_engine/rust/target cargo +1.99.1 test --offline" block
-t "windows target, quoted"     "export CARGO_TARGET_DIR='C:\\\\Users\\\\gunoo\\\\Documents\\\\anicel\\\\packages\\\\gpu_engine\\\\rust\\\\target'; cargo build" block
+t "windows target, quoted"     "export CARGO_TARGET_DIR='$WIN_JSON\\\\packages\\\\gpu_engine\\\\rust\\\\target'; cargo build" block
+t "windows crate, forward"     "( cd $WIN/packages/gpu_engine/rust && cargo test )" block
 t "in the trunk's crate"       "( cd $TRUNK/packages/gpu_engine/rust && cargo test --lib -- kernels::flood )" block
 t "in a trunk native crate"    "( cd $TRUNK/packages/gpu_engine/rust/native/audio && cargo test )" block
 t "relative from the trunk"    "( cd packages/gpu_engine/rust && cargo check )" block
@@ -44,7 +50,7 @@ t "cargo in a grep pattern"    "grep -n 'cargo test' $TRUNK/packages/gpu_engine/
 t "lane.sh land"               "bash tool/lane.sh land some-lane" allow
 
 # --- the description after the command is never read as one ---
-out=$(printf '%s' '{"tool_input":{"command":"ls","description":"x; cd /c/Users/gunoo/Documents/anicel/packages/gpu_engine/rust && cargo test"}}' | bash "$G")
+out=$(printf '{"tool_input":{"command":"ls","description":"x; cd %s/packages/gpu_engine/rust && cargo test"}}' "$TRUNK" | bash "$G")
 if [ -z "$out" ]; then pass=$((pass+1)); echo "ok    description is not the command"; else fail=$((fail+1)); echo "FAIL  description is not the command"; fi
 
 echo "pass=$pass fail=$fail"

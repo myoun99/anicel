@@ -35,7 +35,13 @@ set -u
 payload=$(cat)
 case "$payload" in *cargo*) ;; *) exit 0 ;; esac
 
-verdict=$(printf '%s' "$payload" | awk '
+# The trunk is where this script was installed from (install.dart hands
+# every hook the main checkout's path), in both spellings a command uses.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$(cd "$here/../.." && pwd)"
+root_w="$(cd "$here/../.." && pwd -W 2>/dev/null || pwd)"
+
+verdict=$(printf '%s' "$payload" | awk -v root="$root" -v root_w="$root_w" '
 BEGIN { RS = "^$" }
 {
   if (!match($0, /"command"[ \t]*:[ \t]*"/)) exit
@@ -56,11 +62,16 @@ BEGIN { RS = "^$" }
     text = text c
   }
   low = tolower(text)
+  gsub(/\/\/+/, "/", low)
   # The fuzz crate is a workspace of its own, with its own target.
-  gsub(/packages\/+gpu_engine\/+rust\/+fuzz/, "", low)
-  shared = (low ~ /anicel\/+packages\/+gpu_engine\/+rust\/+target/)
-  trunk = (low ~ /anicel\/+packages\/+gpu_engine\/+rust/) ||
-    (low ~ /(^|[ \t\n"'"'"'=(])packages\/+gpu_engine\/+rust/)
+  gsub(/packages\/gpu_engine\/rust\/fuzz/, "", low)
+  # The crate folder of the trunk, written out in either spelling.
+  crate = "/packages/gpu_engine/rust"
+  trunk = index(low, tolower(root) crate) || index(low, tolower(root_w) crate)
+  shared = index(low, tolower(root) crate "/target") ||
+    index(low, tolower(root_w) crate "/target")
+  # Or relative, from the main checkout where a session stands.
+  trunk = trunk || (low ~ /(^|[ \t\n"'"'"'=(])packages\/gpu_engine\/rust/)
   elsewhere = (low ~ /cargo_target_dir=/) && !shared
   if (!shared && !(trunk && !elsewhere)) exit
   n = split(text, segments, /[;&|\n(){}`]/)
