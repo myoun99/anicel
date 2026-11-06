@@ -265,10 +265,11 @@ mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/hom
 # The launcher the gates ask the room through, and the stamp law it reads.
 # No tool sources beside them, so it hands every call to the stand-in `dart`.
 # And the turn every cargo building in the shared target takes, and what
-# works out the crates a build takes.
+# works out the crates a build takes, with the bracket reading it cuts a
+# cfg by.
 cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" \
   "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$(dirname "${BASH_SOURCE[0]}")/crates_for_host.dart" \
-  "$E/home/tool/"
+  "$(dirname "${BASH_SOURCE[0]}")/source_brackets.dart" "$E/home/tool/"
 # And the parity selector the gate of a lane that changed the C asks.
 printf '#!/bin/bash\necho test/parity_test.dart\n' > "$E/home/tool/native_parity_tests.sh"
 # And the packages the app does not depend on, with one to resolve.
@@ -276,7 +277,8 @@ cp "$(dirname "${BASH_SOURCE[0]}")/resolve_packages.sh" "$E/home/tool/"
 mkdir -p "$E/home/packages/gpu_engine"; echo "name: gpu_engine" > "$E/home/packages/gpu_engine/pubspec.yaml"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
 git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh tool/native_parity_tests.sh \
-  tool/crates_for_host.dart tool/resolve_packages.sh packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
+  tool/crates_for_host.dart tool/source_brackets.dart tool/resolve_packages.sh \
+  packages/gpu_engine/pubspec.yaml a.txt .gitignore 2>/dev/null
 git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup

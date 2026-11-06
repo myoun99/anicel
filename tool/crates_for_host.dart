@@ -31,6 +31,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'source_brackets.dart';
+
 /// One `[[package]]` of a Cargo.lock.
 typedef LockPackage = ({
   String name,
@@ -139,36 +141,30 @@ class TargetPlatform {
   bool takes(String? target) {
     if (target == null) return true;
     if (!target.startsWith('cfg(')) return target == triple;
-    final tokens = RegExp(
-      '[A-Za-z_][A-Za-z0-9_]*|"[^"]*"|[(),=]',
-    ).allMatches(target).map((m) => m.group(0)!).toList();
-    var at = 0;
-    String next() => tokens[at++];
-    bool predicate() {
-      final word = next();
-      if (at < tokens.length && tokens[at] == '(') {
-        next();
-        final all = <bool>[];
-        while (tokens[at] != ')') {
-          all.add(predicate());
-          if (tokens[at] == ',') next();
-        }
-        next();
-        return switch (word) {
-          'cfg' || 'all' => all.every((held) => held),
-          'any' => all.any((held) => held),
-          'not' => !all.single,
-          _ => throw FormatException('not a cfg predicate: $word', target),
-        };
-      }
-      if (at < tokens.length && tokens[at] == '=') {
-        next();
-        return _cfg.contains('$word=${next()}');
-      }
-      return _cfg.contains(word);
-    }
+    return _holds(target.trim(), target);
+  }
 
-    return predicate();
+  /// Whether [predicate] holds here: `cfg`, `all`, `any` and `not` over
+  /// the predicates their call passes — cut where `tool/source_brackets.dart`
+  /// cuts a call's arguments — or a `key = "value"` or a bare name, as
+  /// `rustc --print cfg` spells them.
+  bool _holds(String predicate, String target) {
+    final call = RegExp(r'^(\w+)\s*\(').firstMatch(predicate);
+    if (call == null) {
+      final pair = RegExp(r'^(\w+)\s*=\s*("[^"]*")$').firstMatch(predicate);
+      return _cfg.contains(pair == null ? predicate : '${pair[1]}=${pair[2]}');
+    }
+    final arguments = callArguments(predicate, call.end - 1);
+    if (arguments == null) throw FormatException('never closes', target);
+    final held = [
+      for (final argument in arguments) _holds(argument.trim(), target),
+    ];
+    return switch (call[1]) {
+      'cfg' || 'all' => held.every((one) => one),
+      'any' => held.any((one) => one),
+      'not' => !held.single,
+      _ => throw FormatException('not a cfg predicate: ${call[1]}', target),
+    };
   }
 }
 
