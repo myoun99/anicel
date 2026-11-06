@@ -23,6 +23,8 @@ const UNSORTED: u32 = 1;
 const TAG_BITS: u32 = 8;
 /// `ZSTD_ROW_HASH_CACHE_SIZE`.
 const CACHE: usize = 8;
+/// The most entries a row has: `rowLog` is the search log held to 4..=6.
+const ROW_LOG_MAX: u32 = 6;
 /// `kSearchStrength`.
 const SEARCH_STRENGTH: u32 = 8;
 /// `kLazySkippingStep`.
@@ -44,21 +46,41 @@ fn read64(src: &[u8], at: usize) -> u64 {
     u64::from_le_bytes(src[at..at + 8].try_into().expect("8 bytes"))
 }
 
+/// `PREFETCH_L1`: the line holding `at` asked for ahead of its use. A hint
+/// only — it reads nothing and never faults, so the bytes come out the same
+/// without it, as on a target with none here.
+#[inline(always)]
+fn prefetch<T>(at: &T) {
+    let at = (at as *const T).cast::<i8>();
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: a prefetch is a hint; `at` is a live reference besides.
+    unsafe {
+        std::arch::x86_64::_mm_prefetch::<{ std::arch::x86_64::_MM_HINT_T0 }>(at)
+    };
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: as above — `prfm` loads nothing into a register.
+    unsafe {
+        std::arch::asm!("prfm pldl1keep, [{0}]", in(reg) at, options(nostack, preserves_flags, readonly))
+    };
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    let _ = at;
+}
+
 /// `ZSTD_count`: how many bytes from `at` repeat those from `from`, up to
 /// `end`.
 fn count(src: &[u8], at: usize, from: usize, end: usize) -> usize {
+    let input = &src[at..end];
+    let earlier = &src[from..from + input.len()];
     let mut length = 0;
-    while at + length + 8 <= end {
-        let differ = read64(src, at + length) ^ read64(src, from + length);
+    for (a, b) in input.chunks_exact(8).zip(earlier.chunks_exact(8)) {
+        let word = |bytes: &[u8]| u64::from_le_bytes(bytes.try_into().expect("8 bytes"));
+        let differ = word(a) ^ word(b);
         if differ != 0 {
             return length + (differ.trailing_zeros() / 8) as usize;
         }
         length += 8;
     }
-    while at + length < end && src[at + length] == src[from + length] {
-        length += 1;
-    }
-    length
+    length + input[length..].iter().zip(&earlier[length..]).take_while(|(a, b)| a == b).count()
 }
 
 const PRIME_4: u32 = 2_654_435_761;
@@ -109,6 +131,9 @@ struct Rows {
     cache: [u32; CACHE],
     /// `hashSalt`.
     salt: u64,
+    /// `matchBuffer`: a search's candidates, kept between searches so as
+    /// not to be cleared for each.
+    candidates: [u32; 1 << ROW_LOG_MAX],
 }
 
 /// `ZSTD_bitmix`, after XXH3's rrmxmx.
@@ -141,13 +166,29 @@ impl Rows {
         next as usize
     }
 
+    /// `ZSTD_row_prefetch`: the row `hash` names asked for ahead of its
+    /// use — what the cache computes hashes early for.
+    fn prefetch(&self, shared: &Shared, hash: u32) {
+        let row = ((hash >> TAG_BITS) << self.log) as usize;
+        prefetch(&shared.hash[row]);
+        if self.log >= 5 {
+            prefetch(&shared.hash[row + 16]);
+        }
+        prefetch(&self.tags[row]);
+        if self.log == 6 {
+            prefetch(&self.tags[row + 32]);
+        }
+    }
+
     /// `ZSTD_row_fillHashCache`: the hashes from `index` on, not past
     /// position `limit`.
     fn fill_cache(&mut self, shared: &Shared, src: &[u8], index: u32, limit: isize) {
         let first = position(index) as isize;
         let count = if first > limit { 0 } else { (limit - first + 1) as u32 };
         for at in index..index + count.min(CACHE as u32) {
-            self.cache[at as usize & (CACHE - 1)] = self.hash(shared, src, at);
+            let hash = self.hash(shared, src, at);
+            self.prefetch(shared, hash);
+            self.cache[at as usize & (CACHE - 1)] = hash;
         }
     }
 
@@ -155,6 +196,7 @@ impl Rows {
     /// computed in its place.
     fn next_hash(&mut self, shared: &Shared, src: &[u8], index: u32) -> u32 {
         let ahead = self.hash(shared, src, index + CACHE as u32);
+        self.prefetch(shared, ahead);
         std::mem::replace(&mut self.cache[index as usize & (CACHE - 1)], ahead)
     }
 
@@ -183,12 +225,19 @@ impl Rows {
     }
 
     /// The slots of `row` whose tag is `tag`, as a mask rotated to start at
-    /// the head — newest first (`ZSTD_row_getMatchMask`).
+    /// the head — newest first (`ZSTD_row_getMatchMask`). Eight tags a
+    /// word, where the C's SIMD compares sixteen: a byte equal to the tag
+    /// is a zero byte of the word xored with it, which sets its high bit
+    /// here, and one multiply gathers the eight high bits into a byte.
     fn matching(&self, row: usize, tag: u8, head: u32) -> u64 {
+        const LOW: u64 = 0x7F7F_7F7F_7F7F_7F7F;
+        const GATHER: u64 = 0x0002_0408_1020_4081;
         let entries = 1u32 << self.log;
         let mut mask = 0u64;
-        for (slot, &t) in self.tags[row..row + entries as usize].iter().enumerate() {
-            mask |= u64::from(t == tag) << slot;
+        for (k, tags) in self.tags[row..row + entries as usize].chunks_exact(8).enumerate() {
+            let word = u64::from_le_bytes(tags.try_into().expect("8 tags")) ^ u64::from(tag) * 0x0101_0101_0101_0101;
+            let zero = !(((word & LOW) + LOW) | word) & !LOW;
+            mask |= zero.wrapping_mul(GATHER) >> 56 << (8 * k);
         }
         if head == 0 { mask } else { ((mask >> head) | (mask << (entries - head))) & (u64::MAX >> (64 - entries)) }
     }
@@ -211,7 +260,6 @@ impl Rows {
         let tag = hash as u8;
         let head = u32::from(self.tags[row]) & self.mask();
         let mut matches = self.matching(row, tag, head);
-        let mut candidates = [0u32; 64];
         let mut found = 0;
         while matches != 0 && attempts > 0 {
             let slot = (head + matches.trailing_zeros()) & self.mask();
@@ -223,7 +271,8 @@ impl Rows {
             if candidate < low {
                 break;
             }
-            candidates[found] = candidate;
+            prefetch(&src[position(candidate)]);
+            self.candidates[found] = candidate;
             found += 1;
             attempts -= 1;
         }
@@ -233,7 +282,7 @@ impl Rows {
         shared.next_to_update += 1;
 
         let (mut best, mut off_base) = (3, NOT_FOUND);
-        for &candidate in &candidates[..found] {
+        for &candidate in &self.candidates[..found] {
             let from = position(candidate);
             // Only one that agrees on the bytes ending past the best yet.
             if read32(src, from + best - 3) == read32(src, ip + best - 3) {
@@ -466,12 +515,13 @@ impl Finder {
             hash: vec![0; 1 << hash_log],
         };
         let search = if !tree {
-            let log = search_log.clamp(4, 6);
+            let log = search_log.clamp(4, ROW_LOG_MAX);
             Search::Rows(Rows {
                 log,
                 hash_log: hash_log - log,
                 tags: vec![0; 1 << hash_log],
                 cache: [0; CACHE],
+                candidates: [0; 1 << ROW_LOG_MAX],
                 // A fresh context's salt: its first advance, from no entropy.
                 salt: bitmix(0, 8) ^ bitmix(0, 4),
             })
