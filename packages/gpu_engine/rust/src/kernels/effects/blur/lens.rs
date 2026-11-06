@@ -19,20 +19,20 @@ mod gather_tests;
 
 use super::iris::{Focus, Iris, IrisTable};
 use super::{
-    Encoded, GROUP, Held, TileRect, checked, compile, encode, fits, flat, held_words, plane,
-    whole, words_buffer,
+    Encoded, GROUP, Held, TileRect, bands, checked, compile, encode, fits, flat, held_words,
+    plane, whole, words_buffer,
 };
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::TILE_TEXELS;
-use crate::kernels::shared::{PREMULTIPLY_WGSL, WIDE_WGSL, q};
+use crate::kernels::shared::{PREMULTIPLY_WGSL, WIDE_WGSL, q, room};
 
 /// The most gain a light takes — the app's Highlight Gain's.
 pub(crate) const MOST_GAIN: f64 = 100.0;
 /// The most fringe a lens takes — the app's Diffraction Fringe's.
 pub(crate) const MOST_FRINGE: f64 = 500.0;
-/// gather.wgsl's `Gather`: the light's four words and fourteen of its own.
-const GATHER_WORDS: usize = 18;
+/// gather.wgsl's `Gather`: the light's four words and seventeen of its own.
+const GATHER_WORDS: usize = 21;
 /// sums.wgsl's SUMS_RUN.
 const RUN: u32 = 64;
 /// A pixel's sum's bytes: four channels of two words.
@@ -105,21 +105,29 @@ impl LensSums {
         picture: [i32; 4],
         light: Light,
     ) -> Option<wgpu::Buffer> {
-        if !rect.holds(picture) {
-            return fail(format!("{picture:?} is no picture inside {rect:?}"));
-        }
-        let Some(light_words) = light.words() else {
-            return fail(format!("{light:?} is past what a light takes"));
-        };
-        let [left, top, right, bottom] = picture;
-        let (width, rows) = ((right - left) as u32, (bottom - top) as u32);
+        let laid = self.lay(engine, tiles, (rect, room(engine)), picture, light)?;
+        let [sums, totals] = sums_planes(engine, laid.bytes);
+        encode(engine, &self.passes(tiles, &laid, [&sums, &totals]));
+        Some(sums)
+    }
+
+    /// The sums' two passes over `picture` as `run` lays them, on bindings
+    /// of `room` bytes — none where it refuses them.
+    fn lay(
+        &self,
+        engine: &Engine,
+        tiles: &wgpu::Buffer,
+        (rect, room): (TileRect, u64),
+        picture: [i32; 4],
+        light: Light,
+    ) -> Option<Sums> {
+        let light_words = summed(rect, picture, light)?;
+        let [left, top, ..] = picture;
+        let (width, rows) = sums_rows(picture);
         let runs = width.div_ceil(RUN);
         let groups = (runs.div_ceil(GROUP), rows.div_ceil(GROUP));
-        let sums_bytes = u64::from(width) * u64::from(rows) * SUM_BYTES;
-        let totals_bytes = u64::from(runs) * u64::from(rows) * TOTAL_BYTES;
-        checked(engine, tiles, rect, &[sums_bytes, totals_bytes], [groups].into_iter())?;
-        let sums = plane(engine, "lens sums", sums_bytes);
-        let totals = plane(engine, "lens run totals", totals_bytes);
+        let bytes = sums_bytes(picture);
+        checked(engine, tiles, (rect, room), &bytes, [groups].into_iter())?;
         let to = Held::Plane {
             x0: left,
             y0: top,
@@ -130,23 +138,78 @@ impl LensSums {
         let mut own = light_words.to_vec();
         own.extend([rows, runs]);
         let own = words_buffer(engine, "lens sums pass", &own, uniform);
-        encode(
-            engine,
-            &[
-                Encoded {
-                    pipeline: &self.runs,
-                    bound: whole(&[(0, &held), (1, tiles), (2, &sums), (3, &own), (4, &totals)]),
-                    groups: flat(groups),
-                },
-                Encoded {
-                    pipeline: &self.carry,
-                    bound: whole(&[(0, &held), (2, &sums), (3, &own), (4, &totals)]),
-                    groups: flat(groups),
-                },
-            ],
-        );
-        Some(sums)
+        Some(Sums {
+            bytes,
+            held,
+            own,
+            groups,
+        })
     }
+
+    /// The sums' two passes as `lay` laid them, into `sums` and `totals` —
+    /// planes that hold at least its bytes.
+    fn passes<'a>(
+        &'a self,
+        tiles: &'a wgpu::Buffer,
+        laid: &'a Sums,
+        [sums, totals]: [&'a wgpu::Buffer; 2],
+    ) -> [Encoded<'a>; 2] {
+        let Sums { held, own, groups, .. } = laid;
+        [
+            Encoded {
+                pipeline: &self.runs,
+                bound: whole(&[(0, held), (1, tiles), (2, sums), (3, own), (4, totals)]),
+                groups: flat(*groups),
+            },
+            Encoded {
+                pipeline: &self.carry,
+                bound: whole(&[(0, held), (2, sums), (3, own), (4, totals)]),
+                groups: flat(*groups),
+            },
+        ]
+    }
+}
+
+/// A picture's row sums as their passes lay them: the plane's bytes and
+/// the totals', and the passes' words and workgroups.
+struct Sums {
+    bytes: [u64; 2],
+    held: wgpu::Buffer,
+    own: wgpu::Buffer,
+    groups: (u32, u32),
+}
+
+/// The light's words where `rect` holds `picture` and the light is in its
+/// range — what sums take — or none.
+fn summed(rect: TileRect, picture: [i32; 4], light: Light) -> Option<[u32; 4]> {
+    if !rect.holds(picture) {
+        return fail(format!("{picture:?} is no picture inside {rect:?}"));
+    }
+    let Some(words) = light.words() else {
+        return fail(format!("{light:?} is past what a light takes"));
+    };
+    Some(words)
+}
+
+/// A plane of sums and one of totals, of `bytes` each.
+fn sums_planes(engine: &Engine, bytes: [u64; 2]) -> [wgpu::Buffer; 2] {
+    [plane(engine, "lens sums", bytes[0]), plane(engine, "lens run totals", bytes[1])]
+}
+
+/// A picture's width and rows.
+fn sums_rows(picture: [i32; 4]) -> (u32, u32) {
+    let [left, top, right, bottom] = picture;
+    ((right - left) as u32, (bottom - top) as u32)
+}
+
+/// The bytes the sums of `picture` hold, and its runs' totals.
+fn sums_bytes(picture: [i32; 4]) -> [u64; 2] {
+    let (width, rows) = sums_rows(picture);
+    let runs = width.div_ceil(RUN);
+    [
+        u64::from(width) * u64::from(rows) * SUM_BYTES,
+        u64::from(runs) * u64::from(rows) * TOTAL_BYTES,
+    ]
 }
 
 /// What of a blur map's pixel names its level — the app's
@@ -215,6 +278,22 @@ impl LensBlur {
         lens: &Lens,
         map: Option<BlurMap>,
     ) -> Option<wgpu::Buffer> {
+        self.run_in(engine, tiles, rect, picture, (lens, map), room(engine))
+    }
+
+    /// `run`, in bands whose sums a binding of `room` bytes holds
+    /// ([`bands`]): a band's sums are its rows and the iris's reach past
+    /// them each side, inside the picture — every row its gather reads —,
+    /// one plane of them each band's in turn.
+    fn run_in(
+        &self,
+        engine: &Engine,
+        tiles: &wgpu::Buffer,
+        rect: TileRect,
+        picture: [i32; 4],
+        (lens, map): (&Lens, Option<BlurMap>),
+        room: u64,
+    ) -> Option<wgpu::Buffer> {
         let in_range = (0.0..=MOST_FRINGE).contains(&lens.fringe);
         let fringe = in_range.then(|| q(lens.fringe / MOST_FRINGE, 16, f64::MAX));
         let Some(fringe) = fringe.flatten() else {
@@ -229,40 +308,78 @@ impl LensBlur {
         if map.is_some_and(|map| map.tiles.size() < rect.tiles() * TILE_TEXELS * 4) {
             return fail(format!("a blur map's tiles hold less than {rect:?}"));
         }
-        let sums = self.sums.run(engine, tiles, rect, picture, lens.light)?;
+        // Bound whole, as the tiles are ([`checked`]).
+        if let Some(map) = map.filter(|map| map.tiles.size() > room) {
+            let bytes = map.tiles.size();
+            return fail(format!("a blur map's tiles of {bytes} bytes exceed a binding of {room}"));
+        }
+        let light = summed(rect, picture, lens.light)?;
         let laid = self.table.run(engine, lens.iris, lens.radius, map.map(|map| map.focus))?;
-        let (width, rows) = ((right - left) as u32, (bottom - top) as u32);
-        let groups = (width.div_ceil(GROUP), rows.div_ceil(GROUP));
-        fits(engine, &[], [groups].into_iter())?;
-        let mut own = lens.light.words()?.to_vec();
+        let reach = laid.reach as i32;
+        let sums_over = |[first, end]: [i32; 2]| {
+            [left, top.max(first - reach), right, bottom.min(end + reach)]
+        };
+        let Some(bands) = bands([top, bottom], |band| sums_bytes(sums_over(band))[0] <= room)
+        else {
+            let row = sums_bytes(sums_over([top, top + 1]))[0];
+            return fail(format!("a band of one row sums {row} bytes, past a binding of {room}"));
+        };
+        let width = (right - left) as u32;
+        let groups = |[first, end]: [i32; 2]| {
+            (width.div_ceil(GROUP), ((end - first) as u32).div_ceil(GROUP))
+        };
+        fits(engine, &[], bands.iter().copied().map(groups))?;
+        let sums: Vec<Sums> = bands
+            .iter()
+            .map(|&band| self.sums.lay(engine, tiles, (rect, room), sums_over(band), lens.light))
+            .collect::<Option<_>>()?;
+        let most = [0, 1].map(|k| sums.iter().map(|laid| laid.bytes[k]).max().unwrap_or(0));
+        let planes = sums_planes(engine, most);
+        let mut own = light.to_vec();
         own.extend(picture.iter().chain(&paper).map(|&edge| edge as u32));
         own.extend([u32::from(lens.paper.is_some()), fringe as u32, laid.reach, laid.rows]);
         own.extend([laid.levels, map.map_or(0, |map| map.channel as u32)]);
-        debug_assert_eq!(own.len(), GATHER_WORDS);
         let uniform = wgpu::BufferUsages::UNIFORM;
-        let own = words_buffer(engine, "lens gather", &own, uniform);
+        let gathers: Vec<wgpu::Buffer> = bands
+            .iter()
+            .map(|&band| {
+                let mut own = own.clone();
+                own.extend([sums_over(band)[1], band[0], band[1]].map(|edge| edge as u32));
+                debug_assert_eq!(own.len(), GATHER_WORDS);
+                words_buffer(engine, "lens gather", &own, uniform)
+            })
+            .collect();
         let held = held_words(Held::Tiles, Held::Tiles, rect);
         let held = words_buffer(engine, "lens held", &held, uniform);
         // Nothing outside the pixels the gather puts.
         let out = plane(engine, "lens blur out", rect.tiles() * TILE_TEXELS * 4);
         let map_tiles = map.map_or(tiles, |map| map.tiles);
-        let bound = vec![
-            (0, &held),
-            (1, tiles),
-            (2, &out),
-            (3, &own),
-            (4, &sums),
-            (5, &laid.table),
-            (6, map_tiles),
-        ];
-        encode(
-            engine,
-            &[Encoded {
-                pipeline: &self.gather,
-                bound: whole(&bound),
-                groups: flat(groups),
-            }],
-        );
+        // A band's sums, then its gather out of them — the next band's sums
+        // go in the same plane after it.
+        let encoded: Vec<Encoded> = bands
+            .iter()
+            .zip(&sums)
+            .zip(&gathers)
+            .flat_map(|((&band, laid_sums), own)| {
+                let bound = [
+                    (0, &held),
+                    (1, tiles),
+                    (2, &out),
+                    (3, own),
+                    (4, &planes[0]),
+                    (5, &laid.table),
+                    (6, map_tiles),
+                ];
+                let gather = Encoded {
+                    pipeline: &self.gather,
+                    bound: whole(&bound),
+                    groups: flat(groups(band)),
+                };
+                let [runs, carry] = self.sums.passes(tiles, laid_sums, [&planes[0], &planes[1]]);
+                [runs, carry, gather]
+            })
+            .collect();
+        encode(engine, &encoded);
         Some(out)
     }
 }

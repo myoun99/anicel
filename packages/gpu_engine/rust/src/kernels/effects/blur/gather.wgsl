@@ -12,10 +12,12 @@
 // Needs shared/wide.wgsl, shared/premultiply.wgsl, light.wgsl and held.wgsl
 // (held: the tiles in and out).
 
-// The gather's own words: the light; the picture its sums lie over and
-// the paper, [left, top, right, bottom); whether the paper repeats its
-// edge; the fringe's share (Q.16, to 1); the table's reach, rows and
-// levels; and what of a blur map's pixel names its level (MAP_*).
+// The gather's own words: the light; the picture and the paper,
+// [left, top, right, bottom); whether the paper repeats its edge; the
+// fringe's share (Q.16, to 1); the table's reach, rows and levels; what of
+// a blur map's pixel names its level (MAP_*); the first row the sums hold
+// — of the picture's columns, every row the band's gather reads —; and the
+// band's rows this gather puts, [put_top, put_bottom) (lens.rs's `bands`).
 struct Gather {
   light: Light,
   picture_left: i32,
@@ -32,6 +34,9 @@ struct Gather {
   rows: u32,
   levels: u32,
   channel: u32,
+  sums_top: i32,
+  put_top: i32,
+  put_bottom: i32,
 }
 
 // A map's channel: one of its premultiplied bytes, red to alpha, or its luma.
@@ -45,7 +50,7 @@ const MAP_LUMA: u32 = 4u;
 // The sum of row y of the picture up to column x, each channel.
 fn gather_sum(x: i32, y: i32) -> array<Wide, 4> {
   let width = u32(gather.picture_right - gather.picture_left);
-  let at = held_plane_word(x, y, gather.picture_left, gather.picture_top, width, 8u);
+  let at = held_plane_word(x, y, gather.picture_left, gather.sums_top, width, 8u);
   return array<Wide, 4>(
     Wide(gather_sums[at], gather_sums[at + 1u]),
     Wide(gather_sums[at + 2u], gather_sums[at + 3u]),
@@ -129,12 +134,12 @@ fn gather_run(level: u32, k: u32, row: u32) -> vec2<i32> {
 @compute @workgroup_size(8, 8, 1)
 fn iris_gather(@builtin(global_invocation_id) id: vec3<u32>) {
   let x = gather.picture_left + i32(id.x);
-  let y = gather.picture_top + i32(id.y);
+  let y = gather.put_top + i32(id.y);
   // Only the paper is drawn — the picture, where none repeats: the tiles
-  // out hold nothing past it already.
+  // out hold nothing past it already —, of the band's rows.
   let on_paper = x >= gather.paper_left && x < gather.paper_right
     && y >= gather.paper_top && y < gather.paper_bottom;
-  if (!on_paper) {
+  if (!on_paper || y >= gather.put_bottom) {
     return;
   }
   let level = gather_level(x, y);

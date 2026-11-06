@@ -7,11 +7,13 @@
 
 use std::sync::OnceLock;
 
-use super::super::TileRect;
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
-use super::{BoxBlur, EDGE_NOTHING, Edge, MOST_RADIUS, Route, passes, strips};
+use super::super::{TileRect, bands};
+use super::{BoxBlur, EDGE_NOTHING, Edge, MOST_RADIUS, Route, passes, planes, strips};
 use crate::device::Engine;
+use crate::kernels::composite::TILE_TEXELS;
 use crate::kernels::effects::tests::rgba;
+use crate::kernels::shared::room;
 use crate::testing::{assert_pinned, first_engine};
 
 struct Rig {
@@ -41,8 +43,20 @@ fn blur_by(
     pixel: impl Fn(i32, i32) -> u32,
     route: Route,
 ) -> Option<Blurred> {
+    blur_in(rect, radius, edge, pixel, (route, room(rig().engine)))
+}
+
+/// `blur_by`, its planes in bands a binding of `room` bytes holds.
+fn blur_in(
+    rect: TileRect,
+    radius: (u32, u32),
+    edge: Edge,
+    pixel: impl Fn(i32, i32) -> u32,
+    (route, room): (Route, u64),
+) -> Option<Blurred> {
     let Rig { engine, blur } = rig();
-    let out = blur.run_by(engine, &tiles(engine, rect, pixel), rect, radius, edge, route)?;
+    let out =
+        blur.run_by(engine, &tiles(engine, rect, pixel), rect, radius, edge, (route, room))?;
     Some(Blurred::read(engine, rect, &out))
 }
 
@@ -273,6 +287,71 @@ fn scenes() -> Vec<((u32, u32), Edge)> {
         ((70, 2), Edge::Repeat([-128, 0, 128, 256])),
         ((1, 33), Edge::Nothing),
     ]
+}
+
+/// The ledger's radii blurred in bands, a binding holding the tiles and no
+/// more than the planes of a quarter of the picture's rows above its
+/// middle, are the pictures blurred whole, byte for byte, either way the
+/// passes go (connection-round-checklist ④): the rows past a band the
+/// columns read, and the columns past it the next band's first reads, are
+/// worked out again as the whole works them out — four bands each, the
+/// radius down reaching past a quarter (33: 99 rows) or short of it. The
+/// pictures fill the tiles, or near it, so that a binding holding the
+/// tiles still cuts them: a picture's planes are twice its pixels' bytes.
+#[test]
+fn a_picture_in_bands_is_blurred_as_it_is_whole() {
+    let inside = Edge::Repeat([-120, 5, 250, 250]);
+    let scenes = [
+        ((3, 5), Edge::Nothing),
+        ((2, 0), Edge::Nothing),
+        ((0, 4), inside),
+        ((70, 2), inside),
+        ((1, 33), Edge::Nothing),
+    ];
+    for (radius, edge) in scenes {
+        let picture = match edge {
+            Edge::Nothing => LEDGER_TILES.pixels(),
+            Edge::Repeat(inside) => inside,
+        };
+        let [_, first, _, end] = picture;
+        let middle = first + (end - first) / 2;
+        let quarter = (end - first + 3) / 4;
+        let tiles = LEDGER_TILES.tiles() * TILE_TEXELS * 4;
+        let room = planes(picture, [middle - quarter, middle], radius).max(tiles);
+        let cut = bands([first, end], |band| planes(picture, band, radius) <= room);
+        let count = cut.map_or(0, |cut| cut.len());
+        assert!(count == 4, "{radius:?} {edge:?}: {count} bands");
+        for route in [Route::Strips, Route::Passes] {
+            let whole = blur_by(LEDGER_TILES, radius, edge, pattern, route).expect("whole");
+            let banded = blur_in(LEDGER_TILES, radius, edge, pattern, (route, room));
+            assert!(
+                banded.expect("bands").words == whole.words,
+                "{radius:?} {edge:?}: the bands put the whole's bytes"
+            );
+        }
+    }
+}
+
+/// The cut halves until every band fits, its bands one after another, as
+/// even as whole rows go — down to bands of one row, and none past them.
+#[test]
+fn the_rows_halve_until_each_band_fits() {
+    let rows = |band: [i32; 2]| band[1] - band[0];
+    assert_eq!(bands([0, 10], |band| rows(band) <= 10), Some(vec![[0, 10]]));
+    assert_eq!(
+        bands([0, 10], |band| rows(band) <= 3),
+        Some(vec![[0, 2], [2, 5], [5, 7], [7, 10]])
+    );
+    assert_eq!(bands([4, 7], |band| rows(band) <= 1), Some(vec![[4, 5], [5, 6], [6, 7]]));
+    assert_eq!(bands([0, 10], |_| false), None);
+}
+
+/// A binding that holds no band of one row refuses the blur.
+#[test]
+fn a_picture_no_band_of_one_row_fits_is_refused() {
+    for route in [Route::Strips, Route::Passes] {
+        assert!(blur_in(ONE_TILE, (2, 3), Edge::Nothing, pattern, (route, 0)).is_none());
+    }
 }
 
 /// The same pin either way the passes go (gpu-canonical-store 01:15 (b) ②).

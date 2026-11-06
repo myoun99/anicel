@@ -21,9 +21,10 @@
 #[path = "gaussian_tests.rs"]
 mod tests;
 
-use super::{Dispatch, GROUP, Held, TileRect, compile, run};
+use super::{Dispatch, GROUP, Held, TileRect, bands, compile, run};
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::shared::room;
 
 /// The box law every blur of box passes runs: box.wgsl's `blur_mean` and
 /// `blur_slide`, and the `BoxPass` it reads.
@@ -226,10 +227,11 @@ impl BoxBlur {
         radius: (u32, u32),
         edge: Edge,
     ) -> Option<wgpu::Buffer> {
-        self.run_by(engine, tiles, rect, radius, edge, Route::Strips)
+        self.run_by(engine, tiles, rect, radius, edge, (Route::Strips, room(engine)))
     }
 
-    /// `run`, the passes going by `route`.
+    /// `run`, the passes going by `route`, in bands whose planes a binding
+    /// of `room` bytes holds ([`bands`]).
     fn run_by(
         &self,
         engine: &Engine,
@@ -237,7 +239,7 @@ impl BoxBlur {
         rect: TileRect,
         radius: (u32, u32),
         edge: Edge,
-        route: Route,
+        (route, room): (Route, u64),
     ) -> Option<wgpu::Buffer> {
         let (across, down) = radius;
         if across == 0 && down == 0 {
@@ -257,20 +259,34 @@ impl BoxBlur {
                 return fail(format!("{inside:?} is no rectangle inside {rect:?}"));
             }
         };
-        let passes = passes(picture, radius, kind);
-        let ways: Vec<&[Pass]> = passes.chunks(3).collect();
-        let strips: Option<Vec<Strips>> = ways
+        let [_, top, _, bottom] = picture;
+        let fits = |band| planes(picture, band, radius) <= room;
+        let Some(bands) = bands([top, bottom], fits) else {
+            let row = planes(picture, [top, top + 1], radius);
+            return fail(format!("a band of one row holds {row} bytes, past a binding of {room}"));
+        };
+        let cut: Vec<Vec<Pass>> =
+            bands.iter().map(|&band| passes_over(picture, band, radius, kind)).collect();
+        // A band's ways run as far along as the whole's, past it by as
+        // much: a strip has room in every band or in none.
+        let strips: Option<Vec<Strips>> = cut
             .iter()
+            .flat_map(|passes| passes.chunks(3))
             .map(|way| strips(way).filter(|_| way[0].radius <= MOST_STRIPS_RADIUS))
             .collect();
         let (pipeline, dispatches): (_, Vec<Dispatch>) = match (route, strips) {
             (Route::Strips, Some(strips)) => (
                 &self.three,
-                ways.iter().zip(strips).map(|(way, strips)| three(way, strips)).collect(),
+                cut.iter()
+                    .flat_map(|passes| passes.chunks(3))
+                    .zip(strips)
+                    .map(|(way, strips)| three(way, strips))
+                    .collect(),
             ),
-            _ => (&self.pass, passes.iter().map(Pass::dispatch).collect()),
+            _ => (&self.pass, cut.iter().flatten().map(Pass::dispatch).collect()),
         };
-        run(engine, pipeline, tiles, rect, planes(picture, radius), &dispatches, None)
+        let plane = bands.iter().map(|&band| planes(picture, band, radius)).max().unwrap_or(0);
+        run(engine, pipeline, (tiles, rect), (plane, room), &dispatches, None)
     }
 }
 
@@ -281,25 +297,37 @@ impl BoxBlur {
 /// past the picture by `edge`. The first of all reads the tiles, the last
 /// puts them; between, the planes hold the 16-bit pixels.
 fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
+    let [_, top, _, bottom] = picture;
+    passes_over(picture, [top, bottom], radius, edge)
+}
+
+/// The passes putting `band`, rows [first, end) of `picture`, as the
+/// picture's passes put them ([`passes`]): the columns' down the band and
+/// as far past it as theirs go, past the picture by its `edge`; the rows'
+/// along the lines the columns' first reads ([`lines_read`]). A band of the
+/// whole picture is the whole's passes.
+fn passes_over(picture: [i32; 4], band: [i32; 2], radius: (u32, u32), edge: u32) -> Vec<Pass> {
     let [left, top, right, bottom] = picture;
+    let first = band[0];
     let (across, down) = radius;
+    let lines = lines_read(picture, band, down);
     // A way's plane reaches two radii past the picture along it.
     let rows_plane = Held::Plane {
         x0: left - 2 * across as i32,
-        y0: top,
+        y0: lines[0],
         width: (right - left) as u32 + 4 * across,
     };
     let columns_plane = Held::Plane {
         x0: left,
-        y0: top - 2 * down as i32,
+        y0: first - 2 * down as i32,
         width: (right - left) as u32,
     };
     let ways = [
-        (false, across, [left, right], [top, bottom], rows_plane),
-        (true, down, [top, bottom], [left, right], columns_plane),
+        (false, across, ([left, right], [left, right]), lines, rows_plane),
+        (true, down, (band, [top, bottom]), [left, right], columns_plane),
     ];
     let mut passes: Vec<Pass> = Vec::new();
-    for (is_down, r, along, lines, plane) in ways {
+    for (is_down, r, (along, edge_along), lines, plane) in ways {
         if r == 0 {
             continue;
         }
@@ -311,7 +339,7 @@ fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
                 along: [along[0] - past, along[1] + past],
                 lines,
                 edge: if k == 1 { edge } else { EDGE_NONE },
-                edge_along: along,
+                edge_along,
                 from: passes.last().map_or(Held::Tiles, |before| before.to),
                 to: plane,
             });
@@ -352,12 +380,24 @@ pub(crate) fn within(picture: [i32; 4], radius: u32) -> Option<Within> {
     })
 }
 
-/// The bytes a plane holds: the rows' passes' or the columns', whichever
-/// is more.
-fn planes(picture: [i32; 4], radius: (u32, u32)) -> u64 {
-    let [left, top, right, bottom] = picture;
-    let (width, height) = (u64::from((right - left) as u32), u64::from((bottom - top) as u32));
-    let rows = (width + 4 * u64::from(radius.0)) * height;
-    let columns = width * (height + 4 * u64::from(radius.1));
+/// The bytes a plane holds for `band` of `picture` ([`passes_over`]): the
+/// rows' passes' or the columns', whichever is more.
+fn planes(picture: [i32; 4], band: [i32; 2], radius: (u32, u32)) -> u64 {
+    let [left, _, right, _] = picture;
+    let [first, end] = band;
+    let width = u64::from((right - left) as u32);
+    let [above, below] = lines_read(picture, band, radius.1);
+    let rows = (width + 4 * u64::from(radius.0)) * u64::from((below - above) as u32);
+    let columns = width * (u64::from((end - first) as u32) + 4 * u64::from(radius.1));
     rows.max(columns) * 8
+}
+
+/// The lines the rows' passes blur for `band` of `picture`: the band and,
+/// where the columns' go by `down`, three of their radii past it each side
+/// inside the picture — what the columns' first reads; past the picture
+/// its edge stands in.
+fn lines_read(picture: [i32; 4], band: [i32; 2], down: u32) -> [i32; 2] {
+    let [_, top, _, bottom] = picture;
+    let reach = 3 * down as i32;
+    if down == 0 { band } else { [top.max(band[0] - reach), bottom.min(band[1] + reach)] }
 }

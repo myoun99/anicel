@@ -11,7 +11,9 @@
 // Needs shared/wide.wgsl and held.wgsl before it.
 
 // One pass: where its taps begin in `taps` and how many, the centre C
-// (Q.16), and the plate's pixels, [left, right) × [top, bottom).
+// (Q.16), the plate's pixels, [left, right) × [top, bottom), and the rows
+// of it this pass puts, [put_top, put_bottom) — a band's (line.rs's
+// `puts`).
 struct LinePass {
   taps_at: u32,
   taps: u32,
@@ -21,6 +23,8 @@ struct LinePass {
   top: i32,
   right: i32,
   bottom: i32,
+  put_top: i32,
+  put_bottom: i32,
 }
 
 @group(0) @binding(3) var<uniform> line_: LinePass;
@@ -71,8 +75,8 @@ fn line_tap(px: i32, py: i32) -> vec4<u32> {
 @compute @workgroup_size(8, 8, 1)
 fn line_blur(@builtin(global_invocation_id) id: vec3<u32>) {
   let x = line_.left + i32(id.x);
-  let y = line_.top + i32(id.y);
-  if (x >= line_.right || y >= line_.bottom) {
+  let y = line_.put_top + i32(id.y);
+  if (x >= line_.right || y >= line_.put_bottom) {
     return;
   }
   let dx = wide_sub(wide(x * 65536 + 32768), wide(line_.centre_x));

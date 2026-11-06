@@ -74,10 +74,7 @@ pub(crate) fn fits(
     let limits = engine.device.limits();
     let room = room(engine);
     if let Some(plane) = planes.iter().find(|&&plane| plane > room) {
-        return fail(format!(
-            "a plane of {plane} bytes exceeds a binding of {room} — a picture this large \
-             waits for the round that cuts it into bands"
-        ));
+        return fail(format!("a plane of {plane} bytes exceeds a binding of {room}"));
     }
     let most = limits.max_compute_workgroups_per_dimension;
     if groups.any(|(across, down)| across > most || down > most) {

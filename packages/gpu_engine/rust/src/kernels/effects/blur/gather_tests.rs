@@ -10,9 +10,10 @@ use std::sync::OnceLock;
 use super::super::TileRect;
 use super::super::iris::{Focus, Iris};
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles};
-use super::{BlurMap, Lens, LensBlur, Light, MOST_FRINGE, MapChannel};
+use super::{BlurMap, Lens, LensBlur, Light, MOST_FRINGE, MapChannel, sums_bytes};
 use crate::device::Engine;
 use crate::kernels::effects::tests::rgba;
+use crate::kernels::shared::room;
 use crate::testing::{assert_pinned, first_engine};
 
 struct Rig {
@@ -68,6 +69,17 @@ fn blurred(
     pixel: impl Fn(i32, i32) -> u32,
     map: Option<Map>,
 ) -> Option<Blurred> {
+    blurred_in(rect, picture, (lens, map), pixel, room(rig().engine))
+}
+
+/// `blurred`, its sums in bands a binding of `room` bytes holds.
+fn blurred_in(
+    rect: TileRect,
+    picture: [i32; 4],
+    (lens, map): (&Lens, Option<Map>),
+    pixel: impl Fn(i32, i32) -> u32,
+    room: u64,
+) -> Option<Blurred> {
     let Rig { engine, blur } = rig();
     let map_tiles = map.map(|(pixel, _, _)| tiles(engine, rect, pixel));
     let map = map.zip(map_tiles.as_ref()).map(|((_, channel, focus), tiles)| BlurMap {
@@ -75,7 +87,8 @@ fn blurred(
         channel,
         focus,
     });
-    let out = blur.run(engine, &tiles(engine, rect, pixel), rect, picture, lens, map)?;
+    let tiles = tiles(engine, rect, pixel);
+    let out = blur.run_in(engine, &tiles, rect, picture, (lens, map), room)?;
     Some(Blurred::read(engine, rect, &out))
 }
 
@@ -420,4 +433,57 @@ fn every_device_blurs_the_pinned_picture() {
         .flat_map(|word| word.to_le_bytes())
         .collect();
     assert_pinned("effects/lens-blur", &bytes);
+}
+
+// ---- Bands ----
+
+/// The ledger's pictures blurred in bands, a binding holding a third of
+/// their sums — so two bands at least —, are the pictures blurred whole,
+/// byte for byte (connection-round-checklist ④): the rows past a band its
+/// iris reaches are summed again as the whole sums them, on the picture
+/// and on a paper whose edge repeats, at a blur map's levels too.
+#[test]
+fn a_picture_in_bands_is_blurred_as_it_is_whole() {
+    let read: &dyn Fn(i32, i32) -> u32 = &|x, y| pattern(y, x);
+    for (picture, lens, map) in scenes() {
+        let map = map.map(|(channel, focus)| (read, channel, focus));
+        let whole = blurred(LEDGER_TILES, picture, &lens, pattern, map).expect("whole");
+        let room = sums_bytes(picture)[0] / 3;
+        let banded = blurred_in(LEDGER_TILES, picture, (&lens, map), pattern, room);
+        assert!(
+            banded.expect("bands").words == whole.words,
+            "{picture:?}: the bands put the whole's bytes"
+        );
+    }
+}
+
+/// A blur map is bound whole, as the tiles are: one past a binding refuses
+/// the blur that one inside it does not — the sums cut into bands to fit.
+#[test]
+fn a_map_past_a_binding_is_refused() {
+    let Rig { engine, blur } = rig();
+    let picture_tiles = tiles(engine, ONE_TILE, pattern);
+    let room = picture_tiles.size() * 2;
+    let focus = Focus {
+        focal: 100.5,
+        inverts: false,
+    };
+    for (rect, kept) in [(ONE_TILE, true), (LEDGER_TILES, false)] {
+        let map_tiles = tiles(engine, rect, pattern);
+        let map = BlurMap {
+            tiles: &map_tiles,
+            channel: MapChannel::Alpha,
+            focus,
+        };
+        let lens = (&lens(1.5), Some(map));
+        let out = blur.run_in(engine, &picture_tiles, ONE_TILE, ONE_TILE.pixels(), lens, room);
+        assert_eq!(out.is_some(), kept, "a map over {rect:?}");
+    }
+}
+
+/// A binding that holds no band of one row's sums refuses the blur.
+#[test]
+fn a_picture_no_band_of_one_row_fits_is_refused() {
+    let picture = ONE_TILE.pixels();
+    assert!(blurred_in(ONE_TILE, picture, (&lens(1.5), None), pattern, 0).is_none());
 }

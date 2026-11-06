@@ -110,23 +110,67 @@ fn compile(engine: &Engine, more: &[&str], own: &str, entry: &str) -> wgpu::Comp
 }
 
 /// Whether a blur can lay its passes at all: `tiles` hold `rect`, a
-/// binding holds each of `planes` (bytes), and a dispatch reaches each of
-/// `groups`.
+/// binding of `room` bytes holds them — the tiles a blur puts are as many
+/// —, a binding holds each of `planes` (bytes), and a dispatch reaches each
+/// of `groups`.
+///
+/// ⚠️THE TILES ARE ASKED TOO since a picture goes in bands ([`bands`]): a
+/// band's planes are what it holds of the picture, but the tiles in and
+/// out are bound whole — before, the planes were the larger and refused
+/// first.
 fn checked(
     engine: &Engine,
     tiles: &wgpu::Buffer,
-    rect: TileRect,
+    (rect, room): (TileRect, u64),
     planes: &[u64],
     groups: impl Iterator<Item = (u32, u32)>,
 ) -> Option<()> {
-    if rect.tiles() == 0 || tiles.size() < rect.tiles() * TILE_TEXELS * 4 {
+    let bytes = rect.tiles() * TILE_TEXELS * 4;
+    if rect.tiles() == 0 || tiles.size() < bytes {
         return fail(format!(
             "{rect:?} is {} tiles; the buffer holds {} bytes",
             rect.tiles(),
             tiles.size()
         ));
     }
+    if tiles.size() > room {
+        return fail(format!("tiles of {} bytes exceed a binding of {room}", tiles.size()));
+    }
     fits(engine, planes, groups)
+}
+
+/// The rows `rows`, [top, bottom), cut into as few bands as `fits` lets a
+/// blur's planes hold, [top, bottom) each, one after another: the whole,
+/// or halves, quarters and on, each cut inside the one before it — none
+/// where a band of one row does not fit.
+///
+/// 🚨★★WHY A PICTURE GOES IN BANDS (connection-round-checklist ④ —
+/// 캔버스 베이스's, 관제 11-07 04:36): a plane is bound whole, and a
+/// picture whose plane passed a binding was refused — a camera lens blur's
+/// sums, 32 bytes a pixel, past 2048² on a binding of 128 MiB. A band's
+/// planes hold the rows it puts and those its passes read past them, so
+/// the bands put what the whole would, byte for byte.
+///
+/// ⛔Not [`crate::kernels::shared::tiles_a_pass`]'s count: what a band holds
+/// is not so many bytes a row — the Gaussian's planes run its radii past
+/// the band, and a blur along a way reads where its taps land — so each
+/// blur says whether a band fits, and the cut halves until every band
+/// does.
+fn bands(rows: [i32; 2], fits: impl Fn([i32; 2]) -> bool) -> Option<Vec<[i32; 2]>> {
+    let [top, bottom] = rows;
+    let height = i64::from(bottom - top);
+    let mut count = 1i64;
+    loop {
+        let at = |i: i64| top + (i * height / count) as i32;
+        let cut: Vec<[i32; 2]> = (0..count).map(|i| [at(i), at(i + 1)]).collect();
+        if cut.iter().all(|&band| fits(band)) {
+            return Some(cut);
+        }
+        if count >= height {
+            return None;
+        }
+        count = (count * 2).min(height);
+    }
 }
 
 /// held.wgsl's `Held` for a pass reading `from` and putting `to` over
@@ -141,20 +185,24 @@ fn held_words(from: Held, to: Held, rect: TileRect) -> Vec<u32> {
 }
 
 /// Runs `dispatches` of `pipeline` over `tiles` — straight RGBA8 over
-/// `rect` — with planes of `plane` bytes between them, and `taps` bound
-/// fifth where given; returns the tiles the last one put, nothing where it
-/// put none. Submits the work; the caller waits.
+/// `rect` — with planes of `plane` bytes between them, on bindings of
+/// `room` bytes, and `taps` bound fifth where given; returns the tiles the
+/// last one put, nothing where it put none. Submits the work; the caller
+/// waits. The dispatches may be a picture's bands one after another
+/// ([`bands`]), each reading the tiles first and putting them last: the
+/// planes go to each in turn.
 fn run(
     engine: &Engine,
     pipeline: &wgpu::ComputePipeline,
-    tiles: &wgpu::Buffer,
-    rect: TileRect,
-    plane_bytes: u64,
+    (tiles, rect): (&wgpu::Buffer, TileRect),
+    (plane_bytes, room): (u64, u64),
     dispatches: &[Dispatch],
     taps: Option<&wgpu::Buffer>,
 ) -> Option<wgpu::Buffer> {
-    checked(engine, tiles, rect, &[plane_bytes], dispatches.iter().map(|d| d.groups))?;
-    // A pass between two others reads one plane and puts the other.
+    let groups = dispatches.iter().map(|d| d.groups);
+    checked(engine, tiles, (rect, room), &[plane_bytes], groups)?;
+    // A pass between two others reads one plane and puts the other — and a
+    // pass alone holds none, so its blur goes whole, in one dispatch.
     let planes: Vec<wgpu::Buffer> = (0..if dispatches.len() > 1 { 2 } else { 0 })
         .map(|_| plane(engine, "blur plane", plane_bytes))
         .collect();
