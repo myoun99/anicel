@@ -134,6 +134,7 @@ impl Context {
         make_render: impl Fn() -> Option<R>,
         lost: impl Fn() + Clone + Send + 'static,
     ) -> Option<Built> {
+        let lost = follows(index, lost);
         match self.pick(Direction::Playback, index)? {
             Picked::Null => {
                 let period = null_period(sample_rate);
@@ -144,7 +145,7 @@ impl Context {
                     // Handed up to a full buffer ahead of what the wall has played.
                     paced(stop, sample_rate, period, period as i64 * NULL_PERIODS, || render(&mut buffer));
                 };
-                Some(Built::null(body, index.is_none().then_some(lost), sample_rate, channels))
+                Some(Built::null(body, lost, sample_rate, channels))
             }
             Picked::System(device) => {
                 let build = |rate: i32| {
@@ -160,7 +161,7 @@ impl Context {
                         render(out);
                     };
                     latency.store(0, SeqCst);
-                    let errors = on_error(index.is_none(), lost.clone());
+                    let errors = on_error(lost.clone());
                     device.build_output_stream::<f32, _, _>(config, callback, errors, None).ok()
                 };
                 let own = || Some(device.default_output_config().ok()?.sample_rate() as i32);
@@ -183,6 +184,7 @@ impl Context {
         deliver: fn(&[f32]),
         lost: impl Fn() + Clone + Send + 'static,
     ) -> Option<Built> {
+        let lost = follows(index, lost);
         match self.pick(Direction::Capture, index)? {
             Picked::Null => {
                 let period = null_period(sample_rate);
@@ -192,7 +194,7 @@ impl Context {
                     // Delivered once the wall has taken it in: silence.
                     paced(stop, sample_rate, period, 0, || deliver(&buffer));
                 };
-                Some(Built::null(body, index.is_none().then_some(lost), sample_rate, NULL_CHANNELS))
+                Some(Built::null(body, lost, sample_rate, NULL_CHANNELS))
             }
             Picked::System(device) => {
                 let native = device.default_input_config().ok()?;
@@ -208,7 +210,7 @@ impl Context {
                         deliver(input);
                     };
                     latency.store(0, SeqCst);
-                    let errors = on_error(index.is_none(), lost.clone());
+                    let errors = on_error(lost.clone());
                     device.build_input_stream::<f32, _, _>(config, callback, errors, None).ok()
                 };
                 let own = || Some(native.sample_rate() as i32);
@@ -245,18 +247,24 @@ pub(crate) fn at_rate_or_its_own<T>(
     build(own).map(|built| (built, own))
 }
 
-/// A stream's error callback. A stream opened on the system's default
-/// whose device is lost asks for `lost`: cpal's WASAPI stream never moves
-/// to a new default, and says it lost the old one instead — invalidated,
-/// or unavailable when no default is left. ⚠️On the device's thread: `lost`
+/// What a device of `index` asks for when it loses its device: `lost` —
+/// opened on the system's default, it follows it — or nothing, chosen by
+/// name: it stays the one chosen.
+fn follows<F>(index: Option<usize>, lost: F) -> Option<F> {
+    index.is_none().then_some(lost)
+}
+
+/// A stream's error callback: a stream that follows the default whose
+/// device is lost asks for `lost`. cpal's WASAPI stream never moves to a
+/// new default, and says it lost the old one instead — invalidated, or
+/// unavailable when no default is left. ⚠️On the device's thread: `lost`
 /// waits for nothing.
-pub(crate) fn on_error(
-    follows: bool,
-    lost: impl Fn() + Send + 'static,
-) -> impl FnMut(cpal::Error) + Send + 'static {
+pub(crate) fn on_error(lost: Option<impl Fn() + Send + 'static>) -> impl FnMut(cpal::Error) + Send + 'static {
     use cpal::ErrorKind::{DeviceNotAvailable, StreamInvalidated};
     move |error| {
-        if follows && matches!(error.kind(), StreamInvalidated | DeviceNotAvailable) {
+        if let Some(lost) = &lost
+            && matches!(error.kind(), StreamInvalidated | DeviceNotAvailable)
+        {
             lost();
         }
     }

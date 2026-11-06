@@ -1016,9 +1016,9 @@ fn only_a_stream_on_the_default_that_lost_its_device_asks_again() {
     let asked = |follows: bool, kind: cpal::ErrorKind| {
         let asks = Arc::new(AtomicI32::new(0));
         let counted = Arc::clone(&asks);
-        let mut errors = crate::backend::on_error(follows, move || {
+        let mut errors = crate::backend::on_error(follows.then_some(move || {
             counted.fetch_add(1, SeqCst);
-        });
+        }));
         errors(kind.into());
         asks.load(SeqCst)
     };
