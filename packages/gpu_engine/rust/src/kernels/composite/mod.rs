@@ -362,6 +362,8 @@ impl Composite {
         }
         if !passes.was_asked(wanted) {
             passes.asked.push((wanted, None));
+            // One thread at a time (`compile_apart`): a second would take a
+            // second core from the frames. No test sees it.
             if !passes.compiling {
                 passes.compiling = true;
                 self.compile_apart(engine);
