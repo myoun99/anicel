@@ -8,7 +8,7 @@
 //! says it (`start` — the MP3's LAME tag, a movie's edit list), symphonia
 //! is told no: told yes as well, the frames are taken off twice.
 
-use audio_mix::{Resampler, resample_frames};
+use audio_mix::{DEFAULT_BANDWIDTH, DEFAULT_STOPBAND_DB, MONO_ON_STEREO, Resampler, resample_frames};
 use symphonia::core::audio::sample::Sample;
 use symphonia::core::audio::{Audio, AudioBuffer, GenericAudioBufferRef};
 use symphonia::core::codecs::audio::well_known::{CODEC_ID_AAC, CODEC_ID_ALAC, CODEC_ID_FLAC, CODEC_ID_VORBIS};
@@ -58,17 +58,11 @@ pub(crate) struct Other {
     resampler: Resampler,
 }
 
-/// ⚠️TEMPORARY until 타임라인/콘티's `mono-on-stereo` lands
-/// `audio_mix::DEFAULT_STOPBAND_DB` · `DEFAULT_BANDWIDTH`: the conform's
-/// own, `audio_resampler_reference.dart`'s.
-const STOPBAND_DB: f64 = 120.0;
-const BANDWIDTH: f64 = 0.90;
-
 impl Other {
-    /// A run of `channels` at `rate` converted to `to` — none on bad
-    /// geometry.
+    /// A run of `channels` at `rate` converted to `to`, at the quality a
+    /// sound is conformed at — none on bad geometry.
     pub(crate) fn new(channels: usize, rate: u32, to: u32) -> Option<Other> {
-        let resampler = Resampler::new(channels, rate as i32, to as i32, STOPBAND_DB, BANDWIDTH)?;
+        let resampler = Resampler::new(channels, rate as i32, to as i32, DEFAULT_STOPBAND_DB, DEFAULT_BANDWIDTH)?;
         Some(Other { rate, resampler })
     }
 
@@ -227,14 +221,6 @@ enum Piece {
     End,
 }
 
-/// What each of two channels takes of a piece of one: −3 dB, the user's
-/// answer for mono heard from both speakers wherever it comes from
-/// (native-to-rust-Q12 「프로툴처럼 모노는 어디서든 −3dB(0.707) — 믹서도
-/// 바꾼다」, 2026-11-06 — Pro Tools' default pan depth, and FFmpeg's
-/// `build_matrix`). ⚠️The mixer's center is the same law: 타임라인/콘티,
-/// who port the mixer, and this agree on the one place it is kept.
-const SHARE: f32 = std::f32::consts::FRAC_1_SQRT_2;
-
 /// A decoded piece in `channels` into `block`.
 fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usize) -> Piece {
     let spec = buffer.spec();
@@ -256,7 +242,9 @@ fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usiz
 }
 
 /// The `frames` of `own` channels at the head of `block`, put in `channels`:
-/// a piece of one channel in both of two, at [`SHARE`]. ⚠️Into fewer
+/// a piece of one channel in both of two, each at −3 dB — the mixer's own
+/// [`MONO_ON_STEREO`], for a mono sound is heard at one level wherever it
+/// comes from (native-to-rust-Q12). ⚠️Into fewer
 /// channels than its own no piece here goes — a sound opens with the most
 /// any piece has (native-to-rust-Q13, `mpa_turns_stereo`), and only MPEG
 /// audio changes them on the way; were one to, it keeps its place as
@@ -269,7 +257,7 @@ fn fit(block: &mut Vec<f32>, frames: usize, own: usize, channels: usize) -> bool
             // From the end, so that no sample is written over before it is
             // read.
             for frame in (0..frames).rev() {
-                let sample = SHARE * block[frame];
+                let sample = MONO_ON_STEREO as f32 * block[frame];
                 block[2 * frame] = sample;
                 block[2 * frame + 1] = sample;
             }

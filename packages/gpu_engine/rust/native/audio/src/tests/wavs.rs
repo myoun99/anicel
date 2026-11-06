@@ -506,7 +506,8 @@ fn c_conformed(samples: &[f32], channels: usize, from: i32, to: i32) -> Vec<f32>
     let frames = (samples.len() / channels) as i64;
     let mut out = vec![0.0; frames_of(frames, from, to) as usize * channels];
     // SAFETY: `out` holds the frames qa_audio_resample_frames answers.
-    let written = unsafe { resample(samples.as_ptr(), frames, channels as i32, from, to, 120.0, 0.90, out.as_mut_ptr()) };
+    let (stopband, bandwidth) = (audio_mix::DEFAULT_STOPBAND_DB, audio_mix::DEFAULT_BANDWIDTH);
+    let written = unsafe { resample(samples.as_ptr(), frames, channels as i32, from, to, stopband, bandwidth, out.as_mut_ptr()) };
     out.truncate(written as usize * channels);
     out
 }
