@@ -89,14 +89,15 @@ fn square() -> Iris {
     }
 }
 
-/// A lens blur 3 pixels out over the whole rectangle, its paper repeated.
+/// A lens blur 3 pixels out, nothing past its picture — so the picture an op
+/// names is the one it blurs over (a paper repeated hid it, mutant c08).
 fn lens() -> Lens {
     Lens {
         iris: square(),
         radius: 3.0,
         fringe: 0.0,
         light: Light::STORED,
-        paper: Some([-90, 20, 180, 230]),
+        paper: None,
     }
 }
 
