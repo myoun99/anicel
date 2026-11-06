@@ -414,7 +414,7 @@ const LEAD: usize = 1105;
 fn a_mono_piece_of_a_stereo_mp3_is_heard_in_both_at_0_707() {
     // Twelve stereo frames of silence, four mono frames that sound, eight
     // of silence again: the four are read by a decoder of their own, in
-    // their place, at 1/√2 in both channels (native-to-rust-Q8 · Q9).
+    // their place, at 1/√2 in both channels (native-to-rust-Q8 · Q12).
     let piece = tone_frames(4, &[230]);
     let (alone, _) = mp3_read(&piece);
     assert!(alone.iter().any(|&s| s != 0.0), "the piece sounds");
@@ -432,28 +432,47 @@ fn a_mono_piece_of_a_stereo_mp3_is_heard_in_both_at_0_707() {
     assert!(read[..2 * at].iter().chain(&read[2 * (at + 4 * 1152)..]).all(|&s| s == 0.0), "silence around it");
 }
 
+/// `count` MPEG-1 Layer III frames of silence of one channel.
+fn mono_mp3_frames(count: usize) -> Vec<u8> {
+    let mut frames = mp3_frames(count);
+    frames.chunks_exact_mut(417).for_each(|frame| frame[3] = 0xC0);
+    frames
+}
+
 #[test]
-fn a_stereo_piece_of_a_mono_mp3_is_mixed_at_0_707_each() {
-    // The other way: a mono sound stays mono, as its first piece is, and a
-    // stereo piece in it is its two channels at 1/√2 each
-    // (native-to-rust-Q10). The two channels differ, so that each counts.
-    let mono_silence = || {
-        let mut frames = mp3_frames(1);
-        frames[3] = 0xC0;
-        frames
-    };
-    let piece = tone_frames(4, &[230, 222]);
-    let (alone, two) = mp3_read(&piece);
+fn a_mono_mp3_with_a_stereo_piece_opens_as_stereo() {
+    // The other way: four mono frames that sound, four stereo frames that
+    // sound — their two channels apart — and sixteen mono of silence. The
+    // sound opens with two channels, as an editor puts each piece in its
+    // project's: the stereo piece as it is, the mono at 1/√2 in both
+    // (native-to-rust-Q13 · Q12).
+    let (mono, stereo) = (tone_frames(4, &[230]), tone_frames(4, &[230, 222]));
+    let (mono_alone, _) = mp3_read(&mono);
+    let (stereo_alone, two) = mp3_read(&stereo);
     assert_eq!(two, 2);
-    assert!(alone.chunks_exact(2).any(|lr| lr[0] != lr[1]), "the channels differ");
-    let (read, channels) = mp3_read(&[mono_silence().repeat(12), piece, mono_silence().repeat(8)].concat());
-    assert_eq!(channels, 1);
-    assert_eq!(read.len(), 24 * 1152 - LEAD, "every frame in its place");
-    let share = std::f32::consts::FRAC_1_SQRT_2;
-    let at = 12 * 1152 - LEAD;
-    for (j, lr) in alone.chunks_exact(2).enumerate() {
-        assert_eq!(read[at + LEAD + j], share * lr[0] + share * lr[1], "frame {j} of the piece");
+    assert!(stereo_alone.chunks_exact(2).any(|lr| lr[0] != lr[1]), "the channels differ");
+    let (read, channels) = mp3_read(&[mono, stereo, mono_mp3_frames(16)].concat());
+    assert_eq!(channels, 2);
+    assert_eq!(read.len(), (24 * 1152 - LEAD) * 2, "every frame in its place");
+    // The mono piece opens the sound, its lead off as when it is alone.
+    for (k, &sample) in mono_alone.iter().enumerate() {
+        assert_eq!([read[2 * k], read[2 * k + 1]], [std::f32::consts::FRAC_1_SQRT_2 * sample; 2], "mono frame {k}");
     }
+    let at = 4 * 1152 - LEAD;
+    for (j, lr) in stereo_alone.chunks_exact(2).enumerate() {
+        let frame = at + LEAD + j;
+        assert_eq!([read[2 * frame], read[2 * frame + 1]], [lr[0], lr[1]], "stereo frame {j}");
+    }
+    assert!(read[2 * (at + 4 * 1152)..].iter().all(|&s| s == 0.0), "silence after them");
+}
+
+#[test]
+fn a_mono_mp3_stays_mono() {
+    // No stereo frame anywhere: one channel, as its frames say — the look to
+    // the end widens only a sound that turns stereo.
+    let (read, channels) = mp3_read(&[tone_frames(4, &[230]), mono_mp3_frames(20)].concat());
+    assert_eq!(channels, 1);
+    assert_eq!(read.len(), 24 * 1152 - LEAD);
 }
 
 #[test]
@@ -469,10 +488,11 @@ fn a_piece_lasts_its_time_at_the_stream_s_rate() {
 }
 
 #[test]
-fn a_piece_at_another_rate_is_passed_over_until_the_board_says() {
+fn a_piece_at_another_rate_is_passed_over_until_the_resampler_lands() {
     // Four frames at 48 kHz (384 bytes at 128 kbit/s) in a 44.1 kHz sound:
     // a decoder of their own reads them, at their rate — and they are
-    // passed over, as before, until native-to-rust-Q11 is answered.
+    // passed over, as before, until the resampler native-to-rust-Q11
+    // answers with (the one 타임라인/콘티 are porting) is here.
     let (read, channels) = mp3_read(&[mp3_frames(12), mp3_frames_at(4, 0x94, 384), mp3_frames(8)].concat());
     assert_eq!(channels, 2);
     assert_eq!(read.len(), (20 * 1152 - LEAD) * 2);

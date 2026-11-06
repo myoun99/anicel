@@ -37,9 +37,10 @@ struct Bundled {
     options: AudioDecoderOptions,
     track: u32,
     time_base: Option<TimeBase>,
-    /// The stream's channels and rate: its first piece's, whatever the
-    /// pieces after are (as FFmpeg keeps its first, native-to-rust-Q10).
+    /// The stream's channels: its first piece's, or the most any piece has
+    /// where its reader can say so before (`mpa_turns_stereo`).
     channels: usize,
+    /// The stream's rate: its first piece's, whatever the pieces after are.
     rate: u32,
 }
 
@@ -135,23 +136,24 @@ enum Piece {
     Read(usize),
     /// Read at another rate than the stream's.
     OtherRate,
-    /// Nothing here reads it.
+    /// Nothing here reads it, or puts it in the stream's channels.
     Unread,
-    /// Read, but in channels nothing here puts in the stream's.
+    /// Read as sound no reader here hands.
     End,
 }
 
-/// The share of a channel that each channel on the other side takes, when
-/// a piece is put in other channels than its own: FFmpeg's, the user's
-/// answers (native-to-rust-Q9 「FFmpeg 처럼 양쪽에 0.707(−3dB)로 넣는다」 ·
-/// Q10 「FFmpeg 처럼 모노로 섞는다 — 왼쪽 · 오른쪽 각 0.707」, 2026-11-06).
-/// `libswresample/rematrix.c` `build_matrix` gives M_SQRT1_2 both ways, and
-/// rescales the matrix only for integer sound — this sound is float.
+/// What each of two channels takes of a piece of one: −3 dB, the user's
+/// answer for mono heard from both speakers wherever it comes from
+/// (native-to-rust-Q12 「프로툴처럼 모노는 어디서든 −3dB(0.707) — 믹서도
+/// 바꾼다」, 2026-11-06 — Pro Tools' default pan depth, and FFmpeg's
+/// `build_matrix`). ⚠️The mixer's center is the same law: 타임라인/콘티,
+/// who port the mixer, and this agree on the one place it is kept.
 const SHARE: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
 /// A decoded piece in `channels` into `block` — passed over when it is at
-/// another rate than `rate` (⚠️until the board answers native-to-rust-Q11,
-/// as it was before).
+/// another rate than `rate` (⚠️native-to-rust-Q11 answers: resampled to
+/// it, by the one resampler 타임라인/콘티 are porting — until it lands, as
+/// it was before).
 fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usize, rate: u32) -> Piece {
     let spec = buffer.spec();
     if spec.rate() != rate {
@@ -171,16 +173,15 @@ fn piece(buffer: GenericAudioBufferRef<'_>, block: &mut Vec<f32>, channels: usiz
         // No reader here hands unsigned sound wider than 8 bits.
         _ => return Piece::End,
     };
-    if fit(block, frames, own, channels) { Piece::Read(frames) } else { Piece::End }
+    if fit(block, frames, own, channels) { Piece::Read(frames) } else { Piece::Unread }
 }
 
 /// The `frames` of `own` channels at the head of `block`, put in `channels`:
-/// a piece of one channel in both of two, a piece of two mixed into one, at
-/// [`SHARE`]. ⚠️Between any others it cannot be — no reader here hands one
-/// (MPEG audio is one channel or two, and AAC of more than two is refused
-/// at its opening); were one to, its block would be shorter than the
-/// stream's channels read it, a panic past the C boundary, so the sound
-/// ends there instead.
+/// a piece of one channel in both of two, at [`SHARE`]. ⚠️Into fewer
+/// channels than its own no piece here goes — a sound opens with the most
+/// any piece has (native-to-rust-Q13, `mpa_turns_stereo`), and only MPEG
+/// audio changes them on the way; were one to, it keeps its place as
+/// silence, as a piece nothing reads does (Q8).
 fn fit(block: &mut Vec<f32>, frames: usize, own: usize, channels: usize) -> bool {
     match (own, channels) {
         _ if own == channels => {}
@@ -192,13 +193,6 @@ fn fit(block: &mut Vec<f32>, frames: usize, own: usize, channels: usize) -> bool
                 let sample = SHARE * block[frame];
                 block[2 * frame] = sample;
                 block[2 * frame + 1] = sample;
-            }
-        }
-        // What is left past the frames is never read (`Stream::pass` takes
-        // the frames the block is said to hold).
-        (2, 1) => {
-            for frame in 0..frames {
-                block[frame] = SHARE * block[2 * frame] + SHARE * block[2 * frame + 1];
             }
         }
         _ => return false,
@@ -223,10 +217,10 @@ fn interleave<S: Sample>(buffer: &AudioBuffer<S>, block: &mut Vec<f32>, convert:
 impl Decode for Bundled {
     /// Every piece keeps its place: one the decoder in hand refuses is read
     /// by a new one (`afresh`) and put in the stream's channels (`fit`), and
-    /// one nothing reads is its length of silence (native-to-rust-Q8 · Q9 ·
-    /// Q10). ⚠️A piece at another rate than the stream's is passed over, as
-    /// it was, until the board answers native-to-rust-Q11. One the reader
-    /// cannot read ends the sound.
+    /// one nothing reads is its length of silence (native-to-rust-Q8 · Q12 ·
+    /// Q13). ⚠️A piece at another rate than the stream's is passed over, as
+    /// it was, until the resampler native-to-rust-Q11 answers with lands.
+    /// One the reader cannot read ends the sound.
     fn next(&mut self, block: &mut Vec<f32>) -> usize {
         loop {
             let Ok(Some(packet)) = self.reader.next_packet() else { return 0 };
@@ -349,5 +343,29 @@ pub(crate) fn open_mp3(container: &Container) -> Option<Opened> {
     let delay = track.delay.map(i64::from);
     let lead = delay.unwrap_or(MP3_STANDARD_LEAD);
     let keep = track.num_frames.map_or(-1, |frames| (frames as i64 + delay.unwrap_or(0) - lead).max(0));
-    Bundled::new(Box::new(reader), false)?.opened(FORMAT_MP3, Start { lead, keep })
+    let mut bundled = Bundled::new(Box::new(reader), false)?;
+    if bundled.channels == 1 && mpa_turns_stereo(container) {
+        bundled.channels = 2;
+    }
+    bundled.opened(FORMAT_MP3, Start { lead, keep })
+}
+
+/// Whether MPEG audio that opens with one channel has two somewhere after
+/// it — then the sound opens with two, and its pieces of one are spread
+/// into both (native-to-rust-Q13, the user's answer 2026-11-06: 「편집기처럼
+/// 스테레오로 연다 — 모노 부분을 펼친다」, as an editor puts each piece in
+/// its project's channels). Each frame's header says its own channel mode
+/// (`11` is one channel), and the frames asked are the reader's own, read
+/// once more to the end — what only a sound that opens with one pays.
+fn mpa_turns_stereo(container: &Container) -> bool {
+    let Ok(mut reader) = MpaReader::try_new(source(container, past_id3(container), false), FormatOptions::default())
+    else {
+        return false;
+    };
+    while let Ok(Some(packet)) = reader.next_packet() {
+        if packet.data.get(3).is_some_and(|mode| mode >> 6 != 0b11) {
+            return true;
+        }
+    }
+    false
 }
