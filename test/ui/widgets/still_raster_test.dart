@@ -1070,6 +1070,95 @@ void main() {
         expect(region.debugDrawnFromImage, isFalse);
       });
     }
+
+    testWidgets('scrolled by whole device pixels keeps its image wherever '
+        'the sum that places it rounds', (tester) async {
+      // 🔬11-07, a conte row at 150% scrolled sideways 14 px a frame: its
+      // device x crossed 1024, the sum that placed it rounded on a coarser
+      // grid, and the same pixels read a phase of 7.6e-14 against the 0
+      // its image was taken on — the image dropped, the row drawn live.
+      tester.view.devicePixelRatio = 1.5;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 1200,
+              height: _height,
+              child: SingleChildScrollView(
+                controller: scroll,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: 3000,
+                  height: _height,
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: 1400 + 2 / 3,
+                        top: 0,
+                        width: _width,
+                        height: _height,
+                        child: StillRaster(debugLabel: 'test', child: _box()),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final region = _region(tester);
+      final moved = <String>[];
+      // Two logical pixels are three device pixels: every step lands on
+      // the pixels it left, the region's device x passing 1024 on the way.
+      for (var offset = 700.0; offset <= 760; offset += 2) {
+        scroll.jumpTo(offset);
+        await _untilImage(tester);
+        final taken = region.debugCaptureCount;
+        scroll.jumpTo(offset + 2);
+        await _frame(tester);
+        if (!region.debugDrawnFromImage || region.debugCaptureCount != taken) {
+          moved.add('$offset → ${offset + 2}');
+        }
+      }
+      expect(moved, isEmpty, reason: 'dropped its image scrolled');
+    });
+
+    testWidgets('on whole device pixels reads no phase where its sum lands '
+        'an ulp short of one', (tester) async {
+      // 1000⅔ + 400 rounds at 1400's grid, and back 400 it sums to
+      // 1500.9999999999998 device pixels at 150% — 1501 floored bare is a
+      // phase of a whole pixel less an ulp.
+      tester.view.devicePixelRatio = 1.5;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 1000 + 2 / 3 + 400,
+                top: 0,
+                width: _width,
+                height: _height,
+                child: Transform.translate(
+                  offset: const Offset(-400, 0),
+                  child: StillRaster(debugLabel: 'test', child: _box()),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await _untilImage(tester);
+      expect(_region(tester).debugDrawnFromImage, isTrue);
+      expect(_region(tester).debugGridShift, Offset.zero);
+    });
   });
 
   group('a region that keeps changing', () {
