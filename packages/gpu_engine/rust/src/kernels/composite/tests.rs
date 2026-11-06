@@ -27,15 +27,27 @@ struct Rig {
     composite: Composite,
 }
 
+impl Rig {
+    fn new() -> Self {
+        let engine = first_engine();
+        let composite = Composite::new(engine).expect("compile the composite");
+        Rig { engine, composite }
+    }
+}
+
 /// One device and one compiled pass for every test here, as the app opens
 /// one device (blend's tests have why).
 fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
-    RIG.get_or_init(|| {
-        let engine = first_engine();
-        let composite = Composite::new(engine).expect("compile the composite");
-        Rig { engine, composite }
-    })
+    RIG.get_or_init(Rig::new)
+}
+
+/// A composite of its own, on the one device, for the tests that wait for
+/// the passes it compiles apart: its thread then has only theirs to get
+/// through, where the shared rig's has every other test's plans.
+fn apart() -> &'static Rig {
+    static APART: OnceLock<Rig> = OnceLock::new();
+    APART.get_or_init(Rig::new)
 }
 
 // ---- Rows to composite ----
@@ -217,7 +229,11 @@ impl Scene {
 /// Composites `scene` within `budget`; returns the output's bytes and how
 /// many passes it took.
 fn composite(scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
-    let Rig { engine, composite } = rig();
+    composite_on(rig(), scene, budget)
+}
+
+fn composite_on(rig: &Rig, scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
+    let Rig { engine, composite } = rig;
     let pages = scene.pool.upload(engine);
     let done = composite
         .run(engine, &scene.plan(&pages), &scene.tiles, EVERYWHERE, budget)
@@ -226,7 +242,11 @@ fn composite(scene: &Scene, budget: Budget) -> (Vec<u8>, usize) {
 }
 
 fn widest(scene: &Scene) -> Vec<u8> {
-    composite(scene, rig().composite.widest()).0
+    widest_on(rig(), scene)
+}
+
+fn widest_on(rig: &Rig, scene: &Scene) -> Vec<u8> {
+    composite_on(rig, scene, rig.composite.widest()).0
 }
 
 /// At most `pages` pages and `tiles` output tiles a pass.
@@ -1317,7 +1337,17 @@ fn shown(
     texture: &wgpu::Texture,
     rect: [u32; 4],
 ) -> Vec<u8> {
-    let Rig { engine, composite } = rig();
+    shown_on(rig(), page, map, texture, rect)
+}
+
+fn shown_on(
+    rig: &Rig,
+    page: &wgpu::Buffer,
+    map: ResampleMap,
+    texture: &wgpu::Texture,
+    rect: [u32; 4],
+) -> Vec<u8> {
+    let Rig { engine, composite } = rig;
     let sets = [canvas_set()];
     let steps = [with_map(0, map, WHOLE, NORMAL)];
     let plan = Plan {
@@ -1537,17 +1567,17 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
     let (_, turned) = cameras()[1];
     for _ in 0..2 {
         let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
-        shown(&page, turned, &texture, whole_screen());
+        shown_on(apart(), &page, turned, &texture, whole_screen());
     }
-    rig().composite.settle();
+    apart().composite.settle();
     // A screen is one row: one level.
     let own = Compiled {
         surface: Some("rgba8unorm"),
         modes: ResampleModes::default().with(&turned.words()),
         levels: 1,
     };
-    let taken = rig().composite.pass(rig().engine, own);
-    let passes = rig().composite.passes.lock();
+    let taken = apart().composite.pass(apart().engine, own);
+    let passes = apart().composite.passes.lock();
     let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
     for compiled in [own, Compiled::full(own.surface)] {
         assert_eq!(passes.asked.iter().filter(|(asked, _)| *asked == compiled).count(), 1);
@@ -1566,21 +1596,21 @@ fn a_pass_compiled_for_a_plan_composites_as_the_full_one() {
     let screens = || -> Vec<u8> {
         let shown_by = |(_, map)| {
             let texture = surface(SCREEN_SIZE, wgpu::TextureFormat::Rgba8Unorm);
-            shown(&page, map, &texture, whole_screen())
+            shown_on(apart(), &page, map, &texture, whole_screen())
         };
         cameras().into_iter().flat_map(shown_by).collect()
     };
-    scenes.iter().for_each(|(_, scene)| drop(widest(scene)));
+    scenes.iter().for_each(|(_, scene)| drop(widest_on(apart(), scene)));
     drop(screens());
-    rig().composite.settle();
+    apart().composite.settle();
     for (name, scene) in &scenes {
-        assert_pinned(&format!("composite/{name}"), &widest(scene));
+        assert_pinned(&format!("composite/{name}"), &widest_on(apart(), scene));
     }
     assert_pinned("composite/screen", &screens());
     // The rows scene's maps are all copies and it opens no group: a pass
     // compiled for no mode, holding one level.
     let copies = Compiled { surface: None, modes: ResampleModes::default(), levels: 1 };
-    let passes = rig().composite.passes.lock();
+    let passes = apart().composite.passes.lock();
     let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
     assert!(passes.made(copies).is_some());
 }

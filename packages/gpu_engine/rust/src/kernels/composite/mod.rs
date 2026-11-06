@@ -370,16 +370,18 @@ impl Composite {
         for_full
     }
 
-    /// Compiles the passes asked for and not made, in the order asked, on a
-    /// thread of its own that ends once none is left. One thread, one pass
-    /// at a time: it takes one core from the frames, whatever a session
-    /// asks for at once — a tablet has few.
+    /// Compiles the passes asked for and not made, the latest asked first,
+    /// on a thread of its own that ends once none is left. One thread, one
+    /// pass at a time: it takes one core from the frames, whatever a session
+    /// asks for at once — a tablet has few. The latest first, as the plan on
+    /// screen now is the one likeliest to be asked again; which goes first
+    /// changes only when each is made, and no test sees it.
     fn compile_apart(&self, engine: &Engine) {
         let (engine, passes) = (engine.clone(), Arc::clone(&self.passes));
         let (pages, surface_binding) = (self.pages.source(), self.surface_binding());
         std::thread::spawn(move || loop {
             let mut held = passes.lock().unwrap_or_else(PoisonError::into_inner);
-            let next = held.asked.iter().find(|(_, made)| made.is_none());
+            let next = held.asked.iter().rev().find(|(_, made)| made.is_none());
             let Some(&(wanted, _)) = next else {
                 held.compiling = false;
                 return;
@@ -397,7 +399,8 @@ impl Composite {
     /// Waits for the thread compiling passes apart to end.
     #[cfg(test)]
     pub(crate) fn settle(&self) {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        // Only a thread that never ends should fail here, never a slow one.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
         let making = || self.passes.lock().unwrap_or_else(PoisonError::into_inner).compiling;
         while making() {
             assert!(std::time::Instant::now() < deadline, "a pass compiled apart never came");
@@ -450,6 +453,7 @@ impl Composite {
         let page_count = plan.pages.len();
         let batches = cut(laid, budget.pages, budget.levels)?;
         let written = plan_words(laid, &batches, plan.sets, plan.keys, tiles, page_count);
+        // One level at least: a walk starts on one.
         let levels = batches.iter().fold(1, |most, batch| most.max(batch.levels()));
         let pipeline = &self.pass(engine, Compiled { surface, modes: written.modes, levels });
         let steps = engine
@@ -628,6 +632,9 @@ fn compile(
     };
     let body = include_str!("composite.wgsl")
         .replace("//__OUTPUT__", &output)
+        // Time, not bytes: a walk never reaches past the levels its batches
+        // do, so no test sees this; GPU timestamps do (a 1080p composite of
+        // one copied row, 11-06: 132 µs of GPU holding 8 levels, 79 one).
         .replace("__DEPTH__", &compiled.levels.to_string());
     let sources = [
         ISQRT_WGSL,
@@ -823,6 +830,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
                 base,
                 depth_in: depth,
                 depth_out: depth,
+                // Its first step reaches this high at least.
                 high: depth,
                 pages: Vec::new(),
             };
