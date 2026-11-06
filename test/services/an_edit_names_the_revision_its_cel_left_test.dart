@@ -99,6 +99,9 @@ void main() {
     final store = BrushFrameStore();
     store.storeBakedSurface(a, inkAt(TileCoord(x: -2, y: 0)));
     store.markCelEdited(a);
+    store.markCelEdited(a);
+    expect(store.revisionsLastLeft, isNotEmpty,
+        reason: '⛔premise: the bump before the cut named one');
     final before = store.sourceRevisionOf(a);
     final named = namedBy(store);
     final taken = store.adoptPasteboardReach(PasteboardReach.quarter);

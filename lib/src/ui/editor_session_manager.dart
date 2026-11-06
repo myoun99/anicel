@@ -241,6 +241,15 @@ class EditorSessionManager extends ChangeNotifier
     historyManager = HistoryManager()
       ..scope = ConteStepScope(repository)
       ..places.placeNow = () => standingPlace;
+    // 🚨With the history, not at its first step: from the first change it
+    // lets go of the pictures only deep entries hold. Built lazily, it
+    // listened from the first undo, and a session nobody undid in kept a
+    // picture for every tile its history held — 🔬F-569 (S5_BA cut 352,
+    // Windows, profile): 456 of 456 after five fills.
+    historyPictures = HistoryPictures(
+      history: historyManager,
+      store: renderCaches.brushFrameStore,
+    );
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -774,10 +783,7 @@ class EditorSessionManager extends ChangeNotifier
   late final HistoryManager historyManager;
 
   /// Undo and redo whose first frame is whole — see [HistoryPictures].
-  late final HistoryPictures historyPictures = HistoryPictures(
-    history: historyManager,
-    store: renderCaches.brushFrameStore,
-  );
+  late final HistoryPictures historyPictures;
   @override
   late final CutCommandCoordinator cutCommandCoordinator;
 

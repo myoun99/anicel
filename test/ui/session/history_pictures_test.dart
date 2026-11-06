@@ -181,6 +181,33 @@ void main() {
 
     expect(session.historyManager.undoCount, before - 1);
   });
+
+  testWidgets('🗣️F-569: a session nobody undoes in lets go of the pictures '
+      'only its deep entries hold, from its first change', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final canvas = Object();
+    ShownCels.instance.show(canvas, (_key.layerId, _key.frameId));
+    addTearDown(() => ShownCels.instance.hide(canvas));
+    final held = [
+      for (final fill in [11, 12, 13]) _surfaceOf([fill]),
+    ];
+    for (final surface in held) {
+      _givePictures(BitmapTileImageCache.instance, surface);
+      session.historyManager.execute(_Holds(surface));
+    }
+    await tester.pump();
+
+    bool pictured(BitmapSurface surface) => surface.tiles.values.every(
+      (tile) => BitmapTileImageCache.instance.heldFor(tile) != null,
+    );
+    // ⛔Mutation: the pictures built at the first step → all three kept.
+    expect(pictured(held[0]), isFalse, reason: 'deep');
+    expect(pictured(held[1]), isFalse, reason: 'deep');
+    expect(pictured(held[2]), isTrue, reason: 'the next undo');
+  });
 }
 
 const _key = BrushFrameKey(
@@ -257,4 +284,34 @@ class _PutsBack implements Command, PictureRestoringCommand {
 
   @override
   void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) {}
+}
+
+/// A step that holds [surface]'s tiles on its undo side, as a stroke holds
+/// the tiles it replaced.
+class _Holds implements Command, PictureRestoringCommand {
+  _Holds(this.surface);
+
+  final BitmapSurface surface;
+
+  @override
+  String get description => 'holds';
+
+  @override
+  void execute() {}
+
+  @override
+  void undo() {}
+
+  @override
+  void readAhead(CelsAhead cels, {required bool undo}) {}
+
+  @override
+  void dropReadAhead() {}
+
+  @override
+  void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) {
+    if (!undone) {
+      surface.tiles.forEach(visit);
+    }
+  }
 }
