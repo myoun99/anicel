@@ -220,6 +220,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "compress"
+version = "0.0.1"
+dependencies = [
+ "oracle",
+]
+
+[[package]]
 name = "core_detect"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
