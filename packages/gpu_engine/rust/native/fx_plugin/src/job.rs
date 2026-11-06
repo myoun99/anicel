@@ -43,6 +43,8 @@ pub const OK: i32 = 0;
 pub const BAD_JOB: i32 = -1;
 /// The plugin answered non-zero.
 pub const FAILED: i32 = -2;
+/// A .wasm trapped, or a call into it failed.
+pub const TRAPPED: i32 = -3;
 /// No memory for the frame.
 pub const NO_ROOM: i32 = -4;
 

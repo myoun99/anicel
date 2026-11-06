@@ -48,13 +48,10 @@ impl Native {
         Ok(Self { describe, reach, render, block: Block::default(), _library: library })
     }
 
-    /// The description's length; up to `capacity` bytes of it in `out`.
-    ///
-    /// # Safety
-    /// `out` holds `capacity` bytes.
-    pub(crate) unsafe fn describe(&self, out: *mut c_char, capacity: u32) -> i32 {
-        // SAFETY: the caller's contract — the plugin writes no further.
-        unsafe { (self.describe)(out, capacity) as i32 }
+    /// The description's length; up to `out`'s length of it in `out`.
+    pub(crate) fn describe(&self, out: &mut [u8]) -> i32 {
+        // SAFETY: room the spec's describe writes no further than it is told.
+        unsafe { (self.describe)(out.as_mut_ptr().cast(), out.len() as u32) as i32 }
     }
 
     pub(crate) fn reach(&mut self, head: &Head) -> i32 {

@@ -30,10 +30,6 @@
 //!
 //! ⚠️A plugin is asked by one thread at a time; two plugins may be asked at
 //! once.
-//!
-//! ⏳WebAssembly: Wasmtime is not in this crate yet — it has to be
-//! downloaded, which is the person's to allow (native-to-rust-Q3) — so
-//! `qa_fx_plugin_open_wasm` answers as the C host built without it does.
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
@@ -43,17 +39,55 @@ const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 mod frame;
 mod job;
 mod native;
+mod wasm;
 
 #[cfg(test)]
 mod tests;
 
 use std::ffi::{CStr, c_char, c_void};
 
-pub use job::{BAD_JOB, FAILED, NO_ROOM, OK, Picture, RenderJob};
+pub use job::{BAD_JOB, FAILED, NO_ROOM, OK, Picture, RenderJob, TRAPPED};
 
 use crate::frame::Plan;
-use crate::job::Head;
+use crate::job::{Head, Job};
 use crate::native::Native;
+use crate::wasm::Wasm;
+
+/// An opened plugin of either kind — the one place the kind is asked.
+enum Plugin {
+    Native(Native),
+    Wasm(Wasm),
+}
+
+impl Plugin {
+    fn describe(&mut self, out: &mut [u8]) -> i32 {
+        match self {
+            Plugin::Native(native) => native.describe(out),
+            Plugin::Wasm(wasm) => wasm.describe(out),
+        }
+    }
+
+    fn reach(&mut self, head: &Head) -> i32 {
+        match self {
+            Plugin::Native(native) => native.reach(head),
+            Plugin::Wasm(wasm) => wasm.reach(head),
+        }
+    }
+
+    fn render(&mut self, job: &mut Job, plan: &Plan) -> i32 {
+        match self {
+            Plugin::Native(native) => native.render(job, plan),
+            Plugin::Wasm(wasm) => wasm.render(job, plan),
+        }
+    }
+
+    fn interprets(&self) -> bool {
+        match self {
+            Plugin::Native(_) => false,
+            Plugin::Wasm(wasm) => wasm.interprets(),
+        }
+    }
+}
 
 /// Writes `what` into the caller's `error` room as the C host's snprintf
 /// did: as much as fits before a NUL, and nothing where there is no room.
@@ -76,9 +110,24 @@ unsafe fn say(error: *mut c_char, capacity: i32, what: &str) {
 ///
 /// # Safety
 /// `handle` is null or came from an open and is not closed.
-unsafe fn plugin<'a>(handle: *mut c_void) -> Option<&'a mut Native> {
+unsafe fn plugin<'a>(handle: *mut c_void) -> Option<&'a mut Plugin> {
     // SAFETY: the caller's contract.
-    unsafe { handle.cast::<Native>().as_mut() }
+    unsafe { handle.cast::<Plugin>().as_mut() }
+}
+
+/// A handle to `opened`, or null with why in `error`.
+///
+/// # Safety
+/// `error` is null or holds `capacity` bytes.
+unsafe fn handle(opened: Result<Plugin, String>, error: *mut c_char, capacity: i32) -> *mut c_void {
+    match opened {
+        Ok(plugin) => Box::into_raw(Box::new(plugin)).cast(),
+        Err(why) => {
+            // SAFETY: the caller's contract.
+            unsafe { say(error, capacity, &why) };
+            std::ptr::null_mut()
+        }
+    }
 }
 
 /// Opens the native plugin at `path` (UTF-8); null, with why in `error`,
@@ -99,31 +148,33 @@ pub unsafe extern "C" fn qa_fx_plugin_open_native(
         // SAFETY: the caller's contract.
         Native::open(unsafe { CStr::from_ptr(path) })
     };
-    match opened {
-        Ok(plugin) => Box::into_raw(Box::new(plugin)).cast(),
-        Err(why) => {
-            // SAFETY: the caller's contract.
-            unsafe { say(error, error_capacity, why) };
-            std::ptr::null_mut()
-        }
-    }
+    let opened = opened.map(Plugin::Native).map_err(String::from);
+    // SAFETY: the caller's contract.
+    unsafe { handle(opened, error, error_capacity) }
 }
 
-/// Opens the WebAssembly plugin in `bytes` — which this build cannot yet
-/// (the crate's head): null, and why in `error`.
+/// Opens the WebAssembly plugin in `bytes`; null, with why in `error`,
+/// where there is none.
 ///
 /// # Safety
-/// `error` is null or holds `error_capacity` bytes.
+/// `bytes` is null or holds `length` bytes; `error` is null or holds
+/// `error_capacity` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_fx_plugin_open_wasm(
-    _bytes: *const u8,
-    _length: i64,
+    bytes: *const u8,
+    length: i64,
     error: *mut c_char,
     error_capacity: i32,
 ) -> *mut c_void {
+    let opened = if bytes.is_null() || length <= 0 {
+        Err("no module".into())
+    } else {
+        // SAFETY: the caller's contract.
+        let bytes = unsafe { std::slice::from_raw_parts(bytes, length as usize) };
+        Wasm::open(bytes, wasm::INTERPRETS)
+    };
     // SAFETY: the caller's contract.
-    unsafe { say(error, error_capacity, "this build has no WebAssembly engine") };
-    std::ptr::null_mut()
+    unsafe { handle(opened.map(Plugin::Wasm), error, error_capacity) }
 }
 
 /// The description's length in bytes; up to `capacity` of it in `out`.
@@ -139,10 +190,11 @@ pub unsafe extern "C" fn qa_fx_plugin_describe(
 ) -> i32 {
     // SAFETY: the caller's contract.
     match unsafe { plugin(handle) } {
-        // SAFETY: the caller's contract.
-        Some(plugin) if !out.is_null() && capacity > 0 => unsafe {
-            plugin.describe(out, capacity as u32)
-        },
+        Some(plugin) if !out.is_null() && capacity > 0 => {
+            // SAFETY: the caller's contract.
+            let out = unsafe { std::slice::from_raw_parts_mut(out.cast(), capacity as usize) };
+            plugin.describe(out)
+        }
         _ => BAD_JOB,
     }
 }
@@ -204,15 +256,19 @@ pub unsafe extern "C" fn qa_fx_plugin_render(handle: *mut c_void, job: *const Re
 pub unsafe extern "C" fn qa_fx_plugin_close(handle: *mut c_void) {
     if !handle.is_null() {
         // SAFETY: the caller's contract.
-        drop(unsafe { Box::from_raw(handle.cast::<Native>()) });
+        drop(unsafe { Box::from_raw(handle.cast::<Plugin>()) });
     }
 }
 
-/// 1 when `handle` is a module its engine interprets; 0 for compiled code
-/// and a native library — every plugin this build opens.
+/// 1 when `handle` is a module its engine interprets, as the engine itself
+/// says; 0 for compiled code and a native library.
+///
+/// # Safety
+/// `handle` is null or an open plugin.
 #[unsafe(no_mangle)]
-pub extern "C" fn qa_fx_plugin_interprets(_handle: *mut c_void) -> i32 {
-    0
+pub unsafe extern "C" fn qa_fx_plugin_interprets(handle: *mut c_void) -> i32 {
+    // SAFETY: the caller's contract.
+    unsafe { plugin(handle) }.is_some_and(|plugin| plugin.interprets()).into()
 }
 
 /// The job's size as this build lays it, for the Dart struct that mirrors

@@ -4,6 +4,8 @@
 //! (qa_fx_plugin_test.c) on the same sample plugin, the SDK's example, and
 //! what a host must refuse.
 
+mod wasm;
+
 use std::ffi::{CString, c_char, c_void};
 use std::path::PathBuf;
 
@@ -260,50 +262,55 @@ fn render(plugin: &Opened, amount: f64, with_map: bool) -> (i32, Vec<u8>) {
     (plugin.render(&job), out)
 }
 
-/// Every question of the C test, of the sample: the description, whole and
-/// in a room too small; the reach, which reads the values and every number
-/// of the frame; renders with the map placed elsewhere on the canvas,
-/// without it, below the plugin's threshold and again on the same room; a
-/// plugin's failure; and a job with nothing in it.
+/// Every question of the C test, of the sample or its twin, and the
+/// description it gave: the description, whole and in a room too small;
+/// the reach, which reads the values and every number of the frame; renders
+/// with the map placed elsewhere on the canvas, without it, below the
+/// plugin's threshold, again on the same room and with rows of no padding;
+/// a plugin's failure; and a job with nothing in it.
+fn ask(plugin: &Opened) -> String {
+    let who = plugin.host.name;
+    let mut room = [0 as c_char; 512];
+    let length = plugin.describe(&mut room);
+    let description = said(&room);
+    assert!(description.starts_with(r#"{"spec":1,"id":"app.anicel.test.invert""#), "{who}");
+    assert_eq!(length as usize, description.len(), "{who}");
+    let mut small = [b'x' as c_char; 9];
+    assert_eq!(plugin.describe(&mut small[..8]), length, "{who}: a room too small");
+    assert_eq!(said(&small[..8]).as_bytes(), &description.as_bytes()[..8], "{who}");
+    assert_eq!(small[8], b'x' as c_char, "{who}: nothing past the room");
+
+    let values = [80.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    assert_eq!(plugin.reach(&values, 3, 3.0, 1.0), 14, "{who}: 80 / 10 · 1 + 3 + 3");
+    assert_eq!(plugin.reach(&values, 5, 7.0, 0.5), 16, "{who}: 80 / 10 · 0.5 + 5 + 7");
+
+    for (amount, with_map) in [(80.0, true), (80.0, false), (30.0, true), (80.0, true)] {
+        let (answer, out) = render(plugin, amount, with_map);
+        assert_eq!(answer, OK, "{who}: amount {amount}, map {with_map}");
+        assert_eq!(out, expected(amount, with_map), "{who}: amount {amount}, map {with_map}");
+    }
+    let (input, map) = (input(), map());
+    let packed_input = packed(&input, IN_STRIDE);
+    let mut out = vec![0xEE; IN_H * IN_W * 4];
+    let layers = [map_layer(&map)];
+    let mut job = job(&packed_input, &mut out, &values, &layers);
+    (job.input.stride, job.output_stride) = (IN_W as i32 * 4, IN_W as i32 * 4);
+    assert_eq!(plugin.render(&job), OK, "{who}: rows with no padding");
+    assert_eq!(out, packed(&expected(80.0, true), OUT_STRIDE), "{who}: rows with no padding");
+
+    assert_eq!(render(plugin, -5.0, true).0, FAILED, "{who}: the plugin's failure");
+    assert_eq!(plugin.render(&empty()), BAD_JOB, "{who}: a job with nothing in it");
+    description
+}
+
+/// The sample asked every question of the C test, on each host.
 #[test]
 fn the_sample_answers_as_the_c_host_does_and_as_worked_out_here() {
     let descriptions = hosts().map(|host| {
         let plugin = Opened::new(host, "qa_fx_plugin_sample");
-        let who = host.name;
-        let mut room = [0 as c_char; 512];
-        let length = plugin.describe(&mut room);
-        let description = said(&room);
-        assert!(description.starts_with(r#"{"spec":1,"id":"app.anicel.test.invert""#), "{who}");
-        assert_eq!(length as usize, description.len(), "{who}");
-        let mut small = [b'x' as c_char; 9];
-        assert_eq!(plugin.describe(&mut small[..8]), length, "{who}: a room too small");
-        assert_eq!(said(&small[..8]).as_bytes(), &description.as_bytes()[..8], "{who}");
-        assert_eq!(small[8], b'x' as c_char, "{who}: nothing past the room");
-
-        let values = [80.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        assert_eq!(plugin.reach(&values, 3, 3.0, 1.0), 14, "{who}: 80 / 10 · 1 + 3 + 3");
-        assert_eq!(plugin.reach(&values, 5, 7.0, 0.5), 16, "{who}: 80 / 10 · 0.5 + 5 + 7");
-
-        for (amount, with_map) in [(80.0, true), (80.0, false), (30.0, true), (80.0, true)] {
-            let (answer, out) = render(&plugin, amount, with_map);
-            assert_eq!(answer, OK, "{who}: amount {amount}, map {with_map}");
-            assert_eq!(out, expected(amount, with_map), "{who}: amount {amount}, map {with_map}");
-        }
-        let (input, map) = (input(), map());
-        let packed_input = packed(&input, IN_STRIDE);
-        let mut out = vec![0xEE; IN_H * IN_W * 4];
-        let values = [80.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let layers = [map_layer(&map)];
-        let mut job = job(&packed_input, &mut out, &values, &layers);
-        (job.input.stride, job.output_stride) = (IN_W as i32 * 4, IN_W as i32 * 4);
-        assert_eq!(plugin.render(&job), OK, "{who}: rows with no padding");
-        assert_eq!(out, packed(&expected(80.0, true), OUT_STRIDE), "{who}: rows with no padding");
-
-        assert_eq!(render(&plugin, -5.0, true).0, FAILED, "{who}: the plugin's failure");
-        assert_eq!(plugin.render(&empty()), BAD_JOB, "{who}: a job with nothing in it");
         // SAFETY: an open plugin.
-        assert_eq!(unsafe { (host.interprets)(plugin.handle) }, 0, "{who}: compiled code");
-        description
+        assert_eq!(unsafe { (host.interprets)(plugin.handle) }, 0, "{}: compiled", host.name);
+        ask(&plugin)
     });
     assert_eq!(descriptions[0], descriptions[1]);
 }
