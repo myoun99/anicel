@@ -76,6 +76,53 @@ fn voice(frames: usize, seed: u32, noise: f32) -> Vec<f32> {
         .collect()
 }
 
+/// A number in [lo, hi) off `dice`.
+fn roll(dice: &mut Noise, lo: f64, hi: f64) -> f64 {
+    lo + (hi - lo) * (0.5 + 0.5 * f64::from(dice.next()))
+}
+
+/// Syllables whose pitch the octave check has to argue over, each its
+/// own: the fundamental and the odd harmonics turned down by chance, and
+/// a second voice in unison, a fifth or an octave above.
+fn octave_doubts(frames: usize, seed: u32) -> Vec<f32> {
+    use std::f64::consts::{PI, TAU};
+    let mut dice = Noise(seed);
+    let mut take = Vec::with_capacity(frames);
+    while take.len() < frames {
+        let f0 = roll(&mut dice, 70.0, 400.0);
+        let length = roll(&mut dice, 4_800.0, 14_400.0) as usize;
+        let above = [1.0, 1.5, 2.0][roll(&mut dice, 0.0, 3.0) as usize];
+        let fundamental = roll(&mut dice, 0.0, 1.0);
+        let odd = roll(&mut dice, 0.0, 1.0);
+        let hiss = roll(&mut dice, 0.0, 0.1) as f32;
+        let (mut low, mut high) = (0.0f64, 0.0f64);
+        for n in 0..length {
+            low += TAU * f0 / 48_000.0;
+            high += TAU * f0 * above / 48_000.0;
+            let envelope = (PI * n as f64 / length as f64).sin();
+            let voiced: f64 = (1..=10)
+                .map(|h| {
+                    let weight = match h {
+                        1 => fundamental,
+                        _ if h % 2 == 1 => odd,
+                        _ => 1.0,
+                    };
+                    let h = h as f64;
+                    weight * ((low * h).sin() + 0.5 * (high * h).sin()) / h
+                })
+                .sum();
+            take.push((0.2 * envelope * voiced) as f32 + hiss * dice.next());
+        }
+    }
+    take.truncate(frames);
+    take
+}
+
+#[test]
+fn a_pitch_in_doubt_comes_out_as_the_c_makes_it() {
+    holds(&octave_doubts(8 * 48_000, 29), 1);
+}
+
 #[test]
 fn a_noisy_voice_comes_out_as_the_c_makes_it() {
     // Three seconds and a ragged end: the last frame is padded.

@@ -82,15 +82,18 @@ pub unsafe extern "C" fn qa_audio_denoise_f32(
     channels: i32,
     sample_rate: i32,
 ) -> i32 {
-    if samples.is_null() || frames <= 0 || channels <= 0 || sample_rate != RATE {
-        return 0;
-    }
+    // What the take is and is not is `denoise`'s to say; this door only
+    // turns the pointer into a slice — never a null one, nor a negative
+    // or overflowing length.
     let (Ok(frames), Ok(channels)) = (usize::try_from(frames), usize::try_from(channels)) else {
         return 0;
     };
     let Some(len) = frames.checked_mul(channels) else {
         return 0;
     };
+    if samples.is_null() {
+        return 0;
+    }
     // SAFETY: the caller's contract.
     let samples = unsafe { std::slice::from_raw_parts_mut(samples, len) };
     i32::from(denoise(samples, channels, sample_rate))
