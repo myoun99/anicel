@@ -457,6 +457,18 @@ fn a_stereo_piece_of_a_mono_mp3_is_mixed_at_0_707_each() {
 }
 
 #[test]
+fn a_piece_lasts_its_time_at_the_stream_s_rate() {
+    use crate::bundled::frames_lasting;
+    use symphonia::core::units::TimeBase;
+    // An MP3's track counts frames; a movie's counts its own ticks — an AAC
+    // frame of 1,024 at 48 kHz is 1,920 of a 90 kHz track.
+    assert_eq!(frames_lasting(1152, TimeBase::try_new(1, 44_100), 44_100), 1152);
+    assert_eq!(frames_lasting(1920, TimeBase::try_new(1, 90_000), 48_000), 1024);
+    assert_eq!(frames_lasting(1, TimeBase::try_new(1001, 24_000), 48_000), 2002);
+    assert_eq!(frames_lasting(777, None, 48_000), 777);
+}
+
+#[test]
 fn a_piece_at_another_rate_is_passed_over_until_the_board_says() {
     // Four frames at 48 kHz (384 bytes at 128 kbit/s) in a 44.1 kHz sound:
     // a decoder of their own reads them, at their rate — and they are

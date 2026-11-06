@@ -109,18 +109,24 @@ impl Bundled {
     /// none: packet.rs:340), and a piece inside a sound is trimmed of
     /// nothing — so it is the frames a decode of it would have handed back.
     fn silence(&self, packet: &Packet, block: &mut Vec<f32>) -> usize {
-        let lasts = u128::from(packet.dur.get());
-        let frames = match self.time_base {
-            Some(base) => {
-                lasts * u128::from(base.numer.get()) * u128::from(self.rate) / u128::from(base.denom.get())
-            }
-            None => lasts,
-        };
-        let frames = usize::try_from(frames).unwrap_or(0);
+        let frames = frames_lasting(packet.dur.get(), self.time_base, self.rate);
         block.clear();
         block.resize(frames * self.channels, 0.0);
         frames
     }
+}
+
+/// The frames that `lasts` ticks of `base` — a track's time base, or the
+/// frames themselves where it has none — are at `rate`. A movie's track
+/// counts in its own ticks (an AAC frame of 1,024 at 48 kHz is 1,920 of a
+/// 90 kHz track); 0 where they cannot be held.
+pub(crate) fn frames_lasting(lasts: u64, base: Option<TimeBase>, rate: u32) -> usize {
+    let lasts = u128::from(lasts);
+    let frames = match base {
+        Some(base) => lasts * u128::from(base.numer.get()) * u128::from(rate) / u128::from(base.denom.get()),
+        None => lasts,
+    };
+    usize::try_from(frames).unwrap_or(0)
 }
 
 /// What became of a packet.
@@ -188,11 +194,12 @@ fn fit(block: &mut Vec<f32>, frames: usize, own: usize, channels: usize) -> bool
                 block[2 * frame + 1] = sample;
             }
         }
+        // What is left past the frames is never read (`Stream::pass` takes
+        // the frames the block is said to hold).
         (2, 1) => {
             for frame in 0..frames {
                 block[frame] = SHARE * block[2 * frame] + SHARE * block[2 * frame + 1];
             }
-            block.truncate(frames);
         }
         _ => return false,
     }
