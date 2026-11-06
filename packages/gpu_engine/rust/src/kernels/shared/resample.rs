@@ -40,7 +40,7 @@ const NARROW: f64 = 2_147_483_648.0;
 /// is inside, and keeps every sum the kernel forms within an i64.
 const WIDE: f64 = 2_305_843_009_213_693_952.0;
 /// Blend's radius ceiling, 16 px: a floor above it lands on it anyway.
-const CEILING: f64 = 16.0;
+pub(crate) const CEILING: f64 = 16.0;
 /// resample.wgsl's mode for a map that copies words, whichever was asked.
 const COPY: u32 = 2;
 /// Where a map's mode is among its words (resample.wgsl's `resample_map`).

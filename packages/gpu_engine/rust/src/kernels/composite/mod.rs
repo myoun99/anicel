@@ -56,7 +56,8 @@
 //! output's extent, a page a later run can lay as a row — or on a surface
 //! Flutter shows, premultiplied, inside a rectangle of it
 //! ([`Composite::show`]). The screen is the second with one row: the
-//! canvas's composite tiles posed by the camera. The canvas is composited
+//! canvas's composite tiles posed by the camera — under 1/16 a halving
+//! stage of them ([`halvings`]). The canvas is composited
 //! on its own grid first, so a magnified screen shows the canvas's pixels
 //! — the result's — and a pan or a zoom runs the screen alone
 //! (gpu-canonical-store ④⑤).
@@ -65,6 +66,7 @@
 // (gpu-canonical-store 14:49 — the app connects after the bridges land).
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub(crate) mod halvings;
 #[cfg(test)]
 pub(crate) mod tests;
 

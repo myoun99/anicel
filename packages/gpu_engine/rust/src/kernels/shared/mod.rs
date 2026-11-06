@@ -38,7 +38,9 @@ pub(crate) use dispatch::{
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};
 pub(crate) use pages::{NO_PAGE, Own, Pages, page_table, runs};
-pub(crate) use resample::{ResampleMap, ResampleMode, ResampleModes, q};
+pub(crate) use resample::{
+    CEILING as RESAMPLE_CEILING, ResampleMap, ResampleMode, ResampleModes, q,
+};
 
 /// `isqrt_round` — the blend family's soft light, the timeline's coverage.
 pub(crate) const ISQRT_WGSL: &str = include_str!("isqrt.wgsl");

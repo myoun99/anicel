@@ -1106,7 +1106,7 @@ fn a_clipped_multiply_reads_the_base_made_opaque() {
 
 /// `pixel` over `size` from canvas (0, 0), as R1's own harness takes a
 /// source: nothing past it, as nothing is past a tile set.
-fn picture_of(pixel: impl Fn(i32, i32) -> u32, (width, height): (u32, u32)) -> Picture {
+pub(crate) fn picture_of(pixel: impl Fn(i32, i32) -> u32, (width, height): (u32, u32)) -> Picture {
     let mut picture = Picture::filled(width, height, 0);
     for y in 0..height {
         for x in 0..width {
@@ -1674,7 +1674,7 @@ fn cameras() -> [(&'static str, ResampleMap); 5] {
 }
 
 /// A surface a test can fill first and read back.
-fn surface((width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
+pub(crate) fn surface((width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
     rig().engine.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("test surface"),
         size: wgpu::Extent3d {
