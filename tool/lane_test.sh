@@ -75,12 +75,12 @@
 # ↩️And the turn every cargo takes (tool/cargo_turn.sh) is copied into the
 # scratch trunk: since the gates took it (948f1c65d) every crate run here
 # was red for want of it, the script under test and the one before alike.
-# 🆕And pub the same (section V, 146 checks in all): a lane resolves
+# 🆕And pub the same (section V, 149 checks in all): a lane resolves
 # offline, its gates run with --no-pub, and a package its locks name that
 # this machine has not downloaded refuses the land — and the open, as no
 # refusal of the gates'. A `flutter` that writes down every call that could
-# download finds none in the whole run. ⚠️The script before THAT fails 9 of
-# the 12 there: it resolves online, and lands.
+# download finds none in the whole run. ⚠️The script before THAT fails 10 of
+# the 15 there: it resolves online, and lands.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
@@ -95,14 +95,19 @@ echo "$(basename "$PWD") flutter $*" >> "$LANE_TEST_LOG"
   "(Get-Process -Id $(cat /proc/$$/winpid)).PriorityClass" | tr -d '\r' >> "$LANE_TEST_LOG.priority"
 # A `pub get` not offline, and an analyze or a test that runs one itself,
 # could download: each is written down where no section clears it. When
-# LANE_TEST_FLUTTER says absent, a package is not in the cache, and an
-# offline `pub get` fails as pub does.
+# LANE_TEST_FLUTTER says absent, a package of the app is not in the cache,
+# and an offline `pub get` of the app fails as pub does; absent_package, of
+# a package the app does not depend on; absent_trunk, of that one in the
+# trunk alone.
 case " $* " in
   *" pub get "*) case " $* " in
-      *" --offline "*) [ "${LANE_TEST_FLUTTER:-ok}" = absent ] && {
-          echo "Because app depends on args any which doesn't exist (could not find package args in cache), version solving failed."
-          exit 69
-        } ;;
+      *" --offline "*)
+        where=app; case " $* " in *" --directory "*) where=package ;; esac
+        case "${LANE_TEST_FLUTTER:-ok}:$where:$(basename "$PWD")" in
+          absent:app:*|absent_package:package:*|absent_trunk:package:home)
+            echo "Because app depends on args any which doesn't exist (could not find package args in cache), version solving failed."
+            exit 69 ;;
+        esac ;;
       *) echo "could download: flutter $*" >> "$LANE_TEST_LOG.downloads" ;;
     esac ;;
   *" --no-pub "*) ;;
@@ -604,6 +609,12 @@ has "with the package here, it lands" "$O" "merged work/pubs"
 O=$(PUB_CACHE="$E/pub-cache" LANE_TEST_FLUTTER=absent out "$E/home" open pubs2)
 has "and a lane cut from that trunk is refused too, naming it" "$O" "Not here: args-2.5.0 "
 lacks "where opening a lane is no refusal of the gates'" "$O" "this is refusal"
+O=$(PUB_CACHE="$E/pub-cache" LANE_TEST_FLUTTER=absent_package out "$E/home" open pubs3)
+has "as it is when the miss is in a package the app does not depend on" "$O" "Not here: args-2.5.0 "
+quiet "$E/home" open pubt; commit "$HW/lane-pubt" t.txt "a lane the trunk resolves after"
+O=$(LANE_TEST_FLUTTER=absent_trunk out "$E/home" land pubt)
+has "a miss in the trunk after a land is the next open's: the land stands" "$O" "merged work/pubt"
+has "and says it landed" "$O" "[exit 0]"
 # The whole run: every open, receive, gate and land above.
 check "not one crate or package could be downloaded" \
   "$(cat "$LANE_TEST_LOG.downloads" 2>/dev/null | head -3 | tr '\n' ' ')" ""
