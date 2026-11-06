@@ -27,7 +27,7 @@ import 'conte_picture_ink.dart';
 /// Laid over the printed picture as the picture is printed: the camera's
 /// frame on the ground the picture renders on ([exportFrameGround]), the
 /// layers cropped at the canvas — and the camera's work written over it
-/// again, since it covers what the page wrote.
+/// again inside its shot, since there it covers what the page wrote.
 class ContePictureLive extends StatelessWidget {
   const ContePictureLive({
     super.key,
@@ -60,18 +60,6 @@ class ContePictureLive extends StatelessWidget {
         children: [
           for (final picture in pictures)
             Positioned.fill(child: _live(picture)),
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _CameraWork(
-                marks: [
-                  for (final picture in pictures) ...picture.cameraWork,
-                ],
-                viewport: viewport,
-                effectiveRatio: effectiveRatio,
-                paper: paper,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -137,6 +125,22 @@ class ContePictureLive extends StatelessWidget {
                 effectiveRatio,
               ),
               child: _composite(picture, onTheRaster),
+            ),
+          ),
+          // 🚨Written again only where the live one covers what the page
+          // wrote: inside its shot (conte-picture-print-and-live-part-at-
+          // edges). ↩️Over the whole page, a moving camera's frames were
+          // written twice wherever they ran past the shot's last whole
+          // pixel — 🔬30–58 levels darker along their lines with the brush
+          // on.
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _CameraWork(
+                marks: picture.cameraWork,
+                viewport: viewport,
+                effectiveRatio: effectiveRatio,
+                paper: paper,
+              ),
             ),
           ),
         ],
