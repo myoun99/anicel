@@ -1594,11 +1594,17 @@ void main() {
             ),
           )
           .position;
+      // From where the view stands, as the edge pan moves it
+      // (`edgeAutoPanOvershoot`): a growth builds a screen ahead of the view
+      // now (card a-live-dock-frame-costs-a-whole-draw-Q4), so the built end
+      // is no longer where the view stands.
       Future<void> materializeBy(double overshoot) async {
-        framePosition().jumpTo(framePosition().maxScrollExtent + overshoot);
+        framePosition().jumpTo(framePosition().pixels + overshoot);
         await tester.pumpAndSettle();
       }
 
+      framePosition().jumpTo(framePosition().maxScrollExtent);
+      await tester.pumpAndSettle();
       await materializeBy(200);
 
       expect(timelineCellInWindow(tester, 'layer-1', 24), isTrue);
