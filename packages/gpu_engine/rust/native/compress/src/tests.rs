@@ -259,14 +259,15 @@ fn literals_repeat_only_a_tree_already_read() {
     assert_eq!(same_answer(&repeated, data.len(), "the first literals repeating a tree"), 0);
 }
 
-// A match far behind and long, whose offset and length take more bits
-// together than are left after them: the stream reloads in the middle of
-// the sequence.
+// A match far behind and long, a few literals into a block, whose offset
+// and length take 32 bits together — more than are left after them, fewer
+// than a sequence with long literals too: the stream reloads in the middle
+// of the sequence.
 #[test]
 fn a_far_long_match_decodes_as_the_c_s() {
     let mut noise = Noise(77);
-    let mut echo: Vec<u8> = (0..200_000).map(|_| noise.next() as u8).collect();
-    echo.extend_from_within(..120_000);
+    let mut echo: Vec<u8> = (0..(256 << 10) + 5).map(|_| noise.next() as u8).collect();
+    echo.extend_from_within(50_000..50_000 + 65_536);
     for level in [1, 9, 19] {
         let frame = compressed(&echo, level);
         assert_eq!(same_answer(&frame, echo.len(), &format!("level {level}")), echo.len() as i64);
@@ -354,6 +355,34 @@ fn every_header_decodes_as_the_c_reads_it() {
         let checked = reheaded(&frame, 0x50, true, Some(&data));
         assert_eq!(same_answer(&checked, size, &format!("checksummed {size}")), size as i64);
     }
+}
+
+// A block that writes a little past a window smaller than itself — of a
+// power of two and of sizes between two — into buffers from exactly its
+// size up past the room its literals take behind it: how far a block may
+// write is its window or the buffer, by where the C keeps its literals.
+#[test]
+fn a_block_past_a_small_window_stops_where_the_c_s_does() {
+    let (mut accepted, mut refused) = (0, 0);
+    for window in [0x00u8, 0x07, 0x08, 0x0F, 0x10, 0x13, 0x17, 0x18] {
+        let log = u32::from(window >> 3) + 10;
+        let window_size = (1usize << log) + ((1usize << log) >> 3) * usize::from(window & 7);
+        for size in (window_size + 16..window_size + 100).step_by(3) {
+            let chosen = ["period-7", "text", "sparse", "mixed"];
+            for (kind, data) in kinds(size, size as u64).into_iter().filter(|(kind, _)| chosen.contains(kind)) {
+                let frame = reheaded(&compressed(&data, 9), window, true, None);
+                for capacity in (size..size + 96).step_by(2).chain([size + 5000]) {
+                    let what = format!("{kind} × {size}, window {window:#x}, room {capacity}");
+                    match same_answer(&frame, capacity, &what) {
+                        0 => refused += 1,
+                        _ => accepted += 1,
+                    }
+                }
+            }
+        }
+    }
+    // LIVENESS — the window let some blocks through and stopped others.
+    assert!(accepted > 0 && refused > 0, "{accepted} accepted, {refused} refused");
 }
 
 // The size Dart allocates by: the C's answer for every frame header, for
