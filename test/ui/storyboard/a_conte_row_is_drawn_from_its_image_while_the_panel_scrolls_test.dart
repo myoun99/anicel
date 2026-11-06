@@ -6,6 +6,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -25,7 +26,7 @@ import '../../helpers/storyboard_host.dart';
 /// 그림으로(타임라인과 같은 법)」): every row of the conte — its rail's labels
 /// and its strips, row for row — is a still region of its own (`stillRow`),
 /// as the timeline's rows are. A scroll moves the rows' images; a row whose
-/// content changes is drawn live in that frame, and it alone.
+/// content changes is drawn live in that frame.
 void main() {
   const tracks = 6;
 
@@ -56,6 +57,17 @@ void main() {
           name: 't$t $s',
           kind: LayerKind.se,
           frames: const [],
+          // A chain of two on S1: its headers are lanes a carry re-orders,
+          // each on a target of its own.
+          effects: [
+            if (s == 'S1')
+              for (final e in ['e1', 'e2'])
+                LayerEffect(
+                  id: EffectId(e),
+                  kind: EffectKind.brightnessContrast,
+                  parameters: {'brightness': EffectParameter(value: 0.4)},
+                ),
+          ],
         ),
     ],
   );
@@ -298,22 +310,30 @@ void main() {
         _ => false,
       },
     );
-    // Down the S rows' zone, as the carry test goes, until a line stands.
+    // Down the S rows' zone, as the carry test goes: every line that stands
+    // on the way, whichever row's target draws it — an S row's label, a
+    // lane's, a chain header's.
     final zone = tester.getRect(
       find.byKey(const ValueKey<String>('storyboard-section-zone-t0-se')),
     );
-    for (var at = zone.top;
-        at <= zone.bottom + 12 && caret.evaluate().isEmpty;
-        at += 4) {
+    final seen = <String>{};
+    for (var at = zone.top; at <= zone.bottom + 12; at += 4) {
       await gesture.moveTo(Offset(start.dx, at));
       await tester.pump();
+      for (final line in caret.evaluate()) {
+        final name = (line.widget.key! as ValueKey<String>).value;
+        seen.add(name);
+        expect(
+          find.ancestor(
+            of: find.byElementPredicate((each) => identical(each, line)),
+            matching: find.byType(StillRaster),
+          ),
+          findsNothing,
+          reason: '$name hangs across a row\'s boundary',
+        );
+      }
     }
-    expect(caret, findsWidgets, reason: '⛔premise: the caret is drawn');
-    expect(
-      find.ancestor(of: caret, matching: find.byType(StillRaster)),
-      findsNothing,
-      reason: 'the caret hangs across a row\'s boundary',
-    );
+    expect(seen, isNotEmpty, reason: '⛔premise: the carry draws its lines');
 
     for (final r in regionsOf(tester)) {
       final box = Offset.zero & r.region.size;
