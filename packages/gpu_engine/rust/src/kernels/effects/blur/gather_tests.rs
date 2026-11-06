@@ -457,27 +457,27 @@ fn a_picture_in_bands_is_blurred_as_it_is_whole() {
     }
 }
 
-/// A blur map is bound whole, as the tiles are: one past a binding refuses
-/// the blur that one inside it does not — the sums cut into bands to fit.
+/// A blur map is bound whole, as the tiles are: a map larger than its
+/// blur's tiles goes on a binding that holds it, the sums cut into bands to
+/// fit, and is refused on one a byte short of it.
 #[test]
 fn a_map_past_a_binding_is_refused() {
     let Rig { engine, blur } = rig();
     let picture_tiles = tiles(engine, ONE_TILE, pattern);
-    let room = picture_tiles.size() * 2;
-    let focus = Focus {
-        focal: 100.5,
-        inverts: false,
+    let map_tiles = tiles(engine, LEDGER_TILES, pattern);
+    let map = BlurMap {
+        tiles: &map_tiles,
+        channel: MapChannel::Alpha,
+        focus: Focus {
+            focal: 100.5,
+            inverts: false,
+        },
     };
-    for (rect, kept) in [(ONE_TILE, true), (LEDGER_TILES, false)] {
-        let map_tiles = tiles(engine, rect, pattern);
-        let map = BlurMap {
-            tiles: &map_tiles,
-            channel: MapChannel::Alpha,
-            focus,
-        };
+    let bytes = map_tiles.size();
+    for (room, kept) in [(bytes, true), (bytes - 1, false)] {
         let lens = (&lens(1.5), Some(map));
         let out = blur.run_in(engine, &picture_tiles, ONE_TILE, ONE_TILE.pixels(), lens, room);
-        assert_eq!(out.is_some(), kept, "a map over {rect:?}");
+        assert_eq!(out.is_some(), kept, "a binding of {room}");
     }
 }
 

@@ -76,6 +76,11 @@ fn line_tap(px: i32, py: i32) -> vec4<u32> {
 fn line_blur(@builtin(global_invocation_id) id: vec3<u32>) {
   let x = line_.left + i32(id.x);
   let y = line_.put_top + i32(id.y);
+  // Only the band's rows. Past them the band after puts its own, so no test
+  // of this machine tells `put_bottom` from the plate's bottom (mutant b19,
+  // 11-07) — but a pass between two others puts a plane only as tall as its
+  // rows, and a write past a buffer lands where the device likes: dropped
+  // on DX12, on its last word where Metal clamps the index.
   if (x >= line_.right || y >= line_.put_bottom) {
     return;
   }

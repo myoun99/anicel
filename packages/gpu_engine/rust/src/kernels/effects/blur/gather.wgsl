@@ -136,7 +136,10 @@ fn iris_gather(@builtin(global_invocation_id) id: vec3<u32>) {
   let x = gather.picture_left + i32(id.x);
   let y = gather.put_top + i32(id.y);
   // Only the paper is drawn — the picture, where none repeats: the tiles
-  // out hold nothing past it already —, of the band's rows.
+  // out hold nothing past it already —, of the band's rows. For the work
+  // alone, the rows: past them the band after puts its own, and the sums a
+  // row there would read are past the band's (mutant b26, 11-07 — no value
+  // tells the guard from its absence).
   let on_paper = x >= gather.paper_left && x < gather.paper_right
     && y >= gather.paper_top && y < gather.paper_bottom;
   if (!on_paper || y >= gather.put_bottom) {
