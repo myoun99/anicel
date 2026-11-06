@@ -77,9 +77,10 @@ pub(crate) const TILE_TEXELS: u64 = (TILE * TILE) as u64;
 /// A tile's bytes, straight RGBA8 — as the pool stores it and a pass puts
 /// it.
 pub(crate) const TILE_BYTES: u64 = TILE_TEXELS * 4;
-/// The most stack levels a pass holds in its registers — composite.wgsl's
-/// DEPTH. Folders and clips nest deeper by cutting passes where the walk
-/// leaves the levels a pass holds; the rest wait in the work buffer.
+/// The most stack levels a pass holds in its registers. Folders and clips
+/// nest deeper by cutting passes where the walk leaves the levels a pass
+/// holds; the rest wait in the work buffer. A pass is compiled to hold the
+/// levels its plan's passes reach (composite.wgsl's DEPTH), these at most.
 pub(crate) const DEPTH: usize = 8;
 const STEP_WORDS: usize = 13;
 const NO_TILE: u32 = u32::MAX;
@@ -222,14 +223,23 @@ struct Laid {
 }
 
 /// A run of steps one pass takes: the pages it binds, in binding order,
-/// the lowest stack level it holds, and the depth it starts at.
+/// the lowest stack level it holds, the depth it starts at, and the highest
+/// level it reaches.
 struct Batch {
     begin: usize,
     end: usize,
     base: usize,
     depth_in: usize,
     depth_out: usize,
+    high: usize,
     pages: Vec<u16>,
+}
+
+impl Batch {
+    /// The stack levels its pass holds, from its base to the highest.
+    fn levels(&self) -> usize {
+        self.high + 1 - self.base
+    }
 }
 
 /// The composite pass, compiled for as many pages as the device lets a pass
@@ -249,10 +259,10 @@ impl Composite {
             passes: Arc::default(),
             pages,
         };
-        // The tiles' pass for every mode is compiled here, where the engine
-        // starts, not under a canvas's first composite — as before modes
-        // came apart. Only when the compile is paid changes; no test sees it.
-        composite.pass(engine, Compiled { surface: None, modes: ResampleModes::ALL });
+        // The tiles' full pass is compiled here, where the engine starts, not
+        // under a canvas's first composite — as before passes came apart.
+        // Only when the compile is paid changes; no test sees it.
+        composite.pass(engine, Compiled::full(None));
         Some(composite)
     }
 
@@ -331,64 +341,64 @@ impl Composite {
         self.pages.end()
     }
 
-    /// The pass for `wanted`'s output that reads maps of `wanted`'s modes:
-    /// the one compiled for those modes once a thread has made it, and
-    /// until then the one compiled for every mode, which composites the
-    /// same bytes, slower. A compile takes seconds where a frame takes
-    /// milliseconds (1.7 s to 6 s cold on this PC, 11-06), so no plan waits
-    /// on one but an output's first, compiled for every mode where it is
-    /// first asked for — the tiles' in `new` — as before modes came apart.
+    /// The pass for `wanted`'s output that reads maps of `wanted`'s modes
+    /// and holds `wanted`'s levels: the one compiled for those once a thread
+    /// has made it, and until then the full one, for every mode and level,
+    /// which composites the same bytes, slower. A compile takes seconds
+    /// where a frame takes milliseconds (1.7 s to 6 s cold on this PC,
+    /// 11-06), so no plan waits on one but an output's first: the full one,
+    /// compiled where it is first asked for — the tiles' in `new` — as
+    /// before passes came apart.
     fn pass(&self, engine: &Engine, wanted: Compiled) -> wgpu::ComputePipeline {
-        let every = Compiled { modes: ResampleModes::ALL, ..wanted };
+        let full = Compiled::full(wanted.surface);
         let mut passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
-        let for_every = passes.made(every).unwrap_or_else(|| {
-            let pipeline = compile(engine, &self.pages.source(), &self.output(every), every.modes);
-            passes.0.push((every, Some(pipeline.clone())));
+        let for_full = passes.made(full).unwrap_or_else(|| {
+            let pipeline = compile(engine, &self.pages.source(), self.surface_binding(), full);
+            passes.asked.push((full, Some(pipeline.clone())));
             pipeline
         });
         if let Some(pipeline) = passes.made(wanted) {
             return pipeline;
         }
-        if !passes.asked(wanted) {
-            passes.0.push((wanted, None));
-            self.compile_apart(engine, wanted);
+        if !passes.was_asked(wanted) {
+            passes.asked.push((wanted, None));
+            if !passes.compiling {
+                passes.compiling = true;
+                self.compile_apart(engine);
+            }
         }
-        for_every
+        for_full
     }
 
-    /// `wanted`'s pass compiled on a thread of its own, kept once made.
-    fn compile_apart(&self, engine: &Engine, wanted: Compiled) {
+    /// Compiles the passes asked for and not made, in the order asked, on a
+    /// thread of its own that ends once none is left. One thread, one pass
+    /// at a time: it takes one core from the frames, whatever a session
+    /// asks for at once — a tablet has few.
+    fn compile_apart(&self, engine: &Engine) {
         let (engine, passes) = (engine.clone(), Arc::clone(&self.passes));
-        let (pages, output) = (self.pages.source(), self.output(wanted));
-        std::thread::spawn(move || {
-            let pipeline = compile(&engine, &pages, &output, wanted.modes);
-            let mut passes = passes.lock().unwrap_or_else(PoisonError::into_inner);
-            let asked = passes.0.iter_mut().find(|(asked, _)| *asked == wanted);
+        let (pages, surface_binding) = (self.pages.source(), self.surface_binding());
+        std::thread::spawn(move || loop {
+            let mut held = passes.lock().unwrap_or_else(PoisonError::into_inner);
+            let next = held.asked.iter().find(|(_, made)| made.is_none());
+            let Some(&(wanted, _)) = next else {
+                held.compiling = false;
+                return;
+            };
+            drop(held);
+            let pipeline = compile(&engine, &pages, surface_binding, wanted);
+            let mut held = passes.lock().unwrap_or_else(PoisonError::into_inner);
+            let asked = held.asked.iter_mut().find(|(asked, _)| *asked == wanted);
             if let Some((_, made)) = asked {
                 *made = Some(pipeline);
             }
         });
     }
 
-    /// What `compiled`'s pass puts its pixels by: to_tiles.wgsl's `put`, or
-    /// to_surface.wgsl's for its surface's format.
-    fn output(&self, compiled: Compiled) -> String {
-        match compiled.surface {
-            None => include_str!("to_tiles.wgsl").to_string(),
-            Some(token) => include_str!("to_surface.wgsl")
-                .replace("__BINDING__", &self.surface_binding().to_string())
-                .replace("__FORMAT__", token),
-        }
-    }
-
-    /// Waits for the passes threads are compiling.
+    /// Waits for the thread compiling passes apart to end.
     #[cfg(test)]
     pub(crate) fn settle(&self) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-        let making = || {
-            let passes = self.passes.lock().unwrap_or_else(PoisonError::into_inner);
-            passes.0.iter().any(|(_, made)| made.is_none())
-        };
+        let making = || self.passes.lock().unwrap_or_else(PoisonError::into_inner).compiling;
         while making() {
             assert!(std::time::Instant::now() < deadline, "a pass compiled apart never came");
             std::thread::sleep(std::time::Duration::from_millis(1));
@@ -440,7 +450,8 @@ impl Composite {
         let page_count = plan.pages.len();
         let batches = cut(laid, budget.pages, budget.levels)?;
         let written = plan_words(laid, &batches, plan.sets, plan.keys, tiles, page_count);
-        let pipeline = &self.pass(engine, Compiled { surface, modes: written.modes });
+        let levels = batches.iter().fold(1, |most, batch| most.max(batch.levels()));
+        let pipeline = &self.pass(engine, Compiled { surface, modes: written.modes, levels });
         let steps = engine
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -561,39 +572,63 @@ impl Composite {
 }
 
 /// What a composite pass is compiled for: where it puts its pixels — the
-/// output tiles, or a surface of the format `surface` names — and the R1
-/// modes its plan's maps hold, the rest compiled out (resample.wgsl).
+/// output tiles, or a surface of the format `surface` names —, the R1
+/// modes its plan's maps hold, the rest compiled out (resample.wgsl), and
+/// the stack levels its plan's passes reach.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Compiled {
     surface: Option<&'static str>,
     modes: ResampleModes,
+    levels: usize,
 }
 
-/// Every composite pass asked for, and its pipeline once made — none while
-/// a thread compiles it.
+impl Compiled {
+    /// The pass for `surface`'s output that takes any plan: every mode,
+    /// every level.
+    fn full(surface: Option<&'static str>) -> Self {
+        Self { surface, modes: ResampleModes::ALL, levels: DEPTH }
+    }
+}
+
+/// Every composite pass asked for, with its pipeline once made — none until
+/// the thread compiling passes apart gets to it — and whether that thread
+/// runs.
 #[derive(Default)]
-struct Passes(Vec<(Compiled, Option<wgpu::ComputePipeline>)>);
+struct Passes {
+    asked: Vec<(Compiled, Option<wgpu::ComputePipeline>)>,
+    compiling: bool,
+}
 
 impl Passes {
-    fn asked(&self, compiled: Compiled) -> bool {
-        self.0.iter().any(|(asked, _)| *asked == compiled)
+    fn was_asked(&self, compiled: Compiled) -> bool {
+        self.asked.iter().any(|(asked, _)| *asked == compiled)
     }
 
     fn made(&self, compiled: Compiled) -> Option<wgpu::ComputePipeline> {
-        let asked = self.0.iter().find(|(asked, _)| *asked == compiled);
+        let asked = self.asked.iter().find(|(asked, _)| *asked == compiled);
         asked.and_then(|(_, made)| made.clone())
     }
 }
 
-/// The composite pass binding the pages `pages` declares, putting each
-/// pixel by `output`'s `put` and reading maps of `modes` alone.
+/// The composite pass binding the pages `pages` declares, reading maps of
+/// `compiled`'s modes alone, holding its levels and putting each pixel by
+/// its output's `put`: to_tiles.wgsl's, or to_surface.wgsl's for its
+/// surface's format, the surface bound at `surface_binding`.
 fn compile(
     engine: &Engine,
     pages: &str,
-    output: &str,
-    modes: ResampleModes,
+    surface_binding: u32,
+    compiled: Compiled,
 ) -> wgpu::ComputePipeline {
-    let body = include_str!("composite.wgsl").replace("//__OUTPUT__", output);
+    let output = match compiled.surface {
+        None => include_str!("to_tiles.wgsl").to_string(),
+        Some(token) => include_str!("to_surface.wgsl")
+            .replace("__BINDING__", &surface_binding.to_string())
+            .replace("__FORMAT__", token),
+    };
+    let body = include_str!("composite.wgsl")
+        .replace("//__OUTPUT__", &output)
+        .replace("__DEPTH__", &compiled.levels.to_string());
     let sources = [
         ISQRT_WGSL,
         BLEND_WGSL,
@@ -606,7 +641,7 @@ fn compile(
         pages,
         &body,
     ];
-    pipeline_with(engine, &sources, "composite", &modes.constants())
+    pipeline_with(engine, &sources, "composite", &compiled.modes.constants())
 }
 
 /// Fails where a row is masked and the plan has no mask, or where the mask's
@@ -751,6 +786,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         base: 0,
         depth_in: 0,
         depth_out: 0,
+        high: 0,
         pages: Vec::new(),
     };
     let mut depth = 0usize;
@@ -787,10 +823,12 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
                 base,
                 depth_in: depth,
                 depth_out: depth,
+                high: depth,
                 pages: Vec::new(),
             };
             batches.push(std::mem::replace(&mut batch, next));
         }
+        batch.high = batch.high.max(high);
         for &page in &each.pages {
             if !batch.pages.contains(&page) {
                 batch.pages.push(page);

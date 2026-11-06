@@ -1526,11 +1526,11 @@ fn a_surface_is_shown_only_inside_it_and_in_its_formats() {
     assert!(!show(&wide, [0, 0, width, height]));
 }
 
-// A pass is compiled the first time a plan needs its output and modes, and
-// kept: a screen shows every frame, and a compile is far dearer than a
-// frame. Shown again while its own is compiling, a screen takes the pass
-// for every mode — one, too — and starts no second compile; once its own
-// is made, that is the one it takes.
+// A pass is compiled the first time a plan needs its output, modes and
+// levels, and kept: a screen shows every frame, and a compile is far
+// dearer than a frame. Shown again while its own is compiling, a screen
+// takes the full pass — one, too — and starts no second compile; once its
+// own is made, that is the one it takes.
 #[test]
 fn a_pass_is_compiled_once_for_its_output_and_modes() {
     let (page, _) = composited_canvas();
@@ -1540,24 +1540,27 @@ fn a_pass_is_compiled_once_for_its_output_and_modes() {
         shown(&page, turned, &texture, whole_screen());
     }
     rig().composite.settle();
+    // A screen is one row: one level.
     let own = Compiled {
         surface: Some("rgba8unorm"),
         modes: ResampleModes::default().with(&turned.words()),
+        levels: 1,
     };
     let taken = rig().composite.pass(rig().engine, own);
     let passes = rig().composite.passes.lock();
     let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
-    for compiled in [own, Compiled { modes: ResampleModes::ALL, ..own }] {
-        assert_eq!(passes.0.iter().filter(|(asked, _)| *asked == compiled).count(), 1);
+    for compiled in [own, Compiled::full(own.surface)] {
+        assert_eq!(passes.asked.iter().filter(|(asked, _)| *asked == compiled).count(), 1);
     }
     assert_eq!(passes.made(own), Some(taken));
 }
 
-// A plan's pass compiled for its own R1 modes, on a thread, composites what
-// the one compiled for every mode does, which serves until it is made: once
-// made, every pinned scene and screen comes out the same from it.
+// A plan's pass compiled for its own R1 modes and stack levels, on a
+// thread, composites what the full one does, which serves until it is
+// made: once made, every pinned scene and screen comes out the same from
+// it.
 #[test]
-fn a_pass_compiled_for_a_plan_s_modes_composites_as_the_one_for_every_mode() {
+fn a_pass_compiled_for_a_plan_composites_as_the_full_one() {
     let scenes = scenes();
     let (page, _) = composited_canvas();
     let screens = || -> Vec<u8> {
@@ -1574,8 +1577,9 @@ fn a_pass_compiled_for_a_plan_s_modes_composites_as_the_one_for_every_mode() {
         assert_pinned(&format!("composite/{name}"), &widest(scene));
     }
     assert_pinned("composite/screen", &screens());
-    // The rows scene's maps are all copies: a pass compiled for no mode.
-    let copies = Compiled { surface: None, modes: ResampleModes::default() };
+    // The rows scene's maps are all copies and it opens no group: a pass
+    // compiled for no mode, holding one level.
+    let copies = Compiled { surface: None, modes: ResampleModes::default(), levels: 1 };
     let passes = rig().composite.passes.lock();
     let passes = passes.unwrap_or_else(std::sync::PoisonError::into_inner);
     assert!(passes.made(copies).is_some());

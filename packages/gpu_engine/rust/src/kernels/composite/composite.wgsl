@@ -20,7 +20,10 @@
 // `mask_word`.
 
 const NO_TILE: u32 = 0xffffffffu;
-const DEPTH: u32 = 8u;
+// The stack levels a pass holds: as many as its plan's passes reach
+// (mod.rs `Compiled`), as a pass pays for the levels compiled into it
+// whether it reaches them or not.
+const DEPTH: u32 = __DEPTH__u;
 const STEP_WORDS: u32 = 13u;
 
 const STEP_ROW: u32 = 0u;
