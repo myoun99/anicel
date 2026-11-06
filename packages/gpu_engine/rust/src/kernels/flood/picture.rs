@@ -87,7 +87,7 @@ impl Shown {
     }
 
     /// A fill `finished` on the picture, laid on the canvas — what its
-    /// colour is stamped through (`Flood::stamp`).
+    /// colour is stamped through (`dab::stamp`).
     pub(crate) fn on_canvas<'a>(&self, finished: &'a Finished) -> Mask<'a> {
         let crop = finished.crop;
         let side = TILE as i32;

@@ -7,7 +7,8 @@
 //! tiles lie on.
 //!
 //! The erase a move or a cut does after it is not here: that is a stamp
-//! dab (`selectionEraseDab`, 「⛔ONE ERASE」) on the brush's stamp path.
+//! dab (`selectionEraseDab`, 「⛔ONE ERASE」) on the stamp path — `dab::stamp`
+//! of the mask, whole where the gather was, laid by the eraser.
 
 #[cfg(test)]
 #[path = "lift_tests.rs"]

@@ -7,7 +7,7 @@
 //! pass; R1 is shared's.
 //!
 //! The window is a new stamp: laying it on a cel is the stamp's path
-//! (kernels/dab), not here.
+//! (`dab::stamp`'s picture), not here.
 
 // ⏳Nothing outside the tests runs it until the app's bridge round
 // (gpu-canonical-store ⑧).
@@ -27,11 +27,27 @@ use crate::kernels::shared::{
 /// warp.wgsl's workgroup side.
 const GROUP: u32 = 8;
 
-/// A picture a warp reads: straight RGBA8 words row after row, `size`
-/// across and down.
+/// A picture a warp reads, and a stamp lays: straight RGBA8 words row
+/// after row, `size` across and down.
 pub(crate) struct Boxed<'a> {
     pub(crate) pixels: &'a wgpu::Buffer,
     pub(crate) size: (u32, u32),
+}
+
+impl Boxed<'_> {
+    /// The bytes its box holds.
+    pub(crate) fn bytes(&self) -> u64 {
+        u64::from(self.size.0) * u64::from(self.size.1) * 4
+    }
+
+    /// Fails where its buffer holds less than its box.
+    pub(crate) fn checked(&self) -> Option<()> {
+        if self.pixels.size() < self.bytes() {
+            let (width, height) = self.size;
+            return fail(format!("{} bytes hold no {width}x{height} box", self.pixels.size()));
+        }
+        Some(())
+    }
 }
 
 /// The pixels a warp puts: `size` across and down from `at` in the output
@@ -100,11 +116,8 @@ impl Warp {
         owners: Option<&wgpu::Buffer>,
         Window { at: (left, top), size: (columns, rows) }: Window,
     ) -> Option<wgpu::Buffer> {
+        picture.checked()?;
         let (width, height) = picture.size;
-        let held = u64::from(width) * u64::from(height) * 4;
-        if picture.pixels.size() < held {
-            return fail(format!("{} bytes hold no {width}x{height} box", picture.pixels.size()));
-        }
         if columns == 0 || rows == 0 {
             return fail(format!("a window of {columns}x{rows}"));
         }
@@ -123,6 +136,7 @@ impl Warp {
             })
             .collect();
         let groups = (columns.div_ceil(GROUP), rows.div_ceil(GROUP));
+        let held = picture.bytes();
         fits(engine, &[bytes, table.len() as u64 * 4, held], [groups].into_iter())?;
         let warped = plane(engine, "warped", bytes);
         let owned = u32::from(owners.is_some());

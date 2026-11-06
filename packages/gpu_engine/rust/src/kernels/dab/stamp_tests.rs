@@ -1,13 +1,16 @@
-//! A fill's colour stamp on a real GPU, checked against what the app's
-//! stamp holds by hand — never against a CPU copy of it (`kernels/mod.rs`
-//! has why). How the executor lays it is composite's tests'.
+//! The stamp path on a real GPU, checked against what the app's stamp
+//! holds by hand — never against a CPU copy of it (`kernels/mod.rs` has
+//! why). How the executor lays it is composite's tests'.
 
-use super::super::tests::{Rig, rig};
-use super::{Gradient, Paint, Shape, Stamped};
+use std::sync::OnceLock;
+
+use super::{Gradient, Paint, Shape, Source, Stamped, Stamps};
 use crate::kernels::composite::{TILE, TileAt};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
-use crate::testing::read_buffer;
+use crate::kernels::shared::words_buffer;
+use crate::kernels::warp::Boxed;
+use crate::testing::{first_engine, read_buffer};
 
 const ORANGE: [u8; 3] = [200, 100, 50];
 /// ORANGE as a stamp's word at alpha 0: R in the low byte.
@@ -15,9 +18,16 @@ const ORANGE_WORD: u32 = 0x0032_64c8;
 const BLACK: [u8; 4] = [0, 0, 0, 255];
 const RED: [u8; 4] = [255, 0, 0, 255];
 
+/// One compile for every test that stamps — the executor's, the fill's
+/// picture's and these (blend's tests have why).
+pub(crate) fn stamps() -> &'static Stamps {
+    static STAMPS: OnceLock<Stamps> = OnceLock::new();
+    STAMPS.get_or_init(|| Stamps::new(first_engine()))
+}
+
 /// Each of `stamped`'s pages read back, as words.
 fn pages(stamped: &Stamped) -> Vec<Vec<u32>> {
-    let engine = rig().engine;
+    let engine = first_engine();
     stamped
         .pages
         .iter()
@@ -30,16 +40,26 @@ fn pages(stamped: &Stamped) -> Vec<Vec<u32>> {
         .collect()
 }
 
+/// `source` stamped from `first_page` on, `per_page` tiles a page.
+fn stamped(source: &Source, first_page: u16, per_page: usize) -> Option<Stamped> {
+    stamps().stamp_by(first_engine(), source, first_page, per_page)
+}
+
+/// `mask` stamped in orange, its byte for an alpha.
 fn stamp(mask: &Mask, first_page: u16, per_page: usize) -> Stamped {
-    let Rig { engine, flood, .. } = rig();
-    let paint = Paint::Colour(ORANGE);
-    flood.stamp_by(engine, mask, &paint, first_page, per_page).expect("stamp")
+    let source = Source::Mask { mask, paint: &Paint::Colour(ORANGE), whole: false };
+    stamped(&source, first_page, per_page).expect("stamp")
 }
 
 /// `mask` stamped under `gradient`, or none where it is refused.
 fn graded(mask: &Mask, gradient: &Gradient) -> Option<Stamped> {
-    let Rig { engine, flood, .. } = rig();
-    flood.stamp(engine, mask, &Paint::Gradient(gradient), 0)
+    let source = Source::Mask { mask, paint: &Paint::Gradient(gradient), whole: false };
+    stamps().stamp(first_engine(), &source, 0)
+}
+
+/// `words` as a picture's buffer.
+fn picture(words: &[u32]) -> wgpu::Buffer {
+    words_buffer(first_engine(), "picture", words, wgpu::BufferUsages::STORAGE)
 }
 
 /// A gradient of `shape` from `from` to `to`, `start` to `end`.
@@ -159,13 +179,87 @@ fn an_empty_mask_stamps_no_tile() {
 // A plane that holds less than its box is refused, not read past.
 #[test]
 fn a_mask_short_of_its_box_is_refused() {
-    let Rig { engine, flood, .. } = rig();
     let short = masked((0, 0), (4, 1), |_, _| 255);
     let mask = Mask {
         size: MaskBox { width: 4, height: 2 },
         ..short.mask()
     };
-    assert!(flood.stamp(engine, &mask, &Paint::Colour(ORANGE), 0).is_none());
+    let source = Source::Mask { mask: &mask, paint: &Paint::Colour(ORANGE), whole: false };
+    assert!(stamps().stamp(first_engine(), &source, 0).is_none());
+}
+
+// ---- A selection's erase (`selectionEraseDab`) ----
+
+// Where it covers whole — no feather was asked for — a pixel the mask
+// covers at all is the colour at 255, as the lift's gather takes it whole;
+// one it covers none is still nothing. Not whole, the byte is the alpha.
+#[test]
+fn a_whole_stamp_covers_every_pixel_its_mask_touches_wholly() {
+    let bytes = [0, 1, 128, 254, 255];
+    let mask = masked((10, 20), (5, 1), |x, _| bytes[(x - 10) as usize]);
+    let mask = mask.mask();
+    for (whole, alphas) in [(true, [0, 255, 255, 255, 255]), (false, bytes)] {
+        let source = Source::Mask { mask: &mask, paint: &Paint::Colour(ORANGE), whole };
+        let stamped = stamped(&source, 0, usize::MAX).expect("stamp");
+        let read = pages(&stamped);
+        let words: Vec<u32> = (10..15).map(|x| word(&stamped, &read, 0, (x, 20))).collect();
+        let want = alphas.map(|a| if a == 0 { 0 } else { ORANGE_WORD | u32::from(a) << 24 });
+        assert_eq!(words, want, "whole {whole}");
+    }
+}
+
+// ---- A picture: a lift's, or a warp's window ----
+
+// A picture's words lie where its box does, each as it is — a clear word
+// keeping its colour too, as the app's stamp holds it — and nothing past
+// the box: 3 × 2 at (126, -1) meets the four tiles about the canvas's
+// first tile edge across and its top.
+#[test]
+fn a_picture_s_words_lie_where_its_box_does() {
+    let words = [0xff00_00ff, 0x8000_ff00, 0x00ff_ffff, 0, 0xffff_0000, 0x0102_0304];
+    let pixels = picture(&words);
+    let boxed = Boxed { pixels: &pixels, size: (3, 2) };
+    let source = Source::Picture { picture: &boxed, at: (126, -1) };
+    let stamped = stamped(&source, 2, usize::MAX).expect("stamp");
+    let set = &stamped.set;
+    assert_eq!((set.x0, set.y0, set.columns, set.rows), (0, -1, 2, 2));
+    let read = pages(&stamped);
+    for y in -2..2 {
+        for x in 124..130 {
+            let inside = (126..129).contains(&x) && (-1..1).contains(&y);
+            let want = if inside { words[((y + 1) * 3 + x - 126) as usize] } else { 0 };
+            assert_eq!(word(&stamped, &read, 2, (x, y)), want, "({x}, {y})");
+        }
+    }
+    let put = read.concat().iter().filter(|&&word| word != 0).count();
+    assert_eq!(put, 5, "a word past the box");
+}
+
+// A picture goes on to the next page as a mask does: the same words over
+// two pages as over one.
+#[test]
+fn a_picture_past_a_page_goes_on_the_next() {
+    let words: Vec<u32> = (1..=60).collect();
+    let pixels = picture(&words);
+    let boxed = Boxed { pixels: &pixels, size: (6, 10) };
+    let source = Source::Picture { picture: &boxed, at: (-3, 120) };
+    let whole = stamped(&source, 5, usize::MAX).expect("stamp");
+    let paged = stamped(&source, 5, 2).expect("stamp");
+    let at = |page, slot| Some(TileAt { page, slot });
+    assert_eq!(paged.set.tiles, [at(5, 0), at(5, 1), at(6, 0), at(6, 1)]);
+    let (read_whole, read_paged) = (pages(&whole), pages(&paged));
+    assert_eq!(read_paged.len(), 2);
+    assert!(read_paged.concat() == read_whole.concat());
+}
+
+// A picture whose buffer holds less than its box is refused, not read
+// past.
+#[test]
+fn a_picture_short_of_its_box_is_refused() {
+    let pixels = picture(&[0xffff_ffff; 5]);
+    let boxed = Boxed { pixels: &pixels, size: (3, 2) };
+    let source = Source::Picture { picture: &boxed, at: (0, 0) };
+    assert!(stamps().stamp(first_engine(), &source, 0).is_none());
 }
 
 // ---- Under a gradient (I-160) ----

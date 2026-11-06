@@ -12,7 +12,9 @@
 //! the ceiling, the paper, the share and the level a dab settles at, over
 //! and erase; and a second tip, whose dabs pile on a plane of their own,
 //! alpha alone, the stroke's bytes then the view of the two planes. The
-//! blur brush's dab (`blur`) reads its coverage off the same records.
+//! blur brush's dab (`blur`) reads its coverage off the same records. A
+//! stamp dab — pixels laid 1:1, a fill's, an erase's, a moved or warped
+//! selection's (`stamp`) — piles nothing: it is a stroke row of its own.
 //!
 //! A texture — a tip's or the paper's — goes to the GPU once and stays on
 //! the plan while piles read it: a pile sends only its own words. (Sent
@@ -31,6 +33,7 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
 pub(crate) mod blur;
+pub(crate) mod stamp;
 #[cfg(test)]
 mod tests;
 

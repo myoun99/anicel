@@ -17,7 +17,7 @@ pub(super) struct Rig {
     pub(super) masks: MaskPasses,
 }
 
-/// One device and one compile for every test here, the stamp's and the
+/// One device and one compile for every test here, the flood's and the
 /// picture's (blend's tests have why).
 pub(super) fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();

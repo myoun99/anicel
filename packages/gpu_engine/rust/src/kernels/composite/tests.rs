@@ -10,15 +10,18 @@ use super::{
     TileAt, TileSet, check_depth, cut,
 };
 use crate::device::Engine;
-use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN};
+use crate::kernels::blend::mode::{
+    DIFFERENCE, ERASE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN,
+};
+use crate::kernels::dab::stamp::tests::stamps;
+use crate::kernels::dab::stamp::{Paint, Source, Stamped};
 use crate::kernels::effects::matrix_tests::{Matrix, each, graded};
 use crate::kernels::effects::{KeyRun, MATRIX_WORDS, matrix_words};
-use crate::kernels::flood::Flood;
-use crate::kernels::flood::stamp::{Paint, Stamped};
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
-use crate::kernels::shared::{ResampleMap, ResampleMode, ResampleModes};
+use crate::kernels::shared::{ResampleMap, ResampleMode, ResampleModes, words_buffer};
+use crate::kernels::warp::Boxed;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
 const WHOLE: u32 = 65535;
@@ -2069,7 +2072,33 @@ fn a_masked_row_is_laid_under_the_mask_s_byte() {
     assert_eq!([at(2, 2), at(0, 0), at(6, 5), at(5, 6), at(100, 3)], [blue; 5]);
 }
 
-// A fill's colour stamp (kernels/flood) laid whole lands as its colour laid
+/// `source`'s stamp laid by itself, whole, in `mode` on opaque blue over
+/// tiles (0, 0) and (1, 0): the output, and its tiles.
+fn stamped_on_blue(source: &Source, mode: u32) -> (Vec<u8>, [(i32, i32); 2]) {
+    let Rig { engine, composite } = rig();
+    let mut pool = Pool::default();
+    let blue_set = pool.drawn(|_, _| BLUE, (0, 0), (2, 1), |_, _| Some(0));
+    let mut pages = pool.upload(engine);
+    let stamped = stamps().stamp(engine, source, pages.len() as u16);
+    let Stamped { pages: stamp_pages, set } = stamped.expect("stamp");
+    pages.extend(stamp_pages);
+    let sets = [blue_set, set];
+    let steps = [row(0, (0, 0), WHOLE, NORMAL), row(1, (0, 0), WHOLE, mode)];
+    let plan = Plan {
+        pages: &pages,
+        sets: &sets,
+        keys: &[],
+        matrices: &[],
+        steps: &steps,
+        mask: None,
+    };
+    let tiles = [(0, 0), (1, 0)];
+    let budget = composite.widest();
+    let done = composite.run(engine, &plan, &tiles, EVERYWHERE, budget).expect("composite");
+    (read_buffer(engine, &done.out), tiles)
+}
+
+// A fill's colour stamp (dab::stamp) laid whole lands as its colour laid
 // under its mask: the stamp's alpha is the mask's byte, and R10's
 // mul(a·257, opacity) is blend_cover's one multiply — red's stamp of the
 // mask above on opaque blue is the masked red's bytes, 115 and all.
@@ -2080,33 +2109,55 @@ fn a_fill_s_stamp_lands_as_its_colour_under_its_mask() {
         (2, 2) => 0,
         _ => 255,
     });
-    let Rig { engine, composite } = rig();
     let [r, g, b, _] = bytes_of(RED);
-    let mut pool = Pool::default();
-    let blue_set = pool.drawn(|_, _| BLUE, (0, 0), (1, 1), |_, _| Some(0));
-    let mut pages = pool.upload(engine);
-    let stamped = Flood::new(engine).stamp(engine, &mask.mask(), &Paint::Colour([r, g, b]), 1);
-    let Stamped { pages: stamp_pages, set } = stamped.expect("stamp");
-    pages.extend(stamp_pages);
-    let sets = [blue_set, set];
-    let steps = [row(0, (0, 0), WHOLE, NORMAL), row(1, (0, 0), WHOLE, NORMAL)];
-    let plan = Plan {
-        pages: &pages,
-        sets: &sets,
-        keys: &[],
-        matrices: &[],
-        steps: &steps,
-        mask: None,
-    };
-    let tiles = [(0, 0)];
-    let budget = composite.widest();
-    let done = composite.run(engine, &plan, &tiles, EVERYWHERE, budget).expect("composite");
-    let out = read_buffer(engine, &done.out);
+    let mask = mask.mask();
+    let source = Source::Mask { mask: &mask, paint: &Paint::Colour([r, g, b]), whole: false };
+    let (out, tiles) = stamped_on_blue(&source, NORMAL);
     let at = |x, y| pixel_at(&out, &tiles, x, y);
     let blue = bytes_of(BLUE);
     assert_eq!(at(1, 1), [115, 95, 135, 255]);
     assert_eq!([at(3, 3), at(5, 5)], [bytes_of(RED); 2]);
     assert_eq!([at(2, 2), at(0, 0), at(6, 5), at(5, 6), at(100, 3)], [blue; 5]);
+}
+
+// A selection's erase (`selectionEraseDab`) laid by the eraser takes off
+// what its mask covers, across the tiles' edge: under 255 all of a pixel;
+// under 128 opaque blue's alpha falls to mul(65535, 65535 − 32896) =
+// 32639, 127, its colour staying; under 1 to 254. Covering whole, any
+// byte but 0 takes the pixel off wholly, as the lift took it whole. The
+// app's `blendSpanInPlace` makes the same three (255·(1 − 128/255) = 127,
+// 255 − 1).
+#[test]
+fn a_selection_s_erase_takes_off_what_its_mask_covers() {
+    let bytes = [255, 128, 1, 0];
+    let mask = masked((126, 0), (4, 1), |x, _| bytes[(x - 126) as usize]);
+    let mask = mask.mask();
+    let [r, g, b, _] = bytes_of(BLUE);
+    for (whole, kept) in [(false, [0, 127, 254, 255]), (true, [0, 0, 0, 255])] {
+        let erase = Source::Mask { mask: &mask, paint: &Paint::Colour([0; 3]), whole };
+        let (out, tiles) = stamped_on_blue(&erase, ERASE);
+        let at = |x, y| pixel_at(&out, &tiles, x, y);
+        let want = kept.map(|a| if a == 0 { [0; 4] } else { [r, g, b, a] });
+        assert_eq!([at(126, 0), at(127, 0), at(128, 0), at(129, 0)], want, "whole {whole}");
+        assert_eq!([at(125, 0), at(130, 0), at(127, 1)], [bytes_of(BLUE); 3]);
+    }
+}
+
+// A picture — a lift landing where it moved, or a warp's window — laid
+// whole lands as its words do: opaque red as red, red at 128 as the masked
+// red's 115 and all, and a clear word as nothing, across the tiles' edge;
+// past its box the cel stays.
+#[test]
+fn a_picture_s_stamp_lands_as_its_words() {
+    let words = [RED, RED & 0x00ff_ffff | 128 << 24, 0x00ff_ffff];
+    let pixels = words_buffer(rig().engine, "picture", &words, wgpu::BufferUsages::STORAGE);
+    let boxed = Boxed { pixels: &pixels, size: (3, 1) };
+    let source = Source::Picture { picture: &boxed, at: (127, 5) };
+    let (out, tiles) = stamped_on_blue(&source, NORMAL);
+    let at = |x, y| pixel_at(&out, &tiles, x, y);
+    let blue = bytes_of(BLUE);
+    assert_eq!([at(127, 5), at(128, 5), at(129, 5)], [bytes_of(RED), [115, 95, 135, 255], blue]);
+    assert_eq!([at(126, 5), at(130, 5), at(127, 4), at(128, 6)], [blue; 4]);
 }
 
 // Under a mask of 255 a row is laid as under none, in every mode and at

@@ -1,11 +1,13 @@
-// A fill's colour stamp (`_colorStampDab`, R15-⑥; gpu-canonical-store
-// stage 5): its finished mask in its colour, as the tiles of the row a
-// stroke lands by — straight RGBA8, a pixel the mask covers at all its
-// colour under the mask's byte for an alpha, one it covers none nothing,
-// as the app's stamp holds them. The stamp blends nothing itself: the
-// executor lays its row on the cel at the fill's opacity, in its mode and
-// under the selection, as it lays a stroke (R28), and R10's stamp
-// composite is that laying (gpu-canonical-store 1a 3/3 보탬).
+// A stamp dab's pixels as the tiles of the row a stroke lands by (R15-⑥,
+// gpu-canonical-store stage 5 and 11-06 05:35) — straight RGBA8, as the
+// app's stamp holds them: a mask in a colour, a pixel the mask covers at
+// all the colour under the mask's byte for an alpha and one it covers
+// none nothing (a fill's `_colorStampDab`, a selection's erase); or a
+// picture's words where its box lies and nothing past it (a lift's, a
+// warp's window). The stamp blends nothing itself: the executor lays its
+// row on the cel at the row's opacity, in its mode — the eraser's for an
+// erase — and under the selection, as it lays a stroke (R28), and R10's
+// stamp composite is that laying (gpu-canonical-store 1a 3/3 보탬).
 //
 // Under a gradient (I-160, `_gradientRgba`) a pixel is the stop its centre
 // lies at instead, its alpha the stop's under the mask's byte.
@@ -14,8 +16,9 @@
 // kernels/mask's byte.wgsl before it; defines byte.wgsl's `mask_word`.
 
 struct Stamp {
-  // The mask's box on the canvas: its left and top, its pixels across and
-  // down, and the words a row of it (mask.wgsl's layout).
+  // The box on the canvas: its left and top, its pixels across and down,
+  // and the words a row of it (mask.wgsl's layout for a mask, a pixel a
+  // word for a picture).
   left: i32,
   top: i32,
   width: u32,
@@ -36,11 +39,14 @@ struct Stamp {
   from_y: i32,
   along_x: i32,
   along_y: i32,
-  unused_0: u32,
+  // 1: a pixel the mask covers at all is covered whole (the app's
+  // `takeWholePixels` — the erase the twin of the lift's gather).
+  whole: u32,
 }
 
 @group(0) @binding(0) var<uniform> stamp: Stamp;
-@group(0) @binding(1) var<storage, read> mask: array<u32>;
+// The mask's words, or the picture's.
+@group(0) @binding(1) var<storage, read> given: array<u32>;
 @group(0) @binding(2) var<storage, read_write> page: array<u32>;
 // The gradient's stops, straight RGBA8 (`FillGradient.stops`).
 @group(0) @binding(3) var<storage, read> stops: array<u32>;
@@ -49,18 +55,26 @@ const STAMP_LINE: u32 = 1u;
 const STAMP_LAST_STOP: u32 = 1023u;
 
 fn mask_word(at: u32) -> u32 {
-  return mask[at];
+  return given[at];
 }
 
-// The canvas pixel thread `id` stamps, and the mask's byte there.
-fn stamp_at(id: vec3<u32>) -> vec3<i32> {
+// The canvas pixel thread `id` stamps.
+fn stamp_pixel(id: vec3<u32>) -> vec2<i32> {
   let tile = stamp.first + id.z;
   let x = (stamp.column + i32(tile % stamp.columns)) * i32(TILE_SIDE) + i32(id.x);
   let y = (stamp.row + i32(tile / stamp.columns)) * i32(TILE_SIDE) + i32(id.y);
+  return vec2<i32>(x, y);
+}
+
+// The canvas pixel thread `id` stamps, and the mask's byte there — 255
+// for any but 0 where it covers whole.
+fn stamp_at(id: vec3<u32>) -> vec3<i32> {
+  let at = stamp_pixel(id);
   // A pixel past the box's left or top wraps past its width or height.
   let plane = MaskPlane(0u, stamp.width, stamp.height, stamp.stride);
-  let byte = mask_byte_of(plane, u32(x - stamp.left), u32(y - stamp.top));
-  return vec3<i32>(x, y, i32(byte));
+  let byte = mask_byte_of(plane, u32(at.x - stamp.left), u32(at.y - stamp.top));
+  let covered = select(byte, 255u, stamp.whole != 0u && byte != 0u);
+  return vec3<i32>(at, i32(covered));
 }
 
 fn stamp_put(id: vec3<u32>, word: u32) {
@@ -70,9 +84,24 @@ fn stamp_put(id: vec3<u32>, word: u32) {
 // A workgroup puts a 16 × 16 of a tile's pixels, 64 of them a tile, a
 // tile a workgroup deep.
 @compute @workgroup_size(16, 16, 1)
-fn flood_stamp(@builtin(global_invocation_id) id: vec3<u32>) {
+fn stamp_colour(@builtin(global_invocation_id) id: vec3<u32>) {
   let byte = u32(stamp_at(id).z);
   stamp_put(id, select(0u, stamp.colour | (byte << 24u), byte != 0u));
+}
+
+// A picture's word where its box lies — any word, as the app's stamp
+// holds it —, nothing past it.
+@compute @workgroup_size(16, 16, 1)
+fn stamp_picture(@builtin(global_invocation_id) id: vec3<u32>) {
+  let at = stamp_pixel(id);
+  // A pixel past the box's left or top wraps past its width or height.
+  let x = u32(at.x - stamp.left);
+  let y = u32(at.y - stamp.top);
+  var word = 0u;
+  if (x < stamp.width && y < stamp.height) {
+    word = given[y * stamp.stride + x];
+  }
+  stamp_put(id, word);
 }
 
 // The stop canvas pixel (x, y)'s centre lies at (`FillGradient.rowInto`):
@@ -116,7 +145,7 @@ fn stamp_stop(x: i32, y: i32) -> u32 {
 // A pixel the mask covers keeps its stop's colour under any alpha, 0 too,
 // as the app's stamp does.
 @compute @workgroup_size(16, 16, 1)
-fn flood_stamp_graded(@builtin(global_invocation_id) id: vec3<u32>) {
+fn stamp_graded(@builtin(global_invocation_id) id: vec3<u32>) {
   let at = stamp_at(id);
   let stop = stops[stamp_stop(at.x, at.y)];
   let alpha = div255_round((stop >> 24u) * u32(at.z));
