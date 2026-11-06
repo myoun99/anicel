@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart' show StoryboardPanel;
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, partAlong;
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart';
 
@@ -125,9 +127,11 @@ void main() {
 
       final first = tester.getCenter(find.named('${prefix}0'));
       final second = tester.getCenter(find.named('${prefix}1'));
-      final step = axis == Axis.vertical
-          ? Offset(0, second.dy - first.dy)
-          : Offset(second.dx - first.dx, 0);
+      final step = offsetAlong(
+        axis,
+        along: partAlong(axis, second - first),
+        across: 0,
+      );
       expect(step.distance, greaterThan(0), reason: 'premise: two rows');
 
       final gesture = await tester.startGesture(

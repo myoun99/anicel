@@ -64,6 +64,9 @@ void main() {
             onLayerMarkSelected: (_, _) {},
             orientation: orientation,
             onOrientationChanged: (_) {},
+            // Nothing selected — but a channel to select on, so the bands
+            // stand where a session would draw them.
+            rowSelection: ValueNotifier(const []),
           ),
         ),
       ),
