@@ -212,12 +212,13 @@ fn a_whole_stamp_covers_every_pixel_its_mask_touches_wholly() {
 
 // A picture's words lie where its box does, each as it is — a clear word
 // keeping its colour too, as the app's stamp holds it — and nothing past
-// the box: 3 × 2 at (126, -1) meets the four tiles about the canvas's
-// first tile edge across and its top.
+// the box, though its buffer holds a row more: 3 × 2 at (126, -1) meets
+// the four tiles about the canvas's first tile edge across and its top.
 #[test]
 fn a_picture_s_words_lie_where_its_box_does() {
-    let words = [0xff00_00ff, 0x8000_ff00, 0x00ff_ffff, 0, 0xffff_0000, 0x0102_0304];
-    let pixels = picture(&words);
+    let words = [0xff00_00ff, 0x8000_ff00, 0x00ff_ffff, 0x0102_0304, 0xffff_0000, 0];
+    let past = [0xdead_beef; 3];
+    let pixels = picture(&[&words[..], &past].concat());
     let boxed = Boxed { pixels: &pixels, size: (3, 2) };
     let source = Source::Picture { picture: &boxed, at: (126, -1) };
     let stamped = stamped(&source, 2, usize::MAX).expect("stamp");
