@@ -111,32 +111,66 @@ fn with_no_display_a_wait_returns_at_once_and_nothing_is_composed() {
 
 #[cfg(windows)]
 mod window {
-    use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, TRUE, WPARAM};
+    use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, GetSystemMetrics, RegisterClassW,
-        SM_CXVIRTUALSCREEN, SM_XVIRTUALSCREEN, SW_SHOWNOACTIVATE, ShowWindow, WNDCLASSW,
-        WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_POPUP,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, SW_SHOWNOACTIVATE,
+        ShowWindow, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
+        WS_POPUP,
     };
-    use windows::core::w;
+    use windows::core::{BOOL, w};
 
     /// A window the app's would be found as: of the runner's class, shown,
     /// in this process. It draws nothing — the compositor has no picture of
-    /// a window without a redirection bitmap — and stands one pixel tall
-    /// across the virtual screen's right half at the primary's top, under
-    /// every screen that row crosses, in nobody's way for the second it
-    /// stands. The right half, so its client area is away from the origin a
-    /// reading in client coordinates would put it at.
-    pub(super) struct AppWindow(HWND);
+    /// a window without a redirection bitmap — and stands one pixel tall, in
+    /// nobody's way for the second it stands: across the edge two screens
+    /// share where there are such, so it lies on both; otherwise on a screen
+    /// away from the origin. Either way its client area is not where a
+    /// reading in client coordinates would put it.
+    pub(super) struct AppWindow {
+        window: HWND,
+        /// The screens it lies on.
+        pub(super) crossing: i32,
+    }
 
     unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         // SAFETY: what the system handed this window.
         unsafe { DefWindowProcW(window, message, w, l) }
     }
 
+    unsafe extern "system" fn screen(_: HMONITOR, _: HDC, bounds: *mut RECT, all: LPARAM) -> BOOL {
+        // SAFETY: `all` is screens' local, `bounds` the system's.
+        unsafe { (*(all.0 as *mut Vec<RECT>)).push(*bounds) };
+        TRUE
+    }
+
+    fn screens() -> Vec<RECT> {
+        let mut all: Vec<RECT> = Vec::new();
+        // SAFETY: the callback pushes to `all` alone, before this returns.
+        let _ = unsafe { EnumDisplayMonitors(None, None, Some(screen), LPARAM(&mut all as *mut _ as isize)) };
+        all
+    }
+
+    /// Left, top and width of the strip, and how many screens it crosses.
+    fn strip() -> (i32, i32, i32, i32) {
+        let all = screens();
+        for a in &all {
+            for b in &all {
+                let (top, bottom) = (a.top.max(b.top), a.bottom.min(b.bottom));
+                if a.right == b.left && top < bottom {
+                    return (a.right - 60, top + 10, 120, 2);
+                }
+            }
+        }
+        let away = all.iter().find(|s| s.left != 0 || s.top != 0).or(all.first());
+        away.map_or((10, 10, 100, 1), |s| (s.left + 10, s.top + 10, 100, 1))
+    }
+
     impl AppWindow {
         pub(super) fn show() -> Self {
             let class = w!("FLUTTER_RUNNER_WIN32_WINDOW");
+            let (left, top, width, crossing) = strip();
             // SAFETY: this process's module, a class of it, and a window of
             // that class, shown without taking the focus.
             unsafe {
@@ -149,15 +183,14 @@ mod window {
                 };
                 // 0 when an earlier test registered it: the class is there.
                 RegisterClassW(&kind);
-                let width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
                 let window = CreateWindowExW(
                     WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                     class,
                     w!(""),
                     WS_POPUP,
-                    GetSystemMetrics(SM_XVIRTUALSCREEN) + width / 2,
-                    0,
-                    width - width / 2,
+                    left,
+                    top,
+                    width,
                     1,
                     None,
                     None,
@@ -166,7 +199,7 @@ mod window {
                 )
                 .expect("a window of the runner's class");
                 let _ = ShowWindow(window, SW_SHOWNOACTIVATE);
-                Self(window)
+                Self { window, crossing }
             }
         }
     }
@@ -174,7 +207,7 @@ mod window {
     impl Drop for AppWindow {
         fn drop(&mut self) {
             // SAFETY: the window this made, on the thread that made it.
-            let _ = unsafe { DestroyWindow(self.0) };
+            let _ = unsafe { DestroyWindow(self.window) };
         }
     }
 }
@@ -198,12 +231,12 @@ fn the_screens_and_the_composing_of_the_app_window_are_the_cs() {
         "no app window, nothing kept composing"
     );
 
-    let _window = window::AppWindow::show();
+    let window = window::AppWindow::show();
     std::thread::sleep(PAST_FRESH);
     let (theirs, ours) = between(|| screens(c.window_screens), || screens(RUST_WINDOW_SCREENS));
     assert_eq!(ours, theirs);
     if super::win::has_target_statistics() {
-        assert!(theirs.0 >= 1, "LIVENESS — the window lies on a screen: {theirs:?}");
+        assert_eq!(theirs.0, window.crossing, "LIVENESS — the screens it lies on: {theirs:?}");
     }
     let ons = [1, 1, 0, 0];
     let theirs = composing(c.compose, &ons);
