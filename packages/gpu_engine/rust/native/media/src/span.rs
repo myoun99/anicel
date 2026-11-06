@@ -111,11 +111,14 @@ impl Span {
         let block_bytes = i64::from(u32_at(&prefix, 0));
         let total = u64::from(u32_at(&prefix, 4)) | u64::from(u32_at(&prefix, 8)) << 32;
         let block_count = i64::from(u32_at(&prefix, 12));
-        if block_bytes <= 0 || block_bytes > MAX_BLOCK || total > i64::MAX as u64 {
+        if block_bytes <= 0 || block_bytes > MAX_BLOCK {
             return None;
         }
         // ⛔The count must be the one the length implies: a header that says
-        // otherwise was not written by this format's writer.
+        // otherwise was not written by this format's writer. It bounds the
+        // total too — a u32 count of blocks no bigger than MAX_BLOCK holds
+        // under 2^58 bytes, so the C's own `total > INT64_MAX` refusal is
+        // never the one that answers.
         if i128::from(block_count) != (i128::from(total) + i128::from(block_bytes) - 1) / i128::from(block_bytes) {
             return None;
         }
