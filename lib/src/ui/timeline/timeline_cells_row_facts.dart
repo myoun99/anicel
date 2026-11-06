@@ -15,6 +15,7 @@ import 'lane_row_slice.dart';
 import 'memo_token.dart';
 import 'property_lane_model.dart';
 import 'row_berths.dart';
+import 'still_row.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_cells_row.dart';
@@ -292,17 +293,22 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
 /// boundary here held the paint in but not the layout: the step rebuilt in
 /// the grid's layout scope, laid it out again and repainted the rows'
 /// viewport around the one row that moved (a drag step is a tick:
-/// [TickLayer]).
+/// [TickLayer]). On that layer the row is a still region of its own
+/// ([stillRow]).
 Widget timelineGatedRow(
   TimelineDisplayRow row,
   ValueListenable<TimelineDragPreview?>? dragPreview,
   Widget Function(BuildContext context, Layer layer) rowBuilder,
 ) => TickLayer(
-  child: TimelineDragPreviewRowGate(
-    dragPreview: dragPreview,
-    layer: row.layer,
-    slice: row.isLane ? (layer) => laneRowSlice(layer, row.lane!.laneId) : null,
-    rowBuilder: rowBuilder,
+  child: stillRow(
+    TimelineDragPreviewRowGate(
+      dragPreview: dragPreview,
+      layer: row.layer,
+      slice: row.isLane
+          ? (layer) => laneRowSlice(layer, row.lane!.laneId)
+          : null,
+      rowBuilder: rowBuilder,
+    ),
   ),
 );
 
@@ -390,7 +396,8 @@ typedef KeptTimelineCellsRows = KeptByBerth<TimelineCellsRowFacts>;
 /// tick layer stands INSIDE ([TickLayer]): a new one per pass would lay out
 /// every row again. And the gate stands on that tick layer, reading the
 /// pass from the berth above it — 🚨F-446 (10-24): a drag step is a tick
-/// (F-244), and the gate's rebuild is laid out there, alone.
+/// (F-244), and the gate's rebuild is laid out there, alone. On that layer
+/// the row is a still region of its own ([stillRow]).
 /// ↩️It stood with the berth, in the grid's layout scope (I-57): a cut-end
 /// trim on the user's cut derived again every row its length draws a
 /// ghost on, and each step laid out and repainted the rows' viewport.
@@ -430,10 +437,12 @@ Widget keptTimelineCellsRow(
     // bake, while staying non-editable for free: every edit affordance
     // gates on `LayerKind.holdsDrawings`, which a folder fails.
     () => TickLayer(
-      child: TimelineDragPreviewRowGate.shows(
-        dragPreview: grid.hooks.dragPreview,
-        layer: row.layer,
-        child: timelineCellsRowFrom(row, grid),
+      child: stillRow(
+        TimelineDragPreviewRowGate.shows(
+          dragPreview: grid.hooks.dragPreview,
+          layer: row.layer,
+          child: timelineCellsRowFrom(row, grid),
+        ),
       ),
     ),
   ),
