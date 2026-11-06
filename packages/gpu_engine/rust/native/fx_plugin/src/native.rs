@@ -86,6 +86,8 @@ fn load(path: &CStr) -> Option<Library> {
     use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library};
     let path = String::from_utf8_lossy(path.to_bytes()).into_owned();
     // The plugin's own folder first, for what it brings beside it.
+    // ⚠️No test plugin brings a library beside it, so no test tells this
+    // flag from none (mutant n06, 2026-11-06).
     // SAFETY: opening a plugin runs its library's start, which the person
     // agreed to when they installed it (anicel_fx_plugin.h, THE FILE).
     let library = unsafe { Library::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH) };
@@ -124,6 +126,9 @@ struct Chunk([u8; 16]);
 
 impl Block {
     /// At least `size` bytes; `None` where there is no memory for them.
+    // ⚠️Every size the host asks is on 16 bytes — a plan's total, a reach's
+    // frame — so no test tells rounding up from down here (mutant n05,
+    // 2026-11-06); up keeps the room from ever coming short of the ask.
     fn room(&mut self, size: usize) -> Option<&mut [u8]> {
         let chunks = size.div_ceil(16);
         if self.0.len() < chunks {
