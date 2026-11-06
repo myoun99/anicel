@@ -744,7 +744,8 @@ void main() {
     /// middle unless given — held still over its one block — two keys at one place are no camera
     /// work — or panning on to [last]; its conte row posed by [rowPose] and
     /// wearing [effects], its
-    /// block's handwriting named [inkId].
+    /// block's handwriting named [inkId]; the camera's frame [cameraSize],
+    /// the canvas's unless given.
     Project framed({
       required double zoom,
       CanvasPoint? center,
@@ -752,6 +753,7 @@ void main() {
       CameraPose? last,
       String? inkId,
       List<LayerEffect> effects = const [],
+      CanvasSize? cameraSize,
     }) {
       final pose = CameraPose(
         center: center ?? CanvasPoint(x: 320, y: 180),
@@ -774,7 +776,7 @@ void main() {
         id: const ProjectId('conte-project'),
         name: 'Conte',
         createdAt: DateTime.utc(2026, 9, 26),
-        cameraSize: canvas,
+        cameraSize: cameraSize ?? canvas,
         tracks: [
           Track(
             id: const TrackId('track'),
@@ -1252,8 +1254,12 @@ void main() {
     // print drew through the camera unsnapped and the live one snapped,
     // half a pixel apart on an odd raster (532 pixels); the live one cut the
     // canvas's foot a row lower where it fell on a pixel (448, and 258 once
-    // both asked one map); and a moving camera's frames were written twice
-    // where they ran past the shot (30–58 levels).
+    // both asked one map); a moving camera's frames were written twice
+    // where they ran past the shot (30–58 levels); and where a camera's frame
+    // is off its raster's aspect, so that the raster's height is rounded, the
+    // live one's own road to the map — through the paper — stood the camera
+    // at the frame's middle and the print at the raster's, a row apart where
+    // that crossed a pixel.
     BitmapSurface thinLines() {
       const size = defaultCelTileSize;
       bool inked(int x, int y) =>
@@ -1285,13 +1291,23 @@ void main() {
       );
     }
 
-    for (final (what, zoom, center, view, last)
-        in <(String, double, CanvasPoint, CanvasViewport, CameraPose?)>[
+    for (final (what, zoom, center, view, last, cameraSize)
+        in <
+          (
+            String,
+            double,
+            CanvasPoint,
+            CanvasViewport,
+            CameraPose?,
+            CanvasSize?,
+          )
+        >[
       (
         'a camera that stands the canvas half a pixel off an odd raster',
         4.0,
         CanvasPoint(x: 320, y: 180),
         CanvasViewport(zoom: 0.17, panX: 3.3, panY: 1.9),
+        null,
         null,
       ),
       (
@@ -1299,6 +1315,7 @@ void main() {
         0.7,
         CanvasPoint(x: 300.3, y: 170.7),
         CanvasViewport(zoom: 1.37, panX: 5.61, panY: 21.47),
+        null,
         null,
       ),
       (
@@ -1308,6 +1325,7 @@ void main() {
         CanvasPoint(x: 300.3, y: 179.3),
         CanvasViewport(zoom: 1.37, panX: 5.61, panY: 21.47),
         null,
+        null,
       ),
       (
         'a moving camera, its frames written over the picture it sweeps',
@@ -1315,6 +1333,18 @@ void main() {
         CanvasPoint(x: 320, y: 180),
         CanvasViewport(zoom: 1.37, panX: 5.61, panY: 21.47),
         CameraPose(center: CanvasPoint(x: 305.1, y: 171.2), zoom: 1.0),
+        null,
+      ),
+      (
+        // 160 × 92 for a frame of 160 × 91.6: the frame's middle and the
+        // raster's stand the canvas 3.37 and 3.57 pixels down.
+        'a camera frame off its raster\'s aspect, the raster\'s height '
+            'rounded',
+        1.0,
+        CanvasPoint(x: 320, y: 170),
+        CanvasViewport(zoom: 0.35, panX: 5.61, panY: 21.47),
+        null,
+        CanvasSize(width: 641, height: 367),
       ),
     ]) {
       testWidgets('🎯the brush switch takes the live picture from its real '
@@ -1332,7 +1362,12 @@ void main() {
           return real ?? placeholder;
         }
 
-        final project = framed(zoom: zoom, center: center, last: last);
+        final project = framed(
+          zoom: zoom,
+          center: center,
+          last: last,
+          cameraSize: cameraSize,
+        );
         await pumpPanel(
           tester,
           project,
@@ -1348,7 +1383,10 @@ void main() {
             width: pictureRenderWidthFor(
               heights.last,
               region?.size ??
-                  Size(canvas.width.toDouble(), canvas.height.toDouble()),
+                  Size(
+                    (cameraSize ?? canvas).width.toDouble(),
+                    (cameraSize ?? canvas).height.toDouble(),
+                  ),
             ),
             region: region,
           ),
