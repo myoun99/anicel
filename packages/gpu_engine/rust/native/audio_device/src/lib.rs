@@ -90,18 +90,39 @@ fn playback_render(channels: i32) -> Option<impl FnMut(&mut [f32]) + Send + 'sta
     Some(move |out: &mut [f32]| PLAYBACK.render(out, lanes, &mut bus, &transport::mix_slot))
 }
 
-/// The output of `index` at `(sample_rate, channels)`, made and not yet
-/// started, as open `open`.
-fn build_output(context: &mut Context, index: Option<usize>, geometry: (i32, i32), open: u64) -> Option<Built> {
-    let lost = move || follow_default(move || reopen_output(open));
-    context.build_playback(index, geometry, &PLAYBACK_LATENCY, || playback_render(geometry.1), lost)
+/// A device made and not yet started, and the open it is — the one its
+/// stream asks to open again when it loses its device.
+struct Made {
+    built: Built,
+    open: u64,
 }
 
-/// The capture of `index` at `sample_rate`, made and not yet started, as
-/// open `open`.
-fn build_input(context: &mut Context, index: Option<usize>, sample_rate: i32, open: u64) -> Option<Built> {
+impl Made {
+    fn geometry(&self) -> (i32, i32) {
+        (self.built.sample_rate, self.built.channels)
+    }
+
+    /// Started — or none, and it is gone — as its open.
+    fn start(self) -> Option<Opened> {
+        let open = self.open;
+        self.built.start().map(|running| Opened { running, open })
+    }
+}
+
+/// The output of `index` at `(sample_rate, channels)`, made: a new open.
+fn build_output(context: &mut Context, index: Option<usize>, geometry: (i32, i32)) -> Option<Made> {
+    let open = OPENS.fetch_add(1, SeqCst) + 1;
+    let lost = move || follow_default(move || reopen_output(open));
+    let built = context.build_playback(index, geometry, &PLAYBACK_LATENCY, || playback_render(geometry.1), lost)?;
+    Some(Made { built, open })
+}
+
+/// The capture of `index` at `sample_rate`, made: a new open.
+fn build_input(context: &mut Context, index: Option<usize>, sample_rate: i32) -> Option<Made> {
+    let open = OPENS.fetch_add(1, SeqCst) + 1;
     let lost = move || follow_default(move || reopen_input(open));
-    context.build_capture(index, sample_rate, &CAPTURE_LATENCY, |input| CAPTURE.deliver(input), lost)
+    let built = context.build_capture(index, sample_rate, &CAPTURE_LATENCY, |input| CAPTURE.deliver(input), lost)?;
+    Some(Made { built, open })
 }
 
 /// 🚨A DEVICE OPENED ON THE SYSTEM'S DEFAULT FOLLOWS IT
@@ -126,13 +147,12 @@ fn reopen_output(open: u64) {
         return;
     };
     let geometry = (PLAYBACK.sample_rate(), PLAYBACK.channels());
-    let next = OPENS.fetch_add(1, SeqCst) + 1;
-    let built = devices.context.as_mut().and_then(|context| build_output(context, None, geometry, next));
+    let made = devices.context.as_mut().and_then(|context| build_output(context, None, geometry));
     // The lost device's callback ends before the new one's starts: two
     // would both move the transport.
     drop(lost);
-    match built.filter(|built| (built.sample_rate, built.channels) == geometry).and_then(Built::start) {
-        Some(running) => devices.playback = Some(Opened { running, open: next }),
+    match made.filter(|made| made.geometry() == geometry).and_then(Made::start) {
+        Some(opened) => devices.playback = Some(opened),
         None => PLAYBACK.close(|| {}),
     }
 }
@@ -145,11 +165,10 @@ fn reopen_input(open: u64) {
         return;
     };
     let geometry = (CAPTURE.sample_rate(), CAPTURE.channels());
-    let next = OPENS.fetch_add(1, SeqCst) + 1;
-    let built = devices.context.as_mut().and_then(|context| build_input(context, None, geometry.0, next));
+    let made = devices.context.as_mut().and_then(|context| build_input(context, None, geometry.0));
     drop(lost);
-    match built.filter(|built| (built.sample_rate, built.channels) == geometry).and_then(Built::start) {
-        Some(running) => devices.capture = Some(Opened { running, open: next }),
+    match made.filter(|made| made.geometry() == geometry).and_then(Made::start) {
+        Some(opened) => devices.capture = Some(opened),
         None => CAPTURE.close(),
     }
 }
@@ -274,16 +293,16 @@ pub extern "C" fn qa_audio_device_open(sample_rate: i32, channels: i32, backend:
     let Some(context) = devices.context(Backend::of(backend)) else {
         return 0;
     };
-    let open = OPENS.fetch_add(1, SeqCst) + 1;
-    let Some(built) = build_output(context, index_of(device_index), (sample_rate, channels), open) else {
+    let Some(made) = build_output(context, index_of(device_index), (sample_rate, channels)) else {
         return 0;
     };
-    PLAYBACK.open(built.sample_rate, built.channels);
-    let Some(running) = built.start() else {
+    let (rate, lanes) = made.geometry();
+    PLAYBACK.open(rate, lanes);
+    let Some(opened) = made.start() else {
         PLAYBACK.not_started();
         return 0;
     };
-    devices.playback = Some(Opened { running, open });
+    devices.playback = Some(opened);
     PLAYBACK.sample_rate()
 }
 
@@ -425,18 +444,18 @@ pub extern "C" fn qa_audio_capture_start(sample_rate: i32, backend: i32, device_
     let Some(context) = devices.context(Backend::of(backend)) else {
         return 0;
     };
-    let open = OPENS.fetch_add(1, SeqCst) + 1;
-    let Some(built) = build_input(context, index_of(device_index), sample_rate, open) else {
+    let Some(made) = build_input(context, index_of(device_index), sample_rate) else {
         return 0;
     };
-    if !CAPTURE.open(built.channels, built.sample_rate) {
+    let (rate, channels) = made.geometry();
+    if !CAPTURE.open(channels, rate) {
         return 0;
     }
-    let Some(running) = built.start() else {
+    let Some(opened) = made.start() else {
         CAPTURE.close();
         return 0;
     };
-    devices.capture = Some(Opened { running, open });
+    devices.capture = Some(opened);
     CAPTURE.sample_rate()
 }
 

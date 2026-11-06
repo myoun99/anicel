@@ -991,6 +991,12 @@ fn a_refused_rate_opens_at_the_devices_own() {
     assert_eq!(at_rate_or_its_own(48_000, || Some(44_100), takes(48_000)), Some((48_000, 48_000)));
     assert_eq!(at_rate_or_its_own(48_000, || Some(44_100), takes(44_100)), Some((44_100, 44_100)));
     assert_eq!(at_rate_or_its_own(48_000, || Some(48_000), takes(44_100)), None, "its own is the one refused");
+    let mut tried = Vec::new();
+    at_rate_or_its_own(48_000, || Some(48_000), |rate| {
+        tried.push(rate);
+        None::<()>
+    });
+    assert_eq!(tried, [48_000], "…and is not asked again");
     assert_eq!(at_rate_or_its_own(48_000, || None, takes(44_100)), None, "it has none to say");
     let mut tried = Vec::new();
     let refused = at_rate_or_its_own(48_000, || Some(44_100), |rate| {
