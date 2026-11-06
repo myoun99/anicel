@@ -28,6 +28,7 @@ pub mod flood;
 pub mod letters;
 pub mod mask;
 pub mod mesh;
+pub mod pool;
 pub mod shared;
 pub mod timeline;
 pub mod warp;
