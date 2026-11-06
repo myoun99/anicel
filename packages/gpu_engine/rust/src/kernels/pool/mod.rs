@@ -34,7 +34,7 @@ use crate::kernels::shared::room;
 const MOST_PAGE_BYTES: u64 = 128 << 20;
 /// The slots a page may have and the pages a pool may: a `TileAt` names
 /// each by a u16.
-const MOST_NAMED: usize = 1 << 16;
+const MOST_NAMED: usize = u16::MAX as usize + 1;
 
 /// A cel the pool stores tiles for — what keeps its tiles to pages of its
 /// own.
