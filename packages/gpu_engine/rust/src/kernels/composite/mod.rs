@@ -26,8 +26,6 @@
 //! as a row in its place — a buffer's at its close's opacity, mode and
 //! matrix, which the app's final paint is (`layerCompositePaint`) — so the
 //! walk meets no chain.
-//! Adjustments past a matrix and a cel number's letters (drawn by the
-//! engine's glyph path, then a row here) come in later rounds.
 //!
 //! The pages a pass can bind are few — `max_storage_buffers_per_shader_stage`
 //! less the plan and the work buffer, 2 where GLES reports 4 — so a plan is
@@ -789,6 +787,9 @@ impl Composite {
                     drawn.push(None);
                     continue;
                 };
+                if reads_drawn_maps(rows, plan.chains) {
+                    return fail(format!("step {index} reads a map whose rows read a map"));
+                }
                 let plan = Plan {
                     pages: &pages,
                     sets: &sets,
@@ -1100,6 +1101,16 @@ fn chain_of(step: &Step) -> Option<usize> {
         Step::Close { chain, .. } => chain.map(|named| named.chain),
         _ => None,
     }
+}
+
+/// Whether `steps` name a chain whose lens blur reads a map drawn from
+/// rows — what a map's rows never do: a map's own blur map is not read
+/// (🗣️I-132-Q22 a; the app's `namingNoRow` takes it off the rows it
+/// draws), and one that were would be drawn again under it, without end
+/// where it read its own reader.
+fn reads_drawn_maps(steps: &[Step], chains: &[Chained]) -> bool {
+    let reads = |chained: &Chained| chained.ops.iter().any(|op| op.map_rows().is_some());
+    steps.iter().filter_map(chain_of).filter_map(|at| chains.get(at)).any(reads)
 }
 
 /// `put` — tiles over `rect` — on a page past `pages`, laid as a tile set

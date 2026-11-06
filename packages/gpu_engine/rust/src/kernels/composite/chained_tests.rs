@@ -142,8 +142,23 @@ impl Laying {
         }
     }
 
-    /// `steps` through `chains` over [`TILES`] within `budget`, under `mask`
-    /// if any: the output's bytes, or `None` where the plan was refused.
+    /// `steps` through `chains` over the output `tiles` within `budget`,
+    /// under `mask` if any: the output's bytes, or `None` where the plan was
+    /// refused.
+    fn over(
+        &self,
+        tiles: &[(i32, i32)],
+        (chains, steps): (&[Chained], &[Step]),
+        mask: Option<&Mask>,
+        budget: Budget,
+    ) -> Option<Vec<u8>> {
+        let rig = rig();
+        let plan = self.plan(chains, steps, mask);
+        let done = rig.composite.run(rig.engine, &plan, tiles, NO_EDGE, budget)?;
+        Some(read_buffer(rig.engine, &done.out))
+    }
+
+    /// [`Laying::over`] [`TILES`].
     fn composited(
         &self,
         chains: &[Chained],
@@ -151,10 +166,7 @@ impl Laying {
         mask: Option<&Mask>,
         budget: Budget,
     ) -> Option<Vec<u8>> {
-        let rig = rig();
-        let plan = self.plan(chains, steps, mask);
-        let done = rig.composite.run(rig.engine, &plan, &TILES, NO_EDGE, budget)?;
-        Some(read_buffer(rig.engine, &done.out))
+        self.over(&TILES, (chains, steps), mask, budget)
     }
 
     /// [`Laying::composited`] at all the device lets a pass take.
@@ -296,10 +308,12 @@ fn lensed(tiles: MapTiles<'_>) -> Vec<Op<'_>> {
 
 // A lens blur's map drawn from rows is those rows drawn alone over the
 // chain's rectangle as they show by themselves — a chained one through its
-// own chain — and a row that draws nothing is a map with nothing on it.
+// own chain, and with no edge, as far as the rectangle reaches — and a row
+// that draws nothing is a map with nothing on it. Seen over the whole
+// rectangle, left of the canvas too.
 #[test]
 fn a_map_drawn_from_rows_is_those_rows_drawn_alone_over_the_rectangle() {
-    let mut laying = Laying::new(&[((0, 0), (2, 2)), ((0, 0), (2, 1)), ((-1, 0), (3, 2))]);
+    let mut laying = Laying::new(&[((0, 0), (2, 2)), ((-1, 0), (3, 1)), ((-1, 0), (3, 2))]);
     let base = row(0, (0, 0), WHOLE, NORMAL);
     let reader = chained(row(1, (0, 0), WHOLE, NORMAL), 0);
     let map_rows = [chained(row(2, (4, -3), 50000, NORMAL), 1)];
@@ -316,16 +330,47 @@ fn a_map_drawn_from_rows_is_those_rows_drawn_alone_over_the_rectangle() {
             },
         ]
     }
-    let got = laying.widest(&reading(&map_rows), &[base, reader], None);
-    let got_nothing = laying.widest(&reading(&nothing), &[base, reader], None);
+    fn seen(laying: &Laying, chains: &[Chained], steps: &[Step]) -> Vec<u8> {
+        let budget = rig().composite.widest();
+        laying.over(&tiles_of(RECT), (chains, steps), None, budget).expect("composite")
+    }
+    let got = seen(&laying, &reading(&map_rows), &[base, reader]);
+    let got_nothing = seen(&laying, &reading(&nothing), &[base, reader]);
     assert!(got != got_nothing, "the map");
     let map_put = laying.row_by_hand(2, RECT, &across());
     let map = laying.alone(&[row(map_put, (4, -3), 50000, NORMAL)], RECT);
     let put = laying.row_by_hand(1, RECT, &lensed(MapTiles::Laid(&map)));
-    assert!(got == laying.widest(&[], &[base, row(put, (0, 0), WHOLE, NORMAL)], None));
+    assert!(got == seen(&laying, &[], &[base, row(put, (0, 0), WHOLE, NORMAL)]));
     let blank = laying.alone(&nothing, RECT);
     let put = laying.row_by_hand(1, RECT, &lensed(MapTiles::Laid(&blank)));
-    assert!(got_nothing == laying.widest(&[], &[base, row(put, (0, 0), WHOLE, NORMAL)], None));
+    assert!(got_nothing == seen(&laying, &[], &[base, row(put, (0, 0), WHOLE, NORMAL)]));
+}
+
+// A map's rows read no map of their own (🗣️I-132-Q22 a — the app takes it
+// off them): a plan whose map's rows name one is refused, not drawn a level
+// further.
+#[test]
+fn a_map_s_rows_read_no_map_of_their_own() {
+    let laying = Laying::new(&[((0, 0), (2, 2)), ((-1, 0), (3, 1)), ((-1, 0), (3, 2))]);
+    let deeper = [row(0, (0, 0), WHOLE, NORMAL)];
+    let plain = [row(2, (4, -3), 50000, NORMAL)];
+    let reading_one = [chained(row(2, (4, -3), 50000, NORMAL), 1)];
+    let chains = |rows| {
+        [
+            Chained {
+                ops: lensed(MapTiles::Drawn(rows)),
+                rect: RECT,
+            },
+            Chained {
+                ops: lensed(MapTiles::Drawn(&deeper)),
+                rect: RECT,
+            },
+        ]
+    };
+    let budget = rig().composite.widest();
+    let steps = [chained(row(1, (0, 0), WHOLE, NORMAL), 0)];
+    assert!(laying.composited(&chains(&plain), &steps, None, budget).is_some());
+    assert!(laying.composited(&chains(&reading_one), &steps, None, budget).is_none());
 }
 
 // A folder's rows' chains run before its own, and a folder in it before it:
