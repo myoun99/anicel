@@ -197,19 +197,56 @@ fn a_line_s_stop_is_the_nearest_to_a_pixel_s_centre() {
     assert_eq!(graded_words(&stamped, &points), want);
 }
 
+// On a slant a pixel's stop takes both of its offsets: from (0, 10) to
+// (1023, 1033) pixel (x, y)'s centre lies (x + y − 9) / 2 along, so (300,
+// 410), (700, 10) and (0, 710) at 350.5, stop 351, red round(87.496) =
+// 87, and (511, 521) at stop 512, red 128.
+#[test]
+fn a_line_s_stop_on_a_slant_takes_both_offsets() {
+    let mask = masked((0, 0), (1024, 1034), |_, _| 255);
+    let slant = gradient(Shape::Line, (0.0, 10.0), (1023.0, 1033.0), [BLACK, RED]);
+    let stamped = graded(&mask.mask(), &slant).expect("stamp");
+    let points = [(0, 0), (300, 410), (700, 10), (0, 710), (511, 521), (1023, 1033)];
+    let want = [0, 87, 87, 87, 128, 255].map(red);
+    assert_eq!(graded_words(&stamped, &points), want);
+}
+
 // A circle's stop at a pixel is its centre's distance from `from` over the
 // radius, the nearest, a half going up: from the centre of (0, 0) out 2046,
 // pixel (x, y) lies at stop round(√(x² + y²) / 2) — (5, 0) at 2.5, stop 3,
-// red round(765/1023) = 1; (6, 8) at 5, (600, 800) at 500, red 125 —, and
-// the last at the radius and past it.
+// red round(765/1023) = 1; (6, 8) at 5, (600, 800) at 500, red 125, (1500,
+// 0) at 750, red round(186.95) = 187 —, and the last from (2045, 0), at
+// 1022.5, on: at the radius and past it.
 #[test]
 fn a_circle_s_stop_is_the_nearest_to_a_pixel_s_distance() {
     let mask = masked((-8, -8), (2100, 1010), |_, _| 255);
     let circle = gradient(Shape::Circle, (0.5, 0.5), (2046.5, 0.5), [BLACK, RED]);
     let stamped = graded(&mask.mask(), &circle).expect("stamp");
-    let points = [(0, 0), (5, 0), (6, 8), (-6, -8), (600, 800), (2046, 0), (2000, 1000)];
-    let want = [0, 1, 1, 1, 125, 255, 255].map(red);
+    let points = [
+        (0, 0),
+        (5, 0),
+        (6, 8),
+        (-6, -8),
+        (600, 800),
+        (1500, 0),
+        (2045, 0),
+        (2046, 0),
+        (2000, 1000),
+    ];
+    let want = [0, 1, 1, 1, 125, 187, 255, 255, 255].map(red);
     assert_eq!(graded_words(&stamped, &points), want);
+}
+
+// A stop just short of a half stays below it: out 105300/256 px from the
+// centre of (0, 0), pixel (1, 0) lies 1023 · 256 / 105300 = 2.487 stops
+// out — stop 2, red 0 —, though 4·1023² · 256² / 105300² = 24.74 rounds
+// to 25: the root is of its floor. (2, 0) lies 4.97 out, stop 5, red 1.
+#[test]
+fn a_circle_s_stop_just_short_of_a_half_stays_below() {
+    let mask = masked((0, 0), (3, 1), |_, _| 255);
+    let circle = gradient(Shape::Circle, (0.5, 0.5), (411.828125, 0.5), [BLACK, RED]);
+    let stamped = graded(&mask.mask(), &circle).expect("stamp");
+    assert_eq!(graded_words(&stamped, &[(1, 0), (2, 0)]), [red(0), red(1)]);
 }
 
 // A stop's alpha is under the mask's byte, a clear stop keeps its colour
