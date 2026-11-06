@@ -11,15 +11,15 @@ use crate::kernels::mask::MaskPasses;
 use crate::kernels::shared::words_buffer;
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
-struct Rig {
-    engine: &'static Engine,
-    flood: Flood,
+pub(super) struct Rig {
+    pub(super) engine: &'static Engine,
+    pub(super) flood: Flood,
     masks: MaskPasses,
 }
 
-/// One device and one compile for every test here (blend's tests have
-/// why).
-fn rig() -> &'static Rig {
+/// One device and one compile for every test here and the stamp's
+/// (blend's tests have why).
+pub(super) fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();

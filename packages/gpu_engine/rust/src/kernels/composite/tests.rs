@@ -13,6 +13,8 @@ use crate::device::Engine;
 use crate::kernels::blend::mode::{DIFFERENCE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, SCREEN};
 use crate::kernels::effects::matrix_tests::{Matrix, each, graded};
 use crate::kernels::effects::{KeyRun, MATRIX_WORDS, matrix_words};
+use crate::kernels::flood::Flood;
+use crate::kernels::flood::stamp::Stamped;
 use crate::kernels::mask::tests::masked;
 use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
@@ -2063,6 +2065,46 @@ fn a_masked_row_is_laid_under_the_mask_s_byte() {
     let (red, blue) = (bytes_of(RED), bytes_of(BLUE));
     assert_eq!(at(1, 1), [115, 95, 135, 255]);
     assert_eq!([at(3, 3), at(5, 5)], [red; 2]);
+    assert_eq!([at(2, 2), at(0, 0), at(6, 5), at(5, 6), at(100, 3)], [blue; 5]);
+}
+
+// A fill's colour stamp (kernels/flood) laid whole lands as its colour laid
+// under its mask: the stamp's alpha is the mask's byte, and R10's
+// mul(a·257, opacity) is blend_cover's one multiply — red's stamp of the
+// mask above on opaque blue is the masked red's bytes, 115 and all.
+#[test]
+fn a_fill_s_stamp_lands_as_its_colour_under_its_mask() {
+    let mask = masked((1, 1), (5, 5), |x, y| match (x, y) {
+        (1, 1) => 128,
+        (2, 2) => 0,
+        _ => 255,
+    });
+    let Rig { engine, composite } = rig();
+    let [r, g, b, _] = bytes_of(RED);
+    let mut pool = Pool::default();
+    let blue_set = pool.drawn(|_, _| BLUE, (0, 0), (1, 1), |_, _| Some(0));
+    let mut pages = pool.upload(engine);
+    let stamped = Flood::new(engine).stamp(engine, &mask.mask(), [r, g, b], 1);
+    let Stamped { pages: stamp_pages, set } = stamped.expect("stamp");
+    pages.extend(stamp_pages);
+    let sets = [blue_set, set];
+    let steps = [row(0, (0, 0), WHOLE, NORMAL), row(1, (0, 0), WHOLE, NORMAL)];
+    let plan = Plan {
+        pages: &pages,
+        sets: &sets,
+        keys: &[],
+        matrices: &[],
+        steps: &steps,
+        mask: None,
+    };
+    let tiles = [(0, 0)];
+    let budget = composite.widest();
+    let done = composite.run(engine, &plan, &tiles, EVERYWHERE, budget).expect("composite");
+    let out = read_buffer(engine, &done.out);
+    let at = |x, y| pixel_at(&out, &tiles, x, y);
+    let blue = bytes_of(BLUE);
+    assert_eq!(at(1, 1), [115, 95, 135, 255]);
+    assert_eq!([at(3, 3), at(5, 5)], [bytes_of(RED); 2]);
     assert_eq!([at(2, 2), at(0, 0), at(6, 5), at(5, 6), at(100, 3)], [blue; 5]);
 }
 
