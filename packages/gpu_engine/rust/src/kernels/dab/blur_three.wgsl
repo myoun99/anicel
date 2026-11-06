@@ -3,7 +3,9 @@
 // `blur_rows_pass` blurs the rows over the dab's window into
 // `blur_between`, the dab's columns on the window's lines, and
 // `blur_columns_pass` blurs the columns of that down the dab, its last pass
-// moving the dab's pixels.
+// moving the dab's pixels. A dab of few workgroups goes in turn instead:
+// `blur_dabs_in_turn` takes a run of them in one workgroup, one after
+// another.
 //
 // Needs blur.wgsl and effects/blur/three.wgsl before it.
 
@@ -26,10 +28,10 @@ fn blur_rows_at(x: i32, y: i32) -> u32 {
   return (u32(y - blur_rows_y0) * blur_rows_width + u32(x - blur_rows_x0)) * 2u;
 }
 
-// The dab's block, and where the rows' blur keeps its pixels: the rows'
-// lines, the dab's columns.
-fn blur_begin() {
-  blur_block = blur_dab.x;
+// The dab's block at `block`, and where the rows' blur keeps its pixels:
+// the rows' lines, the dab's columns.
+fn blur_begin(block: u32) {
+  blur_block = block;
   let first = blur_pass(blur_block, 0u);
   let last = blur_pass(blur_block, 2u);
   blur_rows_x0 = last.first;
@@ -67,7 +69,7 @@ fn blur_rows_pass(
   @builtin(workgroup_id) group: vec3<u32>,
   @builtin(local_invocation_index) lane: u32,
 ) {
-  blur_begin();
+  blur_begin(blur_dab.x);
   let run = plan[blur_block + BLUR_ROWS_ALONG];
   let lines = plan[blur_block + BLUR_ROWS_LINES];
   blur_way(blur_passes(blur_block, 0u), group.x, group.y, run, lines, lane);
@@ -80,8 +82,54 @@ fn blur_columns_pass(
   @builtin(workgroup_id) group: vec3<u32>,
   @builtin(local_invocation_index) lane: u32,
 ) {
-  blur_begin();
+  blur_begin(blur_dab.x);
   let run = plan[blur_block + BLUR_COLUMNS_ALONG];
   let lines = plan[blur_block + BLUR_COLUMNS_LINES];
   blur_way(blur_passes(blur_block, 3u), group.x, group.y, run, lines, lane);
+}
+
+// A dab's place in a list of dabs in turn: its block, then its rows' and
+// its columns' workgroups across and down.
+const BLUR_TURN_WORDS: u32 = 5u;
+
+// A way's strips and bands one after another in this workgroup, as its
+// dispatch's workgroups would put them: each puts lines and runs no other
+// does, so only the room between them waits.
+fn blur_way_in_turn(
+  passes: array<BoxPass, 3>,
+  groups: vec2<u32>,
+  run: u32,
+  lines: u32,
+  lane: u32,
+) {
+  for (var band = 0u; band < groups.y; band++) {
+    for (var strip = 0u; strip < groups.x; strip++) {
+      blur_way(passes, strip, band, run, lines, lane);
+      workgroupBarrier();
+    }
+  }
+}
+
+// Dabs one after another in one workgroup (11-06 — a small blur dab's floor
+// was its two dispatches): `blur_dab.y` of them from the list at
+// `blur_dab.x`, each way of each as its dispatch would put it. The storage
+// barriers stand where a dispatch's end stood: the rows' blur put before
+// the columns read it, the dab's pixels moved before the next dab reads
+// them.
+@compute @workgroup_size(256)
+fn blur_dabs_in_turn(@builtin(local_invocation_index) lane: u32) {
+  for (var k = 0u; k < blur_dab.y; k++) {
+    let at = blur_dab.x + k * BLUR_TURN_WORDS;
+    blur_begin(plan[at]);
+    let rows = vec2<u32>(plan[at + 1u], plan[at + 2u]);
+    let columns = vec2<u32>(plan[at + 3u], plan[at + 4u]);
+    let rows_run = plan[blur_block + BLUR_ROWS_ALONG];
+    let rows_lines = plan[blur_block + BLUR_ROWS_LINES];
+    blur_way_in_turn(blur_passes(blur_block, 0u), rows, rows_run, rows_lines, lane);
+    storageBarrier();
+    let columns_run = plan[blur_block + BLUR_COLUMNS_ALONG];
+    let columns_lines = plan[blur_block + BLUR_COLUMNS_LINES];
+    blur_way_in_turn(blur_passes(blur_block, 3u), columns, columns_run, columns_lines, lane);
+    storageBarrier();
+  }
 }

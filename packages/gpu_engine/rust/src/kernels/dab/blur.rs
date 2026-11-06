@@ -26,6 +26,7 @@ mod tests;
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::ops::Range;
 
 use super::{Dab, Paper, Plans, StrokeTile, TILE, of_pages, on_pages};
 use crate::device::Engine;
@@ -96,6 +97,23 @@ pub(crate) struct Cover<'a> {
 /// one function beside `strips` takes the threshold (rule of three, 캔버스
 /// 베이스 11-06 03:05).
 const MOST_STRIPS_RADIUS: u32 = 90;
+
+/// The most workgroups — its rows' and its columns' together — a dab goes in
+/// turn with: one after another with the dabs about it in one workgroup
+/// (blur_three.wgsl's `blur_dabs_in_turn`) instead of its two dispatches.
+/// A small dab's two dispatches were its floor: two thirds of its time was
+/// theirs on the GPU, the rest the CPU making them (11-06, the main PC, 64
+/// dabs warm, µs a dab apart against in turn, by its workgroups — size 12 ·
+/// 15, 2: 27, 15; 18 · 21, 3: 29, 18.5 to 21.5; 24 · 27, 5: 30, 27.6 to
+/// 30.3; 30, 6: 30 to 34, 37 to 42). One workgroup puts a way's strips and
+/// bands one after another, so in turn loses as they grow; 4 keeps clear of
+/// the 5 where the two were even. Size 12 went 22.5 µs a dab in C
+/// (gpu-canonical-store 03:40).
+/// ⏳The Surface's crossing is not measured: it was out of reach that night.
+const MOST_IN_TURN: u32 = 4;
+/// blur_three.wgsl's BLUR_TURN_WORDS: a dab's block, and its rows' and its
+/// columns' workgroups across and down.
+const TURN_WORDS: usize = 5;
 
 /// How a dab's passes go: by strips where a strip of them has room and the
 /// box is no wider than MOST_STRIPS_RADIUS — a pass a dispatch past that —
@@ -231,6 +249,17 @@ impl Window {
         }
     }
 
+    /// Its rows' and its columns' workgroups, where it goes by strips on
+    /// one page with no more than MOST_IN_TURN of them — a dab that goes in
+    /// turn with the dabs about it on that page.
+    fn in_turn(&self) -> Option<[u32; 4]> {
+        let Ways::Strips { rows, columns } = &self.ways else {
+            return None;
+        };
+        let ((rx, ry), (cx, cy)) = (rows.groups, columns.groups);
+        (self.pages.len() == 1 && rx * ry + cx * cy <= MOST_IN_TURN).then_some([rx, ry, cx, cy])
+    }
+
     /// Its dispatches, in order.
     fn steps(&self) -> Vec<Step> {
         match &self.ways {
@@ -259,12 +288,14 @@ impl Window {
     }
 }
 
-/// The blur's entry points: a way's three by strips, rows or columns
-/// (blur_three.wgsl), or one pass (blur_pass.wgsl).
+/// The blur's entry points: a way's three by strips, rows or columns, or
+/// dabs of few workgroups in turn (blur_three.wgsl); or one pass
+/// (blur_pass.wgsl).
 #[derive(Clone, Copy)]
 enum Entry {
     Rows,
     Columns,
+    InTurn,
     Pass,
 }
 
@@ -276,11 +307,19 @@ struct Step {
     groups: (u32, u32),
 }
 
+/// One dispatch of a blur: a run of dabs going in turn on one page, or a
+/// step of a dab going apart.
+enum Planned<'a> {
+    InTurn(Range<usize>),
+    Apart(usize, &'a Step),
+}
+
 /// A dab's pipelines, compiled for the pages a pass of them binds.
 struct Dispatches {
     pages: Pages,
     rows: wgpu::ComputePipeline,
     columns: wgpu::ComputePipeline,
+    in_turn: wgpu::ComputePipeline,
     pass: wgpu::ComputePipeline,
 }
 
@@ -296,6 +335,7 @@ impl Dispatches {
         Some(Self {
             rows: pipeline(engine, &strips, "blur_rows_pass"),
             columns: pipeline(engine, &strips, "blur_columns_pass"),
+            in_turn: pipeline(engine, &strips, "blur_dabs_in_turn"),
             pass: pipeline(engine, &passes, "blur_pass_one"),
             pages,
         })
@@ -305,6 +345,7 @@ impl Dispatches {
         match entry {
             Entry::Rows => &self.rows,
             Entry::Columns => &self.columns,
+            Entry::InTurn => &self.in_turn,
             Entry::Pass => &self.pass,
         }
     }
@@ -421,6 +462,22 @@ impl Blurs {
                 Some(place)
             })
             .collect();
+        // The dispatches: each dab's steps, but a run of dabs that go in turn
+        // on one page one dispatch.
+        let mut planned: Vec<Planned> = Vec::new();
+        for (index, window) in windows.iter().enumerate() {
+            if window.in_turn().is_none() {
+                planned.extend(steps[index].iter().map(|step| Planned::Apart(index, step)));
+                continue;
+            }
+            if let Some(Planned::InTurn(run)) = planned.last_mut()
+                && windows[run.start].pages == window.pages
+            {
+                run.end = index + 1;
+                continue;
+            }
+            planned.push(Planned::InTurn(index..index + 1));
+        }
         let stride = engine.device.limits().min_uniform_buffer_offset_alignment as usize / 4;
         let steps_at = Cell::new(0);
         let plan = self.plans.write(engine, tiles, &white, paper, None, |plan| {
@@ -436,48 +493,61 @@ impl Blurs {
                 words.extend(&window.passes);
                 words.extend(window.grid.iter().flat_map(|&(tile, k)| [plan.tile_at(tile), k]));
             }
-            // Each dispatch's own words — its dab's block and its pass — on
-            // the plan past the blocks, at an offset a binding may start at,
-            // as a pile's runs' are (mod.rs: on a buffer of their own they
-            // cost a pile 5 to 7 µs more made anew). The first of two such
-            // uniforms: they stay apart until a third comes (rule of three,
-            // CLAUDE.md absolute rule 1).
             let blocks_at = plan.end();
+            // Each run in turn's list: its dabs' blocks and workgroups.
+            let mut lists = Vec::with_capacity(planned.len());
+            for each in &planned {
+                lists.push((blocks_at + words.len()) as u32);
+                if let Planned::InTurn(run) = each {
+                    for index in run.clone() {
+                        let [rx, ry, cx, cy] = windows[index].in_turn()?;
+                        let block = (blocks_at + places[index]) as u32;
+                        let turn: [u32; TURN_WORDS] = [block, rx, ry, cx, cy];
+                        words.extend(turn);
+                    }
+                }
+            }
+            // Each dispatch's own words — its dab's block and its pass, or
+            // its run's list and how many dabs it holds — on the plan past
+            // the blocks, at an offset a binding may start at, as a pile's
+            // runs' are (mod.rs: on a buffer of their own they cost a pile 5
+            // to 7 µs more made anew). The first of two such uniforms: they
+            // stay apart until a third comes (rule of three, CLAUDE.md
+            // absolute rule 1).
             let at = (blocks_at + words.len()).next_multiple_of(stride);
             steps_at.set(at);
             words.resize(at - blocks_at, 0);
-            for (place, steps) in places.iter().zip(&steps) {
-                for step in steps {
-                    words.extend([(blocks_at + place) as u32, step.pass]);
-                    words.resize(words.len() + stride - 2, 0);
-                }
+            for (each, &list) in planned.iter().zip(&lists) {
+                words.extend(match each {
+                    Planned::InTurn(run) => [list, run.len() as u32],
+                    Planned::Apart(index, step) => [(blocks_at + places[*index]) as u32, step.pass],
+                });
+                words.resize(words.len() + stride - 2, 0);
             }
             Some(words)
         });
         let plan = plan?;
-        // A dab whose window is on one page goes by the dispatches that bind
-        // one. The widest bind it too, so no test tells the two apart — only
-        // the time (`Blurs::one`; mutant r07, 11-06).
-        let ways: Vec<&Dispatches> = windows
-            .iter()
-            .map(|window| if window.pages.len() == 1 { &self.one } else { &self.widest })
-            .collect();
         let (between, second) = (self.between.as_ref()?, self.second.as_ref());
-        let dispatches: Vec<Encoded> = windows
+        let dispatches: Vec<Encoded> = planned
             .iter()
-            .zip(&ways)
-            .zip(&steps)
-            .flat_map(|((window, &way), steps)| steps.iter().map(move |step| (step, window, way)))
             .enumerate()
-            .map(|(index, (step, window, way))| {
+            .map(|(index, each)| {
+                let (window, entry, groups) = match each {
+                    Planned::InTurn(run) => (&windows[run.start], Entry::InTurn, (1, 1)),
+                    Planned::Apart(at, step) => (&windows[*at], step.entry, step.groups),
+                };
+                // A dab whose window is on one page goes by the dispatches
+                // that bind one. The widest bind it too, so no test tells the
+                // two apart — only the time (`Blurs::one`; mutant r07, 11-06).
+                let way = if window.pages.len() == 1 { &self.one } else { &self.widest };
                 let mut bound = whole(&[(0, plan), (1, between)]);
                 let at = ((steps_at.get() + index * stride) * 4) as u64;
                 bound.push(wgpu::BindGroupEntry { binding: 2, resource: range(plan, at..at + 16) });
-                if let (Entry::Pass, Some(second)) = (step.entry, second) {
+                if let (Entry::Pass, Some(second)) = (entry, second) {
                     bound.extend(whole(&[(3, second)]));
                 }
                 bound.extend(way.pages.entries(of_pages(picture, &window.pages)));
-                Encoded { pipeline: way.of(step.entry), bound, groups: flat(step.groups) }
+                Encoded { pipeline: way.of(entry), bound, groups: flat(groups) }
             })
             .collect();
         encode(engine, &dispatches);
