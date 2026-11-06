@@ -25,6 +25,7 @@ pub mod effects;
 pub mod export;
 pub mod fill;
 pub mod flood;
+pub mod letters;
 pub mod mask;
 pub mod mesh;
 pub mod shared;
