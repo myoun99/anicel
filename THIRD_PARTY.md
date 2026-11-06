@@ -59,10 +59,12 @@ library into the engine. Windows x64 only for now.
 
 ### Bundled fonts (`assets/fonts/`)
 
-Two OFL families ship — **the app's own** (유저 확정 2026-08-28): BIZ
-UDPGothic draws Japanese, Latin, French accents and kanji; 나눔고딕 draws
+Three OFL families ship. Two are **the app's own** (유저 확정 2026-08-28):
+BIZ UDPGothic draws Japanese, Latin, French accents and kanji; 나눔고딕 draws
 Hangul behind it. The conte PDF embeds the same two into exported files
-(2026-09-25; it used to ship M PLUS 1p and IBM Plex Sans KR for that).
+(2026-09-25; it used to ship M PLUS 1p and IBM Plex Sans KR for that). The
+third, Noto Sans SC, draws the Chinese UI in front of those two (유저
+2026-11-05).
 
 All are licensed under the **SIL Open Font License 1.1** (OFL), obtained
 from the Google Fonts collection (`github.com/google/fonts`, `ofl/` tree):
@@ -73,11 +75,16 @@ from the Google Fonts collection (`github.com/google/fonts`, `ofl/` tree):
 | `BIZUDPGothic-Bold.ttf` | BIZ UDPGothic | The BIZ UDGothic Project Authors | 앱 UI · 콘티 PDF |
 | `NanumGothic-Regular.ttf` | Nanum Gothic | NHN Corporation | 앱 UI · 콘티 PDF |
 | `NanumGothic-Bold.ttf` | Nanum Gothic | NHN Corporation | 앱 UI · 콘티 PDF |
+| `NotoSansSC-Variable.ttf` | Noto Sans SC | Adobe (Reserved Font Name 'Source') | 중국어 앱 UI |
 
 **The two `BIZUDPGothic-*.ttf` files are a modified version**: U+007E is taken
 out of their cmaps, so that 나눔고딕 draws the keyboard's `~` in the middle of a
 line (유저 2026-11-01, F-524-Q1) — the glyphs and every other table are as
 obtained. BIZ UDPGothic declares no reserved font name.
+
+`NotoSansSC-Variable.ttf` is Google Fonts' `NotoSansSC[wght].ttf` as obtained,
+renamed only; its license text is `OFL-NotoSansSC.txt`, the `OFL.txt` beside
+it there.
 
 The OFL permits bundling and embedding; the fonts remain under their own
 license, and their reserved font names are not used for any derivative.

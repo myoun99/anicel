@@ -208,7 +208,7 @@ void main() {
   double? floatLeft(WidgetTester tester, LayerId row) {
     for (final MapEntry(:key, :value) in lifted(tester).entries) {
       if (key.layerId == row) {
-        return value.float.value?.drawnWorldRect.left;
+        return value.float?.value?.drawnWorldRect.left;
       }
     }
     return null;

@@ -43,6 +43,7 @@ import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
+import '../services/persistence/app_gpu_settings_store.dart';
 import '../services/persistence/app_memory_settings_store.dart';
 import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
@@ -272,6 +273,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     inputSettingsStore: _unlessTesting(AppInputSettingsStore.new),
     saveSettingsStore: _unlessTesting(AppSaveSettingsStore.new),
     memorySettingsStore: _unlessTesting(AppMemorySettingsStore.new),
+    gpuSettingsStore: _unlessTesting(AppGpuSettingsStore.new),
     audioSyncSettingsStore: _unlessTesting(AudioSyncSettingsStore.new),
     // R28 #9: the pasteboard color, on the accents' app-state idiom.
     workspaceColorsStore: _unlessTesting(AppWorkspaceColorsStore.new),
@@ -1159,7 +1161,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         press,
         tool: _brushTool,
         transform: _transformOptions,
-        cutWhole: _session.pixelVerbs.cutWhole,
       );
       return;
     }

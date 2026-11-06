@@ -1,0 +1,19 @@
+[package]
+name = "media"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# A framed span's blocks are zstd frames (span.rs).
+[dependencies]
+compress = { path = "../compress" }
+
+# Media Foundation's one start (media_foundation.rs), and the one UTF-8 →
+# UTF-16 call a path is widened by (path.rs); the crate is already in the
+# lock as wgpu-hal's major.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Globalization", "Win32_Media_MediaFoundation"] }
+
+# The C answer key: the engine's qa_media_span_* (native/oracle).
+[dev-dependencies]
+oracle = { path = "../oracle" }

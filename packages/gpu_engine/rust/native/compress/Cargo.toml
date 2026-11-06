@@ -1,0 +1,9 @@
+[package]
+name = "compress"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# The C answer key: the engine's qa_zstd_* (native/oracle).
+[dev-dependencies]
+oracle = { path = "../oracle" }

@@ -17,12 +17,17 @@ import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
 import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
+import '../../services/export/xdts_viewer_ink.dart';
+import '../../models/timesheet_sheet_kind.dart';
+import '../../models/xdts_sheet_form.dart';
+import '../../models/xdts_viewer_sheet.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../editor_session_manager.dart';
+import '../panel_pictures.dart';
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -1030,6 +1035,9 @@ class ExportDialogState extends State<ExportDialog> {
 
   Cut get _activeCut => _anchorCut!;
 
+  /// The frames a second the project counts in (`Project.fps`).
+  int get _projectFps => _session.repository.requireProject().fps;
+
   /// The FULL sequence axis (untrimmed, gapless): what the transport runs
   /// over and the in/out marks live on (cut-local frames under the cut
   /// scope, whole-track positions under the project scope).
@@ -1351,7 +1359,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// the preview's and the page-image export's one routine; they differ
   /// only in [outputSize] (the preview fits its pane, the file is the page
   /// at its paper's own pixels). [layers] draws a Photoshop document's row
-  /// (I-117), with the ink composed only where it is drawn.
+  /// (I-117), with the ink composed only where it is drawn; [contentParts]
+  /// those of the values alone — an XDTS Viewer's ink page.
   ///
   /// The ink is the page's windows of the panel's own walk
   /// ([timesheetInkWindows]) — until 2026-09-26 the timesheet exported no
@@ -1361,6 +1370,7 @@ class ExportDialogState extends State<ExportDialog> {
     required TextStyle face,
     CanvasSize? outputSize,
     Set<SheetPaintLayer>? layers,
+    Set<TimesheetContentPart>? contentParts,
   }) async {
     final (document, layout) = _sheetDocFor(task.cut);
     final page = layout.pageRect(task.pageIndex);
@@ -1390,6 +1400,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         images: images,
         layers: layers,
+        contentParts: contentParts,
       );
     } finally {
       images.dispose();
@@ -1420,9 +1431,9 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// Renders each cell picture the conte [pages] name, once — a window's
-  /// [width] wide ([contePictureRenderWidth]) — fresh composites straight from
-  /// the brush store (the storyboard thumbnail rule: the cache is
-  /// panel-resolution, an export re-renders). [have] says which keys the
+  /// [width] wide ([contePictureRenderWidth]) — cut from the frame's one
+  /// picture as the conte tab's are ([PanelPictures]; the tab holds them at
+  /// its cells' size, a page's are cut again). [have] says which keys the
   /// caller already holds, and [take] receives each image and owns it from
   /// then on.
   ///
@@ -1438,7 +1449,7 @@ class ExportDialogState extends State<ExportDialog> {
     required Future<void> Function(SheetPictureKey key, ui.Image image) take,
   }) async {
     _contePictureSize = _session.camera.cameraFrameSize.scaledToWidth(width);
-    final renderer = ExportFrameRenderer(session: _session);
+    final panels = PanelPictures(session: _session);
     for (final page in pages) {
       for (final cell in page.cells) {
         final picture = contePictureOf(cell, page.metrics);
@@ -1453,7 +1464,7 @@ class ExportDialogState extends State<ExportDialog> {
         _sheetPartsMade += 1;
         await take(
           key,
-          await renderer.renderPicture(
+          await panels.render(
             cut,
             picture.pictureFrame,
             width: contePictureRenderWidth(picture, page.metrics, width),
@@ -3147,6 +3158,14 @@ class ExportDialogState extends State<ExportDialog> {
     final digital = spec.sheetFormat == ExportTimesheetFormat.xdts;
     bool isDigitalSheet(ExportDocumentSheet sheet) =>
         digital && sheet.kind == ExportCelKind.timesheet;
+    // A cut's two digital files share one ink folder
+    // ([xdtsInkFolderName]): the first of them the run writes lays it.
+    final inkedCuts = <CutId>{};
+    final inkingSheets = {
+      for (final sheet in plan.writtenDocuments)
+        if (isDigitalSheet(sheet) && inkedCuts.add(sheet.of.id)) sheet,
+    };
+    final writesInk = spec.writesSheetInk(fps: _projectFps);
     // 🚨THE FILES THAT ARE ON, not every planned one. ↩️The run walked the
     // list the window PREVIEWS, so a cel whose switch was off was counted
     // out of the headline and written all the same (found reading the run
@@ -3215,7 +3234,15 @@ class ExportDialogState extends State<ExportDialog> {
       thenWrite: [
         for (final sheet in plan.writtenDocuments)
           if (isDigitalSheet(sheet))
-            _AfterFile.whole(() => _writeXdts(sheet))
+            _AfterFile.whole(
+              () => _writeXdts(
+                sheet,
+                inkFace: writesInk && inkingSheets.contains(sheet)
+                    ? face
+                    : null,
+                viewerSheetFor: spec.viewerSheetFor,
+              ),
+            )
           else if (sheet.kind == ExportCelKind.video)
             _cutFilmFile(sheet),
       ],
@@ -3371,17 +3398,94 @@ class ExportDialogState extends State<ExportDialog> {
     return sounds;
   }
 
-  /// The digital sheet of a cut's timesheet, at [sheet]'s file.
-  Future<void> _writeXdts(ExportDocumentSheet sheet) async {
+  /// One of the digital sheet files of a cut's timesheet ([sheet]'s half),
+  /// at its file — and, given the [inkFace] its words are set in
+  /// ([CelsExportSpec.writesSheetInk]), its pages' handwriting beside it as
+  /// the XDTS Viewer reads it, laid on the viewer sheet [viewerSheetFor]
+  /// gives the cut's.
+  Future<void> _writeXdts(
+    ExportDocumentSheet sheet, {
+    required TextStyle? inkFace,
+    required XdtsViewerSheet Function(TimesheetSheetKind kind) viewerSheetFor,
+  }) async {
     final cut = sheet.of;
     final content = cutXdtsContent(
       _session,
       cut: cut,
+      half: sheet.half!,
       cutStartFrame: _trackStartOf(cut),
     );
     final file = File(_joinLocation(sheet.fileName));
     await file.parent.create(recursive: true);
     await file.writeAsString(content, flush: true);
+    if (inkFace != null) {
+      await _writeXdtsInk(
+        cut,
+        beside: file,
+        face: inkFace,
+        viewerSheetFor: viewerSheetFor,
+      );
+    }
+  }
+
+  /// [cut]'s ink folder [beside] its digital sheet (`xdts_viewer_ink.dart`):
+  /// each page of its timesheet with the handwriting and the values the
+  /// viewer does not print ([xdtsViewerUnprintedParts]), the page laid
+  /// whole onto the viewer's paper — 🗣️I-161-Q2 (유저 2026-11-05): 「우리
+  /// 용지를 뷰어 용지 크기에 맞춰 통째로 늘린다」 — the paper as wide as the
+  /// viewer widens it for the cut's wider block ([TimesheetDocument
+  /// .xdtsColumns]) — and the viewer's settings for that paper. A folder
+  /// already there is written over, page by page, as every export writes
+  /// over its files — 🗣️I-161-Q10 (유저 2026-11-05): 「덮어쓴다」.
+  Future<void> _writeXdtsInk(
+    Cut cut, {
+    required File beside,
+    required TextStyle face,
+    required XdtsViewerSheet Function(TimesheetSheetKind kind) viewerSheetFor,
+  }) async {
+    final (document, _) = _sheetDocFor(cut);
+    final viewer = viewerSheetFor(document.sheetKind);
+    final folder = Directory(
+      '${beside.parent.path}${Platform.pathSeparator}'
+      '${xdtsInkFolderName(beside.uri.pathSegments.last)}',
+    );
+    await folder.create(recursive: true);
+    final paper = XdtsSheetForm(viewer, columns: document.xdtsColumns);
+    final pageCount = document.pages.length;
+    for (var page = 0; page < pageCount; page += 1) {
+      final image = await _renderSheetPage(
+        ExportTimesheetPageTask(
+          cut: cut,
+          cutLabel: cut.name,
+          cutStartFrame: _trackStartOf(cut),
+          pageIndex: page,
+          pageCount: pageCount,
+          fileName: xdtsInkPageFileName(page),
+        ),
+        face: face,
+        outputSize: CanvasSize(
+          width: paper.pageWidth,
+          height: paper.pageHeight,
+        ),
+        layers: const {SheetPaintLayer.content, SheetPaintLayer.ink},
+        contentParts: xdtsViewerUnprintedParts,
+      );
+      try {
+        final png = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          '${folder.path}${Platform.pathSeparator}'
+          '${xdtsInkPageFileName(page)}',
+        ).writeAsBytes(png!.buffer.asUint8List(), flush: true);
+      } finally {
+        image.dispose();
+      }
+    }
+    await File(
+      '${folder.path}${Platform.pathSeparator}config.ini',
+    ).writeAsString(
+      xdtsViewerConfig(sheet: viewer, handles: document.transitionHandles),
+      flush: true,
+    );
   }
 
   /// Renders the SE mix to a temp WAV through the same mixer playback
@@ -4834,36 +4938,90 @@ class ExportDialogState extends State<ExportDialog> {
     ),
   );
 
-  /// 타임시트 형식: its pages as pictures — PNG or JPG — or the digital sheet.
+  /// 타임시트 형식: its pages as pictures — PNG or JPG — or the digital sheet,
+  /// with or without its handwriting (잉크 출력, I-161) laid on the viewer
+  /// sheet picked under it — rows that stand under either, live under the
+  /// digital sheet alone, in a project the viewer reads (I-161-Q7), and
+  /// saying why where it does not, as the timesheet's own paper does
+  /// (I-162-Q3: 「회색일때 툴팁으로 이유 표시」).
   ExportAccordion _sheetFormatAccordion(CelsExportSpec spec) {
     final pictured = spec.sheetFormat == ExportTimesheetFormat.sheetImage;
+    final read = xdtsViewerReads(_projectFps);
+    final inkLive = !pictured && read;
+    final viewer = spec.viewerSheetFor(_sheetDocFor(_activeCut).$1.sheetKind);
+    final strings = AppText.strings;
+    final unread = read ? null : strings.xdtsViewerRateRefused;
     return ExportAccordion(
-      title: AppText.strings.exTimesheetFormat,
+      title: strings.exTimesheetFormat,
       summary: pictured
           ? ExportPaperFormatModule.summarize(spec.sheetImage)
+          : spec.writesSheetInk(fps: _projectFps)
+          ? 'XDTS · ${strings.exXdtsInk} · '
+                '${strings.xdtsViewerSheetName(viewer)}'
           : 'XDTS',
       expansion: _expansion('sheet-format', open: true),
-      child: ExportPaperFormatModule(
-        keyPrefix: 'export-tsformat',
-        caption: ExportCaption.format,
-        image: spec.sheetImage,
-        stillEnabled: _availability.stillAllowed,
-        pictured: pictured,
-        onImageChanged: _isExporting
-            ? null
-            : (image) => _updateSpec(
-                spec.copyWith(
-                  sheetFormat: ExportTimesheetFormat.sheetImage,
-                  sheetImage: image,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExportPaperFormatModule(
+            keyPrefix: 'export-tsformat',
+            caption: ExportCaption.format,
+            image: spec.sheetImage,
+            stillEnabled: _availability.stillAllowed,
+            pictured: pictured,
+            onImageChanged: _isExporting
+                ? null
+                : (image) => _updateSpec(
+                    spec.copyWith(
+                      sheetFormat: ExportTimesheetFormat.sheetImage,
+                      sheetImage: image,
+                    ),
+                  ),
+            after: [
+              _pill(
+                keyValue: 'export-tsformat-xdts',
+                label: 'XDTS',
+                selected: !pictured,
+                onPick: () => _updateSpec(
+                  spec.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
                 ),
               ),
-        after: [
-          _pill(
-            keyValue: 'export-tsformat-xdts',
-            label: 'XDTS',
-            selected: !pictured,
-            onPick: () => _updateSpec(
-              spec.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
+            ],
+          ),
+          settingsHelpTooltip(
+            unread,
+            _specToggle(
+              keyValue: 'export-tsformat-xdts-ink',
+              label: strings.exXdtsInk,
+              value: spec.sheetInk,
+              write: inkLive
+                  ? (value) => spec.copyWith(sheetInk: value)
+                  : null,
+            ),
+          ),
+          // A list, not pills: four sheets' names cut each other to an
+          // ellipsis in the settings column — the codec's way out
+          // (video-export-speed-Q1).
+          ExportModuleRow(
+            caption: ExportCaption.paper,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: PanelFlyoutButton(
+                key: const ValueKey<String>('export-tsformat-xdts-sheet'),
+                label: strings.xdtsViewerSheetName(viewer),
+                tooltip: unread,
+                enabled: !_isExporting && inkLive && spec.sheetInk,
+                entriesBuilder: () =>
+                    XdtsViewerSheet.values.asFlyoutValueChoices(
+                      current: viewer,
+                      choiceOf: (sheet) => PanelFlyoutChoice(
+                        key: 'export-tsformat-xdts-sheet-${sheet.jsonValue}',
+                        label: strings.xdtsViewerSheetName(sheet),
+                      ),
+                      onPicked: (sheet) =>
+                          _updateSpec(spec.copyWith(viewerSheet: sheet)),
+                    ),
+              ),
             ),
           ),
         ],
@@ -5092,20 +5250,23 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// A toggle row bound to the tab's spec: DEAD while an export runs, and
-  /// a change writes the spec [write] answers. Six rows wrote that binding
-  /// out; a run in flight owns the spec, so one place says it — the same
-  /// law [_pill] states for the pills.
+  /// A toggle row bound to the tab's spec: DEAD while an export runs — and
+  /// with no [write], a row kept for a choice it waits on — and a change
+  /// writes the spec [write] answers. Six rows wrote that binding out; a
+  /// run in flight owns the spec, so one place says it — the same law
+  /// [_pill] states for the pills.
   SettingsSwitchRow _specToggle({
     required String keyValue,
     required String label,
     required bool value,
-    required ExportTabSpec Function(bool value) write,
+    required ExportTabSpec Function(bool value)? write,
   }) => SettingsSwitchRow(
     tileKey: ValueKey<String>(keyValue),
     label: label,
     value: value,
-    onChanged: _isExporting ? null : (value) => _updateSpec(write(value)),
+    onChanged: _isExporting || write == null
+        ? null
+        : (value) => _updateSpec(write(value)),
   );
 
   /// The Size accordion three tabs offer: one title, one fold key, one

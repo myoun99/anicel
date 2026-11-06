@@ -114,9 +114,10 @@ Future<void> main(List<String> handedAtLaunch) async {
   // redistributes them, not just sit in the repo — the About dialog's license
   // page surfaces these entries (THIRD_PARTY.md).
   //
-  // ⚠️The two families are the APP's (BIZ UDPGothic · 나눔고딕, 유저 확정
-  // 2026-08-28) — the UI's, and since 2026-09-25 the conte PDF's too, which
-  // embeds the same files.
+  // ⚠️The first two families are the APP's (BIZ UDPGothic · 나눔고딕, 유저
+  // 확정 2026-08-28) — the UI's, and since 2026-09-25 the conte PDF's too,
+  // which embeds the same files. The third is the Chinese UI's (유저
+  // 2026-11-05, gpu-int-spec-word-bake-Q2).
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(const [
       'BIZ UDPGothic',
@@ -124,6 +125,9 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield LicenseEntryWithLineBreaks(const [
       'Nanum Gothic',
     ], await rootBundle.loadString('assets/fonts/OFL-NanumGothic.txt'));
+    yield LicenseEntryWithLineBreaks(const [
+      'Noto Sans SC',
+    ], await rootBundle.loadString('assets/fonts/OFL-NotoSansSC.txt'));
     // PDFium binaries bundle at build time (pdfrx native assets); their
     // license requires the notice to ship with binary redistributions —
     // pub's automatic NOTICES only covers the Dart packages, not the

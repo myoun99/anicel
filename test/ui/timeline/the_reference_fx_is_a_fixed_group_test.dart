@@ -14,6 +14,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -30,6 +31,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
@@ -43,6 +45,8 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/rasterize_fx_group.dart'
+    show rasterizeLaneGroupOf;
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
@@ -522,6 +526,92 @@ void main() {
 
     s.undo();
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1210, y: 800));
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('🎯I-120-Q11 「래스터라이즈 버튼만 둔다(지금 참조 래스터라이즈와 '
+      '같은 길)」 · 「하나만 남기도록」: the header\'s RASTERIZE lets go of '
+      'the rows a press acts on — the selection pressed inside it, the row '
+      'alone outside it — lit off where it acts on none', (
+    tester,
+  ) async {
+    final (s, row) = await placed(tester);
+    final header = referencePropertyLanes(
+      row.mediaReference!,
+      expanded: false,
+      poseAt: null,
+    ).first;
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (hosted) {
+            context = hosted;
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    rasterizeLaneGroupOf(context, s, row, header)!.press!();
+    await tester.pumpAndSettle();
+    expect(s.layerById(row.id)!.mediaReference, isNull);
+
+    s.undo();
+    expect(s.layerById(row.id)!.mediaReference, isNotNull);
+    await tester.runAsync(() async {
+      final blue = await writeSolidPng(
+        tempDir,
+        'blue.png',
+        width: 40,
+        height: 40,
+        rgba: 0x0000FFFF,
+      );
+      expect(
+        await s.importDoors.importImageFile(
+          path: blue,
+          destination: ImportDestination.activeCutLayer,
+          copyIntoProject: false,
+          fit: MediaFitMode.none,
+        ),
+        isTrue,
+      );
+    });
+    final other = s.requireActiveCut.layers.firstWhere(
+      (layer) => layer.mediaReference != null && layer.id != row.id,
+    );
+    s.rowSelectionVerbs.rowSelection.value = [
+      LayerRowAddress(row.id),
+      LayerRowAddress(other.id),
+    ];
+    rasterizeLaneGroupOf(context, s, row, header)!.press!();
+    await tester.pumpAndSettle();
+    expect(
+      [for (final id in [row.id, other.id]) s.layerById(id)!.mediaReference],
+      [null, null],
+      reason: 'pressed in the selection: the selection',
+    );
+
+    s.undo();
+    s.rowSelectionVerbs.rowSelection.value = [LayerRowAddress(other.id)];
+    rasterizeLaneGroupOf(context, s, row, header)!.press!();
+    await tester.pumpAndSettle();
+    expect(
+      [for (final id in [row.id, other.id]) s.layerById(id)!.mediaReference],
+      [isNull, isNotNull],
+      reason: 'pressed outside the selection: that row alone',
+    );
+    expect(
+      s.rowSelectionVerbs.rowSelection.value,
+      [LayerRowAddress(other.id)],
+      reason:
+          'what a press does to the selection itself is not the rule\'s to '
+          'say (the user did not), so the bake leaves it alone',
+    );
+
+    s.undo();
+    s.cutVerbs.createLinkedCutFromActiveCut();
+    expect(rasterizeLaneGroupOf(context, s, row, header)!.press, isNull);
     await stopTheWarmer(tester, s);
   });
 

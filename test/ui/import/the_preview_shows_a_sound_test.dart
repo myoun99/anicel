@@ -9,7 +9,7 @@ import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
-import 'package:anicel/src/ui/media/waveform_marks_painter.dart';
+import 'package:anicel/src/ui/media/sound_face.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/fake_video_backend.dart';
@@ -73,13 +73,11 @@ void main() {
   TransportBar bar(WidgetTester tester) =>
       tester.widget<TransportBar>(find.byType(TransportBar));
 
-  /// The marks over the band — its playhead and the span kept — or null
+  /// The sound's face — its band, its playhead and the span kept — or null
   /// while no sound is on show.
-  WaveformMarksPainter? marks(WidgetTester tester) {
-    final layer = find.byKey(const ValueKey<String>('import-preview-marks'));
-    return layer.evaluate().isEmpty
-        ? null
-        : tester.widget<CustomPaint>(layer).painter as WaveformMarksPainter?;
+  SoundFace? face(WidgetTester tester) {
+    final faces = find.byType(SoundFace);
+    return faces.evaluate().isEmpty ? null : tester.widget<SoundFace>(faces);
   }
 
   testWidgets('the transport runs over the frames the sound lasts, with its '
@@ -118,7 +116,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(marks(tester), isNotNull, reason: 'its band is on show');
+    expect(face(tester), isNotNull, reason: 'its band is on show');
     expect(bar(tester).frameCount, 48, reason: 'two seconds at 24');
   });
 
@@ -157,7 +155,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(marks(tester), isNull);
+    expect(face(tester), isNull);
   });
 
   testWidgets('its frames are the PROJECT\'s', (tester) async {
@@ -166,34 +164,46 @@ void main() {
     expect(bar(tester).frameCount, 24);
   });
 
-  testWidgets('its picture is the viewer\'s waveform page — the band the '
-      'viewer opens a sound as — on no checker', (tester) async {
+  testWidgets('its picture is the viewer\'s face, counting what its '
+      'transport counts — and no page under it', (tester) async {
     await pump(tester);
 
+    final shown = face(tester)!;
     expect(
-      [for (final page in tester.importPreviewPage!.pages) page.rect],
-      [Offset.zero & const Size(200, 256)],
-      reason: 'two seconds of the viewer\'s band: 100 pixels a second, 256 '
-          'tall (`AudioViewerDocument`, through the viewer\'s door)',
+      (shown.frameCount, shown.framesPerSecond, shown.currentFrame),
+      (
+        bar(tester).frameCount,
+        bar(tester).framesPerSecond,
+        bar(tester).currentFrame,
+      ),
     );
     expect(
-      tester.importPreviewCheckered,
-      isFalse,
-      reason: 'a sound has no open alpha to show',
+      tester.importPreviewPage,
+      isNull,
+      reason: '🪦F-71: the sound was a page, rasterised onto paper',
     );
   });
 
-  testWidgets('the span IN/OUT keep is washed on the band, frame for frame', (
-    tester,
-  ) async {
+  testWidgets('⛔no panbars beside the face — it pans with nothing '
+      '(F-71-Q7)', (tester) async {
+    await pump(tester);
+
+    expect(face(tester), isNotNull, reason: 'the premise');
+    expect(
+      find.byKey(const ValueKey<String>('canvas-panbar-horizontal')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-panbar-vertical')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the span IN/OUT keep is washed on the face, the frames the '
+      'transport keeps', (tester) async {
     await pump(tester, inFrame: 12, outFrame: 23);
 
-    expect(
-      marks(tester)!.kept,
-      (from: 0.5, to: 1.0),
-      reason: 'frames 12 to 23 at 24: from half a second to the end of the '
-          'first',
-    );
+    expect(face(tester)!.kept, (first: 12, last: 23));
     expect(
       (bar(tester).range!.inFrame, bar(tester).range!.outFrame),
       (12, 23),
@@ -201,12 +211,12 @@ void main() {
     );
   });
 
-  testWidgets('⛔where IN/OUT do not bite, the wash is clear — and still '
-      'there, so nothing pops in when they do', (tester) async {
+  testWidgets('⛔where IN/OUT do not bite, the wash is clear — and the face '
+      'still there, so nothing pops in when they do', (tester) async {
     await pump(tester, rangeEditable: false);
 
-    expect(marks(tester), isNotNull, reason: 'the layer is there');
-    expect(marks(tester)!.kept, isNull, reason: 'and washes nothing');
+    expect(face(tester), isNotNull, reason: 'the face is there');
+    expect(face(tester)!.kept, isNull, reason: 'and washes nothing');
   });
 
   testWidgets('⛔a sound that answers after the window moved on is not '
@@ -240,7 +250,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(marks(tester), isNull);
+    expect(face(tester), isNull);
     expect(bar(tester).frameCount, 1);
   });
 }

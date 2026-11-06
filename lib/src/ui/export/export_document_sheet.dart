@@ -2,6 +2,9 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
+import '../../models/layer_process.dart';
+import '../../models/xdts_sheet_half.dart';
+import '../timeline/layer_label_controls.dart' show layerProcessAbbrev;
 import 'export_list_sheet.dart';
 import 'export_plan.dart' show sanitizeExportFileComponent;
 
@@ -19,6 +22,7 @@ class ExportDocumentSheet extends ExportListSheet {
     required this.page,
     required this.pageCount,
     required this.fileName,
+    this.half,
     this.skipped = false,
   });
 
@@ -34,12 +38,17 @@ class ExportDocumentSheet extends ExportListSheet {
   /// entry of the list, and each of its cuts keeps a sheet of its own.
   final Cut of;
 
-  /// Which page of the timesheet, from 0; 0 for an envelope, and for the
-  /// sheet's digital file, which is one file whatever its pages.
+  /// Which page of the timesheet, from 0; 0 for an envelope; for the
+  /// sheet's digital files, which are two whatever its pages, its [half]'s
+  /// place.
   final int page;
 
   /// How many files the document is written as.
   final int pageCount;
+
+  /// Which of the cut's two digital sheet files this is; null for every
+  /// other document.
+  final XdtsSheetHalf? half;
 
   @override
   final String fileName;
@@ -59,12 +68,18 @@ class ExportDocumentSheet extends ExportListSheet {
   @override
   String get idValue => '${kind.jsonValue}-${of.id.value}-$page';
 
-  /// A page says its number; a document that is one file says its cut.
+  /// A page says its number; a document that is one file says its cut; a
+  /// digital sheet file says its block's stage, as a row's label does.
   @override
-  String get word => pageCount > 1 ? '${page + 1}' : of.name;
+  String get word => switch (half) {
+    XdtsSheetHalf.genga => layerProcessAbbrev(LayerProcess.key),
+    XdtsSheetHalf.douga => layerProcessAbbrev(LayerProcess.inbetween),
+    null => pageCount > 1 ? '${page + 1}' : of.name,
+  };
 
   @override
-  String get fullName => exportDocumentBase(kind, of, page, pageCount);
+  String get fullName =>
+      exportDocumentBase(kind, of, page, pageCount, half: half);
 
   /// Nothing is laid over a document.
   @override
@@ -76,7 +91,7 @@ class ExportDocumentSheet extends ExportListSheet {
   @override
   bool get guidesLaid => false;
 
-  ExportDocumentPage get ref => (document: kind, page: page);
+  ExportDocumentPage get ref => (document: kind, page: page, half: half);
 
   @override
   ExportCelsCutDelta offIn(ExportCelsCutDelta delta, {required bool off}) =>
@@ -92,11 +107,21 @@ class ExportDocumentSheet extends ExportListSheet {
 ///
 /// A cut ENVELOPE keeps `CUT301_envelope`; a cut's FILM is `CUT301` — my
 /// call, not the user's (I-151 named none).
-String exportDocumentBase(ExportCelKind kind, Cut of, int page, int pageCount) {
+///
+/// The digital sheet is its two files, each named with its [half]'s mark
+/// — `TS301_genga_ts` · `TS301_douga_ts` (I-162-Q6).
+String exportDocumentBase(
+  ExportCelKind kind,
+  Cut of,
+  int page,
+  int pageCount, {
+  XdtsSheetHalf? half,
+}) {
   final cut = sanitizeExportFileComponent(of.name);
   return switch (kind) {
     ExportCelKind.envelope => 'CUT${cut}_envelope',
     ExportCelKind.video => 'CUT$cut',
+    _ when half != null => 'TS$cut${half.nameMark}',
     _ => pageCount > 1 ? 'TS${cut}_${page + 1}' : 'TS$cut',
   };
 }

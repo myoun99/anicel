@@ -5,6 +5,7 @@
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
 #   bash tool/lane.sh gate  <name>     run the land's gates on a lane as it stands, and stamp it
 #   bash tool/lane.sh native <name>    build the lane's C, run its tests and parity
+#   bash tool/lane.sh crate <name>     run the GPU engine crate's tests in the lane
 #   bash tool/lane.sh engine [<name>]  this checkout's engine (or a lane's) built from its own C
 #   bash tool/lane.sh furnish <dir>    a worktree that is not a lane, made ready to run as `open` makes one
 #   bash tool/lane.sh backup           copy the trunk and every open lane to the mirror
@@ -22,7 +23,7 @@
 # every time. The account is suspended, so origin is frozen and LOCAL master is
 # the trunk — that is not a workaround to remember, it is what `open` does.
 #
-# ⛔THE SEVEN THINGS THIS REFUSES TO LET YOU DO
+# ⛔THE EIGHT THINGS THIS REFUSES TO LET YOU DO
 #
 # 1. Run a git command in a worktree that is not one. `git worktree remove`
 #    fails on Windows whenever a file is locked, and it leaves the DIRECTORY
@@ -40,7 +41,9 @@
 #    two ENDS of one type are each green alone (2026-09-07, a required parameter
 #    on one side and a fixture on the other). (Measured ONCE: a lane whose
 #    gates passed on the very commit that merges is not measured a second
-#    time — see MEASURED ONCE below.)
+#    time — see MEASURED ONCE below.) Both run on what the lane resolved
+#    from this machine's pub cache, and a package not there refuses the
+#    land rather than being downloaded (resolve_offline says why).
 # 4. Leave master behind. `land` fast-forwards master last, so the next lane
 #    someone opens is based on what just landed.
 # 5. Land C that nobody compiled. `flutter analyze` does not read C, and the
@@ -93,6 +96,29 @@
 #    does the tree hold exactly the lane's commits — and whether HEAD is
 #    still the commit the rebase made. On either no it refuses and the lane
 #    stays as it is: commit the edit (or discard it) and land again.
+# 8. Land Rust that nobody tested. `flutter analyze` does not read Rust, and
+#    no suite loads the GPU engine crate — it is no dependency of the app —
+#    so a lane that changed packages/gpu_engine/rust, or the ledger its
+#    tests hold every kernel to (test/fixtures/fingerprints.json), had only
+#    the `cargo test` its author ran by hand behind it (저장 · 관제
+#    2026-11-05, gpu-engine-skeleton). Such a lane runs the crate's tests
+#    here, on this machine's GPU, in debug and in release — the shaders a
+#    debug build compiles are not the ones the app ships (cmd_crate says
+#    why); a lane that touched neither pays nothing.
+#    ⚠️A STAMP DOES NOT STAND FOR IT. The ledger says every GPU gives the
+#    same bytes, and a row pinned on one GPU is a claim only another can
+#    check — so a stamped land still runs it, here (관제 2026-11-05: the
+#    Surface's surface11/fx-line-box pinned effects/line-blur and landed on
+#    its stamp, with this machine's GPU never asked).
+#    🆕AND THE C IS THEIR ANSWER KEY (native-to-rust, 2026-11-06): the
+#    native crates are held to the engine the C builds, so a lane that
+#    changed packages/qa_native/src runs them too, and every run builds the
+#    lane's engine from the lane's C first (refusal 6) — a key built from
+#    other C would hold the Rust to the wrong answers.
+#    The machine's Rust must be on PATH — the main PC keeps it on D:, the
+#    Surface on C:, neither on the default PATH — and a land that cannot
+#    find cargo refuses rather than skipping. `bash tool/lane.sh crate
+#    <name>` runs the same thing without landing.
 #
 # ⚠️WHAT THIS CANNOT DO FOR YOU: judge a LAW COLLISION. Two lanes that never
 # touch the same file still invent the same law under two names — seven times in
@@ -161,7 +187,8 @@
 #     for the trunk's machine to do both once more.
 #   · `land` does not measure twice: a lane that still sits on master and
 #     whose stamp names its very commit merges as it is. A master that
-#     moved is what it always was — rebase, every gate, once.
+#     moved is what it always was — rebase, every gate, once. ⚠️Save
+#     refusal 8, whose answer is this machine's GPU's (2026-11-05, above).
 # ⚠️A stamp says 「the gates passed on THIS commit」 and nothing about any
 # other: one more commit, or a rebase, and it names nothing.
 #
@@ -211,6 +238,31 @@ TRUNK=master
 # machine takes its copy of master from it (`sync`) — origin's master only
 # follows when a bundle is pushed; the mirror's follows every `land`.
 MIRROR=backup
+# How long one call to the mirror may take, in seconds — a push of the
+# trunk or of the lanes, a fetch. The trunk's landing chain gives its own
+# fetch the same.
+MIRROR_WAIT=120
+# Set by `backup` alone, never taken from the environment.
+MIRROR_ASKS=
+
+# EVERY CALL THAT REACHES THE MIRROR GOES THROUGH HERE, and none waits for
+# somebody who is not there: it asks for no login, and gives up after
+# MIRROR_WAIT. 관제 2026-11-05 (gpu-engine-skeleton): the mirror's login
+# lapsed at 23:40, and three `git-credential-manager get` stood waiting at
+# a login window nobody would see, the commands that started them gone. Only
+# the land's push refused to ask (lane-land-hangs-on-mirror-login,
+# 2026-09-24); `backup`, `sync`, `send` and `unsend` asked. The trunk's
+# landing chain has run its own calls this way since 2026-10-19.
+# ⚠️Save a `backup` run IN A TERMINAL, which sets MIRROR_ASKS: that is
+# where a person logs in again, and it asks them, with no limit. Run by a
+# session, whose input is no terminal, it asks nobody.
+mirror_git() {
+  if [ -n "${MIRROR_ASKS:-}" ]; then
+    git -C "$ROOT" "$@"
+  else
+    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never timeout "$MIRROR_WAIT" git -C "$ROOT" "$@"
+  fi
+}
 
 # WHICH MACHINE THIS IS. The one that holds the trunk says nothing; every
 # other clone has named itself (the header says what that changes).
@@ -308,7 +360,63 @@ furnish() {
   # checkout holds C nobody has committed.
   ensure_engine "$p" \
     || echo "lane: ⚠️this lane's engine is not built from its C — native results here describe other C" >&2
-  (cd "$p" && flutter pub get >/dev/null 2>&1)
+  resolve_offline "$p"
+}
+
+# ⛔NOTHING HERE DOWNLOADS (관제 2026-11-06, native-memory-safety): a
+# download is the user's to allow, in chat. The Surface's crate gate
+# fetched cpal and dasp_sample from crates.io before anyone was asked, and
+# `pub get` — here, and inside `flutter analyze` and `flutter test`
+# whenever a pubspec is newer than its resolution — does the same for a
+# package a lane adds. So the app at $1 and the packages it does not
+# depend on resolve from this machine's pub cache alone, the gates run
+# with --no-pub, and a miss is refused with what is missing; $2 is the
+# refusal it is, when it is one. Anything else pub could not resolve is
+# left as it was: the gates' analyze reads it as errors.
+resolve_offline() {
+  local p="$1" log="$1/build/lane-pub.log" rc=0 missing
+  mkdir -p "$p/build"
+  (cd "$p" && flutter pub get --offline) >"$log" 2>&1 || rc=1
+  resolve_packages "$p" >>"$log" 2>&1 || rc=1
+  [ "$rc" -eq 0 ] && return 0
+  missing="$(packages_not_here "$p" | tr '\n' ' ')"
+  [ -n "$missing" ] || return 0
+  not_downloaded \
+    "this machine has not downloaded every package the locks name${2:+ — this is refusal $2}" \
+    "$missing" "(cd $p && flutter pub get)" "$log"
+}
+
+# The packages the app does not depend on, which the merge gate still
+# analyzes — why, and the list, are in tool/resolve_packages.sh. Called
+# wherever the gate can next run on a tree: a furnished lane, the gates
+# themselves (a rebase can bring a package in), and the trunk after a land.
+# The checkout's own copy of the script, so its own list is what runs.
+resolve_packages() {
+  local p="$1"
+  [ ! -f "$p/tool/resolve_packages.sh" ] \
+    || bash "$p/tool/resolve_packages.sh" "$p" --offline
+}
+
+# The packages the locks of the checkout at $1 take from a pub host that
+# this machine's pub cache lacks: what `flutter pub get` would download.
+packages_not_here() {
+  local cache="${PUB_CACHE:-${LOCALAPPDATA:+$LOCALAPPDATA/Pub/Cache}}" lock
+  cache="${cache:-$HOME/.pub-cache}"
+  for lock in $(git -C "$1" ls-files -- pubspec.lock '*/pubspec.lock'); do
+    awk '/^  [^ ]+:$/ { n = $1; sub(/:$/, "", n); h = 0 }
+      /^    source: hosted$/ { h = 1 }
+      h && /^    version: / { v = $2; gsub(/"/, "", v); print n "-" v }' "$1/$lock"
+  done | sort -u | grep -vxF -f <(ls "$cache"/hosted/*/ 2>/dev/null)
+}
+
+# What a refusal to download says — the law is above resolve_offline: what
+# is missing, and what would fetch it once the user says yes.
+not_downloaded() {  # not_downloaded <head> <missing> <command> <log>
+  die "$1
+  A download is the user's to allow, in chat.
+  Not here: $2
+  With their yes: $3
+  The whole log: $4"
 }
 
 cmd_list() {
@@ -384,10 +492,10 @@ mirror_trunk() {
     return 0
   }
   echo "lane: mirroring $TRUNK -> $MIRROR"
-  git -C "$ROOT" push --quiet "$MIRROR" "$TRUNK" && return 0
+  mirror_git push --quiet "$MIRROR" "$TRUNK" && return 0
   echo "lane: ⚠️THE MIRROR PUSH FAILED — $TRUNK is on this disk only." >&2
   echo "lane:   The merge landed; it is the COPY that is missing. Retry with:" >&2
-  echo "lane:   bash tool/lane.sh backup" >&2
+  echo "lane:   bash tool/lane.sh backup — in a terminal when the mirror wants a login" >&2
   # Said, and ANSWERED: `land` goes on whatever this returns — nothing of
   # its own depends on the copy — and `backup` fails on it.
   return 1
@@ -408,7 +516,9 @@ mirror_trunk() {
 # and that line stood under their two warnings — on the one command whose
 # whole job is the copy.
 cmd_backup() {
-  local missed=
+  local missed= MIRROR_ASKS=
+  # A person at a terminal is asked for a login (mirror_git says why).
+  [ -t 0 ] && MIRROR_ASKS=1
   mirror_trunk || missed=1
   git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || return 0
   if away; then
@@ -419,7 +529,7 @@ cmd_backup() {
     # anything. A master `sync` refuses is said, and is no reason not to
     # back up.
     (cmd_sync) || true
-    git -C "$ROOT" push --quiet "$MIRROR" \
+    mirror_git push --quiet "$MIRROR" \
       "+refs/heads/work/$MACHINE/*:refs/heads/work/$MACHINE/*" \
       || die "the open lanes did not reach $MIRROR — nothing was copied"
     echo "lane: mirrored $(git -C "$ROOT" for-each-ref \
@@ -434,7 +544,7 @@ cmd_backup() {
     --format='+%(refname):%(refname)' 'refs/heads/work/*')"
   if [ -n "$own" ]; then
     # shellcheck disable=SC2086
-    git -C "$ROOT" push --quiet "$MIRROR" $own || {
+    mirror_git push --quiet "$MIRROR" $own || {
       echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
       missed=1
     }
@@ -460,7 +570,7 @@ cmd_sync() {
   # a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08).
   local offers asked=
   offers="$(offers_here)" && asked=1
-  git -C "$ROOT" fetch --quiet "$MIRROR" "$TRUNK" \
+  mirror_git fetch --quiet "$MIRROR" "$TRUNK" \
     || die "could not fetch $TRUNK from $MIRROR"
   # ⚠️ASKED BEFORE THE MERGE, not left to it. `merge --ff-only` of a commit
   # this master is already AHEAD of succeeds — there is nothing to do — and
@@ -479,8 +589,7 @@ cmd_sync() {
 # (away) This machine's offers on the mirror, a ref a line — or a failure
 # when the mirror cannot be asked.
 offers_here() {
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" \
-    ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null
+  mirror_git ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null
 }
 
 # (away) Let go of the lanes that landed. A lane this machine sent, whose
@@ -578,11 +687,11 @@ cmd_send() {
   # The stamp travels only when it names the commit that is offered: one of
   # an earlier commit vouches for nothing here, and leaves the mirror.
   local stamped=; [ "$(gated_at "$name")" = "$head" ] && stamped=1
-  git -C "$ROOT" push --quiet "$MIRROR" \
+  mirror_git push --quiet "$MIRROR" \
     "+refs/heads/work/$name:refs/heads/sent/$name" \
     ${stamped:+"+$(gate_ref "$name"):refs/heads/gated/$name"} \
     || die "the lane did not reach $MIRROR"
-  [ -n "$stamped" ] || git -C "$ROOT" push --quiet "$MIRROR" \
+  [ -n "$stamped" ] || mirror_git push --quiet "$MIRROR" \
     --delete "gated/$name" >/dev/null 2>&1 || true
   # What was offered, so `landed_lanes_leave` can tell a lane that landed
   # from one that landed AND was worked on since.
@@ -602,11 +711,11 @@ cmd_unsend() {
   away || die "unsend is for an away machine — offers are made there"
   local name="${1:-}"; [ -n "$name" ] || die "unsend needs a name"
   name="$(lane_named "$name")" || exit 1
-  git -C "$ROOT" push --quiet "$MIRROR" --delete "sent/$name" 2>/dev/null \
+  mirror_git push --quiet "$MIRROR" --delete "sent/$name" 2>/dev/null \
     || die "nothing sent as $name on $MIRROR"
   # The stamp that went with the offer leaves with it; this machine's own
   # stays, and travels again if the same commit is sent again.
-  git -C "$ROOT" push --quiet "$MIRROR" --delete "gated/$name" >/dev/null 2>&1 || true
+  mirror_git push --quiet "$MIRROR" --delete "gated/$name" >/dev/null 2>&1 || true
   git -C "$ROOT" config --unset "branch.work/$name.sent" 2>/dev/null
   echo "lane: took back the offer of work/$name — the lane is as it was"
 }
@@ -629,14 +738,13 @@ cmd_receive() {
   [ -e "$p" ] && die "already there: $p (drop it first to take the lane again)"
   git -C "$ROOT" show-ref --verify --quiet "refs/heads/work/$name" \
     && die "a branch work/$name is already here (drop it first to take the lane again)"
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" fetch --quiet \
-    "$MIRROR" "refs/heads/sent/$name:refs/heads/work/$name" \
-    || die "nothing sent as $name on $MIRROR (or no saved login for it — \`backup\` asks for one)"
+  mirror_git fetch --quiet "$MIRROR" "refs/heads/sent/$name:refs/heads/work/$name" \
+    || die "nothing sent as $name on $MIRROR (or no saved login for it — \`backup\` in a terminal asks for one)"
   # The stamp its machine's `gate` made, when it sent one (MEASURED ONCE).
   # Whatever stamp an earlier lane of this name left here goes first: a
   # lane that arrives without one arrives unmeasured.
   git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" fetch --quiet \
+  mirror_git fetch --quiet \
     "$MIRROR" "+refs/heads/gated/$name:$(gate_ref "$name")" >/dev/null 2>&1 || true
   git -C "$ROOT" worktree add "$p" "work/$name" >/dev/null || die "worktree add failed"
   furnish "$p"
@@ -646,8 +754,7 @@ cmd_receive() {
 # What other machines have sent. A lane already received says so.
 cmd_incoming() {
   away && die "incoming is for the machine that holds the trunk"
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" ls-remote \
-    --heads "$MIRROR" 'refs/heads/sent/*/*' \
+  mirror_git ls-remote --heads "$MIRROR" 'refs/heads/sent/*/*' \
     | sed -n 's|.*refs/heads/sent/||p' \
     | while read -r name; do
         if git -C "$ROOT" show-ref --verify --quiet "refs/heads/work/$name"; then
@@ -804,6 +911,69 @@ cmd_native() {
   echo "lane: native — green ($(wc -l <"$list") parity files)"
 }
 
+# The crates the lock at $1 takes from a registry that this machine has not
+# downloaded: what `cargo fetch --locked` would download, every platform's.
+crates_not_here() {
+  local home="${CARGO_HOME:-$HOME/.cargo}"
+  awk '/^name = /{ n = $3 } /^version = /{ v = $3 }
+    /^source = "registry\+/{ gsub(/"/, "", n); gsub(/"/, "", v); print n "-" v }' "$1" \
+    | grep -vxF -f <(ls "$home"/registry/cache/*/ 2>/dev/null | sed -n 's/\.crate$//p')
+}
+
+# Refusal 8, runnable on its own. The header says why it is there.
+cmd_crate() {
+  local name="${1:-}"; [ -n "$name" ] || die "crate needs a name"
+  name="$(lane_named "$name")" || exit 1
+  local p; p="$(lane_path "$name")"
+  require_worktree "$p"
+  command -v cargo >/dev/null 2>&1 || die "cargo is not on PATH — this is refusal 8
+  The lane changed the GPU engine crate, its ledger or the C. Put this
+  machine's Rust on PATH, with its RUSTUP_HOME and CARGO_HOME, and run it again."
+  # The native crates' answer key (native/oracle): the lane's own engine.
+  ensure_engine "$p" || die "the engine is not built from this lane's C — this is refusal 8
+  The native crates are compared with it. See above."
+  local log="$p/build/lane-crate.log" profile flag from passed
+  mkdir -p "$p/build"
+  : >"$log"
+  # Both builds (관제 2026-11-05, gpu-engine-skeleton). A debug build's wgpu
+  # turns InstanceFlags::DEBUG on, and on DX12 that compiles every shader
+  # with optimizations skipped (wgpu-hal 30, dx12/shader_compilation.rs) —
+  # the grid kernel's X3507 failed in release alone, with debug green on the
+  # same tree. Release compiles the shaders the app ships; debug keeps the
+  # validation layers.
+  for profile in debug release; do
+    flag=; [ "$profile" = release ] && flag=--release
+    echo "lane: crate — the GPU engine's tests ($profile)"
+    from=$(wc -l <"$log")
+    # The trunk's target folder: every lane reuses what the trunk and the
+    # lanes before it compiled (wgpu is minutes cold) — in its turn, which
+    # every cargo building there takes (tool/cargo_turn.sh says why).
+    # Offline — the law is above resolve_offline. Cargo names one missing
+    # crate at a time, and not always the one: with cpal gone it said no
+    # `symphonia` was found, so the list comes from the lock.
+    (cd "$p/packages/gpu_engine/rust" \
+      && bash "$ROOT/tool/cargo_turn.sh" \
+        test --locked --offline --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
+      tail -n +$((from + 1)) "$log" | grep -aqE 'offline mode|--offline was specified' \
+        && not_downloaded \
+          "this machine has not downloaded every crate the lock names — this is refusal 8" \
+          "$(crates_not_here "$p/packages/gpu_engine/rust/Cargo.lock" | tr '\n' ' ')" \
+          "(cd $p/packages/gpu_engine/rust && cargo fetch --locked)" "$log"
+      grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
+      die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
+    }
+    # Each crate of the workspace says its own `test result`, the last one
+    # a doc-test of nothing ("0 passed"): what passed is their sum.
+    passed=$(tail -n +$((from + 1)) "$log" | grep -a '^test result' \
+      | awk '{ n += $4 } END { print n + 0 }')
+    # ⛔A RUN THAT PASSED NO TEST IS NOT GREEN (관제 2026-11-06): it exits 0
+    # as a run of every test does.
+    [ "$passed" -gt 0 ] \
+      || die "the GPU engine crate ran no test in $profile — this is refusal 8; the whole log: $log"
+    echo "lane: crate — $profile green ($passed passed)"
+  done
+}
+
 # Is the lane's working tree exactly its commits? Printing what is not.
 # `land` asks it twice — before the rebase, and after the gates (refusal 7) —
 # and both times through this one function, so the two answers cannot drift.
@@ -863,7 +1033,7 @@ at_idle() {
 }
 
 # THE GATES A LANDING STANDS BEHIND, on the lane at $2 as it is checked
-# out — refusals 3 and 5. `land` runs them after its rebase and `gate` on a
+# out — refusals 3, 5 and 8. `land` runs them after its rebase and `gate` on a
 # lane as it stands: the same lines, so a stamp vouches for exactly what a
 # land would have measured. $3 says which of the two is asking, for the
 # room alone.
@@ -880,32 +1050,67 @@ gates() {
   local name="$1" p="$2" out analyze architecture analyzed tested
   room_first "${3:-}"
   at_idle
+  resolve_offline "$p" 3
   out="$(mktemp -d "${TMPDIR:-/tmp}/lane-gates.XXXXXX")"
   echo "lane: flutter analyze (no arguments) and flutter test test/architecture, together"
-  (cd "$p" && flutter analyze) > "$out/analyze" 2>&1 &
+  (cd "$p" && flutter analyze --no-pub) > "$out/analyze" 2>&1 &
   analyze=$!
-  (cd "$p" && flutter test test/architecture) > "$out/architecture" 2>&1 &
+  (cd "$p" && flutter test --no-pub test/architecture) > "$out/architecture" 2>&1 &
   architecture=$!
   wait "$analyze"; analyzed=$?
   wait "$architecture"; tested=$?
+  # A red gate keeps its whole output in the lane, beside the native and
+  # crate logs. 관제 2026-11-05 (i163-dropper-no-paper): an architecture run
+  # went red with no [E] line, the folder was removed, and the same tree
+  # was green again — which test it was is lost for good.
+  mkdir -p "$p/build"
+  cp "$out/analyze" "$p/build/lane-analyze.log"
+  cp "$out/architecture" "$p/build/lane-architecture.log"
+  rm -rf "$out"
   if [ "$analyzed" -ne 0 ]; then
-    tail -20 "$out/analyze" >&2
-    rm -rf "$out"
-    die "analyze is not clean — this is refusal 3"
+    tail -20 "$p/build/lane-analyze.log" >&2
+    die "analyze is not clean — this is refusal 3; the whole log: $p/build/lane-analyze.log"
   fi
   if [ "$tested" -ne 0 ]; then
-    grep -A4 '\[E\]' "$out/architecture" | head -20 >&2
-    rm -rf "$out"
-    die "the architecture gate is red
+    if grep -q '\[E\]' "$p/build/lane-architecture.log"; then
+      grep -A4 '\[E\]' "$p/build/lane-architecture.log" | head -20 >&2
+    else
+      # Red without [E]: a crash, or a run that never reported a test.
+      tail -20 "$p/build/lane-architecture.log" >&2
+    fi
+    die "the architecture gate is red; the whole log: $p/build/lane-architecture.log
   A 'grew past' failure is the lane's. A 'ceiling is slack' failure is the
   trunk's: land the lane, then lower the ceiling to the measured number."
   fi
-  rm -rf "$out"
 
   # Refusal 5. Only a lane that touched the C pays for it — its parity run
   # outside the machine's line, as the architecture tests above run.
-  if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
+  if lane_touched "$p" packages/qa_native/src; then
     cmd_native "$name" gates
+  fi
+  crate_gate "$name" "$p"
+}
+
+# Did the lane at $1 itself change anything under the paths that follow?
+# THREE dots: from where the lane left the trunk to the lane. After a
+# land's rebase that is the trunk; a `gate` measures a lane as it stands.
+# ↩️Two dots compared the trunk's tip with the lane, so a lane opened
+# before the trunk took crate commits read them as its own: the Surface's
+# surface11/xdts-viewer-frames, four Dart files, was refused for want of
+# cargo (저장 2026-11-05).
+lane_touched() {
+  local p="$1"; shift
+  [ -n "$(git -C "$p" diff --name-only "$TRUNK"...HEAD -- "$@")" ]
+}
+
+# Refusal 8, for a lane that touched the crate or its ledger. `gates` asks
+# it, and so does a stamped land: the header says why a stamp does not
+# stand for it.
+crate_gate() {
+  local name="$1" p="$2"
+  if lane_touched "$p" packages/gpu_engine/rust test/fixtures/fingerprints.json \
+    packages/qa_native/src; then
+    cmd_crate "$name"
   fi
 }
 
@@ -988,11 +1193,17 @@ cmd_land() {
 
   # MEASURED ONCE: the gates passed on this very commit, and the trunk has
   # not moved from under it — the tree that merges is the tree that was
-  # measured, and measuring it again would say the same.
+  # measured, and measuring it again would say the same. Save refusal 8:
+  # on another machine's GPU it may not (the header).
   local head; head="$(git -C "$p" rev-parse HEAD)"
   if [ "$(gated_at "$name")" = "$head" ] \
     && git -C "$p" merge-base --is-ancestor "$TRUNK" HEAD; then
-    echo "lane: work/$name was gated at ${head:0:10} and sits on $TRUNK as it stands — not measured again"
+    echo "lane: work/$name was gated at ${head:0:10} and sits on $TRUNK as it stands — not measured again, save refusal 8"
+    # The stamp says nothing of where it was made: a lane gated and landed
+    # here pays one more run of the crate (minutes) — rare, since this
+    # machine's lanes land without a `gate`.
+    crate_gate "$name" "$p"
+    unmoved_since "$p" "$head" land
   else
     echo "lane: rebasing work/$name onto $TRUNK"
     git -C "$p" rebase "$TRUNK" >/dev/null 2>&1 || die "REBASE CONFLICT in $p
@@ -1023,9 +1234,9 @@ cmd_land() {
   # saved login git-credential-manager waited for one: the land never
   # returned, the trunk's engine below was never rebuilt, and the copy was
   # never made (lane-land-hangs-on-mirror-login, 2026-09-24). Here the push
-  # fails at once and says to run `backup`, which still asks — a person can
-  # log in there.
-  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never mirror_trunk
+  # fails at once (mirror_git) and says to run `backup`, which still asks
+  # in a terminal — a person can log in there.
+  mirror_trunk
   # A landed lane is finished on the mirror too: its OFFER goes — that is
   # how the machine that sent it, and `incoming` here, see that it landed —
   # and so do its stamp and its copy. (A lane that was never there has
@@ -1037,8 +1248,7 @@ cmd_land() {
   # a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08).
   local gone
   for gone in "sent/$name" "gated/$name" "work/$name"; do
-    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" push --quiet \
-      "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
+    mirror_git push --quiet "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
   done
   # Refusal 6: the merge moved the trunk's C whenever this lane carried any,
   # and the trunk's engine follows it HERE, in the trunk's own directory and
@@ -1047,12 +1257,15 @@ cmd_land() {
   # trunk engine that cannot be rebuilt now is the next `open`'s to fix.
   ensure_engine "$ROOT" \
     || echo "lane: ⚠️the trunk's engine is not built from the trunk's C — the next open tries again" >&2
+  # A package missing here is the next open's to name.
+  resolve_packages "$ROOT" >/dev/null 2>&1 || true
 }
 
 { case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   land) shift; cmd_land "$@" ;;
   native) shift; cmd_native "$@" ;;
+  crate) shift; cmd_crate "$@" ;;
   engine) shift; cmd_engine "$@" ;;
   furnish) shift; cmd_furnish "$@" ;;
   backup) shift; cmd_backup "$@" ;;
@@ -1065,5 +1278,5 @@ cmd_land() {
   receive) shift; cmd_receive "$@" ;;
   incoming) shift; cmd_incoming "$@" ;;
   gate) shift; cmd_gate "$@" ;;
-  *) sed -n '2,19p' "$0"; exit 2 ;;
+  *) sed -n '2,20p' "$0"; exit 2 ;;
 esac; exit; }

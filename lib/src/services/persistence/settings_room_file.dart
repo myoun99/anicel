@@ -23,10 +23,15 @@ import 'versioned_settings_file.dart';
 /// ⚖️And the fx plugins (I-132, 2026-10-30), by Q2's word for the fonts —
 /// installed here: each is kept as the native build of THIS device beside
 /// its module, and installed only once a person here has said yes to it.
+///
+/// ⚖️And the GPU choice (connection-round-checklist-Q4, 2026-11-06), by
+/// Q2's word for the memory budget — this machine's GPUs: an energy-saving
+/// GPU picked on a laptop says nothing about the desktop it is opened on.
 const Set<String> settingsBoundToThisMachine = {
   'recent_projects.json',
   'window.json',
   'memory_settings.json',
+  'gpu_settings.json',
   'fonts',
   'fx_plugins',
   'launch_notice.json',

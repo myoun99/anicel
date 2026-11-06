@@ -567,16 +567,27 @@ abstract final class AppTypography {
   /// 폰트가 그 자형을 정하므로, 일본어 폰트를 그대로 중국어에 씌우면 중국
   /// 사람에게는 틀린 글자로 보인다.
   ///
-  /// 🚨그리고 **BIZ 는 앱의 중국어 582자 중 174자를 아예 안 갖고 있다**(실측).
-  /// 그대로 두면 한 문장 안에서 408자는 일본 자형, 174자는 OS 폰트로 **섞인다**
-  /// — 폰트를 통일하려다 오히려 갈라 놓는 것이라, 중국어는 **OS 에 맡긴다.**
+  /// 🗣️gpu-int-spec-word-bake-Q2 (유저 2026-11-05): 「중국어 글꼴을
+  /// 번들한다」 — 중국어는 간체 글꼴 [_chineseFamily] 가 앞에 서고, 그 뒤는
+  /// 다른 언어의 순서 그대로다. 블록 글자를 GPU 엔진이 직접 그리게 되면서
+  /// (같은 카드 Q1) 엔진은 OS 글꼴을 볼 수 없으므로, Flutter 와 엔진이 같은
+  /// 파일을 쓴다. 🔬앱의 중국어 한자 803자를 이 파일이 전부 갖는다(11-05 실측
+  /// — `the_app_has_one_face_test` 가 파일로 지킨다).
   ///
-  /// 🔜중국어 전용 폰트(Noto Sans SC, 17MB)는 유저 결정 대기 중이다.
-  static String? familyFor(AppLanguage language) =>
-      language == AppLanguage.zhHans ? null : _family;
+  /// ⚠️뒤에 BIZ 를 남긴 것은 세션이 정했다(11-05): 간체 글꼴에 없는 글자 —
+  /// 라틴 확장 A 128자 중 98자(프랑스어 œ 등), 한자 16자 — 를 OS 가 아니라
+  /// 번들 글꼴이 그리게. 한글은 그 뒤 나눔고딕이 그린다.
+  ///
+  /// ↩️I-4-Q10 (2026-08-28, 답 1)은 중국어를 OS 에 맡겼다: BIZ 는 앱의 중국어
+  /// 한자를 다 갖지 않아(그때 582자 중 174자, 11-05 에 다시 세면 803자 중
+  /// 240자) 한 문장 안에서 일본 자형과 OS 폰트로 섞였기 때문이다.
+  static String familyFor(AppLanguage language) =>
+      language == AppLanguage.zhHans ? _chineseFamily : _family;
 
-  static List<String>? fallbackFor(AppLanguage language) =>
-      language == AppLanguage.zhHans ? null : _fallback;
+  static List<String> fallbackFor(AppLanguage language) =>
+      language == AppLanguage.zhHans
+      ? const <String>[_family, ..._fallback]
+      : _fallback;
 
   /// [style] in the face the app speaks in now.
   ///
@@ -623,12 +634,19 @@ abstract final class AppTypography {
   /// `the_keyboard_tilde_is_nanums_test` holds them.
   static const List<String> _fallback = <String>['Nanum Gothic'];
 
+  /// The Chinese UI's face, in front of [_family] ([familyFor]).
+  static const String _chineseFamily = 'Noto Sans SC';
+
+  /// The one file behind [_chineseFamily] as `pubspec.yaml` declares it —
+  /// variable, its weight set by the style's.
+  static const String chineseFile = 'assets/fonts/NotoSansSC-Variable.ttf';
+
   /// 🚨THE BUNDLED FACES, whatever the UI language — for what has to print
   /// the same on every machine and in every file (유저 2026-09-25: 「글꼴
   /// 앱에서 정한거 통일하는거 해주고」): the conte, whose PDF embeds these
   /// very files, and a text cel, which bakes into the picture. Only the UI
-  /// follows the language ([familyFor]) — a Chinese UI wears the OS's face,
-  /// and an OS face cannot ride inside a PDF.
+  /// follows the language ([familyFor]) — a Chinese UI wears
+  /// [_chineseFamily] in front of these two.
   ///
   /// ↩️The conte printed in faces of its own (M PLUS 1p + IBM Plex Sans KR)
   /// and a text cel caught CJK in them: two more families, bundled for two

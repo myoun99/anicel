@@ -14,6 +14,43 @@ typedef TileInkBounds = ({
   int bottomExclusive,
 });
 
+/// The tight box of the ink in [words] — RGBA pixels, [width] by [height],
+/// one little-endian word each, so alpha is the word's top byte. A box
+/// with nothing in it (`rightExclusive <= left`) where no alpha is above 0.
+///
+/// The tile's own scan ([BitmapTile.inkBounds]) and a picture's that is
+/// not a tile — what the cut tool's 「표시」 frames (I-163) — are this loop,
+/// and why it stays written out is said at the tile's scan.
+TileInkBounds inkBoundsOfWords(
+  Uint32List words, {
+  required int width,
+  required int height,
+}) {
+  var minX = width;
+  var minY = height;
+  var maxX = -1;
+  var maxY = -1;
+  for (var y = 0; y < height; y += 1) {
+    final rowStart = y * width;
+    for (var x = 0; x < width; x += 1) {
+      final word = words[rowStart + x];
+      if (word == 0 || (word & 0xff000000) == 0) {
+        continue;
+      }
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  return (
+    left: minX,
+    top: minY,
+    rightExclusive: maxX + 1,
+    bottomExclusive: maxY + 1,
+  );
+}
+
 /// Where tile blocks come from, as one isolate tells another: the engine's
 /// allocator by its functions' addresses, or `malloc` when that isolate runs
 /// without one (both zero). [BitmapTile.blocks] reads it, [tileBlocksHere]
@@ -278,37 +315,14 @@ class BitmapTile implements Finalizable {
   /// against — a helper call inside it would cost on both counts. It used
   /// to live in `bitmap_surface_geometry`; it moved here so the batched C
   /// scan and the reference answer the same question in one place, and so
-  /// the answer can be MEMOIZED where the pixels are.
-  TileInkBounds _scanInkBounds() {
-    var minX = size;
-    var minY = size;
-    var maxX = -1;
-    var maxY = -1;
-    // RGBA little-endian: alpha is the word's top byte.
-    final words = _view.buffer.asUint32List(
-      _view.offsetInBytes,
-      size * size,
-    );
-    for (var y = 0; y < size; y += 1) {
-      final rowStart = y * size;
-      for (var x = 0; x < size; x += 1) {
-        final word = words[rowStart + x];
-        if (word == 0 || (word & 0xff000000) == 0) {
-          continue;
-        }
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-    return (
-      left: minX,
-      top: minY,
-      rightExclusive: maxX + 1,
-      bottomExclusive: maxY + 1,
-    );
-  }
+  /// the answer can be MEMOIZED where the pixels are. Since I-163 the loop
+  /// itself is [inkBoundsOfWords] — one call per tile, outside the pixel
+  /// loop — so a picture that is not a tile asks the same scan.
+  TileInkBounds _scanInkBounds() => inkBoundsOfWords(
+    _view.buffer.asUint32List(_view.offsetInBytes, size * size),
+    width: size,
+    height: size,
+  );
 
   /// Copies the pixel bytes into [target] without the intermediate copy
   /// the [pixels] getter makes.

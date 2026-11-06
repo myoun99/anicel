@@ -165,8 +165,9 @@ void main() {
   group('the storyboard\'s SE row', () {
     Future<void> pump(
       WidgetTester tester,
-      SoundCannotPlay? Function(String) cannotPlay,
-    ) async {
+      SoundCannotPlay? Function(String) cannotPlay, {
+      StoryboardRowFramePress? onRowFramePress,
+    }) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -196,6 +197,7 @@ void main() {
               pixelsPerFrame: 8,
               projectFrameRate: ProjectFrameRate.fps24,
               soundCannotPlay: cannotPlay,
+              onRowFramePress: onRowFramePress,
             ),
           ),
         ),
@@ -240,6 +242,30 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    // F-495: the warning lies over the whole block, last on the row, and
+    // hears the hover alone. ↩️Its box took the press here, and a warned
+    // block could not be stood on.
+    testWidgets('a press on the block is the block\'s — the warning over it '
+        'takes none', (tester) async {
+      final pressed = <int>[];
+      await pump(
+        tester,
+        gone,
+        onRowFramePress: (_, frame) => pressed.add(frame),
+      );
+      final block = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-se-paper-se-0')),
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey<String>(line))),
+        predicate<Rect>((rect) => rect.contains(block.center)),
+        reason: '⛔전제: the warning lies over the block\'s middle',
+      );
+      await tester.tapAt(block.center);
+      await tester.pumpAndSettle();
+      expect(pressed, [3], reason: 'frames 0–5: the middle is frame 3');
     });
   });
 }

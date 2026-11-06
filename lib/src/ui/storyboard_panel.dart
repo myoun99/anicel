@@ -248,7 +248,10 @@ import 'timeline/timeline_frame_range_policy.dart'
 import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
 import 'timeline/timeline_instruction_row_visual.dart'
-    show timelineRowInstructionEdgeGrips, timelineRowInstructionOverlays;
+    show
+        timelineRowBlockWarnings,
+        timelineRowInstructionEdgeGrips,
+        timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
@@ -287,8 +290,7 @@ import 'timeline/timeline_se_row_visual.dart'
         SePaperSpan,
         seNameBoxExtent,
         timelineRowAudioOverlays,
-        timelineRowSeLabelOverlays,
-        timelineRowSoundWarningOverlays;
+        timelineRowSeLabelOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -1932,7 +1934,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
-    // anchors. ⛔The timeline grids' own call, not a third spelling of it:
+    // anchors — unless a notch or a pinch held its own point. ⛔The
+    // timeline grids' own call, not a third spelling of it:
     // this jump was the policy written out again, and the one that did not
     // hear the fold rule the grids' call keeps.
     applyZoomAnchoredScroll(
@@ -2468,7 +2471,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                 ),
                                 // The row selection, over the LAYER area
                                 // as the timeline's rail lays it (A2) —
-                                // its own listener, since a span grows
+                                // heard by the bands, since a span grows
                                 // per pointer move inside a gesture.
                                 if (widget.rowSelection case final selection?)
                                   Positioned(
@@ -2476,16 +2479,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     top: 0,
                                     right: 0,
                                     bottom: 0,
-                                    child:
-                                        ValueListenableBuilder<
-                                          List<TimelineRowAddress>
-                                        >(
-                                          valueListenable: selection,
-                                          builder: (context, selected, _) =>
-                                              _railRows.rowSelectionBands(
-                                                selected,
-                                              ),
-                                        ),
+                                    child: _railRows.rowSelectionBands(
+                                      selection,
+                                    ),
                                   ),
                                 // A pool file let go on the rail: the layer
                                 // area's law — a sound by the SE rows' rule, a
@@ -2528,7 +2524,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               child: DeviceGridScrollBody(
                                 controller: _horizontalController,
                                 axisDirection: AxisDirection.right,
-                                child: Stack(
+                                // F-495-Q1: the movie's end handle lies
+                                // over every row, and a block's warning
+                                // under it still hears the hover
+                                // ([HoverGoesUnder]).
+                                child: HoverUnderScope(child: Stack(
                                   children: [
                                     // THE grid sheet under the rows (D8/D38
                                     // — the storyboard's own copy of the
@@ -2634,7 +2634,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     if (frame.totalFrames > 0)
                                       _movieEndMarks(frame),
                                   ],
-                                ),
+                                )),
                               ),
                             ),
                           ),
@@ -3214,7 +3214,19 @@ class _StoryboardLabelShell extends StatelessWidget {
     // 버튼은 탭다운, 헤더쪽은 손떼면」). ↩️Only this rail's swipe columns were
     // on the press, so its type button acted on the release while the twirl
     // and the fx switch beside it acted on the press (I-89 ①).
-    return PressFireScope(fireOn: PressFire.down, child: strip);
+    //
+    // 🚨On a layer of its own, in its own size, as the timeline's row stands
+    // ([TimelineLayerControlsRow.build]): a stand lights or unlights the row,
+    // and its keep's bare boundary repainted outside every tick — the dock
+    // drawn live on the click (a-row-pick-breaks-the-timeline-dock-image,
+    // 11-06).
+    return SizedBox(
+      width: StoryboardPanel.railWidthIn(context),
+      height: height,
+      child: TickLayer(
+        child: PressFireScope(fireOn: PressFire.down, child: strip),
+      ),
+    );
   }
 
   Widget _surface(BuildContext context) {
@@ -4053,9 +4065,10 @@ class _StoryboardTransitionRow extends KeptPiece
     }
     spans.add(_runLabels(context, layer));
     // The marks, from the direction row's own overlay builder. Each mark
-    // takes no pointer of its own; a warning's hover reaches its block
-    // (F-495). ↩️The whole layer took none, and the warning's tooltip,
-    // added inside it later (D26), could never be hovered here.
+    // takes no pointer of its own. ↩️The whole layer took none, and the
+    // warning's tooltip, added inside it later (D26), could never be
+    // hovered here (F-495) — the warnings ride a layer of their own now,
+    // last.
     final defById = this.defById;
     if (defById != null && _frameEndExclusive > 0) {
       spans.add(
@@ -4071,11 +4084,6 @@ class _StoryboardTransitionRow extends KeptPiece
               axis: Axis.horizontal,
               defById: defById,
               keyPrefix: 'storyboard',
-              // D26: the refusal marker on the AUTHORING axis too — the
-              // one predicate, answered by global key here.
-              crossingWarningTooltip: crossingTooltip,
-              crossingWarningColor: Theme.of(context).colorScheme.error,
-              crossAxisExtent: height,
             ),
           ),
         ),
@@ -4175,6 +4183,31 @@ class _StoryboardTransitionRow extends KeptPiece
           ),
         );
       }
+    }
+    // D26: the refusal marker on the AUTHORING axis too — the one
+    // predicate, answered by global key here — over the grips, so a hover
+    // on them reaches it ([timelineBlockWarningBar]).
+    final crossingTooltip = this.crossingTooltip;
+    if (crossingTooltip != null && _frameEndExclusive > 0) {
+      spans.add(
+        Positioned.fill(
+          child: TimelineFixedFrameSpanLayer(
+            geometry: _geometry,
+            crossAxisExtent: height,
+            axis: Axis.horizontal,
+            children: timelineRowBlockWarnings(
+              layer: layer,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: _frameEndExclusive,
+              crossAxisExtent: height,
+              axis: Axis.horizontal,
+              color: Theme.of(context).colorScheme.error,
+              crossing: crossingTooltip,
+              keyPrefix: 'storyboard',
+            ),
+          ),
+        ),
+      );
     }
     return SizedBox(
       key: ValueKey<String>('storyboard-transition-row-${trackId.value}'),
@@ -4398,17 +4431,17 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         geometry: _rowFrames,
         crossAxisExtent: height,
         axis: Axis.horizontal,
-        children: timelineRowSoundWarningOverlays(
+        children: timelineRowBlockWarnings(
           layer: layer,
           frameStartIndex: window.startIndex,
           frameEndIndexExclusive: window.endIndexExclusive,
           crossAxisExtent: height,
           axis: Axis.horizontal,
-          warnings: (
+          color: Theme.of(context).colorScheme.error,
+          sounds: (
             clipped: seClipMarkerTooltip,
             cannotPlay: soundCannotPlay,
           ),
-          color: Theme.of(context).colorScheme.error,
           keyPrefix: 'storyboard-${layer.id}',
         ),
       ),

@@ -29,12 +29,44 @@ class _WorkspaceTabs {
     _state._mutatingLayout(() => _state._layout.removeTab(tabId));
   }
 
+  /// 전체 잘라내기's 「실행」 (I-163), with the 대상 and the 「원본 삭제」 the
+  /// tool holds at the press.
+  ///
+  /// 🗣️F-53 · F-551: a step with work ahead of it — 「표시」's picture —
+  /// stands behind the app's wait window while the work runs, on one cel
+  /// too ([workAheadBehindTheWaitWindow]). The cel's own read has none and
+  /// is taken at once, as it was before (one block — F-566 「대상이 한
+  /// 블록이면 안띄움」).
+  void _runCutWhole(BuildContext context) {
+    final tool = _state._brushTool.value;
+    final cut = _state.widget.session.pixelVerbs.cutWhole(
+      source: tool.cutSource,
+      takeWhatItCuts: tool.cutDeletesSource,
+    );
+    final ahead = cut.ahead;
+    if (ahead == null) {
+      cut.step();
+      return;
+    }
+    unawaited(
+      workAheadBehindTheWaitWindow(
+        context,
+        cut.step,
+        window: AppWaitWindow.working(
+          editorActionLabel(EditorActionIds.toolCutWhole),
+        ),
+        ahead: ahead,
+      ),
+    );
+  }
+
   /// 래스터라이즈 (vanishing-point-types-Q5 · Q6): the picked guide's lines baked
   /// onto [paper] off the frame's clock, then laid on the cels through the
   /// paste's door as one undo. Null with no paper to bake onto.
   ///
-  /// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: the bake and the lay
-  /// behind the app's wait window, under the button's name.
+  /// 🗣️F-551 (유저 2026-11-04): the bake and the lay behind the app's wait
+  /// window, under the button's name — the bake works ahead, off the frame's
+  /// clock, so on one cel too ([workAheadBehindTheWaitWindow]).
   ValueChanged<DrawingGuide>? _guideRasterizer(
     BuildContext context,
     CanvasSize? paper,
@@ -46,7 +78,7 @@ class _WorkspaceTabs {
     return (guide) {
       CutPiece? picture;
       unawaited(
-        takeBehindTheWaitWindow(
+        workAheadBehindTheWaitWindow(
           context,
           () {
             if (picture case final baked?) {
@@ -56,7 +88,6 @@ class _WorkspaceTabs {
           window: AppWaitWindow(
             title: editorActionLabel(EditorActionIds.guideRasterize),
             runningLabel: AppText.strings.bakeProgressRunning,
-            doneLabel: AppText.strings.bakeProgressDone,
             windowKey: const ValueKey<String>('guide-rasterize-progress'),
           ),
           ahead: (_) async => picture = await guideLinesOnPaper(
@@ -742,6 +773,11 @@ class _WorkspaceTabs {
                                           onCutPasteAtOrigin: _state
                                               ._cutPieceSlot
                                               .pasteAtOrigin,
+                                          // I-163: 전체 잘라내기's 「실행」,
+                                          // as the tool stands at the press.
+                                          onCutWhole: () => _runCutWhole(
+                                            context,
+                                          ),
                                           onRegisterCutPieceAsTip: _state
                                               ._brushPresets
                                               ._registerCutPieceAsTip,

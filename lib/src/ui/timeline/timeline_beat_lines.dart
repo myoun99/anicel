@@ -597,24 +597,26 @@ Color timelineLaneGround(Color? hostGround) {
 Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
     Color.alphaBlend(timelineActiveRowWashColor(colorScheme), resting);
 
-/// The ink of the grid line at the boundary STARTING frame [frameIndex]
-/// — the one grid language shared by the cell grid overlay and the frame
-/// ruler (R26 #40: "룰러도 프레임 셀 그리드랑 통일감").
+/// The marks a frame axis rules at a boundary ([timelineFrameMarkAt]).
+enum TimelineFrameMark { second, beat, base }
+
+/// The mark at the boundary STARTING frame [frameIndex] — the one grid
+/// language shared by the cell grid overlay, the frame ruler (R26 #40:
+/// "룰러도 프레임 셀 그리드랑 통일감") and a sound's face (F-71).
 ///
-/// The strongest mark that stands there wins: a SECOND line on its rung of
+/// The strongest mark that stands there wins: a SECOND on its rung of
 /// seconds ([timelineSecondLineEverySeconds]), a 6f BEAT while beats hold
-/// ([timelineSixLinesHold]), the faint BASE line on its cadence — null where
+/// ([timelineSixLinesHold]), the faint BASE on its cadence — null where
 /// each of them thins this boundary out. A second is ruled wherever one
 /// begins, as the ruler marks it ([timelineOnSecondBoundary]); it used to be
 /// ruled only where a second fell on a 6f beat, so 25 and 30 fps ruled
 /// seconds the ruler did not mark.
-({Color color, double strokeWidth})? timelineFrameBoundaryLineInk({
+TimelineFrameMark? timelineFrameMarkAt({
   required int frameIndex,
   required double frameCellExtent,
   required int framesPerSecond,
-  required ColorScheme colorScheme,
 }) {
-  if (frameIndex <= 0 || frameCellExtent <= 0) {
+  if (frameIndex < 0 || frameCellExtent <= 0) {
     return null;
   }
   final second = timelineSecondFrames(framesPerSecond);
@@ -623,13 +625,37 @@ Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
     framesPerSecond,
   );
   if (frameIndex % (second * secondsApart) == 0) {
-    return timelineGridSecondLineInk();
+    return TimelineFrameMark.second;
   }
   if (frameIndex % 6 == 0 && timelineSixLinesHold(frameCellExtent)) {
-    return timelineGridSixLineInk(colorScheme);
+    return TimelineFrameMark.beat;
   }
   final cadence = timelineGridLineEveryFrames(frameCellExtent);
-  return frameIndex % cadence == 0 ? timelineGridBaseLineInk(colorScheme) : null;
+  return frameIndex % cadence == 0 ? TimelineFrameMark.base : null;
+}
+
+/// The ink of the grid line at the boundary STARTING frame [frameIndex]:
+/// its mark's ([timelineFrameMarkAt]) — none at frame 0, whose boundary is
+/// the grid's own edge.
+({Color color, double strokeWidth})? timelineFrameBoundaryLineInk({
+  required int frameIndex,
+  required double frameCellExtent,
+  required int framesPerSecond,
+  required ColorScheme colorScheme,
+}) {
+  if (frameIndex <= 0) {
+    return null;
+  }
+  return switch (timelineFrameMarkAt(
+    frameIndex: frameIndex,
+    frameCellExtent: frameCellExtent,
+    framesPerSecond: framesPerSecond,
+  )) {
+    TimelineFrameMark.second => timelineGridSecondLineInk(),
+    TimelineFrameMark.beat => timelineGridSixLineInk(colorScheme),
+    TimelineFrameMark.base => timelineGridBaseLineInk(colorScheme),
+    null => null,
+  };
 }
 
 /// The OUT-OF-CUT wash: everything past the cut's last frame, greyed.

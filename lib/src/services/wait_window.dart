@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../models/layer.dart';
 import 'command.dart';
 
 /// The app's one wait window as a step stands behind it — opaque here: the
@@ -11,6 +12,39 @@ abstract interface class WaitWindow {}
 /// stood behind, and what it works out [ahead] of it off the UI thread
 /// ([WorksAheadCommand]), null when nothing.
 typedef StepBehind = ({WaitWindow window, WorkAhead? ahead});
+
+/// Whether a step that lands on [blocks] stands behind the app's wait
+/// window: only when they are more than one. [blocks] are what the step's
+/// own door names, each as often as it likes — a block named twice is one.
+///
+/// 🗣️F-566 (유저 2026-11-05): 「진행창 뜨고 안뜨고는 tvp기준으로 정함」 ·
+/// 「변형도 셀 하나만 할때는 진행창안띄움. 다른 블록에 걸쳐서 변형할때만
+/// 진행창뜸. 그러니 우리도 색변환이던 뭐던 여러행이나 여러 블록. 즉 대상이
+/// 여러블록일때만 띄우도록. 대상이 한 블록이면 안띄움」. ONE answer for every
+/// heavy door: a door says what it reaches, never whether it waits.
+/// ↩️F-551-Q1 (유저 2026-11-04: 「전부 늘 띄운다」) stood every press
+/// behind it, a cel's own too.
+bool reachesManyBlocks(Iterable<Object> blocks) {
+  Object? first;
+  for (final block in blocks) {
+    if (first == null) {
+      first = block;
+    } else if (block != first) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// The drawings [rows] hold, each a block to a verb that takes rows whole —
+/// a row, or a cut's rows — for [reachesManyBlocks].
+Iterable<Object> drawingsOf(Iterable<Layer> rows) sync* {
+  for (final row in rows) {
+    for (final cel in row.frames) {
+      yield (row.id, cel.id);
+    }
+  }
+}
 
 final Object _windowUp = Object();
 

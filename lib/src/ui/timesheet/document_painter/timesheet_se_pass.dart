@@ -96,8 +96,9 @@ class _TimesheetSePass {
     required double columnLeft,
     required double columnWidth,
     required double centerX,
-    required double cellTop,
+    required TimesheetRows rows,
   }) {
+    final cellTop = rows.topOf(row);
     // Off the bar by a bar's width: a sound closing on the row above
     // closes with its own bar there, under the name.
     final nameTop = cellTop - 2 - _nameBoxHeight;
@@ -141,7 +142,7 @@ class _TimesheetSePass {
       row: row,
       rowCount: rowCount,
       centerX: centerX,
-      cellTop: cellTop,
+      rows: rows,
     );
 
     if ((cell.spanLength ?? 1) == 1) {
@@ -149,7 +150,7 @@ class _TimesheetSePass {
         canvas,
         columnLeft: columnLeft,
         columnWidth: columnWidth,
-        y: cellTop + TimesheetDocumentLayout.rowHeight - 1,
+        y: rows.bottomOf(row) - 1,
       );
     }
   }
@@ -247,20 +248,20 @@ class _TimesheetSePass {
     required int row,
     required int rowCount,
     required double centerX,
-    required double cellTop,
+    required TimesheetRows rows,
   }) {
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    final spanTop = cellTop - (lead + spanOffset) * rowHeight;
+    final first = row - lead - spanOffset;
+    final spanTop = rows.topOf(first);
     // 🗣️F-358 (유저 2026-10-19): 「대사가 1코마부터 시작하게」 — the words
     // have the span's rows edge to edge, named or not, as the block views
     // lay them ([seNameChipPlace]): a glyph stands on the same frame here
     // as on the rows. ↩️They began under the name box and kept off both
     // ends by a pad, a fraction of a frame from the rows' place.
     final frames = lead + (start.spanLength ?? 1);
-    final spanBottom = spanTop + frames * rowHeight;
+    final spanBottom = rows.bottomOf(first + frames - 1);
     // The window: this half's rows of the span.
-    final top = math.max(spanTop, cellTop);
-    final bottom = math.min(spanBottom, cellTop + (rowCount - row) * rowHeight);
+    final top = math.max(spanTop, rows.topOf(row));
+    final bottom = math.min(spanBottom, rows.bottomOf(rowCount - 1));
     if (bottom <= top) {
       return;
     }

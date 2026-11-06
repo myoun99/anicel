@@ -1,0 +1,41 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/transition_geometry.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
+import 'package:anicel/src/services/export/xdts_viewer_ink.dart';
+
+/// The XDTS Viewer's ink folder, as its sources read it (I-161): where the
+/// pictures go, what each is called and sized, and the settings beside them.
+void main() {
+  test('the folder is the file\'s name less .xdts, less a genga or douga '
+      'sheet\'s suffix in any case, with _xdts after it', () {
+    expect(xdtsInkFolderName('TS301.xdts'), 'TS301_xdts');
+    expect(xdtsInkFolderName('c12_genga_ts.xdts'), 'c12_xdts');
+    expect(xdtsInkFolderName('c12_DOUGA_TS.xdts'), 'c12_xdts');
+  });
+
+  test('a page\'s picture counts from 1 — 0 is a sheet\'s back', () {
+    expect(xdtsInkPageFileName(0), '1.png');
+    expect(xdtsInkPageFileName(2), '3.png');
+  });
+
+  test('the settings name the template, the widening and each end\'s O.L — '
+      'twice the のりしろ the sheet draws there — no area: the files\' '
+      'names give theirs (I-162-Q6) — and an empty logo: the ink carries '
+      'the work\'s (I-162-Q5)', () {
+    expect(
+      xdtsViewerConfig(
+        sheet: XdtsViewerSheet.b4ThreeSeconds,
+        handles: const CutTransitionHandles(head: 6, tail: 3),
+      ),
+      '[General]\n'
+      'Version=1.3.0\n'
+      '\n'
+      '[FormatSettings]\n'
+      'TemplateName="B4 size, 3 seconds sheet"\n'
+      'ExpandColumns=true\n'
+      'LogoPath=\n'
+      'StartOverlapFrameLength=12\n'
+      'EndOverlapFrameLength=6\n',
+    );
+  });
+}

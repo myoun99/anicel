@@ -71,6 +71,7 @@ const toolSettingsButtons = [
   EditorActionIds.cutStampPasteAtOrigin,
   EditorActionIds.cutStampReset,
   EditorActionIds.cutStampRegisterTip,
+  EditorActionIds.toolCutWholeRun,
   EditorActionIds.guideAddVanishingPoint,
   EditorActionIds.guideRasterize,
   EditorActionIds.textCentreAcross,
@@ -141,6 +142,7 @@ Future<PanelKeys> pumpToolSettings(
   CutPieceSlot? cutPieceSlot,
   VoidCallback? onCutPasteAtOrigin,
   VoidCallback? onRegisterCutPieceAsTip,
+  VoidCallback? onCutWhole,
   CutGuides? guides,
   GuideId? selectedGuideId,
   ValueChanged<CutGuides>? onGuidesCommitted,
@@ -162,6 +164,7 @@ Future<PanelKeys> pumpToolSettings(
       cutPieceSlot: cutPieceSlot,
       onCutPasteAtOrigin: onCutPasteAtOrigin,
       onRegisterCutPieceAsTip: onRegisterCutPieceAsTip,
+      onCutWhole: onCutWhole,
       guides: guides,
       selectedGuideId: selectedGuideId,
       onGuidesCommitted: onGuidesCommitted,
@@ -336,6 +339,7 @@ void main() {
           '원래 위치에 붙여넣기',
           '스탬프 초기화',
           '팁으로 등록',
+          '전체 잘라내기 실행',
           '새 소실점',
           '래스터라이즈',
           '가로 가운데',
@@ -681,6 +685,22 @@ void main() {
       keys.press(EditorActionIds.cutStampPasteAtOrigin, CanvasTool.cutStamp);
       keys.press(EditorActionIds.cutStampRegisterTip, CanvasTool.cutStamp);
       expect((pastes, tips), (1, 1), reason: 'nothing held: no buttons');
+    });
+
+    // 🗣️I-163 (유저 2026-11-05): 전체 잘라내기's 「실행」.
+    testWidgets('전체 잘라내기\'s 「실행」 runs it, with that tile in hand '
+        'alone', (tester) async {
+      var runs = 0;
+      final keys = await pumpToolSettings(
+        tester,
+        tool: CanvasTool.cutWhole,
+        onCutWhole: () => runs += 1,
+      );
+
+      keys.press(EditorActionIds.toolCutWholeRun, CanvasTool.cutWhole);
+      expect(runs, 1);
+      keys.press(EditorActionIds.toolCutWholeRun, CanvasTool.cut);
+      expect(runs, 1, reason: 'the grab is another tool');
     });
 
     testWidgets('the perspective\'s ＋ adds a vanishing point — at three as '

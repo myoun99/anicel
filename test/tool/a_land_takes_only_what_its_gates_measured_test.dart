@@ -32,10 +32,13 @@ void main() {
       code.indexWhere((line) => line.contains(text));
 
   /// The lines of [code] that run something IN the lane: flutter from
-  /// inside it, and the native build and tests.
+  /// inside it, the native build and tests, and the GPU engine crate's.
   List<int> runsIn(List<String> code) => [
     for (var i = 0; i < code.length; i++)
-      if (code[i].contains(r'(cd "$p" &&') || code[i].contains('cmd_native'))
+      if (code[i].contains(r'(cd "$p" &&') ||
+          code[i].contains('cmd_native') ||
+          code[i].contains('cmd_crate') ||
+          code[i].contains('crate_gate'))
         i,
   ];
 
@@ -44,23 +47,112 @@ void main() {
     late final gates = codeOf('gates');
 
     test('LIVENESS — analyze with no arguments, the architecture tests, '
-        'and the native build of a lane that touched the C', () {
+        'the native build of a lane that touched the C, and the crate\'s '
+        'tests of a lane that touched the crate or its ledger', () {
       final all = gates.join('\n');
-      expect(all, contains(r'(cd "$p" && flutter analyze)'));
-      expect(all, contains(r'(cd "$p" && flutter test test/architecture)'));
+      // Offline (관제 2026-11-06): what the lane resolved from this
+      // machine's pub cache, and neither gate resolves it again.
+      expect(all, contains(r'resolve_offline "$p" 3'));
+      expect(all, contains(r'(cd "$p" && flutter analyze --no-pub)'));
+      expect(
+        all,
+        contains(r'(cd "$p" && flutter test --no-pub test/architecture)'),
+      );
+      expect(all, contains(r'lane_touched "$p" packages/qa_native/src'));
       expect(all, contains(r'cmd_native "$name"'));
+      expect(all, contains(r'crate_gate "$name" "$p"'));
+      final crate = codeOf('crate_gate').join('\n');
+      expect(
+        crate,
+        contains(
+          r'lane_touched "$p" packages/gpu_engine/rust '
+          'test/fixtures/fingerprints.json',
+        ),
+      );
+      expect(crate, contains('    packages/qa_native/src; then'));
+      expect(crate, contains(r'cmd_crate "$name"'));
     });
 
-    test('🚨are run from ONE place: neither the land nor the gate command '
-        'runs anything in the lane by itself', () {
+    // native-to-rust (관제 2026-11-06): the native crates are held to the
+    // engine the C builds — a key built from other C holds them to the
+    // wrong answers.
+    test('🚨the crate\'s tests are held to this lane\'s C: its engine is '
+        'built from it before cargo runs', () {
+      final crate = codeOf('cmd_crate');
+      final ensured = at(crate, r'ensure_engine "$p" || die');
+      expect(ensured, isNot(-1));
+      expect(ensured, lessThan(at(crate, r'"$ROOT/tool/cargo_turn.sh"')));
+    });
+
+    // 저장 2026-11-05: four Dart files, opened before the trunk took crate
+    // commits, were refused for want of cargo — two dots read the trunk's
+    // commits as the lane's.
+    test('🚨a lane pays for what IT changed: three dots, from where it left '
+        'the trunk', () {
+      expect(
+        at(
+          codeOf('lane_touched'),
+          r'diff --name-only "$TRUNK"...HEAD -- "$@"',
+        ),
+        isNot(-1),
+      );
+      expect(
+        File('tool/lane.sh').readAsStringSync(),
+        isNot(contains(r'diff --name-only "$TRUNK" HEAD')),
+      );
+    });
+
+    // 관제 2026-11-05 (i163-dropper-no-paper): a red architecture run with no
+    // [E] line showed nothing, and its output was removed.
+    test('a red gate keeps its whole output in the lane, and shows its tail '
+        'when no test says [E]', () {
+      final kept = at(
+        gates,
+        r'cp "$out/architecture" "$p/build/lane-architecture.log"',
+      );
+      expect(kept, isNot(-1));
+      expect(at(gates, r'rm -rf "$out"'), greaterThan(kept));
+      expect(
+        at(gates, r'tail -20 "$p/build/lane-architecture.log"'),
+        isNot(-1),
+      );
+    });
+
+    // 관제 2026-11-05: the grid kernel's X3507 was red in release alone — a
+    // debug build's wgpu compiles shaders with optimizations skipped.
+    test('🚨the crate\'s tests run in release as well as debug', () {
+      final crate = codeOf('cmd_crate');
+      expect(at(crate, 'for profile in debug release; do'), isNot(-1));
+      expect(
+        at(crate, r'[ "$profile" = release ] && flag=--release'),
+        isNot(-1),
+      );
+      expect(
+        at(crate, r'test --locked --offline --workspace ${flag:+"$flag"}'),
+        isNot(-1),
+        reason: 'every crate of the workspace, not its default members — '
+            'and offline: a download is the user\'s to allow (관제 '
+            '2026-11-06)',
+      );
+    });
+
+    test('🚨are run from ONE place: the gate command runs nothing in the '
+        'lane by itself, and the land only the crate\'s tests', () {
       for (final command in ['cmd_land', 'cmd_gate']) {
-        expect(runsIn(codeOf(command)), isEmpty, reason: command);
         expect(
           at(codeOf(command), r'gates "$name" "$p"'),
           isNot(-1),
           reason: '$command runs them through the one function',
         );
       }
+      expect(runsIn(codeOf('cmd_gate')), isEmpty);
+      final land = codeOf('cmd_land');
+      expect(
+        [for (final i in runsIn(land)) land[i].trim()],
+        [r'crate_gate "$name" "$p"'],
+        reason: 'a stamped land runs refusal 8 — the same function the '
+            'gates run it through',
+      );
     });
 
     // 2026-10-08 (card a-sent-lane-is-gated-once): the script measured
@@ -197,6 +289,20 @@ void main() {
         isNot(contains('git ')),
         reason: 'the stamped road does nothing to the lane on its way to '
             'the merge',
+      );
+    });
+
+    test('🚨a stamped land still runs the crate\'s tests HERE, and asks '
+        'again of its commit before the merge', () {
+      // 관제 2026-11-05: surface11/fx-line-box pinned a ledger row on the
+      // Surface's GPU and landed on its stamp, this machine's never asked.
+      final stamped = at(land, r'if [ "$(gated_at "$name")" = "$head" ] \');
+      final otherwise = land.indexWhere((line) => line.trim() == 'else');
+      final crate = at(land, r'crate_gate "$name" "$p"');
+      expect(crate, inExclusiveRange(stamped, otherwise));
+      expect(
+        at(land, r'unmoved_since "$p" "$head" land'),
+        inExclusiveRange(crate, otherwise),
       );
     });
 

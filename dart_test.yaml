@@ -73,3 +73,18 @@ tags:
   # file that lists both tags runs where `gpu` does: its flags include
   # Impeller's.
   impeller:
+  # A pin that reads a RUNNING DEVICE and must read it on time — the lap
+  # pin reads the null device within a step of its wrap.
+  #
+  # NOT skipped: these run every time. The tag says WITH WHOM they run:
+  # nobody. A null device is a thread that plays on whatever its reader
+  # does, and in a crowd the reader is starved past the moment it reads —
+  # the Mac and TestFlight builds 1089 read no wrap step in twelve laps
+  # inside a parity batch of 161 files at 10 suites, and went green alone in
+  # the same job (2026-11-05). Pacing the waits by the device
+  # (test/helpers/device_paced.dart) mended every wait and cannot mend that.
+  #
+  # `tool/affected_tests.dart` reads this tag and runs each file carrying it
+  # in a batch of one. Its own tag, not `gc`'s: two questions
+  # (transport-real-time-pins-fail-under-load).
+  realtime:

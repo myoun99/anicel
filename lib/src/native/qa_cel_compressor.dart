@@ -117,14 +117,28 @@ final class QaCelCompressor {
     }
   }
 
-  /// Decompresses a frame written by [compress], or null when it cannot
-  /// be read — the caller turns that into the same failure a corrupt
-  /// deflate stream already produces.
+  /// What [read] makes of the bytes a frame written by [compress] holds,
+  /// or null — [read] never called — when the frame cannot be read: the
+  /// caller turns that into the same failure a corrupt deflate stream
+  /// already produces.
+  ///
+  /// 🚨★★★**THE BYTES [read] IS HANDED ARE NATIVE, AND FREED WHEN IT
+  /// RETURNS** — [read] copies what it keeps. ↩️They were copied onto the
+  /// Dart heap (`Uint8List.fromList`) and the native block freed at once:
+  /// every cel a thaw, a pre-bake or an undo decoded left its whole picture
+  /// there, past 256KB so straight into old space, garbage once its tiles
+  /// were laid. 🔬Opening S5_BA to a cut's pre-bake (타임라인/콘티, profile
+  /// build, 2026-11-05): ~825MB of it, 92% of the old garbage in that run —
+  /// the collections that stop a frame 10–26ms (a-collection-stops-a-frame,
+  /// 유저 「열 때 생기는 쓰레기를 줄인다」).
   ///
   /// ⚠️The size comes from the FRAME, not from our own header: zstd
   /// records it, and storing it a second time would be two numbers that
   /// can disagree.
-  Uint8List? decompress(Uint8List frame) {
+  R? readFrame<R extends Object>(
+    Uint8List frame,
+    R Function(Uint8List bytes) read,
+  ) {
     if (frame.isEmpty) {
       return null;
     }
@@ -139,7 +153,7 @@ final class QaCelCompressor {
         if (written != size) {
           return null;
         }
-        return Uint8List.fromList(dst.asTypedList(size));
+        return read(dst.asTypedList(size));
       } finally {
         malloc.free(dst);
       }

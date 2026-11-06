@@ -1,0 +1,80 @@
+name: Fuzz the decoders
+
+# The Rust decoders that replace the C (native-to-rust), fed what no test
+# thought of: cargo-fuzz runs each target of packages/gpu_engine/rust/fuzz
+# in turn, for the seconds given. A target that panics, hangs or runs out
+# of memory leaves the input that did it in fuzz/artifacts; the job uploads
+# them, and each becomes a `cargo test` case of the crate it broke, held to
+# the C there.
+#
+# ⛔workflow_dispatch ONLY, dispatched by the control tower alone and at
+# most once a day (유저, native-to-rust-Q2 2026-11-06: one dispatched
+# workflow, one job, the targets in turn; the nightly compiler and
+# cargo-fuzz installed in the job). No cron, no push or pull_request
+# trigger — gpu-engine.yml has why.
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds each target is fuzzed for
+        default: "600"
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: decoders under cargo-fuzz (Linux)
+    runs-on: ubuntu-24.04
+    # The compiler, cargo-fuzz and each target's build, then each target's
+    # time: bounded for the targets there are today.
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: packages/gpu_engine/rust
+    env:
+      SECONDS_EACH: ${{ inputs.seconds }}
+    steps:
+      - uses: actions/checkout@v5
+      # The nightly compiler is this job's alone — rust-toolchain.toml keeps
+      # pinning the engine's. cargo-fuzz drives that nightly, so both are
+      # the newest, together.
+      - run: rustup toolchain install nightly --profile minimal
+      - run: cargo +nightly install cargo-fuzz --locked
+      # Every target, even after one has crashed. Each starts from its
+      # seeds (fuzz/seeds) when it has any. -O builds every crate as the app
+      # builds the engine, release and unchecked — without it cargo-fuzz
+      # turns debug assertions on everywhere — and fuzz/Cargo.toml turns
+      # them back on, overflow checks with them, for the crates written
+      # here: native-memory-safety-Q1 (유저 2026-11-06), after the audio
+      # target stopped within seconds, every time, at an overflow inside
+      # symphonia that the app's build wraps. -timeout calls an input that
+      # takes ten seconds a hang.
+      - name: fuzz each target in turn
+        run: |
+          crashed=""
+          for target in $(cargo +nightly fuzz list); do
+            mkdir -p "fuzz/corpus/$target"
+            seeds="fuzz/seeds/$target"
+            [ -d "$seeds" ] || seeds=""
+            if ! cargo +nightly fuzz run -O "$target" \
+                "fuzz/corpus/$target" $seeds -- \
+                -max_total_time="$SECONDS_EACH" -timeout=10; then
+              crashed="$crashed $target"
+            fi
+          done
+          if [ -n "$crashed" ]; then
+            echo "crashed:$crashed"
+            exit 1
+          fi
+      - if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: fuzz-artifacts
+          path: packages/gpu_engine/rust/fuzz/artifacts/
+          if-no-files-found: warn
+          retention-days: 7

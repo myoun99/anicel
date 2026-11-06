@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../widgets/ellipsis_text.dart' show HoverUnderScope;
 import '../widgets/tick_layer.dart';
 import 'axis_turn.dart' show alongBox;
 import 'timeline_beat_lines.dart';
@@ -109,7 +110,7 @@ class TimelineFrameGridStack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gridSheet = this.gridSheet;
-    return Stack(
+    final stack = Stack(
       children: [
         // D32 (2026-08-18): the grid sits UNDER the rows — an opaque beat
         // line glowing over a blue paper block was the report. This is
@@ -123,9 +124,13 @@ class TimelineFrameGridStack extends StatelessWidget {
         // short of ([timelineRowPaperExtent]). 유저 2026-09-24 made the frame
         // lines on a block a switch (on by default): where it is on, the
         // paper carries this sheet's own lines ([timelineBlockFrameLine]).
+        // 🚨On a layer that is a tick's, not a bare boundary: a stand
+        // rebuilds the sheet for the two rows' grounds, and rebuilt in the
+        // grid's layout scope it laid the rows' viewport out again and
+        // repainted it (a-row-pick-breaks-the-timeline-dock-image, 11-06).
         if (gridSheet != null)
           Positioned.fill(
-            child: IgnorePointer(child: RepaintBoundary(child: gridSheet)),
+            child: IgnorePointer(child: TickLayer(child: gridSheet)),
           ),
         rowsBody,
         _playheadSlot(),
@@ -150,6 +155,9 @@ class TimelineFrameGridStack extends StatelessWidget {
         ),
       ],
     );
+    // F-495-Q1: the grip lies over every row, and a block's warning under
+    // it still hears the hover ([HoverGoesUnder]).
+    return HoverUnderScope(child: stack);
   }
 
   /// The playhead rides its OWN layer: a cursor move repaints just that

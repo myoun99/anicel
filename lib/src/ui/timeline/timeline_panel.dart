@@ -124,7 +124,7 @@ class TimelinePanel extends StatefulWidget {
     this.currentRowHooks,
     this.rowDragHooks,
     this.onRowSelectionSpan,
-    this.selectedRows = const {},
+    this.rowSelection,
     this.runEdit,
     this.readyRunsIn,
     required this.orientation,
@@ -413,12 +413,13 @@ class TimelinePanel extends StatefulWidget {
   final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan;
 
-  /// ⑨: the rows currently selected, as ADDRESSES.
+  /// ⑨: the rows currently selected, as ADDRESSES — heard by the bands
+  /// that draw them ([TimelineGridHooks.rowSelection]).
   ///
   /// 🚨T1 — this used to be a `Set<LayerId>`, which cannot spell a lane row
   /// or an fx header. T5 made both selectable, so the loss ③ found inside the
   /// span would have reappeared here: selected, and not drawn.
-  final Set<TimelineRowAddress> selectedRows;
+  final ValueListenable<List<TimelineRowAddress>>? rowSelection;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8), both orientations; null
   /// hides the handles.
@@ -787,7 +788,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       currentRowHooks: widget.currentRowHooks,
       rowDragHooks: widget.rowDragHooks,
       onRowSelectionSpan: widget.onRowSelectionSpan,
-      selectedRows: widget.selectedRows,
+      rowSelection: widget.rowSelection,
       runEdit: widget.runEdit,
       readyRunsIn: widget.readyRunsIn,
       expandedLaneLayerIds: widget.expandedLaneLayerIds,

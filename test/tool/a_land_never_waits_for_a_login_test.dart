@@ -10,17 +10,76 @@ import '../helpers/lane_script.dart';
 /// engine was not rebuilt and the copy was not made. Its push must refuse
 /// to ask; `backup`, which a person runs, must still ask so they can log in
 /// there.
+///
+/// ↩️2026-11-05 (관제, gpu-engine-skeleton): only the land's calls refused.
+/// The mirror's login lapsed, and three credential managers stood waiting
+/// at a window nobody would see — `backup`, `sync`, `send` and `unsend`
+/// still asked, whoever ran them. Every call to the mirror now goes through
+/// `mirror_git`, which asks nobody and gives up after a while; `backup`
+/// asks only when a person runs it, at a terminal.
 void main() {
-  final body = LaneScript(File('tool/lane.sh').readAsStringSync()).body;
+  final lane = LaneScript(File('tool/lane.sh').readAsStringSync());
+  final script = lane.text;
 
-  test('the land pushes the mirror without asking for a login', () {
-    final pushes = [
-      for (final line in body('cmd_land').split('\n'))
-        if (line.trim().endsWith('mirror_trunk')) line,
+  test('🚨every call that reaches the mirror goes through mirror_git', () {
+    // A command continued over lines is read as one.
+    final commands = script.replaceAll(RegExp(r'\\\n\s*'), ' ').split('\n');
+    final calls = [
+      for (final line in commands)
+        if (!line.trimLeft().startsWith('#') &&
+            line.contains(r'"$MIRROR"') &&
+            RegExp(r'\b(push|fetch|ls-remote)\b').hasMatch(line))
+          line.trim(),
     ];
-    expect(pushes, hasLength(1), reason: 'LIVENESS — a land pushes once');
-    expect(pushes.single, contains('GIT_TERMINAL_PROMPT=0'));
-    expect(pushes.single, contains('GCM_INTERACTIVE=Never'));
+    expect(calls, hasLength(greaterThan(10)), reason: 'LIVENESS');
+    expect(
+      [
+        for (final call in calls)
+          if (!call.contains('mirror_git ')) call,
+      ],
+      isEmpty,
+    );
+  });
+
+  test('which asks for no login, and gives up after MIRROR_WAIT — unless '
+      'a backup at a terminal asked it to ask', () {
+    final git = lane.codeOf('mirror_git');
+    int at(String text) => git.indexWhere((line) => line.contains(text));
+
+    final asks = at(r'if [ -n "${MIRROR_ASKS:-}" ]; then');
+    final refuses = at(
+      r'GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never timeout "$MIRROR_WAIT" '
+      r'git -C "$ROOT" "$@"',
+    );
+    expect(asks, isNot(-1));
+    expect(refuses, greaterThan(at('else')));
+    expect(at('else'), greaterThan(asks));
+    expect(script, contains('\nMIRROR_WAIT=120\n'));
+    expect(script, contains('\nMIRROR_ASKS=\n'));
+  });
+
+  test('backup, which a person runs, still asks — at a terminal, and only '
+      'there', () {
+    final backup = lane.codeOf('cmd_backup');
+    expect(backup.join('\n'), contains('local missed= MIRROR_ASKS='));
+    final terminal = backup.indexWhere(
+      (line) => line.trim() == '[ -t 0 ] && MIRROR_ASKS=1',
+    );
+    expect(terminal, isNot(-1));
+    expect(
+      terminal,
+      lessThan(backup.indexWhere((line) => line.contains('mirror_trunk'))),
+    );
+    bool sets(String function) =>
+        lane.codeOf(function).any((line) => line.contains('MIRROR_ASKS=1'));
+    expect(
+      [
+        for (final function in lane.functions)
+          if (function != 'cmd_backup' && sets(function)) function,
+      ],
+      isEmpty,
+      reason: 'asking is the backup\'s alone',
+    );
   });
 
   // 2026-10-08: the mirror's login was gone. `backup` printed its two
@@ -28,7 +87,6 @@ void main() {
   // the one command whose whole job is the copy, saying it had made it.
   test('🚨a backup says 「mirrored」 only after its copies reached the '
       'mirror, and fails when they did not', () {
-    final lane = LaneScript(File('tool/lane.sh').readAsStringSync());
     final backup = lane.codeOf('cmd_backup');
     int at(String text) => backup.indexWhere((line) => line.contains(text));
 
@@ -47,16 +105,5 @@ void main() {
       reason: 'a push that failed is ANSWERED as one — the land goes on '
           'whatever it returns, the backup fails on it',
     );
-  });
-
-  test('backup, which a person runs, still asks', () {
-    expect(body('cmd_backup'), contains('mirror_trunk'));
-    for (final function in ['cmd_backup', 'mirror_trunk']) {
-      expect(
-        body(function),
-        isNot(contains('GCM_INTERACTIVE')),
-        reason: 'refusing to ask is the land\'s, not $function\'s',
-      );
-    }
   });
 }

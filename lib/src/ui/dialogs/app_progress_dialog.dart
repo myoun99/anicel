@@ -9,50 +9,33 @@ import '../widgets/app_window.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/fixed_label.dart';
 
-/// What a [AppProgressDialog] is showing right now.
-///
-/// [fraction] is null until the work reports for the first time — that is
-/// what the spinner's indeterminate turn is for, and it is honest: nothing
-/// has been counted yet.
-@immutable
-class AppProgress {
-  const AppProgress.running(this.fraction) : done = false;
-  const AppProgress.done() : fraction = 1, done = true;
-
-  final double? fraction;
-  final bool done;
-}
-
 /// The app's ONE "wait for this" window.
 ///
 /// It is [AppWindow] with a spinner in the body and no way out: nothing to
 /// answer, nothing to cancel, no close button. A window that could be shut
 /// mid-write would only hide the work — the write keeps running in its
 /// isolate either way — so the honest shape is one that stays until the
-/// work is over and then says so.
+/// work is over.
 ///
-/// 🚨★★★THE FINISHED STATE WEARS A CHECK, and that REVERSES an earlier call
-/// of this file's own (유저 2026-08-31, F-53: 「로딩 완료 시 로딩 아이콘
-/// 위치에 **체크 아이콘 넣어서 완료됐단 느낌** 내고 싶음. 저장 완료 시나
-/// 그런 상황. **공통적으로 사용**」).
+/// 🗣️↩️IT GOES THE MOMENT ITS WORK DOES, AND SAYS NOTHING OF THE END (유저
+/// 2026-11-05, bundle-red-paste-behind-the-wait-window-Q1): 「창을 나눔.
+/// 완료표시 진행창이랑 완료비표시 진행창. … 근데 이 창은 쓸데가 있나싶음.
+/// 저장도 완료비표시 진행창으로 할거라서. 완료비표시 진행창은 로딩창만
+/// 보여주고 끝나면 그냥 바로 사라짐」 · Q2 「셋도 「완료」 없는 창으로 —
+/// 「완료」 창은 지운다」.
 ///
-/// ⛔The reason it did NOT have one is kept, because it is a real fact and
-/// the next reader deserves it: 「A check glyph is this app's mark for a
-/// toggle that is ON, and borrowing it here to mean 『over』 would make the
-/// one symbol carry two jobs.」 That is true elsewhere — and it is weak
-/// HERE, which is why 유저 overruled it: this window has no toggles in it,
-/// nothing to confuse the mark with, and the spinner's slot going empty was
-/// the only thing marking the end.
-///
-/// ⚠️The glyph goes in the SPINNER'S OWN SLOT, which was already reserved at
-/// full size so the line would not shuffle sideways on its last frame. The
-/// slot did not change; only what stands in it.
+/// 🪦From 2026-08-31 to 2026-11-05 the end was said for 0.9s, with a check
+/// in the spinner's slot (F-53: 「로딩 완료 시 로딩 아이콘 위치에 **체크
+/// 아이콘 넣어서 완료됐단 느낌** 내고 싶음. 저장 완료 시나 그런 상황.
+/// **공통적으로 사용**」 — overruling this file's earlier ⛔: a check glyph
+/// is this app's mark for a toggle that is ON). That line held the window's
+/// barrier over an app with nothing left to wait for, and a second Ctrl+Z
+/// pressed under it went nowhere (the 11-04 bundle red).
 class AppProgressDialog extends StatelessWidget {
   const AppProgressDialog({
     super.key,
     required this.title,
     required this.runningLabel,
-    required this.doneLabel,
     required this.progress,
     this.titleIcon,
     this.windowKey,
@@ -64,9 +47,8 @@ class AppProgressDialog extends StatelessWidget {
   final String title;
   final IconData? titleIcon;
 
-  /// While the work runs, and once it is over.
+  /// What the work is doing, for its whole length.
   final String runningLabel;
-  final String doneLabel;
 
   /// A running line that CHANGES — what the work is doing right now, when
   /// that is not one sentence for its whole length. An open spends its
@@ -94,7 +76,10 @@ class AppProgressDialog extends StatelessWidget {
   /// (「없다가 생기는 UI 금지」). Null keeps it live throughout.
   final ValueListenable<bool>? cancelLive;
 
-  final ValueListenable<AppProgress> progress;
+  /// The share of the work done — null until the work reports for the first
+  /// time. That is what the spinner's indeterminate turn is for, and it is
+  /// honest: nothing has been counted yet.
+  final ValueListenable<double?> progress;
   final Key? windowKey;
 
   static const double _spinnerBox = 18;
@@ -127,25 +112,15 @@ class AppProgressDialog extends StatelessWidget {
             onPressed: cancellable ? cancel : null,
           ),
       ],
-      body: ValueListenableBuilder<AppProgress>(
+      body: ValueListenableBuilder<double?>(
         valueListenable: progress,
-        builder: (context, value, _) {
-          final fraction = value.fraction;
+        builder: (context, fraction, _) {
           return Row(
             children: [
-              // Kept at its full size when finished so the line does not
-              // shuffle sideways on the last frame it is read.
-              SizedBox(
+              const SizedBox(
                 width: _spinnerBox,
                 height: _spinnerBox,
-                child: value.done
-                    ? Icon(
-                        Icons.check_rounded,
-                        size: _spinnerBox,
-                        color: theme.colorScheme.primary,
-                        key: const ValueKey<String>('app-progress-done'),
-                      )
-                    : const CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -153,22 +128,18 @@ class AppProgressDialog extends StatelessWidget {
                   valueListenable:
                       runningStatus ?? const FixedLabel(''),
                   builder: (context, status, _) => EllipsisText(
-                    value.done
-                        ? doneLabel
-                        : (runningStatus == null || status.isEmpty
-                              ? runningLabel
-                              : status),
+                    runningStatus == null || status.isEmpty
+                        ? runningLabel
+                        : status,
                     key: const ValueKey<String>('app-progress-label'),
                     maxLines: 1,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: value.done
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurface,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
               ),
-              if (!value.done && fraction != null)
+              if (fraction != null)
                 Text(
                   '${(fraction * 100).round()}%',
                   key: const ValueKey<String>('app-progress-percent'),
@@ -186,12 +157,6 @@ class AppProgressDialog extends StatelessWidget {
     );
   }
 }
-
-/// How long the finished line is held up before the window leaves.
-///
-/// Long enough to be read on a glance away from the screen, short enough
-/// that a save every few minutes never feels like it asks for a click.
-const Duration appProgressDoneLinger = Duration(milliseconds: 900);
 
 /// Runs [task] behind an [AppProgressDialog] and returns what it returns.
 ///
@@ -218,20 +183,17 @@ Future<T> runWithAppProgress<T>({
   required BuildContext context,
   required String title,
   required String runningLabel,
-  required String doneLabel,
   required Future<T> Function(void Function(double) report) task,
   IconData? titleIcon,
   Key? windowKey,
-  Duration doneLinger = appProgressDoneLinger,
   ValueListenable<String>? runningStatus,
   VoidCallback? onCancel,
   ValueListenable<bool>? cancelLive,
 }) async {
-  final progress = ValueNotifier<AppProgress>(const AppProgress.running(null));
+  final progress = ValueNotifier<double?>(null);
   final window = AppWaitWindow(
     title: title,
     runningLabel: runningLabel,
-    doneLabel: doneLabel,
     titleIcon: titleIcon,
     windowKey: windowKey,
   );
@@ -240,9 +202,7 @@ Future<T> runWithAppProgress<T>({
     title: title,
     titleIcon: titleIcon,
     runningLabel: runningLabel,
-    doneLabel: doneLabel,
     windowKey: windowKey,
-    doneLinger: doneLinger,
     progress: progress,
     runningStatus: runningStatus,
     onCancel: onCancel,
@@ -255,19 +215,19 @@ Future<T> runWithAppProgress<T>({
     // after the first frame.
     start: () => behindWaitWindow(
       window,
-      () => task((fraction) => progress.value = AppProgress.running(fraction)),
+      () => task((fraction) => progress.value = fraction),
     ),
   );
 }
 
 /// The app's one wait window as a step stands behind it — what it says, so
 /// an undo or a redo of the step stands behind the window its first run
-/// stood behind (`StepWindows`).
+/// stood behind (`StepWindows`). Each goes the moment its step does, and so
+/// does its undo's and its redo's ([AppProgressDialog]).
 final class AppWaitWindow implements WaitWindow {
   const AppWaitWindow({
     required this.title,
     required this.runningLabel,
-    required this.doneLabel,
     this.titleIcon,
     this.windowKey,
   });
@@ -277,7 +237,6 @@ final class AppWaitWindow implements WaitWindow {
     : this(
         title: title,
         runningLabel: AppText.strings.workProgressRunning,
-        doneLabel: AppText.strings.workProgressDone,
         windowKey: const ValueKey<String>('work-progress-dialog'),
       );
 
@@ -288,7 +247,6 @@ final class AppWaitWindow implements WaitWindow {
         title: title,
         titleIcon: Icons.content_paste,
         runningLabel: AppText.strings.pasteProgressRunning,
-        doneLabel: AppText.strings.pasteProgressDone,
         windowKey: const ValueKey<String>('paste-progress-dialog'),
       );
 
@@ -297,13 +255,11 @@ final class AppWaitWindow implements WaitWindow {
     : this(
         title: title,
         runningLabel: AppText.strings.duplicateProgressRunning,
-        doneLabel: AppText.strings.duplicateProgressDone,
         windowKey: const ValueKey<String>('duplicate-progress-dialog'),
       );
 
   final String title;
   final String runningLabel;
-  final String doneLabel;
   final IconData? titleIcon;
   final Key? windowKey;
 
@@ -315,7 +271,6 @@ final class AppWaitWindow implements WaitWindow {
     context: context,
     title: title,
     runningLabel: runningLabel,
-    doneLabel: doneLabel,
     titleIcon: titleIcon,
     windowKey: windowKey,
     task: task,
@@ -338,10 +293,8 @@ Future<T> _awaitBehindWindow<T>({
   required String title,
   required IconData? titleIcon,
   required String runningLabel,
-  required String doneLabel,
   required Key? windowKey,
-  required Duration doneLinger,
-  required ValueNotifier<AppProgress> progress,
+  required ValueNotifier<double?> progress,
   required ValueListenable<String>? runningStatus,
   required VoidCallback? onCancel,
   required ValueListenable<bool>? cancelLive,
@@ -361,7 +314,6 @@ Future<T> _awaitBehindWindow<T>({
           title: title,
           titleIcon: titleIcon,
           runningLabel: runningLabel,
-          doneLabel: doneLabel,
           progress: progress,
           windowKey: windowKey,
           runningStatus: runningStatus,
@@ -373,10 +325,7 @@ Future<T> _awaitBehindWindow<T>({
   );
   await WidgetsBinding.instance.endOfFrame;
   try {
-    final result = await start();
-    progress.value = const AppProgress.done();
-    await Future<void>.delayed(doneLinger);
-    return result;
+    return await start();
   } finally {
     // `removeRoute`, NOT `pop`. A pop takes whatever route is on TOP, and
     // this window is not guaranteed to be it — anything the app pushes

@@ -1,8 +1,9 @@
 // THE REFERENCE POPOVER (유저 2026-09-11, 미디어 배치 라운드 3~6): the file
 // button does not bake — it opens this. Its first line is the file beside
-// its POOL state, or 「선택한 레이어」 when the press acts on several rows;
-// its one button bakes 「래스터라이즈 · N장」 — the whole selection when the
-// pressed row is in it, that row alone when it is not — as ONE undo.
+// its POOL state, or 「선택한 레이어」 when the press acts on several rows.
+// And the rasterize of reference rows its one button ran — the reference
+// header's RASTERIZE's now (I-120-Q11 「하나만 남기도록」): a movie decoded
+// behind the wait window, one bar for the batch, as ONE undo.
 import 'dart:async';
 import 'dart:io';
 
@@ -10,10 +11,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -22,18 +23,9 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
-import 'package:anicel/src/services/reference_move_carried.dart'
-    show ReferenceWait;
-import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart'
-    show DetailsDisclosure;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
-import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
-import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/text/model_vocabulary.dart'
-    show ReferenceWaitWords;
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
 import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
@@ -44,7 +36,6 @@ import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
-import '../../helpers/text_finders.dart';
 
 void main() {
   late Directory tempDir;
@@ -113,14 +104,6 @@ void main() {
 
   String sourceLine(WidgetTester tester) => tester
       .widget<Text>(find.byKey(const ValueKey<String>('layer-reference-source')))
-      .data!;
-
-  final rasterize = find.byKey(
-    const ValueKey<String>('layer-reference-rasterize'),
-  );
-
-  String buttonLabel(WidgetTester tester) => tester
-      .widget<Text>(find.descendant(of: rasterize, matching: find.anyText()))
       .data!;
 
   /// A session with a [frameCount]-frame take placed as a reference from
@@ -206,11 +189,6 @@ void main() {
       isNull,
       reason: '자리는 예약하고 내용만 바꾼다 — the window made room for it',
     );
-    expect(
-      buttonLabel(tester),
-      contains(editorActionLabel(EditorActionIds.layerRasterize)),
-      reason: 'the bake is still the popover own action',
-    );
   });
 
   /// The decode runs in `runAsync`; its answers land on the pumps after —
@@ -218,8 +196,8 @@ void main() {
   Future<void> settle(WidgetTester tester, bool Function() done) =>
       settleAsync(tester, done, step: const Duration(milliseconds: 20));
 
-  testWidgets('one row: its file beside its POOL state, and the one cel it '
-      'bakes (「bg_street.png · 참조」 · 「래스터라이즈 · 1장」)', (tester) async {
+  testWidgets('one row: its file beside its POOL state '
+      '(「bg_street.png · 참조」)', (tester) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     await openOn(tester, s, rows['bg_street.png']!);
 
@@ -230,11 +208,10 @@ void main() {
       '${asset.name} · Linked',
       reason: 'linked, not carried — the file stayed where it was',
     );
-    expect(buttonLabel(tester), 'Rasterize layer · 1 cel');
   });
 
-  testWidgets('pressed INSIDE the selection it bakes every selected '
-      'reference row — and one undo puts them all back', (tester) async {
+  testWidgets('pressed INSIDE the selection it speaks of every selected '
+      'reference row — 「선택한 레이어」', (tester) async {
     final (s, rows) = await sessionWith(tester, [
       'bg_street.png',
       'bg_night.png',
@@ -245,25 +222,10 @@ void main() {
     await openOn(tester, s, street);
 
     expect(sourceLine(tester), 'Selected layers');
-    expect(buttonLabel(tester), 'Rasterize layer · 2 cels');
-
-    await tester.tap(rasterize);
-    await tester.pumpAndSettle();
-    expect(popover, findsNothing, reason: 'the bake closes the popover');
-    expect(current(s, street).mediaReference, isNull);
-    expect(current(s, night).mediaReference, isNull);
-
-    s.undo();
-    expect(current(s, street).mediaReference, isNotNull);
-    expect(
-      current(s, night).mediaReference,
-      isNotNull,
-      reason: 'one gesture, one undo',
-    );
   });
 
   testWidgets('a selected row that points at NO file is not one of them — '
-      'one file to bake, so the line names it', (tester) async {
+      'one file, so the line names it', (tester) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     final street = rows['bg_street.png']!;
     final plain = s.requireActiveCut.layers.firstWhere(
@@ -273,11 +235,11 @@ void main() {
     await openOn(tester, s, street);
 
     expect(sourceLine(tester), endsWith(' · Linked'));
-    expect(buttonLabel(tester), 'Rasterize layer · 1 cel');
   });
 
-  testWidgets('pressed OUTSIDE the selection it bakes that row alone, and '
-      'the selection is left as it was', (tester) async {
+  testWidgets('pressed OUTSIDE the selection it names that row alone', (
+    tester,
+  ) async {
     final (s, rows) = await sessionWith(tester, [
       'bg_street.png',
       'bg_night.png',
@@ -288,64 +250,6 @@ void main() {
     await openOn(tester, s, street);
 
     expect(sourceLine(tester), contains('bg_street'));
-    expect(buttonLabel(tester), 'Rasterize layer · 1 cel');
-
-    await tester.tap(rasterize);
-    await tester.pumpAndSettle();
-    expect(current(s, street).mediaReference, isNull);
-    expect(
-      current(s, night).mediaReference,
-      isNotNull,
-      reason: 'the selection was not what was pressed',
-    );
-    expect(
-      [
-        for (final row in s.rowSelection.value)
-          if (row is LayerRowAddress) row.layerId,
-      ],
-      [night],
-      reason:
-          'what a press does to the selection itself is not the rule\'s to '
-          'say (the user did not), so the bake leaves it alone',
-    );
-  });
-
-  testWidgets('a MOVIE row counts what the bake would LEAVE — a cel per '
-      'position of its block, not the one held cel it shows them with', (
-    tester,
-  ) async {
-    final (s, movie) = await movieSession(tester);
-    await openOn(tester, s, movie);
-
-    expect(current(s, movie).frames, hasLength(1), reason: 'the premise');
-    expect(buttonLabel(tester), 'Rasterize layer · 20 cels');
-  });
-
-  testWidgets('pressing it puts the decode behind the WAIT WINDOW, and the '
-      'row comes back as cels', (tester) async {
-    final (s, movie) = await movieSession(
-      tester,
-      frameCount: 6,
-      inFrame: 0,
-    );
-    await openOn(tester, s, movie);
-
-    await tester.tap(rasterize);
-    await tester.pump();
-    expect(
-      waitWindow,
-      findsOneWidget,
-      reason: 'the one window heavy work waits behind',
-    );
-
-    await settle(
-      tester,
-      () =>
-          waitWindow.evaluate().isEmpty &&
-          current(s, movie).mediaReference == null,
-    );
-    expect(current(s, movie).frames, hasLength(6));
-    await tester.pumpAndSettle();
   });
 
   /// A context under an app, for a verb that puts a window up.
@@ -366,17 +270,20 @@ void main() {
     return hosted;
   }
 
-  testWidgets('the layer menu takes the same road — its rasterize is this '
-      'verb, so a movie goes behind the window there too', (tester) async {
+  testWidgets('rasterizing a movie puts the decode behind the WAIT WINDOW, '
+      'and the row comes back as cels', (tester) async {
     final (s, movie) = await movieSession(tester, frameCount: 6, inFrame: 0);
-    expect(s.activeLayer?.id, movie, reason: 'fixture: the placed row');
     final menuContext = await hostedContext(tester);
 
     // ⛔Not awaited HERE: the decode needs the pumps below to run, and a
     // test body waiting on it is a test body not pumping.
-    unawaited(rasterizeActiveRow(menuContext, s));
+    unawaited(rasterizeReferenceRows(menuContext, s, [current(s, movie)]));
     await tester.pump();
-    expect(waitWindow, findsOneWidget);
+    expect(
+      waitWindow,
+      findsOneWidget,
+      reason: 'the one window heavy work waits behind',
+    );
 
     await settle(
       tester,
@@ -474,9 +381,12 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a row that waits stays the reference it is — no wait window '
-      'comes up for it, the notice that says why does (F-374-Q9 · Q11 '
-      '「막고 경고」)', (tester) async {
+  testWidgets('🎯a still its fx MOVES where its transform cannot carry it '
+      'goes behind the window and comes back an animation layer — a cel '
+      'wherever the move changes, the first with its cel\'s name — as ONE '
+      'undo (I-120-Q5: 「애니메이션 레이어로, 움직이는 프레임마다 한 장」)', (
+    tester,
+  ) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     final street = rows['bg_street.png']!;
     sheared(
@@ -485,77 +395,86 @@ void main() {
       PropertyTrack<double>().withKey(0, 30).withKey(12, 60),
     );
     final before = current(s, street);
+    final length = drawingBlocks(
+      before.timeline,
+    ).fold(0, (sum, block) => sum + block.length);
+    expect(length, greaterThan(13), reason: 'the premise');
     final menuContext = await hostedContext(tester);
 
     unawaited(rasterizeReferenceRows(menuContext, s, [before]));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    expect(waitWindow, findsOneWidget);
 
-    expect(waitWindow, findsNothing);
-    expect(current(s, street), before);
-    expect(foldsOf(tester), {
-      ReferenceWait.sheared.labelFor(AppText.language): [before.name],
-    });
-  });
-
-  testWidgets('🎯the notice says each reason once, in its own words, over '
-      'every row it was said of — under the one line that says the rows '
-      'stayed references (F-374-Q11)', (tester) async {
-    final menuContext = await hostedContext(tester);
-    Layer row(String name) =>
-        Layer(id: LayerId(name), name: name, frames: const []);
-    String words(ReferenceWait why) => why.labelFor(AppText.language);
-
-    unawaited(
-      showReferenceWaits(menuContext, [
-        (row: row('a'), why: ReferenceWait.attached),
-        (row: row('b'), why: ReferenceWait.laidAsFitted),
-        (row: row('c'), why: ReferenceWait.sheared),
-        (row: row('d'), why: ReferenceWait.othersKeepKeys),
-        (row: row('e'), why: ReferenceWait.usesApart),
-        (row: row('f'), why: ReferenceWait.sheared),
-      ]),
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, street).mediaReference == null,
     );
-    await tester.pumpAndSettle();
-
+    final baked = current(s, street);
+    expect(baked.kind, LayerKind.animation);
+    // A turn a frame over 0..12, then held: thirteen pictures.
+    expect(baked.frames, hasLength(13));
+    expect(baked.frames.first.name, before.frames.single.name);
     expect(
-      find.text(AppText.strings.rasterizeLeftReferences),
-      findsOneWidget,
+      [
+        for (var frame = 0; frame < length; frame += 1)
+          exposedFrameIdAt(baked.timeline, frame),
+      ],
+      [
+        for (final cel in baked.frames) cel.id,
+        for (var at = 13; at < length; at += 1) baked.frames.last.id,
+      ],
     );
-    expect(foldsOf(tester), {
-      words(ReferenceWait.attached): ['a'],
-      words(ReferenceWait.laidAsFitted): ['b'],
-      words(ReferenceWait.sheared): ['c', 'f'],
-      words(ReferenceWait.othersKeepKeys): ['d'],
-      words(ReferenceWait.usesApart): ['e'],
-    });
+
+    s.undo();
+    expect(current(s, street), before);
+    await tester.pumpAndSettle();
   });
 
-  testWidgets('the notice says why in the program\'s language — a reason '
-      'reads its words from the tables, not its English (F-374-Q11)', (
+  testWidgets('🎯a 겸용 copy no key carries the move of, showing the picture '
+      'elsewhere, goes behind the window with its row — each use its own '
+      'cel, an animation layer — as ONE undo (🗣️I-120-Q22 「링크를 둔 채 '
+      '셀을 나눠 굽는다」 — ↩️F-374-Q11 left it a reference and said why)', (
     tester,
   ) async {
-    AppText.settings.value = const AppLanguageSettings(
-      programLanguage: AppLanguage.ko,
-      notationLanguage: AppLanguage.ko,
+    final (s, rows) = await sessionWith(tester, ['bg_street.png']);
+    final street = rows['bg_street.png']!;
+    final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+      cutId: s.requireActiveCut.id,
+      layerId: street,
+      insertionIndex: 0,
     );
-    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    sheared(s, copy, PropertyTrack<double>().withKey(0, 30));
+    final before = [current(s, street), current(s, copy)];
     final menuContext = await hostedContext(tester);
-    final words = ReferenceWait.attached.labelFor(AppLanguage.ko);
-    expect(words, isNot(ReferenceWait.attached.label), reason: 'the premise');
 
-    unawaited(
-      showReferenceWaits(menuContext, [
-        (
-          row: Layer(id: const LayerId('a'), name: 'a', frames: const []),
-          why: ReferenceWait.attached,
-        ),
-      ]),
+    unawaited(rasterizeReferenceRows(menuContext, s, [before.first]));
+    await tester.pump();
+    expect(waitWindow, findsOneWidget);
+
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, street).mediaReference == null,
     );
-    await tester.pumpAndSettle();
+    final baked = current(s, street);
+    final bakedCopy = current(s, copy);
+    expect(bakedCopy.mediaReference, isNull);
+    expect([baked.kind, bakedCopy.kind], [
+      LayerKind.animation,
+      LayerKind.animation,
+    ]);
+    expect(baked.frames, hasLength(2));
+    expect(
+      exposedFrameIdAt(baked.timeline, 0),
+      isNot(exposedFrameIdAt(bakedCopy.timeline, 0)),
+    );
 
-    expect(foldsOf(tester), {
-      words: ['a'],
-    });
+    s.undo();
+    expect([current(s, street), current(s, copy)], before);
+    await tester.pumpAndSettle();
   });
 
   test('the pool state is where the file\'s bytes live — carried or linked',
@@ -581,15 +500,3 @@ final popover = find.byKey(const ValueKey<String>('layer-reference-popover'));
 final waitWindow = find.byKey(
   const ValueKey<String>('reference-rasterize-progress'),
 );
-
-/// The folds of the notice a rasterize that left rows waiting puts up: what
-/// each says, over the rows it says it of.
-Map<String, List<String>> foldsOf(WidgetTester tester) => {
-  for (final fold in tester.widgetList<DetailsDisclosure>(
-    find.descendant(
-      of: find.byKey(const ValueKey<String>('reference-rasterize-waits')),
-      matching: find.byType(DetailsDisclosure),
-    ),
-  ))
-    fold.heading: fold.lines,
-};

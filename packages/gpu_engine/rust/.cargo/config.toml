@@ -1,0 +1,11 @@
+# The C engine the native crates are compared with (native/oracle): this
+# checkout's standalone build, where tool/lane.sh builds it (refusal 6) and
+# test/helpers/native_engine_path.dart finds it on Windows. Elsewhere, and
+# on CI, QA_ENGINE_PATH is set, and a variable that is set wins over this.
+[env]
+QA_ENGINE_PATH = { value = "../../../build/native_standalone/Release/qa_engine.dll", relative = true }
+# This checkout's folder, which every crate of the workspace reads as it is
+# built: the trunk and every lane build into one target folder, and cargo
+# builds a crate again when a value it read has changed — not when the files
+# of another checkout are merely older (src/kernels/shared/one_checkout.rs).
+QA_CHECKOUT = { value = ".", relative = true }

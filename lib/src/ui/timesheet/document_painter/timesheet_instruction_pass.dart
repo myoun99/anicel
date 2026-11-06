@@ -110,10 +110,8 @@ class _TimesheetInstructionPass {
       _paintInstructionMarkSlice(
         canvas,
         mark: mark,
-        cell: cell,
-        centerX: centerX,
+        slot: slot,
         halfWidth: columnWidth / 2 - 1,
-        cellTop: cellTop,
       );
     }
 
@@ -178,8 +176,7 @@ class _TimesheetInstructionPass {
       label,
       columnLeft: slot.columnLeft,
       columnWidth: slot.columnWidth,
-      spanTop: slot.cellTop - offset * TimesheetDocumentLayout.rowHeight,
-      spanLength: spanLength,
+      span: slot.span,
       rows: rows,
     );
   }
@@ -215,8 +212,7 @@ class _TimesheetInstructionPass {
     String label, {
     required double columnLeft,
     required double columnWidth,
-    required double spanTop,
-    required int spanLength,
+    required ({double top, double bottom}) span,
     required ({double top, double bottom}) rows,
   }) {
     const fontSize = 9.0;
@@ -241,8 +237,7 @@ class _TimesheetInstructionPass {
     // pack.
     final needed = cellCount * naturalCellExtent;
     final extent = math.min(needed, rows.bottom - rows.top);
-    final spanMiddle =
-        spanTop + spanLength * TimesheetDocumentLayout.rowHeight / 2;
+    final spanMiddle = (span.top + span.bottom) / 2;
     paintVerticalText(
       canvas,
       label,
@@ -298,23 +293,19 @@ class _TimesheetInstructionPass {
   void _paintInstructionMarkSlice(
     Canvas canvas, {
     required CameraInstructionMarkType mark,
-    required TimesheetCell cell,
-    required double centerX,
+    required _CellSlot slot,
     required double halfWidth,
-    required double cellTop,
   }) {
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    final shaftX = centerX;
-    final spanTop = cellTop - (cell.spanOffset ?? 0) * rowHeight;
-    final spanBottom = spanTop + (cell.spanLength ?? 1) * rowHeight;
+    final shaftX = slot.centerX;
+    final (top: spanTop, bottom: spanBottom) = slot.span;
     final mid = (spanTop + spanBottom) / 2;
     canvas.save();
     canvas.clipRect(
-      Rect.fromLTWH(
+      Rect.fromLTRB(
         shaftX - halfWidth - 1,
-        cellTop,
-        (halfWidth + 1) * 2,
-        rowHeight,
+        slot.cellTop,
+        shaftX + halfWidth + 1,
+        slot.cellBottom,
       ),
     );
     // R4: dedicated marks are plain LIGHT-GRAY FILLS laid under the grid

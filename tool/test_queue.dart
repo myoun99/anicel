@@ -561,6 +561,117 @@ bool runHasEnded(File ticket) {
   }
 }
 
+/// The temp folder of one `flutter test` a tool starts — the line's command,
+/// a batch of `affected_tests`, a mutant's suite — which goes when it ends.
+///
+/// 🚨★★★`flutter test` REMOVES ITS TEMP ONLY WHEN IT ENDS BY ITSELF (card
+/// flutter-test-temp-left-behind, 11-05: C: had 11 GB free). It builds in a
+/// `flutter_tools.*` folder of the temp directory, 0.4–1.7 GB each; measured
+/// 11-05, a run that ended by itself left nothing, and the same run cut by
+/// the line's limit after 5 s left 128 MB. Every run ended from outside — the
+/// limit, a silent batch, a mutant's clock, TaskStop, a blue screen — left
+/// one: 146 of them, 51 GB, from 10-20 on. Its testers' own `qa_run_*`
+/// folders stayed with them, their `tearDownAll` never reached.
+///
+/// So the child is started with this folder as its temp ([environment]) —
+/// everything it and its children make lands inside — and the tool removes
+/// it when the child ends ([end]). A tool that was killed first cannot; the
+/// next one to [take] a folder removes it once its lock can be taken
+/// ([sweepEndedRunTemps]), the law [runHasEnded] keeps for a ticket.
+class RunTemp {
+  RunTemp._(this.folder, this._lock);
+
+  /// Makes a folder in [parent] — the system temp unless a test names one —
+  /// and holds its lock until [end], after removing every folder there
+  /// whose run has ended.
+  factory RunTemp.take({Directory? parent, DateTime? now}) {
+    final at = parent ?? Directory.systemTemp;
+    sweepEndedRunTemps(at, now: now);
+    final folder = Directory(
+      '${at.path}${Platform.pathSeparator}'
+      '$kRunTempPrefix${pid}_${DateTime.now().microsecondsSinceEpoch}',
+    );
+    // The lock lands before the folder holds anything, as a room's does
+    // (`SessionScratch.ensureThisRunsFolder`).
+    final lock = File('${folder.path}/$kRunTempLock')
+      ..createSync(recursive: true);
+    final handle = lock.openSync(mode: FileMode.append);
+    handle.lockSync(FileLock.exclusive);
+    handle.writeStringSync('$pid\n');
+    return RunTemp._(folder, handle);
+  }
+
+  final Directory folder;
+  final RandomAccessFile _lock;
+
+  /// What the child is started with: every name a platform reads its temp
+  /// directory from.
+  Map<String, String> get environment => {
+    'TMP': folder.path,
+    'TEMP': folder.path,
+    'TMPDIR': folder.path,
+  };
+
+  /// The child has ended: the folder goes, and what will not go yet (a
+  /// handle not let go of) goes with the next [sweepEndedRunTemps].
+  void end() {
+    try {
+      _lock.unlockSync();
+      _lock.closeSync();
+    } on Object {
+      // Closed already.
+    }
+    _deleteFolderQuietly(folder);
+  }
+}
+
+const kRunTempPrefix = 'qa_tmp_';
+const kRunTempLock = 'run.lock';
+
+/// Removes every [RunTemp] folder in [parent] whose run has [ended] — its
+/// lock can be taken, or it never got one. ⛔Never one younger than
+/// [kTicketSettles] (it may be between being made and being locked) or one
+/// of this process: on POSIX a lock is the process's, so this process could
+/// take its own.
+void sweepEndedRunTemps(
+  Directory parent, {
+  DateTime? now,
+  bool Function(File lock) ended = runHasEnded,
+}) {
+  final at = now ?? DateTime.now();
+  final List<FileSystemEntity> entries;
+  try {
+    entries = parent.listSync(followLinks: false);
+  } on FileSystemException {
+    return;
+  }
+  for (final entity in entries) {
+    if (entity is! Directory) continue;
+    final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+    if (!name.startsWith(kRunTempPrefix) ||
+        name.startsWith('$kRunTempPrefix${pid}_')) {
+      continue;
+    }
+    final DateTime made;
+    try {
+      made = entity.statSync().modified;
+    } on FileSystemException {
+      continue;
+    }
+    if (at.difference(made) < kTicketSettles) continue;
+    if (!ended(File('${entity.path}/$kRunTempLock'))) continue;
+    _deleteFolderQuietly(entity);
+  }
+}
+
+void _deleteFolderQuietly(Directory folder) {
+  try {
+    folder.deleteSync(recursive: true);
+  } on FileSystemException {
+    // A handle not let go of yet: the next sweep asks again.
+  }
+}
+
 /// One run's place in the line, held for as long as the run lives.
 class Ticket {
   Ticket._(this.file, this._lock, this._about);
@@ -1069,17 +1180,23 @@ Future<void> main(List<String> args) async {
     work: workAsked(args, timesOnThisMachine()),
     (suites) async {
       final (:command, :limit) = timeLimitOf(placed(args, suites));
-      final started = await Process.start(
-        command.first,
-        command.skip(1).toList(),
-        mode: ProcessStartMode.inheritStdio,
-        runInShell: Platform.isWindows,
-      );
-      if (limit == null) return started.exitCode;
-      return withinLimit(started.exitCode, limit, () {
-        stderr.writeln('test_queue: ${limit.inSeconds}s are up, cutting it');
-        cutTree(started.pid);
-      });
+      final temp = RunTemp.take();
+      try {
+        final started = await Process.start(
+          command.first,
+          command.skip(1).toList(),
+          environment: temp.environment,
+          mode: ProcessStartMode.inheritStdio,
+          runInShell: Platform.isWindows,
+        );
+        if (limit == null) return await started.exitCode;
+        return await withinLimit(started.exitCode, limit, () {
+          stderr.writeln('test_queue: ${limit.inSeconds}s are up, cutting it');
+          cutTree(started.pid);
+        });
+      } finally {
+        temp.end();
+      }
     },
   );
 }

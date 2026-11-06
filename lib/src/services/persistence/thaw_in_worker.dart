@@ -31,12 +31,9 @@ Future<AnicelLaidCel> layCelInWorker(
 }) {
   final sent = TransferableTypedData.fromList([blob.bytes]);
   return onAWorker(
-    () => layCelEntry(
-      _behindReach(
-        AnicelCelBlob(sent.materialize().asUint8List()).decode(),
-        reach,
-      ),
-      tileBlocksHere(blocks),
+    () => AnicelCelBlob(sent.materialize().asUint8List()).decoded(
+      (entry) =>
+          layCelEntry(_behindReach(entry, reach), tileBlocksHere(blocks)),
     ),
   );
 }
@@ -118,28 +115,29 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
 }) {
   final sent = TransferableTypedData.fromList([blob.bytes]);
   final blocks = BitmapTile.blocks;
-  return onAWorker(() {
-    final entry = AnicelCelBlob(sent.materialize().asUint8List()).decode();
-    final here = tileBlocksHere(blocks);
-    final was = _behindReach(entry, reach);
-    if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: entry.tileSize)) {
-      return (was: layCelEntry(was, here), moved: null);
-    }
-    final laidMoved = layCelEntry(
-      AnicelCelEntry.fromSurface(
-        key,
-        movedBy(surfaceBehindReach(entry.toSurface(), reach), move),
-      ),
-      here,
-    );
-    try {
-      return (was: layCelEntry(was, here), moved: laidMoved);
-    } on Object {
-      // Nothing else knows these blocks exist ([layCelEntry]'s own rule).
-      freeLaidCel(laidMoved, here);
-      rethrow;
-    }
-  });
+  return onAWorker(
+    () => AnicelCelBlob(sent.materialize().asUint8List()).decoded((entry) {
+      final here = tileBlocksHere(blocks);
+      final was = _behindReach(entry, reach);
+      if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: entry.tileSize)) {
+        return (was: layCelEntry(was, here), moved: null);
+      }
+      final laidMoved = layCelEntry(
+        AnicelCelEntry.fromSurface(
+          key,
+          movedBy(surfaceBehindReach(entry.toSurface(), reach), move),
+        ),
+        here,
+      );
+      try {
+        return (was: layCelEntry(was, here), moved: laidMoved);
+      } on Object {
+        // Nothing else knows these blocks exist ([layCelEntry]'s own rule).
+        freeLaidCel(laidMoved, here);
+        rethrow;
+      }
+    }),
+  );
 }
 
 /// A HOT cel's [surface] as [move] leaves it, worked out on a worker that
@@ -247,26 +245,27 @@ cutCelInWorker(
 }) async {
   final sent = TransferableTypedData.fromList([blob.bytes]);
   final blocks = BitmapTile.blocks;
-  final cut = await onAWorker(() {
-    final entry = AnicelCelBlob(sent.materialize().asUint8List()).decode();
-    final behind = cutBehindReach(entry.toSurface(), wall.to);
-    if (behind == null) {
-      return null;
-    }
-    final kept = AnicelCelBlob.ofSurface(key, behind);
-    final path = ScratchFile.write(parkAt, kept.bytes);
-    if (path == null) {
-      throw StateError('The room would not take $parkAt.');
-    }
-    return (
-      blob: TransferableTypedData.fromList([kept.bytes]),
-      path: path,
-      was: layCelEntry(
-        _behindReach(entry, wall.from),
-        tileBlocksHere(blocks),
-      ),
-    );
-  });
+  final cut = await onAWorker(
+    () => AnicelCelBlob(sent.materialize().asUint8List()).decoded((entry) {
+      final behind = cutBehindReach(entry.toSurface(), wall.to);
+      if (behind == null) {
+        return null;
+      }
+      final kept = AnicelCelBlob.ofSurface(key, behind);
+      final path = ScratchFile.write(parkAt, kept.bytes);
+      if (path == null) {
+        throw StateError('The room would not take $parkAt.');
+      }
+      return (
+        blob: TransferableTypedData.fromList([kept.bytes]),
+        path: path,
+        was: layCelEntry(
+          _behindReach(entry, wall.from),
+          tileBlocksHere(blocks),
+        ),
+      );
+    }),
+  );
   if (cut == null) {
     return null;
   }

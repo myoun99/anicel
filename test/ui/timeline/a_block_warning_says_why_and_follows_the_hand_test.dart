@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -16,7 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
-    show BlockMoveDragPreview;
+    show BlockMoveDragPreview, CutTrimDragPreview, MovieEndDragPreview;
 import 'package:anicel/src/ui/timeline_tab_host.dart' show TimelineTabHost;
 
 import '../../helpers/storyboard_host.dart';
@@ -169,16 +170,41 @@ void main() {
         );
         expect(find.text(warning()), findsNothing, reason: 'a clean fade');
 
+        final block = find.byKey(
+          ValueKey<String>('$surface-instruction-$id-$crossing'),
+        );
         await hoverAt(
           tester,
           onTheBlock(
             tester,
-            find.byKey(ValueKey<String>('$surface-instruction-$id-$crossing')),
+            block,
             TimelineTabHost,
             axis: xsheet ? Axis.vertical : Axis.horizontal,
           ),
         );
         expect(find.text(warning()), findsOneWidget);
+
+        // …and on its start grip, which a pointer meets first (10-30).
+        final grip = tester
+            .getRect(
+              find.descendant(
+                of: find.byType(TimelineTabHost),
+                matching: find.byWidgetPredicate(
+                  (widget) =>
+                      widget is TimelineBlockEdgeGrip &&
+                      widget.layer.id ==
+                          session.activeTrack.transitionLayer.id &&
+                      widget.edge == TimelineBlockEdge.start &&
+                      widget.blockStartIndex == crossing,
+                ),
+              ),
+            )
+            .intersect(tester.getRect(block));
+        expect(grip.isEmpty, isFalse, reason: '⛔전제: the grip is on it');
+        await hoverAt(tester, const Offset(4, 4));
+        expect(find.text(warning()), findsNothing, reason: 'off the block');
+        await hoverAt(tester, grip.center);
+        expect(find.text(warning()), findsOneWidget, reason: 'on its grip');
       });
     }
 
@@ -223,6 +249,204 @@ void main() {
       );
       expect(find.text(warning()), findsOneWidget);
     });
+
+    // The hands-on check (10-30, the conte at its 80%): a cut alone, its F.O
+    // run past its end — the movie's — and the playhead on the fade's first
+    // frame. The conte said nothing on the playhead's column: the fade's
+    // start grip covers that frame whole at this zoom, and the warning lay
+    // under it. Just past the end line, under the MOVIE's end handle, is the
+    // next test's.
+    testWidgets('on the conte\'s row — under its start grip, where the '
+        'playhead stood, and past the movie\'s end', (tester) async {
+      final session = await pumpStoryboardHost(
+        tester,
+        createDefaultProject(),
+        surface: wide,
+      );
+      final cut = session.repository.requireProject().tracks.first.cuts.first;
+      final end = cut.duration;
+      final start = end - 3;
+      session.transitions.updateTransitionInstructions(
+        SplayTreeMap<int, InstructionEvent>.from({
+          start: const InstructionEvent(instructionId: 'fo', length: 6),
+        }),
+      );
+      session.selectCut(cut.id);
+      session.selectFrameIndex(start);
+      await tester.pumpAndSettle();
+      final block = tester.getRect(
+        find.byKey(
+          ValueKey<String>(
+            'storyboard-transition-paper-${rowId(session)}-$start',
+          ),
+        ),
+      );
+      final cell = block.width / 6;
+      Offset onFrame(int frame) =>
+          Offset(block.left + cell * (frame - start + 0.5), block.center.dy);
+      bool covers(Finder finder, Offset at) =>
+          tester.getRect(finder).contains(at);
+      final startGrip = find.byWidgetPredicate(
+        (widget) =>
+            widget is TimelineBlockEdgeGrip &&
+            widget.edge == TimelineBlockEdge.start &&
+            widget.blockStartIndex == start,
+      );
+      expect(
+        covers(
+          find.byKey(const ValueKey('storyboard-playhead')),
+          onFrame(start),
+        ),
+        isTrue,
+        reason: '⛔전제: the playhead stands on the fade\'s first frame',
+      );
+      expect(covers(startGrip, onFrame(start)), isTrue, reason: '⛔전제');
+      expect(
+        covers(
+          find.byKey(const ValueKey('storyboard-cut-end-handle')),
+          onFrame(end + 2),
+        ),
+        isFalse,
+        reason: '⛔전제: past the end handle',
+      );
+
+      for (final (where, frame) in [
+        ('the playhead\'s column, under the start grip', start),
+        ('past the movie\'s end', end + 2),
+      ]) {
+        await hoverAt(tester, const Offset(4, 4));
+        expect(find.text(warning()), findsNothing, reason: 'off the block');
+        await hoverAt(tester, onFrame(frame));
+        expect(find.text(warning()), findsOneWidget, reason: where);
+      }
+    });
+
+    /// Under an end line's grip — the panel's, over every row — on [block]:
+    /// the warning says why, the cursor stays the grip's arrows, and a press
+    /// there is the line's drag ([lineDrag]), never the block's (F-495-Q1,
+    /// 유저 2026-11-07: 「잡이 위에서도 블록 툴팁을 띄운다」).
+    Future<void> underTheEndGrip(
+      WidgetTester tester,
+      EditorSessionManager session, {
+      required Finder grip,
+      required Finder block,
+      required MouseCursor arrows,
+      required Matcher lineDrag,
+      required Offset offTheGrips,
+    }) async {
+      final under = tester.getRect(grip).intersect(tester.getRect(block));
+      expect(under.isEmpty, isFalse, reason: '⛔전제: the grip is on it');
+
+      // Only the hover goes under: a press that never moves is no drag of
+      // the grip's, and it must not fall to the block either.
+      Object? picked() => (
+        session.currentFrameIndex,
+        session.frameRangeSelection.value,
+      );
+      Future<void> tapAt(Offset at) async {
+        await mouse!.down(at);
+        await tester.pump(const Duration(milliseconds: 16));
+        await mouse!.up();
+        await tester.pumpAndSettle();
+      }
+
+      await hoverAt(tester, const Offset(4, 4));
+      final before = picked();
+      await tapAt(under.center);
+      expect(picked(), before, reason: 'a tap under the grip is no block\'s');
+      await tapAt(offTheGrips);
+      expect(picked(), isNot(before), reason: '⛔전제: one on it is');
+
+      await hoverAt(tester, const Offset(4, 4));
+      expect(find.text(warning()), findsNothing, reason: 'off the block');
+      await hoverAt(tester, under.center);
+      expect(find.text(warning()), findsOneWidget, reason: 'under the grip');
+      expect(
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        arrows,
+        reason: 'the grip\'s cursor',
+      );
+
+      await mouse!.down(under.center);
+      await tester.pump(const Duration(milliseconds: 16));
+      await mouse!.moveBy(
+        Offset(
+          arrows == SystemMouseCursors.resizeColumn ? 40 : 0,
+          arrows == SystemMouseCursors.resizeRow ? 40 : 0,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(session.dragPreview.value, lineDrag, reason: 'the line\'s drag');
+      await mouse!.up();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('on the conte\'s row — under the movie\'s end handle', (
+      tester,
+    ) async {
+      final session = await pumpStoryboardHost(
+        tester,
+        createDefaultProject(),
+        surface: wide,
+      );
+      final cut = session.repository.requireProject().tracks.first.cuts.first;
+      final start = cut.duration - 3;
+      session.transitions.updateTransitionInstructions(
+        SplayTreeMap<int, InstructionEvent>.from({
+          start: const InstructionEvent(instructionId: 'fo', length: 6),
+        }),
+      );
+      session.selectCut(cut.id);
+      await tester.pumpAndSettle();
+      final block = find.byKey(
+        ValueKey<String>(
+          'storyboard-transition-paper-${rowId(session)}-$start',
+        ),
+      );
+      final paper = tester.getRect(block);
+
+      await underTheEndGrip(
+        tester,
+        session,
+        grip: find.byKey(const ValueKey('storyboard-cut-end-handle')),
+        block: block,
+        arrows: SystemMouseCursors.resizeColumn,
+        lineDrag: isA<MovieEndDragPreview>(),
+        // The fade's third frame of six: inside the cut, off both its grips.
+        offTheGrips: Offset(
+          paper.left + paper.width / 6 * 2.5,
+          paper.center.dy,
+        ),
+      );
+    });
+
+    for (final xsheet in [false, true]) {
+      testWidgets('on the cut\'s row — under the cut end\'s grip'
+          '${xsheet ? ' (X-sheet)' : ''}', (tester) async {
+        final session = await theCutView(tester, xsheet: xsheet);
+        final block = find.byKey(
+          ValueKey<String>(
+            '${surfaceOf(xsheet: xsheet)}-instruction-${rowId(session)}-'
+            '${crossingOf(session)}',
+          ),
+        );
+        final axis = xsheet ? Axis.vertical : Axis.horizontal;
+        await underTheEndGrip(
+          tester,
+          session,
+          grip: find.descendant(
+            of: find.byType(TimelineTabHost),
+            matching: find.byKey(const ValueKey('timeline-cut-end-handle')),
+          ),
+          block: block,
+          arrows: xsheet
+              ? SystemMouseCursors.resizeRow
+              : SystemMouseCursors.resizeColumn,
+          lineDrag: isA<CutTrimDragPreview>(),
+          offTheGrips: onTheBlock(tester, block, TimelineTabHost, axis: axis),
+        );
+      });
+    }
   });
 
   group('② the line follows the hand', () {

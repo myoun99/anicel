@@ -1,0 +1,105 @@
+name: GPU engine on Metal, Mesa and WARP
+
+# The GPU engine crate's tests — every ledger row, and each bridge's test
+# that the bytes Flutter is handed are the kernel's — where no machine of
+# ours runs them: macOS (Metal), Linux (Mesa's software Vulkan, lavapipe)
+# and ARM64 Windows (WARP, with the arm64 dxcompiler.dll). wgpu runs its
+# own GPU tests on the first two runner shapes (gfx-rs/wgpu
+# .github/workflows/ci.yml, gpu-test).
+#
+# ⛔workflow_dispatch ONLY — no cron, no push or pull_request trigger
+# (유저, gpu-engine-skeleton-Q5 2026-11-05: 「손으로 거는 CI 하나를 만든다」).
+# The control tower dispatches it when a Mac or Linux bridge, a kernel or
+# the pinned DXC lands, so the run count is kept in one place; the
+# suspension's likeliest trigger was macOS-runner crons (apple-nightly.yml
+# has the history).
+#
+# Every job runs the tests twice, debug then release, as a land does
+# (tool/lane.sh, refusal 8 — 관제 2026-11-05): a debug build's wgpu turns
+# InstanceFlags::DEBUG on and compiles shaders with optimizations skipped,
+# so only release compiles the shaders the app ships (the grid kernel's
+# X3507 was red in release alone). Debug keeps the validation layers.
+#
+# And every job builds the C engine first: the native crates (native/*,
+# native-to-rust 2026-11-06) are held to it byte for byte, through
+# QA_ENGINE_PATH, and a missing engine fails them (native/oracle). It is
+# built as every CI job builds it (.github/actions/native-engine, cached on
+# the C), whose provenance stamp runs on Dart — no Flutter is needed here,
+# so the Dart that Flutter 3.47.4 ships, alone.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: gpu-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: crate tests on Metal (macOS)
+    runs-on: macos-latest
+    # A cold build of wgpu and the tests is minutes; 30 bounds a hang.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/gpu_engine/rust
+    env:
+      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.dylib
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.3
+      - uses: ./.github/actions/native-engine
+      # rustup reads rust-toolchain.toml: the pinned compiler, as on every
+      # machine that builds the engine.
+      - run: rustup show
+      - run: cargo test --locked --workspace
+      - run: cargo test --locked --workspace --release
+
+  linux:
+    name: crate tests on lavapipe (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/gpu_engine/rust
+    env:
+      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.3
+      - uses: ./.github/actions/native-engine
+      # The runner has no GPU: lavapipe is Mesa's Vulkan on the CPU. The
+      # audio device's cpal builds against ALSA (native-to-rust-Q7), which
+      # alsa-sys finds through pkg-config; its tests open the null device.
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libasound2-dev pkg-config
+      - run: rustup show
+      - run: cargo test --locked --workspace
+      - run: cargo test --locked --workspace --release
+
+  # The ARM64 Windows build ships the arm64 dxcompiler.dll, and no machine
+  # of ours can load it (the Surface Pro 11 is Intel x64) — 관제
+  # 2026-11-05, gpu-engine-feasibility. The runner has no GPU, so the tests
+  # run on WARP, Windows' software D3D12. The kernels are integer-only: a
+  # ledger row WARP reproduces differently fails like any other.
+  windows-arm64:
+    name: crate tests on WARP (Windows ARM64)
+    runs-on: windows-11-arm
+    # Two cold builds of wgpu, and WARP rasterises on the CPU.
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: packages/gpu_engine/rust
+    env:
+      QA_ENGINE_PATH: ${{ github.workspace }}\build\native_standalone\Release\qa_engine.dll
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.3
+      - uses: ./.github/actions/native-engine
+      - run: rustup show
+      - run: cargo test --locked --workspace
+      - run: cargo test --locked --workspace --release

@@ -60,11 +60,12 @@ void main() {
     for (final seed in [1, 37, 91, 255]) {
       final pixels = patterned(seed);
       final blob = AnicelCelBlob.ofSurface(key, surfaceWith(pixels));
-      final back = blob.decode();
-      expect(
-        back.tiles.single.pixels,
-        pixels,
-        reason: 'seed $seed did not survive the round trip',
+      blob.decoded(
+        (back) => expect(
+          back.tiles.single.pixels,
+          pixels,
+          reason: 'seed $seed did not survive the round trip',
+        ),
       );
     }
   });
@@ -76,7 +77,7 @@ void main() {
       pixels[i] = i % 3 == 0 ? 0x00 : (i % 3 == 1 ? 0xFF : 0x80);
     }
     final blob = AnicelCelBlob.ofSurface(key, surfaceWith(pixels));
-    expect(blob.decode().tiles.single.pixels, pixels);
+    blob.decoded((back) => expect(back.tiles.single.pixels, pixels));
   });
 
   group('🚨the head says whether the picture shows anything — read back '
@@ -120,9 +121,11 @@ void main() {
       expect(rekeyed.key.layerId, const LayerId('other'));
       expect(rekeyed.codec, blob.codec);
       expect(rekeyed.showsSomething, picture.showsSomething);
-      expect(
-        rekeyed.decode().tiles.single.pixels,
-        picture.tiles.values.single.pixels,
+      rekeyed.decoded(
+        (back) => expect(
+          back.tiles.single.pixels,
+          picture.tiles.values.single.pixels,
+        ),
       );
     }
   });
@@ -184,7 +187,7 @@ void main() {
       anicelCodecDeflate,
       reason: 'no engine means the floor, and the floor is dart:io zlib',
     );
-    expect(blob.decode().tiles.single.pixels, patterned(7));
+    blob.decoded((back) => expect(back.tiles.single.pixels, patterned(7)));
   });
 
   test('and whatever codec the ambient build picked, the blob round-trips '
@@ -193,6 +196,31 @@ void main() {
     // make false.
     final blob = AnicelCelBlob.ofSurface(key, surfaceWith(patterned(13)));
     expect(blob.codec, anyOf(anicelCodecDeflate, anicelCodecZstd));
-    expect(blob.decode().tiles.single.pixels, patterned(13));
+    blob.decoded((back) => expect(back.tiles.single.pixels, patterned(13)));
+  });
+
+  group('🚨a decoded cel lives only while its reader runs — a zstd one\'s '
+      'bytes are freed when it returns (a-collection-stops-a-frame)', () {
+    // Deflate, so the view kept past the reader is Dart memory a test can
+    // read: a zstd one's is freed under it. The spoiling is the same for
+    // both ([readAnicelPayload]).
+    setUp(() => QaCelCompressor.debugInstanceOverride = () => null);
+    tearDown(() => QaCelCompressor.debugInstanceOverride = null);
+
+    test('a view kept past the reader reads spoiled bytes, not the picture '
+        '— so a reader that keeps one fails here, on either codec', () {
+      final blob = AnicelCelBlob.ofSurface(key, surfaceWith(patterned(7)));
+      expect(blob.codec, anicelCodecDeflate, reason: '⛔premise');
+      final kept = blob.decoded((back) => back.tiles.single.pixels);
+      expect(kept, everyElement(spoiledPayloadByte));
+    });
+
+    test('what the reader laid of its own outlives it', () {
+      final blob = AnicelCelBlob.ofSurface(key, surfaceWith(patterned(7)));
+      expect(
+        blob.toSurface().tiles.values.single.pixels,
+        patterned(7),
+      );
+    });
   });
 }

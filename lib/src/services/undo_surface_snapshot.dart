@@ -451,7 +451,7 @@ class UndoSurfaceSnapshot {
     }
     final Map<KeptTilePlace, BitmapTile> owned;
     try {
-      owned = AnicelCelBlob(bytes).decode().toSurface().keptTiles;
+      owned = AnicelCelBlob(bytes).toSurface().keptTiles;
     } on Object {
       return null;
     }

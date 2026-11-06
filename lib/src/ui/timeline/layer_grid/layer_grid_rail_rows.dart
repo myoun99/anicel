@@ -276,27 +276,24 @@ class _LayerGridRailRows {
                 // plate, not
                 // part of the
                 // selection.
-                Positioned(
-                  left: layerSectionLabelSlotWidth,
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: window.laid(
-                    (window) => TimelineRowSelectionBands(
-                      selectedFlags: [
-                        for (final row in window.rows)
-                          _state.widget.hooks.selectedRows.contains(
-                            row.address,
-                          ),
-                      ],
-                      edges: window.edges,
-                      firstRow: window.range.startIndex,
-                      crossExtent:
-                          _state._metrics.layerControlsWidth -
-                          layerSectionLabelSlotWidth,
+                if (_state.widget.hooks.rowSelection case final selection?)
+                  Positioned(
+                    left: layerSectionLabelSlotWidth,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: window.laid(
+                      (window) => TimelineRowSelectionBands(
+                        selection: selection,
+                        rows: [for (final row in window.rows) row.address],
+                        edges: window.edges,
+                        firstRow: window.range.startIndex,
+                        crossExtent:
+                            _state._metrics.layerControlsWidth -
+                            layerSectionLabelSlotWidth,
+                      ),
                     ),
                   ),
-                ),
                 // The layer area as a place entrance, on top so a file let
                 // go anywhere on the rail finds it — an empty box the rest
                 // of the time, so every row keeps its own pointer.

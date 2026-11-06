@@ -113,7 +113,10 @@ void main() {
       expect(overlay.children[2], isA<TimelineBodyCutEndBoundary>());
     });
 
-    testWidgets('the grid sheet gets its repaint boundary from the stack', (
+    // A stand rebuilds the sheet for two rows' grounds, so it is laid out
+    // and painted on a tick layer, not a bare boundary
+    // (a-row-pick-breaks-the-timeline-dock-image, 11-06).
+    testWidgets('the grid sheet gets its tick layer from the stack', (
       tester,
     ) async {
       await _pumpFrameGridStack(tester);
@@ -122,8 +125,8 @@ void main() {
       // of its own above the stack.
       final stack = tester.widget<Stack>(find.byType(Stack).first);
       final slot = (stack.children[0] as Positioned).child as IgnorePointer;
-      final boundary = slot.child! as RepaintBoundary;
-      expect(boundary.child!.key, gridSheetKey);
+      final layer = slot.child! as TickLayer;
+      expect(layer.child.key, gridSheetKey);
     });
 
     testWidgets('does not duplicate stable keys', (tester) async {

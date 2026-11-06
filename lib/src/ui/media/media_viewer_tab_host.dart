@@ -44,7 +44,7 @@ import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
 import '../sheet/sheet_shape_targets.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart' show AppColors;
+import 'audio_viewer_document.dart';
 import 'media_asset_drag_data.dart';
 import 'media_asset_drop_target.dart';
 import 'media_run.dart';
@@ -55,7 +55,7 @@ import 'viewer_pages_and_run.dart';
 import 'viewer_render_tier.dart';
 import 'viewer_ink.dart';
 import 'viewer_sound.dart';
-import 'waveform_marks_painter.dart';
+import 'sound_face.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_bar.dart';
 import '../widgets/panel_flyout.dart';
@@ -1129,6 +1129,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       child: TransportBar(
         keyPrefix: _key('transport'),
         frameCount: frameCount,
+        framesPerSecond: _run.countingBase(rate),
+        rulerView: widget.session.panelViews.rulerView,
         currentFrame: _run.frameAt(rate).clamp(0, frameCount - 1),
         playing: _run.playing,
         onSeek: (frame) => _run.seekToFrame(frame, rate),
@@ -1137,6 +1139,33 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ),
     );
   }
+
+  /// The face of a sound on the stage ([SoundFace]) — counting what the
+  /// transport under it counts ([_player]), its lower row at the zoom the
+  /// pill shows.
+  Widget _soundFace(
+    BuildContext context,
+    CanvasViewport viewport,
+    AudioViewerDocument sound,
+  ) {
+    final rate = widget.session.projectSettings.projectFrameRate;
+    final frameCount = _run.frameCount(rate);
+    return SoundFace(
+      key: _face,
+      keyValue: _key('face'),
+      peaks: sound.peaks,
+      frameRate: rate,
+      frameCount: frameCount,
+      framesPerSecond: _run.countingBase(rate),
+      rulerView: widget.session.panelViews.rulerView,
+      currentFrame: _run.frameAt(rate).clamp(0, frameCount - 1),
+      zoom: CanvasZoomScale.of(context).display(viewport.zoom),
+      onSeek: (frame) => _run.seekToFrame(frame, rate),
+    );
+  }
+
+  /// The sound's face, asked where a press lands ([SoundFace.takesPressAt]).
+  final GlobalKey _face = GlobalKey();
 
   // --- Cutting (I-14: the cut tool, at the page's own size) -------------
 
@@ -1410,16 +1439,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         ? document.pageSize(pageIndex)
         : const ui.Size(640, 480);
 
-    // How long the sound is, when the page IS the sound — the waveform's
-    // whole width is that many seconds, so it is also the scale the
-    // playhead sits on.
-    //
-    // ⛔Only for a page that does not turn: a movie's playhead is its PAGE,
-    // and giving it a second one in seconds would be two answers to 「어디를
-    //보고 있나」. The movie's soundtrack is the next step of the roadmap and
-    // it rides the page, not this.
-    final waveformSeconds = _turnsItsOwnPages ? null : _run.soundLengthSeconds;
-
+    // A sound stands on the stage as its face, not on a page (F-71-Q7).
+    final sound = document is AudioViewerDocument ? document : null;
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
 
@@ -1503,6 +1524,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
       // 비활성화」): with no file open there is no view to operate.
       hasContentToView: request != null,
+      // A sound's face follows its playhead and pans with nothing
+      // (F-71-Q7 「스크롤바 없음」).
+      panbars: sound == null,
       // 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
       // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
       // and so a finger drives no tool here: the cut takes a pen or a mouse.
@@ -1526,7 +1550,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // lifts them into one.
       contentStrokeActive: drawing ? _strokeHold : null,
       contentShapeTargetAt: _shapes.at,
-      contentTakesPressAt: _shapes.takesPressAt,
+      // A press on a sound's face is the face's, whatever tool is in hand —
+      // a control's ([SoundFace]).
+      contentTakesPressAt: (global) =>
+          SoundFace.takesPressAt(_face, global) ||
+          _shapes.takesPressAt(global),
       // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
       // F-201 names it one.
@@ -1623,6 +1651,21 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                   key: ValueKey<String>(_key('message')),
                   place: EmptyStatePlace.stage,
                 ),
+              ),
+            )
+          else if (sound != null)
+            Positioned.fill(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _soundFace(context, viewport, sound),
+                  // A run waiting for its sound, over the face it stands on
+                  // (F-499).
+                  if (_run.buffering)
+                    ViewerPageLoading(
+                      key: ValueKey<String>(_key('loading')),
+                    ),
+                ],
               ),
             )
           else
@@ -1723,35 +1766,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                     ],
                   );
                 },
-              ),
-            ),
-          // The playhead over a waveform — its own layer, never inside the
-          // page above.
-          //
-          // 🚨The page rides a [StaticRaster] because it changes when you
-          // page or pan and NOT otherwise; a playhead painted into it would
-          // re-bake that raster sixty times a second, which is the exact
-          // cost that widget exists to remove.
-          //
-          // ⛔Present whenever the file has sound, not only while it plays:
-          // a line that appears on the first press is UI that pops into
-          // existence, and where the playhead STANDS is what tells you
-          // where a second press would resume from.
-          if (waveformSeconds != null)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  key: ValueKey<String>(_key('playhead')),
-                  painter: WaveformMarksPainter(
-                    atSeconds: _run.soundSeconds,
-                    ofSeconds: waveformSeconds,
-                    docSize: docSize,
-                    viewport: viewport,
-                    effectiveRatio: EffectiveDevicePixelRatio.of(context),
-                    color: AppColors.accent,
-                  ),
-                  child: const SizedBox.expand(),
-                ),
               ),
             ),
         ],

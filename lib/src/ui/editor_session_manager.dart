@@ -57,6 +57,7 @@ import '../models/timesheet_sheet_kind.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/project.dart';
 import '../models/pill_subject.dart';
+import '../models/pixel_verb_settings.dart';
 import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -181,6 +182,7 @@ import 'session/exposure_verbs.dart';
 import 'session/block_naming.dart';
 import 'session/cell_instances.dart';
 import 'session/cell_verbs.dart';
+import 'session/pixel_verb_preview.dart';
 import 'session/pixel_verbs.dart';
 import 'session/rail_legends.dart';
 import 'session/folders_and_attachments.dart';
@@ -239,6 +241,15 @@ class EditorSessionManager extends ChangeNotifier
     historyManager = HistoryManager()
       ..scope = ConteStepScope(repository)
       ..places.placeNow = () => standingPlace;
+    // 🚨With the history, not at its first step: from the first change it
+    // lets go of the pictures only deep entries hold. Built lazily, it
+    // listened from the first undo, and a session nobody undid in kept a
+    // picture for every tile its history held — 🔬F-569 (S5_BA cut 352,
+    // Windows, profile): 456 of 456 after five fills.
+    historyPictures = HistoryPictures(
+      history: historyManager,
+      store: renderCaches.brushFrameStore,
+    );
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -772,10 +783,7 @@ class EditorSessionManager extends ChangeNotifier
   late final HistoryManager historyManager;
 
   /// Undo and redo whose first frame is whole — see [HistoryPictures].
-  late final HistoryPictures historyPictures = HistoryPictures(
-    history: historyManager,
-    store: renderCaches.brushFrameStore,
-  );
+  late final HistoryPictures historyPictures;
   @override
   late final CutCommandCoordinator cutCommandCoordinator;
 
@@ -1360,6 +1368,18 @@ class EditorSessionManager extends ChangeNotifier
   // when I-55 doubled the family. Callers name it, as they name [cells].
   late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels, solo: visibilitySolo, brushInputActive: brushInputActive, liveStrokeDraws: layerStack.liveStrokeDraws);
 
+  /// The list's preview (I-164): what a row would do to the cels on the
+  /// canvas, shown and not written — made again when a knob turns or the
+  /// cels change.
+  late final PixelVerbPreview pixelVerbPreview = PixelVerbPreview(
+    previewOf: pixelVerbs.previewOf,
+    inputs: Listenable.merge([
+      PixelVerbSettings.settings,
+      renderCaches.brushFrameStore.celPixelRevision,
+    ]),
+    coordinator: () => pixelEditing.coordinator,
+  );
+
   // ── the rail legends: what each panel's header opens, for a key (I-40) ──
   final RailLegends railLegends = RailLegends();
 
@@ -1698,6 +1718,9 @@ class EditorSessionManager extends ChangeNotifier
     () => historyManager.removeListener(refreshLiveAudioSchedule),
     () => historyManager.removeListener(_railFollowsTheDocument),
     () => historyManager.removeListener(renderCaches.framesMoved),
+    // Off the history it listens to, and its view off the stores, before
+    // either goes.
+    pixelVerbPreview.dispose,
     () => opacityVerbs.dragPreview.removeListener(
       playbackRig.prerenderScheduler.notifyEditActivity,
     ),
@@ -3413,6 +3436,16 @@ class EditorSessionManager extends ChangeNotifier
     layers: () => layerVerbs.linkedSelectedLayerIds().isNotEmpty,
     cells: () => cells.canUnlinkCells,
   );
+
+  /// The drawings [unlinkSelectionSubject] gives a copy of their own — the
+  /// wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> get drawingsUnlinked => switch (unlinkSubject) {
+    PillSubject.layers => layerVerbs.drawingsOfRows(
+      layerVerbs.linkedSelectedLayerIds(),
+    ),
+    PillSubject.cells => cells.celsUnlinked,
+    PillSubject.cuts || PillSubject.nothing => const [],
+  };
 
   /// Runs whatever [unlinkSubject] names — one undo step either way.
   void unlinkSelectionSubject() {

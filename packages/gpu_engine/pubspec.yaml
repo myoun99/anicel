@@ -1,0 +1,35 @@
+name: gpu_engine
+description: >-
+  Anicel's GPU engine, stage 0: one wgpu device and one integer-only
+  compute pass whose texture reaches Flutter's screen without a copy.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.11.3
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  code_assets: ^2.1.0
+  ffi: ^2.2.0
+  hooks: ^2.1.0
+  native_toolchain_rust: ^1.0.7
+
+# Two native halves, built two ways (gpu-engine-skeleton):
+# - the engine is Rust, compiled by `hook/build.dart` (Dart build hooks,
+#   on by default since Flutter 3.47) and bound with @Native;
+# - the Windows texture shim is a classic plugin, because only a plugin's
+#   registration is handed the registrar that owns Flutter's textures and
+#   the DXGI adapter Flutter draws with;
+# - so is the Android one, for the same reason: only a plugin is handed
+#   the texture registry whose windows the engine presents into.
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.myoun.gpu_engine
+        pluginClass: GpuEnginePlugin
+      windows:
+        pluginClass: GpuEnginePluginCApi

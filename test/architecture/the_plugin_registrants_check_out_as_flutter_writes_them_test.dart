@@ -24,7 +24,14 @@ void main() {
       r'^(generated_plugin_registrant\.\w+|generated_plugins\.cmake|'
       r'GeneratedPluginRegistrant\.\w+)$',
     );
-    const folders = ['linux/flutter', 'windows/flutter', 'macos/Flutter'];
+    const folders = [
+      'linux/flutter',
+      'windows/flutter',
+      'macos/Flutter',
+      // The GPU engine's measurement app: tool/resolve_packages.sh's
+      // `pub get` in packages/gpu_engine rewrites these too.
+      'packages/gpu_engine/example/windows/flutter',
+    ];
     final found = <String>[
       for (final folder in folders)
         for (final entity in Directory(folder).listSync())

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pdf/pdf.dart' show TtfParser;
 import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★앱은 **자기 얼굴**로 말한다. 유저 확정 2026-08-28:
@@ -45,11 +47,14 @@ void main() {
   /// the theme and is dropped on the way down is the bug.
   testWidgets('🚨a window\'s buttons, a menu\'s rows and a tooltip print in '
       'the app\'s face — in the language the app speaks', (tester) async {
-    for (final language in const [AppLanguage.ko, AppLanguage.ja]) {
+    for (final language in const [
+      AppLanguage.ko,
+      AppLanguage.ja,
+      AppLanguage.zhHans,
+    ]) {
       AppText.settings.value = AppLanguageSettings(programLanguage: language);
       final family = AppTypography.familyFor(language);
       final fallback = AppTypography.fallbackFor(language);
-      expect(family, isNotNull, reason: '⛔전제: $language 는 앱 글꼴로 말한다');
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpWidget(
@@ -128,12 +133,51 @@ void main() {
     );
   });
 
-  test('🚨중국어는 OS 에 맡긴다 — 섞이느니 통째로 넘긴다', () {
-    // BIZ 는 앱의 중국어 582자 중 174자를 안 갖고 있다(실측). 그대로 씌우면
-    // 408자는 일본 자형, 174자는 OS 폰트로 **한 문장 안에서 갈린다** —
-    // 통일하려다 오히려 갈라 놓는 것이라, 중국어만 통째로 OS 로 보낸다.
-    expect(AppTypography.familyFor(AppLanguage.zhHans), isNull);
-    expect(AppTypography.fallbackFor(AppLanguage.zhHans), isNull);
+  test('🚨중국어는 간체 글꼴이 앞에 선다 — 그 뒤는 다른 언어의 순서 그대로', () {
+    // 🗣️gpu-int-spec-word-bake-Q2 (유저 2026-11-05): 「중국어 글꼴을
+    // 번들한다」. 한자의 자형은 앞에 선 글꼴이 정하므로 중국어 UI 의 한자는
+    // 간체 글꼴이 그린다. ↩️I-4-Q10 은 중국어를 OS 에 맡겼다 — BIZ 에 앱의
+    // 중국어 한자가 다 없어서 한 문장 안에서 두 얼굴로 섞였기 때문이다.
+    expect(AppTypography.familyFor(AppLanguage.zhHans), 'Noto Sans SC');
+    expect(AppTypography.fallbackFor(AppLanguage.zhHans), [
+      AppTypography.familyFor(AppLanguage.ja),
+      ...AppTypography.fallbackFor(AppLanguage.ja),
+    ]);
+    // Its one file is declared UNDER its family, as the others' are.
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    final start = pubspec.indexOf(RegExp(r'- family: Noto Sans SC\r?\n'));
+    expect(start, isNot(-1));
+    final next = pubspec.indexOf('- family:', start + 1);
+    expect(
+      pubspec.substring(start, next == -1 ? null : next),
+      contains('- asset: ${AppTypography.chineseFile}'),
+    );
+  });
+
+  test('🚨간체 글꼴이 앱의 중국어 한자를 전부 갖는다 — 한 자도 BIZ 로 '
+      '새지 않는다', () {
+    // 한 자라도 빠지면 그 자는 뒤의 BIZ 가 일본 자형으로 그린다 — I-4-Q10 이
+    // 막으려던 「한 문장 안의 두 얼굴」이 돌아온다. 🔬11-05: 한자 803자,
+    // 전부 있다. By their written paths, so a change to either file runs
+    // this (`affected_tests`).
+    final source = File('lib/src/ui/text/app_strings.dart').readAsStringSync();
+    final start = source.indexOf('_zhHansValues = <String, String>{');
+    expect(start, isNot(-1), reason: '⛔전제: 중국어 표를 찾았다');
+    final table = source.substring(start, source.indexOf('\n  };', start));
+    final han = {
+      for (final rune in table.runes)
+        if (rune >= 0x4E00 && rune <= 0x9FFF) rune,
+    };
+    expect(han, isNotEmpty, reason: '⛔전제: 표의 한자를 읽었다');
+    final covered = TtfParser(
+      ByteData.view(
+        File('assets/fonts/NotoSansSC-Variable.ttf').readAsBytesSync().buffer,
+      ),
+    ).charToGlyphIndexMap;
+    expect([
+      for (final rune in han)
+        if (!covered.containsKey(rune)) String.fromCharCode(rune),
+    ], isEmpty);
   });
 
   test('⛔선언한 폰트만 부른다 — pubspec 에 없는 이름은 조용히 OS 로 떨어진다', () {
@@ -148,11 +192,12 @@ void main() {
 
     expect(declared, isNotEmpty, reason: '⛔pubspec 에서 family 를 못 찾았다');
     for (final language in AppLanguage.values) {
-      final family = AppTypography.familyFor(language);
-      if (family != null) {
-        expect(declared, contains(family), reason: '$language 의 본체');
-      }
-      for (final name in AppTypography.fallbackFor(language) ?? const []) {
+      expect(
+        declared,
+        contains(AppTypography.familyFor(language)),
+        reason: '$language 의 본체',
+      );
+      for (final name in AppTypography.fallbackFor(language)) {
         expect(declared, contains(name), reason: '$language 의 폴백');
       }
     }

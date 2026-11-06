@@ -1,0 +1,18 @@
+name: gpu_engine_example
+description: >-
+  The GPU engine's stage-0 measurement: fills a shared texture, shows it
+  through Flutter's texture registry, and writes report.txt.
+publish_to: none
+version: 0.0.1
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  gpu_engine:
+    path: ../
+
+dev_dependencies:
+  flutter_lints: ^6.0.0

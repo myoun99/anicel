@@ -460,9 +460,13 @@ void main() {
 
     unawaited(
       bakeAfterAsking<LayerMergeChange>(context, s, (
-        title: 'Bake',
-        icon: Icons.merge,
-        windowKey: 'bake-progress',
+        run: (
+          title: 'Bake',
+          icon: Icons.merge,
+          windowKey: 'bake-progress',
+          pictures: const [],
+          land: () {},
+        ),
         question: (
           slug: 'bake-changes',
           title: 'Bake?',
@@ -471,8 +475,6 @@ void main() {
         ),
         changes: {LayerMergeChange.wall, LayerMergeChange.blend},
         lineOf: (change) => change.name,
-        pictures: const [],
-        land: () {},
       )),
     );
     await tester.pumpAndSettle();

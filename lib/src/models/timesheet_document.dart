@@ -23,6 +23,7 @@ import 'timesheet_info.dart';
 import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
+import 'xdts_sheet_form.dart';
 
 /// The colour label whose worker on the cut a sheet's 作業者 box names —
 /// 러프원화 (유저 2026-10-05, F-291: 「타임시트에 적히는 이름 기준이
@@ -78,6 +79,64 @@ enum TimesheetColumnKind {
     action || cel => SheetPaintLayer.content,
     se || camera => SheetPaintLayer.form,
   };
+
+  /// The part of the values a column of this kind prints in.
+  TimesheetContentPart get contentPart => switch (this) {
+    action => TimesheetContentPart.action,
+    cel => TimesheetContentPart.cel,
+    se => TimesheetContentPart.se,
+    camera => TimesheetContentPart.camera,
+  };
+}
+
+/// Where on the sheet a value its CONTENT stratum
+/// ([SheetPaintLayer.content]) prints stands — every value in exactly one,
+/// so a print can hand some of them over alone.
+///
+/// 🗣️I-161-Q3 · Q4 (유저 2026-11-05: 「채운다(잉크 PNG 에도 싣는다)」 ·
+/// 「우리 서식에서 하는거처럼 컷번호밑에 겸용컷 써준다」): the XDTS
+/// viewer prints the cel columns itself and leaves the dialogue and camera
+/// columns blank for the hand, so the ink page an export lays over it
+/// carries the SE and CAM columns and the 겸용 line, and none of what the
+/// viewer prints. Which parts those are is the export's to say; the sheet
+/// answers for each one.
+enum TimesheetContentPart {
+  /// The header band's values — the drawn length under the duration too.
+  header,
+
+  /// The company logo an XDTS sheet prints in the viewer's logo place
+  /// ([TimesheetDocument.printedLogo], I-162-Q5).
+  logo,
+
+  /// The cuts the cut is 겸용 with, under its name (F-558).
+  linkedCuts,
+
+  /// The memo band: each page's memos and the lines it writes of itself.
+  memo,
+
+  /// The ACTION block: its rows' names and their cells.
+  action,
+
+  /// The CELL block: its rows' names and their cells.
+  cel,
+
+  /// The books the ACTION block marks between its columns.
+  books,
+
+  /// The SE block: its entries, and the `~` where a sound crosses the cut.
+  se,
+
+  /// The CAM block: the camera's keys and the instructions.
+  camera,
+
+  /// The O.L an XDTS sheet draws of the cut as the viewer does — its marks
+  /// over the camera block, and the lengths the Ponoc sheet writes — which
+  /// the viewer prints itself from what its ink folder tells it
+  /// (`xdtsViewerOverlaps`, I-162-Q7).
+  overlaps,
+
+  /// The cut's end line.
+  cutEnd,
 }
 
 /// One cell of a timesheet column (one frame row).
@@ -352,6 +411,7 @@ class TimesheetDocument {
     required this.title,
     required this.episode,
     required this.artist,
+    required this.printedLogo,
     required this.pageMemos,
     required this.rightPageMemos,
     required this.pageFixedLines,
@@ -365,6 +425,8 @@ class TimesheetDocument {
     required this.playbackFrameCount,
     this.transitionHandles = CutTransitionHandles.none,
     required this.sheetKind,
+    required this.xdtsForm,
+    required this.xdtsColumns,
     required this.pageFrameCount,
     required this.columns,
     required this.books,
@@ -414,8 +476,6 @@ class TimesheetDocument {
     // `cutSheetDocument` reads.
     List<String> linkedCuts = const [],
   }) {
-    const seColumnCount = 2;
-    const cameraColumnCount = 2;
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
     }
@@ -435,11 +495,23 @@ class TimesheetDocument {
     );
     final playbackFrameCount = sources.playbackFrameCount;
     final drawnFrameCount = sources.drawnFrameCount;
+    final sheetKind = printedSheetKindOf(cut, sources, fps: fps);
+    // Every sheet keeps each row in its block (F-406) — an XDTS sheet too,
+    // where the viewer prints our 原画 file's in the ACTION block and our
+    // 動画 file's in the CELL block (I-162-Q6, [XdtsSheetForm]).
     final actionLayers = sources.actionLayers;
     final cellLayers = sources.cellLayers;
-    final sheetKind = printedSheetKindOf(cut, sources);
-    final celColumnCount = sheetKind.celColumns;
-    final pageFrameCount = (pageSeconds ?? sheetKind.pageSeconds) * fps;
+    final seColumnCount = sheetKind.seColumns;
+    final cameraColumnCount = sheetKind.cameraColumns;
+    final xdtsColumns = sources.celColumnsAcross;
+    final xdtsForm = sheetKind.xdtsFormFor(columns: xdtsColumns);
+    final celBlocks = sheetKind.celBlockColumns(
+      actions: actionLayers.length,
+      cells: cellLayers.length,
+    );
+    final pageFrameCount = pageSeconds == null
+        ? sheetKind.pageFramesAt(fps)
+        : pageSeconds * fps;
     final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);
     final rowCount = pageCount * pageFrameCount;
 
@@ -480,15 +552,26 @@ class TimesheetDocument {
       rowCount: rowCount,
       instructionDefById: instructionDefById,
     );
-    final actionSlots = _slotCount(celColumnCount, actionLayers);
+    final actionSlots = celBlocks.action;
     final seColumnSlots = _slotCount(seColumnCount, seSlots);
     final columns = <TimesheetColumn>[
       // The cel rows fill the ACTION block in order, headed by their real
       // names — but the 動画 and 仕上げ ones, which fill the CELL block by
       // the same law (F-406 · F-431); unbacked slots stay blank
       // handwriting space.
+      // I-162-Q1 (유저 2026-11-05): 「XDTS 서식에서만 뷰어 표기」 — an XDTS
+      // sheet writes the block as the viewer does, from its data
+      // ([xdtsViewerNotation]): its 止メ and リピート, never our words.
       for (var slot = 0; slot < actionSlots; slot += 1)
-        _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet, unnamedMark),
+        _celRowColumn(
+          TimesheetColumnKind.action,
+          slot,
+          actionLayers,
+          rowCount,
+          playbackFrameCount,
+          dataSheet || xdtsForm != null,
+          unnamedMark,
+        ),
       for (var slot = 0; slot < seColumnSlots; slot += 1)
         _seColumn(
           slot,
@@ -504,7 +587,7 @@ class TimesheetDocument {
       // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
       // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」 —
       // the CELL block prints its data whichever way the sheet reads.
-      for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
+      for (var slot = 0; slot < celBlocks.cel; slot += 1)
         _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, true, unnamedMark),
       // CAM block: slot 0 keeps the camera transform keyframes; the
       // instruction rows (CAM 2 …) follow in layer order, growing the block
@@ -517,6 +600,7 @@ class TimesheetDocument {
       title: info.titleOr(projectName),
       episode: info.episode,
       artist: cut.metadata.staffNameFor(sheetArtistMark),
+      printedLogo: xdtsForm == null ? null : info.logoAssetPath,
       pageMemos: cut.metadata.pageNotes,
       rightPageMemos: cut.metadata.rightPageNotes,
       pageFixedLines:
@@ -536,6 +620,8 @@ class TimesheetDocument {
       playbackFrameCount: playbackFrameCount,
       transitionHandles: sources.handles,
       sheetKind: sheetKind,
+      xdtsForm: xdtsForm,
+      xdtsColumns: xdtsColumns,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
       books: List.unmodifiable(sources.actionBooks),
@@ -609,35 +695,21 @@ class TimesheetDocument {
   }
 
   static TimesheetColumn _celRowColumn(TimesheetColumnKind kind, int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet, InbetweenMark unnamedMark) {
+    final layer = slot < animationLayers.length ? animationLayers[slot] : null;
+    List<TimesheetCell> cellsOf(Layer layer) => timesheetLayerCells(
+      layer: layer,
+      rowCount: rowCount,
+      playbackFrameCount: playbackFrameCount,
+      dataSheet: dataSheet,
+      unnamedMark: unnamedMark,
+    );
     return TimesheetColumn(
       kind: kind,
-      label: slot < animationLayers.length
-          ? animationLayers[slot].name
-          : '',
-      layerName: slot < animationLayers.length
-          ? animationLayers[slot].name
-          : null,
-      layerId: slot < animationLayers.length
-          ? animationLayers[slot].id
-          : null,
-      cells: slot < animationLayers.length
-          ? timesheetLayerCells(
-              layer: animationLayers[slot],
-              rowCount: rowCount,
-              playbackFrameCount: playbackFrameCount,
-              dataSheet: dataSheet,
-              unnamedMark: unnamedMark,
-            )
-          : _blankCells(rowCount),
-      previewCellsBuilder: slot < animationLayers.length
-          ? (layer) => timesheetLayerCells(
-              layer: layer,
-              rowCount: rowCount,
-              playbackFrameCount: playbackFrameCount,
-              dataSheet: dataSheet,
-              unnamedMark: unnamedMark,
-            )
-          : null,
+      label: layer?.name ?? '',
+      layerName: layer?.name,
+      layerId: layer?.id,
+      cells: layer == null ? _blankCells(rowCount) : cellsOf(layer),
+      previewCellsBuilder: layer == null ? null : cellsOf,
     );
   }
 
@@ -647,6 +719,11 @@ class TimesheetDocument {
   final String title;
   final String episode;
   final String artist;
+
+  /// The logo this sheet prints, a media pool path: the work's, the one the
+  /// conte and the envelope print ([TimesheetInfo.logoAssetPath]), on an
+  /// XDTS sheet (I-162-Q5); none on one of our own or in a work with none.
+  final String? printedLogo;
 
   /// The Direction memo printed in each page's memo band, by page
   /// ([CutMetadata.pageNotes]) — editable in place on the sheet, the
@@ -728,7 +805,15 @@ class TimesheetDocument {
   /// when the cut's cel layers outgrow the 6-second one ([sheetKindFor]).
   final TimesheetSheetKind sheetKind;
 
-  /// Rows per paper page (pageSeconds × fps).
+  /// The XDTS Viewer's sheet the cut prints on, laid out for its columns —
+  /// null on one of our own ([TimesheetSheetKind.xdts]).
+  final XdtsSheetForm? xdtsForm;
+
+  /// The wider block's cel rows ([SheetSources.celColumnsAcross]): what the
+  /// viewer widens both blocks to, under the sheet and its ink.
+  final int xdtsColumns;
+
+  /// Rows per paper page ([TimesheetSheetKind.pageFramesAt]).
   final int pageFrameCount;
 
   final List<TimesheetColumn> columns;

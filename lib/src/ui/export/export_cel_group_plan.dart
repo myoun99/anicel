@@ -15,6 +15,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/xdts_sheet_half.dart';
 import '../../services/commands/link_mirror.dart'
     show linkCounterpartIn, linkedCutGroupInTrackOrder;
 import '../../services/project_lookup.dart' show cutPositionOf;
@@ -1038,8 +1039,9 @@ ExportCelGroupPlan buildExportCelGroupPlan({
 }
 
 /// One of a cut's documents before its files are counted: which, the cut it
-/// is of, and how many files it is written as.
-typedef _Document = ({ExportCelKind kind, Cut of, int pages});
+/// is of, how many files it is written as, and whether those are the
+/// digital sheet's halves ([XdtsSheetHalf]) rather than pages.
+typedef _Document = ({ExportCelKind kind, Cut of, int pages, bool halves});
 
 /// The documents the export writes beside the cels of [entry]'s cut
 /// (F-289, 유저 2026-10-05: 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
@@ -1048,8 +1050,8 @@ typedef _Document = ({ExportCelKind kind, Cut of, int pages});
 /// for a 겸용 group, which shares it ([cutEnvelopeInkOwner]) — and the film
 /// of every cut (I-151).
 ///
-/// A timesheet is a file a page ([sheetPagesOf]) as pictures, and one file
-/// as the digital sheet.
+/// A timesheet is a file a page ([sheetPagesOf]) as pictures, and two files
+/// as the digital sheet — its blocks' ([XdtsSheetHalf]).
 Iterable<ExportDocumentSheet> _documentsOf(
   _CutRun entry,
   ExportProjectOverrides? overrides,
@@ -1057,13 +1059,14 @@ Iterable<ExportDocumentSheet> _documentsOf(
 ) sync* {
   final (:project, :spec, namer: _) = entry.run;
   if (spec.kinds.contains(ExportCelKind.timesheet)) {
-    final oneFile = spec.sheetFormat == ExportTimesheetFormat.xdts;
+    final digital = spec.sheetFormat == ExportTimesheetFormat.xdts;
     for (final of in _cutsOf(entry)) {
       yield* _filesOf(
         (
           kind: ExportCelKind.timesheet,
           of: of,
-          pages: oneFile ? 1 : sheetPagesOf(of),
+          pages: digital ? XdtsSheetHalf.values.length : sheetPagesOf(of),
+          halves: digital,
         ),
         entry,
         overrides,
@@ -1077,6 +1080,7 @@ Iterable<ExportDocumentSheet> _documentsOf(
         kind: ExportCelKind.envelope,
         of: cutPositionOf(project, owner)?.cut ?? entry.cut,
         pages: 1,
+        halves: false,
       ),
       entry,
       overrides,
@@ -1087,7 +1091,7 @@ Iterable<ExportDocumentSheet> _documentsOf(
   if (spec.kinds.contains(ExportCelKind.video)) {
     for (final of in _cutsOf(entry)) {
       yield* _filesOf(
-        (kind: ExportCelKind.video, of: of, pages: 1),
+        (kind: ExportCelKind.video, of: of, pages: 1, halves: false),
         entry,
         overrides,
       );
@@ -1118,23 +1122,30 @@ Iterable<ExportDocumentSheet> _filesOf(
   _CutRun entry,
   ExportProjectOverrides? overrides,
 ) sync* {
-  final (:kind, :of, :pages) = document;
+  final (:kind, :of, :pages, :halves) = document;
   final delta = overrides?.deltaFor(of.id);
   for (var page = 0; page < pages; page += 1) {
+    final half = halves ? XdtsSheetHalf.values[page] : null;
     yield ExportDocumentSheet(
       kind: kind,
       listedIn: entry.cut,
       of: of,
       page: page,
       pageCount: pages,
+      half: half,
       skipped:
-          delta?.skippedPages.contains((document: kind, page: page)) ?? false,
+          delta?.skippedPages.contains((
+            document: kind,
+            page: page,
+            half: half,
+          )) ??
+          false,
       fileName: entry.run.namer.uniqueDocumentName(
         projectName: entry.run.project.name,
         cutName: entry.cutName,
         base:
             '${entry.run.namer.naming.prefixOf(kind)}'
-            '${exportDocumentBase(kind, of, page, pages)}',
+            '${exportDocumentBase(kind, of, page, pages, half: half)}',
         extension: exportDocumentExtension(kind, entry.run.spec),
       ),
     );

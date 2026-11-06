@@ -92,6 +92,17 @@ jobs:
       # pin opens stands beside it there and not in the bundle; `cmp` holds it
       # to the file the bundle ships, so the file checked is the file handed
       # out. MSVC on ARM64 is a compiler nothing else here runs.
+      #
+      # The SDK's example the fx pin opens beside it is made by the engine's
+      # own build, as the Linux build makes it (run 41951966166 failed on it).
+      - name: The SDK example beside the engine
+        run: |
+          set -euo pipefail
+          cmake -S packages/qa_native/src -B build/fx-sdk-example -A ARM64
+          cmake --build build/fx-sdk-example --config Release \
+            --target qa_fx_sdk_example
+          cp build/fx-sdk-example/Release/qa_fx_sdk_example.dll \
+            build/windows/arm64/plugins/qa_native/shared/Release/
       - name: Parity against the shipped engine
         env:
           QA_ENGINE_PATH: ${{ github.workspace }}/build/windows/arm64/plugins/qa_native/shared/Release/qa_engine.dll

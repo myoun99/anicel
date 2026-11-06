@@ -104,7 +104,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     ),
     PreferencesSection.system => SystemStatusSection(
       openSessions: widget.openSessions,
-      usageStats: widget.session.appSettings.usageStats,
+      appSettings: widget.session.appSettings,
     ),
     PreferencesSection.memory => MemorySettingsSection(
       session: widget.session,

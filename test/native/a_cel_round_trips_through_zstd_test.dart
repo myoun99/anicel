@@ -56,7 +56,7 @@ void main() {
       final frame = compressor.compress(bytes, level: 3);
       expect(frame, isNotNull);
       expect(frame!.length, lessThan(bytes.length));
-      expect(compressor.decompress(frame), bytes);
+      expect(compressor.readFrame(frame, Uint8List.fromList), bytes);
     }
   }, skip: skip);
 
@@ -67,15 +67,18 @@ void main() {
     final bytes = patterned(4097, 5);
     bytes[4096] = 0xAB;
     final frame = compressor.compress(bytes, level: 1)!;
-    final back = compressor.decompress(frame)!;
+    final back = compressor.readFrame(frame, Uint8List.fromList)!;
     expect(back.length, 4097);
     expect(back[4096], 0xAB);
   }, skip: skip);
 
   test('a frame that is not zstd decompresses to null, not to bytes', () {
     final compressor = requireCompressor();
-    expect(compressor.decompress(patterned(64, 3)), isNull);
-    expect(compressor.decompress(Uint8List(0)), isNull);
+    for (final notZstd in [patterned(64, 3), Uint8List(0)]) {
+      var read = false;
+      expect(compressor.readFrame(notZstd, (_) => read = true), isNull);
+      expect(read, isFalse, reason: 'no bytes to hand a reader');
+    }
     expect(compressor.compress(Uint8List(0), level: 3), isNull);
   }, skip: skip);
 }

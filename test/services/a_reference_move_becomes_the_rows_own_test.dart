@@ -2,7 +2,7 @@
 // (추천)」): rasterizing a reference keeps the picture where its fx stood it
 // — the cels hold the file as it was laid, and the move is the row's own
 // keys now. F-374-Q7 (유저 2026-10-17, 「①은 스위치를 켜고 키로, ②③만
-// 굽는다」): which rows take it as keys, which bake it, and which wait.
+// 굽는다」): which rows take it as keys and which bake it.
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -98,11 +98,8 @@ void main() {
     ReferenceUncarried() => null,
   };
 
-  /// Why [row]'s own transform cannot carry its move — null where it can.
-  ReferenceWait? whyUncarried(Layer row) => switch (carryOf(row)) {
-    ReferenceUncarried(:final why) => why,
-    ReferenceCarried() => null,
-  };
+  /// Whether [row]'s own transform cannot carry its move.
+  bool uncarried(Layer row) => carryOf(row) is ReferenceUncarried;
 
   TransformTrack? carried(
     Layer row, {
@@ -505,29 +502,29 @@ void main() {
     expect(valuesOf(track.scale), {0: CanvasPoint(x: 1, y: 2)});
     expect(valuesOf(track.rotation), {5: 90.0});
     expect(strayed(quarter, track, frames(8)), lessThan(1e-9));
-    expect(whyUncarried(turnedOnceBy(30)), ReferenceWait.sheared);
+    expect(uncarried(turnedOnceBy(30)), isTrue);
   });
 
   test('a row scaled unevenly under a picture turned other than by a '
-      'quarter would SHEAR it, which no pose does — nothing carries it, '
-      'and that is why (F-374-Q7 · Q11)', () {
+      'quarter would SHEAR it, which no pose does — nothing carries it '
+      '(F-374-Q7)', () {
     final uneven = TransformTrack.empty().copyWith(
       scale: PropertyTrack<CanvasPoint>().withKey(0, CanvasPoint(x: 2, y: 1)),
     );
     final turned = TransformPose(center: offMiddle, rotationDegrees: 30);
 
     expect(
-      whyUncarried(
+      uncarried(
         paper(
           laid: TransformPose(center: offMiddle),
           pose: turned,
           own: uneven,
         ),
       ),
-      ReferenceWait.sheared,
+      isTrue,
     );
     expect(
-      whyUncarried(
+      uncarried(
         paper(
           laid: TransformPose(center: offMiddle),
           fx: TransformTrack.empty().copyWith(
@@ -536,11 +533,11 @@ void main() {
           own: uneven,
         ),
       ),
-      ReferenceWait.sheared,
+      isTrue,
       reason: 'a quarter turn keyed over frames passes every turn between',
     );
     expect(
-      whyUncarried(
+      uncarried(
         paper(
           laid: TransformPose(center: offMiddle),
           pose: turned,
@@ -551,7 +548,7 @@ void main() {
           ),
         ),
       ),
-      ReferenceWait.sheared,
+      isTrue,
       reason: 'frame by frame, as key by key',
     );
   });
@@ -589,14 +586,14 @@ void main() {
   test('an attach row stands where its base\'s transform puts it — its own '
       'transform cannot carry the move (F-374-Q7 ②)', () {
     expect(
-      whyUncarried(
+      uncarried(
         paper(
           laid: TransformPose(center: middle),
           pose: TransformPose(center: CanvasPoint(x: 260, y: 150)),
           attachedTo: const LayerId('a'),
         ),
       ),
-      ReferenceWait.attached,
+      isTrue,
     );
   });
 
@@ -651,7 +648,7 @@ void main() {
           ),
         ),
       );
-      expect(whyUncarried(row), ReferenceWait.blocks);
+      expect(uncarried(row), isTrue);
     });
 
     test('🎯carries a still one as it showed it, the row\'s own steps '
@@ -677,19 +674,19 @@ void main() {
     final moved = TransformPose(center: CanvasPoint(x: 260, y: 150));
 
     expect(
-      whyUncarried(
+      uncarried(
         paper(
           laid: TransformPose(center: middle, rotationDegrees: 10),
           pose: moved,
         ),
       ),
-      ReferenceWait.laidAsFitted,
+      isTrue,
     );
     expect(
-      whyUncarried(
+      uncarried(
         paper(laid: TransformPose(center: middle, scaleX: 0), pose: moved),
       ),
-      ReferenceWait.laidAsFitted,
+      isTrue,
     );
   });
 
@@ -717,8 +714,8 @@ void main() {
     expect(off.enabled, isFalse);
   });
 
-  group('referenceLetGo — keys, the cels, or waiting, every use of the '
-      'cel together (F-374-Q7 · Q10 · Q11)', () {
+  group('referenceLetGo — keys or the cels, every use of the cel '
+      'together (F-374-Q7 · Q10 · I-120-Q22)', () {
     final laid = TransformPose(center: middle);
     final fitted = TransformPose.uniform(center: middle, zoom: 0.5);
     final uneven = TransformTrack.empty().copyWith(
@@ -737,25 +734,19 @@ void main() {
     );
     const base = LayerId('a');
 
-    ReferenceLetGo wayOf(List<Layer> uses, {bool othersKeepKeys = false}) =>
-        referenceLetGo(
-          uses: [for (final use in uses) (cut: cutOf(use), layer: use)],
-          othersKeepKeys: othersKeepKeys,
-        );
-
     ReferenceMoveCarried goes(
       List<Layer> uses, {
       bool othersKeepKeys = false,
-    }) => switch (wayOf(uses, othersKeepKeys: othersKeepKeys)) {
-      final ReferenceMoveCarried way => way,
-      ReferenceMoveWaits(:final why) => fail('the uses wait: $why'),
-    };
+    }) => referenceLetGo(
+      uses: [for (final use in uses) (cut: cutOf(use), layer: use)],
+      othersKeepKeys: othersKeepKeys,
+    );
 
-    ReferenceWait? whyWaits(List<Layer> uses, {bool othersKeepKeys = false}) =>
-        switch (wayOf(uses, othersKeepKeys: othersKeepKeys)) {
-          ReferenceMoveWaits(:final why) => why,
-          ReferenceMoveCarried() => null,
-        };
+    /// Whether [uses] take the picture as shown, a position apiece.
+    bool framedAsShown(List<Layer> uses) {
+      final way = goes(uses);
+      return way.framed && way.uses.every((use) => use.asShown);
+    }
 
     test('a row its transform carries the move of takes it as keys — the '
         'track the carry makes, the switch as it was', () {
@@ -767,25 +758,31 @@ void main() {
       expect(way.uses.single.track, carried(row));
       expect(way.bakes, isFalse);
       expect(way.switchOn, isFalse, reason: 'it is on already');
+      expect(
+        goes([paper(laid: laid, fx: moving)]).framed,
+        isFalse,
+        reason: 'a move the keys carry is no picture a position',
+      );
     });
 
     test('🎯① the switch comes on where it shows nothing new on the rows '
         'wearing the head with it; where a row that is no use of the cel '
-        'keeps keys of its own the row bakes instead — and waits, saying '
-        'so, where its cel cannot take the move (F-374-Q10)', () {
+        'keeps keys of its own the row bakes instead — a position apiece '
+        'where its reference moves (F-374-Q10 · I-120-Q5)', () {
       final off = paper(laid: laid, pose: fitted, transformEnabled: false);
 
       expect(goes([off]).switchOn, isTrue);
       final baked = goes([off], othersKeepKeys: true);
       expect(baked.bakes, isTrue);
+      expect(baked.framed, isFalse);
       expect(baked.switchOn, isFalse);
       expect(baked.uses.single.track, off.transformTrack);
-      expect(
-        whyWaits([
-          paper(laid: laid, fx: moving, transformEnabled: false),
-        ], othersKeepKeys: true),
-        ReferenceWait.othersKeepKeys,
-      );
+      final framed = goes([
+        paper(laid: laid, fx: moving, transformEnabled: false),
+      ], othersKeepKeys: true);
+      expect(framed.framed, isTrue);
+      expect(framed.switchOn, isFalse);
+      expect(framed.uses.single.asShown, isTrue);
     });
 
     test('a switch that stays as it is shows no other row anything — keys '
@@ -802,8 +799,9 @@ void main() {
     });
 
     test('🎯②③ a still reference its transform cannot carry bakes — an '
-        'attach row, a shear — and one that MOVES waits, saying why '
-        '(F-374-Q9 · Q11)', () {
+        'attach row, a shear — in place where it stands still, a position '
+        'apiece where it MOVES, as a movie\'s frames are (F-374-Q9 · '
+        'I-120-Q5: 「애니메이션 레이어로, 움직이는 프레임마다 한 장」)', () {
       final attached = goes([
         paper(laid: laid, pose: fitted, attachedTo: base),
       ]);
@@ -814,31 +812,29 @@ void main() {
           own: uneven,
         ),
       ]);
+      final attachedMoving = goes([
+        paper(laid: laid, fx: moving, attachedTo: base),
+      ]);
+      final shearedTurning = goes([
+        paper(laid: laid, fx: turning, own: uneven),
+      ]);
 
-      expect(attached.bakes, isTrue);
-      expect(sheared.bakes, isTrue);
-      expect(
-        whyWaits([paper(laid: laid, fx: moving, attachedTo: base)]),
-        ReferenceWait.attached,
-      );
-      expect(
-        whyWaits([paper(laid: laid, fx: turning, own: uneven)]),
-        ReferenceWait.sheared,
-      );
+      expect([attached.bakes, attached.framed], [true, false]);
+      expect([sheared.bakes, sheared.framed], [true, false]);
+      expect([attachedMoving.bakes, attachedMoving.framed], [true, true]);
+      expect([shearedTurning.bakes, shearedTurning.framed], [true, true]);
     });
 
     test('a movie its transform cannot carry bakes moving or not — a cel a '
-        'position — and one it carries takes the keys', () {
-      expect(
-        goes([
-          paper(laid: laid, fx: moving, attachedTo: base, file: '/clip.mp4'),
-        ]).bakes,
-        isTrue,
-      );
-      expect(
-        goes([paper(laid: laid, pose: fitted, file: '/clip.mp4')]).bakes,
-        isFalse,
-      );
+        'position — and one it carries takes the keys, its frames made a '
+        'position apiece either way', () {
+      final attached = goes([
+        paper(laid: laid, fx: moving, attachedTo: base, file: '/clip.mp4'),
+      ]);
+      final keyed = goes([paper(laid: laid, pose: fitted, file: '/clip.mp4')]);
+
+      expect([attached.bakes, attached.framed], [true, true]);
+      expect([keyed.bakes, keyed.framed], [false, true]);
     });
 
     test('🎯every use of a still takes its own move as keys, and where the '
@@ -870,24 +866,25 @@ void main() {
       ]);
     });
 
-    test('🎯a still whose one cel has to take the picture takes it where '
-        'every use shows it at one place — and where they show it apart, '
-        'a use that is no reference among them, every use waits '
-        '(F-374-Q10: 「쓰임마다 참조 fx 가 다르면 한 셀에 담을 수 없어, '
-        '그때는 막힙니다」)', () {
+    test('🎯a still whose one cel has to take the picture takes it IN '
+        'PLACE where every use shows it at one place — and where they show '
+        'it apart, a use that is no reference among them, a picture a '
+        'place (🗣️I-120-Q22 「링크를 둔 채 셀을 나눠 굽는다」 — ↩️F-374-Q10 '
+        'waited there)', () {
       final attached = paper(laid: laid, pose: fitted, attachedTo: base);
       final copy = paper(id: 'copy', laid: laid, pose: fitted, own: kept);
 
       final way = goes([attached, copy]);
 
       expect([for (final use in way.uses) use.asShown], [true, true]);
+      expect(way.framed, isFalse, reason: 'one place: the cel in place');
       expect([for (final use in way.uses) use.track], [
         attached.transformTrack,
         kept,
       ]);
       expect(way.switchOn, isFalse);
       expect(
-        whyWaits([
+        framedAsShown([
           attached,
           paper(
             id: 'copy',
@@ -895,36 +892,37 @@ void main() {
             pose: TransformPose.uniform(center: middle, zoom: 0.25),
           ),
         ]),
-        ReferenceWait.usesApart,
+        isTrue,
       );
       expect(
-        whyWaits([
+        framedAsShown([
           attached,
           paper(id: 'drawn', laid: laid).copyWith(mediaReference: null),
         ]),
-        ReferenceWait.usesApart,
+        isTrue,
       );
     });
 
-    test('a use whose still MOVES on a transform that cannot carry it holds '
-        'every use back, a use whose own could — the keys are all or none '
-        '(F-374-Q10 · Q11)', () {
+    test('a use whose still MOVES on a transform that cannot carry it takes '
+        'every use with it, a use whose own could — the keys are all or '
+        'none — and where they move it apart, a picture a place too '
+        '(F-374-Q10 · I-120-Q5 · Q22)', () {
       final carriable = paper(laid: laid, fx: moving);
 
+      final framed = goes([
+        carriable,
+        paper(id: 'copy', laid: laid, fx: moving, attachedTo: base),
+      ]);
+      expect(framed.framed, isTrue);
+      expect([for (final use in framed.uses) use.asShown], [true, true]);
+      expect(framed.uses.first.track, carriable.transformTrack);
       expect(
-        whyWaits([
-          carriable,
-          paper(id: 'copy', laid: laid, fx: moving, attachedTo: base),
-        ]),
-        ReferenceWait.attached,
-      );
-      expect(
-        whyWaits([
+        framedAsShown([
           carriable,
           paper(id: 'copy', laid: laid, pose: fitted, attachedTo: base),
         ]),
-        ReferenceWait.attached,
-        reason: 'the cel would have to take a move one use makes',
+        isTrue,
+        reason: 'each use takes the move it makes',
       );
     });
 
@@ -1016,7 +1014,7 @@ void main() {
     /// How a rasterize lets go of cut `a`'s conte — a reference its fx fits,
     /// its switch off — on a track whose cut `b` has a conte keeping [kept]
     /// of its own: one head, two cuts' cels.
-    ReferenceLetGo wayOfTheConte({TransformTrack? kept}) {
+    ReferenceMoveCarried wayOfTheConte({TransformTrack? kept}) {
       final conte = paper(
         id: 'a-conte',
         laid: laid,

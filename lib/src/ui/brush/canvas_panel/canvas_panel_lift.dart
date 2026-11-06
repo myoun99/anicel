@@ -75,6 +75,20 @@ class _CanvasPanelLift {
     };
   }
 
+  /// The cels a confirm of the open session lands on: the ones it lifted,
+  /// and every one the ladder names beside them ([_landingsPerCel]) — as
+  /// their keys spell them, a cel named twice once. Empty with no session.
+  Iterable<BrushFrameKey> get confirmLandsOn sync* {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    for (final cel in session.cels) {
+      yield cel.key;
+    }
+    yield* _state.widget.transformTargetKeys?.call() ?? const [];
+  }
+
   void openSession({
     required int token,
     required CanvasSelectionRegion? userSelection,

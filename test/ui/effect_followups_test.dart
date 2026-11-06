@@ -312,7 +312,7 @@ void main() {
       effects: effects,
     );
 
-    int sample(
+    int? sample(
       List<Layer> layers, {
       CanvasReadSource source = CanvasReadSource.display,
       int ink = 0xFF808080,
@@ -332,12 +332,12 @@ void main() {
     );
 
     test('a layer\'s own colour effect changes what it picks', () {
-      expect(sample([drawing()]) & 0xFF0000, 0x800000);
+      expect(sample([drawing()])! & 0xFF0000, 0x800000);
       // +20 of the slider = +51.
       expect(
         (sample([
                   drawing(effects: [brightness(20)]),
-                ]) >>
+                ])! >>
                 16) &
             0xFF,
         closeTo(0x80 + 51, 1),
@@ -350,17 +350,17 @@ void main() {
         name: 'FX1',
       ).copyWith(effects: [brightness(20)]);
       expect(
-        (sample([drawing(), adjustment]) >> 16) & 0xFF,
+        (sample([drawing(), adjustment])! >> 16) & 0xFF,
         closeTo(0x80 + 51, 1),
       );
       // …at half mix, half the grade.
       expect(
-        (sample([drawing(), adjustment.copyWith(opacity: 0.5)]) >> 16) & 0xFF,
+        (sample([drawing(), adjustment.copyWith(opacity: 0.5)])! >> 16) & 0xFF,
         closeTo(0x80 + 26, 2),
       );
       // …and a hidden or bypassed row grades nothing.
       expect(
-        (sample([drawing(), adjustment.copyWith(isVisible: false)]) >> 16) &
+        (sample([drawing(), adjustment.copyWith(isVisible: false)])! >> 16) &
             0xFF,
         0x80,
       );
@@ -380,18 +380,20 @@ void main() {
         id: const LayerId('fx'),
         name: 'FX1',
       ).copyWith(effects: effects);
-      int pick(List<LayerEffect> effects, {double mix = 1}) =>
-          (sample([
-                drawing(),
-                adjustment(effects).copyWith(opacity: mix),
-              ], ink: 0xFF000000) >>
-              16) &
-          0xFF;
-      const paper = (canvasPaperColor >> 16) & 0xFF;
-      expect(pick([deleteBlack]), paper);
+      int? pick(List<LayerEffect> effects, {double mix = 1}) {
+        final picked = sample([
+          drawing(),
+          adjustment(effects).copyWith(opacity: mix),
+        ], ink: 0xFF000000);
+        return picked == null ? null : (picked >> 16) & 0xFF;
+      }
+
+      // The shown picture has no paper under it (I-163-Q6): what is keyed
+      // out leaves nothing to pick.
+      expect(pick([deleteBlack]), isNull);
       expect(
         pick([deleteBlack, brightness(20, id: 'bc')]),
-        paper,
+        isNull,
         reason: 'keyed, then graded: nothing is left to grade',
       );
       expect(
@@ -401,8 +403,8 @@ void main() {
       );
       expect(
         pick([deleteBlack], mix: 0.5),
-        closeTo(paper / 2, 1),
-        reason: 'at half mix, half of it keyed',
+        0,
+        reason: 'at half mix, half of it keyed: the black left is picked',
       );
     });
 
@@ -417,23 +419,21 @@ void main() {
         name: 'FX1',
       ).copyWith(effects: [brightness(-40)]);
 
-      // Nothing drawn at all: the pick is the paper, ungraded — which is
-      // also exactly when the composite tree emits no adjustment node.
-      final paper = sample([darken]);
+      // Nothing drawn at all: nothing to pick — which is also exactly when
+      // the composite tree emits no adjustment node. The shown picture has
+      // no paper under it (I-163-Q6), so a graded paper would be a colour
+      // from nowhere.
       expect(
-        (paper >> 16) & 0xFF,
-        (canvasPaperColor >> 16) & 0xFF,
+        sample([darken]),
+        isNull,
         reason: 'an adjustment over nothing grades nothing',
       );
 
-      // Half-covered ink: the graded ink composites over the UNgraded
-      // paper, so the answer sits between them — never below the ink's own
-      // graded value.
+      // Half-covered ink picks the graded ink itself: the grade met the
+      // ink's own colour, not the ink over a paper.
       final half = sample([drawing(), darken], ink: 0x80808080);
       const gradedInk = 0x80 - 102 < 0 ? 0 : 0x80 - 102;
-      const paperR = (canvasPaperColor >> 16) & 0xFF;
-      final expected = (gradedInk * 0.5 + paperR * 0.5).round();
-      expect((half >> 16) & 0xFF, closeTo(expected, 2));
+      expect((half! >> 16) & 0xFF, closeTo(gradedInk, 2));
     });
 
     test('a chain of [colour, blur] still reports its COLOUR part', () {
@@ -448,7 +448,7 @@ void main() {
         ],
       );
       expect(
-        (sample([chained]) >> 16) & 0xFF,
+        (sample([chained])! >> 16) & 0xFF,
         closeTo(0x80 + 51, 1),
         reason:
             'the blur is out of reach; dropping the brightness too is '
@@ -469,7 +469,7 @@ void main() {
       expect(
         (sample([
                   drawing(effects: [brightness(20)]),
-                ], source: CanvasReadSource.layer) >>
+                ], source: CanvasReadSource.layer)! >>
                 16) &
             0xFF,
         closeTo(0x80 + 51, 1),
@@ -485,14 +485,14 @@ void main() {
       final own =
           (sample([
                 drawing(effects: [brightness(20)]),
-              ], source: CanvasReadSource.layer) >>
+              ], source: CanvasReadSource.layer)! >>
               16) &
           0xFF;
       final withAdjustment =
           (sample([
                 drawing(effects: [brightness(20)]),
                 adjustment,
-              ], source: CanvasReadSource.layer) >>
+              ], source: CanvasReadSource.layer)! >>
               16) &
           0xFF;
       expect(

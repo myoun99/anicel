@@ -20,6 +20,9 @@ import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show editorActionLabel;
 import '../../helpers/wait_window.dart' show windowBehind;
 
 /// F-329 — A FRAME RANGE ACROSS ROWS IS LIFTED, EVERY ROW, WHILE THE BOX IS
@@ -196,7 +199,15 @@ void main() {
 
     commands.editTransformValues((now) => now.copyWith(tx: 20));
     await tester.pumpAndSettle();
-    await windowBehind(tester, () async => commands.applyTransform());
+    final confirmed = await windowBehind(
+      tester,
+      () async => commands.applyTransform(),
+    );
+    expect(
+      confirmed?.title,
+      editorActionLabel(EditorActionIds.confirm),
+      reason: '🗣️F-566: 「다른 블록에 걸쳐서 변형할때만 진행창뜸」 — four cels',
+    );
     await tester.pumpAndSettle();
 
     for (final cel in ['0', '1']) {
@@ -222,6 +233,35 @@ void main() {
         reason: 'one undo brings every cel back',
       );
     }
+  });
+
+  testWidgets('🗣️F-566: with the range let go, the cel you stand on is '
+      'confirmed at once — 「변형도 셀 하나만 할때는 진행창안띄움」', (
+    tester,
+  ) async {
+    final session = await pump(tester);
+    session.frameRangeSelection.value = null;
+    await tester.pumpAndSettle();
+    final commands = await openTheBox(tester);
+
+    commands.editTransformValues((now) => now.copyWith(tx: 20));
+    await tester.pumpAndSettle();
+    expect(
+      await windowBehind(tester, () async => commands.applyTransform()),
+      isNull,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      (inked(session, a, '0', 25, 25), inked(session, a, '0', 75, 25)),
+      (false, true),
+      reason: 'A\'s cel 0 moved right by 20',
+    );
+    expect(
+      inked(session, b, '0', 75, 75),
+      isTrue,
+      reason: 'and nothing else did',
+    );
   });
 
   testWidgets('the box stands around both rows\' pictures — a scale grows '

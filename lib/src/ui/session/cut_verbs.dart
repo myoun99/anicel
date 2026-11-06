@@ -20,6 +20,7 @@ import '../../services/commands/link_mirror.dart'
     show linkedCutsBeyondItsSync;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
+import '../../services/wait_window.dart' show drawingsOf;
 import '../text/place_lines.dart'
     show cutPlaceLine, drawingPlaceLines, syncPartnerLines;
 import 'active_cut_edits.dart';
@@ -204,6 +205,22 @@ class CutVerbs {
       }
     });
   });
+
+  /// The drawings every row of the cuts [cutIds] names holds — the wait
+  /// window's measure for a verb that takes cuts whole
+  /// (`reachesManyBlocks`).
+  Iterable<Object> drawingsOfCuts(Iterable<CutId> cutIds) => drawingsOf([
+    for (final cutId in cutIds) ...?_project.cutById(cutId)?.layers,
+  ]);
+
+  /// The drawings [unlinkCuts] frees of the cuts [cutIds] — the linked
+  /// ones' — the wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> drawingsUnlinkedOf(Iterable<CutId> cutIds) =>
+      drawingsOfCuts(cutIds.where(cutIsLinked));
+
+  /// The drawings [duplicateActiveCut] copies — of the cuts in hand — the
+  /// wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> get drawingsDuplicated => drawingsOfCuts(cutsInHand);
 
   /// THE CUTS IN HAND: the selected ones — a band's, in track order — else
   /// the cut you stand in. What a duplicate copies (F-455-Q1), a delete

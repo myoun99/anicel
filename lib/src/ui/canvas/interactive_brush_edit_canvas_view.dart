@@ -964,13 +964,14 @@ class _InteractiveBrushEditCanvasViewState
   ({List<BrushDab> dabs, BitmapSurface base, List<PromotedStrokeTile> tiles})?
   _pendingFill;
 
-  /// The pointer whose press holds the fill, and the range it covers where
-  /// the press is now (I-160) — null while the seed reaches nothing. The
+  /// The pointer whose press holds the fill, where it came down — what its
+  /// mark's checker is pushed from (F-568) — and the range it covers where
+  /// the press is now (I-160): null while the seed reaches nothing. The
   /// lift lays that range ([_BrushEditFill.lift]).
   ///
   /// One value — see the second-finger branch, which is where a press stops
   /// being this fill's gesture.
-  ({int pointer, FillRange? range})? _fillPress;
+  ({int pointer, CanvasPoint from, FillRange? range})? _fillPress;
 
   /// A range picked with the gradient on (I-160), held for the press that
   /// lays its gradient — and that press's drag, from where it landed to

@@ -1,40 +1,37 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../editor_session_manager.dart';
-import '../input/control_press_claim.dart';
 import '../media/media_asset_pool_state.dart';
-import '../shortcuts/editor_action_registry.dart';
-import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/ellipsis_text.dart';
 import 'movie_source_shortfall.dart';
-import 'rasterize_reference_rows.dart';
 
 /// The reference button's popover (유저 2026-09-11, 미디어 배치 라운드 3~6):
-/// the button does not bake — it opens this, and the bake is the one button
-/// inside it, 「래스터라이즈 · N장」.
+/// the button does not bake — it opens this. ↩️The bake was the one button
+/// inside it, 「래스터라이즈 · N장」, until 🗣️I-120-Q11 (유저 2026-11-04:
+/// 「참조 버튼의 래스터라이즈 버튼은 삭제 … 그래서 하나만 남기도록」) left
+/// the reference header's RASTERIZE the one door.
 ///
 /// The first line names the file beside its POOL state (`bg_street.png ·
 /// 품음`), because 「참조」 means two things and the popover says which one
 /// the file is (round 5). When the press acts on several rows it says so
 /// instead — the mockup's 「선택한 레이어」.
 const double layerReferencePopoverWidth = 236;
-const double layerReferencePopoverHeight = 72;
+const double layerReferencePopoverHeight = 46;
 
 /// One caption line taller — the window when it has to say the row runs
 /// past its source (유저 2026-09-12: 「팝오버 항목중 하나로 내용 띄우도록」).
 ///
-/// ⚠️MEASURED, not guessed: the body is 60 without the line and 76 with it,
-/// and the window carries 12 around the body — so this is 88 exactly, the
-/// same way [layerReferencePopoverHeight] is 72. A window with slack in it
-/// would hide the day the line stops fitting.
-const double layerReferencePopoverShortHeight = 88;
+/// ⚠️MEASURED, not guessed: the body is 34 without the line and 50 with it
+/// (2026-11-05, once the rasterize button left it), and the window carries
+/// 12 around the body — so this is 62 exactly, the same way
+/// [layerReferencePopoverHeight] is 46. A window with slack in it would
+/// hide the day the line stops fitting.
+const double layerReferencePopoverShortHeight = 62;
 
 Future<void> showLayerReferencePopover(
   BuildContext anchorContext, {
@@ -54,11 +51,10 @@ Future<void> showLayerReferencePopover(
     height: shortfall > 0
         ? layerReferencePopoverShortHeight
         : layerReferencePopoverHeight,
-    builder: (context, close) => _LayerReferencePopover(
+    builder: (context, _) => _LayerReferencePopover(
       session: session,
       layerId: layerId,
       shortfall: shortfall,
-      close: close,
     ),
   );
 }
@@ -101,7 +97,6 @@ class _LayerReferencePopover extends StatelessWidget {
     required this.session,
     required this.layerId,
     required this.shortfall,
-    required this.close,
   });
 
   final EditorSessionManager session;
@@ -112,12 +107,10 @@ class _LayerReferencePopover extends StatelessWidget {
   /// was reserved from this very number.
   final int shortfall;
 
-  final VoidCallback close;
-
   @override
   Widget build(BuildContext context) {
     // Listening keeps the window honest while it is open: an undo, or the
-    // menu's rasterize, can change what it would bake.
+    // header's rasterize, can change what it speaks of.
     return AnimatedBuilder(
       animation: session,
       builder: (context, _) {
@@ -125,19 +118,12 @@ class _LayerReferencePopover extends StatelessWidget {
         if (targets.isEmpty) {
           return const SizedBox.shrink();
         }
-        return _body(context, targets);
+        return _body(targets);
       },
     );
   }
 
-  Widget _body(BuildContext context, List<Layer> targets) {
-    final strings = AppText.strings;
-    // What the bake would LEAVE: a still's cels are already its own, a
-    // movie's are one per position of its block ([rasterizeCelCount]).
-    final cels = targets.fold<int>(
-      0,
-      (sum, layer) => sum + rasterizeCelCount(layer),
-    );
+  Widget _body(List<Layer> targets) {
     // ⛔No `Material` of its own — the anchored popup carries the window.
     return Padding(
       key: const ValueKey<String>('layer-reference-popover'),
@@ -166,21 +152,6 @@ class _LayerReferencePopover extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 6),
-          _RasterizeButton(
-            // The rasterize verb's ONE name — its action's: the timeline
-            // menu's entry and this button say the same word for the same
-            // verb.
-            label:
-                '${editorActionLabel(EditorActionIds.layerRasterize)} · '
-                '${strings.exCelCount(cels)}',
-            onPressed: () {
-              close();
-              // A movie is decoded frame by frame behind the wait window;
-              // rows whose pixels are already cels land at once.
-              unawaited(rasterizeReferenceRows(context, session, targets));
-            },
-          ),
         ],
       ),
     );
@@ -198,36 +169,5 @@ class _LayerReferencePopover extends StatelessWidget {
     return asset == null
         ? layer.name
         : '${asset.name} · ${mediaAssetPoolState(asset)}';
-  }
-}
-
-/// The popover's one action, as the mockup drew it: the window's accent
-/// fill. Pressed inside and released inside — a popover is not a rail row.
-class _RasterizeButton extends StatelessWidget {
-  const _RasterizeButton({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return ControlPressClaim(
-      onPressed: onPressed,
-      child: FilledButton(
-        key: const ValueKey<String>('layer-reference-rasterize'),
-        onPressed: silentPress(onPressed),
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 28),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-          textStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        child: EllipsisText(label, maxLines: 1),
-      ),
-    );
   }
 }

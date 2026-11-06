@@ -32,17 +32,17 @@ typedef _PictureRead = ({ui.Image image, ui.Rect from, ui.Rect to});
 /// A frame as its compositor gives it to [FramePictureStore.lay]: [draw]
 /// draws it in world coordinates over all of [extent] as the canvas's
 /// display buffer holds it — the paper and every row, and clear wherever
-/// neither lays anything — and the world outside [extent] is [outside].
+/// neither lays anything — and the world outside [extent] is clear.
 ///
 /// 🚨Not opaque past the paper (one-picture-per-frame, 2026-10-24): the
 /// pasteboard's colour is laid under a frame by whoever shows it — a track
 /// stack lays it under its stage track alone and lets the tracks over that
 /// one show through — so a picture holding it would be one view's. The
-/// compositor's [outside] is clear for the same reason
-/// (`StackedFrame`).
+/// world past [extent] is clear for the same reason (`StackedFrame`).
+/// ↩️A frame carried a colour for it, white at first, then clear always
+/// (`558bce4d8`), until the colour went (11-06).
 typedef FrameDrawing = ({
   ui.Rect extent,
-  ui.Color outside,
   void Function(ui.Canvas canvas) draw,
 });
 
@@ -51,9 +51,8 @@ typedef FrameDrawing = ({
 /// 개선 + 법 통일까지가 목표」): the frame composited, kept where it stands
 /// — an edit is written INTO it, never a new picture beside it.
 ///
-/// The consumer draws [image] where [extent] lies in the world and paints
-/// the world outside [extent] [outside] — nothing else: no patch is ever
-/// drawn over it.
+/// The consumer draws [image] where [extent] lies in the world and nothing
+/// past it — nothing else: no patch is ever drawn over it.
 ///
 /// 🔁ZOOMED OUT IT IS DRAWN WITH ITS OWN MIP CHAIN — `FilterQuality.medium`
 /// at or under 50%. The engine gives every picture it rasters a whole chain
@@ -82,7 +81,7 @@ typedef FrameDrawing = ({
 /// 진짜 비상사태」; 1079 from its second stroke, every stroke from 1080).
 /// Every runner and Windows draw the whole screen each frame, which hid it.
 class FramePicture extends ChangeNotifier {
-  FramePicture._(this._image, this._extent, this.outside);
+  FramePicture._(this._image, this._extent);
 
   /// The deepest level a screen has read of this picture since its patches
   /// last paused — how far down a write lays ([readAt]).
@@ -108,9 +107,6 @@ class FramePicture extends ChangeNotifier {
   /// Where [image] lies in the world — whole pixels, at least what was laid.
   ui.Rect get extent => _extent;
   ui.Rect _extent;
-
-  /// The frame's colour everywhere outside [extent].
-  final ui.Color outside;
 
   /// Tells the picture that a screen draws it at [displayScale], before the
   /// screen asks for a step: a write lays the levels a screen reads
@@ -509,12 +505,26 @@ class FramePictureStore<K extends Object> {
   /// Answers once every patch asked for is in its picture, at every level.
   Future<void> settled() async {
     for (final entry in _everyEntry) {
-      await entry.renders;
+      await _settledAt(entry);
+    }
+  }
+
+  /// [settled] for [key]'s picture alone: what one drawn off the screen at a
+  /// level waits for, without telling the picture it is read
+  /// ([FramePicture.readAt]) — a screen's reading lays every step of the
+  /// patches after it that deep (a panel's, F-533).
+  Future<void> leveled(K key) async {
+    if (_entries[key] case final entry?) {
+      await _settledAt(entry);
+    }
+  }
+
+  Future<void> _settledAt(_Entry<K> entry) async {
+    await entry.renders;
+    await entry.writes;
+    while (entry.picture._owed != null && !entry.gone) {
+      _writeOwed(entry);
       await entry.writes;
-      while (entry.picture._owed != null && !entry.gone) {
-        _writeOwed(entry);
-        await entry.writes;
-      }
     }
   }
 
@@ -564,6 +574,30 @@ class FramePictureStore<K extends Object> {
     if (entry != null) {
       _letGo(entry);
     }
+  }
+
+  /// Lets go of [key]'s picture as [letGo] does, unless a screen holds it
+  /// ([retainPin]) — as the budget never lets one go ([enforceBudget]).
+  void letGoUnpinned(K key) {
+    if (!_pins.isPinned(key)) {
+      letGo(key);
+    }
+  }
+
+  /// Lets go of every picture under a key [dead] says none will ask for
+  /// again — but one a screen holds under any of its keys, and one a patch
+  /// is on its way into (a stroke's landing moves it to a key of its own):
+  /// those go as their screen leaves them.
+  void letGoUnpinnedWhere(bool Function(K key) dead) {
+    final kept = <_Entry<K>>{
+      for (final key in _pins.keys) ?_entries[key],
+      for (final becoming in _becoming.values) becoming.entry,
+    };
+    final going = [
+      for (final MapEntry(:key, value: entry) in _entries.entries)
+        if (!kept.contains(entry) && dead(key)) entry,
+    ];
+    going.forEach(_letGo);
   }
 
   /// Declares a holder of [key]'s picture — one the screen draws. Balanced
@@ -706,7 +740,7 @@ class FramePictureStore<K extends Object> {
       return _laid(
         lay.key,
         _Entry<K>(
-          FramePicture._(image, extent, lay.frame.outside),
+          FramePicture._(image, extent),
           held: held,
           levels: held == null ? 1 : _gpu.levelsOf(held),
           patchedLevels: patchedLevels,
@@ -714,7 +748,7 @@ class FramePictureStore<K extends Object> {
       );
     }
     final entry = _Entry<K>(
-      FramePicture._(_gpu.imageOf(allocated), extent, lay.frame.outside),
+      FramePicture._(_gpu.imageOf(allocated), extent),
       held: allocated,
       levels: _gpu.levelsOf(allocated),
       patchedLevels: patchedLevels,
@@ -1245,6 +1279,19 @@ class FramePictureStore<K extends Object> {
   /// the very code of the levels round it, on any backend (measured on the
   /// Surface Pro 11: the levels it replaced, byte for byte, 2026-10-24).
   /// Drawn 1:1 on whole pixels, it is a copy.
+  ///
+  /// ↩️🔬NOT BYTE FOR BYTE ON THE MAIN PC (Windows, GLES, F-533-Q7,
+  /// 2026-11-05): Impeller reads a mip with a bias of -0.475
+  /// (`kDefaultMipBias`), so a halving drawn at 1/2^k is level k - 1 at
+  /// 47.5% and level k at 52.5% — the mean of its texels as the engine's
+  /// chain is, rounded another way: up to 1/255 in 250–500 bytes of a
+  /// stroke's band at 36%, seen once the frame is laid again, and nothing
+  /// above 1/2. ⛔Not the row drawn 0.72 px tall so the GPU picks level k
+  /// alone (Impeller's MSAA covers three quarters of it), nor its texture
+  /// coordinates stretched on one axis (`drawVertices`: read as anisotropy,
+  /// 12–54 off the mean). The exact ways — a quad a texel, or every lay's
+  /// levels written again — cost each step or lay more, and 유저 F-533-Q7:
+  /// 「성능 나빠지면 안할예정」.
   Future<ui.Image> _readAt(List<_PictureRead> reads, int width, int height) {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);

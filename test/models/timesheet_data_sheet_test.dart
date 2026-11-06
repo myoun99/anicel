@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 
 import '../helpers/run_edge_fixtures.dart';
 
@@ -235,5 +237,35 @@ void main() {
     expect(cellsOf(douga.id)[4].kind, TimesheetCellKind.drawing);
     expect(cellsOf(douga.id)[4].label, '1');
     expect(cellsOf(douga.id)[6].label, '2');
+  });
+
+  // I-162-Q1 (유저 2026-11-05): 「XDTS 서식에서만 뷰어 표기」 — the viewer
+  // writes its own リピート from the values.
+  test('an XDTS sheet prints the ACTION block\'s data on a NOTATION sheet '
+      'too — its notation is the viewer\'s', () {
+    TimesheetDocument on(TimesheetSheetKind kind) => TimesheetDocument.fromCut(
+      cut: Cut(
+        id: const CutId('cut-1'),
+        name: 'Cut 1',
+        layers: [_repeatLayer()],
+        duration: 12,
+        canvasSize: const CanvasSize(width: 1280, height: 720),
+        metadata: CutMetadata(sheetKind: kind),
+      ),
+      projectName: 'Project',
+      fps: 24,
+    );
+
+    final xdts = on(TimesheetSheetKind.xdtsA3SixSeconds);
+    expect(xdts.xdtsForm, isNotNull, reason: '⛔전제: the viewer\'s form');
+    final cells = xdts.columns.first.cells;
+    expect(cells[4].kind, TimesheetCellKind.drawing);
+    expect(cells[4].label, '1');
+    expect(cells[6].label, '2');
+    expect(
+      on(TimesheetSheetKind.sixSeconds).columns.first.cells[4].kind,
+      TimesheetCellKind.repeatStart,
+      reason: 'our own sheet keeps its words',
+    );
   });
 }

@@ -9,6 +9,7 @@ import '../../services/persistence/app_accent_settings_store.dart';
 import '../../services/persistence/app_camera_path_settings_store.dart';
 import '../../services/persistence/app_frame_count_settings_store.dart';
 import '../../services/persistence/app_frame_grid_settings_store.dart';
+import '../../services/persistence/app_gpu_settings_store.dart';
 import '../../services/persistence/app_onion_skin_settings_store.dart';
 import '../../services/persistence/app_pixel_verb_settings_store.dart';
 import '../../services/persistence/app_input_settings_store.dart';
@@ -31,6 +32,7 @@ import '../../models/app_accents.dart';
 import '../../models/camera_path_settings.dart';
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_frame_grid_settings.dart';
+import '../../models/app_gpu_settings.dart';
 import '../../models/onion_skin_settings.dart';
 import '../../models/pixel_verb_settings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -67,6 +69,7 @@ class EditorAppSettings {
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
     AppMemorySettingsStore? memorySettingsStore,
+    AppGpuSettingsStore? gpuSettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppUiScaleStore? uiScaleStore,
     AppOnionSkinSettingsStore? onionSkinSettingsStore,
@@ -84,6 +87,7 @@ class EditorAppSettings {
        _inputSettingsStore = inputSettingsStore,
        _saveSettingsStore = saveSettingsStore,
        _memorySettingsStore = memorySettingsStore,
+       _gpuSettingsStore = gpuSettingsStore,
        _audioSyncSettingsStore = audioSyncSettingsStore,
        _uiScaleStore = uiScaleStore,
        _onionSkinSettingsStore = onionSkinSettingsStore,
@@ -106,6 +110,7 @@ class EditorAppSettings {
     unawaited(_restoreInputSettings());
     unawaited(_restoreSaveSettings());
     unawaited(_restoreMemorySettings());
+    unawaited(_restoreGpuSettings());
     unawaited(_restoreAudioSyncSettings());
     unawaited(_restoreOnionSkinSettings());
     unawaited(_restoreFrameGridSettings());
@@ -541,6 +546,25 @@ class EditorAppSettings {
 
   void setMemorySettings(AppMemorySettings settings) =>
       _publish(AppMemory.settings, settings, _memorySettingsStore?.save);
+
+  // --- GPU choice (connection-round-checklist-Q4) ---------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppGpuSettingsStore? _gpuSettingsStore;
+
+  /// The first restore is also what this run's engine was made with: the
+  /// runner read the same file before Dart ran ([AppGpu.startedWith]).
+  Future<void> _restoreGpuSettings() async {
+    await _restore(
+      AppGpu.settings,
+      _gpuSettingsStore?.load,
+      const AppGpuSettings(),
+    );
+    AppGpu.noteStartedWith(AppGpu.settings.value.preference);
+  }
+
+  void setGpuSettings(AppGpuSettings settings) =>
+      _publish(AppGpu.settings, settings, _gpuSettingsStore?.save);
 
   // --- A/V offset (audio program 2D) ----------------------------------------
 

@@ -1,0 +1,19 @@
+[package]
+name = "fx_plugin"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[dependencies]
+libloading = "0.8"
+wasmtime = { version = "=48.0.8", default-features = false, features = [
+  "runtime",
+  "cranelift",
+  "pulley",
+  "std",
+] }
+wasmtime-wasi = { version = "=48.0.8", default-features = false, features = ["p1"] }
+
+[dev-dependencies]
+oracle = { path = "../oracle" }
+wat = "=1.254.2"

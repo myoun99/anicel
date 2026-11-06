@@ -67,7 +67,7 @@ import 'test_seconds.dart';
 /// ([kEveryTestReads], [kEveryTestReadsUnder]) — and the analysis options.
 ///
 /// Dependencies and toolchain change what every file compiles to; the native
-/// sources (`packages/`) sit behind FFI where no import edge reaches them,
+/// sources ([kEngineSources]) sit behind FFI where no import edge reaches them,
 /// and the assets and shaders the pubspec bundles reach every suite the same
 /// way; and `test/flutter_test_config.dart` is loaded by flutter_test before
 /// every suite in the tree while nothing imports it — an edge the graph
@@ -111,6 +111,13 @@ const impellerTag = 'impeller';
 /// [partitionByTag].
 const impellerTagMarker = "@Tags(['$impellerTag'])";
 
+/// The tag [realtimeTagMarker] writes, as `dart_test.yaml` declares it.
+const realtimeTag = 'realtime';
+
+/// The marker a file writes to say 「I read a running device, and must read
+/// it on time」 — see [partitionByTag].
+const realtimeTagMarker = "@Tags(['$realtimeTag'])";
+
 /// Whether [source]'s `@Tags` lists [tag]. A file carries ONE such
 /// annotation (test_core refuses a second), so a file with two of the tags
 /// above lists both in it — `@Tags(['gc', 'gpu'])`, which neither marker
@@ -132,6 +139,11 @@ enum BatchKind {
   /// [impellerTagMarker]: batches of their own, on Impeller.
   impeller(impellerTag, ['--enable-impeller']),
 
+  /// [realtimeTagMarker]: one file a batch, each alone. Before the
+  /// collector's: a file alone is out of every crowd a pins' batch keeps it
+  /// out of.
+  realtime(realtimeTag, []),
+
   /// [gcTagMarker]: one batch of their own, after every other.
   collector(gcTag, []),
 
@@ -148,12 +160,13 @@ enum BatchKind {
 }
 
 /// The order a run goes in ([runInBatches]), and a list prints in: the
-/// crowd first, the files on another engine next, the collector's pins
-/// last and alone.
+/// crowd first, the files on another engine next, the real-time pins one
+/// by one, the collector's pins last and alone.
 const kRunOrder = [
   BatchKind.crowd,
   BatchKind.gpu,
   BatchKind.impeller,
+  BatchKind.realtime,
   BatchKind.collector,
 ];
 
@@ -198,6 +211,20 @@ BatchKind kindOf(String source) => BatchKind.values.firstWhere(
 /// on `--enable-impeller` alone (브러시/렌더링, 10-24: one tag answering
 /// 「does it draw with Flutter GPU」 and 「does it need Impeller」 would be
 /// one flag answering two questions).
+///
+/// ⏱️**A PIN THAT READS A RUNNING DEVICE ON TIME CANNOT RUN IN COMPANY**
+/// (transport-real-time-pins-fail-under-load ⓑ, 2026-11-05). A null device
+/// is a thread that plays on whatever its reader does, and the lap pin must
+/// read it inside a step of its wrap. Pacing the waits by what the device
+/// handed (`test/helpers/device_paced.dart`, 10-17 — ⓐ) mended every wait;
+/// it cannot make a starved reader read on time. 🔬The Mac and TestFlight
+/// builds 1089 (2026-11-05) both read no wrap step in twelve laps inside a
+/// parity batch of 161 files at 10 suites — 365 and 418 readings straddled
+/// — and both went green alone in the same job; the lap pin had gone red so
+/// four times before, in lanes' runs. So each file carrying [realtimeTag]
+/// runs alone, a batch of one: another real-time pin beside it is company
+/// too. ⛔Not the gc tag — 「does it wait for the collector」 and 「does it
+/// read a device on time」 are two questions.
 ///
 /// ⚠️It is a whole-FILE question because the tag is a library annotation,
 /// so partitioning by file is exact — no `--exclude-tags` pass that could
@@ -523,16 +550,26 @@ void _sayReds(String? to, Iterable<String> reds) {
 
 /// This machine's result records for this checkout ([ResultCache]), keyed
 /// through [imports] — the whole graph from [kGraphRoots] when not given.
-ResultCache? _openCache([Map<String, Set<String>>? imports]) {
+ResultCache? _openCache([Map<String, Set<String>>? imports]) => _cacheOr(
+  imports ?? buildImportGraph(roots: kGraphRoots),
+  (unread) => _report('no result record this time — $unread could not be '
+      'read — so every file runs.'),
+);
+
+/// [ResultCache.open] for this checkout through [imports]; when none can
+/// be opened, [say] hears what could not be read.
+ResultCache? _cacheOr(
+  Map<String, Set<String>> imports,
+  void Function(String unread) say,
+) {
+  final unread = <String>[];
   final cache = ResultCache.open(
     Directory.current.path,
     Platform.environment,
-    imports ?? buildImportGraph(roots: kGraphRoots),
+    imports,
+    unread: unread.add,
   );
-  if (cache == null) {
-    _report('no result record this time — the machine folder, git, Flutter '
-        "or the engine's stamp could not be read — so every file runs.");
-  }
+  if (cache == null) say(unread.join(', '));
   return cache;
 }
 
@@ -589,10 +626,10 @@ void _keep(ResultCache? cache, List<SuiteRun> runs) {
 /// The key of what each test reads in this checkout as it is NOW — the
 /// bytes and the imports measured again ([ResultCache.open]) — or null when
 /// no key can be made.
-String? Function(String file)? _keysNow() => ResultCache.open(
-  Directory.current.path,
-  Platform.environment,
+String? Function(String file)? _keysNow() => _cacheOr(
   buildImportGraph(roots: kGraphRoots),
+  (unread) => _report('what the reds read cannot be keyed now — $unread '
+      'could not be read.'),
 )?.keyFor;
 
 String? _flagValue(List<String> args, String name) {
@@ -683,12 +720,8 @@ bool forcesFullRun(String path, {bool near = false}) =>
           prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
     );
 
-/// Whether [path] is one of the engine's sources — the C behind FFI that no
-/// import edge reaches.
+/// Whether [path] is one of the engine's sources ([kEngineSources]).
 bool changesTheEngine(String path) => path.startsWith(kEngineSources);
-
-/// Where the engine's sources live.
-const kEngineSources = 'packages/';
 
 /// The tests that exercise the engine: `tool/native_parity_tests.sh`'s
 /// answer, asked rather than copied (the one answer — its header), or null
@@ -795,8 +828,9 @@ List<String> nextBatch(
 
 /// Runs [files] batch by batch ([partitionByTag]), kind by kind in
 /// [kRunOrder]: each cut as it goes to the suites each batch is given
-/// ([nextBatch]), but the pins that wait for the collector as one batch of
-/// their own. [take] stands in the line for the files still to run and says
+/// ([nextBatch]), but each real-time pin as a batch of one and the pins
+/// that wait for the collector as one batch of their own. [take] stands in
+/// the line for the files still to run and says
 /// how many suites the next batch has; [run] runs the batch at them, on the
 /// engine its [BatchKind] names.
 Future<void> runInBatches(
@@ -817,6 +851,12 @@ Future<void> runInBatches(
     var left = split[kind]!;
     if (kind == BatchKind.collector) {
       if (left.isNotEmpty) await run(left, await take(left), kind: kind);
+      continue;
+    }
+    if (kind == BatchKind.realtime) {
+      for (final file in left) {
+        await run([file], await take([file]), kind: kind);
+      }
       continue;
     }
     while (left.isNotEmpty) {
@@ -934,6 +974,10 @@ Future<int> _runTests(
         'file(s) need the Impeller tester ($impellerTagMarker) and run in '
             'batches of their own, with ${kind.engineFlags.join(' ')} — on '
             'Skia they can only skip.',
+      BatchKind.realtime =>
+        'file(s) read a running device on time ($realtimeTagMarker) and run '
+            'one at a time — in company their reader is starved past the '
+            'moment it reads.',
     };
     if (apart != null && those.isNotEmpty) _report('${those.length} $apart');
   }
@@ -944,6 +988,7 @@ Future<int> _runTests(
   final runsOf = <int, List<SuiteRun>>{};
   final flaky = <String>{};
   final moved = <String>{};
+  final unkeyed = <String>{};
   final unrun = <String>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
@@ -973,6 +1018,7 @@ Future<int> _runTests(
               BatchKind.collector => ' — the pins',
               BatchKind.gpu => ' — on Impeller with Flutter GPU',
               BatchKind.impeller => ' — on Impeller',
+              BatchKind.realtime => ' — a real-time pin, alone',
             }}');
         final report = File('${reports.path}/batch$i.json');
         try {
@@ -1037,9 +1083,12 @@ Future<int> _runTests(
     );
     flaky.addAll(split.flaky);
     moved.addAll(split.moved);
+    unkeyed.addAll(split.unkeyed);
     _keep(cache, [
       for (final run in again)
-        if (!split.moved.contains(run.path)) run,
+        if (!split.moved.contains(run.path) &&
+            !split.unkeyed.contains(run.path))
+          run,
     ]);
   }
 
@@ -1076,6 +1125,12 @@ Future<int> _runTests(
         'went on (a landing into this checkout?), so they are no flake and '
         'their red stands: ${(moved.toList()..sort()).join(', ')}. Run them '
         'again.');
+  }
+  if (unkeyed.isNotEmpty) {
+    _report('⚠️red, then green — but this run has no key of what they read '
+        '(the line saying what could not be read is above), so nothing says '
+        'it held still: they are no flake and their red stands: '
+        '${(unkeyed.toList()..sort()).join(', ')}.');
   }
   final held = <String>{};
   final onMaster = MasterRecords.of(Platform.environment)?.reds ?? const {};
@@ -1472,6 +1527,27 @@ Future<_BatchResult> _flutterTest(
   required String report,
   required BatchKind kind,
 }) async {
+  final temp = RunTemp.take();
+  try {
+    return await _flutterTestIn(
+      temp,
+      files,
+      concurrency: concurrency,
+      report: report,
+      kind: kind,
+    );
+  } finally {
+    temp.end();
+  }
+}
+
+Future<_BatchResult> _flutterTestIn(
+  RunTemp temp,
+  List<String> files, {
+  required int? concurrency,
+  required String report,
+  required BatchKind kind,
+}) async {
   final process = await Process.start(
     Platform.isWindows ? 'flutter.bat' : 'flutter',
     flutterTestArguments(
@@ -1480,6 +1556,7 @@ Future<_BatchResult> _flutterTest(
       report: report,
       kind: kind,
     ),
+    environment: temp.environment,
     runInShell: true,
   );
   var ranTests = false;

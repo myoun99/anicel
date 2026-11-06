@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show HitTestTarget;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart' show MouseTrackerAnnotation;
@@ -144,9 +145,84 @@ class _RenderPressesGoThrough extends RenderProxyBox {
     super.hitTest(inside, position: position);
     for (final entry in inside.path) {
       if (entry.target is MouseTrackerAnnotation) {
-        result.add(HitTestEntry(entry.target));
+        result.add(_HeardThrough(entry.target));
       }
     }
     return false;
   }
+}
+
+/// What a [PressesGoThrough] hands the hit test: a mouse annotation, and
+/// nothing a press could reach — what a [HoverUnderScope] takes, and all it
+/// takes, from under a [HoverGoesUnder].
+final class _HeardThrough extends HitTestEntry<HitTestTarget> {
+  _HeardThrough(super.target);
+}
+
+/// A CONTROL A HOVER GOES UNDER: a press on it is its own and so is the
+/// cursor, as on any control, but what only a hover hears under it
+/// ([PressesGoThrough]) still hears one — where a [HoverUnderScope] holds
+/// both.
+///
+/// 🗣️F-495-Q1 (유저 2026-11-07: 「잡이 위에서도 블록 툴팁을 띄운다」): the
+/// movie's end handle lies over every row of its panel, and at a low zoom
+/// it covers whole frames of a block run past the end line — the frames the
+/// block's warning is about. A row lays its warnings over its own grips,
+/// but no row can lay them over the panel's handle, and a stack asks
+/// nothing under the layer a pointer hits. ⛔Only the hover goes under: the
+/// option the user picked keeps the handle's arrows and its press.
+class HoverGoesUnder extends SingleChildRenderObjectWidget {
+  const HoverGoesUnder({super.key, required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderHoverGoesUnder();
+}
+
+class _RenderHoverGoesUnder extends RenderProxyBox {
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
+      !_LookingUnder.now && super.hitTest(result, position: position);
+}
+
+/// Where a [HoverGoesUnder] looks under itself: everything [child] stacks.
+/// When a pointer hits one, [child] is hit again as if it were not there,
+/// and what only a hover hears at that point ([PressesGoThrough]) is added
+/// after what was hit — the control's press and cursor stay first.
+class HoverUnderScope extends SingleChildRenderObjectWidget {
+  const HoverUnderScope({super.key, required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderHoverUnderScope();
+}
+
+class _RenderHoverUnderScope extends RenderProxyBox {
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final from = result.path.length;
+    final hit = super.hitTest(result, position: position);
+    final overAControl = result.path
+        .skip(from)
+        .any((entry) => entry.target is _RenderHoverGoesUnder);
+    if (_LookingUnder.now || !overAControl) {
+      return hit;
+    }
+    final under = BoxHitTestResult();
+    _LookingUnder.now = true;
+    try {
+      child?.hitTest(under, position: position);
+    } finally {
+      _LookingUnder.now = false;
+    }
+    for (final entry in under.path.whereType<_HeardThrough>()) {
+      result.add(HitTestEntry(entry.target));
+    }
+    return hit;
+  }
+}
+
+/// A scope's second hit: every [HoverGoesUnder] steps aside while it runs.
+abstract final class _LookingUnder {
+  static bool now = false;
 }

@@ -905,21 +905,14 @@ class CutCommandCoordinator {
   /// their cels — once each use's reference fx's move is its own
   /// ([letReferencesGo]). The asset stays in the pool (유저 2026-09-11:
   /// 「구워도 풀에 남음」). One undo step; no-op on non-reference layers,
-  /// and where a cel has to take the picture first, or the uses wait.
+  /// and where a cel has to take the picture first — in place, or a
+  /// position apiece, as a movie's are.
   void rasterizeLayerReference({
     required CutId cutId,
     required LayerId layerId,
   }) {
-    final layer = requireLayer(
-      repository.requireProject(),
-      cutId: cutId,
-      layerId: layerId,
-    );
-    if (layer.mediaReference == null) {
-      return;
-    }
-    final way = referenceLetGoOf(cutId: cutId, layerId: layerId);
-    if (way is ReferenceMoveCarried && !way.bakes) {
+    final way = referenceCarriedOf(cutId: cutId, layerId: layerId);
+    if (way != null && !way.bakes && !way.framed) {
       historyManager.runAsOneStep(
         'Rasterize layer',
         () => letReferencesGo(way),
@@ -927,11 +920,26 @@ class CutCommandCoordinator {
     }
   }
 
+  /// [referenceLetGoOf] where [layerId] shows a file — null where it shows
+  /// none: what each door that rasterizes a reference asks first, then
+  /// taking the ways that are its own ([ReferenceMoveCarried.bakes] ·
+  /// [ReferenceMoveCarried.framed]).
+  ReferenceMoveCarried? referenceCarriedOf({
+    required CutId cutId,
+    required LayerId layerId,
+  }) {
+    final cut = cutPositionOf(repository.requireProject(), cutId)?.cut;
+    if (cut?.layers.byId(layerId)?.mediaReference == null) {
+      return null;
+    }
+    return referenceLetGoOf(cutId: cutId, layerId: layerId);
+  }
+
   /// How RASTERIZE keeps where [layerId] shows its file ([referenceLetGo]),
   /// asked of the project: every use of its cels — its 겸용 link group, or
   /// the row alone ([linkMirrorTargets]) — and whether a row that wears
   /// their head and is none of them keeps keys of its own.
-  ReferenceLetGo referenceLetGoOf({
+  ReferenceMoveCarried referenceLetGoOf({
     required CutId cutId,
     required LayerId layerId,
   }) {

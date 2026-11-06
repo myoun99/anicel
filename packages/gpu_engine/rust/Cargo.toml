@@ -1,0 +1,114 @@
+[package]
+name = "gpu_engine"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[lib]
+# Both kinds are required by native_toolchain_rust.
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+# The fingerprint: the same CRC-32 as the app's anicelCrc32, not a hash of
+# our own (gpu-engine-skeleton, 2026-11-05).
+crc32fast = "1"
+pollster = "0.4"
+wgpu = { version = "=30.0.1", default-features = false, features = [
+  "std",
+  "parking_lot",
+  "dx12",
+  "wgsl",
+] }
+
+# The same major as wgpu-hal 30's own `windows`, so the D3D12 types this
+# crate makes are the ones wgpu-hal wraps.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_System_LibraryLoader",
+] }
+
+# Android presents through Vulkan (platform/android.rs); Cargo adds this
+# feature to the wgpu above, on Android only.
+[target.'cfg(target_os = "android")'.dependencies]
+wgpu = { version = "=30.0.1", default-features = false, features = ["vulkan"] }
+
+# Apple shows the engine through an IOSurface (platform/apple.rs); Cargo
+# adds Metal to the wgpu above, on Apple only. The objc2 majors are
+# wgpu-hal 30's own, so the Metal types this crate makes are the ones it
+# wraps.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+wgpu = { version = "=30.0.1", default-features = false, features = ["metal"] }
+objc2 = "0.6"
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "CFDictionary",
+  "CFNumber",
+  "CFString",
+] }
+objc2-core-video = { version = "0.3", default-features = false, features = [
+  "std",
+  "CVBase",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+  "CVPixelBufferIOSurface",
+  "CVReturn",
+  "objc2-io-surface",
+] }
+objc2-io-surface = { version = "0.3", default-features = false, features = [
+  "std",
+  "IOSurfaceRef",
+  "objc2-core-foundation",
+] }
+objc2-metal = { version = "0.3", default-features = false, features = [
+  "std",
+  "MTLAllocation",
+  "MTLDevice",
+  "MTLPixelFormat",
+  "MTLResource",
+  "MTLTexture",
+  "objc2-io-surface",
+] }
+
+# Linux shows the engine through a dma-buf of a Vulkan image
+# (platform/linux.rs); ash is wgpu-hal 30's own major, so the Vulkan
+# handles this crate makes are the ones it wraps.
+[target.'cfg(target_os = "linux")'.dependencies]
+wgpu = { version = "=30.0.1", default-features = false, features = ["vulkan"] }
+ash = "0.38"
+
+# The Linux test maps the dma-buf to read what Flutter is handed.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc = "0.2"
+
+# build.rs checks the pinned dxcompiler.dll against its SHA-256.
+[build-dependencies]
+sha2 = "0.10"
+
+# The tests read the ledger, test/fixtures/fingerprints.json.
+[dev-dependencies]
+serde_json = "1"
+
+# THE APP'S NATIVE C MOVES HERE, A MODULE TO A CRATE (native-to-rust, 유저
+# 2026-11-06 via 관제: no C left — what we wrote, third_party, .m, .cpp).
+# A lane moves one module whole, the C it calls with it, and touches only
+# its own folder under native/: these globs take a new crate in without a
+# line here, and `cargo test` in this folder runs every crate. Until the
+# connection round each module's Rust is held to the C byte for byte
+# (native/oracle); that round links the modules into this library and
+# deletes the C.
+# ⚠️ONE LIBRARY, AND IT MUST NAME WHAT IT CARRIES. A crate this one depends
+# on but never names is not linked, and its extern "C" functions are not
+# exported — measured 2026-11-06 on a scratch workspace: the dependency
+# alone exported nothing, `extern crate` or `pub use` exported them.
+# ⚠️THE LOCK IS SHARED: two lanes that add crates both touch Cargo.lock.
+# On a rebase conflict there, take the trunk's lock and let Cargo add the
+# lane's crates back (`cargo build --offline`) — never resolve it by hand.
+[workspace]
+members = ["native/*"]
+default-members = [".", "native/*"]

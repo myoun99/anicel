@@ -39,7 +39,8 @@ Project createDefaultProject({DateTime? createdAt}) {
 /// ⛔[createDefaultProject] stays bare: it is the project the tests build on.
 ///
 /// 🗣️new-project-default-fps-23976 (유저 2026-10-06): 「프로젝트 기본 fps
-/// 23.976으로하자」. So a new project runs at 24000/1001 and still counts 24:
+/// 23.976으로하자」 — the rate the picker marks ([ProjectFrameRate.recommended],
+/// F-567). So a new project runs at 24000/1001 and still counts 24:
 /// the sheet, the grid and the 6f lines are 24's, and only real time — the
 /// sound, the export's length — runs 1000/1001 slower. ⛔It is set HERE, not
 /// as the [Project] constructor's default: a file that is read keeps the
@@ -50,7 +51,7 @@ Project newUntitledProject() {
   return createDefaultProject(createdAt: now).copyWith(
     id: ProjectId('project-${now.microsecondsSinceEpoch}-${_minted++}'),
     pasteboardArgb: AppWorkspaceColors.settings.value.pasteboardArgb,
-    frameRate: const ProjectFrameRate.ntsc(24),
+    frameRate: ProjectFrameRate.recommended,
     tracks: [_newTrack(createDefaultTrack(), defaultLayerIdForSequence(1))],
   );
 }

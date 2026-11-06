@@ -33,13 +33,21 @@ Future<void> showLayerLinkWindow(
       targets: layerVerbs.linkPartnersOf(layerId),
       action: layerVerbs.activeCutIsLinkedCut
           ? null
-          : () => layerVerbs.unlinkLayers(rows),
+          : (
+              step: () => layerVerbs.unlinkLayers(rows),
+              landsOn: () => layerVerbs.drawingsOfRows(rows),
+            ),
       actionOffReason: AppText.strings.linkWindowUnlinkLinkedCut,
     ),
     LinkKind.sync => LinkWindow(
       kind: kind,
       targets: layerVerbs.syncPartnersOf(layerId),
-      action: cutId == null ? null : () => session.cutVerbs.unsyncCut(cutId),
+      action: cutId == null
+          ? null
+          : (
+              step: () => session.cutVerbs.unsyncCut(cutId),
+              landsOn: () => session.cutVerbs.drawingsOfCuts([cutId]),
+            ),
     ),
   });
 }

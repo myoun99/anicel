@@ -27,17 +27,9 @@ void main() {
     await dismissFlyout(tester);
   }
 
-  testWidgets('the relocated LAYER commands reach the Layer flyout', (
-    tester,
-  ) async {
-    await pumpHome(tester);
-
-    // R5 #14: the two folder-making commands left. A folder is ADDED empty
-    // from the Add Layer menu now and filled by dropping rows on it, and
-    // an attach folder is made the same way — so neither has a Layer-menu
-    // entry to relocate any more.
-    await expectInFlyout(tester, 'timeline-rasterize-layer-button');
-  });
+  // ↩️The relocated LAYER commands had their test here. R5 #14 took the two
+  // folder-making commands out of the Layer menu, and I-120-Q11 (「하나만
+  // 남기도록」) took RASTERIZE, the last of them, to the rail's header.
 
   testWidgets('the relocated CUT commands reach the Cut flyouts', (
     tester,

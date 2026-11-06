@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../../core/argb_channels.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/pixel_verb_settings.dart';
 import '../brush_frame_editing_coordinator.dart';
@@ -212,6 +213,40 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     // the second reading equals the first — but only because it IS a
     // reading, and a stale recipe would quietly outlive a canvas resize.
     _applied.clear();
+    for (final (:target, :surface, :restore) in _forwardPasses()) {
+      _applied.add((target: target, restore: restore));
+      coordinator.restoreSurfaceSnapshot(
+        target.key,
+        surface,
+        cacheInvalidationSink: cacheInvalidationSink,
+      );
+    }
+  }
+
+  /// What [execute] would leave each target's cel as, written nowhere — by
+  /// the row each target names, a cel two rows reach shown on both as the
+  /// first one's pass lands it once. A cel the pass would not touch is left
+  /// out.
+  ///
+  /// 🗣️I-164 (유저 2026-11-05): the colour edit list's preview — 「누르면
+  /// 프리뷰로 보임」. ★THE PRESS'S OWN PASS, so what shows is what lands.
+  Map<BrushFrameKey, BitmapSurface> preview() {
+    final byCel = {
+      for (final (:target, :surface, restore: _) in _forwardPasses())
+        coordinator.frameStore.canonicalKeyOf(target.key): surface,
+    };
+    return {
+      for (final target in targets)
+        target.key: ?byCel[coordinator.frameStore.canonicalKeyOf(target.key)],
+    };
+  }
+
+  /// The forward pass over each cel [targets] reach, as it stands — taken
+  /// as it is walked, so [execute] lands each before the next is read.
+  Iterable<
+    ({CelPixelTarget target, BitmapSurface surface, CelPixelRestore restore})
+  >
+  _forwardPasses() sync* {
     final done = <BrushFrameKey>{};
     for (final target in targets) {
       final cel = coordinator.frameStore.canonicalKeyOf(target.key);
@@ -241,12 +276,7 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
         // missed this row's drawing entirely. 없는 곳엔 아무 동작 안 함.
         continue;
       }
-      _applied.add((target: target, restore: restore));
-      coordinator.restoreSurfaceSnapshot(
-        target.key,
-        result.surface,
-        cacheInvalidationSink: cacheInvalidationSink,
-      );
+      yield (target: target, surface: result.surface, restore: restore);
     }
   }
 

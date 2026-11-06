@@ -76,7 +76,7 @@ void main() {
         home: Scaffold(
           body: Center(
             child: AudioLevelMeter(
-              controller: controller,
+              frames: controller.globalFrameIndexListenable,
               resolvePeaks: () => (left: left, right: right),
             ),
           ),

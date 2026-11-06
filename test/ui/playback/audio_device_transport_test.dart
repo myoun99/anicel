@@ -1,3 +1,9 @@
+// The lap and play-once pins read the running device on time, and a crowd
+// starves the reader: each file carrying the tag runs alone
+// (tool/affected_tests.dart, transport-real-time-pins-fail-under-load).
+@Tags(['realtime'])
+library;
+
 import 'dart:developer' show Timeline;
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -617,7 +623,9 @@ void main() {
     );
     final before = device.positionSamples;
 
-    // The live edit: the row's volume jumps to 200% (0.05 -> 0.1 on the bus).
+    // The live edit: the row's volume jumps to 200% (0.05 -> 0.1 at the
+    // source; a mono source lies at -3 dB a side, so 0.035 -> 0.071 on the
+    // bus).
     final track = project.tracks.first;
     project = project.copyWith(
       tracks: [
@@ -641,7 +649,7 @@ void main() {
 
     expect(device.isPlaying, isTrue, reason: 'the swap must not stop audio');
     expect(
-      await waitOnTheDevice(device, () => device.peakFor(0) > 0.08),
+      await waitOnTheDevice(device, () => device.peakFor(0) > 0.06),
       isTrue,
       reason: 'the volume change must be heard mid-run',
     );

@@ -12,8 +12,9 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/editing/cut_duplicate_helpers.dart'
+    show mirrorCopiesFor;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/independent_clip_mint.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// 🚨F-275 (유저 2026-10-04): 「기준레이어 링크된상태에서 독립시킬때, 어태치

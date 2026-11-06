@@ -12,6 +12,7 @@ import '../../services/clipboard/layer_copy_payload.dart';
 import '../../services/commands/cut_command_coordinator.dart' show PastedLayer;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/wait_window.dart' show drawingsOf;
 import 'independent_clip_mint.dart';
 import 'layer_stack.dart';
 import 'layer_verbs.dart';
@@ -165,6 +166,17 @@ class LayerClipboard implements BringsMedia {
   /// of the shared pill's cut, which the copy's rung claims
   /// (`toolbar_panel_context`).
   bool get canCutSelectedRows => _rowsToCut.isNotEmpty;
+
+  /// The drawings a copy of the selection takes — or with [lifted], a
+  /// 잘라내기 — the wait window's measure (`reachesManyBlocks`).
+  Iterable<Object> drawingsTaken({required bool lifted}) =>
+      drawingsOf(lifted ? _rowsToCut : _rowsToCopy);
+
+  /// The drawings a paste of the rows in hand puts down, linked or not.
+  Iterable<Object> get drawingsHeld => drawingsOf([
+    for (final row in _board._copy?.rows ?? const <_CopiedLayer>[])
+      row.source,
+  ]);
 
   /// Lifts [_rowsToCut] as ONE step and puts in hand the rows that went.
   ///

@@ -1,0 +1,37 @@
+[package]
+name = "audio"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[dependencies]
+media = { path = "../media" }
+# The one resampler a sound is conformed with: a piece at another rate is
+# put in the stream's with it (native-to-rust-Q11).
+audio_mix = { path = "../audio_mix" }
+
+# The bundled decoders (native-to-rust-Q4, the user: 「오디오는 symphonia
+# 하나로」). ⛔Its defaults stay off: `opt-simd` sums the FFT in another
+# order on each instruction set, and a sound decodes alike on every device
+# (관제 audio-same-across-devices ③). The formats are the ones the C's
+# bundled decoders read — dr_wav · dr_flac · dr_mp3 · stb_vorbis — and the
+# AAC-LC and ALAC of a movie the C left to the OS (native-to-rust-Q6).
+symphonia = { version = "0.6.1", default-features = false, features = [
+  "aac",
+  "adpcm",
+  "aiff",
+  "alac",
+  "flac",
+  "isomp4",
+  "mp1",
+  "mp2",
+  "mp3",
+  "ogg",
+  "pcm",
+  "vorbis",
+  "wav",
+] }
+
+# The C answer key: the engine's qa_audio_* (native/oracle).
+[dev-dependencies]
+oracle = { path = "../oracle" }

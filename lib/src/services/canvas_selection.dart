@@ -119,31 +119,6 @@ List<CanvasPoint> cornersOfStampRect(StampRect rect) {
   ];
 }
 
-/// The rect that holds every one of [rects] — what a transform box stands
-/// on when a session floats several pictures (I-37: a folder's rows, one
-/// float each). One rect comes back as it is. Null when there are none.
-StampRect? stampRectHolding(Iterable<StampRect> rects) {
-  StampRect? held;
-  for (final rect in rects) {
-    if (held == null) {
-      held = rect;
-      continue;
-    }
-    final left = math.min(held.left, rect.left);
-    final top = math.min(held.top, rect.top);
-    final right = math.max(
-      held.left + held.width,
-      rect.left + rect.width,
-    );
-    final bottom = math.max(
-      held.top + held.height,
-      rect.top + rect.height,
-    );
-    held = (left: left, top: top, width: right - left, height: bottom - top);
-  }
-  return held;
-}
-
 /// Which part of [out] a preview actually has to compute, in
 /// output-pixel coordinates relative to `out.left`/`out.top` — or null
 /// when the answer is "all of it".

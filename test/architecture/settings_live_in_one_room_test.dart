@@ -106,6 +106,7 @@ const _builtOnlyOutsideTests = <String, String>{
   'color_palette.json': 'HomePage, _unlessTesting',
   'frame_count_settings.json': 'HomePage, _unlessTesting',
   'frame_grid_settings.json': 'HomePage, _unlessTesting',
+  'gpu_settings.json': 'HomePage, _unlessTesting',
   'input_settings.json': 'HomePage, _unlessTesting',
   'language_settings.json': 'HomePage, _unlessTesting',
   'launch_notice.json': 'HomePage, _unlessTesting',

@@ -5278,6 +5278,13 @@ static double qa_audio_clip_volume(const qa_audio_clip* clip,
   return volume;
 }
 
+// A mono sound laid on two speakers: each side at -3 dB (1/sqrt 2), before
+// its pan moves it. native-to-rust-Q12 (user 2026-11-06): Pro Tools' default
+// pan depth, a mono sound at one level wherever it comes from; a stereo
+// source keeps unity. Rust's audio_mix::MONO_ON_STEREO and Dart's
+// audioMonoOnStereo are its twins, and the reasons are written there.
+#define QA_AUDIO_MONO_ON_STEREO 0.70710678118654752440
+
 // Which source channel feeds output channel [out_channel]: a mono source
 // feeds every output channel (a mono SE is heard from both speakers, and
 // duplicating it in memory to say so would waste half the RAM animation
@@ -5331,6 +5338,10 @@ QA_EXPORT void qa_audio_mix(
       continue;
     }
 
+    const double spread =
+        source->channels == 1 ? QA_AUDIO_MONO_ON_STEREO : 1.0;
+    const double left = clip->pan_left * spread;
+    const double right = clip->pan_right * spread;
     int64_t from = clip->start_sample > start_sample ? clip->start_sample
                                                      : start_sample;
     int64_t to = clip->end_sample < block_end ? clip->end_sample : block_end;
@@ -5353,9 +5364,7 @@ QA_EXPORT void qa_audio_mix(
         // output side); any other geometry passes through untouched.
         // Multiplication order mirrors the Dart reference exactly.
         const double factor =
-            out_channels == 2
-                ? (channel == 0 ? clip->pan_left : clip->pan_right)
-                : 1.0;
+            out_channels == 2 ? (channel == 0 ? left : right) : 1.0;
         destination[channel] +=
             (double)frame[source_channel] * volume * factor;
       }

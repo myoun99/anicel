@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +11,7 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/audio_viewer_document.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/media/sound_face.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// 🚨★★★**A SOUND HAS A PICTURE AND IT IS ITS WAVEFORM.**
@@ -38,11 +38,9 @@ void main() {
     test('its page is as wide as the sound is long', () {
       final short = AudioViewerDocument(
         peaks: peaksOfSeconds(2),
-        color: const Color(0xFF808080),
       );
       final long = AudioViewerDocument(
         peaks: peaksOfSeconds(4),
-        color: const Color(0xFF808080),
       );
 
       expect(short.pageCount, 1);
@@ -60,7 +58,6 @@ void main() {
       expect(
         AudioViewerDocument(
           peaks: peaksOfSeconds(2),
-          color: const Color(0xFF808080),
         ).drawnAtAnySize,
         isTrue,
       );
@@ -70,16 +67,21 @@ void main() {
       expect(
         AudioViewerDocument(
           peaks: peaksOfSeconds(2),
-          color: const Color(0xFF808080),
         ).framesPerSecond,
         isNull,
       );
     });
 
+    test('its page stands a pixel tall, so a Fit takes its LENGTH — the '
+        'whole file across the face\'s lower row', () {
+      final short = AudioViewerDocument(peaks: peaksOfSeconds(0.5));
+
+      expect(short.pageSize(0), const Size(50, 1));
+    });
+
     test('an empty conform is still a page the panel can lay out', () {
       final empty = AudioViewerDocument(
         peaks: AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(0)),
-        color: const Color(0xFF808080),
       );
 
       expect(empty.pageSize(0).width, greaterThan(0));
@@ -93,7 +95,6 @@ void main() {
         'the band', () async {
       final document = AudioViewerDocument(
         peaks: peaksOfSeconds(2),
-        color: const Color(0xFFFFFFFF),
       );
 
       final image = await document.renderPage(0, width: 240, height: 64);
@@ -155,19 +156,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    ui.Image? drawnPage(WidgetTester tester) {
-      final paint = tester.widget<CustomPaint>(
-        find.byKey(const ValueKey<String>('media-viewer-page')),
-      );
-      // One page — a sound's waveform, a movie's frame: the painter's
-    // pages are the ones on screen, and these documents show one.
-    final pages =
-        (paint.painter as dynamic).pages
-            as List<({Rect rect, ui.Image? image})>;
-    return pages.single.image;
-    }
-
-    testWidgets('a readable sound draws its waveform, and says nothing', (
+    testWidgets('a readable sound stands as its face, and says nothing', (
       tester,
     ) async {
       await pumpViewer(
@@ -182,7 +171,15 @@ void main() {
         ),
       );
 
-      expect(drawnPage(tester), isNotNull);
+      expect(
+        find.byKey(const ValueKey<String>('media-viewer-face')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('media-viewer-page')),
+        findsNothing,
+        reason: '🪦F-71: the sound was a page, rasterised onto paper',
+      );
       expect(
         find.byKey(const ValueKey<String>('media-viewer-message')),
         findsNothing,
@@ -195,7 +192,9 @@ void main() {
     /// 비슷한느낌으로」. The button used to ask only whether the document
     /// advances by itself, which a sound never does.
     testWidgets('a sound gets the play button, and a playhead standing at '
-        'the start', (tester) async {
+        'the start — the face\'s, whose line stands while it does', (
+      tester,
+    ) async {
       await pumpViewer(
         tester,
         result: ConformResult(
@@ -213,8 +212,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('media-viewer-playhead')),
-        findsOneWidget,
+        tester
+            .widget<SoundFace>(find.byType(SoundFace))
+            .currentFrame,
+        0,
         reason: '⛔not only while it plays — a line that appears on the '
             'first press is UI popping into existence, and where the head '
             'STANDS is what says where a second press resumes from',

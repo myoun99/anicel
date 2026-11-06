@@ -65,7 +65,7 @@ void main() {
         ]);
 
     test('🚨reads back with its photos — ids, references and order', () {
-      final read = AnicelCelBlob.ofSurface(key, picture).decode().toSurface();
+      final read = AnicelCelBlob.ofSurface(key, picture).toSurface();
 
       expect(read, picture);
       expect(read.photos.map((photo) => photo.id), [5, 2]);

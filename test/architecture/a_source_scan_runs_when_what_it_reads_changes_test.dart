@@ -324,6 +324,19 @@ void main() {
         reason: 'the engine\'s tests, not the suite');
   });
 
+  test('🚨the GPU engine crate is not the engine\'s C — no suite loads it, '
+      'and one that reads it by path runs when it changes', () {
+    // 저장 · 관제 2026-11-05 (gpu-engine-skeleton): while every path under
+    // `packages/` counted as the engine, a lane that changed only the
+    // crate's Rust, WGSL and ledger ran 218 files with 165 parity tests.
+    const crate = 'packages/gpu_engine/rust/src/kernels/fill/fill.wgsl';
+    expect(changesTheEngine(crate), isFalse);
+    expect(forcesFullRun(crate), isFalse, reason: 'the wide run');
+    expect(forcesFullRun(crate, near: true), isFalse, reason: 'the near run');
+    const registrants = 'packages/gpu_engine/example/windows/flutter';
+    expect(pathsReadAsText("'$registrants'"), {registrants});
+  });
+
   test('🚨a tool a test runs through is walked into — what that tool '
       'imports selects it too', () {
     // Until 2026-10-19 the walk stopped at the tool a test named: a change

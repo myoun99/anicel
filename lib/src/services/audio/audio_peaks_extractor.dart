@@ -12,10 +12,44 @@ import '../../models/project_frame_rate.dart';
 /// buckets, each the maximum absolute amplitude (0..1) of its slice — what
 /// the waveform strips paint and where clip durations come from.
 class AudioPeaks {
-  const AudioPeaks({required this.bucketsPerSecond, required this.peaks});
+  /// One lane: a mono sound, or one already folded to one.
+  AudioPeaks({required this.bucketsPerSecond, required this.peaks})
+    : lanes = List.unmodifiable([peaks]);
+
+  /// A lane per channel, in the file's order — [peaks] is their loudest.
+  AudioPeaks.ofChannels({
+    required this.bucketsPerSecond,
+    required List<Float32List> lanes,
+  }) : lanes = List.unmodifiable(lanes),
+       peaks = _loudestOf(lanes);
 
   final int bucketsPerSecond;
+
+  /// The loudest channel at each bucket — what the length is read from.
   final Float32List peaks;
+
+  /// Each channel's own envelope, which the waveform draws a lane of
+  /// (`WaveformPainter`): 🗣️F-71-Q4 (유저 2026-11-05) 「L · R 두 줄」.
+  final List<Float32List> lanes;
+
+  static Float32List _loudestOf(List<Float32List> lanes) {
+    if (lanes.length == 1) {
+      return lanes.single;
+    }
+    var length = 0;
+    for (final lane in lanes) {
+      length = lane.length > length ? lane.length : length;
+    }
+    final loudest = Float32List(length);
+    for (final lane in lanes) {
+      for (var bucket = 0; bucket < lane.length; bucket += 1) {
+        if (lane[bucket] > loudest[bucket]) {
+          loudest[bucket] = lane[bucket];
+        }
+      }
+    }
+    return loudest;
+  }
 
   double get durationSeconds =>
       bucketsPerSecond <= 0 ? 0 : peaks.length / bucketsPerSecond;
@@ -37,30 +71,6 @@ class AudioPeaks {
     );
     return frames < 1 ? 1 : frames;
   }
-}
-
-/// The LOUDEST channel of the frame starting at [base] in an interleaved
-/// [samples] buffer of [channels], as a magnitude.
-///
-/// The one answer both envelopes take when no fold is chosen — the file
-/// fold below, and the live meter's `device` mode. Never a downmix:
-/// downmixing SUMS the channels, so a stereo pair in opposite phase
-/// cancels to silence and the waveform shows nothing while the sound plays
-/// perfectly well.
-///
-/// ⚠️Per FRAME, and inlined: the clamp and gain around the callers stay
-/// written out because THOSE run per sample.
-@pragma('vm:prefer-inline')
-double loudestChannelMagnitude(Float32List samples, int base, int channels) {
-  var loudest = 0.0;
-  for (var channel = 0; channel < channels; channel += 1) {
-    final value = samples[base + channel];
-    final magnitude = value < 0 ? -value : value;
-    if (magnitude > loudest) {
-      loudest = magnitude;
-    }
-  }
-  return loudest;
 }
 
 /// The bucket state machine behind every `|peak|` envelope: a running
@@ -121,8 +131,8 @@ final class AudioPeakBucketFold {
   Float32List toFloat32List() => Float32List.fromList(peaks);
 }
 
-/// Folds decoded PCM into the same `|peak|` envelope the waveform paints,
-/// taking the LOUDEST channel at each point rather than mixing them down.
+/// Folds decoded PCM into the `|peak|` envelopes the waveform paints: a
+/// lane per channel, never mixed down.
 ///
 /// The ffmpeg path this replaces asked for `-ac 1`, a mono downmix, and
 /// measured that. Downmixing SUMS the channels — so a stereo pair in
@@ -132,10 +142,11 @@ final class AudioPeakBucketFold {
 /// Tools, Logic and Premiere all draw per-channel lanes, precisely so a
 /// waveform can never hide audible sound.
 ///
-/// Per-channel lanes need track height this app does not have (SE rows are
-/// a fixed 28px, and there is no vertical zoom), so the channel MAXIMUM is
-/// the honest single-lane answer: it can never cancel, and what you see is
-/// the loudest thing you will hear.
+/// 🗣️F-71-Q4 (유저 2026-11-05) 「L · R 두 줄」, 「제일 큰 기준은
+/// 프리미어프로나 다빈치」 — so the lanes are drawn, each in its own share
+/// of the block. ↩️Per-channel lanes were judged to need track height this
+/// app does not have (SE rows are a fixed 28px), and one lane drew the
+/// channel MAXIMUM, which is still [AudioPeaks.peaks].
 AudioPeaks peaksFromSamples({
   required Float32List samples,
   required int channels,
@@ -174,48 +185,55 @@ final class AudioPeaksOfWindows {
     required this.channels,
     required int sampleRate,
     required this.bucketsPerSecond,
-  }) : _fold =
+  }) : _folds =
            channels <= 0 ||
                sampleRate <= 0 ||
                bucketsPerSecond <= 0 ||
                sampleRate ~/ bucketsPerSecond <= 0
            ? null
-           : AudioPeakBucketFold(
-               samplesPerBucket: sampleRate ~/ bucketsPerSecond,
-             );
+           : [
+               for (var channel = 0; channel < channels; channel += 1)
+                 AudioPeakBucketFold(
+                   samplesPerBucket: sampleRate ~/ bucketsPerSecond,
+                 ),
+             ];
 
   final int channels;
   final int bucketsPerSecond;
 
-  /// Null where the geometry measures nothing.
-  final AudioPeakBucketFold? _fold;
+  /// A fold per channel; null where the geometry measures nothing.
+  final List<AudioPeakBucketFold>? _folds;
 
   /// Folds [samples] — whole interleaved frames, after the ones before.
   void add(Float32List samples) {
-    final fold = _fold;
-    if (fold == null) {
+    final folds = _folds;
+    if (folds == null) {
       return;
     }
     final frameCount = samples.length ~/ channels;
     for (var frame = 0; frame < frameCount; frame += 1) {
-      fold.add(loudestChannelMagnitude(samples, frame * channels, channels));
+      final base = frame * channels;
+      for (var channel = 0; channel < channels; channel += 1) {
+        folds[channel].add(samples[base + channel].abs());
+      }
     }
   }
 
-  /// The envelope, once the last window is in.
+  /// The envelopes, once the last window is in.
   AudioPeaks finish() {
-    final fold = _fold;
-    if (fold == null) {
+    final folds = _folds;
+    if (folds == null) {
       return AudioPeaks(
         bucketsPerSecond: bucketsPerSecond < 1 ? 1 : bucketsPerSecond,
         peaks: Float32List(0),
       );
     }
-    // A file has an end: the last partial bucket lands.
-    fold.flush();
-    return AudioPeaks(
+    return AudioPeaks.ofChannels(
       bucketsPerSecond: bucketsPerSecond,
-      peaks: fold.toFloat32List(),
+      lanes: [
+        // A file has an end: the last partial bucket lands.
+        for (final fold in folds) (fold..flush()).toFloat32List(),
+      ],
     );
   }
 }

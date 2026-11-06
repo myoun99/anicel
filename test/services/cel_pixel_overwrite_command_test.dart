@@ -361,4 +361,44 @@ void main() {
       expect(pixelAt(target, cel, 1, 1)[3], 255);
     });
   });
+
+  // 🗣️I-164 (유저 2026-11-05): the colour edit list's preview — 「누르면
+  // 프리뷰로 보임」.
+  test('the preview is the press\'s own pass: the bytes execute lands, on '
+      'every cel it would touch, written on none', () {
+    final target = coordinator();
+    final under = key('frame-a');
+    final empty = key('frame-b');
+    final over = key('frame-c');
+    seed(target, under, [10, 20, 30, 100]);
+    seed(target, over, [10, 20, 30, 200]);
+    final command = CelPixelOverwriteCommand.forVerb(
+      coordinator: target,
+      targets: [
+        for (final cel in [under, empty, over]) CelPixelTarget(key: cel),
+      ],
+      verb: CelPixelVerb.binarize,
+      argb: 0xFF000000,
+      settings: const PixelVerbSettings(binarizeThreshold: 128),
+    );
+
+    final shown = command.preview();
+
+    expect(
+      shown.keys,
+      {under, over},
+      reason: 'a cel the pass would not touch is not shown as touched',
+    );
+    expect(pixelAt(target, under, 1, 1), [10, 20, 30, 100], reason: 'no write');
+    List<int> shownAt(BrushFrameKey cel) {
+      final tile = shown[cel]!.tileAt(TileCoord(x: 0, y: 0))!;
+      return tile.readPixels((_, view) => List<int>.from(view.sublist(20, 24)));
+    }
+
+    command.execute();
+    for (final cel in [under, over]) {
+      expect(shownAt(cel), pixelAt(target, cel, 1, 1), reason: '$cel');
+    }
+    expect(shownAt(under)[3], 0, reason: '⛔premise: under the cut, emptied');
+  });
 }

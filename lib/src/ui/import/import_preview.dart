@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
@@ -13,20 +12,19 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
 import '../brush/brush_canvas_panel.dart' show CanvasTransportBand;
+import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/viewport_pages_painter.dart' show ViewportPageGround;
 import '../editor_session_manager.dart';
-import '../effective_device_pixel_ratio.dart';
 import '../media/audio_viewer_document.dart';
 import '../media/document_preview_panel.dart';
 import '../media/media_run.dart';
 import '../media/open_viewer_document.dart';
 import '../media/page_rasters.dart';
 import '../media/picture_run_document.dart';
+import '../media/sound_face.dart';
 import '../media/viewer_page_loading.dart';
 import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_sound.dart';
-import '../media/waveform_marks_painter.dart';
-import '../theme/app_theme.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/transport_bar.dart';
 
@@ -371,9 +369,10 @@ class _ImportPreviewState extends State<ImportPreview>
       documentName: path == null
           ? null
           : widget.session.repository.requireProject().shownNameOfMedia(path),
-      marks: sound
-          ? (viewport, page) => _soundMarks(viewport, page, frameCount)
-          : null,
+      face: switch (_sound) {
+        final peaks? => (viewport) => _soundFace(viewport, peaks, frameCount),
+        null => null,
+      },
     );
   }
 
@@ -398,30 +397,27 @@ class _ImportPreviewState extends State<ImportPreview>
           );
   }
 
-  /// A sound's marks over its band — the viewer's ([WaveformMarksPainter]):
-  /// where the playhead stands, and the span IN/OUT keep, washed as the
-  /// transport's range is. The layer is always there and clear while IN/OUT
-  /// do not bite, so nothing pops in when they start to.
-  Widget _soundMarks(CanvasViewport viewport, ui.Size page, int frameCount) {
+  /// A sound's face — the viewer's ([SoundFace]), counting what the
+  /// transport under it counts ([_transport]), with the span IN/OUT keep
+  /// washed as the transport's range is. Nothing is washed while IN/OUT do
+  /// not bite, and the face stands either way, so nothing pops in when they
+  /// start to.
+  Widget _soundFace(CanvasViewport viewport, AudioPeaks peaks, int frameCount) {
     final kept = _kept(frameCount);
     final rate = widget.frameRate;
-    return CustomPaint(
-      key: const ValueKey<String>('import-preview-marks'),
-      painter: WaveformMarksPainter(
-        atSeconds: _run.soundSeconds,
-        ofSeconds: _run.soundLengthSeconds ?? 0,
-        docSize: page,
-        viewport: viewport,
-        effectiveRatio: EffectiveDevicePixelRatio.of(context),
-        color: AppColors.accent,
-        kept: _rangeShown(frameCount)
-            ? (
-                from: rate.frameStartSeconds(kept.first),
-                to: rate.frameStartSeconds(kept.last + 1),
-              )
-            : null,
-      ),
-      child: const SizedBox.expand(),
+    return SoundFace(
+      keyValue: 'import-preview-face',
+      peaks: peaks,
+      frameRate: rate,
+      frameCount: frameCount,
+      framesPerSecond: _run.countingBase(rate),
+      rulerView: widget.session.panelViews.rulerView,
+      currentFrame: _run.frameAt(rate).clamp(0, frameCount - 1),
+      zoom: CanvasZoomScale.of(context).display(viewport.zoom),
+      onSeek: (frame) => _run.seekToFrame(frame, rate),
+      kept: _rangeShown(frameCount)
+          ? (first: kept.first, last: kept.last)
+          : null,
     );
   }
 
@@ -440,6 +436,8 @@ class _ImportPreviewState extends State<ImportPreview>
     final kept = _kept(frameCount);
     return TransportBar(
       frameCount: frameCount,
+      framesPerSecond: _run.countingBase(widget.frameRate),
+      rulerView: widget.session.panelViews.rulerView,
       currentFrame: _run.frameAt(widget.frameRate).clamp(0, frameCount - 1),
       playing: _run.playing,
       onSeek: (frame) => _run.seekToFrame(frame, widget.frameRate),

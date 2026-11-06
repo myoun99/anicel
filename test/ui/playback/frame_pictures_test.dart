@@ -10,6 +10,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -158,6 +159,125 @@ void main() {
         reason: 'a screen that does not paint the paper shows another '
             'picture',
       );
+    });
+  });
+
+  testWidgets('🚨a panel\'s picture is the frame\'s one picture: the one the '
+      'warmer made where it stacks the same, else made once (F-533-Q8)', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      expect(await pictures.make(at(0), shouldAbort: () => false), isTrue);
+      final warmed = pictures.store.peek(pictures.keyOf(at(0)));
+      expect(warmed, isNotNull, reason: 'LIVENESS: the warmer\'s picture');
+
+      expect(
+        await pictures.pictureOf(
+          pictures.stackOf(at(1)),
+          at(1),
+          shouldAbort: () => false,
+        ),
+        same(warmed),
+        reason: 'frame 1 stacks as frame 0 does: nothing made for it',
+      );
+      final bytes = pictures.store.estimatedBytes;
+      final made = await pictures.pictureOf(
+        pictures.stackOf(at(2)),
+        at(2),
+        shouldAbort: () => false,
+      );
+      expect(made, isNotNull);
+      expect(made, same(pictures.store.peek(pictures.keyOf(at(2)))));
+      expect(pictures.store.estimatedBytes, greaterThan(bytes));
+      expect(
+        await pictures.pictureOf(
+          pictures.stackOf(at(3)),
+          at(3),
+          shouldAbort: () => false,
+        ),
+        same(made),
+        reason: 'made once, for every panel of the frame',
+      );
+    });
+  });
+
+  testWidgets('a panel\'s picture is none where a canvas holds the frame as '
+      'its own, and none is made under the frame\'s key beside it (F-473 · '
+      'F-533-Q8)', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      final nodes = pictures.stackOf(at(0));
+      await pictures.readIn(at(0));
+      final key = pictures.keyOf(at(0));
+      final canvas = Object();
+      expect(
+        await pictures.store.lay(
+          key.standingOn(canvas),
+          pictures.drawingNow(nodes, at(0)).frame.drawing,
+        ),
+        isNotNull,
+        reason: 'LIVENESS: lent to the canvas',
+      );
+
+      expect(
+        await pictures.pictureOf(nodes, at(0), shouldAbort: () => false),
+        isNull,
+      );
+      expect(pictures.store.holds(key), isFalse);
+    });
+  });
+
+  // 🗣️F-569: what an edit left is found wherever the cel stands in the
+  // tree — S5_BA's rows are in folders, nested.
+  testWidgets('a picture made of a revision an edit left is let go of, its '
+      'cel in a folder in a folder', (tester) async {
+    await tester.runAsync(() async {
+      final cels = storeOf(['a', 'b']);
+      final images = LayerFrameImageCache(frameStore: cels);
+      addTearDown(images.dispose);
+      CompositeNode<CanvasStackRow> folder(
+        List<CompositeNode<CanvasStackRow>> children,
+      ) => CompositeGroup(
+        children: children,
+        opacity: 1,
+        blendMode: LayerBlendMode.normal,
+      );
+      final store = FramePictureStore<FramePictureKey>();
+      addTearDown(store.dispose);
+      final pictures = FramePictures(
+        store: store,
+        layerImages: images,
+        stackOf: (picture) => [
+          if (picture.frameIndex < 2)
+            folder([
+              folder([row('a')]),
+            ]),
+          row('b'),
+        ],
+        pageOf: (picture) => (
+          canvasSize: picture.cut.canvasSize,
+          pasteboardReach: PasteboardReach.whole,
+          paintPaper: picture.paintPaper,
+          paperBackground: ProjectBackground.defaultBackground,
+        ),
+      );
+      for (final frame in [0, 2]) {
+        final made = await pictures.make(at(frame), shouldAbort: () => false);
+        expect(made, isTrue, reason: 'LIVENESS: frame $frame');
+      }
+      final withA = pictures.keyOf(at(0));
+      final withoutA = pictures.keyOf(at(2));
+
+      cels.markCelEdited(keyOf('a'));
+      pictures.letGoOfLeftRevisions();
+
+      expect(store.holds(withA), isFalse);
+      expect(store.holds(withoutA), isTrue);
     });
   });
 

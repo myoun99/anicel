@@ -31,6 +31,12 @@ import '../../helpers/wait_window.dart';
 /// picker then places it — and cancelling there DELETES the file the window
 /// just called saved.
 ///
+/// 🗣️↩️Neither 「Ready」 nor 「Saved」 is said any more (유저 11-05,
+/// bundle-red-paste-behind-the-wait-window-Q1 · Q2: no wait window says its
+/// work is over). What F-57 leaves standing is the running line: the window
+/// before the picker says it is getting ready, never that it saves — and no
+/// window comes after the picker to say anything.
+///
 /// 🚨**WHY THIS TEST DID NOT EXIST WHEN THE FIX SHIPPED.** The only seam
 /// into [promptSaveProjectAs] was `savePicker`, and it was worse than
 /// useless: **nothing supplied it** anywhere in `lib/` or `test/`, and its
@@ -63,13 +69,11 @@ void main() {
   /// this follows the app's language rather than restating English.
   List<String> labels() => [
     AppText.strings.savePrepareRunning,
-    AppText.strings.savePrepareDone,
     AppText.strings.saveProgressRunning,
-    AppText.strings.saveProgressDone,
   ];
 
-  testWidgets('🚨the window before the picker says READY, and SAVED only '
-      'lands after the picker answers', (tester) async {
+  testWidgets('🚨the window before the picker says it is getting READY, '
+      'never that it saves — and no window follows the picker', (tester) async {
     final pickerOpened = Completer<void>();
     final letPickerAnswer = Completer<FolderGrant>();
     late String stagedPath;
@@ -110,21 +114,36 @@ void main() {
     await tester.tap(find.text('go'));
 
     /// Every progress label that reached the screen while [until] was still
-    /// false. ⚠️A single `pumpAndSettle` cannot answer this: the staging
-    /// window opens, finishes, LINGERS and closes before the picker is
-    /// reached, so by the time the tree is settled there is nothing left to
-    /// look at. What the user reads is a sequence, so the test watches one.
-    Future<Set<String>> seenUntil(bool Function() until) async {
+    /// false — and whether a wait window stood at all. ⚠️A single
+    /// `pumpAndSettle` cannot answer this: the staging window opens and
+    /// closes before the picker is reached, so by the time the tree is
+    /// settled there is nothing left to look at. What the user reads is a
+    /// sequence, so the test watches one.
+    Future<({Set<String> labels, bool windowStood})> seenUntil(
+      bool Function() until, {
+      int framesAfter = 0,
+    }) async {
       final seen = <String>{};
-      for (var frame = 0; frame < 400 && !until(); frame += 1) {
+      var windowStood = false;
+      var after = 0;
+      for (var frame = 0; frame < 400; frame += 1) {
+        if (until()) {
+          if (after == framesAfter) {
+            break;
+          }
+          after += 1;
+        }
         await tester.pump(const Duration(milliseconds: 16));
+        windowStood =
+            windowStood ||
+            find.byType(AppProgressDialog).evaluate().isNotEmpty;
         for (final label in labels()) {
           if (find.text(label).evaluate().isNotEmpty) {
             seen.add(label);
           }
         }
       }
-      return seen;
+      return (labels: seen, windowStood: windowStood);
     }
 
     final beforePicker = await seenUntil(() => pickerOpened.isCompleted);
@@ -139,17 +158,17 @@ void main() {
       reason: 'fixture: what the picker was offered IS the staged archive',
     );
     expect(
-      beforePicker,
-      contains(AppText.strings.savePrepareDone),
-      reason: 'the staging window has to say READY on its way past',
+      beforePicker.labels,
+      contains(AppText.strings.savePrepareRunning),
+      reason: 'the staging window says it is getting READY on its way past',
     );
     expect(
-      beforePicker,
-      isNot(contains(AppText.strings.saveProgressDone)),
+      beforePicker.labels,
+      isNot(contains(AppText.strings.saveProgressRunning)),
       reason:
           '🚨F-57: nothing is saved yet — cancelling the picker still '
-          'deletes this file. Announcing the end of the WRITE as the end of '
-          'the SAVE is the lie the user reported.',
+          'deletes this file. Announcing the WRITE as the SAVE is the lie '
+          'the user reported.',
     );
 
     final placed = '${placedFolder.path}/scene.anicel';
@@ -157,12 +176,8 @@ void main() {
       FolderGrant.granted(path: placed, kind: GrantKind.file),
     );
     final afterPicker = await seenUntil(
-      () => find.text(AppText.strings.saveProgressDone).evaluate().isNotEmpty,
-    );
-    expect(
-      afterPicker,
-      contains(AppText.strings.saveProgressDone),
-      reason: 'and SAVED is what the other half of the order says, after',
+      () => session.projectFile.path == placed,
+      framesAfter: 30,
     );
     expect(
       session.projectFile.path,
@@ -170,12 +185,12 @@ void main() {
       reason:
           'the session adopted what the picker placed, without a second write',
     );
-    // ⚠️The confirmation window LINGERS on purpose, so the run is not over
-    // when its label appears — leaving that timer alive fails the test on
-    // teardown rather than on anything it asserts. ⛔`pumpAndSettle` alone
-    // does not reach it: the linger is a bare timer and schedules no frame,
-    // so nothing is "settling" for it to wait on.
-    await tester.pump(appProgressDoneLinger * 2);
+    expect(
+      afterPicker.windowStood,
+      isFalse,
+      reason: '🗣️no window comes after the picker to say 「Saved」: no wait '
+          'window says its work is over (11-05)',
+    );
     await tester.pumpAndSettle();
   });
 
@@ -233,11 +248,10 @@ void main() {
     letWriteEnd.complete();
     for (var frame = 0; frame < 400; frame += 1) {
       await tester.pump(const Duration(milliseconds: 16));
-      if (find.text(AppText.strings.saveProgressDone).evaluate().isNotEmpty) {
+      if (find.byType(AppProgressDialog).evaluate().isEmpty) {
         break;
       }
     }
-    await tester.pump(appProgressDoneLinger * 2);
     await tester.pumpAndSettle();
   });
 
@@ -267,7 +281,6 @@ void main() {
       tester,
       () => session.projectFile.path == placed,
     );
-    await tester.pump(appProgressDoneLinger * 2);
     await tester.pumpAndSettle();
 
     expect(session.projectFile.path, placed, reason: 'fixture: it saved');
@@ -336,7 +349,6 @@ void main() {
       findsOneWidget,
       reason: 'the placed end of a Save As tells, like every other end',
     );
-    await tester.pump(appProgressDoneLinger * 2);
     await tester.pumpAndSettle();
   });
 }

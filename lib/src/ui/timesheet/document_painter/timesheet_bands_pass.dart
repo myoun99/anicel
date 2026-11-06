@@ -30,53 +30,87 @@ class _TimesheetBandsPass {
   /// boxes. Reference-sheet layout (R7-⑥): the small gray label centers at
   /// the box top, the bold value centers underneath.
   void paintHeaderBand(Canvas canvas, int pageIndex) {
-    final band = _painter.layout.headerBandRect(pageIndex);
-    if (_painter._drawForm) {
-      final boxPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.1
-        ..color = TimesheetDocumentPainter._gridBold;
-      canvas.drawRect(band, boxPaint);
-      for (final box in _painter.layout.headerFieldBoxes(pageIndex)) {
-        canvas.drawRect(box.rect, boxPaint);
+    final boxes = _painter.layout.headerFieldBoxes(pageIndex);
+    if (_painter._drawsOurForm) {
+      _paintOurHeaderForm(canvas, pageIndex, boxes);
+    }
+    for (final box in boxes) {
+      _paintHeaderValue(canvas, box, pageIndex);
+    }
+  }
+
+  /// Our form's header: the band and its boxes ruled, each box's label
+  /// small at its top. The printed labels belong to the FORM; the user's
+  /// values are CONTENT (UI-R10 #9 — the PSD layer split, live).
+  void _paintOurHeaderForm(
+    Canvas canvas,
+    int pageIndex,
+    List<TimesheetHeaderBox> boxes,
+  ) {
+    final boxPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..color = TimesheetDocumentPainter._gridBold;
+    canvas.drawRect(_painter.layout.headerBandRect(pageIndex), boxPaint);
+    for (final box in boxes) {
+      canvas.drawRect(box.rect, boxPaint);
+      _painter._text(
+        canvas,
+        headerFieldLabel(box.field, _painter.words),
+        Offset(box.rect.center.dx, box.rect.top + 5),
+        fontSize: 8,
+        color: TimesheetDocumentPainter._gridMedium,
+        centeredAtX: true,
+      );
+    }
+  }
+
+  /// [box]'s value where the header's values print, and — under the cut's
+  /// name — the cuts it is 겸용 with, where those do: they hang from where
+  /// the name stands, printed or not. On an XDTS sheet the length and the
+  /// sheet count are written the viewer's way ([_XdtsCountsPass]).
+  void _paintHeaderValue(
+    Canvas canvas,
+    TimesheetHeaderBox box,
+    int pageIndex,
+  ) {
+    final field = box.field;
+    final values = _painter._drawsPart(TimesheetContentPart.header);
+    if (_painter._xdts case final xdts? when _XdtsCountsPass.writes(field)) {
+      if (values) {
+        xdts.counts.paint(canvas, field, pageIndex);
+      }
+      return;
+    }
+    final linked =
+        field == TimesheetHeaderField.cut &&
+        _painter._drawsPart(TimesheetContentPart.linkedCuts);
+    if (!values && !linked) {
+      return;
+    }
+    final value = box.value;
+    final line = sheetLine(
+      headerFieldValue(field, pageIndex),
+      TimesheetDocumentPainter.wordsStyle(
+        _painter.face,
+        fontSize: TimesheetDocumentPainter.headerValueSize,
+        bold: true,
+      ),
+    );
+    final place = SheetLinePlace.of(
+      line.size,
+      value,
+      SheetTextForm.centredLine,
+    );
+    if (values) {
+      place.paint(canvas, line);
+      if (field == TimesheetHeaderField.time && _owesNoriShiro) {
+        _paintDrawnLength(canvas, value);
       }
     }
-    for (final box in _painter.layout.headerFieldBoxes(pageIndex)) {
-      // The printed labels belong to the FORM; the user's values are
-      // CONTENT (UI-R10 #9 — the PSD layer split, live).
-      if (_painter._drawForm) {
-        _painter._text(
-          canvas,
-          headerFieldLabel(box.field, _painter.words),
-          Offset(box.rect.center.dx, box.rect.top + 5),
-          fontSize: 8,
-          color: TimesheetDocumentPainter._gridMedium,
-          centeredAtX: true,
-        );
-      }
-      if (_painter._drawContent) {
-        final value = TimesheetDocumentPainter.headerValueRect(box.rect);
-        final line = sheetLine(
-          headerFieldValue(box.field, pageIndex),
-          TimesheetDocumentPainter.wordsStyle(
-            _painter.face,
-            fontSize: TimesheetDocumentPainter.headerValueSize,
-            bold: true,
-          ),
-        );
-        final place = SheetLinePlace.of(
-          line.size,
-          value,
-          SheetTextForm.centredLine,
-        )..paint(canvas, line);
-        line.dispose();
-        if (box.field == TimesheetHeaderField.time && _owesNoriShiro) {
-          _paintDrawnLength(canvas, value);
-        }
-        if (box.field == TimesheetHeaderField.cut) {
-          _paintLinkedCuts(canvas, place.rect, value);
-        }
-      }
+    line.dispose();
+    if (linked) {
+      _paintLinkedCuts(canvas, place.rect, value);
     }
   }
 

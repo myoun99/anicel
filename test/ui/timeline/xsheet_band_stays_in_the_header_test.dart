@@ -31,7 +31,7 @@ void main() {
 
   final layers = [layer('A'), layer('B'), layer('C')];
 
-  Widget sheet({required Set<TimelineRowAddress> selected}) => MaterialApp(
+  Widget sheet({required List<TimelineRowAddress> selected}) => MaterialApp(
     home: Scaffold(
       body: SizedBox(
         width: 1200,
@@ -51,7 +51,7 @@ void main() {
           onLayerMarkSelected: (_, _) {},
           orientation: TimelineOrientation.vertical,
           onOrientationChanged: (_) {},
-          selectedRows: selected,
+          rowSelection: ValueNotifier(selected),
         ),
       ),
     ),
@@ -61,7 +61,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1200, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      sheet(selected: {const LayerRowAddress(LayerId('B'))}),
+      sheet(selected: [const LayerRowAddress(LayerId('B'))]),
     );
     await tester.pumpAndSettle();
 

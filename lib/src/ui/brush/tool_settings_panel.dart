@@ -13,7 +13,6 @@ import '../../services/canvas_flood_fill.dart';
 import '../../services/fill_gradient.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
-import '../../services/resample/resample_kernel.dart';
 import '../../services/transform_box_law.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
@@ -85,6 +84,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.cutPieceSlot,
     this.onCutPasteAtOrigin,
     this.onRegisterCutPieceAsTip,
+    this.onCutWhole,
     this.brushDetailAt,
     this.onResetBrush,
   });
@@ -177,6 +177,11 @@ class ToolSettingsPanel extends StatelessWidget {
   /// Promote the held piece into the brush tip library. Explicit on
   /// purpose: cutting must never grow the library by itself.
   final VoidCallback? onRegisterCutPieceAsTip;
+
+  /// 전체 잘라내기's 「실행」 (I-163) — the host reads the tool's 대상 and
+  /// 「원본 삭제」 at the press. Null = no cut to cut from, and the button
+  /// keeps its place, greyed.
+  final VoidCallback? onCutWhole;
 
   /// R28 #6: where the eyedropper reads from (PS/CSP's 참조원). Null
   /// handler = the picker shows but cannot be changed (hosts that do not
@@ -309,12 +314,15 @@ class ToolSettingsPanel extends StatelessWidget {
       pasteboard: pasteboard,
       language: language,
     ),
-    // The CUT grab: 「원본 삭제」 and the polygon's confirm, whatever shape
-    // it is wearing — and nothing of a selection's (see the class).
-    CanvasTool.cut => _CutGrabSettings(
+    // The CUT grab: what it reads, 「원본 삭제」 and the polygon's confirm,
+    // whatever shape it is wearing — and nothing of a selection's (see the
+    // class). 전체 잘라내기 cuts by the same two, and runs by its 「실행」.
+    CanvasTool.cut || CanvasTool.cutWhole => _CutGrabSettings(
       state: state,
       onChanged: onChanged,
       traces: canvasTraces,
+      readLayerNames: _namesReadBy(state.cutSource),
+      onCutWhole: onCutWhole,
     ),
     CanvasTool.cutStamp => _CutStampSettings(
       slot: cutPieceSlot,
@@ -506,12 +514,16 @@ class _ShapeToolSettings extends StatelessWidget {
   );
 }
 
-/// The CUT grab's knobs: 「원본 삭제」, and the polygon's confirm, which
-/// every drag-out verb needs while a trace is open.
+/// The CUT grab's knobs — and 전체 잘라내기's, which cuts by the same two:
+/// what it reads, 「원본 삭제」, and under them the action the tile needs —
+/// the polygon's confirm while a trace is open, the whole cut's 「실행」.
 ///
 /// 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
 /// 도구설정으로서 원본 삭제 불리언버튼 추가」 — one switch for every outline
 /// the grab drags, and for 전체 잘라내기 ([BrushToolState.cutDeletesSource]).
+/// 🗣️I-163 (유저 2026-11-05): 「대상 표시/레이어」 — the eyedropper's and the
+/// fill's control ([_ReadSourceControl]), and 「전체 잘라내기는 … 옵션을 다
+/// 두고 밑에 「실행」 버튼으로 실행」.
 ///
 /// ↩️「The two GRAB tiles have nothing to set」 stood here until then, and
 /// its reasons still hold for everything else: the grab makes no selection,
@@ -523,18 +535,35 @@ class _CutGrabSettings extends StatelessWidget {
     required this.state,
     required this.onChanged,
     required this.traces,
+    required this.readLayerNames,
+    required this.onCutWhole,
   });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
   final CanvasTraces? traces;
 
+  /// The layers [BrushToolState.cutSource] reads now; null = every visible
+  /// layer.
+  final List<String>? readLayerNames;
+
+  /// 전체 잘라내기's 「실행」. Null = a host with no cut behind it, and the
+  /// button keeps its place, greyed.
+  final VoidCallback? onCutWhole;
+
   @override
   Widget build(BuildContext context) {
-    return ToolSettingsSection(
+    final whole = state.tool == CanvasTool.cutWhole;
+    final section = ToolSettingsSection(
       tool: 'cut-grab',
       scrolls: false,
       children: [
+        _ReadSourceControl(
+          tool: 'cut',
+          source: state.cutSource,
+          onChanged: (source) => onChanged(state.copyWith(cutSource: source)),
+          readLayerNames: readLayerNames,
+        ),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('cut-deletes-source-switch'),
           label: AppText.strings.toolCutDeletesSource,
@@ -543,10 +572,31 @@ class _CutGrabSettings extends StatelessWidget {
               onChanged(state.copyWith(cutDeletesSource: value)),
         ),
         ToolSettingActions(
-          lines: _closePolygonLine(state.activeShapeKind, traces),
+          lines: whole
+              ? [
+                  [
+                    ToolSettingAction(
+                      keyValue: 'cut-whole-run-button',
+                      label: AppText.strings.toolCutRun,
+                      decides: true,
+                      shortcuts: const [EditorActionIds.toolCutWholeRun],
+                      onPressed: onCutWhole,
+                    ),
+                  ],
+                ]
+              : _closePolygonLine(state.activeShapeKind, traces),
         ),
       ],
     );
+    // A key presses 「실행」 as the whole cut's settings (I-40), as the
+    // stamp's are pressed as its own.
+    return whole
+        ? PanelKeysBinding(
+            tool: CanvasTool.cutWhole,
+            buttons: {EditorActionIds.toolCutWholeRun: onCutWhole},
+            child: section,
+          )
+        : section;
   }
 }
 
@@ -1394,16 +1444,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
               SettingsSwitchRow(
                 tileKey: const ValueKey<String>('move-antialias-switch'),
                 label: strings.brAntiAlias,
-                value: options.resampleMode == ResampleMode.blend,
+                value: options.antiAlias,
                 onChanged: onOptions == null
                     ? null
-                    : (value) => onOptions(
-                        options.copyWith(
-                          resampleMode: value
-                              ? ResampleMode.blend
-                              : ResampleMode.pick,
-                        ),
-                      ),
+                    : (value) => onOptions(options.withAntiAlias(value)),
               ),
             ],
           ),
@@ -1452,8 +1496,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
 /// R28 #6: the eyedropper's REFERENCE SOURCE — Photoshop's "current
 /// layer / all layers", Clip Studio's 참조원. The tool itself works in
 /// every section and on every layer kind; this only decides which pixels
-/// it reads. A row with nothing drawable (an SE row) simply reads the
-/// canvas color, which is what the user described.
+/// it reads. A row with nothing drawable (an SE row) read alone simply
+/// reads the canvas color, which is what the user described; 「표시」 has no
+/// paper under it (I-163-Q6), so a blank spot there picks nothing.
 class _EyedropperSettings extends StatelessWidget {
   const _EyedropperSettings({
     required this.source,

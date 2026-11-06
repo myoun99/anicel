@@ -1,4 +1,5 @@
 import '../../models/canvas_point.dart';
+import '../../services/canvas_selection.dart' show StampRect;
 import '../../services/selection_affine.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 
@@ -43,6 +44,15 @@ class TransformBox {
   /// values the user set.
   double baseWidth;
   double baseHeight;
+
+  /// The base box on the canvas, before the affine: [baseWidth] ×
+  /// [baseHeight] about the pivot.
+  StampRect get baseRect => (
+    left: affine.pivot.x - baseWidth / 2,
+    top: affine.pivot.y - baseHeight / 2,
+    width: baseWidth,
+    height: baseHeight,
+  );
 
   /// 🚨★★★**ONE OPERATION INSIDE AN OPEN BOX = ONE STEP BACK.**
   ///

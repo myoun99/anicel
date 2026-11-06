@@ -11,7 +11,11 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/services/export/xdts_builder.dart';
 
 Cut _cut() {
@@ -55,6 +59,7 @@ Cut _cut() {
             id: const FrameId('se-f'),
             duration: 4,
             name: 'こんにちは',
+            seName: 'ミカ',
             strokes: const [],
           ),
         ],
@@ -87,6 +92,72 @@ Cut _cut() {
   );
 }
 
+/// The CELL track [content]'s one cel row writes: each frame it writes on,
+/// with its one value.
+List<(int, String)> _celValues(String content) {
+  final json =
+      jsonDecode(content.split('\n').skip(1).join('\n')) as Map<String, dynamic>;
+  final field =
+      (((json['timeTables'] as List<dynamic>).single
+                  as Map<String, dynamic>)['fields']
+              as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((field) => field['fieldId'] == xdtsFieldCell);
+  return [
+    for (final entry
+        in (((field['tracks'] as List<dynamic>).single
+                    as Map<String, dynamic>)['frames']
+                as List<dynamic>)
+            .cast<Map<String, dynamic>>())
+      (
+        entry['frame'] as int,
+        (((entry['data'] as List<dynamic>).single
+                        as Map<String, dynamic>)['values']
+                    as List<dynamic>)
+                .single
+            as String,
+      ),
+  ];
+}
+
+/// [_celValues] of a cut 8 frames long whose one cel row is [timeline],
+/// over the drawing `A1`.
+List<(int, String)> _celValuesOfRow(Map<int, TimelineExposure> timeline) =>
+    _celValues(
+      buildXdtsContent(
+        half: XdtsSheetHalf.genga,
+        cut: Cut(
+          id: const CutId('xdts-row'),
+          name: 'Cut 7',
+          duration: 8,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            Layer(
+              id: const LayerId('cel-a'),
+              name: 'A',
+              frames: [
+                Frame(
+                  id: const FrameId('a1'),
+                  duration: 1,
+                  name: 'A1',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('a2'),
+                  duration: 1,
+                  name: 'A2',
+                  strokes: const [],
+                ),
+              ],
+              timeline: timeline,
+            ),
+          ],
+        ),
+        cutLabel: '7',
+        unnamedMark: InbetweenMark.two,
+      ),
+    );
+
 void main() {
   test('the header writes the cut\'s own scene — 🗣️F-291-Q7 「컷의 신을 '
       '쓴다」', () {
@@ -97,8 +168,10 @@ void main() {
     final json =
         jsonDecode(
               buildXdtsContent(
+                half: XdtsSheetHalf.genga,
                 cut: inScene,
                 cutLabel: '3',
+                unnamedMark: InbetweenMark.two,
               ).split('\n').skip(1).join('\n'),
             )
             as Map<String, dynamic>;
@@ -108,8 +181,10 @@ void main() {
   test('XDTS content: identifier line + spec-shaped JSON with CELL/DIALOG/'
       'CAMERAWORK fields', () {
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: _cut(),
       cutLabel: '3',
+      unnamedMark: InbetweenMark.two,
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
@@ -153,40 +228,184 @@ void main() {
         ((fieldById(fieldId)['tracks'] as List<dynamic>).single
                 as Map<String, dynamic>)['frames']
             as List<dynamic>;
+    // A frame's values, joined by `|` where it carries two.
     (int, String) frameValue(Map<String, dynamic> entry) => (
       entry['frame'] as int,
       (((entry['data'] as List<dynamic>).single
-                      as Map<String, dynamic>)['values']
-                  as List<dynamic>)
-              .single
-          as String,
+                  as Map<String, dynamic>)['values']
+              as List<dynamic>)
+          .join('|'),
     );
+    const hyphen = 'SYMBOL_HYPHEN';
 
-    // CELL: only value-change frames — named cel, gap, positional
-    // fallback, trailing gap.
+    // CELL: only value-change frames — named cel, gap, the unnamed cel's
+    // mark as its tick, trailing gap.
     final cel = trackFrames(0).cast<Map<String, dynamic>>();
     expect(cel.map(frameValue), [
       (0, 'A1'),
       (3, 'SYMBOL_NULL_CELL'),
-      (5, '2'),
+      (5, 'SYMBOL_TICK_2'),
       (9, 'SYMBOL_NULL_CELL'),
     ]);
 
-    // DIALOG: a leading empty stretch precedes the serifu.
+    // DIALOG: a leading empty stretch precedes the serifu — its speaker and
+    // its line on its first frame, hyphens to its last (I-161-Q3).
     final dialog = trackFrames(3).cast<Map<String, dynamic>>();
     expect(dialog.map(frameValue), [
       (0, 'SYMBOL_NULL_CELL'),
-      (2, 'こんにちは'),
+      (2, 'ミカ|こんにちは'),
+      (3, hyphen),
+      (4, hyphen),
+      (5, hyphen),
       (6, 'SYMBOL_NULL_CELL'),
     ]);
 
-    // CAMERAWORK: vocabulary name with A→B, then free text, adjacent gap.
+    // CAMERAWORK: vocabulary name with A→B, then free text, adjacent gap —
+    // each lasting in hyphens.
     final camerawork = trackFrames(5).cast<Map<String, dynamic>>();
     expect(camerawork.map(frameValue), [
       (0, 'PAN (A→B)'),
+      for (var frame = 1; frame < 6; frame += 1) (frame, hyphen),
       (6, 'SYMBOL_NULL_CELL'),
       (8, 'ゆっくりFI'),
+      (9, hyphen),
+      (10, hyphen),
+      (11, hyphen),
     ]);
+  });
+
+  // I-161: the CELL value is the head the printed sheet writes
+  // (drawingHeadOf) — ↩️it was `name ?? index + 1`, a number the sheet
+  // never prints.
+  test('a cel writes the head its sheet prints: the cel number trimmed, and '
+      'with none — blank or spaces alike — the picked mark as its tick', () {
+    List<(int, String)> celValues(InbetweenMark unnamedMark) {
+      final content = buildXdtsContent(
+        half: XdtsSheetHalf.genga,
+        cut: Cut(
+          id: const CutId('xdts-heads'),
+          name: 'Cut 5',
+          duration: 8,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            Layer(
+              id: const LayerId('cel-b'),
+              name: 'B',
+              frames: [
+                Frame(
+                  id: const FrameId('spaced'),
+                  duration: 2,
+                  name: ' B3 ',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('blank'),
+                  duration: 2,
+                  name: '   ',
+                  strokes: const [],
+                ),
+                Frame(
+                  id: const FrameId('none'),
+                  duration: 2,
+                  strokes: const [],
+                ),
+              ],
+              timeline: {
+                0: const TimelineExposure.drawing(FrameId('spaced'), length: 2),
+                2: const TimelineExposure.drawing(FrameId('blank'), length: 2),
+                4: const TimelineExposure.drawing(FrameId('none'), length: 2),
+              },
+            ),
+          ],
+        ),
+        cutLabel: '5',
+        unnamedMark: unnamedMark,
+      );
+      return _celValues(content);
+    }
+
+    expect(celValues(InbetweenMark.two), [
+      (0, 'B3'),
+      (2, 'SYMBOL_TICK_2'),
+      (4, 'SYMBOL_TICK_2'),
+      (6, 'SYMBOL_NULL_CELL'),
+    ]);
+    expect(
+      celValues(InbetweenMark.one),
+      [
+        (0, 'B3'),
+        (2, 'SYMBOL_TICK_1'),
+        (4, 'SYMBOL_TICK_1'),
+        (6, 'SYMBOL_NULL_CELL'),
+      ],
+      reason: 'mark 1, the ○, is the format\'s first tick (I-130 order)',
+    );
+  });
+
+  // 타임라인/콘티 (I-162, 2026-11-05): the XDTS sheet draws a block's
+  // breakdown marks — the file wrote the block's head alone, so a viewer
+  // drew the line on through them.
+  test('a block\'s breakdown marks are written where the sheet draws them, '
+      'each as its tick', () {
+    expect(
+      _celValuesOfRow({
+        0: const TimelineExposure.drawing(
+          FrameId('a1'),
+          length: 6,
+          breakdownMarks: {2: InbetweenMark.one, 4: InbetweenMark.two},
+        ),
+      }),
+      [
+        (0, 'A1'),
+        (2, 'SYMBOL_TICK_1'),
+        (4, 'SYMBOL_TICK_2'),
+        (6, 'SYMBOL_NULL_CELL'),
+      ],
+    );
+  });
+
+  // R26 #26: a hold is the same cel exposed longer — one number, held on.
+  test('a held cel is written once however its hold was made, and a '
+      'repeat writes every round, as the sheet reads them', () {
+    TimelineExposure ghost(
+      FrameId id,
+      int length,
+      TimelineRunEdgeSide side,
+      TimelineRunEdgeMode mode,
+    ) => TimelineExposure.drawing(
+      id,
+      length: length,
+      ghostOf: TimelineRunEdgeGhost(side: side, mode: mode),
+    );
+    const a1 = FrameId('a1');
+    const a2 = FrameId('a2');
+
+    expect(
+      _celValuesOfRow({
+        0: const TimelineExposure.drawing(a1, length: 2),
+        2: ghost(a1, 3, TimelineRunEdgeSide.end, TimelineRunEdgeMode.hold),
+      }),
+      [(0, 'A1'), (5, 'SYMBOL_NULL_CELL')],
+      reason: 'an end hold',
+    );
+    expect(
+      _celValuesOfRow({
+        0: ghost(a1, 2, TimelineRunEdgeSide.start, TimelineRunEdgeMode.hold),
+        2: const TimelineExposure.drawing(a1, length: 2),
+      }),
+      [(0, 'A1'), (4, 'SYMBOL_NULL_CELL')],
+      reason: 'a front hold',
+    );
+    expect(
+      _celValuesOfRow({
+        0: const TimelineExposure.drawing(a1, length: 2),
+        2: const TimelineExposure.drawing(a2, length: 2),
+        4: ghost(a1, 2, TimelineRunEdgeSide.end, TimelineRunEdgeMode.repeat),
+        6: ghost(a2, 2, TimelineRunEdgeSide.end, TimelineRunEdgeMode.repeat),
+      }),
+      [(0, 'A1'), (2, 'A2'), (4, 'A1'), (6, 'A2')],
+      reason: 'an end repeat',
+    );
   });
 
   // 🗣️I-72-block-without-instruction: a span with no mark is 「(없음)」 —
@@ -194,6 +413,7 @@ void main() {
   test('CAMERAWORK: a span that writes nothing is the empty cell it shows, '
       'and one with no mark writes only its A→B', () {
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: Cut(
         id: const CutId('xdts-none'),
         name: 'Cut 4',
@@ -220,6 +440,7 @@ void main() {
         ],
       ),
       cutLabel: '4',
+      unnamedMark: InbetweenMark.two,
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
@@ -251,8 +472,11 @@ void main() {
       [
         (0, 'SYMBOL_NULL_CELL'),
         (2, '(C→D)'),
+        (3, 'SYMBOL_HYPHEN'),
+        (4, 'SYMBOL_HYPHEN'),
         (5, 'SYMBOL_NULL_CELL'),
         (6, 'PAN'),
+        (7, 'SYMBOL_HYPHEN'),
         (8, 'SYMBOL_NULL_CELL'),
       ],
     );
@@ -284,8 +508,10 @@ void main() {
     final json =
         jsonDecode(
               buildXdtsContent(
+                half: XdtsSheetHalf.genga,
                 cut: hidden,
                 cutLabel: '3',
+                unnamedMark: InbetweenMark.two,
               ).split('\n').skip(1).join('\n'),
             )
             as Map<String, dynamic>;
@@ -331,7 +557,12 @@ void main() {
       ],
     );
 
-    final content = buildXdtsContent(cut: withImage, cutLabel: '3');
+    final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
+      cut: withImage,
+      cutLabel: '3',
+      unnamedMark: InbetweenMark.two,
+    );
     final json =
         jsonDecode(content.split('\n').skip(1).join('\n'))
             as Map<String, dynamic>;
@@ -375,8 +606,10 @@ void main() {
     final json =
         jsonDecode(
               buildXdtsContent(
+                half: XdtsSheetHalf.genga,
                 cut: withAttach,
                 cutLabel: '3',
+                unnamedMark: InbetweenMark.two,
               ).split('\n').skip(1).join('\n'),
             )
             as Map<String, dynamic>;
@@ -411,6 +644,7 @@ void main() {
     );
 
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: Cut(
         id: const CutId('windowed'),
         name: 'Cut 7',
@@ -426,6 +660,7 @@ void main() {
         ],
       ),
       cutLabel: '7',
+      unnamedMark: InbetweenMark.two,
       // The cut starts at global 20 on its track's axis.
       cutStartFrame: 20,
       trackSeLayers: [
@@ -496,17 +731,17 @@ void main() {
                 )['tracks']
                 as List<dynamic>)
             .cast<Map<String, dynamic>>();
+    // Where each line starts and stops, by its words — the hyphens that hold
+    // it between are the content test's.
     List<(int, String)> frameValues(Map<String, dynamic> track) => [
       for (final entry in (track['frames'] as List<dynamic>)
           .cast<Map<String, dynamic>>())
-        (
-          entry['frame'] as int,
-          (((entry['data'] as List<dynamic>).single
-                          as Map<String, dynamic>)['values']
-                      as List<dynamic>)
-                  .single
-              as String,
-        ),
+        if ((((entry['data'] as List<dynamic>).single
+                        as Map<String, dynamic>)['values']
+                    as List<dynamic>)
+                .last
+            case final String words when words != 'SYMBOL_HYPHEN')
+          (entry['frame'] as int, words),
     ];
 
     expect(frameValues(dialogTracks[0]), [
@@ -518,10 +753,20 @@ void main() {
       (0, 'SYMBOL_NULL_CELL'),
       (10, 'いくぞ'),
     ]);
+    expect(
+      [
+        for (final entry in dialogTracks[1]['frames'] as List<dynamic>)
+          (entry as Map<String, dynamic>)['frame'],
+      ],
+      [0, 10, 11],
+      reason: 'the line crossing the end lasts to the sheet\'s last frame, '
+          'and no further',
+    );
   });
 
   test('an empty cut still writes a valid sheet with a null-cell entry', () {
     final content = buildXdtsContent(
+      half: XdtsSheetHalf.genga,
       cut: Cut(
         id: const CutId('empty'),
         name: 'Empty',
@@ -537,6 +782,7 @@ void main() {
         ],
       ),
       cutLabel: '1',
+      unnamedMark: InbetweenMark.two,
     );
 
     final json =
@@ -552,5 +798,107 @@ void main() {
             as List<dynamic>;
     expect(frames, hasLength(1));
     expect((frames.single as Map<String, dynamic>)['frame'], 0);
+  });
+
+  // 🗣️I-162-Q6 (유저 2026-11-05): 「나누고, 내보내기도 원화 · 동화 두 파일로」.
+  test('a cut is two files by its sheet\'s blocks: the 原画 one holds the '
+      'ACTION rows, the 動画 one the CELL rows, and each the whole of the '
+      'rest', () {
+    final cut = _cut();
+    final withInbetween = cut.copyWith(
+      layers: [
+        ...cut.layers,
+        Layer(
+          id: const LayerId('cel-b'),
+          name: 'B',
+          mark: const LayerMark(process: LayerProcess.inbetween),
+          frames: [
+            Frame(
+              id: const FrameId('b1'),
+              duration: 2,
+              name: 'B1',
+              strokes: const [],
+            ),
+          ],
+          timeline: {
+            1: const TimelineExposure.drawing(FrameId('b1'), length: 2),
+          },
+        ),
+      ],
+    );
+    Map<String, dynamic> tableOf(XdtsSheetHalf half) {
+      final content = buildXdtsContent(
+        half: half,
+        cut: withInbetween,
+        cutLabel: '3',
+        unnamedMark: InbetweenMark.two,
+        instructionDefById: CameraInstructionSet.standard.defById,
+      );
+      final json =
+          jsonDecode(content.split('\n').skip(1).join('\n'))
+              as Map<String, dynamic>;
+      return (json['timeTables'] as List<dynamic>).single
+          as Map<String, dynamic>;
+    }
+
+    List<dynamic> fieldOf(Map<String, dynamic> table, int fieldId) => [
+      for (final field in table['fields'] as List<dynamic>)
+        if ((field as Map<String, dynamic>)['fieldId'] == fieldId)
+          field['tracks'],
+    ];
+    List<String> celNames(Map<String, dynamic> table) => [
+      for (final header in table['timeTableHeaders'] as List<dynamic>)
+        if ((header as Map<String, dynamic>)['fieldId'] == xdtsFieldCell)
+          ...(header['names'] as List<dynamic>).cast<String>(),
+    ];
+
+    final genga = tableOf(XdtsSheetHalf.genga);
+    final douga = tableOf(XdtsSheetHalf.douga);
+    expect(celNames(genga), ['A']);
+    expect(celNames(douga), ['B']);
+    expect(genga['duration'], douga['duration']);
+    for (final field in [xdtsFieldDialog, xdtsFieldCamerawork]) {
+      expect(fieldOf(genga, field), hasLength(1), reason: 'field $field');
+      expect(
+        fieldOf(douga, field),
+        fieldOf(genga, field),
+        reason: 'field $field',
+      );
+    }
+    expect(
+      [for (final half in XdtsSheetHalf.values) half.nameMark],
+      ['_genga_ts', '_douga_ts'],
+      reason: 'the marks the viewer finds a file\'s block by',
+    );
+  });
+
+  // I-161 ④ (서피스 검증 2026-11-07): XDTS Viewer v1.3.0 closed on a 動画
+  // file written without a cel field, and on its 原画 pair too.
+  test('a file whose block has no row still writes the cel field, empty — '
+      'the viewer has no sheet without one', () {
+    // _cut() has its one picture row in the ACTION block: the 動画 file
+    // holds no row.
+    final content = buildXdtsContent(
+      half: XdtsSheetHalf.douga,
+      cut: _cut(),
+      cutLabel: '3',
+      unnamedMark: InbetweenMark.two,
+      instructionDefById: CameraInstructionSet.standard.defById,
+    );
+    final json =
+        jsonDecode(content.split('\n').skip(1).join('\n'))
+            as Map<String, dynamic>;
+    final timeTable =
+        (json['timeTables'] as List<dynamic>).single as Map<String, dynamic>;
+    List<Map<String, dynamic>> cel(String key) => [
+      for (final entry in timeTable[key] as List<dynamic>)
+        if ((entry as Map<String, dynamic>)['fieldId'] == xdtsFieldCell) entry,
+    ];
+    expect(cel('timeTableHeaders'), [
+      {'fieldId': xdtsFieldCell, 'names': <String>[]},
+    ]);
+    expect(cel('fields'), [
+      {'fieldId': xdtsFieldCell, 'tracks': <Map<String, dynamic>>[]},
+    ]);
   });
 }

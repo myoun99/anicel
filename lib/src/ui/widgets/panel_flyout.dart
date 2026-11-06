@@ -473,6 +473,9 @@ Future<void> showPanelFlyout(
   BuildContext anchorContext, {
   required List<PanelFlyoutEntry> entries,
   Rect? anchorRect,
+  // Told when the list closes with nothing chosen — no row, no row-end
+  // command.
+  VoidCallback? onDismissed,
 }) async {
   // A list with nothing in it does not open. A caller's list is built when
   // its button is pressed, and can be empty on the day the thing it lists
@@ -785,7 +788,12 @@ Future<void> showPanelFlyout(
   }
   // The child's pick wins: it is the more specific answer, and reaching it
   // popped the parent route with no value of its own.
-  (pickedInSubmenu ?? selected)?.onSelected?.call();
+  final picked = pickedInSubmenu ?? selected;
+  if (picked == null) {
+    onDismissed?.call();
+    return;
+  }
+  picked.onSelected?.call();
 }
 
 /// 🚨★★★ONE ROW'S METRICS, AND BOTH LEVELS READ THEM.

@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -9,17 +10,40 @@ import '../timeline/axis_turn.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
-/// Paints a clip's |peak| envelope as a filled band mirrored around the
-/// row's center line, along [axis] (horizontal timeline rows, vertical
-/// X-sheet columns). The widget's main-axis extent is expected to be
+/// Paints a clip's |peak| envelope as a band mirrored around the row's
+/// center line, along [axis] (horizontal timeline rows, vertical X-sheet
+/// columns). The widget's main-axis extent is expected to be
 /// `durationFrames(frameRate) * pixelsPerFrame` — each bucket maps to
 /// `pixelsPerFrame * fps / bucketsPerSecond` pixels.
+///
+/// 🧭THE BAND IS gpu-int-spec-timeline ②'s, column by column (관제 F-71 ⑤,
+/// 2026-11-05): each device pixel column along the strip stands as high as
+/// the straight line through the buckets reaches inside that column — the
+/// line at the column's two ends and every bucket between them — and the
+/// band is that height either side of the center, so a silent stretch
+/// draws nothing. The same one definition zoomed in or out. ↩️It was one
+/// polygon with a vertex per bucket: 🔬a five-minute sound's whole-file row
+/// on the viewer (11 buckets a pixel) cost 0.75–0.8ms of raster on every
+/// playing frame, both rows 1.0–1.2ms, re-tessellated each frame; a column
+/// per pixel took it to 0.1–0.4ms (Surface, profile). ⚠️This is the CPU's
+/// way until the engine's waveform kernel takes the four places over — not
+/// that kernel's oracle (관제 12:33).
+///
+/// A band per channel ([AudioPeaks.lanes]), each in its own equal share of
+/// the block across [axis] — the first on top, or on the left down a
+/// column. 🗣️F-71-Q4 (유저 2026-11-05) 「L · R 두 줄」, its note 「블록
+/// 안에서 두줄로 보여준다거나? 그런부분 알아서」 — so inside the block, as
+/// Premiere and DaVinci stack a clip's channels, wherever a sound is drawn
+/// (the viewer, the timeline's SE rows, the sheet's SE columns, the offset
+/// strip). ⛔Mine: no setting that folds them to one, and no drawing that
+/// changes with a panel's state — the same sound looks one way.
 class WaveformPainter extends CustomPainter with RepaintOnProps {
   const WaveformPainter({
     required this.peaks,
     required this.frameRate,
     required this.pixelsPerFrame,
     required this.color,
+    required this.devicePixelRatio,
     this.axis = Axis.horizontal,
     this.leadingFrames = 0,
     this.gain = 1.0,
@@ -29,6 +53,10 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   final ProjectFrameRate frameRate;
   final double pixelsPerFrame;
   final Color color;
+
+  /// Device pixels to a logical one — what a column of the band is
+  /// ([EffectiveDevicePixelRatio]).
+  final double devicePixelRatio;
   final Axis axis;
 
   /// Frames skipped into the FILE before main-axis 0 — the clip's
@@ -60,12 +88,14 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     required AudioPeaks peaks,
     required double pixelsPerSecond,
     required Color color,
+    required double devicePixelRatio,
     Axis axis = Axis.horizontal,
   }) : this(
          peaks: peaks,
          frameRate: const ProjectFrameRate.integer(1),
          pixelsPerFrame: pixelsPerSecond,
          color: color,
+         devicePixelRatio: devicePixelRatio,
          axis: axis,
        );
 
@@ -73,18 +103,12 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     if (peaks.peaks.isEmpty ||
         frameRate.numerator <= 0 ||
-        pixelsPerFrame <= 0) {
+        pixelsPerFrame <= 0 ||
+        devicePixelRatio <= 0 ||
+        _pixelsPerBucket <= 0) {
       return;
     }
     final mainExtent = extentAlong(axis, size);
-    final pixelsPerBucket = _pixelsPerBucket;
-    if (pixelsPerBucket <= 0) {
-      return;
-    }
-    final leadingPixels = _leadingPixels;
-    final startBucket = leadingPixels <= 0
-        ? 0
-        : (leadingPixels / pixelsPerBucket).floor();
     // 🚨I-57 (10-13, profile, the user's project): the band is drawn as far
     // as THIS PICTURE can show it — read off the canvas's own clip, as the
     // bitmap surface reads its own (`BitmapSurfacePainter
@@ -99,14 +123,10 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     if (shownTo <= shownFrom) {
       return;
     }
-    // The bucket before the clip's start — a bucket short of where its
-    // floor lands, so a rounding can never start the band inside the clip —
-    // and every bucket after it the band would draw, up to the first at or
-    // past the clip's end: the whole band's own vertices, cut where nobody
-    // sees.
-    final firstShown = math.max(
-      startBucket,
-      ((shownFrom + leadingPixels) / pixelsPerBucket).floor() - 1,
+    // Every device column the clip touches, and none it does not.
+    final shown = (
+      first: (shownFrom * devicePixelRatio).floor(),
+      end: (shownTo * devicePixelRatio).ceil(),
     );
 
     // 🚨THE BAND IS RECKONED ONCE FOR WHAT IT IS DRAWN FROM
@@ -122,10 +142,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     // too — a band reckoned again when only it moves), the size, and the
     // stretch the clip shows. The same path draws the same pixels.
     final band = _bands
-        .resolve(
-          (props, size, firstShown, shownTo),
-          () => (band: _bandOf(size, firstShown, shownTo)),
-        )
+        .resolve((props, size, shown), () => (band: _bandOf(size, shown)))
         .band;
     if (band == null) {
       return;
@@ -153,55 +170,118 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   /// How far into the file main-axis 0 stands — the clip's trim.
   double get _leadingPixels => leadingFrames * pixelsPerFrame;
 
-  /// The band over the buckets from [firstShown] to the first at or past
-  /// [shownTo], on a strip of [size] — null where there is none.
-  Path? _bandOf(Size size, int firstShown, double shownTo) {
+  /// The bands over the device columns [shown] of a strip of [size], a
+  /// lane's in each share of it — null where there is none.
+  Path? _bandOf(Size size, ({int first, int end}) shown) {
     _bandsReckoned += 1;
+    final lanes = peaks.lanes;
+    final share = extentAcross(axis, size) / lanes.length;
+    final path = Path();
+    var drawn = false;
+    for (var lane = 0; lane < lanes.length; lane += 1) {
+      drawn |= _addLane(
+        path,
+        lanes[lane],
+        shown: (
+          first: shown.first,
+          end: shown.end,
+          extent: extentAlong(axis, size),
+        ),
+        across: (
+          center: share * (lane + 0.5),
+          reach: math.max(0.0, share / 2 - 1) * math.min(1.0, gain),
+        ),
+      );
+    }
+    return drawn ? path : null;
+  }
+
+  /// One lane's band added to [path]: each device column [shown] on a strip
+  /// that long stands either side of its [across] center as far as the
+  /// envelope stands highest in it, at its reach for full amplitude — a run
+  /// of columns standing alike as one rect. False where it stands nowhere.
+  bool _addLane(
+    Path path,
+    Float32List envelope, {
+    required ({int first, int end, double extent}) shown,
+    required ({double center, double reach}) across,
+  }) {
+    final (:first, :end, :extent) = shown;
+    final (:center, :reach) = across;
+    final last = (envelope.length - 1).toDouble();
     final pixelsPerBucket = _pixelsPerBucket;
     final leadingPixels = _leadingPixels;
-    final mainExtent = extentAlong(axis, size);
-    final crossExtent = extentAcross(axis, size);
-    final center = crossExtent / 2;
-    final maxAmplitude = (crossExtent / 2) - 1;
+    var drawn = false;
+    var run = (from: 0.0, to: 0.0, height: 0.0);
+    void lay() {
+      if (run.height > 0) {
+        path.addRect(
+          rectAlong(
+            axis,
+            along: (from: run.from, to: run.to),
+            across: (from: center - run.height, to: center + run.height),
+          ),
+        );
+        drawn = true;
+      }
+    }
 
-    final envelopeGain = math.min(1.0, gain);
+    for (var column = first; column < end; column += 1) {
+      final from = column / devicePixelRatio;
+      // The strip's own end cuts its last column: a clip trimmed short
+      // stops its band where its block does.
+      final to = math.min(extent, (column + 1) / devicePixelRatio);
+      // Read on the envelope's own line, from its first bucket to its last
+      // — a trim landing mid-bucket starts the band on the line rather
+      // than a bucket short (the "ends flicker while sliding" artifact),
+      // and a column before the file, past it or on a one-bucket sound has
+      // no stretch of it and stands nowhere.
+      final height =
+          _highest(
+            envelope,
+            from: math.max(0.0, (from + leadingPixels) / pixelsPerBucket),
+            to: math.min(last, (to + leadingPixels) / pixelsPerBucket),
+          ) *
+          reach;
+      if (height == run.height && from == run.to) {
+        run = (from: run.from, to: to, height: height);
+        continue;
+      }
+      lay();
+      run = (from: from, to: to, height: height);
+    }
+    lay();
+    return drawn;
+  }
 
-    final path = Path();
-    final top = <Offset>[];
-    final bottom = <Offset>[];
-    for (var bucket = firstShown; bucket < peaks.peaks.length; bucket += 1) {
-      var main = bucket * pixelsPerBucket - leadingPixels;
-      var lastSample = false;
-      // The offset usually lands MID-bucket: clamp the edge samples onto
-      // the window instead of dropping them, or the band opens/closes up
-      // to a bucket short — a gap that shifts with every dragged frame
-      // (the "ends flicker while sliding" artifact).
-      if (main < 0) {
-        main = 0;
-      }
-      if (main >= mainExtent) {
-        main = mainExtent;
-        lastSample = true;
-      }
-      final amplitude = peaks.peaks[bucket] * maxAmplitude * envelopeGain;
-      top.add(offsetAlong(axis, along: main, across: center - amplitude));
-      bottom.add(offsetAlong(axis, along: main, across: center + amplitude));
-      if (lastSample || main >= shownTo) {
-        break;
-      }
+  /// The highest the straight line through [envelope]'s buckets stands
+  /// [from] one place [to] another, in buckets — at one of the two ends or
+  /// on a bucket between them, as a straight line is highest at an end —
+  /// or 0 where there is no stretch between them.
+  static double _highest(
+    Float32List envelope, {
+    required double from,
+    required double to,
+  }) {
+    if (to <= from) {
+      return 0;
     }
-    if (top.isEmpty) {
-      return null;
+    var highest = math.max(_lineAt(envelope, from), _lineAt(envelope, to));
+    for (var bucket = from.floor() + 1; bucket < to; bucket += 1) {
+      highest = math.max(highest, envelope[bucket]);
     }
-    path.moveTo(top.first.dx, top.first.dy);
-    for (final point in top.skip(1)) {
-      path.lineTo(point.dx, point.dy);
+    return highest;
+  }
+
+  /// The line through [envelope]'s buckets at [at], from its first bucket
+  /// to its last.
+  static double _lineAt(Float32List envelope, double at) {
+    final bucket = at.floor();
+    if (bucket >= envelope.length - 1) {
+      return envelope[envelope.length - 1];
     }
-    for (final point in bottom.reversed) {
-      path.lineTo(point.dx, point.dy);
-    }
-    path.close();
-    return path;
+    final t = at - bucket;
+    return envelope[bucket] * (1 - t) + envelope[bucket + 1] * t;
   }
 
   @override
@@ -210,6 +290,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     frameRate,
     pixelsPerFrame,
     color,
+    devicePixelRatio,
     axis,
     leadingFrames,
     gain,

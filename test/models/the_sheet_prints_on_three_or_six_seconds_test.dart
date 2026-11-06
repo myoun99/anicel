@@ -15,11 +15,14 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/sheet_sources.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/xdts_sheet_form.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
 /// A cut of [cels] ACTION rows and [inbetweens] 動画 ones, the CELL
@@ -112,13 +115,22 @@ void main() {
       TimesheetSheetKind.threeSeconds,
     );
     expect(
-      sheetKindFits(TimesheetSheetKind.sixSeconds, celColumns: 9),
-      isFalse,
+      sheetKindRefusal(TimesheetSheetKind.sixSeconds, celColumns: 8, fps: 24),
+      isNull,
     );
     expect(
-      sheetKindFits(TimesheetSheetKind.threeSeconds, celColumns: 9),
-      isTrue,
+      sheetKindRefusal(TimesheetSheetKind.sixSeconds, celColumns: 9, fps: 24),
+      TimesheetSheetRefusal.celColumns,
     );
+    for (final kind in TimesheetSheetKind.values) {
+      if (kind != TimesheetSheetKind.sixSeconds) {
+        expect(
+          sheetKindRefusal(kind, celColumns: 40, fps: 24),
+          isNull,
+          reason: '$kind widens for them',
+        );
+      }
+    }
 
     final crowded = _sheet(_cut(cels: 21));
     expect(_count(crowded, TimesheetColumnKind.action), 21);
@@ -173,6 +185,8 @@ void main() {
       _cut(cels: 3, kind: TimesheetSheetKind.threeSeconds),
       _cut(cels: 9),
       _cut(cels: 1, inbetweens: 9),
+      _cut(cels: 3, kind: TimesheetSheetKind.xdtsA3SixSeconds),
+      _cut(cels: 9, kind: TimesheetSheetKind.xdtsB4ThreeSeconds),
     ]) {
       for (final fps in [24, 30]) {
         expect(
@@ -188,5 +202,203 @@ void main() {
     }
     expect(sheetPageFramesOf(_cut(cels: 3), 24), 144);
     expect(sheetPageFramesOf(_cut(cels: 9), 24), 72);
+    expect(
+      sheetPageFramesOf(
+        _cut(cels: 9, kind: TimesheetSheetKind.xdtsB4ThreeSeconds),
+        24,
+      ),
+      72,
+    );
+  });
+
+  // I-162 (유저 2026-11-05): 「타임시트 서식에 우리식 3초/6초에 추가로 xdts의
+  // 서식같은거 다 타입으로 구현하자 … 서식 바꾸면 xdts의 해당 서식에서
+  // 보는거랑 똑같은 화면」.
+  group('the XDTS Viewer\'s sheets', () {
+    List<String> labels(TimesheetDocument sheet, TimesheetColumnKind kind) => [
+      for (final column in sheet.columns)
+        if (column.kind == kind) column.label,
+    ];
+
+    test('a cut keeps an XDTS sheet it chose, by its own key', () {
+      for (final kind in TimesheetSheetKind.values) {
+        final metadata = CutMetadata(sheetKind: kind);
+        expect(CutMetadata.fromJson(metadata.toJson()), metadata);
+      }
+      expect(
+        [
+          for (final kind in TimesheetSheetKind.values)
+            if (kind.xdts != null) kind.jsonValue,
+        ],
+        ['xdts-a3-6s', 'xdts-b4-3s', 'xdts-b4-6s', 'xdts-ponoc-6s'],
+      );
+    });
+
+    test('each row prints in its block, as on our own sheets — 原画 in the '
+        'ACTION block, 動画 in the CELL block — where the viewer prints our '
+        '原画 file and our 動画 file (I-162-Q6)', () {
+      final sheet = _sheet(
+        _cut(
+          cels: 2,
+          inbetweens: 1,
+          kind: TimesheetSheetKind.xdtsA3SixSeconds,
+        ),
+      );
+      expect(sheet.sheetKind, TimesheetSheetKind.xdtsA3SixSeconds);
+      expect(labels(sheet, TimesheetColumnKind.action), [
+        'A',
+        'B',
+        ...List.filled(5, ''),
+      ]);
+      expect(labels(sheet, TimesheetColumnKind.cel), [
+        'IB0',
+        ...List.filled(7, ''),
+      ]);
+      expect(_count(sheet, TimesheetColumnKind.se), 1);
+      expect(_count(sheet, TimesheetColumnKind.camera), 3);
+      expect((sheet.pageFrameCount, sheet.halfFrameCount), (144, 72));
+      expect(
+        (sheet.xdtsForm!.keyColumns, sheet.xdtsForm!.cellsColumns),
+        (7, 8),
+      );
+    });
+
+    test('the books mark the ACTION block\'s rows, as on our own sheets', () {
+      Cut booked(TimesheetSheetKind kind) => Cut(
+        id: const CutId('cut'),
+        name: '1',
+        duration: 24,
+        canvasSize: const CanvasSize(width: 1920, height: 1080),
+        metadata: CutMetadata(sheetKind: kind),
+        layers: [
+          Layer(id: const LayerId('a'), name: 'A', frames: const []),
+          Layer(
+            id: const LayerId('book'),
+            name: 'BOOK',
+            kind: LayerKind.image,
+            mark: const LayerMark(process: LayerProcess.art),
+            frames: const [],
+          ),
+          Layer(id: const LayerId('b'), name: 'B', frames: const []),
+        ],
+      );
+      final ours = _sheet(booked(TimesheetSheetKind.sixSeconds)).books;
+      expect(ours, isNotEmpty);
+      expect(_sheet(booked(TimesheetSheetKind.xdtsA3SixSeconds)).books, ours);
+    });
+
+    test('more cel rows than a block holds widen both blocks to the wider, '
+        'as the viewer widens a pair — no 3-second sheet in its place', () {
+      // The B4 6-second sheet: ACTION 8, CELL 7.
+      for (final (cels, inbetweens, wider) in [(10, 3, 10), (1, 9, 9)]) {
+        final sheet = _sheet(
+          _cut(
+            cels: cels,
+            inbetweens: inbetweens,
+            kind: TimesheetSheetKind.xdtsB4SixSeconds,
+          ),
+        );
+        final reason = '$cels 原画, $inbetweens 動画';
+        expect(
+          sheet.sheetKind,
+          TimesheetSheetKind.xdtsB4SixSeconds,
+          reason: reason,
+        );
+        expect(
+          (
+            _count(sheet, TimesheetColumnKind.action),
+            _count(sheet, TimesheetColumnKind.cel),
+          ),
+          (wider, wider),
+          reason: reason,
+        );
+        expect(
+          (sheet.xdtsForm!.keyColumns, sheet.xdtsForm!.cellsColumns),
+          (wider, wider),
+          reason: reason,
+        );
+      }
+    });
+
+    test('the paper a cut\'s ink is laid on is the viewer\'s, both blocks '
+        'widened for the wider of its 原画 and 動画 files — from our own '
+        'sheet too (I-161-Q2 · I-162-Q6)', () {
+      // Ten ACTION rows and four 動画 rows: the 原画 file's ten tracks.
+      final ours = _sheet(_cut(cels: 10, inbetweens: 4));
+      expect(ours.sheetKind.xdts, isNull);
+      expect(ours.xdtsForm, isNull);
+      expect(ours.xdtsColumns, 10);
+      final onA3 = XdtsSheetForm(
+        XdtsViewerSheet.a3SixSeconds,
+        columns: ours.xdtsColumns,
+      );
+      expect(
+        (onA3.pageWidth, onA3.pageHeight),
+        (2923 + 2 * (3 * 44 + 2 * 79), 4134),
+        reason: 'three 44-pixel ACTION columns past the template\'s seven '
+            'and two 79-pixel CELL ones past its eight, in both bodies',
+      );
+
+      // On the viewer's own sheet the sheet and its ink count alike.
+      final onB4 = _sheet(
+        _cut(
+          cels: 4,
+          inbetweens: 10,
+          kind: TimesheetSheetKind.xdtsB4SixSeconds,
+        ),
+      );
+      expect(onB4.xdtsColumns, 10);
+      expect(
+        (onB4.xdtsForm!.keyColumns, onB4.xdtsForm!.cellsColumns),
+        (10, 10),
+      );
+    });
+
+    test('the B4 3-second sheet is one body of 72 rows, its camera block one '
+        'column', () {
+      final sheet = _sheet(
+        _cut(cels: 3, kind: TimesheetSheetKind.xdtsB4ThreeSeconds),
+      );
+      expect((sheet.pageFrameCount, sheet.halfFrameCount), (72, 72));
+      expect(_count(sheet, TimesheetColumnKind.action), 14);
+      expect(_count(sheet, TimesheetColumnKind.cel), 14);
+      expect(_count(sheet, TimesheetColumnKind.camera), 1);
+    });
+
+    test('off the viewer\'s 24 a second a cut that chose one prints on our '
+        'sheets (I-162-Q3) — [xdtsViewerReads] is the rate', () {
+      for (final kind in TimesheetSheetKind.values) {
+        if (kind.xdts == null) {
+          continue;
+        }
+        final at30 = TimesheetDocument.fromCut(
+          cut: _cut(cels: 3, kind: kind),
+          projectName: 'P',
+          fps: 30,
+        );
+        expect(at30.sheetKind, TimesheetSheetKind.sixSeconds);
+        expect(at30.xdtsForm, isNull);
+        expect(
+          TimesheetDocument.fromCut(
+            cut: _cut(cels: 9, kind: kind),
+            projectName: 'P',
+            fps: 25,
+          ).sheetKind,
+          TimesheetSheetKind.threeSeconds,
+        );
+        expect(_sheet(_cut(cels: 3, kind: kind)).sheetKind, kind);
+        expect(
+          sheetKindRefusal(kind, celColumns: 3, fps: 30),
+          TimesheetSheetRefusal.viewerRate,
+        );
+        expect(sheetKindRefusal(kind, celColumns: 3, fps: 24), isNull);
+      }
+      for (final ours in [
+        TimesheetSheetKind.sixSeconds,
+        TimesheetSheetKind.threeSeconds,
+      ]) {
+        expect(sheetKindRefusal(ours, celColumns: 3, fps: 30), isNull);
+      }
+    });
   });
 }

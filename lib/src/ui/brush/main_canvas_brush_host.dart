@@ -44,6 +44,7 @@ import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
 import 'brush_canvas_defaults.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../session/pixel_verb_preview.dart';
 
 /// Production main-canvas Brush host for HomePage integration.
 ///
@@ -113,6 +114,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.textCommands,
     this.textToolOptions,
     this.cutPieceSlot,
+    this.onCutShown,
+    this.pixelVerbPreview,
     this.lastStroke,
     this.onStrokeInputActiveChanged,
     this.strokeLander,
@@ -310,11 +313,11 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time
   /// mask knobs.
-  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
+  final ValueNotifier<SelectionMaskOptions>? selectionMaskOptions;
 
   /// Forwarded to [BrushCanvasPanel]: the transform tool's settings (mode,
   /// scale anchor, resampler, mesh grid).
-  final ValueListenable<TransformToolOptions>? transformOptions;
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// Forwarded to [BrushCanvasPanel]: the P8 rotate/flip shortcut channel.
   final CanvasViewCommands? viewCommands;
@@ -329,6 +332,17 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Where a finished cut lands — threaded down to the canvas panel.
   final CutPieceSlot? cutPieceSlot;
+
+  /// The cut that reads what is shown — threaded down to the canvas panel
+  /// ([BrushCanvasPanel.onCutShown]).
+  final void Function(
+    CanvasSelectionRegion outline, {
+    required bool takeWhatItCuts,
+  })?
+  onCutShown;
+  /// The colour edit list's preview — threaded down to the canvas panel
+  /// ([BrushCanvasPanel.pixelVerbPreview]).
+  final PixelVerbPreview? pixelVerbPreview;
 
   /// The last drawing action — threaded down to the canvas panel, which
   /// records it and lays it down again for 확정.
@@ -617,6 +631,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       textCommands: widget.textCommands,
       textToolOptions: widget.textToolOptions,
       cutPieceSlot: widget.cutPieceSlot,
+      onCutShown: widget.onCutShown,
+      pixelVerbPreview: widget.pixelVerbPreview,
       lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
       strokeLander: widget.strokeLander,

@@ -68,13 +68,56 @@ const int anicelZstdLevel = 9;
   );
 }
 
-/// The inverse. Throws when [codec] is zstd and this build cannot read it
-/// — the file is fine, this BUILD cannot open it, and saying so beats a
-/// zlib error about a zstd frame.
-Uint8List decompressAnicelPayload(int codec, Uint8List payload) {
-  if (codec == anicelCodecZstd) {
-    return decompressZstdPayload(payload, 'payload');
+/// The inverse, kept: a copy of the bytes for a caller that holds on to
+/// them ([readAnicelPayload] hands them only while its reader runs).
+Uint8List decompressAnicelPayload(int codec, Uint8List payload) =>
+    readAnicelPayload(codec, payload, Uint8List.fromList);
+
+/// What [read] makes of [payload] decompressed, the bytes handed to it only
+/// while it runs — a zstd payload's are native and freed when it returns
+/// ([QaCelCompressor.readFrame] has why) — so [read] copies what it keeps.
+/// Throws when [codec] is zstd and this build cannot read it — the file is
+/// fine, this BUILD cannot open it, and saying so beats a zlib error about
+/// a zstd frame.
+///
+/// 🧪In a debug build the bytes are spoiled when [read] returns, deflate's
+/// as zstd's: a view of them kept past it reads [spoiledPayloadByte]
+/// rather than the picture, so a test that keeps one fails on either codec
+/// — not only on the one whose bytes are freed under it, and not by luck.
+/// ⛔Spoiled around the codecs, not inside either: a test can read a kept
+/// view only where it is not freed (deflate's), so a spoiling one codec
+/// skipped would show on no test.
+R readAnicelPayload<R>(
+  int codec,
+  Uint8List payload,
+  R Function(Uint8List bytes) read,
+) => _decompressed(codec, payload, (bytes) {
+  try {
+    return read(bytes);
+  } finally {
+    assert(_spoiled(bytes));
   }
+});
+
+/// [read] handed [payload] decompressed by the codec that wrote it.
+R _decompressed<R>(
+  int codec,
+  Uint8List payload,
+  R Function(Uint8List bytes) read,
+) => codec == anicelCodecZstd
+    ? readZstdPayload(payload, 'payload', read)
+    : read(_inflated(payload));
+
+/// What a decompressed payload's bytes read once its reader has returned,
+/// in a debug build ([readAnicelPayload]).
+const int spoiledPayloadByte = 0xDD;
+
+bool _spoiled(Uint8List bytes) {
+  bytes.fillRange(0, bytes.length, spoiledPayloadByte);
+  return true;
+}
+
+Uint8List _inflated(Uint8List payload) {
   final List<int> inflated;
   try {
     inflated = ZLibDecoder().convert(payload);

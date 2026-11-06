@@ -4,12 +4,14 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
+import '../../models/layer_link_registry.dart' show LayerLinkRegistry;
 import '../../services/commands/set_cut_layers_command.dart';
 import '../../services/commands/set_cuts_layers_command.dart';
 import '../../services/editing/fx_bake_plan.dart';
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/import/raster_cel_import.dart' show bakeCelSurface;
 import '../../services/project_lookup.dart' show cutWritingRow;
+import 'independent_clip_mint.dart' show copyBakedPictures;
 import 'layer_verbs.dart';
 import 'range_selections.dart';
 import 'render_caches.dart';
@@ -117,7 +119,11 @@ class LayerMerging {
   bool bakesFx(LayerId rowId, EffectId? effectId) =>
       _takingOfFx(rowId, effectId) != null;
 
-  FxBakeTaking? _takingOfFx(LayerId rowId, EffectId? effectId) {
+  FxBakeTaking? _takingOfFx(
+    LayerId rowId,
+    EffectId? effectId, [
+    BakedFrames? band,
+  ]) {
     final project = _project.repository.requireProject();
     final cutId = cutWritingRow(
       project,
@@ -131,27 +137,44 @@ class LayerMerging {
             cutId: cutId,
             rowId: rowId,
             effectId: effectId,
-          );
+          )?.over(band);
   }
 
-  /// What RASTERIZE makes of [rowId]'s fx [effectId] — null where it bakes
-  /// nothing.
-  FxBakePlan? planOfFx(LayerId rowId, EffectId? effectId) =>
-      switch (_takingOfFx(rowId, effectId)) {
-        null => null,
-        final taking => planFxBake(
-          taking,
-          reads: _readsOf(taking.cut),
-          mintFrameId: _frameIds.mintFrameId,
-          reach: _project.repository.requireProject().pasteboardReach,
-        ),
-      };
+  /// What RASTERIZE scoped to [band] — over every frame, where none does —
+  /// makes of [rowId]'s fx [effectId]: null where it bakes nothing.
+  FxBakePlan? planOfFx(
+    LayerId rowId,
+    EffectId? effectId, {
+    BakedFrames? band,
+  }) => switch (_takingOfFx(rowId, effectId, band)) {
+    null => null,
+    final taking => planFxBake(
+      taking,
+      readsOf: _readsOf,
+      mintFrameId: _frameIds.mintFrameId,
+    ),
+  };
 
-  /// The row [plan] bakes made what it planned, in ONE undo step — or
-  /// nothing, when its cut has changed since it was planned.
+  /// The row [plan] bakes made what it planned in every cut it is used in,
+  /// in ONE undo step, and the pictures it copies copied to their new cels
+  /// ([FxBakePlan.copies]) — or nothing, when one of its cuts has changed
+  /// since it was planned.
   bool landFx(FxBakePlan plan) {
-    if (!_lands(plan.cut, plan.layers, 'Rasterize fx')) {
+    if (!_landsAcross(
+      [(cut: plan.cut, layers: plan.layers), ...plan.others],
+      _project.repository.requireProject().linkRegistry,
+      'Rasterize fx',
+    )) {
       return false;
+    }
+    for (final (:cut, :row, :minted) in plan.copies) {
+      copyBakedPictures(
+        project: _project,
+        store: _renderCaches.brushFrameStore,
+        minted: minted,
+        from: (cut: cut, row: row),
+        to: (cut: cut, row: row),
+      );
     }
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
@@ -189,18 +212,13 @@ class LayerMerging {
   /// Every cut and the link table as ONE write and ONE undo step
   /// ([SetCutsLayersCommand]).
   bool land(LayerMergePlan plan) {
-    final cuts = [(cut: plan.cut, layers: plan.layers), ...plan.others];
-    if (cuts.any((each) => _project.cutById(each.cut.id) != each.cut)) {
+    if (!_landsAcross(
+      [(cut: plan.cut, layers: plan.layers), ...plan.others],
+      plan.links,
+      'Merge layers',
+    )) {
       return false;
     }
-    _project.historyManager.execute(
-      SetCutsLayersCommand(
-        repository: _project.repository,
-        layers: {for (final each in cuts) each.cut.id: each.layers},
-        links: plan.links,
-        description: 'Merge layers',
-      ),
-    );
     _rowSelection.clearRowSelection();
     _changes.refreshAfterCutCommand(preferredActiveLayerId: plan.result.id);
     _changes.notifyChanged();
@@ -216,6 +234,28 @@ class LayerMerging {
     }
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
+    return true;
+  }
+
+  /// Each of [cuts] written its rows after, and the link table [links], as
+  /// ONE write and ONE undo step ([SetCutsLayersCommand]) — none when a cut
+  /// is no longer what it was.
+  bool _landsAcross(
+    List<({Cut cut, List<Layer> layers})> cuts,
+    LayerLinkRegistry links,
+    String step,
+  ) {
+    if (cuts.any((each) => _project.cutById(each.cut.id) != each.cut)) {
+      return false;
+    }
+    _project.historyManager.execute(
+      SetCutsLayersCommand(
+        repository: _project.repository,
+        layers: {for (final each in cuts) each.cut.id: each.layers},
+        links: links,
+        description: step,
+      ),
+    );
     return true;
   }
 

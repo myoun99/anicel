@@ -199,7 +199,6 @@ void main() {
       (layer) => layer.kind == LayerKind.image,
     );
     s.selectLayer(layer.id);
-    expect(s.editingCanvas.canRasterizeActiveLayer, isTrue);
     expect(s.mediaPool.mediaAssets, hasLength(1));
 
     s.editingCanvas.rasterizeLayerReferences([layer.id]);

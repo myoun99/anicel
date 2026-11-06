@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/timesheet_sheet_kind.dart';
+import '../../models/xdts_viewer_sheet.dart';
 import '../../services/persistence/save_stretch.dart';
 import '../audio/sound_cannot_play.dart' show SoundCannotPlay;
 
@@ -162,12 +163,6 @@ enum AppStrings {
   /// Why a cut folder's parse dropped a file, by `ExclusionReason.name`.
   String exclusionReason(String key, String fallback) =>
       _values['exclusionReason.$key'] ?? fallback;
-
-  /// Why a rasterize left a row the reference it is, and what gets it past
-  /// (F-374-Q11), by `ReferenceWait.name` — the contract [exclusionReason]
-  /// keeps: the English is the enum's own, the other languages are here.
-  String referenceWait(String key, String fallback) =>
-      _values['referenceWait.$key'] ?? fallback;
 
   /// A file type's name in the save window, by the extensions it writes —
   /// the contract of [importWarning]: the English is the group's own label
@@ -565,9 +560,7 @@ enum AppStrings {
   /// what is happening; this one is the answer to "did it save?", which is
   /// a question the app never used to answer at all.
   String get saveProgressRunning => _s('saveProgressRunning');
-  String get saveProgressDone => _s('saveProgressDone');
   String get savePrepareRunning => _s('savePrepareRunning');
-  String get savePrepareDone => _s('savePrepareDone');
 
   /// The stretch of a save the wait window's line names while it runs
   /// (F-494, [SaveStretch]): the media taken out set aside, the cels, the
@@ -594,7 +587,6 @@ enum AppStrings {
     SaveStretch.handingBack => saveStepHandingBack,
   };
   String get openProgressRunning => _s('openProgressRunning');
-  String get openProgressDone => _s('openProgressDone');
 
   /// '{sec}' is whole seconds waited. Names the CLOUD as the one doing
   /// the work — the app is not slow, the file is not here yet.
@@ -604,28 +596,19 @@ enum AppStrings {
   /// to be worth a decision; the window's cancel is the decision.
   String get openWaitingStalledTemplate => _s('openWaitingStalledTemplate');
   String get resizeProgressRunning => _s('resizeProgressRunning');
-  String get resizeProgressDone => _s('resizeProgressDone');
 
   /// The wait window over a bake — a movie's frames into cels, at placement
-  /// or by the reference button's rasterize.
+  /// or by the reference header's rasterize.
   String get bakeProgressRunning => _s('bakeProgressRunning');
-  String get bakeProgressDone => _s('bakeProgressDone');
 
-  /// The notice over a rasterize that left rows the references they are
-  /// (F-374-Q11 「막고 경고」): its line. Why each row waits, with what gets
-  /// it past, is [referenceWait]'s.
-  String get rasterizeLeftReferences => _s('rasterizeLeftReferences');
   String get pasteProgressRunning => _s('pasteProgressRunning');
-  String get pasteProgressDone => _s('pasteProgressDone');
 
   /// F-549: the wait window a timeline's copy stands behind.
   String get duplicateProgressRunning => _s('duplicateProgressRunning');
-  String get duplicateProgressDone => _s('duplicateProgressDone');
 
   /// F-551: the wait window a heavy step with no words of its own stands
   /// behind, under the step's own name.
   String get workProgressRunning => _s('workProgressRunning');
-  String get workProgressDone => _s('workProgressDone');
 
   /// F-551: the wait window a block dragged onto another row's pictures
   /// lets go behind — the pictures traded (F-330).
@@ -806,7 +789,6 @@ enum AppStrings {
   String get failedCopyPickTitle => _s('failedCopyPickTitle');
   String get failedCopyVanishOnClose => _s('failedCopyVanishOnClose');
   String get failedCopyBackingUp => _s('failedCopyBackingUp');
-  String get failedCopyBackedUp => _s('failedCopyBackedUp');
   String get closeProjectFailedCopyBody => _s('closeProjectFailedCopyBody');
 
   // --- Display (R11) ---
@@ -855,11 +837,41 @@ enum AppStrings {
   String get sheetThreeSeconds => _s('sheetThreeSeconds');
   String get sheetSixSeconds => _s('sheetSixSeconds');
 
-  /// What the paper a timesheet prints on is called.
+  String get sheetXdtsPapers => _s('sheetXdtsPapers');
+
+  /// What the paper a timesheet prints on is called — the XDTS Viewer's
+  /// sheets as the export names them ([xdtsViewerSheetName]), under their
+  /// own field ([sheetXdtsPapers]).
   String sheetKindName(TimesheetSheetKind kind) => switch (kind) {
     TimesheetSheetKind.threeSeconds => sheetThreeSeconds,
     TimesheetSheetKind.sixSeconds => sheetSixSeconds,
+    TimesheetSheetKind.xdtsA3SixSeconds ||
+    TimesheetSheetKind.xdtsB4ThreeSeconds ||
+    TimesheetSheetKind.xdtsB4SixSeconds ||
+    TimesheetSheetKind.xdtsPonocSixSeconds => xdtsViewerSheetName(
+      kind.viewerSheet,
+    ),
   };
+
+  /// Why a cut carrying [celColumns] cel columns cannot print on a paper
+  /// ([sheetKindRefusal]) — the tooltip a greyed paper wears (I-162-Q3,
+  /// 유저 2026-11-05: 「회색일때 툴팁으로 이유 표시」).
+  String sheetKindRefused(
+    TimesheetSheetRefusal refusal, {
+    required int celColumns,
+  }) => switch (refusal) {
+    TimesheetSheetRefusal.viewerRate => xdtsViewerRateRefused,
+    TimesheetSheetRefusal.celColumns => _s('sheetSixSecondsFull')
+        .replaceAll(
+          '{most}',
+          '${TimesheetSheetKind.sixSeconds.blockColumns}',
+        )
+        .replaceAll('{n}', '$celColumns'),
+  };
+
+  /// Why the viewer's sheets and the ink laid on them are shut in a
+  /// project the viewer does not read true ([xdtsViewerReads]).
+  String get xdtsViewerRateRefused => _s('xdtsViewerRateRefused');
   String get sheetBrushAllow => _s('sheetBrushAllow');
   String get conteCoverPage => _s('conteCoverPage');
   String get conteBlankPage => _s('conteBlankPage');
@@ -906,6 +918,16 @@ enum AppStrings {
   String get instructionEditorColor => _s('instructionEditorColor');
   String get instructionEditorMark => _s('instructionEditorMark');
   String get systemStatusHelp => _s('systemStatusHelp');
+  String get gpuPreferenceLabel => _s('gpuPreferenceLabel');
+  String get gpuPreferenceHelp => _s('gpuPreferenceHelp');
+  String get gpuPreferenceAuto => _s('gpuPreferenceAuto');
+  String get gpuPreferenceLowPower => _s('gpuPreferenceLowPower');
+  String get gpuPreferenceHighPerformance =>
+      _s('gpuPreferenceHighPerformance');
+  String get gpuPreferenceNextLaunch => _s('gpuPreferenceNextLaunch');
+  String get gpuPreferenceNotOnMacOS => _s('gpuPreferenceNotOnMacOS');
+  String get gpuPreferenceDriverPicks => _s('gpuPreferenceDriverPicks');
+  String get gpuPreferenceOneGpu => _s('gpuPreferenceOneGpu');
 
   // --- The timeline action toolbar and its flyouts ---
   String get tlNoLayers => _s('tlNoLayers');
@@ -1049,11 +1071,10 @@ enum AppStrings {
   String get tlMergeChangeRiderUnder => _s('tlMergeChangeRiderUnder');
   String get tlMergeChangeWall => _s('tlMergeChangeWall');
 
-  /// The warning over an fx group's RASTERIZE (🗣️I-120-Q2 「순서가 바뀌면
-  /// 먼저 경고」), as the merge's is worded — each line one way it may part.
-  String get tlFxBakeChangesTitle => _s('tlFxBakeChangesTitle');
-  String get tlFxBakeChangesBody => _s('tlFxBakeChangesBody');
-  String get tlFxBakeChangeOrder => _s('tlFxBakeChangeOrder');
+  /// The notice after a rasterize that made rows synced on the conte free,
+  /// on timings of their own — `{names}` theirs (🗣️I-120-Q18 · Q20 「행
+  /// 구조가 바뀌는건 안내문」).
+  String get tlFxBakeRowsFreedTemplate => _s('tlFxBakeRowsFreedTemplate');
 
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
@@ -1146,7 +1167,6 @@ enum AppStrings {
   /// While the candidate folder is being read — which on a cloud folder
   /// means every same-size candidate is being fetched.
   String get mediaRelinkScanning => _s('mediaRelinkScanning');
-  String get mediaRelinkScanned => _s('mediaRelinkScanned');
   String get mediaRemove => _s('mediaRemove');
 
   /// F-118: removing a pool file something still uses — the question, and
@@ -1459,6 +1479,14 @@ enum AppStrings {
   String get exDigits => _s('exDigits');
   String get exApplyLayerFx => _s('exApplyLayerFx');
   String get exMuxSeMix => _s('exMuxSeMix');
+  String get exXdtsInk => _s('exXdtsInk');
+
+  /// A sheet of the XDTS Viewer's, as the export and the timesheet's paper
+  /// name it — its paper and the seconds a page holds (「A3 6초」, I-161-Q8).
+  String xdtsViewerSheetName(XdtsViewerSheet sheet) =>
+      _s('xdtsViewerSheetTemplate')
+          .replaceAll('{paper}', sheet.paper)
+          .replaceAll('{seconds}', '${sheet.pageSeconds}');
   String get exLabel => _s('exLabel');
   String get exApply => _s('exApply');
   String get exKinds => _s('exKinds');
@@ -1723,7 +1751,6 @@ enum AppStrings {
       _s('imFileCountTemplate').replaceAll('{n}', '$count');
   String get imStatusImporting => _s('imStatusImporting');
   String get imStatusNothing => _s('imStatusNothing');
-  String get imStatusDone => _s('imStatusDone');
 
   /// The stretch of a run the wait window's line names while it reports
   /// (F-494): a trimmed movie's piece encoded again, another kind's span
@@ -1889,6 +1916,7 @@ enum AppStrings {
   String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
   String get toolCutDeletesSource => _s('toolCutDeletesSource');
+  String get toolCutRun => _s('toolCutRun');
   String get toolReadSource => _s('toolReadSource');
   String get toolReadsEveryVisibleLayer => _s('toolReadsEveryVisibleLayer');
   String get brushSettingsTitle => _s('brushSettingsTitle');
@@ -2258,6 +2286,7 @@ enum AppStrings {
   String get autoNameStartField => _s('autoNameStartField');
   String get projectFpsTitle => _s('projectFpsTitle');
   String get projectFpsField => _s('projectFpsField');
+  String get projectFpsRecommended => _s('projectFpsRecommended');
 
   static AppStrings of(AppLanguage language) => switch (language) {
     AppLanguage.en => _en,
@@ -2506,9 +2535,7 @@ enum AppStrings {
     'commonSaveAs': 'Save as',
     'saveAsTitle': 'Save as',
     'saveProgressRunning': 'Saving…',
-    'saveProgressDone': 'Saved',
     'savePrepareRunning': 'Preparing…',
-    'savePrepareDone': 'Ready',
     'saveStepKeepingLeftBehind': 'Setting aside the media taken out…',
     'saveStepCels': 'Writing cels…',
     'saveStepChecking': 'Checking the files to carry…',
@@ -2518,20 +2545,13 @@ enum AppStrings {
     'saveStepCompacting': 'Closing up the gaps in the file…',
     'saveStepHandingBack': 'Handing the file back to its document…',
     'openProgressRunning': 'Opening…',
-    'openProgressDone': 'Opened',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
     'openWaitingStalledTemplate': 'Nothing has arrived for {sec}s',
     'resizeProgressRunning': 'Resizing…',
-    'resizeProgressDone': 'Resized',
     'bakeProgressRunning': 'Rasterizing…',
-    'bakeProgressDone': 'Rasterized',
-    'rasterizeLeftReferences': 'Some layers were left as references.',
     'pasteProgressRunning': 'Pasting…',
-    'pasteProgressDone': 'Pasted',
     'duplicateProgressRunning': 'Duplicating…',
-    'duplicateProgressDone': 'Duplicated',
     'workProgressRunning': 'Working…',
-    'workProgressDone': 'Done',
     'pictureTradeTitle': 'Swap drawings',
     'unsavedAutosaveTitle': 'Save your project',
     'unsavedAutosaveBody':
@@ -2712,7 +2732,6 @@ enum AppStrings {
     'failedCopyVanishOnClose':
         'Failed copies disappear when the program closes.',
     'failedCopyBackingUp': 'Backing up…',
-    'failedCopyBackedUp': 'Backed up',
     'closeProjectFailedCopyBody':
         'The work this project could not save is only in its failed copy '
         'inside the app, and the failed copy disappears when the program '
@@ -2764,6 +2783,11 @@ enum AppStrings {
     'sheetStretchLineOn': 'On',
     'sheetStretchLineOff': 'Off',
     'sheetLength': 'Sheet length',
+    'sheetXdtsPapers': 'XDTS Viewer sheet',
+    'xdtsViewerRateRefused':
+        'The XDTS Viewer counts 24 frames a second — 24 fps projects only',
+    'sheetSixSecondsFull': 'A 6 sec block holds {most} columns — this cut '
+        'has {n}',
     'sheetThreeSeconds': '3 sec',
     'sheetSixSeconds': '6 sec',
     'sheetBrushAllow': 'Allow Brush',
@@ -2807,6 +2831,17 @@ enum AppStrings {
     'instructionEditorIcon': 'Icon',
     'instructionEditorColor': 'Color',
     'instructionEditorMark': 'Mark',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp':
+        'Which kind of GPU Anicel asks Windows for when it starts, on a '
+        'computer with more than one.',
+    'gpuPreferenceAuto': 'Automatic',
+    'gpuPreferenceLowPower': 'Power saving',
+    'gpuPreferenceHighPerformance': 'High performance',
+    'gpuPreferenceNextLaunch': 'Takes effect the next time Anicel starts.',
+    'gpuPreferenceNotOnMacOS': 'On macOS, Anicel cannot pick its GPU.',
+    'gpuPreferenceDriverPicks': 'On Linux, the graphics driver picks the GPU.',
+    'gpuPreferenceOneGpu': 'This device has one GPU.',
     'systemStatusHelp':
         'Which implementation each subsystem is running right now. Fallback paths keep the app working but usually run slower — the names are searchable if you want the details.',
     'cutCommands': 'Cut commands',
@@ -2820,7 +2855,6 @@ enum AppStrings {
     'mediaFindInFolder': 'Find in folder',
     'mediaRelinkFound': 'Found {m} of {n}. Relink them?',
     'mediaRelinkScanning': 'Reading that folder…',
-    'mediaRelinkScanned': 'Folder read',
     'mediaRemove': 'Delete media',
     'mediaRegisterInProject': 'Keep inside the project file',
     'mediaExportWav': 'Export as WAV',
@@ -3034,6 +3068,8 @@ enum AppStrings {
     'exDigits': 'Digits',
     'exApplyLayerFx': 'Layer FX',
     'exMuxSeMix': 'Mux the SE mix into the video',
+    'exXdtsInk': 'Ink output',
+    'xdtsViewerSheetTemplate': '{paper} {seconds} sec',
     'exLabel': 'Label',
     'exApply': 'Apply',
     'exKinds': 'Kinds to export',
@@ -3192,7 +3228,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n} files',
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
-    'imStatusDone': 'Imported',
     'imStepRecoding': 'Re-encoding the trimmed movie…',
     'imStepWritingSpan': 'Writing the trimmed span to a file…',
     'imStepCarrying': 'Keeping the file inside the project…',
@@ -3281,6 +3316,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': 'Paste at original position',
     'toolCutRegisterTip': 'Register as Tip',
     'toolCutDeletesSource': 'Delete original',
+    'toolCutRun': 'Run',
     'toolReadSource': 'Reference',
     'toolReadsEveryVisibleLayer': 'Every visible layer',
     'brushSettingsTitle': 'Brush Settings',
@@ -3670,11 +3706,8 @@ enum AppStrings {
     'tlMergeChangeRiderOver': 'An attached layer comes to cover other pictures',
     'tlMergeChangeRiderUnder': 'An attached layer goes under other pictures',
     'tlMergeChangeWall': 'What lies past the pasteboard is cut off',
-    'tlFxBakeChangesTitle': 'Rasterizing may change how it looks',
-    'tlFxBakeChangesBody':
-        'The rasterized pictures may look otherwise than they do now.',
-    'tlFxBakeChangeOrder':
-        'An fx that ran before it runs over the rasterized pictures',
+    'tlFxBakeRowsFreedTemplate':
+        'Rasterized, {names} came to show more than one picture in one panel of the conte, so it went from synced to free (its own timing).',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
@@ -3713,6 +3746,7 @@ enum AppStrings {
     'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Project frame rate',
     'projectFpsField': 'Frames per second',
+    'projectFpsRecommended': 'Recommended',
     'autoNameStartField': 'Start number',
   };
 
@@ -3951,9 +3985,7 @@ enum AppStrings {
     'commonSaveAs': '名前を付けて保存',
     'saveAsTitle': '名前を付けて保存',
     'saveProgressRunning': '保存中…',
-    'saveProgressDone': '保存しました',
     'savePrepareRunning': '準備中…',
-    'savePrepareDone': '準備完了',
     'saveStepKeepingLeftBehind': '外したメディアを退避中…',
     'saveStepCels': 'セルを書き込み中…',
     'saveStepChecking': '格納するファイルを確認中…',
@@ -3963,45 +3995,13 @@ enum AppStrings {
     'saveStepCompacting': 'ファイルの空きを詰めています…',
     'saveStepHandingBack': '元の書類にファイルを渡しています…',
     'openProgressRunning': '読み込み中…',
-    'openProgressDone': '読み込みました',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
     'openWaitingStalledTemplate': '{sec}秒間、まだ届いていません',
     'resizeProgressRunning': 'サイズ変更中…',
-    'resizeProgressDone': 'サイズ変更しました',
     'bakeProgressRunning': 'ラスタライズ中…',
-    'bakeProgressDone': 'ラスタライズしました',
-    'rasterizeLeftReferences': '参照のまま残したレイヤーがあります。',
-    'referenceWait.attached':
-        'アタッチされたレイヤーはベースのトランスフォームで置かれるため、'
-        '動く参照を自分のキーに移せません。'
-        'アタッチを解除するとラスタライズできます。',
-    'referenceWait.laidAsFitted':
-        '以前のバージョンで合わせた大きさに置かれたファイルのため、'
-        '動く参照をキーに移せません。'
-        'ファイルを置き直すとラスタライズできます。',
-    'referenceWait.sheared':
-        '片方の軸だけ伸ばした拡大率の下での90°単位でない回転は、'
-        'トランスフォームでは描けません。'
-        '拡大率をそろえるか90°単位で回すとラスタライズできます。',
-    'referenceWait.othersKeepKeys':
-        'トランスフォームのスイッチを共有する別のレイヤーが、'
-        'オフの間のキーを持っているため、'
-        'スイッチを入れるとそのキーが表示されます。'
-        '先にトランスフォームをオンにするとラスタライズできます。',
-    'referenceWait.usesApart':
-        'リンクされたレイヤーが同じセルの絵を別々の位置に見せているため、'
-        'セル1枚に収められません。'
-        '参照を同じ位置にそろえるとラスタライズできます。',
-    'referenceWait.blocks':
-        'このレイヤーのトランスフォームはブロック単位で適用されるため、'
-        '動く参照をキーにできません。'
-        'トランスフォームの適用対象をフレームにするとラスタライズできます。',
     'pasteProgressRunning': 'ペースト中…',
-    'pasteProgressDone': 'ペーストしました',
     'duplicateProgressRunning': '複製中…',
-    'duplicateProgressDone': '複製しました',
     'workProgressRunning': '処理中…',
-    'workProgressDone': '完了しました',
     'pictureTradeTitle': '作画の入れ替え',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
     'unsavedAutosaveBody':
@@ -4023,7 +4023,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '兼用カットを作成',
     'shortcutAction.cut-convert-linked': '兼用カットに変換',
     'shortcutAction.cut-canvas-size': 'カンバスサイズ',
-    'shortcutAction.layer-rasterize': 'ラスタライズ',
     'menuAction.window-panels': 'パネル',
     'shortcutAction.window-tool-rail-right': 'ツールバーを右端に',
     'shortcutAction.window-region-on-top': 'タイムライン領域を上に',
@@ -4193,7 +4192,6 @@ enum AppStrings {
     'failedCopyPickTitle': 'バックアップする失敗版',
     'failedCopyVanishOnClose': '失敗版はプログラムを閉じると消えます。',
     'failedCopyBackingUp': 'バックアップ中…',
-    'failedCopyBackedUp': 'バックアップ完了',
     'closeProjectFailedCopyBody':
         'このプロジェクトが保存できなかった作業はアプリ内の失敗版にしかなく、失敗版はプログラムを閉じると消えます。残すには「名前を付けて保存」するか、ファイルメニューの「失敗版をバックアップ…」を使ってください。',
     'projectFileVanished':
@@ -4229,6 +4227,9 @@ enum AppStrings {
     'sheetStretchLineOn': 'あり',
     'sheetStretchLineOff': 'なし',
     'sheetLength': 'シートの長さ',
+    'sheetXdtsPapers': 'XDTS Viewer 用紙',
+    'xdtsViewerRateRefused': 'XDTS Viewer は1秒を24コマで数えます — 24fps のプロジェクトのみ',
+    'sheetSixSecondsFull': '6秒シートは1ブロック{most}列まで — このカットは{n}列',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
     'sheetBrushAllow': 'ブラシを許可',
@@ -4272,6 +4273,15 @@ enum AppStrings {
     'instructionEditorIcon': 'アイコン',
     'instructionEditorColor': '色',
     'instructionEditorMark': '記号',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp': 'GPU が複数あるコンピューターで、Anicel の起動時に Windows に求める GPU の種類。',
+    'gpuPreferenceAuto': '自動',
+    'gpuPreferenceLowPower': '省電力',
+    'gpuPreferenceHighPerformance': '高パフォーマンス',
+    'gpuPreferenceNextLaunch': '次回の起動から反映されます。',
+    'gpuPreferenceNotOnMacOS': 'macOS では Anicel は GPU を選べません。',
+    'gpuPreferenceDriverPicks': 'Linux ではグラフィックドライバーが GPU を選びます。',
+    'gpuPreferenceOneGpu': 'このデバイスの GPU は 1 つです。',
     'systemStatusHelp':
         '各サブシステムが今どの実装で動いているかです。フォールバック経路でもアプリは動きますが、たいていは遅くなります — 詳しく知りたいときは名前で検索できます。',
     'shortcutShelf.canvas': 'カンバス',
@@ -4344,6 +4354,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': 'メッシュワープ',
     'shortcutAction.tool-cut': '切り抜きツール',
     'shortcutAction.tool-cut-whole': '全体カット',
+    'shortcutAction.tool-cut-whole-run': '全体カットを実行',
     'shortcutAction.tool-cut-stamp': 'スタンプ',
     'shortcutAction.selection-deselect': '選択解除',
     'shortcutAction.layer-up': 'レイヤーを上へ',
@@ -4518,7 +4529,6 @@ enum AppStrings {
     'mediaFindInFolder': 'フォルダーから探す',
     'mediaRelinkFound': '{n} 件中 {m} 件が見つかりました。再リンクしますか？',
     'mediaRelinkScanning': 'フォルダーを読み込み中…',
-    'mediaRelinkScanned': '読み込みました',
     'mediaRemove': 'メディアを削除',
     'mediaRegisterInProject': 'プロジェクトファイルに取り込む',
     'mediaExportWav': 'WAVで書き出す',
@@ -4722,6 +4732,8 @@ enum AppStrings {
     'exDigits': '桁数',
     'exApplyLayerFx': 'レイヤーFX',
     'exMuxSeMix': 'SEミックスを動画に多重化',
+    'exXdtsInk': 'インク出力',
+    'xdtsViewerSheetTemplate': '{paper} {seconds}秒',
     'exLabel': 'ラベル',
     'exApply': '適用',
     'exKinds': '書き出す種類',
@@ -4962,7 +4974,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n}個のファイル',
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
-    'imStatusDone': 'インポートしました',
     'imStepRecoding': 'トリミングした動画を再エンコード中…',
     'imStepWritingSpan': '切り出した範囲をファイルに書き出し中…',
     'imStepCarrying': 'ファイルをプロジェクトに埋め込み中…',
@@ -5049,6 +5060,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
     'toolCutRegisterTip': '先端として登録',
     'toolCutDeletesSource': '元画像を削除',
+    'toolCutRun': '実行',
     'toolReadSource': '参照',
     'toolReadsEveryVisibleLayer': '表示中のすべてのレイヤー',
     'brushSettingsTitle': 'ブラシ設定',
@@ -5570,9 +5582,8 @@ enum AppStrings {
     'tlMergeChangeRiderOver': 'アタッチレイヤーがほかの絵を覆うようになります',
     'tlMergeChangeRiderUnder': 'アタッチレイヤーがほかの絵の下に入ります',
     'tlMergeChangeWall': 'ペーストボードの外の部分が切り取られます',
-    'tlFxBakeChangesTitle': 'ラスタライズすると見た目が変わることがあります',
-    'tlFxBakeChangesBody': 'ラスタライズした絵は、今と違って見えることがあります。',
-    'tlFxBakeChangeOrder': '先にかかっていた fx が、ラスタライズした絵の上にかかります',
+    'tlFxBakeRowsFreedTemplate':
+        'ラスタライズで {names} がコンテのコマ1つに2枚以上の絵を見せるようになったため、シンクからフリー（自分のタイミング）に切り替えました。',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -5610,6 +5621,7 @@ enum AppStrings {
     'frameRulerPages': 'ページ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
     'projectFpsField': '1秒あたりのフレーム数',
+    'projectFpsRecommended': 'おすすめ',
     'autoNameStartField': '開始番号',
   };
 
@@ -5849,9 +5861,7 @@ enum AppStrings {
     'commonSaveAs': '다른 이름으로 저장',
     'saveAsTitle': '다른 이름으로 저장',
     'saveProgressRunning': '저장 중…',
-    'saveProgressDone': '저장 완료',
     'savePrepareRunning': '준비 중…',
-    'savePrepareDone': '준비 완료',
     'saveStepKeepingLeftBehind': '빠진 미디어를 옮겨 두는 중…',
     'saveStepCels': '셀을 쓰는 중…',
     'saveStepChecking': '품을 파일을 확인하는 중…',
@@ -5861,39 +5871,13 @@ enum AppStrings {
     'saveStepCompacting': '파일의 빈 자리를 메우는 중…',
     'saveStepHandingBack': '원래 문서로 파일을 넘기는 중…',
     'openProgressRunning': '여는 중…',
-    'openProgressDone': '열기 완료',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
     'openWaitingStalledTemplate': '{sec}초째 도착하지 않았습니다',
     'resizeProgressRunning': '크기 변경 중…',
-    'resizeProgressDone': '크기 변경 완료',
     'bakeProgressRunning': '래스터라이즈 중…',
-    'bakeProgressDone': '래스터라이즈 완료',
-    'rasterizeLeftReferences': '참조로 남긴 레이어가 있습니다.',
-    'referenceWait.attached':
-        '어태치된 레이어는 베이스의 변형으로 놓여, 움직이는 참조를 자기 키로 '
-        '옮길 수 없습니다. 어태치를 해제하면 래스터라이즈됩니다.',
-    'referenceWait.laidAsFitted':
-        '이전 버전에서 맞춘 크기로 깔린 파일이라, 움직이는 참조를 키로 옮길 수 '
-        '없습니다. 파일을 다시 놓으면 래스터라이즈됩니다.',
-    'referenceWait.sheared':
-        '한 축만 늘인 배율 아래에서 90° 단위가 아닌 회전은 변형이 그릴 수 '
-        '없습니다. 배율을 고르게 하거나 90° 단위로 돌리면 래스터라이즈됩니다.',
-    'referenceWait.othersKeepKeys':
-        '변형 스위치를 같이 쓰는 다른 레이어가 꺼 둔 동안의 키를 갖고 있어, '
-        '스위치를 켜면 그 키가 보이게 됩니다. 변형을 먼저 켜면 '
-        '래스터라이즈됩니다.',
-    'referenceWait.usesApart':
-        '링크된 레이어들이 같은 셀의 그림을 서로 다른 자리에 보여, 셀 한 장에 '
-        '담을 수 없습니다. 참조를 같은 자리로 맞추면 래스터라이즈됩니다.',
-    'referenceWait.blocks':
-        '이 레이어의 변형은 블록 단위로 적용되어, 움직이는 참조를 키로 옮길 '
-        '수 없습니다. 변형의 적용 대상을 프레임으로 바꾸면 래스터라이즈됩니다.',
     'pasteProgressRunning': '붙여넣는 중…',
-    'pasteProgressDone': '붙여넣음',
     'duplicateProgressRunning': '복제하는 중…',
-    'duplicateProgressDone': '복제함',
     'workProgressRunning': '처리 중…',
-    'workProgressDone': '완료',
     'pictureTradeTitle': '원화 맞바꾸기',
     'unsavedAutosaveTitle': '프로젝트 저장',
     'unsavedAutosaveBody':
@@ -5915,7 +5899,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '겸용컷 만들기',
     'shortcutAction.cut-convert-linked': '겸용컷으로 변환',
     'shortcutAction.cut-canvas-size': '캔버스 크기',
-    'shortcutAction.layer-rasterize': '래스터라이즈',
     'menuAction.window-panels': '패널',
     'shortcutAction.window-tool-rail-right': '툴 바를 오른쪽에',
     'shortcutAction.window-region-on-top': '타임라인 영역을 위로',
@@ -6083,7 +6066,6 @@ enum AppStrings {
     'failedCopyPickTitle': '백업할 실패본',
     'failedCopyVanishOnClose': '실패본은 프로그램을 닫으면 사라집니다.',
     'failedCopyBackingUp': '백업 중…',
-    'failedCopyBackedUp': '백업 완료',
     'closeProjectFailedCopyBody':
         '이 프로젝트가 저장하지 못한 작업은 앱 안의 실패본에만 있고, 실패본은 프로그램을 닫으면 사라집니다. 남기려면 「다른 이름으로 저장」하거나 파일 메뉴의 「실패본 백업…」을 쓰세요.',
     'projectFileVanished':
@@ -6119,6 +6101,9 @@ enum AppStrings {
     'sheetStretchLineOn': '있음',
     'sheetStretchLineOff': '없음',
     'sheetLength': '시트 길이',
+    'sheetXdtsPapers': 'XDTS 뷰어 용지',
+    'xdtsViewerRateRefused': 'XDTS 뷰어는 1초를 24코마로 셉니다 — 24fps 프로젝트에서만',
+    'sheetSixSecondsFull': '6초 시트는 한 블록에 {most}열까지 — 이 컷은 {n}열',
     'sheetThreeSeconds': '3초',
     'sheetSixSeconds': '6초',
     'sheetBrushAllow': '브러시 허용',
@@ -6162,6 +6147,15 @@ enum AppStrings {
     'instructionEditorIcon': '아이콘',
     'instructionEditorColor': '색',
     'instructionEditorMark': '기호',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp': 'GPU 가 여럿인 컴퓨터에서 애니셀이 시작할 때 Windows 에 청할 GPU 의 종류.',
+    'gpuPreferenceAuto': '자동',
+    'gpuPreferenceLowPower': '절전',
+    'gpuPreferenceHighPerformance': '고성능',
+    'gpuPreferenceNextLaunch': '다음 실행부터 적용됩니다.',
+    'gpuPreferenceNotOnMacOS': 'macOS 에서는 애니셀이 GPU 를 고를 수 없습니다.',
+    'gpuPreferenceDriverPicks': '리눅스에서는 그래픽 드라이버가 GPU 를 고릅니다.',
+    'gpuPreferenceOneGpu': '이 기기는 GPU 가 하나입니다.',
     'systemStatusHelp':
         '각 서브시스템이 지금 어떤 구현으로 돌고 있는지입니다. 폴백 경로에서도 앱은 동작하지만 대개 더 느립니다 — 자세히 알고 싶으면 이름으로 검색할 수 있습니다.',
     'shortcutShelf.canvas': '캔버스',
@@ -6234,6 +6228,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': '메시 워프',
     'shortcutAction.tool-cut': '잘라내기 도구',
     'shortcutAction.tool-cut-whole': '전체 잘라내기',
+    'shortcutAction.tool-cut-whole-run': '전체 잘라내기 실행',
     'shortcutAction.tool-cut-stamp': '스탬프',
     'shortcutAction.selection-deselect': '선택 해제',
     'shortcutAction.layer-up': '위 레이어',
@@ -6410,7 +6405,6 @@ enum AppStrings {
     'mediaFindInFolder': '폴더에서 찾기',
     'mediaRelinkFound': '{n}개 중 {m}개를 찾았습니다. 다시 연결할까요?',
     'mediaRelinkScanning': '폴더를 읽는 중…',
-    'mediaRelinkScanned': '폴더를 읽었습니다',
     'mediaRemove': '미디어 삭제',
     'mediaRegisterInProject': '프로젝트 파일에 품기',
     'mediaExportWav': 'WAV로 내보내기',
@@ -6611,6 +6605,8 @@ enum AppStrings {
     'exDigits': '자릿수',
     'exApplyLayerFx': '레이어 FX',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
+    'exXdtsInk': '잉크 출력',
+    'xdtsViewerSheetTemplate': '{paper} {seconds}초',
     'exLabel': '라벨',
     'exApply': '적용',
     'exKinds': '내보낼 종류',
@@ -6850,7 +6846,6 @@ enum AppStrings {
     'imFileCountTemplate': '파일 {n}개',
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
-    'imStatusDone': '임포트 완료',
     'imStepRecoding': '잘라 낸 동영상을 다시 인코딩하는 중…',
     'imStepWritingSpan': '잘라 낸 구간을 파일로 쓰는 중…',
     'imStepCarrying': '파일을 프로젝트에 품는 중…',
@@ -6932,6 +6927,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
     'toolCutRegisterTip': '팁으로 등록',
     'toolCutDeletesSource': '원본 삭제',
+    'toolCutRun': '실행',
     'toolReadSource': '참조',
     'toolReadsEveryVisibleLayer': '보이는 레이어 전부',
     'brushSettingsTitle': '브러시 설정',
@@ -7453,9 +7449,8 @@ enum AppStrings {
     'tlMergeChangeRiderOver': '어태치 레이어가 다른 그림을 덮게 됩니다',
     'tlMergeChangeRiderUnder': '어태치 레이어가 다른 그림 밑으로 들어갑니다',
     'tlMergeChangeWall': '페이스트보드 밖 부분이 잘립니다',
-    'tlFxBakeChangesTitle': '래스터라이즈하면 겉보기가 달라질 수 있습니다',
-    'tlFxBakeChangesBody': '래스터라이즈한 그림은 지금과 다르게 보일 수 있습니다.',
-    'tlFxBakeChangeOrder': '먼저 걸리던 fx 가 래스터라이즈한 그림 위에 걸립니다',
+    'tlFxBakeRowsFreedTemplate':
+        '래스터라이즈로 {names} 이(가) 콘티 칸 하나에 그림을 둘 이상 보이게 되어, 싱크에서 프리(자기 타이밍)로 바꿨습니다.',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
@@ -7494,6 +7489,7 @@ enum AppStrings {
     'frameRulerPages': '페이지',
     'projectFpsTitle': '프로젝트 프레임레이트',
     'projectFpsField': '초당 프레임 수',
+    'projectFpsRecommended': '추천',
     'autoNameStartField': '시작 번호',
   };
 
@@ -7755,9 +7751,7 @@ enum AppStrings {
     'commonSaveAs': 'Enregistrer sous',
     'saveAsTitle': 'Enregistrer sous',
     'saveProgressRunning': 'Enregistrement…',
-    'saveProgressDone': 'Enregistré',
     'savePrepareRunning': 'Préparation…',
-    'savePrepareDone': 'Prêt',
     'saveStepKeepingLeftBehind': 'Mise de côté des médias retirés…',
     'saveStepCels': 'Écriture des cellulos…',
     'saveStepChecking': 'Vérification des fichiers à intégrer…',
@@ -7767,40 +7761,10 @@ enum AppStrings {
     'saveStepCompacting': 'Comblement des vides du fichier…',
     'saveStepHandingBack': 'Remise du fichier à son document…',
     'resizeProgressRunning': 'Redimensionnement…',
-    'resizeProgressDone': 'Redimensionné',
     'bakeProgressRunning': 'Pixellisation…',
-    'bakeProgressDone': 'Pixellisé',
-    'rasterizeLeftReferences': 'Certains calques restent des références.',
-    'referenceWait.attached':
-        'Un calque attaché se place selon la Transformation de sa base. Une '
-        'Référence qui bouge ne peut donc pas devenir ses propres clés. '
-        'Détachez-le pour le pixelliser.',
-    'referenceWait.laidAsFitted':
-        'Ce fichier a été posé à une taille ajustée par une version '
-        'antérieure. Une Référence qui bouge ne peut donc pas devenir des '
-        'clés. Replacez le fichier pour le pixelliser.',
-    'referenceWait.sheared':
-        'Une rotation qui n’est pas un multiple de 90° sous une Échelle '
-        'étirée sur un seul axe donne une forme qu’aucune Transformation ne '
-        'dessine. Égalisez l’Échelle ou tournez par 90° pour pixelliser.',
-    'referenceWait.othersKeepKeys':
-        'Un autre calque qui partage cet interrupteur de Transformation garde '
-        'ses propres clés tant qu’il est éteint, et l’allumer les montrerait. '
-        'Allumez d’abord la Transformation pour pixelliser.',
-    'referenceWait.usesApart':
-        'Les calques liés montrent l’image de ce cellulo à des endroits '
-        'différents, et un cellulo la garde à un seul. Alignez leur '
-        'Référence pour pixelliser.',
-    'referenceWait.blocks':
-        'La Transformation de ce calque s’applique par bloc, et une '
-        'Référence qui bouge ne peut pas devenir ses clés. Appliquez la '
-        'Transformation par image pour pixelliser.',
     'pasteProgressRunning': 'Collage…',
-    'pasteProgressDone': 'Collé',
     'duplicateProgressRunning': 'Duplication…',
-    'duplicateProgressDone': 'Dupliqué',
     'workProgressRunning': 'Traitement…',
-    'workProgressDone': 'Terminé',
     'pictureTradeTitle': 'Échanger les dessins',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
     'unsavedAutosaveBody':
@@ -7823,7 +7787,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': 'Créer un plan lié',
     'shortcutAction.cut-convert-linked': 'Convertir en plan lié',
     'shortcutAction.cut-canvas-size': 'Taille du canevas',
-    'shortcutAction.layer-rasterize': 'Pixelliser le calque',
     'menuAction.window-panels': 'Panneaux',
     'shortcutAction.window-tool-rail-right': "Barre d'outils à droite",
     'shortcutAction.window-region-on-top': 'Zone de timeline en haut',
@@ -8016,7 +7979,6 @@ enum AppStrings {
     'failedCopyVanishOnClose':
         "Les copies d'échec disparaissent à la fermeture du programme.",
     'failedCopyBackingUp': 'Sauvegarde…',
-    'failedCopyBackedUp': 'Sauvegardé',
     'closeProjectFailedCopyBody':
         "Le travail que ce projet n'a pas pu enregistrer n'existe que dans "
         "sa copie d'échec à l'intérieur de l'app, et elle disparaît à la "
@@ -8048,6 +8010,12 @@ enum AppStrings {
     'sheetStretchLineOn': 'Oui',
     'sheetStretchLineOff': 'Non',
     'sheetLength': 'Longueur de feuille',
+    'sheetXdtsPapers': 'Feuille XDTS Viewer',
+    'xdtsViewerRateRefused':
+        'Le XDTS Viewer compte 24 images par seconde — projets à 24 i/s '
+        'seulement',
+    'sheetSixSecondsFull': 'Un bloc de 6 s tient {most} colonnes — ce plan '
+        'en a {n}',
     'sheetThreeSeconds': '3 s',
     'sheetSixSeconds': '6 s',
     'sheetBrushAllow': 'Autoriser le pinceau',
@@ -8091,6 +8059,18 @@ enum AppStrings {
     'instructionEditorIcon': 'Icône',
     'instructionEditorColor': 'Couleur',
     'instructionEditorMark': 'Repère',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp':
+        'Le type de GPU qu’Anicel demande à Windows au démarrage, sur un '
+        'ordinateur qui en a plusieurs.',
+    'gpuPreferenceAuto': 'Automatique',
+    'gpuPreferenceLowPower': 'Économie d’énergie',
+    'gpuPreferenceHighPerformance': 'Hautes performances',
+    'gpuPreferenceNextLaunch': 'Prend effet au prochain démarrage d’Anicel.',
+    'gpuPreferenceNotOnMacOS': 'Sur macOS, Anicel ne peut pas choisir son GPU.',
+    'gpuPreferenceDriverPicks':
+        'Sous Linux, c’est le pilote graphique qui choisit le GPU.',
+    'gpuPreferenceOneGpu': 'Cet appareil n’a qu’un GPU.',
     'systemStatusHelp':
         'Quelle implémentation chaque sous-système exécute en ce moment. Les chemins de repli gardent l\'application fonctionnelle mais tournent en général plus lentement — les noms sont cherchables si vous voulez les détails.',
     'shortcutShelf.canvas': 'Canevas',
@@ -8165,6 +8145,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': 'Déformation par grille',
     'shortcutAction.tool-cut': 'Outil découpe',
     'shortcutAction.tool-cut-whole': 'Découpe entière',
+    'shortcutAction.tool-cut-whole-run': 'Exécuter la découpe entière',
     'shortcutAction.tool-cut-stamp': 'Tampon',
     'shortcutAction.selection-deselect': 'Désélectionner',
     'shortcutAction.layer-up': 'Calque vers le haut',
@@ -8561,6 +8542,8 @@ enum AppStrings {
     'exDigits': 'Chiffres',
     'exApplyLayerFx': 'FX de calque',
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
+    'exXdtsInk': "Sortie de l'encre",
+    'xdtsViewerSheetTemplate': '{paper} {seconds} s',
     'exLabel': 'Étiquette',
     'exApply': 'Appliquer',
     'exKinds': 'Types à exporter',
@@ -8870,7 +8853,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n} fichiers',
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
-    'imStatusDone': 'Importé',
     'imStepRecoding': 'Réencodage de la vidéo découpée…',
     'imStepWritingSpan': 'Écriture de la plage découpée dans un fichier…',
     'imStepCarrying': 'Intégration du fichier au projet…',
@@ -8960,6 +8942,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
     'toolCutRegisterTip': 'Enregistrer comme pointe',
     'toolCutDeletesSource': "Supprimer l'original",
+    'toolCutRun': 'Exécuter',
     'toolReadSource': 'Référence',
     'toolReadsEveryVisibleLayer': 'Calques visibles',
     'brushSettingsTitle': 'Réglages de brosse',
@@ -9481,11 +9464,8 @@ enum AppStrings {
         "Un calque attaché recouvrira d'autres dessins",
     'tlMergeChangeRiderUnder': "Un calque attaché passera sous d'autres dessins",
     'tlMergeChangeWall': 'Ce qui dépasse du fond est coupé',
-    'tlFxBakeChangesTitle': 'La pixellisation peut changer son apparence',
-    'tlFxBakeChangesBody':
-        'Les images pixellisées peuvent paraître autrement qu’à présent.',
-    'tlFxBakeChangeOrder':
-        'Un fx appliqué avant lui s’applique sur les images pixellisées',
+    'tlFxBakeRowsFreedTemplate':
+        'Pixellisé, {names} montrait plus d’une image dans une même vignette du storyboard : il passe de synchronisé à libre (son propre minutage).',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -9502,9 +9482,7 @@ enum AppStrings {
     'drawingCursorPen': 'Stylo',
     'drawingCursorCrosshair': 'Réticule',
     'mediaRelinkScanning': 'Lecture du dossier…',
-    'mediaRelinkScanned': 'Dossier lu',
     'openProgressRunning': 'Ouverture…',
-    'openProgressDone': 'Ouvert',
     'openWaitingCloudTemplate': 'Téléchargement depuis le cloud · {sec} s',
     'openWaitingStalledTemplate': 'Rien reçu depuis {sec} s',
     'prefsDisplay': 'Affichage',
@@ -9566,6 +9544,7 @@ enum AppStrings {
     'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Fréquence du projet',
     'projectFpsField': 'Images par seconde',
+    'projectFpsRecommended': 'Recommandé',
     'autoNameStartField': 'Numéro de départ',
   };
 
@@ -9794,9 +9773,7 @@ enum AppStrings {
     'commonSaveAs': '另存为',
     'saveAsTitle': '另存为',
     'saveProgressRunning': '正在保存…',
-    'saveProgressDone': '已保存',
     'savePrepareRunning': '正在准备…',
-    'savePrepareDone': '准备完成',
     'saveStepKeepingLeftBehind': '正在暂存移除的媒体…',
     'saveStepCels': '正在写入赛璐珞…',
     'saveStepChecking': '正在校验要内嵌的文件…',
@@ -9806,34 +9783,10 @@ enum AppStrings {
     'saveStepCompacting': '正在填补文件中的空隙…',
     'saveStepHandingBack': '正在将文件交还给原文档…',
     'resizeProgressRunning': '正在调整尺寸…',
-    'resizeProgressDone': '已调整尺寸',
     'bakeProgressRunning': '正在栅格化…',
-    'bakeProgressDone': '栅格化完成',
-    'rasterizeLeftReferences': '部分图层仍保留为参照。',
-    'referenceWait.attached':
-        '附属图层由其基底的变换放置，移动的参照无法变成它自己的关键帧。'
-        '解除附属即可栅格化。',
-    'referenceWait.laidAsFitted':
-        '此文件由旧版本按适配尺寸放置，移动的参照无法变成关键帧。'
-        '重新放置文件即可栅格化。',
-    'referenceWait.sheared':
-        '在只拉伸一个轴的缩放下，非 90° 倍数的旋转无法用变换绘制。'
-        '统一缩放或按 90° 旋转即可栅格化。',
-    'referenceWait.othersKeepKeys':
-        '共用此变换开关的另一个图层在关闭期间保留了自己的关键帧，'
-        '打开开关会显示它们。先打开变换即可栅格化。',
-    'referenceWait.usesApart':
-        '链接的图层在不同位置显示同一张赛璐珞的画面，'
-        '一张赛璐珞只能放在一个位置。将参照对齐到同一位置即可栅格化。',
-    'referenceWait.blocks':
-        '此图层的变换按块应用，移动的参照无法转为关键帧。'
-        '将变换的应用对象改为帧即可栅格化。',
     'pasteProgressRunning': '粘贴中…',
-    'pasteProgressDone': '已粘贴',
     'duplicateProgressRunning': '复制中…',
-    'duplicateProgressDone': '已复制',
     'workProgressRunning': '正在处理…',
-    'workProgressDone': '已完成',
     'pictureTradeTitle': '交换画稿',
     'unsavedAutosaveTitle': '保存你的项目',
     'unsavedAutosaveBody':
@@ -9855,7 +9808,6 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '创建链接镜头',
     'shortcutAction.cut-convert-linked': '转换为链接镜头',
     'shortcutAction.cut-canvas-size': '画布尺寸',
-    'shortcutAction.layer-rasterize': '栅格化图层',
     'menuAction.window-panels': '面板',
     'shortcutAction.window-tool-rail-right': '工具条在右侧',
     'shortcutAction.window-region-on-top': '时间轴区域置顶',
@@ -10003,7 +9955,6 @@ enum AppStrings {
     'failedCopyPickTitle': '要备份的失败副本',
     'failedCopyVanishOnClose': '程序关闭后失败副本会消失。',
     'failedCopyBackingUp': '正在备份…',
-    'failedCopyBackedUp': '已备份',
     'closeProjectFailedCopyBody':
         '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
@@ -10029,6 +9980,9 @@ enum AppStrings {
     'sheetStretchLineOn': '有',
     'sheetStretchLineOff': '无',
     'sheetLength': '摄影表长度',
+    'sheetXdtsPapers': 'XDTS Viewer 用纸',
+    'xdtsViewerRateRefused': 'XDTS Viewer 按每秒24格计数 — 仅限24fps项目',
+    'sheetSixSecondsFull': '6秒表每栏最多{most}列 — 本镜头有{n}列',
     'sheetThreeSeconds': '3秒',
     'sheetSixSeconds': '6秒',
     'sheetBrushAllow': '允许画笔',
@@ -10072,6 +10026,15 @@ enum AppStrings {
     'instructionEditorIcon': '图标',
     'instructionEditorColor': '颜色',
     'instructionEditorMark': '记号',
+    'gpuPreferenceLabel': 'GPU',
+    'gpuPreferenceHelp': '在有多个 GPU 的电脑上，Anicel 启动时向 Windows 请求的 GPU 类型。',
+    'gpuPreferenceAuto': '自动',
+    'gpuPreferenceLowPower': '节能',
+    'gpuPreferenceHighPerformance': '高性能',
+    'gpuPreferenceNextLaunch': '下次启动 Anicel 时生效。',
+    'gpuPreferenceNotOnMacOS': '在 macOS 上，Anicel 无法选择 GPU。',
+    'gpuPreferenceDriverPicks': '在 Linux 上，由显卡驱动选择 GPU。',
+    'gpuPreferenceOneGpu': '此设备只有一个 GPU。',
     'systemStatusHelp': '每个子系统当前运行的是哪一种实现。回退路径仍能让应用正常工作，但通常更慢 — 想了解细节可以按名称搜索。',
     'shortcutShelf.canvas': '画布',
     'shortcutShelf.tools': '工具',
@@ -10143,6 +10106,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-mesh': '网格变形',
     'shortcutAction.tool-cut': '裁剪工具',
     'shortcutAction.tool-cut-whole': '整体裁剪',
+    'shortcutAction.tool-cut-whole-run': '执行整体裁剪',
     'shortcutAction.tool-cut-stamp': '图章',
     'shortcutAction.selection-deselect': '取消选择',
     'shortcutAction.layer-up': '图层上移',
@@ -10511,6 +10475,8 @@ enum AppStrings {
     'exDigits': '位数',
     'exApplyLayerFx': '图层 FX',
     'exMuxSeMix': '将 SE 混音封装进视频',
+    'exXdtsInk': '墨迹输出',
+    'xdtsViewerSheetTemplate': '{paper} {seconds}秒',
     'exLabel': '标签',
     'exApply': '应用',
     'exKinds': '导出种类',
@@ -10741,7 +10707,6 @@ enum AppStrings {
     'imFileCountTemplate': '{n} 个文件',
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',
-    'imStatusDone': '已导入',
     'imStepRecoding': '正在重新编码裁剪后的视频…',
     'imStepWritingSpan': '正在将裁剪的范围写入文件…',
     'imStepCarrying': '正在将文件内嵌到项目…',
@@ -10821,6 +10786,7 @@ enum AppStrings {
     'toolCutPasteAtOrigin': '粘贴到原位置',
     'toolCutRegisterTip': '注册为笔尖',
     'toolCutDeletesSource': '删除原图',
+    'toolCutRun': '执行',
     'toolReadSource': '参考',
     'toolReadsEveryVisibleLayer': '所有可见图层',
     'brushSettingsTitle': '画笔设置',
@@ -11298,9 +11264,7 @@ enum AppStrings {
     'tlMergeChangeRiderOver': '附属图层会盖住其他画面',
     'tlMergeChangeRiderUnder': '附属图层会被压到其他画面下面',
     'tlMergeChangeWall': '超出底板的部分会被裁掉',
-    'tlFxBakeChangesTitle': '栅格化后外观可能会改变',
-    'tlFxBakeChangesBody': '栅格化后的画面可能与现在看起来不同。',
-    'tlFxBakeChangeOrder': '先前应用的 fx 将应用在栅格化后的画面上',
+    'tlFxBakeRowsFreedTemplate': '栅格化后，{names} 在分镜的一格中显示了不止一幅画面，已从同步改为自由（自身时间）。',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',
@@ -11315,9 +11279,7 @@ enum AppStrings {
     'drawingCursorPen': '钢笔',
     'drawingCursorCrosshair': '十字',
     'mediaRelinkScanning': '正在读取该文件夹…',
-    'mediaRelinkScanned': '已读取文件夹',
     'openProgressRunning': '正在打开…',
-    'openProgressDone': '已打开',
     'openWaitingCloudTemplate': '正在从云端下载 · {sec} 秒',
     'openWaitingStalledTemplate': '已有 {sec} 秒未收到数据',
     'prefsDisplay': '显示',
@@ -11395,6 +11357,7 @@ enum AppStrings {
     'frameRulerPages': '页',
     'projectFpsTitle': '项目帧率',
     'projectFpsField': '每秒帧数',
+    'projectFpsRecommended': '推荐',
     'autoNameStartField': '起始编号',
   };
 }

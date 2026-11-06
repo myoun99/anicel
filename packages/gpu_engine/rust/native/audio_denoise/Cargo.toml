@@ -1,0 +1,10 @@
+[package]
+name = "audio_denoise"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# The C answer key: the engine's qa_audio_denoise_f32, bit for bit
+# (native/oracle).
+[dev-dependencies]
+oracle = { path = "../oracle" }

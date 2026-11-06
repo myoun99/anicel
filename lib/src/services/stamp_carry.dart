@@ -22,10 +22,11 @@ import 'resample/resample_kernel.dart';
 /// because the box's affine — all the confirm handed down — is the identity
 /// under a warp.
 ///
-/// ⛔ONE CODE for the float and for every other stamp ([through]). The
-/// float is simply the stamp whose rect the box stands on: there the quad's
-/// corners are the box's own and the mesh needs no grid past its edge, so
-/// the float lands the bytes it always landed.
+/// ⛔ONE CODE for the float and for every other stamp ([through]). The box
+/// stands on its own rect, the one 일반 draws (F-570), and the float is a
+/// stamp like the rest: what it holds past that rect — the whole pixels its
+/// edge rounds out to, a grow, a feather — follows the mapping on past the
+/// edge, as another cel's picture does.
 sealed class StampCarry {
   const StampCarry({required this.mode, this.within});
 
@@ -54,7 +55,7 @@ final class AffineCarry extends StampCarry {
       transformStampDab(stamp, affine, mode: mode, visible: visible ?? within);
 }
 
-/// A free quad (퍼스): the float's rect corners [base] went to [corners]
+/// A free quad (퍼스): the box's corners [base] went to [corners]
 /// (TL · TR · BR · BL), and the canvas follows the homography between them.
 final class QuadCarry extends StampCarry {
   const QuadCarry({
@@ -86,9 +87,9 @@ final class QuadCarry extends StampCarry {
       stamp,
       [
         for (var i = 0; i < own.length; i += 1)
-          // ⛔The float's own corners go where the box put them, to the
+          // ⛔A corner on the box's own goes where the box put it, to the
           // bit: solving and re-applying the homography leaves a residue,
-          // and the float must land what the preview showed.
+          // and the picture must land on the quad the screen showed.
           if (own[i] == base[i])
             corners[i]
           else
@@ -109,7 +110,7 @@ typedef MeshGrid = ({
   List<CanvasPoint> points,
 });
 
-/// A mesh: the [grid] laid over the float's rect, and the canvas follows
+/// A mesh: the [grid] laid over the box's rect, and the canvas follows
 /// its cells.
 final class MeshCarry extends StampCarry {
   const MeshCarry(this.grid, {required super.mode, super.within});
@@ -161,8 +162,7 @@ final class MeshCarry extends StampCarry {
   /// box's edge) and not cut off (유저 H41: 「다른 프레임 그림의 잘려서
   /// 변형안먹힌 부분이 있었어」).
   ///
-  /// A stamp the box already covers — the float itself — gets the grid back
-  /// as it is.
+  /// A stamp the box already covers gets the grid back as it is.
   MeshGrid _over(BrushDab stamp) {
     final own = stampRectOf(stamp);
     final cellWidth = base.width / columns;

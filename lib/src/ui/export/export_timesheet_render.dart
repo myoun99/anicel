@@ -53,7 +53,9 @@ class ExportTimesheetPageTask {
 /// panel's own walk), each window's baked raster and the photos laid under
 /// it (I-97), whose files are the ones it asks [images] for. [layers]
 /// draws those strata alone — a Photoshop document's rows (I-117); null
-/// draws the page whole.
+/// draws the page whole. [contentParts] draws those of the values alone —
+/// an XDTS viewer's ink page, which carries what the viewer does not print
+/// ([TimesheetContentPart]); null draws them all.
 ///
 /// ↩️A scale multiplied the page's size in the FORM'S UNITS, which was the
 /// paper while a unit was a pixel of it. F-294 gave the paper pixels of its
@@ -76,6 +78,7 @@ Future<ui.Image> renderTimesheetPageImage({
   ink,
   SheetImageRun? images,
   Set<SheetPaintLayer>? layers,
+  Set<TimesheetContentPart>? contentParts,
 }) {
   final page = layout.pageRect(pageIndex);
   final paper = layout.paperPixelSize;
@@ -92,6 +95,7 @@ Future<ui.Image> renderTimesheetPageImage({
         layout: layout,
         face: face,
         layers: drawn,
+        contentParts: contentParts,
         words: words,
         ink: ink?.windows ?? const [],
         inkImageFor: ink?.rasterFor,

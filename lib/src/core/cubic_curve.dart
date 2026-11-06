@@ -70,13 +70,32 @@ final class CubicWalk {
 
   /// The point [s] of the way along it.
   Offset at(double s) {
-    final lengths = _lengths;
-    if (lengths == null) {
+    if (_lengths == null) {
       return Offset(
         from.dx + (to.dx - from.dx) * s,
         from.dy + (to.dy - from.dy) * s,
       );
     }
+    final (:lo, :f) = _stepAt(s);
+    final a = _curve(lo / _steps);
+    final b = _curve((lo + 1) / _steps);
+    return Offset(a.dx + (b.dx - a.dx) * f, a.dy + (b.dy - a.dy) * f);
+  }
+
+  /// The curve's parameter at the point [s] of the way along it ([at]) —
+  /// [s] itself for the straight line, whose parameter is its way.
+  double parameterAt(double s) {
+    if (_lengths == null) {
+      return s;
+    }
+    final (:lo, :f) = _stepAt(s);
+    return (lo + f) / _steps;
+  }
+
+  /// The even step of the parameter the point [s] of the way falls in, and
+  /// how far into it.
+  ({int lo, double f}) _stepAt(double s) {
+    final lengths = _lengths!;
     final target = s * lengths[_steps];
     var lo = 0;
     var hi = _steps;
@@ -89,9 +108,25 @@ final class CubicWalk {
       }
     }
     final segment = lengths[hi] - lengths[lo];
-    final f = segment <= 0 ? 0.0 : (target - lengths[lo]) / segment;
-    final a = _curve(lo / _steps);
-    final b = _curve(hi / _steps);
-    return Offset(a.dx + (b.dx - a.dx) * f, a.dy + (b.dy - a.dy) * f);
+    return (lo: lo, f: segment <= 0 ? 0.0 : (target - lengths[lo]) / segment);
   }
+}
+
+/// The cubic Bézier of [controls] cut at its parameter [u] (de Casteljau):
+/// the controls of the half before the cut — its first, [before].$1,
+/// [before].$2, [at] — and of the half after it — [at], [after].$1,
+/// [after].$2, its last. Each half is the curve it was there, so a key cut
+/// into a way leaves the way's two halves as they were (I-120-Q3).
+({(Offset, Offset) before, Offset at, (Offset, Offset) after}) cubicCut(
+  (Offset, Offset, Offset, Offset) controls,
+  double u,
+) {
+  final (p0, p1, p2, p3) = controls;
+  Offset lerp(Offset a, Offset b) => a + (b - a) * u;
+  final a1 = lerp(p0, p1);
+  final b1 = lerp(p1, p2);
+  final c1 = lerp(p2, p3);
+  final a2 = lerp(a1, b1);
+  final b2 = lerp(b1, c1);
+  return (before: (a1, a2), at: lerp(a2, b2), after: (b2, c1));
 }

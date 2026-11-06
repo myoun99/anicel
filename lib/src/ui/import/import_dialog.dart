@@ -1453,7 +1453,6 @@ class _ImportDialogState extends State<ImportDialog> {
         title: AppText.strings.imImport,
         titleIcon: Icons.download_outlined,
         runningLabel: AppText.strings.imStatusImporting,
-        doneLabel: AppText.strings.imStatusDone,
         windowKey: const ValueKey<String>('import-progress-dialog'),
         runningStatus: _RunningLine(_wait.status, _step),
         onCancel: _wait.cancel,

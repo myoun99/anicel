@@ -26,6 +26,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -252,11 +253,16 @@ void main() {
       return (s, row);
     }
 
+    /// Where the cel [row] shows at frame 0 holds ink, as the store holds it.
     ui.Rect? shown(EditorSessionManager s, Layer row) {
       final cut = s.requireActiveCut;
       return inkOf(
         s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
-          s.brushFrameKeyForCut(cut, row.id, row.frames.single.id),
+          s.brushFrameKeyForCut(
+            cut,
+            row.id,
+            exposedFrameIdAt(row.timeline, 0)!,
+          ),
         ),
       );
     }
@@ -396,7 +402,7 @@ void main() {
       }
     }
 
-    ReferenceLetGo wayOf(EditorSessionManager s, Layer row) => s
+    ReferenceMoveCarried wayOf(EditorSessionManager s, Layer row) => s
         .cutCommandCoordinator
         .referenceLetGoOf(cutId: s.requireActiveCut.id, layerId: row.id);
 
@@ -778,22 +784,158 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('a still that MOVES on a row whose transform cannot carry '
-        'it waits — no rasterize leaves it anything but the reference it '
-        'is (F-374-Q9)', (tester) async {
+    /// The fx turn a quarter over frames 0 to 2 — on [squashed], a move no
+    /// key of the row's carries.
+    final quarterOverTwo = TransformTrack.empty().copyWith(
+      rotation: PropertyTrack<double>().withKey(0, 0).withKey(2, 90),
+    );
+
+    /// A way whose cels are made a position apiece.
+    final framed = isA<ReferenceMoveCarried>().having(
+      (way) => way.framed,
+      'framed',
+      isTrue,
+    );
+
+    Future<bool?> rasterizeFrames(
+      WidgetTester tester,
+      EditorSessionManager s,
+      Layer row,
+    ) => tester.runAsync(
+      () => s.importDoors.rasterizeReferenceFrames(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+      ),
+    );
+
+    /// [row] with its one cel named [name].
+    void named(EditorSessionManager s, Layer row, String name) =>
+        s.repository.replaceLayer(
+          layer: rowOf(s, row).copyWith(
+            frames: [rowOf(s, row).frames.single.copyWith(name: name)],
+          ),
+        );
+
+    testWidgets('🎯a still that MOVES on a row whose transform cannot carry '
+        'it is taken a position apiece, as a movie\'s frames are: an '
+        'animation layer, a cel wherever the move changes — the first '
+        'with its cel\'s name, tails after — each the paper WHOLE where '
+        'the row showed it there; ONE undo gives the reference back '
+        '(I-120-Q5: 「애니메이션 레이어로, 움직이는 프레임마다 한 장」)', (
+      tester,
+    ) async {
       final (s, row) = await placed(tester);
-      posed(
-        s,
-        row,
-        track: squashed,
-        fx: TransformTrack.empty().copyWith(
-          rotation: PropertyTrack<double>().withKey(0, 30).withKey(12, 60),
+      named(s, row, '3');
+      posed(s, row, track: squashed, fx: quarterOverTwo);
+      final before = rowOf(s, row);
+      final length = drawingBlocks(
+        before.timeline,
+      ).fold(0, (sum, block) => sum + block.length);
+      expect(wayOf(s, row), framed);
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final baked = rowOf(s, row);
+      expect(baked.mediaReference, isNull);
+      expect(baked.kind, LayerKind.animation);
+      expect(baked.transformTrack, squashed);
+      expect([for (final cel in baked.frames) cel.name], ['3', '3-2', '3-3']);
+      final [unturned, turning, turned] = [
+        for (final cel in baked.frames) cel.id,
+      ];
+      expect(
+        [
+          for (var frame = 0; frame < length; frame += 1)
+            exposedFrameIdAt(baked.timeline, frame),
+        ],
+        [unturned, turning, for (var at = 2; at < length; at += 1) turned],
+        reason: 'a cel a frame while it turns, then held',
+      );
+      expect(
+        inkOf(celOf(s, baked, 0)),
+        const ui.Rect.fromLTRB(1120, 797, 1220, 857),
+        reason: 'unturned, where the file is laid',
+      );
+      expect(
+        inkOf(celOf(s, baked, 2)),
+        const ui.Rect.fromLTRB(1140, 777, 1200, 877),
+        reason: 'a quarter turned about its middle',
+      );
+      final between = inkOf(celOf(s, baked, 1))!;
+      expect(between.width, greaterThan(100));
+      expect(between.height, greaterThan(100));
+
+      s.undo();
+      expect(rowOf(s, row), before);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('each cel\'s pictures are its own — a cel showing a picture '
+        'another made is a picture of its own — and a cel no use shows '
+        'stays as it is (I-120-Q20, as an fx RASTERIZE banks them)', (
+      tester,
+    ) async {
+      final (s, row) = await placed(tester);
+      posed(s, row, track: squashed, fx: quarterOverTwo);
+      final first = rowOf(s, row).frames.single;
+      Frame another(String id, String name) => Frame(
+        id: FrameId(id),
+        duration: 1,
+        strokes: const [],
+        name: name,
+        filePicture: first.filePicture,
+      );
+      // A drawing row's: an image row holds one cel.
+      s.repository.replaceLayer(
+        layer: rowOf(s, row).copyWith(
+          kind: LayerKind.animation,
+          frames: [
+            first.copyWith(name: '3'),
+            another('held', '4'),
+            another('unshown', '5'),
+          ],
+          timeline: {
+            0: TimelineExposure.drawing(first.id, length: 3),
+            3: const TimelineExposure.drawing(FrameId('held'), length: 3),
+          },
         ),
       );
-      final before = rowOf(s, row);
-      expect(wayOf(s, row), isA<ReferenceMoveWaits>());
+      expect(wayOf(s, row), framed);
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final baked = rowOf(s, row);
+      expect([for (final cel in baked.frames) cel.name], [
+        '3',
+        '3-2',
+        '3-3',
+        '4',
+        '5',
+      ]);
+      expect(baked.frames.last.id, const FrameId('unshown'));
+      final ids = [for (final cel in baked.frames) cel.id];
+      expect(
+        [
+          for (var frame = 0; frame < 6; frame += 1)
+            exposedFrameIdAt(baked.timeline, frame),
+        ],
+        [ids[0], ids[1], ids[2], ids[3], ids[3], ids[3]],
+      );
+      expect(inkOf(celOf(s, baked, 3)), inkOf(celOf(s, baked, 2)));
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('neither the keyed rasterize nor the bake in place takes a '
+        'still a position apiece, and the frames door takes no other — '
+        'each door lets go of its own rows alone', (tester) async {
+      final (s, row) = await placed(tester);
+      posed(s, row, track: squashed, fx: quarterOverTwo);
+      final moving = rowOf(s, row);
 
       s.editingCanvas.rasterizeLayerReferences([row.id]);
+      expect(rowOf(s, row), moving);
       expect(
         await tester.runAsync(
           () => s.importDoors.bakeReferenceAsSeen(
@@ -803,9 +945,13 @@ void main() {
         ),
         isFalse,
       );
+      expect(rowOf(s, row), moving);
 
-      expect(rowOf(s, row), before);
-      expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+      posed(s, row, fx: turnedOnce);
+      expect(wayOf(s, row), bakes);
+      final standing = rowOf(s, row);
+      expect(await rasterizeFrames(tester, s, row), isFalse);
+      expect(rowOf(s, row), standing);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });
@@ -914,8 +1060,7 @@ void main() {
 
     testWidgets('🎯a 겸용 copy its transform cannot carry the move of: the '
         'one cel takes the picture where both uses show it, and both let '
-        'go — where they show it apart, both wait (F-374-Q10: 「쓰임마다 참조 '
-        'fx 가 다르면 한 셀에 담을 수 없어, 그때는 막힙니다」)', (tester) async {
+        'go (F-374-Q10)', (tester) async {
       final (s, row) = await placed(tester);
       final copy = s.cutCommandCoordinator.linkDuplicateLayer(
         cutId: s.requireActiveCut.id,
@@ -923,16 +1068,6 @@ void main() {
         insertionIndex: 0,
       );
       posed(s, s.layerById(copy)!, track: squashed, fx: turnedOnce);
-      expect(
-        wayOf(s, row),
-        isA<ReferenceMoveWaits>().having(
-          (way) => way.why,
-          'why',
-          ReferenceWait.usesApart,
-        ),
-        reason: 'the row shows the picture where it is laid',
-      );
-
       posed(s, row, fx: turnedOnce);
       expect(wayOf(s, row), bakes);
       expect(
@@ -959,6 +1094,156 @@ void main() {
       s.undo();
       expect(rowOf(s, row).mediaReference, isNotNull);
       expect(s.layerById(copy)!.mediaReference, isNotNull);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🎯a 겸용 copy that moves the paper as the row does is taken '
+        'with it, a position apiece — the row whose keys could carry it '
+        'too, the keys being all or none — and the two share the one bank '
+        '(F-374-Q10 · I-120-Q5)', (tester) async {
+      final (s, row) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      posed(s, row, fx: quarterOverTwo);
+      posed(s, s.layerById(copy)!, track: squashed, fx: quarterOverTwo);
+      expect(wayOf(s, row), framed);
+      final before = [rowOf(s, row), s.layerById(copy)!];
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final baked = rowOf(s, row);
+      final bakedCopy = s.layerById(copy)!;
+      expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
+      expect(baked.frames, hasLength(3));
+      expect(bakedCopy.frames, baked.frames, reason: 'one bank');
+      expect(bakedCopy.timeline, baked.timeline);
+      expect(baked.transformTrack, before.first.transformTrack);
+      expect(bakedCopy.transformTrack, squashed);
+      expect(
+        inkOf(celOf(s, baked, 2)),
+        const ui.Rect.fromLTRB(1140, 777, 1200, 877),
+      );
+
+      s.undo();
+      expect([rowOf(s, row), s.layerById(copy)!], before);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🎯a 겸용 copy that shows the still apart from the row: each '
+        'use takes the picture where IT shows it — the one bank a cel '
+        'apiece, the first with the cel\'s name and a tail after, an '
+        'animation layer — and ONE undo gives both back (🗣️I-120-Q22 '
+        '「링크를 둔 채 셀을 나눠 굽는다」 — ↩️F-374-Q10 waited)', (tester) async {
+      final (s, row) = await placed(tester);
+      named(s, row, '3');
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      posed(s, s.layerById(copy)!, track: squashed, fx: turnedOnce);
+      expect(wayOf(s, row), framed);
+      final before = [rowOf(s, row), s.layerById(copy)!];
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final baked = rowOf(s, row);
+      final bakedCopy = s.layerById(copy)!;
+      expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
+      expect([baked.kind, bakedCopy.kind], [
+        LayerKind.animation,
+        LayerKind.animation,
+      ]);
+      expect([for (final cel in baked.frames) cel.name], ['3', '3-2']);
+      expect(bakedCopy.frames, baked.frames, reason: 'one bank');
+      expect(baked.transformTrack, before.first.transformTrack);
+      expect(bakedCopy.transformTrack, squashed);
+      expect(
+        {
+          exposedFrameIdAt(baked.timeline, 0),
+          exposedFrameIdAt(bakedCopy.timeline, 0),
+        },
+        {for (final cel in baked.frames) cel.id},
+        reason: 'each use its own cel',
+      );
+      expect(shown(s, baked), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+      // 100×60 turned 30° about (1170, 827): 116.6 × 102 across.
+      final turned = shown(s, bakedCopy)!;
+      expect(turned.left, closeTo(1111.7, 1.5));
+      expect(turned.bottom, closeTo(878, 1.5));
+
+      s.undo();
+      expect([rowOf(s, row), s.layerById(copy)!], before);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a 겸용 copy that shows no file shows its cel as it is: the '
+        'cel stays itself, and the picture a row no key carries the move '
+        'of takes of it is a tail of it (🗣️I-120-Q22)', (tester) async {
+      final (s, row) = await placed(tester);
+      named(s, row, '3');
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      posed(s, row, track: squashed, fx: turnedOnce);
+      final cel = rowOf(s, row).frames.single;
+      s.repository.replaceLayer(
+        layer: s.layerById(copy)!.copyWith(mediaReference: null),
+      );
+      expect(wayOf(s, row), framed);
+
+      expect(await rasterizeFrames(tester, s, row), isTrue);
+
+      final baked = rowOf(s, row);
+      final bakedCopy = s.layerById(copy)!;
+      expect(baked.mediaReference, isNull);
+      expect([for (final each in baked.frames) each.name], ['3', '3-2']);
+      expect(baked.frames.first, cel, reason: 'the cel as it was');
+      expect(exposedFrameIdAt(bakedCopy.timeline, 0), cel.id);
+      expect(exposedFrameIdAt(baked.timeline, 0), baked.frames.last.id);
+      expect(baked.transformTrack, squashed);
+      // 100×60 turned 30° about (1170, 827): 116.6 × 102 across.
+      final turned = shown(s, baked)!;
+      expect(turned.left, closeTo(1111.7, 1.5));
+      expect(turned.bottom, closeTo(878, 1.5));
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('no door rasterizes from a row that shows no file — not '
+        'even the use of its cel that does', (tester) async {
+      final (s, row) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      s.repository.replaceLayer(
+        layer: s.layerById(copy)!.copyWith(mediaReference: null),
+      );
+      final before = rowOf(s, row);
+
+      s.editingCanvas.rasterizeLayerReferences([copy]);
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.bakeReferenceAsSeen(
+            cutId: s.requireActiveCut.id,
+            layerId: copy,
+          ),
+        ),
+        isFalse,
+      );
+      expect(await rasterizeFrames(tester, s, s.layerById(copy)!), isFalse);
+
+      expect(rowOf(s, row), before);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });
@@ -1111,7 +1396,7 @@ void main() {
       EditorSessionManager s,
       Layer row,
     ) => tester.runAsync(
-      () => s.importDoors.rasterizeMovieReference(
+      () => s.importDoors.rasterizeReferenceFrames(
         cutId: s.requireActiveCut.id,
         layerId: row.id,
       ),
@@ -1416,7 +1701,7 @@ void main() {
       );
 
       final answer = await tester.runAsync(() {
-        final rasterize = s.importDoors.rasterizeMovieReference(
+        final rasterize = s.importDoors.rasterizeReferenceFrames(
           cutId: s.requireActiveCut.id,
           layerId: row.id,
         );

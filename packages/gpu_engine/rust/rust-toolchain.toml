@@ -1,0 +1,16 @@
+# native_toolchain_rust refuses a bare `stable`: the version is pinned so
+# every machine and runner builds the engine with the same compiler.
+# Stage 0 is Windows x64 (this PC and the Surface Pro 11, Intel) and
+# Android; further targets join with their stage. Android is every ABI the
+# Play bundle ships today — 32-bit ARM and x86_64 too (관제 opened build
+# 1089's AAB, gpu-engine-feasibility 2026-11-05) — whether 32-bit stays is
+# gpu-engine-feasibility-Q2's to say.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+targets = [
+  "aarch64-linux-android",
+  "armv7-linux-androideabi",
+  "x86_64-linux-android",
+  "x86_64-pc-windows-msvc",
+]

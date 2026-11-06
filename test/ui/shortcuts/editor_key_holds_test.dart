@@ -536,6 +536,7 @@ const _whereAltIsTheEyedropper = [
   CanvasTool.guide,
   CanvasTool.cut,
   CanvasTool.cutStamp,
+  CanvasTool.cutWhole,
   CanvasTool.text,
   CanvasTool.shape,
 ];

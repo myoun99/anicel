@@ -80,26 +80,6 @@ final class ShapeTilePress extends SubToolPress {
   String toString() => 'ShapeTilePress(${verb.name}, ${shape.name})';
 }
 
-/// 전체 잘라내기 (I-28): a tile that RUNS rather than arms — the standing
-/// cel's whole picture into the cut tool's hand, at the press.
-///
-/// 🗣️유저 2026-09-30: 「잘라내기 툴의 도구 라이브러리에 전체 잘라내기 신설」 ·
-/// I-28-Q2 「누르는 순간 실행」 · I-28-Q1 「지금 서 있는 셀의 그림 전체」 —
-/// 「잘라내기 도구를 화면전체로 한거랑 똑같은 결과. 물론 좀 더 효율적인
-/// 로직으로」. The stamp follows as it follows every cut: the slot arms it.
-final class CutWholePress extends SubToolPress {
-  const CutWholePress();
-
-  @override
-  bool operator ==(Object other) => other is CutWholePress;
-
-  @override
-  int get hashCode => (CutWholePress).hashCode;
-
-  @override
-  String toString() => 'CutWholePress()';
-}
-
 /// A transform mode tile: the transform tool, in that mode.
 final class TransformModePress extends SubToolPress {
   const TransformModePress(this.mode);
@@ -122,19 +102,15 @@ final class TransformModePress extends SubToolPress {
 /// ⚠️Every tool change goes through the notifier's own setter, so its switch
 /// guard (R26 #13) and its rail memory see a key exactly as they see a tap.
 ///
-/// [cutWhole] is what a [CutWholePress] runs — the session's
-/// (`PixelVerbs.cutWhole`), handed in by whoever holds the session, so the
-/// tile and its key are one press here too. Whether it takes what it cuts
-/// is the cut tool's 「원본 삭제」 (I-90), read here at the press.
+/// ↩️A tile that RAN rode here too — 전체 잘라내기 (I-28), with the session's
+/// cut handed in beside the notifiers. Since I-163 it is a tile like the
+/// stamp ([CanvasTool.cutWhole]), and its 「실행」 runs in the tool settings.
 void pressTool(
   ToolPress press, {
   required PaintToolStateNotifier tool,
   required ValueNotifier<TransformToolOptions> transform,
-  required void Function({required bool takeWhatItCuts}) cutWhole,
 }) {
   switch (press) {
-    case CutWholePress():
-      cutWhole(takeWhatItCuts: tool.value.cutDeletesSource);
     case RailToolPress(:final group):
       tool.value = tool.value.copyWith(tool: tool.railEntry(group));
     case ToolTilePress(tool: final armed):

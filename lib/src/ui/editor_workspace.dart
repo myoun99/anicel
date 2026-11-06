@@ -83,7 +83,7 @@ import 'session/text_clipboard.dart' show CanvasTextHand, TextCopy;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
-import 'export/export_frame_renderer.dart';
+import 'panel_pictures.dart';
 import 'import/import_dialog.dart';
 import 'open_projects.dart';
 import 'import/reference_swap_words.dart';
@@ -181,6 +181,7 @@ import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
 import 'canvas/guide_overlay.dart' show guideColorOf, guideLinesOnPaper;
+import 'export/frame_image_file.dart' show shownFramePicture;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/property_lane_model.dart'
@@ -913,7 +914,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     press,
     tool: _brushTool,
     transform: _transformOptions,
-    cutWhole: widget.session.pixelVerbs.cutWhole,
   );
 
   /// The one piece the cut tool is holding.
@@ -1452,6 +1452,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
+    // I-163: what the cut tool's 「표시」 cuts out of — the save as's
+    // picture, its guides in this window's ink, read at the press.
+    session.pixelVerbs.shownPicture = () =>
+        shownFramePicture(session, guideInk: guideColorOf(context));
     session.textClipboard.canvasText = _canvasTextHand;
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
@@ -1568,16 +1572,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// break a request that was legal when it was made.
   ///
   /// A region — the canvas a conte cell's moving camera sweeps — is shown
-  /// instead of the camera's view where it is given
-  /// (`ExportFrameRenderer.renderPicture`).
+  /// instead of the camera's view where it is given ([PanelPictures]).
   ///
   /// [session] is the project the store was made for, not whichever is on
   /// screen when a render lands — a render in flight across a tab switch
   /// finishes for the project that asked (I-7).
+  ///
+  /// 🚨A PICTURE IS MADE WHILE THE HAND RESTS, as warming is (R13-3,
+  /// [PlaybackPrerenderScheduler.untilQuiet]): once the pen is up and the
+  /// edits are quiet, so a stroke started while it renders has the GPU to
+  /// itself. A stroke changes its cut's picture, so every stroke asked for
+  /// one at once — every row of the cut composed at canvas resolution,
+  /// through the strokes after it (F-533).
   StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
       StoryboardCutThumbnailStore(
         render: (cut, frameIndex, width, region) =>
-            ExportFrameRenderer(session: session).renderPicture(
+            PanelPictures(
+              session: session,
+              giveWay: session.playbackRig.prerenderScheduler.untilQuiet,
+            ).render(
               cut,
               frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
               width: width,
@@ -1601,6 +1614,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // this window's to report or to clear.
     session.pixelVerbs.pixelVerbCanvas = null;
     session.pixelVerbs.cutToolHand = null;
+    session.pixelVerbs.shownPicture = null;
     session.textClipboard.canvasText = null;
     session.memoryPressureTicks.removeListener(
       _storyboardThumbnails.respondToMemoryPressure,
@@ -2486,7 +2500,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     final swapped = await AppWaitWindow(
       title: session.layerById(layerId)?.name ?? AppText.strings.commonReplace,
       runningLabel: AppText.strings.workProgressRunning,
-      doneLabel: AppText.strings.workProgressDone,
       windowKey: const ValueKey<String>('reference-swap-progress'),
     ).standBehind(context, (_) async {
       final swapped = await session.importDoors.swapReference(

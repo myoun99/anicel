@@ -146,7 +146,7 @@ void main() {
       'through', (tester) async {
     final fake = await openMovie(tester);
 
-    expect(find.text('01 / 12'), findsOneWidget);
+    expect(find.text('1 / 12'), findsOneWidget);
     expect(
       fake.asked,
       isNotEmpty,

@@ -21,8 +21,11 @@ import 'timeline_frame_coordinate_policy.dart'
 /// 🗣️I-155-Q1 b (유저 2026-11-04): 「휠 줌만 커서 기준」 — a step a notch
 /// asked for anchors the point it was turned at ([anchorAt], along the
 /// axis from the viewport's leading edge) in the playhead's place: the
-/// frame under it stays under it, as far across its cell. The keys, the
-/// bar and a pinch have no point, and hold the playhead.
+/// frame under it stays under it, as far across its cell.
+/// 🗣️F-565 (유저 2026-11-04): 「프레임 영역을 손가락2개로 줌하는것, 휠로
+/// 줌하는거랑 똑같이 커서(손가락위치?) 기준으로」 — a pinch's step anchors the
+/// middle of its fingers the same way. The keys and the bar have no point,
+/// and hold the playhead.
 double zoomAnchoredScrollOffset({
   required double oldOffset,
   required double oldPixelsPerFrame,
@@ -79,9 +82,9 @@ double _stretched(double frames, double pixelsPerFrame) {
 /// build, which dirtied the folded row mid-build — measured, a debug
 /// assertion on every zoom step with the axis scrolled.
 ///
-/// The point a notch held ([TwoAxisScrollController.zoomHold]) is taken
-/// here whether or not this is its step: it anchors the step it asked for
-/// and no later one.
+/// The point a notch or a pinch held ([TwoAxisScrollController.zoomHold])
+/// is taken here whether or not this is its step: it anchors the step it
+/// asked for and no later one.
 void applyZoomAnchoredScroll(
   TwoAxisScrollController controller, {
   required double oldPixelsPerFrame,

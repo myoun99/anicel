@@ -118,7 +118,9 @@ void main() {
     addTearDown(file.closeSync);
     file.setPositionSync(entry.dataOffset);
     final blob = AnicelCelBlob(file.readSync(entry.length));
-    final picture = blob.decode();
+    final picture = blob.decoded(
+      (entry) => (canvasSize: entry.canvasSize, tileSize: entry.tileSize),
+    );
     expect(blob.key, key);
     expect(
       (blob.canvasSize, blob.tileSize),

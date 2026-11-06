@@ -8,6 +8,7 @@ import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
+import '../widgets/flip_glyph.dart';
 import '../widgets/pill_strip.dart';
 import 'tool_settings_section.dart' show ToolSettingsSection;
 
@@ -379,9 +380,7 @@ class ToolSettingAction extends StatefulWidget {
   }) : label = horizontal
            ? AppText.strings.trFlipHorizontal
            : AppText.strings.trFlipVertical,
-       glyph = horizontal
-           ? const Icon(Icons.flip)
-           : const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+       glyph = flipGlyph(horizontal: horizontal),
        decides = false;
 
   final String keyValue;

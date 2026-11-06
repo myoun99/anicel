@@ -687,11 +687,7 @@ void _everyLabelSitsAtOneHeight() {
     );
   }
 
-  // ⚠️Every language the app draws in ITS OWN faces. 중국어는 OS 에 맡긴다
-  // ([AppTypography.familyFor]) — the binding has no OS font to measure.
-  for (final language in AppLanguage.values.where(
-    (language) => language != AppLanguage.zhHans,
-  )) {
+  for (final language in AppLanguage.values) {
     for (final surface in const [
       (orientation: TimelineOrientation.horizontal, axis: Axis.horizontal,
           prefix: 'timeline'),

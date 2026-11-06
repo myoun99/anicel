@@ -206,6 +206,30 @@ class FramePictures implements PlaybackPictures {
     aheadNodes.clear();
   }
 
+  /// Lets go of every frame's picture made of a revision the cels' store
+  /// last left for good ([BrushFrameStore.revisionsLastLeft]) — asked for
+  /// by no key again — but the ones a screen holds ([FramePictureStore
+  /// .letGoUnpinnedWhere]). Told at every pixel edit
+  /// ([BrushFrameStore.celPixelRevision]).
+  ///
+  /// 🔬F-569 (2026-11-06, S5_BA cut 352, Windows, profile): 30 fills on a
+  /// cel two frames show left 30 pictures of the other frame, 21 MB each —
+  /// the store grew 2757 → 3390 MB and let none go at rest, under a budget
+  /// of 6 GB.
+  void letGoOfLeftRevisions() {
+    final left = layerImages.frameStore.revisionsLastLeft;
+    if (left.isEmpty) {
+      return;
+    }
+    store.letGoUnpinnedWhere(
+      (key) => preorderNodes(key.signature.nodes).any(
+        (node) =>
+            node is CompositeLeafSignature &&
+            left.contains(node.layer.sourceRevision),
+      ),
+    );
+  }
+
   /// A frame drawn on [page] as [pictures] say, its rows signed as its key
   /// signs them.
   ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})
@@ -456,6 +480,46 @@ class FramePictures implements PlaybackPictures {
     shownNow: true,
     keepsNodes: keepsNodes,
   );
+
+  /// 🚨THE PICTURE A PANEL IS CUT FROM (F-533-Q8, 유저 2026-11-05: 「프레임
+  /// 그림에서 잘라 쓴다」 · 「최대한 하나로 통합」): the frame [nodes] stack for
+  /// [picture], under its key ([keyOfStack]) — the canvas's and the warmer's
+  /// own wherever they stack the frame alike — and made in the store's line
+  /// as one made ahead is ([make]) where none is there — whole at every
+  /// level ([FramePictureStore.leveled]): a panel draws it reduced. Null
+  /// where there is none to cut from: the frame draws its page alone
+  /// ([drawsOnlyItsPage]), a canvas holds it as its own over what no cel
+  /// stores ([_isThere] — a panel is of what the cels store), or the making
+  /// was given up.
+  ///
+  /// ↩️A panel composed the frame again for itself, every row at the
+  /// canvas's size (`ExportFrameRenderer.renderPicture`) — 🔬S5_BA cut 352,
+  /// 68 rows: about 180 Mpx a picture, seconds of a Surface Pro 11's GPU
+  /// each time the pen came up.
+  Future<FramePicture?> pictureOf(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture, {
+    required bool Function() shouldAbort,
+  }) async {
+    var key = keyOfStack(nodes, picture);
+    if (!store.holds(key)) {
+      if (_isThere(key) ||
+          !await _make(
+            () => nodes,
+            picture,
+            shouldAbort: shouldAbort,
+            due: notDue,
+            shownNow: false,
+            keepsNodes: false,
+          )) {
+        return null;
+      }
+      // Asked once it is made: a cel it was made without is noted then.
+      key = keyOfStack(nodes, picture);
+    }
+    await store.leveled(key);
+    return store.peek(key);
+  }
 
   /// 🚨Holds the nodes of the frame [nodes] stack for [picture] — one a
   /// screen stands on to draw on, its picture laid ahead of it ([make]),
@@ -891,7 +955,6 @@ FrameDrawing _overTheFilm(StackedFrame frame, FramePicture? Function() film) {
   final whole = frame.drawing;
   return (
     extent: whole.extent,
-    outside: whole.outside,
     draw: (canvas) {
       final under = film();
       final ghosts = frame.whereTheGhostsShow;
@@ -976,7 +1039,6 @@ FrameDrawing _heldFirst(
   var cuts = false;
   return (
     extent: cutting.extent,
-    outside: cutting.outside,
     draw: (canvas) {
       if (cuts) {
         _drawnInALay(cutting, canvas);

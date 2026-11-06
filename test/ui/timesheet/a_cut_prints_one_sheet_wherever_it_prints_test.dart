@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/xdts_sheet_half.dart';
 import 'package:anicel/src/services/export/xdts_builder.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -97,13 +99,19 @@ void main() {
     ];
   }
 
-  /// The one time table of the XDTS [cut] exports.
+  /// The one time table of the XDTS [cut] exports for its ACTION block's
+  /// rows — the fixtures' cel rows are all 原画.
   Map<String, dynamic> xdtsTableOf(
     EditorSessionManager s,
     Cut cut, {
     required int cutStartFrame,
   }) {
-    final xdts = cutXdtsContent(s, cut: cut, cutStartFrame: cutStartFrame);
+    final xdts = cutXdtsContent(
+      s,
+      cut: cut,
+      half: XdtsSheetHalf.genga,
+      cutStartFrame: cutStartFrame,
+    );
     final json =
         jsonDecode(xdts.substring(xdts.indexOf('\n') + 1))
             as Map<String, dynamic>;
@@ -111,8 +119,9 @@ void main() {
         as Map<String, dynamic>;
   }
 
-  /// What the one track of [table]'s field [fieldId] writes, by frame — a
-  /// track writes only the frames its value changes on.
+  /// What the one track of [table]'s field [fieldId] writes, by frame: the
+  /// last of its values — a cel's number, a line's words (a dialog's first
+  /// frame carries its speaker before them).
   Map<int, String> writtenOn(Map<String, dynamic> table, int fieldId) {
     final field = (table['fields'] as List<dynamic>)
         .cast<Map<String, dynamic>>()
@@ -126,15 +135,16 @@ void main() {
             (((entry['data'] as List<dynamic>).single
                             as Map<String, dynamic>)['values']
                         as List<dynamic>)
-                    .single
+                    .last
                 as String,
     };
   }
 
-  /// The frames [table]'s field [fieldId] writes a picture or a sound on.
+  /// The frames [table]'s field [fieldId] starts a picture or a sound on —
+  /// not the gaps, nor the hyphens a line lasts in.
   List<int> framesWritten(Map<String, dynamic> table, int fieldId) => [
     for (final MapEntry(:key, :value) in writtenOn(table, fieldId).entries)
-      if (value != xdtsNullCell) key,
+      if (value != xdtsNullCell && value != xdtsHyphen) key,
   ];
 
   test('the sheet runs on through the のりしろ the O.L asks of the cut', () {
@@ -306,6 +316,41 @@ void main() {
         reason: '${cut.name}: on the rows the sheet prints them on',
       );
     }
+  });
+
+  test('the XDTS writes an unnamed cel with the mark its sheet prints — the '
+      'one Preferences picks (I-161)', () {
+    final picked = AppFrameGridSettings.settings.value;
+    addTearDown(() => AppFrameGridSettings.settings.value = picked);
+    AppFrameGridSettings.settings.value = picked.copyWith(
+      unnamedMark: InbetweenMark.one,
+    );
+    final s = session(
+      layersOf301: [
+        Layer(
+          id: const LayerId('c'),
+          name: 'C',
+          frames: [
+            Frame(id: const FrameId('u'), duration: 1, strokes: const []),
+          ],
+          timeline: const {
+            4: TimelineExposure.drawing(FrameId('u'), length: 3),
+          },
+        ),
+      ],
+    );
+    addTearDown(s.dispose);
+    final cut301 = s.activeTrack.cuts.first;
+
+    final column = sheetOf301(
+      s,
+    ).columns.firstWhere((column) => column.layerId == const LayerId('c'));
+    expect(column.cells[4].mark, InbetweenMark.one, reason: 'the sheet');
+    expect(
+      writtenOn(xdtsTableOf(s, cut301, cutStartFrame: 0), xdtsFieldCell)[4],
+      xdtsTick1,
+      reason: 'the XDTS writes the mark the sheet wears, as its tick',
+    );
   });
 
   test('a transition row kept off the sheet leaves its slot blank — the '

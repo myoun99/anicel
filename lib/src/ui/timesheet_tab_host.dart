@@ -290,6 +290,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             : (
                 kind: cut.metadata.sheetKind,
                 celColumns: SheetSources.of(cut: cut).celColumnsAcross,
+                fps: session.projectSettings.projectFps,
                 words: AppText.strings.conteCameraRoomCurrentCut(cut.name),
                 fixedText: cut.metadata.sheetFixedText,
               ),

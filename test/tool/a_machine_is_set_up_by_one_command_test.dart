@@ -86,6 +86,7 @@ void main() {
           'board_up_test.sh',
           'guard_bare_cd_test.sh',
           'guard_git_add_test.sh',
+          'guard_shared_target_test.sh',
           'hook_says_test.sh',
           'session_letters_test.sh',
           // Read in by every hook that speaks, never run by itself
@@ -305,6 +306,25 @@ void main() {
       expect(
         guards['Bash(cd *)'],
         endsWith('/tool/session_hooks/guard_bare_cd.sh"'),
+      );
+    });
+
+    // 관제 2026-11-06 (native-memory-safety): two cargos in the trunk's
+    // shared target replace each other's builds — a cargo that builds there
+    // takes its turn (tool/cargo_turn.sh), and a call that would not is
+    // refused before it runs. What the guard refuses is pinned by
+    // guard_shared_target_test.sh, run by hand.
+    test('🚨a Bash call with cargo in it goes past the shared-target guard '
+        'first', () {
+      final guards = {
+        for (final group in hooksFor(holder)['PreToolUse'] as List)
+          if ((group as Map)['matcher'] == 'Bash')
+            for (final hook in group['hooks'] as List)
+              '${(hook as Map)['if']}': '${hook['command']}',
+      };
+      expect(
+        guards['Bash(*cargo*)'],
+        endsWith('/tool/session_hooks/guard_shared_target.sh"'),
       );
     });
 

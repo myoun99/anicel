@@ -7,6 +7,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/app_frame_count_settings.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
+import 'package:anicel/src/models/app_gpu_settings.dart';
 import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
@@ -14,6 +15,7 @@ import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_camera_path_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_frame_count_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_frame_grid_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_gpu_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
@@ -65,6 +67,7 @@ void main() {
     AppInput.settings.value = const AppInputSettings();
     AppSave.settings.value = const AppSaveSettings();
     AppMemory.settings.value = const AppMemorySettings();
+    AppGpu.debugReset();
     AppFrameGridSettings.settings.value = const AppFrameGridSettings();
     AppFrameCountSettings.settings.value = const AppFrameCountSettings();
     CameraPathSettings.settings.value = const CameraPathSettings();
@@ -85,6 +88,7 @@ void main() {
       'input',
       'save',
       'memory',
+      'gpu',
       'av',
       'uiscale',
       'onion',
@@ -108,6 +112,7 @@ void main() {
         inputSettingsStore: AppInputSettingsStore(filePath: path('input')),
         saveSettingsStore: AppSaveSettingsStore(filePath: path('save')),
         memorySettingsStore: AppMemorySettingsStore(filePath: path('memory')),
+        gpuSettingsStore: AppGpuSettingsStore(filePath: path('gpu')),
         audioSyncSettingsStore: AudioSyncSettingsStore(filePath: path('av')),
         uiScaleStore: AppUiScaleStore(filePath: path('uiscale')),
         onionSkinSettingsStore: AppOnionSkinSettingsStore(
@@ -153,6 +158,11 @@ void main() {
     );
     first.setMemorySettings(
       const AppMemorySettings(allowanceBytes: 3 << 30),
+    );
+    // The GPU choice (connection-round-checklist-Q4) — and the next run
+    // starts with it, as the runner read it before Dart did.
+    appSettingsOf(first).setGpuSettings(
+      const AppGpuSettings(preference: AppGpuPreference.highPerformance),
     );
     appSettingsOf(first).setAudioSyncSettings(
       const AudioSyncSettings(offset: 42, micGainDb: 3),
@@ -265,6 +275,7 @@ void main() {
           AppInput.settings.value.pressureCurve == penResponse &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
+          AppGpu.startedWith == AppGpuPreference.highPerformance &&
           AppFrameGridSettings.settings.value.blockFrameLines &&
           AppFrameGridSettings.settings.value.unnamedMark ==
               InbetweenMark.one &&
@@ -283,6 +294,11 @@ void main() {
     expect(AppInput.settings.value.pressureCurve, penResponse);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
+    expect(
+      AppGpu.settings.value,
+      const AppGpuSettings(preference: AppGpuPreference.highPerformance),
+    );
+    expect(AppGpu.startedWith, AppGpuPreference.highPerformance);
     expect(
       AppFrameGridSettings.settings.value,
       const AppFrameGridSettings(
@@ -499,6 +515,36 @@ void main() {
           '⛔a direct write publishes and saves NOTHING — it is the shape of '
           'F-150 itself',
     );
+  });
+
+  /// 🧪The roundtrip above builds its OWN settings, so the app's one call —
+  /// HomePage's — is where a store can go missing with every test green: a
+  /// mutant that dropped the GPU choice's line there survived (2026-11-06),
+  /// and the setting would have stopped persisting while its row went on
+  /// looking like it worked.
+  test('the app hands its settings every store they take', () {
+    final taken = {
+      for (final match in RegExp(
+        r'^\s+\w+\? (\w+Store),\r?$',
+        multiLine: true,
+      ).allMatches(
+        librarySource('lib/src/ui/session/editor_app_settings.dart'),
+      ))
+        match.group(1)!,
+    };
+    expect(taken, hasLength(greaterThan(10)), reason: 'source scan failed');
+    final home = librarySource('lib/src/ui/home_page.dart');
+    final start = home.indexOf('_appSettings = EditorAppSettings(');
+    expect(start, isNonNegative, reason: 'premise: HomePage makes them');
+    final call = home.substring(start, home.indexOf(')..restore();', start));
+    final given = {
+      for (final match in RegExp(
+        r'^\s+(\w+Store):',
+        multiLine: true,
+      ).allMatches(call))
+        match.group(1)!,
+    };
+    expect(taken.difference(given), isEmpty);
   });
 
   test('🎯the usage statistics\' day carries the four settings as '

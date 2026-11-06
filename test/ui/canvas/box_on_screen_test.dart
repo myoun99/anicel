@@ -32,7 +32,6 @@ void main() {
     boxOpen: boxOpen,
     warp: FloatWarp(
       box: null,
-      base: null,
       float: null,
       options: TransformToolOptions(mode: mode),
       pasteboard: wall.region,
@@ -83,7 +82,6 @@ void main() {
         boxOpen: true,
         warp: FloatWarp(
           box: box,
-          base: (left: 100, top: 100, width: 100, height: 50),
           float: null,
           options: options,
           pasteboard: wall.region,

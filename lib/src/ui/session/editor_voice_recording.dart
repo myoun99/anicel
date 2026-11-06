@@ -38,7 +38,7 @@ import '../../services/playback/take_head.dart';
 import '../../services/commands/update_media_assets_command.dart';
 import '../../models/se_take_placement.dart';
 import '../../services/audio/audio_peaks_extractor.dart'
-    show AudioPeakBucketFold, AudioPeaks, loudestChannelMagnitude;
+    show AudioPeakBucketFold, AudioPeaks;
 import '../playback/audio_recorder.dart';
 import '../playback/voice_take_processing.dart';
 import '../../services/project_repository.dart';
@@ -600,11 +600,14 @@ class EditorVoiceRecording {
   /// the recorder's chunk tap in the waveform store's own format.
   AudioPeaks? _voiceRecordLivePeaks;
 
-  /// The same bucket fold the file path uses ([AudioPeakBucketFold]);
-  /// non-null between arm and stop. The live path never [flush]es — a
-  /// partial bucket waits for the next chunk, because a take in progress
-  /// has no end yet.
-  AudioPeakBucketFold? _voiceRecordPeakFold;
+  /// The same bucket fold the file path uses ([AudioPeakBucketFold]), one
+  /// per lane the take keeps — so a take shows, while it is spoken, the
+  /// lanes its file will (F-71-Q4). Non-null between arm and stop; empty
+  /// until the first chunk says how many channels there are. The live path
+  /// never [flush]es — a partial bucket waits for the next chunk, because a
+  /// take in progress has no end yet.
+  List<AudioPeakBucketFold>? _voiceRecordPeakFolds;
+  int _voiceRecordSamplesPerBucket = 0;
   int _voiceRecordLastPreviewLength = 0;
 
   /// What the waveform strips should paint for [path]: the live envelope
@@ -621,34 +624,48 @@ class EditorVoiceRecording {
   /// keep, the gain scales it — the envelope and the clip mark both
   /// show what lands in the file, which is the whole point of baking.
   void debugIngestVoiceRecordChunk(Float32List interleaved, int channels) {
-    final fold = _voiceRecordPeakFold;
-    if (channels <= 0 || fold == null) {
+    final folds = _voiceRecordPeakFolds;
+    if (channels <= 0 || folds == null) {
       return;
     }
     final factor = micGainFactor(_voiceRecordGainDb);
     final mode = channels >= 2
         ? _voiceRecordChannelMode
         : VoiceInputChannelMode.device;
+    // ⛔NOT the fold where it is `device`: that keeps every channel in the
+    // TAKE, so each is a lane of its own, as [peaksFromSamples] will draw
+    // its file. A fold keeps one.
+    final keepsEvery = mode == VoiceInputChannelMode.device;
+    final lanes = keepsEvery ? channels : 1;
+    while (folds.length < lanes) {
+      folds.add(
+        AudioPeakBucketFold(samplesPerBucket: _voiceRecordSamplesPerBucket),
+      );
+    }
     final frames = interleaved.length ~/ channels;
     for (var frame = 0; frame < frames; frame += 1) {
       final base = frame * channels;
-      double magnitude;
-      if (mode == VoiceInputChannelMode.device) {
-        // ⛔NOT the fold. `device` keeps every channel in the TAKE, so
-        // there is nothing to fold — and a meter needs one scalar, so it
-        // takes the loudest channel, the same honest single-lane answer
-        // [peaksFromSamples] gives a file. Same rule, same function.
-        magnitude = loudestChannelMagnitude(interleaved, base, channels);
+      if (keepsEvery) {
+        for (var channel = 0; channel < channels; channel += 1) {
+          _foldHeard(folds[channel], interleaved[base + channel] * factor);
+        }
       } else {
-        final picked = mode.pickFrame(interleaved, base, channels);
-        magnitude = picked < 0 ? -picked : picked;
+        _foldHeard(
+          folds.first,
+          mode.pickFrame(interleaved, base, channels) * factor,
+        );
       }
-      final scaled = magnitude * factor;
-      if (scaled >= voiceClipThreshold && !voiceRecordClipLit.value) {
-        voiceRecordClipLit.value = true;
-      }
-      fold.add(scaled);
     }
+  }
+
+  /// One lane's sample of the take, as it lands in the file, into [fold] —
+  /// and the clip mark lit where it reaches the threshold.
+  void _foldHeard(AudioPeakBucketFold fold, double sample) {
+    final magnitude = sample.abs();
+    if (magnitude >= voiceClipThreshold && !voiceRecordClipLit.value) {
+      voiceRecordClipLit.value = true;
+    }
+    fold.add(magnitude);
   }
 
   /// Recomputes the preview when the roll crosses into a new frame —
@@ -688,9 +705,13 @@ class EditorVoiceRecording {
     _voiceRecordLastPreviewLength = length;
     // No flush: a take in progress has no end, so its partial bucket
     // waits for the next chunk rather than landing short.
-    _voiceRecordLivePeaks = AudioPeaks(
+    _voiceRecordLivePeaks = AudioPeaks.ofChannels(
       bucketsPerSecond: 40,
-      peaks: _voiceRecordPeakFold?.toFloat32List() ?? Float32List(0),
+      lanes: [
+        for (final fold
+            in _voiceRecordPeakFolds ?? const <AudioPeakBucketFold>[])
+          fold.toFloat32List(),
+      ],
     );
     var minted = 0;
     final plan = planSeTakePlacement(
@@ -749,7 +770,7 @@ class EditorVoiceRecording {
   void _clearVoiceRecordPreview() {
     playback.globalFrameIndexListenable.removeListener(_syncVoiceRecordPreview);
     _voiceRecordLivePeaks = null;
-    _voiceRecordPeakFold = null;
+    _voiceRecordPeakFolds = null;
     _voiceRecordLastPreviewLength = 0;
     _voiceRecordLastGlobal = null;
     voiceRecordClipLit.value = false;
@@ -854,9 +875,8 @@ class EditorVoiceRecording {
     // Live preview (REC1-C): the recorder's chunk tap feeds the growing
     // waveform; the playback frame channel drives the block preview at
     // frame boundaries — no session notify per tick (R12-B).
-    _voiceRecordPeakFold = AudioPeakBucketFold(
-      samplesPerBucket: opened.rate ~/ 40,
-    );
+    _voiceRecordPeakFolds = [];
+    _voiceRecordSamplesPerBucket = opened.rate ~/ 40;
     opened.recorder.onChunk = debugIngestVoiceRecordChunk;
     playback.globalFrameIndexListenable.addListener(_syncVoiceRecordPreview);
 

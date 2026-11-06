@@ -18,6 +18,7 @@ import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
+import '../../services/canvas_read_source.dart';
 
 /// The strip's standing hand settings — the group whose members a tool
 /// either honours or has no use for (TP2). See [BrushToolState.supports].
@@ -80,6 +81,22 @@ enum CanvasTool {
   /// same problem with two separate tools (Cutting tool / Custom Brush).
   cutStamp,
 
+  /// The CUT tool's whole variant — 전체 잘라내기: nothing to trace, its
+  /// settings stand in the tool settings panel and its 「실행」 runs it.
+  ///
+  /// 🗣️유저 2026-09-30 (I-28): 「잘라내기 툴의 도구 라이브러리에 전체
+  /// 잘라내기 신설」 · I-28-Q1 「지금 서 있는 셀의 그림 전체」 — 「잘라내기
+  /// 도구를 화면전체로 한거랑 똑같은 결과. 물론 좀 더 효율적인 로직으로」.
+  /// The stamp follows as it follows every cut: the slot arms it.
+  ///
+  /// 🗣️I-163 (유저 2026-11-05): 「전체 잘라내기는 바로 실행 버튼이 아니라
+  /// 옵션(표시/레이어 · 원본 삭제 등)을 다 두고 밑에 「실행」 버튼으로 실행」.
+  /// ↩️It was a tile that RAN at the press (I-28-Q2 「누르는 순간 실행」), so
+  /// it had no state to be current in and no place to show what it would do.
+  ///
+  /// ⚠️Its NAME is a file token (`tool_choice.dart` writes a tool by name).
+  cutWhole,
+
   /// Sets TEXT on the cel (R9-rest). 🗣️유저 2026-10-02: 「클튜나 포토샵이랑
   /// 동일하게 텍스트툴로 캔버스에 클릭하면 텍스트 박스가 생김. 거기서 입력 …
   /// 텍스트 레이어가 존재하지않음 … 기존 그림 레이어에 텍스트툴로 텍스트
@@ -116,9 +133,10 @@ bool canvasToolCuts(CanvasTool tool) => tool == CanvasTool.cut;
 bool canvasToolStamps(CanvasTool tool) => tool == CanvasTool.cutStamp;
 
 /// Whether [tool] is one of the cut tool's variants — what the rail button
-/// lights up for, and what the tool library lists tiles for.
+/// lights up for, and what the tool library lists tiles for: the cut
+/// button's group ([canvasToolRailGroup]), asked there and nowhere else.
 bool canvasToolUsesCutPiece(CanvasTool tool) =>
-    canvasToolCuts(tool) || canvasToolStamps(tool);
+    canvasToolRailGroup(tool) == CanvasTool.cut;
 
 /// The outline the cut tool drags while it is ARMED, and null otherwise —
 /// all a surface that can only CUT needs of the tool (I-14: the media
@@ -258,7 +276,9 @@ CanvasTool canvasToolRailGroup(CanvasTool tool) => switch (tool) {
   // MOVE is its own button even though it drags what SELECT traced: its
   // three modes are settings, not tiles (see [canvasToolTransforms]).
   CanvasTool.move => CanvasTool.move,
-  CanvasTool.cut || CanvasTool.cutStamp => CanvasTool.cut,
+  CanvasTool.cut ||
+  CanvasTool.cutStamp ||
+  CanvasTool.cutWhole => CanvasTool.cut,
   CanvasTool.text => CanvasTool.text,
   CanvasTool.shape => CanvasTool.shape,
 };
@@ -291,6 +311,7 @@ List<CanvasShapeKind> canvasToolShapes(CanvasTool tool) => switch (tool) {
   CanvasTool.move ||
   CanvasTool.guide ||
   CanvasTool.cutStamp ||
+  CanvasTool.cutWhole ||
   CanvasTool.text => const [],
 };
 
@@ -374,6 +395,7 @@ class BrushToolState {
     ShapeToolOptions shapeOptions = const ShapeToolOptions(),
     double fillOpacity = 1.0,
     bool cutDeletesSource = false,
+    CanvasReadSource cutSource = CanvasReadSource.layer,
     double cutStampOpacity = 1.0,
   }) {
     return BrushToolState.clamped(
@@ -431,6 +453,7 @@ class BrushToolState {
       shapeOptions: shapeOptions,
       fillOpacity: fillOpacity,
       cutDeletesSource: cutDeletesSource,
+      cutSource: cutSource,
       cutStampOpacity: cutStampOpacity,
     );
   }
@@ -449,6 +472,7 @@ class BrushToolState {
     this.fillOpacity = 1.0,
     this.cutStampOpacity = 1.0,
     this.cutDeletesSource = false,
+    this.cutSource = CanvasReadSource.layer,
     this.presetId,
     this.shown = BrushSettingsRow.shownByDefault,
   });
@@ -475,6 +499,7 @@ class BrushToolState {
     ShapeToolOptions shapeOptions = const ShapeToolOptions(),
     double fillOpacity = 1.0,
     bool cutDeletesSource = false,
+    CanvasReadSource cutSource = CanvasReadSource.layer,
     double cutStampOpacity = 1.0,
     Set<BrushSettingsRow> shown = BrushSettingsRow.shownByDefault,
   }) {
@@ -491,6 +516,7 @@ class BrushToolState {
       shapeOptions: shapeOptions,
       fillOpacity: clampOpacity(fillOpacity),
       cutDeletesSource: cutDeletesSource,
+      cutSource: cutSource,
       cutStampOpacity: clampOpacity(cutStampOpacity),
       shown: shown,
     );
@@ -556,6 +582,7 @@ class BrushToolState {
     ShapeToolOptions? shapeOptions,
     double? fillOpacity,
     bool? cutDeletesSource,
+    CanvasReadSource? cutSource,
     double? cutStampOpacity,
   }) {
     return BrushToolState.fromShape(
@@ -623,6 +650,7 @@ class BrushToolState {
       shapeOptions: shapeOptions ?? const ShapeToolOptions(),
       fillOpacity: fillOpacity ?? 1.0,
       cutDeletesSource: cutDeletesSource ?? false,
+      cutSource: cutSource ?? CanvasReadSource.layer,
       cutStampOpacity: cutStampOpacity ?? 1.0,
     );
   }
@@ -868,6 +896,17 @@ class BrushToolState {
   /// 도구설정으로서 원본 삭제 불리언버튼 추가. 잘라내기시 해당 그림
   /// 없애는것」.
   final bool cutDeletesSource;
+
+  /// What a CUT reads — the cut tool's 대상, for every outline it cuts by
+  /// and for 전체 잘라내기: the layer you stand on, or what is shown.
+  ///
+  /// 🗣️I-163 (유저 2026-11-05): 「잘라내기 서브도구들에 대상 고를수있도록
+  /// 버튼배치. 대상 표시/레이어」 · Q1 「다른 이름으로 저장 한 장으로 통일」.
+  /// The answers are the eyedropper's and the fill's ([CanvasReadSource]);
+  /// [CanvasReadSource.layer] is what a cut always read (유저 확정 「트랜스폼이나
+  /// 이런 거 반영 안 한 진짜 순수 픽셀」), so a tool state that names none
+  /// keeps it.
+  final CanvasReadSource cutSource;
 
   /// The outline SHAPE FILL drags out. See [selectShape].
   final CanvasShapeKind fillShape;
@@ -1285,6 +1324,7 @@ class BrushToolState {
     ShapeToolOptions? shapeOptions,
     double? fillOpacity,
     bool? cutDeletesSource,
+    CanvasReadSource? cutSource,
     double? cutStampOpacity,
     Set<BrushSettingsRow>? shown,
   }) {
@@ -1366,6 +1406,7 @@ class BrushToolState {
       shapeOptions: shapeOptions ?? this.shapeOptions,
       fillOpacity: clampOpacity(fillOpacity ?? this.fillOpacity),
       cutDeletesSource: cutDeletesSource ?? this.cutDeletesSource,
+      cutSource: cutSource ?? this.cutSource,
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
       presetId: presetId,
       shown: shown ?? this.shown,
@@ -1426,6 +1467,7 @@ class BrushToolState {
     shapeOptions: shapeOptions,
     fillOpacity: fillOpacity,
     cutDeletesSource: cutDeletesSource,
+    cutSource: cutSource,
     cutStampOpacity: cutStampOpacity,
     presetId: presetId,
     shown: shown,
@@ -1566,6 +1608,7 @@ class BrushToolState {
           other.fillOpacity == fillOpacity &&
           other.cutStampOpacity == cutStampOpacity &&
           other.cutDeletesSource == cutDeletesSource &&
+          other.cutSource == cutSource &&
           // H25-again: which brush a state holds is part of the state — two
           // states wearing one shape under two names are not the same state.
           other.presetId == presetId &&
@@ -1586,6 +1629,7 @@ class BrushToolState {
     shapeOptions,
     fillOpacity,
     cutDeletesSource,
+    cutSource,
     cutStampOpacity,
     presetId,
     Object.hashAllUnordered(shown),

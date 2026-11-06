@@ -113,6 +113,14 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
             'if': 'Bash(cd *)',
             'timeout': 10,
           },
+          // A `*` on both sides: cargo behind its full path, or a
+          // `NAME=value` in front, is still in the subcommand.
+          {
+            'type': 'command',
+            'command': run('guard_shared_target.sh'),
+            'if': 'Bash(*cargo*)',
+            'timeout': 10,
+          },
         ],
       },
     ],

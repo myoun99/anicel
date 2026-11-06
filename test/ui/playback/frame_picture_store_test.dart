@@ -29,7 +29,7 @@ void main() {
   const white = ui.Color(0xFFFFFFFF);
   void fill(ui.Canvas canvas) => canvas.drawPaint(ui.Paint()..color = red);
   FrameDrawing over(ui.Rect extent) =>
-      (extent: extent, outside: white, draw: fill);
+      (extent: extent, draw: fill);
 
   test('a picture is laid over its extent widened out to the grid of the '
       'world every level a canvas reads halves on', () async {
@@ -42,7 +42,6 @@ void main() {
       over(const ui.Rect.fromLTRB(0.5, 0.5, 1000.7, 300.5)),
     );
     expect(picture!.extent, const ui.Rect.fromLTWH(0, 0, 1024, 384));
-    expect(picture.outside, white);
     expect(gpu.rendered, [(1024, 384)]);
     expect(store.peek('a'), same(picture));
     expect(store.peek('b'), isNull);
@@ -55,6 +54,28 @@ void main() {
       pictureExtentOf(const ui.Rect.fromLTRB(-5, -5, 10, 10)),
       past.extent,
     );
+    store.dispose();
+  });
+
+  // 🗣️F-569: what no key will ask for again goes at once — but what a
+  // screen holds, and what is on its way under a key of its own.
+  test('the pictures a test names are let go of, but one a screen holds '
+      'and one a move takes on to another key', () async {
+    final store = FramePictureStore<String>(gpu: _RecordingGpu());
+    for (final key in ['gone', 'shown', 'moving', 'kept']) {
+      await _layed(store, key, 8);
+    }
+    store.retainPin('shown');
+    expect(store.move(from: 'moving', to: 'moved'), isTrue);
+
+    store.letGoUnpinnedWhere((key) => key != 'kept');
+
+    expect(store.holds('gone'), isFalse);
+    expect(store.holds('shown'), isTrue);
+    expect(store.holds('kept'), isTrue);
+    expect(await store.landingOf('moved'), isTrue);
+    expect(store.holds('moved'), isTrue);
+    store.releasePin('shown');
     store.dispose();
   });
 
@@ -187,7 +208,6 @@ void main() {
 
         final picture = (await store.lay('a', (
           extent: paper,
-          outside: const ui.Color(0xFFFFFFFF),
           draw: draw,
         )))!;
 
@@ -930,6 +950,33 @@ void main() {
       expect(levelsOf(gpu.levelWrites.last), [1, 2, 3]);
       expect(picture.readAt(0.4), isTrue);
       expect(picture.readAt(0.2), isFalse);
+      await store.settled();
+      store.dispose();
+    });
+
+    test('🚨a picture drawn off the screen waits for every level it owes, '
+        'and is no screen: the steps after it lay no deeper (F-533-Q8)',
+        () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      (await _layed(store, 'a', 1024)).readAt(0.4);
+      store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
+      await store.landingOf('b');
+      expect(
+        levelsOf(gpu.levelWrites.single),
+        [1, 2, 3],
+        reason: 'LIVENESS: the rest owed',
+      );
+
+      await store.leveled('b');
+      expect(levelsOf(gpu.levelWrites.last), everyLevel, reason: 'all in');
+      store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
+      await store.landingOf('c');
+      expect(
+        levelsOf(gpu.levelWrites.last),
+        [1, 2, 3],
+        reason: 'what the screen reads, as before the panel drew',
+      );
       await store.settled();
       store.dispose();
     });
@@ -1803,7 +1850,6 @@ void main() {
       /// [name]'s frame, noted in [order] at each draw of it.
       FrameDrawing noted(List<String> order, String name, ui.Rect extent) => (
         extent: extent,
-        outside: white,
         draw: (canvas) {
           order.add(name);
           fill(canvas);
@@ -2041,7 +2087,6 @@ void main() {
       var drawn = 0;
       final throwing = store.lay('a', (
         extent: extent,
-        outside: white,
         draw: (canvas) {
           drawn += 1;
           gpu.rendersThrow = drawn == 2 ? StateError('a piece') : null;
@@ -2389,7 +2434,6 @@ Future<FramePicture> _layed(
   int side,
 ) async => (await store.lay(key, (
   extent: ui.Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
-  outside: const ui.Color(0xFFFFFFFF),
   draw: (canvas) =>
       canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFF0000FF)),
 )))!;

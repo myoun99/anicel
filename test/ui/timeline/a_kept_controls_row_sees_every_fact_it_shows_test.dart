@@ -58,7 +58,7 @@ void main() {
 
   LayerControlsRowFacts facts({
     LayerId? activeLayerId,
-    Set<TimelineRowAddress> selectedRows = const {},
+    List<TimelineRowAddress> selectedRows = const [],
     Set<LayerId> expandedLaneLayerIds = const {},
     LayerFxState fxState = LayerFxState.on,
     bool onionSkinEnabled = false,
@@ -90,7 +90,7 @@ void main() {
         onLayerOpacityChanged: (_, _) {},
         onToggleLayerTimesheet: (_) {},
         onLayerMarkSelected: (_, _) {},
-        selectedRows: selectedRows,
+        rowSelection: ValueNotifier(selectedRows),
         expandedLaneLayerIds: expandedLaneLayerIds,
         layerFxStateOf: (_) => fxState,
         layerOnionSkinEnabledOf: (_) => onionSkinEnabled,
@@ -134,7 +134,7 @@ void main() {
   // ([BerthRow.activeOf]), so the row it leaves is the row it kept.
   test('a stand and a selection are no facts of the row', () {
     expect(facts(activeLayerId: id), facts());
-    expect(facts(selectedRows: {const LayerRowAddress(id)}), facts());
+    expect(facts(selectedRows: [const LayerRowAddress(id)]), facts());
   });
 
   final changes = <String, LayerControlsRowFacts Function()>{

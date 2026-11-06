@@ -8,6 +8,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart';
 
 import '../../helpers/exposure_of.dart';
 import '../../helpers/named_finders.dart';
@@ -19,11 +20,11 @@ import '../../helpers/named_finders.dart';
 /// with — SELECTING rows — and it is the one F-26 is about (유저: 「게다가
 /// 렉도있고」 on the X-sheet's selection band).
 ///
-/// ⚠️`selectedRows` is a plain `Set` field, not a listenable like
-/// `frameCursor`, so the host rebuilds the whole grid when it changes. That
-/// asymmetry is what made this worth measuring: it LOOKS like every row must
-/// repaint. It does not — the wash is the rail's and the band's, and the cell
-/// painters are memoised per row.
+/// The selection reaches the grid as a channel, as `frameCursor` does, and
+/// the bands hear it ([TimelineRowSelectionBands]): selecting a row builds
+/// no grid, and no cell painter is made again. ↩️It was a plain `Set` the
+/// host handed down, and every step of a sweep built the whole panel
+/// (a_row_sweep_step_repaints_only_its_bands_test has what that cost).
 ///
 /// 🚨★★★THE AXIS PREMISE IS PART OF THE TEST, and it is not decoration.
 /// 🧪Measured while writing this: TWO of my first three instrument checks
@@ -60,7 +61,7 @@ void main() {
 
   Widget grid(
     List<Layer> layers,
-    Set<TimelineRowAddress> selected,
+    ValueNotifier<List<TimelineRowAddress>> selection,
     ValueNotifier<int> cursor, {
     int frameCount = 120,
   }) =>
@@ -71,7 +72,7 @@ hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-1')),
 frameCursor: cursor,
 playbackFrameCount: frameCount,
 exposureStateForLayer: stateFor,
-selectedRows: selected,
+rowSelection: selection,
 onSelectLayer: (_) {},
 onSelectFrame: (_) {},
 onToggleLayerVisibility: (_) {},
@@ -89,16 +90,24 @@ layers: layers,
       )
       .toList();
 
+  Finder bands() => find.descendant(
+        of: find.byType(TimelineRowSelectionBands),
+        matching: find.byType(DecoratedBox),
+      );
+
   testWidgets('⛔premise: the axis MOVES when every row\'s cells change',
       (tester) async {
     final cursor = ValueNotifier<int>(2);
     addTearDown(cursor.dispose);
-    await tester.pumpWidget(grid(twelveLayers(), const {}, cursor));
+    final selection = ValueNotifier<List<TimelineRowAddress>>(const []);
+    addTearDown(selection.dispose);
+    await tester.pumpWidget(grid(twelveLayers(), selection, cursor));
     final before = [for (final p in rowPaints(tester)) p.painter];
     expect(before, hasLength(12));
 
-    await tester
-        .pumpWidget(grid(twelveLayers(), const {}, cursor, frameCount: 200));
+    await tester.pumpWidget(
+      grid(twelveLayers(), selection, cursor, frameCount: 200),
+    );
     final after = rowPaints(tester);
     var unchanged = 0;
     for (var i = 0; i < after.length && i < before.length; i++) {
@@ -112,39 +121,44 @@ layers: layers,
     );
   });
 
-  testWidgets('🚨selecting a row rebuilds no cell painter and repaints none',
-      (tester) async {
+  testWidgets('🚨selecting a row builds no grid and no cell painter — the '
+      'bands draw it', (tester) async {
     final cursor = ValueNotifier<int>(2);
     addTearDown(cursor.dispose);
+    final selection = ValueNotifier<List<TimelineRowAddress>>(const []);
+    addTearDown(selection.dispose);
     final layers = twelveLayers();
-    await tester.pumpWidget(grid(layers, const {}, cursor));
+    await tester.pumpWidget(grid(layers, selection, cursor));
     final before = [for (final p in rowPaints(tester)) p.painter];
+    expect(bands(), findsNothing, reason: 'nothing is selected yet');
 
-    await tester.pumpWidget(grid(
-      layers,
-      {const LayerRowAddress(LayerId('layer-3'))},
-      cursor,
-    ));
+    final built = <Type>[];
+    debugOnRebuildDirtyWidget = (element, _) =>
+        built.add(element.widget.runtimeType);
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+    selection.value = const [LayerRowAddress(LayerId('layer-3'))];
+    await tester.pump();
+    debugOnRebuildDirtyWidget = null;
 
+    expect(
+      bands(),
+      findsOneWidget,
+      reason: 'LIVENESS: the selection reached the bands',
+    );
+    expect(
+      built,
+      isNot(contains(LayerTimelineGrid)),
+      reason: 'the selection is a channel the bands hear, not a field the '
+          'grid is built again for',
+    );
     final after = rowPaints(tester);
     expect(after, hasLength(12));
     var unchanged = 0;
-    var wouldRepaint = 0;
     for (var i = 0; i < after.length && i < before.length; i++) {
-      if (identical(after[i].painter, before[i])) {
-        unchanged++;
-      } else if (after[i].painter!.shouldRepaint(before[i]!)) {
-        wouldRepaint++;
-      }
+      if (identical(after[i].painter, before[i])) unchanged++;
     }
-    expect(
-      unchanged,
-      12,
-      reason: '⛔`selectedRows` is a plain field, so the grid DOES rebuild — '
-          'the cells must still come through untouched. The wash belongs to '
-          'the rail and the band, not to twelve rows of cells',
-    );
-    expect(wouldRepaint, 0);
+    expect(unchanged, 12, reason: 'the wash belongs to the bands, not to '
+        'twelve rows of cells');
   });
 
   testWidgets('⛔and the SELECTED row is not special — its cells are cells',
@@ -154,17 +168,16 @@ layers: layers,
     // and it would put the band's cost on the grid's hot path.
     final cursor = ValueNotifier<int>(2);
     addTearDown(cursor.dispose);
+    final selection = ValueNotifier<List<TimelineRowAddress>>(const []);
+    addTearDown(selection.dispose);
     final layers = twelveLayers();
-    await tester.pumpWidget(grid(layers, const {}, cursor));
+    await tester.pumpWidget(grid(layers, selection, cursor));
     final row3 = tester.widget<CustomPaint>(
       find.named('timeline-row-cells-layer-3'),
     );
 
-    await tester.pumpWidget(grid(
-      layers,
-      {const LayerRowAddress(LayerId('layer-3'))},
-      cursor,
-    ));
+    selection.value = const [LayerRowAddress(LayerId('layer-3'))];
+    await tester.pump();
 
     expect(
       identical(

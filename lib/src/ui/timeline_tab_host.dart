@@ -27,6 +27,8 @@ import 'session/session_legend_callbacks.dart';
 import 'session/panel_view_memory.dart';
 import 'session/session_row_button_presses.dart';
 import 'session/tab_rail_wiring.dart';
+import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
+import 'timeline/lane_graph_seats.dart' show selectionSeatedIn;
 import 'timeline/session_lane_callbacks.dart';
 import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
@@ -459,7 +461,28 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   Widget build(BuildContext context) => RailSweepHistory(
     history: _session.historyManager.gestures,
     changed: _session.notifyChanged,
-    child: _panel(context),
+    // ⑨: the row selection grows PER POINTER MOVE inside a gesture, which
+    // is exactly the contract the session's own notify does not have (a
+    // drag is silent until release). Its notifier is the channel, handed to
+    // the panel as the current row's is, and what draws the selection hears
+    // it there ([TimelineRowSelectionBands]). The rows are built again only
+    // for the part an open graph picks ([selectionSeatedIn]).
+    //
+    // ↩️This host heard the whole selection and built its panel at every
+    // step of a rail sweep — 🔬11-06 (S5_BA 컷352): the grid, both
+    // viewports, the header and the scrollbars painted again, and the
+    // bottom dock drawn live instead of from its image, 8ms of raster a
+    // frame.
+    child: SlicedListenableBuilder<BySet<TimelineRowAddress>>(
+      listenable: _session.rowSelection,
+      slice: () => BySet(
+        selectionSeatedIn(
+          _session.rowSelection.value,
+          widget.rail.laneGraphs,
+        ),
+      ),
+      builder: (context, _) => _panel(context),
+    ),
   );
 
   Widget _panel(BuildContext context) {
@@ -494,11 +517,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // tint sat until an unrelated rebuild. Only EMPTY↔drawn crossings
           // bump this, so ordinary strokes cost nothing.
           _session.renderCaches.brushFrameStore.celContentRevision,
-          // ⑨: the row selection grows PER POINTER MOVE inside a gesture,
-          // which is exactly the contract the session's own notify does not
-          // have (a drag is silent until release). Its notifier is the
-          // channel, the same way the current row's is.
-          _session.rowSelection,
         ]),
         builder: (context, _) {
           // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
@@ -528,7 +546,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // 🚨T1: ADDRESSES, not layer ids. T5 made every row kind
             // selectable, and a `Set<LayerId>` cannot spell a lane or an fx
             // header — the same shape of loss ③ found in the span itself.
-            selectedRows: _session.rowSelection.value.toSet(),
+            rowSelection: _session.rowSelection,
             // Edit drags (comma/trim) preview through the scoped channel: a
             // step rebuilds the dragged row's gate + the cursor overlay only,
             // never this host (the release commit is the one session notify).

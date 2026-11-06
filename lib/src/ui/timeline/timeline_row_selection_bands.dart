@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/timeline_row_address.dart';
+import '../widgets/tick_layer.dart';
 import 'timeline_cell_style.dart'
     show
         timelineRangeSelectionBandDecorationAt,
@@ -44,27 +47,42 @@ import 'timeline_row_edges.dart';
 /// A band ends where its last row does: the room an open graph stands past
 /// its lanes is no row, so a band does not reach into it — but a selection
 /// that carries on past it is still one, so a band crosses it (I-89 ③).
+///
+/// 🚨A SPAN GROWS PER POINTER MOVE, SO THE BANDS HEAR IT — ON A TICK
+/// ([TickLayer]). 🔬11-06 (S5_BA 컷352, 디버그 · 프로파일): the timeline's
+/// host heard the selection and built its whole panel at every step of a
+/// rail sweep — the grid, both viewports, the header and the scrollbars
+/// painted again, and the bottom dock drawn live instead of from its image
+/// (`StillRaster`) on 238 of 248 frames, 8ms of raster a frame against the
+/// cells' 1.5 (whose band is the cursor layer's, on a tick). One law for
+/// both bands, and for every rail that draws these: the layer rail, the
+/// x-sheet's header strip and the storyboard's rail.
 class TimelineRowSelectionBands extends StatelessWidget {
   const TimelineRowSelectionBands({
     super.key,
-    required this.selectedFlags,
+    required this.selection,
+    required this.rows,
     required this.edges,
     this.firstRow = 0,
     required this.crossExtent,
     this.axis = Axis.horizontal,
   });
 
-  /// One flag per DRAWN row from [firstRow], in draw order — the rail
-  /// already knows which of its rows are in the selection, and asking it
-  /// here keeps this widget from needing to know what a row IS.
-  final List<bool> selectedFlags;
+  /// The row selection — heard here, so a span growing under the pointer
+  /// lays and paints the bands alone.
+  final ValueListenable<List<TimelineRowAddress>> selection;
+
+  /// What each DRAWN row from [firstRow] is, in draw order: its address, or
+  /// null for a row no selection holds. The rail knows what its rows are;
+  /// this widget asks no more of a row than whether the selection holds it.
+  final List<TimelineRowAddress?> rows;
 
   /// Where the rail's rows sit along it ([TimelineRowEdges]) — the grids'
   /// rows and the storyboard's alike (F-322: its rows are not all one
   /// height). ↩️It took one pitch, or a list of extents it summed itself.
   final TimelineRowEdges edges;
 
-  /// The row [selectedFlags] begins at — a windowed rail's first built row.
+  /// The row [rows] begins at — a windowed rail's first built row.
   final int firstRow;
 
   /// The band's extent ACROSS the rail. The HOST states where the band
@@ -76,11 +94,18 @@ class TimelineRowSelectionBands extends StatelessWidget {
   final Axis axis;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => TickLayer(
+    child: ValueListenableBuilder<List<TimelineRowAddress>>(
+      valueListenable: selection,
+      builder: (context, selected, _) => _bands(selected.toSet()),
+    ),
+  );
+
+  Widget _bands(Set<TimelineRowAddress> held) {
     final bands = <Widget>[];
     var runStart = -1;
-    for (var index = 0; index <= selectedFlags.length; index += 1) {
-      final selected = index < selectedFlags.length && selectedFlags[index];
+    for (var index = 0; index <= rows.length; index += 1) {
+      final selected = index < rows.length && held.contains(rows[index]);
       if (selected) {
         if (runStart < 0) {
           runStart = index;

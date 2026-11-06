@@ -28,10 +28,14 @@ List<({SubToolPress press, IconData icon})> subToolTilesOf(CanvasTool group) =>
       // and works on a tablet. That is why the stamp stays a TOOL while
       // rectangle and lasso became shapes: it is a different verb, not a
       // different outline.
-      CanvasTool.cut || CanvasTool.cutStamp => [
+      CanvasTool.cut || CanvasTool.cutStamp || CanvasTool.cutWhole => [
         ..._shapeTiles(CanvasTool.cut),
-        // I-28: a cut too — of the whole picture, run at the press.
-        (press: const CutWholePress(), icon: Icons.fit_screen),
+        // I-28: a cut too — of the whole picture, run by its 「실행」
+        // (I-163).
+        (
+          press: const ToolTilePress(CanvasTool.cutWhole),
+          icon: Icons.fit_screen,
+        ),
         (
           press: const ToolTilePress(CanvasTool.cutStamp),
           icon: Icons.approval_outlined,
@@ -163,8 +167,6 @@ class ToolLibraryPanel extends StatelessWidget {
             tool == verb && shapeKind == shape,
           ToolTilePress(tool: final armed) => tool == armed,
           TransformModePress(:final mode) => options?.mode == mode,
-          // A tile that runs holds no state to be current in.
-          CutWholePress() => false,
         },
         onPress: onPress,
       ),
@@ -180,6 +182,7 @@ class ToolLibraryPanel extends StatelessWidget {
         return _tileList('tool-library-selection', _tiles(CanvasTool.select));
       case CanvasTool.cut:
       case CanvasTool.cutStamp:
+      case CanvasTool.cutWhole:
         return _tileList('tool-library-cut', _tiles(CanvasTool.cut));
       case CanvasTool.fill:
       case CanvasTool.fillShape:

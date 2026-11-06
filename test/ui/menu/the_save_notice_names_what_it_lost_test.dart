@@ -11,7 +11,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
-import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -165,8 +164,6 @@ void main() {
       reason: 'what the project holds comes first',
     );
 
-    // The confirmation window lingers on a bare timer; let it end.
-    await tester.pump(appProgressDoneLinger * 2);
     await tester.pumpAndSettle();
   });
 }

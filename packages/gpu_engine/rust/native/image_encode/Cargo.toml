@@ -1,0 +1,10 @@
+[package]
+name = "image_encode"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# The C answer key: the engine's qa_image_encode_jpg, byte for byte
+# (native/oracle).
+[dev-dependencies]
+oracle = { path = "../oracle" }

@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/canvas_read_source.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
@@ -25,11 +26,25 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
+import '../../helpers/rail_group_button.dart';
+
 /// 🗣️I-28 (유저 2026-09-30): 「잘라내기 툴의 도구 라이브러리에 전체 잘라내기
 /// 신설. 내용은 화면의 전체 그림을 잘라냄」 — I-28-Q1 「지금 서 있는 셀의 그림
-/// 전체」 (「잘라내기 도구를 화면전체로 한거랑 똑같은 결과」), I-28-Q2 「누르는
-/// 순간 실행」.
+/// 전체」 (「잘라내기 도구를 화면전체로 한거랑 똑같은 결과」). ↩️I-28-Q2 「누르는
+/// 순간 실행」 until I-163 (유저 2026-11-05): the tile arms, and 「실행」 in
+/// the tool settings runs it with the options above it.
 void main() {
+  /// 전체 잘라내기 under 「레이어」: the cel's own read, with no work ahead
+  /// of it — the step is the press.
+  void cutWhole(EditorSessionManager session, {required bool takeWhatItCuts}) {
+    final cut = session.pixelVerbs.cutWhole(
+      source: CanvasReadSource.layer,
+      takeWhatItCuts: takeWhatItCuts,
+    );
+    expect(cut.ahead, isNull, reason: 'the cel\'s own read needs none');
+    cut.step();
+  }
+
   Project fixture() {
     final base = createDefaultProject();
     final track = base.tracks.first;
@@ -126,30 +141,25 @@ void main() {
     );
   }
 
-  testWidgets('the tile RUNS at the press — it arms no tool of its own '
-      '(I-28-Q2 「누르는 순간 실행」)', (tester) async {
+  testWidgets('the tile ARMS — it cuts nothing at the press, and lights as '
+      'the tool in hand (I-163)', (tester) async {
     final tool = PaintToolStateNotifier(
       BrushToolState.defaults.copyWith(tool: CanvasTool.cut),
     );
     addTearDown(tool.dispose);
     final transform = ValueNotifier(TransformToolOptions.defaults);
     addTearDown(transform.dispose);
-    final cuts = <bool>[];
-    var announcements = 0;
-    tool.addListener(() => announcements++);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ToolLibraryPanel(
-            tool: CanvasTool.cut,
-            onPress: (press) => pressTool(
-              press,
-              tool: tool,
-              transform: transform,
-              cutWhole: ({required takeWhatItCuts}) =>
-                  cuts.add(takeWhatItCuts),
+          body: ValueListenableBuilder<BrushToolState>(
+            valueListenable: tool,
+            builder: (context, state, _) => ToolLibraryPanel(
+              tool: state.tool,
+              onPress: (press) =>
+                  pressTool(press, tool: tool, transform: transform),
+              brushLibrary: const SizedBox.shrink(),
             ),
-            brushLibrary: const SizedBox.shrink(),
           ),
         ),
       ),
@@ -158,15 +168,60 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-whole')));
     await tester.pump();
 
-    expect(cuts, [false], reason: '「원본 삭제」 off: the cut copies');
-    expect(announcements, 0, reason: 'the stamp follows the SLOT, not this');
+    expect(tool.value.tool, CanvasTool.cutWhole);
+    expect(
+      canvasToolRailGroup(tool.value.tool),
+      CanvasTool.cut,
+      reason: 'a sub-tool of the cut, like the stamp',
+    );
+  });
 
-    // 🗣️I-90 (유저 2026-10-10): 「원본 삭제」 is the cut tool's, for every
-    // cut it makes — read at the press.
-    tool.value = tool.value.copyWith(cutDeletesSource: true);
-    await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-whole')));
+  testWidgets('「실행」 in the tool settings runs it, with the 대상 and the '
+      '「원본 삭제」 the tool holds at the press', (tester) async {
+    final session = await pump(tester);
+    inkTwoSquares(session);
+    final workspace = tester.widget<EditorWorkspace>(
+      find.byType(EditorWorkspace),
+    );
+    final layer = session.layers.firstWhere((l) => l.frames.length == 2);
+    final key = session.brushFrameKeyForCut(
+      session.requireActiveCut,
+      layer.id,
+      const FrameId('c0'),
+    );
+    final run = find.byKey(const ValueKey<String>('cut-whole-run-button'));
+
+    workspace.brushTool!.value = workspace.brushTool!.value.copyWith(
+      tool: CanvasTool.cutWhole,
+      cutSource: CanvasReadSource.layer,
+      cutDeletesSource: true,
+    );
+    await tester.pumpAndSettle();
+    // The tool settings ship closed.
+    await pressToolSettingsButton(tester);
+    await tester.pumpAndSettle();
+    expect(run, findsOneWidget);
+    // The settings scroll: what is pressed is brought into view first.
+    await tester.ensureVisible(run);
+    await tester.pumpAndSettle();
+    await tester.tap(run);
     await tester.pump();
-    expect(cuts, [false, true]);
+    expect(
+      find.byKey(const ValueKey<String>('work-progress-dialog')),
+      findsNothing,
+      reason: 'the cel\'s own read is one block, with no work ahead',
+    );
+
+    expect(
+      session.renderCaches.brushFrameStore.celHasRenderableContent(key),
+      isFalse,
+      reason: '「원본 삭제」 on: the picture left the cel',
+    );
+    expect(
+      workspace.brushTool!.value.tool,
+      CanvasTool.cutStamp,
+      reason: 'the window\'s own hand took it, and the stamp follows',
+    );
   });
 
   // 🗣️I-90 (유저 2026-10-10): 「잘라내기시 해당 그림 없애는것」.
@@ -186,11 +241,11 @@ void main() {
     final store = session.renderCaches.brushFrameStore;
 
     // CONTROL: off, the cel keeps its picture.
-    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
+    cutWhole(session, takeWhatItCuts: false);
     expect(slot.piece, isNotNull);
     expect(store.celHasRenderableContent(key), isTrue, reason: 'a copy');
 
-    session.pixelVerbs.cutWhole(takeWhatItCuts: true);
+    cutWhole(session, takeWhatItCuts: true);
     await tester.pump();
     final piece = slot.piece!;
     expect(
@@ -229,7 +284,7 @@ void main() {
     expect(published, isNotNull, reason: 'the workspace hands its slot in');
     session.pixelVerbs.cutToolHand = slot.hold;
 
-    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
+    cutWhole(session, takeWhatItCuts: false);
 
     final piece = slot.piece!;
     expect((piece.originLeft, piece.originTop), (10, 10));
@@ -241,7 +296,7 @@ void main() {
 
     // The real hand: the window's slot, which arms the stamp.
     session.pixelVerbs.cutToolHand = published;
-    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
+    cutWhole(session, takeWhatItCuts: false);
     await tester.pump();
     final workspace = tester.widget<EditorWorkspace>(
       find.byType(EditorWorkspace),
@@ -260,7 +315,7 @@ void main() {
     final slot = CutPieceSlot();
     addTearDown(slot.dispose);
     session.pixelVerbs.cutToolHand = slot.hold;
-    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
+    cutWhole(session, takeWhatItCuts: false);
     final held = slot.piece;
     expect(held, isNotNull);
     expect(
@@ -271,7 +326,7 @@ void main() {
 
     session.selectFrameIndex(1);
     await tester.pump();
-    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
+    cutWhole(session, takeWhatItCuts: false);
 
     expect(
       slot.piece,

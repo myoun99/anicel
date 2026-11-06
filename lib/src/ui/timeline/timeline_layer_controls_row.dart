@@ -27,6 +27,7 @@ import 'rail_eyes.dart';
 import 'rail_stand.dart';
 import '../widgets/rail_glyph_button.dart';
 import '../widgets/row_plate.dart';
+import '../widgets/tick_layer.dart';
 import 'timeline_double_tap.dart'
     show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
@@ -463,7 +464,18 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // x-sheet a layer's own strip is THIS widget stood up: the sheet is the
     // rail transposed, so a layer's toggles sit at the head of its column
     // instead of along its row — and 「헤더쪽은 손떼면」 does NOT mean it.
-    return PressFireScope(fireOn: PressFire.down, child: strip);
+    // 🚨The row stands on a layer of its own, in its own size, as a cells
+    // row does (`timelineGatedRow`): a stand rebuilds the plates of the two
+    // rows it moved between ([RailStand]), and rebuilt in the rail's layout
+    // scope they laid the rail out again and repainted the timeline panel
+    // around them — the dock drawn live on every click
+    // (a-row-pick-breaks-the-timeline-dock-image, 11-06).
+    return SizedBox.fromSize(
+      size: _size,
+      child: TickLayer(
+        child: PressFireScope(fireOn: PressFire.down, child: strip),
+      ),
+    );
   }
 
   /// The strip itself — its plate and its twelve slots.

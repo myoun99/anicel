@@ -40,6 +40,7 @@ timelineRulerPlayheadWriting({
   required TimelineRulerGlyphLayout layout,
 }) {
   final pair = scale.writtenAt(layout, frame, current: true);
+  final pairRects = [for (final mine in pair) mine.rect];
   final covered = <Rect>[];
   final standing = <TimelineGlyphPlacement>[];
   final reach = _writingReach(
@@ -54,7 +55,7 @@ timelineRulerPlayheadWriting({
   for (final frameIndex in scale.framesWrittenIn(reach)) {
     for (final glyph in scale.writtenAt(layout, frameIndex, current: false)) {
       final rect = glyph.rect;
-      if (pair.any((mine) => mine.rect.overlaps(rect))) {
+      if (timelineMarkStandsDownFor(rect, pairRects)) {
         covered.add(rect);
       } else {
         standing.add(glyph);
@@ -63,6 +64,13 @@ timelineRulerPlayheadWriting({
   }
   return (pair: pair, covered: covered, standing: standing);
 }
+
+/// Whether the strip's writing at [mark] stands down for the playhead's own
+/// writing over [pair]: it touches one of the pair's glyphs, and stands
+/// down WHOLE — the pair wins (I-16 「겹쳐지는부분있으면 안겹쳐지도록 기존에
+/// 있던 텍스트 사라지도록」). A ruler's, and a sound face's (F-71).
+bool timelineMarkStandsDownFor(Rect mark, List<Rect> pair) =>
+    pair.any((mine) => mine.overlaps(mark));
 
 /// The frames of the painted window whose writing can reach [pair].
 ///

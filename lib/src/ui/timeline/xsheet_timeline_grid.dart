@@ -433,7 +433,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     );
     // Zoom-around-playhead (transposed): the playhead ROW stays put on
     // screen through zoom when visible; otherwise the top-edge frame
-    // anchors. Same policy as the horizontal timeline (Axis rule).
+    // anchors — unless a notch or a pinch held its own point. Same policy
+    // as the horizontal timeline (Axis rule).
     applyZoomAnchoredScroll(
       _frameScrollController,
       oldPixelsPerFrame: oldWidget.metrics.frameCellWidth,
@@ -721,19 +722,18 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             ),
                           ),
                         ),
-                        Positioned.fill(
-                          child: TimelineRowSelectionBands(
-                            axis: Axis.vertical,
-                            selectedFlags: [
-                              for (final entry in entries)
-                                widget.hooks.selectedRows.contains(
-                                  entry.address,
-                                ),
-                            ],
-                            edges: geometry.columnEdges,
-                            crossExtent: _headers.naturalHeaderExtent,
+                        if (widget.hooks.rowSelection case final selection?)
+                          Positioned.fill(
+                            child: TimelineRowSelectionBands(
+                              axis: Axis.vertical,
+                              selection: selection,
+                              rows: [
+                                for (final entry in entries) entry.address,
+                              ],
+                              edges: geometry.columnEdges,
+                              crossExtent: _headers.naturalHeaderExtent,
+                            ),
                           ),
-                        ),
                         // The sheet's header strip is the rail turned on its
                         // side, so it is the same place entrance, along x.
                         if (widget.hooks.onDropMediaAssetBetweenLayers

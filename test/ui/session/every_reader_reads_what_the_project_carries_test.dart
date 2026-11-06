@@ -288,7 +288,7 @@ void main() {
         final (session, layer) = await placedAndGone(tester, fate);
 
         final baked = await tester.runAsync(
-          () => session.importDoors.rasterizeMovieReference(
+          () => session.importDoors.rasterizeReferenceFrames(
             cutId: session.requireActiveCut.id,
             layerId: layer.id,
           ),

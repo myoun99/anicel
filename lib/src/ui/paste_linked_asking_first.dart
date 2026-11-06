@@ -24,9 +24,10 @@ import 'text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
 /// rename's own guard). Link pastes joined to them, as one undo; Cancel
 /// writes nothing.
 ///
-/// 🗣️F-551-Q1 (유저 2026-11-04: 「전부 늘 띄운다」): the paste is tried behind
-/// the wait [window], and the join behind it again — the question asks
-/// between the two, never over the wait window.
+/// 🗣️F-551 (유저 2026-11-04): the paste is tried behind the wait [window],
+/// and the join behind it again — the question asks between the two, never
+/// over the wait window. Each where it lays down more than one drawing
+/// (F-566, `reachesManyBlocks`).
 ///
 /// [place] is where the pressing panel stands ([ClipboardPlace]) — asked
 /// again when the answer comes, as the press itself would be.
@@ -45,6 +46,7 @@ Future<void> pasteLinkedAskingFirst(
     context,
     () => joins = session.clipboard.pasteLinkedAt(place()),
     window: window,
+    blocks: session.clipboard.drawingsPastedAt(place()),
   );
   final asked = joins;
   if (asked == null || !context.mounted) {
@@ -69,11 +71,21 @@ Future<void> pasteLinkedAskingFirst(
             ...rowPlaceLines(session.repository.requireProject(), row.layerId),
         ],
       ],
-      join: (_) => _joinBehind(
-        context,
-        window,
-        () => session.clipboard.pasteLinkedAt(place(), joinTakenNames: true),
-      ),
+      join: (_) {
+        if (context.mounted) {
+          unawaited(
+            takeBehindTheWaitWindow(
+              context,
+              () => session.clipboard.pasteLinkedAt(
+                place(),
+                joinTakenNames: true,
+              ),
+              window: window,
+              blocks: session.clipboard.drawingsPastedAt(place()),
+            ),
+          );
+        }
+      },
       decline: null,
     ),
   );
@@ -84,20 +96,15 @@ Future<void> pasteLinkedAskingFirst(
 /// on the lane they land on. Then nothing is written and the link window
 /// asks ONCE, listing what the key window's rename lists for the same
 /// question — the row the keys sit on. Joined, the pasted keys take what
-/// their names hold there, as one undo; Cancel writes nothing. Behind the
-/// wait [window] as the frames' is.
+/// their names hold there, as one undo; Cancel writes nothing.
+///
+/// No wait window: keys are no block's (F-566 — 「대상이 한 블록이면
+/// 안띄움」, and these reach none).
 Future<void> pasteLinkedKeysAskingFirst(
   BuildContext context,
-  EditorSessionManager session, {
-  required AppWaitWindow window,
-}) async {
-  Set<String>? joins;
-  await takeBehindTheWaitWindow(
-    context,
-    () => joins = session.keyClipboard.pasteLinked(),
-    window: window,
-  );
-  final asked = joins;
+  EditorSessionManager session,
+) async {
+  final asked = session.keyClipboard.pasteLinked();
   final lane = session.laneVerbs.laneVerbRange;
   if (asked == null || lane == null || !context.mounted) {
     return;
@@ -108,23 +115,8 @@ Future<void> pasteLinkedKeysAskingFirst(
     onConflict: (
       lines: (_) =>
           rowPlaceLines(session.repository.requireProject(), lane.layerId),
-      join: (_) => _joinBehind(
-        context,
-        window,
-        () => session.keyClipboard.pasteLinked(joinTakenNames: true),
-      ),
+      join: (_) => session.keyClipboard.pasteLinked(joinTakenNames: true),
       decline: null,
     ),
   );
-}
-
-/// A join the question took, behind the paste's [window] again.
-void _joinBehind(
-  BuildContext context,
-  AppWaitWindow window,
-  VoidCallback join,
-) {
-  if (context.mounted) {
-    unawaited(takeBehindTheWaitWindow(context, join, window: window));
-  }
 }

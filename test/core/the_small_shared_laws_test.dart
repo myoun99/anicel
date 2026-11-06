@@ -20,6 +20,8 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/services/brush_preset_id_mint.dart';
 
+import '../helpers/pinned_fingerprints.dart';
+
 /// The small shared laws in `core` and beside it — each one replaced two
 /// to four hand-written copies, and none was named by a test (the audit's
 /// untested-file pass, 2026-09-05).
@@ -261,6 +263,24 @@ void main() {
         mul255Round(100, 128),
         128,
       ]);
+    });
+
+    test('the GPU premultiplies the bytes this does — one ledger row, '
+        'pinned by both (the engine\'s premultiply.wgsl)', () {
+      // Every alpha (outer) by every byte c (inner) as R c, G 255 − c,
+      // B 7c mod 256, as the engine's every_byte_by_every_alpha lays them.
+      final bytes = Uint8List(256 * 256 * 4);
+      var at = 0;
+      for (var alpha = 0; alpha <= 255; alpha += 1) {
+        for (var c = 0; c <= 255; c += 1) {
+          bytes[at++] = c;
+          bytes[at++] = 255 - c;
+          bytes[at++] = (7 * c) % 256;
+          bytes[at++] = alpha;
+        }
+      }
+      premultiplyRgbaInPlace(bytes);
+      expect(fingerprintHex(bytes), pinnedFingerprint('surface/premultiply'));
     });
 
     test('straight bytes for premultiplied ones premultiply back to them '

@@ -13,20 +13,27 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/models/timesheet_sheet_kind.dart';
+import 'package:anicel/src/models/xdts_sheet_form.dart';
+import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -46,6 +53,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/draw_on_current_frame.dart';
@@ -87,29 +95,48 @@ void main() {
   /// Two cuts (2 + 3 frames) on the active track, a third cut on another
   /// track that exports must never touch. The first cut's drawing layer
   /// carries two authored cels (no brush artwork — surfaces stay empty).
-  EditorSessionManager exportSession() {
+  EditorSessionManager exportSession({
+    ProjectFrameRate frameRate = ProjectFrameRate.fps24,
+    bool celsExposed = true,
+    List<Layer> seLayers = const [],
+    int moreCels = 0,
+    TimesheetSheetKind sheetKind = TimesheetSheetKind.sixSeconds,
+    String? logo,
+  }) {
     return EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
         cameraSize: const CanvasSize(width: 32, height: 18),
+        frameRate: frameRate,
+        timesheetInfo: TimesheetInfo(logoAssetPath: logo),
         tracks: [
           Track(
             id: const TrackId('track'),
             name: 'Track',
+            seLayers: seLayers,
             cuts: [
               Cut(
                 id: const CutId('cut'),
                 name: 'Cut',
                 duration: 2,
                 canvasSize: const CanvasSize(width: 8, height: 8),
+                metadata: CutMetadata(sheetKind: sheetKind),
                 layers: [
                   Layer(
                     id: const LayerId('layer'),
                     name: 'A',
                     mark: const LayerMark(process: LayerProcess.key),
                     frames: [frame('f1'), frame('f2')],
+                    timeline: celsExposed ? null : const {},
                   ),
+                  for (var index = 0; index < moreCels; index += 1)
+                    Layer(
+                      id: LayerId('more-$index'),
+                      name: 'K$index',
+                      mark: const LayerMark(process: LayerProcess.key),
+                      frames: const [],
+                    ),
                   createCameraLayer(cutId: const CutId('cut')),
                 ],
               ),
@@ -710,7 +737,8 @@ void main() {
       await tester.pickExportProjectScope();
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(statusText(tester), '파일 2개 내보냈습니다.');
+      // Two cuts, each written as its 原画 and 動画 pair (I-162-Q6).
+      expect(statusText(tester), '파일 4개 내보냈습니다.');
     });
 
     testWidgets('video: the audio summary and the finished sentence', (
@@ -948,6 +976,349 @@ void main() {
       expect(data.getUint8(1), lessThan(80));
     });
 
+    // 🗣️I-161 (유저 2026-11-05): 「형식 xdts로하면 잉크 출력 on off버튼 둠 …
+    // off는 … 일반 xdts로 출력하기위함」 · Q2 「우리 용지를 뷰어 용지 크기에
+    // 맞춰 통째로 늘린다」.
+    testWidgets('잉크 출력: the digital sheet writes the XDTS Viewer\'s folder '
+        'beside it — each page\'s handwriting, the page laid whole on '
+        'the viewer\'s paper, and the viewer\'s settings; off, the file '
+        'alone', (tester) async {
+      final session = exportSession();
+      addTearDown(session.dispose);
+      session.renderCaches.timesheetInkStore.storeBakedSurface(
+        timesheetInkPageKey(const CutId('cut'), 0),
+        _redSurface(),
+      );
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      final ink = find.byKey(const ValueKey<String>('export-tsformat-xdts-ink'));
+      expect(
+        tester.booleanDotIn(ink).enabled,
+        isFalse,
+        reason: 'its row stands under a picture sheet, dead',
+      );
+      expect(
+        find.ancestor(of: ink, matching: find.anyTooltip),
+        findsNothing,
+        reason: 'the viewer counts this project — no reason to give',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('export-tsformat-xdts-sheet')),
+          matching: find.anyTooltip,
+        ),
+        findsNothing,
+      );
+      await pickPaperFormat(tester, 'export-tsformat', 'xdts');
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(
+        filesWrittenUnder(temp),
+        ['_TSCut_douga_ts.xdts', '_TSCut_genga_ts.xdts'],
+        reason: 'a plain XDTS: its blocks\' two files (I-162-Q6)',
+      );
+
+      // 🗣️I-161-Q8: the cut's own sheet's viewer sheet stands picked — the
+      // app's 6-second sheet, the A3 — and the row is dead with no ink.
+      PanelFlyoutButton sheetButton() => tester.widget<PanelFlyoutButton>(
+        find.byKey(const ValueKey<String>('export-tsformat-xdts-sheet')),
+      );
+      expect(
+        sheetButton().label,
+        AppText.strings.xdtsViewerSheetName(XdtsViewerSheet.a3SixSeconds),
+      );
+      expect(sheetButton().enabled, isFalse);
+
+      await tester.ensureVisible(ink);
+      await tester.pump();
+      expect(tester.booleanDotIn(ink).enabled, isTrue);
+      await tester.pressRingIn(ink);
+      await tester.pump();
+      expect(state.debugSpecs.cels.sheetInk, isTrue);
+      expect(sheetButton().enabled, isTrue);
+      final partsBefore = state.debugSheetPartsMade;
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(
+        state.debugSheetPartsMade - partsBefore,
+        1,
+        reason: 'the page\'s saved ink drawn once for the pair, not a file',
+      );
+      // One ink folder for the pair, beside both (I-162-Q6).
+      expect(filesWrittenUnder(temp), [
+        '_TSCut_douga_ts.xdts',
+        '_TSCut_genga_ts.xdts',
+        '_TSCut_xdts/1.png',
+        '_TSCut_xdts/config.ini',
+      ]);
+      expect(
+        File('${temp.path}/_TSCut_xdts/config.ini').readAsStringSync(),
+        contains('TemplateName="A3 size, 6 seconds sheet"'),
+      );
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final data = (await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      ))!;
+      // A3 at the viewer's 250 dpi.
+      expect((image.width, image.height), (2923, 4134));
+      expect(data.getUint8(0), greaterThan(200), reason: 'the ink, red');
+      expect(data.getUint8(3), 255);
+      final farOff = ((3000 * image.width) + 2000) * 4;
+      expect(
+        data.getUint8(farOff + 3),
+        0,
+        reason: 'no paper and no form: the viewer draws its own sheet under it',
+      );
+
+      // Another sheet picked: its paper, its name in the settings — the
+      // folder written over (I-161-Q10).
+      await pickFromExportList(
+        tester,
+        'export-tsformat-xdts-sheet',
+        'export-tsformat-xdts-sheet-b4-3s',
+      );
+      expect(
+        state.debugSpecs.cels.viewerSheet,
+        XdtsViewerSheet.b4ThreeSeconds,
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(
+        File('${temp.path}/_TSCut_xdts/config.ini').readAsStringSync(),
+        contains('TemplateName="B4 size, 3 seconds sheet"'),
+      );
+      final onB4 = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(onB4.dispose);
+      expect((onB4.width, onB4.height), (2530, 3583));
+    });
+
+    // I-162 ② (타임라인/콘티 · 저장 2026-11-05): the viewer widens its
+    // blocks for the tracks its files bring (`ExpandColumns=true`) — both,
+    // for a 原画 · 動画 pair (I-162-Q6) — and its paper with them; an ink
+    // page cut to the template's paper lands its values in other columns.
+    testWidgets('잉크 출력: a cut with more cel tracks than the viewer\'s '
+        'sheet holds lays its ink on the paper the viewer widens for '
+        'them', (tester) async {
+      final session = exportSession(moreCels: 9);
+      addTearDown(session.dispose);
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await pickPaperFormat(tester, 'export-tsformat', 'xdts');
+      final ink = find.byKey(const ValueKey<String>('export-tsformat-xdts-ink'));
+      await tester.ensureVisible(ink);
+      await tester.pump();
+      await tester.pressRingIn(ink);
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      // Ten 原画 tracks on the A3 sheet: three 44-pixel ACTION columns past
+      // its seven and two 79-pixel CELL ones past its eight, in each of its
+      // two bodies.
+      expect(
+        (image.width, image.height),
+        (2923 + 2 * (3 * 44 + 2 * 79), 4134),
+      );
+    });
+
+    // 🗣️I-161-Q3 (유저 2026-11-05): 「데이터로서 내보낼수있는건 다
+    // 내보내고싶음. 거기서 xdts뷰어용일때만 추가로 잉크로서 내보내게」.
+    testWidgets('잉크 출력: the ink page carries what the viewer does not '
+        'print of the sheet — a line of dialog — and nothing it does — the '
+        'cel rows\' names', (tester) async {
+      Future<List<int>> inkPage(EditorSessionManager session) async {
+        addTearDown(session.dispose);
+        AppExport.settings.value = AppExportSettings(
+          lastSpecs: const ExportTabSpecs(
+            cels: CelsExportSpec(
+              sheetFormat: ExportTimesheetFormat.xdts,
+              sheetInk: true,
+            ),
+          ),
+        );
+        final state = await pumpDialog(
+          tester,
+          session,
+          exportDirectoryPicker: () async => temp.path,
+        );
+        await switchTab(tester, 'timesheet');
+        await tester.runAsync(state.export);
+        await tester.pump();
+        return File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync();
+      }
+
+      final line = Layer(
+        id: const LayerId('se'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: [
+          Frame(
+            id: const FrameId('line'),
+            duration: 2,
+            strokes: const [],
+            name: 'こんにちは',
+            seName: 'ミカ',
+          ),
+        ],
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('line'), length: 2),
+        },
+      );
+      // ⚠️By presence, not by spelling: the test face draws every letter
+      // as the same square, so 「A」 and 「B」 are one picture.
+      final plain = await inkPage(exportSession(celsExposed: false));
+      expect(
+        await inkPage(exportSession(celsExposed: false, seLayers: [line])),
+        isNot(plain),
+        reason: 'the dialog column is a blank grid in the viewer',
+      );
+      expect(
+        await inkPage(exportSession()),
+        plain,
+        reason: 'the viewer prints the cels from the file',
+      );
+    });
+
+    // 🗣️I-162-Q5 (유저 2026-11-05): 「회사 로고를 찍는다」 — the viewer told
+    // to print none of its own (`LogoPath=`), the ink carries the work's.
+    testWidgets('잉크 출력: a cut on an XDTS sheet carries the work\'s logo in '
+        'the viewer\'s logo place, in the viewer\'s line colour — and the '
+        'viewer is told to print none of its own', (tester) async {
+      final black = (await tester.runAsync(
+        () => writeSolidPng(temp, 'logo.png', rgba: 0x000000FF),
+      ))!;
+      AppExport.settings.value = AppExportSettings(
+        lastSpecs: const ExportTabSpecs(
+          cels: CelsExportSpec(
+            sheetFormat: ExportTimesheetFormat.xdts,
+            sheetInk: true,
+          ),
+        ),
+      );
+      // The logo is square: it fills the place's height from its left.
+      final place = XdtsSheetForm(
+        XdtsViewerSheet.a3SixSeconds,
+        columns: 1,
+      ).logo;
+      Future<List<int>> logoPlaceOf(String? logo) async {
+        final session = exportSession(
+          sheetKind: TimesheetSheetKind.xdtsA3SixSeconds,
+          logo: logo,
+        );
+        addTearDown(session.dispose);
+        final state = await pumpDialog(
+          tester,
+          session,
+          exportDirectoryPicker: () async => temp.path,
+        );
+        await switchTab(tester, 'timesheet');
+        await tester.runAsync(state.export);
+        await tester.pump();
+        final image = (await tester.runAsync(
+          () => decodeImageFromList(
+            File('${temp.path}/_TSCut_xdts/1.png').readAsBytesSync(),
+          ),
+        ))!;
+        addTearDown(image.dispose);
+        final data = (await tester.runAsync(
+          () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+        ))!;
+        final x = place.left + place.height ~/ 2;
+        final y = place.top + place.height ~/ 2;
+        final at = (y * image.width + x) * 4;
+        return [for (var i = 0; i < 4; i += 1) data.getUint8(at + i)];
+      }
+
+      expect(
+        await logoPlaceOf(black),
+        [0x9C, 0xC8, 0x62, 255],
+        reason: 'a black logo, opaque in the line colour',
+      );
+      expect(
+        File('${temp.path}/_TSCut_xdts/config.ini').readAsStringSync(),
+        contains('LogoPath=\n'),
+      );
+      expect(
+        (await logoPlaceOf(null))[3],
+        0,
+        reason: 'no logo, a blank place',
+      );
+    });
+
+    // 🗣️I-161-Q7 (유저 2026-11-05): 「24fps 가 아니면 잉크 버튼을 회색으로」.
+    testWidgets('잉크 출력: in a project the viewer does not count — 25 '
+        'frames a second — the switch is dead and a sheet asked for its ink '
+        'is written plain', (tester) async {
+      final session = exportSession(
+        frameRate: const ProjectFrameRate.integer(25),
+      );
+      addTearDown(session.dispose);
+      // Kept on from a project the viewer counts.
+      AppExport.settings.value = AppExportSettings(
+        lastSpecs: const ExportTabSpecs(
+          cels: CelsExportSpec(
+            sheetFormat: ExportTimesheetFormat.xdts,
+            sheetInk: true,
+          ),
+        ),
+      );
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      final ink = find.byKey(const ValueKey<String>('export-tsformat-xdts-ink'));
+      await tester.ensureVisible(ink);
+      await tester.pump();
+      expect(tester.booleanDotIn(ink).enabled, isFalse);
+      expect(state.debugSpecs.cels.sheetInk, isTrue);
+      // I-162-Q3 (유저 2026-11-05): 「회색일때 툴팁으로 이유 표시」 — the
+      // timesheet's paper's reason, word for word.
+      const why =
+          'The XDTS Viewer counts 24 frames a second — 24 fps projects only';
+      expect(
+        find.ancestor(of: ink, matching: find.tooltipSaying(why)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('export-tsformat-xdts-sheet')),
+          matching: find.tooltipSaying(why),
+        ),
+        findsOneWidget,
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesWrittenUnder(temp), [
+        '_TSCut_douga_ts.xdts',
+        '_TSCut_genga_ts.xdts',
+      ]);
+    });
+
     testWidgets('a photo laid on the sheet rides its PNG, drawn from its '
         'file where it was laid (I-97)', (tester) async {
       final session = exportSession();
@@ -1003,7 +1374,8 @@ void main() {
       expect((data.getUint8(at + 1), data.getUint8(at + 2)), (255, 255));
     });
 
-    testWidgets('writes one xdts per cut under the project scope',
+    testWidgets('writes each cut\'s 原画 · 動画 xdts pair under the project '
+        'scope',
         (tester) async {
       final state = await pumpDialog(
         tester,
@@ -1018,11 +1390,15 @@ void main() {
 
       // Each in its cut's folder, which the project scope holds (I-153).
       expect(filesWrittenUnder(temp), [
-        'Cut B/_TSCut B.xdts',
-        'Cut/_TSCut.xdts',
+        'Cut B/_TSCut B_douga_ts.xdts',
+        'Cut B/_TSCut B_genga_ts.xdts',
+        'Cut/_TSCut_douga_ts.xdts',
+        'Cut/_TSCut_genga_ts.xdts',
       ]);
-      expect(statusText(tester), 'Exported 2 files.');
-      final content = File('${temp.path}/Cut/_TSCut.xdts').readAsStringSync();
+      expect(statusText(tester), 'Exported 4 files.');
+      final content = File(
+        '${temp.path}/Cut/_TSCut_genga_ts.xdts',
+      ).readAsStringSync();
       expect(content, contains('exchangeDigitalTimeSheet'));
     });
   });
@@ -1173,10 +1549,11 @@ void main() {
       await switchTab(tester, 'timesheet');
       await pickPaperFormat(tester, 'export-tsformat', 'xdts');
 
-      // The fixture's cut is named 'Cut', so the file is _TSCut.xdts — the
-      // same name the run actually writes.
-      expect(tester.exportFirstFileName, '_TSCut.xdts');
-      expect(tester.exportPreviewName, '_TSCut.xdts');
+      // The fixture's cut is named 'Cut', so the first file is its ACTION
+      // block's, _TSCut_genga_ts.xdts — the same name the run actually
+      // writes (I-162-Q6).
+      expect(tester.exportFirstFileName, '_TSCut_genga_ts.xdts');
+      expect(tester.exportPreviewName, '_TSCut_genga_ts.xdts');
     });
 
     testWidgets('the preview shows the rendered picture once it lands',

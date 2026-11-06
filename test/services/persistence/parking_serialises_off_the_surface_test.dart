@@ -83,6 +83,6 @@ void main() {
     expect(assembled.bytes, inline.bytes);
     expect(assembled.codec, inline.codec);
     // And it still reads back as the same picture.
-    expect(assembled.decode().tiles.length, surface.tiles.length);
+    expect(assembled.decoded((back) => back.tiles.length), surface.tiles.length);
   });
 }

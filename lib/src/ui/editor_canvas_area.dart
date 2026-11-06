@@ -66,7 +66,11 @@ import 'canvas/active_stroke_overlay.dart';
 import 'canvas/camera_adjust_layer.dart';
 import 'canvas/canvas_adjust_layer.dart';
 import 'cut_command_group.dart' show landCanvasAdjust;
-import 'dialogs/behind_the_wait_window.dart' show resizeBehindTheWaitWindow;
+import 'dialogs/app_progress_dialog.dart' show AppWaitWindow;
+import 'dialogs/behind_the_wait_window.dart'
+    show resizeBehindTheWaitWindow, workAheadBehindTheWaitWindow;
+import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
+import 'shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import 'session/canvas_adjust.dart' show CameraSizeDraft;
 import 'canvas/bitmap_surface_painter.dart';
 import 'canvas/flip_hud_controller.dart';
@@ -313,11 +317,11 @@ class EditorCanvasArea extends StatefulWidget {
 
   /// The Select tool's lift-time mask knobs (R26); null keeps the
   /// classic byte-preserving hard mask.
-  final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
+  final ValueNotifier<SelectionMaskOptions>? selectionMaskOptions;
 
   /// The transform tool's settings (mode, scale anchor, resampler, mesh
   /// grid); null keeps the defaults.
-  final ValueListenable<TransformToolOptions>? transformOptions;
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// What the canvas shows of the session: the area hears the session only
   /// when this changes ([SlicedListenableBuilder]).

@@ -655,7 +655,7 @@ _Part _partOf(
     _cutWith(taking, folders, [
       ...rows,
       for (final rider in taking._riders)
-        if (isSyncedAttachedLayer(rider)) _riding(rider),
+        if (isSyncedAttachedLayer(rider)) drawnBare(rider),
     ]),
     taking._pictureRows,
     reads.revisionOf,
@@ -701,21 +701,25 @@ Layer? _conteFollowed(
   return conte;
 }
 
-/// Every cut's rows as ONE key names them across the cuts: a row of a link
-/// group by its group's first member — the row its cels are kept under —
-/// and every other row by its own id.
+/// Every cut's rows as ONE key names them across the cuts
+/// ([rowsKeyedAcrossCuts]).
 Map<CutId, Map<LayerId, LayerId>> _canonicalIdsOf(LayerMergeTakings takings) {
   final links = takings._project.linkRegistry;
   return {
     for (final taking in takings._all)
-      taking.cut.id: {
-        for (final row in taking.cut.layers)
-          if (links.groupOf(cutId: taking.cut.id, layerId: row.id)
-              case final group?)
-            row.id: group.canonical.layerId,
-      },
+      taking.cut.id: rowsKeyedAcrossCuts(links, taking.cut),
   };
 }
+
+/// [cut]'s rows as ONE key names them across the cuts ([runsByPicture]'s
+/// `keys`): a row of a link group by its group's first member — the row its
+/// cels are kept under — and every other row by its own id.
+Map<LayerId, LayerId> rowsKeyedAcrossCuts(LayerLinkRegistry links, Cut cut) =>
+    {
+      for (final row in cut.layers)
+        if (links.groupOf(cutId: cut.id, layerId: row.id) case final group?)
+          row.id: group.canonical.layerId,
+    };
 
 /// One cel of the bank the results share, and the share it first shows in.
 typedef _BankCel = ({_Cel cel, int part});
@@ -744,11 +748,13 @@ typedef _BankCel = ({_Cel cel, int part});
     final cel = (
       cel: (
         frameId: mint(share, spans),
-        name: _nameTakenAt(
+        name: tailedName(
           held,
-          share.baked,
-          share.taking._pictureRows,
-          spans.first.start,
+          _nameShownAt(
+            share.baked,
+            share.taking._pictureRows,
+            spans.first.start,
+          ),
         ),
         spans: spans,
       ),
@@ -1128,17 +1134,18 @@ Cut _aloneWithItsBase(
   final base = taking.cut.layers.byId(rider.attachedToLayerId!)!;
   return _cutWith(taking, _foldersLeft(taking, over, [base]), [
     base.copyWith(isVisible: false),
-    _riding(rider),
+    drawnBare(rider),
   ]);
 }
 
 /// [row] baked as it would show with its eye on (Q7).
 Layer _shown(Layer row) => row.copyWith(isVisible: true);
 
-/// [rider] baked as it rides: shown, with nothing of its own laid — its
-/// strength, blend and clip stay on its row, and land on the pictures as
-/// they did.
-Layer _riding(Layer rider) => rider.copyWith(
+/// [row] as a bake draws it into its pictures — a rider as it rides (a
+/// merge's), a row its fx is baked into (I-120): shown, with nothing of its
+/// own laid — its strength, blend and clip stay on its row, and land on
+/// the pictures as they did.
+Layer drawnBare(Layer row) => row.copyWith(
   isVisible: true,
   opacity: 1,
   blendMode: LayerBlendMode.normal,
@@ -1233,29 +1240,27 @@ List<_Cel> _celsOf(
     for (final (picture, spans) in runs.indexed)
       (
         frameId: mintFrameId(picture),
-        name: _nameTakenAt(heldNames, shown, rows, spans.first.start),
+        name: tailedName(
+          heldNames,
+          _nameShownAt(shown, rows, spans.first.start),
+        ),
         spans: spans,
       ),
   ];
 }
 
-/// The name a new cel takes where the topmost of [rows] that shows a cel
-/// in [shown] at [frameIndex] shows one (Q10 · Q11): that cel's number, its
-/// tail clear of every name [held] holds — which holds it from then on.
-String? _nameTakenAt(
-  Set<String> held,
-  Cut shown,
-  List<Layer> rows,
-  int frameIndex,
-) {
-  final name = switch (_nameShownAt(shown, rows, frameIndex)) {
-    final number? => tailClearOf(held, number),
-    null => null,
-  };
-  if (name != null) {
-    held.add(name);
+/// [name]'s printed number ([celNumberOf]) with the first tail no name of
+/// [held] wears (Q10 · Q11 — 「갈라진 곳은 꼬리 번호」) — which holds it from
+/// then on; null for a cel with no number. A merge's new cel, an fx bake's
+/// parted picture and a reference's rasterized one are named by it.
+String? tailedName(Set<String> held, String? name) {
+  final number = celNumberOf(name);
+  if (number == null) {
+    return null;
   }
-  return name;
+  final tailed = tailClearOf(held, number);
+  held.add(tailed);
+  return tailed;
 }
 
 /// [number], or [number] with the first tail no name of [held] wears

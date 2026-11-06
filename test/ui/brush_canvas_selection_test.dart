@@ -64,8 +64,7 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
 import '../helpers/poll_until.dart';
 import '../helpers/settle_async.dart';
-import '../helpers/wait_window.dart'
-    show passTheDoneLinger, stepBehind, windowBehind;
+import '../helpers/wait_window.dart' show stepBehind, windowBehind;
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
@@ -1972,7 +1971,12 @@ void main() {
       ),
     );
     await tester.pump();
-    await windowBehind(tester, () async => env.commands.applyTransform());
+    // 🗣️F-566: it lands on the cel it lifted and the one the ladder names
+    // beside it — two blocks, so it waits behind the window.
+    expect(
+      await windowBehind(tester, () async => env.commands.applyTransform()),
+      isNotNull,
+    );
     await tester.pump();
 
     expect(
@@ -2910,18 +2914,20 @@ void main() {
     Offset around(double degrees) =>
         anchor + Offset.fromDirection(degrees * math.pi / 180, 50);
     final origin = tester.getTopLeft(find.byKey(layerKey));
-    final gesture = await tester.startGesture(origin + around(90));
+    // Round its upper right: under the box stands its pill (I-165), and a
+    // press there is the pill's.
+    final gesture = await tester.startGesture(origin + around(-50));
     await tester.pump();
     final turned = <double>[];
     for (var step = 1; step <= 6; step += 1) {
-      await gesture.moveTo(origin + around(90 + step * 10.0));
+      await gesture.moveTo(origin + around(-50 + step * 10.0));
       await tester.pump();
       turned.add(env.commands.transformValues!.rotationDegrees);
     }
     // A pen reports moves while the hand holds still. The same point again
     // must turn nothing — measured about a centre the turn carries round,
     // it turned the box again, and back: the flip between two positions.
-    await gesture.moveTo(origin + around(150));
+    await gesture.moveTo(origin + around(10));
     await tester.pump();
     final stillHand = env.commands.transformValues!.rotationDegrees;
     await gesture.up();
@@ -3979,6 +3985,98 @@ void main() {
     });
   });
 
+  /// 🚨F-570 (유저 2026-11-06): 「선택도구 사용 후 변형도구의 자유변형시
+  /// 제대로 왼쪽 중앙 꼭짓점 사각형 클릭했는데 안쪽 클릭한것처럼 그림 자체가
+  /// 이동하는 동작 실행됨 … 일반변형시에는 문제없는거보니 자유변형만 뭔가 법이
+  /// 다른가? 확인하고 통일」.
+  ///
+  /// A selection whose bounds fall between pixels, seen at 8×: the lift
+  /// rounds it out to whole pixels, and 퍼스 · 메쉬 stood on that wider rect
+  /// while the closed box — and 일반 — stood on the selection. The press
+  /// opened the box, was asked again of the opened one, and missed the grip
+  /// that had moved under it.
+  group('🚨F-570: a press opens the box where it was drawn and takes the '
+      'grip drawn there, in every mode', () {
+    const zoom = 8.0;
+    // A corner is dragged out along its diagonal, which a uniform scale
+    // follows too; an edge's middle straight out.
+    const grips = {
+      1: ('the top-right corner', Offset(15, -15)),
+      5: ('the right edge\'s middle', Offset(15, 0)),
+    };
+    for (final mode in TransformMode.values) {
+      for (final MapEntry(key: index, value: (name, by)) in grips.entries) {
+        // A closed 메쉬 box offers its corners alone.
+        if (mode == TransformMode.mesh && index >= 4) {
+          continue;
+        }
+        testWidgets('$mode · $name', (tester) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            transformMode: mode,
+            viewport: seedFromRender(tester, CanvasViewport(zoom: zoom)),
+          );
+          await dragOnLayer(
+            tester,
+            const Offset(24.3, 24.3) * zoom,
+            const Offset(66.6, 66.6) * zoom,
+          );
+          await env.setTool(CanvasTool.move);
+          final drawn = chromeOnScreen(tester)!;
+          // On the square drawn for it, off its middle, toward the inside.
+          final press = drawn.handles[index] + const Offset(-3, 3);
+          final origin = tester.getTopLeft(find.byKey(layerKey));
+          final gesture = await tester.startGesture(origin + press);
+          await tester.pump();
+
+          // A 메쉬 outline walks its grid's edge, so its points are more than
+          // the closed box's four: the rect they span is what is compared.
+          Rect spanned(List<Offset> outline) => outline
+              .skip(1)
+              .fold(
+                Rect.fromPoints(outline.first, outline.first),
+                (rect, point) => rect.expandToInclude(
+                  Rect.fromPoints(point, point),
+                ),
+              );
+          final opened = spanned(chromeOnScreen(tester)!.box);
+          final closed = spanned(drawn.box);
+          for (final (side, now, before) in [
+            ('left', opened.left, closed.left),
+            ('top', opened.top, closed.top),
+            ('right', opened.right, closed.right),
+            ('bottom', opened.bottom, closed.bottom),
+          ]) {
+            expect(
+              (now - before).abs(),
+              lessThan(0.01),
+              reason: 'opening the box moved its $side side',
+            );
+          }
+
+          await gesture.moveTo(origin + press + by);
+          await tester.pump();
+          final values = env.commands.transformValues!;
+          expect(
+            (values.tx, values.ty),
+            (0, 0),
+            reason: 'the press took the grip, not the move inside it',
+          );
+          final reached = drawn.handles[index] + by;
+          expect(
+            chromeOnScreen(tester)!.handles.any(
+              (handle) => (handle - reached).distance < 0.5,
+            ),
+            isTrue,
+            reason: 'the grip pressed followed the hand',
+          );
+          await gesture.up();
+          await tester.pump();
+        });
+      }
+    }
+  });
+
   testWidgets('mode switches carry the box: a 퍼스 warp survives a trip '
       'through 일반 and back', (tester) async {
     final env = await pumpSelectionPanel(
@@ -4074,9 +4172,10 @@ void main() {
       env.commands.beginTransform();
       await tester.pump();
 
-      // Stamp rect (20,20)-(71,71): its bottom-right is a quad corner in
-      // 퍼스 and the grid's last point in 메쉬.
-      await dragOnLayer(tester, const Offset(71, 71), const Offset(120, 120));
+      // The box (20,20)-(70,70): its bottom-right is a quad corner in 퍼스
+      // and the grid's last point in 메쉬 (F-570 — the box 일반 draws, not
+      // the lifted pixels' (20,20)-(71,71)).
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(120, 120));
       final pulled = antsOnScreen(tester)!.transformChrome!.box;
       expect(
         pulled,
@@ -4084,7 +4183,7 @@ void main() {
         reason: 'the premise: the outline grew to the pulled corner',
       );
 
-      // Inside the grown outline, past the box it was pulled from (x > 71).
+      // Inside the grown outline, past the box it was pulled from (x > 70).
       await dragOnLayer(tester, const Offset(85, 80), const Offset(95, 80));
       final moved = antsOnScreen(tester)!.transformChrome!.box;
       expect(moved, hasLength(pulled.length));
@@ -6068,10 +6167,9 @@ void main() {
         reason: 'the warped preview never came up — bad premise',
       );
 
-      // The frames the confirm lands in, its wait window still up (F-551).
+      // The frames the confirm lands in, behind its wait window (F-551).
       await stepBehind(tester, () async => env.commands.applyTransform());
       final atConfirm = await screenInkMask(tester);
-      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenInkMask(tester);
@@ -6133,10 +6231,9 @@ void main() {
         () => decodedPreviewIsUp(tester),
         reason: 'the warped preview to decode',
       );
-      // The frames the confirm lands in, its wait window still up (F-551).
+      // The frames the confirm lands in, behind its wait window (F-551).
       await stepBehind(tester, () async => env.commands.applyTransform());
       final atConfirm = await screenInkMask(tester);
-      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenInkMask(tester);
@@ -6455,7 +6552,7 @@ void main() {
             '— bad premise',
       );
 
-      // The frames the confirm lands in, its wait window still up (F-551).
+      // The frames the confirm lands in, behind its wait window (F-551).
       await stepBehind(tester, () async => env.commands.applyTransform());
       // The release changes nothing about the landing — the box closed
       // under it, and its release only lowers the drag flags — but it
@@ -6469,7 +6566,6 @@ void main() {
         isEmpty,
         reason: 'the landing is still being covered for',
       );
-      await passTheDoneLinger(tester);
 
       await settle(tester);
       final settled = await screenBytes(tester);

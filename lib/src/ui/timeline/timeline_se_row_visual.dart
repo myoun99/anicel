@@ -1,4 +1,5 @@
 import '../widgets/app_tooltip.dart';
+import '../widgets/ellipsis_text.dart' show PressesGoThrough;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../../models/track_se_window.dart' show seSoundRunsPast;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
 import '../audio/waveform_painter.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
 import '../text/dialogue_fit_layout.dart'
@@ -352,50 +354,6 @@ String? seSoundWarningsOf(SeAudioSpan span, SeSoundWarnings warnings) {
   return lines.isEmpty ? null : lines.join('\n');
 }
 
-/// Red warning lines on an SE row's blocks, tooltip-explained — one per
-/// block that has anything to warn of ([seSoundWarningsOf]).
-List<Widget> timelineRowSoundWarningOverlays({
-  required Layer layer,
-  required int frameStartIndex,
-  required int frameEndIndexExclusive,
-  required double crossAxisExtent,
-  required Axis axis,
-  required SeSoundWarnings warnings,
-  required Color color,
-  String keyPrefix = 'timeline',
-}) {
-  final overlays = <Widget>[];
-  for (final span in seAudioSpans(layer)) {
-    final tooltip = seSoundWarningsOf(span, warnings);
-    if (tooltip == null) {
-      continue;
-    }
-    final blockEnd = span.startFrame + span.lengthFrames;
-    if (!frameRangesOverlap(
-      span.startFrame,
-      blockEnd,
-      frameStartIndex,
-      frameEndIndexExclusive,
-    )) {
-      continue;
-    }
-    overlays.add(
-      timelineBlockWarningBar(
-        blockStart: span.startFrame,
-        blockEndExclusive: blockEnd,
-        crossAxisExtent: crossAxisExtent,
-        axis: axis,
-        tooltip: tooltip,
-        color: color,
-        markerKey: ValueKey<String>(
-          '$keyPrefix-block-warning-${layer.id}-b${span.startFrame}',
-        ),
-      ),
-    );
-  }
-  return overlays;
-}
-
 /// How thick a block's warning line is, across the row.
 const double timelineBlockWarningBarThickness = 2;
 
@@ -416,6 +374,18 @@ const double timelineBlockWarningBarThickness = 2;
 /// pointer finds. It summons on the hover alone: a long press on a block is
 /// the block's drag, and a tooltip's recognizer would take that press from
 /// it in the arena (the panel tabs' tooltip, for the same reason).
+///
+/// 🚨AND ANYWHERE MEANS OVER WHAT THE ROW STACKS ON THE BLOCK (the hands-on
+/// check, 10-30): the grips on its edges and the movie's end handle cover
+/// whole frames at a low zoom — the conte's 80% — and a stack asks no layer
+/// under the one a pointer hits, so the block's first frame and the frames
+/// past the end line said nothing. A host mounts the warnings LAST, over
+/// the grips, and the hover is all they hear ([PressesGoThrough]): a press
+/// is the grip's or the block's under them. ↩️They sat under the grips, and
+/// over a conte SE row's blocks they took the press from the block. The
+/// movie's end handle is the panel's, over every row, so no row lays them
+/// over it: there the hover goes under the handle ([HoverGoesUnder] —
+/// F-495-Q1, 유저 2026-11-07 「잡이 위에서도 블록 툴팁을 띄운다」).
 Widget timelineBlockWarningBar({
   required int blockStart,
   required int blockEndExclusive,
@@ -432,21 +402,23 @@ Widget timelineBlockWarningBar({
     ),
     child: KeyedSubtree(
       key: markerKey,
-      child: AppTooltip(
-        message: tooltip,
-        triggerMode: TooltipTriggerMode.manual,
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: sizedAlong(
-            axis,
-            along: double.infinity,
-            across: timelineBlockWarningBarThickness,
-            child: CustomPaint(
-              painter: _WarningBarPainter(
-                color: color,
-                axis: axis,
-                frameCount: blockEndExclusive - blockStart,
-                crossAxisExtent: crossAxisExtent,
+      child: PressesGoThrough(
+        child: AppTooltip(
+          message: tooltip,
+          triggerMode: TooltipTriggerMode.manual,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: sizedAlong(
+              axis,
+              along: double.infinity,
+              across: timelineBlockWarningBarThickness,
+              child: CustomPaint(
+                painter: _WarningBarPainter(
+                  color: color,
+                  axis: axis,
+                  frameCount: blockEndExclusive - blockStart,
+                  crossAxisExtent: crossAxisExtent,
+                ),
               ),
             ),
           ),
@@ -577,6 +549,7 @@ class _AudioClipStrip extends StatelessWidget {
               frameRate: frameRate,
               pixelsPerFrame: audibleFrames <= 0 ? 0 : main / audibleFrames,
               color: color,
+              devicePixelRatio: EffectiveDevicePixelRatio.of(context),
               axis: axis,
               leadingFrames: leadingFrames,
               gain: gain,

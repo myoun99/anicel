@@ -18,11 +18,12 @@ import '../session/effects_and_fx.dart' show EffectChainHolder;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../widgets/boolean_dot.dart' show BooleanDotButton;
 import '../widgets/field_slider.dart';
+import '../widgets/icon_button_box.dart' show AppIconButtonSize;
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
 import 'layer_name_commands.dart' show renameActiveLayerWithDialog;
-import 'rasterize_reference_rows.dart';
 import 'toolbar_panel_context.dart';
 
 /// The frame pill's standing switch, pressed — 「빈 칸에 그리면 프레임 자동
@@ -337,24 +338,17 @@ class TimelineBarMenus {
       // 선택한 레이어들 폴더안에 들어가는식으로」 — ↩️it was born EMPTY, to be
       // filled by dropping rows on it). "New attach folder" goes for the
       // same reason — the drag makes those too.
-      PanelFlyoutItem(
-        keyValue: 'timeline-rasterize-layer-button',
-        label: editorActionLabel(EditorActionIds.layerRasterize),
-        shortcuts: const [EditorActionIds.layerRasterize],
-        icon: Icons.texture_outlined,
-        enabled: serves && session.editingCanvas.canRasterizeActiveLayer,
-        // A movie reference is decoded frame by frame behind the wait
-        // window ([rasterizeActiveRow]); every other row is the session's
-        // own verb, unchanged.
-        onSelected: () => unawaited(rasterizeActiveRow(context, session)),
-      ),
+      //
+      // ↩️RASTERIZE stood here. 🗣️I-120-Q11 (유저 2026-11-04: 「참조 버튼의
+      // 래스터라이즈 버튼은 삭제. 레이어 버튼의 래스터라이즈도 삭제. 그래서
+      // 하나만 남기도록」) — the group header's RASTERIZE on the rail is the
+      // one entrance, a reference's and an fx's alike.
       // 'SE name tag…' opened a window. R5 #7 put every control it held on
       // the SE row's Name Tag lane group, so the entry would only lead
       // somewhere that changes the same thing a second way.
       // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
       // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
       // link window, and its button unlinks.
-      const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-storyboard-layer-button',
         label: editorActionLabel(EditorActionIds.layerStoryboard),
@@ -457,7 +451,7 @@ class TimelineBarMenus {
   ///
   /// 🗣️F-551 (유저 2026-11-04): 「색변환이나 색삭제나 그런거」 — every row
   /// runs behind the app's wait window, put up in [context], under the
-  /// row's own name (Q1 「전부 늘 띄운다」).
+  /// row's own name — where it lands on more than one block (F-566).
   List<PanelFlyoutEntry> colourEdit(BuildContext context) => [
     PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
     for (final verb in CelPixelVerb.values)
@@ -486,22 +480,32 @@ class TimelineBarMenus {
           context,
           pixelClipboardActionIdFor(verb),
           () => session.pixelVerbs.runPixelClipboardVerb(verb),
+          blocks: session.pixelVerbs.pixelClipboardVerbCels(verb),
         ),
       ),
   ];
 
   /// [run], a row of the colour edit list, behind the wait window under
-  /// [actionId]'s name.
-  static void _behindTheWaitWindow(
+  /// [actionId]'s name when it lands on more than one of [blocks] (F-566).
+  ///
+  /// 🗣️I-164: the list's preview is over once a row is chosen — 「그 색 편집
+  /// 앵커창 나가면 사라짐」 — and it goes where the row's step lands, so the
+  /// canvas never shows the cels as they were between the two.
+  void _behindTheWaitWindow(
     BuildContext context,
     String actionId,
-    VoidCallback run,
-  ) {
+    VoidCallback run, {
+    required Iterable<Object> blocks,
+  }) {
     unawaited(
       takeBehindTheWaitWindow(
         context,
-        run,
+        () {
+          run();
+          session.pixelVerbPreview.verb = null;
+        },
         window: AppWaitWindow.working(editorActionLabel(actionId)),
+        blocks: blocks,
       ),
     );
   }
@@ -537,10 +541,11 @@ class TimelineBarMenus {
       context,
       pixelVerbActionIdFor(verb),
       () => session.pixelVerbs.runPixelVerb(verb),
+      blocks: session.pixelVerbs.pixelVerbCellKeys(),
     ),
     // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
     // in its own row — the value the row's command runs with.
-    knob: switch (verb) {
+    knob: _previewed(verb, switch (verb) {
       CelPixelVerb.binarize => _byteKnob(
         'shared-binarize-cut',
         lowest: PixelVerbSettings.lowestBinarizeThreshold,
@@ -561,12 +566,15 @@ class TimelineBarMenus {
         write: (settings, byte) => settings.copyWith(keepColourTolerance: byte),
       ),
       CelPixelVerb.replaceColour || CelPixelVerb.clearPixels => null,
-    },
+    }),
   );
 
   /// A byte from [lowest] to 255 that a row's verb runs with: the live
   /// value follows the bar as it goes, and the app's settings keep it when
   /// it is let go — a drag is not a disk write per step.
+  ///
+  /// As short as a byte's bar reads (I-164: 「수치 막대는 최대한
+  /// 컴팩트하게」).
   PanelFlyoutKnob _byteKnob(
     String keyValue, {
     required int lowest,
@@ -578,6 +586,7 @@ class TimelineBarMenus {
         write(PixelVerbSettings.settings.value, value.round());
     return PanelFlyoutKnob(
       listenable: PixelVerbSettings.settings,
+      width: 56,
       builder: (_) => FieldSlider(
         key: ValueKey<String>(keyValue),
         value: read(PixelVerbSettings.settings.value).toDouble(),
@@ -587,6 +596,39 @@ class TimelineBarMenus {
         onChanged: (value) => PixelVerbSettings.settings.value = at(value),
         onChangeEnd: (value) =>
             session.appSettings.setPixelVerbSettings(at(value)),
+      ),
+    );
+  }
+
+  /// [bar], and right of it the ring that shows the canvas as [verb]'s row
+  /// would leave it (`PixelVerbPreview`) — null for a row with no number.
+  ///
+  /// 🗣️I-164 (유저 2026-11-05): 「색변환의 수치 지정해서 하는 버튼들. 삭제나
+  /// 남기기나 2치화. 그런거는 프리뷰버튼 두도록 … 그 막대 오른쪽에 두도록.
+  /// 누르면 프리뷰로 보임. 프리뷰는 한번에 하나만」 — so the ring rides the
+  /// bar, and turning one on turns the other off: a pick-one group.
+  PanelFlyoutKnob? _previewed(CelPixelVerb verb, PanelFlyoutKnob? bar) {
+    if (bar == null) {
+      return null;
+    }
+    final preview = session.pixelVerbPreview;
+    return PanelFlyoutKnob(
+      listenable: Listenable.merge([?bar.listenable, preview]),
+      width: bar.width + 4 + AppIconButtonSize.bar.maxWidth,
+      builder: (context) => Row(
+        spacing: 4,
+        children: [
+          SizedBox(width: bar.width, child: bar.builder(context)),
+          BooleanDotButton(
+            keyValue: '${pixelVerbActionIdFor(verb)}-preview',
+            value: preview.verb == verb,
+            inPickOneGroup: true,
+            tooltip: AppText.strings.commonPreview,
+            onChanged: session.pixelVerbs.canRunPixelVerb
+                ? (on) => preview.verb = on ? verb : null
+                : null,
+          ),
+        ],
       ),
     );
   }

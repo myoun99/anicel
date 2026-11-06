@@ -54,7 +54,7 @@ void main() {
       final read = AnicelCelBlob.ofSurface(
         key,
         laidPicture(),
-      ).decode().toSurface();
+      ).toSurface();
 
       expect(read, laidPicture());
       expect(read.tileAt(beyond)!.pixels, edge.pixels);

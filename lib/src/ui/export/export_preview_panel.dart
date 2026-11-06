@@ -274,6 +274,8 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       child: TransportBar(
         keyPrefix: 'export-transport',
         frameCount: document.pageCount,
+        framesPerSecond: rate.countingBase,
+        rulerView: widget.session.panelViews.rulerView,
         currentFrame: _page,
         playing: _run.playing,
         onSeek: widget.enabled

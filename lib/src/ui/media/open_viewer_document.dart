@@ -77,7 +77,7 @@ Future<ViewerDocument?> openViewerDocument(
       final peaks = await soundPeaks(path);
       return peaks == null
           ? null
-          : AudioViewerDocument(peaks: peaks, color: AudioViewerDocument.ink);
+          : AudioViewerDocument(peaks: peaks);
   }
 }
 

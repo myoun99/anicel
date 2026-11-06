@@ -7,6 +7,7 @@ import '../playback/frame_pictures.dart';
 import '../playback/playback_pictures.dart' show PictureState;
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
+import '../playback/stacked_frame_picture.dart' show FramePictureKey;
 import '../timeline/timeline_ruler_cursor_overlay.dart'
     show ReadyRun, appendReadyRun;
 import 'render_caches.dart';
@@ -143,6 +144,22 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
 
   @override
   void giveWayToNodes() => enforcePlaybackCacheBudget();
+
+  /// Lets go of [key]'s picture where no step of the run wants it and no
+  /// screen holds it — what the line holds is what the warmer follows
+  /// ([enforcePlaybackCacheBudget] keeps by the same two).
+  ///
+  /// 🚨What a panel cuts its picture from and leaves (`PanelPictures`,
+  /// F-533): a storyboard's fifty cuts are fifty frames no one plays.
+  /// 🔬↩️They stayed on the line, let go of only past it — Surface Pro 11,
+  /// S5_BA with the storyboard open, 2026-11-05: 44 more pictures held at
+  /// the first stroke, 1,611 → 2,596MB, and rss 6.1–6.3 → 7.6–7.8GB where
+  /// the GPU's pictures are the RAM's.
+  void letGoUnwanted(FramePictureKey key) {
+    if (_run.pictures.wantedAt(_run.demand)(key) == null) {
+      _renderCaches.framePictureStore.letGoUnpinned(key);
+    }
+  }
 
   @override
   bool makeRoomFor({required int bytes, required int step}) =>

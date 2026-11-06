@@ -103,6 +103,15 @@ class TransformToolOptions {
   /// affine, and a corner keeps the proportions it has.
   bool get isUniform => mode == TransformMode.normal;
 
+  /// 안티앨리어스: [resampleMode] read as the switch every door turns — the
+  /// settings' and the box's pill's (I-165) — on for the tent mean, off for
+  /// the two-value copy (유저 08-13's polarity).
+  bool get antiAlias => resampleMode == ResampleMode.blend;
+
+  /// These options with [antiAlias] turned to [on].
+  TransformToolOptions withAntiAlias(bool on) =>
+      copyWith(resampleMode: on ? ResampleMode.blend : ResampleMode.pick);
+
   TransformToolOptions copyWith({
     TransformMode? mode,
     ResampleMode? resampleMode,

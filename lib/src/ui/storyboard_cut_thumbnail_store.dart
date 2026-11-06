@@ -148,8 +148,8 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   }
 
   /// ↩️It could answer null — a panel with nothing to draw, remembered
-  /// apart from a picture. The camera-view render always answers a picture
-  /// (`ExportFrameRenderer.renderPicture`); only tests ever answered null.
+  /// apart from a picture. A panel's render always answers a picture
+  /// (`PanelPictures.render`); only tests ever answered null.
   final Future<ui.Image> Function(
     Cut cut,
     int frameIndex,

@@ -102,12 +102,14 @@ class AudioMixClip {
 /// concentrated in one speaker; the output stage clamps and the meter
 /// shows it).
 ///
-/// Center-unity is not a taste choice here: the platform-player fallback
-/// cannot pan, so an uncompensated law would put center-panned sound
-/// 3 dB quieter on the device path than on the fallback — the same file
-/// at two levels depending on the path, the exact defect this program
-/// exists to remove. Computed ONCE per clip here so both mixer
-/// implementations consume identical doubles.
+/// Center-unity is what a STEREO source hears: at center it plays as it
+/// was recorded (native-to-rust-Q12: 「스테레오 소리는 그대로다」). A mono
+/// source meets [audioMonoOnStereo] on top in the mixer, so it pans by
+/// Pro Tools' -3 dB law — 0.707 a side at center, 1 on one side at a hard
+/// pan. ↩️Center-unity was once held for the platform-player fallback,
+/// which could not pan; that path went with the user's 2026-10-16 「대체
+/// 재생을 안 쓰고」. Computed ONCE per clip here so every mixer
+/// implementation consumes identical doubles.
 ({double left, double right}) equalPowerPanGains(double pan) {
   final clamped = pan < -1.0 ? -1.0 : (pan > 1.0 ? 1.0 : pan);
   final angle = (clamped + 1.0) * math.pi / 4.0;
@@ -208,6 +210,19 @@ double audioClipVolumeAt(AudioMixClip clip, int positionSample) {
   return volume;
 }
 
+/// A mono sound laid on two speakers: each side at -3 dB, before its pan
+/// moves it — 0.707 a side at center, 1 on one side at a hard pan.
+///
+/// 🚨native-to-rust-Q12 (user 2026-11-06: 「프로툴처럼 모노는 어디서든
+/// −3dB(0.707) — 믹서도 바꾼다」): Pro Tools' default pan depth for a mono
+/// track on a stereo output (-3.0 dB), FFmpeg's mono-to-stereo 0.707.
+/// EVERYWHERE: a mono file the mixer spreads and a mono piece the decoder
+/// spreads inside a stereo sound are one sound at one level. Only the
+/// level moves — no sample's position does. A stereo source keeps unity.
+/// The C's `QA_AUDIO_MONO_ON_STEREO` and Rust's `audio_mix::MONO_ON_STEREO`
+/// are its twins.
+const double audioMonoOnStereo = math.sqrt1_2;
+
 /// Which source channel feeds [outChannel]: a mono source feeds every
 /// output channel, anything wider maps straight across and holds its last
 /// channel when the output is wider.
@@ -255,6 +270,9 @@ Float64List mixAudioReference({
       continue;
     }
 
+    final spread = source.channels == 1 ? audioMonoOnStereo : 1.0;
+    final left = clip.panLeft * spread;
+    final right = clip.panRight * spread;
     final from = clip.startSample > startSample ? clip.startSample : startSample;
     final to = clip.endSample < blockEnd ? clip.endSample : blockEnd;
     for (var position = from; position < to; position += 1) {
@@ -270,9 +288,7 @@ Float64List mixAudioReference({
         final sourceChannel = audioSourceChannelFor(source.channels, channel);
         // Pan factors apply on a STEREO bus only; multiplication order
         // mirrors the C exactly (sample × volume × factor).
-        final factor = outChannels == 2
-            ? (channel == 0 ? clip.panLeft : clip.panRight)
-            : 1.0;
+        final factor = outChannels == 2 ? (channel == 0 ? left : right) : 1.0;
         out[destination + channel] +=
             source.samples[frame + sourceChannel] * volume * factor;
       }

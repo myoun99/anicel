@@ -29,6 +29,11 @@ void main() {
           'sheet still counts 24 to a second',
     );
     expect(rate.label, '23.976 fps', reason: 'what the picker shows');
+    expect(
+      rate,
+      ProjectFrameRate.recommended,
+      reason: 'the rate the picker marks (F-567)',
+    );
   });
 
   test('a project made for a file brought in runs at its movie\'s rate, or a '

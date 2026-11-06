@@ -10,8 +10,8 @@ import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 /// The complaint it answers is not "saving is slow" — it is "I cannot tell
 /// whether it saved". So the properties under test are about what the user
 /// is able to CONCLUDE: that it appears at all for a save that finishes in
-/// a blink, that it says so when the work is over, and that it gets out of
-/// the way instead of hanging around after a failure.
+/// a blink, and that it gets out of the way the moment the work is over —
+/// a failure included — instead of hanging around.
 void main() {
   /// A window over a task the test finishes by hand.
   Future<
@@ -43,9 +43,7 @@ void main() {
         context: pageContext,
         title: 'Save',
         runningLabel: 'Saving…',
-        doneLabel: 'Saved',
         windowKey: const ValueKey<String>('save-progress-dialog'),
-        doneLinger: const Duration(milliseconds: 40),
         task: (r) {
           report = r;
           return task.future;
@@ -95,9 +93,7 @@ void main() {
       context: pageContext,
       title: 'Save',
       runningLabel: 'Saving…',
-      doneLabel: 'Saved',
       windowKey: window,
-      doneLinger: const Duration(milliseconds: 40),
       task: (_) async {
         final found = find.byKey(window).evaluate();
         var shown = found.isEmpty ? 0.0 : 1.0;
@@ -140,27 +136,23 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('it SAYS it finished, then leaves on its own', (tester) async {
-    // The finished line is the whole point — the user asked to be told, not
-    // to be left guessing at a window that vanished. And it leaves without
-    // a click, because a save happens often enough that a dialog demanding
-    // one every time would be worse than the silence it replaced.
+  testWidgets('🗣️it leaves the frame the work is over, saying nothing of the '
+      'end', (tester) async {
+    // 유저 2026-11-05 (bundle-red-paste-behind-the-wait-window-Q1 · Q2):
+    // 「완료비표시 진행창은 로딩창만 보여주고 끝나면 그냥 바로 사라짐」. Its
+    // 「Saved」 line held the barrier 0.9s over an app with nothing left to
+    // wait for.
     final run = await showOver(tester);
     run.task.complete('written');
     await tester.pump();
 
-    expect(find.text('Saved'), findsOneWidget);
-    expect(
-      find.byType(CircularProgressIndicator),
-      findsNothing,
-      reason: 'nothing is still spinning once it is over',
-    );
-
-    await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('save-progress-dialog')),
       findsNothing,
+      reason: '「끝나면 그냥 바로 사라짐」',
     );
+    await tester.pump();
+    expect(run.closed.isCompleted, isTrue);
   });
 
   testWidgets('a FAILED save takes the window down and comes back out', (

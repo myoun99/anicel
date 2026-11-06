@@ -50,7 +50,7 @@ class DocumentPreviewPanel extends StatefulWidget {
     this.transport,
     this.documentName,
     this.documentAbsent = false,
-    this.marks,
+    this.face,
     this.bottomBarLeading = const <Widget>[],
     this.flip,
   });
@@ -86,10 +86,11 @@ class DocumentPreviewPanel extends StatefulWidget {
   /// ([BrushCanvasPanel.documentAbsent]).
   final bool documentAbsent;
 
-  /// A layer over the page, in the page's own transform — what moves while
-  /// the page does not (a sound's playhead), on its own layer so the page's
-  /// [StaticRaster] is not baked again on every tick.
-  final Widget Function(CanvasViewport viewport, ui.Size page)? marks;
+  /// What stands on the stage in the page's place, through the view — a
+  /// sound's face (`SoundFace`, F-71), which wears no panbars — or null
+  /// where the page is shown. ↩️A sound was its page, with its playhead and
+  /// its kept span marked over it on a layer of their own.
+  final Widget Function(CanvasViewport viewport)? face;
 
   /// The head of the pill ([BrushCanvasPanel.bottomBarLeading]) — what a
   /// host keeps in its place beside the pictures it shows among papers.
@@ -177,37 +178,36 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
       // F-315: the viewer's 1:1, where the viewer keeps it.
       oneToOneOnPill: true,
       hasContentToView: document != null,
+      panbars: widget.face == null,
       bottomBarLeading: widget.bottomBarLeading,
       transport: widget.transport,
       documentName: document == null ? null : widget.documentName,
       documentAbsent: widget.documentAbsent,
       contentOverride: (context, viewport) =>
-          _content(context, viewport, document, paper),
+          _content(context, viewport, document),
     );
   }
 
-  /// What the panel shows through [viewport]: the page of [document] on
-  /// [paper] with its marks over it, and the wait while it is not drawn yet
-  /// — or the host's nothing.
+  /// What the panel shows through [viewport]: the face in the page's place,
+  /// or the page of [document] and the wait while it is not drawn yet — or
+  /// the host's nothing.
   Widget _content(
     BuildContext context,
     CanvasViewport viewport,
     ViewerDocument? document,
-    Rect? paper,
   ) {
-    final marks = widget.marks;
+    final face = widget.face;
     return Stack(
       children: [
         Positioned.fill(
-          child: document == null
-              ? widget.nothing
-              : _picture(context, viewport, document),
+          child: switch ((document, face)) {
+            (null, _) => widget.nothing,
+            (_, final face?) => face(viewport),
+            (final document?, null) => _picture(context, viewport, document),
+          },
         ),
-        if (document != null && marks != null)
-          Positioned.fill(
-            child: IgnorePointer(child: marks(viewport, paper!.size)),
-          ),
         if (document != null &&
+            face == null &&
             widget.pagesAndRun.rasters.imageOf(widget.page) == null)
           Positioned.fill(
             child: ViewerPageLoading(key: ValueKey<String>(_key('loading'))),

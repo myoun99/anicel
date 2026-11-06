@@ -174,6 +174,20 @@ abstract class ToolbarPanelContext {
   bool get canDuplicate;
   void duplicate();
 
+  /// 🗣️F-566 — what the presses above land on, each read as its press is
+  /// made: the wait window's measure (`reachesManyBlocks`). The drawings
+  /// this panel's 복사 takes, or with [lifted] its 잘라내기.
+  Iterable<Object> drawingsTaken({required bool lifted});
+
+  /// The drawings a paste here lays down, independent or linked.
+  Iterable<Object> get drawingsPasted;
+
+  /// The drawings this panel's 링크 독립 gives a copy of their own.
+  Iterable<Object> get drawingsUnlinked;
+
+  /// The drawings this panel's 복제 copies.
+  Iterable<Object> get drawingsDuplicated;
+
   /// 🗣️I-78 — 병합: what this panel's press would merge — the rows, the
   /// band's blocks, or nothing ([EditorSessionManager.mergeSubjectFor]).
   /// The press asks before it bakes, so it is a window's
@@ -208,24 +222,32 @@ abstract class ToolbarPanelContext {
 /// pick, not a ruling: the order was 「여러 단축키 기존 버튼에 연결」), and the
 /// storyboard's pill answered differently from its own keys.
 ///
-/// 🗣️F-551 (유저 2026-11-04) · Q1 「전부 늘 띄운다」: each press is taken
-/// behind the app's one wait window, under its action's name, every time
-/// ([_behindTheWaitWindow]). 링크 붙여넣기 puts up its own
+/// 🗣️F-551 (유저 2026-11-04): each press is taken behind the app's one wait
+/// window, under its action's name ([_behindTheWaitWindow]) — where it lands
+/// on more than one drawing (F-566). 링크 붙여넣기 puts up its own
 /// ([pasteLinkedFrame]): its question comes between two of them.
 extension ToolbarSharedPresses on ToolbarPanelContext {
   void Function()? get cutPress => canCutRun
-      ? _behindTheWaitWindow(EditorActionIds.editCut, cutRun)
+      ? _behindTheWaitWindow(
+          EditorActionIds.editCut,
+          cutRun,
+          blocks: () => drawingsTaken(lifted: true),
+        )
       : null;
 
   void Function()? get copyPress => canCopyFrame
-      ? _behindTheWaitWindow(EditorActionIds.editCopy, copyFrame)
+      ? _behindTheWaitWindow(
+          EditorActionIds.editCopy,
+          copyFrame,
+          blocks: () => drawingsTaken(lifted: false),
+        )
       : null;
 
   void Function()? get pasteIndependentPress => canPasteIndependentFrame
       ? _behindTheWaitWindow(
           EditorActionIds.editPasteIndependent,
           pasteIndependentFrame,
-          window: AppWaitWindow.pasting,
+          blocks: () => drawingsPasted,
           ahead: () => independentPasteAhead,
         )
       : null;
@@ -234,24 +256,29 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       canPasteLinkedFrame ? pasteLinkedFrame : null;
 
   void Function()? get unlinkPress => canUnlink
-      ? _behindTheWaitWindow(EditorActionIds.editUnlink, unlink)
+      ? _behindTheWaitWindow(
+          EditorActionIds.editUnlink,
+          unlink,
+          blocks: () => drawingsUnlinked,
+        )
       : null;
 
   void Function()? get duplicatePress => canDuplicate
       ? _behindTheWaitWindow(
           EditorActionIds.editDuplicate,
           duplicate,
-          window: AppWaitWindow.duplicating,
+          blocks: () => drawingsDuplicated,
         )
       : null;
 
-  /// [press] behind the window [window] makes of [actionId]'s name — with
-  /// what it holds [ahead] of it, asked as it is pressed — or at once where
-  /// the panel has no [waitIn].
+  /// [press] behind [actionId]'s window ([_windowOf]) where it lands on more
+  /// than one of [blocks] — or, holding something [ahead] of it, behind it
+  /// whatever it lands on — each asked as it is pressed; at once where the
+  /// panel has no [waitIn].
   void Function() _behindTheWaitWindow(
     String actionId,
     void Function() press, {
-    AppWaitWindow Function(String title) window = AppWaitWindow.working,
+    required Iterable<Object> Function() blocks,
     WorkAhead? Function()? ahead,
   }) => () {
     final context = waitIn;
@@ -259,15 +286,32 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       press();
       return;
     }
+    final named = _windowOf(actionId);
+    final held = ahead?.call();
     unawaited(
-      takeBehindTheWaitWindow(
-        context,
-        press,
-        window: window(editorActionLabel(actionId)),
-        ahead: ahead?.call(),
-      ),
+      held == null
+          ? takeBehindTheWaitWindow(
+              context,
+              press,
+              window: named,
+              blocks: blocks(),
+            )
+          : workAheadBehindTheWaitWindow(
+              context,
+              press,
+              window: named,
+              ahead: held,
+            ),
     );
   };
+
+  /// The window [actionId]'s press stands behind, under the action's name:
+  /// 붙여넣기's and 복제's own, the work window for the rest.
+  static AppWaitWindow _windowOf(String actionId) => (switch (actionId) {
+    EditorActionIds.editPasteIndependent => AppWaitWindow.pasting,
+    EditorActionIds.editDuplicate => AppWaitWindow.duplicating,
+    _ => AppWaitWindow.working,
+  })(editorActionLabel(actionId));
 
   /// Whether 병합 has anything to merge here — the button's gate and the
   /// key's, read off the one ladder ([mergeSubject]).
@@ -456,6 +500,17 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
     }
   }
 
+  /// Off the board [_boardTaken] names, as [copyFrame] and [cutRun] take
+  /// it. A text is one cel's, and effects and keys are no drawing's.
+  @override
+  Iterable<Object> drawingsTaken({required bool lifted}) =>
+      switch (_boardTaken) {
+        _Board.rows => session.layerClipboard.drawingsTaken(lifted: lifted),
+        _Board.cuts => session.cutClipboard.drawingsInHand,
+        _Board.frames => session.clipboard.drawingsTakenAt(clipboardPlace),
+        _Board.text || _Board.effects || _Board.keys || null => const [],
+      };
+
   /// Whether a paste here puts down ROWS: the hand holds them, and rows are
   /// this panel's. ⛔Not asked of the selection — one copy is in hand
   /// (`AppClipboard`), so what a paste brings is already said; where it
@@ -533,6 +588,20 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         : null;
   }
 
+  /// Off the board a paste here puts down, as [pasteIndependentFrame] and
+  /// [pasteLinkedFrame] put it down: a text on every cel a held picture
+  /// lands on, and effects and keys on no drawing.
+  @override
+  Iterable<Object> get drawingsPasted => _pastesCuts
+      ? session.cutClipboard.drawingsHeld
+      : _pastesRows
+      ? session.layerClipboard.drawingsHeld
+      : _pastesEffects || _pastesKeys
+      ? const []
+      : _pastesText
+      ? session.pixelVerbs.pieceGround().cels
+      : session.clipboard.drawingsPastedAt(clipboardPlace);
+
   @override
   void pasteIndependentFrame() {
     if (_pastesEffects) {
@@ -577,8 +646,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// have nothing to ask. KEYS ask the same way, of a name the lane they
   /// land on already holds at another value (F-388).
   ///
-  /// 🗣️F-551-Q1: behind the paste's wait window, every time — and the join
-  /// a question takes, behind it again ([pasteLinkedAskingFirst]).
+  /// 🗣️F-551: behind the paste's wait window where it lays down more than
+  /// one drawing (F-566) — and the join a question takes, behind it again
+  /// ([pasteLinkedAskingFirst]).
   @override
   void pasteLinkedFrame() {
     final context = waitIn;
@@ -605,13 +675,14 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
               ? session.cutClipboard.pasteLinked
               : session.layerClipboard.pasteRowsLinked,
           window: window,
+          blocks: drawingsPasted,
         ),
       );
       return;
     }
     unawaited(
       _pastesKeys
-          ? pasteLinkedKeysAskingFirst(context, session, window: window)
+          ? pasteLinkedKeysAskingFirst(context, session)
           : pasteLinkedAskingFirst(
               context,
               session,
@@ -810,6 +881,9 @@ class TimelineToolbarPanelContext
   @override
   void unlink() => session.unlinkSelectionSubject();
 
+  @override
+  Iterable<Object> get drawingsUnlinked => session.drawingsUnlinked;
+
   /// 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
   /// 컷버튼의 레이어복제/컷복제 삭제. 그리고 복제버튼, 물론 각 규칙
   /// 따르고」 — the layer pill's 레이어 복제 came here with its rule: the
@@ -830,6 +904,11 @@ class TimelineToolbarPanelContext
   void duplicate() => _duplicatesEffects
       ? session.effectClipboard.duplicate()
       : session.layerVerbs.duplicateActiveLayer();
+
+  @override
+  Iterable<Object> get drawingsDuplicated => _duplicatesEffects
+      ? const []
+      : session.layerVerbs.drawingsDuplicated;
 
   bool get _duplicatesEffects =>
       session.layerVerbs.duplicatableSelectedLayerIds().isEmpty &&
@@ -1430,22 +1509,19 @@ class StoryboardToolbarPanelContext
   /// band's verbs and this rung never asked it — two panels of one cel
   /// under a band lit the timeline's button and left this one dark.
   @override
-  bool get canUnlink {
-    final cuts = _unlinkCutIds;
-    return cuts.isNotEmpty
-        ? cuts.any(session.cutVerbs.cutIsLinked)
-        : _timelinesCells?.canUnlink ?? false;
-  }
+  bool get canUnlink => _unlinkCutIds.isEmpty
+      ? _timelinesCells?.canUnlink ?? false
+      : _unlinkCutIds.any(session.cutVerbs.cutIsLinked);
 
   @override
-  void unlink() {
-    final cuts = _unlinkCutIds;
-    if (cuts.isNotEmpty) {
-      session.cutVerbs.unlinkCuts(cuts);
-      return;
-    }
-    _timelinesCells?.unlink();
-  }
+  void unlink() => _unlinkCutIds.isEmpty
+      ? _timelinesCells?.unlink()
+      : session.cutVerbs.unlinkCuts(_unlinkCutIds);
+
+  @override
+  Iterable<Object> get drawingsUnlinked => _unlinkCutIds.isEmpty
+      ? _timelinesCells?.drawingsUnlinked ?? const []
+      : session.cutVerbs.drawingsUnlinkedOf(_unlinkCutIds);
 
   /// 🗣️F-455 — the cut pill's 컷 복제 came here, cuts being this panel's
   /// noun (R5q1): the selected cuts, else the cut you stand on (유저 확정
@@ -1461,6 +1537,10 @@ class StoryboardToolbarPanelContext
   void duplicate() => _duplicatesEffects
       ? session.effectClipboard.duplicate()
       : session.cutVerbs.duplicateActiveCut();
+
+  @override
+  Iterable<Object> get drawingsDuplicated =>
+      _duplicatesEffects ? const [] : session.cutVerbs.drawingsDuplicated;
 
   bool get _duplicatesEffects =>
       session.storyboardRows.storyboardSelectedCutIds.isEmpty &&

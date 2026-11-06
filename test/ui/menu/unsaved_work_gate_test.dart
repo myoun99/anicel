@@ -391,8 +391,7 @@ void main() {
           path,
       reason: 'the tab on screen holds the file',
     );
-    // The window lingers with its check for `appProgressDoneLinger`, and a
-    // window still up would swallow the next tap.
+    // A window still up would swallow the next tap.
     await pumpPastTheWaitWindow(tester);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))

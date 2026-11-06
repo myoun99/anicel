@@ -42,9 +42,6 @@ import '../../helpers/text_finders.dart';
 /// window's least, in each face the app ships. ↩️The Cels list's rules stood
 /// 168 wide in every language: 「絵コンテ」 got 22 of its 43 px, 「ディレクション」
 /// 22 of its 71.
-///
-/// ⚠️Chinese is set in the OS's face (`AppTypography.familyFor`), which the
-/// test bed does not have: what it measures there is the test font.
 void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
@@ -126,10 +123,7 @@ void main() {
     fail('an accordion would not stay open');
   }
 
-  for (final language in [
-    for (final language in AppLanguage.values)
-      if (AppTypography.familyFor(language) != null) language,
-  ]) {
+  for (final language in AppLanguage.values) {
     testWidgets('🚨every button holds its whole word on every tab — '
         '${language.name}', (tester) async {
       await loadTheAppFaces();
