@@ -118,6 +118,17 @@ unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARA
 
 impl AppWindow {
     fn show() -> Self {
+        Self::make(None, true)
+    }
+
+    /// Two windows of this process the app's is not: one not shown, and one
+    /// shown but owned by it.
+    fn not_the_apps() -> [Self; 2] {
+        let owner = Self::make(None, false);
+        [Self::make(Some(owner.0), true), owner]
+    }
+
+    fn make(owner: Option<HWND>, shown: bool) -> Self {
         let class = w!("AnicelPenTestWindow");
         // SAFETY: this process's module, a class of it, and a window of that
         // class, shown without taking the focus.
@@ -140,13 +151,15 @@ impl AppWindow {
                 0,
                 1,
                 1,
-                None,
+                owner,
                 None,
                 Some(module.into()),
                 None,
             )
             .expect("a window");
-            let _ = ShowWindow(window, SW_SHOWNOACTIVATE);
+            if shown {
+                let _ = ShowWindow(window, SW_SHOWNOACTIVATE);
+            }
             Self(window)
         }
     }
@@ -175,8 +188,8 @@ struct Reading {
 }
 
 /// What `reader` answers and asks the driver as `script` plays: its name
-/// into rooms of `caps`, opened twice, polled for records `polls` at a
-/// time, closed twice.
+/// into rooms of none to a hundred characters, opened twice, polled for
+/// records `polls` at a time, closed twice.
 fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Reading {
     driver.play(script);
     // SAFETY: each export of its declaration, with the room it is told of.
@@ -192,7 +205,7 @@ fn read(driver: &Driver, reader: Reader, script: &Script, polls: &[i32]) -> Read
         let polls = polls
             .iter()
             .map(|&cap| {
-                let mut room = vec![f32::from_bits(UNWRITTEN); 8 * 65];
+                let mut room = vec![f32::from_bits(UNWRITTEN); 8 * (cap.max(0) as usize + 1)];
                 let count = (reader.poll)(room.as_mut_ptr(), cap);
                 (count, room.iter().map(|value| value.to_bits()).collect())
             })
@@ -276,6 +289,7 @@ fn without_a_driver_nothing_opens() {
 #[test]
 fn without_the_apps_window_nothing_opens() {
     let (driver, _turn) = driver();
+    let _others = AppWindow::not_the_apps();
     let reading = held(driver, &installed(&[packet(500, 0, 0, 0)]), &[64]);
     assert_eq!((reading.available, reading.opened), (1, [0, 0]));
     assert_eq!(reading.seen.opens, 0, "the driver is not asked without a window");
@@ -350,10 +364,11 @@ fn a_pen_that_leans_and_turns() {
         orientation: [axis(0, 3599), axis(-900, 900), axis(0, 359)],
         ..installed(&packets)
     };
-    let reading = held(driver, &script, &[0, 2, 64, 1]);
+    let reading = held(driver, &script, &[0, 2, 100, 1]);
     let counts: Vec<_> = reading.polls.iter().map(|(count, _)| *count).collect();
     assert_eq!(counts, [0, 2, 3, 0], "none asked, two, the rest, none left");
-    assert_eq!(&reading.seen.asked[..reading.seen.asks as usize], &[2, 64, 1]);
+    let asked = &reading.seen.asked[..reading.seen.asks as usize];
+    assert_eq!(asked, &[2, 64, 1], "a hundred asked for is its room of 64");
     let first = &reading.polls[1].1;
     let want = [(1024.0 * (1.0 / 2047.0)) as f32, 90.0, 0.5, 123_456.0, 3.0, 1.0, 270.0, 1.0];
     assert_eq!(first[..8], bits(want), "answers worked out here");

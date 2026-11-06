@@ -302,7 +302,7 @@ pub(crate) fn device_name(out: Option<&mut [u16]>) -> Option<usize> {
     // and the driver writes the whole name (native-memory-safety).
     // SAFETY: a size query, writing nothing.
     let bytes = unsafe { (driver.info)(WTI_DEVICES, DVC_NAME, std::ptr::null_mut()) };
-    let mut name = vec![0u16; (bytes as usize).div_ceil(2).max(1)];
+    let mut name = vec![0u16; (bytes as usize).div_ceil(2)];
     if bytes != 0 {
         // SAFETY: room for the size the driver just gave.
         unsafe { (driver.info)(WTI_DEVICES, DVC_NAME, name.as_mut_ptr().cast()) };

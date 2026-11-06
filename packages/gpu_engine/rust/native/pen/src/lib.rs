@@ -77,8 +77,8 @@ pub unsafe extern "C" fn qat_poll(out: *mut f32, cap: i32) -> i32 {
     if out.is_null() || cap <= 0 {
         return 0;
     }
-    // SAFETY: see the function's contract; no more than 64 records are read.
-    let out = unsafe { std::slice::from_raw_parts_mut(out, 8 * cap.min(64) as usize) };
+    // SAFETY: see the function's contract.
+    let out = unsafe { std::slice::from_raw_parts_mut(out, 8 * cap as usize) };
     wintab::poll(out) as i32
 }
 
