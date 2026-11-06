@@ -138,6 +138,14 @@ void main() {
     );
   });
 
+  testWidgets('letters scaled to nothing make no plate', (tester) async {
+    expect(
+      celNumberPlate(_letters('F7', scale: CanvasPoint(x: 0, y: 1))),
+      isNull,
+      reason: '🚨letters that cover no pixel were rastered',
+    );
+  });
+
   testWidgets('a plate pushed out by the bytes kept is let go of', (
     tester,
   ) async {

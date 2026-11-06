@@ -12,6 +12,7 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/composite_tree_paint.dart';
+import 'package:anicel/src/ui/text/cel_number_paint.dart' show celNumberBox;
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
 import '../../helpers/app_faces.dart';
@@ -80,6 +81,41 @@ void main() {
     );
 
     _expectBlocks(whole, zoomed, 4);
+  });
+
+  test('a cel number\'s plate holds its letters where they stand, as large '
+      'as they stand', () async {
+    final whole = await _pixels(canvas, 1, (into) => celNumber(into, 1, null));
+    var left = canvas.width;
+    var top = canvas.height;
+    var right = 0;
+    var bottom = 0;
+    for (var at = 3; at < whole.rgba.length; at += 4) {
+      if (whole.rgba[at] == 0) {
+        continue;
+      }
+      final x = (at ~/ 4) % whole.width;
+      final y = (at ~/ 4) ~/ whole.width;
+      left = x < left ? x : left;
+      top = y < top ? y : top;
+      right = x + 1 > right ? x + 1 : right;
+      bottom = y + 1 > bottom ? y + 1 : bottom;
+    }
+    final ink = ui.Rect.fromLTRB(
+      left.toDouble(),
+      top.toDouble(),
+      right.toDouble(),
+      bottom.toDouble(),
+    );
+    final box = celNumberBox(letters);
+
+    expect(ink.isEmpty, isFalse, reason: 'LIVENESS: the letters drew');
+    expect(
+      box.inflate(1).expandToInclude(ink),
+      box.inflate(1),
+      reason: '🚨the letters were drawn elsewhere, or at another size, than '
+          'where they stand: ink $ink, box $box',
+    );
   });
 
   test('a cel number on a row scaled twice is its pixels, each twice over', () async {
