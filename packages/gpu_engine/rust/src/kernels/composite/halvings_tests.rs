@@ -325,6 +325,7 @@ fn an_empty_change_marks_nothing() {
     drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
     let (pages, set, _) = composite_of(between, CANVAS);
     kept.changed([20, 20, 20, 60]);
+    kept.changed([20, 30, 60, 30]);
     kept.changed(real);
     drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
     let (pages, set, _) = composite_of(red, CANVAS);
