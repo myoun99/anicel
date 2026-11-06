@@ -82,8 +82,9 @@ fn roll(dice: &mut Noise, lo: f64, hi: f64) -> f64 {
 }
 
 /// Syllables whose pitch the octave check has to argue over, each its
-/// own: the fundamental and the odd harmonics turned down by chance, and
-/// a second voice in unison, a fifth or an octave above.
+/// own: the fundamental and the odd harmonics turned down by chance, a
+/// second voice in unison, a fifth or an octave above, the pitch sliding
+/// a little or a lot, the attack soft or sharp, the hiss mostly faint.
 fn octave_doubts(frames: usize, seed: u32) -> Vec<f32> {
     use std::f64::consts::{PI, TAU};
     let mut dice = Noise(seed);
@@ -94,12 +95,16 @@ fn octave_doubts(frames: usize, seed: u32) -> Vec<f32> {
         let above = [1.0, 1.5, 2.0][roll(&mut dice, 0.0, 3.0) as usize];
         let fundamental = roll(&mut dice, 0.0, 1.0);
         let odd = roll(&mut dice, 0.0, 1.0);
-        let hiss = roll(&mut dice, 0.0, 0.1) as f32;
+        let slide = roll(&mut dice, 0.8, 1.25);
+        let attack = roll(&mut dice, 0.2, 1.0);
+        let hiss = (0.1 * roll(&mut dice, 0.0, 1.0).powi(2)) as f32;
         let (mut low, mut high) = (0.0f64, 0.0f64);
         for n in 0..length {
-            low += TAU * f0 / 48_000.0;
-            high += TAU * f0 * above / 48_000.0;
-            let envelope = (PI * n as f64 / length as f64).sin();
+            let at = n as f64 / length as f64;
+            let f = f0 * slide.powf(at);
+            low += TAU * f / 48_000.0;
+            high += TAU * f * above / 48_000.0;
+            let envelope = (PI * at).sin().powf(attack);
             let voiced: f64 = (1..=10)
                 .map(|h| {
                     let weight = match h {
@@ -120,7 +125,7 @@ fn octave_doubts(frames: usize, seed: u32) -> Vec<f32> {
 
 #[test]
 fn a_pitch_in_doubt_comes_out_as_the_c_makes_it() {
-    holds(&octave_doubts(8 * 48_000, 29), 1);
+    holds(&octave_doubts(20 * 48_000, 29), 1);
 }
 
 #[test]
