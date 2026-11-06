@@ -192,7 +192,8 @@ fn twin() -> (String, String) {
 
 /// The twin asked every question of the sample, and how its engine runs it;
 /// a trap ends the render it is in and not the plugin, and the frame's room
-/// in the module is reused, not taken anew each time.
+/// in the module is reused, not taken anew each time — asked of a twin
+/// asked nothing before, whose room is no bigger than one render's frame.
 #[test]
 fn the_twin_answers_as_the_sample_does_on_every_host() {
     let (description, text) = twin();
@@ -206,8 +207,9 @@ fn the_twin_answers_as_the_sample_does_on_every_host() {
         assert_eq!(render(&twin, -200.0, true).0, TRAPPED, "{who}: a trap");
         let after = render(&twin, 80.0, true);
         assert_eq!(after, (OK, expected(80.0, true)), "{who}: a render after a trap");
+        let fresh = opened(host, &text);
         for time in 0..400 {
-            assert_eq!(render(&twin, 80.0, true).0, OK, "{who}: render {time}");
+            assert_eq!(render(&fresh, 80.0, true).0, OK, "{who}: render {time}");
         }
     }
 }
