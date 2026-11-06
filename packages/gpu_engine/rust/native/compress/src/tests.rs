@@ -230,6 +230,69 @@ fn frames_in_a_row_decode_as_the_c_decodes_them() {
     same_answer(&[overlong, frames[0].clone()].concat(), parts[0].len(), "a skippable frame longer than what is left");
 }
 
+/// The blocks of a frame: where each one's body starts, its kind, and the
+/// body's length.
+fn blocks(frame: &[u8]) -> Vec<(usize, usize, usize)> {
+    let mut at = frame_header::size(frame[4]);
+    let mut found = Vec::new();
+    loop {
+        let word = frame_header::le(&frame[at..at + 3]) as usize;
+        let (kind, size) = ((word >> 1) & 3, word >> 3);
+        let length = if kind == 1 { 1 } else { size };
+        found.push((at + 3, kind, length));
+        at += 3 + length;
+        if word & 1 == 1 {
+            return found;
+        }
+    }
+}
+
+// A block's literals may repeat the tree of a block before them — and the
+// first block's, with none before it, are refused.
+#[test]
+fn literals_repeat_only_a_tree_already_read() {
+    let data = kinds(20_000, 5).swap_remove(2).1;
+    let frame = compressed(&data, 9);
+    let (body, kind, _) = blocks(&frame)[0];
+    assert_eq!((kind, frame[body] & 3), (2, 2), "the first block's literals are Huffman-coded");
+    let repeated = with(&frame, body, frame[body] | 3);
+    assert_eq!(same_answer(&repeated, data.len(), "the first literals repeating a tree"), 0);
+}
+
+// A match far behind and long, whose offset and length take more bits
+// together than are left after them: the stream reloads in the middle of
+// the sequence.
+#[test]
+fn a_far_long_match_decodes_as_the_c_s() {
+    let mut noise = Noise(77);
+    let mut echo: Vec<u8> = (0..200_000).map(|_| noise.next() as u8).collect();
+    echo.extend_from_within(..120_000);
+    for level in [1, 9, 19] {
+        let frame = compressed(&echo, level);
+        assert_eq!(same_answer(&frame, echo.len(), &format!("level {level}")), echo.len() as i64);
+    }
+}
+
+// The sequence count in each of its forms, the three-byte one included —
+// pinned by hand, by the format's own words (RFC 8878 3.1.1.3.2.1): it
+// takes more than 0x7F00 sequences in a block, and no input tried made the
+// C's compressor write more than 19,868 (2026-11-06).
+#[test]
+fn a_count_is_read_in_each_of_its_forms() {
+    let forms: [(&[u8], usize); 6] = [
+        (&[0x7F, 0], 0x7F),
+        (&[0x80, 0x80, 0], 0x80),
+        (&[0xFE, 0xFF, 0], 0x7EFF),
+        (&[0xFF, 0, 0, 0], 0x7F00),
+        (&[0xFF, 0x34, 0x12, 0], 0x7F00 + 0x1234),
+        (&[0xFF, 0xFF, 0xFF, 0], 0x7F00 + 0xFFFF),
+    ];
+    for (header, count) in forms {
+        let mut entropy = sequences::Entropy::new();
+        assert_eq!(sequences::read_header(&mut entropy, header), Ok((count, header.len())), "{header:02x?}");
+    }
+}
+
 /// `frame` (the C's: single segment, its size stated) with its header
 /// rewritten — a window descriptor instead of the single segment, the size
 /// stated or not, a checksum appended or not.
@@ -255,14 +318,17 @@ fn reheaded(frame: &[u8], window: u8, state_size: bool, checksum: Option<&[u8]>)
 }
 
 // Headers the app's frames never have, made by hand from the C's frames:
-// a window instead of a single segment, small and large; no size stated; a
-// checksum — the C checks it with its own XXH64, so its answer is also the
-// Rust hash's — right and wrong; a dictionary asked for; reserved bits.
+// a window instead of a single segment — small and large, between a
+// block's literals and its whole, a power of two and between two — no size
+// stated; a checksum — the C checks it with its own XXH64, so its answer
+// is also the Rust hash's — right and wrong; a dictionary asked for;
+// reserved bits.
 #[test]
 fn every_header_decodes_as_the_c_reads_it() {
     for (kind, data) in kinds(150_000, 99).into_iter().step_by(2) {
         let frame = compressed(&data, 9);
-        for window in [0x00, 0x08, 0x38, 0x3F, 0x40, 0x48, 0x58, 0x70, 0xA8, 0xF8, 0xFF] {
+        let windows = [0x00, 0x08, 0x0F, 0x10, 0x17, 0x18, 0x1D, 0x20, 0x2B, 0x38, 0x3F, 0x40, 0x48, 0x58, 0x70, 0xA8, 0xF8, 0xFF];
+        for window in windows {
             for state_size in [true, false] {
                 let what = format!("{kind}, window {window:#x}, size stated {state_size}");
                 same_answer(&reheaded(&frame, window, state_size, None), data.len(), &what);
@@ -273,9 +339,10 @@ fn every_header_decodes_as_the_c_reads_it() {
                 same_answer(&checked[..checked.len() - 2], data.len(), &format!("{what}, checksum cut"));
             }
         }
+        // The dictionary's id goes after the window byte, before the size.
         let mut dictionary = frame.clone();
         dictionary[4] |= 1;
-        dictionary.insert(frame_header::size(frame[4]), 7);
+        dictionary.insert(frame_header::PREFIX + usize::from(frame[4] >> 5 & 1 == 0), 7);
         same_answer(&dictionary, data.len(), &format!("{kind}, a dictionary asked for"));
         same_answer(&with(&frame, 4, frame[4] | 0x08), data.len(), &format!("{kind}, a reserved bit"));
     }
