@@ -518,11 +518,13 @@ fn a_gap_close_leaks_through_no_gap_narrower_than_its_reach() {
 }
 
 #[test]
-fn a_gap_close_measures_over_a_box_of_any_width() {
-    // A box a column short of its tile: a row of distances ends mid word.
-    let inside = extent(0, 0, TILE - 1, TILE);
+fn a_gap_close_measures_over_a_box_anywhere_of_any_width() {
+    // A box off the grid's corner and a column short of its tile: its
+    // distances lie from (1, 2), and a row of them ends mid word.
+    let inside = extent(1, 2, TILE, TILE);
     let closed = gap_closed_inside((1, 1), inside, gapped_wall, (10, 10), 0, 2);
-    assert_fills(&closed.expect("a gap close"), left_of_the_gapped_wall, bounds(0, 60, 0, 127));
+    let hand = |x, y| x >= 1 && y >= 2 && left_of_the_gapped_wall(x, y);
+    assert_fills(&closed.expect("a gap close"), hand, bounds(1, 60, 2, 127));
 }
 
 #[test]
