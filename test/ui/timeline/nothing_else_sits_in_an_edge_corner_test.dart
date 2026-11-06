@@ -12,6 +12,8 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show rectAlong, sizedAlong;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
+    show timelineRowBlockWarnings;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
 import '../../helpers/an_se_row.dart';
@@ -91,13 +93,13 @@ void main() {
                 ),
                 crossAxisExtent: cross,
                 axis: axis,
-                children: timelineRowSoundWarningOverlays(
+                children: timelineRowBlockWarnings(
                   layer: clipped(),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 20,
                   crossAxisExtent: cross,
                   axis: axis,
-                  warnings: (clipped: 'clipped take', cannotPlay: null),
+                  sounds: (clipped: 'clipped take', cannotPlay: null),
                   color: AppColors.danger,
                 ),
               ),

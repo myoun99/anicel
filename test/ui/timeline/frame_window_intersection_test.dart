@@ -118,17 +118,17 @@ void main() {
     expect(marked, [4]);
 
     final warned = <int>[];
-    timelineRowCrossingWarnings(
+    timelineRowBlockWarnings(
       layer: layer,
       frameStartIndex: windowStart,
       frameEndIndexExclusive: windowEnd,
+      crossAxisExtent: 0,
       axis: Axis.horizontal,
-      tooltip: (start) {
+      color: const Color(0xFFFF0000),
+      crossing: (start) {
         warned.add(start);
         return null;
       },
-      color: const Color(0xFFFF0000),
-      crossAxisExtent: 0,
     );
     expect(warned, [4], reason: 'the marker pass takes the same window');
   });

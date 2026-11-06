@@ -249,7 +249,7 @@ import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
 import 'timeline/timeline_instruction_row_visual.dart'
     show
-        timelineRowCrossingWarnings,
+        timelineRowBlockWarnings,
         timelineRowInstructionEdgeGrips,
         timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
@@ -290,8 +290,7 @@ import 'timeline/timeline_se_row_visual.dart'
         SePaperSpan,
         seNameBoxExtent,
         timelineRowAudioOverlays,
-        timelineRowSeLabelOverlays,
-        timelineRowSoundWarningOverlays;
+        timelineRowSeLabelOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -4192,14 +4191,14 @@ class _StoryboardTransitionRow extends KeptPiece
             geometry: _geometry,
             crossAxisExtent: height,
             axis: Axis.horizontal,
-            children: timelineRowCrossingWarnings(
+            children: timelineRowBlockWarnings(
               layer: layer,
               frameStartIndex: 0,
               frameEndIndexExclusive: _frameEndExclusive,
-              axis: Axis.horizontal,
-              tooltip: crossingTooltip,
-              color: Theme.of(context).colorScheme.error,
               crossAxisExtent: height,
+              axis: Axis.horizontal,
+              color: Theme.of(context).colorScheme.error,
+              crossing: crossingTooltip,
               keyPrefix: 'storyboard',
             ),
           ),
@@ -4428,17 +4427,17 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         geometry: _rowFrames,
         crossAxisExtent: height,
         axis: Axis.horizontal,
-        children: timelineRowSoundWarningOverlays(
+        children: timelineRowBlockWarnings(
           layer: layer,
           frameStartIndex: window.startIndex,
           frameEndIndexExclusive: window.endIndexExclusive,
           crossAxisExtent: height,
           axis: Axis.horizontal,
-          warnings: (
+          color: Theme.of(context).colorScheme.error,
+          sounds: (
             clipped: seClipMarkerTooltip,
             cannotPlay: soundCannotPlay,
           ),
-          color: Theme.of(context).colorScheme.error,
           keyPrefix: 'storyboard-${layer.id}',
         ),
       ),

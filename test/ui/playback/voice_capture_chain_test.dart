@@ -20,7 +20,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
-import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
+import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
+    show timelineRowBlockWarnings;
 import '../../helpers/temp_dir.dart';
 import '../../helpers/written_wav.dart';
 import '../../helpers/canned_audio_recorder.dart';
@@ -186,13 +187,13 @@ void main() {
             ),
             crossAxisExtent: 28,
             axis: Axis.horizontal,
-            children: timelineRowSoundWarningOverlays(
+            children: timelineRowBlockWarnings(
               layer: layer,
               frameStartIndex: 0,
               frameEndIndexExclusive: 24,
               crossAxisExtent: 28,
               axis: Axis.horizontal,
-              warnings: (clipped: 'clipped take', cannotPlay: null),
+              sounds: (clipped: 'clipped take', cannotPlay: null),
               color: const Color(0xFFE24B4A),
             ),
           ),

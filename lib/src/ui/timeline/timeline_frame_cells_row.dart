@@ -578,35 +578,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
   List<Widget> _blockWarnings(BuildContext context, _Shows shows) {
     final layer = shows.shown;
     final frames = geometry.value;
-    final color = Theme.of(context).colorScheme.error;
-    final crossing = instructionCrossingTooltip;
-    return [
-      if (layerKindUsesSeSheetCells(layer.kind))
-        ...timelineRowSoundWarningOverlays(
-          layer: layer,
-          frameStartIndex: frames.frameStartIndex,
-          frameEndIndexExclusive: frames.frameEndIndexExclusive,
-          crossAxisExtent: crossAxisExtent,
-          axis: axis,
-          warnings: (
-            clipped: seClipMarkerTooltip,
-            cannotPlay: soundCannotPlay,
-          ),
-          color: color,
-          keyPrefix: keyPrefix,
-        ),
-      if (layer.kind.carriesInstructions && crossing != null)
-        ...timelineRowCrossingWarnings(
-          layer: layer,
-          frameStartIndex: frames.frameStartIndex,
-          frameEndIndexExclusive: frames.frameEndIndexExclusive,
-          axis: axis,
-          tooltip: crossing,
-          color: color,
-          crossAxisExtent: crossAxisExtent,
-          keyPrefix: keyPrefix,
-        ),
-    ];
+    return timelineRowBlockWarnings(
+      layer: layer,
+      frameStartIndex: frames.frameStartIndex,
+      frameEndIndexExclusive: frames.frameEndIndexExclusive,
+      crossAxisExtent: crossAxisExtent,
+      axis: axis,
+      color: Theme.of(context).colorScheme.error,
+      sounds: layerKindUsesSeSheetCells(layer.kind)
+          ? (clipped: seClipMarkerTooltip, cannotPlay: soundCannotPlay)
+          : null,
+      crossing: layer.kind.carriesInstructions
+          ? instructionCrossingTooltip
+          : null,
+      keyPrefix: keyPrefix,
+    );
   }
 
   /// The CAMERA row's union key markers (B4): THE shared lane key marker

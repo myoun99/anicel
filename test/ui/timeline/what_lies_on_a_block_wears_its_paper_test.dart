@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
+    show timelineRowBlockWarnings;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
 import '../../helpers/raster_parity.dart';
@@ -254,13 +256,13 @@ void main() {
           frameEndIndexExclusive: frames,
           axis: axis,
         ),
-        ...timelineRowSoundWarningOverlays(
+        ...timelineRowBlockWarnings(
           layer: layer,
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
           crossAxisExtent: row,
           axis: axis,
-          warnings: (clipped: 'clipped take', cannotPlay: null),
+          sounds: (clipped: 'clipped take', cannotPlay: null),
           color: AppColors.danger,
         ),
       ]);

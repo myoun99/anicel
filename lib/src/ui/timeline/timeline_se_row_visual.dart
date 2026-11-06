@@ -354,50 +354,6 @@ String? seSoundWarningsOf(SeAudioSpan span, SeSoundWarnings warnings) {
   return lines.isEmpty ? null : lines.join('\n');
 }
 
-/// Red warning lines on an SE row's blocks, tooltip-explained — one per
-/// block that has anything to warn of ([seSoundWarningsOf]).
-List<Widget> timelineRowSoundWarningOverlays({
-  required Layer layer,
-  required int frameStartIndex,
-  required int frameEndIndexExclusive,
-  required double crossAxisExtent,
-  required Axis axis,
-  required SeSoundWarnings warnings,
-  required Color color,
-  String keyPrefix = 'timeline',
-}) {
-  final overlays = <Widget>[];
-  for (final span in seAudioSpans(layer)) {
-    final tooltip = seSoundWarningsOf(span, warnings);
-    if (tooltip == null) {
-      continue;
-    }
-    final blockEnd = span.startFrame + span.lengthFrames;
-    if (!frameRangesOverlap(
-      span.startFrame,
-      blockEnd,
-      frameStartIndex,
-      frameEndIndexExclusive,
-    )) {
-      continue;
-    }
-    overlays.add(
-      timelineBlockWarningBar(
-        blockStart: span.startFrame,
-        blockEndExclusive: blockEnd,
-        crossAxisExtent: crossAxisExtent,
-        axis: axis,
-        tooltip: tooltip,
-        color: color,
-        markerKey: ValueKey<String>(
-          '$keyPrefix-block-warning-${layer.id}-b${span.startFrame}',
-        ),
-      ),
-    );
-  }
-  return overlays;
-}
-
 /// How thick a block's warning line is, across the row.
 const double timelineBlockWarningBarThickness = 2;
 
