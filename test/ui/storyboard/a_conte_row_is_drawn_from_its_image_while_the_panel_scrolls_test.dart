@@ -352,8 +352,9 @@ void main() {
           matching: find.byType(StillRaster),
         ),
         findsNothing,
-        reason: '${(target.widget as LayerRowDragTarget).subject} stands '
-            'inside a row\'s region',
+        reason: 'the target of a '
+            '${(target.widget as LayerRowDragTarget).subject.runtimeType} '
+            'stands inside a row\'s region',
       );
     }
 
