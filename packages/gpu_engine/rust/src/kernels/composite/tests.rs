@@ -377,10 +377,12 @@ fn folders() -> Scene {
             Step::Close {
                 opacity: 30000,
                 mode: MULTIPLY,
+                matrix: None,
             },
             Step::Close {
                 opacity: 50000,
                 mode: NORMAL,
+                matrix: None,
             },
             row(3, (-3, 100), WHOLE, LINEAR_BURN),
         ],
@@ -416,6 +418,7 @@ fn clips() -> Scene {
             Step::Close {
                 opacity: 45000,
                 mode: SCREEN,
+                matrix: None,
             },
             Step::Open,
             row(4, (0, 0), WHOLE, NORMAL),
@@ -425,6 +428,7 @@ fn clips() -> Scene {
             Step::Close {
                 opacity: WHOLE,
                 mode: NORMAL,
+                matrix: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -447,6 +451,7 @@ fn spanning() -> Scene {
     steps.push(Step::Close {
         opacity: 60000,
         mode: DIFFERENCE,
+        matrix: None,
     });
     steps.push(row(6, (3, 3), WHOLE, modes[6]));
     Scene {
@@ -511,6 +516,7 @@ fn posed() -> Scene {
             Step::Close {
                 opacity: 45000,
                 mode: NORMAL,
+                matrix: None,
             },
             Step::Open,
             row(3, (0, 10), WHOLE, NORMAL),
@@ -520,6 +526,7 @@ fn posed() -> Scene {
             Step::Close {
                 opacity: WHOLE,
                 mode: NORMAL,
+                matrix: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -563,6 +570,7 @@ fn keyed_rows() -> Scene {
             Step::Close {
                 opacity: 45000,
                 mode: NORMAL,
+                matrix: None,
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -577,7 +585,8 @@ fn contrast() -> Matrix {
 
 /// Rows through colour matrices, over one through none: two rows share a
 /// contrast; in a folder, a keyed turn through a tint — its key before
-/// its pose, its matrix after — and a Blend shrink through the contrast.
+/// its pose, its matrix after — and a Blend shrink through the contrast;
+/// the folder closes through the contrast too, an adjustment's scope.
 fn matrixed_rows() -> Scene {
     let mut pool = Pool::default();
     let sets = vec![
@@ -607,6 +616,7 @@ fn matrixed_rows() -> Scene {
             Step::Close {
                 opacity: 45000,
                 mode: NORMAL,
+                matrix: Some(0),
             },
         ],
         tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
@@ -640,6 +650,7 @@ fn deep() -> Scene {
             Step::Close {
                 opacity: 65535 - d as u32 * 2500,
                 mode: modes[(d + 3) % 6],
+                matrix: None,
             }
         });
         if d % 4 == 1 {
@@ -803,6 +814,7 @@ fn a_folder_of_one_row_is_that_row() {
         Step::Close {
             opacity: WHOLE,
             mode: NORMAL,
+            matrix: None,
         },
     ]));
     assert!(alone == folded);
@@ -828,6 +840,7 @@ fn folders_nested_past_what_a_pass_holds_are_their_row() {
     let close = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
+        matrix: None,
     };
     let alone = widest(&scene(vec![a_row]));
     let nested: Vec<Step> = (0..12)
@@ -878,6 +891,7 @@ fn clip(base_alpha: u32, clipped: u32, mode: u32, open: Step) -> Vec<u8> {
             Step::Close {
                 opacity: WHOLE,
                 mode: NORMAL,
+                matrix: None,
             },
         ],
         tiles: vec![(0, 0)],
@@ -1084,6 +1098,62 @@ fn a_row_s_matrix_runs_on_what_r1_lays() {
     }
 }
 
+// A buffer closing through a matrix runs it on what its rows made of each
+// other, rounded to the bytes a stored pixel holds (Step::Close), and then
+// closes — an adjustment's scope, whose filter runs on what the scope drew.
+// So over a base it lays as a row of the buffer's bytes through the matrix
+// lays, the matrix not run on what it makes of the base.
+#[test]
+fn a_buffer_closing_through_a_matrix_lays_its_bytes_through_it() {
+    let tiles = vec![(0, 0), (1, 0)];
+    // A base, two rows for the buffer and, if given, a row of `bytes`.
+    let scene = |bytes: Option<&[u8]>, steps: Vec<Step>| {
+        let mut pool = Pool::default();
+        let mut sets: Vec<TileSet> = (0..3u32)
+            .map(|n| pool.set(61 + n, (0, 0), (2, 1), |_, _| Some(n as u16)))
+            .collect();
+        if let Some(bytes) = bytes {
+            let pixel = |x, y| u32::from_le_bytes(pixel_at(bytes, &tiles, x, y));
+            sets.push(pool.drawn(pixel, (0, 0), (2, 1), |_, _| Some(3)));
+        }
+        Scene {
+            pool,
+            sets,
+            keys: Vec::new(),
+            matrices: vec![matrix_words(&contrast()).expect("a matrix in range")],
+            steps,
+            tiles: tiles.clone(),
+        }
+    };
+    let buffer = |opacity, mode, matrix| {
+        vec![
+            Step::Open,
+            row(1, (3, -2), 50000, NORMAL),
+            row(2, (-5, 4), 40000, MULTIPLY),
+            Step::Close {
+                opacity,
+                mode,
+                matrix,
+            },
+        ]
+    };
+    let drew = widest(&scene(None, buffer(WHOLE, NORMAL, None)));
+    let words: Vec<u32> = drew
+        .chunks(4)
+        .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
+        .collect();
+    let through: Vec<u8> = each(contrast(), &words)
+        .into_iter()
+        .map(|word| if word >> 24 == 0 { 0 } else { word })
+        .flat_map(u32::to_le_bytes)
+        .collect();
+    let base = row(0, (2, 3), WHOLE, NORMAL);
+    let laid = |steps: Vec<Step>| widest(&scene(Some(&through), [vec![base], steps].concat()));
+    let want = laid(vec![row(3, (0, 0), 45000, SCREEN)]);
+    assert!(laid(buffer(45000, SCREEN, Some(0))) == want);
+    assert!(laid(buffer(45000, SCREEN, None)) != want);
+}
+
 // Each run of a chain goes in its order, against the alpha the row stored,
 // not what the runs before it left: erased to nothing and given back whole
 // is the stored alpha; given back first, there is nothing yet to give, so
@@ -1154,6 +1224,7 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
     let close = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
+        matrix: None,
     };
     assert!(check_depth(&[Step::Open, row(0, (0, 0), WHOLE, NORMAL), close], 1, 0, 0).is_some());
     assert!(check_depth(&[Step::Open], 1, 0, 0).is_none());
@@ -1166,6 +1237,14 @@ fn a_plan_must_close_what_it_opens_and_name_its_rows() {
     let through_the_second = matrixed(row(0, (0, 0), WHOLE, NORMAL), 1);
     assert!(check_depth(&[through_the_second], 1, 0, 2).is_some());
     assert!(check_depth(&[through_the_second], 1, 0, 1).is_none());
+    let closed_through_the_second = Step::Close {
+        opacity: WHOLE,
+        mode: NORMAL,
+        matrix: Some(1),
+    };
+    let scope = [Step::Open, closed_through_the_second];
+    assert!(check_depth(&scope, 1, 0, 2).is_some());
+    assert!(check_depth(&scope, 1, 0, 1).is_none());
     // Past what a pass holds is a plan like any other: it is cut there.
     let deeper: Vec<Step> = (0..DEPTH)
         .map(|_| Step::OpenOpaque)
@@ -1187,6 +1266,7 @@ fn a_plan_is_cut_where_a_pass_runs_out_of_pages() {
     let close = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
+        matrix: None,
     };
     let plan = [
         laid(&[0], a_row),
@@ -1232,6 +1312,7 @@ fn a_plan_is_cut_where_it_leaves_the_levels_a_pass_holds() {
     let close = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
+        matrix: None,
     };
     let plan = [
         laid(Step::Open),
@@ -1268,6 +1349,7 @@ fn a_pass_closing_out_of_its_levels_holds_the_depth_in_the_middle() {
     let close = Step::Close {
         opacity: WHOLE,
         mode: NORMAL,
+        matrix: None,
     };
     let a_row = row(0, (0, 0), WHOLE, NORMAL);
     let steps: Vec<Step> = (0..7)

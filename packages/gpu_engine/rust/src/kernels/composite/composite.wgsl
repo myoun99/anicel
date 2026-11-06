@@ -111,7 +111,8 @@ fn row_keyed(at: u32, word: u32) -> u32 {
 // A step: kind, mode, opacity, the first and last page it lays tiles from,
 // map_at, the map's first tile column and row, its columns and rows, where
 // its R1 map is, where its key chain's list is, whether the plan's mask
-// covers it, and where its colour matrix is.
+// covers it, and where its colour matrix is. A close: kind, mode, opacity,
+// then nothing up to the last word: where the matrix it closes through is.
 fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
   let column = (x >> 7u) - bitcast<i32>(plan[at + 6u]);
   let row = (y >> 7u) - bitcast<i32>(plan[at + 7u]);
@@ -240,8 +241,14 @@ fn composite(
         top += 1u;
         stack[top] = vec4<u32>(stack[top - 1u].xyz, W_ONE);
       }
+      // A buffer through its matrix runs on its bytes, rounded as a stored
+      // pixel is (mod.rs's Step::Close).
       case STEP_CLOSE: {
-        let closed = stack[top];
+        var closed = stack[top];
+        let matrix = plan[at + 13u];
+        if (matrix != NO_MATRIX) {
+          closed = blend_unpack8(matrix_rgba8(matrix, blend_pack8(closed)));
+        }
         top -= 1u;
         stack[top] = laid(plan[at + 1u], plan[at + 2u], 255u, closed, stack[top]);
       }

@@ -12,8 +12,10 @@
 //! its backdrop (its own mode), a clipping group and its base made opaque.
 //! A row's colour keys run on its stored pixels, before R1 poses them; its
 //! colour matrix — the app's colour effects folded into one — on what R1
-//! lays, after (캔버스 베이스, gpu-canonical-store 11-06 07:48).
-//! The other effects, adjustments and a cel number's letters (drawn by the
+//! lays, after (캔버스 베이스, gpu-canonical-store 11-06 07:48). A buffer
+//! may close through one too — an adjustment's colour-only chain over its
+//! scope.
+//! The other effects, adjustments past a matrix and a cel number's letters (drawn by the
 //! engine's glyph path, then a row here) come in later rounds.
 //!
 //! The pages a pass can bind are few — `max_storage_buffers_per_shader_stage`
@@ -175,8 +177,17 @@ pub(crate) enum Step {
     /// Opens a buffer holding the one under it with its alpha made whole —
     /// a clip's scope whose rows blend with the base (CompositeOpaque).
     OpenOpaque,
-    /// Closes a buffer onto the one under it at `opacity` in `mode`.
-    Close { opacity: u32, mode: u32 },
+    /// Closes a buffer onto the one under it at `opacity` in `mode`,
+    /// through colour matrix `matrix` if any: an adjustment's scope, its
+    /// mix folded into the matrix (`resolveAdjustmentScopePass`). The
+    /// matrix runs on bytes, so the buffer is rounded to them first, as a
+    /// stored pixel is — as the app's scope is, drawn to its layer's
+    /// bytes before the filter runs.
+    Close {
+        opacity: u32,
+        mode: u32,
+        matrix: Option<usize>,
+    },
     /// Closes a clip's scope onto its base by the base's alpha (srcATop).
     CloseAtop,
 }
@@ -691,6 +702,9 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> O
             }
             Step::Row {
                 matrix: Some(matrix), ..
+            }
+            | Step::Close {
+                matrix: Some(matrix), ..
             } if matrix >= matrices => {
                 return fail(format!("step {index} runs matrix {matrix} of {matrices}"));
             }
@@ -928,6 +942,9 @@ fn plan_words(
     }
     let matrices_at = chains_at + chains.len() as u32;
     let poses_at = matrices_at + (matrices.len() * MATRIX_WORDS) as u32;
+    let matrix_at = |matrix: Option<usize>| {
+        matrix.map_or(NO_MATRIX, |at| matrices_at + (at * MATRIX_WORDS) as u32)
+    };
     let mut poses: Vec<u32> = Vec::new();
     let mut modes = ResampleModes::default();
     for each in laid {
@@ -961,12 +978,16 @@ fn plan_words(
                     pose_at,
                     keys.map_or(chains_at, |chain| chain_at[chain]),
                     u32::from(masked),
-                    matrix.map_or(NO_MATRIX, |at| matrices_at + (at * MATRIX_WORDS) as u32),
+                    matrix_at(matrix),
                 ]
             }
             Step::Open => [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             Step::OpenOpaque => [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            Step::Close { opacity, mode } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::Close {
+                opacity,
+                mode,
+                matrix,
+            } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, matrix_at(matrix)],
             Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         };
         words.extend(step);
