@@ -7,8 +7,10 @@
 //! decided here, from the file — a movie's edit list or the note iTunes
 //! leaves in it, an MP3's LAME tag — and where the format has no place to
 //! say it, from the format's standard delay (an MP3 without the tag: 1,105,
-//! LAME's own; AAC's: 1,024, one frame). A decoder that already took some
-//! off says how much, and only the rest is taken.
+//! LAME's own; AAC's: 1,024, one frame). The bundled decoders are told to
+//! take nothing off themselves (`bundled`), so all of it is taken here; the
+//! C's count of what a decoder already took (dr_mp3, AudioToolbox) comes
+//! back with the OS stage, if that stage takes any.
 //!
 //! A MOVIE THAT SAYS NOTHING — no edit list on its sound track, and no note
 //! of iTunes' — takes the standard of its sound's format off too (user
@@ -34,8 +36,6 @@ pub(crate) const AAC_STANDARD_LEAD: i64 = 1024;
 pub(crate) struct Start {
     /// Frames before the sound: what the file says, or its format's standard.
     pub(crate) lead: i64,
-    /// Of [Start::lead], the frames the decoder already took off itself.
-    pub(crate) taken: i64,
     /// Frames of sound after the lead, or -1: everything that came.
     pub(crate) keep: i64,
 }
@@ -44,7 +44,7 @@ impl Default for Start {
     /// No file a bundled decoder reads puts frames of its own before its
     /// sound but an MP3, whose opener counts its lead.
     fn default() -> Start {
-        Start { lead: 0, taken: 0, keep: -1 }
+        Start { lead: 0, keep: -1 }
     }
 }
 

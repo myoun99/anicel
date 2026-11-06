@@ -94,11 +94,12 @@ impl Decode for Bundled {
             if packet.track_id != self.track {
                 continue;
             }
+            // symphonia's decoders refuse a packet of other channels than
+            // their stream's, so it is passed over here — ⚠️where dr_mp3 kept
+            // its place, as noise (board audio-mp3-channel-change).
             let Ok(buffer) = self.decoder.decode(&packet) else { continue };
-            // ⛔A frame of other channels than the stream's ends the sound.
-            // dr_mp3 read one's floats as if it had the stream's channels —
-            // noise — and nothing said a frame of them may be spread or cut
-            // to fit.
+            // Were one handed back all the same, its block would be read as
+            // the stream's channels: the sound ends there instead.
             if buffer.spec().channels().count() != self.channels {
                 return 0;
             }
@@ -208,5 +209,5 @@ pub(crate) fn open_mp3(container: &Container) -> Option<Opened> {
     let delay = track.delay.map(i64::from);
     let lead = delay.unwrap_or(MP3_STANDARD_LEAD);
     let keep = track.num_frames.map_or(-1, |frames| (frames as i64 + delay.unwrap_or(0) - lead).max(0));
-    Bundled::new(Box::new(reader), false)?.opened(FORMAT_MP3, Start { lead, taken: 0, keep })
+    Bundled::new(Box::new(reader), false)?.opened(FORMAT_MP3, Start { lead, keep })
 }

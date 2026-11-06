@@ -111,14 +111,23 @@ fn every_wav_reads_as_the_c_reads_it() {
 fn families(tag: u16, channels: u16, bits: u16, frames: usize) -> [(&'static str, Vec<u8>); 3] {
     let align = channels * bits / 8;
     let data = noise(frames * usize::from(align), u32::from(bits) + 40);
-    let format = fmt(tag, channels, 44_100, bits, align, None);
+    families_of(&fmt(tag, channels, 44_100, bits, align, None), &data, false)
+}
+
+/// `data` of `format` as an RF64, a Wave64 and a RIFX, with a chunk of
+/// something else first when `junk` — one whose size is odd, and no
+/// multiple of eight, so that each family's padding is what finds the next.
+fn families_of(format: &[u8], data: &[u8], junk: bool) -> [(&'static str, Vec<u8>); 3] {
+    let other: &[u8] = &[1, 2, 3, 4, 5];
+    let mut chunks: Vec<(&[u8; 4], &[u8])> = if junk { vec![(b"JUNK", other)] } else { Vec::new() };
+    chunks.extend([(b"fmt ", format), (b"data", data)]);
 
     let mut ds64 = Vec::new();
     ds64.extend_from_slice(&0u64.to_le_bytes());
     ds64.extend_from_slice(&(data.len() as u64).to_le_bytes());
-    ds64.extend_from_slice(&(frames as u64).to_le_bytes());
+    ds64.extend_from_slice(&0u64.to_le_bytes());
     ds64.extend_from_slice(&0u32.to_le_bytes());
-    let mut rf64 = riff(b"WAVE", &[(b"ds64", &ds64), (b"fmt ", &format), (b"data", &data)]);
+    let mut rf64 = riff(b"WAVE", &[&[(b"ds64", &ds64[..])], &chunks[..]].concat());
     rf64[..8].copy_from_slice(b"RF64\xFF\xFF\xFF\xFF");
     let data_size_at = rf64.len() - data.len() - data.len() % 2 - 4;
     rf64[data_size_at..data_size_at + 4].copy_from_slice(&[0xFF; 4]);
@@ -131,7 +140,7 @@ fn families(tag: u16, channels: u16, bits: u16, frames: usize) -> [(&'static str
     let mut w64 = b"riff\x2E\x91\xCF\x11\xA5\xD6\x28\xDB\x04\xC1\x00\x00".to_vec();
     w64.extend_from_slice(&0u64.to_le_bytes());
     w64.extend(guid(b"wave"));
-    for (name, body) in [(b"fmt ", &format), (b"data", &data)] {
+    for &(name, body) in &chunks {
         w64.extend(guid(name));
         w64.extend_from_slice(&(body.len() as u64 + 24).to_le_bytes());
         w64.extend_from_slice(body);
@@ -145,7 +154,9 @@ fn families(tag: u16, channels: u16, bits: u16, frames: usize) -> [(&'static str
     for (at, bytes) in [(0, 2), (2, 2), (4, 4), (8, 4), (12, 2), (14, 2)] {
         format_be.extend(format[at..at + bytes].iter().rev());
     }
-    let mut rifx = riff(b"WAVE", &[(b"fmt ", &format_be), (b"data", &data)]);
+    let mut chunks_be = chunks.clone();
+    chunks_be[usize::from(junk)].1 = &format_be;
+    let mut rifx = riff(b"WAVE", &chunks_be);
     rifx[..4].copy_from_slice(b"RIFX");
     let mut at = 4;
     while at + 4 <= rifx.len() {
@@ -166,6 +177,43 @@ fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
             let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
             let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
             assert_eq!(decoded.samples.len(), 3001 * usize::from(channels), "{family}, {what}: every frame");
+        }
+    }
+    let data = noise(2000 * 6, 61);
+    for (what, format) in [
+        ("a chunk of something else first", fmt(1, 2, 44_100, 16, 4, None)),
+        // dr_wav's frame is the bits' bytes where they are whole, not the
+        // block's.
+        ("16 bits in a block of 6", fmt(1, 2, 44_100, 16, 6, None)),
+        ("12 bits in 16", fmt(1, 2, 44_100, 12, 4, None)),
+        ("a-law", fmt(6, 2, 8_000, 8, 2, None)),
+        ("mu-law", fmt(7, 2, 8_000, 8, 2, None)),
+        ("extensible", fmt(1, 2, 44_100, 24, 6, Some((24, 3)))),
+    ] {
+        let junk = what.starts_with("a chunk");
+        let files = families_of(&format, &data, junk);
+        for (family, bytes) in &files {
+            // A RIFX's extension would be big-endian too, and the RIFX
+            // here turns only the first sixteen bytes.
+            if *family == "RIFX" && what == "extensible" {
+                continue;
+            }
+            let file = TempFile::new("family.wav", bytes);
+            let span = Span::whole(file.path());
+            // ⚠️dr_wav pads a Wave64 chunk by its size mod 8, where the
+            // format puts each chunk on the next eight-byte bound: past a
+            // chunk of odd size it found nothing (measured 2026-11-06),
+            // and this reads on — the same sound the RF64 holds.
+            if *family == "Wave64" && junk {
+                let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
+                assert_ne!(c.format, crate::FORMAT_WAV, "the C's {family}, {what}");
+                let file = TempFile::new("family.wav", &files[0].1);
+                let rf64 = expect_same("RF64, the same", &Span::whole(file.path()), 0, -1);
+                assert!(rust.samples.iter().map(|s| s.to_bits()).eq(rf64.samples.iter().map(|s| s.to_bits())));
+                continue;
+            }
+            let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
+            assert_eq!(decoded.format, crate::FORMAT_WAV, "{family}, {what}");
         }
     }
 }
@@ -274,6 +322,7 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
         ("a LAME tag with padding", tagged_mp3_frames(24, Some(23), 700)),
         ("a count short of the frames", tagged_mp3_frames(24, Some(10), 100)),
         ("behind an ID3 tag", id3(tagged_mp3_frames(24, Some(23), 0))),
+        ("behind an ID3 tag with a footer", [super::id3(100, true), tagged_mp3_frames(24, Some(23), 0)].concat()),
     ] {
         let file = TempFile::new("mp3.mp3", &bytes);
         let span = Span::whole(file.path());
@@ -282,6 +331,22 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
         assert_eq!(rust.samples.len(), c.samples.len(), "{what}: the frames");
         assert!(rust.samples.iter().all(|&s| s == 0.0), "{what}: silence");
     }
+}
+
+#[test]
+fn a_frame_of_other_channels_is_passed_over() {
+    // Twelve stereo frames, four of one channel, eight stereo again.
+    // symphonia's decoder refuses a frame of other channels than its
+    // stream's, and a packet that does not decode is passed over: twenty
+    // frames, less the standard lead. ⚠️The C's dr_mp3 kept the four in
+    // their place, as noise — whether they keep it here is the board's
+    // (audio-mp3-channel-change).
+    let mut mono = mp3_frames(4);
+    mono.chunks_exact_mut(417).for_each(|frame| frame[3] = 0xC0);
+    let file = TempFile::new("mixed.mp3", &[mp3_frames(12), mono, mp3_frames(8)].concat());
+    let rust = rust_window(&Span::whole(file.path()), 0, -1);
+    assert_eq!((rust.format, rust.channels), (crate::FORMAT_MP3, 2));
+    assert_eq!(rust.samples.len(), (20 * 1152 - 1105) * 2);
 }
 
 #[test]

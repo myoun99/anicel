@@ -140,7 +140,7 @@ impl Stream {
             block,
             block_frames,
             block_at: 0,
-            lead: (start.lead - start.taken).max(0),
+            lead: start.lead,
             left: start.keep,
         })
     }
