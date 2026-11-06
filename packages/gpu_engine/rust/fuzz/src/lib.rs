@@ -48,6 +48,8 @@ pub fn audio_stream(container: &[u8]) {
     if container.is_empty() {
         return;
     }
+    // `media_span` makes its file the same way — two doors, not yet a
+    // third to share it with.
     let file = std::env::temp_dir().join(format!("decoder_fuzz_audio_{}", std::process::id()));
     std::fs::write(&file, container).expect("the bytes written to a file");
     let path = CString::new(file.to_str().expect("a UTF-8 path")).expect("no NUL in a temp path");
@@ -68,4 +70,41 @@ pub fn audio_stream(container: &[u8]) {
     }
     // SAFETY: opened above, closed once.
     unsafe { audio::qa_audio_stream_close(stream) };
+}
+
+/// Bytes the app reads a medium by at a time (qa_media_span.dart's
+/// `_windowBytes`).
+const MEDIA_WINDOW: i64 = 1 << 20;
+
+/// Any bytes, as the app reads a medium stored framed in a project
+/// (media_byte_source.dart's `MediaFramedBytes`, through
+/// qa_media_span.dart's `readInto`): a whole file opened as a framed span,
+/// then its medium read from the start, `MEDIA_WINDOW` bytes at a time,
+/// until a read brings fewer than it asked for. Only the window is held
+/// here; the medium's own buffer is the caller's.
+pub fn media_span(blob: &[u8]) {
+    // As `audio_stream` makes its file.
+    let file = std::env::temp_dir().join(format!("decoder_fuzz_media_{}", std::process::id()));
+    std::fs::write(&file, blob).expect("the bytes written to a file");
+    let path = CString::new(file.to_str().expect("a UTF-8 path")).expect("no NUL in a temp path");
+    // SAFETY: a NUL-terminated path.
+    let span = unsafe { media::span::qa_media_span_open(path.as_ptr(), 0, blob.len() as i64, 1) };
+    if span.is_null() {
+        return;
+    }
+    // SAFETY: an open span.
+    let size = unsafe { media::span::qa_media_span_size(span) };
+    let mut window = vec![0u8; MEDIA_WINDOW as usize];
+    let mut position = 0;
+    while position < size {
+        let want = (size - position).min(MEDIA_WINDOW);
+        // SAFETY: an open span, and a window of the bytes asked for.
+        let got = unsafe { media::span::qa_media_span_read(span, position, window.as_mut_ptr(), want) };
+        if got < want {
+            break;
+        }
+        position += got;
+    }
+    // SAFETY: opened above, closed once.
+    unsafe { media::span::qa_media_span_close(span) };
 }

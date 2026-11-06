@@ -17,6 +17,7 @@ cargo-fuzz = true
 audio = { path = "../native/audio" }
 compress = { path = "../native/compress" }
 libfuzzer-sys = "0.4"
+media = { path = "../native/media" }
 
 # One target per door a decoder's bytes come in by, each a function of
 # src/lib.rs; the job runs every target `cargo fuzz list` names.
@@ -30,6 +31,13 @@ bench = false
 [[bin]]
 name = "audio_stream"
 path = "fuzz_targets/audio_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "media_span"
+path = "fuzz_targets/media_span.rs"
 test = false
 doc = false
 bench = false
