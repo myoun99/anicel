@@ -573,15 +573,14 @@ impl Composite {
             let Step::Row { set, map, .. } = &mut each.step else {
                 return fail("only a row reads pages");
             };
-            let mut read: Vec<(i32, i32)> = Vec::new();
-            for (_, &(column, row)) in each.live.iter().zip(tiles).filter(|(live, _)| **live) {
-                let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
-                let under = plan.sets[*set].placed_under(map.reads(x0, y0, x0 + side, y0 + side));
-                read.extend(under.map(|(place, _)| place));
-            }
+            let mut live = each.live.iter().zip(tiles).filter(|(live, _)| **live);
+            let (Some((_, &(column, row))), None) = (live.next(), live.next()) else {
+                return fail("a step past a pass's pages is one output tile's");
+            };
+            let (x0, y0) = (i64::from(column) * side, i64::from(row) * side);
+            let under = plan.sets[*set].placed_under(map.reads(x0, y0, x0 + side, y0 + side));
             // Row after row, as the set they make holds them.
-            read.sort_unstable_by_key(|&(column, row)| (row, column));
-            read.dedup();
+            let read: Vec<(i32, i32)> = under.map(|(place, _)| place).collect();
             if read.len() > held {
                 let reads = read.len();
                 return fail(format!("a row reads {reads} tiles at once; a page holds {held}"));
