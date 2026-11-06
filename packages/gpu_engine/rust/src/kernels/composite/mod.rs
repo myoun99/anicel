@@ -581,6 +581,13 @@ impl Composite {
             let under = plan.sets[*set].placed_under(map.reads(x0, y0, x0 + side, y0 + side));
             // Row after row, as the set they make holds them.
             let read: Vec<(i32, i32)> = under.map(|(place, _)| place).collect();
+            // ⚠️No test reaches this refusal (관제 11-06 21:18 asked why): a
+            // page holds 2048 tiles at WebGPU's least binding, 128 MiB, more
+            // where a device binds more, and no seam gives a pass a smaller
+            // one. Past it, one output tile reads that many stored tiles — a
+            // reduction past 1/45 a side over as much ink, 128 MiB of pages
+            // to make in a test. It stands so such a row is refused, not
+            // bound past what a binding holds.
             if read.len() > held {
                 let reads = read.len();
                 return fail(format!("a row reads {reads} tiles at once; a page holds {held}"));
