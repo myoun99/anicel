@@ -292,10 +292,7 @@ impl Decode for Bundled {
     /// reader cannot read ends the sound.
     fn next(&mut self, block: &mut Vec<f32>) -> usize {
         loop {
-            let Ok(Some(packet)) = self.reader.next_packet() else {
-                block.clear();
-                return self.after_run(block, 0);
-            };
+            let Ok(Some(packet)) = self.reader.next_packet() else { return self.after_run(block, 0) };
             if packet.track_id != self.track {
                 continue;
             }
