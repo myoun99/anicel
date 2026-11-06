@@ -2327,8 +2327,14 @@ fn range() -> crate::kernels::mask::tests::Masked {
     masked((3, 2), (200, 100), |x, y| if in_range(x, y) { 255 } else { 0 })
 }
 
-/// Presses moved by nothing, by (3.5, -2) and by (-13, 3.5).
-const PRESSES: [[i32; 2]; 3] = [[0, 0], [3 << 16 | 0x8000, -(2 << 16)], [-(13 << 16), 7 << 15]];
+/// Presses moved by nothing, by (3.5, -2), by (-13, 3.5) and by (-2.25,
+/// 0.75) — past a half, so a cell's rest borrows.
+const PRESSES: [[i32; 2]; 4] = [
+    [0, 0],
+    [3 << 16 | 0x8000, -(2 << 16)],
+    [-(13 << 16), 7 << 15],
+    [-(2 << 16) - 0x4000, 0xc000],
+];
 
 /// `steps` under `range` over tiles (0, 0) and (1, 0).
 fn marked(steps: Vec<Step>, range: &Mask) -> (Vec<u8>, Vec<(i32, i32)>) {
@@ -2409,8 +2415,12 @@ fn a_mark_lies_in_its_row_s_space() {
             // x + 1 across, y - 1 and y down.
             let at = checker(((i64::from(x) << 16) + (3 << 14), i64::from(y) << 16), [0, 0]);
             let read = [(x, y - 1), (x + 1, y - 1), (x, y), (x + 1, y)];
+            let got = pixel_at(&posed, &tiles, x, y);
+            // Inside the range its cover is whole, on a cell's edge too.
+            if read.iter().all(|&(u, v)| in_range(u, v)) {
+                assert_eq!(got, at, "inside a quarter ({x}, {y})");
+            }
             if read.iter().all(|&(u, v)| cell(u, v) == at) {
-                let got = pixel_at(&posed, &tiles, x, y);
                 assert_eq!(got, pixel_at(&want, &tiles, x, y), "a quarter ({x}, {y})");
                 edges += usize::from((1..128).contains(&got[3]));
             }
