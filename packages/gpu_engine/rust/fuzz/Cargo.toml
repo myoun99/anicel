@@ -19,6 +19,29 @@ compress = { path = "../native/compress" }
 libfuzzer-sys = "0.4"
 media = { path = "../native/media" }
 
+# The crates written here are fuzzed with the checks their tests run with;
+# the crates.io ones as the app builds them, release and unchecked — the
+# job passes -O (native-memory-safety-Q1, 유저 2026-11-06). ⚠️Both lines:
+# debug-assertions alone goes to rustc beside the release profile's
+# `overflow-checks=off`, and the overflow checks stay off (measured with
+# `cargo build -v`). A path dependency added above takes its section here
+# (test/architecture/every_fuzzed_crate_keeps_its_checks_test.dart).
+[profile.release.package.audio]
+debug-assertions = true
+overflow-checks = true
+
+[profile.release.package.compress]
+debug-assertions = true
+overflow-checks = true
+
+[profile.release.package.media]
+debug-assertions = true
+overflow-checks = true
+
+[profile.release.package.decoder_fuzz]
+debug-assertions = true
+overflow-checks = true
+
 # One target per door a decoder's bytes come in by, each a function of
 # src/lib.rs; the job runs every target `cargo fuzz list` names.
 [[bin]]

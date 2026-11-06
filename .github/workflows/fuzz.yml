@@ -46,9 +46,14 @@ jobs:
       - run: rustup toolchain install nightly --profile minimal
       - run: cargo +nightly install cargo-fuzz --locked
       # Every target, even after one has crashed. Each starts from its
-      # seeds (fuzz/seeds: frames the C makes) when it has any. Overflow
-      # checks are on, as in the tests; -timeout calls an input that takes
-      # ten seconds a hang.
+      # seeds (fuzz/seeds) when it has any. -O builds every crate as the app
+      # builds the engine, release and unchecked — without it cargo-fuzz
+      # turns debug assertions on everywhere — and fuzz/Cargo.toml turns
+      # them back on, overflow checks with them, for the crates written
+      # here: native-memory-safety-Q1 (유저 2026-11-06), after the audio
+      # target stopped within seconds, every time, at an overflow inside
+      # symphonia that the app's build wraps. -timeout calls an input that
+      # takes ten seconds a hang.
       - name: fuzz each target in turn
         run: |
           crashed=""
@@ -56,7 +61,7 @@ jobs:
             mkdir -p "fuzz/corpus/$target"
             seeds="fuzz/seeds/$target"
             [ -d "$seeds" ] || seeds=""
-            if ! cargo +nightly fuzz run --debug-assertions "$target" \
+            if ! cargo +nightly fuzz run -O "$target" \
                 "fuzz/corpus/$target" $seeds -- \
                 -max_total_time="$SECONDS_EACH" -timeout=10; then
               crashed="$crashed $target"
