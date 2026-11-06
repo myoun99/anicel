@@ -11,7 +11,7 @@ use crate::kernels::composite::{Plan, Step, TILE, TILE_TEXELS, TileSet, WHOLE};
 use crate::kernels::dab::stamp::tests::stamps;
 use crate::kernels::dab::stamp::{Paint, Source};
 use crate::kernels::shared::{ResampleMap, plane};
-use crate::kernels::write::Write;
+use crate::kernels::write::{Change, Write};
 use crate::testing::read_buffer;
 
 const BLUE: u32 = 30 | 90 << 8 | 220 << 16 | 255 << 24;
@@ -200,7 +200,7 @@ fn a_fill_floods_what_shows_and_lands_on_its_cel() {
     let landed = composite.run(engine, &plan(&pages, &sets, &steps), &tiles, extent, composite.widest());
     let out = landed.expect("land").out;
     let write = Write::new(engine).expect("compile the write path");
-    assert_eq!(write.changed(engine, &pages, &out, &places), Some(vec![true, true]));
+    assert_eq!(write.changed(engine, &pages, &out, &places), Some(vec![Change::Inked; 2]));
     let writes: Vec<_> = places.iter().enumerate().map(|(k, at)| (k, at.unwrap())).collect();
     Write::put(engine, &pages, &out, &writes).expect("put");
     let cel_words = words(&pages[0]);

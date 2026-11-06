@@ -1,10 +1,12 @@
 //! The write path on a real GPU, checked by hand: a tile is unchanged only
 //! where every byte is the stored one's, or — with none stored — where
-//! every byte is 0; and a copy lands in its slot and nowhere else.
+//! every byte is 0; a changed one is inked only where a pixel's alpha is
+//! not 0; and a copy lands in its slot and nowhere else.
 
 use std::sync::OnceLock;
 
-use super::Write;
+use super::Change::{Cleared, Inked, Same};
+use super::{Change, Write};
 use crate::device::Engine;
 use crate::kernels::composite::tests::{Pool, mix};
 use crate::kernels::composite::{TILE, TILE_TEXELS, TileAt, TileSet};
@@ -67,7 +69,7 @@ fn changed(
     set: &TileSet,
     tiles: &[Vec<u32>],
     cut: Option<(usize, usize)>,
-) -> Option<Vec<bool>> {
+) -> Option<Vec<Change>> {
     let Rig { engine, write } = rig();
     let pages = pool.upload(engine);
     let put = put(tiles);
@@ -96,7 +98,7 @@ fn a_tile_is_unchanged_only_where_every_word_is_the_stored_ones() {
     let tiles = [tile(0, 0), off(tile(1, 0), last), off(tile(0, 1), 0), tile(1, 1)];
     assert_eq!(
         changed(&pool, &set, &tiles, None).expect("changed"),
-        [false, true, true, false]
+        [Same, Inked, Inked, Same]
     );
 }
 
@@ -107,12 +109,31 @@ fn a_tile_is_compared_with_its_own_place() {
     let mut pool = Pool::default();
     let set = pool.drawn(pixel, (0, 0), (2, 2), |_, row| Some(row as u16));
     let tiles = [tile(1, 0), tile(0, 0), tile(1, 1), tile(0, 1)];
-    assert_eq!(changed(&pool, &set, &tiles, None).expect("changed"), [true; 4]);
+    assert_eq!(changed(&pool, &set, &tiles, None).expect("changed"), [Inked; 4]);
 }
 
-/// Where nothing is stored, a tile of nothing is unchanged — it is not
+/// A stored tile put with no ink left is cleared — every alpha byte 0,
+/// whatever its colour bytes hold — and one with a pixel's alpha left at
+/// its first or its last word, the words the first lane and the last lane
+/// of a tile's workgroup take, is inked.
+#[test]
+fn a_tile_with_no_ink_left_is_cleared() {
+    let mut pool = Pool::default();
+    let set = pool.drawn(pixel, (0, 0), (2, 2), |_, row| Some(row as u16));
+    let last = TILE_TEXELS as usize - 1;
+    let colour_only: Vec<u32> = tile(1, 0).iter().map(|word| word & 0x00ff_ffff).collect();
+    let nothing = vec![0; TILE_TEXELS as usize];
+    let tiles = [nothing, colour_only, only(0, 1 << 24), only(last, 1 << 24)];
+    assert_eq!(
+        changed(&pool, &set, &tiles, None).expect("changed"),
+        [Cleared, Cleared, Inked, Inked]
+    );
+}
+
+/// Where nothing is stored, a tile of nothing is the same — it is not
 /// written and takes no slot —, and one with a word of anything at its
-/// first, a middle or its last word is changed.
+/// first, a middle or its last word is changed: inked where that word's
+/// alpha is not 0, cleared where it is.
 #[test]
 fn a_tile_where_nothing_is_stored_is_changed_unless_it_is_nothing() {
     let mut pool = Pool::default();
@@ -121,7 +142,7 @@ fn a_tile_where_nothing_is_stored_is_changed_unless_it_is_nothing() {
     let tiles = [vec![0; TILE_TEXELS as usize], only(0, 1), only(8_000, 1 << 31), only(last, 1)];
     assert_eq!(
         changed(&pool, &set, &tiles, None).expect("changed"),
-        [false, true, true, true]
+        [Same, Cleared, Inked, Cleared]
     );
 }
 
@@ -144,7 +165,7 @@ fn a_write_cut_into_passes_says_what_one_pass_says() {
         tile(5, 0),
         off(tile(6, 0), 300),
     ];
-    let wanted = [true, false, false, false, true, false, true];
+    let wanted = [Cleared, Same, Same, Same, Inked, Same, Inked];
     assert_eq!(changed(&pool, &set, &tiles, None).expect("changed"), wanted);
     for cut in [(1, 1), (1, 2), (2, 2), (3, 2), (1, 7), (3, 7)] {
         assert_eq!(changed(&pool, &set, &tiles, Some(cut)).expect("cut"), wanted, "{cut:?}");
@@ -157,7 +178,7 @@ fn a_write_of_no_tiles_says_nothing() {
     let Rig { engine, write } = rig();
     let pages = Pool::default().upload(engine);
     let none = plane(engine, "no tiles", 4);
-    assert_eq!(write.changed(engine, &pages, &none, &[]).expect("none"), Vec::<bool>::new());
+    assert_eq!(write.changed(engine, &pages, &none, &[]).expect("none"), Vec::<Change>::new());
 }
 
 /// Each tile named lands whole in its slot, over what was there or in a
