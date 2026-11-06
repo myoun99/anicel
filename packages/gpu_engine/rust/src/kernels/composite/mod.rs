@@ -41,12 +41,16 @@
 //! tile of it; on any other it would show nothing, so it is skipped there.
 //!
 //! A row may be laid under the plan's selection (R28 — a stroke landing on
-//! its cel under one): its opacity under the mask's byte at the output
-//! pixel, nothing past the box, by blend.wgsl's `blend_cover`; a row under
-//! none takes 255 by the same multiply. A pass is given the rows of the
-//! mask its output tiles lie on, copied into `work` on the GPU and not
-//! bound on their own, as the cel pixel verbs are given theirs — so a
-//! pass's output tiles span no more tile rows than it takes tiles.
+//! its cel under one): its opacity under the mask's cover, by blend.wgsl's
+//! `blend_cover`; a row under none takes 255 by the same multiply. The mask
+//! is a plane in the row's own space, read as its pixels are — through its
+//! map by R1, in its mode, nothing past the box — so a landing, whose map
+//! moves nothing, reads the byte at each pixel, and a posed row on the
+//! screen reads its selection in its own artwork, as the app does. A pass
+//! is given the rows of the mask its masked steps' maps read over its
+//! output tiles, copied into `work` on the GPU and not bound on their own,
+//! as the cel pixel verbs are given theirs — so a pass's output tiles span
+//! no more tile rows than it takes tiles.
 //!
 //! A run puts its pixels as output tiles — straight, nothing outside the
 //! output's extent, a page a later run can lay as a row — or on a surface
@@ -64,6 +68,7 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
+use std::ops::Range;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use wgpu::util::DeviceExt;
@@ -76,8 +81,8 @@ use crate::kernels::effects::{KEY_WGSL, MATRIX_WGSL, MATRIX_WORDS};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
-    ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, runs, storage_format,
-    tiles_a_pass, whole, words_buffer,
+    ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, room, runs,
+    storage_format, tiles_a_pass, whole, words_buffer,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -238,6 +243,15 @@ pub(crate) enum Step {
     /// (gpu-canonical-store 11-05 19:53 ⑦: the solid row's step, made for
     /// the bridge round).
     Solid { colour: u32, rect: [i32; 4] },
+    /// The range a fill held down will cover, as the canvas marks it
+    /// (fill_range_mark.dart, I-160-Q1 a): a checker of cells of 8 of the
+    /// row's pixels, white where column + row is even and black where odd,
+    /// each at half alpha, laid in normal under the plan's mask — the
+    /// range, in the row's own space, `map` taking canvas pixels there as
+    /// the row's does. Right after the row, so the rows above it hide it.
+    /// `shift`, Q.16 of the row's pixels, pushes the cells the way the
+    /// press moved (F-568-Q1 a).
+    Mark { map: ResampleMap, shift: [i32; 2] },
 }
 
 /// What one pass may take: pages to bind, output tiles — as many as the
@@ -260,9 +274,9 @@ pub(crate) struct Composited {
 
 /// What a plan lays: the pool's pages, the rows' tile sets, key chains and
 /// colour matrices (`effects::matrix_words`), the steps, bottom to top, and
-/// the selection its masked rows are laid
+/// the selection its masked steps are laid
 /// under — one a plan: the stroke being drawn is the row there is one for
-/// (R28, 11-06 06:51).
+/// (R28, 11-06 06:51), and a range mark's range is on that row.
 pub(crate) struct Plan<'a> {
     pub(crate) pages: &'a [wgpu::Buffer],
     pub(crate) sets: &'a [TileSet],
@@ -651,15 +665,42 @@ impl Composite {
         let waiting = u64::from(matches!(target, Target::Tiles(_)));
         let held = (kept * 2 + waiting) * TILE_TEXELS * 4;
         let band = plan.mask.map_or(0, Mask::per_tile);
-        let per_tile = held + band;
-        let chunk = tiles_a_pass(engine, per_tile, 0)?.min(budget.tiles).min(tiles.len().max(1));
+        let chunk =
+            tiles_a_pass(engine, held + band, 0)?.min(budget.tiles).min(tiles.len().max(1));
         if chunk == 0 {
             return fail("a budget of no tiles a pass");
+        }
+        let rows: Option<Vec<i32>> =
+            plan.mask.map(|_| tiles.iter().map(|&(_, row)| row).collect());
+        // An output tile binds no page of the pool.
+        let runs = runs(tiles.iter().map(|_| None), rows.as_deref(), 1, chunk);
+        // The mask's rows each run reads through the maps of the steps laid
+        // under it: the rows its tiles span where those maps move nothing —
+        // what each tile's share above reserves — and more or fewer under a
+        // pose.
+        let maps: Vec<ResampleMap> =
+            laid.iter().filter_map(|each| masked_map(&each.step)).collect();
+        let bands: Vec<Range<u32>> = runs
+            .iter()
+            .map(|(run, _)| {
+                plan.mask.map_or(0..0, |mask| read_band(mask, &maps, &tiles[run.clone()]))
+            })
+            .collect();
+        let banded = plan.mask.map_or(0, |mask| {
+            let row_bytes = u64::from(mask.size.stride()) * 4;
+            bands.iter().map(|rows| u64::from(rows.end - rows.start) * row_bytes).max().unwrap_or(0)
+        });
+        let size = chunk as u64 * held + banded;
+        // ⚠️No test reaches this: a pose would have to read more of its mask
+        // than a binding holds past the stack — a 128 MiB binding is a mask
+        // of 128 MiB of rows.
+        if size > room(engine) {
+            return fail(format!("a pass's masked steps read {banded} bytes of their mask"));
         }
         let work = engine.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("composite work"),
             // A binding holds something, even where nothing waits.
-            size: (chunk as u64 * per_tile).max(16),
+            size: size.max(16),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
                 | wgpu::BufferUsages::COPY_DST,
@@ -670,15 +711,11 @@ impl Composite {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let [left, top, right, bottom] = extent.map(|edge| edge as u32);
         let mut passes = 0;
-        let rows: Option<Vec<i32>> =
-            plan.mask.map(|_| tiles.iter().map(|&(_, row)| row).collect());
-        // An output tile binds no page of the pool.
-        for (run, _) in runs(tiles.iter().map(|_| None), rows.as_deref(), 1, chunk) {
+        for ((run, _), rows) in runs.into_iter().zip(bands) {
             let (first_tile, chunk_tiles) = (run.start, run.len());
             let out_at = kept * 2 * TILE_TEXELS * chunk_tiles as u64;
             let mask_at = out_at + waiting * TILE_TEXELS * chunk_tiles as u64;
             let shape = plan.mask.map_or([0; 6], |mask| {
-                let rows = mask.band(tiles[run.clone()].iter().map(|&(_, row)| row));
                 let (plane, bytes) = mask.rows(&rows);
                 if !bytes.is_empty() {
                     let length = bytes.end - bytes.start;
@@ -829,15 +866,51 @@ fn compile(
     pipeline_with(engine, &sources, "composite", &compiled.modes.constants())
 }
 
-/// Fails where a row is masked and the plan has no mask, or where the mask's
-/// plane holds less than its box.
+/// Fails where a step is masked and the plan has no mask, or where the
+/// mask's plane holds less than its box.
 fn check_mask(plan: &Plan) -> Option<()> {
-    let masked = plan.steps.iter().position(|step| matches!(step, Step::Row { masked: true, .. }));
+    let masked = plan.steps.iter().position(|step| masked_map(step).is_some());
     match (plan.mask, masked) {
         (Some(mask), _) => mask.checked(),
         (None, Some(index)) => fail(format!("step {index} is masked and the plan has no mask")),
         (None, None) => Some(()),
     }
+}
+
+/// The map of a step laid under the plan's mask — a masked row's, or a
+/// range mark's — which takes canvas pixels to where it reads the mask.
+fn masked_map(step: &Step) -> Option<ResampleMap> {
+    match *step {
+        Step::Row { map, masked: true, .. } | Step::Mark { map, .. } => Some(map),
+        _ => None,
+    }
+}
+
+/// The rows of `mask`'s box that `maps` read over the output `tiles`: where
+/// each lands those tiles' pixels — in its step's own space, as the app
+/// reads a selection on a posed row in the row's artwork (piece_landing.dart
+/// `regionInArtworkSpace`, 09-25 a-marquee-on-a-posed-row) — or every row
+/// where one lands them by a homography. A copy reads the rows it moves to,
+/// so a landing, whose maps take nothing anywhere, reads its tiles' own.
+fn read_band(mask: &Mask, maps: &[ResampleMap], tiles: &[(i32, i32)]) -> Range<u32> {
+    let side = i64::from(TILE);
+    let [mut x0, mut y0, mut x1, mut y1] = [i64::MAX, i64::MAX, i64::MIN, i64::MIN];
+    for &(column, row) in tiles {
+        let (x, y) = (i64::from(column) * side, i64::from(row) * side);
+        [x0, y0, x1, y1] = [x0.min(x), y0.min(y), x1.max(x + side), y1.max(y + side)];
+    }
+    let (mut top, mut bottom) = (i64::MAX, i64::MIN);
+    for map in maps {
+        let Some([_, from, _, to]) = map.reads(x0, y0, x1, y1) else {
+            return 0..mask.size.height;
+        };
+        (top, bottom) = (top.min(from), bottom.max(to));
+    }
+    let row = |y: i64| (y - i64::from(mask.at.1)).clamp(0, i64::from(mask.size.height)) as u32;
+    if top >= bottom {
+        return 0..0;
+    }
+    row(top)..row(bottom)
 }
 
 /// Fails unless every buffer the steps open is closed, none is closed that
@@ -863,7 +936,7 @@ fn check_depth(steps: &[Step], sets: usize, chains: usize, matrices: usize) -> O
             } if matrix >= matrices => {
                 return fail(format!("step {index} runs matrix {matrix} of {matrices}"));
             }
-            Step::Row { .. } | Step::Solid { .. } => {}
+            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
             Step::Open | Step::OpenOpaque => depth += 1,
             Step::Close { .. } | Step::CloseAtop if depth == 0 => {
                 return fail(format!("step {index} closes a buffer that is not open"));
@@ -995,7 +1068,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         let (low, high) = match each.step {
             Step::Open | Step::OpenOpaque => (depth, depth + 1),
             Step::Close { .. } | Step::CloseAtop => (depth - 1, depth),
-            Step::Row { .. } | Step::Solid { .. } => (depth, depth),
+            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => (depth, depth),
         };
         let outside = low < batch.base || high >= batch.base + levels;
         if batch.pages.len() + fresh > pages_per_pass || outside {
@@ -1031,7 +1104,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         match each.step {
             Step::Open | Step::OpenOpaque => depth += 1,
             Step::Close { .. } | Step::CloseAtop => depth -= 1,
-            Step::Row { .. } | Step::Solid { .. } => {}
+            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
         }
     }
     batch.end = laid.len();
@@ -1102,6 +1175,14 @@ fn plan_words(
     };
     let mut poses: Vec<u32> = Vec::new();
     let mut modes = ResampleModes::default();
+    // A step's map put among the poses: where it starts there.
+    let mut posed = |map: &ResampleMap| {
+        let at = poses_at + poses.len() as u32;
+        let pose = map.words();
+        modes = modes.with(&pose);
+        poses.extend(pose);
+        at
+    };
     for each in laid {
         let step = match each.step {
             Step::Row {
@@ -1113,10 +1194,7 @@ fn plan_words(
                 mode,
                 masked,
             } => {
-                let pose_at = poses_at + poses.len() as u32;
-                let pose = map.words();
-                modes = modes.with(&pose);
-                poses.extend(pose);
+                let pose_at = posed(&map);
                 let pages = || each.pages.iter().copied().map(u32::from);
                 let tiles = &sets[set];
                 [
@@ -1150,6 +1228,11 @@ fn plan_words(
             } => {
                 let [left, top, right, bottom] = [left, top, right, bottom].map(|edge| edge as u32);
                 [5, colour, left, top, right, bottom, 0, 0, 0, 0, 0, 0, 0, 0]
+            }
+            // Its map and its mask where a row keeps them (composite.wgsl's
+            // mark_colour and step_cover read both).
+            Step::Mark { map, shift: [x, y] } => {
+                [6, x as u32, y as u32, 0, 0, 0, 0, 0, 0, 0, posed(&map), 0, 1, 0]
             }
         };
         words.extend(step);

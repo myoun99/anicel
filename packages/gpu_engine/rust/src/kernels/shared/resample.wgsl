@@ -42,6 +42,12 @@ override resample_with_blend: bool = true;
 override resample_with_pick: bool = true;
 override resample_with_nearest: bool = true;
 
+// Whether a pass meets a map other than the copy, so locates a point: a
+// host's own call of resample_locate under it is dropped with R1's.
+fn resample_with_locate() -> bool {
+  return resample_with_blend || resample_with_pick || resample_with_nearest;
+}
+
 // The map as the CPU quantised it once: x' = a·x + b·y + c and the rest,
 // a homography divided through by its largest w at the output's corners.
 struct ResampleMap {
@@ -590,7 +596,7 @@ fn resample(map: ResampleMap, source: u32, x: i32, y: i32) -> u32 {
   // code, and this one locate's too (a 1080p composite of no row, 11-06:
   // 110 µs of GPU compiled for the copy alone, 321 for every mode). No
   // test here can see them; GPU timestamps can.
-  if (!resample_with_blend && !resample_with_pick && !resample_with_nearest) {
+  if (!resample_with_locate()) {
     return 0u;
   }
   var point: ResamplePoint;

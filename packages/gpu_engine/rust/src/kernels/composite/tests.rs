@@ -496,6 +496,18 @@ fn pose(name: &str) -> ResampleMap {
     ResampleMap::new(inverse, floor, mode, 2 * TILE, 2 * TILE).expect("a map that lands")
 }
 
+/// Every pose [`pose`] names.
+const POSES: [&str; 8] = [
+    "turn",
+    "turn-pick",
+    "shrink",
+    "shrink-pick",
+    "squeeze",
+    "tilt",
+    "tilt-pick",
+    "blur",
+];
+
 /// Rows posed every way R1 takes among moved ones: in a folder, a turn in
 /// multiply and an exact Pick in screen; in a clip whose base is moved, a
 /// tilt in overlay over the base made opaque. Each posed row's tiles are
@@ -1039,35 +1051,30 @@ fn resampled(map: &ResampleMap, picture: &Picture, tiles: &[(i32, i32)]) -> Vec<
         .collect()
 }
 
+/// Row 51 alone on tiles (0, 0) to (1, 1), each on a page of its own, in
+/// pose `name`, whole and normal — out to output tiles it does not reach.
+fn posed_alone(name: &str) -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![pool.set(51, (0, 0), (2, 2), |c, r| Some((r * 2 + c) as u16))];
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps: vec![pose_row(0, name, WHOLE, NORMAL)],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1), (-1, 0), (2, 1)],
+    }
+}
+
 // A row in any pose lays what R1 resamples: the executor's one sample is
-// R1's own, reading the row through its tile map, every tile here on a
-// page of its own — out to output tiles the row does not reach.
+// R1's own, reading the row through its tile map.
 #[test]
 fn a_posed_row_lays_what_r1_resamples() {
     let picture = picture_of(|x, y| texel(51, x, y), (2 * TILE, 2 * TILE));
-    let tiles = vec![(0, 0), (1, 0), (0, 1), (1, 1), (-1, 0), (2, 1)];
-    let names = [
-        "turn",
-        "turn-pick",
-        "shrink",
-        "shrink-pick",
-        "squeeze",
-        "tilt",
-        "tilt-pick",
-        "blur",
-    ];
-    for name in names {
-        let mut pool = Pool::default();
-        let sets = vec![pool.set(51, (0, 0), (2, 2), |c, r| Some((r * 2 + c) as u16))];
-        let scene = Scene {
-            pool,
-            sets,
-            keys: Vec::new(),
-            matrices: Vec::new(),
-            steps: vec![pose_row(0, name, WHOLE, NORMAL)],
-            tiles: tiles.clone(),
-        };
-        assert!(widest(&scene) == resampled(&pose(name), &picture, &tiles), "{name}");
+    for name in POSES {
+        let scene = posed_alone(name);
+        let want = resampled(&pose(name), &picture, &scene.tiles);
+        assert!(widest(&scene) == want, "{name}");
     }
 }
 
@@ -2169,8 +2176,8 @@ fn red_over_blue() -> Scene {
     }
 }
 
-// A masked row is laid at its opacity under the mask's byte at the output
-// pixel: red whole under 128 lands on opaque blue as red at 128 does —
+// A masked row is laid at its opacity under the mask's byte at its pixel,
+// here the output's: red whole under 128 lands on opaque blue as red at 128 does —
 // (200·32896 + 30·32639)/65535, 115, and the like (a stroke at 128 lands
 // the same, dab/tests.rs) — whole under 255, and not at all under 0 or
 // past the box, [1, 6) each way, though the plane holds 255 past its
@@ -2189,6 +2196,219 @@ fn a_masked_row_is_laid_under_the_mask_s_byte() {
     assert_eq!(at(1, 1), [115, 95, 135, 255]);
     assert_eq!([at(3, 3), at(5, 5)], [red; 2]);
     assert_eq!([at(2, 2), at(0, 0), at(6, 5), at(5, 6), at(100, 3)], [blue; 5]);
+}
+
+// A masked row reads its mask in its own space, where its map takes the
+// pixel: moved by (2, 1), red under the mask's 128 at (1, 1) lands at
+// (3, 2), and the mask's 0 at (2, 2) keeps blue at (4, 3).
+#[test]
+fn a_moved_masked_row_reads_its_mask_where_it_moves() {
+    let mask = masked((1, 1), (5, 5), |x, y| match (x, y) {
+        (1, 1) => 128,
+        (2, 2) => 0,
+        _ => 255,
+    });
+    let mut scene = red_over_blue();
+    scene.steps[1] = masked_row(row(1, (2, 1), WHOLE, NORMAL));
+    let out = under(&scene, Some(&mask.mask()), rig().composite.widest()).expect("composite");
+    let at = |x, y| pixel_at(&out, &scene.tiles, x, y);
+    let (red, blue) = (bytes_of(RED), bytes_of(BLUE));
+    assert_eq!(at(3, 2), [115, 95, 135, 255]);
+    assert_eq!([at(5, 4), at(7, 6)], [red; 2]);
+    assert_eq!([at(4, 3), at(1, 1), at(2, 1), at(8, 6), at(7, 7)], [blue; 5]);
+}
+
+/// A mask's box, off the tile grid, and its bytes there, each its own.
+const SPOTTED_AT: (i32, i32) = (-40, 20);
+const SPOTTED_SIZE: (u32, u32) = (250, 200);
+
+fn spotted_byte(x: i32, y: i32) -> u8 {
+    (mix(x as u32 ^ mix(y as u32)) & 0xff) as u8
+}
+
+/// Opaque blue on tiles (0, 0) to (1, 1) under `posed`, of set 1: `pixel`'s
+/// over the tiles from (-1, -1) to (3, 3).
+fn over_blue(pixel: impl Fn(i32, i32) -> u32, posed: Step) -> Scene {
+    let mut pool = Pool::default();
+    let sets = vec![
+        pool.drawn(|_, _| BLUE, (0, 0), (2, 2), |_, _| Some(0)),
+        pool.drawn(pixel, (-1, -1), (5, 5), |_, _| Some(0)),
+    ];
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps: vec![row(0, (0, 0), WHOLE, NORMAL), posed],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+// A masked row's mask is read as its pixels are, through its map by R1 in
+// its mode: opaque white under a mask lays as a row of white whose alpha is
+// the mask's byte, posed the same — in every pose R1 takes, and however few
+// output tiles a pass takes, each reading the rows of the mask its map
+// reads there. The white reaches past the box further than any tent, so
+// only the mask's edge is resampled; its row holds nothing where the mask
+// does, so Pick votes for one word where the mask's vote is for its 0.
+#[test]
+fn a_posed_row_reads_its_mask_as_it_reads_its_pixels() {
+    let ((x0, y0), (width, height)) = (SPOTTED_AT, SPOTTED_SIZE);
+    let mask = masked(SPOTTED_AT, SPOTTED_SIZE, spotted_byte);
+    let inside = move |x, y| {
+        (x0..x0 + width as i32).contains(&x) && (y0..y0 + height as i32).contains(&y)
+    };
+    let alpha = move |x, y| match (inside(x, y), spotted_byte(x, y)) {
+        (true, byte @ 1..) => 0x00ff_ffff | u32::from(byte) << 24,
+        _ => 0,
+    };
+    for name in POSES {
+        let white = over_blue(|_, _| 0xffff_ffff, masked_row(pose_row(1, name, WHOLE, NORMAL)));
+        let want = widest(&over_blue(alpha, pose_row(1, name, WHOLE, NORMAL)));
+        for budget in [rig().composite.widest(), within(1, 1), within(1, 3)] {
+            let got = under(&white, Some(&mask.mask()), budget).expect("composite");
+            assert!(got == want, "{name} at {budget:?}");
+        }
+    }
+}
+
+// ---- The range mark (F-568) ----
+
+const MARK_WHITE: [u8; 4] = [255, 255, 255, 128];
+const MARK_BLACK: [u8; 4] = [0, 0, 0, 128];
+
+/// What a mark lays inside its range where a pixel's centre lies at
+/// (`u`, `v`) of the row, Q.16, the press moved by `shift`, Q.16: its
+/// cell's colour, the cell floor((p − shift) / 8) each way.
+fn checker((u, v): (i64, i64), [sx, sy]: [i32; 2]) -> [u8; 4] {
+    let cell = |p: i64, shift: i32| (p - i64::from(shift)).div_euclid(8 << 16);
+    match (cell(u, sx) + cell(v, sy)).rem_euclid(2) {
+        0 => MARK_WHITE,
+        _ => MARK_BLACK,
+    }
+}
+
+/// Pixel `x`'s centre, Q.16.
+fn centre(x: i32) -> i64 {
+    (i64::from(x) << 16) + (1 << 15)
+}
+
+/// A range off the tile grid, with a hole out of it.
+fn in_range(x: i32, y: i32) -> bool {
+    (3..203).contains(&x) && (2..102).contains(&y) && !((x - 40).abs() < 9 && y < 30)
+}
+
+fn range() -> crate::kernels::mask::tests::Masked {
+    masked((3, 2), (200, 100), |x, y| if in_range(x, y) { 255 } else { 0 })
+}
+
+/// Presses moved by nothing, by (3.5, -2) and by (-13, 3.5).
+const PRESSES: [[i32; 2]; 3] = [[0, 0], [3 << 16 | 0x8000, -(2 << 16)], [-(13 << 16), 7 << 15]];
+
+/// `steps` under `range` over tiles (0, 0) and (1, 0).
+fn marked(steps: Vec<Step>, range: &Mask) -> (Vec<u8>, Vec<(i32, i32)>) {
+    let scene = Scene {
+        pool: Pool::default(),
+        sets: Vec::new(),
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        steps,
+        tiles: vec![(0, 0), (1, 0)],
+    };
+    let out = under(&scene, Some(range), rig().composite.widest()).expect("composite");
+    (out, scene.tiles)
+}
+
+// Over nothing, a mark lays its cells of eight — white where column + row
+// is even, black where odd, each at half alpha — wherever its range is,
+// pushed the way the press moved, and nothing past the range.
+#[test]
+fn a_mark_lays_its_checker_where_its_range_is() {
+    let range = range();
+    for shift in PRESSES {
+        let mark = Step::Mark { map: ResampleMap::moved(0, 0), shift };
+        let (out, tiles) = marked(vec![mark], &range.mask());
+        for y in 0..TILE as i32 {
+            for x in 0..2 * TILE as i32 {
+                let want = match in_range(x, y) {
+                    true => checker((centre(x), centre(y)), shift),
+                    false => [0; 4],
+                };
+                assert_eq!(pixel_at(&out, &tiles, x, y), want, "{shift:?} ({x}, {y})");
+            }
+        }
+    }
+}
+
+// A mark lies in its row's space: moved by (5, -3), its cells and its range
+// move with it; moved a quarter of a pixel right and half a pixel up under
+// R1's tent, its cells move as much and its range's edge is resampled.
+#[test]
+fn a_mark_lies_in_its_row_s_space() {
+    let range = range();
+    let moved = Step::Mark { map: ResampleMap::moved(5, -3), shift: [0, 0] };
+    let (moved, _) = marked(vec![moved], &range.mask());
+    let quarter = [1.0, 0.0, 0.25, 0.0, 1.0, -0.5, 0.0, 0.0, 1.0];
+    let map = ResampleMap::new(quarter, 1.0, ResampleMode::Blend, 2 * TILE, 2 * TILE)
+        .expect("a map that lands");
+    let (posed, tiles) = marked(vec![Step::Mark { map, shift: [0, 0] }], &range.mask());
+    for y in 0..TILE as i32 {
+        for x in 0..2 * TILE as i32 {
+            let want = match in_range(x - 5, y + 3) {
+                true => checker((centre(x - 5), centre(y + 3)), [0, 0]),
+                false => [0; 4],
+            };
+            assert_eq!(pixel_at(&moved, &tiles, x, y), want, "moved ({x}, {y})");
+            // The centre lands at (x + 3/4, y), where the tent reaches a
+            // pixel either way.
+            let (u, v) = ((i64::from(x) << 16) + (3 << 14), i64::from(y) << 16);
+            let corners = [(-1, -1), (1, -1), (-1, 1), (1, 1)];
+            let want = match corners.iter().filter(|(dx, dy)| in_range(x + dx, y + dy)).count() {
+                4 => checker((u, v), [0, 0]),
+                0 => [0; 4],
+                _ => continue,
+            };
+            assert_eq!(pixel_at(&posed, &tiles, x, y), want, "a quarter ({x}, {y})");
+        }
+    }
+}
+
+// A mark lays its colours in normal over what is under it, as a row of
+// them does.
+#[test]
+fn a_mark_lays_as_a_row_of_its_colours() {
+    let range = range();
+    for shift in PRESSES {
+        let colour = move |x, y| match in_range(x, y) {
+            true => u32::from_le_bytes(checker((centre(x), centre(y)), shift)),
+            false => 0,
+        };
+        let mut pool = Pool::default();
+        let sets = vec![
+            pool.drawn(|_, _| BLUE, (0, 0), (2, 1), |_, _| Some(0)),
+            pool.drawn(colour, (0, 0), (2, 1), |_, _| Some(0)),
+        ];
+        let mut scene = Scene {
+            pool,
+            sets,
+            keys: Vec::new(),
+            matrices: Vec::new(),
+            steps: vec![row(0, (0, 0), WHOLE, NORMAL), row(1, (0, 0), WHOLE, NORMAL)],
+            tiles: vec![(0, 0), (1, 0)],
+        };
+        let want = widest(&scene);
+        scene.steps[1] = Step::Mark { map: ResampleMap::moved(0, 0), shift };
+        let got = under(&scene, Some(&range.mask()), rig().composite.widest());
+        assert!(got == Some(want), "{shift:?}");
+    }
+}
+
+// A mark is a masked step: a plan with no mask is refused.
+#[test]
+fn a_mark_needs_its_range() {
+    let mark = Step::Mark { map: ResampleMap::moved(0, 0), shift: [0, 0] };
+    let scene = Scene { steps: vec![mark], ..red_over_blue() };
+    assert!(under(&scene, None, rig().composite.widest()).is_none());
 }
 
 /// `source`'s stamp laid by itself, whole, in `mode` on opaque blue over
@@ -2279,16 +2499,31 @@ fn a_picture_s_stamp_lands_as_its_words() {
     assert_eq!([at(126, 5), at(130, 5), at(127, 4), at(128, 6)], [blue; 4]);
 }
 
-// Under a mask of 255 a row is laid as under none, in every mode and at
-// every opacity: 255 leaves the opacity as it is, so a row under no mask
-// takes the same multiply.
+/// `scene` with each of its rows laid under the plan's mask.
+fn all_masked(mut scene: Scene) -> Scene {
+    scene.steps = scene
+        .steps
+        .into_iter()
+        .map(|step| match step {
+            Step::Row { .. } => masked_row(step),
+            other => other,
+        })
+        .collect();
+    scene
+}
+
+// 「선택이 있든 없든 같은 코드」: under a mask of 255 a row is laid as under
+// none — in every mode, at every opacity and in every pose R1 takes: 255
+// leaves the opacity as it is, and a masked row is sampled as any row is.
 #[test]
 fn a_row_under_a_whole_mask_lays_as_under_none() {
-    let mut scene = rows();
-    scene.steps = scene.steps.into_iter().map(masked_row).collect();
-    let mask = masked((-128, 0), (384, 256), |_, _| 255);
-    let out = under(&scene, Some(&mask.mask()), rig().composite.widest());
-    assert!(out == Some(widest(&rows())));
+    let mask = masked((-256, -256), (768, 768), |_, _| 255);
+    let scenes = [rows(), posed()].into_iter().chain(POSES.map(posed_alone));
+    for (index, scene) in scenes.enumerate() {
+        let want = widest(&scene);
+        let got = under(&all_masked(scene), Some(&mask.mask()), rig().composite.widest());
+        assert!(got == Some(want), "scene {index}");
+    }
 }
 
 // A mask's byte and a row's opacity are one cover: under 128, a row at

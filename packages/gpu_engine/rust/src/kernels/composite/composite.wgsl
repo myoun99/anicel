@@ -34,6 +34,7 @@ const STEP_OPEN_OPAQUE: u32 = 2u;
 const STEP_CLOSE: u32 = 3u;
 const STEP_CLOSE_ATOP: u32 = 4u;
 const STEP_SOLID: u32 = 5u;
+const STEP_MARK: u32 = 6u;
 
 // One pass: the steps it runs, the stack depth it takes, the output tiles
 // it covers and the words each takes in the plan, where its table of pages
@@ -107,7 +108,9 @@ fn row_keyed(at: u32, word: u32) -> u32 {
 
 // R1's source: the stored word of the row of step `at` at its own (x, y),
 // keyed — nothing where it has no tile, where the tile's page is outside
-// the step's, or where this pass binds no such page.
+// the step's, or where this pass binds no such page. At `at | MASK_SOURCE`
+// it is the plan's mask as a picture instead: its byte at (x, y) the
+// word's alpha, nothing past the box (step_cover).
 //
 // A step: kind, mode, opacity, the first and last page it lays tiles from,
 // map_at, the map's first tile column and row, its columns and rows, where
@@ -115,6 +118,10 @@ fn row_keyed(at: u32, word: u32) -> u32 {
 // covers it, and where its colour matrix is. A close: kind, mode, opacity,
 // then nothing up to the last word: where the matrix it closes through is.
 fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
+  if ((at & MASK_SOURCE) != 0u) {
+    let mask = MaskPlane(pass_.mask_at, pass_.mask_width, pass_.mask_height, pass_.mask_stride);
+    return mask_byte_of(mask, u32(x - pass_.mask_left), u32(y - pass_.mask_top)) << 24u;
+  }
   let column = (x >> 7u) - bitcast<i32>(plan[at + 6u]);
   let row = (y >> 7u) - bitcast<i32>(plan[at + 7u]);
   let columns = plan[at + 8u];
@@ -139,13 +146,7 @@ fn resample_texel(at: u32, x: i32, y: i32) -> u32 {
 // row's colour effects into its paint's filter, which runs on what is
 // drawn (resolveCompositeEffectPaint; 캔버스 베이스 11-06 07:48).
 fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
-  let m = plan[at + 10u];
-  let map = resample_map(array<u32, 15>(
-    plan[m], plan[m + 1u], plan[m + 2u], plan[m + 3u], plan[m + 4u], plan[m + 5u], plan[m + 6u],
-    plan[m + 7u], plan[m + 8u], plan[m + 9u], plan[m + 10u], plan[m + 11u], plan[m + 12u],
-    plan[m + 13u], plan[m + 14u],
-  ));
-  var word = resample(map, at, x, y);
+  var word = resample(step_map(at), at, x, y);
   let matrix = plan[at + 13u];
   if (matrix != NO_MATRIX) {
     word = matrix_rgba8(matrix, word);
@@ -153,16 +154,78 @@ fn row_sample(at: u32, x: i32, y: i32) -> vec4<u32> {
   return blend_unpack8(word);
 }
 
-// The coverage the row of step `at` is laid by at canvas pixel (x, y): the
-// plan's mask's byte there where it covers the row — nothing past its box
-// — and 255 where it does not, so a row under no mask is laid at its
-// opacity by the same multiply (R28, gpu-canonical-store 11-06 06:51).
-fn row_cover(at: u32, x: i32, y: i32) -> u32 {
+// The map of step `at` — a row's, or a range mark's.
+fn step_map(at: u32) -> ResampleMap {
+  let m = plan[at + 10u];
+  return resample_map(array<u32, 15>(
+    plan[m], plan[m + 1u], plan[m + 2u], plan[m + 3u], plan[m + 4u], plan[m + 5u], plan[m + 6u],
+    plan[m + 7u], plan[m + 8u], plan[m + 9u], plan[m + 10u], plan[m + 11u], plan[m + 12u],
+    plan[m + 13u], plan[m + 14u],
+  ));
+}
+
+// resample_texel's source for the plan's mask, above step `at`'s own: no
+// binding holds 2^31 words of plan.
+const MASK_SOURCE: u32 = 0x80000000u;
+
+// The coverage step `at` is laid by at canvas pixel (x, y): the plan's mask
+// read as the step's pixels are, through its own map by R1 in its mode.
+// The mask is a plane in the step's own space — a posed row reads its
+// selection in its own artwork, as the app cuts a dab by it there
+// (piece_landing.dart `regionInArtworkSpace`, 09-25 a-marquee-on-a-posed-row)
+// — and its edge is resampled as what lands under it will be, so what
+// shows while a stroke is drawn is what landing it shows (「보이는 중이랑
+// 결과랑」): exactly for a copy. A step under no mask takes 255 without a
+// second R1 for every row, so it is laid at its opacity by the same
+// multiply (R28, gpu-canonical-store 11-06 06:51).
+fn step_cover(at: u32, x: i32, y: i32) -> u32 {
   if (plan[at + 12u] == 0u) {
     return 255u;
   }
-  let mask = MaskPlane(pass_.mask_at, pass_.mask_width, pass_.mask_height, pass_.mask_stride);
-  return mask_byte_of(mask, u32(x - pass_.mask_left), u32(y - pass_.mask_top));
+  return resample(step_map(at), at | MASK_SOURCE, x, y) >> 24u;
+}
+
+// A range mark's cell along one side (fill_range_mark.dart): floor((p −
+// shift) / MARK_CELL), p being whole + (rest + 2^15) / 2^16 and the shift
+// Q.16 — worked on whole pixels and their rest apart, so no product of a
+// far pixel's position passes an i32.
+const MARK_CELL: i32 = 8;
+const MARK_WHITE: u32 = 0x80ffffffu;
+const MARK_BLACK: u32 = 0x80000000u;
+
+fn mark_cell(whole: i32, rest: i32, shift: i32) -> i32 {
+  let n = whole - (shift >> 16u);
+  let r = rest + 32768 - (shift & 0xffff);
+  let k = (n & (MARK_CELL - 1)) * 65536 + r;
+  let one = MARK_CELL * 65536;
+  // MARK_CELL is 2^3.
+  return (n >> 3u) + select(0, -1, k < 0) + select(0, 1, k >= one);
+}
+
+// The colour range mark `at` lays at canvas pixel (x, y): where the pixel's
+// centre lands in the row's space by its map — p less a half on R1's Q.16,
+// as whole pixels and the rest, exact for a copy however far it moves — in
+// cells pushed the way the press moved: white where their column + row is
+// even, black where odd, each at half alpha (「밑 색이 살짝 보임」). Asked
+// only where the mark's cover is not 0, so where the centre lands.
+fn mark_colour(at: u32, x: i32, y: i32) -> vec4<u32> {
+  let map = step_map(at);
+  var whole: vec2<i32>;
+  var rest = vec2<i32>(0);
+  if (map.mode == RESAMPLE_COPY) {
+    let sx = wide_add(wide(x), wide_shr(map.c, 20u));
+    let sy = wide_add(wide(y), wide_shr(map.f, 20u));
+    whole = vec2<i32>(bitcast<i32>(sx.x), bitcast<i32>(sy.x));
+  } else if (resample_with_locate()) {
+    var point: ResamplePoint;
+    _ = resample_locate(map, x, y, &point);
+    let u = vec2<i32>(point.u, point.v);
+    whole = u >> vec2<u32>(16u);
+    rest = u & vec2<i32>(0xffff);
+  }
+  let column = mark_cell(whole.x, rest.x, bitcast<i32>(plan[at + 1u]));
+  let row = mark_cell(whole.y, rest.y, bitcast<i32>(plan[at + 2u]));
+  return blend_unpack8(select(MARK_BLACK, MARK_WHITE, ((column + row) & 1) == 0));
 }
 
 fn level_at(level: u32, tile: u32, texel: u32) -> u32 {
@@ -227,7 +290,7 @@ fn composite(
         if (((plan[entry + 2u + step / 32u] >> (step % 32u)) & 1u) != 0u) {
           let shown = row_sample(at, x, y);
           if (shown.w != 0u) {
-            let cover = row_cover(at, x, y);
+            let cover = step_cover(at, x, y);
             stack[top] = laid(plan[at + 1u], plan[at + 2u], cover, shown, stack[top]);
           }
         }
@@ -268,6 +331,13 @@ fn composite(
         if (x >= x0 && x < x1 && y >= y0 && y < y1) {
           let colour = blend_unpack8(plan[at + 1u]);
           stack[top] = laid(BLEND_NORMAL, W_ONE, 255u, colour, stack[top]);
+        }
+      }
+      // A range mark's checker under the range (mod.rs's Step::Mark).
+      case STEP_MARK: {
+        let cover = step_cover(at, x, y);
+        if (cover != 0u) {
+          stack[top] = laid(BLEND_NORMAL, W_ONE, cover, mark_colour(at, x, y), stack[top]);
         }
       }
       default: {}
