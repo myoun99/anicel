@@ -66,6 +66,16 @@
 # for a login. ⚠️The script before THAT fails 1 of the 2 there: its backup
 # pushed master, and its sync fetched it, free to ask.
 #
+# 🆕And offline (2026-11-06, native-memory-safety — section T's last case
+# and section V, 135 checks in all): a crate lane whose lock names a crate
+# this machine has not downloaded is refused, naming that crate and the
+# command that would download it, and no gate of the whole run downloaded
+# one. ⚠️The script before THAT fails 5 of the 7 there: it downloads the
+# crate, and lands.
+# ↩️And the turn every cargo takes (tool/cargo_turn.sh) is copied into the
+# scratch trunk: since the gates took it (948f1c65d) every crate run here
+# was red for want of it, the script under test and the one before alike.
+#
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
 E="$(mktemp -d "${TMPDIR:-/tmp}/lane-test.XXXXXX")" || exit 2
@@ -109,10 +119,21 @@ EOF
 # `cargo` writes down which lane it ran in — the crate is three folders
 # down — and fails when LANE_TEST_CARGO says red. Green, it answers as a
 # workspace of two crates does: two tests, then a doc-test run of none —
-# or, when LANE_TEST_CARGO says empty, the doc-tests alone.
+# or, when LANE_TEST_CARGO says empty, the doc-tests alone. When it says
+# absent, a crate is not downloaded: offline it fails as cargo does, and
+# online it downloads — which it writes down where no section clears it.
 cat > "$E/bin/cargo" <<'EOF'
 #!/bin/bash
 echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$LANE_TEST_LOG"
+if [ "${LANE_TEST_CARGO:-ok}" = absent ]; then
+  case " $* " in
+    *" --offline "*|*" --frozen "*)
+      printf 'error: failed to download `cpal v0.18.2`\n\nCaused by:\n'
+      echo "  attempting to make an HTTP request, but --offline was specified"
+      exit 101 ;;
+    *) echo "downloaded cpal v0.18.2: cargo $*" >> "$LANE_TEST_LOG.downloads" ;;
+  esac
+fi
 [ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
 [ "${LANE_TEST_CARGO:-ok}" = empty ] || echo "test result: ok. 2 passed; 0 failed"
 echo "test result: ok. 0 passed; 0 failed"
@@ -170,11 +191,13 @@ git init -q -b master "$E/home" 2>/dev/null
 mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/home/a.txt"
 # The launcher the gates ask the room through, and the stamp law it reads.
 # No tool sources beside them, so it hands every call to the stand-in `dart`.
-cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" "$E/home/tool/"
+# And the turn every cargo building in the shared target takes.
+cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" \
+  "$(dirname "${BASH_SOURCE[0]}")/cargo_turn.sh" "$E/home/tool/"
 # And the parity selector the gate of a lane that changed the C asks.
 printf '#!/bin/bash\necho test/parity_test.dart\n' > "$E/home/tool/native_parity_tests.sh"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/native_parity_tests.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh tool/cargo_turn.sh tool/native_parity_tests.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
 git clone -q -o backup "$E/mirror.git" "$E/away"
@@ -497,11 +520,38 @@ O=$(LANE_TEST_CARGO=empty out "$E/home" land none)
 has "a crate run that passed no test is refused, though it exits 0" \
   "$O" "ran no test in debug — this is refusal 8"
 check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+# A lock of two crates from the registry and the workspace's own, and a
+# machine that downloaded one of them.
+quiet "$E/home" open absent; mkdir -p "$HW/lane-absent/packages/gpu_engine/rust"
+printf '%s\n' '[[package]]' 'name = "cpal"' 'version = "0.18.2"' \
+  'source = "registry+https://github.com/rust-lang/crates.io-index"' '' \
+  '[[package]]' 'name = "have"' 'version = "1.0.0"' \
+  'source = "registry+https://github.com/rust-lang/crates.io-index"' '' \
+  '[[package]]' 'name = "gpu_engine"' 'version = "0.1.0"' \
+  > "$HW/lane-absent/packages/gpu_engine/rust/Cargo.lock"
+git -C "$HW/lane-absent" add packages/gpu_engine/rust/Cargo.lock
+git -C "$HW/lane-absent" commit -q -m "a crate this machine has not downloaded"
+mkdir -p "$E/cargo-home/registry/cache/index.crates.io-0"
+: > "$E/cargo-home/registry/cache/index.crates.io-0/have-1.0.0.crate"
+BEFORE=$(git -C "$E/home" rev-parse master)
+# Spelled as Windows spells it, where it can be: the main PC's is D:\rust\cargo.
+HOME_SPELT="$(cygpath -w "$E/cargo-home" 2>/dev/null || echo "$E/cargo-home")"
+O=$(CARGO_HOME="$HOME_SPELT" LANE_TEST_CARGO=absent out "$E/home" land absent)
+has "a crate lane whose lock names a crate not downloaded here is refused" \
+  "$O" "has not downloaded every crate the lock names — this is refusal 8"
+has "and it names the crate" "$O" "Not here: cpal-0.18.2 "
+lacks "and not the one that is here" "$O" "have-1.0.0"
+lacks "nor the workspace's own" "$O" "gpu_engine-0.1.0"
+has "and the command that would download it" "$O" "cargo fetch --locked"
+check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
 
 say "U NOBODY IS ASKED FOR A LOGIN: every call that reached the mirror in this whole run"
 check "LIVENESS — the run reached the mirror, on both machines, every way" \
   "$(grep -o ' \(push\|fetch\|ls-remote\) ' "$LANE_TEST_LOG.mirror" 2>/dev/null | sort -u | tr -d ' ' | tr '\n' ' ')" "fetch ls-remote push "
 check "and not one call could ask" "$(grep -v 'prompt=0 gcm=Never$' "$LANE_TEST_LOG.mirror" | head -3 | tr '\n' ' ')" ""
+
+say "V NOTHING IS DOWNLOADED: a gate builds offline, in this whole run"
+check "not one crate was downloaded" "$(cat "$LANE_TEST_LOG.downloads" 2>/dev/null | head -3 | tr '\n' ' ')" ""
 
 echo
 echo "== $FAILS failed"

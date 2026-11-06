@@ -866,6 +866,16 @@ cmd_native() {
   echo "lane: native — green ($(wc -l <"$list") parity files)"
 }
 
+# The crates the lock at $1 takes from a registry that this machine has not
+# downloaded: what `cargo fetch --locked` would download, every platform's.
+crates_not_here() {
+  local home="${CARGO_HOME:-$HOME/.cargo}"
+  command -v cygpath >/dev/null 2>&1 && home="$(cygpath -u "$home")"
+  awk '/^name = /{ n = $3 } /^version = /{ v = $3 }
+    /^source = "registry\+/{ gsub(/"/, "", n); gsub(/"/, "", v); print n "-" v }' "$1" \
+    | grep -vxF -f <(ls "$home"/registry/cache/*/ 2>/dev/null | sed -n 's/\.crate$//p')
+}
+
 # Refusal 8, runnable on its own. The header says why it is there.
 cmd_crate() {
   local name="${1:-}"; [ -n "$name" ] || die "crate needs a name"
@@ -894,9 +904,20 @@ cmd_crate() {
     # The trunk's target folder: every lane reuses what the trunk and the
     # lanes before it compiled (wgpu is minutes cold) — in its turn, which
     # every cargo building there takes (tool/cargo_turn.sh says why).
+    # Offline (관제 2026-11-06, native-memory-safety): a download is the
+    # user's to allow, in chat — the Surface's gate fetched cpal and
+    # dasp_sample from crates.io before anyone was asked. Cargo names one
+    # missing crate at a time, and not always the one: with cpal gone it
+    # said no `symphonia` was found, so the list comes from the lock.
     (cd "$p/packages/gpu_engine/rust" \
       && bash "$ROOT/tool/cargo_turn.sh" \
-        test --locked --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
+        test --locked --offline --workspace ${flag:+"$flag"}) >>"$log" 2>&1 || {
+      tail -n +$((from + 1)) "$log" | grep -aqE 'offline mode|--offline was specified' \
+        && die "this machine has not downloaded every crate the lock names — this is refusal 8
+  The gate builds offline: a download is the user's to allow, in chat.
+  Not here: $(crates_not_here "$p/packages/gpu_engine/rust/Cargo.lock" | tr '\n' ' ')
+  With their yes: (cd $p/packages/gpu_engine/rust && cargo fetch --locked)
+  The whole log: $log"
       grep -aE '^test .*FAILED|panicked|^error' "$log" | head -15 >&2
       die "the GPU engine crate's tests are red in $profile — this is refusal 8; the whole log: $log"
     }

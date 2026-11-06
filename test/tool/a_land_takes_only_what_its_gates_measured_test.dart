@@ -122,9 +122,11 @@ void main() {
         isNot(-1),
       );
       expect(
-        at(crate, r'test --locked --workspace ${flag:+"$flag"}'),
+        at(crate, r'test --locked --offline --workspace ${flag:+"$flag"}'),
         isNot(-1),
-        reason: 'every crate of the workspace, not its default members',
+        reason: 'every crate of the workspace, not its default members — '
+            'and offline: a download is the user\'s to allow (관제 '
+            '2026-11-06)',
       );
     });
 
