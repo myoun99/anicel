@@ -19,16 +19,17 @@ const IDENTITY: Affine = Affine {
     f: 0.0,
 };
 
+fn file(name: &str) -> Vec<u8> {
+    let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let path = format!("{dir}/../../../assets/fonts/{name}");
+    std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"))
+}
+
 /// The app's canvas letters' families, in their order: BIZ UDPGothic,
 /// 나눔고딕, Noto Sans SC (app_theme.dart; engine-canvas-letters-Q2).
 fn faces() -> &'static Faces {
     static FACES: OnceLock<Faces> = OnceLock::new();
     FACES.get_or_init(|| {
-        let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
-        let file = |name: &str| {
-            let path = format!("{dir}/../../../assets/fonts/{name}");
-            std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"))
-        };
         Faces::new(vec![
             Family::of_two(file("BIZUDPGothic-Regular.ttf"), file("BIZUDPGothic-Bold.ttf")).unwrap(),
             Family::of_two(file("NanumGothic-Regular.ttf"), file("NanumGothic-Bold.ttf")).unwrap(),
@@ -76,7 +77,75 @@ fn a_letter_goes_to_the_first_family_that_has_it() {
     assert_eq!(families("~"), [1]);
     assert_eq!(families("业"), [2], "a simplified character neither has");
     assert_eq!(families("😊"), [0], "one none has: the first's empty box");
-    assert_eq!(by_family(faces(), "A셀业", false), [(0, "A".into()), (1, "셀".into()), (2, "业".into())]);
+    // A family's letters are one run, shaped together.
+    assert_eq!(by_family(faces(), "AB셀业", false), [(0, "AB".into()), (1, "셀".into()), (2, "业".into())]);
+}
+
+#[test]
+fn letters_are_set_in_some_face() {
+    assert!(Faces::new(Vec::new()).is_none());
+}
+
+#[test]
+fn a_letter_is_its_glyphs_units_at_the_size() {
+    // BIZ UDPGothic's H, of 2048 units: from 199 right of its origin, 1282
+    // wide, from 1608 above the baseline, 1659 tall. At 100 px from (0,
+    // 200): 9.72 to 72.32 across, 121.48 to 202.49 down.
+    let cover = filled(vec![Shape::Letters(run("H", 100 * 64, (0, 200 * 64), 0))], IDENTITY);
+    assert_eq!(cover.at, [9, 121, 73, 203]);
+}
+
+#[test]
+fn a_clusters_letters_follow_one_another() {
+    // One cluster of two: the second at the first's advance, not over it.
+    let one = ink(&filled(vec![Shape::Letters(run("I", 40 * 64, (0, 3000), 0))], IDENTITY));
+    let mut two = run("I", 40 * 64, (0, 3000), 0);
+    two.clusters[0].text = "II".into();
+    let two = ink(&filled(vec![Shape::Letters(two)], IDENTITY));
+    assert!(two > one * 19 / 10, "two {two}, one {one}");
+}
+
+#[test]
+fn marks_stand_where_the_face_puts_them() {
+    // BIZ UDPGothic sets an acute back over the x (-1162 units), and a
+    // second one above the first (368).
+    let cover = |text: &str| {
+        let mut letters = run("x", 64 * 64, (0, 100 * 64), 0);
+        letters.clusters[0].text = text.into();
+        filled(vec![Shape::Letters(letters)], IDENTITY)
+    };
+    let (x, acute, two) = (cover("x"), cover("x\u{301}"), cover("x\u{301}\u{301}"));
+    assert!(acute.at[2] <= x.at[2], "the acute over the x, not after it");
+    assert!(two.at[1] <= acute.at[1] - 10, "a second acute above the first");
+}
+
+#[test]
+fn a_turn_of_the_grid_turns_the_cover() {
+    // A quarter turn: x' = -y, y' = x.
+    let turned = Affine { a: 0.0, b: 1.0, c: -1.0, d: 0.0, ..IDENTITY };
+    let cover = filled(vec![Shape::Rect([0, 0, 4 * 64, 64])], turned);
+    assert_eq!(cover.at, [-1, 0, 0, 4]);
+    assert_eq!(cover.bytes, [255; 4]);
+}
+
+#[test]
+fn shapes_of_one_pass_that_overlap_cover_once() {
+    // A line through letters, as an underline crosses them: no hole.
+    let cover = filled(vec![Shape::Rect([0, 0, 4 * 64, 64]), Shape::Rect([2 * 64, 0, 6 * 64, 64])], IDENTITY);
+    assert_eq!(cover.at, [0, 0, 6, 1]);
+    assert_eq!(cover.bytes, [255; 6]);
+}
+
+#[test]
+fn a_letters_contours_are_closed_and_keep_their_curves() {
+    for text in ["O", "셀", "业"] {
+        let mut path = Vec::new();
+        letters(faces(), &run(text, 64 * 64, (0, 100 * 64), 0), &mut path);
+        let count = |of: fn(&Command) -> bool| path.iter().filter(|command| of(command)).count();
+        let (moves, closes) = (count(|c| matches!(c, Command::MoveTo(_))), count(|c| matches!(c, Command::Close)));
+        assert!(moves > 0 && moves == closes, "{text}: {moves} contours, {closes} closed");
+        assert!(count(|c| matches!(c, Command::QuadTo(..))) > 0, "{text}: no curve");
+    }
 }
 
 #[test]
@@ -148,6 +217,12 @@ fn an_outline_reaches_half_its_width_past_the_fill() {
     // Across the middle: two pixels outside, two inside, nothing between.
     assert_eq!(row(5)[..4], [255, 255, 255, 255]);
     assert_eq!(row(5)[4..10], [0, 0, 0, 0, 0, 0]);
+    // A round join: the corner pixel holds the quarter circle of radius 2
+    // past (1, 1) of it, 0.315 of the pixel by hand — 80 of 255, and zeno's
+    // arc of curves lands 74. A mitre would fill it whole, a bevel leave it
+    // empty.
+    let corner = row(-2)[0];
+    assert!((60..=100).contains(&corner), "the corner pixel holds {corner}");
 }
 
 #[test]
@@ -200,6 +275,7 @@ fn a_letter_no_family_has_draws_the_first_familys_box() {
 fn nothing_to_draw_is_no_cover() {
     assert!(covered(faces(), &[Shape::Letters(run(" ", 30 * 64, (0, 2000), 0))], Paint::Fill, IDENTITY).is_none());
     assert!(covered(faces(), &[], Paint::Fill, IDENTITY).is_none());
+    assert!(covered(faces(), &[Shape::Rect([320, 320, 320, 320])], Paint::Fill, IDENTITY).is_none());
 }
 
 #[test]
