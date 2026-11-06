@@ -295,6 +295,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _frameScroll.renderedFrameCount,
     scrolledFrameOffset: () => _frameAxis.paintedOffset,
+    settle: () => _frameAxis.settle(),
   );
 
   /// The fallback rail extent for hosts that keep none of their own — the

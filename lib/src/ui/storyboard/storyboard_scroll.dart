@@ -19,4 +19,12 @@ class _StoryboardScroll {
   /// scroll physics stay clamped at the built cells.
   void autoPanRulerEdge(double delta) =>
       edgeAutoPanOvershoot(_state._horizontalController, delta);
+
+  /// The ruler scrub let go: the axis comes to rest, its runway past the
+  /// end shrunk as the timeline's grids shrink theirs
+  /// ([TimelineFrameScrub.endScrub]), and the host commits the scrub.
+  void endRulerScrub() {
+    _state._frameAxis.settle();
+    _state.widget.onScrubEnd?.call();
+  }
 }

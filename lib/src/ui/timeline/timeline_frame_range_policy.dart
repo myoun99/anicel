@@ -112,6 +112,17 @@ String? timelineRunLengthLabel(
 /// when the release is at least one viewport-worth of frames
 /// (thumb-rescale hysteresis).
 ///
+/// A growth builds [runwayFrames] more past the view's end: the room the
+/// follower lays ahead of a view going past the built end (Q4 below).
+///
+/// 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q4, c:
+/// 「위 안을 먼저 하고, 아래 안은 되는지 잰 뒤 따로 한다」 — the first being
+/// 「끝 너머로 끄는 동안 빈 칸을 한 칸씩이 아니라 한 화면 폭만큼 한 번에
+/// 늘린다. 손을 떼고 스크롤이 멈추면 지금처럼 다시 줄어든다」). Every growth
+/// rebuilds the panel and lays every row out again — 30~55 ms a frame
+/// (main PC, 11-07) — and a view dragged past the end grew a cell or two a
+/// pointer move. The shrink is left as it was.
+///
 /// Call from the frame-axis scroll listener and add the result to the
 /// policy's base frame count for RENDER extents only; interaction clamps
 /// keep using the base count.
@@ -121,6 +132,7 @@ int endlessTrailingFrames({
   required double scrollOffset,
   required double viewportExtent,
   required double frameCellExtent,
+  int runwayFrames = 0,
   bool allowShrink = false,
 }) {
   if (frameCellExtent <= 0) {
@@ -139,10 +151,10 @@ int endlessTrailingFrames({
             .ceil() -
         baseFrameCount,
   );
-  if (targetFrames >= currentTrailingFrames) {
-    return targetFrames;
+  if (targetFrames > currentTrailingFrames) {
+    return targetFrames + runwayFrames;
   }
-  if (!allowShrink) {
+  if (targetFrames == currentTrailingFrames || !allowShrink) {
     return currentTrailingFrames;
   }
   // The formula keeps [scrollOffset + viewportExtent] covered, so the

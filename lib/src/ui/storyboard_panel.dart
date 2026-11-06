@@ -2821,7 +2821,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     timelineScale: frame.scale,
                     onSeekGlobalFrame: widget.onSeekGlobalFrame,
                     onScrubGlobalFrame: widget.onScrubGlobalFrame,
-                    onScrubEnd: widget.onScrubEnd,
+                    onScrubEnd: _scroll.endRulerScrub,
                     readyRunsIn: widget.readyRunsIn,
                     onEdgeAutoPan: _scroll.autoPanRulerEdge,
                     framesPerSecond: _countingFps,

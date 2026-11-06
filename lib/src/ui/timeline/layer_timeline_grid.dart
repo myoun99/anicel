@@ -417,6 +417,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _renderedFrameCount,
     scrolledFrameOffset: () => _frameAxis.paintedOffset,
+    settle: () => _frameAxis.settle(),
   );
 
   /// Brings the SELECTION back into view on both axes (R5, user

@@ -103,6 +103,7 @@ void main() {
             frameCellExtent: () => cellExtent,
             renderedFrameCount: () => 1000,
             scrolledFrameOffset: () => 0,
+            settle: () {},
           ),
       };
     }
