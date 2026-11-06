@@ -1,0 +1,7 @@
+# What cargo-fuzz writes as it runs. The lock too: the fuzz job resolves
+# it afresh, against the nightly compiler of the day (Cargo.toml).
+target/
+corpus/
+artifacts/
+coverage/
+Cargo.lock

@@ -1,0 +1,27 @@
+[package]
+name = "decoder_fuzz"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace, which `cargo test` in the folder above never builds:
+# libFuzzer and the nightly compiler it needs are the fuzz job's alone
+# (.github/workflows/fuzz.yml), never the engine's lock or toolchain. The
+# job resolves this crate's lock afresh.
+[workspace]
+
+[dependencies]
+compress = { path = "../native/compress" }
+libfuzzer-sys = "0.4"
+
+# One target per door a decoder's bytes come in by, each a function of
+# src/lib.rs; the job runs every target `cargo fuzz list` names.
+[[bin]]
+name = "compress_decompress"
+path = "fuzz_targets/compress_decompress.rs"
+test = false
+doc = false
+bench = false
