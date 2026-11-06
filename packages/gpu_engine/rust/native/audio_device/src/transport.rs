@@ -417,8 +417,7 @@ impl Transport {
         self.looping.store(looping, SeqCst);
         self.position.store(start_sample.wrapping_sub(lead_samples), SeqCst);
         self.begin_arm();
-        let runs = self.runs.load(SeqCst);
-        let run = if runs == u32::MAX { 1 } else { runs + 1 };
+        let run = next_run(self.runs.load(SeqCst));
         self.runs.store(run, SeqCst);
         self.playing.store(run, SeqCst);
         run as i32
@@ -503,6 +502,11 @@ impl Transport {
         let bits = if channel == 1 { &self.peak_right_bits } else { &self.peak_left_bits };
         f64::from(f32::from_bits(bits.load(SeqCst)))
     }
+}
+
+/// The run numbered after `runs`: never 0, which is none.
+pub(crate) fn next_run(runs: u32) -> u32 {
+    if runs == u32::MAX { 1 } else { runs + 1 }
 }
 
 /// `bus` clipped into `out` — the bus has headroom, the DEVICE does not —

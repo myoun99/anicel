@@ -140,6 +140,108 @@ fn a_run_still_runs_out_loops_and_hands_its_lead_silent() {
     racer.transport.play(1000, 0, false, FRAMES as i64);
     assert_eq!(racer.pull(FRAMES), 0, "a lead is handed silent");
     assert_eq!(racer.transport.position(), 1000, "…and counted");
+    assert_eq!(racer.transport.peak(0), 0.0, "…and metered silent");
+}
+
+#[test]
+fn a_stop_inside_a_block_cuts_the_block_on_it() {
+    // A run ends on its stop sample, and a loop wraps on it — never on the
+    // buffer's boundary.
+    let racer = Racer::new();
+    racer.transport.play(0, 700, false, 0);
+    assert_eq!(racer.pull(FRAMES), FRAMES);
+    assert_eq!(racer.pull(FRAMES), 700 - FRAMES, "the block stops at the stop");
+    assert_eq!((racer.transport.position(), racer.transport.is_playing()), (700, false));
+    racer.transport.play(0, 700, true, 0);
+    racer.pull(FRAMES);
+    assert_eq!(racer.pull(FRAMES), FRAMES, "a loop plays on through its stop…");
+    assert_eq!(racer.transport.position(), 2 * FRAMES as i64 - 700, "…wrapped on the stop sample");
+}
+
+#[test]
+fn every_callback_that_hands_leaves_its_point() {
+    let racer = Racer::new();
+    racer.transport.play(0, 0, false, 0);
+    for pulls in 1..=3 {
+        racer.pull(FRAMES);
+        assert_eq!(racer.transport.clock().map(|(position, _)| position), Some(pulls * FRAMES as i64));
+    }
+}
+
+#[test]
+fn a_callback_with_no_bus_hands_silence() {
+    // The C's callback with no scratch: nothing mixed, nothing handed.
+    let transport = Transport::new();
+    transport.open(48_000, 1);
+    transport.play(0, 0, false, 0);
+    let mut out = vec![7.0f32; FRAMES];
+    transport.render(&mut out, 1, &mut [], &mix_slot);
+    assert!(out.iter().all(|&sample| sample == 0.0));
+    assert_eq!(transport.position(), 0);
+}
+
+#[test]
+fn a_run_is_never_numbered_none() {
+    assert_eq!(crate::transport::next_run(0), 1);
+    assert_eq!(crate::transport::next_run(41), 42);
+    assert_eq!(crate::transport::next_run(u32::MAX), 1, "past the last number, the first — not 0");
+}
+
+/// A mono source of 64 samples playing `samples`.
+fn mono(samples: *mut f32) -> Source {
+    Source { source_start: 0, length: 64, channels: 1, reserved: 0, samples }
+}
+
+#[test]
+fn a_close_lets_go_of_both_slots() {
+    let transport = Transport::new();
+    transport.open(48_000, 1);
+    let (first, second) = (buffer::new(64), buffer::new(64));
+    assert!(transport.set_schedule(&[], &[mono(first)], &[]));
+    assert!(transport.set_schedule(&[], &[mono(second)], &[]));
+    assert_eq!((buffer::holds(first), buffer::holds(second)), (1, 2), "premise: the slot the flip left let go");
+    transport.close(|| {});
+    assert_eq!(buffer::holds(second), 1, "the close lets go of the slot that played");
+    buffer::release(first);
+    buffer::release(second);
+}
+
+#[test]
+fn a_slot_the_callback_has_left_is_freed_while_it_still_runs() {
+    // The callback has said the NEW slot, its blocks still running: the old
+    // one is abandoned, and the replacement frees it without waiting the
+    // callback out.
+    let transport = Transport::new();
+    transport.open(48_000, 1);
+    let (old, new) = (buffer::new(64), buffer::new(64));
+    assert!(transport.set_schedule(&[], &[mono(old)], &[]));
+    transport.play(0, 0, false, 0);
+    let blocks = Cell::new(0);
+    let freed_in_flight = Cell::new(false);
+    // The samples' address: a pointer does not cross threads.
+    let new_address = new as usize;
+    thread::scope(|scope| {
+        let mixer = |_: &Slot, _: i64, _: usize, bus: &mut [f64]| {
+            bus.fill(MIXED);
+            blocks.set(blocks.get() + 1);
+            if blocks.get() == 1 {
+                // The control thread replaces the schedule while this block
+                // mixes, and has flipped it before the next block reads.
+                let transport = &transport;
+                scope.spawn(move || assert!(transport.set_schedule(&[], &[mono(new_address as *mut f32)], &[])));
+                assert!(within(|| buffer::holds(new) == 2), "premise: the replacement holds its buffer");
+                thread::sleep(Duration::from_millis(200));
+            } else if blocks.get() == 2 {
+                freed_in_flight.set(within(|| buffer::holds(old) == 1));
+            }
+        };
+        let mut out = vec![0.0f32; 3 * MAX_BLOCK];
+        transport.render(&mut out, 1, &mut vec![0.0; MAX_BLOCK], &mixer);
+    });
+    assert!(freed_in_flight.get(), "the old slot waited for the callback to end");
+    transport.close(|| {});
+    buffer::release(old);
+    buffer::release(new);
 }
 
 #[test]
@@ -179,8 +281,7 @@ fn a_schedule_replaced_mid_block_is_not_freed_under_it() {
     // out, bounded, and leaves the old slot to the next replacement.
     let racer = Racer::new();
     let old = buffer::new(64);
-    let source = |samples| Source { source_start: 0, length: 64, channels: 1, reserved: 0, samples };
-    assert!(racer.transport.set_schedule(&[], &[source(old)], &[]));
+    assert!(racer.transport.set_schedule(&[], &[mono(old)], &[]));
     assert_eq!(buffer::holds(old), 2, "premise: its maker and the slot");
     racer.transport.play(0, 0, false, 0);
     racer.between.set(Some(|transport| {
@@ -242,6 +343,26 @@ fn the_ring_hands_back_what_it_took_across_its_end() {
     ring.close();
 }
 
+#[test]
+fn a_closed_ring_hands_nothing_and_opens_again_empty() {
+    let ring = a_ring(1, 300);
+    ring.deliver(&[0.5; 600]);
+    let mut out = vec![0.0f32; 1_000];
+    assert_eq!(ring.read(&mut out[..200]), 200);
+    assert_eq!(ring.dropped_frames(), 100, "premise: the take dropped frames");
+    ring.close();
+    assert_eq!(ring.read(&mut out), 0, "a closed ring hands nothing — its tail is gone with it");
+    assert!(ring.open(1, 100));
+    assert_eq!((ring.frames(), ring.dropped_frames(), ring.clock()), (0, 0, None), "a ring opens empty");
+    ring.deliver(&[0.25; 10]);
+    assert_eq!(ring.clock().map(|(frames, _)| frames), Some(10), "the point is what the ring had been given");
+    assert_eq!(ring.read(&mut out), 10, "…and hands what it took from then");
+    ring.close();
+    let never = crate::capture::Capture::new();
+    never.deliver(&[0.5; 4]);
+    assert_eq!(never.frames(), 0, "a capture with no ring takes nothing");
+}
+
 // --- What a callback hands, against the C's mix bus -----------------------
 
 /// A schedule over buffers of this crate's, which the C's mix reads as
@@ -257,12 +378,15 @@ impl Schedule {
     fn new() -> Schedule {
         let mut buffers = Vec::new();
         let mut sources = Vec::new();
-        for (channels, length, seed) in [(1, 9_000i64, 0.37f32), (2, 20_000, 0.61)] {
+        for (channels, length, seed) in [(1, 9_000i64, 0.37f32), (2, 20_000, 0.61), (3, 15_000, 0.23)] {
             let floats = length * channels as i64;
             let samples = buffer::new(floats);
             for index in 0..floats as usize {
+                // Each channel louder than the one before: a side's meter
+                // reads its own channel, not the loudest.
+                let level = (1 + index % channels as usize) as f32 / channels as f32;
                 // SAFETY: `floats` samples were made.
-                unsafe { *samples.add(index) = ((index as f32 * seed).sin() * 0.9).clamp(-1.0, 1.0) };
+                unsafe { *samples.add(index) = ((index as f32 * seed).sin() * 0.9 * level).clamp(-1.0, 1.0) };
             }
             buffers.push(samples);
             sources.push(Source { source_start: 0, length, channels, reserved: 0, samples });
@@ -300,6 +424,15 @@ impl Schedule {
                 fade_curve: 0,
                 ..Clip::default()
             },
+            Clip {
+                gain: 1.3,
+                pan_left: 1.0,
+                pan_right: 1.0,
+                start_sample: 5_000,
+                end_sample: 20_000,
+                source_index: 2,
+                ..Clip::default()
+            },
         ];
         Schedule { buffers, sources, clips, keys }
     }
@@ -332,10 +465,12 @@ impl Schedule {
             };
             (left, right) = (0.0, 0.0);
             for (index, value) in bus.iter().enumerate() {
-                if index % channels == 0 {
-                    left = f64::max(left, value.abs());
-                } else {
-                    right = f64::max(right, value.abs());
+                // The C's meter: channel 0 the left side, channel 1 the
+                // right, any wider channel neither.
+                match index % channels {
+                    0 => left = f64::max(left, value.abs()),
+                    1 => right = f64::max(right, value.abs()),
+                    _ => {}
                 }
                 out.push(value.clamp(-1.0, 1.0) as f32);
             }
@@ -356,7 +491,7 @@ impl Drop for Schedule {
 #[test]
 fn a_callback_hands_what_the_cs_mix_bus_mixes_and_clips() {
     let schedule = Schedule::new();
-    for channels in [1usize, 2] {
+    for channels in [1usize, 2, 3] {
         let transport = Transport::new();
         transport.open(48_000, channels as i32);
         assert!(transport.set_schedule(&schedule.clips, &schedule.sources, &schedule.keys));
@@ -632,6 +767,12 @@ fn the_null_device_plays_and_stamps_its_clock() {
     let after_seek = unsafe { qa_audio_device_clock(point.as_mut_ptr()) };
     assert!(after_seek == 0 || point[0] > 100_000, "a point of the arm before the seek: {point:?}");
     assert!(within(|| qa_audio_device_position() > 100_000), "the run goes on from the seek");
+    // SAFETY: two values.
+    assert!(within(|| unsafe { qa_audio_device_clock(point.as_mut_ptr()) } == 1), "premise: the seek's arm has a point");
+    let run = qa_audio_device_play(200_000, 0, 0, 0);
+    // SAFETY: two values.
+    let after_play = unsafe { qa_audio_device_clock(point.as_mut_ptr()) };
+    assert!(after_play == 0 || point[0] > 200_000, "a point of the run before the play: {point:?}");
     qa_audio_device_stop_run(run + 1);
     assert_eq!(qa_audio_device_is_playing(), 1, "another's end leaves this run");
     qa_audio_device_stop();
@@ -643,7 +784,15 @@ fn the_null_device_plays_and_stamps_its_clock() {
     qa_audio_device_play(0, 960, 0, 0);
     assert!(within(|| qa_audio_device_is_playing() == 0), "a stop point ends the run");
     assert_eq!(qa_audio_device_position(), 960);
+    // SAFETY: two values.
+    assert_eq!(unsafe { qa_audio_device_clock(point.as_mut_ptr()) }, 1, "a run that ran out keeps its last point");
     qa_audio_device_close();
+    assert_eq!(qa_audio_device_open(48_000, 2, 1, -1), 48_000);
+    // SAFETY: two values.
+    assert_eq!(unsafe { qa_audio_device_clock(point.as_mut_ptr()) }, 0, "a device just opened has no point");
+    qa_audio_device_play(0, 0, 0, 0);
+    qa_audio_device_close();
+    assert_eq!(qa_audio_device_is_playing(), 0, "a closed device plays nothing");
     assert_eq!(qa_audio_device_play(0, 0, 0, 0), 0, "no device, no run");
 }
 
