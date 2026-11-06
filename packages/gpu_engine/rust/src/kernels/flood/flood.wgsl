@@ -288,6 +288,9 @@ fn flood_mask(@builtin(global_invocation_id) id: vec3<u32>) {
   var word = 0u;
   for (var k = 0u; k < 4u; k++) {
     let x = id.x * 4u + k;
+    // Past the box's last column, where the row's last word is not full,
+    // what it put would land in the row's padding, which no pass reads —
+    // so the stop is for its work alone (mutant m09, 11-06: equivalent).
     if (x >= crop.width) {
       break;
     }
