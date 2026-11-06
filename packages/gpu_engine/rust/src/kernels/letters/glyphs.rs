@@ -180,40 +180,83 @@ pub(super) fn boxed(&[left, top, right, bottom]: &[i32; 4], path: &mut Vec<Comma
     ]);
 }
 
-/// `run`'s glyphs, each cluster from its origin: its letters cut into runs
-/// of the family that draws each, each shaped and set one after another.
+/// `run`'s glyphs: each line of its clusters (those on one baseline, one
+/// after another) shaped whole — so letters the face joins are joined, as
+/// the app's layout joins them (🔬"fi" and "fl" are one glyph in BIZ
+/// UDPGothic, drawn so on the device 2026-11-07) — and each glyph set from
+/// the origin of the cluster it belongs to, after the glyphs before it there.
 pub(super) fn letters(faces: &Faces, run: &Run, path: &mut Vec<Command>) {
     let size = f64::from(run.size) / 64.0;
-    for cluster in &run.clusters {
-        let mut pen = f64::from(cluster.origin[0]) / 64.0;
-        let baseline = f64::from(cluster.origin[1]) / 64.0;
-        for (family, text) in by_family(faces, &cluster.text, run.bold) {
-            let font = faces.families[family].at(run.bold);
-            let scale = size / f64::from(font.units_per_em());
-            let mut buffer = Buffer::new();
-            buffer.push_str(&text);
-            buffer.guess_segment_properties();
-            // harfrust refuses only a misuse (shape.rs: a buffer already
-            // shaped, no direction, a plan of another), and a fresh buffer
-            // whose direction was guessed is none — the guess falls back
-            // to left to right (buffer.rs `guess_segment_properties`).
-            shape(&ShaperFont::new(font), &mut buffer, ShapeOptions::new())
-                .expect("a fresh buffer, its direction guessed, shapes");
-            for (glyph, position) in buffer.glyph_infos().iter().zip(buffer.glyph_positions()) {
-                let place = Place {
-                    x: pen + f64::from(position.x_offset) * scale,
-                    y: baseline - f64::from(position.y_offset) * scale,
-                    scale,
-                    lean: run.italic,
-                };
-                if let Some(outline) = font.outline_glyphs().get(GlyphId::new(glyph.glyph_id)) {
-                    let mut sink = Sink { place, path };
-                    let _ = outline.draw(&DrawOptions::default(), DrawMemory::Scratch, &mut sink);
-                }
-                pen += f64::from(position.x_advance) * scale;
+    for line in run.clusters.chunk_by(|a, b| a.origin[1] == b.origin[1]) {
+        let baseline = f64::from(line[0].origin[1]) / 64.0;
+        for glyph in shaped(faces, line, run.bold, size) {
+            let font = faces.families[glyph.family].at(run.bold);
+            let place = Place {
+                x: glyph.x,
+                y: baseline - glyph.up,
+                scale: size / f64::from(font.units_per_em()),
+                lean: run.italic,
+            };
+            if let Some(outline) = font.outline_glyphs().get(glyph.id) {
+                let mut sink = Sink { place, path };
+                let _ = outline.draw(&DrawOptions::default(), DrawMemory::Scratch, &mut sink);
             }
         }
     }
+}
+
+/// A glyph of a line, where it is set: its family's, `x` across the
+/// layout and `up` above the baseline, in pixels of the layout.
+pub(super) struct Set {
+    pub(super) family: usize,
+    pub(super) id: GlyphId,
+    pub(super) x: f64,
+    pub(super) up: f64,
+}
+
+/// `line`'s glyphs at `size` px: its text cut into runs of the family that
+/// draws each, each run shaped whole, and each glyph set from the origin
+/// of the cluster holding its first letter, after the glyphs before it
+/// there — a glyph of letters joined across clusters standing at the
+/// first one's.
+pub(super) fn shaped(faces: &Faces, line: &[Cluster], bold: bool, size: f64) -> Vec<Set> {
+    let text: String = line.iter().map(|cluster| cluster.text.as_str()).collect();
+    let starts: Vec<usize> = line
+        .iter()
+        .scan(0, |at, cluster| {
+            let start = *at;
+            *at += cluster.text.len();
+            Some(start)
+        })
+        .collect();
+    let mut pens: Vec<f64> = line.iter().map(|cluster| f64::from(cluster.origin[0]) / 64.0).collect();
+    let mut set = Vec::new();
+    let mut from = 0;
+    for (family, letters) in by_family(faces, &text, bold) {
+        let font = faces.families[family].at(bold);
+        let scale = size / f64::from(font.units_per_em());
+        let mut buffer = Buffer::new();
+        buffer.push_str(&letters);
+        buffer.guess_segment_properties();
+        // harfrust refuses only a misuse (shape.rs: a buffer already
+        // shaped, no direction, a plan of another), and a fresh buffer
+        // whose direction was guessed is none — the guess falls back to
+        // left to right (buffer.rs `guess_segment_properties`).
+        shape(&ShaperFont::new(font), &mut buffer, ShapeOptions::new())
+            .expect("a fresh buffer, its direction guessed, shapes");
+        for (glyph, position) in buffer.glyph_infos().iter().zip(buffer.glyph_positions()) {
+            let cluster = starts.partition_point(|&start| start <= from + glyph.cluster as usize) - 1;
+            set.push(Set {
+                family,
+                id: GlyphId::new(glyph.glyph_id),
+                x: pens[cluster] + f64::from(position.x_offset) * scale,
+                up: f64::from(position.y_offset) * scale,
+            });
+            pens[cluster] += f64::from(position.x_advance) * scale;
+        }
+        from += letters.len();
+    }
+    set
 }
 
 /// `text` cut where the family that draws it changes — `_runsFor`.

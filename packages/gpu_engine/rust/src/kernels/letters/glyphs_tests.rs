@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use zeno::{Command, Vector};
 
-use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Run, Shape, boxed, by_family, covered, letters};
+use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Run, Shape, boxed, by_family, covered, letters, shaped};
 use super::tests::at as pixel_of;
 use super::{Pass, set};
 use crate::kernels::composite::tests::rig;
@@ -103,6 +103,67 @@ fn a_clusters_letters_follow_one_another() {
     two.clusters[0].text = "II".into();
     let two = ink(&filled(vec![Shape::Letters(two)], IDENTITY));
     assert!(two > one * 19 / 10, "two {two}, one {one}");
+}
+
+#[test]
+fn letters_a_face_joins_are_joined_across_clusters() {
+    // The app hands "f" and "i" over as two clusters, and BIZ UDPGothic
+    // sets them as one glyph, at the "f"'s origin.
+    let path_of = |clusters: &[(&str, i32, i32)]| {
+        let mut path = Vec::new();
+        let clusters = clusters
+            .iter()
+            .map(|&(text, x, y)| Cluster {
+                text: text.into(),
+                origin: [x, y],
+            })
+            .collect();
+        letters(faces(), &Run { size: 40 * 64, bold: false, italic: false, clusters }, &mut path);
+        path
+    };
+    let joined = path_of(&[("fi", 640, 3200)]);
+    assert_eq!(path_of(&[("f", 640, 3200), ("i", 1573, 3200)]), joined);
+    // On two lines they are two letters, each where it stands.
+    let (f, i) = (path_of(&[("f", 640, 3200)]), path_of(&[("i", 640, 6400)]));
+    assert_ne!(f, joined);
+    assert_eq!(path_of(&[("f", 640, 3200), ("i", 640, 6400)]), [f, i].concat());
+}
+
+/// 🚨THE ENGINE'S HALF OF `test/fixtures/canvas_letter_clusters.json`
+/// (the app's: the_app_sets_letters_where_the_engines_shaping_does_test.dart):
+/// each line set by harfrust's own advances from its start lays every glyph
+/// where the app's lefts lay it — kerning and joined letters with it — to
+/// the 64th of a pixel a cluster's origin is handed over in.
+#[test]
+fn harfrusts_advances_meet_the_apps_clusters() {
+    let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let path = format!("{dir}/../../../test/fixtures/canvas_letter_clusters.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+    let fixture: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"));
+    for line in fixture["lines"].as_array().expect("lines") {
+        let texts: Vec<&str> = line["clusters"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
+        let lefts: Vec<f64> = line["lefts"].as_array().unwrap().iter().map(|l| l.as_f64().unwrap()).collect();
+        let (size, bold) = (line["size"].as_f64().unwrap(), line["bold"].as_bool().unwrap());
+        let whole = [Cluster {
+            text: texts.concat(),
+            origin: [0, 0],
+        }];
+        let split: Vec<Cluster> = texts
+            .iter()
+            .zip(&lefts)
+            .map(|(text, left)| Cluster {
+                text: (*text).into(),
+                origin: [(left * 64.0).round() as i32, 0],
+            })
+            .collect();
+        let (ours, apps) = (shaped(faces(), &whole, bold, size), shaped(faces(), &split, bold, size));
+        let ids = |set: &[super::glyphs::Set]| set.iter().map(|glyph| glyph.id.to_u32()).collect::<Vec<_>>();
+        assert_eq!(ids(&ours), ids(&apps));
+        for (glyph, (ours, apps)) in ours.iter().zip(&apps).enumerate() {
+            let off = (ours.x - apps.x).abs();
+            assert!(off <= 1.0 / 64.0, "{}: glyph {glyph} at {} by harfrust, {} by the app", texts.concat(), ours.x, apps.x);
+        }
+    }
 }
 
 #[test]
