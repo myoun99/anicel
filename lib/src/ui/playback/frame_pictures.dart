@@ -955,7 +955,6 @@ FrameDrawing _overTheFilm(StackedFrame frame, FramePicture? Function() film) {
   final whole = frame.drawing;
   return (
     extent: whole.extent,
-    outside: whole.outside,
     draw: (canvas) {
       final under = film();
       final ghosts = frame.whereTheGhostsShow;
@@ -1040,7 +1039,6 @@ FrameDrawing _heldFirst(
   var cuts = false;
   return (
     extent: cutting.extent,
-    outside: cutting.outside,
     draw: (canvas) {
       if (cuts) {
         _drawnInALay(cutting, canvas);

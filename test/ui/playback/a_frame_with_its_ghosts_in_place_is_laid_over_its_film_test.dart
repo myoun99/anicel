@@ -452,7 +452,6 @@ void main() {
       final poisoned = besideThe(session);
       await poisoned.store.lay(poisoned.keyOf(film), (
         extent: wholePicture.$1,
-        outside: const ui.Color(0x00000000),
         draw: (canvas) => canvas.drawColor(
           const ui.Color(0xFFFF0000),
           ui.BlendMode.src,

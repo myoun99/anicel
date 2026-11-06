@@ -32,17 +32,17 @@ typedef _PictureRead = ({ui.Image image, ui.Rect from, ui.Rect to});
 /// A frame as its compositor gives it to [FramePictureStore.lay]: [draw]
 /// draws it in world coordinates over all of [extent] as the canvas's
 /// display buffer holds it — the paper and every row, and clear wherever
-/// neither lays anything — and the world outside [extent] is [outside].
+/// neither lays anything — and the world outside [extent] is clear.
 ///
 /// 🚨Not opaque past the paper (one-picture-per-frame, 2026-10-24): the
 /// pasteboard's colour is laid under a frame by whoever shows it — a track
 /// stack lays it under its stage track alone and lets the tracks over that
 /// one show through — so a picture holding it would be one view's. The
-/// compositor's [outside] is clear for the same reason
-/// (`StackedFrame`).
+/// world past [extent] is clear for the same reason (`StackedFrame`).
+/// ↩️A frame carried a colour for it, white at first, then clear always
+/// (`558bce4d8`), until the colour went (11-06).
 typedef FrameDrawing = ({
   ui.Rect extent,
-  ui.Color outside,
   void Function(ui.Canvas canvas) draw,
 });
 
@@ -51,9 +51,8 @@ typedef FrameDrawing = ({
 /// 개선 + 법 통일까지가 목표」): the frame composited, kept where it stands
 /// — an edit is written INTO it, never a new picture beside it.
 ///
-/// The consumer draws [image] where [extent] lies in the world and paints
-/// the world outside [extent] [outside] — nothing else: no patch is ever
-/// drawn over it.
+/// The consumer draws [image] where [extent] lies in the world and nothing
+/// past it — nothing else: no patch is ever drawn over it.
 ///
 /// 🔁ZOOMED OUT IT IS DRAWN WITH ITS OWN MIP CHAIN — `FilterQuality.medium`
 /// at or under 50%. The engine gives every picture it rasters a whole chain
@@ -82,7 +81,7 @@ typedef FrameDrawing = ({
 /// 진짜 비상사태」; 1079 from its second stroke, every stroke from 1080).
 /// Every runner and Windows draw the whole screen each frame, which hid it.
 class FramePicture extends ChangeNotifier {
-  FramePicture._(this._image, this._extent, this.outside);
+  FramePicture._(this._image, this._extent);
 
   /// The deepest level a screen has read of this picture since its patches
   /// last paused — how far down a write lays ([readAt]).
@@ -108,9 +107,6 @@ class FramePicture extends ChangeNotifier {
   /// Where [image] lies in the world — whole pixels, at least what was laid.
   ui.Rect get extent => _extent;
   ui.Rect _extent;
-
-  /// The frame's colour everywhere outside [extent].
-  final ui.Color outside;
 
   /// Tells the picture that a screen draws it at [displayScale], before the
   /// screen asks for a step: a write lays the levels a screen reads
@@ -744,7 +740,7 @@ class FramePictureStore<K extends Object> {
       return _laid(
         lay.key,
         _Entry<K>(
-          FramePicture._(image, extent, lay.frame.outside),
+          FramePicture._(image, extent),
           held: held,
           levels: held == null ? 1 : _gpu.levelsOf(held),
           patchedLevels: patchedLevels,
@@ -752,7 +748,7 @@ class FramePictureStore<K extends Object> {
       );
     }
     final entry = _Entry<K>(
-      FramePicture._(_gpu.imageOf(allocated), extent, lay.frame.outside),
+      FramePicture._(_gpu.imageOf(allocated), extent),
       held: allocated,
       levels: _gpu.levelsOf(allocated),
       patchedLevels: patchedLevels,

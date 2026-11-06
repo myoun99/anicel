@@ -1184,20 +1184,13 @@ class _FramePicturePainter extends CustomPainter {
   }
 
   /// The picture as its store says it is drawn ([FramePicture]): its image
-  /// where its extent lies, and the world outside it its colour.
+  /// where its extent lies, and nothing past it.
   void _paintPicture(Canvas canvas, FramePicture picture, ui.Image image) {
-    final extent = picture.extent;
-    if (picture.outside.a != 0) {
-      canvas.save();
-      canvas.clipRect(extent, clipOp: ui.ClipOp.difference);
-      canvas.drawPaint(Paint()..color = picture.outside);
-      canvas.restore();
-    }
     drawOnTheDisplay(
       canvas,
       image,
       Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
-      extent,
+      picture.extent,
       viewport: viewport,
       devicePixelRatio: devicePixelRatio,
     );

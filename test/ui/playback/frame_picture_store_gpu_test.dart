@@ -60,7 +60,6 @@ void main() {
       const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
       final patched = await store.lay('before', (
         extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: frame,
       ));
       final untouched = await _levels(patched!.image);
@@ -76,7 +75,6 @@ void main() {
 
       final fresh = await store.lay('fresh', (
         extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: withPatch,
       ));
       final want = await _levels(fresh!.image);
@@ -130,7 +128,6 @@ void main() {
       const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
       final widened = await store.lay('before', (
         extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: frame,
       ));
       // The way a stroke goes: a step in it first, its levels waiting.
@@ -162,7 +159,6 @@ void main() {
 
       final fresh = await store.lay('fresh', (
         extent: widened.extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: (canvas) {
           pastWithPatch(canvas);
           canvas
@@ -208,7 +204,6 @@ void main() {
       };
       final patched = await store.lay('0', (
         extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: frame,
       ));
       for (final (index, (rect, _)) in strokes.indexed) {
@@ -228,7 +223,6 @@ void main() {
 
       final fresh = await store.lay('fresh', (
         extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: upTo(strokes.length),
       ));
       final want = await _levels(fresh!.image);
@@ -257,7 +251,6 @@ void main() {
         final store = FramePictureStore<String>();
         final behind = await store.lay('before', (
           extent: extent,
-          outside: const ui.Color(0xFFFFFFFF),
           draw: frame,
         ));
         behind!.readAt(toldAt);
@@ -265,7 +258,6 @@ void main() {
         await store.landingOf('after');
         final fresh = await store.lay('fresh', (
           extent: extent,
-          outside: const ui.Color(0xFFFFFFFF),
           draw: withPatch,
         ));
         final apart = _mostApart(
@@ -316,7 +308,6 @@ void main() {
       const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
       final picture = await store.lay('before', (
         extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: frame,
       ));
       // What a screen drew: a handle of its own on the image it was.
@@ -356,7 +347,6 @@ void main() {
       const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
       final picture = await store.lay('before', (
         extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
         draw: frame,
       ));
       final drawn = picture!.image;
@@ -412,7 +402,6 @@ void main() {
       final store = FramePictureStore<String>(onceSide: 512, pieceSide: 512);
       final laid = await store.lay('a', (
         extent: extent,
-        outside: const ui.Color(0x00000000),
         draw: across,
       ));
       final recorded = recordedOver(extent, across);

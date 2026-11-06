@@ -29,7 +29,7 @@ void main() {
   const white = ui.Color(0xFFFFFFFF);
   void fill(ui.Canvas canvas) => canvas.drawPaint(ui.Paint()..color = red);
   FrameDrawing over(ui.Rect extent) =>
-      (extent: extent, outside: white, draw: fill);
+      (extent: extent, draw: fill);
 
   test('a picture is laid over its extent widened out to the grid of the '
       'world every level a canvas reads halves on', () async {
@@ -42,7 +42,6 @@ void main() {
       over(const ui.Rect.fromLTRB(0.5, 0.5, 1000.7, 300.5)),
     );
     expect(picture!.extent, const ui.Rect.fromLTWH(0, 0, 1024, 384));
-    expect(picture.outside, white);
     expect(gpu.rendered, [(1024, 384)]);
     expect(store.peek('a'), same(picture));
     expect(store.peek('b'), isNull);
@@ -209,7 +208,6 @@ void main() {
 
         final picture = (await store.lay('a', (
           extent: paper,
-          outside: const ui.Color(0xFFFFFFFF),
           draw: draw,
         )))!;
 
@@ -1852,7 +1850,6 @@ void main() {
       /// [name]'s frame, noted in [order] at each draw of it.
       FrameDrawing noted(List<String> order, String name, ui.Rect extent) => (
         extent: extent,
-        outside: white,
         draw: (canvas) {
           order.add(name);
           fill(canvas);
@@ -2090,7 +2087,6 @@ void main() {
       var drawn = 0;
       final throwing = store.lay('a', (
         extent: extent,
-        outside: white,
         draw: (canvas) {
           drawn += 1;
           gpu.rendersThrow = drawn == 2 ? StateError('a piece') : null;
@@ -2438,7 +2434,6 @@ Future<FramePicture> _layed(
   int side,
 ) async => (await store.lay(key, (
   extent: ui.Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
-  outside: const ui.Color(0xFFFFFFFF),
   draw: (canvas) =>
       canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFF0000FF)),
 )))!;

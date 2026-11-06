@@ -337,7 +337,7 @@ enum NodesKept {
 /// The extent is what the buffer covers with the whole pasteboard in view:
 /// the page and every row's content.
 ///
-/// 🚨[FrameDrawing.outside] IS NOTHING, and the picture holds what the
+/// 🚨PAST ITS EXTENT A FRAME IS NOTHING, and the picture holds what the
 /// buffer holds past the paper — what the rows lay over no paper, as they
 /// lay it. A screen lays its pasteboard under the buffer, in a colour each
 /// view sets for itself (`BrushCanvasPanel.pasteboardColor`); laid into the
@@ -459,7 +459,6 @@ final class StackedFrame {
   /// a stroke grows what the live row covers.
   FrameDrawing get drawing => (
     extent: _LayerStackPaintPass(_painter).frameExtent(),
-    outside: const ui.Color(0x00000000),
     // A pass per paint, as the painter's own: its geometry is read once.
     draw: (canvas) => _LayerStackPaintPass(_painter).paintFrame(canvas),
   );
