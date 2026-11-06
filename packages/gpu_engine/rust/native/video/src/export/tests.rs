@@ -227,6 +227,23 @@ fn the_movie_is_the_c_s_but_for_its_clock() {
     }
 }
 
+// The bitrate by hand: an encoder spends what a small frame needs whatever
+// it is offered, so the movies above cannot see the ceiling move.
+#[test]
+fn a_bitrate_stays_between_its_floor_and_ceiling() {
+    use super::bitrate;
+    for (what, (named, width, height, fps_num, fps_den), want) in [
+        ("named past the ceiling", (80_000_000, 64, 64, 24, 1), 50_000_000),
+        ("named under the floor", (1_000_000, 64, 64, 24, 1), 2_000_000),
+        ("named in between", (3_000_000, 64, 64, 24, 1), 3_000_000),
+        ("0.12 bits a pixel a frame", (0, 1000, 1000, 25, 1), 3_000_000),
+        ("a small frame at the floor", (0, 64, 48, 24, 1), 2_000_000),
+        ("4K at 60 at the ceiling", (0, 3840, 2160, 60, 1), 50_000_000),
+    ] {
+        assert_eq!(bitrate(named, width, height, fps_num, fps_den), want, "{what}");
+    }
+}
+
 #[test]
 fn what_this_machine_can_write_is_the_c_s_answer() {
     let _one = one_at_a_time();

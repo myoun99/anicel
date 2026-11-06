@@ -107,14 +107,16 @@ fn a_frame_reads_back_through_both_strides() {
 }
 
 // Limited range: 16 is black and 235 white — a converter written for full
-// range answers 0 and 255 to other inputs. And a colour off every axis, so
-// each coefficient is asked.
+// range answers 0 and 255 to other inputs. And colours off every axis: the
+// last is one where each coefficient, one off, moves an answer (a mutant
+// run found the middle one let three of them through).
 #[test]
 fn studio_values_become_their_colour() {
     for ([luma, cb, cr], want) in [
         ([16, 128, 128], [0, 0, 0]),
         ([235, 128, 128], [255, 255, 255]),
         ([123, 91, 175], [200, 101, 50]),
+        ([45, 181, 141], [55, 2, 141]),
     ] {
         let frame = [luma, luma, luma, luma, cb, cr];
         let mut rgba = [0u8; 2 * 2 * 4];
