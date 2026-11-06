@@ -25,20 +25,31 @@
 const MATRIX_ROW_WORDS: u32 = 5u;
 
 // The matrix at `at` over a straight RGBA8 word (A<<24|B<<16|G<<8|R).
+//
+// ⛔NO ARRAY THE LOOP INDEXES: a row is the two sums above as dot products
+// over the pixel's bytes as a vec4, its translation's halves added beside.
+// The array this replaced, read at the column's loop variable, cost a 1080p
+// row through a matrix 62.5 µs over one through none; this costs it 22.6
+// (RTX 4080, DX12, GPU timestamps, 11-06; 캔버스 베이스 ·
+// 브러시/렌더링 on gpu-canonical-store). The bytes are the same and only the
+// time differs, so no test sees it.
 fn matrix_rgba8(at: u32, texel: u32) -> u32 {
-  // The pixel's bytes, then the 1 a row's translation multiplies.
-  var bytes = array<u32, 5>(
-    texel & 0xffu, (texel >> 8u) & 0xffu, (texel >> 16u) & 0xffu, texel >> 24u, 1u,
+  let bytes = vec4<u32>(
+    texel & 0xffu, (texel >> 8u) & 0xffu, (texel >> 16u) & 0xffu, texel >> 24u,
   );
   var word = 0u;
   for (var row = 0u; row < 4u; row += 1u) {
-    var whole = 0i;
-    var part = 0u;
-    for (var column = 0u; column < MATRIX_ROW_WORDS; column += 1u) {
-      let m = matrix_word(at + row * MATRIX_ROW_WORDS + column);
-      whole += (bitcast<i32>(m) >> 16u) * i32(bytes[column]);
-      part += (m & 0xffffu) * bytes[column];
-    }
+    let first = at + row * MATRIX_ROW_WORDS;
+    let m = vec4<u32>(
+      matrix_word(first),
+      matrix_word(first + 1u),
+      matrix_word(first + 2u),
+      matrix_word(first + 3u),
+    );
+    let t = matrix_word(first + 4u);
+    let high = bitcast<vec4<i32>>(m) >> vec4<u32>(16u);
+    let whole = dot(high, vec4<i32>(bytes)) + (bitcast<i32>(t) >> 16u);
+    let part = dot(m & vec4<u32>(0xffffu), bytes) + (t & 0xffffu);
     let channel = clamp(whole + i32((part + 0x8000u) >> 16u), 0, 255);
     word |= u32(channel) << (row * 8u);
   }
