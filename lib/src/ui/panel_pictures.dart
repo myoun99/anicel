@@ -104,8 +104,7 @@ class PanelPictures {
     if (picture != null) {
       drawFramePicture(
         canvas,
-        image!,
-        picture.extent,
+        (image: image!, extent: picture.extent),
         viewport: onTheRaster,
         devicePixelRatio: 1,
       );

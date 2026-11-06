@@ -1104,11 +1104,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   }
 }
 
-/// [image], a frame's picture over [extent] ([FramePicture]), where
-/// [viewport] lays the canvas on a screen of [devicePixelRatio]: through
-/// the snapped view every canvas-space painter draws through
+/// [picture], a frame's picture's image over its extent ([FramePicture]),
+/// where [viewport] lays the canvas on a screen of [devicePixelRatio]:
+/// through the snapped view every canvas-space painter draws through
 /// ([applyViewportTransform]), resampled by the display's law
-/// ([drawOnTheDisplay]), nothing past [extent].
+/// ([drawOnTheDisplay]), nothing past its extent.
 ///
 /// 🚨★★★A CONTE PICTURE'S PRINT IS DRAWN BY THIS, AS ITS LIVE ONE IS
 /// (conte-picture-print-and-live-part-at-edges, 유저 11-07 「0 으로
@@ -1122,11 +1122,11 @@ class _FramePictureViewState extends State<FramePictureView> {
 /// slanted line in the shot.
 void drawFramePicture(
   Canvas canvas,
-  ui.Image image,
-  Rect extent, {
+  ({ui.Image image, Rect extent}) picture, {
   required CanvasViewport viewport,
   required double devicePixelRatio,
 }) {
+  final (:image, :extent) = picture;
   canvas.save();
   applyViewportTransform(canvas, viewport, devicePixelRatio: devicePixelRatio);
   drawOnTheDisplay(
@@ -1205,8 +1205,7 @@ class _FramePicturePainter extends CustomPainter {
     if (shown case (:final picture, :final image)) {
       drawFramePicture(
         canvas,
-        image,
-        picture.extent,
+        (image: image, extent: picture.extent),
         viewport: viewport,
         devicePixelRatio: devicePixelRatio,
       );

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/sheet_marks.dart';
 import '../../services/cel_surface_as_shown.dart';
@@ -87,19 +88,6 @@ class ContePictureLive extends StatelessWidget {
       raster.width / effectiveRatio,
       raster.height / effectiveRatio,
     );
-    // The canvas on the raster as its print lays it there, in the box's
-    // logical pixels.
-    final onTheRaster = CanvasZoomScale(effectiveRatio).fromDevice(
-      panelViewOnRaster(
-        panelView(
-          session,
-          picture.cut,
-          picture.frame,
-          picture.mark.canvasRegion,
-        ),
-        raster,
-      ),
-    );
     final laid = pictureLaid(picture.mark, viewport);
     return ClipPath(
       clipper: _shotOf(picture),
@@ -124,29 +112,45 @@ class ContePictureLive extends StatelessWidget {
                 laid,
                 effectiveRatio,
               ),
-              child: _composite(picture, onTheRaster),
+              child: _composite(picture, _onTheRaster(picture, raster)),
             ),
           ),
-          // 🚨Written again only where the live one covers what the page
-          // wrote: inside its shot (conte-picture-print-and-live-part-at-
-          // edges). ↩️Over the whole page, a moving camera's frames were
-          // written twice wherever they ran past the shot's last whole
-          // pixel — 🔬30–58 levels darker along their lines with the brush
-          // on.
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _CameraWork(
-                marks: picture.cameraWork,
-                viewport: viewport,
-                effectiveRatio: effectiveRatio,
-                paper: paper,
-              ),
-            ),
-          ),
+          Positioned.fill(child: _cameraWorkOf(picture)),
         ],
       ),
     );
   }
+
+  /// Where [picture]'s print lays the canvas on its [raster], in the box's
+  /// logical pixels ([panelViewOnRaster]).
+  CanvasViewport _onTheRaster(ContePicture picture, CanvasSize raster) =>
+      CanvasZoomScale(effectiveRatio).fromDevice(
+        panelViewOnRaster(
+          panelView(
+            session,
+            picture.cut,
+            picture.frame,
+            picture.mark.canvasRegion,
+          ),
+          raster,
+        ),
+      );
+
+  /// [picture]'s camera work written again over it, inside its shot.
+  ///
+  /// 🚨Only where the live one covers what the page wrote: inside its shot
+  /// (conte-picture-print-and-live-part-at-edges). ↩️Over the whole page, a
+  /// moving camera's frames were written twice wherever they ran past the
+  /// shot's last whole pixel — 🔬30–58 levels darker along their lines with
+  /// the brush on.
+  Widget _cameraWorkOf(ContePicture picture) => CustomPaint(
+    painter: _CameraWork(
+      marks: picture.cameraWork,
+      viewport: viewport,
+      effectiveRatio: effectiveRatio,
+      paper: paper,
+    ),
+  );
 
   /// What [picture]'s raster holds: the frame's ground, and its canvas
   /// composited where [onTheRaster] lays it — the canvas into the raster —
