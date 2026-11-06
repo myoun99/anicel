@@ -140,14 +140,20 @@ fn finished(
     tolerance: u32,
     (expand, anti_alias): (u32, bool),
 ) -> (Extent, Vec<Vec<u8>>) {
+    let whole = extent(0, 0, grid.0 * TILE, grid.1 * TILE);
+    finished_inside(grid, whole, colour, seed, tolerance, (expand, anti_alias))
+}
+
+fn finished_inside(
+    grid: (u32, u32),
+    inside: Extent,
+    colour: impl Fn(u32, u32) -> Rgba,
+    seed: (u32, u32),
+    tolerance: u32,
+    (expand, anti_alias): (u32, bool),
+) -> (Extent, Vec<Vec<u8>>) {
     let Rig { engine, flood, masks } = rig();
-    let whole = Extent {
-        left: 0,
-        top: 0,
-        right: grid.0 * TILE,
-        bottom: grid.1 * TILE,
-    };
-    let flooded = flooded(grid, whole, colour, seed, tolerance);
+    let flooded = flooded(grid, inside, colour, seed, tolerance);
     let Finished { mask, crop } =
         flood.finish(engine, masks, &flooded, expand, anti_alias).expect("a finish");
     let width = (crop.right - crop.left) as usize;
@@ -415,6 +421,14 @@ fn a_fill_is_finished_inside_the_picture_s_box() {
     let (crop, rows) = finished((2, 2), checker, (255, 255), 0, (1, true));
     assert_eq!(crop, extent(253, 253, 256, 256));
     assert_eq!(rows, [[0, 0, 36], [0, 73, 146], [36, 146, 182]]);
+}
+
+#[test]
+fn a_fill_s_crop_stops_at_the_picture_s_box_wherever_it_lies() {
+    let inside = extent(3, 5, 200, 100);
+    let (crop, rows) = finished_inside((2, 1), inside, |_, _| [0; 4], (100, 50), 0, (1, false));
+    assert_eq!(crop, inside);
+    assert!(rows.iter().all(|row| row.iter().all(|&byte| byte == 255)));
 }
 
 #[test]
