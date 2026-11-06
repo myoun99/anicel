@@ -266,10 +266,10 @@ fn inside([left, top, right, bottom]: [i32; 4], x: i32, y: i32) -> bool {
 }
 
 // Kept stages are made again on the tiles that read a change, down every
-// stage: a red stripe just right of the canvas's tile edge at x = 256, then
-// one just over its edge at y = 256 with another far from it, both marked
-// before the screen reads — each stripe read across stage 1's tile edge by
-// the tent's reach past it alone — leave every stage as stages made anew
+// stage: red stripes against stage 1's tile edges, each read across the
+// edge by the tent's reach past it alone — just right of x = 256; just over
+// y = 256 and just left of x = 256 far from it, both marked before the
+// screen reads; just under y = 256 — leave every stage as stages made anew
 // over the changed composite. A change not marked, on the tiles the last
 // stripe was made again on, leaves every stage as it was: the stages over
 // it are kept, not made again.
@@ -280,7 +280,11 @@ fn a_kept_stage_is_made_again_where_the_composite_changed() {
     let mut pixel: Box<dyn Fn(i32, i32) -> u32> = Box::new(noise(71));
     let (pages, set, _) = composite_of(&pixel, CANVAS);
     drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
-    let rounds = [vec![[256, 120, 258, 200]], vec![[100, 254, 200, 256], [400, 20, 402, 60]]];
+    let rounds = [
+        vec![[256, 120, 258, 200]],
+        vec![[100, 254, 200, 256], [254, 20, 256, 60]],
+        vec![[300, 256, 400, 258]],
+    ];
     for stripes in rounds {
         for stripe in &stripes {
             let (before, stripe) = (pixel, *stripe);
@@ -296,7 +300,7 @@ fn a_kept_stage_is_made_again_where_the_composite_changed() {
         assert!(stage_bytes(&kept) == stage_bytes(&anew), "{stripes:?}");
     }
     let made = stage_bytes(&kept);
-    let unmarked = move |x, y| if inside([420, 40, 440, 60], x, y) { 0 } else { pixel(x, y) };
+    let unmarked = move |x, y| if inside([420, 260, 440, 280], x, y) { 0 } else { pixel(x, y) };
     let (pages, set, _) = composite_of(unmarked, CANVAS);
     let canvas = Tiles { pages: &pages, set: &set };
     drop(shown(&mut kept, canvas, far));
