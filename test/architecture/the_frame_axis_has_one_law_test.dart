@@ -53,13 +53,10 @@ void main() {
       1,
       'the window bucket\'s span — a repaint cadence, not a position',
     ),
-    'lib/src/ui/timeline/timeline_frame_rows_scroll_body.dart': (
+    'lib/src/ui/timeline/timeline_frame_geometry.dart': (
       1,
-      'the window bucket\'s span',
-    ),
-    'lib/src/ui/timeline/xsheet_grid/xsheet_grid_frame_scroll.dart': (
-      1,
-      'the window bucket\'s span',
+      'the window bucket\'s span — the one window every grid lays its '
+          'rows in',
     ),
     'lib/src/ui/timeline/timeline_run_end_handles.dart': (
       1,

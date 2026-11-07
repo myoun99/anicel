@@ -10,6 +10,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart'
@@ -69,6 +70,15 @@ void main() {
     return Track(
       id: TrackId('t$t'),
       name: 'T$t',
+      // An fx chain on the track, its lanes open: the lane rows stand too.
+      effects: [
+        LayerEffect(
+          id: EffectId('fx'),
+          kind: EffectKind.brightnessContrast,
+          parameters: {'brightness': EffectParameter(value: 0.4)},
+        ),
+      ],
+      lanesExpanded: true,
       transitionLayer: createTrackTransitionLayer(TrackId('t$t')).copyWith(
         instructions: const {
           180: InstructionEvent(instructionId: 'ol', length: 8),
@@ -210,6 +220,36 @@ void main() {
     );
     await tester.pump();
     final before = await untilEveryRowIsAnImage(tester);
+    // A row that lost its still region would drop off the list above, not
+    // fail it: each kind is looked for under its own key.
+    for (var t = 0; t < 2; t += 1) {
+      for (final row in [
+        'storyboard-camera-row-t$t',
+        'storyboard-transition-row-t$t',
+        'storyboard-se-row-$t-1',
+        'storyboard-se-row-$t-2',
+        'storyboard-track-timeline-area-t$t',
+        'storyboard-conte-row-t$t',
+        'storyboard-track-lane-row-$t-',
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byWidgetPredicate(
+              (widget) => switch (widget.key) {
+                ValueKey<String>(:final value) =>
+                  row.endsWith('-') ? value.startsWith(row) : value == row,
+                _ => false,
+              },
+            ),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is StillRaster && widget.debugLabel == 'row',
+            ),
+          ),
+          findsAtLeastNWidgets(1),
+          reason: '⛔premise: $row stands as an image of its own',
+        );
+      }
+    }
     expect(
       find.byType(TimelineBlockEdgeGrip),
       findsAtLeastNWidgets(8),
