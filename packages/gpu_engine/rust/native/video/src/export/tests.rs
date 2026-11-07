@@ -579,10 +579,12 @@ fn every_box_size_iso_bmff_writes_is_walked() {
 }
 
 // VideoToolbox's note by hand, since no writer on this machine puts one in:
-// an SEI unit of two messages — the note, with a 0x03 in its user data, then
-// a recovery point — an SEI unit noted under another UUID, and a slice, in
-// H.264 and in HEVC, each read through a sample entry as a movie holds it;
-// and units that do not fit.
+// an SEI unit of two messages — the note, its user data holding a 0x03 the
+// encoder put after two zeros and one of the data's own after it, then a
+// recovery point — an SEI unit of the note's UUID under the payloadType
+// 255 + 5 and of another UUID under 5, and a slice, in H.264 and in HEVC,
+// each the one sample of a track as a movie holds it; and units that do not
+// fit.
 #[test]
 fn video_toolbox_s_note_and_only_it_is_taken_out() {
     let sized = |bytes: &[u8]| [&(bytes.len() as u32 + 4).to_be_bytes()[..], bytes].concat();
@@ -590,18 +592,28 @@ fn video_toolbox_s_note_and_only_it_is_taken_out() {
     for (format, config, at, sei, slice) in
         [(b"avc1", b"avcC", 4, &[0x06][..], &[0x65][..]), (b"hvc1", b"hvcC", 21, &[0x4e, 0x01][..], &[0x26, 0x01][..])]
     {
+        let sample = |user_data: &[u8]| {
+            let noted = [&[5, 22][..], &NOTE, user_data, &[6, 1, 0x84, 0x80]].concat();
+            let others = [&[0xff, 5, 18][..], &NOTE, &[0xaa, 0xbb, 5, 18], &[0x11; 16], &[0xaa, 0xbb, 0x80]].concat();
+            [unit(sei, &noted), unit(sei, &others), unit(slice, &[0x88, 0x84, 0x00, 0x00, 0x03, 0x01])].concat()
+        };
+        let written = sample(&[0x01, 0x00, 0x00, 0x03, 0x03, 0xc3, 0xdc]);
+        // The sample first, at 0, then its track.
         let mut configuration = vec![0; at + 1];
         configuration[at] = 0xff;
         let entry = sized(&[&format[..], &[0; 78], &sized(&[&config[..], &configuration].concat())].concat());
-        let coding = Coding::of(&entry, children(&entry, 0, entry.len()).unwrap()[0], &String::from_utf8_lossy(format)).unwrap().unwrap();
-        let sample = |user_data: &[u8]| {
-            let noted = [&[5, 22][..], &NOTE, user_data, &[6, 1, 0x84, 0x80]].concat();
-            let elsewhere = [&[5, 18][..], &[0x11; 16], &[0xaa, 0xbb, 0x80]].concat();
-            [unit(sei, &noted), unit(sei, &elsewhere), unit(slice, &[0x88, 0x84, 0x00, 0x00, 0x03, 0x01])].concat()
-        };
-        let mut taken = sample(&[0x01, 0x00, 0x00, 0x03, 0x00, 0xc3, 0xdc]);
-        assert_eq!(take_out_notes(&mut taken, &coding), Ok(1), "{format:?}");
-        assert_eq!(hex(&taken), hex(&sample(&[0; 7])), "{format:?}");
+        let table = [
+            sized(&[&b"stsd"[..], &[0, 0, 0, 0, 0, 0, 0, 1], &entry].concat()),
+            sized(&[&b"stsz"[..], &[0; 8], &1u32.to_be_bytes(), &(written.len() as u32).to_be_bytes()].concat()),
+            sized(&[&b"stco"[..], &[0; 4], &1u32.to_be_bytes(), &[0; 4]].concat()),
+            sized(&[&b"stsc"[..], &[0; 4], &[0, 0, 0, 1], &[0, 0, 0, 1], &[0, 0, 0, 1], &[0, 0, 0, 1]].concat()),
+        ]
+        .concat();
+        let trak = sized(&[&b"trak"[..], &sized(&[&b"mdia"[..], &sized(&[&b"minf"[..], &sized(&[&b"stbl"[..], &table].concat())].concat())].concat())].concat());
+        let movie = [&written[..], &trak].concat();
+        let read = track(&movie, children(&movie, written.len(), movie.len()).unwrap()[0]).unwrap();
+        assert_eq!((read.format.as_str(), read.notes), (std::str::from_utf8(format).unwrap(), 1));
+        assert_eq!(hex(&read.samples), hex(&sample(&[0; 7])), "{format:?}");
     }
     let h264 = Coding { length: 4, header: 1, sei: &[6] };
     for (mut sample, why) in [
