@@ -133,6 +133,9 @@ fn a_pool_makes_no_page_past_its_bytes() {
     assert_eq!(pool.pages().len(), 2);
     pool.release(first).expect("release");
     assert_eq!(pool.fresh(engine, b), Ok(at(0, 0)));
+    let mut none = Pool::new(engine, 0).expect("pool");
+    let cel = none.cel();
+    assert_eq!(none.fresh(engine, cel), Err(Full), "given no bytes, it makes no page");
 }
 
 // Where the OS says the budget it gives this process, a page more keeps

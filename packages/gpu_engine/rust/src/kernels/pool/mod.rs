@@ -173,6 +173,8 @@ impl Pool {
             self.pages[page].cel = Some(cel);
             return Ok(page);
         }
+        // ⚠️No test lowers the budget the OS gives: `fits` is tried on the
+        // numbers instead.
         let memory = platform::video_memory(&engine.adapter);
         if self.pages.len() >= self.most_pages || !self.fits(memory) {
             return Err(Full);
