@@ -574,32 +574,49 @@ bool runHasEnded(File ticket) {
 /// folders stayed with them, their `tearDownAll` never reached.
 ///
 /// So the child is started with this folder as its temp ([environment]) —
-/// everything it and its children make lands inside — and the tool removes
+/// everything it and its children make lands inside — and the tool empties
 /// it when the child ends ([end]). A tool that was killed first cannot; the
-/// next one to [take] a folder removes it once its lock can be taken
+/// next run to [take] the folder empties it first, under its lock, and a
+/// folder whose checkout is gone is removed once its lock can be taken
 /// ([sweepEndedRunTemps]), the law [runHasEnded] keeps for a ticket.
+///
+/// ⛔ONE NAME PER CHECKOUT, NOT PER RUN (관제 2026-11-07 23:56,
+/// connection-round-checklist): the hooks runner keeps a build hook's last
+/// build only while TMP, TEMP and TMPDIR are what they were (its cache key,
+/// `dependencies.dependencies_hash_file.json`), and a folder named for each
+/// run (`4408b2347`) made every `flutter test` run every hook again — the
+/// GPU engine's, pdfium's, sqlite3's, objective_c's. So the folder is named
+/// for the checkout the child runs in, the same each run, and a second run
+/// of that checkout at once takes the next number ([take]).
 class RunTemp {
   RunTemp._(this.folder, this._lock);
 
-  /// Makes a folder in [parent] — the system temp unless a test names one —
-  /// and holds its lock until [end], after removing every folder there
-  /// whose run has ended.
-  factory RunTemp.take({Directory? parent, DateTime? now}) {
+  /// Takes the first free folder in [parent] — the system temp unless a test
+  /// names one — of the checkout at [where] (the folder the child runs in),
+  /// empties it of what a killed run left, and holds its lock until [end];
+  /// first it removes every folder there whose run has ended and whose
+  /// checkout is gone.
+  factory RunTemp.take({Directory? parent, DateTime? now, String? where}) {
     final at = parent ?? Directory.systemTemp;
+    final checkout = where ?? Directory.current.path;
     sweepEndedRunTemps(at, now: now);
-    final folder = Directory(
-      '${at.path}${Platform.pathSeparator}'
-      '$kRunTempPrefix${pid}_${DateTime.now().microsecondsSinceEpoch}',
-    );
-    // The lock lands before the folder holds anything, as a room's does
-    // (`SessionScratch.ensureThisRunsFolder`).
-    final lock = File('${folder.path}/$kRunTempLock')
-      ..createSync(recursive: true);
-    final handle = lock.openSync(mode: FileMode.append);
-    handle.lockSync(FileLock.exclusive);
-    handle.writeStringSync('$pid\n');
-    return RunTemp._(folder, handle);
+    for (var number = 0; ; number++) {
+      final folder = Directory(
+        '${at.path}${Platform.pathSeparator}${runTempName(checkout, number)}',
+      );
+      // ⚠️On POSIX a lock is the process's: this process would take a
+      // folder it holds already.
+      if (_heldHere.contains(folder.path)) continue;
+      final handle = _lockOrNull(File('${folder.path}/$kRunTempLock'));
+      if (handle == null) continue;
+      _heldHere.add(folder.path);
+      File('${folder.path}/$kRunTempWhere').writeAsStringSync(checkout);
+      final temp = RunTemp._(folder, handle).._empty();
+      return temp;
+    }
   }
+
+  static final _heldHere = <String>{};
 
   final Directory folder;
   final RandomAccessFile _lock;
@@ -612,27 +629,85 @@ class RunTemp {
     'TMPDIR': folder.path,
   };
 
-  /// The child has ended: the folder goes, and what will not go yet (a
-  /// handle not let go of) goes with the next [sweepEndedRunTemps].
+  /// The child has ended: what it made goes, under the lock — the folder
+  /// stays for the checkout's next run, and what will not go yet (a handle
+  /// not let go of) goes when that run takes it.
   void end() {
+    _empty();
     try {
       _lock.unlockSync();
       _lock.closeSync();
     } on Object {
       // Closed already.
     }
-    _deleteFolderQuietly(folder);
+    _heldHere.remove(folder.path);
   }
+
+  void _empty() {
+    final List<FileSystemEntity> entries;
+    try {
+      entries = folder.listSync(followLinks: false);
+    } on FileSystemException {
+      return;
+    }
+    for (final entity in entries) {
+      final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
+      if (name == kRunTempLock || name == kRunTempWhere) continue;
+      try {
+        entity.deleteSync(recursive: true);
+      } on FileSystemException {
+        // A handle not let go of yet: the next run of this folder asks again.
+      }
+    }
+  }
+}
+
+/// The lock at [lock], held — or null when another run holds it (on Windows
+/// the open itself is refused, on POSIX the lock is).
+RandomAccessFile? _lockOrNull(File lock) {
+  RandomAccessFile? handle;
+  try {
+    // The lock lands before the folder holds anything, as a room's does
+    // (`SessionScratch.ensureThisRunsFolder`).
+    lock.createSync(recursive: true);
+    handle = lock.openSync(mode: FileMode.append);
+    handle.lockSync(FileLock.exclusive);
+    handle.writeStringSync('$pid\n');
+    return handle;
+  } on FileSystemException {
+    try {
+      handle?.closeSync();
+    } on Object {
+      // Never opened.
+    }
+    return null;
+  }
+}
+
+/// The folder [RunTemp.take] names for the checkout at [where]: its folder's
+/// name, made safe for a file name, and [number].
+String runTempName(String where, int number) {
+  final name = where
+      .replaceAll(r'\', '/')
+      .split('/')
+      .lastWhere((s) => s.isNotEmpty, orElse: () => 'root');
+  final safe = name.replaceAll(RegExp('[^A-Za-z0-9._-]'), '_');
+  return '$kRunTempPrefix${safe}_$number';
 }
 
 const kRunTempPrefix = 'qa_tmp_';
 const kRunTempLock = 'run.lock';
 
+/// The checkout a [RunTemp] folder was last taken for.
+const kRunTempWhere = 'where.txt';
+
 /// Removes every [RunTemp] folder in [parent] whose run has [ended] — its
-/// lock can be taken, or it never got one. ⛔Never one younger than
-/// [kTicketSettles] (it may be between being made and being locked) or one
-/// of this process: on POSIX a lock is the process's, so this process could
-/// take its own.
+/// lock can be taken, or it never got one — and whose checkout is gone, or
+/// was never written (a folder of a run named before [runTempName]). A
+/// folder of a checkout that lives stays: its next run empties it. ⛔Never
+/// one younger than [kTicketSettles] (it may be between being made and
+/// being locked) or one this process holds: on POSIX a lock is the
+/// process's, so this process could take its own.
 void sweepEndedRunTemps(
   Directory parent, {
   DateTime? now,
@@ -649,7 +724,7 @@ void sweepEndedRunTemps(
     if (entity is! Directory) continue;
     final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
     if (!name.startsWith(kRunTempPrefix) ||
-        name.startsWith('$kRunTempPrefix${pid}_')) {
+        RunTemp._heldHere.contains(entity.path)) {
       continue;
     }
     final DateTime made;
@@ -659,8 +734,17 @@ void sweepEndedRunTemps(
       continue;
     }
     if (at.difference(made) < kTicketSettles) continue;
+    if (_checkoutLives(File('${entity.path}/$kRunTempWhere'))) continue;
     if (!ended(File('${entity.path}/$kRunTempLock'))) continue;
     _deleteFolderQuietly(entity);
+  }
+}
+
+bool _checkoutLives(File where) {
+  try {
+    return Directory(where.readAsStringSync()).existsSync();
+  } on FileSystemException {
+    return false;
   }
 }
 
