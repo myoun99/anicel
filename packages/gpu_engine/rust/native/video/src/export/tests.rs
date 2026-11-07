@@ -246,10 +246,136 @@ fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Result<Opt
 
 /// A track as its writer laid it: the four letters its sample entry names
 /// (`avc1`, `mp4a`, `apcn` …) and its samples in order — its sample sizes,
-/// laid along its chunks.
+/// laid along its chunks, with VideoToolbox's notes taken out ([`NOTE`]),
+/// and how many it held.
 struct Track {
     format: String,
     samples: Vec<u8>,
+    notes: usize,
+}
+
+/// The UUID of the user data VideoToolbox writes into its H.264 and HEVC
+/// streams, 47564adc-5c4c-433f-94ef-c5113cd143a8: an SEI message of
+/// payloadType 5 (user data unregistered — a UUID, then bytes the standard
+/// leaves to whoever wrote them), which Apple names nowhere (developer
+/// forums thread 778196 asks what it holds and has no answer;
+/// github.com/PierceLBrooks/vtUudSeiNalCmake prints its UUID).
+///
+/// ↩️2026-11-07: ITS USER DATA IS TAKEN OUT; its UUID and size stay. Every
+/// H.264 and HEVC movie the Mac wrote parted from the C's at one place, and
+/// the C's own second movie parted from its first there too (bundle GPU CI
+/// 42366555125, `3845e935c`; 관제 11-07 20:30: 「a byte the C cannot match
+/// with itself cannot be asked of the Rust」). Measured there: two bytes,
+/// 49–50 of an H.264 track's samples and 50–51 of an HEVC one's — the one
+/// byte the HEVC NAL header is longer, so the first NAL unit, and the same
+/// bytes after it in both codecs, so none of either codec's own syntax —
+/// holding a count that rose 0x14 with every movie made, in the order they
+/// were made (C, Rust, C again; c3c8, c3dc, c3f0, then c404 for the next
+/// movie), on into the release run's process (c724). Read, not measured:
+/// the first unit is this SEI, its user data past the unit's size, its
+/// header, a byte each of payloadType and payloadSize, and the UUID — from
+/// byte 23 in H.264, 24 in HEVC — and the count is the user data's 27th and
+/// 28th bytes as written in both: a number the machine keeps across
+/// processes, rising with each encoder session, which no writer decides.
+/// The whole user data goes, not
+/// those two bytes: Apple names none of its fields, and a field cut from one
+/// run's bytes would be a guess. Each track says how many notes it held, so
+/// a movie whose notes are not where this says still parts, and says so.
+const NOTE: [u8; 16] = [0x47, 0x56, 0x4a, 0xdc, 0x5c, 0x4c, 0x43, 0x3f, 0x94, 0xef, 0xc5, 0x11, 0x3c, 0xd1, 0x43, 0xa8];
+
+/// How a track's samples are coded, for the codecs that carry SEI: the
+/// bytes each NAL unit's size takes, the bytes of its header, and its SEI
+/// unit types.
+struct Coding {
+    length: usize,
+    header: usize,
+    sei: &'static [u8],
+}
+
+impl Coding {
+    /// The coding `format`'s entry names, its sizes as long as its
+    /// configuration box says (the low two bits of `avcC`'s fifth byte,
+    /// `hvcC`'s twenty-second) — or none for a codec without SEI.
+    fn of(movie: &[u8], entry: Atom, format: &str) -> Result<Option<Coding>, String> {
+        let (kind, at, header, sei): (&[u8; 4], usize, usize, &'static [u8]) = match format {
+            "avc1" => (b"avcC", 4, 1, &[6]),
+            "hvc1" => (b"hvcC", 21, 2, &[39, 40]),
+            _ => return Ok(None),
+        };
+        // A visual sample entry's own fields, 78 bytes, before its boxes.
+        let config = find(movie, entry.body + 78, entry.until, &[kind])?.ok_or_else(|| format!("an {format} entry with no configuration"))?;
+        let length = usize::from(*movie.get(config.body + at).ok_or("a configuration too short to say its sizes")? & 3) + 1;
+        Ok(Some(Coding { length, header, sei }))
+    }
+
+    fn unit_type(&self, unit: &[u8]) -> u8 {
+        if self.header == 1 { unit[0] & 0x1f } else { unit[0] >> 1 & 0x3f }
+    }
+}
+
+/// Takes VideoToolbox's notes out of one coded sample, its NAL units each
+/// after its size; how many it took.
+fn take_out_notes(sample: &mut [u8], coding: &Coding) -> Result<usize, String> {
+    let mut notes = 0;
+    let mut at = 0;
+    while at < sample.len() {
+        let size = sample.get(at..at + coding.length).ok_or("a NAL unit's size runs past its sample")?;
+        let size = size.iter().fold(0, |size, &byte| size << 8 | usize::from(byte));
+        let unit = sample.get_mut(at + coding.length..at + coding.length + size).ok_or("a NAL unit runs past its sample")?;
+        if unit.len() > coding.header && coding.sei.contains(&coding.unit_type(unit)) {
+            notes += take_out_note(&mut unit[coding.header..])?;
+        }
+        at += coding.length + size;
+    }
+    Ok(notes)
+}
+
+/// Takes VideoToolbox's note out of one SEI unit's messages, as written
+/// (past its header): the note's user data is zeroed where it lies, the
+/// 0x03 the encoder put after two zeros in it along with it.
+fn take_out_note(written: &mut [u8]) -> Result<usize, String> {
+    // Where each byte of the messages lies as written: every 0x03 that
+    // follows two zeros is the encoder's, not the messages'.
+    let mut lies = Vec::new();
+    let mut zeros = 0;
+    for (at, &byte) in written.iter().enumerate() {
+        if zeros >= 2 && byte == 3 {
+            zeros = 0;
+            continue;
+        }
+        zeros = if byte == 0 { zeros + 1 } else { 0 };
+        lies.push(at);
+    }
+    let messages: Vec<u8> = lies.iter().map(|&at| written[at]).collect();
+    let mut notes = 0;
+    let mut at = 0;
+    // Message after message, up to the last byte's stop bit.
+    while messages.len() - at > 1 {
+        let (kind, after) = sei_number(&messages, at)?;
+        let (size, body) = sei_number(&messages, after)?;
+        let end = body + size;
+        let payload = messages.get(body..end).ok_or("an SEI message runs past its unit")?;
+        if kind == 5 && payload.len() > NOTE.len() && payload[..NOTE.len()] == NOTE {
+            written[lies[body + NOTE.len()]..=lies[end - 1]].fill(0);
+            notes += 1;
+        }
+        at = end;
+    }
+    Ok(notes)
+}
+
+/// An SEI message's type or size — 255 for each 0xff byte, then the byte
+/// that is not — and where what follows it starts.
+fn sei_number(messages: &[u8], mut at: usize) -> Result<(usize, usize), String> {
+    let mut number = 0;
+    loop {
+        let byte = *messages.get(at).ok_or("an SEI message runs past its unit")?;
+        number += usize::from(byte);
+        at += 1;
+        if byte != 0xff {
+            return Ok((number, at));
+        }
+    }
 }
 
 fn track(movie: &[u8], trak: Atom) -> Result<Track, String> {
@@ -259,10 +385,11 @@ fn track(movie: &[u8], trak: Atom) -> Result<Track, String> {
         let atom = find(movie, table.body, table.until, &[kind])?;
         Ok(atom.ok_or_else(|| format!("a sample table with no {}", String::from_utf8_lossy(kind)))?.body + 4)
     };
-    // The first entry's type, past the count of entries and the entry's own
-    // size.
-    let entries = fields(b"stsd")?;
-    let format = String::from_utf8_lossy(&movie[entries + 8..entries + 12]).into_owned();
+    // The first entry, past the version, the flags and the count of entries.
+    let stsd = find(movie, table.body, table.until, &[b"stsd"])?.ok_or("a sample table with no stsd")?;
+    let entry = *children(movie, stsd.body + 8, stsd.until)?.first().ok_or("a sample table with no entry")?;
+    let format = String::from_utf8_lossy(&entry.kind).into_owned();
+    let coding = Coding::of(movie, entry, &format)?;
     let sizes_at = fields(b"stsz")?;
     let uniform = be32(movie, sizes_at);
     let sizes: Vec<usize> =
@@ -273,12 +400,17 @@ fn track(movie: &[u8], trak: Atom) -> Result<Track, String> {
     let runs: Vec<(usize, usize)> =
         (0..be32(movie, runs_at)).map(|k| (be32(movie, runs_at + 4 + 12 * k), be32(movie, runs_at + 8 + 12 * k))).collect();
     let mut bytes = Vec::new();
+    let mut notes = 0;
     let mut sample = 0;
     for chunk in 0..be32(movie, chunks_at) {
         let per_chunk = runs.iter().take_while(|(first, _)| *first <= chunk + 1).last().ok_or("no run from chunk 1")?.1;
         let mut at = be32(movie, chunks_at + 4 + 4 * chunk);
         for size in sizes.get(sample..sample + per_chunk).ok_or("more samples in chunks than sizes")? {
+            let start = bytes.len();
             bytes.extend_from_slice(movie.get(at..at + size).ok_or_else(|| format!("a sample at {at} runs past the file"))?);
+            if let Some(coding) = &coding {
+                notes += take_out_notes(&mut bytes[start..], coding).map_err(|why| format!("the sample at {at}: {why}"))?;
+            }
             at += size;
         }
         sample += per_chunk;
@@ -286,11 +418,12 @@ fn track(movie: &[u8], trak: Atom) -> Result<Track, String> {
     if sample != sizes.len() {
         return Err(format!("{} of {} samples lie in a chunk", sample, sizes.len()));
     }
-    Ok(Track { format, samples: bytes })
+    Ok(Track { format, samples: bytes, notes })
 }
 
 /// A movie as its writer decides it: every box but the media data and the
-/// chunk tables, the clock taken out, and each track's samples in order.
+/// chunk tables, the clock taken out, and each track's samples in order,
+/// VideoToolbox's notes taken out ([`NOTE`]).
 ///
 /// The clock is the creation and modification times the muxer stamps into
 /// each `mvhd`, `tkhd` and `mdhd` — the seconds the file was finished in,
@@ -390,6 +523,9 @@ fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
         .collect();
     let mut again = None;
     for (k, (ours, theirs)) in ours.tracks.iter().zip(&theirs.tracks).enumerate() {
+        if ours.notes != theirs.notes {
+            apart.push(format!("{name}: track {k} ({}) holds {} VideoToolbox notes against the C's {}", ours.format, ours.notes, theirs.notes));
+        }
         let Some(at) = parted(&ours.samples, &theirs.samples) else {
             continue;
         };
@@ -404,10 +540,11 @@ fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
             Err(why) => format!("does not read — {why}"),
         };
         apart.push(format!(
-            "{name}: track {k} ({})'s samples, {} bytes against the C's {}, first apart at {at} — ours {}, the C's {}; the C's own second movie: {itself}",
+            "{name}: track {k} ({})'s samples, {} bytes against the C's {}, {} notes taken out, first apart at {at} — ours {}, the C's {}; the C's own second movie: {itself}",
             ours.format,
             ours.samples.len(),
             theirs.samples.len(),
+            theirs.notes,
             around(&ours.samples, at),
             around(&theirs.samples, at),
         ));
@@ -441,6 +578,42 @@ fn every_box_size_iso_bmff_writes_is_walked() {
     }
 }
 
+// VideoToolbox's note by hand, since no writer on this machine puts one in:
+// an SEI unit of two messages — the note, with a 0x03 in its user data, then
+// a recovery point — an SEI unit noted under another UUID, and a slice, in
+// H.264 and in HEVC, each read through a sample entry as a movie holds it;
+// and units that do not fit.
+#[test]
+fn video_toolbox_s_note_and_only_it_is_taken_out() {
+    let sized = |bytes: &[u8]| [&(bytes.len() as u32 + 4).to_be_bytes()[..], bytes].concat();
+    let unit = |header: &[u8], body: &[u8]| [&(header.len() as u32 + body.len() as u32).to_be_bytes()[..], header, body].concat();
+    for (format, config, at, sei, slice) in
+        [(b"avc1", b"avcC", 4, &[0x06][..], &[0x65][..]), (b"hvc1", b"hvcC", 21, &[0x4e, 0x01][..], &[0x26, 0x01][..])]
+    {
+        let mut configuration = vec![0; at + 1];
+        configuration[at] = 0xff;
+        let entry = sized(&[&format[..], &[0; 78], &sized(&[&config[..], &configuration].concat())].concat());
+        let coding = Coding::of(&entry, children(&entry, 0, entry.len()).unwrap()[0], &String::from_utf8_lossy(format)).unwrap().unwrap();
+        let sample = |user_data: &[u8]| {
+            let noted = [&[5, 22][..], &NOTE, user_data, &[6, 1, 0x84, 0x80]].concat();
+            let elsewhere = [&[5, 18][..], &[0x11; 16], &[0xaa, 0xbb, 0x80]].concat();
+            [unit(sei, &noted), unit(sei, &elsewhere), unit(slice, &[0x88, 0x84, 0x00, 0x00, 0x03, 0x01])].concat()
+        };
+        let mut taken = sample(&[0x01, 0x00, 0x00, 0x03, 0x00, 0xc3, 0xdc]);
+        assert_eq!(take_out_notes(&mut taken, &coding), Ok(1), "{format:?}");
+        assert_eq!(hex(&taken), hex(&sample(&[0; 7])), "{format:?}");
+    }
+    let h264 = Coding { length: 4, header: 1, sei: &[6] };
+    for (mut sample, why) in [
+        (vec![0, 0], "a NAL unit's size runs past its sample"),
+        (vec![0, 0, 0, 9, 0x06, 0x05], "a NAL unit runs past its sample"),
+        (vec![0, 0, 0, 4, 0x06, 0x05, 0x30, 0x80], "an SEI message runs past its unit"),
+        (vec![0, 0, 0, 3, 0x06, 0xff, 0xff], "an SEI message runs past its unit"),
+    ] {
+        assert_eq!(take_out_notes(&mut sample, &h264), Err(why.to_owned()), "{why}");
+    }
+}
+
 // The fixtures' movie, which the hardware law keeps in software; an odd,
 // silent one the pad makes even; a film the hardware takes; the law's first
 // side past the failed one — and the side that failed, held off hardware
@@ -449,7 +622,7 @@ fn every_box_size_iso_bmff_writes_is_walked() {
 // bitrate named; one named past the ceiling; a Korean name; and where the
 // C writes them (Apple), H.264 in a MOV, ProRes 422 with its PCM, and
 // ProRes 4444 keeping a picture's alpha. Each byte for byte with the C's,
-// but for the clock and the chunking (`Movie`).
+// but for the clock, the chunking and VideoToolbox's note (`Movie`).
 //
 // ↩️2026-11-07: every movie is made before any is judged, and a track that
 // parts says where, around what, and whether the C parts from itself there.
@@ -457,9 +630,11 @@ fn every_box_size_iso_bmff_writes_is_walked() {
 // 732 bytes against the C's 732, first apart at Some(50)」 (bundle GPU CI
 // 1cca0c1de) — with the other eleven unasked and the premise, that the C
 // writes the same bytes twice, unmeasured; no Mac is on the machine this is
-// written on, so the next run has to answer both (관제 11-07).
+// written on, so the next run has to answer both (관제 11-07). It answered
+// (42366555125): every H.264 and HEVC movie parts at one place, where the C
+// parts from itself — VideoToolbox's note ([`NOTE`]).
 #[test]
-fn the_movie_is_the_c_s_but_for_its_clock_and_chunking() {
+fn the_movie_is_the_c_s_but_for_its_clock_chunking_and_note() {
     let _one = one_at_a_time();
     // SAFETY: no arguments.
     if unsafe { (c().supported)() } == 0 {
