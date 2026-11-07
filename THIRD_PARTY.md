@@ -11,6 +11,20 @@ into this repository; each package carries its own license in the pub
 cache, and `flutter pub deps` lists the full set. The Flutter SDK and
 Dart SDK are licensed by Google under the BSD 3-Clause license.
 
+## Rust crates (the GPU engine)
+
+Declared in `packages/gpu_engine/rust`'s manifests and resolved into its
+`Cargo.lock`; they are NOT vendored (but Symphonia's four, below) — cargo
+fetches each from crates.io. Every registry crate the engine's library
+carries on a target of its `rust-toolchain.toml` is listed, under the
+licence text it ships, in `assets/licenses/rust_crates.json`, and the
+app's About ▸ licenses screen shows that list. `tool/crate_notices.dart`
+writes it from the lock — run it again when the lock changes;
+`test/every_crate_the_engine_ships_is_noticed_test.dart` turns red until
+then. A crate that ships no licence file is listed under the Apache-2.0
+text of a crate declaring the same licence; one under a licence that
+offers no Apache-2.0 stops the tool for a person to look at.
+
 ## Vendored native sources
 
 ### Symphonia (four crates, modified)

@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// OFL text beside it in `assets/fonts/` (THIRD_PARTY.md: 「a component whose
 /// license requires a notice in shipped binaries must also appear in the
 /// app's about/licenses screen」). A text put in a folder and never
-/// registered ships unread.
+/// registered ships unread — the Rust crates' one list
+/// (`rust_crates.json`, tool/crate_notices.dart) as much as a text.
 void main() {
   test('every licence text the app bundles is registered at launch', () {
     final main = File('lib/main.dart').readAsStringSync();
@@ -17,10 +18,12 @@ void main() {
         Directory('assets/fonts'),
       ])
         for (final file in folder.listSync())
-          if (file is File && file.path.endsWith('.txt'))
+          if (file is File &&
+              (file.path.endsWith('.txt') || file.path.endsWith('.json')))
             "'${folder.path}/${file.uri.pathSegments.last}'",
     ];
     expect(texts, contains("'assets/licenses/LICENSE-Wasmtime.txt'"));
+    expect(texts, contains("'assets/licenses/rust_crates.json'"));
     expect(texts, contains("'assets/fonts/OFL-NotoSansSC.txt'"));
     for (final text in texts) {
       expect(main, contains(text), reason: '$text is bundled but not shown');

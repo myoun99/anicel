@@ -9,6 +9,7 @@ import 'package:flutter/services.dart'
 import 'src/native/device_battery.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
+import 'src/services/crate_licences.dart';
 import 'src/services/import/cel_picture.dart' show pictureSideLimit;
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
@@ -141,6 +142,16 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield LicenseEntryWithLineBreaks(const [
       'Wasmtime',
     ], await rootBundle.loadString('assets/licenses/LICENSE-Wasmtime.txt'));
+    // The registry crates the GPU engine's library carries, on every target
+    // it is built for: one entry a licence text, naming each crate under it
+    // (tool/crate_notices.dart writes the file from the engine's lock, and
+    // test/every_crate_the_engine_ships_is_noticed_test.dart holds it there).
+    // ⚠️Shown before the app links the engine (the connection round): a
+    // notice shown early costs nothing, one left for later can be forgotten
+    // (관제 2026-11-07, connection-round-checklist A 📜).
+    yield* Stream.fromIterable(crateLicenceEntries(
+      await rootBundle.loadString('assets/licenses/rust_crates.json'),
+    ));
   });
   unawaited(AppStorage.ensureInitialized());
   // Probe PDFium once at startup (loads the bundled library, ~ms): the
