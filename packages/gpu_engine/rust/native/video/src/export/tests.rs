@@ -188,24 +188,60 @@ fn be32(movie: &[u8], at: usize) -> usize {
     u32::from_be_bytes(movie[at..at + 4].try_into().unwrap()) as usize
 }
 
-/// The boxes directly in `movie[start..end]`: each one's type and span.
-fn children(movie: &[u8], start: usize, end: usize) -> Vec<([u8; 4], usize, usize)> {
-    let mut boxes = Vec::new();
-    let mut at = start;
-    while at + 8 <= end {
-        let size = be32(movie, at);
-        assert!(size >= 8 && at + size <= end, "a box at {at} runs past its parent");
-        boxes.push((movie[at + 4..at + 8].try_into().unwrap(), at, at + size));
-        at += size;
-    }
-    boxes
+/// Bytes in hex, a space apart.
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect::<Vec<_>>().join(" ")
 }
 
-/// The span of the box `path` leads to under `movie[start..end]`.
-fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Option<(usize, usize)> {
-    let (first, rest) = path.split_first()?;
-    let (_, at, until) = children(movie, start, end).into_iter().find(|(kind, ..)| kind == *first)?;
-    if rest.is_empty() { Some((at, until)) } else { find(movie, at + 8, until, rest) }
+/// One box of a movie: its type, where it starts, where what it holds
+/// starts past its header, and where it ends.
+#[derive(Clone, Copy)]
+struct Atom {
+    kind: [u8; 4],
+    at: usize,
+    body: usize,
+    until: usize,
+}
+
+/// The boxes directly in `movie[start..end]`. A box's size is its first 32
+/// bits — or, when those say 1, the 64 that follow its type, and when they
+/// say 0, all the rest of what holds it (ISO/IEC 14496-12, 4.2). A box that
+/// does not fit says where it is and what its head holds.
+///
+/// ↩️2026-11-07: it read the 32 bits alone, and a MOV the Mac wrote stopped
+/// the whole comparison at its first box past `ftyp` — 「a box at 28 runs
+/// past its parent」 (bundle GPU CI 42353590096), with no movie named and
+/// none of the rest asked.
+fn children(movie: &[u8], start: usize, end: usize) -> Result<Vec<Atom>, String> {
+    let mut atoms = Vec::new();
+    let mut at = start;
+    while at + 8 <= end {
+        let (size, body) = match be32(movie, at) {
+            0 => (end - at, at + 8),
+            1 if at + 16 <= end => {
+                let large = u64::from_be_bytes(movie[at + 8..at + 16].try_into().unwrap());
+                (usize::try_from(large).unwrap_or(usize::MAX), at + 16)
+            }
+            size => (size, at + 8),
+        };
+        if size < body - at || size > end - at {
+            return Err(format!("the box at {at} does not fit what holds it (to {end}), its head {}", hex(&movie[at..end.min(at + 16)])));
+        }
+        atoms.push(Atom { kind: movie[at + 4..at + 8].try_into().unwrap(), at, body, until: at + size });
+        at += size;
+    }
+    Ok(atoms)
+}
+
+/// The box `path` leads to under `movie[start..end]`, if there is one.
+fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Result<Option<Atom>, String> {
+    let Some((first, rest)) = path.split_first() else {
+        return Ok(None);
+    };
+    let Some(atom) = children(movie, start, end)?.into_iter().find(|atom| atom.kind == **first) else {
+        return Ok(None);
+    };
+    if rest.is_empty() { Ok(Some(atom)) } else { find(movie, atom.body, atom.until, rest) }
 }
 
 /// A track as its writer laid it: the four letters its sample entry names
@@ -216,34 +252,41 @@ struct Track {
     samples: Vec<u8>,
 }
 
-fn track(movie: &[u8], start: usize, end: usize) -> Track {
-    let (table, table_end) = find(movie, start, end, &[b"mdia", b"minf", b"stbl"]).expect("a sample table");
-    let at = |kind: &[u8; 4]| find(movie, table + 8, table_end, &[kind]).map(|(at, _)| at);
-    // The first entry's type, past the box's header, its version and flags,
-    // its count of entries and the entry's own size.
-    let entries_at = at(b"stsd").expect("a sample description");
-    let format = String::from_utf8_lossy(&movie[entries_at + 20..entries_at + 24]).into_owned();
-    let sizes_at = at(b"stsz").expect("sample sizes");
-    let uniform = be32(movie, sizes_at + 12);
+fn track(movie: &[u8], trak: Atom) -> Result<Track, String> {
+    let table = find(movie, trak.body, trak.until, &[b"mdia", b"minf", b"stbl"])?.ok_or("a track with no sample table")?;
+    // Where a table's fields start: past its version and flags.
+    let fields = |kind: &[u8; 4]| -> Result<usize, String> {
+        let atom = find(movie, table.body, table.until, &[kind])?;
+        Ok(atom.ok_or_else(|| format!("a sample table with no {}", String::from_utf8_lossy(kind)))?.body + 4)
+    };
+    // The first entry's type, past the count of entries and the entry's own
+    // size.
+    let entries = fields(b"stsd")?;
+    let format = String::from_utf8_lossy(&movie[entries + 8..entries + 12]).into_owned();
+    let sizes_at = fields(b"stsz")?;
+    let uniform = be32(movie, sizes_at);
     let sizes: Vec<usize> =
-        (0..be32(movie, sizes_at + 16)).map(|k| if uniform != 0 { uniform } else { be32(movie, sizes_at + 20 + 4 * k) }).collect();
-    let chunks_at = at(b"stco").expect("32-bit chunk offsets");
-    let runs_at = at(b"stsc").expect("samples per chunk");
+        (0..be32(movie, sizes_at + 4)).map(|k| if uniform != 0 { uniform } else { be32(movie, sizes_at + 8 + 4 * k) }).collect();
+    // 32-bit chunk offsets: the only kind the comparison reads.
+    let chunks_at = fields(b"stco")?;
+    let runs_at = fields(b"stsc")?;
     let runs: Vec<(usize, usize)> =
-        (0..be32(movie, runs_at + 12)).map(|k| (be32(movie, runs_at + 16 + 12 * k), be32(movie, runs_at + 20 + 12 * k))).collect();
+        (0..be32(movie, runs_at)).map(|k| (be32(movie, runs_at + 4 + 12 * k), be32(movie, runs_at + 8 + 12 * k))).collect();
     let mut bytes = Vec::new();
     let mut sample = 0;
-    for chunk in 0..be32(movie, chunks_at + 12) {
-        let per_chunk = runs.iter().take_while(|(first, _)| *first <= chunk + 1).last().expect("a run from chunk 1").1;
-        let mut at = be32(movie, chunks_at + 16 + 4 * chunk);
-        for size in &sizes[sample..sample + per_chunk] {
-            bytes.extend_from_slice(&movie[at..at + size]);
+    for chunk in 0..be32(movie, chunks_at) {
+        let per_chunk = runs.iter().take_while(|(first, _)| *first <= chunk + 1).last().ok_or("no run from chunk 1")?.1;
+        let mut at = be32(movie, chunks_at + 4 + 4 * chunk);
+        for size in sizes.get(sample..sample + per_chunk).ok_or("more samples in chunks than sizes")? {
+            bytes.extend_from_slice(movie.get(at..at + size).ok_or_else(|| format!("a sample at {at} runs past the file"))?);
             at += size;
         }
         sample += per_chunk;
     }
-    assert_eq!(sample, sizes.len(), "every sample lies in a chunk");
-    Track { format, samples: bytes }
+    if sample != sizes.len() {
+        return Err(format!("{} of {} samples lie in a chunk", sample, sizes.len()));
+    }
+    Ok(Track { format, samples: bytes })
 }
 
 /// A movie as its writer decides it: every box but the media data and the
@@ -264,32 +307,35 @@ struct Movie {
     stamped: usize,
 }
 
-fn read_into(movie: &[u8], start: usize, end: usize, into: &mut Movie) {
-    for (kind, at, until) in children(movie, start, end) {
-        match &kind {
-            b"moov" | b"mdia" | b"minf" | b"stbl" => read_into(movie, at + 8, until, into),
+fn read_into(movie: &[u8], start: usize, end: usize, into: &mut Movie) -> Result<(), String> {
+    for atom in children(movie, start, end)? {
+        match &atom.kind {
+            b"moov" | b"mdia" | b"minf" | b"stbl" => read_into(movie, atom.body, atom.until, into)?,
             b"trak" => {
-                read_into(movie, at + 8, until, into);
-                into.tracks.push(track(movie, at + 8, until));
+                read_into(movie, atom.body, atom.until, into)?;
+                into.tracks.push(track(movie, atom)?);
             }
             b"mdat" | b"stco" | b"stsc" => {}
             b"mvhd" | b"tkhd" | b"mdhd" => {
-                let mut body = movie[at..until].to_vec();
-                // Version 0 keeps the two times in 32 bits, 1 in 64.
-                let times = if body[8] == 1 { 16 } else { 8 };
-                body[12..12 + times].fill(0);
+                let mut bytes = movie[atom.at..atom.until].to_vec();
+                // Past the header: the version, the flags, then the two times
+                // — in 32 bits each at version 0, in 64 at 1.
+                let version = atom.body - atom.at;
+                let times = if bytes[version] == 1 { 16 } else { 8 };
+                bytes[version + 4..version + 4 + times].fill(0);
                 into.stamped += 1;
-                into.boxes.push((kind, body));
+                into.boxes.push((atom.kind, bytes));
             }
-            _ => into.boxes.push((kind, movie[at..until].to_vec())),
+            _ => into.boxes.push((atom.kind, movie[atom.at..atom.until].to_vec())),
         }
     }
+    Ok(())
 }
 
-fn read_movie(movie: &[u8]) -> Movie {
+fn read_movie(movie: &[u8]) -> Result<Movie, String> {
     let mut read = Movie { boxes: Vec::new(), tracks: Vec::new(), stamped: 0 };
-    read_into(movie, 0, movie.len(), &mut read);
-    read
+    read_into(movie, 0, movie.len(), &mut read)?;
+    Ok(read)
 }
 
 /// Where two runs of bytes first part: the first byte that differs, or the
@@ -309,15 +355,28 @@ fn around(bytes: &[u8], at: usize) -> String {
 /// What parts the Rust's movie of `shape` from the C's, but for the clock
 /// and the chunking: each box that is not the same, and each track whose
 /// samples are not — said with the track's format, the bytes around where
-/// they part, and whether the C's own second movie parts there too.
+/// they part, and whether the C's own second movie parts there too. A movie
+/// that does not read is said so, with what stopped the reading.
 fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
     let (c, rust) = (c(), rust());
     let c_movie = |run: &str| read_movie(&c.movie(&temp(&format!("{name}-c{run}"), shape.container), shape, frames));
-    let theirs = c_movie("");
-    let ours = read_movie(&rust.movie(&temp(&format!("{name}-rust"), shape.container), shape, frames));
+    let (theirs, ours) = (c_movie(""), read_movie(&rust.movie(&temp(&format!("{name}-rust"), shape.container), shape, frames)));
+    let (theirs, ours) = match (theirs, ours) {
+        (Ok(theirs), Ok(ours)) => (theirs, ours),
+        (theirs, ours) => {
+            let unread = [("the C's", theirs.err()), ("ours", ours.err())];
+            return unread.into_iter().filter_map(|(whose, why)| Some(format!("{name}: {whose} movie does not read — {}", why?))).collect();
+        }
+    };
     let tracks = if shape.channels > 0 { 2 } else { 1 };
-    assert_eq!(theirs.stamped, 1 + 2 * tracks, "{name}: the clock is where the mask looks");
-    assert_eq!(theirs.tracks.len(), tracks, "{name}: every track's samples are read");
+    if theirs.stamped != 1 + 2 * tracks || theirs.tracks.len() != tracks {
+        return vec![format!(
+            "{name}: the C's movie has {} clocks and {} tracks where the mask looks for {} and {tracks}",
+            theirs.stamped,
+            theirs.tracks.len(),
+            1 + 2 * tracks
+        )];
+    }
     let kinds = |movie: &Movie| movie.boxes.iter().map(|(kind, _)| String::from_utf8_lossy(kind).into_owned()).collect::<Vec<_>>();
     if kinds(&ours) != kinds(&theirs) {
         return vec![format!("{name}: the boxes, {:?} against the C's {:?}", kinds(&ours), kinds(&theirs))];
@@ -336,8 +395,14 @@ fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
         };
         // The premise, measured where it failed: whether the C writes these
         // samples the same twice.
-        let again = &again.get_or_insert_with(|| c_movie("-again")).tracks[k].samples;
-        let itself = parted(again, &theirs.samples).map_or("the same".to_owned(), |at| format!("apart at {at}, {}", around(again, at)));
+        let itself = match again.get_or_insert_with(|| c_movie("-again")) {
+            Ok(again) => match again.tracks.get(k) {
+                Some(again) => parted(&again.samples, &theirs.samples)
+                    .map_or("the same".to_owned(), |at| format!("apart at {at}, {}", around(&again.samples, at))),
+                None => format!("has {} tracks", again.tracks.len()),
+            },
+            Err(why) => format!("does not read — {why}"),
+        };
         apart.push(format!(
             "{name}: track {k} ({})'s samples, {} bytes against the C's {}, first apart at {at} — ours {}, the C's {}; the C's own second movie: {itself}",
             ours.format,
@@ -348,6 +413,32 @@ fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
         ));
     }
     apart
+}
+
+// The box walker by hand, since no movie this machine writes has a box sized
+// in 64 bits or one that runs to the end: a box of each after a plain one,
+// and boxes that do not fit — longer than what holds them, shorter than
+// their own header.
+#[test]
+fn every_box_size_iso_bmff_writes_is_walked() {
+    let mut movie = vec![0, 0, 0, 12];
+    movie.extend_from_slice(b"ftyp");
+    movie.extend_from_slice(&[1, 2, 3, 4, 0, 0, 0, 1]);
+    movie.extend_from_slice(b"free");
+    movie.extend_from_slice(&20u64.to_be_bytes());
+    movie.extend_from_slice(&[7, 7, 7, 7, 0, 0, 0, 0]);
+    movie.extend_from_slice(b"mdat");
+    movie.extend_from_slice(&[9; 6]);
+    let atoms = children(&movie, 0, movie.len()).unwrap();
+    let spans: Vec<_> = atoms.iter().map(|atom| (atom.kind, atom.at, atom.body, atom.until)).collect();
+    assert_eq!(spans, [(*b"ftyp", 0, 8, 12), (*b"free", 12, 28, 32), (*b"mdat", 32, 40, 46)]);
+    for (size, why) in [
+        (40, "the box at 0 does not fit what holds it (to 12), its head 00 00 00 28 6d 6f 6f 76 00 00 00 00"),
+        (5, "the box at 0 does not fit what holds it (to 12), its head 00 00 00 05 6d 6f 6f 76 00 00 00 00"),
+    ] {
+        let unfit = [0, 0, 0, size, b'm', b'o', b'o', b'v', 0, 0, 0, 0];
+        assert_eq!(children(&unfit, 0, unfit.len()).err().as_deref(), Some(why), "size {size}");
+    }
 }
 
 // The fixtures' movie, which the hardware law keeps in software; an odd,
@@ -435,18 +526,26 @@ fn what_this_machine_can_write_is_the_c_s_answer() {
     }
 }
 
-/// A job no platform writes — a container that is none of them — which the
-/// C and the Rust turn away in the same words wherever this runs: the
+/// A job no platform writes — a codec that is none of them — which the C
+/// and the Rust turn away in the same words wherever this runs: the
 /// writer's own refusal of the pair, or the Linux stub's 「no OS encoder」.
-const NO_CONTAINER: Shape = Shape { container: 2, ..MOVIE };
+///
+/// ↩️2026-11-07: it was a container that is none of them, said here to be
+/// turned away everywhere without Apple's pair law read: that law — the C's
+/// and the Rust's alike — takes H.264 in any container, so on the Mac the
+/// job was written, no error was left, and the tests compared whatever the
+/// test before had left (bundle GPU CI 42353590096: 「a MOV」 Rust
+/// `(1, "…bad open parameters")` against the C's `(1, "")`, and 「room for
+/// 2」). Hence the refusal is now asserted, not assumed.
+const NO_CODEC: Shape = Shape { codec: 7, ..MOVIE };
 
 /// An open `encoder` turns away as the other does, so the last error it
 /// leaves is one both said. ⚠️Not an open with no path: that is no job,
 /// which the Rust turns away before any platform answers and the C's Linux
 /// stub does not (`Job::well_formed`).
 fn turned_away_alike(encoder: &Encoder) {
-    let file = temp("alike", NO_CONTAINER.container);
-    encoder.tried(Some(file.to_str().unwrap()), NO_CONTAINER);
+    let file = temp("alike", NO_CODEC.container);
+    assert_eq!(encoder.tried(Some(file.to_str().unwrap()), NO_CODEC), 0, "{NO_CODEC:?} is a job no platform writes");
 }
 
 /// `step` asked of both, with what each said after it: the answer and the
@@ -476,10 +575,10 @@ fn an_open_is_refused_as_the_c_refuses_it() {
     let path = file.to_str().unwrap();
     for (what, shape) in [
         ("a MOV", Shape { container: 1, ..MOVIE }),
-        ("no such container", NO_CONTAINER),
+        ("no such container", Shape { container: 2, ..MOVIE }),
         ("ProRes in an MP4", Shape { codec: 2, ..MOVIE }),
         ("ProRes 4444", Shape { codec: 6, ..MOVIE }),
-        ("no such codec", Shape { codec: 7, ..MOVIE }),
+        ("no such codec", NO_CODEC),
     ] {
         both_say(what, |encoder| encoder.tried(Some(path), shape));
     }
