@@ -956,9 +956,8 @@ void main() {
           laneGraphAcross(
             line.lane.curve!.at(5).single,
             fit.ranges.single,
-            box.size.height,
+            painter.depthIn(box.size),
             Axis.horizontal,
-            toolsReach: painter.toolsReachNow,
           ),
         ),
       ),

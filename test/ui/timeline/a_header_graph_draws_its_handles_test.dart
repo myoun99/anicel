@@ -508,9 +508,8 @@ void main() {
         laneGraphAcross(
           speed,
           painter.fits.values.single.ranges.single,
-          size.height,
+          painter.depthIn(size),
           Axis.horizontal,
-          toolsReach: painter.toolsReachNow,
         );
 
     Layer withTrack(TransformTrack track) =>

@@ -409,10 +409,13 @@ void main() {
     _atAFractionalRatio(tester);
     // Longer than the graph is wide: the sheet bounds them by the graph.
     const layerName = 'A drawing whose name runs on past any sheet graph';
+    // Tall enough for the tools and a tag down its view: turned down its
+    // right edge (graph-box-top-handle-under-the-toolbar-Q2), the tools
+    // stand 262 along it, and a tag never stands before their end.
     final s = await _pump(
       tester,
       frames: 600,
-      tall: true,
+      height: 900,
       layerName: layerName,
     );
     await _pinTheBlur(tester, s);
@@ -530,9 +533,13 @@ void main() {
     expect(tools.top, moreOrLessEquals(graph.top + 6));
     expect(_plots(tester, LaneGraphMode.value), isTrue);
     expect(_plots(tester, LaneGraphMode.speed), isFalse);
-    final extent = tester.getSize(_picture('timeline')).height;
+    final picture = tester.getRect(_picture('timeline'));
+    final extent = picture.height;
+    // 🗣️graph-box-top-handle-under-the-toolbar-Q1: its values are fitted
+    // clear of the tools over it, and of its padding past them.
+    final top = tools.bottom - picture.top + 16;
     bool spansThePadding(Rect line) =>
-        (line.top - 16).abs() < 0.5 &&
+        (line.top - top).abs() < 0.5 &&
         (line.bottom - (extent - 16)).abs() < 0.5;
     expect(
       _strokes(tester).any(spansThePadding),
@@ -561,8 +568,9 @@ void main() {
   });
 
   testWidgets('on the sheet its tools stand at the top right — the '
-      'timeline\'s top left turned a quarter clockwise', (tester) async {
-    final s = await _pump(tester, tall: true);
+      'timeline\'s top left turned a quarter clockwise, and turned with '
+      'it', (tester) async {
+    final s = await _pump(tester, height: 610);
     await _openTransform(tester);
     await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
@@ -578,9 +586,23 @@ void main() {
     final tools = tester.getRect(_tools('xsheet'));
     expect(tools.top, moreOrLessEquals(view.top + 6));
     expect(tools.right, moreOrLessEquals(graph.right - 6));
+    // 🗣️graph-box-top-handle-under-the-toolbar-Q2 (유저 2026-11-07, a:
+    // 「X시트의 도구 줄을 시계 방향 90° 돌린다」): down its right edge, as
+    // the timeline's run along its top, and its values fitted clear of
+    // them.
+    expect(tools.height, greaterThan(tools.width), reason: 'turned');
 
     await _tap(tester, _plot('xsheet', LaneGraphMode.speed));
     expect(_painter(tester, grid: 'xsheet').mode, LaneGraphMode.speed);
+    final picture = tester.getRect(_picture('xsheet'));
+    final speeds = _strokes(tester, grid: 'xsheet');
+    expect(speeds, hasLength(1), reason: '⛔전제: a point\'s one speed');
+    expect(speeds.single.left, moreOrLessEquals(16), reason: 'still');
+    expect(
+      speeds.single.right,
+      moreOrLessEquals(tools.left - picture.left - 16),
+      reason: 'its fastest, 16 short of the tools',
+    );
   });
 
   testWidgets('the playhead\'s column runs down through the graph', (
@@ -660,10 +682,10 @@ int _marks(WidgetTester tester) {
   ].length;
 }
 
-/// Where each of the timeline graph's lines runs, painted now.
-List<Rect> _strokes(WidgetTester tester) {
+/// Where each of [grid]'s Transform graph's lines runs, painted now.
+List<Rect> _strokes(WidgetTester tester, {String grid = 'timeline'}) {
   final canvas = TestRecordingCanvas();
-  _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
+  _painter(tester, grid: grid).paint(canvas, tester.getSize(_picture(grid)));
   return [
     for (final call in canvas.invocations)
       if (call.invocation.memberName == #drawPath &&
@@ -875,22 +897,22 @@ RenderBox _firstViewportUnder(WidgetTester tester, String key) {
   return found!;
 }
 
-/// The timeline tab alone ([pumpTimelineHost]). [tall]: as a window twice as
-/// tall laid it — the sheet stands the rail up as its header (~490px), and
-/// the shorter one leaves the frames 48px. [width] is the panel's — the view
-/// narrows with it, as it did in the app's window of 1400, which laid the
-/// panel 870 wide between its side docks — and [layerName] names the
-/// drawing.
+/// The timeline tab alone ([pumpTimelineHost]). [height] is the panel's:
+/// 610 as a window twice as tall laid it — the sheet stands the rail up as
+/// its header (~490px), and the shorter 546 leaves the frames 48px. [width]
+/// is the panel's too — the view narrows with it, as it did in the app's
+/// window of 1400, which laid the panel 870 wide between its side docks —
+/// and [layerName] names the drawing.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   int frames = 12,
-  bool tall = false,
+  double height = 546,
   double width = 870,
   String layerName = 'Drawing',
 }) => pumpTimelineHost(
   tester,
   _project(frames, layerName),
-  surface: Size(width, tall ? 610 : 546),
+  surface: Size(width, height),
 );
 
 /// The drawing's Transform graph open and stood on its Position, with the

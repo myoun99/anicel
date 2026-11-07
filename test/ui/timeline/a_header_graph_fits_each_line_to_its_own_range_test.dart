@@ -244,7 +244,12 @@ void main() {
       double extent,
       Axis axis, {
       double toolsReach = 0,
-    }) => laneGraphAcross(value, range, extent, axis, toolsReach: toolsReach);
+    }) => laneGraphAcross(
+      value,
+      range,
+      (extent: extent, toolsReach: toolsReach),
+      axis,
+    );
 
     test('on the timeline higher is up, its padding kept clear', () {
       expect(across(0, 196, Axis.horizontal), 196 - 16);
@@ -292,7 +297,8 @@ void main() {
       expect(across(0, 196, Axis.vertical, toolsReach: 32), 16);
     });
 
-    // ⏳Q3: the floor Q1's cost named.
+    // 🗣️graph-box-top-handle-under-the-toolbar-Q3 (유저 2026-11-07, a:
+    // 「높이의 절반까지」).
     test('never past the middle, however far the tools reach — the values '
         'the right way up', () {
       expect(across(100, 80, Axis.horizontal, toolsReach: 32), 40);
@@ -304,12 +310,22 @@ void main() {
     test('a hand moved as far as the room the values are fitted to moves a '
         'value its whole range', () {
       expect(
-        laneGraphValueRise(132, range, 196, Axis.horizontal, toolsReach: 32),
+        laneGraphValueRise(
+          132,
+          range,
+          (extent: 196, toolsReach: 32),
+          Axis.horizontal,
+        ),
         -100,
         reason: 'up the timeline\'s graph',
       );
       expect(
-        laneGraphValueRise(164, range, 196, Axis.vertical, toolsReach: 0),
+        laneGraphValueRise(
+          164,
+          range,
+          (extent: 196, toolsReach: 0),
+          Axis.vertical,
+        ),
         100,
       );
     });

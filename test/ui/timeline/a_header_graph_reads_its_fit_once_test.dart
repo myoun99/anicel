@@ -119,9 +119,8 @@ void main() {
     double fitted(double toolsReach) => laneGraphAcross(
       40,
       range,
-      size.height,
+      (extent: size.height, toolsReach: toolsReach),
       Axis.horizontal,
-      toolsReach: toolsReach,
     );
     double top() =>
         painter.keysIn(size).singleWhere((key) => key.frame == 40).at.dy;

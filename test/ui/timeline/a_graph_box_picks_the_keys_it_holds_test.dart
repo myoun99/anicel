@@ -277,9 +277,8 @@ void main() {
           laneGraphAcross(
             line.lane.curve!.at(frame.toDouble()).single,
             fit.ranges.single,
-            size.height,
+            painter.depthIn(size),
             Axis.horizontal,
-            toolsReach: painter.toolsReachNow,
           ),
         );
       }

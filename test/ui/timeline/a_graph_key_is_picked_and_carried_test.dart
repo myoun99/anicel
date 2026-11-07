@@ -1313,9 +1313,8 @@ Offset _lineOnScreen(WidgetTester tester, double time) {
       laneGraphAcross(
         line.lane.curve!.at(time).single,
         fit.ranges.single,
-        box.size.height,
+        painter.depthIn(box.size),
         Axis.horizontal,
-        toolsReach: painter.toolsReachNow,
       ),
     ),
   );

@@ -359,9 +359,8 @@ void main() {
     double markOf(LaneKeyValues? values) => laneGraphAcross(
       double.parse(values!.inputs['rotation']![8]!),
       range,
-      size.height,
+      painterOf(tester).depthIn(size),
       Axis.horizontal,
-      toolsReach: painterOf(tester).toolsReachNow,
     );
     // Four pixels short of it.
     final up = Offset(0, to - from + 4);

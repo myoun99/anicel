@@ -115,9 +115,8 @@ void main() {
       laneGraphAcross(
         line.lane.curve!.at(time).single,
         painter.fits[key]!.ranges.single,
-        size.height,
+        painter.depthIn(size),
         Axis.horizontal,
-        toolsReach: painter.toolsReachNow,
       ),
     );
   }

@@ -166,9 +166,8 @@ void main() {
           laneGraphAcross(
             speed,
             fitOf(painter, line).ranges.single,
-            size.height,
+            painter.depthIn(size),
             Axis.horizontal,
-            toolsReach: painter.toolsReachNow,
           ),
         ),
         epsilon: 1e-3,
