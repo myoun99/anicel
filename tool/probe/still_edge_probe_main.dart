@@ -33,6 +33,17 @@
 //   layer         no image: the right half drawn live inside a `saveLayer` —
 //                 does ANY offscreen target part from the screen?
 //
+// Below them, the APP'S OWN way: the right half is the region itself
+// (`StillRaster`, as every dock region and row stands on one), round widgets
+// a dock is made of — the shapes above as a `CustomPaint`, a rounded pill,
+// blocks under a clip, a text widget, a pill under an opacity — the left
+// half the same widgets live. Three times: on whole device pixels (`still`),
+// and a third and a half of a device pixel over (`stl+1/3`, `stl+1/2`),
+// where a 150% screen stands a logical third. Its layout is written once
+// the regions have their images, and each such cell says how many bytes its
+// image holds (`imageBytes`, 0 while it paints live — then it measured
+// nothing) and why it last painted (`standDown`).
+//
 // Measurement, not a feature: not wired into the app, no strings, no UI
 // conventions apply.
 import 'dart:convert';
@@ -41,6 +52,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+
+import 'package:anicel/src/ui/widgets/still_raster.dart';
 
 const _outDir = String.fromEnvironment('EDGE_OUT', defaultValue: '');
 
@@ -168,6 +181,149 @@ ui.Image _makeSmallImage() {
   return image;
 }
 
+/// The app's own way's rows: a name and how far over a whole device pixel
+/// both halves stand.
+const _stillVariants = [('still', 0.0), ('stl+1/3', 1 / 3), ('stl+1/2', 0.5)];
+
+/// The most cells a line of the app's own rows holds; a row goes on to the
+/// next line past it.
+const int _stillColumns = 6;
+
+/// A widget a cell holds, made at [ratio] device pixels a logical one, its
+/// sizes given in device pixels from the cell's corner as the shapes are.
+typedef _WidgetShape = ({String name, Widget Function(double ratio) build});
+
+/// [left], [top], [width], [height] device pixels inside a cell.
+Widget _at(
+  double ratio,
+  double left,
+  double top,
+  double width,
+  double height,
+  Widget child,
+) => Positioned(
+  left: left / ratio,
+  top: top / ratio,
+  width: width / ratio,
+  height: height / ratio,
+  child: child,
+);
+
+Widget _pill(double ratio) => Stack(
+  children: [
+    _at(
+      ratio,
+      8.3,
+      10.6,
+      52.4,
+      30.2,
+      DecoratedBox(
+        decoration: BoxDecoration(
+          color: _accent,
+          borderRadius: BorderRadius.circular(6.5 / ratio),
+        ),
+      ),
+    ),
+  ],
+);
+
+final List<_WidgetShape> _widgetShapes = [
+  for (final shape in _shapes)
+    (
+      name: shape.name,
+      build: (ratio) => CustomPaint(painter: _ShapePainter(shape, ratio)),
+    ),
+  (name: 'pill', build: _pill),
+  (
+    name: 'clip-blocks',
+    build: (ratio) => Stack(
+      children: [
+        _at(
+          ratio,
+          6.4,
+          9.7,
+          58.1,
+          50.2,
+          ClipRect(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _at(
+                  ratio,
+                  -10,
+                  4.2,
+                  40,
+                  18.5,
+                  const ColoredBox(color: _accent),
+                ),
+                _at(
+                  ratio,
+                  33.3,
+                  26.6,
+                  40,
+                  18.5,
+                  const ColoredBox(color: Color(0xFFF2A33A)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  ),
+  (
+    name: 'text-widget',
+    build: (ratio) => Padding(
+      padding: EdgeInsets.fromLTRB(4.4 / ratio, 8.2 / ratio, 0, 0),
+      child: Text(
+        '値速度\nAg 1-2',
+        style: TextStyle(
+          inherit: false,
+          color: _ink,
+          fontSize: 15 / ratio,
+          height: 1.2,
+        ),
+      ),
+    ),
+  ),
+  (
+    name: 'opacity',
+    build: (ratio) => Opacity(opacity: 0.5, child: _pill(ratio)),
+  ),
+];
+
+/// [shape] painted in device pixels from a box's corner.
+class _ShapePainter extends CustomPainter {
+  _ShapePainter(this.shape, this.ratio);
+
+  final _Shape shape;
+  final double ratio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas
+      ..save()
+      ..scale(1 / ratio);
+    shape.draw(canvas);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ShapePainter oldDelegate) =>
+      oldDelegate.shape != shape || oldDelegate.ratio != ratio;
+}
+
+/// Where the app's own cell of variant [variant], shape [shape] stands —
+/// `[x, y, side, side]` in device pixels from the window's corner — on the
+/// lines below the table's.
+({List<int> live, List<int> image}) _stillCellAt(int variant, int shape) {
+  final lines = (_widgetShapes.length + _stillColumns - 1) ~/ _stillColumns;
+  return _cellAt(
+    _variants.length + variant * lines + shape ~/ _stillColumns,
+    shape % _stillColumns,
+  );
+}
+
 ui.Picture _pictureOf(_Shape shape, {Color? under, double scale = 1}) {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
@@ -230,6 +386,21 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
   /// Each cell's image, by variant then shape; null until taken.
   List<List<ui.Image?>>? _images;
 
+  /// The app's own cells' regions, by variant then shape.
+  final List<List<GlobalKey>> _regions = [
+    for (final _ in _stillVariants)
+      [for (final _ in _widgetShapes) GlobalKey()],
+  ];
+
+  RenderStillRaster? _regionOf(int variant, int shape) =>
+      _regions[variant][shape].currentContext?.findRenderObject()
+          as RenderStillRaster?;
+
+  bool get _everyRegionIsAnImage => [
+    for (var v = 0; v < _stillVariants.length; v += 1)
+      for (var s = 0; s < _widgetShapes.length; s += 1) _regionOf(v, s),
+  ].every((region) => (region?.rasterBytes ?? 0) > 0);
+
   @override
   void initState() {
     super.initState();
@@ -244,6 +415,11 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
     ];
     setState(() => _images = images);
     final view = View.of(context);
+    // Once every region of the app's own rows holds its image — or ten
+    // seconds on, and the cells that paint live say so.
+    for (var tries = 0; tries < 40 && !_everyRegionIsAnImage; tries += 1) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
     await _writeLayout(view.devicePixelRatio);
   }
 
@@ -257,6 +433,16 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
             'shape': _shapes[column].name,
             'live': _cellAt(row, column).live,
             'image': _cellAt(row, column).image,
+          },
+      for (final (variant, (name, _)) in _stillVariants.indexed)
+        for (final (shape, widget) in _widgetShapes.indexed)
+          {
+            'variant': name,
+            'shape': widget.name,
+            'live': _stillCellAt(variant, shape).live,
+            'image': _stillCellAt(variant, shape).image,
+            'imageBytes': _regionOf(variant, shape)?.rasterBytes ?? 0,
+            'standDown': _regionOf(variant, shape)?.standDown.name,
           },
     ];
     final out = Directory(_outDir.isEmpty ? 'still_edge_probe_out' : _outDir);
@@ -274,23 +460,54 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
   @override
   Widget build(BuildContext context) {
     final images = _images;
+    final ratio = View.of(context).devicePixelRatio;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: ColoredBox(
         color: _ground,
         child: images == null
             ? const SizedBox.expand()
-            : CustomPaint(
-                painter: _TablePainter(
-                  images,
-                  View.of(context).devicePixelRatio,
-                ),
-                child: const SizedBox.expand(),
+            : Stack(
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(painter: _TablePainter(images, ratio)),
+                  ),
+                  for (final (variant, (_, over)) in _stillVariants.indexed)
+                    for (final (shape, widget) in _widgetShapes.indexed) ...[
+                      _cell(
+                        _stillCellAt(variant, shape).live,
+                        over,
+                        ratio,
+                        widget.build(ratio),
+                      ),
+                      _cell(
+                        _stillCellAt(variant, shape).image,
+                        over,
+                        ratio,
+                        StillRaster(
+                          key: _regions[variant][shape],
+                          debugLabel: 'probe',
+                          child: widget.build(ratio),
+                        ),
+                      ),
+                    ],
+                ],
               ),
       ),
     );
   }
 }
+
+/// [child] in the cell [rect] of device pixels, [over] a device pixel
+/// further right and down.
+Widget _cell(List<int> rect, double over, double ratio, Widget child) =>
+    Positioned(
+      left: (rect[0] + over) / ratio,
+      top: (rect[1] + over) / ratio,
+      width: rect[2] / ratio,
+      height: rect[3] / ratio,
+      child: child,
+    );
 
 /// Where cell [row], [column]'s halves stand, `[x, y, side, side]` in device
 /// pixels from the window's corner.

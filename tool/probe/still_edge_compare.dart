@@ -9,6 +9,8 @@
 // the worst channel difference, how many pixels part at all and by more than
 // 2 and 8, and where the worst one stands in the cell. A variant whose row
 // reads 0 everywhere takes its image the way the screen draws.
+// A cell of the app's own way says, last, whether its region drew from its
+// image — one that painted live measured nothing.
 import 'dart:convert';
 import 'dart:io';
 
@@ -40,7 +42,7 @@ void main(List<String> args) {
     'devicePixelRatio ${layout['devicePixelRatio']}',
   );
   stdout.writeln(
-    'variant  shape        worst  parted  >2     >8     worst at',
+    'variant  shape        worst  parted  >2     >8     worst at   image',
   );
   for (final cell in layout['cells']! as List<Object?>) {
     final map = cell! as Map<String, Object?>;
@@ -54,7 +56,8 @@ void main(List<String> args) {
       '${'${parted.any}'.padRight(7)} '
       '${'${parted.overTwo}'.padRight(6)} '
       '${'${parted.overEight}'.padRight(6)} '
-      '${parted.at}',
+      '${'${parted.at}'.padRight(10)} '
+      '${_imageOf(map)}',
     );
   }
 }
@@ -139,4 +142,14 @@ List<int> _rect(Object? value) => [
     overEight: overEight,
     at: at,
   );
+}
+
+/// What a cell of the app's own way says of its region: the bytes its image
+/// held, or why it painted live — empty for the other ways' cells.
+String _imageOf(Map<String, Object?> cell) {
+  final bytes = cell['imageBytes'];
+  if (bytes == null) {
+    return '';
+  }
+  return bytes == 0 ? 'LIVE (${cell['standDown']})' : '$bytes B';
 }
