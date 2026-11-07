@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
     show timelineFrameWindowSpanFor;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -133,6 +134,52 @@ void main() {
     ];
     fail('rows still drawn live after 600 frames: $live');
   }
+
+  test('a row with a window draws its bucket\'s whole, wherever the axis '
+      'ends — and repaints for no end alone', () {
+    final bucket = ValueNotifier<int>(3);
+    addTearDown(bucket.dispose);
+    TimelineFrameGeometry endingAt(int end) => TimelineFrameGeometry(
+      frameCellExtent: 12,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: end,
+      viewExtentPx: 600,
+    ).windowed(originPx: 3 * 516.0 - 1024, extentPx: 600 + 2048);
+    final short = endingAt(170);
+    final long = endingAt(400);
+    expect(
+      short.rowDrawnFrames(bucket),
+      long.rowDrawnFrames(bucket),
+      reason: 'the axis\' end does not cut what the row draws',
+    );
+    expect(
+      short.rowDrawnFrames(bucket).endIndexExclusive,
+      greaterThan(170),
+      reason: '⛔premise: the window reaches past the shorter end',
+    );
+    expect(short.drawsAs(long), isTrue);
+
+    // A row with no window draws every frame of the axis, so its end is
+    // what it draws to.
+    const unwindowed = TimelineFrameGeometry(
+      frameCellExtent: 12,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 170,
+      viewExtentPx: 600,
+    );
+    expect(unwindowed.rowDrawnFrames(null).endIndexExclusive, 170);
+    expect(
+      unwindowed.drawsAs(
+        const TimelineFrameGeometry(
+          frameCellExtent: 12,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 400,
+          viewExtentPx: 600,
+        ),
+      ),
+      isFalse,
+    );
+  });
 
   for (final (orientation, strip, scroll) in [
     (
