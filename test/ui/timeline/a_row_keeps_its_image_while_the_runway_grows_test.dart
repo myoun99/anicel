@@ -11,9 +11,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
@@ -22,6 +24,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart'
     show TimelineRowCellsPainter;
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/named.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
@@ -65,6 +69,19 @@ void main() {
     },
   );
 
+  /// A row whose lanes are twirled open, its Transform with them, and
+  /// whose rotation turns from its first frame to its last — lane rows,
+  /// their keys and the line between them.
+  Layer keyed(String id) => row(id).copyWith(
+    lanesExpanded: true,
+    expandedLaneGroups: {transformGroupHeaderLane.laneId},
+    transformTrack: TransformTrack.empty().copyWith(
+      rotation: PropertyTrack<double>()
+          .withKey(0, 0)
+          .withKey(frames ~/ 2, 90),
+    ),
+  );
+
   // The S rows write their blocks' names through a span layout of their
   // own, laid by the frames' edges — a row's pieces as well as its box.
   Project project() => Project(
@@ -81,7 +98,10 @@ void main() {
             name: 'cut-0',
             duration: frames,
             canvasSize: const CanvasSize(width: 640, height: 360),
-            layers: [for (var r = 0; r < layers; r += 1) row('r$r')],
+            layers: [
+              keyed('k0'),
+              for (var r = 0; r < layers; r += 1) row('r$r'),
+            ],
           ),
         ],
         seLayers: [
@@ -118,11 +138,20 @@ void main() {
     return name ?? '${element.widget}';
   }
 
+  /// 🔜A lane's row on the timeline's rail, which every pass of its host
+  /// builds again whole — and so lays out and draws again, whatever the
+  /// pass was for: a cause of its own, the card
+  /// `a-rail-lane-row-is-drawn-again-on-every-host-pass`'s. ⛔Not a law:
+  /// it goes with that card.
+  bool isARailLaneRow(String name) =>
+      name.startsWith('timeline-rail-row-') && !name.endsWith('-row');
+
   /// Every row's still region the grid built, by the row it stands in.
   Map<String, RenderStillRaster> rowsOf(WidgetTester tester) => {
     for (final element in find.byType(StillRaster).evaluate())
       if (element.renderObject case final RenderStillRaster region
-          when region.debugLabel == 'row')
+          when region.debugLabel == 'row' &&
+              !isARailLaneRow(rowNameOf(element)))
         rowNameOf(element): region,
   };
 
@@ -296,6 +325,11 @@ void main() {
         stayed.where((name) => name.endsWith('-s0')),
         isNotEmpty,
         reason: '⛔premise: an S row stayed, as well as the drawings\'',
+      );
+      expect(
+        stayed.where((name) => name.endsWith('-k0-rotation')),
+        isNotEmpty,
+        reason: '⛔premise: a lane row stayed, its keys with it',
       );
       expect(live, isEmpty, reason: 'the runway grew under them');
       await hand.up();

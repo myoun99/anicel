@@ -3321,6 +3321,7 @@ class _StoryboardRailRows {
           width: width,
           height: height,
           timelineScale: scale,
+          frameGeometry: _state._frameGeometry,
           laneEdit: laneEdit,
           laneRange: _laneGestureCallbacksFor(
             track,
@@ -3405,6 +3406,7 @@ class _StoryboardRailRows {
           width: width,
           height: height,
           timelineScale: scale,
+          frameGeometry: _state._frameGeometry,
           laneRange: _laneGestureCallbacksFor(
             track,
             band: _bandOnLane(track, LaneRowAddress(layer.id, lane.laneId)),

@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
@@ -112,6 +113,14 @@ void main() {
       TimelineDisplayRow.layer(layer, layerIndex: 0),
       laneRow('position'),
     ];
+    final geometry = ValueNotifier(
+      TimelineFrameGeometry(
+        frameCellExtent: TimelineGridMetrics.defaults.frameCellWidth,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: 12,
+      ),
+    );
+    addTearDown(geometry.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -142,8 +151,7 @@ void main() {
                       lane: rows[1].lane!,
                       frameStartIndex: 0,
                       frameEndIndexExclusive: 12,
-                      leadingFrameSpacerWidth: 0,
-                      trailingFrameSpacerWidth: 0,
+                      geometry: geometry,
                       metrics: TimelineGridMetrics.defaults,
                     ),
                   ),

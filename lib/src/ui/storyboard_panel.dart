@@ -4869,6 +4869,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     required this.width,
     required this.height,
     required this.timelineScale,
+    required this.frameGeometry,
     this.laneEdit,
     this.laneRange,
   });
@@ -4892,6 +4893,10 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   /// Its label's height ([_StoryboardRowHeights.lane]) — one row.
   final double height;
   final TimelineScale timelineScale;
+
+  /// The panel's live frame-axis geometry its band is laid by, as its
+  /// V rows' are.
+  final TimelineFrameGeometryHandle frameGeometry;
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Wires the band's range-select/move gesture (the timeline's lane
@@ -4922,8 +4927,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
         lane: lane,
         frameStartIndex: 0,
         frameEndIndexExclusive: frames,
-        leadingFrameSpacerWidth: 0,
-        trailingFrameSpacerWidth: 0,
+        geometry: frameGeometry,
         metrics: metrics,
         laneRange: laneRange,
         keyPrefix: 'storyboard',

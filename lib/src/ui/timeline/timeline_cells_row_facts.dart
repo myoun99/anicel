@@ -15,7 +15,6 @@ import 'lane_row_slice.dart';
 import 'memo_token.dart';
 import 'property_lane_model.dart';
 import 'row_berths.dart';
-import 'still_row.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_cells_row.dart';
@@ -294,33 +293,32 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
 /// boundary here held the paint in but not the layout: the step rebuilt in
 /// the grid's layout scope, laid it out again and repainted the rows'
 /// viewport around the one row that moved (a drag step is a tick:
-/// [TickLayer]). On that layer the row is a still region of its own
-/// ([stillRow]).
+/// [TickLayer]). On that layer the row's window is a still region of its
+/// own ([TimelineLaneFrameRow.windowIsStill]).
+/// ↩️The row's whole box was (Q8), which the runway a drag past the end
+/// grows resized.
 Widget timelineGatedRow(
   TimelineDisplayRow row,
   ValueListenable<TimelineDragPreview?>? dragPreview,
   Widget Function(BuildContext context, Layer layer) rowBuilder,
 ) => TickLayer(
-  child: stillRow(
-    TimelineDragPreviewRowGate(
-      dragPreview: dragPreview,
-      layer: row.layer,
-      slice: row.isLane
-          ? (layer) => laneRowSlice(layer, row.lane!.laneId)
-          : null,
-      rowBuilder: rowBuilder,
-    ),
+  child: TimelineDragPreviewRowGate(
+    dragPreview: dragPreview,
+    layer: row.layer,
+    slice: row.isLane
+        ? (layer) => laneRowSlice(layer, row.lane!.laneId)
+        : null,
+    rowBuilder: rowBuilder,
   ),
 );
 
-/// The frames a grid lays its lane rows over — its window and the room it
-/// leaves at either end — and the lanes' selection domain: what a lane row
-/// takes of its grid beyond the cells' record.
+/// The frames a grid lays its lane rows over and the lanes' selection
+/// domain: what a lane row takes of its grid beyond the cells' record.
+/// Where they stand along the axis is the grid's geometry's to say
+/// ([TimelineCellsRowGrid.geometry]).
 typedef TimelineLaneRowSpan = ({
   int startIndex,
   int endIndexExclusive,
-  double leadingSpacer,
-  double trailingSpacer,
   // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's lanes now,
   // camera included. It stood down there until 2026-08-08 on the reading
   // that the camera's keyframes are atomic; they are not (a camera row's
@@ -370,8 +368,8 @@ Widget timelineLaneRowFrom(
     ),
     frameStartIndex: span.startIndex,
     frameEndIndexExclusive: span.endIndexExclusive,
-    leadingFrameSpacerWidth: span.leadingSpacer,
-    trailingFrameSpacerWidth: span.trailingSpacer,
+    geometry: grid.geometry,
+    windowIsStill: true,
     metrics: metrics,
     laneRange: span.laneRange,
   );

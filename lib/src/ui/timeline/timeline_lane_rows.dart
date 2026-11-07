@@ -80,10 +80,16 @@ import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
 import 'timeline_frame_span_layout.dart'
-    show TimelineFrameSpan, TimelineFrameSpanPlacement;
+    show
+        TimelineFrameSpan,
+        TimelineFrameSpanLayout,
+        TimelineFrameSpanPlacement;
 import 'timeline_grid_metrics.dart';
 import 'timeline_span_name.dart' show TimelineSpanName;
 import 'axis_turn.dart';
+import 'still_row.dart';
+import 'timeline_frame_geometry.dart'
+    show TimelineFrameAxisBox, TimelineFrameGeometryHandle;
 import 'memo_token.dart' show ByList;
 
 /// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
@@ -1491,9 +1497,9 @@ class TimelineLaneFrameRow extends StatelessWidget {
     required this.lane,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.leadingFrameSpacerWidth,
-    required this.trailingFrameSpacerWidth,
+    required this.geometry,
     required this.metrics,
+    this.windowIsStill = false,
     this.laneRange,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
@@ -1503,9 +1509,23 @@ class TimelineLaneFrameRow extends StatelessWidget {
   final PropertyLaneRow lane;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final double leadingFrameSpacerWidth;
-  final double trailingFrameSpacerWidth;
+
+  /// The LIVE frame-axis geometry its box and its pieces are laid by — the
+  /// grid's, as its cells row's ([TimelineFrameCellsRow.geometry]).
+  final TimelineFrameGeometryHandle geometry;
+
   final TimelineGridMetrics metrics;
+
+  /// Whether the row's WINDOW is a still region of its own ([stillRow]) —
+  /// every lane row of the dock's grids, as their cells rows' are
+  /// ([TimelineFrameCellsRow.windowIsStill]).
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 —
+  /// 행 그림 영역을 창 상자로」): the window, not the row's box. 🔬The lane
+  /// row was the axis laid whole — its spacers and the frames between — and
+  /// a still region round it: the runway a drag past the end grows resized
+  /// its pieces and threw away the image of every lane row it showed.
+  final bool windowIsStill;
 
   /// The LANE-scoped selection domain (UI-R23 #3 part 2, superseding the
   /// R22-C owner-layer fallback), and since 2026-08-08 the only thing on
@@ -1537,12 +1557,42 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// one of them now, with the rail's own test for the light
   /// ([timelineRowGround]); the band is its gesture, the line between its
   /// keys and its markers.
+  ///
+  /// Its box is the grid's frame-axis box, laid at the window and its
+  /// pieces by their frames' edges ([TimelineFrameSpanLayout]), as a cells
+  /// row's are: where the axis ends lays none of what it draws again. The
+  /// band's gesture stands OVER what it draws and outside its still region
+  /// — it reaches the axis' end, and draws nothing.
   @override
   Widget build(BuildContext context) {
-    return _withSpacers(
-      Stack(
-        clipBehavior: Clip.none,
-        children: [?_gestureLayer(), ?_keysLine(), ..._liveMarkers()],
+    final drawn = _drawn();
+    final gesture = _gestureLayer();
+    return TimelineFrameAxisBox(
+      key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-${lane.laneId}'),
+      geometry: geometry,
+      crossAxisExtent: _crossExtent,
+      axis: axis,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (windowIsStill) stillRow(drawn) else drawn,
+          if (gesture != null)
+            TimelineFrameSpanLayout(
+              geometry: geometry,
+              crossAxisExtent: _crossExtent,
+              axis: axis,
+              children: [
+                TimelineFrameSpan(
+                  placement: TimelineFrameSpanPlacement(
+                    startIndex: frameStartIndex,
+                    endIndexExclusive: frameEndIndexExclusive,
+                  ),
+                  // The layer fills a Stack of its own (it is a [Positioned]).
+                  child: Stack(children: [gesture]),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -1552,7 +1602,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// Cross-axis extent: rail-row height in the timeline, column width in
   /// the X-sheet (the transposed metrics carry both as layerRowHeight).
   double get _crossExtent => metrics.layerRowHeight;
-  double get _visibleExtent => _edge(frameEndIndexExclusive);
 
   /// [frame]'s leading boundary along this band — the frame axis' one law
   /// ([timelineFrameEdge]), from the band's first frame.
@@ -1602,12 +1651,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
     }
     final from = math.max(span.first, frameStartIndex);
     final past = math.min(span.last + 1, frameEndIndexExclusive);
-    return placedAlong(
-      axis,
-      along: _edge(from),
-      across: 0,
-      alongExtent: _edge(past) - _edge(from),
-      acrossExtent: _crossExtent,
+    return TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: from,
+        endIndexExclusive: past,
+      ),
       child: TimelineLaneKeysLine(
         key: ValueKey<String>(
           '$keyPrefix-lane-keys-line-${layer.id}-${lane.laneId}',
@@ -1626,11 +1674,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
   }
 
-  /// The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the markers: pans
-  /// on the band select THIS lane; marker drags keep their arena priority
-  /// above. The GROUP HEADER band selects too (R26 #3): its anchor spans
-  /// the WHOLE member group — the "모두에 적용되는 그 행", collapsed state
-  /// included.
+  /// The band-wide LANE gesture (UI-R23 #3 part 2), OVER what the band
+  /// draws — its line, its marks and its names are drawings, which no
+  /// press is for: pans on the band select THIS lane. The GROUP HEADER
+  /// band selects too (R26 #3): its anchor spans the WHOLE member group —
+  /// the "모두에 적용되는 그 행", collapsed state included.
   Widget? _gestureLayer() {
     final range = laneRange;
     if (range == null) return null;
@@ -1641,7 +1689,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
       layer: layer,
       laneId: lane.laneId,
       frameStartIndex: frameStartIndex,
-      leadingFrameSpacerWidth: 0,
       frameCellExtent: _cellExtent,
       crossAxisExtent: _crossExtent,
       callbacks: range,
@@ -1649,18 +1696,22 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
   }
 
-  /// Markers follow the LIVE lane selection (value-only — no row rebuild)
-  /// so the accent-1 rings track drags per step.
-  List<Widget> _liveMarkers() {
+  /// What the band draws, laid by its frames' edges — the markers following
+  /// the LIVE lane selection (value-only — no row rebuild) so the accent-1
+  /// rings track drags per step.
+  Widget _drawn() {
+    Widget laid(TimelineLaneSelection? selection) => TimelineFrameSpanLayout(
+      geometry: geometry,
+      crossAxisExtent: _crossExtent,
+      axis: axis,
+      children: [?_keysLine(), ..._markers(selection)],
+    );
     final listenable = laneRange?.selection;
-    if (listenable == null) return _markers(null);
-    return [
-      ValueListenableBuilder(
-        valueListenable: listenable,
-        builder: (context, selection, _) =>
-            Stack(clipBehavior: Clip.none, children: _markers(selection)),
-      ),
-    ];
+    if (listenable == null) return laid(null);
+    return ValueListenableBuilder(
+      valueListenable: listenable,
+      builder: (context, selection, _) => laid(selection),
+    );
   }
 
   /// R27 #14: the selection BAND is no longer painted here. It rides the
@@ -1682,14 +1733,19 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// owns the ring now — frame selection is a separate domain and never
   /// rings lane keys. Header union diamonds ring on a whole-group selection
   /// (R26 #3).
+  ///
+  /// In the middle of its cell, either way: a hit box wider than the cell
+  /// (a narrow zoom) stands out past both its edges alike.
   Widget _keyMarker(int frame, TimelineLaneSelection? selection) {
     final hit = _hitSizeAt(frame);
-    return placedAlong(
-      axis,
-      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit.width / 2,
-      across: _crossExtent / 2 - hit.height / 2,
-      alongExtent: hit.width,
-      acrossExtent: hit.height,
+    return TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: frame,
+        mainExtent: hit.width,
+        mainInset: (_edge(frame + 1) - _edge(frame) - hit.width) / 2,
+        crossInset: _crossExtent / 2 - hit.height / 2,
+        crossExtent: hit.height,
+      ),
       child: TimelineLaneKeyMarker(
         key: ValueKey<String>(
           '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
@@ -1747,29 +1803,12 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// 왜 자꾸 멋대로 하는거지? 아예 통일하라고」. One print now: the frame
   /// block's type rule, in the paper's ink, one size on the header and the
   /// member alike.
-  Widget _keyName(int frame, String text) => placedAlong(
-    axis,
-    along: _edge(frame),
-    across: 0,
-    alongExtent: _edge(frame + 1) - _edge(frame),
-    acrossExtent: _crossExtent,
+  Widget _keyName(int frame, String text) => TimelineFrameSpan(
+    placement: TimelineFrameSpanPlacement(
+      startIndex: frame,
+      endIndexExclusive: frame + 1,
+    ),
     child: IgnorePointer(child: _LaneKeyName(text: text, layer: layer)),
-  );
-
-  /// The band between its two spacers, along the axis.
-  Widget _withSpacers(Widget band) => Flex(
-    direction: axis,
-    key: ValueKey<String>('$keyPrefix-lane-row-${layer.id}-${lane.laneId}'),
-    children: [
-      sizedAlong(axis, along: leadingFrameSpacerWidth, across: _crossExtent),
-      sizedAlong(
-        axis,
-        along: _visibleExtent,
-        across: _crossExtent,
-        child: band,
-      ),
-      sizedAlong(axis, along: trailingFrameSpacerWidth, across: _crossExtent),
-    ],
   );
 }
 

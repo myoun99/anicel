@@ -484,8 +484,7 @@ class _WorkspaceCollapsedRows {
             lane: lane,
             frameStartIndex: geometry.value.frameStartIndex,
             frameEndIndexExclusive: geometry.value.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: 0,
-            trailingFrameSpacerWidth: 0,
+            geometry: geometry,
             metrics: metrics,
             // Display-only: the overlay is inside an `IgnorePointer`, so
             // the band has nobody to answer.

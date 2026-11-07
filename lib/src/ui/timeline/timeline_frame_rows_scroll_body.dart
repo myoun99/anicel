@@ -226,8 +226,6 @@ class _TimelineFrameRowsScrollBodyState
   TimelineLaneRowSpan get _laneRowSpan => (
     startIndex: widget.frameStartIndex,
     endIndexExclusive: widget.frameEndIndexExclusive,
-    leadingSpacer: widget.leadingFrameSpacerWidth,
-    trailingSpacer: widget.trailingFrameSpacerWidth,
     laneRange: widget.laneRange,
   );
 
