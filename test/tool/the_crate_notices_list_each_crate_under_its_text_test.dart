@@ -80,6 +80,17 @@ void main() {
       expect(notices.map((n) => n.text), ['apache', 'Copyright Two']);
     });
 
+    test('order two entries of one first crate by their texts', () {
+      // Its files are read by name, so its Apache text comes first.
+      final notices = noticesOf({
+        'a 1.0.0': licence('MIT OR Apache-2.0', {
+          'LICENSE-APACHE': 'zz apache',
+          'LICENSE-MIT': 'Copyright A',
+        }),
+      });
+      expect(notices.map((n) => n.text), ['Copyright A', 'zz apache']);
+    });
+
     test('list the crates of one text under one entry, by first crate', () {
       final notices = noticesOf({
         'zeta 1.0.0': licence('MIT', {'LICENSE': 'Copyright Zeta'}),
