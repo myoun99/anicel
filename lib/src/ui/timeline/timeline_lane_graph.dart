@@ -32,7 +32,7 @@ import '../input/hit_gate.dart' show HitGate;
 import '../input/timeline_edit_pan.dart';
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
 import '../text/app_strings.dart' show AppStrings, AppText;
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppShapes, SuperellipseFace;
 import '../widgets/app_icon_button.dart'
     show AppIconButton, AppIconButtonSize;
 import '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
@@ -1897,9 +1897,9 @@ class LaneGraphGuestTags extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PressesGoThrough(
     child: DecoratedBox(
-      decoration: ShapeDecoration(
+      decoration: SuperellipseFace(
         color: AppColors.surface,
-        shape: AppShapes.container(
+        edge: AppShapes.container(
           AppShapes.wellRadius,
           side: BorderSide(color: AppColors.hairline),
         ),

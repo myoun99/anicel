@@ -1,0 +1,107 @@
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q9 (유저 2026-11-08, 2): a filled
+/// corner's edge is drawn by FILLS — the side's colour over the shape, the
+/// inside over the shape the side's width in — so an image of it and the
+/// screen agree (🔬the Surface, 11-08 04:40: a stroke 49/255, two fills
+/// 3~5). Where two fills cannot draw it — a translucent inside — the face
+/// is drawn as `ShapeDecoration` draws it.
+void main() {
+  const size = Size(60, 24);
+  const inside = Color(0xFF3A3D42);
+  const edge = Color(0xFFE6E8EB);
+  final outer = AppShapes.container(
+    4,
+  ).borderRadius.resolve(TextDirection.ltr).toRSuperellipse(Offset.zero & size);
+
+  Future<RenderBox> faceOf(
+    WidgetTester tester,
+    Color color, {
+    BorderSide side = const BorderSide(color: edge, width: 1.5),
+  }) async {
+    await tester.pumpWidget(
+      Center(
+        child: SizedBox.fromSize(
+          size: size,
+          child: DecoratedBox(
+            decoration: SuperellipseFace(
+              color: color,
+              edge: AppShapes.container(4, side: side),
+            ),
+          ),
+        ),
+      ),
+    );
+    return tester.renderObject<RenderBox>(find.byType(DecoratedBox));
+  }
+
+  bool onlyFills(Symbol method, List<dynamic> arguments) =>
+      method != #drawRSuperellipse ||
+      (arguments[1] as Paint).style == PaintingStyle.fill;
+
+  testWidgets('over an opaque inside: the side\'s colour over the shape, '
+      'then the inside over the shape its width in — fills, no stroke', (
+    tester,
+  ) async {
+    final face = await faceOf(tester, inside);
+    expect(
+      face,
+      paints
+        ..rsuperellipse(rsuperellipse: outer, color: edge)
+        ..rsuperellipse(
+          rsuperellipse: outer.deflate(1.5),
+          color: inside,
+        ),
+    );
+    expect(face, paints..everything(onlyFills));
+    expect(face, paintsExactlyCountTimes(#drawRSuperellipse, 2));
+  });
+
+  testWidgets('a translucent side lies over the inside, as its stroke did', (
+    tester,
+  ) async {
+    final face = await faceOf(
+      tester,
+      inside,
+      side: BorderSide(color: edge.withValues(alpha: 0.5)),
+    );
+    expect(
+      face,
+      paints
+        ..rsuperellipse(rsuperellipse: outer, color: inside)
+        ..rsuperellipse(
+          rsuperellipse: outer,
+          color: edge.withValues(alpha: 0.5),
+        )
+        ..rsuperellipse(
+          rsuperellipse: outer.deflate(1),
+          color: inside,
+        ),
+    );
+    expect(face, paints..everything(onlyFills));
+  });
+
+  testWidgets('over a translucent inside it is drawn as ShapeDecoration '
+      'draws it — the side a stroke', (tester) async {
+    final face = await faceOf(tester, inside.withValues(alpha: 0.4));
+    expect(
+      face,
+      paints
+        ..rsuperellipse(color: inside.withValues(alpha: 0.4))
+        ..rsuperellipse(strokeWidth: 1.5, color: edge),
+    );
+    expect(
+      face,
+      isNot(paints..everything(onlyFills)),
+      reason: 'two fills would let the side show through the inside',
+    );
+  });
+
+  testWidgets('with no side it is the plain fill', (tester) async {
+    final face = await faceOf(tester, inside, side: BorderSide.none);
+    expect(face, paintsExactlyCountTimes(#drawRSuperellipse, 1));
+    expect(face, paints..rsuperellipse(color: inside));
+  });
+}

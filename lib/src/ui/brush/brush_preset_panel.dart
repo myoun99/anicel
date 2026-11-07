@@ -18,7 +18,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../panels/editor_panel_frame.dart';
-import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes, SuperellipseFace;
 import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
@@ -1281,12 +1281,12 @@ class _GroupIconPicker extends StatelessWidget {
           child: Container(
             width: 26,
             height: 26,
-            decoration: ShapeDecoration(
+            decoration: SuperellipseFace(
               // Selection reads as colour only, never a checkmark.
               color: isSelected
                   ? colorScheme.surfaceContainerHigh
                   : Colors.transparent,
-              shape: AppShapes.container(
+              edge: AppShapes.container(
                 AppShapes.wellRadius,
                 side: BorderSide(
                   color: isSelected
@@ -1472,9 +1472,9 @@ class _BrushPresetRow extends StatelessWidget {
                   Container(
                     width: _tipSide,
                     height: _tipSide,
-                    decoration: ShapeDecoration(
+                    decoration: SuperellipseFace(
                       color: colorScheme.surfaceContainerHighest,
-                      shape: AppShapes.container(
+                      edge: AppShapes.container(
                         AppShapes.wellRadius,
                         side: BorderSide(color: colorScheme.outlineVariant),
                       ),

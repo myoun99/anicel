@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, SuperellipseFace;
 import '../widgets/field_slider.dart';
 import '../widgets/tick_layer.dart';
 
@@ -80,9 +80,9 @@ class AudioLevelMeter extends StatelessWidget {
         key: refused
             ? const ValueKey<String>('playback-output-refused')
             : null,
-        decoration: ShapeDecoration(
+        decoration: SuperellipseFace(
           color: refused ? AppColors.danger : AppColors.backdrop,
-          shape: frame.shape,
+          edge: frame.edge,
         ),
         child: Padding(
           padding: const EdgeInsets.all(_inset),

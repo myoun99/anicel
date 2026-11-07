@@ -469,13 +469,13 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// field ran the whole of it, so the frame was the field's (유저
   /// 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데. 다른박스 마찬가지
   /// 통일」), until the field moved into the pad (I-134).
-  static ShapeDecoration frameOf(
+  static SuperellipseFace frameOf(
     double height, {
     required bool enabled,
     bool typed = false,
-  }) => ShapeDecoration(
+  }) => SuperellipseFace(
     color: dimmedIfDisabled(AppColors.surface, enabled: enabled),
-    shape: AppShapes.container(
+    edge: AppShapes.container(
       radiusFor(height),
       side: BorderSide(
         color: typed

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../input/control_press_claim.dart' show ControlPressClaim;
 import '../shortcuts/editor_shortcut_scope.dart' show ShortcutTooltip;
 import '../text/app_strings.dart' show AppText;
-import '../theme/app_theme.dart' show AppColors, AppCursors;
+import '../theme/app_theme.dart' show AppColors, AppCursors, SuperellipseFace;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../widgets/ellipsis_text.dart';
@@ -443,9 +443,9 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
           child: DecoratedBox(
             key: ValueKey<String>(widget.keyValue),
             // The frame's hairline, on the button's own ground.
-            decoration: ShapeDecoration(
+            decoration: SuperellipseFace(
               color: dimmedIfDisabled(shown, enabled: live),
-              shape: frame.shape,
+              edge: frame.edge,
             ),
             child: SizedBox(
               height: FieldSlider.defaultHeight,

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppShapes, SuperellipseFace;
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
 import 'panel_flash.dart';
@@ -240,11 +240,11 @@ class EditorDockDropZone extends StatelessWidget {
       width: expandToFill ? null : (axis == Axis.vertical ? band : null),
       height: expandToFill ? null : (axis == Axis.horizontal ? band : null),
       margin: const EdgeInsets.all(margin),
-      decoration: ShapeDecoration(
+      decoration: SuperellipseFace(
         color: hovered
             ? colorScheme.primary.withValues(alpha: 0.25)
             : colorScheme.primary.withValues(alpha: 0.06),
-        shape: AppShapes.container(
+        edge: AppShapes.container(
           AppShapes.wellRadius,
           side: BorderSide(
             color: hovered

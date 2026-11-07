@@ -9,7 +9,7 @@ import '../widgets/anchored_popup.dart';
 import '../widgets/ellipsis_text.dart';
 import 'brush_tip_preview.dart';
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes, SuperellipseFace;
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/instant_tap_region.dart';
 import 'brush_preset_reorder_grid.dart' show BrushPresetReorderGrid;
@@ -189,9 +189,9 @@ class _TipSwatch extends StatelessWidget {
           child: Container(
             width: FieldSlider.defaultHeight,
             height: FieldSlider.defaultHeight,
-            decoration: ShapeDecoration(
+            decoration: SuperellipseFace(
               color: colorScheme.surfaceContainerHighest,
-              shape: AppShapes.container(
+              edge: AppShapes.container(
                 AppShapes.wellRadius,
                 side: BorderSide(color: colorScheme.outlineVariant),
               ),
@@ -328,9 +328,9 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
         0,
       ),
       child: DecoratedBox(
-        decoration: ShapeDecoration(
+        decoration: SuperellipseFace(
           color: colorScheme.surfaceContainerHighest,
-          shape: AppShapes.container(
+          edge: AppShapes.container(
             AppShapes.wellRadius,
             side: BorderSide(color: colorScheme.outlineVariant),
           ),

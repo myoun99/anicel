@@ -67,9 +67,9 @@ class CanvasCapsule extends StatelessWidget {
       debugLabel: 'capsule:$keyValue',
       child: DecoratedBox(
         key: ValueKey<String>(keyValue),
-        decoration: ShapeDecoration(
+        decoration: SuperellipseFace(
           color: Theme.of(context).colorScheme.surface,
-          shape: shape.copyWith(
+          edge: shape.copyWith(
             side: BorderSide(color: AppColors.backdrop),
           ),
         ),

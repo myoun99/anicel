@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../../models/app_accents.dart';
-import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes, SuperellipseFace;
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 import '../input/control_press_claim.dart';
@@ -65,9 +65,9 @@ class AccentSettingsRow extends StatelessWidget {
                     child: Container(
                       width: 24,
                       height: 24,
-                      decoration: ShapeDecoration(
+                      decoration: SuperellipseFace(
                         color: preset,
-                        shape: AppShapes.container(
+                        edge: AppShapes.container(
                           AppShapes.wellRadius,
                           side: BorderSide(
                             color: preset == settings.accent

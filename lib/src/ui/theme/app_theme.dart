@@ -397,6 +397,68 @@ abstract final class AppShapes {
   /// reads as a lozenge.)
 }
 
+/// THE FACE OF A FILLED CORNER WITH AN EDGE — an [AppShapes] shape filled
+/// with [color] and edged with its side, the edge drawn by FILLS: the
+/// side's colour over the whole shape, [color] over the shape the side's
+/// width in.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q9 (유저 2026-11-08, 2: 「가장자리를
+/// 정확한 식으로 칠하게 바꿔 그려 본다(먼저 탐침으로 잰다)」): a superellipse's
+/// side as [RoundedSuperellipseBorder] draws it — a stroke — is multisampled,
+/// and the image a still region takes of it parts from the screen by up to
+/// 49/255 at its edges; the same side as two fills parts by 3~5 (🔬the
+/// Surface's edge probe, 11-08 04:40: `control` 49, `control-fills` 3~5). A
+/// region's image and the region live then look the same. The framework
+/// already draws a rounded RECTANGLE's side so (`drawDRRect`, which is why
+/// `rrect-line` agreed at 0); a superellipse has no such ring.
+///
+/// ⛔Only over an OPAQUE inside, and a side laid inside the shape (as every
+/// side the app draws is): the inside's fill is what draws the side's inner
+/// edge, so a translucent inside would let the side's colour show through
+/// it. Such a face is drawn as [ShapeDecoration] draws it.
+class SuperellipseFace extends ShapeDecoration {
+  const SuperellipseFace({required Color super.color, required this.edge})
+    : super(shape: edge);
+
+  /// The shape, its side the edge — what [shape] is, typed.
+  final RoundedSuperellipseBorder edge;
+
+  /// Whether the edge is drawn by fills: there is one, laid inside, over an
+  /// opaque inside.
+  bool get _edgedByFills =>
+      edge.side.style == BorderStyle.solid &&
+      edge.side.width > 0 &&
+      edge.side.strokeAlign == BorderSide.strokeAlignInside &&
+      color!.a == 1;
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _edgedByFills
+      ? _SuperellipseFacePainter(this, onChanged)
+      : super.createBoxPainter(onChanged);
+}
+
+class _SuperellipseFacePainter extends BoxPainter {
+  _SuperellipseFacePainter(this._face, super.onChanged);
+
+  final SuperellipseFace _face;
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final side = _face.edge.side;
+    final inside = Paint()..color = _face.color!;
+    final outer = _face.edge.borderRadius
+        .resolve(configuration.textDirection)
+        .toRSuperellipse(offset & configuration.size!);
+    // A translucent side lies over the inside, as its stroke did.
+    if (side.color.a < 1) {
+      canvas.drawRSuperellipse(outer, inside);
+    }
+    canvas
+      ..drawRSuperellipse(outer, Paint()..color = side.color)
+      ..drawRSuperellipse(outer.deflate(side.width), inside);
+  }
+}
+
 /// The cursor of everything a press acts on — a button, a toggle, a menu's
 /// row, a tab, a swatch: the HAND while it is live, the arrow while it is
 /// dead. A Material button reads it from this theme; an `InkWell`, which no
