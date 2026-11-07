@@ -2,11 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart' show GpuEngine;
 
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
     show debugPictureSideLimit;
@@ -61,8 +60,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // The GPU engine opens on the first adapter: no Flutter names one here.
   // ⛔Nothing opens it now — a file that never asks for the engine opens no
   // device (app_gpu_engine.dart) — and nothing stands in for it: a test that
-  // needs it and gets none fails.
-  debugGpuEngineOpener = GpuEngine.onFirstAdapter;
+  // needs it and gets none fails. ⛔Named, not imported: the config reaches
+  // no engine code (gpu_adapter_choice.dart says why).
+  debugGpuAdapterChoice = GpuAdapterChoice.first;
   // 🚨★★★**THE RUN'S TEMP IS ITS OWN, AND IT IS EMPTY WHEN THE RUN ENDS**
   // (2026-10-08). FIRST, before anything below asks for a temp path: from
   // here on `Directory.systemTemp` answers a folder of this file's own —

@@ -336,8 +336,8 @@ void main() {
         reason: 'the engine\'s tests, not the suite');
   });
 
-  test('🚨the GPU engine crate is not the engine\'s C — no suite loads it, '
-      'and one that reads it by path runs when it changes', () {
+  test('🚨the GPU engine crate is not the engine\'s C — it runs no whole '
+      'suite, and one that reads it by path runs when it changes', () {
     // 저장 · 관제 2026-11-05 (gpu-engine-skeleton): while every path under
     // `packages/` counted as the engine, a lane that changed only the
     // crate's Rust, WGSL and ledger ran 218 files with 165 parity tests.
@@ -347,6 +347,32 @@ void main() {
     expect(forcesFullRun(crate, near: true), isFalse, reason: 'the near run');
     const registrants = 'packages/gpu_engine/example/windows/flutter';
     expect(pathsReadAsText("'$registrants'"), {registrants});
+  });
+
+  test('🚨a change to the GPU engine\'s Rust selects the suites that call '
+      'it, near as wide, and no suite that does not', () {
+    // 2026-11-07 (screen-on-the-engine): the app came to depend on the
+    // engine, while `package:gpu_engine` still read as a third party's —
+    // a one-line change to its Rust selected none of the suites that call
+    // it. ⚠️The config is asked at every distance: an engine it reached
+    // would make the change every suite's (lib/src/native/
+    // gpu_adapter_choice.dart).
+    const calls = 'test/native/the_engine_pool_keeps_the_apps_tiles_test.dart';
+    const clear = 'test/native/a_device_is_described_by_its_own_os_test.dart';
+    final graph = buildImportGraph(roots: kGraphRoots);
+    for (final within in [kNearImports, null]) {
+      expect(
+        selectTests(
+          changed: {'packages/gpu_engine/rust/src/kernels/pool/mod.rs'},
+          tests: [calls, clear],
+          imports: graph,
+          read: (path) => File(path).readAsStringSync(),
+          within: within,
+        ),
+        {calls},
+        reason: 'within $within',
+      );
+    }
   });
 
   test('🚨a tool a test runs through is walked into — what that tool '
