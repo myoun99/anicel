@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -24,8 +25,6 @@ void main() {
   late GpuComposite composite;
   final held = <Pointer<Uint8>>[];
   const all = (-1 << 31, -1 << 31, (1 << 31) - 1, (1 << 31) - 1);
-  // blend.wgsl's BLEND_NORMAL: the brush's table has no normal of its own.
-  const normal = 28;
   final multiply = separableBlendModeNativeId(SeparableBlendMode.multiply);
   final screen = separableBlendModeNativeId(SeparableBlendMode.screen);
   const identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
@@ -110,13 +109,28 @@ void main() {
       sampling: sampling,
       columns: set.length * gpuTileSide,
       rows: gpuTileSide,
-      mode: mode ?? normal,
+      mode: mode ?? GpuBlend.normal,
       matrix: matrix == null ? null : plan.matrix(matrix),
       radiusFloor: radiusFloor,
     );
     expect(added, isTrue);
     return plan;
   }
+
+  // The names the package gives are the ids the shader lays by: a number
+  // written twice is two numbers the day one of them moves.
+  test('the blends the package names are the ones its shader has', () {
+    final shader = File(
+      'packages/gpu_engine/rust/src/kernels/blend/blend.wgsl',
+    ).readAsStringSync();
+    int idOf(String name) => int.parse(
+      RegExp('const BLEND_$name: u32 = (\\d+)u;').firstMatch(shader)![1]!,
+    );
+
+    expect(GpuBlend.normal, idOf('NORMAL'));
+    expect(GpuBlend.erase, idOf('ERASE'));
+    expect(GpuBlend.plus, idOf('PLUS'));
+  });
 
   test('a row copied over nothing lays back the bytes stored', () {
     final bytes = noise(2);
@@ -172,7 +186,7 @@ void main() {
       sampling: GpuSampling.blend,
       columns: gpuTileSide,
       rows: gpuTileSide,
-      mode: normal,
+      mode: GpuBlend.normal,
     );
 
     expect(floored(3), isNot(floored(1)));
@@ -230,7 +244,7 @@ void main() {
         sampling: GpuSampling.blend,
         columns: gpuTileSide,
         rows: gpuTileSide,
-        mode: normal,
+        mode: GpuBlend.normal,
       ),
       isFalse,
     );
@@ -244,7 +258,7 @@ void main() {
       ..solid(0xFF0000FF, 0, 0, 10, 6)
       ..open()
       ..solid(0xFF0000FF, 20, 0, 30, 10)
-      ..close(mode: normal, opacity: 32768, matrix: matrix);
+      ..close(mode: GpuBlend.normal, opacity: 32768, matrix: matrix);
     final tiles = [(0, 0)];
     final put = ran(plan, tiles);
 
@@ -287,7 +301,7 @@ void main() {
           mode: multiply,
         )
         ..closeAtop()
-        ..close(mode: normal);
+        ..close(mode: GpuBlend.normal);
       return ran(plan, [(0, 0)]);
     }
 
@@ -300,7 +314,7 @@ void main() {
   });
 
   test('a plan the executor refuses says why, run or shown', () {
-    final plan = GpuPlan()..close(mode: normal);
+    final plan = GpuPlan()..close(mode: GpuBlend.normal);
     addTearDown(plan.free);
     final surface = surfaceOf(8, 8);
     addTearDown(surface.free);
@@ -329,7 +343,7 @@ void main() {
         sampling: GpuSampling.blend,
         columns: 1,
         rows: 1,
-        mode: normal,
+        mode: GpuBlend.normal,
       ),
       throwsArgumentError,
     );
@@ -363,7 +377,7 @@ void main() {
       sampling: GpuSampling.blend,
       columns: (column + tiles.length) * gpuTileSide,
       rows: gpuTileSide,
-      mode: normal,
+      mode: GpuBlend.normal,
       keys: keys,
       chain: chain,
     );
@@ -579,7 +593,7 @@ void main() {
     sampling: GpuSampling.blend,
     columns: 3 * gpuTileSide,
     rows: gpuTileSide,
-    mode: mode ?? normal,
+    mode: mode ?? GpuBlend.normal,
     keys: keys,
     chain: chain,
     opacity: opacity,
@@ -667,7 +681,7 @@ void main() {
           sampling: GpuSampling.blend,
           columns: gpuTileSide,
           rows: gpuTileSide,
-          mode: normal,
+          mode: GpuBlend.normal,
           chain: chain,
         );
       return ran(plan, [(0, 0)]);
@@ -754,7 +768,12 @@ void main() {
       mode: multiply,
     );
     threeTileRow(plan, pair, chain: rowChain, opacity: 50000, mode: screen);
-    plan.close(mode: normal, opacity: 45000, chain: closeChain, mix: 40000);
+    plan.close(
+      mode: GpuBlend.normal,
+      opacity: 45000,
+      chain: closeChain,
+      mix: 40000,
+    );
     final put = ran(plan, [(0, 0), (1, 0), (2, 0)], (0, 0, 300, 120));
 
     expect(
@@ -861,7 +880,7 @@ void main() {
       sampling: GpuSampling.blend,
       columns: gpuTileSide,
       rows: gpuTileSide,
-      mode: normal,
+      mode: GpuBlend.normal,
       keys: keys,
       chain: chain,
     );
@@ -879,7 +898,7 @@ void main() {
         ..chainGaussian(chain, 1, 1)
         ..open();
       row(plan, set);
-      plan.close(mode: normal, chain: chain, mix: 70000);
+      plan.close(mode: GpuBlend.normal, chain: chain, mix: 70000);
     }, 'mixes its chain at 70000');
   });
 }

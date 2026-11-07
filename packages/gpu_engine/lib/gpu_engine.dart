@@ -319,6 +319,23 @@ class GpuPool {
   void free() => rust.poolFree(_pool);
 }
 
+/// The blends the executor has beside the app's table of 1 to 27 — the C
+/// engine's stroke ids, which blend.wgsl follows (`BLEND_NORMAL` and on):
+/// the app names those itself (brush_stroke_blend.dart), these only the
+/// engine has.
+abstract final class GpuBlend {
+  /// Source over.
+  static const int normal = 28;
+
+  /// The eraser: what is there loses the alpha of what lands, its colour
+  /// kept — a stroke's.
+  static const int erase = 29;
+
+  /// Flutter's `BlendMode.plus`: an adjustment's crossfade adds its second
+  /// pass onto its first by it.
+  static const int plus = 30;
+}
+
 /// How a row's pose samples its pixels: R1's modes, by the engine's ids.
 enum GpuSampling {
   /// The tent mean — a reduction's.

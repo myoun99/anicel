@@ -24,8 +24,6 @@ import '../helpers/census_where_textures_are_ram.dart';
 void main() {
   late GpuComposite composite;
   const all = (-1 << 31, -1 << 31, (1 << 31) - 1, (1 << 31) - 1);
-  // blend.wgsl's BLEND_NORMAL: the brush's table has no normal of its own.
-  const normal = 28;
   const identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
   // Cels by the name a painter gives one.
   const a = (1, 1);
@@ -58,7 +56,7 @@ void main() {
       sampling: GpuSampling.blend,
       columns: slots.length * gpuTileSide,
       rows: gpuTileSide,
-      mode: normal,
+      mode: GpuBlend.normal,
     );
     expect(added, isTrue);
     final out = composite.run(ledger.pool, plan, [
