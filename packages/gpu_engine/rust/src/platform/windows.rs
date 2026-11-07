@@ -308,10 +308,14 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     // Windows says the budget it gives this process — what a pool makes no
-    // page past (kernels/pool).
+    // page past (kernels/pool) — and the app reads what the engine's own
+    // device holds of it.
     #[test]
     fn windows_says_the_budget_it_gives_this_process() {
-        let memory = super::video_memory(&first_engine().adapter).expect("a memory report");
+        let engine = first_engine();
+        let memory = super::video_memory(&engine.adapter).expect("a memory report");
         assert!(memory.budget.is_some_and(|budget| budget > 0), "{memory:?}");
+        // SAFETY: the test process's engine lives as long as the process.
+        assert!(unsafe { crate::device::gpu_engine_video_memory(engine) } > 0);
     }
 }
