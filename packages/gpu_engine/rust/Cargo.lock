@@ -861,6 +861,7 @@ dependencies = [
  "read-fonts",
  "serde_json",
  "sha2",
+ "video",
  "wgpu",
  "windows",
  "zeno",

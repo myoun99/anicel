@@ -113,6 +113,10 @@ sha2 = "0.10"
 [dev-dependencies]
 ledger = { path = "native/ledger" }
 serde_json = "1"
+# The NV12 pass is held to video's `from_rgba` byte for byte while the
+# movie writers run it on the CPU (공통, gpu-export-path 2026-11-07 23:20
+# ④); the pin goes when 7′ deletes it.
+video = { path = "native/video" }
 
 # THE APP'S NATIVE C MOVES HERE, A MODULE TO A CRATE (native-to-rust, 유저
 # 2026-11-06 via 관제: no C left — what we wrote, third_party, .m, .cpp).
