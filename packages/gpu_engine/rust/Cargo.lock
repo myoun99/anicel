@@ -303,6 +303,7 @@ dependencies = [
 name = "compress"
 version = "0.0.1"
 dependencies = [
+ "ledger",
  "oracle",
 ]
 

@@ -49,6 +49,32 @@ pub fn assert_pinned(id: &str, bytes: &[u8]) {
     assert_eq!(fingerprint(bytes), pinned(id), "{id}");
 }
 
+/// A fingerprint taken a piece at a time — for a test whose bytes are too
+/// many to hold at once: the pieces' is the fingerprint of them joined.
+pub struct Running(crc32fast::Hasher);
+
+impl Running {
+    pub fn new() -> Self {
+        Running(crc32fast::Hasher::new())
+    }
+
+    pub fn add(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+
+    /// Fails unless the pieces added are the bytes the ledger pinned as
+    /// `id`.
+    pub fn assert_pinned(self, id: &str) {
+        assert_eq!(hex(self.0.finalize()), pinned(id), "{id}");
+    }
+}
+
+impl Default for Running {
+    fn default() -> Self {
+        Running::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +101,22 @@ mod tests {
     #[should_panic(expected = "failed: audio/tone.flac-samples")]
     fn bytes_other_than_the_pinned_ones_fail_naming_the_row() {
         assert_pinned("audio/tone.flac-samples", b"not the samples");
+    }
+
+    #[test]
+    fn pieces_have_the_fingerprint_of_the_bytes_joined() {
+        let mut running = Running::new();
+        for piece in [&b"1234"[..], b"", b"56789"] {
+            running.add(piece);
+        }
+        assert_eq!(hex(running.0.finalize()), "cbf43926");
+    }
+
+    #[test]
+    #[should_panic(expected = "failed: audio/tone.flac-samples")]
+    fn pieces_other_than_the_pinned_ones_fail_naming_the_row() {
+        let mut running = Running::new();
+        running.add(b"not the samples");
+        running.assert_pinned("audio/tone.flac-samples");
     }
 }

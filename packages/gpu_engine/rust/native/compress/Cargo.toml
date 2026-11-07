@@ -4,6 +4,8 @@ version = "0.0.1"
 edition = "2024"
 publish = false
 
-# The C answer key: the engine's qa_zstd_* (native/oracle).
+# The C answer key: the engine's qa_zstd_* (native/oracle), and the app's
+# ledger (native/ledger).
 [dev-dependencies]
+ledger = { path = "../ledger" }
 oracle = { path = "../oracle" }
