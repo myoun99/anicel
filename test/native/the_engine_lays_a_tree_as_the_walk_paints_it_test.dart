@@ -103,9 +103,10 @@ void main() {
     paintedNormal: (layer) => layer.paintedNormal(),
   );
 
-  /// [scope] clipped to [base] by the clip law ([clippedOnto]).
+  /// [scope] clipped to [base] by the clip law ([clippedOnto]) — a row, or
+  /// a clip it joins.
   CompositeNode<CutFrameCompositeLayer> clipped(
-    CompositeLeaf<CutFrameCompositeLayer> base,
+    CompositeNode<CutFrameCompositeLayer> base,
     CompositeLeaf<CutFrameCompositeLayer> scope,
   ) => clippedOnto(
     base,
@@ -251,6 +252,7 @@ void main() {
           const ui.Color(0xFF2050C0),
         ),
         'a row holding its right tile alone': ([row(1, columns: [1])], clear),
+        'an empty row over a row': ([row(1), row(2, columns: [])], clear),
         'a row moved by whole pixels': (
           [row(1, placement: const GuideTransform(1, 0, 0, 1, 7, -3))],
           clear,
@@ -402,6 +404,15 @@ void main() {
         ),
         'a clip whose row multiplies its base': (
           lawful([clipped(row(1), row(2, blendMode: LayerBlendMode.multiply))]),
+          clear,
+        ),
+        'a clip whose rows multiply its base and lie over that': (
+          lawful([
+            clipped(
+              clipped(row(1), row(2, blendMode: LayerBlendMode.multiply)),
+              row(3, opacity: 0.7),
+            ),
+          ]),
           clear,
         ),
         'a clip in screen over a row': (

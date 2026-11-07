@@ -172,7 +172,7 @@ class _TreePlan {
       matrix: _matrixOf(
         colour == null || mix >= 1
             ? colour
-            : lerpColorMatrixFromIdentity(colour, mix.clamp(0.0, 1.0)),
+            : lerpColorMatrixFromIdentity(colour, mix),
       ),
     );
   }
@@ -317,7 +317,7 @@ int _blendOf(LayerBlendMode mode) => switch (mode) {
 };
 
 /// [opacity] as the engine lays it, 65535 whole.
-int _strengthOf(double opacity) => (opacity.clamp(0.0, 1.0) * 65535).round();
+int _strengthOf(double opacity) => (opacity * 65535).round();
 
 /// [argb] — a `Color`'s — as the engine's solid takes it: straight RGBA8,
 /// A<<24|B<<16|G<<8|R.
