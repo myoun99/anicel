@@ -85,11 +85,16 @@ GPU_ENGINE_EXPORT int64_t gpu_engine_texture_register(void* front,
   GpuEngineSharedTexture* texture = [[GpuEngineSharedTexture alloc]
       initWithFront:(CVPixelBufferRef)front
                back:(CVPixelBufferRef)(back != NULL ? back : front)];
-  // 0 is the registry's failure (FlutterTexture.h; FlutterTextureRegistrar.mm).
   const int64_t texture_id = [gTextures registerTexture:texture];
+#if TARGET_OS_OSX
+  // 0 is the macOS registry's failure (FlutterTextureRegistrar.mm), whose
+  // ids are the textures' addresses. iOS counts its ids from 0 and never
+  // fails (ios/.../FlutterEngine.mm, nextTextureId), whatever
+  // FlutterTexture.h says.
   if (texture_id == 0) {
     return -1;
   }
+#endif
   gRegistered[@(texture_id)] = texture;
   return texture_id;
 }
