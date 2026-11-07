@@ -116,29 +116,51 @@ void main() {
     expect(put.sublist(2 * gpuTileBytes), bytes.sublist(gpuTileBytes));
   });
 
-  // A quarter pixel to the left: a pixel's centre lands in the same pixel
-  // and that pixel covers most of its preimage, so nearest and pick lay
-  // back the bytes; the tent mixes the next pixel in.
-  const quarter = [1.0, 0.0, 0.25, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-
+  // Columns red, blue, red, three to a pixel: the pixel's centre lands on
+  // the blue, which nearest lays; pick votes by colour, and the two reds
+  // outweigh it; the tent mixes them.
   test('each sampling samples by its own', () {
-    final bytes = noise(1);
-    final tiles = storedOf(bytes);
-    Uint8List sampled(GpuSampling sampling) =>
-        ran(oneRow(tiles, inverse: quarter, sampling: sampling), [(0, 0)]);
+    const red = [255, 0, 0, 255];
+    const blue = [0, 0, 255, 255];
+    final side = gpuTileSide;
+    final stripes = Uint8List(gpuTileBytes);
+    for (var at = 0; at < side * side; at++) {
+      stripes.setAll(4 * at, at % side % 3 == 1 ? blue : red);
+    }
+    final tiles = storedOf(stripes);
+    const third = [3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    List<int> sampled(GpuSampling sampling) => pixel(
+      ran(oneRow(tiles, inverse: third, sampling: sampling), [(0, 0)]),
+      [(0, 0)],
+      5,
+      5,
+    );
 
-    expect(sampled(GpuSampling.nearest), bytes);
-    expect(sampled(GpuSampling.pick), bytes);
-    expect(sampled(GpuSampling.blend), isNot(bytes));
+    expect(sampled(GpuSampling.nearest), blue);
+    expect(sampled(GpuSampling.pick), red);
+    expect(sampled(GpuSampling.blend), isNot(anyOf([equals(red), blue])));
   });
 
-  // Off a whole-pixel move: R1 copies one, in any mode, by any floor.
-  test("a row's radius floor widens its tent", () {
+  // Off a whole-pixel move — R1 copies one, in any mode, by any floor: a
+  // quarter pixel to the left.
+  test("a row's radius floor widens its tent, and is 1 unless named", () {
     final tiles = storedOf(noise(1));
+    const quarter = [1.0, 0.0, 0.25, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
     Uint8List floored(double radius) =>
         ran(oneRow(tiles, inverse: quarter, radiusFloor: radius), [(0, 0)]);
+    final unnamed = GpuPlan();
+    addTearDown(unnamed.free);
+    unnamed.row(
+      set: unnamed.set(0, 0, 1, 1, tiles),
+      inverse: quarter,
+      sampling: GpuSampling.blend,
+      columns: gpuTileSide,
+      rows: gpuTileSide,
+      mode: normal,
+    );
 
     expect(floored(3), isNot(floored(1)));
+    expect(ran(unnamed, [(0, 0)]), floored(1));
   });
 
   // Red into green: the matrix's first row reads nothing, its second lays

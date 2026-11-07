@@ -479,6 +479,7 @@ class GpuComposited {
   Uint8List read() => using((arena) {
     final count = rust.compositedBytes(tiles);
     final bytes = arena<Uint8>(_held(count));
+    // ⚠️No test reaches the throw: a read fails only where the device does.
     if (!rust.compositedRead(_engine._engine, _composited, bytes, count)) {
       throw StateError(_lastError());
     }
