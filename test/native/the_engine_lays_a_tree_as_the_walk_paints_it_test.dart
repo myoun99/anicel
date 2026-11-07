@@ -1042,6 +1042,13 @@ void main() {
           clear,
           32,
         ),
+        'a row blurred twice, in a colour between': (
+          [
+            row(1, columns: [0], effects: [gaussian(5), colour, gaussian(10)]),
+          ],
+          clear,
+          32,
+        ),
         // A step's: on the picture, cut there — its ink kept off the edge
         // the blur along a way reads past (the chain's margin, above).
         'a row blurred, then blurred along a way': (
