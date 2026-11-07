@@ -1,11 +1,11 @@
-name: GPU engine on Metal, Mesa and WARP
+name: GPU engine on Metal and Mesa, built on ARM64 Windows
 
 # The GPU engine crate's tests — every ledger row, and each bridge's test
 # that the bytes Flutter is handed are the kernel's — where no machine of
-# ours runs them: macOS (Metal), Linux (Mesa's software Vulkan, lavapipe)
-# and ARM64 Windows (WARP, with the arm64 dxcompiler.dll). wgpu runs its
-# own GPU tests on the first two runner shapes (gfx-rs/wgpu
-# .github/workflows/ci.yml, gpu-test).
+# ours runs them: macOS (Metal) and Linux (Mesa's software Vulkan,
+# lavapipe). wgpu runs its own GPU tests on these two runner shapes
+# (gfx-rs/wgpu .github/workflows/ci.yml, gpu-test). ARM64 Windows builds
+# them and runs the native crates' alone (its job says why).
 #
 # ⛔workflow_dispatch ONLY — no cron, no push or pull_request trigger
 # (유저, gpu-engine-skeleton-Q5 2026-11-05: 「손으로 거는 CI 하나를 만든다」).
@@ -15,7 +15,8 @@ name: GPU engine on Metal, Mesa and WARP
 # has the history).
 #
 # Every job runs the tests twice, debug then release, as a land does
-# (tool/lane.sh, refusal 8 — 관제 2026-11-05): a debug build's wgpu turns
+# (tool/lane.sh, refusal 8 — 관제 2026-11-05; the ARM64 job builds the GPU
+# kernels' and runs none of them): a debug build's wgpu turns
 # InstanceFlags::DEBUG on and compiles shaders with optimizations skipped,
 # so only release compiles the shaders the app ships (the grid kernel's
 # X3507 was red in release alone). Debug keeps the validation layers.
@@ -127,14 +128,28 @@ jobs:
 
   # The ARM64 Windows build ships the arm64 dxcompiler.dll, and no machine
   # of ours can load it (the Surface Pro 11 is Intel x64) — 관제
-  # 2026-11-05, gpu-engine-feasibility. The runner has no GPU, so the tests
-  # run on WARP, Windows' software D3D12. The kernels are integer-only: a
-  # ledger row WARP reproduces differently fails like any other.
+  # 2026-11-05, gpu-engine-feasibility. The runner has no GPU: wgpu opens
+  # WARP, Windows' software D3D12.
+  #
+  # ⛔BUILT, NOT RUN, ON WARP (유저, gpu-engine-skeleton-Q9 2026-11-07:
+  # 「ARM 은 빌드와 CPU 크레이트 시험만 — 다른 잡 급으로」). WARP fails the
+  # GPU kernels' tests on its own side (measured on the main PC's x64 WARP,
+  # d3d10warp 10.0.26100.9711, gpu-engine-skeleton): in release the shaders
+  # DXC optimizes for blend, composite, the dab blur, gaussian, resample
+  # and warp never finish (one `case` took a one-case shader from 54 ms to
+  # past 15 minutes), and in debug a chain test takes 868 s to the RTX
+  # 4080's 10 s and its first run reads values no other device does. So
+  # this job builds the GPU kernels' tests, debug and release, and runs the
+  # native crates', which use no GPU, as the other jobs do. The cost: no CI
+  # runs a GPU kernel on ARM64 Windows — a real ARM64 device is the first
+  # to — and shaders compile when a pipeline is made, so the build says
+  # nothing of them. Bringing the GPU tests back here is a new question for
+  # the user, not a fix.
   windows-arm64:
-    name: crate tests on WARP (Windows ARM64)
+    name: crate builds and CPU tests (Windows ARM64)
     runs-on: windows-11-arm
-    # Two cold builds of wgpu, and WARP rasterises on the CPU.
-    timeout-minutes: 60
+    # Two cold builds of wgpu; 30 bounds a hang, as on the others.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: packages/gpu_engine/rust
@@ -148,15 +163,15 @@ jobs:
       - uses: ./.github/actions/native-engine
       - id: toolchain
         run: rustup show
-      - name: GPU kernels (debug)
+      - name: GPU kernels built (debug)
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
-        run: cargo test --locked --no-fail-fast -p gpu_engine
+        run: cargo test --locked --no-fail-fast -p gpu_engine --no-run
       - name: native crates (debug)
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
         run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine
-      - name: GPU kernels (release)
+      - name: GPU kernels built (release)
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
-        run: cargo test --locked --no-fail-fast -p gpu_engine --release
+        run: cargo test --locked --no-fail-fast -p gpu_engine --release --no-run
       - name: native crates (release)
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
         run: cargo test --locked --no-fail-fast --workspace --exclude gpu_engine --release

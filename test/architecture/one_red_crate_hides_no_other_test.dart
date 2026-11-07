@@ -41,13 +41,20 @@ void main() {
     ];
     const kernels = '--no-fail-fast -p gpu_engine';
     const native = '--no-fail-fast --workspace --exclude gpu_engine';
-    for (final step in [
-      kernels,
-      native,
-      '$kernels --release',
-      '$native --release',
+    // The ARM64 job builds the kernels' tests and runs none (유저,
+    // gpu-engine-skeleton-Q9 2026-11-07); the native crates' run in every
+    // job.
+    const built = ' --no-run';
+    for (final (step, forms) in [
+      (kernels, {kernels, '$kernels$built'}),
+      (native, {native}),
+      (
+        '$kernels --release',
+        {'$kernels --release', '$kernels --release$built'},
+      ),
+      ('$native --release', {'$native --release'}),
     ]) {
-      expect(steps.where((s) => s == step), hasLength(jobs), reason: step);
+      expect(steps.where(forms.contains), hasLength(jobs), reason: step);
     }
     expect(steps, hasLength(4 * jobs));
   });
