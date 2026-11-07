@@ -7,12 +7,15 @@ publish = false
 [dependencies]
 media = { path = "../media" }
 
-# Media Foundation's writer (the output path is widened by media's path);
-# the crate is already in the lock as wgpu-hal's major.
+# Media Foundation's writer and reader (the path is widened by media's
+# path); the crate is already in the lock as wgpu-hal's major. The reader
+# seeks with a PROPVARIANT, which the last two features bring.
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
   "Win32_Media_MediaFoundation",
   "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
 ] }
 
 # The NDK's MediaCodec and MediaMuxer, through ndk-sys — bindings made from

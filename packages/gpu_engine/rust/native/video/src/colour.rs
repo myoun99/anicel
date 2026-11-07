@@ -83,10 +83,32 @@ pub fn from_rgba(picture: &Picture, width: usize, height: usize, planes: &mut Pl
 /// ⛔The picture size comes in as ARGUMENTS. It used to read the decoder's
 /// global document, which is what tied a pure calculation to a backend
 /// having opened something.
-pub fn to_rgba(data: &[u8], width: usize, height: usize, stride: usize, slice: usize, semi_planar: bool, rgba: &mut [u8]) {
+///
+/// ⚠️Whether it could: `data` that ends before the last byte its own stride
+/// and slice place is refused, not read past — the C read on regardless
+/// (2026-11-07, the decoder's move to Rust, where reading past is a panic
+/// and a panic across the FFI is the app gone).
+#[must_use]
+pub fn to_rgba(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    stride: usize,
+    slice: usize,
+    semi_planar: bool,
+    rgba: &mut [u8],
+) -> bool {
     let cb_at = stride * slice;
     let (cr_at, chroma_stride, chroma_step) =
         if semi_planar { (cb_at + 1, stride, 2) } else { (cb_at + (stride / 2) * (slice / 2), stride / 2, 1) };
+    if width == 0 || height == 0 {
+        return true;
+    }
+    let last_luma = (height - 1) * stride + width - 1;
+    let last_chroma = cr_at + (height - 1) / 2 * chroma_stride + (width - 1) / 2 * chroma_step;
+    if data.len() <= last_luma.max(last_chroma) || rgba.len() < width * height * 4 {
+        return false;
+    }
     for y in 0..height {
         for x in 0..width {
             let chroma = (y / 2) * chroma_stride + (x / 2) * chroma_step;
@@ -100,6 +122,7 @@ pub fn to_rgba(data: &[u8], width: usize, height: usize, stride: usize, slice: u
             out.copy_from_slice(&[r.clamp(0, 255) as u8, g.clamp(0, 255) as u8, b.clamp(0, 255) as u8, 255]);
         }
     }
+    true
 }
 
 #[cfg(test)]
