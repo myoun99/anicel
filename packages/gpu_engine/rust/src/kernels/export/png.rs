@@ -14,7 +14,7 @@ impl Picture {
     }
 
     /// The bytes of the filtered out: [`Self::png_row_bytes`] a row.
-    fn png_bytes(&self, pixel_bytes: u32) -> u64 {
+    pub(crate) fn png_bytes(&self, pixel_bytes: u32) -> u64 {
         u64::from(self.height) * self.png_row_bytes(pixel_bytes)
     }
 

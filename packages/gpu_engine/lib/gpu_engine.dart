@@ -753,6 +753,196 @@ class GpuComposited {
   void free() => rust.compositedFree(_composited);
 }
 
+/// The export's conversions of a frame a run put, on the GPU before its
+/// readback (gpu-export-path ①), each pass compiled where it is first
+/// asked. A frame is a [GpuComposited] over its picture's tiles, row by
+/// row from its top-left tile; the picture is its width × height from the
+/// frame's top-left pixel.
+class GpuExport {
+  /// The export's passes on [engine], none compiled yet.
+  GpuExport(GpuEngine engine)
+    : _engine = engine,
+      _export = rust.exportNew();
+
+  final GpuEngine _engine;
+  final Pointer<rust.Export> _export;
+
+  /// The picture of [width] × [height] in [frame] as an encoder's NV12
+  /// frame of [frameWidth] × [frameHeight], rows [stride] bytes apart —
+  /// the writer's frame as it opened its encoder: `frameHeight` Y rows,
+  /// then `frameHeight / 2` CbCr rows.
+  GpuReadout nv12(
+    GpuComposited frame,
+    int width,
+    int height, {
+    required int frameWidth,
+    required int frameHeight,
+    required int stride,
+  }) => _readout(
+    using((arena) {
+      final words = [width, height, frameWidth, frameHeight, stride];
+      final shape = arena<Uint32>(5)..asTypedList(5).setAll(0, words);
+      return rust.exportNv12(
+        _export,
+        _engine._engine,
+        frame._composited,
+        shape,
+      );
+    }),
+  );
+
+  /// The picture of [width] × [height] in [frame] over [ground] —
+  /// B<<16|G<<8|R — three bytes a pixel, row after row with nothing
+  /// between; its alpha cut at [cut] where a GIF cuts it (null: its
+  /// shades; 0: a GIF with no clear colour).
+  GpuReadout overGround(
+    GpuComposited frame,
+    int width,
+    int height,
+    int ground, {
+    int? cut,
+  }) => _readout(
+    rust.exportOverGround(
+      _export,
+      _engine._engine,
+      frame._composited,
+      width,
+      height,
+      ground,
+      cut ?? -1,
+    ),
+  );
+
+  /// The pixels of the picture of [width] × [height] in [frame] whose
+  /// alpha is under [cut]: pixel i is bit i % 8 of byte i ~/ 8, low bit
+  /// first, row after row with nothing between.
+  GpuReadout clear(GpuComposited frame, int width, int height, int cut) =>
+      _readout(
+        rust.exportClear(
+          _export,
+          _engine._engine,
+          frame._composited,
+          width,
+          height,
+          cut,
+        ),
+      );
+
+  /// Whether every pixel of the picture of [width] × [height] in [frame]
+  /// is opaque, once the GPU is done.
+  bool opaque(GpuComposited frame, int width, int height) {
+    final readout = _readout(
+      rust.exportOpaque(
+        _export,
+        _engine._engine,
+        frame._composited,
+        width,
+        height,
+      ),
+    );
+    try {
+      return using((arena) {
+        final word = arena<Uint8>(4);
+        readout
+          ..map()
+          ..rows(
+            word,
+            offset: 0,
+            stride: 4,
+            rowBytes: 4,
+            rows: 1,
+            dstStride: 4,
+          );
+        final answer = ByteData.sublistView(word.asTypedList(4));
+        return answer.getUint32(0, Endian.little) == 255;
+      });
+    } finally {
+      readout.free();
+    }
+  }
+
+  /// The rows of a PNG of the picture of [width] × [height] in [frame],
+  /// four bytes a pixel, under their filters: each its filter's byte and
+  /// its own, [pngRowBytes] from the last.
+  GpuReadout pngRgba(GpuComposited frame, int width, int height) => _readout(
+    rust.exportPngRgba(
+      _export,
+      _engine._engine,
+      frame._composited,
+      width,
+      height,
+    ),
+  );
+
+  /// [pngRgba] for a PNG of three bytes a pixel, from [rgb] — what
+  /// [overGround] put for the same picture, which stays on the GPU.
+  GpuReadout pngRgb(GpuReadout rgb, int width, int height) => _readout(
+    rust.exportPngRgb(_export, _engine._engine, rgb._readout, width, height),
+  );
+
+  /// Where each of a PNG's filtered rows starts from the last's, for a
+  /// picture [width] wide of [pixelBytes] a pixel.
+  static int pngRowBytes(int width, int pixelBytes) =>
+      rust.exportPngRowBytes(width, pixelBytes);
+
+  GpuReadout _readout(Pointer<rust.Readout> readout) {
+    if (readout == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuReadout._(_engine, readout);
+  }
+
+  /// Frees the passes; before their engine is closed.
+  void free() => rust.exportFree(_export);
+}
+
+/// What a conversion put: on the GPU until it is mapped, then copied row
+/// by row straight into wherever its writer takes it.
+class GpuReadout {
+  GpuReadout._(this._engine, this._readout);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Readout> _readout;
+
+  /// The bytes of it its writer takes.
+  int get bytes => rust.readoutBytes(_readout);
+
+  /// Waits for the GPU and maps its bytes — once: a second call finds
+  /// them mapped.
+  void map() {
+    if (!rust.readoutMap(_engine._engine, _readout)) {
+      throw StateError(_lastError());
+    }
+  }
+
+  /// Copies [rows] rows of [rowBytes] — the first at [offset], each
+  /// [stride] from the last — into [dst], each [dstStride] from the last.
+  /// It is mapped, and the rows end within its [bytes].
+  void rows(
+    Pointer<Uint8> dst, {
+    required int offset,
+    required int stride,
+    required int rowBytes,
+    required int rows,
+    required int dstStride,
+  }) {
+    final copied = rust.readoutRows(
+      _readout,
+      offset,
+      stride,
+      rowBytes,
+      rows,
+      dst,
+      dstStride,
+    );
+    if (!copied) {
+      throw StateError(_lastError());
+    }
+  }
+
+  void free() => rust.readoutFree(_readout);
+}
+
 /// The fingerprint of [bytes] by the engine's own code — for bytes read off
 /// Flutter's screen, so they are compared as the GPU's are.
 int fingerprintBytes(Uint8List bytes) => using((arena) {

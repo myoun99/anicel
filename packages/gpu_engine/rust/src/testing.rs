@@ -24,6 +24,14 @@ pub fn read_buffer(engine: &Engine, buffer: &wgpu::Buffer) -> Vec<u8> {
     engine.read_buffer(buffer).expect("read back")
 }
 
+/// The last error a call of the C ABI left, as the app reads it.
+pub fn last_error() -> String {
+    let mut buffer = [0u8; 256];
+    // SAFETY: `buffer` holds its length.
+    let length = unsafe { crate::gpu_engine_last_error(buffer.as_mut_ptr(), buffer.len()) };
+    String::from_utf8_lossy(&buffer[..length.min(buffer.len())]).into_owned()
+}
+
 #[test]
 fn the_tests_share_one_device() {
     assert!(std::ptr::eq(first_engine(), first_engine()));

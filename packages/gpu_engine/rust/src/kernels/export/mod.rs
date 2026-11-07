@@ -16,11 +16,7 @@
 //! Each kernel reads the frame through `frame.wgsl`, after the shared
 //! `tile.wgsl`, and runs as one pass over it ([`submit`]).
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
-// (gpu-export-path, 관제 16:26 — the app connects after the bridges), nor
-// the passes it names for the app.
-#![cfg_attr(not(test), allow(dead_code, unused_imports))]
-
+mod abi;
 mod clear;
 mod nv12;
 mod opaque;

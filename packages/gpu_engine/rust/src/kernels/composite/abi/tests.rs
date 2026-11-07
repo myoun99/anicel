@@ -10,7 +10,7 @@ use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::le_bytes;
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
-use crate::testing::read_buffer;
+use crate::testing::{last_error, read_buffer};
 
 const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 /// Moved left by 37.25 px and down by 9.5: a pose R1 samples, not copies.
@@ -91,13 +91,6 @@ fn ran_in_rust(
     let plan = Plan { pages: pool.pages(), sets, keys, matrices, chains, steps, mask: None };
     let out = composite.run(engine, &plan, &OUTPUT, [0, 0, 300, 120], composite.widest()).expect("run");
     read_buffer(engine, &out.out)
-}
-
-fn last_error() -> String {
-    let mut buffer = [0u8; 256];
-    // SAFETY: `buffer` holds its length.
-    let length = unsafe { crate::gpu_engine_last_error(buffer.as_mut_ptr(), buffer.len()) };
-    String::from_utf8_lossy(&buffer[..length.min(buffer.len())]).into_owned()
 }
 
 // Every call names a field of its step: a field put in another's place, or

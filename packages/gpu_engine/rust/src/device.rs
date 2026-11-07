@@ -118,13 +118,20 @@ impl Engine {
     /// that was submitted: what a verb hands back to the app (the cel pixel
     /// pass's counts and runs) and what the tests read.
     pub(crate) fn read_buffer(&self, buffer: &wgpu::Buffer) -> Option<Vec<u8>> {
-        let readback = self.readback(buffer.size());
+        let readback = self.staged(buffer, buffer.size());
+        self.mapped(&readback)
+    }
+
+    /// A buffer the CPU maps, its copy of `buffer`'s first `size` bytes —
+    /// a multiple of 4 — submitted: what [`Self::map`] then maps.
+    pub(crate) fn staged(&self, buffer: &wgpu::Buffer, size: u64) -> wgpu::Buffer {
+        let readback = self.readback(size);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        encoder.copy_buffer_to_buffer(buffer, 0, &readback, 0, buffer.size());
+        encoder.copy_buffer_to_buffer(buffer, 0, &readback, 0, size);
         self.queue.submit([encoder.finish()]);
-        self.mapped(&readback)
+        readback
     }
 
     /// A buffer of `size` bytes a copy puts and the CPU maps.
@@ -137,19 +144,25 @@ impl Engine {
         })
     }
 
-    /// `buffer`'s bytes, mapped once the GPU is done with all that was
-    /// submitted.
-    fn mapped(&self, buffer: &wgpu::Buffer) -> Option<Vec<u8>> {
+    /// Maps `buffer` — one the CPU maps — for reading, once the GPU is done
+    /// with all that was submitted.
+    pub(crate) fn map(&self, buffer: &wgpu::Buffer) -> Option<()> {
         let (sender, receiver) = mpsc::channel();
         buffer.map_async(wgpu::MapMode::Read, .., move |result| {
             let _ = sender.send(result);
         });
         self.wait()?;
         match receiver.recv() {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => return fail(format!("map_async: {error}")),
-            Err(error) => return fail(format!("map_async never answered: {error}")),
+            Ok(Ok(())) => Some(()),
+            Ok(Err(error)) => fail(format!("map_async: {error}")),
+            Err(error) => fail(format!("map_async never answered: {error}")),
         }
+    }
+
+    /// `buffer`'s bytes, mapped once the GPU is done with all that was
+    /// submitted.
+    fn mapped(&self, buffer: &wgpu::Buffer) -> Option<Vec<u8>> {
+        self.map(buffer)?;
         match buffer.get_mapped_range(..) {
             Ok(view) => Some(view.to_vec()),
             Err(error) => fail(format!("get_mapped_range: {error}")),

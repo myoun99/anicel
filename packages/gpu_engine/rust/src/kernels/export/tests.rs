@@ -11,18 +11,18 @@ use crate::device::Engine;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::testing::{assert_pinned, first_engine, read_buffer};
 
-struct Rig {
-    engine: &'static Engine,
-    nv12: Nv12,
-    over_ground: OverGround,
-    opaque: Opaque,
-    clear: Clear,
-    png: PngFilter,
+pub(super) struct Rig {
+    pub(super) engine: &'static Engine,
+    pub(super) nv12: Nv12,
+    pub(super) over_ground: OverGround,
+    pub(super) opaque: Opaque,
+    pub(super) clear: Clear,
+    pub(super) png: PngFilter,
 }
 
 /// One device and one compiled pass each for every test here, as the app
 /// opens one device (blend's tests have why).
-fn rig() -> &'static Rig {
+pub(super) fn rig() -> &'static Rig {
     static RIG: OnceLock<Rig> = OnceLock::new();
     RIG.get_or_init(|| {
         let engine = first_engine();
@@ -58,7 +58,7 @@ fn mix(mut h: u32) -> u32 {
 
 /// The composite's output tiles for a `width` x `height` picture, asked
 /// row by row from its top-left tile; [`PAST`] where a tile runs past it.
-fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> wgpu::Buffer {
+pub(super) fn frame(width: u32, height: u32, pixel: impl Fn(u32, u32) -> u32) -> wgpu::Buffer {
     frame_past(width, height, PAST, pixel)
 }
 
@@ -208,7 +208,7 @@ fn the_frame_is_read_across_its_tiles() {
 // ---- The ledger ----
 
 /// A picture of any colours and alphas.
-fn mixed(seed: u32) -> impl Fn(u32, u32) -> u32 {
+pub(super) fn mixed(seed: u32) -> impl Fn(u32, u32) -> u32 {
     move |x, y| mix(seed ^ mix(x ^ mix(y)))
 }
 

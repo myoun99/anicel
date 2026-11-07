@@ -21,6 +21,10 @@ final class Composite extends Opaque {}
 
 final class Composited extends Opaque {}
 
+final class Export extends Opaque {}
+
+final class Readout extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -449,6 +453,155 @@ external int compositeShow(
   Pointer<Surface> surface,
   Pointer<Uint32> rect,
 );
+
+@Native<Pointer<Export> Function()>(symbol: 'gpu_engine_export_new')
+external Pointer<Export> exportNew();
+
+@Native<Void Function(Pointer<Export>)>(symbol: 'gpu_engine_export_free')
+external void exportFree(Pointer<Export> passes);
+
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Composited>,
+    Pointer<Uint32>,
+  )
+>(symbol: 'gpu_engine_export_nv12')
+external Pointer<Readout> exportNv12(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Composited> frame,
+  Pointer<Uint32> shape,
+);
+
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Composited>,
+    Uint32,
+    Uint32,
+    Uint32,
+    Int32,
+  )
+>(symbol: 'gpu_engine_export_over_ground')
+external Pointer<Readout> exportOverGround(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Composited> frame,
+  int width,
+  int height,
+  int ground,
+  int cut,
+);
+
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Composited>,
+    Uint32,
+    Uint32,
+    Uint8,
+  )
+>(symbol: 'gpu_engine_export_clear')
+external Pointer<Readout> exportClear(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Composited> frame,
+  int width,
+  int height,
+  int cut,
+);
+
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Composited>,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_opaque')
+external Pointer<Readout> exportOpaque(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Composited> frame,
+  int width,
+  int height,
+);
+
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Composited>,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_png_rgba')
+external Pointer<Readout> exportPngRgba(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Composited> frame,
+  int width,
+  int height,
+);
+
+@Native<
+  Pointer<Readout> Function(
+    Pointer<Export>,
+    Pointer<Engine>,
+    Pointer<Readout>,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_export_png_rgb')
+external Pointer<Readout> exportPngRgb(
+  Pointer<Export> passes,
+  Pointer<Engine> engine,
+  Pointer<Readout> rgb,
+  int width,
+  int height,
+);
+
+@Native<Uint64 Function(Uint32, Uint32)>(
+  symbol: 'gpu_engine_export_png_row_bytes',
+)
+external int exportPngRowBytes(int width, int pixelBytes);
+
+@Native<Uint64 Function(Pointer<Readout>)>(symbol: 'gpu_engine_readout_bytes')
+external int readoutBytes(Pointer<Readout> readout);
+
+@Native<Bool Function(Pointer<Engine>, Pointer<Readout>)>(
+  symbol: 'gpu_engine_readout_map',
+)
+external bool readoutMap(Pointer<Engine> engine, Pointer<Readout> readout);
+
+@Native<
+  Bool Function(
+    Pointer<Readout>,
+    Uint64,
+    Uint64,
+    Uint64,
+    Uint64,
+    Pointer<Uint8>,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_readout_rows')
+external bool readoutRows(
+  Pointer<Readout> readout,
+  int offset,
+  int stride,
+  int rowBytes,
+  int rows,
+  Pointer<Uint8> dst,
+  int dstStride,
+);
+
+@Native<Void Function(Pointer<Readout>)>(symbol: 'gpu_engine_readout_free')
+external void readoutFree(Pointer<Readout> readout);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);
