@@ -5,7 +5,10 @@
 // PC by about 1.)
 //
 //   flutter run -d windows --release -t tool/probe/still_edge_probe_main.dart \
-//     --dart-define=EDGE_OUT=<dir>
+//     --dart-define=EDGE_OUT=<dir> [--dart-define=EDGE_SET=q9]
+//
+// `EDGE_SET=q9` keeps to the borders, the clip and the diamond, each beside
+// the same edge drawn as fills alone ([_shapes]).
 //
 // It stays open showing a table: a row per way of taking the image, a column
 // per shape, and in each cell the shape drawn LIVE on the left and put back
@@ -97,7 +100,145 @@ const _variants = ['scene', 'opaque', 'picture', 'twice', 'layer'];
 /// A shape drawn in a cell [_half] device pixels a side, from its corner.
 typedef _Shape = ({String name, void Function(Canvas canvas) draw});
 
-final List<_Shape> _shapes = [
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q9 (유저 11-08, 2: 「가장자리를
+/// 정확한 식으로 칠하게 바꿔 그려 본다(먼저 탐침으로 잰다)」):
+/// `--dart-define=EDGE_SET=q9` keeps to the edges that question is about —
+/// each border as the app strokes it beside the same border as two fills
+/// (the border's colour over its outer shape, the inside over its inner),
+/// which the engine draws by the exact formula `rse-fill` and `rrect-fill`
+/// agreed by, and a key's diamond as a path beside the same diamond as a
+/// turned rectangle — so that a still row stays one line on the Surface's
+/// screen.
+const _set = String.fromEnvironment('EDGE_SET', defaultValue: '');
+
+final List<_Shape> _shapes = _set == 'q9'
+    ? [
+        for (final name in [
+          'rrect-line',
+          'rse-fill',
+          'rse-line',
+          'rse-clip',
+          'path',
+        ])
+          _firstShapes.firstWhere((shape) => shape.name == name),
+        ..._bordersAsFills,
+      ]
+    : _firstShapes;
+
+/// The inside a border is drawn round, as the app's controls fill it.
+const _inside = Color(0xFF3A3D42);
+
+/// [outer]'s border [width] wide drawn as two fills: the border's colour over
+/// the whole shape, [_inside] over the shape [width] in.
+void _ringOf(
+  Canvas canvas,
+  Rect outer,
+  double radius,
+  double width, {
+  bool superellipse = true,
+}) {
+  void fill(Rect rect, double r, Color color) {
+    final paint = Paint()..color = color;
+    if (superellipse) {
+      canvas.drawRSuperellipse(
+        RSuperellipse.fromRectAndRadius(rect, Radius.circular(r)),
+        paint,
+      );
+    } else {
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, Radius.circular(r)), paint);
+    }
+  }
+
+  fill(outer, radius, _ink);
+  fill(outer.deflate(width), radius - width, _inside);
+}
+
+final List<_Shape> _bordersAsFills = [
+  // `rrect-line` and `rse-line` as two fills: their strokes' outer edge
+  // round the outside, their inner edge round the inside.
+  (
+    name: 'rrect-ring',
+    draw: (canvas) => _ringOf(
+      canvas,
+      const Rect.fromLTWH(8, 10, 53, 41),
+      6.5,
+      1,
+      superellipse: false,
+    ),
+  ),
+  (
+    name: 'rrect-dr',
+    draw: (canvas) => canvas.drawDRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(8, 10, 53, 41),
+        const Radius.circular(6.5),
+      ),
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(9, 11, 51, 39),
+        const Radius.circular(5.5),
+      ),
+      Paint()..color = _ink,
+    ),
+  ),
+  (
+    name: 'rse-ring',
+    draw: (canvas) => _ringOf(
+      canvas,
+      const Rect.fromLTWH(7.75, 9.75, 53.5, 41.5),
+      6.75,
+      1.5,
+    ),
+  ),
+  // The `control` widget's border (`AppShapes.control`, 0.75 logical inside
+  // its edge — 1.125 device pixels at 150%) as two fills.
+  (
+    name: 'control-fills',
+    draw: (canvas) => _ringOf(
+      canvas,
+      const Rect.fromLTWH(8, 3.25, 56, 63),
+      AppShapes.controlRadius(56),
+      1.125,
+    ),
+  ),
+  // `path`'s diamond as a rectangle turned a quarter and stretched to it —
+  // the turned square a camera key's diamond is, narrowed with its cell.
+  (
+    name: 'diamond-rect',
+    draw: (canvas) {
+      canvas
+        ..save()
+        ..translate(36.0, 36.0)
+        ..scale(24.4, 27.4)
+        ..rotate(math.pi / 4)
+        ..drawRect(
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: math.sqrt2,
+            height: math.sqrt2,
+          ),
+          Paint()..color = _accent,
+        )
+        ..restore();
+    },
+  ),
+  // And not stretched: the turn alone.
+  (
+    name: 'diamond-sq',
+    draw: (canvas) {
+      canvas
+        ..save()
+        ..translate(36.2, 35.8)
+        ..rotate(math.pi / 4)
+        ..drawRect(
+          Rect.fromCenter(center: Offset.zero, width: 36.4, height: 36.4),
+          Paint()..color = _accent,
+        )
+        ..restore();
+    },
+  ),
+];
+
+final List<_Shape> _firstShapes = [
   (
     name: 'rrect-fill',
     draw: (canvas) => canvas.drawRRect(
