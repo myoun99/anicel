@@ -213,9 +213,6 @@ class EngineTileLedger {
   /// collected — and sweeps what is let go out of [_stored].
   void _letGoWhere(bool Function(BitmapTile? tile) goes) {
     _stored.removeWhere((slot) {
-      if (slot.out) {
-        return true;
-      }
       final tile = slot.tile.target;
       if (!goes(tile)) {
         return false;

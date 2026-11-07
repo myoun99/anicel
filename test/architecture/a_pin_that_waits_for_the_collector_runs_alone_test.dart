@@ -354,6 +354,9 @@ void main() {
         // tile, and only the collector can say it did. The ledger's other
         // pins stay in the crowd, in a file of their own.
         'test/native/a_tile_collected_lets_its_engine_slot_go_test.dart',
+        // pool-pages-given-back (11-08): a page goes back once its tiles
+        // are collected, and only the collector can say they were.
+        'test/native/the_engine_gives_back_the_pages_nobody_holds_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '
