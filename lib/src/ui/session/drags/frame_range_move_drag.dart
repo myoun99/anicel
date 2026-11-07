@@ -1994,19 +1994,32 @@ class FrameRangeMoveDrag {
   /// blocks are its base's, so none of them can go, and each row of the span
   /// trades with the blocks it lands on ([picturesTradedInBlocks], F-546).
   ///
-  /// Null where the hand is on the row it grabbed, where a row of the span
-  /// would land as a move, or where no block stands at the landing: the
-  /// step is a move then. ⚠️Mine: the span's rows land together or not at
-  /// all as a trade — a block leaving a row and a picture staying on it want
-  /// the same frames — and a landing that gives a cel twice is no trade (the
-  /// rows it passes over are the rows it left), so it holds.
+  /// Null where a row of the span would land as a move, or where no block
+  /// stands at the landing: the step is a move then. ⚠️Mine: the span's rows
+  /// land together or not at all as a trade — a block leaving a row and a
+  /// picture staying on it want the same frames — and a landing that gives a
+  /// cel twice is no trade (the rows it passes over are the rows it left),
+  /// so it holds.
+  ///
+  /// 🗣️I-166 (유저 2026-11-07): 「어태치 싱크행의 블록의 세로 행이동이
+  /// 그림교체로 작동하는것처럼 좌우이동도 그림교체로 작동하게」 — for a span
+  /// whose pictures come from synced rows alone, the row the hand grabbed is
+  /// a landing too: slid along it, its blocks trade with the blocks they
+  /// land on, as onto any other row. ↩️It was no landing, and such a span
+  /// slid along its own row moved nothing and said to edit the owner. A span
+  /// with blocks of its own still slides them along the row it was grabbed
+  /// by, a mirror of theirs included (F-546's ⛔slid along by its own mirror).
   _PictureTrade? _picturesTradedInLanding(int frameDelta, LayerId? pointedAt) {
     final cut = _project.activeCutOrNull;
-    if (cut == null || pointedAt == null || pointedAt == _grabbedRow) {
+    if (cut == null || pointedAt == null) {
       return null;
     }
     final rows = sectionedLayerOrder(_project.layers);
     final sources = _rowsGivingPictures();
+    if (pointedAt == _grabbedRow &&
+        sources.any((row) => !isSyncedAttachedLayer(row))) {
+      return null;
+    }
     final hop = layerIndexDelta(
       rows,
       sources.any((row) => row.id == _grabbedRow) ? _grabbedRow! : _hopOrigin,

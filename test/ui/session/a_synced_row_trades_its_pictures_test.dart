@@ -198,6 +198,55 @@ void main() {
     expect(reds(s, [base, mirror]), before);
   });
 
+  // 🗣️I-166 (유저 2026-11-07): 「어태치 싱크행의 블록의 세로 행이동이
+  // 그림교체로 작동하는것처럼 좌우이동도 그림교체로 작동하게」.
+  test('a synced row\'s block slid along its own row onto another trades '
+      'their two pictures on that row alone — every cel, name and block '
+      'stays — and one undo trades them back', () {
+    final (:s, :base, :mirrors) = attachGroup();
+    final mirror = mirrors.single;
+    final baseBefore = reds(s, [base]);
+    final mirrorBefore = reds(s, [mirror]);
+    final rowsBefore = s.requireActiveCut.layers;
+    s.updateFrameRangeSelectionDrag(
+      layerId: mirror,
+      anchorIndex: 0,
+      headIndex: 1,
+    );
+    cursorNotices.clear();
+
+    expect(s.rangeMove.beginFrameRangeMoveDrag(mirror), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: mirror);
+    expect(
+      s.dragPreview.value,
+      isA<BlockMoveDragPreview>().having(
+        (preview) => preview.picturesMoved,
+        'pictures moved',
+        isNotEmpty,
+      ),
+      reason: 'while the hand is down, the trade shows',
+    );
+    expect(reds(s, [mirror]), mirrorBefore, reason: 'nothing written yet');
+    s.rangeMove.endFrameRangeMoveDrag();
+
+    expect(cursorNotices.message, isNull, reason: 'no refusal');
+    expect(
+      reds(s, [mirror]),
+      mirrorBefore.reversed.toList(),
+      reason: 'the two blocks of the row hold each other\'s picture',
+    );
+    expect(reds(s, [base]), baseBefore, reason: 'the base is not touched');
+    expect(
+      s.requireActiveCut.layers,
+      rowsBefore,
+      reason: 'no cel, name, block or link moved',
+    );
+    expect(s.frameRangeSelection.value!.startIndex, 2);
+
+    s.undo();
+    expect(reds(s, [mirror]), mirrorBefore);
+  });
+
   test('a step off the same frames is the move again: the base slides, and '
       'no picture trades', () {
     final (:s, :base, :mirrors) = attachGroup();
