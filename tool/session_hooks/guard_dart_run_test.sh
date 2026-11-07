@@ -14,13 +14,21 @@ t() { # name, command as JSON string text, expected(block|allow)
   printf '%s  %-46s got=%-5s want=%s\n' "$mark" "$1" "$got" "$3"
 }
 
+# A lane of the checkout the guard sits in, in both spellings a command
+# uses: the bash one, and the Windows one as a JSON string holds it — each
+# `\` doubled.
+TRUNK="$(cd "$(dirname "$G")/../.." && pwd)"
+LANE="$TRUNK/.claude/worktrees/lane-x"
+WIN="$(cd "$TRUNK" && pwd -W 2>/dev/null || pwd)"
+WIN_JSON="$(printf '%s' "$WIN" | sed 's#/#\\\\\\\\#g')"
+
 # --- must BLOCK: `dart run` of a tool, wherever a command starts ---
 t "bare"                       "dart run tool/affected_tests.dart --list" block
 t "a tool in a folder"         "dart run tool/session_hooks/install.dart --board x --memory y" block
 t "a flag before it"           "dart run --enable-asserts tool/import_graph.dart" block
 t "the SDK's dart by its path" "/c/flutter/bin/cache/dart-sdk/bin/dart.exe run tool/x.dart" block
-t "a lane's tool by its path"  "dart run C:/Users/u/anicel/.claude/worktrees/lane-x/tool/x.dart" block
-t "a windows path"             "dart run C:\\\\anicel\\\\tool\\\\x.dart" block
+t "a lane's tool by its path"  "dart run $LANE/tool/x.dart" block
+t "a windows path"             "dart run $WIN_JSON\\\\tool\\\\x.dart" block
 t "inside a subshell"          "( cd /c/lane && dart run tool/x.dart )" block
 t "after a semicolon"          "echo go; dart run tool/x.dart" block
 t "after a newline"            "ls\\ndart run tool/x.dart" block
