@@ -29,10 +29,10 @@ import 'layer.dart';
 /// * a SYNCED attach mirror prints its BASE's cel names, so the bases' cels
 ///   must agree too ([attachedDisplayBaseOf]);
 /// * a FOLDER's band paints what its rows hold, grey where none holds a
-///   picture at that frame (R28 #11), so each row must agree too with the
-///   one it stood for ([folderBandRowsOf]). ↩️Its own timeline alone was
-///   asked, and a row's block that ended elsewhere inside the folder's kept
-///   the tile painted before (F-561 ②, 서피스 실기 2026-11-07).
+///   picture at that frame (R28 #11), so its rows must hold alike too
+///   ([firstCellTheBandRowsMayDiffer]). ↩️Its own timeline alone was asked,
+///   and a row's block that ended elsewhere inside the folder's kept the
+///   tile painted before (F-561 ②, 서피스 실기 2026-11-07).
 ///
 /// ⚠️What a row reads from outside its layer is not in here — the cels'
 /// pixels (their own revision) and the camera row's track (its cells are
@@ -46,7 +46,10 @@ int? firstCellThatMayDiffer(Layer a, Layer b) {
   }
   return _earlier(
     _firstKeyTheTimelinesPartAt(a, b),
-    _firstCellTheRowsMayDiffer(a, b),
+    firstCellTheBandRowsMayDiffer(
+      folderBandRowsOf(a) ?? const [],
+      folderBandRowsOf(b) ?? const [],
+    ),
   );
 }
 
@@ -75,22 +78,27 @@ int? _firstKeyTheTimelinesPartAt(Layer a, Layer b) {
   }
 }
 
-/// Where the rows two folder bands stand for may first paint apart — null
-/// for rows that agree, and for two layers that stand for none.
-int? _firstCellTheRowsMayDiffer(Layer a, Layer b) {
-  final rowsOfA = folderBandRowsOf(a);
-  final rowsOfB = folderBandRowsOf(b);
-  if (rowsOfA == null && rowsOfB == null) {
-    return null;
-  }
-  if (rowsOfA == null ||
-      rowsOfB == null ||
-      rowsOfA.length != rowsOfB.length) {
+/// Where a FOLDER's band drawn from the rows [a] and one drawn from the rows
+/// [b] may first paint apart — null where they hold alike.
+///
+/// A band reads two things of its rows. Their timelines: its blocks and
+/// ghosts are made of them (`folderBandOf`), and its grey asks which cel
+/// each stands at a frame (R28 #11). And their kinds: the grey asks first
+/// whether a row holds cels at all (`celHasContentForLayer`). The cels'
+/// pixels are a fact of their own (the tint revision). So a row changed
+/// beside those — its eye, an opacity drag — moves no cell of the band, and
+/// the band made for it stays (`FolderBands`).
+int? firstCellTheBandRowsMayDiffer(List<Layer> a, List<Layer> b) {
+  if (a.length != b.length) {
     return 0;
   }
   int? first;
-  for (var i = 0; i < rowsOfA.length; i += 1) {
-    first = _earlier(first, firstCellThatMayDiffer(rowsOfA[i], rowsOfB[i]));
+  for (var i = 0; i < a.length; i += 1) {
+    final (was, now) = (a[i], b[i]);
+    if (was.id != now.id || was.kind != now.kind) {
+      return 0;
+    }
+    first = _earlier(first, _firstKeyTheTimelinesPartAt(was, now));
   }
   return first;
 }

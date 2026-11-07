@@ -14,8 +14,8 @@ import 'layer.dart';
 /// a row as a drag shows it reads a folder's from its rows.
 List<Layer>? folderBandRowsOf(Layer band) => _bandRows[band];
 
-/// Notes that [band] stands for [rows] — once, as it is made: a band is
-/// made again for rows that changed (`FolderBands`).
+/// Notes that [band] stands for [rows] — as it is made, and again whenever
+/// it is kept for rows that hold as its did (`FolderBands`).
 void folderBandStandsFor(Layer band, Iterable<Layer> rows) =>
     _bandRows[band] = List.unmodifiable(rows);
 

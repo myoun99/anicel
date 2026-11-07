@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
@@ -158,25 +159,27 @@ EditorSessionManager _session(
 
 Layer _layer(EditorSessionManager s, String id) => s.layerById(LayerId(id))!;
 
-/// [row] put in the cut in place of the row of its id.
-void _put(EditorSessionManager s, Layer row) => s.repository.updateProject(
-  (project) => project.copyWith(
-    tracks: [
-      for (final track in project.tracks)
-        track.copyWith(
-          cuts: [
-            for (final cut in track.cuts)
-              cut.copyWith(
-                layers: [
-                  for (final layer in cut.layers)
-                    layer.id == row.id ? row : layer,
-                ],
-              ),
-          ],
-        ),
-    ],
-  ),
-);
+/// [rows] put in the cut, in one edit, each in place of the row of its id.
+void _put(EditorSessionManager s, List<Layer> rows) {
+  final byId = {for (final row in rows) row.id: row};
+  s.repository.updateProject(
+    (project) => project.copyWith(
+      tracks: [
+        for (final track in project.tracks)
+          track.copyWith(
+            cuts: [
+              for (final cut in track.cuts)
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers) byId[layer.id] ?? layer,
+                  ],
+                ),
+            ],
+          ),
+      ],
+    ),
+  );
+}
 
 /// The folder's row as the grids are handed it.
 Layer _band(EditorSessionManager s, [LayerId id = _folder]) =>
@@ -1327,13 +1330,17 @@ void main() {
     // 24px cells: the spans are [0, span) and [span, 2 * span).
     final span = timelineFrameWindowSpanFor(24);
 
-    /// a: 0..4 on a0, and [length] cells from `span + 2` on [cel] — a1
-    /// holds the picture, a2 none; b: `span` to `span + 8`, bare. The
-    /// folder's blocks are 0..4 and `span` to `span + 8` either way.
-    Layer a({int length = 4, String cel = 'a1'}) => Layer(
+    /// a, a row of [kind]: 0..4 on a0, and [length] cells from `span + 2` on
+    /// [cel] — a1 holds the picture, a2 none; b: `span` to `span + 8`, bare.
+    /// The folder's blocks are 0..4 and `span` to `span + 8` either way.
+    Layer a({
+      int length = 4,
+      String cel = 'a1',
+      LayerKind kind = LayerKind.animation,
+    }) => Layer(
       id: const LayerId('a'),
       name: 'a',
-      kind: LayerKind.animation,
+      kind: kind,
       folderId: _folder,
       frames: [
         for (final id in ['a0', 'a1', 'a2'])
@@ -1345,10 +1352,11 @@ void main() {
       },
     );
 
-    EditorSessionManager session() {
+    EditorSessionManager session({List<Layer> beside = const []}) {
       final s = _session([
         a(),
         _row('b', {span: 8}, inside: 'F'),
+        ...beside,
         _folderRow('F'),
       ]);
       _draw(s, 'a', 'a1');
@@ -1378,34 +1386,50 @@ void main() {
       return both;
     }
 
-    Color paperAt(EditorSessionManager s, int frame) =>
-        _painter(s, _band(s)).resolvedCellStyleFor(frame).background;
+    Future<List<Uint8List>> pixelsOf(List<ui.Image?> tiles) async => [
+      for (final tile in tiles)
+        (await tile!.toByteData())!.buffer.asUint8List(),
+    ];
 
-    Future<void> expectBakedAgainWhereTheGreyMoved(
+    /// Puts the rows [edited] in at once, and holds the folder's tiles to what
+    /// a bake from nothing paints of its rows as they are now — the span
+    /// before the edit keeping its tile where [keepsTheSpanBefore] (F-244).
+    Future<void> expectTheTilesShowTheRowsAsTheyAre(
       EditorSessionManager s,
-      Layer edited, {
-      required int at,
+      List<Layer> edited, {
+      bool keepsTheSpanBefore = true,
     }) async {
       final before = await landed(s);
-      final paper = paperAt(s, at);
+      final paintedBefore = await pixelsOf(before);
       final blocks = _blocks(_band(s));
 
       _put(s, edited);
 
       expect(_blocks(_band(s)), blocks, reason: '⛔전제: its blocks stayed');
-      expect(paperAt(s, at), isNot(paper), reason: '⛔전제: the grey moved');
       final after = tiles(s);
+      expect(after, everyElement(isNotNull), reason: '⛔전제: shown');
+      final shown = await pixelsOf(after);
+      store.clear();
+      final painted = await pixelsOf(await landed(s));
       expect(
-        identical(after.first, before.first),
-        isTrue,
-        reason: 'CONTROL: the span before the edit bakes alike',
-      );
-      expect(
-        identical(after.last, before.last),
+        listEquals(paintedBefore.last, painted.last),
         isFalse,
-        reason: 'the tile of the span the grey moved in shows the row as '
-            'it was',
+        reason: '⛔전제: the grey moved in the paint',
       );
+      if (keepsTheSpanBefore) {
+        expect(
+          identical(after.first, before.first),
+          isTrue,
+          reason: 'CONTROL: the span before the edit keeps its tile',
+        );
+      }
+      for (final i in [0, 1]) {
+        expect(
+          listEquals(shown[i], painted[i]),
+          isTrue,
+          reason: 'the tile of span $i shows the rows as they were',
+        );
+      }
     }
 
     test('🚨a row\'s block that ends elsewhere inside the folder\'s', () async {
@@ -1413,11 +1437,7 @@ void main() {
         markTestSkipped('qa_engine.dll not built');
         return;
       }
-      await expectBakedAgainWhereTheGreyMoved(
-        session(),
-        a(length: 5),
-        at: span + 6,
-      );
+      await expectTheTilesShowTheRowsAsTheyAre(session(), [a(length: 5)]);
     });
 
     test('🚨a row\'s block that shows another cel, its edges where they '
@@ -1426,10 +1446,61 @@ void main() {
         markTestSkipped('qa_engine.dll not built');
         return;
       }
-      await expectBakedAgainWhereTheGreyMoved(
+      await expectTheTilesShowTheRowsAsTheyAre(session(), [a(cel: 'a2')]);
+    });
+
+    // A row more is asked from frame 0: the band's rows are paired in order.
+    test('🚨a row put in the folder, its block inside the folder\'s', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final s = session(beside: [_row('c', {span + 6: 2})]);
+      _draw(s, 'c', 'c${span + 6}');
+      await expectTheTilesShowTheRowsAsTheyAre(
+        s,
+        [_row('c', {span + 6: 2}, inside: 'F')],
+        keepsTheSpanBefore: false,
+      );
+    });
+
+    // A row of no cels holds no picture, whatever it stands; its kind is
+    // asked before its blocks, so the band is asked anew from frame 0.
+    test('🚨a row turned to a kind that holds no cels', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await expectTheTilesShowTheRowsAsTheyAre(
         session(),
-        a(cel: 'a2'),
-        at: span + 3,
+        [a(kind: LayerKind.se)],
+        keepsTheSpanBefore: false,
+      );
+    });
+
+    // One row of the folder's taken out and another put in standing as it
+    // stood, on cels of the same names: what they hold is the other row's.
+    test('🚨a row put in the folder in place of one taken out, standing as '
+        'it stood', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final cel = 'b$span';
+      Layer c({String? inside}) => Layer(
+        id: const LayerId('c'),
+        name: 'c',
+        kind: LayerKind.animation,
+        folderId: inside == null ? null : LayerId(inside),
+        frames: [Frame(id: FrameId(cel), duration: 1, strokes: const [])],
+        timeline: {span: TimelineExposure.drawing(FrameId(cel), length: 8)},
+      );
+      final s = session(beside: [c()]);
+      _draw(s, 'c', cel);
+      await expectTheTilesShowTheRowsAsTheyAre(
+        s,
+        [_row('b', {span: 8}), c(inside: 'F')],
+        keepsTheSpanBefore: false,
       );
     });
   });
