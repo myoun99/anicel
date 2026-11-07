@@ -6,8 +6,11 @@
 // and — only where the clone has none — the author it commits as, the
 // trunk's ([authorGiven]).
 //
-//   dart run tool/session_hooks/install.dart --board <folder> --memory <folder>
+//   dart tool/session_hooks/install.dart --board <folder> --memory <folder>
 //       [--home <http://host:4321>] [--dry]
+//
+// ⛔Not `dart run`, which builds the GPU engine's hook once more in the
+// checkout (guard_dart_run.sh says why, and refuses it).
 //
 //   --board       this machine's BOARD FOLDER: a local folder for the flags
 //                 and the two exes — and, on the machine that holds the
