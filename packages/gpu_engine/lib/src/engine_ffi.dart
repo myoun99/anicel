@@ -170,6 +170,14 @@ external int poolStore(
 )
 external bool poolRelease(Pointer<Pool> pool, int page, int slot);
 
+@Native<Void Function(Pointer<Pool>, Uint64)>(
+  symbol: 'gpu_engine_pool_most_bytes',
+)
+external void poolMostBytes(Pointer<Pool> pool, int mostBytes);
+
+@Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_bytes')
+external int poolBytes(Pointer<Pool> pool);
+
 @Native<Pointer<Planned> Function()>(symbol: 'gpu_engine_plan_new')
 external Pointer<Planned> planNew();
 

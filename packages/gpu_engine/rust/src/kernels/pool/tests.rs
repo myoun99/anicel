@@ -138,6 +138,30 @@ fn a_pool_makes_no_page_past_its_bytes() {
     assert_eq!(none.fresh(engine, cel), Err(Full), "given no bytes, it makes no page");
 }
 
+// The bytes a pool may make move after it is made: the pages made stay —
+// its bytes count them whole — and the next is made only within the bytes
+// given now; a page none holds any more is still the next cel's.
+#[test]
+fn a_pool_s_bytes_move_and_the_pages_it_made_stay() {
+    let engine = rig().engine;
+    let page = 2 * TILE_BYTES;
+    let mut pool = Pool::sized(2, MOST_NAMED, 0).expect("pool");
+    let (a, b) = (pool.cel(), pool.cel());
+    assert_eq!(pool.fresh(engine, a), Err(Full), "given no bytes, it makes no page");
+    assert_eq!(pool.bytes(), 0);
+    pool.set_most_bytes(page);
+    let first = pool.fresh(engine, a).expect("a page within the bytes given now");
+    assert_eq!(pool.bytes(), page);
+    pool.set_most_bytes(0);
+    let second = pool.fresh(engine, a).expect("a page made keeps its slots");
+    assert_eq!(second, at(0, 1));
+    assert_eq!(pool.fresh(engine, b), Err(Full));
+    pool.release(first).expect("release");
+    pool.release(second).expect("release");
+    assert_eq!(pool.fresh(engine, b), Ok(at(0, 1)), "a page none holds is made already");
+    assert_eq!(pool.bytes(), page, "a page none holds still counts");
+}
+
 // Where the OS says the budget it gives this process, a page more keeps
 // within it as within the pool's bytes; where it says none, the pool's
 // bytes are the bound.
@@ -289,5 +313,36 @@ fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
             gpu_engine_pool_store(full, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr());
         assert_eq!(stored, 0, "a pool given no bytes stores none of the two");
         gpu_engine_pool_free(full);
+    }
+}
+
+// The C ABI moves the bytes a pool may make and counts the pages it made,
+// as the pool does.
+#[test]
+fn the_c_abi_moves_a_pool_s_bytes_and_counts_its_pages() {
+    use super::{
+        gpu_engine_pool_bytes, gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_most_bytes,
+        gpu_engine_pool_new, gpu_engine_pool_store,
+    };
+    let engine = rig().engine;
+    let bytes = le_bytes(&tile(3));
+    let tiles = [bytes.as_ptr()];
+    let (mut pages, mut slots) = ([u16::MAX], [u16::MAX]);
+    // SAFETY: the engine is the tests' own, alive for the run; the tiles,
+    // pages and slots hold one each.
+    unsafe {
+        let pool = gpu_engine_pool_new(engine, 0);
+        let cel = gpu_engine_pool_cel(pool);
+        let none =
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!(none, 0, "given no bytes, it stores none");
+        assert_eq!(gpu_engine_pool_bytes(pool), 0);
+        gpu_engine_pool_most_bytes(pool, u64::MAX);
+        let one =
+            gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!(one, 1);
+        assert_eq!(gpu_engine_pool_bytes(pool), (*pool).slots() as u64 * TILE_BYTES);
+        assert!(read_back(&*pool, &[at(pages[0], slots[0])]) == bytes);
+        gpu_engine_pool_free(pool);
     }
 }

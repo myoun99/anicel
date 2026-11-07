@@ -308,6 +308,13 @@ class GpuPool {
   /// Lets [tile] go; false where no tile is held there.
   bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
 
+  /// Makes no page more past [mostBytes]: the pages made stay — none is
+  /// given back — and the next is made only within it.
+  void makeNoPagePast(int mostBytes) => rust.poolMostBytes(_pool, mostBytes);
+
+  /// The bytes of the pages made, each counted whole.
+  int get bytes => rust.poolBytes(_pool);
+
   /// Frees the pool's pages; before its engine is closed.
   void free() => rust.poolFree(_pool);
 }

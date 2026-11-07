@@ -26,7 +26,9 @@
 //! screen-on-the-engine): tiles it holds on the CPU, each in a fresh slot
 //! of a cel, and back to the pool when it lets one go. While the CPU's
 //! tiles are the canonical ones (2단계), a full pool is answered by letting
-//! tiles not shown go, as the app's tile pictures were.
+//! tiles not shown go, as the app's tile pictures were: the app's ledger
+//! (lib/src/native/engine_tile_ledger.dart) lets go what none of its calls
+//! holds, and stores what one holds past the bytes it gives.
 
 #[cfg(test)]
 mod tests;
@@ -98,6 +100,19 @@ impl Pool {
     /// The pages, as a plan and the write path take them.
     pub(crate) fn pages(&self) -> &[wgpu::Buffer] {
         &self.buffers
+    }
+
+    /// The bytes of the pages made — a page counts whole, its free slots
+    /// too, as it stays made.
+    pub(crate) fn bytes(&self) -> u64 {
+        self.pages.len() as u64 * self.page_bytes()
+    }
+
+    /// Makes no page more past `most_bytes`: the pages made stay (none is
+    /// given back), and the next is made only within it — the budget its
+    /// store gives, again when the allowance moves.
+    pub(crate) fn set_most_bytes(&mut self, most_bytes: u64) {
+        self.most_bytes = most_bytes;
     }
 
     /// The tiles a page holds.
@@ -276,7 +291,7 @@ impl Pool {
     /// says one, the budget it gives this process.
     fn fits(&self, memory: Option<VideoMemory>) -> bool {
         let page = self.page_bytes();
-        let made = self.pages.len() as u64 * page;
+        let made = self.bytes();
         let within_os = |memory: VideoMemory| match memory.budget {
             Some(budget) => memory.used.checked_add(page).is_some_and(|sum| sum <= budget),
             None => true,
@@ -378,4 +393,28 @@ pub unsafe extern "C" fn gpu_engine_pool_release(pool: *mut Pool, page: u16, slo
     // SAFETY: see the function's contract.
     let pool = unsafe { &mut *pool };
     pool.release(TileAt { page, slot }).is_some()
+}
+
+/// Makes no page more past `most_bytes` ([`Pool::set_most_bytes`]) — the
+/// store's budget as the allowance moves, and past it for the tiles one of
+/// its calls holds.
+///
+/// # Safety
+/// `pool` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_most_bytes(pool: *mut Pool, most_bytes: u64) {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &mut *pool };
+    pool.set_most_bytes(most_bytes);
+}
+
+/// The bytes of the pages a pool has made ([`Pool::bytes`]).
+///
+/// # Safety
+/// `pool` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_bytes(pool: *const Pool) -> u64 {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &*pool };
+    pool.bytes()
 }
