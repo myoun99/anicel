@@ -82,5 +82,22 @@ echo "a run that was killed" > "$TURN/what"
 (cd "$STAGE" && timeout 20 bash tool/cargo_turn.sh check) 2>/dev/null
 check "a dead holder's turn is taken over" "$(grep -q ' check$' "$LOG"; echo $?)"
 
+# 5. --hold: no cargo — the folder on its first line, the turn held until
+# what it reads ends (the engine's build hook).
+: > "$LOG"
+{ sleep 2; date +%s%N > "$TMP/fed"; } \
+  | (cd "$LANE" && bash tool/cargo_turn.sh --hold) > "$TMP/hold.out" 2>/dev/null &
+sleep 0.5
+(cd "$STAGE" && FAKE_SECONDS=0 bash tool/cargo_turn.sh build) 2>/dev/null
+wait
+said_folder="$(head -1 "$TMP/hold.out")"
+want_folder="$(cd "$WANT_TARGET" && { pwd -W 2>/dev/null || pwd; })"
+check "--hold says the trunk's target, as this system writes it" \
+  "$([ -n "$said_folder" ] && [ "$said_folder" = "$want_folder" ]; echo $?)"
+check "--hold runs no cargo" "$([ "$(grep -c '^start' "$LOG")" -eq 1 ]; echo $?)"
+check "a cargo started while it holds waits until what it reads ends" \
+  "$(awk -v fed="$(cat "$TMP/fed")" '$1 == "start" { exit !($3 >= fed) }' "$LOG"; echo $?)"
+check "and the turn is let go then" "$([ ! -e "$TURN" ]; echo $?)"
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
