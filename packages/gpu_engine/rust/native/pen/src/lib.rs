@@ -3,11 +3,11 @@
 //! qa_pen_ledger_apple.m).
 //!
 //! On Windows: what the tablet DRIVER says of the pen (Wintab — `qat_*`)
-//! and what its HID report says (Raw Input — `qpr_*`), as Dart's bridge
-//! (lib/src/native/qa_tablet_bridge.dart) opens them there alone. Each half
-//! keeps the C's ABI — `qat_abi_version` 2, `qpr_abi_version` 3 — and is
-//! looked up apart: the Raw Input observer shipped later, and a library
-//! without it still gives the tablet.
+//! and what its HID report says (Raw Input — `qpr_*`), which Dart's bridge
+//! (lib/src/native/qa_tablet_bridge.dart) binds there alone, in the GPU
+//! engine's library that carries this crate. Each half keeps the C's ABI —
+//! `qat_abi_version` 2, `qpr_abi_version` 3 — the one the bridge reads
+//! (tests.rs holds them to its).
 //!
 //! On Apple: the PEN LEDGER (`qa_pen_ledger_*`, H43) — what UIKit or AppKit
 //! said of each pen sample, read by the sample's own timestamp

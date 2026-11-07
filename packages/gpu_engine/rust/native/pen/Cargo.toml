@@ -25,9 +25,7 @@ block2 = "0.6"
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
 objc2 = "0.6"
 
-# The C this crate replaces (qa_tablet_win.c, qa_penraw_win.c), the answer
-# key until the connection round — and a tablet driver both of them load in
-# its place, so their readings are held to each other on the same packets.
+# A tablet driver the Wintab reader loads in its place, played the packets
+# its readings are held to.
 [dev-dependencies]
-oracle = { path = "../oracle" }
 wintab_fake = { path = "wintab_fake" }

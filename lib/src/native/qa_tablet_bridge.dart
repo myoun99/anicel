@@ -1,9 +1,15 @@
+// The engine's Rust library carries the pen (rust/src/lib.rs), and its
+// names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
 
 /// One driver-side pen sample from the Wintab queue (PEN-2).
 class QaTabletPacket {
@@ -22,7 +28,7 @@ class QaTabletPacket {
   /// `bearing` in degrees (0 toward the top of the tablet, clockwise) and
   /// its `altitude` as a fraction of a right angle (1 upright; negative
   /// with the eraser end down) — or null when the device declares no
-  /// orientation axes, and from a DLL older than desktop-pen-tilt.
+  /// orientation axes.
   ///
   /// ⛔ONE FIELD, NOT A PAIR AND A FLAG. The pair once said 「0° azimuth,
   /// lying flat」 for a pen with no tilt sensor at all, and a separate
@@ -42,7 +48,7 @@ class QaTabletPacket {
   final int buttons;
 }
 
-/// One decoded HID digitizer report from the Raw Input sidecar.
+/// One decoded HID digitizer report from the Raw Input observer.
 ///
 /// These are the usages the pen hardware DECLARES (page 0x0D): nothing
 /// here is inferred from pressure or from a vendor cursor index, which is
@@ -64,12 +70,12 @@ class QaPenRawState {
   /// HID X Tilt (0x3D) and Y Tilt (0x3E) in degrees, as the descriptor
   /// declares them — the Pointer Events plane tilts, +x to the right and +y
   /// toward the user — or null when the report carries no tilt: a pen
-  /// without the sensor, or a DLL from before desktop-pen-tilt.
+  /// without the sensor.
   final ({double x, double y})? tilt;
 
   /// HID Twist (0x41): how far the pen is turned about its own barrel, in
   /// degrees 0..360 clockwise — or null when the report carries none: a
-  /// device that declares no twist, or a DLL from before F-176-Q9.
+  /// device that declares no twist.
   final double? twistDegrees;
 
   /// HID Tip Switch (0x42): the writing end is touching.
@@ -89,37 +95,55 @@ class QaPenRawState {
   bool get secondaryBarrel => flags & 0x10 != 0;
 }
 
-/// FFI wrapper for the Wintab sidecar DLL (qa_tablet.dll) — the
-/// qa_engine loader idiom: dynamic open, env override (QA_TABLET_PATH),
-/// absence or ABI mismatch = null instance = the feature silently absent.
-/// Windows-only by construction (the DLL only builds there).
+@Native<Int32 Function()>(symbol: 'qat_abi_version')
+external int _abiVersion();
+
+@Native<Int32 Function()>(symbol: 'qat_available')
+external int _available();
+
+@Native<Int32 Function(Pointer<Uint16>, Int32)>(symbol: 'qat_device_name')
+external int _deviceName(Pointer<Uint16> out, int cap);
+
+@Native<Int32 Function()>(symbol: 'qat_open')
+external int _open();
+
+@Native<Int32 Function(Pointer<Float>, Int32)>(symbol: 'qat_poll')
+external int _poll(Pointer<Float> out, int cap);
+
+@Native<Void Function()>(symbol: 'qat_close')
+external void _close();
+
+@Native<Int32 Function()>(symbol: 'qpr_abi_version')
+external int _rawAbiVersion();
+
+@Native<Int32 Function()>(symbol: 'qpr_start')
+external int _rawStart();
+
+@Native<Void Function()>(symbol: 'qpr_stop')
+external void _rawStop();
+
+@Native<Int32 Function(Pointer<Float>, Int32)>(symbol: 'qpr_poll')
+external int _rawPoll(Pointer<Float> out, int cap);
+
+/// The engine's pen on Windows (native/pen): what the tablet DRIVER says of
+/// the pen (Wintab — `qat_*`) and what its HID report says (Raw Input —
+/// `qpr_*`). Null on every other platform, and where the engine's pen
+/// speaks another ABI than these read.
+///
+/// ↩️Until the connection round (connection-round-checklist H, 2026-11-08)
+/// it was a DLL of its own beside the engine, qa_tablet.dll, and the Raw
+/// Input half was looked up apart and allowed to be missing or older, for
+/// an older DLL beside a newer app. One library ships with the app now, so
+/// neither half can be.
 class QaTabletBridge {
-  QaTabletBridge._(
-    this._available,
-    this._deviceName,
-    this._open,
-    this._poll,
-    this._close,
-    this._rawStart,
-    this._rawStop,
-    this._rawPoll,
-    this._rawFloats,
-  );
+  QaTabletBridge._();
 
   /// v2 (F-176-Q9): a packet's record carries the twist.
   static const int abiVersion = 2;
 
-  /// The Raw Input observer's own ABI — looked up separately and allowed
-  /// to be absent, so an older qa_tablet.dll still gives us Wintab.
-  ///
-  /// v2 (desktop-pen-tilt) hands over the report's tilt as well, v3
-  /// (F-176-Q9) its twist. An older observer is still taken — for what it
-  /// does write, the buttons at the least — rather than lost along with
-  /// what it never had.
+  /// The Raw Input observer's own ABI: v2 (desktop-pen-tilt) hands over the
+  /// report's tilt as well, v3 (F-176-Q9) its twist.
   static const int rawAbiVersion = 3;
-
-  /// Test hook: an explicit DLL path (bypasses the platform gate).
-  static String? debugLibraryPathOverride;
 
   static bool _instantiated = false;
   static QaTabletBridge? _instance;
@@ -127,30 +151,15 @@ class QaTabletBridge {
   static QaTabletBridge? get instanceOrNull {
     if (!_instantiated) {
       _instantiated = true;
-      _instance = _tryCreate();
+      _instance =
+          Platform.isWindows &&
+              _abiVersion() == abiVersion &&
+              _rawAbiVersion() == rawAbiVersion
+          ? QaTabletBridge._()
+          : null;
     }
     return _instance;
   }
-
-  /// Test hook: forget the cached instance (with [debugLibraryPathOverride]
-  /// this lets a test point at a purpose-built DLL and back).
-  static void debugResetInstance() {
-    _instantiated = false;
-    _instance = null;
-  }
-
-  final int Function() _available;
-  final int Function(Pointer<Uint16>, int) _deviceName;
-  final int Function() _open;
-  final int Function(Pointer<Float>, int) _poll;
-  final void Function() _close;
-  final int Function()? _rawStart;
-  final void Function()? _rawStop;
-  final int Function(Pointer<Float>, int)? _rawPoll;
-
-  /// How many floats this observer's ABI writes a report as — the report
-  /// says no more than that.
-  final int _rawFloats;
 
   static const int _pollCapacity = 64;
   static const int _recordFloats = 8;
@@ -158,17 +167,10 @@ class QaTabletBridge {
     _pollCapacity * _recordFloats,
   );
 
-  /// A report's floats at each raw ABI: flags and counter (v1), then the
-  /// tilt (v2), then the twist (v3).
-  @visibleForTesting
-  static int rawFloatsAt(int rawAbi) => switch (rawAbi) {
-    1 => 2,
-    2 => 5,
-    _ => 7,
-  };
-  final Pointer<Float> _rawBuffer = malloc<Float>(
-    rawFloatsAt(rawAbiVersion),
-  );
+  /// A report's floats: flags and counter, then the tilt and whether the
+  /// report carried one, then the twist and whether.
+  static const int _rawFloats = 7;
+  final Pointer<Float> _rawBuffer = malloc<Float>(_rawFloats);
 
   /// Whether wintab32 loads AND an installed driver answers.
   bool get available => _available() != 0;
@@ -220,115 +222,27 @@ class QaTabletBridge {
 
   void close() => _close();
 
-  /// Whether this DLL carries the Raw Input observer at all.
-  bool get rawInputSupported => _rawStart != null;
+  /// Starts the HID observer thread (idempotent). False = no digitizer
+  /// answered the registration.
+  bool startRawInput() => _rawStart() != 0;
 
-  /// Starts the HID observer thread (idempotent). False = unsupported,
-  /// or no digitizer answered the registration.
-  bool startRawInput() => (_rawStart?.call() ?? 0) != 0;
-
-  void stopRawInput() => _rawStop?.call();
+  void stopRawInput() => _rawStop();
 
   /// The newest decoded HID report; null when the observer is not live.
   QaPenRawState? pollRawInput() {
-    final poll = _rawPoll;
-    if (poll == null || poll(_rawBuffer, _rawFloats) == 0) {
+    if (_rawPoll(_rawBuffer, _rawFloats) == 0) {
       return null;
     }
     return rawStateFrom(_rawBuffer.asTypedList(_rawFloats));
   }
 
-  /// The report `qpr_poll` wrote as [floats] — as many as its ABI writes:
-  /// flags, counter and, where the observer is new enough to write them
-  /// and the report carried them, its tilt (v2) and its twist (v3).
+  /// The report `qpr_poll` wrote as [floats]: flags, counter and, where the
+  /// report carried them, its tilt and its twist.
   @visibleForTesting
   static QaPenRawState rawStateFrom(Float32List floats) => QaPenRawState(
     flags: floats[0].toInt(),
     sequence: floats[1].toInt(),
-    tilt: floats.length >= 5 && floats[4] != 0
-        ? (x: floats[2], y: floats[3])
-        : null,
-    twistDegrees: floats.length >= 7 && floats[6] != 0 ? floats[5] : null,
+    tilt: floats[4] != 0 ? (x: floats[2], y: floats[3]) : null,
+    twistDegrees: floats[6] != 0 ? floats[5] : null,
   );
-
-  static QaTabletBridge? _tryCreate() {
-    final overridePath =
-        debugLibraryPathOverride ?? Platform.environment['QA_TABLET_PATH'];
-    if (overridePath == null && !Platform.isWindows) {
-      return null;
-    }
-    DynamicLibrary? lib;
-    for (final candidate in [
-      if (overridePath != null && overridePath.isNotEmpty) overridePath,
-      if (Platform.isWindows) 'qa_tablet.dll',
-    ]) {
-      try {
-        lib = DynamicLibrary.open(candidate);
-        break;
-      } on Object {
-        continue;
-      }
-    }
-    if (lib == null) {
-      return null;
-    }
-    try {
-      final abi = lib.lookupFunction<Int32 Function(), int Function()>(
-        'qat_abi_version',
-      )();
-      if (abi != abiVersion) {
-        return null;
-      }
-      // The Raw Input observer is looked up SEPARATELY and is allowed to
-      // be missing: it shipped later than the Wintab half, and an older
-      // DLL beside a newer app should lose the observer, not the tablet.
-      int Function()? rawStart;
-      void Function()? rawStop;
-      int Function(Pointer<Float>, int)? rawPoll;
-      var rawFloats = rawFloatsAt(1);
-      try {
-        final rawAbi = lib.lookupFunction<Int32 Function(), int Function()>(
-          'qpr_abi_version',
-        )();
-        if (rawAbi >= 1 && rawAbi <= rawAbiVersion) {
-          rawFloats = rawFloatsAt(rawAbi);
-          rawStart = lib.lookupFunction<Int32 Function(), int Function()>(
-            'qpr_start',
-          );
-          rawStop = lib.lookupFunction<Void Function(), void Function()>(
-            'qpr_stop',
-          );
-          rawPoll = lib
-              .lookupFunction<
-                Int32 Function(Pointer<Float>, Int32),
-                int Function(Pointer<Float>, int)
-              >('qpr_poll');
-        }
-      } on Object {
-        rawStart = null;
-        rawStop = null;
-        rawPoll = null;
-        rawFloats = rawFloatsAt(1);
-      }
-      return QaTabletBridge._(
-        lib.lookupFunction<Int32 Function(), int Function()>('qat_available'),
-        lib.lookupFunction<
-          Int32 Function(Pointer<Uint16>, Int32),
-          int Function(Pointer<Uint16>, int)
-        >('qat_device_name'),
-        lib.lookupFunction<Int32 Function(), int Function()>('qat_open'),
-        lib.lookupFunction<
-          Int32 Function(Pointer<Float>, Int32),
-          int Function(Pointer<Float>, int)
-        >('qat_poll'),
-        lib.lookupFunction<Void Function(), void Function()>('qat_close'),
-        rawStart,
-        rawStop,
-        rawPoll,
-        rawFloats,
-      );
-    } on Object {
-      return null;
-    }
-  }
 }

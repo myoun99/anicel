@@ -177,7 +177,7 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     RuntimePathEntry(
       subsystem: 'Pen tablet driver',
       active: tabletAvailable
-          ? 'Wintab sidecar (qa_tablet) + OS pointer events'
+          ? 'Wintab sidecar + OS pointer events'
           : Platform.isWindows
           ? 'OS pointer events only (Windows Ink) — no Wintab driver '
                 'detected'

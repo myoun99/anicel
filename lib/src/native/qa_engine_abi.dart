@@ -38,9 +38,6 @@ import '../core/on_a_worker.dart';
 /// can go stale — and then the parity suites fail loudly under
 /// `QA_REQUIRE_NATIVE=1` rather than skipping.
 ///
-/// `qa_tablet` is a DIFFERENT binary with its own `qat_abi_version`; none
-/// of this covers it.
-///
 /// ## Changelog
 ///
 /// - v12: fill raster RGB -> RGBX (R22-D flood SIMD).
@@ -343,9 +340,6 @@ const int kQaEngineAbiVersion = 65;
 /// Set it before the loaders resolve — each caches its instance on first
 /// touch, so pair a change with the relevant `debugResetForTests()`
 /// (those stay per class: the cached instance really is per class).
-///
-/// `qa_tablet` is a different binary and keeps its own override, on
-/// `QA_TABLET_PATH`.
 String? debugQaEngineLibraryPathOverride;
 
 /// [job] on a worker ([onAWorker]) that loads the binary this isolate

@@ -74,16 +74,14 @@ void main() {
       final offenders = <String>[];
       for (final file in loaders) {
         final name = file.uri.pathSegments.last;
-        // qa_engine_abi.dart IS the loader; qa_tablet_bridge.dart opens a
-        // DIFFERENT binary (the Wintab sidecar, its own qat_abi_version);
-        // windows_screen_reader.dart opens user32, which every Windows has
-        // — no candidate list to copy, no version to gate (I-57-Q3) —
-        // device_battery.dart kernel32, for the same reason (I-103-Q1),
-        // windows_key_state.dart user32 again, for the held keys (I-61), and
-        // device_description.dart the OS's own (advapi32, libc, the process
-        // for sysctl), for what the feedback forms are told (I-139).
+        // qa_engine_abi.dart IS the loader; windows_screen_reader.dart opens
+        // user32, which every Windows has — no candidate list to copy, no
+        // version to gate (I-57-Q3) — device_battery.dart kernel32, for the
+        // same reason (I-103-Q1), windows_key_state.dart user32 again, for
+        // the held keys (I-61), and device_description.dart the OS's own
+        // (advapi32, libc, the process for sysctl), for what the feedback
+        // forms are told (I-139).
         if (name == 'qa_engine_abi.dart' ||
-            name == 'qa_tablet_bridge.dart' ||
             name == 'windows_screen_reader.dart' ||
             name == 'device_battery.dart' ||
             name == 'windows_key_state.dart' ||
@@ -110,11 +108,6 @@ void main() {
       final offenders = <String>[];
       for (final file in loaders) {
         final name = file.uri.pathSegments.last;
-        // qa_tablet_bridge.dart overrides a DIFFERENT binary's path
-        // (QA_TABLET_PATH), so its own hook is the correct shape.
-        if (name == 'qa_tablet_bridge.dart') {
-          continue;
-        }
         if (file.readAsStringSync().contains('debugLibraryPathOverride')) {
           offenders.add(name);
         }
