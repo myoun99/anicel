@@ -25,6 +25,8 @@ final class Export extends Opaque {}
 
 final class Readout extends Opaque {}
 
+final class Ink extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -602,6 +604,39 @@ external bool readoutRows(
 
 @Native<Void Function(Pointer<Readout>)>(symbol: 'gpu_engine_readout_free')
 external void readoutFree(Pointer<Readout> readout);
+
+@Native<Pointer<Ink> Function(Pointer<Engine>)>(symbol: 'gpu_engine_ink_new')
+external Pointer<Ink> inkNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Ink>)>(symbol: 'gpu_engine_ink_free')
+external void inkFree(Pointer<Ink> ink);
+
+@Native<
+  IntPtr Function(
+    Pointer<Ink>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_ink_run')
+external int inkRun(
+  Pointer<Ink> ink,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+  Pointer<Uint32> tiles,
+  Pointer<Int32> out,
+  int capacity,
+);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);

@@ -230,6 +230,30 @@ final int gpuTileBytes = gpuTileSide * gpuTileSide * 4;
 /// Where a [GpuPool] keeps a tile: a slot of one of its pages.
 typedef GpuTile = ({int page, int slot});
 
+/// A tile with nothing on it, as a tile set names one.
+const _noTile = 0xFFFFFFFF;
+
+/// [tiles] — a tile set's [columns] × [rows], row by row, null for one with
+/// nothing on it — as the words the C ABI names a set by: `page << 16 |
+/// slot` each (`TileAt::word`), [_noTile] for none. A plan's tile sets and
+/// the ink scan's cel alike.
+Pointer<Uint32> _tileWords(
+  Arena arena,
+  int columns,
+  int rows,
+  List<GpuTile?> tiles,
+) {
+  if (tiles.length != columns * rows) {
+    throw ArgumentError('$columns × $rows tiles, not ${tiles.length}');
+  }
+  final words = arena<Uint32>(_held(tiles.length));
+  for (var at = 0; at < tiles.length; at++) {
+    final tile = tiles[at];
+    words[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+  }
+  return words;
+}
+
 /// The engine's pages of tiles (rust/src/kernels/pool): each tile stored
 /// lands in a fresh slot of its cel and stays there until let go.
 class GpuPool {
@@ -364,19 +388,17 @@ class GpuPlan {
   /// Adds the tile set of [columns] × [rows] canvas tiles whose top-left is
   /// column [x0], row [y0] — [tiles] row by row, null for one with nothing
   /// on it — and returns the index a row lays it by.
-  int set(int x0, int y0, int columns, int rows, List<GpuTile?> tiles) {
-    if (tiles.length != columns * rows) {
-      throw ArgumentError('$columns × $rows tiles, not ${tiles.length}');
-    }
-    return using((arena) {
-      final words = arena<Uint32>(_held(tiles.length));
-      for (var at = 0; at < tiles.length; at++) {
-        final tile = tiles[at];
-        words[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
-      }
-      return rust.planSet(_plan, x0, y0, columns, rows, words);
-    });
-  }
+  int set(int x0, int y0, int columns, int rows, List<GpuTile?> tiles) =>
+      using(
+        (arena) => rust.planSet(
+          _plan,
+          x0,
+          y0,
+          columns,
+          rows,
+          _tileWords(arena, columns, rows, tiles),
+        ),
+      );
 
   /// Adds a key chain of no runs and returns the index a row or a chain's
   /// op keys by.
@@ -645,9 +667,6 @@ class GpuPlan {
 
   void free() => rust.planFree(_plan);
 }
-
-/// A tile with nothing on it, as a tile set names one.
-const _noTile = 0xFFFFFFFF;
 
 /// The executor: plans of the pool's tiles composited on the GPU.
 class GpuComposite {
@@ -941,6 +960,92 @@ class GpuReadout {
   }
 
   void free() => rust.readoutFree(_readout);
+}
+
+/// A walked tile's ink: where it is on its cel's grid, and its box —
+/// tile-local, the far edges past the last column and row with ink — or
+/// null where it holds none.
+typedef GpuTileInk = ({
+  int column,
+  int row,
+  ({int left, int top, int right, int bottom})? box,
+});
+
+/// The words the scan puts for a walked tile (cel_pixel/abi.rs's
+/// TILE_INK_WORDS): its column and row, then its box's four edges — four 0s
+/// where it holds no ink.
+const _tileInkWords = 6;
+
+/// The ink scan (rust/src/kernels/cel_pixel/ink.rs): where each of a cel's
+/// tiles on the pool holds ink, as the app's `TileInkBounds` says it.
+class GpuInk {
+  /// The scan on [engine], compiled.
+  factory GpuInk(GpuEngine engine) {
+    final ink = rust.inkNew(engine._engine);
+    if (ink == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuInk._(engine, ink);
+  }
+
+  GpuInk._(this._engine, this._ink);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Ink> _ink;
+
+  /// Each tile of the cel of [columns] × [rows] tiles whose top-left is
+  /// column [x0], row [y0] — [tiles] of [pool] row by row, null for one it
+  /// has none of — and its ink, in that order, the tiles it has none of
+  /// left out. Waits for the GPU.
+  List<GpuTileInk> run(
+    GpuPool pool,
+    int x0,
+    int y0,
+    int columns,
+    int rows,
+    List<GpuTile?> tiles,
+  ) => using((arena) {
+    final words = _tileWords(arena, columns, rows, tiles);
+    final capacity = tiles.nonNulls.length * _tileInkWords;
+    final out = arena<Int32>(_held(capacity));
+    final walked = rust.inkRun(
+      _ink,
+      _engine._engine,
+      pool._pool,
+      x0,
+      y0,
+      columns,
+      rows,
+      words,
+      out,
+      capacity,
+    );
+    if (walked < 0) {
+      throw StateError(_lastError());
+    }
+    final put = out.asTypedList(capacity);
+    return [
+      for (var tile = 0; tile < walked; tile++)
+        _walkedAt(put, tile * _tileInkWords),
+    ];
+  });
+
+  void free() => rust.inkFree(_ink);
+}
+
+/// The walked tile whose words start at [at] of [words].
+GpuTileInk _walkedAt(Int32List words, int at) {
+  final [column, row, left, top, right, bottom] = words.sublist(
+    at,
+    at + _tileInkWords,
+  );
+  return (
+    column: column,
+    row: row,
+    box: right > left
+        ? (left: left, top: top, right: right, bottom: bottom)
+        : null,
+  );
 }
 
 /// The fingerprint of [bytes] by the engine's own code — for bytes read off
