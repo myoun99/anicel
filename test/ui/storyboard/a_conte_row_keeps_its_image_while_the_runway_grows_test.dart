@@ -73,7 +73,7 @@ void main() {
       // An fx chain on the track, its lanes open: the lane rows stand too.
       effects: [
         LayerEffect(
-          id: EffectId('fx'),
+          id: const EffectId('fx'),
           kind: EffectKind.brightnessContrast,
           parameters: {'brightness': EffectParameter(value: 0.4)},
         ),
