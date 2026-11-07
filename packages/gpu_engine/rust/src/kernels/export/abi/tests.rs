@@ -237,7 +237,7 @@ fn a_readout_maps_once() {
 }
 
 // The last of 21 rows of 152 ends at the 3,192nd byte, the readout's last;
-// a byte more is past it, as is a stride that does not fit a u64.
+// a byte more is past it, as is a stride whose rows do not fit a u64.
 #[test]
 fn rows_past_the_bytes_read_out_are_refused() {
     let (readout, _) = mapped_rows();
@@ -255,6 +255,7 @@ fn rows_past_the_bytes_read_out_are_refused() {
     assert!(!rows(0, 152, 152, 22), "a row more");
     assert!(!rows(3193, 152, 0, 0), "no rows past the end");
     assert!(!rows(0, u64::MAX, 1, 2), "a stride past a u64");
+    assert!(!rows(0, 1 << 63, 1, 3), "a stride a u64 wraps round to 0");
     assert!(!rows(u64::MAX, 0, 1, 1), "an end past a u64");
     // SAFETY: `readout` is live.
     unsafe { gpu_engine_readout_free(readout) };
