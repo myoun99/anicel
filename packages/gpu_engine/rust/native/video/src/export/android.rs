@@ -15,7 +15,7 @@ use std::ffi::{c_int, c_long};
 use std::ptr::null_mut;
 use std::sync::Mutex;
 
-use super::{CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
+use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
 use crate::colour::{self, Picture, Planes};
 use crate::ndk::*;
 
@@ -273,10 +273,8 @@ impl Writer {
 
 pub fn open(job: &Job) -> bool {
     let mut held = lock(&WRITER);
-    let Some(path) = job.path.filter(|_| {
-        held.is_none() && job.width > 0 && job.height > 0 && job.fps_num > 0 && job.fps_den > 0 && job.channels >= 0
-    }) else {
-        set_error("video export: unsupported or bad parameters");
+    let Some(path) = job.path.filter(|_| held.is_none() && job.well_formed()) else {
+        set_error(BAD_OPEN);
         return false;
     };
     if job.container != CONTAINER_MP4 || (job.codec != CODEC_H264 && job.codec != CODEC_HEVC) {

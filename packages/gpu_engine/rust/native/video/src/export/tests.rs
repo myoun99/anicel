@@ -66,12 +66,22 @@ struct Shape {
     channels: i32,
     container: i32,
     codec: i32,
+    alpha: i32,
     bitrate_bps: i32,
 }
 
 /// The engine fixtures' movie: 64×48 at 24, stereo 48 kHz, MP4 H.264.
-const MOVIE: Shape =
-    Shape { width: 64, height: 48, fps: (24, 1), sample_rate: 48000, channels: 2, container: 0, codec: 0, bitrate_bps: 0 };
+const MOVIE: Shape = Shape {
+    width: 64,
+    height: 48,
+    fps: (24, 1),
+    sample_rate: 48000,
+    channels: 2,
+    container: 0,
+    codec: 0,
+    alpha: 0,
+    bitrate_bps: 0,
+};
 
 impl Encoder {
     fn error(&self, capacity: i32) -> (i32, String) {
@@ -100,10 +110,29 @@ impl Encoder {
                 s.channels,
                 s.container,
                 s.codec,
-                0,
+                s.alpha,
                 s.bitrate_bps,
             )
         }
+    }
+
+    /// What an open of `shape` at `path` answers, the job let go of again
+    /// if it was taken — a pair one platform turns away, another writes.
+    fn tried(&self, path: Option<&str>, shape: Shape) -> i32 {
+        let opened = self.open(path, shape);
+        if opened == 1 {
+            // SAFETY: an open writer, let go of.
+            unsafe { (self.abort)() };
+        }
+        opened
+    }
+
+    /// Whether this writer takes `shape` on this machine.
+    fn opens(&self, shape: Shape) -> bool {
+        let file = temp("opens", shape.container);
+        let opened = self.tried(Some(file.to_str().unwrap()), shape) == 1;
+        std::fs::remove_file(&file).ok();
+        opened
     }
 
     /// The movie `shape` makes of `frames` moving frames (and their sound),
@@ -149,8 +178,10 @@ fn saw(frames: usize, channels: usize, frame: usize) -> Vec<i16> {
         .collect()
 }
 
-fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("video-export-{}-{name}.mp4", std::process::id()))
+/// A file for `name` named as `container` names its files.
+fn temp(name: &str, container: i32) -> PathBuf {
+    let extension = if container == 1 { "mov" } else { "mp4" };
+    std::env::temp_dir().join(format!("video-export-{}-{name}.{extension}", std::process::id()))
 }
 
 fn be32(movie: &[u8], at: usize) -> usize {
@@ -254,8 +285,8 @@ fn read_movie(movie: &[u8]) -> Movie {
 /// samples, byte for byte.
 fn same_movie(name: &str, shape: Shape, frames: i32) {
     let (c, rust) = (c(), rust());
-    let theirs = read_movie(&c.movie(&temp(&format!("{name}-c")), shape, frames));
-    let ours = read_movie(&rust.movie(&temp(&format!("{name}-rust")), shape, frames));
+    let theirs = read_movie(&c.movie(&temp(&format!("{name}-c"), shape.container), shape, frames));
+    let ours = read_movie(&rust.movie(&temp(&format!("{name}-rust"), shape.container), shape, frames));
     let tracks = if shape.channels > 0 { 2 } else { 1 };
     assert_eq!(theirs.stamped, 1 + 2 * tracks, "{name}: the clock is where the mask looks");
     assert_eq!(theirs.tracks.len(), tracks, "{name}: every track's samples are read");
@@ -280,14 +311,25 @@ fn same_movie(name: &str, shape: Shape, frames: i32) {
 // side past the failed one — and the side that failed, held off hardware
 // (on the Intel machine the law was measured on, asking there fails at
 // Finalize); an exact NTSC fraction with mono sound at another rate and a
-// bitrate named; one named past the ceiling; a Korean name. Each byte for
-// byte with the C's, but for the clock and the chunking (`Movie`).
+// bitrate named; one named past the ceiling; a Korean name; and where the
+// C writes them (Apple), H.264 in a MOV, ProRes 422 with its PCM, and
+// ProRes 4444 keeping a picture's alpha. Each byte for byte with the C's,
+// but for the clock and the chunking (`Movie`).
 #[test]
 fn the_movie_is_the_c_s_but_for_its_clock_and_chunking() {
     let _one = one_at_a_time();
     // SAFETY: no arguments.
     if unsafe { (c().supported)() } == 0 {
         return;
+    }
+    for (name, shape) in [
+        ("mov", Shape { container: 1, ..MOVIE }),
+        ("prores-422", Shape { container: 1, codec: 4, ..MOVIE }),
+        ("prores-4444-alpha", Shape { container: 1, codec: 6, alpha: 1, channels: 0, ..MOVIE }),
+    ] {
+        if c().opens(shape) {
+            same_movie(name, shape, 6);
+        }
     }
     same_movie("fixture", MOVIE, 24);
     same_movie("odd-silent", Shape { width: 63, height: 47, channels: 0, ..MOVIE }, 6);
@@ -347,11 +389,12 @@ fn both_say(what: &str, step: impl Fn(&Encoder) -> i32) {
 
 // Every open the C turns away, turned away with the C's words: bad numbers,
 // pairs this platform does not write, a path that does not convert or that
-// leads nowhere, and a second job while one runs.
+// leads nowhere, and a second job while one runs. A pair one platform
+// writes (a MOV on Apple) is let go of again, by both.
 #[test]
 fn an_open_is_refused_as_the_c_refuses_it() {
     let _one = one_at_a_time();
-    let file = temp("refused");
+    let file = temp("refused", 0);
     let path = file.to_str().unwrap();
     for (what, shape) in [
         ("no width", Shape { width: 0, ..MOVIE }),
@@ -360,20 +403,19 @@ fn an_open_is_refused_as_the_c_refuses_it() {
         ("no frame rate", Shape { fps: (0, 1), ..MOVIE }),
         ("a rate over nothing", Shape { fps: (24, 0), ..MOVIE }),
         ("negative channels", Shape { channels: -1, ..MOVIE }),
-        ("sound at no rate", Shape { sample_rate: 0, ..MOVIE }),
         ("a MOV", Shape { container: 1, ..MOVIE }),
         ("no such container", Shape { container: 2, ..MOVIE }),
         ("ProRes in an MP4", Shape { codec: 2, ..MOVIE }),
         ("ProRes 4444", Shape { codec: 6, ..MOVIE }),
         ("no such codec", Shape { codec: 7, ..MOVIE }),
     ] {
-        both_say(what, |encoder| encoder.open(Some(path), shape));
+        both_say(what, |encoder| encoder.tried(Some(path), shape));
     }
-    both_say("no path", |encoder| encoder.open(None, MOVIE));
+    both_say("no path", |encoder| encoder.tried(None, MOVIE));
     let long = std::env::temp_dir().join("a".repeat(1100)).to_str().unwrap().to_owned();
-    both_say("a path too long to convert", |encoder| encoder.open(Some(&long), MOVIE));
+    both_say("a path too long to convert", |encoder| encoder.tried(Some(&long), MOVIE));
     let nowhere = std::env::temp_dir().join("no-such-folder-here").join("x.mp4").to_str().unwrap().to_owned();
-    both_say("a path into no folder", |encoder| encoder.open(Some(&nowhere), MOVIE));
+    both_say("a path into no folder", |encoder| encoder.tried(Some(&nowhere), MOVIE));
     both_say("a second job while one runs", |encoder| {
         if encoder.open(Some(path), MOVIE) == 0 {
             return -1;
@@ -386,13 +428,26 @@ fn an_open_is_refused_as_the_c_refuses_it() {
     std::fs::remove_file(&file).ok();
 }
 
+// Sound at no rate, held to the one law (`Job::well_formed`) rather than to
+// the C: of the C's three writers only Windows's turned it away — Apple's
+// handed AVFoundation an AAC track at 0 Hz.
+#[test]
+fn sound_at_no_rate_is_no_job() {
+    let _one = one_at_a_time();
+    let rust = rust();
+    let file = temp("no-rate", 0);
+    let answer = rust.tried(Some(file.to_str().unwrap()), Shape { sample_rate: 0, ..MOVIE });
+    assert_eq!((answer, rust.last_error()), (0, super::BAD_OPEN.to_owned()));
+    std::fs::remove_file(&file).ok();
+}
+
 // Nothing open: nothing written, nothing finished, an abort that does
 // nothing — and an open job takes no null frame, no sound when silent, and
 // opens again after an abort.
 #[test]
 fn a_call_out_of_turn_is_answered_as_the_c_answers_it() {
     let _one = one_at_a_time();
-    let file = temp("out-of-turn");
+    let file = temp("out-of-turn", 0);
     let path = file.to_str().unwrap();
     let frame = moving(64, 48, 0);
     let pcm = saw(10, 2, 0);

@@ -10,7 +10,7 @@ use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::core::{GUID, PCWSTR, Result};
 
-use super::{CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
+use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
 use crate::hardware_law;
 
 pub const SUPPORTED: bool = true;
@@ -85,16 +85,8 @@ fn hevc_encoders() -> u32 {
 
 pub fn open(job: &Job) -> bool {
     let mut held = lock(&WRITER);
-    let Some(path) = job.path.filter(|_| {
-        held.is_none()
-            && job.width > 0
-            && job.height > 0
-            && job.fps_num > 0
-            && job.fps_den > 0
-            && job.channels >= 0
-            && (job.channels == 0 || job.sample_rate > 0)
-    }) else {
-        set_error("video export: bad open parameters");
+    let Some(path) = job.path.filter(|_| held.is_none() && job.well_formed()) else {
+        set_error(BAD_OPEN);
         return false;
     };
     if job.container != CONTAINER_MP4 || (job.codec != CODEC_H264 && job.codec != CODEC_HEVC) {

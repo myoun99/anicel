@@ -7,7 +7,7 @@
 //! H.264+AAC encoding and an MP4 muxer as system API:
 //!
 //!   Windows  — Media Foundation's Sink Writer
-//!   Apple    — AVAssetWriter (still the engine's `qa_video_apple.m`)
+//!   Apple    — AVAssetWriter
 //!   Android  — NDK AMediaCodec + AMediaMuxer
 //!
 //! The contract with Dart (`lib/src/native/qa_video_encoder.dart`) is the
@@ -39,7 +39,10 @@ use std::sync::{Mutex, MutexGuard};
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
 mod os;
-#[cfg(not(any(windows, target_os = "android")))]
+#[cfg(target_vendor = "apple")]
+#[path = "apple.rs"]
+mod os;
+#[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
 #[path = "none.rs"]
 mod os;
 #[cfg(windows)]
@@ -49,15 +52,28 @@ mod os;
 // The v10 lineup (ABI v21): MP4 = H.264/H.265, MOV = H.264 + ProRes. The
 // Dart enums map 1:1 onto these values. What follows down to `Job` is the
 // writers' — a build without one reads none of it.
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 const CONTAINER_MP4: i32 = 0;
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CONTAINER_MOV: i32 = 1;
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 const CODEC_H264: i32 = 0;
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 const CODEC_HEVC: i32 = 1;
+// ProRes, lightest to heaviest; only Apple writes it.
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_PROXY: i32 = 2;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_LT: i32 = 3;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_422: i32 = 4;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_HQ: i32 = 5;
+#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+const CODEC_PRORES_4444: i32 = 6;
 
 /// What `open` was asked for, as Dart passed it.
-#[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 struct Job<'a> {
     path: Option<&'a CStr>,
     width: i32,
@@ -68,7 +84,44 @@ struct Job<'a> {
     channels: i32,
     container: i32,
     codec: i32,
+    /// Whether ProRes 4444 keeps the picture's alpha. MF and the NDK write
+    /// H.26x, which is opaque: their pad/alpha byte stays 0xFF and YUV420
+    /// carries no alpha.
+    #[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
+    alpha: bool,
     bitrate_bps: i32,
+}
+
+/// What every writer says of a job it is not given — one that is no job
+/// at all, or one asked for while another runs.
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+const BAD_OPEN: &str = "video export: bad open parameters";
+
+#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+impl Job<'_> {
+    /// Whether this is a job at all: a path, a picture, a frame rate, and
+    /// sound — if any — at a rate.
+    ///
+    /// 🚨ONE LAW FOR THE THREE WRITERS. The C spelled it once per platform,
+    /// all three born in one commit (000cf76c4, AUDIO-PRO R7, 2026-07-21):
+    /// Windows turned away sound at no rate, Android and Apple let it through
+    /// to their encoders, and Android said 「unsupported or bad parameters」
+    /// for the rest. Apple's writer joining Rust (2026-11-07) made it the
+    /// third copy, and the copies became this — Windows's, the one that asks
+    /// no encoder for sound it cannot have (관제 took the merge, 11-07). The
+    /// app's own jobs never meet the difference: their sound is the mix WAV
+    /// the export dialog wrote at the project's rate, and only a WAV whose
+    /// header says 0 Hz would reach here (`ConformPcmStreamReader.overWav16`
+    /// turns away no channels, not no rate).
+    fn well_formed(&self) -> bool {
+        self.path.is_some()
+            && self.width > 0
+            && self.height > 0
+            && self.fps_num > 0
+            && self.fps_den > 0
+            && self.channels >= 0
+            && (self.channels == 0 || self.sample_rate > 0)
+    }
 }
 
 /// What the C's buffer held: the message's first 255 bytes.
@@ -132,14 +185,13 @@ pub unsafe extern "C" fn qa_video_export_open(
     channels: i32,
     container: i32,
     codec: i32,
-    // MF and the NDK write H.26x, which is opaque: the pad/alpha byte stays
-    // 0xFF and YUV420 carries no alpha.
-    _alpha: i32,
+    alpha: i32,
     bitrate_bps: i32,
 ) -> i32 {
     // SAFETY: the caller's contract.
     let path = (!utf8_path.is_null()).then(|| unsafe { CStr::from_ptr(utf8_path) });
-    let job = Job { path, width, height, fps_num, fps_den, sample_rate, channels, container, codec, bitrate_bps };
+    let alpha = alpha != 0;
+    let job = Job { path, width, height, fps_num, fps_den, sample_rate, channels, container, codec, alpha, bitrate_bps };
     os::open(&job) as i32
 }
 

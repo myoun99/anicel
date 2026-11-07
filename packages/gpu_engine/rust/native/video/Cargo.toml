@@ -19,6 +19,54 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "android")'.dependencies]
 libc = "0.2"
 
+# AVFoundation's writer (qa_video_apple.m's AVAssetWriter half). Every
+# crate but AVFoundation's and CoreMedia's was already in the lock (wgpu-hal,
+# cpal); their default features would pull in frameworks it has not.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "AVAssetWriter",
+  "AVAssetWriterInput",
+  "AVMediaFormat",
+  "AVVideoSettings",
+  "block2",
+  "objc2-core-media",
+  "objc2-core-video",
+] }
+objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVAudioSettings"] }
+objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFString"] }
+objc2-core-media = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CMBase",
+  "CMBlockBuffer",
+  "CMFormatDescription",
+  "CMSampleBuffer",
+  "CMTime",
+  "objc2-core-audio-types",
+] }
+objc2-core-video = { version = "0.3", default-features = false, features = [
+  "std",
+  "CVBase",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+  "CVPixelBufferPool",
+  "CVReturn",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSDictionary",
+  "NSError",
+  "NSFileManager",
+  "NSObject",
+  "NSString",
+  "NSURL",
+  "NSValue",
+] }
+
 # The C answer key: the engine's qa_video_export_* (native/oracle).
 [dev-dependencies]
 oracle = { path = "../oracle" }
