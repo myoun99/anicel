@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
     show timelineLayerRowHeight;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
@@ -185,16 +186,25 @@ void main() {
     );
   });
 
-  List<(int, bool)> drawnSides() => [
-    for (final handle in painterOf([
-      lineOf('rotation'),
-    ]).handlesIn(sizeFor(Axis.horizontal)))
+  List<(int, bool)> drawnSides({double cellExtent = cell}) => [
+    for (final handle in painterOf([lineOf('rotation')]).handlesIn(
+      sizeAlong(Axis.horizontal, along: 48 * cellExtent, across: 196),
+    ))
       (handle.frame, handle.leaving),
   ];
 
   test('a segment the window shows some of keeps its handles, though a key '
       'of it stands outside the window', () {
-    // Eight frames to a window's step at this zoom, two cells overscan.
+    // Cells wide enough for eight frames to a window's step, two cells
+    // overscan ([timelineFrameWindowSpanFor]).
+    const wide = 64.7;
+    expect(timelineFrameWindowSpanFor(wide), 8, reason: '⛔전제');
+    geometry.value = const TimelineFrameGeometry(
+      viewExtentPx: 48 * wide,
+      frameCellExtent: wide,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 48,
+    );
     bucket.value = 2;
     expect(
       painterOf([lineOf('rotation')]).visibleFrameWindow().startIndex,
@@ -202,7 +212,7 @@ void main() {
       reason: '⛔전제',
     );
     expect(
-      drawnSides(),
+      drawnSides(cellExtent: wide),
       [(18, false)],
       reason: '12 to 18 shows; 0 to 6 and 6 to 12 do not',
     );
