@@ -2,6 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
 
+import '../core/color_matrix.dart' show luminanceB, luminanceG, luminanceR;
+
 /// One raster of a step a fragment shader draws ([ShadedEffect]): the whole
 /// raster at the identity, over the picture the raster before it made
 /// (`applyEffectSteps`). A kind is drawn in these when it reads past the
@@ -121,7 +123,7 @@ typedef IrisProperties = ({
 /// its luma, or one of its channels, as the weights [r], [g], [b] and [a]
 /// of its premultiplied red, green, blue and alpha.
 enum IrisMapChannel {
-  luminance(0.2126, 0.7152, 0.0722, 0),
+  luminance(luminanceR, luminanceG, luminanceB, 0),
   red(1, 0, 0, 0),
   green(0, 1, 0, 0),
   blue(0, 0, 1, 0),
