@@ -36,7 +36,7 @@
 // ([`abi`]) since the connection round's 잉크 상자.
 #![cfg_attr(not(test), allow(dead_code))]
 
-mod abi;
+pub(crate) mod abi;
 pub(crate) mod ink;
 pub(crate) mod lift;
 #[cfg(test)]

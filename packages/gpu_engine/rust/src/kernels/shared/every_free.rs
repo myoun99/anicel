@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 
 use super::source_scan::files_where;
 use crate::device::gpu_engine_close;
+use crate::kernels::cel_pixel::abi::{gpu_engine_ink_free, gpu_engine_ink_new};
 use crate::kernels::composite::abi::{
     gpu_engine_composite_free, gpu_engine_composite_new, gpu_engine_composited_free,
     gpu_engine_plan_free, gpu_engine_plan_new,
@@ -45,7 +46,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 9] {
+fn frees() -> [(&'static str, fn(&'static str)); 10] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -72,6 +73,11 @@ fn frees() -> [(&'static str, fn(&'static str)); 9] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_fill_new(first_engine()) };
             gives_back(name, made, gpu_engine_fill_free)
+        }),
+        ("gpu_engine_ink_free", |name| {
+            // SAFETY: the engine is live.
+            let made = unsafe { gpu_engine_ink_new(first_engine()) };
+            gives_back(name, made, gpu_engine_ink_free)
         }),
         ("gpu_engine_pool_free", |name| {
             // SAFETY: the engine is live.
