@@ -59,6 +59,38 @@ void main() {
     expect(face, paintsExactlyCountTimes(#drawRSuperellipse, 2));
   });
 
+  testWidgets('it is drawn where its box is laid', (tester) async {
+    const at = Offset(7, 3);
+    await tester.pumpWidget(
+      Center(
+        child: Padding(
+          padding: EdgeInsets.only(left: at.dx, top: at.dy),
+          child: SizedBox.fromSize(
+            size: size,
+            child: DecoratedBox(
+              decoration: SuperellipseFace(
+                color: inside,
+                edge: AppShapes.container(
+                  4,
+                  side: const BorderSide(color: edge, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final laid = AppShapes.container(
+      4,
+    ).borderRadius.resolve(TextDirection.ltr).toRSuperellipse(at & size);
+    expect(
+      tester.renderObject(find.byType(Padding)),
+      paints
+        ..rsuperellipse(rsuperellipse: laid, color: edge)
+        ..rsuperellipse(rsuperellipse: laid.deflate(1.5), color: inside),
+    );
+  });
+
   testWidgets('a translucent side lies over the inside, as its stroke did', (
     tester,
   ) async {
