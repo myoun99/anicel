@@ -26,6 +26,8 @@ use std::sync::Mutex;
 
 use windows::Win32::Media::MediaFoundation::{MF_VERSION, MFSTARTUP_LITE, MFStartup};
 
+pub mod span_stream;
+
 /// Held while a caller starts MF, so two threads opening their first medium
 /// at once start it once between them; true once it is up.
 static UP: Mutex<bool> = Mutex::new(false);

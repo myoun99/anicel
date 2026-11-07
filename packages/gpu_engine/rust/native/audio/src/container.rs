@@ -7,11 +7,27 @@
 //! reads as a corrupt file rather than as the arithmetic bug it is. The span
 //! reader is where that arithmetic lives, once.
 
+use std::ffi::{CStr, CString};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use media::span::Span;
 use symphonia::core::io::MediaSource;
+
+/// Where a container is stored: `[offset, offset + length)` of `path`, as it
+/// is or framed.
+struct Stored {
+    path: CString,
+    offset: i64,
+    length: i64,
+    framed: bool,
+}
+
+impl Stored {
+    fn open(&self) -> Option<Span> {
+        Span::open(&self.path, self.offset, self.length, self.framed)
+    }
+}
 
 /// The container, shared: a decoder reads it through a cursor of its own
 /// while the stream reads its boxes, to learn where the sound starts.
@@ -19,12 +35,25 @@ use symphonia::core::io::MediaSource;
 pub(crate) struct Container {
     span: Arc<Mutex<Span>>,
     size: i64,
+    stored: Arc<Stored>,
 }
 
 impl Container {
-    pub(crate) fn new(span: Span) -> Container {
+    /// The container stored in `[offset, offset + length)` of `path`, or
+    /// None when the span is not inside the file ([Span::open]).
+    pub(crate) fn open(path: &CStr, offset: i64, length: i64, framed: bool) -> Option<Container> {
+        let stored = Stored { path: path.to_owned(), offset, length, framed };
+        let span = stored.open()?;
         let size = span.size();
-        Container { span: Arc::new(Mutex::new(span)), size }
+        Some(Container { span: Arc::new(Mutex::new(span)), size, stored: Arc::new(stored) })
+    }
+
+    /// The container's span opened once more, for a decoder that reads it
+    /// on threads of its own (the OS stage's): its own file handle and
+    /// position, never this container's.
+    #[cfg(windows)]
+    pub(crate) fn span_again(&self) -> Option<Span> {
+        self.stored.open()
     }
 
     /// How many bytes the container has — for a framed span, decoded.

@@ -1,6 +1,6 @@
 //! WAVs, AIFFs and MPEG frames made up here, each decoded by both.
 
-use super::{Span, TempFile, between_junk, c_window, expect_same, framed, noise, rust_window};
+use super::{Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, framed, noise, rust_window};
 
 /// A WAV's `fmt ` chunk body.
 fn fmt(tag: u16, channels: u16, rate: u32, bits: u16, block_align: u16, extensible: Option<(u16, u16)>) -> Vec<u8> {
@@ -602,20 +602,15 @@ fn a_piece_nothing_reads_is_its_length_of_silence() {
 
 #[test]
 fn a_head_that_names_another_container_keeps_the_mp3_decoder_away() {
-    // MPEG frames behind each head the MP3 decoder is kept from: nothing
-    // reads them, where the frames alone read as an MP3.
+    // MPEG frames behind each head the MP3 decoder is kept from: no bundled
+    // decoder reads them, where the frames alone read as an MP3.
     for head in [b"RIFF", b"RIFX", b"RF64", b"riff", b"FORM", b"fLaC", b"OggS"] {
         let mut bytes = head.to_vec();
         bytes.extend_from_slice(&[0, 0, 0, 0]);
         bytes.extend(mp3_frames(24));
         let file = TempFile::new("head.bin", &bytes);
         let span = Span::whole(file.path());
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        // On Windows Media Foundation finds the frames behind a RIFX: what
-        // only the OS stage reads, nothing reads here until it comes.
-        let (format, frames) =
-            if c.format == crate::FORMAT_OS { (crate::FORMAT_UNKNOWN, 0) } else { (c.format, c.samples.len()) };
-        assert_eq!(rust.format, format, "{}", String::from_utf8_lossy(head));
-        assert_eq!(rust.samples.len(), frames, "{}", String::from_utf8_lossy(head));
+        // On Windows Media Foundation finds the frames behind a RIFX.
+        expect_left_to_the_os(&String::from_utf8_lossy(head), &span);
     }
 }

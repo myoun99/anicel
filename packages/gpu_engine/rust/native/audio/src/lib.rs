@@ -30,6 +30,7 @@ mod bundled;
 mod container;
 mod convert;
 mod movie_pcm;
+mod os;
 mod start;
 pub mod stream;
 mod wav_family;
@@ -46,8 +47,9 @@ pub const FORMAT_UNKNOWN: i32 = 0;
 pub const FORMAT_WAV: i32 = 1;
 pub const FORMAT_FLAC: i32 = 2;
 pub const FORMAT_MP3: i32 = 3;
-/// The OS's own codec stack — the C's last stage, ⚠️not here yet: it comes
-/// last of all, with the video lane's decoders (native-to-rust-Q6).
+/// The OS's own codec stack — the last stage, for what no bundled decoder
+/// reads ([os], native-to-rust-Q6): Media Foundation on Windows; ⚠️the
+/// Apple and Android stages are the C's still.
 pub const FORMAT_OS: i32 = 4;
 pub const FORMAT_VORBIS: i32 = 5;
 /// A movie's uncompressed sound, read here on every platform.

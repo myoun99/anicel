@@ -34,6 +34,12 @@ symphonia = { version = "0.6.1", default-features = false, features = [
   "wav",
 ] }
 
+# The OS stage on Windows: Media Foundation's source reader (os/
+# media_foundation.rs); the crate is already in the lock as wgpu-hal's
+# major.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Media_MediaFoundation", "Win32_System_Com"] }
+
 # The C answer key: the engine's qa_audio_* (native/oracle).
 [dev-dependencies]
 oracle = { path = "../oracle" }

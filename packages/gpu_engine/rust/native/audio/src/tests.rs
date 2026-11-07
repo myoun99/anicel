@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use oracle::export;
 
 mod movies;
+mod os;
 mod pins;
 mod wavs;
 
@@ -383,7 +384,7 @@ fn a_bare_aac_stream_reads_as_its_movie_reads() {
     // Frames behind something that is no tag are no bare stream: its start
     // is where its first frame says nothing of (`start::is_adts`).
     let behind = TempFile::new("tone.aac", &[vec![0x11; 100], frames].concat());
-    assert_eq!(rust_window(&Span::whole(behind.path()), 0, -1).format, crate::FORMAT_UNKNOWN);
+    expect_left_to_the_os("frames behind something", &Span::whole(behind.path()));
 }
 
 #[test]
@@ -397,7 +398,23 @@ fn a_movie_is_what_its_head_says() {
     bytes[4..8].copy_from_slice(b"uuid");
     bytes.extend_from_slice(b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00M4A isom");
     let renamed = TempFile::new("renamed.m4a", &bytes);
-    assert_eq!(rust_window(&Span::whole(renamed.path()), 0, -1).format, crate::FORMAT_UNKNOWN);
+    expect_left_to_the_os("a movie by another head", &Span::whole(renamed.path()));
+}
+
+/// Whether this platform's OS stage is here — Media Foundation's. ⚠️The
+/// Apple and Android stages come next: until then nothing reads there what
+/// only the OS reads, while the C's AudioToolbox and MediaCodec do.
+pub(crate) const OS_STAGE_HERE: bool = cfg!(windows);
+
+/// Holds that no bundled decoder reads `span`: what reads it, where
+/// anything does, is the OS stage — as the C's does.
+pub(crate) fn expect_left_to_the_os(what: &str, span: &Span) {
+    if OS_STAGE_HERE {
+        let sound = expect_same(what, span, 0, -1);
+        assert!([crate::FORMAT_OS, crate::FORMAT_UNKNOWN].contains(&sound.format), "{what}: {}", sound.format);
+    } else {
+        assert_eq!(rust_window(span, 0, -1).format, crate::FORMAT_UNKNOWN, "{what}");
+    }
 }
 
 #[test]
