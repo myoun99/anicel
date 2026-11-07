@@ -260,10 +260,29 @@ class RenderStillRaster extends RenderProxyBox {
   /// timeline-playback-drops-every-row-image-each-frame (11-07): a measure
   /// that read this as a row's image dropped counted ~9300 drops in 300
   /// frames of playback — every row, every frame, each holding its image
-  /// under the dock's.
+  /// under the dock's. What the scene draws a region from is
+  /// [debugDrawnFrom].
   @visibleForTesting
   bool get debugDrawnFromImage => _drawnFromImage;
   bool _drawnFromImage = false;
+
+  /// The region whose image the last scene drew this one from — this one,
+  /// or the outermost above it drawn from ITS image, which the scene holds
+  /// in this one's stead. Null when drawn live.
+  ///
+  /// One walk for every reader that asks it (rule of three, 11-08): a
+  /// playing timeline's pin, the dock probe and the conte's rows' pin each
+  /// walked the parents by hand.
+  @visibleForTesting
+  RenderStillRaster? get debugDrawnFrom {
+    RenderStillRaster? from;
+    for (RenderObject? node = this; node != null; node = node.parent) {
+      if (node is RenderStillRaster && node._drawnFromImage) {
+        from = node;
+      }
+    }
+    return from;
+  }
 
   /// How many frames drawn from the image asked where the region sits the
   /// full way — a transform to the root — before building the scene,

@@ -33,7 +33,7 @@ import 'package:anicel/src/ui/widgets/still_raster.dart';
 /// measure that read a row not drawn from its own image as one that had
 /// dropped it. Under the dock's image a row is not in the scene at all
 /// ([RenderStillRaster.debugDrawnFromImage] says so): what this reads is
-/// what the scene draws it from.
+/// what the scene draws it from ([RenderStillRaster.debugDrawnFrom]).
 ///
 /// The rows a timeline plays past: the drawings' cells and rails, a row
 /// twirled open to its keyed lanes — whose values follow the playhead, a
@@ -126,17 +126,8 @@ void main() {
 
   /// Whether the scene draws [region] from an image: its own, or that of a
   /// region above it.
-  bool drawnFromAnImage(RenderStillRaster region) {
-    if (region.debugDrawnFromImage) {
-      return true;
-    }
-    for (var node = region.parent; node != null; node = node.parent) {
-      if (node is RenderStillRaster && node.debugDrawnFromImage) {
-        return true;
-      }
-    }
-    return false;
-  }
+  bool drawnFromAnImage(RenderStillRaster region) =>
+      region.debugDrawnFrom != null;
 
   Future<void> tick(WidgetTester tester) =>
       tester.pump(const Duration(milliseconds: 42));

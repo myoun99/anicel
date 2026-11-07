@@ -227,22 +227,15 @@ final class _Probe {
     return out;
   }
 
-  /// What the scene draws [region] from: the label of the outermost region
-  /// — it or one above it — drawn from its image, or null when live.
-  ///
-  /// ⚠️A region under one drawn from ITS image is not in the scene, and its
-  /// own [RenderStillRaster.debugDrawnFromImage] is the last scene's answer
-  /// (card timeline-playback-drops-every-row-image-each-frame, 11-07).
-  String? _drawnFrom(RenderStillRaster region) {
-    String? from;
-    for (RenderObject? node = region; node != null; node = node.parent) {
+  /// What the scene draws [region] from ([RenderStillRaster.debugDrawnFrom]):
+  /// its own image, a region's above it, or nothing — null, live.
+  String? _drawnFrom(RenderStillRaster region) =>
       // ignore: invalid_use_of_visible_for_testing_member
-      if (node is RenderStillRaster && node.debugDrawnFromImage) {
-        from = node == region ? 'own' : 'above ${node.debugLabel}';
-      }
-    }
-    return from;
-  }
+      switch (region.debugDrawnFrom) {
+        null => null,
+        final from when identical(from, region) => 'own',
+        final from => 'above ${from.debugLabel}',
+      };
 
   void _write(Map<String, Object?> now) {
     final path = '${out.path}/now.json';
