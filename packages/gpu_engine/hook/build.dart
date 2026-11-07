@@ -101,7 +101,25 @@ void _aimTarget(Uri outputDirectory, Uri folder) {
     Directory(target).deleteSync(recursive: true);
   }
   Directory.fromUri(folder).createSync(recursive: true);
-  Link(target).createSync(folder.toFilePath());
+  if (!Platform.isWindows) {
+    Link(target).createSync(folder.toFilePath());
+    return;
+  }
+  // ⛔A junction, not the symbolic link Dart's Link makes on Windows:
+  // rust/build.rs unpacks the DXC zip into its OUT_DIR, inside this
+  // folder, with Windows' tar, which will not unpack through a symbolic
+  // link ("too many symbolic link levels") and does through a junction
+  // (measured 2026-11-07). A junction needs no privilege either.
+  final made = Process.runSync('cmd', [
+    '/c',
+    'mklink',
+    '/J',
+    target,
+    folder.toFilePath(),
+  ]);
+  if (made.exitCode != 0) {
+    throw StateError('mklink /J $target: ${made.stdout}${made.stderr}');
+  }
 }
 
 /// The builder's library, copied beside the hook's output and shipped
