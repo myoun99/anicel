@@ -197,6 +197,7 @@ void main() {
         'test/near_test.dart': <String>{},
         'test/clear_test.dart': {'lib/b.dart'},
         'test/helper.dart': {'lib/a.dart'},
+        'tool/check_test.dart': {'lib/a.dart'},
         'lib/a.dart': {'lib/engine_seat.dart'},
         'lib/b.dart': <String>{},
         'lib/engine_seat.dart': <String>{},
