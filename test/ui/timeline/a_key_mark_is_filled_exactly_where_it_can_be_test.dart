@@ -159,6 +159,21 @@ void main() {
     );
   });
 
+  // As a box narrows with its cell (F-367-Q4) to a pixel or two, a ring of
+  // 4/3 leaves nothing inside it.
+  testWidgets('a mark with no room inside its ring is the ring\'s colour '
+      'whole', (tester) async {
+    for (final mark in [held, diamond]) {
+      final painted = await markOf(
+        tester,
+        mark,
+        ring: (color: accent, width: 6),
+      );
+      expect(painted, paintsExactlyCountTimes(#drawRect, 1), reason: '$mark');
+      expect(painted, paints..rect(color: accent), reason: '$mark');
+    }
+  });
+
   testWidgets('a translucent ring lies over the key, as its stroke did', (
     tester,
   ) async {
