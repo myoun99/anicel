@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
+import '../../core/keyed_notices.dart';
 import '../../core/rgba_premultiply.dart' show straightRgbaFor;
 import '../../core/signed_memo.dart';
 import '../../core/sync_image_upload.dart';
@@ -84,14 +85,17 @@ class TimelineGridTileStore {
 
   /// The rows shown now, each with the listeners of the painters that show
   /// it: they come as those painters are attached and go as they are
-  /// detached ([noticesFor]), so a row nothing shows is not here.
-  final Map<String, List<VoidCallback>> _shown = <String, List<VoidCallback>>{};
+  /// detached ([noticesFor]), so a row nothing shows is not here — nor who
+  /// last asked for it ([_askedBy]).
+  late final KeyedNotices<String> _shown = KeyedNotices(
+    unheard: _askedBy.remove,
+  );
 
   /// Whether [row] is shown now and [painter] paints the live state — the
   /// only rows the store asks anything for of its own accord: a warm-up,
   /// or a request its queue once turned away.
   bool _showsLive(String row, TimelineTileRasterSource painter) =>
-      _shown.containsKey(row) && _answersLive(painter);
+      _shown.isHeard(row) && _answersLive(painter);
 
   /// Whether [painter]'s resolvers still describe its rows: always, for a
   /// source that follows no live cut; for one that does, while its world
@@ -333,16 +337,10 @@ class TimelineGridTileStore {
     required String substrateGeneration,
     required LayerId layerId,
     required Axis axis,
-  }) => _RowNotices(this, _rowKey(substrateGeneration, layerId, axis));
+  }) => _shown.of(_rowKey(substrateGeneration, layerId, axis));
 
   static String _rowKey(String generation, LayerId layerId, Axis axis) =>
       '$generation|${layerId.value}:${axis.index}';
-
-  void _noticeLanding(String row) {
-    for (final listener in [...?_shown[row]]) {
-      listener();
-    }
-  }
 
   /// The substrate tile for [painter]'s span starting at [spanStartIndex]:
   /// the one it holds where that shows the span, one baked in this call
@@ -698,7 +696,7 @@ class TimelineGridTileStore {
   /// step, for a tile of a row nothing shows, or wherever nothing plays.
   /// [shownBy] holds each row's answers for one letting go.
   int? _wantedAt(_Kept kept, Map<String, _RowShows> shownBy) {
-    final asked = _shown.containsKey(kept.row) ? _askedBy[kept.row] : null;
+    final asked = _shown.isHeard(kept.row) ? _askedBy[kept.row] : null;
     if (asked == null) {
       return null;
     }
@@ -820,7 +818,7 @@ class TimelineGridTileStore {
       // A row whose tile lands asks again for itself when it repaints —
       // coming back to it could only find an older painter.
       _starved.remove(request.row);
-      _noticeLanding(request.row);
+      _shown.notice([request.row]);
     }
     return true;
   }
@@ -1103,7 +1101,7 @@ class TimelineGridTileStore {
       // A span the ask bakes in itself lands there ([_landNow]) — with no
       // paint under way to draw it, so the row hears of it.
       if (revision.value != landings) {
-        _noticeLanding(row);
+        _shown.notice([row]);
       }
       for (final (start, end) in ahead) {
         _warm(
@@ -1577,34 +1575,6 @@ class _TileRequest {
   String get key => keyOf(row, spanStartIndex);
 
   static String keyOf(String row, int spanStartIndex) => '$row:$spanStartIndex';
-}
-
-/// A row's side of the store's landing notices ([TimelineGridTileStore.
-/// noticesFor]): its painter adds a listener when it is attached and
-/// removes it when it is detached, so the store holds a row only while
-/// something shows it.
-class _RowNotices implements Listenable {
-  const _RowNotices(this._store, this._row);
-
-  final TimelineGridTileStore _store;
-  final String _row;
-
-  @override
-  void addListener(VoidCallback listener) =>
-      _store._shown.putIfAbsent(_row, () => <VoidCallback>[]).add(listener);
-
-  @override
-  void removeListener(VoidCallback listener) {
-    final listeners = _store._shown[_row];
-    if (listeners == null) {
-      return;
-    }
-    listeners.remove(listener);
-    if (listeners.isEmpty) {
-      _store._shown.remove(_row);
-      _store._askedBy.remove(_row);
-    }
-  }
 }
 
 /// A word a tile writes: its text and type, its ink, its bake key, how far it

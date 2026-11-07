@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/fixed_thumbnails.dart';
 import '../../helpers/settle_async.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -172,10 +173,8 @@ void main() {
               ]),
               builder: (context, _) => ConteTabHost(
                 session: session,
-                thumbnails: (
-                  resolve: (cut, frame, {required shownHeight, region}) => printed,
-                  landed: const _NeverLands(),
-                  pending: () => false,
+                thumbnails: fixedThumbnails(
+                  (cut, frame, {required shownHeight, region}) => printed,
                 ),
                 viewport: seedFromRender(
                   tester,
@@ -645,15 +644,4 @@ class _Shot {
     final o = (device.dy.floor() * width + device.dx.floor()) * 4;
     return Color.fromARGB(rgba[o + 3], rgba[o], rgba[o + 1], rgba[o + 2]);
   }
-}
-
-/// A picture store whose one picture never changes.
-class _NeverLands implements Listenable {
-  const _NeverLands();
-
-  @override
-  void addListener(VoidCallback listener) {}
-
-  @override
-  void removeListener(VoidCallback listener) {}
 }

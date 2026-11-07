@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../core/keyed_notices.dart';
 import '../core/signed_memo.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/cut.dart';
@@ -61,8 +62,9 @@ typedef StoryboardThumbnailResolver =
     });
 
 /// A surface's panel pictures: [resolve] asked while it paints, and
-/// [landed] told when a render lands or a picture is let go — ONE value,
-/// so no surface can draw the pictures without hearing when they change.
+/// [noticesFor] told when a picture of one of the cuts it shows lands or is
+/// let go — ONE value, so no surface can draw the pictures without hearing
+/// when they change.
 ///
 /// ↩️The storyboard and the conte heard a landing by REBUILDING their
 /// whole tab (the store sat in each tab's listenable merge) — at I-22's
@@ -72,12 +74,20 @@ typedef StoryboardThumbnailResolver =
 /// something else happened to repaint it. The painters that ask are the
 /// ones that repaint now.
 ///
-/// [pending] says whether a picture a surface asked for is still to come.
-/// ⚠️Ask it once the surfaces have PAINTED: a landing empties what was
-/// asked, and the repaint it sets off is what asks again for a picture
-/// still behind — heard where the landing is, it answers no for that one.
+/// 🚨A PAINTER HEARS ITS OWN CUTS' PICTURES (conte-one-eye-repaints-every-
+/// track, 2026-11-08 — the timeline tiles' law, I-22 ③). ↩️Every painter
+/// heard [landed]: one conte row's eye re-rendered its track's pictures,
+/// and each landing repainted every track's V row — a capture of each.
+///
+/// [landed] is told of every landing — for what waits on the whole store,
+/// never for a painter. [pending] says whether a picture a surface asked
+/// for is still to come. ⚠️Ask it once the surfaces have PAINTED: a landing
+/// empties what was asked, and the repaint it sets off is what asks again
+/// for a picture still behind — heard where the landing is, it answers no
+/// for that one.
 typedef StoryboardThumbnails = ({
   StoryboardThumbnailResolver resolve,
+  Listenable Function(Iterable<CutId> cuts) noticesFor,
   Listenable landed,
   bool Function() pending,
 });
@@ -87,8 +97,8 @@ typedef StoryboardThumbnails = ({
 /// [thumbnailFor] is a synchronous paint-time resolver: it returns whatever
 /// is cached (possibly stale, possibly null) and puts the panel on the list
 /// of what to render, at the width the surface's size asks, when its
-/// signature changed. Renders finish → [notifyListeners] → the painters
-/// that asked repaint with the fresh image ([thumbnails]).
+/// signature changed. Renders finish → the painters that show the cut
+/// repaint with the fresh image ([noticesFor]).
 ///
 /// 🚨★★★ONE RENDER AT A TIME, AND ONLY WHAT IS SHOWN NOW (2026-09-28 —
 /// 유저: 「fu파일로, 콘티패널 v행 크기 늘리던 도중에 튕겻어」). Every ask
@@ -101,10 +111,11 @@ typedef StoryboardThumbnails = ({
 /// first 26 alone took the process from 674MB to 1244MB. That is the
 /// crash on a tablet. Now an ask only puts the panel on the list, one
 /// render runs, and when it ends the list is emptied: its landing repaints
-/// every surface that asks (they have to, to show it), and they ask again
-/// for exactly what they show NOW — a width the hand has already passed or
-/// a panel scrolled away is never rendered at all ([ShownRasters.want] —
-/// the law of every picture drawn as large as it is shown, since 10-30).
+/// every surface that asked since (they have to, to show it), and they ask
+/// again for exactly what they show NOW — a width the hand has already
+/// passed or a panel scrolled away is never rendered at all
+/// ([ShownRasters.want] — the law of every picture drawn as large as it is
+/// shown, since 10-30).
 ///
 /// Invalidation: a structural signature (canvas size, duration, per-layer
 /// visibility/opacity/frames/EXPOSURES, camera track, layer transforms and
@@ -184,8 +195,15 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
         rebuild: (change) => change(),
         mounted: () => !_disposed,
         report: (bytes) => onHeldBytesChanged?.call(bytes),
-        ended: notifyListeners,
+        ended: (over) {
+          _shown.notice({for (final key in over) key.cutId});
+          notifyListeners();
+        },
       );
+
+  /// The cuts shown now, each with the listeners of the painters that show
+  /// it ([noticesFor]).
+  final KeyedNotices<CutId> _shown = KeyedNotices();
   final Map<CutId, int> _editGenerations = {};
   bool _disposed = false;
 
@@ -208,13 +226,20 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// What the held pictures cost resident, 4 bytes a pixel.
   int get thumbnailBytes => _pictures.heldBytes;
 
-  /// What a surface takes to draw these pictures: [thumbnailFor], this
-  /// store as what says one landed, and whether one is still to come.
+  /// What a surface takes to draw these pictures: [thumbnailFor], what says
+  /// one of its cuts' landed ([noticesFor]), this store as what says any
+  /// did, and whether one is still to come.
   late final StoryboardThumbnails thumbnails = (
     resolve: thumbnailFor,
+    noticesFor: noticesFor,
     landed: this,
     pending: () => pending,
   );
+
+  /// What a painter showing [cuts] listens to: a picture of one of them
+  /// landed or let go, or one of them drawn on — never another cut's.
+  Listenable noticesFor(Iterable<CutId> cuts) =>
+      Listenable.merge([for (final cut in {...cuts}) _shown.of(cut)]);
 
   /// The cached picture of [cut] at [frameIndex] for a surface drawing it
   /// [shownHeight] device pixels tall; asks for a (re)render when that
@@ -283,13 +308,14 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     if (_pictures.heldBytes != before) {
       // Panels still showing an evicted picture ask again — for another
       // width of it, or to render it again.
+      _shown.noticeAll();
       notifyListeners();
     }
   }
 
-  /// Coalesces invalidation-driven notifies: a stroke commits MANY hub
-  /// events, one microtask notify covers them all.
-  bool _invalidationNotifyScheduled = false;
+  /// The cuts drawn on since the last notify, which coalesces them: a
+  /// stroke commits MANY hub events, one microtask notify covers them all.
+  final Set<CutId> _drawnOn = {};
 
   void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
     final cutId = invalidation.frameKey.cutId;
@@ -299,14 +325,20 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     // the session, so without it nothing rebuilt a visible storyboard and
     // freshly drawn artwork never reached its thumbnail (the R5-⑩
     // "thumbnails never show up" device report). It repaints the painters
-    // that ask now, which is what asks again.
-    if (_invalidationNotifyScheduled || _disposed) {
+    // that show the cut, which is what asks again.
+    if (_disposed) {
       return;
     }
-    _invalidationNotifyScheduled = true;
+    final scheduled = _drawnOn.isNotEmpty;
+    _drawnOn.add(cutId);
+    if (scheduled) {
+      return;
+    }
     scheduleMicrotask(() {
-      _invalidationNotifyScheduled = false;
+      final drawnOn = {..._drawnOn};
+      _drawnOn.clear();
       if (!_disposed) {
+        _shown.notice(drawnOn);
         notifyListeners();
       }
     });
@@ -402,6 +434,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     _hub?.removeBrushFrameListener(_onBrushFrameInvalidated);
     // Tells the census nothing is held.
     _pictures.clear();
+    _shown.clear();
     super.dispose();
   }
 }

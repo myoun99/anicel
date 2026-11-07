@@ -5,7 +5,23 @@ import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/sheet_paint_layer.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/conte/conte_book_page.dart';
+import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
@@ -22,6 +38,8 @@ import '../helpers/draw_on_current_frame.dart';
 import '../helpers/solid_png_fixture.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/poll_until.dart';
+import '../helpers/settle_async.dart';
+import '../helpers/until_the_brushes_land.dart';
 
 /// A picture that LANDS repaints the painters that asked for it and
 /// rebuilds nothing — in the workspace as it is wired, with its own store.
@@ -36,11 +54,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> pumpHome(WidgetTester tester, {String? tab}) async {
+  Future<void> pumpHome(
+    WidgetTester tester, {
+    Project? project,
+    String? tab,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      MaterialApp(
+        home: HomePage(initialProject: project ?? createDefaultProject()),
+      ),
     );
     await tester.pumpAndSettle();
     if (tab != null) {
@@ -48,32 +72,112 @@ void main() {
     }
   }
 
-  // The store's own signal, as a render that lands sends it.
-  void land(StoryboardThumbnails thumbnails) =>
-      (thumbnails.landed as ChangeNotifier).notifyListeners();
+  /// Every picture the surfaces on screen asked for, landed and painted —
+  /// and the brushes, whose landing rebuilds the home page — so what a
+  /// landing repaints next is the landing's alone.
+  Future<void> settlePictures(
+    WidgetTester tester,
+    StoryboardThumbnails thumbnails,
+  ) async {
+    await untilTheBrushesLand(tester);
+    expect(
+      await settleAsync(tester, () => !thumbnails.pending()),
+      isTrue,
+      reason: 'the premise: every picture on screen landed',
+    );
+    await tester.pumpAndSettle();
+  }
 
-  testWidgets('the storyboard: the blocks that asked repaint, and the panel '
-      'is not rebuilt', (tester) async {
-    await pumpHome(tester, tab: 'timeline-mode-storyboard-button');
-    final blocks = find
-        .byWidgetPredicate(
-          (widget) =>
-              widget is CustomPaint &&
-              widget.painter is StoryboardCutBlocksPainter,
-        )
-        .first;
-    final painter =
-        tester.widget<CustomPaint>(blocks).painter!
-            as StoryboardCutBlocksPainter;
-    final render = tester.renderObject<RenderCustomPaint>(blocks);
+  /// [cut]'s picture lands as a render lands it — asked at a width no
+  /// surface on screen asks for, inside the real clock, and with no frame
+  /// drawn after it: what it repaints still needs its paint.
+  Future<void> land(
+    WidgetTester tester,
+    StoryboardThumbnails thumbnails,
+    Cut cut,
+  ) async {
+    final camera = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session
+        .camera
+        .cameraFrameSize;
+    final original = Size(
+      camera.width.toDouble(),
+      camera.height.toDouble(),
+    );
+    final width = pictureRenderWidthFor(original.height, original);
+    bool landed() =>
+        thumbnails.resolve(cut, 0, shownHeight: original.height)?.width ==
+        width;
+    expect(landed(), isFalse, reason: 'the premise: not held at that width');
+    expect(
+      await tester.runAsync(() => pollUntil(landed)),
+      isTrue,
+      reason: 'the premise: the picture landed',
+    );
+  }
+
+  testWidgets('🚨the storyboard: a landing repaints the blocks of its own '
+      'track, never another track\'s, and the panel is not rebuilt '
+      '(conte-one-eye-repaints-every-track)', (tester) async {
+    final project = _film(tracks: 3, cutsEach: 1);
+    await pumpHome(
+      tester,
+      project: project,
+      tab: 'timeline-mode-storyboard-button',
+    );
+    List<({StoryboardCutBlocksPainter painter, RenderCustomPaint render})>
+    blocksOnScreen() => [
+      for (final element in find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is CustomPaint &&
+                widget.painter is StoryboardCutBlocksPainter,
+          )
+          .evaluate())
+        if (element.widget case CustomPaint(
+          painter: final StoryboardCutBlocksPainter painter,
+        ))
+          (
+            painter: painter,
+            render: element.renderObject! as RenderCustomPaint,
+          ),
+    ];
+    final thumbnails = blocksOnScreen().first.painter.thumbnails;
+    if (thumbnails == null) {
+      fail('the premise: pictures');
+    }
+    await settlePictures(tester, thumbnails);
+    final blocks = blocksOnScreen();
     final host = tester.widget<StoryboardTabHost>(
       find.byType(StoryboardTabHost),
     );
-    expect(painter.thumbnails, isNotNull, reason: 'the premise: pictures');
-    expect(render.debugNeedsPaint, isFalse, reason: 'the premise: settled');
+    expect(
+      {
+        for (final (:painter, render: _) in blocks)
+          for (final entry in painter.entries) entry.cut.id,
+      },
+      containsAll([
+        for (final track in project.tracks.take(2)) track.cuts.single.id,
+      ]),
+      reason: 'the premise: the blocks of two tracks on screen',
+    );
+    for (final (painter: _, :render) in blocks) {
+      expect(render.debugNeedsPaint, isFalse, reason: 'the premise: settled');
+    }
 
-    land(painter.thumbnails!);
-    expect(render.debugNeedsPaint, isTrue, reason: 'the blocks heard it');
+    final cut = project.tracks.first.cuts.single;
+    await land(tester, thumbnails, cut);
+    for (final (:painter, :render) in blocks) {
+      final shows = painter.entries.any((entry) => entry.cut.id == cut.id);
+      expect(
+        render.debugNeedsPaint,
+        shows,
+        reason: shows
+            ? 'the blocks that show it heard it'
+            : 'another track\'s blocks heard nothing',
+      );
+    }
     await tester.pump();
 
     expect(
@@ -160,13 +264,58 @@ void main() {
     );
   });
 
-  testWidgets('the conte: the page repaints on its own, and the panel is '
-      'not rebuilt', (tester) async {
-    await pumpHome(tester, tab: 'timeline-mode-conte-button');
+  testWidgets('🚨the conte: a landing repaints the pictures of the pages '
+      'that print its cut, never another page\'s, and the panel is not '
+      'rebuilt (conte-one-eye-repaints-every-track)', (tester) async {
+    final project = _film(tracks: 1, cutsEach: 12);
+    await pumpHome(tester, project: project, tab: 'timeline-mode-conte-button');
+    final thumbnails = tester
+        .widget<ConteTabHost>(find.byType(ConteTabHost))
+        .thumbnails;
+    if (thumbnails == null) {
+      fail('the premise: pictures');
+    }
+    await settlePictures(tester, thumbnails);
     final host = tester.widget<ConteTabHost>(find.byType(ConteTabHost));
-    expect(host.thumbnails, isNotNull, reason: 'the premise: pictures');
+    final pages = [
+      for (final element in find.byType(ConteBookPage).evaluate())
+        (
+          cuts: {
+            for (final cell in (element.widget as ConteBookPage).page.cells)
+              cell.cutId,
+          },
+          pictures: _pictureStratumUnder(element),
+        ),
+    ];
+    for (final page in pages) {
+      expect(
+        page.pictures.debugNeedsPaint,
+        isFalse,
+        reason: 'the premise: settled',
+      );
+    }
+    bool printed(Cut cut) =>
+        pages.any((page) => page.cuts.contains(cut.id.value));
+    final cuts = project.tracks.single.cuts;
+    final onScreen = cuts.firstWhere(printed);
+    final offScreen = cuts.lastWhere(
+      (cut) => !printed(cut),
+      orElse: () => fail('the premise: a cut no page on screen prints'),
+    );
 
-    land(host.thumbnails!);
+    for (final cut in [offScreen, onScreen]) {
+      await land(tester, thumbnails, cut);
+      for (final page in pages) {
+        final prints = page.cuts.contains(cut.id.value);
+        expect(
+          page.pictures.debugNeedsPaint,
+          prints,
+          reason: prints
+              ? 'the page that prints ${cut.name} heard it'
+              : 'a page that does not print ${cut.name} heard nothing',
+        );
+      }
+    }
     await tester.pump();
 
     expect(
@@ -237,4 +386,59 @@ void main() {
       );
     });
   });
+}
+
+/// A film of [tracks] tracks of [cutsEach] cuts, each cut a conte row and a
+/// drawing row with a cel exposed over its length.
+Project _film({required int tracks, required int cutsEach}) {
+  Layer drawn(String id, LayerKind kind) => Layer(
+    id: LayerId(id),
+    name: id,
+    kind: kind,
+    frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: const [])],
+    timeline: {0: TimelineExposure.drawing(FrameId('$id-f'), length: 24)},
+  );
+  return Project(
+    id: const ProjectId('a-landing-repaints-its-own'),
+    name: 'A landing repaints its own',
+    createdAt: DateTime.utc(2026, 11, 8),
+    tracks: [
+      for (var t = 0; t < tracks; t += 1)
+        Track(
+          id: TrackId('t$t'),
+          name: 'T$t',
+          cuts: [
+            for (var c = 0; c < cutsEach; c += 1)
+              Cut(
+                id: CutId('t$t-c$c'),
+                name: '${t * cutsEach + c + 1}',
+                duration: 24,
+                canvasSize: const CanvasSize(width: 1280, height: 720),
+                camera: CutCamera.empty(),
+                layers: [
+                  drawn('t$t-c$c-conte', LayerKind.storyboard),
+                  drawn('t$t-c$c-a', LayerKind.animation),
+                ],
+              ),
+          ],
+        ),
+    ],
+  );
+}
+
+/// The picture stratum of the conte page [page] — what a landed picture
+/// repaints.
+RenderCustomPaint _pictureStratumUnder(Element page) {
+  RenderCustomPaint? found;
+  void visit(Element element) {
+    if (element.widget case CustomPaint(
+      painter: final ContePagePainter painter,
+    ) when identical(painter.layers, SheetStratum.picture.layers)) {
+      found = element.renderObject! as RenderCustomPaint;
+    }
+    element.visitChildElements(visit);
+  }
+
+  page.visitChildElements(visit);
+  return found ?? fail('the premise: the page has a picture stratum');
 }

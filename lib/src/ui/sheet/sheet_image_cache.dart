@@ -161,7 +161,7 @@ class SheetImageCache extends ChangeNotifier {
     rebuild: (change) => change(),
     mounted: () => !_disposed,
     report: (bytes) => onHeldBytesChanged?.call(bytes),
-    ended: notifyListeners,
+    ended: (_) => notifyListeners(),
   );
 
   /// Pictures that could not be read, by path and carry — never asked for

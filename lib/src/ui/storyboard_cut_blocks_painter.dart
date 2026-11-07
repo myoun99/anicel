@@ -295,7 +295,10 @@ class StoryboardCutBlocksPainter extends CustomPainter
            hoveredCutId,
            ?standingCutId,
            ?windowBucket,
-           ?thumbnails?.landed,
+           // Its own cuts' pictures, never another track's.
+           ?thumbnails?.noticesFor([
+             for (final entry in entries) entry.cut.id,
+           ]),
          ]),
        );
 

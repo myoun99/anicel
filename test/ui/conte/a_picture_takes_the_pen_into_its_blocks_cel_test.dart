@@ -8,6 +8,7 @@ import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/fixed_thumbnails.dart';
 import '../../helpers/settle_async.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -944,21 +945,16 @@ void main() {
                   session: session,
                   thumbnails: printed == null && printedAt == null
                       ? null
-                      : (
-                          resolve:
-                              (
-                                cut,
-                                frame, {
-                                required shownHeight,
-                                region,
-                              }) {
-                                askedHeights.add(shownHeight);
-                                askedRegions.add(region);
-                                return printed ?? printedAt!(shownHeight);
-                              },
-                          landed: const _NeverLands(),
-                          pending: () => false,
-                        ),
+                      : fixedThumbnails((
+                          cut,
+                          frame, {
+                          required shownHeight,
+                          region,
+                        }) {
+                          askedHeights.add(shownHeight);
+                          askedRegions.add(region);
+                          return printed ?? printedAt!(shownHeight);
+                        }),
                   viewport: seedFromRender(
                     tester,
                     onConteBody(session, view ?? CanvasViewport()),
@@ -1809,15 +1805,4 @@ class _Screen {
     }
     return count;
   }
-}
-
-/// A picture store whose one picture never changes.
-class _NeverLands implements Listenable {
-  const _NeverLands();
-
-  @override
-  void addListener(VoidCallback listener) {}
-
-  @override
-  void removeListener(VoidCallback listener) {}
 }

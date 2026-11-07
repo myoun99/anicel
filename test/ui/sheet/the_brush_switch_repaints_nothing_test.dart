@@ -239,6 +239,7 @@ void main() {
                 session: session,
                 thumbnails: (
                   resolve: (cut, frame, {required shownHeight, region}) => printed,
+                  noticesFor: (_) => landed,
                   landed: landed,
                   pending: () => false,
                 ),

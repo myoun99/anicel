@@ -66,7 +66,7 @@ class ShownRasters<K extends Object, A extends Object> {
     required void Function(VoidCallback fn) rebuild,
     required bool Function() mounted,
     required void Function(int bytes) report,
-    VoidCallback? ended,
+    void Function(Set<K> over)? ended,
   }) : _wantedAt = wantedAt,
        _lastUsed = lastUsed,
        _rebuild = rebuild,
@@ -105,7 +105,18 @@ class ShownRasters<K extends Object, A extends Object> {
   /// for what it shows NOW. Null for a surface that asks while it builds:
   /// its landing rebuilds, and a refusal waits for its clock
   /// ([forgetRefusals]).
-  final VoidCallback? _ended;
+  ///
+  /// 🚨Told WHICH keys it is over for (conte-one-eye-repaints-every-track,
+  /// 2026-11-08): the one asked, every one [want]ed since, and every one let
+  /// go since ([_letGoSince]) — so only a surface that shows one of them
+  /// repaints. ↩️It was told nothing, and every surface repainted for every
+  /// landing: one conte row's eye on one track re-rendered that track's
+  /// pictures, and each landing repainted every track's V row.
+  final void Function(Set<K> over)? _ended;
+
+  /// What [_letGo] let go since the last ask ended — a surface that still
+  /// shows one asks again ([_ended]).
+  final Set<K> _letGoSince = {};
 
   final Map<K, _Held<A>> _held = {};
 
@@ -216,7 +227,7 @@ class ShownRasters<K extends Object, A extends Object> {
         onFailed: () {
           if (stillWanted()) {
             _renders[(key, at)] = _RenderAsk.failed;
-            _askIsOver();
+            _askIsOver(key);
           }
         },
       );
@@ -229,7 +240,7 @@ class ShownRasters<K extends Object, A extends Object> {
         _held[key] = _Held(at: at, image: image, usedAt: _clock += 1);
         evictToBudget(keeping: key);
       });
-      _askIsOver();
+      _askIsOver(key);
     }());
   }
 
@@ -268,9 +279,11 @@ class ShownRasters<K extends Object, A extends Object> {
     }
   }
 
-  void _askIsOver() {
+  void _askIsOver(K asked) {
+    final over = {asked, ..._wanted.keys, ..._letGoSince};
     _wanted.clear();
-    _ended?.call();
+    _letGoSince.clear();
+    _ended?.call(over);
   }
 
   /// Drops held pictures, the one wanted latest first, until what is held
@@ -340,6 +353,7 @@ class ShownRasters<K extends Object, A extends Object> {
       bytesOf: (entry) => ViewerRasterBudget.costOf(entry.value.image),
       letGo: (entry) {
         _held.remove(entry.key);
+        _letGoSince.add(entry.key);
         total -= ViewerRasterBudget.costOf(entry.value.image);
         entry.value.image.dispose();
       },
@@ -383,6 +397,7 @@ class ShownRasters<K extends Object, A extends Object> {
     _held.clear();
     _renders.clear();
     _wanted.clear();
+    _letGoSince.clear();
     shown = const {};
     _report(0);
   }

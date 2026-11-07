@@ -34,6 +34,7 @@ import '../helpers/brush_values_on_strip.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/rail_group_button.dart';
+import '../helpers/until_the_brushes_land.dart';
 
 /// APPLYING A PRESET FROM THE WORKSPACE — MEASURED.
 ///
@@ -95,25 +96,7 @@ void main() {
       ),
     );
     await beforeTheLibraryLands?.call();
-    // The loads are real file IO started on the fake clock: each step
-    // completes in real time (a runAsync window) and its continuation runs
-    // on the fake one (a pump). Alternate until the panel has presets.
-    //
-    // Loaded = the presets are listed AND a brush is in hand: the opening
-    // brush is taken up only once the hand-settings bank has landed too
-    // (H25-again), and that is one more file read after the libraries'.
-    await settleAsync(tester, () {
-      final panels = find.byType(BrushPresetPanel).evaluate();
-      final shown = panels.isEmpty
-          ? null
-          : tester.widget<BrushPresetPanel>(
-              find.byType(BrushPresetPanel).first,
-            );
-      return shown != null &&
-          shown.presets.isNotEmpty &&
-          shown.selectedPresetId != null;
-    });
-    await tester.pumpAndSettle();
+    await untilTheBrushesLand(tester);
     // The size bar these sequences drag is the strip's (I-34: by default
     // the canvas's pill holds the bars).
     await standBrushValuesOnStrip(tester);

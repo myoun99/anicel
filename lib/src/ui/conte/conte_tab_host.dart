@@ -645,7 +645,10 @@ class _ConteTabHostState extends State<ConteTabHost> {
               strokeHold: _strokeHold,
               imageFor: widget.imageFor,
               imageRepaint: widget.imageRepaint,
-              picturesLanded: widget.thumbnails?.landed,
+              // Its own cells' pictures, never another page's.
+              picturesLanded: widget.thumbnails?.noticesFor([
+                for (final cell in shown[index].page.cells) CutId(cell.cutId),
+              ]),
               inkController: widget.inkController,
               pictures: pictures?[index] ?? const [],
               cels: widget.pictures,
