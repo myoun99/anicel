@@ -5,8 +5,10 @@
 
 use std::sync::OnceLock;
 
-use super::tests::{Pool, contrast, keyed, masked_row, matrixed, pose, rig, row, texel, with_map};
-use super::{BufferChain, Budget, NO_EDGE, Plan, Step, TileSet, WHOLE, check_depth};
+use super::tests::{
+    Pool, chained, contrast, keyed, masked_row, matrixed, mixed, pose, rig, row, texel, with_map,
+};
+use super::{Budget, NO_EDGE, Plan, Step, TileSet, WHOLE, check_depth};
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, PLUS, SCREEN};
 use crate::kernels::chain::tests::lens;
 use crate::kernels::chain::{Chain, Chained, MapTiles, Op, laid_as, tiles_of};
@@ -72,21 +74,6 @@ fn across() -> Vec<Op<'static>> {
 fn down() -> Vec<Op<'static>> {
     let radius = (0, 4);
     vec![Op::Gaussian { radius, edge: Edge::Nothing }]
-}
-
-/// `step` through effect chain `at` — a close's whole.
-fn chained(step: Step, at: usize) -> Step {
-    mixed(step, at, WHOLE)
-}
-
-/// `step` through effect chain `at`, a close's at `mix`.
-fn mixed(mut step: Step, at: usize, mix: u32) -> Step {
-    match &mut step {
-        Step::Row { chain, .. } => *chain = Some(at),
-        Step::Close { chain, .. } => *chain = Some(BufferChain { chain: at, mix }),
-        _ => unreachable!("only a row or a close runs a chain"),
-    }
-    step
 }
 
 /// A buffer's close at `opacity` in `mode`, through matrix `matrix` if any.

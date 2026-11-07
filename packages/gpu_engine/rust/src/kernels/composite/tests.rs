@@ -6,15 +6,18 @@
 use std::sync::OnceLock;
 
 use super::{
-    Batch, Budget, Compiled, Composite, DEPTH, KeyChain, Laid, NO_EDGE, Plan, Step, TILE,
-    TILE_TEXELS, TileAt, TileSet, WHOLE, check_depth, cut,
+    Batch, Budget, BufferChain, Compiled, Composite, DEPTH, KeyChain, Laid, NO_EDGE, Plan, Step,
+    TILE, TILE_TEXELS, TileAt, TileSet, WHOLE, check_depth, cut,
 };
 use crate::device::Engine;
 use crate::kernels::blend::mode::{
     DIFFERENCE, ERASE, LINEAR_BURN, MULTIPLY, NORMAL, OVERLAY, PLUS, SCREEN,
 };
+use crate::kernels::chain::{Chained, Op};
 use crate::kernels::dab::stamp::tests::stamps;
 use crate::kernels::dab::stamp::{Paint, Source, Stamped};
+use crate::kernels::effects::blur::TileRect;
+use crate::kernels::effects::blur::gaussian::Edge;
 use crate::kernels::effects::matrix_tests::{Matrix, each, graded};
 use crate::kernels::effects::{KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::tests::masked;
@@ -204,12 +207,29 @@ pub(crate) fn matrixed(mut row: Step, at: usize) -> Step {
     row
 }
 
+/// `step` through effect chain `at` — a close's whole.
+pub(crate) fn chained(step: Step, at: usize) -> Step {
+    mixed(step, at, WHOLE)
+}
+
+/// `step` through effect chain `at`, a close's at `mix`.
+pub(crate) fn mixed(mut step: Step, at: usize, mix: u32) -> Step {
+    match &mut step {
+        Step::Row { chain, .. } => *chain = Some(at),
+        Step::Close { chain, .. } => *chain = Some(BufferChain { chain: at, mix }),
+        _ => unreachable!("only a row or a close runs a chain"),
+    }
+    step
+}
+
+
 /// A plan, what it lays and where it is looked at.
 struct Scene {
     pool: Pool,
     sets: Vec<TileSet>,
     keys: Vec<KeyChain>,
     matrices: Vec<[u32; MATRIX_WORDS]>,
+    chains: Vec<Chained<'static>>,
     steps: Vec<Step>,
     tiles: Vec<(i32, i32)>,
 }
@@ -222,7 +242,7 @@ impl Scene {
             sets: &self.sets,
             keys: &self.keys,
             matrices: &self.matrices,
-            chains: &[],
+            chains: &self.chains,
             steps: &self.steps,
             mask: None,
         }
@@ -344,6 +364,7 @@ fn rows() -> Scene {
         pool.set(3, (1, 1), (1, 1), |_, _| Some(2)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -368,6 +389,7 @@ fn folders() -> Scene {
         pool.set(14, (1, 0), (1, 1), |_, _| Some(4)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -409,6 +431,7 @@ fn clips() -> Scene {
         pool.set(26, (0, 1), (2, 1), |_, _| Some(2)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -464,6 +487,7 @@ fn spanning() -> Scene {
     });
     steps.push(row(6, (3, 3), WHOLE, modes[6]));
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -525,6 +549,7 @@ fn posed() -> Scene {
         pool.set(65, (0, 0), (2, 2), |_, _| Some(1)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -580,6 +605,7 @@ fn keyed_rows() -> Scene {
         },
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys,
@@ -625,6 +651,7 @@ fn matrixed_rows() -> Scene {
     tint[18] = 0.5;
     let words = |matrix: &Matrix| matrix_words(matrix).expect("a matrix in range");
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: vec![KeyChain {
@@ -684,6 +711,7 @@ fn deep() -> Scene {
         }
     }
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -693,7 +721,61 @@ fn deep() -> Scene {
     }
 }
 
-fn scenes() -> [(&'static str, Scene); 8] {
+/// Effect chains among the rows, over a rectangle wider than the output
+/// and left of it: a row blurred, then in a folder two rows closed through
+/// a blur down the columns and a matrix. A chain reads past the output
+/// tiles a pass takes, so a pass that takes fewer lays what the whole
+/// rectangle puts (관제, connection-round-checklist 2026-11-08 00:28 ①).
+fn chained_rows() -> Scene {
+    let mut pool = Pool::default();
+    let sets = (0..3u32)
+        .map(|n| pool.set(71 + n, (-1, 0), (3, 2), |_, _| Some(n as u16)))
+        .collect();
+    let rect = TileRect {
+        x0: -1,
+        y0: 0,
+        columns: 3,
+        rows: 2,
+    };
+    let blur = |radius| Op::Gaussian {
+        radius,
+        edge: Edge::Nothing,
+    };
+    let contrast = matrix_words(&contrast()).expect("a matrix in range");
+    let closing = Step::Close {
+        opacity: 45000,
+        mode: OVERLAY,
+        matrix: None,
+        chain: None,
+    };
+    Scene {
+        pool,
+        sets,
+        keys: Vec::new(),
+        matrices: Vec::new(),
+        chains: vec![
+            Chained {
+                ops: vec![blur((3, 2))],
+                rect,
+            },
+            Chained {
+                ops: vec![blur((0, 4)), Op::Matrix(contrast)],
+                rect,
+            },
+        ],
+        steps: vec![
+            row(0, (0, 0), WHOLE, NORMAL),
+            chained(row(1, (5, -3), 50000, MULTIPLY), 0),
+            Step::Open,
+            row(2, (-7, 2), 40000, SCREEN),
+            row(0, (3, 9), 30000, NORMAL),
+            chained(closing, 1),
+        ],
+        tiles: vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+    }
+}
+
+fn scenes() -> [(&'static str, Scene); 9] {
     [
         ("rows", rows()),
         ("folders", folders()),
@@ -703,6 +785,7 @@ fn scenes() -> [(&'static str, Scene); 8] {
         ("keyed", keyed_rows()),
         ("deep", deep()),
         ("matrices", matrixed_rows()),
+        ("chained", chained_rows()),
     ]
 }
 
@@ -779,6 +862,7 @@ fn a_row_alone_is_its_own_pixels_moved() {
     })];
     let (dx, dy) = (45, -77);
     let scene = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -819,6 +903,7 @@ fn on_the_paper(x: i32, y: i32) -> bool {
 #[test]
 fn a_solid_over_nothing_is_its_colour_on_its_rect() {
     let scene = Scene {
+        chains: Vec::new(),
         pool: Pool::default(),
         sets: Vec::new(),
         keys: Vec::new(),
@@ -854,6 +939,7 @@ fn papered(paper: Step) -> Scene {
         pool.set(6, (0, 0), (2, 2), |_, _| Some(1)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -897,6 +983,7 @@ fn a_row_at_no_strength_lays_nothing() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(42, (0, 0), (1, 1), |_, _| Some(0))];
         let scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -915,6 +1002,7 @@ fn a_folder_of_one_row_is_that_row() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(43, (0, 0), (2, 1), |_, _| Some(0))];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -945,6 +1033,7 @@ fn folders_nested_past_what_a_pass_holds_are_their_row() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(44, (0, 0), (2, 1), |_, _| Some(0))];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -988,6 +1077,7 @@ fn crossfaded(u: impl Fn(i32, i32) -> u32, f: impl Fn(i32, i32) -> u32, mix: u32
         pool.drawn(f, (0, 0), (2, 1), |_, _| Some(1)),
     ];
     widest(&Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1013,6 +1103,7 @@ fn alone(pixel: impl Fn(i32, i32) -> u32) -> Vec<u8> {
     let mut pool = Pool::default();
     let sets = vec![pool.drawn(pixel, (0, 0), (2, 1), |_, _| Some(0))];
     widest(&Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1073,6 +1164,7 @@ fn clip(base_alpha: u32, clipped: u32, mode: u32, open: Step) -> Vec<u8> {
         pool.drawn(move |_, _| clipped, (0, 0), (1, 1), |_, _| Some(1)),
     ];
     widest(&Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1146,6 +1238,7 @@ fn posed_alone(name: &str) -> Scene {
     let mut pool = Pool::default();
     let sets = vec![pool.set(51, (0, 0), (2, 2), |c, r| Some((r * 2 + c) as u16))];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1182,6 +1275,7 @@ fn a_row_binds_the_pages_its_pixels_read() {
         let mut pool = Pool::default();
         let sets = vec![pool.set(52, (0, 0), (4, 1), |c, _| Some(c as u16))];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -1234,6 +1328,7 @@ fn a_row_is_keyed_before_its_pose() {
             Some((r * 2 + c) as u16)
         })];
         let scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: vec![KeyChain {
@@ -1266,6 +1361,7 @@ fn a_row_s_matrix_runs_on_what_r1_lays() {
             Some((r * 2 + c) as u16)
         })];
         let scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -1306,6 +1402,7 @@ fn a_buffer_closing_through_a_matrix_lays_its_bytes_through_it() {
             sets.push(pool.drawn(pixel, (0, 0), (2, 1), |_, _| Some(3)));
         }
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -1361,6 +1458,7 @@ fn every_run_of_a_chain_keys_against_the_stored_alpha() {
         let mut pool = Pool::default();
         let sets = vec![pool.drawn(move |_, _| stored, (0, 0), (1, 1), |_, _| Some(0))];
         let scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: vec![KeyChain { runs }],
@@ -1388,6 +1486,7 @@ fn each_row_is_keyed_by_its_own_chain() {
     };
     let side = TILE as i32;
     let scene = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: vec![erase(KEY_GREEN), erase(KEY_RED)],
@@ -1624,6 +1723,7 @@ fn canvas_scene() -> Scene {
         pool.set(62, (0, 0), (2, 2), |c, r| Some(1 + ((r * 2 + c) % 2) as u16)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -1873,6 +1973,7 @@ fn the_screen_holds_the_canvas_premultiplied() {
     let mut pool = Pool::default();
     let sets = vec![pool.drawn(|_, _| 0x8032_64c8, (0, 0), (1, 1), |_, _| Some(0))];
     let scene = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2096,6 +2197,7 @@ fn a_row_laid_a_group_at_a_time_composites_as_in_one() {
             pool.set(58, (0, 0), (4, 1), |_, _| Some(4)),
         ];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -2136,6 +2238,7 @@ fn an_output_tile_reading_past_a_pass_s_pages_reads_them_gathered() {
             pool.set(62, (0, 0), (3, 2), |_, _| Some(6)),
         ];
         Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -2282,6 +2385,7 @@ fn red_over_blue() -> Scene {
         pool.drawn(|_, _| RED, (0, 0), (1, 1), |_, _| Some(0)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2361,6 +2465,7 @@ fn over_blue(pixel: impl Fn(i32, i32) -> u32, posed: Step) -> Scene {
         pool.drawn(pixel, (-1, -1), (5, 5), |_, _| Some(0)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2440,6 +2545,7 @@ const PRESSES: [[i32; 2]; 4] = [
 /// `steps` under `range` over tiles (0, 0) and (1, 0).
 fn marked(steps: Vec<Step>, range: &Mask) -> (Vec<u8>, Vec<(i32, i32)>) {
     let scene = Scene {
+        chains: Vec::new(),
         pool: Pool::default(),
         sets: Vec::new(),
         keys: Vec::new(),
@@ -2501,6 +2607,7 @@ fn a_mark_lies_in_its_row_s_space() {
         Some(0)
     })];
     let cells = Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
@@ -2547,6 +2654,7 @@ fn a_mark_lays_as_a_row_of_its_colours() {
             pool.drawn(colour, (0, 0), (2, 1), |_, _| Some(0)),
         ];
         let mut scene = Scene {
+            chains: Vec::new(),
             pool,
             sets,
             keys: Vec::new(),
@@ -2711,6 +2819,7 @@ fn three_rows(top: Option<Step>) -> Scene {
         pool.set(62, (-1, 0), (3, 3), |c, r| Some((c + r).rem_euclid(2) as u16)),
     ];
     Scene {
+        chains: Vec::new(),
         pool,
         sets,
         keys: Vec::new(),
