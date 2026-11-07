@@ -403,7 +403,7 @@ class ConvertToLinkedCutCommand implements Command {
         from.layers[index],
         copyId: planned.copyId,
         panel: planned.panel,
-        cutDuration: into.duration,
+        sides: (from: from, into: into),
       );
       from.layers[index] = union.source;
       final copy = _seatedOnItsBase(
@@ -412,19 +412,6 @@ class ConvertToLinkedCutCommand implements Command {
         into: into,
         registry: _registryBefore!.copyWith(groups: groups),
       );
-      if ((union.picturedFrom, planned.panel) case (
-        final picture?,
-        final panel?,
-      )) {
-        _pictured.add((
-          from: _celKey(from, sourceId, picture),
-          to: _celKey(into, copy.id, panel),
-          canvasSize: requireCut(
-            repository.requireProject(),
-            into.cutId,
-          ).canvasSize,
-        ));
-      }
       into.layers.insert(_landingIndex(into.layers, copy), copy);
       copies.add(copy.id);
       groups = linkGroupsJoined(
@@ -555,15 +542,16 @@ class ConvertToLinkedCutCommand implements Command {
   }
 
   /// [source]'s union copy with [copyId] — an EMPTY timeline, the bank
-  /// shared — and [source] itself. A row born with a frame is born over its
-  /// new cut's [cutDuration] frames with [panel] instead, and the panel joins
-  /// [source]'s bank too (F-99) — with the cel of [source] whose picture it
-  /// is born with ([linkedCopyCoveringCelFor]).
-  ({Layer source, Layer copy, FrameId? picturedFrom}) _unionCopyOf(
+  /// shared — and [source] itself, copied from one of [sides] into the
+  /// other. A row born with a frame is born over its new cut's frames with
+  /// [panel] instead, and the panel joins [source]'s bank too (F-99) — with
+  /// the picture of the cel of [source] it is born with, noted for
+  /// [_pictures] ([linkedCopyCoveringCelFor]).
+  ({Layer source, Layer copy}) _unionCopyOf(
     Layer source, {
     required LayerId copyId,
     required FrameId? panel,
-    required int cutDuration,
+    required ({_ConvertSide from, _ConvertSide into}) sides,
   }) {
     final copy = source.copyWith(
       id: copyId,
@@ -571,18 +559,27 @@ class ConvertToLinkedCutCommand implements Command {
       folderId: null,
     );
     if (panel == null) {
-      return (source: source, copy: copy, picturedFrom: null);
+      return (source: source, copy: copy);
     }
     final cel = linkedCopyCoveringCelFor(
       source,
       frameId: panel,
-      cutDuration: cutDuration,
+      cutDuration: sides.into.duration,
     );
+    if (cel.picturedFrom case final picture?) {
+      _pictured.add((
+        from: _celKey(sides.from, source.id, picture),
+        to: _celKey(sides.into, copyId, panel),
+        canvasSize: requireCut(
+          repository.requireProject(),
+          sides.into.cutId,
+        ).canvasSize,
+      ));
+    }
     final bank = [...source.frames, cel.frame];
     return (
       source: source.copyWith(frames: bank),
       copy: copy.copyWith(frames: bank, timeline: cel.timeline),
-      picturedFrom: cel.picturedFrom,
     );
   }
 
