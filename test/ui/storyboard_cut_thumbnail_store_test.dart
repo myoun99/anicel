@@ -921,6 +921,30 @@ void main() {
       expect(heard, {a.id: 5, b.id: 1}, reason: 'b\'s landing let a\'s go');
     });
 
+    testWidgets('and the memory warning tells every painter that shows a '
+        'picture: what it gave back is asked for again', (tester) async {
+      ViewerRasterBudget.debugPageBytesOverride = 16;
+      addTearDown(() => ViewerRasterBudget.debugPageBytesOverride = null);
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (_, _, _, _) => tinyImage(),
+      );
+      addTearDown(store.dispose);
+      final heard = listenedBy(store, [a, b]);
+      await tester.runAsync(() async {
+        for (final (cut, frame) in [(a, 0), (a, 1), (b, 0), (b, 1)]) {
+          store.thumbnailFor(cut, frame, shownHeight: 72);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      expect(heard, {a.id: 2, b.id: 2}, reason: 'the premise: four landed');
+
+      store.respondToMemoryPressure();
+
+      expect(store.thumbnailBytes, 32, reason: 'the premise: two given back');
+      expect(heard, {a.id: 3, b.id: 3});
+    });
+
     test('a stroke tells the painters of the cut it is on', () async {
       final hub = EditorCacheInvalidationHub();
       final store = StoryboardCutThumbnailStore(
