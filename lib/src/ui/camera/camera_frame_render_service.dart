@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
+import '../../core/display_filter.dart';
 import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';

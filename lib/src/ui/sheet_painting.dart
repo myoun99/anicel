@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/contain_rect.dart';
 import '../core/convex_clip.dart' show convexIntersection;
+import '../core/display_filter.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';

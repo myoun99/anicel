@@ -5,12 +5,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, ErrorDescription, FlutterError, FlutterErrorDetails;
 
+import '../../core/display_filter.dart';
 import '../../core/pin_counts.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/display_resample.dart'
     show
-        filterQualityForDisplayScale,
         frameGridOutward,
         levelsReadAt,
         wholeLevelPixelsOutward;

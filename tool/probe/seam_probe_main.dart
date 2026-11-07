@@ -12,7 +12,8 @@
 // It runs in the REAL app process so the answer is the renderer the app
 // ships with (Impeller since 3.47) — `flutter test` runs on flutter_tester
 // and would answer for a renderer nobody ships. The paint settings are the
-// product's own laws, imported from `display_resample.dart`; the tile paint
+// product's own laws, imported from `display_resample.dart` and
+// `core/display_filter.dart`; the tile paint
 // mirrors `_tileImagePaint` (`isAntiAlias = false`); what is NEW here is
 // only the shapes being measured (filtered tiles, padded tiles, pyramid
 // levels), because those are the proposal, not the product.
@@ -30,6 +31,7 @@ import 'package:flutter/material.dart';
 
 import 'package:anicel/src/services/straight_rgba_image.dart'
     show uploadRawRgba;
+import 'package:anicel/src/core/display_filter.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart'
     show samplingPhaseFor;

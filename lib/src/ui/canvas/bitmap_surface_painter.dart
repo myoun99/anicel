@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../core/display_filter.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/tile_coord.dart';
 

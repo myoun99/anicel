@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/display_filter.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -19,8 +20,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/canvas/display_resample.dart'
-    show filterQualityForDisplayScale;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/panel_pictures.dart';
 import 'package:anicel/src/ui/sheet_painting.dart';

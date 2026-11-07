@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import '../../core/collection_equality.dart';
+import '../../core/display_filter.dart';
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
@@ -9,7 +10,7 @@ import '../../models/text_cel_style.dart' show TextCelContent;
 import '../../services/composite_effect_paint.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/display_resample.dart'
-    show filterQualityForDisplayScale, wholeLevelPixelsOutward;
+    show wholeLevelPixelsOutward;
 import '../canvas/image_pieces.dart';
 import '../canvas/layer_image_draw.dart' show drawPosedLayerImage;
 import '../canvas/subtree_image_composite.dart';

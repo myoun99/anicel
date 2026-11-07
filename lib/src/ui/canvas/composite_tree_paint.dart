@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import '../../core/collection_equality.dart';
+import '../../core/display_filter.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart' show ResolvedLayerEffect;
@@ -9,7 +10,6 @@ import '../../models/layer_id.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/cel_number_paint.dart';
-import 'display_resample.dart' show filterQualityForDisplayScale;
 import 'layer_image_draw.dart' show drawPosedLayerImage;
 import 'subtree_image_composite.dart';
 
