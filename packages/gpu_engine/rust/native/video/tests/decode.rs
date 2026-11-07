@@ -114,13 +114,20 @@ const WIDTH: usize = 64;
 const HEIGHT: usize = 48;
 const FRAMES: usize = 30;
 
-/// Frame `k`'s colour: red rising and green falling, so each frame is
-/// nearest its own and a frame read for the wrong index shows.
-fn colour(k: usize) -> [u8; 3] {
-    [(k * 8) as u8, (255 - k * 8) as u8, 128]
+/// Frame `k`'s red and green: red rising and green falling, so each frame
+/// is nearest its own and a frame read for the wrong index shows.
+fn colour(k: usize) -> [u8; 2] {
+    [(k * 8) as u8, (255 - k * 8) as u8]
 }
 
-/// A movie of [`FRAMES`] flat frames at 24, written once by this build's
+/// Frame `k` whole: its colour, and blue rising down the rows — so a picture
+/// read upside down, or with its channels swapped, is not the same bytes.
+fn picture(k: usize) -> Vec<u8> {
+    let [r, g] = colour(k);
+    (0..HEIGHT).flat_map(|y| [r, g, (y * 5) as u8, 255].repeat(WIDTH)).collect()
+}
+
+/// A movie of [`FRAMES`] such pictures at 24, written once by this build's
 /// export — None where it has none — and the file it is in.
 fn movie() -> Option<&'static (PathBuf, Vec<u8>)> {
     static MOVIE: OnceLock<Option<(PathBuf, Vec<u8>)>> = OnceLock::new();
@@ -136,8 +143,7 @@ fn movie() -> Option<&'static (PathBuf, Vec<u8>)> {
                 return None;
             }
             for k in 0..FRAMES {
-                let [r, g, b] = colour(k);
-                let rgba: Vec<u8> = [r, g, b, 255].repeat(WIDTH * HEIGHT);
+                let rgba = picture(k);
                 assert_eq!(unsafe { qa_video_export_write_frame(rgba.as_ptr()) }, 1, "frame {k}: {}", export_error());
             }
             assert_eq!(qa_video_export_finish(), 1, "finish: {}", export_error());
@@ -225,11 +231,14 @@ fn each_frame_is_the_picture_for_its_index() {
     let order = (0..FRAMES).chain([FRAMES - 1, 0, FRAMES / 2, 3, 4, FRAMES / 2, 0]);
     for (index, frame) in order.zip(&frames) {
         let frame = frame.as_ref().expect("a frame");
-        let middle = &frame[(HEIGHT / 2 * WIDTH + WIDTH / 2) * 4..][..3];
+        let at = |y: usize| &frame[(y * WIDTH + WIDTH / 2) * 4..][..4];
+        let middle = &at(HEIGHT / 2)[..2];
         let distance =
             |k: usize| colour(k).iter().zip(middle).map(|(a, b)| (i32::from(*a) - i32::from(*b)).pow(2)).sum::<i32>();
         let nearest = (0..FRAMES).min_by_key(|&k| distance(k)).expect("frames");
         assert_eq!(nearest, index, "frame {index} shows {middle:?}");
+        assert!(at(2)[2] + 100 < at(HEIGHT - 3)[2], "frame {index} is the right way up: {:?}", (at(2), at(HEIGHT - 3)));
+        assert_eq!(at(2)[3], 255, "frame {index} is opaque");
     }
 }
 
