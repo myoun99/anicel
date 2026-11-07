@@ -187,7 +187,9 @@ void main() {
         if (region.rasterBytes == 0 || !drawnFromAnImage(region))
           '$name (${region.standDown.name})',
     ];
-    expect(anImageless, isEmpty, reason: '⛔premise: the rows settled');
+    // Not a premise: a row that never takes its image as it plays is the
+    // drop this pins, and each mutant of the region's stillness lands here.
+    expect(anImageless, isEmpty, reason: 'a row took no image as it played');
 
     final taken = {
       for (final MapEntry(key: name, value: region) in rows.entries)
