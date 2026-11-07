@@ -106,6 +106,23 @@ fn a_page_none_holds_is_the_next_cel_s_that_needs_one() {
     assert_eq!(pool.pages().len(), 2);
 }
 
+// A cel's tile on another cel's page with room leaves the page the other's:
+// the other's tiles still go there first, before a page with room that
+// lies earlier.
+#[test]
+fn a_page_stays_the_cel_s_whose_tiles_go_to_it_first() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let (x, a, b) = (pool.cel(), pool.cel(), pool.cel());
+    let of_x = [pool.fresh(engine, x), pool.fresh(engine, x)].map(|at| at.expect("fresh"));
+    assert_eq!(pool.fresh(engine, a), Ok(at(1, 0)));
+    let of_b = pool.fresh(engine, b).expect("fresh");
+    assert_eq!(of_b, at(1, 1), "a's page has room");
+    pool.release(of_x[0]).expect("release");
+    pool.release(of_b).expect("release");
+    assert_eq!(pool.fresh(engine, a), Ok(at(1, 1)), "a's page, not x's with room");
+}
+
 // A free slot is neither held nor released, nor one past the pool; a pool
 // with every page it may make taken makes no more.
 #[test]
