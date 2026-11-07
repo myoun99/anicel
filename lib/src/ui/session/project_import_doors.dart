@@ -1837,15 +1837,15 @@ class ProjectImportDoors {
     QaVideoInfo info,
     PlannedCelBake bake,
   ) async {
-    final rgba = await videoDecodeBackend.frame(token, bake.sourceFrameIndex);
-    if (rgba == null) {
+    final picture = await pictureOfMovieFrame(
+      videoDecodeBackend,
+      token,
+      bake.sourceFrameIndex,
+      info,
+    );
+    if (picture == null) {
       throw StateError('Movie frame ${bake.sourceFrameIndex} did not decode.');
     }
-    final picture = await pictureOfPixels(
-      rgba,
-      width: info.width,
-      height: info.height,
-    );
     return _pictureOf(picture, owned: true);
   }
 

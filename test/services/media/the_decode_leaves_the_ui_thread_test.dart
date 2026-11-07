@@ -223,9 +223,9 @@ void main() {
 
   test('🚨a request whose work THROWS is answered before the worker dies', () {
     // 🚨★★★**THE STRONGER OF THE TWO NEVER-SETTLES.** `Isolate.spawn`
-    // defaults to `errorsAreFatal: true`, and the frame arm allocates three
-    // whole frames per decode — a native scratch, a `Uint8List`, and the
-    // copy into the transfer, each 8.3 MB at 1080p and 33 MB at 4K. Those
+    // defaults to `errorsAreFatal: true`, and the frame arm allocates whole
+    // frames per decode — a native scratch, the copy into the transfer, and
+    // the premultiply's buffer, each 8.3 MB at 1080p and 33 MB at 4K. Those
     // raise (`ArgumentError('Could not allocate …')`, `OutOfMemoryError`)
     // rather than returning null, so before 2026-09-08 an out-of-memory
     // frame KILLED the worker with nobody listening: `reply.first` never
@@ -246,7 +246,11 @@ void main() {
         // 1 is the frame op. ⚠️If those constants are ever renumbered this
         // lands on the default arm, which replies without throwing — and
         // this expectation then fails loudly rather than passing on nothing.
-        (op: 1, args: (token: 0, index: 0), reply: port.sendPort),
+        (
+          op: 1,
+          args: (token: 0, index: 0, premultiplied: false),
+          reply: port.sendPort,
+        ),
         <int, QaVideoDocument>{},
         (_) => throw StateError('the decode ran out of memory'),
       ),

@@ -27,7 +27,9 @@ import '../../models/bitmap_tile.dart';
 import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
+import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../media/png_reading.dart';
+import '../media/video_decode_worker.dart';
 import '../persistence/brush_drawing_binary_codec.dart' show AnicelLaidCel;
 import '../straight_rgba_image.dart';
 
@@ -103,6 +105,37 @@ Future<CelPicture> pictureOfPixels(
   return EnginePicture(
     await decodeStraightRgbaImage(rgba: rgba, width: width, height: height),
   );
+}
+
+/// Frame [index] of the movie [token] names on [backend] — [info] its
+/// facts — as [pictureOfPixels] makes it of the frame, or null when the
+/// frame does not decode. Within the engine's side the frame is asked for
+/// premultiplied, so its premultiply is the decoder's side's and this
+/// isolate only uploads it ([VideoDecodeBackend.premultipliedFrame]).
+///
+/// ONE read of a movie frame as a picture: a movie row's cel on the canvas
+/// (`movie_cel_hydrator`) and the door that bakes a movie's frames
+/// (`project_import_doors`) each asked for the straight frame and made
+/// their picture of it here, premultiplying it on the isolate that paints.
+Future<CelPicture?> pictureOfMovieFrame(
+  VideoDecodeBackend backend,
+  int token,
+  int index,
+  QaVideoInfo info,
+) async {
+  final QaVideoInfo(:width, :height) = info;
+  if (isPastTheSide(width, height, await pictureSideLimit())) {
+    final rgba = await backend.frame(token, index);
+    return rgba == null
+        ? null
+        : PixelsPicture(rgba, width: width, height: height);
+  }
+  final premultiplied = await backend.premultipliedFrame(token, index);
+  return premultiplied == null
+      ? null
+      : EnginePicture(
+          await uploadRawRgba(premultiplied, width: width, height: height),
+        );
 }
 
 /// A picture an import lays on cels ([layCelPicture]): its own size, its

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/rgba_premultiply.dart';
 import '../flutter_test_run.dart';
 import '../../native/qa_engine_abi.dart';
 import '../../native/qa_video_decoder.dart';
@@ -72,6 +73,22 @@ abstract interface class VideoDecodeBackend {
   /// handing every caller a view that the next frame overwrites.
   Future<Uint8List?> frame(int token, int index);
 
+  /// [frame], premultiplied by the app's one law (`rgba_premultiply.dart`)
+  /// where the frame is decoded — what a picture of it is uploaded from.
+  ///
+  /// 🚨★★★**THE PREMULTIPLY IS THE DECODER'S SIDE'S, TOO** (card
+  /// viewer-frame-premultiply-on-the-worker). 🔬Measured 2026-11-07, one
+  /// real 1080p frame, release AOT on the main PC: 13–17 ms a frame to
+  /// premultiply a copy of it, C or Dart alike — a third of a 24fps frame
+  /// again, on the isolate that paints it, after the decode itself left
+  /// for the same reason. Done where the frame is copied out of the
+  /// decoder's scratch anyway, it costs that isolate nothing.
+  ///
+  /// ⛔Not [frame] in another form: straight is the app's storage
+  /// convention, and a crop of a frame ([ViewerDocument.readRegionRgba])
+  /// reads the colours as the movie holds them.
+  Future<Uint8List?> premultipliedFrame(int token, int index);
+
   /// Why the last open or frame failed, for the sentence a window shows.
   Future<String> lastError();
 
@@ -125,15 +142,26 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
 
   @override
   Future<Uint8List?> frame(int token, int index) async {
-    final document = _documentAt(token);
-    if (document == null) {
-      return null;
-    }
-    final rgba = QaVideoDecoder.instance?.frameOf(document, index);
+    final rgba = _scratchOf(token, index);
     // ⚠️Copied, because the direct path decodes into scratch the next frame
     // overwrites and the isolate path hands over a buffer of its own. One
     // contract, or callers learn which backend they have.
     return rgba == null ? null : Uint8List.fromList(rgba);
+  }
+
+  @override
+  Future<Uint8List?> premultipliedFrame(int token, int index) async {
+    final rgba = _scratchOf(token, index);
+    // The premultiply's copy IS the copy out of the scratch.
+    return rgba == null ? null : premultipliedRgbaCopy(rgba);
+  }
+
+  /// Frame [index] of the document [token] names, in the decoder's scratch.
+  Uint8List? _scratchOf(int token, int index) {
+    final document = _documentAt(token);
+    return document == null
+        ? null
+        : QaVideoDecoder.instance?.frameOf(document, index);
   }
 
   @override
@@ -183,9 +211,10 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   ///
   /// 🚨★★★**A REQUEST THAT WAS SENT ALWAYS GETS AN ANSWER.** `Isolate.spawn`
   /// defaults to `errorsAreFatal: true`, and the worker's body allocates
-  /// three full frames per decode (a native scratch, a `Uint8List`, and the
-  /// copy into the transfer — 8.3 MB each at 1080p, 33 MB at 4K on the
-  /// tablets this app is written for). Any of those throwing used to KILL
+  /// full frames per decode (a native scratch, the copy into the transfer,
+  /// and the premultiply's buffer when a frame of a new size comes — 8.3 MB
+  /// each at 1080p, 33 MB at 4K on the tablets this app is written for).
+  /// Any of those throwing used to KILL
   /// the isolate with nothing on this side listening: `reply.first` never
   /// completed, [_queue] never settled, and every later request — the
   /// viewer's AND the import preview's, since they share one backend —
@@ -342,8 +371,23 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   }
 
   @override
-  Future<Uint8List?> frame(int token, int index) async {
-    final answer = await _ask(_opFrame, (token: token, index: index));
+  Future<Uint8List?> frame(int token, int index) =>
+      _frame(token, index, premultiplied: false);
+
+  @override
+  Future<Uint8List?> premultipliedFrame(int token, int index) =>
+      _frame(token, index, premultiplied: true);
+
+  Future<Uint8List?> _frame(
+    int token,
+    int index, {
+    required bool premultiplied,
+  }) async {
+    final answer = await _ask(_opFrame, (
+      token: token,
+      index: index,
+      premultiplied: premultiplied,
+    ));
     if (answer == null) {
       return null;
     }
@@ -392,8 +436,8 @@ void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
 /// 🚨★★★**IT ANSWERS BEFORE IT DIES.** Every allocation in the frame arm
 /// throws rather than returning null: `malloc` raises
 /// `ArgumentError('Could not allocate …')` and `Uint8List` raises
-/// `OutOfMemoryError`, three full frames' worth per decode (8.3 MB each at
-/// 1080p, 33 MB at 4K on the tablets this app is written for). An uncaught
+/// `OutOfMemoryError`, full frames' worth per decode (8.3 MB each at 1080p,
+/// 33 MB at 4K on the tablets this app is written for). An uncaught
 /// throw here is FATAL to this isolate — `Isolate.spawn` defaults to
 /// `errorsAreFatal: true` — and the asker would then be left waiting on a
 /// port nobody holds, with [IsolateVideoDecodeBackend._queue] jammed behind
@@ -461,7 +505,8 @@ void _serve(
         fpsDenominator: document.info.fpsDenominator,
       ));
     case _opFrame:
-      final args = request.args! as ({int token, int index});
+      final args =
+          request.args! as ({int token, int index, bool premultiplied});
       final document = documentAt(args.token);
       final rgba = document == null
           ? null
@@ -469,10 +514,7 @@ void _serve(
       request.reply.send(
         rgba == null
             ? null
-            // ⚠️A copy INTO the transfer, because the decoder hands back a
-            // view of scratch it reuses. The copy stays on this isolate,
-            // which is the one with time to spare.
-            : TransferableTypedData.fromList([Uint8List.fromList(rgba)]),
+            : transferOfFrame(rgba, premultiplied: args.premultiplied),
       );
     case _opLastError:
       request.reply.send(decoder?.lastError ?? '');
@@ -490,4 +532,48 @@ void _serve(
     default:
       request.reply.send(null);
   }
+}
+
+/// What the frame arm sends of [rgba] — a view of the decoder's scratch —
+/// in the form asked: as it is, or [premultiplied]
+/// ([VideoDecodeBackend.premultipliedFrame]).
+///
+/// ⚠️A copy INTO the transfer, because the decoder hands back a view of
+/// scratch it reuses — `fromList` IS that copy. The copy stays on this
+/// isolate, which is the one with time to spare, and so does the
+/// premultiply. ↩️The scratch was copied into a fresh `Uint8List` first, and
+/// that was copied again.
+@visibleForTesting
+TransferableTypedData transferOfFrame(
+  Uint8List rgba, {
+  required bool premultiplied,
+}) => TransferableTypedData.fromList([
+  if (premultiplied) _premultipliedInRoom(rgba) else rgba,
+]);
+
+/// The worker's one buffer a frame is premultiplied in before the transfer
+/// copies it out — kept, and made anew only when a frame of another size
+/// comes.
+///
+/// 🔬KEPT BECAUSE A FRESH ONE STOPPED THE UI ISOLATE (2026-11-07, card
+/// viewer-frame-premultiply-on-the-worker — a 1080p movie's 240 frames in
+/// the viewer's document on this worker, the engine's upload stood in for,
+/// a 1 ms ticker on the UI isolate): a fresh 8 MB `Uint8List` a frame here
+/// held the UI isolate 9 ms a frame; this one kept, 5 ms. The worker is in
+/// the UI isolate's group (`Isolate.spawn`) and shares its heap — the
+/// likeliest road, not measured on its own.
+Uint8List? _premultiplyRoom;
+
+/// [rgba] premultiplied in [_premultiplyRoom], by the app's one law.
+///
+/// ⚠️Valid until the next frame: the transfer copies it out at once, and
+/// the worker answers one request at a time.
+Uint8List _premultipliedInRoom(Uint8List rgba) {
+  final kept = _premultiplyRoom;
+  final room = kept != null && kept.length == rgba.length
+      ? kept
+      : (_premultiplyRoom = Uint8List(rgba.length));
+  room.setAll(0, rgba);
+  premultiplyRgbaInPlace(room);
+  return room;
 }

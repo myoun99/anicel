@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 
@@ -101,6 +102,14 @@ class FakeVideoBackend implements VideoDecodeBackend {
     return Uint8List.fromList(
       List<int>.filled(width * height * 4, 0xFF),
     );
+  }
+
+  /// [frame], premultiplied by the app's one law — what a decoder's side
+  /// hands a picture.
+  @override
+  Future<Uint8List?> premultipliedFrame(int token, int index) async {
+    final straight = await frame(token, index);
+    return straight == null ? null : premultipliedRgbaCopy(straight);
   }
 
   @override
