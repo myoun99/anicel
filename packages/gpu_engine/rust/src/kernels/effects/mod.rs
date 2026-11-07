@@ -18,12 +18,6 @@
 //! - the lens blur (`blur::lens`): fx Camera Lens Blur's iris gathered over
 //!   its row sums and its light, the app's `iris_gather.frag`.
 
-// ⏳The executor's rows (kernels/composite) walk the keys, and its effects
-// round (brush/rendering) is to place the matrix; nothing outside the tests
-// calls the executor or the blurs until the app's bridge round
-// (gpu-canonical-store ⑧ 3 and 5).
-#![cfg_attr(not(test), allow(dead_code))]
-
 pub(crate) mod blur;
 #[cfg(test)]
 pub(crate) mod matrix_tests;

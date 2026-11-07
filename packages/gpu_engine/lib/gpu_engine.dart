@@ -6,6 +6,7 @@ library;
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +29,38 @@ String _lastError() => using((arena) {
 /// [count] of: one at least, since a calloc of nothing may answer null
 /// (POSIX), which ffi's allocator throws on.
 int _held(int count) => count == 0 ? 1 : count;
+
+/// What a C entry answered — an index, a count —, or its last error thrown
+/// where it answered -1.
+int _checked(int answer) {
+  if (answer < 0) {
+    throw StateError(_lastError());
+  }
+  return answer;
+}
+
+/// [rect] — [left, top, right, bottom) — as four words of [arena]'s.
+Pointer<Int32> _rect(Arena arena, (int, int, int, int) rect) {
+  final (left, top, right, bottom) = rect;
+  return arena<Int32>(4)..asTypedList(4).setAll(0, [left, top, right, bottom]);
+}
+
+/// [_rect]'s, or null for none.
+Pointer<Int32> _rectOrNull(Arena arena, (int, int, int, int)? rect) =>
+    rect == null ? nullptr : _rect(arena, rect);
+
+/// [values] as doubles of [arena]'s.
+Pointer<Double> _doubles(Arena arena, List<double> values) =>
+    arena<Double>(_held(values.length))
+      ..asTypedList(values.length).setAll(0, values);
+
+/// [matrix], checked to be `ColorFilter.matrix`'s twenty.
+List<double> _twenty(List<double> matrix) {
+  if (matrix.length != 20) {
+    throw ArgumentError('a colour matrix of ${matrix.length}, not 20');
+  }
+  return matrix;
+}
 
 /// A kernel's submit-to-done time from its C ABI, which gives -1 on
 /// failure.
@@ -260,7 +293,7 @@ enum GpuSampling {
   /// The tent mean — a reduction's.
   blend(0),
 
-  /// The area vote: the one source pixel covering most of the preimage.
+  /// The area vote: the one colour covering most of the preimage.
   pick(1),
 
   /// The one source pixel where the pixel's centre lands.
@@ -271,10 +304,58 @@ enum GpuSampling {
   final int id;
 }
 
+/// The channel a blur map is read through, by the engine's ids.
+enum GpuMapChannel {
+  red(0),
+  green(1),
+  blue(2),
+  alpha(3),
+  luminance(4);
+
+  const GpuMapChannel(this.id);
+
+  final int id;
+}
+
+/// One pass of a blur along a way — the app's `LineBoxPass` with its maps
+/// worked out: `taps` taps, the i-th at centre + M_i·(at − centre) +
+/// step·(i − (taps − 1)/2), M_i = each^i · first, a map its columns as the
+/// app writes them (rust/src/kernels/effects/blur/line.rs).
+typedef GpuLinePass = ({
+  int taps,
+  (double, double) step,
+  (double, double) centre,
+  List<double> first,
+  List<double> each,
+});
+
+/// fx Camera Lens Blur's settings — the app's `IrisGatherPass` but its map
+/// (rust/src/kernels/effects/blur/lens.rs): an iris of `sides`, its
+/// `roundness` (0 to 1) and `aspect`, its rotation's, half a side's and a
+/// whole side's turns as cosine and sine; the `radius` and the `fringe` (0
+/// to 500); the light's `gain`, `threshold` and `saturation`, `linear` or
+/// not; and the `paper` whose edge pixels it repeats past it, if any.
+typedef GpuLens = ({
+  int sides,
+  double roundness,
+  double aspect,
+  (double, double) turn,
+  (double, double) halfSide,
+  (double, double) side,
+  double radius,
+  double fringe,
+  double gain,
+  double threshold,
+  double saturation,
+  bool linear,
+  (int, int, int, int)? paper,
+});
+
 /// A plan the executor runs, built step by step, bottom to top
-/// (rust/src/kernels/composite/abi.rs): tile sets of the pool, colour
-/// matrices, and rows, folders, clips and solid colours laying them. The
-/// executor checks it where it runs.
+/// (rust/src/kernels/composite/abi.rs): tile sets of the pool, key chains,
+/// colour matrices, effect chains and the blur maps their lens blurs read,
+/// and rows, folders, clips and solid colours laying them. The executor
+/// checks it where it runs.
 class GpuPlan {
   GpuPlan() : _plan = rust.planNew();
 
@@ -297,27 +378,207 @@ class GpuPlan {
     });
   }
 
-  /// Adds the colour matrix of [matrix] — `ColorFilter.matrix`'s twenty —
-  /// and returns the index a row or a close runs it by.
-  int matrix(List<double> matrix) {
-    if (matrix.length != 20) {
-      throw ArgumentError('a colour matrix of ${matrix.length}, not 20');
+  /// Adds a key chain of no runs and returns the index a row or a chain's
+  /// op keys by.
+  int keys() => rust.planKeys(_plan);
+
+  /// Adds to key chain [keys] a run of colour keys as the app's tables give
+  /// one: for each channel's byte — [red], [green], [blue], 256 words each
+  /// — which keys are within their tolerance of it, bit k for key k;
+  /// [restores], the keys that give back instead of erasing; and [maps],
+  /// each key's 256-byte alpha map, one after another.
+  void keyRun(
+    int keys, {
+    required Uint32List red,
+    required Uint32List green,
+    required Uint32List blue,
+    required int restores,
+    required Uint8List maps,
+  }) {
+    if ([red, green, blue].any((table) => table.length != 256) ||
+        maps.length % 256 != 0) {
+      throw ArgumentError('tables of 256 words, maps of 256 bytes a key');
     }
-    final at = using((arena) {
-      final entries = arena<Double>(20);
-      entries.asTypedList(20).setAll(0, matrix);
-      return rust.planMatrix(_plan, entries);
-    });
-    if (at < 0) {
-      throw StateError(_lastError());
-    }
-    return at;
+    _checked(
+      using((arena) {
+        Pointer<Uint32> words(Uint32List table) =>
+            arena<Uint32>(256)..asTypedList(256).setAll(0, table);
+        final bytes = arena<Uint8>(_held(maps.length))
+          ..asTypedList(maps.length).setAll(0, maps);
+        return rust.planKeyRun(
+          _plan,
+          keys,
+          words(red),
+          words(green),
+          words(blue),
+          restores,
+          bytes,
+          maps.length ~/ 256,
+        );
+      }),
+    );
   }
 
-  /// Adds a row: tile set [set] posed by [inverse] — canvas pixel to the
-  /// row's own, row-major with the homogeneous row last, over an output of
-  /// [columns] × [rows] pixels — sampled by [sampling], Blend's radius at
-  /// least [radiusFloor], through colour matrix [matrix] if any, laid at
+  /// Adds the colour matrix of [matrix] — `ColorFilter.matrix`'s twenty —
+  /// and returns the index a row or a close runs it by.
+  int matrix(List<double> matrix) => _checked(
+    using((arena) => rust.planMatrix(_plan, _doubles(arena, _twenty(matrix)))),
+  );
+
+  /// Adds an effect chain of no ops over the canvas tiles of [columns] ×
+  /// [rows] whose top-left is column [x0], row [y0] — a row's in its own
+  /// space, a folder's on the canvas — and returns the index a row or a
+  /// close runs it by.
+  int chain(int x0, int y0, int columns, int rows) =>
+      rust.planChain(_plan, x0, y0, columns, rows);
+
+  /// Adds to effect chain [chain] the colour matrix of [matrix] —
+  /// `ColorFilter.matrix`'s twenty.
+  void chainMatrix(int chain, List<double> matrix) => _checked(
+    using(
+      (arena) => rust.planChainMatrix(
+        _plan,
+        chain,
+        _doubles(arena, _twenty(matrix)),
+      ),
+    ),
+  );
+
+  /// Adds to effect chain [chain] the runs of key chain [keys], every key
+  /// against the alpha of what the op reads.
+  void chainKeys(int chain, int keys) =>
+      _checked(rust.planChainKeys(_plan, chain, keys));
+
+  /// Adds to effect chain [chain] fx Gaussian Blur by box passes of
+  /// [across] and [down], repeating the nearest pixel of [repeat] — inside
+  /// the chain's tiles — past it and putting nothing outside it where one
+  /// is named (Repeat Edge Pixels).
+  void chainGaussian(
+    int chain,
+    int across,
+    int down, {
+    (int, int, int, int)? repeat,
+  }) => _checked(
+    using(
+      (arena) => rust.planChainGaussian(
+        _plan,
+        chain,
+        across,
+        down,
+        _rectOrNull(arena, repeat),
+      ),
+    ),
+  );
+
+  /// Adds to effect chain [chain] fx Directional or Radial Blur's [passes]
+  /// over [plate], inside the chain's tiles.
+  void chainLine(
+    int chain,
+    (int, int, int, int) plate,
+    List<GpuLinePass> passes,
+  ) {
+    if (passes.any((pass) => pass.first.length != 4 || pass.each.length != 4)) {
+      throw ArgumentError('maps of four, column by column');
+    }
+    _checked(
+      using((arena) {
+        final taps = arena<Uint32>(_held(passes.length));
+        for (var at = 0; at < passes.length; at++) {
+          taps[at] = passes[at].taps;
+        }
+        final maps = _doubles(arena, [
+          for (final pass in passes) ...[
+            pass.step.$1,
+            pass.step.$2,
+            pass.centre.$1,
+            pass.centre.$2,
+            ...pass.first,
+            ...pass.each,
+          ],
+        ]);
+        return rust.planChainLine(
+          _plan,
+          chain,
+          _rect(arena, plate),
+          taps,
+          maps,
+          passes.length,
+        );
+      }),
+    );
+  }
+
+  /// Adds to effect chain [chain] fx Camera Lens Blur over [picture] by
+  /// [lens], reading blur map [map] if any.
+  void chainLens(
+    int chain,
+    (int, int, int, int) picture,
+    GpuLens lens, {
+    int? map,
+  }) => _checked(
+    using(
+      (arena) => rust.planChainLens(
+        _plan,
+        chain,
+        _rect(arena, picture),
+        lens.sides,
+        _doubles(arena, [
+          lens.roundness,
+          lens.aspect,
+          lens.turn.$1,
+          lens.turn.$2,
+          lens.halfSide.$1,
+          lens.halfSide.$2,
+          lens.side.$1,
+          lens.side.$2,
+          lens.radius,
+          lens.fringe,
+          lens.gain,
+          lens.threshold,
+          lens.saturation,
+        ]),
+        lens.linear,
+        _rectOrNull(arena, lens.paper),
+        map ?? -1,
+      ),
+    ),
+  );
+
+  /// Adds a blur map read from the tiles [tiles] holds — over the blur's
+  /// own rectangle, as a run over its tiles put them — through [channel],
+  /// in focus at [focal] (0 to 255) and inverted where [inverts]; returns
+  /// the index a lens blur reads it by. The plan keeps the tiles past
+  /// [tiles]' own free.
+  int mapLaid(
+    GpuComposited tiles, {
+    required GpuMapChannel channel,
+    required double focal,
+    bool inverts = false,
+  }) => _checked(
+    rust.planMapLaid(_plan, tiles._composited, channel.id, focal, inverts),
+  );
+
+  /// How many steps the plan has: where the steps a blur map is drawn
+  /// from begin ([mapDrawn]).
+  int get steps => rust.planSteps(_plan);
+
+  /// Takes the plan's steps from step [first] on as the steps a blur map is
+  /// drawn from — drawn alone over the blur's rectangle, as they show by
+  /// themselves —, read as [mapLaid]'s; returns the index a lens blur
+  /// reads it by.
+  int mapDrawn(
+    int first, {
+    required GpuMapChannel channel,
+    required double focal,
+    bool inverts = false,
+  }) => _checked(rust.planMapDrawn(_plan, first, channel.id, focal, inverts));
+
+  /// Adds a row: tile set [set], keyed by key chain [keys] or run through
+  /// effect chain [chain] if one is named (not both: a chain's keys are
+  /// its ops), posed by [inverse] — canvas pixel to the row's own,
+  /// row-major with the homogeneous row last, over an output of [columns]
+  /// × [rows] pixels — sampled by [sampling], Blend's radius at least
+  /// [radiusFloor], through colour matrix [matrix] if any, laid at
   /// [opacity] (65535 whole) in blend mode [mode] (the engine's id).
   ///
   /// False where its pose lands nothing, so it lays nothing and is left
@@ -330,32 +591,31 @@ class GpuPlan {
     required int rows,
     required int mode,
     int? matrix,
+    int? keys,
+    int? chain,
     double radiusFloor = 1,
     int opacity = 65535,
   }) {
     if (inverse.length != 9) {
       throw ArgumentError('an inverse of ${inverse.length}, not 9');
     }
-    final added = using((arena) {
-      final entries = arena<Double>(9);
-      entries.asTypedList(9).setAll(0, inverse);
-      return rust.planRow(
+    final added = using(
+      (arena) => rust.planRow(
         _plan,
         set,
         matrix ?? -1,
-        entries,
+        keys ?? -1,
+        chain ?? -1,
+        _doubles(arena, inverse),
         radiusFloor,
         sampling.id,
         columns,
         rows,
         opacity,
         mode,
-      );
-    });
-    if (added < 0) {
-      throw StateError(_lastError());
-    }
-    return added == 1;
+      ),
+    );
+    return _checked(added) == 1;
   }
 
   /// Opens a transparent buffer — a folder's, a clip's base or its scope —
@@ -364,9 +624,16 @@ class GpuPlan {
   void open({bool opaque = false}) => rust.planOpen(_plan, opaque);
 
   /// Closes the open buffer onto the one under it at [opacity] in [mode],
-  /// through colour matrix [matrix] if any.
-  void close({required int mode, int opacity = 65535, int? matrix}) =>
-      rust.planClose(_plan, opacity, mode, matrix ?? -1);
+  /// through effect chain [chain] if any — what it puts laid against the
+  /// buffer it ran on at [mix] (65535 whole) — then colour matrix [matrix]
+  /// if any.
+  void close({
+    required int mode,
+    int opacity = 65535,
+    int? matrix,
+    int? chain,
+    int mix = 65535,
+  }) => rust.planClose(_plan, opacity, mode, matrix ?? -1, chain ?? -1, mix);
 
   /// Closes a clip's scope onto its base by the base's alpha.
   void closeAtop() => rust.planCloseAtop(_plan);
@@ -413,9 +680,6 @@ class GpuComposite {
         at[2 * tile] = tiles[tile].$1;
         at[2 * tile + 1] = tiles[tile].$2;
       }
-      final edges = arena<Int32>(4);
-      final (left, top, right, bottom) = extent;
-      edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
       return rust.compositeRun(
         _composite,
         _engine._engine,
@@ -423,7 +687,7 @@ class GpuComposite {
         plan._plan,
         at,
         tiles.length,
-        edges,
+        _rect(arena, extent),
       );
     });
     if (out == nullptr) {

@@ -53,6 +53,7 @@ pub(crate) struct Light {
 
 impl Light {
     /// The light a picture is stored in, nothing boosted.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) const STORED: Light = Light {
         gain: 0.0,
         threshold: 1.0,
@@ -97,6 +98,8 @@ impl LensSums {
     /// over the `picture`, [left, top, right, bottom) inside them: a plane
     /// of its pixels row after row, each four channels of two words, low
     /// first. Submits the work; the caller waits.
+    // Only the tests run the sums alone; the blur runs them in its own.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn run(
         &self,
         engine: &Engine,

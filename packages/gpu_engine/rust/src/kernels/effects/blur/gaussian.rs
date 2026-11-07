@@ -186,6 +186,8 @@ fn three(way: &[Pass], strips: Strips) -> Dispatch {
 #[derive(Clone, Copy)]
 enum Route {
     Strips,
+    // Only the tests send it, to see both routes put the same pixels.
+    #[cfg_attr(not(test), allow(dead_code))]
     Passes,
 }
 

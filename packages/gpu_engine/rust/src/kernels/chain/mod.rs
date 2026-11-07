@@ -23,11 +23,6 @@
 //! stored word as R1 then reads it (캔버스 베이스 패널,
 //! connection-round-checklist 11-07 00:39).
 
-// ⏳Nothing outside the tests runs it until the connection round
-// (connection-round-checklist 11-06 23:57 — the app's chain is cut into
-// these ops there).
-#![cfg_attr(not(test), allow(dead_code))]
-
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -230,6 +225,10 @@ pub(crate) fn laid_as(rect: TileRect, page: u16) -> TileSet {
 /// The rectangle a chain reaching `reach` pixels runs over for the output
 /// `tiles`: theirs, grown by as many whole tiles as `reach` takes each way —
 /// what a pixel of them reads, however many ops it passes through.
+// ⏳The tests alone ask it until the app cuts its chains into ops and asks
+// it for their rectangle (connection-round-checklist 11-06 23:57) — through
+// the C ABI, not a copy of it in Dart.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn reaching(tiles: &[(i32, i32)], reach: u32) -> Option<TileRect> {
     let grow = reach.div_ceil(TILE) as i32;
     let left = tiles.iter().map(|&(column, _)| column).min()? - grow;

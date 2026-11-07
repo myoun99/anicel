@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -9,11 +10,14 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
 
+import '../helpers/pinned_fingerprints.dart';
+
 /// The app composites its tiles through the package's Dart
-/// (screen-on-the-engine 2a): what it stored comes back through a row
+/// (screen-on-the-engine 2a · 2b): what it stored comes back through a row
 /// copied over nothing, a plan shown onto a surface lays what a run puts,
-/// and each step's numbers reach the step they name. That a plan built
-/// call by call is the plan built in Rust is the crate's to pin
+/// and each step's numbers reach the step they name — a row's keys, its
+/// effect chain's ops and the blur maps they read among them. That a plan
+/// built call by call is the plan built in Rust is the crate's to pin
 /// (rust/src/kernels/composite/abi/tests.rs) — here, what Dart hands it.
 void main() {
   late GpuPool pool;
@@ -23,6 +27,7 @@ void main() {
   // blend.wgsl's BLEND_NORMAL: the brush's table has no normal of its own.
   const normal = 28;
   final multiply = separableBlendModeNativeId(SeparableBlendMode.multiply);
+  final screen = separableBlendModeNativeId(SeparableBlendMode.screen);
   const identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
   const nothing = [0, 0, 0, 0];
 
@@ -323,5 +328,443 @@ void main() {
         ),
       ),
     );
+  });
+
+  /// A plan of one row of [tiles] over a tile row, keyed by the key chain
+  /// or run through the effect chain [through] adds to the plan.
+  GpuPlan throughRow(
+    List<GpuTile?> tiles,
+    ({int? keys, int? chain}) Function(GpuPlan plan) through,
+  ) {
+    final plan = GpuPlan();
+    addTearDown(plan.free);
+    final set = plan.set(0, 0, tiles.length, 1, tiles);
+    final (:keys, :chain) = through(plan);
+    final added = plan.row(
+      set: set,
+      inverse: identity,
+      sampling: GpuSampling.blend,
+      columns: tiles.length * gpuTileSide,
+      rows: gpuTileSide,
+      mode: normal,
+      keys: keys,
+      chain: chain,
+    );
+    expect(added, isTrue);
+    return plan;
+  }
+
+  /// One tile, red on its left half and blue on its right.
+  List<GpuTile> redAndBlue() {
+    final side = gpuTileSide;
+    final halves = Uint32List(side * side);
+    for (var at = 0; at < side * side; at++) {
+      halves[at] = at % side < side ~/ 2 ? 0xFF0000FF : 0xFFFF0000;
+    }
+    return storedOf(halves.buffer.asUint8List());
+  }
+
+  /// A run of one key naming the reds — red over 127, any green, blue
+  /// under 128 — that leaves a third of the alpha it reads, or gives back
+  /// what the run erased where it [restores].
+  void keyTheReds(GpuPlan plan, int keys, {bool restores = false}) {
+    Uint32List table(bool Function(int byte) inside) => Uint32List.fromList([
+      for (var byte = 0; byte < 256; byte++) if (inside(byte)) 1 else 0,
+    ]);
+    plan.keyRun(
+      keys,
+      red: table((byte) => byte > 127),
+      green: table((_) => true),
+      blue: table((byte) => byte < 128),
+      restores: restores ? 1 : 0,
+      maps: Uint8List.fromList([
+        for (var alpha = 0; alpha < 256; alpha++) alpha ~/ 3,
+      ]),
+    );
+  }
+
+  // Erasing leaves a third of 255; giving back after it, 255 less a third
+  // of the 170 erased — each run against the alpha before the chain.
+  test("a row's key chain walks its runs in turn over the colours named", () {
+    final tiles = redAndBlue();
+    Uint8List keyed(List<bool> runs) => ran(
+      throughRow(tiles, (plan) {
+        final keys = plan.keys();
+        for (final restores in runs) {
+          keyTheReds(plan, keys, restores: restores);
+        }
+        return (keys: keys, chain: null);
+      }),
+      [(0, 0)],
+    );
+
+    final erased = keyed([false]);
+    expect(pixel(erased, [(0, 0)], 3, 3), [255, 0, 0, 85]);
+    expect(pixel(erased, [(0, 0)], gpuTileSide - 3, 3), [0, 0, 255, 255]);
+    expect(pixel(keyed([false, true]), [(0, 0)], 3, 3), [255, 0, 0, 199]);
+    expect(pixel(keyed([true]), [(0, 0)], 3, 3), [255, 0, 0, 255]);
+  });
+
+  test("a chain's keys and matrix are the row's own", () {
+    final tiles = redAndBlue();
+    final keyed = throughRow(tiles, (plan) {
+      final keys = plan.keys();
+      keyTheReds(plan, keys);
+      return (keys: keys, chain: null);
+    });
+    final chained = throughRow(tiles, (plan) {
+      final keys = plan.keys();
+      keyTheReds(plan, keys);
+      final chain = plan.chain(0, 0, 1, 1);
+      plan.chainKeys(chain, keys);
+      return (keys: null, chain: chain);
+    });
+    final greened = throughRow(tiles, (plan) {
+      final chain = plan.chain(0, 0, 1, 1);
+      plan.chainMatrix(chain, green);
+      return (keys: null, chain: chain);
+    });
+
+    expect(ran(chained, [(0, 0)]), ran(keyed, [(0, 0)]));
+    expect(pixel(ran(greened, [(0, 0)]), [(0, 0)], 3, 3), [0, 255, 0, 255]);
+  });
+
+  /// One tile with nothing on it but a white pixel at (64, 64).
+  List<GpuTile> aWhitePixel() {
+    final dot = Uint32List(gpuTileSide * gpuTileSide);
+    dot[64 * gpuTileSide + 64] = 0xFFFFFFFF;
+    return storedOf(dot.buffer.asUint8List());
+  }
+
+  /// The alpha a run of [plan] put at ([x], [y]) of its one tile.
+  int alphaAt(GpuPlan plan, int x, int y) =>
+      pixel(ran(plan, [(0, 0)]), [(0, 0)], x, y)[3];
+
+  test("a chain's Gaussian blurs across and down by its own, inside its "
+      'repeat where one is named', () {
+    final tiles = aWhitePixel();
+    GpuPlan blurred((int, int, int, int)? repeat) {
+      return throughRow(tiles, (plan) {
+        final chain = plan.chain(0, 0, 1, 1);
+        plan.chainGaussian(chain, 10, 0, repeat: repeat);
+        return (keys: null, chain: chain);
+      });
+    }
+
+    final repeated = blurred((50, 60, 70, 80));
+
+    expect(alphaAt(repeated, 55, 64), greaterThan(0));
+    expect(alphaAt(repeated, 64, 70), 0);
+    expect(alphaAt(repeated, 72, 64), 0);
+    expect(alphaAt(blurred(null), 72, 64), greaterThan(0));
+  });
+
+  // Five taps a pixel apart about each pixel: the dot spreads two each way
+  // along the step, and no further.
+  test("a chain's blur along a way takes its taps along its step", () {
+    final tiles = aWhitePixel();
+    const still = [1.0, 0.0, 0.0, 1.0];
+    GpuPlan along((double, double) step) => throughRow(tiles, (plan) {
+      final chain = plan.chain(0, 0, 1, 1);
+      plan.chainLine(chain, (0, 0, gpuTileSide, gpuTileSide), [
+        (taps: 5, step: step, centre: (0, 0), first: still, each: still),
+      ]);
+      return (keys: null, chain: chain);
+    });
+    final across = along((1, 0));
+
+    expect(alphaAt(across, 66, 64), greaterThan(0));
+    expect(alphaAt(across, 67, 64), 0);
+    expect(alphaAt(across, 64, 66), 0);
+    expect(alphaAt(along((0, 1)), 64, 66), greaterThan(0));
+  });
+
+  /// An iris of six sides turned by 20°, a little round and drawn out, at
+  /// [radius], with no fringe, light or paper unless named.
+  GpuLens hexagon(
+    double radius, {
+    double fringe = 0,
+    double gain = 0,
+    double threshold = 1,
+    double saturation = 0,
+    bool linear = false,
+    (int, int, int, int)? paper,
+  }) {
+    (double, double) turn(double degrees) {
+      final radians = degrees * math.pi / 180;
+      return (math.cos(radians), math.sin(radians));
+    }
+
+    return (
+      sides: 6,
+      roundness: 0.25,
+      aspect: 1.25,
+      turn: turn(20),
+      halfSide: turn(30),
+      side: turn(60),
+      radius: radius,
+      fringe: fringe,
+      gain: gain,
+      threshold: threshold,
+      saturation: saturation,
+      linear: linear,
+      paper: paper,
+    );
+  }
+
+  /// A row of tile set [set] over three tiles, posed by [inverse], keyed
+  /// by [keys] or run through [chain] if any.
+  void threeTileRow(
+    GpuPlan plan,
+    int set, {
+    List<double> inverse = identity,
+    int? keys,
+    int? chain,
+    int opacity = 65535,
+    int? mode,
+  }) => plan.row(
+    set: set,
+    inverse: inverse,
+    sampling: GpuSampling.blend,
+    columns: 3 * gpuTileSide,
+    rows: gpuTileSide,
+    mode: mode ?? normal,
+    keys: keys,
+    chain: chain,
+    opacity: opacity,
+  );
+  const nudged = [1.0, 0.0, 0.5, 0.0, 1.0, 0.25, 0.0, 0.0, 1.0];
+
+  // The same rows, drawn alone by the plan or laid from a run of them —
+  // freed before the plan runs, which keeps its tiles.
+  test('a blur map laid from a run is the one drawn from its rows', () {
+    final tiles = storedOf(noise(3));
+    final out = [(0, 0), (1, 0), (2, 0)];
+    GpuPlan lensed(int Function(GpuPlan plan, int set) map) {
+      final plan = GpuPlan();
+      addTearDown(plan.free);
+      final set = plan.set(0, 0, 3, 1, tiles);
+      final blurMap = map(plan, set);
+      final chain = plan.chain(0, 0, 3, 1);
+      final picture = (0, 0, 3 * gpuTileSide, gpuTileSide);
+      plan.chainLens(chain, picture, hexagon(5), map: blurMap);
+      threeTileRow(plan, set, chain: chain);
+      return plan;
+    }
+
+    int drawnFrom(GpuPlan plan, int first) => plan.mapDrawn(
+      first,
+      channel: GpuMapChannel.blue,
+      focal: 90,
+      inverts: true,
+    );
+    final drawn = lensed((plan, set) {
+      final first = plan.steps;
+      threeTileRow(plan, set, inverse: nudged);
+      return drawnFrom(plan, first);
+    });
+    final laid = lensed((plan, set) {
+      final rows = GpuPlan();
+      addTearDown(rows.free);
+      threeTileRow(rows, rows.set(0, 0, 3, 1, tiles), inverse: nudged);
+      final put = composite.run(pool, rows, out, all);
+      final map = plan.mapLaid(
+        put,
+        channel: GpuMapChannel.blue,
+        focal: 90,
+        inverts: true,
+      );
+      put.free();
+      return map;
+    });
+    final unmapped = lensed((plan, set) => drawnFrom(plan, plan.steps));
+
+    expect(ran(laid, out), ran(drawn, out));
+    expect(ran(drawn, out), isNot(ran(unmapped, out)));
+  });
+
+  // Every number each call of a chain takes reaches its op: the crate pins
+  // that a plan built call by call composites as one built in Rust
+  // (abi/tests.rs), this the calls Dart makes, every field of them read
+  // by a pixel. The ledger's row was pinned by this device; another that
+  // differs fails, naming its adapter.
+  test('a plan of every chain op Dart builds composites as pinned', () {
+    final [a, b, c] = storedOf(noise(3));
+    final plan = GpuPlan();
+    addTearDown(plan.free);
+    final pair = plan.set(0, 0, 2, 1, [a, b]);
+    final one = plan.set(1, 0, 1, 1, [c]);
+    final keys = plan.keys();
+    keyTheReds(plan, keys);
+    keyTheReds(plan, keys, restores: true);
+    threeTileRow(plan, one);
+    final map = plan.mapDrawn(
+      0,
+      channel: GpuMapChannel.luminance,
+      focal: 140,
+      inverts: true,
+    );
+    final rowChain = plan.chain(0, 0, 2, 1);
+    final lens = hexagon(
+      4.5,
+      fringe: 80,
+      gain: 1.5,
+      threshold: 0.7,
+      saturation: 0.4,
+      linear: true,
+      paper: (0, 0, 250, 128),
+    );
+    plan
+      ..chainMatrix(rowChain, const [
+        1.4, 0, 0, 0, -20, //
+        0, 1.2, 0.1, 0, 5,
+        0, 0, 0.8, 0, 30,
+        0, 0, 0, 1, 0,
+      ])
+      ..chainKeys(rowChain, keys)
+      ..chainGaussian(rowChain, 3, 2, repeat: (4, 6, 200, 120))
+      ..chainLine(rowChain, (6, 0, 250, 128), const [
+        (
+          taps: 5,
+          step: (1.5, 0.5),
+          centre: (100, 60),
+          first: [1, 0, 0, 1],
+          each: [0.99, 0.01, -0.01, 0.99],
+        ),
+        (
+          taps: 3,
+          step: (0, 2),
+          centre: (120, 40),
+          first: [1, 0.05, 0, 1],
+          each: [1, 0, 0, 1.02],
+        ),
+      ])
+      ..chainLens(rowChain, (0, 0, 2 * gpuTileSide, gpuTileSide), lens,
+          map: map);
+    final closeChain = plan.chain(0, 0, 3, 1);
+    plan
+      ..chainGaussian(closeChain, 2, 0)
+      ..open();
+    threeTileRow(
+      plan,
+      pair,
+      inverse: nudged,
+      keys: keys,
+      opacity: 60000,
+      mode: multiply,
+    );
+    threeTileRow(plan, pair, chain: rowChain, opacity: 50000, mode: screen);
+    plan.close(mode: normal, opacity: 45000, chain: closeChain, mix: 40000);
+    final put = ran(plan, [(0, 0), (1, 0), (2, 0)], (0, 0, 300, 120));
+
+    expect(
+      fingerprintHex(put),
+      pinnedFingerprint('composite/every-chain-op-from-dart'),
+      reason: appGpuEngine.adapterName,
+    );
+  });
+
+  test("what a chain's call cannot add says why", () {
+    final plan = GpuPlan();
+    addTearDown(plan.free);
+    Matcher saying(String why) => throwsA(
+      isA<StateError>().having(
+        (error) => error.message,
+        'message',
+        contains(why),
+      ),
+    );
+    final twenty = [
+      for (var at = 0; at < 20; at++) if (at % 6 == 0) 1.0 else 0.0,
+    ];
+    final keys = plan.keys();
+    final chain = plan.chain(0, 0, 1, 1);
+    final table = Uint32List(256);
+    void keyRun(int keys, {Uint32List? red, int maps = 256}) => plan.keyRun(
+      keys,
+      red: red ?? table,
+      green: table,
+      blue: table,
+      restores: 0,
+      maps: Uint8List(maps),
+    );
+
+    expect(() => keyRun(keys, red: Uint32List(255)), throwsArgumentError);
+    expect(() => keyRun(keys, maps: 300), throwsArgumentError);
+    expect(
+      () => plan.chainLine(chain, (0, 0, 8, 8), const [
+        (taps: 3, step: (1, 0), centre: (0, 0), first: [1, 0, 0], each: []),
+      ]),
+      throwsArgumentError,
+    );
+    expect(() => keyRun(keys, maps: 33 * 256), saying('a run of 33 keys'));
+    expect(() => keyRun(keys + 1), saying('no key chain ${keys + 1}'));
+    expect(
+      () => plan.chainKeys(chain, keys + 1),
+      saying('no key chain ${keys + 1}'),
+    );
+    expect(
+      () => plan.chainMatrix(chain + 1, twenty),
+      saying('no effect chain ${chain + 1}'),
+    );
+    expect(
+      () => plan.chainMatrix(chain, [1e6, ...twenty.skip(1)]),
+      saying('colour matrix'),
+    );
+    expect(
+      () => plan.chainLens(chain, (0, 0, 8, 8), hexagon(2), map: 0),
+      saying('no blur map 0'),
+    );
+    expect(
+      () => plan.mapDrawn(1, channel: GpuMapChannel.red, focal: 0),
+      saying('a map drawn from step 1 of 0'),
+    );
+  });
+
+  test('a row or a close naming what the plan lacks is refused where it '
+      'runs', () {
+    final tiles = storedOf(noise(1));
+    void refused(void Function(GpuPlan plan, int set) build, String why) {
+      final plan = GpuPlan();
+      addTearDown(plan.free);
+      build(plan, plan.set(0, 0, 1, 1, tiles));
+      expect(
+        () => composite.run(pool, plan, [(0, 0)], all),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains(why),
+          ),
+        ),
+      );
+    }
+
+    void row(GpuPlan plan, int set, {int? keys, int? chain}) => plan.row(
+      set: set,
+      inverse: identity,
+      sampling: GpuSampling.blend,
+      columns: gpuTileSide,
+      rows: gpuTileSide,
+      mode: normal,
+      keys: keys,
+      chain: chain,
+    );
+
+    refused((plan, set) => row(plan, set, keys: 3), 'keys by chain 3 of 0');
+    refused((plan, set) => row(plan, set, chain: 2), 'effect chain 2 of 0');
+    refused(
+      (plan, set) =>
+          row(plan, set, keys: plan.keys(), chain: plan.chain(0, 0, 1, 1)),
+      'names keys and an effect chain',
+    );
+    refused((plan, set) {
+      final chain = plan.chain(0, 0, 1, 1);
+      plan
+        ..chainGaussian(chain, 1, 1)
+        ..open();
+      row(plan, set);
+      plan.close(mode: normal, chain: chain, mix: 70000);
+    }, 'mixes its chain at 70000');
   });
 }

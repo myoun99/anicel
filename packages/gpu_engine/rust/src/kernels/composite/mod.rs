@@ -70,11 +70,6 @@
 //! — the result's — and a pan or a zoom runs the screen alone
 //! (gpu-canonical-store ④⑤).
 
-// ⏳The app's C ABI ([`abi`]) runs rows, folders, clips and the solid
-// colour; a row's colour keys and effect chains wait for its 2b, the mask
-// and the fill range's mark for the flip lane (screen-on-the-engine).
-#![cfg_attr(not(test), allow(dead_code))]
-
 mod abi;
 #[cfg(test)]
 mod chained_tests;
@@ -286,6 +281,9 @@ pub(crate) enum Step {
     /// the row's does. Right after the row, so the rows above it hide it.
     /// `shift`, Q.16 of the row's pixels, pushes the cells the way the
     /// press moved (F-568-Q1 a).
+    // ⏳The app's C ABI ([`abi`]) lays none until the flip lane, with the
+    // mask; till then the tests alone.
+    #[cfg_attr(not(test), allow(dead_code))]
     Mark { map: ResampleMap, shift: [i32; 2] },
 }
 
@@ -315,6 +313,8 @@ pub(crate) struct Budget {
 /// screen lays the canvas's — and how many passes it took.
 pub(crate) struct Composited {
     pub(crate) out: wgpu::Buffer,
+    // Only the tests count a run's passes; a show returns its own.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) passes: usize,
 }
 

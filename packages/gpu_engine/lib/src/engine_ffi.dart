@@ -199,6 +199,8 @@ external int planMatrix(Pointer<Planned> plan, Pointer<Double> matrix);
     Pointer<Planned>,
     Uint32,
     Int32,
+    Int32,
+    Int32,
     Pointer<Double>,
     Double,
     Uint32,
@@ -212,6 +214,8 @@ external int planRow(
   Pointer<Planned> plan,
   int set,
   int matrix,
+  int keys,
+  int chain,
   Pointer<Double> inverse,
   double radiusFloor,
   int sampling,
@@ -224,14 +228,16 @@ external int planRow(
 @Native<Void Function(Pointer<Planned>, Bool)>(symbol: 'gpu_engine_plan_open')
 external void planOpen(Pointer<Planned> plan, bool opaque);
 
-@Native<Void Function(Pointer<Planned>, Uint32, Uint32, Int32)>(
-  symbol: 'gpu_engine_plan_close',
-)
+@Native<
+  Void Function(Pointer<Planned>, Uint32, Uint32, Int32, Int32, Uint32)
+>(symbol: 'gpu_engine_plan_close')
 external void planClose(
   Pointer<Planned> plan,
   int opacity,
   int mode,
   int matrix,
+  int chain,
+  int mix,
 );
 
 @Native<Void Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_close_atop')
@@ -247,6 +253,135 @@ external void planSolid(
   int top,
   int right,
   int bottom,
+);
+
+@Native<Uint32 Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_keys')
+external int planKeys(Pointer<Planned> plan);
+
+@Native<
+  Int32 Function(
+    Pointer<Planned>,
+    Uint32,
+    Pointer<Uint32>,
+    Pointer<Uint32>,
+    Pointer<Uint32>,
+    Uint32,
+    Pointer<Uint8>,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_plan_key_run')
+external int planKeyRun(
+  Pointer<Planned> plan,
+  int keys,
+  Pointer<Uint32> red,
+  Pointer<Uint32> green,
+  Pointer<Uint32> blue,
+  int restores,
+  Pointer<Uint8> maps,
+  int count,
+);
+
+@Native<Uint32 Function(Pointer<Planned>, Int32, Int32, Uint32, Uint32)>(
+  symbol: 'gpu_engine_plan_chain',
+)
+external int planChain(
+  Pointer<Planned> plan,
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+);
+
+@Native<Int32 Function(Pointer<Planned>, Uint32, Pointer<Double>)>(
+  symbol: 'gpu_engine_plan_chain_matrix',
+)
+external int planChainMatrix(
+  Pointer<Planned> plan,
+  int chain,
+  Pointer<Double> matrix,
+);
+
+@Native<Int32 Function(Pointer<Planned>, Uint32, Uint32)>(
+  symbol: 'gpu_engine_plan_chain_keys',
+)
+external int planChainKeys(Pointer<Planned> plan, int chain, int keys);
+
+@Native<
+  Int32 Function(Pointer<Planned>, Uint32, Uint32, Uint32, Pointer<Int32>)
+>(symbol: 'gpu_engine_plan_chain_gaussian')
+external int planChainGaussian(
+  Pointer<Planned> plan,
+  int chain,
+  int across,
+  int down,
+  Pointer<Int32> repeat,
+);
+
+@Native<
+  Int32 Function(
+    Pointer<Planned>,
+    Uint32,
+    Pointer<Int32>,
+    Pointer<Uint32>,
+    Pointer<Double>,
+    Size,
+  )
+>(symbol: 'gpu_engine_plan_chain_line')
+external int planChainLine(
+  Pointer<Planned> plan,
+  int chain,
+  Pointer<Int32> plate,
+  Pointer<Uint32> taps,
+  Pointer<Double> maps,
+  int count,
+);
+
+@Native<
+  Int32 Function(
+    Pointer<Planned>,
+    Uint32,
+    Pointer<Int32>,
+    Uint32,
+    Pointer<Double>,
+    Bool,
+    Pointer<Int32>,
+    Int32,
+  )
+>(symbol: 'gpu_engine_plan_chain_lens')
+external int planChainLens(
+  Pointer<Planned> plan,
+  int chain,
+  Pointer<Int32> picture,
+  int sides,
+  Pointer<Double> lens,
+  bool linear,
+  Pointer<Int32> paper,
+  int map,
+);
+
+@Native<
+  Int32 Function(Pointer<Planned>, Pointer<Composited>, Uint32, Double, Bool)
+>(symbol: 'gpu_engine_plan_map_laid')
+external int planMapLaid(
+  Pointer<Planned> plan,
+  Pointer<Composited> composited,
+  int channel,
+  double focal,
+  bool inverts,
+);
+
+@Native<Uint32 Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_steps')
+external int planSteps(Pointer<Planned> plan);
+
+@Native<Int32 Function(Pointer<Planned>, Uint32, Uint32, Double, Bool)>(
+  symbol: 'gpu_engine_plan_map_drawn',
+)
+external int planMapDrawn(
+  Pointer<Planned> plan,
+  int first,
+  int channel,
+  double focal,
+  bool inverts,
 );
 
 @Native<Pointer<Composite> Function(Pointer<Engine>)>(

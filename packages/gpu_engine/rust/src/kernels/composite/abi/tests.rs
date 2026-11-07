@@ -54,14 +54,19 @@ fn map(inverse: [f64; 9], mode: ResampleMode) -> ResampleMap {
     ResampleMap::new(inverse, 1.0, mode, 3 * TILE, TILE).expect("a pose that lands")
 }
 
-/// `plan` run by the C ABI over [`OUTPUT`], read back.
-fn ran(pool: &Pool, plan: *const Planned, extent: [i32; 4]) -> Option<Vec<u8>> {
+/// `plan` run by the C ABI over [`OUTPUT`]: what it put, null where it
+/// was refused.
+fn run_out(pool: &Pool, plan: *const Planned, extent: [i32; 4]) -> *mut Composited {
     let (engine, composite) = (rig().engine, &rig().composite);
     let tiles: Vec<i32> = OUTPUT.iter().flat_map(|&(column, row)| [column, row]).collect();
     // SAFETY: every pointer is live, `tiles` holds two words a tile.
-    let out = unsafe {
-        gpu_engine_composite_run(composite, engine, pool, plan, tiles.as_ptr(), OUTPUT.len(), extent.as_ptr())
-    };
+    unsafe { gpu_engine_composite_run(composite, engine, pool, plan, tiles.as_ptr(), OUTPUT.len(), extent.as_ptr()) }
+}
+
+/// `plan` run by the C ABI over [`OUTPUT`], read back.
+fn ran(pool: &Pool, plan: *const Planned, extent: [i32; 4]) -> Option<Vec<u8>> {
+    let engine = rig().engine;
+    let out = run_out(pool, plan, extent);
     if out.is_null() {
         return None;
     }
@@ -74,9 +79,16 @@ fn ran(pool: &Pool, plan: *const Planned, extent: [i32; 4]) -> Option<Vec<u8>> {
 }
 
 /// `plan` run in Rust over [`OUTPUT`], read back.
-fn ran_in_rust(pool: &Pool, sets: &[TileSet], matrices: &[[u32; MATRIX_WORDS]], steps: &[Step]) -> Vec<u8> {
+fn ran_in_rust(
+    pool: &Pool,
+    sets: &[TileSet],
+    keys: &[KeyChain],
+    matrices: &[[u32; MATRIX_WORDS]],
+    chains: &[Chained],
+    steps: &[Step],
+) -> Vec<u8> {
     let (engine, composite) = (rig().engine, &rig().composite);
-    let plan = Plan { pages: pool.pages(), sets, keys: &[], matrices, chains: &[], steps, mask: None };
+    let plan = Plan { pages: pool.pages(), sets, keys, matrices, chains, steps, mask: None };
     let out = composite.run(engine, &plan, &OUTPUT, [0, 0, 300, 120], composite.widest()).expect("run");
     read_buffer(engine, &out.out)
 }
@@ -110,15 +122,15 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
         assert_eq!(gpu_engine_plan_matrix(plan, warm.as_ptr()), 1);
         gpu_engine_plan_solid(plan, 0xc0_33_66_99, 10, 4, 290, 100);
         gpu_engine_plan_open(plan, false);
-        assert_eq!(gpu_engine_plan_row(plan, 0, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
-        assert_eq!(gpu_engine_plan_row(plan, 1, 0, POSED.as_ptr(), 2.0, PICK, 3 * TILE, TILE, 41000, SCREEN), 1);
-        gpu_engine_plan_close(plan, 40000, MULTIPLY, -1);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
+        assert_eq!(gpu_engine_plan_row(plan, 1, 0, -1, -1, POSED.as_ptr(), 2.0, PICK, 3 * TILE, TILE, 41000, SCREEN), 1);
+        gpu_engine_plan_close(plan, 40000, MULTIPLY, -1, -1, 65535);
         gpu_engine_plan_open(plan, false);
-        assert_eq!(gpu_engine_plan_row(plan, 1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
+        assert_eq!(gpu_engine_plan_row(plan, 1, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
         gpu_engine_plan_open(plan, true);
-        assert_eq!(gpu_engine_plan_row(plan, 0, -1, OVER.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 30000, MULTIPLY), 1);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, -1, OVER.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 30000, MULTIPLY), 1);
         gpu_engine_plan_close_atop(plan);
-        gpu_engine_plan_close(plan, 50000, NORMAL, 1);
+        gpu_engine_plan_close(plan, 50000, NORMAL, 1, -1, 65535);
     }
     let sets = [
         TileSet { x0: 0, y0: 0, columns: 2, rows: 1, tiles: vec![Some(at[0]), Some(at[1])] },
@@ -152,7 +164,7 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
     let built = ran(&pool, plan, [0, 0, 300, 120]).expect("run");
     // SAFETY: `plan` came from `gpu_engine_plan_new`.
     unsafe { gpu_engine_plan_free(plan) };
-    assert_eq!(built, ran_in_rust(&pool, &sets, &matrices, &steps));
+    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &matrices, &[], &steps));
 }
 
 // A row copied over nothing lays its stored bytes, tile for tile in the
@@ -165,7 +177,7 @@ fn a_row_copied_over_nothing_lays_the_bytes_stored() {
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         gpu_engine_plan_set(plan, 0, 0, 3, 1, at.iter().map(|&at| word(at)).collect::<Vec<_>>().as_ptr());
-        gpu_engine_plan_row(plan, 0, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
+        gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
     }
     let read = ran(&pool, plan, NO_EDGE).expect("run");
     // SAFETY: `plan` came from `gpu_engine_plan_new`.
@@ -184,7 +196,7 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         gpu_engine_plan_set(plan, 0, 0, 2, 1, [word(at[0]), word(at[1])].as_ptr());
-        gpu_engine_plan_row(plan, 0, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
+        gpu_engine_plan_row(plan, 0, -1, -1, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
     }
     // Where the pose's tent reads stored pixels alone, so what it lays is
     // opaque: source y = y − 9 ± 1 inside the tiles from y = 10, source x =
@@ -220,7 +232,7 @@ fn a_row_whose_pose_lands_nothing_is_left_out() {
     let behind = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0];
     let plan = gpu_engine_plan_new();
     // SAFETY: `plan` is live and `behind` holds nine.
-    let added = unsafe { gpu_engine_plan_row(plan, 0, -1, behind.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL) };
+    let added = unsafe { gpu_engine_plan_row(plan, 0, -1, -1, -1, behind.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL) };
     assert_eq!(added, 0);
     // SAFETY: `plan` is live.
     assert!(unsafe { &*plan }.steps.is_empty());
@@ -237,12 +249,12 @@ fn what_is_refused_says_why() {
     let past = [1e12; MATRIX_WORDS];
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
-        assert_eq!(gpu_engine_plan_row(plan, 0, -1, IDENTITY.as_ptr(), 1.0, 2, TILE, TILE, 65535, NORMAL), -1);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, 2, TILE, TILE, 65535, NORMAL), -1);
         assert!(last_error().contains("sampling"), "{}", last_error());
         assert_eq!(gpu_engine_plan_matrix(plan, past.as_ptr()), -1);
         assert!(last_error().contains("matrix"), "{}", last_error());
         assert!((*plan).steps.is_empty() && (*plan).matrices.is_empty());
-        gpu_engine_plan_row(plan, 5, -1, IDENTITY.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
+        gpu_engine_plan_row(plan, 5, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
     }
     assert!(ran(&pool, plan, NO_EDGE).is_none());
     assert!(last_error().contains("tile set 5"), "{}", last_error());
@@ -259,4 +271,236 @@ fn the_c_abi_makes_an_executor_and_frees_it() {
     // SAFETY: `composite` came from `gpu_engine_composite_new`.
     unsafe { gpu_engine_composite_free(composite) };
     assert_eq!(gpu_engine_composited_bytes(3), 3 * TILE_BYTES);
+}
+
+/// An iris of six sides turned by 20°, a little round and drawn out: its
+/// sides, then its roundness, aspect and three turns as `lens` names them.
+fn hexagon() -> (u32, [f64; 8]) {
+    let (turn, half, side) = (20f64.to_radians(), 30f64.to_radians(), 60f64.to_radians());
+    (6, [0.25, 1.25, turn.cos(), turn.sin(), half.cos(), half.sin(), side.cos(), side.sin()])
+}
+
+/// [`hexagon`]'s iris and then `rest` — the radius, the fringe, the light's
+/// gain, threshold and saturation: the thirteen `gpu_engine_plan_chain_lens`
+/// reads.
+fn lens_words(rest: [f64; 5]) -> [f64; 13] {
+    let (_, iris) = hexagon();
+    std::array::from_fn(|at| if at < 8 { iris[at] } else { rest[at - 8] })
+}
+
+/// The lens of `l`, as `gpu_engine_plan_chain_lens` reads it.
+fn lens_of(l: &[f64; 13], linear: bool, paper: Option<[i32; 4]>) -> Lens {
+    let (sides, _) = hexagon();
+    Lens {
+        iris: Iris {
+            sides,
+            roundness: l[0],
+            aspect: l[1],
+            turn: [l[2], l[3]],
+            half_side: [l[4], l[5]],
+            side: [l[6], l[7]],
+        },
+        radius: l[8],
+        fringe: l[9],
+        light: Light { gain: l[10], threshold: l[11], saturation: l[12], linear },
+        paper,
+    }
+}
+
+/// A run of one key's tables: red under 128, any green, blue over 127 — a
+/// quarter of a tile's colours —, its alpha map a third of what it reads.
+fn quarter_run() -> ([[u32; 256]; 3], Vec<u8>) {
+    let table = |inside: fn(usize) -> bool| std::array::from_fn(|byte| u32::from(inside(byte)));
+    let tables = [table(|byte| byte < 128), table(|_| true), table(|byte| byte > 127)];
+    (tables, (0..256).map(|alpha| (alpha / 3) as u8).collect())
+}
+
+/// A row of tile set `set`, keyed by `keys` or chained by `chain` if any,
+/// posed by `map`, laid at `opacity` in `mode`.
+fn row(set: usize, keys: Option<usize>, chain: Option<usize>, map: ResampleMap, opacity: u32, mode: u32) -> Step {
+    Step::Row { set, keys, chain, map, matrix: None, opacity, mode, masked: false }
+}
+
+// Every call names a field of its op: a row keyed and a row chained, a
+// chain of every op — a lens blur among them reading a map drawn from
+// rows —, and a folder's close chained at a mix composite as the same
+// plan built in Rust.
+#[test]
+fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust() {
+    let tiles = [tile(4, true), tile(5, true), tile(6, false)];
+    let (pool, at) = stored(&tiles);
+    let (sides, _) = hexagon();
+    let lens = lens_words([4.5, 80.0, 1.5, 0.7, 0.4]);
+    let ([red, green, blue], maps) = quarter_run();
+    let contrast: [f64; MATRIX_WORDS] = [
+        1.4, 0.0, 0.0, 0.0, -20.0, 0.0, 1.2, 0.1, 0.0, 5.0, 0.0, 0.0, 0.8, 0.0, 30.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+    ];
+    let paper = [0, 0, 250, 128];
+    let repeat = [4, 6, 200, 120];
+    let plate = [6, 0, 250, 128];
+    let taps = [5u32, 3];
+    let passes: [f64; 24] = [
+        1.5, 0.5, 100.0, 60.0, 1.0, 0.0, 0.0, 1.0, 0.99, 0.01, -0.01, 0.99, //
+        0.0, 2.0, 120.0, 40.0, 1.0, 0.05, 0.0, 1.0, 1.0, 0.0, 0.0, 1.02,
+    ];
+    let picture = [0, 0, 2 * TILE as i32, TILE as i32];
+    let plan = gpu_engine_plan_new();
+    // SAFETY: `plan` is live; each array holds what its call reads.
+    unsafe {
+        assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [word(at[0]), word(at[1])].as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_set(plan, 1, 0, 1, 1, [word(at[2])].as_ptr()), 1);
+        assert_eq!(gpu_engine_plan_keys(plan), 0);
+        for restores in [0, 1] {
+            let added = gpu_engine_plan_key_run(plan, 0, red.as_ptr(), green.as_ptr(), blue.as_ptr(), restores, maps.as_ptr(), 1);
+            assert_eq!(added, 1);
+        }
+        assert_eq!(gpu_engine_plan_row(plan, 1, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
+        assert_eq!(gpu_engine_plan_map_drawn(plan, 0, 4, 140.0, true), 0);
+        assert_eq!(gpu_engine_plan_steps(plan), 0);
+        assert_eq!(gpu_engine_plan_chain(plan, 0, 0, 2, 1), 0);
+        assert_eq!(gpu_engine_plan_chain_matrix(plan, 0, contrast.as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_chain_keys(plan, 0, 0), 0);
+        assert_eq!(gpu_engine_plan_chain_gaussian(plan, 0, 3, 2, repeat.as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_chain_line(plan, 0, plate.as_ptr(), taps.as_ptr(), passes.as_ptr(), 2), 0);
+        let lensed = gpu_engine_plan_chain_lens(plan, 0, picture.as_ptr(), sides, lens.as_ptr(), true, paper.as_ptr(), 0);
+        assert_eq!(lensed, 0);
+        assert_eq!(gpu_engine_plan_chain(plan, 0, 0, 3, 1), 1);
+        assert_eq!(gpu_engine_plan_chain_gaussian(plan, 1, 2, 0, std::ptr::null()), 0);
+        gpu_engine_plan_open(plan, false);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, 0, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 60000, MULTIPLY), 1);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, 0, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 50000, SCREEN), 1);
+        gpu_engine_plan_close(plan, 45000, NORMAL, -1, 1, 40000);
+    }
+    let sets = [
+        TileSet { x0: 0, y0: 0, columns: 2, rows: 1, tiles: vec![Some(at[0]), Some(at[1])] },
+        TileSet { x0: 1, y0: 0, columns: 1, rows: 1, tiles: vec![Some(at[2])] },
+    ];
+    let key_run = |restores| KeyRun { red: &red, green: &green, blue: &blue, restores, maps: &maps }.words();
+    let keys = [KeyChain { runs: vec![key_run(0), key_run(1)] }];
+    let map_rows = [row(1, None, None, map(IDENTITY, ResampleMode::Blend), 65535, NORMAL)];
+    let line = |at: usize| {
+        let m = &passes[12 * at..];
+        LinePass {
+            taps: taps[at],
+            step: [m[0], m[1]],
+            centre: [m[2], m[3]],
+            first: [m[4], m[5], m[6], m[7]],
+            each: [m[8], m[9], m[10], m[11]],
+        }
+    };
+    let drawn = BlurMap {
+        tiles: MapTiles::Drawn(&map_rows),
+        channel: MapChannel::Luminance,
+        focus: Focus { focal: 140.0, inverts: true },
+    };
+    let chains = [
+        Chained {
+            ops: vec![
+                Op::Matrix(matrix_words(&contrast).expect("held")),
+                Op::Keys(keys[0].clone()),
+                Op::Gaussian { radius: (3, 2), edge: Edge::Repeat(repeat) },
+                Op::Line { plate, passes: vec![line(0), line(1)] },
+                Op::Lens { picture, lens: lens_of(&lens, true, Some(paper)), map: Some(drawn) },
+            ],
+            rect: TileRect { x0: 0, y0: 0, columns: 2, rows: 1 },
+        },
+        Chained {
+            ops: vec![Op::Gaussian { radius: (2, 0), edge: Edge::Nothing }],
+            rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
+        },
+    ];
+    let steps = [
+        Step::Open,
+        row(0, Some(0), None, map(POSED, ResampleMode::Blend), 60000, MULTIPLY),
+        row(0, None, Some(0), map(IDENTITY, ResampleMode::Blend), 50000, SCREEN),
+        Step::Close { opacity: 45000, mode: NORMAL, matrix: None, chain: Some(BufferChain { chain: 1, mix: 40000 }) },
+    ];
+    let built = ran(&pool, plan, [0, 0, 300, 120]).unwrap_or_else(|| panic!("{}", last_error()));
+    // SAFETY: `plan` came from `gpu_engine_plan_new`.
+    unsafe { gpu_engine_plan_free(plan) };
+    assert_eq!(built, ran_in_rust(&pool, &sets, &keys, &[], &chains, &steps));
+}
+
+// A map laid from what a run put is read as the tiles it holds, and the
+// plan keeps them past the run's own free.
+#[test]
+fn a_map_laid_from_a_run_is_read_as_its_tiles() {
+    let tiles = [tile(7, true), tile(8, true), tile(9, true)];
+    let (pool, at) = stored(&tiles);
+    let (sides, _) = hexagon();
+    let lens = lens_words([5.0, 0.0, 0.0, 1.0, 0.0]);
+    let picture = [0, 0, 3 * TILE as i32, TILE as i32];
+    let words = [word(at[0]), word(at[1]), word(at[2])];
+    let laid = gpu_engine_plan_new();
+    let plan = gpu_engine_plan_new();
+    // SAFETY: the plans are live; each array holds what its call reads.
+    let out = unsafe {
+        gpu_engine_plan_set(laid, 0, 0, 3, 1, words.as_ptr());
+        gpu_engine_plan_row(laid, 0, -1, -1, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
+        let out = run_out(&pool, laid, NO_EDGE);
+        gpu_engine_plan_set(plan, 0, 0, 3, 1, words.as_ptr());
+        assert_eq!(gpu_engine_plan_map_laid(plan, out, 2, 90.0, false), 0);
+        gpu_engine_plan_chain(plan, 0, 0, 3, 1);
+        gpu_engine_plan_chain_lens(plan, 0, picture.as_ptr(), sides, lens.as_ptr(), false, std::ptr::null(), 0);
+        gpu_engine_plan_row(plan, 0, -1, -1, 0, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
+        out
+    };
+    // SAFETY: `out` came from a run.
+    let map_tiles = unsafe { &*out }.out.clone();
+    // SAFETY: each came from its maker.
+    unsafe {
+        gpu_engine_composited_free(out);
+        gpu_engine_plan_free(laid);
+    }
+    let built = ran(&pool, plan, [0, 0, 300, 120]).unwrap_or_else(|| panic!("{}", last_error()));
+    // SAFETY: `plan` came from `gpu_engine_plan_new`.
+    unsafe { gpu_engine_plan_free(plan) };
+    let sets = [TileSet { x0: 0, y0: 0, columns: 3, rows: 1, tiles: at.iter().copied().map(Some).collect() }];
+    let read = BlurMap {
+        tiles: MapTiles::Laid(&map_tiles),
+        channel: MapChannel::Blue,
+        focus: Focus { focal: 90.0, inverts: false },
+    };
+    let chains = [Chained {
+        ops: vec![Op::Lens { picture, lens: lens_of(&lens, false, None), map: Some(read) }],
+        rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
+    }];
+    let steps = [row(0, None, Some(0), map(IDENTITY, ResampleMode::Blend), 65535, NORMAL)];
+    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &[], &chains, &steps));
+}
+
+// What a chain's call cannot add says why.
+#[test]
+fn what_a_chain_s_call_refuses_says_why() {
+    let ([red, green, blue], maps) = quarter_run();
+    let many = vec![0u8; 256 * 33];
+    let matrix = [0.0; MATRIX_WORDS];
+    let picture = [0, 0, 1, 1];
+    let (sides, _) = hexagon();
+    let lens = lens_words([2.0, 0.0, 0.0, 1.0, 0.0]);
+    let plan = gpu_engine_plan_new();
+    // SAFETY: `plan` is live; each array holds what its call reads.
+    unsafe {
+        let run = |maps: &[u8], count| {
+            gpu_engine_plan_key_run(plan, 0, red.as_ptr(), green.as_ptr(), blue.as_ptr(), 0, maps.as_ptr(), count)
+        };
+        assert_eq!(run(&maps, 1), -1);
+        assert!(last_error().contains("no key chain 0"), "{}", last_error());
+        gpu_engine_plan_keys(plan);
+        assert_eq!(run(&many, 33), -1);
+        assert!(last_error().contains("33 keys"), "{}", last_error());
+        assert_eq!(gpu_engine_plan_chain_matrix(plan, 0, matrix.as_ptr()), -1);
+        assert!(last_error().contains("no effect chain 0"), "{}", last_error());
+        assert_eq!(gpu_engine_plan_chain_keys(plan, 0, 1), -1);
+        assert!(last_error().contains("no key chain 1"), "{}", last_error());
+        gpu_engine_plan_chain(plan, 0, 0, 1, 1);
+        let lensed = gpu_engine_plan_chain_lens(plan, 0, picture.as_ptr(), sides, lens.as_ptr(), false, std::ptr::null(), 0);
+        assert_eq!(lensed, -1);
+        assert!(last_error().contains("no blur map 0"), "{}", last_error());
+        assert_eq!(gpu_engine_plan_map_drawn(plan, 1, 0, 0.0, false), -1);
+        assert!(last_error().contains("step 1 of 0"), "{}", last_error());
+        assert_eq!(gpu_engine_plan_map_drawn(plan, 0, 5, 0.0, false), -1);
+        assert!(last_error().contains("channel"), "{}", last_error());
+        gpu_engine_plan_free(plan);
+    }
 }

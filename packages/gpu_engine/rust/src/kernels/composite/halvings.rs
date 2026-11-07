@@ -27,6 +27,10 @@
 //! its tiles that read there — the executor's own question of which output
 //! tiles a pose reads ([`ResampleMap::reads`]) — and so down the stages.
 
+// ⏳Only the tests read the stages until the screen does (screen-on-the-engine,
+// the editing screen's commit).
+#![cfg_attr(not(test), allow(dead_code))]
+
 #[cfg(test)]
 #[path = "halvings_tests.rs"]
 mod tests;

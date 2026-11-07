@@ -31,6 +31,7 @@ pub(crate) const MOST_TAPS: u32 = 32;
 const MAP_LIMIT: f64 = (1u64 << 24) as f64;
 const PIXEL_LIMIT: i32 = 1 << 15;
 const SHIFT_LIMIT: f64 = (1u64 << 31) as f64;
+#[cfg_attr(not(test), allow(dead_code))]
 const IDENTITY: [f64; 4] = [1.0, 0.0, 0.0, 1.0];
 /// The rows past where a band's taps land, each side, that the plane its
 /// pass reads holds besides: line.wgsl's Q.20 maps and Q.16 shifts land a
@@ -54,6 +55,8 @@ pub(crate) struct LinePass {
 
 impl LinePass {
     /// A directional blur's pass: no turn and no scale.
+    // Only the tests make one so; the app gives every pass its maps.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn along(step: [f64; 2], taps: u32) -> Self {
         LinePass {
             taps,
