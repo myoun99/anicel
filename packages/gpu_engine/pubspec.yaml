@@ -24,12 +24,23 @@ dependencies:
 #   registration is handed the registrar that owns Flutter's textures and
 #   the DXGI adapter Flutter draws with;
 # - so is the Android one, for the same reason: only a plugin is handed
-#   the texture registry whose windows the engine presents into.
+#   the texture registry whose windows the engine presents into;
+# - and so are the iOS and macOS one (darwin/, one source for both) and
+#   the Linux one: their registrars own Flutter's textures as Windows'
+#   does, and each binds the same three texture calls from Dart.
 flutter:
   plugin:
     platforms:
       android:
         package: com.myoun.gpu_engine
         pluginClass: GpuEnginePlugin
+      ios:
+        pluginClass: GpuEnginePlugin
+        sharedDarwinSource: true
+      linux:
+        pluginClass: GpuEnginePlugin
+      macos:
+        pluginClass: GpuEnginePlugin
+        sharedDarwinSource: true
       windows:
         pluginClass: GpuEnginePluginCApi

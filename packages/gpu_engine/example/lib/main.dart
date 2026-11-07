@@ -9,6 +9,8 @@
 //
 //   flutter run -d windows --release --dart-define=GPU_OUT=<dir>
 //   flutter run -d <android device> --release
+//   flutter build macos|linux, and run the built app, as the GPU engine's
+//   CI does (.github/workflows/gpu-engine.yml)
 //
 // Writes `report.txt` into GPU_OUT (default: gpu_probe_out in the system
 // temp folder — the app's own cache on Android), prints it, and exits. On
@@ -121,7 +123,9 @@ class _ProbeAppState extends State<_ProbeApp> {
     report.writeln('video memory with one $_side² surface: '
         '${_videoMemory(engine)}');
 
-    _reportWhatAngleSees(report, front);
+    if (Platform.isWindows) {
+      _reportWhatAngleSees(report, front);
+    }
     if (!await _checkScreen(report, engine, bgra: bgra)) {
       // Timing a texture Flutter does not draw would measure nothing.
       report.writeln('not on screen: round trip not measured');
@@ -184,7 +188,12 @@ class _ProbeAppState extends State<_ProbeApp> {
     shot
       ..fill(_seed)
       ..present();
-    final shown = await _screenShows(report, shot.textureId, written);
+    final shown = await _screenShows(
+      report,
+      shot.textureId,
+      written,
+      bgra: false,
+    );
     await shot.free();
     if (!shown) {
       report.writeln('not on screen: round trip not measured');
@@ -240,8 +249,7 @@ class _ProbeAppState extends State<_ProbeApp> {
   }
 
   /// The fingerprint of what the fill pass writes for [_seed] on a
-  /// [_shotSide]² RGBA surface. The screen is read as RGBA, and the
-  /// crate's tests pin that the two orders hold the same texels.
+  /// [_shotSide]² RGBA surface — for a window, which reads nothing back.
   int _written(GpuEngine engine) {
     final reference = engine.surface(_shotSide, _shotSide, bgra: false);
     reference.fill(_seed);
@@ -251,29 +259,32 @@ class _ProbeAppState extends State<_ProbeApp> {
   }
 
   /// Whether the screen shows exactly the bytes the GPU wrote, through a
-  /// shared texture.
+  /// shared texture: against the surface's own bytes, read back — no RGBA
+  /// surface stands in for a BGRA one, which iOS and macOS alone take.
   Future<bool> _checkScreen(
     StringBuffer report,
     GpuEngine engine, {
     required bool bgra,
   }) async {
-    final written = _written(engine);
     final shot = engine.surface(_shotSide, _shotSide, bgra: bgra);
     shot.fill(_seed);
+    final written = shot.fingerprint();
     final texture = SharedTexture.register(shot)..show(0);
-    final shown = await _screenShows(report, texture.id, written);
+    final shown = await _screenShows(report, texture.id, written, bgra: bgra);
     await _unregister([texture]);
     shot.free();
     return shown;
   }
 
   /// Whether texture [textureId], shown one texel per pixel, puts exactly
-  /// the bytes whose fingerprint is [written] on the screen.
+  /// the bytes whose fingerprint is [written] on the screen. The screen is
+  /// read as RGBA and put in the texture's order, BGRA when [bgra].
   Future<bool> _screenShows(
     StringBuffer report,
     int textureId,
-    int written,
-  ) async {
+    int written, {
+    required bool bgra,
+  }) async {
     final ratio = View.of(context).devicePixelRatio;
     await _show(textureId, _shotSide / ratio);
     final boundary =
@@ -287,7 +298,15 @@ class _ProbeAppState extends State<_ProbeApp> {
       report.writeln('screen: captured $size, not $_shotSide², not compared');
       return false;
     }
-    final seen = fingerprintBytes(bytes.buffer.asUint8List());
+    final texels = bytes.buffer.asUint8List();
+    if (bgra) {
+      for (var at = 0; at < texels.length; at += 4) {
+        final red = texels[at];
+        texels[at] = texels[at + 2];
+        texels[at + 2] = red;
+      }
+    }
+    final seen = fingerprintBytes(texels);
     report.writeln('screen bytes ${_hex(seen)} vs GPU ${_hex(written)}: '
         '${seen == written ? 'MATCH' : 'MISMATCH'}');
     return seen == written;

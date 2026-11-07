@@ -37,10 +37,11 @@ class GpuEngine {
   GpuEngine._(this._engine, this.adapterLuid);
 
   /// Opens on Flutter's own adapter, so what the engine writes lives on
-  /// the GPU that shows it: on Windows the one Flutter names by LUID, on
-  /// Android the only one there is.
+  /// the GPU that shows it: on Windows the one Flutter names by LUID;
+  /// elsewhere Flutter names none to a plugin, so the only one there is
+  /// (rust/src/device.rs, `open_sole`).
   factory GpuEngine.onFlutterAdapter() {
-    if (Platform.isAndroid) {
+    if (!Platform.isWindows) {
       return GpuEngine._(_opened(rust.engineOpenSole()), null);
     }
     final luid = shim.flutterAdapterLuid();
@@ -74,7 +75,7 @@ class GpuEngine {
   });
 
   /// This process's use of the adapter's local video memory, in bytes; 0
-  /// where the platform cannot say (Android).
+  /// where the platform cannot say (Android, Linux).
   int get videoMemoryBytes => rust.engineVideoMemory(_engine);
 
   /// A texture of [width] × [height] 8-bit texels, BGRA when [bgra].
@@ -152,8 +153,12 @@ class GpuSurface {
   });
 
   /// What a D3D11 device of Flutter's adapter sees when it opens the
-  /// handle, as ANGLE will; null when it cannot open it.
+  /// handle, as ANGLE will; null when it cannot open it, and off Windows,
+  /// where Flutter draws with no ANGLE.
   ({int format, int bindFlags, int miscFlags})? inspect() => using((arena) {
+    if (!Platform.isWindows) {
+      return null;
+    }
     final format = arena<Uint32>();
     final bindFlags = arena<Uint32>();
     final miscFlags = arena<Uint32>();
@@ -222,7 +227,8 @@ class GpuWindow {
 }
 
 /// A Flutter external texture that shows [front], or [back] once
-/// [show] picks slot 1.
+/// [show] picks slot 1 — Windows', iOS', macOS' and Linux' way to the
+/// screen: the engine makes the texture, Flutter shows it.
 class SharedTexture {
   SharedTexture._(this.id);
 
@@ -245,5 +251,7 @@ class SharedTexture {
   /// Shows slot 0 (front) or 1 (back) on the next frame.
   bool show(int slot) => shim.textureShow(id, slot);
 
+  /// Flutter must no longer show the texture: on Linux nothing tells the
+  /// plugin when Flutter stops drawing it (linux/gpu_engine_plugin.cc).
   void unregister() => shim.textureUnregister(id);
 }
