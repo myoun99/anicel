@@ -1,5 +1,6 @@
-/// Anicel's GPU engine, stage 0 (gpu-engine-skeleton): measurement only —
-/// nothing in the app uses it yet.
+/// Anicel's GPU engine: one wgpu device on the adapter Flutter draws with,
+/// the pool the app's tiles are stored in, and its kernels
+/// (gpu-engine-skeleton, screen-on-the-engine).
 library;
 
 import 'dart:convert';
@@ -50,6 +51,11 @@ class GpuEngine {
     }
     return GpuEngine._(_opened(rust.engineOpen(luid)), luid);
   }
+
+  /// Opens on the platform's first adapter — `flutter test`'s, where no
+  /// Flutter names one (rust/src/device.rs, `open_first`).
+  factory GpuEngine.onFirstAdapter() =>
+      GpuEngine._(_opened(rust.engineOpenFirst()), null);
 
   static Pointer<rust.Engine> _opened(Pointer<rust.Engine> engine) {
     if (engine == nullptr) {
@@ -174,6 +180,77 @@ class GpuSurface {
 
   /// Frees the surface; Flutter must no longer show it.
   void free() => rust.surfaceFree(_surface);
+}
+
+/// The side of the tiles a [GpuPool] stores, in texels: a tile is that
+/// square of straight RGBA8, [gpuTileBytes] long.
+final int gpuTileSide = rust.tileSide();
+
+/// The bytes of a tile a [GpuPool] stores.
+final int gpuTileBytes = gpuTileSide * gpuTileSide * 4;
+
+/// Where a [GpuPool] keeps a tile: a slot of one of its pages.
+typedef GpuTile = ({int page, int slot});
+
+/// The engine's pages of tiles (rust/src/kernels/pool): each tile stored
+/// lands in a fresh slot of its cel and stays there until let go.
+class GpuPool {
+  /// A pool on [engine] that makes no page past [mostBytes].
+  factory GpuPool(GpuEngine engine, int mostBytes) {
+    final pool = rust.poolNew(engine._engine, mostBytes);
+    if (pool == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuPool._(engine, pool);
+  }
+
+  GpuPool._(this._engine, this._pool);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Pool> _pool;
+
+  /// A cel of its own: the tiles stored under it keep to pages of theirs.
+  int cel() => rust.poolCel(_pool);
+
+  /// Stores [tiles] — [gpuTileBytes] at each, alive for the call — under
+  /// [cel], each in a fresh slot, and returns where each landed, in order:
+  /// all of them, or the first few where the pool is full at the next.
+  List<GpuTile> store(int cel, List<Pointer<Uint8>> tiles) {
+    if (tiles.isEmpty) {
+      return const [];
+    }
+    return using((arena) {
+      final count = tiles.length;
+      final at = arena<Pointer<Uint8>>(count);
+      for (var tile = 0; tile < count; tile++) {
+        at[tile] = tiles[tile];
+      }
+      final pages = arena<Uint16>(count);
+      final slots = arena<Uint16>(count);
+      final stored = rust.poolStore(
+        _pool,
+        _engine._engine,
+        cel,
+        at,
+        count,
+        pages,
+        slots,
+      );
+      if (stored < 0) {
+        throw StateError(_lastError());
+      }
+      return [
+        for (var tile = 0; tile < stored; tile++)
+          (page: pages[tile], slot: slots[tile]),
+      ];
+    });
+  }
+
+  /// Lets [tile] go; false where no tile is held there.
+  bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
+
+  /// Frees the pool's pages; before its engine is closed.
+  void free() => rust.poolFree(_pool);
 }
 
 /// The fingerprint of [bytes] by the engine's own code — for bytes read off

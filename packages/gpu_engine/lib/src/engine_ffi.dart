@@ -13,11 +13,16 @@ final class Texture extends Opaque {}
 
 final class Window extends Opaque {}
 
+final class Pool extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
 @Native<Pointer<Engine> Function()>(symbol: 'gpu_engine_open_sole')
 external Pointer<Engine> engineOpenSole();
+
+@Native<Pointer<Engine> Function()>(symbol: 'gpu_engine_open_first')
+external Pointer<Engine> engineOpenFirst();
 
 @Native<Void Function(Pointer<Engine>)>(symbol: 'gpu_engine_close')
 external void engineClose(Pointer<Engine> engine);
@@ -112,6 +117,46 @@ external bool surfaceFingerprint(
   symbol: 'gpu_engine_fingerprint_bytes',
 )
 external int fingerprintBytes(Pointer<Uint8> bytes, int length);
+
+@Native<Uint32 Function()>(symbol: 'gpu_engine_tile_side')
+external int tileSide();
+
+@Native<Pointer<Pool> Function(Pointer<Engine>, Uint64)>(
+  symbol: 'gpu_engine_pool_new',
+)
+external Pointer<Pool> poolNew(Pointer<Engine> engine, int mostBytes);
+
+@Native<Void Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_free')
+external void poolFree(Pointer<Pool> pool);
+
+@Native<Uint32 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_cel')
+external int poolCel(Pointer<Pool> pool);
+
+@Native<
+  IntPtr Function(
+    Pointer<Pool>,
+    Pointer<Engine>,
+    Uint32,
+    Pointer<Pointer<Uint8>>,
+    Size,
+    Pointer<Uint16>,
+    Pointer<Uint16>,
+  )
+>(symbol: 'gpu_engine_pool_store')
+external int poolStore(
+  Pointer<Pool> pool,
+  Pointer<Engine> engine,
+  int cel,
+  Pointer<Pointer<Uint8>> tiles,
+  int count,
+  Pointer<Uint16> pages,
+  Pointer<Uint16> slots,
+);
+
+@Native<Bool Function(Pointer<Pool>, Uint16, Uint16)>(
+  symbol: 'gpu_engine_pool_release',
+)
+external bool poolRelease(Pointer<Pool> pool, int page, int slot);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);

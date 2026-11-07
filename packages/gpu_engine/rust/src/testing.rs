@@ -3,7 +3,6 @@
 use std::sync::OnceLock;
 
 use crate::device::Engine;
-use crate::platform;
 
 pub use ledger::assert_pinned;
 
@@ -15,14 +14,7 @@ pub use ledger::assert_pinned;
 /// (관제, gpu-engine-skeleton 2026-11-05 14:49).
 pub fn first_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(|| {
-        let instance = platform::instance();
-        let adapter = platform::adapters(&instance)
-            .into_iter()
-            .next()
-            .expect("these tests need a GPU adapter");
-        Engine::on(instance, adapter).expect("open the engine")
-    })
+    ENGINE.get_or_init(|| Engine::open_first().expect("these tests need a GPU adapter"))
 }
 
 /// `buffer`'s bytes once the GPU is done with all that was submitted — the

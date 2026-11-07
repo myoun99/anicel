@@ -33,7 +33,7 @@ mod tests;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE_BYTES, TileAt};
+use crate::kernels::composite::{TILE, TILE_BYTES, TileAt};
 use crate::kernels::shared::room;
 use crate::kernels::write::Write;
 use crate::platform::{self, VideoMemory};
@@ -165,6 +165,10 @@ impl Pool {
         };
         staging.unmap();
         let writes: Vec<(usize, TileAt)> = places.iter().copied().enumerate().collect();
+        // ⚠️No test reaches the release below: `put` refuses only what this
+        // store never hands it (a tile past the staging, a place past the
+        // pages — a mutant of it lived, 11-07). It stands so a refusal the
+        // write path learns later holds no slot for a tile that never landed.
         if copied.and_then(|()| Write::put(engine, &self.buffers, &staging, &writes)).is_none() {
             for &at in &places {
                 self.release(at);
@@ -308,6 +312,13 @@ pub unsafe extern "C" fn gpu_engine_pool_free(pool: *mut Pool) {
         // SAFETY: see the function's contract.
         drop(unsafe { Box::from_raw(pool) });
     }
+}
+
+/// The side of the tiles a pool stores, in texels: a tile is that square of
+/// straight RGBA8.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_tile_side() -> u32 {
+    TILE
 }
 
 /// A cel of its own, by the number the store names it with.

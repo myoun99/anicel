@@ -41,6 +41,16 @@ impl Engine {
         Self::on(instance, adapters.remove(0))
     }
 
+    /// Opens on the platform's first adapter: the tests', cargo's and
+    /// `flutter test`'s alike, where no Flutter names one.
+    pub(crate) fn open_first() -> Option<Self> {
+        let instance = platform::instance();
+        match platform::adapters(&instance).into_iter().next() {
+            Some(adapter) => Self::on(instance, adapter),
+            None => fail("no adapter"),
+        }
+    }
+
     pub(crate) fn on(instance: wgpu::Instance, adapter: wgpu::Adapter) -> Option<Self> {
         let required_features = adapter.features() & wgpu::Features::BGRA8UNORM_STORAGE;
         let request = adapter.request_device(&wgpu::DeviceDescriptor {
@@ -205,6 +215,13 @@ pub extern "C" fn gpu_engine_open(luid: u64) -> *mut Engine {
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open_sole() -> *mut Engine {
     boxed(Engine::open_sole())
+}
+
+/// Opens the engine on the platform's first adapter — `flutter test`'s,
+/// where no Flutter names one. Null on failure; see the last error.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_open_first() -> *mut Engine {
+    boxed(Engine::open_first())
 }
 
 /// # Safety

@@ -7,7 +7,8 @@
 // 🚨★★★WHAT THE TWO REACH COLUMNS MEAN, AND WHAT THEY DO NOT
 //
 // `reach` is the number of test FILES that can arrive here by following
-// imports at any distance. `direct` is how many name this file in an import
+// imports at any distance — the test config's among every suite's, as
+// flutter_test loads it. `direct` is how many name this file in an import
 // of their own. Neither says 「tested」; both are sound in one direction only:
 //
 //   reach == 0   →  NO test can execute a line of this file. Certain.
@@ -44,6 +45,7 @@ import 'dart:io';
 
 import 'code_map.dart';
 import 'import_graph.dart';
+import 'test_results.dart' show kTestConfig;
 
 /// The ranking the tool prints and the tests read: every lib file with
 /// how many suites can reach it and how many test files name it.
@@ -57,7 +59,16 @@ import 'import_graph.dart';
 
   final graph = buildImportGraph(roots: ['lib', 'test']);
   final testFiles = graph.keys.where(isSuite).toList()..sort();
-  final reached = reachedBy(testFiles, graph);
+  // flutter_test loads the config before every suite while nothing imports
+  // it — an edge the source does not write (affected_tests reads it the
+  // same way, kEveryTestReads). Without it a file only the config names is
+  // reached by no suite, and `reach == 0` is no longer certain (2026-11-07:
+  // the app's GPU engine seam, named by the config before any caller).
+  final run = {
+    ...graph,
+    for (final suite in testFiles) suite: {...?graph[suite], kTestConfig},
+  };
+  final reached = reachedBy(testFiles, run);
 
   /// Distance 1: the test code that NAMES this file. See the header — `reach`
   /// came back saturated and this is the column that discriminates.
