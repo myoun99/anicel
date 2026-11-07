@@ -138,9 +138,12 @@ struct Seen {
 
 impl Seen {
     /// ⚠️`MFInvokeCallback` QUEUES the callback; it does not call it — so
-    /// what is waited for is the notification, bounded, never assumed.
+    /// what is waited for is the notification, bounded, never assumed. Ten
+    /// seconds, as the race below: a deadline costs only when it fails, and
+    /// the work queue is the process's — the other tests' callbacks, a gated
+    /// one among them, may be ahead of this one on a loaded machine.
     fn wait_invoked(&self) {
-        let until = Instant::now() + Duration::from_secs(2);
+        let until = Instant::now() + Duration::from_secs(10);
         while self.invoked.load(Ordering::SeqCst) == 0 && Instant::now() < until {
             std::thread::sleep(Duration::from_millis(1));
         }
@@ -305,9 +308,15 @@ fn the_async_pair_reads_and_each_end_answers_for_its_own_read() {
     unsafe { stream.SetCurrentPosition(0) }.expect("placed");
     begin_read(&stream, &mut eight, &first).expect("the first read");
     begin_read(&stream, &mut three, &second).expect("the second read");
-    second_seen.wait_invoked();
+    // Both have begun before either ends — all the C's one field needs to
+    // answer wrong — so the gate opens here and each is then waited for.
+    // ⛔Not the second's first with the first held shut: the work queue may
+    // run the two one after the other, and then the second waits behind the
+    // held first until its deadline — the landing gate's debug run, 2026-11-07
+    // 15:41 (board native-to-rust), saw nothing of it in two seconds.
     gate.open();
     first_seen.wait_invoked();
+    second_seen.wait_invoked();
     assert_eq!(first_seen.ended.load(Ordering::SeqCst), 8, "the first read's EndRead reports the first read");
     assert_eq!(second_seen.ended.load(Ordering::SeqCst), 3, "the second's, the second");
 
