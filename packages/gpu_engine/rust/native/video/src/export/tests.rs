@@ -247,11 +247,12 @@ fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Result<Opt
 /// A track as its writer laid it: the four letters its sample entry names
 /// (`avc1`, `mp4a`, `apcn` …) and its samples in order — its sample sizes,
 /// laid along its chunks, with VideoToolbox's notes taken out ([`NOTE`]),
-/// and how many it held.
+/// and how many it held — and how many samples it has.
 struct Track {
     format: String,
     samples: Vec<u8>,
     notes: usize,
+    count: usize,
 }
 
 /// The UUID of the user data VideoToolbox writes into its H.264 and HEVC
@@ -418,7 +419,7 @@ fn track(movie: &[u8], trak: Atom) -> Result<Track, String> {
     if sample != sizes.len() {
         return Err(format!("{} of {} samples lie in a chunk", sample, sizes.len()));
     }
-    Ok(Track { format, samples: bytes, notes })
+    Ok(Track { format, samples: bytes, notes, count: sizes.len() })
 }
 
 /// A movie as its writer decides it: every box but the media data and the
@@ -645,6 +646,12 @@ fn video_toolbox_s_note_and_only_it_is_taken_out() {
 // written on, so the next run has to answer both (관제 11-07). It answered
 // (42366555125): every H.264 and HEVC movie parts at one place, where the C
 // parts from itself — VideoToolbox's note ([`NOTE`]).
+//
+// ⛔GOES WITH THE C: its bytes are the OS encoder's and muxer's, and are
+// not frozen once the C is gone (유저 connection-round-checklist-Q14,
+// 2026-11-07). What stays is what the writer decides: the movie's streams
+// and a sample for every frame (below), and each movie read back as it was
+// asked (`tests/decode.rs`).
 #[test]
 fn the_movie_is_the_c_s_but_for_its_clock_chunking_and_note() {
     let _one = one_at_a_time();
@@ -681,6 +688,37 @@ fn the_movie_is_the_c_s_but_for_its_clock_chunking_and_note() {
     assert!(apart.is_empty(), "{}", apart.join("\n"));
 }
 
+// What the writer lays in a movie, held where its bytes are not: a track
+// for the pictures, coded as asked — by either name ISO 14496-15 gives the
+// codec's entry — with a sample for every frame written, and one track more
+// for the sound when there is sound. Each pair of the lineup's MP4 this
+// build writes: HEVC chief among them, which not every machine that writes
+// it reads back (`tests/decode.rs`).
+#[test]
+fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
+    let _one = one_at_a_time();
+    let rust = rust();
+    for (name, shape, frames) in [
+        ("h264", MOVIE, 24),
+        ("h264-silent", Shape { channels: 0, ..MOVIE }, 6),
+        ("hevc", Shape { width: 1280, height: 720, codec: 1, ..MOVIE }, 6),
+    ] {
+        // SAFETY: plain numbers.
+        if unsafe { (rust.probe)(shape.container, shape.codec) } == 0 {
+            continue;
+        }
+        let file = temp(&format!("streams-{name}"), shape.container);
+        let movie = read_movie(&rust.movie(&file, shape, frames)).unwrap_or_else(|why| panic!("{name}: it reads — {why}"));
+        let entries: &[&str] = if shape.codec == 1 { &["hvc1", "hev1"] } else { &["avc1", "avc3"] };
+        let formats: Vec<&str> = movie.tracks.iter().map(|track| track.format.as_str()).collect();
+        let pictures: Vec<&Track> = movie.tracks.iter().filter(|track| entries.contains(&track.format.as_str())).collect();
+        let sounds = formats.iter().filter(|format| **format == "mp4a").count();
+        let sounding = usize::from(shape.channels > 0);
+        assert_eq!((pictures.len(), sounds, formats.len()), (1, sounding, 1 + sounding), "{name}: its tracks, {formats:?}");
+        assert_eq!(pictures[0].count, frames as usize, "{name}: a sample for every frame");
+    }
+}
+
 // The bitrate by hand: an encoder spends what a small frame needs whatever
 // it is offered, so the movies above cannot see the ceiling move.
 #[test]
@@ -702,21 +740,52 @@ fn a_bitrate_stays_between_its_floor_and_ceiling() {
 // lineup's two containers. A container outside it is written nowhere, held
 // to the law (`in_the_lineup`) rather than to the C, whose Apple writer took
 // H.264 in any container (관제's judgment, connection-round-checklist 11-07
-// 18:15).
+// 18:15). Where [`HELD`], the platform's writer's own answer too: Windows
+// writes the MP4's H.264 — Microsoft's encoder ships with it — and H.265
+// where the machine has an encoder, which is the machine's and not held
+// (this one has; the ARM runner, unmeasured); the Linux stub writes nothing.
 #[test]
 fn what_this_machine_can_write_is_the_c_s_answer() {
     let _one = one_at_a_time();
     let (c, rust) = (c(), rust());
     // SAFETY: no arguments.
     assert_eq!(unsafe { (rust.supported)() }, unsafe { (c.supported)() });
+    let writes = cfg!(any(windows, target_os = "android", target_vendor = "apple"));
+    // SAFETY: no arguments.
+    assert_eq!(unsafe { (rust.supported)() }, i32::from(writes), "the builds that write movies");
     for container in -1..=2 {
         for codec in -1..=7 {
             // SAFETY: plain numbers.
             let (ours, theirs) = unsafe { ((rust.probe)(container, codec), (c.probe)(container, codec)) };
             let want = if container == 0 || container == 1 { theirs } else { 0 };
             assert_eq!(ours, want, "container {container}, codec {codec}");
+            if HELD && !(cfg!(windows) && (container, codec) == (0, 1)) {
+                let own = i32::from(cfg!(windows) && (container, codec) == (0, 0));
+                assert_eq!(ours, own, "container {container}, codec {codec}: this platform's own answer");
+            }
         }
     }
+}
+
+/// Whether this platform's writer is held to its own words and answers
+/// without the C: Windows's, measured (2026-11-07), and the Linux stub's,
+/// its source (`none.rs`). ⚠️Not the Mac's until its job reads alike with
+/// the C's (관제 connection-round-checklist 11-07 21:04: two owners' red in
+/// one run costs a run to tell apart), nor Android's, which no run of these
+/// tests reaches.
+const HELD: bool = !cfg!(any(target_os = "android", target_vendor = "apple"));
+
+/// What Windows's writer says of a pair it does not write.
+const NOT_ON_WINDOWS: &str = "video export: Windows writes MP4 H.264/H.265 here - MOV/ProRes go through FFmpeg";
+
+/// The Linux stub's one answer to every open.
+const NO_OS: &str = "video export: no OS encoder on this platform";
+
+/// What a held platform's writer says: Windows's `windows`, the Linux
+/// stub's `linux`.
+fn own((answer, words): (i32, &str), linux: (i32, &str)) -> (i32, String) {
+    let (answer, words) = if cfg!(windows) { (answer, words) } else { linux };
+    (answer, words.to_owned())
 }
 
 /// A job no platform writes — a codec that is none of them — which the C
@@ -746,7 +815,7 @@ fn turned_away_alike(encoder: &Encoder) {
 /// step that says nothing leaves whatever the test before it left.
 /// ↩️2026-11-07: without it a test that asked one writer alone (sound at no
 /// rate) made the next test's 「nothing open」 differ, in 2 runs of 8.
-fn both_say(what: &str, step: impl Fn(&Encoder) -> i32) {
+fn both_say(what: &str, step: impl Fn(&Encoder) -> i32) -> (i32, String) {
     let (c, rust) = (c(), rust());
     for encoder in [c, rust] {
         turned_away_alike(&encoder);
@@ -754,13 +823,24 @@ fn both_say(what: &str, step: impl Fn(&Encoder) -> i32) {
     let theirs = (step(&c), c.last_error());
     let ours = (step(&rust), rust.last_error());
     assert_eq!(ours, theirs, "{what}");
+    ours
+}
+
+/// `said` held to the platform's writer's own words, where [`HELD`].
+fn expect_own(what: &str, said: &(i32, String), windows: (i32, &str), linux: (i32, &str)) {
+    if HELD {
+        assert_eq!(*said, own(windows, linux), "{what}: this platform's own words");
+    }
 }
 
 // Every open the C turns away, turned away with the C's words: pairs this
 // platform does not write, a path that does not convert or that leads
 // nowhere, and a second job while one runs. A pair one platform writes (a
 // MOV on Apple) is let go of again, by both. A job that is no job is the
-// one law's, below, not the C's.
+// one law's, below, not the C's. Where [`HELD`], in the platform's own
+// words — but for a folder that is not there: which call refuses it is the
+// OS's (on Windows, Media Foundation's sink), and so are the words, held
+// only to say why (유저 connection-round-checklist-Q14, 2026-11-07).
 #[test]
 fn an_open_is_refused_as_the_c_refuses_it() {
     let _one = one_at_a_time();
@@ -772,13 +852,16 @@ fn an_open_is_refused_as_the_c_refuses_it() {
         ("ProRes 4444", Shape { codec: 6, ..MOVIE }),
         ("no such codec", NO_CODEC),
     ] {
-        both_say(what, |encoder| encoder.tried(Some(path), shape));
+        let said = both_say(what, |encoder| encoder.tried(Some(path), shape));
+        expect_own(what, &said, (0, NOT_ON_WINDOWS), (0, NO_OS));
     }
     let long = std::env::temp_dir().join("a".repeat(1100)).to_str().unwrap().to_owned();
-    both_say("a path too long to convert", |encoder| encoder.tried(Some(&long), MOVIE));
+    let said = both_say("a path too long to convert", |encoder| encoder.tried(Some(&long), MOVIE));
+    expect_own("a path too long to convert", &said, (0, "video export: the output path did not convert"), (0, NO_OS));
     let nowhere = std::env::temp_dir().join("no-such-folder-here").join("x.mp4").to_str().unwrap().to_owned();
-    both_say("a path into no folder", |encoder| encoder.tried(Some(&nowhere), MOVIE));
-    both_say("a second job while one runs", |encoder| {
+    let said = both_say("a path into no folder", |encoder| encoder.tried(Some(&nowhere), MOVIE));
+    assert!(!HELD || (said.0 == 0 && !said.1.is_empty()), "a path into no folder is refused, and says why: {said:?}");
+    let said = both_say("a second job while one runs", |encoder| {
         if encoder.open(Some(path), MOVIE) == 0 {
             return -1;
         }
@@ -787,6 +870,7 @@ fn an_open_is_refused_as_the_c_refuses_it() {
         unsafe { (encoder.abort)() };
         second
     });
+    expect_own("a second job while one runs", &said, (0, super::BAD_OPEN), (-1, NO_OS));
     std::fs::remove_file(&file).ok();
 }
 
@@ -824,7 +908,9 @@ fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
 
 // Nothing open: nothing written, nothing finished, an abort that does
 // nothing — and an open job takes no null frame, no sound when silent, and
-// opens again after an abort.
+// opens again after an abort. Where [`HELD`], the platform's own answers,
+// none of them saying anything: what is left to read is the open turned
+// away before.
 #[test]
 fn a_call_out_of_turn_is_answered_as_the_c_answers_it() {
     let _one = one_at_a_time();
@@ -833,11 +919,12 @@ fn a_call_out_of_turn_is_answered_as_the_c_answers_it() {
     let frame = moving(64, 48, 0);
     let pcm = saw(10, 2, 0);
     // SAFETY: each pointer is null or holds what the call reads.
-    both_say("nothing open", |encoder| unsafe {
+    let said = both_say("nothing open", |encoder| unsafe {
         (encoder.abort)();
         (encoder.write_frame)(frame.as_ptr()) * 100 + (encoder.write_audio)(pcm.as_ptr(), 10) * 10 + (encoder.finish)()
     });
-    both_say("an open job", |encoder| unsafe {
+    expect_own("nothing open", &said, (0, NOT_ON_WINDOWS), (0, NO_OS));
+    let said = both_say("an open job", |encoder| unsafe {
         if encoder.open(Some(path), Shape { channels: 0, ..MOVIE }) == 0 {
             return -1;
         }
@@ -849,11 +936,13 @@ fn a_call_out_of_turn_is_answered_as_the_c_answers_it() {
         (encoder.abort)();
         answers + again
     });
+    expect_own("an open job", &said, (11, NOT_ON_WINDOWS), (-1, NO_OS));
     std::fs::remove_file(&file).ok();
 }
 
 // The message is handed out as the C hands it: cut to the room given, -1
-// where there is none.
+// where there is none — where [`HELD`], the platform's refusal of a codec
+// that is none, cut so.
 #[test]
 fn the_last_error_is_handed_out_as_the_c_hands_it() {
     let _one = one_at_a_time();
@@ -861,8 +950,11 @@ fn the_last_error_is_handed_out_as_the_c_hands_it() {
     for encoder in [c, rust] {
         turned_away_alike(&encoder);
     }
-    for capacity in [-1, 0, 1, 2, 5, 256] {
+    let (_, whole) = own((0, NOT_ON_WINDOWS), (0, NO_OS));
+    let cut = [(-1, -1, ""), (0, -1, ""), (1, -1, ""), (2, 1, "v"), (5, 4, "vide"), (256, whole.len() as i32, whole.as_str())];
+    for (capacity, length, words) in cut {
         assert_eq!(rust.error(capacity), c.error(capacity), "room for {capacity}");
+        assert!(!HELD || rust.error(capacity) == (length, words.to_owned()), "room for {capacity}: {:?}", rust.error(capacity));
     }
     // SAFETY: null is nowhere to put it.
     let nowhere = unsafe { ((rust.error)(std::ptr::null_mut(), 64), (c.error)(std::ptr::null_mut(), 64)) };
