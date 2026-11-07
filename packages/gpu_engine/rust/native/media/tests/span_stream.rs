@@ -360,6 +360,10 @@ fn a_close_waits_for_the_read_it_meets() {
     let blob = framed(&medium, BLOCK);
     let fixture = Fixture::new("race", &blob);
     let mut reads = 0;
+    // One deadline for the whole test, not one a round: a reader that never
+    // gets going — what LIVENESS is there to catch — would otherwise wait it
+    // out three hundred times.
+    let until = Instant::now() + Duration::from_secs(10);
     for _ in 0..300 {
         let racing = fixture.stream(0, blob.len() as i64, true);
         let stop = Arc::new(AtomicBool::new(false));
@@ -384,11 +388,15 @@ fn a_close_waits_for_the_read_it_meets() {
                 }
             })
         };
-        // Let the reader get going, then close under it.
-        for _ in 0..200 {
-            if count.load(Ordering::SeqCst) >= 2 {
-                break;
-            }
+        // Let the reader get going, then close under it. ⚠️By the clock, not
+        // by a count of yields (the C's 200 × `Sleep(0)`, ported as
+        // `yield_now`): Windows hands a yield only to a thread ready on the
+        // same core, and a new thread queued behind a busy core may not run
+        // in two hundred of them — the landing gate's debug run read nothing
+        // in all 300 rounds (2026-11-07, board native-to-rust 13:21). Yields,
+        // not a sleep, inside it: a 1 ms sleep took the test from 0.14 s to
+        // 4–7 s on the Surface, where the timer is coarser than that.
+        while count.load(Ordering::SeqCst) < 2 && Instant::now() < until {
             std::thread::yield_now();
         }
         // SAFETY: a plain COM call.
