@@ -257,6 +257,23 @@ void main() {
     expect(pixel(plain, [(0, 0)], 1, 1), nothing);
   });
 
+  test('a plan the executor refuses says why, run or shown', () {
+    final plan = GpuPlan()..close(mode: normal);
+    addTearDown(plan.free);
+    final surface = appGpuEngine.surface(8, 8, bgra: false);
+    addTearDown(surface.free);
+    final refused = throwsA(
+      isA<StateError>().having(
+        (error) => error.message,
+        'message',
+        contains('not open'),
+      ),
+    );
+
+    expect(() => composite.run(pool, plan, [(0, 0)], all), refused);
+    expect(() => composite.show(pool, plan, surface, (0, 0, 8, 8)), refused);
+  });
+
   test('what the C entries cannot count is refused before them', () {
     final plan = GpuPlan();
     addTearDown(plan.free);
