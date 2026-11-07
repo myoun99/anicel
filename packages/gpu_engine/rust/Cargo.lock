@@ -778,6 +778,7 @@ name = "fx_plugin"
 version = "0.0.1"
 dependencies = [
  "anicel-fx",
+ "ledger",
  "libloading",
  "oracle",
  "wasmtime",

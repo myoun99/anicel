@@ -357,10 +357,9 @@ fn hashed(width: usize, height: usize) -> Vec<u8> {
 /// The SDK's example (sdk/fx/example) — the plugin a maker starts from —
 /// asked its description, and its reach and render across offsets, colours
 /// and scales, on each host: the answers of its C build on the C host, the
-/// key it is held to, byte for byte.
-/// ⏳That key goes with the C at the connection round; the example then
-/// needs answers worked out here, as the Dart pin has them
-/// (an_fx_plugin_answers_through_the_engine's `shadowed`).
+/// key it is held to, byte for byte — and the key's bytes as the ledger
+/// pinned them, which stand when the connection round deletes the C
+/// (connection-round-checklist A).
 #[test]
 fn the_sdk_example_answers_as_the_c_host_does() {
     let (width, height) = (13, 9);
@@ -408,6 +407,7 @@ fn the_sdk_example_answers_as_the_c_host_does() {
             panic!("{who} parts from the C at byte {at} of {}", key.len());
         }
     }
+    ledger::assert_pinned("fx/sdk-example-answers", key);
 }
 
 /// A job with no values and no layers, their pointers null, is taken as the
