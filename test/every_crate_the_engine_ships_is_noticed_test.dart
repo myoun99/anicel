@@ -16,10 +16,24 @@ import '../tool/crates_for_host.dart';
 /// walk (tested beside it), so here every crate of the lock has to be
 /// accounted for — noticed, or found shipped on no target — once.
 void main() {
-  final file = noticedCrates(
-    jsonDecode(File('assets/licenses/rust_crates.json').readAsStringSync())
-        as Map<String, dynamic>,
-  );
+  final json =
+      jsonDecode(File('assets/licenses/rust_crates.json').readAsStringSync())
+          as Map<String, dynamic>;
+  final file = noticedCrates(json);
+
+  // A pinned file edited, and the list not written again, ships the old
+  // words — the list has to carry each pin as its folder holds it (named
+  // here as a literal, so a change under it runs this).
+  test('the list carries each pinned licence as it is pinned', () {
+    expect(Directory('tool/crate_licences').existsSync(), isTrue);
+    final notices = (json['notices'] as List).cast<Map<String, dynamic>>();
+    final texts = {for (final notice in notices) notice['text'] as String};
+    for (final pinned in pinnedTexts().values) {
+      for (final text in pinned) {
+        expect(texts, contains(text));
+      }
+    }
+  });
 
   test('the list was made for every target the engine is built for', () {
     final toolchain = File(
