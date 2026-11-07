@@ -15,12 +15,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final hook = File('packages/gpu_engine/hook/build.dart').readAsStringSync();
   final build = File('packages/gpu_engine/rust/build.rs').readAsStringSync();
+  final shipped = {
+    for (final match in RegExp(r"'([\w-]+\.dll)'").allMatches(hook))
+      match[1]!,
+  };
 
   test('every DLL the hook ships is pinned and listed', () {
-    final shipped = {
-      for (final match in RegExp(r"'([\w-]+\.dll)'").allMatches(hook))
-        match[1]!,
-    };
     final pinned = {
       for (final match in RegExp(
         r'"bin/\w+/([\w-]+\.dll)"',
@@ -33,6 +33,20 @@ void main() {
       expect(pinned, contains(dll), reason: '$dll ships from no pinned zip');
       expect(thirdParty, contains('`$dll`'), reason: '$dll ships unlisted');
     }
+  });
+
+  // ⛔The app asks no one to agree to the Microsoft terms in the zip
+  // because the user reads them as the closed-source dxil.dll's, which it
+  // does not ship (유저 2026-11-07, gpu-engine-feasibility-Q6; 관제 21:46).
+  // Shipping it is that question asked again, not a DLL to notice.
+  test('the hook ships no dxil.dll, whose terms the app asks no one to '
+      'agree to', () {
+    expect(shipped, isNotEmpty);
+    expect(
+      shipped,
+      isNot(contains('dxil.dll')),
+      reason: 'ask the user gpu-engine-feasibility-Q6 again before it ships',
+    );
   });
 
   test('the app bundles every licence text of the pinned zip', () {
