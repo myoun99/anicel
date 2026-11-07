@@ -9,7 +9,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
+
+import 'gpu_engine_asset.dart';
 
 /// One driver-side pen sample from the Wintab queue (PEN-2).
 class QaTabletPacket {

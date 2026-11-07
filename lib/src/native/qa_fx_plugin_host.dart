@@ -8,9 +8,9 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
 
 import '../models/fx_plugin_run.dart';
+import 'gpu_engine_asset.dart';
 
 /// The host's `Picture` (native/fx_plugin/src/job.rs): premultiplied RGBA8
 /// rows, its first pixel at (left, top) on the canvas.

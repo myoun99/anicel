@@ -8,7 +8,8 @@ import 'dart:developer' show Timeline;
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
-import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
+
+import 'gpu_engine_asset.dart';
 
 /// Where a window's pictures land: a real vblank of its screen on the frame
 /// clock and that screen's refresh period — and the compositor's, which is

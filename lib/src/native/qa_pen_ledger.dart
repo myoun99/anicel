@@ -9,7 +9,8 @@ import 'dart:io';
 
 import 'package:ffi/ffi.dart' show malloc;
 import 'package:flutter/foundation.dart';
-import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
+
+import 'gpu_engine_asset.dart';
 
 /// What the platform said about one pen sample — the PEN LEDGER the engine
 /// keeps (native/pen, H43): written natively BEFORE Flutter hears of the
