@@ -438,32 +438,44 @@ impl Schedule {
         Schedule { buffers, sources, clips, keys }
     }
 
-    /// What the C's mix and the output stage hand for `frames` from
-    /// `start`, interleaved `channels` — in blocks of [`MAX_BLOCK`], as a
-    /// callback mixes — and the last block's pre-clip peak per side.
-    fn c_hands(&self, start: i64, frames: usize, channels: usize) -> (Vec<f32>, f64, f64) {
+    /// The C's mix bus: `bus`, of `channels`, from `start`.
+    fn c_mix(&self, start: i64, channels: usize, bus: &mut [f64]) {
         let mix: Mix = c("qa_audio_mix");
+        // SAFETY: every count is its array's; the bus is its frames x channels.
+        unsafe {
+            mix(
+                self.clips.as_ptr(),
+                self.clips.len() as i32,
+                self.sources.as_ptr(),
+                self.sources.len() as i32,
+                self.keys.as_ptr(),
+                self.keys.len() as i32,
+                start,
+                (bus.len() / channels) as i32,
+                channels as i32,
+                bus.as_mut_ptr(),
+            )
+        };
+    }
+
+    /// The Rust's mix bus (audio_mix, held to the C's in its own tests), the
+    /// same.
+    fn rust_mix(&self, start: i64, channels: usize, bus: &mut [f64]) {
+        // SAFETY: every source holds the samples it reads (`Schedule::new`).
+        unsafe { audio_mix::mix(&self.clips, &self.sources, &self.keys, start, channels, bus) }
+    }
+
+    /// What `mix` and the output stage hand for `frames` from `start`,
+    /// interleaved `channels` — in blocks of [`MAX_BLOCK`], as a callback
+    /// mixes — and the last block's pre-clip peak per side.
+    fn hands(&self, mix: fn(&Self, i64, usize, &mut [f64]), start: i64, frames: usize, channels: usize) -> Handed {
         let mut out = Vec::new();
         let (mut left, mut right) = (0.0, 0.0);
         let mut done = 0;
         while done < frames {
             let block = (frames - done).min(MAX_BLOCK);
             let mut bus = vec![0.0f64; block * channels];
-            // SAFETY: every count is its array's; the bus is block x channels.
-            unsafe {
-                mix(
-                    self.clips.as_ptr(),
-                    self.clips.len() as i32,
-                    self.sources.as_ptr(),
-                    self.sources.len() as i32,
-                    self.keys.as_ptr(),
-                    self.keys.len() as i32,
-                    start + done as i64,
-                    block as i32,
-                    channels as i32,
-                    bus.as_mut_ptr(),
-                )
-            };
+            mix(self, start + done as i64, channels, &mut bus);
             (left, right) = (0.0, 0.0);
             for (index, value) in bus.iter().enumerate() {
                 // The C's meter: channel 0 the left side, channel 1 the
@@ -477,9 +489,12 @@ impl Schedule {
             }
             done += block;
         }
-        (out, left, if channels == 1 { left } else { right })
+        (out.iter().map(|sample| sample.to_bits()).collect(), left, if channels == 1 { left } else { right })
     }
 }
+
+/// What a callback hands, as bits, and its peaks.
+type Handed = (Vec<u32>, f64, f64);
 
 impl Drop for Schedule {
     fn drop(&mut self) {
@@ -507,10 +522,13 @@ fn a_callback_hands_what_the_cs_mix_bus_mixes_and_clips() {
             // The lead hands silence up to the first audible sample.
             let silent = (400 - position).clamp(0, frames as i64) as usize;
             assert!(out[..silent * channels].iter().all(|&sample| sample == 0.0), "{channels}ch lead at {position}");
-            let (want, left, right) = schedule.c_hands(position + silent as i64, frames - silent, channels);
-            let got = &out[silent * channels..];
+            let from = position + silent as i64;
+            let (want, left, right) = schedule.hands(Schedule::rust_mix, from, frames - silent, channels);
+            let theirs = schedule.hands(Schedule::c_mix, from, frames - silent, channels);
+            assert!(theirs == (want.clone(), left, right), "{channels}ch from {from}: the Rust's mix bus is the C's");
+            let got: Vec<u32> = out[silent * channels..].iter().map(|sample| sample.to_bits()).collect();
             assert_eq!(got.len(), want.len());
-            let first = got.iter().zip(&want).position(|(got, want)| got.to_bits() != want.to_bits());
+            let first = got.iter().zip(&want).position(|(got, want)| got != want);
             assert_eq!(first, None, "{channels}ch, {frames} frames from {position}");
             if silent < frames {
                 assert_eq!((transport.peak(0), transport.peak(1)), (left as f32 as f64, right as f32 as f64));
@@ -611,11 +629,15 @@ impl Doors {
     }
 }
 
+// Each step's answer the C's, and — measured of the C 2026-11-07, so held
+// once it is gone (connection-round-checklist A) — these.
 #[test]
 fn the_buffers_are_held_and_let_go_as_the_cs_are() {
     let _serial = serial();
     let (c, rust) = (Doors::c(), Doors::rust());
-    assert_eq!(rust.story(), c.story());
+    let ours = rust.story();
+    assert_eq!(ours, c.story());
+    assert_eq!(ours, [1, 1, 2, 1, 1, 1, 1, 1, -1, 1, 1, 3, 0, 0, 3, 2, 1, 2, 1]);
 }
 
 #[test]
@@ -686,7 +708,7 @@ impl Output {
     /// What describe tells of `index` of `kind` into `capacity` bytes:
     /// the length, the bytes, whether it is the default.
     fn describe(&self, kind: i32, index: i32, capacity: i32) -> (i32, Vec<u8>, i32) {
-        let mut name = vec![0x55u8; 64];
+        let mut name = vec![UNWRITTEN; 64];
         let mut is_default = 7;
         // SAFETY: `capacity` is at most the name's 64 bytes.
         let length = unsafe { (self.describe)(kind, index, name.as_mut_ptr().cast(), capacity, &mut is_default) };
@@ -701,7 +723,8 @@ impl Output {
         for kind in [0, 1] {
             say("count", (self.count)(kind, 1).to_string());
             for (index, capacity) in [(0, 64), (0, 5), (0, 2), (0, 1), (0, 0), (1, 64), (-1, 64)] {
-                say("describe", format!("{:?}", self.describe(kind, index, capacity)));
+                let (length, name, is_default) = self.describe(kind, index, capacity);
+                say("describe", format!("{length} {} {is_default}", room(&name)));
             }
         }
         // SAFETY: a null name is refused before anything is written.
@@ -729,11 +752,61 @@ impl Output {
     }
 }
 
+/// Room no describe wrote.
+const UNWRITTEN: u8 = 0x55;
+
+/// A name's room as text: the bytes written — its NUL as `\0` — and how
+/// many after them were left as they were.
+fn room(bytes: &[u8]) -> String {
+    let untouched = bytes.iter().rev().take_while(|&&byte| byte == UNWRITTEN).count();
+    format!("{:?} +{untouched}", String::from_utf8_lossy(&bytes[..bytes.len() - untouched]))
+}
+
+// Each step's answer the C's, and — measured of the C 2026-11-07, so held
+// once it is gone (connection-round-checklist A) — these.
 #[test]
 fn the_null_backend_lists_and_opens_as_the_cs_does() {
     let _serial = serial();
     let (c, rust) = (Output::c(), Output::rust());
-    assert_eq!(rust.story(), c.story());
+    let ours = rust.story();
+    assert_eq!(ours, c.story());
+    assert_eq!(
+        ours,
+        [
+            "count: 1",
+            r#"describe: 20 "NULL Playback Device\0" +43 1"#,
+            r#"describe: 4 "NULL\0" +0 1"#,
+            r#"describe: 1 "N\0" +0 1"#,
+            r#"describe: -1 "" +1 7"#,
+            r#"describe: -1 "" +0 7"#,
+            r#"describe: -1 "" +64 7"#,
+            r#"describe: -1 "" +64 7"#,
+            "count: 1",
+            r#"describe: 19 "NULL Capture Device\0" +44 1"#,
+            r#"describe: 4 "NULL\0" +0 1"#,
+            r#"describe: 1 "N\0" +0 1"#,
+            r#"describe: -1 "" +1 7"#,
+            r#"describe: -1 "" +0 7"#,
+            r#"describe: -1 "" +64 7"#,
+            r#"describe: -1 "" +64 7"#,
+            "no name: -1",
+            "no default: 20",
+            "refused: 0",
+            "refused: 0",
+            "refused: 0",
+            "refused: 0",
+            "refused: 0",
+            "a bogus index: 0",
+            "one past the list: 0",
+            "open: 48000",
+            "geometry: 1 48000 2 1440",
+            "again, another rate: 48000",
+            "the open one's list: 1",
+            "closed: 0 48000 2 0",
+            "by default: 44100",
+            "geometry: 1 44100 1 1323",
+        ]
+    );
 }
 
 #[test]
@@ -897,6 +970,8 @@ impl Capture {
     }
 }
 
+// Each step's answer the C's, and — measured of the C 2026-11-07, so held
+// once it is gone (connection-round-checklist A) — these.
 #[test]
 fn the_null_capture_runs_as_the_cs_does() {
     let _serial = serial();
@@ -904,6 +979,29 @@ fn the_null_capture_runs_as_the_cs_does() {
     let (said, drained) = rust.story();
     let (c_said, c_drained) = c.story();
     assert_eq!(said, c_said);
+    assert_eq!(
+        said,
+        [
+            "a point with none open: None",
+            "refused: 0 0",
+            "a bogus index: 0 0",
+            "one past the list: 0 0",
+            "start: 44100",
+            "geometry: 1 2 44100 1323",
+            "again: 0",
+            "nothing asked for: 0 0",
+            "no out: 0",
+            "a callback spoke: true",
+            "drained a fifth of a second: true",
+            "whole frames: 0",
+            "dropped: 0",
+            "the stair at or past the point: true",
+            "stopped: 0 2 44100 0 None 0",
+            "read stopped: 0",
+            "restart: 48000",
+            "its own point: true",
+        ]
+    );
     assert!(drained.iter().chain(&c_drained).all(|&sample| sample == 0.0), "the null microphone hears silence");
 }
 
@@ -1061,4 +1159,29 @@ fn the_clock_is_the_cs_clock() {
         let after = now();
         assert!(before <= ours && ours <= after, "{before} {ours} {after}");
     }
+}
+
+// The OS's monotonic clock in microseconds, asked here through another
+// door — std's `Instant` — so held once the C is gone (connection-round-
+// checklist A, 관제 판정 ①㉠): what it says passed lies within what
+// `Instant` saw pass around it, and it never runs back.
+#[test]
+fn the_clock_runs_as_the_os_s_monotonic_clock() {
+    let started = Instant::now();
+    let from = qa_audio_clock_now_us();
+    let inner = Instant::now();
+    let mut last = from;
+    for _ in 0..1000 {
+        let now = qa_audio_clock_now_us();
+        assert!(now >= last, "{last} then {now}");
+        last = now;
+    }
+    thread::sleep(Duration::from_millis(30));
+    let inner = inner.elapsed();
+    let to = qa_audio_clock_now_us();
+    let outer = started.elapsed();
+    let passed = Duration::from_micros((to - from) as u64);
+    // A microsecond either way: each clock is cut to its own.
+    let micro = Duration::from_micros(1);
+    assert!(inner <= passed + micro && passed <= outer + micro, "{passed:?} between {inner:?} and {outer:?}");
 }
