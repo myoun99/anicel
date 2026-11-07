@@ -1,6 +1,6 @@
 //! WAVs, AIFFs and MPEG frames made up here, each decoded by both.
 
-use super::{Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, framed, noise, rust_window};
+use super::{Sounds, Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, framed, noise, rust_window};
 
 /// A WAV's `fmt ` chunk body.
 fn fmt(tag: u16, channels: u16, rate: u32, bits: u16, block_align: u16, extensible: Option<(u16, u16)>) -> Vec<u8> {
@@ -98,13 +98,15 @@ fn every_wav_reads_as_the_c_reads_it() {
     cut.truncate(cut.len() - 1001);
     cases.push(("cut short".into(), cut));
 
+    let mut pins = Sounds::default();
     for (what, bytes) in &cases {
         let file = TempFile::new("wav.wav", bytes);
-        expect_same(what, &Span::whole(file.path()), 0, -1);
+        pins.add(&expect_same(what, &Span::whole(file.path()), 0, -1));
         let (carried, offset) = between_junk("carried.wav", bytes);
         let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
-        expect_same(&format!("{what}, carried"), &span, 0, -1);
+        pins.add(&expect_same(&format!("{what}, carried"), &span, 0, -1));
     }
+    pins.pinned("audio/every-wav");
 }
 
 /// The same sound as an RF64, a Wave64 and a RIFX — the WAVs symphonia does
@@ -172,6 +174,7 @@ fn families_of(format: &[u8], data: &[u8], junk: bool) -> [(&'static str, Vec<u8
 
 #[test]
 fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
+    let mut pins = Sounds::default();
     for (what, tag, channels, bits) in
         [("8-bit", 1, 2, 8), ("16-bit", 1, 2, 16), ("24-bit", 1, 1, 24), ("32-bit", 1, 2, 32), ("floats", 3, 2, 32)]
     {
@@ -180,6 +183,7 @@ fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
             let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
             let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
             assert_eq!(decoded.samples.len(), 3001 * usize::from(channels), "{family}, {what}: every frame");
+            pins.add(&decoded);
         }
     }
     let data = noise(2000 * 6, 61);
@@ -213,12 +217,15 @@ fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
                 let file = TempFile::new("family.wav", &files[0].1);
                 let rf64 = expect_same("RF64, the same", &Span::whole(file.path()), 0, -1);
                 assert!(rust.samples.iter().map(|s| s.to_bits()).eq(rf64.samples.iter().map(|s| s.to_bits())));
+                pins.add(&rf64);
                 continue;
             }
             let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
             assert_eq!(decoded.format, crate::FORMAT_WAV, "{family}, {what}");
+            pins.add(&decoded);
         }
     }
+    pins.pinned("audio/wav-families");
 }
 
 #[test]
@@ -227,8 +234,10 @@ fn a_framed_wav_reads_as_the_c_reads_it() {
     let blob = framed(&bytes, 4096);
     let (carried, offset) = between_junk("framed.bin", &blob);
     let span = Span { path: carried.path(), offset, length: blob.len() as i64, framed: true };
-    expect_same("framed", &span, 0, -1);
-    expect_same("framed, a window", &span, 12_345, 999);
+    let mut pins = Sounds::default();
+    pins.add(&expect_same("framed", &span, 0, -1));
+    pins.add(&expect_same("framed, a window", &span, 12_345, 999));
+    pins.pinned("audio/framed-wav");
 }
 
 /// An AIFF (or AIFC, when `compression` is said) of 16-bit-word fields,
@@ -263,6 +272,7 @@ fn aiff(compression: Option<&[u8; 4]>, channels: u16, bits: u16, frames: u32, da
 
 #[test]
 fn every_aiff_reads_as_the_c_reads_it() {
+    let mut pins = Sounds::default();
     for (what, compression, channels, bits) in [
         ("8-bit", None, 2, 8),
         ("16-bit", None, 2, 16),
@@ -275,8 +285,9 @@ fn every_aiff_reads_as_the_c_reads_it() {
         let data = noise(frames * usize::from(channels * bits / 8), u32::from(bits));
         let bytes = aiff(compression, channels, bits, frames as u32, &data);
         let file = TempFile::new("aiff.aif", &bytes);
-        expect_same(what, &Span::whole(file.path()), 0, -1);
+        pins.add(&expect_same(what, &Span::whole(file.path()), 0, -1));
     }
+    pins.pinned("audio/every-aiff");
 }
 
 /// `count` MPEG-1 Layer III frames of silence — a header and zeros, no side
@@ -325,6 +336,7 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
         tagged.extend(body);
         tagged
     };
+    let mut pins = Sounds::default();
     for (what, bytes) in [
         ("no tag", mp3_frames(24)),
         // 320 kbit/s first, then 128: a length guessed from the first
@@ -343,7 +355,9 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
         assert_eq!((rust.format, rust.channels, rust.rate), (c.format, c.channels, c.rate), "{what}");
         assert_eq!(rust.samples.len(), c.samples.len(), "{what}: the frames");
         assert!(rust.samples.iter().all(|&s| s == 0.0), "{what}: silence");
+        pins.add(&rust);
     }
+    pins.pinned("audio/mp3-starts-and-ends");
 }
 
 /// `count` MPEG-1 Layer III frames, 128 kbit/s at 44.1 kHz, of one channel
@@ -535,6 +549,7 @@ fn a_piece_at_another_rate_is_heard_at_the_stream_s() {
     // and put in the sound's rate as the C conforms a whole sound — what a
     // conversion fed piece by piece writes, bit for bit — and the sound's
     // frames after it keep their place (native-to-rust-Q11).
+    let mut pins = Sounds::default();
     for (what, rate, piece, after) in [
         ("amid it", 48_000, piece_at(0x94, 384, &[230, 222]), 8),
         ("at its end", 32_000, piece_at(0x98, 576, &[230, 222]), 0),
@@ -547,7 +562,9 @@ fn a_piece_at_another_rate_is_heard_at_the_stream_s() {
         assert_eq!(read.len(), 2 * at + conformed.len() + 2 * after * 1152, "{what}: every frame in its place");
         assert_eq!(read[2 * at..2 * at + conformed.len()], conformed, "{what}: the piece");
         assert!(read[..2 * at].iter().chain(&read[2 * at + conformed.len()..]).all(|&s| s == 0.0), "{what}: around it");
+        pins.add_samples(&read);
     }
+    pins.pinned("audio/mp3-piece-at-another-rate");
 }
 
 #[test]
@@ -564,6 +581,9 @@ fn a_piece_at_a_third_rate_ends_the_run_before_it() {
     let at = 12 * 1152 - LEAD;
     assert_eq!(read.len(), 2 * at + conformed.len() + 2 * 8 * 1152, "every frame in its place");
     assert_eq!(read[2 * at..2 * at + conformed.len()], conformed, "the two runs");
+    let mut pins = Sounds::default();
+    pins.add_samples(&read);
+    pins.pinned("audio/mp3-piece-at-a-third-rate");
 }
 
 #[test]

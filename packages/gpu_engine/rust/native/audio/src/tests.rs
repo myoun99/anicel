@@ -145,6 +145,44 @@ pub(crate) fn expect_same(what: &str, span: &Span, first: i64, count: i64) -> De
     rust
 }
 
+/// A test's decodes in a row, fingerprinted for the ledger: each its
+/// decoder, channels and rate (i32 little-endian), then its samples — their
+/// count (u64) and each as float32 little-endian — and a stream's answers
+/// their count and each as i64 little-endian, so the C's answers stay held
+/// once the C is deleted (connection-round-checklist A, 관제 2026-11-07).
+/// Only the bundled decoders', which decode alike on every device
+/// (pins.rs).
+#[derive(Default)]
+pub(crate) struct Sounds(ledger::Running);
+
+impl Sounds {
+    pub(crate) fn add(&mut self, sound: &Decoded) {
+        // What the OS reads is its own on each device, and a pin a job does
+        // not hold is not split by platform (pins.rs).
+        assert_ne!(sound.format, crate::FORMAT_OS, "a row holds the bundled decoders' sounds");
+        for word in [sound.format, sound.channels, sound.rate] {
+            self.0.add(&word.to_le_bytes());
+        }
+        self.add_samples(&sound.samples);
+    }
+
+    pub(crate) fn add_samples(&mut self, samples: &[f32]) {
+        self.0.add(&(samples.len() as u64).to_le_bytes());
+        let bytes: Vec<u8> = samples.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+        self.0.add(&bytes);
+    }
+
+    pub(crate) fn add_answers(&mut self, answers: &[i64]) {
+        self.0.add(&(answers.len() as u64).to_le_bytes());
+        let bytes: Vec<u8> = answers.iter().flat_map(|answer| answer.to_le_bytes()).collect();
+        self.0.add(&bytes);
+    }
+
+    pub(crate) fn pinned(self, id: &str) {
+        self.0.assert_pinned(id);
+    }
+}
+
 /// The biggest difference between two decodes of the same sound.
 pub(crate) fn largest_difference(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max)
@@ -461,6 +499,7 @@ fn a_stream_read_in_pieces_hands_back_what_the_c_s_does() {
     };
     let rust: (Open, Read, Close) = (rust_open, rust_read, rust_close);
     let flac = fixture("tone.flac");
+    let mut pins = Sounds::default();
     for piece in [1, 1000, 4096, 50_000] {
         let span = Span::whole(&flac);
         let (rust_sound, rust_answers, rust_misuses) = stream_in_pieces(rust, &span, piece);
@@ -470,7 +509,11 @@ fn a_stream_read_in_pieces_hands_back_what_the_c_s_does() {
         assert_eq!(rust_misuses, c_misuses, "what a misuse answers");
         assert!(rust_sound.samples.iter().zip(&c_sound.samples).all(|(a, b)| a.to_bits() == b.to_bits()));
         assert_eq!(rust_sound.samples.len(), 44_100 * rust_sound.channels as usize);
+        pins.add(&rust_sound);
+        pins.add_answers(&rust_answers);
+        pins.add_answers(&rust_misuses);
     }
+    pins.pinned("audio/flac-stream-in-pieces");
     // A stream of nothing is none.
     let missing = std::env::temp_dir().join("오디오-없는-파일.wav");
     let span = Span { path: &missing, offset: 0, length: 100, framed: false };
@@ -486,9 +529,11 @@ fn a_stream_read_in_pieces_hands_back_what_the_c_s_does() {
 fn a_window_holds_the_frames_a_whole_decode_has_there() {
     let flac = fixture("tone.flac");
     let span = Span::whole(&flac);
+    let mut pins = Sounds::default();
     for (first, count) in [(0, 0), (0, 1), (1, 1), (4095, 2), (4096, 4096), (10_000, -1), (44_099, 5), (44_100, 3), (90_000, 10)] {
-        expect_same(&format!("tone.flac from {first}, {count}"), &span, first, count);
+        pins.add(&expect_same(&format!("tone.flac from {first}, {count}"), &span, first, count));
     }
+    pins.pinned("audio/flac-windows");
     // A window cannot start before the sound.
     assert_eq!(rust_window(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
     assert_eq!(c_window(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
