@@ -175,6 +175,15 @@ external bool poolRelease(Pointer<Pool> pool, int page, int slot);
 )
 external void poolMostBytes(Pointer<Pool> pool, int mostBytes);
 
+@Native<Void Function(Pointer<Pool>, Pointer<Engine>, Uint64)>(
+  symbol: 'gpu_engine_pool_give_back',
+)
+external void poolGiveBack(
+  Pointer<Pool> pool,
+  Pointer<Engine> engine,
+  int mostBytes,
+);
+
 @Native<Uint64 Function(Pointer<Pool>)>(symbol: 'gpu_engine_pool_bytes')
 external int poolBytes(Pointer<Pool> pool);
 

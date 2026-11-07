@@ -1,7 +1,8 @@
 //! The pool on a real GPU: a cel's tiles go to its own pages first and a
 //! page is made only where none has room, a slot is handed out again only
-//! once none holds it — the one released last first —, and the pages are
-//! what the write path copies to, a pass reads and a readback reads.
+//! once none holds it — the one released last first —, the pages nobody
+//! holds are given back where its store asks, and the pages are what the
+//! write path copies to, a pass reads and a readback reads.
 
 use super::{Full, MOST_NAMED, Pool};
 use crate::kernels::blend::mode::NORMAL;
@@ -196,13 +197,110 @@ fn a_page_past_the_budget_the_os_gives_is_not_made() {
     let page = 2 * TILE_BYTES;
     let pool = Pool::sized(2, MOST_NAMED, page).expect("pool");
     let said = |used, budget| Some(VideoMemory { used, budget });
-    assert!(pool.fits(said(10, Some(10 + page))));
-    assert!(!pool.fits(said(11, Some(10 + page))));
-    assert!(!pool.fits(said(u64::MAX, Some(u64::MAX))), "a sum past a u64 is past any budget");
-    assert!(pool.fits(said(u64::MAX, None)));
-    assert!(pool.fits(None));
+    assert!(pool.fits(said(10, Some(10 + page)), page));
+    assert!(!pool.fits(said(11, Some(10 + page)), page));
+    assert!(!pool.fits(said(u64::MAX, Some(u64::MAX)), page), "a sum past a u64 is past any budget");
+    assert!(pool.fits(said(u64::MAX, None), page));
+    assert!(pool.fits(None, page));
     let small = Pool::sized(2, MOST_NAMED, page - 1).expect("pool");
-    assert!(!small.fits(None));
+    assert!(!small.fits(None, page));
+    assert!(small.fits(said(10, Some(10 + page - TILE_BYTES)), page - TILE_BYTES), "grown by less");
+}
+
+/// `count` cels a page each, the page full: the slots of each, in order.
+fn cels_a_page_each(engine: &crate::device::Engine, pool: &mut Pool, count: usize) -> Vec<Vec<TileAt>> {
+    let slots = pool.slots();
+    (0..count)
+        .map(|_| {
+            let cel = pool.cel();
+            (0..slots).map(|_| pool.fresh(engine, cel).expect("fresh")).collect()
+        })
+        .collect()
+}
+
+// Its store gives back the pages nobody holds — on the memory warning, a
+// project closed, its budget fallen under them (pool-pages-given-back): the
+// last first, those past the last held cut off and one before it kept a
+// tile's stand-in in its place, as a TileAt names a page by its place. A
+// slot of one is no slot; a pass reads a page past it as before; and the
+// next cel that needs a page has it made again there, before one past the
+// last.
+#[test]
+fn the_pages_nobody_holds_are_given_back_the_last_first() {
+    let Rig { engine, .. } = rig();
+    let page = 2 * TILE_BYTES;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let places = cels_a_page_each(engine, &mut pool, 4);
+    let words: Vec<u32> = (0..2).flat_map(tile).collect();
+    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+    let put = words_buffer(engine, "tiles put", &words, usage);
+    Write::put(engine, pool.pages(), &put, &[(0, places[1][0]), (1, places[1][1])]).expect("put");
+    for &at in [&places[0], &places[2], &places[3]].into_iter().flatten() {
+        pool.release(at).expect("release");
+    }
+    pool.give_back(engine, 0);
+    assert_eq!(pool.pages().len(), 2, "the two past the last held cut off");
+    assert_eq!(pool.pages()[0].size(), TILE_BYTES, "the one before it a stand-in");
+    assert_eq!(pool.bytes(), page + TILE_BYTES);
+    assert!(read_back(&pool, &places[1]) == le_bytes(&words), "a page past it read as before");
+    assert!(pool.release(at(0, 0)).is_none(), "a slot of a page given back");
+    assert!(pool.hold(at(0, 0)).is_none());
+    assert!(pool.release(at(2, 0)).is_none(), "a slot of a page cut off");
+    let next = pool.cel();
+    assert_eq!(pool.fresh(engine, next), Ok(at(0, 0)), "made again in its place");
+    assert_eq!(pool.pages()[0].size(), page);
+    assert_eq!(pool.fresh(engine, next), Ok(at(0, 1)));
+    assert_eq!(pool.fresh(engine, next), Ok(at(2, 0)), "then one past the last");
+    assert_eq!(pool.bytes(), 3 * page);
+}
+
+// Pages are given back only till they hold the bytes asked — a budget fallen
+// under them keeps what lies within it —, and a stand-in left last goes
+// with the page past it: it names no page a slot is held on.
+#[test]
+fn pages_are_given_back_till_they_hold_the_bytes_asked() {
+    let engine = rig().engine;
+    let page = 2 * TILE_BYTES;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let places = cels_a_page_each(engine, &mut pool, 4);
+    for &at in [&places[1], &places[3]].into_iter().flatten() {
+        pool.release(at).expect("release");
+    }
+    pool.give_back(engine, 4 * page);
+    assert_eq!(pool.bytes(), 4 * page, "within the bytes asked");
+    pool.give_back(engine, 3 * page);
+    assert_eq!(pool.pages().len(), 3, "the last cut off, enough");
+    assert_eq!(pool.pages()[1].size(), page, "the one between kept");
+    pool.give_back(engine, 3 * page - 1);
+    assert_eq!(pool.pages()[1].size(), TILE_BYTES);
+    assert_eq!(pool.bytes(), 2 * page + TILE_BYTES);
+    for &at in &places[2] {
+        pool.release(at).expect("release");
+    }
+    pool.give_back(engine, 2 * page);
+    assert_eq!(pool.pages().len(), 1, "the stand-in left last gone with the page past it");
+    assert_eq!(pool.bytes(), page);
+    pool.give_back(engine, 0);
+    assert_eq!(pool.bytes(), page, "a page held stays");
+}
+
+// A page given back is made again within the bytes the pool held with it
+// made — its stand-in counted out — and past the pages a pool may make: its
+// place is named already.
+#[test]
+fn a_page_given_back_is_made_again_within_the_pool_s_bounds() {
+    let engine = rig().engine;
+    let page = 2 * TILE_BYTES;
+    let mut pool = Pool::sized(2, 2, 2 * page).expect("pool");
+    let places = cels_a_page_each(engine, &mut pool, 2);
+    for &at in &places[0] {
+        pool.release(at).expect("release");
+    }
+    pool.give_back(engine, 0);
+    assert_eq!(pool.bytes(), page + TILE_BYTES);
+    let next = pool.cel();
+    assert_eq!(pool.fresh(engine, next), Ok(at(0, 0)));
+    assert_eq!(pool.bytes(), 2 * page);
 }
 
 // What the write path copies to a slot is what a pass reads of it and what
@@ -398,13 +496,13 @@ fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
     }
 }
 
-// The C ABI moves the bytes a pool may make and counts the pages it made,
-// as the pool does.
+// The C ABI moves the bytes a pool may make, counts the pages it made and
+// gives back the pages nobody holds, as the pool does.
 #[test]
-fn the_c_abi_moves_a_pool_s_bytes_and_counts_its_pages() {
+fn the_c_abi_moves_a_pool_s_bytes_counts_its_pages_and_gives_them_back() {
     use super::{
-        gpu_engine_pool_bytes, gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_most_bytes,
-        gpu_engine_pool_new, gpu_engine_pool_store,
+        gpu_engine_pool_bytes, gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_give_back,
+        gpu_engine_pool_most_bytes, gpu_engine_pool_new, gpu_engine_pool_release, gpu_engine_pool_store,
     };
     let engine = rig().engine;
     let bytes = le_bytes(&tile(3));
@@ -425,6 +523,11 @@ fn the_c_abi_moves_a_pool_s_bytes_and_counts_its_pages() {
         assert_eq!(one, 1);
         assert_eq!(gpu_engine_pool_bytes(pool), (*pool).slots() as u64 * TILE_BYTES);
         assert!(read_back(&*pool, &[at(pages[0], slots[0])]) == bytes);
+        gpu_engine_pool_give_back(pool, engine, 0);
+        assert_eq!(gpu_engine_pool_bytes(pool), (*pool).slots() as u64 * TILE_BYTES, "a page held stays");
+        assert!(gpu_engine_pool_release(pool, pages[0], slots[0]));
+        gpu_engine_pool_give_back(pool, engine, 0);
+        assert_eq!(gpu_engine_pool_bytes(pool), 0);
         gpu_engine_pool_free(pool);
     }
 }

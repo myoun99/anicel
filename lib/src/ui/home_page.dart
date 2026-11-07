@@ -18,8 +18,8 @@ import '../models/frame.dart' show InbetweenMark;
 import '../models/project.dart';
 import '../models/working_panel.dart';
 import '../native/device_battery.dart';
+import '../native/drawing_engines.dart';
 import '../native/handed_files.dart';
-import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
@@ -968,9 +968,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     for (final session in _projects.sessions) {
       session.respondToMemoryPressure();
     }
-    // The drawing engine is the process's, not a project's: its parked
-    // tile blocks and scratch buffers hear the warning here too.
-    QaNativeEngine.respondToMemoryPressure();
+    // The drawing engines are the process's, not a project's: the C
+    // engine's parked tile blocks and scratch buffers, and the GPU ledger's
+    // pages nobody holds, hear the warning here too.
+    DrawingEngines.respondToMemoryPressure();
   }
 
   /// 🚨★★★**COMING BACK IS WHEN THE FILE MAY HAVE GONE.**

@@ -318,11 +318,18 @@ class GpuPool {
   /// Lets [tile] go; false where no tile is held there.
   bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
 
-  /// Makes no page more past [mostBytes]: the pages made stay — none is
-  /// given back — and the next is made only within it.
+  /// Makes no page more past [mostBytes]: the pages made stay — till
+  /// [giveBackPast] — and the next is made only within it.
   void makeNoPagePast(int mostBytes) => rust.poolMostBytes(_pool, mostBytes);
 
-  /// The bytes of the pages made, each counted whole.
+  /// Gives back the pages none of whose tiles is held, the last first, till
+  /// the pages made hold [mostBytes]; a cel that needs a page again has it
+  /// made again (rust/src/kernels/pool/mod.rs).
+  void giveBackPast(int mostBytes) =>
+      rust.poolGiveBack(_pool, _engine._engine, mostBytes);
+
+  /// The bytes of the pages made, each counted whole — one given back by
+  /// the tile's stand-in left in its place.
   int get bytes => rust.poolBytes(_pool);
 
   /// Frees the pool's pages; before its engine is closed.

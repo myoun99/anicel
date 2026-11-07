@@ -1,7 +1,6 @@
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../models/bitmap_tile.dart';
-import '../models/tile_roll.dart';
 import 'app_gpu_engine.dart';
 
 /// The engine's copy of each tile asked for — a slot of a pool of its own
@@ -28,6 +27,13 @@ import 'app_gpu_engine.dart';
 /// call holds would be a failure with no fallback — a cel of 5800² inked
 /// whole is past the 128 MB it gives a device of 2 GB.
 ///
+/// The pages nobody holds are given back ([respondToMemoryPressure],
+/// [byteBudget] falling under them) — the slots of tiles collected let go
+/// first, their finalizers' messages or not (pool-pages-given-back): a
+/// closed project's tiles are collected with it, and the give-back its
+/// collection brings (`DrawingEngines.giveBackOnceCollected`) may land
+/// before them.
+///
 /// One an isolate, as the engine is ([appGpuEngine]): a worker that asked
 /// would open its own (ⓗ — no law says otherwise).
 // ⏳Tests alone ask till the screen does (screen-on-the-engine c6), and
@@ -46,6 +52,9 @@ class EngineTileLedger {
     byteBudget: _appByteBudget,
   );
   static EngineTileLedger? _instance;
+
+  /// The app's, where anything has opened it — none for a warning to open.
+  static EngineTileLedger? get opened => _instance;
 
   /// The budget of the app's ledger: the tile pictures' line
   /// (`CacheBudgetLine.tileImages`), which the session gives both — before
@@ -69,30 +78,47 @@ class EngineTileLedger {
   final GpuPool pool;
 
   /// The bytes past which no page is made but for the tiles a call holds;
-  /// none but the OS's where null. The pages made stay when it falls.
+  /// none but the OS's where null. Falling under the pages made, it gives
+  /// back those nobody holds till they keep within it.
   int? get byteBudget => _byteBudget;
   set byteBudget(int? bytes) {
     _byteBudget = bytes;
     pool.makeNoPagePast(bytes ?? _unbounded);
+    _giveBackPast(bytes ?? _unbounded);
   }
 
   int? _byteBudget;
 
-  final Expando<GpuTile> _slots = Expando<GpuTile>('engineTileSlots');
+  /// The OS says memory is tight, or a closed project was collected: every
+  /// page nobody holds goes back — what only makes the next store cheaper.
+  void respondToMemoryPressure() => _giveBackPast(0);
 
-  /// Every tile given a slot here — the walk a full pool lets slots go by,
-  /// since [_slots] cannot be walked.
-  final TileRoll _stored = TileRoll();
+  void _giveBackPast(int bytes) {
+    _letGoWhere((tile) => tile == null);
+    pool.giveBackPast(bytes);
+  }
 
-  late final Finalizer<GpuTile> _letGoWithTile = Finalizer<GpuTile>(_letGo);
+  final Expando<_Slot> _slots = Expando<_Slot>('engineTileSlots');
+
+  /// Every slot handed out here and not yet swept — the walk a full pool
+  /// and a give-back let slots go by, since [_slots] cannot be walked.
+  final List<_Slot> _stored = [];
+
+  late final Finalizer<_Slot> _letGoWithTile = Finalizer<_Slot>(_letGo);
 
   /// How many slots tiles have here — let go of with their tile or by a
   /// full pool. A probe.
   int get slotCount => _slotCount;
   int _slotCount = 0;
 
-  void _letGo(GpuTile slot) {
-    pool.release(slot);
+  /// Lets [slot] go, once: its tile's finalizer and a walk that found the
+  /// tile collected first both come to it.
+  void _letGo(_Slot slot) {
+    if (slot.out) {
+      return;
+    }
+    slot.out = true;
+    pool.release(slot.at);
     _slotCount -= 1;
   }
 
@@ -117,7 +143,7 @@ class EngineTileLedger {
 
   /// The slot [tile] has, or null — nothing is stored here. A probe: a
   /// call that runs over slots asks [held].
-  GpuTile? slotOf(BitmapTile tile) => _slots[tile];
+  GpuTile? slotOf(BitmapTile tile) => _slots[tile]?.at;
 
   List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) {
     for (final tile in tiles) {
@@ -136,7 +162,7 @@ class EngineTileLedger {
     if (missing.isNotEmpty) {
       _store(_cels.putIfAbsent(cel, pool.cel), missing);
     }
-    return [for (final tile in tiles) _slots[tile]!];
+    return [for (final tile in tiles) _slots[tile]!.at];
   }
 
   /// [tiles], none with a slot, each given one of [cel]'s: within the
@@ -146,7 +172,10 @@ class EngineTileLedger {
     if (stored == tiles.length) {
       return;
     }
-    _letGoUnheld();
+    _letGoWhere(
+      (tile) =>
+          tile == null || !_holds.any((hold) => hold._tiles.contains(tile)),
+    );
     pool.makeNoPagePast(_unbounded);
     try {
       stored += _put(cel, tiles.sublist(stored));
@@ -174,26 +203,46 @@ class EngineTileLedger {
     ]);
     for (var at = 0; at < slots.length; at++) {
       final tile = tiles[at];
-      _slots[tile] = slots[at];
-      _letGoWithTile.attach(tile, slots[at], detach: tile);
-      _stored.hold(tile);
+      final slot = _Slot(tile, slots[at]);
+      _slots[tile] = slot;
+      _letGoWithTile.attach(tile, slot, detach: slot);
+      _stored.add(slot);
     }
     _slotCount += slots.length;
     return slots.length;
   }
 
-  /// Lets go the slot of every tile no open hold has.
-  void _letGoUnheld() {
-    for (final tile in _stored.alive()) {
-      final slot = _slots[tile];
-      if (slot == null || _holds.any((hold) => hold._tiles.contains(tile))) {
-        continue;
+  /// Lets go the slot of every tile [goes] names — null for a tile
+  /// collected — and sweeps what is let go out of [_stored].
+  void _letGoWhere(bool Function(BitmapTile? tile) goes) {
+    _stored.removeWhere((slot) {
+      if (slot.out) {
+        return true;
       }
-      _slots[tile] = null;
-      _letGoWithTile.detach(tile);
+      final tile = slot.tile.target;
+      if (!goes(tile)) {
+        return false;
+      }
+      if (tile != null) {
+        _slots[tile] = null;
+        _letGoWithTile.detach(slot);
+      }
       _letGo(slot);
-    }
+      return true;
+    });
   }
+}
+
+/// A slot a tile has here, its tile held weakly: being stored must not keep
+/// a tile alive.
+final class _Slot {
+  _Slot(BitmapTile tile, this.at) : tile = WeakReference(tile);
+
+  final WeakReference<BitmapTile> tile;
+  final GpuTile at;
+
+  /// Let go already — by its tile's finalizer, a full pool or a give-back.
+  bool out = false;
 }
 
 /// What a call of [EngineTileLedger.held] is handed: the slots asked for

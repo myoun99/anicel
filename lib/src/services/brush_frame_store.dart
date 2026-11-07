@@ -14,7 +14,7 @@ import '../models/cut_id.dart';
 import '../models/movie_cel.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
-import '../native/qa_native_engine.dart';
+import '../native/drawing_engines.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
@@ -1330,7 +1330,7 @@ class BrushFrameStore {
 
   /// A CLOSED project's store lets go of every cel it holds — and the
   /// engine gives back its parking once the collector has found them
-  /// ([QaNativeEngine.giveBackOnceCollected]).
+  /// ([DrawingEngines.giveBackOnceCollected]).
   ///
   /// 🗣️유저 2026-10-29 (F-505): 「무거운거 닫으면 … 초기프로젝트분만큼만
   /// 메모리 존재해야하는데 무거운 프로젝트의 메모리가 아직 남아있는듯함」.
@@ -1345,7 +1345,7 @@ class BrushFrameStore {
   /// closed project's crossings.
   void dispose() {
     for (final surface in [..._bakedSurfaces.values, ..._movieCels.values]) {
-      QaNativeEngine.giveBackOnceCollected(surface);
+      DrawingEngines.giveBackOnceCollected(surface);
     }
     _dropMovieCels();
     _letGoOfEveryCel();

@@ -1,8 +1,8 @@
 import 'bitmap_tile.dart';
 
 /// Every tile a holder has given a copy of its own — a picture
-/// (`BitmapTileImageCache`) or a slot on the engine (`EngineTileLedger`) —
-/// the roll it walks when it lets those copies go early.
+/// (`BitmapTileImageCache`) — the roll it walks when it lets those copies
+/// go early.
 ///
 /// 🚨★★★THE CACHE COULD NOT BE ASKED 「WHAT DO YOU HOLD」 (render round,
 /// 2026-09-16). Its pictures live in an `Expando` keyed by the tile object:
@@ -22,10 +22,10 @@ import 'bitmap_tile.dart';
 /// walkable thing of its own, and the holder is the door copies come
 /// through, not the census of them.
 ///
-/// In `models/` since 2026-11-08 (screen-on-the-engine c4): the engine's
-/// ledger walks one too, and it lies in `native/`, which `models/` and
-/// `services/` reach — so the roll moved inward rather than the ledger
-/// reaching out to `ui/` (CLAUDE.md, 의존 방향).
+/// In `models/` since 2026-11-08 (screen-on-the-engine c4), when the
+/// engine's ledger in `native/` walked one too. 🪦It walks its own slots
+/// since (pool-pages-given-back): a give-back lets a collected tile's slot
+/// go, which a roll of the live tiles cannot name.
 ///
 /// 🪦Until 2026-09-17 the roll also remembered WHERE a canvas drew each
 /// tile, because letting a picture go had to un-file it from its

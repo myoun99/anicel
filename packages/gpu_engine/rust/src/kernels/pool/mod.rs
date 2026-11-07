@@ -23,7 +23,12 @@
 //! hold the slots they name — and a slot held by none is free. The slot
 //! released last on a page is the next one it hands out, so a cel that
 //! keeps replacing its tiles keeps to its pages. A page with every slot
-//! free is the next one a cel needs; pages are not given back.
+//! free is the next one a cel needs, and stays made till its store gives
+//! back what nobody holds ([`Pool::give_back`] — the memory warning, a
+//! project closed, its budget falling under the pages made): making a
+//! page is 44 to 89 ms (캔버스 베이스, gpu-canonical-store 11-08 02:54), a
+//! lag each time a cut was opened again were pages given back as they
+//! emptied.
 //!
 //! A pool makes no page past the bytes it is given, past the budget the OS
 //! gives this process, nor one the driver refuses: it is [`Full`], one
@@ -77,7 +82,9 @@ struct Page {
 
 pub(crate) struct Pool {
     buffers: Vec<wgpu::Buffer>,
-    pages: Vec<Page>,
+    /// Each page's slots; none where the page was given back and a tile's
+    /// stand-in is its buffer, as a `TileAt` names a page by its place.
+    pages: Vec<Option<Page>>,
     slots: usize,
     most_pages: usize,
     most_bytes: u64,
@@ -112,16 +119,51 @@ impl Pool {
     }
 
     /// The bytes of the pages made — a page counts whole, its free slots
-    /// too, as it stays made.
+    /// too, as it stays made, and a page given back its stand-in.
     pub(crate) fn bytes(&self) -> u64 {
-        self.pages.len() as u64 * self.page_bytes()
+        self.buffers.iter().map(wgpu::Buffer::size).sum()
     }
 
-    /// Makes no page more past `most_bytes`: the pages made stay (none is
-    /// given back), and the next is made only within it — the budget its
-    /// store gives, again when the allowance moves.
+    /// Makes no page more past `most_bytes`: the pages made stay (its store
+    /// gives back what nobody holds, [`Pool::give_back`]), and the next is
+    /// made only within it — the budget its store gives, again when the
+    /// allowance moves.
     pub(crate) fn set_most_bytes(&mut self, most_bytes: u64) {
         self.most_bytes = most_bytes;
+    }
+
+    /// Gives back the pages nobody's — every slot free —, the last first,
+    /// till the pages hold `most_bytes` or none is nobody's: those past the
+    /// last held cut off, one before it kept a tile's stand-in in its
+    /// place, made again there when a cel next needs a page. No plan binds
+    /// one: none of its slots is held, so no tile set names it.
+    pub(crate) fn give_back(&mut self, engine: &Engine, most_bytes: u64) {
+        while let Some(last) = self.pages.last() {
+            let gone = match last {
+                None => true,
+                Some(_) => nobody_s(last) && self.bytes() > most_bytes,
+            };
+            if !gone {
+                break;
+            }
+            self.pages.pop();
+            self.buffers.pop();
+        }
+        for page in (0..self.pages.len()).rev() {
+            if self.bytes() <= most_bytes {
+                return;
+            }
+            if !nobody_s(&self.pages[page]) {
+                continue;
+            }
+            // ⚠️No test reaches a driver's refusal ([`made`] says why): the
+            // page stays made where its stand-in is refused.
+            let Some(stand_in) = made(engine, "a page given back", TILE_BYTES) else {
+                return;
+            };
+            self.buffers[page] = stand_in;
+            self.pages[page] = None;
+        }
     }
 
     /// The tiles a page holds.
@@ -140,12 +182,14 @@ impl Pool {
     /// pages with one free, else on a page of nobody's — its then —, else
     /// on the first page with one free, else on a new page, its.
     pub(crate) fn fresh(&mut self, engine: &Engine, cel: Cel) -> Result<TileAt, Full> {
-        let own = |page: &Page| page.cel == Some(cel) && !page.free.is_empty();
+        let own = |page: &Option<Page>| {
+            page.as_ref().is_some_and(|page| page.cel == Some(cel) && !page.free.is_empty())
+        };
         let page = match self.pages.iter().position(own) {
             Some(page) => page,
             None => self.claimed(engine, cel)?,
         };
-        let book = &mut self.pages[page];
+        let book = self.pages[page].as_mut().expect("a page found or made is made");
         let slot = book.free.pop().expect("a page found or made has a slot free");
         book.holds[usize::from(slot)] = 1;
         Ok(TileAt { page: page as u16, slot })
@@ -207,10 +251,7 @@ impl Pool {
     // canonical ones, the app's map holds each slot once.
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn hold(&mut self, at: TileAt) -> Option<()> {
-        let holds = self.holds(at)?;
-        if *holds == 0 {
-            return fail(format!("{at:?} is free"));
-        }
+        let holds = &mut self.held(at)?.holds[usize::from(at.slot)];
         *holds += 1;
         Some(())
     }
@@ -219,15 +260,12 @@ impl Pool {
     /// it, and its page nobody's once every slot of it is. Nothing where
     /// none holds it.
     pub(crate) fn release(&mut self, at: TileAt) -> Option<()> {
-        let holds = self.holds(at)?;
-        if *holds == 0 {
-            return fail(format!("{at:?} is free"));
-        }
+        let book = self.held(at)?;
+        let holds = &mut book.holds[usize::from(at.slot)];
         *holds -= 1;
         if *holds > 0 {
             return Some(());
         }
-        let book = &mut self.pages[usize::from(at.page)];
         book.free.push(at.slot);
         if book.free.len() == book.holds.len() {
             book.cel = None;
@@ -235,35 +273,40 @@ impl Pool {
         Some(())
     }
 
-    /// The holds of the tile at `at`; nothing where the pool has no such
-    /// slot.
-    fn holds(&mut self, at: TileAt) -> Option<&mut u32> {
+    /// The page of the tile at `at`, held; nothing where the pool has no
+    /// such slot or none holds it.
+    fn held(&mut self, at: TileAt) -> Option<&mut Page> {
         let pages = self.pages.len();
-        let Some(book) = self.pages.get_mut(usize::from(at.page)) else {
-            return fail(format!("{at:?} of a pool of {pages} pages"));
+        let book = match self.pages.get_mut(usize::from(at.page)) {
+            Some(Some(book)) => book,
+            Some(None) => return fail(format!("{at:?} on a page given back")),
+            None => return fail(format!("{at:?} of a pool of {pages} pages")),
         };
-        let slots = book.holds.len();
-        match book.holds.get_mut(usize::from(at.slot)) {
-            Some(holds) => Some(holds),
-            None => fail(format!("{at:?} past a page of {slots} tiles")),
+        match book.holds.get(usize::from(at.slot)).copied() {
+            Some(0) => fail(format!("{at:?} is free")),
+            Some(_) => Some(book),
+            None => fail(format!("{at:?} past a page of {} tiles", book.holds.len())),
         }
     }
 
     /// A page for `cel`'s tiles where it has none with a slot free: one of
     /// nobody's, its then; one of another cel's with a slot free; or a new
-    /// one, its.
+    /// one, its — where one was given back, made again in its place.
     fn claimed(&mut self, engine: &Engine, cel: Cel) -> Result<usize, Full> {
-        if let Some(page) = self.pages.iter().position(|page| page.cel.is_none()) {
-            self.pages[page].cel = Some(cel);
+        if let Some(page) = self.pages.iter().position(nobody_s) {
+            self.pages[page].as_mut().expect("a page nobody's is made").cel = Some(cel);
             return Ok(page);
         }
-        if let Some(page) = self.pages.iter().position(|page| !page.free.is_empty()) {
+        let with_room = |page: &Option<Page>| page.as_ref().is_some_and(|page| !page.free.is_empty());
+        if let Some(page) = self.pages.iter().position(with_room) {
             return Ok(page);
         }
+        let given_back = self.pages.iter().position(Option::is_none);
         // ⚠️No test lowers the budget the OS gives: `fits` is tried on the
         // numbers instead.
         let memory = platform::video_memory(&engine.adapter);
-        if self.pages.len() >= self.most_pages || !self.fits(memory) {
+        let grows = self.page_bytes() - given_back.map_or(0, |page| self.buffers[page].size());
+        if (given_back.is_none() && self.pages.len() >= self.most_pages) || !self.fits(memory, grows) {
             return Err(Full);
         }
         // The OS's budget is asked here, not set on the instance as wgpu's
@@ -275,47 +318,65 @@ impl Pool {
         // buffers go over it a while instead. Nor `for_device_loss`: the
         // canonical tiles are on the device (브러시/렌더링 11-07, 관제
         // 09:04).
-        let made = engine.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let buffer = engine.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pool page"),
-            size: self.page_bytes(),
-            // Bound by the passes, copied to by the write path and copied
-            // from where its bytes are read back (connection-round-checklist
-            // B: saving, cooling, an undo record parked).
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        // ⚠️No test reaches a driver's refusal: a 0% threshold opens no
-        // device, wgpu's own zero buffer refused first
-        // (wgpu-core-30.0.1/src/device/resource.rs:464), and wgpu makes no
-        // D3D12 buffer past 2 GiB (wgpu-hal-30.0.1/src/dx12/adapter.rs:916),
-        // too few bytes for a driver to refuse.
-        if pollster::block_on(made.pop()).is_some() {
-            return Err(Full);
-        }
-        self.buffers.push(buffer);
+        let buffer = made(engine, "pool page", self.page_bytes()).ok_or(Full)?;
         // The first slot first: the one handed out last is first in line.
         let free = (0..self.slots).rev().map(|slot| slot as u16).collect();
-        self.pages.push(Page { holds: vec![0; self.slots], free, cel: Some(cel) });
-        Ok(self.pages.len() - 1)
+        let book = Some(Page { holds: vec![0; self.slots], free, cel: Some(cel) });
+        match given_back {
+            Some(page) => {
+                self.buffers[page] = buffer;
+                self.pages[page] = book;
+                Ok(page)
+            }
+            None => {
+                self.buffers.push(buffer);
+                self.pages.push(book);
+                Ok(self.pages.len() - 1)
+            }
+        }
     }
 
-    /// Whether a page more keeps within the pool's bytes and, where the OS
-    /// says one, the budget it gives this process.
-    fn fits(&self, memory: Option<VideoMemory>) -> bool {
-        let page = self.page_bytes();
-        let made = self.bytes();
+    /// Whether the pool's bytes grown by `grows` keep within them and,
+    /// where the OS says one, the budget it gives this process.
+    fn fits(&self, memory: Option<VideoMemory>, grows: u64) -> bool {
         let within_os = |memory: VideoMemory| match memory.budget {
-            Some(budget) => memory.used.checked_add(page).is_some_and(|sum| sum <= budget),
+            Some(budget) => memory.used.checked_add(grows).is_some_and(|sum| sum <= budget),
             None => true,
         };
-        made + page <= self.most_bytes && memory.is_none_or(within_os)
+        self.bytes() + grows <= self.most_bytes && memory.is_none_or(within_os)
     }
 
     fn page_bytes(&self) -> u64 {
         self.slots as u64 * TILE_BYTES
+    }
+}
+
+/// Whether `page` is made and nobody's: every slot of it free.
+fn nobody_s(page: &Option<Page>) -> bool {
+    matches!(page, Some(Page { cel: None, .. }))
+}
+
+/// A page's buffer of `size` bytes — a page or a page given back's stand-in
+/// —, or none where the device refuses it for want of memory.
+fn made(engine: &Engine, label: &str, size: u64) -> Option<wgpu::Buffer> {
+    let made = engine.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+    let buffer = engine.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(label),
+        size,
+        // Bound by the passes, copied to by the write path and copied
+        // from where its bytes are read back (connection-round-checklist
+        // B: saving, cooling, an undo record parked).
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    // ⚠️No test reaches a driver's refusal: a 0% threshold opens no
+    // device, wgpu's own zero buffer refused first
+    // (wgpu-core-30.0.1/src/device/resource.rs:464), and wgpu makes no
+    // D3D12 buffer past 2 GiB (wgpu-hal-30.0.1/src/dx12/adapter.rs:916),
+    // too few bytes for a driver to refuse.
+    match pollster::block_on(made.pop()) {
+        Some(_) => None,
+        None => Some(buffer),
     }
 }
 
@@ -421,6 +482,18 @@ pub unsafe extern "C" fn gpu_engine_pool_most_bytes(pool: *mut Pool, most_bytes:
     // SAFETY: see the function's contract.
     let pool = unsafe { &mut *pool };
     pool.set_most_bytes(most_bytes);
+}
+
+/// Gives back the pages nobody holds till the pages hold `most_bytes`
+/// ([`Pool::give_back`]).
+///
+/// # Safety
+/// `pool` and `engine` are live and the pool was made on `engine`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_give_back(pool: *mut Pool, engine: *const Engine, most_bytes: u64) {
+    // SAFETY: see the function's contract.
+    let (pool, engine) = unsafe { (&mut *pool, &*engine) };
+    pool.give_back(engine, most_bytes);
 }
 
 /// The bytes of the pages a pool has made ([`Pool::bytes`]).

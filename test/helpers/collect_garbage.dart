@@ -44,14 +44,39 @@ Future<void> collectGarbage({
     atMost: atMost,
     churn: () async {
       await Future<void>.delayed(Duration.zero);
-      held.add(List<int>.filled(30000, 0));
-      if (held.length > 100) {
-        held.removeAt(0);
-      }
+      _churn(held);
     },
   );
   await Future<void>.delayed(Duration.zero);
   await Future<void>.delayed(Duration.zero);
+}
+
+/// A small list more on [held], the oldest let go past a hundred: what
+/// brings the collector round.
+void _churn(List<List<int>> held) {
+  held.add(List<int>.filled(30000, 0));
+  if (held.length > 100) {
+    held.removeAt(0);
+  }
+}
+
+/// Runs full collections until two have completed INSIDE this turn of the
+/// event loop — for a test that reads what a holder does after a
+/// collection and before any finalizer's message can land: the VM hands
+/// those to the isolate as messages, and none runs till the turn ends. A
+/// [WeakReference] to what nothing reaches reads null after.
+///
+/// ⚠️It gives up after [atMost], as [collectGarbage] does, and asserts
+/// nothing: the caller's own `expect` reads the real value.
+void collectGarbageInThisTurn({
+  Duration atMost = const Duration(seconds: 30),
+}) {
+  final target = reachabilityBarrier + 2;
+  final clock = Stopwatch()..start();
+  final held = <List<int>>[];
+  while (reachabilityBarrier < target && clock.elapsed < atMost) {
+    _churn(held);
+  }
 }
 
 /// The bounded wait itself: churn until [happened], or until [elapsed]
