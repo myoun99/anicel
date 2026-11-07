@@ -195,9 +195,7 @@ Future<void> main(List<String> args) async {
     // as SURVIVED. Every mutation in those files would have been written down
     // as unnoticed, bought from a suite that could not have noticed anything
     // (2026-09-08).
-    if (!entry.key.startsWith('test/') || !entry.key.endsWith('_test.dart')) {
-      continue;
-    }
+    if (!isSuite(entry.key)) continue;
     for (final target in entry.value) {
       namersOf.putIfAbsent(target, () => []).add(entry.key);
     }

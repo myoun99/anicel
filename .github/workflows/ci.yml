@@ -234,6 +234,14 @@ jobs:
       # is worth: it stayed green for five rounds while Apple silicon
       # rendered different pixels.
       - uses: ./.github/actions/native-engine
+      # The GPU engine the tests open (packages/gpu_engine, built by the
+      # app's build hook) needs an adapter, and this runner has no GPU:
+      # lavapipe, Mesa's Vulkan on the CPU, which gpu-engine.yml's Linux
+      # job runs the engine's own tests on. Every test that reaches the
+      # engine runs here — the Windows shards leave them to these three
+      # (유저 gpu-engine-skeleton-Q16, below).
+      - run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
+      - uses: ./.github/actions/rust-engine
       # The project's green rule: the exit code decides, never the tail.
       - name: Run tests against the gcc-built engine
         uses: ./.github/actions/test-shard
@@ -267,6 +275,7 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-android-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@v5
         with:
@@ -299,6 +308,7 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
       - run: flutter build windows --debug
 
   # The critical path, and the reason this file was restructured: measured
@@ -361,11 +371,28 @@ jobs:
       # loudly rather than fail, so building it here is what actually
       # exercises the C implementation against the Dart reference.
       - uses: ./.github/actions/native-engine
+      # The app's build hook builds the GPU engine for every `flutter test`,
+      # whether a file here opens it or not.
+      - uses: ./.github/actions/rust-engine
       - name: Run tests with the engine on PATH
         uses: ./.github/actions/test-shard
         with:
           total: 6
           index: ${{ matrix.shard }}
+          # 🗣️유저 gpu-engine-skeleton-Q16 (2026-11-07) 「윈도 샤드는 엔진에
+          # 닿는 시험을 리눅스에 맡긴다」: this runner has no GPU, and the one
+          # adapter the GPU engine opens on it, WARP, never finishes the
+          # engine's optimised shaders — blend, composite, dab blur,
+          # Gaussian, resample, warp; 15 minutes and still running on the
+          # main PC's WARP — and with the optimisation off each process's
+          # first compile is minutes and its first values wrong (WARP's).
+          # So the tests that reach the engine — 1472 of 3116 files on the
+          # day — run on the three Linux shards above, on lavapipe, and CI
+          # never draws through the engine on Windows: its DX12 kernels are
+          # the land gate's crate tests on the main PC's RTX, and the screen
+          # is the PCs'. ⛔Running them here again is not a fix but a new
+          # question for the user.
+          leave-out-package: gpu_engine
       # A step that stood past its limit leaves the process's threads in
       # build/native_call_watch before the run ends
       # (test/helpers/native_call_watch.dart) — kept from a red shard.

@@ -56,10 +56,7 @@ import 'import_graph.dart';
   }
 
   final graph = buildImportGraph(roots: ['lib', 'test']);
-  final testFiles = graph.keys
-      .where((f) => f.startsWith('test/') && f.endsWith('_test.dart'))
-      .toList()
-    ..sort();
+  final testFiles = graph.keys.where(isSuite).toList()..sort();
   final reached = reachedBy(testFiles, graph);
 
   /// Distance 1: the test code that NAMES this file. See the header — `reach`

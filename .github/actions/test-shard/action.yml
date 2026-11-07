@@ -11,6 +11,13 @@ inputs:
   index:
     description: Which shard this job runs (0-based, less than total).
     required: true
+  leave-out-package:
+    description: >
+      A package whose tests this runner cannot run — every test file that
+      reaches it (tool/tests_reaching_package.dart) is left out before the
+      deal. Empty leaves out nothing.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -65,6 +72,18 @@ runs:
           | awk '{sz=$1; $1=""; sub(/^ /, "");
                   if ($0 != "total") printf "%s\t%s\n", sz, $0}' \
           | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/weighted.txt"
+        # Left out before the deal, not after it, so the shards that are
+        # left stay even.
+        if [ -n "${{ inputs.leave-out-package }}" ]; then
+          dart run tool/tests_reaching_package.dart \
+            "${{ inputs.leave-out-package }}" > "$RUNNER_TEMP/left_out.txt"
+          awk -F'\t' 'NR == FNR { out[$0]; next } !($2 in out)' \
+            "$RUNNER_TEMP/left_out.txt" "$RUNNER_TEMP/weighted.txt" \
+            > "$RUNNER_TEMP/kept.txt"
+          mv "$RUNNER_TEMP/kept.txt" "$RUNNER_TEMP/weighted.txt"
+          echo "$(wc -l < "$RUNNER_TEMP/left_out.txt") test files reach" \
+            "package:${{ inputs.leave-out-package }} — not run here"
+        fi
         total_files=$(wc -l < "$RUNNER_TEMP/weighted.txt")
         # `want`, not `index` — index() is a gawk builtin and awk dies with
         # "cannot use gawk builtin as variable name", which on CI would be

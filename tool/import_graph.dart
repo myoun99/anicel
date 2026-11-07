@@ -250,6 +250,28 @@ Map<String, Set<String>> reachedBy(
   return out;
 }
 
+/// Whether [path] is a test file — a suite `flutter test` runs.
+bool isSuite(String path) =>
+    path.startsWith('test/') && path.endsWith('_test.dart');
+
+/// Whether [source] imports, exports or parts a file of [package]: a
+/// third-party target, which the graph's edges leave out ([importsOf]).
+bool importsPackage(String source, String package) => _directive
+    .allMatches(source)
+    .any((match) => match.group(1)!.startsWith('package:$package/'));
+
+/// The test files in [graph] that are one of [files] or reach one of them.
+Set<String> testsReaching(
+  Set<String> files,
+  Map<String, Set<String>> graph,
+) {
+  final reached = reachedBy(graph.keys.where(isSuite), graph);
+  return {
+    for (final file in files) ...?reached[file],
+    ...files.where(isSuite),
+  };
+}
+
 String dirOf(String path) {
   final i = path.lastIndexOf('/');
   return i < 0 ? '.' : path.substring(0, i);

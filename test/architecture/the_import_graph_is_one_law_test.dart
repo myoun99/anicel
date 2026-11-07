@@ -177,6 +177,42 @@ void main() {
     });
   });
 
+  // The Windows shards leave the tests that reach package:gpu_engine to the
+  // Linux shards (유저 gpu-engine-skeleton-Q16, tool/tests_reaching_package
+  // .dart): a test the walk missed would run on WARP and never finish.
+  group('the tests that reach a package', () {
+    test("a package's import is told from another package's", () {
+      const source = "import 'package:gpu_engine/gpu_engine.dart';";
+      expect(importsPackage(source, 'gpu_engine'), isTrue);
+      expect(importsPackage(source, 'gpu'), isFalse);
+      const longer = "import 'package:gpu_engines/x.dart';";
+      expect(importsPackage(longer, 'gpu_engine'), isFalse);
+      const exported = "export 'package:gpu_engine/x.dart';";
+      expect(importsPackage(exported, 'gpu_engine'), isTrue);
+    });
+
+    test('a test is chosen when it, or anything it reaches, imports it', () {
+      final graph = {
+        'test/far_test.dart': {'lib/a.dart'},
+        'test/near_test.dart': <String>{},
+        'test/clear_test.dart': {'lib/b.dart'},
+        'test/helper.dart': {'lib/a.dart'},
+        'lib/a.dart': {'lib/engine_seat.dart'},
+        'lib/b.dart': <String>{},
+        'lib/engine_seat.dart': <String>{},
+      };
+      final importers = {
+        'lib/engine_seat.dart',
+        'test/near_test.dart',
+        'test/helper.dart',
+      };
+      expect(
+        testsReaching(importers, graph),
+        {'test/far_test.dart', 'test/near_test.dart'},
+      );
+    });
+  });
+
   group('walking a tree', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('import_graph_fx'));

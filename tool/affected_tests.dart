@@ -374,7 +374,7 @@ Set<String> selectTests({
   );
   return {
     // A changed test runs because it changed, whatever it imports.
-    ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+    ...changed.where(isSuite),
     for (final test in tests)
       if (everySuite || reachesAny(reaches.of(test), changed)) test,
   };
@@ -747,10 +747,8 @@ List<String>? parityTests() {
 /// dependencies through those. Only files flutter test will actually run
 /// as a suite may be handed back, though: passing it the config would ask
 /// it to run a file that defines no tests.
-List<String> _suitesIn(Map<String, Set<String>> graph) => graph.keys
-    .where((f) => f.startsWith('test/') && f.endsWith('_test.dart'))
-    .toList()
-  ..sort();
+List<String> _suitesIn(Map<String, Set<String>> graph) =>
+    graph.keys.where(isSuite).toList()..sort();
 
 /// Every suite there is, named — what `--all` and a blanket file run.
 List<String> _wholeSuite() =>
