@@ -789,6 +789,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fx_sdk_example"
+version = "0.0.1"
+dependencies = [
+ "anicel-fx",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
