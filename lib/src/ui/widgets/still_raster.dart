@@ -690,6 +690,48 @@ class _StillLayer extends OffsetLayer {
       _frame - _changedAt > _waitNow &&
       StillRaster._lastCaptureFrame != _frame;
 
+  /// Whether this region's check takes its image in the checks of the
+  /// frame under way ([_watch]), unless it gives way ([_givesWayTo]).
+  bool get _takesNow =>
+      _watching &&
+      attached &&
+      _strata == null &&
+      _owner._gate() == StillStandDown.none &&
+      _mayTake;
+
+  /// Whether the scene draws this region's own image: no region above it
+  /// is drawn from an image, which holds this one's pixels too.
+  bool get _shown {
+    for (var layer = parent; layer != null; layer = layer.parent) {
+      if (layer is _StillLayer && layer._strata != null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Whether this region gives its turn to one of [waiting], the regions
+  /// taking theirs in the same turn.
+  ///
+  /// 🚨A REGION THE SCENE DRAWS GOES BEFORE ONE UNDER ANOTHER'S IMAGE
+  /// (F-533, 2026-11-07): one image a frame, and the one drawn pays in the
+  /// frame after it — the other only once the region above it is drawn
+  /// live. 🔬When every row of the timeline's dock became a region of its
+  /// own (a-live-dock-frame-costs-a-whole-draw-Q1), HomePage at rest drew
+  /// `dock:bottom` from its image from its 12th frame, and its twelve rows
+  /// took frames 12–23, one each; the right tool strip, waiting since the
+  /// 3rd, was taken in the 24th. ⛔Not left untaken: taken while the dock
+  /// is drawn from its image, the rows are images from the first frame of
+  /// the scroll that draws the dock live — what Q1 is for.
+  bool _givesWayTo(Iterable<_StillLayer> waiting) =>
+      !_shown && waiting.any((other) => other._shown);
+
+  /// The regions whose checks take their images in the frame under way.
+  static Iterable<_StillLayer> _takingNow() => StillRaster.census
+      .map((region) => region._layer)
+      .whereType<_StillLayer>()
+      .where((layer) => layer._takesNow);
+
   void _watch() {
     if (_watching) {
       return;
@@ -705,7 +747,7 @@ class _StillLayer extends OffsetLayer {
       }
       // The frame clock ticks after the scene is built, so [_frame] here
       // already reads the next frame — the one that draws what is taken.
-      if (_mayTake) {
+      if (_mayTake && !_givesWayTo(_takingNow())) {
         if (_capture()) {
           // The scene still holds the children: re-add this layer so the
           // next frame draws the strata instead.
@@ -968,10 +1010,11 @@ typedef _Packing = ({List<Offset?> at, Size size});
 /// the timeline: 9.3 8.1 8.8 → 3.9 1.1 1.0 ms.
 ///
 /// So once no frame has come for a [_step], the region that has waited
-/// longest is taken, one a [_step], for the next frame that comes. That
-/// asks for no frame either, and lands on none. A region that backed off
-/// waits as many more steps as it would have frames, so what changes every
-/// so often is not taken every time.
+/// longest is taken, one a [_step], for the next frame that comes — the
+/// scene's before those under another's image, as in the frames
+/// ([_StillLayer._givesWayTo]). That asks for no frame either, and lands
+/// on none. A region that backed off waits as many more steps as it would
+/// have frames, so what changes every so often is not taken every time.
 abstract final class _FrameGap {
   /// The quiet a region waiting the shortest wait needs: its
   /// [StillRaster.stillFrames] at 60Hz. It is what keeps two images apart
@@ -1010,8 +1053,12 @@ abstract final class _FrameGap {
     }
     _quiet += 1;
     final waited = _quiet * StillRaster.stillFrames;
-    for (final layer in _owed) {
-      if (waited >= layer._stillFramesNeeded) {
+    final ready = [
+      for (final layer in _owed)
+        if (waited >= layer._stillFramesNeeded) layer,
+    ];
+    for (final layer in ready) {
+      if (!layer._givesWayTo(ready)) {
         _owed.remove(layer);
         layer._takeInAGap();
         break;

@@ -68,6 +68,31 @@ Future<void> _pump(
 const _red = Color(0xFFE53935);
 const _blue = Color(0xFF1E88E5);
 
+/// An `outer` region holding an `inner` one, and a region `beside` them,
+/// all still at once — the outer one first in the order they paint, the
+/// inner one before the one beside.
+Future<void> _pumpInnerAndBeside(WidgetTester tester) => pumpSurface(
+  tester,
+  Row(
+    // Stretched, for the reason the frame apart test gives.
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      Expanded(
+        child: StillRaster(
+          debugLabel: 'outer',
+          child: StillRaster(debugLabel: 'inner', child: _box()),
+        ),
+      ),
+      Expanded(
+        child: StillRaster(debugLabel: 'beside', child: _box(color: _blue)),
+      ),
+    ],
+  ),
+  left: _left,
+  width: _width,
+  height: _height,
+);
+
 /// A box that is its own repaint boundary, so a property of a layer ABOVE
 /// it can change while its picture stays exactly the one it was.
 /// How a region is moved: its scroll view's offset, its own place, or the
@@ -392,6 +417,34 @@ void main() {
     expect(tookOn, hasLength(2), reason: 'both regions took their image');
   });
 
+  testWidgets('a region the scene draws is taken before one under another '
+      'region\'s image (F-533)', (tester) async {
+    await _pumpInnerAndBeside(tester);
+    final tookOn = <String, int>{};
+    for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
+      await _frame(tester);
+      for (final region in tester.renderObjectList<RenderStillRaster>(
+        find.byType(StillRaster),
+      )) {
+        if (region.debugCaptureCount > 0) {
+          tookOn.putIfAbsent(region.debugLabel, () => frame);
+        }
+      }
+    }
+    expect(tookOn.keys, containsAll(['outer', 'inner', 'beside']));
+    expect(
+      tookOn['outer'],
+      lessThan(tookOn['beside']!),
+      reason: 'premise: the outer region is drawn from its image first',
+    );
+    expect(
+      tookOn['beside'],
+      lessThan(tookOn['inner']!),
+      reason: 'the region under the outer one\'s image took the turn of the '
+          'one the scene draws',
+    );
+  });
+
   group('when the frames stop (F-533)', () {
     // A click, a hover, a pen lifting: the region changed, its frames
     // ended with the change, and the wait was left for the next stroke to
@@ -477,6 +530,33 @@ void main() {
       expect(taken(), 1);
       await tester.binding.delayed(theRest);
       expect(taken(), 2);
+    });
+
+    testWidgets('a region the scene draws is taken a step before one under '
+        'another region\'s image', (tester) async {
+      await _pumpInnerAndBeside(tester);
+      await lastFrame(tester);
+      final regions = {
+        for (final region in tester.renderObjectList<RenderStillRaster>(
+          find.byType(StillRaster),
+        ))
+          region.debugLabel: region,
+      };
+      List<String> taken() => [
+        for (final MapEntry(key: label, value: region) in regions.entries)
+          if (region.debugCaptureCount > 0) label,
+      ];
+      await tester.binding.delayed(step);
+      expect(taken(), ['outer'], reason: 'premise: the outer region first');
+      await tester.binding.delayed(step);
+      expect(
+        taken(),
+        ['outer', 'beside'],
+        reason: 'the region under the outer one\'s image took the step of '
+            'the one the scene draws',
+      );
+      await tester.binding.delayed(step);
+      expect(taken(), ['outer', 'inner', 'beside']);
     });
 
     testWidgets('a region that threw an image away waits as many more steps '
