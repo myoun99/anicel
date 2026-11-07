@@ -379,9 +379,15 @@ fn what_this_machine_can_write_is_the_c_s_answer() {
 }
 
 /// `step` asked of both, with what each said after it: the answer and the
-/// last error.
+/// last error — from the same last error, an open both turn away, since a
+/// step that says nothing leaves whatever the test before it left.
+/// ↩️2026-11-07: without it a test that asked one writer alone (sound at no
+/// rate) made the next test's 「nothing open」 differ, in 2 runs of 8.
 fn both_say(what: &str, step: impl Fn(&Encoder) -> i32) {
     let (c, rust) = (c(), rust());
+    for encoder in [c, rust] {
+        encoder.tried(None, MOVIE);
+    }
     let theirs = (step(&c), c.last_error());
     let ours = (step(&rust), rust.last_error());
     assert_eq!(ours, theirs, "{what}");
