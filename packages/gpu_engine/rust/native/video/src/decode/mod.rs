@@ -423,23 +423,38 @@ fn frame(doc: &mut Doc, index: i64, out: &mut [u8]) -> Result<(), Why> {
     if !positioned {
         doc.reader.reposition(index, doc.shape.rate)?;
     }
-    let (width, height) = (doc.shape.stored.0 as usize, doc.shape.stored.1 as usize);
-    if doc.shape.rotation == 0 {
-        doc.reader.read(index, doc.shape.rate, out)?;
-    } else {
-        // ⛔The turn is applied HERE, once, for every backend.
-        let needed = width * height * 4;
-        if doc.scratch.len() < needed {
-            doc.scratch.try_reserve_exact(needed - doc.scratch.len())
-                .map_err(|_| "out of memory turning the frame upright")?;
-            doc.scratch.resize(needed, 0);
-        }
-        doc.reader.read(index, doc.shape.rate, &mut doc.scratch[..needed])?;
-        rotate(&doc.scratch, width, height, doc.shape.rotation, out);
-    }
+    let (reader, shape) = (&mut doc.reader, &doc.shape);
+    upright(shape, &mut doc.scratch, out, |into| reader.read(index, shape.rate, into))?;
     // Positioned on the frame AFTER this one: asking for it next needs no
     // reposition at all.
     doc.next = Some(index + 1);
+    Ok(())
+}
+
+/// One picture the right way up into `out`, which `read` fills at the
+/// STORED size: straight into `out` with no turn, into `scratch` and then
+/// turned with one.
+///
+/// ⛔The turn is applied HERE, once, for every backend — not by whichever
+/// backend's author happened to know about it (until 2026-08-31 Apple's
+/// alone did, and upright phone video lay on its side elsewhere).
+fn upright(
+    shape: &Shape,
+    scratch: &mut Vec<u8>,
+    out: &mut [u8],
+    read: impl FnOnce(&mut [u8]) -> Result<(), Why>,
+) -> Result<(), Why> {
+    if shape.rotation == 0 {
+        return read(out);
+    }
+    let (width, height) = (shape.stored.0 as usize, shape.stored.1 as usize);
+    let needed = width * height * 4;
+    if scratch.len() < needed {
+        scratch.try_reserve_exact(needed - scratch.len()).map_err(|_| "out of memory turning the frame upright")?;
+        scratch.resize(needed, 0);
+    }
+    read(&mut scratch[..needed])?;
+    rotate(scratch, width, height, shape.rotation, out);
     Ok(())
 }
 

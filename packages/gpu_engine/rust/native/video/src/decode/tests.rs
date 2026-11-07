@@ -109,6 +109,29 @@ fn a_turn_changes_the_picture_and_its_shape() {
 }
 
 #[test]
+fn a_frame_is_turned_upright_where_it_is_read() {
+    // The stored 3x2 of the test above, as a backend hands it over.
+    let stored: Vec<u8> = (0..6u8).flat_map(|i| [i, 0, 0, 255]).collect();
+    let read = |into: &mut [u8]| -> Result<(), Why> {
+        assert_eq!(into.len(), stored.len(), "a backend is handed the STORED size");
+        into.copy_from_slice(&stored);
+        Ok(())
+    };
+    let shape = |rotation, shown| Shape { stored: (3, 2), rotation, shown, rate: (24, 1), frame_count: 1 };
+    let (mut scratch, mut out) = (Vec::new(), vec![0u8; 24]);
+    upright(&shape(90, (2, 3)), &mut scratch, &mut out, read).expect("read");
+    assert_eq!(out.chunks(4).map(|pixel| pixel[0]).collect::<Vec<_>>(), [3, 0, 4, 1, 5, 2], "turned");
+    assert_eq!(scratch.len(), 24, "through the scratch, which is kept");
+    let mut direct = vec![0u8; 24];
+    upright(&shape(0, (3, 2)), &mut Vec::new(), &mut direct, read).expect("read");
+    assert_eq!(direct, stored, "an upright movie is read straight into the caller's buffer");
+    let mut untouched = vec![9u8; 24];
+    let failed = upright(&shape(270, (2, 3)), &mut scratch, &mut untouched, |_| Err("no".into()));
+    assert_eq!(failed.err().as_deref(), Some("no"), "a read's failure is the frame's");
+    assert!(untouched.iter().all(|&byte| byte == 9), "and turns nothing into the caller's buffer");
+}
+
+#[test]
 fn the_law_settles_size_rate_and_length_once() {
     let opened = |rotation, rate, length| Opened { stored_width: 1920, stored_height: 1080, rotation, rate, length };
     let shape = |opened| settle(opened).unwrap_or_else(|why| panic!("{why}"));

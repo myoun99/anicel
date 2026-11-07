@@ -167,15 +167,16 @@ fn between_junk(name: &str, body: &[u8]) -> (PathBuf, i64) {
 }
 
 /// Everything `decoder` reads of the movie `open` gives it: its info, then
-/// every frame in order, then some out of it, then one past the end and one
-/// into too small a buffer — each as bytes or the sentence refusing it.
+/// every frame in order, then some out of it — one before the first among
+/// them, which is the first — then one past the end and one into too small
+/// a buffer: each as bytes or the sentence refusing it.
 fn read_all(decoder: Decoder, open: impl Fn(Decoder) -> i32) -> (Info, Vec<Result<Vec<u8>, String>>) {
     let handle = open(decoder);
     assert!(handle > 0, "it opens: {}", decoder.error());
     let info = decoder.info(handle).expect("it describes the movie");
     let bytes = (info.0 * info.1 * 4) as usize;
     let count = info.2;
-    let order = (0..count).chain([count - 1, 0, count / 2, 3, 4, count / 2, count + 3]);
+    let order = (0..count).chain([count - 1, 0, count / 2, 3, 4, count / 2, -5, count + 3]);
     let mut frames: Vec<_> = order.map(|index| decoder.frame(handle, index, bytes)).collect();
     frames.push(decoder.frame(handle, 0, bytes - 1));
     (decoder.close)(handle);
@@ -220,7 +221,8 @@ fn each_frame_is_the_picture_for_its_index() {
     let _turn = one_at_a_time();
     let Some((path, _)) = movie() else { return };
     let (_, frames) = read_all(rust(), |decoder| decoder.open(path.to_str().expect("UTF-8")));
-    let order = (0..FRAMES).chain([FRAMES - 1, 0, FRAMES / 2, 3, 4, FRAMES / 2]);
+    // -5 is asked as the first.
+    let order = (0..FRAMES).chain([FRAMES - 1, 0, FRAMES / 2, 3, 4, FRAMES / 2, 0]);
     for (index, frame) in order.zip(&frames) {
         let frame = frame.as_ref().expect("a frame");
         let middle = &frame[(HEIGHT / 2 * WIDTH + WIDTH / 2) * 4..][..3];
@@ -276,6 +278,35 @@ fn a_failure_says_the_same_sentence() {
         assert_eq!(answers[1], answers[0], "{what}: as the C answers");
         assert!(!answers[0].0 && !answers[0].1.is_empty(), "LIVENESS — {what} is refused, and says why: {answers:?}");
     }
+    // And an open that succeeds says nothing: the last failure is not left
+    // for the next caller to read as its own.
+    for decoder in [c(), rust()] {
+        let handle = decoder.open(path);
+        assert!(handle > 0 && decoder.error().is_empty(), "a good open clears the failure: {:?}", decoder.error());
+        (decoder.close)(handle);
+    }
+}
+
+#[test]
+#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
+fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
+    // The repo's fixture: twelve pictures at 24 (stts 12 × 1000 in a track
+    // that says 11999/24000) under a sound that runs past them — the C's
+    // Windows backend counted by the video's own samples, not the
+    // presentation (검증 2026-10-23, windows-counts-a-movie-by-its-longest-track).
+    let _turn = one_at_a_time();
+    if (c().supported)() == 0 {
+        return;
+    }
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../../test/fixtures/tone_with_video.mp4");
+    let answers = [c(), rust()].map(|decoder| {
+        let handle = decoder.open(fixture);
+        let info = decoder.info(handle);
+        (decoder.close)(handle);
+        info
+    });
+    assert_eq!(answers[1], answers[0], "as the C counts it");
+    assert_eq!(answers[0].map(|info| info.2), Some(12), "LIVENESS: twelve pictures");
 }
 
 #[test]
