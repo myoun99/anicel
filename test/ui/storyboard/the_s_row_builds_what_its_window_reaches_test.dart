@@ -136,9 +136,18 @@ Future<void> _scrollTo(WidgetTester tester, double offset) async {
 
 Finder _key(String name) => find.byKey(ValueKey<String>(name));
 
-/// Narrows the storyboard's rail until the view's last cell and the window's
-/// overscan end on a span's edge — where a window ends least past the view
-/// ([timelineFrameWindowFor]) — and answers the view's breadth.
+/// A window whose storyboard view's last cell and overscan end on a span's
+/// edge — where a window ends least past the view
+/// ([timelineFrameWindowFor]): the view is 494px at 1560 and two thirds of
+/// a pixel wider for each pixel more.
+///
+/// ↩️The rail was moved there, by up to a span: at 512px a span is more
+/// than the rail moves, and in a window wide enough for one it stands at
+/// its own breadth.
+const _windowEndingOnASpan = Size(1580, 900);
+
+/// The storyboard's view, where its last cell and the window's overscan end
+/// on a span's edge ([_windowEndingOnASpan]).
 Future<double> _viewEndingOnASpan(WidgetTester tester) async {
   double view() => _frameAreas(tester).first.viewportDimension;
   int short() =>
@@ -150,17 +159,11 @@ Future<double> _viewEndingOnASpan(WidgetTester tester) async {
       (timelineFrameWindowSpanFor(2) +
           (view() / 2).ceil() +
           timelineFrameWindowOverscanCells);
-  final gesture = await tester.startGesture(
-    tester.getCenter(_key('storyboard-rail-splitter')),
+  expect(
+    short(),
+    0,
+    reason: '⛔전제: the view ends on a span, overscan too (${view()}px)',
   );
-  // Past any slop first, so the step after it is taken whole.
-  await gesture.moveBy(const Offset(-24, 0));
-  await tester.pump();
-  await gesture.moveBy(Offset(-2.0 * short(), 0));
-  await tester.pump();
-  await gesture.up();
-  await tester.pumpAndSettle();
-  expect(short(), 0, reason: '⛔전제: the view ends on a span, overscan too');
   return view();
 }
 
@@ -210,6 +213,8 @@ void main() {
     // ↩️A window reaches whole spans now (storyboard-strips-build-on-every-
     // view-pixel, 10-30), so it ends that close only for a view whose last
     // cell and overscan end ON a span's edge ([_viewEndingOnASpan]).
+    await tester.binding.setSurfaceSize(_windowEndingOnASpan);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await _open(tester, _project(far: 3000));
     final viewportWidth = await _viewEndingOnASpan(tester);
     final bucketWidth = timelineFrameWindowSpanFor(2) * 2.0;

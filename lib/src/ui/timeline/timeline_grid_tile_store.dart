@@ -105,9 +105,12 @@ class TimelineGridTileStore {
   final LinkedHashMap<String, _TileRequest> _starved =
       LinkedHashMap<String, _TileRequest>();
 
-  /// How many tiles it comes back to keeping ([_letGoWantedLatest]). A span
-  /// tile at 96px × a 28px row × DPR 2 ≈ 42KB; 768 covers dozens of rows ×
-  /// the whole scroll neighborhood before it lets any go.
+  /// How many tiles it comes back to keeping ([_letGoWantedLatest]): dozens
+  /// of rows × the whole scroll neighborhood before it lets any go. A tile
+  /// is a span wide ([timelineFrameWindowSpanFor]): 🔬S5 cut 352 (68 rows ×
+  /// 36 frames) at 1.5 held 267 (the timeline) · 426 (the X-sheet) tiles of
+  /// ~100 KB after a lap at 512px — at 96px it was past this, 804 · 811
+  /// tiles of 28 KB (11-07).
   static const int capacity = 768;
 
   /// How many tiles it comes back to keeping: [capacity] — lowered by a test

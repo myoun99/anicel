@@ -49,7 +49,7 @@ void main() {
 
   /// A row [frames] long with a block [length] long at every fourth frame,
   /// its cel named [name] (none: the block's head is a mark) — four frames
-  /// to a span at 24px.
+  /// to a span at 128px.
   Layer rowLayer(
     String id, {
     int frames = 4,
@@ -74,7 +74,7 @@ void main() {
   }) => TimelineRowCellsPainter(
     layer: layer,
     geometry: testFrameGeometry(
-      frameCellExtent: 24,
+      frameCellExtent: 128,
       frameEndIndexExclusive: frames,
     ),
     crossAxisExtent: crossAxisExtent,
@@ -98,7 +98,7 @@ void main() {
   /// every span it shows.
   void paintRow(TimelineRowCellsPainter painter, int frames) {
     final recorder = ui.PictureRecorder();
-    painter.paint(Canvas(recorder), Size(frames * 24.0, 28));
+    painter.paint(Canvas(recorder), Size(frames * 128.0, 28));
     recorder.endRecording().dispose();
   }
 

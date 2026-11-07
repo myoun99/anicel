@@ -53,7 +53,7 @@ void main() {
   final store = TimelineGridTileStore.instance;
 
   /// A row [frames] long with a block of two at every fourth frame — four
-  /// frames to a span at 24px (`timelineFrameWindowSpanFor`).
+  /// frames to a span at 128px (`timelineFrameWindowSpanFor`).
   Layer rowLayer(String id, {required int frames}) => Layer(
     id: LayerId(id),
     name: id,
@@ -68,7 +68,7 @@ void main() {
       TimelineRowCellsPainter(
         layer: layer,
         geometry: testFrameGeometry(
-          frameCellExtent: 24,
+          frameCellExtent: 128,
           frameEndIndexExclusive: frames,
         ),
         crossAxisExtent: 28,
@@ -83,7 +83,7 @@ void main() {
   /// every span it shows and keeps warm.
   void paintRow(TimelineRowCellsPainter painter, int frames) {
     final recorder = ui.PictureRecorder();
-    painter.paint(Canvas(recorder), Size(frames * 24.0, 28));
+    painter.paint(Canvas(recorder), Size(frames * 128.0, 28));
     recorder.endRecording().dispose();
   }
 
@@ -244,7 +244,7 @@ void main() {
         TimelineRowCellsPainter(
           layer: rowLayer(id, frames: frames),
           geometry: testFrameGeometry(
-            frameCellExtent: 24,
+            frameCellExtent: 128,
             frameEndIndexExclusive: frames,
           ),
           crossAxisExtent: 28,

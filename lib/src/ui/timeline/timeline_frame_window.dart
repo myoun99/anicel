@@ -29,7 +29,18 @@ const int timelineFrameWindowSpanCells = 4;
 
 /// Spans never get finer than this many pixels — tiny cells (storyboard
 /// zoom levels) would otherwise re-approach per-pixel repainting.
-const double timelineFrameWindowMinSpanPx = 96;
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q5 (유저 2026-11-07, a: 「행
+/// 그림이 덜 버려지게 하는 구간 폭 일을 먼저」): every row of the dock is
+/// drawn from an image of itself, and a crossing records every row's
+/// painters again, so a row's image lasts one span. ↩️96: 🔬S5 cut 352 at
+/// 1.5, 14 px a frame, two runs each against 512 (11-07): raster p50 the
+/// conte 12.1 · 12.7 → 3.0 · 2.6 ms, the timeline 2.8 · 2.6 → 1.8 · 1.9,
+/// the X-sheet 3.3 · 3.2 → 2.5 · 2.5; rows taken again while scrolling
+/// 49 · 12 · 9 → 0; the X-sheet's playback threw 1051 · 1238 rows' images
+/// away against 289 · 289. A span is a cell tile's width too
+/// ([TimelineGridTileStore]): the X-sheet's tiles held 22 → 44 MB.
+const double timelineFrameWindowMinSpanPx = 512;
 
 /// Safety cells painted beyond the span's reach on both sides.
 const int timelineFrameWindowOverscanCells = 2;

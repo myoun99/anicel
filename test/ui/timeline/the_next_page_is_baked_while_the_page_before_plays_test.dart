@@ -47,11 +47,11 @@ void main() {
   final available = dllPath != null;
   final store = TimelineGridTileStore.instance;
 
-  // 120 frames at 24px, a 240px viewport: ten frames a page, four to a span
+  // 120 frames at 128px, a 1280px viewport: ten frames a page, four to a span
   // (`timelineFrameWindowSpanFor`).
   const frames = 120;
-  const cell = 24.0;
-  const viewport = 240.0;
+  const cell = 128.0;
+  const viewport = 1280.0;
 
   Layer rowLayer(String id, {int length = 2}) => Layer(
     id: LayerId(id),

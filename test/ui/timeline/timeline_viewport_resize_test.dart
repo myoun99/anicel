@@ -102,7 +102,8 @@ void main() {
   /// A span-aligned frame index that the ENLARGED viewport shows but the
   /// small-window request set never covered — kept clear of the small
   /// window's one-span prefetch too, so under the broken shape nothing
-  /// has ever requested it.
+  /// has ever requested it. Spans are 512px at the least, so the enlarged
+  /// window is wide enough to show a frame that far.
   int newlyExposedSpanStart(
     ({int startIndex, int endIndexExclusive}) smallWindow,
   ) {
@@ -133,7 +134,7 @@ void main() {
     );
 
     // ---- the resize: same session, same scroll offset, wider glass ----
-    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.physicalSize = const Size(4000, 900);
     await tester.pumpAndSettle();
 
     final probeFrame = newlyExposedSpanStart(smallWindow);
@@ -190,7 +191,7 @@ void main() {
       layerId,
     ).visibleFrameWindow();
 
-    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.physicalSize = const Size(4000, 900);
     await tester.pumpAndSettle();
 
     // Let the raster drains converge: a landing repaints the rows, which

@@ -77,11 +77,12 @@ void main() {
     ValueListenable<int>? windowBucket,
     double viewportMainExtent = 0,
     int? Function(int frame)? stepsUntilShown,
+    double cellExtent = 24,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
       geometry: testFrameGeometry(
-        frameCellExtent: 24,
+        frameCellExtent: cellExtent,
         frameEndIndexExclusive: 40,
         viewExtentPx: viewportMainExtent,
       ),
@@ -698,6 +699,10 @@ void main() {
   // shows its pages in its own order and round again, so the tile asked for
   // longest ago is the next one it shows — what an LRU lets go of first.
   group('past its capacity, a row on screen lets its tiles go by the run', () {
+    // Cells as wide as a quarter of the narrowest span, so the row's 40
+    // frames hold ten spans (`timelineFrameWindowSpanFor`).
+    const cell = 128.0;
+
     /// A row on screen ([TimelineGridTileStore.noticesFor] heard), windowed
     /// so its first spans are shown and the three after them are not:
     /// those three's starts, the painter, and the tile of a span.
@@ -715,13 +720,14 @@ void main() {
         blockLayer(),
         store: store,
         windowBucket: bucket,
-        viewportMainExtent: 48,
+        viewportMainExtent: 2 * cell,
         stepsUntilShown: stepsUntilShown,
+        cellExtent: cell,
       );
       void heard() {}
       painter.addListener(heard);
       addTearDown(() => painter.removeListener(heard));
-      final span = timelineFrameWindowSpanFor(24);
+      final span = timelineFrameWindowSpanFor(cell);
       final shownEnd = painter.tileSpans.shown.last.$2;
       final past = [for (var i = 0; i < 3; i += 1) shownEnd + i * span];
       expect(
@@ -812,8 +818,9 @@ void main() {
         ),
         store: store,
         stepsUntilShown: (_) => 0,
+        cellExtent: cell,
       );
-      final span = timelineFrameWindowSpanFor(24);
+      final span = timelineFrameWindowSpanFor(cell);
 
       final hidden = await landed(
         () => store.tileFor(
