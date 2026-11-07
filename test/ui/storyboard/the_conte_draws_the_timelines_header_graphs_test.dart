@@ -958,6 +958,7 @@ void main() {
             fit.ranges.single,
             box.size.height,
             Axis.horizontal,
+            toolsReach: painter.toolsReachNow,
           ),
         ),
       ),

@@ -237,30 +237,80 @@ void main() {
   group('across the graph', () {
     const range = (low: 0.0, high: 100.0);
 
+    /// Where [value] stands across a graph [extent] deep along [axis], its
+    /// tools reaching [toolsReach] in — none, where not told.
+    double across(
+      double value,
+      double extent,
+      Axis axis, {
+      double toolsReach = 0,
+    }) => laneGraphAcross(value, range, extent, axis, toolsReach: toolsReach);
+
     test('on the timeline higher is up, its padding kept clear', () {
-      expect(laneGraphAcross(0, range, 196, Axis.horizontal), 196 - 16);
-      expect(laneGraphAcross(100, range, 196, Axis.horizontal), 16);
-      expect(laneGraphAcross(50, range, 196, Axis.horizontal), 98);
+      expect(across(0, 196, Axis.horizontal), 196 - 16);
+      expect(across(100, 196, Axis.horizontal), 16);
+      expect(across(50, 196, Axis.horizontal), 98);
     });
 
     test('on the sheet, the timeline turned a quarter clockwise, higher is '
         'further right', () {
-      expect(laneGraphAcross(0, range, 196, Axis.vertical), 16);
-      expect(laneGraphAcross(100, range, 196, Axis.vertical), 196 - 16);
+      expect(across(0, 196, Axis.vertical), 16);
+      expect(across(100, 196, Axis.vertical), 196 - 16);
     });
 
     // I-89 ③D: the mock's 16 a side turned the values over in a graph
     // shallower than 32 — a one-lane group's, gripped down to its lane.
     test('a graph too shallow for its padding keeps a quarter a side, the '
         'right way up', () {
-      expect(laneGraphAcross(0, range, 24, Axis.horizontal), 24 - 6);
-      expect(laneGraphAcross(100, range, 24, Axis.horizontal), 6);
-      expect(laneGraphAcross(0, range, 24, Axis.vertical), 6);
-      expect(laneGraphAcross(100, range, 24, Axis.vertical), 24 - 6);
+      expect(across(0, 24, Axis.horizontal), 24 - 6);
+      expect(across(100, 24, Axis.horizontal), 6);
+      expect(across(0, 24, Axis.vertical), 6);
+      expect(across(100, 24, Axis.vertical), 24 - 6);
       expect(
-        laneGraphAcross(100, range, 64, Axis.horizontal),
+        across(100, 64, Axis.horizontal),
         16,
         reason: 'deep enough, the padding is the mock\'s',
+      );
+    });
+
+    // 🗣️graph-box-top-handle-under-the-toolbar-Q1 (유저 2026-11-07, a:
+    // 「값을 도구 줄 아래로 맞춘다」).
+    test('its high values\' edge keeps its tools clear, and its padding '
+        'past them — the low edge as it was', () {
+      expect(
+        across(100, 196, Axis.horizontal, toolsReach: 32),
+        32 + 16,
+        reason: 'the highest value 16 under tools reaching 32 down',
+      );
+      expect(across(0, 196, Axis.horizontal, toolsReach: 32), 196 - 16);
+      expect(across(50, 196, Axis.horizontal, toolsReach: 32), 48 + 132 / 2);
+      expect(
+        across(100, 196, Axis.vertical, toolsReach: 32),
+        196 - 32 - 16,
+        reason: 'the sheet\'s high values stand at its right',
+      );
+      expect(across(0, 196, Axis.vertical, toolsReach: 32), 16);
+    });
+
+    // ⏳Q3: the floor Q1's cost named.
+    test('never past the middle, however far the tools reach — the values '
+        'the right way up', () {
+      expect(across(100, 80, Axis.horizontal, toolsReach: 32), 40);
+      expect(across(0, 80, Axis.horizontal, toolsReach: 32), 80 - 16);
+      expect(across(100, 24, Axis.horizontal, toolsReach: 32), 12);
+      expect(across(0, 24, Axis.horizontal, toolsReach: 32), 24 - 6);
+    });
+
+    test('a hand moved as far as the room the values are fitted to moves a '
+        'value its whole range', () {
+      expect(
+        laneGraphValueRise(132, range, 196, Axis.horizontal, toolsReach: 32),
+        -100,
+        reason: 'up the timeline\'s graph',
+      );
+      expect(
+        laneGraphValueRise(164, range, 196, Axis.vertical, toolsReach: 0),
+        100,
       );
     });
   });

@@ -168,6 +168,7 @@ void main() {
             fitOf(painter, line).ranges.single,
             size.height,
             Axis.horizontal,
+            toolsReach: painter.toolsReachNow,
           ),
         ),
         epsilon: 1e-3,

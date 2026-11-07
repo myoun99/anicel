@@ -361,6 +361,7 @@ void main() {
       range,
       size.height,
       Axis.horizontal,
+      toolsReach: painterOf(tester).toolsReachNow,
     );
     // Four pixels short of it.
     final up = Offset(0, to - from + 4);

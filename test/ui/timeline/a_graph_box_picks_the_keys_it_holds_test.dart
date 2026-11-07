@@ -279,6 +279,7 @@ void main() {
             fit.ranges.single,
             size.height,
             Axis.horizontal,
+            toolsReach: painter.toolsReachNow,
           ),
         );
       }

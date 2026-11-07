@@ -316,7 +316,10 @@ LaneGraphLines laneGraphLines(
 /// of cells: laid out by the grid's live geometry ([TimelineFrameAxisBox])
 /// and drawing only its window, so a scroll or a zoom step repaints it and
 /// rebuilds nothing.
-class TimelineLaneGraph extends StatelessWidget {
+///
+/// Its values are fitted clear of its tools ([laneGraphAcross]): where the
+/// tools are laid, they say how far they reach in ([_LaneGraphCorners]).
+class TimelineLaneGraph extends StatefulWidget {
   const TimelineLaneGraph({
     super.key,
     required this.seat,
@@ -347,16 +350,32 @@ class TimelineLaneGraph extends StatelessWidget {
   /// ([TimelineRowEdges.graphMost]).
   final double mostExtent;
 
-  Axis get _axis => grid.frameAxis.axis;
+  @override
+  State<TimelineLaneGraph> createState() => _TimelineLaneGraphState();
+}
+
+class _TimelineLaneGraphState extends State<TimelineLaneGraph> {
+  /// How far its tools reach in across it, as they were last laid
+  /// ([LaneGraphPicture.toolsReach]).
+  final ValueNotifier<double> _toolsReach = ValueNotifier(0);
+
+  Axis get _axis => widget.grid.frameAxis.axis;
+
+  @override
+  void dispose() {
+    _toolsReach.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final TimelineLaneGraph(:seat, :lines, :grid) = widget;
     final verbs = grid.verbs;
     return Stack(
       children: [
         TimelineFrameAxisBox(
           geometry: grid.frameAxis.geometry,
-          crossAxisExtent: crossExtent,
+          crossAxisExtent: widget.crossExtent,
           axis: _axis,
           child: RepaintBoundary(
             child: ListenableBuilder(
@@ -371,6 +390,7 @@ class TimelineLaneGraph extends StatelessWidget {
                 pen: seat.graph.pen,
                 transformBox: seat.graph.transformBox,
                 snap: seat.graph.snap,
+                toolsReach: _toolsReach,
               ),
             ),
           ),
@@ -383,11 +403,13 @@ class TimelineLaneGraph extends StatelessWidget {
 
   /// Its tools and its guests' tags, each in its corner of the view.
   Widget _corners(LaneGraphVerbs? verbs) {
+    final TimelineLaneGraph(:seat, :lines, :grid) = widget;
     final guests = lines.guests();
     return CustomMultiChildLayout(
       delegate: _LaneGraphCorners(
         _axis,
         grid.frameAxis.geometry,
+        _toolsReach,
       ),
       children: [
         LayoutId(
@@ -429,28 +451,31 @@ class TimelineLaneGraph extends StatelessWidget {
 
   /// Its grip along its cross end: the timeline's bottom, the sheet's
   /// right.
-  Widget _grip(LaneGraphVerbs? verbs) => stripAcross(
-    _axis,
-    across: 0,
-    fromEnd: true,
-    child: LaneGraphGrip(
-      key: ValueKey<String>(
-        '${grid.keyPrefix}-lane-graph-grip-${seat.groupKey}',
+  Widget _grip(LaneGraphVerbs? verbs) {
+    final TimelineLaneGraph(:seat, :grid) = widget;
+    return stripAcross(
+      _axis,
+      across: 0,
+      fromEnd: true,
+      child: LaneGraphGrip(
+        key: ValueKey<String>(
+          '${grid.keyPrefix}-lane-graph-grip-${seat.groupKey}',
+        ),
+        axis: _axis,
+        extent: widget.crossExtent,
+        least: widget.lanesExtent,
+        most: widget.mostExtent,
+        onResize: (extent) => verbs?.resize(seat.groupKey, extent),
       ),
-      axis: _axis,
-      extent: crossExtent,
-      least: lanesExtent,
-      most: mostExtent,
-      onResize: (extent) => verbs?.resize(seat.groupKey, extent),
-    ),
-  );
+    );
+  }
 
   /// [corners] standing still in the view while the frames scroll under
   /// them ([ScrollStill]) — at the frames' start where the host scrolls
   /// none. Forward along the frames, as the scroll body they stand in
   /// lands (`TimelineScrollViewport`).
   Widget _standingInTheView(Widget corners) {
-    final controller = grid.frameAxisController;
+    final controller = widget.grid.frameAxisController;
     return controller == null
         ? corners
         : ScrollStill(
@@ -506,6 +531,7 @@ class LaneGraphPicture extends StatefulWidget {
     this.pen = false,
     this.transformBox = true,
     this.snap = false,
+    this.toolsReach,
   });
 
   final List<LaneGraphLine> own;
@@ -513,6 +539,11 @@ class LaneGraphPicture extends StatefulWidget {
 
   /// The frames it is drawn over.
   final LaneGraphFrames frameAxis;
+
+  /// How far its graph's tools reach in across it from the edge they stand
+  /// on, as they were laid — what its values are fitted clear of
+  /// ([laneGraphAcross]); none where nothing stands over it.
+  final ValueListenable<double>? toolsReach;
 
   /// What a handle let go of writes through; null where the host takes no
   /// lane edits, and a pull shows and writes nothing.
@@ -692,6 +723,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       box: _box?.rect,
       transformBox: widget.transformBox,
       pivot: _pivot ?? laneGraphBoxMiddle,
+      toolsReach: widget.toolsReach,
     );
     final picture = HitGate(
       admits: _takesPressAt,
@@ -1444,6 +1476,7 @@ class _LaneGraphLift {
     }
     final axis = picture.frameAxis.axis;
     final extent = extentAcross(axis, size);
+    final toolsReach = picture.toolsReach?.value ?? 0;
     final values = <String, Map<int, List<double>>>{};
     for (final (
           lifted: (:laneId, :frame, :numbers, :part, :range),
@@ -1453,7 +1486,13 @@ class _LaneGraphLift {
       // A key's two marks a stretch raises each — a position's x and y —
       // write ONE value between them.
       final value = (values[laneId] ??= {})[frame] ??= [...numbers];
-      value[part] += laneGraphValueRise(rise, range, extent, axis);
+      value[part] += laneGraphValueRise(
+        rise,
+        range,
+        extent,
+        axis,
+        toolsReach: toolsReach,
+      );
     }
     return (
       inputs: {
@@ -1752,8 +1791,12 @@ enum _LaneGraphCorner { tools, guests }
 /// The tags never stand before the tools' end: no wider than the room the
 /// view leaves them on the timeline — the graph's on the sheet — so a long
 /// name ends in an ellipsis; never narrower than a tag's dash and pin.
+///
+/// Where it lays the tools it tells [toolsReach] how far in across the
+/// graph they reach.
 class _LaneGraphCorners extends MultiChildLayoutDelegate {
-  _LaneGraphCorners(this.axis, this.geometry) : super(relayout: geometry);
+  _LaneGraphCorners(this.axis, this.geometry, this.toolsReach)
+    : super(relayout: geometry);
 
   final Axis axis;
 
@@ -1761,6 +1804,9 @@ class _LaneGraphCorners extends MultiChildLayoutDelegate {
   /// laid, so a widened view moves them without the graph building again
   /// ([TimelineFrameGeometry.viewExtentPx]).
   final ValueListenable<TimelineFrameGeometry> geometry;
+
+  /// What the graph's values are fitted clear of ([laneGraphAcross]).
+  final ValueNotifier<double> toolsReach;
 
   /// The view's extent along the frames; nothing where the host says
   /// nothing, and the view is all of them.
@@ -1800,6 +1846,13 @@ class _LaneGraphCorners extends MultiChildLayoutDelegate {
         across: _across(size, tools, _graphToolsInset),
       ),
     );
+    // ⏳graph-box-top-handle-under-the-toolbar-Q2: upright on the sheet, the
+    // tools stand across the whole of its graph — 🔬6–190 of 196, as it
+    // opens — and no fit across clears them: asked, and the sheet's values
+    // keep their fit till it is answered.
+    toolsReach.value = axis == Axis.horizontal
+        ? _graphToolsInset + extentAcross(axis, tools)
+        : 0;
     if (!hasChild(_LaneGraphCorner.guests)) {
       return;
     }
@@ -2136,17 +2189,21 @@ LaneGraphRange laneGraphSpeedRange(LaneCurve curve, List<int> keyed) {
 /// The padding is at most a quarter of the depth (I-89 ③D): the mock's
 /// own 16 turned the values over in a graph shallower than 32 — a one-lane
 /// group's, gripped down to its lane.
+///
+/// And its high values' edge keeps its tools' [toolsReach] clear as well
+/// ([_laneGraphRoom]).
 double laneGraphAcross(
   double value,
   LaneGraphRange range,
   double extent,
-  Axis axis,
-) {
+  Axis axis, {
+  required double toolsReach,
+}) {
   final share = (value - range.low) / (range.high - range.low);
-  final (:padding, :room) = _laneGraphRoom(extent);
+  final (:low, :room) = _laneGraphRoom(extent, toolsReach);
   return axis == Axis.horizontal
-      ? extent - padding - share * room
-      : padding + share * room;
+      ? extent - low - share * room
+      : low + share * room;
 }
 
 /// How far a value fitted to [range] moves for a hand gone [rise] pixels
@@ -2156,17 +2213,33 @@ double laneGraphValueRise(
   double rise,
   LaneGraphRange range,
   double extent,
-  Axis axis,
-) {
-  final by = rise / _laneGraphRoom(extent).room * (range.high - range.low);
+  Axis axis, {
+  required double toolsReach,
+}) {
+  final room = _laneGraphRoom(extent, toolsReach).room;
+  final by = rise / room * (range.high - range.low);
   return axis == Axis.horizontal ? -by : by;
 }
 
-/// What a graph [extent] deep keeps clear at either edge across it, and
-/// the room between that its values are fitted to.
-({double padding, double room}) _laneGraphRoom(double extent) {
-  final padding = math.min(_laneGraphPadding, extent / 4);
-  return (padding: padding, room: extent - 2 * padding);
+/// What a graph [extent] deep keeps clear across it at its low values'
+/// edge, and the room past that its values are fitted to — short of its
+/// high values' edge by as much again, and by what its tools reach in from
+/// there ([toolsReach]), though never past the middle.
+///
+/// 🗣️graph-box-top-handle-under-the-toolbar-Q1 (유저 2026-11-07, a: 「값을
+/// 도구 줄 아래로 맞춘다」): the tools stand opaque over the picture at its
+/// high values' edge — the timeline's top, the sheet's right — and a press
+/// on them is theirs, so a key, a line or a box's handle drawn under them
+/// could not be taken. 🔬Opened as it opens, 196 deep, the top 6–32 was
+/// theirs; the values were fitted from 16. ⏳Never past the middle is the
+/// floor Q1's cost named for a graph gripped shallow — asked (Q3).
+({double low, double room}) _laneGraphRoom(
+  double extent,
+  double toolsReach,
+) {
+  final low = math.min(_laneGraphPadding, extent / 4);
+  final high = math.min(low + toolsReach, extent / 2);
+  return (low: low, room: extent - low - high);
 }
 
 /// The times a line is read at across [window], its frames [cell] long:
@@ -2332,11 +2405,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
     this.box,
     this.transformBox = true,
     this.pivot = laneGraphBoxMiddle,
+    this.toolsReach,
   }) : super(
          repaint: Listenable.merge([
            frameAxis.geometry,
            ?frameAxis.windowBucket,
            ?selection,
+           ?toolsReach,
          ]),
        );
 
@@ -2346,6 +2421,12 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// The frames it draws over.
   final LaneGraphFrames frameAxis;
   final LaneGraphMode mode;
+
+  /// What its values are fitted clear of ([LaneGraphPicture.toolsReach]).
+  final ValueListenable<double>? toolsReach;
+
+  /// How far its tools reach in across it now — none where none stand.
+  double get toolsReachNow => toolsReach?.value ?? 0;
 
   /// The live lane selection its keys are picked by — null where none is
   /// kept, and no key wears a ring.
@@ -2392,10 +2473,11 @@ class TimelineLaneGraphPainter extends CustomPainter {
       laneGroupKey(line.layer.id, line.lane.laneId);
 
   /// The strokes, the handles and the keys [_readIn] last read, and where
-  /// they were read for.
+  /// they were read for — its tools' reach among it.
   ({
     Size size,
     TimelineFrameGeometry frames,
+    double toolsReach,
     ({int startIndex, int endIndexExclusive}) window,
     List<_LaneGraphStroke> strokes,
     List<LaneGraphHandle> handles,
@@ -2638,9 +2720,11 @@ class TimelineLaneGraphPainter extends CustomPainter {
   _readIn(Size size) {
     final frames = frameAxis.geometry.value;
     final window = visibleFrameWindow();
+    final toolsReach = toolsReachNow;
     if (_read case final last?
         when last.size == size &&
             last.frames == frames &&
+            last.toolsReach == toolsReach &&
             last.window == window) {
       return (strokes: last.strokes, handles: last.handles, keys: last.keys);
     }
@@ -2658,6 +2742,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
     _read = (
       size: size,
       frames: frames,
+      toolsReach: toolsReach,
       window: window,
       strokes: strokes,
       handles: handles,
@@ -2688,8 +2773,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
     }
     final (:keyed, :ranges) = fit;
     final shift = _shiftOf(line);
-    double across(double value) =>
-        laneGraphAcross(value, ranges.single, extent, axis);
+    double across(double value) => laneGraphAcross(
+      value,
+      ranges.single,
+      extent,
+      axis,
+      toolsReach: toolsReachNow,
+    );
     for (final span in _laneGraphSegmentsOf(curve, keyed)) {
       if (span.to + shift < window.startIndex ||
           span.from + shift >= window.endIndexExclusive) {
@@ -2780,7 +2870,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
     return (time, number, part) => offsetAlong(
       axis,
       along: laneGraphAlong(time + shift, frames),
-      across: laneGraphAcross(number, ranges[part], extent, axis),
+      across: laneGraphAcross(
+        number,
+        ranges[part],
+        extent,
+        axis,
+        toolsReach: toolsReachNow,
+      ),
     );
   }
 
@@ -2875,7 +2971,8 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.held != held ||
       oldDelegate.box != box ||
       oldDelegate.transformBox != transformBox ||
-      oldDelegate.pivot != pivot;
+      oldDelegate.pivot != pivot ||
+      oldDelegate.toolsReach != toolsReach;
 }
 
 /// The segments [curve]'s handles bend, in order: from each of its

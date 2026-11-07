@@ -510,6 +510,7 @@ void main() {
           painter.fits.values.single.ranges.single,
           size.height,
           Axis.horizontal,
+          toolsReach: painter.toolsReachNow,
         );
 
     Layer withTrack(TransformTrack track) =>

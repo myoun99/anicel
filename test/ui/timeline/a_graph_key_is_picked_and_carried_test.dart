@@ -859,6 +859,55 @@ void main() {
       expect((picked.startIndex, picked.endIndexExclusive), (0, 17));
     });
 
+    // 🗣️graph-box-top-handle-under-the-toolbar-Q1 (유저 2026-11-07, a:
+    // 「값을 도구 줄 아래로 맞춘다」): 🔬opened as it opens, the box's top
+    // handle, its top right and the key on 8 stood under the graph's tools,
+    // and a press there was theirs.
+    testWidgets('opened as it opens, its keys and the box\'s handles stand '
+        'clear of the graph\'s tools, and the top handle takes a press', (
+      tester,
+    ) async {
+      final s = await _pump(tester);
+      await _openTheGraph(tester, s);
+      await _pick(tester, s);
+      final tools = tester.getRect(find.byType(LaneGraphTools));
+      final (:painter, :box) = _graphOf(tester);
+      expect(
+        tools.overlaps(box.localToGlobal(Offset.zero) & box.size),
+        isTrue,
+        reason: '⛔전제: the tools stand over the picture',
+      );
+      final under = [
+        for (final key in painter.keysIn(box.size))
+          if (tools.contains(box.localToGlobal(key.at))) 'key on ${key.frame}',
+        for (final along in [-1, 0, 1])
+          for (final across in [-1, 0, 1])
+            if ((along, across) != (0, 0) &&
+                tools.contains(
+                  handleOnScreen(tester, (along: along, across: across)),
+                ))
+              'handle ($along, $across)',
+      ];
+      expect(under, isEmpty, reason: 'under the tools');
+
+      final gesture = await tester.startGesture(
+        handleOnScreen(tester, (along: 0, across: -1)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(rotations(s)[0], 0);
+      expect(
+        rotations(s)[8],
+        lessThan(45),
+        reason: 'the top handle pulled down lowers the top key',
+      );
+    });
+
     testWidgets('a finger on the start\'s handle stretches them too: the '
         'press is the handle\'s', (tester) async {
       final s = await _pump(tester, transform: rotating(8, 16));
@@ -1266,6 +1315,7 @@ Offset _lineOnScreen(WidgetTester tester, double time) {
         fit.ranges.single,
         box.size.height,
         Axis.horizontal,
+        toolsReach: painter.toolsReachNow,
       ),
     ),
   );
@@ -1359,10 +1409,6 @@ ScrollPosition _rowsScroll(WidgetTester tester) => tester
 
 /// The drawing's lanes twirled open and its Transform graph with them, its
 /// [lane] stood on — the one lane the graph then draws.
-///
-/// Pulled taller than it opens: a line's top stands about where the tools
-/// in the view's near corner end, and the key on 8 is that top — half under
-/// them once the pen joined them (I-3 ④).
 Future<void> _openTheGraph(
   WidgetTester tester,
   EditorSessionManager s, {
@@ -1377,7 +1423,6 @@ Future<void> _openTheGraph(
     tester,
     'timeline-lane-group-graph-draw-${transformGroupHeaderLane.laneId}',
   );
-  SessionRowButtonPresses(s).resizeLaneGraph(_transformGroup, 320);
   s.standOnRow(LaneRowAddress(_drawId, lane));
   await tester.pumpAndSettle();
 }
