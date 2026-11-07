@@ -423,8 +423,7 @@ Iterable<TileRange> _partsFitting(
 
 /// The pixels of a [picture]-sized picture that [block]'s raster samples
 /// where [placement] lays it — what the block covers, taken back into the
-/// picture and grown by a texel — or null where it reaches none of the
-/// picture.
+/// picture to whole texels — or null where it reaches none of the picture.
 ({int left, int top, int width, int height})? _reachedBy(
   TileRange block,
   CanvasSize picture,
@@ -444,16 +443,17 @@ Iterable<TileRange> _partsFitting(
       ((block.lastY + 1) * tileSize).toDouble(),
     ),
   );
-  // A pixel reads the one texel its centre lands on ([_layPaint]), within
-  // what the block covers taken back; a texel more each way holds a centre
-  // that lands on a texel's edge. ↩️Two and more, 「farther the more the lay
-  // shrinks it」, and out to a mip grid, while a lay resampled smoothly
-  // (I-120-Q28).
-  const reach = 1;
-  final left = math.max(0, over.left.floor() - reach);
-  final top = math.max(0, over.top.floor() - reach);
-  final right = math.min(picture.width, over.right.ceil() + reach);
-  final bottom = math.min(picture.height, over.bottom.ceil() + reach);
+  // A pixel reads the one texel its centre lands on ([_layPaint]), and a
+  // centre lies half a pixel inside the block, so it lands inside what the
+  // block covers taken back — on a texel's edge, either texel of it.
+  // ↩️It reached two texels and more past that, 「farther the more the lay
+  // shrinks it」, and out to a mip grid, while a lay resampled smoothly;
+  // and one texel, while it went nearest, which no pixel read (I-120-Q28,
+  // its mutant lived).
+  final left = math.max(0, over.left.floor());
+  final top = math.max(0, over.top.floor());
+  final right = math.min(picture.width, over.right.ceil());
+  final bottom = math.min(picture.height, over.bottom.ceil());
   if (left >= right || top >= bottom) {
     return null;
   }
