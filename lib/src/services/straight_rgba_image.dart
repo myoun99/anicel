@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../core/rgba_premultiply.dart';
 import '../native/qa_native_engine.dart';
 
 /// Straight-alpha [rgba] premultiplied for the display upload, with the
@@ -21,17 +22,7 @@ import '../native/qa_native_engine.dart';
     final scratch = native.premultipliedStampCopy(rgba);
     return (pixels: scratch.view, scratch: scratch);
   }
-  final premultiplied = Uint8List.fromList(rgba);
-  for (var i = 0; i < premultiplied.length; i += 4) {
-    final alpha = premultiplied[i + 3];
-    if (alpha == 255) {
-      continue;
-    }
-    premultiplied[i] = (premultiplied[i] * alpha + 127) ~/ 255;
-    premultiplied[i + 1] = (premultiplied[i + 1] * alpha + 127) ~/ 255;
-    premultiplied[i + 2] = (premultiplied[i + 2] * alpha + 127) ~/ 255;
-  }
-  return (pixels: premultiplied, scratch: null);
+  return (pixels: premultipliedRgbaCopy(rgba), scratch: null);
 }
 
 /// Uploads STRAIGHT-alpha [rgba] as a display image.
