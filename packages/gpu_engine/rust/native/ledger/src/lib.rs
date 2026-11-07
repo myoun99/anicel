@@ -70,4 +70,10 @@ mod tests {
     fn a_row_the_ledger_lacks_is_named() {
         pinned("no/such-row");
     }
+
+    #[test]
+    #[should_panic(expected = "failed: audio/tone.flac-samples")]
+    fn bytes_other_than_the_pinned_ones_fail_naming_the_row() {
+        assert_pinned("audio/tone.flac-samples", b"not the samples");
+    }
 }
