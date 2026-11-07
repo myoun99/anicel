@@ -468,6 +468,51 @@ unsafe impl std::alloc::GlobalAlloc for Counting {
 #[global_allocator]
 static COUNTING: Counting = Counting;
 
+/// A frame of another spec or format is answered — a reach of 0, a
+/// failure — before the effect sees it: the spec crate's glue, asked
+/// through the sample's own exports with frames laid here, as no host lays
+/// them.
+#[test]
+fn a_frame_the_plugin_does_not_speak_never_reaches_its_effect() {
+    use anicel_fx::{Frame, Value, names};
+
+    #[repr(C, align(16))]
+    struct Block([u8; 176]);
+
+    let path = sample("qa_fx_plugin_sample");
+    // SAFETY: the sample, its exports the spec's.
+    let library = unsafe { libloading::Library::new(path.to_str().expect("UTF-8")) }
+        .expect("the sample");
+    // SAFETY: each export with the spec's type.
+    let (reach, render) = unsafe {
+        let reach = *library.get::<names::Reach>(names::REACH.as_bytes()).expect("its reach");
+        let render = *library.get::<names::Render>(names::RENDER.as_bytes()).expect("its render");
+        (reach, render)
+    };
+    let asked = |spec, format| {
+        let frame = Frame {
+            spec,
+            format,
+            value_count: 2,
+            values: 112,
+            frame_rate: 24.0,
+            scale: 1.0,
+            frame_index: 3,
+            ..Frame::default()
+        };
+        let mut block = Block([0; 176]);
+        block.0[..104].copy_from_slice(frame.as_bytes());
+        block.0[112..144].copy_from_slice(Value([80.0, 0.0, 0.0, 0.0]).as_bytes());
+        block.0[144..176].copy_from_slice(Value([-1.0, 0.0, 0.0, 0.0]).as_bytes());
+        let at = block.0.as_mut_ptr().cast::<Frame>();
+        // SAFETY: a frame with its two values, its pictures empty.
+        unsafe { (reach(at), render(at)) }
+    };
+    assert_eq!(asked(1, 1), (11, 0), "LIVENESS — spoken: 80 / 10 + 3, and done");
+    assert_eq!(asked(2, 1), (0, 1), "another spec");
+    assert_eq!(asked(1, 2), (0, 1), "another format");
+}
+
 /// A plugin opened, asked and closed leaves the heap as it found it.
 #[test]
 fn a_closed_plugin_gives_back_what_the_host_took() {
