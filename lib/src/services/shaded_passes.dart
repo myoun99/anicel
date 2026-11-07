@@ -177,6 +177,27 @@ typedef IrisRows = ({
   ({double focal, bool inverts})? levels,
 });
 
+/// The turns an iris of [sides] at [rotation] is laid by — its rotation's,
+/// half a side's and a whole side's, each as its cosine and sine — worked
+/// out here, in doubles: a GPU's sin and cos miss by too much (the
+/// uniforms of `iris_table.frag` say how much). What that shader and the
+/// engine's lens blur (lens.rs's `Iris`) are handed.
+({
+  (double, double) rotation,
+  (double, double) halfSide,
+  (double, double) side,
+})
+irisTurnsOf({required int sides, required double rotation}) {
+  (double, double) turn(double radians) =>
+      (math.cos(radians), math.sin(radians));
+  final halfSide = math.pi / sides;
+  return (
+    rotation: turn(rotation),
+    halfSide: turn(halfSide),
+    side: turn(2 * halfSide),
+  );
+}
+
 /// A camera lens blur's iris gathered out of its row sums
 /// (`shaders/iris_gather.frag`, after [RowSumPass]es): every pixel the
 /// mean of the pixels the iris covers about it — the ones of each row two

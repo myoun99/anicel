@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/color_matrix.dart';
 import '../core/display_filter.dart';
+import '../core/draw_space.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/composite_tree.dart';
@@ -13,10 +15,27 @@ import '../models/layer_effect.dart';
 import '../models/tile_coord.dart';
 import '../services/brush_stroke_blend.dart'
     show nonSeparableBlendModeNativeId, separableBlendModeNativeId;
+import '../services/cel_source_effect_pass.dart'
+    show CelColorKey, keyRgbaTablesOf;
 import '../services/composite_effect_paint.dart'
-    show onionTintColorMatrix, resolveColorOnlyMatrix;
+    show
+        CompositeEffectPlan,
+        EffectStepLead,
+        KeyRun,
+        PaperEdgeEffect,
+        PluginEffect,
+        ShadedEffect,
+        effectBufferBounds,
+        onionTintColorMatrix,
+        resolveColorOnlyMatrix,
+        resolveCompositeEffectPlan,
+        shadedPassesOf;
 import '../services/layer_pose_matrix.dart'
     show LayerPlacement, canvasToArtwork;
+import '../services/shaded_passes.dart'
+    show IrisGatherPass, LineBoxPass, irisTurnsOf;
+import '../ui/canvas/subtree_image_composite.dart' show subtreeBufferBounds;
+import '../ui/canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
 import 'engine_tile_ledger.dart';
 
 /// What a row of a composite tree lays on the engine. Each route folds its
@@ -148,14 +167,20 @@ class _TreePlan {
     }
   }
 
-  /// [group]'s buffer, closed at its strength in [mode] through its colour.
+  /// [group]'s buffer, closed at its strength in [mode] through its chain
+  /// and its colour.
   void _group(CompositeGroup<EngineRow> group, int mode) {
     plan.open();
     _lay(group.children);
+    final (:chain, :colour) = _chainOf(
+      group.effects,
+      over: (outset) => _bufferOf(group, outset),
+    );
     plan.close(
       opacity: _strengthOf(group.opacity),
       mode: mode,
-      matrix: _matrixOf(_colourOf(group.effects)),
+      chain: chain,
+      matrix: _matrixOf(colour),
     );
   }
 
@@ -165,15 +190,24 @@ class _TreePlan {
     plan.open();
     _lay(children);
     // A mix is no fade: a colour's is folded into its matrix, a grade of
-    // that strength (resolveAdjustmentScopePass).
-    final colour = _colourOf(effects);
+    // that strength, and a chain's lays the scope under what the chain
+    // puts, graded (resolveAdjustmentScopePass).
+    if (resolveColorOnlyMatrix(effects) case final colour? when mix < 1) {
+      plan.close(
+        mode: GpuBlend.normal,
+        matrix: _matrixOf(lerpColorMatrixFromIdentity(colour, mix)),
+      );
+      return;
+    }
+    final (:chain, :colour) = _chainOf(
+      effects,
+      over: (outset) => _bufferOf(adjustment, outset),
+    );
     plan.close(
       mode: GpuBlend.normal,
-      matrix: _matrixOf(
-        colour == null || mix >= 1
-            ? colour
-            : lerpColorMatrixFromIdentity(colour, mix),
-      ),
+      chain: chain,
+      mix: _strengthOf(mix),
+      matrix: _matrixOf(colour),
     );
   }
 
@@ -209,11 +243,18 @@ class _TreePlan {
     if (back == null || tiles.isEmpty) {
       return;
     }
-    final colour = _colourOf(row.effects);
+    // Its chain runs on its own picture, the whole of what it stands for,
+    // and is cut there — as the walk steps the image it lays, before its
+    // pose (steppedForChain).
+    final (:chain, :colour) = _chainOf(
+      row.effects,
+      over: (_) => surfaceContentWorldRect(row.surface),
+    );
     final tint = row.tint;
     final (a, b, c, d, tx, ty) = back;
     plan.row(
       set: _setOf(row.lineage, tiles),
+      chain: chain,
       inverse: [a, c, tx, b, d, ty, 0, 0, 1],
       // A row is laid at the canvas's own resolution, one of its pixels a
       // canvas pixel, whatever its pose (🗣️I-120-Q26 · Q28 — a picture
@@ -264,20 +305,207 @@ class _TreePlan {
       matrix == null || colorMatrixIsIdentity(matrix)
       ? null
       : plan.matrix(matrix);
+
+  /// What [effects] lay where a draw takes them, its picture standing for
+  /// the rect [over] answers for how far they reach past it: the chain
+  /// their steps run on that picture — none where no step changes a pixel
+  /// — and the colour the draw lays it through after them.
+  ({int? chain, List<double>? colour}) _chainOf(
+    List<ResolvedLayerEffect> effects, {
+    required ui.Rect Function(double outset) over,
+  }) {
+    final steps = resolveCompositeEffectPlan(effects, paper: paper);
+    final colour = _colourOf(steps.finalEffects);
+    if (steps.preSteps.isEmpty) {
+      return (chain: null, colour: colour);
+    }
+    final picture = _pixelsOf(over(steps.outsetPixels));
+    final ops = [
+      for (final step in steps.preSteps) ...[
+        ..._opsOf(step.lead, picture),
+        if (_colourOf(step.then) case final then?)
+          (int chain) => plan.chainMatrix(chain, then),
+      ],
+    ];
+    if (ops.isEmpty) {
+      return (chain: null, colour: colour);
+    }
+    final (left, top, right, bottom) = picture;
+    final x0 = (left / gpuTileSide).floor();
+    final y0 = (top / gpuTileSide).floor();
+    final chain = plan.chain(
+      x0,
+      y0,
+      (right / gpuTileSide).ceil() - x0,
+      (bottom / gpuTileSide).ceil() - y0,
+    );
+    for (final op in ops) {
+      op(chain);
+    }
+    return (chain: chain, colour: colour);
+  }
+
+  /// The ops [lead] lays on a chain whose picture is [picture] — none for
+  /// none, nor where it changes no pixel there.
+  List<void Function(int chain)> _opsOf(
+    EffectStepLead? lead,
+    (int, int, int, int) picture,
+  ) => switch (lead) {
+    null => const [],
+    KeyRun(:final keys) => [(chain) => plan.chainKeys(chain, _keysOf(keys))],
+    // In the chain's own pixels, as its plate and its paper are.
+    ShadedEffect(:final effect) => switch (shadedPassesOf(
+      effect,
+      DrawSpace.canvas,
+      paper: paper,
+      rasterWidth: picture.$3 - picture.$1,
+    )) {
+      [] => const [],
+      // The sums before it are the engine lens blur's own.
+      [..., final IrisGatherPass gather] => [
+        (chain) => _lens(chain, gather, picture),
+      ],
+      final passes => [
+        (chain) => plan.chainLine(chain, picture, [
+          for (final pass in passes.cast<LineBoxPass>()) _lineOf(pass),
+        ]),
+      ],
+    },
+    // ⏳gpu-canonical-store-Q2: the blur the engine's Gaussian lays.
+    PaperEdgeEffect(:final effect) => throw UnsupportedError(
+      'a Gaussian on the engine: $effect',
+    ),
+    // ⏳A plug-in's step is the host's: a plan cuts its chain there
+    // (rust/src/kernels/chain/mod.rs).
+    PluginEffect(:final effect) => throw UnsupportedError(
+      'a plug-in on the engine: $effect',
+    ),
+  };
+
+  /// A key chain of [keys], one run of them: the tables the CPU walks
+  /// them by, a set at a time ([keyRgbaTablesOf]).
+  int _keysOf(List<CelColorKey> keys) {
+    final run = plan.keys();
+    for (final (:red, :green, :blue, :restores, :alphaMaps)
+        in keyRgbaTablesOf(keys)) {
+      plan.keyRun(
+        run,
+        red: red,
+        green: green,
+        blue: blue,
+        restores: restores,
+        maps: alphaMaps,
+      );
+    }
+    return run;
+  }
+
+  /// [gather] — a camera lens blur's iris gathered out of its row sums —
+  /// on [chain] over [picture], the paper it repeats past it cut to the
+  /// picture, as its shader cuts it (iris_blur_shader.dart): where none of
+  /// the paper is there, the cut leaves nothing.
+  void _lens(int chain, IrisGatherPass gather, (int, int, int, int) picture) {
+    // ⏳screen-on-the-engine c5c: a blur map drawn from the rows it reads.
+    if (gather.map != null) {
+      throw UnsupportedError('a lens blur reading a map on the engine');
+    }
+    final (left, top, right, bottom) = picture;
+    final cut = switch (gather.paper) {
+      null => null,
+      final paper => (
+        math.max(paper.left.toInt(), left),
+        math.max(paper.top.toInt(), top),
+        math.min(paper.right.toInt(), right),
+        math.min(paper.bottom.toInt(), bottom),
+      ),
+    };
+    if (cut case (final l, final t, final r, final b) when l >= r || t >= b) {
+      plan.chainMatrix(chain, List.filled(20, 0));
+      return;
+    }
+    final IrisGatherPass(:iris, :light) = gather;
+    final (:rotation, :halfSide, :side) = irisTurnsOf(
+      sides: iris.sides,
+      rotation: iris.rotation,
+    );
+    plan.chainLens(chain, picture, (
+      sides: iris.sides,
+      roundness: iris.roundness,
+      aspect: iris.aspect,
+      turn: rotation,
+      halfSide: halfSide,
+      side: side,
+      radius: gather.radius,
+      fringe: iris.fringe,
+      // Read as the picture is stored, nothing boosted, where it reads no
+      // light of its own (cameraLensBlurPasses).
+      gain: light?.gain ?? 0,
+      threshold: light?.threshold ?? 1,
+      saturation: light?.saturation ?? 0,
+      linear: light?.linear ?? false,
+      paper: cut,
+    ));
+  }
+
+  /// The rect [node]'s buffer covers on the canvas: all its rows stand for
+  /// ([subtreeBufferBounds]), grown by [outset], how far its chain reaches
+  /// past them.
+  // ⏳Uncut by what reads it, as the walk cuts it to the view (screen-on-
+  // the-engine c6): what of it lies past the view changes no pixel a run
+  // puts there, only how much the chain runs over.
+  ui.Rect _bufferOf(CompositeNode<EngineRow> node, double outset) =>
+      effectBufferBounds(
+        subtreeBufferBounds(
+          node,
+          within: ui.Rect.largest,
+          extentOf: _extentOf,
+          placementOf: _placementOf,
+        ),
+        outset,
+      );
 }
 
-/// The colour [effects] fold into, null where there are none — a tree
-/// holds no effect that changes no pixel ([resolveLayerEffectsAt] drops
-/// them).
+/// The rect [row] stands for, as a buffer holding it covers it: a row's
+/// content — the canvas with every tile it holds — and a solid's own.
+ui.Rect _extentOf(EngineRow row) => switch (row) {
+  EngineTiles(:final surface) => surfaceContentWorldRect(surface),
+  EngineSolid(:final rect) => rect.rect,
+};
+
+LayerPlacement? _placementOf(EngineRow row) => switch (row) {
+  EngineTiles(:final placement) => placement,
+  EngineSolid() => null,
+};
+
+/// [rect] on whole pixels, grown out to them: a chain's picture.
+(int, int, int, int) _pixelsOf(ui.Rect rect) => (
+  rect.left.floor(),
+  rect.top.floor(),
+  rect.right.ceil(),
+  rect.bottom.ceil(),
+);
+
+/// [pass] as the engine's line blur takes it.
+GpuLinePass _lineOf(LineBoxPass pass) => (
+  taps: pass.taps,
+  step: (pass.stepX, pass.stepY),
+  centre: (pass.centerX, pass.centerY),
+  first: pass.firstMap,
+  each: pass.eachMap,
+);
+
+/// The colour [effects] — a run of a chain's painted effects, which a draw
+/// carries ([CompositeEffectPlan.finalEffects], a step's `then`) — fold
+/// into, null where there are none: a tree holds no effect that changes no
+/// pixel ([resolveLayerEffectsAt] drops them).
 ///
-/// ⏳screen-on-the-engine c5b: a chain the engine runs — a key, a blur, a
-/// lens — on the row's own tiles, a folder's or a scope's buffer.
+/// ⏳gpu-canonical-store-Q2: the Gaussian, the one such effect past colour.
 List<double>? _colourOf(List<ResolvedLayerEffect> effects) {
   if (effects.isEmpty) {
     return null;
   }
   return resolveColorOnlyMatrix(effects) ??
-      (throw UnsupportedError('a chain past colour on the engine: $effects'));
+      (throw UnsupportedError('a Gaussian on the engine: $effects'));
 }
 
 /// Whether [scope] is laid on its clip's base made opaque — its bottom node

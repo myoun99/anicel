@@ -452,17 +452,14 @@ BitmapTile _keyedTile(
 /// leave it, written to the bytes [into] answers — asked once, at the
 /// first pixel that changes — and null when none does. THE walk, a tile's
 /// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike,
-/// [keyRgbaKeysAtOnce] keys at a time in the chain's order.
+/// a set of tables at a time ([keyRgbaTablesOf]).
 Uint8List? _keyedPixels(
   Uint8List view,
   List<CelColorKey> keys,
   Uint8List Function() into,
 ) {
   Uint8List? out;
-  for (var from = 0; from < keys.length; from += keyRgbaKeysAtOnce) {
-    final tables = _keyTables(
-      keys.sublist(from, math.min(from + keyRgbaKeysAtOnce, keys.length)),
-    );
+  for (final tables in keyRgbaTablesOf(keys)) {
     final source = out;
     // A restore past the first thirty-two still gives back to [view]'s
     // alphas — the run's, whichever call it falls in.
@@ -472,6 +469,18 @@ Uint8List? _keyedPixels(
   }
   return out;
 }
+
+/// [keys] as the tables a run of them is walked by, [keyRgbaKeysAtOnce]
+/// keys a set in the chain's order — each set over what the one before it
+/// left, a restore in any giving back to the run's input: the CPU's walk
+/// ([_keyedPixels]) and the engine's key run (composite_tree_plan.dart)
+/// alike.
+List<KeyRgbaTables> keyRgbaTablesOf(List<CelColorKey> keys) => [
+  for (var from = 0; from < keys.length; from += keyRgbaKeysAtOnce)
+    _keyTables(
+      keys.sublist(from, math.min(from + keyRgbaKeysAtOnce, keys.length)),
+    ),
+];
 
 /// [tables] over [view] as [_keyedPixels] says — in C where the engine is
 /// loaded (`qa_key_rgba`), and here, step for step the same, where it is

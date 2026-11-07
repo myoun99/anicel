@@ -178,7 +178,10 @@ class IrisBlurShader {
     final levels = rows.levels;
     final width = layout.rowsALine * 2;
     final height = layout.heads + layout.headLines;
-    final halfSide = math.pi / rows.sides;
+    final (:rotation, :halfSide, :side) = irisTurnsOf(
+      sides: rows.sides,
+      rotation: rows.rotation,
+    );
     final shader = _table.shader()
       ..setFloat(0, width.toDouble())
       ..setFloat(1, height.toDouble())
@@ -192,14 +195,13 @@ class IrisBlurShader {
       ..setFloat(9, rows.sides.toDouble())
       ..setFloat(10, rows.roundness)
       ..setFloat(11, rows.aspect)
-      // ⚠️Turned here, in doubles: a GPU's sin and cos miss by too much
-      // (the shader's uniforms say how much).
-      ..setFloat(12, math.cos(rows.rotation))
-      ..setFloat(13, math.sin(rows.rotation))
-      ..setFloat(14, math.cos(halfSide))
-      ..setFloat(15, math.sin(halfSide))
-      ..setFloat(16, math.cos(2 * halfSide))
-      ..setFloat(17, math.sin(2 * halfSide));
+      // ⚠️Turned in doubles ([irisTurnsOf]).
+      ..setFloat(12, rotation.$1)
+      ..setFloat(13, rotation.$2)
+      ..setFloat(14, halfSide.$1)
+      ..setFloat(15, halfSide.$2)
+      ..setFloat(16, side.$1)
+      ..setFloat(17, side.$2);
     try {
       // What the shader gives, as it gives it — a column past 1.
       return shadedRaster(shader, width, height, inFloats: true);

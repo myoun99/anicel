@@ -819,12 +819,14 @@ class CompositeEffectPlan {
   const CompositeEffectPlan._({
     required this.preSteps,
     required this.finalPaint,
+    required this.finalEffects,
     required this.outsetPixels,
   });
 
   static const CompositeEffectPlan none = CompositeEffectPlan._(
     preSteps: [],
     finalPaint: CompositeEffectPaint.none,
+    finalEffects: [],
     outsetPixels: 0,
   );
 
@@ -832,6 +834,11 @@ class CompositeEffectPlan {
 
   /// The paint state the composite draw carries.
   final CompositeEffectPaint finalPaint;
+
+  /// The effects [finalPaint] is resolved from, unresolved — what a reader
+  /// that paints no `ui.Paint` lays in its place, the engine's chain
+  /// (composite_tree_plan.dart).
+  final List<ResolvedLayerEffect> finalEffects;
 
   /// How far the whole chain paints beyond its input's bounds, summed over
   /// every step — ONE number for ONE buffer. Every step rasterises at the
@@ -923,6 +930,7 @@ CompositeEffectPlan resolveCompositeEffectPlan(
         : CompositeEffectPlan._(
             preSteps: const [],
             finalPaint: finalPaint,
+            finalEffects: runs[last],
             outsetPixels: outset,
           );
   }
@@ -945,6 +953,7 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   return CompositeEffectPlan._(
     preSteps: steps,
     finalPaint: finalPaint,
+    finalEffects: runs[last],
     outsetPixels: outset,
   );
 }

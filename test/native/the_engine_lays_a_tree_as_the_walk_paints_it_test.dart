@@ -1,3 +1,10 @@
+// On Impeller, the app's: the walk lays a camera lens blur's row sums in
+// floats, which the Skia tester does not lay (11-08: a row through one came
+// out all but empty).
+@Tags(['impeller'])
+library;
+
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -24,13 +31,17 @@ import 'package:anicel/src/services/brush_stroke_blend.dart'
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
+import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
+import 'package:anicel/src/ui/canvas/directional_blur_shader.dart';
+import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 
 /// 🚨THE ENGINE LAYS A TREE AS THE WALK PAINTS IT (screen-on-the-engine
 /// c5): one tree, painted by the walk every route composites by
 /// (`paintCompositeTree`, here through the camera at rest) and laid by the
 /// translator on the engine (`planCompositeTree` → `run`), comes out the
-/// same pixels — each node kind, each blend, a pose, a colour and a ghost.
+/// same pixels — each node kind, each blend, a pose, a colour, a ghost and
+/// a chain past colour.
 void main() {
   const canvas = CanvasSize(width: 256, height: 128);
   const side = 128;
@@ -39,33 +50,50 @@ void main() {
   setUpAll(() => composite = GpuComposite(appGpuEngine));
   tearDownAll(() => composite.free());
 
-  /// A cel of [canvas] whose pixels are [seed]'s, in the tiles of [columns]
-  /// it holds: colours no two neighbours share, and alphas in bands — none,
-  /// part and whole — so a blend meets every kind of pixel under and over
-  /// it.
-  BitmapSurface cel(int seed, {List<int> columns = const [0, 1]}) {
+  /// A cel of [width] × 128 whose pixels are [seed]'s, in the tiles of
+  /// [columns] it holds: colours no two neighbours share, and alphas in
+  /// bands — none, part and whole — so a blend meets every kind of pixel
+  /// under and over it; none at all within [margin] of the tiles' edge.
+  BitmapSurface cel(
+    int seed, {
+    List<int> columns = const [0, 1],
+    int margin = 0,
+    int width = 256,
+  }) {
+    final (first, last) = columns.isEmpty
+        ? (0, 0)
+        : (columns.reduce(math.min), columns.reduce(math.max));
+    final left = first * side + margin;
+    final right = (last + 1) * side - margin;
     BitmapTile tile(int column) {
       final pixels = Uint8List(side * side * 4);
       for (var y = 0; y < side; y++) {
         for (var x = 0; x < side; x++) {
           final at = (y * side + x) * 4;
           final n = (x + column * side) * 7 + y * 13 + seed * 101;
+          final inside =
+              x + column * side >= left &&
+              x + column * side < right &&
+              y >= margin &&
+              y < side - margin;
           pixels[at] = (n * 37 + seed * 59) & 255;
           pixels[at + 1] = (n * 23 + 91) & 255;
           pixels[at + 2] = (n * 11 + seed * 17) & 255;
-          pixels[at + 3] = switch (((x + seed * 9) ~/ 16 + y ~/ 32) % 4) {
-            0 => 0,
-            1 => 255,
-            2 => 96 + (n & 63),
-            _ => 200 + (n & 31),
-          };
+          pixels[at + 3] = !inside
+              ? 0
+              : switch (((x + seed * 9) ~/ 16 + y ~/ 32) % 4) {
+                  0 => 0,
+                  1 => 255,
+                  2 => 96 + (n & 63),
+                  _ => 200 + (n & 31),
+                };
         }
       }
       return BitmapTile(size: side, pixels: pixels);
     }
 
     return BitmapSurface(
-      canvasSize: canvas,
+      canvasSize: CanvasSize(width: width, height: side),
       tileSize: side,
       tiles: {
         for (final column in columns)
@@ -82,9 +110,11 @@ void main() {
     List<ResolvedLayerEffect> effects = const [],
     int? tint,
     List<int> columns = const [0, 1],
+    int margin = 0,
+    int width = 256,
   }) => CompositeLeaf(
     CutFrameCompositeLayer(
-      surface: cel(seed, columns: columns),
+      surface: cel(seed, columns: columns, margin: margin, width: width),
       opacity: opacity,
       blendMode: blendMode,
       placement: placement,
@@ -239,6 +269,55 @@ void main() {
     }
     return (most: most, apart: apart, far: far);
   }
+
+  /// [kind] at its defaults but for [lanes], standing on [points].
+  ResolvedLayerEffect fx(
+    EffectKind kind,
+    Map<String, double> lanes, {
+    Map<String, CanvasPoint?> points = const {},
+  }) => ResolvedLayerEffect(
+    kind: kind,
+    values: [
+      for (final spec in kind.parameters) lanes[spec.id] ?? spec.defaultValue,
+    ],
+    points: points,
+  );
+
+  final colour = fx(EffectKind.hueSaturation, {
+    'hue': 40,
+    'saturation': 30,
+    'lightness': -10,
+  });
+  ResolvedLayerEffect key({bool restores = false, double tolerance = 40}) =>
+      fx(EffectKind.colorKey, {
+        'keyOperation': restores ? 1 : 0,
+        'keyColor': 0xFF808080,
+        'tolerance': tolerance,
+        'amount': 100,
+      });
+  final along = fx(EffectKind.directionalBlur, {
+    'direction': 30,
+    'blurLength': 12,
+  });
+  ResolvedLayerEffect about({required bool spin}) => fx(
+    EffectKind.radialBlur,
+    {'amount': spin ? 8 : 15, 'type': spin ? 0 : 1},
+    points: {'center': CanvasPoint(x: 90, y: 40)},
+  );
+  ResolvedLayerEffect lens({
+    bool repeats = false,
+    Map<String, double> light = const {},
+  }) => fx(EffectKind.cameraLensBlur, {
+    'blurRadius': 5,
+    'irisShape': 3,
+    'irisRoundness': 20,
+    'irisAspectRatio': 1.3,
+    'irisRotation': 15,
+    'irisDiffractionFringe': 100,
+    'repeatEdgePixels': repeats ? 1 : 0,
+    ...light,
+  });
+  GuideTransform moved(double x, double y) => GuideTransform(1, 0, 0, 1, x, y);
 
   const clear = ui.Color(0x00000000);
   const white = ui.Color(0xFFFFFFFF);
@@ -441,6 +520,247 @@ void main() {
     });
   }
 
+  // A chain past colour: its steps run on the row's own picture — with ink
+  // on the pasteboard, a picture that starts left of the paper — or on a
+  // buffer's, which a moved row starts off the canvas's corner.
+  //
+  // 🔬Its ink kept off the picture's edge where a blur along a way reads
+  // it (margin): the walk's pass samples its raster clamped, so a tap
+  // within half a pixel of the edge reads the edge pixel whole, where the
+  // engine reads nothing past it — the decal directional_blur.frag says
+  // it lays. A buffer's raster holds the chain's reach of nothing about
+  // its ink, so there the two lie 1 apart; a row's picture whose ink
+  // touches its edge, 13 there (measured 11-08).
+  //
+  // 🔬And a key's tolerance no pixel's colour lies at, through the colour
+  // before it: where one does, the walk's premultiplied bytes and the
+  // engine's straight ones fall either side of it (a row: 99 on 32 pixels
+  // at a tolerance of 90 — measured 11-08, the blends' thresholds' kind).
+  final chained =
+      <String, (List<CompositeNode<CutFrameCompositeLayer>>, ui.Color)>{
+        'a row keyed past a colour': (
+          [
+            row(1, effects: [colour, key()]),
+          ],
+          clear,
+        ),
+        'a row keyed past a colour, in a colour after': (
+          [
+            row(
+              1,
+              effects: [
+                colour,
+                key(),
+                fx(EffectKind.brightnessContrast, {
+                  'brightness': 20,
+                  'contrast': 35,
+                }),
+              ],
+            ),
+          ],
+          clear,
+        ),
+        // Past a set of tables, a key still gives back to the run's input.
+        'a row keyed past a colour by more keys than a set holds': (
+          [
+            row(
+              1,
+              effects: [
+                colour,
+                for (var at = 0; at < 32; at++) key(),
+                key(restores: true, tolerance: 30),
+              ],
+            ),
+          ],
+          clear,
+        ),
+        'a row blurred along a way': (
+          [
+            row(1, columns: [-1, 0, 1], margin: 8, effects: [along]),
+          ],
+          clear,
+        ),
+        'a row spun about a point': (
+          [
+            row(1, columns: [-1, 0, 1], margin: 8, effects: [about(spin: true)]),
+          ],
+          clear,
+        ),
+        'a row zoomed about a point': (
+          [
+            row(
+              1,
+              columns: [-1, 0, 1],
+              margin: 8,
+              effects: [about(spin: false)],
+            ),
+          ],
+          clear,
+        ),
+        // Cut to what the row stands for — its canvas, where that reaches
+        // past its tiles — not to the tiles its chain runs over.
+        'a row blurred across past the canvas it stands on': (
+          [
+            row(
+              1,
+              columns: [0],
+              margin: 8,
+              width: 200,
+              effects: [
+                fx(EffectKind.directionalBlur, {
+                  'direction': 90,
+                  'blurLength': 200,
+                }),
+              ],
+            ),
+          ],
+          clear,
+        ),
+        'a row through a lens': (
+          [
+            row(1, columns: [-1, 0, 1], effects: [lens()]),
+          ],
+          clear,
+        ),
+        'a row through a lens repeating the paper\'s edge': (
+          [
+            row(1, columns: [-1, 0, 1], effects: [lens(repeats: true)]),
+          ],
+          clear,
+        ),
+        'a row through a lens in its own light': (
+          [
+            row(
+              1,
+              effects: [
+                lens(
+                  light: {
+                    'highlightGain': 20,
+                    'highlightThreshold': 180,
+                    'highlightSaturation': 50,
+                    'useLinearWorkingSpace': 1,
+                  },
+                ),
+              ],
+            ),
+          ],
+          clear,
+        ),
+        'a ghost of a row blurred along a way': (
+          [
+            row(1, tint: 0xC03070E0, margin: 8, effects: [along]),
+          ],
+          clear,
+        ),
+        'a row blurred along a way, turned': (
+          [
+            row(
+              1,
+              placement: const GuideTransform(0, 1, -1, 0, 192, -64),
+              margin: 8,
+              effects: [along],
+            ),
+          ],
+          clear,
+        ),
+        'a folder blurred along a way, in a colour after': (
+          [
+            row(4),
+            CompositeGroup(
+              children: [
+                row(1, placement: moved(20, 10)),
+                row(2, opacity: 0.8),
+              ],
+              opacity: 0.8,
+              blendMode: LayerBlendMode.normal,
+              effects: [along, colour],
+            ),
+          ],
+          clear,
+        ),
+        'a folder spun about a point, its row moved': (
+          [
+            CompositeGroup(
+              children: [row(1, placement: moved(40, 30))],
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: [about(spin: true)],
+            ),
+          ],
+          clear,
+        ),
+        'a folder through a lens repeating the paper\'s edge, its row moved': (
+          [
+            CompositeGroup(
+              children: [row(1, placement: moved(40, 30))],
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: [lens(repeats: true)],
+            ),
+          ],
+          clear,
+        ),
+        'a folder through a lens repeating a paper it lies off': (
+          [
+            row(3),
+            CompositeGroup(
+              children: [row(1, placement: moved(300, 0))],
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: [lens(repeats: true)],
+            ),
+          ],
+          clear,
+        ),
+        'an adjustment blurred along a way at whole mix': (
+          [
+            CompositeAdjustment(
+              children: [row(1), row(2, opacity: 0.6)],
+              effects: [along, colour],
+              mix: 1,
+            ),
+          ],
+          clear,
+        ),
+        'an adjustment blurred along a way at part mix, in a colour after': (
+          [
+            CompositeAdjustment(
+              children: [row(1), row(2, opacity: 0.6)],
+              effects: [along, colour],
+              mix: 0.4,
+            ),
+          ],
+          clear,
+        ),
+        'an adjustment keyed past a colour at part mix': (
+          [
+            CompositeAdjustment(
+              children: [row(1)],
+              effects: [colour, key()],
+              mix: 0.4,
+            ),
+          ],
+          clear,
+        ),
+      };
+
+  for (final MapEntry(key: name, value: (nodes, ground)) in chained.entries) {
+    testWidgets('$name is laid as the walk paints it', (tester) async {
+      await tester.runAsync(() async {
+        await LayerBlendShader.load();
+        await ColourKeyShader.load();
+        await DirectionalBlurShader.load();
+        await IrisBlurShader.load();
+        final walk = await walked(nodes, ground);
+        // A chain's picture is kept as straight bytes from one op to the
+        // next and to its draw's colour (rust/src/kernels/chain/mod.rs),
+        // where the walk keeps premultiplied ones: 3 apart at the most —
+        // one channel of an adjustment's at whole mix (measured 11-08).
+        expect(apartness(walk, laid(nodes, ground)).most, lessThanOrEqualTo(3));
+      });
+    });
+  }
+
   // 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a row takes
   // every mode the brush does — by the brush's own ids, the engine's table.
   // Not the walk's: where a mode's formula breaks (a burn, a dodge, a hard
@@ -488,13 +808,21 @@ void main() {
 
   // ⏳What the engine lays no step for yet is refused, never dropped: a
   // tree laid without it would show a picture with a row missing.
-  test('a tree holding what the engine cannot lay yet is refused', () {
-    final blurred = row(
-      1,
-      effects: [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: [6, 0, 0]),
-      ],
-    );
-    expect(() => laid([blurred], clear), throwsUnsupportedError);
-  });
+  // ⏳gpu-canonical-store-Q2: the Gaussian — painted, or a step repeating
+  // the paper's edge.
+  for (final repeats in [false, true]) {
+    test('a tree holding what the engine cannot lay yet is refused — a '
+        'Gaussian${repeats ? ' repeating the paper\'s edge' : ''}', () {
+      final blurred = row(
+        1,
+        effects: [
+          fx(EffectKind.blur, {
+            'blurriness': 6,
+            'repeatEdgePixels': repeats ? 1 : 0,
+          }),
+        ],
+      );
+      expect(() => laid([blurred], clear), throwsUnsupportedError);
+    });
+  }
 }
