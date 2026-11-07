@@ -283,5 +283,11 @@ fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
         assert_eq!(none, 0);
         gpu_engine_pool_free(pool);
         gpu_engine_pool_free(std::ptr::null_mut());
+        let full = gpu_engine_pool_new(engine, 0);
+        let cel = gpu_engine_pool_cel(full);
+        let stored =
+            gpu_engine_pool_store(full, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!(stored, 0, "a pool given no bytes stores none of the two");
+        gpu_engine_pool_free(full);
     }
 }
