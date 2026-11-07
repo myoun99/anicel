@@ -14,8 +14,8 @@ publish = false
 [dependencies]
 libm = "0.2"
 
-# The C answer key: the engine's qa_audio_denoise_f32, bit for bit
-# (native/oracle), and the app's ledger (native/ledger).
+# The answer key: the app's ledger (native/ledger), whose rows were
+# pinned beside the engine's C qa_audio_denoise_f32 — gone in the connection
+# round (H).
 [dev-dependencies]
 ledger = { path = "../ledger" }
-oracle = { path = "../oracle" }

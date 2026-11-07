@@ -67,13 +67,7 @@ jobs:
             -o /tmp/qa_audio_decode_ios.o \
             -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
             -O3 -ffp-contract=off -std=c99
-          # The denoise TU carries the vendored RNNoise bundle — device
-          # target too, same as the decoder.
-          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_audio_denoise.c \
-            -o /tmp/qa_audio_denoise_ios.o \
-            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
-            -O3 -ffp-contract=off -std=c99
-          ls -la /tmp/qa_engine_ios.o /tmp/qa_audio_decode_ios.o /tmp/qa_audio_denoise_ios.o
+          ls -la /tmp/qa_engine_ios.o /tmp/qa_audio_decode_ios.o
 
       - uses: subosito/flutter-action@v2
         with:

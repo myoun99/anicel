@@ -1,15 +1,15 @@
-//! The mix bus and the conversions against the engine's C (native/oracle),
-//! bit for bit: both asked through their exports, on schedules and sounds
-//! made up here.
+//! The mix bus against the engine's C (native/oracle), bit for bit: both
+//! asked through their exports, on schedules made up here. The C made the
+//! conversions too until its resampler went (connection-round-checklist H,
+//! 관제 2026-11-08 05:58); they are held to the app's ledger alone now.
 //!
-//! What they hand back is pinned in the app's ledger as well — the bus,
-//! its output stage, the filter lengths and frame counts, and the
-//! conversions — beside the C's answer and so the C's to the bit: the row
-//! is what holds these tests once the C is deleted
-//! (connection-round-checklist A, 관제 2026-11-07). It holds on every
-//! device because nothing here calls the device's maths library: the
-//! filters' sin and pow, and the sounds made up here, are libm's
-//! (Cargo.toml).
+//! What they hand back is pinned in the ledger — the bus, its output
+//! stage, the filter lengths and frame counts, and the conversions — each
+//! row pinned beside the C's answer, and so the C's to the bit: the row is
+//! what holds these tests once the C is deleted (connection-round-checklist
+//! A, 관제 2026-11-07). It holds on every device because nothing here calls
+//! the device's maths library: the filters' sin and pow, and the sounds
+//! made up here, are libm's (Cargo.toml).
 
 use std::ptr;
 
@@ -28,15 +28,6 @@ type Mix =
     unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32, i64, i32, i32, *mut f64);
 type ToFloat = unsafe extern "C" fn(*const f64, i32, *mut f32);
 type ToInt16 = unsafe extern "C" fn(*const f64, i32, *mut i16);
-type Taps = extern "C" fn(i32, i32, f64, f64) -> i32;
-type Frames = extern "C" fn(i64, i32, i32) -> i64;
-type Resample = unsafe extern "C" fn(*const f32, i64, i32, i32, i32, f64, f64, *mut f32) -> i64;
-type Open = extern "C" fn(i32, i32, i32, f64, f64) -> *mut Resampler;
-type Push = unsafe extern "C" fn(*mut Resampler, *const f32, i64) -> i32;
-type End = unsafe extern "C" fn(*mut Resampler);
-type Count = unsafe extern "C" fn(*const Resampler) -> i64;
-type Pull = unsafe extern "C" fn(*mut Resampler, *mut f32, i64) -> i64;
-type Close = unsafe extern "C" fn(*mut Resampler);
 
 fn c<F: Copy>(name: &str) -> F {
     // SAFETY: each type above is its export's C declaration in qa_engine.c.
@@ -313,9 +304,7 @@ fn the_output_stage_makes_the_c_s_floats_and_shorts() {
 }
 
 #[test]
-fn the_filter_lengths_and_frame_counts_are_the_c_s() {
-    let taps = Both::of("qa_audio_resample_taps", qa_audio_resample_taps as Taps);
-    let frames = Both::of("qa_audio_resample_frames", qa_audio_resample_frames as Frames);
+fn the_filter_lengths_and_frame_counts_are_pinned() {
     let rates = [-1, 0, 1, 7, 8_000, 22_050, 44_100, 47_999, 48_000, 96_000, 192_000];
     let mut answers = Vec::new();
     for input in rates {
@@ -332,15 +321,10 @@ fn the_filter_lengths_and_frame_counts_are_the_c_s() {
                 (10.0, 0.5),
                 (120.0, 1.0),
             ] {
-                let asked = (input, output, stopband, bandwidth);
-                let rust = (taps.rust)(input, output, stopband, bandwidth);
-                assert_eq!(rust, (taps.c)(input, output, stopband, bandwidth), "{asked:?}");
-                answers.extend(rust.to_le_bytes());
+                answers.extend(qa_audio_resample_taps(input, output, stopband, bandwidth).to_le_bytes());
             }
             for count in [-5, 0, 1, 7, 44_099, 44_100, 1_000_003] {
-                let rust = (frames.rust)(count, input, output);
-                assert_eq!(rust, (frames.c)(count, input, output), "{count} {input}→{output}");
-                answers.extend(rust.to_le_bytes());
+                answers.extend(qa_audio_resample_frames(count, input, output).to_le_bytes());
             }
         }
     }
@@ -351,7 +335,7 @@ fn the_filter_lengths_and_frame_counts_are_the_c_s() {
 
 #[test]
 fn the_default_quality_is_the_dart_references() {
-    let dart = include_str!("../../../../../../lib/src/services/audio/audio_resampler_reference.dart");
+    let dart = include_str!("../../../../../../lib/src/services/audio/audio_resample_stream.dart");
     let declared = |name: &str| -> f64 {
         let line = dart.lines().find(|line| line.starts_with(&format!("const double {name} = "))).expect(name);
         line.trim_end_matches(';').rsplit(' ').next().and_then(|value| value.parse().ok()).expect(line)
@@ -371,151 +355,99 @@ fn sound(frames: usize, channels: usize, seed: u32) -> Vec<f32> {
         .collect()
 }
 
-fn resampled(f: Resample, samples: &[f32], channels: i32, input: i32, output: i32) -> Vec<u32> {
-    resampled_at(f, samples, channels, (input, output), (120.0, 0.9))
+fn resampled(samples: &[f32], channels: i32, input: i32, output: i32) -> Vec<u32> {
+    resampled_at(samples, channels, (input, output), (120.0, 0.9))
 }
 
-/// `samples` converted whole by `f` at `quality` (stopband, bandwidth).
-fn resampled_at(f: Resample, samples: &[f32], channels: i32, rates: (i32, i32), quality: (f64, f64)) -> Vec<u32> {
+/// `samples` converted whole through the export at `quality` (stopband,
+/// bandwidth).
+fn resampled_at(samples: &[f32], channels: i32, rates: (i32, i32), quality: (f64, f64)) -> Vec<u32> {
     let frames = samples.len() as i64 / i64::from(channels);
     let mut out = vec![f32::NAN; (qa_audio_resample_frames(frames, rates.0, rates.1) * i64::from(channels)) as usize];
     // SAFETY: `out` is sized by resample_frames.
-    let written =
-        unsafe { f(samples.as_ptr(), frames, channels, rates.0, rates.1, quality.0, quality.1, out.as_mut_ptr()) };
+    let written = unsafe {
+        qa_audio_resample(samples.as_ptr(), frames, channels, rates.0, rates.1, quality.0, quality.1, out.as_mut_ptr())
+    };
     assert_eq!(written * i64::from(channels), out.len() as i64);
     out.iter().map(|v| v.to_bits()).collect()
 }
 
 #[test]
-fn a_filter_of_every_quality_converts_as_the_c_s() {
-    let resample = Both::of("qa_audio_resample", qa_audio_resample as Resample);
+fn a_filter_of_every_quality_converts_as_pinned() {
     let take = sound(9_001, 2, 21);
     let mut converted = Vec::new();
     // Kaiser's three branches and their seam, and the shortest filter.
     for quality in [(80.0, 0.95), (50.0, 0.9), (40.0, 0.9), (30.0, 0.8), (20.0, 0.5), (10.0, 0.5)] {
         for rates in [(44_100, 48_000), (48_000, 96_000)] {
-            let rust = resampled_at(resample.rust, &take, 2, rates, quality);
-            assert_eq!(rust, resampled_at(resample.c, &take, 2, rates, quality), "{rates:?} at {quality:?}");
-            converted.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
+            converted.extend(resampled_at(&take, 2, rates, quality).iter().flat_map(|v| v.to_le_bytes()));
         }
     }
     ledger::assert_pinned("audio_mix/every-quality-conversions", &converted);
 }
 
 #[test]
-fn a_whole_sound_converts_as_the_c_converts_it() {
-    let resample = Both::of("qa_audio_resample", qa_audio_resample as Resample);
+fn a_whole_sound_converts_as_pinned() {
     let pairs = [(44_100, 48_000), (48_000, 44_100), (22_050, 48_000), (8_000, 48_000), (96_000, 48_000), (32_000, 44_100)];
     let mut converted = Vec::new();
     for (input, output) in pairs {
         for channels in [1, 2] {
             let take = sound(input as usize / 3 + 17, channels as usize, input as u32);
-            let rust = resampled(resample.rust, &take, channels, input, output);
-            assert_eq!(rust, resampled(resample.c, &take, channels, input, output), "{input}→{output} x {channels}");
-            converted.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
+            converted.extend(resampled(&take, channels, input, output).iter().flat_map(|v| v.to_le_bytes()));
         }
     }
     ledger::assert_pinned("audio_mix/whole-sound-conversions", &converted);
 }
 
 #[test]
-fn both_refuse_the_same_conversions() {
-    let resample = Both::of("qa_audio_resample", qa_audio_resample as Resample);
-    let open = Both::of("qa_audio_resampler_open", qa_audio_resampler_open as Open);
-    let close: Close = c("qa_audio_resampler_close");
+fn the_conversions_it_cannot_make_are_refused() {
     let take = sound(64, 1, 3);
     let mut out = [0.0f32; 256];
-    for f in [resample.c, resample.rust] {
-        for (samples, frames, channels, input, output) in [
-            (ptr::null(), 64, 1, 44_100, 48_000),
-            (take.as_ptr(), 0, 1, 44_100, 48_000),
-            (take.as_ptr(), -1, 1, 44_100, 48_000),
-            (take.as_ptr(), 64, 0, 44_100, 48_000),
-            (take.as_ptr(), 64, 1, 48_000, 48_000),
-            (take.as_ptr(), 64, 1, 0, 48_000),
-            (take.as_ptr(), 64, 1, 44_100, -1),
-        ] {
-            // SAFETY: refused before anything is read or written.
-            assert_eq!(unsafe { f(samples, frames, channels, input, output, 120.0, 0.9, out.as_mut_ptr()) }, 0);
-        }
-        // SAFETY: as above.
-        assert_eq!(unsafe { f(take.as_ptr(), 64, 1, 44_100, 48_000, 120.0, 0.9, ptr::null_mut()) }, 0);
+    for (samples, frames, channels, input, output) in [
+        (ptr::null(), 64, 1, 44_100, 48_000),
+        (take.as_ptr(), 0, 1, 44_100, 48_000),
+        (take.as_ptr(), -1, 1, 44_100, 48_000),
+        (take.as_ptr(), 64, 0, 44_100, 48_000),
+        (take.as_ptr(), 64, 1, 48_000, 48_000),
+        (take.as_ptr(), 64, 1, 0, 48_000),
+        (take.as_ptr(), 64, 1, 44_100, -1),
+    ] {
+        // SAFETY: refused before anything is read or written.
+        assert_eq!(unsafe { qa_audio_resample(samples, frames, channels, input, output, 120.0, 0.9, out.as_mut_ptr()) }, 0);
     }
+    // SAFETY: as above.
+    assert_eq!(unsafe { qa_audio_resample(take.as_ptr(), 64, 1, 44_100, 48_000, 120.0, 0.9, ptr::null_mut()) }, 0);
     for (channels, input, output) in [(0, 44_100, 48_000), (-2, 44_100, 48_000), (1, 48_000, 48_000), (1, 0, 48_000)] {
-        assert!((open.c)(channels, input, output, 120.0, 0.9).is_null());
-        assert!((open.rust)(channels, input, output, 120.0, 0.9).is_null());
+        assert!(qa_audio_resampler_open(channels, input, output, 120.0, 0.9).is_null());
     }
-    // SAFETY: closing null is nothing, on both.
+    let resampler = qa_audio_resampler_open(1, 44_100, 48_000, 120.0, 0.9);
+    // SAFETY: closing null is nothing; `resampler` is open, and each null
+    // below is a refusal.
     unsafe {
-        close(ptr::null_mut());
         qa_audio_resampler_close(ptr::null_mut());
-    }
-    for side in [Stream::c(), Stream::rust()] {
-        let resampler = (side.open)(1, 44_100, 48_000, 120.0, 0.9);
-        // SAFETY: `resampler` is open; each null below is a refusal.
-        unsafe {
-            assert_eq!((side.push)(resampler, ptr::null(), 5), 0, "five frames from nowhere");
-            assert_eq!((side.push)(resampler, take.as_ptr(), -1), 0);
-            assert_eq!((side.push)(ptr::null_mut(), take.as_ptr(), 5), 0);
-            assert_eq!((side.push)(resampler, ptr::null(), 0), 1, "nothing, from nowhere, is taken");
-            assert_eq!((side.push)(resampler, take.as_ptr(), 64), 1);
-            assert_eq!((side.held)(resampler), 64, "LIVENESS: the refused pushes held nothing");
-            (side.end)(resampler);
-            assert_eq!((side.pull)(resampler, ptr::null_mut(), 8), 0);
-            assert_eq!((side.pull)(resampler, out.as_mut_ptr(), 0), 0);
-            assert_eq!((side.pull)(ptr::null_mut(), out.as_mut_ptr(), 8), 0);
-            assert_eq!(((side.held)(ptr::null()), (side.ready)(ptr::null())), (0, 0));
-            (side.end)(ptr::null_mut());
-            assert_eq!((side.pull)(resampler, out.as_mut_ptr(), 256), 69, "LIVENESS: what was taken comes out");
-            (side.close)(resampler);
-        }
+        assert_eq!(qa_audio_resampler_push(resampler, ptr::null(), 5), 0, "five frames from nowhere");
+        assert_eq!(qa_audio_resampler_push(resampler, take.as_ptr(), -1), 0);
+        assert_eq!(qa_audio_resampler_push(ptr::null_mut(), take.as_ptr(), 5), 0);
+        assert_eq!(qa_audio_resampler_push(resampler, ptr::null(), 0), 1, "nothing, from nowhere, is taken");
+        assert_eq!(qa_audio_resampler_push(resampler, take.as_ptr(), 64), 1);
+        assert_eq!(qa_audio_resampler_held(resampler), 64, "LIVENESS: the refused pushes held nothing");
+        qa_audio_resampler_end(resampler);
+        assert_eq!(qa_audio_resampler_pull(resampler, ptr::null_mut(), 8), 0);
+        assert_eq!(qa_audio_resampler_pull(resampler, out.as_mut_ptr(), 0), 0);
+        assert_eq!(qa_audio_resampler_pull(ptr::null_mut(), out.as_mut_ptr(), 8), 0);
+        assert_eq!((qa_audio_resampler_held(ptr::null()), qa_audio_resampler_ready(ptr::null())), (0, 0));
+        qa_audio_resampler_end(ptr::null_mut());
+        assert_eq!(qa_audio_resampler_pull(resampler, out.as_mut_ptr(), 256), 69, "LIVENESS: what was taken comes out");
+        qa_audio_resampler_close(resampler);
     }
 }
 
-/// One side's streaming exports.
-#[derive(Clone, Copy)]
-struct Stream {
-    open: Open,
-    push: Push,
-    end: End,
-    held: Count,
-    ready: Count,
-    pull: Pull,
-    close: Close,
-}
-
-impl Stream {
-    fn c() -> Self {
-        Stream {
-            open: c("qa_audio_resampler_open"),
-            push: c("qa_audio_resampler_push"),
-            end: c("qa_audio_resampler_end"),
-            held: c("qa_audio_resampler_held"),
-            ready: c("qa_audio_resampler_ready"),
-            pull: c("qa_audio_resampler_pull"),
-            close: c("qa_audio_resampler_close"),
-        }
-    }
-
-    fn rust() -> Self {
-        Stream {
-            open: qa_audio_resampler_open,
-            push: qa_audio_resampler_push,
-            end: qa_audio_resampler_end,
-            held: qa_audio_resampler_held,
-            ready: qa_audio_resampler_ready,
-            pull: qa_audio_resampler_pull,
-            close: qa_audio_resampler_close,
-        }
-    }
-}
-
-/// What a side says at every step of feeding `take` in `pieces` and
-/// pulling `capacity` at a time: each push's answer, held and ready after
-/// it, and each pull's count and samples, then the same after the end.
-fn streamed(side: Stream, take: &[f32], channels: usize, rates: (i32, i32), dice: &mut Dice) -> Vec<i64> {
+/// What the streaming exports say at every step of feeding `take` in
+/// pieces and pulling a made-up capacity at a time: each push's answer,
+/// held and ready after it, and each pull's count and samples, then the
+/// same after the end.
+fn streamed(take: &[f32], channels: usize, rates: (i32, i32), dice: &mut Dice) -> Vec<i64> {
     let mut said = Vec::new();
-    let resampler = (side.open)(channels as i32, rates.0, rates.1, 120.0, 0.9);
+    let resampler = qa_audio_resampler_open(channels as i32, rates.0, rates.1, 120.0, 0.9);
     assert!(!resampler.is_null());
     let frames = take.len() / channels;
     let mut fed = 0;
@@ -524,40 +456,35 @@ fn streamed(side: Stream, take: &[f32], channels: usize, rates: (i32, i32), dice
     unsafe {
         let mut drain = |said: &mut Vec<i64>, dice: &mut Dice| {
             let capacity = dice.int(0, 9_000);
-            let pulled = (side.pull)(resampler, out.as_mut_ptr(), capacity);
+            let pulled = qa_audio_resampler_pull(resampler, out.as_mut_ptr(), capacity);
             said.push(pulled);
             said.extend(out[..pulled as usize * channels].iter().map(|v| i64::from(v.to_bits())));
-            said.extend([(side.held)(resampler), (side.ready)(resampler)]);
+            said.extend([qa_audio_resampler_held(resampler), qa_audio_resampler_ready(resampler)]);
         };
         while fed < frames {
             let piece = (dice.int(0, 6_000) as usize).min(frames - fed);
-            said.push(i64::from((side.push)(resampler, take[fed * channels..].as_ptr(), piece as i64)));
+            said.push(i64::from(qa_audio_resampler_push(resampler, take[fed * channels..].as_ptr(), piece as i64)));
             fed += piece;
-            said.extend([(side.held)(resampler), (side.ready)(resampler)]);
+            said.extend([qa_audio_resampler_held(resampler), qa_audio_resampler_ready(resampler)]);
             drain(&mut said, dice);
         }
-        (side.end)(resampler);
-        said.push(i64::from((side.push)(resampler, take.as_ptr(), 1)));
-        while (side.ready)(resampler) > 0 {
+        qa_audio_resampler_end(resampler);
+        said.push(i64::from(qa_audio_resampler_push(resampler, take.as_ptr(), 1)));
+        while qa_audio_resampler_ready(resampler) > 0 {
             drain(&mut said, dice);
         }
-        (side.close)(resampler);
+        qa_audio_resampler_close(resampler);
     }
     said
 }
 
 #[test]
-fn a_sound_fed_in_pieces_converts_as_the_c_converts_it_step_by_step() {
+fn a_sound_fed_in_pieces_converts_as_pinned_step_by_step() {
     let mut steps = Vec::new();
     for (input, output, channels) in [(44_100, 48_000, 2), (48_000, 44_100, 1), (22_050, 48_000, 2), (96_000, 48_000, 1)] {
         let take = sound(input as usize / 2 + 5, channels, output as u32);
         for seed in [1, 2, 3] {
-            let rust = streamed(Stream::rust(), &take, channels, (input, output), &mut Dice(seed));
-            let c = streamed(Stream::c(), &take, channels, (input, output), &mut Dice(seed));
-            assert_eq!(rust.len(), c.len(), "{input}→{output} seed {seed}");
-            let first = rust.iter().zip(&c).position(|(a, b)| a != b);
-            assert_eq!(first, None, "{input}→{output} seed {seed}: step {first:?}");
-            steps.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
+            steps.extend(streamed(&take, channels, (input, output), &mut Dice(seed)).iter().flat_map(|v| v.to_le_bytes()));
         }
     }
     ledger::assert_pinned("audio_mix/stream-steps", &steps);
@@ -567,7 +494,7 @@ fn a_sound_fed_in_pieces_converts_as_the_c_converts_it_step_by_step() {
 fn a_sound_fed_in_pieces_converts_as_it_converts_whole() {
     let (input, output, channels) = (44_100, 48_000, 2usize);
     let take = sound(30_011, channels, 5);
-    let whole = resampled(qa_audio_resample, &take, channels as i32, input, output);
+    let whole = resampled(&take, channels as i32, input, output);
     let mut resampler = Resampler::new(channels, input, output, 120.0, 0.9).expect("a conversion");
     let mut pieces = Vec::new();
     let mut out = vec![0.0f32; 4_096 * channels];
@@ -584,6 +511,6 @@ fn a_sound_fed_in_pieces_converts_as_it_converts_whole() {
     }
     assert_eq!(pieces, whole);
     // A push lets go of what no output still to come reads — never the
-    // whole sound. (How much, step by step, the C comparison holds.)
+    // whole sound. (How much, step by step, the stream-steps row holds.)
     assert!(resampler.held_frames() < 30_011 / 2, "LIVENESS: held {} of 30011", resampler.held_frames());
 }

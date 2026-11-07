@@ -4,8 +4,6 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import '../services/audio/audio_mixer_reference.dart';
-import '../services/audio/audio_resampler_reference.dart';
-import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
 
 /// Whether [library] lays the audio structs out byte-for-byte the way
@@ -55,15 +53,7 @@ bool qaAudioStructLayoutsMatch(DynamicLibrary library) {
 /// missing symbol or a layout disagreement stands the native path down
 /// rather than reading garbage.
 final class QaAudioNative {
-  QaAudioNative._(
-    this._mix,
-    this._busToFloat,
-    this._busToInt16,
-    this._resample,
-    this._resampleFrames,
-    this._denoise,
-    this._resampler,
-  );
+  QaAudioNative._(this._mix, this._busToFloat, this._busToInt16);
 
   final void Function(
     Pointer<QaAudioClipStruct>,
@@ -80,20 +70,6 @@ final class QaAudioNative {
   _mix;
   final void Function(Pointer<Double>, int, Pointer<Float>) _busToFloat;
   final void Function(Pointer<Double>, int, Pointer<Int16>) _busToInt16;
-  final int Function(
-    Pointer<Float>,
-    int,
-    int,
-    int,
-    int,
-    double,
-    double,
-    Pointer<Float>,
-  )
-  _resample;
-  final int Function(int, int, int) _resampleFrames;
-  final int Function(Pointer<Float>, int, int, int) _denoise;
-  final _QaResamplerApi _resampler;
 
   static QaAudioNative? _instance;
   static bool _tried = false;
@@ -121,6 +97,19 @@ final class QaAudioNative {
     return _instance;
   }
 
+  /// 🚨★★★**THE C'S MIXER NAMES ONLY, NOTHING THE ENGINE ANSWERS**
+  /// (connection-round-checklist H, 관제 2026-11-08 06:15 ⓓ · 타임라인/콘티
+  /// 06:17). Every name is found in one `try`, and one missing stands the
+  /// whole class down — the mixer to the Dart reference with it. The
+  /// resampler and the denoiser left this class when their C went
+  /// (`qa_audio_resampler.dart`, `qa_audio_denoiser.dart`), and their
+  /// names went from this list in the same change: on Apple's the library
+  /// below is `DynamicLibrary.process()`, which searches every image
+  /// loaded, the engine's among them — so a name the C no longer has would
+  /// be found there or not by whether the engine had been opened first,
+  /// and the mixer would stand on the C or on Dart by that order alone.
+  /// Windows and Linux open the C by its own handle and could never show
+  /// it. ⛔Name nothing here the C engine does not export itself.
   static QaAudioNative? _load() {
     final library = openQaEngineLibrary();
     if (library == null || !qaAudioStructLayoutsMatch(library)) {
@@ -162,37 +151,6 @@ final class QaAudioNative {
           Void Function(Pointer<Double>, Int32, Pointer<Int16>),
           void Function(Pointer<Double>, int, Pointer<Int16>)
         >('qa_audio_bus_to_int16'),
-        library.lookupFunction<
-          Int64 Function(
-            Pointer<Float>,
-            Int64,
-            Int32,
-            Int32,
-            Int32,
-            Double,
-            Double,
-            Pointer<Float>,
-          ),
-          int Function(
-            Pointer<Float>,
-            int,
-            int,
-            int,
-            int,
-            double,
-            double,
-            Pointer<Float>,
-          )
-        >('qa_audio_resample'),
-        library.lookupFunction<
-          Int64 Function(Int64, Int32, Int32),
-          int Function(int, int, int)
-        >('qa_audio_resample_frames'),
-        library.lookupFunction<
-          Int32 Function(Pointer<Float>, Int64, Int32, Int32),
-          int Function(Pointer<Float>, int, int, int)
-        >('qa_audio_denoise_f32'),
-        _QaResamplerApi(library),
       );
     } on Object {
       return null;
@@ -264,37 +222,6 @@ final class QaAudioNative {
     }
   }
 
-  /// RNNoise voice suppression over a finished take (48 kHz only — the
-  /// model's native rate). Returns the denoised samples, or null when
-  /// the C declined (wrong rate/empty) — null always means "use the raw
-  /// take", never a half-processed buffer.
-  Float32List? denoiseVoice({
-    required Float32List samples,
-    required int channels,
-    required int sampleRate,
-  }) {
-    if (samples.isEmpty || channels <= 0) {
-      return null;
-    }
-    final frames = samples.length ~/ channels;
-    if (frames <= 0) {
-      return null;
-    }
-    final buffer = calloc<Float>(samples.length);
-    try {
-      buffer.asTypedList(samples.length).setAll(0, samples);
-      final processed = _denoise(buffer, frames, channels, sampleRate);
-      if (processed != 1) {
-        return null;
-      }
-      final result = Float32List(samples.length);
-      result.setAll(0, buffer.asTypedList(samples.length));
-      return result;
-    } finally {
-      calloc.free(buffer);
-    }
-  }
-
   /// ⚠️This and [busToInt16] keep the same allocate/call/free skeleton and
   /// the clone scan pairs them (audit 2026-09-04, read and HELD). A generic
   /// over the output pointer cannot work: `asTypedList` has no common
@@ -311,8 +238,8 @@ final class QaAudioNative {
     final bus = calloc<Double>(busSamples.length);
     final out = calloc<Float>(busSamples.length);
     try {
-      // Bulk copies, like [denoise] above — the element loops these two
-      // used to run were the same twenty lines written twice.
+      // Bulk copies — the element loops these two used to run were the same
+      // twenty lines written twice.
       bus.asTypedList(busSamples.length).setAll(0, busSamples);
       _busToFloat(bus, busSamples.length, out);
       result.setAll(0, out.asTypedList(busSamples.length));
@@ -342,197 +269,6 @@ final class QaAudioNative {
     }
   }
 }
-
-/// Extension point for the resampler, kept apart from the mixer calls
-/// because it belongs to a different moment: this runs ONCE at import,
-/// while the mixer runs on the device thread.
-extension QaAudioNativeResampling on QaAudioNative {
-  /// Converts [samples] to [outputRate] through the native polyphase
-  /// resampler.
-  ///
-  /// Equal rates return the input UNCHANGED — the caller should not even
-  /// reach here in that case, but making it explicit keeps the bit-exact
-  /// promise from depending on the caller remembering.
-  Float32List resample({
-    required Float32List samples,
-    required int channels,
-    required int inputRate,
-    required int outputRate,
-    double stopbandDb = defaultResamplerStopbandDb,
-    double bandwidth = defaultResamplerBandwidth,
-  }) {
-    if (channels <= 0 || inputRate <= 0 || outputRate <= 0) {
-      return Float32List(0);
-    }
-    if (inputRate == outputRate) {
-      return samples;
-    }
-    final inputFrames = samples.length ~/ channels;
-    if (inputFrames <= 0) {
-      return Float32List(0);
-    }
-    final outputFrames = _resampleFrames(inputFrames, inputRate, outputRate);
-    if (outputFrames <= 0) {
-      return Float32List(0);
-    }
-
-    final input = calloc<Float>(samples.length);
-    final output = calloc<Float>(outputFrames * channels);
-    try {
-      input.asTypedList(samples.length).setAll(0, samples);
-      final written = _resample(
-        input,
-        inputFrames,
-        channels,
-        inputRate,
-        outputRate,
-        stopbandDb,
-        bandwidth,
-        output,
-      );
-      final result = Float32List(written * channels);
-      result.setAll(0, output.asTypedList(written * channels));
-      return result;
-    } finally {
-      calloc.free(output);
-      calloc.free(input);
-    }
-  }
-
-  /// A conversion of [channels] from [inputRate] to [outputRate] fed a
-  /// piece at a time through the native resampler, by the conform's filter
-  /// — the loop [resample] runs, so the pieces' outputs are its outputs bit
-  /// for bit. The rates unequal: equal ones skip the filter.
-  QaAudioResampleStream openResampler({
-    required int channels,
-    required int inputRate,
-    required int outputRate,
-  }) {
-    final handle = _resampler.open(
-      channels,
-      inputRate,
-      outputRate,
-      defaultResamplerStopbandDb,
-      defaultResamplerBandwidth,
-    );
-    if (handle == nullptr) {
-      throw ArgumentError(
-        'no conversion of $channels channels from $inputRate to $outputRate',
-      );
-    }
-    return QaAudioResampleStream._(_resampler, handle, channels);
-  }
-}
-
-/// The engine's resampler fed a piece at a time — `qa_audio_resampler_*`.
-final class _QaResamplerApi {
-  _QaResamplerApi(DynamicLibrary library)
-    : open = library
-          .lookupFunction<
-            Pointer<Void> Function(Int32, Int32, Int32, Double, Double),
-            Pointer<Void> Function(int, int, int, double, double)
-          >('qa_audio_resampler_open'),
-      push = library
-          .lookupFunction<
-            Int32 Function(Pointer<Void>, Pointer<Float>, Int64),
-            int Function(Pointer<Void>, Pointer<Float>, int)
-          >('qa_audio_resampler_push'),
-      end = library
-          .lookupFunction<
-            Void Function(Pointer<Void>),
-            void Function(Pointer<Void>)
-          >('qa_audio_resampler_end'),
-      ready = library
-          .lookupFunction<
-            Int64 Function(Pointer<Void>),
-            int Function(Pointer<Void>)
-          >('qa_audio_resampler_ready'),
-      pull = library
-          .lookupFunction<
-            Int64 Function(Pointer<Void>, Pointer<Float>, Int64),
-            int Function(Pointer<Void>, Pointer<Float>, int)
-          >('qa_audio_resampler_pull'),
-      held = library
-          .lookupFunction<
-            Int64 Function(Pointer<Void>),
-            int Function(Pointer<Void>)
-          >('qa_audio_resampler_held'),
-      close = library
-          .lookupFunction<
-            Void Function(Pointer<Void>),
-            void Function(Pointer<Void>)
-          >('qa_audio_resampler_close');
-
-  final Pointer<Void> Function(int, int, int, double, double) open;
-  final int Function(Pointer<Void>, Pointer<Float>, int) push;
-  final void Function(Pointer<Void>) end;
-  final int Function(Pointer<Void>) ready;
-  final int Function(Pointer<Void>, Pointer<Float>, int) pull;
-  final int Function(Pointer<Void>) held;
-  final void Function(Pointer<Void>) close;
-}
-
-/// The native resampler fed a piece at a time
-/// ([QaAudioNativeResampling.openResampler]).
-final class QaAudioResampleStream implements AudioResampleStream {
-  QaAudioResampleStream._(this._api, this._handle, this._channels);
-
-  final _QaResamplerApi _api;
-  Pointer<Void> _handle;
-  final int _channels;
-
-  /// Input frames it holds now — for the tests that tell a conversion that
-  /// lets go of its input from one that keeps the whole sound.
-  int get heldFrames => _api.held(_handle);
-
-  /// ⚠️One for the isolate, not one per conversion: nothing here suspends
-  /// between filling it and copying out of it, a piece in or a piece out.
-  static final NativeScratch<Float> _room = NativeScratch<Float>(
-    (count) => calloc<Float>(count),
-    bytesPerElement: sizeOf<Float>(),
-  );
-
-  @override
-  Float32List push(Float32List samples) {
-    final frames = samples.length ~/ _channels;
-    if (frames > 0) {
-      final input = _room.ensure(frames * _channels);
-      input
-          .asTypedList(frames * _channels)
-          .setAll(0, Float32List.sublistView(samples, 0, frames * _channels));
-      if (_api.push(_handle, input, frames) == 0) {
-        throw StateError('the native resampler could not take the piece');
-      }
-    }
-    return _pull();
-  }
-
-  @override
-  Float32List finish() {
-    _api.end(_handle);
-    return _pull();
-  }
-
-  Float32List _pull() {
-    final ready = _api.ready(_handle);
-    if (ready <= 0) {
-      return Float32List(0);
-    }
-    final out = _room.ensure(ready * _channels);
-    final written = _api.pull(_handle, out, ready);
-    // Copied out: the room is the next piece's.
-    return Float32List.fromList(out.asTypedList(written * _channels));
-  }
-
-  @override
-  void close() {
-    if (_handle != nullptr) {
-      _api.close(_handle);
-      _handle = nullptr;
-    }
-  }
-}
-
 
 /// How many envelope keys [clips] carry between them — the length the
 /// flattened key array has to be.

@@ -2,53 +2,25 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_audio_native.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
+import 'package:anicel/src/native/qa_audio_resampler.dart';
 
-import '../../helpers/native_engine_path.dart';
+import '../../helpers/audio_resampler_reference.dart';
 
-/// The C resampler must be BIT-IDENTICAL to the Dart reference.
+/// The engine's resampler ([_mix]) must be BIT-IDENTICAL to the
+/// Dart reference.
 ///
 /// The reference went in first and had its maths pinned by measurement —
 /// 135 dB of rejection, a passband flat to 0.1 dB, and an impulse that
-/// comes out where it went in. This suite makes the C inherit all of that
-/// rather than re-argue it: if the two agree bit for bit, every number
-/// already proven about one holds for the other.
+/// comes out where it went in. This suite makes the engine inherit all of
+/// that rather than re-argue it: if the two agree bit for bit, every number
+/// already proven about one holds for the other. The engine always loads
+/// (connection-round-checklist H), so nothing here skips; the reference is
+/// the app's no more, only this answer key.
 ///
 /// A resampler is a multiply-accumulate loop, so it is exactly the shape
 /// #614 caught Apple clang contracting into an FMA that rounds once where
-/// Dart rounds twice.
+/// Dart rounds twice, when it was C.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaAudioNative.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-    QaAudioNative.debugForceDartFallback = false;
-  });
-
-  tearDown(() {
-    QaAudioNative.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaAudioNative.debugForceDartFallback = false;
-  });
-
-  QaAudioNative requireNative() {
-    final native = QaAudioNative.instance;
-    expect(
-      native,
-      isNotNull,
-      reason:
-          'the binary at $libraryPath loaded but the resampler entry points '
-          'did not bind — an ABI mismatch, which is what this suite exists '
-          'to catch',
-    );
-    return native!;
-  }
-
   void expectIdentical(
     Float32List native,
     Float32List reference, {
@@ -60,7 +32,7 @@ void main() {
         native[index],
         reference[index],
         reason:
-            '$what: sample $index — native ${native[index]} vs reference '
+            '$what: sample $index — $_mix ${native[index]} vs reference '
             '${reference[index]}',
       );
     }
@@ -76,10 +48,8 @@ void main() {
   }
 
   group('resampler byte parity', () {
-    test('the entry points bind', requireNative, skip: skip);
 
     test('every standard rate pair agrees bit for bit', () {
-      final native = requireNative();
       const pairs = [
         (44100, 48000),
         (48000, 44100),
@@ -93,7 +63,7 @@ void main() {
       ];
       for (final (inputRate, outputRate) in pairs) {
         final samples = noise(2000, 1, inputRate);
-        final fromNative = native.resample(
+        final fromNative = resampleAudio(
           samples: samples,
           channels: 1,
           inputRate: inputRate,
@@ -111,14 +81,13 @@ void main() {
           what: '$inputRate → $outputRate',
         );
       }
-    }, skip: skip);
+    });
 
     test('multichannel interleaving agrees', () {
-      final native = requireNative();
       for (final channels in const [1, 2, 6]) {
         final samples = noise(1500, channels, 90 + channels);
         expectIdentical(
-          native.resample(
+          resampleAudio(
             samples: samples,
             channels: channels,
             inputRate: 44100,
@@ -133,18 +102,17 @@ void main() {
           what: '$channels channels',
         );
       }
-    }, skip: skip);
+    });
 
     test('an impulse — where the delay compensation shows — agrees', () {
       // The edges are where the two could most easily diverge: the
       // convolution runs off the ends and the compensation offset decides
       // exactly which taps participate.
-      final native = requireNative();
       for (final at in const [0, 1, 500, 1999]) {
         final samples = Float32List(2000);
         samples[at] = 1.0;
         expectIdentical(
-          native.resample(
+          resampleAudio(
             samples: samples,
             channels: 1,
             inputRate: 44100,
@@ -159,17 +127,16 @@ void main() {
           what: 'impulse at $at',
         );
       }
-    }, skip: skip);
+    });
 
     test('the filter design parameters agree', () {
       // Different stopband or bandwidth settings must pick the SAME tap
       // count on both sides — a one-tap disagreement shifts every phase.
-      final native = requireNative();
       for (final stopband in const [90.0, 120.0, 150.0]) {
         for (final bandwidth in const [0.85, 0.90, 0.95]) {
           final samples = noise(800, 1, 7);
           expectIdentical(
-            native.resample(
+            resampleAudio(
               samples: samples,
               channels: 1,
               inputRate: 44100,
@@ -189,12 +156,11 @@ void main() {
           );
         }
       }
-    }, skip: skip);
+    });
 
     test('equal rates pass through untouched on both sides', () {
-      final native = requireNative();
       final samples = noise(500, 2, 11);
-      final fromNative = native.resample(
+      final fromNative = resampleAudio(
         samples: samples,
         channels: 2,
         inputRate: 48000,
@@ -210,18 +176,17 @@ void main() {
         ).passthrough,
         isTrue,
       );
-    }, skip: skip);
+    });
 
     test('🎯fed a piece at a time, the native conversion is the whole '
         'reference one bit for bit — and lets go of its input as the '
         'reference does', () {
-      final native = requireNative();
       const pairs = [(44100, 48000), (48000, 44100), (8000, 48000)];
       const pieces = [1, 7, 333, 4096, 5000, 2];
       for (final (inputRate, outputRate) in pairs) {
         for (final channels in const [1, 2]) {
           final samples = noise(20000, channels, inputRate + channels);
-          final fromNative = native.openResampler(
+          final fromNative = openAudioResampler(
             channels: channels,
             inputRate: inputRate,
             outputRate: outputRate,
@@ -263,12 +228,11 @@ void main() {
           );
         }
       }
-    }, skip: skip);
+    });
 
     test('degenerate geometry agrees instead of crashing', () {
-      final native = requireNative();
       expect(
-        native.resample(
+        resampleAudio(
           samples: Float32List(0),
           channels: 1,
           inputRate: 44100,
@@ -277,7 +241,7 @@ void main() {
         isEmpty,
       );
       expect(
-        native.resample(
+        resampleAudio(
           samples: Float32List(8),
           channels: 0,
           inputRate: 44100,
@@ -286,7 +250,7 @@ void main() {
         isEmpty,
       );
       expect(
-        native.resample(
+        resampleAudio(
           samples: Float32List(8),
           channels: 1,
           inputRate: 0,
@@ -294,6 +258,11 @@ void main() {
         ),
         isEmpty,
       );
-    }, skip: skip);
+    });
   });
 }
+
+/// The resampler these hold to the reference — named as a path, so a lane
+/// that changed only the engine's resampler runs this file (`affected_tests`
+/// picks a test by the paths it writes out, 보드/인프라 2026-11-08 05:35).
+const _mix = 'packages/gpu_engine/rust/native/audio_mix';

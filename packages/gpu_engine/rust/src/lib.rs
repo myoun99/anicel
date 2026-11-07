@@ -26,6 +26,24 @@ mod testing;
 // 2026-11-08 03:39): a crate this one depends on but never names is not
 // linked, and its extern "C" functions are not exported (Cargo.toml's
 // workspace note, measured 2026-11-06) — named here, they are.
+//
+// The voice take's denoiser and the conform's resampler (H, 관제 2026-11-08
+// 05:58): `qa_audio_denoise_f32` and `qa_audio_resample*` ·
+// `qa_audio_resampler_*` are answered here, and the C's are gone.
+pub use audio_denoise;
+// ⚠️audio_mix carries the mix bus too, and naming the crate exports all of
+// it: `qa_audio_mix` · `qa_audio_bus_to_*` · `qa_audio_*_sizeof` are then in
+// this library AND in the C engine, which still answers them for the app
+// until the mixer moves (관제 2026-11-08 06:15 ⓑ — ⛔the crate is not split
+// to keep them out). Apart, they cannot meet: Windows, Linux and Android
+// open the two libraries by their own handles, and on Apple's the C is
+// linked into the app's executable while this library is a framework the
+// code asset loads after it, so `DynamicLibrary.process()` finds the C's
+// first (as the platforms' loaders are documented — not measured on a
+// device; 타임라인/콘티 06:17). 🚨The mixer's own move binds it with
+// `@Native`, as the resampler is bound — never through `process()`, whose
+// answer, while both carry a name, is the order the images loaded in.
+pub use audio_mix;
 pub use display;
 pub use fx_plugin;
 pub use pen;

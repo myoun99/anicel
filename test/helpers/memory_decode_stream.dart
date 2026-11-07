@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:anicel/src/services/audio/audio_decode_stream.dart';
-import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
+import 'package:anicel/src/services/audio/audio_resample_stream.dart';
 
 /// [samples] — a whole sound already in hand — read on the way a decoder
 /// reads one: what the fake decoders hand the conform pipeline.

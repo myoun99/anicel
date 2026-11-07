@@ -19,12 +19,11 @@ import 'dart:typed_data';
 import '../../core/on_a_worker.dart';
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_device.dart';
-import '../../native/qa_audio_native.dart';
+import '../../native/qa_audio_resampler.dart';
 import '../../native/qa_engine_abi.dart';
 import '../media/media_byte_source.dart';
 import 'audio_conform_pipeline.dart';
 import 'audio_decode_stream.dart';
-import 'audio_resampler_reference.dart';
 
 /// One conform request — every field a sendable value so the whole thing
 /// can cross an isolate boundary.
@@ -257,21 +256,12 @@ Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
 /// The conversion itself, on whichever isolate this is called from.
 Float32List runResampleHere(ResampleRequest request) {
   _applyLibraryOverride(request.libraryPathOverride);
-  final native = QaAudioNative.instance;
-  if (native != null) {
-    return native.resample(
-      samples: request.samples,
-      channels: request.channels,
-      inputRate: request.inputRate,
-      outputRate: request.outputRate,
-    );
-  }
-  return resampleAudioReference(
+  return resampleAudio(
     samples: request.samples,
     channels: request.channels,
     inputRate: request.inputRate,
     outputRate: request.outputRate,
-  ).samples;
+  );
 }
 
 void _applyLibraryOverride(String? override) {
@@ -342,24 +332,9 @@ ConformResult runConformHere(ConformRequest request) {
   _applyLibraryOverride(request.libraryPathOverride);
   final pipeline = AudioConformPipeline(
     decode: openAudioSource,
-    // Native resampler when the binary is present; the byte-identical Dart
-    // reference otherwise. Either way the SAME filter design — that is what
-    // the parity pins are for.
-    resample: ({required channels, required inputRate, required outputRate}) {
-      final native = QaAudioNative.instance;
-      if (native != null) {
-        return native.openResampler(
-          channels: channels,
-          inputRate: inputRate,
-          outputRate: outputRate,
-        );
-      }
-      return AudioResampleStreamReference(
-        channels: channels,
-        inputRate: inputRate,
-        outputRate: outputRate,
-      );
-    },
+    // The engine's resampler, which always loads — its Dart twin is the
+    // tests' answer key, no fallback (connection-round-checklist H).
+    resample: openAudioResampler,
     projectSampleRate: request.projectSampleRate,
     bucketsPerSecond: request.bucketsPerSecond,
     speedNumerator: request.speedNumerator,

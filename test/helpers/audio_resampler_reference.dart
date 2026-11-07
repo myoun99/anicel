@@ -1,4 +1,6 @@
-/// Sample-rate conversion (audio program 2B) — Dart REFERENCE.
+/// Sample-rate conversion (audio program 2B) — Dart REFERENCE, the test
+/// answer key the engine's resampler is held to bit for bit (the app's
+/// fallback until the connection round, H).
 ///
 /// A conform has to land at the project's sample rate, and 44.1k → 48k
 /// means computing sample values at instants that do not exist in the
@@ -27,18 +29,7 @@ library;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-/// Stopband attenuation target in dB. 120 puts both the aliasing and the
-/// pre-ringing more than 20 dB below the quantization noise of a 16-bit
-/// source — under the material's own noise floor.
-const double defaultResamplerStopbandDb = 120.0;
-
-/// How much of the available band stays flat, as a fraction of the lower
-/// of the two Nyquist limits. The remainder is the transition band.
-///
-/// 0.90 keeps everything below 19.8 kHz flat on a 44.1k → 48k conform and
-/// spends 19.8–22.05 kHz rolling off. Pushing this toward 1.0 costs filter
-/// length quadratically for band nobody can hear.
-const double defaultResamplerBandwidth = 0.90;
+import 'package:anicel/src/services/audio/audio_resample_stream.dart';
 
 /// Ceiling on the prototype length, so a pathological rate pair (44100 →
 /// 44101 shares no factors and would ask for billions of taps) degrades
@@ -90,9 +81,9 @@ int _gcd(int a, int b) {
 /// Modified Bessel function of the first kind, order 0 — the Kaiser
 /// window's kernel.
 ///
-/// Fixed termination (relative epsilon, hard iteration cap) so the C twin
-/// runs the identical number of terms. A loop that stopped "when it feels
-/// converged" would be a parity hazard.
+/// Fixed termination (relative epsilon, hard iteration cap) so the
+/// engine's twin runs the identical number of terms. A loop that stopped
+/// "when it feels converged" would be a parity hazard.
 double besselI0(double x) {
   final half = x / 2.0;
   var term = 1.0;
@@ -154,31 +145,8 @@ Float64List buildResamplerKernel({
   return kernel;
 }
 
-/// A conversion fed a piece at a time — what the next piece needs of the
-/// ones before it, carried across. Both resamplers answer it: the Dart
-/// reference ([AudioResampleStreamReference]) and the C twin
-/// (`QaAudioNativeResampling.openResampler`), bit for bit alike.
-///
-/// 🚨★★★**THE PIECES' OUTPUTS ARE THE WHOLE CONVERSION'S** (user
-/// 2026-10-10, board long-sound-conform-memory-Q1: 「지금 한다 — 전
-/// 플랫폼」). A long sound is conformed as the decoder hands it back, so it
-/// is never held whole — and an output frame reads the inputs it reads
-/// either way, the same taps in the same order. [resampleAudioReference] is
-/// the same loop over input that has all arrived.
-abstract interface class AudioResampleStream {
-  /// Takes [samples] — whole interleaved frames — and answers every output
-  /// frame they complete.
-  Float32List push(Float32List samples);
-
-  /// Answers the rest, once nothing more comes.
-  Float32List finish();
-
-  /// Lets go of what the conversion holds.
-  void close();
-}
-
 /// What a conversion between two rates runs: its polyphase geometry and the
-/// prototype's taps — the C's `qa_audio_resample_design`.
+/// prototype's taps — the engine's `Design` (native/audio_mix).
 final class _ResamplerDesign {
   _ResamplerDesign._({
     required this.interpolation,
@@ -316,8 +284,8 @@ typedef _HeldInput = ({
   int total,
 });
 
-/// The Dart reference's [AudioResampleStream] — the C's
-/// `qa_audio_resampler`, line for line.
+/// The Dart reference's [AudioResampleStream] — the engine's
+/// `Resampler` (native/audio_mix), line for line.
 final class AudioResampleStreamReference implements AudioResampleStream {
   /// A conversion of [channels] from [inputRate] to [outputRate] through the
   /// conform's filter: all positive, the rates unequal — equal ones skip the

@@ -69,7 +69,13 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     ),
   );
 
-  // --- Audio engine (same binary): playback mixer + sinc resampler.
+  // --- Audio engine (same binary): the playback mixer.
+  //
+  // 🪦It said 「and windowed-sinc sample-rate conversion」 too, until the
+  // conversion and the voice take's denoiser moved into the GPU engine's
+  // library (connection-round-checklist H, 2026-11-08). They have no other
+  // path there — no fallback to report — so they have no row, as the fx
+  // plugin host has none: this report lists what is chosen at run time.
   final audio = QaAudioNative.instance;
   entries.add(
     RuntimePathEntry(
@@ -79,9 +85,8 @@ List<RuntimePathEntry> collectRuntimePathReport() {
           : 'Dart fallback (no native binary loaded)',
       isPrimary: audio != null,
       detail:
-          'Realtime playback mixing and windowed-sinc sample-rate '
-          'conversion. The Dart reference keeps sound working without '
-          'the native binary, at higher CPU cost.',
+          'Realtime playback mixing. The Dart reference keeps sound '
+          'working without the native binary, at higher CPU cost.',
     ),
   );
 
