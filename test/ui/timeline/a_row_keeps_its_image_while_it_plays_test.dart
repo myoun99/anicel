@@ -130,7 +130,7 @@ void main() {
     if (region.debugDrawnFromImage) {
       return true;
     }
-    for (RenderObject? node = region.parent; node != null; node = node.parent) {
+    for (var node = region.parent; node != null; node = node.parent) {
       if (node is RenderStillRaster && node.debugDrawnFromImage) {
         return true;
       }
