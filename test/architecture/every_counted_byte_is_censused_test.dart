@@ -437,6 +437,9 @@ const _imageHolders = <String, String>{
       'counted:sampleBytes',
   'lib/src/ui/timeline/timeline_grid_tile_store.dart → _entries':
       'counted:tileImageBytes',
+  'lib/src/ui/timeline/timeline_grid_tile_store.dart → _keptByRow':
+      'the tiles of _entries again, by row and the frame each starts on: '
+      'an index, whose pictures are counted there (tileImageBytes)',
   // … holdings counted all along, by a counter of their own file …
   'lib/src/ui/playback/frame_picture_store.dart → _entries':
       'counted:estimatedBytes',
