@@ -2,6 +2,7 @@
 //! through their exports, one export at a time — each keeps one writer for
 //! the whole process, so two tests at once would be one job.
 
+use std::cell::LazyCell;
 use std::ffi::{CString, c_char};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -487,10 +488,8 @@ fn around(bytes: &[u8], at: usize) -> String {
 }
 
 /// What parts the Rust's movie of `shape` from the C's, but for the clock
-/// and the chunking: each box that is not the same, and each track whose
-/// samples are not — said with the track's format, the bytes around where
-/// they part, and whether the C's own second movie parts there too. A movie
-/// that does not read is said so, with what stopped the reading.
+/// and the chunking ([`judged`]). A movie that does not read is said so,
+/// with what stopped the reading.
 fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
     let (c, rust) = (c(), rust());
     let c_movie = |run: &str| read_movie(&c.movie(&temp(&format!("{name}-c{run}"), shape.container), shape, frames));
@@ -515,42 +514,75 @@ fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
     if kinds(&ours) != kinds(&theirs) {
         return vec![format!("{name}: the boxes, {:?} against the C's {:?}", kinds(&ours), kinds(&theirs))];
     }
-    let mut apart: Vec<String> = ours
-        .boxes
-        .iter()
-        .zip(&theirs.boxes)
-        .filter(|((_, ours), (_, theirs))| ours != theirs)
-        .map(|((kind, _), _)| format!("{name}: the {} box", String::from_utf8_lossy(kind)))
-        .collect();
-    let mut again = None;
-    for (k, (ours, theirs)) in ours.tracks.iter().zip(&theirs.tracks).enumerate() {
-        if ours.notes != theirs.notes {
-            apart.push(format!("{name}: track {k} ({}) holds {} VideoToolbox notes against the C's {}", ours.format, ours.notes, theirs.notes));
-        }
-        let Some(at) = parted(&ours.samples, &theirs.samples) else {
-            continue;
+    judged(name, &ours, &theirs, || c_movie("-again"))
+}
+
+/// Each place `ours` parts from `theirs`, the C's movie, in bytes the C
+/// writes the same twice — a box, a track's samples — and each track whose
+/// notes are more or fewer; `again`, the C's own second movie, is made only
+/// when a place parts.
+///
+/// ↩️2026-11-08: A PLACE PARTS ONLY BEFORE THE C PARTS FROM ITSELF THERE.
+/// From the first byte at which the C's own second movie parts from its
+/// first, a box's or a track's bytes are the OS encoder's and muxer's, which
+/// the C does not write the same twice either, so they are not asked of ours
+/// (유저 connection-round-checklist-Q14: what the OS encoder makes is not
+/// frozen, only what our code decides; 관제 11-08 01:56). Before it the C
+/// keeps to itself, and ours has to. Measured on the Mac's debug run of
+/// bundle GPU CI 42391596471 (`df08b3819`), green in its release run: the
+/// ntsc-mono movie's ctts, sdtp and stsz boxes parted from the C's, and its
+/// avc1 samples from byte 9855 — where the C's own second movie parted from
+/// its first too, its bytes around there ours. Not measured: whether its
+/// boxes parted as well, since only samples were then put to it.
+fn judged(name: &str, ours: &Movie, theirs: &Movie, again: impl FnOnce() -> Result<Movie, String>) -> Vec<String> {
+    let second = LazyCell::new(|| again().map_err(|why| format!("does not read — {why}")));
+    let boxes = ours.boxes.iter().zip(&theirs.boxes).enumerate().filter_map(|(k, ((kind, ours), (_, theirs)))| {
+        let name = format!("{name}: the {} box", String::from_utf8_lossy(kind));
+        let again = || match &*second {
+            Ok(movie) => movie
+                .boxes
+                .get(k)
+                .filter(|(its, _)| its == kind)
+                .map(|(_, bytes)| bytes.as_slice())
+                .ok_or_else(|| format!("has its boxes {:?}", movie.boxes.iter().map(|(kind, _)| String::from_utf8_lossy(kind)).collect::<Vec<_>>())),
+            Err(why) => Err(why.clone()),
         };
-        // The premise, measured where it failed: whether the C writes these
-        // samples the same twice.
-        let itself = match again.get_or_insert_with(|| c_movie("-again")) {
-            Ok(again) => match again.tracks.get(k) {
-                Some(again) => parted(&again.samples, &theirs.samples)
-                    .map_or("the same".to_owned(), |at| format!("apart at {at}, {}", around(&again.samples, at))),
-                None => format!("has {} tracks", again.tracks.len()),
-            },
-            Err(why) => format!("does not read — {why}"),
-        };
-        apart.push(format!(
-            "{name}: track {k} ({})'s samples, {} bytes against the C's {}, {} notes taken out, first apart at {at} — ours {}, the C's {}; the C's own second movie: {itself}",
+        place_apart(&name, ours, theirs, again)
+    });
+    let tracks = ours.tracks.iter().zip(&theirs.tracks).enumerate().flat_map(|(k, (ours, theirs))| {
+        let notes = (ours.notes != theirs.notes)
+            .then(|| format!("{name}: track {k} ({}) holds {} VideoToolbox notes against the C's {}", ours.format, ours.notes, theirs.notes));
+        let name = format!(
+            "{name}: track {k} ({})'s samples, {} bytes against the C's {}, {} notes taken out",
             ours.format,
             ours.samples.len(),
             theirs.samples.len(),
-            theirs.notes,
-            around(&ours.samples, at),
-            around(&theirs.samples, at),
-        ));
-    }
-    apart
+            theirs.notes
+        );
+        let again = || match &*second {
+            Ok(movie) => movie.tracks.get(k).map(|track| track.samples.as_slice()).ok_or_else(|| format!("has {} tracks", movie.tracks.len())),
+            Err(why) => Err(why.clone()),
+        };
+        notes.into_iter().chain(place_apart(&name, &ours.samples, &theirs.samples, again))
+    });
+    boxes.chain(tracks).collect()
+}
+
+/// Where `ours` parts from `theirs` at the place `name` names, said with
+/// the bytes around it and how `again` — the C's own second movie's bytes
+/// there — stands; nothing when ours keeps to the C, or parts no earlier
+/// than the C parts from itself ([`judged`]).
+fn place_apart<'m>(name: &str, ours: &[u8], theirs: &[u8], again: impl FnOnce() -> Result<&'m [u8], String>) -> Option<String> {
+    let at = parted(ours, theirs)?;
+    let itself = match again() {
+        Ok(again) => match parted(again, theirs) {
+            Some(itself) if itself <= at => return None,
+            Some(itself) => format!("apart at {itself}, {}", around(again, itself)),
+            None => "the same".to_owned(),
+        },
+        Err(why) => why,
+    };
+    Some(format!("{name}, first apart at {at} — ours {}, the C's {}; the C's own second movie: {itself}", around(ours, at), around(theirs, at)))
 }
 
 // The box walker by hand, since no movie this machine writes has a box sized
@@ -627,6 +659,42 @@ fn video_toolbox_s_note_and_only_it_is_taken_out() {
     }
 }
 
+// The judgment by hand, since no movie the C writes on this machine parts
+// from itself: a box and a track parting from the C's movie before, at and
+// past where the C's own second movie parts from it, where the C keeps to
+// itself, where its second movie does not read, a track with a note more,
+// and a movie the same as the C's, for which no second is made.
+#[test]
+fn a_place_parts_only_before_the_c_parts_from_itself_there() {
+    let movie = |bytes: &[u8], notes: usize| Movie {
+        boxes: vec![(*b"stsz", bytes.to_vec())],
+        tracks: vec![Track { format: "avc1".to_owned(), samples: bytes.to_vec(), notes, count: 1 }],
+        stamped: 0,
+    };
+    let theirs = movie(&[1, 2, 3, 4, 5, 6], 1);
+    let judge = |ours: Movie, again: Result<&[u8], &str>| judged("m", &ours, &theirs, || again.map(|bytes| movie(bytes, 1)).map_err(str::to_owned));
+    let both = |at: usize, ours: &str, itself: &str| {
+        let parted = format!("first apart at {at} — ours {ours}, the C's {}; the C's own second movie: {itself}", around(&theirs.boxes[0].1, at));
+        vec![format!("m: the stsz box, {parted}"), format!("m: track 0 (avc1)'s samples, 6 bytes against the C's 6, 1 notes taken out, {parted}")]
+    };
+    assert_eq!(
+        judge(movie(&[1, 2, 9, 4, 5, 6], 1), Ok(&[1, 2, 3, 4, 5, 6])),
+        both(2, "@0 01 02 [09] 04 05 06", "the same"),
+        "where the C keeps to itself"
+    );
+    assert_eq!(judge(movie(&[1, 2, 9, 4, 5, 6], 1), Ok(&[1, 2, 7, 4, 5, 6])), Vec::<String>::new(), "at where the C parts");
+    assert_eq!(judge(movie(&[1, 2, 3, 4, 9, 6], 1), Ok(&[1, 2, 7, 4, 5, 6])), Vec::<String>::new(), "past where the C parts");
+    assert_eq!(
+        judge(movie(&[1, 9, 3, 4, 5, 6], 1), Ok(&[1, 2, 3, 7, 5, 6])),
+        both(1, "@0 01 [09] 03 04 05 06", "apart at 3, @0 01 02 03 [07] 05 06"),
+        "before where the C parts"
+    );
+    assert_eq!(judge(movie(&[1, 2, 9, 4, 5, 6], 1), Err("cut short")), both(2, "@0 01 02 [09] 04 05 06", "does not read — cut short"));
+    assert_eq!(judge(movie(&[1, 2, 3, 4, 5, 6], 2), Err("unmade")), ["m: track 0 (avc1) holds 2 VideoToolbox notes against the C's 1"]);
+    let same = movie(&[1, 2, 3, 4, 5, 6], 1);
+    assert_eq!(judged("m", &same, &theirs, || panic!("a second movie made for one the same as the C's")), Vec::<String>::new());
+}
+
 // The fixtures' movie, which the hardware law keeps in software; an odd,
 // silent one the pad makes even; a film the hardware takes; the law's first
 // side past the failed one — and the side that failed, held off hardware
@@ -635,7 +703,8 @@ fn video_toolbox_s_note_and_only_it_is_taken_out() {
 // bitrate named; one named past the ceiling; a Korean name; and where the
 // C writes them (Apple), H.264 in a MOV, ProRes 422 with its PCM, and
 // ProRes 4444 keeping a picture's alpha. Each byte for byte with the C's,
-// but for the clock, the chunking and VideoToolbox's note (`Movie`).
+// but for the clock, the chunking and VideoToolbox's note (`Movie`), and
+// from where the C parts from itself on (`judged`).
 //
 // ↩️2026-11-07: every movie is made before any is judged, and a track that
 // parts says where, around what, and whether the C parts from itself there.
@@ -645,7 +714,10 @@ fn video_toolbox_s_note_and_only_it_is_taken_out() {
 // writes the same bytes twice, unmeasured; no Mac is on the machine this is
 // written on, so the next run has to answer both (관제 11-07). It answered
 // (42366555125): every H.264 and HEVC movie parts at one place, where the C
-// parts from itself — VideoToolbox's note ([`NOTE`]).
+// parts from itself — VideoToolbox's note ([`NOTE`]). The next answered in
+// its debug run alone (42391596471): an encode of ntsc-mono that parted
+// from the C's where the C's own second movie parted from its first
+// ([`judged`]).
 //
 // ⛔GOES WITH THE C: its bytes are the OS encoder's and muxer's, and are
 // not frozen once the C is gone (유저 connection-round-checklist-Q14,
