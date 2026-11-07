@@ -111,6 +111,12 @@ class TimelineGridTileStore {
   /// 36 frames) at 1.5 held 267 (the timeline) · 426 (the X-sheet) tiles of
   /// ~100 KB after a lap at 512px — at 96px it was past this, 804 · 811
   /// tiles of 28 KB (11-07).
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q6 (유저 2026-11-07, a: 「512 로
+  /// 넓히고 타일은 장수 상한 그대로」): a count, not bytes. ↩️A byte cap at
+  /// what the 96px tiles held at most (~23 MB at 1.5) keeps ~220 tiles of
+  /// 512px — fewer than the X-sheet's lap took, so it would bake again while
+  /// playing. The cost: up to ~82 MB at 1.5 · ~146 MB at 2 on a huge cut.
   static const int capacity = 768;
 
   /// How many tiles it comes back to keeping: [capacity] — lowered by a test
