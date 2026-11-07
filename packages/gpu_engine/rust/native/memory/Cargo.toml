@@ -1,0 +1,28 @@
+[package]
+name = "memory"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+# What each OS says of its memory, through bindings made from its headers or
+# metadata, never a struct declared by hand (the C declared Windows' EX2
+# counters itself, for an older SDK's sake): wgpu-hal's own `windows`, and
+# on Apple `mach2` for the task's VM info — both already in the lock.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+libc = "0.2"
+mach2 = "0.6"
+
+[target.'cfg(not(any(windows, target_vendor = "apple")))'.dependencies]
+libc = "0.2"
+
+# The C this crate replaces (qa_engine.c's four memory questions), the
+# answer key until the connection round.
+[dev-dependencies]
+oracle = { path = "../oracle" }

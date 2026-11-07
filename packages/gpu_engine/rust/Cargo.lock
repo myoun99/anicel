@@ -1249,6 +1249,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "memory"
+version = "0.0.1"
+dependencies = [
+ "libc",
+ "mach2",
+ "oracle",
+ "windows",
+]
+
+[[package]]
 name = "mio"
 version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
