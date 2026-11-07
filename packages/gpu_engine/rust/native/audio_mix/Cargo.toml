@@ -4,6 +4,15 @@ version = "0.0.1"
 edition = "2024"
 publish = false
 
+# A sound is conformed alike on every device (유저 gpu-same-formula-Q2):
+# the filters' sin and pow are libm's, the same Rust on every OS, not the
+# device's maths library, which rounds its last place differently from OS
+# to OS — as symphonia's are (native-to-rust-Q14), and so a ledger row
+# can hold them (connection-round-checklist A, 관제 2026-11-07 ③); already
+# in the lock as zeno's.
+[dependencies]
+libm = "0.2"
+
 # The C answer key: the engine's qa_audio_mix, bus conversions and
 # resamplers, bit for bit (native/oracle), and the app's ledger
 # (native/ledger).

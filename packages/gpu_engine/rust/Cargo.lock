@@ -111,6 +111,8 @@ dependencies = [
 name = "audio_denoise"
 version = "0.0.1"
 dependencies = [
+ "ledger",
+ "libm",
  "oracle",
 ]
 
@@ -130,6 +132,7 @@ name = "audio_mix"
 version = "0.0.1"
 dependencies = [
  "ledger",
+ "libm",
  "oracle",
 ]
 

@@ -71,7 +71,7 @@ fn kaiser_beta(stopband_db: f64) -> f64 {
     if stopband_db > 50.0 {
         0.1102 * (stopband_db - 8.7)
     } else if stopband_db >= 21.0 {
-        0.5842 * (stopband_db - 21.0).powf(0.4) + 0.07886 * (stopband_db - 21.0)
+        0.5842 * libm::pow(stopband_db - 21.0, 0.4) + 0.07886 * (stopband_db - 21.0)
     } else {
         0.0
     }
@@ -82,7 +82,7 @@ fn sinc(x: f64) -> f64 {
         return 1.0;
     }
     let pix = PI * x;
-    pix.sin() / pix
+    libm::sin(pix) / pix
 }
 
 /// The prototype's length for a conversion: odd, 15 to 131071, and 0 for

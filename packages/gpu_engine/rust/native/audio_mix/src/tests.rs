@@ -2,11 +2,14 @@
 //! bit for bit: both asked through their exports, on schedules and sounds
 //! made up here.
 //!
-//! What no device's maths library makes — the bus, its output stage, the
-//! filter lengths and frame counts — is pinned in the app's ledger as well,
-//! beside the C's answer and so the C's to the bit: the row is what holds
-//! these tests once the C is deleted (connection-round-checklist A, 관제
-//! 2026-11-07).
+//! What they hand back is pinned in the app's ledger as well — the bus,
+//! its output stage, the filter lengths and frame counts, and the
+//! conversions — beside the C's answer and so the C's to the bit: the row
+//! is what holds these tests once the C is deleted
+//! (connection-round-checklist A, 관제 2026-11-07). It holds on every
+//! device because nothing here calls the device's maths library: the
+//! filters' sin and pow, and the sounds made up here, are libm's
+//! (Cargo.toml).
 
 use std::ptr;
 
@@ -363,7 +366,7 @@ fn sound(frames: usize, channels: usize, seed: u32) -> Vec<f32> {
     (0..frames * channels)
         .map(|at| {
             let (frame, channel) = ((at / channels) as f64, (at % channels) as f64);
-            (0.5 * (frame * (0.01 + 0.03 * channel)).sin() + 0.2 * dice.unit()) as f32
+            (0.5 * libm::sin(frame * (0.01 + 0.03 * channel)) + 0.2 * dice.unit()) as f32
         })
         .collect()
 }
@@ -387,26 +390,32 @@ fn resampled_at(f: Resample, samples: &[f32], channels: i32, rates: (i32, i32), 
 fn a_filter_of_every_quality_converts_as_the_c_s() {
     let resample = Both::of("qa_audio_resample", qa_audio_resample as Resample);
     let take = sound(9_001, 2, 21);
+    let mut converted = Vec::new();
     // Kaiser's three branches and their seam, and the shortest filter.
     for quality in [(80.0, 0.95), (50.0, 0.9), (40.0, 0.9), (30.0, 0.8), (20.0, 0.5), (10.0, 0.5)] {
         for rates in [(44_100, 48_000), (48_000, 96_000)] {
             let rust = resampled_at(resample.rust, &take, 2, rates, quality);
             assert_eq!(rust, resampled_at(resample.c, &take, 2, rates, quality), "{rates:?} at {quality:?}");
+            converted.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
         }
     }
+    ledger::assert_pinned("audio_mix/every-quality-conversions", &converted);
 }
 
 #[test]
 fn a_whole_sound_converts_as_the_c_converts_it() {
     let resample = Both::of("qa_audio_resample", qa_audio_resample as Resample);
     let pairs = [(44_100, 48_000), (48_000, 44_100), (22_050, 48_000), (8_000, 48_000), (96_000, 48_000), (32_000, 44_100)];
+    let mut converted = Vec::new();
     for (input, output) in pairs {
         for channels in [1, 2] {
             let take = sound(input as usize / 3 + 17, channels as usize, input as u32);
             let rust = resampled(resample.rust, &take, channels, input, output);
             assert_eq!(rust, resampled(resample.c, &take, channels, input, output), "{input}→{output} x {channels}");
+            converted.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
         }
     }
+    ledger::assert_pinned("audio_mix/whole-sound-conversions", &converted);
 }
 
 #[test]
@@ -539,6 +548,7 @@ fn streamed(side: Stream, take: &[f32], channels: usize, rates: (i32, i32), dice
 
 #[test]
 fn a_sound_fed_in_pieces_converts_as_the_c_converts_it_step_by_step() {
+    let mut steps = Vec::new();
     for (input, output, channels) in [(44_100, 48_000, 2), (48_000, 44_100, 1), (22_050, 48_000, 2), (96_000, 48_000, 1)] {
         let take = sound(input as usize / 2 + 5, channels, output as u32);
         for seed in [1, 2, 3] {
@@ -547,8 +557,10 @@ fn a_sound_fed_in_pieces_converts_as_the_c_converts_it_step_by_step() {
             assert_eq!(rust.len(), c.len(), "{input}→{output} seed {seed}");
             let first = rust.iter().zip(&c).position(|(a, b)| a != b);
             assert_eq!(first, None, "{input}→{output} seed {seed}: step {first:?}");
+            steps.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
         }
     }
+    ledger::assert_pinned("audio_mix/stream-steps", &steps);
 }
 
 #[test]
