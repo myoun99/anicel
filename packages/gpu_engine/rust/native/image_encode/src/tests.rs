@@ -1,8 +1,12 @@
 //! The Rust encoder against the engine's C (native/oracle), byte for byte:
 //! both are asked through their exports, so the handing out and giving
-//! back are held too.
+//! back are held too — and each test's pictures held to the ledger in a
+//! row, so the C's bytes stay held once the C is deleted
+//! (connection-round-checklist A, 관제 2026-11-07).
 
 use std::ptr::null_mut;
+
+use ledger::Running;
 
 use super::{qa_image_encode_free, qa_image_encode_jpg};
 
@@ -75,11 +79,14 @@ fn flat(width: usize, height: usize) -> Vec<u8> {
     [200, 30, 90].repeat(width * height)
 }
 
-fn same(rgb: &[u8], width: usize, height: usize, quality: i32) {
+/// Each JPEG ends at its EOI, which no stuffed byte inside repeats, so the
+/// pictures added in a row are told apart without their lengths.
+fn same(pins: &mut Running, rgb: &[u8], width: usize, height: usize, quality: i32) {
     let (w, h) = (width as i32, height as i32);
     let ours = rust(rgb.as_ptr(), w, h, quality).expect("the Rust encodes");
     let theirs = c(rgb.as_ptr(), w, h, quality).expect("the C encodes");
     assert!(ours == theirs, "{width}x{height} at {quality}: {} bytes against the C's {}", ours.len(), theirs.len());
+    pins.add(&ours);
 }
 
 // Sides on, off and across the 8 and 16 pixel blocks — the edge repeated
@@ -87,33 +94,39 @@ fn same(rgb: &[u8], width: usize, height: usize, quality: i32) {
 // 91 not), the table's halves (49, 50) and its ends, on three pictures.
 #[test]
 fn every_byte_is_the_c_s() {
+    let mut pins = Running::new();
     let sides = [(1, 1), (7, 5), (8, 8), (16, 16), (17, 9), (33, 47), (64, 48)];
     for (width, height) in sides {
         for picture in [noise(width, height), gradient(width, height), flat(width, height)] {
             for quality in [1, 10, 49, 50, 75, 90, 91, 100] {
-                same(&picture, width, height, quality);
+                same(&mut pins, &picture, width, height, quality);
             }
         }
     }
+    pins.assert_pinned("image_encode/jpg-every-side");
 }
 
 // Past 1..=100 both clamp, to the same bytes as the end they clamp to.
 #[test]
 fn a_quality_past_its_ends_clamps_as_the_c_does() {
+    let mut pins = Running::new();
     let picture = gradient(20, 12);
     for quality in [i32::MIN, -5, 0, 101, 1000, i32::MAX] {
-        same(&picture, 20, 12, quality);
+        same(&mut pins, &picture, 20, 12, quality);
     }
+    pins.assert_pinned("image_encode/jpg-quality-past-its-ends");
 }
 
 // A whole frame: thousands of blocks, the byte stuffing after 0xFF.
 #[test]
 fn a_full_hd_frame_is_the_c_s() {
+    let mut pins = Running::new();
     let mut picture = gradient(1920, 1080);
     picture.iter_mut().zip(noise(1920, 1080)).step_by(7).for_each(|(byte, n)| *byte ^= n);
     for quality in [90, 95] {
-        same(&picture, 1920, 1080, quality);
+        same(&mut pins, &picture, 1920, 1080, quality);
     }
+    pins.assert_pinned("image_encode/jpg-full-hd");
 }
 
 #[test]
