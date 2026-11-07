@@ -157,3 +157,11 @@ symphonia-core = { path = "vendor/symphonia-core" }
 symphonia-codec-aac = { path = "vendor/symphonia-codec-aac" }
 symphonia-bundle-mp3 = { path = "vendor/symphonia-bundle-mp3" }
 symphonia-codec-vorbis = { path = "vendor/symphonia-codec-vorbis" }
+
+# A DEPENDENCY'S DEBUG INFO IS ITS LINE TABLES (브러시/렌더링 23:09 · 관제
+# 2026-11-07, connection-round-checklist): the shared target had grown to
+# 47 GB, 42 of it debug builds. A dependency's frames keep their names and
+# lines in a dump and a backtrace, and no one has stepped into wgpu or naga
+# with a debugger; this workspace's own crates keep their full debug info.
+[profile.dev.package."*"]
+debug = "line-tables-only"
