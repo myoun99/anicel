@@ -250,6 +250,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(label(held), findsNothing, reason: 'released, S$held is let go');
   });
+
+  // ↩️검증/서피스 11-08 01:23 (card the-conte-panel-builds-the-rows-its-
+  // window-reaches): a window made smaller and grown back left the rail's
+  // rows past the smaller view unbuilt until the next resize, while the
+  // timeline built its own at once.
+  testWidgets('a view resized under rows that stand still builds the rows it '
+      'now shows, as the view of that size first did', (tester) async {
+    await pumpManyRows(tester);
+    final shown = tester.getRect(viewport);
+    final first = builtSeRows(tester).keys.toSet();
+
+    await tester.binding.setSurfaceSize(const Size(1600, 700));
+    await tester.pumpAndSettle();
+    final smaller = tester.getRect(viewport);
+    expect(
+      smaller.height,
+      lessThan(shown.height),
+      reason: '⛔전제: the smaller window\'s view is shorter',
+    );
+    for (final MapEntry(key: slot, value: row)
+        in builtSeRows(tester).entries) {
+      expect(
+        row.label.overlaps(smaller),
+        isTrue,
+        reason: 'shrunk, S$slot\'s label at ${row.label}, the view $smaller',
+      );
+    }
+
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(viewport),
+      shown,
+      reason: '⛔전제: the view stands as it first stood',
+    );
+    expect(
+      builtSeRows(tester).keys.toSet(),
+      first,
+      reason: 'grown back, the view builds the S rows it built at that size',
+    );
+  });
 }
 
 /// The S rows the track holds — more than the view shows.
