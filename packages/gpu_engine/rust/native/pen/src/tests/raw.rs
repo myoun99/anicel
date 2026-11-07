@@ -97,6 +97,9 @@ fn life(observer: Observer) -> Life {
     }
 }
 
+// Each answer the C's, and — measured of the C 2026-11-07, so held once it
+// is gone (connection-round-checklist A) — these: nothing before a start
+// and after the stop, and live, a record into room for two floats and more.
 #[test]
 fn the_observers_life_is_the_cs() {
     let _turn = one_at_a_time();
@@ -106,6 +109,10 @@ fn the_observers_life_is_the_cs() {
     assert_eq!((theirs.abi, theirs.started), (3, [1, 1]), "LIVENESS — the C's observer started");
     let written: Vec<_> = theirs.live.iter().map(|(_, written)| *written).collect();
     assert_eq!(written, [0, 0, 0, 2, 2, 2, 5, 5, 7, 7], "answers worked out here");
+    let none = vec![(0, 0); 10];
+    let live = vec![(0, 0), (0, 0), (0, 0), (1, 2), (1, 2), (1, 2), (1, 5), (1, 5), (1, 7), (1, 7)];
+    let abi = super::bridge_asks("rawAbiVersion");
+    assert_eq!(ours, Life { abi, before: none.clone(), started: [1, 1], live, into_nothing: 0, after: none });
 }
 
 #[test]

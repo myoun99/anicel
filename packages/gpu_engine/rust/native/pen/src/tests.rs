@@ -18,3 +18,13 @@ mod raw;
 mod report;
 #[cfg(windows)]
 mod wintab;
+
+/// The ABI the app's bridge asks a reader for, as it declares `name`
+/// (lib/src/native/qa_tablet_bridge.dart) — the number each half must say.
+#[cfg(windows)]
+fn bridge_asks(name: &str) -> i32 {
+    let dart = include_str!("../../../../../../lib/src/native/qa_tablet_bridge.dart");
+    let declared = format!("static const int {name} = ");
+    let line = dart.lines().map(str::trim_start).find(|line| line.starts_with(&declared)).expect(name);
+    line.trim_end_matches(';').rsplit(' ').next().and_then(|value| value.parse().ok()).expect(line)
+}
