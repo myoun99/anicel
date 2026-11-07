@@ -172,10 +172,7 @@ class EngineTileLedger {
     if (stored == tiles.length) {
       return;
     }
-    _letGoWhere(
-      (tile) =>
-          tile == null || !_holds.any((hold) => hold._tiles.contains(tile)),
-    );
+    _letGoWhere((tile) => !_holds.any((hold) => hold._tiles.contains(tile)));
     pool.makeNoPagePast(_unbounded);
     try {
       stored += _put(cel, tiles.sublist(stored));
