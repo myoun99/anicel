@@ -265,8 +265,9 @@ final class TileHold {
 
   /// The slot of each of [tiles], in order — the ones without one stored
   /// now, together, on pages of [cel]'s. [cel] is the name a painter gives
-  /// its cel (`(layerId, frameId)`): what keeps a cel's tiles to pages of
-  /// its own, which a pass binds few of (1a ④).
+  /// its cel (`BrushFrameKey.cel`, and `BrushFrameKey.noCel` for a surface
+  /// that is nobody's): what keeps a cel's tiles to pages of its own, which
+  /// a pass binds few of (1a ④).
   ///
   /// Throws, nothing stored, for a tile of a side the engine does not
   /// store (ⓖ — no fallback), and where the device stores no more.

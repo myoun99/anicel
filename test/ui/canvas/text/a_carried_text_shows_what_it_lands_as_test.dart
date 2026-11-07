@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_text.dart';
@@ -21,7 +22,6 @@ import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
-import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -573,7 +573,7 @@ void main() {
       showTransparentBackground: false,
       lineage: landing == null
           ? 'f344-${lineages++}'
-          : TilePictureBudget.noLineage,
+          : BrushFrameKey.noCel,
       landingPreview: landing,
     );
 

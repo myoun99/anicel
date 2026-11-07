@@ -37,10 +37,6 @@ class TilePictureBudget {
 
   static final TilePictureBudget instance = TilePictureBudget();
 
-  /// The scope of a painter whose surface is nobody's cel — the selection
-  /// float: every float's paints are counted under it.
-  static final Object noLineage = Object();
-
   final BitmapTileImageCache _cache;
 
   /// This device's ceiling on tile pictures ([CacheBudgetLine.tileImages]);

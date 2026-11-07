@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import '../../core/signed_memo.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/layer_effect.dart';
@@ -21,7 +22,6 @@ import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
 import 'display_resample.dart' show drawImageRectOnThePixelGrid;
 import 'landing_preview.dart';
-import 'tile_picture_budget.dart' show TilePictureBudget;
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart' show ByList;
@@ -317,8 +317,8 @@ BitmapSurfacePainter _keyedFloatPainter(
 /// that row's own space by the painter it floats over, so it brings no
 /// paper and is nobody's cel.
 ///
-/// Nobody's cel: what it shows is counted under the picture budget's one
-/// scope for floats ([TilePictureBudget.noLineage]). ↩️The level pyramid
+/// Nobody's cel: what it shows is counted under the one name for that
+/// ([BrushFrameKey.noCel]). ↩️The level pyramid
 /// filed a float's level tiles under it too — one scope, not one a float,
 /// for the pyramid kept eight and a session of transforms would have
 /// pushed out the brush's — until nothing drew a level tile
@@ -329,7 +329,7 @@ BitmapSurfacePainter floatPainter(
 ) => BitmapSurfacePainter(
   surface: celSurfaceAsShown(surface, keys),
   showTransparentBackground: false,
-  lineage: TilePictureBudget.noLineage,
+  lineage: BrushFrameKey.noCel,
 );
 
 /// Whether [stamp] holds a pixel neither clear nor opaque — asked once of

@@ -6,13 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 
 /// 🚨★★★F-240 — WHILE IT FLOATS, IT SHOWS WHAT IT LANDS AS, AT EVERY ZOOM.
 ///
@@ -226,7 +226,7 @@ void main() {
         surface: BitmapSurfacePainter(
           surface: lift,
           showTransparentBackground: false,
-          lineage: TilePictureBudget.noLineage,
+          lineage: BrushFrameKey.noCel,
         ),
         surfaceOffset: CanvasPoint(x: 5, y: 3),
         clip: const ui.Rect.fromLTWH(9, 7, 27, 19),

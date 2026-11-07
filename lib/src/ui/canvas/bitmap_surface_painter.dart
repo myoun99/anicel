@@ -135,7 +135,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   ///
   /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` passes
   /// one; a painter of a surface that is nobody's cel (the selection
-  /// float) passes [TilePictureBudget.noLineage].
+  /// float) passes `BrushFrameKey.noCel`.
   final Object? lineage;
 
   final BitmapTileImageCache tileImageCache;
