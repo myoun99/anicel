@@ -31,7 +31,6 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
-  "${CMAKE_CURRENT_LIST_DIR}/qa_display.c"
   "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
 if(APPLE)
@@ -57,11 +56,6 @@ if(WIN32)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_media_foundation.c")
-  # The compositor kept composing while a clock runs: DirectComposition's
-  # interfaces are C++ only, so this one translation unit is C++.
-  enable_language(CXX)
-  target_sources(qa_engine PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}/qa_display_compose.cpp")
 endif()
 # ⛔ANDROID only, for the same reason: serving a span to MediaExtractor is
 # libmediandk's business and nobody else's (see qa_ndk_media.h for why there
