@@ -137,6 +137,37 @@ void main() {
       lessThan(view / 2),
       reason: 'the runway stayed after the hand let go',
     );
+
+    // Held again, past the end until a runway is built, then pulled back
+    // past the near end: moving back, the room shrinks as it always did,
+    // the hand still down.
+    final again = await tester.startGesture(
+      at(extentAlong(axis, area.size) - 40),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    final rested = position().maxScrollExtent;
+    past = extentAlong(axis, area.size) + 4;
+    for (var move = 0; position().maxScrollExtent <= rested; move += 1) {
+      expect(move, lessThan(moves), reason: '⛔premise: grew again');
+      past += 0.5;
+      await again.moveTo(at(past));
+      await tester.pump();
+    }
+    final grown = position().maxScrollExtent;
+    var near = -4.0;
+    for (var move = 0; move < 8; move += 1) {
+      near -= 0.5;
+      await again.moveTo(at(near));
+      await tester.pump();
+    }
+    expect(
+      position().maxScrollExtent,
+      lessThan(grown),
+      reason: 'pulled back, the runway stayed ahead',
+    );
+    await again.up();
+    await tester.pumpAndSettle();
   }
 
   testWidgets('the timeline\'s ruler', (tester) async {
