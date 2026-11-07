@@ -99,8 +99,9 @@ const BAD_OPEN: &str = "video export: bad open parameters";
 
 #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 impl Job<'_> {
-    /// Whether this is a job at all: a path, a picture, a frame rate, and
-    /// sound — if any — at a rate.
+    /// Whether this is a job at all: a picture, a frame rate, and sound —
+    /// if any — at a rate. The path is the last of it, and each writer takes
+    /// it out of the job as it asks this.
     ///
     /// 🚨ONE LAW FOR THE THREE WRITERS. The C spelled it once per platform,
     /// all three born in one commit (000cf76c4, AUDIO-PRO R7, 2026-07-21):
@@ -114,8 +115,7 @@ impl Job<'_> {
     /// header says 0 Hz would reach here (`ConformPcmStreamReader.overWav16`
     /// turns away no channels, not no rate).
     fn well_formed(&self) -> bool {
-        self.path.is_some()
-            && self.width > 0
+        self.width > 0
             && self.height > 0
             && self.fps_num > 0
             && self.fps_den > 0
