@@ -70,10 +70,12 @@
 //! — the result's — and a pan or a zoom runs the screen alone
 //! (gpu-canonical-store ④⑤).
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
-// (gpu-canonical-store 14:49 — the app connects after the bridges land).
+// ⏳The app's C ABI ([`abi`]) runs rows, folders, clips and the solid
+// colour; a row's colour keys and effect chains wait for its 2b, the mask
+// and the fill range's mark for the flip lane (screen-on-the-engine).
 #![cfg_attr(not(test), allow(dead_code))]
 
+mod abi;
 #[cfg(test)]
 mod chained_tests;
 pub(crate) mod halvings;

@@ -15,6 +15,12 @@ final class Window extends Opaque {}
 
 final class Pool extends Opaque {}
 
+final class Planned extends Opaque {}
+
+final class Composite extends Opaque {}
+
+final class Composited extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -157,6 +163,157 @@ external int poolStore(
   symbol: 'gpu_engine_pool_release',
 )
 external bool poolRelease(Pointer<Pool> pool, int page, int slot);
+
+@Native<Pointer<Planned> Function()>(symbol: 'gpu_engine_plan_new')
+external Pointer<Planned> planNew();
+
+@Native<Void Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_free')
+external void planFree(Pointer<Planned> plan);
+
+@Native<
+  Uint32 Function(
+    Pointer<Planned>,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+    Pointer<Uint32>,
+  )
+>(symbol: 'gpu_engine_plan_set')
+external int planSet(
+  Pointer<Planned> plan,
+  int x0,
+  int y0,
+  int columns,
+  int rows,
+  Pointer<Uint32> tiles,
+);
+
+@Native<Int32 Function(Pointer<Planned>, Pointer<Double>)>(
+  symbol: 'gpu_engine_plan_matrix',
+)
+external int planMatrix(Pointer<Planned> plan, Pointer<Double> matrix);
+
+@Native<
+  Int32 Function(
+    Pointer<Planned>,
+    Uint32,
+    Int32,
+    Pointer<Double>,
+    Double,
+    Uint32,
+    Uint32,
+    Uint32,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_plan_row')
+external int planRow(
+  Pointer<Planned> plan,
+  int set,
+  int matrix,
+  Pointer<Double> inverse,
+  double radiusFloor,
+  int sampling,
+  int columns,
+  int rows,
+  int opacity,
+  int mode,
+);
+
+@Native<Void Function(Pointer<Planned>, Bool)>(symbol: 'gpu_engine_plan_open')
+external void planOpen(Pointer<Planned> plan, bool opaque);
+
+@Native<Void Function(Pointer<Planned>, Uint32, Uint32, Int32)>(
+  symbol: 'gpu_engine_plan_close',
+)
+external void planClose(
+  Pointer<Planned> plan,
+  int opacity,
+  int mode,
+  int matrix,
+);
+
+@Native<Void Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_close_atop')
+external void planCloseAtop(Pointer<Planned> plan);
+
+@Native<Void Function(Pointer<Planned>, Uint32, Int32, Int32, Int32, Int32)>(
+  symbol: 'gpu_engine_plan_solid',
+)
+external void planSolid(
+  Pointer<Planned> plan,
+  int colour,
+  int left,
+  int top,
+  int right,
+  int bottom,
+);
+
+@Native<Pointer<Composite> Function(Pointer<Engine>)>(
+  symbol: 'gpu_engine_composite_new',
+)
+external Pointer<Composite> compositeNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Composite>)>(symbol: 'gpu_engine_composite_free')
+external void compositeFree(Pointer<Composite> composite);
+
+@Native<
+  Pointer<Composited> Function(
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Planned>,
+    Pointer<Int32>,
+    Size,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_composite_run')
+external Pointer<Composited> compositeRun(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Planned> plan,
+  Pointer<Int32> tiles,
+  int count,
+  Pointer<Int32> extent,
+);
+
+@Native<
+  Bool Function(Pointer<Engine>, Pointer<Composited>, Pointer<Uint8>, Size)
+>(symbol: 'gpu_engine_composited_read')
+external bool compositedRead(
+  Pointer<Engine> engine,
+  Pointer<Composited> composited,
+  Pointer<Uint8> bytes,
+  int capacity,
+);
+
+@Native<Uint64 Function(Size)>(symbol: 'gpu_engine_composited_bytes')
+external int compositedBytes(int count);
+
+@Native<Void Function(Pointer<Composited>)>(
+  symbol: 'gpu_engine_composited_free',
+)
+external void compositedFree(Pointer<Composited> composited);
+
+@Native<
+  IntPtr Function(
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Planned>,
+    Pointer<Surface>,
+    Pointer<Uint32>,
+  )
+>(symbol: 'gpu_engine_composite_show')
+external int compositeShow(
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Planned> plan,
+  Pointer<Surface> surface,
+  Pointer<Uint32> rect,
+);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);

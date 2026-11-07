@@ -24,6 +24,11 @@ String _lastError() => using((arena) {
   return utf8.decode(buffer.asTypedList(count), allowMalformed: true);
 });
 
+/// The entries an array of [count] is allocated, for the C ABI to read
+/// [count] of: one at least, since a calloc of nothing may answer null
+/// (POSIX), which ffi's allocator throws on.
+int _held(int count) => count == 0 ? 1 : count;
+
 /// A kernel's submit-to-done time from its C ABI, which gives -1 on
 /// failure.
 Duration _ran(int nanos) {
@@ -216,19 +221,14 @@ class GpuPool {
   /// [cel], each in a fresh slot, and returns where each landed, in order:
   /// all of them, or the first few where the pool is full at the next.
   List<GpuTile> store(int cel, List<Pointer<Uint8>> tiles) {
-    // Not into the arena: a calloc of nothing may answer null (POSIX), which
-    // ffi's allocator throws on.
-    if (tiles.isEmpty) {
-      return const [];
-    }
     return using((arena) {
       final count = tiles.length;
-      final at = arena<Pointer<Uint8>>(count);
+      final at = arena<Pointer<Uint8>>(_held(count));
       for (var tile = 0; tile < count; tile++) {
         at[tile] = tiles[tile];
       }
-      final pages = arena<Uint16>(count);
-      final slots = arena<Uint16>(count);
+      final pages = arena<Uint16>(_held(count));
+      final slots = arena<Uint16>(_held(count));
       final stored = rust.poolStore(
         _pool,
         _engine._engine,
@@ -253,6 +253,239 @@ class GpuPool {
 
   /// Frees the pool's pages; before its engine is closed.
   void free() => rust.poolFree(_pool);
+}
+
+/// How a row's pose samples its pixels: R1's modes, by the engine's ids.
+enum GpuSampling {
+  /// The tent mean — a reduction's.
+  blend(0),
+
+  /// The area vote: the one source pixel covering most of the preimage.
+  pick(1),
+
+  /// The one source pixel where the pixel's centre lands.
+  nearest(3);
+
+  const GpuSampling(this.id);
+
+  final int id;
+}
+
+/// A plan the executor runs, built step by step, bottom to top
+/// (rust/src/kernels/composite/abi.rs): tile sets of the pool, colour
+/// matrices, and rows, folders, clips and solid colours laying them. The
+/// executor checks it where it runs.
+class GpuPlan {
+  GpuPlan() : _plan = rust.planNew();
+
+  final Pointer<rust.Planned> _plan;
+
+  /// Adds the tile set of [columns] × [rows] canvas tiles whose top-left is
+  /// column [x0], row [y0] — [tiles] row by row, null for one with nothing
+  /// on it — and returns the index a row lays it by.
+  int set(int x0, int y0, int columns, int rows, List<GpuTile?> tiles) {
+    if (tiles.length != columns * rows) {
+      throw ArgumentError('$columns × $rows tiles, not ${tiles.length}');
+    }
+    return using((arena) {
+      final words = arena<Uint32>(_held(tiles.length));
+      for (var at = 0; at < tiles.length; at++) {
+        final tile = tiles[at];
+        words[at] = tile == null ? _noTile : tile.page << 16 | tile.slot;
+      }
+      return rust.planSet(_plan, x0, y0, columns, rows, words);
+    });
+  }
+
+  /// Adds the colour matrix of [matrix] — `ColorFilter.matrix`'s twenty —
+  /// and returns the index a row or a close runs it by.
+  int matrix(List<double> matrix) {
+    if (matrix.length != 20) {
+      throw ArgumentError('a colour matrix of ${matrix.length}, not 20');
+    }
+    final at = using((arena) {
+      final entries = arena<Double>(20);
+      entries.asTypedList(20).setAll(0, matrix);
+      return rust.planMatrix(_plan, entries);
+    });
+    if (at < 0) {
+      throw StateError(_lastError());
+    }
+    return at;
+  }
+
+  /// Adds a row: tile set [set] posed by [inverse] — canvas pixel to the
+  /// row's own, row-major with the homogeneous row last, over an output of
+  /// [columns] × [rows] pixels — sampled by [sampling], Blend's radius at
+  /// least [radiusFloor], through colour matrix [matrix] if any, laid at
+  /// [opacity] (65535 whole) in blend mode [mode] (the engine's id).
+  ///
+  /// False where its pose lands nothing, so it lays nothing and is left
+  /// out.
+  bool row({
+    required int set,
+    required List<double> inverse,
+    required GpuSampling sampling,
+    required int columns,
+    required int rows,
+    required int mode,
+    int? matrix,
+    double radiusFloor = 1,
+    int opacity = 65535,
+  }) {
+    if (inverse.length != 9) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    }
+    final added = using((arena) {
+      final entries = arena<Double>(9);
+      entries.asTypedList(9).setAll(0, inverse);
+      return rust.planRow(
+        _plan,
+        set,
+        matrix ?? -1,
+        entries,
+        radiusFloor,
+        sampling.id,
+        columns,
+        rows,
+        opacity,
+        mode,
+      );
+    });
+    if (added < 0) {
+      throw StateError(_lastError());
+    }
+    return added == 1;
+  }
+
+  /// Opens a transparent buffer — a folder's, a clip's base or its scope —
+  /// or, where [opaque], one holding the buffer under it with its alpha
+  /// made whole: a clip's scope whose rows blend with the base.
+  void open({bool opaque = false}) => rust.planOpen(_plan, opaque);
+
+  /// Closes the open buffer onto the one under it at [opacity] in [mode],
+  /// through colour matrix [matrix] if any.
+  void close({required int mode, int opacity = 65535, int? matrix}) =>
+      rust.planClose(_plan, opacity, mode, matrix ?? -1);
+
+  /// Closes a clip's scope onto its base by the base's alpha.
+  void closeAtop() => rust.planCloseAtop(_plan);
+
+  /// Lays [colour] — straight RGBA8, A<<24|B<<16|G<<8|R — over the canvas
+  /// pixels [[left], [top], [right], [bottom]) in normal.
+  void solid(int colour, int left, int top, int right, int bottom) =>
+      rust.planSolid(_plan, colour, left, top, right, bottom);
+
+  void free() => rust.planFree(_plan);
+}
+
+/// A tile with nothing on it, as a tile set names one.
+const _noTile = 0xFFFFFFFF;
+
+/// The executor: plans of the pool's tiles composited on the GPU.
+class GpuComposite {
+  /// The executor on [engine], its full pass compiled.
+  factory GpuComposite(GpuEngine engine) {
+    final composite = rust.compositeNew(engine._engine);
+    if (composite == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuComposite._(engine, composite);
+  }
+
+  GpuComposite._(this._engine, this._composite);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Composite> _composite;
+
+  /// Composites [plan] of [pool]'s tiles over the output [tiles] — canvas
+  /// tile columns and rows — with nothing outside the pixels [extent],
+  /// [left, top, right, bottom), and submits the work.
+  GpuComposited run(
+    GpuPool pool,
+    GpuPlan plan,
+    List<(int, int)> tiles,
+    (int, int, int, int) extent,
+  ) {
+    final out = using((arena) {
+      final at = arena<Int32>(_held(2 * tiles.length));
+      for (var tile = 0; tile < tiles.length; tile++) {
+        at[2 * tile] = tiles[tile].$1;
+        at[2 * tile + 1] = tiles[tile].$2;
+      }
+      final edges = arena<Int32>(4);
+      final (left, top, right, bottom) = extent;
+      edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
+      return rust.compositeRun(
+        _composite,
+        _engine._engine,
+        pool._pool,
+        plan._plan,
+        at,
+        tiles.length,
+        edges,
+      );
+    });
+    if (out == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuComposited._(_engine, out, tiles.length);
+  }
+
+  /// Composites [plan] of [pool]'s tiles onto the pixels [rect] of
+  /// [surface] — [left, top, right, bottom) — leaving the rest of it as it
+  /// was, and submits the work; returns how many passes it took.
+  int show(
+    GpuPool pool,
+    GpuPlan plan,
+    GpuSurface surface,
+    (int, int, int, int) rect,
+  ) {
+    final passes = using((arena) {
+      final edges = arena<Uint32>(4);
+      final (left, top, right, bottom) = rect;
+      edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
+      return rust.compositeShow(
+        _composite,
+        _engine._engine,
+        pool._pool,
+        plan._plan,
+        surface._surface,
+        edges,
+      );
+    });
+    if (passes < 0) {
+      throw StateError(_lastError());
+    }
+    return passes;
+  }
+
+  /// Frees the executor; before its engine is closed.
+  void free() => rust.compositeFree(_composite);
+}
+
+/// What a run put: its output tiles' pixels, on the GPU.
+class GpuComposited {
+  GpuComposited._(this._engine, this._composited, this.tiles);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Composited> _composited;
+
+  /// How many output tiles it put.
+  final int tiles;
+
+  /// Its pixels once the GPU is done — straight RGBA8, tile after tile in
+  /// the order asked, each [gpuTileSide] rows of [gpuTileSide].
+  Uint8List read() => using((arena) {
+    final count = rust.compositedBytes(tiles);
+    final bytes = arena<Uint8>(_held(count));
+    if (!rust.compositedRead(_engine._engine, _composited, bytes, count)) {
+      throw StateError(_lastError());
+    }
+    return Uint8List.fromList(bytes.asTypedList(count));
+  });
+
+  void free() => rust.compositedFree(_composited);
 }
 
 /// The fingerprint of [bytes] by the engine's own code — for bytes read off

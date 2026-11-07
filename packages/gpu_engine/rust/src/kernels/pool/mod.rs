@@ -96,9 +96,6 @@ impl Pool {
     }
 
     /// The pages, as a plan and the write path take them.
-    // ⏳The executor's C ABI takes them (screen-on-the-engine, the next
-    // commit).
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn pages(&self) -> &[wgpu::Buffer] {
         &self.buffers
     }
