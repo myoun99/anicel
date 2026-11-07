@@ -164,7 +164,12 @@ fn light_stored(gathered: vec4<u32>, light: Light) -> u32 {
 // table read back, no second one — and that put 44 of the 65536 values one
 // byte from the app's (a lone grey 42 among black: 169 of light, 9 where
 // the app stores 8); this table puts none. No value comes within 1.5e-6 of
-// a byte of a tie, so the f64 that worked it out decides each.
+// a byte of a tie, so the f64 that worked it out decides each. ⚠️The table
+// is the spec, as LIGHT_LINEAR is: a case pins only the entries it reads —
+// every byte read alone coming back as itself (gather_tests) holds each
+// between its byte's light and the one below's, no closer (mutant l08,
+// 11-07: the last entry one up lives); a second copy in a test would be
+// the table twice.
 var<private> LIGHT_STORED_FROM: array<u32, 255> = array<u32, 255>(
   10u, 30u, 50u, 70u, 90u, 110u, 130u, 150u,
   170u, 189u, 209u, 230u, 253u, 276u, 301u, 327u,
