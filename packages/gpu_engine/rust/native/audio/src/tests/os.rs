@@ -26,27 +26,33 @@ use crate::{FORMAT_OS, FORMAT_UNKNOWN};
 /// crate's, in the one process, unmeasured.
 const MEASURED: bool = cfg!(windows);
 
-/// What only the OS reads: the fixture, and the channels, rate and frames
-/// its decoder hands back (measured 2026-11-07) — what is held of it once
-/// the C is gone: the samples are the OS's own, and asking the OS's reader
-/// again in the test would be a copy of the crate's (connection-round-
-/// checklist A, 관제 판정 ①㉠).
+/// What only the OS reads: the fixture, and the channels and rate its
+/// decoder hands back.
+///
+/// ⛔ITS SAMPLES — AND SO HOW MANY — ARE NOT HELD ONCE THE C IS GONE (유저
+/// connection-round-checklist-Q14, 2026-11-07: 「OS 가 푼 샘플은 얼리지
+/// 않는다 — 우리 코드가 정하는 것만 C 없이 남긴다」): they are the OS
+/// decoder's own, and an update to it would turn the test red with no
+/// change of ours. Held without the C: the stage, the channels, the rate,
+/// a length floor and a tone; what this crate decides of it — where it
+/// starts, a window, a stream, a carried span — against its own whole
+/// decode.
 ///
 /// ⚠️The AAC-LC of 22,050 Hz comes back at 44,100: Media Foundation's
 /// decoder takes a core of 24 kHz or less to be half of an HE-AAC stream
 /// that may not say so (measured 2026-11-07) — the reason such a core is
 /// left to it (`bundled::core_may_hide_sbr`).
-const ONLY_THE_OS: [(&str, i32, i32, usize); 5] = [
-    ("tone_aac_22khz.m4a", 2, 44_100, 11_264),
-    ("tone_he_aac.m4a", 2, 48_000, 26_624),
-    ("tone_he_aac_v2.m4a", 2, 44_100, 24_576),
-    ("tone_5_1.m4a", 6, 48_000, 12_288),
-    ("tone.wma", 2, 44_100, 23_040),
+const ONLY_THE_OS: [(&str, i32, i32); 5] = [
+    ("tone_aac_22khz.m4a", 2, 44_100),
+    ("tone_he_aac.m4a", 2, 48_000),
+    ("tone_he_aac_v2.m4a", 2, 44_100),
+    ("tone_5_1.m4a", 6, 48_000),
+    ("tone.wma", 2, 44_100),
 ];
 
 #[test]
 fn what_no_bundled_decoder_reads_the_os_stage_reads_as_the_c_does() {
-    for (name, channels, rate, frames) in ONLY_THE_OS {
+    for (name, channels, rate) in ONLY_THE_OS {
         let path = fixture(name);
         let span = Span::whole(&path);
         if !MEASURED {
@@ -55,7 +61,7 @@ fn what_no_bundled_decoder_reads_the_os_stage_reads_as_the_c_does() {
         }
         let sound = expect_same(name, &span, 0, -1);
         assert_eq!((sound.format, sound.channels, sound.rate), (FORMAT_OS, channels, rate), "{name}");
-        assert_eq!(sound.samples.len(), frames * channels as usize, "{name}: the frames");
+        assert!(sound.samples.len() >= (rate / 4) as usize * channels as usize, "{name}: the sound, not a scrap of it");
         assert!(sound.samples.iter().any(|&s| s.abs() > 0.05), "{name}: the tone, not silence");
     }
 }
