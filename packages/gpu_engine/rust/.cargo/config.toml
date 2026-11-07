@@ -9,3 +9,10 @@ QA_ENGINE_PATH = { value = "../../../build/native_standalone/Release/qa_engine.d
 # builds a crate again when a value it read has changed — not when the files
 # of another checkout are merely older (src/kernels/shared/one_checkout.rs).
 QA_CHECKOUT = { value = ".", relative = true }
+# The fx SDK example as WebAssembly (native/fx_sdk_example), the module the
+# fx tests open on each WebAssembly host, in a target folder of this
+# checkout's own: tool/lane.sh and CI build it there before the tests. Not
+# the shared folder — its turn (tool/cargo_turn.sh) is one cargo's, and
+# another checkout's could build the module again between this build and
+# the tests that read it.
+QA_FX_MODULE = { value = "../../../build/fx_wasm/wasm32-unknown-unknown/release/fx_sdk_example.wasm", relative = true }

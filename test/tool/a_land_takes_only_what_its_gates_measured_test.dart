@@ -69,7 +69,7 @@ void main() {
           'test/fixtures/fingerprints.json',
         ),
       );
-      expect(crate, contains('    packages/qa_native/src; then'));
+      expect(crate, contains('    packages/qa_native/src sdk/fx; then'));
       expect(crate, contains(r'cmd_crate "$name"'));
     });
 

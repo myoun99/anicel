@@ -9,9 +9,11 @@ publish = false
 # (native/fx_plugin, src/tests/wasm.rs). fx_plugin's own example of it is
 # its native build, and cannot be this one: an example brings its package's
 # library, and wasmtime with it, which no WebAssembly build takes. The gate
-# and CI build it before the tests (tool/lane.sh, cmd_crate):
+# and CI build it before the tests (tool/lane.sh, cmd_crate), where the
+# tests read it (QA_FX_MODULE, .cargo/config.toml):
 #
-#   cargo build --release -p fx_sdk_example --target wasm32-unknown-unknown
+#   CARGO_TARGET_DIR=../../../build/fx_wasm \
+#     cargo build --release -p fx_sdk_example --target wasm32-unknown-unknown
 [lib]
 crate-type = ["cdylib"]
 

@@ -73,6 +73,18 @@ jobs:
       # machine that builds the engine.
       - id: toolchain
         run: rustup show
+      # The fx SDK example as WebAssembly, the module the fx tests open on
+      # each WebAssembly host, built where they read it (QA_FX_MODULE,
+      # .cargo/config.toml) as a land builds it (tool/lane.sh, cmd_crate).
+      # Its target is fetched here, not listed in rust-toolchain.toml: that
+      # list is what the engine is built for and ships (crate_notices.dart).
+      - name: fx SDK example as WebAssembly
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/build/fx_wasm
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --locked --release -p fx_sdk_example --target wasm32-unknown-unknown
       - name: GPU kernels (debug)
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
         run: cargo test --locked --no-fail-fast -p gpu_engine
@@ -157,6 +169,18 @@ jobs:
           ls -l /dev/udmabuf
       - id: toolchain
         run: rustup show
+      # The fx SDK example as WebAssembly, the module the fx tests open on
+      # each WebAssembly host, built where they read it (QA_FX_MODULE,
+      # .cargo/config.toml) as a land builds it (tool/lane.sh, cmd_crate).
+      # Its target is fetched here, not listed in rust-toolchain.toml: that
+      # list is what the engine is built for and ships (crate_notices.dart).
+      - name: fx SDK example as WebAssembly
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/build/fx_wasm
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --locked --release -p fx_sdk_example --target wasm32-unknown-unknown
       - name: GPU kernels (debug)
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
         run: cargo test --locked --no-fail-fast -p gpu_engine
@@ -230,6 +254,18 @@ jobs:
       - uses: ./.github/actions/native-engine
       - id: toolchain
         run: rustup show
+      # The fx SDK example as WebAssembly, the module the fx tests open on
+      # each WebAssembly host, built where they read it (QA_FX_MODULE,
+      # .cargo/config.toml) as a land builds it (tool/lane.sh, cmd_crate).
+      # Its target is fetched here, not listed in rust-toolchain.toml: that
+      # list is what the engine is built for and ships (crate_notices.dart).
+      - name: fx SDK example as WebAssembly
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/build/fx_wasm
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --locked --release -p fx_sdk_example --target wasm32-unknown-unknown
       - name: GPU kernels built (debug)
         if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
         run: cargo test --locked --no-fail-fast -p gpu_engine --no-run

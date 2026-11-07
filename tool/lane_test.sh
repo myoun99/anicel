@@ -166,6 +166,8 @@ EOF
 # or, when LANE_TEST_CARGO says empty, the doc-tests alone. When it says
 # absent, a crate is not downloaded: offline it fails as cargo does, and
 # online it downloads — which it writes down where no section clears it.
+# When it says nowasm, the machine lacks the WebAssembly target: that
+# build fails as cargo does there, and the tests still pass.
 cat > "$E/bin/cargo" <<'EOF'
 #!/bin/bash
 echo "$(basename "$(dirname "$(dirname "$(dirname "$PWD")")")") cargo $*" >> "$LANE_TEST_LOG"
@@ -187,6 +189,11 @@ if [ "${LANE_TEST_CARGO:-ok}" = absent ]; then
       exit 101 ;;
     *) echo "downloaded cpal v0.18.2: cargo $*" >> "$LANE_TEST_LOG.downloads" ;;
   esac
+fi
+if [ "${LANE_TEST_CARGO:-ok}" = nowasm ] && [ "$1" = build ]; then
+  echo "error[E0463]: can't find crate for \`core\`"
+  echo "  = note: the \`wasm32-unknown-unknown\` target may not be installed"
+  exit 101
 fi
 [ "${LANE_TEST_CARGO:-ok}" = red ] && { echo "test grid ... FAILED"; exit 101; }
 [ "${LANE_TEST_CARGO:-ok}" = empty ] || echo "test result: ok. 2 passed; 0 failed"
@@ -553,12 +560,33 @@ commit "$HW/lane-kern" packages/gpu_engine/rust/k.wgsl "a kernel"
 O=$(out "$E/home" land kern)
 has "a lane that changed the crate lands" "$O" "merged work/kern"
 check "and its tests ran, debug and release" "$(cargo_runs lane-kern)" 2
+check "after the fx SDK example was built once as WebAssembly" \
+  "$(grep -c 'lane-kern cargo build .*-p fx_sdk_example --target wasm32-unknown-unknown' "$LANE_TEST_LOG")" 1
+check "before them" \
+  "$(grep -m1 -o 'lane-kern cargo build\|lane-kern cargo test' "$LANE_TEST_LOG")" "lane-kern cargo build"
+check "in the lane's own target folder for it, where the tests read it" \
+  "$(grep -c 'lane-kern cargo build .* --target-dir .*/lane-kern/build/fx_wasm$' "$LANE_TEST_LOG")" 1
 has "and each says what passed in all the crates, debug" "$O" "debug green (2 passed)"
 has "and release, its own run alone" "$O" "release green (2 passed)"
 : > "$LANE_TEST_LOG"
 O=$(out "$E/home" gate dart4)
 has "a lane opened before the trunk took the crate is gated" "$O" "gated work/dart4"
 check "and the trunk's crate is not taken for its own" "$(cargo_runs lane-dart4)" 0
+quiet "$E/home" open sdkfx; mkdir -p "$HW/lane-sdkfx/sdk/fx"
+commit "$HW/lane-sdkfx" sdk/fx/s.rs "the fx SDK's source alone"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" land sdkfx)
+has "a lane that changed the fx SDK alone lands" "$O" "merged work/sdkfx"
+check "and pays for the crate it feeds, debug and release" "$(cargo_runs lane-sdkfx)" 2
+quiet "$E/home" open nowasm; mkdir -p "$HW/lane-nowasm/sdk/fx"
+commit "$HW/lane-nowasm" sdk/fx/w.rs "the fx SDK on a machine without the target"
+: > "$LANE_TEST_LOG"
+O=$(LANE_TEST_CARGO=nowasm out "$E/home" land nowasm)
+has "a red WebAssembly build is no refusal of its own: the tests that open the module refuse" \
+  "$O" "merged work/nowasm"
+has "and it says so" "$O" "that build is red; the fx tests that open it say so"
+has "in cargo's words" "$O" "target may not be installed"
+check "the tests ran past it, debug and release" "$(cargo_runs lane-nowasm)" 2
 quiet "$E/away" sync
 quiet "$E/away" open line; mkdir -p "$AW/lane-surface11-line/test/fixtures"
 commit "$AW/lane-surface11-line" test/fixtures/fingerprints.json "a row pinned there"

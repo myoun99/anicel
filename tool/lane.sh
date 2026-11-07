@@ -115,6 +115,10 @@
 #    changed packages/qa_native/src runs them too, and every run builds the
 #    lane's engine from the lane's C first (refusal 6) — a key built from
 #    other C would hold the Rust to the wrong answers.
+#    🆕AND THE fx SDK (2026-11-07): its spec crate and its example
+#    (sdk/fx) are the fx tests' source too, so a lane that changed them
+#    runs the crate's tests, and every run builds the example as
+#    WebAssembly first — the module the fx tests open (cmd_crate).
 #    The machine's Rust must be on PATH — the main PC keeps it on D:, the
 #    Surface on C:, neither on the default PATH — and a land that cannot
 #    find cargo refuses rather than skipping. `bash tool/lane.sh crate
@@ -965,6 +969,31 @@ cmd_crate() {
   local log="$p/build/lane-crate.log" profile flag from passed red=
   mkdir -p "$p/build"
   : >"$log"
+  # The fx SDK example as WebAssembly, the module the fx tests open on each
+  # WebAssembly host (native/fx_sdk_example/Cargo.toml says why it is a
+  # crate of its own) — built once, release, for both runs to read (유저
+  # connection-round-checklist-Q11; 관제 2026-11-07: everything that runs
+  # the tests builds it first). It builds in the lane's own target folder
+  # for it, where the tests read it (QA_FX_MODULE, .cargo/config.toml says
+  # why) — `--target-dir`, which wins over the turn's folder; the turn all
+  # the same, as every cargo a tool runs (every_cargo_a_tool_runs_takes_
+  # the_turn_test.dart).
+  # ⛔ITS RED IS NO REFUSAL OF ITS OWN: the tests that open the module
+  # refuse, saying how it is built and what a machine lacks (`rustup target
+  # add`). A refusal here too was that refusal twice, and it refused every
+  # land where no test reads the module — on a machine without the target,
+  # every land (관제 2026-11-07, connection-round-checklist 18:35).
+  # ⚠️The target is not the toolchain file's: that list is what the engine
+  # is built for and ships (tool/crate_notices.dart reads it), and the
+  # engine is never built as WebAssembly.
+  echo "lane: crate — the fx SDK example as WebAssembly"
+  (cd "$p/packages/gpu_engine/rust" \
+    && bash "$ROOT/tool/cargo_turn.sh" build --locked --offline --release \
+      -p fx_sdk_example --target wasm32-unknown-unknown --target-dir "$p/build/fx_wasm") \
+    >>"$log" 2>&1 || {
+    grep -aE '^error|= note' "$log" | head -5 >&2
+    echo "lane: crate — that build is red; the fx tests that open it say so" >&2
+  }
   # Both builds (관제 2026-11-05, gpu-engine-skeleton). A debug build's wgpu
   # turns InstanceFlags::DEBUG on, and on DX12 that compiles every shader
   # with optimizations skipped (wgpu-hal 30, dx12/shader_compilation.rs) —
@@ -1148,8 +1177,11 @@ lane_touched() {
 # stand for it.
 crate_gate() {
   local name="$1" p="$2"
+  # sdk/fx: the fx SDK's spec crate and example are the fx tests' source
+  # as well (native/fx_plugin and native/fx_sdk_example build them), and a
+  # lane that changed them alone ran none (2026-11-07).
   if lane_touched "$p" packages/gpu_engine/rust test/fixtures/fingerprints.json \
-    packages/qa_native/src; then
+    packages/qa_native/src sdk/fx; then
     cmd_crate "$name"
   fi
 }
