@@ -182,6 +182,13 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
             'if': 'Bash(*cargo*)',
             'timeout': 10,
           },
+          // The same on both sides: dart behind the SDK's full path.
+          {
+            'type': 'command',
+            'command': run('guard_dart_run.sh'),
+            'if': 'Bash(*dart*)',
+            'timeout': 10,
+          },
         ],
       },
     ],

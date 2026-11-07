@@ -85,6 +85,7 @@ void main() {
           'board_gate_test.sh',
           'board_up_test.sh',
           'guard_bare_cd_test.sh',
+          'guard_dart_run_test.sh',
           'guard_git_add_test.sh',
           'guard_shared_target_test.sh',
           'hook_says_test.sh',
@@ -325,6 +326,24 @@ void main() {
       expect(
         guards['Bash(*cargo*)'],
         endsWith('/tool/session_hooks/guard_shared_target.sh"'),
+      );
+    });
+
+    // 관제 2026-11-07 (connection-round-checklist 22:10): `dart run` builds
+    // the GPU engine's Rust once more for the Dart VM — 485 MB a checkout —
+    // where a tool's exe and its JIT build nothing. What the guard refuses
+    // is pinned by guard_dart_run_test.sh, run by hand.
+    test('🚨a Bash call with dart in it goes past the dart-run guard first',
+        () {
+      final guards = {
+        for (final group in hooksFor(holder)['PreToolUse'] as List)
+          if ((group as Map)['matcher'] == 'Bash')
+            for (final hook in group['hooks'] as List)
+              '${(hook as Map)['if']}': '${hook['command']}',
+      };
+      expect(
+        guards['Bash(*dart*)'],
+        endsWith('/tool/session_hooks/guard_dart_run.sh"'),
       );
     });
 
