@@ -107,13 +107,17 @@ fn every_byte_is_the_c_s() {
     pins.assert_pinned("image_encode/jpg-every-side");
 }
 
-// Past 1..=100 both clamp, to the same bytes as the end they clamp to.
+// Past 1..=100 both clamp, to the same bytes as the end they clamp to —
+// and those are the ends: a step inside either is other bytes.
 #[test]
 fn a_quality_past_its_ends_clamps_as_the_c_does() {
     let picture = gradient(20, 12);
     for (quality, end) in [(i32::MIN, 1), (-5, 1), (0, 1), (101, 100), (1000, 100), (i32::MAX, 100)] {
         let at_the_end = rust(picture.as_ptr(), 20, 12, end).expect("the Rust encodes");
         assert!(same(&picture, 20, 12, quality) == at_the_end, "{quality}: the bytes of {end}");
+    }
+    for (end, inside) in [(1, 2), (100, 99)] {
+        assert!(rust(picture.as_ptr(), 20, 12, end) != rust(picture.as_ptr(), 20, 12, inside), "{end} against {inside}");
     }
 }
 
