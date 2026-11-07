@@ -17,19 +17,19 @@ use std::ffi::{CStr, c_char};
 use std::fs::File;
 use std::os::fd::AsRawFd;
 
+use media::ndk::{Codec, Extractor, Format, ok};
 use media::served_span::ServedSpan;
 use ndk_sys::{
     AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM, AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED,
     AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED, AMEDIAFORMAT_KEY_CHANNEL_COUNT, AMEDIAFORMAT_KEY_MIME,
-    AMEDIAFORMAT_KEY_PCM_ENCODING, AMEDIAFORMAT_KEY_SAMPLE_RATE, AMediaCodec, AMediaCodec_configure,
-    AMediaCodec_createDecoderByType, AMediaCodec_delete, AMediaCodec_dequeueInputBuffer,
-    AMediaCodec_dequeueOutputBuffer, AMediaCodec_getInputBuffer, AMediaCodec_getOutputBuffer,
-    AMediaCodec_getOutputFormat, AMediaCodec_queueInputBuffer, AMediaCodec_releaseOutputBuffer, AMediaCodec_start,
-    AMediaCodec_stop, AMediaCodecBufferInfo, AMediaExtractor, AMediaExtractor_advance, AMediaExtractor_delete,
-    AMediaExtractor_getSampleTime, AMediaExtractor_getTrackCount, AMediaExtractor_getTrackFormat,
-    AMediaExtractor_new, AMediaExtractor_readSampleData, AMediaExtractor_selectTrack,
-    AMediaExtractor_setDataSourceCustom, AMediaExtractor_setDataSourceFd, AMediaFormat, AMediaFormat_delete,
-    AMediaFormat_getInt32, AMediaFormat_getString, media_status_t,
+    AMEDIAFORMAT_KEY_PCM_ENCODING, AMEDIAFORMAT_KEY_SAMPLE_RATE, AMediaCodec_configure,
+    AMediaCodec_createDecoderByType, AMediaCodec_dequeueInputBuffer, AMediaCodec_dequeueOutputBuffer,
+    AMediaCodec_getInputBuffer, AMediaCodec_getOutputBuffer, AMediaCodec_getOutputFormat,
+    AMediaCodec_queueInputBuffer, AMediaCodec_releaseOutputBuffer, AMediaCodec_start, AMediaCodecBufferInfo,
+    AMediaExtractor_advance, AMediaExtractor_getSampleTime, AMediaExtractor_getTrackCount,
+    AMediaExtractor_getTrackFormat, AMediaExtractor_new, AMediaExtractor_readSampleData, AMediaExtractor_selectTrack,
+    AMediaExtractor_setDataSourceCustom, AMediaExtractor_setDataSourceFd, AMediaFormat_getInt32,
+    AMediaFormat_getString,
 };
 
 use crate::FORMAT_OS;
@@ -45,47 +45,6 @@ const IDLE_ROUNDS: u32 = 10_000;
 /// `AudioFormat.ENCODING_PCM_16BIT` — MediaCodec's default — and `…_FLOAT`.
 const PCM_16BIT: i32 = 2;
 const PCM_FLOAT: i32 = 4;
-
-fn ok(status: media_status_t) -> Option<()> {
-    (status == media_status_t::AMEDIA_OK).then_some(())
-}
-
-struct Extractor(*mut AMediaExtractor);
-
-impl Drop for Extractor {
-    fn drop(&mut self) {
-        // SAFETY: the extractor `open` made, deleted once.
-        unsafe { AMediaExtractor_delete(self.0) };
-    }
-}
-
-struct Format(*mut AMediaFormat);
-
-impl Drop for Format {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            // SAFETY: a format handed over to this, deleted once.
-            unsafe { AMediaFormat_delete(self.0) };
-        }
-    }
-}
-
-struct Codec {
-    codec: *mut AMediaCodec,
-    started: bool,
-}
-
-impl Drop for Codec {
-    fn drop(&mut self) {
-        // SAFETY: the codec `open` made, stopped if it started, deleted once.
-        unsafe {
-            if self.started {
-                AMediaCodec_stop(self.codec);
-            }
-            AMediaCodec_delete(self.codec);
-        }
-    }
-}
 
 /// What the codec last said it hands back.
 #[derive(Clone, Copy)]

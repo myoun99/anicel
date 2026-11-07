@@ -10,6 +10,8 @@ const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
 #[cfg(windows)]
 pub mod media_foundation;
+#[cfg(target_os = "android")]
+pub mod ndk;
 pub mod path;
 #[cfg(target_os = "android")]
 pub mod served_span;
