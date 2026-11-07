@@ -27,6 +27,8 @@ windows-core = "0.62"
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-sys = { version = "0.6", features = ["media"] }
 
-# The C answer key: the engine's qa_media_span_* (native/oracle).
+# The C answer key: the engine's qa_media_span_* (native/oracle), and the
+# app's ledger (native/ledger).
 [dev-dependencies]
+ledger = { path = "../ledger" }
 oracle = { path = "../oracle" }
