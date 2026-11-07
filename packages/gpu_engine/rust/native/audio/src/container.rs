@@ -35,6 +35,9 @@ impl Stored {
 pub(crate) struct Container {
     span: Arc<Mutex<Span>>,
     size: i64,
+    /// Read only by the OS stages that open the file their own way (Media
+    /// Foundation's, the NDK's); AudioToolbox reads through the span.
+    #[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
     stored: Arc<Stored>,
 }
 

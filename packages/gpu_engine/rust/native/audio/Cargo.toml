@@ -47,6 +47,19 @@ windows = { version = "0.62", features = ["Win32_Media_MediaFoundation", "Win32_
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-sys = { version = "0.6", features = ["media"] }
 
+# The OS stage on Apple's: AudioToolbox's ExtAudioFile over the container's
+# bytes (os/audio_toolbox.rs); both crates are already in the lock as
+# cpal's, taken without their default features, which would pull in
+# frameworks it has not.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+objc2-audio-toolbox = { version = "0.3", default-features = false, features = [
+  "std",
+  "AudioFile",
+  "ExtendedAudioFile",
+  "objc2-core-audio-types",
+] }
+objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+
 # The C answer key: the engine's qa_audio_* (native/oracle).
 [dev-dependencies]
 oracle = { path = "../oracle" }

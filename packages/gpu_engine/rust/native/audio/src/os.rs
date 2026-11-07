@@ -13,9 +13,10 @@
 //! reading a sound.
 //!
 //! Media Foundation on Windows ([media_foundation]), the NDK's MediaCodec on
-//! Android ([ndk]). ⚠️AudioToolbox is still the C's (`qa_audio_decode.c`)
-//! and comes next: until then this stage reads nothing on Apple's.
+//! Android ([ndk]), AudioToolbox on Apple's ([audio_toolbox]).
 
+#[cfg(target_vendor = "apple")]
+mod audio_toolbox;
 #[cfg(windows)]
 mod media_foundation;
 #[cfg(target_os = "android")]
@@ -25,7 +26,7 @@ use crate::container::Container;
 use crate::stream::Opened;
 
 /// The container opened by the OS's codec stack, or None when it does not
-/// read it — or this platform's stage is not here yet.
+/// read it — or this platform has no stage.
 pub(crate) fn open(container: &Container) -> Option<Opened> {
     #[cfg(windows)]
     {
@@ -35,7 +36,11 @@ pub(crate) fn open(container: &Container) -> Option<Opened> {
     {
         ndk::open(container)
     }
-    #[cfg(not(any(windows, target_os = "android")))]
+    #[cfg(target_vendor = "apple")]
+    {
+        audio_toolbox::open(container)
+    }
+    #[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
     {
         let _ = container;
         None

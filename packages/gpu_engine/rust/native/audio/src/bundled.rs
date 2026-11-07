@@ -431,7 +431,7 @@ pub(crate) fn open_mp3(container: &Container) -> Option<Opened> {
     if bundled.channels == 1 && mpa_turns_stereo(container) {
         bundled.channels = 2;
     }
-    bundled.opened(FORMAT_MP3, Start { lead, keep })
+    bundled.opened(FORMAT_MP3, Start { lead, taken: 0, keep })
 }
 
 /// Whether MPEG audio that opens with one channel has two somewhere after

@@ -148,7 +148,7 @@ impl Stream {
             block,
             block_frames,
             block_at: 0,
-            lead: start.lead,
+            lead: start.left_to_take(),
             left: start.keep,
         })
     }

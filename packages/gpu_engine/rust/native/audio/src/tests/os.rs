@@ -21,7 +21,8 @@ use crate::{FORMAT_OS, FORMAT_UNKNOWN};
 /// Where what these tests hold was measured — Media Foundation's answers.
 /// ⚠️Elsewhere a fixture is held to the C's alone (`expect_left_to_the_os`):
 /// a device's MediaCodec reads what it reads, and there is no Android run of
-/// these tests; the Apple stage is not here yet.
+/// these tests; on the Mac job AudioToolbox is both the C's and this
+/// crate's, in the one process, unmeasured.
 const MEASURED: bool = cfg!(windows);
 
 /// What only the OS reads: the fixture, and the channels and rate its

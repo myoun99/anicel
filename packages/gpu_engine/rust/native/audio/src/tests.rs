@@ -401,10 +401,10 @@ fn a_movie_is_what_its_head_says() {
     expect_left_to_the_os("a movie by another head", &Span::whole(renamed.path()));
 }
 
-/// Whether this platform's OS stage is here — Media Foundation's, the NDK's
-/// MediaCodec. ⚠️The Apple stage comes next: until then nothing reads there
-/// what only the OS reads, while the C's AudioToolbox does.
-pub(crate) const OS_STAGE_HERE: bool = cfg!(any(windows, target_os = "android"));
+/// Whether this platform has an OS stage — Media Foundation's, the NDK's
+/// MediaCodec, AudioToolbox. Linux has none, and nothing reads there what
+/// only the OS reads, as the C's reads nothing there.
+pub(crate) const OS_STAGE_HERE: bool = cfg!(any(windows, target_os = "android", target_vendor = "apple"));
 
 /// Holds that no bundled decoder reads `span`: what reads it, where
 /// anything does, is the OS stage — as the C's does.
@@ -556,4 +556,15 @@ fn a_broken_piece_is_silence_no_longer_than_a_decode_of_it_hands_back() {
     assert_eq!((sound.format, sound.channels, sound.rate), (crate::FORMAT_ALAC, 1, 8000));
     assert_eq!(sound.samples.len(), 4096);
     assert!(sound.samples.iter().all(|&s| s == 0.0), "silence");
+}
+
+// What a decoder took off itself is not taken again — AudioToolbox's packet
+// table, which only the Mac job reads (`os::audio_toolbox`): the arithmetic
+// pinned here, where every platform runs it.
+#[test]
+fn what_a_decoder_took_off_itself_is_not_taken_again() {
+    use crate::start::Start;
+    for (lead, taken, left) in [(2112, 0, 2112), (2112, 1024, 1088), (1024, 2112, 0), (0, 2112, 0)] {
+        assert_eq!(Start { lead, taken, keep: -1 }.left_to_take(), left, "{lead} less {taken}");
+    }
 }

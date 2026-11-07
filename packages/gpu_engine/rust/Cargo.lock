@@ -99,6 +99,8 @@ dependencies = [
  "audio_mix",
  "media",
  "ndk-sys",
+ "objc2-audio-toolbox",
+ "objc2-core-audio-types",
  "oracle",
  "symphonia",
  "windows",
