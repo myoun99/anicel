@@ -90,6 +90,7 @@ import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart'
     show conformingInto, resamplingInto, runConformHere;
+import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -464,6 +465,9 @@ class EditorSessionManager extends ChangeNotifier
     // The canvas's tile pictures (render round, 2026-09-16): the walk that
     // lets the unshown ones go reads this ceiling after every paint.
     TilePictureBudget.instance.byteBudget = budgets.tileImages;
+    // The engine's slots of the same tiles (screen-on-the-engine c4) ride
+    // the same line: they are what the pictures become.
+    EngineTileLedger.appByteBudget = budgets.tileImages;
     if (enforce) {
       playbackRig.playbackCache.enforcePlaybackCacheBudget();
     }

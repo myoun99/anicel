@@ -3,6 +3,7 @@ import 'dart:io' show ProcessInfo;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
+import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/brush_tip_stamp_cache.dart';
@@ -264,10 +265,15 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // a third more, and is counted with it (`pictureBytesOf`). ↩️From 4c
     // (2026-09-16) the row also held the LEVEL TILES — the same pictures
     // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
+    // The engine's slots of the same tiles ride it (screen-on-the-engine
+    // c4): its pool's pages, each whole — what the pictures become, under
+    // the same line.
     if (textures)
       MemoryCensusItem(
         id: 'tileImages',
-        bytes: BitmapTileImageCache.liveImageBytes,
+        bytes:
+            BitmapTileImageCache.liveImageBytes +
+            EngineTileLedger.appPoolBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest

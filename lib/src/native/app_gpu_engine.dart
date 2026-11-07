@@ -7,8 +7,8 @@ import 'gpu_adapter_choice.dart';
 /// s a device, eighteen test files at once on the machine's line) — on the
 /// adapter [debugGpuAdapterChoice] names. ⛔No fallback: a test that needs
 /// the engine and gets none fails.
-// ⏳The tile store asks first (screen-on-the-engine, the write path's
-// commit); till then only its test does.
+// ⏳The tile ledger asks first (`EngineTileLedger.instance`) once the
+// screen asks it (screen-on-the-engine c6); till then only tests do.
 GpuEngine get appGpuEngine => _engine ??= switch (debugGpuAdapterChoice) {
   GpuAdapterChoice.flutters => GpuEngine.onFlutterAdapter(),
   GpuAdapterChoice.first => GpuEngine.onFirstAdapter(),
