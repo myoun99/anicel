@@ -511,6 +511,11 @@ fn a_bitrate_stays_between_its_floor_and_ceiling() {
     }
 }
 
+// What this machine writes, pair by pair, is the C's answer — in the
+// lineup's two containers. A container outside it is written nowhere, held
+// to the law (`in_the_lineup`) rather than to the C, whose Apple writer took
+// H.264 in any container (관제's judgment, connection-round-checklist 11-07
+// 18:15).
 #[test]
 fn what_this_machine_can_write_is_the_c_s_answer() {
     let _one = one_at_a_time();
@@ -521,7 +526,8 @@ fn what_this_machine_can_write_is_the_c_s_answer() {
         for codec in -1..=7 {
             // SAFETY: plain numbers.
             let (ours, theirs) = unsafe { ((rust.probe)(container, codec), (c.probe)(container, codec)) };
-            assert_eq!(ours, theirs, "container {container}, codec {codec}");
+            let want = if container == 0 || container == 1 { theirs } else { 0 };
+            assert_eq!(ours, want, "container {container}, codec {codec}");
         }
     }
 }
@@ -575,7 +581,6 @@ fn an_open_is_refused_as_the_c_refuses_it() {
     let path = file.to_str().unwrap();
     for (what, shape) in [
         ("a MOV", Shape { container: 1, ..MOVIE }),
-        ("no such container", Shape { container: 2, ..MOVIE }),
         ("ProRes in an MP4", Shape { codec: 2, ..MOVIE }),
         ("ProRes 4444", Shape { codec: 6, ..MOVIE }),
         ("no such codec", NO_CODEC),
@@ -598,13 +603,14 @@ fn an_open_is_refused_as_the_c_refuses_it() {
     std::fs::remove_file(&file).ok();
 }
 
-// A job that is no job — bad numbers, sound at no rate, no path — turned
-// away by the one law (`Job::well_formed`) before any platform answers, on
-// every platform alike. Held to the law rather than to the C: the C spelled
-// it once per platform, and of its four only Windows's turned all of these
-// away — Apple's and Android's handed their encoders sound at 0 Hz, and the
-// Linux stub said 「no OS encoder」 of every one. Each is asked after an
-// open that leaves other words, so each answer is its own.
+// A job that is no job — bad numbers, a container outside the lineup, sound
+// at no rate, no path — turned away by the one law (`Job::well_formed`)
+// before any platform answers, on every platform alike. Held to the law
+// rather than to the C: the C spelled it once per platform, and of its four
+// only Windows's turned all of these away — Apple's and Android's handed
+// their encoders sound at 0 Hz, Apple's wrote H.264 into a container that is
+// none, and the Linux stub said 「no OS encoder」 of every one. Each is asked
+// after an open that leaves other words, so each answer is its own.
 #[test]
 fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
     let _one = one_at_a_time();
@@ -618,6 +624,8 @@ fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
         ("no frame rate", path, Shape { fps: (0, 1), ..MOVIE }),
         ("a rate over nothing", path, Shape { fps: (24, 0), ..MOVIE }),
         ("negative channels", path, Shape { channels: -1, ..MOVIE }),
+        ("no such container", path, Shape { container: 2, ..MOVIE }),
+        ("a container below the lineup", path, Shape { container: -1, ..MOVIE }),
         ("sound at no rate", path, Shape { sample_rate: 0, ..MOVIE }),
         ("no path", None, MOVIE),
     ] {

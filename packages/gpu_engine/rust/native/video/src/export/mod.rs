@@ -50,11 +50,9 @@ mod os;
 mod os;
 
 // The v10 lineup (ABI v21): MP4 = H.264/H.265, MOV = H.264 + ProRes. The
-// Dart enums map 1:1 onto these values. What follows down to `Job` is the
-// writers' — a build without one reads none of it.
-#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+// Dart enums map 1:1 onto these values. The containers are the law's; the
+// codecs down to `Job` are the writers' — a build without one reads none.
 const CONTAINER_MP4: i32 = 0;
-#[cfg_attr(not(target_vendor = "apple"), allow(dead_code))]
 const CONTAINER_MOV: i32 = 1;
 #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 const CODEC_H264: i32 = 0;
@@ -96,10 +94,24 @@ struct Job<'a> {
 /// or one asked for while the writer's other runs.
 const BAD_OPEN: &str = "video export: bad open parameters";
 
+/// Whether `container` is one the lineup has — asked of every open and
+/// every probe before any platform answers.
+///
+/// ↩️2026-11-07: each platform's pair law asked it in its own way, and
+/// Apple's never did: it takes H.264 in any container, so a container that
+/// is none of them was written there as an MP4 and turned away on Windows
+/// and Android (bundle GPU CI 42353590096). 관제's judgment, CLAUDE.md
+/// 절대명령 2 (connection-round-checklist, 11-07 18:15): the lineup is the
+/// law's, not an accident of which pair law asks. The app sends only these
+/// two.
+fn in_the_lineup(container: i32) -> bool {
+    container == CONTAINER_MP4 || container == CONTAINER_MOV
+}
+
 impl Job<'_> {
-    /// Whether this is a job at all: a picture, a frame rate, and sound —
-    /// if any — at a rate. The path is the last of it, and a job without
-    /// one is not built ([`qa_video_export_open`]).
+    /// Whether this is a job at all: a picture, a frame rate, a container
+    /// of the lineup, and sound — if any — at a rate. The path is the last
+    /// of it, and a job without one is not built ([`qa_video_export_open`]).
     ///
     /// ↩️2026-11-07: ASKED ONCE, before any platform answers. It was asked
     /// inside each writer, the same line three times, and the platform with
@@ -125,6 +137,7 @@ impl Job<'_> {
             && self.height > 0
             && self.fps_num > 0
             && self.fps_den > 0
+            && in_the_lineup(self.container)
             && self.channels >= 0
             && (self.channels == 0 || self.sample_rate > 0)
     }
@@ -175,7 +188,7 @@ pub extern "C" fn qa_video_export_supported() -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn qa_video_export_probe(container: i32, codec: i32) -> i32 {
-    os::probe(container, codec) as i32
+    (in_the_lineup(container) && os::probe(container, codec)) as i32
 }
 
 /// # Safety
