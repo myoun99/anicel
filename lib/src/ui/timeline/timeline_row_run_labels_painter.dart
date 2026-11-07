@@ -15,7 +15,6 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
-import 'timeline_frame_window.dart' show rowDrawnFrameWindowFor;
 import 'timeline_glyph_cache.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
@@ -183,13 +182,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter
   /// The labels a paint prints: those whose block reaches the frames the
   /// window can show ([windowBucket]).
   List<TimelineRunLabel> runLabelsInWindow() {
-    final window = rowDrawnFrameWindowFor(
-      bucket: windowBucket,
-      viewportMainExtent: viewportMainExtent,
-      cellExtent: frameCellExtent,
-      frameStartIndex: frameStartIndex,
-      frameEndIndexExclusive: frameEndIndexExclusive,
-    );
+    final window = geometry.value.rowDrawnFrames(windowBucket);
     return _labelsIn(window.startIndex, window.endIndexExclusive);
   }
 

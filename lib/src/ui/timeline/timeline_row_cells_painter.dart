@@ -348,13 +348,7 @@ class TimelineRowCellsPainter extends CustomPainter
   /// classic contract, the bucket-derived span (shared policy), whole, under
   /// the self-windowing one (Q8). THE probe surface for visibility tests.
   ({int startIndex, int endIndexExclusive}) visibleFrameWindow() =>
-      rowDrawnFrameWindowFor(
-        bucket: windowBucket,
-        viewportMainExtent: viewportMainExtent,
-        cellExtent: frameCellExtent,
-        frameStartIndex: frameStartIndex,
-        frameEndIndexExclusive: frameEndIndexExclusive,
-      );
+      geometry.value.rowDrawnFrames(windowBucket);
 
   /// What this row's BAND shows at [frameIndex] — the union for a row that
   /// has both spans and cels, the layer's own cels for everything else.
@@ -883,9 +877,10 @@ class TimelineRowCellsPainter extends CustomPainter
   /// policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
   ///
   /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8: a row with a window draws
-  /// it whole ([rowDrawnFrameWindowFor]), so its last tile is a span like
-  /// every other, not one cut where the axis ends; and a span the axis
-  /// ends before holds nothing a row draws, so it is asked for nothing.
+  /// it whole ([TimelineFrameGeometry.rowDrawnFrames]), so its last tile is
+  /// a span like every other, not one cut where the axis ends; and a span
+  /// the axis ends before holds nothing a row draws, so it is asked for
+  /// nothing.
   /// What a runway's growth reaches past the end is blank either way, and
   /// no row is painted again for it. ↩️The last tile was cut at the axis'
   /// end — a growth asked for it again. A row with no window still cuts it
@@ -895,12 +890,7 @@ class TimelineRowCellsPainter extends CustomPainter
     int builtFrames,
   ) {
     final span = timelineFrameWindowSpanFor(frameCellExtent);
-    final cut =
-        rowDrawsItsWindow(
-          bucket: windowBucket,
-          viewportMainExtent: viewportMainExtent,
-          cellExtent: frameCellExtent,
-        )
+    final cut = geometry.value.rowDrawsItsWindow(windowBucket)
         ? null
         : builtFrames;
     (int, int)? spanAt(int tile) {

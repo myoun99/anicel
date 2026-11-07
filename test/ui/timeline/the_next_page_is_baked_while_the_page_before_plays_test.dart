@@ -173,8 +173,8 @@ void main() {
   });
 
   test('🚨a row\'s page is every span its paint asks for once the axis stands '
-      'there — cut where the axis is built to there, past the end it is '
-      'built to now', () {
+      'there — the span the axis ends in whole, and none past the end it is '
+      'built to there', () {
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     // The last page: the turn stands the axis in bucket 28 and builds it
@@ -194,8 +194,9 @@ void main() {
     expect(page, [...shown, ...ahead]);
     expect(
       page.last,
-      (128, 130),
-      reason: 'the span at the end is cut where the turn builds the axis to',
+      (128, 132),
+      reason: 'the span the turn builds the axis into is whole (Q8), and '
+          'none begins past it',
     );
   });
 

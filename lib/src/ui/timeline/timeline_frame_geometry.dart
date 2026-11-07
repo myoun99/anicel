@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../layout/render_shifted_child.dart';
 import 'axis_turn.dart';
 import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 
 /// The frame-axis geometry of a timeline row — everything a ZOOM STEP moves.
 ///
@@ -180,13 +181,37 @@ class TimelineFrameGeometry {
           1e-6 &&
       other.windowExtentPx == windowExtentPx;
 
+  /// Whether a row that windows itself off [bucket] draws its window
+  /// ([rowDrawnFrames]) — it has one.
+  bool rowDrawsItsWindow(ValueListenable<int>? bucket) =>
+      bucket != null && viewExtentPx > 0 && frameCellExtent > 0;
+
+  /// The frames a ROW draws off [bucket]: with a window, its bucket's
+  /// whole — not cut where the axis ends, which a drag past it grows
+  /// ([drawsAs]) — and without one, every frame of the axis
+  /// ([visibleFrameWindowFor]).
+  ({int startIndex, int endIndexExclusive}) rowDrawnFrames(
+    ValueListenable<int>? bucket,
+  ) => visibleFrameWindowFor(
+    bucket: bucket,
+    viewportMainExtent: viewExtentPx,
+    cellExtent: frameCellExtent,
+    frameStartIndex: frameStartIndex,
+    frameEndIndexExclusive: rowDrawsItsWindow(bucket)
+        ? _noEnd
+        : frameEndIndexExclusive,
+  );
+
+  /// A frame no axis reaches.
+  static const int _noEnd = 1 << 30;
+
   /// Whether a row draws under [other] what it draws under this
   /// ([timelineFrameDrawing]): every field it is drawn by — and where the
   /// axis ends only for a row with no window, which draws every frame.
   ///
   /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07): a row
   /// with a window draws its window, not what the axis' end clips
-  /// ([rowDrawnFrameWindowFor]). Nothing a row draws stands past the end —
+  /// ([rowDrawnFrames]). Nothing a row draws stands past the end —
   /// 🔬the runway a drag past it grows held no pixel of any kind of row
   /// (animation · image · SE · camera · direction, before and after) — so
   /// the end a drag grows repaints no row.

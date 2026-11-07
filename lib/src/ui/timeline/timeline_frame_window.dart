@@ -147,41 +147,6 @@ int timelineFrameWindowReachFor({
   );
 }
 
-/// The frames a ROW draws: with a window, its bucket's whole — not cut
-/// where the axis ends, which a drag past it grows (`drawsAs`, Q8) — and without
-/// one, every frame from [frameStartIndex] to [frameEndIndexExclusive]
-/// ([visibleFrameWindowFor]).
-({int startIndex, int endIndexExclusive}) rowDrawnFrameWindowFor({
-  required ValueListenable<int>? bucket,
-  required double viewportMainExtent,
-  required double cellExtent,
-  required int frameStartIndex,
-  required int frameEndIndexExclusive,
-}) => visibleFrameWindowFor(
-  bucket: bucket,
-  viewportMainExtent: viewportMainExtent,
-  cellExtent: cellExtent,
-  frameStartIndex: frameStartIndex,
-  frameEndIndexExclusive:
-      rowDrawsItsWindow(
-        bucket: bucket,
-        viewportMainExtent: viewportMainExtent,
-        cellExtent: cellExtent,
-      )
-      ? _noEnd
-      : frameEndIndexExclusive,
-);
-
-/// Whether a row draws its window ([rowDrawnFrameWindowFor]) — it has one.
-bool rowDrawsItsWindow({
-  required ValueListenable<int>? bucket,
-  required double viewportMainExtent,
-  required double cellExtent,
-}) => bucket != null && viewportMainExtent > 0 && cellExtent > 0;
-
-/// A frame no axis reaches.
-const int _noEnd = 1 << 30;
-
 /// The window a painter draws while the offset stands in [bucket]
 /// ([timelineFrameWindowFor]), clipped to its [frames] — the one a scroll
 /// there gives it ([visibleFrameWindowFor]).
