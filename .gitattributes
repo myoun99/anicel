@@ -30,3 +30,9 @@ macos/Flutter/GeneratedPluginRegistrant.swift text eol=lf
 # that tool/resolve_packages.sh runs in packages/gpu_engine.
 packages/gpu_engine/example/windows/flutter/generated_plugin_registrant.* text eol=lf
 packages/gpu_engine/example/windows/flutter/generated_plugins.cmake text eol=lf
+
+# A licence pinned for the crates that ship none (tool/crate_notices.dart's
+# `pinnedLicences`) is the repository's file byte for byte — git's id of it
+# is the upstream's — and the notices list is written from it: converted on
+# checkout, a Windows machine would list it under other bytes than a Mac.
+tool/crate_licences/** -text

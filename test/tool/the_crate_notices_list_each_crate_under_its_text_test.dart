@@ -41,24 +41,34 @@ void main() {
     setUp(() => folder = Directory.systemTemp.createTempSync('crate-source'));
     tearDown(() => deleteTempQuietly(folder));
 
-    test('gives its manifest\'s licence and the files beside it', () {
+    test('gives its manifest\'s licence and repository and the files beside '
+        'it', () {
       File('${folder.path}/Cargo.toml').writeAsStringSync(
         '[package]\nname = "a"\nversion = "1.0.0"\n'
-        'license = "MIT OR Apache-2.0"\nreadme = "README.md"\n',
+        'license = "MIT OR Apache-2.0"\nreadme = "README.md"\n'
+        'repository = "https://example.org/a"\n',
       );
       File('${folder.path}/LICENSE-MIT').writeAsStringSync('mit\n');
       File('${folder.path}/LICENSE-APACHE').writeAsStringSync('apache\n');
       File('${folder.path}/README.md').writeAsStringSync('read me\n');
       final licence = licenceIn(folder);
       expect(licence.expression, 'MIT OR Apache-2.0');
+      expect(licence.repository, 'https://example.org/a');
       expect(licence.files, {'LICENSE-APACHE': 'apache\n', 'LICENSE-MIT': 'mit\n'});
       expect(licence.files.keys, ['LICENSE-APACHE', 'LICENSE-MIT']);
     });
   });
 
   group('the notices', () {
-    CrateLicence licence(String? expression, [Map<String, String>? files]) =>
-        (expression: expression, files: files ?? const {});
+    CrateLicence licence(
+      String? expression, [
+      Map<String, String>? files,
+      String? repository,
+    ]) => (
+      expression: expression,
+      repository: repository,
+      files: files ?? const {},
+    );
 
     test('list a crate under each text it ships, and a text once', () {
       final notices = noticesOf({
@@ -153,6 +163,47 @@ void main() {
       }
     });
 
+    test('list a crate with no file under its repository\'s pinned texts, '
+        'ahead of a lent one', () {
+      const pinned = {
+        'https://example.org/family': ['statement', 'terms'],
+      };
+      final notices = noticesOf({
+        // A sibling would lend it its Apache text: the repository's own
+        // comes first.
+        'bare 1.0.0': licence('Zlib OR Apache-2.0 OR MIT', null,
+            'https://example.org/family'),
+        'kin 1.0.0': licence('Zlib OR Apache-2.0 OR MIT', {
+          'LICENSE-APACHE': 'apache kin',
+        }),
+        // MIT alone, which nothing lends: the pinned texts are its.
+        'core 1.0.0': licence('MIT', null, 'https://example.org/family'),
+        // A file of its own wins over its repository's.
+        'own 1.0.0': licence('MIT', {'LICENSE': 'Copyright Own'},
+            'https://example.org/family'),
+      }, pinned: pinned);
+      expect(
+        {for (final n in notices) n.text: n.crates},
+        {
+          'apache kin': ['kin 1.0.0'],
+          'Copyright Own': ['own 1.0.0'],
+          'statement': ['bare 1.0.0', 'core 1.0.0'],
+          'terms': ['bare 1.0.0', 'core 1.0.0'],
+        },
+      );
+      // Another repository's crate is not listed under them.
+      expect(
+        () => noticesOf({
+          'stranger 1.0.0': licence('MIT', null, 'https://example.org/other'),
+        }, pinned: pinned),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('stranger 1.0.0 (MIT)'),
+        )),
+      );
+    });
+
     test('refuse a crate no text can be found for', () {
       expect(
         () => noticesOf({
@@ -194,6 +245,29 @@ void main() {
       expect(missing, {'a': 1});
       expect(folderOf('md-5 0.10.6'), 'md-5-0.10.6');
     });
+  });
+
+  test('the pinned licences are the files tool/crate_licences/ holds', () {
+    final held = [
+      for (final file
+          in Directory('tool/crate_licences').listSync(recursive: true))
+        if (file is File) file.path.replaceAll(r'\', '/'),
+    ]..sort();
+    final named = [
+      for (final MapEntry(key: repository, value: files)
+          in pinnedLicences.entries)
+        for (final name in files.keys) '${pinnedFolder(repository)}/$name',
+    ]..sort();
+    expect(held, named);
+    expect(
+      held,
+      contains('tool/crate_licences/github.com/madsmtm/objc2/LICENSE.md'),
+    );
+    for (final texts in pinnedTexts().values) {
+      for (final text in texts) {
+        expect(text, isNotEmpty);
+      }
+    }
   });
 
   test('the file reads back what was written', () {
