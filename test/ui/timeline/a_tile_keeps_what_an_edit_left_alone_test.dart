@@ -411,7 +411,8 @@ void main() {
       tileStore: store,
       substrateGeneration: 'p:cut',
     );
-    // 24px cells: a span is four of them.
+    // Four cells a tile — finer than the frame window's span, so an edit
+    // shows how far it reaches span by span.
     const spans = [
       (0, 4), (4, 8), (8, 12), (12, 16), (16, 20),
       (20, 24), (24, 28), (28, 32), (32, 36), (36, 40),
