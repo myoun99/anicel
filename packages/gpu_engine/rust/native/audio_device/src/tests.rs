@@ -1161,15 +1161,40 @@ fn the_clock_is_the_cs_clock() {
     }
 }
 
+/// The clock `now_us` reads, asked through another door than its own: std's
+/// `Instant`, which reads that clock — but on Apple, where `Instant` reads
+/// CLOCK_UPTIME_RAW and the crate, as the C did, CLOCK_MONOTONIC, a clock
+/// the system adjusts the rate of: there, that clock through
+/// `clock_gettime_nsec_np`. ↩️2026-11-07: through `Instant` the Mac said
+/// 116.587 ms passed against `Instant`'s 116.528–116.5295 (bundle GPU CI
+/// 42373705486) — 500 parts in a million, the most NTP lets a clock it
+/// slews run apart (read, not measured: no Mac is on the machine this is
+/// written on — the Mac job answers).
+fn os_clock() -> Duration {
+    #[cfg(target_vendor = "apple")]
+    {
+        unsafe extern "C" {
+            fn clock_gettime_nsec_np(clock: libc::clockid_t) -> u64;
+        }
+        // SAFETY: a clock every Apple system has, read with no pointer.
+        Duration::from_nanos(unsafe { clock_gettime_nsec_np(libc::CLOCK_MONOTONIC) })
+    }
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        static ORIGIN: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        ORIGIN.get_or_init(Instant::now).elapsed()
+    }
+}
+
 // The OS's monotonic clock in microseconds, asked here through another
-// door — std's `Instant` — so held once the C is gone (connection-round-
-// checklist A, 관제 판정 ①㉠): what it says passed lies within what
-// `Instant` saw pass around it, and it never runs back.
+// door ([`os_clock`]) — so held once the C is gone (connection-round-
+// checklist A, 관제 판정 ①㉠): what it says passed lies within what that
+// door saw pass around it, and it never runs back.
 #[test]
 fn the_clock_runs_as_the_os_s_monotonic_clock() {
-    let started = Instant::now();
+    let started = os_clock();
     let from = qa_audio_clock_now_us();
-    let inner = Instant::now();
+    let inner = os_clock();
     let mut last = from;
     for _ in 0..1000 {
         let now = qa_audio_clock_now_us();
@@ -1177,9 +1202,9 @@ fn the_clock_runs_as_the_os_s_monotonic_clock() {
         last = now;
     }
     thread::sleep(Duration::from_millis(30));
-    let inner = inner.elapsed();
+    let inner = os_clock() - inner;
     let to = qa_audio_clock_now_us();
-    let outer = started.elapsed();
+    let outer = os_clock() - started;
     let passed = Duration::from_micros((to - from) as u64);
     // A microsecond either way: each clock is cut to its own.
     let micro = Duration::from_micros(1);
