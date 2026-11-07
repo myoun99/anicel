@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
+import '../../services/fx_plugins/fx_plugin_outcomes.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
@@ -55,7 +56,8 @@ import 'transform_lane_policy.dart'
 /// reason [hasPlugin] comes in — whether this device has the plugin an
 /// effect is of, the app's one list that every rail reads alike
 /// (I-132-Q28). Null on a rail that is not told it: its effect headers read
-/// as the app's own.
+/// as the app's own. [pluginOutcomes] comes in the same way: how this
+/// device's plugin runs went, which a plugin's header shows.
 ///
 /// The camera row is not read here: its lanes are the cut's camera track,
 /// which only a cut's rail stands on (`timelineLanesForLayer`).
@@ -66,6 +68,7 @@ List<PropertyLaneRow> propertyLanesForRow({
   required ({Layer layer, int frame}) Function(int frameIndex)? valueSourceAt,
   required CanvasSize? poseCentre,
   required bool Function(FxPluginDescription plugin)? hasPlugin,
+  required FxPluginOutcomes? pluginOutcomes,
 }) {
   final source = valueSourceAt;
 
@@ -240,6 +243,7 @@ List<PropertyLaneRow> propertyLanesForRow({
               );
             },
       hasPlugin: hasPlugin,
+      pluginOutcomes: pluginOutcomes,
       rowHasBlocks: layer.fxBlocks != null,
       shownFrame: shownFrame,
     );

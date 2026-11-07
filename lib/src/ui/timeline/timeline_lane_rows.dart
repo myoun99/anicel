@@ -891,7 +891,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // grid, so `Expanded` (not `Flexible`) — the trailing run has to
           // start at the same place on every header, and shrink-wrapping
           // the name is what made it start wherever a name happened to end.
-          Expanded(child: _headerLabel(colorScheme)),
+          Expanded(child: _headerName(colorScheme)),
           ?_groupGraph(),
           ..._headerTrailing(context, colorScheme),
         ],
@@ -932,18 +932,57 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// stand up on the sheet (user, 2026-08-08).
   ///
   /// An effect of a plugin this device has not greys as the rail's off
-  /// glyphs do (🗣️I-132-Q28 a 「회색으로 남고」).
-  Widget _headerLabel(ColorScheme colorScheme) => readableText(
-    widget.axis,
-    lane.label,
-    style: TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-      color: lane.pluginNotOnDevice
-          ? colorScheme.onSurface.withValues(alpha: 0.35)
-          : colorScheme.onSurface,
-    ),
-  );
+  /// glyphs do (🗣️I-132-Q28 a 「회색으로 남고」) — and so does one whose
+  /// plugin [failed] to draw.
+  Widget _headerLabel(ColorScheme colorScheme, {required bool failed}) =>
+      readableText(
+        widget.axis,
+        lane.label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: lane.pluginNotOnDevice || failed
+              ? colorScheme.onSurface.withValues(alpha: 0.35)
+              : colorScheme.onSurface,
+        ),
+      );
+
+  /// The header's name, and on a plugin's effect the ⚠ after it —
+  /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08): 「원래
+  /// 셀 + 머리를 회색으로, 이름 뒤 ⚠ 칸은 늘 잡아 둔다」. The mark is always
+  /// laid, clear while the plugin drew at the frame the row stands on: only
+  /// its colour changes, as the record button's clip mark's does, so the
+  /// name never narrows and widens with it.
+  Widget _headerName(ColorScheme colorScheme) {
+    final failures = lane.pluginFailures;
+    if (failures == null) {
+      return _headerLabel(colorScheme, failed: false);
+    }
+    final cursor = widget.frameCursor;
+    return ListenableBuilder(
+      listenable: cursor == null
+          ? failures.changes
+          : Listenable.merge([failures.changes, cursor]),
+      builder: (context, _) {
+        final failed = failures.failedAt(laneRowFrame(cursor));
+        return Flex(
+          direction: widget.axis,
+          children: [
+            Expanded(child: _headerLabel(colorScheme, failed: failed)),
+            Icon(
+              Icons.warning_rounded,
+              key: ValueKey<String>(
+                '$_keyPrefix-lane-group-plugin-failed-'
+                '${layer.id}-${lane.laneId}',
+              ),
+              size: 12,
+              color: failed ? colorScheme.error : Colors.transparent,
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   /// R5 #7: the group's switch sits in the LAYER ROW'S fx column, through
   /// the layer row's own skeleton. R6 put it straight after the label, which

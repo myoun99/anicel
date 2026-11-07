@@ -49,11 +49,12 @@ BitmapSurface celSurfaceThroughPlugin(
   }
   // ONE entry per surface, as the keys keep theirs: a value dragged makes a
   // new sample each step, and only the one being looked at is wanted.
-  return _ran.resolve(
-    surface,
-    effect,
-    () => _rendered(surface, effect, run) ?? surface,
-  );
+  final ran = _ran.resolve(surface, effect, () {
+    final rendered = _rendered(surface, effect, run);
+    return (surface: rendered ?? surface, failed: rendered == null);
+  });
+  run.told?.call(failed: ran.failed);
+  return ran.surface;
 }
 
 /// The rows [effect]'s layer parameters name that its run holds, each once,
@@ -230,7 +231,7 @@ Uint8List _premultiplied(Uint8List straight) {
 
 /// The picture a plugin made of each surface, by the sample it was made
 /// with — its values and its run, rows and moment and all
-/// ([ResolvedLayerEffect.==]).
-final SignedMemo<ResolvedLayerEffect, BitmapSurface> _ran = SignedMemo(
-  'celPluginSurfaces',
-);
+/// ([ResolvedLayerEffect.==]) — and whether it failed, told each time it is
+/// shown ([FxPluginRun.told]).
+final SignedMemo<ResolvedLayerEffect, ({BitmapSurface surface, bool failed})>
+_ran = SignedMemo('celPluginSurfaces');

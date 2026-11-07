@@ -294,6 +294,7 @@ class ExportFrameRenderer {
     runnerFor: session.fxPlugins.runnerFor,
     frameRate: session.repository.requireProject().frameRate,
     surfaceOf: (layer, frame) => _surfaceFor(cut, layer, frame),
+    outcomes: session.fxPlugins.outcomes,
   );
 
   /// How this render reads [cut]'s cels ([CelReading]): each as it

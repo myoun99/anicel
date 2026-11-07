@@ -2019,6 +2019,7 @@ class EditorSessionManager extends ChangeNotifier
     frameRate: repository.requireProject().frameRate,
     surfaceOf: (layer, frame) =>
         renderCaches.celSurfaceIn(cut, layer.id, frame.id),
+    outcomes: fxPlugins.outcomes,
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────

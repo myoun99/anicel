@@ -215,6 +215,7 @@ final class _Stage {
       data.lengthInBytes,
     );
     made = _ranThrough(run, pixels);
+    run.told?.call(failed: made == null);
   }
 
   /// [premultiplied] — this step's input — through [run]'s plugin, as a

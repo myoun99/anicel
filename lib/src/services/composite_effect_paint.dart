@@ -406,9 +406,12 @@ _PaintPart _pluginPart(
     frameRate: run.moment.frameRate,
     scale: space.scale,
   ));
-  return reach == null
-      ? const _NoPart()
-      : _PluginPart(reach: math.max(0, reach).toDouble());
+  if (reach == null) {
+    // What it draws tells the rest, once its step has run (FxPluginStages).
+    run.told?.call(failed: true);
+    return const _NoPart();
+  }
+  return _PluginPart(reach: math.max(0, reach).toDouble());
 }
 
 /// A Gaussian: a filter the composite draw carries, or a step where it

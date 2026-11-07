@@ -1186,6 +1186,7 @@ class ResolvedLayerEffect {
     Map<String, CanvasPoint?> points = const {},
     Map<String, LayerId?> layers = const {},
     this.frame,
+    this.instance,
     this.run,
   }) : values = List.unmodifiable(values),
        points = Map.unmodifiable(points),
@@ -1228,6 +1229,17 @@ class ResolvedLayerEffect {
   /// or not.
   final int? frame;
 
+  /// The effect a PLUGIN's sample is of, by identity — null for every
+  /// other kind's: where its run tells how it went ([FxPluginRun.told]),
+  /// the one its fx row's header reads (`FxPluginOutcomes`).
+  ///
+  /// ⛔Its object, not its [LayerEffect.id]: a row copied with its chain
+  /// keeps the ids, so two rows of one cut may hold the same id — the
+  /// object is the one instance a header and a run both hold.
+  /// ⛔NOT IN [==]: it names whose outcome a run is, not what is drawn —
+  /// two samples equal in all else draw one picture and fail alike.
+  final LayerEffect? instance;
+
   /// What a plugin's effect is run with at this frame ([FxPluginRun]) —
   /// null for every other kind, and for a plugin's where it does not run:
   /// 🗣️I-132-Q34 a, anywhere in any chain, on a route that binds it, on a
@@ -1244,6 +1256,7 @@ class ResolvedLayerEffect {
     points: points,
     layers: layers,
     frame: frame,
+    instance: instance,
     run: run,
   );
 
@@ -1274,6 +1287,7 @@ class ResolvedLayerEffect {
           points: points,
           layers: {for (final parameter in layers.keys) parameter: null},
           frame: frame,
+          instance: instance,
           run: run,
         );
 
@@ -1465,6 +1479,7 @@ ResolvedLayerEffect sampleLayerEffectAt(LayerEffect effect, int frameIndex) =>
       },
       layers: effect.layers,
       frame: effect.plugin == null ? null : frameIndex,
+      instance: effect.plugin == null ? null : effect,
     );
 
 /// Whether any of [effects] spreads pixels beyond their own coverage — the

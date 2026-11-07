@@ -1,4 +1,6 @@
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, VoidCallback;
+
+import 'package:flutter/foundation.dart' show Listenable;
 
 import '../../models/fx_basis.dart';
 import '../../models/fx_plugin_description.dart';
@@ -7,6 +9,7 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/transform_track.dart' show TransformPose;
+import '../../services/fx_plugins/fx_plugin_outcomes.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/readout_text.dart';
@@ -105,6 +108,22 @@ String effectLaneId(EffectId effectId, String parameterId) =>
   return null;
 }
 
+/// A plugin header's on a rail not told how runs went: its slot, never
+/// filled.
+const PluginRunFailures _neverFailed = (changes: _Still(), failedAt: _never);
+
+bool _never(int frameIndex) => false;
+
+final class _Still implements Listenable {
+  const _Still();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
+}
+
 /// The lane rows for [effects]: each effect's header, and its lanes while
 /// [isExpanded] says the header is twirled open (AE group collapse, exactly
 /// like the Transform group) — where it stands first, on a kind that draws
@@ -128,6 +147,11 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 /// ([PropertyLaneRow.pluginNotOnDevice]). Null on a rail that is not told
 /// the device's plugins: its headers read as the app's own.
 ///
+/// [pluginOutcomes] says how this device's plugin runs went — a plugin's
+/// header reads it at the frame it stands on, as its value column reads
+/// that frame's value ([PropertyLaneRow.pluginFailures]). Null on a rail
+/// that is not told it: its plugin headers keep their slot, never filled.
+///
 /// [rowHasBlocks] says whether the row the chain rides has blocks of its
 /// own to step on ([Layer.fxBlocks]) — each header then wears its effect's
 /// basis chip ([PropertyLaneRow.groupBasis], I-120-Q9). A track's chain has
@@ -146,6 +170,7 @@ List<PropertyLaneRow> effectPropertyLanes(
   TransformPose Function(EffectId effectId, String lane, double time)?
   standAt,
   bool Function(FxPluginDescription plugin)? hasPlugin,
+  FxPluginOutcomes? pluginOutcomes,
   bool rowHasBlocks = false,
   int Function(FxBasis basis, int frame)? shownFrame,
 }) {
@@ -175,6 +200,15 @@ List<PropertyLaneRow> effectPropertyLanes(
         pluginNotOnDevice: switch ((effect.plugin, hasPlugin)) {
           (final plugin?, final has?) => !has(plugin),
           _ => false,
+        },
+        pluginFailures: switch ((effect.plugin, pluginOutcomes)) {
+          (null, _) => null,
+          (_, null) => _neverFailed,
+          (_, final outcomes?) => (
+            changes: outcomes,
+            failedAt: (frame) =>
+                outcomes.failedAt(effect, shown?.call(frame) ?? frame),
+          ),
         },
         // The header carries its members' key union (UI-R20 #13), so one
         // glance finds the effect's keys while it stays collapsed — with

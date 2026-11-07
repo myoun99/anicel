@@ -169,6 +169,7 @@ void main() {
         valueSourceAt: (frame) => (layer: row, frame: frame),
         poseCentre: paper,
         hasPlugin: null,
+        pluginOutcomes: null,
       );
       String shown(String lane) =>
           lanes.singleWhere((it) => it.laneId == lane).valueLabel!(0);

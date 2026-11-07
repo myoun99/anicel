@@ -64,6 +64,7 @@ final class FxPluginRun {
     required this.runner,
     required this.moment,
     required Map<LayerId, BitmapSurface?> rows,
+    this.told,
   }) : rows = Map.unmodifiable(rows);
 
   final FxPluginRunner runner;
@@ -72,9 +73,17 @@ final class FxPluginRun {
   /// The rows the effect's layer parameters name that are in its cut.
   final Map<LayerId, BitmapSurface?> rows;
 
+  /// Where every route that runs this tells how it went — failed or drew —
+  /// each time it shows the picture, kept or made: the device's record
+  /// its fx row's header reads (`FxPluginOutcomes`). Null tells nobody.
+  final void Function({required bool failed})? told;
+
   /// ⛔A row's picture is the SAME OBJECT, not an equal one: a picture is
   /// immutable, so an edited row is another object — and a deep compare of
   /// every tile per frame is what the identity is there to spare.
+  /// ⛔[told] is not compared: it is who hears the outcome, not what the
+  /// plugin runs with — two runs equal in that make one picture and fail
+  /// alike, so a picture kept from either is told to the one that asks.
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

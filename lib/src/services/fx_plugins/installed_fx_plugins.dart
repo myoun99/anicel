@@ -9,6 +9,7 @@ import '../../native/qa_fx_plugin_host.dart';
 import '../project_lookup.dart' show projectLayersAnywhere;
 import 'fx_plugin_bundle.dart';
 import 'fx_plugin_library_service.dart';
+import 'fx_plugin_outcomes.dart';
 
 /// What a plugin's module said when it was asked who it is: its
 /// description's text, or why the engine would not open it.
@@ -85,9 +86,9 @@ class InstalledFxPlugins extends ChangeNotifier {
   final FxPluginDescriber _describe;
   final FxPluginOpener _open;
 
-  /// The plugins opened to run, by id — null for one that would not open,
-  /// so it is not tried again each frame.
-  final Map<String, FxPluginRunner?> _runners = {};
+  /// The plugins opened to run, by id — one that would not open kept as
+  /// such ([_Unopened]), so it is not tried again each frame.
+  final Map<String, FxPluginRunner> _runners = {};
   List<InstalledFxPlugin> _plugins = const [];
   bool _disposed = false;
 
@@ -115,12 +116,19 @@ class InstalledFxPlugins extends ChangeNotifier {
   bool has(FxPluginDescription plugin) =>
       _plugins.any((installed) => installed.description.id == plugin.id);
 
+  /// How the runs of this device's plugins went, frame by frame — what a
+  /// plugin effect's header shows ([FxPluginOutcomes]).
+  final FxPluginOutcomes outcomes = FxPluginOutcomes();
+
   /// This device's build of [plugin] opened to run ([openInstalledFxPlugin])
-  /// — null where the device has it not ([has]) or it will not open.
+  /// — null where the device has it not ([has]).
   ///
   /// Opened the first time it is asked, and kept until the plugin is
   /// replaced, uninstalled or this list goes: a frame that runs it pays no
-  /// open.
+  /// open. One that will not open fails every ask, as a run that fails does
+  /// — shown as failed (🗣️a-failed-plugin-shows-the-cel-silently-Q1), and
+  /// not opened again each frame. ↩️It answered null, and its effect drew
+  /// as if off with nothing to say why.
   FxPluginRunner? runnerFor(FxPluginDescription plugin) {
     final installed = _plugins
         .where((installed) => installed.description.id == plugin.id)
@@ -128,7 +136,10 @@ class InstalledFxPlugins extends ChangeNotifier {
     if (installed == null) {
       return null;
     }
-    return _runners.putIfAbsent(plugin.id, () => _open(installed, _service));
+    return _runners.putIfAbsent(
+      plugin.id,
+      () => _open(installed, _service) ?? const _Unopened(),
+    );
   }
 
   /// Closes plugin [id]'s opened build, if it has one.
@@ -225,8 +236,28 @@ class InstalledFxPlugins extends ChangeNotifier {
     for (final id in [..._runners.keys]) {
       _letGo(id);
     }
+    outcomes.dispose();
     super.dispose();
   }
+}
+
+/// An installed plugin that would not open: every ask fails.
+final class _Unopened implements FxPluginRunner {
+  const _Unopened();
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => null;
+
+  @override
+  Uint8List? render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) => null;
+
+  @override
+  void close() {}
 }
 
 /// [plugin] opened through the engine's host: its native build where this

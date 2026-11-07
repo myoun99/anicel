@@ -58,6 +58,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
       standing: session.activeCutId,
     ),
     hasPlugin: session.fxPlugins.has,
+    pluginOutcomes: session.fxPlugins.outcomes,
   );
 }
 
@@ -108,6 +109,7 @@ final class KeptTimelineLanes {
             ),
             ByIdentity(expandedGroupKeys),
             ByIdentity(session.fxPlugins.plugins),
+            ByIdentity(session.fxPlugins.outcomes),
             // The camera row's lanes are the track a camera drag previews.
             layer.kind == LayerKind.camera
                 ? ByIdentity(session.camera.activeCutCameraTrack)

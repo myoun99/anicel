@@ -332,6 +332,37 @@ void main() {
     expect(runner.renders, 1);
     picture.dispose();
   });
+
+  test('a step tells its run how it went: failed — its picture, or how far '
+      'it reaches, not given — or drew '
+      '(🗣️a-failed-plugin-shows-the-cel-silently-Q1)', () async {
+    final picture = source();
+    Future<List<bool>> toldBy(ShiftingFxPlugin runner) async {
+      final heard = <bool>[];
+      final effect = ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: shiftingFxPluginDescription,
+        values: const [],
+        run: FxPluginRun(
+          runner: runner,
+          moment: (frameIndex: 0, time: 0, frameRate: 24, scale: 1),
+          rows: const {},
+          told: ({required failed}) => heard.add(failed),
+        ),
+      );
+      final made = await FxPluginStages.recordedThrough(
+        () => recorded(picture, [effect]),
+        discard: (made) => made.dispose(),
+      );
+      made.dispose();
+      return heard;
+    }
+
+    expect(await toldBy(ShiftingFxPlugin(by: 2, fails: true)), [true]);
+    expect(await toldBy(ShiftingFxPlugin(by: 2)), [false]);
+    expect((await toldBy(ShiftingFxPlugin(reachFails: true))).toSet(), {true});
+    picture.dispose();
+  });
 }
 
 /// Gives back what it is handed, every clear pixel of it given a colour no

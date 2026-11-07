@@ -8,6 +8,7 @@ import '../../models/layer_effect.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_frame_composite_plan.dart'
     show LayerFrameSurfaceResolver, layerDrawingAt;
+import 'fx_plugin_outcomes.dart';
 
 /// The binding a route that knows the device and the project runs plugins
 /// by: each plugin of a chain through [runnerFor] — this device's build of
@@ -23,10 +24,14 @@ import '../cut_frame_composite_plan.dart'
 /// A plugin is told the frame its sample is of ([ResolvedLayerEffect.frame])
 /// — the V row's chain is sampled on the track's axis — and reads the rows
 /// it names at the cut's [FxPluginBinding] frame.
+///
+/// Each run tells [outcomes] how it went at that same frame, the one its
+/// header reads its lanes at ([FxPluginRun.told]); null tells nobody.
 FxPluginBinding deviceFxPluginBinding({
   required FxPluginRunner? Function(FxPluginDescription plugin) runnerFor,
   required ProjectFrameRate frameRate,
   required LayerFrameSurfaceResolver surfaceOf,
+  FxPluginOutcomes? outcomes,
 }) => (effects, {required cut, required frameIndex}) {
   if (!effects.any((effect) => effect.kind == EffectKind.plugin)) {
     return effects;
@@ -37,8 +42,13 @@ FxPluginBinding deviceFxPluginBinding({
       return plugin;
     }
     final told = plugin.frame ?? frameIndex;
+    final instance = plugin.instance;
     return plugin.withRun(
       FxPluginRun(
+        told: outcomes == null || instance == null
+            ? null
+            : ({required failed}) =>
+                  outcomes.tell(instance, told, failed: failed),
         runner: runner,
         moment: (
           frameIndex: told,

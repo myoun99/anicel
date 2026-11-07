@@ -124,6 +124,7 @@ class _StoryboardRailRows {
         time,
       ),
       hasPlugin: _state.widget.hasFxPlugin,
+      pluginOutcomes: _state.widget.fxPluginOutcomes,
     );
   }
 
@@ -189,6 +190,7 @@ class _StoryboardRailRows {
       // made another track's S row show its values as defaults.
       poseCentre: _in.poseDisplaySize,
       hasPlugin: _state.widget.hasFxPlugin,
+      pluginOutcomes: _state.widget.fxPluginOutcomes,
     );
   }
 
@@ -554,6 +556,7 @@ class _StoryboardRailRows {
     valueSourceAt: valued ? (frame) => (layer: row, frame: frame) : null,
     poseCentre: valued ? cut.canvasSize : null,
     hasPlugin: _state.widget.hasFxPlugin,
+    pluginOutcomes: _state.widget.fxPluginOutcomes,
   );
 
   /// The lanes [track]'s conte row at [seat] twirls down: those of its row
@@ -599,6 +602,7 @@ class _StoryboardRailRows {
         valueSourceAt: (frame) => (layer: row, frame: frame),
         poseCentre: cut.canvasSize,
         hasPlugin: _state.widget.hasFxPlugin,
+        pluginOutcomes: _state.widget.fxPluginOutcomes,
       ),
       eyeOf: (cut, row) => headEye ?? _cutsOwnEye(cut, row),
     );

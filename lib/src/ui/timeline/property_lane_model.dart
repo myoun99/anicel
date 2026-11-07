@@ -118,6 +118,7 @@ class PropertyLaneRow {
     this.groupEnabled,
     this.groupBasis,
     this.pluginNotOnDevice = false,
+    this.pluginFailures,
     this.headsAGraph = false,
     this.previewText,
     this.stretchWords = const [],
@@ -260,7 +261,24 @@ class PropertyLaneRow {
   /// the header greys, its lanes stay as they were, and it draws nothing
   /// until a plugin of its id is installed.
   final bool pluginNotOnDevice;
+
+  /// Group headers of a PLUGIN's effect only — null on every other row,
+  /// which keeps no ⚠ slot: where the header reads whether its plugin
+  /// failed to draw at the frame it stands on.
+  /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08):
+  /// 「원래 셀 + 머리를 회색으로, 이름 뒤 ⚠ 칸은 늘 잡아 둔다」 — the slot
+  /// stands whether or not a run failed, so the name never narrows and
+  /// widens with it; a failure fills it and greys the name as
+  /// [pluginNotOnDevice] does.
+  final PluginRunFailures? pluginFailures;
 }
+
+/// Whether a plugin effect's run failed at a rail frame, and what tells a
+/// header it may have changed.
+typedef PluginRunFailures = ({
+  Listenable changes,
+  bool Function(int frameIndex) failedAt,
+});
 
 /// A word over the stretch of a lane from its key on [from] to the next, on
 /// [to] — written in its row's key colour (`timelineStretchWordSpan`).

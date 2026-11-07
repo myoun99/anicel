@@ -60,6 +60,7 @@ import 'canvas/flip_hud_rows.dart';
 import 'canvas/view_hand.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
+import '../services/fx_plugins/fx_plugin_outcomes.dart';
 import 'audio/sound_cannot_play.dart' show SoundCannotPlay, soundCannotPlayIn;
 import 'dialogs/link_window.dart' show LinkKind;
 import 'storyboard_cut_blocks_painter.dart';
@@ -736,6 +737,7 @@ class StoryboardPanel extends StatefulWidget {
     this.cutLaneEdit,
     this.poseDisplaySize,
     this.hasFxPlugin,
+    this.fxPluginOutcomes,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
     this.onOpenLayerMixer,
@@ -1348,6 +1350,11 @@ class StoryboardPanel extends StatefulWidget {
   /// headers of one it has not grey, as the timeline's do (I-132-Q28).
   /// Null greys none.
   final bool Function(FxPluginDescription plugin)? hasFxPlugin;
+
+  /// How this device's plugin runs went — a plugin effect's header shows a
+  /// failure at the frame it stands on, as the timeline's does. Null fills
+  /// no header's ⚠.
+  final FxPluginOutcomes? fxPluginOutcomes;
 
   /// Commits a cut-fade handle drag (one undo); null makes the Opacity
   /// lane display-only. The fade is transparency (R3b) — no per-cut
