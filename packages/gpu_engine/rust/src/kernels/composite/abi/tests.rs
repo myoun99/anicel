@@ -204,9 +204,15 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
     let rect = [5u32, 10, 217, 120];
     let extent = rect.map(|edge| edge as i32);
     let put = ran(&pool, plan, extent).expect("run");
-    // SAFETY: `engine` is live.
-    let surface = unsafe { gpu_engine_surface_new(engine, 3 * TILE, TILE, false) };
-    assert!(!surface.is_null());
+    // The surface as the platform makes the ones it shows: RGBA where it
+    // can, else BGRA — Apple's make BGRA alone (platform/apple.rs), Linux's
+    // RGBA alone.
+    let (surface, bgra) = [false, true]
+        .into_iter()
+        // SAFETY: `engine` is live.
+        .map(|bgra| (unsafe { gpu_engine_surface_new(engine, 3 * TILE, TILE, bgra) }, bgra))
+        .find(|(surface, _)| !surface.is_null())
+        .unwrap_or_else(|| panic!("{}", last_error()));
     // SAFETY: every pointer is live and made on `engine`.
     let passes = unsafe { gpu_engine_composite_show(&rig().composite, engine, &pool, plan, surface, rect.as_ptr()) };
     assert!(passes >= 1, "{}", last_error());
@@ -215,7 +221,9 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
     for y in rect[1] as i32..rect[3] as i32 {
         for x in rect[0] as i32..rect[2] as i32 {
             let texel = (y as usize * 3 * TILE as usize + x as usize) * 4;
-            assert_eq!(shown[texel..texel + 4], pixel_at(&put, &OUTPUT, x, y), "({x}, {y})");
+            let [r, g, b, a] = pixel_at(&put, &OUTPUT, x, y);
+            let want = if bgra { [b, g, r, a] } else { [r, g, b, a] };
+            assert_eq!(shown[texel..texel + 4], want, "({x}, {y})");
         }
     }
     // SAFETY: neither is used again.

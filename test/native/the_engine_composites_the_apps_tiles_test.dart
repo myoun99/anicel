@@ -82,6 +82,17 @@ void main() {
     return bytes.sublist(at, at + 4);
   }
 
+  /// A surface of [width] × [height] as the platform makes the ones it
+  /// shows: RGBA where it can, else BGRA — Apple's make BGRA alone
+  /// (platform/apple.rs), Linux's RGBA alone.
+  GpuSurface surfaceOf(int width, int height) {
+    try {
+      return appGpuEngine.surface(width, height, bgra: false);
+    } on StateError {
+      return appGpuEngine.surface(width, height, bgra: true);
+    }
+  }
+
   /// A plan of one row: [set] over a tile row of [columns] tiles.
   GpuPlan oneRow(
     List<GpuTile?> set, {
@@ -191,14 +202,18 @@ void main() {
     final plan = oneRow(storedOf(noise(2)), sampling: GpuSampling.nearest);
     final tiles = [(0, 0), (1, 0)];
     final put = ran(plan, tiles);
+    final surface = surfaceOf(2 * side, side);
+    addTearDown(surface.free);
     final rowByRow = Uint8List(put.length);
     for (var y = 0; y < side; y++) {
       for (var x = 0; x < 2 * side; x++) {
-        rowByRow.setAll((y * 2 * side + x) * 4, pixel(put, tiles, x, y));
+        final [r, g, b, a] = pixel(put, tiles, x, y);
+        rowByRow.setAll(
+          (y * 2 * side + x) * 4,
+          surface.bgra ? [b, g, r, a] : [r, g, b, a],
+        );
       }
     }
-    final surface = appGpuEngine.surface(2 * side, side, bgra: false);
-    addTearDown(surface.free);
 
     expect(composite.show(pool, plan, surface, (0, 0, 2 * side, side)), 1);
     expect(surface.fingerprint(), fingerprintBytes(rowByRow));
@@ -287,7 +302,7 @@ void main() {
   test('a plan the executor refuses says why, run or shown', () {
     final plan = GpuPlan()..close(mode: normal);
     addTearDown(plan.free);
-    final surface = appGpuEngine.surface(8, 8, bgra: false);
+    final surface = surfaceOf(8, 8);
     addTearDown(surface.free);
     final refused = throwsA(
       isA<StateError>().having(
