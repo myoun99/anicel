@@ -13,7 +13,7 @@
 # lane · it is handed its arguments and its exit code is the run's · two
 # runs at once never overlap — the second waits, and says so · the turn is
 # let go after a run that failed too · a turn left by a dead holder is
-# taken over.
+# taken over · it keeps no incremental cache (관제 2026-11-08 01:10).
 #
 # usage: bash tool/cargo_turn_test.sh
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +31,7 @@ git -C "$STAGE" worktree add -q "$LANE" 2>/dev/null
 cat > "$TMP/bin/cargo" <<CARGO
 #!/usr/bin/env bash
 echo "start \$\$ \$(date +%s%N) \$CARGO_TARGET_DIR \$*" >> "$LOG"
+echo "incremental \${CARGO_INCREMENTAL-unset}" >> "$TMP/env"
 sleep "\${FAKE_SECONDS:-1}"
 echo "end \$\$ \$(date +%s%N)" >> "$LOG"
 exit "\${FAKE_EXIT:-0}"
@@ -122,6 +123,12 @@ check "and says no wait" "$(! grep -q 'held' "$TMP/hook.err"; echo $?)"
 code=$?
 check "a folder of no name is refused, and runs no cargo" \
   "$([ "$code" -eq 2 ] && [ ! -s "$LOG" ]; echo $?)"
+
+# 7. No incremental cache in a shared folder, whatever the caller asks.
+: > "$TMP/env"
+(cd "$LANE" && CARGO_INCREMENTAL=1 bash tool/cargo_turn.sh test) 2>/dev/null
+check "cargo builds there with no incremental cache" \
+  "$([ "$(cat "$TMP/env")" = "incremental 0" ]; echo $?)"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

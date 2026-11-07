@@ -6,8 +6,8 @@
 #   bash tool/cargo_turn.sh [--folder hook] --hold
 #
 # cargo, run where it is called from, with the trunk's
-# packages/gpu_engine/rust/target as its target folder, once no other cargo
-# holds it; its exit code is cargo's.
+# packages/gpu_engine/rust/target as its target folder and no incremental
+# cache, once no other cargo holds it; its exit code is cargo's.
 #
 # `--hold` runs no cargo: once the turn is its, it says that folder on its
 # first line and keeps the turn until what it reads ends. It is for a caller
@@ -46,6 +46,16 @@
 # (session_hooks/guard_shared_target.sh). A cargo with a target folder of
 # its own — CARGO_TARGET_DIR elsewhere, or a lane's own default `target` —
 # shares nothing, and needs no turn.
+#
+# ⛔NO INCREMENTAL CACHE IN A SHARED FOLDER (관제 2026-11-08 01:10,
+# connection-round-checklist 01:06): cargo keeps one per crate and checkout
+# and never removes one — 22 of the crate folder's 59 GB, 15 GB of it
+# written on 2026-11-07 alone, with C: at 95 %. Off, a checkout's first
+# build is 6–8 s faster (22–26 s against 30–33 s) and a rebuild after one
+# line of the engine 6 s slower (10 s against 4 s); the disk decided. It is
+# set here and not in Cargo.toml's [profile.dev], which would take it from a
+# cargo with a folder of its own too. Were it back on, the old session
+# folders would be what to sweep.
 #
 # ⚠️A holder that was killed leaves its turn behind. It is taken over when
 # the process that held it is gone, or when it is older than any cargo run
@@ -108,4 +118,4 @@ if [ "$1" = --hold ]; then
   exit 0
 fi
 
-CARGO_TARGET_DIR="$SHARED_TARGET" cargo "$@"
+CARGO_TARGET_DIR="$SHARED_TARGET" CARGO_INCREMENTAL=0 cargo "$@"
