@@ -1,4 +1,5 @@
-//! The app's side of the fx plugin spec (anicel_fx_plugin.h): one plugin
+//! The app's side of the fx plugin spec (the spec crate, sdk/fx/anicel-fx —
+//! whose types, places and names this host reads the frame by): one plugin
 //! opened from a native library or a WebAssembly module, asked the same
 //! four questions either way — through the exports the app's
 //! `QaFxPluginHost` binds by name (lib/src/native/qa_fx_plugin_host.dart),
@@ -11,13 +12,15 @@
 //! it writes to: its own memory for a native library, the module's linear
 //! memory for a .wasm. Everything past opening is the same code.
 //!
-//! Why the spec is as it is — kept here, on the app's side, since that
-//! header is the SDK's and speaks to plugin makers (fx-plugin-sdk-publish,
-//! 2026-11-04):
+//! Why the spec is as it is — kept here, on the app's side, since the spec
+//! crate is the SDK's and speaks to plugin makers (fx-plugin-sdk-publish,
+//! 2026-11-04; the crate took the header's place on 유저 Q9 · 옛 플러그인
+//! 없음, 2026-11-07):
 //! 🗣️I-132-Q5: one .wasm runs on every platform and a desktop may also take
 //! a native build of the same source, so the spec is a C FUNCTION SPEC that
 //! a .dll speaks as well as a .wasm, not a WebAssembly component interface
-//! (I-132-Q31: the component model stays a road to add on the wasm side).
+//! (I-132-Q31: the component model stays a road to add on the wasm side) —
+//! the spec crate's exports are `extern "C"` functions for that.
 //! 🗣️I-132-Q29 (유저 2026-10-29): 「a + 플러그인이 다른 레이어를 읽기」 — a
 //! 「layer」 parameter hands a plugin another row's picture. 「나중엔 최대한
 //! 극한으로 확장 … 플러그인은 확장성이 젤 중요」: a plugin says what it can

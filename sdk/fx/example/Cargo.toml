@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 PARK GUNWOO -- the Anicel fx plugin SDK's LICENSE.
+#
+# The example plugin: one source built as a WebAssembly module and as this
+# machine's native library (README.md says how, and how the two make
+# shadow.anifx).
+[package]
+name = "shadow"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anicel-fx = { path = "../anicel-fx" }

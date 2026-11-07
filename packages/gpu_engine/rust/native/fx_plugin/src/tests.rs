@@ -1,12 +1,20 @@
 //! The host held to the C host it replaces (qa_fx_plugin.c, through the
 //! engine — native/oracle) and to answers worked out here, so two hosts
 //! that agree on a wrong answer still fail: the C's own test's cases
-//! (qa_fx_plugin_test.c) on the same sample plugin, the SDK's example, and
-//! what a host must refuse.
+//! (qa_fx_plugin_test.c) on the sample plugin, the SDK's example, and what a
+//! host must refuse.
+//!
+//! The plugins are this crate's examples, built against the spec crate as a
+//! maker builds one ([`sample`]) and opened by both hosts — the C host
+//! reading a Rust plugin is the spec crate held to the header it replaces.
+//! ⏳Until the connection round the C builds of the sample and the example
+//! (CMakeLists.txt, beside the engine) answer beside them, the key each
+//! Rust plugin is held to; that round deletes them with the C host.
 
 mod wasm;
 
-use std::ffi::{CString, c_char, c_void};
+use std::ffi::{CStr, CString, c_char, c_void};
+use std::path::Path;
 
 use super::*;
 
@@ -64,11 +72,25 @@ fn hosts() -> [Host; 2] {
     [c(), RUST]
 }
 
-/// A plugin the engine's build made beside the engine (CMakeLists.txt: the
-/// sample, the two builds of it a host refuses, and the SDK's example).
-fn built(name: &str) -> CString {
-    let path = oracle::beside(name);
+fn c_path(path: &Path) -> CString {
     CString::new(path.to_str().expect("a UTF-8 path")).expect("a path with no NUL")
+}
+
+/// One of this crate's examples (Cargo.toml: the sample, the two builds of
+/// it a host refuses, and the SDK's example), which `cargo test` builds
+/// beside the folder of the test it runs.
+fn sample(name: &str) -> CString {
+    let test = std::env::current_exe().expect("the test's own path");
+    let profile = test.parent().and_then(Path::parent).expect("target/<profile>/deps");
+    let path = profile.join("examples").join(libloading::library_filename(name));
+    assert!(path.is_file(), "no {} — `cargo test` builds it, `--lib` alone does not", path.display());
+    c_path(&path)
+}
+
+/// A C build of a plugin the engine's build made beside the engine
+/// (CMakeLists.txt), the key its Rust build is held to.
+fn c_built(name: &str) -> CString {
+    c_path(&oracle::beside(name))
 }
 
 /// What an error room holds, up to its NUL.
@@ -84,12 +106,11 @@ struct Opened {
 }
 
 impl Opened {
-    fn new(host: Host, name: &str) -> Self {
-        let path = built(name);
+    fn new(host: Host, path: &CStr) -> Self {
         let mut error = [0 as c_char; 256];
         // SAFETY: a path and an error room of the size said.
         let handle = unsafe { (host.open_native)(path.as_ptr(), error.as_mut_ptr(), 256) };
-        assert!(!handle.is_null(), "{}: {name} would not open: {}", host.name, said(&error));
+        assert!(!handle.is_null(), "{}: {path:?} would not open: {}", host.name, said(&error));
         Self { host, handle }
     }
 
@@ -157,7 +178,7 @@ fn map() -> Vec<u8> {
     map
 }
 
-/// What the sample's render gives (qa_fx_plugin_sample.c), worked out here
+/// What the sample's render gives (examples/invert.rs), worked out here
 /// on its own: inverted where Amount is at least 50 and the map, read at the
 /// same canvas place, has alpha over 127 — everywhere, with no map — and
 /// the output's padding untouched.
@@ -299,16 +320,21 @@ fn ask(plugin: &Opened) -> String {
     description
 }
 
-/// The sample asked every question of the C test, on each host.
+/// The sample asked every question of the C test, on each host — and its C
+/// build on the C host, the key it is held to.
 #[test]
 fn the_sample_answers_as_the_c_host_does_and_as_worked_out_here() {
-    let descriptions = hosts().map(|host| {
-        let plugin = Opened::new(host, "qa_fx_plugin_sample");
+    let rust = sample("qa_fx_plugin_sample");
+    let c_build = c_built("qa_fx_plugin_sample");
+    let asked = [(c(), &c_build), (c(), &rust), (RUST, &rust)];
+    let descriptions = asked.map(|(host, path)| {
+        let plugin = Opened::new(host, path);
         // SAFETY: an open plugin.
         assert_eq!(unsafe { (host.interprets)(plugin.handle) }, 0, "{}: compiled", host.name);
         ask(&plugin)
     });
     assert_eq!(descriptions[0], descriptions[1]);
+    assert_eq!(descriptions[1], descriptions[2]);
 }
 
 /// A picture of `width` × `height` with 4 bytes of padding a row, hashed
@@ -328,9 +354,13 @@ fn hashed(width: usize, height: usize) -> Vec<u8> {
         .collect()
 }
 
-/// The SDK's example (sdk/fx/example/shadow.c) — the plugin a maker starts
-/// from — asked its description, and its reach and render across offsets,
-/// colours and scales: the C host's answers, byte for byte.
+/// The SDK's example (sdk/fx/example) — the plugin a maker starts from —
+/// asked its description, and its reach and render across offsets, colours
+/// and scales, on each host: the answers of its C build on the C host, the
+/// key it is held to, byte for byte.
+/// ⏳That key goes with the C at the connection round; the example then
+/// needs answers worked out here, as the Dart pin has them
+/// (an_fx_plugin_answers_through_the_engine's `shadowed`).
 #[test]
 fn the_sdk_example_answers_as_the_c_host_does() {
     let (width, height) = (13, 9);
@@ -341,8 +371,11 @@ fn the_sdk_example_answers_as_the_c_host_does() {
         ([7.5, -2.5], [0.2, 0.9, 0.4, 0.5], 0.5),
         ([0.0, 0.0], [1.0, 1.0, 1.0, 0.0], 2.0),
     ];
-    let answers = hosts().map(|host| {
-        let plugin = Opened::new(host, "qa_fx_sdk_example");
+    let rust = sample("qa_fx_sdk_example");
+    let c_build = c_built("qa_fx_sdk_example");
+    let asked = [(c(), &c_build, "C on C"), (c(), &rust, "Rust on C"), (RUST, &rust, "Rust")];
+    let answers = asked.map(|(host, path, who)| {
+        let plugin = Opened::new(host, path);
         let mut room = [0 as c_char; 1024];
         let length = plugin.describe(&mut room);
         let mut answers = said(&room).into_bytes();
@@ -362,28 +395,31 @@ fn the_sdk_example_answers_as_the_c_host_does() {
             };
             job.output_stride = (width * 4 + 8) as i32;
             job.scale = scale;
-            assert_eq!(plugin.render(&job), OK, "{}: offset ({x}, {y})", host.name);
-            assert!(out.iter().any(|&byte| byte != 0xEE), "LIVENESS — {}: written", host.name);
+            assert_eq!(plugin.render(&job), OK, "{who}: offset ({x}, {y})");
+            assert!(out.iter().any(|&byte| byte != 0xEE), "LIVENESS — {who}: written");
             answers.extend(out);
         }
-        answers
+        (who, answers)
     });
-    let [c, rust] = &answers;
-    assert_eq!(c.len(), rust.len());
-    if let Some(at) = (0..c.len()).find(|&at| c[at] != rust[at]) {
-        panic!("the hosts part at byte {at} of {}", c.len());
+    let (_, key) = &answers[0];
+    for (who, answer) in &answers[1..] {
+        assert_eq!(key.len(), answer.len(), "{who}");
+        if let Some(at) = (0..key.len()).find(|&at| key[at] != answer[at]) {
+            panic!("{who} parts from the C at byte {at} of {}", key.len());
+        }
     }
 }
 
 /// A job with no values and no layers, their pointers null, is taken as the
-/// C host takes it. The sample reads two values anyway, from where the
-/// frame says they lie — with none there, the input's first pixels, which
-/// both hosts lay in the same place — so its answer is the same on both.
+/// C host takes it. The sample reads its first value anyway; with none
+/// there its slice is not read past — it panics, and the spec crate answers
+/// that as the plugin's failure, on both hosts alike, the output untouched.
 #[test]
 fn a_job_with_no_values_and_no_layers_is_taken_as_the_c_host_takes_it() {
     let input = input();
+    let path = sample("qa_fx_plugin_sample");
     let answers = hosts().map(|host| {
-        let plugin = Opened::new(host, "qa_fx_plugin_sample");
+        let plugin = Opened::new(host, &path);
         let mut out = vec![0xEE; IN_H * OUT_STRIDE];
         let job = RenderJob {
             values: std::ptr::null(),
@@ -394,7 +430,7 @@ fn a_job_with_no_values_and_no_layers_is_taken_as_the_c_host_takes_it() {
         };
         (plugin.render(&job), out)
     });
-    assert_ne!(answers[0].0, BAD_JOB, "LIVENESS — the C host takes it");
+    assert_eq!(answers[0].0, FAILED, "the C host takes it, and the plugin fails");
     assert_eq!(answers[0], answers[1]);
 }
 
@@ -435,10 +471,10 @@ static COUNTING: Counting = Counting;
 /// A plugin opened, asked and closed leaves the heap as it found it.
 #[test]
 fn a_closed_plugin_gives_back_what_the_host_took() {
-    built("qa_fx_plugin_sample");
+    let path = sample("qa_fx_plugin_sample");
     let before = held();
     {
-        let plugin = Opened::new(RUST, "qa_fx_plugin_sample");
+        let plugin = Opened::new(RUST, &path);
         assert_eq!(render(&plugin, 80.0, true).0, OK);
         assert!(held() > before, "LIVENESS — the host holds its plugin and room");
     }
@@ -453,8 +489,8 @@ fn the_host_refuses_what_the_c_host_refuses_in_its_words() {
     let paths = [
         None,
         Some(CString::new("no/such/plugin.dll").expect("a path")),
-        Some(built("qa_fx_plugin_sample_spec2")),
-        Some(built("qa_fx_plugin_sample_no_render")),
+        Some(sample("qa_fx_plugin_sample_spec2")),
+        Some(sample("qa_fx_plugin_sample_no_render")),
     ];
     for path in &paths {
         let path = path.as_ref().map_or(std::ptr::null(), |path| path.as_ptr());
@@ -498,9 +534,10 @@ fn what_the_host_cannot_take_is_refused_before_the_plugin_sees_it() {
         top: 0,
     };
     let bigs = vec![big_layer; 1100];
+    let path = sample("qa_fx_plugin_sample");
     let no_width = Picture { width: 0, ..map_layer(&map) };
     for host in hosts() {
-        let plugin = Opened::new(host, "qa_fx_plugin_sample");
+        let plugin = Opened::new(host, &path);
         let mut out = vec![0xEE; IN_H * OUT_STRIDE];
         let good = job(&input, &mut out, &values, &[]);
         let cases: [(&str, fn(&mut RenderJob)); 10] = [

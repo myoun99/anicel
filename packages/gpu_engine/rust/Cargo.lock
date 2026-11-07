@@ -55,6 +55,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "anicel-fx"
+version = "1.0.0"
+
+[[package]]
 name = "anyhow"
 version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -773,6 +777,7 @@ dependencies = [
 name = "fx_plugin"
 version = "0.0.1"
 dependencies = [
+ "anicel-fx",
  "libloading",
  "oracle",
  "wasmtime",

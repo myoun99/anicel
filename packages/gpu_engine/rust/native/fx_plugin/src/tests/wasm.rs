@@ -1,7 +1,7 @@
 //! The host's WebAssembly side held to the C host's on the C test's modules
-//! (qa_fx_plugin_test.c): the sample's twin, written from its C line for
-//! line, and the modules a host must start, clear, keep in their memory and
-//! refuse — on the C host, on this one, and on this one interpreting as an
+//! (qa_fx_plugin_test.c): the sample's twin, written from the C sample
+//! line for line, and the modules a host must start, clear, keep in their
+//! memory and refuse — on the C host, on this one, and on this one interpreting as an
 //! iPad's does, on every machine (the C test's second build,
 //! qa_fx_plugin_interpreted_test).
 
@@ -61,7 +61,8 @@ fn module(before: &str, [spec, alloc, describe, reach, render]: [&str; 5]) -> St
 const QUIET: [&str; 5] =
     ["i32.const 1", "i32.const 1024", "i32.const 0", "i32.const 0", "i32.const 0"];
 
-/// The sample's C as WebAssembly text, one line of the C per few here:
+/// The C sample as WebAssembly text, one line of the C per few here (the
+/// Rust one, examples/invert.rs, answers as it does where values are given):
 /// DESCRIPTION is its description, escaped, and LENGTH its length. At most
 /// two pages: a host that took new room for each render would run out of it
 /// long before the 400 renders asked of it. Far below zero it traps, as a
@@ -180,7 +181,7 @@ const TWIN: &str = r#"(module
 
 /// The sample's description, and its twin's text carrying it.
 fn twin() -> (String, String) {
-    let sample = Opened::new(RUST, "qa_fx_plugin_sample");
+    let sample = Opened::new(RUST, &super::sample("qa_fx_plugin_sample"));
     let mut room = [0 as c_char; 512];
     sample.describe(&mut room);
     let description = said(&room);

@@ -3,8 +3,14 @@ name = "fx_plugin"
 version = "0.0.1"
 edition = "2024"
 publish = false
+# The examples are the plugins the tests open, listed below; invert.rs is
+# one they share, not one of them.
+autoexamples = false
 
 [dependencies]
+# The spec: the frame's types and places and the names a plugin exports —
+# the crate the SDK hands a maker, so the host and every plugin read one.
+anicel-fx = { path = "../../../../../sdk/fx/anicel-fx" }
 libloading = "0.8"
 wasmtime = { version = "=48.0.8", default-features = false, features = [
   "runtime",
@@ -17,3 +23,23 @@ wasmtime-wasi = { version = "=48.0.8", default-features = false, features = ["p1
 [dev-dependencies]
 oracle = { path = "../oracle" }
 wat = "=1.254.2"
+
+# The plugins the tests open (src/tests.rs), each built against the spec
+# crate as a maker builds one: `cargo test` makes them before it runs a
+# test — `--lib` alone does not. The sample, two builds of it a host must
+# refuse, and the SDK's example from its own source.
+[[example]]
+name = "qa_fx_plugin_sample"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "qa_fx_plugin_sample_spec2"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "qa_fx_plugin_sample_no_render"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "qa_fx_sdk_example"
+crate-type = ["cdylib"]
