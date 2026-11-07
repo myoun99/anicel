@@ -45,6 +45,13 @@ void main() {
     },
   );
 
+  /// [count] tiles of nothing, objects of their own: a page's worth fills
+  /// it, as a cel's tiles share one till none has room.
+  List<BitmapTile> blanks(int count) => [
+    for (var tile = 0; tile < count; tile++)
+      BitmapTile.blank(size: gpuTileSide),
+  ];
+
   /// What a row of [slots] lays back copied over nothing: their bytes, as
   /// [tileOf]'s are opaque.
   Uint8List laidBack(EngineTileLedger ledger, List<GpuTile> slots) {
@@ -123,13 +130,16 @@ void main() {
     final page = ledger.pool.bytes;
     expect(ledger.slotOf(one), isNotNull, reason: 'a call is never refused');
     expect(page, greaterThan(0));
+    final rest = blanks(page ~/ gpuTileBytes - 1);
+    ledger.held((hold) => hold.slotsOf(a, rest));
+    expect(ledger.pool.bytes, page, reason: 'the page has room for them');
 
     ledger.held((hold) => hold.slotsOf(b, [two]));
     expect(ledger.slotOf(one), isNull, reason: 'no hold has it');
     expect(ledger.pool.bytes, page, reason: "its page is the next cel's");
 
     ledger.held((hold) {
-      final [kept] = hold.slotsOf(a, [one]);
+      final kept = hold.slotsOf(a, [one, ...rest]).first;
       final [past] = hold.slotsOf(b, [three]);
 
       expect(ledger.slotOf(one), kept, reason: 'this hold has it');
@@ -140,7 +150,7 @@ void main() {
     });
     expect(ledger.slotOf(two), isNull);
     expect(ledger.pool.bytes, 2 * page);
-    expect(ledger.slotCount, 2);
+    expect(ledger.slotCount, rest.length + 2);
   });
 
   test('a hold is asked inside the call it was handed to', () {
@@ -158,16 +168,21 @@ void main() {
     final two = tileOf(9);
 
     ledger.held((hold) => hold.slotsOf(a, [one]));
+    final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    final rest = blanks(slots - 1);
+    ledger.held((hold) => hold.slotsOf(a, rest));
     ledger.held((hold) => hold.slotsOf(b, [two]));
     final made = ledger.pool.bytes;
-    expect(ledger.slotOf(one), isNotNull, reason: 'no budget but the OS');
+    expect(made, 2 * slots * gpuTileBytes, reason: 'no budget but the OS');
+    expect(ledger.slotOf(one), isNotNull);
 
     ledger.byteBudget = 0;
-    ledger.held((hold) => hold.slotsOf(c, [tileOf(10)]));
+    ledger.held((hold) => hold.slotsOf(c, blanks(slots)));
 
     expect(ledger.byteBudget, 0);
     expect(ledger.slotOf(one), isNull);
     expect(ledger.slotOf(two), isNull);
+    expect(rest.map(ledger.slotOf), everyElement(isNull));
     expect(ledger.pool.bytes, made);
   });
 

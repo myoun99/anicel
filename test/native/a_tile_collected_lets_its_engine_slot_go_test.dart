@@ -41,9 +41,14 @@ void main() {
     final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
     BitmapTile? gone = aTile();
     ledger.held((hold) => hold.slotsOf(a, [gone!]));
+    // The rest of its page, so the next cel finds the pool full.
+    final slots = ledger.pool.bytes ~/ gpuTileBytes;
+    final rest = [for (var n = 1; n < slots; n++) aTile()];
+    ledger.held((hold) => hold.slotsOf(a, rest));
     final kept = aTile();
     final [slot] = ledger.held((hold) => hold.slotsOf(b, [kept]));
     expect(ledger.slotOf(kept), slot);
+    expect(rest.map(ledger.slotOf), everyElement(isNull));
     expect(ledger.slotCount, 1);
 
     gone = null;
