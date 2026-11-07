@@ -852,6 +852,21 @@ void main() {
           ],
           clear,
         ),
+        'an adjustment through a lens reading a map at part mix': (
+          [
+            CompositeReadsRows(
+              node: CompositeAdjustment(
+                children: [row(1), row(2, opacity: 0.6)],
+                effects: [lens(reads: {})],
+                mix: 0.4,
+              ),
+              rows: {
+                depth: [row(5)],
+              },
+            ),
+          ],
+          clear,
+        ),
       };
 
   for (final MapEntry(key: name, value: (nodes, ground)) in chained.entries) {

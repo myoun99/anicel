@@ -383,11 +383,10 @@ class _TreePlan {
           chain,
           gather,
           picture,
-          drawn: switch (effectReadsRow(effect)) {
+          drawn: switch (reads[effectReadsRow(effect)]) {
             null => null,
-            final row => reads[row],
+            final nodes => (nodes: nodes, space: space),
           },
-          space: space,
         ),
       ],
       final passes => [
@@ -429,15 +428,13 @@ class _TreePlan {
   /// on [chain] over [picture], the paper it repeats past it cut to the
   /// picture, as its shader cuts it (iris_blur_shader.dart): where none of
   /// the paper is there, the cut leaves nothing. Its blur map is the row
-  /// [drawn] draw, in [space]; where none draw it, the row it names is
-  /// none of the cut's, and it blurs at its whole radius
-  /// ([IrisGatherPass.unmapped]).
+  /// [drawn] draw; where none draw it, the row it names is none of the
+  /// cut's, and it blurs at its whole radius ([IrisGatherPass.unmapped]).
   void _lens(
     int chain,
     IrisGatherPass gather,
     (int, int, int, int) picture, {
-    required List<CompositeNode<EngineRow>>? drawn,
-    required LayerPlacement? space,
+    required _Drawn? drawn,
   }) {
     final (left, top, right, bottom) = picture;
     final cut = switch (gather.paper) {
@@ -457,7 +454,7 @@ class _TreePlan {
         ? gather.unmapped
         : gather;
     final read = switch ((map, drawn)) {
-      (final map?, final drawn?) => _mapDrawn(drawn, map, space: space),
+      (final map?, final drawn?) => _mapDrawn(drawn, map),
       _ => null,
     };
     final (:rotation, :halfSide, :side) = irisTurnsOf(
@@ -484,18 +481,15 @@ class _TreePlan {
   }
 
   /// The blur map [map] reads of the row [drawn] draw: drawn alone, as it
-  /// shows by itself, in [space] — the steps laid for it taken from the
-  /// plan as the map's (`GpuPlan.mapDrawn`).
-  int _mapDrawn(
-    List<CompositeNode<EngineRow>> drawn,
-    IrisMap map, {
-    required LayerPlacement? space,
-  }) {
+  /// shows by itself, in their space — the steps laid for it taken from
+  /// the plan as the map's (`GpuPlan.mapDrawn`).
+  int _mapDrawn(_Drawn drawn, IrisMap map) {
+    final (:nodes, :space) = drawn;
     final first = plan.steps;
     final outer = _space;
     _space = space;
     try {
-      _lay(drawn);
+      _lay(nodes);
     } finally {
       _space = outer;
     }
@@ -544,6 +538,13 @@ class _TreePlan {
 /// Row id → the nodes that draw the row, as a node whose chain reads rows
 /// holds them ([CompositeReadsRows.rows]).
 typedef _Reads = Map<LayerId, List<CompositeNode<EngineRow>>>;
+
+/// The nodes that draw a row a chain reads, and the space the chain runs
+/// in, where they are drawn.
+typedef _Drawn = ({
+  List<CompositeNode<EngineRow>> nodes,
+  LayerPlacement? space,
+});
 
 /// [channel] by the engine's id.
 GpuMapChannel _channelOf(IrisMapChannel channel) => switch (channel) {
