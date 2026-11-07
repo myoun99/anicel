@@ -1118,6 +1118,41 @@ void main() {
         s.rangeMove.cancelFrameRangeMoveDrag();
       });
 
+      // A band kept across an edit stands for its rows as they are now: let
+      // go of its base, the mirror stands where it stood as it did, and the
+      // band is the one it was — so it must not read the mirror as before.
+      test('a mirror let go of its base stays where it stands while the base '
+          'is carried', () {
+        final s = _session([
+          _row('a', const {0: 4}, inside: 'F'),
+          _folderRow('F'),
+        ]);
+        s.selectLayer(const LayerId('a'));
+        s.folders.addAttachedLayer(AttachedPlacement.below);
+        final mirror = s.activeLayer!.id;
+        final band = _band(s);
+
+        s.folders.detachActiveLayer();
+
+        final let = _layer(s, mirror.value);
+        expect(
+          [isSyncedAttachedLayer(let), let.folderId, _blocks(let)],
+          [false, _folder, {0: 4}],
+          reason: '⛔전제: let go, in F, standing where it stood',
+        );
+        expect(identical(_band(s), band), isTrue, reason: '⛔전제: kept');
+        _selectFolderBlockAt(s, 1, const LayerId('a'));
+        s.rangeMove.beginFrameRangeMoveDrag(const LayerId('a'));
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        expect(
+          _blocks(timelineRowPreviewLayer(s.dragPreview.value, _band(s))!),
+          {0: 4, 6: 4},
+          reason: 'read as the mirror it was, it went with its old base',
+        );
+        s.rangeMove.cancelFrameRangeMoveDrag();
+      });
+
       test('an organizer holding the mirrors of a row outside it follows that '
           'row\'s drag', () {
         final s = _session([_row('a', const {0: 4})]);
