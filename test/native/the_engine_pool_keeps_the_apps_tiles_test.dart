@@ -4,6 +4,8 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
+import 'package:anicel/src/models/bitmap_surface.dart'
+    show defaultCelTileSize;
 import 'package:anicel/src/native/app_gpu_engine.dart';
 
 /// The app stores its tiles in the engine's pool through the package's
@@ -30,6 +32,16 @@ void main() {
     tiles.addAll(made);
     return made;
   }
+
+  test('the app opens one engine, however often it asks', () {
+    expect(identical(appGpuEngine, appGpuEngine), isTrue);
+  });
+
+  // The store reads a tile's bytes at each pointer: an engine tile of other
+  // bytes than the app's cel tile reads past each or leaves its end unread.
+  test("the engine's tile is the app's cel tile", () {
+    expect(gpuTileSide, defaultCelTileSize);
+  });
 
   test('each tile stored lands in a slot of its own, a cel to its pages', () {
     final a = pool.cel();

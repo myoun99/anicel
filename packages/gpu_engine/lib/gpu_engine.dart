@@ -216,6 +216,8 @@ class GpuPool {
   /// [cel], each in a fresh slot, and returns where each landed, in order:
   /// all of them, or the first few where the pool is full at the next.
   List<GpuTile> store(int cel, List<Pointer<Uint8>> tiles) {
+    // Not into the arena: a calloc of nothing may answer null (POSIX), which
+    // ffi's allocator throws on.
     if (tiles.isEmpty) {
       return const [];
     }
