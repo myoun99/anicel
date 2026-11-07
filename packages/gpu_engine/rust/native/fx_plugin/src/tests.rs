@@ -96,7 +96,8 @@ fn sample(name: &str) -> CString {
         Some((_, sources)) => sources.split_whitespace().map(Path::new).collect(),
         None => refused(&path, "no sources listed"),
     };
-    let own = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join(format!("{name}.rs"));
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let own = Path::new(&crate_dir).join("examples").join(format!("{name}.rs"));
     let own = own.canonicalize().expect("the example's source");
     let same = |source: &Path| source.canonicalize().is_ok_and(|source| source == own);
     if !sources.iter().any(|source| same(source)) {
