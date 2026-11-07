@@ -29,6 +29,15 @@ if [ "$LANE" = "$TRUNK" ]; then
   exit 2
 fi
 LIB=packages/gpu_engine/rust/src/lib.rs
+# The two engines alike but for the mark: a file one holds and the other
+# not makes cargo build again whatever it was handed (the first run of
+# this test, a lane behind master — 2026-11-08).
+ENGINE=packages/gpu_engine/rust
+if ! git -C "$LANE" diff --quiet "$(git -C "$TRUNK" rev-parse HEAD)" -- "$ENGINE" \
+  || ! git -C "$TRUNK" diff --quiet HEAD -- "$ENGINE"; then
+  echo "engine_hook_checkout_test: the lane's $ENGINE is not the trunk's — rebase the lane on master first" >&2
+  exit 2
+fi
 MARK="probe-$(date +%s)-lane"
 CHANNEL="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$LANE/packages/gpu_engine/rust/rust-toolchain.toml")"
 HOST="$(RUSTUP_TOOLCHAIN="$CHANNEL" rustc -vV | sed -n 's/^host: //p')"
