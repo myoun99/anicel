@@ -35,8 +35,8 @@ import '../helpers/native_engine_path.dart';
 void main() {
   QaFxPlugin openSample() {
     final host = QaFxPluginHost.instance;
-    expect(host, isNotNull, reason: "the engine's plugin structs are laid "
-        'out otherwise');
+    expect(host, isNotNull, reason: "the host's structs ($_host/src/job.rs) "
+        "are laid out otherwise than the app's");
     final twin = File('test/fixtures/fx/sample_twin.wasm').readAsBytesSync();
     final opened = host!.openWasm(twin);
     expect(opened.error, isNull);
@@ -283,6 +283,11 @@ void main() {
     }, skip: skipExample);
   });
 }
+
+/// The host these hold to the app's structs — named as a path, so a lane
+/// that changed only the host runs this file (`affected_tests` picks a test
+/// by the paths it writes out, 보드/인프라 2026-11-08 05:35).
+const _host = 'packages/gpu_engine/rust/native/fx_plugin';
 
 /// The SDK example's native build: where `QA_FX_SDK_EXAMPLE` names it, else
 /// where this checkout's build of it lands ([_buildExample]) — as the gate
