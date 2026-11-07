@@ -97,7 +97,8 @@ class TimelineFrameAxisFollower {
   /// fewer than the viewport needs to read as one continuous sheet. The
   /// scrollbar and the scroll physics clamp here, and only a move that
   /// overshoots — a ruler's edge-drag, a walk or a page past the end —
-  /// grows it, with a screen of runway ahead while it goes on ([_cutAt]).
+  /// grows it, with a screen of runway ahead while a hand holds the strip
+  /// that drags it ([_cutAt]).
   ///
   /// 🚨ONE law for the rail, the sheet and the storyboard: each spelled it
   /// beside its follower, and a run's next page asks it again for where
@@ -299,22 +300,47 @@ class TimelineFrameAxisFollower {
   /// move back.
   double _stoodAt = 0;
 
+  /// Whether a hand holds a strip that drags the axis ([hold]), until it
+  /// lets go ([letGo]).
+  bool _held = false;
+
+  /// A hand drags the axis by its strip — the timeline's ruler, the
+  /// x-sheet's rail, the storyboard's ruler — and holds it until [letGo]: a
+  /// view it pushes past the built end grows a screen of runway ahead
+  /// ([_cutAt]).
+  void hold() => _held = true;
+
+  /// The hand let go of the strip ([hold]): no runway is grown past the end
+  /// any more, and the axis comes to rest ([_settle]).
+  void letGo() {
+    _held = false;
+    _settle();
+  }
+
   /// The bucket and the endless room the axis takes standing at [offset]:
   /// what [_standAt] writes, and what [nextPage] reads before a turn.
   ///
-  /// 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q4, c — a
-  /// screen of room at a time while it goes past the end, shrunk back as
-  /// ever once it comes to rest): a view standing past the built end, where
-  /// only a move that overshoots puts it, grows a screen of runway ahead
-  /// ([endlessTrailingFrames]); and a move on never shrinks it, or the next
-  /// pointer move would take back what this one built and every move would
-  /// build the axis again. Moving back, or come to rest ([settle]), the room
-  /// shrinks as it always did.
+  /// 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q5, a:
+  /// 「끌 때만 한 화면씩 — 구간 폭 일 다음에 같이 재서 착지」): a view a
+  /// held strip pushes past the built end ([hold]) grows a screen of runway
+  /// ahead ([endlessTrailingFrames]); and a move on never shrinks it, or the
+  /// next pointer move would take back what this one built and every move
+  /// would build the axis again. Moving back, or come to rest ([_settle]), the
+  /// room shrinks as it always did. 🔬The drag past the end built the axis
+  /// at every pointer move — 90 builds for 90 moves, 8 with the runway; the
+  /// frame's build 5.6 → 4.3 ms on the timeline, 8.0 → 5.4 on the x-sheet,
+  /// 6.4 → 2.4 on the storyboard (main PC at a ratio of 1.5, 11-07).
+  /// ↩️A walk or a page past the end grew one too (Q4), and a short cut
+  /// played on a loop built the axis 9 times in 5 s instead of once: the
+  /// page past the end built a screen ahead, and the wrap to the start
+  /// shrank it back.
   ({int bucket, int trailing}) _cutAt(double offset) {
     final position = controller.position;
     final viewport = position.viewportDimension;
-    final past =
-        position.hasContentDimensions && offset > position.maxScrollExtent;
+    final pushedPast =
+        _held &&
+        position.hasContentDimensions &&
+        offset > position.maxScrollExtent;
     return (
       bucket: timelineFrameWindowBucketOf(
         offset: offset,
@@ -326,7 +352,7 @@ class TimelineFrameAxisFollower {
         scrollOffset: offset,
         viewportExtent: viewport,
         frameCellExtent: cellExtent(),
-        runwayFrames: past
+        runwayFrames: pushedPast
             ? endlessViewportFillFrames(
                 viewportExtent: viewport,
                 frameCellExtent: cellExtent(),
@@ -364,14 +390,14 @@ class TimelineFrameAxisFollower {
     if (identical(position, _watchedPosition)) {
       return;
     }
-    _watchedPosition?.isScrollingNotifier.removeListener(settle);
+    _watchedPosition?.isScrollingNotifier.removeListener(_settle);
     _watchedPosition = position;
-    position.isScrollingNotifier.addListener(settle);
+    position.isScrollingNotifier.addListener(_settle);
   }
 
-  /// The axis come to rest — its scroll settled, or a scrub that carried it
-  /// past the end let go ([TimelineFrameScrub.endScrub]): the trailing room
-  /// shrinks as far as the view lets it, a runway left ahead with it.
+  /// The axis come to rest — its scroll settled, or the strip that dragged
+  /// it let go ([letGo]): the trailing room shrinks as far as the view lets
+  /// it, a runway left ahead with it.
   ///
   /// 🚨A scroll that stops while the frame lays out has not come to rest: a
   /// move past the built end leaves the position out of its range, its
@@ -382,7 +408,7 @@ class TimelineFrameAxisFollower {
   /// twice — and the rebuild was asked from the middle of a layout. 🧪The
   /// three strips' drag past the end (11-07,
   /// `a_drag_past_the_end_builds_a_screen_at_a_time_test.dart`).
-  void settle() {
+  void _settle() {
     final position = _watchedPosition;
     if (position == null ||
         position.isScrollingNotifier.value ||
@@ -407,7 +433,7 @@ class TimelineFrameAxisFollower {
   /// controller itself.
   void dispose() {
     frameAxisOffset.removeListener(_followTheAxis);
-    _watchedPosition?.isScrollingNotifier.removeListener(settle);
+    _watchedPosition?.isScrollingNotifier.removeListener(_settle);
     _watchedPosition = null;
   }
 }

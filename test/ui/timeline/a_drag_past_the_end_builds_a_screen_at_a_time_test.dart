@@ -29,11 +29,12 @@ import '../../helpers/scrollable_of.dart';
 import '../../helpers/storyboard_host.dart';
 import '../../helpers/timeline_zoom.dart';
 
-/// 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q4, c): a
+/// 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q5, a): a
 /// drag on the frame strip held past the far end builds the room past it a
-/// screen at a time, and lets it go when the hand does. ↩️It built the
-/// cells the view had just reached, a cell or two a pointer move, and each
-/// build laid every row out again — 30~55 ms a frame (main PC, 11-07).
+/// screen at a time, and lets it go when the hand does — the drag alone; a
+/// walk past the end builds what it reaches (`a_flip_reaches_past_the_end`).
+/// ↩️It built the cells the view had just reached, a cell or two a pointer
+/// move, and each build laid every row out again.
 ///
 /// Every panel that runs a frame axis, through its own strip and a real
 /// pointer: the timeline's ruler, the x-sheet's rail, the storyboard's

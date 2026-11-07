@@ -113,14 +113,14 @@ String? timelineRunLengthLabel(
 /// (thumb-rescale hysteresis).
 ///
 /// A growth builds [runwayFrames] more past the view's end: the room the
-/// follower lays ahead of a view going past the built end (Q4 below).
+/// follower lays ahead of a view a held strip drags past the built end (Q5
+/// below).
 ///
-/// 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q4, c:
-/// 「위 안을 먼저 하고, 아래 안은 되는지 잰 뒤 따로 한다」 — the first being
-/// 「끝 너머로 끄는 동안 빈 칸을 한 칸씩이 아니라 한 화면 폭만큼 한 번에
-/// 늘린다. 손을 떼고 스크롤이 멈추면 지금처럼 다시 줄어든다」). Every growth
-/// rebuilds the panel and lays every row out again — 30~55 ms a frame
-/// (main PC, 11-07) — and a view dragged past the end grew a cell or two a
+/// 🗣️유저 2026-11-07 (card a-live-dock-frame-costs-a-whole-draw-Q5, a:
+/// 「끌 때만 한 화면씩 — 구간 폭 일 다음에 같이 재서 착지」 — 「룰러 · 레일을
+/// 끝 너머로 끄는 동안만 한 화면씩 늘리고 손을 떼면 줄인다. 재생 · 화살표
+/// 걷기는 지금처럼 필요한 만큼만」). Every growth rebuilds the panel and lays
+/// every row out again, and a view dragged past the end grew a cell or two a
 /// pointer move. The shrink is left as it was.
 ///
 /// Call from the frame-axis scroll listener and add the result to the

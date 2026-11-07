@@ -16,15 +16,19 @@ class _StoryboardScroll {
   /// scrub past the viewport edge pans the strip — rightward it
   /// deliberately OVERSHOOTS the built extent, and the growth listener
   /// materializes the frames the overshot view needs. The scrollbar and
-  /// scroll physics stay clamped at the built cells.
-  void autoPanRulerEdge(double delta) =>
-      edgeAutoPanOvershoot(_state._horizontalController, delta);
+  /// scroll physics stay clamped at the built cells. The ruler holds the
+  /// axis while it drags it ([TimelineFrameAxisFollower.hold]), as the
+  /// timeline's grids' strips do ([TimelineFrameScrub.dragTo]).
+  void autoPanRulerEdge(double delta) {
+    _state._frameAxis.hold();
+    edgeAutoPanOvershoot(_state._horizontalController, delta);
+  }
 
   /// The ruler scrub let go: the axis comes to rest, its runway past the
   /// end shrunk as the timeline's grids shrink theirs
   /// ([TimelineFrameScrub.endScrub]), and the host commits the scrub.
   void endRulerScrub() {
-    _state._frameAxis.settle();
+    _state._frameAxis.letGo();
     _state.widget.onScrubEnd?.call();
   }
 }
