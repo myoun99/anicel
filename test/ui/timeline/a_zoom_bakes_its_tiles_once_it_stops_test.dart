@@ -15,7 +15,9 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/painted_glyph_boxes.dart';
 import '../../helpers/poll_until.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🗣️A zoom's tiles are rastered once it stops (유저 2026-10-30,
@@ -462,4 +464,152 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 2200));
     expect(landings, 2, reason: 'stopped 3s after the step, not the repaint');
   });
+
+  // 🚨Through the row's own cut: a span is 512 px of cells
+  // ([timelineFrameWindowMinSpanPx]), so a step under narrow cells cuts the
+  // row into other spans than its tiles hold (검증/서피스 11-08 02:04: on
+  // S5's cut 352 the steps went crisp at once, the old picture unseen).
+  test('🚨a zoom that cuts the row into other spans shows its old tiles, '
+      'scaled over the frames they hold, and rasters nothing until it '
+      'stops', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    expect(
+      at(20).tileSpans.shown,
+      isNot(at(24).tileSpans.shown),
+      reason: '⛔전제: the step cuts the row into other spans',
+    );
+    at(24).paint(_TileDraws(), const Size(40 * 24, 28));
+    await tileStoreIdle(store);
+    final baked = _TileDraws();
+    at(24).paint(baked, const Size(40 * 24, 28));
+    expect(
+      baked.drawn,
+      hasLength(at(24).tileSpans.shown.length),
+      reason: '⛔전제: every span is tiled',
+    );
+    final rastered = landings;
+
+    final step = _TileDraws();
+    at(20).paint(step, const Size(40 * 20, 28));
+    expect(
+      step.drawn.map((draw) => draw.image).toSet(),
+      baked.drawn.map((draw) => draw.image).toSet(),
+      reason: 'the old tiles, scaled',
+    );
+    expect(
+      step.along(),
+      [0.0, 40 * 20.0],
+      reason: 'over every frame the row shows, edge to edge',
+    );
+    // By hand: kept 0–22 (528 px) and 22–40 (432 px) at 24 px, asked 0–26
+    // and 26–40 at 20 px — the second tile's frames 22–26 under the first
+    // span, 26–40 under the second.
+    expect(
+      [
+        for (final draw in step.drawn)
+          (width: draw.image.width, src: draw.src, dst: draw.dst),
+      ],
+      [
+        (
+          width: 528,
+          src: const Rect.fromLTRB(0, 0, 528, 28),
+          dst: const Rect.fromLTRB(0, 0, 440, 28),
+        ),
+        (
+          width: 432,
+          src: const Rect.fromLTRB(0, 0, 96, 28),
+          dst: const Rect.fromLTRB(440, 0, 520, 28),
+        ),
+        (
+          width: 432,
+          src: const Rect.fromLTRB(96, 0, 432, 28),
+          dst: const Rect.fromLTRB(520, 0, 800, 28),
+        ),
+      ],
+      reason: 'each frame of a tile over the same frame of the row',
+    );
+    await aWhile();
+    expect(landings, rastered, reason: 'nothing rastered at a step\'s extent');
+
+    expect(await pollUntil(() => landings > rastered), isTrue);
+    await tileStoreIdle(store);
+    final stopped = _TileDraws();
+    at(20).paint(stopped, const Size(40 * 20, 28));
+    expect(
+      stopped.drawn.map((draw) => draw.image).toSet().intersection(
+        baked.drawn.map((draw) => draw.image).toSet(),
+      ),
+      isEmpty,
+      reason: 'rastered at the extent the zoom stopped at',
+    );
+    expect(
+      landings - rastered,
+      at(20).tileSpans.shown.length,
+      reason: 'each of its spans once',
+    );
+  });
+
+  // Kept one at a time, the row's other tile lands and the one shown before
+  // it is let go.
+  test('a tile the store let go stands in for nothing', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    store.debugCapacity = 1;
+    addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
+    at(24).paint(_TileDraws(), const Size(40 * 24, 28));
+    await tileStoreIdle(store);
+    final shown = _TileDraws();
+    at(24).paint(shown, const Size(40 * 24, 28));
+    await tileStoreIdle(store);
+    expect(
+      shown.drawn.single.image.debugDisposed,
+      isTrue,
+      reason: '⛔전제: the tile shown was let go when the other landed',
+    );
+
+    final step = _TileDraws();
+    at(20).paint(step, const Size(40 * 20, 28));
+    expect(
+      [
+        for (final draw in step.drawn)
+          if (draw.image.debugDisposed) draw.dst,
+      ],
+      isEmpty,
+      reason: 'no let-go tile is laid',
+    );
+  });
+}
+
+/// The tiles a paint lays: each image, the part of it laid and where.
+class _TileDraws extends PaintedGlyphBoxes {
+  final drawn = <({ui.Image image, Rect src, Rect dst})>[];
+
+  @override
+  void drawImageRect(ui.Image image, Rect src, Rect dst, Paint paint) =>
+      drawn.add((image: image, src: src, dst: dst));
+
+  /// Where the drawn tiles start and end along the row, when they abut one
+  /// another from the first to the last — and every edge between where
+  /// they do not.
+  List<double> along() {
+    final rects = [...drawn.map((draw) => draw.dst)]
+      ..sort((a, b) => a.left.compareTo(b.left));
+    if (rects.isEmpty) {
+      return const [];
+    }
+    final edges = <double>[rects.first.left];
+    for (var at = 1; at < rects.length; at += 1) {
+      if ((rects[at].left - rects[at - 1].right).abs() > 1e-6) {
+        edges
+          ..add(rects[at - 1].right)
+          ..add(rects[at].left);
+      }
+    }
+    return [...edges, rects.last.right];
+  }
 }

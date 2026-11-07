@@ -807,10 +807,12 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// The substrate through the tile store: a tile is one drawImageRect —
   /// baked in this paint where an edit moved the span
-  /// ([TimelineGridTileStore.tileFor]) — a cold span keeps the classic
-  /// paint underneath while its raster lands off-frame, and the two spans
-  /// past the window are asked for so a scroll finds them warm. Answers the
-  /// spans whose tile already carries the foreground ink.
+  /// ([TimelineGridTileStore.tileFor]) — a cold span the tiles kept over its
+  /// frames stand in for, scaled, while it is rastered
+  /// ([TimelineGridTileStore.standInFor]), and one they do not cover keeps
+  /// the classic paint underneath while its raster lands off-frame; the two
+  /// spans past the window are asked for so a scroll finds them warm.
+  /// Answers the spans whose tiles already carry the foreground ink.
   List<(int, int)> _paintTiledSubstrate(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,
@@ -826,20 +828,24 @@ class TimelineRowCellsPainter extends CustomPainter
         spanEndIndexExclusive: spanEnd,
         devicePixelRatio: devicePixelRatio,
       );
-      if (image != null) {
-        final origin = startAlong(axis, cellRectFor(spanStart));
-        final mainExtent = endAlong(axis, cellRectFor(spanEnd - 1)) - origin;
-        final dst = rectAlong(
-          axis,
-          along: (from: origin, to: origin + mainExtent),
-          across: (from: 0, to: crossAxisExtent),
-        );
-        canvas.drawImageRect(
-          image,
-          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-          dst,
-          tilePaint,
-        );
+      final tiles = image != null
+          ? [
+              (
+                image: image,
+                spanStartIndex: spanStart,
+                spanEndIndexExclusive: spanEnd,
+              ),
+            ]
+          : store.standInFor(
+              painter: this,
+              spanStartIndex: spanStart,
+              spanEndIndexExclusive: spanEnd,
+              devicePixelRatio: devicePixelRatio,
+            );
+      if (tiles != null) {
+        for (final tile in tiles) {
+          _layTile(canvas, tile, spanStart, spanEnd, tilePaint);
+        }
         tiledSpans.add((spanStart, spanEnd));
         continue;
       }
@@ -869,6 +875,43 @@ class TimelineRowCellsPainter extends CustomPainter
       );
     }
     return tiledSpans;
+  }
+
+  /// [tile] laid over the cells of the frames it holds from [from] to [to]
+  /// — the whole of it for its own span, or the part of it a span cut
+  /// otherwise stands on ([TimelineGridTileStore.standInFor]).
+  void _layTile(
+    Canvas canvas,
+    TileStandIn tile,
+    int from,
+    int to,
+    Paint paint,
+  ) {
+    final first = math.max(from, tile.spanStartIndex);
+    final last = math.min(to, tile.spanEndIndexExclusive);
+    final frames = tile.spanEndIndexExclusive - tile.spanStartIndex;
+    final picture = Size(
+      tile.image.width.toDouble(),
+      tile.image.height.toDouble(),
+    );
+    final main = extentAlong(axis, picture);
+    final src = rectAlong(
+      axis,
+      along: (
+        from: main * (first - tile.spanStartIndex) / frames,
+        to: main * (last - tile.spanStartIndex) / frames,
+      ),
+      across: (from: 0, to: extentAcross(axis, picture)),
+    );
+    final dst = rectAlong(
+      axis,
+      along: (
+        from: startAlong(axis, cellRectFor(first)),
+        to: endAlong(axis, cellRectFor(last - 1)),
+      ),
+      across: (from: 0, to: crossAxisExtent),
+    );
+    canvas.drawImageRect(tile.image, src, dst, paint);
   }
 
   /// The tile grid's spans under [window], in order (`shown`), and the one

@@ -140,6 +140,12 @@ class TimelineGridTileStore {
   /// warm-up from starting ([_startWarming]).
   final Map<String, _Kept> _entries = <String, _Kept>{};
 
+  /// [_entries] by row, each row's by the frame its spans start on — what
+  /// [_standInFor] walks over a span's frames. Kept beside [_entries] where
+  /// a tile is kept and where it is let go, and nowhere else.
+  final Map<String, SplayTreeMap<int, _Kept>> _keptByRow =
+      <String, SplayTreeMap<int, _Kept>>{};
+
   /// What [_entries]' pictures weigh together.
   int _heldBytes = 0;
 
@@ -165,7 +171,7 @@ class TimelineGridTileStore {
   /// 늘린 옛 타일만 보여 준다」): shown, each its old tile scaled, and rastered
   /// at the new cell extent once the zoom has stood still for
   /// [debugZoomSettles] — once, however many steps it took within the
-  /// band a tile stretches across ([_stretches]); a step past it rasters
+  /// band a tile stretches across ([_standInFor]); a step past it rasters
   /// then, as before.
   ///
   /// ↩️Each step queued every shown span at its own extent, and the drain
@@ -297,6 +303,7 @@ class TimelineGridTileStore {
       kept.entry.image.dispose();
     }
     _entries.clear();
+    _keptByRow.clear();
     _heldBytes = 0;
     _pending.clear();
     _starved.clear();
@@ -412,13 +419,11 @@ class TimelineGridTileStore {
     // A span a warm-up still holds becomes a shown one's to raster first; one
     // a warm-up has in flight tells this row when it lands. One a zoom under
     // way stretched waits for it to stop ([_stretched]).
-    final stretched = stale == null && entry != null && _stretches(entry, asked)
-        ? entry
-        : null;
+    final standIn = stale == null ? _standInFor(asked) : null;
     if (!_inFlight.contains(key)) {
       _warming.remove(key);
       _ahead.remove(key);
-      if (stretched != null && _stoodAt[row] != painter.frameCellExtent) {
+      if (standIn != null && _stoodAt[row] != painter.frameCellExtent) {
         _waitForTheZoom(key, asked);
       } else {
         _enqueue(key, asked);
@@ -452,24 +457,96 @@ class TimelineGridTileStore {
     if (stale != null) {
       return stale.image;
     }
-    return stretched?.image;
+    return switch (standIn) {
+      [final only]
+          when only.spanStartIndex == spanStartIndex &&
+              only.entry.spanEndIndexExclusive == spanEndIndexExclusive =>
+        only.entry.image,
+      _ => null,
+    };
   }
 
-  /// Whether [entry] may stand in for [asked], scaled — its geometry but for
-  /// the cell extent, which a zoom moved by no more than twice.
+  /// The tiles [painter]'s row keeps over its span's frames, edge to edge,
+  /// which stand in for the span, scaled, while it is rastered
+  /// ([_standInFor]) — each with the frames it holds — or null where they
+  /// leave a frame of it bare. Asks for nothing: what [tileFor] answered
+  /// null for, the paint lays from these.
+  List<TileStandIn>? standInFor({
+    required TimelineTileRasterSource painter,
+    required int spanStartIndex,
+    required int spanEndIndexExclusive,
+    required double devicePixelRatio,
+  }) {
+    final parts = _standInFor(
+      _TileRequest(
+        row: _rowKey(painter.substrateGeneration, painter.layer.id, painter.axis),
+        painter: painter,
+        spanStartIndex: spanStartIndex,
+        spanEndIndexExclusive: spanEndIndexExclusive,
+        devicePixelRatio: devicePixelRatio,
+      ),
+    );
+    return parts == null
+        ? null
+        : [
+            for (final kept in parts)
+              (
+                image: kept.entry.image,
+                spanStartIndex: kept.spanStartIndex,
+                spanEndIndexExclusive: kept.entry.spanEndIndexExclusive,
+              ),
+          ];
+  }
+
+  /// What may stand in for [asked], scaled: the tiles its row keeps over
+  /// its frames, edge to edge, each baked as [asked] but for the cell
+  /// extent, which a zoom moved by no more than twice — null where they
+  /// leave a frame of it bare.
   ///
   /// R27 #10: a ZOOM step changes the geometry of every visible tile at
   /// once, and dropping all of them to the classic Dart pass is what
-  /// made zooming crawl. The tile covers the SAME frames either way and
+  /// made zooming crawl. A tile holds the SAME frames either way and
   /// the painter draws it into a `dst` rect built from the CURRENT
   /// geometry — so the stale raster simply scales, the way every pro
   /// timeline shows a stretched last frame while the real one renders.
   /// Bounded so an extreme jump (a 10× slider throw) still takes the
   /// crisp path rather than showing mush.
-  static bool _stretches(_TileEntry entry, _TileRequest asked) {
+  ///
+  /// ↩️2026-11-08: THE TILES OVER ITS FRAMES, not the one at its key. A
+  /// span is 512 px of cells ([timelineFrameWindowMinSpanPx]), so under
+  /// cells narrower than 128 px every step cuts the row into other spans
+  /// than it kept, and the one tile asked for by the span's own start and
+  /// end was never there: 🔬on S5's cut 352 the steps went crisp at once
+  /// and the old picture was not seen (검증/서피스 11-08 02:04, card
+  /// zoom-step-lays-out-five-times-the-07-25-count) — and 24 px to 20 px
+  /// laid neither of the two tiles kept
+  /// (`a_zoom_bakes_its_tiles_once_it_stops_test`).
+  List<_Kept>? _standInFor(_TileRequest asked) {
+    final kept = _keptByRow[asked.row];
+    if (kept == null) {
+      return null;
+    }
+    final parts = <_Kept>[];
+    var frame = asked.spanStartIndex;
+    while (frame < asked.spanEndIndexExclusive) {
+      final from = kept.lastKeyBefore(frame + 1);
+      final part = from == null ? null : kept[from]!;
+      if (part == null ||
+          part.entry.spanEndIndexExclusive <= frame ||
+          !_stretchesTo(part.entry, asked)) {
+        return null;
+      }
+      parts.add(part);
+      frame = part.entry.spanEndIndexExclusive;
+    }
+    return parts;
+  }
+
+  /// Whether [entry] was baked as [asked] is asked but for the cell extent,
+  /// which moved by no more than twice.
+  static bool _stretchesTo(_TileEntry entry, _TileRequest asked) {
     final painter = asked.painter;
     return entry.substrateGeneration == painter.substrateGeneration &&
-        entry.spanEndIndexExclusive == asked.spanEndIndexExclusive &&
         entry.devicePixelRatio == asked.devicePixelRatio &&
         entry.crossAxisExtent == painter.crossAxisExtent &&
         _withinRescaleBand(entry.frameCellExtent, painter.frameCellExtent);
@@ -565,6 +642,8 @@ class TimelineGridTileStore {
       lastUsed: ++_clock,
     );
     _entries[key] = kept;
+    final row = _keptByRow.putIfAbsent(request.row, SplayTreeMap.new);
+    row[request.spanStartIndex] = kept;
     _heldBytes += kept.bytes;
     _letGoWantedLatest();
   }
@@ -596,6 +675,11 @@ class TimelineGridTileStore {
       bytesOf: (_) => 1,
       letGo: (entry) {
         _entries.remove(entry.key);
+        final row = _keptByRow[entry.value.row];
+        row?.remove(entry.value.spanStartIndex);
+        if (row != null && row.isEmpty) {
+          _keptByRow.remove(entry.value.row);
+        }
         _heldBytes -= entry.value.bytes;
         entry.value.entry.image.dispose();
       },
@@ -1521,6 +1605,14 @@ class _RowNotices implements Listenable {
 /// A word a tile writes: its text and type, its ink, its bake key, how far it
 /// is narrowed, and where it lands in the tile (logical px from the span's
 /// start).
+/// A kept tile that stands in for part of a span while the span is rastered
+/// ([TimelineGridTileStore.standInFor]), with the frames it holds.
+typedef TileStandIn = ({
+  ui.Image image,
+  int spanStartIndex,
+  int spanEndIndexExclusive,
+});
+
 typedef _TileGlyph = ({
   String text,
   TextStyle style,
