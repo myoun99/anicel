@@ -31,10 +31,12 @@
 //! walk.wgsl, as the verbs' does. So does the ink scan (`ink`, R4b), which
 //! walks a whole cel.
 
-// ⏳Nothing outside the tests runs it until the app's bridge round
-// (gpu-canonical-store ⑧).
+// ⏳The verbs and the lift: nothing outside the tests runs them until the
+// flip lane (connection-round-checklist). The ink scan has its C entrance
+// ([`abi`]) since the connection round's 잉크 상자.
 #![cfg_attr(not(test), allow(dead_code))]
 
+mod abi;
 pub(crate) mod ink;
 pub(crate) mod lift;
 #[cfg(test)]

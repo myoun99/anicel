@@ -2872,3 +2872,17 @@ fn a_masked_row_needs_a_mask_that_holds_its_box() {
     assert!(under(&scene, Some(&short), budget).is_none());
     assert!(under(&scene, Some(&mask.mask()), budget).is_some());
 }
+
+/// A tile's word is its page over its slot, each whole, and a set read
+/// from words holds each tile where its word names it, none where it
+/// names none — the app's sets over the C ABI, a plan's and the ink
+/// scan's alike.
+#[test]
+fn a_tile_set_read_from_words_holds_each_tile_its_word_names() {
+    let far = TileAt { page: 0xfffe, slot: 0xfffd };
+    let near = TileAt { page: 0, slot: 1 };
+    assert_eq!(far.word(), 0xfffe_fffd);
+    let set = TileSet::from_words(-3, 4, 3, 1, &[far.word(), super::NO_TILE, near.word()]);
+    assert_eq!((set.x0, set.y0, set.columns, set.rows), (-3, 4, 3, 1));
+    assert_eq!(set.tiles, vec![Some(far), None, Some(near)]);
+}

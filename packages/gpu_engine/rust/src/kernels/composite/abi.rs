@@ -25,7 +25,7 @@ use crate::kernels::pool::Pool;
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::platform::Surface;
 
-use super::{BufferChain, Composite, Composited, KeyChain, NO_TILE, Plan, Step, TILE_BYTES, TileAt, TileSet};
+use super::{BufferChain, Composite, Composited, KeyChain, Plan, Step, TILE_BYTES, TileSet};
 
 /// A plan as the app builds it: what [`Plan`] borrows, owned. It names
 /// the pool's slots and holds none of them: build it, and run it before
@@ -194,11 +194,7 @@ pub unsafe extern "C" fn gpu_engine_plan_set(
     // SAFETY: see the function's contract.
     let (plan, words) =
         unsafe { (&mut *plan, std::slice::from_raw_parts(tiles, columns as usize * rows as usize)) };
-    let tiles = words
-        .iter()
-        .map(|&word| (word != NO_TILE).then(|| TileAt { page: (word >> 16) as u16, slot: word as u16 }))
-        .collect();
-    plan.sets.push(TileSet { x0, y0, columns, rows, tiles });
+    plan.sets.push(TileSet::from_words(x0, y0, columns, rows, words));
     plan.sets.len() as u32 - 1
 }
 

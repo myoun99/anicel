@@ -109,7 +109,9 @@ pub(crate) const TILE_BYTES: u64 = TILE_TEXELS * 4;
 /// levels its plan's passes reach (composite.wgsl's DEPTH), these at most.
 pub(crate) const DEPTH: usize = 8;
 const STEP_WORDS: usize = 14;
-const NO_TILE: u32 = u32::MAX;
+/// The word that names no tile, where a tile's word ([`TileAt::word`])
+/// names one.
+pub(crate) const NO_TILE: u32 = u32::MAX;
 /// A row's matrix place where it runs none (composite.wgsl's NO_MATRIX).
 const NO_MATRIX: u32 = u32::MAX;
 /// An output with no edge: every pixel of every output tile as it is.
@@ -130,6 +132,15 @@ pub(crate) struct TileAt {
     pub(crate) slot: u16,
 }
 
+impl TileAt {
+    /// The one word this tile is named by — `page << 16 | slot` — wherever
+    /// a tile set travels as words: from the app over the C ABI
+    /// ([`TileSet::from_words`]) and to a pass in its plan (composite.wgsl).
+    pub(crate) fn word(self) -> u32 {
+        u32::from(self.page) << 16 | u32::from(self.slot)
+    }
+}
+
 /// A row's picture on the canvas's tile grid: the tiles of the rectangle
 /// whose top-left tile is column `x0`, row `y0`, row by row. `None` is a
 /// tile with nothing on it.
@@ -143,6 +154,18 @@ pub(crate) struct TileSet {
 }
 
 impl TileSet {
+    /// The set of `columns` × `rows` tiles whose top-left is column `x0`,
+    /// row `y0`, named by `words` row by row — each a tile's
+    /// [`TileAt::word`], or [`NO_TILE`] — as the app hands one over the C
+    /// ABI: the plan's tile sets and the ink scan's cel alike.
+    pub(crate) fn from_words(x0: i32, y0: i32, columns: u32, rows: u32, words: &[u32]) -> Self {
+        let tiles = words
+            .iter()
+            .map(|&word| (word != NO_TILE).then(|| TileAt { page: (word >> 16) as u16, slot: word as u16 }))
+            .collect();
+        Self { x0, y0, columns, rows, tiles }
+    }
+
     fn at(&self, column: i32, row: i32) -> Option<TileAt> {
         let (c, r) = (column - self.x0, row - self.y0);
         if c < 0 || r < 0 || c as u32 >= self.columns || r as u32 >= self.rows {
@@ -1472,10 +1495,7 @@ fn plan_words(
     let mut maps: Vec<u32> = Vec::new();
     for set in sets {
         map_at.push(maps_at + maps.len() as u32);
-        maps.extend(set.tiles.iter().map(|tile| match tile {
-            Some(at) => (u32::from(at.page) << 16) | u32::from(at.slot),
-            None => NO_TILE,
-        }));
+        maps.extend(set.tiles.iter().map(|tile| tile.map_or(NO_TILE, TileAt::word)));
     }
     let chains_at = maps_at + maps.len() as u32;
     // The empty list also keeps the plan from being empty, as a storage

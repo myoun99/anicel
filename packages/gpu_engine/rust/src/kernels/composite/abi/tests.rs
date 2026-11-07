@@ -6,7 +6,7 @@
 use super::*;
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
 use crate::kernels::composite::tests::{mix, pixel_at, rig};
-use crate::kernels::composite::{TILE, TILE_TEXELS};
+use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::le_bytes;
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
@@ -44,10 +44,6 @@ fn stored(tiles: &[Vec<u8>]) -> (Pool, Vec<TileAt>) {
     let bytes: Vec<&[u8]> = tiles.iter().map(Vec::as_slice).collect();
     let places = pool.store(engine, cel, &bytes).expect("store");
     (pool, places)
-}
-
-fn word(at: TileAt) -> u32 {
-    u32::from(at.page) << 16 | u32::from(at.slot)
 }
 
 fn map(inverse: [f64; 9], mode: ResampleMode) -> ResampleMap {
@@ -109,8 +105,8 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
     let plan = gpu_engine_plan_new();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
-        assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [word(at[0]), word(at[1])].as_ptr()), 0);
-        assert_eq!(gpu_engine_plan_set(plan, 1, 0, 2, 1, [NO_TILE, word(at[2])].as_ptr()), 1);
+        assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_set(plan, 1, 0, 2, 1, [NO_TILE, at[2].word()].as_ptr()), 1);
         assert_eq!(gpu_engine_plan_matrix(plan, contrast.as_ptr()), 0);
         assert_eq!(gpu_engine_plan_matrix(plan, warm.as_ptr()), 1);
         gpu_engine_plan_solid(plan, 0xc0_33_66_99, 10, 4, 290, 100);
@@ -169,7 +165,7 @@ fn a_row_copied_over_nothing_lays_the_bytes_stored() {
     let plan = gpu_engine_plan_new();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
-        gpu_engine_plan_set(plan, 0, 0, 3, 1, at.iter().map(|&at| word(at)).collect::<Vec<_>>().as_ptr());
+        gpu_engine_plan_set(plan, 0, 0, 3, 1, at.iter().map(|&at| at.word()).collect::<Vec<_>>().as_ptr());
         gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
     }
     let read = ran(&pool, plan, NO_EDGE).expect("run");
@@ -188,7 +184,7 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
     let plan = gpu_engine_plan_new();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
-        gpu_engine_plan_set(plan, 0, 0, 2, 1, [word(at[0]), word(at[1])].as_ptr());
+        gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr());
         gpu_engine_plan_row(plan, 0, -1, -1, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
     }
     // Where the pose's tent reads stored pixels alone, so what it lays is
@@ -348,8 +344,8 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
     let plan = gpu_engine_plan_new();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
-        assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [word(at[0]), word(at[1])].as_ptr()), 0);
-        assert_eq!(gpu_engine_plan_set(plan, 1, 0, 1, 1, [word(at[2])].as_ptr()), 1);
+        assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_set(plan, 1, 0, 1, 1, [at[2].word()].as_ptr()), 1);
         assert_eq!(gpu_engine_plan_keys(plan), 0);
         for restores in [0, 1] {
             let added = gpu_engine_plan_key_run(plan, 0, red.as_ptr(), green.as_ptr(), blue.as_ptr(), restores, maps.as_ptr(), 1);
@@ -431,7 +427,7 @@ fn a_map_laid_from_a_run_is_read_as_its_tiles() {
     let (sides, _) = hexagon();
     let lens = lens_words([5.0, 0.0, 0.0, 1.0, 0.0]);
     let picture = [0, 0, 3 * TILE as i32, TILE as i32];
-    let words = [word(at[0]), word(at[1]), word(at[2])];
+    let words = [at[0].word(), at[1].word(), at[2].word()];
     let laid = gpu_engine_plan_new();
     let plan = gpu_engine_plan_new();
     // SAFETY: the plans are live; each array holds what its call reads.
