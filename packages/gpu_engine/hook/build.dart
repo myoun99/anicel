@@ -60,20 +60,23 @@ void main(List<String> args) async {
     try {
       final folder =
           turn.folder ?? input.outputDirectory.resolve('own_target/');
-      // Which way it built, in the log the hooks runner keeps (stdout.txt
-      // beside the hook's input) — never a silent second way (관제 22:55).
-      stdout.writeln(
-        turn.folder == null
-            ? "gpu_engine: ${turn.why} — built in this checkout's own target, "
-                '${folder.toFilePath()}'
-            : "gpu_engine: built in the trunk's hook folder, "
-                '${folder.toFilePath()}, under its turn',
-      );
       final homes = [
         for (final name in kMachineVariables)
           '$name=${Platform.environment[name] ?? 'the default'}',
-      ];
-      stdout.writeln('gpu_engine: Rust from ${homes.join(' ')}');
+      ].join(' ');
+      // Which way it built and with which Rust, in the log the hooks runner
+      // keeps (stdout.txt beside the hook's input) — never a silent second
+      // way (관제 22:55). ⚠️In one write: the runner appends each piece of
+      // output to that file without waiting for the one before, and of two
+      // lines written at once one was lost, either one (2026-11-08).
+      stdout.writeln(
+        turn.folder == null
+            ? "gpu_engine: ${turn.why} — built in this checkout's own target, "
+                '${folder.toFilePath()}, with Rust from $homes'
+            : "gpu_engine: built in the trunk's hook folder, "
+                '${folder.toFilePath()}, under its turn, '
+                'with Rust from $homes',
+      );
       _aimTarget(input.outputDirectory, folder);
       final built = BuildOutputBuilder();
       await RustBuilder(
@@ -116,7 +119,9 @@ void main(List<String> args) async {
 /// the toolchain into the home it sees (measured 2026-11-08). So the hook
 /// runs itself once more with them, read where a session's are
 /// (tool/machine_variables.dart) — none off Windows, and none where the
-/// user set none (the Surface, CI). Null when it has them already.
+/// user set none in their own settings. It does so before it asks for the
+/// hook folder's turn, which the run it starts takes. Null when it has
+/// them already.
 Future<int?> _againWithThisMachinesRustHomes(List<String> args) async {
   final missing = {
     for (final MapEntry(:key, :value) in thisMachinesVariables().entries)
