@@ -208,7 +208,11 @@ fn read_all(decoder: Decoder, open: impl Fn(Decoder) -> i32) -> (Info, Vec<Resul
 fn where_there_is_no_decoder_both_say_so() {
     let _turn = one_at_a_time();
     assert_eq!((rust().supported)(), (c().supported)(), "both, or neither");
-    if (c().supported)() == 1 {
+    // Which builds read movies is this crate's to say: those with an OS
+    // decoder under them.
+    let reads = cfg!(any(windows, target_os = "android", target_vendor = "apple"));
+    assert_eq!((rust().supported)(), i32::from(reads), "the builds that read movies");
+    if (rust().supported)() == 1 {
         return;
     }
     for decoder in [c(), rust()] {
@@ -284,20 +288,35 @@ fn a_failure_says_the_same_sentence() {
     let path = path.to_str().expect("UTF-8");
     let missing = format!("{path}.not-there");
     let length = bytes.len() as i64;
-    let tries: [(&str, Box<dyn Fn(Decoder) -> i32>); 4] = [
-        ("no file", Box::new(|decoder: Decoder| decoder.open(&missing))),
-        ("a plain movie said to be framed", Box::new(|decoder: Decoder| decoder.open_span(path, 0, length, true))),
-        ("a span past the file", Box::new(|decoder: Decoder| decoder.open_span(path, 10, length, false))),
-        ("a span of the movie's middle", Box::new(|decoder: Decoder| decoder.open_span(path, 1000, 2000, false))),
+    // A span that is not one is refused by this crate before the OS sees a
+    // byte (`media::span`), in its own words — held where measured. What
+    // the OS refuses says the sentence of the call that refused, and which
+    // call refuses is the OS's: held only to say why (유저
+    // connection-round-checklist-Q14, 2026-11-07: what the OS decides is
+    // not frozen). ⚠️Measured on Windows (2026-11-07); the Mac's waits for
+    // its job to read alike with the C's first.
+    let not_a_span = cfg!(windows).then_some("that span does not hold a readable movie");
+    let tries: [(&str, Option<&str>, Box<dyn Fn(Decoder) -> i32>); 4] = [
+        ("no file", None, Box::new(|decoder: Decoder| decoder.open(&missing))),
+        (
+            "a plain movie said to be framed",
+            not_a_span,
+            Box::new(|decoder: Decoder| decoder.open_span(path, 0, length, true)),
+        ),
+        ("a span past the file", not_a_span, Box::new(|decoder: Decoder| decoder.open_span(path, 10, length, false))),
+        ("a span of the movie's middle", None, Box::new(|decoder: Decoder| decoder.open_span(path, 1000, 2000, false))),
     ];
-    for (what, open) in &tries {
+    for (what, says, open) in &tries {
         let answers = [c(), rust()].map(|decoder| {
             let handle = open(decoder);
             (decoder.close)(handle);
             (handle > 0, decoder.error())
         });
         assert_eq!(answers[1], answers[0], "{what}: as the C answers");
-        assert!(!answers[0].0 && !answers[0].1.is_empty(), "LIVENESS — {what} is refused, and says why: {answers:?}");
+        assert!(!answers[1].0 && !answers[1].1.is_empty(), "LIVENESS — {what} is refused, and says why: {answers:?}");
+        if let Some(says) = says {
+            assert_eq!(answers[1].1, *says, "{what}");
+        }
     }
     // And an open that succeeds says nothing: the last failure is not left
     // for the next caller to read as its own.
