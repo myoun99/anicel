@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
@@ -42,6 +43,25 @@ final class LineBoxPass extends ShadedPass {
   final double centerX;
   final double centerY;
   final int taps;
+
+  /// The first tap's turn and scale about the centre: the map of the
+  /// (taps − 1)/2 taps it lies back from the middle one. With [eachMap],
+  /// what the shader (`DirectionalBlurShader`) and the engine's line blur
+  /// (line.rs's `first` and `each`) are handed.
+  List<double> get firstMap => _mapOf(-(taps - 1) / 2);
+
+  /// The turn and scale each next tap takes from the one before.
+  List<double> get eachMap => _mapOf(1);
+
+  /// [taps] taps of [turn] and [grow], as the columns of their 2×2 map —
+  /// where x goes, then where y goes — the identity on a line, whose taps
+  /// turn and grow by nothing.
+  List<double> _mapOf(double taps) {
+    final scale = math.exp(grow * taps);
+    final angle = turn * taps;
+    final (cos, sin) = (math.cos(angle) * scale, math.sin(angle) * scale);
+    return [cos, sin, -sin, cos];
+  }
 
   @override
   bool operator ==(Object other) =>

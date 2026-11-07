@@ -6,7 +6,7 @@
 //! takes them as integers.
 //!
 //! ⏳The turns and scales a pass's maps start from are the app's to give
-//! (`DirectionalBlurShader._mapOf` — a cos, a sin and an exp: 대조 필요 ①,
+//! (`LineBoxPass.firstMap` · `eachMap` — a cos, a sin and an exp: 대조 필요 ①,
 //! the deterministic functions 관제 placed in gpu-same-formula). A
 //! directional blur has none.
 //!

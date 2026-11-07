@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import '../../services/shaded_passes.dart';
@@ -36,8 +35,8 @@ class DirectionalBlurShader {
     required ui.Image source,
     required LineBoxPass pass,
   }) {
-    final first = _mapOf(pass, -(pass.taps - 1) / 2);
-    final each = _mapOf(pass, 1);
+    final first = pass.firstMap;
+    final each = pass.eachMap;
     // ⛔Indices are declaration order, floats only — a sampler takes no
     // float slot.
     final shader = _program.shader()
@@ -55,14 +54,5 @@ class DirectionalBlurShader {
     // a step under one pixel weighs the two it falls between.
     return shader
       ..setImageSampler(0, source, filterQuality: ui.FilterQuality.low);
-  }
-
-  /// [taps] taps of [pass]'s turn and scale, as the columns of their 2×2
-  /// map — the identity on a line, whose taps turn and grow by nothing.
-  static List<double> _mapOf(LineBoxPass pass, double taps) {
-    final scale = math.exp(pass.grow * taps);
-    final angle = pass.turn * taps;
-    final (cos, sin) = (math.cos(angle) * scale, math.sin(angle) * scale);
-    return [cos, sin, -sin, cos];
   }
 }
