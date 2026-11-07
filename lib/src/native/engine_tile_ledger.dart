@@ -219,6 +219,10 @@ class EngineTileLedger {
       }
       if (tile != null) {
         _slots[tile] = null;
+        // ⚠️No test tells this line from its absence (mutant D10, 11-08):
+        // the slot goes once whichever comes to it ([_letGo]). It keeps the
+        // finalizer from holding an entry a tile let go by a full pool and
+        // stored again would otherwise add each time, till it is collected.
         _letGoWithTile.detach(slot);
       }
       _letGo(slot);
