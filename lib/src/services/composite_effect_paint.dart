@@ -255,11 +255,11 @@ final class _ColourPart extends _PaintPart {
   final List<double> next;
 }
 
+/// The part a paint carries past colour: a Gaussian.
 final class _SpatialPart extends _PaintPart {
-  const _SpatialPart(this.filter, {required this.outset});
+  const _SpatialPart(this.blur);
 
-  final ui.ImageFilter filter;
-  final double outset;
+  final GaussianBlur blur;
 }
 
 /// A sample that changes no pixel though its values are not its defaults.
@@ -281,15 +281,15 @@ final class _StepPart extends _PaintPart {
 
 /// A blur that reads past the paper's edge as its edge's own pixels and
 /// paints no further than it — AE's Repeat Edge Pixels ([PaperEdgeEffect]):
-/// [filter] repeats the edge of the image it is drawn with, so it is drawn
-/// over the paper cut out alone, a step of its own.
+/// its filter repeats the edge of the image it is drawn with, so it is
+/// drawn over the paper cut out alone, a step of its own.
 final class _PaperEdgePart extends _PaintPart {
-  const _PaperEdgePart(this.filter, {required this.reach});
+  const _PaperEdgePart(this.blur);
 
-  final ui.ImageFilter filter;
+  final GaussianBlur blur;
 
   /// How far past its input it paints, inside the paper.
-  final double reach;
+  double get reach => blur.reach;
 }
 
 /// A plugin's effect: a step of its own over the picture before it, read
@@ -422,20 +422,103 @@ _PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
   final dimensions = effect.parameter('blurDimensions').round();
   final radiusX = dimensions == 2 ? 0.0 : radius;
   final radiusY = dimensions == 1 ? 0.0 : radius;
-  final repeatsTheEdge = effect.flag('repeatEdgePixels');
-  final filter = ui.ImageFilter.blur(
+  final blur = GaussianBlur(
     sigmaX: radiusX * blurSigmaPerRadius,
     sigmaY: radiusY * blurSigmaPerRadius,
-    // DECAL, not the clamp default: a layer's artwork must not smear its
-    // edge pixels outward forever — outside its coverage there is nothing,
-    // and that is what the picture should show. CLAMP where the edge is to
-    // be repeated: drawn over the paper cut out alone, it is the paper's.
+    reachX: blurSpreadForRadius(radiusX),
+    reachY: blurSpreadForRadius(radiusY),
+    repeatsTheEdge: effect.flag('repeatEdgePixels'),
+  );
+  return blur.repeatsTheEdge ? _PaperEdgePart(blur) : _SpatialPart(blur);
+}
+
+/// What a run of a chain's painted effects paints, one after another
+/// ([paintedEffectsOf]).
+sealed class PaintedEffect {
+  const PaintedEffect();
+}
+
+/// The colour effects standing together, folded into one 4×5 matrix.
+final class PaintedColour extends PaintedEffect {
+  const PaintedColour(this.matrix);
+
+  final List<double> matrix;
+}
+
+/// fx Gaussian Blur at a draw's scale ([_blurPart]) as the walk and the
+/// engine both take it: its sigma each way, how far each way it reaches
+/// past a pixel ([blurSpreadForRadius]), and whether it repeats its
+/// input's edge. The walk draws it by [filter]; the engine lays the
+/// Gaussian itself from the same numbers (🗣️유저 gpu-canonical-store-Q2,
+/// composite_tree_plan.dart).
+@immutable
+final class GaussianBlur extends PaintedEffect {
+  const GaussianBlur({
+    required this.sigmaX,
+    required this.sigmaY,
+    required this.reachX,
+    required this.reachY,
+    required this.repeatsTheEdge,
+  });
+
+  final double sigmaX;
+  final double sigmaY;
+  final double reachX;
+  final double reachY;
+  final bool repeatsTheEdge;
+
+  /// How far past its input it paints: the farther way's reach.
+  double get reach => math.max(reachX, reachY);
+
+  /// The filter the walk draws it by. DECAL, not the clamp default: a
+  /// layer's artwork must not smear its edge pixels outward forever —
+  /// outside its coverage there is nothing, and that is what the picture
+  /// should show. CLAMP where the edge is to be repeated: drawn over the
+  /// paper cut out alone, it is the paper's.
+  ui.ImageFilter get filter => ui.ImageFilter.blur(
+    sigmaX: sigmaX,
+    sigmaY: sigmaY,
     tileMode: repeatsTheEdge ? ui.TileMode.clamp : ui.TileMode.decal,
   );
-  final spread = blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY);
-  return repeatsTheEdge
-      ? _PaperEdgePart(filter, reach: spread)
-      : _SpatialPart(filter, outset: spread);
+}
+
+/// What [effects] — a run of a chain's painted effects, which a draw
+/// carries ([CompositeEffectPlan.finalEffects], a step's `then`) — paint
+/// at [space], in their order: each Gaussian, and the colour between them
+/// folded into one matrix; nothing for an effect that changes no pixel.
+/// The walk folds them into a paint ([resolveCompositeEffectPaint]), the
+/// engine lays each (composite_tree_plan.dart).
+List<PaintedEffect> paintedEffectsOf(
+  List<ResolvedLayerEffect> effects, {
+  DrawSpace space = DrawSpace.canvas,
+}) {
+  final painted = <PaintedEffect>[];
+  for (final effect in effects) {
+    switch (_paintPartOf(effect, space)) {
+      // Reaching here means a route resolved a chain without splitting it —
+      // an assert rather than a silent skip, because the silent version
+      // looks exactly like "the artist set Amount to 0".
+      case _SplitPart(:final splitBy):
+        assert(false, splitBy);
+      case _StepPart() || _PaperEdgePart() || _PluginPart():
+        assert(
+          false,
+          'A shaded effect, a blur on the paper and a plugin are steps of '
+          'their own — see resolveCompositeEffectPlan.',
+        );
+      case _NoPart():
+        break;
+      case _ColourPart(:final next):
+        if (painted.lastOrNull case PaintedColour(:final matrix)) {
+          painted.last = PaintedColour(composeColorMatrices(next, matrix));
+        } else {
+          painted.add(PaintedColour(next));
+        }
+      case _SpatialPart(:final blur):
+        painted.add(blur);
+    }
+  }
+  return painted;
 }
 
 /// A directional blur: a step of passes along its way.
@@ -598,9 +681,9 @@ List<ShadedPass> shadedPassesOf(
 
 /// The blur [effect] — a step's [PaperEdgeEffect] — draws over the paper
 /// at [space], the raster's own: null where it changes no pixel there.
-ui.ImageFilter? paperEdgeBlurOf(ResolvedLayerEffect effect, DrawSpace space) =>
+GaussianBlur? paperEdgeBlurOf(ResolvedLayerEffect effect, DrawSpace space) =>
     switch (_paintPartOf(effect, space)) {
-      _PaperEdgePart(:final filter) => filter,
+      _PaperEdgePart(:final blur) => blur,
       _ => null,
     };
 
@@ -666,31 +749,16 @@ CompositeEffectPaint resolveCompositeEffectPaint(
     pendingColor = null;
   }
 
-  for (final effect in effects) {
-    switch (_paintPartOf(effect, space)) {
-      // Reaching here means a route resolved a chain without splitting it —
-      // an assert rather than a silent skip, because the silent version
-      // looks exactly like "the artist set Amount to 0".
-      case _SplitPart(:final splitBy):
-        assert(false, splitBy);
-      case _StepPart() || _PaperEdgePart() || _PluginPart():
-        assert(
-          false,
-          'A shaded effect, a blur on the paper and a plugin are steps of '
-          'their own — see resolveCompositeEffectPlan.',
-        );
-      case _NoPart():
-        break;
-      case _ColourPart(:final next):
-        pendingColor = pendingColor == null
-            ? next
-            : composeColorMatrices(next, pendingColor!);
-      case _SpatialPart(:final filter, outset: final spread):
+  for (final painted in paintedEffectsOf(effects, space: space)) {
+    switch (painted) {
+      case PaintedColour(:final matrix):
+        pendingColor = matrix;
+      case GaussianBlur(:final filter, :final reach):
         flushPendingColor();
         chain = chain == null
             ? filter
             : ui.ImageFilter.compose(outer: filter, inner: chain!);
-        outset += spread;
+        outset += reach;
     }
   }
 

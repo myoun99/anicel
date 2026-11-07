@@ -931,26 +931,209 @@ void main() {
     });
   }
 
-  // ⏳What the engine lays no step for yet is refused, never dropped: a
-  // tree laid without it would show a picture with a row missing.
-  // ⏳gpu-canonical-store-Q2: the Gaussian — painted, or a step repeating
-  // the paper's edge.
-  for (final repeats in [false, true]) {
-    test('a tree holding what the engine cannot lay yet is refused — a '
-        'Gaussian${repeats ? ' repeating the paper\'s edge' : ''}', () {
-      final blurred = row(
-        1,
-        effects: [
-          fx(EffectKind.blur, {
-            'blurriness': 6,
-            'repeatEdgePixels': repeats ? 1 : 0,
-          }),
-        ],
-      );
-      expect(() => laid([blurred], clear), throwsUnsupportedError);
+  // 🗣️gpu-canonical-store-Q2 (유저 2026-11-08 「모든 흐림을 진짜
+  // 가우시안」): fx Gaussian Blur is laid as the Gaussian itself at every
+  // Blurriness, reaching 3 sigma. The walk's is Impeller's, which is not
+  // (gaussian_blur_filter_contents.cc): it reaches
+  // round((σ′ − 0.5)·√3), σ′ a shade under σ — about half as far — so it
+  // leaves Blurriness 2 (σ ⅔, a reach of none) sharp, and past σ 4 it
+  // blurs a picture made smaller. So the two are held apart by what each
+  // case measured (11-08, an RTX 4080): the engine's is the one the ledger
+  // pins.
+  //
+  // 🔬And a row and a folder spread past their picture onto the canvas
+  // lie no further apart than one that cannot: a chain that put no
+  // further than its picture would leave the canvas clear where the walk
+  // spreads it, ~100 a pixel past a solid edge.
+  ResolvedLayerEffect gaussian(
+    double blurriness, {
+    int dimensions = 0,
+    bool repeats = false,
+  }) => fx(EffectKind.blur, {
+    'blurriness': blurriness,
+    'blurDimensions': dimensions.toDouble(),
+    'repeatEdgePixels': repeats ? 1 : 0,
+  });
+  final gaussians =
+      <
+        String,
+        (List<CompositeNode<CutFrameCompositeLayer>>, ui.Color, int)
+      >{
+        for (final (blurriness, most) in [
+          (2.0, 127),
+          (2.5, 17),
+          (5.0, 32),
+          (10.0, 32),
+          (20.0, 26),
+          (50.0, 16),
+        ])
+          'a row blurred at Blurriness $blurriness': (
+            [
+              row(1, columns: [-1, 0, 1], effects: [gaussian(blurriness)]),
+            ],
+            clear,
+            most,
+          ),
+        'a row blurred across': (
+          [
+            row(1, effects: [gaussian(10, dimensions: 1)]),
+          ],
+          clear,
+          23,
+        ),
+        'a row blurred down': (
+          [
+            row(1, effects: [gaussian(10, dimensions: 2)]),
+          ],
+          clear,
+          12,
+        ),
+        'a row blurred past its own tiles': (
+          [
+            row(1, columns: [0], effects: [gaussian(20)]),
+          ],
+          clear,
+          26,
+        ),
+        'a moved row blurred past its own tiles': (
+          [
+            row(
+              1,
+              columns: [0],
+              placement: moved(40, 30),
+              effects: [gaussian(10)],
+            ),
+          ],
+          clear,
+          32,
+        ),
+        'a turned row blurred across its own tiles': (
+          [
+            row(
+              1,
+              columns: [0],
+              placement: quarter,
+              effects: [gaussian(10, dimensions: 1)],
+            ),
+          ],
+          clear,
+          23,
+        ),
+        'a folder blurred past its moved row': (
+          [
+            CompositeGroup(
+              children: [
+                row(1, columns: [0], placement: moved(40, 30)),
+              ],
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: [gaussian(10)],
+            ),
+          ],
+          clear,
+          32,
+        ),
+        'a row in a colour, blurred after': (
+          [
+            row(1, effects: [colour, gaussian(5)]),
+          ],
+          clear,
+          32,
+        ),
+        // A step's: on the picture, cut there — its ink kept off the edge
+        // the blur along a way reads past (the chain's margin, above).
+        'a row blurred, then blurred along a way': (
+          [
+            row(1, margin: 8, effects: [gaussian(5), along]),
+          ],
+          clear,
+          12,
+        ),
+        'a row blurred along a way, blurred after': (
+          [
+            row(1, margin: 8, effects: [along, gaussian(5)]),
+          ],
+          clear,
+          12,
+        ),
+        'a folder blurred, its row moved, in a colour after': (
+          [
+            row(4),
+            CompositeGroup(
+              children: [
+                row(1, placement: moved(20, 10)),
+                row(2, opacity: 0.8),
+              ],
+              opacity: 0.8,
+              blendMode: LayerBlendMode.normal,
+              effects: [gaussian(10), colour],
+            ),
+          ],
+          clear,
+          13,
+        ),
+        'an adjustment blurred at part mix': (
+          [
+            CompositeAdjustment(
+              children: [row(1), row(2, opacity: 0.6)],
+              effects: [gaussian(5)],
+              mix: 0.4,
+            ),
+          ],
+          clear,
+          12,
+        ),
+        'a row blurred repeating the paper\'s edge': (
+          [
+            row(1, columns: [-1, 0, 1], effects: [gaussian(10, repeats: true)]),
+          ],
+          clear,
+          24,
+        ),
+        'a folder blurred repeating the paper\'s edge, its row moved': (
+          [
+            CompositeGroup(
+              children: [row(1, placement: moved(40, 30))],
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: [gaussian(10, repeats: true)],
+            ),
+          ],
+          clear,
+          24,
+        ),
+        'a folder blurred repeating a paper it lies off': (
+          [
+            row(3),
+            CompositeGroup(
+              children: [row(1, placement: moved(300, 0))],
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: [gaussian(10, repeats: true)],
+            ),
+          ],
+          clear,
+          0,
+        ),
+      };
+
+  for (final MapEntry(key: name, value: (nodes, ground, most))
+      in gaussians.entries) {
+    testWidgets('$name is laid as the walk paints it', (tester) async {
+      await tester.runAsync(() async {
+        await LayerBlendShader.load();
+        await DirectionalBlurShader.load();
+        final walk = await walked(nodes, ground);
+        expect(
+          apartness(walk, laid(nodes, ground)).most,
+          lessThanOrEqualTo(most),
+        );
+      });
     });
   }
 
+  // ⏳What the engine lays no step for yet is refused, never dropped: a
+  // tree laid without it would show a picture with a row missing.
   // ⏳A folder's chain in the blur map a posed row reads: the walk spreads
   // it on the canvas's grid, laid under the row's pose undone.
   test('a tree holding what the engine cannot lay yet is refused — a '

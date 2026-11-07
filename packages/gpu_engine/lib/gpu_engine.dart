@@ -373,6 +373,11 @@ enum GpuMapChannel {
   final int id;
 }
 
+/// One way of fx Gaussian Blur: its sigma in pixels, and how many pixels
+/// either side of a pixel its weights reach — none where the way is not
+/// blurred (rust/src/kernels/effects/blur/gaussian.rs).
+typedef GpuGaussianWay = ({double sigma, int reach});
+
 /// One pass of a blur along a way — the app's `LineBoxPass` with its maps
 /// worked out: `taps` taps, the i-th at centre + M_i·(at − centre) +
 /// step·(i − (taps − 1)/2), M_i = each^i · first, a map its columns as the
@@ -503,25 +508,32 @@ class GpuPlan {
   void chainKeys(int chain, int keys) =>
       _checked(rust.planChainKeys(_plan, chain, keys));
 
-  /// Adds to effect chain [chain] fx Gaussian Blur by box passes of
-  /// [across] and [down], repeating the nearest pixel of [repeat] — inside
-  /// the chain's tiles — past it and putting nothing outside it where one
-  /// is named (Repeat Edge Pixels).
+  /// Adds to effect chain [chain] fx Gaussian Blur, the Gaussian itself a
+  /// way a pass, [across] and [down]: reading [picture] — past it nothing,
+  /// or its nearest pixel where it [repeats] (Repeat Edge Pixels) — and
+  /// putting [puts], nothing outside it; both inside the chain's tiles.
   void chainGaussian(
-    int chain,
-    int across,
-    int down, {
-    (int, int, int, int)? repeat,
+    int chain, {
+    required GpuGaussianWay across,
+    required GpuGaussianWay down,
+    required (int, int, int, int) picture,
+    bool repeats = false,
+    required (int, int, int, int) puts,
   }) => _checked(
-    using(
-      (arena) => rust.planChainGaussian(
+    using((arena) {
+      final reaches = arena<Uint32>(2)
+        ..[0] = across.reach
+        ..[1] = down.reach;
+      return rust.planChainGaussian(
         _plan,
         chain,
-        across,
-        down,
-        _rectOrNull(arena, repeat),
-      ),
-    ),
+        _doubles(arena, [across.sigma, down.sigma]),
+        reaches,
+        _rect(arena, picture),
+        repeats ? 1 : 0,
+        _rect(arena, puts),
+      );
+    }),
   );
 
   /// Adds to effect chain [chain] fx Directional or Radial Blur's [passes]

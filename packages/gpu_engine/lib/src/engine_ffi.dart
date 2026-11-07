@@ -330,14 +330,24 @@ external int planChainMatrix(
 external int planChainKeys(Pointer<Planned> plan, int chain, int keys);
 
 @Native<
-  Int32 Function(Pointer<Planned>, Uint32, Uint32, Uint32, Pointer<Int32>)
+  Int32 Function(
+    Pointer<Planned>,
+    Uint32,
+    Pointer<Double>,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Uint32,
+    Pointer<Int32>,
+  )
 >(symbol: 'gpu_engine_plan_chain_gaussian')
 external int planChainGaussian(
   Pointer<Planned> plan,
   int chain,
-  int across,
-  int down,
-  Pointer<Int32> repeat,
+  Pointer<Double> sigmas,
+  Pointer<Uint32> reaches,
+  Pointer<Int32> picture,
+  int repeats,
+  Pointer<Int32> puts,
 );
 
 @Native<

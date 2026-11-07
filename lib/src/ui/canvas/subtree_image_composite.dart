@@ -1160,7 +1160,7 @@ _Laying _laidStep(
   if (lead case PaperEdgeEffect(:final effect)) {
     if (paperEdgeBlurOf(effect, space) case final blur?) {
       return laying
-          .cutAndBlurred(paper: paper, blur: blur)
+          .cutAndBlurred(paper: paper, blur: blur.filter)
           .then(then, layers: layers);
     }
   }

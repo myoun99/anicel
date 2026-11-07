@@ -20,15 +20,20 @@ import '../services/cel_source_effect_pass.dart'
     show CelColorKey, keyRgbaTablesOf;
 import '../services/composite_effect_paint.dart'
     show
-        CompositeEffectPlan,
         EffectStepLead,
+        GaussianBlur,
         KeyRun,
+        PaintedColour,
+        PaintedEffect,
         PaperEdgeEffect,
         PluginEffect,
         ShadedEffect,
         effectBufferBounds,
         effectReadsRow,
         onionTintColorMatrix,
+        paintedEffectsOf,
+        paperEdgeBlurOf,
+        paperOnWholePixels,
         resolveColorOnlyMatrix,
         resolveCompositeEffectPlan,
         shadedPassesOf;
@@ -319,8 +324,15 @@ class _TreePlan {
   /// What [effects] lay where a draw takes them, its picture standing for
   /// the rect [over] answers for how far they reach past it, in [space]:
   /// the chain their steps run on that picture, reading the rows [reads]
-  /// draw — none where no step changes a pixel — and the colour the draw
-  /// lays it through after them.
+  /// draw, then the Gaussians the draw carries — none where nothing past
+  /// colour changes a pixel — and the colour the draw lays it through
+  /// after them.
+  ///
+  /// A step rasters on the picture, so what it blurs is the picture and is
+  /// cut there. The draw's filter paints past the image it is drawn from:
+  /// each of its Gaussians reads what the one before put and puts as far
+  /// past it as it reaches — a row's picture, its own, is no larger for
+  /// them (its [over]).
   ({int? chain, List<double>? colour}) _chainOf(
     List<ResolvedLayerEffect> effects, {
     required ui.Rect Function(double outset) over,
@@ -328,22 +340,33 @@ class _TreePlan {
     required _Reads reads,
   }) {
     final steps = resolveCompositeEffectPlan(effects, paper: paper);
-    final colour = _colourOf(steps.finalEffects);
-    if (steps.preSteps.isEmpty) {
+    final carried = paintedEffectsOf(steps.finalEffects);
+    final last = carried.lastIndexWhere((painted) => painted is GaussianBlur);
+    final colour = switch (carried.sublist(last + 1)) {
+      [PaintedColour(:final matrix)] => matrix,
+      _ => null,
+    };
+    if (steps.preSteps.isEmpty && last < 0) {
       return (chain: null, colour: colour);
     }
     final picture = _pixelsOf(over(steps.outsetPixels));
     final ops = [
       for (final step in steps.preSteps) ...[
         ..._opsOf(step.lead, picture, space: space, reads: reads),
-        if (_colourOf(step.then) case final then?)
-          (int chain) => plan.chainMatrix(chain, then),
+        for (final painted in paintedEffectsOf(step.then))
+          _paintedOp(painted, reads: picture, puts: picture),
       ],
     ];
+    var extent = picture;
+    for (final painted in carried.take(last + 1)) {
+      final read = extent;
+      extent = _grown(extent, painted);
+      ops.add(_paintedOp(painted, reads: read, puts: extent));
+    }
     if (ops.isEmpty) {
       return (chain: null, colour: colour);
     }
-    final (left, top, right, bottom) = picture;
+    final (left, top, right, bottom) = extent;
     final x0 = (left / gpuTileSide).floor();
     final y0 = (top / gpuTileSide).floor();
     final chain = plan.chain(
@@ -357,6 +380,38 @@ class _TreePlan {
     }
     return (chain: chain, colour: colour);
   }
+
+  /// The op [painted] lays on a chain: a colour over its tiles, or a
+  /// Gaussian reading [reads] and putting [puts].
+  void Function(int chain) _paintedOp(
+    PaintedEffect painted, {
+    required (int, int, int, int) reads,
+    required (int, int, int, int) puts,
+  }) => switch (painted) {
+    PaintedColour(:final matrix) => (chain) => plan.chainMatrix(chain, matrix),
+    GaussianBlur() => (chain) => _gaussian(
+      chain,
+      painted,
+      reads: reads,
+      puts: puts,
+    ),
+  };
+
+  /// [blur] on [chain] — the Gaussian itself over the whole pixels each
+  /// way reaches — reading [reads] and putting [puts].
+  void _gaussian(
+    int chain,
+    GaussianBlur blur, {
+    required (int, int, int, int) reads,
+    required (int, int, int, int) puts,
+  }) => plan.chainGaussian(
+    chain,
+    across: (sigma: blur.sigmaX, reach: blur.reachX.ceil()),
+    down: (sigma: blur.sigmaY, reach: blur.reachY.ceil()),
+    picture: reads,
+    repeats: blur.repeatsTheEdge,
+    puts: puts,
+  );
 
   /// The ops [lead] lays on a chain whose picture is [picture], in
   /// [space], reading the rows [reads] draw — none for none, nor where it
@@ -395,10 +450,13 @@ class _TreePlan {
         ]),
       ],
     },
-    // ⏳gpu-canonical-store-Q2: the blur the engine's Gaussian lays.
-    PaperEdgeEffect(:final effect) => throw UnsupportedError(
-      'a Gaussian on the engine: $effect',
-    ),
+    PaperEdgeEffect(:final effect) => switch (paperEdgeBlurOf(
+      effect,
+      DrawSpace.canvas,
+    )) {
+      null => const [],
+      final blur => [(chain) => _onThePaper(chain, blur, picture)],
+    },
     // ⏳A plug-in's step is the host's: a plan cuts its chain there
     // (rust/src/kernels/chain/mod.rs).
     PluginEffect(:final effect) => throw UnsupportedError(
@@ -424,6 +482,32 @@ class _TreePlan {
     return run;
   }
 
+  /// [blur] on [chain] over the paper on whole pixels cut out of
+  /// [picture], its edge repeated past it and nothing put outside it, as
+  /// the walk draws it over the paper cut out alone (`cutAndBlurred`):
+  /// where none of the paper is there, the cut leaves nothing.
+  // The second cut of the paper out of a chain's picture — the lens's the
+  // other ([_lens]): a third joins them (rule of three).
+  void _onThePaper(
+    int chain,
+    GaussianBlur blur,
+    (int, int, int, int) picture,
+  ) {
+    final (left, top, right, bottom) = picture;
+    final whole = paperOnWholePixels(paper);
+    final cut = (
+      math.max(whole.left.toInt(), left),
+      math.max(whole.top.toInt(), top),
+      math.min(whole.right.toInt(), right),
+      math.min(whole.bottom.toInt(), bottom),
+    );
+    if (cut case (final l, final t, final r, final b) when l >= r || t >= b) {
+      plan.chainMatrix(chain, List.filled(20, 0));
+      return;
+    }
+    _gaussian(chain, blur, reads: cut, puts: cut);
+  }
+
   /// [gather] — a camera lens blur's iris gathered out of its row sums —
   /// on [chain] over [picture], the paper it repeats past it cut to the
   /// picture, as its shader cuts it (iris_blur_shader.dart): where none of
@@ -437,6 +521,8 @@ class _TreePlan {
     required _Drawn? drawn,
   }) {
     final (left, top, right, bottom) = picture;
+    // The first cut of the paper out of a chain's picture — the Gaussian's
+    // the second ([_onThePaper]).
     final cut = switch (gather.paper) {
       null => null,
       final paper => (
@@ -584,18 +670,18 @@ GpuLinePass _lineOf(LineBoxPass pass) => (
   each: pass.eachMap,
 );
 
-/// The colour [effects] — a run of a chain's painted effects, which a draw
-/// carries ([CompositeEffectPlan.finalEffects], a step's `then`) — fold
-/// into, null where there are none: a tree holds no effect that changes no
-/// pixel ([resolveLayerEffectsAt] drops them).
-///
-/// ⏳gpu-canonical-store-Q2: the Gaussian, the one such effect past colour.
-List<double>? _colourOf(List<ResolvedLayerEffect> effects) {
-  if (effects.isEmpty) {
-    return null;
+/// [extent] grown by how far [painted] paints past it: a Gaussian's whole
+/// pixels each way, nothing for a colour.
+(int, int, int, int) _grown(
+  (int, int, int, int) extent,
+  PaintedEffect painted,
+) {
+  if (painted is! GaussianBlur) {
+    return extent;
   }
-  return resolveColorOnlyMatrix(effects) ??
-      (throw UnsupportedError('a Gaussian on the engine: $effects'));
+  final (left, top, right, bottom) = extent;
+  final (x, y) = (painted.reachX.ceil(), painted.reachY.ceil());
+  return (left - x, top - y, right + x, bottom + y);
 }
 
 /// Whether [scope] is laid on its clip's base made opaque — its bottom node

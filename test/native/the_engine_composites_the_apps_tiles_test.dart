@@ -505,23 +505,32 @@ void main() {
   int alphaAt(GpuPlan plan, int x, int y) =>
       pixel(ran(plan, [(0, 0)]), [(0, 0)], x, y)[3];
 
-  test("a chain's Gaussian blurs across and down by its own, inside its "
-      'repeat where one is named', () {
+  test("a chain's Gaussian blurs across and down by its own, and puts "
+      'nothing past what it puts', () {
     final tiles = aWhitePixel();
-    GpuPlan blurred((int, int, int, int)? repeat) {
+    final whole = (0, 0, gpuTileSide, gpuTileSide);
+    GpuPlan blurred((int, int, int, int) puts, {bool repeats = false}) {
       return throughRow(tiles, (plan) {
         final chain = plan.chain(0, 0, 1, 1);
-        plan.chainGaussian(chain, 10, 0, repeat: repeat);
+        plan.chainGaussian(
+          chain,
+          across: (sigma: 10 / 3, reach: 10),
+          down: (sigma: 0, reach: 0),
+          picture: repeats ? (50, 60, 70, 80) : whole,
+          repeats: repeats,
+          puts: puts,
+        );
         return (keys: null, chain: chain);
       });
     }
 
-    final repeated = blurred((50, 60, 70, 80));
+    final repeated = blurred((50, 60, 70, 80), repeats: true);
 
     expect(alphaAt(repeated, 55, 64), greaterThan(0));
     expect(alphaAt(repeated, 64, 70), 0);
     expect(alphaAt(repeated, 72, 64), 0);
-    expect(alphaAt(blurred(null), 72, 64), greaterThan(0));
+    expect(alphaAt(blurred(whole), 72, 64), greaterThan(0));
+    expect(alphaAt(blurred((0, 0, 70, gpuTileSide)), 72, 64), 0);
   });
 
   // Five taps a pixel apart about each pixel: the dot spreads two each way
@@ -736,7 +745,14 @@ void main() {
         0, 0, 0, 1, 0,
       ])
       ..chainKeys(rowChain, keys)
-      ..chainGaussian(rowChain, 3, 2, repeat: (4, 6, 200, 120))
+      ..chainGaussian(
+        rowChain,
+        across: (sigma: 1, reach: 3),
+        down: (sigma: 2 / 3, reach: 2),
+        picture: (4, 6, 200, 120),
+        repeats: true,
+        puts: (0, 0, 250, 128),
+      )
       ..chainLine(rowChain, (6, 0, 250, 128), const [
         (
           taps: 5,
@@ -757,7 +773,13 @@ void main() {
           map: map);
     final closeChain = plan.chain(0, 0, 3, 1);
     plan
-      ..chainGaussian(closeChain, 2, 0)
+      ..chainGaussian(
+        closeChain,
+        across: (sigma: 2 / 3, reach: 2),
+        down: (sigma: 0, reach: 0),
+        picture: (0, 0, 3 * gpuTileSide, gpuTileSide),
+        puts: (0, 0, 3 * gpuTileSide, gpuTileSide),
+      )
       ..open();
     threeTileRow(
       plan,
@@ -829,7 +851,13 @@ void main() {
     for (final add in <void Function(int chain)>[
       (chain) => plan.chainMatrix(chain, twenty),
       (chain) => plan.chainKeys(chain, keys),
-      (chain) => plan.chainGaussian(chain, 1, 1),
+      (chain) => plan.chainGaussian(
+        chain,
+        across: (sigma: 1 / 3, reach: 1),
+        down: (sigma: 1 / 3, reach: 1),
+        picture: (0, 0, 8, 8),
+        puts: (0, 0, 8, 8),
+      ),
       (chain) => plan.chainLine(chain, (0, 0, 8, 8), const [
         (taps: 3, step: (1, 0), centre: (0, 0), first: four, each: four),
       ]),
@@ -895,7 +923,13 @@ void main() {
     refused((plan, set) {
       final chain = plan.chain(0, 0, 1, 1);
       plan
-        ..chainGaussian(chain, 1, 1)
+        ..chainGaussian(
+          chain,
+          across: (sigma: 1 / 3, reach: 1),
+          down: (sigma: 1 / 3, reach: 1),
+          picture: (0, 0, gpuTileSide, gpuTileSide),
+          puts: (0, 0, gpuTileSide, gpuTileSide),
+        )
         ..open();
       row(plan, set);
       plan.close(mode: GpuBlend.normal, chain: chain, mix: 70000);
