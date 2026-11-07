@@ -15,6 +15,10 @@ use crate::testing::read_buffer;
 const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 /// Moved left by 37.25 px and down by 9.5: a pose R1 samples, not copies.
 const POSED: [f64; 9] = [1.0, 0.0, 37.25, 0.0, 1.0, -9.5, 0.0, 0.0, 1.0];
+/// Moved right by 200 px, over the base of tile 3, and up by half a pixel:
+/// every pixel's preimage split between two rows, which Pick breaks to the
+/// one above and nearest to the one below.
+const OVER: [f64; 9] = [1.0, 0.0, -200.0, 0.0, 1.0, 0.5, 0.0, 0.0, 1.0];
 const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 const OUTPUT: [(i32, i32); 3] = [(0, 0), (1, 0), (2, 0)];
 const BLEND: u32 = 0;
@@ -112,7 +116,7 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
         gpu_engine_plan_open(plan, false);
         assert_eq!(gpu_engine_plan_row(plan, 1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
         gpu_engine_plan_open(plan, true);
-        assert_eq!(gpu_engine_plan_row(plan, 0, -1, POSED.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 30000, MULTIPLY), 1);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, OVER.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 30000, MULTIPLY), 1);
         gpu_engine_plan_close_atop(plan);
         gpu_engine_plan_close(plan, 50000, NORMAL, 1);
     }
@@ -140,7 +144,7 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
         Step::Open,
         row(1, map(IDENTITY, ResampleMode::Blend), None, 65535, NORMAL),
         Step::OpenOpaque,
-        row(0, map(POSED, ResampleMode::Nearest), None, 30000, MULTIPLY),
+        row(0, map(OVER, ResampleMode::Nearest), None, 30000, MULTIPLY),
         Step::CloseAtop,
         Step::Close { opacity: 50000, mode: NORMAL, matrix: Some(1), chain: None },
     ];
