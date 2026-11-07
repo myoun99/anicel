@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'effect_parameter_spec.dart';
 
-/// What an fx plugin says of itself — its description (anicel_fx_plugin.h),
+/// What an fx plugin says of itself — its description (sdk/fx/anicel-fx),
 /// read STRICTLY: a description that is not whole is no plugin, because
 /// what it declares is a lane, a key and a value of the project for good.
 ///

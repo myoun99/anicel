@@ -1,14 +1,16 @@
 /*
- * Shadow -- an example Anicel fx plugin.
+ * Shadow -- the SDK example's C build, the key the Rust example
+ * (sdk/fx/example) is held to byte for byte through both hosts
+ * (native/fx_plugin's tests), and what the Dart fx pin and the releases'
+ * parity runs open beside the C engine. The SDK was C until 2026-11-07
+ * (connection-round-checklist, user Q9: no C plugin exists to keep), and
+ * this was its example; the connection round deletes it with the C host.
  *
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 PARK GUNWOO -- the Anicel fx plugin SDK's LICENSE.
  *
  * Draws the row's picture over a shadow of itself: the picture's alpha,
- * moved by an offset and painted in a color. It shows the parts most
- * plugins need -- parameters of a few kinds, a reach (the shadow lands
- * outside the picture), the frame's scale, and premultiplied pixels -- and
- * uses no C library, so any clang with the wasm32 target builds it.
+ * moved by an offset and painted in a color.
  */
 #include "anicel_fx_plugin.h"
 

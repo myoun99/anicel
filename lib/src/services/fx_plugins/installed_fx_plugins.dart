@@ -71,7 +71,7 @@ final class FxPluginInstalled extends FxPluginInstall {
 /// The files and their index are [FxPluginLibraryService]'s. A plugin is
 /// asked who it is by its MODULE, in the sandbox, and shown to the person
 /// before anything is kept; its native build is opened only to run it, once
-/// they have said yes (anicel_fx_plugin.h, THE FILE).
+/// they have said yes (sdk/fx/anicel-fx, The file).
 class InstalledFxPlugins extends ChangeNotifier {
   InstalledFxPlugins({
     FxPluginLibraryService? service,

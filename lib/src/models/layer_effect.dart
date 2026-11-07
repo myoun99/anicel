@@ -499,7 +499,7 @@ enum EffectKind {
 
   /// A plugin's effect: its parameters, the words they go by and what it
   /// does to the pixels are the plugin's ([LayerEffect.plugin],
-  /// anicel_fx_plugin.h) — ONE kind for every plugin, told apart by the
+  /// sdk/fx/anicel-fx) — ONE kind for every plugin, told apart by the
   /// description it keeps, so a plugin's lanes, keys and values are the
   /// app's own code (🗣️I-132-Q29).
   ///

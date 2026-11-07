@@ -429,21 +429,23 @@ if(NOT ANDROID AND NOT IOS)
       target_compile_options(${qa_fx_target} PRIVATE /utf-8)
     endif()
   endforeach()
-  # The SDK's example (sdk/fx/example) built as a maker builds it: C99,
-  # against the published header, without the /utf-8 the app's own sources
-  # need — so a change here that breaks the plugin a maker starts from fails
-  # the engine's build and its pins (an_fx_plugin_answers_through_the_engine).
+  # The SDK example's C build (qa_fx_sdk_example.c), the key the Rust
+  # example is held to and what the Dart fx pin opens beside the engine
+  # (an_fx_plugin_answers_through_the_engine) — until the connection round
+  # deletes it. C99, without the /utf-8 the app's own sources need, as it
+  # was built while it was the SDK's.
   # ⚠️Only where this file is the top of the build — the engine's own build
-  # (the lane gate, CI). The app's build reads it through the plugin's
-  # symlink (windows/flutter/ephemeral/.plugin_symlinks/qa_native), where
-  # three levels up is not the repository, and the CMake it runs (Visual
-  # Studio's 3.31) leaves that symlink unresolved in REALPATH — 2026-11-04,
-  # the Windows app failed to generate twice. The app needs no example; the
-  # Linux and Windows ARM64 releases build this one target this way for the
-  # parity run against their engine (linux-release.yml).
+  # (the lane gate, CI). It began so while the source lay three levels up in
+  # sdk/fx/example: the app's build read it through the plugin's symlink
+  # (windows/flutter/ephemeral/.plugin_symlinks/qa_native), where three
+  # levels up is not the repository, and the CMake it runs (Visual Studio's
+  # 3.31) left that symlink unresolved in REALPATH — 2026-11-04, the Windows
+  # app failed to generate twice. It stays so: the app needs no example, and
+  # the Linux and Windows ARM64 releases build this one target this way for
+  # the parity run against their engine (linux-release.yml).
   if(PROJECT_IS_TOP_LEVEL)
     add_library(qa_fx_sdk_example SHARED
-      "${CMAKE_CURRENT_LIST_DIR}/../../../sdk/fx/example/shadow.c")
+      "${CMAKE_CURRENT_LIST_DIR}/qa_fx_sdk_example.c")
     target_include_directories(qa_fx_sdk_example PRIVATE
       "${CMAKE_CURRENT_LIST_DIR}")
     set_target_properties(qa_fx_sdk_example PROPERTIES

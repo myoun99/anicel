@@ -94,8 +94,9 @@ jobs:
       # and a build that ever stops doing so fails here rather than checks
       # another file.
       #
-      # The SDK's example, which the fx pin opens beside that engine
-      # (an_fx_plugin_answers_through_the_engine), is made only by the
+      # The SDK example's C build (qa_fx_sdk_example.c, the Rust example's
+      # key until the connection round), which the fx pin opens beside that
+      # engine (an_fx_plugin_answers_through_the_engine), is made only by the
       # engine's own build — packages/qa_native/src/CMakeLists.txt builds it
       # where that file is the top of the build, as CI and the lane gate run
       # it, and never in the app's (run 41951941230 failed on it). So that

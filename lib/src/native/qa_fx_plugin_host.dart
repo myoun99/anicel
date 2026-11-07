@@ -51,7 +51,7 @@ typedef FxPluginOpened = ({QaFxPlugin? plugin, String? error});
 
 /// The engine's fx plugin host (qa_fx_plugin.c) — one plugin opened from a
 /// native library or a WebAssembly module, asked the same four questions
-/// either way (anicel_fx_plugin.h; 🗣️I-132-Q5 「a + 데스크톱은 같은
+/// either way (sdk/fx/anicel-fx; 🗣️I-132-Q5 「a + 데스크톱은 같은
 /// 규격의 네이티브(.dll · .dylib)도」).
 final class QaFxPluginHost {
   QaFxPluginHost._(DynamicLibrary library)
@@ -199,7 +199,7 @@ final class QaFxPlugin implements FxPluginRunner {
   Pointer<Void> _handle;
   final _PluginCalls _calls;
 
-  /// The plugin's description (anicel_fx_plugin.h, UTF-8 JSON), or null
+  /// The plugin's description (sdk/fx/anicel-fx, UTF-8 JSON), or null
   /// where it would not say — or said what is no UTF-8.
   String? describe() {
     const room = 4096;

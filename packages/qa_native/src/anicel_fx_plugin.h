@@ -1,93 +1,22 @@
 /*
- * Anicel fx plugin specification, version 1.
+ * Anicel fx plugin specification, version 1 -- the C host's copy.
  *
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 PARK GUNWOO -- the Anicel fx plugin SDK's LICENSE.
  *
- * The one header a plugin is built against. The same source builds as a
- * WebAssembly module (.wasm), which Anicel runs on every device in a
- * sandbox, and -- where its maker wants -- as a native library (.dll, .dylib
- * or .so) that a desktop runs instead.
- *
- * A plugin declares its parameters, takes the row's picture (wider by the
- * reach it declares) and gives back a picture; a "layer" parameter hands it
- * another row's picture as well. It says what it can do in its description
- * ("can"), so a later host can offer more and an older plugin still runs.
+ * The spec is the Rust crate sdk/fx/anicel-fx since 2026-11-07
+ * (connection-round-checklist, user Q9: no C plugin exists to keep): what a
+ * plugin exports, its description, the file and the versions are said
+ * there. This header is what the C host (qa_fx_plugin.c), its test and the
+ * C builds of the sample and the SDK example read the same frame by -- held
+ * to the crate byte for byte through native/fx_plugin's tests, where the C
+ * host opens the plugins the crate builds -- and the connection round
+ * deletes it with them.
  *
  * ONE LAYOUT ON EVERY TARGET. Nothing the host hands a plugin is a pointer:
  * every place is a byte DISTANCE from the frame's own address, so the
  * structs below are the same bytes in a 32-bit WebAssembly module and in a
- * 64-bit native library. The ANICEL_FX_ASSERT lines below hold the layout to
- * the numbers on every compiler a plugin is built with.
- *
- * WHAT A PLUGIN EXPORTS (the names are the spec):
- *
- *   uint32_t anicel_fx_spec(void);
- *       The spec version it was built against: ANICEL_FX_SPEC_VERSION.
- *
- *   uint32_t anicel_fx_describe(char *out, uint32_t capacity);
- *       Writes its description -- UTF-8 JSON, below -- into out and returns
- *       its length in bytes. A length past capacity asks to be called again
- *       with that much room; nothing past capacity is written.
- *
- *   uint32_t anicel_fx_reach(const anicel_fx_frame *frame);
- *       How many pixels past each edge of its input the effect reads and
- *       draws, for the values in frame (its images are empty here). The
- *       host hands the next render an input that much wider each way.
- *
- *   int32_t anicel_fx_render(anicel_fx_frame *frame);
- *       Writes every pixel of frame->output from frame->input, its values
- *       and its layers. 0 is done; anything else is a failure, and the host
- *       draws the row as if the effect were off.
- *
- *   A WebAssembly module also exports its linear memory as "memory" and
- *       void *anicel_fx_alloc(uint32_t size);
- *   which the host calls for the room it writes a frame into
- *   (ANICEL_FX_DEFINE_ALLOC below is one). A native library does not: the
- *   host's own memory is the frame's.
- *
- * THE DESCRIPTION:
- *
- *   {"spec":1, "id":"com.example.invert", "name":"Invert",
- *    "vendor":"Example", "version":"1.0.0", "can":["cpu"],
- *    "params":[
- *      {"id":"amount", "kind":"number", "label":"Amount",
- *       "default":100, "min":0, "max":100},
- *      {"id":"map", "kind":"layer", "label":"Map"}]}
- *
- *   "kind" is one of number, angle, color, point, checkbox, menu or
- *   layer -- the kinds the app's own effects have, keyed, graphed and linked
- *   the same way. What each says beside its id and label:
- *     number, angle  "default", "min", "max" (an angle in degrees)
- *     color          "default":[r, g, b, a], each from 0 to 1
- *     checkbox       "default": true or false
- *     menu           "choices":[{"id":...,"label":...}, ...], "default": its place
- *     point, layer   nothing (a point starts at the paper's middle, a layer
- *                    names no row until one is picked)
- *   An id is letters, digits and `_ . -`. A description that leaves out
- *   what its kind says, or says it past its range, is no plugin: the app
- *   makes nothing up for it. A key the spec does not name is passed over,
- *   so a later spec's hints do not stop an older host. A parameter's
- *   place in "params" is its place in frame->values.
- *
- * THE FILE (.anifx) -- a zip a person opens with the app's Open:
- *
- *   plugin.wasm                the module; every bundle has it
- *   native/windows-x64.dll     \
- *   native/windows-arm64.dll    |  the same source built natively,
- *   native/macos.dylib          |  each where the plugin has one
- *   native/linux-x64.so         |  (macos.dylib for both Mac chips)
- *   native/linux-arm64.so      /
- *
- *   The app asks plugin.wasm for the description, in its sandbox, and
- *   shows it to the person before anything is installed; a native build
- *   is never opened before they say yes. A device with a native build of
- *   its own runs that, and every other device the module.
- *
- * VERSIONS. Spec 1 does not change once published: a host that speaks it
- * runs every spec-1 plugin. What comes later comes as spec 2 -- in the
- * frame's `reserved` room, new kinds and keys in the description, new
- * formats a plugin names in "can" -- and a spec-1 plugin still runs.
+ * 64-bit native library.
  */
 #ifndef ANICEL_FX_PLUGIN_H
 #define ANICEL_FX_PLUGIN_H

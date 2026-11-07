@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/temp_dir.dart';
 
-/// I-132: an fx plugin's file (anicel_fx_plugin.h, THE FILE) read for each
+/// I-132: an fx plugin's file (sdk/fx/anicel-fx, The file) read for each
 /// device — its module everywhere, the native build of that device's own
 /// where the file has one — and kept on this device as those builds, under
 /// names the library mints, with what the plugin said of itself.

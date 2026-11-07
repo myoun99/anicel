@@ -24,7 +24,7 @@ typedef FxPluginMoment = ({
   double scale,
 });
 
-/// What a plugin's effect is run through (anicel_fx_plugin.h): how far it
+/// What a plugin's effect is run through (sdk/fx/anicel-fx): how far it
 /// reaches, and the picture it makes — the engine's host for a plugin this
 /// device has opened (`QaFxPlugin`), whatever its build.
 abstract interface class FxPluginRunner {

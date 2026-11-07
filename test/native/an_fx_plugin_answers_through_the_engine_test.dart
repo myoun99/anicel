@@ -23,10 +23,12 @@ import '../helpers/native_engine_path.dart';
 /// The WebAssembly side is the engine's own test's (qa_fx_plugin_test.c):
 /// it writes its twin module from text, which Dart cannot.
 ///
-/// The SDK's example (sdk/fx/example/shadow.c) is the plugin a maker starts
-/// from, built beside the engine as a maker builds it: what it says of
-/// itself is held to the app's own reading of a description, and its
-/// pictures to answers worked out here.
+/// The SDK's example is the plugin a maker starts from (sdk/fx/example);
+/// its C build (qa_fx_sdk_example.c, the key the Rust one is held to) is
+/// made beside the engine: what it says of itself is held to the app's own
+/// reading of a description, and its pictures to answers worked out here.
+/// ⏳The connection round deletes the C builds; this then opens the Rust
+/// ones the spec crate's tests build (native/fx_plugin/examples).
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final samplePath = libraryPath == null
@@ -300,14 +302,16 @@ void main() {
       plugin.close();
     }, skip: skipExample);
 
-    // A maker's compiler reads the source in its own code page: MSVC on a
-    // Japanese or Korean Windows warns at every byte past ASCII, and one at
-    // a line's end can take the line break with it.
+    // Its C build and the header it reads are compiled without /utf-8
+    // (packages/qa_native/src/CMakeLists.txt), so MSVC reads them in the
+    // machine's code page: on a Japanese or Korean Windows it warns at
+    // every byte past ASCII, and one at a line's end can take the line
+    // break with it. ↩️Until 2026-11-07 they were the SDK's, read by a
+    // maker's compiler; the connection round deletes both.
     test('its C is ASCII, as every code page reads it', () {
       for (final path in [
         'packages/qa_native/src/anicel_fx_plugin.h',
-        'sdk/fx/example/shadow.c',
-        'sdk/fx/example/CMakeLists.txt',
+        'packages/qa_native/src/qa_fx_sdk_example.c',
       ]) {
         final bytes = File(path).readAsBytesSync();
         expect(

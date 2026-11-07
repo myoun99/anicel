@@ -1,4 +1,4 @@
-/// An fx plugin's file (anicel_fx_plugin.h, THE FILE): the module every
+/// An fx plugin's file (sdk/fx/anicel-fx, The file): the module every
 /// device runs, and the native builds of the same source a desktop may run
 /// instead (🗣️I-132-Q5 b, 유저 2026-10-27: 「a + 데스크톱은 같은 규격의
 /// 네이티브(.dll · .dylib)도」).

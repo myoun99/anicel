@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 
-/// An fx plugin's description (anicel_fx_plugin.h) read as the app's own
+/// An fx plugin's description (sdk/fx/anicel-fx) read as the app's own
 /// parameters — each of the seven kinds the app's effects have — and kept
 /// in a project as it was given; and every description that leaves out
 /// what its kind says refused, never made whole.

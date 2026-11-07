@@ -1,6 +1,6 @@
 # Anicel fx plugin SDK — spec 1
 
-Write effects for Anicel in C. A plugin is one C source built as a
+Write effects for Anicel in Rust. A plugin is one Rust source built as a
 WebAssembly module (`.wasm`), which Anicel runs on every device it runs on —
 Windows, Mac, Linux, Android, iPad and iPhone — in a sandbox with no files,
 no network and no environment. A desktop can also take a native build of
@@ -8,40 +8,72 @@ the same source and run that instead.
 
 | Here | What it is |
 | --- | --- |
-| `include/anicel_fx_plugin.h` | The spec: the one header a plugin is built against. Read it first — this page only walks around it. |
-| `example/shadow.c` | A plugin that draws the picture over a coloured shadow of itself. |
-| `example/CMakeLists.txt` | Builds the example as `plugin.wasm` and as this machine's native library, and packs both into `shadow.anifx`. |
+| `anicel-fx/` | The spec: the one crate a plugin is built against. Its documentation (`cargo doc --open` in that folder) is the spec in full — this page only walks around it. |
+| `example/` | A plugin that draws the picture over a coloured shadow of itself. Copy the folder to start your own. |
 | `LICENSE` | MIT — for the files of this SDK. It does not cover the Anicel app. |
 
 ## Build the example
 
-You need CMake 3.20 or later and a clang with the `wasm32` target and
-`wasm-ld` beside it: LLVM's own release, WASI SDK's, or the Android NDK's.
-Apple's clang has no `wasm32` target; on a Mac use LLVM (Homebrew `llvm`)
-or WASI SDK. The native build uses this machine's usual C compiler.
+You need Rust 1.85 or later (`rustup`), and its WebAssembly target once:
 
 ```sh
-cmake -S example -B build -DANICEL_FX_CLANG=/path/to/clang
-cmake --build build --config Release
+rustup target add wasm32-unknown-unknown
 ```
 
-`build/shadow.anifx` is the plugin. Add `-DANICEL_FX_NATIVE=OFF` for a file
-with the module alone — every device runs it.
-
-The example uses no C library, so plain clang builds it. A plugin that
-wants one (`malloc`, `sinf`, …) builds against WASI SDK's:
+In `example/`:
 
 ```sh
-cmake -S example -B build \
-  -DANICEL_FX_CLANG=<wasi-sdk>/bin/clang \
-  -DANICEL_FX_WASI_SYSROOT=<wasi-sdk>/share/wasi-sysroot
+cargo build --release --target wasm32-unknown-unknown
+cargo build --release
 ```
 
-The module is then a WASI reactor: Anicel starts its C library
-(`_initialize`) before asking it anything. WASI has no folder, no
-environment and no network behind it — a plugin that opens a file finds
-none. The clock is there, but a render must not read it: a frame draws the
-same picture whenever it is asked for, so use `frame->time`.
+The first is the module, `target/wasm32-unknown-unknown/release/shadow.wasm`;
+the second this machine's native library in `target/release/` —
+`shadow.dll`, `libshadow.dylib` or `libshadow.so`. A Mac's file serves
+both chips when it is built for each and joined:
+
+```sh
+cargo build --release --target aarch64-apple-darwin
+cargo build --release --target x86_64-apple-darwin
+lipo -create -output libshadow.dylib \
+  target/aarch64-apple-darwin/release/libshadow.dylib \
+  target/x86_64-apple-darwin/release/libshadow.dylib
+```
+
+## Make the file
+
+An `.anifx` is a zip of the module, named `plugin.wasm`, and the native
+builds under `native/`, each named for its machine:
+
+| Entry | |
+| --- | --- |
+| `plugin.wasm` | The module. Every file has it. |
+| `native/windows-x64.dll`, `native/windows-arm64.dll` | Windows builds, each where the plugin has one. |
+| `native/macos.dylib` | A Mac build — one file for both chips. |
+| `native/linux-x64.so`, `native/linux-arm64.so` | Linux builds. |
+
+On Linux x64, for example, in `example/`:
+
+```sh
+mkdir -p pack/native
+cp target/wasm32-unknown-unknown/release/shadow.wasm pack/plugin.wasm
+cp target/release/libshadow.so pack/native/linux-x64.so
+(cd pack && zip -r ../shadow.anifx plugin.wasm native)
+```
+
+On Windows x64, in PowerShell — Windows' own `tar` writes the zip, its
+entries named with `/` as the app reads them:
+
+```powershell
+New-Item -ItemType Directory -Force pack\native
+Copy-Item target\wasm32-unknown-unknown\release\shadow.wasm pack\plugin.wasm
+Copy-Item target\release\shadow.dll pack\native\windows-x64.dll
+tar -C pack --format=zip -cf shadow.anifx plugin.wasm native
+```
+
+A file with the module alone is a plugin too — every device runs it. A
+device with a native build of its own runs that, and every other device
+the module. Both are the same source, so both answer the same.
 
 ## Install it in Anicel
 
@@ -54,58 +86,43 @@ graphed and linked as the app's own effects are.
 
 ## Writing a plugin
 
-A plugin exports four functions, and a `.wasm` two things more. The header
-says each in full; in short:
+A plugin is a type that is an `anicel_fx::Effect`, exported once with
+`anicel_fx::export!`:
 
-- `anicel_fx_spec` — `ANICEL_FX_SPEC_VERSION`, the spec it was built for.
-- `anicel_fx_describe` — its description: UTF-8 JSON with its id, name,
-  maker, version, what it can do (`"can"`) and its parameters. The kinds are
-  the app's own: number, angle, color, point, checkbox, menu and layer. A
-  description the header's rules reject is no plugin — the app makes
-  nothing up for it.
-- `anicel_fx_reach` — how many pixels past its input the effect draws (a
-  shadow, a glow, a blur). The next render's input is that much wider each
-  way, so the effect has room.
-- `anicel_fx_render` — every pixel of `frame->output` from `frame->input`,
-  the values and the layers. Return 0; anything else draws the row as if the
-  effect were off.
-- A `.wasm` also exports its memory as `memory`, and `anicel_fx_alloc` for
-  the room the app writes a frame into — `ANICEL_FX_DEFINE_ALLOC()` once
-  in one source is one.
+- `DESCRIPTION` — UTF-8 JSON with its id, name, maker, version, what it can
+  do (`"can"`) and its parameters. The kinds are the app's own: number,
+  angle, color, point, checkbox, menu and layer. A description the spec's
+  rules reject is no plugin — the app makes nothing up for it.
+- `reach` — how many pixels past its input the effect draws (a shadow, a
+  glow, a blur). The next render's input is that much wider each way, so
+  the effect has room.
+- `render` — every pixel of `job.output` from `job.input`, the values and
+  the layers. `Err(Failed)` draws the row as if the effect were off; so
+  does a panic.
+
+`export!` writes the functions the spec names — and, built as WebAssembly,
+the room the app writes a frame into — and checks each frame's spec and
+format before your code sees it.
 
 Things every plugin meets:
 
 - **Pixels are premultiplied** 8-bit RGBA, rows top to bottom: no colour is
   above its alpha. Mix in that space.
-- **Nothing is a pointer.** Every place in the frame is a byte distance from
-  the frame; reach pictures and values through `anicel_fx_pixels`,
-  `anicel_fx_values` and `anicel_fx_layers`.
 - **Values are canvas pixels; pictures are output pixels.** A draft renders
-  at a `scale` below 1 — multiply a distance by `frame->scale`, as the
+  at a `scale` below 1 — multiply a distance by `job.moment.scale`, as the
   example does.
-- **A layer parameter** hands the plugin another row's picture: its value is
-  that picture's place in the frame's layers, or -1 while no row is picked.
-  Its `left` and `top` place it on the same canvas as the input.
+- **A layer parameter** hands the plugin another row's picture:
+  `job.values[i].layer()` is its place in `job.layers`, or `None` while no
+  row is picked. Its `left` and `top` place it on the same canvas as the
+  input, so `Picture::at` reads both at the same canvas place.
 - **Frames come in any order** — the app renders the frame a person moves
   to. A render that depends on the one before it is wrong on the next jump.
+- **No clock.** A frame draws the same picture whenever it is asked for:
+  use `job.moment.time`, never the system's time.
 - **Speed.** A desktop, Android and a Mac compile the module to machine
   code as it opens. An iPad or an iPhone makes no machine code as it runs,
   so it interprets the module — many times slower: keep the inner loop
   plain, and ship a native build where a desktop should be fastest.
-
-## The file
-
-An `.anifx` is a zip:
-
-| Entry | |
-| --- | --- |
-| `plugin.wasm` | The module. Every file has it. |
-| `native/windows-x64.dll`, `native/windows-arm64.dll` | Windows builds, each where the plugin has one. |
-| `native/macos.dylib` | A Mac build — one file for both chips (a universal library). |
-| `native/linux-x64.so`, `native/linux-arm64.so` | Linux builds. |
-
-A device with a native build of its own runs that, and every other device
-the module. Both are the same source, so both answer the same.
 
 ## Versions
 
