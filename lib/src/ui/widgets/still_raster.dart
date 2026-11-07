@@ -690,14 +690,14 @@ class _StillLayer extends OffsetLayer {
       _frame - _changedAt > _waitNow &&
       StillRaster._lastCaptureFrame != _frame;
 
+  /// Whether the region is owed an image: on screen, holding none, and
+  /// allowed one ([RenderStillRaster._gate]).
+  bool get _owedAnImage =>
+      attached && _strata == null && _owner._gate() == StillStandDown.none;
+
   /// Whether this region's check takes its image in the checks of the
   /// frame under way ([_watch]), unless it gives way ([_givesWayTo]).
-  bool get _takesNow =>
-      _watching &&
-      attached &&
-      _strata == null &&
-      _owner._gate() == StillStandDown.none &&
-      _mayTake;
+  bool get _takesNow => _watching && _owedAnImage && _mayTake;
 
   /// Whether the scene draws this region's own image: no region above it
   /// is drawn from an image, which holds this one's pixels too.
@@ -739,10 +739,7 @@ class _StillLayer extends OffsetLayer {
     _watching = true;
     void check(Duration _) {
       _watching = false;
-      if (!attached || _strata != null) {
-        return;
-      }
-      if (_owner._gate() != StillStandDown.none) {
+      if (!_owedAnImage) {
         return;
       }
       // The frame clock ticks after the scene is built, so [_frame] here
@@ -775,10 +772,7 @@ class _StillLayer extends OffsetLayer {
   /// Takes the region in a gap in the frames ([_FrameGap]), for the next
   /// frame that comes anyway.
   void _takeInAGap() {
-    if (attached &&
-        _strata == null &&
-        _owner._gate() == StillStandDown.none &&
-        _capture()) {
+    if (_owedAnImage && _capture()) {
       markNeedsAddToScene();
     }
   }
