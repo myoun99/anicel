@@ -138,20 +138,11 @@ void main() {
     return name ?? '${element.widget}';
   }
 
-  /// 🔜A lane's row on the timeline's rail, which every pass of its host
-  /// builds again whole — and so lays out and draws again, whatever the
-  /// pass was for: a cause of its own, the card
-  /// `a-rail-lane-row-is-drawn-again-on-every-host-pass`'s. ⛔Not a law:
-  /// it goes with that card.
-  bool isARailLaneRow(String name) =>
-      name.startsWith('timeline-rail-row-') && !name.endsWith('-row');
-
   /// Every row's still region the grid built, by the row it stands in.
   Map<String, RenderStillRaster> rowsOf(WidgetTester tester) => {
     for (final element in find.byType(StillRaster).evaluate())
       if (element.renderObject case final RenderStillRaster region
-          when region.debugLabel == 'row' &&
-              !isARailLaneRow(rowNameOf(element)))
+          when region.debugLabel == 'row')
         rowNameOf(element): region,
   };
 
@@ -218,16 +209,22 @@ void main() {
     );
   });
 
-  for (final (orientation, strip, scroll) in [
+  // A lane's controls row — its name, keys and value — on the rail, and
+  // turned on its side over the sheet's columns: the host builds both again
+  // at every pass, and each keeps its image while its lane holds
+  // (card a-rail-lane-row-is-drawn-again-on-every-host-pass).
+  for (final (orientation, strip, scroll, controls) in [
     (
       TimelineOrientation.horizontal,
       'timeline-frame-ruler-scrub-area',
       'timeline-frame-scroll-viewport',
+      'timeline-rail-row-',
     ),
     (
       TimelineOrientation.vertical,
       'xsheet-frame-rail-scrub-area',
       'xsheet-frame-vertical-viewport',
+      'xsheet-header-',
     ),
   ]) {
     testWidgets('the ${orientation.name} grid\'s rows keep their images '
@@ -248,11 +245,6 @@ void main() {
           .position;
       position.jumpTo(position.maxScrollExtent);
       await tester.pumpAndSettle();
-      final before = await untilEveryRowIsAnImage(tester);
-      final taken = {
-        for (final MapEntry(key: name, value: region) in before.entries)
-          name: region.debugCaptureCount,
-      };
 
       // The window reaches past the axis' end, and no tile is asked for
       // there: nothing a row draws stands past the end.
@@ -297,6 +289,14 @@ void main() {
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
+      // ⚠️Taken once the press has stood the playhead under the hand: a
+      // keyed lane's row shows its value there — a change of its own, not
+      // the growth's.
+      final before = await untilEveryRowIsAnImage(tester);
+      final taken = {
+        for (final MapEntry(key: name, value: region) in before.entries)
+          name: region.debugCaptureCount,
+      };
       final built = position.maxScrollExtent;
       var stood = bucket();
       var past = extentAlong(axis, area.size) + 4;
@@ -330,6 +330,13 @@ void main() {
         stayed.where((name) => name.endsWith('-k0-rotation')),
         isNotEmpty,
         reason: '⛔premise: a lane row stayed, its keys with it',
+      );
+      expect(
+        stayed.where(
+          (name) => name.startsWith(controls) && name.endsWith('-k0-rotation'),
+        ),
+        isNotEmpty,
+        reason: '⛔premise: a lane\'s controls row stayed, its value with it',
       );
       expect(live, isEmpty, reason: 'the runway grew under them');
       await hand.up();

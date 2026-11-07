@@ -96,27 +96,33 @@ class _XSheetGridHeaders {
     );
   }
 
-  /// [entry]'s column header, draggable. A LAYER's is kept while nothing
-  /// it is built from changed — the rail's memo, turned on its side
+  /// [entry]'s column header, draggable — kept while nothing it is built
+  /// from changed: the rail's memo, turned on its side
   /// ([KeptLayerControlsRows], F-244): a commit rebuilt every header of
-  /// the sheet. A lane's is built every pass.
+  /// the sheet. A lane's as the rail's lane rows are
+  /// ([LaneControlsRowFacts]).
   Widget header(TimelineDisplayRow entry) {
-    if (entry.isLane) {
-      return draggableHeader(entry, _laneHeader(entry));
-    }
     final grid = _controlsRowGrid;
+    final drag = layerRowDragInputs(
+      row: entry,
+      drawnRows: _state._dragRows,
+      hooks: grid.hooks.rowDragHooks,
+      onRowSelectionSpan: grid.hooks.onRowSelectionSpan,
+    );
+    if (entry.isLane) {
+      return _kept.keepLane(
+        _state._berths,
+        entry,
+        (facts: laneControlsRowFacts(entry, grid), drag: drag),
+        () => _laneHeader(entry),
+      );
+    }
     final fold = _state._groupFoldFor(entry);
     final facts = layerControlsRowFacts(
       entry,
       grid,
       fold: fold,
       hasLanes: _state.widget.hooks.lanesOf(entry.layer).isNotEmpty,
-    );
-    final drag = layerRowDragInputs(
-      row: entry,
-      drawnRows: _state._dragRows,
-      hooks: grid.hooks.rowDragHooks,
-      onRowSelectionSpan: grid.hooks.onRowSelectionSpan,
     );
     return _kept.keep(
       _state._berths,
@@ -135,14 +141,17 @@ class _XSheetGridHeaders {
 
   /// Every column's [header] where [edges] puts it — the room after a
   /// graph's last lane left empty, and a column of no extent no box, as
-  /// the rail leaves them (I-89 ③) — each in its column's BERTH.
+  /// the rail leaves them (I-89 ③) — each in its column's BERTH, and named
+  /// for its row as the rail's rows are ([Named]).
   List<Widget> headers(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
   ) => [
     for (var index = 0; index < entries.length; index += 1) ...[
       if (edges.extentOf(index) > 0)
-        KeyedSubtree(
+        Named(
+          'xsheet-header-${entries[index].layer.id}-'
+          '${entries[index].lane?.laneId ?? 'row'}',
           key: _state._berths.keyOf(entries[index]),
           child: header(entries[index]),
         ),

@@ -1,9 +1,13 @@
+import '../../core/identity_memo.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/project_lookup.dart'
     show cutWritingRow, requireCut, rowPoseSpace;
 import '../editor_session_manager.dart';
+import '../text/app_strings.dart' show AppText;
 import 'lane_graph_seats.dart' show LaneGraphLine, laneGraphLineAmong;
+import 'memo_token.dart' show ByIdentity;
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
 import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
@@ -55,6 +59,64 @@ List<PropertyLaneRow> timelineLanesForLayer({
     ),
     hasPlugin: session.fxPlugins.has,
   );
+}
+
+/// [timelineLanesForLayer]'s lists as a host's rail asks them: a layer's
+/// handed back — the same list, the same lanes — while all it is read from
+/// holds, so a lane row kept while its lane is the same object
+/// ([LaneControlsRowFacts]) is kept through a pass that changed nothing.
+///
+/// 🔬Card a-rail-lane-row-is-drawn-again-on-every-host-pass (2026-11-07):
+/// read anew at every pass, every lane was a new object, so no lane row
+/// could be told its lane had not changed — a runway step past the cut's
+/// end built the rail's six open lane rows again, and each threw its image
+/// away and took another.
+///
+/// ⛔The key is EVERYTHING [timelineLanesForLayer] reads: a read added
+/// there and left out here is a lane kept across a change of it. A layer's
+/// slot lives while the layer is one of the session's rows.
+final class KeptTimelineLanes {
+  final Map<LayerId, IdentityMemo<List<PropertyLaneRow>>> _byLayer = {};
+  List<Layer>? _rows;
+
+  /// [layer]'s lanes with [expandedGroupKeys] open, as [session] reads
+  /// them now.
+  List<PropertyLaneRow> of(
+    Layer layer, {
+    required EditorSessionManager session,
+    required Set<String> expandedGroupKeys,
+  }) {
+    final rows = session.layers;
+    if (!identical(rows, _rows)) {
+      _rows = rows;
+      final live = {for (final row in rows) row.id};
+      _byLayer.removeWhere((id, _) => !live.contains(id));
+    }
+    return _byLayer
+        .putIfAbsent(layer.id, IdentityMemo.new)
+        .resolve(
+          identity: layer,
+          key: (
+            ByIdentity(session),
+            ByIdentity(session.repository.requireProject()),
+            session.activeCutId,
+            ByIdentity(rows),
+            ByIdentity(expandedGroupKeys),
+            ByIdentity(session.fxPlugins.plugins),
+            // The camera row's lanes are the track a camera drag previews.
+            layer.kind == LayerKind.camera
+                ? ByIdentity(session.camera.activeCutCameraTrack)
+                : null,
+            // A lane's name is a word of the app's language.
+            AppText.settings.value,
+          ),
+          build: () => timelineLanesForLayer(
+            layer: layer,
+            session: session,
+            expandedGroupKeys: expandedGroupKeys,
+          ),
+        );
+  }
 }
 
 /// The CAMERA row's lanes: its cut's camera track, the member lanes alone.

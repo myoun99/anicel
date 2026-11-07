@@ -294,12 +294,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// R10 moved the lane list out to [timelineLanesForLayer] — the ↑/↓ row
   /// nav needs the same answer, and a second copy would have drifted from
-  /// what the grids draw.
-  List<PropertyLaneRow> _lanesForLayer(Layer layer) => timelineLanesForLayer(
-    layer: layer,
+  /// what the grids draw. Handed back as the same lanes while what they are
+  /// read from holds ([KeptTimelineLanes]), so the grids keep the lane rows
+  /// a pass did not change.
+  List<PropertyLaneRow> _lanesForLayer(Layer layer) => _lanes.of(
+    layer,
     session: _session,
     expandedGroupKeys: widget.rail.expandedLaneGroupKeys,
   );
+
+  final _lanes = KeptTimelineLanes();
 
   /// The CAMERA row's union summary (B4): the shared transform-header union
   /// lane, re-derived per row rebuild from the session's preview-aware

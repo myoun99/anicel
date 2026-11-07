@@ -77,16 +77,24 @@ class _LayerGridRailRows {
   /// The memo gate for the rail's rows (UI-R7 #1): a controls row whose
   /// facts match hands back the CACHED widget instance — a zoom step (or any
   /// rebuild that didn't touch the row) skips its whole Material subtree.
-  /// Lane label rows stay unmemoized: they subscribe to the frame cursor
-  /// themselves and their lane models churn identity per build.
+  /// A lane's row too, kept while its lane is the same object
+  /// ([LaneControlsRowFacts] has why it stood unkept).
   ///
   /// The memo is the x-sheet header's too ([KeptLayerControlsRows]) — one
   /// reading of a controls row, one keeping of it, for both grids (F-244).
   Widget _railRowMemoized(TimelineDisplayRow row, RowBerthMap berths) {
-    if (row.isLane) {
-      return _state._rowDrags.draggable(row, _laneRow(row));
-    }
     final grid = _controlsRowGrid;
+    if (row.isLane) {
+      return _state._railRowMemo.keepLane(
+        berths,
+        row,
+        (
+          facts: laneControlsRowFacts(row, grid),
+          drag: _state._rowDrags.inputsFor(row),
+        ),
+        () => _laneRow(row),
+      );
+    }
     final fold = _groupFoldFor(row);
     final facts = layerControlsRowFacts(
       row,
