@@ -758,8 +758,28 @@ import '../../tool/refactor/clone_scan.dart';
 /// where it is not clear, or under the coverage.
 /// 🔬Measured on the lane over master (`826a20074`, at 86): none added,
 /// that one gone.
+///
+/// 85 → 86 (2026-11-07, viewer-frame-premultiply-on-the-worker — a movie
+/// page's frame asked for premultiplied, where it is decoded, and uploaded
+/// as it comes). Named:
+///
+///     46 tokens
+///       lib/src/services/media/video_viewer_document.dart
+///         VideoViewerDocument.renderPage
+///       lib/src/services/media/video_viewer_document.dart
+///         VideoViewerDocument.readRegionRgba
+///
+/// They share one step — "ask the backend for the page's frame, and say
+/// it could not be read when it does not come" — which both bodies carried
+/// before this round, word for word; what each does with the bytes (an
+/// upload at the page's size, a box cut straight out) is its own, and the
+/// two ask for different forms of the frame. ⛔Not merged, by the rule of
+/// three (CLAUDE.md): two reads of a page's frame. 🔜A third read of a
+/// page's frame merges the step.
+/// 🔬Measured on the lane over master (`0aa978aae`, at 85): this one
+/// added, none gone.
 void main() {
-  const ceiling = 85;
+  const ceiling = 86;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
