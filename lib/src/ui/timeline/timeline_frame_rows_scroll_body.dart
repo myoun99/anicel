@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -10,7 +8,7 @@ import 'timeline_cells_row_facts.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart'
-    show TimelineNextPage, timelineFrameWindowSpanFor;
+    show TimelineNextPage;
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_graph.dart';
 import 'timeline_row_edges.dart';
@@ -168,28 +166,13 @@ class _TimelineFrameRowsScrollBodyState
     viewExtentPx: widget.viewportMainExtent,
   );
 
-  /// The window for the CURRENT bucket: origin quantized to the shared
-  /// bucket span (so it moves once per crossing, exactly when the painters
-  /// re-window), extent a constant pixel span around the viewport.
-  ///
-  /// Without a bucket or a measured viewport there is no window at all and
-  /// every row keeps the content-sized box.
+  /// The window for the CURRENT bucket ([TimelineFrameGeometry.windowedAt]);
+  /// without a bucket there is no window at all and every row keeps the
+  /// content-sized box.
   TimelineFrameGeometry _windowedGeometryFromWidget() {
     final base = _geometryFromWidget();
     final bucket = widget.windowBucket;
-    final viewport = widget.viewportMainExtent;
-    final cellExtent = base.frameCellExtent;
-    if (bucket == null || viewport <= 0 || cellExtent <= 0) {
-      return base;
-    }
-    final spanPx = timelineFrameWindowSpanFor(cellExtent) * cellExtent;
-    return base.windowed(
-      originPx: math.max(
-        0.0,
-        bucket.value * spanPx - timelineFrameWindowMarginPx,
-      ),
-      extentPx: viewport + 2 * timelineFrameWindowMarginPx,
-    );
+    return bucket == null ? base : base.windowedAt(bucket.value);
   }
 
   void _handleWindowBucket() {

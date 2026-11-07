@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -5,7 +7,8 @@ import 'package:flutter/widgets.dart';
 import '../layout/render_shifted_child.dart';
 import 'axis_turn.dart';
 import 'timeline_frame_coordinate_policy.dart';
-import 'timeline_frame_window.dart' show visibleFrameWindowFor;
+import 'timeline_frame_window.dart'
+    show timelineFrameWindowSpanFor, visibleFrameWindowFor;
 
 /// The frame-axis geometry of a timeline row — everything a ZOOM STEP moves.
 ///
@@ -138,9 +141,30 @@ class TimelineFrameGeometry {
     ).clamp(frameStartIndex, frameEndIndexExclusive - 1);
   }
 
+  /// The window a grid lays its rows in while its view stands in [bucket]
+  /// ([timelineFrameWindowSpanFor]): from a margin before the bucket's span
+  /// to a margin past the view ([timelineFrameWindowMarginPx]) — moved once
+  /// a crossing, exactly when the painters re-window. Itself where there is
+  /// no view or no cell to window by: every row keeps the content's box.
+  ///
+  /// ONE answer for every grid: the timeline's rows, the X-sheet's columns
+  /// and the conte's strips (🗣️a-live-dock-frame-costs-a-whole-draw-Q8 —
+  /// 「타임라인 · X시트 · 콘티 한 법」). ↩️The timeline and the X-sheet each
+  /// worked it out, until the conte came third.
+  TimelineFrameGeometry windowedAt(int bucket) {
+    if (viewExtentPx <= 0 || frameCellExtent <= 0) {
+      return this;
+    }
+    final spanPx =
+        timelineFrameWindowSpanFor(frameCellExtent) * frameCellExtent;
+    return windowed(
+      originPx: math.max(0.0, bucket * spanPx - timelineFrameWindowMarginPx),
+      extentPx: viewExtentPx + 2 * timelineFrameWindowMarginPx,
+    );
+  }
+
   /// The same geometry seen through a window starting at [originPx] and
-  /// [extentPx] wide, over the same view. Only the owner (the rows body)
-  /// calls this.
+  /// [extentPx] wide, over the same view — [windowedAt]'s, and a test's.
   TimelineFrameGeometry windowed({
     required double originPx,
     required double extentPx,
