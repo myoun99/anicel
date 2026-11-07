@@ -277,6 +277,11 @@ class TimelineGridTileStore {
       _warmScheduled ||
       _stretched.isNotEmpty;
 
+  /// How many rows [_keptByRow] holds tiles of — not one whose every tile
+  /// was let go. ⚠️TEST ONLY.
+  @visibleForTesting
+  int get debugRowsKept => _keptByRow.length;
+
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
   /// seen of a source that follows the live cut

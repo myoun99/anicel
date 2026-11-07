@@ -59,14 +59,14 @@ void main() {
     timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 2)},
   );
 
-  TimelineRowCellsPainter at(double extent, {Layer? of}) =>
+  TimelineRowCellsPainter at(double extent, {Layer? of, double across = 28}) =>
       TimelineRowCellsPainter(
         layer: of ?? layer,
         geometry: testFrameGeometry(
           frameCellExtent: extent,
           frameEndIndexExclusive: 40,
         ),
-        crossAxisExtent: 28,
+        crossAxisExtent: across,
         exposureStateForLayer: stateFor,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),
@@ -581,6 +581,60 @@ void main() {
       ],
       isEmpty,
       reason: 'no let-go tile is laid',
+    );
+  });
+
+  test('a row whose every tile was let go is kept no more', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugCapacity = 1;
+    addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
+    await baked(24);
+    expect(store.debugRowsKept, 1, reason: '⛔전제: A\'s row holds its tile');
+    final other = Layer(
+      id: const LayerId('layer-b'),
+      name: 'B',
+      frames: layer.frames,
+      timeline: layer.timeline,
+    );
+    store.tileFor(
+      painter: at(24, of: other),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(await pollUntil(() => landings == 2), isTrue);
+    expect(store.debugRowsKept, 1, reason: 'A\'s tile let go as B\'s landed');
+  });
+
+  test('a tile stands in only at its own pixel ratio and in a row as thick '
+      'as its own', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    final old = await baked(24);
+    expect(ask(20), same(old), reason: '⛔CONTROL: but for the extent, it does');
+    expect(
+      store.tileFor(
+        painter: at(20),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      ),
+      isNull,
+      reason: 'at another pixel ratio',
+    );
+    expect(
+      store.tileFor(
+        painter: at(20, across: 40),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 2.0,
+      ),
+      isNull,
+      reason: 'in a thicker row',
     );
   });
 }
