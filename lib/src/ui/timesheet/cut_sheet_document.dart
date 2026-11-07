@@ -77,6 +77,11 @@ TimesheetDocument cutSheetDocument(
 /// (F-558) — what [cutSheetDocument] prints, and what the timesheet panel
 /// reprints on: a rename of one on another track leaves [cut] and its
 /// track the very objects they were.
+///
+/// Bare names, as the cut's own number above them — never `writtenCutName`'s
+/// `c265`: 유저's F-558 sketch wrote 312 · 265 · 266 under the box's カット,
+/// which already says they are cuts. A line has no such box, so the conte's
+/// cell writes `겸용 c98,c102` (F-531 · F-229).
 List<String> sheetLinkedCutNames(Project project, Cut cut) => [
   for (final other in LinkedCutGroups(project).of(cut))
     if (other.id != cut.id) other.name,
