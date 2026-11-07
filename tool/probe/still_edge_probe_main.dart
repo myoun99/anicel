@@ -39,10 +39,17 @@
 // blocks under a clip, a text widget, a pill under an opacity — the left
 // half the same widgets live. Three times: on whole device pixels (`still`),
 // and a third and a half of a device pixel over (`stl+1/3`, `stl+1/2`),
-// where a 150% screen stands a logical third. Its layout is written once
-// the regions have their images, and each such cell says how many bytes its
-// image holds (`imageBytes`, 0 while it paints live — then it measured
-// nothing) and why it last painted (`standDown`).
+// where a 150% screen stands a logical third. Then the layers a dock adds
+// round them (🔬the Surface, 11-07 22:31: the three rows above all agreed
+// with the live half): a region inside the region a third of a device pixel
+// in, as a dock's image holds its rows' (`nest`, `nst+1/2`), and the widget
+// over and under a tick that is painted again at every frame — the same
+// pixels each time — which the region draws live between its strata
+// (`tick-o`, `tick-u`). Its layout is written once the regions have their
+// images, and each such cell says how many bytes its image holds
+// (`imageBytes`, 0 while it paints live — then it measured nothing), why it
+// last painted (`standDown`) and, for a tick it could not draw live, why
+// (`tickRefusals`).
 //
 // Measurement, not a feature: not wired into the app, no strings, no UI
 // conventions apply.
@@ -54,6 +61,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'package:anicel/src/ui/widgets/still_raster.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart' show TickOverlay;
 
 const _outDir = String.fromEnvironment('EDGE_OUT', defaultValue: '');
 
@@ -181,13 +189,91 @@ ui.Image _makeSmallImage() {
   return image;
 }
 
-/// The app's own way's rows: a name and how far over a whole device pixel
-/// both halves stand.
-const _stillVariants = [('still', 0.0), ('stl+1/3', 1 / 3), ('stl+1/2', 0.5)];
+/// How a row of the app's own cells holds its widget in the right half.
+enum _Hold {
+  /// In the region.
+  region,
+
+  /// In a region a third of a device pixel inside the region — a dock's
+  /// image holding its rows' images.
+  nested,
+
+  /// Over a tick that changes alone at every frame, which the region draws
+  /// live between its strata: the widget is the stratum above it.
+  overTick,
+
+  /// Under that tick: the widget is the stratum below it.
+  underTick,
+}
+
+/// The app's own way's rows: a name, how far over a whole device pixel
+/// both halves stand, and how the right half holds the widget.
+const _stillVariants = [
+  ('still', 0.0, _Hold.region),
+  ('stl+1/3', 1 / 3, _Hold.region),
+  ('stl+1/2', 0.5, _Hold.region),
+  ('nest', 0.0, _Hold.nested),
+  ('nst+1/2', 0.5, _Hold.nested),
+  ('tick-o', 1 / 3, _Hold.overTick),
+  ('tick-u', 1 / 3, _Hold.underTick),
+];
 
 /// The most cells a line of the app's own rows holds; a row goes on to the
 /// next line past it.
-const int _stillColumns = 6;
+const int _stillColumns = 11;
+
+/// [widget] as [hold] stands it in a half — [inRegion] for the right one,
+/// which a region holds. The left half stands the same pixels live: the
+/// nested region's inset, the tick's mark.
+Widget _held(
+  _Hold hold,
+  double ratio,
+  Widget widget, {
+  required bool inRegion,
+  required Listenable beat,
+}) {
+  switch (hold) {
+    case _Hold.region:
+      return widget;
+    case _Hold.nested:
+      return Padding(
+        padding: EdgeInsets.only(left: 1 / 3 / ratio, top: 1 / 3 / ratio),
+        child: inRegion
+            ? StillRaster(debugLabel: 'probe-in', child: widget)
+            : widget,
+      );
+    case _Hold.overTick || _Hold.underTick:
+      // A 4-device-pixel mark in the corner no widget draws in, painted
+      // again at every frame — the same pixels each time.
+      final tick = TickOverlay(
+        children: [
+          Positioned(
+            right: 3 / ratio,
+            bottom: 3 / ratio,
+            width: 4 / ratio,
+            height: 4 / ratio,
+            child: CustomPaint(painter: _TickMark(beat)),
+          ),
+        ],
+      );
+      return Stack(
+        fit: StackFit.expand,
+        children: hold == _Hold.overTick ? [tick, widget] : [widget, tick],
+      );
+  }
+}
+
+/// The tick's mark: the same square at every [beat].
+class _TickMark extends CustomPainter {
+  _TickMark(Listenable beat) : super(repaint: beat);
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      canvas.drawRect(Offset.zero & size, Paint()..color = _ink);
+
+  @override
+  bool shouldRepaint(_TickMark oldDelegate) => false;
+}
 
 /// A widget a cell holds, made at [ratio] device pixels a logical one, its
 /// sizes given in device pixels from the cell's corner as the shapes are.
@@ -382,9 +468,21 @@ class _EdgeProbeApp extends StatefulWidget {
   State<_EdgeProbeApp> createState() => _EdgeProbeAppState();
 }
 
-class _EdgeProbeAppState extends State<_EdgeProbeApp> {
+class _EdgeProbeAppState extends State<_EdgeProbeApp>
+    with SingleTickerProviderStateMixin {
   /// Each cell's image, by variant then shape; null until taken.
   List<List<ui.Image?>>? _images;
+
+  /// What the tick rows' marks are painted again at: every frame.
+  final ValueNotifier<int> _beat = ValueNotifier(0);
+  late final _ticker = createTicker((_) => _beat.value += 1);
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _beat.dispose();
+    super.dispose();
+  }
 
   /// The app's own cells' regions, by variant then shape.
   final List<List<GlobalKey>> _regions = [
@@ -404,6 +502,7 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
   @override
   void initState() {
     super.initState();
+    _ticker.start();
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeAll());
   }
 
@@ -434,7 +533,7 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
             'live': _cellAt(row, column).live,
             'image': _cellAt(row, column).image,
           },
-      for (final (variant, (name, _)) in _stillVariants.indexed)
+      for (final (variant, (name, _, _)) in _stillVariants.indexed)
         for (final (shape, widget) in _widgetShapes.indexed)
           {
             'variant': name,
@@ -443,6 +542,9 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
             'image': _stillCellAt(variant, shape).image,
             'imageBytes': _regionOf(variant, shape)?.rasterBytes ?? 0,
             'standDown': _regionOf(variant, shape)?.standDown.name,
+            // A tick row whose tick the region could not draw live between
+            // its strata says why here — then it measured a baked tick.
+            'tickRefusals': _regionOf(variant, shape)?.debugTickRefusals,
           },
     ];
     final out = Directory(_outDir.isEmpty ? 'still_edge_probe_out' : _outDir);
@@ -472,13 +574,20 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
                   Positioned.fill(
                     child: CustomPaint(painter: _TablePainter(images, ratio)),
                   ),
-                  for (final (variant, (_, over)) in _stillVariants.indexed)
+                  for (final (variant, (_, over, hold))
+                      in _stillVariants.indexed)
                     for (final (shape, widget) in _widgetShapes.indexed) ...[
                       _cell(
                         _stillCellAt(variant, shape).live,
                         over,
                         ratio,
-                        widget.build(ratio),
+                        _held(
+                          hold,
+                          ratio,
+                          widget.build(ratio),
+                          inRegion: false,
+                          beat: _beat,
+                        ),
                       ),
                       _cell(
                         _stillCellAt(variant, shape).image,
@@ -487,7 +596,13 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp> {
                         StillRaster(
                           key: _regions[variant][shape],
                           debugLabel: 'probe',
-                          child: widget.build(ratio),
+                          child: _held(
+                            hold,
+                            ratio,
+                            widget.build(ratio),
+                            inRegion: true,
+                            beat: _beat,
+                          ),
                         ),
                       ),
                     ],
