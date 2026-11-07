@@ -693,7 +693,12 @@ fn the_movie_is_the_c_s_but_for_its_clock_chunking_and_note() {
 // codec's entry — with a sample for every frame written, and one track more
 // for the sound when there is sound. Each pair of the lineup's MP4 this
 // build writes: HEVC chief among them, which not every machine that writes
-// it reads back (`tests/decode.rs`).
+// it reads back (`tests/decode.rs`). ⚠️The Mac's encoder writes a note of
+// its own into the first unit of its H.264 and HEVC streams — an SEI of
+// user data under UUID 47564adc-5c4c-433f-94ef-c5113cd143a8, holding a
+// count the machine keeps across processes (bundle GPU CI 42366555125,
+// 2026-11-07) — which parts any two of its movies byte for byte; inside a
+// sample, it leaves how many there are alone.
 #[test]
 fn a_movie_holds_its_streams_and_a_sample_for_every_frame() {
     let _one = one_at_a_time();
