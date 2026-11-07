@@ -266,12 +266,14 @@ class _TreePlan {
       : plan.matrix(matrix);
 }
 
-/// The colour [effects] fold into, null where none changes a colour.
+/// The colour [effects] fold into, null where there are none — a tree
+/// holds no effect that changes no pixel ([resolveLayerEffectsAt] drops
+/// them).
 ///
 /// ⏳screen-on-the-engine c5b: a chain the engine runs — a key, a blur, a
 /// lens — on the row's own tiles, a folder's or a scope's buffer.
 List<double>? _colourOf(List<ResolvedLayerEffect> effects) {
-  if (effects.every((effect) => effect.isNoOp)) {
+  if (effects.isEmpty) {
     return null;
   }
   return resolveColorOnlyMatrix(effects) ??
