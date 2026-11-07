@@ -6,6 +6,7 @@ import 'package:hooks/hooks.dart';
 import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
 import '../../../tool/bash_executable.dart';
+import '../../../tool/machine_variables.dart';
 
 // Builds rust/ with the toolchain pinned in rust/rust-toolchain.toml and
 // ships it as the code asset that lib/src/engine_ffi.dart binds to.
@@ -46,6 +47,9 @@ import '../../../tool/bash_executable.dart';
 const _asset = 'src/engine_ffi.dart';
 
 void main(List<String> args) async {
+  if (await _againWithThisMachinesRustHomes(args) case final code?) {
+    exit(code);
+  }
   await build(args, (input, output) async {
     final windows = input.config.buildCodeAssets &&
         input.config.code.targetOS == OS.windows;
@@ -65,6 +69,11 @@ void main(List<String> args) async {
             : "gpu_engine: built in the trunk's hook folder, "
                 '${folder.toFilePath()}, under its turn',
       );
+      final homes = [
+        for (final name in kMachineVariables)
+          '$name=${Platform.environment[name] ?? 'the default'}',
+      ];
+      stdout.writeln('gpu_engine: Rust from ${homes.join(' ')}');
       _aimTarget(input.outputDirectory, folder);
       final built = BuildOutputBuilder();
       await RustBuilder(
@@ -93,6 +102,34 @@ void main(List<String> args) async {
       ),
     );
   });
+}
+
+/// ⛔THIS MACHINE'S RUST HOMES, WHICH THE HOOKS RUNNER TAKES AWAY (관제
+/// 2026-11-08, the-engine-hook-builds-with-the-c-drive-rust-homes): it hands
+/// a hook only the variables it lists (hooks_runner 1.5.0,
+/// `includeHookEnvironmentVariable`), and CARGO_HOME and RUSTUP_HOME are not
+/// among them — so on the main PC, whose homes are on D:, the builder's
+/// rustup installed the pinned toolchain into the default home on C:
+/// (1.7 GB, 2026-11-07) and cargo kept a registry there. Handing them to
+/// cargo alone is not enough: the builder asks `rustup show
+/// active-toolchain` first, with no environment of ours, and that installs
+/// the toolchain into the home it sees (measured 2026-11-08). So the hook
+/// runs itself once more with them, read where a session's are
+/// (tool/machine_variables.dart) — none off Windows, and none where the
+/// user set none (the Surface, CI). Null when it has them already.
+Future<int?> _againWithThisMachinesRustHomes(List<String> args) async {
+  final missing = {
+    for (final MapEntry(:key, :value) in thisMachinesVariables().entries)
+      if (Platform.environment[key] != value) key: value,
+  };
+  if (missing.isEmpty) return null;
+  final again = await Process.start(
+    Platform.resolvedExecutable,
+    [...Platform.executableArguments, Platform.script.toFilePath(), ...args],
+    environment: missing,
+    mode: ProcessStartMode.inheritStdio,
+  );
+  return again.exitCode;
 }
 
 /// The builder builds into `target` of the hook's output folder, and the

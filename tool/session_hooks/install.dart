@@ -45,6 +45,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../machine_variables.dart';
+
 /// What one machine's settings are made from. Every path with forward
 /// slashes: they go into commands a POSIX shell reads.
 typedef MachineSetup = ({
@@ -84,66 +86,6 @@ Map<String, String> environmentFor(MachineSetup setup) => {
   'ANICEL_BOARD_TOKEN_FILE': '${setup.board}/.board-token',
   'ANICEL_BOARD_FOLDER': setup.board,
 };
-
-/// The variables this machine's own settings hold and a session may not
-/// have been handed: the Rust toolchain's homes.
-///
-/// 유저 2026-11-07 (gpu-engine-skeleton-Q7): 「세션 설정에 두 변수를 적는다
-/// — install.dart 가 이 기계의 윈도 설정에서 읽어 적게」. The desktop app
-/// hands a session the environment it was itself started with: on the main
-/// PC it started on 10-29 and Rust went onto D: on 11-05, so every session's
-/// cargo kept a second home on C: (`~/.cargo`, `~/.rustup`) while the
-/// landing chain read D: — a crate one session fetched was missing to the
-/// other, and a land was refused for it. Off Windows a session's shell
-/// reads the login profile, which holds them already.
-const kMachineVariables = ['CARGO_HOME', 'RUSTUP_HOME'];
-
-/// [kMachineVariables] as [read] finds them, the ones it has, slashed.
-Map<String, String> machineVariables(String? Function(String name) read) => {
-  for (final name in kMachineVariables)
-    if (read(name) case final value? when value.trim().isNotEmpty)
-      name: slashed(value.trim()),
-};
-
-/// [name]'s value in what `reg query HKCU\Environment /v <name>` printed,
-/// with the `%VARIABLE%`s of an expandable value [expand]ed; null when it
-/// printed none.
-String? registryValue(
-  String printed,
-  String name,
-  String Function(String variable) expand,
-) {
-  final line = RegExp(
-    '^\\s+${RegExp.escape(name)}\\s+(REG_SZ|REG_EXPAND_SZ)\\s+(.*?)\\s*\$',
-    multiLine: true,
-    caseSensitive: false,
-  ).firstMatch(printed);
-  if (line == null) return null;
-  final value = line.group(2)!;
-  return line.group(1)!.toUpperCase() == 'REG_SZ'
-      ? value
-      : value.replaceAllMapped(
-          RegExp('%([^%]+)%'),
-          (variable) => expand(variable.group(1)!),
-        );
-}
-
-/// [name] as Windows keeps it for this user, whatever this process was
-/// handed.
-String? windowsUserVariable(String name) {
-  final asked = Process.runSync('reg', [
-    'query',
-    r'HKCU\Environment',
-    '/v',
-    name,
-  ]);
-  if (asked.exitCode != 0) return null;
-  return registryValue(
-    '${asked.stdout}',
-    name,
-    (variable) => Platform.environment[variable] ?? '%$variable%',
-  );
-}
 
 /// The hooks of a session on this machine — all of them.
 Map<String, dynamic> hooksFor(MachineSetup setup) {
@@ -372,14 +314,6 @@ Map<String, String> authorGiven({
     'user.email': trunkEmail.trim(),
 };
 
-/// [path] the way a POSIX shell and a settings file both read it.
-String slashed(String path) {
-  final forward = path.replaceAll('\\', '/');
-  return forward.length > 1 && forward.endsWith('/')
-      ? forward.substring(0, forward.length - 1)
-      : forward;
-}
-
 void main(List<String> args) {
   final repo = File.fromUri(Platform.script).parent.parent.parent.path;
   final machine = Process.runSync('git', [
@@ -404,9 +338,7 @@ void main(List<String> args) {
 
   final file = File(settingsPathOf(setup));
   final before = file.existsSync() ? file.readAsStringSync() : '{}';
-  final variables = Platform.isWindows
-      ? machineVariables(windowsUserVariable)
-      : const <String, String>{};
+  final variables = thisMachinesVariables();
   final settings = settingsWith(
     jsonDecode(before) as Map<String, dynamic>,
     setup,

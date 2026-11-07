@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/machine_variables.dart';
 import '../../tool/session_hooks/install.dart';
 
 /// 유저 2026-10-07: 「작업을 노트북이 해줫으면 한단거지」 — a second machine
