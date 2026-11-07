@@ -2,7 +2,8 @@
 //! opened by both, through the exports each has — its shape, every frame's
 //! bytes in order and out of it, a span of a file plain and framed, the
 //! slots, and the sentence each failure says. Where this build has no
-//! decoder, that the two say so alike.
+//! decoder, that the two say so alike. And every movie the export writes,
+//! read back by the Rust's as it was asked.
 //!
 //! ⚠️A process of its own, apart from the crate's tests: the movie is
 //! written through the export, which keeps one job for the whole process,
@@ -17,8 +18,8 @@ use video::decode::{
     qa_video_decode_last_error, qa_video_decode_open, qa_video_decode_open_span, qa_video_decode_supported,
 };
 use video::export::{
-    qa_video_export_error, qa_video_export_finish, qa_video_export_open, qa_video_export_write_audio,
-    qa_video_export_write_frame,
+    qa_video_export_error, qa_video_export_finish, qa_video_export_open, qa_video_export_probe,
+    qa_video_export_write_audio, qa_video_export_write_frame,
 };
 
 #[derive(Clone, Copy)]
@@ -119,49 +120,95 @@ fn colour(k: usize) -> [u8; 2] {
     [(k * 8) as u8, (255 - k * 8) as u8]
 }
 
-/// Frame `k` whole: its colour, and blue rising down the rows — so a picture
-/// read upside down, or with its channels swapped, is not the same bytes.
-fn picture(k: usize) -> Vec<u8> {
+/// Frame `k` whole, `width` × `height`: its colour, and blue rising down the
+/// rows — so a picture read upside down, or with its channels swapped, is
+/// not the same bytes.
+fn picture(width: usize, height: usize, k: usize) -> Vec<u8> {
     let [r, g] = colour(k);
-    (0..HEIGHT).flat_map(|y| [r, g, (y * 5) as u8, 255].repeat(WIDTH)).collect()
+    (0..height).flat_map(|y| [r, g, (20 + y * 200 / height) as u8, 255].repeat(width)).collect()
 }
+
+/// What `frame`, read `width` × `height`, shows: the frame whose colour
+/// is nearest its middle's, whether it is the right way up, and whether it
+/// is opaque.
+fn shows(frame: &[u8], width: usize, height: usize) -> (usize, bool, bool) {
+    let at = |y: usize| &frame[(y * width + width / 2) * 4..][..4];
+    let middle = &at(height / 2)[..2];
+    let distance =
+        |k: usize| colour(k).iter().zip(middle).map(|(a, b)| (i32::from(*a) - i32::from(*b)).pow(2)).sum::<i32>();
+    let nearest = (0..FRAMES).min_by_key(|&k| distance(k)).expect("frames");
+    (nearest, u16::from(at(2)[2]) + 100 < u16::from(at(height - 3)[2]), at(2)[3] == 255)
+}
+
+/// What a movie is asked to be, as the export's open takes it.
+#[derive(Clone, Copy, Debug)]
+struct Asked {
+    width: usize,
+    height: usize,
+    fps: (i32, i32),
+    /// The sound's rate and channels, or none for a silent movie.
+    sound: Option<(i32, i32)>,
+    container: i32,
+    codec: i32,
+    alpha: i32,
+    bitrate_bps: i32,
+}
+
+/// [`movie`]'s: silent at 24, an MP4 of H.264.
+const SILENT: Asked =
+    Asked { width: WIDTH, height: HEIGHT, fps: (24, 1), sound: None, container: 0, codec: 0, alpha: 0, bitrate_bps: 0 };
 
 /// A movie of [`FRAMES`] such pictures at 24, written once by this build's
 /// export — None where it has none — and the file it is in.
 fn movie() -> Option<&'static (PathBuf, Vec<u8>)> {
     static MOVIE: OnceLock<Option<(PathBuf, Vec<u8>)>> = OnceLock::new();
-    MOVIE.get_or_init(|| write_movie("silent", FRAMES, None)).as_ref()
+    MOVIE.get_or_init(|| write_movie("silent", SILENT, FRAMES, 0)).as_ref()
 }
 
-/// `frames` such pictures at 24 as an MP4 this build's export writes, and
-/// the file — None where it has no export. With `sound_past`, over a stereo
-/// 48 kHz sound that runs that many samples past the last picture.
-fn write_movie(name: &str, frames: usize, sound_past: Option<usize>) -> Option<(PathBuf, Vec<u8>)> {
-    const PER_FRAME: usize = 48_000 / 24;
-    let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.mp4", std::process::id()));
+/// `frames` such pictures as the movie `asked` this build's export writes,
+/// and the file — None where it does not write it. Under silence of the
+/// sound's rate, if it has one, that runs `sound_past` samples past the
+/// last picture.
+fn write_movie(name: &str, asked: Asked, frames: usize, sound_past: usize) -> Option<(PathBuf, Vec<u8>)> {
+    let extension = if asked.container == 1 { "mov" } else { "mp4" };
+    let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.{extension}", std::process::id()));
     let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
-    let (rate, channels) = if sound_past.is_some() { (48_000, 2) } else { (0, 0) };
+    let (rate, channels) = asked.sound.unwrap_or((0, 0));
+    let Asked { width, height, fps, container, codec, alpha, bitrate_bps, .. } = asked;
     // SAFETY (each): the export's declarations; a whole frame of the size
     // opened, and as many samples of its channels as are passed.
     let opened = unsafe {
-        qa_video_export_open(utf8.as_ptr(), WIDTH as i32, HEIGHT as i32, 24, 1, rate, channels, 0, 0, 0, 0)
+        qa_video_export_open(
+            utf8.as_ptr(),
+            width as i32,
+            height as i32,
+            fps.0,
+            fps.1,
+            rate,
+            channels,
+            container,
+            codec,
+            alpha,
+            bitrate_bps,
+        )
     };
     if opened != 1 {
         return None;
     }
     let sound = |samples: usize| {
-        let pcm = vec![0i16; samples * 2];
+        let pcm = vec![0i16; samples * channels as usize];
         assert_eq!(unsafe { qa_video_export_write_audio(pcm.as_ptr(), samples as i32) }, 1, "{}", export_error());
     };
+    let per_frame = (rate * fps.1 / fps.0) as usize;
     for k in 0..frames {
-        let rgba = picture(k);
+        let rgba = picture(width, height, k);
         assert_eq!(unsafe { qa_video_export_write_frame(rgba.as_ptr()) }, 1, "frame {k}: {}", export_error());
-        if sound_past.is_some() {
-            sound(PER_FRAME);
+        if channels > 0 {
+            sound(per_frame);
         }
     }
-    if let Some(past) = sound_past {
-        sound(past);
+    if channels > 0 && sound_past > 0 {
+        sound(sound_past);
     }
     assert_eq!(qa_video_export_finish(), 1, "finish: {}", export_error());
     let bytes = std::fs::read(&path).expect("the movie written");
@@ -238,25 +285,63 @@ fn a_movie_on_disk_reads_alike() {
     assert_eq!(refusals, ["past the end of the stream", "frame buffer too small"], "LIVENESS: both refusals asked");
 }
 
+// Every movie the export writes reads back through this crate's reader as
+// it was asked: its picture made even, its rate, every frame written, and
+// each frame the picture for its index, read in order and out of it. Its
+// bytes are the OS encoder's and are not held (유저
+// connection-round-checklist-Q14, 2026-11-07: what the OS decides is not
+// frozen) — the shapes are the ones the export's C comparison writes, each
+// where this build writes its pair: the fixtures' movie, an odd one the pad
+// makes even, a film the hardware takes, the hardware law's two sides, an
+// exact NTSC fraction with mono sound at another rate and a bitrate named,
+// one named past the ceiling, and where Apple writes them, H.264 in a MOV
+// and ProRes — 4444 keeping a picture's alpha. Each file's path is Korean.
+// ⚠️Not HEVC: whether a machine reads it back is its own — Windows reads
+// HEVC only through the Store's extension, which a machine that writes it
+// may lack (this one: 「no RGB conversion for this codec」, 2026-11-07).
 #[test]
-fn each_frame_is_the_picture_for_its_index() {
+fn what_the_export_writes_reads_back_as_it_was_asked() {
     let _turn = one_at_a_time();
-    let Some((path, _)) = movie() else { return };
-    let (_, frames) = read_all(rust(), |decoder| decoder.open(path.to_str().expect("UTF-8")));
-    // -5 and then -4 are each asked as the first: an index before it is
-    // clamped BEFORE 「already positioned」 is asked, or -4 would read as the
-    // frame after -5's.
-    let order = (0..FRAMES).chain([FRAMES - 1, 0, FRAMES / 2, 3, 4, FRAMES / 2, 0, 0]);
-    for (index, frame) in order.zip(&frames) {
-        let frame = frame.as_ref().expect("a frame");
-        let at = |y: usize| &frame[(y * WIDTH + WIDTH / 2) * 4..][..4];
-        let middle = &at(HEIGHT / 2)[..2];
-        let distance =
-            |k: usize| colour(k).iter().zip(middle).map(|(a, b)| (i32::from(*a) - i32::from(*b)).pow(2)).sum::<i32>();
-        let nearest = (0..FRAMES).min_by_key(|&k| distance(k)).expect("frames");
-        assert_eq!(nearest, index, "frame {index} shows {middle:?}");
-        assert!(at(2)[2] + 100 < at(HEIGHT - 3)[2], "frame {index} is the right way up: {:?}", (at(2), at(HEIGHT - 3)));
-        assert_eq!(at(2)[3], 255, "frame {index} is opaque");
+    let sounding = Asked { sound: Some((48_000, 2)), ..SILENT };
+    let ntsc =
+        Asked { width: 96, height: 64, fps: (24000, 1001), sound: Some((44_100, 1)), bitrate_bps: 3_000_000, ..SILENT };
+    for (name, asked, frames) in [
+        ("silent", SILENT, FRAMES),
+        ("fixture", sounding, 24),
+        ("odd-silent", Asked { width: 63, height: 47, ..SILENT }, 6),
+        ("full-hd", Asked { width: 1920, height: 1080, ..sounding }, 6),
+        ("past-the-law", Asked { width: 49, height: 64, ..SILENT }, 6),
+        ("the-failed-side", Asked { width: 48, height: 64, ..SILENT }, 6),
+        ("ntsc-mono", ntsc, 12),
+        ("past-the-ceiling", Asked { width: 64, height: 64, bitrate_bps: 80_000_000, ..sounding }, 6),
+        ("mov", Asked { container: 1, ..sounding }, 6),
+        ("prores-422", Asked { container: 1, codec: 4, ..sounding }, 6),
+        ("prores-4444-alpha", Asked { container: 1, codec: 6, alpha: 1, ..SILENT }, 6),
+    ] {
+        if qa_video_export_probe(asked.container, asked.codec) == 0 {
+            continue;
+        }
+        let (path, _) = write_movie(&format!("asked-{name}"), asked, frames, 0)
+            .unwrap_or_else(|| panic!("{name}: what the export says it writes opens: {}", export_error()));
+        let (info, read) = read_all(rust(), |decoder| decoder.open(path.to_str().expect("UTF-8")));
+        let even = |side: usize| (side + (side & 1)) as i32;
+        let shape = (even(asked.width), even(asked.height), frames as i64);
+        assert_eq!((info.0, info.1, info.2), shape, "{name}: as asked");
+        // The rate as the reader hands it: Media Foundation's, in the 100 ns
+        // it keeps a frame's time in (24000/1001 came back 10000000/417083,
+        // 2026-11-07) — so a frame lasts as asked, to that tick.
+        let lasts = |(num, den): (i32, i32)| 1e7 * f64::from(den) / f64::from(num);
+        assert!((lasts(info.3) - lasts(asked.fps)).abs() <= 1.0, "{name}: a frame lasts as asked: {:?}", info.3);
+        // -5 and then -4 are each asked as the first: an index before it is
+        // clamped BEFORE 「already positioned」 is asked, or -4 would read as
+        // the frame after -5's.
+        let order = (0..frames).chain([frames - 1, 0, frames / 2, 3, 4, frames / 2, 0, 0]);
+        for (index, frame) in order.zip(&read) {
+            let frame = frame.as_ref().unwrap_or_else(|why| panic!("{name}: frame {index}: {why}"));
+            let shown = shows(frame, info.0 as usize, info.1 as usize);
+            assert_eq!(shown, (index, true, true), "{name}: frame {index} — its picture, the right way up, opaque");
+        }
+        std::fs::remove_file(path).ok();
     }
 }
 
@@ -338,7 +423,9 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     // frame the count rounds away — and the repo's own movie, whose sound
     // runs past its twelve by less.
     let _turn = one_at_a_time();
-    let Some((longer, _)) = write_movie("sound-past", 12, Some(12_000)) else { return };
+    let Some((longer, _)) = write_movie("sound-past", Asked { sound: Some((48_000, 2)), ..SILENT }, 12, 12_000) else {
+        return;
+    };
     // This checkout's, read when the test runs (gpu_engine's
     // kernels/shared/one_checkout.rs).
     let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
