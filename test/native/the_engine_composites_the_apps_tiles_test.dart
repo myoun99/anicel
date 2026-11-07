@@ -330,21 +330,23 @@ void main() {
     );
   });
 
-  /// A plan of one row of [tiles] over a tile row, keyed by the key chain
-  /// or run through the effect chain [through] adds to the plan.
+  /// A plan of one row of [tiles] from tile [column] of a tile row, keyed
+  /// by the key chain or run through the effect chain [through] adds to
+  /// the plan.
   GpuPlan throughRow(
     List<GpuTile?> tiles,
-    ({int? keys, int? chain}) Function(GpuPlan plan) through,
-  ) {
+    ({int? keys, int? chain}) Function(GpuPlan plan) through, {
+    int column = 0,
+  }) {
     final plan = GpuPlan();
     addTearDown(plan.free);
-    final set = plan.set(0, 0, tiles.length, 1, tiles);
+    final set = plan.set(column, 0, tiles.length, 1, tiles);
     final (:keys, :chain) = through(plan);
     final added = plan.row(
       set: set,
       inverse: identity,
       sampling: GpuSampling.blend,
-      columns: tiles.length * gpuTileSide,
+      columns: (column + tiles.length) * gpuTileSide,
       rows: gpuTileSide,
       mode: normal,
       keys: keys,
@@ -405,6 +407,8 @@ void main() {
     expect(pixel(keyed([true]), [(0, 0)], 3, 3), [255, 0, 0, 255]);
   });
 
+  // The matrix's row lies a tile in: a chain over its own tiles there runs
+  // on them, and not on where nothing is.
   test("a chain's keys and matrix are the row's own", () {
     final tiles = redAndBlue();
     final keyed = throughRow(tiles, (plan) {
@@ -419,14 +423,18 @@ void main() {
       plan.chainKeys(chain, keys);
       return (keys: null, chain: chain);
     });
-    final greened = throughRow(tiles, (plan) {
-      final chain = plan.chain(0, 0, 1, 1);
+    final greened = throughRow(column: 1, tiles, (plan) {
+      final chain = plan.chain(1, 0, 1, 1);
       plan.chainMatrix(chain, green);
       return (keys: null, chain: chain);
     });
+    const aside = [(1, 0)];
 
     expect(ran(chained, [(0, 0)]), ran(keyed, [(0, 0)]));
-    expect(pixel(ran(greened, [(0, 0)]), [(0, 0)], 3, 3), [0, 255, 0, 255]);
+    expect(
+      pixel(ran(greened, aside), aside, gpuTileSide + 3, 3),
+      [0, 255, 0, 255],
+    );
   });
 
   /// One tile with nothing on it but a white pixel at (64, 64).
@@ -536,7 +544,8 @@ void main() {
   const nudged = [1.0, 0.0, 0.5, 0.0, 1.0, 0.25, 0.0, 0.0, 1.0];
 
   // The same rows, drawn alone by the plan or laid from a run of them —
-  // freed before the plan runs, which keeps its tiles.
+  // freed before the plan runs, which keeps its tiles. The solid under
+  // them stays the plan's: a map takes the steps from where it is told.
   test('a blur map laid from a run is the one drawn from its rows', () {
     final tiles = storedOf(noise(3));
     final out = [(0, 0), (1, 0), (2, 0)];
@@ -544,6 +553,7 @@ void main() {
       final plan = GpuPlan();
       addTearDown(plan.free);
       final set = plan.set(0, 0, 3, 1, tiles);
+      plan.solid(0xFF00FF00, 0, 0, 40, 40);
       final blurMap = map(plan, set);
       final chain = plan.chain(0, 0, 3, 1);
       final picture = (0, 0, 3 * gpuTileSide, gpuTileSide);
@@ -581,6 +591,51 @@ void main() {
 
     expect(ran(laid, out), ran(drawn, out));
     expect(ran(drawn, out), isNot(ran(unmapped, out)));
+  });
+
+  // Each map a solid with one channel at the focal value and the rest off
+  // it: through that channel the blur is in focus everywhere, alike for
+  // every channel, and through the next it is not. Luminance is the
+  // ledger plan's.
+  test('a blur map reads the channel it names', () {
+    final tiles = storedOf(noise(1));
+    const channels = [
+      GpuMapChannel.red,
+      GpuMapChannel.green,
+      GpuMapChannel.blue,
+      GpuMapChannel.alpha,
+    ];
+    // A<<24|B<<16|G<<8|R: 200 in the channel at its place, 10 in the
+    // colours elsewhere, the alpha whole elsewhere.
+    const atFocal = [0xFF0A0AC8, 0xFF0AC80A, 0xFFC80A0A, 0xC80A0A0A];
+    Uint8List lensed(GpuMapChannel channel, int map) {
+      final plan = GpuPlan();
+      addTearDown(plan.free);
+      final set = plan.set(0, 0, 1, 1, tiles);
+      plan.solid(atFocal[map], 0, 0, gpuTileSide, gpuTileSide);
+      final read = plan.mapDrawn(0, channel: channel, focal: 200);
+      final chain = plan.chain(0, 0, 1, 1);
+      final picture = (0, 0, gpuTileSide, gpuTileSide);
+      plan
+        ..chainLens(chain, picture, hexagon(6), map: read)
+        ..row(
+          set: set,
+          inverse: identity,
+          sampling: GpuSampling.blend,
+          columns: gpuTileSide,
+          rows: gpuTileSide,
+          mode: normal,
+          chain: chain,
+        );
+      return ran(plan, [(0, 0)]);
+    }
+
+    final inFocus = lensed(channels.first, 0);
+    for (var at = 0; at < channels.length; at++) {
+      final next = channels[(at + 1) % channels.length];
+      expect(lensed(channels[at], at), inFocus, reason: '${channels[at]}');
+      expect(lensed(next, at), isNot(inFocus), reason: '$next');
+    }
   });
 
   // Every number each call of a chain takes reaches its op: the crate pins
@@ -691,12 +746,15 @@ void main() {
 
     expect(() => keyRun(keys, red: Uint32List(255)), throwsArgumentError);
     expect(() => keyRun(keys, maps: 300), throwsArgumentError);
-    expect(
-      () => plan.chainLine(chain, (0, 0, 8, 8), const [
-        (taps: 3, step: (1, 0), centre: (0, 0), first: [1, 0, 0], each: []),
-      ]),
-      throwsArgumentError,
-    );
+    const four = [1.0, 0.0, 0.0, 1.0];
+    for (final (first, each) in const [(four, <double>[1]), ([1.0], four)]) {
+      expect(
+        () => plan.chainLine(chain, (0, 0, 8, 8), [
+          (taps: 3, step: (1, 0), centre: (0, 0), first: first, each: each),
+        ]),
+        throwsArgumentError,
+      );
+    }
     expect(() => keyRun(keys, maps: 33 * 256), saying('a run of 33 keys'));
     expect(() => keyRun(keys + 1), saying('no key chain ${keys + 1}'));
     expect(
@@ -719,6 +777,8 @@ void main() {
       () => plan.mapDrawn(1, channel: GpuMapChannel.red, focal: 0),
       saying('a map drawn from step 1 of 0'),
     );
+    expect(plan.keys(), keys + 1);
+    expect(plan.chain(0, 0, 1, 1), chain + 1);
   });
 
   test('a row or a close naming what the plan lacks is refused where it '
