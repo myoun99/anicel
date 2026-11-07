@@ -13,7 +13,8 @@
 use oracle::export;
 
 use super::{
-    Close, Open, Read, Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, fixture, framed,
+    Close, Open, Read, Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, expect_stream_of,
+    expect_window_of, fixture, framed,
     rust_close, rust_open, rust_read, rust_window, stream_in_pieces,
 };
 use crate::{FORMAT_OS, FORMAT_UNKNOWN};
@@ -25,24 +26,27 @@ use crate::{FORMAT_OS, FORMAT_UNKNOWN};
 /// crate's, in the one process, unmeasured.
 const MEASURED: bool = cfg!(windows);
 
-/// What only the OS reads: the fixture, and the channels and rate its
-/// decoder hands back.
+/// What only the OS reads: the fixture, and the channels, rate and frames
+/// its decoder hands back (measured 2026-11-07) — what is held of it once
+/// the C is gone: the samples are the OS's own, and asking the OS's reader
+/// again in the test would be a copy of the crate's (connection-round-
+/// checklist A, 관제 판정 ①㉠).
 ///
 /// ⚠️The AAC-LC of 22,050 Hz comes back at 44,100: Media Foundation's
 /// decoder takes a core of 24 kHz or less to be half of an HE-AAC stream
 /// that may not say so (measured 2026-11-07) — the reason such a core is
 /// left to it (`bundled::core_may_hide_sbr`).
-const ONLY_THE_OS: [(&str, i32, i32); 5] = [
-    ("tone_aac_22khz.m4a", 2, 44_100),
-    ("tone_he_aac.m4a", 2, 48_000),
-    ("tone_he_aac_v2.m4a", 2, 44_100),
-    ("tone_5_1.m4a", 6, 48_000),
-    ("tone.wma", 2, 44_100),
+const ONLY_THE_OS: [(&str, i32, i32, usize); 5] = [
+    ("tone_aac_22khz.m4a", 2, 44_100, 11_264),
+    ("tone_he_aac.m4a", 2, 48_000, 26_624),
+    ("tone_he_aac_v2.m4a", 2, 44_100, 24_576),
+    ("tone_5_1.m4a", 6, 48_000, 12_288),
+    ("tone.wma", 2, 44_100, 23_040),
 ];
 
 #[test]
 fn what_no_bundled_decoder_reads_the_os_stage_reads_as_the_c_does() {
-    for (name, channels, rate) in ONLY_THE_OS {
+    for (name, channels, rate, frames) in ONLY_THE_OS {
         let path = fixture(name);
         let span = Span::whole(&path);
         if !MEASURED {
@@ -51,7 +55,7 @@ fn what_no_bundled_decoder_reads_the_os_stage_reads_as_the_c_does() {
         }
         let sound = expect_same(name, &span, 0, -1);
         assert_eq!((sound.format, sound.channels, sound.rate), (FORMAT_OS, channels, rate), "{name}");
-        assert!(sound.samples.len() >= (rate / 4) as usize * channels as usize, "{name}: the sound, not a scrap of it");
+        assert_eq!(sound.samples.len(), frames * channels as usize, "{name}: the frames");
         assert!(sound.samples.iter().any(|&s| s.abs() > 0.05), "{name}: the tone, not silence");
     }
 }
@@ -116,7 +120,8 @@ fn a_window_of_what_the_os_reads_holds_the_frames_a_whole_decode_has_there() {
     let whole = rust_window(&span, 0, -1);
     let frames = (whole.samples.len() / 6) as i64;
     for (first, count) in [(0, 0), (0, 1), (1000, 2000), (frames - 5, 10), (frames, 3), (frames + 100, 10)] {
-        expect_same(&format!("tone_5_1.m4a from {first}, {count}"), &span, first, count);
+        let what = format!("tone_5_1.m4a from {first}, {count}");
+        expect_window_of(&what, &expect_same(&what, &span, first, count), &whole, first, count);
     }
 }
 
@@ -131,15 +136,18 @@ fn a_stream_of_what_the_os_reads_hands_back_what_the_c_s_does() {
     };
     let rust: (Open, Read, Close) = (rust_open, rust_read, rust_close);
     let path = fixture("tone.wma");
+    let whole = rust_window(&Span::whole(&path), 0, -1);
     for piece in [1, 1000, 50_000] {
         let span = Span::whole(&path);
-        let (rust_sound, rust_answers, rust_misuses) = stream_in_pieces(rust, &span, piece);
+        let ours = stream_in_pieces(rust, &span, piece);
+        let (rust_sound, rust_answers, rust_misuses) = &ours;
         let (c_sound, c_answers, c_misuses) = stream_in_pieces(c, &span, piece);
         assert_eq!((rust_sound.format, rust_sound.channels, rust_sound.rate), (c_sound.format, c_sound.channels, c_sound.rate));
         assert_eq!(rust_sound.format, FORMAT_OS);
-        assert_eq!(rust_answers, c_answers, "each read, {piece} frames at a time");
-        assert_eq!(rust_misuses, c_misuses, "what a misuse answers");
+        assert_eq!(rust_answers, &c_answers, "each read, {piece} frames at a time");
+        assert_eq!(rust_misuses, &c_misuses, "what a misuse answers");
         assert!(rust_sound.samples.iter().map(|s| s.to_bits()).eq(c_sound.samples.iter().map(|s| s.to_bits())));
+        expect_stream_of(&format!("{piece} frames at a time"), &ours, &whole, piece);
     }
 }
 

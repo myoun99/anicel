@@ -1,7 +1,10 @@
 //! Movies whose sound is uncompressed, made up here in the shapes the C's
 //! own test makes (`qa_audio_range_test.c`), each decoded by both.
 
-use super::{Sounds, Span, TempFile, between_junk, c_window, expect_same, framed, noise, rust_window};
+use super::{
+    Sounds, Span, TempFile, between_junk, c_window, expect_same, expect_the_same_sound, expect_window_of, framed, noise,
+    rust_window,
+};
 use crate::FORMAT_MOVIE_PCM;
 
 /// How a writer stores a movie's sound: the description's type, its
@@ -351,14 +354,16 @@ fn every_layout_of_a_movie_s_sound_reads_as_the_c_reads_it() {
     expect_movie(&mut pins, "the second data reference", &movie_naming(&SOWT, 2, &two, 2));
     // Carried, and framed as a save frames it.
     let bytes = movie(&SOWT, 2, &reel);
+    let plain = TempFile::new("plain.mov", &bytes);
+    let whole = rust_window(&Span::whole(plain.path()), 0, -1);
     let (carried, offset) = between_junk("carried.mov", &bytes);
     let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
-    pins.add(&expect_same("carried", &span, 0, -1));
+    expect_the_same_sound("carried", &expect_same("carried", &span, 0, -1), &whole);
     let blob = framed(&bytes, 1000);
     let (kept, offset) = between_junk("framed.mov", &blob);
     let span = Span { path: kept.path(), offset, length: blob.len() as i64, framed: true };
-    pins.add(&expect_same("framed", &span, 0, -1));
-    pins.add(&expect_same("framed, a window", &span, 333, 222));
+    expect_the_same_sound("framed", &expect_same("framed", &span, 0, -1), &whole);
+    expect_window_of("framed, a window", &expect_same("framed, a window", &span, 333, 222), &whole, 333, 222);
     // Cut short in the middle of a chunk.
     let mut cut = movie(&SOWT, 2, &Layout { movie_first: true, ..reel });
     cut.truncate(cut.len() - 1801);

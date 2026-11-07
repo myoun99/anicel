@@ -1,6 +1,9 @@
 //! WAVs, AIFFs and MPEG frames made up here, each decoded by both.
 
-use super::{Sounds, Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, framed, noise, rust_window};
+use super::{
+    Sounds, Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, expect_the_same_sound,
+    expect_window_of, framed, noise, rust_window,
+};
 
 /// A WAV's `fmt ` chunk body.
 fn fmt(tag: u16, channels: u16, rate: u32, bits: u16, block_align: u16, extensible: Option<(u16, u16)>) -> Vec<u8> {
@@ -101,10 +104,12 @@ fn every_wav_reads_as_the_c_reads_it() {
     let mut pins = Sounds::default();
     for (what, bytes) in &cases {
         let file = TempFile::new("wav.wav", bytes);
-        pins.add(&expect_same(what, &Span::whole(file.path()), 0, -1));
+        let whole = expect_same(what, &Span::whole(file.path()), 0, -1);
         let (carried, offset) = between_junk("carried.wav", bytes);
         let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
-        pins.add(&expect_same(&format!("{what}, carried"), &span, 0, -1));
+        let what = format!("{what}, carried");
+        expect_the_same_sound(&what, &expect_same(&what, &span, 0, -1), &whole);
+        pins.add(&whole);
     }
     pins.pinned("audio/every-wav");
 }
@@ -234,10 +239,10 @@ fn a_framed_wav_reads_as_the_c_reads_it() {
     let blob = framed(&bytes, 4096);
     let (carried, offset) = between_junk("framed.bin", &blob);
     let span = Span { path: carried.path(), offset, length: blob.len() as i64, framed: true };
-    let mut pins = Sounds::default();
-    pins.add(&expect_same("framed", &span, 0, -1));
-    pins.add(&expect_same("framed, a window", &span, 12_345, 999));
-    pins.pinned("audio/framed-wav");
+    let plain = TempFile::new("plain.wav", &bytes);
+    let whole = rust_window(&Span::whole(plain.path()), 0, -1);
+    expect_the_same_sound("framed", &expect_same("framed", &span, 0, -1), &whole);
+    expect_window_of("framed, a window", &expect_same("framed, a window", &span, 12_345, 999), &whole, 12_345, 999);
 }
 
 /// An AIFF (or AIFC, when `compression` is said) of 16-bit-word fields,
@@ -336,28 +341,29 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
         tagged.extend(body);
         tagged
     };
-    let mut pins = Sounds::default();
-    for (what, bytes) in [
-        ("no tag", mp3_frames(24)),
+    // The frames each is heard for: the C's, measured 2026-11-07
+    // (connection-round-checklist A).
+    for (what, bytes, frames) in [
+        ("no tag", mp3_frames(24), 26_543),
         // 320 kbit/s first, then 128: a length guessed from the first
         // frame's bitrate would cut the sound short.
-        ("no tag, two bitrates", [mp3_frames_at(20, 0xE0, 1044), mp3_frames(4)].concat()),
-        ("a LAME tag", tagged_mp3_frames(24, None, 0)),
-        ("a LAME tag counting the frames", tagged_mp3_frames(24, Some(23), 0)),
-        ("a LAME tag with padding", tagged_mp3_frames(24, Some(23), 700)),
-        ("a count short of the frames", tagged_mp3_frames(24, Some(10), 100)),
-        ("behind an ID3 tag", id3(tagged_mp3_frames(24, Some(23), 0))),
-        ("behind an ID3 tag with a footer", [super::id3(100, true), tagged_mp3_frames(24, Some(23), 0)].concat()),
+        ("no tag, two bitrates", [mp3_frames_at(20, 0xE0, 1044), mp3_frames(4)].concat(), 26_543),
+        ("a LAME tag", tagged_mp3_frames(24, None, 0), 25_391),
+        ("a LAME tag counting the frames", tagged_mp3_frames(24, Some(23), 0), 25_391),
+        ("a LAME tag with padding", tagged_mp3_frames(24, Some(23), 700), 24_691),
+        ("a count short of the frames", tagged_mp3_frames(24, Some(10), 100), 10_315),
+        ("behind an ID3 tag", id3(tagged_mp3_frames(24, Some(23), 0)), 25_391),
+        ("behind an ID3 tag with a footer", [super::id3(100, true), tagged_mp3_frames(24, Some(23), 0)].concat(), 25_391),
     ] {
         let file = TempFile::new("mp3.mp3", &bytes);
         let span = Span::whole(file.path());
         let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
         assert_eq!((rust.format, rust.channels, rust.rate), (c.format, c.channels, c.rate), "{what}");
         assert_eq!(rust.samples.len(), c.samples.len(), "{what}: the frames");
+        assert_eq!((rust.format, rust.channels, rust.rate), (crate::FORMAT_MP3, 2, 44_100), "{what}");
+        assert_eq!(rust.samples.len(), 2 * frames, "{what}: the frames");
         assert!(rust.samples.iter().all(|&s| s == 0.0), "{what}: silence");
-        pins.add(&rust);
     }
-    pins.pinned("audio/mp3-starts-and-ends");
 }
 
 /// `count` MPEG-1 Layer III frames, 128 kbit/s at 44.1 kHz, of one channel

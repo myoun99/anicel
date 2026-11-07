@@ -147,11 +147,10 @@ pub(crate) fn expect_same(what: &str, span: &Span, first: i64, count: i64) -> De
 
 /// A test's decodes in a row, fingerprinted for the ledger: each its
 /// decoder, channels and rate (i32 little-endian), then its samples — their
-/// count (u64) and each as float32 little-endian — and a stream's answers
-/// their count and each as i64 little-endian, so the C's answers stay held
-/// once the C is deleted (connection-round-checklist A, 관제 2026-11-07).
-/// Only the bundled decoders', which decode alike on every device
-/// (pins.rs).
+/// count (u64) and each as float32 little-endian — so the C's answers stay
+/// held once the C is deleted (connection-round-checklist A, 관제
+/// 2026-11-07). Only the bundled decoders', which decode alike on every
+/// device (pins.rs).
 #[derive(Default)]
 pub(crate) struct Sounds(ledger::Running);
 
@@ -172,15 +171,39 @@ impl Sounds {
         self.0.add(&bytes);
     }
 
-    pub(crate) fn add_answers(&mut self, answers: &[i64]) {
-        self.0.add(&(answers.len() as u64).to_le_bytes());
-        let bytes: Vec<u8> = answers.iter().flat_map(|answer| answer.to_le_bytes()).collect();
-        self.0.add(&bytes);
-    }
-
     pub(crate) fn pinned(self, id: &str) {
         self.0.assert_pinned(id);
     }
+}
+
+/// Holds `sound` to be `whole`, to the bit: its decoder, channels and rate,
+/// and every sample.
+pub(crate) fn expect_the_same_sound(what: &str, sound: &Decoded, whole: &Decoded) {
+    assert_eq!((sound.format, sound.channels, sound.rate), (whole.format, whole.channels, whole.rate), "{what}");
+    assert!(sound.samples.iter().map(|s| s.to_bits()).eq(whole.samples.iter().map(|s| s.to_bits())), "{what}: the samples");
+}
+
+/// Holds `window` to be the frames `whole` has from `first` on — `count` of
+/// them, or to the end at -1, and none past it.
+pub(crate) fn expect_window_of(what: &str, window: &Decoded, whole: &Decoded, first: i64, count: i64) {
+    let channels = whole.channels as usize;
+    let from = (first as usize * channels).min(whole.samples.len());
+    let to = if count < 0 { whole.samples.len() } else { (from + count as usize * channels).min(whole.samples.len()) };
+    let there = Decoded { samples: whole.samples[from..to].to_vec(), ..whole.clone() };
+    expect_the_same_sound(what, window, &there);
+}
+
+/// Holds a stream of `whole` read `piece` frames at a time to be it: each
+/// read a whole piece until what is left, then nothing; a read of no
+/// buffer or of fewer than no frames refused, of no frames nothing.
+pub(crate) fn expect_stream_of(what: &str, (sound, answers, misuses): &(Decoded, Vec<i64>, [i64; 3]), whole: &Decoded, piece: i64) {
+    expect_the_same_sound(what, sound, whole);
+    let frames = (whole.samples.len() / whole.channels as usize) as i64;
+    let mut reads = vec![piece; (frames / piece) as usize];
+    reads.extend([frames % piece].into_iter().filter(|&left| left > 0));
+    reads.push(0);
+    assert_eq!(answers, &reads, "{what}: each read");
+    assert_eq!(misuses, &[-1, -1, 0], "{what}: what a misuse answers");
 }
 
 /// The biggest difference between two decodes of the same sound.
@@ -499,21 +522,19 @@ fn a_stream_read_in_pieces_hands_back_what_the_c_s_does() {
     };
     let rust: (Open, Read, Close) = (rust_open, rust_read, rust_close);
     let flac = fixture("tone.flac");
-    let mut pins = Sounds::default();
+    let whole = rust_window(&Span::whole(&flac), 0, -1);
     for piece in [1, 1000, 4096, 50_000] {
         let span = Span::whole(&flac);
-        let (rust_sound, rust_answers, rust_misuses) = stream_in_pieces(rust, &span, piece);
+        let ours = stream_in_pieces(rust, &span, piece);
+        let (rust_sound, rust_answers, rust_misuses) = &ours;
         let (c_sound, c_answers, c_misuses) = stream_in_pieces(c, &span, piece);
         assert_eq!((rust_sound.format, rust_sound.channels, rust_sound.rate), (c_sound.format, c_sound.channels, c_sound.rate));
-        assert_eq!(rust_answers, c_answers, "each read, {piece} frames at a time");
-        assert_eq!(rust_misuses, c_misuses, "what a misuse answers");
+        assert_eq!(rust_answers, &c_answers, "each read, {piece} frames at a time");
+        assert_eq!(rust_misuses, &c_misuses, "what a misuse answers");
         assert!(rust_sound.samples.iter().zip(&c_sound.samples).all(|(a, b)| a.to_bits() == b.to_bits()));
         assert_eq!(rust_sound.samples.len(), 44_100 * rust_sound.channels as usize);
-        pins.add(&rust_sound);
-        pins.add_answers(&rust_answers);
-        pins.add_answers(&rust_misuses);
+        expect_stream_of(&format!("{piece} frames at a time"), &ours, &whole, piece);
     }
-    pins.pinned("audio/flac-stream-in-pieces");
     // A stream of nothing is none.
     let missing = std::env::temp_dir().join("오디오-없는-파일.wav");
     let span = Span { path: &missing, offset: 0, length: 100, framed: false };
@@ -529,11 +550,11 @@ fn a_stream_read_in_pieces_hands_back_what_the_c_s_does() {
 fn a_window_holds_the_frames_a_whole_decode_has_there() {
     let flac = fixture("tone.flac");
     let span = Span::whole(&flac);
-    let mut pins = Sounds::default();
+    let whole = rust_window(&span, 0, -1);
     for (first, count) in [(0, 0), (0, 1), (1, 1), (4095, 2), (4096, 4096), (10_000, -1), (44_099, 5), (44_100, 3), (90_000, 10)] {
-        pins.add(&expect_same(&format!("tone.flac from {first}, {count}"), &span, first, count));
+        let what = format!("tone.flac from {first}, {count}");
+        expect_window_of(&what, &expect_same(&what, &span, first, count), &whole, first, count);
     }
-    pins.pinned("audio/flac-windows");
     // A window cannot start before the sound.
     assert_eq!(rust_window(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
     assert_eq!(c_window(&span, -1, 5).format, crate::FORMAT_UNKNOWN);
@@ -545,6 +566,7 @@ fn what_is_not_a_sound_is_refused_as_the_c_refuses_it() {
     let span = Span::whole(junk.path());
     let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
     assert_eq!(rust.format, c.format, "junk");
+    assert_eq!(rust.format, crate::FORMAT_UNKNOWN, "junk");
 
     let flac = fixture("tone.flac");
     let whole = Span::whole(&flac);
