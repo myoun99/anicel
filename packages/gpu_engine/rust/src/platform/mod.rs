@@ -60,6 +60,14 @@ pub(crate) fn adapters(instance: &wgpu::Instance) -> Vec<wgpu::Adapter> {
     pollster::block_on(instance.enumerate_adapters(native::BACKENDS))
 }
 
+/// This process's use of the adapter's memory, in bytes, and the budget
+/// the OS gives it there where the OS says one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VideoMemory {
+    pub used: u64,
+    pub budget: Option<u64>,
+}
+
 /// A texture kernels write — and, where the platform shares textures,
 /// Flutter shows.
 pub struct Surface {

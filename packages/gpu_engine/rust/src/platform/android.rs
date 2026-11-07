@@ -51,7 +51,7 @@ pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
 }
 
 /// Android has no call that says how much video memory a process uses.
-pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<u64> {
+pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     None
 }
 

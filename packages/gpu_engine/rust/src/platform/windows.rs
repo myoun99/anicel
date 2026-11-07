@@ -161,15 +161,17 @@ pub fn adapter_luid(adapter: &wgpu::Adapter) -> Option<u64> {
     Some((u64::from(luid.HighPart as u32) << 32) | u64::from(luid.LowPart))
 }
 
-/// This process's use of the adapter's local video memory, in bytes.
-pub fn video_memory(adapter: &wgpu::Adapter) -> Option<u64> {
+/// This process's use of the adapter's local video memory and the budget
+/// the OS gives it there — past it, WDDM moves the process's video memory
+/// out to system memory (F-569, RTX 4080: dedicated 4.9 → 2.4 GB).
+pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     // SAFETY: only reads the adapter's memory report.
     let hal = unsafe { adapter.as_hal::<Dx12>() }?;
     let info = hal
         .raw_adapter()
         .query_video_memory_info(DXGI_MEMORY_SEGMENT_GROUP_LOCAL)
         .ok()?;
-    Some(info.CurrentUsage)
+    Some(super::VideoMemory { used: info.CurrentUsage, budget: Some(info.Budget) })
 }
 
 /// The pinned DXC (rust/build.rs), named by its full path — never wgpu's
@@ -303,5 +305,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     fn dxcompiler_is_looked_for_beside_the_engine() {
         let exe = std::env::current_exe().expect("the test binary's path");
         assert_eq!(super::beside_engine(), exe.with_file_name("dxcompiler.dll"));
+    }
+
+    // Windows says the budget it gives this process — what a pool makes no
+    // page past (kernels/pool).
+    #[test]
+    fn windows_says_the_budget_it_gives_this_process() {
+        let memory = super::video_memory(&first_engine().adapter).expect("a memory report");
+        assert!(memory.budget.is_some_and(|budget| budget > 0), "{memory:?}");
     }
 }

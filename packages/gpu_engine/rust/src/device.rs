@@ -243,7 +243,7 @@ pub unsafe extern "C" fn gpu_engine_adapter_name(
 pub unsafe extern "C" fn gpu_engine_video_memory(engine: *const Engine) -> u64 {
     // SAFETY: see the function's contract.
     let engine = unsafe { &*engine };
-    platform::video_memory(&engine.adapter).unwrap_or(0)
+    platform::video_memory(&engine.adapter).map_or(0, |memory| memory.used)
 }
 
 #[cfg(test)]

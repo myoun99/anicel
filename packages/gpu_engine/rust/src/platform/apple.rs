@@ -203,11 +203,13 @@ pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
 
 /// The bytes every resource this process made on the adapter's device
 /// holds — Metal's per-device count, which is per process as Windows'
-/// `CurrentUsage` is.
-pub fn video_memory(adapter: &wgpu::Adapter) -> Option<u64> {
+/// `CurrentUsage` is. No budget: on Apple's unified memory the bound is
+/// the RAM budget a pool is given (gpu-canonical-store 11-05 13:19 ②).
+pub fn video_memory(adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     // SAFETY: only reads the device's allocation count.
     let hal = unsafe { adapter.as_hal::<Metal>() }?;
-    Some(hal.raw_device().currentAllocatedSize() as u64)
+    let used = hal.raw_device().currentAllocatedSize() as u64;
+    Some(super::VideoMemory { used, budget: None })
 }
 
 #[cfg(test)]

@@ -26,6 +26,6 @@ pub fn adapter_luid(_adapter: &wgpu::Adapter) -> Option<u64> {
     None
 }
 
-pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<u64> {
+pub fn video_memory(_adapter: &wgpu::Adapter) -> Option<super::VideoMemory> {
     None
 }
