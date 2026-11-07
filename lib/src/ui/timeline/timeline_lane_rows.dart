@@ -723,7 +723,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// The cell SUBSCRIBES to the current row rather than being rebuilt from
   /// above with it: the claim that moves the row fires on pointer-down
   /// inside gestures that must not notify, and only two rows change
-  /// appearance when it moves.
+  /// appearance when it moves — so it is built again only when what it
+  /// shows of the current row changes ([_shownOf]), as what it shows of the
+  /// frame is ([_onTheFrame]). 🔬Card a-rail-lane-row-is-drawn-again-on-
+  /// every-host-pass (the Surface, 11-08): built again at every move, every
+  /// lane cell laid its layout builders out again, and every lane row of
+  /// the rail drew itself again and let its image go — a pick of another
+  /// layer changed none of them.
   @override
   Widget build(BuildContext context) {
     final hooks = widget.currentRowHooks;
@@ -751,11 +757,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         child: PressFireScope(
           fireOn: PressFire.down,
           child: hooks == null
-              ? _buildCell(context, null)
-              : ValueListenableBuilder<TimelineRowAddress?>(
-                  valueListenable: hooks.currentRow,
-                  builder: (context, currentRow, _) =>
-                      _buildCell(context, currentRow),
+              ? _buildCell(context, _shownOf(null))
+              : SlicedListenableBuilder<_ShownOfTheCurrentRow>(
+                  listenable: hooks.currentRow,
+                  slice: () => _shownOf(hooks.currentRow.value),
+                  builder: _buildCell,
                 ),
         ),
       ),
@@ -783,13 +789,28 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  Widget _buildCell(BuildContext context, TimelineRowAddress? currentRow) {
+  /// What the cell shows of [currentRow]: whether its plate is lit
+  /// ([_plate]), and — on a graph's seat — whether the graph draws its lane.
+  _ShownOfTheCurrentRow _shownOf(TimelineRowAddress? currentRow) {
+    final seat = widget.seat;
+    return (
+      lit:
+          currentRowIsLane(currentRow, layer.id, lane.laneId) ||
+          (lane.isGroupHeader &&
+              currentRowIsInsideGroup(currentRow, layer.id, lane.laneId)),
+      drawn: seat == null
+          ? null
+          : laneGraphDrawnLanes(seat, currentRow).contains(lane.laneId),
+    );
+  }
+
+  Widget _buildCell(BuildContext context, _ShownOfTheCurrentRow shown) {
     final colorScheme = Theme.of(context).colorScheme;
-    final plate = _plate(colorScheme, currentRow);
+    final plate = _plate(colorScheme, lit: shown.lit);
     return _standable(
       lane.isGroupHeader
           ? _headerCell(context, colorScheme, plate)
-          : _memberCell(colorScheme, plate, currentRow),
+          : _memberCell(colorScheme, plate, drawn: shown.drawn),
     );
   }
 
@@ -797,13 +818,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// row is the verbs' subject — or while you are standing INSIDE the group
   /// it leads, so the rail reads as the chain it is (layer ▸ Blur ▸ Radius
   /// all lit, user 2026-08-07).
-  Color _plate(ColorScheme colorScheme, TimelineRowAddress? currentRow) {
-    final lit =
-        currentRowIsLane(currentRow, layer.id, lane.laneId) ||
-        (lane.isGroupHeader &&
-            currentRowIsInsideGroup(currentRow, layer.id, lane.laneId));
-    return lit ? railSelectedRowColor(colorScheme) : AppColors.washDown;
-  }
+  Color _plate(ColorScheme colorScheme, {required bool lit}) =>
+      lit ? railSelectedRowColor(colorScheme) : AppColors.washDown;
 
   /// The cell's size, the same for a header and a member: the rail's row
   /// width (the sheet's column) and the row height. Horizontal: the section
@@ -1079,9 +1095,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   Widget _memberCell(
     ColorScheme colorScheme,
-    Color plate,
-    TimelineRowAddress? currentRow,
-  ) {
+    Color plate, {
+    required bool? drawn,
+  }) {
     if (widget.folded) {
       return _cellBox(
         plate: plate,
@@ -1091,10 +1107,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       );
     }
     final hasValue = lane.valueLabel != null;
-    final seat = widget.seat;
-    final drawn = seat == null
-        ? null
-        : laneGraphDrawnLanes(seat, currentRow).contains(lane.laneId);
     final ink = colorScheme.onSurfaceVariant;
     // A lane's name reads down its column on the sheet, through the shared
     // vertical-writing table ([readableText]). One its graph does not draw
@@ -1438,6 +1450,10 @@ typedef _StoodShows = ({
 /// A lane's keys about the cursor's frame
 /// ([_TimelineLaneControlsRowState._keysAround]).
 typedef _KeysAround = ({bool keyed, int? previous, int? next});
+
+/// What a lane's cell shows of the current row
+/// ([_TimelineLaneControlsRowState._shownOf]).
+typedef _ShownOfTheCurrentRow = ({bool lit, bool? drawn});
 
 class _NavigatorButton extends StatelessWidget {
   const _NavigatorButton({

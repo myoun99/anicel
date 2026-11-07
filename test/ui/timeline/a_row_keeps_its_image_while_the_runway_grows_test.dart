@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/widgets/named.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
 
 /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 — 행
@@ -340,6 +341,53 @@ void main() {
       );
       expect(live, isEmpty, reason: 'the runway grew under them');
       await hand.up();
+      await tester.pumpAndSettle();
+    });
+
+    // 🔬The Surface's verify, 11-08: a pick of another layer moves the
+    // current row, which only the two rows it leaves and lands on show —
+    // and every lane row of the rail and the sheet drew itself again and
+    // let its image go, their layout builders laid out again by a cell
+    // built again at every move.
+    testWidgets('the ${orientation.name} grid\'s rows keep their images '
+        'through a pick of another layer, but the two it moves between', (
+      tester,
+    ) async {
+      await pumpTimelineHost(tester, project(), orientation: orientation);
+      final before = await untilEveryRowIsAnImage(tester);
+      final taken = {
+        for (final MapEntry(key: name, value: region) in before.entries)
+          name: region.debugCaptureCount,
+      };
+      expect(
+        before.keys.where(
+          (name) => name.startsWith(controls) && name.endsWith('-k0-rotation'),
+        ),
+        isNotEmpty,
+        reason: '⛔premise: a lane\'s controls row stands',
+      );
+      final prefix = orientation == TimelineOrientation.horizontal
+          ? 'timeline'
+          : 'xsheet';
+      await tester.tap(
+        find.named('$prefix-layer-name-r3').first,
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      await frame(tester);
+
+      final drawnAgain = [
+        for (final MapEntry(key: name, value: region) in before.entries)
+          if (!region.debugDrawnFromImage ||
+              region.debugCaptureCount != taken[name])
+            name,
+      ];
+      expect(
+        drawnAgain,
+        unorderedEquals(['${controls}k0-row', '${controls}r3-row']),
+        reason: 'the current row moved from k0 to r3, and no other row '
+            'shows it',
+      );
       await tester.pumpAndSettle();
     });
   }
