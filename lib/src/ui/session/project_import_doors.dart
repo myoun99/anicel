@@ -426,7 +426,9 @@ class ProjectImportDoors {
   /// Always baked: a layer's reference names ONE file, and these are many
   /// — the cut folder's law, which always bakes. So nothing registers
   /// ([placementRegisters], F-282-Q6). ↩️Each file registered on its own
-  /// (유저 2026-09-11: 「구워도 풀에 남음」).
+  /// (유저 2026-09-11: 「구워도 풀에 남음」). And the row shows no file, so
+  /// no 겸용 copy of it is born showing one: nothing is left to give a panel
+  /// ([ImportLanded]).
   ///
   /// One file is decoded at a time — to fold, then again to bake — so a run
   /// of full-page scans never sits in memory whole.
@@ -480,7 +482,6 @@ class ProjectImportDoors {
       plan.layer,
       plan.bakes,
       rowId: _rowOf(spot),
-      picturedPanels: landed.picturedPanels,
       standing: _atTheFit(settings.fit),
       pictureOf: (bake, _) => _ownedStillOf(bake.sourceFile),
       onProgress: onRenderProgress,
@@ -887,12 +888,7 @@ class ProjectImportDoors {
           _movieAsset(source, info, settings, sourcePath),
       ];
       await _pool.holdCarriedBytes(assets, onProgress: onCarrying);
-      final landed = _landMovieWithSound(
-        planned,
-        assets,
-        withSound: withMovieSound,
-      );
-      if (landed == null) {
+      if (!_landMovieWithSound(planned, assets, withSound: withMovieSound)) {
         return false;
       }
       await _bakeLandedCels(
@@ -900,7 +896,6 @@ class ProjectImportDoors {
         planned.layer,
         planned.bakes,
         rowId: _rowOf(spot),
-        picturedPanels: landed.picturedPanels,
         standing: _atTheFit(settings.fit),
         onProgress: onRenderProgress,
         // One frame the reader refuses leaves its cel empty and is
@@ -1024,22 +1019,29 @@ class ProjectImportDoors {
   /// two blocks (「짝 = 따로따로」). The sound starts where the picture
   /// starts and runs as long (「같은 시작 · 같은 구간」), and it is landed
   /// only when [withSound] says the movie brought one.
-  ImportLanded? _landMovieWithSound(
+  ///
+  /// It answers only whether the picture landed: a movie's row shows no file
+  /// in a cel — read from the file unbaked, its cels its own baked — so no
+  /// 겸용 copy of it is born showing one, and nothing is left to give a panel
+  /// ([ImportLanded]).
+  bool _landMovieWithSound(
     _MoviePlacement planned,
     List<MediaAsset> assets, {
     required bool withSound,
   }) {
     final arrival = planned.arrival;
     final kept = planned.kept;
-    ImportLanded? landed;
+    var landed = false;
     _project.historyManager.runAsOneStep(arrival.undoDescription, () {
-      landed = _landing.land(
-        [planned.layer],
-        arrival: arrival,
-        duration: kept.count,
-        assets: assets,
-      );
-      if (landed == null || !withSound) {
+      landed =
+          _landing.land(
+            [planned.layer],
+            arrival: arrival,
+            duration: kept.count,
+            assets: assets,
+          ) !=
+          null;
+      if (!landed || !withSound) {
         return;
       }
       // A NEW cut is the active one by now, so the sound asks the gate
@@ -1144,8 +1146,6 @@ class ProjectImportDoors {
         // The cels are THIS row's, under its own id — the bank its link
         // group shares.
         rowId: layerId,
-        // A rasterize lands no row, nor a copy of one.
-        picturedPanels: const {},
         // Where the reference shows each picture, so the cels land exactly
         // there (I-68). ↩️It read the pool's fit for the file — the fit the
         // row was placed with — and fitted each frame to the canvas again.
@@ -1888,7 +1888,10 @@ class ProjectImportDoors {
   /// Without it the throw is the caller's.
   ///
   /// Then [picturedPanels] — the panels the landed rows' 겸용 copies were
-  /// born showing those pictures in — take them ([ImportLanded]).
+  /// born showing those pictures in — take them ([ImportLanded]): a still's
+  /// and a PDF's. None where no copy is born showing a file — a run's row
+  /// and a movie's show none in a cel — nor where the bake lands no row, as
+  /// a rasterize does.
   ///
   /// ⛔ONE TAIL, FOUR DOORS. The still/GIF door and the PDF door each wrote
   /// it out — the cut, the loop, the row to stand on — the movie door was
@@ -1898,7 +1901,7 @@ class ProjectImportDoors {
     Layer layer,
     List<PlannedCelBake> bakes, {
     required LayerId? rowId,
-    required Map<LayerId, Map<FrameId, FrameId>> picturedPanels,
+    Map<LayerId, Map<FrameId, FrameId>> picturedPanels = const {},
     required _Standing standing,
     required Future<_BakePicture> Function(
       PlannedCelBake bake,
