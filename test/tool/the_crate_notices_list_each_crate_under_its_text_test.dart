@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/crate_notices.dart';
+import '../helpers/dart_sources.dart';
 import '../helpers/temp_dir.dart';
 
 /// tool/crate_notices.dart: which targets, which files, which text a crate
@@ -249,9 +250,8 @@ void main() {
 
   test('the pinned licences are the files tool/crate_licences/ holds', () {
     final held = [
-      for (final file
-          in Directory('tool/crate_licences').listSync(recursive: true))
-        if (file is File) file.path.replaceAll(r'\', '/'),
+      for (final file in filesUnder('tool/crate_licences'))
+        file.path.replaceAll(r'\', '/'),
     ]..sort();
     final named = [
       for (final MapEntry(key: repository, value: files)
