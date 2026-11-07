@@ -70,28 +70,41 @@ const _blue = Color(0xFF1E88E5);
 
 /// An `outer` region holding an `inner` one, and a region `beside` them,
 /// all still at once — the outer one first in the order they paint, the
-/// inner one before the one beside.
-Future<void> _pumpInnerAndBeside(WidgetTester tester) => pumpSurface(
-  tester,
-  Row(
-    // Stretched, for the reason the frame apart test gives.
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: <Widget>[
-      Expanded(
-        child: StillRaster(
-          debugLabel: 'outer',
-          child: StillRaster(debugLabel: 'inner', child: _box()),
+/// inner one before the one beside, which holds [beside].
+Future<void> _pumpInnerAndBeside(WidgetTester tester, {Widget? beside}) {
+  return pumpSurface(
+    tester,
+    Row(
+      // Stretched, for the reason the frame apart test gives.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(
+          child: StillRaster(
+            debugLabel: 'outer',
+            child: StillRaster(debugLabel: 'inner', child: _box()),
+          ),
         ),
-      ),
-      Expanded(
-        child: StillRaster(debugLabel: 'beside', child: _box(color: _blue)),
-      ),
-    ],
-  ),
-  left: _left,
-  width: _width,
-  height: _height,
-);
+        Expanded(
+          child: StillRaster(
+            debugLabel: 'beside',
+            child: beside ?? _box(color: _blue),
+          ),
+        ),
+      ],
+    ),
+    left: _left,
+    width: _width,
+    height: _height,
+  );
+}
+
+/// The regions on screen, by their labels.
+Map<String, RenderStillRaster> _regionsByLabel(WidgetTester tester) => {
+  for (final region in tester.renderObjectList<RenderStillRaster>(
+    find.byType(StillRaster),
+  ))
+    region.debugLabel: region,
+};
 
 /// A box that is its own repaint boundary, so a property of a layer ABOVE
 /// it can change while its picture stays exactly the one it was.
@@ -420,14 +433,13 @@ void main() {
   testWidgets('a region the scene draws is taken before one under another '
       'region\'s image (F-533)', (tester) async {
     await _pumpInnerAndBeside(tester);
+    final regions = _regionsByLabel(tester);
     final tookOn = <String, int>{};
     for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
       await _frame(tester);
-      for (final region in tester.renderObjectList<RenderStillRaster>(
-        find.byType(StillRaster),
-      )) {
+      for (final MapEntry(key: label, value: region) in regions.entries) {
         if (region.debugCaptureCount > 0) {
-          tookOn.putIfAbsent(region.debugLabel, () => frame);
+          tookOn.putIfAbsent(label, () => frame);
         }
       }
     }
@@ -442,6 +454,27 @@ void main() {
       lessThan(tookOn['inner']!),
       reason: 'the region under the outer one\'s image took the turn of the '
           'one the scene draws',
+    );
+  });
+
+  testWidgets('a region the scene draws that cannot be taken holds no turn '
+      'back', (tester) async {
+    await _pumpInnerAndBeside(tester, beside: const Texture(textureId: 7));
+    final regions = _regionsByLabel(tester);
+    for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
+      await _frame(tester);
+    }
+    expect(
+      regions['beside']!.standDown,
+      StillStandDown.unvouched,
+      reason: 'premise: the region beside cannot be taken',
+    );
+    expect(regions['outer']!.debugCaptureCount, 1, reason: 'premise');
+    expect(
+      regions['inner']!.debugCaptureCount,
+      1,
+      reason: 'the region under the outer one\'s image gave its turn on '
+          'every frame to one that never takes it',
     );
   });
 
@@ -536,12 +569,7 @@ void main() {
         'another region\'s image', (tester) async {
       await _pumpInnerAndBeside(tester);
       await lastFrame(tester);
-      final regions = {
-        for (final region in tester.renderObjectList<RenderStillRaster>(
-          find.byType(StillRaster),
-        ))
-          region.debugLabel: region,
-      };
+      final regions = _regionsByLabel(tester);
       List<String> taken() => [
         for (final MapEntry(key: label, value: region) in regions.entries)
           if (region.debugCaptureCount > 0) label,
