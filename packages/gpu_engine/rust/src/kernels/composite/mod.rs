@@ -70,7 +70,7 @@
 //! — the result's — and a pan or a zoom runs the screen alone
 //! (gpu-canonical-store ④⑤).
 
-mod abi;
+pub(crate) mod abi;
 #[cfg(test)]
 mod chained_tests;
 pub(crate) mod halvings;

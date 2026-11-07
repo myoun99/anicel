@@ -16,7 +16,7 @@
 //! Each kernel reads the frame through `frame.wgsl`, after the shared
 //! `tile.wgsl`, and runs as one pass over it ([`submit`]).
 
-mod abi;
+pub(crate) mod abi;
 mod clear;
 mod nv12;
 mod opaque;

@@ -15,6 +15,8 @@
 
 mod dispatch;
 #[cfg(test)]
+mod every_free;
+#[cfg(test)]
 mod one_builder;
 #[cfg(test)]
 mod one_checkout;
