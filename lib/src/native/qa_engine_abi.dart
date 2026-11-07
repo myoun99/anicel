@@ -327,9 +327,10 @@ import '../core/on_a_worker.dart';
 /// - v64: `qa_fx_plugin_*` leave the C: the fx plugin host is the Rust
 ///   engine's (native/fx_plugin, connection-round-checklist H), which
 ///   `QaFxPluginHost` opens in the GPU engine's library.
-/// - v65: `qa_display_*` leave the C: the display's timing is the Rust
-///   engine's (native/display, connection-round-checklist H), which
-///   `QaDisplayTiming` opens in the GPU engine's library.
+/// - v65: `qa_display_*` and Apple's `qa_pen_ledger_*` leave the C: the
+///   display's timing and the pen ledger are the Rust engine's
+///   (native/display, native/pen, connection-round-checklist H), which
+///   `QaDisplayTiming` and `QaPenLedger` open in the GPU engine's library.
 const int kQaEngineAbiVersion = 65;
 
 /// Test hook: point EVERY engine loader at a locally built binary.

@@ -5,9 +5,8 @@
 //! the Wintab half on the same packets from one driver (wintab_fake); the
 //! Raw Input half on its life without a report — a report comes from a
 //! digitizer alone, which no test has — and its reading of one on the HID
-//! parser's answers made up here. The ledger and Apple's readers have no C
-//! beside the engine to be held to (qa_pen_ledger_apple.m is compiled into
-//! the app alone): their answers are worked out here.
+//! parser's answers made up here. The ledger and Apple's readers are held
+//! to answers worked out here.
 
 #[cfg(target_vendor = "apple")]
 mod apple;

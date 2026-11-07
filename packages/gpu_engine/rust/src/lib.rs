@@ -28,6 +28,18 @@ mod testing;
 // workspace note, measured 2026-11-06) — named here, they are.
 pub use display;
 pub use fx_plugin;
+pub use pen;
+
+// The Runner finds the pen ledger's class by name (ios/Runner/
+// AppDelegate.swift), and an initializer of the pen crate registers it as
+// the image it is in loads — this library, carried here: no code calls the
+// initializer, and it must be linked all the same (보드/인프라 2026-11-08
+// 03:49 ⓔ). The test binary links the crate as the library does.
+#[cfg(all(test, target_vendor = "apple"))]
+#[test]
+fn the_pen_ledger_s_class_is_registered_as_the_library_loads() {
+    assert!(objc2::runtime::AnyClass::get(c"QaPenLedger").is_some());
+}
 
 use std::cell::RefCell;
 

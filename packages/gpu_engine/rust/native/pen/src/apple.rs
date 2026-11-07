@@ -129,13 +129,14 @@ pub(crate) mod touches {
         }
     );
 
-    // The Runner looks the class up by name at its first touch and keeps
-    // what it found, nil too (AppDelegate's penLedger): a touch before
-    // Dart's main() would leave the ledger unfed for the app's life. So the
-    // class is the image's from its load, as the C's was — an initializer
-    // registers it, on every Apple target, and the Mac's tests reach it by
-    // name as the Runner does. Two classes of one name abort the load: the
-    // C's leaves the image in the round that links this one.
+    // The Runner looks the class up by name at each touch until it finds it
+    // (AppDelegate's penLedger), so the class is the image's from its load
+    // — an initializer registers it, on every Apple target, and the Mac's
+    // tests reach it by name as the Runner does. The image is the GPU
+    // engine's library, which Dart loads at its first call into it
+    // (gpu_engine's lib.rs holds that it is registered there). Two classes
+    // of one name abort the load: the C's left the app in the round that
+    // linked this one (connection-round-checklist H, 2026-11-08).
     #[used]
     #[unsafe(link_section = "__DATA,__mod_init_func,mod_init_funcs")]
     static REGISTER: extern "C" fn() = register;

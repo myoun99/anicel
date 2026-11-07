@@ -857,6 +857,7 @@ dependencies = [
  "objc2-core-video",
  "objc2-io-surface",
  "objc2-metal",
+ "pen",
  "pollster",
  "read-fonts",
  "serde_json",

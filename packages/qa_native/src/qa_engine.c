@@ -7053,6 +7053,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // is slower than it.
 // v64: qa_fx_plugin_* leave - the fx plugin host is the Rust engine's
 // (native/fx_plugin), which the app opens in the GPU engine's library.
-// v65: qa_display_* leave - the display's timing is the Rust engine's
-// (native/display), which the app opens in the GPU engine's library.
+// v65: qa_display_* and Apple's qa_pen_ledger_* leave - the display's timing
+// and the pen ledger are the Rust engine's (native/display, native/pen),
+// which the app opens in the GPU engine's library.
 QA_EXPORT int32_t qa_engine_abi_version(void) { return 65; }
