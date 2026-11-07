@@ -134,8 +134,12 @@ final class LinkPartCopies {
   /// nothing.
   void keep(List<LinkPartCopy> taken) {
     _kept.clear();
+    final store = _store;
+    if (store == null) {
+      return;
+    }
     for (final (:from, :to, :canvasSize) in taken) {
-      if (_store!.copyCel(from, to, canvasSize: canvasSize) case final kept?) {
+      if (store.copyCel(from, to, canvasSize: canvasSize) case final kept?) {
         _kept.add((to, kept));
       }
     }

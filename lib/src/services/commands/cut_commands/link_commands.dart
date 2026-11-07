@@ -50,6 +50,7 @@ class _LinkCommands {
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
         coveringFrameIdBySource: plan.coveringFrameIdBySource,
+        brushFrameStore: _coordinator.brushFrameStore,
       ),
     );
   }

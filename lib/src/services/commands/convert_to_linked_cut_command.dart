@@ -20,6 +20,7 @@ import '../project_lookup.dart';
 import '../project_tree_editor.dart';
 import '../project_repository.dart';
 import 'convert_to_linked_cut_plan.dart';
+import 'link_group_parts.dart' show LinkPartCopies, LinkPartCopy;
 
 /// One of the two cuts a conversion works on: where it lives, the working
 /// copy of its rows, and how long it runs.
@@ -94,6 +95,12 @@ class ConvertToLinkedCutCommand implements Command {
   final List<(BrushFrameKey, BrushFrameKey)> _rekeys = [];
   bool _hasExecuted = false;
 
+  /// The pictures the copies' panels are born with (I-120-Q24), named as
+  /// the copies are made and copied once the table links them
+  /// ([_pictures]).
+  final List<LinkPartCopy> _pictured = [];
+  late final LinkPartCopies _pictures = LinkPartCopies(brushFrameStore);
+
   @override
   String get description => 'Convert cut $targetCutId to link $originCutId';
 
@@ -112,6 +119,7 @@ class ConvertToLinkedCutCommand implements Command {
     _registryBefore ??= project.linkRegistry;
     final rows = _ConvertRows(project, _snapshots);
     var groups = [...project.linkRegistry.groups];
+    _pictured.clear();
 
     // 1. Matched pairs: merge banks (origin wins) and link.
     for (final pair in plan.layerPairs) {
@@ -129,6 +137,7 @@ class ConvertToLinkedCutCommand implements Command {
         rows.layersByCut,
       ).copyWith(linkRegistry: current.linkRegistry.copyWith(groups: groups)),
     );
+    _pictures.keep(_pictured);
     _hasExecuted = true;
   }
 
@@ -327,6 +336,8 @@ class ConvertToLinkedCutCommand implements Command {
     if (!_hasExecuted || registryBefore == null) {
       throw StateError('Command has not been executed.');
     }
+    // The panels' pictures emptied while the table still links them.
+    _pictures.takeBack();
     // Invert the cel moves first (keys self-resolve with the link gone).
     brushFrameStore.rekeyFrames([
       for (final (from, to) in _rekeys) (to, from),
@@ -401,6 +412,19 @@ class ConvertToLinkedCutCommand implements Command {
         into: into,
         registry: _registryBefore!.copyWith(groups: groups),
       );
+      if ((union.picturedFrom, planned.panel) case (
+        final picture?,
+        final panel?,
+      )) {
+        _pictured.add((
+          from: _celKey(from, sourceId, picture),
+          to: _celKey(into, copy.id, panel),
+          canvasSize: requireCut(
+            repository.requireProject(),
+            into.cutId,
+          ).canvasSize,
+        ));
+      }
       into.layers.insert(_landingIndex(into.layers, copy), copy);
       copies.add(copy.id);
       groups = linkGroupsJoined(
@@ -533,8 +557,9 @@ class ConvertToLinkedCutCommand implements Command {
   /// [source]'s union copy with [copyId] — an EMPTY timeline, the bank
   /// shared — and [source] itself. A row born with a frame is born over its
   /// new cut's [cutDuration] frames with [panel] instead, and the panel joins
-  /// [source]'s bank too (F-99).
-  ({Layer source, Layer copy}) _unionCopyOf(
+  /// [source]'s bank too (F-99) — with the cel of [source] whose picture it
+  /// is born with ([linkedCopyCoveringCelFor]).
+  ({Layer source, Layer copy, FrameId? picturedFrom}) _unionCopyOf(
     Layer source, {
     required LayerId copyId,
     required FrameId? panel,
@@ -546,13 +571,18 @@ class ConvertToLinkedCutCommand implements Command {
       folderId: null,
     );
     if (panel == null) {
-      return (source: source, copy: copy);
+      return (source: source, copy: copy, picturedFrom: null);
     }
-    final cel = coveringCelFor(frameId: panel, cutDuration: cutDuration);
+    final cel = linkedCopyCoveringCelFor(
+      source,
+      frameId: panel,
+      cutDuration: cutDuration,
+    );
     final bank = [...source.frames, cel.frame];
     return (
       source: source.copyWith(frames: bank),
       copy: copy.copyWith(frames: bank, timeline: cel.timeline),
+      picturedFrom: cel.picturedFrom,
     );
   }
 

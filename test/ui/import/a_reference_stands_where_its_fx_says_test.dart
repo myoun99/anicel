@@ -26,9 +26,12 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
@@ -49,6 +52,8 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
     show picturePlacement;
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/project_lookup.dart'
+    show requireCut, requireCutPosition, requireLayer;
 import 'package:anicel/src/services/reference_move_carried.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
     show debugComposesFromBytes;
@@ -631,6 +636,93 @@ void main() {
       expect(lanesOf(open: false), [referenceGroupLaneId]);
       expect(lanesOf(open: true), referenceLaneSelectionOrder);
       await stopTheWarmer(tester, s);
+    });
+
+    group('🗣️I-120-Q24 「참조 행의 겸용 복사본은 같은 파일 그림의 셀로 '
+        '태어난다」', () {
+      BitmapSurface? celIn(
+        EditorSessionManager s,
+        Cut cut,
+        LayerId row,
+        FrameId frame,
+      ) => s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(cut, row, frame),
+      );
+
+      /// [s]'s copy of [row] in [linked], born with the picture of the file
+      /// [row] shows in [source] — a cel of its own, whose pixels are its —
+      /// and the row's 参照 group standing in both cuts; and the panel it
+      /// was born with emptied by ONE undo.
+      void expectBornWithThePicture(
+        EditorSessionManager s, {
+        required Cut source,
+        required Layer row,
+        required CutId linked,
+      }) {
+        final project = s.cutCommandCoordinator.repository.requireProject();
+        final into = requireCut(project, linked);
+        final copy = into.layers.firstWhere(
+          (layer) => layer.mediaReference != null,
+        );
+        final picture = row.frames.single;
+        final panel = copy.frames.firstWhere(
+          (frame) => frame.id == exposedFrameIdAt(copy.timeline, 0),
+        );
+        expect(panel.id, isNot(picture.id), reason: 'a cel of its own');
+        expect([panel.name, panel.filePicture], [null, picture.filePicture]);
+        final ink = inkOf(celIn(s, source, row.id, picture.id));
+        expect(ink, isNotNull, reason: '⛔premise: the file is laid');
+        expect(inkOf(celIn(s, into, copy.id, panel.id)), ink);
+        expect(
+          colourAt(celIn(s, into, copy.id, panel.id), 1170, 827),
+          colourAt(celIn(s, source, row.id, picture.id), 1170, 827),
+        );
+        for (final shown in [
+          requireLayer(project, cutId: source.id, layerId: row.id),
+          copy,
+        ]) {
+          expect(referenceRedrawFor(shown), ReferenceSwap.pictures);
+        }
+
+        s.undo();
+        expect(
+          requireCut(
+            s.cutCommandCoordinator.repository.requireProject(),
+            source.id,
+          ),
+          source,
+        );
+        expect(inkOf(celIn(s, source, row.id, panel.id)), isNull);
+      }
+
+      testWidgets('🎯a 겸용 cut made of its cut', (tester) async {
+        final (s, row) = await placed(tester);
+        final source = s.requireActiveCut;
+
+        s.cutCommandCoordinator.createLinkedCut(sourceCutId: source.id);
+        final linked = s.requireActiveCut.id;
+        expect(linked, isNot(source.id), reason: '⛔premise: a new cut');
+        expectBornWithThePicture(s, source: source, row: row, linked: linked);
+        await stopTheWarmer(tester, s);
+      });
+
+      testWidgets('🎯a cut linked to its cut as a 겸용 — the row only one '
+          'side held', (tester) async {
+        final (s, row) = await placed(tester);
+        final source = s.requireActiveCut;
+        const target = CutId('target');
+        s.cutCommandCoordinator
+          ..createCut(
+            trackId: requireCutPosition(
+              s.cutCommandCoordinator.repository.requireProject(),
+              source.id,
+            ).track.id,
+            cutId: target,
+          )
+          ..convertCutToLinked(originCutId: source.id, targetCutId: target);
+        expectBornWithThePicture(s, source: source, row: row, linked: target);
+        await stopTheWarmer(tester, s);
+      });
     });
 
     testWidgets('a paper bigger than the canvas bakes where it shows — the '

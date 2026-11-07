@@ -1,6 +1,7 @@
 import '../editing/default_cut_helpers.dart';
 import '../editing/default_layer_helpers.dart';
 import '../editing/editing_session_state.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -11,11 +12,13 @@ import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/layer_section_defaults.dart';
+import '../brush_frame_store.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_tree_editor.dart';
 import '../project_repository.dart';
 import 'cut_insertion.dart';
+import 'link_group_parts.dart' show LinkPartCopies, LinkPartCopy;
 import 'linked_cut_field_command.dart' show withLinkedCutFieldsOf;
 import 'transitions_ride_the_cuts.dart';
 
@@ -69,7 +72,9 @@ import 'transitions_ride_the_cuts.dart';
 /// unnamed: 「이미지 레이어는 이름이 없는 상태인데도 겸용컷이랑 링크되는데,
 /// 그게아니라 애니메이션 레이어랑 똑같이 이름이 같아야만 링크되도록. 이름
 /// 안정해지면 별개것임」. The source's pictures are still in the bank the two
-/// rows share; a frame NAMED like one of them is that picture.
+/// rows share; a frame NAMED like one of them is that picture. A REFERENCE
+/// row's copy is born with the picture of the file its source shows
+/// (🗣️I-120-Q24, [linkedCopyCoveringCelFor]).
 class CreateLinkedCutCommand implements Command {
   CreateLinkedCutCommand({
     required this.repository,
@@ -80,7 +85,8 @@ class CreateLinkedCutCommand implements Command {
     required this.layerIdMap,
     required this.newGroupIdBySource,
     required this.coveringFrameIdBySource,
-  });
+    BrushFrameStore? brushFrameStore,
+  }) : _pictures = LinkPartCopies(brushFrameStore);
 
   final ProjectRepository repository;
   final EditingSessionState editingSession;
@@ -98,6 +104,11 @@ class CreateLinkedCutCommand implements Command {
   /// the new cut (F-99).
   final Map<LayerId, FrameId> coveringFrameIdBySource;
 
+  /// The pictures the copies' panels are born with (I-120-Q24): each
+  /// source cel copied to its copy's panel once the table links the two,
+  /// and emptied again by an undo.
+  final LinkPartCopies _pictures;
+
   CutId? _previousActiveCutId;
   LayerLinkRegistry? _registryBefore;
 
@@ -113,6 +124,7 @@ class CreateLinkedCutCommand implements Command {
   @override
   void execute() {
     _previousActiveCutId = editingSession.activeCutId;
+    final pictured = <LinkPartCopy>[];
     void insert() => repository.updateProject((project) {
       final position = requireCutPosition(project, sourceCutId);
       final track = position.track;
@@ -120,10 +132,27 @@ class CreateLinkedCutCommand implements Command {
       // F-97: a new cut's length, read where a new cut reads it.
       const duration = defaultCutDuration;
 
+      BrushFrameKey keyOf(CutId cutId, LayerId layerId, FrameId frameId) =>
+          BrushFrameKey(
+            projectId: project.id,
+            trackId: track.id,
+            cutId: cutId,
+            layerId: layerId,
+            frameId: frameId,
+          );
+      pictured.clear();
       final linkedLayers = <Layer>[
         for (final layer in source.layers)
           if (layerIdMap.containsKey(layer.id))
-            _linkedCopyOf(layer, cutDuration: duration),
+            _linkedCopyOf(
+              layer,
+              cutDuration: duration,
+              pictured: (from, panel) => pictured.add((
+                from: keyOf(sourceCutId, layer.id, from),
+                to: keyOf(newCutId, _requireCopyId(layer.id), panel),
+                canvasSize: source.canvasSize,
+              )),
+            ),
       ];
       final newCut = withLinkedCutFieldsOf(
         Cut(
@@ -202,6 +231,7 @@ class CreateLinkedCutCommand implements Command {
       return next;
     });
     _ride.carry(insert);
+    _pictures.keep(pictured);
     editingSession.setActiveCutId(newCutId);
     _hasExecuted = true;
   }
@@ -214,6 +244,8 @@ class CreateLinkedCutCommand implements Command {
     if (!_hasExecuted || registryBefore == null) {
       throw StateError('Command has not been executed.');
     }
+    // While the table still links the copies to the cels they were laid in.
+    _pictures.takeBack();
     void remove() => repository.updateProject((project) {
       var next = projectWithCutTakenOut(
         project,
@@ -238,8 +270,14 @@ class CreateLinkedCutCommand implements Command {
 
   /// [layer]'s linked copy in the new cut: the same bank and an EMPTY
   /// timeline the 겸용 cut exposes anew — or, for a row born with a frame,
-  /// its fresh panel over the whole cut (F-99).
-  Layer _linkedCopyOf(Layer layer, {required int cutDuration}) {
+  /// its fresh panel over the whole cut (F-99), [pictured] told the cel of
+  /// [layer] whose picture the panel is born with
+  /// ([linkedCopyCoveringCelFor]).
+  Layer _linkedCopyOf(
+    Layer layer, {
+    required int cutDuration,
+    required void Function(FrameId from, FrameId panel) pictured,
+  }) {
     final copy = layer.copyWith(
       id: _requireCopyId(layer.id),
       // EMPTY timeline: the 겸용 re-exposes the shared bank.
@@ -258,7 +296,14 @@ class CreateLinkedCutCommand implements Command {
     if (panel == null) {
       return copy;
     }
-    final cel = coveringCelFor(frameId: panel, cutDuration: cutDuration);
+    final cel = linkedCopyCoveringCelFor(
+      layer,
+      frameId: panel,
+      cutDuration: cutDuration,
+    );
+    if (cel.picturedFrom case final from?) {
+      pictured(from, panel);
+    }
     return copy.copyWith(
       frames: [...layer.frames, cel.frame],
       timeline: cel.timeline,
