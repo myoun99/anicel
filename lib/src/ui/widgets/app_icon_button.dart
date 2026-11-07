@@ -680,7 +680,7 @@ class RenderIconButtonPressFace extends RenderShiftedBox
     _layer.paint(
       context.canvas,
       offset & size,
-      ShapeDecoration(shape: _spec.shape, color: _spec.ink.overlay(_states)),
+      iconButtonLayerOf(_spec.shape, _spec.ink.overlay(_states)),
       _spec.textDirection,
     );
     super.paint(context, offset);

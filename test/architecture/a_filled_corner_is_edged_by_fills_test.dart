@@ -16,8 +16,11 @@ import '../helpers/source_ledger.dart';
 /// carried in by another face's `shape`) — so that is what is scanned for.
 ///
 /// ⛔Not a decoration with a side and NO colour — an outline over whatever
-/// lies under it, which two fills cannot draw
-/// (a-live-dock-frame-costs-a-whole-draw-Q11 asks 유저).
+/// lies under it. 🗣️a-live-dock-frame-costs-a-whole-draw-Q11 (유저 2026-11-08)
+/// fills one with its ground only where that is one colour with nothing
+/// passing behind it — the command pill, an outlined icon button — and a
+/// clear flyout chip, a pill strip, a group tab or a tip cell has its
+/// hover ink behind it and keeps its stroke: no scan tells the two apart.
 void main() {
   test('no ShapeDecoration under lib/ is handed both a colour and a side, '
       'outside the ledger — and every ledger entry still is', () {
@@ -67,19 +70,14 @@ final e = SuperellipseFace(
 /// Faces handed a colour and a side that stroke it on purpose, by
 /// `path #k` — the k-th such face in its file.
 const _strokedOnPurpose = <String, String>{
-  'lib/src/ui/widgets/app_icon_button.dart #1':
-      'the press wash over a button\'s outline — no colour at rest, a '
-      'translucent one pressed, never an inside two fills can draw by '
-      '(a-live-dock-frame-costs-a-whole-draw-Q11)',
-  'lib/src/ui/widgets/rail_glyph_button.dart #1':
-      'the press wash over a rail button\'s outline, as the icon button\'s '
-      '(a-live-dock-frame-costs-a-whole-draw-Q11)',
   'lib/src/ui/widgets/panel_flyout.dart #1':
       'never both: a plate has a ground and no side, a clear chip a side and '
-      'no colour — the clear chip is an outline '
+      'no colour — and the clear chip keeps its stroke, its hover ink lying '
+      'behind it on the button\'s Material '
       '(a-live-dock-frame-costs-a-whole-draw-Q11)',
   'lib/src/ui/export/export_preset_rail.dart #1':
-      'a translucent wash or none, inside an outline '
+      'a translucent wash or none inside an outline, in the export window — '
+      'drawn live, never from an image '
       '(a-live-dock-frame-costs-a-whole-draw-Q11)',
   'lib/src/ui/dialogs/instruction_set_editor_dialog.dart #1':
       'a circle (`CircleBorder`), not a superellipse — a dialog\'s, drawn '

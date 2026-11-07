@@ -465,7 +465,7 @@ class RenderRailGlyphFace extends RenderBox
     _layer.paint(
       context.canvas,
       offset & size,
-      ShapeDecoration(shape: _spec.shape, color: _spec.ink.overlay(states)),
+      iconButtonLayerOf(_spec.shape, _spec.ink.overlay(states)),
       _spec.textDirection,
     );
     _glyphPainter(_spec.ink.foreground(states)).paint(

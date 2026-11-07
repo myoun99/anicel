@@ -351,8 +351,8 @@ final class IconButtonInk {
 /// for the state it is in, filling its shape — painted as the face's old
 /// `DecoratedBox` painted it, by every face that tracks its own hover and
 /// press: the app's ([RenderIconButtonPressFace]) and the rail's glyph
-/// (`RenderRailGlyphFace`). At rest the overlay is null and only an
-/// outlined shape's edge is drawn.
+/// (`RenderRailGlyphFace`). At rest the overlay is null: a plain shape
+/// paints nothing, an outlined one its ground and edge ([iconButtonLayerOf]).
 final class IconButtonLayer {
   /// [onChanged] repaints the face — what a decoration calls when an image
   /// it waits for arrives.
@@ -383,6 +383,33 @@ final class IconButtonLayer {
 
   void dispose() => _painter?.dispose();
 }
+
+/// What [IconButtonLayer] paints for a face cut to [shape] with [overlay]
+/// over it: the overlay filling the shape — or, where the shape is
+/// outlined ([appIconButtonShape]), a [SuperellipseFace] filled with the
+/// ground the button stands on and the overlay over that, its edge drawn
+/// by fills.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q11 (유저 2026-11-08): 「안쪽을 그
+/// 테두리가 놓인 바탕색으로 칠해 『채우기 둘』로 그린다」 — so an image of
+/// the button and the screen agree at its edge. Every outlined button
+/// stands on [AppColors.surface] (census 11-08: the brush settings' reset
+/// and detail on the panel's frame, the number pad's keys in its popup),
+/// and the overlay is the face's own fill, not something behind it.
+/// ⛔A button outlined on another ground wears a surface plate there —
+/// that ground is then its to say.
+ShapeDecoration iconButtonLayerOf(ShapeBorder shape, Color? overlay) =>
+    switch (shape) {
+      RoundedSuperellipseBorder(side: BorderSide(style: BorderStyle.solid)) =>
+        SuperellipseFace(
+          color: Color.alphaBlend(
+            overlay ?? const Color(0x00000000),
+            AppColors.surface,
+          ),
+          edge: shape,
+        ),
+      _ => ShapeDecoration(shape: shape, color: overlay),
+    };
 
 /// Where the keyboard's focus is, as an icon button shows it: not on it;
 /// on it but unseen — the pointer is driving, and M3 shows the focus layer

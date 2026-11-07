@@ -127,12 +127,20 @@ class CommandPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pill = DecoratedBox(
-      decoration: ShapeDecoration(
+      // 🗣️a-live-dock-frame-costs-a-whole-draw-Q11 (유저 2026-11-08):
+      // 「안쪽을 그 테두리가 놓인 바탕색으로 칠해 『채우기 둘』로 그린다」 —
+      // its edge drawn by fills, so a toolbar's image and the screen agree
+      // there. Every pill stands on [AppColors.surface] (census 11-08: the
+      // timeline's and the storyboard's toolbars, and the timeline's with
+      // no cut) with nothing painted behind it — its verbs' hovers are its
+      // children's, over the fill.
+      decoration: SuperellipseFace(
+        color: AppColors.surface,
         // The app's control shape at this height — never a hand-typed
         // radius: `app_shapes_coverage_test` polices exactly that, and the
         // corner ratio is a token so a future control-shape change lands
         // here too.
-        shape: AppShapes.control(
+        edge: AppShapes.control(
           heightIn(context),
           side: BorderSide(color: AppColors.hairline),
         ),
