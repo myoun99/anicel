@@ -242,6 +242,7 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     layer: row.layer,
     drawnFrameCount: world.drawnFrameCount,
     geometry: grid.geometry,
+    windowIsStill: true,
     crossAxisExtent: grid.metrics.layerRowHeight,
     exposureStateForLayer: hooks.exposureStateForLayer,
     frameNameForLayer: hooks.frameNameForLayer,
@@ -397,7 +398,8 @@ typedef KeptTimelineCellsRows = KeptByBerth<TimelineCellsRowFacts>;
 /// every row again. And the gate stands on that tick layer, reading the
 /// pass from the berth above it — 🚨F-446 (10-24): a drag step is a tick
 /// (F-244), and the gate's rebuild is laid out there, alone. On that layer
-/// the row is a still region of its own ([stillRow]).
+/// the row's window is a still region of its own
+/// ([TimelineFrameCellsRow.windowIsStill]).
 /// ↩️It stood with the berth, in the grid's layout scope (I-57): a cut-end
 /// trim on the user's cut derived again every row its length draws a
 /// ghost on, and each step laid out and repainted the rows' viewport.
@@ -437,12 +439,10 @@ Widget keptTimelineCellsRow(
     // bake, while staying non-editable for free: every edit affordance
     // gates on `LayerKind.holdsDrawings`, which a folder fails.
     () => TickLayer(
-      child: stillRow(
-        TimelineDragPreviewRowGate.shows(
-          dragPreview: grid.hooks.dragPreview,
-          layer: row.layer,
-          child: timelineCellsRowFrom(row, grid),
-        ),
+      child: TimelineDragPreviewRowGate.shows(
+        dragPreview: grid.hooks.dragPreview,
+        layer: row.layer,
+        child: timelineCellsRowFrom(row, grid),
       ),
     ),
   ),

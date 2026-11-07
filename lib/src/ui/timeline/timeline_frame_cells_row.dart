@@ -21,6 +21,7 @@ import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'memo_token.dart';
 import 'rail_eyes.dart';
+import 'still_row.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -52,6 +53,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.layer,
     required this.drawnFrameCount,
     required this.geometry,
+    this.windowIsStill = false,
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -119,6 +121,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// and stay in the memo key by value — they rebuild on zoom exactly as
   /// before.
   final TimelineFrameGeometryHandle geometry;
+
+  /// Whether the row's WINDOW is a still region of its own ([stillRow]) —
+  /// every row of the dock's grids; not the collapsed overlay's.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 —
+  /// 행 그림 영역을 창 상자로」): the window, not the row's box. The box
+  /// reaches the axis' end, so the runway a drag past the end grows widened
+  /// the region and threw away every row's image it showed; the window is
+  /// the same pixels wide wherever the axis ends. Its price: where the axis
+  /// is shorter than the window, a row's image is the window's width.
+  final bool windowIsStill;
 
   /// Row height (horizontal) / column width (X-sheet). NOT a zoom field.
   final double crossAxisExtent;
@@ -328,7 +341,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       // row shows one layer and then another in the same elements.
       child: Named(
         '$keyPrefix-frame-$_axisWord-area-${layer.id}',
-        child: stack,
+        child: windowIsStill ? stillRow(stack) : stack,
       ),
     );
     // The X-sheet column is cross-axis sized to the layer's row height (its

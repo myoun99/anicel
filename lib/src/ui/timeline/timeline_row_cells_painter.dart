@@ -153,7 +153,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.shown = true,
   }) : super(
          repaint: Listenable.merge([
-           geometry,
+           timelineFrameDrawing(geometry),
            ?windowBucket,
            // Its OWN row's landings — never every row's (I-22 ③).
            ?tileStore?.noticesFor(
@@ -345,10 +345,10 @@ class TimelineRowCellsPainter extends CustomPainter
   final double devicePixelRatio;
 
   /// The frame window paint() actually draws: the full bounds under the
-  /// classic contract, the bucket-derived span (shared policy) under the
-  /// self-windowing one. THE probe surface for visibility tests.
+  /// classic contract, the bucket-derived span (shared policy), whole, under
+  /// the self-windowing one (Q8). THE probe surface for visibility tests.
   ({int startIndex, int endIndexExclusive}) visibleFrameWindow() =>
-      visibleFrameWindowFor(
+      rowDrawnFrameWindowFor(
         bucket: windowBucket,
         viewportMainExtent: viewportMainExtent,
         cellExtent: frameCellExtent,
@@ -878,18 +878,37 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// The tile grid's spans under [window], in order (`shown`), and the one
-  /// past each edge a paint keeps warm (`ahead`), the last cut at the
-  /// [builtFrames] the axis ends at — the grid rides the SHARED window
+  /// past each edge a paint keeps warm (`ahead`) — none from the
+  /// [builtFrames] the axis ends at on — the grid rides the SHARED window
   /// policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8: a row with a window draws
+  /// it whole ([rowDrawnFrameWindowFor]), so its last tile is a span like
+  /// every other, not one cut where the axis ends; and a span the axis
+  /// ends before holds nothing a row draws, so it is asked for nothing.
+  /// What a runway's growth reaches past the end is blank either way, and
+  /// no row is painted again for it. ↩️The last tile was cut at the axis'
+  /// end — a growth asked for it again. A row with no window still cuts it
+  /// there: it draws every frame up to the end.
   ({List<(int, int)> shown, List<(int, int)> ahead}) _tileGridIn(
     ({int startIndex, int endIndexExclusive}) window,
     int builtFrames,
   ) {
     final span = timelineFrameWindowSpanFor(frameCellExtent);
+    final cut =
+        rowDrawsItsWindow(
+          bucket: windowBucket,
+          viewportMainExtent: viewportMainExtent,
+          cellExtent: frameCellExtent,
+        )
+        ? null
+        : builtFrames;
     (int, int)? spanAt(int tile) {
       final start = tile * span;
-      final end = math.min(start + span, builtFrames);
-      return start < 0 || end <= start ? null : (start, end);
+      final end = math.min(start + span, cut ?? start + span);
+      return start < 0 || start >= builtFrames || end <= start
+          ? null
+          : (start, end);
     }
 
     final first = window.startIndex < 0 ? 0 : window.startIndex ~/ span;

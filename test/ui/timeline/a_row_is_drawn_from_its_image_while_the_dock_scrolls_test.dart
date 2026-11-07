@@ -12,6 +12,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
@@ -173,7 +174,8 @@ void main() {
       expect(lanes, findsWidgets, reason: '⛔premise: its lanes are shown');
 
       for (final id in shown) {
-        // The cells: one region, and it is the row's box.
+        // The cells: one region, and it is the row's WINDOW (Q8 — the
+        // row's box reaches the axis' end).
         final cells = find.named(
           horizontal
               ? 'timeline-row-$id-cells'
@@ -183,10 +185,16 @@ void main() {
         final region = tester.renderObject<RenderStillRaster>(
           find.descendant(of: cells, matching: find.byType(StillRaster)),
         );
+        final box = tester.renderObject<RenderTimelineFrameAxisBox>(
+          find.descendant(
+            of: cells,
+            matching: find.byType(TimelineFrameAxisBox),
+          ),
+        );
         expect(
-          region.size,
-          tester.getSize(cells),
-          reason: '$id\'s cells are the region\'s box',
+          (region.size, identical(region, box.child)),
+          (box.child!.size, true),
+          reason: '$id\'s cells window is the region\'s box',
         );
         // The rail's row (the sheet's header): one region over its name.
         expect(

@@ -162,15 +162,42 @@ class TimelineFrameGeometry {
   /// The content's own spacer is compared within a hair: [windowed] takes
   /// the origin off it, and adding it back is not exact for every origin.
   bool laysOutAs(TimelineFrameGeometry other) =>
+      laysPiecesOutAs(other) &&
+      other.frameEndIndexExclusive == frameEndIndexExclusive &&
+      other.trailingFrameSpacerWidth == trailingFrameSpacerWidth;
+
+  /// Whether a piece laid out by frames inside a row's window under [other]
+  /// stands laid out under this ([laysOutAs], but for where the axis ends):
+  /// a piece is laid by the edges of its own frames ([edgeAt]), and only
+  /// the row's box reaches the axis' end (a-live-dock-frame-costs-a-whole-
+  /// draw-Q8).
+  bool laysPiecesOutAs(TimelineFrameGeometry other) =>
       other.frameCellExtent == frameCellExtent &&
       other.frameStartIndex == frameStartIndex &&
-      other.frameEndIndexExclusive == frameEndIndexExclusive &&
       ((other.leadingFrameSpacerWidth + other.windowOriginPx) -
                   (leadingFrameSpacerWidth + windowOriginPx))
               .abs() <
           1e-6 &&
-      other.trailingFrameSpacerWidth == trailingFrameSpacerWidth &&
       other.windowExtentPx == windowExtentPx;
+
+  /// Whether a row draws under [other] what it draws under this
+  /// ([timelineFrameDrawing]): every field it is drawn by — and where the
+  /// axis ends only for a row with no window, which draws every frame.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07): a row
+  /// with a window draws its window, not what the axis' end clips
+  /// ([rowDrawnFrameWindowFor]). Nothing a row draws stands past the end —
+  /// 🔬the runway a drag past it grows held no pixel of any kind of row
+  /// (animation · image · SE · camera · direction, before and after) — so
+  /// the end a drag grows repaints no row.
+  bool drawsAs(TimelineFrameGeometry other) =>
+      other.frameCellExtent == frameCellExtent &&
+      other.frameStartIndex == frameStartIndex &&
+      other.leadingFrameSpacerWidth == leadingFrameSpacerWidth &&
+      other.viewExtentPx == viewExtentPx &&
+      other.windowOriginPx == windowOriginPx &&
+      other.windowExtentPx == windowExtentPx &&
+      (isWindowed || other.frameEndIndexExclusive == frameEndIndexExclusive);
 
   @override
   bool operator ==(Object other) =>
@@ -226,6 +253,51 @@ const double timelineFrameWindowMarginPx = 1024;
 /// after build in the same frame. Do NOT attach a `ValueListenableBuilder` or
 /// any `setState` listener to it — that would be a rebuild during build.
 typedef TimelineFrameGeometryHandle = ValueNotifier<TimelineFrameGeometry>;
+
+/// What a row's pieces repaint by: [geometry] moving anything they are
+/// drawn by ([TimelineFrameGeometry.drawsAs]) — and not its end alone,
+/// which a drag past it grows a screen at a time (Q8).
+Listenable timelineFrameDrawing(TimelineFrameGeometryHandle geometry) =>
+    _drawings[geometry] ??= _TimelineFrameDrawing(geometry);
+
+final Expando<_TimelineFrameDrawing> _drawings = Expando();
+
+/// [timelineFrameDrawing]'s listenable: told by its geometry, it tells its
+/// listeners only of what a row draws differently.
+class _TimelineFrameDrawing extends ChangeNotifier {
+  _TimelineFrameDrawing(this._geometry) : _drawn = _geometry.value;
+
+  final TimelineFrameGeometryHandle _geometry;
+
+  /// What the listeners last heard of.
+  TimelineFrameGeometry _drawn;
+
+  void _heard() {
+    final now = _geometry.value;
+    if (now.drawsAs(_drawn)) {
+      return;
+    }
+    _drawn = now;
+    notifyListeners();
+  }
+
+  @override
+  void addListener(VoidCallback listener) {
+    if (!hasListeners) {
+      _drawn = _geometry.value;
+      _geometry.addListener(_heard);
+    }
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    if (!hasListeners) {
+      _geometry.removeListener(_heard);
+    }
+  }
+}
 
 /// Sizes its child along the frame axis from the live geometry.
 ///
@@ -293,9 +365,13 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
   /// What the last layout was laid under ([layOutUnder]).
   TimelineFrameGeometry? _laidOutUnder;
 
+  /// What the last layout or paint this asked for was asked under.
+  TimelineFrameGeometry? _heard;
+
   /// The geometry a layout reads — remembered, so that a window moving
   /// along the content alone is answered with a paint ([_follow]).
-  TimelineFrameGeometry layOutUnder() => _laidOutUnder = geometry.value;
+  TimelineFrameGeometry layOutUnder() =>
+      _laidOutUnder = _heard = geometry.value;
 
   /// 🚨A WINDOW THAT MOVED IS PAINTED, NOT LAID OUT
   /// (frame-axis-box-at-window-size, 2026-10-30): where the window stands
@@ -304,15 +380,31 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
   /// in it was laid out again at each crossing past the window's margin —
   /// 43 on the timeline, 76 on the sheet (24 layers, measured) — each
   /// measuring its semantics again with it.
+  ///
+  /// 🚨AND WHAT IT DRAWS THE SAME IS NOT PAINTED AGAIN (Q8): the axis' end a
+  /// drag grows moves the row's box alone ([standsLaidOutUnder]).
   void _follow() {
+    final now = geometry.value;
+    final heard = _heard;
+    _heard = now;
     final laid = _laidOutUnder;
-    if (laid != null && geometry.value.laysOutAs(laid)) {
-      markNeedsPaint();
-      markNeedsSemanticsUpdate();
+    if (laid != null && standsLaidOutUnder(now, laid)) {
+      if (heard == null || !now.drawsAs(heard)) {
+        markNeedsPaint();
+        markNeedsSemanticsUpdate();
+      }
       return;
     }
     markNeedsLayout();
   }
+
+  /// Whether what this laid out under [laid] stands under [now] — the
+  /// row's box, by default, whose size reaches the axis' end
+  /// ([TimelineFrameGeometry.laysOutAs]).
+  bool standsLaidOutUnder(
+    TimelineFrameGeometry now,
+    TimelineFrameGeometry laid,
+  ) => now.laysOutAs(laid);
 
   /// Where the window stands along the content, as an offset — what a
   /// piece laid out free of it is painted back by.
