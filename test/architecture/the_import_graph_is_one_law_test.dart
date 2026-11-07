@@ -59,6 +59,15 @@ void main() {
         importsOf('lib/a.dart', "import 'package:gpu_engine/gpu_engine.dart';"),
         {'packages/gpu_engine/lib/gpu_engine.dart'},
       );
+      // A file of the package naming its own by package: — none does yet
+      // (보드/인프라 21:54) — reaches the same file.
+      expect(
+        importsOf(
+          'packages/gpu_engine/lib/src/x.dart',
+          "import 'package:gpu_engine/gpu_engine.dart';",
+        ),
+        {'packages/gpu_engine/lib/gpu_engine.dart'},
+      );
       expect(
         pathPackageOf('packages/gpu_engine/lib/src/x.dart'),
         'packages/gpu_engine/',
