@@ -185,3 +185,103 @@ fn the_pages_are_what_the_write_path_copies_to_and_a_pass_reads() {
     let nothing = vec![0; TILE_TEXELS as usize];
     assert!(read_buffer(engine, &pool.pages()[1]) == le_bytes(&[tile(2), nothing].concat()));
 }
+
+/// What `places` of `pool` hold, read as a pass reads them: one row of
+/// output tiles, a stored tile each.
+fn read_back(pool: &Pool, places: &[TileAt]) -> Vec<u8> {
+    let Rig { engine, composite } = rig();
+    let set = TileSet {
+        x0: 0,
+        y0: 0,
+        columns: places.len() as u32,
+        rows: 1,
+        tiles: places.iter().copied().map(Some).collect(),
+    };
+    let tiles: Vec<(i32, i32)> = (0..places.len() as i32).map(|column| (column, 0)).collect();
+    let read = composite
+        .copied(engine, pool.pages(), &set, &tiles, composite.widest())
+        .expect("copied");
+    read_buffer(engine, &read.out)
+}
+
+// The app's tiles, stored from the CPU, land each whole in a fresh slot of
+// their cel — a cel's on its own pages, as a fresh slot is.
+#[test]
+fn stored_tiles_land_each_in_a_fresh_slot_of_their_cel() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let (a, b) = (pool.cel(), pool.cel());
+    let bytes: Vec<Vec<u8>> = (0..4).map(|n| le_bytes(&tile(n))).collect();
+    let tiles: Vec<&[u8]> = bytes.iter().map(Vec::as_slice).collect();
+    let of_a = pool.store(engine, a, &tiles[..3]).expect("store a");
+    let of_b = pool.store(engine, b, &tiles[3..]).expect("store b");
+    assert_eq!(of_a, [at(0, 0), at(0, 1), at(1, 0)]);
+    assert_eq!(of_b, [at(2, 0)]);
+    let places = [of_a, of_b].concat();
+    assert!(read_back(&pool, &places) == bytes.concat());
+}
+
+// A pool full partway stores the tiles before it, keeps them, and stores
+// none past it; a tile not of a tile's bytes is refused, and no slot is
+// taken for any of its store.
+#[test]
+fn a_store_stops_where_the_pool_is_full_and_refuses_a_tile_of_other_bytes() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, 2 * TILE_BYTES).expect("pool");
+    let cel = pool.cel();
+    let bytes: Vec<Vec<u8>> = (0..3).map(|n| le_bytes(&tile(n))).collect();
+    let tiles: Vec<&[u8]> = bytes.iter().map(Vec::as_slice).collect();
+    let stored = pool.store(engine, cel, &tiles).expect("store");
+    assert_eq!(stored, [at(0, 0), at(0, 1)], "one page is all its bytes hold");
+    assert!(read_back(&pool, &stored) == bytes[..2].concat());
+    assert_eq!(pool.store(engine, cel, &tiles[2..]), Some(Vec::new()));
+    let mut room = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let other = room.cel();
+    let short = [tiles[0], &tiles[1][1..]];
+    assert!(room.store(engine, other, &short).is_none());
+    assert_eq!(room.fresh(engine, other), Ok(at(0, 0)), "the refused store took no slot");
+}
+
+// The C ABI stores and lets go as the pool does: a cel a number of its
+// own, each tile's place written out, a slot let go handed out again, and
+// one let go twice refused.
+#[test]
+fn the_c_abi_stores_and_lets_go_as_the_pool_does() {
+    use super::{
+        gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_release,
+        gpu_engine_pool_store,
+    };
+    let engine = rig().engine;
+    let bytes: Vec<Vec<u8>> = (0..2).map(|n| le_bytes(&tile(n))).collect();
+    let tiles: Vec<*const u8> = bytes.iter().map(|tile| tile.as_ptr()).collect();
+    let (mut pages, mut slots) = ([u16::MAX; 2], [u16::MAX; 2]);
+    // SAFETY: the engine is the tests' own, alive for the run; the tiles,
+    // pages and slots hold two each.
+    unsafe {
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        assert!(!pool.is_null());
+        let (a, b) = (gpu_engine_pool_cel(pool), gpu_engine_pool_cel(pool));
+        assert_ne!(a, b);
+        let stored = gpu_engine_pool_store(
+            pool,
+            engine,
+            a,
+            tiles.as_ptr(),
+            2,
+            pages.as_mut_ptr(),
+            slots.as_mut_ptr(),
+        );
+        assert_eq!(stored, 2);
+        assert_eq!((pages, slots), ([0, 0], [0, 1]));
+        assert!(read_back(&*pool, &[at(0, 0), at(0, 1)]) == bytes.concat());
+        assert!(gpu_engine_pool_release(pool, 0, 0));
+        assert!(!gpu_engine_pool_release(pool, 0, 0), "let go twice");
+        let again =
+            gpu_engine_pool_store(pool, engine, a, tiles.as_ptr(), 1, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!((again, pages[0], slots[0]), (1, 0, 0));
+        let none = gpu_engine_pool_store(pool, engine, b, tiles.as_ptr(), 0, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!(none, 0);
+        gpu_engine_pool_free(pool);
+        gpu_engine_pool_free(std::ptr::null_mut());
+    }
+}

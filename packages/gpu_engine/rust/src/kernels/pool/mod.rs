@@ -21,10 +21,12 @@
 //! answer to all three, and its store cools a cel — reads its tiles back,
 //! releases them — and asks again (gpu-canonical-store 11-07 09:00, 관제
 //! 09:04: 「한 증상에 법 하나」).
-
-// ⏳Nothing outside the tests stores in it until the connection round
-// (connection-round-checklist B).
-#![cfg_attr(not(test), allow(dead_code))]
+//!
+//! The app stores through the C ABI below (connection-round-checklist B,
+//! screen-on-the-engine): tiles it holds on the CPU, each in a fresh slot
+//! of a cel, and back to the pool when it lets one go. While the CPU's
+//! tiles are the canonical ones (2단계), a full pool is answered by letting
+//! tiles not shown go, as the app's tile pictures were.
 
 #[cfg(test)]
 mod tests;
@@ -33,6 +35,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::{TILE_BYTES, TileAt};
 use crate::kernels::shared::room;
+use crate::kernels::write::Write;
 use crate::platform::{self, VideoMemory};
 
 /// The most a page holds where a binding holds more (1a ④).
@@ -93,11 +96,15 @@ impl Pool {
     }
 
     /// The pages, as a plan and the write path take them.
+    // ⏳The executor's C ABI takes them (screen-on-the-engine, the next
+    // commit).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn pages(&self) -> &[wgpu::Buffer] {
         &self.buffers
     }
 
     /// The tiles a page holds.
+    #[cfg(test)]
     pub(crate) fn slots(&self) -> usize {
         self.slots
     }
@@ -122,8 +129,57 @@ impl Pool {
         Ok(TileAt { page: page as u16, slot })
     }
 
+    /// `tiles` — straight RGBA8, a tile's bytes each — each in a fresh slot
+    /// of `cel`, copied there by the write path in one submit: as many of
+    /// them, the first, as the pool has room for. A tile is never written
+    /// where one is stored ([`Write::put`] where it is told).
+    pub(crate) fn store(&mut self, engine: &Engine, cel: Cel, tiles: &[&[u8]]) -> Option<Vec<TileAt>> {
+        if let Some(tile) = tiles.iter().find(|tile| tile.len() as u64 != TILE_BYTES) {
+            return fail(format!("a tile of {} bytes; one holds {TILE_BYTES}", tile.len()));
+        }
+        let mut places = Vec::with_capacity(tiles.len());
+        while places.len() < tiles.len() {
+            match self.fresh(engine, cel) {
+                Ok(at) => places.push(at),
+                Err(Full) => break,
+            }
+        }
+        if places.is_empty() {
+            return Some(places);
+        }
+        let staging = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tiles stored"),
+            size: places.len() as u64 * TILE_BYTES,
+            usage: wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: true,
+        });
+        let copied = match staging.get_mapped_range_mut(..) {
+            Ok(mut mapped) => {
+                let bytes = TILE_BYTES as usize;
+                for (at, tile) in tiles[..places.len()].iter().enumerate() {
+                    mapped.slice(at * bytes..(at + 1) * bytes).copy_from_slice(tile);
+                }
+                Some(())
+            }
+            Err(error) => fail(format!("get_mapped_range_mut: {error}")),
+        };
+        staging.unmap();
+        let writes: Vec<(usize, TileAt)> = places.iter().copied().enumerate().collect();
+        if copied.and_then(|()| Write::put(engine, &self.buffers, &staging, &writes)).is_none() {
+            for &at in &places {
+                self.release(at);
+            }
+            return None;
+        }
+        Some(places)
+    }
+
     /// One more hold of the tile at `at`. Nothing where none holds it: a
     /// free slot is handed out by [`Pool::fresh`], not held.
+    // ⏳An undo record's or a stroke result's hold: the flip lane's
+    // (connection-round-checklist B ⓓ) — while the CPU's tiles are the
+    // canonical ones, the app's map holds each slot once.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn hold(&mut self, at: TileAt) -> Option<()> {
         let holds = self.holds(at)?;
         if *holds == 0 {
@@ -230,4 +286,88 @@ impl Pool {
     fn page_bytes(&self) -> u64 {
         self.slots as u64 * TILE_BYTES
     }
+}
+
+/// A pool that makes no page past `most_bytes` (1a ③ — its store gives
+/// the budget). Null on failure; see the last error.
+///
+/// # Safety
+/// `engine` is live; the pool is freed before it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_new(engine: *const Engine, most_bytes: u64) -> *mut Pool {
+    // SAFETY: see the function's contract.
+    let engine = unsafe { &*engine };
+    Pool::new(engine, most_bytes).map_or(std::ptr::null_mut(), |pool| Box::into_raw(Box::new(pool)))
+}
+
+/// # Safety
+/// `pool` came from `gpu_engine_pool_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_free(pool: *mut Pool) {
+    if !pool.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(pool) });
+    }
+}
+
+/// A cel of its own, by the number the store names it with.
+///
+/// # Safety
+/// `pool` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_cel(pool: *mut Pool) -> u32 {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &mut *pool };
+    pool.cel().0
+}
+
+/// Stores the `count` tiles at `tiles` — straight RGBA8, a tile's bytes at
+/// each — in fresh slots of the cel `cel` ([`Pool::store`]), and writes
+/// each one stored's place to `pages` and `slots`. Returns how many it
+/// stored, the first of them: all, or fewer where the pool is full at the
+/// next; -1 on failure, nothing stored — see the last error.
+///
+/// # Safety
+/// `pool` and `engine` are live and the pool was made on `engine`; `tiles`
+/// holds `count` pointers to a tile's bytes each, alive for the call; and
+/// `pages` and `slots` hold `count` each.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_store(
+    pool: *mut Pool,
+    engine: *const Engine,
+    cel: u32,
+    tiles: *const *const u8,
+    count: usize,
+    pages: *mut u16,
+    slots: *mut u16,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (pool, engine) = unsafe { (&mut *pool, &*engine) };
+    let tiles: Vec<&[u8]> = (0..count)
+        // SAFETY: a tile's bytes at each pointer, alive for the call.
+        .map(|at| unsafe { std::slice::from_raw_parts(*tiles.add(at), TILE_BYTES as usize) })
+        .collect();
+    let Some(places) = pool.store(engine, Cel(cel), &tiles) else {
+        return -1;
+    };
+    for (at, place) in places.iter().enumerate() {
+        // SAFETY: `pages` and `slots` hold `count` each, and no more are stored.
+        unsafe {
+            *pages.add(at) = place.page;
+            *slots.add(at) = place.slot;
+        }
+    }
+    places.len() as isize
+}
+
+/// Lets the slot at (`page`, `slot`) go — the store let its tile go. False
+/// where none holds it; see the last error.
+///
+/// # Safety
+/// `pool` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_release(pool: *mut Pool, page: u16, slot: u16) -> bool {
+    // SAFETY: see the function's contract.
+    let pool = unsafe { &mut *pool };
+    pool.release(TileAt { page, slot }).is_some()
 }

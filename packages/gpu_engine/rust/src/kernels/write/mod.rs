@@ -17,8 +17,9 @@
 //! stored tile is never written over) —, and `put` copies each where it
 //! is told. The pool's pages are made `COPY_DST` for it.
 
-// ⏳Nothing outside the tests runs it until the app's bridge round
-// (gpu-canonical-store ⑧).
+// ⏳`put` is the pool's store's (kernels/pool, the app's tiles put from the
+// CPU); the test of what a tile is waits for the flip lane, where a pass's
+// output tiles come back to the store (connection-round-checklist B ⓓ).
 #![cfg_attr(not(test), allow(dead_code))]
 
 #[cfg(test)]
