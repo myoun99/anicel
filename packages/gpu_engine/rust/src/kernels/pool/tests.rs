@@ -86,20 +86,23 @@ fn a_slot_is_handed_out_again_once_none_holds_it_the_last_released_first() {
 }
 
 // A page none of whose slots is held is nobody's: the next cel that needs a
-// page takes it, and no page more is made.
+// page takes it — before another cel's page with room —, and no page more
+// is made.
 #[test]
 fn a_page_none_holds_is_the_next_cel_s_that_needs_one() {
     let engine = rig().engine;
     let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
     let (a, b) = (pool.cel(), pool.cel());
-    let first = [pool.fresh(engine, a), pool.fresh(engine, a)].map(|at| at.expect("fresh"));
+    let of_a = [pool.fresh(engine, a), pool.fresh(engine, a)].map(|at| at.expect("fresh"));
     assert_eq!(pool.fresh(engine, b), Ok(at(1, 0)));
-    pool.release(first[0]).expect("release");
+    pool.release(of_a[0]).expect("release");
     assert_eq!(pool.fresh(engine, b), Ok(at(1, 1)), "b's own page first");
-    pool.release(first[1]).expect("release");
+    pool.release(at(1, 0)).expect("release");
+    pool.release(at(1, 1)).expect("release");
     let c = pool.cel();
-    assert_eq!(pool.fresh(engine, c), Ok(at(0, 1)));
-    assert_eq!(pool.fresh(engine, a), Ok(at(0, 0)), "a's page is c's now, with room");
+    assert_eq!(pool.fresh(engine, c), Ok(at(1, 1)), "nobody's page before a's with room");
+    assert_eq!(pool.fresh(engine, c), Ok(at(1, 0)));
+    assert_eq!(pool.fresh(engine, b), Ok(at(0, 0)), "c's page full, a's with room");
     assert_eq!(pool.pages().len(), 2);
 }
 
