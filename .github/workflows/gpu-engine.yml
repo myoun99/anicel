@@ -104,11 +104,16 @@ jobs:
       # The first run's bridge test stopped there (관제 2026-11-07, run
       # 42274856506), so the runner's user is lent the device. A lend that
       # fails is shown and stops nothing: the bridge test then says why.
+      # The module is loaded only when the device is missing: this runner's
+      # kernel (7.0.0-1017-azure) has udmabuf built in, root:kvm, so
+      # modprobe finds no module, and its exit 1 ended the step before the
+      # chown — the bridge test was red behind a green step (관제 2026-11-07,
+      # run 42324320792).
       - name: lend lavapipe /dev/udmabuf
         continue-on-error: true
         run: |
           ls -l /dev/udmabuf || true
-          sudo modprobe udmabuf
+          [ -e /dev/udmabuf ] || sudo modprobe udmabuf
           sudo chown "$USER" /dev/udmabuf
           ls -l /dev/udmabuf
       - id: toolchain
