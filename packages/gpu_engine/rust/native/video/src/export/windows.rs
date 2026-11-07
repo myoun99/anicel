@@ -85,10 +85,11 @@ fn hevc_encoders() -> u32 {
 
 pub fn open(job: &Job) -> bool {
     let mut held = lock(&WRITER);
-    let Some(path) = job.path.filter(|_| held.is_none() && job.well_formed()) else {
+    if held.is_some() {
         set_error(BAD_OPEN);
         return false;
-    };
+    }
+    let path = job.path;
     if job.container != CONTAINER_MP4 || (job.codec != CODEC_H264 && job.codec != CODEC_HEVC) {
         set_error("video export: Windows writes MP4 H.264/H.265 here - MOV/ProRes go through FFmpeg");
         return false;

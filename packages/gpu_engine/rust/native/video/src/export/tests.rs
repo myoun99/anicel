@@ -208,10 +208,21 @@ fn find(movie: &[u8], start: usize, end: usize, path: &[&[u8; 4]]) -> Option<(us
     if rest.is_empty() { Some((at, until)) } else { find(movie, at + 8, until, rest) }
 }
 
-/// A track's samples in order: its sample sizes, laid along its chunks.
-fn samples(movie: &[u8], start: usize, end: usize) -> Vec<u8> {
+/// A track as its writer laid it: the four letters its sample entry names
+/// (`avc1`, `mp4a`, `apcn` …) and its samples in order — its sample sizes,
+/// laid along its chunks.
+struct Track {
+    format: String,
+    samples: Vec<u8>,
+}
+
+fn track(movie: &[u8], start: usize, end: usize) -> Track {
     let (table, table_end) = find(movie, start, end, &[b"mdia", b"minf", b"stbl"]).expect("a sample table");
     let at = |kind: &[u8; 4]| find(movie, table + 8, table_end, &[kind]).map(|(at, _)| at);
+    // The first entry's type, past the box's header, its version and flags,
+    // its count of entries and the entry's own size.
+    let entries_at = at(b"stsd").expect("a sample description");
+    let format = String::from_utf8_lossy(&movie[entries_at + 20..entries_at + 24]).into_owned();
     let sizes_at = at(b"stsz").expect("sample sizes");
     let uniform = be32(movie, sizes_at + 12);
     let sizes: Vec<usize> =
@@ -232,7 +243,7 @@ fn samples(movie: &[u8], start: usize, end: usize) -> Vec<u8> {
         sample += per_chunk;
     }
     assert_eq!(sample, sizes.len(), "every sample lies in a chunk");
-    bytes
+    Track { format, samples: bytes }
 }
 
 /// A movie as its writer decides it: every box but the media data and the
@@ -247,7 +258,7 @@ fn samples(movie: &[u8], start: usize, end: usize) -> Vec<u8> {
 /// same) — the cut follows when the sound encoder's output reaches it.
 struct Movie {
     boxes: Vec<([u8; 4], Vec<u8>)>,
-    tracks: Vec<Vec<u8>>,
+    tracks: Vec<Track>,
     /// The boxes the clock was taken out of, so a mask that found none
     /// says so.
     stamped: usize,
@@ -259,7 +270,7 @@ fn read_into(movie: &[u8], start: usize, end: usize, into: &mut Movie) {
             b"moov" | b"mdia" | b"minf" | b"stbl" => read_into(movie, at + 8, until, into),
             b"trak" => {
                 read_into(movie, at + 8, until, into);
-                into.tracks.push(samples(movie, at + 8, until));
+                into.tracks.push(track(movie, at + 8, until));
             }
             b"mdat" | b"stco" | b"stsc" => {}
             b"mvhd" | b"tkhd" | b"mdhd" => {
@@ -281,29 +292,62 @@ fn read_movie(movie: &[u8]) -> Movie {
     read
 }
 
-/// The C's movie and the Rust's of `shape`: the same boxes and the same
-/// samples, byte for byte.
-fn same_movie(name: &str, shape: Shape, frames: i32) {
+/// Where two runs of bytes first part: the first byte that differs, or the
+/// end of the shorter when one runs on past the other.
+fn parted(a: &[u8], b: &[u8]) -> Option<usize> {
+    a.iter().zip(b).position(|(a, b)| a != b).or_else(|| (a.len() != b.len()).then_some(a.len().min(b.len())))
+}
+
+/// The bytes around `at`, in hex, the one at `at` in brackets.
+fn around(bytes: &[u8], at: usize) -> String {
+    let from = at.saturating_sub(8);
+    let hex: Vec<String> =
+        (from..(at + 9).min(bytes.len())).map(|i| if i == at { format!("[{:02x}]", bytes[i]) } else { format!("{:02x}", bytes[i]) }).collect();
+    format!("@{from} {}", hex.join(" "))
+}
+
+/// What parts the Rust's movie of `shape` from the C's, but for the clock
+/// and the chunking: each box that is not the same, and each track whose
+/// samples are not — said with the track's format, the bytes around where
+/// they part, and whether the C's own second movie parts there too.
+fn movie_apart(name: &str, shape: Shape, frames: i32) -> Vec<String> {
     let (c, rust) = (c(), rust());
-    let theirs = read_movie(&c.movie(&temp(&format!("{name}-c"), shape.container), shape, frames));
+    let c_movie = |run: &str| read_movie(&c.movie(&temp(&format!("{name}-c{run}"), shape.container), shape, frames));
+    let theirs = c_movie("");
     let ours = read_movie(&rust.movie(&temp(&format!("{name}-rust"), shape.container), shape, frames));
     let tracks = if shape.channels > 0 { 2 } else { 1 };
     assert_eq!(theirs.stamped, 1 + 2 * tracks, "{name}: the clock is where the mask looks");
     assert_eq!(theirs.tracks.len(), tracks, "{name}: every track's samples are read");
     let kinds = |movie: &Movie| movie.boxes.iter().map(|(kind, _)| String::from_utf8_lossy(kind).into_owned()).collect::<Vec<_>>();
-    assert_eq!(kinds(&ours), kinds(&theirs), "{name}: the boxes");
-    for ((kind, ours), (_, theirs)) in ours.boxes.iter().zip(&theirs.boxes) {
-        assert!(ours == theirs, "{name}: the {} box", String::from_utf8_lossy(kind));
+    if kinds(&ours) != kinds(&theirs) {
+        return vec![format!("{name}: the boxes, {:?} against the C's {:?}", kinds(&ours), kinds(&theirs))];
     }
+    let mut apart: Vec<String> = ours
+        .boxes
+        .iter()
+        .zip(&theirs.boxes)
+        .filter(|((_, ours), (_, theirs))| ours != theirs)
+        .map(|((kind, _), _)| format!("{name}: the {} box", String::from_utf8_lossy(kind)))
+        .collect();
+    let mut again = None;
     for (k, (ours, theirs)) in ours.tracks.iter().zip(&theirs.tracks).enumerate() {
-        let first = ours.iter().zip(theirs).position(|(a, b)| a != b);
-        assert!(
-            ours.len() == theirs.len() && first.is_none(),
-            "{name}: track {k}'s samples, {} bytes against the C's {}, first apart at {first:?}",
-            ours.len(),
-            theirs.len()
-        );
+        let Some(at) = parted(&ours.samples, &theirs.samples) else {
+            continue;
+        };
+        // The premise, measured where it failed: whether the C writes these
+        // samples the same twice.
+        let again = &again.get_or_insert_with(|| c_movie("-again")).tracks[k].samples;
+        let itself = parted(again, &theirs.samples).map_or("the same".to_owned(), |at| format!("apart at {at}, {}", around(again, at)));
+        apart.push(format!(
+            "{name}: track {k} ({})'s samples, {} bytes against the C's {}, first apart at {at} — ours {}, the C's {}; the C's own second movie: {itself}",
+            ours.format,
+            ours.samples.len(),
+            theirs.samples.len(),
+            around(&ours.samples, at),
+            around(&theirs.samples, at),
+        ));
     }
+    apart
 }
 
 // The fixtures' movie, which the hardware law keeps in software; an odd,
@@ -315,6 +359,14 @@ fn same_movie(name: &str, shape: Shape, frames: i32) {
 // C writes them (Apple), H.264 in a MOV, ProRes 422 with its PCM, and
 // ProRes 4444 keeping a picture's alpha. Each byte for byte with the C's,
 // but for the clock and the chunking (`Movie`).
+//
+// ↩️2026-11-07: every movie is made before any is judged, and a track that
+// parts says where, around what, and whether the C parts from itself there.
+// The first Mac run stopped at its first movie — 「mov: track 0's samples,
+// 732 bytes against the C's 732, first apart at Some(50)」 (bundle GPU CI
+// 1cca0c1de) — with the other eleven unasked and the premise, that the C
+// writes the same bytes twice, unmeasured; no Mac is on the machine this is
+// written on, so the next run has to answer both (관제 11-07).
 #[test]
 fn the_movie_is_the_c_s_but_for_its_clock_and_chunking() {
     let _one = one_at_a_time();
@@ -322,28 +374,33 @@ fn the_movie_is_the_c_s_but_for_its_clock_and_chunking() {
     if unsafe { (c().supported)() } == 0 {
         return;
     }
+    let mut movies = Vec::new();
     for (name, shape) in [
         ("mov", Shape { container: 1, ..MOVIE }),
         ("prores-422", Shape { container: 1, codec: 4, ..MOVIE }),
         ("prores-4444-alpha", Shape { container: 1, codec: 6, alpha: 1, channels: 0, ..MOVIE }),
     ] {
         if c().opens(shape) {
-            same_movie(name, shape, 6);
+            movies.push((name, shape, 6));
         }
     }
-    same_movie("fixture", MOVIE, 24);
-    same_movie("odd-silent", Shape { width: 63, height: 47, channels: 0, ..MOVIE }, 6);
-    same_movie("full-hd", Shape { width: 1920, height: 1080, ..MOVIE }, 6);
-    same_movie("past-the-law", Shape { width: 49, height: 64, channels: 0, ..MOVIE }, 6);
-    same_movie("the-failed-side", Shape { width: 48, height: 64, channels: 0, ..MOVIE }, 6);
     let ntsc = Shape { width: 96, height: 64, fps: (24000, 1001), sample_rate: 44100, channels: 1, bitrate_bps: 3_000_000, ..MOVIE };
-    same_movie("ntsc-mono", ntsc, 12);
-    same_movie("past-the-ceiling", Shape { width: 64, height: 64, bitrate_bps: 80_000_000, ..MOVIE }, 6);
-    same_movie("영상", MOVIE, 3);
+    movies.extend([
+        ("fixture", MOVIE, 24),
+        ("odd-silent", Shape { width: 63, height: 47, channels: 0, ..MOVIE }, 6),
+        ("full-hd", Shape { width: 1920, height: 1080, ..MOVIE }, 6),
+        ("past-the-law", Shape { width: 49, height: 64, channels: 0, ..MOVIE }, 6),
+        ("the-failed-side", Shape { width: 48, height: 64, channels: 0, ..MOVIE }, 6),
+        ("ntsc-mono", ntsc, 12),
+        ("past-the-ceiling", Shape { width: 64, height: 64, bitrate_bps: 80_000_000, ..MOVIE }, 6),
+        ("영상", MOVIE, 3),
+    ]);
     // SAFETY: no arguments.
     if unsafe { (c().probe)(0, 1) } == 1 {
-        same_movie("hevc", Shape { width: 1280, height: 720, channels: 0, codec: 1, ..MOVIE }, 6);
+        movies.push(("hevc", Shape { width: 1280, height: 720, channels: 0, codec: 1, ..MOVIE }, 6));
     }
+    let apart: Vec<String> = movies.into_iter().flat_map(|(name, shape, frames)| movie_apart(name, shape, frames)).collect();
+    assert!(apart.is_empty(), "{}", apart.join("\n"));
 }
 
 // The bitrate by hand: an encoder spends what a small frame needs whatever
@@ -378,6 +435,20 @@ fn what_this_machine_can_write_is_the_c_s_answer() {
     }
 }
 
+/// A job no platform writes — a container that is none of them — which the
+/// C and the Rust turn away in the same words wherever this runs: the
+/// writer's own refusal of the pair, or the Linux stub's 「no OS encoder」.
+const NO_CONTAINER: Shape = Shape { container: 2, ..MOVIE };
+
+/// An open `encoder` turns away as the other does, so the last error it
+/// leaves is one both said. ⚠️Not an open with no path: that is no job,
+/// which the Rust turns away before any platform answers and the C's Linux
+/// stub does not (`Job::well_formed`).
+fn turned_away_alike(encoder: &Encoder) {
+    let file = temp("alike", NO_CONTAINER.container);
+    encoder.tried(Some(file.to_str().unwrap()), NO_CONTAINER);
+}
+
 /// `step` asked of both, with what each said after it: the answer and the
 /// last error — from the same last error, an open both turn away, since a
 /// step that says nothing leaves whatever the test before it left.
@@ -386,38 +457,32 @@ fn what_this_machine_can_write_is_the_c_s_answer() {
 fn both_say(what: &str, step: impl Fn(&Encoder) -> i32) {
     let (c, rust) = (c(), rust());
     for encoder in [c, rust] {
-        encoder.tried(None, MOVIE);
+        turned_away_alike(&encoder);
     }
     let theirs = (step(&c), c.last_error());
     let ours = (step(&rust), rust.last_error());
     assert_eq!(ours, theirs, "{what}");
 }
 
-// Every open the C turns away, turned away with the C's words: bad numbers,
-// pairs this platform does not write, a path that does not convert or that
-// leads nowhere, and a second job while one runs. A pair one platform
-// writes (a MOV on Apple) is let go of again, by both.
+// Every open the C turns away, turned away with the C's words: pairs this
+// platform does not write, a path that does not convert or that leads
+// nowhere, and a second job while one runs. A pair one platform writes (a
+// MOV on Apple) is let go of again, by both. A job that is no job is the
+// one law's, below, not the C's.
 #[test]
 fn an_open_is_refused_as_the_c_refuses_it() {
     let _one = one_at_a_time();
     let file = temp("refused", 0);
     let path = file.to_str().unwrap();
     for (what, shape) in [
-        ("no width", Shape { width: 0, ..MOVIE }),
-        ("no height", Shape { height: 0, ..MOVIE }),
-        ("a negative width", Shape { width: -1, ..MOVIE }),
-        ("no frame rate", Shape { fps: (0, 1), ..MOVIE }),
-        ("a rate over nothing", Shape { fps: (24, 0), ..MOVIE }),
-        ("negative channels", Shape { channels: -1, ..MOVIE }),
         ("a MOV", Shape { container: 1, ..MOVIE }),
-        ("no such container", Shape { container: 2, ..MOVIE }),
+        ("no such container", NO_CONTAINER),
         ("ProRes in an MP4", Shape { codec: 2, ..MOVIE }),
         ("ProRes 4444", Shape { codec: 6, ..MOVIE }),
         ("no such codec", Shape { codec: 7, ..MOVIE }),
     ] {
         both_say(what, |encoder| encoder.tried(Some(path), shape));
     }
-    both_say("no path", |encoder| encoder.tried(None, MOVIE));
     let long = std::env::temp_dir().join("a".repeat(1100)).to_str().unwrap().to_owned();
     both_say("a path too long to convert", |encoder| encoder.tried(Some(&long), MOVIE));
     let nowhere = std::env::temp_dir().join("no-such-folder-here").join("x.mp4").to_str().unwrap().to_owned();
@@ -434,16 +499,32 @@ fn an_open_is_refused_as_the_c_refuses_it() {
     std::fs::remove_file(&file).ok();
 }
 
-// Sound at no rate, held to the one law (`Job::well_formed`) rather than to
-// the C: of the C's three writers only Windows's turned it away — Apple's
-// handed AVFoundation an AAC track at 0 Hz.
+// A job that is no job — bad numbers, sound at no rate, no path — turned
+// away by the one law (`Job::well_formed`) before any platform answers, on
+// every platform alike. Held to the law rather than to the C: the C spelled
+// it once per platform, and of its four only Windows's turned all of these
+// away — Apple's and Android's handed their encoders sound at 0 Hz, and the
+// Linux stub said 「no OS encoder」 of every one. Each is asked after an
+// open that leaves other words, so each answer is its own.
 #[test]
-fn sound_at_no_rate_is_no_job() {
+fn a_job_that_is_no_job_is_refused_before_any_platform_answers() {
     let _one = one_at_a_time();
     let rust = rust();
-    let file = temp("no-rate", 0);
-    let answer = rust.tried(Some(file.to_str().unwrap()), Shape { sample_rate: 0, ..MOVIE });
-    assert_eq!((answer, rust.last_error()), (0, super::BAD_OPEN.to_owned()));
+    let file = temp("no-job", 0);
+    let path = Some(file.to_str().unwrap());
+    for (what, path, shape) in [
+        ("no width", path, Shape { width: 0, ..MOVIE }),
+        ("no height", path, Shape { height: 0, ..MOVIE }),
+        ("a negative width", path, Shape { width: -1, ..MOVIE }),
+        ("no frame rate", path, Shape { fps: (0, 1), ..MOVIE }),
+        ("a rate over nothing", path, Shape { fps: (24, 0), ..MOVIE }),
+        ("negative channels", path, Shape { channels: -1, ..MOVIE }),
+        ("sound at no rate", path, Shape { sample_rate: 0, ..MOVIE }),
+        ("no path", None, MOVIE),
+    ] {
+        turned_away_alike(&rust);
+        assert_eq!((rust.tried(path, shape), rust.last_error()), (0, super::BAD_OPEN.to_owned()), "{what}");
+    }
     std::fs::remove_file(&file).ok();
 }
 
@@ -484,7 +565,7 @@ fn the_last_error_is_handed_out_as_the_c_hands_it() {
     let _one = one_at_a_time();
     let (c, rust) = (c(), rust());
     for encoder in [c, rust] {
-        encoder.open(None, MOVIE);
+        turned_away_alike(&encoder);
     }
     for capacity in [-1, 0, 1, 2, 5, 256] {
         assert_eq!(rust.error(capacity), c.error(capacity), "room for {capacity}");

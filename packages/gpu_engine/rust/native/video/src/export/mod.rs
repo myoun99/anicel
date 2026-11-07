@@ -75,7 +75,7 @@ const CODEC_PRORES_4444: i32 = 6;
 /// What `open` was asked for, as Dart passed it.
 #[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 struct Job<'a> {
-    path: Option<&'a CStr>,
+    path: &'a CStr,
     width: i32,
     height: i32,
     fps_num: i32,
@@ -92,16 +92,22 @@ struct Job<'a> {
     bitrate_bps: i32,
 }
 
-/// What every writer says of a job it is not given — one that is no job
-/// at all, or one asked for while another runs.
-#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
+/// What an open says of a job it is not given — one that is no job at all,
+/// or one asked for while the writer's other runs.
 const BAD_OPEN: &str = "video export: bad open parameters";
 
-#[cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 impl Job<'_> {
     /// Whether this is a job at all: a picture, a frame rate, and sound —
-    /// if any — at a rate. The path is the last of it, and each writer takes
-    /// it out of the job as it asks this.
+    /// if any — at a rate. The path is the last of it, and a job without
+    /// one is not built ([`qa_video_export_open`]).
+    ///
+    /// ↩️2026-11-07: ASKED ONCE, before any platform answers. It was asked
+    /// inside each writer, the same line three times, and the platform with
+    /// no writer (`none.rs`) never asked it: Linux CI said 「no OS encoder
+    /// on this platform」 of sound at no rate where the three writers say
+    /// 「bad open parameters」 (bundle GPU CI 1cca0c1de,
+    /// `sound_at_no_rate_is_no_job`; CLAUDE.md 절대명령 2, 관제 11-07). The
+    /// C's Linux stub answered so of every job and is not followed.
     ///
     /// 🚨ONE LAW FOR THE THREE WRITERS. The C spelled it once per platform,
     /// all three born in one commit (000cf76c4, AUDIO-PRO R7, 2026-07-21):
@@ -191,7 +197,11 @@ pub unsafe extern "C" fn qa_video_export_open(
     // SAFETY: the caller's contract.
     let path = (!utf8_path.is_null()).then(|| unsafe { CStr::from_ptr(utf8_path) });
     let alpha = alpha != 0;
-    let job = Job { path, width, height, fps_num, fps_den, sample_rate, channels, container, codec, alpha, bitrate_bps };
+    let job = path.map(|path| Job { path, width, height, fps_num, fps_den, sample_rate, channels, container, codec, alpha, bitrate_bps });
+    let Some(job) = job.filter(|job| job.well_formed()) else {
+        set_error(BAD_OPEN);
+        return 0;
+    };
     os::open(&job) as i32
 }
 

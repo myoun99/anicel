@@ -281,10 +281,11 @@ fn pcm_description(job: &Job) -> Option<CFRetained<CMAudioFormatDescription>> {
 
 pub fn open(job: &Job) -> bool {
     let mut held = lock(&WRITER);
-    let Some(path) = job.path.filter(|_| held.is_none() && job.well_formed()) else {
+    if held.is_some() {
         set_error(BAD_OPEN);
         return false;
-    };
+    }
+    let path = job.path;
     if !probe(job.container, job.codec) {
         set_error("video export: that container/codec pair is not in the lineup");
         return false;
