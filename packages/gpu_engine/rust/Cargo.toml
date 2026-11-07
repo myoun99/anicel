@@ -20,6 +20,9 @@ name = "gpu_engine_core"
 # The fingerprint: the same CRC-32 as the app's anicelCrc32, not a hash of
 # our own (gpu-engine-skeleton, 2026-11-05).
 crc32fast = "1"
+# The app's native modules this library carries, each exported from here
+# (src/lib.rs names it — the workspace note below says why it must).
+fx_plugin = { path = "native/fx_plugin" }
 pollster = "0.4"
 # The engine sets canvas letters itself (engine-canvas-letters; 🗣️유저
 # gpu-int-spec-word-bake-Q1 「엔진이 글자를 직접 그린다」, the crates allowed

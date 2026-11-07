@@ -21,6 +21,13 @@ mod platform;
 #[cfg(test)]
 mod testing;
 
+// THE APP LOADS ONE RUST LIBRARY, AND IT CARRIES EACH native/ CRATE THE APP
+// CALLS (connection-round-checklist A; the fx plugin host first, 관제
+// 2026-11-08 03:39): a crate this one depends on but never names is not
+// linked, and its extern "C" functions are not exported (Cargo.toml's
+// workspace note, measured 2026-11-06) — named here, they are.
+pub use fx_plugin;
+
 use std::cell::RefCell;
 
 thread_local! {
