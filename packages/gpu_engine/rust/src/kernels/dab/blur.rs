@@ -102,15 +102,24 @@ const MOST_STRIPS_RADIUS: u32 = 90;
 /// turn with: one after another with the dabs about it in one workgroup
 /// (blur_three.wgsl's `blur_dabs_in_turn`) instead of its two dispatches.
 /// A small dab's two dispatches were its floor: two thirds of its time was
-/// theirs on the GPU, the rest the CPU making them (11-06, the main PC, 64
-/// dabs warm, µs a dab apart against in turn, by its workgroups — size 12 ·
-/// 15, 2: 27, 15; 18 · 21, 3: 29, 18.5 to 21.5; 24 · 27, 5: 30, 27.6 to
-/// 30.3; 30, 6: 30 to 34, 37 to 42). One workgroup puts a way's strips and
-/// bands one after another, so in turn loses as they grow; 4 keeps clear of
-/// the 5 where the two were even. Size 12 went 22.5 µs a dab in C
+/// theirs on the GPU, the rest the CPU making them. One workgroup puts a
+/// way's strips and bands one after another, so in turn loses as they grow.
+/// µs a dab apart against in turn, 64 dabs warm, by its workgroups (and
+/// radius):
+/// - the main PC's RTX 4080 (11-06): 2 (r 2): 27, 15; 3 (r 3): 29, 18.5 to
+///   21.5; 5 (r 4): 30, 27.6 to 30.3; 6 (r 5): 30 to 34, 37 to 42;
+/// - the Surface's Arc 140V (11-07): 2 (r 2): 30, 22; 3 (r 3): 35 to 37, 32
+///   to 35; 4 (r 4): 40, 49; 5 (r 4): 40, 57; 6 (r 5): 41, 76 to 79.
+/// At 3 no device goes slower than by its two dispatches — the Arc still
+/// gains at 3 and loses a quarter at 4 —, where 4 would set the weaker
+/// device back on that step (the old-device policy, 유저 11-05: 「구형 =
+/// 성능 약한 기기」). The main PC gives up only what it gained at 4, not
+/// measured: no number there turns a stronger device's gain against a
+/// weaker one's loss. One threshold for every device, as
+/// MOST_STRIPS_RADIUS: a device's own would be a rule more (브러시/렌더링,
+/// gpu-canonical-store 11-07 13:24). Size 12 went 22.5 µs a dab in C
 /// (gpu-canonical-store 03:40).
-/// ⏳The Surface's crossing is not measured: it was out of reach that night.
-const MOST_IN_TURN: u32 = 4;
+const MOST_IN_TURN: u32 = 3;
 /// blur_three.wgsl's BLUR_TURN_WORDS: a dab's block, and its rows' and its
 /// columns' workgroups across and down.
 const TURN_WORDS: usize = 5;
