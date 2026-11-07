@@ -63,6 +63,34 @@ fn windows_tool(name: &str) -> Command {
     Command::new(Path::new(&root).join("System32").join(name))
 }
 
+/// The zip, kept once for this user outside every checkout and target
+/// folder: each target folder fetched its own 32 MB — every lane's
+/// worktree, whose build hook builds into its own, and every CI job (관제
+/// 2026-11-07, gpu-engine-skeleton) — and the pin says whether it is the
+/// one, wherever it lies.
+fn cached_zip() -> PathBuf {
+    let local = env::var("LOCALAPPDATA").expect("LOCALAPPDATA");
+    Path::new(&local).join("anicel-build").join("dxc").join(format!("{ZIP_SHA256}.zip"))
+}
+
+/// The pinned zip at `zip`, fetched there unless it already is. A fetch
+/// lands beside it under this process's name first, so a build reading
+/// `zip` never sees half of one.
+fn fetched(zip: &Path) {
+    if sha256(zip).as_deref() == Some(ZIP_SHA256) {
+        return;
+    }
+    fs::create_dir_all(zip.parent().unwrap()).expect("make the DXC cache's folder");
+    let part = zip.with_extension(format!("part-{}", std::process::id()));
+    run(windows_tool("curl.exe").args(["-sSfL", "--retry", "3", "-o"]).arg(&part).arg(ZIP_URL));
+    check(&part, ZIP_SHA256);
+    if fs::rename(&part, zip).is_err() {
+        // Another build's fetch got there first and is being read.
+        check(zip, ZIP_SHA256);
+        let _ = fs::remove_file(&part);
+    }
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed={HOOK_DIR}");
@@ -77,11 +105,8 @@ fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let dll = out.join("dxcompiler.dll");
     if sha256(&dll).as_deref() != Some(pinned) {
-        let zip = out.join("dxc.zip");
-        if sha256(&zip).as_deref() != Some(ZIP_SHA256) {
-            run(windows_tool("curl.exe").args(["-sSfL", "--retry", "3", "-o"]).arg(&zip).arg(ZIP_URL));
-            check(&zip, ZIP_SHA256);
-        }
+        let zip = cached_zip();
+        fetched(&zip);
         run(windows_tool("tar.exe").arg("-xf").arg(&zip).arg("-C").arg(&out).arg(member));
         fs::rename(out.join(member), &dll).expect("move dxcompiler.dll out of the zip's folders");
         check(&dll, pinned);
