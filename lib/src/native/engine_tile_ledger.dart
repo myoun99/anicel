@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../models/bitmap_tile.dart';
@@ -145,6 +146,11 @@ class EngineTileLedger {
   /// call that runs over slots asks [held].
   GpuTile? slotOf(BitmapTile tile) => _slots[tile]?.at;
 
+  /// The record of the slot [tile] has, or null — a probe of what holds a
+  /// record once its slot goes, which a test reads off the heap.
+  @visibleForTesting
+  Object? recordOf(BitmapTile tile) => _slots[tile];
+
   List<GpuTile> _slotsOf(TileHold hold, Object cel, List<BitmapTile> tiles) {
     for (final tile in tiles) {
       if (tile.size != gpuTileSide) {
@@ -219,10 +225,11 @@ class EngineTileLedger {
       }
       if (tile != null) {
         _slots[tile] = null;
-        // ⚠️No test tells this line from its absence (mutant D10, 11-08):
-        // the slot goes once whichever comes to it ([_letGo]). It keeps the
-        // finalizer from holding an entry a tile let go by a full pool and
-        // stored again would otherwise add each time, till it is collected.
+        // The finalizer holds a record strongly and its tile weakly: left
+        // attached, a tile that lives on would keep one record each time a
+        // full pool let it go and it was stored again. No pixel tells —
+        // the slot goes once whichever comes to it ([_letGo]) — so the
+        // heap does (mutant D10, 관제 11-08 07:11).
         _letGoWithTile.detach(slot);
       }
       _letGo(slot);
