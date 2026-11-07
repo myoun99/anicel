@@ -59,6 +59,11 @@ dependencies:
   # compiles packages/qa_native/src and ships the result with the app.
   qa_native:
     path: packages/qa_native
+  # The GPU engine (Rust + wgpu), built by its own build hook and shipped
+  # with the app — the screen, playback and export draw through it
+  # (screen-on-the-engine, connection-round-checklist).
+  gpu_engine:
+    path: packages/gpu_engine
   pdf: ^3.13.0
   desktop_drop: ^0.7.1
   pdfrx: ^2.4.7
@@ -81,6 +86,11 @@ dev_dependencies:
   # sites — the debug seams sit above them, so seam tests cannot see a
   # call site dropping the F-14 hint retry.
   file_selector_platform_interface: ^2.7.0
+
+  # Already in the graph via pdf and sqlite3; declared so a test can hold
+  # a bundled licence text to the digest the build that fetches its binary
+  # pins (test/every_dll_the_engine_ships_is_noticed_test.dart).
+  crypto: ^3.0.7
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -23,8 +23,8 @@ const ZIP_URL: &str = "https://github.com/microsoft/DirectXShaderCompiler/releas
 /// GitHub's digest of that asset (32,287,592 bytes).
 const ZIP_SHA256: &str = "ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1";
 /// The dxcompiler.dll in it for each Windows architecture the engine
-/// builds for — Microsoft-signed, version 1.9.2609.5. Its licence is the
-/// LLVM Release License (NCSA): the notice ships with the app.
+/// builds for — Microsoft-signed, version 1.9.2609.5. The zip ships it
+/// beside the three licence texts below, which the app shows with it.
 const DLLS: [(&str, &str, &str); 2] = [
     (
         "x86_64",
@@ -38,17 +38,39 @@ const DLLS: [(&str, &str, &str); 2] = [
     ),
 ];
 
+/// Every licence text the zip ships, each with the digest of its text
+/// with the carriage returns taken out — the bytes git keeps of a text
+/// file. Which file each one covers the zip does not say (nor do the
+/// release's notes), so the app's About ▸ licenses shows all three
+/// (assets/licenses/LICENSE-DXC-*.txt, held to these digests by
+/// test/every_dll_the_engine_ships_is_noticed_test.dart): a zip pinned
+/// above with other texts fails here until they are shown.
+const LICENCES: [(&str, &str); 3] = [
+    ("LICENSE-LLVM.txt", "b2551288a0381a79527d63c1590ae8bac98de4dafa1afd0702625d6e82524b85"),
+    ("LICENCE-MIT.txt", "fd532481d828e13a0b13ccb598e02338a3617740675a862ee6bdc1541b68e93d"),
+    ("LICENSE-MS.txt", "e249948c6c7b0007e90638ad749d0e89c84634dcc8c28436a52b8b2dbce4a31e"),
+];
+
 /// Where the build hook asks for a copy (hook/build.dart).
 const HOOK_DIR: &str = "GPU_ENGINE_DXC_OUT";
 
+fn digest(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn sha256(path: &Path) -> Option<String> {
-    let bytes = fs::read(path).ok()?;
-    Some(Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect())
+    Some(digest(&fs::read(path).ok()?))
 }
 
 fn check(path: &Path, pinned: &str) {
     let found = sha256(path);
     assert_eq!(found.as_deref(), Some(pinned), "{} is not the pinned file", path.display());
+}
+
+fn check_text(path: &Path, pinned: &str) {
+    let bytes = fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    let text: Vec<u8> = bytes.into_iter().filter(|&byte| byte != b'\r').collect();
+    assert_eq!(digest(&text), pinned, "{} is not the pinned licence text", path.display());
 }
 
 fn run(command: &mut Command) {
@@ -107,9 +129,13 @@ fn main() {
     if sha256(&dll).as_deref() != Some(pinned) {
         let zip = cached_zip();
         fetched(&zip);
-        run(windows_tool("tar.exe").arg("-xf").arg(&zip).arg("-C").arg(&out).arg(member));
+        let licences = LICENCES.iter().map(|(name, _)| name);
+        run(windows_tool("tar.exe").arg("-xf").arg(&zip).arg("-C").arg(&out).arg(member).args(licences));
         fs::rename(out.join(member), &dll).expect("move dxcompiler.dll out of the zip's folders");
         check(&dll, pinned);
+        for (name, text) in LICENCES {
+            check_text(&out.join(name), text);
+        }
     }
     println!("cargo:rerun-if-changed={}", dll.display());
     println!("cargo:rustc-env=GPU_ENGINE_DXC={}", dll.display());

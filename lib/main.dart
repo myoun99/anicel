@@ -142,6 +142,17 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield LicenseEntryWithLineBreaks(const [
       'Wasmtime',
     ], await rootBundle.loadString('assets/licenses/LICENSE-Wasmtime.txt'));
+    // The dxcompiler.dll the GPU engine compiles its DX12 shaders with ships
+    // beside it on Windows: one entry for the three licence texts its zip
+    // carries, since the zip does not say which file each covers
+    // (packages/gpu_engine/rust/build.rs, LICENCES).
+    yield LicenseEntryWithLineBreaks(const [
+      'DirectX Shader Compiler',
+    ], [
+      await rootBundle.loadString('assets/licenses/LICENSE-DXC-LLVM.txt'),
+      await rootBundle.loadString('assets/licenses/LICENSE-DXC-MIT.txt'),
+      await rootBundle.loadString('assets/licenses/LICENSE-DXC-MS.txt'),
+    ].join('\n\n'));
     // The registry crates the GPU engine's library carries, on every target
     // it is built for: one entry a licence text, naming each crate under it
     // (tool/crate_notices.dart writes the file from the engine's lock, and

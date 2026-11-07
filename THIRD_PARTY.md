@@ -93,6 +93,24 @@ there (`QA_WASMTIME_VERSION`) — from
 `github.com/bytecodealliance/wasmtime` releases, and links its static
 library into the engine. Windows x64 only for now.
 
+### DirectX Shader Compiler
+
+Microsoft's shader compiler — `dxcompiler.dll`, which the GPU engine
+compiles its DX12 shaders with (gpu-engine-feasibility-Q4 · Q5), ships
+beside the engine on Windows (x64 and ARM64). Not vendored: the engine's
+`packages/gpu_engine/rust/build.rs` downloads the release zip
+`dxc_2026_09_29.zip` (v1.9.2609) from
+`github.com/microsoft/DirectXShaderCompiler` releases — the zip's and
+each DLL's SHA-256 pinned there — and the build hook bundles the DLL.
+The zip ships three licence texts and does not say which file each
+covers: **the LLVM Release License (University of Illinois/NCSA), an
+MIT License (© Microsoft Corporation) and the Microsoft Software
+License Terms for the DirectX Shader Compiler**. All three are bundled
+as the zip has them, at `assets/licenses/LICENSE-DXC-LLVM.txt`,
+`LICENSE-DXC-MIT.txt` and `LICENSE-DXC-MS.txt`, and surfaced together in
+the app's About ▸ licenses screen; `build.rs` pins each text's digest, so
+a newer zip with other texts fails the build until they are bundled.
+
 ## Assets
 
 ### Bundled fonts (`assets/fonts/`)
