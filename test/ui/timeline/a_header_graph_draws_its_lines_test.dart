@@ -44,6 +44,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
 import '../../helpers/timeline_zoom.dart';
@@ -118,13 +119,7 @@ void main() {
     s.standOnRow(const LaneRowAddress(_drawId, 'position'));
     await tester.pumpAndSettle();
 
-    final canvas = TestRecordingCanvas();
-    _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
-    final paints = [
-      for (final call in canvas.invocations)
-        if (call.invocation.memberName == #drawPath)
-          call.invocation.positionalArguments[1] as Paint,
-    ];
+    final paints = [for (final shape in _drawn(tester)) shape.paint];
     final strokes = [
       for (final paint in paints)
         if (paint.style == PaintingStyle.stroke) paint,
@@ -170,17 +165,11 @@ void main() {
         .markerSize;
     // Each key's mark as drawn — the whole of its box, whatever its shape,
     // to a float's precision: a path keeps its points in floats.
-    List<Size> graphMarks() {
-      final canvas = TestRecordingCanvas();
-      _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
-      return [
-        for (final call in canvas.invocations)
-          if (call.invocation.memberName == #drawPath &&
-              (call.invocation.positionalArguments[1] as Paint).style ==
-                  PaintingStyle.fill)
-            (call.invocation.positionalArguments[0] as Path).getBounds().size,
-      ];
-    }
+    List<Size> graphMarks() => [
+      for (final shape in _drawn(tester))
+        if (shape.paint.style == PaintingStyle.fill)
+          shape.outline.getBounds().size,
+    ];
 
     // Zoomed in, a frame's cell is wider than a lane's row is tall and the
     // row is the tighter of the two; zoomed out, the cell is.
@@ -675,18 +664,18 @@ TimelineLaneGraphPainter _painter(
     tester.widget<CustomPaint>(_picture(grid, group: group)).painter!
         as TimelineLaneGraphPainter;
 
-/// How many key marks the timeline graph draws, painted now.
-int _marks(WidgetTester tester) {
-  final canvas = TestRecordingCanvas();
+/// The shapes the timeline graph paints now — its lines and its key marks.
+List<DrawnShape> _drawn(WidgetTester tester) {
+  final canvas = DrawnShapes();
   _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
-  return [
-    for (final call in canvas.invocations)
-      if (call.invocation.memberName == #drawPath &&
-          (call.invocation.positionalArguments[1] as Paint).style ==
-              PaintingStyle.fill)
-        call,
-  ].length;
+  return canvas.shapes;
 }
+
+/// How many key marks the timeline graph draws, painted now.
+int _marks(WidgetTester tester) => [
+  for (final shape in _drawn(tester))
+    if (shape.paint.style == PaintingStyle.fill) shape,
+].length;
 
 /// Where each of [grid]'s Transform graph's lines runs, painted now.
 List<Rect> _strokes(WidgetTester tester, {String grid = 'timeline'}) {

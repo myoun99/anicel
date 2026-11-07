@@ -22,6 +22,8 @@ import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
+import '../../helpers/drawn_shapes.dart';
+
 /// **F-17 — a union mark says when its members disagree** (유저: 「**멤버
 /// 타입이 서로 다르면 헤더에 동그라미**」), and since I-89 ② every mark is
 /// After Effects' (유저 2026-10-10: 「ae식 반반등은 검증된 업계기준이라 아주
@@ -273,15 +275,19 @@ void main() {
         'own — only the selection rings it, inside (유저 2026-09-12)', (
       tester,
     ) async {
-      final plain = await pumpMarker(tester, KeyMark.linear);
-      expect(plain, paints..path(color: labelColor));
-      expect(
-        plain,
-        paintsExactlyCountTimes(#drawPath, 1),
-        reason: '「그냥 심플하게 바탕색만 남겨서」',
-      );
+      // A straight key's diamond is filled exactly, a hold's half is a path
+      // (`paintKeyMark`) — the two ways a mark is drawn.
+      for (final mark in [KeyMark.linear, _heldOut]) {
+        final plain = await pumpMarker(tester, mark);
+        expect(plain, paintsShape(color: labelColor), reason: '$mark');
+        expect(
+          DrawnShapes.of(plain),
+          hasLength(1),
+          reason: '$mark: 「그냥 심플하게 바탕색만 남겨서」',
+        );
+      }
 
-      final ringed = await pumpMarker(tester, KeyMark.linear, selected: true);
+      final ringed = await pumpMarker(tester, _heldOut, selected: true);
       expect(
         ringed,
         paints
@@ -295,12 +301,55 @@ void main() {
           ..path(style: PaintingStyle.stroke, color: AppColors.accent),
         reason: 'the selection still speaks — in accent, inside the mark',
       );
+      final diamond = await pumpMarker(tester, KeyMark.linear, selected: true);
+      expect(
+        [for (final shape in DrawnShapes.of(diamond)) shape.paint.color],
+        [isSameColorAs(AppColors.accent), isSameColorAs(labelColor)],
+        reason: 'the accent under the label, by fills',
+      );
+      expect(
+        diamond,
+        paintsShape(
+          color: AppColors.accent,
+          includes: const [Offset(1.5, 6), Offset(6, 6)],
+          excludes: const [Offset(1, 1)],
+        ),
+        reason: 'the ring inside the mark, never past it',
+      );
     });
 
     testWidgets('the selection rings the OUTLINE, as thin as UI-R23 #4 set it '
         '— never a bar down the middle where the halves meet', (tester) async {
+      // A diamond is filled exactly, its ring by fills (`paintKeyMark`): the
+      // label laid over the accent the ring's 4/3 in — its points the more,
+      // by the root of two, as its sides lean — and no stroke to run down
+      // the middle at all.
+      final diamond = await pumpMarker(tester, KeyMark.linear, selected: true);
+      expect(
+        {for (final shape in DrawnShapes.of(diamond)) shape.paint.style},
+        {PaintingStyle.fill},
+      );
+      expect(
+        diamond,
+        paintsShape(
+          color: labelColor,
+          includes: const [
+            Offset(2, 6),
+            Offset(6, 2),
+            Offset(10, 6),
+            Offset(6, 10),
+          ],
+          excludes: const [
+            Offset(1.75, 6),
+            Offset(6, 1.75),
+            Offset(10.25, 6),
+            Offset(6, 10.25),
+          ],
+        ),
+        reason: 'its points 6 − 4/3·√2 from the middle',
+      );
+
       for (final mark in [
-        KeyMark.linear,
         _heldOut,
         sides(KeySideKind.ease, KeySideKind.ease),
         sides(KeySideKind.auto, KeySideKind.linear),
@@ -390,11 +439,10 @@ void main() {
       final drawn = await pumpMarker(tester, _heldOut, axis: Axis.vertical);
       expect(
         drawn,
-        paints
-          ..path(
-            includes: const [Offset(1, 11), Offset(11, 11), Offset(6, 1)],
-            excludes: const [Offset(1, 1), Offset(11, 1)],
-          ),
+        paintsShape(
+          includes: const [Offset(1, 11), Offset(11, 11), Offset(6, 1)],
+          excludes: const [Offset(1, 1), Offset(11, 1)],
+        ),
         reason: 'the hold leaves DOWN the sheet; the straight side arrives '
             'from above',
       );
@@ -415,11 +463,10 @@ void main() {
       expect(painted(), box);
       expect(
         lying,
-        paints
-          ..path(
-            includes: const [Offset(7, 1), Offset(7, 11), Offset(1, 6)],
-            excludes: const [Offset(1, 1), Offset(1, 11)],
-          ),
+        paintsShape(
+          includes: const [Offset(7, 1), Offset(7, 11), Offset(1, 6)],
+          excludes: const [Offset(1, 1), Offset(1, 11)],
+        ),
         reason: 'a diamond\'s half narrowed, its point on the box\'s edge',
       );
       final standing = await pumpMarker(
@@ -431,11 +478,10 @@ void main() {
       expect(painted(), box.flipped);
       expect(
         standing,
-        paints
-          ..path(
-            includes: const [Offset(1, 7), Offset(11, 7), Offset(6, 1)],
-            excludes: const [Offset(1, 1), Offset(11, 1)],
-          ),
+        paintsShape(
+          includes: const [Offset(1, 7), Offset(11, 7), Offset(6, 1)],
+          excludes: const [Offset(1, 1), Offset(11, 1)],
+        ),
         reason: 'the same mark turned a quarter, in the box turned with it',
       );
     });
@@ -467,22 +513,21 @@ void main() {
       final drawn = await pumpMarker(tester, KeyMark.linear);
       expect(
         drawn,
-        paints
-          ..path(
-            includes: const [
-              Offset(5, 6),
-              Offset(1, 6),
-              Offset(11, 6),
-              Offset(5.5, 1),
-              Offset(6.5, 11),
-            ],
-            excludes: const [
-              Offset(1, 1),
-              Offset(11, 1),
-              Offset(1, 11),
-              Offset(11, 11),
-            ],
-          ),
+        paintsShape(
+          includes: const [
+            Offset(5, 6),
+            Offset(1, 6),
+            Offset(11, 6),
+            Offset(5.5, 1),
+            Offset(6.5, 11),
+          ],
+          excludes: const [
+            Offset(1, 1),
+            Offset(11, 1),
+            Offset(1, 11),
+            Offset(11, 11),
+          ],
+        ),
       );
     });
 
@@ -492,11 +537,10 @@ void main() {
       final drawn = await pumpMarker(tester, _heldOut);
       expect(
         drawn,
-        paints
-          ..path(
-            includes: const [Offset(11, 1), Offset(11, 11), Offset(1, 6)],
-            excludes: const [Offset(1, 1), Offset(1, 11)],
-          ),
+        paintsShape(
+          includes: const [Offset(11, 1), Offset(11, 11), Offset(1, 6)],
+          excludes: const [Offset(1, 1), Offset(1, 11)],
+        ),
       );
     });
 
@@ -508,16 +552,15 @@ void main() {
       );
       expect(
         drawn,
-        paints
-          ..path(
-            includes: const [
-              Offset(5, 1),
-              Offset(7, 1),
-              Offset(5, 11),
-              Offset(7, 11),
-            ],
-            excludes: const [Offset(1, 6), Offset(11, 6), Offset(1, 3)],
-          ),
+        paintsShape(
+          includes: const [
+            Offset(5, 1),
+            Offset(7, 1),
+            Offset(5, 11),
+            Offset(7, 11),
+          ],
+          excludes: const [Offset(1, 6), Offset(11, 6), Offset(1, 3)],
+        ),
       );
     });
 
@@ -529,23 +572,22 @@ void main() {
       );
       expect(
         drawn,
-        paints
-          ..path(
-            includes: const [
-              Offset(1, 6),
-              Offset(11, 6),
-              Offset(6, 1),
-              Offset(6, 11),
-              Offset(4, 6),
-            ],
-            // Inside the straight side's diamond, outside the star.
-            excludes: const [
-              Offset(3.5, 3.5),
-              Offset(8.5, 3.5),
-              Offset(3.5, 8.5),
-              Offset(8.5, 8.5),
-            ],
-          ),
+        paintsShape(
+          includes: const [
+            Offset(1, 6),
+            Offset(11, 6),
+            Offset(6, 1),
+            Offset(6, 11),
+            Offset(4, 6),
+          ],
+          // Inside the straight side's diamond, outside the star.
+          excludes: const [
+            Offset(3.5, 3.5),
+            Offset(8.5, 3.5),
+            Offset(3.5, 8.5),
+            Offset(8.5, 8.5),
+          ],
+        ),
       );
     });
 
@@ -556,11 +598,10 @@ void main() {
       );
       expect(
         drawn,
-        paints
-          ..path(
-            includes: const [Offset(5, 6), Offset(1, 6), Offset(5.5, 1)],
-            excludes: const [Offset(1, 1), Offset(11, 11)],
-          ),
+        paintsShape(
+          includes: const [Offset(5, 6), Offset(1, 6), Offset(5.5, 1)],
+          excludes: const [Offset(1, 1), Offset(11, 11)],
+        ),
       );
     });
 
@@ -575,16 +616,15 @@ void main() {
       // the gap from 4.8 in to 3.84, and the disc inside that.
       expect(
         await pumpMarker(tester, KeyMark.mixed),
-        paints
-          ..path(
-            includes: const [
-              Offset(6 - 5.4, 6),
-              Offset(6, 6 + 5.4),
-              Offset(6, 6),
-              Offset(6 - 3.2, 6),
-            ],
-            excludes: const [Offset(6 - 4.3, 6), Offset(6, 6 + 4.3)],
-          ),
+        paintsShape(
+          includes: const [
+            Offset(6 - 5.4, 6),
+            Offset(6, 6 + 5.4),
+            Offset(6, 6),
+            Offset(6 - 3.2, 6),
+          ],
+          excludes: const [Offset(6 - 4.3, 6), Offset(6, 6 + 4.3)],
+        ),
       );
     });
 
@@ -601,10 +641,9 @@ void main() {
           final drawn = await pumpMarker(tester, sides(incoming, outgoing));
           expect(
             drawn,
-            paints
-              ..path(
-                includes: const [Offset(5.9, 0.6), Offset(6.1, 11.4)],
-              ),
+            paintsShape(
+              includes: const [Offset(5.9, 0.6), Offset(6.1, 11.4)],
+            ),
             reason: '$incoming → $outgoing',
           );
         }

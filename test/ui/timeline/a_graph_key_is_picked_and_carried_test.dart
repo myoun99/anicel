@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/widgets/app_icon_button.dart'
     show AppIconButtonFace;
 
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/named_finders.dart';
 
 /// **I-3 — a header graph's key is picked and carried, AE's way.**
@@ -221,17 +222,12 @@ void main() {
       'row', (tester) async {
     final s = await _pump(tester);
     await _openTheGraph(tester, s);
-    // Any path stroked as the ring is, past the line and the marks.
-    final ring = paints
-      ..something((method, arguments) {
-        if (method != #drawPath) {
-          return false;
-        }
-        // A paint keeps its stroke as a 32-bit float.
-        final paint = arguments[1] as Paint;
-        return paint.style == PaintingStyle.stroke &&
-            (paint.strokeWidth - 8 / 3).abs() < 1e-6;
-      });
+    // The ring's colour over the key at 8 — a diamond, filled exactly, so
+    // rung by fills: the ring's colour under its own, a ring's width in.
+    final ring = paintsShape(
+      color: selectedLaneKeyRing.color,
+      includes: [_keyAt(tester, 8)],
+    );
     expect(_paintOf(tester), isNot(ring), reason: '⛔전제: none picked');
 
     s.updateLaneRangeSelectionDrag(
@@ -1385,14 +1381,18 @@ double _cellExtent(WidgetTester tester) => _graphOf(
 ).painter.frameAxis.geometry.value.frameCellExtent;
 
 /// Where the graph marks its lane's key on [frame] — of its numbers, the
-/// [part]th's — on the screen.
-Offset _keyOnScreen(WidgetTester tester, int frame, {int part = 0}) {
+/// [part]th's — in the graph's own box.
+Offset _keyAt(WidgetTester tester, int frame, {int part = 0}) {
   final (:painter, :box) = _graphOf(tester);
-  final key = painter
+  return painter
       .keysIn(box.size)
-      .singleWhere((key) => key.frame == frame && key.part == part);
-  return box.localToGlobal(key.at);
+      .singleWhere((key) => key.frame == frame && key.part == part)
+      .at;
 }
+
+/// [_keyAt] on the screen.
+Offset _keyOnScreen(WidgetTester tester, int frame, {int part = 0}) =>
+    _graphOf(tester).box.localToGlobal(_keyAt(tester, frame, part: part));
 
 ScrollPosition _rowsScroll(WidgetTester tester) => tester
     .stateList<ScrollableState>(

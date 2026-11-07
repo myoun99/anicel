@@ -61,6 +61,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/conte_track_fixture.dart';
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
@@ -785,7 +786,7 @@ void main() {
         ),
         matching: find.byType(CustomPaint),
       );
-      final canvas = TestRecordingCanvas();
+      final canvas = DrawnShapes();
       tester
           .widget<CustomPaint>(paint)
           .painter!
@@ -793,11 +794,9 @@ void main() {
       // Each key's mark as drawn — the whole of its box, whatever its
       // shape, to a float's precision: a path keeps its points in floats.
       final marks = [
-        for (final call in canvas.invocations)
-          if (call.invocation.memberName == #drawPath &&
-              (call.invocation.positionalArguments[1] as Paint).style ==
-                  PaintingStyle.fill)
-            (call.invocation.positionalArguments[0] as Path).getBounds().size,
+        for (final shape in canvas.shapes)
+          if (shape.paint.style == PaintingStyle.fill)
+            shape.outline.getBounds().size,
       ];
       expect(marks, hasLength(2), reason: '⛔전제: the rotation\'s keys');
       for (final mark in marks) {

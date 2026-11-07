@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/timeline/key_mark_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/drawn_shapes.dart';
+
 /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q9 (유저 2026-11-08, 2): the key
 /// marks the engine can fill by an exact formula — the diamond, the box — are
 /// drawn so, their selection's ring by fills too, so a still row's image and
@@ -124,8 +126,37 @@ void main() {
       ring: (color: accent, width: 1),
     );
     expect(mark, paintsExactlyCountTimes(#drawRect, 2));
-    expect(mark, paints..rect(color: accent)..rect(color: key));
     expect(mark, paintsExactlyCountTimes(#drawPath, 0));
+    final [ring, inside] = DrawnShapes.of(mark);
+    expect(ring.paint.color, isSameColorAs(accent));
+    expect(inside.paint.color, isSameColorAs(key));
+    // How far a diamond's sides lie from its middle, by its half-sides.
+    double toSides(Rect box) {
+      final (a, b) = (box.width / 2, box.height / 2);
+      return a * b / math.sqrt(a * a + b * b);
+    }
+
+    // To a float's precision: a path keeps its points in floats.
+    final whole = ring.outline.getBounds();
+    final inner = inside.outline.getBounds();
+    expect(
+      whole,
+      rectMoreOrLessEquals(
+        Rect.fromCenter(center: center, width: 10, height: 12),
+        epsilon: 1e-6,
+      ),
+    );
+    expect(inner.center, offsetMoreOrLessEquals(center, epsilon: 1e-6));
+    expect(
+      toSides(whole) - toSides(inner),
+      moreOrLessEquals(1, epsilon: 1e-6),
+      reason: 'every side the ring\'s width in',
+    );
+    expect(
+      inner.width / inner.height,
+      moreOrLessEquals(10 / 12, epsilon: 1e-6),
+      reason: 'the same diamond, smaller',
+    );
   });
 
   testWidgets('a translucent ring lies over the key, as its stroke did', (

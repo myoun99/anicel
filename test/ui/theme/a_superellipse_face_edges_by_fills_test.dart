@@ -99,9 +99,49 @@ void main() {
     );
   });
 
-  testWidgets('with no side it is the plain fill', (tester) async {
-    final face = await faceOf(tester, inside, side: BorderSide.none);
-    expect(face, paintsExactlyCountTimes(#drawRSuperellipse, 1));
-    expect(face, paints..rsuperellipse(color: inside));
-  });
+  // Two fills lay the side inside the edge, its whole width: a side laid
+  // across the edge or past it, or a hairline — a pixel whatever its width
+  // — is no such side.
+  for (final (what, side) in [
+    (
+      'across the edge',
+      const BorderSide(
+        color: edge,
+        width: 1.5,
+        strokeAlign: BorderSide.strokeAlignCenter,
+      ),
+    ),
+    (
+      'past the edge',
+      const BorderSide(
+        color: edge,
+        width: 1.5,
+        strokeAlign: BorderSide.strokeAlignOutside,
+      ),
+    ),
+    ('a hairline', const BorderSide(color: edge, width: 0)),
+  ]) {
+    testWidgets('a side $what is drawn as ShapeDecoration draws it — a '
+        'stroke', (tester) async {
+      final face = await faceOf(tester, inside, side: side);
+      expect(
+        face,
+        paints
+          ..rsuperellipse(color: inside)
+          ..rsuperellipse(color: edge),
+      );
+      expect(face, isNot(paints..everything(onlyFills)));
+    });
+  }
+
+  for (final side in [
+    BorderSide.none,
+    const BorderSide(color: edge, width: 1.5, style: BorderStyle.none),
+  ]) {
+    testWidgets('with no side it is the plain fill — $side', (tester) async {
+      final face = await faceOf(tester, inside, side: side);
+      expect(face, paintsExactlyCountTimes(#drawRSuperellipse, 1));
+      expect(face, paints..rsuperellipse(color: inside));
+    });
+  }
 }

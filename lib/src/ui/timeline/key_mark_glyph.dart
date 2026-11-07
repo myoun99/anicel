@@ -124,8 +124,14 @@ void paintKeyMark(
   if (exact != null && (ring == null || color.a == 1)) {
     _paintExactly(
       canvas,
-      exact,
-      Rect.fromCenter(center: center, width: stood.width, height: stood.height),
+      _ExactMark(
+        exact,
+        Rect.fromCenter(
+          center: center,
+          width: stood.width,
+          height: stood.height,
+        ),
+      ),
       color: color,
       ring: ring,
     );
@@ -217,68 +223,81 @@ _Exact? _exactlyFilled(KeyMark mark) => switch (mark) {
   _ => null,
 };
 
-/// [shape] filled with [color] in [box], rung inside its edge with [ring]
-/// by fills as well: the ring's colour over the whole mark, [color] over the
-/// mark the ring's width in — the edge `SuperellipseFace` draws a corner's
-/// side by, and as it, [color] under a translucent ring.
+/// [mark] filled with [color], rung inside its edge with [ring] by fills as
+/// well: the ring's colour over the whole mark, [color] over the mark the
+/// ring's width in — the edge `SuperellipseFace` draws a corner's side by,
+/// and as it, [color] under a translucent ring.
 void _paintExactly(
   Canvas canvas,
-  _Exact shape,
-  Rect box, {
+  _ExactMark mark, {
   required Color color,
   required ({Color color, double width})? ring,
 }) {
   if (ring == null) {
-    _fillExactly(canvas, shape, box, color);
+    mark.fill(canvas, color);
     return;
   }
   if (ring.color.a < 1) {
-    _fillExactly(canvas, shape, box, color);
+    mark.fill(canvas, color);
   }
-  _fillExactly(canvas, shape, box, ring.color);
-  final inner = _insetBy(shape, box, ring.width);
-  if (inner != null) {
-    _fillExactly(canvas, shape, inner, color);
-  }
+  mark.fill(canvas, ring.color);
+  mark.insetBy(ring.width)?.fill(canvas, color);
 }
 
-void _fillExactly(Canvas canvas, _Exact shape, Rect box, Color color) {
-  final paint = Paint()..color = color;
-  switch (shape) {
-    case _Exact.box:
-      canvas.drawRect(box, paint);
-    // The square √2 a side turned a quarter has its corners one out on each
-    // axis; stretched by the box's half-sides they touch its edges' middles.
-    case _Exact.diamond:
-      canvas
-        ..save()
-        ..translate(box.center.dx, box.center.dy)
-        ..scale(box.width / 2, box.height / 2)
-        ..rotate(math.pi / 4)
-        ..drawRect(
-          Rect.fromCenter(
-            center: Offset.zero,
-            width: math.sqrt2,
-            height: math.sqrt2,
-          ),
-          paint,
-        )
-        ..restore();
-  }
-}
+/// A mark filled exactly ([_exactlyFilled]): its [shape], touching the
+/// edges of [box].
+class _ExactMark {
+  const _ExactMark(this.shape, this.box);
 
-/// The box of [shape] whose edges lie [width] inside [box]'s — null when
-/// nothing is left inside. A diamond's sides lean, so its points come in
-/// further than [width]: by [width] over the sine of the side's lean.
-Rect? _insetBy(_Exact shape, Rect box, double width) {
-  final a = box.width / 2;
-  final b = box.height / 2;
-  final side = math.sqrt(a * a + b * b);
-  final (across, down) = switch (shape) {
-    _Exact.box => (a - width, b - width),
-    _Exact.diamond => (a - width * side / b, b - width * side / a),
-  };
-  return across > 0 && down > 0
-      ? Rect.fromCenter(center: box.center, width: across * 2, height: down * 2)
-      : null;
+  final _Exact shape;
+  final Rect box;
+
+  void fill(Canvas canvas, Color color) {
+    final paint = Paint()..color = color;
+    switch (shape) {
+      case _Exact.box:
+        canvas.drawRect(box, paint);
+      // The square √2 a side turned a quarter has its corners one out on
+      // each axis; stretched by the box's half-sides they touch its edges'
+      // middles.
+      case _Exact.diamond:
+        canvas
+          ..save()
+          ..translate(box.center.dx, box.center.dy)
+          ..scale(box.width / 2, box.height / 2)
+          ..rotate(math.pi / 4)
+          ..drawRect(
+            Rect.fromCenter(
+              center: Offset.zero,
+              width: math.sqrt2,
+              height: math.sqrt2,
+            ),
+            paint,
+          )
+          ..restore();
+    }
+  }
+
+  /// The same shape with its edges [width] inside these — null when nothing
+  /// is left inside. A diamond's sides lean, so its points come in further
+  /// than [width]: by [width] over the sine of the side's lean.
+  _ExactMark? insetBy(double width) {
+    final a = box.width / 2;
+    final b = box.height / 2;
+    final side = math.sqrt(a * a + b * b);
+    final (across, down) = switch (shape) {
+      _Exact.box => (a - width, b - width),
+      _Exact.diamond => (a - width * side / b, b - width * side / a),
+    };
+    return across > 0 && down > 0
+        ? _ExactMark(
+            shape,
+            Rect.fromCenter(
+              center: box.center,
+              width: across * 2,
+              height: down * 2,
+            ),
+          )
+        : null;
+  }
 }
