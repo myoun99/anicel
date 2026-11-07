@@ -180,7 +180,11 @@ enum Walk {
   /// What the built library carries: normal dependencies alone, a member's
   /// as any other crate's — a build script's crates and a test's run on the
   /// machine that builds, never in what ships. The notices' list
-  /// (tool/crate_notices.dart).
+  /// (tool/crate_notices.dart). A proc-macro crate is a normal edge, so it
+  /// is walked although it too runs only where the build does: left in on
+  /// purpose, as a notice too many harms nothing, and telling one apart
+  /// would mean reading `[lib] proc-macro` from its source (보드/인프라
+  /// review, 2026-11-07).
   binary;
 
   bool follows(String kind, {required bool fromMember}) => switch (this) {
