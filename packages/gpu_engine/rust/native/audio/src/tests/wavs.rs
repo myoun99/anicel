@@ -123,11 +123,13 @@ fn families(tag: u16, channels: u16, bits: u16, frames: usize) -> [(&'static str
 }
 
 /// `data` of `format` as an RF64, a Wave64 and a RIFX, with a chunk of
-/// something else first when `junk` — one whose size is odd, and no
-/// multiple of eight, so that each family's padding is what finds the next
-/// — and a list after the data, which is no sound.
+/// something else first when `junk` — one whose size is odd, and one past
+/// a multiple of eight, so that each family's padding is what finds the
+/// next: rounded to two bytes it is 10, to four 12, to eight 16 (five
+/// bytes rounded to four and to eight were both 8, and a Wave64 read on
+/// four-byte bounds passed) — and a list after the data, which is no sound.
 fn families_of(format: &[u8], data: &[u8], junk: bool) -> [(&'static str, Vec<u8>); 3] {
-    let other: &[u8] = &[1, 2, 3, 4, 5];
+    let other: &[u8] = &[1, 2, 3, 4, 5, 6, 7, 8, 9];
     let mut chunks: Vec<(&[u8; 4], &[u8])> = if junk { vec![(b"JUNK", other)] } else { Vec::new() };
     chunks.extend([(b"fmt ", format), (b"data", data), (b"LIST", b"INFOisft")]);
 
