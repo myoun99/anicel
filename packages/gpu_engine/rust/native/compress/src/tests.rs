@@ -1,6 +1,7 @@
 //! The Rust decoder against the engine's C (native/oracle): frames the C
 //! compresses, decoded by both — every answer and every byte written held
-//! to the C's, on good frames and on damaged ones.
+//! to the C's, on good frames and on damaged ones — and those of frames
+//! that outlive the C held to the ledger too.
 
 use oracle::export;
 
@@ -38,13 +39,80 @@ fn c_decompress() -> Decompress {
     unsafe { export::<Decompress>("qa_zstd_decompress") }
 }
 
-/// Both decoders on `frame` into `capacity`: the Rust's answer is the C's.
-fn same_answer(frame: &[u8], capacity: usize, what: &str) -> i64 {
+/// A test's answers in a row, fingerprinted for the ledger: each the
+/// number answered, little-endian, then the bytes written — so the C's
+/// answers stay held once the C is deleted (connection-round-checklist A,
+/// 관제 2026-11-07).
+#[derive(Default)]
+pub(crate) struct Answers(ledger::Running);
+
+impl Answers {
+    pub(crate) fn add(&mut self, answer: i64, written: &[u8]) {
+        self.0.add(&answer.to_le_bytes());
+        self.0.add(written);
+    }
+
+    pub(crate) fn pinned(self, id: &str) {
+        self.0.assert_pinned(id);
+    }
+}
+
+// The C's frames below level 9 that outlive it: each of at most
+// `KEPT_MAX` bytes that a test here decodes — the C's compressor frozen
+// for small inputs while it lives (connection-round-checklist A ②,
+// 관제 2026-11-07). Level 9 needs none: it is the Rust compressor's own.
+// Records, little-endian: the level (i32), the input's length (u64) and
+// its fingerprint (8 hex digits), the frame's length (u32), the frame.
+const C_FRAMES: &[u8] = include_bytes!("../fixtures/c_frames.bin");
+const KEPT_MAX: usize = 10 << 10;
+
+/// The frame of `data` at `level` that outlives the C, if there is one.
+fn kept_frame(data: &[u8], level: i32) -> Option<Vec<u8>> {
+    if level == 9 {
+        let mut frame = vec![0u8; crate::qa_zstd_compress_bound(data.len() as i64) as usize];
+        let written = crate::encode::compress(&mut frame, data).expect("the Rust compresses it");
+        frame.truncate(written);
+        return Some(frame);
+    }
+    let (size, fingerprint) = (data.len() as u64, ledger::fingerprint(data));
+    let mut at = 0;
+    while at < C_FRAMES.len() {
+        let field = |from: usize, to: usize| &C_FRAMES[at + from..at + to];
+        let length = u32::from_le_bytes(field(20, 24).try_into().unwrap()) as usize;
+        let frame = field(24, 24 + length);
+        if field(0, 4) == level.to_le_bytes() && field(4, 12) == size.to_le_bytes() && field(12, 20) == fingerprint.as_bytes()
+        {
+            return Some(frame.to_vec());
+        }
+        at += 24 + length;
+    }
+    None
+}
+
+/// The C's frame of `data` at `level`, and whether it outlives the C —
+/// the frame that does is the C's, and every one small enough is kept.
+fn frame(data: &[u8], level: i32) -> (Vec<u8>, bool) {
+    let theirs = compressed(data, level);
+    let what = format!("{} bytes ({}) at level {level}", data.len(), ledger::fingerprint(data));
+    let kept = kept_frame(data, level);
+    match &kept {
+        Some(kept) => assert!(*kept == theirs, "{what}: the frame kept is the C's"),
+        None => assert!(theirs.len() > KEPT_MAX, "{what}: c_frames.bin keeps the C's frame"),
+    }
+    (theirs, kept.is_some())
+}
+
+/// Both decoders on `frame` into `capacity`: the Rust's answer is the C's
+/// — and goes into `answers`, where there are any.
+fn same_answer(answers: Option<&mut Answers>, frame: &[u8], capacity: usize, what: &str) -> i64 {
     let theirs = decoded(c_decompress(), frame, capacity);
     let ours = decoded(crate::qa_zstd_decompress, frame, capacity);
     assert!(ours.0 == theirs.0, "{what}: the Rust answers {} where the C answers {}", ours.0, theirs.0);
     let first = ours.1.iter().zip(&theirs.1).position(|(a, b)| a != b);
     assert!(first.is_none(), "{what}: {} bytes written, first apart at {first:?}", ours.0);
+    if let Some(answers) = answers {
+        answers.add(ours.0, &ours.1);
+    }
     ours.0
 }
 
@@ -128,21 +196,23 @@ const SIZES: [usize; 21] = [
 // literals behind the block, and one a byte short.
 #[test]
 fn every_frame_the_c_makes_decodes_to_the_c_s_bytes() {
+    let mut answers = Answers::default();
     for &size in &SIZES {
         for (kind, data) in kinds(size, size as u64) {
             let levels: &[i32] = if size <= 131_073 { &[-5, 1, 3, 9, 19] } else { &[1, 9] };
             for &level in levels {
-                let frame = compressed(&data, level);
+                let (frame, kept) = frame(&data, level);
                 let what = format!("{kind} × {size} at level {level}");
-                let answer = same_answer(&frame, size, &what);
+                let answer = same_answer(kept.then_some(&mut answers), &frame, size, &what);
                 assert_eq!(answer, size as i64, "{what}: decoded whole");
                 assert_eq!(decoded(crate::qa_zstd_decompress, &frame, size).1, data, "{what}: the input back");
-                same_answer(&frame, size + 100, &format!("{what}, room to spare"));
-                same_answer(&frame, size + 300_000, &format!("{what}, literals behind the block"));
-                same_answer(&frame, size - 1, &format!("{what}, a byte short"));
+                same_answer(kept.then_some(&mut answers), &frame, size + 100, &format!("{what}, room to spare"));
+                same_answer(kept.then_some(&mut answers), &frame, size + 300_000, &format!("{what}, literals behind the block"));
+                same_answer(kept.then_some(&mut answers), &frame, size - 1, &format!("{what}, a byte short"));
             }
         }
     }
+    answers.pinned("compress/decode-every-frame");
 }
 
 /// `frame` with byte `at` set to `value`.
@@ -156,19 +226,21 @@ fn with(frame: &[u8], at: usize, value: u8) -> Vec<u8> {
 // replaced, the end cut, a byte inserted — and the Rust refuses what the C
 // refuses and writes what the C writes from what it accepts: no checksum
 // guards a frame the app writes, so a damaged one can decode to other
-// bytes, and those must be the C's.
+// bytes, and those must be the C's. Each frame is damaged by noise of its
+// own: one frame gone with the C leaves the others' damage as it was.
 #[test]
 fn a_damaged_frame_is_refused_or_decoded_as_the_c_does() {
-    let mut noise = Noise(0x5EED);
+    let mut answers = Answers::default();
     let mut refused = 0;
     let mut runs = 0;
     for &size in &[33, 1000, 4095, 65537, 131073, 300_000] {
-        for (kind, data) in kinds(size, size as u64 ^ 0xC0FFEE) {
+        for (k, (kind, data)) in kinds(size, size as u64 ^ 0xC0FFEE).into_iter().enumerate() {
             for level in [1, 9, 19] {
                 if level == 19 && size > 131_073 {
                     continue;
                 }
-                let frame = compressed(&data, level);
+                let (frame, kept) = frame(&data, level);
+                let mut noise = Noise(0x5EED ^ (size as u64) << 16 ^ (level as u64) << 8 ^ k as u64);
                 for damage in 0..60 {
                     let at = noise.below(frame.len());
                     let damaged = match damage % 4 {
@@ -183,7 +255,7 @@ fn a_damaged_frame_is_refused_or_decoded_as_the_c_does() {
                     };
                     let what = format!("{kind} × {size} at level {level}, damage {damage} at {at}");
                     for capacity in [size, size + 300_000] {
-                        refused += usize::from(same_answer(&damaged, capacity, &what) == 0);
+                        refused += usize::from(same_answer(kept.then_some(&mut answers), &damaged, capacity, &what) == 0);
                         runs += 1;
                     }
                 }
@@ -192,6 +264,7 @@ fn a_damaged_frame_is_refused_or_decoded_as_the_c_does() {
     }
     // LIVENESS — the damage reached both outcomes.
     assert!(refused > runs / 4 && refused < runs, "{refused} of {runs} refused");
+    answers.pinned("compress/decode-damaged");
 }
 
 /// A skippable frame of `payload`, with magic variant `variant`.
@@ -206,28 +279,33 @@ fn skippable(variant: u8, payload: &[u8]) -> Vec<u8> {
 // over after them.
 #[test]
 fn frames_in_a_row_decode_as_the_c_decodes_them() {
+    let mut answers = Answers::default();
     let parts: Vec<Vec<u8>> = kinds(70_000, 7).into_iter().take(5).map(|(_, data)| data).collect();
-    let frames: Vec<Vec<u8>> = parts.iter().enumerate().map(|(k, data)| compressed(data, [1, 9, 3, 19, -5][k])).collect();
+    let (frames, kept): (Vec<Vec<u8>>, Vec<bool>) =
+        parts.iter().enumerate().map(|(k, data)| frame(data, [1, 9, 3, 19, -5][k])).unzip();
+    assert!(kept.iter().all(|&kept| kept), "every frame of the row outlives the C");
     let total: usize = parts.iter().map(Vec::len).sum();
     let mut row = Vec::new();
     for (k, frame) in frames.iter().enumerate() {
         row.extend(skippable(k as u8, &vec![k as u8; k * 3]));
         row.extend_from_slice(frame);
     }
-    assert_eq!(same_answer(&row, total, "frames in a row"), total as i64);
+    assert_eq!(same_answer(Some(&mut answers), &row, total, "frames in a row"), total as i64);
     let all: Vec<u8> = parts.concat();
     assert_eq!(decoded(crate::qa_zstd_decompress, &row, total).1, all);
-    same_answer(&row, total - 1, "a byte short of the last");
+    same_answer(Some(&mut answers), &row, total - 1, "a byte short of the last");
     for tail in [&[0u8][..], &[1, 2, 3, 4], &[0x28, 0xB5, 0x2F, 0xFD], &[0x28, 0xB5, 0x2F, 0xFD, 0x20], &[0x50, 0x2A, 0x4D, 0x18, 9, 0, 0, 0]] {
         let mut trailed = row.clone();
         trailed.extend_from_slice(tail);
-        same_answer(&trailed, total, &format!("trailed by {tail:?}"));
+        same_answer(Some(&mut answers), &trailed, total, &format!("trailed by {tail:?}"));
     }
-    same_answer(&skippable(15, b"alone"), 16, "a skippable frame alone");
-    same_answer(&[skippable(0, &[]), frames[0].clone()].concat(), parts[0].len(), "an empty skippable first");
+    same_answer(Some(&mut answers), &skippable(15, b"alone"), 16, "a skippable frame alone");
+    same_answer(Some(&mut answers), &[skippable(0, &[]), frames[0].clone()].concat(), parts[0].len(), "an empty skippable first");
     let mut overlong = skippable(1, b"xx");
     overlong[4] = 0xFF;
-    same_answer(&[overlong, frames[0].clone()].concat(), parts[0].len(), "a skippable frame longer than what is left");
+    let overlong = [overlong, frames[0].clone()].concat();
+    same_answer(Some(&mut answers), &overlong, parts[0].len(), "a skippable frame longer than what is left");
+    answers.pinned("compress/decode-frames-in-a-row");
 }
 
 /// The blocks of a frame: where each one's body starts, its kind, and the
@@ -252,11 +330,11 @@ fn blocks(frame: &[u8]) -> Vec<(usize, usize, usize)> {
 #[test]
 fn literals_repeat_only_a_tree_already_read() {
     let data = kinds(20_000, 5).swap_remove(2).1;
-    let frame = compressed(&data, 9);
+    let (frame, _) = frame(&data, 9);
     let (body, kind, _) = blocks(&frame)[0];
     assert_eq!((kind, frame[body] & 3), (2, 2), "the first block's literals are Huffman-coded");
     let repeated = with(&frame, body, frame[body] | 3);
-    assert_eq!(same_answer(&repeated, data.len(), "the first literals repeating a tree"), 0);
+    assert_eq!(same_answer(None, &repeated, data.len(), "the first literals repeating a tree"), 0);
 }
 
 // A match far behind and long, a few literals into a block, whose offset
@@ -265,13 +343,16 @@ fn literals_repeat_only_a_tree_already_read() {
 // of the sequence.
 #[test]
 fn a_far_long_match_decodes_as_the_c_s() {
+    let mut answers = Answers::default();
     let mut noise = Noise(77);
     let mut echo: Vec<u8> = (0..(256 << 10) + 5).map(|_| noise.next() as u8).collect();
     echo.extend_from_within(50_000..50_000 + 65_536);
     for level in [1, 9, 19] {
-        let frame = compressed(&echo, level);
-        assert_eq!(same_answer(&frame, echo.len(), &format!("level {level}")), echo.len() as i64);
+        let (frame, kept) = frame(&echo, level);
+        let answer = same_answer(kept.then_some(&mut answers), &frame, echo.len(), &format!("level {level}"));
+        assert_eq!(answer, echo.len() as i64);
     }
+    answers.pinned("compress/decode-far-long-match");
 }
 
 // The sequence count in each of its forms, the three-byte one included —
@@ -326,35 +407,39 @@ fn reheaded(frame: &[u8], window: u8, state_size: bool, checksum: Option<&[u8]>)
 // reserved bits.
 #[test]
 fn every_header_decodes_as_the_c_reads_it() {
+    let mut answers = Answers::default();
     for (kind, data) in kinds(150_000, 99).into_iter().step_by(2) {
-        let frame = compressed(&data, 9);
+        let (frame, _) = frame(&data, 9);
         let windows = [0x00, 0x08, 0x0F, 0x10, 0x17, 0x18, 0x1D, 0x20, 0x2B, 0x38, 0x3F, 0x40, 0x48, 0x58, 0x70, 0xA8, 0xF8, 0xFF];
         for window in windows {
             for state_size in [true, false] {
                 let what = format!("{kind}, window {window:#x}, size stated {state_size}");
-                same_answer(&reheaded(&frame, window, state_size, None), data.len(), &what);
+                same_answer(Some(&mut answers), &reheaded(&frame, window, state_size, None), data.len(), &what);
                 let checked = reheaded(&frame, window, state_size, Some(&data));
-                same_answer(&checked, data.len(), &format!("{what}, checksum"));
+                same_answer(Some(&mut answers), &checked, data.len(), &format!("{what}, checksum"));
                 let wrong = checked.len() - 1;
-                same_answer(&with(&checked, wrong, checked[wrong] ^ 1), data.len(), &format!("{what}, checksum wrong"));
-                same_answer(&checked[..checked.len() - 2], data.len(), &format!("{what}, checksum cut"));
+                let damaged = with(&checked, wrong, checked[wrong] ^ 1);
+                same_answer(Some(&mut answers), &damaged, data.len(), &format!("{what}, checksum wrong"));
+                same_answer(Some(&mut answers), &checked[..checked.len() - 2], data.len(), &format!("{what}, checksum cut"));
             }
         }
         // The dictionary's id goes after the window byte, before the size.
         let mut dictionary = frame.clone();
         dictionary[4] |= 1;
         dictionary.insert(frame_header::PREFIX + usize::from(frame[4] >> 5 & 1 == 0), 7);
-        same_answer(&dictionary, data.len(), &format!("{kind}, a dictionary asked for"));
-        same_answer(&with(&frame, 4, frame[4] | 0x08), data.len(), &format!("{kind}, a reserved bit"));
+        same_answer(Some(&mut answers), &dictionary, data.len(), &format!("{kind}, a dictionary asked for"));
+        same_answer(Some(&mut answers), &with(&frame, 4, frame[4] | 0x08), data.len(), &format!("{kind}, a reserved bit"));
     }
     // Every length of checksummed frame up to two stripes and a tail (the
     // C compresses nothing to no frame).
     for size in 1..80 {
         let data: Vec<u8> = (0..size).map(|k| (k * 7 + 1) as u8).collect();
-        let frame = compressed(&data, 3);
+        let (frame, kept) = frame(&data, 3);
+        assert!(kept, "checksummed {size}: the frame outlives the C");
         let checked = reheaded(&frame, 0x50, true, Some(&data));
-        assert_eq!(same_answer(&checked, size, &format!("checksummed {size}")), size as i64);
+        assert_eq!(same_answer(Some(&mut answers), &checked, size, &format!("checksummed {size}")), size as i64);
     }
+    answers.pinned("compress/decode-every-header");
 }
 
 // A block that writes a little past a window smaller than itself — of a
@@ -363,6 +448,7 @@ fn every_header_decodes_as_the_c_reads_it() {
 // write is its window or the buffer, by where the C keeps its literals.
 #[test]
 fn a_block_past_a_small_window_stops_where_the_c_s_does() {
+    let mut answers = Answers::default();
     let (mut accepted, mut refused) = (0, 0);
     for window in [0x00u8, 0x07, 0x08, 0x0F, 0x10, 0x13, 0x17, 0x18] {
         let log = u32::from(window >> 3) + 10;
@@ -370,10 +456,10 @@ fn a_block_past_a_small_window_stops_where_the_c_s_does() {
         for size in (window_size + 16..window_size + 100).step_by(3) {
             let chosen = ["period-7", "text", "sparse", "mixed"];
             for (kind, data) in kinds(size, size as u64).into_iter().filter(|(kind, _)| chosen.contains(kind)) {
-                let frame = reheaded(&compressed(&data, 9), window, true, None);
+                let frame = reheaded(&frame(&data, 9).0, window, true, None);
                 for capacity in (size..size + 96).step_by(2).chain([size + 5000]) {
                     let what = format!("{kind} × {size}, window {window:#x}, room {capacity}");
-                    match same_answer(&frame, capacity, &what) {
+                    match same_answer(Some(&mut answers), &frame, capacity, &what) {
                         0 => refused += 1,
                         _ => accepted += 1,
                     }
@@ -383,6 +469,7 @@ fn a_block_past_a_small_window_stops_where_the_c_s_does() {
     }
     // LIVENESS — the window let some blocks through and stopped others.
     assert!(accepted > 0 && refused > 0, "{accepted} accepted, {refused} refused");
+    answers.pinned("compress/decode-small-window");
 }
 
 // The size Dart allocates by: the C's answer for every frame header, for
@@ -391,9 +478,11 @@ fn a_block_past_a_small_window_stops_where_the_c_s_does() {
 fn the_stated_size_is_the_c_s() {
     // SAFETY: qa_compress.c — `int64_t qa_zstd_decompressed_size(const uint8_t*, int64_t)`.
     let c = unsafe { export::<Size>("qa_zstd_decompressed_size") };
-    let mut frames: Vec<Vec<u8>> = SIZES.iter().map(|&size| compressed(&vec![9u8; size], 9)).collect();
+    let mut answers = Answers::default();
+    let mut frames: Vec<Vec<u8>> = SIZES.iter().map(|&size| frame(&vec![9u8; size], 9).0).collect();
     let data = vec![1u8; 70_000];
-    let frame = compressed(&data, 1);
+    let (frame, kept) = frame(&data, 1);
+    assert!(kept, "the frame at level 1 outlives the C");
     frames.extend([0x00, 0x48, 0xF0, 0xF8].map(|window| reheaded(&frame, window, true, None)));
     frames.push(reheaded(&frame, 0x48, false, None));
     frames.push(skippable(3, b"skip"));
@@ -407,8 +496,10 @@ fn the_stated_size_is_the_c_s() {
             // SAFETY: as above.
             let ours = unsafe { crate::qa_zstd_decompressed_size(prefix.as_ptr(), prefix.len() as i64) };
             assert_eq!(ours, theirs, "{:02x?}", prefix);
+            answers.add(ours, &[]);
         }
     }
+    answers.pinned("compress/stated-size");
     // SAFETY: null is nothing.
     assert_eq!(unsafe { crate::qa_zstd_decompressed_size(std::ptr::null(), 8) }, -1);
 }
@@ -418,17 +509,20 @@ fn the_stated_size_is_the_c_s() {
 fn the_bound_is_the_c_s() {
     // SAFETY: qa_compress.c — `int64_t qa_zstd_compress_bound(int64_t)`.
     let c = unsafe { export::<Bound>("qa_zstd_compress_bound") };
+    let mut answers = Answers::default();
     let sizes = [i64::MIN, -1, 0, 1, 2, 255, 256, 2047, 2048, 131_071, 131_072, 131_073, 1 << 30, (1 << 40) + 5];
     for size in sizes.into_iter().chain([0xFF00_FF00_FF00_FEFFu64 as i64, 0xFF00_FF00_FF00_FF00u64 as i64, i64::MAX]) {
         assert_eq!(crate::qa_zstd_compress_bound(size), c(size), "{size}");
+        answers.add(crate::qa_zstd_compress_bound(size), &[]);
     }
+    answers.pinned("compress/bound");
 }
 
 // Pointers that are null and sizes that are not sizes come back 0, as the
 // C's do.
 #[test]
 fn nothing_to_decode_is_refused() {
-    let frame = compressed(b"cel", 9);
+    let (frame, _) = frame(b"cel", 9);
     let mut out = [0u8; 8];
     for (dst, capacity, src, size) in [
         (std::ptr::null_mut(), 8, frame.as_ptr(), frame.len() as i64),
