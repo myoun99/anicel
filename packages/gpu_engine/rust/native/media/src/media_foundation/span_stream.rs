@@ -85,20 +85,16 @@ impl SpanStream {
     }
 
     /// The one place bytes actually move: up to `into.len()` of them from
-    /// the position. Everything else is bookkeeping.
+    /// the position — short at the medium's end, which [Span::read] keeps
+    /// to. Everything else is bookkeeping.
     fn read_at(&self, into: &mut [u8]) -> Result<u32> {
         let mut held = self.hold();
-        let left = self.length - held.position;
         let position = held.position;
         // Closed: nothing left to read from.
         let span = held.span.as_mut().ok_or(E_FAIL)?;
-        if left <= 0 || into.is_empty() {
-            return Ok(0);
-        }
-        let take = into.len().min(usize::try_from(left).unwrap_or(usize::MAX));
         // The file would not read, or a block would not decode: a broken
         // medium, said as one rather than served as whatever the buffer held.
-        let read = span.read(position, &mut into[..take]).ok_or(E_FAIL)?;
+        let read = span.read(position, into).ok_or(E_FAIL)?;
         held.position += read as i64;
         Ok(read as u32)
     }
