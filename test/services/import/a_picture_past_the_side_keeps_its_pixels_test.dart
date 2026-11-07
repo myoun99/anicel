@@ -10,6 +10,7 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
@@ -426,53 +427,68 @@ void main() {
     // when it went nearest. The engine's Nearest maps in integers
     // (`kernels/shared/resample.rs`, Q.20), a part and the whole alike: a
     // lay by it may stand these back on the edges.
-    for (final (how, width, side, placement) in [
-      ('shrunk by 0.6', 300, 256, const GuideTransform(0.6, 0, 0, 0.6, 10, 5)),
+    for (final (how, (width, height), side, placement) in [
+      (
+        'shrunk by 0.6',
+        (300, 200),
+        256,
+        const GuideTransform(0.6, 0, 0, 0.6, 10, 5),
+      ),
       (
         '🎯shrunk past half, read whole as the engine reads it — not halved',
-        300,
+        (300, 200),
         256,
         const GuideTransform(0.3, 0, 0, 0.3, 3.25, 7.25),
       ),
       (
         'shrunk past half across alone',
-        1200,
+        (1200, 200),
         512,
         const GuideTransform(0.2, 0, 0, 0.9, 3.25, 7.25),
       ),
       (
         '🎯shrunk past what one raster holds a tile at — the tile laid in '
             'halves, never decoded smaller',
-        1200,
+        (1200, 200),
         256,
         const GuideTransform(0.15, 0, 0, 0.15, 3.26, 7.26),
       ),
       (
+        '🎯shrunk past what one raster holds a tile at, down alone',
+        (200, 1200),
+        256,
+        const GuideTransform(0.15, 0, 0, 0.15, 7.26, 3.26),
+      ),
+      (
         '🎯shrunk so far a tile is halved three times',
-        1200,
+        (1200, 200),
         256,
         const GuideTransform(0.04, 0, 0, 0.04, 3.27, 7.27),
       ),
       (
         '🎯shrunk so far, past the wall — its halves laid whole there too',
-        1200,
+        (1200, 200),
         256,
         const GuideTransform(0.04, 0, 0, 0.04, -2996.73, 7.27),
       ),
     ]) {
       testWidgets('$how, a part at a time', (tester) async {
         await tester.runAsync(() async {
-          final rgba = patterned(width, 200);
+          final rgba = patterned(width, height);
           debugLayRasterSide = side;
-          final engine = await engineOf(rgba, width, 200);
+          final engine = await engineOf(rgba, width, height);
           debugLayRasters = 0;
           final theirs = await laid(engine, placement);
           final blocks = debugLayRasters;
           engine.dispose();
 
           for (final held in [
-            PixelsPicture(rgba, width: width, height: 200),
-            FilePicture(pngOf(rgba, width, 200), width: width, height: 200),
+            PixelsPicture(rgba, width: width, height: height),
+            FilePicture(
+              pngOf(rgba, width, height),
+              width: width,
+              height: height,
+            ),
           ]) {
             debugLayRasters = 0;
             expectSameCel(await laid(held, placement), theirs, colourSlack: 1);
@@ -481,6 +497,42 @@ void main() {
         });
       });
     }
+
+    // ⚠️Turned, the picture's edge is not softened the same where it
+    // crosses the edge of a part's raster: 🔬2026-11-08 up to 19/255 apart
+    // turned 45° at 0.6 in parts of whole tiles, 50/255 at 0.04 halved,
+    // none laid in one raster — the known problem of a cel drawn in pieces
+    // (card `a-cel-past-the-side-resamples-a-hair-apart`). What is pinned
+    // turned is which tiles there are: the strip's bounds take in the tile
+    // right of its top, which none of its pixels reach.
+    testWidgets('🎯shrunk so far and turned — a tile halved to no ink is no '
+        'tile', (tester) async {
+      await tester.runAsync(() async {
+        const placement = GuideTransform(
+          0.028284,
+          0.028284,
+          -0.028284,
+          0.028284,
+          34.3,
+          44.3,
+        );
+        final rgba = patterned(1200, 200);
+        debugLayRasterSide = 256;
+        final engine = await engineOf(rgba, 1200, 200);
+        final theirs = await laid(engine, placement);
+        engine.dispose();
+        final ours = await laid(
+          PixelsPicture(rgba, width: 1200, height: 200),
+          placement,
+        );
+
+        expect(
+          theirs.tiles.keys,
+          isNot(contains(TileCoord(x: 1, y: 0))),
+        );
+        expect(ours.tiles.keys, unorderedEquals(theirs.tiles.keys));
+      });
+    });
   });
 
   group('a Photoshop document past the side', () {

@@ -377,7 +377,9 @@ Future<List<PlacedTile>> _laidPart(
   CelLayout layout,
 ) async {
   final reached = _reachedBy(part, pixels.size, placement, layout.tileSize);
-  if (!_fitsOneRaster(reached) && layout.tileSize.isEven) {
+  if (reached != null &&
+      !_fitsOneRaster(reached) &&
+      layout.tileSize.isEven) {
     return [?await _laidInHalves(pixels, placement, part, layout)];
   }
   final drawn = await _partUploaded(pixels, placement, part, layout);
@@ -443,10 +445,10 @@ Future<PlacedTile?> _laidInHalves(
 }
 
 /// Whether what a raster reaches ([_reachedBy]) is no longer a side than
-/// one lay's raster ([layRasterSide]) — nothing reached fits.
-bool _fitsOneRaster(({int left, int top, int width, int height})? reached) {
+/// one lay's raster ([layRasterSide]).
+bool _fitsOneRaster(({int left, int top, int width, int height}) reached) {
   final side = debugLayRasterSide ?? layRasterSide;
-  return reached == null || reached.width <= side && reached.height <= side;
+  return reached.width <= side && reached.height <= side;
 }
 
 /// [block], cut into the parts whose reach into the picture
