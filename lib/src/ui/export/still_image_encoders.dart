@@ -245,24 +245,20 @@ final class LayeredPsd {
   );
 }
 
-/// [image] over the format's background as RGB24 for the native stb
-/// encoder. Null = no encoder (an older binary) — the file skips rather
-/// than lying.
+/// [image] over the format's background as RGB24 for the engine's JPEG
+/// encoder. Null = no pixels read back, or the encoder refused — the file
+/// skips rather than lying.
 Future<List<int>?> _encodeJpg(
   ui.Image image,
   ExportFormatSelection format,
 ) async {
-  final encoder = QaImageEncoder.instance;
-  if (encoder == null) {
-    return null;
-  }
   final rgba = await _rgbaOf(image);
   if (rgba == null) {
     return null;
   }
   final rgb = Uint8List(image.width * image.height * 3);
   _overGround(rgba, format.backgroundArgb, rgb);
-  return encoder.encodeJpg(
+  return QaImageEncoder.encodeJpg(
     rgb: rgb,
     width: image.width,
     height: image.height,

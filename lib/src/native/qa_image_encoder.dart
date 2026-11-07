@@ -1,92 +1,63 @@
+// The engine's Rust library carries the encoder (rust/src/lib.rs), and its
+// names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
 
 import 'native_scratch.dart';
-import 'qa_engine_abi.dart';
 
-/// The still-image encoder (EX4): baseline JPEG through the engine's
-/// vendored stb_image_write — memory to memory, byte-deterministic,
-/// no ffmpeg, no pub dependency.
+@Native<
+  Int32 Function(
+    Pointer<Uint8>,
+    Int32,
+    Int32,
+    Int32,
+    Pointer<Pointer<Uint8>>,
+    Pointer<Int32>,
+  )
+>(symbol: 'qa_image_encode_jpg')
+external int _encodeJpg(
+  Pointer<Uint8> rgb,
+  int width,
+  int height,
+  int quality,
+  Pointer<Pointer<Uint8>> outData,
+  Pointer<Int32> outSize,
+);
+
+@Native<Void Function(Pointer<Uint8>)>(symbol: 'qa_image_encode_free')
+external void _free(Pointer<Uint8> data);
+
+/// The still-image encoder (EX4): baseline JPEG as stb_image_write v1.16
+/// writes one, in the engine (native/image_encode) — memory to memory,
+/// byte-deterministic, no ffmpeg, no pub dependency.
 ///
-/// Unlike the video encoder there is NO test gate: encoding a buffer is
-/// a pure function with no device side effects, and the widget tests
-/// exercise the real thing when the standalone binary is around
-/// ([debugQaEngineLibraryPathOverride], same as the parity suites).
-final class QaImageEncoder {
-  QaImageEncoder._(this._library);
+/// Wherever the app runs it is there: the engine's library ships with the
+/// app, and `flutter test` builds it too. ↩️Until the connection round
+/// (connection-round-checklist H, 2026-11-08) it was the C engine's, which a
+/// machine could be without, and a JPG row stood off there.
+abstract final class QaImageEncoder {
+  /// Test hook: refuse every picture, as the encoder refuses a degenerate
+  /// one — what a save that makes no file shows is otherwise out of reach.
+  static bool debugForceRefusal = false;
 
-  final DynamicLibrary _library;
-
-  static QaImageEncoder? _instance;
-  static bool _tried = false;
-
-  /// Test hook: answer as a machine with no encoder does, even when a
-  /// binary loads — what a row that needs one shows there is otherwise
-  /// out of reach wherever the engine is built. (Where the binary IS lives
-  /// in [debugQaEngineLibraryPathOverride] — one switch for every loader.)
-  static bool debugForceAbsent = false;
-
-  static void debugResetForTests() {
-    _instance = null;
-    _tried = false;
-  }
-
-  static QaImageEncoder? get instance {
-    if (debugForceAbsent) {
-      return null;
-    }
-    if (!_tried) {
-      _tried = true;
-      final library = openQaEngineLibrary();
-      _instance = library == null ? null : QaImageEncoder._(library);
-    }
-    return _instance;
-  }
-
-  late final _encodeJpg = _library
-      .lookupFunction<
-        Int32 Function(
-          Pointer<Uint8>,
-          Int32,
-          Int32,
-          Int32,
-          Pointer<Pointer<Uint8>>,
-          Pointer<Int32>,
-        ),
-        int Function(
-          Pointer<Uint8>,
-          int,
-          int,
-          int,
-          Pointer<Pointer<Uint8>>,
-          Pointer<Int32>,
-        )
-      >('qa_image_encode_jpg');
-  late final _free = _library
-      .lookupFunction<Void Function(Pointer<Uint8>), void Function(Pointer<Uint8>)>(
-        'qa_image_encode_free',
-      );
-
-  bool get isSupported {
-    try {
-      _encodeJpg;
-      return true;
-    } on Object {
-      return false; // an older binary without the image surface
-    }
-  }
-
-  /// Encodes top-down RGB24 into JPEG bytes; null on refusal (an older
-  /// binary, a degenerate size).
-  Uint8List? encodeJpg({
+  /// Encodes top-down RGB24 into JPEG bytes; null on refusal (a degenerate
+  /// size).
+  static Uint8List? encodeJpg({
     required Uint8List rgb,
     required int width,
     required int height,
     required int quality,
   }) {
-    if (rgb.length < width * height * 3 || width <= 0 || height <= 0) {
+    if (debugForceRefusal ||
+        rgb.length < width * height * 3 ||
+        width <= 0 ||
+        height <= 0) {
       return null;
     }
     final outData = calloc<Pointer<Uint8>>();
@@ -104,8 +75,6 @@ final class QaImageEncoder {
       );
       _free(outData.value);
       return bytes;
-    } on Object {
-      return null;
     } finally {
       calloc.free(outData);
       calloc.free(outSize);

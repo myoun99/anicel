@@ -623,7 +623,6 @@ void main() {
     final availability = ExportFormatAvailability(
       encoderResolver: () => null,
       ffmpegCheck: () async => false,
-      jpgSupported: true,
     );
     addTearDown(availability.dispose);
     expect(
@@ -652,7 +651,6 @@ void main() {
     final availability = ExportFormatAvailability(
       encoderResolver: () => encoder,
       ffmpegCheck: () async => false,
-      jpgSupported: true,
     );
     addTearDown(availability.dispose);
     expect(

@@ -915,7 +915,15 @@ void main() {
   /// lane's base (`fd101433a`) names those three added and those two gone.
   /// ⛔Not bundled to fit: the bindings take what the exports take, and the
   /// conversion's quality is the caller's to ask, as the export's is.
-  const wideSignatures = 464;
+  ///
+  /// ⚠️464 → 465 on 2026-11-08, the same way (connection-round-checklist
+  /// H, the JPEG encoder moved into the Rust engine): `_encodeJpg` (six) in
+  /// `qa_image_encoder.dart` is the `@Native` binding of
+  /// `qa_image_encode_jpg` — the picture, its two sides, the quality and
+  /// the two outs it hands the file back through. 🔬`clean_code_diff`
+  /// against the lane's base (`302604dde`) names it added and nothing gone.
+  /// ⛔Not bundled to fit: the binding takes what the export takes.
+  const wideSignatures = 465;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

@@ -851,6 +851,7 @@ dependencies = [
  "display",
  "fx_plugin",
  "harfrust",
+ "image_encode",
  "ledger",
  "libc",
  "libm",

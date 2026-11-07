@@ -26,6 +26,7 @@ audio_denoise = { path = "native/audio_denoise" }
 audio_mix = { path = "native/audio_mix" }
 display = { path = "native/display" }
 fx_plugin = { path = "native/fx_plugin" }
+image_encode = { path = "native/image_encode" }
 pen = { path = "native/pen" }
 # A Gaussian's weights are alike on every device (유저 gpu-same-formula-Q2):
 # their exp is libm's, the same Rust on every OS, not the device's maths

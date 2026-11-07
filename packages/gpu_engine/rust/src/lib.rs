@@ -46,6 +46,7 @@ pub use audio_denoise;
 pub use audio_mix;
 pub use display;
 pub use fx_plugin;
+pub use image_encode;
 pub use pen;
 
 // The Runner finds the pen ledger's class by name (ios/Runner/

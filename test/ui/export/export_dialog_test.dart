@@ -36,8 +36,6 @@ import 'package:anicel/src/models/xdts_sheet_form.dart';
 import 'package:anicel/src/models/xdts_viewer_sheet.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_image_encoder.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -59,7 +57,6 @@ import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
 import '../../helpers/solid_png_fixture.dart';
 import 'fake_ffmpeg_process.dart';
@@ -1706,7 +1703,6 @@ void main() {
       final restrictive = ExportFormatAvailability(
         encoderResolver: () => null,
         ffmpegCheck: () async => false,
-        jpgSupported: false,
       );
       addTearDown(restrictive.dispose);
       await pumpDialog(
@@ -1740,17 +1736,6 @@ void main() {
 
     testWidgets('JPG sequence writes .jpg files through the native encoder',
         (tester) async {
-      final enginePath = nativeEngineLibraryPathOrNull();
-      if (enginePath == null) {
-        markTestSkipped(nativeEngineMissingSkipReason);
-        return;
-      }
-      QaImageEncoder.debugResetForTests();
-      debugQaEngineLibraryPathOverride = enginePath;
-      addTearDown(() {
-        debugQaEngineLibraryPathOverride = null;
-        QaImageEncoder.debugResetForTests();
-      });
       final state = await pumpDialog(
         tester,
         exportSession(),
@@ -1817,17 +1802,17 @@ void main() {
     // … 소재 하나당 해당 어태치레이어 구조 그대로」, which the Cels tab
     // writes; and the Image tab the cut's rows — I-117-Q2 (유저 2026-10-22:
     // 「층을 지키고 그 효과는 뺀다」). ↩️PSD stood off there until that answer.
+    // ↩️JPG stood off here on a binary without the C engine's encoder until
+    // the connection round (connection-round-checklist H): the engine's
+    // ships with the app now.
     testWidgets('the Cels and the Image tab list every still with PSD on, '
-        'and the Sequence tab every one but PSD; a still this machine cannot '
-        'write is off in each', (tester) async {
-      // A binary with no JPG encoder.
-      final noJpg = ExportFormatAvailability(
+        'and the Sequence tab every one but PSD', (tester) async {
+      final machine = ExportFormatAvailability(
         encoderResolver: () => null,
         ffmpegCheck: () async => true,
-        jpgSupported: false,
       );
-      addTearDown(noJpg.dispose);
-      await pumpDialog(tester, exportSession(), formatAvailability: noJpg);
+      addTearDown(machine.dispose);
+      await pumpDialog(tester, exportSession(), formatAvailability: machine);
 
       /// The still list's rows, each as whether it takes a pick; the list
       /// shut again after.
@@ -1862,7 +1847,7 @@ void main() {
       await pickExportStill(tester, ExportStillFormat.png);
       expect(await listed(), {
         'png': true,
-        'jpg': false,
+        'jpg': true,
         'bmp': true,
         'tga': true,
         'tiff': true,
@@ -1871,7 +1856,7 @@ void main() {
       await switchTab(tester, 'image');
       expect(await listed(), {
         'png': true,
-        'jpg': false,
+        'jpg': true,
         'psd': true,
         'bmp': true,
         'tga': true,
@@ -1892,7 +1877,7 @@ void main() {
       await tester.pump();
       expect(await listed(), {
         'png': true,
-        'jpg': false,
+        'jpg': true,
         'psd': true,
         'bmp': true,
         'tga': true,

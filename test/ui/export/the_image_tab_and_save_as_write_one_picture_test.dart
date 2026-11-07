@@ -10,7 +10,6 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/native/qa_image_encoder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
@@ -317,36 +316,20 @@ void main() {
     );
   });
 
-  group('what this machine writes', () {
-    tearDown(() => QaImageEncoder.debugForceAbsent = false);
-
-    // Which tab lays its picture out as a PSD's rows is the tab's to say
-    // (`export_dialog_test.dart`).
-    test('PNG and PSD always, JPG where an encoder is', () {
-      expect(stillFormatWritable(ExportStillFormat.png), isTrue);
-      expect(stillFormatWritable(ExportStillFormat.psd), isTrue);
-      expect(
-        stillFormatWritable(ExportStillFormat.jpg, jpgSupported: false),
-        isFalse,
-      );
-      expect(
-        stillFormatWritable(ExportStillFormat.jpg, jpgSupported: true),
-        isTrue,
-      );
-      QaImageEncoder.debugForceAbsent = true;
-      expect(stillFormatWritable(ExportStillFormat.jpg), isFalse);
-    });
-
-    test('and the export window grays by the same rule', () {
-      final none = ExportFormatAvailability(
-        jpgSupported: false,
-        encoderResolver: () => null,
-        ffmpegCheck: () async => false,
-      );
-      addTearDown(none.dispose);
-      expect(none.stillAllowed(ExportStillFormat.jpg), isFalse);
-      expect(none.stillAllowed(ExportStillFormat.png), isTrue);
-      expect(none.stillAllowed(ExportStillFormat.psd), isTrue);
-    });
+  // Which tab lays its picture out as a PSD's rows is the tab's to say
+  // (`export_dialog_test.dart`). ↩️JPG stood off on a machine without the C
+  // engine's encoder until the connection round
+  // (connection-round-checklist H): the engine's ships with the app.
+  test('this machine writes every still, and the export window grays by the '
+      'same rule', () {
+    final none = ExportFormatAvailability(
+      encoderResolver: () => null,
+      ffmpegCheck: () async => false,
+    );
+    addTearDown(none.dispose);
+    for (final format in ExportStillFormat.values) {
+      expect(stillFormatWritable(format), isTrue, reason: format.label);
+      expect(none.stillAllowed(format), isTrue, reason: format.label);
+    }
   });
 }
