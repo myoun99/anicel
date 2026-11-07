@@ -46,7 +46,7 @@ void main() {
   void aStepNotReady() {
     cache = BitmapTileImageCache();
     shown = ShownCels(cache: cache)
-      ..show(Object(), (_key.layerId, _key.frameId));
+      ..show(Object(), _key.cel);
     final now = _surfaceOf([1, 2]);
     next = _surfaceOf([3, 4]);
     _givePictures(cache, now);
@@ -87,7 +87,7 @@ void main() {
       'looks at this one', (tester) async {
     cache = BitmapTileImageCache();
     shown = ShownCels(cache: cache)
-      ..show(Object(), (_key.layerId, _key.frameId));
+      ..show(Object(), _key.cel);
     final now = _surfaceOf([1, 2]);
     final first = _surfaceOf([3, 4]);
     final second = _surfaceOf([5, 6]);
@@ -168,7 +168,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final canvas = Object();
-    ShownCels.instance.show(canvas, (_key.layerId, _key.frameId));
+    ShownCels.instance.show(canvas, _key.cel);
     addTearDown(() => ShownCels.instance.hide(canvas));
     final now = _surfaceOf([7, 8]);
     _givePictures(BitmapTileImageCache.instance, now);
@@ -189,7 +189,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final canvas = Object();
-    ShownCels.instance.show(canvas, (_key.layerId, _key.frameId));
+    ShownCels.instance.show(canvas, _key.cel);
     addTearDown(() => ShownCels.instance.hide(canvas));
     final held = [
       for (final fill in [11, 12, 13]) _surfaceOf([fill]),

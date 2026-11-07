@@ -184,7 +184,7 @@ class ContePictureLive extends StatelessWidget {
           ),
           overlayModel: window.overlay,
           showTransparentBackground: false,
-          lineage: (window.key.layerId, window.key.frameId),
+          lineage: window.key.cel,
         ),
         floatOverlay: null,
         liftedRows: const {},

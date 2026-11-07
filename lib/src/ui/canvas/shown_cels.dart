@@ -68,7 +68,7 @@ class ShownCels {
 
   /// Whether a canvas is painting [key]'s cel.
   bool isShown(BrushFrameKey key) {
-    final cel = (key.layerId, key.frameId);
+    final cel = key.cel;
     return _byCanvas.values.any((shown) => shown.cel == cel);
   }
 
@@ -76,7 +76,7 @@ class ShownCels {
   Iterable<BitmapTile> _painted(Iterable<CelSurface> cels) sync* {
     final canvases = _byCanvas.values.toList();
     for (final (key, surface) in cels) {
-      final cel = (key.layerId, key.frameId);
+      final cel = key.cel;
       for (final shown in canvases) {
         if (shown.cel != cel) {
           continue;

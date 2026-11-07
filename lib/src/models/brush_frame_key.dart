@@ -19,6 +19,12 @@ class BrushFrameKey {
   final LayerId layerId;
   final FrameId frameId;
 
+  /// The cel as its painters name it — its row and its frame, without the
+  /// project, track and cut this key finds it through: what a canvas shows
+  /// (`ShownCel`), a tile picture's lineage and the engine ledger's cel are
+  /// keyed by.
+  (LayerId, FrameId) get cel => (layerId, frameId);
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

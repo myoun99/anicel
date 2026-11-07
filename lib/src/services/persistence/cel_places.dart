@@ -258,7 +258,7 @@ class _CelPlaceIndex {
         ? _timesheets[key.cutId]
         : isViewerInkKey(key)
         ? _viewers[viewerInkCarryOf(key)]
-        : _drawings[(key.layerId, key.frameId)];
+        : _drawings[key.cel];
     return found ??
         (plane: _Plane.gone, position: 0, place: const GoneCelPlace());
   }

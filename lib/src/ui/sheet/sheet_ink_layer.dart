@@ -570,7 +570,7 @@ void printSheetInkAsLive(
       surface: surface,
       viewport: viewport,
       showTransparentBackground: false,
-      lineage: (window.key.layerId, window.key.frameId),
+      lineage: window.key.cel,
       devicePixelRatio: view.devicePixelRatio,
     ).paint(canvas, view.size);
     canvas.restore();

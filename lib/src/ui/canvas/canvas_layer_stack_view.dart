@@ -549,7 +549,7 @@ final class LiftedRowPainters {
       surface: celSurfaceAsShown(lifted.surface, request.sourceEffects),
       // The stack draws in canvas space, as for the live row.
       showTransparentBackground: false,
-      lineage: (request.frameKey.layerId, request.frameKey.frameId),
+      lineage: request.frameKey.cel,
     );
     _held[request.frameKey] = (
       surface: lifted.surface,

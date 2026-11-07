@@ -1416,7 +1416,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // would go unused.
     ShownCels.instance.show(
       this,
-      (token.key.layerId, token.key.frameId),
+      token.key.cel,
       painted: (surface) =>
           celSurfaceAsShown(surface, widget.activeSourceEffects),
     );
@@ -1429,7 +1429,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // The stack painter applies the viewport itself, so the surface
       // painter draws in canvas space.
       showTransparentBackground: false,
-      lineage: (token.key.layerId, token.key.frameId),
+      lineage: token.key.cel,
       landingPreview: _text.float,
     );
   }
