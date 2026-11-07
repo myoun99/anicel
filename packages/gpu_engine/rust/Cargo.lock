@@ -848,6 +848,7 @@ version = "0.0.1"
 dependencies = [
  "ash",
  "crc32fast",
+ "display",
  "fx_plugin",
  "harfrust",
  "ledger",

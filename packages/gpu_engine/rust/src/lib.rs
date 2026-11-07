@@ -26,6 +26,7 @@ mod testing;
 // 2026-11-08 03:39): a crate this one depends on but never names is not
 // linked, and its extern "C" functions are not exported (Cargo.toml's
 // workspace note, measured 2026-11-06) — named here, they are.
+pub use display;
 pub use fx_plugin;
 
 use std::cell::RefCell;

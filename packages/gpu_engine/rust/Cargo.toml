@@ -22,6 +22,7 @@ name = "gpu_engine_core"
 crc32fast = "1"
 # The app's native modules this library carries, each exported from here
 # (src/lib.rs names it — the workspace note below says why it must).
+display = { path = "native/display" }
 fx_plugin = { path = "native/fx_plugin" }
 pollster = "0.4"
 # The engine sets canvas letters itself (engine-canvas-letters; 🗣️유저
