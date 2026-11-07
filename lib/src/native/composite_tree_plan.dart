@@ -12,6 +12,7 @@ import '../models/composite_tree.dart';
 import '../models/dirty_region.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
+import '../models/layer_id.dart';
 import '../models/tile_coord.dart';
 import '../services/brush_stroke_blend.dart'
     show nonSeparableBlendModeNativeId, separableBlendModeNativeId;
@@ -26,14 +27,16 @@ import '../services/composite_effect_paint.dart'
         PluginEffect,
         ShadedEffect,
         effectBufferBounds,
+        effectReadsRow,
         onionTintColorMatrix,
         resolveColorOnlyMatrix,
         resolveCompositeEffectPlan,
         shadedPassesOf;
+import '../services/guide_geometry.dart' show GuideTransform;
 import '../services/layer_pose_matrix.dart'
     show LayerPlacement, canvasToArtwork;
 import '../services/shaded_passes.dart'
-    show IrisGatherPass, LineBoxPass, irisTurnsOf;
+    show IrisGatherPass, IrisMap, IrisMapChannel, LineBoxPass, irisTurnsOf;
 import '../ui/canvas/subtree_image_composite.dart' show subtreeBufferBounds;
 import '../ui/canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
 import 'engine_tile_ledger.dart';
@@ -118,6 +121,11 @@ class _TreePlan {
   final TileHold hold;
   final ui.Rect paper;
 
+  /// Where the steps being laid lie: the canvas, or — while a blur map a
+  /// posed row's chain reads is drawn — that row's own space, canvas to it
+  /// ([_mapDrawn]).
+  LayerPlacement? _space;
+
   void _lay(List<CompositeNode<EngineRow>> nodes) {
     for (final node in nodes) {
       _node(node);
@@ -126,11 +134,16 @@ class _TreePlan {
 
   /// [node]'s steps, its picture laid in [mode] where one is named — the
   /// blend a [CompositeBackdropBlend] lays its source in, which paints
-  /// normal itself — else in its own.
-  void _node(CompositeNode<EngineRow> node, {int? mode}) {
+  /// normal itself — else in its own; its chain reading the rows [reads]
+  /// draw ([CompositeReadsRows]), none of its children's.
+  void _node(
+    CompositeNode<EngineRow> node, {
+    int? mode,
+    _Reads reads = const {},
+  }) {
     switch (node) {
       case CompositeLeaf(payload: final EngineTiles row):
-        _row(row, mode ?? _blendOf(row.blendMode));
+        _row(row, mode ?? _blendOf(row.blendMode), reads);
       case CompositeLeaf(payload: EngineSolid(:final argb, :final rect)):
         plan.solid(
           _rgbaOf(argb),
@@ -140,9 +153,9 @@ class _TreePlan {
           rect.bottomExclusive,
         );
       case final CompositeGroup<EngineRow> group:
-        _group(group, mode ?? _blendOf(group.blendMode));
+        _group(group, mode ?? _blendOf(group.blendMode), reads);
       case final CompositeAdjustment<EngineRow> adjustment:
-        _adjustment(adjustment);
+        _adjustment(adjustment, reads);
       case CompositeBackdropBlend(
         :final backdrop,
         :final source,
@@ -161,20 +174,21 @@ class _TreePlan {
       // engine's own letters lay them (공통, engine-canvas-letters).
       case CompositeCelNumber():
         throw UnsupportedError('a cel number on the engine: $node');
-      // ⏳screen-on-the-engine c5c: a lens blur's map drawn from its rows.
-      case CompositeReadsRows():
-        throw UnsupportedError('a chain reading rows on the engine: $node');
+      case CompositeReadsRows(:final node, :final rows):
+        _node(node, mode: mode, reads: rows);
     }
   }
 
   /// [group]'s buffer, closed at its strength in [mode] through its chain
   /// and its colour.
-  void _group(CompositeGroup<EngineRow> group, int mode) {
+  void _group(CompositeGroup<EngineRow> group, int mode, _Reads reads) {
     plan.open();
     _lay(group.children);
     final (:chain, :colour) = _chainOf(
       group.effects,
       over: (outset) => _bufferOf(group, outset),
+      space: _space,
+      reads: reads,
     );
     plan.close(
       opacity: _strengthOf(group.opacity),
@@ -185,7 +199,7 @@ class _TreePlan {
   }
 
   /// [adjustment]'s scope, closed through its grade at its mix.
-  void _adjustment(CompositeAdjustment<EngineRow> adjustment) {
+  void _adjustment(CompositeAdjustment<EngineRow> adjustment, _Reads reads) {
     final CompositeAdjustment(:children, :effects, :mix) = adjustment;
     plan.open();
     _lay(children);
@@ -202,6 +216,8 @@ class _TreePlan {
     final (:chain, :colour) = _chainOf(
       effects,
       over: (outset) => _bufferOf(adjustment, outset),
+      space: _space,
+      reads: reads,
     );
     plan.close(
       mode: GpuBlend.normal,
@@ -224,34 +240,28 @@ class _TreePlan {
   }
 
   /// [row] laid in [mode] — none where its pose collapses it.
-  void _row(EngineTiles row, int mode) {
-    final back = switch (row.placement) {
-      null => const (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
-      final placement => switch (canvasToArtwork(placement)) {
-        null => null,
-        final inverse => (
-          inverse.a,
-          inverse.b,
-          inverse.c,
-          inverse.d,
-          inverse.tx,
-          inverse.ty,
-        ),
-      },
+  void _row(EngineTiles row, int mode, _Reads reads) {
+    final placement = _inSpace(row.placement);
+    final inverse = switch (placement) {
+      null => const GuideTransform.identity(),
+      final placement => canvasToArtwork(placement),
     };
     final tiles = row.surface.tiles;
-    if (back == null || tiles.isEmpty) {
+    if (inverse == null || tiles.isEmpty) {
       return;
     }
     // Its chain runs on its own picture, the whole of what it stands for,
     // and is cut there — as the walk steps the image it lays, before its
-    // pose (steppedForChain).
+    // pose (steppedForChain); the rows it reads drawn there too, under
+    // its pose undone (rowsUnderPlacement).
     final (:chain, :colour) = _chainOf(
       row.effects,
       over: (_) => surfaceContentWorldRect(row.surface),
+      space: placement == null ? null : inverse,
+      reads: reads,
     );
     final tint = row.tint;
-    final (a, b, c, d, tx, ty) = back;
+    final GuideTransform(:a, :b, :c, :d, :tx, :ty) = inverse;
     plan.row(
       set: _setOf(row.lineage, tiles),
       chain: chain,
@@ -307,12 +317,15 @@ class _TreePlan {
       : plan.matrix(matrix);
 
   /// What [effects] lay where a draw takes them, its picture standing for
-  /// the rect [over] answers for how far they reach past it: the chain
-  /// their steps run on that picture — none where no step changes a pixel
-  /// — and the colour the draw lays it through after them.
+  /// the rect [over] answers for how far they reach past it, in [space]:
+  /// the chain their steps run on that picture, reading the rows [reads]
+  /// draw — none where no step changes a pixel — and the colour the draw
+  /// lays it through after them.
   ({int? chain, List<double>? colour}) _chainOf(
     List<ResolvedLayerEffect> effects, {
     required ui.Rect Function(double outset) over,
+    required LayerPlacement? space,
+    required _Reads reads,
   }) {
     final steps = resolveCompositeEffectPlan(effects, paper: paper);
     final colour = _colourOf(steps.finalEffects);
@@ -322,7 +335,7 @@ class _TreePlan {
     final picture = _pixelsOf(over(steps.outsetPixels));
     final ops = [
       for (final step in steps.preSteps) ...[
-        ..._opsOf(step.lead, picture),
+        ..._opsOf(step.lead, picture, space: space, reads: reads),
         if (_colourOf(step.then) case final then?)
           (int chain) => plan.chainMatrix(chain, then),
       ],
@@ -345,12 +358,15 @@ class _TreePlan {
     return (chain: chain, colour: colour);
   }
 
-  /// The ops [lead] lays on a chain whose picture is [picture] — none for
-  /// none, nor where it changes no pixel there.
+  /// The ops [lead] lays on a chain whose picture is [picture], in
+  /// [space], reading the rows [reads] draw — none for none, nor where it
+  /// changes no pixel there.
   List<void Function(int chain)> _opsOf(
     EffectStepLead? lead,
-    (int, int, int, int) picture,
-  ) => switch (lead) {
+    (int, int, int, int) picture, {
+    required LayerPlacement? space,
+    required _Reads reads,
+  }) => switch (lead) {
     null => const [],
     KeyRun(:final keys) => [(chain) => plan.chainKeys(chain, _keysOf(keys))],
     // In the chain's own pixels, as its plate and its paper are.
@@ -363,7 +379,16 @@ class _TreePlan {
       [] => const [],
       // The sums before it are the engine lens blur's own.
       [..., final IrisGatherPass gather] => [
-        (chain) => _lens(chain, gather, picture),
+        (chain) => _lens(
+          chain,
+          gather,
+          picture,
+          drawn: switch (effectReadsRow(effect)) {
+            null => null,
+            final row => reads[row],
+          },
+          space: space,
+        ),
       ],
       final passes => [
         (chain) => plan.chainLine(chain, picture, [
@@ -403,12 +428,17 @@ class _TreePlan {
   /// [gather] — a camera lens blur's iris gathered out of its row sums —
   /// on [chain] over [picture], the paper it repeats past it cut to the
   /// picture, as its shader cuts it (iris_blur_shader.dart): where none of
-  /// the paper is there, the cut leaves nothing.
-  void _lens(int chain, IrisGatherPass gather, (int, int, int, int) picture) {
-    // ⏳screen-on-the-engine c5c: a blur map drawn from the rows it reads.
-    if (gather.map != null) {
-      throw UnsupportedError('a lens blur reading a map on the engine');
-    }
+  /// the paper is there, the cut leaves nothing. Its blur map is the row
+  /// [drawn] draw, in [space]; where none draw it, the row it names is
+  /// none of the cut's, and it blurs at its whole radius
+  /// ([IrisGatherPass.unmapped]).
+  void _lens(
+    int chain,
+    IrisGatherPass gather,
+    (int, int, int, int) picture, {
+    required List<CompositeNode<EngineRow>>? drawn,
+    required LayerPlacement? space,
+  }) {
     final (left, top, right, bottom) = picture;
     final cut = switch (gather.paper) {
       null => null,
@@ -423,7 +453,13 @@ class _TreePlan {
       plan.chainMatrix(chain, List.filled(20, 0));
       return;
     }
-    final IrisGatherPass(:iris, :light) = gather;
+    final IrisGatherPass(:iris, :light, :map) = drawn == null
+        ? gather.unmapped
+        : gather;
+    final read = switch ((map, drawn)) {
+      (final map?, final drawn?) => _mapDrawn(drawn, map, space: space),
+      _ => null,
+    };
     final (:rotation, :halfSide, :side) = irisTurnsOf(
       sides: iris.sides,
       rotation: iris.rotation,
@@ -444,26 +480,79 @@ class _TreePlan {
       saturation: light?.saturation ?? 0,
       linear: light?.linear ?? false,
       paper: cut,
-    ));
+    ), map: read);
   }
 
-  /// The rect [node]'s buffer covers on the canvas: all its rows stand for
-  /// ([subtreeBufferBounds]), grown by [outset], how far its chain reaches
-  /// past them.
+  /// The blur map [map] reads of the row [drawn] draw: drawn alone, as it
+  /// shows by itself, in [space] — the steps laid for it taken from the
+  /// plan as the map's (`GpuPlan.mapDrawn`).
+  int _mapDrawn(
+    List<CompositeNode<EngineRow>> drawn,
+    IrisMap map, {
+    required LayerPlacement? space,
+  }) {
+    final first = plan.steps;
+    final outer = _space;
+    _space = space;
+    try {
+      _lay(drawn);
+    } finally {
+      _space = outer;
+    }
+    return plan.mapDrawn(
+      first,
+      channel: _channelOf(map.channel),
+      focal: map.focal,
+      inverts: map.inverts,
+    );
+  }
+
+  /// [placement] as it lies in the space the steps are laid in ([_space]).
+  LayerPlacement? _inSpace(LayerPlacement? placement) => switch (_space) {
+    null => placement,
+    final space => space.compose(
+      placement ?? const GuideTransform.identity(),
+    ),
+  };
+
+  /// The rect [node]'s buffer covers in the space it is laid in: all its
+  /// rows stand for ([subtreeBufferBounds]), grown by [outset], how far
+  /// its chain reaches past them.
   // ⏳Uncut by what reads it, as the walk cuts it to the view (screen-on-
   // the-engine c6): what of it lies past the view changes no pixel a run
   // puts there, only how much the chain runs over.
-  ui.Rect _bufferOf(CompositeNode<EngineRow> node, double outset) =>
-      effectBufferBounds(
-        subtreeBufferBounds(
-          node,
-          within: ui.Rect.largest,
-          extentOf: _extentOf,
-          placementOf: _placementOf,
-        ),
-        outset,
-      );
+  ui.Rect _bufferOf(CompositeNode<EngineRow> node, double outset) {
+    // ⏳A folder's chain in the blur map a posed row reads: the walk rasters
+    // it on the canvas's grid, its spread in canvas pixels, and lays that
+    // under the row's pose undone — a buffer in the row's own space would
+    // spread it in the row's.
+    if (_space != null) {
+      throw UnsupportedError('a chain of a buffer a posed row reads: $node');
+    }
+    return effectBufferBounds(
+      subtreeBufferBounds(
+        node,
+        within: ui.Rect.largest,
+        extentOf: _extentOf,
+        placementOf: _placementOf,
+      ),
+      outset,
+    );
+  }
 }
+
+/// Row id → the nodes that draw the row, as a node whose chain reads rows
+/// holds them ([CompositeReadsRows.rows]).
+typedef _Reads = Map<LayerId, List<CompositeNode<EngineRow>>>;
+
+/// [channel] by the engine's id.
+GpuMapChannel _channelOf(IrisMapChannel channel) => switch (channel) {
+  IrisMapChannel.luminance => GpuMapChannel.luminance,
+  IrisMapChannel.red => GpuMapChannel.red,
+  IrisMapChannel.green => GpuMapChannel.green,
+  IrisMapChannel.blue => GpuMapChannel.blue,
+  IrisMapChannel.alpha => GpuMapChannel.alpha,
+};
 
 /// The rect [row] stands for, as a buffer holding it covers it: a row's
 /// content — the canvas with every tile it holds — and a solid's own.

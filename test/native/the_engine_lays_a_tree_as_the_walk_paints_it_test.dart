@@ -21,6 +21,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
@@ -270,17 +271,20 @@ void main() {
     return (most: most, apart: apart, far: far);
   }
 
-  /// [kind] at its defaults but for [lanes], standing on [points].
+  /// [kind] at its defaults but for [lanes], standing on [points] and
+  /// reading the rows [layers] name.
   ResolvedLayerEffect fx(
     EffectKind kind,
     Map<String, double> lanes, {
     Map<String, CanvasPoint?> points = const {},
+    Map<String, LayerId?> layers = const {},
   }) => ResolvedLayerEffect(
     kind: kind,
     values: [
       for (final spec in kind.parameters) lanes[spec.id] ?? spec.defaultValue,
     ],
     points: points,
+    layers: layers,
   );
 
   final colour = fx(EffectKind.hueSaturation, {
@@ -304,20 +308,29 @@ void main() {
     {'amount': spin ? 8 : 15, 'type': spin ? 0 : 1},
     points: {'center': CanvasPoint(x: 90, y: 40)},
   );
+  /// The row a lens's blur map is read from ([lens]'s `reads`).
+  const depth = LayerId('depth');
   ResolvedLayerEffect lens({
     bool repeats = false,
     Map<String, double> light = const {},
-  }) => fx(EffectKind.cameraLensBlur, {
-    'blurRadius': 5,
-    'irisShape': 3,
-    'irisRoundness': 20,
-    'irisAspectRatio': 1.3,
-    'irisRotation': 15,
-    'irisDiffractionFringe': 100,
-    'repeatEdgePixels': repeats ? 1 : 0,
-    ...light,
-  });
+    Map<String, double>? reads,
+  }) => fx(
+    EffectKind.cameraLensBlur,
+    {
+      'blurRadius': 5,
+      'irisShape': 3,
+      'irisRoundness': 20,
+      'irisAspectRatio': 1.3,
+      'irisRotation': 15,
+      'irisDiffractionFringe': 100,
+      'repeatEdgePixels': repeats ? 1 : 0,
+      ...light,
+      if (reads != null) ...{'blurFocalDistance': 128, ...reads},
+    },
+    layers: {if (reads != null) 'blurMapLayer': depth},
+  );
   GuideTransform moved(double x, double y) => GuideTransform(1, 0, 0, 1, x, y);
+  const quarter = GuideTransform(0, 1, -1, 0, 192, -64);
 
   const clear = ui.Color(0x00000000);
   const white = ui.Color(0xFFFFFFFF);
@@ -341,7 +354,7 @@ void main() {
           clear,
         ),
         'a row turned a quarter': (
-          [row(1, placement: const GuideTransform(0, 1, -1, 0, 192, -64))],
+          [row(1, placement: quarter)],
           clear,
         ),
         'a row in a colour': (
@@ -656,7 +669,7 @@ void main() {
           [
             row(
               1,
-              placement: const GuideTransform(0, 1, -1, 0, 192, -64),
+              placement: quarter,
               margin: 8,
               effects: [along],
             ),
@@ -738,6 +751,103 @@ void main() {
               children: [row(1)],
               effects: [colour, key()],
               mix: 0.4,
+            ),
+          ],
+          clear,
+        ),
+        // A lens reading its blur map from a row, drawn as it shows by
+        // itself where the chain runs: under a posed row's pose undone.
+        'a row through a lens reading a map': (
+          [
+            CompositeReadsRows(
+              node: row(1, effects: [lens(reads: {})]),
+              rows: {
+                depth: [row(5)],
+              },
+            ),
+          ],
+          clear,
+        ),
+        'a moved row through a lens reading a map, a row over it': (
+          [
+            CompositeReadsRows(
+              node: row(1, placement: moved(20, 10), effects: [lens(reads: {})]),
+              rows: {
+                depth: [row(5)],
+              },
+            ),
+            row(2, opacity: 0.6),
+          ],
+          clear,
+        ),
+        'a turned row through a lens reading a moved map': (
+          [
+            CompositeReadsRows(
+              node: row(1, placement: quarter, effects: [lens(reads: {})]),
+              rows: {
+                depth: [row(5, placement: moved(10, 5))],
+              },
+            ),
+          ],
+          clear,
+        ),
+        'a row through a lens reading a map\'s alpha inverted, in focus '
+            'far': (
+          [
+            CompositeReadsRows(
+              node: row(
+                1,
+                effects: [
+                  lens(
+                    reads: {
+                      'blurMapChannel': 4,
+                      'blurFocalDistance': 220,
+                      'invertBlurMap': 1,
+                    },
+                  ),
+                ],
+              ),
+              rows: {
+                depth: [row(5)],
+              },
+            ),
+          ],
+          clear,
+        ),
+        'a row through a lens reading a map that draws nothing': (
+          [
+            CompositeReadsRows(
+              node: row(1, effects: [lens(reads: {})]),
+              rows: {depth: const []},
+            ),
+          ],
+          clear,
+        ),
+        // A row it names that the cut does not hold reads as none: the
+        // blur at its whole radius.
+        'a row through a lens reading a row the cut does not hold': (
+          [
+            CompositeReadsRows(
+              node: row(1, effects: [lens(reads: {})]),
+              rows: {
+                const LayerId('another'): [row(5)],
+              },
+            ),
+          ],
+          clear,
+        ),
+        'a folder through a lens reading a map': (
+          [
+            CompositeReadsRows(
+              node: CompositeGroup(
+                children: [row(1, placement: moved(40, 30))],
+                opacity: 1,
+                blendMode: LayerBlendMode.normal,
+                effects: [lens(reads: {})],
+              ),
+              rows: {
+                depth: [row(5)],
+              },
             ),
           ],
           clear,
@@ -825,4 +935,24 @@ void main() {
       expect(() => laid([blurred], clear), throwsUnsupportedError);
     });
   }
+
+  // ⏳A folder's chain in the blur map a posed row reads: the walk spreads
+  // it on the canvas's grid, laid under the row's pose undone.
+  test('a tree holding what the engine cannot lay yet is refused — a '
+      'folder\'s chain in the map a moved row reads', () {
+    final reading = CompositeReadsRows(
+      node: row(1, placement: moved(20, 10), effects: [lens(reads: {})]),
+      rows: {
+        depth: [
+          CompositeGroup(
+            children: [row(5)],
+            opacity: 1,
+            blendMode: LayerBlendMode.normal,
+            effects: [along],
+          ),
+        ],
+      },
+    );
+    expect(() => laid([reading], clear), throwsUnsupportedError);
+  });
 }
