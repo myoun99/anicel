@@ -56,17 +56,29 @@ void main() {
     });
   });
 
-  test('a text is its one file, or each file under its name', () {
-    expect(textOf({'LICENSE': '\n  one  \n'}), 'one');
-    expect(
-      textOf({'LICENSE-APACHE': 'apache\n', 'LICENSE-MIT': 'mit\n'}),
-      'LICENSE-APACHE\n\napache\n\nLICENSE-MIT\n\nmit',
-    );
-  });
-
   group('the notices', () {
     CrateLicence licence(String? expression, [Map<String, String>? files]) =>
         (expression: expression, files: files ?? const {});
+
+    test('list a crate under each text it ships, and a text once', () {
+      final notices = noticesOf({
+        'two 1.0.0': licence('MIT OR Apache-2.0', {
+          'LICENSE-APACHE': '\n  apache  \n',
+          'LICENSE-MIT': 'Copyright Two\n',
+        }),
+        'one 1.0.0': licence('Apache-2.0', {'LICENSE': 'apache'}),
+        // The same text in two files of one crate names the crate once.
+        'twice 1.0.0': licence('Apache-2.0', {
+          'LICENSE': 'apache',
+          'LICENSE-APACHE': 'apache\n',
+        }),
+      });
+      expect(notices.map((n) => n.crates), [
+        ['one 1.0.0', 'twice 1.0.0', 'two 1.0.0'],
+        ['two 1.0.0'],
+      ]);
+      expect(notices.map((n) => n.text), ['apache', 'Copyright Two']);
+    });
 
     test('list the crates of one text under one entry, by first crate', () {
       final notices = noticesOf({
@@ -94,7 +106,7 @@ void main() {
         }),
       });
       final bare = notices.singleWhere((n) => n.crates.contains('bare 1.0.0'));
-      expect(bare.crates, ['bare 1.0.0']);
+      expect(bare.crates, ['a 1.0.0', 'bare 1.0.0']);
       expect(bare.text, 'apache a');
     });
 
@@ -132,7 +144,11 @@ void main() {
 
     test('refuse a crate no text can be found for', () {
       expect(
-        () => noticesOf({'orphan 1.0.0': licence('Apache-2.0')}),
+        () => noticesOf({
+          'orphan 1.0.0': licence('Apache-2.0'),
+          // Another licence's Apache file is not this licence's text.
+          'other 1.0.0': licence('MIT OR Apache-2.0', {'LICENSE-APACHE': 'a'}),
+        }),
         throwsA(isA<StateError>().having(
           (e) => e.message,
           'message',
@@ -174,12 +190,13 @@ void main() {
       ['x86_64-pc-windows-msvc'],
       [
         (crates: ['a 1.0.0', 'b 1.0.0'], text: 'one'),
-        (crates: ['c 1.0.0'], text: 'two'),
+        (crates: ['a 1.0.0', 'c 1.0.0'], text: 'two'),
       ],
       {'z 1.0.0', 'y 1.0.0'},
     );
     final read = noticedCrates(file);
     expect(read.targets, ['x86_64-pc-windows-msvc']);
+    // A crate under two texts is one crate noticed.
     expect(read.noticed, ['a 1.0.0', 'b 1.0.0', 'c 1.0.0']);
     expect(read.unshipped, ['y 1.0.0', 'z 1.0.0']);
   });

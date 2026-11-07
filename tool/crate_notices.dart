@@ -73,15 +73,6 @@ CrateLicence licenceIn(Directory folder) {
   ));
 }
 
-/// A crate's notice text: its files, one after another, each under its
-/// name where there are more than one.
-String textOf(Map<String, String> files) => files.length == 1
-    ? files.values.single.trim()
-    : [
-        for (final MapEntry(:key, :value) in files.entries)
-          '$key\n\n${value.trim()}',
-      ].join('\n\n');
-
 /// The text a crate that ships no licence file is listed under: the
 /// Apache-2.0 text of the first crate (by name) declaring the same licence
 /// — its APACHE file, or its one file where the licence is Apache's alone.
@@ -105,36 +96,44 @@ String? borrowedText(
           file.key.toUpperCase().contains('APACHE') ||
           (alone && files.length == 1),
     );
-    if (apache.isNotEmpty) return textOf(Map.fromEntries([apache.first]));
+    if (apache.isNotEmpty) return apache.first.value.trim();
   }
   return null;
 }
 
-/// The notices: every crate of [shipped] under its text, one entry a text,
-/// the crates of an entry sorted, the entries by their first crate.
+/// The notices: one entry a licence text, naming every crate of [shipped]
+/// that ships it — a crate with two files (its MIT and its Apache) under
+/// each, so a text many crates ship is listed once, as the app's licence
+/// screen lists a package under each of its texts. The crates of an entry
+/// sorted, the entries by their first crate and then their text.
 List<({List<String> crates, String text})> noticesOf(
   Map<String, CrateLicence> shipped,
 ) {
-  final byText = <String, List<String>>{};
+  final byText = <String, Set<String>>{};
   final unread = <String>[];
   for (final MapEntry(key: crate, value: licence) in shipped.entries) {
-    final text = licence.files.isEmpty
+    final borrowed = licence.files.isEmpty
         ? borrowedText(licence.expression, shipped)
-        : textOf(licence.files);
-    if (text == null) {
-      unread.add('$crate (${licence.expression})');
-      continue;
+        : null;
+    final texts = [
+      for (final text in licence.files.values) text.trim(),
+      ?borrowed,
+    ];
+    if (texts.isEmpty) unread.add('$crate (${licence.expression})');
+    for (final text in texts) {
+      (byText[text] ??= {}).add(crate);
     }
-    (byText[text] ??= []).add(crate);
   }
   if (unread.isNotEmpty) {
     throw StateError('no licence text for: ${unread.join(', ')}');
   }
-  final notices = [
+  return [
     for (final MapEntry(key: text, value: crates) in byText.entries)
-      (crates: crates..sort(), text: text),
-  ]..sort((a, b) => a.crates.first.compareTo(b.crates.first));
-  return notices;
+      (crates: crates.toList()..sort(), text: text),
+  ]..sort((a, b) {
+      final first = a.crates.first.compareTo(b.crates.first);
+      return first != 0 ? first : a.text.compareTo(b.text);
+    });
 }
 
 /// The notices file's shape, written by [noticesFile] and read by
@@ -153,18 +152,18 @@ Map<String, Object> noticesFile(
   'unshipped': unshipped.toList()..sort(),
 };
 
-/// What a notices file accounts for: the targets it was made for, the crates
-/// it lists under a text, and the lock's crates it found no target ships.
+/// What a notices file accounts for: the targets it was made for, the
+/// crates it lists — each once, however many texts it is under — and the
+/// lock's crates it found no target ships.
 ({List<String> targets, List<String> noticed, List<String> unshipped})
 noticedCrates(Map<String, dynamic> file) => (
   targets: (file['targets'] as List).cast<String>(),
-  noticed: [
+  noticed: {
     for (final notice in (file['notices'] as List).cast<Map<String, dynamic>>())
       ...(notice['crates'] as List).cast<String>(),
-  ],
+  }.toList()..sort(),
   unshipped: (file['unshipped'] as List).cast<String>(),
 );
-
 Future<String> _run(String executable, List<String> args, String folder) async {
   final result = await Process.run(executable, args, workingDirectory: folder);
   if (result.exitCode != 0) {
