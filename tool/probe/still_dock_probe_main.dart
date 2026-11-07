@@ -81,6 +81,11 @@ final class _Probe {
       Timer.periodic(const Duration(milliseconds: 250), (_) => _look());
 
   void _look() {
+    // A frame at every look: a region shows the image it took from the
+    // frame after, and an app nothing moves in asks for none — 🔬the main
+    // PC, 11-07: every region had taken its image and still painted live,
+    // three seconds on.
+    WidgetsBinding.instance.scheduleFrame();
     if (!_marked) {
       _marked = _putMark();
     }
