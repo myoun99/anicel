@@ -498,39 +498,67 @@ void main() {
       });
     }
 
-    // ⚠️Turned, the picture's edge is not softened the same where it
-    // crosses the edge of a part's raster: 🔬2026-11-08 up to 19/255 apart
-    // turned 45° at 0.6 in parts of whole tiles, 50/255 at 0.04 halved,
-    // none laid in one raster — the known problem of a cel drawn in pieces
-    // (card `a-cel-past-the-side-resamples-a-hair-apart`). What is pinned
-    // turned is which tiles there are: the strip's bounds take in the tile
-    // right of its top, which none of its pixels reach.
-    testWidgets('🎯shrunk so far and turned — a tile halved to no ink is no '
-        'tile', (tester) async {
+    // ⚠️None of these is turned: turned, the picture's edge is softened
+    // otherwise where it crosses the edge of a part's raster — 🔬2026-11-08
+    // up to 19/255 apart at 45° and 0.6 in parts of whole tiles, 50/255 at
+    // 0.04 halved, none laid in one raster. The known problem of a cel drawn
+    // in pieces (card `a-cel-past-the-side-resamples-a-hair-apart`, its
+    // owner 02:28: 「알려진 문제로 둔다」).
+
+    testWidgets('🎯shrunk past one raster over the clear of a picture — a '
+        'tile halved to no ink is no tile', (tester) async {
       await tester.runAsync(() async {
-        const placement = GuideTransform(
-          0.028284,
-          0.028284,
-          -0.028284,
-          0.028284,
-          34.3,
-          44.3,
-        );
-        final rgba = patterned(1200, 200);
+        const side = 1200;
+        final rgba = Uint8List(side * side * 4);
+        final ink = patterned(side, side);
+        for (var y = 900; y < side; y += 1) {
+          final row = (y * side + 900) * 4;
+          rgba.setRange(row, (y + 1) * side * 4, ink, row);
+        }
+        const placement = GuideTransform(0.15, 0, 0, 0.15, 3.26, 3.26);
         debugLayRasterSide = 256;
-        final engine = await engineOf(rgba, 1200, 200);
+        final engine = await engineOf(rgba, side, side);
+        final theirs = await laid(engine, placement);
+        engine.dispose();
+
+        expect(theirs.tiles.keys, [TileCoord(x: 2, y: 2)]);
+        expectSameCel(
+          await laid(PixelsPicture(rgba, width: side, height: side), placement),
+          theirs,
+          colourSlack: 1,
+        );
+      });
+    });
+
+    testWidgets('🎯shrunk so far a pixel reaches past one raster — laid, '
+        'that pixel decoded smaller', (tester) async {
+      await tester.runAsync(() async {
+        const placement = GuideTransform(0.0035, 0, 0, 0.0035, 3.27, 7.27);
+        final rgba = patterned(2000, 2000);
+        debugLayRasterSide = 256;
+        final engine = await engineOf(rgba, 2000, 2000);
         final theirs = await laid(engine, placement);
         engine.dispose();
         final ours = await laid(
-          PixelsPicture(rgba, width: 1200, height: 200),
+          PixelsPicture(rgba, width: 2000, height: 2000),
           placement,
         );
 
-        expect(
-          theirs.tiles.keys,
-          isNot(contains(TileCoord(x: 1, y: 0))),
-        );
         expect(ours.tiles.keys, unorderedEquals(theirs.tiles.keys));
+        // Its colour is the decoder's, not the texel's: what is pinned is
+        // that every pixel the picture covers whole is laid.
+        var covered = 0;
+        for (final MapEntry(key: coord, value: tile) in theirs.tiles.entries) {
+          final engine = tile.pixels;
+          final held = ours.tiles[coord]!.pixels;
+          for (var alpha = 3; alpha < engine.length; alpha += 4) {
+            if (engine[alpha] == 255) {
+              covered += 1;
+              expect(held[alpha], 255, reason: 'pixel ${alpha ~/ 4}');
+            }
+          }
+        }
+        expect(covered, greaterThan(0));
       });
     });
   });
