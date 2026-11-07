@@ -60,6 +60,7 @@ jobs:
           $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
 
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
 
       # 🔢One number per round, read through env and never pasted into the
       # script, as linux-release.yml does.

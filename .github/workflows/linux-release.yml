@@ -67,6 +67,7 @@ jobs:
             clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev \
             xvfb xdotool libgl1-mesa-dri
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
 
       # 🔢One number per round, the round's TestFlight number (유저
       # 2026-10-02: 「제일 높은 테스트플라이트 숫자로 통일」). Required here,

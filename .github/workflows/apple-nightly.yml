@@ -79,6 +79,7 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
       - name: Run tests (engine loaded, parity tests live)
         uses: ./.github/actions/test-shard
         with:

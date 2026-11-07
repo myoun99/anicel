@@ -55,6 +55,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
 
       # The Apple-side correctness check lives HERE, before anything
       # expensive, rather than in a separate workflow somebody has to

@@ -115,6 +115,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - uses: ./.github/actions/rust-engine
 
       # No signing needed for either of these: the macOS build is local,
       # and simulator builds never sign.
