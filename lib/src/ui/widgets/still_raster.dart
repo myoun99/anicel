@@ -697,7 +697,12 @@ class _StillLayer extends OffsetLayer {
 
   /// Whether this region's check takes its image in the checks of the
   /// frame under way ([_watch]), unless it gives way ([_givesWayTo]).
-  bool get _takesNow => _watching && _owedAnImage && _mayTake;
+  ///
+  /// ⛔Not asked whether it is owed one ([_owedAnImage]): one told no or
+  /// gone empty since its check was asked for has changed, and one taken
+  /// in a gap has its image first drawn in this frame — neither may take
+  /// (the mutants of F-533's fix, 2026-11-07).
+  bool get _takesNow => _watching && _mayTake;
 
   /// Whether the scene draws this region's own image: no region above it
   /// is drawn from an image, which holds this one's pixels too.

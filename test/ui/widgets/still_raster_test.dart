@@ -457,25 +457,46 @@ void main() {
     );
   });
 
-  testWidgets('a region the scene draws that cannot be taken holds no turn '
-      'back', (tester) async {
-    await _pumpInnerAndBeside(tester, beside: const Texture(textureId: 7));
-    final regions = _regionsByLabel(tester);
-    for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
-      await _frame(tester);
-    }
-    expect(
-      regions['beside']!.standDown,
-      StillStandDown.unvouched,
-      reason: 'premise: the region beside cannot be taken',
-    );
-    expect(regions['outer']!.debugCaptureCount, 1, reason: 'premise');
-    expect(
-      regions['inner']!.debugCaptureCount,
-      1,
-      reason: 'the region under the outer one\'s image gave its turn on '
-          'every frame to one that never takes it',
-    );
+  group('a region the scene draws holds no turn back', () {
+    const gaveItsTurn =
+        'the region under the outer one\'s image gave its turn to one that '
+        'does not take it';
+
+    testWidgets('that cannot be taken', (tester) async {
+      await _pumpInnerAndBeside(tester, beside: const Texture(textureId: 7));
+      final regions = _regionsByLabel(tester);
+      for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
+        await _frame(tester);
+      }
+      expect(
+        regions['beside']!.standDown,
+        StillStandDown.unvouched,
+        reason: 'premise: the region beside cannot be taken',
+      );
+      expect(regions['outer']!.debugCaptureCount, 1, reason: 'premise');
+      expect(regions['inner']!.debugCaptureCount, 1, reason: gaveItsTurn);
+    });
+
+    testWidgets('that keeps changing', (tester) async {
+      final color = ValueNotifier<Color>(_red);
+      addTearDown(color.dispose);
+      await _pumpInnerAndBeside(
+        tester,
+        beside: CustomPaint(painter: _Fill(color), size: Size.infinite),
+      );
+      final regions = _regionsByLabel(tester);
+      for (var frame = 1; frame <= StillRaster.stillFrames + 6; frame += 1) {
+        color.value = frame.isEven ? _red : _blue;
+        await _frame(tester);
+      }
+      expect(
+        regions['beside']!.debugCaptureCount,
+        0,
+        reason: 'premise: the region beside never stood still',
+      );
+      expect(regions['outer']!.debugCaptureCount, 1, reason: 'premise');
+      expect(regions['inner']!.debugCaptureCount, 1, reason: gaveItsTurn);
+    });
   });
 
   group('when the frames stop (F-533)', () {
