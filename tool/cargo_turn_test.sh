@@ -99,5 +99,29 @@ check "a cargo started while it holds waits until what it reads ends" \
   "$(awk -v fed="$(cat "$TMP/fed")" '$1 == "start" { exit !($3 >= fed) }' "$LOG"; echo $?)"
 check "and the turn is let go then" "$([ ! -e "$TURN" ]; echo $?)"
 
+# 6. --folder hook: the build hook's folder and a turn of its own — a run
+# there and one in the crate folder at once do not wait for each other.
+: > "$LOG"
+(cd "$LANE" && bash tool/cargo_turn.sh --folder hook build) 2>/dev/null
+check "--folder hook builds into the trunk's target-hook" \
+  "$(grep -q "^start [0-9]* [0-9]* ${WANT_TARGET}-hook build\$" "$LOG"; echo $?)"
+: > "$LOG"
+(cd "$STAGE" && FAKE_SECONDS=2 bash tool/cargo_turn.sh test) 2>/dev/null &
+sleep 0.5
+(cd "$LANE" && FAKE_SECONDS=0 bash tool/cargo_turn.sh --folder hook build) \
+  2>"$TMP/hook.err"
+wait
+crate_pid=$(awk '$1 == "start" && $4 !~ /-hook$/ { print $2; exit }' "$LOG")
+crate_end=$(awk -v p="$crate_pid" '$1 == "end" && $2 == p { print $3; exit }' "$LOG")
+hook_start=$(awk '$1 == "start" && $4 ~ /-hook$/ { print $3; exit }' "$LOG")
+check "a hook run does not wait for a crate run" \
+  "$([ -n "$hook_start" ] && [ -n "$crate_end" ] && [ "$hook_start" -lt "$crate_end" ]; echo $?)"
+check "and says no wait" "$(! grep -q 'held' "$TMP/hook.err"; echo $?)"
+: > "$LOG"
+(cd "$STAGE" && bash tool/cargo_turn.sh --folder elsewhere build) 2>/dev/null
+code=$?
+check "a folder of no name is refused, and runs no cargo" \
+  "$([ "$code" -eq 2 ] && [ ! -s "$LOG" ]; echo $?)"
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

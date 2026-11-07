@@ -17,20 +17,26 @@ import '../../../tool/bash_executable.dart';
 // (windows/CMakeLists.txt, NATIVE_ASSETS_DIR) — beside the engine, which
 // looks for it there.
 //
-// THE TRUNK'S ONE TARGET FOLDER (관제 · 브러시/렌더링 2026-11-07,
+// THE TRUNK'S ONE HOOK FOLDER (관제 · 브러시/렌더링 2026-11-07,
 // connection-round-checklist (나)): the hook built into a folder of each
 // checkout's own, and the app's tests run it — so every lane's first test
-// built wgpu once more (485 MB and 110 s, measured that day). It builds
-// where the crate gate builds instead, under the same turn
-// (tool/cargo_turn.sh --hold), and as each checkout's own build there:
-// cargo does not read rust/.cargo/config.toml from here (the run's folder
-// is not rust/ — measured that day, QA_CHECKOUT was unset in the build's
-// fingerprint), so the hook hands it QA_CHECKOUT itself. ⛔Without it a
-// lane's files, older than another checkout's build, read as fresh and
-// the lane's tests run that checkout's engine (src/kernels/shared/
-// one_checkout.rs). The library is copied out of the folder before the
-// turn is let go, and the copy is the asset: another checkout may build
-// there again before Flutter installs it.
+// built wgpu once more (485 MB and 110 s, measured that day). Every
+// checkout's hook builds in the trunk's rust/target-hook instead, under
+// that folder's turn (tool/cargo_turn.sh --folder hook --hold) — ⛔not the
+// crate gate's folder and turn (관제 2026-11-08 00:24, the card's 00:21):
+// under them a lane's first test waited for a gate's whole run, 445 s
+// against 19 s, and after a gate the hook built 14 of its shared host
+// build scripts and 30 crates again, 45 s. It builds there as each
+// checkout's own build: cargo does not read rust/.cargo/config.toml from
+// here (the run's folder is not rust/ — measured 2026-11-07, QA_CHECKOUT
+// was unset in the build's fingerprint), so the hook hands it QA_CHECKOUT
+// itself. ⛔Without it a lane's files, older than another checkout's build,
+// read as fresh and the lane's tests run that checkout's engine
+// (src/kernels/shared/one_checkout.rs) — measured for a target the hook
+// hands no other checkout's own value for, as it hands every one but
+// Windows (tool/engine_hook_checkout_test.sh). The library is copied out
+// of the folder before the turn is let go, and the copy is the asset:
+// another checkout may build there again before Flutter installs it.
 // ⚠️With no bash to take the turn it builds into a folder of its own, as
 // before (관제 22:55: a fork of the machine's, not a convenience rule —
 // it builds as correctly as before). That is a build started outside a
@@ -56,7 +62,7 @@ void main(List<String> args) async {
         turn.folder == null
             ? "gpu_engine: ${turn.why} — built in this checkout's own target, "
                 '${folder.toFilePath()}'
-            : "gpu_engine: built in the trunk's target, "
+            : "gpu_engine: built in the trunk's hook folder, "
                 '${folder.toFilePath()}, under its turn',
       );
       _aimTarget(input.outputDirectory, folder);
@@ -145,14 +151,14 @@ void _shipCopies(
   output.dependencies.addAll(built.dependencies);
 }
 
-/// The trunk's target turn, held by `tool/cargo_turn.sh --hold` until
-/// [release] — or, when it could not be taken, why.
+/// The trunk's hook folder's turn, held by `tool/cargo_turn.sh --folder
+/// hook --hold` until [release] — or, when it could not be taken, why.
 final class _Turn {
   _Turn._(this._holder, this.folder, this.why);
 
   final Process? _holder;
 
-  /// The shared target folder, as the turn says it; null when not held.
+  /// The hook folder, as the turn says it; null when not held.
   final Uri? folder;
 
   final String why;
@@ -162,10 +168,12 @@ final class _Turn {
     try {
       holder = await Process.start(bashExecutable, [
         script.toFilePath(),
+        '--folder',
+        'hook',
         '--hold',
       ]);
     } on ProcessException catch (error) {
-      return _Turn._(null, null, "no bash to take the trunk's turn "
+      return _Turn._(null, null, "no bash to take the hook folder's turn "
           '(${error.executable}: ${error.message.trim()})');
     }
     holder.stderr.listen(stderr.add);

@@ -2,8 +2,8 @@
 # THE SHARED TARGET'S TURN — one cargo at a time builds into the trunk's
 # target folder, and keeps it from its build to its last test.
 #
-#   bash tool/cargo_turn.sh <cargo arguments…>
-#   bash tool/cargo_turn.sh --hold
+#   bash tool/cargo_turn.sh [--folder hook] <cargo arguments…>
+#   bash tool/cargo_turn.sh [--folder hook] --hold
 #
 # cargo, run where it is called from, with the trunk's
 # packages/gpu_engine/rust/target as its target folder, once no other cargo
@@ -15,6 +15,15 @@
 # hook (packages/gpu_engine/hook/build.dart), which copies its library out
 # of the folder before another cargo may build there again (관제 ·
 # 브러시/렌더링 2026-11-07, connection-round-checklist (나) ⓑ).
+#
+# `--folder hook` is the build hook's folder of its own,
+# packages/gpu_engine/rust/target-hook, with a turn of its own — the same
+# law on a second folder (관제 2026-11-08 00:24, connection-round-checklist
+# 00:21): under the crate folder's turn a lane's first test waited for a
+# gate's whole run (445 s against 19 s), and the hook's release build,
+# for a target named on its command line, shares the gate's host build
+# scripts there — after a gate the hook built 14 of them and 30 crates
+# again (45 s). Apart, neither builds a file of the other's.
 #
 # WHY (관제 2026-11-06, native-memory-safety): the trunk and every lane
 # build the GPU engine's workspace into that one folder — wgpu is minutes
@@ -49,8 +58,25 @@ COMMON="$(git -C "$TOOL_DIR" rev-parse --path-format=absolute --git-common-dir)"
   exit 2
 }
 TRUNK_ROOT="$(cd "$COMMON/.." && pwd)"
-SHARED_TARGET="$TRUNK_ROOT/packages/gpu_engine/rust/target"
-TURN="$COMMON/cargo-target.turn"
+FOLDER=crate
+if [ "$1" = --folder ]; then
+  FOLDER="$2"
+  shift 2
+fi
+case "$FOLDER" in
+  crate)
+    SHARED_TARGET="$TRUNK_ROOT/packages/gpu_engine/rust/target"
+    TURN="$COMMON/cargo-target.turn"
+    ;;
+  hook)
+    SHARED_TARGET="$TRUNK_ROOT/packages/gpu_engine/rust/target-hook"
+    TURN="$COMMON/cargo-target-hook.turn"
+    ;;
+  *)
+    echo "cargo_turn: no shared target is named '$FOLDER' (crate, hook)" >&2
+    exit 2
+    ;;
+esac
 # Longer than a cold debug and release build with every test after it.
 STALE_MINUTES=120
 
