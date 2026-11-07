@@ -394,11 +394,16 @@ resolve_offline() {
 # analyzes — why, and the list, are in tool/resolve_packages.sh. Called
 # wherever the gate can next run on a tree: a furnished lane, the gates
 # themselves (a rebase can bring a package in), and the trunk after a land.
-# The checkout's own copy of the script, so its own list is what runs.
+#
+# ⛔THE TRUNK'S SCRIPT, NOT THE CHECKOUT'S — as a land runs the trunk's
+# lane.sh. ↩️2026-11-07 (관제, 캔버스 베이스 22:14): it was the checkout's
+# own copy, so that its own list ran — and a checkout older than the offline
+# fix holds a copy that drops what it is handed (`b60cbd54d`, where a
+# measuring worktree is kept on purpose): it resolved online, and the
+# Surface downloaded code_assets 2.2.0 unasked. ⚠️So a package a lane adds
+# to the list is resolved once the list has landed — land the list first.
 resolve_packages() {
-  local p="$1"
-  [ ! -f "$p/tool/resolve_packages.sh" ] \
-    || bash "$p/tool/resolve_packages.sh" "$p" --offline
+  bash "$ROOT/tool/resolve_packages.sh" "$1" --offline
 }
 
 # The packages the locks of the checkout at $1 take from a pub host that

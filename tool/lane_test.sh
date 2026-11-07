@@ -726,7 +726,23 @@ quiet "$E/home" open pubt; commit "$HW/lane-pubt" t.txt "a lane the trunk resolv
 O=$(LANE_TEST_FLUTTER=absent_trunk out "$E/home" land pubt)
 has "a miss in the trunk after a land is the next open's: the land stands" "$O" "merged work/pubt"
 has "and says it landed" "$O" "[exit 0]"
-# The whole run: every open, receive, gate and land above.
+
+say "W A CHECKOUT'S OWN RESOLVER IS NOT ASKED: furnish resolves with the trunk's, offline"
+# A checkout older than the offline fix holds a resolver that drops what it
+# is handed (b60cbd54d's): furnished with it, it resolved online (관제
+# 2026-11-07, 캔버스 베이스 22:14 — the Surface downloaded code_assets 2.2.0).
+quiet "$E/home" open oldpub
+printf '%s\n' '#!/usr/bin/env bash' 'checkout="${1:-.}"' 'for package in packages/gpu_engine; do' \
+  '  [ -f "$checkout/$package/pubspec.yaml" ] || continue' \
+  '  (cd "$checkout" && flutter pub get --directory "$package") || exit 1' 'done' \
+  > "$HW/lane-oldpub/tool/resolve_packages.sh"
+git -C "$HW/lane-oldpub" commit -q -am "the resolver before it passed its flags on"
+quiet "$E/home" furnish "$HW/lane-oldpub"
+check "furnished, its packages resolve offline" \
+  "$(grep -c '^lane-oldpub flutter pub get --offline --directory packages/gpu_engine' "$LANE_TEST_LOG")" 2
+check "and never as its own resolver would have them" \
+  "$(grep -c '^lane-oldpub flutter pub get --directory' "$LANE_TEST_LOG")" 0
+# The whole run: every open, receive, gate, land and furnish above.
 check "not one crate or package could be downloaded" \
   "$(cat "$LANE_TEST_LOG.downloads" 2>/dev/null | head -3 | tr '\n' ' ')" ""
 check "LIVENESS — and the packages the app does not depend on were resolved" \
