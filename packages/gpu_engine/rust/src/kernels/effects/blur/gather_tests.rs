@@ -175,7 +175,9 @@ fn a_fringe_with_nowhere_to_go_keeps_the_light() {
 /// lies from the focal distance, over 255. At 382.5 out a level one off the
 /// focus is 1.5 out — 3 × 3 — and the focus itself the pixel alone. Each
 /// channel names its own byte of the map's pixel, premultiplied (red 200 at
-/// half alpha is 100), and its luma Rec. 709's (74 of 40, 80, 120).
+/// half alpha is 100), and its luma Rec. 709's by the app's weights (74 of
+/// 40, 80, 120; 16 of 0, 5, 179 — 16.4998 — where weights summing to 2^16
+/// made 17).
 #[test]
 fn a_blur_map_names_each_pixel_level() {
     let spread = rgba(255, 255, 255, 28);
@@ -185,6 +187,7 @@ fn a_blur_map_names_each_pixel_level() {
         (MapChannel::Blue, rgba(40, 80, 120, 255), 120.0),
         (MapChannel::Alpha, rgba(40, 80, 120, 255), 255.0),
         (MapChannel::Luminance, rgba(40, 80, 120, 255), 74.0),
+        (MapChannel::Luminance, rgba(0, 5, 179, 255), 16.0),
         (MapChannel::Red, rgba(200, 0, 0, 128), 100.0),
     ];
     for (channel, word, level) in cases {
@@ -259,14 +262,19 @@ fn in_linear_light_the_mean_is_of_light() {
     let blur = whole(&Lens { light: linear, ..lens(1.5) }, on_black);
     assert_eq!(blur.at(65, 65), grey(94));
     assert_eq!(whole(&lens(1.5), on_black).at(65, 65), grey(28));
-    // The nearer of the curve's two bytes is stored: black among eight grey
-    // 38 is 1129 of light, on the midpoint of 35's 1101 and 36's 1156 — so
-    // 36 —, and among grey 17 it is 326, just under 15's and 16's — so 15.
+    // The byte sRGB's curve rounds the light to is stored, as the app's
+    // render target rounds it: black among eight grey 38 is 1129 of light,
+    // the least that stores as 36 (35.507), and among grey 17 it is 326, one
+    // under the least that stores as 16 (15.494) — so 15.
     for (shade, byte) in [(38, 36), (17, 15)] {
         let block = move |x, y| if (x, y) == (64, 64) { grey(0) } else { grey(shade) };
         let blur = whole(&Lens { light: linear, ..lens(1.5) }, block);
         assert_eq!(blur.at(64, 64), grey(byte), "among grey {shade}");
     }
+    // A lone grey 42 lends a neighbour 169 (8.496): 8 — where the byte of
+    // the nearest light was 9, 169 being 8's and 9's midpoint (159, 179).
+    let lone = |x, y| if (x, y) == (64, 64) { grey(42) } else { grey(0) };
+    assert_eq!(whole(&Lens { light: linear, ..lens(1.5) }, lone).at(65, 65), grey(8));
     let every = |x: i32, y: i32| {
         let (x, y) = (x as u32, y as u32);
         rgba(x & 255, 255 - (y & 255), (x + y) & 255, 255)

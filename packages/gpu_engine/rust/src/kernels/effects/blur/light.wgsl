@@ -4,8 +4,8 @@
 // stored light with nothing boosted is held_read's, exactly.
 //
 // A stored pixel's straight colour is its bytes widened, or — in linear
-// light — sRGB's curve out of LIGHT_LINEAR. Its luma is Rec. 709's,
-// weights summing to 2^16. Past the threshold its colour gains
+// light — sRGB's curve out of LIGHT_LINEAR. Its luma is Rec. 709's, by
+// the app's weights (`light_luma`). Past the threshold its colour gains
 // t · tint: t = luma · gain · (luma − threshold), tint its own colour over
 // the luma by the saturation and white by the rest — as bright as each
 // other. Then premultiplied, which past 65535 a boosted channel may be:
@@ -63,11 +63,18 @@ struct Light {
   linear: u32,
 }
 
-// Rec. 709's luma of a colour, its weights summing to 2^16 — on the 16-bit
-// scale or on bytes alike: the light's, and a blur map's where it reads one
-// (iris_gather.wgsl). At most 65536 · 65535 + 2^15: a u32.
+// Rec. 709's luma of a colour by the app's own weights — 0.2126, 0.7152 and
+// 0.0722 (the light's lens_light.glsl `kLuma`, the map's shaded_passes.dart
+// `luminance`) as ten-thousandths, rounded half up — on the 16-bit scale or
+// on bytes alike: the light's, and a blur map's where it reads one
+// (gather.wgsl). At most 10000 · 65535 + 5000: a u32.
+// 📐THE APP'S WEIGHTS, NOT A NEARBY 2^16 (11-07, every byte triple against
+// iris_gather.frag's ⌊dot(map, uChannel) · 255 + ½⌋ taken exactly):
+// weights summing to 2^16 (13933 · 46871 · 4732) put 7,564 of the
+// 16,777,216 map levels one off it, where a GPU running the app's float
+// puts 192 to 253 — these put none.
 fn light_luma(colour: vec3<u32>) -> u32 {
-  return (13933u * colour.x + 46871u * colour.y + 4732u * colour.z + 32768u) >> 16u;
+  return (2126u * colour.x + 7152u * colour.y + 722u * colour.z + 5000u) / 10000u;
 }
 
 // A stored word as the lens blur sums it: premultiplied on the 16-bit
@@ -148,14 +155,58 @@ fn light_stored(gathered: vec4<u32>, light: Light) -> u32 {
   return word;
 }
 
-// The byte whose LIGHT_LINEAR lies nearest `straight`, a tie going up: how
-// many of the midpoints between the table's neighbours lie at or below it,
-// found a bit at a time — the table read back, no second one.
+// The least straight light — on the 16-bit scale — each byte from 1 is
+// stored from: sRGB's curve back and rounded to a byte, ⌊255 · c⁻¹(s /
+// 65535) + ½⌋, as the app's lens_light.glsl `storedOf` and its render
+// target put it; worked out once (no libm here), as LIGHT_LINEAR is.
+// 📐THE APP'S ROUNDING, NOT THE NEAREST LIGHT (11-07, every straight value):
+// ↩️until then the byte was the one whose LIGHT_LINEAR lay nearest — one
+// table read back, no second one — and that put 44 of the 65536 values one
+// byte from the app's (a lone grey 42 among black: 169 of light, 9 where
+// the app stores 8); this table puts none. No value comes within 1.5e-6 of
+// a byte of a tie, so the f64 that worked it out decides each.
+var<private> LIGHT_STORED_FROM: array<u32, 255> = array<u32, 255>(
+  10u, 30u, 50u, 70u, 90u, 110u, 130u, 150u,
+  170u, 189u, 209u, 230u, 253u, 276u, 301u, 327u,
+  354u, 382u, 412u, 443u, 475u, 509u, 544u, 580u,
+  618u, 657u, 698u, 740u, 783u, 828u, 875u, 923u,
+  972u, 1023u, 1075u, 1129u, 1185u, 1242u, 1300u, 1360u,
+  1422u, 1486u, 1551u, 1617u, 1685u, 1755u, 1827u, 1900u,
+  1975u, 2052u, 2130u, 2210u, 2292u, 2376u, 2461u, 2548u,
+  2637u, 2727u, 2820u, 2914u, 3010u, 3108u, 3208u, 3309u,
+  3412u, 3518u, 3625u, 3734u, 3844u, 3957u, 4072u, 4188u,
+  4307u, 4427u, 4550u, 4674u, 4800u, 4928u, 5059u, 5191u,
+  5325u, 5461u, 5599u, 5740u, 5882u, 6026u, 6173u, 6321u,
+  6471u, 6624u, 6778u, 6935u, 7094u, 7255u, 7418u, 7583u,
+  7750u, 7919u, 8091u, 8265u, 8440u, 8618u, 8798u, 8981u,
+  9165u, 9352u, 9541u, 9732u, 9925u, 10121u, 10318u, 10518u,
+  10720u, 10925u, 11132u, 11341u, 11552u, 11765u, 11981u, 12199u,
+  12420u, 12643u, 12868u, 13095u, 13325u, 13557u, 13791u, 14028u,
+  14267u, 14508u, 14752u, 14998u, 15247u, 15498u, 15751u, 16007u,
+  16265u, 16525u, 16788u, 17054u, 17321u, 17592u, 17864u, 18139u,
+  18417u, 18697u, 18980u, 19264u, 19552u, 19842u, 20134u, 20429u,
+  20727u, 21027u, 21329u, 21634u, 21942u, 22252u, 22564u, 22880u,
+  23197u, 23518u, 23840u, 24166u, 24494u, 24824u, 25158u, 25493u,
+  25832u, 26173u, 26516u, 26862u, 27211u, 27563u, 27917u, 28273u,
+  28633u, 28995u, 29359u, 29727u, 30097u, 30469u, 30845u, 31223u,
+  31603u, 31987u, 32373u, 32762u, 33153u, 33547u, 33944u, 34344u,
+  34747u, 35152u, 35560u, 35970u, 36384u, 36800u, 37219u, 37640u,
+  38065u, 38492u, 38922u, 39355u, 39790u, 40229u, 40670u, 41114u,
+  41561u, 42011u, 42463u, 42918u, 43377u, 43838u, 44301u, 44768u,
+  45238u, 45710u, 46185u, 46663u, 47144u, 47628u, 48115u, 48605u,
+  49097u, 49593u, 50091u, 50592u, 51096u, 51604u, 52114u, 52627u,
+  53142u, 53661u, 54183u, 54708u, 55235u, 55766u, 56300u, 56836u,
+  57376u, 57918u, 58464u, 59012u, 59564u, 60118u, 60675u, 61236u,
+  61799u, 62366u, 62935u, 63508u, 64083u, 64662u, 65244u,
+);
+
+// The byte linear light `straight` is stored as: how many of
+// LIGHT_STORED_FROM lie at or below it, found a bit at a time.
 fn light_encoded(straight: u32) -> u32 {
   var byte = 0u;
   for (var step = 128u; step > 0u; step = step >> 1u) {
     let next = byte + step;
-    if (next <= 255u && (LIGHT_LINEAR[next - 1u] + LIGHT_LINEAR[next] + 1u) >> 1u <= straight) {
+    if (next <= 255u && LIGHT_STORED_FROM[next - 1u] <= straight) {
       byte = next;
     }
   }
