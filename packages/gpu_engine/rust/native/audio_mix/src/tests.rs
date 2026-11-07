@@ -1,6 +1,12 @@
 //! The mix bus and the conversions against the engine's C (native/oracle),
 //! bit for bit: both asked through their exports, on schedules and sounds
 //! made up here.
+//!
+//! What no device's maths library makes — the bus, its output stage, the
+//! filter lengths and frame counts — is pinned in the app's ledger as well,
+//! beside the C's answer and so the C's to the bit: the row is what holds
+//! these tests once the C is deleted (connection-round-checklist A, 관제
+//! 2026-11-07).
 
 use std::ptr;
 
@@ -176,6 +182,7 @@ fn every_made_up_schedule_mixes_as_the_c_mixes_it() {
     let mix = Both::of("qa_audio_mix", qa_audio_mix as Mix);
     let mut dice = Dice(0x5eed_1234);
     let mut heard = 0;
+    let mut buses = Vec::new();
     for round in 0..600 {
         let schedule = Schedule::made(&mut dice);
         let start = dice.int(-400, 3_000);
@@ -184,8 +191,10 @@ fn every_made_up_schedule_mixes_as_the_c_mixes_it() {
         let rust = mixed(mix.rust, &schedule, start, samples, channels);
         same_bits(&rust, &mixed(mix.c, &schedule, start, samples, channels), &format!("round {round}"));
         heard += rust.iter().filter(|v| **v != 0.0).count();
+        buses.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
     }
     assert!(heard > 100_000, "LIVENESS: the schedules were heard ({heard} values)");
+    ledger::assert_pinned("audio_mix/made-up-schedules", &buses);
 }
 
 #[test]
@@ -283,6 +292,10 @@ fn the_output_stage_makes_the_c_s_floats_and_shorts() {
     assert_eq!(floats(to_float.rust), floats(to_float.c));
     assert_eq!(shorts(to_int16.rust), shorts(to_int16.c));
     assert_eq!(shorts(to_int16.rust)[..4], [0, 0, 32767, -32768], "LIVENESS: the edges");
+    let float_bytes: Vec<u8> = floats(to_float.rust).iter().flat_map(|v| v.to_le_bytes()).collect();
+    ledger::assert_pinned("audio_mix/bus-to-float", &float_bytes);
+    let short_bytes: Vec<u8> = shorts(to_int16.rust).iter().flat_map(|v| v.to_le_bytes()).collect();
+    ledger::assert_pinned("audio_mix/bus-to-int16", &short_bytes);
     for f in [to_float.c, to_float.rust] {
         let mut out = [7.0f32];
         // SAFETY: nothing is read or written for these.
@@ -301,6 +314,7 @@ fn the_filter_lengths_and_frame_counts_are_the_c_s() {
     let taps = Both::of("qa_audio_resample_taps", qa_audio_resample_taps as Taps);
     let frames = Both::of("qa_audio_resample_frames", qa_audio_resample_frames as Frames);
     let rates = [-1, 0, 1, 7, 8_000, 22_050, 44_100, 47_999, 48_000, 96_000, 192_000];
+    let mut answers = Vec::new();
     for input in rates {
         for output in rates {
             // The default, Kaiser's three branches and their seam at 50,
@@ -316,13 +330,18 @@ fn the_filter_lengths_and_frame_counts_are_the_c_s() {
                 (120.0, 1.0),
             ] {
                 let asked = (input, output, stopband, bandwidth);
-                assert_eq!((taps.rust)(input, output, stopband, bandwidth), (taps.c)(input, output, stopband, bandwidth), "{asked:?}");
+                let rust = (taps.rust)(input, output, stopband, bandwidth);
+                assert_eq!(rust, (taps.c)(input, output, stopband, bandwidth), "{asked:?}");
+                answers.extend(rust.to_le_bytes());
             }
             for count in [-5, 0, 1, 7, 44_099, 44_100, 1_000_003] {
-                assert_eq!((frames.rust)(count, input, output), (frames.c)(count, input, output), "{count} {input}→{output}");
+                let rust = (frames.rust)(count, input, output);
+                assert_eq!(rust, (frames.c)(count, input, output), "{count} {input}→{output}");
+                answers.extend(rust.to_le_bytes());
             }
         }
     }
+    ledger::assert_pinned("audio_mix/taps-and-frames", &answers);
     assert_eq!(qa_audio_resample_taps(44_100, 48_000, 120.0, 0.9) % 2, 1, "LIVENESS: odd");
     assert_eq!(qa_audio_resample_taps(48_000, 96_000, 20.0, 0.5), 15, "LIVENESS: the shortest");
 }

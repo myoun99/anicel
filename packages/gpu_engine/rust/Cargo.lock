@@ -129,6 +129,7 @@ dependencies = [
 name = "audio_mix"
 version = "0.0.1"
 dependencies = [
+ "ledger",
  "oracle",
 ]
 
