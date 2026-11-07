@@ -91,15 +91,21 @@ fn kept_frame(data: &[u8], level: i32) -> Option<Vec<u8>> {
 
 /// The C's frame of `data` at `level`, and whether it outlives the C —
 /// the frame that does is the C's, and every one small enough is kept.
+/// The one that outlives it is the one decoded, so the ledger's rows hold
+/// what the tests decode once the C is gone.
 fn frame(data: &[u8], level: i32) -> (Vec<u8>, bool) {
     let theirs = compressed(data, level);
     let what = format!("{} bytes ({}) at level {level}", data.len(), ledger::fingerprint(data));
-    let kept = kept_frame(data, level);
-    match &kept {
-        Some(kept) => assert!(*kept == theirs, "{what}: the frame kept is the C's"),
-        None => assert!(theirs.len() > KEPT_MAX, "{what}: c_frames.bin keeps the C's frame"),
+    match kept_frame(data, level) {
+        Some(kept) => {
+            assert!(kept == theirs, "{what}: the frame kept is the C's");
+            (kept, true)
+        }
+        None => {
+            assert!(theirs.len() > KEPT_MAX, "{what}: c_frames.bin keeps the C's frame");
+            (theirs, false)
+        }
     }
-    (theirs, kept.is_some())
 }
 
 /// Both decoders on `frame` into `capacity`: the Rust's answer is the C's
