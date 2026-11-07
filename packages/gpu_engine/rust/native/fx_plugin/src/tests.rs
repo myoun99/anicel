@@ -7,6 +7,8 @@
 //! The plugins are this crate's examples, built against the spec crate as a
 //! maker builds one ([`sample`]) and opened by both hosts — the C host
 //! reading a Rust plugin is the spec crate held to the header it replaces.
+//! The SDK's example is built as WebAssembly too, by a crate of its own
+//! (native/fx_sdk_example), and its module opened on each WebAssembly host.
 //! ⏳Until the connection round the C builds of the sample and the example
 //! (CMakeLists.txt, beside the engine) answer beside them, the key each
 //! Rust plugin is held to; that round deletes them with the C host.
@@ -14,7 +16,7 @@
 mod wasm;
 
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::*;
 
@@ -78,41 +80,46 @@ fn c_path(path: &Path) -> CString {
 
 /// One of this crate's examples (Cargo.toml: the sample, the two builds of
 /// it a host refuses, and the SDK's example), which `cargo test` builds
-/// beside the folder of the test it runs — opened only when the build is of
-/// this checkout's sources as they are now. A run given a test's name, or
+/// beside the folder of the test it runs. A run given a test's name, or
 /// `--lib`, builds no example: a mutant of the SDK example's source passed
 /// so, the test opening the build from before it (2026-11-07). And the
 /// target folder is shared, so the last build may be another checkout's.
-/// The build's own list of its sources, cargo's `.d` beside it, says both.
 fn sample(name: &str) -> CString {
     let test = std::env::current_exe().expect("the test's own path");
     let profile = test.parent().and_then(Path::parent).expect("target/<profile>/deps");
     let path = profile.join("examples").join(libloading::library_filename(name));
-    let changed = |file: &Path| std::fs::metadata(file).and_then(|meta| meta.modified());
-    let built = changed(&path).unwrap_or_else(|error| refused(&path, error));
-    let listed = std::fs::read_to_string(path.with_extension("d"))
-        .unwrap_or_else(|error| refused(&path, error));
-    let sources: Vec<&Path> = match listed.lines().next().and_then(|line| line.split_once(": ")) {
-        Some((_, sources)) => sources.split_whitespace().map(Path::new).collect(),
-        None => refused(&path, "no sources listed"),
-    };
     let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
     let own = Path::new(&crate_dir).join("examples").join(format!("{name}.rs"));
-    let own = own.canonicalize().expect("the example's source");
+    c_path(&current(&path, &own, "`cargo test` given no test's name builds it"))
+}
+
+/// `build`, taken only when it is of this checkout's sources as they are
+/// now — its own list of them, cargo's `.d` beside it, names `own`, and
+/// none changed since — and refused otherwise, saying `how` it is built.
+fn current(build: &Path, own: &Path, how: &str) -> PathBuf {
+    let changed = |file: &Path| std::fs::metadata(file).and_then(|meta| meta.modified());
+    let built = changed(build).unwrap_or_else(|error| refused(build, how, error));
+    let listed = std::fs::read_to_string(build.with_extension("d"))
+        .unwrap_or_else(|error| refused(build, how, error));
+    let sources: Vec<&Path> = match listed.lines().next().and_then(|line| line.split_once(": ")) {
+        Some((_, sources)) => sources.split_whitespace().map(Path::new).collect(),
+        None => refused(build, how, "no sources listed"),
+    };
+    let own = own.canonicalize().unwrap_or_else(|error| panic!("{}: {error}", own.display()));
     let same = |source: &Path| source.canonicalize().is_ok_and(|source| source == own);
     if !sources.iter().any(|source| same(source)) {
-        refused(&path, format!("not built from {}", own.display()));
+        refused(build, how, format!("not built from {}", own.display()));
     }
     for source in sources {
         if changed(source).map_or(true, |at| at > built) {
-            refused(&path, format!("{} changed since", source.display()));
+            refused(build, how, format!("{} changed since", source.display()));
         }
     }
-    c_path(&path)
+    build.to_owned()
 }
 
-fn refused(build: &Path, why: impl std::fmt::Display) -> ! {
-    panic!("{}: {why} — `cargo test` given no test's name builds it", build.display())
+fn refused(build: &Path, how: &str, why: impl std::fmt::Display) -> ! {
+    panic!("{}: {why} — {how}", build.display())
 }
 
 /// A C build of a plugin the engine's build made beside the engine
@@ -384,50 +391,25 @@ fn hashed(width: usize, height: usize) -> Vec<u8> {
 
 /// The SDK's example (sdk/fx/example) — the plugin a maker starts from —
 /// asked its description, and its reach and render across offsets, colours
-/// and scales, on each host: the answers of its C build on the C host, the
-/// key it is held to, byte for byte — and the key's bytes as the ledger
-/// pinned them, which stand when the connection round deletes the C
-/// (connection-round-checklist A).
+/// and scales: its native build on each host, and its module, the one every
+/// device runs, on each WebAssembly host (유저,
+/// connection-round-checklist-Q11: 「받고, CI 가 매번 확인」). The answers
+/// of its C build on the C host are the key they are held to, byte for byte
+/// — and the key's bytes as the ledger pinned them, which stand when the
+/// connection round deletes the C (connection-round-checklist A).
 #[test]
 fn the_sdk_example_answers_as_the_c_host_does() {
-    let (width, height) = (13, 9);
-    let input = hashed(width, height);
-    let cases = [
-        ([4.0, 2.0], [0.0, 0.0, 0.0, 0.75], 1.0),
-        ([-3.0, 5.0], [1.0, 0.25, 0.5, 1.0], 1.0),
-        ([7.5, -2.5], [0.2, 0.9, 0.4, 0.5], 0.5),
-        ([0.0, 0.0], [1.0, 1.0, 1.0, 0.0], 2.0),
-    ];
     let rust = sample("qa_fx_sdk_example");
     let c_build = c_built("qa_fx_sdk_example");
-    let asked = [(c(), &c_build, "C on C"), (c(), &rust, "Rust on C"), (RUST, &rust, "Rust")];
-    let answers = asked.map(|(host, path, who)| {
-        let plugin = Opened::new(host, path);
-        let mut room = [0 as c_char; 1024];
-        let length = plugin.describe(&mut room);
-        let mut answers = said(&room).into_bytes();
-        answers.extend(length.to_le_bytes());
-        for ([x, y], [r, g, b, a], scale) in cases {
-            let values = [x, 0.0, 0.0, 0.0, y, 0.0, 0.0, 0.0, r, g, b, a];
-            answers.extend(plugin.reach(&values, 2, 2.0, scale).to_le_bytes());
-            let mut out = vec![0xEE; height * (width * 4 + 8)];
-            let mut job = job(&input, &mut out, &values, &[]);
-            job.input = Picture {
-                pixels: input.as_ptr(),
-                width: width as i32,
-                height: height as i32,
-                stride: (width * 4 + 4) as i32,
-                left: -2,
-                top: 3,
-            };
-            job.output_stride = (width * 4 + 8) as i32;
-            job.scale = scale;
-            assert_eq!(plugin.render(&job), OK, "{who}: offset ({x}, {y})");
-            assert!(out.iter().any(|&byte| byte != 0xEE), "LIVENESS — {who}: written");
-            answers.extend(out);
-        }
-        (who, answers)
-    });
+    let module = wasm::sdk_module();
+    let natives = [(c(), &c_build, "C on C"), (c(), &rust, "Rust on C"), (RUST, &rust, "Rust")];
+    let mut asked =
+        Vec::from(natives.map(|(host, path, who)| (who.to_owned(), Opened::new(host, path))));
+    asked.extend(wasm::wasm_hosts().map(|host| {
+        (format!("the module on {}", host.name), wasm::opened_module(host, &module))
+    }));
+    let answers: Vec<_> =
+        asked.iter().map(|(who, plugin)| (who, sdk_answers(plugin, who))).collect();
     let (_, key) = &answers[0];
     for (who, answer) in &answers[1..] {
         assert_eq!(key.len(), answer.len(), "{who}");
@@ -436,6 +418,43 @@ fn the_sdk_example_answers_as_the_c_host_does() {
         }
     }
     ledger::assert_pinned("fx/sdk-example-answers", key);
+}
+
+/// What the SDK's example answers: its description and its length, then its
+/// reach and render across offsets, colours and scales.
+fn sdk_answers(plugin: &Opened, who: &str) -> Vec<u8> {
+    let (width, height) = (13, 9);
+    let input = hashed(width, height);
+    let cases = [
+        ([4.0, 2.0], [0.0, 0.0, 0.0, 0.75], 1.0),
+        ([-3.0, 5.0], [1.0, 0.25, 0.5, 1.0], 1.0),
+        ([7.5, -2.5], [0.2, 0.9, 0.4, 0.5], 0.5),
+        ([0.0, 0.0], [1.0, 1.0, 1.0, 0.0], 2.0),
+    ];
+    let mut room = [0 as c_char; 1024];
+    let length = plugin.describe(&mut room);
+    let mut answers = said(&room).into_bytes();
+    answers.extend(length.to_le_bytes());
+    for ([x, y], [r, g, b, a], scale) in cases {
+        let values = [x, 0.0, 0.0, 0.0, y, 0.0, 0.0, 0.0, r, g, b, a];
+        answers.extend(plugin.reach(&values, 2, 2.0, scale).to_le_bytes());
+        let mut out = vec![0xEE; height * (width * 4 + 8)];
+        let mut job = job(&input, &mut out, &values, &[]);
+        job.input = Picture {
+            pixels: input.as_ptr(),
+            width: width as i32,
+            height: height as i32,
+            stride: (width * 4 + 4) as i32,
+            left: -2,
+            top: 3,
+        };
+        job.output_stride = (width * 4 + 8) as i32;
+        job.scale = scale;
+        assert_eq!(plugin.render(&job), OK, "{who}: offset ({x}, {y})");
+        assert!(out.iter().any(|&byte| byte != 0xEE), "LIVENESS — {who}: written");
+        answers.extend(out);
+    }
+    answers
 }
 
 /// A job with no values and no layers, their pointers null, is taken as the

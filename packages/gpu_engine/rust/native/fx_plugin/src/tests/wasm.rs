@@ -26,13 +26,33 @@ unsafe extern "C" fn open_interpreted(
 
 const INTERPRETED: Host = Host { name: "Rust interpreted", open_wasm: open_interpreted, ..RUST };
 
-fn wasm_hosts() -> [Host; 3] {
+pub(super) fn wasm_hosts() -> [Host; 3] {
     [c(), RUST, INTERPRETED]
 }
 
+/// The SDK's example as WebAssembly (native/fx_sdk_example), where
+/// `QA_FX_MODULE` says: this checkout's own target folder for it
+/// (.cargo/config.toml says why).
+pub(super) fn sdk_module() -> Vec<u8> {
+    let path = std::env::var("QA_FX_MODULE").expect("QA_FX_MODULE (.cargo/config.toml)");
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let own = Path::new(&crate_dir).join("../fx_sdk_example/src/lib.rs");
+    let path = current(Path::new(&path), &own, BUILD_MODULE);
+    std::fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+}
+
+/// How the module is built, as tool/lane.sh builds it before a land's tests.
+const BUILD_MODULE: &str = "built by `rustup target add wasm32-unknown-unknown`, once, \
+    then in packages/gpu_engine/rust `CARGO_TARGET_DIR=../../../build/fx_wasm \
+    cargo build --release -p fx_sdk_example --target wasm32-unknown-unknown`";
+
 /// `text` opened on `host`: the plugin, or why there is none.
 fn open(host: Host, text: &str) -> Result<Opened, String> {
-    let bytes = wat::parse_str(text).expect("WebAssembly text");
+    open_module(host, &wat::parse_str(text).expect("WebAssembly text"))
+}
+
+/// A module's `bytes` opened on `host`: the plugin, or why there is none.
+fn open_module(host: Host, bytes: &[u8]) -> Result<Opened, String> {
     let mut error = [0 as c_char; 512];
     let length = bytes.len() as i64;
     // SAFETY: the module's bytes, and an error room of 512.
@@ -42,6 +62,10 @@ fn open(host: Host, text: &str) -> Result<Opened, String> {
 
 fn opened(host: Host, text: &str) -> Opened {
     open(host, text).unwrap_or_else(|why| panic!("{}: {why}", host.name))
+}
+
+pub(super) fn opened_module(host: Host, bytes: &[u8]) -> Opened {
+    open_module(host, bytes).unwrap_or_else(|why| panic!("{}: {why}", host.name))
 }
 
 /// A module of one page whose five functions' bodies are these, after
@@ -353,13 +377,8 @@ fn a_module_the_host_cannot_run_is_refused_in_the_c_host_s_words() {
     let absent = wat::parse_str(r#"(module (import "env" "absent" (func)))"#).expect("a module");
     for bytes in [&[1u8, 2, 3, 4, 5, 6, 7, 8][..], &absent] {
         for host in wasm_hosts() {
-            let mut error = [0 as c_char; 512];
-            let length = bytes.len() as i64;
-            // SAFETY: the bytes, and an error room of 512.
-            let handle =
-                unsafe { (host.open_wasm)(bytes.as_ptr(), length, error.as_mut_ptr(), 512) };
-            assert!(handle.is_null(), "{} opened it", host.name);
-            let why = said(&error);
+            let why = open_module(host, bytes).err();
+            let why = why.unwrap_or_else(|| panic!("{} opened it", host.name));
             assert!(why.starts_with("the module would not start: "), "{}: {why}", host.name);
         }
     }
