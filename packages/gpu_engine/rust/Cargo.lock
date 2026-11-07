@@ -98,6 +98,7 @@ version = "0.0.1"
 dependencies = [
  "audio_mix",
  "media",
+ "ndk-sys",
  "oracle",
  "symphonia",
  "windows",
@@ -1226,6 +1227,7 @@ name = "media"
 version = "0.0.1"
 dependencies = [
  "compress",
+ "ndk-sys",
  "oracle",
  "windows",
  "windows-core",

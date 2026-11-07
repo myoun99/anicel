@@ -12,12 +12,14 @@
 //! our own decoders read what it reads, deleting it leaves one way of
 //! reading a sound.
 //!
-//! Media Foundation on Windows ([media_foundation]). ⚠️AudioToolbox and the
-//! NDK's MediaCodec are still the C's (`qa_audio_decode.c`) and come next:
-//! until then this stage reads nothing on those platforms.
+//! Media Foundation on Windows ([media_foundation]), the NDK's MediaCodec on
+//! Android ([ndk]). ⚠️AudioToolbox is still the C's (`qa_audio_decode.c`)
+//! and comes next: until then this stage reads nothing on Apple's.
 
 #[cfg(windows)]
 mod media_foundation;
+#[cfg(target_os = "android")]
+mod ndk;
 
 use crate::container::Container;
 use crate::stream::Opened;
@@ -29,7 +31,11 @@ pub(crate) fn open(container: &Container) -> Option<Opened> {
     {
         media_foundation::open(container)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "android")]
+    {
+        ndk::open(container)
+    }
+    #[cfg(not(any(windows, target_os = "android")))]
     {
         let _ = container;
         None

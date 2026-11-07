@@ -51,9 +51,18 @@ impl Container {
     /// The container's span opened once more, for a decoder that reads it
     /// on threads of its own (the OS stage's): its own file handle and
     /// position, never this container's.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "android"))]
     pub(crate) fn span_again(&self) -> Option<Span> {
         self.stored.open()
+    }
+
+    /// Where the container is stored — the path, the offset and length of
+    /// its span, whether it is framed — for a decoder that opens the file its
+    /// own way: the NDK's extractor takes a descriptor and a range.
+    #[cfg(target_os = "android")]
+    pub(crate) fn stored(&self) -> (&CStr, i64, i64, bool) {
+        let stored = &*self.stored;
+        (&stored.path, stored.offset, stored.length, stored.framed)
     }
 
     /// How many bytes the container has — for a framed span, decoded.

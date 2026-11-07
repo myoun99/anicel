@@ -48,8 +48,8 @@ pub const FORMAT_WAV: i32 = 1;
 pub const FORMAT_FLAC: i32 = 2;
 pub const FORMAT_MP3: i32 = 3;
 /// The OS's own codec stack — the last stage, for what no bundled decoder
-/// reads ([os], native-to-rust-Q6): Media Foundation on Windows; ⚠️the
-/// Apple and Android stages are the C's still.
+/// reads ([os], native-to-rust-Q6): Media Foundation on Windows, the NDK's
+/// MediaCodec on Android; ⚠️the Apple stage is the C's still.
 pub const FORMAT_OS: i32 = 4;
 pub const FORMAT_VORBIS: i32 = 5;
 /// A movie's uncompressed sound, read here on every platform.

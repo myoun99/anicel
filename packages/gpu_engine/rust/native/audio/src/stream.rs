@@ -31,6 +31,14 @@ pub(crate) trait Decode {
     /// The next block of what the decoder hands back, interleaved, into
     /// `block`: how many frames — 0 at the end.
     fn next(&mut self, block: &mut Vec<f32>) -> usize;
+
+    /// The channels and the rate of what it hands back, once it has handed
+    /// a block back, for a decoder that says them only then — the NDK's
+    /// MediaCodec, by its output format, where its first block fixes them.
+    /// None: what it said as it opened.
+    fn shape(&self) -> Option<(i32, i32)> {
+        None
+    }
 }
 
 /// A decoder that read the container as it opened: which one, the sound's
@@ -124,6 +132,7 @@ impl Stream {
         if block_frames == 0 {
             return None;
         }
+        let (channels, sample_rate) = decoder.shape().unwrap_or((channels, sample_rate));
         // A movie's sound starts where the movie says, and a bare AAC
         // stream's where AAC's standard says — only the file knows, not the
         // decoder: its rate is the decoder's by the first block. The OS
@@ -243,3 +252,6 @@ pub fn window(path: &CStr, offset: i64, length: i64, framed: bool, first: i64, c
     samples.truncate(kept as usize * channels);
     Some(Window { samples, format: stream.format, channels: stream.channels, sample_rate: stream.sample_rate })
 }
+
+#[cfg(test)]
+mod tests;

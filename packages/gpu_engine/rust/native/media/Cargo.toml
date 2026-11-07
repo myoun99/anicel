@@ -21,6 +21,12 @@ windows = { version = "0.62", features = [
 ] }
 windows-core = "0.62"
 
+# The one serving of a span to the NDK's MediaExtractor (served_span.rs),
+# through ndk-sys — bindings made from the NDK's own headers, never a table
+# by hand; already in the lock as cpal's.
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-sys = { version = "0.6", features = ["media"] }
+
 # The C answer key: the engine's qa_media_span_* (native/oracle).
 [dev-dependencies]
 oracle = { path = "../oracle" }

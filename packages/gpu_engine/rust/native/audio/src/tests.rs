@@ -401,10 +401,10 @@ fn a_movie_is_what_its_head_says() {
     expect_left_to_the_os("a movie by another head", &Span::whole(renamed.path()));
 }
 
-/// Whether this platform's OS stage is here — Media Foundation's. ⚠️The
-/// Apple and Android stages come next: until then nothing reads there what
-/// only the OS reads, while the C's AudioToolbox and MediaCodec do.
-pub(crate) const OS_STAGE_HERE: bool = cfg!(windows);
+/// Whether this platform's OS stage is here — Media Foundation's, the NDK's
+/// MediaCodec. ⚠️The Apple stage comes next: until then nothing reads there
+/// what only the OS reads, while the C's AudioToolbox does.
+pub(crate) const OS_STAGE_HERE: bool = cfg!(any(windows, target_os = "android"));
 
 /// Holds that no bundled decoder reads `span`: what reads it, where
 /// anything does, is the OS stage — as the C's does.

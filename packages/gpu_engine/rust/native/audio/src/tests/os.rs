@@ -13,10 +13,16 @@
 use oracle::export;
 
 use super::{
-    Close, OS_STAGE_HERE as HERE, Open, Read, Span, TempFile, between_junk, c_window, expect_same, fixture, framed,
+    Close, Open, Read, Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, fixture, framed,
     rust_close, rust_open, rust_read, rust_window, stream_in_pieces,
 };
 use crate::{FORMAT_OS, FORMAT_UNKNOWN};
+
+/// Where what these tests hold was measured — Media Foundation's answers.
+/// ⚠️Elsewhere a fixture is held to the C's alone (`expect_left_to_the_os`):
+/// a device's MediaCodec reads what it reads, and there is no Android run of
+/// these tests; the Apple stage is not here yet.
+const MEASURED: bool = cfg!(windows);
 
 /// What only the OS reads: the fixture, and the channels and rate its
 /// decoder hands back.
@@ -38,8 +44,8 @@ fn what_no_bundled_decoder_reads_the_os_stage_reads_as_the_c_does() {
     for (name, channels, rate) in ONLY_THE_OS {
         let path = fixture(name);
         let span = Span::whole(&path);
-        if !HERE {
-            assert_eq!(rust_window(&span, 0, -1).format, FORMAT_UNKNOWN, "{name}: no stage here yet");
+        if !MEASURED {
+            expect_left_to_the_os(name, &span);
             continue;
         }
         let sound = expect_same(name, &span, 0, -1);
@@ -64,8 +70,8 @@ fn a_carried_sound_reads_through_the_os_stage_as_its_file_does() {
         ("between junk", Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false }),
         ("framed", Span { path: framed_file.path(), offset: framed_offset, length: blob.len() as i64, framed: true }),
     ] {
-        if !HERE {
-            assert_eq!(rust_window(&span, 0, -1).format, FORMAT_UNKNOWN, "{what}");
+        if !MEASURED {
+            expect_left_to_the_os(what, &span);
             continue;
         }
         let sound = expect_same(what, &span, 0, -1);
@@ -88,8 +94,8 @@ fn what_the_os_reads_starts_where_the_movie_says() {
     bytes[32] ^= 1;
     let unmarked = TempFile::new("unmarked.m4a", &bytes);
     let span = Span::whole(unmarked.path());
-    if !HERE {
-        assert_eq!(rust_window(&span, 0, -1).format, FORMAT_UNKNOWN);
+    if !MEASURED {
+        expect_left_to_the_os("unmarked", &span);
         return;
     }
     let marked = rust_window(&Span::whole(&path), 0, -1);
@@ -101,7 +107,7 @@ fn what_the_os_reads_starts_where_the_movie_says() {
 
 #[test]
 fn a_window_of_what_the_os_reads_holds_the_frames_a_whole_decode_has_there() {
-    if !HERE {
+    if !MEASURED {
         return;
     }
     let path = fixture("tone_5_1.m4a");
@@ -115,7 +121,7 @@ fn a_window_of_what_the_os_reads_holds_the_frames_a_whole_decode_has_there() {
 
 #[test]
 fn a_stream_of_what_the_os_reads_hands_back_what_the_c_s_does() {
-    if !HERE {
+    if !MEASURED {
         return;
     }
     // SAFETY: qa_audio_decode.c's declarations.
@@ -143,9 +149,11 @@ fn a_file_the_os_does_not_read_either_is_no_sound() {
     let bytes = std::fs::read(fixture("tone_he_aac.m4a")).expect("the fixture");
     let cut = TempFile::new("cut.m4a", &bytes[..bytes.len() / 3]);
     let span = Span::whole(cut.path());
+    if !MEASURED {
+        expect_left_to_the_os("cut short", &span);
+        return;
+    }
     let rust = rust_window(&span, 0, -1);
     assert_eq!((rust.format, rust.samples.len()), (FORMAT_UNKNOWN, 0));
-    if HERE {
-        assert_eq!(c_window(&span, 0, -1).format, FORMAT_UNKNOWN, "the C's");
-    }
+    assert_eq!(c_window(&span, 0, -1).format, FORMAT_UNKNOWN, "the C's");
 }
