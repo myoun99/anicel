@@ -1,9 +1,9 @@
-//! The host's WebAssembly side held to the C host's on the C test's modules
-//! (qa_fx_plugin_test.c): the sample's twin, written from the C sample
-//! line for line, and the modules a host must start, clear, keep in their
-//! memory and refuse — on the C host, on this one, and on this one interpreting as an
-//! iPad's does, on every machine (the C test's second build,
-//! qa_fx_plugin_interpreted_test).
+//! The host's WebAssembly side on the C host's test's modules: the sample's
+//! twin, written from the C sample line for line, and the modules a host
+//! must start, clear, keep in their memory and refuse — on this host, and on
+//! it interpreting as an iPad's does, on every machine (as the C test's
+//! second build did). ↩️Until the connection round (connection-round-
+//! checklist H, 2026-11-08) the C host answered beside them.
 
 use super::*;
 use crate::wasm::Wasm;
@@ -26,8 +26,8 @@ unsafe extern "C" fn open_interpreted(
 
 const INTERPRETED: Host = Host { name: "Rust interpreted", open_wasm: open_interpreted, ..RUST };
 
-pub(super) fn wasm_hosts() -> [Host; 3] {
-    [c(), RUST, INTERPRETED]
+pub(super) fn wasm_hosts() -> [Host; 2] {
+    [RUST, INTERPRETED]
 }
 
 /// The SDK's example as WebAssembly (native/fx_sdk_example), where
@@ -359,11 +359,11 @@ fn wasi_is_there_and_reaches_nothing() {
     }
 }
 
-/// A module the host cannot run is refused: in the C host's own words where
-/// they are the host's, and with its first words where the rest is
+/// A module the host cannot run is refused: in the words the C host chose
+/// where they are the host's, and with its first words where the rest is
 /// Wasmtime's.
 #[test]
-fn a_module_the_host_cannot_run_is_refused_in_the_c_host_s_words() {
+fn a_module_the_host_cannot_run_is_refused_in_its_words() {
     let spec_2 = module("", ["i32.const 2", QUIET[1], QUIET[2], QUIET[3], QUIET[4]]);
     let cases = [
         (r#"(module (memory (export "memory") 1))"#.to_owned(), "the module exports no fx plugin"),
@@ -383,12 +383,35 @@ fn a_module_the_host_cannot_run_is_refused_in_the_c_host_s_words() {
         }
     }
     let one = [1u8];
-    for host in hosts() {
-        for (bytes, length) in [(std::ptr::null(), 8), (one.as_ptr(), 0)] {
-            let mut error = [0 as c_char; 64];
-            // SAFETY: no bytes or none of them, and an error room of 64.
-            let handle = unsafe { (host.open_wasm)(bytes, length, error.as_mut_ptr(), 64) };
-            assert!(handle.is_null() && said(&error) == "no module", "{}", host.name);
-        }
+    for (bytes, length) in [(std::ptr::null(), 8), (one.as_ptr(), 0)] {
+        let mut error = [0 as c_char; 64];
+        // SAFETY: no bytes or none of them, and an error room of 64.
+        let handle = unsafe { qa_fx_plugin_open_wasm(bytes, length, error.as_mut_ptr(), 64) };
+        assert!(handle.is_null() && said(&error) == "no module", "{length} bytes");
     }
 }
+
+/// The twin as the app's fx pin opens it (test/native/
+/// an_fx_plugin_answers_through_the_engine_test.dart): its bytes are this
+/// text's, so the Dart structs are held to the host on the plugin the tests
+/// here ask — with no build, on every machine that runs `flutter test`.
+#[test]
+fn the_app_s_pin_opens_the_twin_written_here() {
+    let (_, text) = twin();
+    let bytes = wat::parse_str(&text).expect("WebAssembly text");
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let path = Path::new(&crate_dir).join(TWIN_FILE);
+    if std::env::var_os("QA_FX_WRITE_TWIN").is_some() {
+        std::fs::write(&path, &bytes).unwrap_or_else(|error| panic!("{TWIN_FILE}: {error}"));
+    }
+    let pinned = std::fs::read(&path).unwrap_or_else(|error| panic!("{TWIN_FILE}: {error}"));
+    assert!(
+        pinned == bytes,
+        "{TWIN_FILE} is not the twin written here — write it again: in packages/gpu_engine/rust \
+         `QA_FX_WRITE_TWIN=1 cargo test -p fx_plugin` (given no test's name, which builds the \
+         sample its description is read from)",
+    );
+}
+
+/// Where the app's tests find the twin, from this crate's folder.
+const TWIN_FILE: &str = "../../../../../test/fixtures/fx/sample_twin.wasm";

@@ -782,7 +782,6 @@ dependencies = [
  "anicel-fx",
  "ledger",
  "libloading",
- "oracle",
  "wasmtime",
  "wasmtime-wasi",
  "wat",

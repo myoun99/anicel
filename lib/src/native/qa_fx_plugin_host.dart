@@ -1,14 +1,19 @@
+// The engine's Rust library carries the host (rust/src/lib.rs), and its
+// names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
 
 import '../models/fx_plugin_run.dart';
-import 'qa_engine_abi.dart';
 
-/// `qa_fx_picture` (qa_fx_plugin.h): premultiplied RGBA8 rows, its first
-/// pixel at (left, top) on the canvas.
+/// The host's `Picture` (native/fx_plugin/src/job.rs): premultiplied RGBA8
+/// rows, its first pixel at (left, top) on the canvas.
 final class QaFxPictureStruct extends Struct {
   external Pointer<Uint8> pixels;
   @Int32()
@@ -23,7 +28,7 @@ final class QaFxPictureStruct extends Struct {
   external int top;
 }
 
-/// `qa_fx_render_job` (qa_fx_plugin.h).
+/// The host's `RenderJob` (native/fx_plugin/src/job.rs).
 final class QaFxRenderJobStruct extends Struct {
   external QaFxPictureStruct input;
   external Pointer<Uint8> output;
@@ -49,103 +54,87 @@ final class QaFxRenderJobStruct extends Struct {
 /// not.
 typedef FxPluginOpened = ({QaFxPlugin? plugin, String? error});
 
-/// The engine's fx plugin host (qa_fx_plugin.c) — one plugin opened from a
-/// native library or a WebAssembly module, asked the same four questions
+@Native<Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Int32)>(
+  symbol: 'qa_fx_plugin_open_native',
+)
+external Pointer<Void> _openNative(
+  Pointer<Utf8> path,
+  Pointer<Utf8> error,
+  int errorCapacity,
+);
+
+@Native<Pointer<Void> Function(Pointer<Uint8>, Int64, Pointer<Utf8>, Int32)>(
+  symbol: 'qa_fx_plugin_open_wasm',
+)
+external Pointer<Void> _openWasm(
+  Pointer<Uint8> bytes,
+  int length,
+  Pointer<Utf8> error,
+  int errorCapacity,
+);
+
+@Native<Int32 Function(Pointer<Void>, Pointer<Uint8>, Int32)>(
+  symbol: 'qa_fx_plugin_describe',
+)
+external int _describe(
+  Pointer<Void> plugin,
+  Pointer<Uint8> out,
+  int capacity,
+);
+
+@Native<
+  Int32 Function(
+    Pointer<Void>,
+    Pointer<Double>,
+    Int32,
+    Int32,
+    Double,
+    Double,
+    Double,
+  )
+>(symbol: 'qa_fx_plugin_reach')
+external int _reach(
+  Pointer<Void> plugin,
+  Pointer<Double> values,
+  int valueCount,
+  int frameIndex,
+  double time,
+  double frameRate,
+  double scale,
+);
+
+@Native<Int32 Function(Pointer<Void>, Pointer<QaFxRenderJobStruct>)>(
+  symbol: 'qa_fx_plugin_render',
+)
+external int _render(
+  Pointer<Void> plugin,
+  Pointer<QaFxRenderJobStruct> job,
+);
+
+@Native<Void Function(Pointer<Void>)>(symbol: 'qa_fx_plugin_close')
+external void _close(Pointer<Void> plugin);
+
+@Native<Int32 Function()>(symbol: 'qa_fx_render_job_sizeof')
+external int _renderJobSize();
+
+@Native<Int32 Function()>(symbol: 'qa_fx_picture_sizeof')
+external int _pictureSize();
+
+/// The engine's fx plugin host (native/fx_plugin) — one plugin opened from
+/// a native library or a WebAssembly module, asked the same four questions
 /// either way (sdk/fx/anicel-fx; 🗣️I-132-Q5 「a + 데스크톱은 같은
 /// 규격의 네이티브(.dll · .dylib)도」).
 final class QaFxPluginHost {
-  QaFxPluginHost._(DynamicLibrary library)
-    : _openNative = library
-          .lookupFunction<
-            Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Int32),
-            Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, int)
-          >('qa_fx_plugin_open_native'),
-      _openWasm = library
-          .lookupFunction<
-            Pointer<Void> Function(
-              Pointer<Uint8>,
-              Int64,
-              Pointer<Utf8>,
-              Int32,
-            ),
-            Pointer<Void> Function(Pointer<Uint8>, int, Pointer<Utf8>, int)
-          >('qa_fx_plugin_open_wasm'),
-      _calls = (
-        describe: library
-            .lookupFunction<
-              Int32 Function(Pointer<Void>, Pointer<Uint8>, Int32),
-              int Function(Pointer<Void>, Pointer<Uint8>, int)
-            >('qa_fx_plugin_describe'),
-        reach: library
-            .lookupFunction<
-              Int32 Function(
-                Pointer<Void>,
-                Pointer<Double>,
-                Int32,
-                Int32,
-                Double,
-                Double,
-                Double,
-              ),
-              int Function(
-                Pointer<Void>,
-                Pointer<Double>,
-                int,
-                int,
-                double,
-                double,
-                double,
-              )
-            >('qa_fx_plugin_reach'),
-        render: library
-            .lookupFunction<
-              Int32 Function(Pointer<Void>, Pointer<QaFxRenderJobStruct>),
-              int Function(Pointer<Void>, Pointer<QaFxRenderJobStruct>)
-            >('qa_fx_plugin_render'),
-        close: library
-            .lookupFunction<
-              Void Function(Pointer<Void>),
-              void Function(Pointer<Void>)
-            >('qa_fx_plugin_close'),
-      );
+  QaFxPluginHost._();
 
-  static QaFxPluginHost? _instance;
-  static bool _tried = false;
-
-  static void debugResetForTests() {
-    _instance = null;
-    _tried = false;
-  }
-
-  /// The host, or null where there is no engine — or one whose structs are
-  /// laid out otherwise than these (a plugin is then not asked at all,
-  /// never asked with fields read wrong).
-  static QaFxPluginHost? get instance {
-    if (!_tried) {
-      _tried = true;
-      final library = openQaEngineLibrary();
-      _instance =
-          library != null &&
-              qaStructSizeMatches(
-                library,
-                'qa_fx_render_job_sizeof',
-                sizeOf<QaFxRenderJobStruct>(),
-              ) &&
-              qaStructSizeMatches(
-                library,
-                'qa_fx_picture_sizeof',
-                sizeOf<QaFxPictureStruct>(),
-              )
-          ? QaFxPluginHost._(library)
-          : null;
-    }
-    return _instance;
-  }
-
-  final Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, int) _openNative;
-  final Pointer<Void> Function(Pointer<Uint8>, int, Pointer<Utf8>, int)
-  _openWasm;
-  final _PluginCalls _calls;
+  /// The host, or null where its structs are laid out otherwise than these
+  /// (a plugin is then not asked at all, never asked with fields read
+  /// wrong).
+  static final QaFxPluginHost? instance =
+      _renderJobSize() == sizeOf<QaFxRenderJobStruct>() &&
+          _pictureSize() == sizeOf<QaFxPictureStruct>()
+      ? QaFxPluginHost._()
+      : null;
 
   static const int _errorRoom = 512;
 
@@ -173,31 +162,14 @@ final class QaFxPluginHost {
   FxPluginOpened _opened(Pointer<Void> handle, Pointer<Utf8> error) =>
       handle == nullptr
       ? (plugin: null, error: error.toDartString())
-      : (plugin: QaFxPlugin._(handle, _calls), error: null);
+      : (plugin: QaFxPlugin._(handle), error: null);
 }
-
-typedef _PluginCalls = ({
-  int Function(Pointer<Void>, Pointer<Uint8>, int) describe,
-  int Function(
-    Pointer<Void>,
-    Pointer<Double>,
-    int,
-    int,
-    double,
-    double,
-    double,
-  )
-  reach,
-  int Function(Pointer<Void>, Pointer<QaFxRenderJobStruct>) render,
-  void Function(Pointer<Void>) close,
-});
 
 /// One open plugin. ⚠️Asked by one thread at a time; [close] lets it go.
 final class QaFxPlugin implements FxPluginRunner {
-  QaFxPlugin._(this._handle, this._calls);
+  QaFxPlugin._(this._handle);
 
   Pointer<Void> _handle;
-  final _PluginCalls _calls;
 
   /// The plugin's description (sdk/fx/anicel-fx, UTF-8 JSON), or null
   /// where it would not say — or said what is no UTF-8.
@@ -211,7 +183,7 @@ final class QaFxPlugin implements FxPluginRunner {
 
   ({int length, String? text}) _describeIn(int room) => using((arena) {
     final out = arena<Uint8>(room);
-    final length = _calls.describe(_handle, out, room);
+    final length = _describe(_handle, out, room);
     if (length < 0 || length > room) {
       return (length: length, text: null);
     }
@@ -229,7 +201,7 @@ final class QaFxPlugin implements FxPluginRunner {
     }
     final at = arena<Double>(values.isEmpty ? 1 : values.length);
     at.asTypedList(values.length).setAll(0, values);
-    final reach = _calls.reach(
+    final reach = _reach(
       _handle,
       at,
       values.length ~/ 4,
@@ -270,7 +242,7 @@ final class QaFxPlugin implements FxPluginRunner {
     for (final (index, layer) in layers.indexed) {
       _lay(job.ref.layers[index], layer, arena);
     }
-    if (_calls.render(_handle, job) != 0) {
+    if (_render(_handle, job) != 0) {
       return null;
     }
     return Uint8List.fromList(output.asTypedList(bytes));
@@ -299,7 +271,7 @@ final class QaFxPlugin implements FxPluginRunner {
     if (_handle == nullptr) {
       return;
     }
-    _calls.close(_handle);
+    _close(_handle);
     _handle = nullptr;
   }
 }

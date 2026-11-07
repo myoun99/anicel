@@ -3,7 +3,8 @@ description: >
   The pinned compiler and its targets, the crates the engine is built from,
   and on Windows the pinned DXC — for a job whose Flutter build or test run
   builds packages/gpu_engine through its build hook (hook/build.dart), as
-  every one does once the app depends on the engine.
+  every one does once the app depends on the engine — and the fx SDK's
+  example, which the fx pin opens.
 
 runs:
   using: composite
@@ -21,6 +22,10 @@ runs:
     # OS and Android ABI, against 0.7 GB the repository's 10 GB of caches
     # had left: it would push the Flutter SDKs out, and a cold engine build
     # is under two minutes (95 s on the main PC, 1:44 on the ARM runner).
+    # ⚠️Wasmtime joined the engine with the fx host (native/fx_plugin): a
+    # cold build went from 60 to 315 s on the Surface (2026-11-08), paid by
+    # every job here that builds it — not yet weighed against this choice
+    # (connection-round-checklist H).
     - uses: actions/cache@v4
       with:
         path: |
@@ -38,3 +43,11 @@ runs:
       with:
         path: ~/AppData/Local/anicel-build/dxc
         key: dxc-${{ hashFiles('packages/gpu_engine/rust/build.rs') }}
+    # The SDK example's native build, which the fx pin opens
+    # (test/native/an_fx_plugin_answers_through_the_engine_test.dart, where
+    # a job told QA_REQUIRE_NATIVE fails without it): the spec crate alone,
+    # seconds, for this machine — so every job that tests has it. ↩️The C
+    # engine's build made a C one beside the engine until 2026-11-08.
+    - shell: bash
+      working-directory: packages/gpu_engine/rust
+      run: cargo build --locked --release -p fx_sdk_example --target-dir ../../../build/fx_native

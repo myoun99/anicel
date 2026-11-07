@@ -1,17 +1,15 @@
-//! The host held to the C host it replaces (qa_fx_plugin.c, through the
-//! engine — native/oracle) and to answers worked out here, so two hosts
-//! that agree on a wrong answer still fail: the C's own test's cases
-//! (qa_fx_plugin_test.c) on the sample plugin, the SDK's example, and what a
-//! host must refuse.
+//! The host held to answers worked out here: the cases of the C host's own
+//! test on the sample plugin, the SDK's example, and what a host must
+//! refuse. ↩️Until the connection round (connection-round-checklist H,
+//! 2026-11-08) this host was held to the C host it replaced, byte for byte,
+//! on those plugins' C builds too; what the C answered was pinned here before
+//! it went — the refusals' words, the SDK example's answers in the ledger
+//! (`fx/sdk-example-answers`).
 //!
 //! The plugins are this crate's examples, built against the spec crate as a
-//! maker builds one ([`sample`]) and opened by both hosts — the C host
-//! reading a Rust plugin is the spec crate held to the header it replaces.
-//! The SDK's example is built as WebAssembly too, by a crate of its own
-//! (native/fx_sdk_example), and its module opened on each WebAssembly host.
-//! ⏳Until the connection round the C builds of the sample and the example
-//! (CMakeLists.txt, beside the engine) answer beside them, the key each
-//! Rust plugin is held to; that round deletes them with the C host.
+//! maker builds one ([`sample`]). The SDK's example is built as WebAssembly
+//! too, by a crate of its own (native/fx_sdk_example), and its module opened
+//! on each WebAssembly host.
 
 mod wasm;
 
@@ -27,7 +25,6 @@ type Reach = unsafe extern "C" fn(*mut c_void, *const f64, i32, i32, f64, f64, f
 type Render = unsafe extern "C" fn(*mut c_void, *const RenderJob) -> i32;
 type Close = unsafe extern "C" fn(*mut c_void);
 type Interprets = unsafe extern "C" fn(*mut c_void) -> i32;
-type Size = unsafe extern "C" fn() -> i32;
 
 /// One host's exports.
 #[derive(Clone, Copy)]
@@ -52,27 +49,6 @@ const RUST: Host = Host {
     close: qa_fx_plugin_close,
     interprets: qa_fx_plugin_interprets,
 };
-
-/// The C host's, through the engine.
-fn c() -> Host {
-    // SAFETY: each as qa_fx_plugin.c declares it.
-    unsafe {
-        Host {
-            name: "C",
-            open_native: oracle::export("qa_fx_plugin_open_native"),
-            open_wasm: oracle::export("qa_fx_plugin_open_wasm"),
-            describe: oracle::export("qa_fx_plugin_describe"),
-            reach: oracle::export("qa_fx_plugin_reach"),
-            render: oracle::export("qa_fx_plugin_render"),
-            close: oracle::export("qa_fx_plugin_close"),
-            interprets: oracle::export("qa_fx_plugin_interprets"),
-        }
-    }
-}
-
-fn hosts() -> [Host; 2] {
-    [c(), RUST]
-}
 
 fn c_path(path: &Path) -> CString {
     CString::new(path.to_str().expect("a UTF-8 path")).expect("a path with no NUL")
@@ -120,12 +96,6 @@ fn current(build: &Path, own: &Path, how: &str) -> PathBuf {
 
 fn refused(build: &Path, how: &str, why: impl std::fmt::Display) -> ! {
     panic!("{}: {why} — {how}", build.display())
-}
-
-/// A C build of a plugin the engine's build made beside the engine
-/// (CMakeLists.txt), the key its Rust build is held to.
-fn c_built(name: &str) -> CString {
-    c_path(&oracle::beside(name))
 }
 
 /// What an error room holds, up to its NUL.
@@ -355,21 +325,13 @@ fn ask(plugin: &Opened) -> String {
     description
 }
 
-/// The sample asked every question of the C test, on each host — and its C
-/// build on the C host, the key it is held to.
+/// The sample asked every question of the C test.
 #[test]
-fn the_sample_answers_as_the_c_host_does_and_as_worked_out_here() {
-    let rust = sample("qa_fx_plugin_sample");
-    let c_build = c_built("qa_fx_plugin_sample");
-    let asked = [(c(), &c_build), (c(), &rust), (RUST, &rust)];
-    let descriptions = asked.map(|(host, path)| {
-        let plugin = Opened::new(host, path);
-        // SAFETY: an open plugin.
-        assert_eq!(unsafe { (host.interprets)(plugin.handle) }, 0, "{}: compiled", host.name);
-        ask(&plugin)
-    });
-    assert_eq!(descriptions[0], descriptions[1]);
-    assert_eq!(descriptions[1], descriptions[2]);
+fn the_sample_answers_as_worked_out_here() {
+    let plugin = Opened::new(RUST, &sample("qa_fx_plugin_sample"));
+    // SAFETY: an open plugin.
+    assert_eq!(unsafe { qa_fx_plugin_interprets(plugin.handle) }, 0, "compiled");
+    ask(&plugin);
 }
 
 /// A picture of `width` × `height` with 4 bytes of padding a row, hashed
@@ -393,31 +355,28 @@ fn hashed(width: usize, height: usize) -> Vec<u8> {
 /// asked its description, and its reach and render across offsets, colours
 /// and scales: its native build on each host, and its module, the one every
 /// device runs, on each WebAssembly host (유저,
-/// connection-round-checklist-Q11: 「받고, CI 가 매번 확인」). The answers
-/// of its C build on the C host are the key they are held to, byte for byte
-/// — and the key's bytes as the ledger pinned them, which stand when the
-/// connection round deletes the C (connection-round-checklist A).
+/// connection-round-checklist-Q11: 「받고, CI 가 매번 확인」), all byte for
+/// byte the answers the ledger pinned — its C build's on the C host, which
+/// stand now the connection round has deleted the C
+/// (connection-round-checklist A).
 #[test]
-fn the_sdk_example_answers_as_the_c_host_does() {
-    let rust = sample("qa_fx_sdk_example");
-    let c_build = c_built("qa_fx_sdk_example");
+fn the_sdk_example_answers_as_the_ledger_pinned() {
+    let native = Opened::new(RUST, &sample("qa_fx_sdk_example"));
     let module = wasm::sdk_module();
-    let natives = [(c(), &c_build, "C on C"), (c(), &rust, "Rust on C"), (RUST, &rust, "Rust")];
-    let mut asked =
-        Vec::from(natives.map(|(host, path, who)| (who.to_owned(), Opened::new(host, path))));
+    let mut asked = vec![("Rust".to_owned(), native)];
     asked.extend(wasm::wasm_hosts().map(|host| {
         (format!("the module on {}", host.name), wasm::opened_module(host, &module))
     }));
     let answers: Vec<_> =
         asked.iter().map(|(who, plugin)| (who, sdk_answers(plugin, who))).collect();
-    let (_, key) = &answers[0];
+    let (native, key) = &answers[0];
+    ledger::assert_pinned("fx/sdk-example-answers", key);
     for (who, answer) in &answers[1..] {
         assert_eq!(key.len(), answer.len(), "{who}");
         if let Some(at) = (0..key.len()).find(|&at| key[at] != answer[at]) {
-            panic!("{who} parts from the C at byte {at} of {}", key.len());
+            panic!("{who} parts from the {native} build at byte {at} of {}", key.len());
         }
     }
-    ledger::assert_pinned("fx/sdk-example-answers", key);
 }
 
 /// What the SDK's example answers: its description and its length, then its
@@ -457,28 +416,24 @@ fn sdk_answers(plugin: &Opened, who: &str) -> Vec<u8> {
     answers
 }
 
-/// A job with no values and no layers, their pointers null, is taken as the
-/// C host takes it. The sample reads its first value anyway; with none
+/// A job with no values and no layers, their pointers null, is taken, as
+/// the C host took it. The sample reads its first value anyway; with none
 /// there its slice is not read past — it panics, and the spec crate answers
-/// that as the plugin's failure, on both hosts alike, the output untouched.
+/// that as the plugin's failure, the output untouched.
 #[test]
-fn a_job_with_no_values_and_no_layers_is_taken_as_the_c_host_takes_it() {
+fn a_job_with_no_values_and_no_layers_is_taken() {
     let input = input();
-    let path = sample("qa_fx_plugin_sample");
-    let answers = hosts().map(|host| {
-        let plugin = Opened::new(host, &path);
-        let mut out = vec![0xEE; IN_H * OUT_STRIDE];
-        let job = RenderJob {
-            values: std::ptr::null(),
-            value_count: 0,
-            layers: std::ptr::null(),
-            layer_count: 0,
-            ..job(&input, &mut out, &[], &[])
-        };
-        (plugin.render(&job), out)
-    });
-    assert_eq!(answers[0].0, FAILED, "the C host takes it, and the plugin fails");
-    assert_eq!(answers[0], answers[1]);
+    let plugin = Opened::new(RUST, &sample("qa_fx_plugin_sample"));
+    let mut out = vec![0xEE; IN_H * OUT_STRIDE];
+    let job = RenderJob {
+        values: std::ptr::null(),
+        value_count: 0,
+        layers: std::ptr::null(),
+        layer_count: 0,
+        ..job(&input, &mut out, &[], &[])
+    };
+    assert_eq!(plugin.render(&job), FAILED, "taken, and the plugin fails");
+    assert_eq!(out, vec![0xEE; IN_H * OUT_STRIDE], "the output untouched");
 }
 
 /// Bytes this thread holds from the heap, so a test sees a host give back
@@ -575,38 +530,41 @@ fn a_closed_plugin_gives_back_what_the_host_took() {
 
 /// A library the host must not open — none at all, one that is not there,
 /// one of another spec version, one with no render — and a module that is
-/// none: refused in the C host's words, cut to the room as it cut them.
+/// none: refused in the words the C host chose, cut to the room as it cut
+/// them (pinned here from the C host before it went).
 #[test]
-fn the_host_refuses_what_the_c_host_refuses_in_its_words() {
+fn the_host_refuses_what_it_cannot_open_in_its_words() {
     let paths = [
-        None,
-        Some(CString::new("no/such/plugin.dll").expect("a path")),
-        Some(sample("qa_fx_plugin_sample_spec2")),
-        Some(sample("qa_fx_plugin_sample_no_render")),
+        (None, "no path"),
+        (Some(CString::new("no/such/plugin.dll").expect("a path")), "the library would not load"),
+        (Some(sample("qa_fx_plugin_sample_spec2")), "the plugin speaks another spec version"),
+        (Some(sample("qa_fx_plugin_sample_no_render")), "the library exports no fx plugin"),
     ];
-    for path in &paths {
+    for (path, words) in &paths {
         let path = path.as_ref().map_or(std::ptr::null(), |path| path.as_ptr());
         for capacity in [64, 5, 1, 0] {
-            let words = hosts().map(|host| {
-                let mut error = [0x7f as c_char; 64];
-                // SAFETY: a path or none, and a room of at least `capacity`.
-                let handle = unsafe { (host.open_native)(path, error.as_mut_ptr(), capacity) };
-                assert!(handle.is_null(), "{} opened it", host.name);
-                error
-            });
-            assert_eq!(words[0], words[1], "a room of {capacity}");
-            assert_eq!(words[0][0] == 0x7f, capacity == 0, "LIVENESS — the room is written");
+            // The words as far as the room holds them and their NUL, the
+            // rest of it untouched; a room of none, untouched.
+            let mut cut = [0x7f as c_char; 64];
+            if capacity > 0 {
+                let said = words.len().min(capacity as usize - 1);
+                for (at, &byte) in words.as_bytes()[..said].iter().enumerate() {
+                    cut[at] = byte as c_char;
+                }
+                cut[said] = 0;
+            }
+            let mut error = [0x7f as c_char; 64];
+            // SAFETY: a path or none, and a room of at least `capacity`.
+            let handle = unsafe { qa_fx_plugin_open_native(path, error.as_mut_ptr(), capacity) };
+            assert!(handle.is_null(), "opened it");
+            assert_eq!(error, cut, "{words:?} in a room of {capacity}");
         }
     }
     let garbage = [1u8, 2, 3, 4, 5, 6, 7, 8];
-    for host in hosts() {
-        let mut error = [0 as c_char; 256];
-        // SAFETY: eight bytes, and a room of 256.
-        let handle =
-            unsafe { (host.open_wasm)(garbage.as_ptr(), 8, error.as_mut_ptr(), 256) };
-        let refused = handle.is_null() && !said(&error).is_empty();
-        assert!(refused, "{}: bytes that are no module", host.name);
-    }
+    let mut error = [0 as c_char; 256];
+    // SAFETY: eight bytes, and a room of 256.
+    let handle = unsafe { qa_fx_plugin_open_wasm(garbage.as_ptr(), 8, error.as_mut_ptr(), 256) };
+    assert!(handle.is_null() && !said(&error).is_empty(), "bytes that are no module");
 }
 
 /// A job the host cannot take, and questions it cannot answer, refused
@@ -628,69 +586,53 @@ fn what_the_host_cannot_take_is_refused_before_the_plugin_sees_it() {
     let bigs = vec![big_layer; 1100];
     let path = sample("qa_fx_plugin_sample");
     let no_width = Picture { width: 0, ..map_layer(&map) };
-    for host in hosts() {
-        let plugin = Opened::new(host, &path);
-        let mut out = vec![0xEE; IN_H * OUT_STRIDE];
-        let good = job(&input, &mut out, &values, &[]);
-        let cases: [(&str, fn(&mut RenderJob)); 10] = [
-            ("no pixels", |job| job.input.pixels = std::ptr::null()),
-            ("no width", |job| job.input.width = 0),
-            ("a height below none", |job| job.input.height = -1),
-            ("a stride short of a row", |job| job.input.stride = IN_W as i32 * 4 - 1),
-            ("no output", |job| job.output = std::ptr::null_mut()),
-            ("an output short of a row", |job| job.output_stride = IN_W as i32 * 4 - 1),
-            ("values below none", |job| job.value_count = -1),
-            ("values with no pointer", |job| job.values = std::ptr::null()),
-            ("layers below none", |job| job.layer_count = -1),
-            ("layers with no pointer", |job| {
-                job.layers = std::ptr::null();
-                job.layer_count = 1;
-            }),
-        ];
-        let who = host.name;
-        for (case, spoil) in cases {
-            let mut job = good;
-            spoil(&mut job);
-            assert_eq!(plugin.render(&job), BAD_JOB, "{who}: {case}");
-        }
-        let layers = [(&[no_width][..], "a layer with no width"), (&bigs[..], "past 4 GB")];
-        for (layers, case) in layers {
-            let count = layers.len() as i32;
-            let job = RenderJob { layers: layers.as_ptr(), layer_count: count, ..good };
-            assert_eq!(plugin.render(&job), BAD_JOB, "{who}: {case}");
-        }
-        assert_eq!(plugin.render(std::ptr::null()), BAD_JOB, "{who}: no job");
-        // SAFETY: no plugin, a job that holds what it says.
-        assert_eq!(unsafe { (host.render)(std::ptr::null_mut(), &good) }, BAD_JOB, "{who}");
-        assert!(out.iter().all(|&byte| byte == 0xEE), "{who}: the output was written");
-
-        let mut room = [0 as c_char; 8];
-        // SAFETY: no plugin; no room; a room said to be none.
-        unsafe {
-            assert_eq!((host.describe)(std::ptr::null_mut(), room.as_mut_ptr(), 8), BAD_JOB);
-            assert_eq!((host.describe)(plugin.handle, std::ptr::null_mut(), 8), BAD_JOB);
-            assert_eq!((host.describe)(plugin.handle, room.as_mut_ptr(), 0), BAD_JOB);
-        }
-        let reach = |handle, values: *const f64, count| {
-            // SAFETY: what each case says it holds.
-            unsafe { (host.reach)(handle, values, count, 0, 0.0, 24.0, 1.0) }
-        };
-        assert_eq!(reach(std::ptr::null_mut(), values.as_ptr(), 2), BAD_JOB, "{who}: no plugin");
-        assert_eq!(reach(plugin.handle, values.as_ptr(), -1), BAD_JOB, "{who}: below none");
-        assert_eq!(reach(plugin.handle, std::ptr::null(), 1), BAD_JOB, "{who}: no pointer");
+    let plugin = Opened::new(RUST, &path);
+    let mut out = vec![0xEE; IN_H * OUT_STRIDE];
+    let good = job(&input, &mut out, &values, &[]);
+    let cases: [(&str, fn(&mut RenderJob)); 10] = [
+        ("no pixels", |job| job.input.pixels = std::ptr::null()),
+        ("no width", |job| job.input.width = 0),
+        ("a height below none", |job| job.input.height = -1),
+        ("a stride short of a row", |job| job.input.stride = IN_W as i32 * 4 - 1),
+        ("no output", |job| job.output = std::ptr::null_mut()),
+        ("an output short of a row", |job| job.output_stride = IN_W as i32 * 4 - 1),
+        ("values below none", |job| job.value_count = -1),
+        ("values with no pointer", |job| job.values = std::ptr::null()),
+        ("layers below none", |job| job.layer_count = -1),
+        ("layers with no pointer", |job| {
+            job.layers = std::ptr::null();
+            job.layer_count = 1;
+        }),
+    ];
+    for (case, spoil) in cases {
+        let mut job = good;
+        spoil(&mut job);
+        assert_eq!(plugin.render(&job), BAD_JOB, "{case}");
     }
+    let layers = [(&[no_width][..], "a layer with no width"), (&bigs[..], "past 4 GB")];
+    for (layers, case) in layers {
+        let count = layers.len() as i32;
+        let job = RenderJob { layers: layers.as_ptr(), layer_count: count, ..good };
+        assert_eq!(plugin.render(&job), BAD_JOB, "{case}");
+    }
+    assert_eq!(plugin.render(std::ptr::null()), BAD_JOB, "no job");
+    // SAFETY: no plugin, a job that holds what it says.
+    assert_eq!(unsafe { qa_fx_plugin_render(std::ptr::null_mut(), &good) }, BAD_JOB);
+    assert!(out.iter().all(|&byte| byte == 0xEE), "the output was written");
+
+    let mut room = [0 as c_char; 8];
+    // SAFETY: no plugin; no room; a room said to be none.
+    unsafe {
+        assert_eq!(qa_fx_plugin_describe(std::ptr::null_mut(), room.as_mut_ptr(), 8), BAD_JOB);
+        assert_eq!(qa_fx_plugin_describe(plugin.handle, std::ptr::null_mut(), 8), BAD_JOB);
+        assert_eq!(qa_fx_plugin_describe(plugin.handle, room.as_mut_ptr(), 0), BAD_JOB);
+    }
+    let reach = |handle, values: *const f64, count| {
+        // SAFETY: what each case says it holds.
+        unsafe { qa_fx_plugin_reach(handle, values, count, 0, 0.0, 24.0, 1.0) }
+    };
+    assert_eq!(reach(std::ptr::null_mut(), values.as_ptr(), 2), BAD_JOB, "no plugin");
+    assert_eq!(reach(plugin.handle, values.as_ptr(), -1), BAD_JOB, "below none");
+    assert_eq!(reach(plugin.handle, std::ptr::null(), 1), BAD_JOB, "no pointer");
 }
 
-/// The job and the picture are the C host's size, which the Dart structs
-/// that mirror them are held to.
-#[test]
-fn the_job_is_laid_out_as_the_c_host_lays_it() {
-    // SAFETY: as qa_fx_plugin.c declares them.
-    let (job, picture) = unsafe {
-        (
-            oracle::export::<Size>("qa_fx_render_job_sizeof")(),
-            oracle::export::<Size>("qa_fx_picture_sizeof")(),
-        )
-    };
-    assert_eq!((qa_fx_render_job_sizeof(), qa_fx_picture_sizeof()), (job, picture));
-}

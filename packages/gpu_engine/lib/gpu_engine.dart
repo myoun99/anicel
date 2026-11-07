@@ -17,6 +17,15 @@ import 'src/texture_shim.dart' as shim;
 /// The Android plugin (android/src/main/kotlin/.../GpuEnginePlugin.kt).
 const _plugin = MethodChannel('gpu_engine');
 
+/// The code asset the engine's Rust library ships as (hook/build.dart names
+/// it; this package's own `@Native` bindings resolve to it by being that
+/// file) — for an app module the library carries (rust/src/lib.rs), whose
+/// file says `@DefaultAsset(gpuEngineAsset) library;` and binds its names
+/// with `@Native`: the app opens no library and names no path for it
+/// (connection-round-checklist A, 캔버스 베이스 2026-11-08 — the fx plugin
+/// host first).
+const gpuEngineAsset = 'package:gpu_engine/src/engine_ffi.dart';
+
 String _lastError() => using((arena) {
   const capacity = 1024;
   final buffer = arena<Uint8>(capacity);

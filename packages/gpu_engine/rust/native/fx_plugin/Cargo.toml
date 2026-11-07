@@ -20,12 +20,10 @@ wasmtime = { version = "=48.0.8", default-features = false, features = [
 ] }
 wasmtime-wasi = { version = "=48.0.8", default-features = false, features = ["p1"] }
 
-# The C answer key, the engine's qa_fx_* (native/oracle), and the app's
-# ledger (native/ledger), which keeps the SDK example's answers when the C
-# is deleted.
+# The app's ledger (native/ledger), which keeps the SDK example's answers
+# the C host gave before it was deleted.
 [dev-dependencies]
 ledger = { path = "../ledger" }
-oracle = { path = "../oracle" }
 wat = "=1.254.2"
 
 # The plugins the tests open (src/tests.rs), each built against the spec

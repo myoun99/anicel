@@ -9,52 +9,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/effect_parameter_spec.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/fx_plugin_run.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_fx_plugin_host.dart';
 
 import '../helpers/native_engine_path.dart';
 
-/// The fx plugin host as Dart asks it: the sample plugin the engine's build
-/// makes beside it (qa_fx_plugin_sample.c) opened through
-/// [QaFxPluginHost], its description, reach and render read back through
-/// the structs — held to answers worked out here, so a field the Dart
-/// struct lays where the C one does not shows as a wrong picture.
+/// The fx plugin host as Dart asks it — the engine's Rust host
+/// (native/fx_plugin) through [QaFxPluginHost], a plugin's description,
+/// reach and render read back through the structs — held to answers worked
+/// out here, so a field the Dart structs lay where the host does not shows
+/// as a wrong picture.
 ///
-/// The WebAssembly side is the engine's own test's (qa_fx_plugin_test.c):
-/// it writes its twin module from text, which Dart cannot.
+/// The sample is its WebAssembly twin (test/fixtures/fx/sample_twin.wasm),
+/// from the text the host's own tests write it from — they hold this file
+/// to that text (native/fx_plugin/src/tests/wasm.rs) — so it needs no build
+/// and runs wherever `flutter test` does.
 ///
-/// The SDK's example is the plugin a maker starts from (sdk/fx/example);
-/// its C build (qa_fx_sdk_example.c, the key the Rust one is held to) is
-/// made beside the engine: what it says of itself is held to the app's own
-/// reading of a description, and its pictures to answers worked out here.
-/// ⏳The connection round deletes the C builds; this then opens the Rust
-/// ones the spec crate's tests build (native/fx_plugin/examples).
+/// The SDK's example is the plugin a maker starts from (sdk/fx/example),
+/// its native build where [_sdkExample] finds it: what it says of itself is
+/// held to the app's own reading of a description, and its pictures to
+/// answers worked out here.
+///
+/// ↩️Until the connection round (connection-round-checklist H, 2026-11-08)
+/// both were C builds the C engine's build made beside it, opened by the C
+/// host.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final samplePath = libraryPath == null
-      ? null
-      : _builtBeside(libraryPath, 'qa_fx_plugin_sample');
-  final skip = libraryPath == null
-      ? nativeEngineMissingSkipReason
-      : samplePath == null
-      ? 'the engine at $libraryPath has no sample plugin beside it'
-      : false;
-
-  setUp(() {
-    QaFxPluginHost.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
-  tearDown(() {
-    QaFxPluginHost.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
-
   QaFxPlugin openSample() {
     final host = QaFxPluginHost.instance;
-    expect(host, isNotNull, reason: 'the engine at $libraryPath loaded '
-        'but its plugin structs are laid out otherwise');
-    final opened = host!.openNative(samplePath!);
+    expect(host, isNotNull, reason: "the engine's plugin structs are laid "
+        'out otherwise');
+    final twin = File('test/fixtures/fx/sample_twin.wasm').readAsBytesSync();
+    final opened = host!.openWasm(twin);
     expect(opened.error, isNull);
     return opened.plugin!;
   }
@@ -132,7 +116,7 @@ void main() {
         (parameter as Map<String, dynamic>)['kind'],
     ], ['number', 'layer']);
     plugin.close();
-  }, skip: skip);
+  });
 
   test('its reach reads the values and every number of the moment', () {
     final plugin = openSample();
@@ -148,7 +132,7 @@ void main() {
       4 + 5 + 7,
     );
     plugin.close();
-  }, skip: skip);
+  });
 
   test('a render reads the map where the canvas puts it', () {
     final plugin = openSample();
@@ -165,32 +149,28 @@ void main() {
       expected(amount: 30, withMap: true),
     );
     plugin.close();
-  }, skip: skip);
+  });
 
   test("a plugin's failure is no picture", () {
     final plugin = openSample();
     expect(render(plugin, amount: -5), isNull);
     plugin.close();
-  }, skip: skip);
+  });
 
   test('what is no plugin is said so', () {
     final host = QaFxPluginHost.instance!;
-    final missing = host.openNative('${samplePath!}.missing');
+    final missing = host.openNative('test/fixtures/fx/no_such_plugin');
     expect(missing.plugin, isNull);
     expect(missing.error, isNotEmpty);
     final garbage = host.openWasm(Uint8List.fromList([1, 2, 3, 4]));
     expect(garbage.plugin, isNull);
     expect(garbage.error, isNotEmpty);
-  }, skip: skip);
+  });
 
   group('the SDK example', () {
-    final examplePath = libraryPath == null
-        ? null
-        : _builtBeside(libraryPath, 'qa_fx_sdk_example');
-    final skipExample = libraryPath == null
-        ? nativeEngineMissingSkipReason
-        : examplePath == null
-        ? 'the engine at $libraryPath has no SDK example beside it'
+    final examplePath = _sdkExample();
+    final skipExample = examplePath == null
+        ? 'no SDK example built here — $_buildExample'
         : false;
 
     QaFxPlugin openExample() {
@@ -301,44 +281,34 @@ void main() {
       }
       plugin.close();
     }, skip: skipExample);
-
-    // Its C build and the header it reads are compiled without /utf-8
-    // (packages/qa_native/src/CMakeLists.txt), so MSVC reads them in the
-    // machine's code page: on a Japanese or Korean Windows it warns at
-    // every byte past ASCII, and one at a line's end can take the line
-    // break with it. ↩️Until 2026-11-07 they were the SDK's, read by a
-    // maker's compiler; the connection round deletes both.
-    test('its C is ASCII, as every code page reads it', () {
-      for (final path in [
-        'packages/qa_native/src/anicel_fx_plugin.h',
-        'packages/qa_native/src/qa_fx_sdk_example.c',
-      ]) {
-        final bytes = File(path).readAsBytesSync();
-        expect(
-          [for (var i = 0; i < bytes.length; i += 1) if (bytes[i] > 0x7E) i],
-          isEmpty,
-          reason: path,
-        );
-      }
-    });
   });
 }
 
-/// The plugin [target] the engine's build makes in its own folder — where
-/// QA_ENGINE_PATH points ([nativeEngineLibraryPathOrNull]).
-String? _builtBeside(String libraryPath, String target) {
-  final folder = File(libraryPath).parent.path;
-  final name = Platform.isWindows
-      ? '$target.dll'
+/// The SDK example's native build: where `QA_FX_SDK_EXAMPLE` names it, else
+/// where this checkout's build of it lands ([_buildExample]) — as the gate
+/// and CI build it before these run. A builder told to have one fails here
+/// without it ([nativeEngineRequired]).
+String? _sdkExample() {
+  final named = Platform.environment['QA_FX_SDK_EXAMPLE'];
+  final library = Platform.isWindows
+      ? 'fx_sdk_example.dll'
       : Platform.isMacOS
-      ? 'lib$target.dylib'
-      : 'lib$target.so';
-  final path = '$folder${Platform.pathSeparator}$name';
+      ? 'libfx_sdk_example.dylib'
+      : 'libfx_sdk_example.so';
+  final path = named != null && named.isNotEmpty
+      ? named
+      : ['build', 'fx_native', 'release', library].join(Platform.pathSeparator);
   if (File(path).existsSync()) {
     return path;
   }
   if (nativeEngineRequired) {
-    fail('QA_REQUIRE_NATIVE=1 but no $target beside the engine: $path');
+    fail('QA_REQUIRE_NATIVE=1 but no SDK example at $path — $_buildExample');
   }
   return null;
 }
+
+/// How the SDK example's native build is made, from its crate of its own
+/// (native/fx_sdk_example: the spec crate alone, no host) — seconds.
+const _buildExample =
+    'in packages/gpu_engine/rust `cargo build --release -p fx_sdk_example '
+    '--target-dir ../../../build/fx_native`';

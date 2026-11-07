@@ -14,6 +14,14 @@ publish = false
 #
 #   CARGO_TARGET_DIR=../../../build/fx_wasm \
 #     cargo build --release -p fx_sdk_example --target wasm32-unknown-unknown
+#
+# And natively, the plugin the app's fx pin opens through the engine's host
+# (test/native/an_fx_plugin_answers_through_the_engine_test.dart): built
+# here, with no host in it, it takes seconds where fx_plugin's example
+# takes the host's build. The gate's native run and CI's rust-engine action
+# build it where the pin looks:
+#
+#   cargo build --release -p fx_sdk_example --target-dir ../../../build/fx_native
 [lib]
 crate-type = ["cdylib"]
 
