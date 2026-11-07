@@ -45,6 +45,12 @@ const DLLS: [(&str, &str, &str); 2] = [
 /// (assets/licenses/LICENSE-DXC-*.txt, held to these digests by
 /// test/every_dll_the_engine_ships_is_noticed_test.dart): a zip pinned
 /// above with other texts fails here until they are shown.
+///
+/// The DLL itself is read as under the LLVM licence, as Microsoft labels
+/// its NuGet package of it, and the Microsoft terms as the closed-source
+/// `dxil.dll`'s, which the app does not ship: the three texts are its
+/// notice, and no one is asked to agree to the terms (유저 2026-11-07,
+/// gpu-engine-feasibility-Q6).
 const LICENCES: [(&str, &str); 3] = [
     ("LICENSE-LLVM.txt", "b2551288a0381a79527d63c1590ae8bac98de4dafa1afd0702625d6e82524b85"),
     ("LICENCE-MIT.txt", "fd532481d828e13a0b13ccb598e02338a3617740675a862ee6bdc1541b68e93d"),

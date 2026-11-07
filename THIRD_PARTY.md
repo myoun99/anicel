@@ -110,6 +110,11 @@ as the zip has them, at `assets/licenses/LICENSE-DXC-LLVM.txt`,
 `LICENSE-DXC-MIT.txt` and `LICENSE-DXC-MS.txt`, and surfaced together in
 the app's About ▸ licenses screen; `build.rs` pins each text's digest, so
 a newer zip with other texts fails the build until they are bundled.
+The DLL itself is read as under the LLVM licence, as Microsoft labels its
+NuGet package of it, and the Microsoft terms as the closed-source
+`dxil.dll`'s, which the app does not ship — so the three texts are its
+notice and no agreement to the terms is asked (유저 2026-11-07,
+gpu-engine-feasibility-Q6).
 
 ## Assets
 
