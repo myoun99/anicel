@@ -15,9 +15,13 @@ windows = { version = "0.62", features = [
   "Win32_System_Com",
 ] }
 
-# open/close of the output file the NDK muxer writes into.
+# The NDK's MediaCodec and MediaMuxer, through ndk-sys — bindings made from
+# the NDK's own headers, never a table by hand (media's served_span.rs says
+# why; this crate's own hand copy, ndk.rs, went 2026-11-07) — and libc for
+# open/close of the output file the muxer writes into.
 [target.'cfg(target_os = "android")'.dependencies]
 libc = "0.2"
+ndk-sys = { version = "0.6", features = ["media"] }
 
 # AVFoundation's writer (qa_video_apple.m's AVAssetWriter half). Every
 # crate but AVFoundation's and CoreMedia's was already in the lock (wgpu-hal,

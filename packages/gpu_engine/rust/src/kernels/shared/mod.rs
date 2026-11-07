@@ -21,6 +21,8 @@ mod one_checkout;
 #[cfg(test)]
 mod one_maths;
 #[cfg(test)]
+mod one_ndk_table;
+#[cfg(test)]
 mod one_pass;
 #[cfg(test)]
 mod one_premultiply;

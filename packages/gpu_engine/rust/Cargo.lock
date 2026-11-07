@@ -2479,6 +2479,7 @@ dependencies = [
  "block2",
  "libc",
  "media",
+ "ndk-sys",
  "objc2",
  "objc2-av-foundation",
  "objc2-avf-audio",

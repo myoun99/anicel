@@ -17,5 +17,3 @@ pub mod colour;
 // road 관제 set for every Apple piece of the engine (connection round, H).
 pub mod export;
 pub mod hardware_law;
-#[cfg(target_os = "android")]
-mod ndk;

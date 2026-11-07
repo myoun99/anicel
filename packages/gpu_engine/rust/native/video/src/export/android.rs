@@ -1,4 +1,5 @@
-//! Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer (`crate::ndk`).
+//! Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer, through `ndk-sys`
+//! — the NDK's own headers, never a hand table (media's `served_span.rs`).
 //! Color conversion RGBA → YUV420 happens here, in the app's colour law
 //! (`crate::colour`) — hardware encoders overwhelmingly accept
 //! COLOR_FormatYUV420SemiPlanar; the planar variant is the fallback.
@@ -11,13 +12,32 @@
 //! finish a file since that backend was written (#646).
 
 use std::collections::VecDeque;
-use std::ffi::{c_int, c_long};
+use std::ffi::c_int;
 use std::ptr::null_mut;
 use std::sync::Mutex;
 
+use ndk_sys::{
+    AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM, AMEDIACODEC_CONFIGURE_FLAG_ENCODE,
+    AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED, AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED, AMEDIACODEC_INFO_TRY_AGAIN_LATER,
+    AMEDIAFORMAT_KEY_AAC_PROFILE, AMEDIAFORMAT_KEY_BIT_RATE, AMEDIAFORMAT_KEY_CHANNEL_COUNT,
+    AMEDIAFORMAT_KEY_COLOR_FORMAT, AMEDIAFORMAT_KEY_FRAME_RATE, AMEDIAFORMAT_KEY_HEIGHT,
+    AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, AMEDIAFORMAT_KEY_MIME, AMEDIAFORMAT_KEY_SAMPLE_RATE, AMEDIAFORMAT_KEY_WIDTH,
+    AMediaCodec, AMediaCodec_configure, AMediaCodec_createEncoderByType, AMediaCodec_delete,
+    AMediaCodec_dequeueInputBuffer, AMediaCodec_dequeueOutputBuffer, AMediaCodec_getInputBuffer,
+    AMediaCodec_getOutputBuffer, AMediaCodec_getOutputFormat, AMediaCodec_queueInputBuffer,
+    AMediaCodec_releaseOutputBuffer, AMediaCodec_start, AMediaCodec_stop, AMediaCodecBufferInfo, AMediaFormat_delete,
+    AMediaFormat_new, AMediaFormat_setInt32, AMediaFormat_setString, AMediaMuxer, AMediaMuxer_addTrack,
+    AMediaMuxer_delete, AMediaMuxer_new, AMediaMuxer_start, AMediaMuxer_stop, AMediaMuxer_writeSampleData,
+    OutputFormat, media_status_t,
+};
+
 use super::{BAD_OPEN, CODEC_H264, CODEC_HEVC, CONTAINER_MP4, Job, bitrate, lock, set_error};
 use crate::colour::{self, Picture, Planes};
-use crate::ndk::*;
+
+const AMEDIA_OK: media_status_t = media_status_t::AMEDIA_OK;
+
+/// What a codec has not filled in yet.
+const NO_INFO: AMediaCodecBufferInfo = AMediaCodecBufferInfo { offset: 0, size: 0, presentationTimeUs: 0, flags: 0 };
 
 pub const SUPPORTED: bool = true;
 
@@ -144,7 +164,7 @@ impl Writer {
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 1);
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, color_format);
             let configured =
-                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
+                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE as u32);
             AMediaFormat_delete(format);
             if configured != AMEDIA_OK || AMediaCodec_start(codec) != AMEDIA_OK {
                 AMediaCodec_delete(codec);
@@ -170,7 +190,7 @@ impl Writer {
             // 2 = AAC LC.
             AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_AAC_PROFILE, 2);
             let configured =
-                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
+                AMediaCodec_configure(codec, format, null_mut(), null_mut(), AMEDIACODEC_CONFIGURE_FLAG_ENCODE as u32);
             AMediaFormat_delete(format);
             if configured != AMEDIA_OK || AMediaCodec_start(codec) != AMEDIA_OK {
                 AMediaCodec_delete(codec);
@@ -218,13 +238,13 @@ impl Writer {
     fn drain(&mut self, track: Track) -> bool {
         let codec = if track == Track::Video { self.video_codec } else { self.audio_codec };
         loop {
-            let mut info = AMediaCodecBufferInfo::default();
+            let mut info = NO_INFO;
             // SAFETY: our codec; `info` is a local.
             let index = unsafe { AMediaCodec_dequeueOutputBuffer(codec, &mut info, 0) };
-            if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER {
+            if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER as isize {
                 return true;
             }
-            if index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED {
+            if index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED as isize {
                 // SAFETY: the codec's format, handed to the muxer and deleted.
                 let added = unsafe {
                     let format = AMediaCodec_getOutputFormat(codec);
@@ -243,7 +263,7 @@ impl Writer {
                 }
                 continue;
             }
-            if index == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED || index < 0 {
+            if index == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED as isize || index < 0 {
                 continue;
             }
             if !self.take_output(codec, track, index as usize, &info) {
@@ -311,7 +331,7 @@ pub fn open(job: &Job) -> bool {
         return false;
     }
     // SAFETY: an open fd, which the muxer writes and the writer closes.
-    writer.muxer = unsafe { AMediaMuxer_new(writer.fd, AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4) };
+    writer.muxer = unsafe { AMediaMuxer_new(writer.fd, OutputFormat::AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4) };
     if writer.muxer.is_null() {
         set_error("video export: the MP4 muxer could not be created");
         return false;
@@ -439,7 +459,7 @@ fn signal_end(codec: *mut AMediaCodec) {
     unsafe {
         let input = AMediaCodec_dequeueInputBuffer(codec, INPUT_WAIT_US);
         if input >= 0 {
-            AMediaCodec_queueInputBuffer(codec, input as usize, 0 as c_long, 0, 0, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
+            AMediaCodec_queueInputBuffer(codec, input as usize, 0, 0, 0, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
         }
     }
 }
@@ -461,7 +481,7 @@ pub fn finish() -> bool {
         if !writer.audio_codec.is_null() && !writer.drain(Track::Audio) {
             break;
         }
-        let mut info = AMediaCodecBufferInfo::default();
+        let mut info = NO_INFO;
         // SAFETY: our codec; `info` is a local.
         let index = unsafe { AMediaCodec_dequeueOutputBuffer(writer.video_codec, &mut info, 10_000) };
         if index >= 0 {
@@ -472,7 +492,7 @@ pub fn finish() -> bool {
             }
             continue;
         }
-        if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER {
+        if index == AMEDIACODEC_INFO_TRY_AGAIN_LATER as isize {
             break;
         }
     }
