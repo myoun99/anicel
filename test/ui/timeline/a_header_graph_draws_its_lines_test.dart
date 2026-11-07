@@ -591,6 +591,12 @@ void main() {
     // the timeline's run along its top, and its values fitted clear of
     // them.
     expect(tools.height, greaterThan(tools.width), reason: 'turned');
+    expect(
+      tools.bottom,
+      moreOrLessEquals(view.bottom - 6),
+      reason: 'a view this short: no longer than it, kept off its end as '
+          'off its start — the timeline\'s narrow view turned',
+    );
 
     await _tap(tester, _plot('xsheet', LaneGraphMode.speed));
     expect(_painter(tester, grid: 'xsheet').mode, LaneGraphMode.speed);
