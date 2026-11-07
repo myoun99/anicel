@@ -78,13 +78,40 @@ fn c_path(path: &Path) -> CString {
 
 /// One of this crate's examples (Cargo.toml: the sample, the two builds of
 /// it a host refuses, and the SDK's example), which `cargo test` builds
-/// beside the folder of the test it runs.
+/// beside the folder of the test it runs — opened only when the build is of
+/// this checkout's sources as they are now. A run given a test's name, or
+/// `--lib`, builds no example: a mutant of the SDK example's source passed
+/// so, the test opening the build from before it (2026-11-07). And the
+/// target folder is shared, so the last build may be another checkout's.
+/// The build's own list of its sources, cargo's `.d` beside it, says both.
 fn sample(name: &str) -> CString {
     let test = std::env::current_exe().expect("the test's own path");
     let profile = test.parent().and_then(Path::parent).expect("target/<profile>/deps");
     let path = profile.join("examples").join(libloading::library_filename(name));
-    assert!(path.is_file(), "no {} — `cargo test` builds it, `--lib` alone does not", path.display());
+    let changed = |file: &Path| std::fs::metadata(file).and_then(|meta| meta.modified());
+    let built = changed(&path).unwrap_or_else(|error| refused(&path, error));
+    let listed = std::fs::read_to_string(path.with_extension("d"))
+        .unwrap_or_else(|error| refused(&path, error));
+    let sources: Vec<&Path> = match listed.lines().next().and_then(|line| line.split_once(": ")) {
+        Some((_, sources)) => sources.split_whitespace().map(Path::new).collect(),
+        None => refused(&path, "no sources listed"),
+    };
+    let own = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join(format!("{name}.rs"));
+    let own = own.canonicalize().expect("the example's source");
+    let same = |source: &Path| source.canonicalize().is_ok_and(|source| source == own);
+    if !sources.iter().any(|source| same(source)) {
+        refused(&path, format!("not built from {}", own.display()));
+    }
+    for source in sources {
+        if changed(source).map_or(true, |at| at > built) {
+            refused(&path, format!("{} changed since", source.display()));
+        }
+    }
     c_path(&path)
+}
+
+fn refused(build: &Path, why: impl std::fmt::Display) -> ! {
+    panic!("{}: {why} — `cargo test` given no test's name builds it", build.display())
 }
 
 /// A C build of a plugin the engine's build made beside the engine
