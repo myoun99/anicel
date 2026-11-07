@@ -550,29 +550,24 @@ class RenderRailPlateFace extends RenderProxyBox
   void paint(PaintingContext context, Offset offset) {
     if (_spec.hoverShape case final shape?) {
       // The [InkWell]'s two highlights, each in its own colour; the same
-      // hue over itself, so their order says nothing. Each is painted as an
-      // `InkHighlight` paints it inside its `Material` — the box clipped to
-      // the material, then to the shape, filled with its alpha in whole
-      // bytes — so the rim is anti-aliased as it was.
-      final inks = [
+      // hue over itself, so their order says nothing. Each is filled with
+      // its alpha in whole bytes, as an `InkHighlight` fills it.
+      //
+      // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림
+      // 안의 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」):
+      // the shape is FILLED, not clipped to ([SuperellipseClip] says why).
+      // ↩️It was the box clipped to the shape, as an `InkHighlight` paints
+      // inside its `Material`.
+      for (final ink in [
         if (_spec.focus == IconButtonFocus.shown) _spec.focusInk,
         if (hovered && _spec.enabled) _spec.hoverInk,
-      ];
-      if (inks.isNotEmpty) {
-        final box = offset & size;
-        final canvas = context.canvas
-          ..save()
-          ..clipRect(box)
-          ..clipPath(
-            shape.getOuterPath(box, textDirection: _spec.textDirection),
-          );
-        for (final ink in inks) {
-          canvas.drawRect(
-            box,
-            Paint()..color = ink.withAlpha((ink.a * 255).round()),
-          );
-        }
-        canvas.restore();
+      ]) {
+        shape.paintInterior(
+          context.canvas,
+          offset & size,
+          Paint()..color = ink.withAlpha((ink.a * 255).round()),
+          textDirection: _spec.textDirection,
+        );
       }
     }
     super.paint(context, offset);
@@ -631,7 +626,7 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
 
   /// A clear plate's hover, in this shape — null for an opaque plate, whose
   /// ink nobody saw ([RailPlateButton.hoverShape]).
-  final ShapeBorder? hoverShape;
+  final RoundedSuperellipseBorder? hoverShape;
 
   /// The hover's colour: the theme's, as an [InkWell] with none of its own
   /// takes it.
@@ -726,7 +721,7 @@ class RailPlateButton extends SingleChildRenderObjectWidget
   /// A CLEAR plate's hover, painted under it in this shape — the ink an
   /// [InkWell] drew where the plate let it show ([RenderRailPlateFace]).
   /// Null for an opaque plate.
-  final ShapeBorder? hoverShape;
+  final RoundedSuperellipseBorder? hoverShape;
 
   /// Where the keyboard's focus is, for a plate the keyboard reaches — a
   /// toolbar's name cell, whose [KeyboardPress] stands above this. Null for

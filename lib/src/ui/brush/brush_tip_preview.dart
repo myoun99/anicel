@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../models/brush_settings.dart';
 import '../canvas/raster_picture.dart';
 import '../repaint_props.dart';
+import '../widgets/superellipse_clip.dart';
 
 /// A small synchronous preview of a brush tip for preset lists.
 ///
@@ -16,20 +17,22 @@ import '../repaint_props.dart';
 /// and a soft outer ring when hardness is low. This is a shape hint, not a
 /// rasterizer-accurate rendering.
 class BrushTipPreview extends StatelessWidget {
-  const BrushTipPreview({super.key, required this.settings});
+  const BrushTipPreview({super.key, required this.settings, this.well});
 
   final BrushSettings settings;
+
+  /// The well it fills, whose corners cut it ([BrushTipMaskPreview.well]).
+  final RoundedSuperellipseBorder? well;
 
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.onSurface;
-    // ⛔No `RepaintBoundary`. It looks free and is not, twice over: a
-    // boundary is a composited layer of its own, AND it sets
-    // `needsCompositing`, which is the only reason the host row's
-    // `Container(clipBehavior: Clip.antiAlias)` promotes to a real clip
-    // LAYER (`PaintingContext.pushClipPath` gates on exactly that). Two
-    // layers per row, per frame, to isolate a painter that redraws only
-    // when its preset does.
+    // ⛔No `RepaintBoundary`. It looks free and is not: a boundary is a
+    // composited layer of its own, a layer per row, per frame, to isolate a
+    // painter that redraws only when its preset does. (It was two while the
+    // host row clipped it: a boundary sets `needsCompositing`, which
+    // promoted that clip to a real clip LAYER — the well cuts it now,
+    // [well].)
     //
     // What isolates it is the library CELL's own boundary (H40,
     // 2026-09-24). The panel-level bake this note used to name never did:
@@ -37,7 +40,12 @@ class BrushTipPreview extends StatelessWidget {
     // through from the start.
     final mask = settings.tipMask;
     if (mask != null) {
-      return _BrushTipGrid(alpha: mask.alpha, side: mask.size, color: color);
+      return _BrushTipGrid(
+        alpha: mask.alpha,
+        side: mask.size,
+        color: color,
+        well: well,
+      );
     }
     return CustomPaint(
       painter: _BrushTipPreviewPainter(settings: settings, color: color),
@@ -58,6 +66,9 @@ const int brushTipPreviewGrid = 16;
 /// Every cell overhangs its right and bottom neighbour by half a logical
 /// pixel, so the last row and column reach half a pixel past the grid.
 ///
+/// In a [within] — the well it fills — a cell reaching its corner is the
+/// well's shape where the cell lies ([SuperellipseCut.drawRSuperellipseCut]).
+///
 /// A widget shows this through [RenderBrushTipGrid], which draws it once.
 @visibleForTesting
 void paintBrushTipGrid(
@@ -65,8 +76,9 @@ void paintBrushTipGrid(
   Size size,
   Uint8List alpha,
   int side,
-  Color color,
-) {
+  Color color, {
+  ui.RSuperellipse? within,
+}) {
   final cell = size.shortestSide / brushTipPreviewGrid;
   final texelsPerCell = math.max(1, side ~/ brushTipPreviewGrid);
   final paint = Paint();
@@ -94,10 +106,12 @@ void paintBrushTipGrid(
         continue;
       }
       paint.color = color.withValues(alpha: (total / count) / 255);
-      canvas.drawRect(
-        Rect.fromLTWH(col * cell, row * cell, cell + 0.5, cell + 0.5),
-        paint,
-      );
+      final at = Rect.fromLTWH(col * cell, row * cell, cell + 0.5, cell + 0.5);
+      if (within == null) {
+        canvas.drawRect(at, paint);
+      } else {
+        canvas.drawRSuperellipseCut(within, at, paint);
+      }
     }
   }
 }
@@ -108,10 +122,20 @@ class BrushTipMaskPreview extends StatelessWidget {
     super.key,
     required this.alpha,
     required this.side,
+    this.well,
   });
 
   final Uint8List alpha;
   final int side;
+
+  /// The well it fills, whose corners cut it — null where it stands clear
+  /// of every corner.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림 안의
+  /// 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」): a well in
+  /// a dock does not clip it ([SuperellipseClip]) — the cells are cut as the
+  /// grid is drawn. ↩️The well clipped it.
+  final RoundedSuperellipseBorder? well;
 
   @override
   Widget build(BuildContext context) {
@@ -119,6 +143,7 @@ class BrushTipMaskPreview extends StatelessWidget {
       alpha: alpha,
       side: side,
       color: Theme.of(context).colorScheme.onSurface,
+      well: well,
     );
   }
 }
@@ -128,17 +153,20 @@ class _BrushTipGrid extends LeafRenderObjectWidget {
     required this.alpha,
     required this.side,
     required this.color,
+    required this.well,
   });
 
   final Uint8List alpha;
   final int side;
   final Color color;
+  final RoundedSuperellipseBorder? well;
 
   BrushTipGridLook _look(BuildContext context) => (
     alpha: alpha,
     side: side,
     color: color,
     devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    well: well?.borderRadius.resolve(Directionality.maybeOf(context)),
   );
 
   @override
@@ -161,6 +189,7 @@ typedef BrushTipGridLook = ({
   int side,
   Color color,
   double devicePixelRatio,
+  BorderRadius? well,
 });
 
 /// 🚨**A SAMPLED TIP'S GRID IS DRAWN ONCE AND PLACED 1:1 EVERY FRAME**
@@ -248,7 +277,7 @@ class RenderBrushTipGrid extends RenderBox {
     if (drawing == null) {
       canvas.save();
       canvas.translate(offset.dx, offset.dy);
-      paintBrushTipGrid(canvas, size, _look.alpha, _look.side, _look.color);
+      _paintGrid(canvas);
       canvas.restore();
       return;
     }
@@ -262,6 +291,16 @@ class RenderBrushTipGrid extends RenderBox {
     );
   }
 
+  /// The grid over this box, cut by its well.
+  void _paintGrid(Canvas canvas) => paintBrushTipGrid(
+    canvas,
+    size,
+    _look.alpha,
+    _look.side,
+    _look.color,
+    within: _look.well?.toRSuperellipse(Offset.zero & size),
+  );
+
   /// The grid at device resolution, or null when the raster threw — the
   /// icon then paints live, which is always available and always right.
   ///
@@ -272,7 +311,7 @@ class RenderBrushTipGrid extends RenderBox {
   ui.Image? _draw(int extent) {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder)..scale(_look.devicePixelRatio);
-    paintBrushTipGrid(canvas, size, _look.alpha, _look.side, _look.color);
+    _paintGrid(canvas);
     try {
       return rasterPicture(recorder, extent, extent);
     } catch (error, stack) {

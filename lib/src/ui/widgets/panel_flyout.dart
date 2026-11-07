@@ -1669,7 +1669,8 @@ class PanelFlyoutChip extends StatelessWidget {
 
   /// The chip's outline — its edge, and where a press's hover ink shows on
   /// a clear chip.
-  static ShapeBorder get shape => AppShapes.container(AppShapes.wellRadius);
+  static RoundedSuperellipseBorder get shape =>
+      AppShapes.container(AppShapes.wellRadius);
 
   /// [PanelFlyoutButton.label].
   final String label;

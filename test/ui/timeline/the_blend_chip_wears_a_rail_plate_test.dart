@@ -3,7 +3,9 @@
 // a Material and an InkWell of its own (~43 elements a chip, mounted anew
 // whenever a frame panel is shown again — frame-panels-build-in-one-frame,
 // 10-24). The chip is clear, so the one ink the app keeps — the hover —
-// showed on it; the face paints that hover, and the chip looks as it did.
+// showed on it; the face paints that hover, and the chip looks as it did —
+// but at the hover's rim, which is the shape's fill and not a clip (Q10).
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -47,9 +49,19 @@ Future<Uint8List> _pixelsOf(WidgetTester tester, String key) async {
   return pixels;
 }
 
+/// The most two captures of one size part by in any channel.
+int _partedBy(Uint8List a, Uint8List b) {
+  expect(a.length, b.length, reason: 'two captures of one size');
+  var most = 0;
+  for (var i = 0; i < a.length; i++) {
+    most = math.max(most, (a[i] - b[i]).abs());
+  }
+  return most;
+}
+
 void main() {
-  testWidgets('the rail chip and the InkWell chip paint the same pixels, at '
-      'rest and under the mouse', (tester) async {
+  testWidgets('the rail chip and the InkWell chip paint the same pixels at '
+      'rest, and under the mouse but at the rim', (tester) async {
     const label = 'Normal';
     await tester.pumpWidget(
       MaterialApp(
@@ -109,7 +121,58 @@ void main() {
       isNot(await _pixelsOf(tester, 'inkwell')),
       reason: 'the hover shows on a clear chip — or this compares nothing',
     );
-    expect(railHovered, inkwellHovered, reason: 'under the mouse');
+    // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10: the rail's hover is the
+    // chip's shape FILLED, the InkWell's the box clipped to it — the two
+    // part at the rim by the raster's step, and nowhere else.
+    expect(
+      _partedBy(railHovered, inkwellHovered),
+      lessThanOrEqualTo(2),
+      reason: 'under the mouse',
+    );
+  });
+
+  testWidgets('the rail chip\'s hover is its shape filled, not the box '
+      'clipped to it', (tester) async {
+    final theme = buildAppTheme();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Material(
+          child: Center(
+            child: _boxed(
+              'rail',
+              RailFlyoutTrigger(
+                name: 'rail-chip',
+                tooltip: 'Blend',
+                hoverShape: PanelFlyoutChip.shape,
+                entriesBuilder: _entries,
+                child: const PanelFlyoutChip(label: 'Normal', expand: true),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(
+      location: tester.getCenter(find.byKey(const ValueKey<String>('rail'))),
+    );
+    await tester.pump();
+
+    final plate = tester.renderObject(find.byType(RailFlyoutTrigger));
+    final ink = theme.hoverColor;
+    expect(
+      plate,
+      paints..rsuperellipse(
+        rsuperellipse: PanelFlyoutChip.shape.borderRadius
+            .resolve(TextDirection.ltr)
+            .toRSuperellipse(Offset.zero & _chipSize),
+        color: ink.withAlpha((ink.a * 255).round()),
+      ),
+    );
+    expect(plate, paintsExactlyCountTimes(#clipPath, 0));
+    expect(plate, paintsExactlyCountTimes(#clipRSuperellipse, 0));
   });
 
   testWidgets('the row\'s blend chip is the rail plate around the panels\' '

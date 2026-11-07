@@ -3438,6 +3438,7 @@ class _RailGroupButton extends StatelessWidget {
               for (final tab in tabs) (icon: tab.icon, label: tab.label),
             ],
             nearby: nearby,
+            shape: AppShapes.control(ToolsPanel.buttonExtent),
             onLifted: onLifted,
           );
     final button = face == null
@@ -3470,8 +3471,7 @@ class _RailGroupButton extends StatelessWidget {
                     child: Stack(
                       children: [
                         Positioned.fill(child: face!),
-                        if (band != null)
-                          Positioned(left: 0, right: 0, top: 0, child: band),
+                        if (band != null) Positioned.fill(child: band),
                       ],
                     ),
                   ),

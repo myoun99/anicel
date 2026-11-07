@@ -1479,8 +1479,10 @@ class _BrushPresetRow extends StatelessWidget {
                         side: BorderSide(color: colorScheme.outlineVariant),
                       ),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: BrushTipPreview(settings: preset.settings),
+                    child: BrushTipPreview(
+                      settings: preset.settings,
+                      well: AppShapes.container(AppShapes.wellRadius),
+                    ),
                   ),
                   if (showName || showStrokePreview)
                     const SizedBox(width: _tipGap),

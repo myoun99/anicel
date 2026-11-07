@@ -196,14 +196,17 @@ class _TipSwatch extends StatelessWidget {
                 side: BorderSide(color: colorScheme.outlineVariant),
               ),
             ),
-            clipBehavior: Clip.antiAlias,
             child: current == null
                 ? Icon(
                     Icons.remove,
                     size: 14,
                     color: colorScheme.onSurfaceVariant,
                   )
-                : BrushTipMaskPreview(alpha: current.alpha, side: current.size),
+                : BrushTipMaskPreview(
+                    alpha: current.alpha,
+                    side: current.size,
+                    well: AppShapes.container(AppShapes.wellRadius),
+                  ),
           ),
         ),
       ),

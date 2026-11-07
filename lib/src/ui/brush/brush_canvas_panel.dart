@@ -3846,6 +3846,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     child: CanvasCapsule(
       keyValue: 'canvas-transport',
       height: transport.height,
+      clipped: true,
       child: transport.child,
     ),
   );
