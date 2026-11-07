@@ -1,110 +1,129 @@
-//! The Gaussian (fx Gaussian Blur, now Flutter's `ImageFilter.blur`) as the
-//! blur brush's integer law: C's `qa_blur_box` (gpu-canonical-store ⑦ — one
-//! blur law, 관제 11-05 12:19).
+//! fx Gaussian Blur — AE's, and the walk's (Flutter's `ImageFilter.blur`):
+//! each way one pass of the Gaussian itself, the rows' first (🗣️유저
+//! gpu-canonical-store-Q2, 2026-11-08: 「모든 흐림을 진짜 가우시안」 — at
+//! every Blurriness, on the picture as it is: Impeller blurs a picture made
+//! smaller past a sigma, and that is not done here).
 //!
-//! The picture is the input past which there is nothing, or — Repeat Edge
-//! Pixels — a rectangle of it whose edge repeats outward, cut to that
-//! rectangle (subtree_image_composite.dart's `cutAndBlurred`). Either way a
-//! pixel's blur is the one the passes would leave on the whole plane: each
-//! pass is worked out a radius further out than the next one reads, as C
-//! gathers its window three radii out.
+//! ↩️It went by the blur brush's three boxes (gpu-canonical-store ⑦, 관제
+//! 11-05 12:19) — the AI's choice, never the user's: three boxes blur no
+//! thinner than about two pixels, so a Blurriness under 6 spread a line
+//! past what the screen shows (Q2: up to 190 apart). The boxes are the
+//! brush's alone now (`boxes`).
 //!
-//! A way's three passes go in one dispatch, a strip of them a workgroup, in
-//! its memory (three.wgsl), where a strip has room; past that room, a pass a
-//! dispatch (gpu-canonical-store 01:15 (b)). Both put the same pixels.
+//! A way's weights are the Gaussian's at the whole pixels its reach holds,
+//! integers summing to 65536 ([`weights`]), and a pass's pixel their sum
+//! over the pixels about it on held.wgsl's premultiplied 16-bit scale,
+//! rounded half up once: a sum of integers, the same in any order on any
+//! device. The plane between the passes holds those 16-bit pixels.
 //!
-//! ⏳The radius is the app's to give: how a Blurriness becomes a box radius
-//! is the bridge round's, beside the brush's (`BrushBlurPicture.
-//! blurRadiusOf` — three radii are the blur's reach).
+//! What a blur reads is its picture: past it nothing — the walk's decal —
+//! or, Repeat Edge Pixels, its nearest pixel — the walk's clamp. What it
+//! puts is a rectangle of its own, and nothing outside it: the picture,
+//! where the walk's raster is the picture, or the picture grown by the
+//! reach, where the walk's filter paints past the image it is drawn from
+//! (composite_tree_plan.dart's `_chainOf` says which).
 
 #[cfg(test)]
 #[path = "gaussian_tests.rs"]
 mod tests;
 
-use super::{Dispatch, GROUP, Held, TileRect, bands, compile, run};
+use super::{Dispatch, GROUP, Held, TileRect, bands, compile, run, words_buffer};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::room;
 
-/// The box law every blur of box passes runs: box.wgsl's `blur_mean` and
-/// `blur_slide`, and the `BoxPass` it reads.
-pub(crate) const BOX_WGSL: &str = include_str!("box.wgsl");
-/// A way's three passes in one dispatch, over strips in a workgroup's
-/// memory: three.wgsl's `blur_way`, for what includes it to load and store.
-pub(crate) const THREE_WGSL: &str = include_str!("three.wgsl");
-/// A pass a dispatch, a thread sliding its sum along a run: pass.wgsl's
-/// `blur_run`, for what includes it to tap and put.
-pub(crate) const PASS_WGSL: &str = include_str!("pass.wgsl");
-/// The words of one `BoxPass`.
-pub(crate) const PASS_WORDS: usize = 9;
+/// The farthest a way's weights reach: the picture's coordinates are i32s,
+/// and a reach past this would be a picture no plane holds.
+pub(crate) const MOST_REACH: u32 = 32767;
+/// The weights' sum: 65535 under each of them is 65535·65536 at most, and
+/// with half of one for the rounding it stays a u32 (gaussian.wgsl).
+const WHOLE: u32 = 65536;
 
-/// The widest box: a pass sums 2·radius + 1 pixels of 65535 at most, and
-/// the sum stays a u32.
-pub(crate) const MOST_RADIUS: u32 = 32767;
-/// pass.wgsl's BLUR_RUN — the pixels one thread slides its sum along.
-const RUN: u32 = 64;
-/// three.wgsl's BLUR_ROOM: the pixels a workgroup's strip holds.
-const ROOM: i32 = 1024;
-/// gaussian_three.wgsl's words: a way's three passes, then its strips'
-/// lines and run — whole vec4s, as a uniform holds them.
-const THREE_WORDS: usize = 32;
-/// The widest box the Gaussian goes by strips. Past it a pass a dispatch is
-/// the faster: a strip's lanes each sum 2r + 1 pixels before sliding over a
-/// run of a few, and those sums outgrow what one dispatch a way saves
-/// (11-06, the main PC's GPU, a 2048² picture, strips against a pass a
-/// dispatch — r 50: 1.9 ms, 2.3; r 56: 1.9, 2.4; r 64: 2.5–2.8, 2.3–2.4;
-/// r 120: 5.5, 2.7; r 170: 396, 3.4). Lanes summing runs of r or more
-/// instead were nowhere faster, and slower from r 32 on.
-///
-/// The Surface (Arc 140V) crosses later, between 80 and 88 (캔버스 베이스
-/// 11-06 04:35 — ms, strips against a pass a dispatch: r 64: 21.7, 23.6;
-/// r 80: 25.0, 29.0; r 88: 32.0, 28.9; r 120: 55.7, 34.1; r 170: 4,459,
-/// 35.5): there 56 goes r 57 to 80 a pass a dispatch at up to 16% more.
-/// Kept at 56 — any one threshold costs one of the two devices in the band
-/// between them, both keep clear of the strips' cliff, and choosing it by
-/// device would be a rule of its own.
-///
-/// The second of two such choices — the other is the blur brush's dab
-/// (kernels/dab/blur.rs's MOST_STRIPS_RADIUS and Route): they stay apart,
-/// each threshold measured for its own use, until a third comes and one
-/// function beside `strips` takes the threshold (rule of three, 캔버스
-/// 베이스 11-06 03:05).
-const MOST_STRIPS_RADIUS: u32 = 56;
-
-const EDGE_NONE: u32 = 0;
 const EDGE_NOTHING: u32 = 1;
 const EDGE_REPEAT: u32 = 2;
 
-/// What a blur reads past its picture.
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum Edge {
-    /// Nothing: the tiles' rectangle is the picture.
-    Nothing,
-    /// The nearest pixel of these, [left, top, right, bottom) — inside the
-    /// tiles —, and nothing is put outside them (Repeat Edge Pixels).
-    Repeat([i32; 4]),
+/// One way of a Gaussian: its sigma in pixels, and how many pixels either
+/// side of a pixel its weights reach — none where the way is not blurred.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Way {
+    pub(crate) sigma: f64,
+    pub(crate) reach: u32,
 }
 
-/// One pass: along the rows or down the columns, the pixels it writes —
-/// [first, end) along, lines [line_first, line_end) across — and its edge
-/// along.
+/// What a blur reads past its picture.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Edge {
+    /// Nothing (the walk's decal).
+    Nothing,
+    /// The nearest pixel inside (Repeat Edge Pixels, the walk's clamp).
+    Repeat,
+}
+
+/// A Gaussian as a chain runs it: its ways, the picture it reads —
+/// [left, top, right, bottom) — and how past it, and the rectangle it
+/// puts, nothing outside it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Blur {
+    pub(crate) across: Way,
+    pub(crate) down: Way,
+    pub(crate) picture: [i32; 4],
+    pub(crate) edge: Edge,
+    pub(crate) puts: [i32; 4],
+}
+
+/// The weights of a way of `sigma` reaching `reach` pixels: e^(−i²/2σ²)
+/// at i = 0 ..= reach — `libm`'s, the same Rust on every device, where
+/// `f64::exp` is the device's maths library's (shared/one_maths.rs) —
+/// scaled so the 2·reach + 1 of them sum to 65536 and taken as integers
+/// each within one of its share: the floors, then what they fall short
+/// given a pair at a time — a weight stands either side — to the largest
+/// remainders, the nearer first among equals, and the odd one left to the
+/// middle.
+pub(crate) fn weights(sigma: f64, reach: u32) -> Vec<u32> {
+    let twice_variance = 2.0 * sigma * sigma;
+    let gaussian: Vec<f64> =
+        (0..=reach).map(|i| libm::exp(-f64::from(i * i) / twice_variance)).collect();
+    let total = gaussian[0] + 2.0 * gaussian[1..].iter().sum::<f64>();
+    let shares: Vec<f64> = gaussian.iter().map(|g| g * f64::from(WHOLE) / total).collect();
+    let mut weights: Vec<u32> = shares.iter().map(|share| share.floor() as u32).collect();
+    let mut short = WHOLE - weights[0] - 2 * weights[1..].iter().sum::<u32>();
+    let remainder = |i: usize| shares[i] - f64::from(weights[i]);
+    let mut pairs: Vec<usize> = (1..weights.len()).collect();
+    pairs.sort_by(|&a, &b| remainder(b).total_cmp(&remainder(a)).then(a.cmp(&b)));
+    for i in pairs {
+        if short < 2 {
+            break;
+        }
+        weights[i] += 1;
+        short -= 2;
+    }
+    weights[0] += short;
+    weights
+}
+
+/// One pass: along the rows or down the columns, its weights' reach and
+/// where they begin, the pixels it writes — [first, end) along, lines
+/// [line_first, line_end) across — and the picture's edge it reads past,
+/// along and across.
 struct Pass {
     down: bool,
-    radius: u32,
+    reach: u32,
+    weights: u32,
     along: [i32; 2],
     lines: [i32; 2],
     edge: u32,
     edge_along: [i32; 2],
+    edge_across: [i32; 2],
     from: Held,
     to: Held,
 }
 
 impl Pass {
-    /// box.wgsl's `BoxPass`.
-    fn words(&self) -> [u32; PASS_WORDS] {
-        [
+    /// gaussian.wgsl's `GaussianPass`.
+    fn words(&self) -> Vec<u32> {
+        vec![
             u32::from(self.down),
-            self.radius,
+            self.reach,
             self.along[0] as u32,
             self.along[1] as u32,
             self.lines[0] as u32,
@@ -112,294 +131,170 @@ impl Pass {
             self.edge,
             self.edge_along[0] as u32,
             self.edge_along[1] as u32,
+            self.edge_across[0] as u32,
+            self.edge_across[1] as u32,
+            self.weights,
         ]
     }
 
-    /// What it reads along: a radius past what it writes, each side.
-    fn reads(&self) -> [i32; 2] {
-        let r = self.radius as i32;
-        [self.along[0] - r, self.along[1] + r]
-    }
-
-    /// Its own dispatch (pass.wgsl).
+    /// Its dispatch: a thread a pixel, neighbours along a row side by side.
     fn dispatch(&self) -> Dispatch {
-        let runs = ((self.along[1] - self.along[0]) as u32).div_ceil(RUN);
+        let along = (self.along[1] - self.along[0]) as u32;
         let lines = (self.lines[1] - self.lines[0]) as u32;
+        let (x, y) = if self.down { (lines, along) } else { (along, lines) };
         Dispatch {
             from: self.from,
             to: self.to,
-            words: self.words().to_vec(),
-            groups: (runs.div_ceil(GROUP), lines.div_ceil(GROUP)),
+            words: self.words(),
+            groups: (x.div_ceil(GROUP), y.div_ceil(GROUP)),
         }
     }
 }
 
-/// A way's three passes cut into strips of a workgroup each (three.wgsl's
-/// `blur_way`): the lines one takes and the run along, and the workgroups,
-/// along by across.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Strips {
-    pub(crate) lines: u32,
-    pub(crate) run: u32,
-    pub(crate) groups: (u32, u32),
-}
-
-/// The strips of `way`, its three passes: each runs as far along as its
-/// room holds past what the first pass reads beyond what the last puts, on
-/// as many lines as fit — none where that leaves no room.
-fn strips(way: &[Pass]) -> Option<Strips> {
-    let (first, last) = (way.first()?, way.last()?);
-    let reads = first.reads();
-    let along = last.along[1] - last.along[0];
-    let halo = reads[1] - reads[0] - along;
-    let run = along.min(ROOM - halo);
-    if run < 1 {
-        return None;
-    }
-    let lines = (ROOM / (run + halo)) as u32;
-    let across = (first.lines[1] - first.lines[0]) as u32;
-    Some(Strips {
+/// The passes putting rows `band` of `blur`'s rectangle: the rows' along
+/// it, then the columns' down it, a way of no reach taking none. Where
+/// both go, the rows' put the lines of the picture the columns' read for
+/// the band ([`lines_read`]) in a plane as wide as the rectangle — which
+/// the columns' read whole, their edge across its own — and the columns'
+/// read past the picture by its edge.
+fn passes(blur: &Blur, band: [i32; 2]) -> Vec<Pass> {
+    let [left, top, right, bottom] = blur.picture;
+    let [put_left, _, put_right, _] = blur.puts;
+    let edge = match blur.edge {
+        Edge::Nothing => EDGE_NOTHING,
+        Edge::Repeat => EDGE_REPEAT,
+    };
+    let rows = |lines, to| Pass {
+        down: false,
+        reach: blur.across.reach,
+        weights: 0,
+        along: [put_left, put_right],
         lines,
-        run: run as u32,
-        groups: ((along as u32).div_ceil(run as u32), across.div_ceil(lines)),
-    })
-}
-
-/// The one dispatch of `way`'s three passes over `strips`
-/// (gaussian_three.wgsl).
-fn three(way: &[Pass], strips: Strips) -> Dispatch {
-    let mut words: Vec<u32> = way.iter().flat_map(Pass::words).collect();
-    words.extend([strips.lines, strips.run]);
-    words.resize(THREE_WORDS, 0);
-    Dispatch {
-        from: way[0].from,
-        to: way[2].to,
-        words,
-        groups: strips.groups,
+        edge,
+        edge_along: [left, right],
+        edge_across: [top, bottom],
+        from: Held::Tiles,
+        to,
+    };
+    let columns = |edge_across, from| Pass {
+        down: true,
+        reach: blur.down.reach,
+        weights: blur.across.reach + 1,
+        along: band,
+        lines: [put_left, put_right],
+        edge,
+        edge_along: [top, bottom],
+        edge_across,
+        from,
+        to: Held::Tiles,
+    };
+    match (blur.across.reach, blur.down.reach) {
+        (_, 0) => vec![rows(band, Held::Tiles)],
+        (0, _) => vec![columns([left, right], Held::Tiles)],
+        (_, down) => {
+            let lines = lines_read(band, down, [top, bottom]);
+            let plane = Held::Plane {
+                x0: put_left,
+                y0: lines[0],
+                width: (put_right - put_left) as u32,
+            };
+            vec![rows(lines, plane), columns([put_left, put_right], plane)]
+        }
     }
 }
 
-/// How a blur's passes go: a way's three in one dispatch where a strip of
-/// them has room and a box is no wider than MOST_STRIPS_RADIUS — a pass a
-/// dispatch past that — or every pass a dispatch, as the tests send them
-/// too, to see both put the same pixels.
-#[derive(Clone, Copy)]
-enum Route {
-    Strips,
-    // Only the tests send it, to see both routes put the same pixels.
-    #[cfg_attr(not(test), allow(dead_code))]
-    Passes,
+/// The lines of the picture's `rows` the columns' pass reads putting
+/// `band` by weights reaching `down`: the band and `down` past it each
+/// side, held to the picture — past it the edge stands in, and nothing
+/// still reads its first or its last line.
+fn lines_read(band: [i32; 2], down: u32, rows: [i32; 2]) -> [i32; 2] {
+    let (reach, last) = (down as i32, rows[1] - 1);
+    [(band[0] - reach).clamp(rows[0], last), (band[1] - 1 + reach).clamp(rows[0], last) + 1]
 }
 
-/// The Gaussian's passes, compiled once: a pass a dispatch, and a way's
-/// three in one.
-pub(crate) struct BoxBlur {
-    pass: wgpu::ComputePipeline,
-    three: wgpu::ComputePipeline,
+/// The bytes the plane holds for `band` of `blur` — none where one way
+/// goes alone.
+fn planes(blur: &Blur, band: [i32; 2]) -> u64 {
+    if blur.across.reach == 0 || blur.down.reach == 0 {
+        return 0;
+    }
+    let [left, _, right, _] = blur.puts;
+    let [first, end] = lines_read(band, blur.down.reach, [blur.picture[1], blur.picture[3]]);
+    u64::from((right - left) as u32) * u64::from((end - first) as u32) * 8
 }
 
-impl BoxBlur {
+/// The Gaussian's pass, compiled once.
+pub(crate) struct Gaussian {
+    pipeline: wgpu::ComputePipeline,
+}
+
+impl Gaussian {
     pub(crate) fn new(engine: &Engine) -> Self {
-        let gaussian = include_str!("gaussian.wgsl");
         Self {
-            pass: compile(
-                engine,
-                &[BOX_WGSL, PASS_WGSL, gaussian],
-                include_str!("gaussian_pass.wgsl"),
-                "box_blur",
-            ),
-            three: compile(
-                engine,
-                &[BOX_WGSL, THREE_WGSL, gaussian],
-                include_str!("gaussian_three.wgsl"),
-                "box_three",
-            ),
+            pipeline: compile(engine, &[], include_str!("gaussian.wgsl"), "gaussian_blur"),
         }
     }
 
-    /// Blurs `tiles` — straight RGBA8 over `rect` — by box passes of
-    /// `radius` across and down, three each way, the rows' first, and
-    /// returns the blurred tiles over the same rectangle; submits the work,
-    /// the caller waits. A radius of 0 leaves its way as it is.
+    /// `tiles` — straight RGBA8 over `rect` — through `blur`: the tiles it
+    /// put over the same rectangle. Submits the work; the caller waits.
     pub(crate) fn run(
         &self,
         engine: &Engine,
         tiles: &wgpu::Buffer,
         rect: TileRect,
-        radius: (u32, u32),
-        edge: Edge,
+        blur: &Blur,
     ) -> Option<wgpu::Buffer> {
-        self.run_by(engine, tiles, rect, radius, edge, (Route::Strips, room(engine)))
+        self.run_in(engine, tiles, rect, blur, room(engine))
     }
 
-    /// `run`, the passes going by `route`, in bands whose planes a binding
-    /// of `room` bytes holds ([`bands`]).
-    fn run_by(
+    /// `run`, in bands whose plane a binding of `room` bytes holds
+    /// ([`bands`]).
+    fn run_in(
         &self,
         engine: &Engine,
         tiles: &wgpu::Buffer,
         rect: TileRect,
-        radius: (u32, u32),
-        edge: Edge,
-        (route, room): (Route, u64),
+        blur: &Blur,
+        room: u64,
     ) -> Option<wgpu::Buffer> {
-        let (across, down) = radius;
-        if across == 0 && down == 0 {
-            return fail("a blur of no radius changes no pixel — a plan leaves it out");
+        let ways = [blur.across, blur.down];
+        if ways.iter().all(|way| way.reach == 0) {
+            return fail("a blur of no reach changes no pixel — a plan leaves it out");
         }
-        if across > MOST_RADIUS || down > MOST_RADIUS {
-            return fail(format!("{radius:?}: a box radius is {MOST_RADIUS} at most"));
+        if let Some(way) = ways.iter().find(|way| way.reach > MOST_REACH) {
+            return fail(format!("{way:?}: a way reaches {MOST_REACH} pixels at most"));
         }
-        let (picture, kind) = match edge {
-            // The columns' first pass reads the rows' plane, which ends at
-            // the picture: past it is nothing by this edge, not by what a
-            // read past a plane happens to give — 0 on the Surface, where
-            // no test tells EDGE_NONE from it (mutant b19, 11-05).
-            Edge::Nothing => (rect.pixels(), EDGE_NOTHING),
-            Edge::Repeat(inside) if rect.holds(inside) => (inside, EDGE_REPEAT),
-            Edge::Repeat(inside) => {
-                return fail(format!("{inside:?} is no rectangle inside {rect:?}"));
+        if let Some(way) = ways.iter().find(|way| way.reach > 0 && !(way.sigma > 0.0)) {
+            return fail(format!("{way:?}: a way that reaches has a sigma"));
+        }
+        if ways.iter().any(|way| !way.sigma.is_finite()) {
+            return fail(format!("{ways:?}: a sigma is a number"));
+        }
+        for (name, inside) in [("picture", blur.picture), ("rectangle put", blur.puts)] {
+            if !rect.holds(inside) {
+                return fail(format!("{inside:?}: the {name} is no rectangle inside {rect:?}"));
             }
-        };
-        let [_, top, _, bottom] = picture;
-        let fits = |band| planes(picture, band, radius) <= room;
+        }
+        let [_, top, _, bottom] = blur.puts;
+        let fits = |band| planes(blur, band) <= room;
         let Some(bands) = bands([top, bottom], fits) else {
-            let row = planes(picture, [top, top + 1], radius);
+            let row = planes(blur, [top, top + 1]);
             return fail(format!("a band of one row holds {row} bytes, past a binding of {room}"));
         };
-        let cut: Vec<Vec<Pass>> =
-            bands.iter().map(|&band| passes_over(picture, band, radius, kind)).collect();
-        // A band's ways run as far along as the whole's, past it by as
-        // much: a strip has room in every band or in none.
-        let strips: Option<Vec<Strips>> = cut
+        let dispatches: Vec<Dispatch> = bands
             .iter()
-            .flat_map(|passes| passes.chunks(3))
-            .map(|way| strips(way).filter(|_| way[0].radius <= MOST_STRIPS_RADIUS))
+            .flat_map(|&band| passes(blur, band))
+            .map(|pass| pass.dispatch())
             .collect();
-        let (pipeline, dispatches): (_, Vec<Dispatch>) = match (route, strips) {
-            (Route::Strips, Some(strips)) => (
-                &self.three,
-                cut.iter()
-                    .flat_map(|passes| passes.chunks(3))
-                    .zip(strips)
-                    .map(|(way, strips)| three(way, strips))
-                    .collect(),
-            ),
-            _ => (&self.pass, cut.iter().flatten().map(Pass::dispatch).collect()),
-        };
-        let plane = bands.iter().map(|&band| planes(picture, band, radius)).max().unwrap_or(0);
-        run(engine, pipeline, (tiles, rect), (plane, room), &dispatches, None)
+        let words: Vec<u32> = ways
+            .iter()
+            .flat_map(|way| match way.reach {
+                0 => vec![WHOLE],
+                reach => weights(way.sigma, reach),
+            })
+            .collect();
+        let weights = words_buffer(engine, "gaussian weights", &words, wgpu::BufferUsages::STORAGE);
+        let plane = bands.iter().map(|&band| planes(blur, band)).max().unwrap_or(0);
+        run(engine, &self.pipeline, (tiles, rect), (plane, room), &dispatches, Some(&weights))
     }
-}
-
-/// The passes blurring `picture`, [left, top, right, bottom), by `radius`
-/// across and down: three along the rows, then three down the columns, a
-/// way of radius 0 taking none. The k-th of a way writes (3 − k) radii past
-/// the picture each side, all the k + 1-th reads; the first of a way reads
-/// past the picture by `edge`. The first of all reads the tiles, the last
-/// puts them; between, the planes hold the 16-bit pixels.
-fn passes(picture: [i32; 4], radius: (u32, u32), edge: u32) -> Vec<Pass> {
-    let [_, top, _, bottom] = picture;
-    passes_over(picture, [top, bottom], radius, edge)
-}
-
-/// The passes putting `band`, rows [first, end) of `picture`, as the
-/// picture's passes put them ([`passes`]): the columns' down the band and
-/// as far past it as theirs go, past the picture by its `edge`; the rows'
-/// along the lines the columns' first reads ([`lines_read`]). A band of the
-/// whole picture is the whole's passes.
-fn passes_over(picture: [i32; 4], band: [i32; 2], radius: (u32, u32), edge: u32) -> Vec<Pass> {
-    let [left, top, right, bottom] = picture;
-    let first = band[0];
-    let (across, down) = radius;
-    let lines = lines_read(picture, band, down);
-    // A way's plane reaches two radii past the picture along it.
-    let rows_plane = Held::Plane {
-        x0: left - 2 * across as i32,
-        y0: lines[0],
-        width: (right - left) as u32 + 4 * across,
-    };
-    let columns_plane = Held::Plane {
-        x0: left,
-        y0: first - 2 * down as i32,
-        width: (right - left) as u32,
-    };
-    let ways = [
-        (false, across, ([left, right], [left, right]), lines, rows_plane),
-        (true, down, (band, [top, bottom]), [left, right], columns_plane),
-    ];
-    let mut passes: Vec<Pass> = Vec::new();
-    for (is_down, r, (along, edge_along), lines, plane) in ways {
-        if r == 0 {
-            continue;
-        }
-        for k in 1..=3 {
-            let past = (3 - k) * r as i32;
-            passes.push(Pass {
-                down: is_down,
-                radius: r,
-                along: [along[0] - past, along[1] + past],
-                lines,
-                edge: if k == 1 { edge } else { EDGE_NONE },
-                edge_along,
-                from: passes.last().map_or(Held::Tiles, |before| before.to),
-                to: plane,
-            });
-        }
-    }
-    if let Some(last) = passes.last_mut() {
-        last.to = Held::Tiles;
-    }
-    passes
-}
-
-/// The passes blurring a picture by a radius either way where past it lie
-/// real pixels, read as they are: the blur brush's dab (kernels/dab/blur.rs),
-/// whose window holds the picture three radii past the dab each side.
-pub(crate) struct Within {
-    /// box.wgsl's `BoxPass` for each, the rows' three first.
-    pub(crate) words: Vec<u32>,
-    /// Each way cut into strips — none where a strip has no room.
-    pub(crate) rows: Option<Strips>,
-    pub(crate) columns: Option<Strips>,
-    /// Each pass's workgroups, gone a pass a dispatch (pass.wgsl).
-    pub(crate) groups: Vec<(u32, u32)>,
-}
-
-/// The passes blurring `picture` by `radius` within real pixels: the
-/// columns' three down the picture, and the rows' three along its columns
-/// on every line the columns' first reads — none for a radius of 0.
-pub(crate) fn within(picture: [i32; 4], radius: u32) -> Option<Within> {
-    let [left, _, right, _] = picture;
-    let columns = passes(picture, (0, radius), EDGE_NONE);
-    let [top, bottom] = columns.first()?.reads();
-    let rows = passes([left, top, right, bottom], (radius, 0), EDGE_NONE);
-    Some(Within {
-        rows: strips(&rows),
-        columns: strips(&columns),
-        words: rows.iter().chain(&columns).flat_map(Pass::words).collect(),
-        groups: rows.iter().chain(&columns).map(|pass| pass.dispatch().groups).collect(),
-    })
-}
-
-/// The bytes a plane holds for `band` of `picture` ([`passes_over`]): the
-/// rows' passes' or the columns', whichever is more.
-fn planes(picture: [i32; 4], band: [i32; 2], radius: (u32, u32)) -> u64 {
-    let [left, _, right, _] = picture;
-    let [first, end] = band;
-    let width = u64::from((right - left) as u32);
-    let [above, below] = lines_read(picture, band, radius.1);
-    let rows = (width + 4 * u64::from(radius.0)) * u64::from((below - above) as u32);
-    let columns = width * (u64::from((end - first) as u32) + 4 * u64::from(radius.1));
-    rows.max(columns) * 8
-}
-
-/// The lines the rows' passes blur for `band` of `picture`: the band and,
-/// where the columns' go by `down`, three of their radii past it each side
-/// inside the picture — what the columns' first reads; past the picture
-/// its edge stands in.
-fn lines_read(picture: [i32; 4], band: [i32; 2], down: u32) -> [i32; 2] {
-    let [_, top, _, bottom] = picture;
-    let reach = 3 * down as i32;
-    if down == 0 { band } else { [top.max(band[0] - reach), bottom.min(band[1] + reach)] }
 }

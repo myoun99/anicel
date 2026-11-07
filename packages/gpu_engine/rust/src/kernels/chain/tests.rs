@@ -12,7 +12,7 @@ use crate::kernels::composite::tests::{
 };
 use crate::kernels::composite::{KeyChain, TILE, TileAt};
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::effects::blur::gaussian::Edge;
+use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::{Focus, Iris};
 use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
@@ -104,6 +104,18 @@ pub(crate) fn lens() -> Lens {
 /// The pixels of [`RECT`], [left, top, right, bottom).
 const PICTURE: [i32; 4] = [-128, 0, 256, 256];
 
+/// A Gaussian of sigma `across` reaching 3 and `down` reaching 2, reading
+/// the picture inside [`RECT`]'s by `edge` and putting past it.
+pub(crate) fn blur(across: f64, down: f64, edge: Edge) -> Blur {
+    Blur {
+        across: Way { sigma: across, reach: 3 },
+        down: Way { sigma: down, reach: 2 },
+        picture: [-90, 20, 180, 230],
+        edge,
+        puts: [-100, 10, 200, 240],
+    }
+}
+
 /// Tile k of a chain's rectangle is slot k of its page, the rectangle's
 /// tiles taken row by row — as a blur lays them, and the store a row's.
 #[test]
@@ -146,7 +158,7 @@ fn a_key_run_keys_what_it_reads() {
 }
 
 /// Each blur of a chain is its kernel's, run on the chain's rectangle with
-/// the op's own settings — a Gaussian's two radii each its way, a lens
+/// the op's own settings — a Gaussian's two sigmas each its way, a lens
 /// through its map. Each case is told from a near one, so a setting lost on
 /// the way could not pass.
 #[test]
@@ -155,18 +167,14 @@ fn each_blur_of_a_chain_is_its_kernel_s() {
     let picture = |x, y| texel(93, x, y);
     let blurred = |op: Op| held(&chained(tiles(picture), &[op]).expect("chain"));
 
-    let edge = Edge::Repeat([-90, 20, 180, 230]);
-    let gaussian = |radius| {
-        let out = chain().gaussian.run(engine, &tiles(picture), RECT, radius, edge);
+    let gaussian = |blur: Blur| {
+        let out = chain().gaussian.run(engine, &tiles(picture), RECT, &blur);
         held(&out.expect("blur"))
     };
-    assert_same(&blurred(Op::Gaussian { radius: (3, 2), edge }), &gaussian((3, 2)));
-    assert_ne!(gaussian((3, 2)), gaussian((2, 3)));
-    let unrepeated = Op::Gaussian {
-        radius: (3, 2),
-        edge: Edge::Nothing,
-    };
-    assert_ne!(blurred(unrepeated), gaussian((3, 2)));
+    let repeated = blur(1.0, 0.7, Edge::Repeat);
+    assert_same(&blurred(Op::Gaussian(repeated)), &gaussian(repeated));
+    assert_ne!(gaussian(repeated), gaussian(blur(0.7, 1.0, Edge::Repeat)));
+    assert_ne!(blurred(Op::Gaussian(blur(1.0, 0.7, Edge::Nothing))), gaussian(repeated));
 
     let plate = [-100, 10, 200, 240];
     let passes = vec![LinePass::along([1.5, 0.5], 7)];
@@ -213,10 +221,7 @@ fn a_chain_runs_its_ops_one_after_another() {
                 runs: vec![key_run(KEY_RED, false, half)],
             }),
             Op::Matrix(matrix_words(&contrast()).expect("a matrix in range")),
-            Op::Gaussian {
-                radius: (3, 2),
-                edge: Edge::Nothing,
-            },
+            Op::Gaussian(blur(1.0, 0.7, Edge::Nothing)),
             Op::Line {
                 plate: [-100, 10, 200, 240],
                 passes: vec![LinePass::along([1.5, 0.5], 7)],

@@ -334,6 +334,8 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
     ];
     let paper = [0, 0, 250, 128];
     let repeat = [4, 6, 200, 120];
+    let wide = [0, 0, 3 * TILE as i32, TILE as i32];
+    let (sigmas, reaches) = ([1.0, 0.7], [3u32, 2]);
     let plate = [6, 0, 250, 128];
     let taps = [5u32, 3];
     let passes: [f64; 24] = [
@@ -357,12 +359,14 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
         assert_eq!(gpu_engine_plan_chain(plan, 0, 0, 2, 1), 0);
         assert_eq!(gpu_engine_plan_chain_matrix(plan, 0, contrast.as_ptr()), 0);
         assert_eq!(gpu_engine_plan_chain_keys(plan, 0, 0), 0);
-        assert_eq!(gpu_engine_plan_chain_gaussian(plan, 0, 3, 2, repeat.as_ptr()), 0);
+        let blurred = gpu_engine_plan_chain_gaussian(plan, 0, sigmas.as_ptr(), reaches.as_ptr(), repeat.as_ptr(), 1, repeat.as_ptr());
+        assert_eq!(blurred, 0);
         assert_eq!(gpu_engine_plan_chain_line(plan, 0, plate.as_ptr(), taps.as_ptr(), passes.as_ptr(), 2), 0);
         let lensed = gpu_engine_plan_chain_lens(plan, 0, picture.as_ptr(), sides, lens.as_ptr(), true, paper.as_ptr(), 0);
         assert_eq!(lensed, 0);
         assert_eq!(gpu_engine_plan_chain(plan, 0, 0, 3, 1), 1);
-        assert_eq!(gpu_engine_plan_chain_gaussian(plan, 1, 2, 0, std::ptr::null()), 0);
+        let across = gpu_engine_plan_chain_gaussian(plan, 1, [0.7, 0.0].as_ptr(), [2u32, 0].as_ptr(), wide.as_ptr(), 0, wide.as_ptr());
+        assert_eq!(across, 0);
         gpu_engine_plan_open(plan, false);
         assert_eq!(gpu_engine_plan_row(plan, 0, -1, 0, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 60000, MULTIPLY), 1);
         assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, 0, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 50000, SCREEN), 1);
@@ -395,14 +399,26 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
             ops: vec![
                 Op::Matrix(matrix_words(&contrast).expect("held")),
                 Op::Keys(keys[0].clone()),
-                Op::Gaussian { radius: (3, 2), edge: Edge::Repeat(repeat) },
+                Op::Gaussian(Blur {
+                    across: Way { sigma: sigmas[0], reach: reaches[0] },
+                    down: Way { sigma: sigmas[1], reach: reaches[1] },
+                    picture: repeat,
+                    edge: Edge::Repeat,
+                    puts: repeat,
+                }),
                 Op::Line { plate, passes: vec![line(0), line(1)] },
                 Op::Lens { picture, lens: lens_of(&lens, true, Some(paper)), map: Some(drawn) },
             ],
             rect: TileRect { x0: 0, y0: 0, columns: 2, rows: 1 },
         },
         Chained {
-            ops: vec![Op::Gaussian { radius: (2, 0), edge: Edge::Nothing }],
+            ops: vec![Op::Gaussian(Blur {
+                across: Way { sigma: 0.7, reach: 2 },
+                down: Way { sigma: 0.0, reach: 0 },
+                picture: wide,
+                edge: Edge::Nothing,
+                puts: wide,
+            })],
             rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
         },
     ];

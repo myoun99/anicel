@@ -1,5 +1,5 @@
-// What a blur's passes share — the Gaussian's boxes (gaussian.wgsl) and a
-// blur along a way (line.wgsl): where a pass reads and puts a pixel, the
+// What a blur's passes share — the Gaussian's (gaussian.wgsl) and a blur
+// along a way's (line.wgsl): where a pass reads and puts a pixel, the
 // grid's tiles, straight RGBA8, or a plane of two words a pixel, 16 bits a
 // channel; and the pixel between them, premultiplied on the 16-bit scale —
 // read from a stored word and stored back as every blur reads and stores

@@ -11,8 +11,8 @@
 //! - the colour matrix (`matrix.wgsl`): fx Brightness & Contrast and
 //!   Hue/Saturation and an onion skin's tint, the one 4×5 matrix the app
 //!   folds them into, which Flutter's `ColorFilter.matrix` runs now;
-//! - the Gaussian (`blur::gaussian`): the blur brush's box passes, C's
-//!   `qa_blur_box`;
+//! - the Gaussian (`blur::gaussian`): fx Gaussian Blur, the Gaussian itself
+//!   a way a pass, as Flutter's `ImageFilter.blur` runs it now;
 //! - the blur along a way (`blur::line`): fx Directional and Radial Blur's
 //!   taps, the app's `directional_blur.frag`;
 //! - the lens blur (`blur::lens`): fx Camera Lens Blur's iris gathered over

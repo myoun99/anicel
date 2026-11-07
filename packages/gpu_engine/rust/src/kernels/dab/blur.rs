@@ -2,12 +2,12 @@
 //! C's `qa_blur_dab`; gpu-canonical-store D5, 01:13): the stroke's picture
 //! under each dab moved toward its blur by what the dab lays as paint onto
 //! nothing. `blur.wgsl` has what a dab reads and moves; the passes are the
-//! fx Gaussian's box law and its two schedules (`effects/blur/box.wgsl`,
-//! `three.wgsl`, `pass.wgsl`; the ranges and the cut gaussian.rs's
-//! `within`), the coverage the dab kernel's own (`dab_source`) — no second
-//! copy of any. A dab goes by strips, a way's three passes a dispatch
-//! (`blur_three.wgsl`), up to MOST_STRIPS_RADIUS; past it a pass a dispatch
-//! (`blur_pass.wgsl`, 01:13 ③).
+//! box law and its two schedules (`effects/blur/box.wgsl`, `three.wgsl`,
+//! `pass.wgsl`; the ranges and the cut boxes.rs's `within`), the coverage
+//! the dab kernel's own (`dab_source`) — no second copy of any. A dab goes
+//! by strips, a way's three passes a dispatch (`blur_three.wgsl`), up to
+//! MOST_STRIPS_RADIUS; past it a pass a dispatch (`blur_pass.wgsl`, 01:13
+//! ③).
 //!
 //! The picture is made from the cel — every tile a dab's window meets — and
 //! finished back as the cel stores it (`qa_blur_result_tile`) by
@@ -33,7 +33,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::composite::{Composite, Composited, TILE_TEXELS, TileSet};
-use crate::kernels::effects::blur::gaussian::{
+use crate::kernels::effects::blur::boxes::{
     BOX_WGSL, PASS_WGSL, PASS_WORDS, Strips, THREE_WGSL, within,
 };
 use crate::kernels::mask::{BYTE_WGSL, Mask};
@@ -79,9 +79,9 @@ pub(crate) struct Cover<'a> {
 /// so it reads the same line over again (11-06, the main PC's GPU, a dab,
 /// µs by strips against a pass a dispatch — r 75: 248, 497; r 90: 517,
 /// 637; r 100: 705, 642; r 120: 1,121, 730; r 150: 4,255, 1,016; r 167:
-/// 25,374, 1,328). The Gaussian's crossing on a whole picture is lower
-/// (gaussian.rs's 56): a dab's six dispatches cost more against its
-/// small window.
+/// 25,374, 1,328). The fx Gaussian's boxes crossed lower on a whole
+/// picture, at 56, while it went by them: a dab's six dispatches cost more
+/// against its small window.
 ///
 /// The Surface (Arc 140V) crosses sooner, between 67 and 82 (캔버스 베이스
 /// 11-06 04:35 — µs, a dab of 128 px, strips against a pass a dispatch:
@@ -91,11 +91,10 @@ pub(crate) struct Cover<'a> {
 /// them, both keep clear of the strips' cliff, and choosing it by device
 /// would be a rule of its own.
 ///
-/// The second of two such choices — the other is the fx Gaussian's
-/// (effects/blur/gaussian.rs's MOST_STRIPS_RADIUS and Route): they stay
-/// apart, each threshold measured for its own use, until a third comes and
-/// one function beside `strips` takes the threshold (rule of three, 캔버스
-/// 베이스 11-06 03:05).
+/// ↩️It was the second of two such choices, the fx Gaussian's the other
+/// (rule of three, 캔버스 베이스 11-06 03:05), till that went by the
+/// Gaussian itself (🗣️유저 gpu-canonical-store-Q2): the boxes are the
+/// dab's alone.
 const MOST_STRIPS_RADIUS: u32 = 90;
 
 /// The most workgroups — its rows' and its columns' together — a dab goes in
@@ -160,7 +159,7 @@ pub(crate) struct Blurs {
 }
 
 /// The `index`-th pass's word `word` among `passes` (box.wgsl's `BoxPass`:
-/// down, radius, first, end, line_first, line_end, …).
+/// down, radius, first, end, line_first, line_end).
 fn word(passes: &[u32], index: usize, word: usize) -> i32 {
     passes[index * PASS_WORDS + word] as i32
 }

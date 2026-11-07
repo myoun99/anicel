@@ -17,7 +17,7 @@ use crate::kernels::chain::{Chained, Op};
 use crate::kernels::dab::stamp::tests::stamps;
 use crate::kernels::dab::stamp::{Paint, Source, Stamped};
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::effects::blur::gaussian::Edge;
+use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::matrix_tests::{Matrix, each, graded};
 use crate::kernels::effects::{KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::tests::masked;
@@ -737,9 +737,14 @@ fn chained_rows() -> Scene {
         columns: 3,
         rows: 2,
     };
-    let blur = |radius| Op::Gaussian {
-        radius,
-        edge: Edge::Nothing,
+    let blur = |sigmas: (f64, f64), reaches: (u32, u32)| {
+        Op::Gaussian(Blur {
+            across: Way { sigma: sigmas.0, reach: reaches.0 },
+            down: Way { sigma: sigmas.1, reach: reaches.1 },
+            picture: rect.pixels(),
+            edge: Edge::Nothing,
+            puts: rect.pixels(),
+        })
     };
     let contrast = matrix_words(&contrast()).expect("a matrix in range");
     let closing = Step::Close {
@@ -755,11 +760,11 @@ fn chained_rows() -> Scene {
         matrices: Vec::new(),
         chains: vec![
             Chained {
-                ops: vec![blur((3, 2))],
+                ops: vec![blur((1.0, 0.7), (3, 2))],
                 rect,
             },
             Chained {
-                ops: vec![blur((0, 4)), Op::Matrix(contrast)],
+                ops: vec![blur((0.0, 1.3), (0, 4)), Op::Matrix(contrast)],
                 rect,
             },
         ],

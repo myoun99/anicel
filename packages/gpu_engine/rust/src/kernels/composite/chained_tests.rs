@@ -13,7 +13,7 @@ use crate::kernels::blend::mode::{MULTIPLY, NORMAL, PLUS, SCREEN};
 use crate::kernels::chain::tests::lens;
 use crate::kernels::chain::{Chain, Chained, MapTiles, Op, laid_as, tiles_of};
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::effects::blur::gaussian::Edge;
+use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::Focus;
 use crate::kernels::effects::blur::lens::{BlurMap, MapChannel};
 use crate::kernels::effects::{MATRIX_WORDS, matrix_words};
@@ -55,25 +55,32 @@ fn matrix() -> &'static [u32; MATRIX_WORDS] {
     MATRIX.get_or_init(|| matrix_words(&contrast()).expect("a matrix in range"))
 }
 
+/// A Gaussian of `sigmas` reaching `reaches` over the whole of `rect`'s
+/// tiles, nothing past them.
+fn gaussian(rect: TileRect, sigmas: (f64, f64), reaches: (u32, u32)) -> Op<'static> {
+    let whole = rect.pixels();
+    Op::Gaussian(Blur {
+        across: Way { sigma: sigmas.0, reach: reaches.0 },
+        down: Way { sigma: sigmas.1, reach: reaches.1 },
+        picture: whole,
+        edge: Edge::Nothing,
+        puts: whole,
+    })
+}
+
 /// A blur, then a colour matrix between it and the final paint.
 fn blurred() -> Vec<Op<'static>> {
-    let blur = Op::Gaussian {
-        radius: (3, 2),
-        edge: Edge::Nothing,
-    };
-    vec![blur, Op::Matrix(*matrix())]
+    vec![gaussian(RECT, (1.0, 0.7), (3, 2)), Op::Matrix(*matrix())]
 }
 
 /// A blur along the rows alone.
 fn across() -> Vec<Op<'static>> {
-    let radius = (5, 0);
-    vec![Op::Gaussian { radius, edge: Edge::Nothing }]
+    vec![gaussian(RECT, (1.7, 0.0), (5, 0))]
 }
 
-/// A blur down the columns alone.
+/// A blur down the columns alone, over [`TALL`].
 fn down() -> Vec<Op<'static>> {
-    let radius = (0, 4);
-    vec![Op::Gaussian { radius, edge: Edge::Nothing }]
+    vec![gaussian(TALL, (0.0, 1.3), (0, 4))]
 }
 
 /// A buffer's close at `opacity` in `mode`, through matrix `matrix` if any.

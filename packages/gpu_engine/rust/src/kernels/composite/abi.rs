@@ -16,7 +16,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::chain::{Chained, MapTiles, Op};
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::effects::blur::gaussian::Edge;
+use crate::kernels::effects::blur::gaussian::{Blur, Edge, Way};
 use crate::kernels::effects::blur::iris::{Focus, Iris};
 use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
@@ -441,25 +441,46 @@ pub unsafe extern "C" fn gpu_engine_plan_chain_keys(plan: *mut Planned, chain: u
     plan.op(chain, Op::Keys(keyed), None)
 }
 
-/// Adds to effect chain `chain` fx Gaussian Blur by box passes of `across`
-/// and `down`, repeating the nearest pixel of `repeat` — [left, top, right,
-/// bottom), inside the chain's tiles — past it and putting nothing outside
-/// it where `repeat` is not null (Repeat Edge Pixels). 0, or -1 where the
-/// plan has no such chain; see the last error.
+/// Adds to effect chain `chain` fx Gaussian Blur: across by sigma
+/// `sigmas[0]` reaching `reaches[0]` pixels either side, down by
+/// `sigmas[1]` reaching `reaches[1]` — a way of no reach not blurred —,
+/// reading `picture` — past it nothing, or where `repeats` is 1 its nearest
+/// pixel — and putting `puts`, nothing outside it: [left, top, right,
+/// bottom) each, inside the chain's tiles. 0, or -1 where the plan has no
+/// such chain; see the last error.
 ///
 /// # Safety
-/// `plan` is live and `repeat` is null or holds four words.
+/// `plan` is live, `sigmas` and `reaches` hold two words each, `picture`
+/// and `puts` four.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_plan_chain_gaussian(
     plan: *mut Planned,
     chain: u32,
-    across: u32,
-    down: u32,
-    repeat: *const i32,
+    sigmas: *const f64,
+    reaches: *const u32,
+    picture: *const i32,
+    repeats: u32,
+    puts: *const i32,
 ) -> i32 {
     // SAFETY: see the function's contract.
-    let (plan, edge) = unsafe { (&mut *plan, rect_or_none(repeat).map_or(Edge::Nothing, Edge::Repeat)) };
-    plan.op(chain, Op::Gaussian { radius: (across, down), edge }, None)
+    let (plan, sigmas, reaches, picture, puts) = unsafe {
+        (
+            &mut *plan,
+            *sigmas.cast::<[f64; 2]>(),
+            *reaches.cast::<[u32; 2]>(),
+            *picture.cast::<[i32; 4]>(),
+            *puts.cast::<[i32; 4]>(),
+        )
+    };
+    let way = |at: usize| Way { sigma: sigmas[at], reach: reaches[at] };
+    let blur = Blur {
+        across: way(0),
+        down: way(1),
+        picture,
+        edge: if repeats == 1 { Edge::Repeat } else { Edge::Nothing },
+        puts,
+    };
+    plan.op(chain, Op::Gaussian(blur), None)
 }
 
 /// Adds to effect chain `chain` fx Directional or Radial Blur's `count`

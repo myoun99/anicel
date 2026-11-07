@@ -3,9 +3,9 @@
 // lines — and works the three passes over it in its own memory, so no pass
 // waits on another workgroup's. Each pass puts as far past the strip as it
 // puts past the way's last, so the strip reads past what it puts as far as
-// the way's first pass reads past the way's last. The fx Gaussian's strips
-// (gaussian_three.wgsl) and the blur brush's (kernels/dab/blur.wgsl) both go
-// by it; how a way is cut is gaussian.rs's `strips`.
+// the way's first pass reads past the way's last. The blur brush's strips
+// go by it (kernels/dab/blur_three.wgsl); how a way is cut is boxes.rs's
+// `strips`.
 //
 // Needs blend/blend.wgsl and box.wgsl before it, and from what includes it:
 //   blur_load(first: BoxPass, line: i32, p: i32) -> vec4<u32> — the pixel
@@ -15,7 +15,7 @@
 
 // The pixels a strip holds, in each half of its room: a pass reads one half
 // and puts the other. Two halves of 1024 are the 16KB every device gives a
-// workgroup (gaussian.rs's ROOM).
+// workgroup (boxes.rs's ROOM).
 const BLUR_ROOM: u32 = 1024u;
 const BLUR_LANES: u32 = 256u;
 var<workgroup> blur_room: array<vec2<u32>, 2048>;

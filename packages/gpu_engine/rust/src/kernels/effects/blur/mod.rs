@@ -2,7 +2,9 @@
 //! executor runs before a plan lays its result as a row: it reads tiles a
 //! composite put and puts blurred tiles in their place
 //! (gpu-canonical-store ② (a)).
-//! - `gaussian` — fx Gaussian Blur, by the blur brush's box passes.
+//! - `gaussian` — fx Gaussian Blur, the Gaussian itself a way a pass.
+//! - `boxes` — the blur brush's box law, which its dab runs
+//!   (kernels/dab/blur.rs).
 //! - `line` — a blur along a way: fx Directional Blur and Radial Blur.
 //! - `lens` — fx Camera Lens Blur: its row sums, its light, and the mean
 //!   of each pixel's iris over them.
@@ -12,6 +14,7 @@
 //! 16-bit scale in planes between their passes (`held.wgsl`) — one way in
 //! and one way out, so two blurs of one picture cannot store it apart.
 
+pub(crate) mod boxes;
 pub(crate) mod gaussian;
 pub(crate) mod iris;
 pub(crate) mod lens;
@@ -152,7 +155,7 @@ fn checked(
 /// the bands put what the whole would, byte for byte.
 ///
 /// ⛔Not [`crate::kernels::shared::tiles_a_pass`]'s count: what a band holds
-/// is not so many bytes a row — the Gaussian's planes run its radii past
+/// is not so many bytes a row — the Gaussian's plane runs its reach past
 /// the band, and a blur along a way reads where its taps land — so each
 /// blur says whether a band fits, and the cut halves until every band
 /// does.

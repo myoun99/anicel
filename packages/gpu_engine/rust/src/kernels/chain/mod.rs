@@ -31,7 +31,7 @@ use crate::fail;
 use crate::kernels::composite::{Composite, KeyChain, Step, TILE, TileAt, TileSet, Through};
 use crate::kernels::effects::MATRIX_WORDS;
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::effects::blur::gaussian::{BoxBlur, Edge};
+use crate::kernels::effects::blur::gaussian::{Blur, Gaussian};
 use crate::kernels::effects::blur::lens::{BlurMap, Lens, LensBlur};
 use crate::kernels::effects::blur::line::{LineBlur, LinePass};
 
@@ -46,8 +46,8 @@ pub(crate) enum Op<'a> {
     /// joins its run, and a run after anything else reads what that put (the
     /// app's `KeyRun`).
     Keys(KeyChain),
-    /// fx Gaussian Blur by box passes of `radius` across and down.
-    Gaussian { radius: (u32, u32), edge: Edge },
+    /// fx Gaussian Blur, the Gaussian itself a way a pass.
+    Gaussian(Blur),
     /// fx Directional or Radial Blur's passes over `plate`.
     Line { plate: [i32; 4], passes: Vec<LinePass> },
     /// fx Camera Lens Blur over `picture`, through the blur map where one
@@ -124,7 +124,7 @@ pub(crate) struct Chained<'a> {
 
 /// The chain's blurs, compiled once; its colour runs on the executor's.
 pub(crate) struct Chain {
-    gaussian: BoxBlur,
+    gaussian: Gaussian,
     line: LineBlur,
     lens: LensBlur,
 }
@@ -132,7 +132,7 @@ pub(crate) struct Chain {
 impl Chain {
     pub(crate) fn new(engine: &Engine) -> Self {
         Self {
-            gaussian: BoxBlur::new(engine),
+            gaussian: Gaussian::new(engine),
             line: LineBlur::new(engine),
             lens: LensBlur::new(engine),
         }
@@ -177,7 +177,7 @@ impl Chain {
         match op {
             Op::Matrix(matrix) => coloured(Through { keys: None, matrix: Some(matrix) }),
             Op::Keys(keys) => coloured(Through { keys: Some(keys), matrix: None }),
-            Op::Gaussian { radius, edge } => self.gaussian.run(engine, tiles, rect, *radius, *edge),
+            Op::Gaussian(blur) => self.gaussian.run(engine, tiles, rect, blur),
             Op::Line { plate, passes } => self.line.run(engine, tiles, rect, *plate, passes),
             Op::Lens { picture, lens, map } => {
                 let map = match *map {

@@ -1,9 +1,8 @@
 // A box pass a dispatch (gpu-canonical-store 01:13 ③): a thread takes a
 // run of BLUR_RUN pixels of a line and slides one sum along it (box.wgsl's
-// `blur_slide`). The fx Gaussian goes so past its strips' widest box
-// (gaussian_pass.wgsl), and the blur brush past its own (kernels/dab/
-// blur_pass.wgsl) — where three passes' halo leaves a strip too few pixels
-// to put (three.wgsl).
+// `blur_slide`). The blur brush goes so past its strips' widest box
+// (kernels/dab/blur_pass.wgsl) — where three passes' halo leaves a strip
+// too few pixels to put (three.wgsl).
 //
 // Needs box.wgsl before it, and from what includes it `blur_tap` and
 // `blur_put`.

@@ -24,7 +24,7 @@
 // A dab's block in the plan, at the word `blur_dab.x` names: its record,
 // the window's first tile and its tiles a row, how many lines and how far
 // along a workgroup of each strip dispatch takes, the six passes
-// (gaussian.rs's `within`, the rows' three first), then for each of the
+// (boxes.rs's `within`, the rows' three first), then for each of the
 // window's tiles, row after row of them, the place of its record and the
 // binding of its page.
 const BLUR_RECORD: u32 = 0u;
@@ -36,8 +36,8 @@ const BLUR_ROWS_ALONG: u32 = 5u;
 const BLUR_COLUMNS_LINES: u32 = 6u;
 const BLUR_COLUMNS_ALONG: u32 = 7u;
 const BLUR_PASSES: u32 = 8u;
-const BLUR_PASS_WORDS: u32 = 9u;
-const BLUR_GRID: u32 = 62u;
+const BLUR_PASS_WORDS: u32 = 6u;
+const BLUR_GRID: u32 = 44u;
 
 // What one dispatch of a dab puts for the next to read: the rows' blur, or
 // the planes a pass a dispatch alternates between.
@@ -52,8 +52,8 @@ var<private> blur_block: u32;
 // The block's `index`-th pass.
 fn blur_pass(block: u32, index: u32) -> BoxPass {
   let at = block + BLUR_PASSES + index * BLUR_PASS_WORDS;
-  var words: array<u32, 9>;
-  for (var i = 0u; i < 9u; i++) {
+  var words: array<u32, 6>;
+  for (var i = 0u; i < 6u; i++) {
     words[i] = plan[at + i];
   }
   return box_pass(words);

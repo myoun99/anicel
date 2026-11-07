@@ -853,6 +853,7 @@ dependencies = [
  "harfrust",
  "ledger",
  "libc",
+ "libm",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-video",

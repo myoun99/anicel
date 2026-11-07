@@ -1,21 +1,16 @@
-// The box law of every blur that passes boxes (gpu-canonical-store ⑦, 관제
-// 11-05 12:19: the fx Gaussian goes by C's `qa_blur_box`, the blur brush's
-// passes — one blur law, not two): each pixel of a pass the mean of the
-// `radius` pixels either side of it and itself, rounded half up, on
-// held.wgsl's premultiplied scale. The order and the rounding of every pass
-// are part of the law (BrushBlurPicture has its reasons); which pixels each
-// pass writes is gaussian.rs's `passes`.
+// The blur brush's box law (C's `qa_blur_box`, I-75 흐리기): each pixel of
+// a pass the mean of the `radius` pixels either side of it and itself,
+// rounded half up, on the premultiplied 16-bit scale. The order and the
+// rounding of every pass are part of the law (BrushBlurPicture has its
+// reasons); which pixels each pass writes is boxes.rs's `passes`.
 //
 // Written once for both schedules (gpu-canonical-store 01:13, 01:15 (b)):
-// a pass a dispatch over a whole picture (gaussian_pass.wgsl), and three
-// passes a dispatch over strips in workgroup memory (three.wgsl) — the fx
-// Gaussian's where a strip has room, the blur brush's over a dab's window.
-// Each brings its own `blur_tap` — the pixel at `p` along `line` — and
-// `blur_put`.
+// a pass a dispatch (pass.wgsl), and three passes a dispatch over strips in
+// workgroup memory (three.wgsl), over a dab's window. Each brings its own
+// `blur_tap` — the pixel at `p` along `line` — and `blur_put`.
 
 // One pass: along the rows (down 0) or the columns (down 1), the pixels it
-// writes — [first, end) along, lines [line_first, line_end) across — and
-// its edge (gaussian.wgsl's; a brush pass reads as it is).
+// writes — [first, end) along, lines [line_first, line_end) across.
 struct BoxPass {
   down: u32,
   radius: u32,
@@ -23,13 +18,10 @@ struct BoxPass {
   end: i32,
   line_first: i32,
   line_end: i32,
-  edge: u32,
-  edge_first: i32,
-  edge_end: i32,
 }
 
-// A pass from its words, in the order above (gaussian.rs's `Pass::words`).
-fn box_pass(words: array<u32, 9>) -> BoxPass {
+// A pass from its words, in the order above (boxes.rs's `Pass::words`).
+fn box_pass(words: array<u32, 6>) -> BoxPass {
   return BoxPass(
     words[0],
     words[1],
@@ -37,9 +29,6 @@ fn box_pass(words: array<u32, 9>) -> BoxPass {
     bitcast<i32>(words[3]),
     bitcast<i32>(words[4]),
     bitcast<i32>(words[5]),
-    words[6],
-    bitcast<i32>(words[7]),
-    bitcast<i32>(words[8]),
   );
 }
 
