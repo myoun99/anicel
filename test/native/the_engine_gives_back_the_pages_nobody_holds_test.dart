@@ -123,6 +123,11 @@ void main() {
       BitmapTile? tile = aTile();
       EngineTileLedger.instance.held((hold) => hold.slotsOf(a, [tile!]));
       expect(EngineTileLedger.appPoolBytes, isPositive, reason: 'premise');
+      // Both through collections first, as a closed project's surfaces and
+      // their tiles are: a holder still young goes in a scavenge before a
+      // tile the old space holds, and the give-back its going brings finds
+      // the tile's slot held.
+      await collectGarbage();
 
       project = null;
       tile = null;
