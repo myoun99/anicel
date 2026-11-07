@@ -53,6 +53,22 @@ Not in a shipped binary yet — the audio crate is linked into the engine in
 the connection round. That round adds an MPL-2.0 entry to the app's
 About ▸ licenses screen, saying where the source is.
 
+### RNNoise (ported to Rust)
+
+The voice-take denoiser of the engine's `audio_denoise` crate
+(`packages/gpu_engine/rust/native/audio_denoise`): RNNoise **v0.1.1**
+(`github.com/xiph/rnnoise`, commit
+`6cbfd53eb348a8d394e0757b4025c6ded34eb2b6`) — its frame analysis, its
+network and its built-in model, ported line for line, so it is RNNoise's
+work in another language. **BSD-3-Clause** (Mozilla, Jean-Marc Valin,
+Xiph.Org Foundation, Mark Borgerding) — the text is the crate's `COPYING`,
+and `PROVENANCE.md` beside it says what was and was not ported. The
+license asks binary distributions to reproduce the notice: the app's
+About ▸ licenses screen shows `assets/licenses/LICENSE-RNNoise.txt`, a copy
+of `COPYING`. Until the connection round (2026-11-08) it was vendored as C
+under `packages/qa_native/src/third_party/rnnoise/`, which shipped without
+that entry.
+
 > When native third-party sources are vendored into `native/` (or into a
 > platform plugin package), each one gets an entry here with: what it is,
 > where it came from, its version/commit, and its license text or a path

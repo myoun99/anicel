@@ -136,6 +136,15 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield LicenseEntryWithLineBreaks(const [
       'PDFium',
     ], await rootBundle.loadString('assets/licenses/LICENSE-PDFium.txt'));
+    // RNNoise, ported line for line into the GPU engine's denoiser
+    // (native/audio_denoise): BSD-3-Clause asks binary distributions to
+    // reproduce its notice. It is not a registry crate, so
+    // rust_crates.json below never lists it — and the C it was before
+    // shipped without this entry (connection-round-checklist H, 관제
+    // 2026-11-08 06:15 ⓔ).
+    yield LicenseEntryWithLineBreaks(const [
+      'RNNoise',
+    ], await rootBundle.loadString('assets/licenses/LICENSE-RNNoise.txt'));
     // The dxcompiler.dll the GPU engine compiles its DX12 shaders with ships
     // beside it on Windows: one entry for the three licence texts its zip
     // carries, since the zip does not say which file each covers
