@@ -19,6 +19,7 @@ const NO_EDGE: [i32; 4] = [i32::MIN, i32::MIN, i32::MAX, i32::MAX];
 const OUTPUT: [(i32, i32); 3] = [(0, 0), (1, 0), (2, 0)];
 const BLEND: u32 = 0;
 const PICK: u32 = 1;
+const NEAREST: u32 = 3;
 
 /// A tile of words of its own, `n`, opaque where `opaque` — else a pixel
 /// of no alpha all 0, as a pass lays one.
@@ -84,7 +85,8 @@ fn last_error() -> String {
 }
 
 // Every call names a field of its step: a field put in another's place, or
-// a set or matrix named by another index, composites other bytes.
+// a set or matrix named by another index, composites other bytes — each
+// sampling, both opens and both matrices among them.
 #[test]
 fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
     let tiles = [tile(1, false), tile(2, false), tile(3, true)];
@@ -92,12 +94,16 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
     let contrast: [f64; MATRIX_WORDS] = [
         1.4, 0.0, 0.0, 0.0, -20.0, 0.0, 1.2, 0.1, 0.0, 5.0, 0.0, 0.0, 0.8, 0.0, 30.0, 0.0, 0.0, 0.0, 1.0, 0.0,
     ];
+    let warm: [f64; MATRIX_WORDS] = [
+        1.0, 0.0, 0.0, 0.0, 25.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 0.0, -10.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+    ];
     let plan = gpu_engine_plan_new();
     // SAFETY: `plan` is live; each array holds what its call reads.
     unsafe {
         assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [word(at[0]), word(at[1])].as_ptr()), 0);
         assert_eq!(gpu_engine_plan_set(plan, 1, 0, 2, 1, [NO_TILE, word(at[2])].as_ptr()), 1);
         assert_eq!(gpu_engine_plan_matrix(plan, contrast.as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_matrix(plan, warm.as_ptr()), 1);
         gpu_engine_plan_solid(plan, 0xc0_33_66_99, 10, 4, 290, 100);
         gpu_engine_plan_open(plan, false);
         assert_eq!(gpu_engine_plan_row(plan, 0, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
@@ -106,9 +112,9 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
         gpu_engine_plan_open(plan, false);
         assert_eq!(gpu_engine_plan_row(plan, 1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
         gpu_engine_plan_open(plan, true);
-        assert_eq!(gpu_engine_plan_row(plan, 0, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 30000, NORMAL), 1);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, POSED.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 30000, MULTIPLY), 1);
         gpu_engine_plan_close_atop(plan);
-        gpu_engine_plan_close(plan, 50000, NORMAL, 0);
+        gpu_engine_plan_close(plan, 50000, NORMAL, 1);
     }
     let sets = [
         TileSet { x0: 0, y0: 0, columns: 2, rows: 1, tiles: vec![Some(at[0]), Some(at[1])] },
@@ -134,11 +140,11 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
         Step::Open,
         row(1, map(IDENTITY, ResampleMode::Blend), None, 65535, NORMAL),
         Step::OpenOpaque,
-        row(0, map(POSED, ResampleMode::Blend), None, 30000, NORMAL),
+        row(0, map(POSED, ResampleMode::Nearest), None, 30000, MULTIPLY),
         Step::CloseAtop,
-        Step::Close { opacity: 50000, mode: NORMAL, matrix: Some(0), chain: None },
+        Step::Close { opacity: 50000, mode: NORMAL, matrix: Some(1), chain: None },
     ];
-    let matrices = [matrix_words(&contrast).expect("held")];
+    let matrices = [matrix_words(&contrast).expect("held"), matrix_words(&warm).expect("held")];
     let built = ran(&pool, plan, [0, 0, 300, 120]).expect("run");
     // SAFETY: `plan` came from `gpu_engine_plan_new`.
     unsafe { gpu_engine_plan_free(plan) };
