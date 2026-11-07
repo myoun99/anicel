@@ -372,7 +372,6 @@ class AudioConformStore extends ChangeNotifier {
           channels: entry.channels,
           inputRate: entry.sampleRate,
           outputRate: sampleRate,
-          libraryPathOverride: libraryPathOverride,
         ),
       );
       // Onto the entry it was made FROM, or nowhere: one let go of while

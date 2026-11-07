@@ -97,7 +97,6 @@ void main() {
       channels: 2,
       inputRate: 48000,
       outputRate: 44100,
-      libraryPathOverride: libraryPath,
     );
     final here = runResampleHere(request);
     debugWorkersRunHere = false;
@@ -118,7 +117,6 @@ void main() {
       channels: 2,
       inputRate: 48000,
       outputRate: 44100,
-      libraryPathOverride: libraryPath,
     );
     final here = runResampleHere(request.withSamples(plain));
     debugWorkersRunHere = false;

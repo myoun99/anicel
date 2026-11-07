@@ -101,14 +101,12 @@ class ResampleRequest {
     required this.channels,
     required this.inputRate,
     required this.outputRate,
-    this.libraryPathOverride,
   });
 
   final Float32List samples;
   final int channels;
   final int inputRate;
   final int outputRate;
-  final String? libraryPathOverride;
 
   /// This conversion of [samples] instead.
   ResampleRequest withSamples(Float32List samples) => ResampleRequest(
@@ -116,7 +114,6 @@ class ResampleRequest {
     channels: channels,
     inputRate: inputRate,
     outputRate: outputRate,
-    libraryPathOverride: libraryPathOverride,
   );
 }
 
@@ -254,15 +251,12 @@ Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
 }
 
 /// The conversion itself, on whichever isolate this is called from.
-Float32List runResampleHere(ResampleRequest request) {
-  _applyLibraryOverride(request.libraryPathOverride);
-  return resampleAudio(
-    samples: request.samples,
-    channels: request.channels,
-    inputRate: request.inputRate,
-    outputRate: request.outputRate,
-  );
-}
+Float32List runResampleHere(ResampleRequest request) => resampleAudio(
+  samples: request.samples,
+  channels: request.channels,
+  inputRate: request.inputRate,
+  outputRate: request.outputRate,
+);
 
 void _applyLibraryOverride(String? override) {
   // A worker isolate re-resolves the singletons from scratch, so the test
