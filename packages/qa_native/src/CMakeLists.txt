@@ -230,26 +230,6 @@ if(WIN32)
   add_test(NAME qa_win_range_stream COMMAND qa_win_range_stream_test)
 endif()
 
-# The HID axis law (desktop-pen-tilt) — how a digitizer's declared value
-# becomes an angle. Its one reader is the Windows-only pen DLL below, but
-# the law has no platform in it, so it runs on every host CI has.
-if(NOT ANDROID AND NOT IOS)
-  add_executable(qa_pen_hid_axis_test
-    "${CMAKE_CURRENT_LIST_DIR}/qa_pen_hid_axis_test.c")
-  set_target_properties(qa_pen_hid_axis_test PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED ON
-  )
-  if(MSVC)
-    target_compile_options(qa_pen_hid_axis_test PRIVATE /utf-8)
-  endif()
-  if(UNIX AND NOT APPLE)
-    target_link_libraries(qa_pen_hid_axis_test m)
-  endif()
-  enable_testing()
-  add_test(NAME qa_pen_hid_axis COMMAND qa_pen_hid_axis_test)
-endif()
-
 # The hardware law (card surface-engine-mp4-pieces-fail-to-finalize) — which
 # Windows video jobs may ask for a hardware encoder. Its one reader is the
 # Windows encoder glue, but the law has no platform in it, so it runs on
@@ -289,27 +269,6 @@ if(NOT ANDROID AND NOT IOS)
   endif()
   enable_testing()
   add_test(NAME qa_engine_pool COMMAND qa_engine_pool_test)
-endif()
-
-# The pen sidecars (pen program) — Windows only, one DLL:
-#   qa_tablet_win.c  PEN-2, talks to the tablet driver through wintab32.dll
-#   qa_penraw_win.c  reads the HID digitizer report through Raw Input
-# Both load their system DLL dynamically at runtime, so building needs no
-# vendor SDK and no extra link libraries, and absence of a driver is a
-# normal silent state. Same bundle-beside-the-exe + dart:ffi consumption
-# pattern as qa_engine.
-if(WIN32)
-  add_library(qa_tablet SHARED
-    "${CMAKE_CURRENT_LIST_DIR}/qa_tablet_win.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_penraw_win.c")
-  set_target_properties(qa_tablet PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED ON
-  )
-  if(MSVC)
-    # Same UTF-8 sources, same C4819 story as qa_engine below.
-    target_compile_options(qa_tablet PRIVATE /utf-8)
-  endif()
 endif()
 
 # Vendored dr_libs emits a few benign conversion warnings. We do not edit

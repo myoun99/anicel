@@ -13,12 +13,12 @@ import 'package:flutter_test/flutter_test.dart' show fail;
 /// honoring the `QA_ENGINE_PATH` override CI sets — is what makes them
 /// real everywhere.
 ///
-/// `QA_ENGINE_PATH` names the engine where its build left it, beside what
-/// that build makes with it — the pen DLL — which the pins open from there.
-/// Never a bundle's copy: a bundle holds only what ships, and the Linux
-/// release's parity failed on the missing fx plugin sample, which stood
-/// beside the engine until the Rust host took it (2026-10-30,
-/// linux-release.yml).
+/// `QA_ENGINE_PATH` names the engine where its build left it. Never a
+/// bundle's copy: a bundle holds only what ships, and the Linux release's
+/// parity failed on the missing fx plugin sample, which stood beside the
+/// engine until the Rust host took it (2026-10-30, linux-release.yml); the
+/// pen DLL stood there too until the Rust engine carried the pen
+/// (connection-round-checklist H, 2026-11-08).
 ///
 /// Null = no engine built here, on a machine that was not told to have
 /// one; callers skip, and say why.

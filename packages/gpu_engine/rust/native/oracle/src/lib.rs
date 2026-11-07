@@ -19,17 +19,14 @@
 //! the Rust's bytes to theirs: on the cases the C's own tests run, on the
 //! files the Dart parity suites read, and on inputs made up in the test. A
 //! function the engine does not export — a header's `static` — is held to
-//! through the export that calls it. A module whose C is a library of its
-//! own beside the engine (`qa_tablet`, the pen) is held to that library
-//! through [`sidecar_export`].
+//! through the export that calls it.
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
 // never run as this one's (gpu_engine's kernels/shared/one_checkout.rs).
 const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
-use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::OnceLock;
 
 use libloading::Library;
 
@@ -57,43 +54,6 @@ pub fn engine() -> &'static Library {
 pub unsafe fn export<F: Copy>(name: &str) -> F {
     // SAFETY: the caller's contract.
     unsafe { export_of(engine(), "the engine", name) }
-}
-
-/// A library the engine's build makes beside the engine, by the name CMake
-/// gives it: the C of a module the engine does not carry (`qa_tablet`), or
-/// a library a module's tests hand to it (the fx host's sample plugins).
-pub fn beside(name: &str) -> PathBuf {
-    engine();
-    let engine = PathBuf::from(std::env::var("QA_ENGINE_PATH").expect("the engine's path"));
-    let path = engine.with_file_name(libloading::library_filename(name));
-    assert!(path.is_file(), "no {} beside the engine — `bash tool/lane.sh engine`", path.display());
-    path
-}
-
-/// The library [`beside`] the engine called `name`, loaded once for the
-/// test binary.
-pub fn sidecar(name: &str) -> &'static Library {
-    static LOADED: Mutex<Vec<(String, &'static Library)>> = Mutex::new(Vec::new());
-    let mut loaded = LOADED.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some((_, library)) = loaded.iter().find(|(own, _)| own == name) {
-        return library;
-    }
-    let path = beside(name);
-    // SAFETY: a library the app itself loads, as the engine is.
-    let library = unsafe { Library::new(&path) }
-        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-    let library: &'static Library = Box::leak(Box::new(library));
-    loaded.push((name.to_owned(), library));
-    library
-}
-
-/// The export `name` of the library [`sidecar`] calls `library`, as `F`.
-///
-/// # Safety
-/// `F` is the function pointer type of the export's C declaration.
-pub unsafe fn sidecar_export<F: Copy>(library: &str, name: &str) -> F {
-    // SAFETY: the caller's contract.
-    unsafe { export_of(sidecar(library), library, name) }
 }
 
 /// `medium` framed as the save frames it (`writeMediaBlob`): the block size,

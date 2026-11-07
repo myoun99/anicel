@@ -9,10 +9,7 @@ project(${PROJECT_NAME} LANGUAGES C)
 add_subdirectory("../src" "${CMAKE_CURRENT_BINARY_DIR}/shared")
 
 # The magic variable Flutter's Windows build reads to bundle native libs.
-# qa_tablet is the Wintab sidecar (pen program, PEN-2) — Windows only,
-# built by the same src/CMakeLists.txt.
 set(qa_native_bundled_libraries
   $<TARGET_FILE:qa_engine>
-  $<TARGET_FILE:qa_tablet>
   PARENT_SCOPE
 )
