@@ -39,10 +39,11 @@ void main() {
   setUpAll(() => composite = GpuComposite(appGpuEngine));
   tearDownAll(() => composite.free());
 
-  /// A cel of [canvas] whose pixels are [seed]'s: colours no two
-  /// neighbours share, and alphas in bands — none, part and whole — so a
-  /// blend meets every kind of pixel under and over it.
-  BitmapSurface cel(int seed) {
+  /// A cel of [canvas] whose pixels are [seed]'s, in the tiles of [columns]
+  /// it holds: colours no two neighbours share, and alphas in bands — none,
+  /// part and whole — so a blend meets every kind of pixel under and over
+  /// it.
+  BitmapSurface cel(int seed, {List<int> columns = const [0, 1]}) {
     BitmapTile tile(int column) {
       final pixels = Uint8List(side * side * 4);
       for (var y = 0; y < side; y++) {
@@ -67,8 +68,8 @@ void main() {
       canvasSize: canvas,
       tileSize: side,
       tiles: {
-        TileCoord(x: 0, y: 0): tile(0),
-        TileCoord(x: 1, y: 0): tile(1),
+        for (final column in columns)
+          TileCoord(x: column, y: 0): tile(column),
       },
     );
   }
@@ -80,9 +81,10 @@ void main() {
     GuideTransform? placement,
     List<ResolvedLayerEffect> effects = const [],
     int? tint,
+    List<int> columns = const [0, 1],
   }) => CompositeLeaf(
     CutFrameCompositeLayer(
-      surface: cel(seed),
+      surface: cel(seed, columns: columns),
       opacity: opacity,
       blendMode: blendMode,
       placement: placement,
@@ -244,7 +246,11 @@ void main() {
         'a row': ([row(1)], clear),
         'a row at part strength': ([row(1, opacity: 0.6)], clear),
         'two rows': ([row(1), row(2, opacity: 0.7)], clear),
-        'a row over the ground': ([row(3, opacity: 0.8)], white),
+        'a row over a ground of a colour': (
+          [row(3, opacity: 0.8)],
+          const ui.Color(0xFF2050C0),
+        ),
+        'a row holding its right tile alone': ([row(1, columns: [1])], clear),
         'a row moved by whole pixels': (
           [row(1, placement: const GuideTransform(1, 0, 0, 1, 7, -3))],
           clear,
@@ -341,6 +347,25 @@ void main() {
                 ),
               ],
               mix: 0.4,
+            ),
+          ],
+          clear,
+        ),
+        // A pass-through folder buffers where its chain needs one
+        // (folderNeedsCompositeBuffer), and closes as normal.
+        'a pass-through folder in a colour': (
+          [
+            row(4),
+            CompositeGroup(
+              children: [row(1), row(2, opacity: 0.8)],
+              opacity: 0.75,
+              blendMode: LayerBlendMode.passThrough,
+              effects: [
+                ResolvedLayerEffect(
+                  kind: EffectKind.hueSaturation,
+                  values: [25, -40, 10],
+                ),
+              ],
             ),
           ],
           clear,

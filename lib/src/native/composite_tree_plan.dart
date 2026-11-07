@@ -120,33 +120,10 @@ class _TreePlan {
           rect.rightExclusive,
           rect.bottomExclusive,
         );
-      case CompositeGroup(
-        :final children,
-        :final opacity,
-        :final blendMode,
-        :final effects,
-      ):
-        plan.open();
-        _lay(children);
-        plan.close(
-          opacity: _strengthOf(opacity),
-          mode: mode ?? _blendOf(blendMode),
-          matrix: _matrixOf(_colourOf(effects)),
-        );
-      case CompositeAdjustment(:final children, :final effects, :final mix):
-        plan.open();
-        _lay(children);
-        // A mix is no fade: a colour's is folded into its matrix, a grade
-        // of that strength (resolveAdjustmentScopePass).
-        final colour = _colourOf(effects);
-        plan.close(
-          mode: GpuBlend.normal,
-          matrix: _matrixOf(
-            colour == null || mix >= 1
-                ? colour
-                : lerpColorMatrixFromIdentity(colour, mix.clamp(0.0, 1.0)),
-          ),
-        );
+      case final CompositeGroup<EngineRow> group:
+        _group(group, mode ?? _blendOf(group.blendMode));
+      case final CompositeAdjustment<EngineRow> adjustment:
+        _adjustment(adjustment);
       case CompositeBackdropBlend(
         :final backdrop,
         :final source,
@@ -154,22 +131,8 @@ class _TreePlan {
       ):
         _lay(backdrop);
         _node(source, mode: _blendOf(blendMode));
-      case CompositeClip(
-        :final base,
-        :final scope,
-        :final opacity,
-        :final blendMode,
-      ):
-        plan.open();
-        _node(base);
-        final (:opaque, :rows) = _onTheBase(scope);
-        plan.open(opaque: opaque);
-        _lay(rows);
-        plan.closeAtop();
-        plan.close(
-          opacity: _strengthOf(opacity),
-          mode: mode ?? _blendOf(blendMode),
-        );
+      case final CompositeClip<EngineRow> clip:
+        _clip(clip, mode ?? _blendOf(clip.blendMode));
       case CompositeOpaque():
         throw StateError(
           'a base made opaque lies at the bottom of its clip\'s scope, where '
@@ -183,6 +146,47 @@ class _TreePlan {
       case CompositeReadsRows():
         throw UnsupportedError('a chain reading rows on the engine: $node');
     }
+  }
+
+  /// [group]'s buffer, closed at its strength in [mode] through its colour.
+  void _group(CompositeGroup<EngineRow> group, int mode) {
+    plan.open();
+    _lay(group.children);
+    plan.close(
+      opacity: _strengthOf(group.opacity),
+      mode: mode,
+      matrix: _matrixOf(_colourOf(group.effects)),
+    );
+  }
+
+  /// [adjustment]'s scope, closed through its grade at its mix.
+  void _adjustment(CompositeAdjustment<EngineRow> adjustment) {
+    final CompositeAdjustment(:children, :effects, :mix) = adjustment;
+    plan.open();
+    _lay(children);
+    // A mix is no fade: a colour's is folded into its matrix, a grade of
+    // that strength (resolveAdjustmentScopePass).
+    final colour = _colourOf(effects);
+    plan.close(
+      mode: GpuBlend.normal,
+      matrix: _matrixOf(
+        colour == null || mix >= 1
+            ? colour
+            : lerpColorMatrixFromIdentity(colour, mix.clamp(0.0, 1.0)),
+      ),
+    );
+  }
+
+  /// [clip]'s base and its scope opened on it, closed atop it, the two
+  /// closed at the base's strength in [mode].
+  void _clip(CompositeClip<EngineRow> clip, int mode) {
+    plan.open();
+    _node(clip.base);
+    final (:opaque, :rows) = _onTheBase(clip.scope);
+    plan.open(opaque: opaque);
+    _lay(rows);
+    plan.closeAtop();
+    plan.close(opacity: _strengthOf(clip.opacity), mode: mode);
   }
 
   /// [row] laid in [mode] — none where its pose collapses it.
