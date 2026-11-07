@@ -1,16 +1,29 @@
 # native_toolchain_rust refuses a bare `stable`: the version is pinned so
 # every machine and runner builds the engine with the same compiler.
-# Stage 0 is Windows x64 (this PC and the Surface Pro 11, Intel) and
-# Android; further targets join with their stage. Android is every ABI the
-# Play bundle ships today — 32-bit ARM and x86_64 too (관제 opened build
-# 1089's AAB, gpu-engine-feasibility 2026-11-05) — whether 32-bit stays is
-# gpu-engine-feasibility-Q2's to say.
+# Windows x64 is this PC and the Surface Pro 11 (Intel). Android is every
+# ABI the Play bundle ships today — 32-bit ARM and x86_64 too (관제 opened
+# build 1089's AAB, gpu-engine-feasibility 2026-11-05) — whether 32-bit
+# stays is gpu-engine-feasibility-Q2's to say.
+#
+# The Apple and Linux targets are every one the connection round builds,
+# all at once (유저, gpu-engine-skeleton-Q10 2026-11-07: 「연결 라운드에
+# 필요한 대상까지 전부 지금 더한다」): the Mac's two halves of a universal
+# release, an iPhone or iPad and the simulator on Apple silicon, and x64
+# Linux — no ARM Linux, whose release there is none of. native_toolchain_rust
+# builds no target this file leaves out, and rustup downloads every target it
+# lists that a machine lacks on that machine's next cargo here — so a target
+# is fetched by hand, with the user's yes, before it is added.
 [toolchain]
 channel = "1.99.1"
 profile = "minimal"
 targets = [
+  "aarch64-apple-darwin",
+  "aarch64-apple-ios",
+  "aarch64-apple-ios-sim",
   "aarch64-linux-android",
   "armv7-linux-androideabi",
+  "x86_64-apple-darwin",
   "x86_64-linux-android",
   "x86_64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
 ]
