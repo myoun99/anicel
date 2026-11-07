@@ -26,19 +26,19 @@
 // A build without a reader (none.rs) makes nothing a backend answers and
 // walks no movie, so most of the law goes uncalled there — and is still the
 // law its tests run.
-#![cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
+#![cfg_attr(not(any(windows, target_os = "android", target_vendor = "apple")), allow(dead_code))]
 
 use std::borrow::Cow;
 use std::ffi::{CStr, c_char};
 use std::sync::{Mutex, PoisonError};
 
-// Apple's reader (qa_video_apple.m's AVAssetReader half) is 공통's: it adds
-// `apple.rs` here and `target_vendor = "apple"` to none's `not(any(…))`
-// (connection-round-checklist, 14:39 · 14:59).
 #[cfg(target_os = "android")]
 #[path = "android.rs"]
 mod os;
-#[cfg(not(any(windows, target_os = "android")))]
+#[cfg(target_vendor = "apple")]
+#[path = "apple.rs"]
+mod os;
+#[cfg(not(any(windows, target_os = "android", target_vendor = "apple")))]
 #[path = "none.rs"]
 mod os;
 #[cfg(windows)]

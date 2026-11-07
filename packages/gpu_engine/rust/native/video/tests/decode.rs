@@ -7,10 +7,6 @@
 //! ⚠️A process of its own, apart from the crate's tests: the movie is
 //! written through the export, which keeps one job for the whole process,
 //! and the crate's export tests hold that job for themselves.
-//!
-//! ⏳On Apple each is IGNORED BY NAME, not skipped: the engine's C reads a
-//! movie there and this crate's reader is 공통's, still to come
-//! (`decode/mod.rs`'s `os`). The line comes off with `apple.rs`.
 
 use std::ffi::{CStr, CString, c_char};
 use std::path::PathBuf;
@@ -209,7 +205,6 @@ fn read_all(decoder: Decoder, open: impl Fn(Decoder) -> i32) -> (Info, Vec<Resul
 }
 
 #[test]
-#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn where_there_is_no_decoder_both_say_so() {
     let _turn = one_at_a_time();
     assert_eq!((rust().supported)(), (c().supported)(), "both, or neither");
@@ -223,7 +218,6 @@ fn where_there_is_no_decoder_both_say_so() {
 }
 
 #[test]
-#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn a_movie_on_disk_reads_alike() {
     let _turn = one_at_a_time();
     let Some((path, _)) = movie() else { return };
@@ -241,7 +235,6 @@ fn a_movie_on_disk_reads_alike() {
 }
 
 #[test]
-#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn each_frame_is_the_picture_for_its_index() {
     let _turn = one_at_a_time();
     let Some((path, _)) = movie() else { return };
@@ -264,7 +257,6 @@ fn each_frame_is_the_picture_for_its_index() {
 }
 
 #[test]
-#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn a_span_reads_as_the_movie_it_holds_plain_or_framed() {
     let _turn = one_at_a_time();
     let Some((path, bytes)) = movie() else { return };
@@ -286,7 +278,6 @@ fn a_span_reads_as_the_movie_it_holds_plain_or_framed() {
 }
 
 #[test]
-#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn a_failure_says_the_same_sentence() {
     let _turn = one_at_a_time();
     let Some((path, bytes)) = movie() else { return };
@@ -318,7 +309,6 @@ fn a_failure_says_the_same_sentence() {
 }
 
 #[test]
-#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     // 🚨The presentation is as long as its LONGEST track: counted by it, a
     // sound that runs past the pictures is frames with no picture in them
@@ -348,7 +338,6 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
 }
 
 #[test]
-#[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn eight_movies_open_at_once_and_a_ninth_is_refused() {
     let _turn = one_at_a_time();
     let Some((path, _)) = movie() else { return };

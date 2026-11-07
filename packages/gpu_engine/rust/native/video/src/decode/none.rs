@@ -1,7 +1,6 @@
-//! Linux and anything else — Apple too until 공통's `apple.rs` (mod.rs):
-//! no OS reader this app can lean on. The answer is 「none」, and the window
-//! says 「no video decoder in this build」 rather than failing as a corrupt
-//! file.
+//! Linux and anything else: no OS reader this app can lean on. The answer
+//! is 「none」, and the window says 「no video decoder in this build」 rather
+//! than failing as a corrupt file.
 
 use std::ffi::CStr;
 

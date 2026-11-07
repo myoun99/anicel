@@ -30,7 +30,7 @@ use objc2_core_audio_types::{
     AudioStreamBasicDescription, kAudioFormatFlagIsPacked, kAudioFormatFlagIsSignedInteger,
     kAudioFormatLinearPCM, kAudioFormatMPEG4AAC,
 };
-use objc2_core_foundation::{CFRetained, CFString};
+use objc2_core_foundation::CFRetained;
 use objc2_core_media::{
     CMAudioFormatDescription, CMAudioFormatDescriptionCreate,
     CMAudioSampleBufferCreateWithPacketDescriptions, CMBlockBuffer, CMSampleBuffer, CMTime,
@@ -116,11 +116,6 @@ fn named(name: Option<&'static NSString>) -> &'static NSString {
     name.expect("an AVFoundation name")
 }
 
-/// A CoreVideo key as the dictionary's NSString.
-fn bridged(key: &CFString) -> &NSString {
-    // SAFETY: CFString and NSString are toll-free bridged.
-    unsafe { &*(key as *const CFString).cast::<NSString>() }
-}
 
 fn dictionary(entries: &[(&NSString, &AnyObject)]) -> Retained<NSDictionary<NSString, AnyObject>> {
     let (keys, values): (Vec<&NSString>, Vec<&AnyObject>) = entries.iter().copied().unzip();
@@ -340,12 +335,13 @@ fn writer(path: Option<&str>, job: &Job) -> Result<Writer, &'static str> {
     };
     let format = NSNumber::new_u32(if ycbcr { kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange } else { kCVPixelFormatType_32BGRA });
     let (pixel_width, pixel_height) = (NSNumber::new_i32(width as i32), NSNumber::new_i32(height as i32));
-    // SAFETY: reading the framework's constant keys.
+    // SAFETY: reading the framework's constant keys, each a CFString as the
+    // NSString it is toll-free bridged to.
     let attributes = unsafe {
         dictionary(&[
-            (bridged(kCVPixelBufferPixelFormatTypeKey), &format),
-            (bridged(kCVPixelBufferWidthKey), &pixel_width),
-            (bridged(kCVPixelBufferHeightKey), &pixel_height),
+            (kCVPixelBufferPixelFormatTypeKey.as_ref(), &format),
+            (kCVPixelBufferWidthKey.as_ref(), &pixel_width),
+            (kCVPixelBufferHeightKey.as_ref(), &pixel_height),
         ])
     };
     // SAFETY: a video input no adaptor holds, before writing; the attributes

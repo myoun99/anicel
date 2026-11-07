@@ -26,25 +26,35 @@ windows = { version = "0.62", features = [
 libc = "0.2"
 ndk-sys = { version = "0.6", features = ["media"] }
 
-# AVFoundation's writer (qa_video_apple.m's AVAssetWriter half). Every
-# crate but AVFoundation's and CoreMedia's was already in the lock (wgpu-hal,
-# cpal); their default features would pull in frameworks it has not.
+# AVFoundation's writer and reader (qa_video_apple.m's AVAssetWriter and
+# AVAssetReader halves). Every crate but AVFoundation's and CoreMedia's was
+# already in the lock (wgpu-hal, cpal, pen's dispatch2); their default
+# features would pull in frameworks it has not. The reader serves a span
+# through a resource loader, whose delegate is called on a dispatch queue.
 [target.'cfg(target_vendor = "apple")'.dependencies]
 block2 = "0.6"
+dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
 objc2 = "0.6"
 objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
+  "AVAsset",
+  "AVAssetReader",
+  "AVAssetReaderOutput",
+  "AVAssetResourceLoader",
+  "AVAssetTrack",
   "AVAssetWriter",
   "AVAssetWriterInput",
   "AVMediaFormat",
   "AVVideoSettings",
   "block2",
+  "dispatch2",
+  "objc2-core-foundation",
   "objc2-core-media",
   "objc2-core-video",
 ] }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVAudioSettings"] }
 objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFString"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFString"] }
 objc2-core-media = { version = "0.3.2", default-features = false, features = [
   "std",
   "CMBase",
@@ -52,7 +62,9 @@ objc2-core-media = { version = "0.3.2", default-features = false, features = [
   "CMFormatDescription",
   "CMSampleBuffer",
   "CMTime",
+  "CMTimeRange",
   "objc2-core-audio-types",
+  "objc2-core-video",
 ] }
 objc2-core-video = { version = "0.3", default-features = false, features = [
   "std",
@@ -65,6 +77,8 @@ objc2-core-video = { version = "0.3", default-features = false, features = [
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
   "std",
+  "NSArray",
+  "NSData",
   "NSDictionary",
   "NSError",
   "NSFileManager",
@@ -72,6 +86,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSString",
   "NSURL",
   "NSValue",
+  "objc2-core-foundation",
 ] }
 
 # The C answer key: the engine's qa_video_export_* (native/oracle).
