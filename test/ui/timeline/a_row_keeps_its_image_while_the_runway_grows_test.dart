@@ -8,6 +8,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -18,6 +19,8 @@ import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
     show timelineFrameWindowSpanFor;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart'
+    show TimelineRowCellsPainter;
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/widgets/named.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
@@ -37,9 +40,33 @@ import '../../helpers/timeline_host.dart';
 /// holds — the growth alone, in a frame that crosses none.
 void main() {
   const layers = 8;
+  const sounds = 2;
   const frames = 60;
   const block = 6;
 
+  /// A row of [kind] whose blocks of [block] frames, each named, fill the
+  /// cut.
+  Layer row(String id, {LayerKind kind = LayerKind.animation}) => Layer(
+    id: LayerId(id),
+    name: id,
+    kind: kind,
+    frames: [
+      for (var i = 0; i < frames ~/ block; i += 1)
+        Frame(
+          id: FrameId('$id-$i'),
+          duration: 1,
+          strokes: const [],
+          name: '${i + 1}',
+        ),
+    ],
+    timeline: {
+      for (var i = 0; i < frames ~/ block; i += 1)
+        i * block: TimelineExposure.drawing(FrameId('$id-$i'), length: block),
+    },
+  );
+
+  // The S rows write their blocks' names through a span layout of their
+  // own, laid by the frames' edges — a row's pieces as well as its box.
   Project project() => Project(
     id: const ProjectId('runway-rows'),
     name: 'Runway rows',
@@ -54,30 +81,11 @@ void main() {
             name: 'cut-0',
             duration: frames,
             canvasSize: const CanvasSize(width: 640, height: 360),
-            layers: [
-              for (var r = 0; r < layers; r += 1)
-                Layer(
-                  id: LayerId('r$r'),
-                  name: 'R$r',
-                  frames: [
-                    for (var i = 0; i < frames ~/ block; i += 1)
-                      Frame(
-                        id: FrameId('r$r-$i'),
-                        duration: 1,
-                        strokes: const [],
-                        name: '${i + 1}',
-                      ),
-                  ],
-                  timeline: {
-                    for (var i = 0; i < frames ~/ block; i += 1)
-                      i * block: TimelineExposure.drawing(
-                        FrameId('r$r-$i'),
-                        length: block,
-                      ),
-                  },
-                ),
-            ],
+            layers: [for (var r = 0; r < layers; r += 1) row('r$r')],
           ),
+        ],
+        seLayers: [
+          for (var s = 0; s < sounds; s += 1) row('s$s', kind: LayerKind.se),
         ],
       ),
     ],
@@ -217,6 +225,35 @@ void main() {
           name: region.debugCaptureCount,
       };
 
+      // The window reaches past the axis' end, and no tile is asked for
+      // there: nothing a row draws stands past the end.
+      final cells = [
+        for (final paint in tester.widgetList<CustomPaint>(
+          find.byType(CustomPaint),
+        ))
+          if (paint.painter case final TimelineRowCellsPainter painter)
+            painter,
+      ];
+      expect(
+        cells.where(
+          (painter) =>
+              painter.visibleFrameWindow().endIndexExclusive >
+              painter.frameEndIndexExclusive,
+        ),
+        isNotEmpty,
+        reason: '⛔premise: a row\'s window reaches past the end',
+      );
+      final pastTheEnd = [
+        for (final painter in cells)
+          for (final (start, end) in [
+            ...painter.tileSpans.shown,
+            ...painter.tileSpans.ahead,
+          ])
+            if (start >= painter.frameEndIndexExclusive)
+              '($start, $end) past ${painter.frameEndIndexExclusive}',
+      ];
+      expect(pastTheEnd, isEmpty, reason: 'a tile past the axis\' end');
+
       const cell = TimelineZoomLimits.referencePixelsPerFrame;
       final spanPx = timelineFrameWindowSpanFor(cell) * cell;
       int bucket() => (position.pixels / spanPx).floor();
@@ -251,10 +288,14 @@ void main() {
             '$name (${region.standDown.name}, took '
                 '${region.debugCaptureCount - taken[name]!})',
       ];
+      final stayed = [
+        for (final MapEntry(key: name, value: region) in before.entries)
+          if (region.attached) name,
+      ];
       expect(
-        before.values.where((region) => region.attached),
+        stayed.where((name) => name.endsWith('-s0')),
         isNotEmpty,
-        reason: '⛔premise: rows stayed',
+        reason: '⛔premise: an S row stayed, as well as the drawings\'',
       );
       expect(live, isEmpty, reason: 'the runway grew under them');
       await hand.up();
