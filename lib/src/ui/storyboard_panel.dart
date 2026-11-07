@@ -218,7 +218,11 @@ import 'timeline/timeline_row_edit_chrome.dart'
         TimelineRowGripCallbacks,
         timelineLayerGripBlocks;
 import 'timeline/timeline_frame_geometry.dart'
-    show TimelineFrameGeometry, TimelineFrameGeometryHandle;
+    show
+        TimelineFrameAxisBox,
+        TimelineFrameGeometry,
+        TimelineFrameGeometryHandle,
+        timelineFrameDrawing;
 import 'timeline/timeline_frame_range_gesture.dart'
     show
         TimelineFrameRangeGestureLayer,
@@ -236,7 +240,6 @@ import 'media/media_asset_drop_target.dart';
 import '../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import 'timeline/timeline_frame_span_layout.dart'
     show
-        TimelineFixedFrameSpanLayer,
         TimelineFrameSpan,
         TimelineFrameSpanLayout,
         TimelineFrameSpanPlacement;
@@ -1829,6 +1832,22 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         ),
       );
 
+  /// [_frameGeometry] through the window the strips' rows are laid in
+  /// ([TimelineFrameGeometry.windowedAt]) — what every strip row's box, its
+  /// pieces and its presses are laid and read by, as the timeline's rows
+  /// are by their body's. Following the bucket directly, so a scroll moves
+  /// the rows' images and rebuilds nothing; ⛔render objects listen to it,
+  /// nothing that builds.
+  ///
+  /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 —
+  /// 행 그림 영역을 창 상자로」): a row's image is its window, not the axis,
+  /// so the runway a drag past the end grows takes none of them.
+  late final TimelineFrameGeometryHandle _windowedFrameGeometry =
+      TimelineFrameGeometryHandle(_frameGeometry.value);
+
+  void _rewindowRows() => _windowedFrameGeometry.value = _frameGeometry.value
+      .windowedAt(_horizontalWindowBucket.value);
+
   /// This panel's legend, held up for as long as it is mounted: a panel
   /// built anew comes up before this one goes, so this one puts down only
   /// its own ([ViewHand] — card `rail-legend-menus-lost-to-an-old-goodbye`).
@@ -1840,6 +1859,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     super.initState();
     _legendKeeper?.up(_legend);
     _horizontalController.addListener(_frameAxis.handleScroll);
+    _horizontalWindowBucket.addListener(_rewindowRows);
     _verticalController.addListener(_rowsWindow.handleScroll);
     _letGoOfKeptRows = followKeptAxis(
       _verticalController,
@@ -1959,6 +1979,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
+    _horizontalWindowBucket.removeListener(_rewindowRows);
     _verticalController.removeListener(_rowsWindow.handleScroll);
     _rowsWindow.dispose();
     _frameAxis.dispose();
@@ -1971,6 +1992,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _horizontalWindowBucket.dispose();
     _hoveredCutId.dispose();
     _frameGeometry.dispose();
+    _windowedFrameGeometry.dispose();
     _ownedRailExtent?.dispose();
     super.dispose();
   }
@@ -2170,6 +2192,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           _viewportFillFrameCells,
       viewExtentPx: _stripViewportWidth,
     );
+    _rewindowRows();
     // SE rows are built OUTSIDE the drag-preview builder from the RAW
     // project (R10-③): their content is track-global, so a cut trim
     // never changes them — handing the per-step rebuild IDENTICAL row
@@ -3703,6 +3726,41 @@ bool _storyboardRangeCovers(
 ) =>
     selection != null && selection.coversRow(row) && selection.contains(frame);
 
+/// A strip row's box — the timeline's frame-axis box: its [child] laid at
+/// the window of [geometry] and painted where the window stands, and that
+/// window a still region of its own while [windowIsStill] ([stillRow]), as
+/// a timeline cells row's is ([TimelineFrameCellsRow.windowIsStill]).
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q8 (유저 2026-11-07, 「한다 — 행
+/// 그림 영역을 창 상자로」 — 타임라인 · X시트 · 콘티 한 법): ↩️each row was
+/// as wide as the scroll content and the strip a still region round it, so
+/// the runway a drag past the end grows threw away the image of every row
+/// it showed.
+TimelineFrameAxisBox _storyboardRowBox({
+  required Key key,
+  required TimelineFrameGeometryHandle geometry,
+  required double height,
+  required bool windowIsStill,
+  required Widget child,
+}) => TimelineFrameAxisBox(
+  key: key,
+  geometry: geometry,
+  crossAxisExtent: height,
+  axis: Axis.horizontal,
+  child: windowIsStill ? stillRow(child) : child,
+);
+
+/// The frame [x] in a strip row's box stands on, read off the [geometry]
+/// the row is laid by ([TimelineFrameGeometry.cellAt]) — so a row laid in
+/// its window answers in it — or null while a cell has no extent.
+///
+/// ↩️Every row read it off the panel's scale, which counts from the
+/// content's left edge, each row with a copy of its own.
+int? _storyboardRowFrameAt(TimelineFrameGeometryHandle geometry, double x) {
+  final frames = geometry.value;
+  return frames.frameCellExtent <= 0 ? null : frames.cellAt(x);
+}
+
 /// A storyboard row's press layer: a tap seeks the pressed frame through
 /// [onRowFramePress], a double-tap hands the frame to [onEdit].
 ///
@@ -3934,13 +3992,13 @@ class _StoryboardTransitionRow extends KeptPiece
   const _StoryboardTransitionRow({
     required this.trackId,
     required this.layer,
-    required this.width,
     required this.height,
     required this.timelineScale,
     required this.frameGeometry,
     required this.windowBucket,
     required this.showSeconds,
     required this.projectFrameRate,
+    this.windowIsStill = false,
     this.defById,
     this.crossingTooltip,
     this.commaDrag,
@@ -3956,7 +4014,10 @@ class _StoryboardTransitionRow extends KeptPiece
   /// The row as it should RENDER — the committed layer, or the session's
   /// in-flight edge-drag form while a grip is held.
   final Layer layer;
-  final double width;
+
+  /// Whether the row's window is a still region of its own
+  /// ([_storyboardRowBox]) — every row of the panel's strips.
+  final bool windowIsStill;
 
   /// Its label's height ([_StoryboardRowHeights.transition]) — one row.
   @override
@@ -3990,15 +4051,11 @@ class _StoryboardTransitionRow extends KeptPiece
   /// the S rows' does.
   final _RailSweepAt? railSweepAt;
 
-  /// The visible frame window this strip covers — the whole content width,
-  /// like the SE grips' own geometry.
-  int get _frameEndExclusive => timelineScale.framesCovering(width);
-
-  TimelineFrameGeometry get _geometry => TimelineFrameGeometry(
-    frameCellExtent: timelineScale.pixelsPerFrame,
-    frameStartIndex: 0,
-    frameEndIndexExclusive: _frameEndExclusive,
-  );
+  /// The frames the row's spans are asked of: the whole track — its spans
+  /// are every span of its layer, laid by the live geometry
+  /// ([frameGeometry]) wherever the axis ends (Q8). ↩️It was the content's
+  /// width in frames, and the spans' own fixed geometry built from it.
+  static const int _trackEnd = 1 << 30;
 
   /// What the row shows — its spans' terms and crossing warnings by what
   /// [defById] and [crossingTooltip] answer for every span the row holds,
@@ -4010,7 +4067,6 @@ class _StoryboardTransitionRow extends KeptPiece
   Object? get facts => (
     trackId,
     ByIdentity(layer),
-    width,
     height,
     timelineScale.pixelsPerFrame,
     timelineScale.minBlockWidth,
@@ -4018,6 +4074,7 @@ class _StoryboardTransitionRow extends KeptPiece
     ByIdentity(windowBucket),
     showSeconds,
     projectFrameRate,
+    windowIsStill,
     ByList([
       for (final MapEntry(key: start, value: span)
           in layer.instructions.entries)
@@ -4038,32 +4095,30 @@ class _StoryboardTransitionRow extends KeptPiece
     // rows do rather than through the cell exposure states. [SePaperSpan] is
     // the shared paper block (a rounded block, no line across it — I-44) —
     // named for its first user, not SE-specific.
-    for (final entry in layer.instructions.entries) {
-      spans.add(
-        Positioned(
-          left: timelineScale.leftForFrame(entry.key),
-          top: 0,
-          bottom: 0,
-          width: timelineScale.spanWidth(
-            entry.key,
-            entry.key + entry.value.length,
-          ),
-          child: IgnorePointer(
-            key: ValueKey<String>(
-              'storyboard-transition-paper-${layer.id}-${entry.key}',
+    spans.add(
+      _spanLayer([
+        for (final entry in layer.instructions.entries)
+          TimelineFrameSpan(
+            placement: TimelineFrameSpanPlacement(
+              startIndex: entry.key,
+              endIndexExclusive: entry.key + entry.value.length,
             ),
-            child: SePaperSpan(
-              axis: Axis.horizontal,
-              frameCellExtent: timelineScale.pixelsPerFrame,
-              startFrame: entry.key,
-              // ⑲: the block is its layer's colour label — in its look
-              // (I-129).
-              paper: timelineRowLookOf(context, layer).paper!,
+            child: IgnorePointer(
+              key: ValueKey<String>(
+                'storyboard-transition-paper-${layer.id}-${entry.key}',
+              ),
+              child: SePaperSpan(
+                axis: Axis.horizontal,
+                frameCellExtent: timelineScale.pixelsPerFrame,
+                startFrame: entry.key,
+                // ⑲: the block is its layer's colour label — in its look
+                // (I-129).
+                paper: timelineRowLookOf(context, layer).paper!,
+              ),
             ),
           ),
-        ),
-      );
-    }
+      ]),
+    );
     spans.add(_runLabels(context, layer));
     // The marks, from the direction row's own overlay builder. Each mark
     // takes no pointer of its own. ↩️The whole layer took none, and the
@@ -4071,21 +4126,16 @@ class _StoryboardTransitionRow extends KeptPiece
     // hovered here (F-495) — the warnings ride a layer of their own now,
     // last.
     final defById = this.defById;
-    if (defById != null && _frameEndExclusive > 0) {
+    if (defById != null) {
       spans.add(
-        Positioned.fill(
-          child: TimelineFixedFrameSpanLayer(
-            geometry: _geometry,
-            crossAxisExtent: height,
+        _spanLayer(
+          timelineRowInstructionOverlays(
+            layer: layer,
+            frameStartIndex: 0,
+            frameEndIndexExclusive: _trackEnd,
             axis: Axis.horizontal,
-            children: timelineRowInstructionOverlays(
-              layer: layer,
-              frameStartIndex: 0,
-              frameEndIndexExclusive: _frameEndExclusive,
-              axis: Axis.horizontal,
-              defById: defById,
-              keyPrefix: 'storyboard',
-            ),
+            defById: defById,
+            keyPrefix: 'storyboard',
           ),
         ),
       );
@@ -4107,15 +4157,12 @@ class _StoryboardTransitionRow extends KeptPiece
     final onRowFramePress = this.onRowFramePress;
     final onEditSpan = this.onEditSpan;
     if (onRowFramePress != null || onEditSpan != null) {
-      int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
-          ? null
-          : timelineScale.frameAt(local.dx);
       spans.add(
         _storyboardRowPressLayer(
           key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
           row: LayerRowAddress(layer.id),
           cellExtent: timelineScale.pixelsPerFrame,
-          frameAt: frameAt,
+          frameAt: (local) => _storyboardRowFrameAt(frameGeometry, local.dx),
           onRowFramePress: onRowFramePress,
           onEdit: onEditSpan,
         ),
@@ -4143,14 +4190,14 @@ class _StoryboardTransitionRow extends KeptPiece
     // transition span has no sibling row to land on, so the drag slides
     // frames and never changes rows (the SE rows' own clamp construction).
     final select = this.select;
-    if (select != null && _frameEndExclusive > 0) {
+    if (select != null) {
       spans.add(
         _storyboardRowRangeGestureLayer(
           key: ValueKey<String>(
             'storyboard-transition-range-gesture-slot-${layer.id}',
           ),
           layer: layer,
-          geometry: TimelineFrameGeometryHandle(_geometry),
+          geometry: frameGeometry,
           crossAxisExtent: height,
           select: select,
           railSweepAt: railSweepAt,
@@ -4162,61 +4209,59 @@ class _StoryboardTransitionRow extends KeptPiece
     // press — the frame blocks' arbitration (edges keep comma-drag
     // priority), the same order the SE row and the cut row already mount.
     final commaDrag = this.commaDrag;
-    if (commaDrag != null && _frameEndExclusive > 0) {
+    if (commaDrag != null) {
       final grips = timelineRowInstructionEdgeGrips(
         layer: layer,
         frameStartIndex: 0,
-        frameEndIndexExclusive: _frameEndExclusive,
-        geometry: TimelineFrameGeometryHandle(_geometry),
+        frameEndIndexExclusive: _trackEnd,
+        geometry: frameGeometry,
         commaDrag: commaDrag,
         axis: Axis.horizontal,
         crossAxisExtent: height,
       );
       if (grips.isNotEmpty) {
-        spans.add(
-          Positioned.fill(
-            child: TimelineFixedFrameSpanLayer(
-              geometry: _geometry,
-              crossAxisExtent: height,
-              axis: Axis.horizontal,
-              children: grips,
-            ),
-          ),
-        );
+        spans.add(_spanLayer(grips));
       }
     }
     // D26: the refusal marker on the AUTHORING axis too — the one
     // predicate, answered by global key here — over the grips, so a hover
     // on them reaches it ([timelineBlockWarningBar]).
     final crossingTooltip = this.crossingTooltip;
-    if (crossingTooltip != null && _frameEndExclusive > 0) {
+    if (crossingTooltip != null) {
       spans.add(
-        Positioned.fill(
-          child: TimelineFixedFrameSpanLayer(
-            geometry: _geometry,
+        _spanLayer(
+          timelineRowBlockWarnings(
+            layer: layer,
+            frameStartIndex: 0,
+            frameEndIndexExclusive: _trackEnd,
             crossAxisExtent: height,
             axis: Axis.horizontal,
-            children: timelineRowBlockWarnings(
-              layer: layer,
-              frameStartIndex: 0,
-              frameEndIndexExclusive: _frameEndExclusive,
-              crossAxisExtent: height,
-              axis: Axis.horizontal,
-              color: Theme.of(context).colorScheme.error,
-              crossing: crossingTooltip,
-              keyPrefix: 'storyboard',
-            ),
+            color: Theme.of(context).colorScheme.error,
+            crossing: crossingTooltip,
+            keyPrefix: 'storyboard',
           ),
         ),
       );
     }
-    return SizedBox(
+    return _storyboardRowBox(
       key: ValueKey<String>('storyboard-transition-row-${trackId.value}'),
-      width: width,
+      geometry: frameGeometry,
       height: height,
+      windowIsStill: windowIsStill,
       child: Stack(children: spans),
     );
   }
+
+  /// A layer of the row's [pieces], each laid by its frames' edges on the
+  /// live geometry ([TimelineFrameSpanLayout]).
+  Positioned _spanLayer(List<Widget> pieces) => Positioned.fill(
+    child: TimelineFrameSpanLayout(
+      geometry: frameGeometry,
+      crossAxisExtent: height,
+      axis: Axis.horizontal,
+      children: pieces,
+    ),
+  );
 }
 
 /// One TRACK-owned SE row: the track's [slot]th SE layer rendered straight
@@ -4229,7 +4274,6 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     required this.trackIndex,
     required this.slot,
     required this.layer,
-    required this.width,
     required this.height,
     required this.timelineScale,
     required this.projectFrameRate,
@@ -4237,6 +4281,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     required this.windowBucket,
     required this.viewportWidth,
     required this.showSeconds,
+    this.windowIsStill = false,
     this.audioPeaksFor,
     this.soundCannotPlay,
     this.seClipMarkerTooltip,
@@ -4264,7 +4309,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
 
   /// The track's GLOBAL SE layer behind this row (null = fewer rows).
   final Layer? layer;
-  final double width;
+
+  /// Whether the row's window is a still region of its own
+  /// ([_storyboardRowBox]) — every row of the panel's strips.
+  final bool windowIsStill;
 
   /// Its label's height ([_StoryboardRowHeights.se]) — one row.
   @override
@@ -4336,13 +4384,13 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     trackIndex,
     slot,
     ByIdentity(layer),
-    width,
     height,
     timelineScale.pixelsPerFrame,
     timelineScale.minBlockWidth,
     projectFrameRate,
     ByIdentity(frameGeometry),
     ByIdentity(windowBucket),
+    windowIsStill,
     // By the window it reaches, not the breadth: a view a pixel wider keeps
     // its window, and the pieces built for it stand
     // (storyboard-strips-build-on-every-view-pixel).
@@ -4383,10 +4431,11 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   @override
   Widget buildKept(BuildContext context) {
     final layer = this.layer;
-    return SizedBox(
+    return _storyboardRowBox(
       key: ValueKey<String>('storyboard-se-row-$trackIndex-${slot + 1}'),
-      width: width,
+      geometry: frameGeometry,
       height: height,
+      windowIsStill: windowIsStill,
       child: layer == null
           ? const Stack()
           : _windowed(layer, drawingBlocks(layer.timeline)),
@@ -4409,14 +4458,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       );
 
   /// The frames the panel's window can reach while its offset stays in the
-  /// bucket ([visibleFrameWindowFor]).
-  ({int startIndex, int endIndexExclusive}) _window() => visibleFrameWindowFor(
-    bucket: windowBucket,
-    viewportMainExtent: viewportWidth,
-    cellExtent: timelineScale.pixelsPerFrame,
-    frameStartIndex: 0,
-    frameEndIndexExclusive: _rowFrames.frameEndIndexExclusive,
-  );
+  /// bucket — its whole, not cut where the axis ends
+  /// ([TimelineFrameGeometry.rowDrawnFrames]).
+  ({int startIndex, int endIndexExclusive}) _window() =>
+      frameGeometry.value.rowDrawnFrames(windowBucket);
 
   /// The blocks' warning lines — a take that clipped (REC1-D), a sound that
   /// cannot be played — on the ROW, where the timeline's SE row mounts
@@ -4428,8 +4473,8 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     ({int startIndex, int endIndexExclusive}) window,
   ) {
     return Positioned.fill(
-      child: TimelineFixedFrameSpanLayer(
-        geometry: _rowFrames,
+      child: TimelineFrameSpanLayout(
+        geometry: frameGeometry,
         crossAxisExtent: height,
         axis: Axis.horizontal,
         children: timelineRowBlockWarnings(
@@ -4515,8 +4560,8 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   /// now the span layer does, the one its grips and warnings land by.
   Positioned _contentLayer(List<Widget> spans) => Positioned.fill(
     child: IgnorePointer(
-      child: TimelineFixedFrameSpanLayer(
-        geometry: _rowFrames,
+      child: TimelineFrameSpanLayout(
+        geometry: frameGeometry,
         crossAxisExtent: height,
         axis: Axis.horizontal,
         children: spans,
@@ -4592,9 +4637,6 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     final seCommaDrag = this.seCommaDrag;
     if (seCommaDrag != null) {
       final grips = <Widget>[];
-      // One handle for the row's grips: the round end of each mark reads
-      // the cell off it ([BlockEdgeGrip.geometry]).
-      final gripGeometry = TimelineFrameGeometryHandle(_rowFrames);
       // Each grip names its block by its place on the WHOLE row, as the
       // session counts it.
       for (final (blockOrdinal, block) in blocks.indexed) {
@@ -4609,7 +4651,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
               layer,
               blockOrdinal,
               seCommaDrag,
-              gripGeometry,
+              frameGeometry,
             ),
           );
         }
@@ -4632,22 +4674,13 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     return spans;
   }
 
-  /// The press's conversion: this row's frame 0 sits at its left edge.
-  int? _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
-      ? null
-      : timelineScale.frameAt(x);
-
-  /// The row's cells, as its grips and its drop places are laid out on.
-  TimelineFrameGeometry get _rowFrames => TimelineFrameGeometry(
-    frameCellExtent: timelineScale.pixelsPerFrame,
-    frameStartIndex: 0,
-    frameEndIndexExclusive: timelineScale.framesCovering(width),
-  );
+  /// The press's conversion, in the row's box.
+  int? _frameAtX(double x) => _storyboardRowFrameAt(frameGeometry, x);
 
   Positioned _gripLayer(List<Widget> grips) {
     return Positioned.fill(
-      child: TimelineFixedFrameSpanLayer(
-        geometry: _rowFrames,
+      child: TimelineFrameSpanLayout(
+        geometry: frameGeometry,
         crossAxisExtent: height,
         axis: Axis.horizontal,
         children: grips,
@@ -4667,8 +4700,9 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     ({int startIndex, int endIndexExclusive}) window,
     StoryboardMediaDrop drop,
   ) {
-    final frames = _rowFrames;
-    final end = frames.frameEndIndexExclusive;
+    // As far as the window reaches, not to where the axis ends (Q8): the
+    // runway a drag past the end grows lays no drop place out again.
+    final end = window.endIndexExclusive;
     // The walk asks cell by cell, and a track runs to thousands of frames.
     // Past the row's last block nothing covers a cell, so the walk stops
     // there and the rest is one gap — the answer inside it is still
@@ -4693,8 +4727,8 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       return null;
     }
     return Positioned.fill(
-      child: TimelineFixedFrameSpanLayer(
-        geometry: frames,
+      child: TimelineFrameSpanLayout(
+        geometry: frameGeometry,
         crossAxisExtent: height,
         axis: Axis.horizontal,
         children: [
@@ -4795,15 +4829,16 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
                 timelineScale.pixelsPerFrame <= 0) {
               return const SizedBox.shrink();
             }
-            return Stack(
+            return TimelineFrameSpanLayout(
+              geometry: frameGeometry,
+              crossAxisExtent: height,
+              axis: Axis.horizontal,
               children: [
-                Positioned(
-                  left: timelineScale.leftForFrame(selection.startFrame),
-                  top: 0,
-                  bottom: 0,
-                  width: timelineScale.spanWidth(
-                    selection.startFrame,
-                    selection.startFrame + selection.lengthFrames,
+                TimelineFrameSpan(
+                  placement: TimelineFrameSpanPlacement(
+                    startIndex: selection.startFrame,
+                    endIndexExclusive:
+                        selection.startFrame + selection.lengthFrames,
                   ),
                   child: ColoredBox(
                     color: timelineSelectedFrameBorderColor.withValues(
@@ -4866,10 +4901,10 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     required this.rowKey,
     required this.carrier,
     required this.lane,
-    required this.width,
     required this.height,
     required this.timelineScale,
     required this.frameGeometry,
+    this.windowIsStill = false,
     this.laneEdit,
     this.laneRange,
   });
@@ -4888,8 +4923,6 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   /// track-owned data) are structurally gone.
   final PropertyLaneRow lane;
 
-  final double width;
-
   /// Its label's height ([_StoryboardRowHeights.lane]) — one row.
   final double height;
   final TimelineScale timelineScale;
@@ -4897,6 +4930,11 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   /// The panel's live frame-axis geometry its band is laid by, as its
   /// V rows' are.
   final TimelineFrameGeometryHandle frameGeometry;
+
+  /// Whether the band's window is a still region of its own
+  /// ([TimelineLaneFrameRow.windowIsStill]) — every lane of the panel's
+  /// strips.
+  final bool windowIsStill;
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Wires the band's range-select/move gesture (the timeline's lane
@@ -4915,19 +4953,17 @@ class _StoryboardLaneStripRow extends StatelessWidget {
       frameCellWidth: timelineScale.pixelsPerFrame,
       layerRowHeight: height,
     );
-    final frames = timelineScale.pixelsPerFrame <= 0
-        ? 0
-        : timelineScale.frameAt(width);
-    return SizedBox(
+    // The track's axis as the geometry lays it — the folded overlay's lane
+    // reads its own the same way.
+    return KeyedSubtree(
       key: ValueKey<String>(rowKey),
-      width: width,
-      height: height,
       child: TimelineLaneFrameRow(
         layer: carrier,
         lane: lane,
         frameStartIndex: 0,
-        frameEndIndexExclusive: frames,
+        frameEndIndexExclusive: frameGeometry.value.frameEndIndexExclusive,
         geometry: frameGeometry,
+        windowIsStill: windowIsStill,
         metrics: metrics,
         laneRange: laneRange,
         keyPrefix: 'storyboard',
@@ -5228,7 +5264,6 @@ class _StoryboardTrackRow extends KeptPiece {
     required this.onDropMediaAsset,
     required this.acceptsMediaAsset,
     required this.laneHeight,
-    required this.width,
     required this.stripEdges,
     required this.cutMove,
     required this.cutSelect,
@@ -5240,6 +5275,7 @@ class _StoryboardTrackRow extends KeptPiece {
     required this.windowBucket,
     required this.showSeconds,
     required this.projectFrameRate,
+    this.windowIsStill = false,
     this.railSweepAt,
     this.linkedCutIds = const {},
     this.syncedCutIds = const {},
@@ -5269,11 +5305,14 @@ class _StoryboardTrackRow extends KeptPiece {
   final TrackId trackId;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
 
-  /// The scroll content's full width — the SE rows' own. The row used to
+  /// Whether the row's window is a still region of its own
+  /// ([_storyboardRowBox]) — every row of the panel's strips.
+  ///
+  /// Its box spans the whole axis, as the SE rows' does. The row used to
   /// size itself to its cuts, which left NO widget (no press, no range
   /// gesture) past the last cut or on an empty track, while every empty
   /// cell there is still a cell ("빈 칸도 칸").
-  final double width;
+  final bool windowIsStill;
 
   final StoryboardRowFramePress? onRowFramePress;
   final StoryboardMediaDrop? onDropMediaAsset;
@@ -5485,8 +5524,7 @@ class _StoryboardTrackRow extends KeptPiece {
     );
   }
 
-  int _frameAtX(double x) =>
-      timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
+  int _frameAtX(double x) => _storyboardRowFrameAt(frameGeometry, x) ?? 0;
 
   void _handleHover(PointerHoverEvent event) {
     hoveredCutId.value = _cutAtFrame(_frameAtX(event.localPosition.dx))?.cutId;
@@ -5506,7 +5544,6 @@ class _StoryboardTrackRow extends KeptPiece {
     trackId,
     ByList(layoutEntries),
     laneHeight,
-    width,
     timelineScale.pixelsPerFrame,
     timelineScale.minBlockWidth,
     ByIdentity(frameGeometry),
@@ -5515,6 +5552,7 @@ class _StoryboardTrackRow extends KeptPiece {
     ByIdentity(windowBucket),
     showSeconds,
     projectFrameRate,
+    windowIsStill,
     thumbnails,
     BySet(linkedCutIds),
     BySet(syncedCutIds),
@@ -5531,7 +5569,6 @@ class _StoryboardTrackRow extends KeptPiece {
 
   @override
   Widget buildKept(BuildContext context) {
-    final timelineWidth = _storyboardCutsExtent(layoutEntries, timelineScale);
     final rangeGesture = _rangeGesture();
     final drop = onDropMediaAsset;
 
@@ -5564,12 +5601,13 @@ class _StoryboardTrackRow extends KeptPiece {
 
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-track-row-${trackId.value}'),
-      child: SizedBox(
+      child: _storyboardRowBox(
         key: ValueKey<String>(
           'storyboard-track-timeline-area-${trackId.value}',
         ),
-        width: math.max(timelineWidth, width),
+        geometry: frameGeometry,
         height: laneHeight,
+        windowIsStill: windowIsStill,
         child: Stack(
           children: [
             // THE blocks — one painter for the whole row (R28 #4's rule
@@ -5786,26 +5824,6 @@ StoryboardTimelineLayoutEntry? _cutEntryAt(
     }
   }
   return null;
-}
-
-/// How far along the frame axis a track's cuts reach as [entries] lay them,
-/// with room past the last — what the V row and the conte row under it are
-/// at least as wide as, so a cut a drag has pushed past the content's width
-/// is still under a pointer.
-double _storyboardCutsExtent(
-  List<StoryboardTimelineLayoutEntry> entries,
-  TimelineScale scale,
-) {
-  const trailingPadding = 12.0;
-
-  if (entries.isEmpty) {
-    return 0;
-  }
-
-  return entries
-          .map((entry) => scale.blockEndFor(entry.startFrame, entry.duration))
-          .reduce((width, nextWidth) => width > nextWidth ? width : nextWidth) +
-      trailingPadding;
 }
 
 // _StoryboardFrameLinesPainter is GONE (D8/D38 2026-08-18): it was a

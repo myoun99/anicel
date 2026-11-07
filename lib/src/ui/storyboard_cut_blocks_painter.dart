@@ -24,7 +24,6 @@ import 'timeline/timeline_frame_coordinate_policy.dart'
 import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
-import 'timeline/timeline_frame_window.dart';
 import 'text/laid_out_glyph.dart';
 import 'timeline/timeline_glyph_cache.dart';
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -291,7 +290,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
     this.windowBucket,
   }) : super(
          repaint: Listenable.merge([
-           geometry,
+           timelineFrameDrawing(geometry),
            ?selectedRange,
            hoveredCutId,
            ?standingCutId,
@@ -439,19 +438,11 @@ class StoryboardCutBlocksPainter extends CustomPainter
   };
 
   /// The frame span worth drawing — the axis's frames under the classic
-  /// contract, the bucket's window clipped to them when the row is
-  /// self-windowing: the window every painter on a frame axis draws
-  /// ([visibleFrameWindowFor]).
-  ({int startIndex, int endIndexExclusive}) visibleFrameWindow() {
-    final frames = geometry.value;
-    return visibleFrameWindowFor(
-      bucket: windowBucket,
-      viewportMainExtent: frames.viewExtentPx,
-      cellExtent: frames.frameCellExtent,
-      frameStartIndex: frames.frameStartIndex,
-      frameEndIndexExclusive: frames.frameEndIndexExclusive,
-    );
-  }
+  /// contract, the bucket's whole window when the row is self-windowing:
+  /// what every row on a frame axis draws
+  /// ([TimelineFrameGeometry.rowDrawnFrames]), not cut where the axis ends.
+  ({int startIndex, int endIndexExclusive}) visibleFrameWindow() =>
+      geometry.value.rowDrawnFrames(windowBucket);
 
   /// The thin bands' height — at every row height: they never fold
   /// ([StoryboardCutBlockVisual.topBand]).

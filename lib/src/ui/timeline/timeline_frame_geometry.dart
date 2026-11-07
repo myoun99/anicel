@@ -306,8 +306,9 @@ typedef TimelineFrameGeometryHandle = ValueNotifier<TimelineFrameGeometry>;
 /// What a row's pieces repaint by: [geometry] moving anything they are
 /// drawn by ([TimelineFrameGeometry.drawsAs]) — and not its end alone,
 /// which a drag past it grows a screen at a time (Q8).
-Listenable timelineFrameDrawing(TimelineFrameGeometryHandle geometry) =>
-    _drawings[geometry] ??= _TimelineFrameDrawing(geometry);
+Listenable timelineFrameDrawing(
+  ValueListenable<TimelineFrameGeometry> geometry,
+) => _drawings[geometry] ??= _TimelineFrameDrawing(geometry);
 
 final Expando<_TimelineFrameDrawing> _drawings = Expando();
 
@@ -316,7 +317,7 @@ final Expando<_TimelineFrameDrawing> _drawings = Expando();
 class _TimelineFrameDrawing extends ChangeNotifier {
   _TimelineFrameDrawing(this._geometry) : _drawn = _geometry.value;
 
-  final TimelineFrameGeometryHandle _geometry;
+  final ValueListenable<TimelineFrameGeometry> _geometry;
 
   /// What the listeners last heard of.
   TimelineFrameGeometry _drawn;

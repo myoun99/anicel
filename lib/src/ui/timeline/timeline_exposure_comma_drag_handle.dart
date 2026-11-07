@@ -375,7 +375,7 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
     required this.devicePixelRatio,
     required this.geometry,
     this.on = blockEdgeGripOnPaper,
-  }) : super(repaint: geometry);
+  }) : super(repaint: timelineFrameDrawing(geometry));
 
   final TimelineBlockEdge edge;
   final Axis axis;
@@ -395,7 +395,9 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
   /// ↩️The box WAS the geometry — a third of a cell along — so nothing
   /// needed the cell passed in (that is what used to drag every grip
   /// through a rebuild on each zoom step), and a zoom step that resized the
-  /// box repainted it. Listening keeps that: no rebuild, only a repaint.
+  /// box repainted it. Listening keeps that: no rebuild, only a repaint —
+  /// on what a row is drawn by, never on the axis' end a drag past it grows
+  /// ([timelineFrameDrawing], a-live-dock-frame-costs-a-whole-draw-Q8).
   final ValueListenable<TimelineFrameGeometry> geometry;
 
   @override

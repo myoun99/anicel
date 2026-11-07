@@ -980,16 +980,16 @@ class _StoryboardRowsAndLabels {
 
   /// The transition row's strip: the track's spans on the GLOBAL axis, live
   /// through the session's edge-drag form while a grip is held.
-  Widget transitionStripRow(Track track, double width, TimelineScale scale) {
+  Widget transitionStripRow(Track track, TimelineScale scale) {
     final committed = track.transitionLayer;
     final height = _state._rowHeights.transition;
     Widget row(Layer layer) => _StoryboardTransitionRow(
       trackId: track.id,
       layer: _state.widget.transitionRowShown?.call(track, layer) ?? layer,
-      width: width,
       height: height,
       timelineScale: scale,
-      frameGeometry: _state._frameGeometry,
+      frameGeometry: _state._windowedFrameGeometry,
+      windowIsStill: true,
       windowBucket: _state._horizontalWindowBucket,
       showSeconds: _state.widget.showSeconds,
       projectFrameRate: _state.widget.projectFrameRate,
