@@ -4328,7 +4328,6 @@ class ExportDialogState extends State<ExportDialog> {
               if (still != ExportStillFormat.psd) still,
           ],
           video: _videoLineup,
-          stillEnabled: _availability.stillAllowed,
           videoEnabled: _availability.videoAllowed,
           videoReason: _availability.videoBlockedReason,
         ),
@@ -4967,7 +4966,6 @@ class ExportDialogState extends State<ExportDialog> {
             keyPrefix: 'export-tsformat',
             caption: ExportCaption.format,
             image: spec.sheetImage,
-            stillEnabled: _availability.stillAllowed,
             pictured: pictured,
             onImageChanged: _isExporting
                 ? null
@@ -5049,7 +5047,6 @@ class ExportDialogState extends State<ExportDialog> {
             keyPrefix: 'export-envelope-format',
             caption: ExportCaption.image,
             image: spec.envelopeImage,
-            stillEnabled: _availability.stillAllowed,
             onImageChanged: _isExporting
                 ? null
                 : (image) => _updateSpec(spec.copyWith(envelopeImage: image)),
@@ -5165,7 +5162,6 @@ class ExportDialogState extends State<ExportDialog> {
           keyPrefix: 'export-conteformat',
           caption: ExportCaption.format,
           image: spec.image,
-          stillEnabled: _availability.stillAllowed,
           pictured: pictured,
           onImageChanged: _isExporting
               ? null
@@ -5296,10 +5292,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// The still-only format lineup the Image and Cels tabs share; the
   /// Sequence tab's table carries video and is its own value. Both lay their
   /// picture out as a PSD's rows (I-117).
-  ExportFormatCapabilities _stillOnlyCapabilities() => ExportFormatCapabilities(
-    stills: ExportStillFormat.values,
-    stillEnabled: _availability.stillAllowed,
-  );
+  ExportFormatCapabilities _stillOnlyCapabilities() =>
+      const ExportFormatCapabilities(stills: ExportStillFormat.values);
 
   /// The "this cut or the whole film" accordion every tab offers.
   ///

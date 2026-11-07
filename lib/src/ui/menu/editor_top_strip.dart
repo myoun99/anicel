@@ -56,7 +56,6 @@ import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
 import '../workspace/workspace_door_commands.dart';
-import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
     show ExportFrameTask, sanitizeExportFileComponent, unnamedExportName;
 import '../export/frame_image_file.dart';
@@ -423,7 +422,7 @@ class EditorTopStrip extends StatelessWidget {
             id: saveAsImageActionId(format),
             label: format.label,
             shortcuts: [saveAsImageActionId(format)],
-            onPressed: _onACut && stillFormatWritable(format)
+            onPressed: _onACut
                 ? () => unawaited(saveFrameAsImage(context, session, format))
                 : null,
           ),

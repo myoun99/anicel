@@ -10,10 +10,14 @@ import '../text/app_strings.dart';
 import 'video_export_service.dart'
     show ExportVideoCodecAbi, ExportVideoContainerAbi, writtenByTheApp;
 
-/// What THIS machine can write (EX4): the OS encoder's probe per
-/// container/codec pair, ffmpeg's presence as the fallback answer, and
-/// for stills [stillFormatWritable]. The format picker grays what
-/// cannot run and says why — nothing in the lineup fails only at Export.
+/// What movies THIS machine can write (EX4): the OS encoder's probe per
+/// container/codec pair, ffmpeg's presence as the fallback answer. The
+/// format picker grays what cannot run and says why — nothing in the
+/// lineup fails only at Export. Every still is written wherever the app
+/// runs: the engine's PNG and JPG (`QaImageEncoder`), the rest in Dart
+/// (`still_file_writing.dart`, `psd_writer.dart`). ↩️A still could stand off
+/// — JPG on a machine without the C engine's encoder — until the
+/// connection round (connection-round-checklist H, 관제 2026-11-08 08:23).
 ///
 /// The ffmpeg check is one `-version` run, async; until it lands the
 /// pairs the OS cannot take stay pessimistically off (they pop in when
@@ -99,30 +103,9 @@ class ExportFormatAvailability extends ChangeNotifier {
         : AppText.strings.exCheckingEncoders;
   }
 
-  bool stillAllowed(ExportStillFormat format) => stillFormatWritable(format);
-
   @override
   void dispose() {
     _disposed = true;
     super.dispose();
   }
 }
-
-/// Whether this machine writes a still in [format] — the rule
-/// [ExportFormatAvailability.stillAllowed] grays the picker by, for a row
-/// with no window to keep the answer in (「다른 이름으로 저장」's pictures):
-/// nothing in a lineup fails only once it is pressed.
-bool stillFormatWritable(ExportStillFormat format) => switch (format) {
-  // Written wherever the app runs: the engine's PNG and JPG
-  // (`QaImageEncoder`), the rest in Dart (`still_file_writing.dart`,
-  // `psd_writer.dart`). Whether a tab lays its picture out as a PSD's rows
-  // is the tab's to say. ↩️JPG stood off on a machine without the C
-  // engine until the connection round (connection-round-checklist H).
-  ExportStillFormat.png ||
-  ExportStillFormat.jpg ||
-  ExportStillFormat.psd ||
-  ExportStillFormat.bmp ||
-  ExportStillFormat.tga ||
-  ExportStillFormat.tiff ||
-  ExportStillFormat.webp => true,
-};

@@ -389,13 +389,16 @@ class ExportChoiceRow<T> extends StatelessWidget {
 
 /// What the Format module offers in a tab: the LINEUP (v10 — every pill
 /// shows), with per-pill enablement + reason from the machine's actual
-/// encoders. A grayed pill says why on hover; nothing fails only at
-/// Export.
+/// video encoders. A grayed pill says why on hover; nothing fails only at
+/// Export. Every still is written wherever the app runs.
+/// ↩️A still could stand off too — JPG on a machine without the C engine's
+/// encoder — until the connection round put the encoder in the engine the
+/// app ships with (connection-round-checklist H, 관제 2026-11-08 08:23:
+/// a switch that only ever answers 「on」 goes with its premise).
 class ExportFormatCapabilities {
   const ExportFormatCapabilities({
     required this.stills,
     this.video = const {},
-    this.stillEnabled,
     this.videoEnabled,
     this.videoReason,
   });
@@ -403,8 +406,7 @@ class ExportFormatCapabilities {
   final List<ExportStillFormat> stills;
   final Map<ExportVideoContainer, List<ExportVideoCodec>> video;
 
-  /// Null = everything in the lineup is writable (the EX2 behavior).
-  final bool Function(ExportStillFormat format)? stillEnabled;
+  /// Null = every pair in the lineup is writable (the EX2 behavior).
   final bool Function(ExportVideoContainer container, ExportVideoCodec codec)?
   videoEnabled;
   final String? Function(
@@ -417,9 +419,6 @@ class ExportFormatCapabilities {
 
   List<ExportVideoCodec> codecsFor(ExportVideoContainer container) =>
       video[container] ?? const [];
-
-  bool isStillEnabled(ExportStillFormat format) =>
-      stillEnabled?.call(format) ?? true;
 
   bool isVideoEnabled(ExportVideoContainer container, ExportVideoCodec codec) =>
       videoEnabled?.call(container, codec) ?? true;
@@ -523,9 +522,7 @@ class ExportFormatModule extends StatelessWidget {
     ExportMediaKind.video => capabilities.video.keys.any(
       capabilities.isContainerEnabled,
     ),
-    ExportMediaKind.still => capabilities.stills.any(
-      capabilities.isStillEnabled,
-    ),
+    ExportMediaKind.still => capabilities.stills.isNotEmpty,
   };
 
   Widget _kindButton() => PanelFlyoutButton(
@@ -546,8 +543,8 @@ class ExportFormatModule extends StatelessWidget {
     ),
   );
 
-  /// [kind], landing on the format that kind last stood on — or, when that
-  /// one is off in this build, the first one that is on.
+  /// [kind], landing on the format that kind last stood on — or, for a
+  /// movie whose container is off in this build, the first one that is on.
   ExportFormatSelection _withKind(ExportMediaKind kind) {
     if (kind == ExportMediaKind.video) {
       final container = capabilities.isContainerEnabled(selection.container)
@@ -558,13 +555,7 @@ class ExportFormatModule extends StatelessWidget {
             );
       return _withContainer(container);
     }
-    final still = capabilities.isStillEnabled(selection.stillFormat)
-        ? selection.stillFormat
-        : capabilities.stills.firstWhere(
-            capabilities.isStillEnabled,
-            orElse: () => selection.stillFormat,
-          );
-    return selection.copyWith(kind: kind, stillFormat: still);
+    return selection.copyWith(kind: kind);
   }
 
   /// The containers. Choosing one lands on that container's first WRITABLE
@@ -619,15 +610,10 @@ class ExportFormatModule extends StatelessWidget {
     enabled: enabled,
     entriesBuilder: () => capabilities.stills.asFlyoutValueChoices(
       current: selection.stillFormat,
-      choiceOf: (still) {
-        final writable = capabilities.isStillEnabled(still);
-        return PanelFlyoutChoice(
-          key: '$keyPrefix-still-${still.jsonValue}',
-          label: still.label,
-          enabled: writable,
-          warning: writable ? null : AppText.strings.exNotInThisBuild,
-        );
-      },
+      choiceOf: (still) => PanelFlyoutChoice(
+        key: '$keyPrefix-still-${still.jsonValue}',
+        label: still.label,
+      ),
       onPicked: (still) => _change(
         selection.copyWith(kind: ExportMediaKind.still, stillFormat: still),
       ),
@@ -896,8 +882,8 @@ class ExportJpgQualityRow extends StatelessWidget {
 /// envelope, the conte's page images: any still, JPG at a quality
 /// ([paperDocumentFormat]; 유저 2026-10-05: 「시트 그리고 png말고 jpg도
 /// 추가」 · I-117, 10-21: 「새 출력형식으로서 BMP TGA TIFF WEBP」, and a PSD
-/// of its strata). A still this machine cannot write stays in the list,
-/// off, saying why — the Format module's law ([stillEnabled]).
+/// of its strata). Every still is written wherever the app runs, as in the
+/// Format module's list ([ExportFormatCapabilities]).
 ///
 /// A document that has a format which is no picture — the timesheet's
 /// digital sheet, the conte's PDF — offers it in the same list ([before] ·
@@ -910,7 +896,6 @@ class ExportPaperFormatModule extends StatelessWidget {
     required this.caption,
     required this.image,
     required this.onImageChanged,
-    required this.stillEnabled,
     this.pictured = true,
     this.before = const [],
     this.after = const [],
@@ -925,10 +910,6 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// A picture format, picked — or its quality, moved. Null while the
   /// window is busy.
   final ValueChanged<ExportFormatSelection>? onImageChanged;
-
-  /// Whether this machine writes a still in a format — the answer the
-  /// Format module's list is greyed by ([ExportFormatCapabilities]).
-  final bool Function(ExportStillFormat format) stillEnabled;
   final bool pictured;
   final List<PillItem> before;
   final List<PillItem> after;
@@ -963,19 +944,13 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// one value of the app's one picker ([PanelFlyoutValueChoices]).
   List<PanelFlyoutEntry> _entries() {
     final changed = onImageChanged;
-    ({
-      String key,
-      String label,
-      bool current,
-      VoidCallback? pick,
-      bool writable,
-    })
-    listed(PillItem item) => (
+    ({String key, String label, bool current, VoidCallback? pick}) listed(
+      PillItem item,
+    ) => (
       key: item.keyValue,
       label: item.label,
       current: item.selected,
       pick: item.onTap,
-      writable: true,
     );
     final rows = [
       for (final item in before) listed(item),
@@ -987,7 +962,6 @@ class ExportPaperFormatModule extends StatelessWidget {
           pick: changed == null
               ? null
               : () => changed(image.copyWith(stillFormat: format)),
-          writable: stillEnabled(format),
         ),
       for (final item in after) listed(item),
     ];
@@ -996,8 +970,7 @@ class ExportPaperFormatModule extends StatelessWidget {
       choiceOf: (row) => PanelFlyoutChoice(
         key: row.key,
         label: row.label,
-        enabled: row.writable && row.pick != null,
-        warning: row.writable ? null : AppText.strings.exNotInThisBuild,
+        enabled: row.pick != null,
       ),
       onPicked: (row) => row.pick?.call(),
     );

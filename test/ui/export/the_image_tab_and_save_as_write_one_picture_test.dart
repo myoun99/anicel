@@ -11,7 +11,6 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/frame_image_file.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart';
@@ -314,22 +313,5 @@ void main() {
       saveAsImageActionLabel(ExportStillFormat.jpg, AppLanguage.en),
       'Save as: JPG',
     );
-  });
-
-  // Which tab lays its picture out as a PSD's rows is the tab's to say
-  // (`export_dialog_test.dart`). ↩️JPG stood off on a machine without the C
-  // engine's encoder until the connection round
-  // (connection-round-checklist H): the engine's ships with the app.
-  test('this machine writes every still, and the export window grays by the '
-      'same rule', () {
-    final none = ExportFormatAvailability(
-      encoderResolver: () => null,
-      ffmpegCheck: () async => false,
-    );
-    addTearDown(none.dispose);
-    for (final format in ExportStillFormat.values) {
-      expect(stillFormatWritable(format), isTrue, reason: format.label);
-      expect(none.stillAllowed(format), isTrue, reason: format.label);
-    }
   });
 }
