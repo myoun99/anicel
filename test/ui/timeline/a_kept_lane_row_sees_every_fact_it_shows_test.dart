@@ -207,7 +207,7 @@ void main() {
       });
     });
 
-    test('the rows of the cut and the project', () async {
+    test('the rows of the cut', () async {
       final layer = rowOf(otherId);
       await readAgainFor('the rows', otherId, () async {
         session.layerVerbs.renameLayer(celId, 'renamed');

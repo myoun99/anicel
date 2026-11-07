@@ -72,8 +72,11 @@ List<PropertyLaneRow> timelineLanesForLayer({
 /// end built the rail's six open lane rows again, and each threw its image
 /// away and took another.
 ///
-/// ⛔The key is EVERYTHING [timelineLanesForLayer] reads: a read added
-/// there and left out here is a lane kept across a change of it. A layer's
+/// ⛔The key is EVERYTHING [timelineLanesForLayer] reads, each as the value
+/// it reads: a read added there and left out here is a lane kept across a
+/// change of it. The rows stand for the session and the cut it stands in —
+/// a session composes its own list, of that cut's object — and the pose an
+/// S row rests in is all it reads of the rest of the project. A layer's
 /// slot lives while the layer is one of the session's rows.
 final class KeptTimelineLanes {
   final Map<LayerId, IdentityMemo<List<PropertyLaneRow>>> _byLayer = {};
@@ -97,10 +100,12 @@ final class KeptTimelineLanes {
         .resolve(
           identity: layer,
           key: (
-            ByIdentity(session),
-            ByIdentity(session.repository.requireProject()),
-            session.activeCutId,
             ByIdentity(rows),
+            rowPoseSpace(
+              session.repository.requireProject(),
+              layer,
+              standing: session.activeCutId,
+            ),
             ByIdentity(expandedGroupKeys),
             ByIdentity(session.fxPlugins.plugins),
             // The camera row's lanes are the track a camera drag previews.
