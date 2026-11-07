@@ -24,7 +24,7 @@ import 'widgets/app_icon_button.dart';
 import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
 import 'shortcuts/panel_keys.dart';
 import 'sliced_value_listenable_builder.dart' show SlicedListenable;
-import 'timeline/memo_token.dart' show ByIdentity;
+import 'timeline/memo_token.dart' show ByIdentity, ByList;
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'effective_device_pixel_ratio.dart';
@@ -120,6 +120,7 @@ typedef _Printed = ({
   ByIdentity<Object> instructionSet,
   ByIdentity<Object> trackSe,
   ByIdentity<Object> transition,
+  ByList<String> linkedCuts,
   int fps,
   InbetweenMark unnamedMark,
 });
@@ -183,6 +184,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           session.activeTrack.transitionLayer,
           olWord: sheetOlWord(session),
         ),
+      ),
+      // The 겸용 cuts' names the header writes (F-558), keyed as they
+      // print: 🔬a rename on another track hands the printed cut back as
+      // the same object (`mappedOrSame`, 11-08), and the header kept the
+      // old name.
+      linkedCuts: ByList(
+        sheetLinkedCutNames(session.repository.requireProject(), at.cut),
       ),
       fps: session.projectSettings.projectFps,
       // An app preference, not the session's (F-489): a pick reprints.

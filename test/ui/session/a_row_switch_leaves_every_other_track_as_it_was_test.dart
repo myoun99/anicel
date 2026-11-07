@@ -107,8 +107,51 @@ void main() {
     }
   }
 
-  /// [each] switch pressed on [row]: every other track as it was, and of
-  /// its own track what [ownTrack] says stays.
+  /// [press] on track t0: every other track as it was, and of its own
+  /// track what [ownTrack] says stays.
+  void pinPress(
+    String label,
+    void Function(EditorSessionManager) press, {
+    required _OwnTrack ownTrack,
+  }) {
+    test(label, () {
+      final session = open();
+      final before = session.repository.requireProject();
+      press(session);
+      final after = session.repository.requireProject();
+      expect(
+        identical(after, before),
+        isFalse,
+        reason: '⛔premise: the press changed the project',
+      );
+      for (var t = 1; t < before.tracks.length; t += 1) {
+        expect(
+          after.tracks[t],
+          same(before.tracks[t]),
+          reason: 'track t$t is left as it was',
+        );
+      }
+      switch (ownTrack) {
+        case _OwnTrack.everyCut:
+          expectAsItWas(
+            after.tracks.first,
+            before.tracks.first,
+            reason: 'an S row\'s switch leaves its track\'s cuts as they '
+                'were',
+          );
+        case _OwnTrack.theOtherCut:
+          expect(
+            after.tracks.first.cuts.last,
+            same(before.tracks.first.cuts.last),
+            reason: 'the other cut of its track is left as it was',
+          );
+        case _OwnTrack.none:
+          break;
+      }
+    });
+  }
+
+  /// [each] switch pressed on [row] ([pinPress]).
   void pin(
     String row,
     LayerId id,
@@ -116,41 +159,11 @@ void main() {
     required _OwnTrack ownTrack,
   }) {
     for (final MapEntry(key: name, value: press) in each.entries) {
-      test('$row · $name', () {
-        final session = open();
-        final before = session.repository.requireProject();
-        press(session, id);
-        final after = session.repository.requireProject();
-        expect(
-          identical(after, before),
-          isFalse,
-          reason: '⛔premise: the switch changed the project',
-        );
-        for (var t = 1; t < before.tracks.length; t += 1) {
-          expect(
-            after.tracks[t],
-            same(before.tracks[t]),
-            reason: 'track t$t is left as it was',
-          );
-        }
-        switch (ownTrack) {
-          case _OwnTrack.everyCut:
-            expectAsItWas(
-              after.tracks.first,
-              before.tracks.first,
-              reason: 'an S row\'s switch leaves its track\'s cuts as they '
-                  'were',
-            );
-          case _OwnTrack.theOtherCut:
-            expect(
-              after.tracks.first.cuts.last,
-              same(before.tracks.first.cuts.last),
-              reason: 'the other cut of its track is left as it was',
-            );
-          case _OwnTrack.none:
-            break;
-        }
-      });
+      pinPress(
+        '$row · $name',
+        (session) => press(session, id),
+        ownTrack: ownTrack,
+      );
     }
   }
 
@@ -172,6 +185,17 @@ void main() {
     const LayerId('t0-c0-conte'),
     {'eye': switches['eye']!},
     ownTrack: _OwnTrack.none,
+  );
+  // A cut's own name goes through the cut walk (`updateCutAnywhere`) alike.
+  // 🚨WHAT READS ANOTHER CUT KEYS ON WHAT IT READS: 🔬a rename on another
+  // track left the timesheet's printed cut the same object, and its header
+  // kept the 겸용 cut's old name (master red, 11-08) — pinned where it
+  // prints (the_format_windows_set_the_fixed_text_test).
+  pinPress(
+    'a cut · name',
+    (session) =>
+        session.cutVerbs.renameCuts({const CutId('t0-c0'): 'Renamed'}),
+    ownTrack: _OwnTrack.theOtherCut,
   );
 }
 
