@@ -54,6 +54,8 @@ import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
     show debugComposesFromBytes;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
 
@@ -604,6 +606,30 @@ void main() {
         const ui.Rect.fromLTRB(1145, 812, 1195, 842),
       );
       await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🎯an attach row twirls down its reference fx — that group '
+        'alone, its transform and fx its base\'s (🗣️I-120-Q25 「어태치된 참조 '
+        '행도 「参照」 묶음 하나만 보인다」)', (tester) async {
+      final (s, row) = await placed(tester);
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: turnedOnce);
+      final attached = rowOf(s, row);
+      expect(isAttachedLayer(attached), isTrue, reason: '⛔premise');
+
+      List<String> lanesOf({required bool open}) => [
+        for (final lane in timelineLanesForLayer(
+          layer: attached,
+          session: s,
+          expandedGroupKeys: {
+            if (open) laneGroupKey(attached.id, referenceGroupLaneId),
+          },
+        ))
+          lane.laneId,
+      ];
+      expect(lanesOf(open: false), [referenceGroupLaneId]);
+      expect(lanesOf(open: true), referenceLaneSelectionOrder);
       await stopTheWarmer(tester, s);
     });
 

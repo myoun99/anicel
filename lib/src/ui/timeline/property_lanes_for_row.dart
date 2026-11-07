@@ -82,6 +82,30 @@ List<PropertyLaneRow> propertyLanesForRow({
     return frame - at.frame + fxReadFrame(basis, at.layer.fxBlocks, at.frame);
   }
 
+  /// I-68: a row that SHOWS a file has its reference fx — where the file
+  /// stands, laid when its pixels are made, before any effect or transform
+  /// reads them.
+  List<PropertyLaneRow> referenceLanes() {
+    final reference = layer.mediaReference;
+    if (reference == null || referenceRedrawFor(layer) == null) {
+      return const [];
+    }
+    return referencePropertyLanes(
+      reference,
+      expanded: expandedGroupKeys.contains(
+        laneGroupKey(layer.id, referenceGroupLaneId),
+      ),
+      poseAt: source == null
+          ? null
+          : (time) {
+              final at = _sourceAtTime(source, time);
+              return (at.layer.mediaReference ?? reference).poseAtTime(
+                at.time,
+              );
+            },
+    );
+  }
+
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
   // — no lanes of their own; a row riding the conte authors its own fx and
   // has them (I-99). R9: the 공정 ORGANIZER folder joins
@@ -89,8 +113,14 @@ List<PropertyLaneRow> propertyLanesForRow({
   // effect chain here would be a second answer competing with the base's;
   // leaving the lanes up while the label has no fx switch would also let a
   // chain be added that nothing could bypass.
+  //
+  // 🗣️I-120-Q25 (유저 2026-11-07 「어태치된 참조 행도 「参照」 묶음 하나만
+  // 보인다」): where its file stands is the row's own, not its base's — a
+  // group with no switch to bypass (I-68-Q1) — so that group alone stands,
+  // and its header's RASTERIZE is the row's door. ↩️It stood nowhere: keys
+  // inside it had no place to be seen or set.
   if (attachRowWearsBaseComposite(layer, rows)) {
-    return const [];
+    return referenceLanes();
   }
 
   /// AE group collapse: the Transform group header always shows; its member
@@ -283,26 +313,9 @@ List<PropertyLaneRow> propertyLanesForRow({
       // sit inside it, so the transform is genuinely last. Only the reading
       // order was upside down.
       //
-      // I-68: a row that SHOWS a file has its reference fx before them all
-      // — where the file stands is laid when its pixels are made, before
-      // any effect or transform reads them.
-      final reference = layer.mediaReference;
+      // A row that shows a file has its reference fx before them all.
       return [
-        if (reference != null && referenceRedrawFor(layer) != null)
-          ...referencePropertyLanes(
-            reference,
-            expanded: expandedGroupKeys.contains(
-              laneGroupKey(layer.id, referenceGroupLaneId),
-            ),
-            poseAt: source == null
-                ? null
-                : (time) {
-                    final at = _sourceAtTime(source, time);
-                    return (at.layer.mediaReference ?? reference).poseAtTime(
-                      at.time,
-                    );
-                  },
-          ),
+        ...referenceLanes(),
         ...layerEffectLanes(),
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];

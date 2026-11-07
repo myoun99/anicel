@@ -173,10 +173,13 @@ final class FxBakeTaking {
 /// row, the camera. Nor does a row that wears another's fx: a row riding
 /// another wears its base's and authors none (R9 — the panels draw it none).
 ///
-/// ⚠️A reference row stands down wherever the press reaches one — a use of
-/// its row or a row riding it — until the round that takes it (⑤, Q5): the
-/// card's order, not a law of the verb. ↩️So did a row riding it linked to
-/// a row riding one that is no use of it, until Q19 ([FxBakeTaking._selves]).
+/// 🗣️I-120-Q23 (유저 2026-11-05 「지금처럼 꺼 둔다 — 참조 헤더로 먼저 풀고
+/// 나서 굽는다」): the press stands down wherever it reaches a reference row
+/// — a use of its row or a row riding it — and that row's 参照 header lets
+/// go of it first; a rider's too, which has one since Q25. ↩️It was the
+/// card's order until the round that took it (⑤, Q5). ↩️So did a row riding
+/// it linked to a row riding one that is no use of it, until Q19
+/// ([FxBakeTaking._selves]).
 ///
 /// It bakes every frame each use's cut draws; a band scoping the press
 /// narrows it ([FxBakeTaking.over]).
