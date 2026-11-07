@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +33,8 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/folder_bands.dart';
@@ -42,12 +45,16 @@ import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
     show timelineHoldGlyph;
 
 import '../timeline/timeline_frame_geometry_probe.dart';
 import '../../helpers/a_folder_made_by_hand.dart';
+import '../../helpers/native_engine_path.dart';
+import '../timeline/tile_store_idle.dart';
 
 /// F-311 (유저 2026-10-06): 「일반 폴더의 블록, 왜 이 경우 일부만 회색인지?
 /// 폴더 블록이 그림 없는구간 회색하는건 아이디어 좋다고 하니 개선해서 채용.
@@ -151,6 +158,26 @@ EditorSessionManager _session(
 
 Layer _layer(EditorSessionManager s, String id) => s.layerById(LayerId(id))!;
 
+/// [row] put in the cut in place of the row of its id.
+void _put(EditorSessionManager s, Layer row) => s.repository.updateProject(
+  (project) => project.copyWith(
+    tracks: [
+      for (final track in project.tracks)
+        track.copyWith(
+          cuts: [
+            for (final cut in track.cuts)
+              cut.copyWith(
+                layers: [
+                  for (final layer in cut.layers)
+                    layer.id == row.id ? row : layer,
+                ],
+              ),
+          ],
+        ),
+    ],
+  ),
+);
+
 /// The folder's row as the grids are handed it.
 Layer _band(EditorSessionManager s, [LayerId id = _folder]) =>
     bandsOf(s).folderBandLayerFor(s.layerById(id)!);
@@ -210,14 +237,21 @@ void _setEdge(
 );
 
 /// The shared cells painter over [layer], asking the session what the
-/// grids ask it.
-TimelineRowCellsPainter _painter(EditorSessionManager s, Layer layer) =>
+/// grids ask it — baking its spans in [store] where one is given.
+TimelineRowCellsPainter _painter(
+  EditorSessionManager s,
+  Layer layer, {
+  TimelineGridTileStore? store,
+  int frames = 40,
+}) =>
     TimelineRowCellsPainter(
       layer: layer,
       geometry: testFrameGeometry(
         frameCellExtent: 24,
-        frameEndIndexExclusive: 40,
+        frameEndIndexExclusive: frames,
       ),
+      tileStore: store,
+      substrateGeneration: 'p:cut',
       crossAxisExtent: 28,
       exposureStateForLayer: s.exposureStateForLayer,
       celContent: TimelineCelContentSource(
@@ -1266,6 +1300,137 @@ void main() {
       expect(_blocks(_layer(s, 'over')), isEmpty);
       expect(_blocks(_layer(s, 'a')), {4: 4, 8: 2});
       expect(_blocks(_layer(s, 'b')), {6: 4});
+    });
+  });
+
+  // 🐛F-561 ② (서피스 실기 2026-11-07): a row's block end dragged 3 → 7
+  // under a folder of 1..10, and the folder's row stayed white to 3 — its
+  // tiles were kept, for the folder's own blocks had not moved.
+  group('a tile of the folder\'s block shows its rows as they are', () {
+    final dllPath = nativeEngineLibraryPathOrNull();
+    final store = TimelineGridTileStore.instance;
+
+    setUp(() {
+      QaNativeEngine.debugResetForTests();
+      debugQaEngineLibraryPathOverride = dllPath;
+      QaNativeEngine.debugForceDartFallback = false;
+      store.clear();
+    });
+
+    tearDown(() {
+      QaNativeEngine.debugResetForTests();
+      debugQaEngineLibraryPathOverride = null;
+      QaNativeEngine.debugForceDartFallback = false;
+      store.clear();
+    });
+
+    // 24px cells: the spans are [0, span) and [span, 2 * span).
+    final span = timelineFrameWindowSpanFor(24);
+
+    /// a: 0..4 on a0, and [length] cells from `span + 2` on [cel] — a1
+    /// holds the picture, a2 none; b: `span` to `span + 8`, bare. The
+    /// folder's blocks are 0..4 and `span` to `span + 8` either way.
+    Layer a({int length = 4, String cel = 'a1'}) => Layer(
+      id: const LayerId('a'),
+      name: 'a',
+      kind: LayerKind.animation,
+      folderId: _folder,
+      frames: [
+        for (final id in ['a0', 'a1', 'a2'])
+          Frame(id: FrameId(id), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('a0'), length: 4),
+        span + 2: TimelineExposure.drawing(FrameId(cel), length: length),
+      },
+    );
+
+    EditorSessionManager session() {
+      final s = _session([
+        a(),
+        _row('b', {span: 8}, inside: 'F'),
+        _folderRow('F'),
+      ]);
+      _draw(s, 'a', 'a1');
+      return s;
+    }
+
+    /// The folder's tiles of the two spans, as its row asks them now.
+    List<ui.Image?> tiles(EditorSessionManager s) {
+      final painter = _painter(s, _band(s), store: store, frames: 2 * span);
+      return [
+        for (final from in [0, span])
+          store.tileFor(
+            painter: painter,
+            spanStartIndex: from,
+            spanEndIndexExclusive: from + span,
+            devicePixelRatio: 1,
+          ),
+      ];
+    }
+
+    /// The folder's tiles once both have landed.
+    Future<List<ui.Image?>> landed(EditorSessionManager s) async {
+      tiles(s);
+      await tileStoreIdle(store);
+      final both = tiles(s);
+      expect(both, everyElement(isNotNull), reason: '⛔전제: baked');
+      return both;
+    }
+
+    Color paperAt(EditorSessionManager s, int frame) =>
+        _painter(s, _band(s)).resolvedCellStyleFor(frame).background;
+
+    Future<void> expectBakedAgainWhereTheGreyMoved(
+      EditorSessionManager s,
+      Layer edited, {
+      required int at,
+    }) async {
+      final before = await landed(s);
+      final paper = paperAt(s, at);
+      final blocks = _blocks(_band(s));
+
+      _put(s, edited);
+
+      expect(_blocks(_band(s)), blocks, reason: '⛔전제: its blocks stayed');
+      expect(paperAt(s, at), isNot(paper), reason: '⛔전제: the grey moved');
+      final after = tiles(s);
+      expect(
+        identical(after.first, before.first),
+        isTrue,
+        reason: 'CONTROL: the span before the edit bakes alike',
+      );
+      expect(
+        identical(after.last, before.last),
+        isFalse,
+        reason: 'the tile of the span the grey moved in shows the row as '
+            'it was',
+      );
+    }
+
+    test('🚨a row\'s block that ends elsewhere inside the folder\'s', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await expectBakedAgainWhereTheGreyMoved(
+        session(),
+        a(length: 5),
+        at: span + 6,
+      );
+    });
+
+    test('🚨a row\'s block that shows another cel, its edges where they '
+        'were', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await expectBakedAgainWhereTheGreyMoved(
+        session(),
+        a(cel: 'a2'),
+        at: span + 3,
+      );
     });
   });
 }

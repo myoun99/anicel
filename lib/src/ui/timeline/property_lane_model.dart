@@ -2,6 +2,7 @@ import 'dart:ui' show Color, Offset, VoidCallback;
 
 import 'package:flutter/foundation.dart' show Listenable;
 
+import '../../models/folder_band_rows.dart';
 import '../../models/frame_id.dart';
 import '../../models/fx_basis.dart';
 import '../../models/key_mark.dart';
@@ -619,26 +620,6 @@ Layer folderBandOf(Layer folder, Iterable<Layer> members) {
   folderBandStandsFor(band, members);
   return band;
 }
-
-/// The rows [band] is made of — what a drag in flight re-reads it from
-/// (`rowShownWhileMoved`); null for every layer that is no band.
-///
-/// 🐛folder-band-lags-a-comma-drag (10-27): a folder's row is what its rows
-/// hold (F-311), so it follows the hand as they do — and it did for a block
-/// MOVE alone, whose drag laid the bands in its own preview. A comma drag
-/// and a file held over a row put their one row there, and the folder stood
-/// where it was until the release. So the band says what it stands for,
-/// as a mirror says its base (`attachedDisplayBaseOf`), and whatever reads
-/// a row as a drag shows it reads a folder's from its rows.
-List<Layer>? folderBandRowsOf(Layer band) => _bandRows[band];
-
-/// Notes that [band] stands for [rows]: [folderBandOf]'s own, and a cache's
-/// that keeps a band while the rows under it changed and its blocks did not.
-void folderBandStandsFor(Layer band, Iterable<Layer> rows) =>
-    _bandRows[band] = List.unmodifiable(rows);
-
-/// The rows each band stands for, held weakly like the bands themselves.
-final Expando<List<Layer>> _bandRows = Expando('folder band rows');
 
 /// Where [row]'s blocks start and end — where what a block shows can
 /// change along it: a row's cells' edges (`timelineRowCellEdges`), and a

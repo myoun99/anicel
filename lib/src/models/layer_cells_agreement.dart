@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import 'attached_layer_resolve.dart';
+import 'folder_band_rows.dart';
 import 'layer.dart';
 
 /// The first frame at which a row drawn from [a] and a row drawn from [b]
@@ -26,7 +27,12 @@ import 'layer.dart';
 /// * a block's word walks its room only within its block, and the blocks
 ///   before the key end by it;
 /// * a SYNCED attach mirror prints its BASE's cel names, so the bases' cels
-///   must agree too ([attachedDisplayBaseOf]).
+///   must agree too ([attachedDisplayBaseOf]);
+/// * a FOLDER's band paints what its rows hold, grey where none holds a
+///   picture at that frame (R28 #11), so each row must agree too with the
+///   one it stood for ([folderBandRowsOf]). ↩️Its own timeline alone was
+///   asked, and a row's block that ended elsewhere inside the folder's kept
+///   the tile painted before (F-561 ②, 서피스 실기 2026-11-07).
 ///
 /// ⚠️What a row reads from outside its layer is not in here — the cels'
 /// pixels (their own revision) and the camera row's track (its cells are
@@ -38,6 +44,15 @@ int? firstCellThatMayDiffer(Layer a, Layer b) {
   if (!a.sameBesideTimeline(b) || !_sameCelNames(a, b)) {
     return 0;
   }
+  return _earlier(
+    _firstKeyTheTimelinesPartAt(a, b),
+    _firstCellTheRowsMayDiffer(a, b),
+  );
+}
+
+/// The first key at which the timelines of [a] and [b] part — null when
+/// they are alike.
+int? _firstKeyTheTimelinesPartAt(Layer a, Layer b) {
   final left = a.timeline.entries.iterator;
   final right = b.timeline.entries.iterator;
   while (true) {
@@ -59,6 +74,29 @@ int? firstCellThatMayDiffer(Layer a, Layer b) {
     }
   }
 }
+
+/// Where the rows two folder bands stand for may first paint apart — null
+/// for rows that agree, and for two layers that stand for none.
+int? _firstCellTheRowsMayDiffer(Layer a, Layer b) {
+  final rowsOfA = folderBandRowsOf(a);
+  final rowsOfB = folderBandRowsOf(b);
+  if (rowsOfA == null && rowsOfB == null) {
+    return null;
+  }
+  if (rowsOfA == null ||
+      rowsOfB == null ||
+      rowsOfA.length != rowsOfB.length) {
+    return 0;
+  }
+  int? first;
+  for (var i = 0; i < rowsOfA.length; i += 1) {
+    first = _earlier(first, firstCellThatMayDiffer(rowsOfA[i], rowsOfB[i]));
+  }
+  return first;
+}
+
+/// The earlier of two frames, either of which may be none.
+int? _earlier(int? a, int? b) => a == null ? b : (b == null || a <= b ? a : b);
 
 /// Whether both rows print the same cel names: a mirror's come from the
 /// cels of the base it mirrors, every other row's from its own frames

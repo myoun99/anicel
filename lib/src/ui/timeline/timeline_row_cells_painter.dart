@@ -7,6 +7,7 @@ import 'frame_window_semantics.dart';
 
 import '../../models/frame.dart'
     show InbetweenMark, defaultUnnamedDrawingMark, drawingHeadOf;
+import '../../models/folder_band_rows.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -32,7 +33,7 @@ import 'axis_turn.dart'
 import 'berth_row.dart';
 import 'rail_eyes.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
-import 'property_lane_model.dart' show folderBandRowsOf, timelineBlockEdgesOf;
+import 'property_lane_model.dart' show timelineBlockEdgesOf;
 import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';

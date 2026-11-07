@@ -7,6 +7,7 @@ import '../../models/cel_rekey.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
+import '../../models/folder_band_rows.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -22,7 +23,7 @@ import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
 import '../collection_equality.dart';
 import 'berth_row.dart';
-import 'property_lane_model.dart' show folderBandOf, folderBandRowsOf;
+import 'property_lane_model.dart' show folderBandOf;
 
 /// The scoped edit-drag preview channel.
 ///
