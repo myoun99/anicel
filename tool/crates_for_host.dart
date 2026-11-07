@@ -168,12 +168,32 @@ class TargetPlatform {
   }
 }
 
-/// The registry crates, `name-version`, that a build of every member of the
-/// workspace — their tests too — takes on [platform].
+/// Which of the lock's edges a walk takes — the one question two lists ask
+/// of the same walk (관제 2026-11-07, connection-round-checklist: "what a
+/// build takes is not what the binary carries").
+enum Walk {
+  /// What a build downloads and compiles: a member's dependencies of every
+  /// kind, any other crate's but its dev-dependencies (cargo builds no
+  /// dependency's tests) — refusal 8's list.
+  build,
+
+  /// What the built library carries: normal dependencies alone, a member's
+  /// as any other crate's — a build script's crates and a test's run on the
+  /// machine that builds, never in what ships. The notices' list
+  /// (tool/crate_notices.dart).
+  binary;
+
+  bool follows(String kind, {required bool fromMember}) => switch (this) {
+    Walk.build => fromMember || kind != 'dev',
+    Walk.binary => kind == 'normal',
+  };
+}
+
+/// The registry crates, `name-version`, that [walk] reaches from every
+/// member of the workspace on [platform].
 ///
 /// An edge of the lock is walked when the crate it leaves declares, for this
-/// platform, the crate it reaches: a member in any kind, any other crate
-/// not as a dev-dependency (cargo builds no dependency's tests). Where a
+/// platform and of a kind [walk] follows, the crate it reaches. Where a
 /// declaration cannot be read — a crate this machine's index never saw, a
 /// path crate that is not a member — every edge is walked: what cannot be
 /// ruled out is listed.
@@ -181,8 +201,9 @@ Set<String> cratesFor(
   List<LockPackage> lock,
   Map<String, List<Declared>> members,
   List<Declared>? Function(LockPackage) declaredOf,
-  TargetPlatform platform,
-) {
+  TargetPlatform platform, {
+  required Walk walk,
+}) {
   LockPackage named(String dependency) {
     final words = dependency.split(' ');
     return lock.singleWhere(
@@ -208,7 +229,7 @@ Set<String> cratesFor(
       final walked = asNamed.isEmpty ||
           asNamed.any(
             (d) =>
-                (member != null || d.kind != 'dev') &&
+                walk.follows(d.kind, fromMember: member != null) &&
                 platform.takes(d.target),
           );
       if (walked && reached.add(dependency)) queue.add(dependency);
@@ -234,6 +255,7 @@ void main(List<String> args) {
     memberDependencies(File(args[1]).readAsStringSync()),
     (package) => indexDependencies(index, package.name, package.version),
     TargetPlatform(args[3], File(args[2]).readAsLinesSync()),
+    walk: Walk.build,
   ).toList()..sort();
   stdout.write(crates.map((crate) => '$crate\n').join());
 }

@@ -104,6 +104,7 @@ void main() {
           members,
           (p) => p.name == 'everywhere' ? everywhere : const [],
           windows,
+          walk: Walk.build,
         ),
         {'everywhere-1.0.0', 'tested-1.0.0', 'plain-1.0.0', 'nested-2.0.0'},
         reason: 'not android (a member\'s, for Android), not linux (a '
@@ -112,12 +113,29 @@ void main() {
       );
     });
 
-    test('a crate whose declarations are not here has every edge walked', () {
+    test('the binary carries the normal edges alone, a member\'s too', () {
       expect(
-        cratesFor(lock, members, (_) => null, windows),
-        containsAll(['linux-1.0.0', 'own_tests-1.0.0']),
-        reason: 'what cannot be ruled out is listed',
+        cratesFor(
+          lock,
+          members,
+          (p) => p.name == 'everywhere' ? everywhere : const [],
+          windows,
+          walk: Walk.binary,
+        ),
+        {'everywhere-1.0.0', 'plain-1.0.0'},
+        reason: 'not tested (the member\'s dev-dependency), not nested '
+            '2.0.0 (a build dependency runs where it is built)',
       );
+    });
+
+    test('a crate whose declarations are not here has every edge walked', () {
+      for (final walk in Walk.values) {
+        expect(
+          cratesFor(lock, members, (_) => null, windows, walk: walk),
+          containsAll(['linux-1.0.0', 'own_tests-1.0.0']),
+          reason: 'what cannot be ruled out is listed ($walk)',
+        );
+      }
     });
   });
 
