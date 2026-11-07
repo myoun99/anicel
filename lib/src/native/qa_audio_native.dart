@@ -104,10 +104,11 @@ final class QaAudioNative {
   /// resampler and the denoiser left this class when their C went
   /// (`qa_audio_resampler.dart`, `qa_audio_denoiser.dart`), and their
   /// names went from this list in the same change: on Apple's the library
-  /// below is `DynamicLibrary.process()`, which searches every image
-  /// loaded, the engine's among them — so a name the C no longer has would
-  /// be found there or not by whether the engine had been opened first,
-  /// and the mixer would stand on the C or on Dart by that order alone.
+  /// [openQaEngineLibrary] answers is the process's, which searches every
+  /// image loaded, the engine's among them — so a name the C no longer has
+  /// would be found there or not by whether the engine had been opened
+  /// first, and the mixer would stand on the C or on Dart by that order
+  /// alone.
   /// Windows and Linux open the C by its own handle and could never show
   /// it. ⛔Name nothing here the C engine does not export itself.
   static QaAudioNative? _load() {

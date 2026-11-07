@@ -902,7 +902,20 @@ void main() {
   /// type, which this scan does not read. 🔬`clean_code_diff` against the
   /// lane's base (`fe520ab12`) names it added and nothing gone. ⛔Not
   /// bundled to fit: the binding takes what the export takes.
-  const wideSignatures = 463;
+  ///
+  /// ⚠️463 → 464 on 2026-11-08, named as the rule above asks
+  /// (connection-round-checklist H, the conform's resampler moved into the
+  /// Rust engine): in `qa_audio_resampler.dart`, `_resample` (eight) and
+  /// `_open` (five) are the `@Native` bindings of `qa_audio_resample` and
+  /// `qa_audio_resampler_open`, their parameters the exports' own — the
+  /// same as `lookupFunction` types before, which this scan does not read —
+  /// and `resampleAudio` (six) is `QaAudioNative.resample` moved there
+  /// whole. Gone: that method, and `resampleAudioReference`, which went to
+  /// the test helpers as the answer key. 🔬`clean_code_diff` against the
+  /// lane's base (`fd101433a`) names those three added and those two gone.
+  /// ⛔Not bundled to fit: the bindings take what the exports take, and the
+  /// conversion's quality is the caller's to ask, as the export's is.
+  const wideSignatures = 464;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1276,7 +1289,12 @@ void main() {
   /// column handed its rows and lane to a method of their own (`5745769e0`,
   /// I-153), landed beside ⑤d. 🔬`clean_code_diff` across that commit names
   /// `ExportCelsBoardState._folderColumn` gone and nothing added.
-  const longBodies = 415;
+  ///
+  /// ⚠️415 → 414 on 2026-11-08, following one down: `QaAudioNative._load`
+  /// found the mixer's names only once the resampler and the denoiser left
+  /// the C (connection-round-checklist H). 🔬`clean_code_diff` against the
+  /// lane's base (`fd101433a`) names it gone and nothing added.
+  const longBodies = 414;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
