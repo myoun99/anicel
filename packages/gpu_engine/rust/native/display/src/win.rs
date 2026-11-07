@@ -171,7 +171,14 @@ unsafe extern "system" fn find_app_window(window: HWND, found: LPARAM) -> BOOL {
 }
 
 /// The app's window, or None where this process shows none.
-pub(crate) fn app_window() -> Option<HWND> {
+///
+/// ⛔ONE FINDER FOR EVERY CRATE THAT ASKS (관제 2026-11-08 03:50,
+/// connection-round-checklist H): the pen's Wintab context asks it too. The
+/// pen had a finder of its own — this process's first shown window with no
+/// owner, carried over from its C on 2026-07-20 with no word of who chose it
+/// — which bound the context to another top-level window where one came
+/// first; the runner's class is the question itself.
+pub fn app_window() -> Option<HWND> {
     let mut window = HWND::default();
     // SAFETY: the callback writes `window` alone, before this returns.
     let _ = unsafe { EnumWindows(Some(find_app_window), LPARAM(&mut window as *mut HWND as isize)) };

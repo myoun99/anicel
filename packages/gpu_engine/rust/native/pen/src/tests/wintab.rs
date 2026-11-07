@@ -12,7 +12,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     ShowWindow, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
     WS_POPUP,
 };
-use windows::core::{HSTRING, s, w};
+use windows::core::{HSTRING, PCWSTR, s, w};
 use wintab32::{
     Axis, Context, MOVE_MASK, OPTIONS, PACKET_DATA, PACKET_MODE, Packet, Script, Seen,
 };
@@ -92,9 +92,9 @@ impl Driver {
     }
 }
 
-/// A window the app's would be found as: shown, without an owner, of this
-/// process. It draws nothing and stands one pixel tall for the second it
-/// stands.
+/// A window the app's would be found as: of the runner's class, shown, of
+/// this process (display's app_window). It draws nothing and stands one
+/// pixel tall for the second it stands.
 struct AppWindow(HWND);
 
 unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -102,20 +102,21 @@ unsafe extern "system" fn answer(window: HWND, message: u32, w: WPARAM, l: LPARA
     unsafe { DefWindowProcW(window, message, w, l) }
 }
 
+/// The class the runner gives its window (windows/runner/win32_window.cpp).
+const RUNNER: PCWSTR = w!("FLUTTER_RUNNER_WIN32_WINDOW");
+
 impl AppWindow {
     fn show() -> Self {
-        Self::make(None, true)
+        Self::make(RUNNER, true)
     }
 
-    /// Two windows of this process the app's is not: one not shown, and one
-    /// shown but owned by it.
+    /// Two windows of this process the app's is not: one of the runner's
+    /// class not shown, and one shown of another class.
     fn not_the_apps() -> [Self; 2] {
-        let owner = Self::make(None, false);
-        [Self::make(Some(owner.0), true), owner]
+        [Self::make(RUNNER, false), Self::make(w!("AnicelPenTestWindow"), true)]
     }
 
-    fn make(owner: Option<HWND>, shown: bool) -> Self {
-        let class = w!("AnicelPenTestWindow");
+    fn make(class: PCWSTR, shown: bool) -> Self {
         // SAFETY: this process's module, a class of it, and a window of that
         // class, shown without taking the focus.
         unsafe {
@@ -137,7 +138,7 @@ impl AppWindow {
                 0,
                 1,
                 1,
-                owner,
+                None,
                 None,
                 Some(module.into()),
                 None,

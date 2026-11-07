@@ -16,6 +16,9 @@ windows = { version = "0.62", features = [
     "Win32_UI_Input",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# The app's window, which the Wintab context is scoped to: the display's
+# finder, one for every crate that asks (관제 2026-11-08 03:50).
+display = { path = "../display" }
 
 # Apple's touches and events, asked by message, and the main queue the
 # event monitor is installed from: wgpu-hal's own Objective-C crates,

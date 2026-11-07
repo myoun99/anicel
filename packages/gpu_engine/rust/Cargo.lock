@@ -1677,6 +1677,7 @@ version = "0.0.1"
 dependencies = [
  "block2",
  "dispatch2",
+ "display",
  "objc2",
  "windows",
  "wintab_fake",
