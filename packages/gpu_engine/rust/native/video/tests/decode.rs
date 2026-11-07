@@ -330,8 +330,11 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     // runs past its twelve by less.
     let _turn = one_at_a_time();
     let Some((longer, _)) = write_movie("sound-past", 12, Some(12_000)) else { return };
-    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../../test/fixtures/tone_with_video.mp4");
-    for movie in [longer.to_str().expect("UTF-8"), fixture] {
+    // This checkout's, read when the test runs (gpu_engine's
+    // kernels/shared/one_checkout.rs).
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
+    let fixture = format!("{crate_dir}/../../../../../test/fixtures/tone_with_video.mp4");
+    for movie in [longer.to_str().expect("UTF-8"), &fixture] {
         let answers = [c(), rust()].map(|decoder| {
             let handle = decoder.open(movie);
             let info = decoder.info(handle);
