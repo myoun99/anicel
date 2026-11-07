@@ -1,8 +1,8 @@
-import '../../models/bitmap_tile.dart';
+import 'bitmap_tile.dart';
 
-/// Every tile that has been given a picture — the roll the budget walks
-/// when the pictures held add up to more than the device allows
-/// ([TilePictureBudget]).
+/// Every tile a holder has given a copy of its own — a picture
+/// (`BitmapTileImageCache`) or a slot on the engine (`EngineTileLedger`) —
+/// the roll it walks when it lets those copies go early.
 ///
 /// 🚨★★★THE CACHE COULD NOT BE ASKED 「WHAT DO YOU HOLD」 (render round,
 /// 2026-09-16). Its pictures live in an `Expando` keyed by the tile object:
@@ -14,29 +14,32 @@ import '../../models/bitmap_tile.dart';
 /// needs a roll to walk; this is it.
 ///
 /// ⛔WEAK. Being on the roll must not keep a tile alive: it is read only by
-/// the budget's walk, which sweeps out what died since. A strong list here
-/// would pin every tile that ever had a picture — the undo history's
+/// the holder's walk, which sweeps out what died since. A strong list here
+/// would pin every tile that ever had a copy — the undo history's
 /// included — for the life of the run.
 ///
-/// A sibling of `BitmapTileImageCache` rather than a field on it: the roll
-/// is a walkable thing of its own, and the cache is the door pictures come
+/// A sibling of its holder rather than a field on it: the roll is a
+/// walkable thing of its own, and the holder is the door copies come
 /// through, not the census of them.
+///
+/// In `models/` since 2026-11-08 (screen-on-the-engine c4): the engine's
+/// ledger walks one too, and it lies in `native/`, which `models/` and
+/// `services/` reach — so the roll moved inward rather than the ledger
+/// reaching out to `ui/` (CLAUDE.md, 의존 방향).
 ///
 /// 🪦Until 2026-09-17 the roll also remembered WHERE a canvas drew each
 /// tile, because letting a picture go had to un-file it from its
 /// coordinate's fallback bucket. Nothing is filed by coordinate any more.
-class PicturedTiles {
-  PicturedTiles();
-
-  static final PicturedTiles instance = PicturedTiles();
+class TileRoll {
+  TileRoll();
 
   final List<WeakReference<BitmapTile>> _roll = [];
 
-  final Expando<bool> _onRoll = Expando<bool>('picturedTiles');
+  final Expando<bool> _onRoll = Expando<bool>('tileRoll');
 
-  /// [tile] has a picture now. A tile joins the roll once and stays on it
-  /// for its life, whatever its picture does: the walk asks the cache what
-  /// it holds, not the roll.
+  /// [tile] has a copy now. A tile joins the roll once and stays on it for
+  /// its life, whatever its copy does: the walk asks the holder what it
+  /// holds, not the roll.
   void hold(BitmapTile tile) {
     if (_onRoll[tile] ?? false) {
       return;

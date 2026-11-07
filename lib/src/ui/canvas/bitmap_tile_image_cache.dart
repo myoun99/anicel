@@ -5,10 +5,10 @@ import 'package:flutter/foundation.dart';
 import '../../core/sync_image_upload.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/tile_roll.dart';
 import '../../native/qa_native_engine.dart';
 import 'chained_picture.dart';
 import 'deferred_image_disposal.dart';
-import 'pictured_tiles.dart';
 import 'tile_pages.dart';
 
 /// The pictures of immutable [BitmapTile]s, keyed by tile identity, for
@@ -44,8 +44,8 @@ import 'tile_pages.dart';
 /// picture budget lets pictures go EARLY ([releasePicture]) when the device
 /// cannot hold every one; a tile asked for again is simply pictured again.
 class BitmapTileImageCache {
-  BitmapTileImageCache({PicturedTiles? pictured, TilePages? pages})
-    : pictured = pictured ?? PicturedTiles.instance,
+  BitmapTileImageCache({TileRoll? pictured, TilePages? pages})
+    : pictured = pictured ?? TileRoll(),
       pages = pages ?? TilePages.instance;
 
   /// Shared instance used by the display painter. A render cache, not app
@@ -54,7 +54,7 @@ class BitmapTileImageCache {
 
   /// The roll of every tile given a picture here — the one way the pictures
   /// held can be walked ([TilePictureBudget]), since [_pictures] cannot be.
-  final PicturedTiles pictured;
+  final TileRoll pictured;
 
   /// Where the pictures this makes lie, where the engine writes pages.
   final TilePages pages;

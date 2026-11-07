@@ -12,7 +12,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/chained_picture.dart';
-import 'package:anicel/src/ui/canvas/pictured_tiles.dart';
 import 'package:anicel/src/ui/canvas/tile_pages.dart';
 import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
@@ -64,11 +63,10 @@ void main() {
   ({BitmapTileImageCache cache, TilePictureBudget budget}) picturesIn(
     TilePages pages,
   ) {
-    final pictured = PicturedTiles();
-    final cache = BitmapTileImageCache(pictured: pictured, pages: pages);
+    final cache = BitmapTileImageCache(pages: pages);
     return (
       cache: cache,
-      budget: TilePictureBudget(cache: cache, pictured: pictured),
+      budget: TilePictureBudget(cache: cache),
     );
   }
 
