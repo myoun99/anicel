@@ -97,6 +97,7 @@ name = "audio"
 version = "0.0.1"
 dependencies = [
  "audio_mix",
+ "ledger",
  "media",
  "ndk-sys",
  "objc2-audio-toolbox",
@@ -830,6 +831,7 @@ dependencies = [
  "ash",
  "crc32fast",
  "harfrust",
+ "ledger",
  "libc",
  "objc2",
  "objc2-core-foundation",
@@ -1156,6 +1158,14 @@ name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
+
+[[package]]
+name = "ledger"
+version = "0.0.1"
+dependencies = [
+ "crc32fast",
+ "serde_json",
+]
 
 [[package]]
 name = "libc"

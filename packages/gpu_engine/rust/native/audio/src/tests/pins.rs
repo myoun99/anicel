@@ -6,8 +6,8 @@
 //! Windows (관제 11:11 ②). No C is asked: the pins hold where no engine is
 //! built.
 //!
-//! The FLAC's and the WAV's are the ledger's own — the C's samples, to the
-//! bit. The rest are this decoder's: what the C's computed differs within a
+//! The FLAC's and the WAV's are read from the ledger — the C's samples, to
+//! the bit. The rest are this decoder's: what the C's computed differs within a
 //! decoder's rounding (`the_fixtures_decode_as_the_c_decodes_them`).
 //! ⚠️Those three were where a device differed, and the first CI run
 //! (42274856506) found it: symphonia made its tables and some of each
@@ -25,13 +25,6 @@ use std::path::Path;
 use super::{TempFile, fixture};
 use crate::stream::window;
 
-/// The CRC-32 the app's ledger takes (`anicelCrc32*`).
-fn crc32(bytes: &[u8]) -> u32 {
-    !bytes.iter().fold(!0u32, |crc, &byte| {
-        (0..8).fold(crc ^ u32::from(byte), |crc, _| if crc & 1 != 0 { crc >> 1 ^ 0xEDB8_8320 } else { crc >> 1 })
-    })
-}
-
 /// The fingerprint of `path`'s whole decode, with which decoder read it and
 /// how many frames.
 fn fingerprint(file: &Path) -> (i32, usize, String) {
@@ -39,7 +32,7 @@ fn fingerprint(file: &Path) -> (i32, usize, String) {
     let path = CString::new(file.to_str().expect("a UTF-8 path")).expect("no NUL");
     let sound = window(&path, 0, length, false, 0, -1).expect("the fixture decodes");
     let bytes: Vec<u8> = sound.samples.iter().flat_map(|sample| sample.to_le_bytes()).collect();
-    (sound.format, sound.samples.len() / sound.channels as usize, format!("{:08x}", crc32(&bytes)))
+    (sound.format, sound.samples.len() / sound.channels as usize, ledger::fingerprint(&bytes))
 }
 
 /// Two channels of whole numbers at 48 kHz — a full-scale sawtooth on the
@@ -70,14 +63,15 @@ fn whole_number_wav() -> Vec<u8> {
 fn a_sound_decodes_alike_on_every_device() {
     use crate::{FORMAT_AAC, FORMAT_FLAC, FORMAT_MP3, FORMAT_VORBIS, FORMAT_WAV};
     for (name, format, frames, pinned) in [
-        ("tone.flac", FORMAT_FLAC, 44_100, "e9616c02"),
-        ("tone.mp3", FORMAT_MP3, 44_975, "12cc326d"),
-        ("tone.ogg", FORMAT_VORBIS, 22_050, "7ef2a0f4"),
-        ("tone.m4a", FORMAT_AAC, 22_050, "459586bd"),
-        ("tone_with_video.mp4", FORMAT_AAC, 22_528, "258b85e4"),
+        ("tone.flac", FORMAT_FLAC, 44_100, ledger::pinned("audio/tone.flac-samples")),
+        ("tone.mp3", FORMAT_MP3, 44_975, "12cc326d".to_owned()),
+        ("tone.ogg", FORMAT_VORBIS, 22_050, "7ef2a0f4".to_owned()),
+        ("tone.m4a", FORMAT_AAC, 22_050, "459586bd".to_owned()),
+        ("tone_with_video.mp4", FORMAT_AAC, 22_528, "258b85e4".to_owned()),
     ] {
-        assert_eq!(fingerprint(&fixture(name)), (format, frames, pinned.to_string()), "{name}");
+        assert_eq!(fingerprint(&fixture(name)), (format, frames, pinned), "{name}");
     }
     let wav = TempFile::new("whole-number.wav", &whole_number_wav());
-    assert_eq!(fingerprint(wav.path()), (FORMAT_WAV, 4800, "f3b4dddf".to_string()), "the whole-number WAV");
+    let pinned = ledger::pinned("audio/whole-number.wav-samples");
+    assert_eq!(fingerprint(wav.path()), (FORMAT_WAV, 4800, pinned), "the whole-number WAV");
 }

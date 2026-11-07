@@ -3,7 +3,9 @@
 use std::sync::OnceLock;
 
 use crate::device::Engine;
-use crate::{fingerprint, platform};
+use crate::platform;
+
+pub use ledger::assert_pinned;
 
 /// The engine on the platform's first adapter, opened once for the whole
 /// test process, as the app opens one device: blend's tests opened one
@@ -28,11 +30,6 @@ pub fn first_engine() -> &'static Engine {
 /// hands the app its runs by. The buffer is `COPY_SRC`.
 pub fn read_buffer(engine: &Engine, buffer: &wgpu::Buffer) -> Vec<u8> {
     engine.read_buffer(buffer).expect("read back")
-}
-
-/// Fails unless `bytes` are the ones the ledger pinned as `id`.
-pub fn assert_pinned(id: &str, bytes: &[u8]) {
-    assert_eq!(fingerprint::hex(fingerprint::of(bytes)), fingerprint::pinned(id), "{id}");
 }
 
 #[test]

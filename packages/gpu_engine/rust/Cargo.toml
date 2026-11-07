@@ -100,8 +100,10 @@ libc = "0.2"
 [build-dependencies]
 sha2 = "0.10"
 
-# The tests read the ledger, test/fixtures/fingerprints.json.
+# The tests read the ledger, test/fixtures/fingerprints.json, through the
+# workspace's one reader; the letters' tests read a fixture of their own.
 [dev-dependencies]
+ledger = { path = "native/ledger" }
 serde_json = "1"
 
 # THE APP'S NATIVE C MOVES HERE, A MODULE TO A CRATE (native-to-rust, 유저
