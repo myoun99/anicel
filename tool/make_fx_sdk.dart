@@ -4,9 +4,9 @@
 //
 //   dart run tool/make_fx_sdk.dart <folder>
 //
-// writes <folder>/anicel-fx-sdk-<spec>.zip — sdk/fx of the commit checked
-// out, every file as committed, under one folder: the spec crate, the
-// example, the README and the LICENSE, lying as they lie here, so the
+// writes <folder>/anicel-fx-sdk-<spec>.zip — the files of sdk/fx git
+// tracks, as this checkout holds them, under one folder: the spec crate,
+// the example, the README and the LICENSE, lying as they lie here, so the
 // example's path to the crate holds in the zip as in the repository. The
 // spec is the crate's own SPEC_VERSION.
 //
@@ -14,13 +14,17 @@
 // Rust now (유저 Q9 · 옛 플러그인 없음, 2026-11-07), and this repository's
 // tools are Dart.
 
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
 
 /// The SDK's folder in the repository.
 const sdkFolder = 'sdk/fx';
 
-/// Where the spec crate's source lies in the repository.
-const specCrateSource = '$sdkFolder/anicel-fx/src/lib.rs';
+/// Where the spec crate's source lies in the SDK.
+const specCrateSource = 'anicel-fx/src/lib.rs';
 
 /// The spec version [crateSource] — the spec crate's lib.rs — says.
 int specOf(String crateSource) {
@@ -35,36 +39,17 @@ int specOf(String crateSource) {
 /// The zip's folder, and the file's name without `.zip`.
 String sdkName(int spec) => 'anicel-fx-sdk-$spec';
 
-/// What git is asked to write [out]: the SDK folder of [commit], each file
-/// as committed — not as this checkout's line endings make it — under the
-/// zip's [folder].
-List<String> archiveArguments(String commit, String folder, String out) => [
-  '-c',
-  'core.autocrlf=false',
-  'archive',
-  '--format=zip',
-  '--prefix=$folder/',
-  '-o',
-  out,
-  '$commit:$sdkFolder',
-];
-
-String _git(List<String> arguments) {
-  final run = Process.runSync('git', arguments);
-  if (run.exitCode != 0) {
-    throw ProcessException('git', arguments, '${run.stderr}', run.exitCode);
+/// The SDK zip of [files] — each one's path in the SDK and its bytes —
+/// under one folder named for the spec its crate says.
+({String name, Uint8List bytes}) sdkZip(Map<String, List<int>> files) {
+  final crate = files[specCrateSource];
+  if (crate == null) throw StateError('no $specCrateSource in the SDK');
+  final name = sdkName(specOf(utf8.decode(crate)));
+  final archive = Archive();
+  for (final MapEntry(key: path, value: bytes) in files.entries) {
+    archive.addFile(ArchiveFile.bytes('$name/$path', bytes));
   }
-  return '${run.stdout}';
-}
-
-/// Writes the SDK zip of [commit] into [folder]; its path.
-String makeSdk(String folder, {String commit = 'HEAD'}) {
-  final spec = specOf(_git(['show', '$commit:$specCrateSource']));
-  final name = sdkName(spec);
-  final out = '$folder/$name.zip';
-  File(out).parent.createSync(recursive: true);
-  _git(archiveArguments(commit, name, out));
-  return out;
+  return (name: '$name.zip', bytes: ZipEncoder().encodeBytes(archive));
 }
 
 void main(List<String> args) {
@@ -72,5 +57,19 @@ void main(List<String> args) {
     stderr.writeln('usage: dart run tool/make_fx_sdk.dart <folder>');
     exit(64);
   }
-  stdout.writeln(makeSdk(args.single));
+  final listed = Process.runSync('git', ['ls-files', '-z', '--', sdkFolder]);
+  if (listed.exitCode != 0) {
+    stderr.writeln('git ls-files: ${listed.stderr}');
+    exit(1);
+  }
+  final files = {
+    for (final path in '${listed.stdout}'.split('\x00'))
+      if (path.isNotEmpty)
+        path.substring(sdkFolder.length + 1): File(path).readAsBytesSync(),
+  };
+  final zip = sdkZip(files);
+  final out = File('${args.single}/${zip.name}');
+  out.parent.createSync(recursive: true);
+  out.writeAsBytesSync(zip.bytes);
+  stdout.writeln(out.path);
 }
