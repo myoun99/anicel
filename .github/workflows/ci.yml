@@ -123,11 +123,6 @@ jobs:
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The fx plugin test passes without its WebAssembly twin when the build
-    # found no engine; Linux x86_64 has one (fx-plugin-sdk-publish-Q2), so a
-    # run without it is a failure here.
-    env:
-      QA_REQUIRE_WASM: '1'
     steps:
       - uses: actions/checkout@v5
       - name: Build with gcc

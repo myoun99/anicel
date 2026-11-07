@@ -89,22 +89,13 @@ jobs:
           }
 
       # The release path's parity check, as the Linux build runs it. The
-      # engine is read in the build folder, because the sample plugin the fx
-      # pin opens stands beside it there and not in the bundle; `cmp` holds it
+      # engine is read in the build folder, where its build left it, as the
+      # pins read it (test/helpers/native_engine_path.dart); `cmp` holds it
       # to the file the bundle ships, so the file checked is the file handed
-      # out. MSVC on ARM64 is a compiler nothing else here runs.
-      #
-      # The SDK example's C build the fx pin opens beside it is made by the
-      # engine's own build, as the Linux build makes it (run 41951966166
-      # failed on it).
-      - name: The SDK example beside the engine
-        run: |
-          set -euo pipefail
-          cmake -S packages/qa_native/src -B build/fx-sdk-example -A ARM64
-          cmake --build build/fx-sdk-example --config Release \
-            --target qa_fx_sdk_example
-          cp build/fx-sdk-example/Release/qa_fx_sdk_example.dll \
-            build/windows/arm64/plugins/qa_native/shared/Release/
+      # out. MSVC on ARM64 is a compiler nothing else here runs, and the fx
+      # pin's WebAssembly twin is Wasmtime writing ARM64 code as a plugin
+      # opens, in the Rust engine's fx host, which nothing else here does.
+      # ↩️That was the C host's own test, run here, until 2026-11-08.
       - name: Parity against the shipped engine
         env:
           QA_ENGINE_PATH: ${{ github.workspace }}/build/windows/arm64/plugins/qa_native/shared/Release/qa_engine.dll
@@ -119,15 +110,6 @@ jobs:
           # Run by the run plan, as every list run goes: the pins that wait
           # for the collector alone and last (tool/affected_tests.dart).
           dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"
-
-      # Wasmtime writes ARM64 code as a plugin opens, which nothing else here
-      # does. The host's own test asks a native plugin and its WebAssembly twin
-      # the same questions, and passes without the twin when the build found
-      # no engine — unless the run says it must have one.
-      - name: A .wasm answers as its native twin does
-        env:
-          QA_REQUIRE_WASM: '1'
-        run: build/windows/arm64/plugins/qa_native/shared/Release/qa_fx_plugin_test.exe
 
       # The launch the x64 zip gets on the desk: still alive after 15 s, with
       # its window titled Anicel. It proves every library resolves and the

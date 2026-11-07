@@ -15,7 +15,7 @@ import '../../helpers/temp_dir.dart';
 /// yes; a plugin the device has already replaced where it stood.
 ///
 /// The module is asked through a stand-in here: the engine's own tests
-/// hold its sandbox (qa_fx_plugin_test.c).
+/// hold its sandbox (native/fx_plugin, src/tests/wasm.rs).
 void main() {
   late Directory room;
   late FxPluginLibraryService library;

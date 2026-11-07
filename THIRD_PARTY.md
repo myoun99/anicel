@@ -80,19 +80,6 @@ tag lives in the `pdfium_dart`/`pdfium_flutter` package versions in
 packages themselves are MIT (covered by the pub-packages section
 above).
 
-### Wasmtime
-
-The Bytecode Alliance's WebAssembly runtime — the sandbox the fx
-plugins' modules run in (I-132). **Apache License 2.0 with LLVM
-exceptions**; the full text is bundled at
-`assets/licenses/LICENSE-Wasmtime.txt` and surfaced in the app's
-About ▸ licenses screen. Not vendored: the engine's CMake build
-(`packages/qa_native/src/CMakeLists.txt`) downloads the official
-prebuilt C API release once per machine — version and SHA-256 pinned
-there (`QA_WASMTIME_VERSION`) — from
-`github.com/bytecodealliance/wasmtime` releases, and links its static
-library into the engine. Windows x64 only for now.
-
 ### DirectX Shader Compiler
 
 Microsoft's shader compiler — `dxcompiler.dll`, which the GPU engine

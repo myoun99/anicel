@@ -22,7 +22,7 @@ void main() {
               (file.path.endsWith('.txt') || file.path.endsWith('.json')))
             "'${folder.path}/${file.uri.pathSegments.last}'",
     ];
-    expect(texts, contains("'assets/licenses/LICENSE-Wasmtime.txt'"));
+    expect(texts, contains("'assets/licenses/LICENSE-PDFium.txt'"));
     expect(texts, contains("'assets/licenses/rust_crates.json'"));
     expect(texts, contains("'assets/fonts/OFL-NotoSansSC.txt'"));
     for (final text in texts) {

@@ -37,17 +37,13 @@ jobs:
     # Measured 7-12 minutes including the parity check; 30 bounded a hang.
     # A build that stalls must not sit for six hours holding the
     # `testflight` concurrency group and blocking the nightly behind it.
-    # 50 since the iPad's fx engine is built from source when its cache is
-    # cold (apple.yml says why) — guessed at 10-20 minutes, not yet measured.
+    # 50 since the fx plugins' engine is built here: the Rust engine's build
+    # hook builds Wasmtime with it, for the Mac the parity runs on and for
+    # the iPad, from cold (apple.yml says how long). ↩️It was C's prebuilt
+    # engine and an iPad build from source until 2026-11-08.
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
-
-      # The fx plugins' engine, kept between runs as apple.yml keeps it.
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/anicel/third_party
-          key: wasmtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/qa_native/src/wasmtime.cmake') }}
 
       - uses: subosito/flutter-action@v2
         with:

@@ -136,12 +136,6 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield LicenseEntryWithLineBreaks(const [
       'PDFium',
     ], await rootBundle.loadString('assets/licenses/LICENSE-PDFium.txt'));
-    // Wasmtime is linked into the engine (the fx plugins' sandbox, I-132):
-    // Apache 2.0 with LLVM exceptions — shipped with the binary as PDFium's
-    // is, so the notice goes wherever the code does.
-    yield LicenseEntryWithLineBreaks(const [
-      'Wasmtime',
-    ], await rootBundle.loadString('assets/licenses/LICENSE-Wasmtime.txt'));
     // The dxcompiler.dll the GPU engine compiles its DX12 shaders with ships
     // beside it on Windows: one entry for the three licence texts its zip
     // carries, since the zip does not say which file each covers

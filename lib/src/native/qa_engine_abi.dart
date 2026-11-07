@@ -324,7 +324,10 @@ import '../core/on_a_worker.dart';
 ///   window lies on, which the compositor's clock is not when one is slower
 ///   than it (`gridOfTheWindow`, board
 ///   playback-pacing-knows-one-display-only, 유저 2026-11-02).
-const int kQaEngineAbiVersion = 63;
+/// - v64: `qa_fx_plugin_*` leave the C: the fx plugin host is the Rust
+///   engine's (native/fx_plugin, connection-round-checklist H), which
+///   `QaFxPluginHost` opens in the GPU engine's library.
+const int kQaEngineAbiVersion = 64;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

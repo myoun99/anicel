@@ -2,10 +2,12 @@
 //! whose types, places and names this host reads the frame by): one plugin
 //! opened from a native library or a WebAssembly module, asked the same
 //! four questions either way — through the exports the app's
-//! `QaFxPluginHost` binds by name (lib/src/native/qa_fx_plugin_host.dart),
-//! the C host's own (qa_fx_plugin.h), which this crate replaces
-//! (native-to-rust, 2026-11-06) and is held to byte for byte until the
-//! connection round (tests.rs).
+//! `QaFxPluginHost` binds by name (lib/src/native/qa_fx_plugin_host.dart)
+//! in the GPU engine's library, which carries this crate (its lib.rs).
+//! ↩️They were the C host's (qa_fx_plugin.h), which this crate replaced
+//! (native-to-rust, 2026-11-06), held to it byte for byte until the
+//! connection round deleted it (connection-round-checklist H, 2026-11-08 —
+//! tests.rs keeps what it answered).
 //!
 //! 🗣️I-132-Q5 (유저 2026-10-27): 「a + 데스크톱은 같은 규격의 네이티브(.dll ·
 //! .dylib)도」 — so the host has ONE frame writer (frame.rs) and two places
@@ -233,7 +235,7 @@ pub unsafe extern "C" fn qa_fx_plugin_reach(
 ///
 /// # Safety
 /// `handle` is null or an open plugin; `job` is null or a job whose
-/// pointers hold what qa_fx_plugin.h says they hold.
+/// pointers hold what [`RenderJob`] says they hold.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qa_fx_plugin_render(handle: *mut c_void, job: *const RenderJob) -> i32 {
     // SAFETY: the caller's contract.

@@ -7051,4 +7051,6 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v63: qa_display_window_screens - the vblanks of the screens the app's
 // window lies on, which the compositor's own clock is not when one of them
 // is slower than it.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 63; }
+// v64: qa_fx_plugin_* leave - the fx plugin host is the Rust engine's
+// (native/fx_plugin), which the app opens in the GPU engine's library.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 64; }
