@@ -214,11 +214,13 @@ void main() {
 
   /// The straight pixels of [nodes] laid on the engine over [ground], as a
   /// route folds its rows ([mapCompositeLeaves]) and lays its ground under
-  /// them ([onUnderlay]).
+  /// them ([onUnderlay]) — on the canvas's paper, or on [paper] where one
+  /// is named.
   Uint8List laid(
     List<CompositeNode<CutFrameCompositeLayer>> nodes,
-    ui.Color ground,
-  ) {
+    ui.Color ground, {
+    ui.Rect? paper,
+  }) {
     final tree = onUnderlay<EngineRow>(
       mapCompositeLeaves<CutFrameCompositeLayer, EngineRow>(
         nodes,
@@ -239,7 +241,7 @@ void main() {
         plan,
         tree,
         hold: hold,
-        paper: canvas.canvasRect,
+        paper: paper ?? canvas.canvasRect,
       ),
     );
   }
@@ -1131,6 +1133,46 @@ void main() {
       });
     });
   }
+
+  // 🗣️I-132-Q14: with Repeat Edge Pixels on, artwork on the pasteboard
+  // stays out of sight — where the canvas shows past its paper, a row
+  // half on it and a folder off it show nothing there. The walk's camera
+  // shows the paper alone, so the engine is held to the law by itself.
+  test('a Gaussian repeating the paper\'s edge puts nothing on the '
+      'pasteboard', () {
+    const paper = ui.Rect.fromLTWH(0, 0, 128, 128);
+    List<CompositeNode<CutFrameCompositeLayer>> nodes(
+      List<ResolvedLayerEffect> effects,
+    ) => [
+      row(1, effects: effects),
+      CompositeGroup(
+        children: [
+          row(2, columns: [0], placement: moved(140, 0)),
+        ],
+        opacity: 1,
+        blendMode: LayerBlendMode.normal,
+        effects: effects,
+      ),
+    ];
+    int inkPast(Uint8List pixels, int x) {
+      var ink = 0;
+      for (var at = 0; at < pixels.length; at += 4) {
+        if ((at ~/ 4) % canvas.width >= x && pixels[at + 3] > 0) {
+          ink += 1;
+        }
+      }
+      return ink;
+    }
+
+    final repeating = laid(
+      nodes([gaussian(10, repeats: true)]),
+      clear,
+      paper: paper,
+    );
+    expect(inkPast(laid(nodes(const []), clear, paper: paper), 128), isNot(0));
+    expect(inkPast(repeating, 0), isNot(0));
+    expect(inkPast(repeating, 128), 0);
+  });
 
   // ⏳What the engine lays no step for yet is refused, never dropped: a
   // tree laid without it would show a picture with a row missing.
