@@ -34,12 +34,12 @@
 //
 // ## Usage
 //
-//   dart run tool/mutation_run.dart lib/src/services/x.dart
-//   dart run tool/mutation_run.dart lib/src/services/x.dart --sample 6
-//   dart run tool/mutation_run.dart --out results.jsonl lib/a.dart lib/b.dart
-//   dart run tool/mutation_run.dart --plan lib/a.dart   # say what it would do
-//   dart run tool/mutation_run.dart --max-namers 3 lib/a.dart
-//   dart run tool/mutation_run.dart --resume --out r.jsonl lib/*.dart
+//   dart tool/mutation_run.dart lib/src/services/x.dart
+//   dart tool/mutation_run.dart lib/src/services/x.dart --sample 6
+//   dart tool/mutation_run.dart --out results.jsonl lib/a.dart lib/b.dart
+//   dart tool/mutation_run.dart --plan lib/a.dart   # say what it would do
+//   dart tool/mutation_run.dart --max-namers 3 lib/a.dart
+//   dart tool/mutation_run.dart --resume --out r.jsonl lib/*.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

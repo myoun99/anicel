@@ -23,16 +23,16 @@ WIN="$(cd "$TRUNK" && pwd -W 2>/dev/null || pwd)"
 WIN_JSON="$(printf '%s' "$WIN" | sed 's#/#\\\\\\\\#g')"
 
 # --- must BLOCK: `dart run` of a tool, wherever a command starts ---
-t "bare"                       "dart run tool/affected_tests.dart --list" block
-t "a tool in a folder"         "dart run tool/session_hooks/install.dart --board x --memory y" block
+t "bare"                       "dart tool/affected_tests.dart --list" block
+t "a tool in a folder"         "dart tool/session_hooks/install.dart --board x --memory y" block
 t "a flag before it"           "dart run --enable-asserts tool/import_graph.dart" block
 t "the SDK's dart by its path" "/c/flutter/bin/cache/dart-sdk/bin/dart.exe run tool/x.dart" block
 t "a lane's tool by its path"  "dart run $LANE/tool/x.dart" block
 t "a windows path"             "dart run $WIN_JSON\\\\tool\\\\x.dart" block
-t "inside a subshell"          "( cd /c/lane && dart run tool/x.dart )" block
-t "after a semicolon"          "echo go; dart run tool/x.dart" block
-t "after a newline"            "ls\\ndart run tool/x.dart" block
-t "past a variable in front"   "QA_X=1 dart run tool/x.dart" block
+t "inside a subshell"          "( cd /c/lane && dart tool/x.dart )" block
+t "after a semicolon"          "echo go; dart tool/x.dart" block
+t "after a newline"            "ls\\ndart tool/x.dart" block
+t "past a variable in front"   "QA_X=1 dart tool/x.dart" block
 t "quoted path"                "dart run \\\"tool/x.dart\\\"" block
 
 # --- must ALLOW: the two ways that build nothing ---
@@ -48,9 +48,9 @@ t "not dart at all"            "ls tool/" allow
 t "dart format"                "dart format --output=none tool/x.dart" allow
 
 # --- must ALLOW: PROSE ---
-t "echo about the rule"        "echo never dart run tool/x.dart" allow
-t "a commit message"           "git commit -m \\\"refuse dart run tool/ in the guard\\\"" allow
-out=$(printf '{"tool_input":{"command":"ls","description":"x; dart run tool/x.dart"}}' | bash "$G")
+t "echo about the rule"        "echo never dart tool/x.dart" allow
+t "a commit message"           "git commit -m \\\"refuse dart tool/ in the guard\\\"" allow
+out=$(printf '{"tool_input":{"command":"ls","description":"x; dart tool/x.dart"}}' | bash "$G")
 if [ -z "$out" ]; then pass=$((pass+1)); mark="ok  "; else fail=$((fail+1)); mark="FAIL"; fi
 printf '%s  %-46s got=%-5s want=%s\n' "$mark" "the description is not read" "$([ -n "$out" ] && echo block || echo allow)" allow
 

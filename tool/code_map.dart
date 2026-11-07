@@ -49,10 +49,10 @@
 //
 // ## Usage
 //
-//   dart run tool/code_map.dart                 # ranked tables for a human
-//   dart run tool/code_map.dart --json          # the whole map, for a tool
-//   dart run tool/code_map.dart --top 40        # how many rows per table
-//   dart run tool/code_map.dart --root lib      # what to walk (default lib)
+//   dart tool/code_map.dart                 # ranked tables for a human
+//   dart tool/code_map.dart --json          # the whole map, for a tool
+//   dart tool/code_map.dart --top 40        # how many rows per table
+//   dart tool/code_map.dart --root lib      # what to walk (default lib)
 import 'dart:convert';
 import 'dart:io';
 

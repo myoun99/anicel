@@ -103,7 +103,7 @@ jobs:
           echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           # Run by the run plan, as every list run goes: the pins that wait
           # for the collector alone and last (tool/affected_tests.dart).
-          dart run tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt" || {
+          dart tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt" || {
             status=$?
             python3 tool/print_mac_crash_reports.py
             exit $status

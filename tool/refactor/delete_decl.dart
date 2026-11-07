@@ -1,7 +1,7 @@
 // Deletes named TOP-LEVEL declarations from a Dart file, doc comment and
 // all, by the AST — the sweep's other half (2026-09-03).
 //
-//   dart run tool/refactor/delete_decl.dart <file> <name> [<name> ...]
+//   dart tool/refactor/delete_decl.dart <file> <name> [<name> ...]
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/features.dart';

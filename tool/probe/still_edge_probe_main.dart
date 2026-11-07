@@ -14,7 +14,7 @@
 // top-left corner. Take a screenshot of the screen at its own resolution
 // (nothing over the window), then:
 //
-//   dart run tool/probe/still_edge_compare.dart <screenshot.png> \
+//   dart tool/probe/still_edge_compare.dart <screenshot.png> \
 //     <EDGE_OUT>/layout.json
 //
 // The image is taken and put back as `StillRaster` does: the shape's layer

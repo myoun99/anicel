@@ -2,7 +2,7 @@
 // (fx-plugin-sdk-publish: the site's developer page and an SDK zip, no link
 // to this repository):
 //
-//   dart run tool/make_fx_sdk.dart <folder>
+//   dart tool/make_fx_sdk.dart <folder>
 //
 // writes <folder>/anicel-fx-sdk-<spec>.zip — the files of sdk/fx git
 // tracks, as this checkout holds them, under one folder: the spec crate,
@@ -54,7 +54,7 @@ String sdkName(int spec) => 'anicel-fx-sdk-$spec';
 
 void main(List<String> args) {
   if (args.length != 1) {
-    stderr.writeln('usage: dart run tool/make_fx_sdk.dart <folder>');
+    stderr.writeln('usage: dart tool/make_fx_sdk.dart <folder>');
     exit(64);
   }
   final listed = Process.runSync('git', ['ls-files', '-z', '--', sdkFolder]);

@@ -29,7 +29,7 @@
 // few seconds, take a screenshot at the screen's own resolution and keep the
 // now.json beside it; then:
 //
-//   dart run tool/probe/still_edge_compare.dart <image.png> <live.png> \
+//   dart tool/probe/still_edge_compare.dart <image.png> <live.png> \
 //     <now.json of the image shot>
 //
 // `StaticRaster` is left as it ships: on Impeller it paints through already.

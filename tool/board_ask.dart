@@ -1,6 +1,6 @@
 // Asks the board's server one question and prints what it answers.
 //
-//   dart run tool/board_ask.dart <http://host:4321> <path?query>
+//   dart tool/board_ask.dart <http://host:4321> <path?query>
 //
 //   …/api/records?id=<card>      that card's lines, its questions with them
 //   …/api/records?since=<stamp>  every line stamped at or after it

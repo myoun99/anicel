@@ -19,7 +19,7 @@
 # sentence.
 #
 # ⚠️This reads words, not the whole shell (guard_bare_cd.sh does that for
-# `cd`): a heredoc whose body has a line starting with `dart run tool/` is
+# `cd`): a heredoc whose body has a line starting with `dart tool/` is
 # refused too. The refusal says what to run instead, so the cost of that
 # mistake is one more call.
 # ⛔NOT TO THE LAST QUOTE (guard_bare_cd.sh's lesson): the command is read
@@ -79,4 +79,4 @@ BEGIN { RS = "^$" }
 [ "$verdict" = refuse ] || exit 0
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
-say_deny '⛔ `dart run tool/…` 은 이 체크아웃에 엔진 Rust 를 한 벌 더 짓는다(Dart VM 의 설정으로 — 485 MB · 1분, 2026-11-07 실측). `bash tool/run.sh <도구> <인자…>`(도구의 exe) 또는 `dart tool/<도구>.dart <인자…>`(JIT — 예: `dart tool/session_hooks/install.dart --board …`) 로 돌려라 — 둘 다 훅을 안 돌린다.'
+say_deny '⛔ `dart tool/…` 은 이 체크아웃에 엔진 Rust 를 한 벌 더 짓는다(Dart VM 의 설정으로 — 485 MB · 1분, 2026-11-07 실측). `bash tool/run.sh <도구> <인자…>`(도구의 exe) 또는 `dart tool/<도구>.dart <인자…>`(JIT — 예: `dart tool/session_hooks/install.dart --board …`) 로 돌려라 — 둘 다 훅을 안 돌린다.'

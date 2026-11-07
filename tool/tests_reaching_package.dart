@@ -1,7 +1,7 @@
 // THE TESTS THAT REACH A PACKAGE — for a CI job that cannot run what the
 // package runs.
 //
-//   dart run tool/tests_reaching_package.dart <package>
+//   dart tool/tests_reaching_package.dart <package>
 //
 // Prints, one path a line, every test file that imports `package:<package>/…`
 // or whose imports, however far away, reach a file that does — through the
@@ -21,7 +21,7 @@ import 'import_graph.dart';
 void main(List<String> args) {
   if (args.length != 1) {
     stderr.writeln(
-      'usage: dart run tool/tests_reaching_package.dart <package>',
+      'usage: dart tool/tests_reaching_package.dart <package>',
     );
     exit(2);
   }

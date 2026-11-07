@@ -1,7 +1,7 @@
 // Dumps the descriptor structure of an ABR file (keys, types, values) so
 // dynamics mappings are built from ground truth instead of guesses.
 //
-// Usage: dart run tool/abr_inspect.dart <file.abr> [maxBrushes]
+// Usage: dart tool/abr_inspect.dart <file.abr> [maxBrushes]
 import 'dart:io';
 import 'dart:typed_data';
 

@@ -75,7 +75,7 @@ runs:
         # Left out before the deal, not after it, so the shards that are
         # left stay even.
         if [ -n "${{ inputs.leave-out-package }}" ]; then
-          dart run tool/tests_reaching_package.dart \
+          dart tool/tests_reaching_package.dart \
             "${{ inputs.leave-out-package }}" > "$RUNNER_TEMP/left_out.txt"
           awk -F'\t' 'NR == FNR { out[$0]; next } !($2 in out)' \
             "$RUNNER_TEMP/left_out.txt" "$RUNNER_TEMP/weighted.txt" \
@@ -128,10 +128,17 @@ runs:
         # step's `flutter test` ran a shard at before — package:test's own
         # default, half the cores — so the move changes where files run,
         # not how many run at once.
+        #
+        # ⛔`dart tool/…`, not `dart run tool/…`: `dart run` runs every
+        # package's build hook for the Dart VM first — the GPU engine's
+        # Rust among them — for a tool that imports none of them
+        # (tool/session_hooks/guard_dart_run.sh; 관제 2026-11-08,
+        # ci-dart-run-tools-build-the-engine-again). The release
+        # workflows' parity runs are the same.
         cores=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN)
         half=$(( cores / 2 ))
         [ "$half" -ge 1 ] || half=1
-        dart run tool/affected_tests.dart \
+        dart tool/affected_tests.dart \
           --files-from "$RUNNER_TEMP/shard_tests.txt" \
           --outside-the-line --concurrency "$half"
     # One writer per run per OS, and only from master: thirteen shards

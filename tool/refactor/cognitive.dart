@@ -2,8 +2,8 @@
 // The audit's cognitive-complexity meter (2026-09-02): the warning line is
 // 15 (CLAUDE.md), and this is what measures it.
 //
-//   dart run tool/refactor/cognitive.dart lib            # the summary
-//   dart run tool/refactor/cognitive.dart lib --list 15  # every function above 15
+//   dart tool/refactor/cognitive.dart lib            # the summary
+//   dart tool/refactor/cognitive.dart lib --list 15  # every function above 15
 //
 // under a directory — so the ceiling's NUMBER comes out of the real code.
 //

@@ -2,7 +2,7 @@
 // far each cell's image half parts from its live half, read off a
 // screenshot of the probe's window.
 //
-//   dart run tool/probe/still_edge_compare.dart <screenshot.png> <layout.json>
+//   dart tool/probe/still_edge_compare.dart <screenshot.png> <layout.json>
 //
 // Finds the probe's magenta mark in the screenshot, then for every cell
 // compares the two halves pixel for pixel and prints, per variant and shape,
@@ -15,7 +15,7 @@
 // And of `still_dock_probe_main.dart` — the app itself, two screenshots of
 // one state, its images on and off:
 //
-//   dart run tool/probe/still_edge_compare.dart <image.png> <live.png> \
+//   dart tool/probe/still_edge_compare.dart <image.png> <live.png> \
 //     <now.json>
 //
 // Compares the two shots pixel for pixel and prints, per region the parted
@@ -33,9 +33,9 @@ void main(List<String> args) {
   }
   if (args.length != 2) {
     stderr.writeln(
-      'usage: dart run tool/probe/still_edge_compare.dart '
+      'usage: dart tool/probe/still_edge_compare.dart '
       '<screenshot.png> <layout.json>\n'
-      '       dart run tool/probe/still_edge_compare.dart '
+      '       dart tool/probe/still_edge_compare.dart '
       '<image.png> <live.png> <now.json>',
     );
     exit(64);

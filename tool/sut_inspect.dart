@@ -1,7 +1,7 @@
 // Inspection harness for Clip Studio .sut brush files (SQLite databases).
 // Read-only: never modifies the input files.
 //
-// Usage: dart run tool/sut_inspect.dart <file.sut> [more files...]
+// Usage: dart tool/sut_inspect.dart <file.sut> [more files...]
 import 'dart:io';
 import 'dart:typed_data';
 

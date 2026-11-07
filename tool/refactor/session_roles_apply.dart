@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print
 // G0-1 of the god-object decomposition (round 8, 2026-09-06): the roles.
 //
-//   dart run tool/refactor/session_roles_apply.dart <repoRoot> <session_map.json>
+//   dart tool/refactor/session_roles_apply.dart <repoRoot> <session_map.json>
 //
 // What it does, mechanically and in one pass:
 //   1. Every host name a collaborator reads or calls that belongs to a

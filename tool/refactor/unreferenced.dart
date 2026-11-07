@@ -1,7 +1,7 @@
 // The audit's "nobody calls it" sweep (2026-09-03): every public top-level
 // declaration under lib/ against every Dart file in lib/, test/ and tool/.
 //
-//   dart run tool/refactor/unreferenced.dart <repoRoot>
+//   dart tool/refactor/unreferenced.dart <repoRoot>
 //
 import 'dart:io';
 

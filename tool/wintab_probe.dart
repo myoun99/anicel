@@ -1,7 +1,7 @@
 ﻿// Wintab bridge probe (pen program, PEN-2).
 //
 // Plain-VM FFI smoke against a REAL tablet driver:
-//   dart run tool/wintab_probe.dart [path/to/qa_tablet.dll]
+//   dart tool/wintab_probe.dart [path/to/qa_tablet.dll]
 //
 // Prints the bridge ABI, whether wintab32 + a driver answer, and the
 // driver's device name. qat_open needs a visible window of this process,

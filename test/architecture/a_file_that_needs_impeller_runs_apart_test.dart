@@ -259,7 +259,7 @@ void main() {
         shard,
         contains('        half=\$(( cores / 2 ))\n'
             '        [ "\$half" -ge 1 ] || half=1\n'
-            '        dart run tool/affected_tests.dart \\\n'
+            '        dart tool/affected_tests.dart \\\n'
             '          --files-from "\$RUNNER_TEMP/shard_tests.txt" \\\n'
             '          --outside-the-line --concurrency "\$half"\n'),
       );

@@ -35,11 +35,11 @@
 //
 // ## Usage
 //
-//   dart run tool/audit_rank.dart                # the tables
-//   dart run tool/audit_rank.dart --by direct    # lines|fanin|complexity|reach|direct
-//   dart run tool/audit_rank.dart --top 40
-//   dart run tool/audit_rank.dart --unreached    # only what no test reaches
-//   dart run tool/audit_rank.dart --json
+//   dart tool/audit_rank.dart                # the tables
+//   dart tool/audit_rank.dart --by direct    # lines|fanin|complexity|reach|direct
+//   dart tool/audit_rank.dart --top 40
+//   dart tool/audit_rank.dart --unreached    # only what no test reaches
+//   dart tool/audit_rank.dart --json
 import 'dart:convert';
 import 'dart:io';
 

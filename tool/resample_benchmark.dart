@@ -14,7 +14,7 @@
 // Run with:
 //   cmake -S packages/qa_native/src -B build/native_standalone
 //   cmake --build build/native_standalone --config Release
-//   dart run tool/resample_benchmark.dart
+//   dart tool/resample_benchmark.dart
 //
 // Dev tool only: not imported by lib/ or test/ runtime code.
 // ignore_for_file: avoid_print
