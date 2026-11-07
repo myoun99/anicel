@@ -58,7 +58,7 @@ void main(List<String> args) async {
           turn.folder ?? input.outputDirectory.resolve('own_target/');
       // Which way it built, in the log the hooks runner keeps (stdout.txt
       // beside the hook's input) — never a silent second way (관제 22:55).
-      print(
+      stdout.writeln(
         turn.folder == null
             ? "gpu_engine: ${turn.why} — built in this checkout's own target, "
                 '${folder.toFilePath()}'
