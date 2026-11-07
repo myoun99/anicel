@@ -892,7 +892,17 @@ void main() {
   /// against the lane's base (`40d076f75`) names it added and nothing gone.
   /// ⛔Not bundled to fit: the paper is the one input the two doors give
   /// differently, and the 「one render」 pin counts the call it makes.
-  const wideSignatures = 462;
+  ///
+  /// ⚠️462 → 463 on 2026-11-08, named as the rule above asks
+  /// (connection-round-checklist H, the fx host moved into the Rust
+  /// engine): `_reach` (seven) in `qa_fx_plugin_host.dart` is the `@Native`
+  /// binding of the host's `qa_fx_plugin_reach`, its parameters the
+  /// export's own — the plugin, the values and their count, and the
+  /// moment's four numbers. It was the same seven as a `lookupFunction`
+  /// type, which this scan does not read. 🔬`clean_code_diff` against the
+  /// lane's base (`fe520ab12`) names it added and nothing gone. ⛔Not
+  /// bundled to fit: the binding takes what the export takes.
+  const wideSignatures = 463;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
