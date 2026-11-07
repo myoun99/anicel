@@ -158,3 +158,25 @@ fn a_file_the_os_does_not_read_either_is_no_sound() {
     assert_eq!((rust.format, rust.samples.len()), (FORMAT_UNKNOWN, 0));
     assert_eq!(c_window(&span, 0, -1).format, FORMAT_UNKNOWN, "the C's");
 }
+
+// A container whose start is AudioToolbox's to say — a CAF of AAC, its
+// packet table the encoder's priming: AudioToolbox takes it off itself and
+// says it did (`Start::taken`), where a movie's start is the crate's. Held
+// to the C's, read through the same AudioToolbox in the one process.
+// ⚠️Made by the test on the Mac, by the `afconvert` every Mac has (관제
+// 2026-11-07: no CAF in the repo, nothing to download); nowhere else.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_caf_audio_toolbox_trims_itself_is_read_as_the_c_reads_it() {
+    let caf = TempFile::new("tone.caf", &[]);
+    let made = std::process::Command::new("afconvert")
+        .args(["-f", "caff", "-d", "aac"])
+        .arg(fixture("tone.m4a"))
+        .arg(caf.path())
+        .status()
+        .expect("afconvert, which every Mac has");
+    assert!(made.success(), "afconvert made the CAF");
+    let sound = expect_same("an AAC CAF", &Span::whole(caf.path()), 0, -1);
+    assert_eq!(sound.format, FORMAT_OS, "no bundled decoder reads a CAF");
+    assert!(sound.samples.iter().any(|&s| s.abs() > 0.05), "the tone, not silence");
+}
