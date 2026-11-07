@@ -3,9 +3,18 @@
 //! straight RGBA8 128² tiles, a tile a slot, named (page, slot) by a
 //! [`TileAt`] — the pages every pass binds and the write path copies to. A
 //! page holds what one binding does, 128 MiB at most (2048 tiles at
-//! WebGPU's least binding), and a cel's tiles lie on pages of its own, so a
-//! pass over a cel binds its page or few: on a device that binds few pages
-//! a pass, the passes a composite takes.
+//! WebGPU's least binding). A cel's tiles go to a page of its own first,
+//! then to any page with a slot free, and a page is made only where none
+//! has one: a cel stored at once lies on a page or two, and the cels a
+//! frame shows on the few pages their tiles fill — on a device that binds
+//! few pages a pass, the passes a composite takes.
+//!
+//! ↩️A cel kept to pages of its own (1a ④, 11-05) until it was measured in
+//! the app (캔버스 베이스, gpu-canonical-store 11-08 02:54 — the Surface,
+//! S5_BA cut 352): each cel of 17 to 240 tiles opened a page of 128 MiB,
+//! nine of them filled 1152 MiB holding 399 of the cut's 8658 tiles, and a
+//! frame of its 68 rows would have bound 68 pages. Its 8658 tiles, 541
+//! MiB, fit on five.
 //!
 //! A held tile is never written over: a write takes a fresh slot (the write
 //! path's `put` copies where it is told — no caller writes in place,
@@ -46,8 +55,8 @@ const MOST_PAGE_BYTES: u64 = 128 << 20;
 /// each by a u16.
 const MOST_NAMED: usize = u16::MAX as usize + 1;
 
-/// A cel the pool stores tiles for — what keeps its tiles to pages of its
-/// own.
+/// A cel the pool stores tiles for — what names the pages its tiles go to
+/// first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Cel(u32);
 
@@ -62,7 +71,7 @@ struct Page {
     holds: Vec<u32>,
     /// The free slots, the one released last at the end.
     free: Vec<u16>,
-    /// The cel whose tiles it stores; none while every slot is free.
+    /// The cel whose tiles go to it first; none while every slot is free.
     cel: Option<Cel>,
 }
 
@@ -121,14 +130,15 @@ impl Pool {
         self.slots
     }
 
-    /// A cel of its own.
+    /// A cel: what the pages its tiles go to first are named by.
     pub(crate) fn cel(&mut self) -> Cel {
         self.cels += 1;
         Cel(self.cels)
     }
 
     /// A free slot for a tile of `cel`, held once: on the first of its
-    /// pages with one free, else on a page of nobody's, else on a new page.
+    /// pages with one free, else on a page of nobody's — its then —, else
+    /// on the first page with one free, else on a new page, its.
     pub(crate) fn fresh(&mut self, engine: &Engine, cel: Cel) -> Result<TileAt, Full> {
         let own = |page: &Page| page.cel == Some(cel) && !page.free.is_empty();
         let page = match self.pages.iter().position(own) {
@@ -136,7 +146,7 @@ impl Pool {
             None => self.claimed(engine, cel)?,
         };
         let book = &mut self.pages[page];
-        let slot = book.free.pop().expect("a cel's page or a fresh one has a slot free");
+        let slot = book.free.pop().expect("a page found or made has a slot free");
         book.holds[usize::from(slot)] = 1;
         Ok(TileAt { page: page as u16, slot })
     }
@@ -239,10 +249,15 @@ impl Pool {
         }
     }
 
-    /// A page for `cel`'s tiles: one of nobody's, or a new one.
+    /// A page for `cel`'s tiles where it has none with a slot free: one of
+    /// nobody's, its then; one of another cel's with a slot free; or a new
+    /// one, its.
     fn claimed(&mut self, engine: &Engine, cel: Cel) -> Result<usize, Full> {
         if let Some(page) = self.pages.iter().position(|page| page.cel.is_none()) {
             self.pages[page].cel = Some(cel);
+            return Ok(page);
+        }
+        if let Some(page) = self.pages.iter().position(|page| !page.free.is_empty()) {
             return Ok(page);
         }
         // ⚠️No test lowers the budget the OS gives: `fits` is tried on the

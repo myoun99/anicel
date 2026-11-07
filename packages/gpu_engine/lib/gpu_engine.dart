@@ -271,7 +271,8 @@ class GpuPool {
   final GpuEngine _engine;
   final Pointer<rust.Pool> _pool;
 
-  /// A cel of its own: the tiles stored under it keep to pages of theirs.
+  /// A cel: the tiles stored under it go to pages of theirs first, then to
+  /// any page with room (rust/src/kernels/pool/mod.rs).
   int cel() => rust.poolCel(_pool);
 
   /// Stores [tiles] — [gpuTileBytes] at each, alive for the call — under

@@ -1,12 +1,15 @@
-//! The pool on a real GPU: a cel's tiles keep to pages of its own, a slot
-//! is handed out again only once none holds it — the one released last
-//! first —, and the pages are what the write path copies to, a pass reads
-//! and a readback reads.
+//! The pool on a real GPU: a cel's tiles go to its own pages first and a
+//! page is made only where none has room, a slot is handed out again only
+//! once none holds it — the one released last first —, and the pages are
+//! what the write path copies to, a pass reads and a readback reads.
 
 use super::{Full, MOST_NAMED, Pool};
-use crate::kernels::composite::tests::{Rig, mix, rig};
-use crate::kernels::composite::{TILE_BYTES, TILE_TEXELS, TileAt, TileSet};
-use crate::kernels::shared::{le_bytes, room, words_buffer};
+use crate::kernels::blend::mode::NORMAL;
+use crate::kernels::composite::tests::{Rig, mix, rig, row, with_map};
+use crate::kernels::composite::{
+    Budget, NO_EDGE, Plan, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet, WHOLE,
+};
+use crate::kernels::shared::{ResampleMap, ResampleMode, le_bytes, room, words_buffer};
 use crate::kernels::write::Write;
 use crate::platform::VideoMemory;
 use crate::testing::read_buffer;
@@ -43,21 +46,23 @@ fn a_page_holds_what_a_binding_does_and_no_more_than_128_mib() {
     assert!(Pool::sized(named + 1, 1, u64::MAX).is_none());
 }
 
-// A cel's tiles go on its own pages, the first of them with room first; a
-// page full, its next tile is on a page of its own again.
+// A cel's tiles go to its own pages first, the first of them with room;
+// where none of its has room, to another cel's page with a slot free; and a
+// page is made only where no page has one (캔버스 베이스 11-08 02:54: a cel
+// on pages of its own, nine of them held 399 of a cut's 8658 tiles).
 #[test]
-fn a_cel_s_tiles_keep_to_pages_of_its_own() {
+fn a_cel_s_tiles_go_to_its_own_pages_first_and_a_page_is_made_where_none_has_room() {
     let engine = rig().engine;
     let mut pool = Pool::sized(3, MOST_NAMED, u64::MAX).expect("pool");
     let (a, b) = (pool.cel(), pool.cel());
-    let mut fresh = |cel| pool.fresh(engine, cel).expect("fresh");
-    assert_eq!(fresh(a), at(0, 0));
-    assert_eq!(fresh(b), at(1, 0));
-    assert_eq!(fresh(a), at(0, 1));
-    assert_eq!(fresh(a), at(0, 2));
-    assert_eq!(fresh(a), at(2, 0));
-    assert_eq!(fresh(b), at(1, 1));
-    assert_eq!(pool.pages().len(), 3);
+    assert_eq!(pool.fresh(engine, a), Ok(at(0, 0)));
+    assert_eq!(pool.fresh(engine, b), Ok(at(0, 1)), "a's page has room");
+    assert_eq!(pool.fresh(engine, a), Ok(at(0, 2)));
+    assert_eq!(pool.fresh(engine, b), Ok(at(1, 0)), "no page has room");
+    pool.release(at(0, 0)).expect("release");
+    assert_eq!(pool.fresh(engine, b), Ok(at(1, 1)), "its own page before the first with room");
+    assert_eq!(pool.fresh(engine, a), Ok(at(0, 0)));
+    assert_eq!(pool.pages().len(), 2);
 }
 
 // A slot held twice is free after two releases, not one; free slots are
@@ -90,12 +95,12 @@ fn a_page_none_holds_is_the_next_cel_s_that_needs_one() {
     let first = [pool.fresh(engine, a), pool.fresh(engine, a)].map(|at| at.expect("fresh"));
     assert_eq!(pool.fresh(engine, b), Ok(at(1, 0)));
     pool.release(first[0]).expect("release");
-    assert_eq!(pool.fresh(engine, b), Ok(at(1, 1)), "a page still a's is not b's");
+    assert_eq!(pool.fresh(engine, b), Ok(at(1, 1)), "b's own page first");
     pool.release(first[1]).expect("release");
     let c = pool.cel();
     assert_eq!(pool.fresh(engine, c), Ok(at(0, 1)));
+    assert_eq!(pool.fresh(engine, a), Ok(at(0, 0)), "a's page is c's now, with room");
     assert_eq!(pool.pages().len(), 2);
-    assert_eq!(pool.fresh(engine, a), Ok(at(2, 0)), "a's page is c's now");
 }
 
 // A free slot is neither held nor released, nor one past the pool; a pool
@@ -127,6 +132,7 @@ fn a_pool_makes_no_page_past_its_bytes() {
     let mut pool = Pool::sized(2, MOST_NAMED, 4 * TILE_BYTES).expect("pool");
     let (a, b) = (pool.cel(), pool.cel());
     let first = pool.fresh(engine, a).expect("fresh");
+    assert_eq!(pool.fresh(engine, b), Ok(at(0, 1)));
     assert_eq!(pool.fresh(engine, b), Ok(at(1, 0)));
     assert_eq!(pool.fresh(engine, b), Ok(at(1, 1)));
     assert_eq!(pool.fresh(engine, b), Err(Full), "two pages are all its bytes hold");
@@ -180,8 +186,8 @@ fn a_page_past_the_budget_the_os_gives_is_not_made() {
 }
 
 // What the write path copies to a slot is what a pass reads of it and what
-// a readback of its page reads there — a cel's tiles over two pages, and
-// another cel's between them.
+// a readback of its page reads there — a cel's tiles over two pages, the
+// last on another cel's.
 #[test]
 fn the_pages_are_what_the_write_path_copies_to_and_a_pass_reads() {
     let Rig { engine, composite } = rig();
@@ -206,8 +212,63 @@ fn the_pages_are_what_the_write_path_copies_to_and_a_pass_reads() {
         .copied(engine, pool.pages(), &set, &tiles, composite.widest())
         .expect("copied");
     assert!(read_buffer(engine, &read.out) == le_bytes(&[tile(0), tile(1), tile(3)].concat()));
-    let nothing = vec![0; TILE_TEXELS as usize];
-    assert!(read_buffer(engine, &pool.pages()[1]) == le_bytes(&[tile(2), nothing].concat()));
+    assert_eq!(pool.pages().len(), 2);
+    assert!(read_buffer(engine, &pool.pages()[1]) == le_bytes(&[tile(2), tile(3)].concat()));
+}
+
+// The pages shared, a cel's tiles may lie on more pages than a pass binds
+// — two where GLES reports four (관제 11-08 02:57): a cel stored after
+// three others took a page and a half lies on three, and a pass of two
+// pages, or of one, lays it as a pass binding them all does — copied, a
+// step a page; posed, its tiles under an output tile gathered.
+#[test]
+fn a_cel_on_more_pages_than_a_pass_binds_composites_as_in_one_pass() {
+    let Rig { engine, composite } = rig();
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    for _ in 0..3 {
+        let cel = pool.cel();
+        pool.fresh(engine, cel).expect("fresh");
+    }
+    let cel = pool.cel();
+    let places: Vec<TileAt> = (0..4).map(|_| pool.fresh(engine, cel).expect("fresh")).collect();
+    assert_eq!(places, [at(1, 1), at(2, 0), at(2, 1), at(3, 0)]);
+    let words: Vec<u32> = (0..4).flat_map(tile).collect();
+    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+    let put = words_buffer(engine, "tiles put", &words, usage);
+    let writes: Vec<(usize, TileAt)> = places.iter().copied().enumerate().collect();
+    Write::put(engine, pool.pages(), &put, &writes).expect("put");
+    let sets = [TileSet {
+        x0: 0,
+        y0: 0,
+        columns: 2,
+        rows: 2,
+        tiles: places.iter().copied().map(Some).collect(),
+    }];
+    let tiles = [(0, 0), (1, 0), (0, 1), (1, 1)];
+    let both = [1.0, 0.0, 0.5, 0.0, 1.0, 0.5, 0.0, 0.0, 1.0];
+    let half = ResampleMap::new(both, 1.0, ResampleMode::Blend, TILE, TILE).unwrap();
+    let copied = row(0, (0, 0), WHOLE, NORMAL);
+    for (name, step) in [("copied", copied), ("posed", with_map(0, half, WHOLE, NORMAL))] {
+        let steps = [step];
+        let plan = Plan {
+            pages: pool.pages(),
+            sets: &sets,
+            keys: &[],
+            matrices: &[],
+            chains: &[],
+            steps: &steps,
+            mask: None,
+        };
+        let laid = |pages| {
+            let budget = Budget { pages, ..composite.widest() };
+            let done = composite.run(engine, &plan, &tiles, NO_EDGE, budget).expect("composite");
+            read_buffer(engine, &done.out)
+        };
+        let all = laid(composite.widest().pages);
+        for pages in [1, 2] {
+            assert!(laid(pages) == all, "{name} at {pages} pages a pass");
+        }
+    }
 }
 
 /// What `places` of `pool` hold, read as a pass reads them: one row of
@@ -229,7 +290,8 @@ fn read_back(pool: &Pool, places: &[TileAt]) -> Vec<u8> {
 }
 
 // The app's tiles, stored from the CPU, land each whole in a fresh slot of
-// their cel — a cel's on its own pages, as a fresh slot is.
+// their cel — its own pages first, then a page with room, as a fresh slot
+// is.
 #[test]
 fn stored_tiles_land_each_in_a_fresh_slot_of_their_cel() {
     let engine = rig().engine;
@@ -240,7 +302,7 @@ fn stored_tiles_land_each_in_a_fresh_slot_of_their_cel() {
     let of_a = pool.store(engine, a, &tiles[..3]).expect("store a");
     let of_b = pool.store(engine, b, &tiles[3..]).expect("store b");
     assert_eq!(of_a, [at(0, 0), at(0, 1), at(1, 0)]);
-    assert_eq!(of_b, [at(2, 0)]);
+    assert_eq!(of_b, [at(1, 1)]);
     let places = [of_a, of_b].concat();
     assert!(read_back(&pool, &places) == bytes.concat());
 }

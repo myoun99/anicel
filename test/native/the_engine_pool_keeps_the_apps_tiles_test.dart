@@ -10,7 +10,8 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 
 /// The app stores its tiles in the engine's pool through the package's
 /// Dart (screen-on-the-engine): the places come back in the order the tiles
-/// went, a cel keeps to pages of its own, and a slot let go is free once.
+/// went, a cel shares a page where it has room, and a slot let go is free
+/// once.
 /// What lands in a slot is the engine's own tests' to pin
 /// (rust/src/kernels/pool/tests.rs) — here, what Dart makes of its C ABI.
 void main() {
@@ -43,7 +44,8 @@ void main() {
     expect(gpuTileSide, defaultCelTileSize);
   });
 
-  test('each tile stored lands in a slot of its own, a cel to its pages', () {
+  test('each tile stored lands in a slot of its own, a cel on a page with '
+      'room', () {
     final a = pool.cel();
     final b = pool.cel();
     final first = pool.store(a, made(3));
@@ -51,7 +53,8 @@ void main() {
 
     expect(first.toSet(), hasLength(3));
     expect({for (final tile in first) tile.page}, hasLength(1));
-    expect(second.single.page, isNot(first.first.page));
+    expect(second.single.page, first.first.page);
+    expect(first, isNot(contains(second.single)));
   });
 
   test('a pool given no bytes stores none', () {
