@@ -27,7 +27,9 @@ use crate::platform::Surface;
 
 use super::{BufferChain, Composite, Composited, KeyChain, NO_TILE, Plan, Step, TILE_BYTES, TileAt, TileSet};
 
-/// A plan as the app builds it: what [`Plan`] borrows, owned.
+/// A plan as the app builds it: what [`Plan`] borrows, owned. It names
+/// the pool's slots and holds none of them: build it, and run it before
+/// the pool lets those slots go (캔버스 베이스 패널, 11-07 22:30).
 #[derive(Default)]
 pub(crate) struct Planned {
     sets: Vec<TileSet>,

@@ -422,6 +422,34 @@ void main() {
     expect(pixel(keyed([true]), [(0, 0)], 3, 3), [255, 0, 0, 255]);
   });
 
+  // Two keys in one run, each by its own map: the reds keep a third of
+  // their alpha, the blues 200 whatever they held.
+  test("a run's keys each leave what their own map says", () {
+    final tiles = redAndBlue();
+    Uint32List table(int Function(int byte) keys) => Uint32List.fromList([
+      for (var byte = 0; byte < 256; byte++) keys(byte),
+    ]);
+    final plan = throughRow(tiles, (plan) {
+      final keys = plan.keys();
+      plan.keyRun(
+        keys,
+        red: table((byte) => byte > 127 ? 1 : 2),
+        green: table((_) => 3),
+        blue: table((byte) => byte > 127 ? 2 : 1),
+        restores: 0,
+        maps: Uint8List.fromList([
+          for (var alpha = 0; alpha < 256; alpha++) alpha ~/ 3,
+          for (var alpha = 0; alpha < 256; alpha++) 200,
+        ]),
+      );
+      return (keys: keys, chain: null);
+    });
+    final put = ran(plan, [(0, 0)]);
+
+    expect(pixel(put, [(0, 0)], 3, 3), [255, 0, 0, 85]);
+    expect(pixel(put, [(0, 0)], gpuTileSide - 3, 3), [0, 0, 255, 200]);
+  });
+
   // The matrix's row lies a tile in: a chain over its own tiles there runs
   // on them, and not on where nothing is.
   test("a chain's keys and matrix are the row's own", () {
@@ -773,15 +801,23 @@ void main() {
       );
     }
     expect(() => keyRun(keys, maps: 33 * 256), saying('a run of 33 keys'));
+    expect(() => keyRun(keys, maps: 32 * 256), returnsNormally);
     expect(() => keyRun(keys + 1), saying('no key chain ${keys + 1}'));
     expect(
       () => plan.chainKeys(chain, keys + 1),
       saying('no key chain ${keys + 1}'),
     );
-    expect(
-      () => plan.chainMatrix(chain + 1, twenty),
-      saying('no effect chain ${chain + 1}'),
-    );
+    for (final add in <void Function(int chain)>[
+      (chain) => plan.chainMatrix(chain, twenty),
+      (chain) => plan.chainKeys(chain, keys),
+      (chain) => plan.chainGaussian(chain, 1, 1),
+      (chain) => plan.chainLine(chain, (0, 0, 8, 8), const [
+        (taps: 3, step: (1, 0), centre: (0, 0), first: four, each: four),
+      ]),
+      (chain) => plan.chainLens(chain, (0, 0, 8, 8), hexagon(2)),
+    ]) {
+      expect(() => add(chain + 1), saying('no effect chain ${chain + 1}'));
+    }
     expect(
       () => plan.chainMatrix(chain, [1e6, ...twenty.skip(1)]),
       saying('colour matrix'),
@@ -796,6 +832,8 @@ void main() {
     );
     expect(plan.keys(), keys + 1);
     expect(plan.chain(0, 0, 1, 1), chain + 1);
+    final map = plan.mapDrawn(0, channel: GpuMapChannel.red, focal: 0);
+    expect(plan.mapDrawn(0, channel: GpuMapChannel.red, focal: 0), map + 1);
   });
 
   test('a row or a close naming what the plan lacks is refused where it '
