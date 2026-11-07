@@ -75,15 +75,15 @@ fn archive(blob: &[u8]) -> (Vec<u8>, i64) {
     (bytes, offset)
 }
 
-/// A test's answers in a row, fingerprinted for the ledger — each opening
+/// A test's costs in a row, fingerprinted for the ledger — each opening
 /// whether it opened (one byte), then its size and the header's cost; each
-/// window its answer, the whole buffer it read into, then the cost so far;
-/// every number i64 little-endian — so the C's answers stay held once the
-/// C is deleted (connection-round-checklist A, 관제 2026-11-07).
+/// window the cost so far; every number i64 little-endian — so the C's
+/// answers stay held once the C is deleted (connection-round-checklist A,
+/// 관제 2026-11-07). What a window reads is the medium's own, held as that.
 #[derive(Default)]
-struct Answers(ledger::Running);
+struct Costs(ledger::Running);
 
-impl Answers {
+impl Costs {
     fn add(&mut self, numbers: &[i64], bytes: &[u8]) {
         for number in numbers {
             self.0.add(&number.to_le_bytes());
@@ -98,22 +98,25 @@ impl Answers {
 
 /// Both readers opened on the same span: whether each opened, and the size
 /// each says, held to the C's.
-fn both(answers: &mut Answers, path: &str, offset: i64, length: i64, framed: bool) -> Option<(CSpan, Span)> {
+fn both(costs: &mut Costs, path: &str, offset: i64, length: i64, framed: bool) -> Option<(CSpan, Span)> {
     let theirs = CSpan::open(path, offset, length, framed);
     let ours = Span::open(&CString::new(path).expect("no NUL"), offset, length, framed);
     let what = format!("{path} [{offset}, +{length}) framed {framed}");
     assert_eq!(ours.is_some(), !theirs.0.is_null(), "{what}: opened");
-    answers.add(&[], &[u8::from(ours.is_some())]);
+    costs.add(&[], &[u8::from(ours.is_some())]);
     let ours = ours?;
     assert_eq!(ours.size(), theirs.size(), "{what}: size");
     assert_eq!(ours.stats(), theirs.stats(), "{what}: the header's cost");
     let (blocks, bytes) = ours.stats();
-    answers.add(&[ours.size(), blocks, bytes], &[]);
+    costs.add(&[ours.size(), blocks, bytes], &[]);
     Some((theirs, ours))
 }
 
-/// One window through both: the answer, the bytes, and the cost so far.
-fn window(answers: &mut Answers, spans: &mut (CSpan, Span), position: i64, want: usize, what: &str) -> i64 {
+/// One window through both: the answer, the bytes, and the cost so far,
+/// held to the C's; and where it is not refused, the bytes the `medium`
+/// has there — as many as the window and the span's size leave, the rest
+/// of the buffer as it was.
+fn window(costs: &mut Costs, spans: &mut (CSpan, Span), medium: &[u8], position: i64, want: usize, what: &str) -> i64 {
     let (mut theirs_out, mut ours_out) = (vec![0xAAu8; want.max(1)], vec![0xAAu8; want.max(1)]);
     let theirs = spans.0.read(position, &mut theirs_out[..want]);
     let ours = spans.1.read(position, &mut ours_out[..want]).map_or(-1, |wrote| wrote as i64);
@@ -121,8 +124,15 @@ fn window(answers: &mut Answers, spans: &mut (CSpan, Span), position: i64, want:
     assert!(ours_out == theirs_out, "{what}: window {position} +{want}, the bytes");
     assert_eq!(spans.1.stats(), spans.0.stats(), "{what}: window {position} +{want}, the cost");
     let (blocks, bytes) = spans.1.stats();
-    answers.add(&[ours], &ours_out);
-    answers.add(&[blocks, bytes], &[]);
+    costs.add(&[blocks, bytes], &[]);
+    if ours >= 0 {
+        let size = spans.1.size();
+        let left = if position < 0 || position >= size { 0 } else { size - position };
+        assert_eq!(ours, left.min(want as i64), "{what}: window {position} +{want}, how many");
+        let (from, wrote) = ((position.max(0) as usize).min(medium.len()), ours as usize);
+        assert_eq!(Some(&ours_out[..wrote]), medium.get(from..from + wrote), "{what}: window {position} +{want}, the medium's bytes");
+        assert!(ours_out[wrote..].iter().all(|&byte| byte == 0xAA), "{what}: window {position} +{want}, nothing past them");
+    }
     ours
 }
 
@@ -150,19 +160,20 @@ fn a_plain_span_reads_as_the_c_reads_it() {
     let path = file("plain", &archive);
     let path = path.to_str().expect("UTF-8");
     let length = bytes.len() as i64;
-    let mut answers = Answers::default();
-    let mut spans = both(&mut answers, path, offset, length, false).expect("opens");
+    let mut costs = Costs::default();
+    let mut spans = both(&mut costs, path, offset, length, false).expect("opens");
     for (position, want) in windows(length, 1024) {
-        window(&mut answers, &mut spans, position, want, "plain");
+        window(&mut costs, &mut spans, &bytes, position, want, "plain");
     }
     let total = archive.len() as i64;
     for (offset, length) in [(0, total), (0, 0), (total, 0), (total - 1, 1), (total - 1, 2), (-1, 4), (4, -1), (offset, length + 78)] {
-        if let Some(mut spans) = both(&mut answers, path, offset, length, false) {
-            window(&mut answers, &mut spans, 0, 16, "an edge span");
+        if let Some(mut spans) = both(&mut costs, path, offset, length, false) {
+            let edge = archive.get(offset as usize..(offset + length) as usize).expect("an open span lies in its file");
+            window(&mut costs, &mut spans, edge, 0, 16, "an edge span");
         }
     }
-    assert!(both(&mut answers, &format!("{path}.missing"), 0, 1, false).is_none());
-    answers.pinned("media/span-plain");
+    assert!(both(&mut costs, &format!("{path}.missing"), 0, 1, false).is_none());
+    costs.pinned("media/span-plain");
     // The C's file shuts out deleting while it is open.
     drop(spans);
     std::fs::remove_file(path).expect("cleanup");
@@ -187,7 +198,7 @@ fn a_path_past_the_wide_buffer_is_refused_by_both() {
     let far = deep.join("medium.bin");
     std::fs::write(&far, &bytes).expect("a file far down");
     assert!(far.to_str().expect("UTF-8").encode_utf16().count() >= 1024, "LIVENESS — past the buffer");
-    assert!(both(&mut Answers::default(), far.to_str().expect("UTF-8"), 0, bytes.len() as i64, false).is_none());
+    assert!(both(&mut Costs::default(), far.to_str().expect("UTF-8"), 0, bytes.len() as i64, false).is_none());
     std::fs::remove_dir_all(&top).expect("cleanup");
 }
 
@@ -196,7 +207,7 @@ fn a_path_past_the_wide_buffer_is_refused_by_both() {
 // reads: every window's bytes, and the blocks and bytes it cost, the C's.
 #[test]
 fn a_framed_span_reads_as_the_c_reads_it() {
-    let mut answers = Answers::default();
+    let mut costs = Costs::default();
     for block in [1000usize, 4096, 65536, 512 * 1024] {
         for size in [1, block - 1, block, block + 1, 3 * block + 777] {
             let medium = medium(size);
@@ -204,18 +215,18 @@ fn a_framed_span_reads_as_the_c_reads_it() {
             let path = file(&format!("framed-{block}-{size}"), &archive);
             let path = path.to_str().expect("UTF-8");
             let what = format!("blocks of {block}, {size} bytes");
-            let mut spans = both(&mut answers, path, offset, archive.len() as i64 - offset - 77, true).expect("opens");
+            let mut spans = both(&mut costs, path, offset, archive.len() as i64 - offset - 77, true).expect("opens");
             for (position, want) in windows(size as i64, block as i64) {
-                window(&mut answers, &mut spans, position, want, &what);
+                window(&mut costs, &mut spans, &medium, position, want, &what);
             }
             // The same bytes as a header from the wrong origin, or cut short.
-            both(&mut answers, path, offset + 4, archive.len() as i64 - offset - 81, true);
-            both(&mut answers, path, offset, archive.len() as i64 - offset - 78, true);
+            both(&mut costs, path, offset + 4, archive.len() as i64 - offset - 81, true);
+            both(&mut costs, path, offset, archive.len() as i64 - offset - 78, true);
             drop(spans);
             std::fs::remove_file(path).expect("cleanup");
         }
     }
-    answers.pinned("media/span-framed");
+    costs.pinned("media/span-framed");
 }
 
 /// `blob` with `u32` `value` written at `at`.
@@ -230,6 +241,9 @@ fn with_u32(blob: &[u8], at: usize, value: u32) -> Vec<u8> {
 // size holds, a block of no bytes or running past the span — and blocks
 // that do not decode, or decode to another length: refused where the C
 // refuses them, at the door or at the window.
+// Each one's verdict is the C's, measured 2026-11-07 — refused at the door
+// (`None`), or opened at a size with so many of its windows refused — and
+// so held once the C is gone (connection-round-checklist A).
 #[test]
 fn a_framed_span_that_does_not_hold_together_is_refused_as_the_c_refuses_it() {
     let block = 4096;
@@ -240,52 +254,64 @@ fn a_framed_span_that_does_not_hold_together_is_refused_as_the_c_refuses_it() {
     // One block of the largest size trusted, so its count still holds when
     // the size goes past it.
     let largest = framed(&medium, 64 << 20);
-    let mut broken = vec![
-        ("block size 0", with_u32(&blob, 0, 0)),
-        ("block size at the bound", largest.clone()),
-        ("block size past the bound", with_u32(&largest, 0, (64 << 20) + 1)),
-        ("a count too many", with_u32(&blob, 12, 5)),
-        ("a count too few", with_u32(&blob, 12, 3)),
-        ("a length past a signed size", with_u32(&blob, 8, 0x8000_0000)),
-        ("a block of nothing", with_u32(&blob, 20, 0)),
-        ("a block past the span", with_u32(&blob, 28, lengths[3] + 1)),
-        ("a block short by a byte", with_u32(&blob, 28, lengths[3] - 1)),
-        ("the second block's magic broken", {
-            let mut changed = blob.clone();
-            changed[second] ^= 0xFF;
-            changed
-        }),
-        ("the second and third blocks' lengths swapped", {
-            let mut changed = with_u32(&blob, 20, lengths[2]);
-            changed[24..28].copy_from_slice(&lengths[1].to_le_bytes());
-            changed
-        }),
-        ("a total a byte longer", with_u32(&blob, 4, medium.len() as u32 + 1)),
-        ("a total a byte shorter", with_u32(&blob, 4, medium.len() as u32 - 1)),
+    let broken = [
+        ("block size 0", with_u32(&blob, 0, 0), None),
+        ("block size at the bound", largest.clone(), Some((12_388, 0))),
+        ("block size past the bound", with_u32(&largest, 0, (64 << 20) + 1), None),
+        ("a count too many", with_u32(&blob, 12, 5), None),
+        ("a count too few", with_u32(&blob, 12, 3), None),
+        ("a length past a signed size", with_u32(&blob, 8, 0x8000_0000), None),
+        ("a block of nothing", with_u32(&blob, 20, 0), None),
+        ("a block past the span", with_u32(&blob, 28, lengths[3] + 1), None),
+        ("a block short by a byte", with_u32(&blob, 28, lengths[3] - 1), Some((12_388, 5))),
+        (
+            "the second block's magic broken",
+            {
+                let mut changed = blob.clone();
+                changed[second] ^= 0xFF;
+                changed
+            },
+            Some((12_388, 29)),
+        ),
+        (
+            "the second and third blocks' lengths swapped",
+            {
+                let mut changed = with_u32(&blob, 20, lengths[2]);
+                changed[24..28].copy_from_slice(&lengths[1].to_le_bytes());
+                changed
+            },
+            Some((12_388, 0)),
+        ),
+        ("a total a byte longer", with_u32(&blob, 4, medium.len() as u32 + 1), Some((12_389, 5))),
+        ("a total a byte shorter", with_u32(&blob, 4, medium.len() as u32 - 1), Some((12_387, 5))),
+        (
+            "an empty medium",
+            {
+                let mut empty = (block as u32).to_le_bytes().to_vec();
+                empty.extend_from_slice(&[0; 12]);
+                empty
+            },
+            Some((0, 0)),
+        ),
     ];
-    broken.push(("an empty medium", {
-        let mut empty = (block as u32).to_le_bytes().to_vec();
-        empty.extend_from_slice(&[0; 12]);
-        empty
-    }));
-    let (mut opened, mut refused_at_a_window) = (0, 0);
-    let mut answers = Answers::default();
-    for (what, blob) in broken {
+    let mut costs = Costs::default();
+    for (what, blob, verdict) in broken {
         let (archive, offset) = archive(&blob);
         let path = file(&what.replace(' ', "-"), &archive);
         let path = path.to_str().expect("UTF-8");
-        if let Some(mut spans) = both(&mut answers, path, offset, blob.len() as i64, true) {
-            opened += 1;
+        let mut answered = None;
+        if let Some(mut spans) = both(&mut costs, path, offset, blob.len() as i64, true) {
             let size = spans.1.size();
-            for (position, want) in windows(size, block as i64) {
-                refused_at_a_window += usize::from(window(&mut answers, &mut spans, position, want, what) == -1);
-            }
+            let refused = windows(size, block as i64)
+                .into_iter()
+                .filter(|&(position, want)| window(&mut costs, &mut spans, &medium, position, want, what) == -1)
+                .count();
+            answered = Some((size, refused));
         }
+        assert_eq!(answered, verdict, "{what}");
         std::fs::remove_file(path).expect("cleanup");
     }
-    answers.pinned("media/span-framed-broken");
-    // LIVENESS — some were refused at the door, some at a window.
-    assert!(opened > 0 && refused_at_a_window > 0, "{opened} opened, {refused_at_a_window} windows refused");
+    costs.pinned("media/span-framed-broken");
 }
 
 // Nothing to read from, nothing to read into: the C's answers.
