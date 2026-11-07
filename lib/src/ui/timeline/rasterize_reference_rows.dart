@@ -22,6 +22,11 @@ import '../text/app_strings.dart';
 /// ↩️A row whose uses showed its still apart was left the reference it
 /// was, and a notice said why (F-374-Q11 「막고 경고」), until 🗣️I-120-Q22
 /// parted its cels.
+///
+/// The press is ONE undo step however its rows let go — the law the keyed
+/// rows' one step already kept, asked of the whole press (I-120 ⑥-③, the
+/// Surface 2026-11-07: two rows baked, three undos). ↩️Each baked row was
+/// a step of its own, or more, until then.
 Future<void> rasterizeReferenceRows(
   BuildContext context,
   EditorSessionManager session,
@@ -31,6 +36,25 @@ Future<void> rasterizeReferenceRows(
   if (cutId == null) {
     return;
   }
+  // The bakes write a row at a time across the wait window's events, so
+  // the press folds what it wrote once it is over, as Import's does (F-405)
+  // — a batch that stopped part-way is still one press.
+  final history = session.historyManager.gestures;
+  final pressed = history.mark;
+  try {
+    await _letGo(context, session, cutId, targets);
+  } finally {
+    history.foldSince(pressed, 'Rasterize layers');
+  }
+}
+
+/// [targets] let go, each the way `referenceLetGo` says.
+Future<void> _letGo(
+  BuildContext context,
+  EditorSessionManager session,
+  CutId cutId,
+  List<Layer> targets,
+) async {
   final keyed = <LayerId>[];
   final baked = <_Baked>[];
   for (final layer in targets) {
