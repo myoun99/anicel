@@ -123,7 +123,7 @@ void main() {
     expect(
       growths,
       lessThanOrEqualTo((panned / view).ceil() + 1),
-      reason: 'built again ${growths}× over ${panned.round()} px past the '
+      reason: 'built again $growths× over ${panned.round()} px past the '
           'end, a ${view.round()} px view',
     );
     final runway = position().maxScrollExtent - position().pixels;
