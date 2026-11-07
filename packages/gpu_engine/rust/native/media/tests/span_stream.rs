@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 
 use media::media_foundation::{span_stream, up};
 use media::span::Span;
+use oracle::framed;
 use windows::Win32::Foundation::E_NOTIMPL;
 use windows::Win32::Media::MediaFoundation::{
     IMFAsyncCallback, IMFAsyncCallback_Impl, IMFAsyncResult, IMFByteStream, MFBYTESTREAM_IS_READABLE,
@@ -67,28 +68,6 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.0);
     }
-}
-
-/// `medium` framed in blocks of `block_bytes`, each a level-9 zstd frame,
-/// as `writeMediaBlob` lays them out.
-fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
-    let blocks: Vec<Vec<u8>> = medium
-        .chunks(block_bytes)
-        .map(|block| {
-            let mut frame = vec![0u8; block.len() + block.len() / 128 + 1024];
-            let wrote = compress::compress(&mut frame, block).expect("room enough");
-            frame.truncate(wrote);
-            frame
-        })
-        .collect();
-    let mut blob = (block_bytes as u32).to_le_bytes().to_vec();
-    blob.extend_from_slice(&(medium.len() as u64).to_le_bytes());
-    blob.extend_from_slice(&(blocks.len() as u32).to_le_bytes());
-    for block in &blocks {
-        blob.extend_from_slice(&(block.len() as u32).to_le_bytes());
-    }
-    blob.extend(blocks.concat());
-    blob
 }
 
 fn read(stream: &IMFByteStream, into: &mut [u8]) -> (Result<()>, u32) {

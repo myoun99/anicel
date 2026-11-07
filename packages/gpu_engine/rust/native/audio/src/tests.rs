@@ -6,7 +6,7 @@
 use std::ffi::{CString, c_char, c_void};
 use std::path::{Path, PathBuf};
 
-use oracle::export;
+use oracle::{export, framed};
 
 mod movies;
 mod os;
@@ -16,8 +16,6 @@ mod wavs;
 type Window =
     unsafe extern "C" fn(*const c_char, i64, i64, i32, i64, i64, *mut *mut f32, *mut i64, *mut i32, *mut i32) -> i32;
 type Free = unsafe extern "C" fn(*mut f32);
-type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
-type Bound = extern "C" fn(i64) -> i64;
 
 /// 🚨The most one request of these tests asks the heap for: past it the
 /// request is refused, and the tests stop there (`handle_alloc_error`)
@@ -186,32 +184,6 @@ pub(crate) fn between_junk(name: &str, body: &[u8]) -> (TempFile, i64) {
     bytes.extend_from_slice(body);
     bytes.extend((0..777).map(|i| (i * 29 + 3) as u8));
     (TempFile::new(name, &bytes), offset)
-}
-
-/// `medium` framed as the save frames it — blocks of `block_bytes`, each a
-/// zstd frame the C compresses.
-pub(crate) fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
-    // SAFETY: qa_compress.c's declarations.
-    let (bound, compress) =
-        unsafe { (export::<Bound>("qa_zstd_compress_bound"), export::<Compress>("qa_zstd_compress")) };
-    let blocks: Vec<Vec<u8>> = medium
-        .chunks(block_bytes)
-        .map(|block| {
-            let mut frame = vec![0u8; bound(block.len() as i64) as usize];
-            // SAFETY: both buffers hold the sizes passed.
-            let written =
-                unsafe { compress(frame.as_mut_ptr(), frame.len() as i64, block.as_ptr(), block.len() as i64, 9) };
-            frame.truncate(written as usize);
-            frame
-        })
-        .collect();
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(&(block_bytes as u32).to_le_bytes());
-    bytes.extend_from_slice(&(medium.len() as u64).to_le_bytes());
-    bytes.extend_from_slice(&(blocks.len() as u32).to_le_bytes());
-    blocks.iter().for_each(|block| bytes.extend_from_slice(&(block.len() as u32).to_le_bytes()));
-    blocks.iter().for_each(|block| bytes.extend_from_slice(block));
-    bytes
 }
 
 /// A stream of bytes that looks like nothing, the same every run.

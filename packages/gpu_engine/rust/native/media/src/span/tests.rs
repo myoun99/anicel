@@ -6,7 +6,7 @@
 use std::ffi::{CString, c_char};
 use std::path::PathBuf;
 
-use oracle::export;
+use oracle::{export, framed};
 
 use super::Span;
 
@@ -15,8 +15,6 @@ type Size = unsafe extern "C" fn(*const u8) -> i64;
 type Read = unsafe extern "C" fn(*mut u8, i64, *mut u8, i64) -> i64;
 type Close = unsafe extern "C" fn(*mut u8);
 type Stats = unsafe extern "C" fn(*const u8, *mut i64, *mut i64);
-type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
-type Bound = extern "C" fn(i64) -> i64;
 
 /// The C's span reader, through the engine's exports.
 struct CSpan(*mut u8);
@@ -65,31 +63,6 @@ fn file(name: &str, bytes: &[u8]) -> PathBuf {
 /// not the medium's own shows, and it compresses.
 fn medium(size: usize) -> Vec<u8> {
     (0..size).map(|at| ((at * 7) ^ (at >> 9) ^ (at >> 17)) as u8).collect()
-}
-
-/// `medium` framed in blocks of `block_bytes`, each the C's level-9 frame,
-/// as `writeMediaBlob` lays them out.
-fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
-    // SAFETY: qa_compress.c's declarations.
-    let (bound, compress) = unsafe { (export::<Bound>("qa_zstd_compress_bound"), export::<Compress>("qa_zstd_compress")) };
-    let blocks: Vec<Vec<u8>> = medium
-        .chunks(block_bytes)
-        .map(|block| {
-            let mut frame = vec![0u8; bound(block.len() as i64) as usize];
-            // SAFETY: both buffers hold the sizes passed.
-            let wrote = unsafe { compress(frame.as_mut_ptr(), frame.len() as i64, block.as_ptr(), block.len() as i64, 9) };
-            frame.truncate(wrote as usize);
-            frame
-        })
-        .collect();
-    let mut blob = (block_bytes as u32).to_le_bytes().to_vec();
-    blob.extend_from_slice(&(medium.len() as u64).to_le_bytes());
-    blob.extend_from_slice(&(blocks.len() as u32).to_le_bytes());
-    for block in &blocks {
-        blob.extend_from_slice(&(block.len() as u32).to_le_bytes());
-    }
-    blob.extend(blocks.concat());
-    blob
 }
 
 /// Junk, then `blob`, then junk: the archive a span sits in. The blob's

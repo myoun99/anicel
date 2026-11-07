@@ -96,6 +96,41 @@ pub unsafe fn sidecar_export<F: Copy>(library: &str, name: &str) -> F {
     unsafe { export_of(sidecar(library), library, name) }
 }
 
+/// `medium` framed as the save frames it (`writeMediaBlob`): the block size,
+/// the medium's length, the count of blocks and each one's length, then the
+/// blocks — every `block_bytes` of it the C's level-9 zstd frame.
+///
+/// One writing of it for every crate whose tests read a framed span (저장
+/// 2026-11-07): media's span and stream tests and audio's each laid it out
+/// themselves, and the video decoder's would have been a fourth.
+/// `gpu_engine`'s `kernels/shared/one_framing.rs` reads for another.
+pub fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
+    type Bound = extern "C" fn(i64) -> i64;
+    type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
+    // SAFETY: qa_compress.c's declarations.
+    let (bound, compress) =
+        unsafe { (export::<Bound>("qa_zstd_compress_bound"), export::<Compress>("qa_zstd_compress")) };
+    let blocks: Vec<Vec<u8>> = medium
+        .chunks(block_bytes)
+        .map(|block| {
+            let mut frame = vec![0u8; bound(block.len() as i64) as usize];
+            // SAFETY: both buffers hold the sizes passed.
+            let wrote =
+                unsafe { compress(frame.as_mut_ptr(), frame.len() as i64, block.as_ptr(), block.len() as i64, 9) };
+            frame.truncate(wrote as usize);
+            frame
+        })
+        .collect();
+    let mut blob = (block_bytes as u32).to_le_bytes().to_vec();
+    blob.extend_from_slice(&(medium.len() as u64).to_le_bytes());
+    blob.extend_from_slice(&(blocks.len() as u32).to_le_bytes());
+    for block in &blocks {
+        blob.extend_from_slice(&(block.len() as u32).to_le_bytes());
+    }
+    blob.extend(blocks.concat());
+    blob
+}
+
 /// # Safety
 /// `F` is the function pointer type of the export's C declaration.
 unsafe fn export_of<F: Copy>(library: &Library, called: &str, name: &str) -> F {
