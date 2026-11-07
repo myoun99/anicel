@@ -66,6 +66,7 @@ import '../../services/persistence/media_staging_store.dart';
 import '../audio/audio_conform_store.dart';
 import '../import/import_file_settings.dart';
 import 'import_landing.dart';
+import 'independent_clip_mint.dart' show givePanelsTheirPictures;
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
 import '../canvas/tiled_surface_compose.dart'
@@ -376,7 +377,7 @@ class ProjectImportDoors {
       duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
       assets: assets,
     );
-    if (!landed) {
+    if (landed == null) {
       for (final frame in decoded) {
         frame.picture.dispose();
       }
@@ -399,6 +400,7 @@ class ProjectImportDoors {
         layer,
         bakes,
         rowId: _rowOf(spot),
+        picturedPanels: landed.picturedPanels,
         standing: _standingFor(reference, fit),
         pictureOf: (bake, _) async =>
             _pictureOf(decoded[bake.sourceFrameIndex].picture, owned: false),
@@ -464,12 +466,13 @@ class ProjectImportDoors {
       mint: arrival.mint,
       frameNames: [for (final file in files) file.label],
     );
-    if (!_landing.land(
+    final landed = _landing.land(
       [plan.layer],
       arrival: arrival,
       duration: _sequenceLength(plan.layer),
       assets: const [],
-    )) {
+    );
+    if (landed == null) {
       return false;
     }
     await _bakeLandedCels(
@@ -477,6 +480,7 @@ class ProjectImportDoors {
       plan.layer,
       plan.bakes,
       rowId: _rowOf(spot),
+      picturedPanels: landed.picturedPanels,
       standing: _atTheFit(settings.fit),
       pictureOf: (bake, _) => _ownedStillOf(bake.sourceFile),
       onProgress: onRenderProgress,
@@ -607,7 +611,7 @@ class ProjectImportDoors {
     }
     final arrival = newCut ? gate.withCanvasSize(expansion.canvas) : gate;
 
-    _landing.land(
+    final landed = _landing.land(
       expansion.layers,
       arrival: arrival,
       duration: duration,
@@ -625,6 +629,7 @@ class ProjectImportDoors {
           cel.surface,
         );
       }
+      _givePanelsTheirPictures(bakedCut, landed?.picturedPanels ?? const {});
     }
 
     // The last row may be a folder — the file's, where it joined a cut, or
@@ -772,7 +777,7 @@ class ProjectImportDoors {
         duration: spanCount > 1 ? _sequenceLength(layer) : arrival.projectFps,
         assets: assets,
       );
-      if (!landed) {
+      if (landed == null) {
         return false;
       }
       // ⛔ No fingerprint here. A PDF is opened BY PATH and rendered page by
@@ -794,6 +799,7 @@ class ProjectImportDoors {
         layer,
         bakes,
         rowId: _rowOf(spot),
+        picturedPanels: landed.picturedPanels,
         standing: standing,
         onProgress: onRenderProgress,
         // The bake counts within the SPAN; the document counts from its
@@ -880,7 +886,12 @@ class ProjectImportDoors {
           _movieAsset(source, info, settings, sourcePath),
       ];
       await _pool.holdCarriedBytes(assets, onProgress: onCarrying);
-      if (!_landMovieWithSound(planned, assets, withSound: withMovieSound)) {
+      final landed = _landMovieWithSound(
+        planned,
+        assets,
+        withSound: withMovieSound,
+      );
+      if (landed == null) {
         return false;
       }
       await _bakeLandedCels(
@@ -888,6 +899,7 @@ class ProjectImportDoors {
         planned.layer,
         planned.bakes,
         rowId: _rowOf(spot),
+        picturedPanels: landed.picturedPanels,
         standing: _atTheFit(settings.fit),
         onProgress: onRenderProgress,
         // One frame the reader refuses leaves its cel empty and is
@@ -1011,14 +1023,14 @@ class ProjectImportDoors {
   /// two blocks (「짝 = 따로따로」). The sound starts where the picture
   /// starts and runs as long (「같은 시작 · 같은 구간」), and it is landed
   /// only when [withSound] says the movie brought one.
-  bool _landMovieWithSound(
+  ImportLanded? _landMovieWithSound(
     _MoviePlacement planned,
     List<MediaAsset> assets, {
     required bool withSound,
   }) {
     final arrival = planned.arrival;
     final kept = planned.kept;
-    var landed = false;
+    ImportLanded? landed;
     _project.historyManager.runAsOneStep(arrival.undoDescription, () {
       landed = _landing.land(
         [planned.layer],
@@ -1026,7 +1038,7 @@ class ProjectImportDoors {
         duration: kept.count,
         assets: assets,
       );
-      if (!landed || !withSound) {
+      if (landed == null || !withSound) {
         return;
       }
       // A NEW cut is the active one by now, so the sound asks the gate
@@ -1131,6 +1143,8 @@ class ProjectImportDoors {
         // The cels are THIS row's, under its own id — the bank its link
         // group shares.
         rowId: layerId,
+        // A rasterize lands no row, nor a copy of one.
+        picturedPanels: const {},
         // Where the reference shows each picture, so the cels land exactly
         // there (I-68). ↩️It read the pool's fit for the file — the fit the
         // row was placed with — and fitted each frame to the canvas again.
@@ -1872,6 +1886,9 @@ class ProjectImportDoors {
   /// a half-baked import is one the window would retry as a duplicate.
   /// Without it the throw is the caller's.
   ///
+  /// Then [picturedPanels] — the panels the landed rows' 겸용 copies were
+  /// born showing those pictures in — take them ([ImportLanded]).
+  ///
   /// ⛔ONE TAIL, FOUR DOORS. The still/GIF door and the PDF door each wrote
   /// it out — the cut, the loop, the row to stand on — the movie door was
   /// the third, and rasterizing a movie in place is the fourth.
@@ -1880,6 +1897,7 @@ class ProjectImportDoors {
     Layer layer,
     List<PlannedCelBake> bakes, {
     required LayerId? rowId,
+    required Map<LayerId, Map<FrameId, FrameId>> picturedPanels,
     required _Standing standing,
     required Future<_BakePicture> Function(
       PlannedCelBake bake,
@@ -1920,9 +1938,27 @@ class ProjectImportDoors {
         done += 1;
         onProgress?.call(done, bakes.length);
       }
+      _givePanelsTheirPictures(cut, picturedPanels);
     }
     _changes.refreshAfterCutCommand(preferredActiveLayerId: rowId ?? layer.id);
     _changes.notifyChanged();
+  }
+
+  /// The panels the landed rows' 겸용 copies were born showing their
+  /// pictures in, by row ([ImportLanded.picturedPanels]), given them now
+  /// [cut] holds them — the last of a landing's bake (🗣️I-120-Q29).
+  void _givePanelsTheirPictures(
+    Cut cut,
+    Map<LayerId, Map<FrameId, FrameId>> picturedPanels,
+  ) {
+    for (final MapEntry(key: row, value: panels) in picturedPanels.entries) {
+      givePanelsTheirPictures(
+        project: _project,
+        store: _renderCaches.brushFrameStore,
+        row: (cut: cut, row: row),
+        panels: panels,
+      );
+    }
   }
 
   /// [picture] laid on a [canvas]-sized cel where it stands at [pose]

@@ -44,6 +44,8 @@ import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/services/commands/link_mirror.dart'
+    show linkCounterpartIn, linkedCutSiblings;
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
@@ -54,7 +56,7 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/project_lookup.dart'
-    show requireCut, requireCutPosition, requireLayer;
+    show layerAnywhereOrNull, requireCut, requireCutPosition, requireLayer;
 import 'package:anicel/src/services/reference_move_carried.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
     show debugComposesFromBytes;
@@ -71,6 +73,7 @@ import '../../helpers/cel_text_fixture.dart' show pixelOf;
 import '../../helpers/checker_sampling.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/pill_row_clipboard.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -656,9 +659,9 @@ void main() {
 
       /// [s]'s copy of [row] in [linked], born with the picture of the file
       /// [row] shows in [source] — a cel of its own, whose pixels are its —
-      /// and the row's 参照 group standing in both cuts; and the panel it
-      /// was born with emptied by ONE undo.
-      void expectBornWithThePicture(
+      /// and the row's 参照 group standing in both cuts: the panel it was
+      /// born with.
+      Frame expectBornWithThePicture(
         EditorSessionManager s, {
         required Cut source,
         required Layer row,
@@ -666,13 +669,21 @@ void main() {
       }) {
         final project = s.cutCommandCoordinator.repository.requireProject();
         final into = requireCut(project, linked);
-        final copy = into.layers.firstWhere(
-          (layer) => layer.mediaReference != null,
+        final copy = requireLayer(
+          project,
+          cutId: linked,
+          layerId: linkCounterpartIn(
+            project,
+            cutId: source.id,
+            layerId: row.id,
+            targetCutId: linked,
+          )!,
         );
-        final picture = row.frames.single;
-        final panel = copy.frames.firstWhere(
-          (frame) => frame.id == exposedFrameIdAt(copy.timeline, 0),
+        Frame shownBy(Layer layer) => layer.frames.firstWhere(
+          (frame) => frame.id == exposedFrameIdAt(layer.timeline, 0),
         );
+        final picture = shownBy(row);
+        final panel = shownBy(copy);
         expect(panel.id, isNot(picture.id), reason: 'a cel of its own');
         expect([panel.name, panel.filePicture], [null, picture.filePicture]);
         final ink = inkOf(celIn(s, source, row.id, picture.id));
@@ -688,7 +699,18 @@ void main() {
         ]) {
           expect(referenceRedrawFor(shown), ReferenceSwap.pictures);
         }
+        return panel;
+      }
 
+      /// ONE undo hands [source] back as it was, and empties [panel] — the
+      /// panel [row]'s copy was born with — that linking copied the picture
+      /// to.
+      void expectOneUndoEmpties(
+        EditorSessionManager s, {
+        required Cut source,
+        required Layer row,
+        required Frame panel,
+      }) {
         s.undo();
         expect(
           requireCut(
@@ -707,7 +729,13 @@ void main() {
         s.cutCommandCoordinator.createLinkedCut(sourceCutId: source.id);
         final linked = s.requireActiveCut.id;
         expect(linked, isNot(source.id), reason: '⛔premise: a new cut');
-        expectBornWithThePicture(s, source: source, row: row, linked: linked);
+        final panel = expectBornWithThePicture(
+          s,
+          source: source,
+          row: row,
+          linked: linked,
+        );
+        expectOneUndoEmpties(s, source: source, row: row, panel: panel);
         await stopTheWarmer(tester, s);
       });
 
@@ -725,9 +753,156 @@ void main() {
             cutId: target,
           )
           ..convertCutToLinked(originCutId: source.id, targetCutId: target);
-        expectBornWithThePicture(s, source: source, row: row, linked: target);
+        final panel = expectBornWithThePicture(
+          s,
+          source: source,
+          row: row,
+          linked: target,
+        );
+        expectOneUndoEmpties(s, source: source, row: row, panel: panel);
         await stopTheWarmer(tester, s);
       });
+
+      // 🗣️I-120-Q29 (유저 2026-11-07 「서피스 저장 레인에 넘긴다」): a row
+      // that comes into a cut with a 겸용 is born in its sibling too (F-398),
+      // and its copy there is born with the picture as well — a placed file,
+      // or a row pasted or duplicated there. The pictures come AFTER the
+      // row is in (the import's bake, the paste's copy), and the panel takes
+      // them then. ↩️It was born blank, which took the 参照 header off the
+      // row in both cuts.
+
+      /// The cut the active cut was made a 겸용 of, and that 겸용, active.
+      CutId besideAPair(EditorSessionManager s) {
+        final pairedWith = s.requireActiveCut.id;
+        s.cutVerbs.createLinkedCutFromActiveCut();
+        expect(
+          linkedCutSiblings(
+            s.cutCommandCoordinator.repository.requireProject(),
+            cutId: s.requireActiveCut.id,
+          ),
+          [pairedWith],
+          reason: '⛔premise: a pair',
+        );
+        return pairedWith;
+      }
+
+      /// ONE undo takes [row] out of [cuts], each as it was before it came.
+      void expectOneUndoTakesItOut(
+        EditorSessionManager s,
+        List<Cut> cuts, {
+        required Layer row,
+      }) {
+        s.undo();
+        final project = s.cutCommandCoordinator.repository.requireProject();
+        for (final cut in cuts) {
+          expect(requireCut(project, cut.id), cut, reason: '${cut.id}');
+        }
+        expect(layerAnywhereOrNull(project, row.id), isNull);
+      }
+
+      testWidgets('🎯a file placed in a cut that has a 겸용 — the row its '
+          'sibling takes', (tester) async {
+        final s = EditorSessionManager(initialProject: createDefaultProject());
+        addTearDown(s.dispose);
+        s.playbackRig.prerenderScheduler.beginInputHold();
+        final sibling = besideAPair(s);
+        final project = s.cutCommandCoordinator.repository.requireProject();
+        final before = [
+          s.requireActiveCut,
+          requireCut(project, sibling),
+        ];
+        await tester.runAsync(() async {
+          expect(
+            await s.importDoors.importImageFile(
+              path: await writeSolidPng(
+                tempDir,
+                'red.png',
+                width: 100,
+                height: 60,
+                rgba: 0xFF0000FF,
+              ),
+              destination: ImportDestination.activeCutLayer,
+              copyIntoProject: false,
+              fit: MediaFitMode.none,
+            ),
+            isTrue,
+          );
+        });
+        final row = s.requireActiveCut.layers.firstWhere(
+          (layer) => layer.mediaReference != null,
+        );
+
+        expectBornWithThePicture(
+          s,
+          source: s.requireActiveCut,
+          row: row,
+          linked: sibling,
+        );
+        // I-41: the file was placed from the row stood on, and the landing
+        // stands on the row it made — so the first press walks back there.
+        s.undo();
+        expect(
+          layerAnywhereOrNull(
+            s.cutCommandCoordinator.repository.requireProject(),
+            row.id,
+          ),
+          isNotNull,
+          reason: 'a walk, not a step',
+        );
+        expectOneUndoTakesItOut(s, before, row: row);
+        await stopTheWarmer(tester, s);
+      });
+
+      for (final (how, copied) in [
+        (
+          'duplicated',
+          (EditorSessionManager s) => s.layerVerbs.duplicateActiveLayer(),
+        ),
+        (
+          'pasted',
+          (EditorSessionManager s) {
+            copyRowsWithThePill(s);
+            pasteWithThePill(s);
+          },
+        ),
+      ]) {
+        testWidgets('🎯a reference row $how in a cut that has a 겸용 — the '
+            'row its sibling takes', (tester) async {
+          final (s, placedRow) = await placed(tester);
+          final sibling = besideAPair(s);
+          final project = s.cutCommandCoordinator.repository.requireProject();
+          // The placed row's own copy in the 겸용, made with it.
+          final shown = requireLayer(
+            project,
+            cutId: s.requireActiveCut.id,
+            layerId: linkCounterpartIn(
+              project,
+              cutId: sibling,
+              layerId: placedRow.id,
+              targetCutId: s.requireActiveCut.id,
+            )!,
+          );
+          s.selectLayer(shown.id);
+          final before = [
+            s.requireActiveCut,
+            requireCut(project, sibling),
+          ];
+
+          copied(s);
+          final row = s.activeLayer!;
+          expect(row.id, isNot(shown.id), reason: '⛔premise: a new row');
+          expect(row.mediaReference, isNotNull, reason: '⛔premise');
+
+          expectBornWithThePicture(
+            s,
+            source: s.requireActiveCut,
+            row: row,
+            linked: sibling,
+          );
+          expectOneUndoTakesItOut(s, before, row: row);
+          await stopTheWarmer(tester, s);
+        });
+      }
     });
 
     testWidgets('a paper bigger than the canvas bakes where it shows — the '

@@ -16,7 +16,7 @@ import '../../services/project_lookup.dart'
     show cutWritingRow, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
-    show copyBakedPictures, copyConteHandwriting;
+    show copyBakedPictures, copyConteHandwriting, givePanelsTheirPictures;
 import 'render_caches.dart';
 import 'row_selection.dart';
 import 'session_roles.dart';
@@ -334,6 +334,12 @@ class LayerVerbs {
       minted: copy.minted,
       from: (cut: cut, row: layerId),
       to: (cut: cut, row: copy.layerId),
+    );
+    givePanelsTheirPictures(
+      project: _project,
+      store: _renderCaches.brushFrameStore,
+      row: (cut: cut, row: copy.layerId),
+      panels: copy.picturedPanels,
     );
     copyConteHandwriting(
       store: _renderCaches.conteInkRowStore,

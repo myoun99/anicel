@@ -455,6 +455,30 @@ void copyBakedPictures({
   }
 }
 
+/// The panels [row]'s 겸용 copies were born showing its pictures in
+/// ([panels]: each panel, and the cel of [row] whose picture it is —
+/// `AddLayerCommand.picturedPanels`), given those pictures — once the door
+/// has laid them, a copy beside its source ([copyBakedPictures]). Every
+/// panel is a cel of the bank [row] holds in its cut, the first of its link
+/// group. 🗣️I-120-Q29: an import bakes a row's pictures, and a paste copies
+/// them, after the row and its copies are in.
+void givePanelsTheirPictures({
+  required ProjectAccess project,
+  required BrushFrameStore store,
+  required ({Cut cut, LayerId row}) row,
+  required Map<FrameId, FrameId> panels,
+}) {
+  for (final MapEntry(key: panel, value: picture) in panels.entries) {
+    copyBakedPictures(
+      project: project,
+      store: store,
+      minted: {picture: panel},
+      from: row,
+      to: row,
+    );
+  }
+}
+
 /// The pictures [cels] show as they are NOW, each under the key [keyOf]
 /// names — what a copy takes BY VALUE (F-161): a paste may land in another
 /// cut, or another project (I-7), whose store has no picture under the
