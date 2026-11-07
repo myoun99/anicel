@@ -853,6 +853,40 @@ void main() {
         await stopTheWarmer(tester, s);
       });
 
+      testWidgets('🎯a PDF placed in a cut that has a 겸용 — its page, the '
+          'row its sibling takes', (tester) async {
+        PdfRenderService.debugOpenerOverride = (_) async =>
+            FakePdfDocument(pageSizes: const [ui.Size(100, 50)]);
+        addTearDown(PdfRenderService.debugResetForTests);
+        final s = EditorSessionManager(initialProject: createDefaultProject());
+        addTearDown(s.dispose);
+        s.playbackRig.prerenderScheduler.beginInputHold();
+        final sibling = besideAPair(s);
+        await tester.runAsync(() async {
+          final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
+          await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+          expect(
+            await s.importDoors.importPdfFile(
+              path: path,
+              destination: ImportDestination.activeCutLayer,
+              copyIntoProject: false,
+            ),
+            isTrue,
+          );
+        });
+        final row = s.requireActiveCut.layers.firstWhere(
+          (layer) => layer.mediaReference != null,
+        );
+
+        expectBornWithThePicture(
+          s,
+          source: s.requireActiveCut,
+          row: row,
+          linked: sibling,
+        );
+        await stopTheWarmer(tester, s);
+      });
+
       for (final (how, copied) in [
         (
           'duplicated',

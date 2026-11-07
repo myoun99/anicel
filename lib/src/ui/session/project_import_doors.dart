@@ -611,7 +611,9 @@ class ProjectImportDoors {
     }
     final arrival = newCut ? gate.withCanvasSize(expansion.canvas) : gate;
 
-    final landed = _landing.land(
+    // A document's rows show no file, so no copy of them is born showing
+    // one: nothing is left to give a panel ([ImportLanded]).
+    _landing.land(
       expansion.layers,
       arrival: arrival,
       duration: duration,
@@ -629,7 +631,6 @@ class ProjectImportDoors {
           cel.surface,
         );
       }
-      _givePanelsTheirPictures(bakedCut, landed?.picturedPanels ?? const {});
     }
 
     // The last row may be a folder — the file's, where it joined a cut, or
