@@ -1,6 +1,3 @@
-@Tags(['gc'])
-library;
-
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -15,15 +12,15 @@ import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../helpers/census_where_textures_are_ram.dart';
-import '../helpers/collect_garbage.dart';
 
 /// The app's tiles get their slots on the engine through the ledger
 /// (screen-on-the-engine c4): stored inside the call that asks, once a
 /// tile object, each slot holding its tile's bytes; kept while a hold has
-/// them; let go when a pool is full of what no hold has, and with their
-/// tile. What the pool does with a store is its own test's
-/// (the_engine_pool_keeps_the_apps_tiles_test.dart) — here, what the
-/// ledger asks of it.
+/// them; let go when a pool is full of what no hold has. Let go with their
+/// tile is a_tile_collected_lets_its_engine_slot_go_test.dart's, which
+/// waits for the collector; what the pool does with a store is its own
+/// test's (the_engine_pool_keeps_the_apps_tiles_test.dart) — here, what
+/// the ledger asks of it.
 void main() {
   late GpuComposite composite;
   const all = (-1 << 31, -1 << 31, (1 << 31) - 1, (1 << 31) - 1);
@@ -204,41 +201,6 @@ void main() {
     expect(
       rows['tileImages'],
       BitmapTileImageCache.liveImageBytes + app.pool.bytes,
-    );
-  });
-
-  test('a tile collected lets its slot go, for the next to take', () async {
-    final ledger = EngineTileLedger(appGpuEngine);
-    BitmapTile? tile = tileOf(12);
-    final slot = ledger.held((hold) => hold.slotsOf(a, [tile!]).single);
-    expect(ledger.slotCount, 1);
-
-    tile = null;
-    await collectGarbageUntil(() => ledger.slotCount == 0);
-
-    expect(ledger.slotCount, 0, reason: 'the slot goes with its tile');
-    expect(ledger.held((hold) => hold.slotsOf(a, [tileOf(13)])), [slot]);
-  });
-
-  test('a tile let go by a full pool takes no slot with it when collected',
-      () async {
-    final ledger = EngineTileLedger(appGpuEngine, byteBudget: 0);
-    BitmapTile? gone = tileOf(14);
-    ledger.held((hold) => hold.slotsOf(a, [gone!]));
-    final kept = tileOf(15);
-    final [slot] = ledger.held((hold) => hold.slotsOf(b, [kept]));
-    expect(ledger.slotOf(kept), slot);
-    expect(ledger.slotCount, 1);
-
-    gone = null;
-    // Bounded: what is waited for must not come.
-    await collectGarbageUntil(() => ledger.slotCount != 1, rounds: 3);
-
-    expect(ledger.slotCount, 1, reason: 'its slot went with the full pool');
-    expect(
-      ledger.held((hold) => hold.slotsOf(b, [tileOf(16)])),
-      isNot([slot]),
-      reason: "the slot handed out again is still the kept tile's",
     );
   });
 }

@@ -350,6 +350,10 @@ void main() {
         // I-57 ㉣ (10-13): a berth that leaves must let go of the row it
         // kept, and only the collector can say it did.
         'test/ui/timeline/a_berth_that_leaves_lets_go_of_its_row_test.dart',
+        // screen-on-the-engine c4 (11-08): an engine slot goes with its
+        // tile, and only the collector can say it did. The ledger's other
+        // pins stay in the crowd, in a file of their own.
+        'test/native/a_tile_collected_lets_its_engine_slot_go_test.dart',
       ],
       unledgered:
           'Adding the tag takes a file OUT of the main run — cheap to do by '
