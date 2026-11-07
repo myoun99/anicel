@@ -1,3 +1,4 @@
+import '../core/mapped_or_same.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -27,23 +28,25 @@ import '../models/track_id.dart';
 /// that reports "nothing matched", so the caller throws over an edit that
 /// actually landed. The flag and the replacement are one step here, which
 /// is the only way they cannot come apart.
+///
+/// [items] ITSELF when the step changed nothing ([mappedOrSame]), so every
+/// walk below hands back the very parent it was given where nothing under
+/// it changed. 🔬Card conte-one-eye-repaints-every-track (11-08): one S
+/// row's eye made every track and every cut of the project anew — and the
+/// conte's rows, kept while their cuts are the same objects, all built
+/// again.
 List<T> _replacingOne<T, I>(
-  Iterable<T> items,
+  List<T> items,
   ({I id, I Function(T item) of}) picks,
   T Function(T item) update,
   void Function() onFound,
-) {
-  final out = <T>[];
-  for (final item in items) {
-    if (picks.of(item) != picks.id) {
-      out.add(item);
-      continue;
-    }
-    onFound();
-    out.add(update(item));
+) => mappedOrSame(items, (item) {
+  if (picks.of(item) != picks.id) {
+    return item;
   }
-  return out;
-}
+  onFound();
+  return update(item);
+});
 
 /// [items] without the one [picks] names, and the element that left.
 ///
@@ -101,17 +104,15 @@ Project? updateCutAnywhere(
 ) {
   var found = false;
   final next = project.withTracksOfEveryTimeline(
-    (tracks) => [
-      for (final track in tracks)
-        track.copyWith(
-          cuts: _replacingOne(
-            track.cuts,
-            (id: cutId, of: (cut) => cut.id),
-            update,
-            () => found = true,
-          ),
-        ),
-    ],
+    (tracks) => mappedOrSame(tracks, (track) {
+      final cuts = _replacingOne(
+        track.cuts,
+        (id: cutId, of: (Cut cut) => cut.id),
+        update,
+        () => found = true,
+      );
+      return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
+    }),
   );
   return found ? next : null;
 }
@@ -147,17 +148,21 @@ Project? updateFrameAnywhere(
   Frame Function(Frame frame) update,
 ) {
   var found = false;
-  Layer updateFrames(Layer layer) => layer.copyWith(
-    frames: _replacingOne(
+  Layer updateFrames(Layer layer) {
+    final frames = _replacingOne(
       layer.frames,
-      (id: frameId, of: (frame) => frame.id),
+      (id: frameId, of: (Frame frame) => frame.id),
       update,
       () => found = true,
-    ),
-  );
+    );
+    return identical(frames, layer.frames)
+        ? layer
+        : layer.copyWith(frames: frames);
+  }
+
   final next = _withEveryRowList(
     project,
-    (rows) => [for (final row in rows) updateFrames(row)],
+    (rows) => mappedOrSame(rows, updateFrames),
   );
   return found ? next : null;
 }
@@ -170,21 +175,30 @@ Project? updateFrameAnywhere(
 /// beside the SE rows and reaches a cut's row list as a display clone, so a
 /// flag command (eye, mark, timesheet) sweeping the visible rows can name
 /// it. ↩️The frames' walk wrote this out again without it.
+///
+/// A track and a cut whose rows [rebuild] hands back as they were stand as
+/// they were ([mappedOrSame]).
 Project _withEveryRowList(
   Project project,
   List<Layer> Function(List<Layer> rows) rebuild,
 ) => project.withTracksOfEveryTimeline(
-  (tracks) => [
-    for (final track in tracks)
-      track.copyWith(
-        cuts: [
-          for (final cut in track.cuts)
-            cut.copyWith(layers: rebuild(cut.layers)),
-        ],
-        seLayers: rebuild(track.seLayers),
-        transitionLayer: rebuild([track.transitionLayer]).single,
-      ),
-  ],
+  (tracks) => mappedOrSame(tracks, (track) {
+    final cuts = mappedOrSame(track.cuts, (cut) {
+      final layers = rebuild(cut.layers);
+      return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
+    });
+    final seLayers = rebuild(track.seLayers);
+    final transitionLayer = rebuild([track.transitionLayer]).single;
+    return identical(cuts, track.cuts) &&
+            identical(seLayers, track.seLayers) &&
+            identical(transitionLayer, track.transitionLayer)
+        ? track
+        : track.copyWith(
+            cuts: cuts,
+            seLayers: seLayers,
+            transitionLayer: transitionLayer,
+          );
+  }),
 );
 
 /// Replaces the layer matching [layerId] within [cut] via [update]. Returns
@@ -201,7 +215,10 @@ Cut? updateLayerInCut(
     update,
     () => found = true,
   );
-  return found ? cut.copyWith(layers: layers) : null;
+  if (!found) {
+    return null;
+  }
+  return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
 }
 
 /// Removes the cut matching [cutId] from whichever track holds it, and
@@ -212,22 +229,17 @@ Cut? updateLayerInCut(
 ) {
   Cut? removed;
   final next = project.withTracksOfEveryTimeline(
-    (tracks) => [
-      for (final track in tracks)
-        if (removed != null)
-          track
-        else
-          () {
-            final without = _withoutOne(track.cuts, (
-              id: cutId,
-              of: (Cut cut) => cut.id,
-            ));
-            removed = without.removed;
-            return removed == null
-                ? track
-                : track.copyWith(cuts: without.items);
-          }(),
-    ],
+    (tracks) => mappedOrSame(tracks, (track) {
+      if (removed != null) {
+        return track;
+      }
+      final without = _withoutOne(track.cuts, (
+        id: cutId,
+        of: (Cut cut) => cut.id,
+      ));
+      removed = without.removed;
+      return removed == null ? track : track.copyWith(cuts: without.items);
+    }),
   );
   return (project: next, removed: removed);
 }

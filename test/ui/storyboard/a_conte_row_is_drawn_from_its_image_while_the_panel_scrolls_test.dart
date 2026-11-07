@@ -251,34 +251,28 @@ void main() {
     );
   });
 
-  // ⚠️Not 「it alone」 as the timeline's test has it: an S row's eye is the
-  // whole track's (an S row's effects lie over the cuts), and the V and
-  // conte rows of every track build again on any edit of the project — what
-  // they draw is the conte's own, not this law's.
+  // 🚨IT ALONE, as the timeline's test has it (card conte-one-eye-repaints-
+  // every-track, 11-08). ↩️Every track's V and conte rows were drawn live
+  // with it: one S row's eye made every track and every cut of the project
+  // anew (`project_tree_editor.dart`), and those rows are kept while their
+  // cuts are the same objects.
   testWidgets('a row whose content changes is drawn live in that frame, and '
-      'a row that did not stays its image', (tester) async {
+      'it alone', (tester) async {
     final session = await open(tester);
     await untilEveryRowIsAnImage(tester);
-    Set<String> rowsNamed(List<String> ids) => {
-      for (final id in ids)
-        rowOf(tester.getRect(find.named('storyboard-layer-row-$id'))),
-    };
-    final changed = rowsNamed(['t0-S2']);
-    final others = rowsNamed(['t0-S1', 't1-S1', 't1-S2']);
+    final changed = rowOf(
+      tester.getRect(find.named('storyboard-layer-row-t0-S2')),
+    );
 
     session.layerSwitches.toggleLayerVisibility(const LayerId('t0-S2'));
     await tester.pump();
 
     final live = {
       for (final r in regionsOf(tester))
-        if (!r.region.debugDrawnFromImage) rowOf(r.at),
+        if (r.region.debugDrawnFrom == null) rowOf(r.at),
     };
-    expect(live, containsAll(changed), reason: 't0-S2 shows it is hidden');
-    expect(
-      live.intersection(others),
-      isEmpty,
-      reason: 'the S rows that did not change stay their images: $live',
-    );
+    expect(live, {changed}, reason: 't0-S2 shows it is hidden, and no row '
+        'else changed');
   });
 
   testWidgets('a row drag\'s caret stands outside every row\'s region, and '
