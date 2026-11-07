@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -596,7 +597,9 @@ void main() {
         reason: 'sub-cell pixels rebuild nothing',
       );
 
-      framePosition().jumpTo(4 * 48.0); // Crosses cell boundaries.
+      // Crosses cell boundaries, and a span's, where the window moves.
+      final span = timelineFrameWindowSpanFor(48);
+      framePosition().jumpTo(span * 48.0);
       await tester.pump();
       // PRO-TIMELINE contract (UI-R15): a cell crossing rebuilds NOTHING
       // either — the painter windows itself off the live offset, so the
@@ -608,7 +611,7 @@ void main() {
         reason: 'crossings are repaint-only now — no rebuild at all',
       );
       expect(
-        timelineCellInWindow(tester, 'layer-1', 4),
+        timelineCellInWindow(tester, 'layer-1', span),
         isTrue,
         reason: 'the paint window followed the offset',
       );
@@ -617,7 +620,7 @@ void main() {
         isFalse,
         reason:
             'scrolled-out cells left the paint window (48px cells, '
-            'offset 192, overscan 2)',
+            'a span on, overscan 2)',
       );
     },
   );

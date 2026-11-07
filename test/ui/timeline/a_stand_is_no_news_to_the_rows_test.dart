@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +16,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -25,6 +28,7 @@ import '../../helpers/line_on_screen.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/room_for_the_pills.dart';
 import '../../helpers/timeline_host.dart';
+import 'tile_store_idle.dart';
 
 /// 🔬I-22-rest (11-01, S5_BA 컷352, 디버그): a click on a rail row built the
 /// whole timeline host, 195 widgets and 9ms, for a colour on two rows and
@@ -36,11 +40,30 @@ import '../../helpers/timeline_host.dart';
 /// stand left it, and after the host is made to build. Equal pixels are what
 /// says no reader of the stand was left out; a list of readers could not.
 void main() {
+  /// The screen once the cell tiles have landed and been painted.
+  ///
+  /// 🚨A TILE THAT LANDS BETWEEN THE TWO READS CHANGES THE SCREEN WHATEVER
+  /// THE STAND DID. 🔬At 512 px spans the X-sheet's tiles were still landing
+  /// at both reads (11-07): four lines of a cell row moved by a few
+  /// levels, with or without the build, and the case went red in a run of
+  /// the file and green alone. ↩️It read the screen at once.
+  Future<ByteData> landedPixels(WidgetTester tester) async {
+    final store = TimelineGridTileStore.instance;
+    for (var round = 0; round < 20; round += 1) {
+      await tileStoreIdle(store, tester: tester);
+      await tester.pump();
+      if (!store.debugBusy) {
+        return screenPixels(tester);
+      }
+    }
+    fail('a pump kept asking the tile store for more');
+  }
+
   Future<void> expectBuildChangesNothing(
     WidgetTester tester,
     EditorSessionManager session,
   ) async {
-    final stood = await screenPixels(tester);
+    final stood = await landedPixels(tester);
     final panel = tester.widget(find.byType(TimelinePanel));
     session.notifyChanged();
     await tester.pump();
@@ -49,7 +72,7 @@ void main() {
       isFalse,
       reason: 'LIVENESS: the host was made to build',
     );
-    final built = await screenPixels(tester);
+    final built = await landedPixels(tester);
     var differing = 0;
     for (var byte = 0; byte < built.lengthInBytes; byte += 1) {
       if (built.getUint8(byte) != stood.getUint8(byte)) {
