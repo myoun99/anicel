@@ -254,6 +254,13 @@ class RenderStillRaster extends RenderProxyBox {
   int _captureCount = 0;
 
   /// Whether the last scene drew this region from its image.
+  ///
+  /// ⚠️A region under one drawn from ITS image is not in the scene at all,
+  /// and this keeps the answer of the last scene it was in. 🔬Card
+  /// timeline-playback-drops-every-row-image-each-frame (11-07): a measure
+  /// that read this as a row's image dropped counted ~9300 drops in 300
+  /// frames of playback — every row, every frame, each holding its image
+  /// under the dock's.
   @visibleForTesting
   bool get debugDrawnFromImage => _drawnFromImage;
   bool _drawnFromImage = false;
