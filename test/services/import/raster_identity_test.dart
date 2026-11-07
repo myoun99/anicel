@@ -9,6 +9,8 @@ import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
 import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
 
+import '../../helpers/checker_sampling.dart';
+
 /// A 1:1 integer-aligned placement must be a BYTE COPY, not a resample:
 /// bicubic (FilterQuality.high) blurs even at identity — a hard black
 /// line came back 28/255 gray — and the text bake's contract is that the
@@ -53,10 +55,12 @@ void main() {
     });
   });
 
-  // I-68: the copy is for 1:1 alone — a placement that scales (a fit, a
-  // reference's pose) resamples, or a paper drawn twice its size would come
-  // out in blocks.
-  testWidgets('a SCALED placement resamples — only a 1:1 one copies bytes', (
+  // 🗣️I-120-Q26 (유저 2026-11-07 「굽기를 화면에 맞춘다 — 확대된 그림은
+  // 계단 그대로 굽는다」): a placement that grows a picture lays it as the
+  // canvas shows it, hard-edged — the display's nearest at the cel's own
+  // resolution. ↩️It resampled every placement but 1:1 (I-68: 「or a paper
+  // drawn twice its size would come out in blocks」).
+  testWidgets('🎯grown, a picture is laid in blocks, as the canvas shows it', (
     tester,
   ) async {
     await tester.runAsync(() async {
@@ -76,8 +80,8 @@ void main() {
       final image = picture.toImageSync(2, 1);
       picture.dispose();
 
-      // Four times its size at a whole-pixel origin: a copy repeats each
-      // pixel four times, a resample blends where the two meet.
+      // Four times its size at a whole-pixel origin: each pixel four times,
+      // where a smooth resample blends the two where they meet.
       final surface = await layCelPicture(
         picture: EnginePicture(image),
         canvas: canvas,
@@ -87,14 +91,57 @@ void main() {
       image.dispose();
 
       final pixels = surface.tiles.values.single.pixels;
-      final reds = {for (var x = 0; x < 8; x += 1) pixels[(64 + x) * 4]};
       expect(
-        reds.length,
-        greaterThan(2),
-        reason: 'values between black and white — not two blocks',
+        [for (var x = 0; x < 8; x += 1) pixels[(64 + x) * 4]],
+        [0, 0, 0, 0, 255, 255, 255, 255],
       );
     });
   });
+
+  // 🗣️I-120-Q28 (「축소도 같은 법 — 화면처럼 최근접으로 굽는다」): shrunk or
+  // turned, each pixel takes the one the canvas would — of one-pixel
+  // squares, black or white, never the grey a smooth one mixes.
+  for (final (how, placement) in [
+    ('halved', const GuideTransform(0.5, 0, 0, 0.5, 0, 0)),
+    ('shrunk by 0.3', const GuideTransform(0.3, 0, 0, 0.3, 0, 0)),
+    (
+      'turned 45°',
+      GuideTransform(
+        math.cos(math.pi / 4),
+        math.sin(math.pi / 4),
+        -math.sin(math.pi / 4),
+        math.cos(math.pi / 4),
+        32,
+        0,
+      ),
+    ),
+  ]) {
+    testWidgets('🎯$how, a picture is laid hard-edged, as the canvas shows '
+        'it', (tester) async {
+      await tester.runAsync(() async {
+        final checker = await checkerImage(64);
+        final surface = await layCelPicture(
+          picture: EnginePicture(checker),
+          canvas: const CanvasSize(width: 64, height: 64),
+          placement: placement,
+          tileSize: 64,
+        );
+        checker.dispose();
+
+        // The canvas's own tile: a turn reaches the pasteboard too.
+        final pixels = surface.tiles[TileCoord(x: 0, y: 0)]!.pixels;
+        // Well inside what each lay covers: the turned square's middle, the
+        // shrunk ones' top-left.
+        final at = how.startsWith('turned') ? (30, 30) : (4, 4);
+        final reds = [
+          for (var y = at.$2; y < at.$2 + 8; y += 1)
+            for (var x = at.$1; x < at.$1 + 8; x += 1)
+              pixels[(y * 64 + x) * 4],
+        ];
+        expect(reds.every(isPure), isTrue, reason: '$reds');
+      });
+    });
+  }
 
   // F-374-Q8 ⑦: a picture is laid a block of tiles at a time
   // ([layRasterSide]), so no ONE raster of it passes what a device makes —

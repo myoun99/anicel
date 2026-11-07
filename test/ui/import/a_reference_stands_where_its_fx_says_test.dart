@@ -28,6 +28,7 @@ import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -58,6 +59,8 @@ import 'package:anicel/src/services/reference_move_carried.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
     show debugComposesFromBytes;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/export/export_plan.dart' show ExportFrameTask;
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
@@ -65,6 +68,7 @@ import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
 
 import '../../helpers/cel_text_fixture.dart' show pixelOf;
+import '../../helpers/checker_sampling.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -213,11 +217,12 @@ void main() {
 
     /// A session with a red [width]×[height] paper placed 1:1 as a
     /// reference on the default 2340×1654 canvas — its middle at
-    /// (1170, 827).
+    /// (1170, 827). [paper] writes another picture to place instead.
     Future<(EditorSessionManager, Layer)> placed(
       WidgetTester tester, {
       int width = 100,
       int height = 60,
+      Future<String> Function()? paper,
     }) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
@@ -246,7 +251,7 @@ void main() {
         );
         expect(
           await s.importDoors.importImageFile(
-            path: red,
+            path: await paper?.call() ?? red,
             destination: ImportDestination.activeCutLayer,
             copyIntoProject: false,
             fit: MediaFitMode.none,
@@ -858,6 +863,127 @@ void main() {
       expect(celOf(s, baked, 0)!.laidBounds!.rect, where);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
+    });
+
+    // 🗣️I-120-Q26 · Q28 (유저 2026-11-07): 「굽기를 화면에 맞춘다 — 확대된
+    // 그림은 계단 그대로 굽는다」 · 「축소도 같은 법 — 화면처럼 최근접으로
+    // 굽는다」. The canvas lays a row's picture where its fx stands it into
+    // a picture at the canvas's resolution, so baking it where it shows is
+    // that picture: the frame after the bake is the frame before it, a
+    // pixel at a time, however the fx grows, shrinks or turns it. Read well
+    // inside the paper — its edge is coverage, reckoned a block at a time
+    // by the bake ([layRasterSide]).
+    group('🎯baked as it shows, a paper is the frame it was', () {
+      /// The reds of the frame the canvas shows, round the paper's middle.
+      Future<List<int>> frameReds(EditorSessionManager s) async {
+        final renderer = ExportFrameRenderer(session: s);
+        try {
+          final image = await renderer.renderComposite(
+            ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
+            ExportSizeMode.canvas,
+          );
+          try {
+            return await redsAround(image, 1170, 827, radius: 6);
+          } finally {
+            image.dispose();
+          }
+        } finally {
+          renderer.dispose();
+        }
+      }
+
+      final poses = {
+        'grown 3.9 times': TransformTrack.empty().copyWith(
+          scale: PropertyTrack<CanvasPoint>().withKey(
+            0,
+            CanvasPoint(x: 3.9, y: 3.9),
+          ),
+        ),
+        'halved': halved,
+        'turned 45°': TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>().withKey(0, 45),
+        ),
+      };
+      for (final MapEntry(key: how, value: fx) in poses.entries) {
+        testWidgets(how, (tester) async {
+          final (s, row) = await placed(
+            tester,
+            paper: () async {
+              final checker = await checkerImage(64);
+              try {
+                return await writeImagePng(tempDir, 'checker.png', checker);
+              } finally {
+                checker.dispose();
+              }
+            },
+          );
+          attachToTheDrawing(s, row);
+          posed(s, row, fx: fx);
+          final before = (await tester.runAsync(() => frameReds(s)))!;
+
+          final baked = await tester.runAsync(
+            () => s.importDoors.bakeReferenceAsSeen(
+              cutId: s.requireActiveCut.id,
+              layerId: row.id,
+            ),
+          );
+
+          expect(baked, isTrue, reason: 'LIVENESS: an attach row bakes');
+          expect(
+            before.every(isPure),
+            isTrue,
+            reason: 'the canvas lays it hard-edged at any pose: $before',
+          );
+          expect(await tester.runAsync(() => frameReds(s)), before);
+          await tester.pump(const Duration(minutes: 1));
+          await stopTheWarmer(tester, s);
+        });
+      }
+
+      // The placement window's bake lays the file where the window stood
+      // it — a file baked as it lands is the picture placed and then baked
+      // (`_celLaid`): grown 25.8 times by its fit, in blocks as the canvas
+      // shows the same file placed.
+      testWidgets('baked as it lands, fitted to the canvas', (tester) async {
+        Future<List<int>> landed({required bool rasterize}) async {
+          final s = EditorSessionManager(
+            initialProject: createDefaultProject(),
+          );
+          addTearDown(s.dispose);
+          s.playbackRig.prerenderScheduler.beginInputHold();
+          final reds = await tester.runAsync(() async {
+            final checker = await checkerImage(64);
+            final String path;
+            try {
+              path = await writeImagePng(
+                tempDir,
+                'checker-${rasterize ? 'baked' : 'placed'}.png',
+                checker,
+              );
+            } finally {
+              checker.dispose();
+            }
+            expect(
+              await s.importDoors.importImageFile(
+                path: path,
+                destination: ImportDestination.activeCutLayer,
+                copyIntoProject: false,
+                rasterize: rasterize,
+                fit: MediaFitMode.contain,
+              ),
+              isTrue,
+            );
+            return frameReds(s);
+          });
+          await tester.pump(const Duration(minutes: 1));
+          await stopTheWarmer(tester, s);
+          return reds!;
+        }
+
+        final asPlaced = await landed(rasterize: false);
+        expect(asPlaced.every(isPure), isTrue, reason: '$asPlaced');
+        expect(await landed(rasterize: true), asPlaced);
+      });
     });
 
     testWidgets('a cel that does not know where its file lies — an older '

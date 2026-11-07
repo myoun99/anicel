@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
@@ -47,7 +46,6 @@ void main() {
     debugPictureSideLimit = engineSide;
     debugLayRasterSide = null;
     debugWorkersRunHere = true;
-    debugLayFilterQuality = null;
   });
 
   /// [width] × [height] of straight RGBA that shows a slip anywhere: each
@@ -415,19 +413,32 @@ void main() {
     // part is drawn where it lies in the picture, and a pixel resampled from
     // it can round a step apart — as one laid in a block of tiles of its own
     // does (`raster_identity_test`).
+    //
+    // ⚠️Each is placed so that no pixel's centre falls on the edge between
+    // two texels: a lay takes the texel a centre lands on (I-120-Q28), and
+    // on an edge either is that, as float rounding goes — and a part, drawn
+    // from where it lies in the picture, can go the other way from the
+    // whole at its seam. 🔬2026-11-08: 0.3 at (3, 7) put x = 64, a part's
+    // first column, on texel 205's left edge, and the part read 204. Neither
+    // is the reference; what is pinned is every pixel off an edge — the
+    // known problem a cel drawn in pieces has (card
+    // `a-cel-past-the-side-resamples-a-hair-apart`), which the lay took on
+    // when it went nearest. The engine's Nearest maps in integers
+    // (`kernels/shared/resample.rs`, Q.20), a part and the whole alike: a
+    // lay by it may stand these back on the edges.
     for (final (how, width, side, placement) in [
       ('shrunk by 0.6', 300, 256, const GuideTransform(0.6, 0, 0, 0.6, 10, 5)),
       (
         '🎯shrunk past half, read whole as the engine reads it — not halved',
         300,
         256,
-        const GuideTransform(0.3, 0, 0, 0.3, 3, 7),
+        const GuideTransform(0.3, 0, 0, 0.3, 3.25, 7.25),
       ),
       (
         'shrunk past half across alone',
         1200,
         512,
-        const GuideTransform(0.2, 0, 0, 0.9, 3, 7),
+        const GuideTransform(0.2, 0, 0, 0.9, 3.25, 7.25),
       ),
     ]) {
       testWidgets('$how, a part at a time', (tester) async {
@@ -451,41 +462,6 @@ void main() {
         });
       });
     }
-
-    testWidgets('🎯on an engine that mips, each part is read on the grid the '
-        'picture whole is mipped on — 🔬up to 95/255 apart on the Surface '
-        'where it was not', (tester) async {
-      await tester.runAsync(() async {
-        debugLayRasterSide = 1024;
-        debugLayFilterQuality = ui.FilterQuality.medium;
-        // Wide, it is cut in parts across; tall, down.
-        for (final (width, height) in [(2048, 256), (256, 2048)]) {
-          final rgba = patterned(width, height);
-          final engine = await engineOf(rgba, width, height);
-          for (final shrink in [0.096, 0.24, 0.3, 0.6]) {
-            final placement = GuideTransform(shrink, 0, 0, shrink, 13, 7);
-            debugLayRasters = 0;
-            final theirs = await laid(engine, placement);
-            final blocks = debugLayRasters;
-            debugLayRasters = 0;
-            expectSameCel(
-              await laid(
-                PixelsPicture(rgba, width: width, height: height),
-                placement,
-              ),
-              theirs,
-              colourSlack: 1,
-            );
-            expect(
-              debugLayRasters,
-              greaterThan(blocks),
-              reason: 'in parts at $shrink, ${width}x$height',
-            );
-          }
-          engine.dispose();
-        }
-      });
-    });
   });
 
   group('a Photoshop document past the side', () {

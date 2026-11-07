@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/display_filter.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -339,8 +340,7 @@ Future<BitmapSurface> _rastered(
 /// A picture held off the engine, laid where [placement] resamples it: read
 /// whole, and drawn a block at a time from the part of it each block
 /// reaches, which is all that is ever uploaded ([_partUploaded]) — by the
-/// engine's own resampler, as a picture it holds is laid, each part read on
-/// the grid the picture whole is mipped on ([_mipGrid]).
+/// engine's own sampler, as a picture it holds is laid ([_layPaint]).
 ///
 /// ⛔Not halved first to hold a quarter of it, as a mip chain is read: 🔬a
 /// lay at 0.3 came out up to 86/255 apart in `flutter test` from the same
@@ -423,8 +423,8 @@ Iterable<TileRange> _partsFitting(
 
 /// The pixels of a [picture]-sized picture that [block]'s raster samples
 /// where [placement] lays it — what the block covers, taken back into the
-/// picture and grown by the resampler's reach — or null where it reaches
-/// none of the picture.
+/// picture and grown by a texel — or null where it reaches none of the
+/// picture.
 ({int left, int top, int width, int height})? _reachedBy(
   TileRange block,
   CanvasSize picture,
@@ -444,45 +444,21 @@ Iterable<TileRange> _partsFitting(
       ((block.lastY + 1) * tileSize).toDouble(),
     ),
   );
-  // A resampled pixel reads the picture about two of its own pixels round
-  // where it lands — farther, in the picture's pixels, the more the lay
-  // shrinks it.
-  final shrink = math.min(
-    math.sqrt(placement.a * placement.a + placement.b * placement.b),
-    math.sqrt(placement.c * placement.c + placement.d * placement.d),
-  );
-  final reach = shrink <= 0 ? 0 : (2 / math.min(shrink, 1)).ceil() + 2;
-  final grid = _mipGrid(shrink);
-  final left = math.max(0, over.left.floor() - reach) ~/ grid * grid;
-  final top = math.max(0, over.top.floor() - reach) ~/ grid * grid;
-  final right = math.min(
-    picture.width,
-    (over.right.ceil() + reach + grid - 1) ~/ grid * grid,
-  );
-  final bottom = math.min(
-    picture.height,
-    (over.bottom.ceil() + reach + grid - 1) ~/ grid * grid,
-  );
+  // A pixel reads the one texel its centre lands on ([_layPaint]), within
+  // what the block covers taken back; a texel more each way holds a centre
+  // that lands on a texel's edge. ↩️Two and more, 「farther the more the lay
+  // shrinks it」, and out to a mip grid, while a lay resampled smoothly
+  // (I-120-Q28).
+  const reach = 1;
+  final left = math.max(0, over.left.floor() - reach);
+  final top = math.max(0, over.top.floor() - reach);
+  final right = math.min(picture.width, over.right.ceil() + reach);
+  final bottom = math.min(picture.height, over.bottom.ceil() + reach);
   if (left >= right || top >= bottom) {
     return null;
   }
   return (left: left, top: top, width: right - left, height: bottom - top);
 }
-
-/// The grid of the picture's pixels a part of it is read on where [shrink]
-/// lays it smaller: the texels of the deepest mip level a draw at that
-/// shrink samples. A part read from anywhere else is mipped on another grid
-/// than the picture whole is, and resamples to other pixels.
-///
-/// 🔬On the Surface's engine (Impeller, 2026-10-20, a throwaway probe: an
-/// 8000×1080 picture laid from parts against the engine's lay of it whole)
-/// unaligned parts came out up to 95/255 apart at 0.096, 0.24, 0.3 and 0.6
-/// — all over, not at their seams; on this grid 4 at most, 1 on a smooth
-/// picture, and on the grid a level deeper no closer. The test engine
-/// samples `high` without mips and sees neither ([debugLayFilterQuality]).
-int _mipGrid(double shrink) => shrink <= 0 || shrink >= 1
-    ? 1
-    : 1 << (math.log(1 / shrink) / math.ln2).ceil();
 
 /// The part of [pixels] that [part]'s raster reaches ([_reachedBy]),
 /// uploaded for that raster alone — at no more than a lay's raster a side
@@ -597,25 +573,32 @@ bool _copiesPixels(LayerPlacement placement) =>
     placement.tx == placement.tx.truncateToDouble() &&
     placement.ty == placement.ty.truncateToDouble();
 
-/// How [placement] lays a picture's pixels: copied where it stands them 1:1
-/// on whole pixels, resampled anywhere else.
-ui.Paint _layPaint(LayerPlacement placement) {
-  // A 1:1 integer-aligned placement must copy bytes, not resample:
-  // bicubic (high) blurs even at identity — a hard black line came back
-  // 28/255 gray through the cubic kernel — and the text bake's whole
-  // contract is that the store pixels ARE the engine render.
-  return ui.Paint()
-    ..filterQuality = _copiesPixels(placement)
-        ? ui.FilterQuality.none
-        : debugLayFilterQuality ?? ui.FilterQuality.high
-    ..isAntiAlias = true;
-}
+/// How a lay samples a picture's pixels: as the display does a picture it
+/// draws into a raster at the canvas's own resolution — the scale a cel is
+/// at, one of its pixels a canvas pixel.
+///
+/// 🗣️I-120-Q26 (유저 2026-11-07 「굽기를 화면에 맞춘다 — 확대된 그림은 계단
+/// 그대로 굽는다」) · Q28 (「축소도 같은 법 — 화면처럼 최근접으로 굽는다」):
+/// the canvas lays a row's picture where its pose stands it into its frame
+/// picture, at that resolution, by the display's one law
+/// ([filterQualityForDisplayScale]) asked of that picture's scale, never of
+/// the pose's — so the lay asks it the same, and a picture baked where it
+/// shows is the picture shown, grown, shrunk or turned. At 1:1 on whole
+/// pixels the answer copies the bytes, which the text bake's contract
+/// needs: the store pixels ARE the engine render.
+///
+/// ↩️It resampled at `high` — bicubic, from the picture's mips when it
+/// shrank — wherever it did not copy, so a rasterize softened the picture
+/// the canvas had shown hard-edged (I-120-Q26: 1,664–31,102 px a frame, up
+/// to 163/255 on the Surface, 11-07); and each part of a picture held off
+/// the engine was read on the grid of the deepest mip the shrink sampled
+/// (`_mipGrid`, 2026-10-20), which nothing samples now.
+ui.Paint _layPaint() => ui.Paint()
+  ..filterQuality = filterQualityForDisplayScale(_celScale)
+  ..isAntiAlias = true;
 
-/// The quality a test resamples a lay at in place of `high` — `medium`,
-/// which mips on the test engine as `high` does on this device's
-/// ([_mipGrid]) — or null.
-@visibleForTesting
-ui.FilterQuality? debugLayFilterQuality;
+/// A cel's pixels a canvas pixel: a cel is at the canvas's resolution.
+const double _celScale = 1;
 
 /// What one block of a lay draws: an image, where it lies among the
 /// picture's own pixels — the picture whole at its origin, or the part of a
@@ -667,7 +650,7 @@ Future<List<PlacedTile>> _laidBlockOf(
       -(tileY0 * tileSize).toDouble(),
     )
     ..transform(placementMatrix(placement).storage)
-    ..drawImage(image, ui.Offset.zero, _layPaint(placement));
+    ..drawImage(image, ui.Offset.zero, _layPaint());
   final picture = recorder.endRecording();
   // 🚨THE `finally` IS THE POINT. `toImage` is the awaited call, and an await
   // that throws skips every statement after it — so a dispose written on the

@@ -7,9 +7,9 @@ import 'dart:typed_data';
 /// The transform tool goes through here — affine, perspective quad and
 /// mesh, preview and commit alike, which is what makes those two the same
 /// bytes. The rest do not yet: the composite path still hands its scaling
-/// to Skia, import fit still uses `FilterQuality.high`, and on-screen
-/// minification is still a `FilterQuality` too. Those move over one at a
-/// time.
+/// to Skia, import fit lays a picture by the display's `FilterQuality`
+/// (`core/display_filter.dart`, I-120-Q26), and on-screen minification is
+/// still a `FilterQuality` too. Those move over one at a time.
 ///
 /// Once they have, every surface that turns pixels into other pixels
 /// arrives here. They differ in what matrix they hand in, never in how a
