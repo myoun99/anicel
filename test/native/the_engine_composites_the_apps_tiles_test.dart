@@ -660,11 +660,13 @@ void main() {
       inverts: true,
     );
     final rowChain = plan.chain(0, 0, 2, 1);
+    // The blurs before it gather the noise about a luma of a half: a
+    // threshold under that lights it, so its gain and saturation show.
     final lens = hexagon(
       4.5,
       fringe: 80,
       gain: 1.5,
-      threshold: 0.7,
+      threshold: 0.3,
       saturation: 0.4,
       linear: true,
       paper: (0, 0, 250, 128),
