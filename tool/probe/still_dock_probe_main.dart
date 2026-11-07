@@ -20,7 +20,8 @@
 //   live    every still region drawn live (`StillRaster.cachePays` off)
 //
 // It answers four times a second in <EDGE_OUT>/now.json: the phase it is in,
-// how long the regions have stood as they are (`still`, seconds), and every
+// how long the regions have stood as they are in it (`still`, seconds — from
+// the turn or their last change, whichever came later), and every
 // region — its label, the nearest name above it, where it stands in device
 // pixels from the magenta mark in the window's top-left corner, what the
 // scene draws it from (its own image, the image of a region above it, or
@@ -130,6 +131,12 @@ final class _Probe {
 
   void _turn(String phase) {
     _phase = phase;
+    // The count starts again at the turn: the regions answer as they did
+    // for a while after it, and that stood for the new phase's stillness —
+    // 🔬the Surface, 11-08 D2: a shot two seconds after `image` read 5 s
+    // still, the regions all still live from the phase before.
+    _stood = '';
+    _since = DateTime.now();
     // ignore: invalid_use_of_visible_for_testing_member
     StillRaster.debugCachePaysOverride = phase == 'live' ? false : null;
     void repaint(RenderObject node) {

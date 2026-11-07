@@ -36,10 +36,18 @@
 // Below them, the APP'S OWN way: the right half is the region itself
 // (`StillRaster`, as every dock region and row stands on one), round widgets
 // a dock is made of — the shapes above as a `CustomPaint`, a rounded pill,
-// blocks under a clip, a text widget, a pill under an opacity — the left
-// half the same widgets live. Three times: on whole device pixels (`still`),
-// and a third and a half of a device pixel over (`stl+1/3`, `stl+1/2`),
-// where a 150% screen stands a logical third. Then the layers a dock adds
+// blocks under a clip, a text widget, a pill under an opacity, and two of
+// the app's own: a rail row's opacity bar (`field`, a real `FieldSlider`
+// 6.75 device pixels down, as a row stands it at 150%) and the control
+// shape the canvas capsules wear (`control`, [AppShapes]) — the left half
+// the same widgets live. On whole device pixels (`still`), and a quarter, a
+// third, a half and three quarters of a device pixel over (`stl+1/4` …
+// `stl+3/4`): a 150% screen stands a logical third, and a logical half
+// three quarters — a quarter over puts the bar's top on a whole pixel.
+// The superellipse and path columns (🔬the dock probe, the Surface, 11-08:
+// the app's corners parted 31~57/255 from live where the RRects above had
+// agreed) are the app's corner as a fill, a border and a clip, and a
+// diamond's diagonal edges. Then the layers a dock adds
 // round them (🔬the Surface, 11-07 22:31: the three rows above all agreed
 // with the live half): a region inside the region a third of a device pixel
 // in, as a dock's image holds its rows' (`nest`, `nst+1/2`), and the widget
@@ -60,6 +68,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart' show TickOverlay;
 
@@ -69,7 +79,7 @@ const _outDir = String.fromEnvironment('EDGE_OUT', defaultValue: '');
 const int _half = 72;
 
 /// Room between the cells and round the table, in device pixels.
-const int _gap = 12;
+const int _gap = 8;
 
 /// The mark the compare finds the window by: magenta, this many device
 /// pixels a side, in the window's top-left corner.
@@ -138,6 +148,67 @@ final List<_Shape> _shapes = [
     ),
   ),
   (name: 'image', draw: _drawSmallImage),
+  // The corner every control and container of the app wears
+  // ([AppShapes] — a superellipse), filled, as a border and as a clip,
+  // and a path's diagonal edges (a camera key's diamond): 🔬the dock probe
+  // on the Surface, 11-08, parted them from live where these RRects agreed.
+  (
+    name: 'rse-fill',
+    draw: (canvas) => canvas.drawRSuperellipse(
+      RSuperellipse.fromRectAndRadius(
+        const Rect.fromLTWH(8.3, 10.6, 52.4, 30.2),
+        const Radius.circular(6.5),
+      ),
+      Paint()..color = _accent,
+    ),
+  ),
+  (
+    name: 'rse-line',
+    draw: (canvas) => canvas.drawRSuperellipse(
+      RSuperellipse.fromRectAndRadius(
+        const Rect.fromLTWH(8.5, 10.5, 52, 40),
+        const Radius.circular(6),
+      ),
+      Paint()
+        ..color = _ink
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    ),
+  ),
+  (
+    name: 'rse-clip',
+    draw: (canvas) {
+      canvas
+        ..save()
+        ..clipRSuperellipse(
+          RSuperellipse.fromRectAndRadius(
+            const Rect.fromLTWH(6, 6.75, 60, 27),
+            const Radius.circular(6),
+          ),
+        )
+        ..drawRect(
+          const Rect.fromLTWH(0, 0, 72, 72),
+          Paint()..color = const Color(0xFF3A3D42),
+        )
+        ..drawRect(
+          const Rect.fromLTWH(0, 0, 39.6, 72),
+          Paint()..color = _accent,
+        )
+        ..restore();
+    },
+  ),
+  (
+    name: 'path',
+    draw: (canvas) => canvas.drawPath(
+      Path()
+        ..moveTo(36.2, 8.6)
+        ..lineTo(60.4, 35.8)
+        ..lineTo(36.2, 63.4)
+        ..lineTo(11.6, 35.8)
+        ..close(),
+      Paint()..color = _accent,
+    ),
+  ),
 ];
 
 void _drawText(Canvas canvas) {
@@ -210,8 +281,10 @@ enum _Hold {
 /// both halves stand, and how the right half holds the widget.
 const _stillVariants = [
   ('still', 0.0, _Hold.region),
+  ('stl+1/4', 0.25, _Hold.region),
   ('stl+1/3', 1 / 3, _Hold.region),
   ('stl+1/2', 0.5, _Hold.region),
+  ('stl+3/4', 0.75, _Hold.region),
   ('nest', 0.0, _Hold.nested),
   ('nst+1/2', 0.5, _Hold.nested),
   ('tick-o', 1 / 3, _Hold.overTick),
@@ -220,7 +293,7 @@ const _stillVariants = [
 
 /// The most cells a line of the app's own rows holds; a row goes on to the
 /// next line past it.
-const int _stillColumns = 11;
+const int _stillColumns = 17;
 
 /// [widget] as [hold] stands it in a half — [inRegion] for the right one,
 /// which a region holds. The left half stands the same pixels live: the
@@ -320,6 +393,54 @@ final List<_WidgetShape> _widgetShapes = [
       build: (ratio) => CustomPaint(painter: _ShapePainter(shape, ratio)),
     ),
   (name: 'pill', build: _pill),
+  // The app's own: a rail row's opacity bar where the row stands it — its
+  // top 4.5 logical pixels down, 6.75 device ones at 150% (🔬the dock
+  // probe, 11-08: every rail row parted 31~34/255 at that bar's corner) —
+  // and the control shape the canvas capsules wear.
+  (
+    name: 'field',
+    build: (ratio) => Stack(
+      children: [
+        _at(
+          ratio,
+          6,
+          6.75,
+          60,
+          27,
+          FieldSlider(
+            value: 56,
+            min: 0,
+            max: 100,
+            height: 27 / ratio,
+            onChanged: (_) {},
+          ),
+        ),
+      ],
+    ),
+  ),
+  (
+    name: 'control',
+    build: (ratio) => Stack(
+      children: [
+        _at(
+          ratio,
+          8,
+          3.25,
+          56,
+          63,
+          DecoratedBox(
+            decoration: ShapeDecoration(
+              color: const Color(0xFF3A3D42),
+              shape: AppShapes.control(
+                56 / ratio,
+                side: const BorderSide(color: _ink, width: 0.75),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  ),
   (
     name: 'clip-blocks',
     build: (ratio) => Stack(
@@ -565,6 +686,8 @@ class _EdgeProbeAppState extends State<_EdgeProbeApp>
     final ratio = View.of(context).devicePixelRatio;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      // The app's own theme: the app's own widgets below read it.
+      theme: buildAppTheme(),
       home: ColoredBox(
         color: _ground,
         child: images == null
