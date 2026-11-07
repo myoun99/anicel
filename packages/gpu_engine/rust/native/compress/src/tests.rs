@@ -202,23 +202,22 @@ const SIZES: [usize; 21] = [
 // literals behind the block, and one a byte short.
 #[test]
 fn every_frame_the_c_makes_decodes_to_the_c_s_bytes() {
-    let mut answers = Answers::default();
     for &size in &SIZES {
         for (kind, data) in kinds(size, size as u64) {
             let levels: &[i32] = if size <= 131_073 { &[-5, 1, 3, 9, 19] } else { &[1, 9] };
             for &level in levels {
-                let (frame, kept) = frame(&data, level);
+                let (frame, _) = frame(&data, level);
                 let what = format!("{kind} × {size} at level {level}");
-                let answer = same_answer(kept.then_some(&mut answers), &frame, size, &what);
-                assert_eq!(answer, size as i64, "{what}: decoded whole");
-                assert_eq!(decoded(crate::qa_zstd_decompress, &frame, size).1, data, "{what}: the input back");
-                same_answer(kept.then_some(&mut answers), &frame, size + 100, &format!("{what}, room to spare"));
-                same_answer(kept.then_some(&mut answers), &frame, size + 300_000, &format!("{what}, literals behind the block"));
-                same_answer(kept.then_some(&mut answers), &frame, size - 1, &format!("{what}, a byte short"));
+                for (capacity, room) in [(size, ""), (size + 100, ", room to spare"), (size + 300_000, ", literals behind the block")] {
+                    let what = format!("{what}{room}");
+                    assert_eq!(same_answer(None, &frame, capacity, &what), size as i64, "{what}: decoded whole");
+                    assert_eq!(decoded(crate::qa_zstd_decompress, &frame, capacity).1, data, "{what}: the input back");
+                }
+                let what = format!("{what}, a byte short");
+                assert_eq!(same_answer(None, &frame, size - 1, &what), 0, "{what}: nothing");
             }
         }
     }
-    answers.pinned("compress/decode-every-frame");
 }
 
 /// `frame` with byte `at` set to `value`.
@@ -510,18 +509,35 @@ fn the_stated_size_is_the_c_s() {
     assert_eq!(unsafe { crate::qa_zstd_decompressed_size(std::ptr::null(), 8) }, -1);
 }
 
-// The bound every buffer is sized by, at the sizes its margin turns on.
+// The bound every buffer is sized by, at the sizes its margin turns on —
+// the C's answers, measured 2026-11-07 (connection-round-checklist A):
+// nothing for no size, and past i64's end the sum wraps, as the C's does.
 #[test]
 fn the_bound_is_the_c_s() {
     // SAFETY: qa_compress.c — `int64_t qa_zstd_compress_bound(int64_t)`.
     let c = unsafe { export::<Bound>("qa_zstd_compress_bound") };
-    let mut answers = Answers::default();
-    let sizes = [i64::MIN, -1, 0, 1, 2, 255, 256, 2047, 2048, 131_071, 131_072, 131_073, 1 << 30, (1 << 40) + 5];
-    for size in sizes.into_iter().chain([0xFF00_FF00_FF00_FEFFu64 as i64, 0xFF00_FF00_FF00_FF00u64 as i64, i64::MAX]) {
+    for (size, bound) in [
+        (i64::MIN, 0),
+        (-1, 0),
+        (0, 0),
+        (1, 64),
+        (2, 65),
+        (255, 318),
+        (256, 320),
+        (2047, 2117),
+        (2048, 2119),
+        (131_071, 131_582),
+        (131_072, 131_584),
+        (131_073, 131_585),
+        (1 << 30, 1_077_936_128),
+        ((1 << 40) + 5, 1_103_806_595_077),
+        (0xFF00_FF00_FF00_FEFFu64 as i64, 0),
+        (0xFF00_FF00_FF00_FF00u64 as i64, 0),
+        (i64::MAX, -9_187_343_239_835_811_842),
+    ] {
         assert_eq!(crate::qa_zstd_compress_bound(size), c(size), "{size}");
-        answers.add(crate::qa_zstd_compress_bound(size), &[]);
+        assert_eq!(crate::qa_zstd_compress_bound(size), bound, "{size}");
     }
-    answers.pinned("compress/bound");
 }
 
 // Pointers that are null and sizes that are not sizes come back 0, as the
