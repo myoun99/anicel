@@ -30,8 +30,10 @@ wat = "=1.254.2"
 
 # The plugins the tests open (src/tests.rs), each built against the spec
 # crate as a maker builds one: `cargo test` makes them before it runs a
-# test — `--lib` alone does not. The sample, two builds of it a host must
-# refuse, and the SDK's example from its own source.
+# test — given `--lib` or a test's name it makes none, and the tests refuse
+# a build older than its sources or another checkout's (src/tests.rs,
+# `sample`). The sample, two builds of it a host must refuse, and the SDK's
+# example from its own source.
 #
 # Examples rather than a dev-dependency crate, native/pen's wintab_fake's
 # form (2026-11-07): the SDK's example as a crate of its own could not read
