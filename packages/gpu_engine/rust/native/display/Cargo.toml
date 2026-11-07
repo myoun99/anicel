@@ -20,8 +20,3 @@ windows = { version = "0.62", features = [
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
-
-# The C this crate replaces (qa_display.c, qa_display_compose.cpp), the
-# answer key until the connection round.
-[dev-dependencies]
-oracle = { path = "../oracle" }

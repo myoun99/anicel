@@ -1,9 +1,14 @@
+// The engine's Rust library carries the display's timing (rust/src/lib.rs),
+// and its names are found in that code asset — no library opened, no path
+// named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:developer' show Timeline;
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
-
-import 'qa_engine_abi.dart';
+import 'package:gpu_engine/gpu_engine.dart' show gpuEngineAsset;
 
 /// Where a window's pictures land: a real vblank of its screen on the frame
 /// clock and that screen's refresh period — and the compositor's, which is
@@ -74,12 +79,25 @@ abstract interface class DisplayTiming {
   bool composeEveryVblank({required bool on});
 }
 
-/// The engine's own answers (`qa_display_vblank`,
-/// `qa_display_window_screens`, `qa_display_wait_until_us`,
-/// `qa_display_compose_every_vblank`): Windows' compositor timing (DWM), its
-/// statistics of the screens under the app's window, a high-resolution
-/// waitable timer, and a visual with nothing in it swaying on the app's
-/// window for as long as the compositor is to compose on every vblank.
+@Native<Int32 Function(Pointer<Int64>)>(symbol: 'qa_display_vblank')
+external int _vblank(Pointer<Int64> out2);
+
+@Native<Int32 Function(Pointer<Int64>, Int32)>(
+  symbol: 'qa_display_window_screens',
+)
+external int _windowScreens(Pointer<Int64> out, int max);
+
+@Native<Void Function(Int64)>(symbol: 'qa_display_wait_until_us')
+external void _waitUntil(int deadlineMicros);
+
+@Native<Int32 Function(Int32)>(symbol: 'qa_display_compose_every_vblank')
+external int _compose(int on);
+
+/// The engine's own answers (native/display): Windows' compositor timing
+/// (DWM), its statistics of the screens under the app's window, a
+/// high-resolution waitable timer, and a visual with nothing in it swaying
+/// on the app's window for as long as the compositor is to compose on every
+/// vblank.
 ///
 /// 🚨THE TWO CLOCKS ARE ONE ONLY BECAUSE BOTH ARE THE PERFORMANCE COUNTER —
 /// Dart's monotonic microseconds are, on Windows, and the compositor stamps
@@ -88,22 +106,13 @@ abstract interface class DisplayTiming {
 /// hand-off in the wrong place, which is worse than none.
 ///
 /// Null where the engine has no display to ask — every platform but
-/// Windows, whose engine vsync IS the display's — or where no engine loads.
+/// Windows, whose engine vsync IS the display's.
 final class QaDisplayTiming implements DisplayTiming {
-  QaDisplayTiming._(
-    this._vblank,
-    this._windowScreens,
-    this._waitUntil,
-    this._compose,
-  );
+  QaDisplayTiming._();
 
   /// The most screens a window is read to lie on.
   static const int _maxScreens = 8;
 
-  final int Function(Pointer<Int64>) _vblank;
-  final int Function(Pointer<Int64>, int) _windowScreens;
-  final void Function(int) _waitUntil;
-  final int Function(int) _compose;
   final Pointer<Int64> _out = calloc<Int64>(2);
   final Pointer<Int64> _screens = calloc<Int64>(2 * _maxScreens);
 
@@ -124,26 +133,7 @@ final class QaDisplayTiming implements DisplayTiming {
   }
 
   static QaDisplayTiming? _open() {
-    final library = openQaEngineLibrary();
-    if (library == null) {
-      return null;
-    }
-    final timing = QaDisplayTiming._(
-      library.lookupFunction<
-        Int32 Function(Pointer<Int64>),
-        int Function(Pointer<Int64>)
-      >('qa_display_vblank'),
-      library.lookupFunction<
-        Int32 Function(Pointer<Int64>, Int32),
-        int Function(Pointer<Int64>, int)
-      >('qa_display_window_screens'),
-      library.lookupFunction<Void Function(Int64), void Function(int)>(
-        'qa_display_wait_until_us',
-      ),
-      library.lookupFunction<Int32 Function(Int32), int Function(int)>(
-        'qa_display_compose_every_vblank',
-      ),
-    );
+    final timing = QaDisplayTiming._();
     final grid = timing.vblankGrid();
     if (grid == null) {
       return null;
