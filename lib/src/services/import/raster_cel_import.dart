@@ -18,6 +18,7 @@ import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../models/transform_pose.dart';
 import '../brush_frame_store.dart';
+import '../brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import '../guide_geometry.dart' show GuideTransform;
 import '../layer_pose_matrix.dart';
 import '../persistence/brush_drawing_binary_codec.dart' show laidCelSurface;
@@ -359,18 +360,98 @@ Future<BitmapSurface> _resampled(
   final tiles = <PlacedTile>[];
   for (final block in _layBlocks(layout.tiles, layout.tileSize)) {
     for (final part in _partsFitting(block, pixels.size, placement, layout)) {
-      final drawn = await _partUploaded(pixels, placement, part, layout);
-      if (drawn != null) {
-        tiles.addAll(await _laidBlock(drawn, placement, part, layout.tileSize));
-      }
+      tiles.addAll(await _laidPart(pixels, placement, part, layout));
     }
   }
   return _surfaceOf(layout, tiles);
 }
 
+/// [part]'s tiles, laid from the part of [pixels] it reaches
+/// ([_partUploaded]) — or, a part of ONE tile that reaches past one raster
+/// ([_partsFitting]), as the tiles half its side, laid alike and put back
+/// together where they lie ([_laidInHalves]).
+Future<List<PlacedTile>> _laidPart(
+  PixelsPicture pixels,
+  LayerPlacement placement,
+  TileRange part,
+  CelLayout layout,
+) async {
+  final reached = _reachedBy(part, pixels.size, placement, layout.tileSize);
+  if (!_fitsOneRaster(reached) && layout.tileSize.isEven) {
+    return [?await _laidInHalves(pixels, placement, part, layout)];
+  }
+  final drawn = await _partUploaded(pixels, placement, part, layout);
+  return drawn == null
+      ? const []
+      : await _laidBlock(drawn, placement, part, layout.tileSize);
+}
+
+/// [tile], laid as the four tiles half its side — cut as any block is
+/// ([_partsFitting]) and each laid as a part is ([_laidPart]) — and read
+/// back as the one tile they cover. Null where none of them took ink.
+///
+/// 🔬2026-11-08 (I-120-Q28): a tile that reached past one raster was drawn
+/// from what it reached decoded smaller, by the decoder's own smooth
+/// filter — 6,630 grey pixels of a lay at 0.15 of black-and-white line art
+/// in `flutter test`, where the engine laying the picture whole by its
+/// nearest texel ([_layPaint]) made none. Halved, every pixel is read from
+/// the file's own texels; only a tile of one pixel reaching past a raster
+/// (a lay below 1/[layRasterSide]) is still read from fewer.
+Future<PlacedTile?> _laidInHalves(
+  PixelsPicture pixels,
+  LayerPlacement placement,
+  TileRange tile,
+  CelLayout layout,
+) async {
+  final size = layout.tileSize;
+  final halves = (
+    canvas: layout.canvas,
+    tileSize: size >> 1,
+    tiles: (
+      firstX: tile.firstX * 2,
+      lastX: tile.firstX * 2 + 1,
+      firstY: tile.firstY * 2,
+      lastY: tile.firstY * 2 + 1,
+    ),
+    laid: layout.laid,
+  );
+  final laid = <PlacedTile>[];
+  for (final part in _partsFitting(
+    halves.tiles,
+    pixels.size,
+    placement,
+    halves,
+  )) {
+    laid.addAll(await _laidPart(pixels, placement, part, halves));
+  }
+  if (laid.isEmpty) {
+    return null;
+  }
+  final rgba = bitmapSurfaceRegionPixels(
+    _surfaceOf(halves, laid),
+    DirtyRegion.fromXYWH(
+      x: tile.firstX * size,
+      y: tile.firstY * size,
+      width: size,
+      height: size,
+    ),
+  );
+  return (
+    coord: TileCoord(x: tile.firstX, y: tile.firstY),
+    tile: BitmapTile(size: size, pixels: rgba),
+  );
+}
+
+/// Whether what a raster reaches ([_reachedBy]) is no longer a side than
+/// one lay's raster ([layRasterSide]) — nothing reached fits.
+bool _fitsOneRaster(({int left, int top, int width, int height})? reached) {
+  final side = debugLayRasterSide ?? layRasterSide;
+  return reached == null || reached.width <= side && reached.height <= side;
+}
+
 /// [block], cut into the parts whose reach into the picture
-/// ([_reachedBy]) is no longer a side than one lay's raster
-/// ([layRasterSide]) — a block of one tile however far it reaches.
+/// ([_reachedBy]) fits one raster ([_fitsOneRaster]) — a block of one tile
+/// however far it reaches, which is laid in halves ([_laidPart]).
 Iterable<TileRange> _partsFitting(
   TileRange block,
   CanvasSize picture,
@@ -381,10 +462,9 @@ Iterable<TileRange> _partsFitting(
   if (reached == null) {
     return;
   }
-  final side = debugLayRasterSide ?? layRasterSide;
   final wide = block.lastX - block.firstX;
   final tall = block.lastY - block.firstY;
-  if (reached.width <= side && reached.height <= side || wide + tall == 0) {
+  if (_fitsOneRaster(reached) || wide + tall == 0) {
     yield block;
     return;
   }
@@ -462,9 +542,10 @@ Iterable<TileRange> _partsFitting(
 
 /// The part of [pixels] that [part]'s raster reaches ([_reachedBy]),
 /// uploaded for that raster alone — at no more than a lay's raster a side
-/// ([layRasterSide]), which every engine holds; a part of one tile that
-/// reaches farther is drawn from fewer pixels than it reaches, still more
-/// than the tile shows. Null where it reaches none of the picture.
+/// ([layRasterSide]), which every engine holds; a part that still reaches
+/// farther — a tile of one pixel ([_laidInHalves]) — is drawn from fewer
+/// pixels than it reaches, still more than the tile shows. Null where it
+/// reaches none of the picture.
 Future<_BlockPicture?> _partUploaded(
   PixelsPicture pixels,
   LayerPlacement placement,

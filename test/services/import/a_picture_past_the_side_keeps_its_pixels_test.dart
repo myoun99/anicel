@@ -440,6 +440,25 @@ void main() {
         512,
         const GuideTransform(0.2, 0, 0, 0.9, 3.25, 7.25),
       ),
+      (
+        '🎯shrunk past what one raster holds a tile at — the tile laid in '
+            'halves, never decoded smaller',
+        1200,
+        256,
+        const GuideTransform(0.15, 0, 0, 0.15, 3.26, 7.26),
+      ),
+      (
+        '🎯shrunk so far a tile is halved three times',
+        1200,
+        256,
+        const GuideTransform(0.04, 0, 0, 0.04, 3.27, 7.27),
+      ),
+      (
+        '🎯shrunk so far, past the wall — its halves laid whole there too',
+        1200,
+        256,
+        const GuideTransform(0.04, 0, 0, 0.04, -2996.73, 7.27),
+      ),
     ]) {
       testWidgets('$how, a part at a time', (tester) async {
         await tester.runAsync(() async {
