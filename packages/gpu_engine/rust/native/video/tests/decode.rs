@@ -20,7 +20,10 @@ use video::decode::{
     qa_video_decode_close, qa_video_decode_close_all, qa_video_decode_frame, qa_video_decode_info,
     qa_video_decode_last_error, qa_video_decode_open, qa_video_decode_open_span, qa_video_decode_supported,
 };
-use video::export::{qa_video_export_error, qa_video_export_finish, qa_video_export_open, qa_video_export_write_frame};
+use video::export::{
+    qa_video_export_error, qa_video_export_finish, qa_video_export_open, qa_video_export_write_audio,
+    qa_video_export_write_frame,
+};
 
 #[derive(Clone, Copy)]
 struct Decoder {
@@ -131,26 +134,42 @@ fn picture(k: usize) -> Vec<u8> {
 /// export — None where it has none — and the file it is in.
 fn movie() -> Option<&'static (PathBuf, Vec<u8>)> {
     static MOVIE: OnceLock<Option<(PathBuf, Vec<u8>)>> = OnceLock::new();
-    MOVIE
-        .get_or_init(|| {
-            let path = std::env::temp_dir().join(format!("영상-디코드-{}.mp4", std::process::id()));
-            let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
-            // SAFETY (each): the export's declarations; a whole frame of the
-            // size opened; MP4 · H.264, silent.
-            let opened =
-                unsafe { qa_video_export_open(utf8.as_ptr(), WIDTH as i32, HEIGHT as i32, 24, 1, 0, 0, 0, 0, 0, 0) };
-            if opened != 1 {
-                return None;
-            }
-            for k in 0..FRAMES {
-                let rgba = picture(k);
-                assert_eq!(unsafe { qa_video_export_write_frame(rgba.as_ptr()) }, 1, "frame {k}: {}", export_error());
-            }
-            assert_eq!(qa_video_export_finish(), 1, "finish: {}", export_error());
-            let bytes = std::fs::read(&path).expect("the movie written");
-            Some((path, bytes))
-        })
-        .as_ref()
+    MOVIE.get_or_init(|| write_movie("silent", FRAMES, None)).as_ref()
+}
+
+/// `frames` such pictures at 24 as an MP4 this build's export writes, and
+/// the file — None where it has no export. With `sound_past`, over a stereo
+/// 48 kHz sound that runs that many samples past the last picture.
+fn write_movie(name: &str, frames: usize, sound_past: Option<usize>) -> Option<(PathBuf, Vec<u8>)> {
+    const PER_FRAME: usize = 48_000 / 24;
+    let path = std::env::temp_dir().join(format!("영상-디코드-{}-{name}.mp4", std::process::id()));
+    let utf8 = CString::new(path.to_str().expect("UTF-8")).expect("no NUL");
+    let (rate, channels) = if sound_past.is_some() { (48_000, 2) } else { (0, 0) };
+    // SAFETY (each): the export's declarations; a whole frame of the size
+    // opened, and as many samples of its channels as are passed.
+    let opened = unsafe {
+        qa_video_export_open(utf8.as_ptr(), WIDTH as i32, HEIGHT as i32, 24, 1, rate, channels, 0, 0, 0, 0)
+    };
+    if opened != 1 {
+        return None;
+    }
+    let sound = |samples: usize| {
+        let pcm = vec![0i16; samples * 2];
+        assert_eq!(unsafe { qa_video_export_write_audio(pcm.as_ptr(), samples as i32) }, 1, "{}", export_error());
+    };
+    for k in 0..frames {
+        let rgba = picture(k);
+        assert_eq!(unsafe { qa_video_export_write_frame(rgba.as_ptr()) }, 1, "frame {k}: {}", export_error());
+        if sound_past.is_some() {
+            sound(PER_FRAME);
+        }
+    }
+    if let Some(past) = sound_past {
+        sound(past);
+    }
+    assert_eq!(qa_video_export_finish(), 1, "finish: {}", export_error());
+    let bytes = std::fs::read(&path).expect("the movie written");
+    Some((path, bytes))
 }
 
 fn export_error() -> String {
@@ -173,16 +192,16 @@ fn between_junk(name: &str, body: &[u8]) -> (PathBuf, i64) {
 }
 
 /// Everything `decoder` reads of the movie `open` gives it: its info, then
-/// every frame in order, then some out of it — one before the first among
-/// them, which is the first — then one past the end and one into too small
-/// a buffer: each as bytes or the sentence refusing it.
+/// every frame in order, then some out of it — two before the first among
+/// them, each of which is the first — then one past the end and one into too
+/// small a buffer: each as bytes or the sentence refusing it.
 fn read_all(decoder: Decoder, open: impl Fn(Decoder) -> i32) -> (Info, Vec<Result<Vec<u8>, String>>) {
     let handle = open(decoder);
     assert!(handle > 0, "it opens: {}", decoder.error());
     let info = decoder.info(handle).expect("it describes the movie");
     let bytes = (info.0 * info.1 * 4) as usize;
     let count = info.2;
-    let order = (0..count).chain([count - 1, 0, count / 2, 3, 4, count / 2, -5, count + 3]);
+    let order = (0..count).chain([count - 1, 0, count / 2, 3, 4, count / 2, -5, -4, count + 3]);
     let mut frames: Vec<_> = order.map(|index| decoder.frame(handle, index, bytes)).collect();
     frames.push(decoder.frame(handle, 0, bytes - 1));
     (decoder.close)(handle);
@@ -227,8 +246,10 @@ fn each_frame_is_the_picture_for_its_index() {
     let _turn = one_at_a_time();
     let Some((path, _)) = movie() else { return };
     let (_, frames) = read_all(rust(), |decoder| decoder.open(path.to_str().expect("UTF-8")));
-    // -5 is asked as the first.
-    let order = (0..FRAMES).chain([FRAMES - 1, 0, FRAMES / 2, 3, 4, FRAMES / 2, 0]);
+    // -5 and then -4 are each asked as the first: an index before it is
+    // clamped BEFORE 「already positioned」 is asked, or -4 would read as the
+    // frame after -5's.
+    let order = (0..FRAMES).chain([FRAMES - 1, 0, FRAMES / 2, 3, 4, FRAMES / 2, 0, 0]);
     for (index, frame) in order.zip(&frames) {
         let frame = frame.as_ref().expect("a frame");
         let at = |y: usize| &frame[(y * WIDTH + WIDTH / 2) * 4..][..4];
@@ -299,23 +320,28 @@ fn a_failure_says_the_same_sentence() {
 #[test]
 #[cfg_attr(target_vendor = "apple", ignore = "Apple's reader is 공통's, still to come (connection-round-checklist)")]
 fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
-    // The repo's fixture: twelve pictures at 24 (stts 12 × 1000 in a track
-    // that says 11999/24000) under a sound that runs past them — the C's
-    // Windows backend counted by the video's own samples, not the
-    // presentation (검증 2026-10-23, windows-counts-a-movie-by-its-longest-track).
+    // 🚨The presentation is as long as its LONGEST track: counted by it, a
+    // sound that runs past the pictures is frames with no picture in them
+    // (유저 2026-08-31 「73프레임째의 빈 화면」). The C's Windows backend
+    // counts by the video's own samples (검증 2026-10-23,
+    // windows-counts-a-movie-by-its-longest-track). Twelve pictures under a
+    // sound a quarter second longer — six frames past, well over the half
+    // frame the count rounds away — and the repo's own movie, whose sound
+    // runs past its twelve by less.
     let _turn = one_at_a_time();
-    if (c().supported)() == 0 {
-        return;
-    }
+    let Some((longer, _)) = write_movie("sound-past", 12, Some(12_000)) else { return };
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../../test/fixtures/tone_with_video.mp4");
-    let answers = [c(), rust()].map(|decoder| {
-        let handle = decoder.open(fixture);
-        let info = decoder.info(handle);
-        (decoder.close)(handle);
-        info
-    });
-    assert_eq!(answers[1], answers[0], "as the C counts it");
-    assert_eq!(answers[0].map(|info| info.2), Some(12), "LIVENESS: twelve pictures");
+    for movie in [longer.to_str().expect("UTF-8"), fixture] {
+        let answers = [c(), rust()].map(|decoder| {
+            let handle = decoder.open(movie);
+            let info = decoder.info(handle);
+            (decoder.close)(handle);
+            info
+        });
+        assert_eq!(answers[1], answers[0], "{movie}: as the C counts it");
+        assert_eq!(answers[0].map(|info| info.2), Some(12), "{movie}: LIVENESS — twelve pictures");
+    }
+    std::fs::remove_file(longer).ok();
 }
 
 #[test]
