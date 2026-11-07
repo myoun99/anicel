@@ -7,6 +7,14 @@ publish = false
 [lib]
 # Both kinds are required by native_toolchain_rust.
 crate-type = ["staticlib", "cdylib"]
+# ⛔NOT `gpu_engine`, the package's name: on Apple's the plugin's pod is
+# gpu_engine.framework (CocoaPods names it after the plugin), and Flutter
+# wraps a code asset libX.dylib as X.framework without looking at the
+# pods' names — the two met in one place, and the macOS app found no
+# gpu_engine_open_sole in the gpu_engine it opened (GPU engine run
+# 42349881697, 2026-11-07). Dart binds the library by its asset's id
+# (lib/src/engine_ffi.dart), never by this name.
+name = "gpu_engine_core"
 
 [dependencies]
 # The fingerprint: the same CRC-32 as the app's anicelCrc32, not a hash of
