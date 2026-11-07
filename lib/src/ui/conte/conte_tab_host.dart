@@ -600,6 +600,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
+  /// What [page]'s pictures repaint on: a picture of one of its cells' cuts
+  /// landed, never another page's (conte-one-eye-repaints-every-track).
+  Listenable? _picturesLandedOn(ContePageLayout page) => widget.thumbnails
+      ?.noticesFor([for (final cell in page.cells) CutId(cell.cutId)]);
+
   /// The pages the view shows, each drawn through the view moved to where
   /// it lies in the stack — and ONE ink layer over them all, its windows in
   /// the stack's own space, so the pen is heard on every page on screen.
@@ -645,10 +650,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
               strokeHold: _strokeHold,
               imageFor: widget.imageFor,
               imageRepaint: widget.imageRepaint,
-              // Its own cells' pictures, never another page's.
-              picturesLanded: widget.thumbnails?.noticesFor([
-                for (final cell in shown[index].page.cells) CutId(cell.cutId),
-              ]),
+              picturesLanded: _picturesLandedOn(shown[index].page),
               inkController: widget.inkController,
               pictures: pictures?[index] ?? const [],
               cels: widget.pictures,

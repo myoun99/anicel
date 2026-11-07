@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
+import '../../helpers/poll_until.dart';
+
 /// D15 (유저 2026-08-21): 「①트랙이 보여야 하는데 프레임이 보임 ②심지어
 /// 수정 전 구버전 간편오버레이가 보임 — 설마 사본 멋대로 만든 건가?」
 ///
@@ -222,7 +224,17 @@ void main() {
     // pictures showed whenever something else happened to repaint it.
     final render = tester.renderObject<RenderCustomPaint>(_cutBlocks());
     expect(render.debugNeedsPaint, isFalse, reason: 'the premise: settled');
-    (painter.thumbnails!.landed as ChangeNotifier).notifyListeners();
+    // A picture of the row's cut at a height no block asks for, rendered
+    // and landed on the real clock, with no frame drawn after it.
+    final thumbnails = painter.thumbnails!;
+    final cut = painter.entries.first.cut;
+    thumbnails.resolve(cut, 0, shownHeight: 1000);
+    expect(thumbnails.pending(), isTrue, reason: 'the premise: it renders');
+    expect(
+      await tester.runAsync(() => pollUntil(() => !thumbnails.pending())),
+      isTrue,
+      reason: 'the premise: it landed',
+    );
     expect(render.debugNeedsPaint, isTrue, reason: 'the folded row heard it');
   });
 
