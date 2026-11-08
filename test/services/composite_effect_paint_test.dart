@@ -105,6 +105,18 @@ void main() {
     );
   });
 
+  // How far the engine's weights reach and how far its chain puts past
+  // what it reads are one number (composite_tree_plan.dart): the walk
+  // lies too far off the Gaussian to tell a pixel short (mutants D06 ·
+  // D20, 11-08).
+  test('a Gaussian between whole pixels reaches the next whole one, and '
+      'none the way it does not run', () {
+    GaussianBlur only(ResolvedLayerEffect effect) =>
+        paintedEffectsOf([effect]).single as GaussianBlur;
+    expect(only(blur(2.5, dimensions: 1)).wholeReach, (3, 0));
+    expect(only(blur(4)).wholeReach, (4, 4));
+  });
+
   test('🗣️I-132-Q3: Blur Dimensions says which way the blurriness runs', () {
     ui.ImageFilter? filterOf(int dimensions) =>
         resolveCompositeEffectPaint([

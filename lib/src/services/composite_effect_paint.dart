@@ -470,6 +470,12 @@ final class GaussianBlur extends PaintedEffect {
   /// How far past its input it paints: the farther way's reach.
   double get reach => math.max(reachX, reachY);
 
+  /// The whole pixels its spread touches each way: how far the engine's
+  /// weights reach either side of a pixel, and so how far past what it
+  /// reads a chain puts it — one answer for both, or a reach put short
+  /// leaves its last pixels out.
+  (int, int) get wholeReach => (reachX.ceil(), reachY.ceil());
+
   /// The filter the walk draws it by. DECAL, not the clamp default: a
   /// layer's artwork must not smear its edge pixels outward forever —
   /// outside its coverage there is nothing, and that is what the picture

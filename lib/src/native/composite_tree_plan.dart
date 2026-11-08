@@ -404,14 +404,17 @@ class _TreePlan {
     GaussianBlur blur, {
     required (int, int, int, int) reads,
     required (int, int, int, int) puts,
-  }) => plan.chainGaussian(
-    chain,
-    across: (sigma: blur.sigmaX, reach: blur.reachX.ceil()),
-    down: (sigma: blur.sigmaY, reach: blur.reachY.ceil()),
-    picture: reads,
-    repeats: blur.repeatsTheEdge,
-    puts: puts,
-  );
+  }) {
+    final (x, y) = blur.wholeReach;
+    plan.chainGaussian(
+      chain,
+      across: (sigma: blur.sigmaX, reach: x),
+      down: (sigma: blur.sigmaY, reach: y),
+      picture: reads,
+      repeats: blur.repeatsTheEdge,
+      puts: puts,
+    );
+  }
 
   /// The ops [lead] lays on a chain whose picture is [picture], in
   /// [space], reading the rows [reads] draw — none for none, nor where it
@@ -680,7 +683,7 @@ GpuLinePass _lineOf(LineBoxPass pass) => (
     return extent;
   }
   final (left, top, right, bottom) = extent;
-  final (x, y) = (painted.reachX.ceil(), painted.reachY.ceil());
+  final (x, y) = painted.wholeReach;
   return (left - x, top - y, right + x, bottom + y);
 }
 
