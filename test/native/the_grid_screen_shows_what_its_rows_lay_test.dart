@@ -309,6 +309,69 @@ void main() {
     );
   });
 
+  testWidgets('the screen stands under its rows', (tester) async {
+    aSmallView(tester);
+    await tester.pumpWidget(aGrid(_Row(() => tile)));
+    await tester.pump();
+
+    final layers = tester.layers;
+    final shown = layers.whereType<TextureLayer>().single;
+    final row = tester
+        .renderObject(find.byType(TimelineGridScreenSlot))
+        .debugLayer!;
+    expect(
+      layers.indexOf(shown),
+      lessThan(layers.indexOf(row)),
+      reason: 'a frame shows what comes after over what comes before',
+    );
+  });
+
+  testWidgets('a row built again within a clip that moves by itself lays '
+      'again as that clip moves', (tester) async {
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(
+      aGrid(row, clip: _Rects.of([const Rect.fromLTWH(0, 0, 60, 10)])),
+    );
+    await tester.pump();
+    final at = ValueNotifier([const Rect.fromLTWH(0, 0, 30, 10)]);
+    addTearDown(at.dispose);
+    await tester.pumpWidget(aGrid(row, clip: _Rects(at)));
+    await tester.pump();
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(20, 80, red)])),
+      reason: '⛔premise: the left half alone',
+    );
+
+    at.value = [const Rect.fromLTWH(30, 0, 30, 10)];
+    await tester.pump();
+
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(80, 140, green)])),
+    );
+  });
+  testWidgets('a part of the row its clip leaves none of is not laid', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final before = tile.debugHolds;
+    // The second rect lies past the row's end.
+    await tester.pumpWidget(
+      aGrid(
+        _Row(() => tile),
+        clip: _Rects.of([
+          const Rect.fromLTWH(0, 0, 30, 10),
+          const Rect.fromLTWH(70, 0, 10, 10),
+        ]),
+      ),
+    );
+    await tester.pump();
+
+    expect(tile.debugHolds - before, 1, reason: 'the one part laid');
+  });
+
   testWidgets('before the engine is open a row lays nothing', (tester) async {
     aSmallView(tester);
     final row = _Row(() => tile);

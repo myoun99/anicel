@@ -218,6 +218,7 @@ void main() {
     final latest = painterFor(rowLayer('r', length: 3));
     final baked = ask(latest)!;
 
+    final live = TimelineGridTilePicture.debugLive;
     held.single.complete();
     await tileStoreIdle(store);
     expect(
@@ -226,6 +227,11 @@ void main() {
       reason: 'the drain\'s raster, of an older ask, landed over it',
     );
     expect(baked.debugHolds, isPositive);
+    expect(
+      TimelineGridTilePicture.debugLive,
+      live,
+      reason: 'the tile the drain drew for nothing is freed',
+    );
   });
 
   test('an ask that bakes the span takes it off the queue — the older ask '

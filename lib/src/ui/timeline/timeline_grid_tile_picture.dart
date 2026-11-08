@@ -11,7 +11,9 @@ import 'package:gpu_engine/gpu_engine.dart';
 /// texture gone under the GPU. ↩️A tile was a `ui.Image`, which the
 /// engine counted for every picture that drew it.
 final class TimelineGridTilePicture {
-  TimelineGridTilePicture(this.picture);
+  TimelineGridTilePicture(this.picture) {
+    _live += 1;
+  }
 
   final GpuGridPicture picture;
   int _holds = 1;
@@ -23,6 +25,14 @@ final class TimelineGridTilePicture {
   @visibleForTesting
   int get debugHolds => _holds;
 
+  /// How many are not freed yet — a tile the store drew and then dropped
+  /// on its way, which nothing hands back to hold, among them.
+  /// ⛔Read it around an operation, never as an absolute
+  /// (`QaStampScratch.debugLiveCount`'s rule).
+  @visibleForTesting
+  static int get debugLive => _live;
+  static int _live = 0;
+
   void hold() {
     assert(_holds > 0, 'a tile held after it was freed');
     _holds += 1;
@@ -32,6 +42,7 @@ final class TimelineGridTilePicture {
     assert(_holds > 0, 'a tile let go of after it was freed');
     _holds -= 1;
     if (_holds == 0) {
+      _live -= 1;
       picture.free();
     }
   }

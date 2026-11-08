@@ -582,6 +582,23 @@ void main() {
     );
   });
 
+  test('a clear lets go of every tile it kept', () async {
+    final store = TimelineGridTileStore.instance;
+    final painter = painterFor(blockLayer(), store: store);
+    TimelineGridTilePicture? tile() => store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(await pollUntil(() => tile() != null), isTrue, reason: 'premise');
+    final kept = tile()!;
+
+    store.clear();
+
+    expect(kept.debugHolds, 0);
+  });
+
   test('🚨a sixteenth past its capacity it comes back to it in one letting '
       'go, not one tile at each landing', () async {
     final store = TimelineGridTileStore.instance..debugCapacity = 16;

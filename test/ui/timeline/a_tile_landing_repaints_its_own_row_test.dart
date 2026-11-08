@@ -14,6 +14,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
@@ -276,9 +277,15 @@ void main() {
     await pollUntil(() => out.length > 1);
     expect(out, hasLength(2), reason: 'its key is asked for again at once');
 
+    final live = TimelineGridTilePicture.debugLive;
     land(0);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(landings, 0, reason: 'the fenced raster lands nowhere');
+    expect(
+      TimelineGridTilePicture.debugLive,
+      live,
+      reason: 'and what it drew is freed',
+    );
     land(1);
     await tileStoreIdle(store);
     expect(landings, 1, reason: 'the one asked for after it does');
