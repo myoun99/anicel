@@ -1,3 +1,5 @@
+import 'dart:ui' show ClipOp;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,26 +10,71 @@ import 'canvas_transforms.dart';
 /// paint.
 typedef DrawnShape = ({Path outline, Paint paint});
 
-/// A canvas that keeps every path and rectangle painted on it as the outline
-/// it covers — the rectangle through the transform it was drawn in.
+/// A canvas that keeps every path, rectangle and superellipse painted on it
+/// as the outline it covers — through the transform it was drawn in, and
+/// within the rectangles it was cut to.
 ///
 /// 🗣️a-live-dock-frame-costs-a-whole-draw-Q9 (유저 2026-11-08, 2): a key mark
 /// the engine fills exactly — a diamond, a held key's box — is drawn as a
 /// rectangle turned and stretched (`paintKeyMark`), every other as a path.
 /// What a mark looks like is the shape it covers, whichever call covered
 /// it — so that is what a test reads.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2): what
+/// reaches a still region's corner is the region's shape cut by a
+/// rectangle (`drawRSuperellipseCut`) — a bar's fill, a grip's band — so
+/// the cut is part of what it covers too.
 class DrawnShapes extends CanvasTransforms {
   final shapes = <DrawnShape>[];
 
-  @override
-  void drawPath(Path path, Paint paint) =>
-      shapes.add((outline: path.transform(current.storage), paint: paint));
+  /// The rectangles the canvas is cut to now, each with how it cuts.
+  var _cuts = <(PathOperation, Path)>[];
+  final _savedCuts = <List<(PathOperation, Path)>>[];
 
   @override
-  void drawRect(Rect rect, Paint paint) => shapes.add((
-    outline: (Path()..addRect(rect)).transform(current.storage),
-    paint: paint,
-  ));
+  void save() {
+    super.save();
+    _savedCuts.add(_cuts);
+  }
+
+  @override
+  void restore() {
+    super.restore();
+    _cuts = _savedCuts.removeLast();
+  }
+
+  @override
+  void clipRect(
+    Rect rect, {
+    ClipOp clipOp = ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) => _cuts = [
+    ..._cuts,
+    (
+      clipOp == ClipOp.intersect
+          ? PathOperation.intersect
+          : PathOperation.difference,
+      (Path()..addRect(rect)).transform(current.storage),
+    ),
+  ];
+
+  void _add(Path drawn, Paint paint) {
+    var outline = drawn.transform(current.storage);
+    for (final (operation, cut) in _cuts) {
+      outline = Path.combine(operation, outline, cut);
+    }
+    shapes.add((outline: outline, paint: paint));
+  }
+
+  @override
+  void drawPath(Path path, Paint paint) => _add(path, paint);
+
+  @override
+  void drawRect(Rect rect, Paint paint) => _add(Path()..addRect(rect), paint);
+
+  @override
+  void drawRSuperellipse(RSuperellipse rsuperellipse, Paint paint) =>
+      _add(Path()..addRSuperellipse(rsuperellipse), paint);
 
   /// The shapes [object] paints, in order — its children's too.
   static List<DrawnShape> of(RenderObject object) {
@@ -35,11 +82,19 @@ class DrawnShapes extends CanvasTransforms {
     object.paint(TestRecordingPaintingContext(canvas), Offset.zero);
     return canvas.shapes;
   }
+
+  /// The shapes [paint] paints on a canvas, in order.
+  static List<DrawnShape> by(void Function(Canvas canvas) paint) {
+    final canvas = DrawnShapes();
+    paint(canvas);
+    return canvas.shapes;
+  }
 }
 
-/// Matches a render object — or the one a finder finds — that paints a
-/// shape of [color] and [style] whose outline covers every point of
-/// [includes] and none of [excludes].
+/// Matches a render object — or the one a finder finds, or a function
+/// painting on a canvas, as `paints` takes — that paints a shape of
+/// [color] and [style] whose outline covers every point of [includes] and
+/// none of [excludes].
 Matcher paintsShape({
   Color? color,
   PaintingStyle style = PaintingStyle.fill,
@@ -64,17 +119,16 @@ class _PaintsShape extends Matcher {
       includes.every(shape.outline.contains) &&
       !excludes.any(shape.outline.contains);
 
-  static RenderObject? _objectOf(Object? item) => switch (item) {
-    RenderObject() => item,
-    Finder() => item.evaluate().single.renderObject,
+  static List<DrawnShape>? _shapesOf(Object? item) => switch (item) {
+    RenderObject() => DrawnShapes.of(item),
+    Finder() => DrawnShapes.of(item.evaluate().single.renderObject!),
+    final void Function(Canvas) paint => DrawnShapes.by(paint),
     _ => null,
   };
 
   @override
-  bool matches(Object? item, Map<Object?, Object?> matchState) {
-    final object = _objectOf(item);
-    return object != null && DrawnShapes.of(object).any(_isIt);
-  }
+  bool matches(Object? item, Map<Object?, Object?> matchState) =>
+      _shapesOf(item)?.any(_isIt) ?? false;
 
   @override
   Description describe(Description description) => description.add(
@@ -88,11 +142,11 @@ class _PaintsShape extends Matcher {
     Description mismatchDescription,
     Map<Object?, Object?> matchState,
     bool verbose,
-  ) => switch (_objectOf(item)) {
-    final object? => mismatchDescription.add(
-      'painted ${DrawnShapes.of(object).map(_said)}',
+  ) => switch (_shapesOf(item)) {
+    final shapes? => mismatchDescription.add('painted ${shapes.map(_said)}'),
+    null => mismatchDescription.add(
+      'is no render object, nor finds one, nor paints',
     ),
-    null => mismatchDescription.add('is no render object, nor finds one'),
   };
 
   static String _said(DrawnShape shape) =>

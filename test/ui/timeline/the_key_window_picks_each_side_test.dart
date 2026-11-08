@@ -316,15 +316,26 @@ void main() {
       ),
     );
     // A 9px box, cut at 4.5: the mark of a key straight on both sides,
-    // with the half its row does not say clipped away.
-    for (final (key, half) in [
-      ('rename-key-in-linear', const Rect.fromLTRB(0, 0, 4.5, 9)),
-      ('rename-key-out-linear', const Rect.fromLTRB(4.5, 0, 9, 9)),
+    // with the half its row does not say clipped away — what it covers is
+    // the half its row says.
+    for (final (key, half, said, unsaid) in [
+      (
+        'rename-key-in-linear',
+        const Rect.fromLTRB(0, 0, 4.5, 9),
+        const Offset(2, 4.5),
+        const Offset(7, 4.5),
+      ),
+      (
+        'rename-key-out-linear',
+        const Rect.fromLTRB(4.5, 0, 9, 9),
+        const Offset(7, 4.5),
+        const Offset(2, 4.5),
+      ),
     ]) {
       expect(glyph(key), paints..clipRect(rect: half), reason: key);
       expect(
         glyph(key),
-        paintsShape(includes: const [Offset(2, 4.5), Offset(7, 4.5)]),
+        paintsShape(includes: [said], excludes: [unsaid]),
         reason: key,
       );
     }

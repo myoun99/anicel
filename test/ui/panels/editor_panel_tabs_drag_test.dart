@@ -7,6 +7,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
+import 'package:anicel/src/ui/widgets/grip_band.dart';
+
+import '../../helpers/drawn_shapes.dart';
+import '../../helpers/grip_band_drawn.dart';
 
 /// Two draggable tab groups wired to one layout model, the way the
 /// workspace docks are.
@@ -140,11 +144,8 @@ void main() {
     final model = _twoGroups();
     await tester.pumpWidget(_Harness(model: model));
 
-    Color bandOf(String id) => tester
-        .widget<ColoredBox>(
-          find.descendant(of: _grip(id), matching: find.byType(ColoredBox)),
-        )
-        .color;
+    List<DrawnShape> bandOf(String id) =>
+        gripBandDrawn(tester, ValueKey<String>('panel-grip-$id'));
 
     // One band per tab, spanning the tab and lying on its top edge (the
     // strip is above the body here).
@@ -152,6 +153,18 @@ void main() {
     final band = tester.getRect(_grip('a'));
     expect(band.width, closeTo(tab.width, 0.5));
     expect(band.top, closeTo(tab.top, 0.5));
+
+    // At rest NEITHER band says anything — not even the open one.
+    expect(bandOf('a'), isEmpty);
+    expect(bandOf('b'), isEmpty);
+
+    // A pointer anywhere on the panel raises every band it can lift.
+    final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await pointer.addPointer(location: Offset.zero);
+    await pointer.moveTo(tester.getCenter(find.byType(EditorPanelTabs).first));
+    await tester.pumpAndSettle();
+    expect(bandOf('a'), isNotEmpty);
+    expect(bandOf('b'), isNotEmpty);
 
     // ★THE BAND ITSELF, not the 8px zone that holds it.
     //
@@ -161,30 +174,36 @@ void main() {
     // `constraints.smallest` — so a band given only a HEIGHT laid out 0px
     // wide. Coloured, painted, on the right edge, and invisible (유저, R4 #6:
     // 띠를 드래그해서 이동은 가능한데 그 띠 ui가 없어). The same trap
-    // collapsed a grip's height in R1a; a `ColoredBox` must be told BOTH.
-    final painted = tester.getRect(
-      find.descendant(of: _grip('a'), matching: find.byType(ColoredBox)),
-    );
-    expect(painted.width, closeTo(tab.width, 0.5));
+    // collapsed a grip's height in R1a. The band is the tab's shape cut to
+    // its rows (Q10), so it spans the tab but for the corners the shape
+    // takes.
+    final corner =
+        (tester.widget(
+                  find
+                      .ancestor(
+                        of: _grip('a'),
+                        matching: find.byWidgetPredicate(
+                          (widget) => widget is LiftingGripBand,
+                        ),
+                      )
+                      .first,
+                )
+                as LiftingGripBand)
+            .shape
+            .borderRadius
+            .resolve(TextDirection.ltr)
+            .topLeft
+            .x;
+    final painted = bandOf('a').single.outline.getBounds();
+    expect(painted.left, lessThan(tab.left + corner));
+    expect(painted.right, greaterThan(tab.right - corner));
     expect(painted.height, greaterThan(0));
-
-    // At rest NEITHER band says anything — not even the open one.
-    expect(bandOf('a'), Colors.transparent);
-    expect(bandOf('b'), Colors.transparent);
-
-    // A pointer anywhere on the panel raises every band it can lift.
-    final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await pointer.addPointer(location: Offset.zero);
-    await pointer.moveTo(tester.getCenter(find.byType(EditorPanelTabs).first));
-    await tester.pumpAndSettle();
-    expect(bandOf('a'), isNot(Colors.transparent));
-    expect(bandOf('b'), isNot(Colors.transparent));
 
     // And when the hand leaves they go quiet again — which tab is OPEN is
     // said by the tab's own fill, not by the band.
     await pointer.removePointer();
     await tester.pumpAndSettle();
-    expect(bandOf('a'), Colors.transparent);
+    expect(bandOf('a'), isEmpty);
   });
 
   testWidgets('유저 R4 #1: a seam separates the tab strip from the body, and '
