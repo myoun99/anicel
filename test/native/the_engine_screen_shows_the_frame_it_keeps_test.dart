@@ -268,8 +268,7 @@ void main() {
       addTearDown(target.free);
       screen.show(
         target,
-        columns: width,
-        rows: height,
+        view.size,
         viewport: view.viewport,
         devicePixelRatio: view.devicePixelRatio,
       );

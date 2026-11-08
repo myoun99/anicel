@@ -60,13 +60,12 @@ final class EngineStackScreen {
   }
 
   /// The kept frame through [viewport] at [devicePixelRatio] onto [target]
-  /// of [columns] × [rows] texels, one a device pixel — the camera the walk
-  /// draws through ([applyViewportTransform]), its pan snapped as there —
-  /// waiting for the GPU ([GpuScreen.show]).
+  /// of [size] texels, columns by rows, one a device pixel — the camera the
+  /// walk draws through ([applyViewportTransform]), its pan snapped as
+  /// there — waiting for the GPU ([GpuScreen.show]).
   void show(
-    GpuTarget target, {
-    required int columns,
-    required int rows,
+    GpuTarget target,
+    (int, int) size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
   }) {
@@ -79,6 +78,7 @@ final class EngineStackScreen {
     // A texel is a device pixel, the camera's unit a logical one.
     final per = 1 / devicePixelRatio;
     final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
+    final (columns, rows) = size;
     screen.show(
       target,
       inverse: [
