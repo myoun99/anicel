@@ -10,6 +10,7 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 
 import '../helpers/a_shown_surface.dart';
 
@@ -20,7 +21,9 @@ import '../helpers/a_shown_surface.dart';
 /// that paint's frame shows; and before the app's engine is open a row
 /// lays nothing and draws its cells itself.
 void main() {
-  late GpuGridPicture tile;
+  late TimelineGridTilePicture tile;
+  // The same, for the one case that lets go of it as its store would.
+  late TimelineGridTilePicture letGoOf;
   late GpuSurface surface;
   const red = [255, 0, 0, 255];
   const green = [0, 255, 0, 255];
@@ -28,14 +31,19 @@ void main() {
   setUpAll(() async {
     final engine = await openAppGpuEngine();
     // 120 × 20: red over its left half, green over its right.
-    tile = GpuGridPicture(engine, 120, 20);
     final grid = GpuGrid(engine);
     final ops = TimelineGridTileOpWriter()
       ..fillRect(0, 0, 60, 20, timelineGridPackRgba(const Color(0xFFFF0000)))
       ..fillRect(60, 0, 60, 20, timelineGridPackRgba(const Color(0xFF00FF00)));
-    grid
-      ..draw(tile, ops.build(), const [])
-      ..free();
+    TimelineGridTilePicture drawn() {
+      final picture = GpuGridPicture(engine, 120, 20);
+      grid.draw(picture, ops.build(), const []);
+      return TimelineGridTilePicture(picture);
+    }
+
+    tile = drawn();
+    letGoOf = drawn();
+    grid.free();
     surface = shownSurfaceOf(300, 200);
     debugOpenTimelineGridScreen = (_, _, _) async =>
         ScreenTexture.debugOnSurface(surface);
@@ -43,7 +51,7 @@ void main() {
   tearDownAll(() {
     debugOpenTimelineGridScreen = ScreenTexture.open;
     surface.free();
-    tile.free();
+    tile.letGo();
   });
 
   /// A 300 × 200 view at a ratio of 2, so a logical pixel is two.
@@ -191,6 +199,30 @@ void main() {
     );
   });
 
+  testWidgets('a tile its store lets go of lives while a row lays it', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    final row = _Row(() => letGoOf);
+    await tester.pumpWidget(aGrid(row, scroll: scroll));
+    await tester.pump();
+    expect(letGoOf.debugHolds, 2, reason: 'the store and the row');
+
+    letGoOf.letGo();
+    scroll.jumpTo(15);
+    await tester.pump();
+
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(0, 50, red), (50, 110, green)])),
+    );
+    row.layFrom(null);
+    await tester.pump();
+    expect(letGoOf.debugHolds, 0, reason: 'freed once no row lays it');
+  });
+
   testWidgets('a row that lays nothing leaves nothing shown', (tester) async {
     aSmallView(tester);
     final row = _Row(() => tile);
@@ -226,7 +258,7 @@ void main() {
 class _Row extends CustomPainter {
   _Row(this._tile) : super(repaint: _changed);
 
-  final GpuGridPicture Function() _tile;
+  final TimelineGridTilePicture Function() _tile;
   static final ValueNotifier<int> _changed = ValueNotifier(0);
 
   Rect? _from = const Rect.fromLTWH(0, 0, 120, 20);

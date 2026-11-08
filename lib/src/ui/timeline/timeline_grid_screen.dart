@@ -7,6 +7,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../native/app_gpu_engine.dart';
 import '../../native/screen_texture.dart';
+import 'timeline_grid_tile_picture.dart';
 
 /// How a grid's screen is opened: [ScreenTexture.open]. A test reads one
 /// back through [ScreenTexture.debugOnSurface].
@@ -18,7 +19,7 @@ debugOpenTimelineGridScreen = ScreenTexture.open;
 /// [picture], in the picture's pixels, onto the part [onto] of the row, in
 /// the row's own.
 typedef TimelineGridScreenTile = ({
-  GpuGridPicture picture,
+  TimelineGridTilePicture picture,
   Rect from,
   Rect onto,
 });
@@ -323,7 +324,7 @@ class _RenderGridScreen extends RenderBox {
           continue;
         }
         laid.add((
-          picture: picture,
+          picture: picture.picture,
           from: (from.left, from.top, from.right, from.bottom),
           onto: (at.left, at.top, at.right, at.bottom),
         ));
@@ -407,7 +408,7 @@ class TimelineGridScreenSlot extends SingleChildRenderObjectWidget {
 /// What a row lays its tiles on, while it paints.
 abstract interface class TimelineGridScreenLaying {
   /// Lays [tile] on the screen this paint, and every paint of the screen
-  /// till the row paints again.
+  /// till the row paints again — holding its picture till then.
   void lay(TimelineGridScreenTile tile);
 }
 
@@ -444,17 +445,27 @@ class _RenderGridScreenSlot extends RenderProxyBox
     _screen?._box?.markNeedsPaint();
   }
 
+  // A slot that comes is laid out, and a layout marks it to paint — and so
+  // the box ([markNeedsPaint]).
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _screen?._slots.add(this);
-    _screen?._box?.markNeedsPaint();
   }
 
   @override
   void detach() {
     _leave();
+    _letGo();
     super.detach();
+  }
+
+  /// Lets go of what the row laid.
+  void _letGo() {
+    for (final (:picture, from: _, onto: _) in _laid) {
+      picture.letGo();
+    }
+    _laid.clear();
   }
 
   void _leave() {
@@ -465,11 +476,14 @@ class _RenderGridScreenSlot extends RenderProxyBox
   }
 
   @override
-  void lay(TimelineGridScreenTile tile) => _laid.add(tile);
+  void lay(TimelineGridScreenTile tile) {
+    tile.picture.hold();
+    _laid.add(tile);
+  }
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    _laid.clear();
+    _letGo();
     final outer = _painting;
     _painting = this;
     try {
