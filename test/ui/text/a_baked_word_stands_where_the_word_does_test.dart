@@ -155,6 +155,26 @@ void main() {
     });
   });
 
+  testWidgets('a word the engine is not handed bakes into nothing — a tile '
+      'leaves it out, as it leaves a word of no size', (tester) async {
+    final word = TextPainter(
+      text: const TextSpan(
+        text: '3a',
+        style: TextStyle(fontSize: 9, fontFamily: 'Somebody Else\'s Face'),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    expect(
+      await bakeWordCoverage(
+        word,
+        fit: (x: 0.5, y: 1),
+        dpr: 1,
+        fontSize: 9,
+      ),
+      isNull,
+    );
+  });
+
   test('a word is drawn from its bake where some axis of it is under the '
       'legible size — its type times that axis\'s narrowing', () {
     expect(wordIsBaked(12, (x: 0.7, y: 1.0)), isTrue, reason: 'along');
