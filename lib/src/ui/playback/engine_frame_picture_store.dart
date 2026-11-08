@@ -66,14 +66,12 @@ class EngineFramePicture extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Laid before it is handed to anyone: no one to tell.
   void _composedOver(
     EngineFramePicture film,
     StackedFrame frame, {
     required ui.Rect fresh,
-  }) {
-    _screen.composeOver(film._screen, frame, fresh: fresh);
-    notifyListeners();
-  }
+  }) => _screen.composeOver(film._screen, frame, fresh: fresh);
 
   void _letGo() {
     _gone = true;
