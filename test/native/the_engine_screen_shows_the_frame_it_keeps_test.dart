@@ -328,6 +328,56 @@ void main() {
     showsThrough(screen, ranOver(within), views.take(2));
   });
 
+  // A frame laid over a film is its own frame on the tile it is fresh on —
+  // the page's first — and the film's as it is on the others, the
+  // pasteboard's and the page's second, through every view.
+  test('a frame laid over a film is the film but where it is fresh', () {
+    final film = EngineStackScreen(engine.composite, engine.letters);
+    addTearDown(film.free);
+    final under = cel(5);
+    film.compose(frameOf(under));
+    final screen = EngineStackScreen(engine.composite, engine.letters);
+    addTearDown(screen.free);
+    final frame = cel(7);
+
+    screen.composeOver(film, frameOf(frame), fresh: rectOf((10, 10, 20, 20)));
+
+    final (mine, theirs) = (ranOver(frame), ranOver(under));
+    showsThrough(
+      screen,
+      (x, y) => (x / side).floor() == 0 ? mine(x, y) : theirs(x, y),
+      views,
+    );
+  });
+
+  // Over a film nothing is laid on, a frame is laid whole; onto a screen
+  // laid on already, a frame over a film is refused with the engine's
+  // reason.
+  test('a frame over a film of nothing is laid whole, and over a film onto '
+      'a screen laid already refused', () {
+    final film = EngineStackScreen(engine.composite, engine.letters);
+    addTearDown(film.free);
+    final screen = EngineStackScreen(engine.composite, engine.letters);
+    addTearDown(screen.free);
+    final frame = cel(7);
+    final fresh = rectOf((10, 10, 20, 20));
+
+    screen.composeOver(film, frameOf(frame), fresh: fresh);
+
+    showsThrough(screen, ranOver(frame), views.take(1));
+    film.compose(frameOf(cel(5)));
+    expect(
+      () => screen.composeOver(film, frameOf(frame), fresh: fresh),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'why',
+          contains('before anything is composed'),
+        ),
+      ),
+    );
+  });
+
   // What the screen keeps is its world's tiles — the page's two and the one
   // past it — and, once it shows under 1/16, the halvings it shows through;
   // a frame of another world is kept on that world's tiles alone.

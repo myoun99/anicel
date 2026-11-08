@@ -37,13 +37,13 @@ final class EngineStackScreen {
   /// is laid on yet, but over the world pixels [fresh] alone: the rest is
   /// [film]'s kept frame, copied tile by tile as it is — a frame over the
   /// frame its ghosts lie on, which the tiles they do not reach show as it
-  /// does. Over a film nothing is laid on, all of it.
+  /// does. Over a film nothing is laid on, all of it; onto a screen laid
+  /// on already, refused with the engine's reason.
   void composeOver(
     EngineStackScreen film,
     StackedFrame frame, {
     required Rect fresh,
   }) {
-    assert(_screen == null, 'a screen laid over a film is laid on nothing');
     final under = film._screen;
     if (under == null) {
       compose(frame);
