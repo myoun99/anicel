@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../packages/gpu_engine/hook/target_link.dart';
+import '../helpers/dart_sources.dart';
 import '../helpers/temp_dir.dart';
 
 /// THE ENGINE'S BUILD HOOK TAKES DOWN ITS LINK INTO THE TRUNK'S HOOK FOLDER
@@ -17,70 +18,43 @@ import '../helpers/temp_dir.dart';
 /// arm64's lock and fingerprints `allocator-api2` … `anicel-fx` while an
 /// Android build of another checkout ran there. cargo, finding a path
 /// crate's fingerprint gone, deletes the library's `.d` and still exits 0
-/// (output_depinfo.rs), and the hook failed reading it.
+/// (output_depinfo.rs), and the hook failed reading it. A worktree removed
+/// with the link standing is tool/lane_test.sh's section X — a run of git,
+/// which no test here starts.
 void main() {
   late Directory root;
   late Directory shared;
-  late String repo;
-  late String worktree;
   late Uri output;
-
-  void git(List<String> args) {
-    final run = Process.runSync('git', args);
-    expect(run.exitCode, 0, reason: 'git $args: ${run.stderr}');
-  }
+  late String target;
 
   List<String> sharedFiles() => [
-        for (final entity in shared.listSync(recursive: true))
-          if (entity is File) entity.uri.pathSegments.last,
+        for (final file in filesUnder(shared.path)) file.uri.pathSegments.last,
       ]..sort();
 
-  void removeTheWorktree() =>
-      git(['-C', repo, 'worktree', 'remove', worktree, '--force']);
+  FileSystemEntityType standing() =>
+      FileSystemEntity.typeSync(target, followLinks: false);
 
   setUp(() {
     root = Directory.systemTemp.createTempSync('hook-link');
     shared = Directory('${root.path}/shared')..createSync();
     File('${shared.path}/kept').writeAsStringSync('the trunk');
-    repo = '${root.path}/repo';
-    git(['init', '-q', repo]);
-    git(['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit',
-        '-q', '--allow-empty', '-m', 'trunk']);
-    worktree = '$repo/lane';
-    git(['-C', repo, 'worktree', 'add', '-q', worktree, '-b', 'lane']);
-    output = Directory('$worktree/.dart_tool/hooks_runner/shared/gpu_engine/'
-            'build/0123456789/')
+    output = Directory('${root.path}/lane/.dart_tool/hooks_runner/shared/'
+            'gpu_engine/build/0123456789/')
         .absolute
         .uri;
     Directory.fromUri(output).createSync(recursive: true);
+    target = output.resolve('target').toFilePath();
   });
 
   tearDown(() => deleteTempQuietly(root));
 
-  test('🧪a worktree removed while the link stands takes the shared '
-      'folder\'s files with it', () async {
-    await withTargetAimed(output, shared.uri, () async {
-      removeTheWorktree();
-    });
-    expect(sharedFiles(), isEmpty);
-  }, skip: Platform.isWindows ? false : 'git deletes through a junction on '
-      'Windows alone — elsewhere the link is a symbolic one it unlinks');
-
   test('🚨the build writes through the link, and once it ends the checkout '
-      'holds none: removing the worktree takes nothing shared', () async {
-    final target = output.resolve('target').toFilePath();
+      'holds none — what it built stays in the folder', () async {
     await withTargetAimed(output, shared.uri, () async {
-      expect(
-        FileSystemEntity.typeSync(target, followLinks: false),
-        FileSystemEntityType.link,
-      );
+      expect(standing(), FileSystemEntityType.link);
       File('$target/built').writeAsStringSync('a build');
     });
-    expect(
-      FileSystemEntity.typeSync(target, followLinks: false),
-      FileSystemEntityType.notFound,
-    );
-    removeTheWorktree();
+    expect(standing(), FileSystemEntityType.notFound);
     expect(sharedFiles(), ['built', 'kept']);
   });
 
@@ -91,7 +65,7 @@ void main() {
       }),
       throwsStateError,
     );
-    removeTheWorktree();
+    expect(standing(), FileSystemEntityType.notFound);
     expect(sharedFiles(), ['kept']);
   });
 }
