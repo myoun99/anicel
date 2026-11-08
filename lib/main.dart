@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
+import 'src/native/app_gpu_engine.dart' show openAppGpuEngine;
 import 'src/native/device_battery.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
@@ -240,6 +241,12 @@ Future<void> main(List<String> handedAtLaunch) async {
   // is made whole, as it always was.
   WidgetsBinding.instance.addPostFrameCallback(
     (_) => unawaited(pictureSideLimit()),
+  );
+  // The GPU engine the frame grids' tiles are drawn and shown on, opened
+  // off this isolate after the first frame (관제 2026-11-08 20:54: 「장치는
+  // 첫 프레임 뒤에」): till it is open every row draws its cells itself.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(openAppGpuEngine()),
   );
 }
 

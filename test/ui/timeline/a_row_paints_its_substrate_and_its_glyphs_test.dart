@@ -8,33 +8,34 @@
 // painter's cell MODEL (timeline_cell_probe) or its geometry — nothing
 // looked at the pixels the painter actually lays down.
 //
-// ⚠️The store's own tiled path needs the native engine (`tileFor` answers
-// null without it), so with a store present but no engine the painter
-// takes the fallback INSIDE the tiled pass — which is exactly the arm the
-// second test pins. The "a fresh tile carries its own glyphs" arm belongs
-// to the native lane.
+// ⚠️A row asks its store only on a grid's screen, where its tiles are laid
+// (`TimelineGridScreenSlot.laying`); off one it paints its cells itself —
+// the arm the second test pins. ↩️It was the native engine the store
+// needed until grid-on-the-engine ④, and the second test the fallback
+// INSIDE the tiled pass. A fresh tile is laid on the screen, not painted
+// here (`the_grid_screen_shows_what_its_rows_lay`).
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
-import '../../helpers/native_engine_path.dart';
+import '../../helpers/tiles_laid.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
   const cell = 24.0;
   const crossExtent = 28.0;
@@ -75,10 +76,19 @@ void main() {
         substrateGeneration: 'g1',
       );
 
-  /// The painter's own output as raw RGBA over [size].
-  Future<Uint8List> paintBytes(TimelineRowCellsPainter painter) async {
+  /// The painter's own output as raw RGBA over [size] — painted on a grid's
+  /// screen when [onAScreen], where it asks its store.
+  Future<Uint8List> paintBytes(
+    TimelineRowCellsPainter painter, {
+    bool onAScreen = false,
+  }) async {
     final recorder = ui.PictureRecorder();
-    painter.paint(Canvas(recorder, Offset.zero & size), size);
+    void paint() => painter.paint(Canvas(recorder, Offset.zero & size), size);
+    if (onAScreen) {
+      expect(tilesLaidBy(paint), isEmpty, reason: 'premise: a cold store');
+    } else {
+      paint();
+    }
     final picture = recorder.endRecording();
     final image = picture.toImageSync(size.width.round(), size.height.round());
     picture.dispose();
@@ -143,36 +153,31 @@ void main() {
     });
   });
 
-  testWidgets('with a tile store but no fresh tile the row still paints '
-      'its cells AND their glyphs', (tester) async {
+  testWidgets('with a tile store but no screen to lay its tiles on the row '
+      'paints its cells AND their glyphs itself', (tester) async {
     await tester.runAsync(() async {
-      // The store answers null for every span here (the raster needs the
-      // native engine), so the tiled pass produces nothing at all. What
-      // reaches the strip here is the foreground alone.
       final bytes = await paintBytes(
         painterFor(store: TimelineGridTileStore.instance),
       );
-      // ⛔MEASURED, NOT ASSUMED (2026-09-04): this strip comes out 0.101
-      // painted, and deleting EITHER the store substrate or the classic
-      // one leaves it at exactly 0.101 — this setup reaches neither and
-      // CANNOT pin them. The bound below is what it really proves: a row
-      // with a store but no fresh tile still paints, rather than coming
-      // out blank. Pinning either substrate needs a setup that reaches it;
-      // the one that would is still to be found.
-      // ↪️Found 2026-09-15, after the cold-span fallback had in fact been
-      // lost (F-94): the ENGINE has to be on, so the store is live and a
-      // cold span reaches the fallback — the next test.
+      // ↩️MEASURED (2026-09-04): with a store but no engine this strip came
+      // out 0.101 painted — the foreground alone — and deleting EITHER
+      // substrate left it there, so this case could not pin them; a cold
+      // span on a live store (F-94, the next test) did. Off a screen the
+      // row paints its cells itself now, which this pins.
       expect(
         paintedFraction(bytes),
-        greaterThan(0.05),
-        reason:
-            'a row waiting for its tile still paints its cells rather than '
-            'coming out blank',
+        greaterThan(0.5),
+        reason: 'the substrate is painted, not left to a screen it is not on',
       );
       expect(
         coloursInFirstCell(bytes),
         greaterThan(1),
         reason: 'and the foregrounds still go on top of it',
+      );
+      expect(
+        TimelineGridTileStore.instance.debugBusy,
+        isFalse,
+        reason: 'nothing was asked of the store',
       );
     });
   });
@@ -180,20 +185,7 @@ void main() {
   testWidgets('🚨with the engine on and the store COLD, a span waiting for its '
       'tile paints the same cells the classic pass paints (F-94)',
       (tester) async {
-    final dllPath = nativeEngineLibraryPathOrNull();
-    if (dllPath == null) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    addTearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      TimelineGridTileStore.instance.clear();
-    });
+    addTearDown(TimelineGridTileStore.instance.clear);
     await tester.runAsync(() async {
       final classic = paintedFraction(await paintBytes(painterFor()));
       TimelineGridTileStore.instance.clear();
@@ -201,7 +193,10 @@ void main() {
       // tiled pass has to lay the cells down itself while the raster lands
       // off-frame. That is the zoom step across a span boundary.
       final cold = paintedFraction(
-        await paintBytes(painterFor(store: TimelineGridTileStore.instance)),
+        await paintBytes(
+          painterFor(store: TimelineGridTileStore.instance),
+          onAScreen: true,
+        ),
       );
       expect(
         classic,

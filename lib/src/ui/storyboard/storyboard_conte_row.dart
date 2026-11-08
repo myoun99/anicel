@@ -416,14 +416,17 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     // I-44: the HOST's ground and lines, stated once by its law — as the
     // timeline's rows read them.
     final law = TimelineGridLaw.maybeOf(context);
+    final clip = _ConteCutsClip(
+      geometry: frameGeometry,
+      spans: _cutSpans(withConteLayer: true),
+    );
     return Positioned.fill(
       child: ClipPath(
         clipBehavior: Clip.hardEdge,
-        clipper: _ConteCutsClip(
-          geometry: frameGeometry,
-          spans: _cutSpans(withConteLayer: true),
-        ),
-        child: RepaintBoundary(
+        clipper: clip,
+        // A layer of its own, as the timeline's rows lay theirs.
+        child: TimelineGridScreenSlot(
+          clip: clip,
           child: CustomPaint(
             key: ValueKey<String>('storyboard-conte-cells-$_scope'),
             painter: TimelineRowCellsPainter(
@@ -898,8 +901,9 @@ class _StoryboardPanelEdges extends StatelessWidget {
 
 /// Holds the conte row's cells to the stretches of the track whose cut has
 /// a conte layer ([_StoryboardConteRow]) — re-cut on a zoom step, which
-/// moves the frames and builds nothing.
-class _ConteCutsClip extends CustomClipper<Path> {
+/// moves the frames and builds nothing. The tiles the row lays on its
+/// grid's screen are held to them too ([TimelineGridScreenSlot.clip]).
+class _ConteCutsClip extends TimelineGridScreenClip {
   _ConteCutsClip({required this.geometry, required this.spans})
     : super(reclip: timelineFrameDrawing(geometry));
 
@@ -907,20 +911,17 @@ class _ConteCutsClip extends CustomClipper<Path> {
   final List<({int start, int endExclusive})> spans;
 
   @override
-  Path getClip(Size size) {
+  List<Rect> rectsIn(Size size) {
     final frames = geometry.value;
-    final path = Path();
-    for (final span in spans) {
-      path.addRect(
+    return [
+      for (final span in spans)
         Rect.fromLTRB(
           frames.edgeAt(span.start),
           0,
           frames.edgeAt(span.endExclusive),
           size.height,
         ),
-      );
-    }
-    return path;
+    ];
   }
 
   @override

@@ -261,6 +261,7 @@ import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
 import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
+import 'timeline/timeline_grid_screen.dart';
 import 'timeline/timeline_grid_tile_store.dart' show TimelineGridTileStore;
 import 'timeline/timeline_tile_raster_source.dart'
     show filmSubstrateGeneration;
@@ -2590,7 +2591,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                     // rasterizes every strip, thumbnail and
                                     // waveform in this column.
                                     RepaintBoundary(
-                                      child: Column(
+                                      child: TimelineGridScreenHost(child: Column(
                                         key: const ValueKey<String>(
                                           'storyboard-timeline-scroll-content',
                                         ),
@@ -2635,7 +2636,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                   : const [],
                                             ),
                                         ],
-                                      ),
+                                      )),
                                     ),
                                     if (playheadListenable != null)
                                       Positioned.fill(

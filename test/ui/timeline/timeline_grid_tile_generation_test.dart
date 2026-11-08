@@ -16,21 +16,19 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
     show filmSubstrateGeneration;
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -57,9 +55,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// be the cross-generation guard.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
+  setUpAll(openAppGpuEngine);
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -100,27 +96,13 @@ void main() {
     );
   }
 
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  setUp(TimelineGridTileStore.instance.clear);
 
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  tearDown(TimelineGridTileStore.instance.clear);
 
   test('a request whose generation died before the drain is discarded — '
       'rastering it would consult resolvers that no longer describe its '
       'rows', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);
@@ -194,10 +176,6 @@ void main() {
 
   test('a same-id row in another generation is never served this '
       'generation\'s pixels — old files carry duplicate ids across cuts', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);
@@ -255,10 +233,6 @@ void main() {
   test('stale-while-revalidate WITHIN a generation still serves the old '
       'tile — a content edit is a new instance that must find it (R26 #27)',
       () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);
@@ -308,10 +282,6 @@ void main() {
 
     test('keeps its request when a timeline row paints after it — its '
         'resolvers describe its rows whatever cut is live', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final store = TimelineGridTileStore.instance;
       var landings = 0;
       store.revision.addListener(() => landings += 1);
@@ -349,10 +319,6 @@ void main() {
 
     test('never takes the live world from the timeline — a timeline row\'s '
         'request survives the conte row painting after it', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final store = TimelineGridTileStore.instance;
       var landings = 0;
       store.revision.addListener(() => landings += 1);

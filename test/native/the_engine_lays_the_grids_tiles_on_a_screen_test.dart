@@ -96,6 +96,8 @@ void main() {
         height: 3,
       ),
     );
+    // White at 255 and at 128, as the tile keeps it: straight.
+    expect(tile.read(), [255, 255, 255, 255, 255, 255, 255, 128]);
     final surface = shownSurfaceOf(1, 2);
     addTearDown(surface.free);
 

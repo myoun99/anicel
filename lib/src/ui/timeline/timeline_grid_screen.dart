@@ -26,16 +26,17 @@ typedef TimelineGridScreenTile = ({
 
 /// THE FRAME GRID'S SCREEN ON THE ENGINE (grid-on-the-engine ④ D1, 관제
 /// 2026-11-08 20:54): one grid's rows lay their tiles on one screen, which
-/// one box under them ([TimelineGridScreen]) shows — laid and presented in
+/// one box under them (`_ScreenBox`) shows — laid and presented in
 /// the box's own paint, the texture's layer put there by it, so what a
 /// frame lays is what that frame shows. ↩️Not a `Texture` widget rebuilt
 /// off the texture's id: a rebuild comes a frame late, and the two textures
 /// it alternates between would each show a frame old.
 ///
-/// Holds the screen for [child]: the box and the rows' slots
-/// ([TimelineGridScreenSlot]) under it lay on it once the app's engine is
-/// open ([appGpuEngineOpen]); till then, and wherever a row has no slot,
-/// a row draws its cells itself.
+/// Holds the screen for [child] — the grid's rows — and shows it under
+/// them, as big as they are: their slots ([TimelineGridScreenSlot]) lay on
+/// it once the app's engine is open ([appGpuEngineOpen]); till then, and
+/// wherever a row has no slot, a row draws its cells itself. What lies
+/// under the rows — the grid's sheet — lies under it.
 class TimelineGridScreenHost extends StatefulWidget {
   const TimelineGridScreenHost({super.key, required this.child});
 
@@ -60,9 +61,16 @@ class _TimelineGridScreenHostState extends State<TimelineGridScreenHost> {
     super.dispose();
   }
 
+  // The rows as they were laid out, and drawn, without it.
   @override
-  Widget build(BuildContext context) =>
-      _GridScreenScope(screen: _screen, child: widget.child);
+  Widget build(BuildContext context) => _GridScreenScope(
+    screen: _screen,
+    child: Stack(
+      fit: StackFit.passthrough,
+      clipBehavior: Clip.none,
+      children: [const Positioned.fill(child: _ScreenBox()), widget.child],
+    ),
+  );
 }
 
 class _GridScreenScope extends InheritedWidget {
@@ -182,8 +190,8 @@ final class _GridScreen {
 /// ([PipelineOwner.flushPaint]), and a row comes in the paint of a layer
 /// shallower than the box. A scroll of any scrollable around it lays the
 /// screen again; the rows' pictures are kept.
-class TimelineGridScreen extends LeafRenderObjectWidget {
-  const TimelineGridScreen({super.key});
+class _ScreenBox extends LeafRenderObjectWidget {
+  const _ScreenBox();
 
   @override
   RenderObject createRenderObject(BuildContext context) => _RenderGridScreen(
@@ -384,25 +392,71 @@ class _ScreenLayer extends TextureLayer {
 /// Its own layer, so a row painting again is a paint of this slot — which
 /// marks the screen's box to paint after it, in the same frame.
 class TimelineGridScreenSlot extends SingleChildRenderObjectWidget {
-  const TimelineGridScreenSlot({super.key, required super.child});
+  const TimelineGridScreenSlot({super.key, this.clip, required super.child});
+
+  /// The clip the row is drawn within, where one stands between it and its
+  /// grid's screen — which is not under that clip, so the slot lays the
+  /// row's tiles within it ([TimelineGridScreenClip.rectsIn]).
+  final TimelineGridScreenClip? clip;
 
   /// Where the row being painted lays its tiles — null where none does:
   /// no screen over its grid, or none open yet. A row then draws its cells
   /// itself.
   static TimelineGridScreenLaying? get laying {
+    if (_debugLaying case final laying?) {
+      return laying;
+    }
     final slot = _RenderGridScreenSlot._painting;
     return slot != null && (slot._screen?.lays ?? false) ? slot : null;
   }
 
+  /// Runs [paint] — a row a test paints by hand, outside any slot — as a
+  /// row whose grid's screen takes its tiles through [laying].
+  @visibleForTesting
+  static void debugLayThrough(
+    TimelineGridScreenLaying laying,
+    void Function() paint,
+  ) {
+    final outer = _debugLaying;
+    _debugLaying = laying;
+    try {
+      paint();
+    } finally {
+      _debugLaying = outer;
+    }
+  }
+
+  static TimelineGridScreenLaying? _debugLaying;
+
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderGridScreenSlot(_GridScreenScope.of(context));
+      _RenderGridScreenSlot(_GridScreenScope.of(context), clip);
 
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) =>
-      (renderObject as _RenderGridScreenSlot)._showOn(
-        _GridScreenScope.of(context),
-      );
+      (renderObject as _RenderGridScreenSlot)
+        .._showOn(_GridScreenScope.of(context))
+        .._clipBy(clip);
+}
+
+/// A clip of rects, as a row's cells are clipped to the stretches of it
+/// they show: a path for the clip over the row's own drawing, and the rects
+/// it is made of for its tiles on the screen under it, which a path cannot
+/// tell ([TimelineGridScreenSlot.clip]).
+abstract class TimelineGridScreenClip extends CustomClipper<Path> {
+  const TimelineGridScreenClip({super.reclip});
+
+  /// The rects of the clip, in the row's own pixels.
+  List<Rect> rectsIn(Size size);
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    for (final rect in rectsIn(size)) {
+      path.addRect(rect);
+    }
+    return path;
+  }
 }
 
 /// What a row lays its tiles on, while it paints.
@@ -414,12 +468,33 @@ abstract interface class TimelineGridScreenLaying {
 
 class _RenderGridScreenSlot extends RenderProxyBox
     implements TimelineGridScreenLaying {
-  _RenderGridScreenSlot(this._screen);
+  _RenderGridScreenSlot(this._screen, this._clip);
 
   /// The slot whose row is painting.
   static _RenderGridScreenSlot? _painting;
 
   _GridScreen? _screen;
+  TimelineGridScreenClip? _clip;
+
+  /// A clip that moves lays its row's tiles again — as the row's own
+  /// clip ([ClipPath]) clips again.
+  void _clipBy(TimelineGridScreenClip? clip) {
+    final was = _clip;
+    if (identical(clip, was)) {
+      return;
+    }
+    if (attached) {
+      was?.removeListener(markNeedsPaint);
+      clip?.addListener(markNeedsPaint);
+    }
+    _clip = clip;
+    if (clip == null ||
+        was == null ||
+        clip.runtimeType != was.runtimeType ||
+        clip.shouldReclip(was)) {
+      markNeedsPaint();
+    }
+  }
 
   void _showOn(_GridScreen? screen) {
     if (identical(screen, _screen)) {
@@ -451,10 +526,12 @@ class _RenderGridScreenSlot extends RenderProxyBox
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _screen?._slots.add(this);
+    _clip?.addListener(markNeedsPaint);
   }
 
   @override
   void detach() {
+    _clip?.removeListener(markNeedsPaint);
     _leave();
     _letGo();
     super.detach();
@@ -477,8 +554,40 @@ class _RenderGridScreenSlot extends RenderProxyBox
 
   @override
   void lay(TimelineGridScreenTile tile) {
-    tile.picture.hold();
-    _laid.add(tile);
+    final clip = _clip;
+    for (final part in clip == null
+        ? [tile]
+        : [for (final rect in clip.rectsIn(size)) ?_within(tile, rect)]) {
+      part.picture.hold();
+      _laid.add(part);
+    }
+  }
+
+  /// What of [tile] lies within [rect] of the row: that part of its
+  /// picture onto that part of the row — null where none does.
+  static TimelineGridScreenTile? _within(
+    TimelineGridScreenTile tile,
+    Rect rect,
+  ) {
+    final (:picture, :from, :onto) = tile;
+    final part = onto.intersect(rect);
+    if (part.width <= 0 || part.height <= 0) {
+      return null;
+    }
+    double x(double at) =>
+        from.left + (at - onto.left) * from.width / onto.width;
+    double y(double at) =>
+        from.top + (at - onto.top) * from.height / onto.height;
+    return (
+      picture: picture,
+      from: Rect.fromLTRB(
+        x(part.left),
+        y(part.top),
+        x(part.right),
+        y(part.bottom),
+      ),
+      onto: part,
+    );
   }
 
   @override

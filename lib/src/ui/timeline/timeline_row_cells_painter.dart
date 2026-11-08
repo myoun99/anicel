@@ -54,6 +54,7 @@ import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
+import 'timeline_grid_screen.dart';
 import 'timeline_grid_tile_store.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
@@ -786,13 +787,16 @@ class TimelineRowCellsPainter extends CustomPainter
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleFrameWindow();
     final store = tileStore;
+    // Where the row's grid has no screen open to lay on, its store is not
+    // asked: a tile is nowhere to be shown.
+    final laying = TimelineGridScreenSlot.laying;
     // Spans whose FRESH tile already carries the foreground ink (T3):
     // the Dart glyph/dash pass skips them.
     final tiledSpans = <(int, int)>[];
-    if (store == null || frameCellExtent <= 0) {
+    if (store == null || laying == null || frameCellExtent <= 0) {
       _paintSubstrate(canvas, window.startIndex, window.endIndexExclusive);
     } else {
-      tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store));
+      tiledSpans.addAll(_paintTiledSubstrate(canvas, window, store, laying));
     }
     _paintForegrounds(canvas, window, tiledSpans);
     _paintGhostInk(canvas, window);
@@ -805,7 +809,7 @@ class TimelineRowCellsPainter extends CustomPainter
     // user's switch shows them ([substrateIn]).
   }
 
-  /// The substrate through the tile store: a tile is one drawImageRect —
+  /// The substrate through the tile store: a tile is one lay on [laying] —
   /// baked in this paint where an edit moved the span
   /// ([TimelineGridTileStore.tileFor]) — a cold span the tiles kept over its
   /// frames stand in for, scaled, while it is rastered
@@ -817,21 +821,21 @@ class TimelineRowCellsPainter extends CustomPainter
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,
     TimelineGridTileStore store,
+    TimelineGridScreenLaying laying,
   ) {
     final tiledSpans = <(int, int)>[];
     final grid = _tileGridIn(window, frameEndIndexExclusive);
-    final tilePaint = Paint()..filterQuality = FilterQuality.low;
     for (final (spanStart, spanEnd) in grid.shown) {
-      final image = store.tileFor(
+      final picture = store.tileFor(
         painter: this,
         spanStartIndex: spanStart,
         spanEndIndexExclusive: spanEnd,
         devicePixelRatio: devicePixelRatio,
       );
-      final tiles = image != null
+      final tiles = picture != null
           ? [
               (
-                image: image,
+                picture: picture,
                 spanStartIndex: spanStart,
                 spanEndIndexExclusive: spanEnd,
               ),
@@ -844,7 +848,7 @@ class TimelineRowCellsPainter extends CustomPainter
             );
       if (tiles != null) {
         for (final tile in tiles) {
-          _layTile(canvas, tile, spanStart, spanEnd, tilePaint);
+          _layTile(laying, tile, spanStart, spanEnd);
         }
         tiledSpans.add((spanStart, spanEnd));
         continue;
@@ -881,27 +885,26 @@ class TimelineRowCellsPainter extends CustomPainter
   /// — the whole of it for its own span, or the part of it a span cut
   /// otherwise stands on ([TimelineGridTileStore.standInFor]).
   void _layTile(
-    Canvas canvas,
+    TimelineGridScreenLaying laying,
     TileStandIn tile,
     int from,
     int to,
-    Paint paint,
   ) {
     final first = math.max(from, tile.spanStartIndex);
     final last = math.min(to, tile.spanEndIndexExclusive);
     final frames = tile.spanEndIndexExclusive - tile.spanStartIndex;
-    final picture = Size(
-      tile.image.width.toDouble(),
-      tile.image.height.toDouble(),
+    final size = Size(
+      tile.picture.width.toDouble(),
+      tile.picture.height.toDouble(),
     );
-    final main = extentAlong(axis, picture);
+    final main = extentAlong(axis, size);
     final src = rectAlong(
       axis,
       along: (
         from: main * (first - tile.spanStartIndex) / frames,
         to: main * (last - tile.spanStartIndex) / frames,
       ),
-      across: (from: 0, to: extentAcross(axis, picture)),
+      across: (from: 0, to: extentAcross(axis, size)),
     );
     final dst = rectAlong(
       axis,
@@ -911,7 +914,7 @@ class TimelineRowCellsPainter extends CustomPainter
       ),
       across: (from: 0, to: crossAxisExtent),
     );
-    canvas.drawImageRect(tile.image, src, dst, paint);
+    laying.lay((picture: tile.picture, from: src, onto: dst));
   }
 
   /// The tile grid's spans under [window], in order (`shown`), and the one
@@ -1845,19 +1848,23 @@ class _RowCellsPicture extends StatelessWidget {
       // rail's own plate and name hear it.
       shown: RailEyes.of(context, layer).shown,
     );
-    // Named, not keyed (I-57, 10-13): the row shows one layer and then
-    // another in the same elements.
-    return Named(
-      '$keyPrefix-row-cells-${layer.id}',
-      child: CustomPaint(
-        painter: painter,
-        // The block duration labels ride HERE rather than as their own
-        // Positioned.fill CustomPaint: same geometry, same repaint trigger,
-        // two fewer render objects per row to lay out on a zoom step. A
-        // foreground painter that does not implement `hitTest` never absorbs
-        // a pointer, which is what the IgnorePointer around it used to
-        // guarantee.
-        foregroundPainter: foregroundPainterFor?.call(context, layer),
+    // The row lays its tiles on its grid's screen, where there is one
+    // ([TimelineGridScreenHost]); outside the name, which is the picture's.
+    return TimelineGridScreenSlot(
+      // Named, not keyed (I-57, 10-13): the row shows one layer and then
+      // another in the same elements.
+      child: Named(
+        '$keyPrefix-row-cells-${layer.id}',
+        child: CustomPaint(
+          painter: painter,
+          // The block duration labels ride HERE rather than as their own
+          // Positioned.fill CustomPaint: same geometry, same repaint trigger,
+          // two fewer render objects per row to lay out on a zoom step. A
+          // foreground painter that does not implement `hitTest` never
+          // absorbs a pointer, which is what the IgnorePointer around it
+          // used to guarantee.
+          foregroundPainter: foregroundPainterFor?.call(context, layer),
+        ),
       ),
     );
   }

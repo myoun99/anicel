@@ -1,9 +1,10 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
     show isSyncedAttachedLayer;
 import 'package:anicel/src/models/attached_placement.dart';
@@ -34,8 +35,6 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/folder_bands.dart';
@@ -54,7 +53,6 @@ import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
 
 import '../timeline/timeline_frame_geometry_probe.dart';
 import '../../helpers/a_folder_made_by_hand.dart';
-import '../../helpers/native_engine_path.dart';
 import '../timeline/tile_store_idle.dart';
 
 /// F-311 (유저 2026-10-06): 「일반 폴더의 블록, 왜 이 경우 일부만 회색인지?
@@ -275,6 +273,7 @@ void _selectFolderBlockAt(EditorSessionManager s, int frame, [LayerId? id]) =>
     );
 
 void main() {
+  setUpAll(openAppGpuEngine);
   group('the band is the blocks its rows stand', () {
     test('a ghost is no block of the union: the runs are the blocks, and '
         'the ghosts stand beside them — a hold\'s before a repeat\'s, and '
@@ -1345,22 +1344,11 @@ void main() {
   // under a folder of 1..10, and the folder's row stayed white to 3 — its
   // tiles were kept, for the folder's own blocks had not moved.
   group('a tile of the folder\'s block shows its rows as they are', () {
-    final dllPath = nativeEngineLibraryPathOrNull();
     final store = TimelineGridTileStore.instance;
 
-    setUp(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    setUp(store.clear);
 
-    tearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    tearDown(store.clear);
 
     // 24px cells: the spans are [0, span) and [span, 2 * span).
     final span = timelineFrameWindowSpanFor(24);
@@ -1399,7 +1387,7 @@ void main() {
     }
 
     /// The folder's tiles of the two spans, as its row asks them now.
-    List<ui.Image?> tiles(EditorSessionManager s) {
+    List<TimelineGridTilePicture?> tiles(EditorSessionManager s) {
       final painter = _painter(s, _band(s), store: store, frames: 2 * span);
       return [
         for (final from in [0, span])
@@ -1413,7 +1401,9 @@ void main() {
     }
 
     /// The folder's tiles once both have landed.
-    Future<List<ui.Image?>> landed(EditorSessionManager s) async {
+    Future<List<TimelineGridTilePicture?>> landed(
+      EditorSessionManager s,
+    ) async {
       tiles(s);
       await tileStoreIdle(store);
       final both = tiles(s);
@@ -1421,9 +1411,9 @@ void main() {
       return both;
     }
 
-    Future<List<Uint8List>> pixelsOf(List<ui.Image?> tiles) async => [
+    List<Uint8List> pixelsOf(List<TimelineGridTilePicture?> tiles) => [
       for (final tile in tiles)
-        (await tile!.toByteData())!.buffer.asUint8List(),
+        tile!.picture.read(),
     ];
 
     /// Puts the rows [edited] in at once, and holds the folder's tiles to what
@@ -1435,7 +1425,7 @@ void main() {
       bool keepsTheSpanBefore = true,
     }) async {
       final before = await landed(s);
-      final paintedBefore = await pixelsOf(before);
+      final paintedBefore = pixelsOf(before);
       final blocks = _blocks(_band(s));
 
       _put(s, edited);
@@ -1443,9 +1433,9 @@ void main() {
       expect(_blocks(_band(s)), blocks, reason: '⛔전제: its blocks stayed');
       final after = tiles(s);
       expect(after, everyElement(isNotNull), reason: '⛔전제: shown');
-      final shown = await pixelsOf(after);
+      final shown = pixelsOf(after);
       store.clear();
-      final painted = await pixelsOf(await landed(s));
+      final painted = pixelsOf(await landed(s));
       expect(
         listEquals(paintedBefore.last, painted.last),
         isFalse,
@@ -1468,28 +1458,16 @@ void main() {
     }
 
     test('🚨a row\'s block that ends elsewhere inside the folder\'s', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await expectTheTilesShowTheRowsAsTheyAre(session(), [a(length: 5)]);
     });
 
     test('🚨a row\'s block that shows another cel, its edges where they '
         'were', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await expectTheTilesShowTheRowsAsTheyAre(session(), [a(cel: 'a2')]);
     });
 
     // A row more is asked from frame 0: the band's rows are paired in order.
     test('🚨a row put in the folder, its block inside the folder\'s', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final s = session(beside: [_row('c', {span + 6: 2})]);
       _draw(s, 'c', 'c${span + 6}');
       await expectTheTilesShowTheRowsAsTheyAre(
@@ -1502,10 +1480,6 @@ void main() {
     // A row of no cels holds no picture, whatever it stands; its kind is
     // asked before its blocks, so the band is asked anew from frame 0.
     test('🚨a row turned to a kind that holds no cels', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await expectTheTilesShowTheRowsAsTheyAre(
         session(),
         [a(kind: LayerKind.se)],
@@ -1517,10 +1491,6 @@ void main() {
     // stood, on cels of the same names: what they hold is the other row's.
     test('🚨a row put in the folder in place of one taken out, standing as '
         'it stood', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final cel = 'b$span';
       Layer c({String? inside}) => Layer(
         id: const LayerId('c'),

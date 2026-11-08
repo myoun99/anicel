@@ -55,6 +55,30 @@ pub unsafe extern "C" fn gpu_engine_grid_picture_free(picture: *mut GridPicture)
     }
 }
 
+/// Copies `picture`'s pixels — straight RGBA8, row by row — into `bytes`
+/// once the GPU is done, `capacity` of them at most. False on failure; see
+/// the last error.
+///
+/// # Safety
+/// `engine` and `picture` are live and `bytes` holds `capacity`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_picture_read(
+    engine: *const Engine,
+    picture: *const GridPicture,
+    bytes: *mut u8,
+    capacity: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (engine, picture) = unsafe { (&*engine, &*picture) };
+    let Some(read) = engine.read_texture(&picture.texture) else {
+        return false;
+    };
+    let count = read.len().min(capacity);
+    // SAFETY: `bytes` holds `capacity`, and `count` is no more.
+    unsafe { std::ptr::copy_nonoverlapping(read.as_ptr(), bytes, count) };
+    true
+}
+
 /// Draws `ops` — `count` words — into `picture` over clear, its letters
 /// read from `atlas`, `atlas_width` × `atlas_height` A8 bytes row by row —
 /// none where a side is 0 —; and waits for the GPU. False for a stream

@@ -6,20 +6,18 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
-import '../../helpers/native_engine_path.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -31,9 +29,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// whose paper changed may re-raster; the rest keep their pixels.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
+  setUpAll(openAppGpuEngine);
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -60,27 +56,13 @@ void main() {
     },
   );
 
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  setUp(TimelineGridTileStore.instance.clear);
 
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-    TimelineGridTileStore.instance.clear();
-  });
+  tearDown(TimelineGridTileStore.instance.clear);
 
   test('a bump re-rasters only the tile whose paper it changed — every '
       'other tile keeps its pixels, and a bump that changed nothing '
       're-rasters nothing', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     store.revision.addListener(() => landings += 1);

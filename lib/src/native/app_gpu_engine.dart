@@ -8,8 +8,10 @@ import 'gpu_adapter_choice.dart';
 /// s a device, eighteen test files at once on the machine's line) — on the
 /// adapter [debugGpuAdapterChoice] names. ⛔No fallback: a test that needs
 /// the engine and gets none fails.
-// ⏳The tile ledger asks first (`EngineTileLedger.instance`) once the
-// screen asks it (screen-on-the-engine c6); till then only tests do.
+// The app opens it after its first frame ([openAppGpuEngine], main.dart),
+// for the frame grids' tiles (grid-on-the-engine ⑤); ⏳the tile ledger
+// (`EngineTileLedger.instance`) asks once the screen asks it
+// (screen-on-the-engine c6).
 GpuEngine get appGpuEngine => _engine ??= _opener()();
 GpuEngine? _engine;
 

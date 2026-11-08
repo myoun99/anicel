@@ -1508,14 +1508,26 @@ class GpuGridPicture {
     if (picture == nullptr) {
       throw StateError(_lastError());
     }
-    return GpuGridPicture._(picture, width, height);
+    return GpuGridPicture._(engine, picture, width, height);
   }
 
-  GpuGridPicture._(this._picture, this.width, this.height);
+  GpuGridPicture._(this._engine, this._picture, this.width, this.height);
 
+  final GpuEngine _engine;
   final Pointer<rust.GridPicture> _picture;
   final int width;
   final int height;
+
+  /// Its pixels once the GPU is done — straight RGBA8, row by row.
+  Uint8List read() => using((arena) {
+    final count = width * height * 4;
+    final bytes = arena<Uint8>(_held(count));
+    // ⚠️No test reaches the throw: a read fails only where the device does.
+    if (!rust.gridPictureRead(_engine._engine, _picture, bytes, count)) {
+      throw StateError(_lastError());
+    }
+    return Uint8List.fromList(bytes.asTypedList(count));
+  });
 
   void free() => rust.gridPictureFree(_picture);
 }

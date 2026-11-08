@@ -36,8 +36,10 @@ fn drawn(size: (u32, u32), ops: &[i32], (atlas, width, height): Atlas) -> (bool,
     assert!(!tile.is_null(), "{}", last_error());
     // SAFETY: every pointer is live and holds what it is said to.
     let ok = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), atlas, width, height) };
-    // SAFETY: both came from their news.
-    let bytes = unsafe { engine.read_texture(&(*tile).texture).expect("read back") };
+    let mut bytes = vec![0; (size.0 * size.1 * 4) as usize];
+    // SAFETY: both came from their news, and `bytes` holds its length.
+    let read = unsafe { gpu_engine_grid_picture_read(engine, tile, bytes.as_mut_ptr(), bytes.len()) };
+    assert!(read, "{}", last_error());
     // SAFETY: as above, each let go of once.
     unsafe {
         gpu_engine_grid_picture_free(tile);
@@ -74,6 +76,27 @@ fn a_stream_drawn_through_the_abi_is_over_clear() {
     assert_eq!(at(&bytes, 4, 2, 1), [255, 0, 0, 255]);
     for (x, y) in [(0, 0), (0, 1), (3, 1), (1, 2), (3, 2)] {
         assert_eq!(at(&bytes, 4, x, y), [0; 4], "({x}, {y})");
+    }
+}
+
+// A read copies as many bytes as it is handed room for, and no more.
+#[test]
+fn a_tile_read_through_the_abi_fills_the_room_it_is_handed() {
+    let engine = first_engine();
+    // SAFETY: the engine is live.
+    let grid = unsafe { gpu_engine_grid_new(engine) };
+    let tile = picture(2, 1);
+    let ops = [FILL_RECT, 0, 0, 2, 1, rgba(255, 0, 0, 255)];
+    // SAFETY: every pointer is live and holds what it is said to.
+    assert!(unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), NO_ATLAS.0, 0, 0) });
+    let mut bytes = [7; 8];
+    // SAFETY: as above; `bytes` holds 8, and the read is handed 4.
+    assert!(unsafe { gpu_engine_grid_picture_read(engine, tile, bytes.as_mut_ptr(), 4) }, "{}", last_error());
+    assert_eq!(bytes, [255, 0, 0, 255, 7, 7, 7, 7]);
+    // SAFETY: each came from its new, let go of once.
+    unsafe {
+        gpu_engine_grid_picture_free(tile);
+        gpu_engine_grid_free(grid);
     }
 }
 

@@ -945,6 +945,16 @@ external Pointer<GridPicture> gridPictureNew(
 external void gridPictureFree(Pointer<GridPicture> picture);
 
 @Native<
+  Bool Function(Pointer<Engine>, Pointer<GridPicture>, Pointer<Uint8>, Size)
+>(symbol: 'gpu_engine_grid_picture_read')
+external bool gridPictureRead(
+  Pointer<Engine> engine,
+  Pointer<GridPicture> picture,
+  Pointer<Uint8> bytes,
+  int capacity,
+);
+
+@Native<
   Bool Function(
     Pointer<Grid>,
     Pointer<Engine>,

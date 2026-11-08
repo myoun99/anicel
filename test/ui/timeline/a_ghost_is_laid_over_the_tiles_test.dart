@@ -3,10 +3,9 @@
 @Timeout(Duration(minutes: 3))
 library;
 
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -14,8 +13,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
@@ -23,9 +20,9 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/frame_name_of.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/painted_glyph_boxes.dart';
 import '../../helpers/run_edge_fixtures.dart';
+import '../../helpers/tiles_laid.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -40,6 +37,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// (`a_hold_is_one_line`). A tile bakes the rest, and each cell inks once.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
   const cut = 16;
   const built = 24;
@@ -198,7 +196,7 @@ void main() {
         reason: 'premise: the window\'s lead is a tile\'s, and no tile '
             'lays a ghost\'s word',
       );
-      final spy = _PaintSpy();
+      final spy = PaintedGlyphBoxes();
       painter.paint(spy, Size(frames * 24.0, 28));
       expect(
         spy.boxes.map((box) => box.left),
@@ -208,22 +206,11 @@ void main() {
   });
 
   group('the tiles and the row', () {
-    final dllPath = nativeEngineLibraryPathOrNull();
     final store = TimelineGridTileStore.instance;
 
-    setUp(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    setUp(store.clear);
 
-    tearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    tearDown(store.clear);
 
     Future<List<int>> opsOf(Layer layer, int from, int to) =>
         store.debugForegroundOps(
@@ -246,19 +233,15 @@ void main() {
 
     test('over fresh tiles the row lays the ghost\'s ink once, and nothing '
         'else', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final painter = painterFor(repeated, store: store);
       const size = Size(built * 24, 28);
-      painter.paint(_PaintSpy(), size);
+      tilesLaidBy(() => painter.paint(PaintedGlyphBoxes(), size));
       await tileStoreIdle(store);
-      final spy = _PaintSpy();
-      painter.paint(spy, size);
+      final spy = PaintedGlyphBoxes();
+      final tiles = tilesLaidBy(() => painter.paint(spy, size));
       expect(
-        spy.tiles,
-        (built / timelineFrameWindowSpanFor(24)).ceil(),
+        tiles,
+        hasLength((built / timelineFrameWindowSpanFor(24)).ceil()),
         reason: 'premise: every span is tiled',
       );
       expect(
@@ -271,10 +254,6 @@ void main() {
     test('🚨over fresh tiles a row that holds no ghost asks none of its '
         'cells: a ghost\'s ink is asked of the window at every '
         'paint', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       var asked = 0;
       final painter = painterFor(
         rowOf({
@@ -288,29 +267,19 @@ void main() {
         },
       );
       const size = Size(built * 24, 28);
-      painter.paint(_PaintSpy(), size);
+      tilesLaidBy(() => painter.paint(PaintedGlyphBoxes(), size));
       await tileStoreIdle(store);
       asked = 0;
-      final spy = _PaintSpy();
+      final spy = PaintedGlyphBoxes();
 
-      painter.paint(spy, size);
+      final tiles = tilesLaidBy(() => painter.paint(spy, size));
 
       expect(
-        spy.tiles,
-        (built / timelineFrameWindowSpanFor(24)).ceil(),
+        tiles,
+        hasLength((built / timelineFrameWindowSpanFor(24)).ceil()),
         reason: 'premise: every span is tiled',
       );
       expect(asked, 0);
     });
   });
-}
-
-/// The words a paint sets itself, and the tiles it lays.
-class _PaintSpy extends PaintedGlyphBoxes {
-  int tiles = 0;
-
-  @override
-  void drawImageRect(ui.Image image, Rect src, Rect dst, Paint paint) {
-    tiles += 1;
-  }
 }

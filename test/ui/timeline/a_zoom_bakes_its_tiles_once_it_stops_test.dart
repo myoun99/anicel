@@ -1,22 +1,21 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/painted_glyph_boxes.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/tiles_laid.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -36,8 +35,8 @@ import 'timeline_frame_geometry_probe.dart';
 /// loaded machine stretches the steps' gaps, never by that much.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
-  final dllPath = nativeEngineLibraryPathOrNull();
   final store = TimelineGridTileStore.instance;
   var landings = 0;
   void landed() => landings += 1;
@@ -74,7 +73,7 @@ void main() {
       );
 
   /// The tile of the span from [start] four cells long, its cells [extent].
-  ui.Image? ask(double extent, {int start = 0}) => store.tileFor(
+  TimelineGridTilePicture? ask(double extent, {int start = 0}) => store.tileFor(
     painter: at(extent),
     spanStartIndex: start,
     spanEndIndexExclusive: start + 4,
@@ -82,7 +81,7 @@ void main() {
   );
 
   /// The span from [start], baked at [extent] — the tiles a zoom stretches.
-  Future<ui.Image> baked(double extent, {int start = 0}) async {
+  Future<TimelineGridTilePicture> baked(double extent, {int start = 0}) async {
     final before = landings;
     expect(ask(extent, start: start), isNull, reason: '⛔전제: a cold span');
     expect(await pollUntil(() => landings > before), isTrue);
@@ -93,20 +92,7 @@ void main() {
   Future<void> aWhile() =>
       Future<void>.delayed(const Duration(milliseconds: 300));
 
-  /// Whether this machine has no engine to raster with — the case is
-  /// skipped, said as such.
-  bool skipped() {
-    if (dllPath != null) {
-      return false;
-    }
-    markTestSkipped('qa_engine.dll not built');
-    return true;
-  }
-
   setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     store.clear();
     store.revision.addListener(landed);
     landings = 0;
@@ -115,17 +101,11 @@ void main() {
   tearDown(() {
     store.revision.removeListener(landed);
     store.debugZoomSettles = TimelineGridTileStore.zoomSettles;
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
     store.clear();
   });
 
   test('a zoom\'s steps show the old tile and raster nothing; stopped, the '
       'span is rastered once at the extent it stopped at', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
@@ -145,9 +125,6 @@ void main() {
   });
 
   test('past twice the old tile\'s extent a step is rastered then', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(hours: 1);
     await baked(24);
 
@@ -158,9 +135,6 @@ void main() {
 
   test('a span a zoom left waiting and a jump then took past twice is '
       'rastered at the jump, and not again when the zoom stops', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
@@ -174,9 +148,6 @@ void main() {
 
   test('a zoom that comes back to the tile\'s extent stretches it no more '
       '— the stop rasters nothing', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
@@ -189,9 +160,6 @@ void main() {
 
   test('once the zoom stopped, a span it did not reach is asked at the '
       'extent it stopped at as any other', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(24, start: 4);
@@ -207,9 +175,6 @@ void main() {
 
   test('a warm-up waits for the zoom too — and what a step asked of it at '
       'another extent is let go', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
@@ -235,9 +200,6 @@ void main() {
 
   test('a span a step stretched and the last step did not ask for is let '
       'go at the stop, not rastered at that step\'s extent', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(24, start: 4);
@@ -251,9 +213,6 @@ void main() {
   });
 
   test('a span waiting for the stop is not warmed beside it', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
@@ -271,9 +230,6 @@ void main() {
 
   test('a span the zoom came back to with an edit is baked in that ask, '
       'and not rastered over at the stop', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
@@ -297,9 +253,6 @@ void main() {
 
   test('a clear lets go of a zoom under way and of where the cells stood '
       'still', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     ask(16);
@@ -321,9 +274,6 @@ void main() {
   });
 
   test('a zoom begun after a clear stops as any other', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     ask(20);
@@ -336,9 +286,6 @@ void main() {
 
   test('a span queued at a jump and stretched by the next step waits for '
       'the stop — the jump\'s raster is not made', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
@@ -352,9 +299,6 @@ void main() {
 
   test('each step puts the stop off — a zoom that goes on is not stopped '
       'by the time since its first step', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 4);
     await baked(24);
 
@@ -369,9 +313,6 @@ void main() {
 
   test('a zoom that came back stands where its paint last asked — a '
       'warm-up a step asked is let go', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
@@ -390,9 +331,6 @@ void main() {
 
   test('a warm-up the zoom held goes on when it stops, though nothing it '
       'stretched is left to raster', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(12, start: 4);
@@ -411,9 +349,6 @@ void main() {
   });
 
   test('a second zoom after one that came back stops as any other', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
     ask(16);
@@ -426,9 +361,6 @@ void main() {
   });
 
   test('another row\'s warm-up is not let go at this row\'s stop', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
@@ -452,9 +384,6 @@ void main() {
 
   test('a repaint at the extent the zoom already waits at does not put '
       'the stop off', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 3);
     await baked(24);
 
@@ -472,35 +401,36 @@ void main() {
   test('🚨a zoom that cuts the row into other spans shows its old tiles, '
       'scaled over the frames they hold, and rasters nothing until it '
       'stops', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     expect(
       at(20).tileSpans.shown,
       isNot(at(24).tileSpans.shown),
       reason: '⛔전제: the step cuts the row into other spans',
     );
-    at(24).paint(_TileDraws(), const Size(40 * 24, 28));
+    tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
     await tileStoreIdle(store);
-    final baked = _TileDraws();
-    at(24).paint(baked, const Size(40 * 24, 28));
+    final baked = tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
     expect(
-      baked.drawn,
+      baked,
       hasLength(at(24).tileSpans.shown.length),
       reason: '⛔전제: every span is tiled',
     );
     final rastered = landings;
 
-    final step = _TileDraws();
-    at(20).paint(step, const Size(40 * 20, 28));
+    final step = tilesLaidBy(
+      () => at(20).paint(PaintedGlyphBoxes(), const Size(40 * 20, 28)),
+    );
     expect(
-      step.drawn.map((draw) => draw.image).toSet(),
-      baked.drawn.map((draw) => draw.image).toSet(),
+      step.map((draw) => draw.picture).toSet(),
+      baked.map((draw) => draw.picture).toSet(),
       reason: 'the old tiles, scaled',
     );
     expect(
-      step.along(),
+      along(step),
       [0.0, 40 * 20.0],
       reason: 'over every frame the row shows, edge to edge',
     );
@@ -509,8 +439,8 @@ void main() {
     // span, 26–40 under the second.
     expect(
       [
-        for (final draw in step.drawn)
-          (width: draw.image.width, src: draw.src, dst: draw.dst),
+        for (final draw in step)
+          (width: draw.picture.width, src: draw.from, dst: draw.onto),
       ],
       [
         (
@@ -536,11 +466,12 @@ void main() {
 
     expect(await pollUntil(() => landings > rastered), isTrue);
     await tileStoreIdle(store);
-    final stopped = _TileDraws();
-    at(20).paint(stopped, const Size(40 * 20, 28));
+    final stopped = tilesLaidBy(
+      () => at(20).paint(PaintedGlyphBoxes(), const Size(40 * 20, 28)),
+    );
     expect(
-      stopped.drawn.map((draw) => draw.image).toSet().intersection(
-        baked.drawn.map((draw) => draw.image).toSet(),
+      stopped.map((draw) => draw.picture).toSet().intersection(
+        baked.map((draw) => draw.picture).toSet(),
       ),
       isEmpty,
       reason: 'rastered at the extent the zoom stopped at',
@@ -555,29 +486,30 @@ void main() {
   // Kept one at a time, the row's other tile lands and the one shown before
   // it is let go.
   test('a tile the store let go stands in for nothing', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     store.debugCapacity = 1;
     addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
-    at(24).paint(_TileDraws(), const Size(40 * 24, 28));
+    tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
     await tileStoreIdle(store);
-    final shown = _TileDraws();
-    at(24).paint(shown, const Size(40 * 24, 28));
+    final shown = tilesLaidBy(
+      () => at(24).paint(PaintedGlyphBoxes(), const Size(40 * 24, 28)),
+    );
     await tileStoreIdle(store);
     expect(
-      shown.drawn.single.image.debugDisposed,
-      isTrue,
+      shown.single.picture.debugHolds,
+      0,
       reason: '⛔전제: the tile shown was let go when the other landed',
     );
 
-    final step = _TileDraws();
-    at(20).paint(step, const Size(40 * 20, 28));
+    final step = tilesLaidBy(
+      () => at(20).paint(PaintedGlyphBoxes(), const Size(40 * 20, 28)),
+    );
     expect(
       [
-        for (final draw in step.drawn)
-          if (draw.image.debugDisposed) draw.dst,
+        for (final draw in step)
+          if (draw.picture.debugHolds == 0) draw.onto,
       ],
       isEmpty,
       reason: 'no let-go tile is laid',
@@ -585,9 +517,6 @@ void main() {
   });
 
   test('a row whose every tile was let go is kept no more', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugCapacity = 1;
     addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
     await baked(24);
@@ -610,9 +539,6 @@ void main() {
 
   test('a tile stands in only at its own pixel ratio and in a row as thick '
       'as its own', () async {
-    if (skipped()) {
-      return;
-    }
     store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
     expect(ask(20), same(old), reason: '⛔CONTROL: but for the extent, it does');
@@ -639,31 +565,22 @@ void main() {
   });
 }
 
-/// The tiles a paint lays: each image, the part of it laid and where.
-class _TileDraws extends PaintedGlyphBoxes {
-  final drawn = <({ui.Image image, Rect src, Rect dst})>[];
-
-  @override
-  void drawImageRect(ui.Image image, Rect src, Rect dst, Paint paint) =>
-      drawn.add((image: image, src: src, dst: dst));
-
-  /// Where the drawn tiles start and end along the row, when they abut one
-  /// another from the first to the last — and every edge between where
-  /// they do not.
-  List<double> along() {
-    final rects = [...drawn.map((draw) => draw.dst)]
-      ..sort((a, b) => a.left.compareTo(b.left));
-    if (rects.isEmpty) {
-      return const [];
-    }
-    final edges = <double>[rects.first.left];
-    for (var at = 1; at < rects.length; at += 1) {
-      if ((rects[at].left - rects[at - 1].right).abs() > 1e-6) {
-        edges
-          ..add(rects[at - 1].right)
-          ..add(rects[at].left);
-      }
-    }
-    return [...edges, rects.last.right];
+/// Where the laid tiles start and end along the row, when they abut one
+/// another from the first to the last — and every edge between where they
+/// do not.
+List<double> along(List<TimelineGridScreenTile> laid) {
+  final rects = [...laid.map((tile) => tile.onto)]
+    ..sort((a, b) => a.left.compareTo(b.left));
+  if (rects.isEmpty) {
+    return const [];
   }
+  final edges = <double>[rects.first.left];
+  for (var at = 1; at < rects.length; at += 1) {
+    if ((rects[at].left - rects[at - 1].right).abs() > 1e-6) {
+      edges
+        ..add(rects[at - 1].right)
+        ..add(rects[at].left);
+    }
+  }
+  return [...edges, rects.last.right];
 }

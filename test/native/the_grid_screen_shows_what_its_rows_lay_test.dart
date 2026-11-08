@@ -27,6 +27,7 @@ void main() {
   late GpuSurface surface;
   const red = [255, 0, 0, 255];
   const green = [0, 255, 0, 255];
+  final opened = debugOpenTimelineGridScreen;
 
   setUpAll(() async {
     final engine = await openAppGpuEngine();
@@ -49,7 +50,7 @@ void main() {
         ScreenTexture.debugOnSurface(surface);
   });
   tearDownAll(() {
-    debugOpenTimelineGridScreen = ScreenTexture.open;
+    debugOpenTimelineGridScreen = opened;
     surface.free();
     tile.letGo();
   });
@@ -105,7 +106,6 @@ void main() {
               child: TimelineGridScreenHost(
                 child: Stack(
                   children: [
-                    const Positioned.fill(child: TimelineGridScreen()),
                     if (row != null)
                       Positioned(
                         left: 10,

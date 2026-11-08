@@ -10,15 +10,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/services/straight_rgba_image.dart'
-    show debugRawRgbaUploader;
 import 'package:anicel/src/ui/quiet_turns.dart';
 import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
@@ -26,8 +23,9 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/tiles_drawn_off_the_paint.dart';
+import '../../helpers/tiles_laid.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -42,9 +40,8 @@ import 'timeline_frame_geometry_probe.dart';
 /// changes its film frame in, and its landings repaint nothing.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
   final store = TimelineGridTileStore.instance;
 
   // 120 frames at 128px, a 1280px viewport: ten frames a page, four to a span
@@ -104,7 +101,9 @@ void main() {
 
   void paintRow(TimelineRowCellsPainter painter) {
     final recorder = ui.PictureRecorder();
-    painter.paint(Canvas(recorder), const Size(frames * cell, 28));
+    tilesLaidBy(
+      () => painter.paint(Canvas(recorder), const Size(frames * cell, 28)),
+    );
     recorder.endRecording().dispose();
   }
 
@@ -115,14 +114,6 @@ void main() {
     painter.addListener(onRepaint);
     addTearDown(() => painter.removeListener(onRepaint));
     return () => repaints;
-  }
-
-  /// A tile's pixels as a held or counted upload hands them back: any image
-  /// will do for the store.
-  ui.Image tiny() {
-    final recorder = ui.PictureRecorder();
-    Canvas(recorder).drawRect(Rect.zero, Paint());
-    return recorder.endRecording().toImageSync(1, 1);
   }
 
   /// Every span [painter] asks for on the page its axis turns to next.
@@ -158,19 +149,9 @@ void main() {
     return true;
   }
 
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-    store.clear();
-  });
+  setUp(store.clear);
 
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
-    store.clear();
-  });
+  tearDown(store.clear);
 
   test('🚨a row\'s page is every span its paint asks for once the axis stands '
       'there — the span the axis ends in whole, and none past the end it is '
@@ -202,10 +183,6 @@ void main() {
 
   test('🚨an axis is asked where its turn stands it once a warm-up, however '
       'many rows it lays', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     var asked = 0;
@@ -258,10 +235,6 @@ void main() {
   });
 
   test('🚨the next page is baked, and its landings repaint nothing', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('row', bucket);
@@ -283,10 +256,6 @@ void main() {
 
   test('a warm tile a paint asked for while it was in flight tells the row '
       'when it lands', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('asked', bucket);
@@ -311,20 +280,8 @@ void main() {
 
   test('while a shown span waits, a warm-up starts nothing — what is on the '
       'screen is rastered first', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    var uploads = 0;
-    final held = <Completer<ui.Image>>[];
-    debugRawRgbaUploader =
-        (rgba, {required width, required height, targetWidth, targetHeight}) {
-          uploads += 1;
-          final landing = Completer<ui.Image>();
-          held.add(landing);
-          return landing.future;
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
+    final held = holdTilesDrawnOffThePaint(store);
+    var released = 0;
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('first', bucket);
@@ -335,23 +292,31 @@ void main() {
     // is still being rastered.
     final shown = painter.tileSpans.shown.length;
     for (var landed = 0; landed < shown - 1; landed += 1) {
-      held.removeAt(0).complete(tiny());
+      held[released++].complete();
       await pumpEventQueue();
     }
-    expect(uploads, shown, reason: '⛔premise: the last shown span is out');
+    expect(
+      held,
+      hasLength(shown),
+      reason: '⛔premise: the last shown span is out',
+    );
 
     store.warmTheNextPage(tiles: 16);
     await pumpEventQueue();
 
-    expect(uploads, shown, reason: 'the warm-up waits for the shown spans');
+    expect(
+      held,
+      hasLength(shown),
+      reason: 'the warm-up waits for the shown spans',
+    );
     while (store.debugBusy) {
-      if (held.isNotEmpty) {
-        held.removeAt(0).complete(tiny());
+      if (released < held.length) {
+        held[released++].complete();
       }
       await pumpEventQueue();
     }
     expect(
-      uploads,
+      held.length,
       shown + painter.tileSpans.ahead.length,
       reason: 'the spans past the window go on once they are rastered, and '
           'the next page only when it is asked for again',
@@ -360,10 +325,6 @@ void main() {
 
   test('🚨the span past each edge of the window is warmed: rastered, and its '
       'landing repaints nothing', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('ahead', bucket);
@@ -394,10 +355,6 @@ void main() {
 
   test('🚨at rest every span past the windows is warmed, not the few a run '
       'asks for each frame', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     // Away from the first frame: a span past both edges of every window.
     final bucket = ValueNotifier<int>(2);
     addTearDown(bucket.dispose);
@@ -430,23 +387,13 @@ void main() {
   });
 
   test('a span a paint takes over from the warm-up is rastered once', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('once', bucket);
     show(painter);
     paintRow(painter);
     await tileStoreIdle(store);
-    var uploads = 0;
-    debugRawRgbaUploader =
-        (rgba, {required width, required height, targetWidth, targetHeight}) {
-          uploads += 1;
-          return Future.value(tiny());
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
+    final drawn = countTilesDrawnOffThePaint(store);
 
     // Queued, none rastered yet: the shown paint below takes one over.
     store.warmTheNextPage(tiles: 0);
@@ -460,12 +407,12 @@ void main() {
       devicePixelRatio: 1,
     );
     await tileStoreIdle(store);
-    expect(uploads, 1, reason: 'the shown one, and the next page waits');
+    expect(drawn(), 1, reason: 'the shown one, and the next page waits');
     store.warmTheNextPage(tiles: 64);
     await tileStoreIdle(store);
 
     expect(
-      uploads,
+      drawn(),
       cold.length,
       reason: 'each span of the next page once, the one the paint took over '
           'with them',
@@ -474,23 +421,13 @@ void main() {
 
   test('a span the next page\'s warm-up holds is rastered once when a paint '
       'asks for it past its window', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('moved-up', bucket);
     show(painter);
     paintRow(painter);
     await tileStoreIdle(store);
-    var uploads = 0;
-    debugRawRgbaUploader =
-        (rgba, {required width, required height, targetWidth, targetHeight}) {
-          uploads += 1;
-          return Future.value(tiny());
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
+    final drawn = countTilesDrawnOffThePaint(store);
 
     // Queued, none rastered yet.
     store.warmTheNextPage(tiles: 0);
@@ -500,20 +437,16 @@ void main() {
     expect(painter.tileSpans.ahead, contains(queued.first), reason: '⛔premise');
     paintRow(painter);
     await tileStoreIdle(store);
-    expect(uploads, 1, reason: 'the span past the window, at rest');
+    expect(drawn(), 1, reason: 'the span past the window, at rest');
     final rest = {...queued.skip(1), ...coldOfTheNextPage(painter)};
     store.warmTheNextPage(tiles: 64);
     await tileStoreIdle(store);
 
-    expect(uploads, 1 + rest.length, reason: 'and not again with the rest');
+    expect(drawn(), 1 + rest.length, reason: 'and not again with the rest');
   });
 
   test('a span a paint bakes in its ask is taken off the next page\'s '
       'warm-up — not baked again with the rest (F-314)', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final before = painterFor('baked', bucket);
@@ -528,13 +461,7 @@ void main() {
     paintRow(after);
     store.warmTheNextPage(tiles: 0);
     await tileStoreIdle(store);
-    var uploads = 0;
-    debugRawRgbaUploader =
-        (rgba, {required width, required height, targetWidth, targetHeight}) {
-          uploads += 1;
-          return Future.value(tiny());
-        };
-    addTearDown(() => debugRawRgbaUploader = null);
+    final drawn = countTilesDrawnOffThePaint(store);
 
     // Queued, none rastered yet: a paint asks for one of them.
     final queued = coldOfTheNextPage(after);
@@ -549,12 +476,12 @@ void main() {
       ),
       isNotNull,
     );
-    expect(uploads, 0, reason: '⛔premise: baked in the ask');
+    expect(drawn(), 0, reason: '⛔premise: baked in the ask');
     store.warmTheNextPage(tiles: 64);
     await tileStoreIdle(store);
 
     expect(
-      uploads,
+      drawn(),
       queued.length - 1,
       reason: 'the rest of the page once each, and not the span the paint '
           'baked',
@@ -565,13 +492,13 @@ void main() {
     var clock = 0;
     ({int fromMicros, int untilMicros})? quiet;
     final waits = <(Duration, Completer<void>)>[];
-    var uploads = 0;
+    var drawn = 0;
 
     setUp(() {
       clock = 0;
       quiet = null;
       waits.clear();
-      uploads = 0;
+      drawn = 0;
       store.quietTurns = QuietTurns(
         clock: QuietClock(
           quiet: () => quiet,
@@ -587,11 +514,20 @@ void main() {
 
     tearDown(() {
       store.quietTurns = QuietTurns.instance;
-      debugRawRgbaUploader = null;
+      store.debugBeforeDrawing = null;
     });
 
-    /// A row shown and painted, its shown spans landed; every upload after
-    /// it counted, each [taking] that long on the warm-up's clock.
+    /// Counts every raster drawn off the paint from here, each [taking] that
+    /// long on the warm-up's clock.
+    void countDrawings({int taking = 0}) {
+      store.debugBeforeDrawing = () async {
+        drawn += 1;
+        clock += taking;
+      };
+    }
+
+    /// A row shown and painted, its shown spans landed; every raster after
+    /// it counted ([countDrawings]).
     Future<TimelineRowCellsPainter> shownRow(
       String id, {
       int taking = 0,
@@ -602,28 +538,19 @@ void main() {
       show(painter);
       paintRow(painter);
       await tileStoreIdle(store);
-      debugRawRgbaUploader =
-          (rgba, {required width, required height, targetWidth, targetHeight}) {
-            uploads += 1;
-            clock += taking;
-            return Future.value(tiny());
-          };
+      countDrawings(taking: taking);
       return painter;
     }
 
-    test('nothing is uploaded before the quiet begins — and in it the '
+    test('nothing is drawn before the quiet begins — and in it the '
         'warm-up goes on', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final painter = await shownRow('quiet');
       quiet = (fromMicros: 5000, untilMicros: 1000000);
 
       store.warmTheNextPage(tiles: 64);
       await pumpEventQueue();
 
-      expect(uploads, 0, reason: 'the quiet has not begun');
+      expect(drawn, 0, reason: 'the quiet has not begun');
       expect(waits.single.$1, const Duration(microseconds: 5000));
       clock = 5000;
       waits.single.$2.complete();
@@ -633,15 +560,7 @@ void main() {
 
     test('🚨the span past the window waits for the quiet as well — only the '
         'shown spans are rastered at once', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
-      debugRawRgbaUploader =
-          (rgba, {required width, required height, targetWidth, targetHeight}) {
-            uploads += 1;
-            return Future.value(tiny());
-          };
+      countDrawings();
       final bucket = ValueNotifier<int>(0);
       addTearDown(bucket.dispose);
       final painter = painterFor('ahead-quiet', bucket);
@@ -652,25 +571,17 @@ void main() {
       await pollUntil(() => waits.isNotEmpty);
 
       final (:shown, :ahead) = painter.tileSpans;
-      expect(uploads, shown.length, reason: 'the shown spans, at once');
+      expect(drawn, shown.length, reason: 'the shown spans, at once');
       expect(waits.single.$1, const Duration(microseconds: 5000));
       clock = 5000;
       waits.single.$2.complete();
       await tileStoreIdle(store);
-      expect(uploads, shown.length + ahead.length);
+      expect(drawn, shown.length + ahead.length);
     });
 
     test('a span past the window that a scroll shows before the quiet is '
         'rastered at once, and once', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
-      debugRawRgbaUploader =
-          (rgba, {required width, required height, targetWidth, targetHeight}) {
-            uploads += 1;
-            return Future.value(tiny());
-          };
+      countDrawings();
       final bucket = ValueNotifier<int>(0);
       addTearDown(bucket.dispose);
       final painter = painterFor('ahead-shown', bucket);
@@ -680,20 +591,20 @@ void main() {
       await pollUntil(() => waits.isNotEmpty);
       final shownBefore = painter.tileSpans.shown.length;
       final waiting = painter.tileSpans.ahead.single;
-      expect(uploads, shownBefore, reason: '⛔premise: it waits for the quiet');
+      expect(drawn, shownBefore, reason: '⛔premise: it waits for the quiet');
 
       // The row scrolls a span on before the quiet begins.
       bucket.value = 1;
       expect(painter.tileSpans.shown, contains(waiting), reason: '⛔premise');
       paintRow(painter);
-      await pollUntil(() => uploads != shownBefore);
-      expect(uploads, shownBefore + 1, reason: 'shown now: at once');
+      await pollUntil(() => drawn != shownBefore);
+      expect(drawn, shownBefore + 1, reason: 'shown now: at once');
       clock = 5000;
       waits.single.$2.complete();
       await tileStoreIdle(store);
 
       expect(
-        uploads,
+        drawn,
         shownBefore + 1 + painter.tileSpans.ahead.length,
         reason: 'and the warm-up takes the span past the new edge only',
       );
@@ -701,10 +612,6 @@ void main() {
 
     test('a span that would land past the quiet\'s end waits for the next '
         'quiet', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       final painter = await shownRow('fits', taking: 30000);
       expect(
         coldOfTheNextPage(painter).length,
@@ -715,93 +622,73 @@ void main() {
 
       store.warmTheNextPage(tiles: 4);
       await tileStoreIdle(store);
-      expect(uploads, 1, reason: 'a second 30ms span would end at 60ms');
+      expect(drawn, 1, reason: 'a second 30ms span would end at 60ms');
 
       quiet = (fromMicros: clock, untilMicros: clock + 1000000);
       store.warmTheNextPage(tiles: 4);
       await tileStoreIdle(store);
-      expect(uploads, greaterThan(1), reason: 'the next quiet takes it on');
+      expect(drawn, greaterThan(1), reason: 'the next quiet takes it on');
     });
 
     test('a span longer than a quiet once does not shut the warm-up out for '
         'good', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await shownRow('decays', taking: 30000);
       quiet = (fromMicros: 0, untilMicros: 50000);
       store.warmTheNextPage(tiles: 4);
       await tileStoreIdle(store);
-      expect(uploads, 1, reason: '⛔premise: a 30ms span learned');
+      expect(drawn, 1, reason: '⛔premise: a 30ms span learned');
 
       quiet = (fromMicros: clock, untilMicros: clock + 25000);
       store.warmTheNextPage(tiles: 4);
       await tileStoreIdle(store);
 
-      expect(uploads, 2, reason: 'a quiet of 25ms still takes one');
+      expect(drawn, 2, reason: 'a quiet of 25ms still takes one');
     });
 
     test('a quiet that is over turns the warm-up away and shortens nothing '
         '— the next held frame\'s quiet asks for the span it '
         'learned', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await shownRow('over', taking: 30000);
       quiet = (fromMicros: 0, untilMicros: 1000000);
       store.warmTheNextPage(tiles: 1);
       await tileStoreIdle(store);
-      expect(uploads, 1, reason: '⛔premise: a 30ms span learned');
+      expect(drawn, 1, reason: '⛔premise: a 30ms span learned');
 
       quiet = (fromMicros: 0, untilMicros: clock - 1);
       store.warmTheNextPage(tiles: 4);
       await tileStoreIdle(store);
-      expect(uploads, 1, reason: 'it is over');
+      expect(drawn, 1, reason: 'it is over');
 
       quiet = (fromMicros: clock, untilMicros: clock + 25000);
       store.warmTheNextPage(tiles: 4);
       await tileStoreIdle(store);
-      expect(uploads, 1, reason: 'a 30ms span does not fit 25ms');
+      expect(drawn, 1, reason: 'a 30ms span does not fit 25ms');
     });
 
     test('🚨a quiet with no room holds the warm-up back — a run that leaves '
         'none is not leave to run beside its frames', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await shownRow('no-room');
       quiet = (fromMicros: 9000, untilMicros: 4000);
 
       store.warmTheNextPage(tiles: 4);
       await tileStoreIdle(store);
 
-      expect(uploads, 0);
+      expect(drawn, 0);
       expect(waits, isEmpty, reason: 'nothing to wait for in it either');
     });
 
     test('with nothing held there is no quiet to wait for', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await shownRow('free');
 
       store.warmTheNextPage(tiles: 2);
       await tileStoreIdle(store);
 
-      expect(uploads, 2);
+      expect(drawn, 2);
       expect(waits, isEmpty);
     });
 
     test('🚨while frames are held, a span waits for the GPU to be done with '
         'the one before it — where a run has no quiet yet as well', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await shownRow('gpu');
       final gpu = Completer<void>();
       addTearDown(() {
@@ -820,22 +707,18 @@ void main() {
       );
 
       store.warmTheNextPage(tiles: 2);
-      await pollUntil(() => uploads > 0);
+      await pollUntil(() => drawn > 0);
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(uploads, 1, reason: 'the GPU is not done with the first');
+      expect(drawn, 1, reason: 'the GPU is not done with the first');
 
       gpu.complete();
       await tileStoreIdle(store);
-      expect(uploads, 2);
+      expect(drawn, 2);
     });
 
     test('🚨while frames are held, a warm-up asks for its next span once the '
         'GPU is done with the one before — a job that asked meanwhile goes '
         'first', () async {
-      if (!available) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       await shownRow('fair');
       final gpu = Completer<void>();
       addTearDown(() {
@@ -855,25 +738,21 @@ void main() {
       store.quietTurns = turns;
 
       store.warmTheNextPage(tiles: 2);
-      await pollUntil(() => uploads > 0);
+      await pollUntil(() => drawn > 0);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final other = turns.inThisQuiet(QuietSpan(), gone: () => false);
       gpu.complete();
       final turn = await other;
-      expect(uploads, 1, reason: 'the job that asked first goes first');
+      expect(drawn, 1, reason: 'the job that asked first goes first');
 
       await turn!.landed();
       await tileStoreIdle(store);
-      expect(uploads, 2);
+      expect(drawn, 2);
     });
   });
 
   testWidgets('🚨the page law warms the next page after the frame it turns in '
       '— every surface that follows the playhead', (tester) async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
     final painter = painterFor('law', bucket);
@@ -895,6 +774,9 @@ void main() {
       ),
     );
 
+    // Its rasters held where they draw, so the frame's pump cannot finish
+    // them: ↩️an upload's real await held them until grid-on-the-engine ⑤.
+    holdTilesDrawnOffThePaint(store);
     pageToPlayhead((controller: controller, extent: cell, at: 2));
     await tester.pump();
 

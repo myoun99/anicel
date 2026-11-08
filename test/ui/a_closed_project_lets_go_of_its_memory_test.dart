@@ -7,6 +7,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -37,6 +38,7 @@ import '../helpers/settle_async.dart';
 /// the path walks and the collector does not; letting the pictures go is
 /// what made it collectable.
 void main() {
+  setUpAll(openAppGpuEngine);
   final enginePath = nativeEngineLibraryPathOrNull();
 
   testWidgets('a closed project lets go of its pictures and its history, the '

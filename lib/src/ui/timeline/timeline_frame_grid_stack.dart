@@ -10,6 +10,7 @@ import 'timeline_body_norishiro_boundary.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
+import 'timeline_grid_screen.dart';
 
 /// A trim in flight: both hooks present. The four cut-end overlays split on
 /// THIS, once — static when there is none, following the preview otherwise.
@@ -132,7 +133,9 @@ class TimelineFrameGridStack extends StatelessWidget {
           Positioned.fill(
             child: IgnorePointer(child: TickLayer(child: gridSheet)),
           ),
-        rowsBody,
+        // Over the sheet, under the rows: their tiles on the GPU's screen
+        // (grid-on-the-engine ④).
+        TimelineGridScreenHost(child: rowsBody),
         _playheadSlot(),
         // 🚨F-244: what follows a drag here is asked on EVERY step of every
         // drag, so it lays out and paints on a layer of its own — rebuilt

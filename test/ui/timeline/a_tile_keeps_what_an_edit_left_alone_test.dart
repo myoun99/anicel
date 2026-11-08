@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/exposure_instruction.dart';
@@ -21,15 +22,12 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/frame_name_of.dart';
-import '../../helpers/native_engine_path.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -48,6 +46,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// same ink from the old layer as from the new one.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
   // The session's reading of a drawing row's cells
   // (`ExposureVerbs.exposureStateForLayer`).
@@ -372,22 +371,11 @@ void main() {
   });
 
   group('the store', () {
-    final dllPath = nativeEngineLibraryPathOrNull();
     final store = TimelineGridTileStore.instance;
 
-    setUp(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = dllPath;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    setUp(store.clear);
 
-    tearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    tearDown(store.clear);
 
     TimelineExposure block(int cel, int length) =>
         TimelineExposure.drawing(FrameId('c$cel'), length: length);
@@ -455,10 +443,6 @@ void main() {
 
     test('a comma step bakes again only the spans whose bake it moved — the '
         'rest keep their pixels', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       var landings = 0;
       store.revision.addListener(() => landings += 1);
       Future<void> waitIdle() =>
@@ -569,10 +553,6 @@ void main() {
     // 조절하는게 레이어가 많아질수록 렉이 심함」.
     test("an end-line step grows each row's last ghost by a cell, and no "
         'span bakes again', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
       var landings = 0;
       store.revision.addListener(() => landings += 1);
       Future<void> waitIdle() =>

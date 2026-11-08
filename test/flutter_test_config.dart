@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/gpu_adapter_choice.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/services/import/cel_picture.dart'
     show debugPictureSideLimit;
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
@@ -21,8 +23,10 @@ import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
+import 'helpers/a_shown_surface.dart';
 import 'helpers/native_engine_path.dart';
 import 'helpers/temp_dir.dart';
 
@@ -208,6 +212,12 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // failed on a raster the test before it had queued). A test ends with
   // the store empty; the drain it scheduled then finds nothing.
   tearDown(TimelineGridTileStore.instance.clear);
+  // `flutter test` registers no texture a frame grid's screen could be
+  // shown by ([ScreenTexture.debugOnSurface]): where a file opens the GPU
+  // engine, each grid's screen opens on a surface of its own, freed as the
+  // test ends.
+  debugOpenTimelineGridScreen = _gridScreenOnASurface;
+  tearDown(_freeGridScreenSurfaces);
   // 🚨★★★**THE RUN ENDS THE WAY THE APP'S RUN ENDS, AND THEN IT IS ASKED
   // WHAT IT LEFT** (2026-10-08). Registered BEFORE the file declares a
   // single test, so it is the root group's LAST `tearDownAll` — package:test
@@ -241,4 +251,24 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
     );
   });
   await testMain();
+}
+
+/// The surfaces the grids' screens opened on in this test.
+final List<GpuSurface> _gridScreenSurfaces = [];
+
+Future<ScreenTexture> _gridScreenOnASurface(
+  GpuEngine engine,
+  int width,
+  int height,
+) async {
+  final surface = shownSurfaceOf(width, height);
+  _gridScreenSurfaces.add(surface);
+  return ScreenTexture.debugOnSurface(surface);
+}
+
+void _freeGridScreenSurfaces() {
+  for (final surface in _gridScreenSurfaces) {
+    surface.free();
+  }
+  _gridScreenSurfaces.clear();
 }

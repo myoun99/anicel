@@ -1,22 +1,19 @@
-import '../../services/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data' show Uint8List;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/keyed_notices.dart';
-import '../../core/rgba_premultiply.dart' show straightRgbaFor;
 import '../../core/signed_memo.dart';
-import '../../core/sync_image_upload.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
 import '../../models/rgba_image_bytes.dart';
-import '../../native/qa_native_engine.dart';
+import '../../native/app_gpu_engine.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import '../quiet_turns.dart';
@@ -25,6 +22,7 @@ import 'inbetween_mark_painter.dart' show inbetweenMarkRingWidth;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
+import 'timeline_grid_tile_picture.dart';
 import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
 import '../../core/lru.dart';
@@ -34,10 +32,11 @@ import '../../services/playback/let_go_wanted_latest.dart';
 ///
 /// A row's cells — its paper and the frame lines on it
 /// ([TimelineTileRasterSource.substrateIn]), plus the ink over them —
-/// rasterize ONCE per (row, span, look) through the native
-/// `qa_grid_raster_tile` and land here as a premultiplied [ui.Image]; the
-/// row painter then draws one `drawImageRect` per span instead of 2-3
-/// canvas calls per cell.
+/// are drawn ONCE per (row, span, look) on the app's GPU engine
+/// ([GpuGrid]) into a picture that stays there
+/// ([TimelineGridTilePicture]); the row painter then lays one per span on
+/// its grid's screen (`TimelineGridScreenSlot.laying`) instead of 2-3 canvas
+/// calls per cell.
 ///
 /// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
 /// the foreground — the in-between marks inline, glyph text through the A8
@@ -52,9 +51,8 @@ import '../../services/playback/let_go_wanted_latest.dart';
 /// The classic Dart pass is the FALLBACK, for spans with no usable tile.
 ///
 /// Contracts:
-/// - Tiles are TRANSPARENT (background 0): accumulation from
-///   transparent black is premultiplied, the raw-upload contract, so a
-///   tile composites pixel-true over any panel background.
+/// - Tiles are TRANSPARENT (drawn over clear), so a tile laid
+///   composites pixel-true over any panel background.
 /// - The tile grid rides the SHARED window policy
 ///   ([timelineFrameWindowSpanFor]): tile i covers cells
 ///   [i*span, (i+1)*span) — scrolling reuses tiles bucket by bucket.
@@ -62,14 +60,17 @@ import '../../services/playback/let_go_wanted_latest.dart';
 ///   are immutable, an edit is a new instance — extents, the paper's
 ///   ground, the block-frame-lines switch and the fps, scheme, DPR): any
 ///   mismatch re-rasters, so edits invalidate exactly like `shouldRepaint`.
-/// - NO native engine (flutter_tester, unsupported platforms, load
-///   failure) = the store stands down entirely ([tileFor] returns null
-///   and requests nothing): rows keep the classic Dart paint, tests and
-///   packaging stay byte-for-byte on today's path.
+/// - NO open engine ([appGpuEngineOpen] — not yet, or never: a test that
+///   opens none) = the store stands down entirely ([tileFor] returns null
+///   and requests nothing): rows keep the classic Dart paint.
 class TimelineGridTileStore {
   TimelineGridTileStore._();
 
   static final TimelineGridTileStore instance = TimelineGridTileStore._();
+
+  /// The tile pass the tiles are drawn with, made on the engine the first
+  /// one is drawn on — the app's, which is never closed.
+  GpuGrid? _grid;
 
   /// Bumped when a tile lands, whichever row it is — in the paint that
   /// bakes it or off-frame — a count for tests to wait on. ⛔No painter
@@ -309,7 +310,7 @@ class TimelineGridTileStore {
   /// session through the resolvers they were baked against), and tests.
   void clear() {
     for (final kept in _entries.values) {
-      kept.entry.image.dispose();
+      kept.entry.picture.letGo();
     }
     _entries.clear();
     _keptByRow.clear();
@@ -349,13 +350,13 @@ class TimelineGridTileStore {
   /// until its raster lands, and null for a cold span (the classic paint
   /// covers this frame). What is not baked here is scheduled off the paint
   /// phase — what a zoom stretched, once it stops.
-  ui.Image? tileFor({
+  TimelineGridTilePicture? tileFor({
     required TimelineTileRasterSource painter,
     required int spanStartIndex,
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
   }) {
-    final engine = QaNativeEngine.instance;
+    final engine = appGpuEngineOpen.value;
     if (engine == null) {
       return null;
     }
@@ -386,7 +387,7 @@ class TimelineGridTileStore {
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     final entry = _touched(key);
     if (entry != null && _shows(entry, asked)) {
-      return entry.image;
+      return entry.picture;
     }
     // 🚨F-314 (유저 2026-10-08: 「코마 바꿀때 +나 N이나 코마텍스트 이런 위젯이랑
     // 블록이랑 위치 어긋나는 프레임 1프레임정도 … 1프레임도 위치 안어긋나게」):
@@ -395,7 +396,8 @@ class TimelineGridTileStore {
     // that came a frame later showed the block a step behind its own grips:
     // 🔬every one of a drag's steps did (8 of 8 — comma, +, a move, a move
     // to another row; Surface, 10-25), each tile ~0.3ms of ops and ~70µs of
-    // raster through the door's picture ([pictureOf]), ~1.5 tiles a step.
+    // raster through the door's picture (`pictureOf`, the C raster's before
+    // grid-on-the-engine ⑤), ~1.5 tiles a step.
     // A word never baked before is the one wait left: its bake answers in a
     // future ([bakeWordCoverage] — the engine's faces are read off the
     // bundle the first time), which a paint cannot wait for.
@@ -459,13 +461,13 @@ class TimelineGridTileStore {
     // cut" — the alias that turned a mid-drain grey from a flicker into
     // a resident.
     if (stale != null) {
-      return stale.image;
+      return stale.picture;
     }
     return switch (standIn) {
       [final only]
           when only.spanStartIndex == spanStartIndex &&
               only.entry.spanEndIndexExclusive == spanEndIndexExclusive =>
-        only.entry.image,
+        only.entry.picture,
       _ => null,
     };
   }
@@ -495,7 +497,7 @@ class TimelineGridTileStore {
         : [
             for (final kept in parts)
               (
-                image: kept.entry.image,
+                picture: kept.entry.picture,
                 spanStartIndex: kept.spanStartIndex,
                 spanEndIndexExclusive: kept.entry.spanEndIndexExclusive,
               ),
@@ -601,7 +603,7 @@ class TimelineGridTileStore {
   /// asking draws — or null while a word it sets has never been baked.
   /// What was asked for it before is answered by it, and a raster of it in
   /// flight lands nothing ([_overtaken]).
-  ui.Image? _landNow(QaNativeEngine engine, _TileRequest asked) {
+  TimelineGridTilePicture? _landNow(GpuEngine engine, _TileRequest asked) {
     final rastered = _rasterNow(engine, asked);
     if (rastered == null) {
       return null;
@@ -615,7 +617,7 @@ class TimelineGridTileStore {
     }
     _keep(key, asked, _entryOf(asked, rastered));
     revision.value += 1;
-    return rastered.image;
+    return rastered.picture;
   }
 
   /// The tile at [key], made the newest in the cache: a span asked for —
@@ -637,7 +639,7 @@ class TimelineGridTileStore {
     final replaced = _entries.remove(key);
     if (replaced != null) {
       _heldBytes -= replaced.bytes;
-      replaced.entry.image.dispose();
+      replaced.entry.picture.letGo();
     }
     final kept = _Kept(
       landed,
@@ -685,7 +687,7 @@ class TimelineGridTileStore {
           _keptByRow.remove(entry.value.row);
         }
         _heldBytes -= entry.value.bytes;
-        entry.value.entry.image.dispose();
+        entry.value.entry.picture.letGo();
       },
     );
   }
@@ -740,7 +742,7 @@ class TimelineGridTileStore {
 
   Future<void> _drain() async {
     _drainScheduled = false;
-    final engine = QaNativeEngine.instance;
+    final engine = appGpuEngineOpen.value;
     if (engine == null) {
       _pending.clear();
       return;
@@ -773,7 +775,7 @@ class TimelineGridTileStore {
   /// of a row for a tile it does not show is a frame drawn for nothing —
   /// unless a paint asked for it while it was in flight ([_askedWhileWarm]).
   Future<bool> _rasterAndLand(
-    QaNativeEngine engine,
+    GpuEngine engine,
     _TileRequest request,
     int epoch, {
     required bool warm,
@@ -802,12 +804,12 @@ class TimelineGridTileStore {
       }
     }
     if (epoch != _epoch) {
-      rastered?.image.dispose();
+      rastered?.picture.letGo();
       return false;
     }
     if (_overtaken.remove(key)) {
       _askedWhileWarm.remove(key);
-      rastered?.image.dispose();
+      rastered?.picture.letGo();
       return true;
     }
     if (rastered == null) {
@@ -857,7 +859,7 @@ class TimelineGridTileStore {
       unnamedMark: painter.unnamedMark,
       framesPerSecond: painter.framesPerSecond,
       shown: painter.shown,
-      image: rastered.image,
+      picture: rastered.picture,
       ink: emitted.ink,
     );
   }
@@ -888,7 +890,7 @@ class TimelineGridTileStore {
   /// ([TimelineTileRasterSource.nextPage]) — the run's end it reads is the
   /// cut's drawn length, worked out again at each asking.
   void warmTheNextPage({int tiles = 6}) {
-    if (QaNativeEngine.instance == null) {
+    if (appGpuEngineOpen.value == null) {
       return;
     }
     final pages = <TimelineNextPage? Function(), TimelineNextPage?>{};
@@ -937,7 +939,7 @@ class TimelineGridTileStore {
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
   }) {
-    if (QaNativeEngine.instance == null) {
+    if (appGpuEngineOpen.value == null) {
       return;
     }
     _warm(
@@ -991,7 +993,7 @@ class TimelineGridTileStore {
   /// Starts a warm-up when no raster is under way and it has something to
   /// warm — what is on the screen is rastered first.
   void _startWarming({int pageTiles = 0}) {
-    final engine = QaNativeEngine.instance;
+    final engine = appGpuEngineOpen.value;
     if (engine != null &&
         _drainsRunning == 0 &&
         _warmQueue(pageTiles) != null) {
@@ -1013,7 +1015,7 @@ class TimelineGridTileStore {
     return pageTiles > 0 && _warming.isNotEmpty ? _warming : null;
   }
 
-  Future<void> _drainWarm(QaNativeEngine engine, int pageTiles) async {
+  Future<void> _drainWarm(GpuEngine engine, int pageTiles) async {
     final epoch = _epoch;
     _drainsRunning += 1;
     var pagesLeft = pageTiles;
@@ -1178,12 +1180,12 @@ class TimelineGridTileStore {
     );
   }
 
-  /// Rasters the request and returns the image TOGETHER WITH the content
+  /// Rasters the request and returns the picture TOGETHER WITH the content
   /// revision the raster's answers described and the substrate it laid
   /// down — both sampled in the same synchronous block as the substrate
   /// emit, so pixels, stamp and substrate can never disagree.
   Future<_Rastered?> _raster(
-    QaNativeEngine engine,
+    GpuEngine engine,
     _TileRequest request,
   ) async {
     final emitted = _emit(request);
@@ -1191,18 +1193,23 @@ class TimelineGridTileStore {
       return null;
     }
     final words = await _bakedWords(emitted.ink.glyphs);
-    final pixels = _pixelsOf(engine, request, emitted, words);
-    if (pixels == null) {
-      return null;
+    if (debugBeforeDrawing case final wait?) {
+      await wait();
     }
-    final image = await _upload(pixels, emitted.tileWidth, emitted.tileHeight);
-    return (image: image, emitted: emitted);
+    final picture = _drawn(engine, request, emitted, words);
+    return picture == null ? null : (picture: picture, emitted: emitted);
   }
 
-  /// [_raster] within the call, the picture made through the door
-  /// ([pictureOf]) — or null while a word the span sets has never been
-  /// baked.
-  _Rastered? _rasterNow(QaNativeEngine engine, _TileRequest request) {
+  /// What a raster off the paint waits on before it draws: a test counts
+  /// them by it, or holds one in flight. ↩️It was the upload such a raster
+  /// awaited (test/helpers/awaited_uploads.dart); one drawn on the engine
+  /// awaits none.
+  @visibleForTesting
+  Future<void> Function()? debugBeforeDrawing;
+
+  /// [_raster] within the call — or null while a word the span sets has
+  /// never been baked.
+  _Rastered? _rasterNow(GpuEngine engine, _TileRequest request) {
     final emitted = _emit(request);
     if (emitted == null) {
       return null;
@@ -1211,16 +1218,8 @@ class TimelineGridTileStore {
     if (words == null) {
       return null;
     }
-    final pixels = _pixelsOf(engine, request, emitted, words);
-    if (pixels == null) {
-      return null;
-    }
-    return (
-      image: pictureOf(
-        _TileBytes(pixels, emitted.tileWidth, emitted.tileHeight),
-      ),
-      emitted: emitted,
-    );
+    final picture = _drawn(engine, request, emitted, words);
+    return picture == null ? null : (picture: picture, emitted: emitted);
   }
 
   /// The request's span laid as ops up to its words ([_setWords]) — its
@@ -1285,10 +1284,10 @@ class TimelineGridTileStore {
     );
   }
 
-  /// [emitted]'s span with [words] set over it ([_setWords]), rastered by
-  /// [engine] into the tile's premultiplied bytes — null where it refused.
-  static Uint8List? _pixelsOf(
-    QaNativeEngine engine,
+  /// [emitted]'s span with [words] set over it ([_setWords]), drawn on
+  /// [engine] into a tile — null where the pass refused it.
+  TimelineGridTilePicture? _drawn(
+    GpuEngine engine,
     _TileRequest request,
     _Emitted emitted,
     Map<String, BakedWordCoverage> words,
@@ -1300,22 +1299,19 @@ class TimelineGridTileStore {
       words,
       devicePixelRatio: request.devicePixelRatio,
     );
-    final pixels = Uint8List(emitted.tileWidth * emitted.tileHeight * 4);
-    final result = engine.gridRasterTileBytes(
-      pixels: pixels,
-      tileWidth: emitted.tileWidth,
-      tileHeight: emitted.tileHeight,
-      backgroundRgba: 0,
-      ops: writer.build(),
-      atlas: atlas?.alpha,
-      atlasWidth: atlas?.width ?? 0,
-      atlasHeight: atlas?.height ?? 0,
+    final picture = GpuGridPicture(
+      engine,
+      emitted.tileWidth,
+      emitted.tileHeight,
     );
-    if (result != 0) {
-      assert(false, 'qa_grid_raster_tile failed: $result');
+    try {
+      (_grid ??= GpuGrid(engine)).draw(picture, writer.build(), atlas: atlas);
+    } on StateError catch (error) {
+      picture.free();
+      assert(false, 'the grid pass refused a tile: $error');
       return null;
     }
-    return pixels;
+    return TimelineGridTilePicture(picture);
   }
 
   /// The ink [painter]'s span [spanStartIndex, spanEndIndexExclusive) bakes
@@ -1491,7 +1487,7 @@ class TimelineGridTileStore {
 
   /// Writes the GLYPH ops of the [glyphs] [baked] holds — returns the
   /// transient atlas those ops reference, or null (no word to set).
-  static _TileAtlas? _setWords(
+  static GpuGridAtlas? _setWords(
     TimelineGridTileOpWriter writer,
     List<_TileGlyph> glyphs,
     Map<String, BakedWordCoverage> baked, {
@@ -1545,15 +1541,7 @@ class TimelineGridTileStore {
         cell.rgba,
       );
     }
-    return _TileAtlas(width: atlasWidth, height: atlasHeight, alpha: atlas);
-  }
-
-  Future<ui.Image> _upload(
-    Uint8List pixels,
-    int tileWidth,
-    int tileHeight,
-  ) async {
-    return uploadRawRgba(pixels, width: tileWidth, height: tileHeight);
+    return (alpha: atlas, width: atlasWidth, height: atlasHeight);
   }
 }
 
@@ -1585,7 +1573,7 @@ class _TileRequest {
 /// A kept tile that stands in for part of a span while the span is rastered
 /// ([TimelineGridTileStore.standInFor]), with the frames it holds.
 typedef TileStandIn = ({
-  ui.Image image,
+  TimelineGridTilePicture picture,
   int spanStartIndex,
   int spanEndIndexExclusive,
 });
@@ -1617,30 +1605,7 @@ typedef _Emitted = ({
 });
 
 /// What a raster hands its landing: the picture, and what it shows.
-typedef _Rastered = ({ui.Image image, _Emitted emitted});
-
-/// A tile's pixels as the door ([pictureOf]) reads them: the raster's own
-/// premultiplied bytes, and on the road that draws them the straight bytes
-/// that premultiply back to them ([straightRgbaFor]).
-class _TileBytes implements PictureBytes {
-  const _TileBytes(this._premultiplied, this.width, this.height);
-
-  final Uint8List _premultiplied;
-
-  @override
-  final int width;
-
-  @override
-  final int height;
-
-  @override
-  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
-      use(_premultiplied);
-
-  @override
-  T readStraight<T>(T Function(Uint8List straight) use) =>
-      use(straightRgbaFor(_premultiplied));
-}
+typedef _Rastered = ({TimelineGridTilePicture picture, _Emitted emitted});
 
 /// The ink a tile bakes over its substrate ([TimelineGridTileStore._inkOf]):
 /// the ops its marks write, and the words it sets.
@@ -1662,7 +1627,7 @@ class _Kept {
     required this.row,
     required this.spanStartIndex,
     required this.lastUsed,
-  }) : bytes = estimatedImageBytes(entry.image.width, entry.image.height);
+  }) : bytes = estimatedImageBytes(entry.picture.width, entry.picture.height);
 
   final _TileEntry entry;
   final String row;
@@ -1692,7 +1657,7 @@ class _TileEntry {
     required this.unnamedMark,
     required this.framesPerSecond,
     required this.shown,
-    required this.image,
+    required this.picture,
     required this.ink,
   });
 
@@ -1764,7 +1729,7 @@ class _TileEntry {
   /// (I-129).
   final bool shown;
 
-  final ui.Image image;
+  final TimelineGridTilePicture picture;
 
   /// The ink `_raster` baked over [substrate] — read in the same pass.
   final _TileInk ink;
@@ -1929,20 +1894,6 @@ final SignedMemo<Layer, int?> _agreements = SignedMemo(
   'tile agreement',
   same: identical,
 );
-
-/// The per-raster transient atlas (a vertical stack of the span's
-/// distinct glyphs) the GLYPH ops reference.
-class _TileAtlas {
-  const _TileAtlas({
-    required this.width,
-    required this.height,
-    required this.alpha,
-  });
-
-  final int width;
-  final int height;
-  final Uint8List alpha;
-}
 
 /// Emits the SUBSTRATE op stream for [painter]'s cells in
 /// [spanStartIndex, spanEndIndexExclusive): the paper and the frame lines

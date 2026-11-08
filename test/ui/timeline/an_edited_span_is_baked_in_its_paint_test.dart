@@ -4,27 +4,26 @@
 @Timeout(Duration(minutes: 3))
 library;
 
-import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
-import '../../helpers/awaited_uploads.dart';
 import '../../helpers/exposure_of.dart';
 import '../../helpers/frame_name_of.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
+import '../../helpers/tiles_drawn_off_the_paint.dart';
+import '../../helpers/tiles_laid.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -37,14 +36,12 @@ import 'timeline_frame_geometry_probe.dart';
 /// the frame the edit lands in. The tile followed it a frame later: the
 /// store showed the tile from before the edit while the fresh one went up
 /// off-frame, and on the device every step of a drag did (8 of 8, Surface,
-/// 10-25). It is made through the door ([pictureOf]) inside the ask now;
-/// the one wait left is a word never baked before, whose bake reads it
-/// back.
+/// 10-25). It is drawn on the engine inside the ask now; the one wait left
+/// is a word never baked before, whose bake reads its faces first.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
-  final dllPath = nativeEngineLibraryPathOrNull();
-  final available = dllPath != null;
   final store = TimelineGridTileStore.instance;
 
   /// A row [frames] long with a block [length] long at every fourth frame,
@@ -87,18 +84,21 @@ void main() {
   );
 
   /// What a paint asks of the store for the row's first span.
-  ui.Image? ask(TimelineRowCellsPainter painter) => store.tileFor(
-    painter: painter,
-    spanStartIndex: 0,
-    spanEndIndexExclusive: 4,
-    devicePixelRatio: 1.0,
-  );
+  TimelineGridTilePicture? ask(TimelineRowCellsPainter painter) =>
+      store.tileFor(
+        painter: painter,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      );
 
   /// What a repaint does: the painter's own paint, which asks the store for
-  /// every span it shows.
+  /// every span it shows — on a grid's screen, where its tiles are laid.
   void paintRow(TimelineRowCellsPainter painter, int frames) {
     final recorder = ui.PictureRecorder();
-    painter.paint(Canvas(recorder), Size(frames * 128.0, 28));
+    tilesLaidBy(
+      () => painter.paint(Canvas(recorder), Size(frames * 128.0, 28)),
+    );
     recorder.endRecording().dispose();
   }
 
@@ -109,7 +109,9 @@ void main() {
   }
 
   /// The first span of [painter]'s row, cold, landed off-frame.
-  Future<ui.Image> landed(TimelineRowCellsPainter painter) async {
+  Future<TimelineGridTilePicture> landed(
+    TimelineRowCellsPainter painter,
+  ) async {
     expect(ask(painter), isNull, reason: 'premise: cold');
     await tileStoreIdle(store);
     return ask(painter)!;
@@ -119,9 +121,6 @@ void main() {
   void countLanding() => landings += 1;
 
   setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     store.clear();
     landings = 0;
     store.revision.addListener(countLanding);
@@ -129,20 +128,13 @@ void main() {
 
   tearDown(() {
     store.revision.removeListener(countLanding);
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-    QaNativeEngine.debugForceDartFallback = false;
     store.clear();
   });
 
-  test('a comma edit is baked in the ask: the fresh tile, made through the '
-      'door, the one before it let go, nothing left for off-frame', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
+  test('a comma edit is baked in the ask: the fresh tile, drawn in it, the '
+      'one before it let go, nothing left for off-frame', () async {
     final before = await landed(painterFor(rowLayer('r')));
-    final uploads = countAwaitedUploads();
+    final drawnOff = countTilesDrawnOffThePaint(store);
     final landingsBefore = landings;
 
     final edited = painterFor(rowLayer('r', length: 3));
@@ -155,54 +147,41 @@ void main() {
       reason: 'the block a step behind its grips: the tile before the edit',
     );
     expect(landings, landingsBefore + 1, reason: 'it landed in the ask');
-    expect(before.debugDisposed, isTrue, reason: 'the tile it replaced went');
+    expect(before.debugHolds, 0, reason: 'the tile it replaced went');
     expect(store.debugBusy, isFalse, reason: 'nothing left for off-frame');
     expect(ask(edited), same(baked), reason: 'and it shows the edit');
     await tileStoreIdle(store);
-    expect(uploads(), 0, reason: 'made through the door, never awaited');
+    expect(drawnOff(), 0, reason: 'drawn in the ask, none off the paint');
   });
 
-  test('the baked tile is the raster\'s bytes to the last one — the door\'s '
-      'road that draws (this harness) premultiplies back exactly', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    Future<Uint8List> bytesOf(ui.Image image) async {
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      return data!.buffer.asUint8List();
-    }
+  test('the tile baked in the ask is the one drawn off the paint, to the '
+      'last byte', () async {
+    Uint8List bytesOf(TimelineGridTilePicture tile) => tile.picture.read();
 
     // A head with no name is a mark: its edges, the X's and the paper's
-    // rounded corners are the partly clear pixels a straight road could
-    // get wrong.
+    // rounded corners are the partly clear pixels the two could part on.
     await landed(painterFor(rowLayer('r', name: null)));
     final baked = ask(painterFor(rowLayer('r', name: null, length: 3)))!;
     expect(landings, 2, reason: 'premise: baked in the ask');
 
-    // The same cells on a row of their own, cold: uploaded as the raster's
-    // own premultiplied bytes.
-    final uploaded = await bytesOf(
+    // The same cells on a row of their own, cold: drawn off the paint.
+    final offThePaint = bytesOf(
       await landed(painterFor(rowLayer('twin', name: null, length: 3))),
     );
     var partlyClear = 0;
-    for (var alpha = 3; alpha < uploaded.length; alpha += 4) {
-      if (uploaded[alpha] != 0 && uploaded[alpha] != 255) {
+    for (var alpha = 3; alpha < offThePaint.length; alpha += 4) {
+      if (offThePaint[alpha] != 0 && offThePaint[alpha] != 255) {
         partlyClear += 1;
       }
     }
-    expect(partlyClear, greaterThan(0), reason: 'premise: edges to get wrong');
+    expect(partlyClear, greaterThan(0), reason: 'premise: edges to part on');
 
-    expect(await bytesOf(baked), uploaded);
+    expect(bytesOf(baked), offThePaint);
   });
 
   test('a word never baked before stands the tile before it in while it '
       'bakes, and lands off-frame — once baked, the next edit is baked in '
       'its ask', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     final before = await landed(painterFor(rowLayer('r')));
 
     final renamed = painterFor(rowLayer('r', name: 'Q7'));
@@ -227,44 +206,30 @@ void main() {
 
   test('a raster in flight when an ask bakes the span lands nothing over '
       'it — the ask is the newer', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     await landed(painterFor(rowLayer('r')));
-    final release = Completer<void>();
-    final reached = holdAwaitedUploads(release.future);
-    addTearDown(() {
-      if (!release.isCompleted) {
-        release.complete();
-      }
-    });
+    final held = holdTilesDrawnOffThePaint(store);
 
     // A new word: the ask stands the old tile in and a drain takes it up,
-    // its upload held here.
+    // its drawing held here.
     ask(painterFor(rowLayer('r', name: 'Z9')));
-    expect(await pollUntil(() => reached() == 1), isTrue, reason: 'premise');
+    expect(await pollUntil(() => held.length == 1), isTrue, reason: 'premise');
 
     // A later edit back to words already baked: baked in its ask.
     final latest = painterFor(rowLayer('r', length: 3));
     final baked = ask(latest)!;
 
-    release.complete();
+    held.single.complete();
     await tileStoreIdle(store);
     expect(
       ask(latest),
       same(baked),
       reason: 'the drain\'s raster, of an older ask, landed over it',
     );
-    expect(baked.debugDisposed, isFalse);
+    expect(baked.debugHolds, isPositive);
   });
 
   test('an ask that bakes the span takes it off the queue — the older ask '
       'queued for it lands nothing after', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     await landed(painterFor(rowLayer('r')));
     // A new word: stood in, and queued for a drain.
     ask(painterFor(rowLayer('r', name: 'Y3')));
@@ -279,10 +244,6 @@ void main() {
 
   test('an ask that bakes the span takes it off a warm-up — the span asked '
       'for past a window\'s edge is not baked again after', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     await landed(painterFor(rowLayer('r')));
     final latest = painterFor(rowLayer('r', length: 3));
     store.warmAhead(
@@ -298,10 +259,6 @@ void main() {
 
   test('a row the queue turned away hears its tile when the store comes back '
       'to it and bakes it in that ask', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     // Two spans, landed; then renamed to a word no tile has baked yet, so
     // both are stood in and queued — and thirty-two spans of a row that
     // sets the same word, queued after them, turn both away. The filler's
@@ -323,13 +280,13 @@ void main() {
       rowLayer('filler', frames: 128, name: 'W5'),
       frames: 128,
     );
-    final uploads = countAwaitedUploads();
+    final drawnOff = countTilesDrawnOffThePaint(store);
     paintRow(renamed, 8);
     paintRow(filler, 128);
     expect(store.debugBusy, isTrue, reason: 'premise');
     await tileStoreIdle(store);
 
-    expect(uploads(), 32, reason: 'the filler\'s alone: the row was baked in '
+    expect(drawnOff(), 32, reason: 'the filler\'s alone: the row was baked in '
         'the ask the store came back with');
     expect(heard, greaterThan(0), reason: 'nothing else would repaint it');
     paintRow(renamed, 8);
@@ -338,10 +295,6 @@ void main() {
 
   test('a row the store comes back to with nothing baked in that ask is not '
       'repainted for it — its landings repaint it, once each', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     // Two cold spans, turned away by thirty-two queued after them: the
     // store comes back to them cold, and queues them.
     final row = painterFor(rowLayer('r', frames: 8), frames: 8);
@@ -359,10 +312,6 @@ void main() {
   test('a stand-in is a tile of the span\'s own size — a taller row, or a '
       'span the axis cut shorter, keeps the classic paint while its new word '
       'bakes', () async {
-    if (!available) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
     await landed(painterFor(rowLayer('tall')));
     final taller = painterFor(
       rowLayer('tall', name: 'T1'),

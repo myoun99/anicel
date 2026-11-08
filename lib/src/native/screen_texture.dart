@@ -9,8 +9,9 @@ import 'package:gpu_engine/gpu_engine.dart';
 /// view's size in device pixels, and the way a frame drawn on it reaches
 /// Flutter (screen-on-the-engine c6) — two surfaces, each a texture of its
 /// own, alternated, on Windows, iOS, macOS and Linux; a SurfaceProducer's
-/// window on Android.
-// ⏳The widget reads this at the end of the flip lane (관제 11-08 15:02 ⓐ):
+/// window on Android. The frame grids show their tiles through one already
+/// (`TimelineGridScreenHost`, grid-on-the-engine ④).
+// ⏳The canvas view's widget reads this at the end of the flip lane (관제 11-08 15:02 ⓐ):
 // the live row's held pixels — the stroke being drawn in its CPU buffer,
 // the selection's float, a lift's float, a fill's range — are drawn by the
 // walk inside their row, under the rows above it, and the engine reads only

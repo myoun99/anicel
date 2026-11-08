@@ -19,14 +19,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/text/laid_out_glyph.dart';
@@ -34,7 +34,6 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -50,6 +49,7 @@ import 'timeline_frame_geometry_probe.dart';
 /// the baked tile after the name's own, and the storyboard panel's comma.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(openAppGpuEngine);
 
   const cell = 24.0;
   const crossExtent = 28.0;
@@ -159,21 +159,8 @@ void main() {
 
   test('a name that grows past its tile is baked into the next tile '
       'too', () async {
-    final dllPath = nativeEngineLibraryPathOrNull();
-    if (dllPath == null) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     final store = TimelineGridTileStore.instance..clear();
-    addTearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    addTearDown(store.clear);
     // Two cells before a tile's end: the name lives in [0, span) and runs
     // on through [span, 2 * span).
     final start = span - 2;
@@ -183,7 +170,7 @@ void main() {
     store.revision.addListener(count);
     addTearDown(() => store.revision.removeListener(count));
 
-    ui.Image? nextTile() => store.tileFor(
+    TimelineGridTilePicture? nextTile() => store.tileFor(
       painter: painter,
       spanStartIndex: span,
       spanEndIndexExclusive: 2 * span,
@@ -198,12 +185,10 @@ void main() {
     await pollUntil(() => landings > 0);
     final image = nextTile();
     expect(image, isNotNull, reason: 'fixture: the tile landed');
-    final bytes = (await image!.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!;
+    final bytes = image!.picture.read();
     int sumAt(int x, int y) {
       final i = (y * image.width + x) * 4;
-      return bytes.getUint8(i) + bytes.getUint8(i + 1) + bytes.getUint8(i + 2);
+      return bytes[i] + bytes[i + 1] + bytes[i + 2];
     }
 
     // The tile's first frame is a held cell of the block: paper, with a
@@ -233,21 +218,8 @@ void main() {
   /// is a whole name and half a name).
   test('a name longer than its block is BAKED narrowed, every letter of it', (
   ) async {
-    final dllPath = nativeEngineLibraryPathOrNull();
-    if (dllPath == null) {
-      markTestSkipped('qa_engine.dll not built');
-      return;
-    }
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
     final store = TimelineGridTileStore.instance..clear();
-    addTearDown(() {
-      QaNativeEngine.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugForceDartFallback = false;
-      store.clear();
-    });
+    addTearDown(store.clear);
     // Four letters with gaps between them, in a TWO-cell block: 7 em-wide
     // glyphs (the test face) at 11px against 48px of block.
     const gapped = 'A A A A';
@@ -281,7 +253,7 @@ void main() {
     void count() => landings += 1;
     store.revision.addListener(count);
     addTearDown(() => store.revision.removeListener(count));
-    ui.Image? tile() => store.tileFor(
+    TimelineGridTilePicture? tile() => store.tileFor(
       painter: painter,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
@@ -291,12 +263,10 @@ void main() {
     await pollUntil(() => landings > 0);
     final image = tile();
     expect(image, isNotNull, reason: 'fixture: the tile landed');
-    final bytes = (await image!.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!;
+    final bytes = image!.picture.read();
     int sumAt(int x, int y) {
       final i = (y * image.width + x) * 4;
-      return bytes.getUint8(i) + bytes.getUint8(i + 1) + bytes.getUint8(i + 2);
+      return bytes[i] + bytes[i + 1] + bytes[i + 2];
     }
 
     // Across the block (x 0-47), where the word's band holds ink: one run
