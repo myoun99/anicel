@@ -553,8 +553,12 @@ fn a_buffer_closed_as_a_row_draws_the_tiles_its_output_reads() {
     assert!(got == laying.widest(&[], &buffer(picture, pose("turn")), None));
     let budget = rig().composite.widest();
     assert!(laying.over(&[], (&[], &buffer(wide, pose("turn"))), None, budget).is_some());
-    let away = laying.widest(&[], &buffer(picture, ResampleMap::moved(-10_000, -10_000)), None);
-    assert!(away == laying.widest(&[], &[base], None));
+    // Away one way at a time: moved both ways, the rows it no longer reads
+    // would hide columns that ran past those it does.
+    for away in [ResampleMap::moved(-10_000, 0), ResampleMap::moved(0, -10_000)] {
+        let away = laying.widest(&[], &buffer(picture, away), None);
+        assert!(away == laying.widest(&[], &[base], None));
+    }
 }
 
 // A buffer closed as a row names a matrix and a chain the plan has, and
