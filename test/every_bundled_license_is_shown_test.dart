@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anicel/src/services/crate_licences.dart';
 import 'package:anicel/src/services/licence_entry.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/dart_sources.dart';
@@ -36,16 +37,24 @@ void main() {
   });
 
   // A `\r` left in a paragraph is drawn as a box (서피스 검증 2026-11-08
-  // 10:35) — every text the app bundles, as this checkout holds it, and the
-  // crates' notices, five of them CRLF as they ship ([licenceEntry]).
-  test('every licence text the app shows reads without a carriage return', () {
+  // 10:35) — every text as the asset bundle hands it to the app (this
+  // checkout's bytes, CRLF under core.autocrlf), and the crates' notices,
+  // five of them CRLF as they ship ([licenceEntry]).
+  test('every licence text the app shows reads without a carriage return',
+      () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
     final entries = [
       for (final folder in ['assets/licenses', 'assets/fonts'])
         for (final file in Directory(folder).listSync())
           if (file is File && file.path.endsWith('.txt'))
-            licenceEntry([file.path], file.readAsStringSync()),
+            licenceEntry(
+              [file.path],
+              await rootBundle.loadString(
+                '$folder/${file.uri.pathSegments.last}',
+              ),
+            ),
       ...crateLicenceEntries(
-        File('assets/licenses/rust_crates.json').readAsStringSync(),
+        await rootBundle.loadString('assets/licenses/rust_crates.json'),
       ),
       licenceEntry(const ['old Mac'], 'one\rtwo\r\n\r\nthree'),
     ];

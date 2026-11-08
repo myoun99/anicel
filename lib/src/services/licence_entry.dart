@@ -13,6 +13,12 @@ import 'package:flutter/foundation.dart'
 /// tool/crate_notices.dart read them. ⛔Not a `.gitattributes` rule: no
 /// checkout rule reaches the crates', and one place every entry is made
 /// through cannot miss a text added later.
+///
+/// ⚠️The launch notice ends its lines the same way for its own question
+/// (`LaunchNoticeContent._oneLineEnding`, the dismissed notice's key —
+/// lone CRs left as they are, which this turns into breaks). Two, kept
+/// apart until a third reader asks the same (the rule of three, CLAUDE.md 1):
+/// a change to one must not move the other's key.
 LicenseEntry licenceEntry(List<String> packages, String text) =>
     LicenseEntryWithLineBreaks(packages, text.replaceAll(_lineEnd, '\n'));
 
