@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/project_media_sources.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
@@ -110,10 +109,6 @@ void main() {
 
   test('🚨a FRAMED carry survives a save and a reopen with its original gone '
       '— the manifest names the entry the archive holds', () async {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
     await pool.addMediaAssets([path], carried: true);
@@ -185,10 +180,6 @@ void main() {
   });
 
   test('a framed staged file still serves a WINDOW', () async {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final path = compressibleFile('take.wav');
     final original = File(path).readAsBytesSync();
     await pool.addMediaAssets([path], carried: true);

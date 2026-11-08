@@ -26,11 +26,12 @@ windows = { version = "0.62", features = [
 libc = "0.2"
 ndk-sys = { version = "0.6", features = ["media"] }
 
-# AVFoundation's writer and reader (qa_video_apple.m's AVAssetWriter and
-# AVAssetReader halves). Every crate but AVFoundation's and CoreMedia's was
-# already in the lock (wgpu-hal, cpal, pen's dispatch2); their default
-# features would pull in frameworks it has not. The reader serves a span
-# through a resource loader, whose delegate is called on a dispatch queue.
+# AVFoundation's writer and reader (↩️qa_video_apple.m's AVAssetWriter and
+# AVAssetReader halves, until the connection round deleted it). Every crate
+# but AVFoundation's and CoreMedia's was already in the lock (wgpu-hal, cpal,
+# pen's dispatch2); their default features would pull in frameworks it has
+# not. The reader serves a span through a resource loader, whose delegate is
+# called on a dispatch queue.
 [target.'cfg(target_vendor = "apple")'.dependencies]
 block2 = "0.6"
 dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
@@ -89,6 +90,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "objc2-core-foundation",
 ] }
 
-# The C answer key: the engine's qa_video_export_* (native/oracle).
+# A medium framed as the save frames it (native/oracle's `framed`), for the
+# decoder's span test. ↩️And the C answer key, the engine's qa_video_*, until
+# the connection round deleted them (connection-round-checklist H, 2026-11-08).
 [dev-dependencies]
 oracle = { path = "../oracle" }

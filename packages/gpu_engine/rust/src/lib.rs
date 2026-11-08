@@ -45,12 +45,20 @@ pub use compress;
 pub use display;
 pub use fx_plugin;
 pub use image_encode;
+// The span reader and the movie writer and reader (H, 관제 2026-11-08 06:56
+// ③④): `qa_media_span_*` · `qa_video_export_*` · `qa_video_decode_*` are
+// answered here, and the C's video is gone. ⚠️The span's five stay in the C
+// engine as well, for the C's audio decoder alone, until the audio decode's
+// move deletes it (관제 03:59) — and the app binds these with `@Native`, for
+// the reason the device's note above gives.
+pub use media;
 // The four memory questions (H, 관제 2026-11-08 14:51):
 // `qa_physical_memory_bytes` · `qa_process_footprint_bytes` ·
 // `qa_available_memory_bytes` · `qa_app_memory_limit_bytes` are answered
 // here, and the C's are gone.
 pub use memory;
 pub use pen;
+pub use video;
 
 // The Runner finds the pen ledger's class by name (ios/Runner/
 // AppDelegate.swift), and an initializer of the pen crate registers it as

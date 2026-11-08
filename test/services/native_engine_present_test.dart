@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/native/qa_media_span.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
 
 import '../helpers/native_engine_path.dart';
 
@@ -62,12 +62,13 @@ void main() {
     //
     // ↩️It asked the compressor until the connection round (connection-
     // round-checklist H) moved that into the Rust engine, which no path
-    // finds; the span reader is what the production resolver opens now,
-    // and what the framed-media pins gate on.
+    // finds, and then the span reader, until the next move took that too;
+    // it asks the resolver itself now — what the C engine's every binding
+    // still opens it through.
     final built = nativeEngineLibraryPathOrNull();
     expect(
-      QaMediaSpan.available,
-      isTrue,
+      openQaEngineLibrary(),
+      isNotNull,
       reason:
           'a native engine is built at $built, but the resolver production '
           'uses could not open one — the parity pins that gate on it are '

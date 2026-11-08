@@ -133,7 +133,8 @@ fn ticks_to_frames(value: i64, scale: u32, rate: i32) -> i64 {
 /// open with — `ftyp` is the ISO file's first box, and the older movies
 /// start with whatever the editor wrote first.
 ///
-/// ⚠️Not the question `qa_apple_container_type` (qa_video_apple.m) answers:
+/// ⚠️Not the question `container_of` (native/video `decode/apple.rs`; ↩️the
+/// C's `qa_apple_container_type`, gone in the connection round) answers:
 /// that one is handed a movie and names its kind. Two heads read, two
 /// questions — a third reader is the time to make them one.
 pub(crate) fn head_is_a_movie_box(head: &[u8; 8]) -> bool {

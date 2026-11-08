@@ -26,7 +26,8 @@ import '../../models/audio_pcm_scale.dart';
 bool writtenByTheApp(ExportVideoContainer container) =>
     container == ExportVideoContainer.gif;
 
-/// The ABI v21 integers the native encoder speaks (qa_video_encode.c).
+/// The ABI v21 integers the native encoder speaks (native/video's export,
+/// bound by `QaVideoEncoder`).
 /// ⛔A movie the app writes itself has none: it is never handed over
 /// ([writtenByTheApp]).
 extension ExportVideoContainerAbi on ExportVideoContainer {

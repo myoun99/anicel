@@ -1,7 +1,8 @@
-//! The OS video decoder: a movie file in, one RGBA frame out — the engine's
-//! `qa_video_decode.c` in Rust (native-to-rust, 저장). Every media surface is
-//! built on 「the picture at index N」, and this is how a movie answers it:
-//! through each operating system's own codec stack, the encoder's mirror.
+//! The OS video decoder: a movie file in, one RGBA frame out, in Rust
+//! (native-to-rust, 저장; ↩️the engine's `qa_video_decode.c` until the
+//! connection round deleted it). Every media surface is built on 「the
+//! picture at index N」, and this is how a movie answers it: through each
+//! operating system's own codec stack, the encoder's mirror.
 //!
 //! 🚨★★★**THE LAW IS WRITTEN ONCE; THE PLATFORMS ONLY SAY HOW.** The C held
 //! three whole decoders first, and the rules were spelled in each — measured

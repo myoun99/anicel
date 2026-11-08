@@ -1,4 +1,5 @@
-//! Apple: AVAssetWriter — `qa_video_apple.m`'s export half, through objc2.
+//! Apple: AVAssetWriter, through objc2 (↩️`qa_video_apple.m`'s export half
+//! until the connection round deleted it).
 //! The writer IS the OS's MP4/MOV writer on macOS and iOS: hardware H.264
 //! and H.265 through VideoToolbox, ProRes where the machine has it, AAC
 //! through AudioToolbox, muxing included. Our pixel job is RGBA → NV12 in

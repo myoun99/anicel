@@ -2,11 +2,11 @@
 //! (2026-10-16, board mac-reads-no-movie-pcm). AudioToolbox read nothing of
 //! the tests' PCM movie on the macOS CI runner (2026-10-15) where Media
 //! Foundation reads it to the sample, and a ProRes movie this app exports
-//! on a Mac carries its sound as PCM (`qa_video_apple.m`), as editors'
-//! reels do. Uncompressed sound needs no codec — it is bytes the movie's
-//! sample table lays out — so it is read here, into floats by dr_wav's
-//! conversions (what a WAV of the same samples gets), and no OS stack is
-//! asked for it. Where it starts is the movie's to say
+//! on a Mac carries its sound as PCM (native/video `export/apple.rs`), as
+//! editors' reels do. Uncompressed sound needs no codec — it is bytes the
+//! movie's sample table lays out — so it is read here, into floats by
+//! dr_wav's conversions (what a WAV of the same samples gets), and no OS
+//! stack is asked for it. Where it starts is the movie's to say
 //! (`start::container_start`).
 //!
 //! What is read is the layout ffmpeg's movie reader reads (⚠️known from it

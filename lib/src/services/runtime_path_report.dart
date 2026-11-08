@@ -105,7 +105,7 @@ List<RuntimePathEntry> collectRuntimePathReport() {
   // --- Video export encoder: the OS encoder is the primary path since
   // AUDIO-PRO R7; ffmpeg is fallback-only.
   final video = QaVideoEncoder.instance;
-  final videoSupported = video != null && video.isSupported;
+  final videoSupported = video.isSupported;
   entries.add(
     RuntimePathEntry(
       subsystem: 'Video export encoder',

@@ -32,8 +32,13 @@ fx_plugin = { path = "native/fx_plugin" }
 # engine's device (kernels/plugin).
 fx_wgsl = { path = "native/fx_wgsl" }
 image_encode = { path = "native/image_encode" }
+media = { path = "native/media" }
 memory = { path = "native/memory" }
 pen = { path = "native/pen" }
+# The NV12 pass's tests hold it to video's `from_rgba` byte for byte too,
+# while the movie writers run it on the CPU (공통, gpu-export-path
+# 2026-11-07 23:20 ④); that pin goes when 7′ deletes it.
+video = { path = "native/video" }
 # A Gaussian's weights are alike on every device (유저 gpu-same-formula-Q2):
 # their exp is libm's, the same Rust on every OS, not the device's maths
 # library — as the audio crates' sin and pow are; already in the lock as
@@ -132,10 +137,6 @@ sha2 = "0.10"
 [dev-dependencies]
 ledger = { path = "native/ledger" }
 serde_json = "1"
-# The NV12 pass is held to video's `from_rgba` byte for byte while the
-# movie writers run it on the CPU (공통, gpu-export-path 2026-11-07 23:20
-# ④); the pin goes when 7′ deletes it.
-video = { path = "native/video" }
 
 # THE APP'S NATIVE C MOVES HERE, A MODULE TO A CRATE (native-to-rust, 유저
 # 2026-11-06 via 관제: no C left — what we wrote, third_party, .m, .cpp).

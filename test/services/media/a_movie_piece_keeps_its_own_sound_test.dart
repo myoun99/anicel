@@ -25,8 +25,6 @@ void main() {
 
   void reset() {
     QaAudioDecoder.debugResetForTests();
-    QaVideoDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
   }
 
   setUp(() {

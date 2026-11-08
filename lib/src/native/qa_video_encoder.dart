@@ -1,125 +1,95 @@
+// The engine's Rust library carries the encoder (rust/src/lib.rs), and its
+// names are found in that code asset — no library opened, no path named.
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:convert' show utf8;
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'gpu_engine_asset.dart';
 import 'native_scratch.dart';
-import 'qa_engine_abi.dart';
+
+@Native<Int32 Function()>(symbol: 'qa_video_export_supported')
+external int _supported();
+
+@Native<
+  Int32 Function(
+    Pointer<Utf8>,
+    Int32,
+    Int32,
+    Int32,
+    Int32,
+    Int32,
+    Int32,
+    Int32,
+    Int32,
+    Int32,
+    Int32,
+  )
+>(symbol: 'qa_video_export_open')
+external int _open(
+  Pointer<Utf8> utf8Path,
+  int width,
+  int height,
+  int fpsNumerator,
+  int fpsDenominator,
+  int sampleRate,
+  int channels,
+  int container,
+  int codec,
+  int alpha,
+  int bitrateBps,
+);
+
+@Native<Int32 Function(Int32, Int32)>(symbol: 'qa_video_export_probe')
+external int _probe(int container, int codec);
+
+@Native<Int32 Function(Pointer<Uint8>)>(symbol: 'qa_video_export_write_frame')
+external int _writeFrame(Pointer<Uint8> rgba);
+
+@Native<Int32 Function(Pointer<Int16>, Int32)>(
+  symbol: 'qa_video_export_write_audio',
+)
+external int _writeAudio(Pointer<Int16> interleaved, int frames);
+
+@Native<Int32 Function()>(symbol: 'qa_video_export_finish')
+external int _finish();
+
+@Native<Void Function()>(symbol: 'qa_video_export_abort')
+external void _abort();
+
+@Native<Int32 Function(Pointer<Utf8>, Int32)>(symbol: 'qa_video_export_error')
+external int _error(Pointer<Utf8> out, int capacity);
 
 /// The OS video encoder (AUDIO-PRO R7): frames + mixed PCM in, an
 /// H.264/AAC MP4 out through the operating system's own codec stack —
 /// Media Foundation on Windows, AVAssetWriter on Apple, NDK MediaCodec on
 /// Android. No ffmpeg.
 ///
-/// Absence is graceful: no binary, or a platform with no OS encoder
-/// (Linux), leaves [isSupported] false and the caller on the ffmpeg
-/// fallback — chosen, not crashed into.
+/// Absence is graceful: a platform with no OS encoder (Linux) leaves
+/// [isSupported] false and the caller on the ffmpeg fallback — chosen, not
+/// crashed into. The engine itself is wherever the app runs — its library
+/// ships with the app, and `flutter test` builds it too — so [instance] is
+/// always one. ↩️Until the connection round (connection-round-checklist H,
+/// 2026-11-08) it was the C engine's (`qa_video_encode.c`), which a machine
+/// could be without, and the instance was null there.
 final class QaVideoEncoder {
-  QaVideoEncoder._(this._library);
+  QaVideoEncoder._();
 
-  final DynamicLibrary _library;
-
-  static QaVideoEncoder? _instance;
-  static bool _tried = false;
-
-  static void debugResetForTests() {
-    _instance = null;
-    _tried = false;
-  }
-
-  static QaVideoEncoder? get instance {
-    if (!_tried) {
-      _tried = true;
-      final library = openQaEngineLibrary();
-      _instance = library == null ? null : QaVideoEncoder._(library);
-    }
-    return _instance;
-  }
-
-  late final _supported = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_video_export_supported',
-      );
-  late final _open = _library
-      .lookupFunction<
-        Int32 Function(
-          Pointer<Utf8>,
-          Int32,
-          Int32,
-          Int32,
-          Int32,
-          Int32,
-          Int32,
-          Int32,
-          Int32,
-          Int32,
-          Int32,
-        ),
-        int Function(
-          Pointer<Utf8>,
-          int,
-          int,
-          int,
-          int,
-          int,
-          int,
-          int,
-          int,
-          int,
-          int,
-        )
-      >('qa_video_export_open');
-  late final _probe = _library
-      .lookupFunction<
-        Int32 Function(Int32, Int32),
-        int Function(int, int)
-      >('qa_video_export_probe');
-  late final _writeFrame = _library
-      .lookupFunction<
-        Int32 Function(Pointer<Uint8>),
-        int Function(Pointer<Uint8>)
-      >('qa_video_export_write_frame');
-  late final _writeAudio = _library
-      .lookupFunction<
-        Int32 Function(Pointer<Int16>, Int32),
-        int Function(Pointer<Int16>, int)
-      >('qa_video_export_write_audio');
-  late final _finish = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_video_export_finish',
-      );
-  late final _abort = _library
-      .lookupFunction<Void Function(), void Function()>(
-        'qa_video_export_abort',
-      );
-  late final _error = _library
-      .lookupFunction<
-        Int32 Function(Pointer<Utf8>, Int32),
-        int Function(Pointer<Utf8>, int)
-      >('qa_video_export_error');
+  /// The process's one writer, as the engine keeps one job at a time.
+  static final QaVideoEncoder instance = QaVideoEncoder._();
 
   /// Whether THIS build and OS can encode (Android answers by actually
   /// resolving the NDK media symbols).
-  bool get isSupported {
-    try {
-      return _supported() != 0;
-    } on Object {
-      return false; // an older binary without the export surface
-    }
-  }
+  bool get isSupported => _supported() != 0;
 
   /// Whether this platform could take the [container]/[codec] pair
   /// (ABI v21) — the format picker grays what the machine cannot write.
-  /// An older binary without the probe answers the legacy truth: only
-  /// MP4·H.264 existed.
-  bool probe({required int container, required int codec}) {
-    try {
-      return _probe(container, codec) != 0;
-    } on Object {
-      return container == 0 && codec == 0;
-    }
-  }
+  bool probe({required int container, required int codec}) =>
+      _probe(container, codec) != 0;
 
   /// Opens the output at [path]. [channels] 0 = silent video;
   /// [container]/[codec] follow the ABI v21 values ([alpha] only matters

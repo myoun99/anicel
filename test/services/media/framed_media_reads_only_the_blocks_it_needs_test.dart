@@ -75,10 +75,6 @@ void main() {
   }
 
   test('a window reads only the block it lands in', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
     final (:framed, :entry, :blocks, :index) = written(source);
 
@@ -98,10 +94,6 @@ void main() {
   });
 
   test('a window straddling a boundary reads both blocks and no third', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
     final (:framed, entry: _, :blocks, :index) = written(source);
 
@@ -115,10 +107,6 @@ void main() {
   });
 
   test('the whole file comes back byte for byte', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
     final (:framed, entry: _, blocks: _, index: _) = written(source);
     expect(framed.lengthSync(), source.length);
@@ -126,10 +114,6 @@ void main() {
   });
 
   test('a read past the end is short, not a throw and not garbage', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final source = sourceOf(200 * 1024);
     final (:framed, entry: _, blocks: _, index: _) = written(source);
     final window = Uint8List(500);
@@ -143,10 +127,6 @@ void main() {
 
   test('🚨many small windows through ONE reader decode their block ONCE — '
       'PDFium reads a few hundred bytes at a time', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
     final (:framed, entry: _, :blocks, :index) = written(source);
 
@@ -165,10 +145,6 @@ void main() {
   });
 
   test('a reader reads across the file, and back', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
     final (:framed, entry: _, blocks: _, index: _) = written(source);
     final reader = framed.openWindowReader();
@@ -210,10 +186,6 @@ void main() {
   });
 
   test('a truncated entry says so rather than returning short data', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final (framed: _, :entry, blocks: _, index: _) = written(
       sourceOf(300 * 1024),
     );
@@ -229,10 +201,6 @@ void main() {
   });
 
   test('🚨an entry written at ANOTHER block size still windows correctly', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     // 4MB is what this app wrote until the decompression measurement moved
     // [mediaBlockBytes] to 512KB, and those entries live in .anicel files
     // that are already on people's disks. The reader's authority is the

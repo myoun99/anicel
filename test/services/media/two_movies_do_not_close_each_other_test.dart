@@ -2,11 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 
 import '../../helpers/encoded_movie.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -25,18 +23,8 @@ import '../../helpers/project_scratch_folder.dart';
 /// nothing on screen to explain it. The document is a native handle now, so
 /// 「whose movie is loaded」 is not a question anything asks.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
   tearDown(() {
-    QaVideoDecoder.instance?.close();
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
+    QaVideoDecoder.instance.close();
   });
 
   /// Two movies that LOOK DIFFERENT.
@@ -96,7 +84,7 @@ void main() {
       reason: 'if these are the same picture, nothing below is measuring '
           'anything',
     );
-  }, skip: skip);
+  });
 
   test('a second movie does not blind the first — both keep answering', () {
     final decoder = osVideoDecoderOrSkip();
@@ -131,7 +119,7 @@ void main() {
       isNot(preview.handle),
       reason: 'two documents, two handles — that IS the law',
     );
-  }, skip: skip);
+  });
 
   test('the same frame reads the same either side of a switch', () {
     // ⚠️Not just 「non-null」: a document that had been put back on the wrong
@@ -156,7 +144,7 @@ void main() {
       reason: 'frame 3 of the viewer\'s movie is frame 3 whatever the '
           'placement window did in between',
     );
-  }, skip: skip);
+  });
 
   test('reading one movie, then the other, then back — each answers with '
       'ITS OWN picture every time', () {
@@ -181,7 +169,7 @@ void main() {
       expect(decoder.frameOf(first, 0), orderedEquals(red));
       expect(decoder.frameOf(second, 0), orderedEquals(blue));
     }
-  }, skip: skip);
+  });
 
   test('closing one document leaves the other reading', () {
     // ⛔A bare close from one consumer took the other's movie with it. Each
@@ -216,7 +204,7 @@ void main() {
       reason: 'and the closed one IS closed — a handle nothing holds any '
           'more reads nothing',
     );
-  }, skip: skip);
+  });
 
   test('the slots run out HONESTLY — and a close hands one back', () {
     // ⚠️A fixed row of documents is a refusal that has to be readable: the
@@ -249,5 +237,5 @@ void main() {
     final after = decoder.openDocument(movies.second);
     expect(after, isNotNull, reason: 'the closed slot is free again');
     expect(decoder.frameOf(after!, 0), isNotNull);
-  }, skip: skip);
+  });
 }

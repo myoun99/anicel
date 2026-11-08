@@ -18,9 +18,11 @@
 // Foundation asks, so a movie the save compressed plays without its
 // original. ⛔Nothing here reads a file any more; keep it that way.
 //
-// ⛔Its own translation unit rather than 200 more lines inside
-// `qa_video_decode.c`: that file is the DECODE LAW plus three thin backends,
-// and hand-written COM is neither.
+// ⛔Its own translation unit rather than 200 more lines inside a decoder
+// that reads through it: a decoder is its law and its backends, and
+// hand-written COM is neither (↩️`qa_video_decode.c` was that decoder
+// until the connection round moved it to Rust; the C's audio decoder reads
+// through it now).
 //
 // 🚨★★★**MEDIA FOUNDATION CALLS THIS FROM ITS OWN THREADS**
 // (framed-movie-parity-hangs-under-load, 2026-09-29). The decoder's contract

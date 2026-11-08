@@ -44,10 +44,10 @@ import 'media_byte_source.dart';
 }) {
   final decoder = QaVideoDecoder.instance;
   final encoder = QaVideoEncoder.instance;
-  if (decoder == null || !decoder.isSupported) {
+  if (!decoder.isSupported) {
     return (kept: null, failure: 'no video decoder');
   }
-  if (encoder == null || !encoder.isSupported) {
+  if (!encoder.isSupported) {
     return (kept: null, failure: 'no video encoder');
   }
   final document = decoder.openDocument(sourcePath);

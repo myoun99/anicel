@@ -5,49 +5,29 @@
 #
 # Nothing platform-specific lives here except the compiler flags, because
 # qa_engine.c is one portable C99 source by design.
-# 3.16 for OBJC language support — the Apple video writer (AUDIO-PRO R7)
-# is Objective-C because AVAssetWriter is.
+# ↩️3.16 was for OBJC language support, which the Apple video writer and
+# reader (`qa_video_apple.m`) needed; they went to the Rust engine in the
+# connection round (connection-round-checklist H, 2026-11-08), and nothing
+# here is Objective-C now.
 cmake_minimum_required(VERSION 3.16)
 project(qa_engine LANGUAGES C)
-
-if(APPLE)
-  enable_language(OBJC)
-endif()
 
 # qa_audio_decode.c is a second translation unit rather than more of
 # qa_engine.c: it pulls in ~27k lines of vendored dr_libs, and compiling
 # that alongside the hot loops would slow every build and mix third-party
-# warnings into ours. qa_video_encode.c is per-OS encoder glue (AUDIO-PRO
-# R7) — Media Foundation / AVAssetWriter / NDK MediaCodec. qa_video_decode.c is its
-# mirror: the Source Reader half, so a movie can answer "the picture at
-# frame N" the way every other source already does.
+# warnings into ours. ↩️The movie encoder and decoder (qa_video_encode.c,
+# qa_video_decode.c) were two more, until the connection round moved them
+# to the Rust engine (native/video).
 add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_engine.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
-  "${CMAKE_CURRENT_LIST_DIR}/qa_video_encode.c"
-  "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
     "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
-if(APPLE)
-  target_sources(qa_engine PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}/qa_video_apple.m")
-  # 🚨ARC, as the pod compiles it. CocoaPods turns ARC on by default and this
-  # file is written for it: it keeps AVFoundation objects in globals with no
-  # retain. Built here without the flag, `g_decode_asset` held an autoreleased
-  # asset that was freed when the open's pool drained, and the next reader
-  # built on it crashed inside -[AVAssetReader initWithAsset:] — the tests on
-  # a Mac died of a segmentation fault the app on the iPad never had
-  # (Codemagic, 2026-09-11). The file refuses to compile without ARC, so the
-  # two builds cannot drift apart again.
-  set_source_files_properties(
-    "${CMAKE_CURRENT_LIST_DIR}/qa_video_apple.m"
-    PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-endif()
-# ⛔WIN32 only, for the same reason the Apple source above is: an
-# `IMFByteStream` over a range — and starting Media Foundation at all — is
-# Media Foundation's problem and nobody else's, and a translation unit that
-# compiles to nothing elsewhere is a warning waiting to happen.
+# ⛔WIN32 only: an `IMFByteStream` over a range — and starting Media
+# Foundation at all — is Media Foundation's problem and nobody else's, and
+# a translation unit that compiles to nothing elsewhere is a warning
+# waiting to happen.
 if(WIN32)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c"
@@ -66,41 +46,13 @@ set_target_properties(qa_engine PROPERTIES
   C_STANDARD_REQUIRED ON
 )
 
-# 🚨★★★**THE FIRST NATIVE CODE CI ACTUALLY RUNS.**
-#
-# The portability job built this library with two compilers and then printed
-# a directory listing — a real check for「does it compile everywhere」and no
-# check at all for「is the arithmetic right」. That was not laziness: until
-# the decode law was lifted out of the per-OS `#if` blocks, there was nothing
-# a Linux runner could execute. Now there is, and the rules it covers are
-# exactly the ones the three decoders had disagreed about.
-#
-# ⚠️Built only where the target is the host, because it is meant to be RUN.
-# ⛔Not linked against qa_engine: the law is `static`, and the test includes
-# the translation unit instead — see the file's own header.
-if(NOT ANDROID AND NOT IOS)
-  add_executable(qa_video_decode_law_test
-    "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode_law_test.c")
-  set_target_properties(qa_video_decode_law_test PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED ON
-  )
-  # ⛔NO PLATFORM UNDER IT. The first try let the host's backend come along
-  # and paid for it per host — Media Foundation libraries on Windows, and on
-  # Apple a link failure, because that backend lives in a `.m` this target
-  # does not compile. The law is the same everywhere; the test that proves
-  # it compiles the same everywhere.
-  target_compile_definitions(qa_video_decode_law_test
-    PRIVATE QA_DECODE_LAW_ONLY=1)
-  # /utf-8 for the same reason qa_engine has it: these sources carry Korean
-  # comments, and without it MSVC reads them in the machine's code page and
-  # floods C4819 on every Japanese or Korean Windows build.
-  if(MSVC)
-    target_compile_options(qa_video_decode_law_test PRIVATE /utf-8)
-  endif()
-  enable_testing()
-  add_test(NAME qa_video_decode_law COMMAND qa_video_decode_law_test)
-endif()
+# ↩️THE FIRST NATIVE CODE CI ACTUALLY RAN was the decode law's test
+# (qa_video_decode_law_test.c): the portability job had built this library
+# with two compilers and printed a directory listing, until the law was
+# lifted out of the per-OS `#if` blocks and a Linux runner had something to
+# execute. It went with the decoder in the connection round
+# (connection-round-checklist H, 2026-11-08); the law is held in Rust now
+# (native/video `decode/tests.rs`), where every host runs it.
 
 # The span reader — plain and framed — with nothing platform-specific in it,
 # so it runs on every host CI has. See qa_media_span_test.c for why it
@@ -145,7 +97,7 @@ if(NOT ANDROID AND NOT IOS)
     target_link_libraries(qa_audio_range_test
       "-framework CoreFoundation" "-framework AudioToolbox")
   elseif(WIN32)
-    # The Windows range origin hands Media Foundation the video decoder's
+    # The Windows range origin hands Media Foundation the span's
     # byte stream, and starts Media Foundation the engine's one way, so the
     # test needs those translation units too.
     target_sources(qa_audio_range_test PRIVATE
@@ -193,29 +145,16 @@ if(WIN32)
   add_test(NAME qa_win_range_stream COMMAND qa_win_range_stream_test)
 endif()
 
-# The hardware law (card surface-engine-mp4-pieces-fail-to-finalize) — which
-# Windows video jobs may ask for a hardware encoder. Its one reader is the
-# Windows encoder glue, but the law has no platform in it, so it runs on
-# every host CI has; on any other machine nothing else would notice it gone.
-if(NOT ANDROID AND NOT IOS)
-  add_executable(qa_video_hardware_law_test
-    "${CMAKE_CURRENT_LIST_DIR}/qa_video_hardware_law_test.c")
-  set_target_properties(qa_video_hardware_law_test PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED ON
-  )
-  if(MSVC)
-    target_compile_options(qa_video_hardware_law_test PRIVATE /utf-8)
-  endif()
-  enable_testing()
-  add_test(NAME qa_video_hardware_law COMMAND qa_video_hardware_law_test)
-endif()
+# ↩️The hardware law's test (card surface-engine-mp4-pieces-fail-to-
+# finalize) went with the encoder in the connection round; the law and its
+# cases are Rust's now (native/video `hardware_law.rs`).
 
 # Several callers at once on the engine's one pool and one wave arena (card
 # clip-import-hangs-on-three-samples): every isolate calls the engine from a
 # thread of its own, and nothing else that runs here calls it from more than
-# one. It includes the engine's translation unit, as the law tests include
-# theirs.
+# one. It includes the engine's translation unit. ↩️As the law tests and
+# the transport test included theirs, until the connection round moved the
+# movie laws and the sound device to the Rust engine.
 if(NOT ANDROID AND NOT IOS)
   add_executable(qa_engine_pool_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_engine_pool_test.c")
@@ -250,36 +189,34 @@ else()
     PROPERTIES COMPILE_OPTIONS "-Wno-conversion;-Wno-unused-function")
 endif()
 
-# The OS threading/dl primitives, and on Apple the frameworks the decoders
-# and the video writer link. 🪦The C's sound device (miniaudio) linked
-# CoreAudio here and OpenSLES on Android, until the device moved into the
-# GPU engine's library (connection-round-checklist H, 2026-11-08).
+# The OS threading/dl primitives, and on Apple the frameworks the audio
+# decoder links. 🪦The C's sound device (miniaudio) linked CoreAudio here
+# and OpenSLES on Android, until the device moved into the GPU engine's
+# library (connection-round-checklist H, 2026-11-08).
 if(APPLE)
-  # AVFoundation/CoreMedia/CoreVideo carry the video writer (R7);
-  # Foundation is the Objective-C runtime half of it (NSString and
-  # friends) — CoreFoundation alone does NOT provide those classes.
   # AudioToolbox carries the OS audio decoder (qa_audio_decode.c).
+  # ↩️AVFoundation, CoreMedia, CoreVideo, CoreGraphics and Foundation
+  # carried the movie writer and reader (`qa_video_apple.m`), which went to
+  # the Rust engine in the connection round (connection-round-checklist H,
+  # 2026-11-08).
   target_link_libraries(qa_engine
-    "-framework CoreFoundation" "-framework AudioToolbox"
-    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
-    # CoreGraphics arrived with the DECODER: a CGImage from the image
-    # generator is drawn into a bitmap context to come out as RGBA.
-    "-framework CoreGraphics"
-    "-framework Foundation")
+    "-framework CoreFoundation" "-framework AudioToolbox")
 elseif(UNIX AND NOT ANDROID)
   find_package(Threads REQUIRED)
   target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})
 elseif(ANDROID)
-  # mediandk: the NDK media stack — the movie decoder and encoder and the
-  # OS audio decoder (AAC).
+  # mediandk: the NDK media stack — the OS audio decoder (AAC); ↩️the movie
+  # decoder and encoder too, until the connection round moved them to the
+  # Rust engine.
   # ↩️mediandk was resolved via dlopen/dlsym at runtime until 2026-10-24,
   # when the minSdk 29 floor left the headers nothing to hide (qa_ndk_media.h).
   target_link_libraries(qa_engine mediandk)
 elseif(WIN32)
-  # The OS decoders (AAC/m4a, and every movie): Media Foundation source
-  # readers over the span stream (qa_win_range_stream.c). ole32 carries the
-  # COM runtime. 🪦shlwapi went with the in-memory audio origin it served
-  # (SHCreateMemStream, 2026-09-24).
+  # The OS decoder (AAC/m4a; ↩️and every movie, until the connection round):
+  # Media Foundation source readers over the span stream
+  # (qa_win_range_stream.c). ole32 carries the COM runtime. 🪦shlwapi went
+  # with the in-memory audio origin it served (SHCreateMemStream,
+  # 2026-09-24).
   target_link_libraries(qa_engine mfplat mfreadwrite mfuuid ole32)
 endif()
 

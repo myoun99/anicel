@@ -354,7 +354,13 @@ import '../core/on_a_worker.dart';
 ///   native/audio_mix, connection-round-checklist H), which
 ///   `qa_audio_device.dart` and `qa_audio_native.dart` bind in the GPU
 ///   engine's library.
-const int kQaEngineAbiVersion = 70;
+/// - v71: `qa_video_export_*` and `qa_video_decode_*` leave the C: the movie
+///   writer and reader are the Rust engine's (native/video,
+///   connection-round-checklist H), which `QaVideoEncoder` and
+///   `QaVideoDecoder` bind in the GPU engine's library, as `QaMediaSpan`
+///   binds native/media's span reader there. The C's `qa_media_span_*` stay,
+///   for the C's audio decoder alone, until the audio decoder moves.
+const int kQaEngineAbiVersion = 71;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

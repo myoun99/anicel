@@ -120,7 +120,7 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
   const DirectVideoDecodeBackend();
 
   @override
-  bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
+  bool get supported => QaVideoDecoder.instance.isSupported;
 
   @override
   Future<({int token, QaVideoInfo info})?> open(
@@ -128,7 +128,7 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
     ({int offset, int length, bool framed})? span,
   }) async {
     final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    if (!decoder.isSupported) {
       return null;
     }
     final document = decoder.openDocument(path, span: span);
@@ -161,17 +161,17 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
     final document = _documentAt(token);
     return document == null
         ? null
-        : QaVideoDecoder.instance?.frameOf(document, index);
+        : QaVideoDecoder.instance.frameOf(document, index);
   }
 
   @override
-  Future<String> lastError() async => QaVideoDecoder.instance?.lastError ?? '';
+  Future<String> lastError() async => QaVideoDecoder.instance.lastError;
 
   @override
   Future<void> close(int token) async {
     final document = _documentAt(token);
     if (document != null) {
-      QaVideoDecoder.instance?.closeDocument(document);
+      QaVideoDecoder.instance.closeDocument(document);
     }
   }
 
@@ -201,7 +201,7 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   /// ⚠️Answered on THIS isolate: whether the library loads is a property of
   /// the build, and asking a worker would mean starting one to find out.
   @override
-  bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
+  bool get supported => QaVideoDecoder.instance.isSupported;
 
   SendPort? _worker;
   Future<SendPort>? _starting;
@@ -488,7 +488,7 @@ void _serve(
                 String path,
                 ({int offset, int length, bool framed})? span,
               });
-      final document = decoder == null || !decoder.isSupported
+      final document = !decoder.isSupported
           ? null
           : decoder.openDocument(args.path, span: args.span);
       if (document == null) {
@@ -510,14 +510,14 @@ void _serve(
       final document = documentAt(args.token);
       final rgba = document == null
           ? null
-          : decoder?.frameOf(document, args.index);
+          : decoder.frameOf(document, args.index);
       request.reply.send(
         rgba == null
             ? null
             : transferOfFrame(rgba, premultiplied: args.premultiplied),
       );
     case _opLastError:
-      request.reply.send(decoder?.lastError ?? '');
+      request.reply.send(decoder.lastError);
     case _opClose:
       // ⚠️Removed, not just closed. The handle is the ASKER's now and never
       // repeats, so an entry left behind is a closed document a stale
@@ -526,7 +526,7 @@ void _serve(
       // after it — which is why the old code deliberately left it.
       final document = documents.remove(request.args! as int);
       if (document != null) {
-        decoder?.closeDocument(document);
+        decoder.closeDocument(document);
       }
       request.reply.send(null);
     default:

@@ -3,11 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 
 import '../../helpers/mpeg4_visual_movie.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -28,18 +26,8 @@ import '../../helpers/project_scratch_folder.dart';
 /// hand. Every frame is a flat grey of its own, so a frame read from the
 /// wrong place cannot pass for the right one.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
   tearDown(() {
-    QaVideoDecoder.instance?.close();
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
+    QaVideoDecoder.instance.close();
   });
 
   /// [bytes] as a movie on disk, for as long as the run lasts.
@@ -110,7 +98,7 @@ void main() {
             'the file\'s are eleven and some',
       );
     }
-  }, skip: skip);
+  });
 
   test('🚨every frame plays as itself to the end, and a jump two thousand '
       'frames in lands where it was sent', () {
@@ -148,5 +136,5 @@ void main() {
       expect(rgba, isNotNull, reason: 'frame $frame: ${decoder.lastError}');
       expect(shownGrey(rgba!, info), greyOf(frame), reason: 'a jump to $frame');
     }
-  }, skip: skip);
+  });
 }

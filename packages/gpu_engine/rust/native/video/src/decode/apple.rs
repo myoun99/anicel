@@ -1,4 +1,5 @@
-//! Apple: AVAssetReader — `qa_video_apple.m`'s decode half, through objc2.
+//! Apple: AVAssetReader, through objc2 (↩️`qa_video_apple.m`'s decode half
+//! until the connection round deleted it).
 //! A reader is started over a time RANGE and walks forward; it cannot seek,
 //! so repositioning builds a new one over the same asset. A whole file is an
 //! asset on its URL; a span is SERVED — AVFoundation has no 「open this file

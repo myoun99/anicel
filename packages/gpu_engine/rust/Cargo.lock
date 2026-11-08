@@ -906,6 +906,7 @@ dependencies = [
  "ledger",
  "libc",
  "libm",
+ "media",
  "memory",
  "objc2",
  "objc2-core-foundation",

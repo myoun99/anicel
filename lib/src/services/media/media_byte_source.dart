@@ -481,9 +481,11 @@ class MediaFramedBytes extends MediaByteSource {
         : (path: at.path, offset: at.offset, length: at.length, framed: true);
   }
 
-  /// The engine's reader over [span], or a throw that says which of three
-  /// it was: the bytes are gone, this build has no engine to read them
-  /// with, or they do not hold together.
+  /// The engine's reader over [span], or a throw that says which of two it
+  /// was: the bytes are gone, or they do not hold together. ↩️A third, 「no
+  /// engine to read them with」, went in the connection round
+  /// (connection-round-checklist H, 2026-11-08): the reader is the engine's
+  /// Rust now, which every build carries.
   QaMediaSpan _openSpan() {
     final at = span;
     if (at == null) {
@@ -498,13 +500,8 @@ class MediaFramedBytes extends MediaByteSource {
     if (opened != null) {
       return opened;
     }
-    // ⛔「No engine」 is something the user can act on, and must not reach
-    // the screen as 「corrupt」 — the same line the cel reader draws.
-    throw FormatException(
-      QaMediaSpan.available
-          ? 'this framed media entry does not hold together'
-          : 'This media was compressed with zstd and no engine is available '
-                'to read it.',
+    throw const FormatException(
+      'this framed media entry does not hold together',
     );
   }
 

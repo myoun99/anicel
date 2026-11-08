@@ -1,6 +1,7 @@
-//! The decode law, run — `qa_video_decode_law_test.c`'s checks, here where
-//! the law is (the colour half is `colour/tests.rs`'s). The arithmetic below
-//! is exactly where the C's three decoders disagreed.
+//! The decode law, run — the C test's checks (↩️`qa_video_decode_law_test.c`,
+//! until the connection round deleted it), here where the law is (the colour
+//! half is `colour/tests.rs`'s). The arithmetic below is exactly where the
+//! C's three decoders disagreed.
 
 use std::ffi::CStr;
 use std::sync::{Mutex, MutexGuard, PoisonError};

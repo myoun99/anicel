@@ -7,9 +7,11 @@
 // the reader is handed the archive's own header, or half a movie, and both
 // look like a corrupt file rather than a bug in here.
 //
-// ⛔Windows only, and unlike `qa_video_decode_law_test` this one WANTS the
-// platform under it: the object being tested IS Media Foundation's
-// interface, and there is nothing portable to check.
+// ⛔Windows only, and unlike the portable tests beside it this one WANTS
+// the platform under it: the object being tested IS Media Foundation's
+// interface, and there is nothing portable to check. (↩️It was set
+// against the decode law's test, which went with `qa_video_decode.c` in
+// the connection round.)
 
 #if defined(_WIN32)
 

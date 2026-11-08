@@ -2,30 +2,16 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_call_watch.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
-/// ABI v21: the container/codec surface. Real-binary-or-skip, like every
-/// native suite; the assertions stay machine-honest (an HEVC MFT may or
-/// may not exist) by pinning CONSISTENCY between probe and open.
+/// ABI v21: the container/codec surface. Codec-or-skip
+/// (`osVideoEncoderOrSkip`); the assertions stay machine-honest (an HEVC
+/// MFT may or may not exist) by pinning CONSISTENCY between probe and open.
 void main() {
-  final enginePath = nativeEngineLibraryPathOrNull();
-
-  setUp(() {
-    QaVideoEncoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = enginePath;
-  });
-
-  tearDown(() {
-    debugQaEngineLibraryPathOverride = null;
-    QaVideoEncoder.debugResetForTests();
-  });
-
   test('the baseline pair always probes true', () {
     final encoder = osVideoEncoderOrSkip();
     if (encoder == null) {

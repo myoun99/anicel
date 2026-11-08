@@ -29,15 +29,11 @@ void main() {
   final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
 
   setUp(() {
-    QaVideoDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = libraryPath;
   });
 
   tearDown(() {
-    QaVideoDecoder.instance?.close();
-    QaVideoDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
+    QaVideoDecoder.instance.close();
     debugQaEngineLibraryPathOverride = null;
   });
 

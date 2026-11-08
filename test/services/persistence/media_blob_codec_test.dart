@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
-import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import '../../helpers/temp_dir.dart';
@@ -106,10 +105,6 @@ void main() {
     });
 
     test('compressible bytes round-trip through the framed form', () {
-      if (!QaMediaSpan.available) {
-        markTestSkipped('no span reader on this run');
-        return;
-      }
       final source = compressible(300 * 1024);
       final (:framed, :entry, :back) = roundTrip(source);
       expect(framed, isTrue, reason: 'fixture: this data does compress');
@@ -122,10 +117,6 @@ void main() {
     });
 
     test('a file longer than one block gets one index entry per block', () {
-      if (!QaMediaSpan.available) {
-        markTestSkipped('no span reader on this run');
-        return;
-      }
       // Two blocks and a bit, at a block size a test can afford.
       final source = compressible(mediaBlockBytes * 2 + 1024);
       final (:framed, :entry, :back) = roundTrip(source);

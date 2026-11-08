@@ -62,11 +62,20 @@ void main() {
     );
   });
 
-  test('the Apple-only source is forwarded too, and the pods agree with '
-      'each other', () {
+  /// ↩️It was 「the Apple-only source is forwarded too」 until the connection
+  /// round (connection-round-checklist H, 2026-11-08) moved that source —
+  /// the movie writer and reader, `qa_video_apple.m` — to the Rust engine,
+  /// as it moved the sound device, whose forwarder iOS compiled as
+  /// Objective-C: nothing is Apple's own now, and the two pods forward the
+  /// same sources.
+  test('the pods agree with each other', () {
     final ios = _forwardedSources(pods['ios']!);
     final macos = _forwardedSources(pods['macos']!);
-    expect(ios, contains('qa_video_apple.m'));
+    expect(
+      ios,
+      contains('qa_audio_decode.c'),
+      reason: 'the parser must see the forwarders this test is about',
+    );
     expect(
       ios,
       equals(macos),

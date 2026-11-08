@@ -6164,4 +6164,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // the three qa_audio_*_sizeof - leave: the sound device and its mixer are
 // the Rust engine's (native/audio_device, native/audio_mix), which the app
 // binds in the GPU engine's library.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 70; }
+// v71: qa_video_export_* and qa_video_decode_* leave - the movie writer and
+// reader are the Rust engine's (native/video), which the app binds in the GPU
+// engine's library, as it binds native/media's span reader there. The C's
+// qa_media_span_* stay, for the C's audio decoder alone, until it moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 71; }

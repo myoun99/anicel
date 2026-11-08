@@ -1,7 +1,9 @@
-//! The colour law, by hand: no export of the engine reaches `qa_yuv601.h` on
-//! Windows (only the Android and Apple writers call it), so its answers are
-//! pinned here — the C test's cases (qa_video_decode_law_test.c) and the
-//! values the BT.601 integer formula gives, worked out on paper.
+//! The colour law, by hand: no export reaches it on Windows (only the
+//! Android and Apple writers call it), so its answers are pinned here — the
+//! C test's cases and the values the BT.601 integer formula gives, worked
+//! out on paper. ↩️The law was the engine's `qa_yuv601.h` and the cases
+//! `qa_video_decode_law_test.c`'s, until the connection round deleted them
+//! (connection-round-checklist H, 2026-11-08).
 
 use super::{Picture, Planes, from_rgba, to_rgba};
 

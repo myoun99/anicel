@@ -272,7 +272,9 @@ static void qa_cursor_rewind(qa_audio_cursor* cursor) {
 /// open with — `ftyp` is the ISO file's first box, and the older movies
 /// start with whatever the editor wrote first.
 ///
-/// ⚠️Not the question `qa_apple_container_type` (qa_video_apple.m) answers:
+/// ⚠️Not the question Apple's movie reader asks (native/video
+/// `decode/apple.rs` `container_of`; ↩️`qa_apple_container_type` in
+/// `qa_video_apple.m` until the connection round moved it to Rust):
 /// that one is handed a movie and names its kind. Two heads read, two
 /// questions — a third reader is the time to make them one.
 static int qa_audio_head_is_a_movie_box(const uint8_t* head) {
@@ -1168,7 +1170,8 @@ static int qa_mp3_open(qa_audio_stream* stream, qa_audio_start* start) {
 // (2026-10-16, board mac-reads-no-movie-pcm). AudioToolbox read nothing of
 // the tests' PCM movie on the macOS CI runner (2026-10-15) where Media
 // Foundation reads it to the sample, and a ProRes movie this app exports on
-// a Mac carries its sound as PCM (`qa_video_apple.m`), as editors' reels do.
+// a Mac carries its sound as PCM (native/video `export/apple.rs`), as
+// editors' reels do.
 // Uncompressed sound needs no codec — it is bytes the movie's sample table
 // lays out — so it is read here, into floats by dr_wav's conversions (what a
 // WAV of the same samples gets), and no OS stack is asked for it. A movie's

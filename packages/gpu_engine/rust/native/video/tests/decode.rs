@@ -1,15 +1,20 @@
-//! The Rust decoder against the engine's C (native/oracle): the same movie
-//! opened by both, through the exports each has — its shape, every frame's
-//! bytes in order and out of it, a span of a file plain and framed, the
-//! slots, and the sentence each failure says. Where this build has no
-//! decoder, that the two say so alike. And every movie the export writes,
-//! read back by the Rust's as it was asked.
+//! The decoder through its exports: a movie the export wrote, its shape
+//! and every frame in order and out of it, a span of a file plain and
+//! framed, the slots, and why each failure is refused. Where this build has
+//! no decoder, that it says so. And every movie the export writes, read back
+//! as it was asked.
+//!
+//! ↩️It was held to the engine's C (native/oracle) — the same movie opened by
+//! both, every frame's bytes and every sentence alike — until the connection
+//! round deleted the C's decoder (connection-round-checklist H, 2026-11-08):
+//! what the OS decoder makes is not frozen, only what this code decides
+//! (유저 connection-round-checklist-Q14, 2026-11-07).
 //!
 //! ⚠️A process of its own, apart from the crate's tests: the movie is
 //! written through the export, which keeps one job for the whole process,
 //! and the crate's export tests hold that job for themselves.
 
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
@@ -22,88 +27,45 @@ use video::export::{
     qa_video_export_write_audio, qa_video_export_write_frame,
 };
 
-#[derive(Clone, Copy)]
-struct Decoder {
-    supported: extern "C" fn() -> i32,
-    last_error: extern "C" fn() -> *const c_char,
-    open: unsafe extern "C" fn(*const c_char) -> i32,
-    open_span: unsafe extern "C" fn(*const c_char, i64, i64, i32) -> i32,
-    info: unsafe extern "C" fn(i32, *mut i32, *mut i32, *mut i64, *mut i32, *mut i32) -> i32,
-    frame: unsafe extern "C" fn(i32, i64, *mut u8, i32) -> i32,
-    close: extern "C" fn(i32),
-    close_all: extern "C" fn(),
-}
-
-fn c() -> Decoder {
-    // SAFETY: qa_video_decode.c's declarations.
-    unsafe {
-        Decoder {
-            supported: oracle::export("qa_video_decode_supported"),
-            last_error: oracle::export("qa_video_decode_last_error"),
-            open: oracle::export("qa_video_decode_open"),
-            open_span: oracle::export("qa_video_decode_open_span"),
-            info: oracle::export("qa_video_decode_info"),
-            frame: oracle::export("qa_video_decode_frame"),
-            close: oracle::export("qa_video_decode_close"),
-            close_all: oracle::export("qa_video_decode_close_all"),
-        }
-    }
-}
-
-fn rust() -> Decoder {
-    Decoder {
-        supported: qa_video_decode_supported,
-        last_error: qa_video_decode_last_error,
-        open: qa_video_decode_open,
-        open_span: qa_video_decode_open_span,
-        info: qa_video_decode_info,
-        frame: qa_video_decode_frame,
-        close: qa_video_decode_close,
-        close_all: qa_video_decode_close_all,
-    }
-}
-
 /// What `info` answers: the shown size, the frame count and the rate.
 type Info = (i32, i32, i64, (i32, i32));
 
-impl Decoder {
-    fn error(&self) -> String {
-        // SAFETY: the decoder's own NUL-terminated buffer, read under this
-        // file's lock before anything rewrites it.
-        unsafe { CStr::from_ptr((self.last_error)()) }.to_string_lossy().into_owned()
-    }
+fn error() -> String {
+    // SAFETY: the decoder's own NUL-terminated buffer, read under this
+    // file's lock before anything rewrites it.
+    unsafe { CStr::from_ptr(qa_video_decode_last_error()) }.to_string_lossy().into_owned()
+}
 
-    fn open(&self, path: &str) -> i32 {
-        let path = CString::new(path).expect("no NUL");
-        // SAFETY: a NUL-terminated path.
-        unsafe { (self.open)(path.as_ptr()) }
-    }
+fn open(path: &str) -> i32 {
+    let path = CString::new(path).expect("no NUL");
+    // SAFETY: a NUL-terminated path.
+    unsafe { qa_video_decode_open(path.as_ptr()) }
+}
 
-    fn open_span(&self, path: &str, offset: i64, length: i64, framed: bool) -> i32 {
-        let path = CString::new(path).expect("no NUL");
-        // SAFETY: a NUL-terminated path.
-        unsafe { (self.open_span)(path.as_ptr(), offset, length, i32::from(framed)) }
-    }
+fn open_span(path: &str, offset: i64, length: i64, framed: bool) -> i32 {
+    let path = CString::new(path).expect("no NUL");
+    // SAFETY: a NUL-terminated path.
+    unsafe { qa_video_decode_open_span(path.as_ptr(), offset, length, i32::from(framed)) }
+}
 
-    fn info(&self, handle: i32) -> Option<Info> {
-        let (mut width, mut height, mut frames, mut num, mut den) = (0, 0, 0, 0, 0);
-        // SAFETY: each out-parameter is a local.
-        let answered = unsafe { (self.info)(handle, &mut width, &mut height, &mut frames, &mut num, &mut den) };
-        (answered == 1).then_some((width, height, frames, (num, den)))
-    }
+fn info(handle: i32) -> Option<Info> {
+    let (mut width, mut height, mut frames, mut num, mut den) = (0, 0, 0, 0, 0);
+    // SAFETY: each out-parameter is a local.
+    let answered = unsafe { qa_video_decode_info(handle, &mut width, &mut height, &mut frames, &mut num, &mut den) };
+    (answered == 1).then_some((width, height, frames, (num, den)))
+}
 
-    /// Frame `index` of `handle`, or the sentence its refusal says.
-    fn frame(&self, handle: i32, index: i64, bytes: usize) -> Result<Vec<u8>, String> {
-        let mut rgba = vec![0u8; bytes];
-        // SAFETY: the buffer holds `bytes`.
-        match unsafe { (self.frame)(handle, index, rgba.as_mut_ptr(), bytes as i32) } {
-            1 => Ok(rgba),
-            _ => Err(self.error()),
-        }
+/// Frame `index` of `handle`, or the sentence its refusal says.
+fn frame(handle: i32, index: i64, bytes: usize) -> Result<Vec<u8>, String> {
+    let mut rgba = vec![0u8; bytes];
+    // SAFETY: the buffer holds `bytes`.
+    match unsafe { qa_video_decode_frame(handle, index, rgba.as_mut_ptr(), bytes as i32) } {
+        1 => Ok(rgba),
+        _ => Err(error()),
     }
 }
 
-/// The decoders' slots and their one error buffer are each the process's:
+/// The decoder's slots and its one error buffer are the process's:
 /// a test that opens holds this.
 fn one_at_a_time() -> MutexGuard<'static, ()> {
     static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
@@ -234,54 +196,51 @@ fn between_junk(name: &str, body: &[u8]) -> (PathBuf, i64) {
     (path, offset)
 }
 
-/// Everything `decoder` reads of the movie `open` gives it: its info, then
+/// Everything the decoder reads of the movie `open` gives it: its info, then
 /// every frame in order, then some out of it — two before the first among
 /// them, each of which is the first — then one past the end and one into too
 /// small a buffer: each as bytes or the sentence refusing it.
-fn read_all(decoder: Decoder, open: impl Fn(Decoder) -> i32) -> (Info, Vec<Result<Vec<u8>, String>>) {
-    let handle = open(decoder);
-    assert!(handle > 0, "it opens: {}", decoder.error());
-    let info = decoder.info(handle).expect("it describes the movie");
+fn read_all(open: impl Fn() -> i32) -> (Info, Vec<Result<Vec<u8>, String>>) {
+    let handle = open();
+    assert!(handle > 0, "it opens: {}", error());
+    let info = info(handle).expect("it describes the movie");
     let bytes = (info.0 * info.1 * 4) as usize;
     let count = info.2;
     let order = (0..count).chain([count - 1, 0, count / 2, 3, 4, count / 2, -5, -4, count + 3]);
-    let mut frames: Vec<_> = order.map(|index| decoder.frame(handle, index, bytes)).collect();
-    frames.push(decoder.frame(handle, 0, bytes - 1));
-    (decoder.close)(handle);
+    let mut frames: Vec<_> = order.map(|index| frame(handle, index, bytes)).collect();
+    frames.push(frame(handle, 0, bytes - 1));
+    qa_video_decode_close(handle);
     (info, frames)
 }
 
+// Which builds read movies is this crate's to say: those with an OS decoder
+// under them. One without says so of every open. ↩️It was also the C's
+// answer until the connection round deleted the C (H, 2026-11-08).
 #[test]
-fn where_there_is_no_decoder_both_say_so() {
+fn where_there_is_no_decoder_it_says_so() {
     let _turn = one_at_a_time();
-    assert_eq!((rust().supported)(), (c().supported)(), "both, or neither");
-    // Which builds read movies is this crate's to say: those with an OS
-    // decoder under them.
     let reads = cfg!(any(windows, target_os = "android", target_vendor = "apple"));
-    assert_eq!((rust().supported)(), i32::from(reads), "the builds that read movies");
-    if (rust().supported)() == 1 {
+    assert_eq!(qa_video_decode_supported(), i32::from(reads), "the builds that read movies");
+    if qa_video_decode_supported() == 1 {
         return;
     }
-    for decoder in [c(), rust()] {
-        assert_eq!(decoder.open("movie.mp4"), 0);
-        assert_eq!(decoder.error(), "no video decoder in this build");
-    }
+    assert_eq!(open("movie.mp4"), 0);
+    assert_eq!(error(), "no video decoder in this build");
 }
 
+// The movie on disk is the shape it was written and refuses only a frame
+// past its end and a buffer too small for one, in this code's words — its
+// every frame the picture for its index is the readback's below. ↩️Its
+// every read was the C's bytes too until the connection round deleted the C
+// (H, 2026-11-08).
 #[test]
-fn a_movie_on_disk_reads_alike() {
+fn a_movie_on_disk_refuses_only_past_its_end_and_too_small_a_buffer() {
     let _turn = one_at_a_time();
     let Some((path, _)) = movie() else { return };
     let path = path.to_str().expect("UTF-8");
-    let theirs = read_all(c(), |decoder| decoder.open(path));
-    let ours = read_all(rust(), |decoder| decoder.open(path));
-    assert_eq!(ours.0, theirs.0, "the same shape, count and rate");
-    assert_eq!(ours.0, (WIDTH as i32, HEIGHT as i32, FRAMES as i64, (24, 1)), "LIVENESS: the movie written");
-    for (at, (ours, theirs)) in ours.1.iter().zip(&theirs.1).enumerate() {
-        let sizes = (ours.as_ref().map(Vec::len), theirs.as_ref().map(Vec::len));
-        assert!(ours == theirs, "read {at}: {:?} against the C's {:?}", sizes.0, sizes.1);
-    }
-    let refusals: Vec<_> = ours.1.iter().filter_map(|read| read.as_ref().err()).collect();
+    let (info, read) = read_all(|| open(path));
+    assert_eq!(info, (WIDTH as i32, HEIGHT as i32, FRAMES as i64, (24, 1)), "LIVENESS: the movie written");
+    let refusals: Vec<_> = read.iter().filter_map(|read| read.as_ref().err()).collect();
     assert_eq!(refusals, ["past the end of the stream", "frame buffer too small"], "LIVENESS: both refusals asked");
 }
 
@@ -290,12 +249,13 @@ fn a_movie_on_disk_reads_alike() {
 // each frame the picture for its index, read in order and out of it. Its
 // bytes are the OS encoder's and are not held (유저
 // connection-round-checklist-Q14, 2026-11-07: what the OS decides is not
-// frozen) — the shapes are the ones the export's C comparison writes, each
-// where this build writes its pair: the fixtures' movie, an odd one the pad
-// makes even, a film the hardware takes, the hardware law's two sides, an
-// exact NTSC fraction with mono sound at another rate and a bitrate named,
-// one named past the ceiling, and where Apple writes them, H.264 in a MOV
-// and ProRes — 4444 keeping a picture's alpha. Each file's path is Korean.
+// frozen) — the shapes are the ones the export's C comparison wrote (↩️until
+// the connection round deleted the C, H 2026-11-08), each where this build
+// writes its pair: the fixtures' movie, an odd one the pad makes even, a
+// film the hardware takes, the hardware law's two sides, an exact NTSC
+// fraction with mono sound at another rate and a bitrate named, one named
+// past the ceiling, and where Apple writes them, H.264 in a MOV and ProRes —
+// 4444 keeping a picture's alpha. Each file's path is Korean.
 // ⚠️Not HEVC: whether a machine reads it back is its own — Windows reads
 // HEVC only through the Store's extension, which a machine that writes it
 // may lack (this one: 「no RGB conversion for this codec」, 2026-11-07).
@@ -323,7 +283,7 @@ fn what_the_export_writes_reads_back_as_it_was_asked() {
         }
         let (path, _) = write_movie(&format!("asked-{name}"), asked, frames, 0)
             .unwrap_or_else(|| panic!("{name}: what the export says it writes opens: {}", export_error()));
-        let (info, read) = read_all(rust(), |decoder| decoder.open(path.to_str().expect("UTF-8")));
+        let (info, read) = read_all(|| open(path.to_str().expect("UTF-8")));
         let even = |side: usize| (side + (side & 1)) as i32;
         let shape = (even(asked.width), even(asked.height), frames as i64);
         assert_eq!((info.0, info.1, info.2), shape, "{name}: as asked");
@@ -345,11 +305,14 @@ fn what_the_export_writes_reads_back_as_it_was_asked() {
     }
 }
 
+// A span reads as the file on disk reads, plain and framed as the archive
+// frames it (`oracle::framed`). ↩️And as the C read it, until the connection
+// round deleted the C (H, 2026-11-08).
 #[test]
 fn a_span_reads_as_the_movie_it_holds_plain_or_framed() {
     let _turn = one_at_a_time();
     let Some((path, bytes)) = movie() else { return };
-    let whole = read_all(rust(), |decoder| decoder.open(path.to_str().expect("UTF-8")));
+    let whole = read_all(|| open(path.to_str().expect("UTF-8")));
     let (plain, offset) = between_junk("plain", bytes);
     let framed_blob = oracle::framed(bytes, 4096);
     let (framed, framed_offset) = between_junk("framed", &framed_blob);
@@ -357,17 +320,15 @@ fn a_span_reads_as_the_movie_it_holds_plain_or_framed() {
         [(&plain, offset, bytes.len(), false), (&framed, framed_offset, framed_blob.len(), true)]
     {
         let archive = archive.to_str().expect("UTF-8");
-        let open = |decoder: Decoder| decoder.open_span(archive, offset, length as i64, is_framed);
-        let (ours, theirs) = (read_all(rust(), open), read_all(c(), open));
-        assert!(ours == theirs, "framed {is_framed}: the span reads as the C reads it");
-        assert!(ours == whole, "framed {is_framed}: and as the file on disk reads");
+        let ours = read_all(|| open_span(archive, offset, length as i64, is_framed));
+        assert!(ours == whole, "framed {is_framed}: the span reads as the file on disk reads");
     }
     std::fs::remove_file(plain).ok();
     std::fs::remove_file(framed).ok();
 }
 
 #[test]
-fn a_failure_says_the_same_sentence() {
+fn a_failure_says_why() {
     let _turn = one_at_a_time();
     let Some((path, bytes)) = movie() else { return };
     let path = path.to_str().expect("UTF-8");
@@ -378,38 +339,31 @@ fn a_failure_says_the_same_sentence() {
     // the OS refuses says the sentence of the call that refused, and which
     // call refuses is the OS's: held only to say why (유저
     // connection-round-checklist-Q14, 2026-11-07: what the OS decides is
-    // not frozen). ⚠️Measured on Windows (2026-11-07); the Mac's waits for
-    // its job to read alike with the C's first.
+    // not frozen). ⚠️Measured on Windows (2026-11-07) alone: the Mac's was
+    // to wait for its job to read alike with the C's, and the C went first
+    // (connection-round-checklist H, 2026-11-08). ↩️Each failure was also the
+    // C's sentence until then.
     let not_a_span = cfg!(windows).then_some("that span does not hold a readable movie");
-    let tries: [(&str, Option<&str>, Box<dyn Fn(Decoder) -> i32>); 4] = [
-        ("no file", None, Box::new(|decoder: Decoder| decoder.open(&missing))),
-        (
-            "a plain movie said to be framed",
-            not_a_span,
-            Box::new(|decoder: Decoder| decoder.open_span(path, 0, length, true)),
-        ),
-        ("a span past the file", not_a_span, Box::new(|decoder: Decoder| decoder.open_span(path, 10, length, false))),
-        ("a span of the movie's middle", None, Box::new(|decoder: Decoder| decoder.open_span(path, 1000, 2000, false))),
+    let tries: [(&str, Option<&str>, Box<dyn Fn() -> i32>); 4] = [
+        ("no file", None, Box::new(|| open(&missing))),
+        ("a plain movie said to be framed", not_a_span, Box::new(|| open_span(path, 0, length, true))),
+        ("a span past the file", not_a_span, Box::new(|| open_span(path, 10, length, false))),
+        ("a span of the movie's middle", None, Box::new(|| open_span(path, 1000, 2000, false))),
     ];
     for (what, says, open) in &tries {
-        let answers = [c(), rust()].map(|decoder| {
-            let handle = open(decoder);
-            (decoder.close)(handle);
-            (handle > 0, decoder.error())
-        });
-        assert_eq!(answers[1], answers[0], "{what}: as the C answers");
-        assert!(!answers[1].0 && !answers[1].1.is_empty(), "LIVENESS — {what} is refused, and says why: {answers:?}");
+        let handle = open();
+        qa_video_decode_close(handle);
+        let answer = (handle > 0, error());
+        assert!(!answer.0 && !answer.1.is_empty(), "LIVENESS — {what} is refused, and says why: {answer:?}");
         if let Some(says) = says {
-            assert_eq!(answers[1].1, *says, "{what}");
+            assert_eq!(answer.1, *says, "{what}");
         }
     }
     // And an open that succeeds says nothing: the last failure is not left
     // for the next caller to read as its own.
-    for decoder in [c(), rust()] {
-        let handle = decoder.open(path);
-        assert!(handle > 0 && decoder.error().is_empty(), "a good open clears the failure: {:?}", decoder.error());
-        (decoder.close)(handle);
-    }
+    let handle = open(path);
+    assert!(handle > 0 && error().is_empty(), "a good open clears the failure: {:?}", error());
+    qa_video_decode_close(handle);
 }
 
 #[test]
@@ -417,11 +371,12 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     // 🚨The presentation is as long as its LONGEST track: counted by it, a
     // sound that runs past the pictures is frames with no picture in them
     // (유저 2026-08-31 「73프레임째의 빈 화면」). The C's Windows backend
-    // counts by the video's own samples (검증 2026-10-23,
+    // counted by the video's own samples (검증 2026-10-23,
     // windows-counts-a-movie-by-its-longest-track). Twelve pictures under a
     // sound a quarter second longer — six frames past, well over the half
     // frame the count rounds away — and the repo's own movie, whose sound
-    // runs past its twelve by less.
+    // runs past its twelve by less. ↩️Each was also counted as the C counted
+    // it until the connection round deleted the C (H, 2026-11-08).
     let _turn = one_at_a_time();
     let Some((longer, _)) = write_movie("sound-past", Asked { sound: Some((48_000, 2)), ..SILENT }, 12, 12_000) else {
         return;
@@ -431,14 +386,10 @@ fn a_movie_is_as_long_as_its_pictures_not_its_sound() {
     let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
     let fixture = format!("{crate_dir}/../../../../../test/fixtures/tone_with_video.mp4");
     for movie in [longer.to_str().expect("UTF-8"), &fixture] {
-        let answers = [c(), rust()].map(|decoder| {
-            let handle = decoder.open(movie);
-            let info = decoder.info(handle);
-            (decoder.close)(handle);
-            info
-        });
-        assert_eq!(answers[1], answers[0], "{movie}: as the C counts it");
-        assert_eq!(answers[0].map(|info| info.2), Some(12), "{movie}: LIVENESS — twelve pictures");
+        let handle = open(movie);
+        let answer = info(handle);
+        qa_video_decode_close(handle);
+        assert_eq!(answer.map(|info| info.2), Some(12), "{movie}: LIVENESS — twelve pictures");
     }
     std::fs::remove_file(longer).ok();
 }
@@ -448,15 +399,13 @@ fn eight_movies_open_at_once_and_a_ninth_is_refused() {
     let _turn = one_at_a_time();
     let Some((path, _)) = movie() else { return };
     let path = path.to_str().expect("UTF-8");
-    for decoder in [c(), rust()] {
-        let handles: Vec<i32> = (0..8).map(|_| decoder.open(path)).collect();
-        assert_eq!(handles, (1..=8).collect::<Vec<_>>(), "handles count from one");
-        assert_eq!(decoder.open(path), 0, "a ninth");
-        assert_eq!(decoder.error(), "too many movies are open at once");
-        (decoder.close)(3);
-        assert_eq!(decoder.open(path), 3, "the one let go is the first free again");
-        assert!(decoder.info(5).is_some(), "the others are untouched");
-        (decoder.close_all)();
-        assert!(decoder.info(5).is_none(), "and close_all closes them all");
-    }
+    let handles: Vec<i32> = (0..8).map(|_| open(path)).collect();
+    assert_eq!(handles, (1..=8).collect::<Vec<_>>(), "handles count from one");
+    assert_eq!(open(path), 0, "a ninth");
+    assert_eq!(error(), "too many movies are open at once");
+    qa_video_decode_close(3);
+    assert_eq!(open(path), 3, "the one let go is the first free again");
+    assert!(info(5).is_some(), "the others are untouched");
+    qa_video_decode_close_all();
+    assert!(info(5).is_none(), "and close_all closes them all");
 }

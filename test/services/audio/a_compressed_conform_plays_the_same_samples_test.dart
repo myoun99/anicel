@@ -60,10 +60,6 @@ void main() {
   int samplesPerBlock(int blockBytes) => blockBytes ~/ 4;
 
   test('🚨a framed conform returns the SAME samples as the plain one', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final perBlock = samplesPerBlock(mediaBlockBytes);
     // Two blocks and a bit, so there is a real boundary to cross.
     final wav = rampWav(perBlock * 2 + 5000);
@@ -120,10 +116,6 @@ void main() {
   });
 
   test('a window still reads only the blocks it lands in', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final perBlock = samplesPerBlock(mediaBlockBytes);
     final path = '${directory.path}/take.1234abcd.wav$mediaFramedEntrySuffix';
     File(path).writeAsBytesSync(framedEntryBytes(rampWav(perBlock * 3))!);
@@ -147,10 +139,6 @@ void main() {
   });
 
   test('the NAME decides how it is read, and open follows it', () {
-    if (!QaMediaSpan.available) {
-      markTestSkipped('no span reader on this run');
-      return;
-    }
     final wav = rampWav(20000);
     // Framed bytes under the PLAIN name: nothing says to decompress them,
     // so this must not be mistaken for a WAV.

@@ -39,7 +39,6 @@ void main() {
   // card's ninth sighting), its clock stopped inside the call.
   setUp(() async {
     watch = await NativeCallWatch.start('the OS video encoder');
-    QaVideoEncoder.debugResetForTests();
     QaAudioDecoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-video-enc-test');
@@ -47,9 +46,8 @@ void main() {
 
   tearDown(() async {
     watch.step('letting the encoder go');
-    QaVideoEncoder.instance?.abort();
+    QaVideoEncoder.instance.abort();
     watch.stop();
-    QaVideoEncoder.debugResetForTests();
     QaAudioDecoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
     deleteTempQuietly(directory);
@@ -92,9 +90,8 @@ void main() {
   test('the capability answer matches the OS', () {
     watch.step('the capability: asking for the encoder');
     final encoder = QaVideoEncoder.instance;
-    expect(encoder, isNotNull, reason: 'the binary did not bind');
     expect(
-      encoder!.isSupported,
+      encoder.isSupported,
       osHasVideoEncoder,
       reason:
           'Windows/Apple encode natively; elsewhere the ffmpeg '

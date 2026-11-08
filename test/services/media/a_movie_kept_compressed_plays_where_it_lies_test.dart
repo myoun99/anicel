@@ -2,12 +2,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 import '../../helpers/encoded_movie.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -25,18 +23,8 @@ import '../../helpers/project_scratch_folder.dart';
 /// could still produce a picture. Every frame here is compared, byte for
 /// byte, with the same movie decoded from a plain file.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
   tearDown(() {
-    QaVideoDecoder.instance?.close();
-    QaVideoDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
+    QaVideoDecoder.instance.close();
   });
 
   /// A movie made by the app's own encoder — every frame a different colour,
@@ -116,7 +104,7 @@ void main() {
       expect(got, isNotNull, reason: 'frame $index: ${decoder.lastError}');
       expect(got, orderedEquals(want), reason: 'frame $index');
     }
-  }, skip: skip);
+  });
 
   test('a framed movie INSIDE a bigger file is read from its own stretch', () {
     final decoder = osVideoDecoderOrSkip();
@@ -151,7 +139,7 @@ void main() {
       decoder.frameOf(carried!, 5),
       orderedEquals(Uint8List.fromList(decoder.frameOf(plain, 5)!)),
     );
-  }, skip: skip);
+  });
 
   test('⛔the same blocks read as if they were the movie are refused', () {
     final decoder = osVideoDecoderOrSkip();
@@ -171,5 +159,5 @@ void main() {
       reason: 'a block index is not a container — the flag is what says how '
           'the stretch is to be read',
     );
-  }, skip: skip);
+  });
 }

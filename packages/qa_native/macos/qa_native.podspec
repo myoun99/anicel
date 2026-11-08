@@ -13,11 +13,11 @@ Pod::Spec.new do |s|
   # not allow loading a standalone dylib from the bundle, so Dart resolves
   # its symbols with DynamicLibrary.process().
   s.source_files     = 'Classes/**/*'
-  # AudioToolbox carries the OS audio decoder; AVFoundation/CoreMedia/CoreVideo
-  # carry the video writer (AUDIO-PRO R7).
-  s.frameworks       = 'CoreFoundation', 'AudioToolbox',
-                       'AVFoundation', 'CoreMedia', 'CoreVideo',
-                       'CoreGraphics'
+  # AudioToolbox carries the OS audio decoder. ↩️AVFoundation, CoreMedia,
+  # CoreVideo and CoreGraphics carried the movie writer and reader
+  # (AUDIO-PRO R7), until the connection round (connection-round-checklist
+  # H, 2026-11-08) moved them to the Rust engine.
+  s.frameworks       = 'CoreFoundation', 'AudioToolbox'
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.14'
   # -ffp-contract=off must be repeated here, NOT only in

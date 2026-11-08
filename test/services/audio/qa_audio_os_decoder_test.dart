@@ -37,13 +37,11 @@ void main() {
 
   setUp(() {
     QaAudioDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = libraryPath;
   });
 
   tearDown(() {
     QaAudioDecoder.debugResetForTests();
-    QaVideoEncoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
   });
 
