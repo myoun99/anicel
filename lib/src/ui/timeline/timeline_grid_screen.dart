@@ -104,8 +104,17 @@ final class _GridScreen {
   bool _stopped = false;
 
   /// Whether a row lays its tiles here: a box shows the screen, and its
-  /// texture is open.
-  bool get lays => _box != null && _texture != null;
+  /// texture is open and holds the view. ↩️Any texture open: while a bigger
+  /// one opened, the rows laid on the one held, and what of them lay past
+  /// its edge was shown nowhere (타임라인/콘티 리뷰 2026-11-09 B).
+  bool get lays => _box != null && _holdsTheView(_texture);
+
+  bool _holdsTheView(ScreenTexture? texture) {
+    final (width, height) = _size;
+    return texture != null &&
+        texture.width >= width &&
+        texture.height >= height;
+  }
 
   void start() => appGpuEngineOpen.addListener(_open);
 
@@ -136,7 +145,11 @@ final class _GridScreen {
 
   void sizedBy(_RenderGridScreen box, (int, int) size) {
     if (identical(_box, box) && size != _size) {
+      final laid = lays;
       _size = size;
+      if (lays != laid) {
+        _laysChanged();
+      }
       unawaited(_open());
     }
   }
@@ -147,8 +160,10 @@ final class _GridScreen {
     final engine = appGpuEngineOpen.value;
     final (width, height) = _size;
     final held = _texture;
-    final fits = held != null && held.width >= width && held.height >= height;
-    if (engine == null || _box == null || fits || _opening == _size) {
+    if (engine == null ||
+        _box == null ||
+        _holdsTheView(held) ||
+        _opening == _size) {
       return;
     }
     if (width <= 0 || height <= 0) {
@@ -208,7 +223,16 @@ class _ScreenBox extends LeafRenderObjectWidget {
         moves: _movesOf(context),
       );
 
+  /// The view's size in device pixels. ⚠️Asked of the MediaQuery too —
+  /// its size, and its ratio for a window moved to a screen of another
+  /// ratio at the size it had — though not read off it: the app's UI scale
+  /// rewrites both (`EffectiveDevicePixelRatioScope`). So a view resized
+  /// builds the box again: `View.of` tells of another view, not of another
+  /// size. ↩️It did not, and a window grown stayed laid at the size it
+  /// opened at (타임라인/콘티 리뷰 2026-11-09 A · 01:46).
   static (int, int) _sizeOf(BuildContext context) {
+    MediaQuery.sizeOf(context);
+    MediaQuery.devicePixelRatioOf(context);
     final size = View.of(context).physicalSize;
     return (size.width.ceil(), size.height.ceil());
   }
@@ -283,11 +307,11 @@ class _RenderGridScreen extends RenderBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    final texture = _screen._texture;
-    final lay = _screen._lay;
-    if (texture == null || lay == null) {
+    if (!_screen.lays) {
       return;
     }
+    final texture = _screen._texture!;
+    final lay = _screen._lay!;
     // In the view's device pixels: to the root by name, its transform — the
     // ratio — is carried; to `null` it is not.
     final view = owner!.rootNode!;
@@ -520,13 +544,17 @@ class _RenderGridScreenSlot extends RenderProxyBox
     _screen?._box?.markNeedsPaint();
   }
 
-  // A slot that comes is laid out, and a layout marks it to paint — and so
-  // the box ([markNeedsPaint]).
+  // A slot that comes paints, and so does one that comes back — what it
+  // laid was let go as it went ([detach]) — and so does the box
+  // ([markNeedsPaint]). ↩️Left to its layout: a slot moved to another parent
+  // with the constraints it had is not laid out again, and showed nothing
+  // (타임라인/콘티 리뷰 2026-11-09 H).
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _screen?._slots.add(this);
     _clip?.addListener(markNeedsPaint);
+    markNeedsPaint();
   }
 
   @override
@@ -552,12 +580,16 @@ class _RenderGridScreenSlot extends RenderProxyBox
     }
   }
 
+  /// The rects of [_clip] in the paint under way: asked once a paint that
+  /// lays, not once a tile (타임라인/콘티 리뷰 2026-11-09 I).
+  List<Rect>? _clipRects;
+
   @override
   void lay(TimelineGridScreenTile tile) {
-    final clip = _clip;
-    for (final part in clip == null
+    final rects = _clipRects ??= _clip?.rectsIn(size);
+    for (final part in rects == null
         ? [tile]
-        : [for (final rect in clip.rectsIn(size)) ?_within(tile, rect)]) {
+        : [for (final rect in rects) ?_within(tile, rect)]) {
       part.picture.hold();
       _laid.add(part);
     }
@@ -593,6 +625,7 @@ class _RenderGridScreenSlot extends RenderProxyBox
   @override
   void paint(PaintingContext context, Offset offset) {
     _letGo();
+    _clipRects = null;
     final outer = _painting;
     _painting = this;
     try {

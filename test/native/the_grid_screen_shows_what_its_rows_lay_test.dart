@@ -64,19 +64,22 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  /// The screen's bytes: clear, and [runs] — (left, right, colour) each —
-  /// over the rows [top] to [bottom], in device pixels.
+  /// The bytes of a screen [width] × [height]: clear, and [runs] — (left,
+  /// right, colour) each — over the rows [top] to [bottom], in device
+  /// pixels.
   Uint8List screenOf(
     List<(int, int, List<int>)> runs, {
     int top = 40,
     int bottom = 60,
+    int width = 300,
+    int height = 200,
   }) {
-    final bytes = Uint8List(300 * 200 * 4);
+    final bytes = Uint8List(width * height * 4);
     for (final (left, right, [r, g, b, a]) in runs) {
       for (var y = top; y < bottom; y++) {
         for (var x = left; x < right; x++) {
           bytes.setAll(
-            (y * 300 + x) * 4,
+            (y * width + x) * 4,
             surface.bgra ? [b, g, r, a] : [r, g, b, a],
           );
         }
@@ -89,49 +92,101 @@ void main() {
   /// inside a scroll of 400 across driven by [scroll]: a viewport 100
   /// across, 20 in from the view's left edge, so the screen stands where
   /// the viewport's clip puts it, not the view's. The row is drawn within
-  /// [clip] where there is one.
+  /// [clip] where there is one, its slot keyed [slot] — under a padding of
+  /// none where it is [padded], another parent with the constraints it had.
   Widget aGrid(
     _Row? row, {
     ScrollController? scroll,
     TimelineGridScreenClip? clip,
-  }) => Directionality(
-    textDirection: TextDirection.ltr,
-    child: Align(
-      alignment: Alignment.topLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 20),
-        child: SizedBox(
-          width: 100,
-          height: 100,
-          child: SingleChildScrollView(
-            controller: scroll,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: 400,
-              height: 100,
-              child: TimelineGridScreenHost(
-                child: Stack(
-                  children: [
-                    if (row != null)
-                      Positioned(
-                        left: 10,
-                        top: 20,
-                        width: 60,
-                        height: 10,
-                        child: TimelineGridScreenSlot(
-                          clip: clip,
-                          child: CustomPaint(painter: row),
+    Key? slot,
+    bool padded = false,
+  }) {
+    final slotted = TimelineGridScreenSlot(
+      key: slot,
+      clip: clip,
+      child: CustomPaint(painter: row),
+    );
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 20),
+          child: SizedBox(
+            width: 100,
+            height: 100,
+            child: SingleChildScrollView(
+              controller: scroll,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: 400,
+                height: 100,
+                child: TimelineGridScreenHost(
+                  child: Stack(
+                    children: [
+                      if (row != null)
+                        Positioned(
+                          left: 10,
+                          top: 20,
+                          width: 60,
+                          height: 10,
+                          child: padded
+                              ? Padding(
+                                  padding: EdgeInsets.zero,
+                                  child: slotted,
+                                )
+                              : slotted,
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// A grid as big as the view, of [row] 60 × 10, 20 in from the view's
+  /// right edge and 20 down — past the right edge of a screen the view
+  /// outgrew.
+  Widget aGridAtTheRight(_Row row) => Directionality(
+    textDirection: TextDirection.ltr,
+    child: TimelineGridScreenHost(
+      child: Stack(
+        children: [
+          Positioned(
+            right: 20,
+            top: 20,
+            width: 60,
+            height: 10,
+            child: TimelineGridScreenSlot(child: CustomPaint(painter: row)),
+          ),
+        ],
+      ),
     ),
   );
+
+  /// Opens each screen on a surface as big as it is asked, the sizes asked
+  /// kept in [asked]; freed after the test.
+  List<GpuSurface> screensAsAsked(List<(int, int)> asked) {
+    final shown = <GpuSurface>[];
+    debugOpenTimelineGridScreen = (_, width, height) async {
+      asked.add((width, height));
+      final surface = shownSurfaceOf(width, height);
+      shown.add(surface);
+      return ScreenTexture.debugOnSurface(surface);
+    };
+    addTearDown(() {
+      debugOpenTimelineGridScreen = (_, _, _) async =>
+          ScreenTexture.debugOnSurface(surface);
+      for (final surface in shown) {
+        surface.free();
+      }
+    });
+    return shown;
+  }
 
   testWidgets('a row lays its tile where it stands, in device pixels', (
     tester,
@@ -386,15 +441,146 @@ void main() {
     expect(row.laidLast, isFalse);
     expect(tester.layers.whereType<TextureLayer>(), isEmpty);
   });
+
+  // 타임라인/콘티 리뷰 2026-11-09 A: a window grown stayed laid on the
+  // screen it opened at, and what stood past that one's edge was laid
+  // nowhere.
+  testWidgets('a view that grows is laid on a screen as big as it', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final asked = <(int, int)>[];
+    final shown = screensAsAsked(asked);
+    await tester.pumpWidget(aGridAtTheRight(_Row(() => tile)));
+    await tester.pump();
+    expect(asked, [(300, 200)], reason: '⛔premise: the view it opened at');
+
+    tester.view.physicalSize = const Size(600, 200);
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, [(300, 200), (600, 200)]);
+    // 300 logical across: the row stands at 220 to 280, device 440 to 560.
+    expect(
+      shown.last.fingerprint(),
+      fingerprintBytes(
+        screenOf([(440, 500, red), (500, 560, green)], width: 600),
+      ),
+    );
+  });
+
+  // 타임라인/콘티 2026-11-09 01:46: the size a MediaQuery tells of stays.
+  testWidgets('a view moved to a screen of twice the ratio at the size it '
+      'had is laid on a screen as big as its pixels', (tester) async {
+    aSmallView(tester);
+    final asked = <(int, int)>[];
+    final shown = screensAsAsked(asked);
+    await tester.pumpWidget(aGridAtTheRight(_Row(() => tile)));
+    await tester.pump();
+    expect(asked, [(300, 200)], reason: '⛔premise: the view it opened at');
+
+    tester.view
+      ..physicalSize = const Size(600, 400)
+      ..devicePixelRatio = 4;
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, [(300, 200), (600, 400)]);
+    // Still 150 logical across: the row stands at 70 to 130, 20 to 30 —
+    // device 280 to 520, 80 to 120.
+    expect(
+      shown.last.fingerprint(),
+      fingerprintBytes(
+        screenOf(
+          [(280, 400, red), (400, 520, green)],
+          top: 80,
+          bottom: 120,
+          width: 600,
+          height: 400,
+        ),
+      ),
+    );
+  });
+
+  // 타임라인/콘티 리뷰 2026-11-09 B: they laid on the smaller one held.
+  testWidgets('while a screen as big as the view opens, its rows draw '
+      'their cells themselves', (tester) async {
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    final shown = screensAsAsked([]);
+    await tester.pumpWidget(aGridAtTheRight(row));
+    await tester.pump();
+    expect(row.laidLast, isTrue, reason: '⛔premise: laid on the one opened');
+
+    final opening = Completer<ScreenTexture>();
+    debugOpenTimelineGridScreen = (_, _, _) => opening.future;
+    tester.view.physicalSize = const Size(600, 200);
+    await tester.pump();
+
+    expect(row.laidLast, isFalse);
+    expect(tester.layers.whereType<TextureLayer>(), isEmpty);
+
+    final bigger = shownSurfaceOf(600, 200);
+    shown.add(bigger);
+    opening.complete(ScreenTexture.debugOnSurface(bigger));
+    await tester.pump();
+    await tester.pump();
+
+    expect(row.laidLast, isTrue);
+    expect(
+      bigger.fingerprint(),
+      fingerprintBytes(
+        screenOf([(440, 500, red), (500, 560, green)], width: 600),
+      ),
+    );
+  });
+
+  // 타임라인/콘티 리뷰 2026-11-09 H: it let go of what it laid as it went,
+  // and was not laid out again to paint it anew.
+  testWidgets('a row moved to another parent lays its tile again', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final slot = GlobalKey();
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row, slot: slot));
+    await tester.pump();
+    final laid = fingerprintBytes(screenOf([(20, 80, red), (80, 140, green)]));
+    expect(surface.fingerprint(), laid, reason: '⛔premise');
+
+    await tester.pumpWidget(aGrid(row, slot: slot, padded: true));
+
+    expect(surface.fingerprint(), laid);
+  });
+
+  // 타임라인/콘티 리뷰 2026-11-09 I.
+  testWidgets('a clip is asked for its rects once a paint, however many '
+      'tiles its row lays', (tester) async {
+    aSmallView(tester);
+    final at = ValueNotifier([const Rect.fromLTWH(0, 0, 30, 10)]);
+    addTearDown(at.dispose);
+    final clip = _Rects(at);
+    final row = _Row(() => tile, times: 3);
+    await tester.pumpWidget(aGrid(row, clip: clip));
+    await tester.pump();
+    expect(row.laidLast, isTrue, reason: '⛔premise');
+    final before = clip.asked;
+
+    at.value = [const Rect.fromLTWH(30, 0, 30, 10)];
+    await tester.pump();
+
+    expect(clip.asked - before, 1);
+  });
 }
 
 /// A row that lays a part of its tile over all of itself where its grid's
 /// screen takes it ([TimelineGridScreenSlot.laying]) — the whole, till
-/// [layFrom] names another, or none, and paints it again.
+/// [layFrom] names another, or none, and paints it again — [times] over.
 class _Row extends CustomPainter {
-  _Row(this._tile) : super(repaint: _changed);
+  _Row(this._tile, {this.times = 1}) : super(repaint: _changed);
 
   final TimelineGridTilePicture Function() _tile;
+  final int times;
   static final ValueNotifier<int> _changed = ValueNotifier(0);
 
   Rect? _from = const Rect.fromLTWH(0, 0, 120, 20);
@@ -411,7 +597,9 @@ class _Row extends CustomPainter {
     final laying = TimelineGridScreenSlot.laying;
     laidLast = laying != null;
     if (_from case final from?) {
-      laying?.lay((picture: _tile(), from: from, onto: Offset.zero & size));
+      for (var laid = 0; laid < times; laid += 1) {
+        laying?.lay((picture: _tile(), from: from, onto: Offset.zero & size));
+      }
     }
   }
 
@@ -427,8 +615,14 @@ class _Rects extends TimelineGridScreenClip {
 
   final ValueListenable<List<Rect>> at;
 
+  /// How many times it was asked for its rects.
+  int asked = 0;
+
   @override
-  List<Rect> rectsIn(Size size) => at.value;
+  List<Rect> rectsIn(Size size) {
+    asked += 1;
+    return at.value;
+  }
 
   @override
   bool shouldReclip(_Rects oldClipper) =>
