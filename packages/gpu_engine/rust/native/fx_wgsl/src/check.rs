@@ -369,10 +369,10 @@ fn statements(code: &Code<'_>, block: &naga::Block) -> Result<(), Refusal> {
                 return refuse("the one barrier a plugin has is `workgroupBarrier`: it owns no storage, texture or subgroup".into());
             }
             Statement::ControlBarrier(_) | Statement::WorkGroupUniformLoad { .. } => {}
+            // A helper has nothing to aim one at: an atomic lives in shared
+            // memory, which it cannot name, or in storage, of which a plugin
+            // has none.
             Statement::Atomic { fun, result, .. } => {
-                if !code.render {
-                    return refuse(SHARED_IN_RENDER.into());
-                }
                 if !matches!(fun, AtomicFunction::Add | AtomicFunction::Min | AtomicFunction::Max) {
                     return refuse("an atomic is an add, a min or a max — its last value is then the same in any order (Q6 ⓑ)".into());
                 }

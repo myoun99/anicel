@@ -397,6 +397,31 @@ fn the_group_sum_adds_in_two_steps_a_round() {
     assert!(kernel.source().contains("anicel_host_spend_together("), "the round waits at barriers:\n{}", kernel.source());
 }
 
+/// `plugin`'s render, also taking its `local_invocation_id` as `lid`.
+fn by_axes(extra: &str, render_body: &str) -> String {
+    plugin(extra, render_body, "return 0u;")
+        .replace("at: vec3<u32>) {", "at: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {")
+}
+
+#[test]
+fn a_tile_kept_by_its_axes_flips_each_group() {
+    // The own cell by the invocation's place in the group, an axis a level.
+    let kernel = opened(&by_axes(
+        "var<workgroup> tile: array<array<u32, 16>, 16>;",
+        "let here = anicel_here();\ntile[lid.y][lid.x] = anicel_in(here.x, here.y);\nworkgroupBarrier();\n\
+         anicel_out(tile[15u - lid.y][lid.x]);",
+    ));
+    let size = [16, 32];
+    let input = canvas(size, |i| i.wrapping_mul(2654435761));
+    let mut output = vec![0u32; input.len()];
+    kernel.render(&picture(size, 0, &input, &[], &[]), &mut output).expect("not cut");
+    for (at, word) in output.iter().enumerate() {
+        let (x, y) = (at % 16, at / 16);
+        let flipped = (y / 16 * 16 + 15 - y % 16) * 16 + x;
+        assert_eq!(*word, input[flipped], "pixel ({x}, {y})");
+    }
+}
+
 #[test]
 fn a_cut_in_a_barriers_loop_takes_the_whole_group_out() {
     // The first loop runs `i` turns, so the later invocations spend their
@@ -449,7 +474,7 @@ fn a_barrier_under_a_uniform_load_opens() {
 fn what_the_group_check_refuses_and_why() {
     let tile = "var<workgroup> tile: array<u32, 256>;";
     let count = "var<workgroup> count: atomic<u32>;";
-    let cases: [(&str, String, &str); 22] = [
+    let cases: [(&str, String, &str); 29] = [
         (
             "an in-place tree sum (Q10)",
             indexed(tile, "tile[i] = 1u;\nworkgroupBarrier();\ntile[i] = tile[i] + tile[min(i + 1u, 255u)];"),
@@ -471,6 +496,13 @@ fn what_the_group_check_refuses_and_why() {
         ("another's cell written (Q9)", indexed(tile, "tile[255u - i] = 1u;"), "own cell"),
         ("a cell chosen by data (Q9)", indexed(tile, "tile[anicel_in(0, 0) & 255u] = 1u;"), "own cell"),
         ("too few cells for the group", indexed("var<workgroup> tile: array<u32, 16>;", "tile[i] = 1u;"), "own cell"),
+        (
+            "too few cells for an axis",
+            by_axes("var<workgroup> tile: array<array<u32, 16>, 8>;", "tile[lid.y][lid.x] = 1u;"),
+            "own cell",
+        ),
+        ("one axis twice", by_axes("var<workgroup> tile: array<array<u32, 16>, 16>;", "tile[lid.x][lid.x] = 1u;"), "own cell"),
+        ("an axis the group spans left out", by_axes("var<workgroup> tile: array<u32, 16>;", "tile[lid.x] = 1u;"), "own cell"),
         (
             "a neighbour read before the barrier",
             indexed(tile, "tile[i] = 1u;\nanicel_out(tile[min(i + 1u, 255u)]);"),
@@ -514,6 +546,21 @@ fn what_the_group_check_refuses_and_why() {
             "left by the whole group at once",
         ),
         (
+            "a barrier's loop some continue apart (a)",
+            indexed("", "loop {\nif (i == 0u) { continue; }\nworkgroupBarrier();\nbreak;\n}"),
+            "left by the whole group at once",
+        ),
+        (
+            "a barrier's loop some return from (a)",
+            indexed("", "loop {\nif (i == 0u) { return; }\nworkgroupBarrier();\n}"),
+            "left by the whole group at once",
+        ),
+        (
+            "a barrier's loop its break if leaves apart (a)",
+            indexed("", "var k = 0u;\nloop {\nworkgroupBarrier();\ncontinuing {\nk += 1u;\nbreak if k > i;\n}\n}"),
+            "left by the whole group at once",
+        ),
+        (
             "a barrier's loop bound by a local holding the index (a)",
             indexed("", "var n = 0u;\nn = i;\nfor (var k = 0u; k < n; k++) { workgroupBarrier(); }"),
             "left by the whole group at once",
@@ -543,6 +590,12 @@ fn what_the_group_check_refuses_and_why() {
         ),
         ("a storage barrier", plugin("", "storageBarrier();", "return 0u;"), "the one barrier"),
         ("too much shared memory", indexed("var<workgroup> big: array<u32, 4096>;", "big[i] = 1u;"), "at most 16368 bytes"),
+        (
+            // 16356 and 4 bytes fit only unrounded: each rounds up to 16.
+            "shared memory rounded up a variable",
+            indexed("var<workgroup> big: array<u32, 4089>;\nvar<workgroup> count: atomic<u32>;", "atomicAdd(&count, 1u);"),
+            "at most 16368 bytes",
+        ),
     ];
     for (what, source, why) in cases {
         let refused = refusal(&source);
