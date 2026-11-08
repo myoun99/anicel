@@ -1,15 +1,13 @@
 //! The frame grid's C ABI (grid-on-the-engine ①, 관제 2026-11-08 16:42):
 //! the app hands a tile's op stream — the words `TimelineGridTileOpWriter`
-//! writes — and the words its letters are read from, each where the
-//! stream's GLYPH ops say it lies in the atlas, and the engine draws them
-//! into a picture of its own that stays on the GPU for the view's screen
-//! to lay: nothing comes back but whether it drew.
+//! writes — and the A8 atlas its GLYPH ops read its letters from, and the
+//! engine draws them into a picture of its own that stays on the GPU for
+//! the view's screen to lay: nothing comes back but whether it drew.
 
 #[cfg(test)]
 mod tests;
 
 use crate::device::Engine;
-use crate::kernels::letters::words::WordCover;
 
 use super::lay::{GridLay, Laid};
 use super::{GridPicture, GridTile, atlas_of};
@@ -58,17 +56,17 @@ pub unsafe extern "C" fn gpu_engine_grid_picture_free(picture: *mut GridPicture)
 }
 
 /// Draws `ops` — `count` words — into `picture` over clear, its letters
-/// read from an atlas of `words`, the i-th with its top-left at
-/// `places[2i]`, `places[2i + 1]`; and waits for the GPU. False for a
-/// stream the pass refuses, and on failure; see the last error.
+/// read from `atlas`, `atlas_width` × `atlas_height` A8 bytes row by row —
+/// none where a side is 0 —; and waits for the GPU. False for a stream
+/// the pass refuses, and on failure; see the last error.
 ///
 /// ⚠️Over clear, always: a tile lays over its view's sheet (the store's
 /// contract, timeline_grid_tile_store.dart), so the pass's background word
 /// is nobody's to hand.
 ///
 /// # Safety
-/// Every pointer is live, made on `engine`; `ops` holds `count` words,
-/// `words` `word_count` covers and `places` `2 × word_count`.
+/// Every pointer is live, made on `engine`; `ops` holds `count` words and
+/// `atlas` `atlas_width × atlas_height` bytes.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn gpu_engine_grid_draw(
@@ -77,27 +75,21 @@ pub unsafe extern "C" fn gpu_engine_grid_draw(
     picture: *const GridPicture,
     ops: *const i32,
     count: usize,
-    words: *const *const WordCover,
-    places: *const u32,
-    word_count: usize,
+    atlas: *const u8,
+    atlas_width: u32,
+    atlas_height: u32,
 ) -> bool {
     // SAFETY: see the function's contract.
     let (grid, engine, picture) = unsafe { (&mut *grid, &*engine, &*picture) };
     // SAFETY: see the function's contract.
-    let (ops, words, places) = unsafe {
-        (
-            std::slice::from_raw_parts(ops, count),
-            std::slice::from_raw_parts(words, word_count),
-            std::slice::from_raw_parts(places, 2 * word_count),
-        )
+    let ops = unsafe { std::slice::from_raw_parts(ops, count) };
+    let bytes = match atlas_width as usize * atlas_height as usize {
+        // No atlas: its pointer may be null, which no slice may be.
+        0 => &[][..],
+        // SAFETY: see the function's contract.
+        length => unsafe { std::slice::from_raw_parts(atlas, length) },
     };
-    let laid: Vec<(&WordCover, [u32; 2])> = words
-        .iter()
-        .zip(places.chunks_exact(2))
-        // SAFETY: each cover is live (the function's contract).
-        .map(|(&word, place)| (unsafe { &*word }, [place[0], place[1]]))
-        .collect();
-    let Some(atlas) = atlas_of(engine, &laid) else {
+    let Some(atlas) = atlas_of(engine, bytes, atlas_width, atlas_height) else {
         return false;
     };
     grid.run(engine, &picture.texture, 0, ops, atlas.as_ref()).is_some()

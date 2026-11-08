@@ -20,7 +20,6 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
-use crate::kernels::letters::words::WordCover;
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, encode_on, flat, pipeline, storage_format, whole,
 };
@@ -82,32 +81,25 @@ impl GridPicture {
     }
 }
 
-/// The atlas a stream's letters are read from: each of `words` with its
-/// top-left at its place, nothing where none lies — None for no word, and
-/// None with the last error for an atlas past what the device makes.
-pub(crate) fn atlas_of(engine: &Engine, words: &[(&WordCover, [u32; 2])]) -> Option<Option<wgpu::Texture>> {
-    if words.is_empty() {
+/// The atlas a stream's letters are read from: `bytes`, `width` across
+/// and `height` down, row by row — None for one of no side, and None with
+/// the last error for one past what the device makes or one its bytes do
+/// not fill.
+///
+/// ↩️It was laid here from the words and their places (23c70b786): the
+/// tile store lays its atlas itself, as the C rasterizer reads one
+/// (timeline_grid_tile_store.dart `_setWords`), and keeps its words as the
+/// app's bytes — so the engine takes that atlas, and one place lays it.
+pub(crate) fn atlas_of(engine: &Engine, bytes: &[u8], width: u32, height: u32) -> Option<Option<wgpu::Texture>> {
+    if width == 0 || height == 0 {
         return Some(None);
     }
-    let ends: Option<Vec<[u32; 2]>> = words
-        .iter()
-        .map(|(word, [x, y])| Some([x.checked_add(word.width)?, y.checked_add(word.height)?]))
-        .collect();
-    let Some(ends) = ends else {
-        return fail(format!("a word laid in a letters' atlas past its {}th pixel", u32::MAX));
-    };
-    let width = ends.iter().map(|[x, _]| *x).max().unwrap_or(0);
-    let height = ends.iter().map(|[_, y]| *y).max().unwrap_or(0);
     let most = engine.device.limits().max_texture_dimension_2d;
-    if width == 0 || height == 0 || width > most || height > most {
+    if width > most || height > most {
         return fail(format!("a letters' atlas {width} × {height}: a side is 1 to {most} pixels"));
     }
-    let mut bytes = vec![0u8; width as usize * height as usize];
-    for (word, [x, y]) in words {
-        for (row, line) in word.bytes.chunks_exact(word.width as usize).enumerate() {
-            let at = (*y as usize + row) * width as usize + *x as usize;
-            bytes[at..at + line.len()].copy_from_slice(line);
-        }
+    if bytes.len() as u64 != u64::from(width) * u64::from(height) {
+        return fail(format!("a letters' atlas {width} × {height} of {} bytes", bytes.len()));
     }
     let size = wgpu::Extent3d {
         width,
@@ -126,7 +118,7 @@ pub(crate) fn atlas_of(engine: &Engine, words: &[(&WordCover, [u32; 2])]) -> Opt
     });
     engine.queue.write_texture(
         texture.as_image_copy(),
-        &bytes,
+        bytes,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(width),

@@ -951,9 +951,9 @@ external void gridPictureFree(Pointer<GridPicture> picture);
     Pointer<GridPicture>,
     Pointer<Int32>,
     Size,
-    Pointer<Pointer<WordCover>>,
-    Pointer<Uint32>,
-    Size,
+    Pointer<Uint8>,
+    Uint32,
+    Uint32,
   )
 >(symbol: 'gpu_engine_grid_draw')
 external bool gridDraw(
@@ -962,9 +962,9 @@ external bool gridDraw(
   Pointer<GridPicture> picture,
   Pointer<Int32> ops,
   int count,
-  Pointer<Pointer<WordCover>> words,
-  Pointer<Uint32> places,
-  int wordCount,
+  Pointer<Uint8> atlas,
+  int atlasWidth,
+  int atlasHeight,
 );
 
 @Native<Pointer<GridLay> Function()>(symbol: 'gpu_engine_grid_lay_new')

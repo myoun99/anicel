@@ -41,7 +41,7 @@ void main() {
     for (final (x, y, w, h, colour) in fills) {
       ops.fillRect(x, y, w, h, timelineGridPackRgba(colour));
     }
-    grid.draw(picture, ops.build(), const []);
+    grid.draw(picture, ops.build());
     return picture;
   }
 

@@ -1453,9 +1453,9 @@ class GpuWordCover {
   void free() => rust.wordCoverFree(_cover);
 }
 
-/// A word a frame grid's tile reads its letters from, and where its
-/// top-left lies in the atlas the tile's GLYPH ops read.
-typedef GpuGridWord = ({GpuWordCover word, int x, int y});
+/// The A8 atlas a frame grid's tile reads its letters from: [alpha], row
+/// by row, [width] across and [height] down.
+typedef GpuGridAtlas = ({Uint8List alpha, int width, int height});
 
 /// THE FRAME GRID'S TILE PASS (rust/src/kernels/timeline/grid): a tile's op
 /// stream — `TimelineGridTileOpWriter`'s words — drawn into a picture the
@@ -1466,20 +1466,23 @@ class GpuGrid {
   final GpuEngine _engine;
   final Pointer<rust.Grid> _grid;
 
-  /// Draws [ops] into [picture] over clear, its letters read from an atlas
-  /// of [words], each where its place puts it; waits for the GPU. Throws
-  /// for a stream the pass refuses.
-  void draw(GpuGridPicture picture, Int32List ops, List<GpuGridWord> words) =>
+  /// Draws [ops] into [picture] over clear, its letters read from [atlas]
+  /// where its GLYPH ops say; waits for the GPU. Throws for a stream the
+  /// pass refuses.
+  void draw(GpuGridPicture picture, Int32List ops, {GpuGridAtlas? atlas}) =>
       using((arena) {
         final stream = arena<Int32>(_held(ops.length))
           ..asTypedList(ops.length).setAll(0, ops);
-        final covers = arena<Pointer<rust.WordCover>>(_held(words.length));
-        final places = arena<Uint32>(_held(2 * words.length));
-        for (final (index, (:word, :x, :y)) in words.indexed) {
-          covers[index] = word._cover;
-          places[2 * index] = x;
-          places[2 * index + 1] = y;
+        final alpha = atlas?.alpha ?? Uint8List(0);
+        if (atlas != null && alpha.length != atlas.width * atlas.height) {
+          // The engine reads width × height bytes of it.
+          throw ArgumentError(
+            'an atlas ${atlas.width} × ${atlas.height} of ${alpha.length} '
+            'bytes',
+          );
         }
+        final bytes = arena<Uint8>(_held(alpha.length))
+          ..asTypedList(alpha.length).setAll(0, alpha);
         _done(
           rust.gridDraw(
             _grid,
@@ -1487,9 +1490,9 @@ class GpuGrid {
             picture._picture,
             stream,
             ops.length,
-            covers,
-            places,
-            words.length,
+            bytes,
+            atlas?.width ?? 0,
+            atlas?.height ?? 0,
           ),
         );
       });

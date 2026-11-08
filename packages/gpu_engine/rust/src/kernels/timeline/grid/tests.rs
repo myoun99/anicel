@@ -2,9 +2,9 @@
 //! what the formula gives by hand — never against a CPU copy of it
 //! (`kernels/mod.rs` has why). Each hand case writes its sums out.
 
-use super::{GridTile, MOST_RADIUS_Q9};
+use super::{GridTile, MOST_RADIUS_Q9, atlas_of};
 use crate::device::{Engine, storage_texture};
-use crate::testing::{assert_pinned, first_engine};
+use crate::testing::{assert_pinned, first_engine, last_error};
 
 const RGBA: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const BGRA: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
@@ -28,34 +28,10 @@ fn q8(pixels: f64) -> i32 {
     (pixels * 256.0).round() as i32
 }
 
-/// An `R8Uint` atlas of `coverage`, rows top to bottom.
+/// An `R8Uint` atlas of `coverage`, rows top to bottom, as the pass's own
+/// takes one ([`atlas_of`]).
 fn atlas(engine: &Engine, width: u32, height: u32, coverage: &[u8]) -> wgpu::Texture {
-    let size = wgpu::Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-    };
-    let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("test atlas"),
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::R8Uint,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-    engine.queue.write_texture(
-        texture.as_image_copy(),
-        coverage,
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some(width),
-            rows_per_image: Some(height),
-        },
-        size,
-    );
-    texture
+    atlas_of(engine, coverage, width, height).expect("an atlas").expect("of a side")
 }
 
 /// A `width` x `height` tile of `ops` over `background`, as `format`
@@ -141,6 +117,17 @@ fn a_vertical_line_runs_its_length_down_and_a_horizontal_one_across() {
     }
     assert_eq!(at(&horizontal, 5, 3, 1), [0; 4]);
     assert_eq!(at(&horizontal, 5, 0, 3), [0; 4]);
+}
+
+#[test]
+fn an_atlas_of_no_side_is_none_and_one_its_bytes_do_not_fill_is_refused() {
+    let engine = first_engine();
+    for (width, height) in [(0, 3), (3, 0)] {
+        assert!(atlas_of(engine, &[], width, height).expect("no atlas").is_none(), "{width} × {height}");
+    }
+    assert!(atlas_of(engine, &[0; 3], 2, 2).is_none());
+    assert!(last_error().contains("a letters' atlas 2 × 2 of 3 bytes"), "{}", last_error());
+    assert!(atlas_of(engine, &[0; 4], 2, 2).expect("an atlas").is_some(), "{}", last_error());
 }
 
 // (10, 20, 30) opaque, its alpha scaled by the coverage: 65535 times

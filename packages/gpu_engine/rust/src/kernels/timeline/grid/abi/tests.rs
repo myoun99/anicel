@@ -20,25 +20,22 @@ fn picture(width: u32, height: u32) -> *mut GridPicture {
     unsafe { gpu_engine_grid_picture_new(first_engine(), width, height) }
 }
 
+/// An atlas: its bytes, row by row, and its sides.
+type Atlas<'a> = (&'a [u8], u32, u32);
+
+/// No atlas, as the app hands one: a pointer to a byte, of no side.
+const NO_ATLAS: Atlas = (&[0], 0, 0);
+
 /// `ops` drawn into a fresh `size` tile through the ABI, its letters from
-/// `words` at their places: whether it drew, and the tile's bytes.
-fn drawn(size: (u32, u32), ops: &[i32], words: &[(&WordCover, [u32; 2])]) -> (bool, Vec<u8>) {
+/// `atlas`: whether it drew, and the tile's bytes.
+fn drawn(size: (u32, u32), ops: &[i32], (atlas, width, height): Atlas) -> (bool, Vec<u8>) {
     let engine = first_engine();
     // SAFETY: the engine is live.
     let grid = unsafe { gpu_engine_grid_new(engine) };
     let tile = picture(size.0, size.1);
     assert!(!tile.is_null(), "{}", last_error());
-    let covers: Vec<*const WordCover> = words.iter().map(|(word, _)| *word as *const _).collect();
-    let places: Vec<u32> = words.iter().flat_map(|(_, place)| *place).collect();
-    // A binding of none is still a pointer, as the app hands one.
-    let (covers, places) = (
-        if covers.is_empty() { vec![std::ptr::null()] } else { covers },
-        if places.is_empty() { vec![0] } else { places },
-    );
     // SAFETY: every pointer is live and holds what it is said to.
-    let ok = unsafe {
-        gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), covers.as_ptr(), places.as_ptr(), words.len())
-    };
+    let ok = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), atlas.as_ptr(), width, height) };
     // SAFETY: both came from their news.
     let bytes = unsafe { engine.read_texture(&(*tile).texture).expect("read back") };
     // SAFETY: as above, each let go of once.
@@ -71,7 +68,7 @@ fn a_tile_of_no_side_or_past_the_device_is_refused_with_why() {
 #[test]
 fn a_stream_drawn_through_the_abi_is_over_clear() {
     let red = rgba(255, 0, 0, 255);
-    let (ok, bytes) = drawn((4, 3), &[FILL_RECT, 1, 1, 2, 1, red], &[]);
+    let (ok, bytes) = drawn((4, 3), &[FILL_RECT, 1, 1, 2, 1, red], NO_ATLAS);
     assert!(ok, "{}", last_error());
     assert_eq!(at(&bytes, 4, 1, 1), [255, 0, 0, 255]);
     assert_eq!(at(&bytes, 4, 2, 1), [255, 0, 0, 255]);
@@ -80,23 +77,23 @@ fn a_stream_drawn_through_the_abi_is_over_clear() {
     }
 }
 
-// Two words in an atlas, the second below and right of the first: each
-// letter reads its word where its place put it. Opaque white scaled by a
+// An atlas of two words, the second below and right of the first: each
+// letter reads the atlas where its op says. Opaque white scaled by a
 // coverage c over clear is white at c, stored straight.
 #[test]
-fn a_letter_reads_its_word_where_its_place_put_it() {
-    let first = WordCover { width: 2, height: 1, bytes: vec![255, 128] };
-    let second = WordCover { width: 1, height: 2, bytes: vec![64, 32] };
+fn a_letter_reads_the_atlas_where_its_op_says() {
+    // 3 × 3: [255, 128] at (0, 0), [64] over [32] at (2, 1).
+    let atlas: Atlas = (&[255, 128, 0, 0, 0, 64, 0, 0, 32], 3, 3);
     let white = rgba(255, 255, 255, 255);
     let ops = [[GLYPH, 0, 0, 0, 0, 2, 1, white], [GLYPH, 3, 0, 2, 1, 1, 2, white]].concat();
-    let (ok, bytes) = drawn((4, 2), &ops, &[(&first, [0, 0]), (&second, [2, 1])]);
+    let (ok, bytes) = drawn((4, 2), &ops, atlas);
     assert!(ok, "{}", last_error());
     assert_eq!(at(&bytes, 4, 0, 0), [255; 4]);
     assert_eq!(at(&bytes, 4, 1, 0), [255, 255, 255, 128]);
     assert_eq!(at(&bytes, 4, 3, 0), [255, 255, 255, 64]);
     assert_eq!(at(&bytes, 4, 3, 1), [255, 255, 255, 32]);
     // What lies between the words in the atlas is nothing.
-    let (_, between) = drawn((2, 2), &[GLYPH, 0, 0, 0, 1, 2, 1, white], &[(&first, [0, 0]), (&second, [2, 1])]);
+    let (_, between) = drawn((2, 2), &[GLYPH, 0, 0, 0, 1, 2, 1, white], atlas);
     assert_eq!(at(&between, 2, 0, 0), [0; 4]);
     assert_eq!(at(&between, 2, 1, 0), [0; 4]);
 }
@@ -104,7 +101,7 @@ fn a_letter_reads_its_word_where_its_place_put_it() {
 #[test]
 fn a_stream_the_pass_refuses_draws_nothing_and_says_why() {
     let white = rgba(255, 255, 255, 255);
-    let (ok, bytes) = drawn((2, 2), &[GLYPH, 0, 0, 0, 0, 1, 1, white], &[]);
+    let (ok, bytes) = drawn((2, 2), &[GLYPH, 0, 0, 0, 0, 1, 1, white], NO_ATLAS);
     assert!(!ok);
     assert!(last_error().contains("has no atlas"), "{}", last_error());
     assert!(bytes.iter().all(|&byte| byte == 0));
@@ -113,16 +110,12 @@ fn a_stream_the_pass_refuses_draws_nothing_and_says_why() {
 #[test]
 fn an_atlas_past_the_device_is_refused_with_why() {
     let most = first_engine().device.limits().max_texture_dimension_2d;
-    let word = WordCover { width: 1, height: 1, bytes: vec![255] };
-    let (ok, _) = drawn((1, 1), &[], &[(&word, [most, 0])]);
+    let wide = vec![255; most as usize + 1];
+    let (ok, _) = drawn((1, 1), &[], (&wide, most + 1, 1));
     assert!(!ok);
     assert!(last_error().contains(&format!("a letters' atlas {} × 1", most + 1)), "{}", last_error());
-    let (ok, _) = drawn((1, 1), &[], &[(&word, [most - 1, 0])]);
+    let (ok, _) = drawn((1, 1), &[], (&wide[1..], most, 1));
     assert!(ok, "an atlas as wide as the device makes: {}", last_error());
-    // A place past the last pixel — a negative one, as a Uint32 reads it.
-    let (ok, _) = drawn((1, 1), &[], &[(&word, [u32::MAX, 0])]);
-    assert!(!ok);
-    assert!(last_error().contains("past its 4294967295th pixel"), "{}", last_error());
 }
 
 // Through the ABI a box is eight doubles, the tile's part then the
@@ -136,9 +129,8 @@ fn a_tile_laid_through_the_abi_takes_its_part_onto_the_screens() {
     let grid = unsafe { gpu_engine_grid_new(engine) };
     let tile = picture(2, 1);
     let ops = [[FILL_RECT, 0, 0, 1, 1, rgba(255, 0, 0, 255)], [FILL_RECT, 1, 0, 1, 1, rgba(0, 255, 0, 255)]].concat();
-    let none: [*const WordCover; 1] = [std::ptr::null()];
     // SAFETY: every pointer is live and holds what it is said to.
-    let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), none.as_ptr(), [0].as_ptr(), 0) };
+    let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), NO_ATLAS.0.as_ptr(), 0, 0) };
     assert!(drew, "{}", last_error());
     let screen = crate::device::storage_texture(&engine.device, 3, 2, wgpu::TextureFormat::Rgba8Unorm);
     let lay = gpu_engine_grid_lay_new();

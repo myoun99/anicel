@@ -37,7 +37,7 @@ void main() {
       ..fillRect(60, 0, 60, 20, timelineGridPackRgba(const Color(0xFF00FF00)));
     TimelineGridTilePicture drawn() {
       final picture = GpuGridPicture(engine, 120, 20);
-      grid.draw(picture, ops.build(), const []);
+      grid.draw(picture, ops.build());
       return TimelineGridTilePicture(picture);
     }
 
