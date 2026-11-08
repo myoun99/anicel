@@ -175,11 +175,6 @@ EngineHeld _engineHeldOf(HeldTiles held, Matrix4? canvasToRow) {
       rowToPreview[12] - dx,
       rowToPreview[13] - dy,
     ),
-    laying: switch ((laying, canvasToRow)) {
-      (LaidReplacing(:final region), final canvasToRow?) => LaidReplacing(
-        MatrixUtils.transformRect(canvasToRow, region),
-      ),
-      _ => laying,
-    },
+    laying: laying,
   );
 }

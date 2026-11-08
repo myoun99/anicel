@@ -54,7 +54,8 @@ final class LaidErasing extends HeldLaying {
 }
 
 /// In place of it over [region], in the preview's space: a landing, which
-/// IS the cel there (`BlendMode.src`).
+/// IS the cel there (`BlendMode.src`) — made in its cel's own space
+/// (`FloatLandsOn.landingShown`), so its region is its row's pixels.
 final class LaidReplacing extends HeldLaying {
   const LaidReplacing(this.region);
 

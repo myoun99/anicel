@@ -2,11 +2,15 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/services/brush_stroke_blend.dart'
+    show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/stamp_carry.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
@@ -297,6 +301,29 @@ void main() {
 
       expect(preview.image, isNull);
       expect(preview.shown, isNull);
+    });
+
+    testWidgets('🚨the picture shown holds its resample as tiles where it '
+        'lands — what the engine lays (flip lane ⓐ-2)', (tester) async {
+      final now = over(box(scale: 2));
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+      preview.schedule();
+      await settleAsync(tester, () => preview.image != null);
+
+      final (:dab, :landing, :tiles, image: _) = preview.shown!;
+      final stamp = dab.stamp!;
+      expect(landing, stamp.landingRect(dab.center));
+      expect(
+        bitmapSurfaceRegionPixels(
+          BitmapSurface(
+            canvasSize: const CanvasSize(width: 1000, height: 1000),
+            tiles: tiles,
+          ),
+          landing,
+        ),
+        stamp.rgba,
+      );
     });
 
     testWidgets('a decode still on its way when the box ends lands nowhere — '
