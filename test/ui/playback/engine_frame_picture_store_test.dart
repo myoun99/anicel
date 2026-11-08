@@ -48,19 +48,22 @@ void main() {
   const picture = 3 * side * side * 4;
   final engine = EngineScreenPins('the engine frame picture store');
 
-  /// A cel of [seed]'s pixels in the tiles of [over] — the one left of the
-  /// page and the page's two —, [marked] green.
+  /// A cel of [seed]'s pixels — or [seedAt]'s of each tile's column — in
+  /// the tiles of [over] — the one left of the page and the page's two —,
+  /// [marked] green.
   BitmapSurface cel(
     int seed, {
+    int Function(int column)? seedAt,
     (int, int, int, int)? marked,
     List<int> over = const [-1, 0, 1],
   }) {
     BitmapTile tile(int column) {
       final pixels = Uint8List(side * side * 4);
+      final seeded = seedAt?.call(column) ?? seed;
       for (var y = 0; y < side; y++) {
         for (var x = 0; x < side; x++) {
           final worldX = x + column * side;
-          final n = worldX * 7 + y * 13 + seed * 101;
+          final n = worldX * 7 + y * 13 + seeded * 101;
           final green = switch (marked) {
             (final l, final t, final r, final b) =>
               worldX >= l && worldX < r && y >= t && y < b,
@@ -287,6 +290,35 @@ void main() {
     expect(store.peek('b'), same(laid));
     expect(shownBy(laid), laidBy(changed));
     expect(told, 1, reason: 'what it shows changed');
+  });
+
+  test('🚨a frame laid over a film is the film\'s picture where it is not '
+      'fresh, and its own frame where it is', () async {
+    final store = storeOf();
+    await store.lay('film', frameOf(cel(5)));
+
+    // Fresh over the page's first tile alone.
+    final laid = await store.lay(
+      'ghosts',
+      frameOf(cel(6)),
+      over: (film: 'film', fresh: const Rect.fromLTRB(10, 10, 20, 20)),
+    );
+
+    final mixed = cel(5, seedAt: (column) => column == 0 ? 6 : 5);
+    expect(shownBy(laid!), laidBy(mixed));
+    expect(store.bytesOf('ghosts'), picture);
+  });
+
+  test('a frame laid over a film not there is laid whole', () async {
+    final store = storeOf();
+
+    final laid = await store.lay(
+      'ghosts',
+      frameOf(cel(6)),
+      over: (film: 'gone', fresh: const Rect.fromLTRB(10, 10, 20, 20)),
+    );
+
+    expect(shownBy(laid!), laidBy(cel(6)));
   });
 
   test('a patch composes nothing where it is not told the frame '

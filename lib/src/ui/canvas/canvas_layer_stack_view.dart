@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuComposite, GpuMask, GpuPlan, GpuScreen, GpuTarget;
+    show GpuComposite, GpuMask, GpuPlan, GpuPool, GpuScreen, GpuTarget;
 
 import '../../core/collection_equality.dart';
 import '../../core/tree_nodes.dart';

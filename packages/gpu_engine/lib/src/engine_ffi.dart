@@ -615,6 +615,27 @@ external bool screenCompose(
 );
 
 @Native<
+  Bool Function(
+    Pointer<Screen>,
+    Pointer<Screen>,
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Planned>,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_screen_compose_over')
+external bool screenComposeOver(
+  Pointer<Screen> screen,
+  Pointer<Screen> film,
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Planned> plan,
+  Pointer<Int32> fresh,
+);
+
+@Native<
   IntPtr Function(
     Pointer<Screen>,
     Pointer<Composite>,

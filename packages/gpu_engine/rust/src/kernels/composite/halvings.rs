@@ -117,6 +117,10 @@ pub(crate) struct Kept {
     extent: [i32; 4],
 }
 
+/// A picture another is laid over, and which of its tiles are fresh on it:
+/// made, not copied ([`Kept::made_over`]).
+pub(crate) type Film<'a> = (&'a Kept, &'a dyn Fn((i32, i32)) -> bool);
+
 impl Kept {
     /// `plan` composited over the pixels `extent`, [left, top, right,
     /// bottom), nothing past it, and kept.
@@ -140,13 +144,83 @@ impl Kept {
         per_page: usize,
         budget: Budget,
     ) -> Option<Self> {
+        Self::made_over_by(engine, composite, plan, extent, None, per_page, budget)
+    }
+
+    /// `made` on the tiles `fresh` names alone, every other tile `film`
+    /// keeps copied from it as it is — a frame laid over the frame its
+    /// ghosts lie on (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이
+    /// 아닌 경우라도 최대한 극한으로 개선해보자」), where the tiles its ghosts
+    /// do not reach are that frame's. A tile `film` does not keep is made.
+    pub(crate) fn made_over(
+        engine: &Engine,
+        composite: &Composite,
+        plan: &Plan,
+        extent: [i32; 4],
+        film: &Kept,
+        fresh: impl Fn((i32, i32)) -> bool,
+        budget: Budget,
+    ) -> Option<Self> {
+        let over: Film = (film, &fresh);
+        Self::made_over_by(engine, composite, plan, extent, Some(over), tiles_a_page(engine)?, budget)
+    }
+
+    /// `made_over` over `over` — `made` where none —, `per_page` tiles a
+    /// page: a page all of whose tiles are made is the run's own.
+    pub(crate) fn made_over_by(
+        engine: &Engine,
+        composite: &Composite,
+        plan: &Plan,
+        extent: [i32; 4],
+        over: Option<Film>,
+        per_page: usize,
+        budget: Budget,
+    ) -> Option<Self> {
         let [left, top, right, bottom] = extent;
         let size = (right.abs_diff(left), bottom.abs_diff(top));
         let set = TileSet::paged((left, top), size, 0, per_page)?;
         let tiles: Vec<(i32, i32)> = set.placed_under(None).map(|(place, _)| place).collect();
+        // The film's tile a tile is copied from, where it is not made.
+        let copied = |(column, row): (i32, i32)| {
+            let (film, fresh) = over?;
+            if fresh((column, row)) {
+                return None;
+            }
+            Some((film, film.set.at(column, row)?))
+        };
         let mut pages = Vec::with_capacity(tiles.len().div_ceil(per_page));
         for page in tiles.chunks(per_page) {
-            pages.push(composite.run(engine, plan, page, extent, budget)?.out);
+            let made: Vec<(i32, i32)> = page.iter().copied().filter(|&tile| copied(tile).is_none()).collect();
+            let run = if made.is_empty() {
+                None
+            } else {
+                Some(composite.run(engine, plan, &made, extent, budget)?.out)
+            };
+            if made.len() == page.len() {
+                pages.push(run?);
+                continue;
+            }
+            let kept = engine.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("kept over a film"),
+                size: page.len() as u64 * TILE_BYTES,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+            let mut encoder = engine.device.create_command_encoder(&Default::default());
+            let mut next = 0;
+            for (slot, &tile) in page.iter().enumerate() {
+                let to = slot as u64 * TILE_BYTES;
+                let (from, at) = match copied(tile) {
+                    Some((film, at)) => (&film.pages[usize::from(at.page)], u64::from(at.slot) * TILE_BYTES),
+                    None => {
+                        next += 1;
+                        (run.as_ref()?, (next - 1) * TILE_BYTES)
+                    }
+                };
+                encoder.copy_buffer_to_buffer(from, at, &kept, to, TILE_BYTES);
+            }
+            engine.queue.submit([encoder.finish()]);
+            pages.push(kept);
         }
         let kept = Self { pages, set, extent };
         KEPT_BYTES.fetch_add(kept.bytes(), Ordering::Relaxed);

@@ -27,7 +27,43 @@ final class EngineStackScreen {
   /// all of it the first time, and when the world the frame holds is not
   /// the one kept: a stroke past the page grows it. Where it changed is
   /// the caller's to say ([StackedFrame.movedSince]); null is everywhere.
-  void compose(StackedFrame frame, {Rect? changed}) {
+  void compose(StackedFrame frame, {Rect? changed}) => _laid(
+    frame,
+    (screen, pool, plan, world) =>
+        screen.compose(pool, plan, _edgesOf(changed ?? world)),
+  );
+
+  /// Lays [frame] as [compose] does the first time, onto a screen nothing
+  /// is laid on yet, but over the world pixels [fresh] alone: the rest is
+  /// [film]'s kept frame, copied tile by tile as it is — a frame over the
+  /// frame its ghosts lie on, which the tiles they do not reach show as it
+  /// does. Over a film nothing is laid on, all of it.
+  void composeOver(
+    EngineStackScreen film,
+    StackedFrame frame, {
+    required Rect fresh,
+  }) {
+    assert(_screen == null, 'a screen laid over a film is laid on nothing');
+    final under = film._screen;
+    if (under == null) {
+      compose(frame);
+      return;
+    }
+    _laid(
+      frame,
+      (screen, pool, plan, _) =>
+          screen.composeOver(under, pool, plan, _edgesOf(fresh)),
+    );
+  }
+
+  /// [frame]'s rows planned by the one translator and handed to [lay] with
+  /// the kept frame — made again over the world the frame holds where it
+  /// is not the one kept.
+  void _laid(
+    StackedFrame frame,
+    void Function(GpuScreen screen, GpuPool pool, GpuPlan plan, Rect world)
+    lay,
+  ) {
     final pass = _LayerStackPaintPass(frame._painter);
     // A frame of nothing keeps one pixel of nothing: shown through any
     // camera, it shows nothing.
@@ -55,7 +91,7 @@ final class EngineStackScreen {
           paper: frame._painter.canvasSize.canvasRect,
           letters: _letters,
         );
-        screen!.compose(ledger.pool, plan, _edgesOf(changed ?? world));
+        lay(screen!, ledger.pool, plan, world);
       } finally {
         plan.free();
       }

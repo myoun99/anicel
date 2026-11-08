@@ -1035,6 +1035,34 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
     screen.compose(engine, composite, &plan, changed, composite.widest()).is_some()
 }
 
+/// Composites `plan` onto `screen`'s canvas, nothing composed on it yet,
+/// over its tiles that meet the pixels `fresh` — [left, top, right,
+/// bottom) — and copies every other tile `film`'s canvas keeps from it as
+/// it is; submits the work. False on failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, the pool and the executor were made on `engine`,
+/// `film` is not `screen`; `fresh` holds four words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_screen_compose_over(
+    screen: *mut Screen,
+    film: *const Screen,
+    composite: *const Composite,
+    engine: *const Engine,
+    pool: *const Pool,
+    plan: *const Planned,
+    fresh: *const i32,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (screen, film, composite, engine, pool, plan) =
+        unsafe { (&mut *screen, &*film, &*composite, &*engine, &*pool, &*plan) };
+    // SAFETY: see the function's contract.
+    let fresh = unsafe { *fresh.cast::<[i32; 4]>() };
+    let (chains, mask) = (plan.chained(), plan.masked());
+    let plan = plan.plan(pool.pages(), &chains, mask.as_ref());
+    screen.compose_over(engine, composite, &plan, film, fresh, composite.widest()).is_some()
+}
+
 /// Shows `screen`'s canvas through the camera onto the pixels `rect` of
 /// `target` — [left, top, right, bottom) — leaving the rest of it as it
 /// was, and waits for the GPU; returns how many passes it took, -1 on

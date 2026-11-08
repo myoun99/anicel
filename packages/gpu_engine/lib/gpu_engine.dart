@@ -998,6 +998,32 @@ class GpuScreen {
     }
   }
 
+  /// [compose] onto a canvas nothing is composed on yet, but over its tiles
+  /// that meet the pixels [fresh] alone — [left, top, right, bottom) —:
+  /// every other tile [film]'s canvas keeps is copied from it as it is.
+  /// Over a film nothing is composed on, the whole canvas.
+  void composeOver(
+    GpuScreen film,
+    GpuPool pool,
+    GpuPlan plan,
+    (int, int, int, int) fresh,
+  ) {
+    final composed = using(
+      (arena) => rust.screenComposeOver(
+        _screen,
+        film._screen,
+        _composite._composite,
+        _composite._engine._engine,
+        pool._pool,
+        plan._plan,
+        _rect(arena, fresh),
+      ),
+    );
+    if (!composed) {
+      throw StateError(_lastError());
+    }
+  }
+
   /// Shows the kept canvas through the camera onto the pixels [rect] of
   /// [target] — [left, top, right, bottom) — leaving the rest of it as it
   /// was, and waits for the GPU; returns how many passes it took. The

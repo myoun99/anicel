@@ -8,12 +8,12 @@ use crate::device::Engine;
 use crate::kernels::composite::halvings::tests::{
     CANVAS, PAGE, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
 };
-use crate::kernels::composite::halvings::{Camera, Halvings, Kept, Tiles, affine, plan, row};
+use crate::kernels::composite::halvings::{Camera, Film, Halvings, Kept, Tiles, affine, plan, row};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on};
 use crate::kernels::composite::{Composite, Plan, Step, TILE, TILE_BYTES, TileSet};
 use crate::kernels::shared::tests::{premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
-use crate::testing::read_buffer;
+use crate::testing::{last_error, read_buffer};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 
@@ -92,6 +92,66 @@ fn a_kept_canvas_is_made_again_on_the_tiles_a_change_meets() {
     assert_eq!(made.expect("made again"), Some([0, 256, 128, 384]));
     assert!(kept_bytes(&kept) == before, "the tile made again holds no change");
     assert!(composited_whole(&unmarked) != before, "the change not marked is one the canvas shows");
+}
+
+/// The tile pixel (`x`, `y`) lies on.
+fn tile_of(x: i32, y: i32) -> (i32, i32) {
+    let side = TILE as i32;
+    (x.div_euclid(side), y.div_euclid(side))
+}
+
+// Over a film kept two tiles a page, a canvas is made from its own plan on
+// the tiles fresh marks meet — a stripe on a tile's last column, a block
+// across four tiles of three pages — and is the film's as it is on every
+// other; over a film of fewer tiles, its own past them too. Kept a tile a
+// page, two, and all on one alike.
+#[test]
+fn a_canvas_made_over_a_film_is_its_own_where_fresh_and_the_films_elsewhere() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let marks = [[127, 40, 128, 90], [250, 120, 270, 140]];
+    let fresh = |tile| marks.iter().any(|&mark| meets(tile, mark));
+    let (pages, set, _) = composite_of(noise(53), CANVAS);
+    let film = laid(&pages, &set);
+    let wide = Kept::made_by(engine, composite, &film, PAGE, 2, budget).expect("film");
+    let narrow = Kept::made_by(engine, composite, &film, [0, 0, 256, 256], 2, budget).expect("film");
+    let (pages, set, _) = composite_of(noise(71), CANVAS);
+    let frame = laid(&pages, &set);
+    for (under, (columns, rows)) in [(&wide, (5, 3)), (&narrow, (2, 2))] {
+        let want = composited_whole(|x, y| {
+            let (column, row) = tile_of(x, y);
+            let theirs = !fresh((column, row)) && column < columns && row < rows;
+            if theirs { noise(53)(x, y) } else { noise(71)(x, y) }
+        });
+        for per_page in [1, 2, 15] {
+            let over: Film = (under, &fresh);
+            let kept = Kept::made_over_by(engine, composite, &frame, PAGE, Some(over), per_page, budget).expect("over");
+            assert!(kept_bytes(&kept) == want, "{columns} × {rows} under, {per_page} a page");
+        }
+    }
+}
+
+// A screen is composed over a film before anything is composed on it: the
+// film's canvas but where fresh marks, the whole canvas over a film of
+// nothing composed — and then refused, with the engine's reason.
+#[test]
+fn a_screen_is_composed_over_a_film_before_anything_else_is() {
+    let Rig { engine, composite } = rig();
+    let budget = composite.widest();
+    let (pages, set, _) = composite_of(noise(53), CANVAS);
+    let (frame_pages, frame_set, _) = composite_of(noise(71), CANVAS);
+    let frame = laid(&frame_pages, &frame_set);
+    let mut film = Screen::new(PAGE, 1.0).expect("film");
+    let mut over_nothing = Screen::new(PAGE, 1.0).expect("screen");
+    over_nothing.compose_over(engine, composite, &frame, &film, [0, 0, 1, 1], budget).expect("over nothing");
+    assert!(kept_bytes(over_nothing.canvas.as_ref().expect("composed")) == composited_whole(noise(71)));
+    film.compose(engine, composite, &laid(&pages, &set), PAGE, budget).expect("film");
+    let mut screen = Screen::new(PAGE, 1.0).expect("screen");
+    screen.compose_over(engine, composite, &frame, &film, [0, 0, 1, 1], budget).expect("over the film");
+    let want = composited_whole(|x, y| if tile_of(x, y) == (0, 0) { noise(71)(x, y) } else { noise(53)(x, y) });
+    assert!(kept_bytes(screen.canvas.as_ref().expect("composed")) == want);
+    assert!(screen.compose_over(engine, composite, &frame, &film, PAGE, budget).is_none());
+    assert!(last_error().contains("before anything is composed"), "{}", last_error());
 }
 
 /// `screen` shown through `camera`, the surface read back.

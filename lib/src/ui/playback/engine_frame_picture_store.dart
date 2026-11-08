@@ -66,6 +66,15 @@ class EngineFramePicture extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _composedOver(
+    EngineFramePicture film,
+    StackedFrame frame, {
+    required ui.Rect fresh,
+  }) {
+    _screen.composeOver(film._screen, frame, fresh: fresh);
+    notifyListeners();
+  }
+
   void _letGo() {
     _gone = true;
     _freedIfUnheld();
@@ -131,11 +140,16 @@ class EngineFramePictureStore<K extends Object> {
   /// 굽던거 버리고 다시굽는게 맞지않을까」 — [gone] says the one asking has no
   /// use for it any more, and a lay all who asked for it are gone from is not
   /// made when its turn comes: it answers null.
+  ///
+  /// [over] lays it over the picture of a film, where that is there when
+  /// its turn comes: composited where it is fresh alone, in world pixels,
+  /// and the film's elsewhere as it is ([EngineStackScreen.composeOver]).
   Future<EngineFramePicture?> lay(
     K key,
     StackedFrame frame, {
     bool shownNow = false,
     bool Function() gone = _stays,
+    ({K film, ui.Rect fresh})? over,
   }) {
     final there = peek(key);
     if (there != null) {
@@ -152,7 +166,7 @@ class EngineFramePictureStore<K extends Object> {
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame)..askers.add(gone);
+    final lay = _Lay<K>(key, frame, over)..askers.add(gone);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
@@ -312,7 +326,13 @@ class EngineFramePictureStore<K extends Object> {
       EngineStackScreen(_composite, _letters),
     );
     try {
-      picture._composed(lay.frame);
+      final over = lay.over;
+      final film = over == null ? null : _entries[over.film]?.picture;
+      if (over != null && film != null) {
+        picture._composedOver(film, lay.frame, fresh: over.fresh);
+      } else {
+        picture._composed(lay.frame);
+      }
     } on Object {
       picture._letGo();
       rethrow;
@@ -332,10 +352,11 @@ final class _Entry {
 }
 
 final class _Lay<K> {
-  _Lay(this.key, this.frame);
+  _Lay(this.key, this.frame, this.over);
 
   final K key;
   final StackedFrame frame;
+  final ({K film, ui.Rect fresh})? over;
 
   /// Each asker's word on whether it still wants the picture.
   final List<bool Function()> askers = [];
