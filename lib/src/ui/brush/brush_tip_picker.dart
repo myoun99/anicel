@@ -516,17 +516,20 @@ class _PickerCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final (:edge, :fill) = chosenCellFace(
+      Theme.of(context).colorScheme,
+      selected: selected,
+    );
     return AppTooltip(
       message: tooltip,
       child: ControlPressClaim(
         onPressed: onTap,
-        child: _cellWell(
-          colorScheme,
+        child: FaceInkWell(
           key: ValueKey<String>(keyValue),
-          selected: selected,
+          edge: edge,
+          fill: fill,
           onTap: silentPress(onTap),
-          child: child,
+          child: Padding(padding: _cellInset(edge), child: child),
         ),
       ),
     );
@@ -558,42 +561,31 @@ class _TurnCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final (:edge, :fill) = chosenCellFace(
+      Theme.of(context).colorScheme,
+      selected: selected,
+    );
     return AppTooltip(
       message: tooltip,
       child: InstantTapRegion(
         onTap: (_) => onTap(),
-        child: _cellWell(
-          colorScheme,
+        child: FaceInkWell(
           key: ValueKey<String>('brush-tip-turn-at-$index'),
-          selected: selected,
+          edge: edge,
+          fill: fill,
           // Its ripple only — the press is [InstantTapRegion]'s.
           onTap: silentPress(onTap),
-          child: BrushTipMaskPreview(alpha: mask.alpha, side: mask.size),
+          child: Padding(
+            padding: _cellInset(edge),
+            child: BrushTipMaskPreview(alpha: mask.alpha, side: mask.size),
+          ),
         ),
       ),
     );
   }
 }
 
-/// A cell of either grid ([chosenCellFace]), [child] standing 2 px inside
-/// its frame.
-Widget _cellWell(
-  ColorScheme colorScheme, {
-  required Key key,
-  required bool selected,
-  required VoidCallback? onTap,
-  required Widget child,
-}) {
-  final (:edge, :fill) = chosenCellFace(colorScheme, selected: selected);
-  return FaceInkWell(
-    key: key,
-    edge: edge,
-    fill: fill,
-    onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.all(2).add(edge.dimensions),
-      child: child,
-    ),
-  );
-}
+/// Where a cell of either grid ([chosenCellFace]) stands its picture: 2 px
+/// inside its frame.
+EdgeInsetsGeometry _cellInset(RoundedSuperellipseBorder edge) =>
+    const EdgeInsets.all(2).add(edge.dimensions);
