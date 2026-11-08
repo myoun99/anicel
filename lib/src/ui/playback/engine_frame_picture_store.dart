@@ -97,7 +97,6 @@ class EngineFramePictureStore<K extends Object> {
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
   final List<_Lay<K>> _lays = [];
-  bool _laying = false;
   int _clock = 0;
 
   /// Whether [key]'s picture is there — asked by a warmer and a ready bar
@@ -159,7 +158,9 @@ class EngineFramePictureStore<K extends Object> {
     } else {
       _lays.add(lay);
     }
-    unawaited(_pump());
+    // A turn for each lay: one asked for the screen meanwhile goes to the
+    // front.
+    scheduleMicrotask(_layFirst);
     return lay.done.future;
   }
 
@@ -287,31 +288,15 @@ class EngineFramePictureStore<K extends Object> {
     _entries.clear();
   }
 
+  /// Lays the lay at the front, if any is left — [dispose] answers them.
   /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
-  /// meanwhile waits on it, not laid a second time over it.
-  Future<void> _pump() async {
-    if (_laying) {
+  /// meanwhile waits on it, not laid a second time over it. A key a
+  /// picture moved to meanwhile ([move]) answers with it: one picture a key.
+  void _layFirst() {
+    if (_lays.isEmpty) {
       return;
     }
-    _laying = true;
-    try {
-      while (_lays.isNotEmpty) {
-        // A turn between lays: one asked for the screen meanwhile goes to
-        // the front.
-        await Future<void>.value();
-        if (_lays.isEmpty) {
-          break;
-        }
-        _layInItsTurn(_lays.first);
-      }
-    } finally {
-      _laying = false;
-    }
-  }
-
-  /// A key a picture moved to meanwhile ([move]) answers with it: one
-  /// picture a key.
-  void _layInItsTurn(_Lay<K> lay) {
+    final lay = _lays.first;
     try {
       final laid = lay.unwanted ? null : peek(lay.key) ?? _laid(lay);
       lay.done.complete(laid);

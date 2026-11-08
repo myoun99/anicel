@@ -254,6 +254,8 @@ void main() {
     final laid = await store.lay('a', frameOf(cel(5)));
     const marked = (-20, 10, 40, 50);
     final changed = cel(5, marked: marked);
+    var told = 0;
+    laid!.addListener(() => told += 1);
 
     expect(
       store.patch(
@@ -267,7 +269,8 @@ void main() {
 
     expect(store.holds('a'), isFalse);
     expect(store.peek('b'), same(laid));
-    expect(shownBy(laid!), laidBy(changed));
+    expect(shownBy(laid), laidBy(changed));
+    expect(told, 1, reason: 'what it shows changed');
   });
 
   test('a patch composes nothing where it is not told the frame '
