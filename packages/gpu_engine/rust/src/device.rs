@@ -15,7 +15,13 @@ pub struct Engine {
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
+    /// Where [`Engine::wait`] sends to the thread its waits block on
+    /// ([`waiter`]).
+    waits: mpsc::Sender<Wait>,
 }
+
+/// What a wait sends its thread: the device to poll, and where to answer.
+type Wait = (wgpu::Device, mpsc::Sender<Result<(), String>>);
 
 impl Engine {
     /// Opens on the adapter whose LUID is `luid`.
@@ -61,6 +67,7 @@ impl Engine {
         });
         match pollster::block_on(request) {
             Ok((device, queue)) => Some(Self {
+                waits: waiter()?,
                 instance,
                 adapter,
                 device,
@@ -70,11 +77,18 @@ impl Engine {
         }
     }
 
-    /// Blocks until the GPU has finished everything submitted.
+    /// Blocks until the GPU has finished everything submitted — polled on
+    /// the thread the engine's waits block on ([`waiter`]), the caller
+    /// waiting outside the driver.
     pub(crate) fn wait(&self) -> Option<()> {
-        match self.device.poll(wgpu::PollType::wait_indefinitely()) {
-            Ok(_) => Some(()),
-            Err(error) => fail(format!("poll: {error}")),
+        let (answer, answered) = mpsc::channel();
+        if self.waits.send((self.device.clone(), answer)).is_err() {
+            return fail("the engine's wait thread is gone");
+        }
+        match answered.recv() {
+            Ok(Ok(())) => Some(()),
+            Ok(Err(error)) => fail(error),
+            Err(error) => fail(format!("the engine's wait thread never answered: {error}")),
         }
     }
 
@@ -255,6 +269,32 @@ fn opened(open: impl FnOnce() -> Option<Engine> + Send) -> *mut Engine {
     }
 }
 
+/// The thread an engine's waits block on ([`Engine::wait`]), polling the
+/// device each one sends till no engine is left to send.
+///
+/// 🚨★★A WAIT NEVER BLOCKS IN THE DRIVER ON THE CALLER'S THREAD, for the
+/// reason a device is never opened there ([`opened`]): the profiler walks
+/// that thread's stack, and a wait stays in the driver as long as the GPU
+/// takes. 🔬Flip lane ⓓ (2026-11-09) put a read back in every save, park
+/// and cooling: eight `flutter test` files at once lost one at its first
+/// read, three runs of three, each passing alone. A thread made for each
+/// wait took 50–60 µs on the main PC against 1 µs handed to this one, and
+/// the screen waits every frame. The device comes with each wait, so none
+/// is kept between them.
+fn waiter() -> Option<mpsc::Sender<Wait>> {
+    let (waits, asked) = mpsc::channel::<Wait>();
+    let polling = move || {
+        for (device, answer) in asked {
+            let polled = device.poll(wgpu::PollType::wait_indefinitely());
+            let _ = answer.send(polled.map(|_| ()).map_err(|error| format!("poll: {error}")));
+        }
+    };
+    match std::thread::Builder::new().name("gpu_engine wait".into()).spawn(polling) {
+        Ok(_) => Some(waits),
+        Err(error) => fail(format!("no thread to wait on: {error}")),
+    }
+}
+
 /// Opens the engine on the adapter whose LUID is `luid` (high part in the
 /// upper 32 bits) — Flutter's own. Null on failure; see the last error.
 #[unsafe(no_mangle)]
@@ -334,6 +374,21 @@ mod tests {
         assert!(on.is_some_and(|on| on != caller));
         // SAFETY: `made` came from `opened`, nothing made on it.
         unsafe { gpu_engine_close(made) };
+    }
+
+    #[test]
+    fn a_wait_blocks_in_the_driver_on_a_thread_of_the_engines_not_the_callers() {
+        let engine = first_engine();
+        let buffer = engine.readback(4);
+        let (sender, answered) = std::sync::mpsc::channel();
+        // A map answers inside the poll that sees it done: on the thread
+        // that polled.
+        buffer.map_async(wgpu::MapMode::Read, .., move |_| {
+            let _ = sender.send(std::thread::current().id());
+        });
+        assert_eq!(engine.wait(), Some(()), "{}", last_error());
+        let polled_on = answered.try_recv().expect("the map answered inside the wait");
+        assert_ne!(polled_on, std::thread::current().id());
     }
 
     #[test]
