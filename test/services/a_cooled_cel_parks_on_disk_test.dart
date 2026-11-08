@@ -183,4 +183,21 @@ void main() {
       reason: 'and it is the same picture, still in RAM where it was',
     );
   });
+
+  test('🚨 a pass that THROWS stands down as a failed park does — the cel '
+      'stays HOT, the error is the waiter\'s, and no pass runs again on '
+      'its own', () async {
+    final store = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    // A tile of a side the engine does not store: its read back throws
+    // before the pass's first wait.
+    store.storeBakedSurface(k1, inked(11, side: defaultCelTileSize ~/ 2));
+    store.storeBakedSurface(key('f2'), inked(13));
+
+    await expectLater(store.drainCooling(), throwsStateError);
+    await store.drainCooling();
+
+    expect(store.isCelCold(k1), isFalse);
+    expect(store.celHasRenderableContent(k1), isTrue);
+  });
 }

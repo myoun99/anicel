@@ -1623,12 +1623,15 @@ class BrushFrameStore {
     }
   }
 
-  /// Set when a pass could not park a cel, and cleared by anything that
-  /// could plausibly change the answer — a new edit, a project swap.
+  /// Set when a pass could not park a cel — refused, or thrown — and
+  /// cleared by anything that could plausibly change the answer — a new
+  /// edit, a project swap.
   ///
   /// ⛔Without it the completion re-schedule is an infinite loop: the pass
   /// stands down BECAUSE the budget is still exceeded, which is the very
-  /// condition the re-schedule fires on.
+  /// condition the re-schedule fires on. A pass that throws before its
+  /// first wait (a cel's read back from the engine, flip lane ⓓ) spun it
+  /// on microtasks and starved the screen.
   bool _coolingStoodDown = false;
 
   void _scheduleCooling() {
@@ -1641,14 +1644,19 @@ class BrushFrameStore {
       // one remaining cel alone exceeds the budget.
       return;
     }
-    _activeCooling = _coolLoop().whenComplete(() {
-      _activeCooling = null;
-      // Work stored while this pass ran (or that this pass could not cool
-      // yet — e.g. a lone hot cel that stopped the loop) gets a fresh
-      // pass; without this, a skipped schedule during an active pass
-      // would never retry.
-      _scheduleCooling();
-    });
+    _activeCooling = _coolLoop()
+        .catchError((Object error, StackTrace stack) {
+          _coolingStoodDown = true;
+          Error.throwWithStackTrace(error, stack);
+        })
+        .whenComplete(() {
+          _activeCooling = null;
+          // Work stored while this pass ran (or that this pass could not
+          // cool yet — e.g. a lone hot cel that stopped the loop) gets a
+          // fresh pass; without this, a skipped schedule during an active
+          // pass would never retry.
+          _scheduleCooling();
+        });
   }
 
   /// Cools LRU hot cels until the budget holds, one at a time: snapshot
