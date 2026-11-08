@@ -263,6 +263,21 @@ fn a_word_past_what_the_bake_takes_is_refused_with_why() {
 }
 
 #[test]
+fn a_word_past_the_raster_is_refused_before_it_is_drawn() {
+    // A 4000 px 「3」 inks some 2400 × 3200 raster pixels, and its box runs
+    // past the bound along its line.
+    let (shapes, [_, height]) = word(4000.0, true);
+    let (refused, most) =
+        crate::testing::most_held_while(|| bake(faces(), &shapes, 1.0, 1, [70_000.0, height], [WHOLE, WHOLE]));
+    assert!(refused.is_none());
+    assert!(last_error().contains("a side is 65536 at most"), "{}", last_error());
+    assert!(most < 1 << 20, "a refused word took {most} bytes at its most");
+    // The same 「3」 in a box the bound takes is drawn, that big.
+    let (_, drawn) = crate::testing::most_held_while(|| bake(faces(), &shapes, 1.0, 1, [3000.0, height], [WHOLE, WHOLE]));
+    assert!(drawn > 4 << 20, "the 「3」 took {drawn} bytes at its most");
+}
+
+#[test]
 fn a_word_of_no_ink_is_its_box_of_nothing() {
     let space = [Placed {
         at: IDENTITY,

@@ -29,12 +29,15 @@ final class EngineWord {
   final List<String> families;
 
   /// [painter]'s word, laid out. Throws [UnsupportedError] for what the
-  /// engine is not handed: a span that is no text, and a word whose spans
-  /// go down two orders of faces — a bake sets one word in one.
+  /// engine is not handed: a span that is no text, a face the app does not
+  /// bundle ([_familiesOf]), a paint past the letters' outlines
+  /// ([_refuseWhatIsNotHanded]), and a word whose spans go down two orders
+  /// of faces — a bake sets one word in one.
   static EngineWord of(TextPainter painter) {
     final leaves = _leavesOf(painter.text!);
     final families = _familiesOf(leaves.first.style);
     for (final (:style, end: _) in leaves) {
+      _refuseWhatIsNotHanded(style);
       if (!listEquals(_familiesOf(style), families)) {
         throw UnsupportedError('a word set in two orders of faces');
       }
@@ -115,21 +118,43 @@ List<({int end, TextStyle style})> _leavesOf(InlineSpan span) {
   return leaves;
 }
 
-/// The bundled families [style] goes down, in its order, each once — a
-/// family the app does not bundle passed over, as Flutter passes over one
-/// it does not hold.
-///
-/// ⚠️Mine (2026-11-08): a style that names none of them is set in all of
-/// them, in the canvas letters' order. Flutter would go on to the
-/// machine's face, which the engine cannot see; the app speaks in one face
-/// (「앱은 한 글꼴」, 유저 2026-08-28), and a canvas letter whose face this
-/// device lacks is set in the bundled one (`canvasLetterTextStyle`).
+/// The bundled families [style] goes down, in its order, each once — the
+/// cel number's law (`engine_letters.dart`), asked the same of a word.
+/// Throws [UnsupportedError] for a family the app does not bundle, as
+/// letters named in a face of their own are refused there: Flutter sets
+/// them in it where the machine has it, and the engine is handed no other.
+/// A style that names none is set in the bundled ones, in the canvas
+/// letters' order, as letters with no face of their own are there — the
+/// app speaks in one face (「앱은 한 글꼴」, 유저 2026-08-28).
 List<String> _familiesOf(TextStyle style) {
-  final named = <String>{
-    for (final family in [?style.fontFamily, ...?style.fontFamilyFallback])
-      if (_bundled.contains(family)) family,
-  };
+  final named = {?style.fontFamily, ...?style.fontFamilyFallback};
+  for (final family in named) {
+    if (!_bundled.contains(family)) {
+      throw UnsupportedError(
+        'letters in a face the engine is not handed: $family',
+      );
+    }
+  }
   return named.isEmpty ? _bundled : named.toList();
+}
+
+/// Throws [UnsupportedError] where [style] paints what the engine's bake
+/// does not — it sets the letters' outlines alone, and a word painted with
+/// more is painted as it always was.
+void _refuseWhatIsNotHanded(TextStyle style) {
+  final more = [
+    if (style.fontFeatures?.isNotEmpty ?? false) 'font features',
+    if (style.fontVariations?.isNotEmpty ?? false) 'font variations',
+    if (style.decoration case final line? when line != TextDecoration.none)
+      'a decoration',
+    if (style.shadows?.isNotEmpty ?? false) 'shadows',
+    if (style.foreground != null) 'a paint of its own',
+    if (style.background != null || style.backgroundColor != null)
+      'a background',
+  ];
+  if (more.isNotEmpty) {
+    throw UnsupportedError('a word set with ${more.join(', ')}');
+  }
 }
 
 final List<String> _bundled = [

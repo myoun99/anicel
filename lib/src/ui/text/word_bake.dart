@@ -118,13 +118,21 @@ class BakedWordCoverage {
 /// in: the colour, its alpha with it, is laid on where the word is drawn
 /// ([paintBakedWord]). ↩️It was the painted ink's alpha, the colour's own
 /// in it, and the word was tinted with the colour made opaque.
+///
+/// Null for a word of no size, and for one the engine is not handed
+/// ([EngineWord.of]): a tile leaves either out (`TimelineGridTileStore`).
 Future<BakedWordCoverage?> bakeWordCoverage(
   TextPainter painter, {
   required ({double x, double y}) fit,
   required double dpr,
   required double? fontSize,
 }) async {
-  final word = recordWord(painter, fit: fit, dpr: dpr, fontSize: fontSize);
+  final RecordedWord? word;
+  try {
+    word = recordWord(painter, fit: fit, dpr: dpr, fontSize: fontSize);
+  } on UnsupportedError {
+    return null;
+  }
   return word == null ? null : bakeRecordedWord(word);
 }
 
@@ -304,7 +312,7 @@ bool paintBakedWord(
   }
   final baked = BakedWords.instance._bakeFor(
     _Word((
-      span: span,
+      span: _inkless(span),
       scaler: painter.textScaler,
       dpr: dpr,
       width: painter.width,
@@ -451,10 +459,10 @@ mixin RepaintOnWordBakes on CustomPainter implements WordBakeWaiter {
   }
 }
 
-/// A word apart from its narrowing: the spans it is set in — text, style
-/// and ink, the letter gaps it gave included — the painter's scaling, the
-/// pixel grid, and the box it was laid in (a word laid short, ellipsis and
-/// all, is not the word laid whole).
+/// A word apart from its narrowing: the spans it is set in — text and
+/// style, the letter gaps it gave included, not its ink ([_inkless]) — the
+/// painter's scaling, the pixel grid, and the box it was laid in (a word
+/// laid short, ellipsis and all, is not the word laid whole).
 ///
 /// Hashed once ([HashedOnce]): a paint looks its word up several times —
 /// its bake taken out and put back, the word's latest bake, its waiters —
@@ -473,6 +481,23 @@ typedef _Word =
 /// A word at one narrowing — what one bake is of — hashed once, as its word
 /// is.
 typedef _Bake = HashedOnce<({_Word word, double x, double y})>;
+
+/// [span] with every colour it is set in made one: its bake is the letters'
+/// ink alone, so a word painted in another colour is drawn from the same
+/// bake ([paintBakedWord] tints it). A style painted with a [Paint] of its
+/// own keeps it — the engine is not handed one ([EngineWord.of]).
+InlineSpan _inkless(InlineSpan span) => switch (span) {
+  TextSpan(:final text, :final style, :final children) => TextSpan(
+    text: text,
+    style: style?.foreground == null
+        ? style?.copyWith(color: const Color(0xFF000000))
+        : style,
+    children: [
+      for (final child in children ?? const <InlineSpan>[]) _inkless(child),
+    ],
+  ),
+  _ => span,
+};
 
 /// The words a screen has baked ([paintBakedWord]) — the app's one cache
 /// of them, as images, and when one lands.

@@ -24,6 +24,7 @@ import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
+import 'package:anicel/src/ui/text/word_bake.dart' show wordBakePixelRatio;
 import 'package:anicel/src/ui/text/word_condensation.dart'
     show maxGapTightening;
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
@@ -209,6 +210,26 @@ class _ParagraphOffsetSpy implements Canvas {
     xScales.add(_transform.storage[0]);
   }
 
+  /// Where each word drawn from its bake lands — the box of the narrowed
+  /// word, the bake's pixel of margin taken off (`paintBakedWord` tints it
+  /// in the word's ink; a panel's picture is drawn untinted). A screen
+  /// draws a narrowed word from its bake once one landed, the bake an
+  /// earlier test asked for among them.
+  final List<Rect> baked = [];
+
+  @override
+  void drawImageRect(ui.Image image, Rect src, Rect dst, Paint paint) {
+    if (paint.colorFilter == null) {
+      return;
+    }
+    baked.add(
+      MatrixUtils.transformRect(
+        _transform,
+        dst.deflate(1 / wordBakePixelRatio()!),
+      ),
+    );
+  }
+
   @override
   void drawCircle(Offset c, double radius, Paint paint) => circles.add((
     center: MatrixUtils.transformPoint(_transform, c),
@@ -267,9 +288,12 @@ _ParagraphOffsetSpy _paintedCreate(WidgetTester tester) {
   return spy;
 }
 
-/// The words laid in [band], left to right.
+/// The words laid in [band], left to right — set or drawn from their bake.
 List<Rect> _wordsIn(Rect band, _ParagraphOffsetSpy spy) =>
-    spy.rects.where((rect) => band.contains(rect.center)).toList()
+    [
+      ...spy.rects,
+      ...spy.baked,
+    ].where((rect) => band.contains(rect.center)).toList()
       ..sort((a, b) => a.left.compareTo(b.left));
 
 /// A copy of [painter] at another height, or under another selection — the

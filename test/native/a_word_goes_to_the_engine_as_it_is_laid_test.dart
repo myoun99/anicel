@@ -135,7 +135,8 @@ void main() {
   });
 
   test('a word goes down the bundled faces its style names, in its order, '
-      'each once', () {
+      'each once — and the app\'s, where it names none, as a cel number '
+      'does', () {
     List<String> facesOf(TextStyle style) =>
         EngineWord.of(_laid(TextSpan(text: 'a', style: style))).families;
     expect(facesOf(_ja), _bundled, reason: 'the Japanese UI: theirs (Q21)');
@@ -146,22 +147,51 @@ void main() {
     ], reason: 'the Chinese UI begins with Noto Sans SC');
     expect(
       facesOf(
-        const TextStyle(
-          fontFamily: 'Somebody Else\'s Face',
-          fontFamilyFallback: ['Nanum Gothic', 'Nanum Gothic'],
+        TextStyle(
+          fontFamily: _bundled[1],
+          fontFamilyFallback: [_bundled[1], _bundled[0]],
         ),
       ),
-      ['Nanum Gothic'],
-      reason: 'a face the app does not bundle is passed over, a repeat is one',
+      [_bundled[1], _bundled[0]],
+      reason: 'a repeat is one',
     );
-    expect(
-      facesOf(const TextStyle()),
-      _bundled,
-      reason: '⚠️Mine: a style that names none of them is set in all of them',
-    );
+    expect(facesOf(const TextStyle()), _bundled);
   });
 
   test('what the engine is not handed is refused', () {
+    for (final style in [
+      const TextStyle(fontFamily: 'Somebody Else\'s Face'),
+      TextStyle(
+        fontFamily: _bundled[0],
+        fontFamilyFallback: const ['Somebody Else\'s Face'],
+      ),
+      _ja.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+      _ja.copyWith(
+        fontVariations: const [FontVariation.weight(500)],
+      ),
+      _ja.copyWith(decoration: TextDecoration.underline),
+      _ja.copyWith(shadows: const [Shadow(blurRadius: 1)]),
+      _ja.copyWith(foreground: Paint()),
+      _ja.copyWith(backgroundColor: const Color(0xFFFFFFFF)),
+    ]) {
+      expect(
+        () => EngineWord.of(_laid(TextSpan(text: 'a', style: style))),
+        throwsUnsupportedError,
+        reason: '$style',
+      );
+    }
+    expect(
+      EngineWord.of(
+        _laid(
+          TextSpan(
+            text: 'a',
+            style: _ja.copyWith(decoration: TextDecoration.none),
+          ),
+        ),
+      ).runs,
+      hasLength(1),
+      reason: 'no line is no decoration',
+    );
     final twoOrders = _laid(
       TextSpan(
         style: _ja,

@@ -202,9 +202,11 @@ pub unsafe extern "C" fn gpu_engine_letters_run(
     let Some(at) = at else {
         return false;
     };
+    let Some(weight) = weight_of(weight) else {
+        return false;
+    };
     // SAFETY: see the function's contract.
-    let (Some(weight), Some(clusters)) = (weight_of(weight), unsafe { clusters_of(text, length, ends, origins, count) })
-    else {
+    let Some(clusters) = (unsafe { clusters_of(text, length, ends, origins, count) }) else {
         return false;
     };
     let Some(pass) = letters.last() else {
@@ -322,9 +324,11 @@ pub unsafe extern "C" fn gpu_engine_word_run(
 ) -> bool {
     // SAFETY: see the function's contract.
     let word = unsafe { &mut *word };
+    let Some(weight) = weight_of(weight) else {
+        return false;
+    };
     // SAFETY: see the function's contract.
-    let (Some(weight), Some(clusters)) = (weight_of(weight), unsafe { clusters_of(text, length, ends, origins, count) })
-    else {
+    let Some(clusters) = (unsafe { clusters_of(text, length, ends, origins, count) }) else {
         return false;
     };
     word.shapes.push(Placed {

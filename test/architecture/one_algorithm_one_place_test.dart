@@ -63,7 +63,9 @@ import '../../tool/refactor/clone_scan.dart';
 /// what this ratchet is FOR, and the alternative is the number-chasing the
 /// complexity section refuses.
 /// 🔜**A third rectangle-mean makes it a law**, and then it is extracted and
-/// this comes back down.
+/// this comes back down. ↩️`boxFilterA8` went to the GPU engine on
+/// 2026-11-08 (`narrowed_cover`, 86 → 85 below): the brush's mean is the
+/// one left, and a third counts from it.
 /// 89 → 88 (2026-09-10, the pixel pass's recipe builder). The pair that left:
 ///
 ///     lib/src/services/cel_pixel_overwrite.dart

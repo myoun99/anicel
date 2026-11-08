@@ -117,4 +117,10 @@ fn an_atlas_past_the_device_is_refused_with_why() {
     let (ok, _) = drawn((1, 1), &[], &[(&word, [most, 0])]);
     assert!(!ok);
     assert!(last_error().contains(&format!("a letters' atlas {} × 1", most + 1)), "{}", last_error());
+    let (ok, _) = drawn((1, 1), &[], &[(&word, [most - 1, 0])]);
+    assert!(ok, "an atlas as wide as the device makes: {}", last_error());
+    // A place past the last pixel — a negative one, as a Uint32 reads it.
+    let (ok, _) = drawn((1, 1), &[], &[(&word, [u32::MAX, 0])]);
+    assert!(!ok);
+    assert!(last_error().contains("past its 4294967295th pixel"), "{}", last_error());
 }

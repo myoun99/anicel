@@ -88,8 +88,15 @@ pub(crate) fn atlas_of(engine: &Engine, words: &[(&WordCover, [u32; 2])]) -> Opt
     if words.is_empty() {
         return Some(None);
     }
-    let width = words.iter().map(|(word, [x, _])| x + word.width).max().unwrap_or(0);
-    let height = words.iter().map(|(word, [_, y])| y + word.height).max().unwrap_or(0);
+    let ends: Option<Vec<[u32; 2]>> = words
+        .iter()
+        .map(|(word, [x, y])| Some([x.checked_add(word.width)?, y.checked_add(word.height)?]))
+        .collect();
+    let Some(ends) = ends else {
+        return fail(format!("a word laid in a letters' atlas past its {}th pixel", u32::MAX));
+    };
+    let width = ends.iter().map(|[x, _]| *x).max().unwrap_or(0);
+    let height = ends.iter().map(|[_, y]| *y).max().unwrap_or(0);
     let most = engine.device.limits().max_texture_dimension_2d;
     if width == 0 || height == 0 || width > most || height > most {
         return fail(format!("a letters' atlas {width} × {height}: a side is 1 to {most} pixels"));

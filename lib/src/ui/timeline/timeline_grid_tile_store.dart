@@ -396,8 +396,9 @@ class TimelineGridTileStore {
     // 🔬every one of a drag's steps did (8 of 8 — comma, +, a move, a move
     // to another row; Surface, 10-25), each tile ~0.3ms of ops and ~70µs of
     // raster through the door's picture ([pictureOf]), ~1.5 tiles a step.
-    // A word never baked before is the one wait left: its bake reads the
-    // word back ([bakeWordCoverage]), which a paint cannot wait for.
+    // A word never baked before is the one wait left: its bake answers in a
+    // future ([bakeWordCoverage] — the engine's faces are read off the
+    // bundle the first time), which a paint cannot wait for.
     final stale = entry != null && entry.hasTheGeometryOf(asked) ? entry : null;
     if (stale != null) {
       final baked = _landNow(engine, asked);
@@ -1124,9 +1125,9 @@ class TimelineGridTileStore {
   // --- Glyph A8 bake cache (T3) ---------------------------------------
   //
   // Foreground glyphs bake ONCE per (text, shape-style, DPR) into an A8
-  // coverage bitmap (white text rendered off-screen, alpha extracted);
-  // tiles blit them through the op stream's GLYPH op, tinted with the
-  // painter's exact ink per cell.
+  // coverage bitmap — the letters' ink alone, set and rastered by the GPU
+  // engine ([bakeWordCoverage]); tiles blit them through the op stream's
+  // GLYPH op, tinted with the painter's exact ink per cell.
 
   static const int _glyphCapacity = 1024;
   final BakeOnceLru<String, BakedWordCoverage?> _glyphs =
@@ -1156,10 +1157,11 @@ class TimelineGridTileStore {
     _GlyphBake at,
   ) {
     final (:dpr, :fit, :tightening) = at;
-    // COVERAGE bake: white text on transparent, alpha channel out — the
-    // GLYPH op multiplies the per-cell ink's alpha by it. Rasterised big and
-    // shrunk where it is small ([bakeWordCoverage], the bake a screen draws
-    // a narrowed word from too, F-224).
+    // COVERAGE bake: the letters' ink alone — the GLYPH op multiplies the
+    // per-cell ink's alpha by it. Rasterised big and shrunk where it is
+    // small ([bakeWordCoverage], the bake a screen draws a narrowed word
+    // from too, F-224). Laid out white whatever the cell's ink, so every
+    // ink shares one layout ([laidOutGlyph] keys on the colour).
     //
     // ⛔AND THE ATLAS STAYS 1:1. The GLYPH op blits without a scale
     // parameter, so the shrink and the narrowing happen in the bake, before

@@ -81,16 +81,17 @@ pub(crate) fn bake(
     }
     // The raster is the word as it stands un-narrowed with one final pixel
     // of margin round it, `times` times over: one final pixel of margin is
-    // that many of its own.
-    let scale = (dpr * f64::from(times)) as f32;
-    let margin = times as f32;
-    let to_raster = Affine { a: scale, b: 0.0, c: 0.0, d: scale, e: margin, f: margin };
-    let cover = covered(faces, shapes, Paint::Fill, to_raster);
+    // that many of its own. Refused before it is drawn: a word past the
+    // bound would be all of it first.
     let raster = [width, height].map(|side| ((side * dpr).ceil() + 2.0) * f64::from(times));
     if raster.iter().any(|&side| side > f64::from(MOST_RASTER)) {
         return fail(format!("a word rastered {raster:?} pixels: a side is {MOST_RASTER} at most"));
     }
     let raster = raster.map(|side| side as u32);
+    let scale = (dpr * f64::from(times)) as f32;
+    let margin = times as f32;
+    let to_raster = Affine { a: scale, b: 0.0, c: 0.0, d: scale, e: margin, f: margin };
+    let cover = covered(faces, shapes, Paint::Fill, to_raster);
     // The box the word is laid by: its narrowed ink, and a pixel round it.
     let boxed = [0, 1].map(|axis| (size[axis] * (f64::from(narrowed[axis]) / f64::from(WHOLE)) * dpr).ceil() as u32 + 2);
     let bytes = match cover {

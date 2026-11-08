@@ -26,7 +26,7 @@ import '../../helpers/word_bakes.dart';
 /// tiles' bake — rasterised big, averaged down on the CPU — came out smooth,
 /// so a screen's narrowed word is drawn from that bake too.
 ///
-/// The bake reads its pixels back off the engine, which answers in real
+/// The bake is uploaded to the engine as an image, which answers in real
 /// time ([pumpUntilAWordBakeLands]).
 
 /// A word in a red ink, laid out.
@@ -475,8 +475,53 @@ void main() {
     );
   });
 
+  testWidgets('a word painted in another ink is drawn from the bake it has '
+      '— the bake is its letters\' ink alone, tinted where it is drawn', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const fit = (x: 0.5, y: 1.0);
+    TextPainter inked(Color ink) => TextPainter(
+      text: TextSpan(
+        text: 'インク',
+        style: TextStyle(fontSize: 12, color: ink),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final red = inked(const Color(0xFFD00000));
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, red, Offset.zero, fit),
+      paints..paragraph(),
+    );
+    await pumpUntilAWordBakeLands(tester);
+    const blue = Color(0xFF0000D0);
+    final again = inked(blue);
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+      paints..drawImageRect(
+        source: Rect.fromLTWH(
+          0,
+          0,
+          (red.width * fit.x).ceil() + 2.0,
+          red.height.ceil() + 2.0,
+        ),
+      ),
+      reason: 'the same letters, baked once',
+    );
+    await tester.runAsync(() async {
+      final ink = await _inkOf(
+        (canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+        Size(again.width, again.height),
+      );
+      expect(ink.a, greaterThan(0.5), reason: 'fixture: the word is inked');
+      expect(ink.b, moreOrLessEquals(0xD0 / 255, epsilon: 0.05));
+      expect(ink.r, lessThan(0.05), reason: 'in its own ink, not the first');
+    });
+  });
+
   testWidgets('🚨a word is recorded in the paint that asks for its bake, and '
-      'rastered, read back and uploaded in its turn in the quiet between a '
+      'rastered and uploaded in its turn in the quiet between a '
       'run\'s held frames — the painter may be gone by then', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
