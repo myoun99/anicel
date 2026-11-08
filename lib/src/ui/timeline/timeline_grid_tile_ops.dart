@@ -71,6 +71,33 @@ typedef TimelineGridRRect = ({
 /// Pixels → the op stream's 24.8 fixed-point word.
 int timelineGridQ8(double pixels) => (pixels * 256).round();
 
+/// A rounded box's [width], [height] and [radius] as the stream's q8 words.
+///
+/// ⛔A CORNER THE GPU ENGINE'S GRID PASS REFUSES IS REFUSED HERE, where the
+/// op is written — the corner the box takes, its radius or half its
+/// narrower side where that is less, past 64 pixels or below square
+/// (`kernels/timeline/grid/mod.rs`, `MOST_RADIUS_Q9`: the pass refuses the
+/// whole stream rather than draw a smaller corner, and asks the writer to
+/// refuse first). Throws [ArgumentError].
+(int, int, int) _cornered(double width, double height, double radius) {
+  final (w, h, r) = (
+    timelineGridQ8(width),
+    timelineGridQ8(height),
+    timelineGridQ8(radius),
+  );
+  // In q9, as the pass reads it.
+  final corner = math.min(2 * r, math.min(w, h));
+  if (r < 0 || corner > _mostCornerQ9) {
+    throw ArgumentError(
+      'a corner of $radius px on a $width × $height px box: the grid takes '
+      'none below square and none past 64 px',
+    );
+  }
+  return (w, h, r);
+}
+
+const int _mostCornerQ9 = 1 << 15;
+
 /// Packs a straight-alpha color into the op stream's RGBA word.
 int timelineGridPackRgba(Color color) {
   final argb = color.toARGB32();
@@ -129,13 +156,14 @@ class TimelineGridTileOpWriter {
     int cornerMask,
     int rgba,
   ) {
+    final (w, h, r) = _cornered(width, height, radius);
     _words
       ..add(TimelineGridTileOp.rrectFill)
       ..add(timelineGridQ8(x))
       ..add(timelineGridQ8(y))
-      ..add(timelineGridQ8(width))
-      ..add(timelineGridQ8(height))
-      ..add(timelineGridQ8(radius))
+      ..add(w)
+      ..add(h)
+      ..add(r)
       ..add(cornerMask)
       ..add(rgba);
   }
@@ -149,13 +177,14 @@ class TimelineGridTileOpWriter {
     required int openMask,
     required int rgba,
   }) {
+    final (w, h, r) = _cornered(box.width, box.height, box.radius);
     _words
       ..add(TimelineGridTileOp.rrectRing)
       ..add(timelineGridQ8(box.x))
       ..add(timelineGridQ8(box.y))
-      ..add(timelineGridQ8(box.width))
-      ..add(timelineGridQ8(box.height))
-      ..add(timelineGridQ8(box.radius))
+      ..add(w)
+      ..add(h)
+      ..add(r)
       ..add(box.cornerMask)
       ..add(timelineGridQ8(lineWidth))
       ..add(openMask)
