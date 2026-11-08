@@ -1229,15 +1229,14 @@ fn runs_first(step: &Step) -> bool {
 }
 
 /// The tiles of `rect` whose pixels `map` reads for the output `tiles` —
-/// every one where it is a homography, which bounds no read.
+/// every one where it is a homography, which bounds no read; none for no
+/// output.
 fn read_through(rect: TileRect, map: &ResampleMap, tiles: &[(i32, i32)]) -> TileRect {
     let side = i64::from(TILE);
     let columns = tiles.iter().map(|&(column, _)| i64::from(column));
     let rows = tiles.iter().map(|&(_, row)| i64::from(row));
-    let (Some(x0), Some(x1)) = (columns.clone().min(), columns.max()) else {
-        return TileRect { columns: 0, rows: 0, ..rect };
-    };
-    let (Some(y0), Some(y1)) = (rows.clone().min(), rows.max()) else {
+    let bounds = (columns.clone().min(), columns.max(), rows.clone().min(), rows.max());
+    let (Some(x0), Some(x1), Some(y0), Some(y1)) = bounds else {
         return TileRect { columns: 0, rows: 0, ..rect };
     };
     let Some([left, top, right, bottom]) =

@@ -584,7 +584,8 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
 
 // A buffer closed as a row call by call — over its own tiles through a
 // matrix, and over a chain's through it — composites as the same plan
-// built in Rust: each field in its place, its pose sampled as a row's is.
+// built in Rust: each field in its place, its pose sampled as a row's is,
+// Blend's radius among them.
 #[test]
 fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
     let tiles = [tile(1, false), tile(2, false), tile(3, true)];
@@ -608,7 +609,7 @@ fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
         gpu_engine_plan_open(plan, false);
         assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
         assert_eq!(gpu_engine_plan_row(plan, 1, -1, -1, -1, OVER.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 30000, MULTIPLY), 1);
-        let closed = gpu_engine_plan_close_row(plan, -1, own.as_ptr(), 0, POSED.as_ptr(), 2.0, PICK, 3 * TILE, TILE, 41000, SCREEN);
+        let closed = gpu_engine_plan_close_row(plan, -1, own.as_ptr(), 0, POSED.as_ptr(), 2.0, BLEND, 3 * TILE, TILE, 41000, SCREEN);
         assert_eq!(closed, 1);
         gpu_engine_plan_open(plan, false);
         assert_eq!(gpu_engine_plan_row(plan, 1, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
@@ -620,7 +621,7 @@ fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
         TileSet { x0: 1, y0: 0, columns: 1, rows: 1, tiles: vec![Some(at[2])] },
     ];
     let identity = map(IDENTITY, ResampleMode::Blend);
-    let posed = ResampleMap::new(POSED, 2.0, ResampleMode::Pick, 3 * TILE, TILE).expect("lands");
+    let posed = ResampleMap::new(POSED, 2.0, ResampleMode::Blend, 3 * TILE, TILE).expect("lands");
     let steps = [
         row(0, None, None, identity, 65535, NORMAL),
         Step::Open,

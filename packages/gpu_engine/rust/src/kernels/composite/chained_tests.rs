@@ -530,8 +530,8 @@ fn a_buffer_closed_as_a_row_runs_its_chain_on_its_picture() {
 }
 
 // Of its tiles, only those its output reads through its pose are drawn: a
-// row of more than a page holds shows as the few of them read do, and one
-// moved away from the output lays nothing.
+// row of more than a page holds shows as the few of them read do, over an
+// output of no tiles none, and one moved away from the output lays nothing.
 #[test]
 fn a_buffer_closed_as_a_row_draws_the_tiles_its_output_reads() {
     let laying = held_over_a_row();
@@ -551,6 +551,8 @@ fn a_buffer_closed_as_a_row_draws_the_tiles_its_output_reads() {
     };
     let got = laying.widest(&[], &buffer(wide, pose("turn")), None);
     assert!(got == laying.widest(&[], &buffer(picture, pose("turn")), None));
+    let budget = rig().composite.widest();
+    assert!(laying.over(&[], (&[], &buffer(wide, pose("turn"))), None, budget).is_some());
     let away = laying.widest(&[], &buffer(picture, ResampleMap::moved(-10_000, 0)), None);
     assert!(away == laying.widest(&[], &[base], None));
 }
