@@ -8,11 +8,7 @@
 //! with the C library's square root, so an edge pixel may differ from an
 //! old build's by a step — the same on every device, which is the point.
 
-// ⏳Nothing outside the tests calls it until the app's bridge round
-// (gpu-int-spec-timeline, 관제 13:5x — the app connects after the bridges
-// land).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
 #[cfg(test)]
 mod tests;
 
@@ -23,6 +19,7 @@ use wgpu::util::DeviceExt;
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
+use crate::kernels::letters::words::WordCover;
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, PREMULTIPLY_WGSL, encode_on, flat, pipeline, storage_format, whole,
 };
@@ -46,6 +43,91 @@ const RRECT_RING: i32 = 6;
 /// with nobody told. The writer is to refuse to write one first
 /// (`TimelineGridTileOpWriter.rrectFill` · `rrectRing`, at the bridge).
 pub(crate) const MOST_RADIUS_Q9: i32 = 1 << 15;
+
+/// A frame grid's tile as the engine keeps it: what the pass draws, stored
+/// premultiplied, for the view's screen to lay (grid-on-the-engine ⓑ, 관제
+/// 2026-11-08 16:42) — never read back for the app to raise again (관제
+/// 11-05 14:02).
+pub(crate) struct GridPicture {
+    pub(crate) texture: wgpu::Texture,
+}
+
+impl GridPicture {
+    /// A clear picture `width` × `height` pixels — None, with the last
+    /// error, for a side of none or past what the device makes.
+    pub(crate) fn new(engine: &Engine, width: u32, height: u32) -> Option<Self> {
+        let most = engine.device.limits().max_texture_dimension_2d;
+        if width == 0 || height == 0 || width > most || height > most {
+            return fail(format!("a grid tile {width} × {height}: a side is 1 to {most} pixels"));
+        }
+        let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("grid tile"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            // Drawn by the pass, laid by the screen, read for a fingerprint.
+            usage: wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        Some(Self { texture })
+    }
+}
+
+/// The atlas a stream's letters are read from: each of `words` with its
+/// top-left at its place, nothing where none lies — None for no word, and
+/// None with the last error for an atlas past what the device makes.
+pub(crate) fn atlas_of(engine: &Engine, words: &[(&WordCover, [u32; 2])]) -> Option<Option<wgpu::Texture>> {
+    if words.is_empty() {
+        return Some(None);
+    }
+    let width = words.iter().map(|(word, [x, _])| x + word.width).max().unwrap_or(0);
+    let height = words.iter().map(|(word, [_, y])| y + word.height).max().unwrap_or(0);
+    let most = engine.device.limits().max_texture_dimension_2d;
+    if width == 0 || height == 0 || width > most || height > most {
+        return fail(format!("a letters' atlas {width} × {height}: a side is 1 to {most} pixels"));
+    }
+    let mut bytes = vec![0u8; width as usize * height as usize];
+    for (word, [x, y]) in words {
+        for (row, line) in word.bytes.chunks_exact(word.width as usize).enumerate() {
+            let at = (*y as usize + row) * width as usize + *x as usize;
+            bytes[at..at + line.len()].copy_from_slice(line);
+        }
+    }
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let texture = engine.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("grid atlas"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R8Uint,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    engine.queue.write_texture(
+        texture.as_image_copy(),
+        &bytes,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width),
+            rows_per_image: Some(height),
+        },
+        size,
+    );
+    Some(Some(texture))
+}
 
 /// A frame grid's tile pass, one pipeline per texture format it has been
 /// run on.

@@ -220,3 +220,85 @@ fn letters_that_cover_nothing_are_no_picture_and_no_failure() {
         gpu_engine_faces_free(faces);
     }
 }
+
+/// `text`'s letters as the ABI is handed a word's run: one cluster a
+/// letter, `step` 64ths apart from the box's left, on a baseline at `y`.
+fn word_run_of(word: *mut Wording, text: &str, size: i32, y: i32, step: i32) -> bool {
+    let set = run(text, size, (0, y), step);
+    let mut ends = Vec::new();
+    let mut origins = Vec::new();
+    let mut end = 0;
+    for cluster in &set.clusters {
+        end += cluster.text.len() as u32;
+        ends.push(end);
+        origins.extend(cluster.origin);
+    }
+    // SAFETY: each buffer holds what it is said to.
+    unsafe {
+        gpu_engine_word_run(
+            word,
+            set.size,
+            false,
+            false,
+            text.as_ptr(),
+            text.len(),
+            ends.as_ptr(),
+            origins.as_ptr(),
+            ends.len(),
+        )
+    }
+}
+
+#[test]
+fn a_word_built_call_by_call_bakes_as_the_one_built_in_rust() {
+    let handed_faces = handed();
+    let word = gpu_engine_word_new();
+    // Two runs, in two styles: a word set in more than one.
+    assert!(word_run_of(word, "3a", 12 * 64, 12 * 64, 7 * 64), "{}", last_error());
+    assert!(word_run_of(word, "셀", 9 * 64, 12 * 64, 0), "{}", last_error());
+    // SAFETY: both are live.
+    let cover = unsafe { gpu_engine_word_bake(word, handed_faces, 1.5, 2, 24.0, 15.0, 45, 64) };
+    assert!(!cover.is_null(), "{}", last_error());
+    let mut size = [0u32; 2];
+    // SAFETY: `cover` is live and `size` holds two words.
+    unsafe { gpu_engine_word_cover_size(cover, size.as_mut_ptr()) };
+    let mut bytes = vec![7u8; (size[0] * size[1]) as usize];
+    // SAFETY: `bytes` holds its length.
+    unsafe { gpu_engine_word_cover_read(cover, bytes.as_mut_ptr(), bytes.len()) };
+
+    let runs = [run("3a", 12 * 64, (0, 12 * 64), 7 * 64), run("셀", 9 * 64, (0, 12 * 64), 0)];
+    let built = words::bake(faces(), &here(runs.into_iter().map(Shape::Letters).collect()), 1.5, 2, [24.0, 15.0], [45, 64])
+        .expect("bake");
+    assert_eq!(size, [built.width, built.height]);
+    assert!(bytes == built.bytes, "the coverage");
+    assert!(bytes.iter().any(|&alpha| alpha != 0), "LIVENESS: the word has ink");
+    // SAFETY: each came from its `_new` or its bake.
+    unsafe {
+        gpu_engine_word_cover_free(cover);
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(handed_faces);
+    }
+}
+
+#[test]
+fn a_word_the_bake_refuses_is_no_cover_and_says_why() {
+    let handed_faces = handed();
+    let word = gpu_engine_word_new();
+    assert!(word_run_of(word, "3a", 12 * 64, 12 * 64, 7 * 64));
+    // SAFETY: both are live.
+    let refused = unsafe { gpu_engine_word_bake(word, handed_faces, 1.0, 65, 14.0, 15.0, 64, 64) };
+    assert!(refused.is_null());
+    assert!(last_error().contains("each is 1 to 64"), "{}", last_error());
+    // A run's clusters are read as the letters' are: cut short is refused.
+    let text = "A셀";
+    let origins = [0; 2];
+    // SAFETY: each buffer holds what it is said to.
+    let short = unsafe { gpu_engine_word_run(word, 64, false, false, text.as_ptr(), text.len(), [1].as_ptr(), origins.as_ptr(), 1) };
+    assert!(!short);
+    assert!(last_error().contains("the letters at 4"), "{}", last_error());
+    // SAFETY: each came from its `_new`.
+    unsafe {
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(handed_faces);
+    }
+}
