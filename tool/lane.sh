@@ -97,10 +97,11 @@
 #    still the commit the rebase made. On either no it refuses and the lane
 #    stays as it is: commit the edit (or discard it) and land again.
 # 8. Land Rust that nobody tested. `flutter analyze` does not read Rust, and
-#    no suite loads the GPU engine crate — it is no dependency of the app —
-#    so a lane that changed packages/gpu_engine/rust, or the ledger its
-#    tests hold every kernel to (test/fixtures/fingerprints.json), had only
-#    the `cargo test` its author ran by hand behind it (저장 · 관제
+#    no suite runs the GPU engine crate's own tests — the app depends on it
+#    since 2026-11-07, but a suite loads what it builds, not what its tests
+#    hold it to — so a lane that changed packages/gpu_engine/rust, or the
+#    ledger its tests hold every kernel to (test/fixtures/fingerprints.json),
+#    had only the `cargo test` its author ran by hand behind it (저장 · 관제
 #    2026-11-05, gpu-engine-skeleton). Such a lane runs the crate's tests
 #    here, on this machine's GPU, in debug and in release — the shaders a
 #    debug build compiles are not the ones the app ships (cmd_crate says
