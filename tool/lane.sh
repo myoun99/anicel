@@ -25,7 +25,7 @@
 #
 # ⛔THE EIGHT THINGS THIS REFUSES TO LET YOU DO
 #
-# 1. Run a git command in a worktree that is not one. `git worktree remove`
+# 1. Run a git command in a worktree that is not one. Removing a worktree
 #    fails on Windows whenever a file is locked, and it leaves the DIRECTORY
 #    behind with no `.git` in it. `git -C <that path> rebase` then walks up and
 #    rebases THE MAIN CHECKOUT — 2026-09-07, master was rebased that way and
@@ -448,7 +448,7 @@ cmd_list() {
 }
 
 # 🚨THE SHELLS ACCUMULATE, AND THEY ARE NOT HARMLESS. `land` and `drop` both
-# try `worktree remove` and then `rm -rf`, and on Windows BOTH fail while any
+# remove the lane with `rm -rf`, and on Windows it fails while any
 # file under the directory is locked — a dart analysis server, a flutter_tester
 # that has not exited, an editor with the folder open. What is left is a
 # directory with no `.git` in it, and refusal 1 exists because `git -C` on one
@@ -486,7 +486,13 @@ cmd_drop() {
   local name="${1:-}"; [ -n "$name" ] || die "drop needs a name"
   name="$(lane_named "$name")" || exit 1
   local p; p="$(lane_path "$name")"
-  git -C "$ROOT" worktree remove "$p" --force 2>/dev/null || rm -rf "$p"
+  # ⛔rm, and not `git worktree remove`: Git for Windows deletes through a
+  # junction, and the engine's build hook stands one in a lane's .dart_tool
+  # into the trunk's hook folder while it builds — a run killed there leaves
+  # it standing. A landing emptied that folder so, under another checkout's
+  # build (the-hook-folder-lost-an-android-dep-file, 2026-11-08). rm takes
+  # the link and not what it points at; prune then forgets the worktree.
+  rm -rf "$p"
   git -C "$ROOT" worktree prune
   git -C "$ROOT" branch -D "work/$name" 2>/dev/null
   # Its stamp goes with it: a lane opened later under the same name is
@@ -1312,7 +1318,8 @@ cmd_land() {
   git -C "$ROOT" merge --ff-only "work/$name" >/dev/null || die "fast-forward refused — someone moved $TRUNK under you; run land again"
   echo "lane: merged work/$name -> $(git -C "$ROOT" log --oneline -1)"
 
-  git -C "$ROOT" worktree remove "$p" --force 2>/dev/null || rm -rf "$p" 2>/dev/null
+  # rm, and not `git worktree remove`, as `drop` says why.
+  rm -rf "$p" 2>/dev/null
   git -C "$ROOT" worktree prune
   git -C "$ROOT" branch -d "work/$name" 2>/dev/null
   # The stamp was for the lane that just merged; the name is free again.

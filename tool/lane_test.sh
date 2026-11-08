@@ -748,6 +748,32 @@ check "not one crate or package could be downloaded" \
 check "LIVENESS — and the packages the app does not depend on were resolved" \
   "$(grep -q 'pub get --offline --directory packages/gpu_engine' "$LANE_TEST_LOG" && echo resolved)" resolved
 
+say "X A LINK IN A LANE GOES WITH IT, AND WHAT IT POINTS AT STAYS: drop and land empty no folder outside the lane"
+# The engine's build hook stands a junction in a lane into the trunk's hook
+# folder while it builds, and a run killed there leaves it standing; Git for
+# Windows' `worktree remove` deleted through one
+# (the-hook-folder-lost-an-android-dep-file, 2026-11-08). Under build/,
+# which the scratch trunk ignores, so the lane is clean to land.
+link_into() {  # link_into <link> <folder>: a junction on Windows, as the hook's
+  if command -v cygpath >/dev/null 2>&1; then
+    cmd //c mklink //J "$(cygpath -w "$1")" "$(cygpath -w "$2")" >/dev/null
+  else
+    ln -s "$2" "$1"
+  fi
+}
+SHARED="$E/shared"; mkdir -p "$SHARED"; echo kept > "$SHARED/kept"
+quiet "$E/home" open linkd; mkdir -p "$HW/lane-linkd/build"
+link_into "$HW/lane-linkd/build/target" "$SHARED"
+check "LIVENESS — the link reads the folder" "$(cat "$HW/lane-linkd/build/target/kept")" kept
+quiet "$E/home" drop linkd
+check "a dropped lane takes nothing through its link" "$(ls "$SHARED")" kept
+check "and is gone" "$(test -e "$HW/lane-linkd" && echo there || echo gone)" gone
+quiet "$E/home" open linkl; commit "$HW/lane-linkl" x.txt "a lane with a link"
+mkdir -p "$HW/lane-linkl/build"; link_into "$HW/lane-linkl/build/target" "$SHARED"
+O=$(out "$E/home" land linkl)
+has "a lane with a link lands" "$O" "merged work/linkl"
+check "and takes nothing through it either" "$(ls "$SHARED")" kept
+
 echo
 echo "== $FAILS failed"
 exit "$FAILS"
