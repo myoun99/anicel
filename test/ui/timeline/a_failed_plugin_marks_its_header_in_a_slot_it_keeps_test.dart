@@ -3,13 +3,21 @@ import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_outcomes.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/a_plugin_that_shifts.dart';
+import '../../helpers/cel_text_tool_harness.dart'
+    show textToolCutId, textToolProject;
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️a-failed-plugin-shows-the-cel-silently-Q1 (유저 2026-11-08): 「원래 셀
 /// + 머리를 회색으로, 이름 뒤 ⚠ 칸은 늘 잡아 둔다」 — a plugin effect's
@@ -94,6 +102,71 @@ void main() {
         reason: 'it greys as not on this device, and runs nothing');
     expect(failedAt3(effect, owner: const LayerId('b')), isFalse,
         reason: 'another row\'s effect of the same id');
+  });
+
+  test('a row\'s header asks of the row it heads — another row\'s effect '
+      'of the same id is another', () {
+    final outcomes = FxPluginOutcomes();
+    addTearDown(outcomes.dispose);
+    final a = Layer(id: row, name: 'A', frames: const [], effects: [effect]);
+    final b = Layer(
+      id: const LayerId('b'),
+      name: 'B',
+      frames: const [],
+      effects: [effect],
+    );
+    bool failedAt3(Layer heading) => propertyLanesForRow(
+      layer: heading,
+      rows: [a, b],
+      expandedGroupKeys: const {},
+      valueSourceAt: null,
+      poseCentre: null,
+      hasPlugin: (_) => true,
+      pluginOutcomes: outcomes,
+    ).firstWhere((lane) => lane.pluginFailures != null).pluginFailures!
+        .failedAt(3);
+
+    tell(outcomes, 3, failed: true);
+    expect(failedAt3(a), isTrue);
+    expect(failedAt3(b), isFalse);
+  });
+
+  testWidgets('the storyboard\'s V row header asks of its track\'s chain', (
+    tester,
+  ) async {
+    final plugins = await installedShiftingFxPlugin(tester);
+    final project = textToolProject();
+    final track = project.tracks.single;
+    final fx = shiftingFxPluginLayerEffect();
+    final session = EditorSessionManager(
+      initialProject: project.copyWith(
+        tracks: [
+          track.copyWith(effects: [fx], lanesExpanded: true),
+        ],
+      ),
+      fxPlugins: plugins,
+    );
+    addTearDown(session.dispose);
+    await pumpStoryboardHostOn(tester, session);
+    final carrier = trackTransformLaneCarrierId(track.id);
+    final mark = find.byKey(
+      ValueKey<String>(
+        'storyboard-lane-group-plugin-failed-$carrier-'
+        '${effectGroupLaneId(fx.id)}',
+      ),
+    );
+    expect(mark, findsOneWidget, reason: '⛔fixture: the V row is open');
+    Color? markColour() => tester.widget<Icon>(mark).color;
+    expect(markColour(), Colors.transparent);
+
+    plugins.outcomes.toldFor(
+      (owner: track.id, effect: fx.id, wearer: track.id),
+      sampleLayerEffectAt(fx, 0, worn: null),
+      cut: textToolCutId,
+      frame: 0,
+    )(failed: true);
+    await tester.pumpAndSettle();
+    expect(markColour(), isNot(Colors.transparent));
   });
 
   testWidgets('the mark keeps its place; a failure at the frame the row '
