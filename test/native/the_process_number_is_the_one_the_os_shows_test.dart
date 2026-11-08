@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/a_reading_held_between.dart';
+
 /// 🚨THE PANEL'S BIG NUMBER MUST BE THE ONE THE USER IS LOOKING AT.
 ///
 /// 유저 2026-09-10: 「같은수로 하고싶은데 다른 멀티플랫폼도 같아지는건가?」 —
@@ -45,9 +47,11 @@ void main() {
     expect(QaMemory.processFootprintBytes, greaterThan(0));
   });
 
-  test('the reading follows the private bytes we touch', () {
+  test('the reading follows the private bytes we touch, and the RAM does '
+      'not', () {
     const megabytes = 64;
     const ballastBytes = megabytes * 1024 * 1024;
+    final ram = QaMemory.physicalMemoryBytes;
     final before = QaMemory.processFootprintBytes!;
     final ballast = Uint8List(ballastBytes);
     // One byte per page: allocating is not enough, the pages have to be
@@ -63,8 +67,20 @@ void main() {
           'a counter that ignored $megabytes MB of freshly touched private '
           'pages is not measuring this process',
     );
+    expect(
+      QaMemory.physicalMemoryBytes,
+      ram,
+      reason:
+          'the machine\'s RAM moved with $megabytes MB this process took — '
+          'that is what it holds or what is free, not the RAM',
+    );
     // Keeps the ballast alive across the second reading.
     expect(ballast[0], 1);
+  });
+
+  test('a desktop gives this app no limit of its own — none, not a limit '
+      'of 0', () {
+    expect(QaMemory.appMemoryLimitBytes, isNull);
   });
 
   test('on Windows it is the PRIVATE working set, not the resident one', () {
@@ -120,4 +136,20 @@ void main() {
           'whole DLL set below the resident one',
     );
   }, skip: Platform.isWindows ? null : 'Windows-only separation');
+
+  test('the CENSUS reads the RAM and what more the process may take from '
+      'the engine', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    expect(
+      collectMemoryCensus([session]).deviceBytes,
+      QaMemory.physicalMemoryBytes,
+    );
+    expectReadingHeldBetween(
+      () => QaMemory.availableMemoryBytes,
+      () => collectMemoryCensus([session]).availableBytes,
+    );
+  });
 }
