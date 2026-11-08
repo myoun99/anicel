@@ -120,6 +120,8 @@ void main() {
     );
     final shown = tester.layers.whereType<TextureLayer>().single;
     expect(shown.rect, const Rect.fromLTWH(0, 0, 150, 100));
+    // The id the screen presented by: a texture on a surface has 0.
+    expect(shown.textureId, 0);
   });
 
   testWidgets('a scroll lays the tile again where the row went', (
