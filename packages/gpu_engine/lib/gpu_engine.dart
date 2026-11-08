@@ -339,6 +339,15 @@ class GpuPool {
   /// Lets [tile] go; false where no tile is held there.
   bool release(GpuTile tile) => rust.poolRelease(_pool, tile.page, tile.slot);
 
+  /// Reads [tiles], each held, back into [into] — [gpuTileBytes] each, in
+  /// order: waits for the GPU (rust/src/kernels/pool/mod.rs `Pool::read`).
+  void read(List<GpuTile> tiles, Pointer<Uint8> into) => using((arena) {
+    final words = _tileWords(arena, tiles.length, 1, tiles);
+    if (!rust.poolRead(_pool, _engine._engine, words, tiles.length, into)) {
+      throw StateError(_lastError());
+    }
+  });
+
   /// Makes no page more past [mostBytes]: the pages made stay — till
   /// [giveBackPast] — and the next is made only within it.
   void makeNoPagePast(int mostBytes) => rust.poolMostBytes(_pool, mostBytes);

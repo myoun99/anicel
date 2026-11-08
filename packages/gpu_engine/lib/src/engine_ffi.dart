@@ -188,6 +188,23 @@ external int poolStore(
 )
 external bool poolRelease(Pointer<Pool> pool, int page, int slot);
 
+@Native<
+  Bool Function(
+    Pointer<Pool>,
+    Pointer<Engine>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Uint8>,
+  )
+>(symbol: 'gpu_engine_pool_read')
+external bool poolRead(
+  Pointer<Pool> pool,
+  Pointer<Engine> engine,
+  Pointer<Uint32> tiles,
+  int count,
+  Pointer<Uint8> into,
+);
+
 @Native<Void Function(Pointer<Pool>, Uint64)>(
   symbol: 'gpu_engine_pool_most_bytes',
 )

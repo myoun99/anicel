@@ -135,7 +135,7 @@ impl Engine {
     }
 
     /// A buffer of `size` bytes a copy puts and the CPU maps.
-    fn readback(&self, size: u64) -> wgpu::Buffer {
+    pub(crate) fn readback(&self, size: u64) -> wgpu::Buffer {
         self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("readback"),
             size,
@@ -162,9 +162,20 @@ impl Engine {
     /// `buffer`'s bytes, mapped once the GPU is done with all that was
     /// submitted.
     fn mapped(&self, buffer: &wgpu::Buffer) -> Option<Vec<u8>> {
+        let mut bytes = vec![0; buffer.size() as usize];
+        self.mapped_into(buffer, &mut bytes)?;
+        Some(bytes)
+    }
+
+    /// `buffer`'s bytes — one the CPU maps, as long as `into` — copied into
+    /// `into`, mapped once the GPU is done with all that was submitted.
+    pub(crate) fn mapped_into(&self, buffer: &wgpu::Buffer, into: &mut [u8]) -> Option<()> {
         self.map(buffer)?;
         match buffer.get_mapped_range(..) {
-            Ok(view) => Some(view.to_vec()),
+            Ok(view) => {
+                into.copy_from_slice(&view);
+                Some(())
+            }
             Err(error) => fail(format!("get_mapped_range: {error}")),
         }
     }

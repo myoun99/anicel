@@ -531,3 +531,84 @@ fn the_c_abi_moves_a_pool_s_bytes_counts_its_pages_and_gives_them_back() {
         gpu_engine_pool_free(pool);
     }
 }
+
+// A read puts each held tile's bytes in the order asked, from whichever
+// page it is on, as a pass reads them — what a save, a cel cooled and an
+// undo record parked read back of the canonical tiles.
+#[test]
+fn a_read_puts_each_held_tile_s_bytes_in_the_order_asked_from_any_page() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let cel = pool.cel();
+    let bytes: Vec<Vec<u8>> = (0..3).map(|n| le_bytes(&tile(n))).collect();
+    let tiles: Vec<&[u8]> = bytes.iter().map(Vec::as_slice).collect();
+    let stored = pool.store(engine, cel, &tiles).expect("store");
+    assert_eq!(stored, [at(0, 0), at(0, 1), at(1, 0)], "two pages");
+    let asked = [stored[2], stored[0], stored[1], stored[0]];
+    let mut into = vec![0xA5; asked.len() * TILE_BYTES as usize];
+    pool.read(engine, &asked, &mut into).expect("read");
+    assert!(into == [&bytes[2], &bytes[0], &bytes[1], &bytes[0]].map(Vec::as_slice).concat());
+    assert!(into == read_back(&pool, &asked), "as a pass reads them");
+    assert_eq!(pool.read(engine, &[], &mut []), Some(()), "none asked, none read");
+}
+
+// A read of a tile none holds — a slot free, a page past the pool's or one
+// given back — or into other bytes than the tiles' is refused, and puts
+// nothing.
+#[test]
+fn a_read_of_a_tile_none_holds_or_into_other_bytes_is_refused() {
+    let engine = rig().engine;
+    let mut pool = Pool::sized(2, MOST_NAMED, u64::MAX).expect("pool");
+    let places = cels_a_page_each(engine, &mut pool, 2);
+    let held = places[1][0];
+    pool.release(places[1][1]).expect("release");
+    let mut into = vec![0xA5; 2 * TILE_BYTES as usize];
+    for (asked, why) in [
+        (places[1][1], "a slot free"),
+        (at(2, 0), "a page past the pool's"),
+        (at(1, 2), "a slot past a page's"),
+    ] {
+        assert_eq!(pool.read(engine, &[held, asked], &mut into), None, "{why}");
+    }
+    assert!(into.iter().all(|&byte| byte == 0xA5), "refused, it put nothing");
+    assert_eq!(pool.read(engine, &[held], &mut into), None, "into two tiles' bytes");
+    for &at in &places[0] {
+        pool.release(at).expect("release");
+    }
+    pool.give_back(engine, 0);
+    assert_eq!(pool.pages()[0].size(), TILE_BYTES, "its first page given back");
+    let one = &mut into[..TILE_BYTES as usize];
+    assert_eq!(pool.read(engine, &[places[0][0]], one), None, "a page given back");
+    assert_eq!(pool.read(engine, &[held], one), Some(()), "a page held reads");
+}
+
+// The C ABI reads back the tiles its words name, in their order, and
+// refuses a word that names none and a tile none holds.
+#[test]
+fn the_c_abi_reads_back_the_tiles_its_words_name() {
+    use super::{
+        gpu_engine_pool_cel, gpu_engine_pool_free, gpu_engine_pool_new, gpu_engine_pool_read, gpu_engine_pool_store,
+    };
+    use crate::kernels::composite::NO_TILE;
+    let engine = rig().engine;
+    let bytes: Vec<Vec<u8>> = (0..2).map(|n| le_bytes(&tile(n))).collect();
+    let tiles: Vec<*const u8> = bytes.iter().map(|tile| tile.as_ptr()).collect();
+    let (mut pages, mut slots) = ([u16::MAX; 2], [u16::MAX; 2]);
+    let mut into = vec![0; 2 * TILE_BYTES as usize];
+    // SAFETY: the engine is the tests' own, alive for the run; the tiles,
+    // pages, slots and words hold two each, and `into` two tiles' bytes.
+    unsafe {
+        let pool = gpu_engine_pool_new(engine, u64::MAX);
+        let cel = gpu_engine_pool_cel(pool);
+        let stored = gpu_engine_pool_store(pool, engine, cel, tiles.as_ptr(), 2, pages.as_mut_ptr(), slots.as_mut_ptr());
+        assert_eq!(stored, 2);
+        let words = [at(pages[1], slots[1]).word(), at(pages[0], slots[0]).word()];
+        assert!(gpu_engine_pool_read(pool, engine, words.as_ptr(), 2, into.as_mut_ptr()));
+        assert!(into == [bytes[1].as_slice(), &bytes[0]].concat());
+        let none = [words[0], NO_TILE];
+        assert!(!gpu_engine_pool_read(pool, engine, none.as_ptr(), 2, into.as_mut_ptr()), "a word of none");
+        let free = [words[0], at(pages[0], slots[0] + 2).word()];
+        assert!(!gpu_engine_pool_read(pool, engine, free.as_ptr(), 2, into.as_mut_ptr()), "a slot free");
+        gpu_engine_pool_free(pool);
+    }
+}

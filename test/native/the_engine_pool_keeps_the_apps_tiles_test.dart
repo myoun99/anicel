@@ -11,7 +11,8 @@ import 'package:anicel/src/native/app_gpu_engine.dart';
 /// The app stores its tiles in the engine's pool through the package's
 /// Dart (screen-on-the-engine): the places come back in the order the tiles
 /// went, a cel shares a page where it has room, a slot let go is free
-/// once, and the pages nobody holds go back.
+/// once, the pages nobody holds go back, and a tile reads back as its
+/// bytes.
 /// What lands in a slot is the engine's own tests' to pin
 /// (rust/src/kernels/pool/tests.rs) — here, what Dart makes of its C ABI.
 void main() {
@@ -86,5 +87,24 @@ void main() {
     expect(pool.bytes, page, reason: 'within the bytes asked');
     pool.giveBackPast(0);
     expect(pool.bytes, 0);
+  });
+
+  test('the tiles read back are their bytes, in the order asked', () {
+    final bytes = made(2);
+    for (var tile = 0; tile < 2; tile++) {
+      bytes[tile].asTypedList(gpuTileBytes)
+        ..fillRange(0, gpuTileBytes, tile + 1)
+        ..[tile * 4 + 1] = 0xC3;
+    }
+    final [first, second] = pool.store(pool.cel(), bytes);
+    final into = calloc<Uint8>(2 * gpuTileBytes);
+    addTearDown(() => calloc.free(into));
+
+    pool.read([second, first], into);
+    final read = into.asTypedList(2 * gpuTileBytes);
+    expect(read.sublist(0, gpuTileBytes), bytes[1].asTypedList(gpuTileBytes));
+    expect(read.sublist(gpuTileBytes), bytes[0].asTypedList(gpuTileBytes));
+    pool.release(second);
+    expect(() => pool.read([second], into), throwsStateError);
   });
 }

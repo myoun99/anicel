@@ -273,18 +273,53 @@ impl Pool {
         Some(())
     }
 
+    /// The bytes of the tiles at `places`, each held, copied into `into` —
+    /// a tile's bytes each, in order — in one submit and one map: what a
+    /// save, a cel cooled and an undo record parked read of the tiles the
+    /// pool holds (connection-round-checklist B ⓓ). Nothing where one is
+    /// not held or `into` is not their bytes.
+    pub(crate) fn read(&self, engine: &Engine, places: &[TileAt], into: &mut [u8]) -> Option<()> {
+        let bytes = places.len() as u64 * TILE_BYTES;
+        if into.len() as u64 != bytes {
+            return fail(format!("{} bytes to read {} tiles into; they hold {bytes}", into.len(), places.len()));
+        }
+        for &at in places {
+            self.holding(at)?;
+        }
+        if places.is_empty() {
+            return Some(());
+        }
+        let readback = engine.readback(bytes);
+        let mut encoder = engine
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        for (to, at) in (0..).step_by(TILE_BYTES as usize).zip(places) {
+            let from = u64::from(at.slot) * TILE_BYTES;
+            encoder.copy_buffer_to_buffer(&self.buffers[usize::from(at.page)], from, &readback, to, TILE_BYTES);
+        }
+        engine.queue.submit([encoder.finish()]);
+        engine.mapped_into(&readback, into)
+    }
+
     /// The page of the tile at `at`, held; nothing where the pool has no
     /// such slot or none holds it.
     fn held(&mut self, at: TileAt) -> Option<&mut Page> {
+        self.holding(at)?;
+        self.pages[usize::from(at.page)].as_mut()
+    }
+
+    /// Whether a tile is held at `at`; nothing where the pool has no such
+    /// slot or none holds it.
+    fn holding(&self, at: TileAt) -> Option<()> {
         let pages = self.pages.len();
-        let book = match self.pages.get_mut(usize::from(at.page)) {
+        let book = match self.pages.get(usize::from(at.page)) {
             Some(Some(book)) => book,
             Some(None) => return fail(format!("{at:?} on a page given back")),
             None => return fail(format!("{at:?} of a pool of {pages} pages")),
         };
         match book.holds.get(usize::from(at.slot)).copied() {
             Some(0) => fail(format!("{at:?} is free")),
-            Some(_) => Some(book),
+            Some(_) => Some(()),
             None => fail(format!("{at:?} past a page of {} tiles", book.holds.len())),
         }
     }
@@ -469,6 +504,36 @@ pub unsafe extern "C" fn gpu_engine_pool_release(pool: *mut Pool, page: u16, slo
     // SAFETY: see the function's contract.
     let pool = unsafe { &mut *pool };
     pool.release(TileAt { page, slot }).is_some()
+}
+
+/// Reads the `count` tiles `tiles` names — each a tile's word
+/// ([`TileAt::word`]) — back into `into`, a tile's bytes each, in order
+/// ([`Pool::read`]). False where one is not held; see the last error.
+///
+/// # Safety
+/// `pool` and `engine` are live and the pool was made on `engine`; `tiles`
+/// holds `count` words and `into` the bytes of `count` tiles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_pool_read(
+    pool: *const Pool,
+    engine: *const Engine,
+    tiles: *const u32,
+    count: usize,
+    into: *mut u8,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (pool, engine) = unsafe { (&*pool, &*engine) };
+    // SAFETY: `tiles` holds `count` words, `into` the bytes of `count` tiles.
+    let (words, into) = unsafe {
+        (
+            std::slice::from_raw_parts(tiles, count),
+            std::slice::from_raw_parts_mut(into, count * TILE_BYTES as usize),
+        )
+    };
+    let Some(places) = words.iter().copied().map(TileAt::of_word).collect::<Option<Vec<_>>>() else {
+        return fail::<()>("a tile to read named by no tile's word").is_some();
+    };
+    pool.read(engine, &places, into).is_some()
 }
 
 /// Makes no page more past `most_bytes` ([`Pool::set_most_bytes`]) — the

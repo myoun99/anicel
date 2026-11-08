@@ -143,6 +143,11 @@ impl TileAt {
     pub(crate) fn word(self) -> u32 {
         u32::from(self.page) << 16 | u32::from(self.slot)
     }
+
+    /// The tile `word` names ([`Self::word`]) — none for [`NO_TILE`].
+    pub(crate) fn of_word(word: u32) -> Option<Self> {
+        (word != NO_TILE).then(|| Self { page: (word >> 16) as u16, slot: word as u16 })
+    }
 }
 
 /// A row's picture on the canvas's tile grid: the tiles of the rectangle
@@ -163,10 +168,7 @@ impl TileSet {
     /// [`TileAt::word`], or [`NO_TILE`] — as the app hands one over the C
     /// ABI: the plan's tile sets and the ink scan's cel alike.
     pub(crate) fn from_words(x0: i32, y0: i32, columns: u32, rows: u32, words: &[u32]) -> Self {
-        let tiles = words
-            .iter()
-            .map(|&word| (word != NO_TILE).then(|| TileAt { page: (word >> 16) as u16, slot: word as u16 }))
-            .collect();
+        let tiles = words.iter().copied().map(TileAt::of_word).collect();
         Self { x0, y0, columns, rows, tiles }
     }
 
