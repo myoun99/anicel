@@ -7,6 +7,7 @@ import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
 import '../../../tool/bash_executable.dart';
 import '../../../tool/machine_variables.dart';
+import 'target_link.dart';
 
 // Builds rust/ with the toolchain pinned in rust/rust-toolchain.toml and
 // ships it as the code asset that lib/src/engine_ffi.dart binds to.
@@ -77,16 +78,17 @@ void main(List<String> args) async {
                 '${folder.toFilePath()}, under its turn, '
                 'with Rust from $homes',
       );
-      _aimTarget(input.outputDirectory, folder);
-      final built = BuildOutputBuilder();
-      await RustBuilder(
-        assetName: _asset,
-        extraCargoEnvironmentVariables: {
-          'QA_CHECKOUT': input.packageRoot.resolve('rust/').toFilePath(),
-          if (windows) 'GPU_ENGINE_DXC_OUT': dxc.toFilePath(),
-        },
-      ).run(input: input, output: built);
-      _shipCopies(built.build(), input, output);
+      await withTargetAimed(input.outputDirectory, folder, () async {
+        final built = BuildOutputBuilder();
+        await RustBuilder(
+          assetName: _asset,
+          extraCargoEnvironmentVariables: {
+            'QA_CHECKOUT': input.packageRoot.resolve('rust/').toFilePath(),
+            if (windows) 'GPU_ENGINE_DXC_OUT': dxc.toFilePath(),
+          },
+        ).run(input: input, output: built);
+        _shipCopies(built.build(), input, output);
+      });
     } finally {
       await turn.release();
     }
@@ -135,39 +137,6 @@ Future<int?> _againWithThisMachinesRustHomes(List<String> args) async {
     mode: ProcessStartMode.inheritStdio,
   );
   return again.exitCode;
-}
-
-/// The builder builds into `target` of the hook's output folder, and the
-/// folder is fixed on its command line — so `target` is a link to [folder].
-void _aimTarget(Uri outputDirectory, Uri folder) {
-  final target = outputDirectory.resolve('target').toFilePath();
-  final was = FileSystemEntity.typeSync(target, followLinks: false);
-  // ⛔The link itself, never through it: it is the trunk's target.
-  if (was == FileSystemEntityType.link) Link(target).deleteSync();
-  // A hook from before the link built there itself.
-  if (was == FileSystemEntityType.directory) {
-    Directory(target).deleteSync(recursive: true);
-  }
-  Directory.fromUri(folder).createSync(recursive: true);
-  if (!Platform.isWindows) {
-    Link(target).createSync(folder.toFilePath());
-    return;
-  }
-  // ⛔A junction, not the symbolic link Dart's Link makes on Windows:
-  // rust/build.rs unpacks the DXC zip into its OUT_DIR, inside this
-  // folder, with Windows' tar, which will not unpack through a symbolic
-  // link ("too many symbolic link levels") and does through a junction
-  // (measured 2026-11-07). A junction needs no privilege either.
-  final made = Process.runSync('cmd', [
-    '/c',
-    'mklink',
-    '/J',
-    target,
-    folder.toFilePath(),
-  ]);
-  if (made.exitCode != 0) {
-    throw StateError('mklink /J $target: ${made.stdout}${made.stderr}');
-  }
 }
 
 /// The builder's library, copied beside the hook's output and shipped
