@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/icon_button_box.dart' show FaceGround;
 import 'package:anicel/src/ui/widgets/named.dart';
 
 import '../../helpers/named_finders.dart';
@@ -407,11 +408,12 @@ void main() {
           if (row != _two.draw) {
             // Its plate asks which layer the row stands for now, as its eye
             // does (I-22-rest); a plate is one box, so nothing builds under
-            // it.
+            // it — and the ground it says to its chips (Q12) tells none of
+            // them while it holds.
             expect(
               {
                 for (final type in types) '$type',
-              }.difference({'$RailEyeBuilder', '_StoodPlate'}),
+              }.difference({'$RailEyeBuilder', '_StoodPlate', '$FaceGround'}),
               isEmpty,
               reason: '$row shows what the row it was built for showed',
             );

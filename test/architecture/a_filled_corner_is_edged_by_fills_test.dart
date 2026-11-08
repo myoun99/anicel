@@ -21,6 +21,10 @@ import '../helpers/source_ledger.dart';
 /// passing behind it — the command pill, an outlined icon button — and a
 /// clear flyout chip, a pill strip, a group tab or a tip cell has its
 /// hover ink behind it and keeps its stroke: no scan tells the two apart.
+/// ↩️🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버 ·
+/// 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」): the hover
+/// is no longer behind them — it is their inside, over the ground they stand
+/// on (`FaceGround`) — so the four are faces too, edged by fills.
 void main() {
   test('no ShapeDecoration under lib/ is handed both a colour and a side, '
       'outside the ledger — and every ledger entry still is', () {
@@ -70,11 +74,6 @@ final e = SuperellipseFace(
 /// Faces handed a colour and a side that stroke it on purpose, by
 /// `path #k` — the k-th such face in its file.
 const _strokedOnPurpose = <String, String>{
-  'lib/src/ui/widgets/panel_flyout.dart #1':
-      'never both: a plate has a ground and no side, a clear chip a side and '
-      'no colour — and the clear chip keeps its stroke, its hover ink lying '
-      'behind it on the button\'s Material '
-      '(a-live-dock-frame-costs-a-whole-draw-Q11)',
   'lib/src/ui/export/export_preset_rail.dart #1':
       'a translucent wash or none inside an outline, in the export window — '
       'drawn live, never from an image '
