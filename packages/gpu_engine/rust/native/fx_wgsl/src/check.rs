@@ -281,12 +281,8 @@ fn body(code: &Code<'_>, function: &Function) -> Result<(), Refusal> {
     for (handle, expression) in function.expressions.iter() {
         let span = function.expressions.get_span(handle);
         let refuse = |why: String| Err(Refusal::at(code.plugin, span, why));
-        let ty = code.info[handle].ty.inner_with(&module.types);
-        if let Some(why) = refused_type(ty) {
+        if let Some(why) = refused_type(code.info[handle].ty.inner_with(&module.types)) {
             return refuse(why);
-        }
-        if !code.render && points_at_group(ty) {
-            return refuse(SHARED_IN_RENDER.into());
         }
         match *expression {
             Expression::Literal(_)
@@ -334,7 +330,9 @@ fn body(code: &Code<'_>, function: &Function) -> Result<(), Refusal> {
 }
 
 /// Why shared memory, a barrier or an atomic outside `anicel_render` is
-/// refused: the proof of group.rs does not follow calls.
+/// refused: the proof of group.rs does not follow calls. A helper reaches
+/// shared memory only by naming it — naga refuses a `ptr<workgroup, …>`
+/// parameter (no `unrestricted_pointer_parameters`; tests.rs pins that).
 const SHARED_IN_RENDER: &str = "shared memory, barriers and atomics are anicel_render's own: the host's proof \
                                 that the group meets them alike does not follow calls";
 
@@ -386,15 +384,6 @@ fn statements(code: &Code<'_>, block: &naga::Block) -> Result<(), Refusal> {
         }
     }
     Ok(())
-}
-
-/// Whether a value points at a group's shared memory — a helper handed
-/// `&tile` would read and write it where group.rs does not look.
-fn points_at_group(ty: &TypeInner) -> bool {
-    matches!(
-        *ty,
-        TypeInner::Pointer { space: AddressSpace::WorkGroup, .. } | TypeInner::ValuePointer { space: AddressSpace::WorkGroup, .. }
-    )
 }
 
 /// The variant's name of an IR node, for a refusal.

@@ -1019,3 +1019,46 @@ fn zero_like(a: &Val) -> Val {
         _ => Val::U32(0),
     }
 }
+
+#[cfg(test)]
+mod meet_tests {
+    use super::{At, BreakOnPanic, Meet};
+
+    #[test]
+    fn a_group_meeting_at_different_places_stops_rather_than_waits() {
+        // One invocation at a barrier, the other already at the group's
+        // end: a hole in the check's proof, which on a device would hang.
+        let meet = Meet::new(2);
+        let (first, second) = std::thread::scope(|scope| {
+            let at = |place: At| {
+                let meet = &meet;
+                scope.spawn(move || {
+                    let _breaks = BreakOnPanic(meet);
+                    meet.meet(place, || {});
+                })
+            };
+            let first = at(At::Barrier(1));
+            let second = at(At::Group);
+            (first.join().is_err(), second.join().is_err())
+        });
+        assert_eq!((first, second), (true, true), "both stop, neither waits");
+    }
+
+    #[test]
+    fn a_group_meeting_at_one_place_goes_on_together() {
+        let meet = Meet::new(3);
+        let lasts = std::sync::atomic::AtomicU32::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..3 {
+                scope.spawn(|| {
+                    for round in 0..4 {
+                        meet.meet(At::Barrier(round), || {
+                            lasts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        });
+                    }
+                });
+            }
+        });
+        assert_eq!(lasts.into_inner(), 4, "the last to come runs `last` once a meeting");
+    }
+}

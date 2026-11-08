@@ -436,7 +436,7 @@ fn a_barrier_under_a_uniform_load_opens() {
 fn what_the_group_check_refuses_and_why() {
     let tile = "var<workgroup> tile: array<u32, 256>;";
     let count = "var<workgroup> count: atomic<u32>;";
-    let cases: [(&str, String, &str); 17] = [
+    let cases: [(&str, String, &str); 20] = [
         (
             "an in-place tree sum (Q10)",
             indexed(tile, "tile[i] = 1u;\nworkgroupBarrier();\ntile[i] = tile[i] + tile[min(i + 1u, 255u)];"),
@@ -483,6 +483,19 @@ fn what_the_group_check_refuses_and_why() {
             "left by the whole group at once",
         ),
         (
+            "a barrier's loop bound by a local holding the index (a)",
+            indexed("", "var n = 0u;\nn = i;\nfor (var k = 0u; k < n; k++) { workgroupBarrier(); }"),
+            "left by the whole group at once",
+        ),
+        (
+            "a barrier's loop bound by a local a helper wrote (a)",
+            indexed(
+                "fn write_x(p: ptr<function, u32>) { *p = u32(anicel_here().x); }",
+                "var n = 0u;\nwrite_x(&n);\nfor (var k = 0u; k < n; k++) { workgroupBarrier(); }",
+            ),
+            "left by the whole group at once",
+        ),
+        (
             "a barrier passed by after a return (a)",
             indexed("", "loop { if (i == 0u) { return; } break; }\nworkgroupBarrier();"),
             "met by the whole group",
@@ -491,6 +504,11 @@ fn what_the_group_check_refuses_and_why() {
             "shared memory in a helper",
             plugin(&format!("{tile}\nfn put() {{ tile[0] = 1u; }}"), "put();", "return 0u;"),
             "anicel_render's own",
+        ),
+        (
+            "shared memory handed to a helper (naga refuses the pointer)",
+            plugin(&format!("{tile}\nfn put(p: ptr<workgroup, array<u32, 256>>) {{ (*p)[0] = 1u; }}"), "put(&tile);", "return 0u;"),
+            "'put' is invalid",
         ),
         ("a storage barrier", plugin("", "storageBarrier();", "return 0u;"), "the one barrier"),
         ("too much shared memory", indexed("var<workgroup> big: array<u32, 4096>;", "big[i] = 1u;"), "at most 16368 bytes"),
