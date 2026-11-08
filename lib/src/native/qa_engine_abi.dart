@@ -328,13 +328,13 @@ import '../core/on_a_worker.dart';
 ///   display's timing and the pen ledger are the Rust engine's
 ///   (native/display, native/pen, connection-round-checklist H), which
 ///   `QaDisplayTiming` and `QaPenLedger` open in the GPU engine's library.
-/// - v67: `qa_audio_resample*` · `qa_audio_resampler_*` and
+/// - v66: `qa_audio_resample*` · `qa_audio_resampler_*` and
 ///   `qa_audio_denoise_f32` leave the C: the conform's resampler and the
 ///   voice take's denoiser are the Rust engine's (native/audio_mix,
 ///   native/audio_denoise, connection-round-checklist H), which
 ///   `qa_audio_resampler.dart` and `qa_audio_denoiser.dart` ask in the GPU
 ///   engine's library.
-const int kQaEngineAbiVersion = 67;
+const int kQaEngineAbiVersion = 66;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

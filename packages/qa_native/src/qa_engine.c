@@ -6626,8 +6626,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v65: qa_display_* and Apple's qa_pen_ledger_* leave - the display's timing
 // and the pen ledger are the Rust engine's (native/display, native/pen),
 // which the app opens in the GPU engine's library.
-// v67: qa_audio_resample*, qa_audio_resampler_* and qa_audio_denoise_f32
+// v66: qa_audio_resample*, qa_audio_resampler_* and qa_audio_denoise_f32
 // leave - the conform's resampler and the voice take's denoiser are the
 // Rust engine's (native/audio_mix, native/audio_denoise), which the app
 // opens in the GPU engine's library.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 67; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 66; }
