@@ -11,6 +11,7 @@ mod tests;
 use crate::device::Engine;
 use crate::kernels::letters::words::WordCover;
 
+use super::lay::{GridLay, Laid};
 use super::{GridPicture, GridTile, atlas_of};
 
 /// The tile pass, compiled for each format the first time it draws one.
@@ -100,4 +101,65 @@ pub unsafe extern "C" fn gpu_engine_grid_draw(
         return false;
     };
     grid.run(engine, &picture.texture, 0, ops, atlas.as_ref()).is_some()
+}
+
+/// The screen pass that lays tiles on a view's screen ([`GridLay`]),
+/// compiled for each format the first time it lays onto one.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_grid_lay_new() -> *mut GridLay {
+    Box::into_raw(Box::new(GridLay::new()))
+}
+
+/// # Safety
+/// `lay` came from `gpu_engine_grid_lay_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_lay_free(lay: *mut GridLay) {
+    if !lay.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(lay) });
+    }
+}
+
+/// The pixels `rect` of `target` — [left, top, right, bottom) — clear, and
+/// the `count` tiles `pictures` laid over them, the i-th from `boxes[8i ..
+/// 8i + 4]` of its own pixels onto `boxes[8i + 4 .. 8i + 8]` of the
+/// screen's, each [left, top, right, bottom) ([`GridLay::lay`]); waits for
+/// the GPU. `target` is what the view shows: a surface's texture
+/// (`gpu_engine_surface_texture`) or a window's next image
+/// (`gpu_engine_window_target`). False on failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`; `rect` holds four words,
+/// `pictures` `count` tiles and `boxes` `8 × count` doubles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_grid_lay(
+    lay: *mut GridLay,
+    engine: *const Engine,
+    target: *const wgpu::Texture,
+    rect: *const u32,
+    pictures: *const *const GridPicture,
+    boxes: *const f64,
+    count: usize,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (lay, engine, target) = unsafe { (&mut *lay, &*engine, &*target) };
+    // SAFETY: see the function's contract.
+    let (rect, pictures, boxes) = unsafe {
+        (
+            *rect.cast::<[u32; 4]>(),
+            std::slice::from_raw_parts(pictures, count),
+            std::slice::from_raw_parts(boxes, 8 * count),
+        )
+    };
+    let laid: Vec<Laid> = pictures
+        .iter()
+        .zip(boxes.chunks_exact(8))
+        .map(|(&picture, edges)| Laid {
+            // SAFETY: each tile is live (the function's contract).
+            picture: unsafe { &*picture },
+            from: [edges[0], edges[1], edges[2], edges[3]],
+            onto: [edges[4], edges[5], edges[6], edges[7]],
+        })
+        .collect();
+    lay.lay(engine, target, rect, &laid).is_some()
 }

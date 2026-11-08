@@ -1483,7 +1483,7 @@ class GpuGrid {
 }
 
 /// A frame grid's tile as the engine keeps it: [width] × [height] pixels,
-/// premultiplied, drawn by [GpuGrid.draw].
+/// straight, drawn by [GpuGrid.draw] and laid by [GpuGridLay.lay].
 class GpuGridPicture {
   factory GpuGridPicture(GpuEngine engine, int width, int height) {
     final picture = rust.gridPictureNew(engine._engine, width, height);
@@ -1500,6 +1500,61 @@ class GpuGridPicture {
   final int height;
 
   void free() => rust.gridPictureFree(_picture);
+}
+
+/// A tile laid on a view's screen: the part [from] of its [picture], in its
+/// pixels, onto the part [onto] of the screen, in the screen's — each
+/// (left, top, right, bottom).
+typedef GpuGridLaid = ({
+  GpuGridPicture picture,
+  (double, double, double, double) from,
+  (double, double, double, double) onto,
+});
+
+/// THE VIEW'S SCREEN OF FRAME GRID TILES (rust/src/kernels/timeline/grid/
+/// lay.rs): the tiles a sheet's rows lay, onto what the view shows.
+class GpuGridLay {
+  GpuGridLay(this._engine) : _lay = rust.gridLayNew();
+
+  final GpuEngine _engine;
+  final Pointer<rust.GridLay> _lay;
+
+  /// The pixels [rect] of [target] — (left, top, right, bottom) — clear,
+  /// and each of [laid] over the pixels whose centres its `onto` holds, a
+  /// later one over an earlier; waits for the GPU. Throws for a rect past
+  /// the target and a tile laid from past its picture or onto no box.
+  void lay(
+    GpuTarget target,
+    (int, int, int, int) rect,
+    List<GpuGridLaid> laid,
+  ) => using((arena) {
+    final (left, top, right, bottom) = rect;
+    final edges = arena<Uint32>(4)
+      ..asTypedList(4).setAll(0, [left, top, right, bottom]);
+    final pictures = arena<Pointer<rust.GridPicture>>(_held(laid.length));
+    final boxes = arena<Double>(_held(8 * laid.length));
+    for (final (index, (:picture, :from, :onto)) in laid.indexed) {
+      pictures[index] = picture._picture;
+      final (x0, y0, x1, y1) = from;
+      final (u0, v0, u1, v1) = onto;
+      boxes
+          .asTypedList(8 * laid.length)
+          .setAll(8 * index, [x0, y0, x1, y1, u0, v0, u1, v1]);
+    }
+    _done(
+      rust.gridLay(
+        _lay,
+        _engine._engine,
+        target._texture,
+        edges,
+        pictures,
+        boxes,
+        laid.length,
+      ),
+    );
+  });
+
+  void free() => rust.gridLayFree(_lay);
 }
 
 /// [argb] — a `Color`'s, A<<24|R<<16|G<<8|B — as the engine's colours

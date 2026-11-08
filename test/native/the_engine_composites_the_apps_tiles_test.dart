@@ -11,6 +11,7 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
 
+import '../helpers/a_shown_surface.dart';
 import '../helpers/pinned_fingerprints.dart';
 
 /// The app composites its tiles through the package's Dart
@@ -79,17 +80,6 @@ void main() {
     final tile = tiles.indexOf((x ~/ side, y ~/ side));
     final at = (tile * side * side + (y % side) * side + x % side) * 4;
     return bytes.sublist(at, at + 4);
-  }
-
-  /// A surface of [width] × [height] as the platform makes the ones it
-  /// shows: RGBA where it can, else BGRA — Apple's make BGRA alone
-  /// (platform/apple.rs), Linux's RGBA alone.
-  GpuSurface surfaceOf(int width, int height) {
-    try {
-      return appGpuEngine.surface(width, height, bgra: false);
-    } on StateError {
-      return appGpuEngine.surface(width, height, bgra: true);
-    }
   }
 
   /// A plan of one row: [set] over a tile row of [columns] tiles.
@@ -216,7 +206,7 @@ void main() {
     final plan = oneRow(storedOf(noise(2)), sampling: GpuSampling.nearest);
     final tiles = [(0, 0), (1, 0)];
     final put = ran(plan, tiles);
-    final surface = surfaceOf(2 * side, side);
+    final surface = shownSurfaceOf(2 * side, side);
     addTearDown(surface.free);
     final rowByRow = Uint8List(put.length);
     for (var y = 0; y < side; y++) {
@@ -316,7 +306,7 @@ void main() {
   test('a plan the executor refuses says why, run or shown', () {
     final plan = GpuPlan()..close(mode: GpuBlend.normal);
     addTearDown(plan.free);
-    final surface = surfaceOf(8, 8);
+    final surface = shownSurfaceOf(8, 8);
     addTearDown(surface.free);
     final refused = throwsA(
       isA<StateError>().having(

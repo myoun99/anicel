@@ -9,6 +9,7 @@
 //! old build's by a step — the same on every device, which is the point.
 
 pub(crate) mod abi;
+pub(crate) mod lay;
 #[cfg(test)]
 mod tests;
 
@@ -21,7 +22,7 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::letters::words::WordCover;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, PREMULTIPLY_WGSL, encode_on, flat, pipeline, storage_format, whole,
+    Encoded, ISQRT_WGSL, encode_on, flat, pipeline, storage_format, whole,
 };
 use crate::kernels::timeline::LAID_WGSL;
 
@@ -45,9 +46,9 @@ const RRECT_RING: i32 = 6;
 pub(crate) const MOST_RADIUS_Q9: i32 = 1 << 15;
 
 /// A frame grid's tile as the engine keeps it: what the pass draws, stored
-/// premultiplied, for the view's screen to lay (grid-on-the-engine ⓑ, 관제
-/// 2026-11-08 16:42) — never read back for the app to raise again (관제
-/// 11-05 14:02).
+/// straight (grid.wgsl says why), for the view's screen to lay
+/// ([`lay::GridLay`]; grid-on-the-engine ⓑ, 관제 2026-11-08 16:42) — never
+/// read back for the app to raise again (관제 11-05 14:02).
 pub(crate) struct GridPicture {
     pub(crate) texture: wgpu::Texture,
 }
@@ -246,7 +247,7 @@ impl GridTile {
         let body = include_str!("grid.wgsl").replace("__FORMAT__", token);
         let pipeline = pipeline(
             engine,
-            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, PREMULTIPLY_WGSL, &body],
+            &[ISQRT_WGSL, BLEND_WGSL, LAID_WGSL, &body],
             "grid",
         );
         self.pipelines.push((format, pipeline.clone()));

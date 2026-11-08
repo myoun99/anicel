@@ -28,7 +28,8 @@ use crate::kernels::letters::glyphs_tests::file;
 use crate::kernels::letters::words::WordCover;
 use crate::kernels::pool::{gpu_engine_pool_free, gpu_engine_pool_new};
 use crate::kernels::timeline::grid::abi::{
-    gpu_engine_grid_free, gpu_engine_grid_new, gpu_engine_grid_picture_free, gpu_engine_grid_picture_new,
+    gpu_engine_grid_free, gpu_engine_grid_lay_free, gpu_engine_grid_lay_new, gpu_engine_grid_new,
+    gpu_engine_grid_picture_free, gpu_engine_grid_picture_new,
 };
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
 use crate::testing::{first_engine, held, last_error};
@@ -57,7 +58,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 18] {
+fn frees() -> [(&'static str, fn(&'static str)); 19] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -122,6 +123,7 @@ fn frees() -> [(&'static str, fn(&'static str)); 18] {
             let made = unsafe { gpu_engine_grid_new(first_engine()) };
             gives_back(name, made, gpu_engine_grid_free)
         }),
+        ("gpu_engine_grid_lay_free", |name| gives_back(name, gpu_engine_grid_lay_new(), gpu_engine_grid_lay_free)),
         ("gpu_engine_grid_picture_free", |name| {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_grid_picture_new(first_engine(), 4, 4) };

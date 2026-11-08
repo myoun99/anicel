@@ -26,6 +26,8 @@ import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../helpers/a_shown_surface.dart';
+
 
 /// 🚨THE ENGINE'S SCREEN SHOWS THE FRAME IT KEEPS (screen-on-the-engine c6
 /// ④, 관제 11-08 14:19): a frame laid on the engine's screen
@@ -187,16 +189,6 @@ void main() {
     };
   }
 
-  /// A surface as the platform makes the ones it shows: RGBA where it can,
-  /// else BGRA.
-  GpuSurface surfaceOf(int width, int height) {
-    try {
-      return appGpuEngine.surface(width, height, bgra: false);
-    } on StateError {
-      return appGpuEngine.surface(width, height, bgra: true);
-    }
-  }
-
   /// The views the cases show through.
   final views = <View>[
     (
@@ -263,7 +255,7 @@ void main() {
   ) {
     for (final view in views) {
       final (width, height) = view.size;
-      final target = surfaceOf(width, height);
+      final target = shownSurfaceOf(width, height);
       addTearDown(target.free);
       screen.show(
         target,

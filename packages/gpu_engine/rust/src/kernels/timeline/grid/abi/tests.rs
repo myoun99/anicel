@@ -82,7 +82,7 @@ fn a_stream_drawn_through_the_abi_is_over_clear() {
 
 // Two words in an atlas, the second below and right of the first: each
 // letter reads its word where its place put it. Opaque white scaled by a
-// coverage c over clear is c in every channel.
+// coverage c over clear is white at c, stored straight.
 #[test]
 fn a_letter_reads_its_word_where_its_place_put_it() {
     let first = WordCover { width: 2, height: 1, bytes: vec![255, 128] };
@@ -92,9 +92,9 @@ fn a_letter_reads_its_word_where_its_place_put_it() {
     let (ok, bytes) = drawn((4, 2), &ops, &[(&first, [0, 0]), (&second, [2, 1])]);
     assert!(ok, "{}", last_error());
     assert_eq!(at(&bytes, 4, 0, 0), [255; 4]);
-    assert_eq!(at(&bytes, 4, 1, 0), [128; 4]);
-    assert_eq!(at(&bytes, 4, 3, 0), [64; 4]);
-    assert_eq!(at(&bytes, 4, 3, 1), [32; 4]);
+    assert_eq!(at(&bytes, 4, 1, 0), [255, 255, 255, 128]);
+    assert_eq!(at(&bytes, 4, 3, 0), [255, 255, 255, 64]);
+    assert_eq!(at(&bytes, 4, 3, 1), [255, 255, 255, 32]);
     // What lies between the words in the atlas is nothing.
     let (_, between) = drawn((2, 2), &[GLYPH, 0, 0, 0, 1, 2, 1, white], &[(&first, [0, 0]), (&second, [2, 1])]);
     assert_eq!(at(&between, 2, 0, 0), [0; 4]);
@@ -123,4 +123,38 @@ fn an_atlas_past_the_device_is_refused_with_why() {
     let (ok, _) = drawn((1, 1), &[], &[(&word, [u32::MAX, 0])]);
     assert!(!ok);
     assert!(last_error().contains("past its 4294967295th pixel"), "{}", last_error());
+}
+
+// Through the ABI a box is eight doubles, the tile's part then the
+// screen's: the right half of a red-and-green tile laid on the screen's
+// left pixel is green there, and the rest of the rect is made clear.
+#[test]
+fn a_tile_laid_through_the_abi_takes_its_part_onto_the_screens() {
+    let engine = first_engine();
+    // SAFETY: the engine is live.
+    let grid = unsafe { gpu_engine_grid_new(engine) };
+    let tile = picture(2, 1);
+    let ops = [[FILL_RECT, 0, 0, 1, 1, rgba(255, 0, 0, 255)], [FILL_RECT, 1, 0, 1, 1, rgba(0, 255, 0, 255)]].concat();
+    let none: [*const WordCover; 1] = [std::ptr::null()];
+    // SAFETY: every pointer is live and holds what it is said to.
+    let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), none.as_ptr(), [0].as_ptr(), 0) };
+    assert!(drew, "{}", last_error());
+    let screen = crate::device::storage_texture(&engine.device, 3, 1, wgpu::TextureFormat::Rgba8Unorm);
+    let lay = gpu_engine_grid_lay_new();
+    let tiles = [tile.cast_const()];
+    let laid = |rect: [u32; 4], boxes: [f64; 8]| {
+        // SAFETY: as above.
+        unsafe { gpu_engine_grid_lay(lay, engine, &screen, rect.as_ptr(), tiles.as_ptr(), boxes.as_ptr(), 1) }
+    };
+    assert!(laid([0, 0, 3, 1], [1.0, 0.0, 2.0, 1.0, 0.0, 0.0, 1.0, 1.0]), "{}", last_error());
+    let bytes = engine.read_texture(&screen).expect("read back");
+    assert_eq!(bytes, [0, 255, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert!(!laid([0, 0, 4, 1], [0.0, 0.0, 2.0, 1.0, 0.0, 0.0, 2.0, 1.0]));
+    assert!(last_error().contains("is no rectangle of a 3 × 1 screen"), "{}", last_error());
+    // SAFETY: each came from its new, let go of once.
+    unsafe {
+        gpu_engine_grid_lay_free(lay);
+        gpu_engine_grid_picture_free(tile);
+        gpu_engine_grid_free(grid);
+    }
 }

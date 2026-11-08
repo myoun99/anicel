@@ -43,6 +43,8 @@ final class Grid extends Opaque {}
 
 final class GridPicture extends Opaque {}
 
+final class GridLay extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -963,4 +965,31 @@ external bool gridDraw(
   Pointer<Pointer<WordCover>> words,
   Pointer<Uint32> places,
   int wordCount,
+);
+
+@Native<Pointer<GridLay> Function()>(symbol: 'gpu_engine_grid_lay_new')
+external Pointer<GridLay> gridLayNew();
+
+@Native<Void Function(Pointer<GridLay>)>(symbol: 'gpu_engine_grid_lay_free')
+external void gridLayFree(Pointer<GridLay> lay);
+
+@Native<
+  Bool Function(
+    Pointer<GridLay>,
+    Pointer<Engine>,
+    Pointer<Texture>,
+    Pointer<Uint32>,
+    Pointer<Pointer<GridPicture>>,
+    Pointer<Double>,
+    Size,
+  )
+>(symbol: 'gpu_engine_grid_lay')
+external bool gridLay(
+  Pointer<GridLay> lay,
+  Pointer<Engine> engine,
+  Pointer<Texture> target,
+  Pointer<Uint32> rect,
+  Pointer<Pointer<GridPicture>> pictures,
+  Pointer<Double> boxes,
+  int count,
 );
