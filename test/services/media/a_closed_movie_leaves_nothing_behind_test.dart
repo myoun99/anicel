@@ -47,9 +47,7 @@ void main() {
       ? false
       : 'the heaps are read with HeapSummary — Windows only';
 
-  tearDown(() {
-    QaVideoDecoder.instance.close();
-  });
+  tearDown(QaVideoDecoder.instance.close);
 
   test('🚨two hundred more opens of the same movie leave the heaps where two '
       'hundred left them', () {

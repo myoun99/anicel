@@ -26,9 +26,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// hand. Every frame is a flat grey of its own, so a frame read from the
 /// wrong place cannot pass for the right one.
 void main() {
-  tearDown(() {
-    QaVideoDecoder.instance.close();
-  });
+  tearDown(QaVideoDecoder.instance.close);
 
   /// [bytes] as a movie on disk, for as long as the run lasts.
   String onDisk(Uint8List bytes) {

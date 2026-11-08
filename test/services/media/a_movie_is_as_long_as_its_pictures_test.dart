@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/encoded_movie.dart';

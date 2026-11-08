@@ -23,9 +23,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// nothing on screen to explain it. The document is a native handle now, so
 /// 「whose movie is loaded」 is not a question anything asks.
 void main() {
-  tearDown(() {
-    QaVideoDecoder.instance.close();
-  });
+  tearDown(QaVideoDecoder.instance.close);
 
   /// Two movies that LOOK DIFFERENT.
   ///

@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';

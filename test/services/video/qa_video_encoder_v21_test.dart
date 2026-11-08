@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/os_video_codec.dart';

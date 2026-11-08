@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
 
 import '../helpers/native_engine_path.dart';

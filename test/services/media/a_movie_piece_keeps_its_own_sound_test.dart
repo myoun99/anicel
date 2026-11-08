@@ -3,8 +3,6 @@ import 'dart:io';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/media/movie_span.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -23,9 +23,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// could still produce a picture. Every frame here is compared, byte for
 /// byte, with the same movie decoded from a plain file.
 void main() {
-  tearDown(() {
-    QaVideoDecoder.instance.close();
-  });
+  tearDown(QaVideoDecoder.instance.close);
 
   /// A movie made by the app's own encoder — every frame a different colour,
   /// so a frame read from the wrong place cannot pass for the right one —
