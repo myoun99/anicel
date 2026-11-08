@@ -6,6 +6,7 @@ import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../core/pin_counts.dart';
 import '../../models/canvas_viewport.dart';
+import '../../native/engine_chain_holds.dart';
 import '../../native/engine_letters.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/canvas_layer_stack_view.dart';
@@ -91,15 +92,20 @@ class EngineFramePicture extends ChangeNotifier {
 /// changed ([patch]), let go of by the playback budget's one order
 /// ([enforceBudget]).
 class EngineFramePictureStore<K extends Object> {
-  /// Pictures composited by [composite], laying cel numbers in [letters].
+  /// Pictures composited by [composite], laying cel numbers in [letters]
+  /// and their chains' puts held in [holds], if any — one hold for every
+  /// picture: a frame laid ahead finds what the frame before it put.
   EngineFramePictureStore({
     required GpuComposite composite,
     required EngineLetters letters,
+    EngineChainHolds? holds,
   }) : _composite = composite,
-       _letters = letters;
+       _letters = letters,
+       _holds = holds;
 
   final GpuComposite _composite;
   final EngineLetters _letters;
+  final EngineChainHolds? _holds;
 
   final Map<K, _Entry> _entries = {};
   final PinCounts<K> _pins = PinCounts<K>();
@@ -321,7 +327,7 @@ class EngineFramePictureStore<K extends Object> {
 
   EngineFramePicture _laid(_Lay<K> lay) {
     final picture = EngineFramePicture._(
-      EngineStackScreen(_composite, _letters),
+      EngineStackScreen(_composite, _letters, holds: _holds),
     );
     try {
       final over = lay.over;

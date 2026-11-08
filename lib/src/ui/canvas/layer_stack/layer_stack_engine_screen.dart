@@ -9,11 +9,14 @@ part of '../canvas_layer_stack_view.dart';
 // ⏳The widget asks it at the end of the flip lane (관제 11-08 15:02 ⓐ);
 // [ScreenTexture] says why.
 final class EngineStackScreen {
-  /// A screen of [composite]'s, laying cel numbers in [letters].
-  EngineStackScreen(this._composite, this._letters);
+  /// A screen of [composite]'s, laying cel numbers in [letters] and holding
+  /// its chains' puts in [holds], if any.
+  EngineStackScreen(this._composite, this._letters, {EngineChainHolds? holds})
+    : _holds = holds;
 
   final GpuComposite _composite;
   final EngineLetters _letters;
+  final EngineChainHolds? _holds;
 
   GpuScreen? _screen;
 
@@ -58,7 +61,9 @@ final class EngineStackScreen {
 
   /// [frame]'s rows planned by the one translator and handed to [lay] with
   /// the kept frame — made again over the world the frame holds where it
-  /// is not the one kept.
+  /// is not the one kept. Each node's chain is held as what the node shows
+  /// ([_LayerStackPaintPass._pictureOf]) in the space it runs in, on this
+  /// paper ([_holding]).
   void _laid(
     StackedFrame frame,
     void Function(GpuScreen screen, GpuPool pool, GpuPlan plan, Rect world)
@@ -78,6 +83,9 @@ final class EngineStackScreen {
       _kept = world;
     }
     final ledger = EngineTileLedger.instance;
+    final paper = frame._painter.canvasSize.canvasRect;
+    final origins =
+        Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>>.identity();
     ledger.held((hold) {
       final plan = GpuPlan();
       try {
@@ -86,18 +94,44 @@ final class EngineStackScreen {
           mapCompositeLeaves<_PaintRow, EngineRow>(
             pass._rootNodes,
             (row) => pass._engineRowOf(row, _range.of),
+            told: _holds == null ? null : (node, to) => origins[to] = node,
           ),
           hold: hold,
-          paper: frame._painter.canvasSize.canvasRect,
+          paper: paper,
           letters: _letters,
+          holding: _holding(pass, origins, paper),
         );
         lay(screen!, ledger.pool, plan, world);
       } finally {
         plan.free();
+        _holds?.settle();
       }
     });
     _range.settle();
   }
+
+  /// The holding of the chains [pass] plans ([ChainHolding]): a node's, on
+  /// [paper], under what the node it came from shows ([origins]) — none
+  /// for one that shows a row drawn live ([_LayerStackPaintPass._pictureOf]).
+  ChainHolding? _holding(
+    _LayerStackPaintPass pass,
+    Map<CompositeNode<EngineRow>, CompositeNode<_PaintRow>> origins,
+    Rect paper,
+  ) => switch (_holds) {
+    null => null,
+    final holds => (
+      held: holds.held,
+      idOf: (node, space) => switch (origins[node]) {
+        final origin? => switch (pass._pictureOf(origin)) {
+          final picture? => holds.idOf(
+            (picture: picture, space: space, paper: paper),
+          ),
+          null => null,
+        },
+        null => null,
+      },
+    ),
+  };
 
   /// The kept frame through [viewport] at [devicePixelRatio] onto [target]
   /// of [size] texels, columns by rows, one a device pixel — the camera the

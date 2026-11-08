@@ -19,6 +19,8 @@ final class Planned extends Opaque {}
 
 final class MaskPlane extends Opaque {}
 
+final class HeldChains extends Opaque {}
+
 final class Composite extends Opaque {}
 
 final class Composited extends Opaque {}
@@ -426,6 +428,35 @@ external int planChainMatrix(
   symbol: 'gpu_engine_plan_chain_keys',
 )
 external int planChainKeys(Pointer<Planned> plan, int chain, int keys);
+
+@Native<Int32 Function(Pointer<Planned>, Uint32, Pointer<HeldChains>, Uint32)>(
+  symbol: 'gpu_engine_plan_chain_held',
+)
+external int planChainHeld(
+  Pointer<Planned> plan,
+  int chain,
+  Pointer<HeldChains> held,
+  int id,
+);
+
+@Native<Pointer<HeldChains> Function()>(symbol: 'gpu_engine_held_new')
+external Pointer<HeldChains> heldNew();
+
+@Native<Void Function(Pointer<HeldChains>)>(symbol: 'gpu_engine_held_free')
+external void heldFree(Pointer<HeldChains> held);
+
+@Native<Void Function(Pointer<HeldChains>, Uint32)>(
+  symbol: 'gpu_engine_held_let_go',
+)
+external void heldLetGo(Pointer<HeldChains> held, int id);
+
+@Native<Uint64 Function(Pointer<HeldChains>, Uint32)>(
+  symbol: 'gpu_engine_held_bytes_of',
+)
+external int heldBytesOf(Pointer<HeldChains> held, int id);
+
+@Native<Uint64 Function()>(symbol: 'gpu_engine_held_bytes')
+external int heldBytes();
 
 @Native<
   Int32 Function(

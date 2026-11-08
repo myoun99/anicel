@@ -538,6 +538,12 @@ class GpuPlan {
   void chainKeys(int chain, int keys) =>
       _checked(rust.planChainKeys(_plan, chain, keys));
 
+  /// Holds what effect chain [chain] puts in [held] under [id], the number
+  /// the app gives what the chain shows: a run whose hold under [id] keeps
+  /// what it put over the chain's tiles lays that, and does not run it.
+  void chainHeld(int chain, GpuHeldChains held, int id) =>
+      _checked(rust.planChainHeld(_plan, chain, held._held, id));
+
   /// Adds to effect chain [chain] fx Gaussian Blur, the Gaussian itself a
   /// way a pass, [across] and [down]: reading [picture] — past it nothing,
   /// or its nearest pixel where it [repeats] (Repeat Edge Pixels) — and
@@ -819,6 +825,28 @@ class GpuPlan {
   }
 
   void free() => rust.planFree(_plan);
+}
+
+/// What effect chains put, held past the run that made them
+/// (rust/src/kernels/composite/held.rs), under the numbers the app gives
+/// them ([GpuPlan.chainHeld]) — for as long as it is not freed, or let go.
+class GpuHeldChains {
+  GpuHeldChains() : _held = rust.heldNew();
+
+  /// The bytes every hold keeps, counted by the engine where a hold keeps
+  /// and lets go.
+  static int get liveBytes => rust.heldBytes();
+
+  final Pointer<rust.HeldChains> _held;
+
+  /// The bytes it keeps under [id] — none where it keeps nothing.
+  int bytesOf(int id) => rust.heldBytesOf(_held, id);
+
+  /// Lets go of what it keeps under [id], if anything.
+  void letGo(int id) => rust.heldLetGo(_held, id);
+
+  /// Frees it; a plan that names it keeps its own hold.
+  void free() => rust.heldFree(_held);
 }
 
 /// A mask kept on the GPU (rust/src/kernels/composite/abi.rs): a byte a

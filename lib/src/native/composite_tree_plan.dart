@@ -162,6 +162,9 @@ GpuSampling gpuSamplingOf(ui.FilterQuality quality) =>
 /// lays the backdrop where it stands and the row over it in its blend — a
 /// row reads what it is laid on, so the backdrop needs no picture of its
 /// own ([CompositeBackdropBlend]).
+///
+/// Under [holding], a node's chain is held by the number it gives the node
+/// in the space the chain runs in ([ChainHolding]).
 // ⏳Tests alone lay a tree till the screen does (screen-on-the-engine c6).
 void planCompositeTree(
   GpuPlan plan,
@@ -169,16 +172,27 @@ void planCompositeTree(
   required TileHold hold,
   required ui.Rect paper,
   required EngineLetters letters,
-}) => _TreePlan(plan, hold, paper, letters)._lay(nodes);
+  ChainHolding? holding,
+}) => _TreePlan(plan, hold, paper, letters, holding)._lay(nodes);
+
+/// Where the chains a plan runs are held past it ([GpuHeldChains]): the
+/// hold, and the number [idOf] gives the chain of a node run in a space —
+/// the canvas where null, else a row's own — or null for one that runs each
+/// time.
+typedef ChainHolding = ({
+  GpuHeldChains held,
+  int? Function(CompositeNode<EngineRow> node, LayerPlacement? space) idOf,
+});
 
 class _TreePlan {
-  _TreePlan(this.plan, TileHold hold, this.paper, this.letters)
+  _TreePlan(this.plan, TileHold hold, this.paper, this.letters, this.holding)
     : _tiles = _TileLaying(plan, hold, paper);
 
   final GpuPlan plan;
   final _TileLaying _tiles;
   final ui.Rect paper;
   final EngineLetters letters;
+  final ChainHolding? holding;
 
   /// Where the steps being laid lie: the canvas, or — while a blur map a
   /// posed row's chain reads is drawn — that row's own space, canvas to it
@@ -194,15 +208,19 @@ class _TreePlan {
   /// [node]'s steps, its picture laid in [mode] where one is named — the
   /// blend a [CompositeBackdropBlend] lays its source in, which paints
   /// normal itself — else in its own; its chain reading the rows [reads]
-  /// draw ([CompositeReadsRows]), none of its children's.
+  /// draw ([CompositeReadsRows]), none of its children's, and held as what
+  /// [heldAs] shows — itself where null — is ([ChainHolding]): the rows it
+  /// reads are of the node it is read by.
   void _node(
     CompositeNode<EngineRow> node, {
     int? mode,
     _Reads reads = const {},
+    CompositeNode<EngineRow>? heldAs,
   }) {
+    final shows = heldAs ?? node;
     switch (node) {
       case CompositeLeaf(payload: final EngineTiles row):
-        _row(row, mode ?? _blendOf(row.blendMode), reads);
+        _row(row, mode ?? _blendOf(row.blendMode), reads, shows);
       case CompositeLeaf(payload: EngineSolid(:final argb, :final rect)):
         plan.solid(
           gpuColourOf(argb),
@@ -212,9 +230,9 @@ class _TreePlan {
           rect.bottomExclusive,
         );
       case final CompositeGroup<EngineRow> group:
-        _group(group, mode ?? _blendOf(group.blendMode), reads);
+        _group(group, mode ?? _blendOf(group.blendMode), reads, shows);
       case final CompositeAdjustment<EngineRow> adjustment:
-        _adjustment(adjustment, reads);
+        _adjustment(adjustment, reads, shows);
       case CompositeBackdropBlend(
         :final backdrop,
         :final source,
@@ -245,17 +263,23 @@ class _TreePlan {
           ),
           GpuBlend.normal,
           const {},
+          null,
         );
       case CompositeCelNumber():
         throw StateError('a cel number on a row of no tiles: $node');
-      case CompositeReadsRows(:final node, :final rows):
-        _node(node, mode: mode, reads: rows);
+      case CompositeReadsRows(node: final reader, :final rows):
+        _node(reader, mode: mode, reads: rows, heldAs: shows);
     }
   }
 
   /// [group]'s buffer, closed at its strength in [mode] through its chain
-  /// and its colour.
-  void _group(CompositeGroup<EngineRow> group, int mode, _Reads reads) {
+  /// and its colour, held as what [shows] is.
+  void _group(
+    CompositeGroup<EngineRow> group,
+    int mode,
+    _Reads reads,
+    CompositeNode<EngineRow> shows,
+  ) {
     plan.open();
     _lay(group.children);
     final (:chain, :colour) = _chainOf(
@@ -263,6 +287,7 @@ class _TreePlan {
       over: (outset) => _bufferOf(group, outset),
       space: _space,
       reads: reads,
+      shows: shows,
     );
     plan.close(
       opacity: _strengthOf(group.opacity),
@@ -272,8 +297,13 @@ class _TreePlan {
     );
   }
 
-  /// [adjustment]'s scope, closed through its grade at its mix.
-  void _adjustment(CompositeAdjustment<EngineRow> adjustment, _Reads reads) {
+  /// [adjustment]'s scope, closed through its grade at its mix, held as
+  /// what [shows] is.
+  void _adjustment(
+    CompositeAdjustment<EngineRow> adjustment,
+    _Reads reads,
+    CompositeNode<EngineRow> shows,
+  ) {
     final CompositeAdjustment(:children, :effects, :mix) = adjustment;
     plan.open();
     _lay(children);
@@ -292,6 +322,7 @@ class _TreePlan {
       over: (outset) => _bufferOf(adjustment, outset),
       space: _space,
       reads: reads,
+      shows: shows,
     );
     plan.close(
       mode: GpuBlend.normal,
@@ -316,14 +347,20 @@ class _TreePlan {
   /// [row] laid in [mode] — none where its pose collapses it: its tiles,
   /// and what a hand holds over them ([EngineTiles.held]) laid there first,
   /// in its own space, as one picture — what they are once they land —,
-  /// then the range a fill holds on it ([EngineTiles.mark]).
-  void _row(EngineTiles row, int mode, _Reads reads) {
+  /// then the range a fill holds on it ([EngineTiles.mark]). Its chain is
+  /// held as what [shows] is, where it names one.
+  void _row(
+    EngineTiles row,
+    int mode,
+    _Reads reads,
+    CompositeNode<EngineRow>? shows,
+  ) {
     final pose = _poseOf(row);
     if (pose == null) {
       return;
     }
     if (row.surface.tiles.isNotEmpty || row.held.isNotEmpty) {
-      _picture(row, mode, reads, pose);
+      _picture(row, mode, reads, pose, shows);
     }
     if (row.mark case final mark?) {
       _mark(mark, pose.posed);
@@ -363,9 +400,15 @@ class _TreePlan {
   }
 
   /// [row]'s picture — its tiles and what a hand holds over them — laid as
-  /// the row is, by [pose], through its chain on what it stands for, in
-  /// [mode].
-  void _picture(EngineTiles row, int mode, _Reads reads, _RowPose pose) {
+  /// the row is, by [pose], through its chain on what it stands for — held
+  /// as what [shows] is —, in [mode].
+  void _picture(
+    EngineTiles row,
+    int mode,
+    _Reads reads,
+    _RowPose pose,
+    CompositeNode<EngineRow>? shows,
+  ) {
     final tiles = row.surface.tiles;
     final picture = _rowExtentOf(row);
     // Its chain runs on its own picture, the whole of what it stands for,
@@ -377,6 +420,7 @@ class _TreePlan {
       over: (_) => picture,
       space: pose.space,
       reads: reads,
+      shows: shows,
     );
     final tint = row.tint;
     // The tint LAST, over the finished pixel: the ghost is the row as the
@@ -442,11 +486,15 @@ class _TreePlan {
   /// each of its Gaussians reads what the one before put and puts as far
   /// past it as it reaches — a row's picture, its own, is no larger for
   /// them (its [over]).
+  ///
+  /// The chain is held as what [shows] is in [space], where [holding] gives
+  /// it a number.
   ({int? chain, List<double>? colour}) _chainOf(
     List<ResolvedLayerEffect> effects, {
     required ui.Rect Function(double outset) over,
     required LayerPlacement? space,
     required _Reads reads,
+    required CompositeNode<EngineRow>? shows,
   }) {
     final steps = resolveCompositeEffectPlan(effects, paper: paper);
     final carried = paintedEffectsOf(steps.finalEffects);
@@ -479,6 +527,11 @@ class _TreePlan {
     final chain = plan.chain(x0, y0, columns, rows);
     for (final op in ops) {
       op(chain);
+    }
+    final holding = this.holding;
+    final id = shows == null ? null : holding?.idOf(shows, space);
+    if (holding != null && id != null) {
+      plan.chainHeld(chain, holding.held, id);
     }
     return (chain: chain, colour: colour);
   }

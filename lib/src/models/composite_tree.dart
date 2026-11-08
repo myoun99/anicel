@@ -631,22 +631,30 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
 /// route, as [map] says what a row's does — its plugins bound to their runs
 /// (🗣️I-132-Q34 a 「어디에 걸어도 돌고」); each as it stands where null.
 ///
+/// [told] is told each node that stands and what it became: a route that
+/// keeps what a node shows by what it was (the engine's holds of chains)
+/// finds it there.
+///
 /// Perf: one pass per node per frame — tens of nodes, never per pixel.
 List<CompositeNode<M>> mapCompositeLeaves<L, M>(
   List<CompositeNode<L>> nodes,
   M? Function(L payload) map, {
   M? Function(L payload)? bare,
   List<ResolvedLayerEffect> Function(List<ResolvedLayerEffect> chain)? chains,
+  void Function(CompositeNode<L> node, CompositeNode<M> mapped)? told,
 }) => _mapCompositeLeaves<L, M>(
   nodes,
   map,
   bare: bare,
   chains: chains ?? _asItStands,
+  told: told ?? _untold,
   kept: Map.identity(),
 );
 
 List<ResolvedLayerEffect> _asItStands(List<ResolvedLayerEffect> chain) =>
     chain;
+
+void _untold(Object node, Object mapped) {}
 
 /// [mapCompositeLeaves], with [kept] the nodes a later node points back at
 /// — a clip's base ([CompositeOpaque.of]), a row a cel number is written on
@@ -658,10 +666,18 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
   required M? Function(L payload)? bare,
   required List<ResolvedLayerEffect> Function(List<ResolvedLayerEffect>)
   chains,
+  required void Function(CompositeNode<L> node, CompositeNode<M> mapped) told,
   required Map<CompositeNode<L>, CompositeNode<M>?> kept,
 }) {
   List<CompositeNode<M>> fold(List<CompositeNode<L>> list) =>
-      _mapCompositeLeaves(list, map, bare: bare, chains: chains, kept: kept);
+      _mapCompositeLeaves(
+        list,
+        map,
+        bare: bare,
+        chains: chains,
+        told: told,
+        kept: kept,
+      );
   CompositeLeaf<M>? bareOf(CompositeLeaf<L> row) =>
       switch (bare?.call(row.payload)) {
         final payload? => CompositeLeaf<M>(payload),
@@ -670,6 +686,11 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
   CompositeNode<M>? keptOf(CompositeNode<L> node) =>
       kept.containsKey(node) ? kept[node] : fold([node]).singleOrNull;
   final out = <CompositeNode<M>>[];
+  void stands(CompositeNode<L> node, CompositeNode<M> mapped) {
+    told(node, mapped);
+    out.add(mapped);
+  }
+
   for (final node in nodes) {
     switch (node) {
       case CompositeLeaf<L>(:final payload):
@@ -677,7 +698,7 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
         final leaf = mapped == null ? null : CompositeLeaf<M>(mapped);
         kept[node] = leaf;
         if (leaf != null) {
-          out.add(leaf);
+          stands(node, leaf);
         }
       case CompositeGroup<L>(
         :final children,
@@ -689,7 +710,8 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
         if (mapped.isEmpty) {
           continue;
         }
-        out.add(
+        stands(
+          node,
           CompositeGroup<M>(
             children: List.unmodifiable(mapped),
             opacity: opacity,
@@ -702,7 +724,8 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
         if (mapped.isEmpty) {
           continue; // Every row in scope turned out to have no artwork.
         }
-        out.add(
+        stands(
+          node,
           CompositeAdjustment<M>(
             children: List.unmodifiable(mapped),
             effects: chains(effects),
@@ -721,7 +744,8 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
           out.addAll(below);
           continue;
         }
-        out.add(
+        stands(
+          node,
           CompositeBackdropBlend<M>(
             backdrop: List.unmodifiable(below),
             source: row.single,
@@ -740,7 +764,8 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
           // Nothing to clip to: the rows clipped to it show nowhere.
           continue;
         }
-        out.add(
+        stands(
+          node,
           CompositeClip<M>(
             base: mappedBase,
             scope: List.unmodifiable(fold(scope)),
@@ -750,17 +775,18 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
         );
       case CompositeOpaque<L>(:final of):
         if (keptOf(of) case final base?) {
-          out.add(CompositeOpaque<M>(base));
+          stands(node, CompositeOpaque<M>(base));
         }
       case CompositeCelNumber<L>(:final on, :final letters):
         if (keptOf(on) ?? bareOf(on) case final CompositeLeaf<M> row) {
-          out.add(CompositeCelNumber<M>(on: row, letters: letters));
+          stands(node, CompositeCelNumber<M>(on: row, letters: letters));
         }
       // A row read that draws nothing here is read as a picture with
       // nothing on it — still a row of the cut, not none.
       case CompositeReadsRows<L>(node: final reader, :final rows):
         if (fold([reader]).singleOrNull case final mapped?) {
-          out.add(
+          stands(
+            node,
             CompositeReadsRows<M>(
               node: mapped,
               rows: {

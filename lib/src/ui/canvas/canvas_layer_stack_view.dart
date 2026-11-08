@@ -48,6 +48,7 @@ import 'tile_origin.dart';
 import '../../core/display_filter.dart' show filterQualityForDisplayScale;
 import '../../models/dirty_region.dart';
 import '../../native/composite_tree_plan.dart';
+import '../../native/engine_chain_holds.dart';
 import '../../native/engine_letters.dart';
 import '../../native/engine_range_mask.dart';
 import '../../native/engine_tile_ledger.dart';
