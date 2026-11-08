@@ -13,8 +13,9 @@
 /// this one word read as code that draws through the engine. The display
 /// and the pen are reached from test/flutter_test_config.dart
 /// (present_pacing.dart, pen_sidecars.dart), so a change to the engine's
-/// Rust ran every suite in the wide run — gpu_adapter_choice.dart says why
-/// the config reaches none —, and the Windows CI shards, which leave the
+/// Rust ran every suite in the wide run — which it does since
+/// connection-round-checklist-Q24 all the same (gpu_adapter_choice.dart) —,
+/// and the Windows CI shards, which leave the
 /// tests that reach package:gpu_engine to Linux
 /// (tool/tests_reaching_package.dart), left 685 more files there: the
 /// pen's and the display's Windows pins among them, which skip on Linux.

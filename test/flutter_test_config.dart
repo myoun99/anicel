@@ -63,8 +63,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // The GPU engine opens on the first adapter: no Flutter names one here.
   // ⛔Nothing opens it now — a file that never asks for the engine opens no
   // device (app_gpu_engine.dart) — and nothing stands in for it: a test that
-  // needs it and gets none fails. ⛔Named, not imported: the config reaches
-  // no engine code (gpu_adapter_choice.dart says why).
+  // needs it and gets none fails. Named, not imported: it was to keep the
+  // config from the engine, which it reaches all the same since Q24
+  // (gpu_adapter_choice.dart says why, and why that is the law).
   debugGpuAdapterChoice = GpuAdapterChoice.first;
   // 🚨★★★**THE RUN'S TEMP IS ITS OWN, AND IT IS EMPTY WHEN THE RUN ENDS**
   // (2026-10-08). FIRST, before anything below asks for a temp path: from

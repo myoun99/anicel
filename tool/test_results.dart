@@ -53,9 +53,11 @@ const kEveryTestReadsUnder = ['assets/', 'shaders/', kEngineSources];
 /// reaches.
 ///
 /// ⛔Not the whole of `packages/`. `packages/gpu_engine` is read by the
-/// suites that reach its bindings, not by every one (import_graph.dart,
-/// `Reaches` — since 2026-11-07 the app depends on it), and a suite that
-/// reads it as text names it (`kTextRoots`). Until 2026-11-05 this was
+/// suites that reach its bindings (import_graph.dart, `Reaches` — since
+/// 2026-11-07 the app depends on it) — every suite since the config reached
+/// them, which is the law (connection-round-checklist-Q24, 2026-11-08: the
+/// engine's Rust read as the C is) —, and a suite that reads it as text
+/// names it (`kTextRoots`). Until 2026-11-05 this was
 /// `packages/`: a lane that changed only the GPU engine's Rust, WGSL and
 /// ledger ran 218 files with 165 parity tests and held the Surface's line
 /// for forty minutes (저장 · 관제, gpu-engine-skeleton). The crate's own

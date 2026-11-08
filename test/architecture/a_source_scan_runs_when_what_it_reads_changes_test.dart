@@ -336,11 +336,13 @@ void main() {
         reason: 'the engine\'s tests, not the suite');
   });
 
-  test('🚨the GPU engine crate is not the engine\'s C — it runs no whole '
-      'suite, and one that reads it by path runs when it changes', () {
+  test('🚨the GPU engine crate is not on the C\'s list — no change to it is '
+      'a blanket, and one that reads it by path runs when it changes', () {
     // 저장 · 관제 2026-11-05 (gpu-engine-skeleton): while every path under
     // `packages/` counted as the engine, a lane that changed only the
     // crate's Rust, WGSL and ledger ran 218 files with 165 parity tests.
+    // What a change to it runs is the graph's answer — read as the C's
+    // since connection-round-checklist-Q24 (the next pin).
     const crate = 'packages/gpu_engine/rust/src/kernels/fill/fill.wgsl';
     expect(changesTheEngine(crate), isFalse);
     expect(forcesFullRun(crate), isFalse, reason: 'the wide run');
@@ -349,30 +351,36 @@ void main() {
     expect(pathsReadAsText("'$registrants'"), {registrants});
   });
 
-  test('🚨a change to the GPU engine\'s Rust selects the suites that call '
-      'it, near as wide, and no suite that does not', () {
-    // 2026-11-07 (screen-on-the-engine): the app came to depend on the
-    // engine, while `package:gpu_engine` still read as a third party's —
-    // a one-line change to its Rust selected none of the suites that call
-    // it. ⚠️The config is asked at every distance: an engine it reached
-    // would make the change every suite's (lib/src/native/
-    // gpu_adapter_choice.dart).
+  test('🚨a change to the GPU engine\'s Rust is read as the C\'s — near, the '
+      'suites that call it, and wide, every suite', () {
+    // 🗣️유저 2026-11-08, connection-round-checklist-Q24 「엔진 Rust 를 옛 C
+    // 엔진 소스처럼 읽는다」 — the law 10-21 Q14 set the C ([forcesFullRun]).
+    // The app draws through the engine from deep in its widgets
+    // (word_bake.dart), so the config reaches it: the wide run, which asks
+    // the config at every distance, runs every suite, and a lane's near
+    // run, which asks it of the config alone ([kNearConfigImports]), runs
+    // the suites that call the engine.
+    // ↩️2026-11-07 (screen-on-the-engine) to Q24 the wide run chose the
+    // callers alone too, and the config was kept from the engine for it
+    // (lib/src/native/gpu_adapter_choice.dart). Before that the app did not
+    // depend on the engine, and a change to its Rust chose none of them.
     const calls = 'test/native/the_engine_pool_keeps_the_apps_tiles_test.dart';
     const clear = 'test/native/a_device_is_described_by_its_own_os_test.dart';
     final graph = buildImportGraph(roots: kGraphRoots);
-    for (final within in [kNearImports, null]) {
-      expect(
-        selectTests(
-          changed: {'packages/gpu_engine/rust/src/kernels/pool/mod.rs'},
-          tests: [calls, clear],
-          imports: graph,
-          read: (path) => File(path).readAsStringSync(),
-          within: within,
-        ),
-        {calls},
-        reason: 'within $within',
-      );
-    }
+    Set<String> chosen({int? within, int? configWithin}) => selectTests(
+      changed: {'packages/gpu_engine/rust/src/kernels/pool/mod.rs'},
+      tests: [calls, clear],
+      imports: graph,
+      read: (path) => File(path).readAsStringSync(),
+      within: within,
+      configWithin: configWithin,
+    );
+    expect(
+      chosen(within: kNearImports, configWithin: kNearConfigImports),
+      {calls},
+      reason: 'the near run',
+    );
+    expect(chosen(), {calls, clear}, reason: 'the wide run');
   });
 
   test('🚨a tool a test runs through is walked into — what that tool '
