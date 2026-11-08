@@ -8,7 +8,16 @@ publish = false
 audio_mix = { path = "../audio_mix" }
 # The OS's sound (native-to-rust-Q7, user 2026-11-06: 「cpal 을 받고, 다른
 # 점 셋은 직접 덧댄다」) — Apache-2.0.
-cpal = "0.18.2"
+# Linux names its devices as PulseAudio does, as the C did
+# (connection-round-checklist-Q17, user 2026-11-08 「cpal 의 pulseaudio 기능을
+# 받아 지금(PulseAudio)의 이름으로 맞춘다」): with the feature cpal's default
+# host is PulseAudio where its server answers, ALSA where it does not —
+# miniaudio's order — and a device is called by its description, as
+# miniaudio called it, so a saved name finds the device it named. The five
+# crates it brings (pulseaudio · byteorder · enum-primitive-derive ·
+# futures-executor · futures-macro) were allowed in chat (-Q18 · -Q19
+# 「받는거 허락할게」); cpal builds them for Linux alone.
+cpal = { version = "0.18.2", features = ["pulseaudio"] }
 
 [target.'cfg(unix)'.dependencies]
 # clock_gettime(CLOCK_MONOTONIC), the clock the C's lines are drawn on.

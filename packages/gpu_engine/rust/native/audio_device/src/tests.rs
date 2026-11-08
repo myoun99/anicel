@@ -1210,3 +1210,19 @@ fn the_clock_runs_as_the_os_s_monotonic_clock() {
     let micro = Duration::from_micros(1);
     assert!(inner <= passed + micro && passed <= outer + micro, "{passed:?} between {inner:?} and {outer:?}");
 }
+
+// Linux's devices are PulseAudio's where its server answers, as the C's were
+// (connection-round-checklist-Q17, user 2026-11-08): cpal's default host is
+// then PulseAudio, and a device is listed by its description, the name
+// miniaudio listed it by. Without the `pulseaudio` feature the host is not
+// built and this does not compile; a runner whose server does not answer
+// lists ALSA's, the C's next backend.
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_lists_its_devices_as_pulseaudio_does_where_it_answers() {
+    let pulse = cpal::HostId::PulseAudio;
+    assert_eq!(pulse.name(), "PulseAudio");
+    let answered = cpal::available_hosts().contains(&pulse) && cpal::host_from_id(pulse).is_ok();
+    let first = if answered { pulse } else { cpal::HostId::Alsa };
+    assert_eq!(cpal::default_host().id(), first);
+}
