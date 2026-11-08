@@ -777,7 +777,7 @@ class GpuComposite {
         _engine._engine,
         pool._pool,
         plan._plan,
-        surface._surface,
+        rust.surfaceTexture(surface._surface),
         edges,
       );
     });

@@ -203,7 +203,8 @@ fn a_plan_shown_onto_a_surface_lays_the_pixels_a_run_puts() {
         .find(|(surface, _)| !surface.is_null())
         .unwrap_or_else(|| panic!("{}", last_error()));
     // SAFETY: every pointer is live and made on `engine`.
-    let passes = unsafe { gpu_engine_composite_show(&rig().composite, engine, &pool, plan, surface, rect.as_ptr()) };
+    let passes =
+        unsafe { gpu_engine_composite_show(&rig().composite, engine, &pool, plan, &(*surface).texture, rect.as_ptr()) };
     assert!(passes >= 1, "{}", last_error());
     // SAFETY: `surface` is live.
     let shown = engine.read_texture(unsafe { &(*surface).texture }).expect("read the surface");

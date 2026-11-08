@@ -476,7 +476,7 @@ external void compositedFree(Pointer<Composited> composited);
     Pointer<Engine>,
     Pointer<Pool>,
     Pointer<Planned>,
-    Pointer<Surface>,
+    Pointer<Texture>,
     Pointer<Uint32>,
   )
 >(symbol: 'gpu_engine_composite_show')
@@ -485,7 +485,7 @@ external int compositeShow(
   Pointer<Engine> engine,
   Pointer<Pool> pool,
   Pointer<Planned> plan,
-  Pointer<Surface> surface,
+  Pointer<Texture> target,
   Pointer<Uint32> rect,
 );
 

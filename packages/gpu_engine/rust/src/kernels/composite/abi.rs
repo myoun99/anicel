@@ -23,7 +23,6 @@ use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::{ResampleMap, ResampleMode};
-use crate::platform::Surface;
 
 use super::{BufferChain, Composite, Composited, KeyChain, Plan, Step, TILE_BYTES, TileSet};
 
@@ -721,9 +720,12 @@ pub unsafe extern "C" fn gpu_engine_composited_free(composited: *mut Composited)
     }
 }
 
-/// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
+/// Composites `plan` onto the pixels `rect` of `target` — [left, top,
 /// right, bottom) — leaving the rest of it as it was, and submits the work;
 /// returns how many passes it took, -1 on failure (see the last error).
+/// `target` is what the screen shows: a surface's texture
+/// (`gpu_engine_surface_texture`) or a window's next image
+/// (`gpu_engine_window_target`), one entry for both (kernels/mod.rs).
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `rect` holds four words.
@@ -733,14 +735,14 @@ pub unsafe extern "C" fn gpu_engine_composite_show(
     engine: *const Engine,
     pool: *const Pool,
     plan: *const Planned,
-    surface: *const Surface,
+    target: *const wgpu::Texture,
     rect: *const u32,
 ) -> isize {
     // SAFETY: see the function's contract.
-    let (composite, engine, pool, plan, surface) = unsafe { (&*composite, &*engine, &*pool, &*plan, &*surface) };
+    let (composite, engine, pool, plan, target) = unsafe { (&*composite, &*engine, &*pool, &*plan, &*target) };
     // SAFETY: see the function's contract.
     let rect = unsafe { *rect.cast::<[u32; 4]>() };
     let chains = plan.chained();
-    let shown = composite.show(engine, &plan.plan(pool.pages(), &chains), &surface.texture, rect, composite.widest());
+    let shown = composite.show(engine, &plan.plan(pool.pages(), &chains), target, rect, composite.widest());
     shown.map_or(-1, |passes| passes as isize)
 }
