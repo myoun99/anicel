@@ -30,7 +30,7 @@ use std::collections::HashMap;
 
 use naga::valid::FunctionInfo;
 use naga::{
-    AddressSpace, Barrier, Binding, Block, BuiltIn, EntryPoint, Expression, Handle, Module, Span, Statement,
+    AddressSpace, Binding, Block, BuiltIn, EntryPoint, Expression, Handle, Module, Span, Statement,
     TypeInner,
 };
 
@@ -253,11 +253,8 @@ impl Intervals<'_> {
                     interval.atomic_written = true;
                 }
             }
-            Statement::ControlBarrier(barrier) => {
-                if barrier.contains(Barrier::WORK_GROUP) {
-                    state = barrier_passed(&state);
-                }
-            }
+            // `workgroupBarrier`, the one the check lets through.
+            Statement::ControlBarrier(_) => state = barrier_passed(&state),
             Statement::WorkGroupUniformLoad { pointer, .. } => {
                 state = barrier_passed(&state);
                 if let Some(place) = self.place(pointer) {
@@ -274,13 +271,13 @@ impl Intervals<'_> {
             }
             Statement::Switch { ref cases, .. } => {
                 // A break leaves the switch; a continue, the loop around it.
+                // Each case starts from the switch's state: a case WGSL
+                // falls through from is one of `case 1, 2:`'s selectors,
+                // and its body is empty.
                 let mut inner = Exits { breaks: None, continues: exits.continues.take() };
                 let mut out = state.clone();
-                let mut entry = state.clone();
                 for case in cases {
-                    let end = self.block(&case.body, entry, &mut inner)?;
-                    out = join(&out, &end);
-                    entry = if case.fall_through { join(&state, &end) } else { state.clone() };
+                    out = join(&out, &self.block(&case.body, state.clone(), &mut inner)?);
                 }
                 exits.continues = inner.continues;
                 state = with(out, &inner.breaks);

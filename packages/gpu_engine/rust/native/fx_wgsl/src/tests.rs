@@ -400,22 +400,35 @@ fn the_group_sum_adds_in_two_steps_a_round() {
 #[test]
 fn a_cut_in_a_barriers_loop_takes_the_whole_group_out() {
     // The first loop runs `i` turns, so the later invocations spend their
-    // share there; the second waits at a barrier each round, and the group
-    // leaves it together on the cut. The CPU's run stops, rather than
-    // waits, if any invocation meets a barrier the others do not.
+    // share there; the second waits at a barrier each round, and the whole
+    // group leaves it on its first turn once any of it was cut — each pixel
+    // says how many rounds it ran. The CPU's run stops, rather than waits,
+    // if any invocation meets a barrier the others do not.
     let kernel = opened(&indexed(
         "var<workgroup> cells: array<u32, 256>;",
         "var spent = 0u;\nfor (var k = 0u; k < i; k++) { spent += 1u; }\n\
-         for (var round = 0u; round < 8u; round++) {\ncells[i] = spent + round;\nworkgroupBarrier();\n}\n\
-         anicel_out(spent);",
+         var rounds = 0u;\n\
+         for (var round = 0u; round < 8u; round++) {\ncells[i] = spent + round;\nworkgroupBarrier();\nrounds += 1u;\n}\n\
+         anicel_out(spent << 4u | rounds);",
     ));
     let input = [0u32; 256];
     let mut output = [0u32; 256];
     let frame = picture([16, 16], 0, &input, &[], &[]);
     kernel.render(&frame, &mut output).expect("enough to spend");
-    assert_eq!(output.to_vec(), (0..256).collect::<Vec<u32>>());
+    assert_eq!(output.to_vec(), (0..256).map(|i| i << 4 | 8).collect::<Vec<u32>>());
     let short = Frame { fuel: 100 * first_turn(&kernel), ..frame };
     assert_eq!(kernel.render(&short, &mut output), Err(Cut));
+    assert!(output.iter().all(|word| word & 15 == 0), "no invocation ran a round: {output:?}");
+}
+
+#[test]
+fn an_endless_barriers_loop_is_cut_with_its_whole_group() {
+    // A group of four, so the many rounds before the cut meet quickly.
+    let kernel = opened(&plugin("", "loop {\nworkgroupBarrier();\n}", "return 0u;").replace("(16, 16)", "(2, 2)"));
+    let input = [0u32; 4];
+    let mut output = [0u32; 4];
+    let frame = Frame { fuel: 10_000, ..picture([2, 2], 0, &input, &[], &[]) };
+    assert_eq!(kernel.render(&frame, &mut output), Err(Cut));
 }
 
 #[test]
@@ -436,7 +449,7 @@ fn a_barrier_under_a_uniform_load_opens() {
 fn what_the_group_check_refuses_and_why() {
     let tile = "var<workgroup> tile: array<u32, 256>;";
     let count = "var<workgroup> count: atomic<u32>;";
-    let cases: [(&str, String, &str); 20] = [
+    let cases: [(&str, String, &str); 22] = [
         (
             "an in-place tree sum (Q10)",
             indexed(tile, "tile[i] = 1u;\nworkgroupBarrier();\ntile[i] = tile[i] + tile[min(i + 1u, 255u)];"),
@@ -474,6 +487,24 @@ fn what_the_group_check_refuses_and_why() {
                 tile,
                 "for (var k = 0u; k < 4u; k++) {\nlet other = tile[min(i + 1u, 255u)];\nworkgroupBarrier();\n\
                  tile[i] = other + k;\nif (k == 2u) { continue; }\nworkgroupBarrier();\n}",
+            ),
+            "only after a barrier has followed the writes",
+        ),
+        (
+            "a write a switch's break carries out (Q9, Q10)",
+            indexed(
+                tile,
+                "switch (anicel_frame()) {\ncase 0: {\ntile[i] = 1u;\nif (anicel_time() == 0) { break; }\n\
+                 workgroupBarrier();\n}\ndefault: {}\n}\nanicel_out(tile[min(i + 1u, 255u)]);",
+            ),
+            "only after a barrier has followed the writes",
+        ),
+        (
+            "a write a continue in a switch carries round (Q9, Q10)",
+            indexed(
+                tile,
+                "for (var k = 0u; k < 4u; k++) {\nlet other = tile[min(i + 1u, 255u)];\nworkgroupBarrier();\n\
+                 tile[i] = other + k;\nswitch (k) {\ncase 2u: { continue; }\ndefault: {}\n}\nworkgroupBarrier();\n}",
             ),
             "only after a barrier has followed the writes",
         ),
