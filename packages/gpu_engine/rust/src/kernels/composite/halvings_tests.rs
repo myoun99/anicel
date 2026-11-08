@@ -362,3 +362,13 @@ fn an_empty_change_marks_nothing() {
     drop(shown(&mut anew, Tiles { pages: &pages, set: &set }, far));
     assert!(stage_bytes(&kept) == stage_bytes(&anew));
 }
+
+// A composite over no pixel has none to halve: an extent with no width or
+// no height, or turned inside out, is refused, saying so.
+#[test]
+fn a_composite_over_no_pixel_is_refused() {
+    for extent in [[5, 0, 5, 9], [0, 9, 4, 9], [6, 0, 5, 9], [0, 9, 4, 8]] {
+        assert!(Halvings::new(extent, 1.0).is_none(), "{extent:?}");
+        assert_eq!(crate::last_error(), format!("a composite over {extent:?} holds no pixel to halve"));
+    }
+}
