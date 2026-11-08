@@ -762,10 +762,12 @@ fn chained_rows() -> Scene {
             Chained {
                 ops: vec![blur((1.0, 0.7), (3, 2))],
                 rect,
+                held: None,
             },
             Chained {
                 ops: vec![blur((0.0, 1.3), (0, 4)), Op::Matrix(contrast)],
                 rect,
+                held: None,
             },
         ],
         steps: vec![

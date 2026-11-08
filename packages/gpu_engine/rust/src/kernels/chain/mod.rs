@@ -28,6 +28,7 @@ pub(crate) mod tests;
 
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::composite::held::HeldChains;
 use crate::kernels::composite::{Composite, KeyChain, Step, TILE, TileAt, TileSet, Through};
 use crate::kernels::effects::MATRIX_WORDS;
 use crate::kernels::effects::blur::TileRect;
@@ -115,11 +116,14 @@ pub(crate) fn with_drawn<'b>(ops: &[Op<'b>], drawn: &'b [Option<wgpu::Buffer>]) 
 }
 
 /// A chain as a plan names it (`Plan`'s `chains`): its ops, in the order
-/// the app runs its steps, and the ONE rectangle of tiles they all run over
-/// — a row's in its own space, a folder's on the canvas.
+/// the app runs its steps, the ONE rectangle of tiles they all run over
+/// — a row's in its own space, a folder's on the canvas — and the hold
+/// that keeps what it puts under the number the app gives it, if any
+/// ([`HeldChains`]).
 pub(crate) struct Chained<'a> {
     pub(crate) ops: Vec<Op<'a>>,
     pub(crate) rect: TileRect,
+    pub(crate) held: Option<(&'a HeldChains, u32)>,
 }
 
 /// The chain's blurs, compiled once; its colour runs on the executor's.

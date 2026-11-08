@@ -414,6 +414,7 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
                 Op::Lens { picture, lens: lens_of(&lens, true, Some(paper)), map: Some(drawn) },
             ],
             rect: TileRect { x0: 0, y0: 0, columns: 2, rows: 1 },
+            held: None,
         },
         Chained {
             ops: vec![Op::Gaussian(Blur {
@@ -424,6 +425,7 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
                 puts: wide,
             })],
             rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
+            held: None,
         },
     ];
     let steps = [
@@ -481,6 +483,7 @@ fn a_map_laid_from_a_run_is_read_as_its_tiles() {
     let chains = [Chained {
         ops: vec![Op::Lens { picture, lens: lens_of(&lens, false, None), map: Some(read) }],
         rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
+        held: None,
     }];
     let steps = [row(0, None, Some(0), map(IDENTITY, ResampleMode::Blend), 65535, NORMAL)];
     assert_eq!(built, ran_in_rust(&pool, &sets, &[], &[], &chains, &steps, None));
@@ -519,6 +522,55 @@ fn what_a_chain_s_call_refuses_says_why() {
         assert_eq!(gpu_engine_plan_map_drawn(plan, 0, 5, 0.0, false), -1);
         assert!(last_error().contains("channel"), "{}", last_error());
         gpu_engine_plan_free(plan);
+    }
+}
+
+// A chain held call by call is laid from its hold while that keeps what it
+// put: a plan over other tiles naming the same number lays it, until the
+// hold lets it go. The bytes it keeps are counted; holding a chain the plan
+// has not says why, and the hold frees.
+#[test]
+fn a_chain_held_call_by_call_lays_what_its_hold_keeps() {
+    let tiles = [tile(7, true), tile(8, true), tile(9, true), tile(4, true), tile(5, true), tile(6, true)];
+    let (pool, at) = stored(&tiles);
+    let contrast: [f64; MATRIX_WORDS] = [
+        1.4, 0.0, 0.0, 0.0, -20.0, 0.0, 1.2, 0.1, 0.0, 5.0, 0.0, 0.0, 0.8, 0.0, 30.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+    ];
+    let held = gpu_engine_held_new();
+    let ran_from = |first: usize| {
+        let words = [at[first].word(), at[first + 1].word(), at[first + 2].word()];
+        let plan = gpu_engine_plan_new();
+        // SAFETY: `plan` and `held` are live; each array holds what its call
+        // reads.
+        unsafe {
+            gpu_engine_plan_set(plan, 0, 0, 3, 1, words.as_ptr());
+            gpu_engine_plan_chain(plan, 0, 0, 3, 1);
+            assert_eq!(gpu_engine_plan_chain_matrix(plan, 0, contrast.as_ptr()), 0);
+            assert_eq!(gpu_engine_plan_chain_held(plan, 0, held, 11), 0);
+            gpu_engine_plan_row(plan, 0, -1, -1, 0, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
+        }
+        let ran = ran(&pool, plan, NO_EDGE).unwrap_or_else(|| panic!("{}", last_error()));
+        // SAFETY: `plan` came from `gpu_engine_plan_new`.
+        unsafe { gpu_engine_plan_free(plan) };
+        ran
+    };
+    let first = ran_from(0);
+    // SAFETY: `held` is live.
+    assert_eq!(unsafe { gpu_engine_held_bytes_of(held, 11) }, 3 * TILE_BYTES);
+    assert!(gpu_engine_held_bytes() >= 3 * TILE_BYTES);
+    assert_eq!(ran_from(3), first, "what it put laid");
+    // SAFETY: `held` is live.
+    unsafe { gpu_engine_held_let_go(held, 11) };
+    // SAFETY: `held` is live.
+    assert_eq!(unsafe { gpu_engine_held_bytes_of(held, 11) }, 0);
+    assert_ne!(ran_from(3), first, "let go, it runs");
+    let plan = gpu_engine_plan_new();
+    // SAFETY: `plan` and `held` are live, each freed once.
+    unsafe {
+        assert_eq!(gpu_engine_plan_chain_held(plan, 0, held, 11), -1);
+        assert!(last_error().contains("no effect chain 0"), "{}", last_error());
+        gpu_engine_plan_free(plan);
+        gpu_engine_held_free(held);
     }
 }
 
@@ -650,6 +702,7 @@ fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
     let chains = [Chained {
         ops: vec![Op::Matrix(matrix_words(&contrast).expect("held"))],
         rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
+        held: None,
     }];
     let matrices = [matrix_words(&warm).expect("held")];
     let built = ran(&pool, plan, [0, 0, 300, 120]).unwrap_or_else(|| panic!("{}", last_error()));

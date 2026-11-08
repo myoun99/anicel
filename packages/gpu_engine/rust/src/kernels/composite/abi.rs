@@ -32,6 +32,7 @@ use crate::kernels::pool::Pool;
 use crate::kernels::shared::{ResampleMap, ResampleMode, words_buffer};
 
 use super::halvings::Camera;
+use super::held::{HeldChains, held_bytes};
 use super::screen::Screen;
 use super::{
     BufferChain, Composite, Composited, KeyChain, Over, Plan, Step, TILE_BYTES, TileSet,
@@ -68,10 +69,12 @@ impl MaskPlane {
 }
 
 /// An effect chain as the app builds it: its ops, a lens blur's with its
-/// map's index of the plan's, and the rectangle they run over.
+/// map's index of the plan's, the rectangle they run over and the hold
+/// that keeps what it puts, under the number the app gives it, if any.
 struct PlannedChain {
     ops: Vec<(Op<'static>, Option<usize>)>,
     rect: TileRect,
+    held: Option<(HeldChains, u32)>,
 }
 
 /// A blur map as the app names it ([`BlurMap`]), what it is read from
@@ -117,11 +120,14 @@ impl Planned {
     /// The effect chains as a plan names them, each lens blur reading its
     /// map.
     fn chained(&self) -> Vec<Chained<'_>> {
-        let chained = |chain: &PlannedChain| Chained {
-            ops: chain.ops.iter().map(|(op, map)| self.mapped(op, *map)).collect(),
-            rect: chain.rect,
-        };
-        self.chains.iter().map(chained).collect()
+        self.chains
+            .iter()
+            .map(|chain| Chained {
+                ops: chain.ops.iter().map(|(op, map)| self.mapped(op, *map)).collect(),
+                rect: chain.rect,
+                held: chain.held.as_ref().map(|(held, id)| (held, *id)),
+            })
+            .collect()
     }
 
     /// `op`, reading map `map` of the plan's where it names one.
@@ -621,8 +627,80 @@ pub unsafe extern "C" fn gpu_engine_plan_key_run(
 pub unsafe extern "C" fn gpu_engine_plan_chain(plan: *mut Planned, x0: i32, y0: i32, columns: u32, rows: u32) -> u32 {
     // SAFETY: see the function's contract.
     let plan = unsafe { &mut *plan };
-    plan.chains.push(PlannedChain { ops: Vec::new(), rect: TileRect { x0, y0, columns, rows } });
+    let rect = TileRect { x0, y0, columns, rows };
+    plan.chains.push(PlannedChain { ops: Vec::new(), rect, held: None });
     plan.chains.len() as u32 - 1
+}
+
+/// Holds what effect chain `chain` puts in `held` under `id`, the number
+/// the app gives what it shows: a run whose hold under `id` keeps what it
+/// put over the chain's rectangle lays that, and does not run it
+/// ([`HeldChains`]). 0, or -1 where the plan has no such chain; see the
+/// last error.
+///
+/// # Safety
+/// `plan` and `held` are live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_chain_held(
+    plan: *mut Planned,
+    chain: u32,
+    held: *const HeldChains,
+    id: u32,
+) -> i32 {
+    // SAFETY: see the function's contract.
+    let (plan, held) = unsafe { (&mut *plan, &*held) };
+    let Some(planned) = plan.chains.get_mut(chain as usize) else {
+        fail::<()>(format!("no effect chain {chain}"));
+        return -1;
+    };
+    planned.held = Some((held.clone(), id));
+    0
+}
+
+/// A hold for what the chains of the plans that name it put
+/// ([`gpu_engine_plan_chain_held`]), empty.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_held_new() -> *mut HeldChains {
+    Box::into_raw(Box::default())
+}
+
+/// Lets go of everything `held` keeps that no plan names; what one does is
+/// let go with the plan.
+///
+/// # Safety
+/// `held` came from `gpu_engine_held_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_held_free(held: *mut HeldChains) {
+    if !held.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(held) });
+    }
+}
+
+/// Lets go of what `held` keeps under `id`, if anything.
+///
+/// # Safety
+/// `held` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_held_let_go(held: *const HeldChains, id: u32) {
+    // SAFETY: see the function's contract.
+    unsafe { &*held }.let_go(id);
+}
+
+/// The bytes `held` keeps under `id` — none where it keeps nothing.
+///
+/// # Safety
+/// `held` is live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_held_bytes_of(held: *const HeldChains, id: u32) -> u64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*held }.bytes_of(id)
+}
+
+/// The bytes every hold keeps, kept and not yet let go.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_held_bytes() -> u64 {
+    held_bytes()
 }
 
 /// Adds to effect chain `chain` the colour matrix of `matrix` —

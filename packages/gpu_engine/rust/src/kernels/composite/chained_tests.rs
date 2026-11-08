@@ -9,7 +9,8 @@ use std::sync::OnceLock;
 use super::tests::{
     Pool, chained, contrast, keyed, masked_row, matrixed, mixed, pose, rig, row, texel, with_map,
 };
-use super::{Budget, NO_EDGE, Over, Plan, Step, TileSet, WHOLE, check_depth};
+use super::held::HeldChains;
+use super::{Budget, NO_EDGE, Over, Plan, Step, TILE_BYTES, TileSet, WHOLE, check_depth};
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, PLUS, SCREEN};
 use crate::kernels::chain::tests::lens;
 use crate::kernels::chain::{Chain, Chained, MapTiles, Op, laid_as, tiles_of};
@@ -226,6 +227,7 @@ fn a_chained_row_lays_what_its_chain_puts_as_it_was_laid() {
     let chains = [Chained {
         ops: blurred(),
         rect: RECT,
+        held: None,
     }];
     let got = laying.widest(&chains, &[base, chained(posed(1), 0)], mask.as_ref());
     assert!(got != laying.widest(&[], &[base, posed(1)], mask.as_ref()), "the chain ran");
@@ -245,6 +247,7 @@ fn a_chained_buffer_lays_what_its_chain_puts_as_its_close_does() {
     let chains = [Chained {
         ops: blurred(),
         rect: RECT,
+        held: None,
     }];
     let buffer = |close| [base, Step::Open, rows[0], rows[1], close];
     let got = laying.widest(&chains, &buffer(chained(closing, 0)), None);
@@ -266,6 +269,7 @@ fn a_buffer_chained_at_a_mix_crossfades_its_rows_with_what_its_chain_puts() {
     let chains = [Chained {
         ops: blurred(),
         rect: RECT,
+        held: None,
     }];
     let buffer = |close| [base, Step::Open, rows[0], rows[1], close];
     let closing = |mix| mixed(close(45000, SCREEN, Some(0)), 0, mix);
@@ -319,10 +323,12 @@ fn a_map_drawn_from_rows_is_those_rows_drawn_alone_over_the_rectangle() {
             Chained {
                 ops: lensed(MapTiles::Drawn(rows)),
                 rect: RECT,
+                held: None,
             },
             Chained {
                 ops: across(),
                 rect: RECT,
+                held: None,
             },
         ]
     }
@@ -356,10 +362,12 @@ fn a_map_s_rows_read_no_map_of_their_own() {
             Chained {
                 ops: lensed(MapTiles::Drawn(rows)),
                 rect: RECT,
+                held: None,
             },
             Chained {
                 ops: lensed(MapTiles::Drawn(&deeper)),
                 rect: RECT,
+                held: None,
             },
         ]
     };
@@ -394,14 +402,17 @@ fn chains_run_innermost_first() {
         Chained {
             ops: blurred(),
             rect: RECT,
+            held: None,
         },
         Chained {
             ops: across(),
             rect: RECT,
+            held: None,
         },
         Chained {
             ops: down(),
             rect: TALL,
+            held: None,
         },
     ];
     let got = laying.widest(&chains, &steps, None);
@@ -451,6 +462,7 @@ fn a_buffer_opened_on_the_one_under_it_runs_no_chain() {
     let chains = [Chained {
         ops: across(),
         rect: RECT,
+        held: None,
     }];
     let budget = rig().composite.widest();
     let scope = |open| [row(0, (0, 0), WHOLE, NORMAL), open, row(1, (0, 0), WHOLE, MULTIPLY)];
@@ -520,6 +532,7 @@ fn a_buffer_closed_as_a_row_runs_its_chain_on_its_picture() {
     let chains = [Chained {
         ops: blurred(),
         rect: RECT,
+        held: None,
     }];
     let buffer = |over| [&[base, Step::Open][..], &held(), &[closed_as_a_row(over, pose("turn"))]].concat();
     let got = laying.widest(&chains, &buffer(Over::Chain(0)), None);
@@ -579,4 +592,75 @@ fn a_buffer_closed_as_a_row_is_checked_as_a_close() {
     let budget = rig().composite.widest();
     assert!(laying.composited(&[], &opened(Step::Open), None, budget).is_some());
     assert!(laying.composited(&[], &opened(Step::OpenOpaque), None, budget).is_none());
+}
+
+/// [`blurred`] over [`RECT`] — or where `tall` [`down`] over [`TALL`] —
+/// held by `held` under the number it names, if any.
+fn held_chain<'a>(held: Option<(&'a HeldChains, u32)>, tall: bool) -> [Chained<'a>; 1] {
+    let (ops, rect) = if tall { (down(), TALL) } else { (blurred(), RECT) };
+    [Chained { ops, rect, held }]
+}
+
+// A chained row whose chain's hold keeps what it put over its rectangle is
+// laid from that, not run: another row under the same number lays it too —
+// until the hold lets it go, or the chain runs over another rectangle.
+#[test]
+fn a_held_row_lays_what_its_chain_put_while_its_hold_keeps_it() {
+    let laying = Laying::new(&[((0, 0), (2, 2)), ((0, 0), (2, 1)), ((-1, 1), (2, 1))]);
+    let held = HeldChains::default();
+    let holding = |tall| held_chain(Some((&held, 7)), tall);
+    let base = row(0, (0, 0), WHOLE, NORMAL);
+    let over = |set| [base, chained(row(set, (3, -2), 50000, MULTIPLY), 0)];
+    let first = laying.widest(&holding(false), &over(1), None);
+    assert!(first == laying.widest(&held_chain(None, false), &over(1), None), "a miss runs it");
+    assert_eq!(held.bytes_of(7), 6 * TILE_BYTES);
+    assert!(laying.widest(&holding(false), &over(2), None) == first, "what it put laid");
+    let other = laying.widest(&held_chain(None, false), &over(2), None);
+    assert!(other != first, "row 2 shows otherwise");
+    held.let_go(7);
+    assert_eq!(held.bytes_of(7), 0);
+    assert!(laying.widest(&holding(false), &over(2), None) == other, "let go, it runs");
+    let taller = laying.widest(&held_chain(None, true), &over(1), None);
+    assert!(laying.widest(&holding(true), &over(1), None) == taller, "over another, it runs");
+}
+
+// A chained buffer whose chain's hold keeps what it put is laid from that,
+// its steps not walked: other rows in it under the same number lay it too.
+#[test]
+fn a_held_buffer_lays_what_its_chain_put_and_walks_none_of_its_steps() {
+    let laying = Laying::new(&[((0, 0), (2, 2)), ((0, 0), (2, 1)), ((-1, 1), (2, 1))]);
+    let held = HeldChains::default();
+    let base = row(0, (0, 0), WHOLE, NORMAL);
+    let closing = chained(close(45000, SCREEN, Some(0)), 0);
+    let buffer = |rows: &[Step]| [&[base, Step::Open][..], rows, &[closing]].concat();
+    let rows = [row(1, (3, -2), 50000, NORMAL), row(2, (-5, 4), 40000, MULTIPLY)];
+    let other = [row(2, (1, 0), WHOLE, NORMAL)];
+    let holding = held_chain(Some((&held, 3)), false);
+    let first = laying.widest(&holding, &buffer(&rows), None);
+    assert!(first == laying.widest(&held_chain(None, false), &buffer(&rows), None));
+    assert!(laying.widest(&holding, &buffer(&other), None) == first, "what it put laid");
+    assert!(laying.widest(&held_chain(None, false), &buffer(&other), None) != first);
+}
+
+// A buffer crossfaded at a mix is laid from its hold only where that keeps
+// the tiles its chain ran on, as well as what it put: one held at the whole
+// mix runs again, and from then on holds both.
+#[test]
+fn a_held_buffer_at_a_mix_lays_what_its_hold_keeps_where_that_holds_its_tiles() {
+    let laying = Laying::new(&[((0, 0), (2, 2)), ((0, 0), (2, 1)), ((-1, 1), (2, 1))]);
+    let held = HeldChains::default();
+    let base = row(0, (0, 0), WHOLE, NORMAL);
+    let closing = |mix| mixed(close(45000, SCREEN, Some(0)), 0, mix);
+    let buffer = |rows: &[Step], mix| [&[base, Step::Open][..], rows, &[closing(mix)]].concat();
+    let rows = [row(1, (3, -2), 50000, NORMAL), row(2, (-5, 4), 40000, MULTIPLY)];
+    let other = [row(2, (1, 0), WHOLE, NORMAL)];
+    let holding = held_chain(Some((&held, 5)), false);
+    laying.widest(&holding, &buffer(&rows, WHOLE), None);
+    assert_eq!(held.bytes_of(5), 6 * TILE_BYTES);
+    let crossfaded = laying.widest(&holding, &buffer(&rows, 20000), None);
+    let unheld = held_chain(None, false);
+    assert!(crossfaded == laying.widest(&unheld, &buffer(&rows, 20000), None), "it runs");
+    assert_eq!(held.bytes_of(5), 2 * 6 * TILE_BYTES);
+    assert!(laying.widest(&holding, &buffer(&other, 20000), None) == crossfaded, "both laid");
+    assert!(laying.widest(&unheld, &buffer(&other, 20000), None) != crossfaded);
 }

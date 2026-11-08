@@ -74,6 +74,7 @@ pub(crate) mod abi;
 #[cfg(test)]
 mod chained_tests;
 pub(crate) mod halvings;
+pub(crate) mod held;
 pub(crate) mod screen;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -96,6 +97,8 @@ use crate::kernels::shared::{
     ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, room, runs,
     storage_format, tiles_a_page, tiles_a_pass, whole, words_buffer,
 };
+
+use held::Made;
 
 /// A tile's side in pixels (1a ①).
 pub(crate) const TILE: u32 = 128;
@@ -818,6 +821,10 @@ impl Composite {
     /// A buffer closed as a row ([`Step::CloseRow`]) is one so too, over
     /// its chain's rectangle, or over its own tiles that the output `tiles`
     /// read through its pose where it names no chain — and is laid posed.
+    ///
+    /// A chain whose hold keeps what it put over its rectangle is not run:
+    /// that is laid, and a buffer's steps are not walked ([`held::HeldChains`]).
+    /// A chain run under a hold is kept by it.
     fn chained(
         &self,
         engine: &Engine,
@@ -825,13 +832,24 @@ impl Composite {
         tiles: &[(i32, i32)],
         budget: Budget,
     ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>)> {
-        let held = tiles_a_page(engine)?;
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
         let mut steps: Vec<Step> = Vec::with_capacity(plan.steps.len());
         // Where in `steps` each buffer open there was opened, and whether
         // on nothing.
         let mut opens: Vec<(usize, bool)> = Vec::new();
+        let closes = closes_of(plan.steps);
+        // A buffer whose chain's hold keeps what it put: its close, and that.
+        let mut kept: Option<(usize, Made)> = None;
         for (index, step) in plan.steps.iter().enumerate() {
+            if kept.as_ref().is_some_and(|&(close, _)| index < close) {
+                continue;
+            }
+            if let (Step::Open, Some(close)) = (step, closes[index])
+                && let Some(made) = held_over(plan, &plan.steps[close])
+            {
+                kept = Some((close, made));
+                continue;
+            }
             let chained = chain_of(step).map(|at| &plan.chains[at]);
             let rect = match (*step, chained) {
                 (_, Some(chained)) => chained.rect,
@@ -851,49 +869,34 @@ impl Composite {
                     continue;
                 }
             };
-            let read = tiles_of(rect);
-            // ⚠️No test reaches this refusal, as none reaches `gathered`'s:
-            // a page holds 2048 tiles at WebGPU's least binding.
-            if read.len() > held {
-                let count = read.len();
-                return fail(format!("step {index} runs on {count} tiles; a page holds {held}"));
-            }
-            let under = match *step {
-                Step::Row { set, .. } => self.copied(engine, &pages, &sets[set], &read, budget)?,
-                _ => {
-                    // A buffer opened on the one under it holds what is under
-                    // it, which its steps alone do not lay.
-                    let Some((open, true)) = opens.pop() else {
-                        return fail(format!("step {index} runs a buffer opened on another"));
-                    };
-                    let alone = steps.split_off(open + 1);
-                    steps.truncate(open);
-                    let plan = Plan {
-                        pages: &pages,
-                        sets: &sets,
-                        chains: &[],
-                        steps: &alone,
-                        ..*plan
-                    };
-                    self.run(engine, &plan, &read, NO_EDGE, budget)?
-                }
+            let found = match step {
+                Step::Row { .. } => held_over(plan, step),
+                _ => kept.take().map(|(_, made)| made),
             };
-            let put = match chained {
-                Some(chained) => {
+            let made = match found {
+                Some(made) => made,
+                None => {
                     let now = Plan { pages: &pages, sets: &sets, ..*plan };
-                    self.through(engine, &now, chained, under.out.clone(), &read, budget)?
+                    let laying = (&mut opens, &mut steps);
+                    let made = self.made(engine, &now, (index, step), rect, laying, budget)?;
+                    if let Some((held, id)) = chained.and_then(|chained| chained.held) {
+                        held.keep(id, rect, made.clone());
+                    }
+                    made
                 }
-                None => under.out.clone(),
             };
-            let put = laid_on(&mut pages, &mut sets, put, rect)?;
-            match *step {
-                Step::Close {
-                    opacity,
-                    mode,
-                    matrix,
-                    chain: Some(BufferChain { mix, .. }),
-                } if mix < WHOLE => {
-                    let read = laid_on(&mut pages, &mut sets, under.out, rect)?;
+            let put = laid_on(&mut pages, &mut sets, made.put, rect)?;
+            match (*step, made.under) {
+                (
+                    Step::Close {
+                        opacity,
+                        mode,
+                        matrix,
+                        chain: Some(BufferChain { mix, .. }),
+                    },
+                    Some(under),
+                ) if mix < WHOLE => {
+                    let read = laid_on(&mut pages, &mut sets, under, rect)?;
                     let laid = |set, opacity, mode, matrix| Step::Row {
                         set,
                         keys: None,
@@ -920,6 +923,57 @@ impl Composite {
             }
         }
         Some((pages, sets, steps))
+    }
+
+    /// What step `index`, `step`, of `plan` puts over `rect`, run
+    /// ([`Composite::chained`]): a row's tiles as they are stored, or the
+    /// steps of the buffer it closes — taken off the steps laid so far where
+    /// the opens say it opened — composited alone, through its chain where
+    /// it names one; and those tiles where it is laid crossfaded with them.
+    fn made(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        (index, step): (usize, &Step),
+        rect: TileRect,
+        (opens, steps): (&mut Vec<(usize, bool)>, &mut Vec<Step>),
+        budget: Budget,
+    ) -> Option<Made> {
+        let read = tiles_of(rect);
+        let page = tiles_a_page(engine)?;
+        // ⚠️No test reaches this refusal, as none reaches `gathered`'s:
+        // a page holds 2048 tiles at WebGPU's least binding.
+        if read.len() > page {
+            let count = read.len();
+            return fail(format!("step {index} runs on {count} tiles; a page holds {page}"));
+        }
+        let under = match *step {
+            Step::Row { set, .. } => self.copied(engine, plan.pages, &plan.sets[set], &read, budget)?,
+            _ => {
+                // A buffer opened on the one under it holds what is under
+                // it, which its steps alone do not lay.
+                let Some((open, true)) = opens.pop() else {
+                    return fail(format!("step {index} runs a buffer opened on another"));
+                };
+                let alone = steps.split_off(open + 1);
+                steps.truncate(open);
+                let plan = Plan {
+                    chains: &[],
+                    steps: &alone,
+                    ..*plan
+                };
+                self.run(engine, &plan, &read, NO_EDGE, budget)?
+            }
+        };
+        let put = match chain_of(step) {
+            Some(at) => {
+                let chained = &plan.chains[at];
+                self.through(engine, plan, chained, under.out.clone(), &read, budget)?
+            }
+            None => under.out.clone(),
+        };
+        let under = mixed(step).then_some(under.out);
+        Some(Made { put, under })
     }
 
     /// `under` — tiles over `chained`'s rectangle, `read` — through its ops:
@@ -1223,6 +1277,39 @@ fn chain_of(step: &Step) -> Option<usize> {
 /// closed as a row.
 fn runs_first(step: &Step) -> bool {
     chain_of(step).is_some() || matches!(step, Step::CloseRow { .. })
+}
+
+/// What the hold of the chain `step` names keeps of it, over the chain's
+/// rectangle and — where `step` is laid crossfaded with them — with the
+/// tiles it ran on; none where it names no chain or none held.
+fn held_over(plan: &Plan, step: &Step) -> Option<Made> {
+    let chained = &plan.chains[chain_of(step)?];
+    let (held, id) = chained.held?;
+    held.over(id, chained.rect, mixed(step))
+}
+
+/// Whether `step` closes a chained buffer at a mix under whole: laid as a
+/// crossfade of its tiles with what its chain put ([`Composite::chained`]).
+fn mixed(step: &Step) -> bool {
+    matches!(*step, Step::Close { chain: Some(BufferChain { mix, .. }), .. } if mix < WHOLE)
+}
+
+/// For each step that opens a buffer, the step that closes it, if one does.
+fn closes_of(steps: &[Step]) -> Vec<Option<usize>> {
+    let mut closes = vec![None; steps.len()];
+    let mut opens = Vec::new();
+    for (index, step) in steps.iter().enumerate() {
+        match step {
+            Step::Open | Step::OpenOpaque => opens.push(index),
+            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => {
+                if let Some(open) = opens.pop() {
+                    closes[open] = Some(index);
+                }
+            }
+            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+        }
+    }
+    closes
 }
 
 /// The tiles of `rect` whose pixels `map` reads for the output `tiles` —

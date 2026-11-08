@@ -37,7 +37,7 @@ const GROUP: u32 = 8;
 /// A rectangle of the canvas's tiles, its top-left tile at column `x0`, row
 /// `y0` — what a blur reads and puts: one straight RGBA8 tile after
 /// another, row after row of them.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TileRect {
     pub(crate) x0: i32,
     pub(crate) y0: i32,
