@@ -277,6 +277,35 @@ external void planClose(
   int mix,
 );
 
+@Native<
+  Int32 Function(
+    Pointer<Planned>,
+    Int32,
+    Pointer<Int32>,
+    Int32,
+    Pointer<Double>,
+    Double,
+    Uint32,
+    Uint32,
+    Uint32,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_plan_close_row')
+external int planCloseRow(
+  Pointer<Planned> plan,
+  int chain,
+  Pointer<Int32> tiles,
+  int matrix,
+  Pointer<Double> inverse,
+  double radiusFloor,
+  int sampling,
+  int columns,
+  int rows,
+  int opacity,
+  int mode,
+);
+
 @Native<Void Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_close_atop')
 external void planCloseAtop(Pointer<Planned> plan);
 

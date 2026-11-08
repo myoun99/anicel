@@ -731,6 +731,46 @@ class GpuPlan {
     int mix = 65535,
   }) => rust.planClose(_plan, opacity, mode, matrix ?? -1, chain ?? -1, mix);
 
+  /// Closes the open buffer — opened on nothing, its steps laid in a row's
+  /// own space — as that row: drawn over effect chain [chain]'s tiles and
+  /// run through it, else over the row's own [tiles] (x0, y0, columns,
+  /// rows), and laid as [row] lays a row, posed by [inverse] and the rest.
+  ///
+  /// False where its pose lands nothing, so it lays nothing: the buffer is
+  /// taken out with its steps.
+  bool closeRow({
+    int? chain,
+    (int, int, int, int)? tiles,
+    required List<double> inverse,
+    required GpuSampling sampling,
+    required int columns,
+    required int rows,
+    required int mode,
+    int? matrix,
+    double radiusFloor = 1,
+    int opacity = 65535,
+  }) {
+    if (inverse.length != 9) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    }
+    final closed = using(
+      (arena) => rust.planCloseRow(
+        _plan,
+        chain ?? -1,
+        _rectOrNull(arena, tiles),
+        matrix ?? -1,
+        _doubles(arena, inverse),
+        radiusFloor,
+        sampling.id,
+        columns,
+        rows,
+        opacity,
+        mode,
+      ),
+    );
+    return _checked(closed) == 1;
+  }
+
   /// Closes a clip's scope onto its base by the base's alpha.
   void closeAtop() => rust.planCloseAtop(_plan);
 
