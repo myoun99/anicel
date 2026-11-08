@@ -293,5 +293,5 @@ fn a_word_of_no_ink_is_its_box_of_nothing() {
     }];
     let cover = baked(&space, [3.0, 15.0], 1.0, 1, [32 * SIXTY_FOURTH, WHOLE]);
     assert_eq!((cover.width, cover.height), (4, 17));
-    assert!(cover.bytes.iter().all(|&alpha| alpha == 0));
+    assert_eq!(cover.bytes, vec![0; 4 * 17]);
 }
