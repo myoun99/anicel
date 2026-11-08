@@ -403,10 +403,6 @@ void main() {
         () => celTileAsShown(tile, null, effects, tileSize),
         throwsA(isA<AssertionError>()),
       );
-      expect(
-        () => celStraightTileAsShown(Uint8List(64), null, effects, tileSize),
-        throwsA(isA<AssertionError>()),
-      );
     });
   });
 

@@ -422,9 +422,12 @@ const _imageHolders = <String, String>{
       'one export render\'s media images (SheetImageRun), read for that '
       'render and let go when it ends — the working set of a render, as '
       'the ink rasters and cell pictures composed beside it are',
-  'lib/src/ui/canvas/active_stroke_overlay.dart → _tileImages':
+  'lib/src/ui/canvas/active_stroke_overlay.dart → _shown':
       'the tiles of the stroke in progress, each freed as it settles into '
       'the surface',
+  'lib/src/ui/canvas/active_stroke_overlay.dart → _staged':
+      'a dragged shape\'s stroke pictured before it is shown (I-69-Q4ⓒ), '
+      'shown in place of the stroke or dropped in the same drag',
   'lib/src/ui/canvas/deferred_image_disposal.dart → _buckets':
       'images already let go, kept only for the frames the raster thread '
       'may still read; a disposal queue, not a holding',

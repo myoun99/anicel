@@ -30,9 +30,11 @@ import '../helpers/project_scratch_folder.dart';
 ///
 /// And a third: a live stroke shows its result in place of the cel's tile
 /// at every coordinate it changes, so the result is shown as the tile the
-/// cel will show there — one tile (`celTileWithSourceEffects`), or its
-/// bytes before they are one (card a-stroke-on-a-keyed-row-shows-its-tiles-
-/// unkeyed: a keyed sheet's ground showed bare under the pen).
+/// cel will show there — one tile (`celTileWithSourceEffects`; card
+/// a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed: a keyed sheet's ground
+/// showed bare under the pen). ↩️Its bytes were keyed before they were one,
+/// a road of their own, until the overlay held each result as a tile
+/// (flip lane ⓐ, 2026-11-08).
 void main() {
   const seam = 'lib/src/services/cel_surface_as_shown.dart';
   const keysPass = 'lib/src/services/cel_source_effect_pass.dart';
@@ -46,12 +48,11 @@ void main() {
   };
 
   /// How many roads in the seam open each door: a cel, one of its tiles,
-  /// and bytes that are no tile yet — a landing text's region and a live
-  /// stroke's tile.
+  /// and bytes that are no tile yet — a landing text's region.
   const roads = {
     'celSurfaceWithSourceEffects(': 1,
     'celTileWithSourceEffects(': 1,
-    'celSourceEffectsOverStraight(': 2,
+    'celSourceEffectsOverStraight(': 1,
   };
 
   /// The lines of [source] that CALL [door] — a mention in a comment is not
@@ -108,14 +109,6 @@ void main() {
         'celTileWithPlatesLaid(tile,plates,tileSize)!,effects,tileSize,)',
       ),
       reason: 'a tile: $order',
-    );
-    expect(
-      flat,
-      contains(
-        'layPlatesOverStraight(straight,plates,tileSize);}'
-        'celSourceEffectsOverStraight(straight,effects);',
-      ),
-      reason: 'a live tile\'s bytes: $order',
     );
   });
 

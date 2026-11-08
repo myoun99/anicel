@@ -9,6 +9,8 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/cel_source_effect_pass.dart'
+    show celSourceEffectsOverStraight;
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart'
     show pixelThroughChain;
@@ -204,8 +206,8 @@ void main() {
       expect(kept, greaterThan(0), reason: '⛔liveness: and leave some');
     });
 
-    test('$name: bytes keyed in place — a region\'s, a live tile\'s — the '
-        'same in C and in Dart', () {
+    test('$name: bytes keyed in place — a region\'s — the same in C and '
+        'in Dart', () {
       if (libraryPath == null) {
         if (nativeEngineRequired) {
           fail(nativeEngineMissingSkipReason);
@@ -216,10 +218,10 @@ void main() {
       for (final pixels in planes().values) {
         walkIn(native: false);
         final inDart = Uint8List.fromList(pixels);
-        celStraightTileAsShown(inDart, null, chain, tileSize);
+        celSourceEffectsOverStraight(inDart, chain);
         walkIn(native: true);
         final inC = Uint8List.fromList(pixels);
-        celStraightTileAsShown(inC, null, chain, tileSize);
+        celSourceEffectsOverStraight(inC, chain);
 
         expect(inC, inDart);
       }
