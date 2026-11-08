@@ -100,6 +100,18 @@ List<Color> _inksOf(WidgetTester tester, String tabId) => [
   for (final shape in _bandOf(tester, tabId)) shape.paint.color,
 ];
 
+/// That [tabId]'s band lies in its grip — on the strip's edge, where the
+/// hand reaches for it.
+void _expectInItsGrip(WidgetTester tester, String tabId, String where) {
+  final band = _bandOf(tester, tabId).single.outline.getBounds();
+  final grip = tester.getRect(_gripOf(tabId)).inflate(0.5);
+  expect(
+    grip.contains(band.topLeft) && grip.contains(band.bottomRight),
+    isTrue,
+    reason: '$where: the band $band lies in its grip $grip',
+  );
+}
+
 /// The panel [tabId]'s tab lifts: its dock's whole box.
 Rect _panelOf(WidgetTester tester, String tabId) => tester.getRect(
   find
@@ -163,6 +175,7 @@ void main() {
 
     final ink = GripBand.ink(nearby: true, hovered: false, active: false);
     expect(_inksOf(tester, tabId), [isSameColorAs(ink)], reason: where);
+    _expectInItsGrip(tester, tabId, where);
     final rows = await _bandRows(tester, tabId);
     expect(rows, hasLength(GripBand.rest.round()), reason: where);
     expect(
@@ -244,6 +257,7 @@ void main() {
     await tester.pump();
 
     final ink = GripBand.ink(nearby: true, hovered: true, active: false);
+    _expectInItsGrip(tester, tabId, 'under the pointer');
     final rows = await _bandRows(tester, tabId);
     expect(rows, hasLength(GripBand.reach.round()));
     expect(
