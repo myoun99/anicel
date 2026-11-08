@@ -6,6 +6,8 @@ library;
 
 import 'dart:ffi';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'gpu_engine_asset.dart';
 
 @Native<Int64 Function()>(symbol: 'qa_physical_memory_bytes')
@@ -28,7 +30,24 @@ abstract final class QaMemory {
   /// The device's physical RAM — callers keep their desktop-class default
   /// where it is null. This is what lets the hot cel budget scale to the
   /// machine.
-  static int? get physicalMemoryBytes => _said(_physical());
+  static int? get physicalMemoryBytes {
+    final said = debugPhysicalMemoryBytes;
+    return said != null ? said() : _said(_physical());
+  }
+
+  /// Test seam: the RAM a test says this machine has, or null — the
+  /// machine's own.
+  ///
+  /// 🚨A TEST RUNS ON NO MACHINE UNDER 6GB, and that is where the device
+  /// laws stop scaling: a quarter of the RAM clamps to 1536MB, the same as
+  /// no RAM at all, so a budget that read none passed every pin there.
+  /// Four lived through the move to the engine — the session's laws and the
+  /// viewers' (관제 2026-11-08 16:21, connection-round-checklist: 「넣을
+  /// 자리가 없으면 QaMemory 의 답을 시험에서 바꿔 끼울 한 자리」 — a 4GB
+  /// tablet's 1024MB against the 1536MB). Only the RAM: no other answer
+  /// feeds a law a test can only reach on a smaller machine.
+  @visibleForTesting
+  static int? Function()? debugPhysicalMemoryBytes;
 
   /// What THIS PROCESS is holding.
   ///

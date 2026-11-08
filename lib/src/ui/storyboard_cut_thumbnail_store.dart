@@ -226,6 +226,10 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// What the held pictures cost resident, 4 bytes a pixel.
   int get thumbnailBytes => _pictures.heldBytes;
 
+  /// What may be held now — the pin that the budget is this device's.
+  @visibleForTesting
+  int get debugByteBudget => _budget.byteBudget;
+
   /// What a surface takes to draw these pictures: [thumbnailFor], what says
   /// one of its cuts' landed ([noticesFor]), this store as what says any
   /// did, and whether one is still to come.

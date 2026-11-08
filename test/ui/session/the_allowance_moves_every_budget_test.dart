@@ -193,6 +193,35 @@ void main() {
     );
   });
 
+  test('under 6GB of RAM the laws and the allowance are that machine\'s, '
+      'not a desktop\'s', () {
+    // 관제 2026-11-08 16:21: every machine the tests run on has 6GB or more,
+    // where the laws stop scaling — a session that read no RAM passed every
+    // pin there. A 4GB tablet is where the two part.
+    const tablet = 4 * 1024 * 1024 * 1024;
+    expect(
+      CacheBudgets.forDevice(physicalMemoryBytes: tablet),
+      isNot(CacheBudgets.forDevice(physicalMemoryBytes: null)),
+      reason: 'fixture: the tablet\'s laws must not be the desktop default',
+    );
+    QaMemory.debugPhysicalMemoryBytes = () => tablet;
+    addTearDown(() => QaMemory.debugPhysicalMemoryBytes = null);
+    final session = newSession();
+    expect(
+      session.deviceCacheBudgets,
+      CacheBudgets.forDevice(physicalMemoryBytes: tablet),
+    );
+    expect(
+      session.automaticAllowance,
+      automaticAllowanceBytes(
+        physicalMemoryBytes: tablet,
+        appMemoryLimitBytes: QaMemory.appMemoryLimitBytes,
+        floorBytes: CacheBudgets.floors.total,
+        lawsTotalBytes: session.deviceCacheBudgets.total,
+      ),
+    );
+  });
+
   /// F-504: the line rising is room a resting warmer did not have. The user
   /// saw twenty frames go green after moving the allowance — while it
   /// played, when the playhead moving wakes the walk anyway; a line that

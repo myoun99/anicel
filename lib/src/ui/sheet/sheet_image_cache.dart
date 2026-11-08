@@ -178,6 +178,10 @@ class SheetImageCache extends ChangeNotifier {
   /// What the held images cost resident, 4 bytes a pixel.
   int get decodedBytes => _images.heldBytes;
 
+  /// What may be held now — the pin that the budget is this device's.
+  @visibleForTesting
+  int get debugByteBudget => _budget.byteBudget;
+
   /// [assetPath]'s picture [width] pixels wide (its own size where null):
   /// held, or the sharpest held of it at another width while that one is
   /// read — null when none is.
