@@ -175,14 +175,19 @@ fn every_loop_of_the_plugins_pays_and_the_render_enters_first() {
 }
 
 #[test]
-fn a_call_in_a_loop_costs_its_callee_and_a_nested_loop_one() {
-    let lone = opened(&plugin("", "", "var n = 0u;\nloop { n += 1u; if n > 3u { break; } }\nreturn n;"));
-    let calling = opened(&plugin(
-        "fn helper(x: u32) -> u32 { let a = x * 3u; let b = a + 7u; return b ^ a; }",
-        "",
-        "var n = 0u;\nloop { n += helper(n) & 1u; n += 1u; if n > 3u { break; } }\nreturn n;",
-    ));
-    assert!(first_turn(&calling) > first_turn(&lone) + 3, "the helper's straight size is in the turn");
+fn a_call_in_a_loop_costs_what_it_calls() {
+    // The same loop, calling a helper of one statement or of ten: only the
+    // callee's straight size tells the two turns apart.
+    let turn_with = |helper_body: &str| {
+        first_turn(&opened(&plugin(
+            &format!("fn helper(x: u32) -> u32 {{ {helper_body} }}"),
+            "",
+            "var n = 0u;\nloop { n += helper(n) & 1u; n += 1u; if n > 3u { break; } }\nreturn n;",
+        )))
+    };
+    let small = turn_with("return x;");
+    let big = turn_with("let a = x * 3u; let b = a + 7u; let c = b ^ a; let d = c * c; return d + b;");
+    assert!(big >= small + 8, "the callee's straight size is in the turn: {small} -> {big}");
 }
 
 #[test]
