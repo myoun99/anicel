@@ -964,7 +964,20 @@ void main() {
   /// 🔬`clean_code_diff` against master (`6793af759`) names those two added
   /// and nothing gone. ⛔Not bundled to fit: the bindings take what the
   /// exports take.
-  const wideSignatures = 473;
+  ///
+  /// ⚠️473 → 463 on 2026-11-08, lowered as the rule asks
+  /// (grid-on-the-engine ⑤⑥ — the frame grids' tiles are drawn by the GPU
+  /// engine's grid pass and laid on their grid's screen). With the C's
+  /// rasterizer went its binding (`QaNativeEngine.gridRasterTile` and
+  /// `gridRasterTileBytes`), the Dart reference it was pinned to
+  /// (`timelineGridRasterTileReference`, `_rrectDistance`, `_blendRect`,
+  /// `_blendSpan`) and the writer's split spellings of a rounded fill
+  /// (`boxFill`, `runFill`, the 388 → 391 step's); a row lays a tile on its
+  /// screen, not on a canvas with a paint (`TimelineRowCellsPainter
+  /// ._layTile`), and the engine narrows a word where Dart averaged its
+  /// raster (`boxFilterA8`, ③). 🔬`clean_code_diff` against master
+  /// (`0570a2a1b`) names those ten gone and nothing added.
+  const wideSignatures = 463;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1343,7 +1356,19 @@ void main() {
   /// found the mixer's names only once the resampler and the denoiser left
   /// the C (connection-round-checklist H). 🔬`clean_code_diff` against the
   /// lane's base (`fd101433a`) names it gone and nothing added.
-  const longBodies = 414;
+  ///
+  /// ⚠️414 → 410 on 2026-11-08, one named and two gone as the rule above
+  /// asks (grid-on-the-engine ⑤⑥; master stood at 411 under 414).
+  /// `_RowCellsPicture.build` (64) crossed when the row's picture came to
+  /// stand in its grid's screen slot (`TimelineGridScreenSlot`), where the
+  /// row lays its tiles. `timelineGridRasterTileReference` left with the C
+  /// rasterizer it was pinned to, and `TimelineGridTileOpWriter.boxFill`
+  /// with the split of a rounded fill into cheap pieces — the engine's pass
+  /// asks every op at every pixel, so one field op a piece costs least.
+  /// 🔬`clean_code_diff` against master (`0570a2a1b`) names those.
+  /// ⛔Not split to fit: the build is one constructor call, each argument
+  /// the row's own fact.
+  const longBodies = 410;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

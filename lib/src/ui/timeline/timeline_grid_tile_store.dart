@@ -1929,7 +1929,6 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
   required int spanEndIndexExclusive,
   required double devicePixelRatio,
 }) {
-  final horizontal = painter.axis == Axis.horizontal;
   final toLocal = offsetAlong(
     painter.axis,
     along: -startAlong(painter.axis, painter.cellRectFor(spanStartIndex)),
@@ -1944,9 +1943,14 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
   for (final piece in substrate.paper) {
     final local = piece.rect.shift(toLocal);
     final corner = _cornerOf(piece.radius);
-    // ⚡The field is paid for at the run's two ends; the rest is plain
-    // fills ([TimelineGridTileOpWriter.runFill] — the same bytes).
-    writer.runFill(
+    // ⚡One field op a piece: the engine's pass asks every op at every
+    // pixel of the tile, so a piece split into more ops costs more.
+    // ↩️It was split into corner pieces and boxes while the C rastered the
+    // tiles, whose cost was the field's square root at every pixel of the
+    // paper (block frame lines, 09-24); the split's Dart field was a copy
+    // of the pass's own, an alpha apart on the engine (grid-on-the-engine
+    // ⑥).
+    writer.rrectFill(
       local.left * devicePixelRatio,
       local.top * devicePixelRatio,
       local.width * devicePixelRatio,
@@ -1954,16 +1958,17 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
       corner.radius * devicePixelRatio,
       corner.mask,
       timelineGridPackRgba(piece.color),
-      alongX: horizontal,
     );
   }
   for (final line in substrate.lines) {
     final local = line.rect.shift(toLocal);
-    writer.boxFill(
+    writer.rrectFill(
       local.left * devicePixelRatio,
       local.top * devicePixelRatio,
       local.width * devicePixelRatio,
       local.height * devicePixelRatio,
+      0,
+      0,
       timelineGridPackRgba(line.color),
     );
   }

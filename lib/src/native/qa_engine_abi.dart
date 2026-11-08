@@ -365,7 +365,10 @@ import '../core/on_a_worker.dart';
 ///   connection-round-checklist H), which `QaAudioDecoder` binds in the GPU
 ///   engine's library with native/media's span reader. The C engine is its
 ///   raster half alone: no media, no zstd, no OS codec stack.
-const int kQaEngineAbiVersion = 72;
+/// - v73: `qa_grid_raster_tile` leaves the C: the frame grids' tiles are
+///   drawn by the GPU engine's grid pass (grid-on-the-engine ⑥), and the
+///   C rasterizes no grid.
+const int kQaEngineAbiVersion = 73;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

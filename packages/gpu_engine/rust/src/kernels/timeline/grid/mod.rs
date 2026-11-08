@@ -1,12 +1,14 @@
-//! A frame grid's tile, drawn from the op stream the grids write — the
-//! words the C rasterizer `qa_grid_raster_tile` reads today
-//! (timeline_grid_tile_ops.dart has them) — over an A8 atlas of the
-//! letters, in `grid.wgsl`.
+//! A frame grid's tile, drawn from the op stream the grids write
+//! (timeline_grid_tile_ops.dart has the words) over an A8 atlas of the
+//! letters, in `grid.wgsl` — the one place the stream is drawn, and so
+//! what it says.
 //!
-//! What the stream says is the C rasterizer's, but for the rounded rects:
-//! their field is taken in q9 integers with `isqrt_round`, not in doubles
-//! with the C library's square root, so an edge pixel may differ from an
-//! old build's by a step — the same on every device, which is the point.
+//! ↩️The C rasterizer `qa_grid_raster_tile` drew it until
+//! grid-on-the-engine ⑥. What the stream said was the C's, but for the
+//! rounded rects: their field is taken here in q9 integers with
+//! `isqrt_round`, not in doubles with the C library's square root, so an
+//! edge pixel may differ from an old build's by a step — the same on every
+//! device, which is the point.
 
 pub(crate) mod abi;
 pub(crate) mod lay;
@@ -87,7 +89,7 @@ impl GridPicture {
 /// not match.
 ///
 /// ↩️It was laid here from the words and their places (23c70b786): the
-/// tile store lays its atlas itself, as the C rasterizer reads one
+/// tile store lays its atlas itself, as the C rasterizer read one
 /// (timeline_grid_tile_store.dart `_setWords`), and keeps its words as the
 /// app's bytes — so the engine takes that atlas, and one place lays it.
 pub(crate) fn atlas_of(engine: &Engine, bytes: &[u8], width: u32, height: u32) -> Option<Option<wgpu::Texture>> {
@@ -163,7 +165,7 @@ fn shape_of(op: i32) -> Option<(usize, &'static [usize])> {
 /// have, one cut short, a letter with no atlas, a place or length past
 /// [`MOST_REACH`], or a corner below square or past [`MOST_RADIUS_Q9`].
 ///
-/// ⚠️Mine: a stream the C rasterizer would stop part-way through is refused
+/// ⚠️Mine: a stream the C rasterizer stopped part-way through is refused
 /// whole here — a pass cannot stop at an op — so nothing of it is drawn.
 fn fault_in(ops: &[i32], has_atlas: bool) -> Option<String> {
     let mut at = 0;

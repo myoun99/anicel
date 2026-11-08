@@ -84,7 +84,6 @@ class QaNativeEngine {
     this._fillGapCloseRun,
     this._floodFillWave,
     this._fillComposeBatch,
-    this._gridRasterTile,
     this._resampleRgba,
     this._celPixelPassTile,
   ) : _celSpec = calloc<QaCelPixelSpecStruct>(),
@@ -588,47 +587,6 @@ class QaNativeEngine {
   _preBlendTiles;
 
   final int Function(
-    Pointer<Uint8> pixels,
-    int tileWidth,
-    int tileHeight,
-    int backgroundRgba,
-    Pointer<Int32> ops,
-    int opWordCount,
-    Pointer<Uint8> atlas,
-    int atlasWidth,
-    int atlasHeight,
-  )
-  _gridRasterTile;
-
-  /// Grid tile raster (UI-R18 O7 T1): rasterizes one op stream into the
-  /// native RGBA tile. Semantics = `timelineGridRasterTileReference`
-  /// (byte parity pinned). Returns 0 ok / negative on a malformed
-  /// stream.
-  int gridRasterTile({
-    required Pointer<Uint8> pixels,
-    required int tileWidth,
-    required int tileHeight,
-    required int backgroundRgba,
-    required Pointer<Int32> ops,
-    required int opWordCount,
-    Pointer<Uint8>? atlas,
-    int atlasWidth = 0,
-    int atlasHeight = 0,
-  }) {
-    return _gridRasterTile(
-      pixels,
-      tileWidth,
-      tileHeight,
-      backgroundRgba,
-      ops,
-      opWordCount,
-      atlas ?? nullptr,
-      atlasWidth,
-      atlasHeight,
-    );
-  }
-
-  final int Function(
     Pointer<Uint8> src,
     int srcWidth,
     int srcHeight,
@@ -751,58 +709,6 @@ class QaNativeEngine {
 
   final _resampleDst = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   Pointer<Double> _resampleInverse = nullptr;
-
-  /// Copy-in/copy-out convenience over [gridRasterTile] for callers (and
-  /// the parity suite) that live in Dart lists.
-  int gridRasterTileBytes({
-    required Uint8List pixels,
-    required int tileWidth,
-    required int tileHeight,
-    required int backgroundRgba,
-    Int32List? ops,
-    Uint8List? atlas,
-    int atlasWidth = 0,
-    int atlasHeight = 0,
-  }) {
-    final pixelsNative = malloc<Uint8>(pixels.length);
-    final opsNative = ops == null || ops.isEmpty
-        ? nullptr
-        : malloc<Int32>(ops.length);
-    final atlasNative = atlas == null || atlas.isEmpty
-        ? nullptr
-        : malloc<Uint8>(atlas.length);
-    try {
-      if (opsNative != nullptr) {
-        opsNative.asTypedList(ops!.length).setAll(0, ops);
-      }
-      if (atlasNative != nullptr) {
-        atlasNative.asTypedList(atlas!.length).setAll(0, atlas);
-      }
-      final result = gridRasterTile(
-        pixels: pixelsNative,
-        tileWidth: tileWidth,
-        tileHeight: tileHeight,
-        backgroundRgba: backgroundRgba,
-        ops: opsNative,
-        opWordCount: ops?.length ?? 0,
-        atlas: atlasNative == nullptr ? null : atlasNative,
-        atlasWidth: atlasWidth,
-        atlasHeight: atlasHeight,
-      );
-      if (result == 0) {
-        pixels.setAll(0, pixelsNative.asTypedList(pixels.length));
-      }
-      return result;
-    } finally {
-      malloc.free(pixelsNative);
-      if (opsNative != nullptr) {
-        malloc.free(opsNative);
-      }
-      if (atlasNative != nullptr) {
-        malloc.free(atlasNative);
-      }
-    }
-  }
 
   static QaNativeEngine? _instance;
   static bool _loadAttempted = false;
@@ -1218,31 +1124,6 @@ class QaNativeEngine {
               Pointer<QaComposeBlendStruct>,
             )
           >('qa_fill_compose_batch');
-      final gridRasterTile = library
-          .lookupFunction<
-            Int32 Function(
-              Pointer<Uint8>,
-              Int32,
-              Int32,
-              Uint32,
-              Pointer<Int32>,
-              Int32,
-              Pointer<Uint8>,
-              Int32,
-              Int32,
-            ),
-            int Function(
-              Pointer<Uint8>,
-              int,
-              int,
-              int,
-              Pointer<Int32>,
-              int,
-              Pointer<Uint8>,
-              int,
-              int,
-            )
-          >('qa_grid_raster_tile');
       final resampleRgba = library
           .lookupFunction<
             Int32 Function(
@@ -1323,7 +1204,6 @@ class QaNativeEngine {
         fillGapCloseRun,
         floodFillWave,
         fillComposeBatch,
-        gridRasterTile,
         resampleRgba,
         celPixelPassTile,
       );

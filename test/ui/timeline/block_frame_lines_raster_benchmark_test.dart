@@ -5,23 +5,22 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
-import '../../helpers/native_engine_path.dart';
 import 'timeline_frame_geometry_probe.dart';
 
-/// What a row's substrate costs to BAKE on the native rasterizer: a
+/// What a row's substrate costs to BAKE on the GPU engine's grid pass: a
 /// 240-frame working row in 64-frame tiles at DPR 1.5.
 ///
 /// The two per-cell bakes this replaced are rebuilt here from the painter's
@@ -30,26 +29,20 @@ import 'timeline_frame_geometry_probe.dart';
 /// line). Against them, today's emitter with the block frame lines off and
 /// on (유저 2026-09-24: a switch, and 「좀 더 성능적으로 개선해주면 좋아」).
 ///
-/// 🔬Measured 2026-09-24 (median of 60, four tiles), pre-I-44 · I-44 · off ·
-/// on — a quiet machine: 24px 2.8 · 2.0 · 1.45 · 1.45ms, 12px 1.26 · 1.16 ·
-/// 0.56 · 0.61, 8px 0.77 · 0.62 · 0.33 · 0.41; with six other test runs on
-/// it: 24px 3.9 · 3.4 · 1.7 · 1.8, 12px 1.8 · 1.4 · 0.82 · 0.85, 8px 1.2 ·
-/// 0.89 · 0.48 · 0.54. Read the ratios, not the milliseconds: the lines on
-/// cost 27–48% less than I-44's bare paper did.
+/// 🔬Measured 2026-11-08 on the pass (median of 60, four tiles, the main
+/// PC), pre-I-44 · I-44 · off · on: 24px 1.6 · 1.2 · 1.0 · 0.86ms, 12px 0.97
+/// · 0.76 · 0.77 · 1.2, 8px 0.97 · 0.76 · 0.71 · 0.87 — a draw's own fixed
+/// cost rules, and the medians are noisy. One field op a piece took the
+/// words off 1500 → 488 and 4818 → 1936 at 24px; the split it replaced
+/// measured 1.44 · 1.56ms there for off · on, in a run just before.
+///
+/// ↩️2026-09-24 on the C rasterizer (until grid-on-the-engine ⑥), a quiet
+/// machine: 24px 2.8 · 2.0 · 1.45 · 1.45ms, 12px 1.26 · 1.16 · 0.56 · 0.61,
+/// 8px 0.77 · 0.62 · 0.33 · 0.41; with six other test runs on it: 24px 3.9
+/// · 3.4 · 1.7 · 1.8, 12px 1.8 · 1.4 · 0.82 · 0.85, 8px 1.2 · 0.89 · 0.48 ·
+/// 0.54. The lines on cost 27–48% less than I-44's bare paper did.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  final dllPath = nativeEngineLibraryPathOrNull();
-
-  setUp(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = dllPath;
-    QaNativeEngine.debugForceDartFallback = false;
-  });
-
-  tearDown(() {
-    QaNativeEngine.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
 
   const frames = 240;
   const span = 64;
@@ -87,11 +80,8 @@ void main() {
   }
 
   test('bake cost: pre-I-44 / I-44 / today off / today on', () {
-    final engine = QaNativeEngine.instance;
-    if (engine == null) {
-      markTestSkipped('native engine not built');
-      return;
-    }
+    final grid = GpuGrid(appGpuEngine);
+    addTearDown(grid.free);
     const scheme = ColorScheme.dark();
     for (final cell in [24.0, 12.0, 8.0]) {
       TimelineRowCellsPainter painterFor({required bool lines}) =>
@@ -188,7 +178,7 @@ void main() {
 
       final width = (span * cell * dpr).ceil();
       final height = (28 * dpr).ceil();
-      final pixels = Uint8List(width * height * 4);
+      final picture = GpuGridPicture(appGpuEngine, width, height);
       final results = <String>[];
       for (final entry in model.entries) {
         final words = entry.value.fold<int>(0, (sum, ops) => sum + ops.length);
@@ -196,13 +186,7 @@ void main() {
         for (var round = 0; round < 60; round += 1) {
           final watch = Stopwatch()..start();
           for (final ops in entry.value) {
-            engine.gridRasterTileBytes(
-              pixels: pixels,
-              tileWidth: width,
-              tileHeight: height,
-              backgroundRgba: 0,
-              ops: ops,
-            );
+            grid.draw(picture, ops);
           }
           samples.add(watch.elapsedMicroseconds);
         }
@@ -213,6 +197,7 @@ void main() {
       }
       // ignore: avoid_print
       print('cell ${cell}px — ${results.join(' | ')}');
+      picture.free();
     }
   });
 }

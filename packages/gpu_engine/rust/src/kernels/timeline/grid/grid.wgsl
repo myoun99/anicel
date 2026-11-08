@@ -98,7 +98,7 @@ fn field_at(at: u32) -> Field {
 // corners `line` tighter, never below square. Every edge is even in q9,
 // so its halves are whole.
 //
-// No hold to what the hole can hold, though the C rasterizer has one: the
+// No hold to what the hole can hold, though the C rasterizer had one: the
 // outer corner is held to the outer box's shorter half and each half of
 // the hole is that half less `line` or more, so a corner `line` tighter
 // always fits.

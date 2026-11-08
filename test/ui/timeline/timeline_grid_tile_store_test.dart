@@ -149,6 +149,12 @@ void main() {
       );
     Uint8List raster(Int32List ops) => gridTileDrawn(4 * 24, 28, ops);
 
+    expect(
+      covered,
+      field.build(),
+      reason: 'one field op a piece — ↩️split into corner pieces and boxes '
+          'while the C rastered (grid-on-the-engine ⑥)',
+    );
     expect(raster(covered), equals(raster(field.build())));
 
     // 🚨D43-2 재개 (유저 2026-08-22): 「아직도 레이어행에만 그리드 없거든?」.
