@@ -3,7 +3,7 @@
 
 use std::sync::mpsc;
 
-use crate::{copy_out, fail, platform};
+use crate::{copy_out, fail, last_error, platform};
 
 /// One wgpu device and its queue.
 #[derive(Clone)]
@@ -211,15 +211,44 @@ pub(crate) fn storage_texture(
     })
 }
 
-fn boxed(engine: Option<Engine>) -> *mut Engine {
-    engine.map_or(std::ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
+/// The engine `open` makes, made on a thread of the engine's own while
+/// the caller waits — its failure, if it fails, the caller's last error.
+///
+/// 🚨★★A DEVICE IS NEVER OPENED ON THE CALLER'S THREAD
+/// (an-engine-setup-hangs-in-a-batch, 2026-11-08): the caller is a Dart
+/// isolate's, and the Dart VM's sampling profiler — on in every
+/// `flutter test` (flutter_tools `flutter_tester_device.dart`,
+/// `--enable-dart-profiling`) and every debug run — walks that thread's
+/// stack from a thread of its own. While that thread was inside the NVIDIA
+/// driver, wgpu trying a device on each adapter, the walk read its stack
+/// below what was committed and the process died — 0xC0000005 or
+/// 0x80000001, no WER report: 17 of 1368 `flutter test` files eighteen at
+/// once on the main PC's RTX 4080, every one in the adapters' enumeration
+/// (the Surface's setUpAll `did not complete` is the same death). The
+/// profiler walks the isolate's thread, so the driver runs on this one.
+fn opened(open: impl FnOnce() -> Option<Engine> + Send) -> *mut Engine {
+    let made = std::thread::scope(|scope| {
+        let thread = std::thread::Builder::new().name("gpu_engine open".into());
+        let opening = thread.spawn_scoped(scope, || open().ok_or_else(last_error));
+        match opening {
+            Ok(opening) => opening.join().unwrap_or_else(|_| Err("opening panicked".into())),
+            Err(error) => Err(format!("no thread to open on: {error}")),
+        }
+    });
+    match made {
+        Ok(engine) => Box::into_raw(Box::new(engine)),
+        Err(error) => {
+            let _ = fail::<()>(error);
+            std::ptr::null_mut()
+        }
+    }
 }
 
 /// Opens the engine on the adapter whose LUID is `luid` (high part in the
 /// upper 32 bits) — Flutter's own. Null on failure; see the last error.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open(luid: u64) -> *mut Engine {
-    boxed(Engine::open(luid))
+    opened(|| Engine::open(luid))
 }
 
 /// Opens the engine on the platform's only adapter — Android's, where
@@ -227,14 +256,14 @@ pub extern "C" fn gpu_engine_open(luid: u64) -> *mut Engine {
 /// error.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open_sole() -> *mut Engine {
-    boxed(Engine::open_sole())
+    opened(Engine::open_sole)
 }
 
 /// Opens the engine on the platform's first adapter — `flutter test`'s,
 /// where no Flutter names one. Null on failure; see the last error.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open_first() -> *mut Engine {
-    boxed(Engine::open_first())
+    opened(Engine::open_first)
 }
 
 /// # Safety
@@ -278,7 +307,30 @@ pub unsafe extern "C" fn gpu_engine_video_memory(engine: *const Engine) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use super::{Engine, gpu_engine_close, opened};
     use crate::testing::first_engine;
+    use crate::{fail, last_error};
+
+    #[test]
+    fn a_device_is_opened_on_a_thread_of_its_own_not_the_callers() {
+        let caller = std::thread::current().id();
+        let mut on = None;
+        let made = opened(|| {
+            on = Some(std::thread::current().id());
+            Engine::open_first()
+        });
+        assert!(!made.is_null(), "{}", last_error());
+        assert!(on.is_some_and(|on| on != caller));
+        // SAFETY: `made` came from `opened`, nothing made on it.
+        unsafe { gpu_engine_close(made) };
+    }
+
+    #[test]
+    fn what_fails_on_that_thread_is_the_callers_last_error() {
+        let made = opened(|| fail("no adapter here"));
+        assert!(made.is_null());
+        assert_eq!(last_error(), "no adapter here");
+    }
 
     #[test]
     fn the_device_has_the_most_storage_the_adapter_gives() {

@@ -73,6 +73,11 @@ pub(crate) fn fail<T>(message: impl Into<String>) -> Option<T> {
     None
 }
 
+/// This thread's last error, as [`fail`] recorded it.
+pub(crate) fn last_error() -> String {
+    LAST_ERROR.with(|last| last.borrow().clone())
+}
+
 /// Copies `text` into a caller's buffer of `capacity` bytes; returns its
 /// full length, which may exceed `capacity`.
 pub(crate) fn copy_out(text: &str, buffer: *mut u8, capacity: usize) -> usize {
