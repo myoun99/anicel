@@ -123,7 +123,7 @@ fn a_field_of_one_value_stays_that_value_wherever_a_window_lies_in_it() {
                     bytes: vec![value; (raster[0] as usize + 16) * (raster[1] as usize + 16)],
                 };
                 let boxed = [8, 5];
-                let bytes = narrowed_cover(&field, raster, boxed, times, [k, WHOLE]);
+                let bytes = narrowed_cover(&field, raster, boxed, times, [k, WHOLE]).unwrap();
                 let columns = narrowed_windows(times, k, boxed[0], raster[0]);
                 let rows = narrowed_windows(times, WHOLE, boxed[1], raster[1]);
                 for (y, (top, down)) in rows.iter().enumerate() {
@@ -157,7 +157,7 @@ fn a_thin_stroke_is_averaged_into_its_pixel_not_dropped() {
         at: [3, 0, 4, 8],
         bytes: vec![255; 8],
     };
-    assert_eq!(narrowed_cover(&stroke, [8, 8], [2, 2], 4, [WHOLE, WHOLE]), [63, 0, 63, 0]);
+    assert_eq!(narrowed_cover(&stroke, [8, 8], [2, 2], 4, [WHOLE, WHOLE]), Some(vec![63, 0, 63, 0]));
 }
 
 // 유저 2026-08-28: 「줌인하면 텍스트는 선명하게 보고싶다」 — the average of one
@@ -275,6 +275,14 @@ fn a_word_past_the_raster_is_refused_before_it_is_drawn() {
     // The same 「3」 in a box the bound takes is drawn, that big.
     let (_, drawn) = crate::testing::most_held_while(|| bake(faces(), &shapes, 1.0, 1, [3000.0, height], [WHOLE, WHOLE]));
     assert!(drawn > 4 << 20, "the 「3」 took {drawn} bytes at its most");
+}
+
+#[test]
+fn a_cover_past_the_machine_is_refused_and_one_it_holds_is_its_box() {
+    // Past what an allocation can ask for, so nothing is taken to learn it.
+    assert!(cover_of([u32::MAX, u32::MAX]).is_none());
+    assert!(last_error().contains("the machine has not the bytes"), "{}", last_error());
+    assert_eq!(cover_of([3, 2]), Some(vec![0; 6]));
 }
 
 #[test]

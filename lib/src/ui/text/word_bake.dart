@@ -312,7 +312,7 @@ bool paintBakedWord(
   }
   final baked = BakedWords.instance._bakeFor(
     _Word((
-      span: _inkless(span),
+      span: _inklessOf[span] ??= HashedOnce(_inkless(span)),
       scaler: painter.textScaler,
       dpr: dpr,
       width: painter.width,
@@ -466,11 +466,12 @@ mixin RepaintOnWordBakes on CustomPainter implements WordBakeWaiter {
 ///
 /// Hashed once ([HashedOnce]): a paint looks its word up several times —
 /// its bake taken out and put back, the word's latest bake, its waiters —
-/// and a span's hash walks its style and every child's.
+/// and a span's hash walks its style and every child's. The span is too,
+/// once for as long as it lives ([_inklessOf]).
 typedef _Word =
     HashedOnce<
       ({
-        InlineSpan span,
+        HashedOnce<InlineSpan> span,
         TextScaler scaler,
         double dpr,
         double width,
@@ -485,19 +486,27 @@ typedef _Bake = HashedOnce<({_Word word, double x, double y})>;
 /// [span] with every colour it is set in made one: its bake is the letters'
 /// ink alone, so a word painted in another colour is drawn from the same
 /// bake ([paintBakedWord] tints it). A style painted with a [Paint] of its
-/// own keeps it — the engine is not handed one ([EngineWord.of]).
+/// own keeps it — the engine is not handed one ([EngineWord.of]) — and so
+/// does one already in the one colour.
 InlineSpan _inkless(InlineSpan span) => switch (span) {
   TextSpan(:final text, :final style, :final children) => TextSpan(
     text: text,
-    style: style?.foreground == null
-        ? style?.copyWith(color: const Color(0xFF000000))
-        : style,
+    style: style == null || style.foreground != null || style.color == _ink
+        ? style
+        : style.copyWith(color: _ink),
     children: [
       for (final child in children ?? const <InlineSpan>[]) _inkless(child),
     ],
   ),
   _ => span,
 };
+
+const _ink = Color(0xFF000000);
+
+/// Each span's [_inkless] key, made and hashed once for as long as the span
+/// lives — a cached glyph's painter is painted with the same span frame
+/// after frame, and finding it here asks nothing of its hash.
+final Expando<HashedOnce<InlineSpan>> _inklessOf = Expando();
 
 /// The words a screen has baked ([paintBakedWord]) — the app's one cache
 /// of them, as images, and when one lands.

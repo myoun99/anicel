@@ -89,8 +89,8 @@ int timelineGridQ8(double pixels) => (pixels * 256).round();
   final corner = math.min(2 * r, math.min(w, h));
   if (r < 0 || corner > _mostCornerQ9) {
     throw ArgumentError(
-      'a corner of $radius px on a $width × $height px box: the grid takes '
-      'none below square and none past 64 px',
+      'a corner of $radius px on a box $width px wide and $height px high: '
+      'the grid takes none below square and none past 64 px',
     );
   }
   return (w, h, r);

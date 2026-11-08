@@ -299,38 +299,53 @@ void main() {
       return bytes.getUint8(i) + bytes.getUint8(i + 1) + bytes.getUint8(i + 2);
     }
 
-    // Along the word's middle line, across the block (x 0-47): the ink runs.
+    // Across the block (x 0-47), where the word's band holds ink: one run
+    // per letter. The letters are the engine's own faces' outlines, set
+    // where the test face lays them (em-wide), so a letter is not its
+    // advance — the narrowing shows in how far apart they start.
     final layout = painter.cellWordSetFor(
       0,
       model.glyph,
       painter.glyphStyleFor(model),
     );
-    final y = (layout.origin.dy + natural.height * layout.fit.y / 2).round();
+    final tight = laidOutGlyph(
+      model.glyph,
+      painter.glyphStyleFor(model),
+      tightening: layout.tightening,
+    );
+    double leftOf(int at) => tight
+        .getBoxesForSelection(
+          TextSelection(baseOffset: at, extentOffset: at + 1),
+        )
+        .single
+        .left;
+    final top = layout.origin.dy.floor();
+    final bottom = (layout.origin.dy + natural.height * layout.fit.y).ceil();
     final paper = sumAt(24, 25);
-    final runs = <int>[];
-    var run = 0;
+    bool inked(int x) => [
+      for (var y = top; y < bottom; y += 1) y,
+    ].any((y) => (sumAt(x, y) - paper).abs() > 60);
+    final starts = <int>[];
+    var inRun = false;
     for (var x = 1; x < 2 * cell - 1; x += 1) {
-      if ((sumAt(x, y) - paper).abs() > 60) {
-        run += 1;
-      } else if (run > 0) {
-        runs.add(run);
-        run = 0;
+      final ink = inked(x);
+      if (ink && !inRun) {
+        starts.add(x);
       }
-    }
-    if (run > 0) {
-      runs.add(run);
+      inRun = ink;
     }
     expect(
-      runs,
+      starts,
       hasLength(4),
       reason: 'all four letters are in the tile, inside the block — a name '
           'baked wide shows the first two or three and is cut off',
     );
+    // The second and third: the first is cut by the scan's edge.
     expect(
-      runs.first,
-      lessThan(11 * 0.8),
-      reason: 'narrowed as the classic pass narrows it (fit '
-          '${layout.fit.x}), not at its full 11px',
+      starts[2] - starts[1],
+      closeTo((leftOf(4) - leftOf(2)) * layout.fit.x, 1),
+      reason: 'narrowed as the classic pass narrows it — its gaps set '
+          '(${layout.tightening}), then fit ${layout.fit.x}',
     );
   });
 

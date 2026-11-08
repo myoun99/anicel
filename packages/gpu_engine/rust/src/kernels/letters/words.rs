@@ -95,8 +95,8 @@ pub(crate) fn bake(
     // The box the word is laid by: its narrowed ink, and a pixel round it.
     let boxed = [0, 1].map(|axis| (size[axis] * (f64::from(narrowed[axis]) / f64::from(WHOLE)) * dpr).ceil() as u32 + 2);
     let bytes = match cover {
-        Some(cover) => narrowed_cover(&cover, raster, boxed, times, narrowed),
-        None => vec![0; boxed[0] as usize * boxed[1] as usize],
+        Some(cover) => narrowed_cover(&cover, raster, boxed, times, narrowed)?,
+        None => cover_of(boxed)?,
     };
     Some(WordCover {
         width: boxed[0],
@@ -150,13 +150,13 @@ pub(crate) fn bake(
 /// 12px 「12」 narrowed to a quarter inks all 14 rows of its box for 9, peak
 /// 76 for 214, the blur of F-297 back. Even narrowed by a half both ways its
 /// levels stand half a texel off these windows, the margin being one pixel.
-fn narrowed_cover(cover: &Cover, raster: [u32; 2], boxed: [u32; 2], times: u32, narrowed: [u32; 2]) -> Vec<u8> {
+fn narrowed_cover(cover: &Cover, raster: [u32; 2], boxed: [u32; 2], times: u32, narrowed: [u32; 2]) -> Option<Vec<u8>> {
     let columns = narrowed_windows(times, narrowed[0], boxed[0], raster[0]);
     let rows = narrowed_windows(times, narrowed[1], boxed[1], raster[1]);
     let whole = (u64::from(WHOLE) * u64::from(times)).pow(2);
-    let mut bytes = Vec::with_capacity(boxed[0] as usize * boxed[1] as usize);
-    for (top, down) in &rows {
-        for (left, along) in &columns {
+    let mut bytes = cover_of(boxed)?;
+    for ((top, down), line_of_bytes) in rows.iter().zip(bytes.chunks_exact_mut(boxed[0] as usize)) {
+        for ((left, along), byte) in columns.iter().zip(line_of_bytes) {
             let mut sum = 0u64;
             for (j, &weight_down) in down.iter().enumerate() {
                 let y = (top + j as u32) as i32;
@@ -167,10 +167,27 @@ fn narrowed_cover(cover: &Cover, raster: [u32; 2], boxed: [u32; 2], times: u32, 
                     .sum();
                 sum += u64::from(weight_down) * line;
             }
-            bytes.push((sum / whole) as u8);
+            *byte = (sum / whole) as u8;
         }
     }
-    bytes
+    Some(bytes)
+}
+
+/// A cover of `boxed` pixels, none of them inked — None, with the last
+/// error, where the machine has not the bytes to give.
+///
+/// 🧭REFUSED, NOT ENDED: a word past what the machine holds is refused as
+/// any other word the bake cannot take, never the process aborted, and by
+/// no number of its own (브러시/렌더링 2026-11-08: 「OOM 은 거절」).
+fn cover_of(boxed: [u32; 2]) -> Option<Vec<u8>> {
+    let mut bytes = Vec::new();
+    match usize::try_from(u64::from(boxed[0]) * u64::from(boxed[1])) {
+        Ok(length) if bytes.try_reserve_exact(length).is_ok() => {
+            bytes.resize(length, 0);
+            Some(bytes)
+        }
+        _ => fail(format!("a word's cover of {boxed:?} pixels: the machine has not the bytes")),
+    }
 }
 
 /// Along one axis, what each of `count` final pixels covers of a raster

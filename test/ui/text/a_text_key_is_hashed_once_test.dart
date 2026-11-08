@@ -17,11 +17,10 @@ import '../../helpers/word_bakes.dart';
 /// twice and more.
 
 var _styleHashes = 0;
-var _spanHashes = 0;
 
 /// A style that counts its hashes.
 class _CountedStyle extends TextStyle {
-  const _CountedStyle({super.fontSize});
+  const _CountedStyle({super.fontSize, super.color});
 
   @override
   int get hashCode {
@@ -31,20 +30,6 @@ class _CountedStyle extends TextStyle {
 
   @override
   bool operator ==(Object other) => other is _CountedStyle && super == other;
-}
-
-/// A span that counts its hashes.
-class _CountedSpan extends TextSpan {
-  const _CountedSpan({super.text, super.style});
-
-  @override
-  int get hashCode {
-    _spanHashes += 1;
-    return super.hashCode;
-  }
-
-  @override
-  bool operator ==(Object other) => other is _CountedSpan && super == other;
 }
 
 class _WordPainter extends CustomPainter with RepaintOnWordBakes {
@@ -70,19 +55,22 @@ void main() {
     expect(_styleHashes, 1);
   });
 
-  testWidgets('a word drawn from its bake hashes its span once', (
+  testWidgets('a word drawn from its bake hashes its span once in its life', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     const fit = (x: 0.25, y: 1.0);
+    // In the one ink its key is set in, so the key holds this very style
+    // and its hashes are counted here.
     final word = TextPainter(
-      text: const _CountedSpan(
+      text: const TextSpan(
         text: 'かぎ',
-        style: TextStyle(fontSize: 12, color: Color(0xFFD00000)),
+        style: _CountedStyle(fontSize: 12, color: Color(0xFF000000)),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
+    _styleHashes = 0;
     await tester.pumpWidget(
       Center(
         child: CustomPaint(
@@ -98,10 +86,11 @@ void main() {
       paints..drawImageRect(),
       reason: 'fixture: the word is drawn from its bake',
     );
-    _spanHashes = 0;
-    final recorder = ui.PictureRecorder();
-    paintFittedText(Canvas(recorder), word, Offset.zero, fit);
-    recorder.endRecording().dispose();
-    expect(_spanHashes, 1);
+    for (var paint = 0; paint < 2; paint += 1) {
+      final recorder = ui.PictureRecorder();
+      paintFittedText(Canvas(recorder), word, Offset.zero, fit);
+      recorder.endRecording().dispose();
+    }
+    expect(_styleHashes, 1);
   });
 }
