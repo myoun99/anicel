@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
+import '../widgets/face_ink_well.dart';
 
 /// **The tool's sizes, as buttons** (I-2).
 ///
@@ -170,12 +171,10 @@ class _SizeCell extends StatelessWidget {
     final ink = selected ? AppColors.accent : colorScheme.onSurface;
     return Material(
       color: Colors.transparent,
-      shape: AppShapes.control(AppShapes.controlSmall),
-      clipBehavior: Clip.antiAlias,
       child: ControlPressClaim(
         onPressed: onTap,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
+        child: FaceInkWell(
+          edge: AppShapes.control(AppShapes.controlSmall),
           onTap: silentPress(onTap),
           // ⛔WIDTH ONLY. Pinning the height too made the column overflow by
           // whatever the label's line height happened to be — a number that

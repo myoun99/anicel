@@ -559,16 +559,11 @@ class RenderRailPlateFace extends RenderProxyBox
 
   late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
 
-  /// The [InkWell]'s two highlights as one overlay, each with its alpha in
-  /// whole bytes as an `InkHighlight` fills it — the same hue over itself,
-  /// so their order says nothing. Null while neither shows.
-  Color? get _overlay => [
-    if (_spec.focus == IconButtonFocus.shown) _spec.focusInk,
-    if (hovered && _spec.enabled) _spec.hoverInk,
-  ].fold<Color?>(null, (under, ink) {
-    final whole = ink.withAlpha((ink.a * 255).round());
-    return under == null ? whole : Color.alphaBlend(whole, under);
-  });
+  /// The [InkWell]'s two highlights as one overlay ([inkWellOverlay]).
+  Color? get _overlay => inkWellOverlay(
+    focus: _spec.focus == IconButtonFocus.shown ? _spec.focusInk : null,
+    hover: hovered && _spec.enabled ? _spec.hoverInk : null,
+  );
 
   @override
   void paint(PaintingContext context, Offset offset) {

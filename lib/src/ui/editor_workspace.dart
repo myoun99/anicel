@@ -124,6 +124,7 @@ import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
+import 'widgets/face_ink_well.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/still_raster.dart';
 import 'widgets/superellipse_clip.dart';
@@ -3454,15 +3455,12 @@ class _RailGroupButton extends StatelessWidget {
             message: tooltip,
             child: Material(
               key: ValueKey<String>('rail-group-$railId'),
-              color: open
-                  ? colorScheme.surfaceContainerHigh
-                  : Colors.transparent,
-              clipBehavior: Clip.antiAlias,
-              shape: AppShapes.control(ToolsPanel.buttonExtent),
+              color: Colors.transparent,
               child: ControlPressClaim(
                 onPressed: onPressed,
-                child: InkWell(
-                  mouseCursor: AppCursors.press,
+                child: FaceInkWell(
+                  edge: AppShapes.control(ToolsPanel.buttonExtent),
+                  fill: open ? colorScheme.surfaceContainerHigh : null,
                   onTap: silentPress(onPressed),
                   // The pair sizes itself to one button cell, so a group that
                   // wears a face is the same square as every other.

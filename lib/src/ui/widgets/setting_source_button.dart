@@ -6,6 +6,7 @@ import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart' show textOnColor;
 import 'app_tooltip.dart';
 import 'ellipsis_text.dart';
+import 'face_ink_well.dart';
 
 /// The button at a settings row's END that says whether anything moves the
 /// setting and opens the window that sets what does — the curve button
@@ -117,39 +118,34 @@ class SettingSourceButton extends StatelessWidget {
     // `a-disabled-bar-dims-without-a-layer-Q1`). The well's own two colours
     // carry the dimming now.
     final lit = enabled && active;
+    final edge = AppShapes.container(
+      AppShapes.wellRadius,
+      side: BorderSide(
+        color: dimmedIfDisabled(
+          lit ? AppColors.accent : _offEdge,
+          enabled: enabled,
+        ),
+        width: _borderWidth,
+      ),
+    );
     return AppTooltip(
       message: tooltip,
       child: Material(
         color: Colors.transparent,
         child: ControlPressClaim(
           onPressed: enabled ? () => onPressed(context) : null,
-          child: InkWell(
-            mouseCursor: AppCursors.press,
+          child: FaceInkWell(
             key: ValueKey<String>(keyValue),
-            customBorder: AppShapes.container(AppShapes.wellRadius),
+            edge: edge,
             onTap: silentPress(enabled ? () => onPressed(context) : null),
-            child: DecoratedBox(
-              decoration: ShapeDecoration(
-                shape: AppShapes.container(
-                  AppShapes.wellRadius,
-                  side: BorderSide(
-                    color: dimmedIfDisabled(
-                      lit ? AppColors.accent : _offEdge,
-                      enabled: enabled,
-                    ),
-                    width: _borderWidth,
-                  ),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(_padding),
-                child: CustomPaint(
-                  size: _glyphSize,
-                  painter: glyph(
-                    dimmedIfDisabled(
-                      lit ? AppColors.accent : offInk,
-                      enabled: enabled,
-                    ),
+            child: Padding(
+              padding: const EdgeInsets.all(_padding),
+              child: CustomPaint(
+                size: _glyphSize,
+                painter: glyph(
+                  dimmedIfDisabled(
+                    lit ? AppColors.accent : offInk,
+                    enabled: enabled,
                   ),
                 ),
               ),

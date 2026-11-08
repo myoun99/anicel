@@ -24,6 +24,7 @@ import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/group_tab.dart';
+import '../widgets/face_ink_well.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/stand_on_reorder_list.dart';
@@ -1271,31 +1272,19 @@ class _GroupIconPicker extends StatelessWidget {
       required bool isSelected,
       required VoidCallback onTap,
     }) {
+      // Selection reads as colour only, never a checkmark.
+      final (:edge, :fill) = chosenCellFace(colorScheme, selected: isSelected);
       return ControlPressClaim(
         onPressed: onTap,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
+        child: FaceInkWell(
           key: ValueKey<String>(keyValue),
+          edge: edge,
+          fill: fill,
           onTap: silentPress(onTap),
-          customBorder: AppShapes.container(AppShapes.wellRadius),
           child: Container(
             width: 26,
             height: 26,
-            decoration: SuperellipseFace(
-              // Selection reads as colour only, never a checkmark.
-              color: isSelected
-                  ? colorScheme.surfaceContainerHigh
-                  : Colors.transparent,
-              edge: AppShapes.container(
-                AppShapes.wellRadius,
-                side: BorderSide(
-                  color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant,
-                  width: isSelected ? 1.5 : 1,
-                ),
-              ),
-            ),
+            padding: edge.dimensions,
             child: child,
           ),
         ),

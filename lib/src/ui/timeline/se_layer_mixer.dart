@@ -9,6 +9,7 @@ import '../session/session_row_button_presses.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/ellipsis_text.dart';
+import '../widgets/face_ink_well.dart';
 import '../widgets/field_slider.dart';
 import '../input/control_press_claim.dart';
 
@@ -190,24 +191,21 @@ class _MixToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = on ? AppColors.accent : AppColors.hairline;
+    final edge = AppShapes.container(
+      AppShapes.wellRadius,
+      side: BorderSide(color: on ? AppColors.accent : AppColors.hairline),
+    );
     return Material(
       color: Colors.transparent,
       child: ControlPressClaim(
         onPressed: onPressed,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
+        child: FaceInkWell(
           key: ValueKey<String>(keyValue),
-          customBorder: AppShapes.container(AppShapes.wellRadius),
+          edge: edge,
           onTap: silentPress(onPressed),
           child: Container(
             height: 26,
-            decoration: ShapeDecoration(
-              shape: AppShapes.container(
-                AppShapes.wellRadius,
-                side: BorderSide(color: color),
-              ),
-            ),
+            padding: edge.dimensions,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

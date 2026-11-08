@@ -89,19 +89,13 @@ const _clippedOnPurpose = <String, String>{
       'the export window\'s preview well — drawn live, never from an image',
   'lib/src/ui/export/export_settings_modules.dart #1':
       'a module of the export window — drawn live, never from an image',
-  'lib/src/ui/editor_workspace.dart #1':
-      'a faced strip button: the InkWell\'s hover ink is a rectangle the '
-      'material\'s clip rounds — whether hover becomes a fill is '
-      'a-live-dock-frame-costs-a-whole-draw-Q12',
-  'lib/src/ui/panels/tool_size_preset_panel.dart #1':
-      'a size cell: the InkWell\'s hover ink is a rectangle the material\'s '
-      'clip rounds — a-live-dock-frame-costs-a-whole-draw-Q12',
   'lib/src/ui/widgets/pill_strip.dart #1':
       'the strip\'s ground and its hover ink — '
       'a-live-dock-frame-costs-a-whole-draw-Q12',
   'lib/src/ui/widgets/group_tab.dart #1':
-      'the tab\'s hover ink on its own material — '
-      'a-live-dock-frame-costs-a-whole-draw-Q12',
+      'the tab\'s picture — its group\'s first brush, a stroke preview — '
+      'reaches into its corners; its hover is its face\'s fill since Q12 '
+      '(a-live-dock-frame-costs-a-whole-draw)',
   'lib/src/ui/widgets/color_swatch_button.dart #1':
       'a CIRCLE (`CircleBorder`), not a superellipse — its hover ink on the '
       'material\'s clip, and a circle\'s clip was not probed',

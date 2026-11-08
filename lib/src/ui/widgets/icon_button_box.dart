@@ -384,6 +384,16 @@ final class IconButtonLayer {
   void dispose() => _painter?.dispose();
 }
 
+/// An [InkWell]'s two highlights as one overlay — [focus]'s and [hover]'s,
+/// where each shows — each with its alpha in whole bytes as an
+/// `InkHighlight` fills it: the same hue over itself, so their order says
+/// nothing. Null while neither shows.
+Color? inkWellOverlay({Color? focus, Color? hover}) =>
+    [?focus, ?hover].fold<Color?>(null, (under, ink) {
+      final whole = ink.withAlpha((ink.a * 255).round());
+      return under == null ? whole : Color.alphaBlend(whole, under);
+    });
+
 /// What [IconButtonLayer] paints for a face cut to [shape] with [overlay]
 /// over it: the overlay filling the shape — or, where the shape is
 /// outlined ([appIconButtonShape]), a [SuperellipseFace] filled with the
