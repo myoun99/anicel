@@ -29,20 +29,29 @@ void main() {
     grid.free();
   });
 
-  /// A 3 × 2 tile: (200, 100, 50) at 128 over its left two columns, red
-  /// over its right one.
-  GpuGridPicture aTile() {
-    final picture = GpuGridPicture(appGpuEngine, 3, 2);
+  /// A tile [width] × [height] of [fills] — (x, y, w, h, colour) each.
+  GpuGridPicture aTile(
+    int width,
+    int height,
+    List<(int, int, int, int, Color)> fills,
+  ) {
+    final picture = GpuGridPicture(appGpuEngine, width, height);
     addTearDown(picture.free);
-    final ops = TimelineGridTileOpWriter()
-      ..fillRect(0, 0, 2, 2, timelineGridPackRgba(const Color(0x80C86432)))
-      ..fillRect(2, 0, 1, 2, timelineGridPackRgba(const Color(0xFFFF0000)));
+    final ops = TimelineGridTileOpWriter();
+    for (final (x, y, w, h, colour) in fills) {
+      ops.fillRect(x, y, w, h, timelineGridPackRgba(colour));
+    }
     grid.draw(picture, ops.build(), const []);
     return picture;
   }
 
   test('each lay takes its part of its tile onto its part of the screen', () {
-    final tile = aTile();
+    // (200, 100, 50) at 128 over the left two columns, red over the right.
+    final tile = aTile(3, 2, [
+      (0, 0, 2, 2, const Color(0x80C86432)),
+      (2, 0, 1, 2, const Color(0xFFFF0000)),
+    ]);
+    final green = aTile(1, 1, [(0, 0, 1, 1, const Color(0xFF00FF00))]);
     final surface = shownSurfaceOf(5, 4);
     addTearDown(surface.free);
     final want = Uint8List(5 * 4 * 4);
@@ -58,13 +67,13 @@ void main() {
     for (final (x, y) in [(1, 1), (2, 1), (1, 2), (2, 2)]) {
       put(x, y, [100, 50, 25, 128]);
     }
-    for (final (x, y) in [(3, 1), (3, 2), (0, 3)]) {
-      put(x, y, red);
-    }
+    put(3, 1, red);
+    put(3, 2, red);
+    put(0, 3, [0, 255, 0, 255]);
 
     lay.lay(surface, (0, 0, 5, 4), [
       (picture: tile, from: (0, 0, 3, 2), onto: (1, 1, 4, 3)),
-      (picture: tile, from: (2, 0, 3, 1), onto: (0, 3, 1, 4)),
+      (picture: green, from: (0, 0, 1, 1), onto: (0, 3, 1, 4)),
     ]);
 
     expect(surface.fingerprint(), fingerprintBytes(want));
