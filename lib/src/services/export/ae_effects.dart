@@ -79,6 +79,8 @@ class _AeKin {
            sampleLayerEffectAt(
              effect,
              fxReadFrame(effect.basis, blocks, frame),
+             // A script for After Effects runs no plugin of this device.
+             worn: null,
            ),
        ];
 

@@ -8,6 +8,7 @@ import '../../models/key_mark.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
+import '../../models/string_id.dart';
 import '../../models/transform_track.dart' show TransformPose;
 import '../../services/fx_plugins/fx_plugin_outcomes.dart';
 import '../text/app_strings.dart';
@@ -108,8 +109,12 @@ String effectLaneId(EffectId effectId, String parameterId) =>
   return null;
 }
 
-/// A plugin header's on a rail not told how runs went: its slot, never
-/// filled.
+/// How this device's plugin runs went ([FxPluginOutcomes]), asked of the
+/// chain of [owner] — the row, or the V row's track, whose lanes they are.
+typedef PluginOutcomesOf = ({FxPluginOutcomes outcomes, StringId owner});
+
+/// A plugin header's on a rail not told how runs went, or of an effect that
+/// does not run: its slot, never filled.
 const PluginRunFailures _neverFailed = (changes: _Still(), failedAt: _never);
 
 bool _never(int frameIndex) => false;
@@ -151,6 +156,9 @@ final class _Still implements Listenable {
 /// header reads it at the frame it stands on, as its value column reads
 /// that frame's value ([PropertyLaneRow.pluginFailures]). Null on a rail
 /// that is not told it: its plugin headers keep their slot, never filled.
+/// So is the slot of an effect that does not run — switched off, or of a
+/// plugin this device has not: the record of a run before it is not the
+/// frame's (card a-cached-failed-picture-loses-its-mark).
 ///
 /// [rowHasBlocks] says whether the row the chain rides has blocks of its
 /// own to step on ([Layer.fxBlocks]) — each header then wears its effect's
@@ -170,7 +178,7 @@ List<PropertyLaneRow> effectPropertyLanes(
   TransformPose Function(EffectId effectId, String lane, double time)?
   standAt,
   bool Function(FxPluginDescription plugin)? hasPlugin,
-  FxPluginOutcomes? pluginOutcomes,
+  PluginOutcomesOf? pluginOutcomes,
   bool rowHasBlocks = false,
   int Function(FxBasis basis, int frame)? shownFrame,
 }) {
@@ -184,6 +192,10 @@ List<PropertyLaneRow> effectPropertyLanes(
         ? null
         : (int frame) => shownFrame(effect.basis, frame);
     final lanes = [for (final lane in effect.lanes) effect.laneTrack(lane)!];
+    final notOnDevice = switch ((effect.plugin, hasPlugin)) {
+      (final plugin?, final has?) => !has(plugin),
+      _ => false,
+    };
     rows.add(
       PropertyLaneRow(
         laneId: effectGroupLaneId(effect.id),
@@ -197,17 +209,17 @@ List<PropertyLaneRow> effectPropertyLanes(
         // parameter.
         groupEnabled: effect.enabled,
         groupBasis: rowHasBlocks ? effect.basis : null,
-        pluginNotOnDevice: switch ((effect.plugin, hasPlugin)) {
-          (final plugin?, final has?) => !has(plugin),
-          _ => false,
-        },
+        pluginNotOnDevice: notOnDevice,
         pluginFailures: switch ((effect.plugin, pluginOutcomes)) {
           (null, _) => null,
           (_, null) => _neverFailed,
-          (_, final outcomes?) => (
+          _ when !effect.enabled || notOnDevice => _neverFailed,
+          (_, (:final outcomes, :final owner)) => (
             changes: outcomes,
-            failedAt: (frame) =>
-                outcomes.failedAt(effect, shown?.call(frame) ?? frame),
+            failedAt: (frame) => outcomes.failedAt(
+              (owner: owner, effect: effect.id),
+              shown?.call(frame) ?? frame,
+            ),
           ),
         },
         // The header carries its members' key union (UI-R20 #13), so one

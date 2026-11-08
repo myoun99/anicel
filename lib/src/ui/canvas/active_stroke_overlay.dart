@@ -367,7 +367,10 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       ]),
       sourceEffects,
     );
-    final before = celSurfaceAsShown(base, sourceEffects);
+    final before = celSurfaceAsShown(
+      base,
+      effectsTellingNobody(sourceEffects),
+    );
     for (final coord in {...shown.tiles.keys, ...before.tiles.keys}) {
       if (_tileImages.remove(coord) case final previous?) {
         DeferredImageDisposer.instance.retire(previous);

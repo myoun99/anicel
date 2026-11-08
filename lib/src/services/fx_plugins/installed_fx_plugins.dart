@@ -142,8 +142,12 @@ class InstalledFxPlugins extends ChangeNotifier {
     );
   }
 
-  /// Closes plugin [id]'s opened build, if it has one.
-  void _letGo(String id) => _runners.remove(id)?.close();
+  /// Closes plugin [id]'s opened build, if it has one, and lets go of what
+  /// its runs told ([FxPluginOutcomes.forget]).
+  void _letGo(String id) {
+    _runners.remove(id)?.close();
+    outcomes.forget(id);
+  }
 
   /// The plugins [project]'s effects are of that this device has not
   /// ([has]) — each once, as the project first names it — asked once the

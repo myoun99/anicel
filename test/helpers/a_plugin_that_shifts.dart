@@ -59,13 +59,14 @@ LayerEffect shiftingFxPluginLayerEffect() => LayerEffect.defaults(
 
 /// This device's plugins with the stand-in installed — described [as] says,
 /// the stand-in's own description where it says nothing — on a directory of
-/// the test's own: its build opens as a [ShiftingFxPlugin] by [by] — or
-/// not at all, [opens] false.
+/// the test's own: its build opens as a [ShiftingFxPlugin] by [by], or as
+/// [runner] where told one — or not at all, [opens] false.
 Future<InstalledFxPlugins> installedShiftingFxPlugin(
   WidgetTester tester, {
   FxPluginDescription? as,
   int by = 1,
   bool opens = true,
+  FxPluginRunner? runner,
 }) async {
   final description = as ?? shiftingFxPluginDescription;
   final room = Directory.systemTemp.createTempSync('anicel_fx_shift_');
@@ -74,7 +75,7 @@ Future<InstalledFxPlugins> installedShiftingFxPlugin(
     service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
     // The stand-in's module is its description's text.
     describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
-    open: (_, _) => opens ? ShiftingFxPlugin(by: by) : null,
+    open: (_, _) => opens ? runner ?? ShiftingFxPlugin(by: by) : null,
   );
   addTearDown(plugins.dispose);
   await tester.runAsync(() async {

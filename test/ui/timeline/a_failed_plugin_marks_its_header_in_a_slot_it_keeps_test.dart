@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
@@ -31,6 +32,14 @@ void main() {
     kind: EffectKind.plugin,
     plugin: glow,
   );
+  const row = LayerId('a');
+  void tell(FxPluginOutcomes outcomes, int frame, {required bool failed}) =>
+      outcomes.toldFor(
+        (owner: row, effect: effect.id, wearer: row),
+        sampleLayerEffectAt(effect, frame, worn: null),
+        cut: const CutId('c'),
+        frame: frame,
+      )(failed: failed);
 
   test('a plugin\'s header reads its runs; an app effect\'s keeps no slot', () {
     final outcomes = FxPluginOutcomes();
@@ -39,11 +48,14 @@ void main() {
         effectPropertyLanes(
           [of],
           isExpanded: (_) => false,
-          pluginOutcomes: told,
+          pluginOutcomes: switch (told) {
+            final outcomes? => (outcomes: outcomes, owner: row),
+            null => null,
+          },
         ).single;
 
     final failures = headerOf(effect, told: outcomes).pluginFailures!;
-    outcomes.tell(effect, 3, failed: true);
+    tell(outcomes, 3, failed: true);
     expect(failures.failedAt(3), isTrue);
     expect(failures.failedAt(2), isFalse);
 
@@ -58,6 +70,32 @@ void main() {
     expect(headerOf(blur, told: outcomes).pluginFailures, isNull);
   });
 
+  test('the slot of an effect that does not run is never filled — switched '
+      'off, or of a plugin this device has not — and a header asks of its '
+      'own chain', () {
+    final outcomes = FxPluginOutcomes();
+    addTearDown(outcomes.dispose);
+    tell(outcomes, 3, failed: true);
+    bool failedAt3(
+      LayerEffect of, {
+      LayerId owner = row,
+      bool onDevice = true,
+    }) => effectPropertyLanes(
+      [of],
+      isExpanded: (_) => false,
+      hasPlugin: (_) => onDevice,
+      pluginOutcomes: (outcomes: outcomes, owner: owner),
+    ).single.pluginFailures!.failedAt(3);
+
+    expect(failedAt3(effect), isTrue);
+    expect(failedAt3(effect.copyWith(enabled: false)), isFalse,
+        reason: 'what it told when on is not the frame\'s now');
+    expect(failedAt3(effect, onDevice: false), isFalse,
+        reason: 'it greys as not on this device, and runs nothing');
+    expect(failedAt3(effect, owner: const LayerId('b')), isFalse,
+        reason: 'another row\'s effect of the same id');
+  });
+
   testWidgets('the mark keeps its place; a failure at the frame the row '
       'stands on fills it and greys the name', (tester) async {
     final outcomes = FxPluginOutcomes();
@@ -67,7 +105,7 @@ void main() {
     final header = effectPropertyLanes(
       [effect],
       isExpanded: (_) => false,
-      pluginOutcomes: outcomes,
+      pluginOutcomes: (outcomes: outcomes, owner: row),
     ).single;
     await tester.pumpWidget(
       MaterialApp(
@@ -76,7 +114,7 @@ void main() {
             width: 600,
             height: 40,
             child: TimelineLaneControlsRow(
-              layer: Layer(id: const LayerId('a'), name: 'A', frames: const []),
+              layer: Layer(id: row, name: 'A', frames: const []),
               lane: header,
               metrics: TimelineGridMetrics.defaults,
               frameCursor: cursor,
@@ -96,7 +134,7 @@ void main() {
     expect(markColour(), Colors.transparent);
     expect(nameColour(), scheme.onSurface);
 
-    outcomes.tell(effect, 3, failed: true);
+    tell(outcomes, 3, failed: true);
     await tester.pump();
     expect(markColour(), scheme.error);
     expect(nameColour(), scheme.onSurface.withValues(alpha: 0.35));
@@ -110,7 +148,7 @@ void main() {
         reason: 'it failed at frame 3, not at the frame the row stands on');
 
     cursor.value = 3;
-    outcomes.tell(effect, 3, failed: false);
+    tell(outcomes, 3, failed: false);
     await tester.pump();
     expect(markColour(), Colors.transparent, reason: 'drawn again, it clears');
     expect(nameColour(), scheme.onSurface);

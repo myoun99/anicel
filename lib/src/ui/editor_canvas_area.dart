@@ -1454,6 +1454,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       effects: [boxed.effect],
       frameIndex: at.frame,
       blocks: row.fxBlocks,
+      worn: (owner: row.id, wearer: row.id),
     ).single;
     final name = '${row.name} ${boxed.effect.label}';
     return boxed.effect.kind.drawsItsOwnPicture

@@ -243,7 +243,10 @@ List<PropertyLaneRow> propertyLanesForRow({
               );
             },
       hasPlugin: hasPlugin,
-      pluginOutcomes: pluginOutcomes,
+      pluginOutcomes: switch (pluginOutcomes) {
+        final outcomes? => (outcomes: outcomes, owner: layer.id),
+        null => null,
+      },
       rowHasBlocks: layer.fxBlocks != null,
       shownFrame: shownFrame,
     );

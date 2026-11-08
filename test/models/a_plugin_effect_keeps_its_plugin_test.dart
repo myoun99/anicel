@@ -102,6 +102,7 @@ void main() {
       effects: [effect],
       frameIndex: 0,
       blocks: null,
+      worn: null,
     );
 
     expect(resolved, hasLength(1));
@@ -118,6 +119,7 @@ void main() {
       effects: [effect.withLayer('mask', const LayerId('matte'))],
       frameIndex: 0,
       blocks: null,
+      worn: null,
     ).single;
     expect(naming.layers, {'mask': const LayerId('matte')});
     expect(naming.namingNoRow.layers, {'mask': null});
@@ -141,6 +143,7 @@ void main() {
       effects: [effect],
       frameIndex: frame,
       blocks: null,
+      worn: null,
     ).single.parameter('brightness');
 
     expect(at(held, 3), 60);
@@ -211,8 +214,18 @@ void main() {
     expect(one.plugin, glow());
     expect(one, isNot(two));
     expect(
-      resolveLayerEffectsAt(effects: [one], frameIndex: 0, blocks: null),
-      isNot(resolveLayerEffectsAt(effects: [two], frameIndex: 0, blocks: null)),
+      resolveLayerEffectsAt(
+        effects: [one],
+        frameIndex: 0,
+        blocks: null,
+        worn: null,
+      ),
+      isNot(resolveLayerEffectsAt(
+        effects: [two],
+        frameIndex: 0,
+        blocks: null,
+        worn: null,
+      )),
     );
     expect(one.copyWith(enabled: false).plugin, one.plugin);
   });

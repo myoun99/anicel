@@ -75,7 +75,12 @@ void main() {
       () {
     expect(
       resolvedEffectsSpreadPixels(
-        resolveLayerEffectsAt(effects: [effect], frameIndex: 0, blocks: null),
+        resolveLayerEffectsAt(
+          effects: [effect],
+          frameIndex: 0,
+          blocks: null,
+          worn: null,
+        ),
       ),
       isTrue,
     );

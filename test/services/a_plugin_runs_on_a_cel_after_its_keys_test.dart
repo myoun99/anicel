@@ -466,6 +466,7 @@ void main() {
             effects: a.effects,
             frameIndex: at,
             blocks: null,
+            worn: null,
           ),
           cut: cutOf([...others, a]),
           frameIndex: at,
@@ -519,6 +520,7 @@ void main() {
             effects: a.effects,
             frameIndex: 0,
             blocks: null,
+            worn: null,
           ),
           cut: cutOf([a]),
           frameIndex: 0,
@@ -552,6 +554,7 @@ void main() {
           effects: a.effects,
           frameIndex: 3,
           blocks: null,
+          worn: null,
         ).single.frame,
         3,
       );
@@ -565,6 +568,7 @@ void main() {
           ],
           frameIndex: 3,
           blocks: null,
+          worn: null,
         ).single.frame,
         isNull,
       );

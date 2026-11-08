@@ -663,6 +663,7 @@ List<ResolvedLayerEffect> resolveFolderEffectsAt({
     effects: folder.effects,
     frameIndex: frameIndex,
     blocks: folder.fxBlocks,
+    worn: (owner: folder.id, wearer: folder.id),
   );
 }
 
@@ -1141,6 +1142,15 @@ List<LayerEffect> chainWornBy(Cut cut, Layer layer) {
 SplayTreeMap<int, TimelineExposure>? chainBlocksOf(Cut cut, Layer layer) =>
     _paintingRowOf(cut, layer)?.carrier.fxBlocks;
 
+/// How [layer] wears the chain it wears ([chainWornBy]): its OWNER's — the
+/// base's for an attach row — over its own picture. Null where it wears
+/// none.
+EffectWorn? chainWornAs(Cut cut, Layer layer) =>
+    switch (_paintingRowOf(cut, layer)) {
+      (:final carrier, base: _) => (owner: carrier.id, wearer: layer.id),
+      null => null,
+    };
+
 List<LayerEffect> _wornChain(Layer layer, Layer carrier) =>
     carrier.id == layer.id
     ? carrier.effects
@@ -1188,6 +1198,7 @@ List<LayerEffect> _wornChain(Layer layer, Layer carrier) =>
         effects: _wornChain(layer, painting.carrier),
         frameIndex: frameIndex,
         blocks: painting.carrier.fxBlocks,
+        worn: (owner: painting.carrier.id, wearer: layer.id),
       ),
     ),
   );
@@ -1257,6 +1268,7 @@ CutFrameCompositeRow? _resolveLayerNode(
     effects: _wornChain(layer, fxCarrier),
     frameIndex: frameIndex,
     blocks: fxCarrier.fxBlocks,
+    worn: (owner: fxCarrier.id, wearer: layer.id),
   );
   // The placement is [layerPlacementAt]'s: the same own part, under the
   // folder poses this walk already gathered with the chain's gates.
@@ -1343,6 +1355,7 @@ _adjustmentScopeNode({
     effects: adjustment.effects,
     frameIndex: frameIndex,
     blocks: adjustment.fxBlocks,
+    worn: (owner: adjustment.id, wearer: adjustment.id),
   );
   if (effects.isEmpty) {
     return null;

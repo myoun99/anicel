@@ -98,7 +98,7 @@ void main() {
     ]) {
       final group = groupOf(nodes);
       expect(group, isNotNull, reason: 'the cut is filtered as a whole');
-      expect(group!.effects, trackEffectsAt([brightness], 0));
+      expect(group!.effects, trackEffectsAt([brightness], 0, track: null));
       expect(group.opacity, 1);
       expect(group.children, isNotEmpty, reason: 'the cut\'s row is inside');
     }
@@ -184,10 +184,10 @@ void main() {
     s.selectCut(const CutId('second'));
 
     final group = groupOf(s.editingCanvas.stack.nodes)!;
-    expect(group.effects, trackEffectsAt([keyed], 4));
+    expect(group.effects, trackEffectsAt([keyed], 4, track: null));
     expect(
       group.effects,
-      isNot(trackEffectsAt([keyed], 0)),
+      isNot(trackEffectsAt([keyed], 0, track: null)),
       reason: '⛔the cut\'s own frame 0 is not the track\'s',
     );
   });

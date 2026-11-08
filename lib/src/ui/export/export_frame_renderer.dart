@@ -446,6 +446,7 @@ class ExportFrameRenderer {
       session.effectsAndFx.trackEffectsForCut(cut.id),
       globalFrame,
       enabled: _trackFxLaid(cut.id),
+      track: session.trackOwningCut(cut.id)?.id,
     ),
     cut: cut,
     frameIndex: frameIndex,
@@ -1858,6 +1859,7 @@ class ExportFrameRenderer {
           effects: _outputChainOf(chainWornBy(cut, layer)),
           frameIndex: firstExposure,
           blocks: chainBlocksOf(cut, layer),
+          worn: chainWornAs(cut, layer),
         ),
         placement: referenceMoveAt(_asOutput(layer), firstExposure),
       ));

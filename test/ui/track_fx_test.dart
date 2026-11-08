@@ -120,7 +120,7 @@ void main() {
       int frame, {
       bool enabled = true,
     }) => resolveCompositeEffectPaint(
-      trackEffectsAt(effects, frame, enabled: enabled),
+      trackEffectsAt(effects, frame, enabled: enabled, track: null),
     );
 
     test('empty is the zero-cost path, and so is a bypassed row', () {
@@ -169,7 +169,10 @@ void main() {
       // leave the value actually compared untested.
       final effects = [_brightness()];
       expect(
-        listEquals(trackEffectsAt(effects, 3), trackEffectsAt(effects, 4)),
+        listEquals(
+          trackEffectsAt(effects, 3, track: null),
+          trackEffectsAt(effects, 4, track: null),
+        ),
         isTrue,
       );
       expect(paintOf(effects, 3), paintOf(effects, 4));
@@ -183,7 +186,7 @@ void main() {
       // unreachable only while nothing called `addEffectToTrack`; "no
       // caller" is not a design, and the round that let the fx menu reach
       // the V row would have shipped an assert.
-      final chain = trackEffectsAt([_deleteWhite()], 0);
+      final chain = trackEffectsAt([_deleteWhite()], 0, track: null);
       expect(chain, hasLength(1), reason: 'fixture: the key survived');
 
       final plan = resolveCompositeEffectPlan(chain, paper: ui.Rect.zero);
@@ -201,7 +204,7 @@ void main() {
 
     test('a key UNDER a painted effect keeps both, in that order', () {
       final plan = resolveCompositeEffectPlan(
-        trackEffectsAt([_brightness(), _deleteWhite()], 0),
+        trackEffectsAt([_brightness(), _deleteWhite()], 0, track: null),
         paper: ui.Rect.zero,
       );
       expect(plan.preSteps, hasLength(2));
@@ -306,7 +309,9 @@ void main() {
       expect(chain(s).single.enabled, isFalse);
       // Bypassed, so the cut's picture is unfiltered — the keys stay.
       expect(
-        resolveCompositeEffectPaint(trackEffectsAt(chain(s), 0)).isEmpty,
+        resolveCompositeEffectPaint(
+          trackEffectsAt(chain(s), 0, track: null),
+        ).isEmpty,
         isTrue,
       );
 
@@ -352,7 +357,7 @@ void main() {
     // V row must not invent a second meaning for a radius.
     final paint = ui.Paint();
     resolveCompositeEffectPaint(
-      trackEffectsAt([_blur(radius: 6)], 0),
+      trackEffectsAt([_blur(radius: 6)], 0, track: null),
     ).applyTo(paint);
     expect(paint.imageFilter, isNotNull);
     expect(

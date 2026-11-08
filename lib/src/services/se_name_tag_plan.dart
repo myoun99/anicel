@@ -198,6 +198,7 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
           effects: layer.effects,
           frameIndex: globalFrame,
           blocks: layer.fxBlocks,
+          worn: (owner: layer.id, wearer: layer.id),
         ),
         content: TextCelContent(
           text: name,

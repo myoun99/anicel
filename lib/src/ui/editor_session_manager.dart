@@ -2004,6 +2004,7 @@ class EditorSessionManager extends ChangeNotifier
       effectsAndFx.trackEffectsForCut(cutId),
       rowSpans.trackGlobalFrameOf(cutId, frameIndex),
       enabled: effectsAndFx.isCutFxEnabled(cutId),
+      track: trackOwningCut(cutId)?.id,
     ),
     movieLaidAt: (key) => movieCels.laidAt(key),
     ghostsAt: (cut, frameIndex, dragPreview) =>

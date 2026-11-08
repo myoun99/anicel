@@ -115,6 +115,7 @@ void main() {
         effects: [fresh],
         frameIndex: 0,
         blocks: null,
+        worn: null,
       );
       expect(
         resolved,

@@ -107,7 +107,12 @@ void main() {
   );
   List<ResolvedLayerEffect> bound(List<LayerEffect> chain, int frame) =>
       binding(
-        resolveLayerEffectsAt(effects: chain, frameIndex: frame, blocks: null),
+        resolveLayerEffectsAt(
+          effects: chain,
+          frameIndex: frame,
+          blocks: null,
+          worn: null,
+        ),
         cut: cutOf(const []),
         frameIndex: frame,
       );
@@ -207,7 +212,12 @@ void main() {
       },
     );
     final run = binding(
-      resolveLayerEffectsAt(effects: [map], frameIndex: 7, blocks: null),
+      resolveLayerEffectsAt(
+        effects: [map],
+        frameIndex: 7,
+        blocks: null,
+        worn: null,
+      ),
       cut: cutOf([m]),
       frameIndex: 2,
     ).single.run!;

@@ -100,6 +100,7 @@ _Stack? _throughAdjustment(
       effects: adjustment.effects,
       frameIndex: frameIndex,
       blocks: adjustment.fxBlocks,
+      worn: (owner: adjustment.id, wearer: adjustment.id),
     ),
     red: r / coverage,
     green: g / coverage,

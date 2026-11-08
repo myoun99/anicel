@@ -26,7 +26,9 @@ import 'fx_plugin_outcomes.dart';
 /// it names at the cut's [FxPluginBinding] frame.
 ///
 /// Each run tells [outcomes] how it went at that same frame, the one its
-/// header reads its lanes at ([FxPluginRun.told]); null tells nobody.
+/// header reads its lanes at, where it is worn ([FxPluginRun.told],
+/// [ResolvedLayerEffect.worn]) — and is told as it is bound how its sample
+/// went there before ([FxPluginOutcomes.toldFor]); null tells nobody.
 FxPluginBinding deviceFxPluginBinding({
   required FxPluginRunner? Function(FxPluginDescription plugin) runnerFor,
   required ProjectFrameRate frameRate,
@@ -42,13 +44,12 @@ FxPluginBinding deviceFxPluginBinding({
       return plugin;
     }
     final told = plugin.frame ?? frameIndex;
-    final instance = plugin.instance;
+    final worn = plugin.worn;
     return plugin.withRun(
       FxPluginRun(
-        told: outcomes == null || instance == null
+        told: outcomes == null || worn == null
             ? null
-            : ({required failed}) =>
-                  outcomes.tell(instance, told, failed: failed),
+            : outcomes.toldFor(worn, plugin, cut: cut.id, frame: told),
         runner: runner,
         moment: (
           frameIndex: told,

@@ -83,7 +83,7 @@ void main() {
               CompositeLeaf(
                 CutFrameCompositeLayer(surface: whiteCut(), opacity: 1),
               ),
-            ], trackEffectsAt(trackChain, 0)),
+            ], trackEffectsAt(trackChain, 0, track: null)),
             pose: CameraPose(center: CanvasPoint(x: 8, y: 8)),
             cameraFrameSize: canvasSize,
           );

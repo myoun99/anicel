@@ -281,6 +281,7 @@ void main() {
           effects: session.activeLayer!.effects,
           frameIndex: 0,
           blocks: null,
+          worn: null,
         ),
         isEmpty,
       );

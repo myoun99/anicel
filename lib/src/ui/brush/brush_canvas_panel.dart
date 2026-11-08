@@ -1413,12 +1413,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // The canvas says which cel it is drawing, and THROUGH what: the texts
     // laid over it and the colour keys make the tiles it paints other
     // objects than the cel's own, so a picture made ahead for the cel's own
-    // would go unused.
+    // would go unused. What it makes ahead nobody is shown yet, so its
+    // plugin's run tells nothing (`effectsTellingNobody`).
     ShownCels.instance.show(
       this,
       token.key.cel,
-      painted: (surface) =>
-          celSurfaceAsShown(surface, widget.activeSourceEffects),
+      painted: (surface) => celSurfaceAsShown(
+        surface,
+        effectsTellingNobody(widget.activeSourceEffects),
+      ),
     );
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
       // ★DRAWN THROUGH THE SEAM — the texts laid, then the keys. Both are

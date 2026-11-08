@@ -276,6 +276,7 @@ void main() {
               effects: row.effects,
               frameIndex: 0,
               blocks: null,
+              worn: null,
             ),
             cut: cut,
             frameIndex: 0,

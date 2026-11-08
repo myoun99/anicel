@@ -124,7 +124,10 @@ class _StoryboardRailRows {
         time,
       ),
       hasPlugin: _state.widget.hasFxPlugin,
-      pluginOutcomes: _state.widget.fxPluginOutcomes,
+      pluginOutcomes: switch (_state.widget.fxPluginOutcomes) {
+        final outcomes? => (outcomes: outcomes, owner: track.id),
+        null => null,
+      },
     );
   }
 

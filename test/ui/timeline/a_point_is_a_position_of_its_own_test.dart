@@ -95,6 +95,7 @@ void main() {
             effects: [effect.withParameter('amount', EffectParameter(value: 5))],
             frameIndex: frame,
             blocks: null,
+            worn: null,
           ).single;
 
       expect(at(radial(), 4).points['center'], isNull);
