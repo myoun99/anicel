@@ -47,9 +47,10 @@ void main() {
     };
 
     /// Reading a codec, not letting one go: a test that closes or aborts
-    /// what an earlier one left is not asking whether there is one.
+    /// what an earlier one left — called, or torn off for a `tearDown` — is
+    /// not asking whether there is one.
     final readsTheCodec = RegExp(
-      r'QaVideo(?:De|En)coder\.instance(?!\.(?:close|abort)\(\))',
+      r'QaVideo(?:De|En)coder\.instance(?!\.(?:close|abort)\b)',
     );
 
     test('it sees what it forbids', () {
@@ -64,6 +65,7 @@ void main() {
       for (final notARead in [
         'QaVideoDecoder.instance.close()',
         'QaVideoEncoder.instance.abort()',
+        'tearDown(QaVideoDecoder.instance.close);',
         'osVideoDecoderOrSkip()',
       ]) {
         expect(readsTheCodec.hasMatch(notARead), isFalse, reason: notARead);

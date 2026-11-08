@@ -942,7 +942,18 @@ void main() {
   /// 🔬`clean_code_diff` against the lane's base (`f5348acc6`) names those
   /// three added and nothing gone. ⛔Not bundled to fit: the bindings take
   /// what the exports take.
-  const wideSignatures = 469;
+  ///
+  /// ⚠️469 → 471 on 2026-11-08, the same way as 464 → 465
+  /// (connection-round-checklist H, the movie writer and reader moved into
+  /// the Rust engine): `_open` (eleven) in `qa_video_encoder.dart` and
+  /// `_info` (six) in `qa_video_decoder.dart` are the `@Native` bindings of
+  /// `qa_video_export_open` — the path, the picture's sides, the rate's two
+  /// numbers, the sound's rate and channels, the container, the codec, the
+  /// alpha and the bitrate — and of `qa_video_decode_info`, the handle and
+  /// the five outs it describes the movie through. 🔬`clean_code_diff`
+  /// against the lane's base (`a037dd5b0`) names those two added and nothing
+  /// gone. ⛔Not bundled to fit: the bindings take what the exports take.
+  const wideSignatures = 471;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
