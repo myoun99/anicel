@@ -553,7 +553,7 @@ fn a_buffer_closed_as_a_row_draws_the_tiles_its_output_reads() {
     assert!(got == laying.widest(&[], &buffer(picture, pose("turn")), None));
     let budget = rig().composite.widest();
     assert!(laying.over(&[], (&[], &buffer(wide, pose("turn"))), None, budget).is_some());
-    let away = laying.widest(&[], &buffer(picture, ResampleMap::moved(-10_000, 0)), None);
+    let away = laying.widest(&[], &buffer(picture, ResampleMap::moved(-10_000, -10_000)), None);
     assert!(away == laying.widest(&[], &[base], None));
 }
 
