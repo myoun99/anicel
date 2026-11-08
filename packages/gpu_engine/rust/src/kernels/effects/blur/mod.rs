@@ -27,7 +27,8 @@ use crate::fail;
 use crate::kernels::blend::BLEND_WGSL;
 use crate::kernels::composite::{TILE, TILE_TEXELS};
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, TILE_WGSL, encode, fits, flat, pipeline, plane, whole, words_buffer,
+    Encoded, ISQRT_WGSL, TILE_WGSL, encode, fits, flat, pipeline, pipeline_unzeroed, plane, whole,
+    words_buffer,
 };
 
 /// The workgroup's side in both passes' shaders.
@@ -103,13 +104,28 @@ struct Dispatch {
 /// A blur's pipeline: held.wgsl and what it needs, then `own`, whose entry
 /// point is `entry` — after `more`, what `own` alone needs.
 fn compile(engine: &Engine, more: &[&str], own: &str, entry: &str) -> wgpu::ComputePipeline {
-    let sources: Vec<&str> = [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL]
+    pipeline(engine, &sources(more, own), entry)
+}
+
+/// [`compile`], its workgroup memory not zeroed first — for a pass that
+/// writes what it reads of it (shared's `pipeline_unzeroed`).
+fn compile_unzeroed(
+    engine: &Engine,
+    more: &[&str],
+    own: &str,
+    entry: &str,
+) -> wgpu::ComputePipeline {
+    pipeline_unzeroed(engine, &sources(more, own), entry)
+}
+
+/// A blur's sources: held.wgsl and what it needs, `more`, then `own`.
+fn sources<'a>(more: &[&'a str], own: &'a str) -> Vec<&'a str> {
+    [ISQRT_WGSL, BLEND_WGSL, TILE_WGSL]
         .iter()
         .chain(more)
         .chain(&[include_str!("held.wgsl"), own])
         .copied()
-        .collect();
-    pipeline(engine, &sources, entry)
+        .collect()
 }
 
 /// Whether a blur can lay its passes at all: `tiles` hold `rect`, a

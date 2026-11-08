@@ -82,6 +82,32 @@ pub(crate) fn pipeline_with(
     entry: &str,
     constants: &[(&str, f64)],
 ) -> wgpu::ComputePipeline {
+    build(engine, sources, entry, constants, true)
+}
+
+/// [`pipeline`], its workgroup memory left as the device hands it — for a
+/// shader that writes each word of it before any thread reads that word.
+///
+/// 🔬wgpu zeroes it at the top of every workgroup otherwise, and that was
+/// the Gaussian's whole cost at a small reach: its 16 KiB window zeroed
+/// took Blurriness 2 from 0.36 to 0.55 ms on the RTX 4080, past what the
+/// shared window saved (gaussian-shared-rows, 2026-11-08). ⚠️A word read
+/// before it is written would hold what the last workgroup left there.
+pub(crate) fn pipeline_unzeroed(
+    engine: &Engine,
+    sources: &[&str],
+    entry: &str,
+) -> wgpu::ComputePipeline {
+    build(engine, sources, entry, &[], false)
+}
+
+fn build(
+    engine: &Engine,
+    sources: &[&str],
+    entry: &str,
+    constants: &[(&str, f64)],
+    zeroed: bool,
+) -> wgpu::ComputePipeline {
     let source = sources.join("\n");
     let module = engine
         .device
@@ -98,6 +124,7 @@ pub(crate) fn pipeline_with(
             entry_point: Some(entry),
             compilation_options: wgpu::PipelineCompilationOptions {
                 constants,
+                zero_initialize_workgroup_memory: zeroed,
                 ..Default::default()
             },
             cache: None,

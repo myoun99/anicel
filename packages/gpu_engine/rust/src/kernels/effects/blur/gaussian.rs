@@ -27,7 +27,7 @@
 #[path = "gaussian_tests.rs"]
 mod tests;
 
-use super::{Dispatch, GROUP, Held, TileRect, bands, compile, run, words_buffer};
+use super::{Dispatch, Held, TileRect, bands, compile_unzeroed, run, words_buffer};
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::shared::room;
@@ -38,6 +38,9 @@ pub(crate) const MOST_REACH: u32 = 32767;
 /// The weights' sum: 65535 under each of them is 65535·65536 at most, and
 /// with half of one for the rounding it stays a u32 (gaussian.wgsl).
 const WHOLE: u32 = 65536;
+
+/// A workgroup's threads (gaussian.wgsl's `GAUSSIAN_THREADS`).
+const THREADS: u32 = 256;
 
 const EDGE_NOTHING: u32 = 1;
 const EDGE_REPEAT: u32 = 2;
@@ -142,16 +145,24 @@ impl Pass {
         ]
     }
 
-    /// Its dispatch: a thread a pixel, neighbours along a row side by side.
+    /// Its dispatch: a workgroup of 256 threads a stretch of its lines —
+    /// the rows' one line 256 along, the columns' eight lines 32 down
+    /// (gaussian.wgsl's `gaussian_lines`).
     fn dispatch(&self) -> Dispatch {
         let along = (self.along[1] - self.along[0]) as u32;
         let lines = (self.lines[1] - self.lines[0]) as u32;
-        let (x, y) = if self.down { (lines, along) } else { (along, lines) };
+        let lines_a_group = if self.down { 8 } else { 1 };
+        let along_groups = along.div_ceil(THREADS / lines_a_group);
+        let line_groups = lines.div_ceil(lines_a_group);
         Dispatch {
             from: self.from,
             to: self.to,
             words: self.words(),
-            groups: (x.div_ceil(GROUP), y.div_ceil(GROUP)),
+            groups: if self.down {
+                (line_groups, along_groups)
+            } else {
+                (along_groups, line_groups)
+            },
         }
     }
 }
@@ -236,7 +247,14 @@ pub(crate) struct Gaussian {
 impl Gaussian {
     pub(crate) fn new(engine: &Engine) -> Self {
         Self {
-            pipeline: compile(engine, &[], include_str!("gaussian.wgsl"), "gaussian_blur"),
+            // What a thread reads of the window its workgroup wrote in the
+            // same stretch, before the barrier it reads after (gaussian.wgsl).
+            pipeline: compile_unzeroed(
+                engine,
+                &[],
+                include_str!("gaussian.wgsl"),
+                "gaussian_blur",
+            ),
         }
     }
 

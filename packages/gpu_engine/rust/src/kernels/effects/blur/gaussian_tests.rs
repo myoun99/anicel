@@ -4,6 +4,7 @@
 //! premultiplied scale: a pass's pixel its weights' sum rounded half up
 //! once, then stored — alpha (a + 128) / 257, a colour over it.
 
+use std::ops::Range;
 use std::sync::OnceLock;
 
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
@@ -270,6 +271,47 @@ fn white_stays_white_however_far_a_way_reaches() {
     };
     let blurred = blurred(ONE_TILE, &blur, |_, _| WHITE).expect("blur");
     assert!(blurred.words.iter().all(|&word| word == WHITE));
+}
+
+/// The alphas a step of white from `edge` to `last` puts at each of
+/// `places` along a way: the weights reaching white, of 65535, rounded half
+/// up once — then to a byte, (v + 128) / 257.
+fn step(way: Way, [edge, last]: [i32; 2], places: Range<i32>) -> Vec<u32> {
+    let weights = weights(way.sigma, way.reach);
+    let reach = way.reach as i32;
+    places
+        .map(|p| {
+            let reached: u64 = (edge.max(p - reach)..=last.min(p + reach))
+                .map(|q| u64::from(weights[(q - p).unsigned_abs() as usize]))
+                .sum();
+            let v = ((65535 * reached + 32768) >> 16) as u32;
+            (v + 128) / 257
+        })
+        .collect()
+}
+
+/// A reach past what a workgroup's window holds at once — 2048 pixels of
+/// the rows' one line, 256 of each of the columns' eight (gaussian.wgsl) —
+/// sums over the stretches it takes as over one: a step of white spreads by
+/// the weights reaching it, every pixel along (the rows' two stretches, the
+/// columns' three).
+#[test]
+fn a_reach_past_the_window_spreads_a_step_by_the_weights_it_reaches() {
+    let first_off = |got: Vec<u32>, want: Vec<u32>| got.iter().zip(&want).position(|(g, w)| g != w);
+
+    let rows = TileRect { x0: 0, y0: 0, columns: 24, rows: 1 };
+    let across = Way { sigma: 366.7, reach: 1100 };
+    let blur = whole(rows, across, NONE);
+    let along = blurred(rows, &blur, |x, _| if x >= 1536 { WHITE } else { 0 }).expect("blur");
+    let want = white(&step(across, [1536, 3071], 0..3072));
+    assert_eq!(first_off(along.row(100, 0..3072), want), None, "along the rows");
+
+    let columns = TileRect { x0: 0, y0: 0, columns: 1, rows: 12 };
+    let down = Way { sigma: 100.0, reach: 300 };
+    let blur = whole(columns, NONE, down);
+    let downward = blurred(columns, &blur, |_, y| if y >= 768 { WHITE } else { 0 }).expect("blur");
+    let want = white(&step(down, [768, 1535], 0..1536));
+    assert_eq!(first_off(downward.column(100, 0..1536), want), None, "down the columns");
 }
 
 #[test]
