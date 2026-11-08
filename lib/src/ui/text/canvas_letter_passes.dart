@@ -73,10 +73,8 @@ class CanvasLetterLines {
 
   final List<CanvasLetterLine> _lines;
 
-  /// The lines [pass] draws: those of letters that are its own
-  /// ([CanvasLetterPass.draws]).
-  Iterable<CanvasLetterLine> drawnIn(CanvasLetterPass pass) =>
-      _lines.where((line) => pass.draws(line.letters));
+  /// Where the lines stand.
+  Iterable<ui.Rect> get rects => _lines.map((line) => line.rect);
 
   /// Draws each line in what paints its letters in [pass] — which, for
   /// letters that are not the pass's, draws nothing

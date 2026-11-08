@@ -103,15 +103,15 @@ class TextCelLayout {
       ),
     for (final (:set, :pass, :hard) in _letters.layers)
       if (pass.draws(style))
-        _shapesOf(set, pass, pass.paintOf(style), hard: hard),
+        _shapesOf(set, pass.paintOf(style), hard: hard),
   ];
 
-  /// The shapes [set] covers in [pass] — the letters in [paint] (null being
-  /// their own colour), cut in [hard] where it is named — and the lines
-  /// they wear there.
+  /// The shapes [set] covers in a pass that draws the block's one style —
+  /// the letters in [paint] (null being their own colour), cut in [hard]
+  /// where it is named — and the lines they wear there, every one of them
+  /// the style's.
   CanvasLetterShapes _shapesOf(
     TextPainter set,
-    CanvasLetterPass pass,
     ui.Paint? paint, {
     required int? hard,
   }) => (
@@ -125,7 +125,7 @@ class TextCelLayout {
           size: letterSize,
           clusters: clusters,
         ),
-      for (final line in _lines.drawnIn(pass)) CanvasLetterRect(line.rect),
+      for (final rect in _lines.rects) CanvasLetterRect(rect),
     ],
   );
 
