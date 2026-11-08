@@ -77,6 +77,17 @@ fn anicel_host_spend_together(cost: u32) -> bool {
   return workgroupUniformLoad(&anicel_host_group_cut) != 0u;
 }
 
+// A plugin's unsigned packs, which count.rs calls through these: naga's
+// HLSL writer leaves `pack4xU8` unparenthesized inside a wider expression
+// (count.rs says how, and when these go).
+fn anicel_host_pack4xU8(v: vec4<u32>) -> u32 {
+  return pack4xU8(v);
+}
+
+fn anicel_host_pack4xU8Clamp(v: vec4<u32>) -> u32 {
+  return pack4xU8Clamp(v);
+}
+
 // The canvas place of the pixel this invocation writes.
 fn anicel_here() -> vec2<i32> {
   return anicel_host_here;

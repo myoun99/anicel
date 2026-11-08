@@ -214,6 +214,22 @@ fn braces_in_comments_do_not_move_a_charge() {
 }
 
 #[test]
+fn an_unsigned_pack_is_called_through_the_prelude() {
+    // count.rs's 🔧: naga's HLSL leaves the unsigned packs unparenthesized.
+    let kernel = opened(&plugin(
+        "fn mine(v: vec4<u32>) -> u32 { return 1u ^ pack4xU8(v); }",
+        "let v = vec4<u32>(at.xy, 300u, 4u);\nanicel_out(mine(v) ^ pack4xU8Clamp(v) ^ pack4xI8(vec4<i32>(v)));",
+        "return 7u ^ pack4xU8(vec4<u32>(u32(anicel_value(0, 0))) >> vec4<u32>(0u, 8u, 16u, 24u));",
+    ));
+    let plugin_part = kernel.source().split(PRELUDE).next().expect("the plugin comes first");
+    assert_eq!(plugin_part.matches("anicel_host_pack4xU8(v)").count(), 1, "{plugin_part}");
+    assert_eq!(plugin_part.matches("anicel_host_pack4xU8Clamp(v)").count(), 1, "{plugin_part}");
+    assert_eq!(plugin_part.matches("anicel_host_pack4xU8(vec4").count(), 1, "{plugin_part}");
+    assert!(plugin_part.contains(" pack4xI8("), "a signed pack is left as written:\n{plugin_part}");
+    assert_eq!(kernel.reach(&ask(&[[0x0403_0201, 0, 0, 0]], 1_000)), Ok(7 ^ 0x0403_0201));
+}
+
+#[test]
 fn the_integers_are_wgsls() {
     // value 0's words are 0, -1, i32::MIN, 33 — known only at run time.
     let kernel = opened(&plugin(
@@ -233,15 +249,68 @@ fn the_integers_are_wgsls() {
 
 #[test]
 fn the_frame_crosses_member_by_member() {
-    // run.rs's `frame_val` lays the prelude's AnicelFrame out by place.
+    // frame.rs's `words` lays the prelude's AnicelFrame out by place, a
+    // word a scalar, and both runs read a binding's words in that order:
+    // no member may sit past a gap.
     let module = naga::front::wgsl::parse_str(PRELUDE).expect("the prelude parses alone");
     let frame = module.types.iter().find(|(_, ty)| ty.name.as_deref() == Some("AnicelFrame")).expect("the struct");
-    let naga::TypeInner::Struct { ref members, .. } = frame.1.inner else { panic!("a struct") };
+    let naga::TypeInner::Struct { ref members, span } = frame.1.inner else { panic!("a struct") };
     let names: Vec<_> = members.iter().map(|m| m.name.as_deref().unwrap_or("")).collect();
     assert_eq!(
         names,
         ["out_origin", "out_size", "in_origin", "in_size", "rows", "values", "frame", "time_q16", "rate_q16", "scale_q16", "fuel", "spare"]
     );
+    let offsets: Vec<_> = members.iter().map(|m| m.offset).collect();
+    assert_eq!(offsets, [0, 8, 16, 24, 32, 36, 40, 44, 48, 52, 56, 60]);
+    assert_eq!(span, 64);
+}
+
+#[test]
+fn a_frame_binds_its_words_as_the_prelude_reads_them() {
+    let input = [7u32, 8, 9, 10, 11, 12];
+    let rows = [1u32; 12];
+    let values = [[1, -2, 3, i32::MIN], [5, 6, 7, 8]];
+    let frame = Frame {
+        out_origin: [-3, 4],
+        out_size: [5, 6],
+        in_origin: [-7, 8],
+        in_size: [3, 2],
+        frame: 9,
+        time_q16: -10,
+        rate_q16: 11,
+        scale_q16: 12,
+        fuel: 13,
+        input: &input,
+        rows: &rows,
+        values: &values,
+    };
+    let output = [42u32; 3];
+    let word = |name: &str| frame.bound(name, &output).expect(name).into_owned();
+    let signed = |words: &[i32]| words.iter().map(|&w| w as u32).collect::<Vec<_>>();
+    assert_eq!(word("anicel_host_frame"), signed(&[-3, 4, 5, 6, -7, 8, 3, 2, 2, 2, 9, -10, 11, 12, 13, 0]));
+    assert_eq!(word("anicel_host_input"), input);
+    assert_eq!(word("anicel_host_rows"), rows);
+    assert_eq!(word("anicel_host_values"), signed(&[1, -2, 3, i32::MIN, 5, 6, 7, 8]));
+    assert_eq!(word(crate::OUTPUT), output);
+    assert_eq!(word(crate::CUT), [0]);
+    assert_eq!(frame.bound("anicel_host_fuel", &output), None, "a private is not bound");
+}
+
+#[test]
+fn a_kernel_names_the_bindings_its_render_reaches() {
+    let bindings = |source: &str| -> Vec<(u32, String, bool, bool)> {
+        let kernel = open(source).expect("opens");
+        kernel.bindings().iter().map(|b| (b.number, b.name.to_string(), b.uniform, b.written)).collect()
+    };
+    let frame = (0, "anicel_host_frame".to_string(), true, false);
+    let input = (1, "anicel_host_input".to_string(), false, false);
+    let output = (2, "anicel_host_output".to_string(), false, true);
+    let values = (3, "anicel_host_values".to_string(), false, false);
+    let rows = (4, "anicel_host_rows".to_string(), false, false);
+    let cut = (5, "anicel_host_cut".to_string(), false, true);
+    assert_eq!(bindings(INVERT), [frame.clone(), input.clone(), output.clone()]);
+    assert_eq!(bindings(BLUR), [frame.clone(), input.clone(), output.clone(), values.clone(), cut]);
+    assert_eq!(bindings(LAYER), [frame, input, output, values, rows]);
 }
 
 #[test]
@@ -251,7 +320,7 @@ fn what_the_check_refuses_and_why() {
     let with_render_argument = |argument: &str| {
         plugin("", render, reach).replace("at: vec3<u32>) {", &format!("at: vec3<u32>, {argument}) {{"))
     };
-    let cases: [(&str, String, &str); 22] = [
+    let cases: [(&str, String, &str); 23] = [
         ("a float literal", plugin("", "let x = 1.5;", reach), "no float"),
         ("a float conversion", plugin("", "let x = u32(f32(at.x));", reach), "no float"),
         ("a texture", plugin("@group(1) @binding(0) var picture: texture_2d<u32>;", render, reach), "no texture"),
@@ -264,6 +333,7 @@ fn what_the_check_refuses_and_why() {
         ("the host's output", plugin("", "anicel_host_output[0] = 1u;", reach), "`anicel_host_output` is the host's"),
         ("an override", plugin("override strength: u32 = 1u;", render, reach), "override"),
         ("a big workgroup", plugin("", render, reach).replace("(16, 16)", "(32, 32)"), "at most 256"),
+        ("a deep workgroup", plugin("", render, reach).replace("(16, 16)", "(8, 8, 2)"), "one deep"),
         (
             "no invocation",
             plugin("", render, reach).replace("@builtin(global_invocation_id) at: vec3<u32>", ""),

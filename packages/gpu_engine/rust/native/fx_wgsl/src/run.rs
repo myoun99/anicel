@@ -26,32 +26,7 @@ use naga::{
     Literal, MathFunction, Module, RelationalFunction, ScalarKind, Statement, SwitchValue, TypeInner, UnaryOperator,
 };
 
-use crate::{Kernel, REACH};
-
-/// The pictures, values and moment one run is handed — what the GPU's
-/// bindings hold (prelude.wgsl's `AnicelFrame` and buffers). Places are
-/// canvas pixels; a picture is one straight RGBA8 word a pixel, row by row.
-#[derive(Clone, Copy, Debug)]
-pub struct Frame<'a> {
-    pub out_origin: [i32; 2],
-    pub out_size: [i32; 2],
-    pub in_origin: [i32; 2],
-    pub in_size: [i32; 2],
-    pub frame: i32,
-    pub time_q16: i32,
-    pub rate_q16: i32,
-    pub scale_q16: i32,
-    /// What each invocation may spend (Q5).
-    pub fuel: u32,
-    pub input: &'a [u32],
-    /// The layer planes, each `in_size`, one after another.
-    pub rows: &'a [u32],
-    pub values: &'a [[i32; 4]],
-}
-
-/// The run spent its share somewhere and was cut.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cut;
+use crate::{CUT, Cut, Frame, Kernel, OUTPUT, REACH};
 
 impl Kernel {
     /// The plugin's reach, as `anicel_reach` answers it with `frame`'s
@@ -76,11 +51,7 @@ impl Kernel {
     /// them — a pixel nothing wrote keeps its word).
     pub fn render(&self, frame: &Frame<'_>, output: &mut [u32]) -> Result<(), Cut> {
         let size = self.workgroup_size();
-        let groups = [
-            (frame.out_size[0].max(0) as u32).div_ceil(size[0]),
-            (frame.out_size[1].max(0) as u32).div_ceil(size[1]),
-            1,
-        ];
+        let groups = self.groups(frame);
         let render = self.render_entry();
         let world = World::new(&self.module, frame, output, size.iter().product::<u32>() as usize);
         std::thread::scope(|scope| {
@@ -231,9 +202,6 @@ struct World<'m> {
 
 impl<'m> World<'m> {
     fn new(module: &'m Module, frame: &Frame<'_>, output: &[u32], invocations: usize) -> Self {
-        let plane = (frame.in_size[0].max(0) * frame.in_size[1].max(0)) as usize;
-        let rows = if plane == 0 { 0 } else { frame.rows.len() / plane };
-        let words = |words: &[u32]| Val::Comp(words.iter().map(|&w| Val::U32(w)).collect());
         let mut world = World {
             module,
             homes: Vec::new(),
@@ -247,25 +215,19 @@ impl<'m> World<'m> {
         let mut shared = Vec::new();
         for (handle, global) in module.global_variables.iter() {
             let index = handle.index();
-            let (home, val) = match global.name.as_deref() {
-                Some("anicel_host_frame") => (Home::Fixed, Some(frame_val(frame, rows, frame.values.len()))),
-                Some("anicel_host_input") => (Home::Fixed, Some(words(frame.input))),
-                Some("anicel_host_rows") => (Home::Fixed, Some(words(frame.rows))),
-                Some("anicel_host_values") => (
-                    Home::Fixed,
-                    Some(Val::Comp(
-                        frame.values.iter().map(|v| Val::Comp(v.iter().map(|&w| Val::I32(w)).collect())).collect(),
-                    )),
-                ),
-                Some("anicel_host_output") => {
-                    world.output_global = Some(index);
-                    (Home::Shared, Some(words(output)))
+            let (home, val) = match global.space {
+                AddressSpace::Uniform | AddressSpace::Storage { .. } => {
+                    let name = global.name.as_deref().expect("the prelude names its bindings");
+                    let words = frame.bound(name, output).expect("the check refuses a binding of the plugin's");
+                    match name {
+                        OUTPUT => world.output_global = Some(index),
+                        CUT => world.cut_global = index,
+                        _ => {}
+                    }
+                    let home = if crate::frame::written(global.space) { Home::Shared } else { Home::Fixed };
+                    (home, Some(typed(module, global.ty, &mut words.iter().peekable())))
                 }
-                Some("anicel_host_cut") => {
-                    world.cut_global = index;
-                    (Home::Shared, Some(Val::U32(0)))
-                }
-                _ if global.space == AddressSpace::WorkGroup => {
+                AddressSpace::WorkGroup => {
                     let zero = zero(module, global.ty);
                     world.group_zero.push((index, zero.clone()));
                     (Home::Shared, Some(zero))
@@ -748,43 +710,41 @@ fn compose(module: &Module, ty: Handle<naga::Type>, parts: Vec<Val>) -> Val {
     }
 }
 
+/// The value of `ty` none of whose words are given.
 fn zero(module: &Module, ty: Handle<naga::Type>) -> Val {
-    let scalar = |kind: ScalarKind| match kind {
-        ScalarKind::Sint => Val::I32(0),
-        ScalarKind::Uint => Val::U32(0),
-        ScalarKind::Bool => Val::Bool(false),
-        other => unreachable!("the check refuses {other:?}"),
+    typed(module, ty, &mut [].iter().peekable())
+}
+
+/// The value of `ty` a buffer of `words` holds, a word a scalar in order —
+/// what a binding of the host's holds (frame.rs gives its words): a word
+/// past their end reads 0, and an array sized at run time takes every
+/// word left.
+fn typed(module: &Module, ty: Handle<naga::Type>, words: &mut std::iter::Peekable<std::slice::Iter<'_, u32>>) -> Val {
+    let mut scalar = |kind: ScalarKind| {
+        let word = words.next().copied().unwrap_or(0);
+        match kind {
+            ScalarKind::Sint => Val::I32(word as i32),
+            ScalarKind::Uint => Val::U32(word),
+            ScalarKind::Bool => Val::Bool(word != 0),
+            other => unreachable!("the check refuses {other:?}"),
+        }
     };
     match module.types[ty].inner {
         TypeInner::Scalar(s) | TypeInner::Atomic(s) => scalar(s.kind),
-        TypeInner::Vector { size, scalar: s } => Val::Comp(vec![scalar(s.kind); size as usize]),
+        TypeInner::Vector { size, scalar: s } => Val::Comp((0..size as usize).map(|_| scalar(s.kind)).collect()),
         TypeInner::Array { base, size: ArraySize::Constant(count), .. } => {
-            Val::Comp(vec![zero(module, base); count.get() as usize])
+            Val::Comp((0..count.get()).map(|_| typed(module, base, words)).collect())
         }
-        TypeInner::Array { size: ArraySize::Dynamic, .. } => Val::Comp(Vec::new()),
-        TypeInner::Struct { ref members, .. } => Val::Comp(members.iter().map(|m| zero(module, m.ty)).collect()),
+        TypeInner::Array { base, size: ArraySize::Dynamic, .. } => {
+            let mut parts = Vec::new();
+            while words.peek().is_some() {
+                parts.push(typed(module, base, words));
+            }
+            Val::Comp(parts)
+        }
+        TypeInner::Struct { ref members, .. } => Val::Comp(members.iter().map(|m| typed(module, m.ty, words)).collect()),
         ref other => unreachable!("the check refuses {other:?}"),
     }
-}
-
-/// The prelude's `AnicelFrame`, member by member (tests.rs holds the
-/// order to the prelude's).
-fn frame_val(frame: &Frame<'_>, rows: usize, values: usize) -> Val {
-    let pair = |[x, y]: [i32; 2]| Val::Comp(vec![Val::I32(x), Val::I32(y)]);
-    Val::Comp(vec![
-        pair(frame.out_origin),
-        pair(frame.out_size),
-        pair(frame.in_origin),
-        pair(frame.in_size),
-        Val::I32(rows as i32),
-        Val::I32(values as i32),
-        Val::I32(frame.frame),
-        Val::I32(frame.time_q16),
-        Val::I32(frame.rate_q16),
-        Val::I32(frame.scale_q16),
-        Val::U32(frame.fuel),
-        Val::U32(0),
-    ])
 }
 
 fn literal_val(literal: Literal) -> Val {

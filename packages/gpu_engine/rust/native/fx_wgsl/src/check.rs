@@ -11,7 +11,7 @@
 //!   under group.rs: atomics are an add, a min or a max whose result is
 //!   not read (ⓑ); no `storageBarrier` or `textureBarrier`.
 //! - One entry point, `@compute fn anicel_render`, of at most
-//!   [`MOST_INVOCATIONS`] invocations a group, taking its
+//!   [`MOST_INVOCATIONS`] invocations a group and one deep, taking its
 //!   `global_invocation_id`; and `fn anicel_reach() -> u32`.
 //! - The `anicel_` names are the host's: a plugin declares none but those
 //!   two, and names no `anicel_host_` function and none of the prelude's
@@ -225,6 +225,11 @@ fn entry(module: &Module, plugin: &str) -> Result<(), Refusal> {
     let invocations: u64 = render.workgroup_size.iter().map(|&size| u64::from(size)).product();
     if render.workgroup_size_overrides.is_some() || invocations > u64::from(MOST_INVOCATIONS) {
         return nowhere("`anicel_render`'s workgroup is at most 256 invocations, set by numbers");
+    }
+    // Q4's one invocation a pixel: a group deeper than one would have its
+    // invocations at one place across and down write that pixel each.
+    if render.workgroup_size[2] != 1 {
+        return nowhere("`anicel_render`'s workgroup is one deep: one invocation writes each pixel");
     }
     if render.function.result.is_some() {
         return nowhere("`anicel_render` returns nothing: it writes its pixel with `anicel_out`");

@@ -17,25 +17,37 @@
 //! The charge goes in as text, just inside the loop's `{`, and the counted
 //! text is read again (lib.rs `open`): what the device compiles is WGSL the
 //! parser and validator saw, not IR this crate assembled.
+//!
+//! 🔧Each `pack4xU8` and `pack4xU8Clamp` of the plugin's is called through
+//! the prelude's `anicel_host_` function of that name: naga 30.0.1's HLSL
+//! writer (back/hlsl/writer.rs, `Function::Pack4xU8`) writes an unsigned
+//! pack as `(v[0] & 0xFF) | ((v[1] & 0xFF) << 8) | …` with no parentheses
+//! around it — only the signed packs are wrapped, in `uint(…)` — so on D3D12
+//! `x ^ pack4xU8Clamp(v)` came out `(x ^ v[0]) | …` (kernels/plugin's
+//! parity test, 2026-11-08). A call's result is a value of its own in every
+//! backend. ⚠️AT EVERY NAGA UPGRADE: when its HLSL writer parenthesizes the
+//! unsigned packs, delete this and the prelude's two functions.
 
 use std::collections::HashMap;
 
-use naga::{Block, Function, Handle, Module, Statement};
+use naga::{Block, Expression, Function, Handle, MathFunction, Module, Statement};
 
 use crate::{RENDER, scan};
 
-/// The plugin's source with its charges, and `anicel_host_enter` first in
-/// its render.
+/// The plugin's source with its charges, its unsigned packs called through
+/// the prelude, and `anicel_host_enter` first in its render.
 pub(crate) fn count(module: &Module, plugin: &str) -> String {
     let mut sizes = Sizes { module, straight: HashMap::new() };
     let mut charges = Vec::new();
     for (handle, function) in module.functions.iter() {
         if crate::check::is_plugins(module.functions.get_span(handle), plugin) {
             sizes.charge(&function.body, plugin, false, &mut charges);
+            unsigned_packs(function, &mut charges);
         }
     }
     let render = module.entry_points.iter().find(|entry| entry.name == RENDER).expect("the check found it");
     sizes.charge(&render.function.body, plugin, true, &mut charges);
+    unsigned_packs(&render.function, &mut charges);
     charges.push((render_open(plugin), format!(" anicel_host_enter({});", invocation_name(&render.function))));
     charges.sort_by_key(|(at, _)| *at);
     let mut counted = String::with_capacity(plugin.len() + charges.len() * 48);
@@ -47,6 +59,17 @@ pub(crate) fn count(module: &Module, plugin: &str) -> String {
     }
     counted.push_str(&plugin[written..]);
     counted
+}
+
+/// The prelude's name before each unsigned pack `function` calls — where
+/// its call starts, the builtin's name.
+fn unsigned_packs(function: &Function, edits: &mut Vec<(usize, String)>) {
+    for (handle, expression) in function.expressions.iter() {
+        if let Expression::Math { fun: MathFunction::Pack4xU8 | MathFunction::Pack4xU8Clamp, .. } = expression {
+            let call = function.expressions.get_span(handle).to_range().expect("a call the parser read has a place");
+            edits.push((call.start, "anicel_host_".to_string()));
+        }
+    }
 }
 
 /// Just inside the render's body.

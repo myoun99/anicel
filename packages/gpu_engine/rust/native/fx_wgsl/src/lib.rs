@@ -39,6 +39,7 @@ const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
 mod check;
 mod count;
+mod frame;
 mod group;
 mod run;
 mod scan;
@@ -49,7 +50,7 @@ mod tests;
 
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 
-pub use run::{Cut, Frame};
+pub use frame::{Bound, CUT, Cut, Frame, OUTPUT};
 
 /// The host's prelude, appended after every plugin's source.
 pub const PRELUDE: &str = include_str!("prelude.wgsl");
@@ -129,7 +130,11 @@ impl Kernel {
     }
 
     fn render_entry(&self) -> &naga::EntryPoint {
-        self.module.entry_points.iter().find(|entry| entry.name == RENDER).expect("the check found it")
+        &self.module.entry_points[self.render_index()]
+    }
+
+    fn render_index(&self) -> usize {
+        self.module.entry_points.iter().position(|entry| entry.name == RENDER).expect("the check found it")
     }
 }
 
