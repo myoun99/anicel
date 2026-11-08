@@ -6,6 +6,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 
 /// R26 #13 follow-up: the tight ink bounding box — the whole-picture
@@ -202,6 +203,43 @@ void main() {
       expect(blank.inkBoundsKnown, isTrue);
       expect(blank.hasInk, isFalse);
       expect(blank.inkBounds, isNull);
+    });
+
+    test('a tile that does not know its box is asked of the engine, every '
+        'one of them, and a tile that knows is not', () {
+      final (one, other) = (
+        tileWithInk(TileCoord(x: 0, y: 0), [(x: 2, y: 1)]).tile,
+        tileWithInk(TileCoord(x: 1, y: 0), [(x: 3, y: 2)]).tile,
+      );
+      final known = tileWithInk(TileCoord(x: 2, y: 0), [(x: 4, y: 3)]).tile
+        ..rememberInkBounds((
+          left: 4,
+          top: 3,
+          rightExclusive: 5,
+          bottomExclusive: 4,
+        ));
+
+      final bounds = bitmapSurfaceContentBounds(
+        BitmapSurface(
+          canvasSize: const CanvasSize(
+            width: 3 * tileSize,
+            height: 3 * tileSize,
+          ),
+          tileSize: tileSize,
+          tiles: {
+            TileCoord(x: 0, y: 0): one,
+            TileCoord(x: 1, y: 0): other,
+            TileCoord(x: 2, y: 0): known,
+          },
+        ),
+      )!;
+
+      expect(bounds.left, 2);
+      expect(bounds.rightExclusive, 2 * tileSize + 5);
+      final ledger = EngineTileLedger.instance;
+      expect(ledger.slotOf(one), isNotNull);
+      expect(ledger.slotOf(other), isNotNull);
+      expect(ledger.slotOf(known), isNull);
     });
   });
 }
