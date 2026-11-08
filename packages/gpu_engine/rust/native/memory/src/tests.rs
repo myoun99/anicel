@@ -1,52 +1,32 @@
-//! The Rust memory questions against the engine's C (native/oracle), through
-//! their exports. The machine's RAM holds still, so the two say the same;
-//! what this process holds and what the machine has free move on all the
-//! time, so a Rust answer is held to the C's around it: asked of the C, the
-//! Rust and the C again, until the Rust lies between the two C answers.
+//! The memory questions, through their exports, held to what each answer
+//! must be on the platforms this runs on. ↩️Until the connection round
+//! deleted the C (connection-round-checklist H, 2026-11-08), each was held
+//! to the C's answer around it as well (native/oracle); what this process
+//! holds is pinned against the bytes it touches by the app's own test of
+//! the same export (test/native/the_process_number_is_the_one_the_os_shows_test.dart).
 
 use super::{
     qa_app_memory_limit_bytes, qa_available_memory_bytes, qa_physical_memory_bytes,
-    qa_process_footprint_bytes,
+    qa_process_footprint_bytes, said,
 };
 
-type Ask = extern "C" fn() -> i64;
-
-/// The C's export `name`.
-fn c(name: &str) -> Ask {
-    // SAFETY: qa_engine.c's declaration — no arguments, an int64 back.
-    unsafe { oracle::export(name) }
-}
-
-/// The Rust's answer, asked between two of the C's that it lies between.
-fn between(c: Ask, rust: Ask) -> i64 {
-    for _ in 0..1000 {
-        let before = c();
-        let ours = rust();
-        let after = c();
-        if before.min(after) <= ours && ours <= before.max(after) {
-            return ours;
-        }
-    }
-    panic!("LIVENESS — the Rust never answered between two of the C's answers");
-}
-
 #[test]
-fn the_ram_is_the_cs() {
+fn the_ram_holds_still() {
     let ram = qa_physical_memory_bytes();
-    assert_eq!(ram, c("qa_physical_memory_bytes")());
     assert!(ram > 0, "every platform here says how much RAM it has");
+    assert_eq!(qa_physical_memory_bytes(), ram);
 }
 
 #[test]
-fn what_this_process_holds_is_what_the_c_says_around_it() {
-    let held = between(c("qa_process_footprint_bytes"), qa_process_footprint_bytes);
+fn what_this_process_holds_is_some_of_the_ram() {
+    let held = qa_process_footprint_bytes();
     assert!(held > 0, "every platform here says what a process holds");
     assert!(held < qa_physical_memory_bytes());
 }
 
 #[test]
-fn what_more_it_may_take_is_what_the_c_says_around_it() {
-    let free = between(c("qa_available_memory_bytes"), qa_available_memory_bytes);
+fn what_more_it_may_take_is_some_of_the_ram() {
+    let free = qa_available_memory_bytes();
     if cfg!(target_os = "macos") {
         assert_eq!(free, 0, "a Mac gives a process no such number");
     } else {
@@ -56,8 +36,14 @@ fn what_more_it_may_take_is_what_the_c_says_around_it() {
 
 #[test]
 fn a_desktop_holds_an_app_to_no_limit_of_its_own() {
-    assert_eq!(qa_app_memory_limit_bytes(), c("qa_app_memory_limit_bytes")());
     if cfg!(any(windows, target_os = "macos", target_os = "linux")) {
         assert_eq!(qa_app_memory_limit_bytes(), 0);
     }
+}
+
+#[test]
+fn an_answer_not_said_is_zero_and_one_too_large_is_the_most_there_is() {
+    assert_eq!(said(None), 0);
+    assert_eq!(said(Some(7)), 7);
+    assert_eq!(said(Some(u64::MAX)), i64::MAX);
 }

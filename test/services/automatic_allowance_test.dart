@@ -40,7 +40,7 @@ void main() {
     expect(auto(ram: 3000 * mb, limit: 900 * mb), floors);
   });
 
-  test('no engine, no RAM known: the laws as they are, byte for byte', () {
+  test('no RAM known: the laws as they are, byte for byte', () {
     expect(auto(), laws);
     expect(auto(limit: 6000 * mb), laws, reason: 'a limit without a RAM figure is not a device');
   });

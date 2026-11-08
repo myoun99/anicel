@@ -92,6 +92,7 @@ import '../services/audio/audio_conform_runner.dart'
     show conformingInto, resamplingInto, runConformHere;
 import '../native/engine_tile_ledger.dart';
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
+import '../native/qa_memory.dart';
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'canvas/stroke_in_flight.dart';
@@ -415,7 +416,7 @@ class EditorSessionManager extends ChangeNotifier
   /// Every cache's budget at the automatic allowance, on this device's
   /// laws — what the memory tab's slider scales.
   late final CacheBudgets deviceCacheBudgets = CacheBudgets.forDevice(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    physicalMemoryBytes: QaMemory.physicalMemoryBytes,
   );
 
   /// The allowance when nobody has moved the slider: the device's, read
@@ -423,8 +424,8 @@ class EditorSessionManager extends ChangeNotifier
   /// what the app holds, and a slider whose automatic end kept moving
   /// would be a lie about what was chosen.
   late final int automaticAllowance = automaticAllowanceBytes(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    appMemoryLimitBytes: QaNativeEngine.instance?.appMemoryLimitBytes,
+    physicalMemoryBytes: QaMemory.physicalMemoryBytes,
+    appMemoryLimitBytes: QaMemory.appMemoryLimitBytes,
     floorBytes: CacheBudgets.floors.total,
     lawsTotalBytes: deviceCacheBudgets.total,
   );

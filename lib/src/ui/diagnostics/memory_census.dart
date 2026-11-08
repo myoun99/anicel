@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 
 import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
+import '../../native/qa_memory.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/cut_piece_slot.dart';
@@ -94,8 +95,9 @@ class MemoryCensus {
   /// 2026-09-10, idle release: 194.8MB RSS against 139.3MB private, and
   /// the 55.5MB gap is shared pages — not a leak, and not ours.
   ///
-  /// ⚠️RSS remains the fallback, and only for a run with no native engine
-  /// at all, where every other native number is already absent too.
+  /// ⚠️RSS remains the fallback, and only where the platform will not say —
+  /// ↩️a run with no native engine at all, until the connection round moved
+  /// the question into the engine that ships with the app.
   final int footprintBytes;
 
   /// How much more the OS will let this process take, where the platform
@@ -388,13 +390,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
   return MemoryCensus(
     // ⛔The PLATFORM's own answer, not the Dart VM's RSS — see
     // [MemoryCensus.footprintBytes] for why they differ and which one the
-    // user is looking at. `ProcessInfo.currentRss` stands in only when no
-    // native engine loaded at all.
-    footprintBytes:
-        QaNativeEngine.instance?.processFootprintBytes ??
-        ProcessInfo.currentRss,
-    availableBytes: QaNativeEngine.instance?.availableMemoryBytes,
-    deviceBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    // user is looking at. `ProcessInfo.currentRss` stands in only where the
+    // platform will not say.
+    footprintBytes: QaMemory.processFootprintBytes ?? ProcessInfo.currentRss,
+    availableBytes: QaMemory.availableMemoryBytes,
+    deviceBytes: QaMemory.physicalMemoryBytes,
     items: items,
   );
 }

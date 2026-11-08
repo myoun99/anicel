@@ -32,13 +32,13 @@ abstract final class MemoryAllowance {
 ///
 /// 🗣️유저 2026-09-16 (memory-allowance-Q1): 「OS 가 이 앱에 주는 한도의 절반
 /// (알려 주지 않는 곳은 RAM 의 절반)」. iOS gives every app a limit of its
-/// own and the engine can read it ([QaNativeEngine.appMemoryLimitBytes]:
+/// own and the engine can read it ([QaMemory.appMemoryLimitBytes]:
 /// held plus still available, the ceiling a jetsam decision is made
 /// against), so there the allowance is half of that, read ONCE at start;
 /// everywhere else it is half the RAM. And (Q2's note) never under
 /// [floorBytes] — the least the app runs on, which is the caches' floors.
 ///
-/// Unknown RAM (no engine: tests, host runs) keeps [lawsTotalBytes], the
+/// Unknown RAM (a platform that will not say) keeps [lawsTotalBytes], the
 /// numbers as they were, byte for byte.
 int automaticAllowanceBytes({
   required int? physicalMemoryBytes,

@@ -9,7 +9,7 @@ import '../models/brush_frame_cache_invalidation.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
-import '../native/qa_native_engine.dart';
+import '../native/qa_memory.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import 'media/shown_rasters.dart';
 import 'media/viewer_raster_budget.dart';
@@ -220,7 +220,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// One viewer's share of this device, halved by the memory warning — see
   /// the class doc for why a viewer's.
   final ViewerRasterBudget _budget = ViewerRasterBudget(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    physicalMemoryBytes: QaMemory.physicalMemoryBytes,
   );
 
   /// What the held pictures cost resident, 4 bytes a pixel.

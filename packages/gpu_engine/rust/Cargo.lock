@@ -862,6 +862,7 @@ dependencies = [
  "ledger",
  "libc",
  "libm",
+ "memory",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-video",
@@ -1298,7 +1299,6 @@ version = "0.0.1"
 dependencies = [
  "libc",
  "mach2",
- "oracle",
  "windows",
 ]
 

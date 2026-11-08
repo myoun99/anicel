@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/memory_allowance.dart';
@@ -33,9 +33,9 @@ void main() {
     return session;
   }
 
-  /// Every budget at the automatic allowance. With no engine that is the
-  /// laws' own total, so these ARE the laws; the native parity run loads
-  /// one, and then the allowance is the device's and the laws scale to it.
+  /// Every budget at the automatic allowance: the device's, and the laws
+  /// scale to it — where the RAM is not said, the laws' own total, so these
+  /// ARE the laws.
   CacheBudgets automaticBudgetsOf(EditorSessionManager session) =>
       session.deviceCacheBudgets.toAllowance(session.automaticAllowance);
 
@@ -45,7 +45,7 @@ void main() {
     expect(
       session.deviceCacheBudgets,
       CacheBudgets.forDevice(
-        physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+        physicalMemoryBytes: QaMemory.physicalMemoryBytes,
       ),
       reason: "this device's own laws",
     );
@@ -68,7 +68,8 @@ void main() {
     expect(
       MemoryAllowance.factor.value,
       session.deviceCacheBudgets.factorFor(session.automaticAllowance),
-      reason: 'exactly 1 with no engine; the device\'s factor with one',
+      reason: 'exactly 1 where the RAM is not said; the device\'s factor '
+          'where it is',
     );
   });
 
@@ -169,25 +170,21 @@ void main() {
     expect(session.playbackRig.playbackCache.playbackCacheByteBudget, 1234);
   });
 
-  test('the automatic allowance is the device\'s, read once — and with no '
-      'engine it is the laws\' own total', () {
-    // 유저 2026-09-16 (memory-allowance-Q1). Under flutter_test there is
-    // usually no engine: RAM is unknown and the automatic allowance is the
-    // sum of the laws, byte for byte — the shape every device law already
-    // has. The native parity run loads one, and then it is the device's,
-    // by the law automatic_allowance_test pins, from the engine's numbers.
+  test('the automatic allowance is the device\'s, read once', () {
+    // 유저 2026-09-16 (memory-allowance-Q1): by the law
+    // automatic_allowance_test pins, from the engine's numbers. ↩️Under
+    // flutter_test there was often no C engine, so RAM was unknown and this
+    // was the laws' own total; the engine that answers now ships with the
+    // app (connection-round-checklist H, 2026-11-08).
     final session = newSession();
-    final engine = QaNativeEngine.instance;
     expect(
       session.automaticAllowance,
-      engine == null
-          ? session.deviceCacheBudgets.total
-          : automaticAllowanceBytes(
-              physicalMemoryBytes: engine.physicalMemoryBytes,
-              appMemoryLimitBytes: engine.appMemoryLimitBytes,
-              floorBytes: CacheBudgets.floors.total,
-              lawsTotalBytes: session.deviceCacheBudgets.total,
-            ),
+      automaticAllowanceBytes(
+        physicalMemoryBytes: QaMemory.physicalMemoryBytes,
+        appMemoryLimitBytes: QaMemory.appMemoryLimitBytes,
+        floorBytes: CacheBudgets.floors.total,
+        lawsTotalBytes: session.deviceCacheBudgets.total,
+      ),
     );
     expect(
       session.automaticAllowance,

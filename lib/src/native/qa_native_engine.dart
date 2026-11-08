@@ -81,10 +81,6 @@ class QaNativeEngine {
     this._tilePoolCachedBytes,
     this._tilePoolTrim,
     this._tilePoolSetByteCap,
-    this._physicalMemoryBytes,
-    this._processFootprintBytes,
-    this._availableMemoryBytes,
-    this._appMemoryLimitBytes,
     this._fillGapCloseRun,
     this._floodFillWave,
     this._fillComposeBatch,
@@ -368,54 +364,6 @@ class QaNativeEngine {
   static void respondToMemoryPressure() {
     _instance?._tilePoolTrim();
     NativeScratch.releaseAll();
-  }
-
-  final int Function() _physicalMemoryBytes;
-
-  /// The device's physical RAM, or null when the platform refused to
-  /// answer — callers keep their desktop-class default then. This is what
-  /// lets the hot cel budget scale to the machine (v28).
-  int? get physicalMemoryBytes {
-    final bytes = _physicalMemoryBytes();
-    return bytes <= 0 ? null : bytes;
-  }
-
-  final int Function() _processFootprintBytes;
-  final int Function() _availableMemoryBytes;
-  final int Function() _appMemoryLimitBytes;
-
-  /// What THIS PROCESS is holding, or null where the platform will not
-  /// say (v29).
-  ///
-  /// The number a jetsam report calls `rpages × pageSize` — the one that
-  /// decides whether the app is about to be killed. [physicalMemoryBytes]
-  /// answers a different question and has been standing in for it.
-  int? get processFootprintBytes {
-    final bytes = _processFootprintBytes();
-    return bytes <= 0 ? null : bytes;
-  }
-
-  /// How much more this process may take before the OS stops it, or null
-  /// where the platform will not say (v29).
-  ///
-  /// 🚨On iOS this is the REAL ceiling — an app's allowance is neither the
-  /// device's free RAM nor a fraction of its total, so a budget scaled
-  /// from the machine can be double what the process is allowed to have.
-  int? get availableMemoryBytes {
-    final bytes = _availableMemoryBytes();
-    return bytes <= 0 ? null : bytes;
-  }
-
-  /// What the OS lets THIS APP hold all in — held plus still available —
-  /// or null where the OS gives an app no limit of its own (v36).
-  ///
-  /// ⛔Not [availableMemoryBytes] doubled up: on a desktop that one is the
-  /// MACHINE's free memory, which is not a limit on this app at all. Only
-  /// iOS answers here, and there it is the ceiling a jetsam decision is
-  /// made against — the number the automatic allowance halves.
-  int? get appMemoryLimitBytes {
-    final bytes = _appMemoryLimitBytes();
-    return bytes <= 0 ? null : bytes;
   }
 
   final int Function(
@@ -1167,22 +1115,6 @@ class QaNativeEngine {
           .lookupFunction<Void Function(Int64), void Function(int)>(
             'qa_tile_pool_set_byte_cap',
           );
-      final physicalMemoryBytes = library
-          .lookupFunction<Int64 Function(), int Function()>(
-            'qa_physical_memory_bytes',
-          );
-      final processFootprintBytes = library
-          .lookupFunction<Int64 Function(), int Function()>(
-            'qa_process_footprint_bytes',
-          );
-      final availableMemoryBytes = library
-          .lookupFunction<Int64 Function(), int Function()>(
-            'qa_available_memory_bytes',
-          );
-      final appMemoryLimitBytes = library
-          .lookupFunction<Int64 Function(), int Function()>(
-            'qa_app_memory_limit_bytes',
-          );
       final fillGapCloseRun = library
           .lookupFunction<
             Int32 Function(
@@ -1388,10 +1320,6 @@ class QaNativeEngine {
         tilePoolCachedBytes,
         tilePoolTrim,
         tilePoolSetByteCap,
-        physicalMemoryBytes,
-        processFootprintBytes,
-        availableMemoryBytes,
-        appMemoryLimitBytes,
         fillGapCloseRun,
         floodFillWave,
         fillComposeBatch,

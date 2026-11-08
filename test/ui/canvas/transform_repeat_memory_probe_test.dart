@@ -14,6 +14,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/native/native_scratch.dart';
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -192,7 +193,7 @@ void main() {
       // The census's own rows, as far as a panel without a session has
       // them — layer images, playback frames and the viewers need one.
       return {
-        'footprint': engine?.processFootprintBytes ?? ProcessInfo.currentRss,
+        'footprint': QaMemory.processFootprintBytes ?? ProcessInfo.currentRss,
         'tileImages': BitmapTileImageCache.liveImageBytes,
         'undo': history.retainedBytes,
         'drawings': store.hotBakedBytes + store.reclaimableViewBytes,
@@ -359,7 +360,7 @@ void main() {
         print(
           '    took=${watch.elapsedMilliseconds}ms '
           'rss=${mb(ProcessInfo.currentRss)} '
-          'available=${mb(QaNativeEngine.instance?.availableMemoryBytes ?? 0)}',
+          'available=${mb(QaMemory.availableMemoryBytes ?? 0)}',
         );
         previous = now;
       }

@@ -4,8 +4,8 @@
 //! app's budgets scale from and its memory census shows.
 //!
 //! Each is None where the platform will not say. The exports answer 0 then,
-//! as the C did, and the app's side reads 0 as "not said" (its
-//! `QaNativeEngine` getters).
+//! as the C did, and the app's side reads 0 as "not said" (`QaMemory`,
+//! which binds them in the engine's library).
 //!
 //! The rest of qa_engine.c does not come here: its pixel work is the GPU
 //! engine's kernels already, and its premultiply is a formula one of them

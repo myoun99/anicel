@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-import '../../native/qa_native_engine.dart';
+import '../../native/qa_memory.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../models/media_asset.dart' show MediaCarry;
@@ -172,7 +172,7 @@ class SheetImageCache extends ChangeNotifier {
 
   /// One viewer's share of this device, halved by the memory warning.
   final ViewerRasterBudget _budget = ViewerRasterBudget(
-    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    physicalMemoryBytes: QaMemory.physicalMemoryBytes,
   );
 
   /// What the held images cost resident, 4 bytes a pixel.

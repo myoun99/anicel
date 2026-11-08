@@ -21,8 +21,3 @@ mach2 = "0.6"
 
 [target.'cfg(not(any(windows, target_vendor = "apple")))'.dependencies]
 libc = "0.2"
-
-# The C this crate replaces (qa_engine.c's four memory questions), the
-# answer key until the connection round.
-[dev-dependencies]
-oracle = { path = "../oracle" }

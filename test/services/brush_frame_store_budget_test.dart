@@ -12,13 +12,10 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
-import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/native/qa_memory.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cache_budgets.dart';
-
-import '../helpers/native_engine_path.dart';
 
 /// The hot cel budget scales to the MACHINE (유저 확정 2026-08-16): a
 /// quarter of physical RAM clamped to [384MB, 1536MB], with the OS
@@ -146,9 +143,9 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    // The seed is the device law at the automatic allowance: with no
-    // engine (a host test run) the desktop default, byte for byte; with
-    // one (the native parity run) this machine's.
+    // The seed is the device law at the automatic allowance: this
+    // machine's, or the desktop default, byte for byte, where the RAM is
+    // not said.
     expect(
       session.renderCaches.brushFrameStore.hotCelByteBudget,
       session.deviceCacheBudgets
@@ -165,28 +162,8 @@ void main() {
     );
   });
 
-  test('the engine answers physical RAM with a sane number (needs the '
-      'standalone binary)', () {
-    final path = nativeEngineLibraryPathOrNull();
-    if (path == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-    debugQaEngineLibraryPathOverride = path;
-    QaNativeEngine.debugResetForTests();
-    addTearDown(() {
-      debugQaEngineLibraryPathOverride = null;
-      QaNativeEngine.debugResetForTests();
-    });
-
-    final engine = QaNativeEngine.instance;
-    expect(
-      engine,
-      isNotNull,
-      reason: 'a null engine here means the standalone binary does not '
-          'speak ABI v$kQaEngineAbiVersion — rebuild it',
-    );
-    final bytes = engine!.physicalMemoryBytes;
+  test('the engine answers physical RAM with a sane number', () {
+    final bytes = QaMemory.physicalMemoryBytes;
     expect(bytes, isNotNull, reason: 'a real machine knows its RAM');
     expect(
       bytes,

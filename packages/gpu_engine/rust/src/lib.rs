@@ -48,6 +48,11 @@ pub use compress;
 pub use display;
 pub use fx_plugin;
 pub use image_encode;
+// The four memory questions (H, 관제 2026-11-08 14:51):
+// `qa_physical_memory_bytes` · `qa_process_footprint_bytes` ·
+// `qa_available_memory_bytes` · `qa_app_memory_limit_bytes` are answered
+// here, and the C's are gone.
+pub use memory;
 pub use pen;
 
 // The Runner finds the pen ledger's class by name (ios/Runner/
