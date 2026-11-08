@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -168,15 +169,18 @@ final class _GridScreen {
 }
 
 /// The box that shows its grid's screen ([TimelineGridScreenHost]): between
-/// the grid's sheet and its rows, as big as the rows' area. Each paint lays
-/// what of the rows' tiles the view shows — the box's bounds within every
-/// clip over it — and shows it there, snapped to device pixels.
+/// the grid's sheet and its rows, as big as the rows' area. It shows what
+/// of the rows' tiles the view shows — the box's bounds within every clip
+/// over it — there, snapped to device pixels.
 ///
-/// It paints after the rows it shows, in the frame they paint in: a row
-/// marked to paint marks it ([TimelineGridScreenSlot]), and a frame paints
-/// what is deeper first ([PipelineOwner.flushPaint]) — so what a row lays
-/// in its paint is on the screen the frame shows. A scroll of any
-/// scrollable around it lays the screen again; the rows' pictures are kept.
+/// What a frame's rows lay is on the screen that frame shows: a row marked
+/// to paint, or come, marks the box to paint in its frame
+/// ([TimelineGridScreenSlot]), and the box's layer lays the screen once
+/// the frame has painted ([_ScreenLayer]). ↩️Laid in the box's paint, a
+/// row that came after was not on it: a frame paints what is deeper first
+/// ([PipelineOwner.flushPaint]), and a row comes in the paint of a layer
+/// shallower than the box. A scroll of any scrollable around it lays the
+/// screen again; the rows' pictures are kept.
 class TimelineGridScreen extends LeafRenderObjectWidget {
   const TimelineGridScreen({super.key});
 
@@ -284,6 +288,25 @@ class _RenderGridScreen extends RenderBox {
       return;
     }
     final origin = Offset(shown.left.floorToDouble(), shown.top.floorToDouble());
+    final screen =
+        origin & Size(texture.width.toDouble(), texture.height.toDouble());
+    context.addLayer(
+      _ScreenLayer(
+        rect: MatrixUtils.inverseTransformRect(toView, screen).shift(offset),
+        textureId: texture.nextTextureId,
+        lay: () => _layAt(origin, texture, lay, view),
+      ),
+    );
+  }
+
+  /// Presents every slot's tiles on [texture], from [origin] in the device
+  /// pixels of [view] — what of them it holds, the rest of it clear.
+  void _layAt(
+    Offset origin,
+    ScreenTexture texture,
+    GpuGridLay lay,
+    RenderObject view,
+  ) {
     final (width, height) = (texture.width, texture.height);
     final laid = <GpuGridLaid>[];
     for (final slot in _screen._slots) {
@@ -306,22 +329,12 @@ class _RenderGridScreen extends RenderBox {
         ));
       }
     }
-    if (laid.isEmpty) {
-      return;
-    }
     texture.present((next) => lay.lay(next, (0, 0, width, height), laid));
-    final screen = origin & Size(width.toDouble(), height.toDouble());
-    context.addLayer(
-      TextureLayer(
-        rect: MatrixUtils.inverseTransformRect(toView, screen).shift(offset),
-        textureId: texture.textureId.value,
-        filterQuality: FilterQuality.none,
-      ),
-    );
   }
 
   /// What of this box the view shows, in its own pixels: its bounds within
-  /// the clip each ancestor lays over it, and the view's own.
+  /// the clip each ancestor lays over it — in that ancestor's own pixels
+  /// ([RenderObject.describeApproximatePaintClip]) — and the view's own.
   Rect _shownRect() {
     var shown = Offset.zero & size;
     RenderObject child = this;
@@ -329,7 +342,7 @@ class _RenderGridScreen extends RenderBox {
       final clip = above.describeApproximatePaintClip(child);
       if (clip != null) {
         shown = shown.intersect(
-          MatrixUtils.inverseTransformRect(getTransformTo(child), clip),
+          MatrixUtils.inverseTransformRect(getTransformTo(above), clip),
         );
       }
       child = above;
@@ -337,6 +350,29 @@ class _RenderGridScreen extends RenderBox {
     return shown.intersect(
       MatrixUtils.inverseTransformRect(getTransformTo(child), child.paintBounds),
     );
+  }
+}
+
+/// A grid's screen in the frame's layers, laid as the frame's scene is
+/// built ([addToScene]) — once every row the frame paints has laid what it
+/// lays — and shown by the id its texture shows that next frame by.
+class _ScreenLayer extends TextureLayer {
+  _ScreenLayer({
+    required super.rect,
+    required super.textureId,
+    required void Function() lay,
+  }) : _lay = lay,
+       super(filterQuality: FilterQuality.none);
+
+  /// Laid once: a scene built of this layer again shows what it laid.
+  void Function()? _lay;
+
+  @override
+  void addToScene(ui.SceneBuilder builder) {
+    final lay = _lay;
+    _lay = null;
+    lay?.call();
+    super.addToScene(builder);
   }
 }
 

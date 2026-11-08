@@ -43,6 +43,10 @@ sealed class ScreenTexture {
   /// The id a `Texture` widget shows the frame last presented by.
   ValueListenable<int> get textureId;
 
+  /// The id the frame [present] draws next is shown by: what a layer put
+  /// down before the frame is presented shows it by.
+  int get nextTextureId;
+
   /// [draw]s the next frame onto what Flutter is not showing, then shows
   /// it. [draw] waits for the GPU before it returns, as every kernel that
   /// writes a texture the screen shows does ([GpuScreen.show]): Flutter
@@ -99,6 +103,9 @@ final class _AlternatedTextures extends ScreenTexture {
   ValueListenable<int> get textureId => _shown;
 
   @override
+  int get nextTextureId => _textures[_next].id;
+
+  @override
   void present(void Function(GpuTarget next) draw) {
     draw(_surfaces[_next]);
     final texture = _textures[_next];
@@ -130,6 +137,9 @@ final class _SurfaceTexture extends ScreenTexture {
   ValueListenable<int> get textureId => _id;
 
   @override
+  int get nextTextureId => 0;
+
+  @override
   void present(void Function(GpuTarget next) draw) => draw(_surface);
 
   @override
@@ -148,6 +158,9 @@ final class _WindowTexture extends ScreenTexture {
 
   @override
   ValueListenable<int> get textureId => _id;
+
+  @override
+  int get nextTextureId => _window.textureId;
 
   @override
   void present(void Function(GpuTarget next) draw) {

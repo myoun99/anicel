@@ -75,30 +75,43 @@ void main() {
     return bytes;
   }
 
-  /// A grid of one row, 60 × 10 at (10, 20), laying the whole tile over
-  /// itself, inside a scroll of 400 across driven by [scroll].
-  Widget aGrid(_Row row, {ScrollController? scroll}) => Directionality(
+  /// A grid of [row], 60 × 10 at (10, 20) — of none where it is null —,
+  /// inside a scroll of 400 across driven by [scroll]: a viewport 100
+  /// across, 20 in from the view's left edge, so the screen stands where
+  /// the viewport's clip puts it, not the view's.
+  Widget aGrid(_Row? row, {ScrollController? scroll}) => Directionality(
     textDirection: TextDirection.ltr,
-    child: SingleChildScrollView(
-      controller: scroll,
-      scrollDirection: Axis.horizontal,
-      child: SizedBox(
-        width: 400,
-        height: 100,
-        child: TimelineGridScreenHost(
-          child: Stack(
-            children: [
-              const Positioned.fill(child: TimelineGridScreen()),
-              Positioned(
-                left: 10,
-                top: 20,
-                width: 60,
-                height: 10,
-                child: TimelineGridScreenSlot(
-                  child: CustomPaint(painter: row),
+    child: Align(
+      alignment: Alignment.topLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 20),
+        child: SizedBox(
+          width: 100,
+          height: 100,
+          child: SingleChildScrollView(
+            controller: scroll,
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: 400,
+              height: 100,
+              child: TimelineGridScreenHost(
+                child: Stack(
+                  children: [
+                    const Positioned.fill(child: TimelineGridScreen()),
+                    if (row != null)
+                      Positioned(
+                        left: 10,
+                        top: 20,
+                        width: 60,
+                        height: 10,
+                        child: TimelineGridScreenSlot(
+                          child: CustomPaint(painter: row),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -137,7 +150,7 @@ void main() {
     await tester.pump();
 
     // 15 logical pixels are 30 device pixels left: the red half's first
-    // ten are off the view.
+    // ten are past the viewport's left edge, where the screen begins.
     expect(
       surface.fingerprint(),
       fingerprintBytes(screenOf([(0, 50, red), (50, 110, green)])),
@@ -162,17 +175,33 @@ void main() {
     );
   });
 
+  testWidgets('a row that comes is shown in the frame it comes in', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    await tester.pumpWidget(aGrid(null));
+    await tester.pump();
+    expect(surface.fingerprint(), fingerprintBytes(screenOf([])));
+
+    await tester.pumpWidget(aGrid(_Row(() => tile)));
+
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf([(20, 80, red), (80, 140, green)])),
+    );
+  });
+
   testWidgets('a row that lays nothing leaves nothing shown', (tester) async {
     aSmallView(tester);
     final row = _Row(() => tile);
     await tester.pumpWidget(aGrid(row));
     await tester.pump();
-    expect(tester.layers.whereType<TextureLayer>(), hasLength(1));
+    expect(surface.fingerprint(), isNot(fingerprintBytes(screenOf([]))));
 
     row.layFrom(null);
     await tester.pump();
 
-    expect(tester.layers.whereType<TextureLayer>(), isEmpty);
+    expect(surface.fingerprint(), fingerprintBytes(screenOf([])));
   });
 
   testWidgets('before the engine is open a row lays nothing', (tester) async {
