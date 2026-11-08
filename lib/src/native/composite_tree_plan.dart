@@ -13,6 +13,7 @@ import '../models/dirty_region.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
+import '../models/pasteboard_bounds.dart' show PasteboardWall;
 import '../models/tile_coord.dart';
 import '../services/brush_stroke_blend.dart'
     show nonSeparableBlendModeNativeId, separableBlendModeNativeId;
@@ -39,10 +40,12 @@ import '../services/composite_effect_paint.dart'
         shadedPassesOf;
 import '../services/guide_geometry.dart' show GuideTransform;
 import '../services/layer_pose_matrix.dart'
-    show LayerPlacement, canvasToArtwork;
+    show LayerPlacement, canvasToArtwork, placedRectBounds;
 import '../services/shaded_passes.dart'
     show IrisGatherPass, IrisMap, IrisMapChannel, LineBoxPass, irisTurnsOf;
+import '../ui/canvas/landing_preview.dart';
 import '../ui/canvas/subtree_image_composite.dart' show subtreeBufferBounds;
+import '../ui/canvas/tile_origin.dart' show tileCoordsWorldRect;
 import '../ui/canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
 import 'engine_letters.dart';
 import 'engine_tile_ledger.dart';
@@ -73,6 +76,7 @@ final class EngineTiles extends EngineRow {
     this.blendMode = LayerBlendMode.normal,
     this.effects = const [],
     this.tint,
+    this.held = const [],
   });
 
   /// What the row's tiles are kept under, one cel a lineage — the row and
@@ -85,6 +89,31 @@ final class EngineTiles extends EngineRow {
   final LayerBlendMode blendMode;
   final List<ResolvedLayerEffect> effects;
   final int? tint;
+
+  /// What a hand holds over the row, bottom to top: laid over its tiles in
+  /// its own space before its chain and its pose, as they are once they
+  /// land — a float at its layer's depth, through its filters (TS1 ·
+  /// F-240).
+  final List<EngineHeld> held;
+}
+
+/// Pixels a hand holds over a row ([EngineTiles.held]) — a float, a text
+/// in hand, a landing shown before it lands — as [tiles] kept as
+/// [lineage]'s, read where [toHeld] takes a pixel of the row to one of
+/// theirs (none where the two are one), laid as [laying] says, its region
+/// in the row's pixels.
+final class EngineHeld {
+  const EngineHeld({
+    required this.lineage,
+    required this.tiles,
+    this.toHeld,
+    this.laying = const LaidOver(),
+  });
+
+  final Object lineage;
+  final Map<TileCoord, BitmapTile> tiles;
+  final GuideTransform? toHeld;
+  final HeldLaying laying;
 }
 
 /// [argb] laid over [rect] in normal: the paper under a cut's rows, a
@@ -262,7 +291,9 @@ class _TreePlan {
     plan.close(opacity: _strengthOf(clip.opacity), mode: mode);
   }
 
-  /// [row] laid in [mode] — none where its pose collapses it.
+  /// [row] laid in [mode] — none where its pose collapses it: its tiles,
+  /// and what a hand holds over them ([EngineTiles.held]) laid there first,
+  /// in its own space, as one picture — what they are once they land.
   void _row(EngineTiles row, int mode, _Reads reads) {
     final placement = _inSpace(row.placement);
     final inverse = switch (placement) {
@@ -270,47 +301,150 @@ class _TreePlan {
       final placement => canvasToArtwork(placement),
     };
     final tiles = row.surface.tiles;
-    if (inverse == null || tiles.isEmpty) {
+    if (inverse == null || tiles.isEmpty && row.held.isEmpty) {
       return;
     }
+    final picture = _rowExtentOf(row);
     // Its chain runs on its own picture, the whole of what it stands for,
     // and is cut there — as the walk steps the image it lays, before its
     // pose (steppedForChain); the rows it reads drawn there too, under
     // its pose undone (rowsUnderPlacement).
     final (:chain, :colour) = _chainOf(
       row.effects,
-      over: (_) => surfaceContentWorldRect(row.surface),
+      over: (_) => picture,
       space: placement == null ? null : inverse,
       reads: reads,
     );
     final tint = row.tint;
     final GuideTransform(:a, :b, :c, :d, :tx, :ty) = inverse;
-    plan.row(
-      set: _setOf(row.lineage, tiles),
+    final posed = [a, c, tx, b, d, ty, 0.0, 0.0, 1.0];
+    // The tint LAST, over the finished pixel: the ghost is the row as the
+    // screen shows it, in the peg's colour (resolveCompositeEffectPaint).
+    final matrix = _matrixOf(switch ((colour, tint)) {
+      (_, null) => colour,
+      (null, final tint?) => onionTintColorMatrix(tint),
+      (final colour?, final tint?) => composeColorMatrices(
+        onionTintColorMatrix(tint),
+        colour,
+      ),
+    });
+    final opacity = _strengthOf(row.opacity);
+    if (row.held.isEmpty) {
+      plan.row(
+        set: _setOf(row.lineage, tiles),
+        chain: chain,
+        inverse: posed,
+        sampling: _rowSampling,
+        columns: _columns,
+        rows: _rows,
+        mode: mode,
+        matrix: matrix,
+        opacity: opacity,
+      );
+      return;
+    }
+    plan.open();
+    if (tiles.isNotEmpty) {
+      _laySet(_setOf(row.lineage, tiles), null, GpuBlend.normal);
+    }
+    for (final held in row.held) {
+      _held(held, row.surface.pasteboard);
+    }
+    plan.closeRow(
       chain: chain,
-      inverse: [a, c, tx, b, d, ty, 0, 0, 1],
-      // A row is laid at the canvas's own resolution, one of its pixels a
-      // canvas pixel, whatever its pose (🗣️I-120-Q26 · Q28 — a picture
-      // baked as the canvas shows it).
-      sampling: gpuSamplingOf(filterQualityForDisplayScale(1)),
-      // A placement is affine: no corner of what the plan lays says how
-      // far a pixel lies, as a homography's would.
-      columns: paper.width.ceil(),
-      rows: paper.height.ceil(),
+      tiles: chain == null ? _tilesOf(_pixelsOf(picture)) : null,
+      inverse: posed,
+      sampling: _rowSampling,
+      columns: _columns,
+      rows: _rows,
       mode: mode,
-      // The tint LAST, over the finished pixel: the ghost is the row as the
-      // screen shows it, in the peg's colour (resolveCompositeEffectPaint).
-      matrix: _matrixOf(switch ((colour, tint)) {
-        (_, null) => colour,
-        (null, final tint?) => onionTintColorMatrix(tint),
-        (final colour?, final tint?) => composeColorMatrices(
-          onionTintColorMatrix(tint),
-          colour,
-        ),
-      }),
-      opacity: _strengthOf(row.opacity),
+      matrix: matrix,
+      opacity: opacity,
     );
   }
+
+  /// A row is laid at the canvas's own resolution, one of its pixels a
+  /// canvas pixel, whatever its pose (🗣️I-120-Q26 · Q28 — a picture baked
+  /// as the canvas shows it).
+  GpuSampling get _rowSampling =>
+      gpuSamplingOf(filterQualityForDisplayScale(1));
+
+  // A placement is affine: no corner of what the plan lays says how far a
+  // pixel lies, as a homography's would.
+  int get _columns => paper.width.ceil();
+  int get _rows => paper.height.ceil();
+
+  /// [held] in the open buffer of its row, as its laying says, and cut at
+  /// [wall] — its row's pasteboard — where it reaches past it, as its
+  /// landing is cut there.
+  void _held(EngineHeld held, PasteboardWall wall) {
+    final reach = _reachOf(held);
+    if (reach == null) {
+      return;
+    }
+    final set = _setOf(held.lineage, held.tiles);
+    final (left, top, right, bottom) = _pixelsOf(reach);
+    final outside = [
+      (left, top, right, wall.top),
+      (left, wall.bottomExclusive, right, bottom),
+      (left, wall.top, wall.left, wall.bottomExclusive),
+      (wall.rightExclusive, wall.top, right, wall.bottomExclusive),
+    ].where((band) => band.$1 < band.$3 && band.$2 < band.$4).toList();
+    void laid(int mode) {
+      if (outside.isEmpty) {
+        _laySet(set, held.toHeld, mode);
+        return;
+      }
+      plan.open();
+      _laySet(set, held.toHeld, GpuBlend.normal);
+      plan.open();
+      for (final (l, t, r, b) in outside) {
+        plan.solid(_opaque, l, t, r, b);
+      }
+      plan.close(mode: GpuBlend.erase);
+      plan.close(mode: mode);
+    }
+
+    switch (held.laying) {
+      case LaidOver():
+        laid(GpuBlend.normal);
+      case LaidErasing():
+        laid(GpuBlend.erase);
+      case LaidReplacing(:final region):
+        final (l, t, r, b) = _pixelsOf(region);
+        final cut = (
+          math.max(l, wall.left),
+          math.max(t, wall.top),
+          math.min(r, wall.rightExclusive),
+          math.min(b, wall.bottomExclusive),
+        );
+        if (cut case (final l, final t, final r, final b) when l < r && t < b) {
+          plan.open();
+          plan.solid(_opaque, l, t, r, b);
+          plan.close(mode: GpuBlend.erase);
+        }
+        laid(GpuBlend.normal);
+    }
+  }
+
+  /// Tile set [set] laid whole in [mode] where [toOwn] — a pixel of the
+  /// space the steps are laid in to the set's own, none where they are
+  /// one — reads it.
+  void _laySet(int set, GuideTransform? toOwn, int mode) {
+    final GuideTransform(:a, :b, :c, :d, :tx, :ty) =
+        toOwn ?? const GuideTransform.identity();
+    plan.row(
+      set: set,
+      inverse: [a, c, tx, b, d, ty, 0, 0, 1],
+      sampling: _rowSampling,
+      columns: _columns,
+      rows: _rows,
+      mode: mode,
+    );
+  }
+
+  /// Opaque white, as a solid takes it.
+  static final int _opaque = gpuColourOf(0xFFFFFFFF);
 
   /// The tile set of [tiles], held as [lineage]'s: the box their
   /// coordinates span, row by row, an empty place where none is.
@@ -384,15 +518,8 @@ class _TreePlan {
     if (ops.isEmpty) {
       return (chain: null, colour: colour);
     }
-    final (left, top, right, bottom) = extent;
-    final x0 = (left / gpuTileSide).floor();
-    final y0 = (top / gpuTileSide).floor();
-    final chain = plan.chain(
-      x0,
-      y0,
-      (right / gpuTileSide).ceil() - x0,
-      (bottom / gpuTileSide).ceil() - y0,
-    );
+    final (x0, y0, columns, rows) = _tilesOf(extent);
+    final chain = plan.chain(x0, y0, columns, rows);
     for (final op in ops) {
       op(chain);
     }
@@ -663,11 +790,46 @@ GpuMapChannel _channelOf(IrisMapChannel channel) => switch (channel) {
 };
 
 /// The rect [row] stands for, as a buffer holding it covers it: a row's
-/// content — the canvas with every tile it holds — and a solid's own.
+/// ([_rowExtentOf]) and a solid's own.
 ui.Rect _extentOf(EngineRow row) => switch (row) {
-  EngineTiles(:final surface) => surfaceContentWorldRect(surface),
+  final EngineTiles row => _rowExtentOf(row),
   EngineSolid(:final rect) => rect.rect,
 };
+
+/// What [row] stands for, in its own space: its content — the canvas with
+/// every tile it holds — and what is held over it.
+ui.Rect _rowExtentOf(EngineTiles row) => row.held.fold(
+  surfaceContentWorldRect(row.surface),
+  (extent, held) => switch (_reachOf(held)) {
+    null => extent,
+    final reach => extent.expandToInclude(reach),
+  },
+);
+
+/// The row's pixels [held] reaches, the tiles it holds where the row's
+/// pixels read them — none for no tile, or a map that reads them from no
+/// pixel of the row.
+ui.Rect? _reachOf(EngineHeld held) {
+  final tiles = tileCoordsWorldRect(held.tiles.keys, gpuTileSide);
+  final back = canvasToArtwork(
+    held.toHeld ?? const GuideTransform.identity(),
+  );
+  return tiles == null || back == null ? null : placedRectBounds(back, tiles);
+}
+
+/// The tiles [pixels] lie on, as the engine takes a box of them: (x0, y0,
+/// columns, rows).
+(int, int, int, int) _tilesOf((int, int, int, int) pixels) {
+  final (left, top, right, bottom) = pixels;
+  final x0 = (left / gpuTileSide).floor();
+  final y0 = (top / gpuTileSide).floor();
+  return (
+    x0,
+    y0,
+    (right / gpuTileSide).ceil() - x0,
+    (bottom / gpuTileSide).ceil() - y0,
+  );
+}
 
 LayerPlacement? _placementOf(EngineRow row) => switch (row) {
   EngineTiles(:final placement) => placement,

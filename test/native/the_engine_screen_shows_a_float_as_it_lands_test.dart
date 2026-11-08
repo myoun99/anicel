@@ -1,0 +1,533 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
+
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/native/app_gpu_engine.dart';
+import 'package:anicel/src/native/engine_letters.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart'
+    show materializeBrushDabSequenceOnBitmapSurface;
+import 'package:anicel/src/services/bitmap_surface_geometry.dart'
+    show tilesOfRegion;
+import 'package:anicel/src/services/cel_surface_as_shown.dart'
+    show celLandingShownWhole, celSurfaceAsShown;
+import 'package:anicel/src/services/guide_geometry.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+
+/// 🚨★★★THE ENGINE'S SCREEN SHOWS A FLOAT AS IT LANDS (flip lane ⓐ-2, 유저
+/// 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」 · F-240 ·
+/// TS1): what a hand carries over a row is laid in the row's own picture,
+/// at its depth, before its chain and its pose — so the screen while it is
+/// carried is, byte for byte, the screen once it has landed: a float moved,
+/// one through the row's blur, one cut at the wall, one on a row that keys
+/// its colours, a landing in place of a region on a posed row, a warp's
+/// resample, a row a lift holds beside the pen's.
+///
+/// ⚠️Its pixels are clear or opaque: a partly clear one over ink lands by
+/// the stamp blend's arithmetic and lies by the engine's, one apart at most
+/// till the stroke is the engine's too (flip lane ⓒ,
+/// `a_carried_text_shows_what_it_lands_as_test`).
+void main() {
+  // The letters read their faces from the bundle.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const canvas = CanvasSize(width: 256, height: 128);
+  const side = 128;
+  final left = TileCoord(x: 0, y: 0);
+  final right = TileCoord(x: 1, y: 0);
+  late GpuComposite composite;
+  late EngineLetters letters;
+
+  setUpAll(() async {
+    composite = GpuComposite(appGpuEngine);
+    letters = await EngineLetters.open(composite);
+  });
+  tearDownAll(() {
+    letters.free();
+    composite.free();
+  });
+
+  /// A tile of [seed]'s pixels, alphas of every kind.
+  BitmapTile tileOf(int seed) {
+    final pixels = Uint8List(side * side * 4);
+    for (var y = 0; y < side; y++) {
+      for (var x = 0; x < side; x++) {
+        final n = x * 7 + y * 13 + seed * 101;
+        final alpha = switch ((x ~/ 16 + y ~/ 32 + seed) % 4) {
+          0 => 0,
+          1 => 255,
+          2 => 96 + (n & 63),
+          _ => 200 + (n & 31),
+        };
+        if (alpha > 0) {
+          pixels.setAll((y * side + x) * 4, [
+            (n * 37) & 255,
+            (n * 23 + 91) & 255,
+            (n * 11) & 255,
+            alpha,
+          ]);
+        }
+      }
+    }
+    return BitmapTile(size: side, pixels: pixels);
+  }
+
+  /// The cel a float is carried over: ink on both tiles.
+  BitmapSurface cel({PasteboardReach reach = PasteboardReach.whole}) =>
+      BitmapSurface(
+        canvasSize: canvas,
+        pasteboardReach: reach,
+        tileSize: side,
+        tiles: {left: tileOf(1), right: tileOf(2)},
+      );
+
+  /// Nothing, on [like]'s grid — what a lift's picture is laid on.
+  BitmapSurface nothingLike(BitmapSurface like) => BitmapSurface(
+    canvasSize: like.canvasSize,
+    pasteboardReach: like.pasteboardReach,
+    tileSize: side,
+  );
+
+  /// A lift's picture centred [at]: clear at its rim, a pattern of opaque
+  /// colours inside — some of them grey, which a key takes away.
+  BrushDab liftAt(CanvasPoint at, {int width = 60, int height = 40}) {
+    final rgba = Uint8List(width * height * 4);
+    for (var y = 3; y < height - 3; y++) {
+      for (var x = 3; x < width - 3; x++) {
+        final n = x * 29 + y * 17;
+        final grey = (x ~/ 6 + y ~/ 5).isEven;
+        rgba.setAll((y * width + x) * 4, [
+          if (grey) ...[128 + n % 9, 128, 128 - n % 7] else ...[
+            (n * 37) & 255,
+            (n * 23 + 91) & 255,
+            (n * 11) & 255,
+          ],
+          255,
+        ]);
+      }
+    }
+    return BrushDab(
+      center: at,
+      color: 0xFFFFFFFF,
+      size: (width > height ? width : height).toDouble(),
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+      stamp: BrushStampImage(
+        id: 'a-lift',
+        width: width,
+        height: height,
+        rgba: rgba,
+      ),
+    );
+  }
+
+  /// [on] with [dab] stamped on it by the landing's own code.
+  BitmapSurface stamped(BitmapSurface on, BrushDab dab) =>
+      materializeBrushDabSequenceOnBitmapSurface(
+        surface: on,
+        sequence: BrushDabSequence([dab]),
+      ).surface;
+
+  /// [lift] carried by ([dx], [dy]), as the selection layer floats a move:
+  /// its picture laid on nothing, at an offset.
+  SelectionFloatOverlay carried(
+    BrushDab lift,
+    BitmapSurface over, {
+    required int dx,
+    required int dy,
+    FloatLanding? lands,
+  }) {
+    final overlay = SelectionFloatOverlay(
+      SelectionFloatPaint(
+        surface: floatPainter(stamped(nothingLike(over), lift), const []),
+        surfaceOffset: CanvasPoint(x: dx.toDouble(), y: dy.toDouble()),
+        clip: over.pasteboard.rect,
+        lands: lands,
+      ),
+    );
+    addTearDown(overlay.dispose);
+    return overlay;
+  }
+
+  BrushDab movedBy(BrushDab dab, int dx, int dy) => dab.copyWith(
+    center: CanvasPoint(x: dab.center.x + dx, y: dab.center.y + dy),
+  );
+
+  FramePage pageOf(PasteboardReach reach) => (
+    canvasSize: canvas,
+    pasteboardReach: reach,
+    paintPaper: true,
+    paperBackground: const ProjectBackground.color(0xFF30A060),
+  );
+
+  /// The frame of one row, the pen's — [row] — drawn by [live], [float]
+  /// over it.
+  StackedFrame frameOf(
+    BitmapSurfacePainter live, {
+    SelectionFloatOverlay? float,
+    CanvasActiveLayerRow row = const CanvasActiveLayerRow(opacity: 1),
+    PasteboardReach reach = PasteboardReach.whole,
+  }) => stackedFrameOf(
+    [CompositeLeaf(row)],
+    page: pageOf(reach),
+    surfaceOf: (_) => null,
+    live: (
+      rows: (
+        activeSurfacePainter: live,
+        floatOverlay: float,
+        liftedRows: const {},
+      ),
+      painters: LiftedRowPainters(),
+    ),
+  );
+
+  /// What the engine's screen shows of [frame] through [viewport], [size]
+  /// texels — its fingerprint.
+  int shown(
+    StackedFrame frame, {
+    CanvasViewport? viewport,
+    (int, int) size = (256, 128),
+  }) {
+    final screen = EngineStackScreen(composite, letters);
+    addTearDown(screen.free);
+    screen.compose(frame);
+    final (columns, rows) = size;
+    final target = () {
+      try {
+        return appGpuEngine.surface(columns, rows, bgra: false);
+      } on StateError {
+        return appGpuEngine.surface(columns, rows, bgra: true);
+      }
+    }();
+    addTearDown(target.free);
+    screen.show(
+      target,
+      size,
+      viewport: viewport ?? CanvasViewport(),
+      devicePixelRatio: 1,
+    );
+    return target.fingerprint();
+  }
+
+  /// A row of [kind] at its defaults but for [lanes].
+  ResolvedLayerEffect fx(EffectKind kind, Map<String, double> lanes) =>
+      ResolvedLayerEffect(
+        kind: kind,
+        values: [
+          for (final spec in kind.parameters)
+            lanes[spec.id] ?? spec.defaultValue,
+        ],
+      );
+
+  for (final (dx, dy) in [(0, 0), (37, -11), (-70, 25)]) {
+    test('🚨a float carried by ($dx, $dy) shows on the engine\'s screen as '
+        'it lands', () {
+      final base = cel();
+      final lift = liftAt(CanvasPoint(x: 120, y: 60));
+      final drawing = shown(
+        frameOf(
+          BitmapSurfacePainter(surface: base),
+          float: carried(lift, base, dx: dx, dy: dy),
+        ),
+      );
+
+      expect(
+        drawing,
+        shown(
+          frameOf(
+            BitmapSurfacePainter(surface: stamped(base, movedBy(lift, dx, dy))),
+          ),
+        ),
+      );
+      expect(
+        drawing,
+        isNot(shown(frameOf(BitmapSurfacePainter(surface: base)))),
+        reason: 'the float shows while it is carried',
+      );
+    });
+  }
+
+  test('🚨a float shows through its row\'s blur as it lands (F-240)', () {
+    final base = cel();
+    final lift = liftAt(CanvasPoint(x: 120, y: 60));
+    final row = CanvasActiveLayerRow(
+      opacity: 1,
+      effects: [
+        fx(EffectKind.blur, {'blurriness': 6, 'blurDimensions': 0}),
+      ],
+    );
+    final drawing = shown(
+      frameOf(
+        BitmapSurfacePainter(surface: base),
+        float: carried(lift, base, dx: 30, dy: 9),
+        row: row,
+      ),
+    );
+
+    expect(
+      drawing,
+      shown(
+        frameOf(
+          BitmapSurfacePainter(surface: stamped(base, movedBy(lift, 30, 9))),
+          row: row,
+        ),
+      ),
+    );
+  });
+
+  test('🚨a float carried past the wall shows cut there, as it lands', () {
+    const reach = PasteboardReach.none;
+    final base = cel(reach: reach);
+    final lift = liftAt(CanvasPoint(x: 200, y: 64));
+    // The canvas and 64 past it each way: past the wall, which is its edge.
+    final past = (
+      viewport: CanvasViewport(panX: 64, panY: 64),
+      size: (canvas.width + 128, canvas.height + 128),
+    );
+    int seen(StackedFrame frame) =>
+        shown(frame, viewport: past.viewport, size: past.size);
+    final drawing = seen(
+      frameOf(
+        BitmapSurfacePainter(surface: base),
+        float: carried(lift, base, dx: 40, dy: 50),
+        reach: reach,
+      ),
+    );
+
+    expect(
+      drawing,
+      seen(
+        frameOf(
+          BitmapSurfacePainter(surface: stamped(base, movedBy(lift, 40, 50))),
+          reach: reach,
+        ),
+      ),
+    );
+  });
+
+  test('🚨on a row that keys its colours, a float shows keyed with the cel, '
+      'as it lands', () {
+    final keys = [
+      fx(EffectKind.colorKey, {
+        'keyOperation': 0,
+        'keyColor': 0xFF808080,
+        'tolerance': 40,
+        'amount': 100,
+      }),
+    ];
+    final row = CanvasActiveLayerRow(opacity: 1, effects: keys);
+    final base = cel();
+    final lift = liftAt(CanvasPoint(x: 120, y: 60));
+    final landing = movedBy(lift, 21, 13);
+    final drawing = shown(
+      frameOf(
+        BitmapSurfacePainter(surface: celSurfaceAsShown(base, keys)),
+        float: carried(
+          lift,
+          base,
+          dx: 21,
+          dy: 13,
+          lands: (stamp: landing, on: _Cel(base, onCanvasGrid: true)),
+        ),
+        row: row,
+      ),
+    );
+
+    expect(
+      drawing,
+      shown(
+        frameOf(
+          BitmapSurfacePainter(
+            surface: celSurfaceAsShown(stamped(base, landing), keys),
+          ),
+          row: row,
+        ),
+      ),
+    );
+  });
+
+  test('🚨on a posed row, a float shows as its landing, in place of what '
+      'the cel shows there', () {
+    const row = CanvasActiveLayerRow(
+      opacity: 1,
+      placement: GuideTransform(0, 1, -1, 0, 192, -64),
+    );
+    final base = cel();
+    final lift = liftAt(CanvasPoint(x: 120, y: 60));
+    final landed = stamped(base, movedBy(lift, 17, 5));
+    final shownWhole = celLandingShownWhole(
+      under: base,
+      landed: landed,
+      effects: const [],
+    )!;
+    final landing = CelTextLanding.of(shownWhole.region, shownWhole.straight);
+    addTearDown(landing.letGo);
+    final drawing = shown(
+      frameOf(
+        BitmapSurfacePainter(surface: base),
+        float: carried(
+          lift,
+          base,
+          dx: 17,
+          dy: 5,
+          lands: (
+            stamp: movedBy(lift, 17, 5),
+            on: _Cel(base, onCanvasGrid: false, landing: landing),
+          ),
+        ),
+        row: row,
+      ),
+    );
+
+    expect(
+      drawing,
+      shown(frameOf(BitmapSurfacePainter(surface: landed), row: row)),
+    );
+    expect(
+      drawing,
+      isNot(shown(frameOf(BitmapSurfacePainter(surface: base), row: row))),
+      reason: 'the landing shows while it is carried',
+    );
+  });
+
+  test('🚨a warp\'s resample shows on the engine\'s screen as it lands',
+      () async {
+    final base = cel();
+    // A centre between pixels: the landing rounds it, and so does the rect
+    // its tiles stand on.
+    final warped = liftAt(
+      CanvasPoint(x: 140.5, y: 70.25),
+      width: 75,
+      height: 33,
+    );
+    final stamp = warped.stamp!;
+    final landing = stamp.landingRect(warped.center);
+    final image = await _imageOf(stamp);
+    addTearDown(image.dispose);
+    final overlay = SelectionFloatOverlay(
+      SelectionFloatPaint(
+        image: image,
+        imageTiles: tilesOfRegion(landing, stamp.rgba),
+        imageLeft: landing.left.toDouble(),
+        imageTop: landing.top.toDouble(),
+        clip: base.pasteboard.rect,
+      ),
+    );
+    addTearDown(overlay.dispose);
+
+    expect(
+      shown(frameOf(BitmapSurfacePainter(surface: base), float: overlay)),
+      shown(frameOf(BitmapSurfacePainter(surface: stamped(base, warped)))),
+    );
+  });
+
+  test('🚨a row a lift holds beside the pen\'s shows its float as it lands',
+      () {
+    const key = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('lifted'),
+      frameId: FrameId('f'),
+    );
+    final base = cel();
+    final lift = liftAt(CanvasPoint(x: 120, y: 60));
+    const nodes = [
+      CompositeLeaf<CanvasStackRow>(
+        CanvasLayerImageRequest(frameKey: key, opacity: 1),
+      ),
+    ];
+    final drawing = shown(
+      stackedFrameOf(
+        nodes,
+        page: pageOf(PasteboardReach.whole),
+        surfaceOf: (_) => null,
+        live: (
+          rows: (
+            activeSurfacePainter: null,
+            floatOverlay: null,
+            liftedRows: {
+              key: (surface: base, float: carried(lift, base, dx: 9, dy: 31)),
+            },
+          ),
+          painters: LiftedRowPainters(),
+        ),
+      ),
+    );
+
+    expect(
+      drawing,
+      shown(
+        stackedFrameOf(
+          nodes,
+          page: pageOf(PasteboardReach.whole),
+          surfaceOf: (_) => stamped(base, movedBy(lift, 9, 31)),
+        ),
+      ),
+    );
+  });
+}
+
+/// [stamp]'s picture, as a warp's preview decodes it — its pixels clear or
+/// opaque, so its straight bytes are its premultiplied ones.
+Future<ui.Image> _imageOf(BrushStampImage stamp) {
+  final done = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+    stamp.rgba,
+    stamp.width,
+    stamp.height,
+    ui.PixelFormat.rgba8888,
+    done.complete,
+  );
+  return done.future;
+}
+
+/// A cel a float was taken up from: [holed] under it, on the canvas's grid
+/// or not, and its landing where it is asked for one.
+class _Cel implements FloatLandsOn {
+  _Cel(this.holed, {required this.onCanvasGrid, this.landing});
+
+  @override
+  final BitmapSurface holed;
+
+  @override
+  final bool onCanvasGrid;
+
+  final LandingPreview? landing;
+
+  @override
+  LandingPreview? landingShown(
+    BrushDab stamp,
+    List<ResolvedLayerEffect> keys,
+  ) => landing;
+}

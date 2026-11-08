@@ -5,11 +5,13 @@ import 'package:flutter/rendering.dart';
 
 import '../../core/signed_memo.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/layer_effect.dart';
+import '../../models/tile_coord.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_source_effect_pass.dart'
@@ -53,6 +55,7 @@ class SelectionFloatPaint implements LandingPreview {
     this.surface,
     CanvasPoint? surfaceOffset,
     this.image,
+    this.imageTiles,
     this.imageLeft = 0,
     this.imageTop = 0,
     this.clip,
@@ -67,6 +70,10 @@ class SelectionFloatPaint implements LandingPreview {
   /// The resampled preview (an open warp: the preview IS the result, drawn
   /// unfiltered at the rect it will land in).
   final ui.Image? image;
+
+  /// [image]'s pixels as tiles, where they land (`FloatResampleShown`) —
+  /// what the engine lays ([heldTiles]).
+  final Map<TileCoord, BitmapTile>? imageTiles;
   final double imageLeft;
   final double imageTop;
 
@@ -161,6 +168,26 @@ class SelectionFloatPaint implements LandingPreview {
     canvas.restore();
   }
 
+  @override
+  List<HeldTiles> get heldTiles {
+    final surface = this.surface;
+    if (surface != null) {
+      return [
+        (
+          tiles: surface.surface.tiles,
+          dx: surfaceOffset.x,
+          dy: surfaceOffset.y,
+          laying: const LaidOver(),
+        ),
+      ];
+    }
+    final imageTiles = this.imageTiles;
+    return [
+      if (image != null && imageTiles != null)
+        (tiles: imageTiles, dx: 0, dy: 0, laying: const LaidOver()),
+    ];
+  }
+
   /// This float as a row whose leading colour keys are [keys] shows it:
   /// itself — CANVAS space, [canvasToRow] takes it into the row — where its
   /// own pixels are what its landing will show, and where they are not,
@@ -176,9 +203,14 @@ class SelectionFloatPaint implements LandingPreview {
   /// pixels apart from its landing).
   ///
   /// So the row asks, and the answer is one of three:
-  /// · no keys, no text under it — the float itself, as it always was: its
-  ///   pixels are its landing's, but where a partly clear pixel lies over
-  ///   ink (one apart at most, `a_carried_text_shows_what_it_lands_as_test`).
+  /// · no keys, no text under it, on the canvas's grid — the float itself,
+  ///   as it always was: its pixels are its landing's, but where a partly
+  ///   clear pixel lies over ink (one apart at most,
+  ///   `a_carried_text_shows_what_it_lands_as_test`). ↩️Off the grid too,
+  ///   until the engine laid what it shows (flip lane ⓐ-2, 2026-11-08):
+  ///   a pose resamples what lands into the cel, and the row resamples the
+  ///   cel again, so a posed row's float drawn as itself showed sharper than
+  ///   it landed (유저 09-17 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
   /// · keys, and the landing there is the float's pixels landed on nothing
   ///   ([_KeyedFloat]) — made ONCE, and moved as the float moves.
   /// · anything else — the landing itself, made again at each place it is
@@ -201,11 +233,11 @@ class SelectionFloatPaint implements LandingPreview {
     final keyed = celSourceEffectSignature(keys).isNotEmpty || plugin;
     final onGrid = lands.on.onCanvasGrid;
     final rect = drawnWorldRect;
-    // Under a pose a rect of the float is no rect of the cel, so a cel that
-    // carries a text at all may carry it under the float.
-    final textUnder =
-        holed.texts.isNotEmpty && (!onGrid || _textsTouch(holed, rect));
-    if (!keyed && !textUnder) {
+    // A rect of the float is a rect of the cel on the grid alone, which is
+    // where this is asked: off it, the float is its landing whatever lies
+    // under it.
+    final textUnder = holed.texts.isNotEmpty && _textsTouch(holed, rect);
+    if (!keyed && !textUnder && onGrid) {
       return itself;
     }
     final floatSurface = surface?.surface;
@@ -234,6 +266,7 @@ class SelectionFloatPaint implements LandingPreview {
           other.surfaceOffset.x == surfaceOffset.x &&
           other.surfaceOffset.y == surfaceOffset.y &&
           identical(other.image, image) &&
+          identical(other.imageTiles, imageTiles) &&
           other.imageLeft == imageLeft &&
           other.imageTop == imageTop &&
           other.clip == clip &&
@@ -245,6 +278,7 @@ class SelectionFloatPaint implements LandingPreview {
     surfaceOffset.x,
     surfaceOffset.y,
     identityHashCode(image),
+    identityHashCode(imageTiles),
     imageLeft,
     imageTop,
     clip,
@@ -422,6 +456,20 @@ class _KeyedFloat implements LandingPreview {
     );
     _keyed.paintContentInto(canvas, pixelRatio: pixelRatio);
     canvas.restore();
+  }
+
+  @override
+  List<HeldTiles> get heldTiles {
+    final CanvasPoint(x: dx, y: dy) = _float.surfaceOffset;
+    return [
+      (
+        tiles: _float.surface!.surface.tiles,
+        dx: dx,
+        dy: dy,
+        laying: const LaidErasing(),
+      ),
+      (tiles: _keyed.surface.tiles, dx: dx, dy: dy, laying: const LaidOver()),
+    ];
   }
 }
 

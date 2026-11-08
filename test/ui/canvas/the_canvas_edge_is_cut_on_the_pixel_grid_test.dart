@@ -820,6 +820,7 @@ void main() {
             ratio: ratio,
             landing: CelTextLanding(
               picture: await redPicture(8, 2),
+              tiles: const {},
               left: -2,
               top: 1,
             ),
@@ -831,6 +832,7 @@ void main() {
               ratio: ratio,
               landing: CelTextLanding(
                 picture: await redPicture(6, 2),
+                tiles: const {},
                 left: -1,
                 top: 1,
               ),
@@ -895,7 +897,10 @@ void main() {
           imageLeft: 1,
           imageTop: 1,
         )),
-        ('a text', CelTextLanding(picture: square, left: 1, top: 1)),
+        (
+          'a text',
+          CelTextLanding(picture: square, tiles: const {}, left: 1, top: 1),
+        ),
       ]) {
         final drawn = ui.PictureRecorder();
         final canvas = Canvas(drawn, Offset.zero & logical);

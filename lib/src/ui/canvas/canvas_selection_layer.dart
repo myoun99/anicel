@@ -2319,27 +2319,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final pasteboard = widget.pasteboard.rect;
     // The image and the dab it was decoded from travel together, so the
     // rect the preview draws into always belongs to the pixels in it.
-    final resampledImage = float.preview.image;
-    final resampledDab = float.preview.imageDab;
-    if (resampledImage != null && resampledDab != null) {
+    if (float.preview.shown case (
+      :final image,
+      :final dab,
+      :final landing,
+      :final tiles,
+    )) {
       return SelectionFloatPaint(
-        image: resampledImage,
-        // The landing rect, computed the way the stamp blend computes it: the
-        // dab centre rounded to an integer top-left. Previewing at the
-        // unrounded position would put a sub-pixel Ctrl+T on screen half a
-        // pixel from where it lands.
-        imageLeft: (resampledDab.center.x - resampledImage.width / 2)
-            .round()
-            .toDouble(),
-        imageTop: (resampledDab.center.y - resampledImage.height / 2)
-            .round()
-            .toDouble(),
+        image: image,
+        imageTiles: tiles,
+        // The landing rect, the stamp blend's own: the dab centre rounded to
+        // an integer top-left. Previewing at the unrounded position would
+        // put a sub-pixel Ctrl+T on screen half a pixel from where it lands.
+        imageLeft: landing.left.toDouble(),
+        imageTop: landing.top.toDouble(),
         // The pasteboard wall, because the landing clips there too
         // (`bitmap_surface_brush_commit`): a selection dragged past the stage
         // edge loses those pixels on Enter, and a preview that kept showing
         // them would be promising something the commit will not deliver.
         clip: pasteboard,
-        lands: _landsAs(float, resampledDab),
+        lands: _landsAs(float, dab),
       );
     }
     // ↩️`_drag is MoveDrag` stood here too, from when a move was its own

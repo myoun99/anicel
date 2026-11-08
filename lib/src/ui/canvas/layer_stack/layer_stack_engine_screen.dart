@@ -46,7 +46,7 @@ final class EngineStackScreen {
           plan,
           mapCompositeLeaves<_PaintRow, EngineRow>(
             pass._rootNodes,
-            frame._painter._engineRowOf,
+            pass._engineRowOf,
           ),
           hold: hold,
           paper: frame._painter.canvasSize.canvasRect,
@@ -111,41 +111,75 @@ final class EngineStackScreen {
   );
 }
 
-extension on _LayerStackPainter {
+extension on _LayerStackPaintPass {
   /// [row] as the engine lays it: the paper a solid over the page, a
-  /// surface row its tiles as its painter shows them — a live stroke's in
-  /// their place ([BitmapSurfacePainter.shownSurface]) — kept under its
-  /// cel's lineage.
+  /// surface row its slot ([_slotOf]) — its tiles as its painter shows
+  /// them, a live stroke's in their place ([BitmapSurfacePainter
+  /// .shownSurface]), kept under its cel's lineage, and what a hand holds
+  /// over them where the walk draws it ([_heldOver]).
   EngineRow _engineRowOf(_PaintRow row) => switch (row) {
     _PaintPaper() => EngineSolid(
-      argb: paperBackground.paintedArgb,
+      argb: _painter.paperBackground.paintedArgb,
       rect: DirtyRegion.fromLTBR(
-        left: canvasSize.canvasRect.left.floor(),
-        top: canvasSize.canvasRect.top.floor(),
-        rightExclusive: canvasSize.canvasRect.right.ceil(),
-        bottomExclusive: canvasSize.canvasRect.bottom.ceil(),
+        left: _painter.canvasSize.canvasRect.left.floor(),
+        top: _painter.canvasSize.canvasRect.top.floor(),
+        rightExclusive: _painter.canvasSize.canvasRect.right.ceil(),
+        bottomExclusive: _painter.canvasSize.canvasRect.bottom.ceil(),
       ),
     ),
-    _PaintActiveSurface() => _engineTilesOf(row, activeSurfacePainter!),
-    _PaintLiftedSurface(:final lifted) => _engineTilesOf(row, lifted.surface),
-    _PaintCelSurface(:final painter, :final lineage) => _engineTilesOf(
-      row,
-      painter,
-      lineage: lineage,
-    ),
+    _PaintCelSurface(:final lineage) => _engineTilesOf(row, lineage: lineage),
+    final _SurfaceRow row => _engineTilesOf(row),
   };
 
-  EngineTiles _engineTilesOf(
-    _SurfaceRow row,
-    BitmapSurfacePainter painter, {
-    Object? lineage,
-  }) => EngineTiles(
-    lineage: lineage ?? painter.lineage ?? BrushFrameKey.noCel,
-    surface: painter.shownSurface,
-    placement: row.placement,
-    opacity: row.opacity,
-    blendMode: row.blendMode,
-    effects: row.effects,
-    tint: row.tint,
+  EngineTiles _engineTilesOf(_SurfaceRow row, {Object? lineage}) {
+    final slot = _slotOf(row);
+    final painter = slot.painter;
+    return EngineTiles(
+      lineage: lineage ?? painter.lineage ?? BrushFrameKey.noCel,
+      surface: painter.shownSurface,
+      placement: row.placement,
+      opacity: row.opacity,
+      blendMode: row.blendMode,
+      effects: row.effects,
+      tint: row.tint,
+      held: _heldOver(slot),
+    );
+  }
+
+  /// What a hand holds over [slot]'s row: each float its painter draws over
+  /// it ([BitmapSurfacePainter.floatsOver]), by the tiles it holds, in the
+  /// row's own pixels.
+  List<EngineHeld> _heldOver(_SurfaceSlot slot) => [
+    for (final (:preview, :canvasToRow) in slot.painter.floatsOver(slot.shown))
+      for (final held in preview.heldTiles) _engineHeldOf(held, canvasToRow),
+  ];
+}
+
+/// [held] as the engine lays it over its row, which [canvasToRow] takes the
+/// space of its preview into — none where the two are one.
+EngineHeld _engineHeldOf(HeldTiles held, Matrix4? canvasToRow) {
+  final (:tiles, :dx, :dy, :laying) = held;
+  final rowToPreview = (canvasToRow == null
+          ? Matrix4.identity()
+          : Matrix4.inverted(canvasToRow))
+      .storage;
+  return EngineHeld(
+    // A float's tiles are no cel's: kept by the tile, as long as it lives.
+    lineage: BrushFrameKey.noCel,
+    tiles: tiles,
+    toHeld: GuideTransform(
+      rowToPreview[0],
+      rowToPreview[1],
+      rowToPreview[4],
+      rowToPreview[5],
+      rowToPreview[12] - dx,
+      rowToPreview[13] - dy,
+    ),
+    laying: switch ((laying, canvasToRow)) {
+      (LaidReplacing(:final region), final canvasToRow?) => LaidReplacing(
+        MatrixUtils.transformRect(canvasToRow, region),
+      ),
+      _ => laying,
+    },
   );
 }

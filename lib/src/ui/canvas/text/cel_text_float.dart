@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart' show immutable;
 
 import '../../../core/rgba_premultiply.dart';
 import '../../../core/sync_image_upload.dart';
+import '../../../models/bitmap_tile.dart';
 import '../../../models/dirty_region.dart';
+import '../../../models/tile_coord.dart';
+import '../../../services/bitmap_surface_geometry.dart' show tilesOfRegion;
 import '../deferred_image_disposal.dart';
 import '../display_resample.dart' show drawImageRectOnThePixelGrid;
 import '../landing_preview.dart';
@@ -64,6 +67,9 @@ class CelTextFloat implements LandingPreview {
   }
 
   @override
+  List<HeldTiles> get heldTiles => [...held.heldTiles, ...?above?.heldTiles];
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CelTextFloat && other.held == held && other.above == above;
@@ -103,23 +109,29 @@ class CelTextFloat implements LandingPreview {
 class CelTextLanding implements LandingPreview {
   const CelTextLanding({
     required this.picture,
+    required this.tiles,
     required this.left,
     required this.top,
   });
 
   /// The picture of [straight] — rgba of [region], a row its width —
   /// through the door every tile takes ([pictureOf]), so its bytes are the
-  /// bytes the landed tiles are pictured to.
+  /// bytes the landed tiles are pictured to; and those bytes as tiles.
   factory CelTextLanding.of(DirtyRegion region, Uint8List straight) =>
       CelTextLanding(
         picture: pictureOf(
           _StraightRows(straight, region.width, region.height),
         ),
+        tiles: tilesOfRegion(region, straight),
         left: region.left,
         top: region.top,
       );
 
   final Image picture;
+
+  /// [picture]'s bytes as tiles, where they stand: what the engine lays
+  /// ([heldTiles]).
+  final Map<TileCoord, BitmapTile> tiles;
   final int left;
   final int top;
 
@@ -151,6 +163,16 @@ class CelTextLanding implements LandingPreview {
       paint: _replacing,
     );
   }
+
+  @override
+  List<HeldTiles> get heldTiles => [
+    (
+      tiles: tiles,
+      dx: 0,
+      dy: 0,
+      laying: LaidReplacing(drawnWorldRect),
+    ),
+  ];
 
   /// Lets [picture] go — past the frames that may still draw it
   /// ([DeferredImageDisposer]).

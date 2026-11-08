@@ -296,7 +296,7 @@ void main() {
       preview.schedule();
 
       expect(preview.image, isNull);
-      expect(preview.imageDab, isNull);
+      expect(preview.shown, isNull);
     });
 
     testWidgets('a decode still on its way when the box ends lands nowhere — '

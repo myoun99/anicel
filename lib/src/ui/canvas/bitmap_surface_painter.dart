@@ -33,6 +33,10 @@ part 'surface_paint/surface_paint_pass.dart';
 /// the row stands where the canvas does, the posed row's inverse otherwise.
 typedef RowFloat = ({LandingPreview preview, Matrix4? canvasToRow});
 
+/// [float] where it draws anything, else null.
+RowFloat? drawnFloat(RowFloat? float) =>
+    float == null || float.preview.drawnWorldRect.isEmpty ? null : float;
+
 /// Paints the brush canvas — committed artwork plus the in-progress stroke —
 /// with the viewport transform applied INSIDE the picture.
 ///
@@ -119,12 +123,19 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   final ValueListenable<LandingPreview?>? landingPreview;
 
   /// [landingPreview] as the paint draws it — null while it draws nothing.
-  RowFloat? get _ownFloat {
-    final preview = landingPreview?.value;
-    return preview == null || preview.drawnWorldRect.isEmpty
-        ? null
-        : (preview: preview, canvasToRow: null);
-  }
+  RowFloat? get _ownFloat => drawnFloat(switch (landingPreview?.value) {
+    null => null,
+    final preview => (preview: preview, canvasToRow: null),
+  });
+
+  /// Every float a paint draws over this surface, in the order drawn: a
+  /// selection's [float], from the row's slot, and this painter's own
+  /// [landingPreview] — each that draws anything. What the walk draws
+  /// ([paintContentInto]) and the engine lays (flip lane ⓐ-2), one list.
+  List<RowFloat> floatsOver(RowFloat? float) => [
+    ?drawnFloat(float),
+    ?_ownFloat,
+  ];
 
   final bool showTransparentBackground;
 

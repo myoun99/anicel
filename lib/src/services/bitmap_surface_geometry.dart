@@ -888,3 +888,48 @@ class _MovedBlit {
 /// tile, the canvas row [worldY] it lands on, and the [width] pixels kept
 /// of it from the x it lands at, [from].
 typedef _SourceRow = ({int row, int worldY, int from, int width});
+
+/// [straight] — rgba of [region], a row its width — as tiles of [tileSize]
+/// by their coordinates: every tile [region] reaches, holding its bytes
+/// where it lies and nothing past it.
+Map<TileCoord, BitmapTile> tilesOfRegion(
+  DirtyRegion region,
+  Uint8List straight, {
+  int tileSize = defaultCelTileSize,
+}) {
+  const bytes = BitmapTile.bytesPerPixel;
+  final DirtyRegion(:left, :top, :rightExclusive, :bottomExclusive) = region;
+  BitmapTile tileAt(int x, int y) => BitmapTile.written(
+    size: tileSize,
+    write: (pixels) {
+      pixels.fillRange(0, pixels.length, 0);
+      final (x0, y0) = (x * tileSize, y * tileSize);
+      final from = left < x0 ? x0 : left;
+      final to = rightExclusive < x0 + tileSize
+          ? rightExclusive
+          : x0 + tileSize;
+      final rowsFrom = top < y0 ? y0 : top;
+      final rowsTo = bottomExclusive < y0 + tileSize
+          ? bottomExclusive
+          : y0 + tileSize;
+      for (var row = rowsFrom; row < rowsTo; row += 1) {
+        final source = ((row - top) * region.width + from - left) * bytes;
+        final target = ((row - y0) * tileSize + from - x0) * bytes;
+        pixels.setRange(target, target + (to - from) * bytes, straight, source);
+      }
+    },
+  );
+  return {
+    for (
+      var y = floorDiv(top, tileSize);
+      y < ceilDiv(bottomExclusive, tileSize);
+      y += 1
+    )
+      for (
+        var x = floorDiv(left, tileSize);
+        x < ceilDiv(rightExclusive, tileSize);
+        x += 1
+      )
+        TileCoord(x: x, y: y): tileAt(x, y),
+  };
+}

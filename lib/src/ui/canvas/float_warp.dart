@@ -5,9 +5,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/canvas_point.dart';
 import '../../models/dirty_region.dart';
+import '../../models/tile_coord.dart';
+import '../../services/bitmap_surface_geometry.dart' show tilesOfRegion;
 import '../../services/canvas_selection.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../services/stamp_carry.dart';
@@ -403,6 +406,17 @@ abstract interface class FloatWarpHost {
   void previewChanged();
 }
 
+/// A resample as the screen shows it ([FloatResamplePreview.shown]): its
+/// decoded [image], the [dab] it was decoded from — what it is — the rect
+/// it lands on ([BrushStampImage.landingRect]), and its pixels as tiles
+/// there.
+typedef FloatResampleShown = ({
+  ui.Image image,
+  BrushDab dab,
+  DirtyRegion landing,
+  Map<TileCoord, BitmapTile> tiles,
+});
+
 /// A float's RESAMPLED preview while a warp is open (Ctrl+T, a quad, a
 /// mesh): the newest resample of its pending stamp through the warp, and
 /// the decoded copy of the last resample that finished — the picture the
@@ -426,27 +440,29 @@ class FloatResamplePreview {
   /// before its decode is even requested.
   ({_ResampleKey key, BrushDab dab})? _resampled;
 
-  /// The premultiplied copy for display, and the dab it was decoded FROM.
+  /// The premultiplied copy for display, the dab it was decoded FROM, and
+  /// that dab's pixels as tiles where it lands — what the engine lays of
+  /// the picture (`SelectionFloatPaint.heldTiles`): one field, so the three
+  /// cannot belong to two resamples.
   ///
-  /// Kept as a pair, and deliberately NOT compared against [_resampled]:
-  /// the newest resample is computed and stored before its decode is even
-  /// requested, so a guard demanding the two agree would hide the preview
-  /// for the whole time a decode is in flight — which is most of a drag.
-  /// The float would blink back to its untransformed self on every
-  /// pointer move.
+  /// Deliberately NOT compared against [_resampled]: the newest resample
+  /// is computed and stored before its decode is even requested, so a
+  /// guard demanding the two agree would hide the preview for the whole
+  /// time a decode is in flight — which is most of a drag. The float would
+  /// blink back to its untransformed self on every pointer move.
   ///
   /// Showing the last COMPLETED resample instead is both the honest
   /// picture (it is a real state the transform passed through) and the
   /// whole point of coalescing. The last scheduling always runs, so the
   /// picture just before Enter is always the exact one.
-  ui.Image? _image;
-  BrushDab? _imageDab;
+  FloatResampleShown? _shown;
 
-  /// The decoded picture, or null while nothing has decoded.
-  ui.Image? get image => _image;
+  /// The decoded picture, the dab it was decoded from — where it goes, and
+  /// what it is — and its tiles; or null while nothing has decoded.
+  FloatResampleShown? get shown => _shown;
 
-  /// The dab [image] was decoded from — where it goes, and what it is.
-  BrushDab? get imageDab => _imageDab;
+  /// The decoded picture of [shown].
+  ui.Image? get image => _shown?.image;
 
   int _imageRequest = 0;
   bool _inFlight = false;
@@ -494,7 +510,7 @@ class FloatResamplePreview {
     final key = warp._resampleKey(visible: visible);
     if (key == null) {
       _dirty = false;
-      if (_resampled != null || _image != null) {
+      if (_resampled != null || _shown != null) {
         discard();
       }
       return;
@@ -578,9 +594,14 @@ class FloatResamplePreview {
       if (image == null) {
         return;
       }
-      _image?.dispose();
-      _image = image;
-      _imageDab = dab;
+      _shown?.image.dispose();
+      final landing = stamp.landingRect(dab.center);
+      _shown = (
+        image: image,
+        dab: dab,
+        landing: landing,
+        tiles: tilesOfRegion(landing, stamp.rgba),
+      );
       _host.previewChanged();
       _runIfIdle();
     }());
@@ -604,9 +625,8 @@ class FloatResamplePreview {
   /// flight away from it. The gate stays as it is — see [_runIfIdle].
   void _letGoOfTheImage() {
     _imageRequest += 1; // Invalidate an in-flight decode.
-    _imageDab = null;
-    _image?.dispose();
-    _image = null;
+    _shown?.image.dispose();
+    _shown = null;
   }
 
   /// The cached resample, or a fresh one — what every COMMIT path calls.

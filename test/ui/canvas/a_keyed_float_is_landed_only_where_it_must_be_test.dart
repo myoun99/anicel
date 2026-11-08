@@ -182,6 +182,15 @@ void main() {
     expect(cel.asked, 1);
   });
 
+  test('🚨a float on a posed row is the landing on a row that keys nothing '
+      'too — the pose resamples what lands, and the row the cel again '
+      '(flip lane ⓐ-2 · 유저 09-17)', () {
+    final (:float, :cel) = floatOver(empty, onCanvasGrid: false);
+
+    expect(float.shownOn(const []).preview, same(_landing));
+    expect(cel.asked, 1);
+  });
+
   test('a float a warp resampled is the landing', () {
     final (:float, :cel) = floatOver(empty, image: true);
 
@@ -319,6 +328,9 @@ class _Landing implements LandingPreview {
 
   @override
   void paintInto(Canvas canvas, {required double pixelRatio}) {}
+
+  @override
+  List<HeldTiles> get heldTiles => const [];
 }
 
 /// A cel under a float, counting the landings it is asked for.

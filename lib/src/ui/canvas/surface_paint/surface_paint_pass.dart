@@ -89,10 +89,8 @@ class _SurfacePaintPass {
     _layerPaint = layerPaint;
     _scale = scale;
     _pixelRatio = pixelRatio;
-    _float = float == null || float.preview.drawnWorldRect.isEmpty
-        ? null
-        : float;
-    _floats = [?_float, ?_painter._ownFloat];
+    _float = drawnFloat(float);
+    _floats = _painter.floatsOver(float);
     _painter.pictureBudget.paintBegan(_painter.lineage);
     assert(
       _layerPaint == null || _painter.drawsDisjointCoverage,

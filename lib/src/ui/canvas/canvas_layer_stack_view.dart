@@ -27,6 +27,7 @@ import '../../services/layer_pose_paint.dart';
 import 'tiled_surface_compose.dart';
 import '../../services/composite_effect_paint.dart';
 import 'display_resample.dart';
+import 'landing_preview.dart';
 import 'selection_float_overlay.dart';
 import 'composite_tree_paint.dart';
 import 'subtree_image_composite.dart';
@@ -35,6 +36,7 @@ import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
+import '../../services/guide_geometry.dart' show GuideTransform;
 import '../../services/playback/cut_frame_composite_signature.dart'
     show
         CompositeLayerSignature,
