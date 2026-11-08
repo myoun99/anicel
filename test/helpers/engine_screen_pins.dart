@@ -14,12 +14,14 @@ import 'native_call_watch.dart';
 /// and freed after its last, under a watch on the native calls made on it
 /// ([NativeCallWatch]), each test and each step of a screen shown named.
 ///
-/// 🔬The float pins stood in their first test for thirteen minutes once,
-/// with nothing named, in a batch of 18 suites on the main PC (flip lane
-/// ⓐ-3, 2026-11-08; no driver reset in the system log), and were green
-/// run again: the engine waits for the GPU with no limit (device.rs
-/// `wait`), so a wait that never ends stops the test's isolate and every
-/// timer in it.
+/// 🔬Twice a file of these ended in its first test with nothing said and
+/// was green run again (flip lane ⓐ-3, 2026-11-08, the main PC): the float
+/// pins in a batch of 18 suites, the frame pins alone — no driver reset
+/// in the system log, no crash in the application log. The reporter names
+/// such a test only as its run ends, so whether it stood or its process
+/// ended is not known. The engine waits for the GPU with no limit
+/// (device.rs `wait`): a wait that never ends would stop the isolate and
+/// every timer in it, which the watch outlives.
 final class EngineScreenPins {
   /// Opens the engine for the file of pins [file] names.
   EngineScreenPins(String file) {
