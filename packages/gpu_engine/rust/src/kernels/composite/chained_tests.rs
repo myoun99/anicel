@@ -643,7 +643,14 @@ fn a_held_buffer_lays_what_its_chain_put_and_walks_none_of_its_steps() {
         Step::CloseAtop,
         close(40000, NORMAL, None),
     ];
-    let other = [row(2, (1, 0), WHOLE, NORMAL)];
+    let other = [
+        Step::Open,
+        row(2, (1, 0), WHOLE, NORMAL),
+        Step::OpenOpaque,
+        row(1, (2, 2), WHOLE, MULTIPLY),
+        Step::CloseAtop,
+        close(WHOLE, NORMAL, None),
+    ];
     let holding = held_chain(Some((&held, 3)), false);
     let first = laying.widest(&holding, &buffer(&rows), None);
     assert!(first == laying.widest(&held_chain(None, false), &buffer(&rows), None));
