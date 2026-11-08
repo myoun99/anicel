@@ -149,16 +149,17 @@ void main() {
   }
 
   /// A grid as big as the view, of [row] 60 × 10, 20 in from the view's
-  /// right edge and 20 down — past the right edge of a screen the view
-  /// outgrew.
-  Widget aGridAtTheRight(_Row row) => Directionality(
+  /// right edge and 20 down — or 20 up from its bottom, where [low]
+  /// — past the edge of a screen the view outgrew.
+  Widget aGridAtTheRight(_Row row, {bool low = false}) => Directionality(
     textDirection: TextDirection.ltr,
     child: TimelineGridScreenHost(
       child: Stack(
         children: [
           Positioned(
             right: 20,
-            top: 20,
+            top: low ? null : 20,
+            bottom: low ? 20 : null,
             width: 60,
             height: 10,
             child: TimelineGridScreenSlot(child: CustomPaint(painter: row)),
@@ -465,6 +466,35 @@ void main() {
       shown.last.fingerprint(),
       fingerprintBytes(
         screenOf([(440, 500, red), (500, 560, green)], width: 600),
+      ),
+    );
+  });
+
+  testWidgets('a view that only grows taller is laid on a screen as tall', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final asked = <(int, int)>[];
+    final shown = screensAsAsked(asked);
+    await tester.pumpWidget(aGridAtTheRight(_Row(() => tile), low: true));
+    await tester.pump();
+    expect(asked, [(300, 200)], reason: '⛔premise: the view it opened at');
+
+    tester.view.physicalSize = const Size(300, 400);
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, [(300, 200), (300, 400)]);
+    // 200 logical down: the row stands at 170 to 180, device 340 to 360.
+    expect(
+      shown.last.fingerprint(),
+      fingerprintBytes(
+        screenOf(
+          [(140, 200, red), (200, 260, green)],
+          top: 340,
+          bottom: 360,
+          height: 400,
+        ),
       ),
     );
   });
