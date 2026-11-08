@@ -25,7 +25,7 @@ use super::{
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::TILE_TEXELS;
-use crate::kernels::shared::{PREMULTIPLY_WGSL, WIDE_WGSL, q, room};
+use crate::kernels::shared::{PREMULTIPLY_WGSL, WIDE_WGSL, q, room, sixteen_bit};
 
 /// The most gain a light takes — the app's Highlight Gain's.
 pub(crate) const MOST_GAIN: f64 = 100.0;
@@ -71,7 +71,7 @@ impl Light {
         }
         Some([
             q(self.gain, 16, f64::MAX)? as u32,
-            (self.threshold * 65535.0).round() as u32,
+            sixteen_bit(self.threshold),
             q(self.saturation, 16, f64::MAX)? as u32,
             u32::from(self.linear),
         ])

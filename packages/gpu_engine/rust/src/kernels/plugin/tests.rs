@@ -20,7 +20,7 @@ const GROUP_SUM: &str = include_str!("../../../native/fx_wgsl/fixtures/group_sum
 
 /// `count` words, each its place hashed — every channel and every bit
 /// varied.
-fn hashed(count: usize, seed: u32) -> Vec<u32> {
+pub(super) fn hashed(count: usize, seed: u32) -> Vec<u32> {
     (0..count as u32).map(|i| (i ^ seed).wrapping_mul(2654435761).rotate_left(i % 29) ^ seed).collect()
 }
 

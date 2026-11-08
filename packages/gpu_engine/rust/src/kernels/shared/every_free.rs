@@ -36,6 +36,7 @@ use crate::kernels::letters::abi::{
     gpu_engine_letters_new,
 };
 use crate::kernels::letters::glyphs_tests::file;
+use crate::kernels::plugin::abi::{gpu_engine_plugin_free, gpu_engine_plugin_open};
 use crate::kernels::pool::{gpu_engine_pool_free, gpu_engine_pool_new};
 use crate::kernels::timeline::grid::abi::{
     gpu_engine_grid_free, gpu_engine_grid_lay_free, gpu_engine_grid_lay_new, gpu_engine_grid_new,
@@ -68,7 +69,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 27] {
+fn frees() -> [(&'static str, fn(&'static str)); 28] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -161,6 +162,12 @@ fn frees() -> [(&'static str, fn(&'static str)); 27] {
             let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
             let made = Box::into_raw(Box::new(Lettered { rect, tiles: composited().out }));
             gives_back(name, made, gpu_engine_lettered_free)
+        }),
+        ("gpu_engine_plugin_free", |name| {
+            let source = include_str!("../../../native/fx_wgsl/fixtures/invert.wgsl");
+            // SAFETY: the engine is live; `source` holds its length.
+            let made = unsafe { gpu_engine_plugin_open(first_engine(), source.as_ptr(), source.len()) };
+            gives_back(name, made, gpu_engine_plugin_free)
         }),
         ("gpu_engine_pool_free", |name| {
             // SAFETY: the engine is live.

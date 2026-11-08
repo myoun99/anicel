@@ -7,11 +7,9 @@
 //! each holding the words fx_wgsl's frame binds there. The CPU's run of the
 //! same kernel is the picture this one is held to (tests.rs).
 
-// ⏳Reached only by tests until the app's seam asks it (㉯ ②: the
-// `FxPluginRunner` on `appGpuEngine`, 관제 an-endless-plugin-stalls-the-app
-// 17:00).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
+#[cfg(test)]
+mod abi_tests;
 #[cfg(test)]
 mod tests;
 
@@ -39,6 +37,12 @@ impl Plugin {
     pub(crate) fn open(engine: &Engine, kernel: Kernel) -> Result<Self, String> {
         let pipeline = pipeline_or_why(engine, &[kernel.source()], RENDER)?;
         Ok(Plugin { kernel, pipeline })
+    }
+
+    /// The plugin's reach for `frame`'s values and moment, run on the CPU
+    /// (fx_wgsl's `Kernel::reach`): the chain's plan asks it before a run.
+    pub(crate) fn reach(&self, frame: &Frame<'_>) -> Result<u32, Cut> {
+        self.kernel.reach(frame)
     }
 
     /// Runs the render over `frame`'s output into `output` — its pixels as

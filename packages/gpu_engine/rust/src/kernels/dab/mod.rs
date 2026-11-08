@@ -49,7 +49,7 @@ use crate::fail;
 use crate::kernels::blend::{BLEND_WGSL, mode};
 use crate::kernels::composite::TileAt;
 use crate::kernels::shared::{
-    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, whole,
+    Encoded, ISQRT_WGSL, Own, Pages, TILE_WGSL, encode, pipeline, range, runs, sixteen_bit, whole,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -115,7 +115,7 @@ impl Texture {
         Some(Texture {
             id: MADE.fetch_add(1, Ordering::Relaxed),
             side,
-            words: texels.iter().map(|&texel| wide(texel)).collect(),
+            words: texels.iter().map(|&texel| sixteen_bit(texel)).collect(),
         })
     }
 }
@@ -617,7 +617,7 @@ fn planned(
         ]);
     }
     if let Some(second) = second {
-        head[5..].copy_from_slice(&[second.mode, wide(second.density)]);
+        head[5..].copy_from_slice(&[second.mode, sixteen_bit(second.density)]);
     }
     let listed: usize = lists.iter().map(Vec::len).sum();
     let records_at = frame_at + tiles.len() * TILE_WORDS + listed;
@@ -682,15 +682,10 @@ impl Tables {
             return place;
         }
         let place = (self.at + self.words.len()) as u32;
-        self.words.extend(table.iter().map(|&entry| wide(entry)));
+        self.words.extend(table.iter().map(|&entry| sixteen_bit(entry)));
         self.placed.insert(key, place);
         place
     }
-}
-
-/// A number on 0..=1 on the 16-bit scale, rounded once.
-fn wide(value: f64) -> u32 {
-    (value * 65535.0).round() as u32
 }
 
 /// A scale as `per_unit` × 2^point in an integer under [`SCALE_BOUND`],
@@ -730,13 +725,13 @@ fn record(
         flags,
         red | green << 8 | blue << 16,
         alpha * 257,
-        wide(dab.opacity),
-        wide(dab.flow),
+        sixteen_bit(dab.opacity),
+        sixteen_bit(dab.flow),
         contrast,
         dab.evening.map_or(NO_TABLE, |table| tables.place(table)),
     ]);
     words[26] = NO_TABLE;
-    words[28] = dab.density.map_or(NO_TABLE, wide);
+    words[28] = dab.density.map_or(NO_TABLE, sixteen_bit);
     // How far from the centre anything is laid, and the major axis's reach.
     let (extent, major) = match dab.shape {
         Shape::Square => return Some(words),

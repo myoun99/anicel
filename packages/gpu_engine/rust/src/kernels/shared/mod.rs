@@ -30,6 +30,8 @@ mod one_ndk_table;
 mod one_pass;
 #[cfg(test)]
 mod one_premultiply;
+#[cfg(test)]
+mod one_sixteen_bit;
 mod paged;
 mod pages;
 mod resample;
@@ -69,6 +71,14 @@ pub(crate) const TILE_WGSL: &str = include_str!("tile.wgsl");
 /// `div255_round`, which the cel pixel blend takes too. `one_premultiply.rs`
 /// keeps it the one.
 pub(crate) const PREMULTIPLY_WGSL: &str = include_str!("premultiply.wgsl");
+
+/// A number on 0..=1 on the 16-bit scale — the scale a channel and an
+/// alpha are on (blend.wgsl) — rounded once: a dab's opacity and flow, a
+/// lens's threshold, a plugin's colour. `one_sixteen_bit.rs` keeps it the
+/// one.
+pub(crate) fn sixteen_bit(value: f64) -> u32 {
+    (value * 65535.0).round() as u32
+}
 
 /// The pipeline of `sources`, one after another, whose entry point is
 /// `entry` — its bindings as that entry uses them. The crate's one builder:
