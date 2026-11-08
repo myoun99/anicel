@@ -84,7 +84,7 @@ impl GridPicture {
 /// The atlas a stream's letters are read from: `bytes`, `width` across
 /// and `height` down, row by row — None for one of no side, and None with
 /// the last error for one past what the device makes or one its bytes do
-/// not fill.
+/// not match.
 ///
 /// ↩️It was laid here from the words and their places (23c70b786): the
 /// tile store lays its atlas itself, as the C rasterizer reads one

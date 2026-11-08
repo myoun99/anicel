@@ -10,7 +10,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import '../helpers/a_shown_surface.dart';
 
 /// The frame grid's tiles reach a view's screen through the package's Dart
-/// (grid-on-the-engine ④): a tile the tile pass draws ([GpuGrid.draw]) is
+/// (grid-on-the-engine ④): a tile the tile pass draws ([GpuGrid.draw]) —
+/// its letters read from the atlas it is handed — is
 /// laid ([GpuGridLay.lay]) from the part of it each lay names onto the part
 /// of the screen it names, premultiplied, the rest of the rect clear. How a
 /// lay lands on pixels between whole ones is the crate's to pin
@@ -77,6 +78,59 @@ void main() {
     ]);
 
     expect(surface.fingerprint(), fingerprintBytes(want));
+  });
+
+  test('a tile reads its letters from the atlas it is handed', () {
+    final tile = GpuGridPicture(appGpuEngine, 1, 2);
+    addTearDown(tile.free);
+    // 3 × 2: a letter of 255 over 128 down its last column.
+    final ops = TimelineGridTileOpWriter()
+      ..glyph(0, 0, 2, 0, 1, 2, timelineGridPackRgba(const Color(0xFFFFFFFF)));
+    grid.draw(
+      tile,
+      ops.build(),
+      atlas: (
+        alpha: Uint8List.fromList([0, 0, 255, 0, 0, 128]),
+        width: 3,
+        height: 2,
+      ),
+    );
+    final surface = shownSurfaceOf(1, 2);
+    addTearDown(surface.free);
+
+    lay.lay(surface, (0, 0, 1, 2), [
+      (picture: tile, from: (0, 0, 1, 2), onto: (0, 0, 1, 2)),
+    ]);
+
+    // White at 255 and at 128, premultiplied.
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(
+        Uint8List.fromList([255, 255, 255, 255, 128, 128, 128, 128]),
+      ),
+    );
+  });
+
+  test('an atlas its bytes do not match is refused before it is read', () {
+    final tile = GpuGridPicture(appGpuEngine, 1, 1);
+    addTearDown(tile.free);
+
+    for (final length in [5, 7]) {
+      expect(
+        () => grid.draw(
+          tile,
+          Int32List(0),
+          atlas: (alpha: Uint8List(length), width: 3, height: 2),
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            'an atlas 3 × 2 of $length bytes',
+          ),
+        ),
+      );
+    }
   });
 
   test('a lay past its screen is refused with why', () {

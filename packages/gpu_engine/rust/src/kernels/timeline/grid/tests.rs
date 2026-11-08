@@ -120,13 +120,15 @@ fn a_vertical_line_runs_its_length_down_and_a_horizontal_one_across() {
 }
 
 #[test]
-fn an_atlas_of_no_side_is_none_and_one_its_bytes_do_not_fill_is_refused() {
+fn an_atlas_of_no_side_is_none_and_one_its_bytes_do_not_match_is_refused() {
     let engine = first_engine();
     for (width, height) in [(0, 3), (3, 0)] {
         assert!(atlas_of(engine, &[], width, height).expect("no atlas").is_none(), "{width} × {height}");
     }
-    assert!(atlas_of(engine, &[0; 5], 3, 2).is_none());
-    assert!(last_error().contains("a letters' atlas 3 × 2 of 5 bytes"), "{}", last_error());
+    for length in [5, 7] {
+        assert!(atlas_of(engine, &vec![0; length], 3, 2).is_none(), "{length}");
+        assert!(last_error().contains(&format!("a letters' atlas 3 × 2 of {length} bytes")), "{}", last_error());
+    }
     assert!(atlas_of(engine, &[0; 6], 3, 2).expect("an atlas").is_some(), "{}", last_error());
 }
 

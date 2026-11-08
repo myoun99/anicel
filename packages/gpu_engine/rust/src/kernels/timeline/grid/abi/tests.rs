@@ -20,11 +20,11 @@ fn picture(width: u32, height: u32) -> *mut GridPicture {
     unsafe { gpu_engine_grid_picture_new(first_engine(), width, height) }
 }
 
-/// An atlas: its bytes, row by row, and its sides.
-type Atlas<'a> = (&'a [u8], u32, u32);
+/// An atlas: where its bytes lie, row by row, and its sides.
+type Atlas = (*const u8, u32, u32);
 
-/// No atlas, as the app hands one: a pointer to a byte, of no side.
-const NO_ATLAS: Atlas = (&[0], 0, 0);
+/// No atlas: nothing pointed at, of no side — as a C caller may hand one.
+const NO_ATLAS: Atlas = (std::ptr::null(), 0, 0);
 
 /// `ops` drawn into a fresh `size` tile through the ABI, its letters from
 /// `atlas`: whether it drew, and the tile's bytes.
@@ -35,7 +35,7 @@ fn drawn(size: (u32, u32), ops: &[i32], (atlas, width, height): Atlas) -> (bool,
     let tile = picture(size.0, size.1);
     assert!(!tile.is_null(), "{}", last_error());
     // SAFETY: every pointer is live and holds what it is said to.
-    let ok = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), atlas.as_ptr(), width, height) };
+    let ok = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), atlas, width, height) };
     // SAFETY: both came from their news.
     let bytes = unsafe { engine.read_texture(&(*tile).texture).expect("read back") };
     // SAFETY: as above, each let go of once.
@@ -83,7 +83,8 @@ fn a_stream_drawn_through_the_abi_is_over_clear() {
 #[test]
 fn a_letter_reads_the_atlas_where_its_op_says() {
     // 3 × 3: [255, 128] at (0, 0), [64] over [32] at (2, 1).
-    let atlas: Atlas = (&[255, 128, 0, 0, 0, 64, 0, 0, 32], 3, 3);
+    let letters = [255, 128, 0, 0, 0, 64, 0, 0, 32];
+    let atlas: Atlas = (letters.as_ptr(), 3, 3);
     let white = rgba(255, 255, 255, 255);
     let ops = [[GLYPH, 0, 0, 0, 0, 2, 1, white], [GLYPH, 3, 0, 2, 1, 1, 2, white]].concat();
     let (ok, bytes) = drawn((4, 2), &ops, atlas);
@@ -112,12 +113,12 @@ fn an_atlas_past_the_device_is_refused_with_why() {
     let most = first_engine().device.limits().max_texture_dimension_2d;
     let long = vec![255; most as usize + 1];
     for (width, height) in [(most + 1, 1), (1, most + 1)] {
-        let (ok, _) = drawn((1, 1), &[], (&long, width, height));
+        let (ok, _) = drawn((1, 1), &[], (long.as_ptr(), width, height));
         assert!(!ok, "{width} × {height}");
         assert!(last_error().contains(&format!("a letters' atlas {width} × {height}")), "{}", last_error());
     }
     for (width, height) in [(most, 1), (1, most)] {
-        let (ok, _) = drawn((1, 1), &[], (&long[1..], width, height));
+        let (ok, _) = drawn((1, 1), &[], (long[1..].as_ptr(), width, height));
         assert!(ok, "an atlas {width} × {height}, as long as the device makes: {}", last_error());
     }
 }
@@ -134,7 +135,7 @@ fn a_tile_laid_through_the_abi_takes_its_part_onto_the_screens() {
     let tile = picture(2, 1);
     let ops = [[FILL_RECT, 0, 0, 1, 1, rgba(255, 0, 0, 255)], [FILL_RECT, 1, 0, 1, 1, rgba(0, 255, 0, 255)]].concat();
     // SAFETY: every pointer is live and holds what it is said to.
-    let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), NO_ATLAS.0.as_ptr(), 0, 0) };
+    let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), NO_ATLAS.0, 0, 0) };
     assert!(drew, "{}", last_error());
     let screen = crate::device::storage_texture(&engine.device, 3, 2, wgpu::TextureFormat::Rgba8Unorm);
     let lay = gpu_engine_grid_lay_new();
