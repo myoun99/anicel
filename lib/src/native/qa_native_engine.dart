@@ -66,7 +66,6 @@ class QaNativeEngine {
     this._dabBlendBatch,
     this._stampBlendTiles,
     this._strokeBlendTiles,
-    this._alphaBoundsTiles,
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._premultiplyRgbaRows,
@@ -564,16 +563,6 @@ class QaNativeEngine {
   )
   _strokeBlendTiles;
 
-  /// BB-N1 (ABI 22): whole-tile alpha bounds scan, 4 int32 per tile.
-  /// Reference = the `bitmapSurfaceContentBounds` word loop.
-  final void Function(
-    Pointer<QaTileSpanStruct> tiles,
-    int tileCount,
-    int tileSize,
-    Pointer<Int32> boundsOut,
-  )
-  _alphaBoundsTiles;
-
   /// ABI 24: the fused pre-blend (stage + blend + premultiply, masked).
   /// Reference = `preBlendStrokeOverlayPixels`.
   final void Function(
@@ -909,16 +898,6 @@ class QaNativeEngine {
               Pointer<Uint8>,
             )
           >('qa_stroke_blend_tiles');
-      final alphaBoundsTiles = library
-          .lookupFunction<
-            Void Function(
-              Pointer<QaTileSpanStruct>,
-              Int32,
-              Int32,
-              Pointer<Int32>,
-            ),
-            void Function(Pointer<QaTileSpanStruct>, int, int, Pointer<Int32>)
-          >('qa_alpha_bounds_tiles');
       final preBlendTiles = library
           .lookupFunction<
             Void Function(
@@ -1186,7 +1165,6 @@ class QaNativeEngine {
         dabBlendBatch,
         stampBlendTiles,
         strokeBlendTiles,
-        alphaBoundsTiles,
         preBlendTiles,
         premultiplyRgbaCopy,
         premultiplyRgbaRows,
@@ -1782,27 +1760,6 @@ class QaNativeEngine {
       _batchChanged.pointer,
     );
     return _batchChanged.pointer.asTypedList(count);
-  }
-
-  /// Grow-only out buffer for [alphaBoundsTiles] (4 int32 per tile).
-  Pointer<Int32> _alphaBoundsOut = nullptr;
-  int _alphaBoundsCapacity = 0;
-
-  /// BB-N1: scans every staged tile's ink bounds in ONE pooled call.
-  /// Returns 4 int32 per tile — minX, minY, maxX, maxY in TILE-LOCAL
-  /// pixels (empty tile: minX=0x7fffffff / maxX=-0x7fffffff). Only the
-  /// span's tilePixels is consumed; the scan is whole-tile. The view is
-  /// valid until the next call.
-  Int32List alphaBoundsTiles({required int count, required int tileSize}) {
-    if (_alphaBoundsCapacity < count * 4) {
-      if (_alphaBoundsOut != nullptr) {
-        calloc.free(_alphaBoundsOut);
-      }
-      _alphaBoundsOut = calloc<Int32>(count * 4);
-      _alphaBoundsCapacity = count * 4;
-    }
-    _alphaBoundsTiles(_tileSpans.pointer, count, tileSize, _alphaBoundsOut);
-    return _alphaBoundsOut.asTypedList(count * 4);
   }
 
   // -------------------------------------------------------------------

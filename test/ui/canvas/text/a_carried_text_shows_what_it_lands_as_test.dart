@@ -561,8 +561,26 @@ void main() {
   group('over a drawing', () {
     TestWidgetsFlutterBinding.ensureInitialized();
 
-    const tile = 16;
-    const canvasSize = CanvasSize(width: 64, height: 48);
+    const tile = defaultCelTileSize;
+    const canvasSize = CanvasSize(width: 4 * tile, height: 3 * tile);
+
+    // ⚠️The pattern's 16² over and over, as these pins were measured on it.
+    // The pattern run across a whole 128² tile meets pairs of colour and
+    // alpha those did not, and a float and its landing are then 2 apart at
+    // most, not 1 (18,999 bytes of 786,432 differ, 2026-11-09).
+    BitmapTile repeated(int seed, int size, {required int clear}) {
+      const period = 16;
+      final cell = patterned(seed, period, clear: clear).pixels;
+      final px = Uint8List(BitmapTile.bytesFor(size));
+      for (var y = 0; y < size; y += 1) {
+        for (var x = 0; x < size; x += 1) {
+          final to = (y * size + x) * 4;
+          final from = ((y % period) * period + x % period) * 4;
+          px.setRange(to, to + 4, cell, from);
+        }
+      }
+      return BitmapTile(size: size, pixels: px);
+    }
 
     var lineages = 0;
     BitmapSurfacePainter painterOf(
@@ -580,10 +598,13 @@ void main() {
     Future<Uint8List> paint(BitmapSurfacePainter painter) async {
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder)
-        ..clipRect(const ui.Rect.fromLTWH(0, 0, 64, 48));
+        ..clipRect(const ui.Rect.fromLTWH(0, 0, 4.0 * tile, 3.0 * tile));
       painter.paintContentInto(canvas, pixelRatio: 1);
       final picture = recorder.endRecording();
-      final image = await picture.toImage(64, 48);
+      final image = await picture.toImage(
+        canvasSize.width,
+        canvasSize.height,
+      );
       picture.dispose();
       final bytes = (await image.toByteData())!.buffer.asUint8List();
       image.dispose();
@@ -596,11 +617,11 @@ void main() {
       final drawing = {
         for (var y = 0; y < 3; y += 1)
           for (var x = 0; x < 4; x += 1)
-            TileCoord(x: x, y: y): patterned(x + y * 4, tile, clear: 3),
+            TileCoord(x: x, y: y): repeated(x + y * 4, tile, clear: 3),
       };
       final plate = {
-        TileCoord(x: 1, y: 1): patterned(20, tile, clear: 5),
-        TileCoord(x: 2, y: 1): patterned(21, tile, clear: 7),
+        TileCoord(x: 1, y: 1): repeated(20, tile, clear: 5),
+        TileCoord(x: 2, y: 1): repeated(21, tile, clear: 7),
       };
       final content = CelTextContent(
         spans: const [
@@ -687,24 +708,24 @@ void main() {
         for (var y = 0; y < 3; y += 1)
           for (var x = 0; x < 4; x += 1)
             if (x != 2 || y != 2)
-              TileCoord(x: x, y: y): patterned(x + y * 4, tile, clear: 3),
+              TileCoord(x: x, y: y): repeated(x + y * 4, tile, clear: 3),
       };
       final below = text(1, {
-        TileCoord(x: 0, y: 1): patterned(30, tile, clear: 4),
-        TileCoord(x: 1, y: 1): patterned(31, tile, clear: 6),
+        TileCoord(x: 0, y: 1): repeated(30, tile, clear: 4),
+        TileCoord(x: 1, y: 1): repeated(31, tile, clear: 6),
       });
       final hand = (
         plate: {
-          TileCoord(x: 1, y: 1): patterned(20, tile, clear: 5),
-          TileCoord(x: 2, y: 1): patterned(21, tile, clear: 7),
-          TileCoord(x: 1, y: 2): patterned(22, tile, clear: 2),
+          TileCoord(x: 1, y: 1): repeated(20, tile, clear: 5),
+          TileCoord(x: 2, y: 1): repeated(21, tile, clear: 7),
+          TileCoord(x: 1, y: 2): repeated(22, tile, clear: 2),
         },
         dx: 5,
         dy: 3,
       );
       final above = text(3, {
-        TileCoord(x: 2, y: 1): patterned(40, tile, clear: 2),
-        TileCoord(x: 2, y: 2): patterned(41, tile, clear: 3),
+        TileCoord(x: 2, y: 1): repeated(40, tile, clear: 2),
+        TileCoord(x: 2, y: 2): repeated(41, tile, clear: 3),
       });
       final under = BitmapSurface(
         canvasSize: canvasSize,

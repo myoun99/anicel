@@ -3916,33 +3916,6 @@ QA_EXPORT void qa_pre_blend_tiles(
   qa_pool_run(qa_pre_blend_item, &context, tile_count);
 }
 
-typedef struct {
-  qa_tile_span* tiles;
-  int32_t tile_size;
-  int32_t* bounds_out;
-} qa_alpha_bounds_context;
-
-static void qa_alpha_bounds_item(int32_t item_index, void* context) {
-  const qa_alpha_bounds_context* batch =
-      (const qa_alpha_bounds_context*)context;
-  qa_tile_alpha_bounds(batch->tiles[item_index].tile_pixels, batch->tile_size,
-                       batch->bounds_out + (ptrdiff_t)item_index * 4);
-}
-
-// Scans MANY tiles' alpha bounds in one call, fanned across the pool.
-// Only tile_pixels of each span is consumed (the scan is whole-tile).
-QA_EXPORT void qa_alpha_bounds_tiles(
-    qa_tile_span* tiles,
-    int32_t tile_count,
-    int32_t tile_size,
-    int32_t* bounds_out) {
-  qa_alpha_bounds_context context;
-  context.tiles = tiles;
-  context.tile_size = tile_size;
-  context.bounds_out = bounds_out;
-  qa_pool_run(qa_alpha_bounds_item, &context, tile_count);
-}
-
 // ---------------------------------------------------------------------------
 // Parallel flood fill (R22-E3): wave-parallel connected growth.
 //

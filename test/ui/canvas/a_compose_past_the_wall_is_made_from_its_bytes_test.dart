@@ -63,13 +63,15 @@ void main() {
     format: ui.ImageByteFormat.rawRgba,
   ))!.buffer.asUint8List();
 
-  /// A tile of 16 [at] its place with ink in the premultiply's three
+  const tile = defaultCelTileSize;
+
+  /// A tile [at] its place with ink in the premultiply's three
   /// regimes — clear, part and whole — and none outside [lies].
   BitmapTile inked(int seed, {required TileCoord at, ui.Rect? lies}) {
-    final pixels = Uint8List(16 * 16 * 4);
-    for (var p = 0; p < 16 * 16; p += 1) {
-      final x = at.x * 16 + p % 16 + 0.5;
-      final y = at.y * 16 + p ~/ 16 + 0.5;
+    final pixels = Uint8List(tile * tile * 4);
+    for (var p = 0; p < tile * tile; p += 1) {
+      final x = at.x * tile + p % tile + 0.5;
+      final y = at.y * tile + p ~/ tile + 0.5;
       if (lies != null && !lies.contains(ui.Offset(x, y))) {
         continue;
       }
@@ -78,23 +80,25 @@ void main() {
       pixels[p * 4 + 2] = (p * 29 + seed) & 255;
       pixels[p * 4 + 3] = (p * 37 + seed * 11) % 256;
     }
-    return BitmapTile(size: 16, pixels: pixels);
+    return BitmapTile(size: tile, pixels: pixels);
   }
 
-  /// A file's picture laid whole on a 16×16 canvas (its wall -16..32), a
+  /// A file's picture laid whole on a canvas of one tile (its wall reaches
+  /// a tile to its left and a tile to its right), a
   /// row of tiles from [left] to [right], one of them left out — lying in
   /// the tiles, or in [lies] within them.
   BitmapSurface laid(int left, int right, {int? without, ui.Rect? lies}) {
-    final where = lies ?? ui.Rect.fromLTRB(left * 1.0, 0, right * 1.0, 16);
+    final where =
+        lies ?? ui.Rect.fromLTRB(left * 1.0, 0, right * 1.0, tile * 1.0);
     return BitmapSurface(
-      canvasSize: const CanvasSize(width: 16, height: 16),
-      tileSize: 16,
+      canvasSize: const CanvasSize(width: tile, height: tile),
+      tileSize: tile,
       tiles: {
-        for (var x = left; x < right; x += 16)
+        for (var x = left; x < right; x += tile)
           if (x != without)
-            TileCoord(x: x ~/ 16, y: 0): inked(
+            TileCoord(x: x ~/ tile, y: 0): inked(
               x,
-              at: TileCoord(x: x ~/ 16, y: 0),
+              at: TileCoord(x: x ~/ tile, y: 0),
               lies: lies,
             ),
       },
@@ -105,13 +109,13 @@ void main() {
   /// Where [pastTheWallWithAText] lies: past the wall on both sides, and
   /// through its edge tiles' clear pixels on every side — as a compose
   /// over where a picture lies cuts them (`_celMoved`).
-  const lies = ui.Rect.fromLTRB(-45, 2, 61, 14);
+  const lies = ui.Rect.fromLTRB(-360, 16, 488, 112);
 
   /// A tile left out inside the wall — and a text over the first tile: a
   /// picture is shown with its texts laid over it (R9-rest, 유저
   /// 2026-10-06: 「셀의 그림이랑 정확히 동일」).
   BitmapSurface pastTheWallWithAText() =>
-      laid(-48, 64, without: 16, lies: lies).withTexts([
+      laid(-3 * tile, 4 * tile, without: tile, lies: lies).withTexts([
         textOf(
           1,
           plate: {
@@ -130,7 +134,7 @@ void main() {
     required ui.Rect over,
   }) async {
     expect(
-      over.left < -16 && over.right > 32,
+      over.left < -tile && over.right > 2 * tile,
       isTrue,
       reason: 'premise: past the wall on both sides ($over)',
     );
@@ -223,12 +227,12 @@ void main() {
       'the wall: its rect reaches past it, and nothing lies there', (
     tester,
   ) async {
-    // A 20×16 canvas's wall is -20..40: a tile at 32..48 straddles it, its
-    // ink cut at the wall as every stroke is.
-    const wall = ui.Rect.fromLTRB(-20, -16, 40, 32);
+    // A 160×128 canvas's wall is -160..320: a tile at 256..384 straddles
+    // it, its ink cut at the wall as every stroke is.
+    const wall = ui.Rect.fromLTRB(-160, -128, 320, 256);
     final straddling = BitmapSurface(
-      canvasSize: const CanvasSize(width: 20, height: 16),
-      tileSize: 16,
+      canvasSize: const CanvasSize(width: 160, height: 128),
+      tileSize: tile,
       tiles: {
         TileCoord(x: 2, y: 0): inked(3, at: TileCoord(x: 2, y: 0), lies: wall),
       },
@@ -241,14 +245,14 @@ void main() {
     await tester.runAsync(() async {
       for (final surface in [
         BitmapSurface(
-          canvasSize: const CanvasSize(width: 16, height: 16),
-          tileSize: 16,
+          canvasSize: const CanvasSize(width: tile, height: tile),
+          tileSize: tile,
           tiles: {
             TileCoord(x: -1, y: -1): inked(1, at: TileCoord(x: -1, y: -1)),
             TileCoord(x: 1, y: 1): inked(2, at: TileCoord(x: 1, y: 1)),
           },
         ),
-        laid(-16, 32),
+        laid(-tile, 2 * tile),
         straddling,
       ]) {
         final composed = (await composePositionedSurfaceImage(surface))!;
@@ -262,7 +266,7 @@ void main() {
       'device\'s decoder holds, on either side — is let go, and the '
       'picture rastered', (tester) async {
     await tester.runAsync(() async {
-      final surface = laid(-48, 64);
+      final surface = laid(-3 * tile, 4 * tile);
       final over = surfaceInkWorldRect(surface);
       debugRastersPastTheWall = true;
       final rastered = (await composePositionedSurfaceImage(
@@ -330,7 +334,7 @@ void main() {
             uploads += 1;
             return uploadRawRgba(rgba, width: width, height: height);
           };
-      final surface = laid(-48, 64);
+      final surface = laid(-3 * tile, 4 * tile);
 
       expect(
         await composePositionedSurfaceImage(
@@ -362,7 +366,7 @@ void main() {
     });
 
     /// A picture laid past the wall, [tiles] tiles in a row.
-    BitmapSurface rowOf(int tiles) => laid(-48, -48 + tiles * 16);
+    BitmapSurface rowOf(int tiles) => laid(-3 * tile, (tiles - 3) * tile);
 
     Future<PositionedSurfaceImage?> composed(
       BitmapSurface surface, {

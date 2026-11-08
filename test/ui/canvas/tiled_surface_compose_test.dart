@@ -269,16 +269,17 @@ void main() {
       tester,
     ) async {
       await tester.runAsync(() async {
-        // One opaque red pixel at (5, 6), alone in its 16px tile.
-        final pixels = Uint8List(16 * 16 * 4);
-        const at = (6 * 16 + 5) * 4;
+        // One opaque red pixel at (5, 6), alone in its tile.
+        const tile = defaultCelTileSize;
+        final pixels = Uint8List(tile * tile * 4);
+        const at = (6 * tile + 5) * 4;
         pixels[at] = 255;
         pixels[at + 3] = 255;
         final surface = BitmapSurface(
-          canvasSize: const CanvasSize(width: 32, height: 32),
-          tileSize: 16,
+          canvasSize: const CanvasSize(width: 2 * tile, height: 2 * tile),
+          tileSize: tile,
           tiles: {
-            TileCoord(x: 0, y: 0): BitmapTile(size: 16, pixels: pixels),
+            TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels),
           },
         );
 

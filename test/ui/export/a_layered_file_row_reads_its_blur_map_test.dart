@@ -47,19 +47,20 @@ void main() {
   const height = 32;
   const canvas = CanvasSize(width: width, height: height);
   const seam = 32;
+  const tile = defaultCelTileSize;
 
   BitmapSurface surfaceOf(List<int> Function(int x, int y) rgbaAt) {
-    final pixels = Uint8List(width * width * 4);
+    final pixels = Uint8List(tile * tile * 4);
     for (var y = 0; y < height; y += 1) {
       for (var x = 0; x < width; x += 1) {
-        pixels.setAll((y * width + x) * 4, rgbaAt(x, y));
+        pixels.setAll((y * tile + x) * 4, rgbaAt(x, y));
       }
     }
     return BitmapSurface(
       canvasSize: canvas,
-      tileSize: width,
+      tileSize: tile,
       tiles: {
-        TileCoord(x: 0, y: 0): BitmapTile(size: width, pixels: pixels),
+        TileCoord(x: 0, y: 0): BitmapTile(size: tile, pixels: pixels),
       },
     );
   }

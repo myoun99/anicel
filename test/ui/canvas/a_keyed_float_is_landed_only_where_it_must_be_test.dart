@@ -32,7 +32,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const canvasSize = CanvasSize(width: 128, height: 128);
-  const tile = 32;
+  const tile = defaultCelTileSize;
+  const side = 32;
   final keys = [
     ResolvedLayerEffect(
       kind: EffectKind.colorKey,
@@ -40,7 +41,7 @@ void main() {
     ),
   ];
 
-  /// A cel of one tile at the canvas's corner, every pixel of it [alpha].
+  /// A cel of one tile at the canvas's corner, a [side]² of it all [alpha].
   BitmapSurface tileOf(int alpha) => BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tile,
@@ -48,7 +49,9 @@ void main() {
       TileCoord(x: 0, y: 0): BitmapTile(
         size: tile,
         pixels: Uint8List.fromList([
-          for (var i = 0; i < tile * tile; i += 1) ...[64, 192, 96, alpha],
+          for (var y = 0; y < tile; y += 1)
+            for (var x = 0; x < tile; x += 1)
+              ...(x < side && y < side ? [64, 192, 96, alpha] : [0, 0, 0, 0]),
         ]),
       ),
     },
@@ -84,7 +87,7 @@ void main() {
     bool image = false,
   }) {
     final cel = _Cel(holed, onCanvasGrid: onCanvasGrid);
-    final stamp = stampOf(tile, alpha);
+    final stamp = stampOf(side, alpha);
     final float = image
         ? SelectionFloatPaint(
             image: _image,
@@ -115,7 +118,7 @@ void main() {
   }
 
   setUpAll(() async {
-    _image = await _imageOf(tile);
+    _image = await _imageOf(side);
   });
 
   test('an opaque float landing on nothing is its own pixels keyed — no '

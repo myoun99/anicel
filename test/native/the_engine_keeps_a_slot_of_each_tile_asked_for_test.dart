@@ -210,6 +210,50 @@ void main() {
     expect([many.givenBack, few.givenBack], [1, 1]);
   });
 
+  test('what the engine finds of each tile is told to that tile — a box '
+      'where it has ink, none where it has none', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    BitmapTile inkedAt(int x, int y) => BitmapTile(
+      size: gpuTileSide,
+      pixels: Uint8List(BitmapTile.bytesFor(gpuTileSide))
+        ..[(y * gpuTileSide + x) * 4 + 3] = 255,
+    );
+    final (first, clear, last) = (
+      inkedAt(2, 1),
+      BitmapTile.blank(size: gpuTileSide),
+      inkedAt(9, 7),
+    );
+
+    ledger.rememberInk(a, [first, clear, last]);
+
+    expect(first.inkBounds, (
+      left: 2,
+      top: 1,
+      rightExclusive: 3,
+      bottomExclusive: 2,
+    ));
+    expect(last.inkBounds, (
+      left: 9,
+      top: 7,
+      rightExclusive: 10,
+      bottomExclusive: 8,
+    ));
+    expect(first.inkBoundsKnown && last.inkBoundsKnown, isTrue);
+    expect(clear.inkBoundsKnown, isTrue);
+    expect(clear.hasInk, isFalse);
+  });
+
+  test('a tile with ink is told it has some, and a tile asked for twice is '
+      'told once and alike', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final tile = tileOf(14);
+
+    ledger.rememberInk(a, [tile, tile]);
+
+    expect(tile.inkBoundsKnown, isTrue);
+    expect(tile.hasInk, isTrue);
+  });
+
   test('a hold is asked inside the call it was handed to', () {
     final ledger = EngineTileLedger(appGpuEngine);
     final kept = ledger.held((hold) => hold);

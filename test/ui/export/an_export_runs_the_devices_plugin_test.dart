@@ -39,6 +39,7 @@ import '../../helpers/no_guides_laid.dart';
 /// row's cel.
 void main() {
   const width = 32;
+  const tile = defaultCelTileSize;
   const height = 16;
   const canvas = CanvasSize(width: width, height: height);
   const red = [255, 0, 0, 255];
@@ -48,12 +49,12 @@ void main() {
   /// A cel with one opaque red pixel, at (10, 5).
   BitmapSurface oneRed() => BitmapSurface(
     canvasSize: canvas,
-    tileSize: width,
+    tileSize: tile,
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
-        size: width,
-        pixels: Uint8List(width * width * 4)
-          ..setAll((5 * width + 10) * 4, red),
+        size: tile,
+        pixels: Uint8List(tile * tile * 4)
+          ..setAll((5 * tile + 10) * 4, red),
       ),
     },
   );

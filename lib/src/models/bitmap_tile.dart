@@ -296,9 +296,10 @@ class BitmapTile implements Finalizable {
 
   /// Whether [inkBounds] can answer without reading pixels — what a
   /// BATCHED scan asks so it stages only the tiles that still owe one.
-  bool get inkBoundsKnown => _inkBounds != null || !hasInk;
+  bool get inkBoundsKnown => _inkBounds != null || _hasInk == false;
 
-  /// Adopts a box computed elsewhere — the batched C scan, which answers
+  /// Adopts what the engine found ([EngineTileLedger.rememberInk]), a box or
+  /// null for no ink at all — a batched scan, which answers
   /// for many tiles in one call and would otherwise throw its answers
   /// away.
   ///
@@ -306,7 +307,10 @@ class BitmapTile implements Finalizable {
   /// the box, the pixels never change, so the only thing this can do is
   /// save the recompute. First writer wins, and every writer computes the
   /// same answer.
-  void rememberInkBounds(TileInkBounds bounds) => _inkBounds ??= bounds;
+  void rememberInkBounds(TileInkBounds? bounds) {
+    _hasInk ??= bounds != null;
+    _inkBounds ??= bounds;
+  }
 
   /// The reference scan: this tile's words, in Dart.
   ///

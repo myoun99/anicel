@@ -43,14 +43,14 @@ import 'app_gpu_engine.dart';
 ///
 /// One an isolate, as the engine is ([appGpuEngine]): a worker that asked
 /// would open its own (ⓗ — no law says otherwise).
-// ⏳Tests alone ask till the screen does (screen-on-the-engine c6), and
-// the ink box after it (2번 레인 커밋 3 — 관제 2026-11-08 01:12).
+// ⏳The screen asks after its view is swapped (screen-on-the-engine c6).
 class EngineTileLedger {
   /// A ledger of a pool of its own on [engine], making no page past
   /// [byteBudget] but for the tiles a call holds — none but the OS's where
   /// null.
   EngineTileLedger(GpuEngine engine, {int? byteBudget})
-    : pool = GpuPool(engine, byteBudget ?? _unbounded),
+    : _engine = engine,
+      pool = GpuPool(engine, byteBudget ?? _unbounded),
       _byteBudget = byteBudget;
 
   /// The app's, on its engine — opened the first time anything asks.
@@ -83,6 +83,7 @@ class EngineTileLedger {
 
   /// The pool the slots are of — what a plan over them runs on.
   final GpuPool pool;
+final GpuEngine _engine;
 
   /// The bytes past which no page is made but for the tiles a call holds;
   /// none but the OS's where null. Falling under the pages made, it gives
@@ -199,6 +200,28 @@ class EngineTileLedger {
       blocks.free(into);
     }
   }
+
+  /// What the engine finds of each of [tiles]' ink, told to the tile
+  /// ([BitmapTile.rememberInkBounds]) — the tiles laid side by side as a
+  /// cel of those tiles alone, as the scan takes them. Waits for the GPU.
+  void rememberInk(Object cel, List<BitmapTile> tiles) => held((hold) {
+    final slots = hold.slotsOf(cel, tiles);
+    for (final walked in _ink.run(pool, 0, 0, tiles.length, 1, slots)) {
+      final box = walked.box;
+      tiles[walked.column].rememberInkBounds(
+        box == null
+            ? null
+            : (
+                left: box.left,
+                top: box.top,
+                rightExclusive: box.right,
+                bottomExclusive: box.bottom,
+              ),
+      );
+    }
+  });
+
+  late final GpuInk _ink = GpuInk(_engine);
 
   /// The tiles a read of [readEach] reads at once.
   static const int readBatch = 64;

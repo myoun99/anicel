@@ -64,12 +64,16 @@ void main() {
     final cut = session.activeTrack.cuts.firstWhere((cut) => cut.id == cutId);
     session.renderCaches.brushFrameStore.storeBakedSurface(
       key,
-      BitmapSurface(canvasSize: cut.canvasSize, tileSize: 8).putTiles([
+      BitmapSurface(
+        canvasSize: cut.canvasSize,
+        tileSize: defaultCelTileSize,
+      ).putTiles([
         (
           coord: at ?? TileCoord(x: 1, y: 1),
           tile: BitmapTile(
-            size: 8,
-            pixels: Uint8List(256)..fillRange(0, 256, 9),
+            size: defaultCelTileSize,
+            pixels: Uint8List(BitmapTile.bytesFor(defaultCelTileSize))
+              ..fillRange(0, BitmapTile.bytesFor(defaultCelTileSize), 9),
           ),
         ),
       ]),
@@ -168,7 +172,8 @@ void main() {
     final store = session.renderCaches.brushFrameStore;
     // Half the paper past its left edge: past the 1.5x wall, inside the 3x.
     final past = TileCoord(
-      x: -(session.requireActiveCut.canvasSize.width ~/ 16),
+      x: -(session.requireActiveCut.canvasSize.width ~/
+          (2 * defaultCelTileSize)),
       y: 1,
     );
     final key = draw(session, session.requireActiveCut.id, at: past);
