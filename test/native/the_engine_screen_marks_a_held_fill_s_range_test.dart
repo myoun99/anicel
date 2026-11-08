@@ -12,6 +12,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -35,7 +37,8 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// the row with a row of the mark's cells laid right over it — white and
 /// black cells of eight of its pixels at half alpha over the range alone,
 /// its hole kept, pushed as far as the press moved (F-568-Q1 a) —, outside
-/// its opacity, under every row above it and under its pose.
+/// its opacity, under every row above it, under its pose, and in a
+/// blurred folder's picture where it reaches past the row's ink.
 void main() {
   // The letters read their faces from the bundle.
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -67,9 +70,13 @@ void main() {
     frameId: const FrameId('f'),
   );
 
-  /// A surface of the canvas's two tiles, each pixel [pixel]'s straight
-  /// RGBA — none where it answers null.
-  BitmapSurface surfaceOf(List<int>? Function(int x, int y) pixel) {
+  /// A surface of [columns] tiles along the canvas's row of them — its two,
+  /// and one past it on the pasteboard for three —, each pixel [pixel]'s
+  /// straight RGBA, none where it answers null.
+  BitmapSurface surfaceOf(
+    List<int>? Function(int x, int y) pixel, {
+    int columns = 2,
+  }) {
     BitmapTile tileAt(int column) {
       final pixels = Uint8List(side * side * 4);
       for (var y = 0; y < side; y++) {
@@ -87,8 +94,8 @@ void main() {
       canvasSize: canvas,
       tileSize: side,
       tiles: {
-        TileCoord(x: 0, y: 0): tileAt(0),
-        TileCoord(x: 1, y: 0): tileAt(1),
+        for (var column = 0; column < columns; column++)
+          TileCoord(x: column, y: 0): tileAt(column),
       },
     );
   }
@@ -132,22 +139,25 @@ void main() {
   /// row add up even, black where odd, each at half alpha, over [cover]
   /// alone, the cells pushed [shift] — the checker the canvas marks
   /// (fill_range_mark.dart).
-  BitmapSurface cellsOf(FloodFillRegion cover, ui.Offset shift) =>
-      surfaceOf((x, y) {
-        final (column, row) = (x - cover.left, y - cover.top);
-        if (column < 0 ||
-            row < 0 ||
-            column >= cover.width ||
-            row >= cover.height ||
-            cover.mask[row * cover.width + column] == 0) {
-          return null;
-        }
-        final across = ((x + 0.5 - shift.dx) / 8).floor();
-        final down = ((y + 0.5 - shift.dy) / 8).floor();
-        return (across + down).isEven
-            ? const [255, 255, 255, 128]
-            : const [0, 0, 0, 128];
-      });
+  BitmapSurface cellsOf(
+    FloodFillRegion cover,
+    ui.Offset shift, {
+    int columns = 2,
+  }) => surfaceOf(columns: columns, (x, y) {
+    final (column, row) = (x - cover.left, y - cover.top);
+    if (column < 0 ||
+        row < 0 ||
+        column >= cover.width ||
+        row >= cover.height ||
+        cover.mask[row * cover.width + column] == 0) {
+      return null;
+    }
+    final across = ((x + 0.5 - shift.dx) / 8).floor();
+    final down = ((y + 0.5 - shift.dy) / 8).floor();
+    return (across + down).isEven
+        ? const [255, 255, 255, 128]
+        : const [0, 0, 0, 128];
+  });
 
   StackedFrame frameOf(
     List<CompositeNode<CanvasStackRow>> nodes, {
@@ -350,6 +360,61 @@ void main() {
           ],
           live: BitmapSurfacePainter(surface: nothing),
           cels: {cells: cellsOf(range.cover, ui.Offset.zero)},
+        ),
+      ),
+    );
+  });
+
+  test('🚨in a blurred folder, a range past the row\'s ink is laid in the '
+      'folder\'s picture and blurred with it, as a row of its cells is', () {
+    // A tile past the canvas, covered whole: where the row holds no ink,
+    // so only the range's own extent puts it in the folder's picture —
+    // whose blur spreads it back over the canvas's edge.
+    final range = FillRange.over(
+      FloodFillRegion(
+        left: 256,
+        top: 0,
+        width: side,
+        height: side,
+        mask: Uint8List(side * side)..fillRange(0, side * side, 255),
+      ),
+    ).coveredWithin(null)!;
+    CompositeNode<CanvasStackRow> blurred(
+      List<CompositeNode<CanvasStackRow>> children,
+    ) => CompositeGroup(
+      children: children,
+      opacity: 1,
+      blendMode: LayerBlendMode.normal,
+      effects: [
+        ResolvedLayerEffect(
+          kind: EffectKind.blur,
+          values: [
+            for (final spec in EffectKind.blur.parameters)
+              switch (spec.id) {
+                'blurriness' => 6,
+                'blurDimensions' => 0,
+                _ => spec.defaultValue,
+              },
+          ],
+        ),
+      ],
+    );
+    final row = CanvasActiveLayerRow(opacity: 1, frameKey: pen);
+    overlay.showFillRange(FillRangeMark(range));
+
+    expect(
+      shown(
+        frameOf([
+          blurred([CompositeLeaf(row)]),
+        ], live: penOn(cel())),
+      ),
+      shown(
+        frameOf(
+          [
+            blurred([CompositeLeaf(row), cellsRow()]),
+          ],
+          live: BitmapSurfacePainter(surface: cel()),
+          cels: {cells: cellsOf(range.cover, ui.Offset.zero, columns: 3)},
         ),
       ),
     );

@@ -171,7 +171,6 @@ extension on _LayerStackPaintPass {
     GpuMask Function(FloodFillRegion cover) maskOf,
   ) => switch (slot.painter.overlayModel?.fillRange) {
     null => null,
-    final range when range.isEmpty => null,
     final range => EngineMark(
       mask: maskOf(range.cover),
       bounds: range.bounds,
