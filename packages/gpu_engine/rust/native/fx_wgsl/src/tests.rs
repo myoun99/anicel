@@ -458,23 +458,39 @@ fn an_endless_barriers_loop_is_cut_with_its_whole_group() {
 
 #[test]
 fn a_barrier_under_a_uniform_load_opens() {
+    // The group's most alpha by a max, and its least, negated, by a min.
     let kernel = opened(&plugin(
-        "var<workgroup> most: atomic<u32>;",
-        "let here = anicel_here();\natomicMax(&most, anicel_in(here.x, here.y) >> 24u);\nworkgroupBarrier();\n\
-         let top = workgroupUniformLoad(&most);\nif (top > 128u) {\nworkgroupBarrier();\n}\nanicel_out(top);",
+        "var<workgroup> most: atomic<u32>;\nvar<workgroup> least: atomic<i32>;",
+        "let here = anicel_here();\nlet alpha = anicel_in(here.x, here.y) >> 24u;\n\
+         atomicMax(&most, alpha);\natomicMin(&least, -i32(alpha));\nworkgroupBarrier();\n\
+         let top = workgroupUniformLoad(&most);\nif (top > 128u) {\nworkgroupBarrier();\n}\n\
+         anicel_out(top | u32(-atomicLoad(&least)) << 8u);",
         "return 0u;",
     ));
     let input = canvas([16, 16], |i| pixel(0, 0, 0, i * 3 % 211));
     let mut output = vec![0u32; 256];
     kernel.render(&picture([16, 16], 0, &input, &[], &[]), &mut output).expect("not cut");
-    assert_eq!(output, vec![210; 256]);
+    assert_eq!(output, vec![210 | 210 << 8; 256]);
+}
+
+#[test]
+fn an_own_cell_by_any_mix_of_the_invocations_numbers_opens() {
+    // Q9 asks that the index be the invocation's own number alone; how its
+    // levels mix the whole index and the axes is the plugin's.
+    for (extra, body) in [
+        ("var<workgroup> grid: array<array<u32, 8>, 64>;", "grid[i][lid.x] = 1u;"),
+        ("var<workgroup> grid: array<array<u32, 8>, 8>;", "grid[lid.x][lid.y] = 1u;"),
+    ] {
+        let source = by_axes(extra, body).replace("(16, 16)", "(8, 8)");
+        opened(&source.replace("at: vec3<u32>,", "at: vec3<u32>, @builtin(local_invocation_index) i: u32,"));
+    }
 }
 
 #[test]
 fn what_the_group_check_refuses_and_why() {
     let tile = "var<workgroup> tile: array<u32, 256>;";
     let count = "var<workgroup> count: atomic<u32>;";
-    let cases: [(&str, String, &str); 29] = [
+    let cases: [(&str, String, &str); 28] = [
         (
             "an in-place tree sum (Q10)",
             indexed(tile, "tile[i] = 1u;\nworkgroupBarrier();\ntile[i] = tile[i] + tile[min(i + 1u, 255u)];"),
@@ -501,7 +517,6 @@ fn what_the_group_check_refuses_and_why() {
             by_axes("var<workgroup> tile: array<array<u32, 16>, 8>;", "tile[lid.y][lid.x] = 1u;"),
             "own cell",
         ),
-        ("one axis twice", by_axes("var<workgroup> tile: array<array<u32, 16>, 16>;", "tile[lid.x][lid.x] = 1u;"), "own cell"),
         ("an axis the group spans left out", by_axes("var<workgroup> tile: array<u32, 16>;", "tile[lid.x] = 1u;"), "own cell"),
         (
             "a neighbour read before the barrier",

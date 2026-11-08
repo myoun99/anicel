@@ -353,8 +353,11 @@ impl Intervals<'_> {
         Some(Place { slot, atomic, own: self.own(self.module.global_variables[global].ty, &steps) })
     }
 
-    /// Whether the first steps down the array levels from `ty` are the
-    /// invocation's own index, one-to-one within the group.
+    /// Whether every array level down from `ty` is indexed by the
+    /// invocation's own number alone (Q9), each long enough that no index
+    /// is clamped onto another's (Restrict), and together they tell the
+    /// group's invocations apart — the whole index, or each axis the group
+    /// spans.
     fn own(&self, mut ty: Handle<naga::Type>, steps: &[Option<Handle<Expression>>]) -> bool {
         let size = self.render.workgroup_size;
         let mut covered = [false; 3];
@@ -364,20 +367,19 @@ impl Intervals<'_> {
                 break;
             };
             let Some(index) = step else { return false };
-            match self.own_index(*index) {
-                Some(Own::Whole) if !whole && covered == [false; 3] => {
-                    if length.get() < size.iter().product::<u32>() {
-                        return false;
-                    }
+            let reach = match self.own_index(*index) {
+                Some(Own::Whole) => {
                     whole = true;
+                    size.iter().product::<u32>()
                 }
-                Some(Own::Axis(axis)) if !whole && !covered[axis] => {
-                    if length.get() < size[axis] {
-                        return false;
-                    }
+                Some(Own::Axis(axis)) => {
                     covered[axis] = true;
+                    size[axis]
                 }
-                _ => return false,
+                None => return false,
+            };
+            if length.get() < reach {
+                return false;
             }
             ty = base;
         }
