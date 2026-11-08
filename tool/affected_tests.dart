@@ -1561,12 +1561,13 @@ Future<_BatchResult> _flutterTestIn(
   var skipped = 0;
   final context = NoContextWatch();
   final silence = BatchSilence(DateTime.now());
-  var cut = false;
+  var silent = false;
   final look = Timer.periodic(kLookForSilence, (_) {
-    if (cut || !silence.isPast(kSilentBatch, DateTime.now())) return;
-    cut = true;
+    if (silent || !silence.isPast(kSilentBatch, DateTime.now())) return;
+    silent = true;
     cutTree(process.pid);
   });
+  final memory = MemoryWatch(process.pid);
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {
       // latin1 never throws on malformed bytes; a mojibake launch error
@@ -1585,8 +1586,12 @@ Future<_BatchResult> _flutterTestIn(
   ];
   final code = await process.exitCode;
   look.cancel();
+  memory.stop();
   await Future.wait(pumped);
-  if (cut) {
+  final cut = silent
+      ? 'no test finished for ${kSilentBatch.inMinutes} min'
+      : memory.outgrew;
+  if (cut != null) {
     var open = const <String>[];
     try {
       open = stillRunning(File(report).readAsStringSync());
@@ -1594,11 +1599,10 @@ Future<_BatchResult> _flutterTestIn(
       // No report to name them by; the cut is said all the same.
     }
     final named = open.isEmpty ? '(none named)' : open.join(' | ');
-    _report('🚨 no test finished for ${kSilentBatch.inMinutes} min — cut the '
-        'batch, red. Still running: $named');
+    _report('🚨 $cut — cut the batch, red. Still running: $named');
   }
   return _BatchResult(
-    cut && code == 0 ? 1 : code,
+    cut != null && code == 0 ? 1 : code,
     ranTests,
     skipped,
     noContext: context.said,

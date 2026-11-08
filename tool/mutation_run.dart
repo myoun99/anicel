@@ -497,6 +497,7 @@ Future<Verdict> _runSuiteIn(RunTemp temp, List<String> namers) async {
     }),
   );
 
+  final memory = MemoryWatch(process.pid);
   Timer(_suiteTimeout, () {
     if (done.isCompleted) return;
     cutTree(process.pid);
@@ -504,6 +505,7 @@ Future<Verdict> _runSuiteIn(RunTemp temp, List<String> namers) async {
   });
 
   final code = await done.future;
-  if (code == -1) return Verdict.timeout;
+  memory.stop();
+  if (code == -1 || memory.outgrew != null) return Verdict.timeout;
   return classifyRun(exitCode: code, output: buffer.toString());
 }

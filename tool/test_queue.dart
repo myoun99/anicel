@@ -470,6 +470,21 @@ Future<int> withinLimit(
   return timedOut ? kTimedOut : code;
 }
 
+/// The answer of a run its [MemoryWatch] cut: a shell's for a process killed
+/// (128 + SIGKILL), which is how an out-of-memory kill reads anywhere.
+const kOutgrewMemory = 137;
+
+/// What the run answers with [exit], or [kOutgrewMemory] and its name when
+/// [watch] cut it.
+Future<int> withinMemory(Future<int> exit, MemoryWatch watch) async {
+  final code = await exit;
+  watch.stop();
+  final outgrew = watch.outgrew;
+  if (outgrew == null) return code;
+  stderr.writeln('test_queue: $outgrew — cut the run');
+  return kOutgrewMemory;
+}
+
 /// The tickets in [line] whose runs are alive, by name — [mine] among them
 /// — after taking away every one whose run has [ended].
 List<String> heldTickets(
@@ -1273,11 +1288,15 @@ Future<void> main(List<String> args) async {
           mode: ProcessStartMode.inheritStdio,
           runInShell: Platform.isWindows,
         );
-        if (limit == null) return await started.exitCode;
-        return await withinLimit(started.exitCode, limit, () {
-          stderr.writeln('test_queue: ${limit.inSeconds}s are up, cutting it');
-          cutTree(started.pid);
-        });
+        final exit = limit == null
+            ? started.exitCode
+            : withinLimit(started.exitCode, limit, () {
+                stderr.writeln(
+                  'test_queue: ${limit.inSeconds}s are up, cutting it',
+                );
+                cutTree(started.pid);
+              });
+        return await withinMemory(exit, MemoryWatch(started.pid));
       } finally {
         temp.end();
       }
