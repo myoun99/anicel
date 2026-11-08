@@ -581,3 +581,130 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
         gpu_engine_plan_free(again);
     }
 }
+
+// A buffer closed as a row call by call — over its own tiles through a
+// matrix, and over a chain's through it — composites as the same plan
+// built in Rust: each field in its place, its pose sampled as a row's is.
+#[test]
+fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
+    let tiles = [tile(1, false), tile(2, false), tile(3, true)];
+    let (pool, at) = stored(&tiles);
+    let contrast: [f64; MATRIX_WORDS] = [
+        1.4, 0.0, 0.0, 0.0, -20.0, 0.0, 1.2, 0.1, 0.0, 5.0, 0.0, 0.0, 0.8, 0.0, 30.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+    ];
+    let warm: [f64; MATRIX_WORDS] = [
+        1.0, 0.0, 0.0, 0.0, 25.0, 0.0, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 0.0, -10.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+    ];
+    let own = [0, 0, 2, 1];
+    let plan = gpu_engine_plan_new();
+    // SAFETY: `plan` is live; each array holds what its call reads.
+    unsafe {
+        assert_eq!(gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_set(plan, 1, 0, 1, 1, [at[2].word()].as_ptr()), 1);
+        assert_eq!(gpu_engine_plan_matrix(plan, warm.as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_chain(plan, 0, 0, 3, 1), 0);
+        assert_eq!(gpu_engine_plan_chain_matrix(plan, 0, contrast.as_ptr()), 0);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
+        gpu_engine_plan_open(plan, false);
+        assert_eq!(gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
+        assert_eq!(gpu_engine_plan_row(plan, 1, -1, -1, -1, OVER.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 30000, MULTIPLY), 1);
+        let closed = gpu_engine_plan_close_row(plan, -1, own.as_ptr(), 0, POSED.as_ptr(), 2.0, PICK, 3 * TILE, TILE, 41000, SCREEN);
+        assert_eq!(closed, 1);
+        gpu_engine_plan_open(plan, false);
+        assert_eq!(gpu_engine_plan_row(plan, 1, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL), 1);
+        let closed = gpu_engine_plan_close_row(plan, 0, std::ptr::null(), -1, OVER.as_ptr(), 1.0, NEAREST, 3 * TILE, TILE, 50000, MULTIPLY);
+        assert_eq!(closed, 1);
+    }
+    let sets = [
+        TileSet { x0: 0, y0: 0, columns: 2, rows: 1, tiles: vec![Some(at[0]), Some(at[1])] },
+        TileSet { x0: 1, y0: 0, columns: 1, rows: 1, tiles: vec![Some(at[2])] },
+    ];
+    let identity = map(IDENTITY, ResampleMode::Blend);
+    let posed = ResampleMap::new(POSED, 2.0, ResampleMode::Pick, 3 * TILE, TILE).expect("lands");
+    let steps = [
+        row(0, None, None, identity, 65535, NORMAL),
+        Step::Open,
+        row(0, None, None, identity, 65535, NORMAL),
+        row(1, None, None, map(OVER, ResampleMode::Nearest), 30000, MULTIPLY),
+        Step::CloseRow {
+            over: Over::Tiles(TileRect { x0: 0, y0: 0, columns: 2, rows: 1 }),
+            map: posed,
+            matrix: Some(0),
+            opacity: 41000,
+            mode: SCREEN,
+        },
+        Step::Open,
+        row(1, None, None, identity, 65535, NORMAL),
+        Step::CloseRow {
+            over: Over::Chain(0),
+            map: map(OVER, ResampleMode::Nearest),
+            matrix: None,
+            opacity: 50000,
+            mode: MULTIPLY,
+        },
+    ];
+    let chains = [Chained {
+        ops: vec![Op::Matrix(matrix_words(&contrast).expect("held"))],
+        rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
+    }];
+    let matrices = [matrix_words(&warm).expect("held")];
+    let built = ran(&pool, plan, [0, 0, 300, 120]).unwrap_or_else(|| panic!("{}", last_error()));
+    // SAFETY: `plan` came from `gpu_engine_plan_new`.
+    unsafe { gpu_engine_plan_free(plan) };
+    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &matrices, &chains, &steps));
+}
+
+// A buffer closed as a row whose pose lands nothing lays nothing, as such
+// a row is left out: it is taken out with its steps — a buffer closed in it
+// among them — and what came before it stays.
+#[test]
+fn a_buffer_closed_as_a_row_whose_pose_lands_nothing_is_taken_out() {
+    let behind = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0];
+    let own = [0, 0, 1, 1];
+    let plan = gpu_engine_plan_new();
+    // SAFETY: `plan` is live; each array holds what its call reads.
+    unsafe {
+        gpu_engine_plan_solid(plan, 0xff00_00ff, 0, 0, 10, 10);
+        gpu_engine_plan_open(plan, false);
+        gpu_engine_plan_open(plan, false);
+        gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
+        gpu_engine_plan_close(plan, 65535, NORMAL, -1, -1, 65535);
+        gpu_engine_plan_row(plan, 0, -1, -1, -1, IDENTITY.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
+        let closed = gpu_engine_plan_close_row(plan, -1, own.as_ptr(), -1, behind.as_ptr(), 1.0, BLEND, TILE, TILE, 65535, NORMAL);
+        assert_eq!(closed, 0);
+        assert!(matches!((&(*plan).steps)[..], [Step::Solid { .. }]), "{:?}", &(*plan).steps);
+        gpu_engine_plan_free(plan);
+    }
+}
+
+// What a row's close cannot add it refuses with a reason, adding nothing:
+// a chain and tiles both or neither, tiles of no size there is, a sampling
+// no mode has, no buffer open.
+#[test]
+fn what_a_row_s_close_refuses_says_why() {
+    let (own, negative) = ([0, 0, 1, 1], [0, 0, -1, 1]);
+    let plan = gpu_engine_plan_new();
+    let close = |chain, tiles: *const i32, sampling| {
+        // SAFETY: `plan` is live; `tiles` is null or holds four words.
+        unsafe {
+            gpu_engine_plan_close_row(plan, chain, tiles, -1, IDENTITY.as_ptr(), 1.0, sampling, TILE, TILE, 65535, NORMAL)
+        }
+    };
+    assert_eq!(close(-1, own.as_ptr(), BLEND), -1);
+    assert!(last_error().contains("no buffer"), "{}", last_error());
+    // SAFETY: `plan` is live.
+    unsafe { gpu_engine_plan_open(plan, false) };
+    assert_eq!(close(0, own.as_ptr(), BLEND), -1);
+    assert!(last_error().contains("one"), "{}", last_error());
+    assert_eq!(close(-1, std::ptr::null(), BLEND), -1);
+    assert!(last_error().contains("one"), "{}", last_error());
+    assert_eq!(close(-1, negative.as_ptr(), BLEND), -1);
+    assert!(last_error().contains("-1 × 1"), "{}", last_error());
+    assert_eq!(close(-1, own.as_ptr(), 2), -1);
+    assert!(last_error().contains("sampling"), "{}", last_error());
+    // SAFETY: `plan` is live, then freed.
+    unsafe {
+        assert!(matches!((&(*plan).steps)[..], [Step::Open]));
+        gpu_engine_plan_free(plan);
+    }
+}

@@ -1,14 +1,15 @@
 //! Effect chains a plan names, on a real GPU: a chained row or buffer lays
 //! what its chain puts as a row, each checked against the chain run by
 //! hand and laid so. What a chain puts is checked against its kernels' own
-//! hands in kernels/chain.
+//! hands in kernels/chain. A buffer closed as a row, run first as a chained
+//! one is, likewise.
 
 use std::sync::OnceLock;
 
 use super::tests::{
     Pool, chained, contrast, keyed, masked_row, matrixed, mixed, pose, rig, row, texel, with_map,
 };
-use super::{Budget, NO_EDGE, Plan, Step, TileSet, WHOLE, check_depth};
+use super::{Budget, NO_EDGE, Over, Plan, Step, TileSet, WHOLE, check_depth};
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, PLUS, SCREEN};
 use crate::kernels::chain::tests::lens;
 use crate::kernels::chain::{Chain, Chained, MapTiles, Op, laid_as, tiles_of};
@@ -19,6 +20,7 @@ use crate::kernels::effects::blur::lens::{BlurMap, MapChannel};
 use crate::kernels::effects::{MATRIX_WORDS, matrix_words};
 use crate::kernels::mask::Mask;
 use crate::kernels::mask::tests::masked;
+use crate::kernels::shared::ResampleMap;
 use crate::testing::read_buffer;
 
 /// The output: two by two tiles from the origin.
@@ -456,4 +458,119 @@ fn a_buffer_opened_on_the_one_under_it_runs_no_chain() {
     let composited = |open| laying.composited(&chains, &closed(open), None, budget);
     assert!(composited(Step::Open).is_some());
     assert!(composited(Step::OpenOpaque).is_none());
+}
+
+/// A buffer closed as the row its picture is, over `over`, posed by `map`,
+/// through matrix 0, at 45000 in screen.
+fn closed_as_a_row(over: Over, map: ResampleMap) -> Step {
+    Step::CloseRow {
+        over,
+        map,
+        matrix: Some(0),
+        opacity: 45000,
+        mode: SCREEN,
+    }
+}
+
+/// A row's own tiles: a column of two from the origin. Its picture is
+/// wider — a tile past it each way, but right of it two — so what lies
+/// outside them is there to be left out, on every side a turn reads past.
+const OWN: TileRect = TileRect {
+    x0: 0,
+    y0: 0,
+    columns: 1,
+    rows: 2,
+};
+
+/// The base, a row's picture over more than [`OWN`] and a float over it.
+fn held_over_a_row() -> Laying {
+    Laying::new(&[((0, 0), (2, 2)), ((-1, -1), (4, 4)), ((0, 0), (1, 1))])
+}
+
+/// The row's picture and what a hand holds over it, in the row's space.
+fn held() -> [Step; 2] {
+    [row(1, (0, 0), WHOLE, NORMAL), row(2, (37, 21), 50000, MULTIPLY)]
+}
+
+// A row with what a hand holds over it is one picture in its own space —
+// its rows drawn alone over its tiles there and nothing past them —, laid
+// as the row is: posed once, through its matrix, at its opacity in its
+// mode. Every way R1 poses, a homography's over all its tiles.
+#[test]
+fn a_buffer_closed_as_a_row_lays_its_picture_as_the_row() {
+    let mut laying = held_over_a_row();
+    let base = row(0, (0, 0), WHOLE, NORMAL);
+    for name in ["turn", "shrink-pick", "tilt"] {
+        let closing = closed_as_a_row(Over::Tiles(OWN), pose(name));
+        let got = laying.widest(&[], &[&[base, Step::Open][..], &held(), &[closing]].concat(), None);
+        assert!(got != laying.widest(&[], &[base], None), "{name}: it lays");
+        let picture = laying.alone(&held(), OWN);
+        let put = laying.laid(picture, OWN);
+        let laid = matrixed(with_map(put, pose(name), 45000, SCREEN), 0);
+        assert!(got == laying.widest(&[], &[base, laid], None), "{name}");
+    }
+}
+
+// Its chain runs on that picture, over the chain's rectangle, as a row's
+// runs on its own, before the pose.
+#[test]
+fn a_buffer_closed_as_a_row_runs_its_chain_on_its_picture() {
+    let mut laying = held_over_a_row();
+    let base = row(0, (0, 0), WHOLE, NORMAL);
+    let chains = [Chained {
+        ops: blurred(),
+        rect: RECT,
+    }];
+    let buffer = |over| [&[base, Step::Open][..], &held(), &[closed_as_a_row(over, pose("turn"))]].concat();
+    let got = laying.widest(&chains, &buffer(Over::Chain(0)), None);
+    assert!(got != laying.widest(&chains, &buffer(Over::Tiles(RECT)), None), "the chain ran");
+    let put = laying.buffer_by_hand(&held(), RECT, &blurred());
+    let laid = matrixed(with_map(put, pose("turn"), 45000, SCREEN), 0);
+    assert!(got == laying.widest(&[], &[base, laid], None));
+}
+
+// Of its tiles, only those its output reads through its pose are drawn: a
+// row of more than a page holds shows as the few of them read do, and one
+// moved away from the output lays nothing.
+#[test]
+fn a_buffer_closed_as_a_row_draws_the_tiles_its_output_reads() {
+    let laying = held_over_a_row();
+    let base = row(0, (0, 0), WHOLE, NORMAL);
+    let buffer = |rect, map| [&[base, Step::Open][..], &held(), &[closed_as_a_row(Over::Tiles(rect), map)]].concat();
+    let wide = TileRect {
+        x0: -(1 << 16),
+        y0: -1,
+        columns: 1 << 17,
+        rows: 4,
+    };
+    let picture = TileRect {
+        x0: -1,
+        y0: -1,
+        columns: 4,
+        rows: 4,
+    };
+    let got = laying.widest(&[], &buffer(wide, pose("turn")), None);
+    assert!(got == laying.widest(&[], &buffer(picture, pose("turn")), None));
+    let away = laying.widest(&[], &buffer(picture, ResampleMap::moved(-10_000, 0)), None);
+    assert!(away == laying.widest(&[], &[base], None));
+}
+
+// A buffer closed as a row names a matrix and a chain the plan has, and
+// closes one that is open; one opened on the one under it, which holds
+// what its steps alone do not lay, is refused.
+#[test]
+fn a_buffer_closed_as_a_row_is_checked_as_a_close() {
+    let a_row = row(0, (0, 0), WHOLE, NORMAL);
+    let closing = |over| closed_as_a_row(over, pose("turn"));
+    let buffer = |over| [Step::Open, a_row, closing(over)];
+    assert!(check_depth(&buffer(Over::Tiles(OWN)), 1, 0, 1, 0).is_some());
+    assert!(check_depth(&buffer(Over::Tiles(OWN)), 1, 0, 0, 0).is_none());
+    assert!(check_depth(&buffer(Over::Chain(1)), 1, 0, 1, 2).is_some());
+    assert!(check_depth(&buffer(Over::Chain(1)), 1, 0, 1, 1).is_none());
+    assert!(check_depth(&[a_row, closing(Over::Tiles(OWN))], 1, 0, 1, 0).is_none());
+    let laying = held_over_a_row();
+    let opened = |open| [open, a_row, closing(Over::Tiles(OWN))];
+    let budget = rig().composite.widest();
+    assert!(laying.composited(&[], &opened(Step::Open), None, budget).is_some());
+    assert!(laying.composited(&[], &opened(Step::OpenOpaque), None, budget).is_none());
 }

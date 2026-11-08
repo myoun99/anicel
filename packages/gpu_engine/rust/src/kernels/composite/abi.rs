@@ -28,7 +28,9 @@ use crate::kernels::shared::{ResampleMap, ResampleMode};
 
 use super::halvings::Camera;
 use super::screen::Screen;
-use super::{BufferChain, Composite, Composited, KeyChain, Plan, Step, TILE_BYTES, TileSet};
+use super::{
+    BufferChain, Composite, Composited, KeyChain, Over, Plan, Step, TILE_BYTES, TileSet,
+};
 
 /// A plan as the app builds it: what [`Plan`] borrows, owned. It names
 /// the pool's slots and holds none of them: build it, and run it before
@@ -123,6 +125,20 @@ impl Planned {
     fn map(&mut self, tiles: MapFrom, channel: MapChannel, focus: Focus) -> i32 {
         self.maps.push(PlannedMap { tiles, channel, focus });
         self.maps.len() as i32 - 1
+    }
+
+    /// Where the buffer open on top was opened among the steps, if one is.
+    fn open_buffer(&self) -> Option<usize> {
+        let mut closed = 0usize;
+        for (at, step) in self.steps.iter().enumerate().rev() {
+            match step {
+                Step::Open | Step::OpenOpaque if closed == 0 => return Some(at),
+                Step::Open | Step::OpenOpaque => closed -= 1,
+                Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => closed += 1,
+                Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+            }
+        }
+        None
     }
 }
 
@@ -304,6 +320,67 @@ pub unsafe extern "C" fn gpu_engine_plan_close(
     let plan = unsafe { &mut *plan };
     let chain = named(chain).map(|chain| BufferChain { chain, mix });
     plan.steps.push(Step::Close { opacity, mode, matrix: named(matrix), chain });
+}
+
+/// Closes the open buffer — opened on nothing, its steps laid in a row's
+/// own space — as that row: drawn over effect chain `chain`'s tiles if not
+/// -1, through it, else over the row's tiles `tiles` (x0, y0, columns,
+/// rows), and laid as [`gpu_engine_plan_row`] lays a row, posed by
+/// `inverse` and the rest.
+///
+/// Returns 1 where it was closed, 0 where its pose lands nothing and so it
+/// lays nothing — the buffer and its steps taken out —, and -1 for a
+/// sampling no mode has, a chain and tiles both named or neither, or no
+/// buffer open; see the last error.
+///
+/// # Safety
+/// `plan` is live, `inverse` holds nine doubles and `tiles` is null or
+/// holds four words.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_plan_close_row(
+    plan: *mut Planned,
+    chain: i32,
+    tiles: *const i32,
+    matrix: i32,
+    inverse: *const f64,
+    radius_floor: f64,
+    sampling_id: u32,
+    columns: u32,
+    rows: u32,
+    opacity: u32,
+    mode: u32,
+) -> i32 {
+    // SAFETY: see the function's contract.
+    let (plan, inverse, tiles) =
+        unsafe { (&mut *plan, *inverse.cast::<[f64; 9]>(), rect_or_none(tiles)) };
+    let over = match (named(chain), tiles) {
+        (Some(chain), None) => Over::Chain(chain),
+        (None, Some([x0, y0, columns, rows])) => {
+            let (Ok(columns), Ok(rows)) = (u32::try_from(columns), u32::try_from(rows)) else {
+                fail::<()>(format!("{columns} × {rows} tiles"));
+                return -1;
+            };
+            Over::Tiles(TileRect { x0, y0, columns, rows })
+        }
+        _ => {
+            fail::<()>("a row's buffer is drawn over its chain's tiles or its own, one");
+            return -1;
+        }
+    };
+    let Some(sampled) = sampling(sampling_id) else {
+        return -1;
+    };
+    let Some(open) = plan.open_buffer() else {
+        fail::<()>("no buffer is open to close as a row");
+        return -1;
+    };
+    let Some(map) = ResampleMap::new(inverse, radius_floor, sampled, columns, rows) else {
+        plan.steps.truncate(open);
+        return 0;
+    };
+    plan.steps.push(Step::CloseRow { over, map, matrix: named(matrix), opacity, mode });
+    1
 }
 
 /// Closes a clip's scope onto its base by the base's alpha.

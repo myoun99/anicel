@@ -322,6 +322,21 @@ pub(crate) enum Step {
     },
     /// Closes a clip's scope onto its base by the base's alpha (srcATop).
     CloseAtop,
+    /// Closes a buffer opened on nothing ([`Step::Open`]) as the row it is
+    /// the picture of: its steps, laid in the row's own space, drawn alone
+    /// over the tiles `over` names there, and laid as that row is — posed
+    /// by `map`, canvas pixel to the row's own, through colour matrix
+    /// `matrix` if any, at `opacity` in `mode`. What a hand holds over a
+    /// row (a lifted selection, a text being set) is drawn so: in the
+    /// row's own pixels before its chain, as the canvas's walk draws it,
+    /// and as it lies there once it lands (flip lane ⓐ-2).
+    CloseRow {
+        over: Over,
+        map: ResampleMap,
+        matrix: Option<usize>,
+        opacity: u32,
+        mode: u32,
+    },
     /// Lays `colour` — straight RGBA8, A<<24|B<<16|G<<8|R, its alpha its
     /// strength — over the canvas pixels `rect`, [left, top, right,
     /// bottom), in normal, as a row of that colour there lays it: the paper
@@ -342,6 +357,16 @@ pub(crate) enum Step {
     // mask; till then the tests alone.
     #[cfg_attr(not(test), allow(dead_code))]
     Mark { map: ResampleMap, shift: [i32; 2] },
+}
+
+/// What a buffer closed as a row ([`Step::CloseRow`]) is drawn over, in the
+/// row's space: tiles of its own — those of them its output reads through
+/// the row's pose —, or effect chain `Chain`'s, whose rectangle it runs on
+/// whole as a row's chain runs on its picture.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Over {
+    Tiles(TileRect),
+    Chain(usize),
 }
 
 /// A buffer's effect chain: chain `chain` of the plan, and how much of what
@@ -695,8 +720,8 @@ impl Composite {
             plan.chains.len(),
         )?;
         check_mask(plan)?;
-        if plan.steps.iter().any(|step| chain_of(step).is_some()) {
-            let (pages, sets, steps) = self.chained(engine, plan, budget)?;
+        if plan.steps.iter().any(runs_first) {
+            let (pages, sets, steps) = self.chained(engine, plan, tiles, budget)?;
             let plan = Plan {
                 pages: &pages,
                 sets: &sets,
@@ -792,10 +817,15 @@ impl Composite {
     /// whole and cuts only what a run puts to its extent. A lens blur's map
     /// drawn from the rows it reads (`MapTiles::Drawn`) is those rows drawn
     /// so over the chain's rectangle first, as they show by themselves.
+    ///
+    /// A buffer closed as a row ([`Step::CloseRow`]) is one so too, over
+    /// its chain's rectangle, or over its own tiles that the output `tiles`
+    /// read through its pose where it names no chain — and is laid posed.
     fn chained(
         &self,
         engine: &Engine,
         plan: &Plan,
+        tiles: &[(i32, i32)],
         budget: Budget,
     ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>)> {
         let held = tiles_a_page(engine)?;
@@ -805,25 +835,31 @@ impl Composite {
         // on nothing.
         let mut opens: Vec<(usize, bool)> = Vec::new();
         for (index, step) in plan.steps.iter().enumerate() {
-            let Some(at) = chain_of(step) else {
-                match step {
-                    Step::Open => opens.push((steps.len(), true)),
-                    Step::OpenOpaque => opens.push((steps.len(), false)),
-                    Step::Close { .. } | Step::CloseAtop => {
-                        opens.pop();
-                    }
-                    Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+            let chained = chain_of(step).map(|at| &plan.chains[at]);
+            let rect = match (*step, chained) {
+                (_, Some(chained)) => chained.rect,
+                (Step::CloseRow { over: Over::Tiles(rect), map, .. }, None) => {
+                    read_through(rect, &map, tiles)
                 }
-                steps.push(*step);
-                continue;
+                _ => {
+                    match step {
+                        Step::Open => opens.push((steps.len(), true)),
+                        Step::OpenOpaque => opens.push((steps.len(), false)),
+                        Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => {
+                            opens.pop();
+                        }
+                        Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+                    }
+                    steps.push(*step);
+                    continue;
+                }
             };
-            let chained = &plan.chains[at];
-            let read = tiles_of(chained.rect);
+            let read = tiles_of(rect);
             // ⚠️No test reaches this refusal, as none reaches `gathered`'s:
             // a page holds 2048 tiles at WebGPU's least binding.
             if read.len() > held {
                 let count = read.len();
-                return fail(format!("step {index} chains {count} tiles; a page holds {held}"));
+                return fail(format!("step {index} runs on {count} tiles; a page holds {held}"));
             }
             let under = match *step {
                 Step::Row { set, .. } => self.copied(engine, &pages, &sets[set], &read, budget)?,
@@ -831,7 +867,7 @@ impl Composite {
                     // A buffer opened on the one under it holds what is under
                     // it, which its steps alone do not lay.
                     let Some((open, true)) = opens.pop() else {
-                        return fail(format!("step {index} chains a buffer opened on another"));
+                        return fail(format!("step {index} runs a buffer opened on another"));
                     };
                     let alone = steps.split_off(open + 1);
                     steps.truncate(open);
@@ -845,29 +881,13 @@ impl Composite {
                     self.run(engine, &plan, &read, NO_EDGE, budget)?
                 }
             };
-            // Each map a lens blur reads from rows, drawn alone over the
-            // rectangle as they show by themselves — their own chains run.
-            let mut drawn = Vec::with_capacity(chained.ops.len());
-            for op in &chained.ops {
-                let Some(rows) = op.map_rows() else {
-                    drawn.push(None);
-                    continue;
-                };
-                if reads_drawn_maps(rows, plan.chains) {
-                    return fail(format!("step {index} reads a map whose rows read a map"));
+            let put = match chained {
+                Some(chained) => {
+                    let now = Plan { pages: &pages, sets: &sets, ..*plan };
+                    self.through(engine, &now, chained, under.out.clone(), &read, budget)?
                 }
-                let plan = Plan {
-                    pages: &pages,
-                    sets: &sets,
-                    steps: rows,
-                    ..*plan
-                };
-                drawn.push(Some(self.run(engine, &plan, &read, NO_EDGE, budget)?.out));
-            }
-            let (ops, rect) = (with_drawn(&chained.ops, &drawn), chained.rect);
-            let chain = self.chain.get_or_init(|| Chain::new(engine));
-            // A chain reads its tiles and puts others: what it read stays.
-            let put = chain.run(engine, self, under.out.clone(), rect, &ops)?;
+                None => under.out.clone(),
+            };
             let put = laid_on(&mut pages, &mut sets, put, rect)?;
             match *step {
                 Step::Close {
@@ -903,6 +923,37 @@ impl Composite {
             }
         }
         Some((pages, sets, steps))
+    }
+
+    /// `under` — tiles over `chained`'s rectangle, `read` — through its ops:
+    /// the tiles the last put. Each map a lens blur reads from rows is
+    /// those rows drawn alone over the rectangle first, as they show by
+    /// themselves — their own chains run.
+    fn through(
+        &self,
+        engine: &Engine,
+        plan: &Plan,
+        chained: &Chained,
+        under: wgpu::Buffer,
+        read: &[(i32, i32)],
+        budget: Budget,
+    ) -> Option<wgpu::Buffer> {
+        let mut drawn = Vec::with_capacity(chained.ops.len());
+        for op in &chained.ops {
+            let Some(rows) = op.map_rows() else {
+                drawn.push(None);
+                continue;
+            };
+            if reads_drawn_maps(rows, plan.chains) {
+                return fail("a chain reads a map whose rows read a map");
+            }
+            let plan = Plan { steps: rows, ..*plan };
+            drawn.push(Some(self.run(engine, &plan, read, NO_EDGE, budget)?.out));
+        }
+        let ops = with_drawn(&chained.ops, &drawn);
+        let chain = self.chain.get_or_init(|| Chain::new(engine));
+        // A chain reads its tiles and puts others: what it read stays.
+        chain.run(engine, self, under, chained.rect, &ops)
     }
 
     /// [`Composite::walk`] from the steps as `lay` laid them.
@@ -1165,7 +1216,45 @@ fn chain_of(step: &Step) -> Option<usize> {
     match *step {
         Step::Row { chain, .. } => chain,
         Step::Close { chain, .. } => chain.map(|named| named.chain),
+        Step::CloseRow { over: Over::Chain(chain), .. } => Some(chain),
         _ => None,
+    }
+}
+
+/// Whether the walk runs `step` before it lays the plan
+/// ([`Composite::chained`]): one naming an effect chain, or a buffer
+/// closed as a row.
+fn runs_first(step: &Step) -> bool {
+    chain_of(step).is_some() || matches!(step, Step::CloseRow { .. })
+}
+
+/// The tiles of `rect` whose pixels `map` reads for the output `tiles` —
+/// every one where it is a homography, which bounds no read.
+fn read_through(rect: TileRect, map: &ResampleMap, tiles: &[(i32, i32)]) -> TileRect {
+    let side = i64::from(TILE);
+    let columns = tiles.iter().map(|&(column, _)| i64::from(column));
+    let rows = tiles.iter().map(|&(_, row)| i64::from(row));
+    let (Some(x0), Some(x1)) = (columns.clone().min(), columns.max()) else {
+        return TileRect { columns: 0, rows: 0, ..rect };
+    };
+    let (Some(y0), Some(y1)) = (rows.clone().min(), rows.max()) else {
+        return TileRect { columns: 0, rows: 0, ..rect };
+    };
+    let Some([left, top, right, bottom]) =
+        map.reads(x0 * side, y0 * side, (x1 + 1) * side, (y1 + 1) * side)
+    else {
+        return rect;
+    };
+    let [x0, y0] = [rect.x0, rect.y0].map(i64::from);
+    let (x1, y1) = (x0 + i64::from(rect.columns), y0 + i64::from(rect.rows));
+    let (from_x, from_y) = (left.div_euclid(side).max(x0), top.div_euclid(side).max(y0));
+    let to_x = (right + side - 1).div_euclid(side).min(x1).max(from_x);
+    let to_y = (bottom + side - 1).div_euclid(side).min(y1).max(from_y);
+    TileRect {
+        x0: from_x as i32,
+        y0: from_y as i32,
+        columns: (to_x - from_x) as u32,
+        rows: (to_y - from_y) as u32,
     }
 }
 
@@ -1197,7 +1286,8 @@ fn laid_on(
 
 /// What chained `step` lays once its chain has put tile set `set`: a row
 /// from that set, as it was posed; a buffer's close a row of it, unposed,
-/// at the close's opacity, mode and matrix.
+/// at the close's opacity, mode and matrix; a buffer closed as a row that
+/// row, posed.
 fn unchained(step: Step, set: usize) -> Step {
     match step {
         Step::Row {
@@ -1228,6 +1318,22 @@ fn unchained(step: Step, set: usize) -> Step {
             keys: None,
             chain: None,
             map: ResampleMap::moved(0, 0),
+            matrix,
+            opacity,
+            mode,
+            masked: false,
+        },
+        Step::CloseRow {
+            map,
+            matrix,
+            opacity,
+            mode,
+            ..
+        } => Step::Row {
+            set,
+            keys: None,
+            chain: None,
+            map,
             matrix,
             opacity,
             mode,
@@ -1300,6 +1406,9 @@ fn check_depth(
             }
             | Step::Close {
                 matrix: Some(matrix), ..
+            }
+            | Step::CloseRow {
+                matrix: Some(matrix), ..
             } if matrix >= matrices => {
                 return fail(format!("step {index} runs matrix {matrix} of {matrices}"));
             }
@@ -1308,6 +1417,10 @@ fn check_depth(
             }
             | Step::Close {
                 chain: Some(BufferChain { chain, .. }),
+                ..
+            }
+            | Step::CloseRow {
+                over: Over::Chain(chain),
                 ..
             } if chain >= chains => {
                 return fail(format!("step {index} runs effect chain {chain} of {chains}"));
@@ -1329,10 +1442,10 @@ fn check_depth(
             }
             Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
             Step::Open | Step::OpenOpaque => depth += 1,
-            Step::Close { .. } | Step::CloseAtop if depth == 0 => {
+            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } if depth == 0 => {
                 return fail(format!("step {index} closes a buffer that is not open"));
             }
-            Step::Close { .. } | Step::CloseAtop => depth -= 1,
+            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => depth -= 1,
         }
     }
     if depth != 0 {
@@ -1458,7 +1571,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         // The levels the step reads and writes, lowest and highest.
         let (low, high) = match each.step {
             Step::Open | Step::OpenOpaque => (depth, depth + 1),
-            Step::Close { .. } | Step::CloseAtop => (depth - 1, depth),
+            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => (depth - 1, depth),
             Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => (depth, depth),
         };
         let outside = low < batch.base || high >= batch.base + levels;
@@ -1494,7 +1607,7 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         }
         match each.step {
             Step::Open | Step::OpenOpaque => depth += 1,
-            Step::Close { .. } | Step::CloseAtop => depth -= 1,
+            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => depth -= 1,
             Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
         }
     }
@@ -1613,6 +1726,9 @@ fn plan_words(
                 chain: _,
             } => [3, mode, opacity, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, matrix_at(matrix)],
             Step::CloseAtop => [4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Step::CloseRow { .. } => {
+                unreachable!("run before the walk ([`Composite::chained`]): none is left")
+            }
             Step::Solid {
                 colour,
                 rect: [left, top, right, bottom],
