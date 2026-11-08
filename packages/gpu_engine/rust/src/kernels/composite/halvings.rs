@@ -27,20 +27,16 @@
 //! its tiles that read there — the executor's own question of which output
 //! tiles a pose reads ([`ResampleMap::reads`]) — and so down the stages.
 
-// ⏳Only the tests read the stages until the screen does (screen-on-the-engine,
-// the editing screen's commit).
-#![cfg_attr(not(test), allow(dead_code))]
-
 #[cfg(test)]
 #[path = "halvings_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
-use crate::kernels::shared::{RESAMPLE_CEILING, ResampleMap, ResampleMode};
+use crate::kernels::shared::{RESAMPLE_CEILING, ResampleMap, ResampleMode, tiles_a_page};
 
-use super::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileSet, placed_on};
+use super::{Budget, Composite, Plan, Step, TILE, TILE_BYTES, TileAt, TileSet};
 
 /// Tiles to lay as a row: the pages and the tile set on them.
 #[derive(Clone, Copy)]
@@ -88,13 +84,6 @@ fn extent_of((width, height): (u32, u32)) -> [i32; 4] {
     [0, 0, width as i32, height as i32]
 }
 
-/// The output tiles over a picture of `size` from the canvas's origin, row
-/// after row.
-fn tiles_over((width, height): (u32, u32)) -> Vec<(i32, i32)> {
-    let (columns, rows) = (width.div_ceil(TILE) as i32, height.div_ceil(TILE) as i32);
-    (0..rows).flat_map(|row| (0..columns).map(move |column| (column, row))).collect()
-}
-
 /// The smallest rectangle holding both.
 fn joined(one: Option<[i64; 4]>, other: [i64; 4]) -> [i64; 4] {
     let Some([l, t, r, b]) = one else {
@@ -103,22 +92,88 @@ fn joined(one: Option<[i64; 4]>, other: [i64; 4]) -> [i64; 4] {
     [l.min(other[0]), t.min(other[1]), r.max(other[2]), b.max(other[3])]
 }
 
-/// One halving stage: its tiles on a page of its own, slot i the i-th of
-/// `tiles`, over a picture of `size` from the canvas's origin.
-struct Stage {
-    page: wgpu::Buffer,
+/// A picture kept on pages of its own: its tiles over `size` pixels from
+/// the canvas's origin, row after row, as many to a page as one takes — a
+/// halving stage, and the canvas's composite the screen reads (screen.rs).
+pub(crate) struct Kept {
+    pages: Vec<wgpu::Buffer>,
     set: TileSet,
-    tiles: Vec<(i32, i32)>,
     size: (u32, u32),
-    /// What changed of the stage above it since it was made over that, in
-    /// that stage's pixels.
-    behind: Option<[i64; 4]>,
 }
 
-impl Stage {
-    fn as_tiles(&self) -> Tiles<'_> {
-        Tiles { pages: std::slice::from_ref(&self.page), set: &self.set }
+impl Kept {
+    /// `plan` composited over a picture of `size` from the canvas's origin,
+    /// nothing past it, and kept.
+    pub(crate) fn made(
+        engine: &Engine,
+        composite: &Composite,
+        plan: &Plan,
+        size: (u32, u32),
+        budget: Budget,
+    ) -> Option<Self> {
+        Self::made_by(engine, composite, plan, size, tiles_a_page(engine)?, budget)
     }
+
+    /// `made`, a page holding no more than `per_page` tiles — a test's
+    /// fewer than the device's, to see a picture go on to its next page.
+    pub(crate) fn made_by(
+        engine: &Engine,
+        composite: &Composite,
+        plan: &Plan,
+        size: (u32, u32),
+        per_page: usize,
+        budget: Budget,
+    ) -> Option<Self> {
+        let set = TileSet::paged((0, 0), size, 0, per_page)?;
+        let tiles: Vec<(i32, i32)> = set.placed_under(None).map(|(place, _)| place).collect();
+        let mut pages = Vec::with_capacity(tiles.len().div_ceil(per_page));
+        for page in tiles.chunks(per_page) {
+            pages.push(composite.run(engine, plan, page, extent_of(size), budget)?.out);
+        }
+        Some(Self { pages, set, size })
+    }
+
+    /// `plan` composited again over the kept tiles `stale` names, the rest
+    /// kept as they are; those tiles' pixels, where it names any.
+    pub(crate) fn made_again(
+        &self,
+        engine: &Engine,
+        composite: &Composite,
+        plan: &Plan,
+        stale: impl Fn((i32, i32)) -> bool,
+        budget: Budget,
+    ) -> Option<Option<[i64; 4]>> {
+        let (places, slots): (Vec<(i32, i32)>, Vec<TileAt>) =
+            self.set.placed_under(None).filter(|&(place, _)| stale(place)).unzip();
+        // A run puts no more than a page takes.
+        let per_page = tiles_a_page(engine)?;
+        for (some, slots) in places.chunks(per_page).zip(slots.chunks(per_page)) {
+            let done = composite.run(engine, plan, some, extent_of(self.size), budget)?;
+            let mut encoder = engine.device.create_command_encoder(&Default::default());
+            for (from, at) in slots.iter().enumerate() {
+                let (from, to) = (from as u64 * TILE_BYTES, u64::from(at.slot) * TILE_BYTES);
+                let page = &self.pages[usize::from(at.page)];
+                encoder.copy_buffer_to_buffer(&done.out, from, page, to, TILE_BYTES);
+            }
+            engine.queue.submit([encoder.finish()]);
+        }
+        let side = i64::from(TILE);
+        Some(places.iter().fold(None, |sum, &(column, row)| {
+            let (x, y) = (i64::from(column) * side, i64::from(row) * side);
+            Some(joined(sum, [x, y, x + side, y + side]))
+        }))
+    }
+
+    pub(crate) fn as_tiles(&self) -> Tiles<'_> {
+        Tiles { pages: &self.pages, set: &self.set }
+    }
+}
+
+/// One halving stage, and what changed of the stage above it since it was
+/// made over that, in that stage's pixels.
+struct Stage {
+    kept: Kept,
+    behind: Option<[i64; 4]>,
 }
 
 /// The canvas's composite's halving stages, kept for the screen. One is
@@ -172,7 +227,7 @@ impl Halvings {
             return fail(format!("no stage is read at a scale of {}", camera.scale));
         };
         self.bring_to(engine, composite, canvas, k, budget)?;
-        let read = if k == 0 { canvas } else { self.stages[k - 1].as_tiles() };
+        let read = if k == 0 { canvas } else { self.stages[k - 1].kept.as_tiles() };
         let (columns, rows) = camera.size;
         let inverse = onto_stage(camera.inverse, k);
         let Some(map) = ResampleMap::new(inverse, self.floor, camera.mode, columns, rows) else {
@@ -196,7 +251,7 @@ impl Halvings {
         for at in 0..k {
             let (above, size) = match at {
                 0 => (canvas, self.size),
-                _ => (self.stages[at - 1].as_tiles(), self.stages[at - 1].size),
+                _ => (self.stages[at - 1].kept.as_tiles(), self.stages[at - 1].kept.size),
             };
             if at == self.stages.len() {
                 let made = self.made(engine, composite, above, size, budget)?;
@@ -224,14 +279,9 @@ impl Halvings {
         size: (u32, u32),
         budget: Budget,
     ) -> Option<Stage> {
-        let size = halved(size);
-        let tiles = tiles_over(size);
-        if u16::try_from(tiles.len()).is_err() {
-            return fail(format!("a stage of {} tiles is past a page's slots", tiles.len()));
-        }
         let steps = [row(self.halving())];
-        let done = composite.run(engine, &plan(above, &steps), &tiles, extent_of(size), budget)?;
-        Some(Stage { page: done.out, set: placed_on(0, &tiles), tiles, size, behind: None })
+        let kept = Kept::made(engine, composite, &plan(above, &steps), halved(size), budget)?;
+        Some(Stage { kept, behind: None })
     }
 
     /// `stage` made again on its tiles that read `behind` of `above`, and
@@ -249,36 +299,14 @@ impl Halvings {
         let halving = self.halving();
         let side = i64::from(TILE);
         let [left, top, right, bottom] = behind;
-        let reads_behind = |&(column, row): &(i32, i32)| {
+        let reads_behind = |(column, row): (i32, i32)| {
             let (x, y) = (i64::from(column) * side, i64::from(row) * side);
             halving
                 .reads(x, y, x + side, y + side)
                 .is_some_and(|[l, t, r, b]| l < right && left < r && t < bottom && top < b)
         };
-        let (slots, stale): (Vec<usize>, Vec<(i32, i32)>) = stage
-            .tiles
-            .iter()
-            .enumerate()
-            .filter(|(_, tile)| reads_behind(tile))
-            .map(|(slot, &tile)| (slot, tile))
-            .unzip();
-        if stale.is_empty() {
-            return Some(None);
-        }
         let steps = [row(halving)];
-        let extent = extent_of(stage.size);
-        let done = composite.run(engine, &plan(above, &steps), &stale, extent, budget)?;
-        let mut encoder = engine.device.create_command_encoder(&Default::default());
-        for (from, &slot) in slots.iter().enumerate() {
-            let (from, to) = (from as u64 * TILE_BYTES, slot as u64 * TILE_BYTES);
-            encoder.copy_buffer_to_buffer(&done.out, from, &stage.page, to, TILE_BYTES);
-        }
-        engine.queue.submit([encoder.finish()]);
-        let pixels = stale.iter().fold(None, |sum, &(column, row)| {
-            let (x, y) = (i64::from(column) * side, i64::from(row) * side);
-            Some(joined(sum, [x, y, x + side, y + side]))
-        });
-        Some(pixels)
+        stage.kept.made_again(engine, composite, &plan(above, &steps), reads_behind, budget)
     }
 
     /// ①'s map: stage k's pixel x about stage k − 1's 2x + 1, in Blend on

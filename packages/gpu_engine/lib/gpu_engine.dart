@@ -163,11 +163,34 @@ class GpuEngine {
   }
 }
 
-/// A texture the compute pass fills and Flutter shows.
-class GpuSurface {
-  GpuSurface._(this._engine, this._surface, this.width, this.height, this.bgra);
+/// What a kernel writes for the screen to show: a [GpuSurface] Flutter
+/// shows through a [SharedTexture], or a [GpuWindow]'s next image — one
+/// kernel entry for both (rust/src/kernels/mod.rs).
+sealed class GpuTarget {
+  GpuTarget(this._engine);
 
   final GpuEngine _engine;
+
+  /// The texture the kernel writes.
+  Pointer<rust.Texture> get _texture;
+
+  /// Fills the target with the pattern for [seed] and waits for the GPU;
+  /// returns the submit-to-done time.
+  Duration fill(int seed) => _ran(
+    rust.fillRun(_engine._fillKernel, _engine._engine, _texture, seed),
+  );
+}
+
+/// A texture the compute pass fills and Flutter shows.
+class GpuSurface extends GpuTarget {
+  GpuSurface._(
+    super._engine,
+    this._surface,
+    this.width,
+    this.height,
+    this.bgra,
+  );
+
   final Pointer<rust.Surface> _surface;
   final int width;
   final int height;
@@ -175,16 +198,8 @@ class GpuSurface {
 
   Pointer<Void> get _handle => rust.surfaceHandle(_surface);
 
-  /// Fills the surface with the pattern for [seed] and waits for the GPU;
-  /// returns the submit-to-done time.
-  Duration fill(int seed) => _ran(
-    rust.fillRun(
-      _engine._fillKernel,
-      _engine._engine,
-      rust.surfaceTexture(_surface),
-      seed,
-    ),
-  );
+  @override
+  Pointer<rust.Texture> get _texture => rust.surfaceTexture(_surface);
 
   /// The CRC-32 of the surface's bytes, read back from the GPU — the
   /// fingerprint the ledger `test/fixtures/fingerprints.json` pins.
@@ -760,35 +775,124 @@ class GpuComposite {
   }
 
   /// Composites [plan] of [pool]'s tiles onto the pixels [rect] of
-  /// [surface] — [left, top, right, bottom) — leaving the rest of it as it
-  /// was, and submits the work; returns how many passes it took.
+  /// [target] — [left, top, right, bottom) — leaving the rest of it as it
+  /// was, and waits for the GPU; returns how many passes it took.
   int show(
     GpuPool pool,
     GpuPlan plan,
-    GpuSurface surface,
+    GpuTarget target,
     (int, int, int, int) rect,
-  ) {
-    final passes = using((arena) {
-      final edges = arena<Uint32>(4);
-      final (left, top, right, bottom) = rect;
-      edges.asTypedList(4).setAll(0, [left, top, right, bottom]);
-      return rust.compositeShow(
+  ) => _checked(
+    using(
+      (arena) => rust.compositeShow(
         _composite,
         _engine._engine,
         pool._pool,
         plan._plan,
-        rust.surfaceTexture(surface._surface),
-        edges,
-      );
-    });
-    if (passes < 0) {
-      throw StateError(_lastError());
-    }
-    return passes;
-  }
+        target._texture,
+        _edges(arena, rect),
+      ),
+    ),
+  );
 
   /// Frees the executor; before its engine is closed.
   void free() => rust.compositeFree(_composite);
+}
+
+/// [rect] — [left, top, right, bottom) of a target's pixels — as four
+/// unsigned words of [arena]'s.
+Pointer<Uint32> _edges(Arena arena, (int, int, int, int) rect) {
+  final (left, top, right, bottom) = rect;
+  return arena<Uint32>(4)..asTypedList(4).setAll(0, [left, top, right, bottom]);
+}
+
+/// A canvas's screen (rust/src/kernels/composite/screen.rs): the canvas's
+/// composite kept at its own pixels, made again where it changed
+/// ([compose]), and shown through the camera ([show]) — a pan or a zoom
+/// shows what is kept, the canvas's pixels magnified, so what is shown
+/// while working is the result (gpu-canonical-store ④⑤).
+class GpuScreen {
+  /// The screen of a canvas of [width] × [height] pixels on [composite]'s
+  /// engine, shown on Blend's radius [radiusFloor] at least — nothing
+  /// composed on it yet.
+  factory GpuScreen(
+    GpuComposite composite,
+    int width,
+    int height, {
+    double radiusFloor = 1,
+  }) {
+    final screen = rust.screenNew(width, height, radiusFloor);
+    if (screen == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuScreen._(composite, screen);
+  }
+
+  GpuScreen._(this._composite, this._screen);
+
+  final GpuComposite _composite;
+  final Pointer<rust.Screen> _screen;
+
+  /// Composites [plan] of [pool]'s tiles onto the kept canvas over its
+  /// tiles that meet the pixels [changed] — [left, top, right, bottom); the
+  /// whole canvas the first time — and submits the work. The tiles
+  /// [changed] meets none of are kept as they were: where the composite
+  /// changed is the caller's to say.
+  void compose(GpuPool pool, GpuPlan plan, (int, int, int, int) changed) {
+    final composed = using(
+      (arena) => rust.screenCompose(
+        _screen,
+        _composite._composite,
+        _composite._engine._engine,
+        pool._pool,
+        plan._plan,
+        _rect(arena, changed),
+      ),
+    );
+    if (!composed) {
+      throw StateError(_lastError());
+    }
+  }
+
+  /// Shows the kept canvas through the camera onto the pixels [rect] of
+  /// [target] — [left, top, right, bottom) — leaving the rest of it as it
+  /// was, and waits for the GPU; returns how many passes it took. The
+  /// camera is [inverse] — a screen pixel to the canvas's, row-major with
+  /// the homogeneous row last — over a screen of [columns] × [rows]
+  /// pixels at display [scale], device pixels a canvas pixel, sampled by
+  /// [sampling].
+  int show(
+    GpuTarget target, {
+    required List<double> inverse,
+    required double scale,
+    required GpuSampling sampling,
+    required int columns,
+    required int rows,
+    required (int, int, int, int) rect,
+  }) {
+    if (inverse.length != 9) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    }
+    return _checked(
+      using(
+        (arena) => rust.screenShow(
+          _screen,
+          _composite._composite,
+          _composite._engine._engine,
+          _doubles(arena, inverse),
+          scale,
+          sampling.id,
+          columns,
+          rows,
+          target._texture,
+          _edges(arena, rect),
+        ),
+      ),
+    );
+  }
+
+  /// Frees the screen; before its executor is.
+  void free() => rust.screenFree(_screen);
 }
 
 /// What a run put: its output tiles' pixels, on the GPU.
@@ -1288,10 +1392,9 @@ int fingerprintBytes(Uint8List bytes) => using((arena) {
 
 /// A Flutter texture the engine presents into: a SurfaceProducer's window,
 /// whose images Flutter shows without a copy (Android).
-class GpuWindow {
-  GpuWindow._(this._engine, this._window, this.textureId);
+class GpuWindow extends GpuTarget {
+  GpuWindow._(super._engine, this._window, this.textureId);
 
-  final GpuEngine _engine;
   final Pointer<rust.Window> _window;
 
   /// What a `Texture` widget shows the window by.
@@ -1301,19 +1404,18 @@ class GpuWindow {
   /// not, each present copies the engine's own texture into one.
   bool get direct => rust.windowDirect(_window);
 
-  /// Fills the window's next image with the pattern for [seed] and waits
-  /// for the GPU; returns the submit-to-done time. [present] shows it.
-  Duration fill(int seed) {
+  /// The window's next image — [present] shows what a kernel wrote there.
+  @override
+  Pointer<rust.Texture> get _texture {
     final target = rust.windowTarget(_window);
     if (target == nullptr) {
       throw StateError(_lastError());
     }
-    return _ran(
-      rust.fillRun(_engine._fillKernel, _engine._engine, target, seed),
-    );
+    return target;
   }
 
-  /// Hands the image [fill] wrote to Flutter.
+  /// Hands the image a kernel last wrote ([fill], [GpuScreen.show]) to
+  /// Flutter.
   void present() {
     if (!rust.windowPresent(_engine._engine, _window)) {
       throw StateError(_lastError());

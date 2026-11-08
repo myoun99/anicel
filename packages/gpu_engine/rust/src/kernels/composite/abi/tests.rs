@@ -1,11 +1,11 @@
 //! The executor's C ABI on a real GPU: a plan built call by call composites
 //! as the same plan built in Rust, shown onto a surface it lays the pixels a
-//! run puts, a row whose pose lands nothing is left out, and what is refused
-//! says why.
+//! run puts, a screen composes and shows as one built in Rust does, a row
+//! whose pose lands nothing is left out, and what is refused says why.
 
 use super::*;
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
-use crate::kernels::composite::tests::{mix, pixel_at, rig};
+use crate::kernels::composite::tests::{mix, pixel_at, rig, surface};
 use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::le_bytes;
@@ -515,6 +515,56 @@ fn what_a_chain_s_call_refuses_says_why() {
         assert!(last_error().contains("step 1 of 0"), "{}", last_error());
         assert_eq!(gpu_engine_plan_map_drawn(plan, 0, 5, 0.0, false), -1);
         assert!(last_error().contains("channel"), "{}", last_error());
+        gpu_engine_plan_free(plan);
+    }
+}
+
+// A screen composed and shown call by call is the screen built in Rust over
+// the same plan: a posed row laid on the canvas at its own pixels, then the
+// camera magnifying it 2× and turned past a quarter pixel. A sampling no
+// mode has is refused, saying why, and the screen frees.
+#[test]
+fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
+    let tiles = [tile(11, true), tile(12, false)];
+    let (pool, at) = stored(&tiles);
+    let (engine, composite) = (rig().engine, &rig().composite);
+    let plan = gpu_engine_plan_new();
+    // SAFETY: `plan` is live; each array holds what its call reads.
+    unsafe {
+        gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr());
+        gpu_engine_plan_row(plan, 0, -1, -1, -1, POSED.as_ptr(), 1.0, BLEND, 2 * TILE, TILE, 65535, NORMAL);
+    }
+    let canvas = [0, 0, 2 * TILE as i32, TILE as i32];
+    let camera = [0.4, 0.3, 20.25, -0.3, 0.4, 30.5, 0.0, 0.0, 1.0];
+    let (size, rect) = ((64, 48), [3u32, 2, 60, 47]);
+    let screen = gpu_engine_screen_new(2 * TILE, TILE, 1.0);
+    assert!(!screen.is_null(), "{}", last_error());
+    let shown = surface(size, wgpu::TextureFormat::Rgba8Unorm);
+    // SAFETY: every pointer is live and made on `engine`; each array holds
+    // what its call reads.
+    let passes = unsafe {
+        assert!(gpu_engine_screen_compose(screen, composite, engine, &pool, plan, canvas.as_ptr()), "{}", last_error());
+        gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, 64, 48, &shown, rect.as_ptr())
+    };
+    assert!(passes >= 1, "{}", last_error());
+    let mut in_rust = Screen::new((2 * TILE, TILE), 1.0).expect("screen");
+    // SAFETY: `plan` is live.
+    let planned = unsafe { &*plan };
+    let chains = planned.chained();
+    let laid = planned.plan(pool.pages(), &chains);
+    in_rust.compose(engine, composite, &laid, canvas, composite.widest()).expect("compose");
+    let want = surface(size, wgpu::TextureFormat::Rgba8Unorm);
+    let mode = ResampleMode::Nearest;
+    let camera = Camera { inverse: camera, scale: 2.0, mode, size };
+    in_rust.show(engine, composite, camera, &want, rect, composite.widest()).expect("show");
+    assert!(engine.read_texture(&shown) == engine.read_texture(&want));
+    // SAFETY: as above.
+    let refused =
+        unsafe { gpu_engine_screen_show(screen, composite, engine, IDENTITY.as_ptr(), 1.0, 2, 64, 48, &shown, rect.as_ptr()) };
+    assert_eq!((refused, last_error()), (-1, "no sampling has id 2".to_string()));
+    // SAFETY: neither is used again.
+    unsafe {
+        gpu_engine_screen_free(screen);
         gpu_engine_plan_free(plan);
     }
 }

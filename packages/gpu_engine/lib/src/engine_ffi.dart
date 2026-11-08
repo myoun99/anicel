@@ -21,6 +21,8 @@ final class Composite extends Opaque {}
 
 final class Composited extends Opaque {}
 
+final class Screen extends Opaque {}
+
 final class Export extends Opaque {}
 
 final class Readout extends Opaque {}
@@ -485,6 +487,60 @@ external int compositeShow(
   Pointer<Engine> engine,
   Pointer<Pool> pool,
   Pointer<Planned> plan,
+  Pointer<Texture> target,
+  Pointer<Uint32> rect,
+);
+
+@Native<Pointer<Screen> Function(Uint32, Uint32, Double)>(
+  symbol: 'gpu_engine_screen_new',
+)
+external Pointer<Screen> screenNew(int width, int height, double floor);
+
+@Native<Void Function(Pointer<Screen>)>(symbol: 'gpu_engine_screen_free')
+external void screenFree(Pointer<Screen> screen);
+
+@Native<
+  Bool Function(
+    Pointer<Screen>,
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Pool>,
+    Pointer<Planned>,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_screen_compose')
+external bool screenCompose(
+  Pointer<Screen> screen,
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Pool> pool,
+  Pointer<Planned> plan,
+  Pointer<Int32> changed,
+);
+
+@Native<
+  IntPtr Function(
+    Pointer<Screen>,
+    Pointer<Composite>,
+    Pointer<Engine>,
+    Pointer<Double>,
+    Double,
+    Uint32,
+    Uint32,
+    Uint32,
+    Pointer<Texture>,
+    Pointer<Uint32>,
+  )
+>(symbol: 'gpu_engine_screen_show')
+external int screenShow(
+  Pointer<Screen> screen,
+  Pointer<Composite> composite,
+  Pointer<Engine> engine,
+  Pointer<Double> inverse,
+  double scale,
+  int sampling,
+  int columns,
+  int rows,
   Pointer<Texture> target,
   Pointer<Uint32> rect,
 );

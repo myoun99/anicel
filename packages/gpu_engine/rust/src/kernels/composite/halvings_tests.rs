@@ -4,7 +4,7 @@
 //! against stages made anew — never against a CPU copy of a formula
 //! (`kernels/mod.rs` has why).
 
-use super::{Camera, Halvings, Tiles, onto_stage, stage_at};
+use super::{Camera, Halvings, Kept, Tiles, onto_stage, stage_at};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, pixel_at, rig, surface, texel};
 use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
@@ -13,8 +13,8 @@ use crate::testing::{assert_pinned, read_buffer};
 
 /// The canvas: odd both ways, so every stage's last column and row lie
 /// half past the one above it.
-const CANVAS: (u32, u32) = (517, 301);
-const SCREEN: (u32, u32) = (64, 48);
+pub(crate) const CANVAS: (u32, u32) = (517, 301);
+pub(crate) const SCREEN: (u32, u32) = (64, 48);
 /// The screen's floor, 1 (`resampleRadiusFloor`), and one past the tent a
 /// half spans, 2 — what a stage reads on it is the screen's.
 const FLOORS: [f64; 2] = [1.0, 4.0];
@@ -22,7 +22,7 @@ const FLOORS: [f64; 2] = [1.0, 4.0];
 /// A composite of `pixel` over a canvas of `size`, nothing past it, as a
 /// composite ending at the canvas leaves it: its page, its tile set and its
 /// pixels as R1's harness takes a source.
-fn composite_of(
+pub(crate) fn composite_of(
     pixel: impl Fn(i32, i32) -> u32,
     (width, height): (u32, u32),
 ) -> (Vec<wgpu::Buffer>, TileSet, Picture) {
@@ -37,13 +37,13 @@ fn composite_of(
     (pool.upload(rig().engine), set, picture)
 }
 
-fn noise(seed: u32) -> impl Fn(i32, i32) -> u32 {
+pub(crate) fn noise(seed: u32) -> impl Fn(i32, i32) -> u32 {
     move |x, y| texel(seed, x, y)
 }
 
 /// The camera at `scale`, turned by (cos, sin), the canvas's origin at
 /// `pan` on the screen.
-fn camera(scale: f64, (cos, sin): (f64, f64), (x, y): (f64, f64)) -> Camera {
+pub(crate) fn camera(scale: f64, (cos, sin): (f64, f64), (x, y): (f64, f64)) -> Camera {
     let (a, b, d, e) = (cos / scale, sin / scale, -sin / scale, cos / scale);
     Camera {
         inverse: [a, b, -(a * x + b * y), d, e, -(d * x + e * y), 0.0, 0.0, 1.0],
@@ -144,15 +144,16 @@ fn a_stage_is_r1_blend_at_a_half_of_the_one_above() {
         let mut halvings = Halvings::new(CANVAS, floor).expect("halvings");
         drop(shown(&mut halvings, canvas, camera(0.01, (1.0, 0.0), (3.0, 2.0))));
         let by_r1 = stages_by_r1(&picture, CANVAS, floor, 3);
-        let sizes: Vec<(u32, u32)> = halvings.stages.iter().map(|stage| stage.size).collect();
+        let sizes: Vec<(u32, u32)> = halvings.stages.iter().map(|stage| stage.kept.size).collect();
         assert_eq!(sizes, [(259, 151), (130, 76), (65, 38)]);
         for (stage, (picture, _)) in halvings.stages.iter().zip(&by_r1) {
-            let bytes = read_buffer(rig().engine, &stage.page);
+            let bytes = kept_bytes(&stage.kept);
+            let tiles: Vec<(i32, i32)> = stage.kept.set.placed_under(None).map(|(place, _)| place).collect();
             for y in 0..picture.height as i32 {
                 for x in 0..picture.width as i32 {
                     let at = (y as u32 * picture.width + x as u32) as usize;
-                    let word = u32::from_le_bytes(pixel_at(&bytes, &stage.tiles, x, y));
-                    let size = stage.size;
+                    let word = u32::from_le_bytes(pixel_at(&bytes, &tiles, x, y));
+                    let size = stage.kept.size;
                     assert_eq!(word, picture.pixels[at], "{floor} {size:?} ({x}, {y})");
                 }
             }
@@ -256,9 +257,15 @@ fn a_line_holds_its_alpha_where_the_screen_takes_stage_1() {
     }
 }
 
-/// Every stage's page, read back.
+/// A kept picture's pages, read back one after another: its tiles in
+/// order.
+pub(crate) fn kept_bytes(kept: &Kept) -> Vec<u8> {
+    kept.pages.iter().flat_map(|page| read_buffer(rig().engine, page)).collect()
+}
+
+/// Every stage's pages, read back.
 fn stage_bytes(halvings: &Halvings) -> Vec<Vec<u8>> {
-    halvings.stages.iter().map(|stage| read_buffer(rig().engine, &stage.page)).collect()
+    halvings.stages.iter().map(|stage| kept_bytes(&stage.kept)).collect()
 }
 
 fn inside([left, top, right, bottom]: [i32; 4], x: i32, y: i32) -> bool {

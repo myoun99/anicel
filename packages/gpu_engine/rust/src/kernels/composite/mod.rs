@@ -74,6 +74,7 @@ pub(crate) mod abi;
 #[cfg(test)]
 mod chained_tests;
 pub(crate) mod halvings;
+pub(crate) mod screen;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -93,7 +94,7 @@ use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
     Encoded, ISQRT_WGSL, Own, PREMULTIPLY_WGSL, Pages, RESAMPLE_WGSL, ResampleMap, TILE_WGSL,
     ResampleModes, WIDE_WGSL, encode_on, le_bytes, page_table, pipeline_with, room, runs,
-    storage_format, tiles_a_pass, whole, words_buffer,
+    storage_format, tiles_a_page, tiles_a_pass, whole, words_buffer,
 };
 
 /// A tile's side in pixels (1a ①).
@@ -164,6 +165,39 @@ impl TileSet {
             .map(|&word| (word != NO_TILE).then(|| TileAt { page: (word >> 16) as u16, slot: word as u16 }))
             .collect();
         Self { x0, y0, columns, rows, tiles }
+    }
+
+    /// The tiles a box `size` across and down from `at` meets, row after
+    /// row, `per_page` to a page from page `first_page` on: a stamp's
+    /// (dab/stamp.rs) and a kept picture's (halvings.rs).
+    pub(crate) fn paged(at: (i32, i32), size: (u32, u32), first_page: u16, per_page: usize) -> Option<Self> {
+        let side = i64::from(TILE);
+        let (left, top) = (i64::from(at.0), i64::from(at.1));
+        let (width, height) = (i64::from(size.0), i64::from(size.1));
+        // In tiles, ends excluded; an empty box meets none.
+        let (x0, y0) = (left.div_euclid(side), top.div_euclid(side));
+        let x1 = if width == 0 { x0 } else { (left + width - 1).div_euclid(side) + 1 };
+        let y1 = if height == 0 { y0 } else { (top + height - 1).div_euclid(side) + 1 };
+        let (Ok(x0), Ok(y0), Ok(columns), Ok(rows)) = (
+            i32::try_from(x0),
+            i32::try_from(y0),
+            u32::try_from(x1 - x0),
+            u32::try_from(y1 - y0),
+        ) else {
+            return fail("a box lies past the canvas's grid");
+        };
+        let count = columns as usize * rows as usize;
+        let tiles: Option<Vec<Option<TileAt>>> = (0..count)
+            .map(|tile| {
+                let page = u16::try_from(tile / per_page).ok()?.checked_add(first_page)?;
+                let slot = u16::try_from(tile % per_page).ok()?;
+                Some(Some(TileAt { page, slot }))
+            })
+            .collect();
+        let Some(tiles) = tiles else {
+            return fail("a box's pages are past what a plan names");
+        };
+        Some(Self { x0, y0, columns, rows, tiles })
     }
 
     fn at(&self, column: i32, row: i32) -> Option<TileAt> {
@@ -514,9 +548,16 @@ impl Composite {
     /// Composites `plan` onto the pixels `rect` of `surface` — [left, top,
     /// right, bottom), the output's pixels being the surface's own — and
     /// leaves the rest of it as it was, the other panels of an atlas;
-    /// submits the work, the caller waits, and returns how many passes it
+    /// submits the work, waits for the GPU and returns how many passes it
     /// took. The screen is this with one row: the canvas's composite posed
     /// by the camera (gpu-canonical-store ④⑤).
+    ///
+    /// 🚨IT WAITS, as the fill, the grid and the wave do: Flutter shows a
+    /// surface without waiting on the engine's work — on Windows nothing
+    /// tells either side the other is done (gpu-engine-feasibility ⑤), on
+    /// Apple's Flutter waits on no GPU work of ours (the Apple bridge's ①),
+    /// on Android it waits on an image's fence from API 33 only — so a
+    /// surface handed over before the GPU is done shows what it held.
     pub(crate) fn show(
         &self,
         engine: &Engine,
@@ -543,7 +584,9 @@ impl Composite {
             .collect();
         let target = Target::Surface(surface.create_view(&Default::default()));
         let extent = rect.map(|edge| edge as i32);
-        self.walk(engine, plan, &tiles, extent, Some(token), &target, budget)
+        let passes = self.walk(engine, plan, &tiles, extent, Some(token), &target, budget)?;
+        engine.wait()?;
+        Some(passes)
     }
 
     /// The surface's binding: past the plan, the work buffer and the pages.
@@ -691,8 +734,7 @@ impl Composite {
         budget: Budget,
     ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Laid>)> {
         let side = i64::from(TILE);
-        // A slot is a u16.
-        let held = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
+        let held = tiles_a_page(engine)?;
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
         let mut gathered = Vec::with_capacity(laid.len());
         for mut each in laid {
@@ -756,8 +798,7 @@ impl Composite {
         plan: &Plan,
         budget: Budget,
     ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>, Vec<Step>)> {
-        // A slot is a u16.
-        let held = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
+        let held = tiles_a_page(engine)?;
         let (mut pages, mut sets) = (plan.pages.to_vec(), plan.sets.to_vec());
         let mut steps: Vec<Step> = Vec::with_capacity(plan.steps.len());
         // Where in `steps` each buffer open there was opened, and whether

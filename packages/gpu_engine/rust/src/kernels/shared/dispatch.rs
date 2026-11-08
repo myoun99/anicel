@@ -11,6 +11,7 @@ use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
 use crate::fail;
+use crate::kernels::composite::TILE_BYTES;
 
 /// A buffer a pass reads or puts, of `bytes` — nothing at first: wgpu
 /// zeroes a new buffer.
@@ -62,6 +63,14 @@ pub(crate) fn tiles_a_pass(engine: &Engine, per_tile: u64, fixed: u64) -> Option
         0 => fail(format!("one tile's {per_tile} bytes exceed a binding")),
         most => Some(most as usize),
     }
+}
+
+/// The most tiles a page takes on this device: as many as a pass takes and
+/// a slot names — a u16 (`TileAt`). ⛔ONE COUNT: a gathered row's page, a
+/// chained row's, a stamp's and the letters' each worked it out, and a kept
+/// picture's was to be the fifth (11-08).
+pub(crate) fn tiles_a_page(engine: &Engine) -> Option<usize> {
+    Some(tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX)))
 }
 
 /// Whether a binding holds each of `planes` (bytes) and a dispatch reaches

@@ -2,7 +2,9 @@
 //! plan call by call — each tile set, key chain, colour matrix, effect
 //! chain and its ops, blur map and step one call, so the plan's layout is
 //! written here alone and nowhere in Dart — and runs it over output tiles,
-//! or shows it onto a surface. The plan is checked where it runs
+//! shows it onto a surface, or composites it onto a canvas's screen
+//! (screen.rs) that the camera shows (screen-on-the-engine c6). The plan
+//! is checked where it runs
 //! ([`Composite`]'s walk), as one built in Rust is; a call checks only the
 //! indices it adds to — a chain's or a key chain's —, which no plan holds.
 //!
@@ -24,6 +26,8 @@ use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 
+use super::halvings::Camera;
+use super::screen::Screen;
 use super::{BufferChain, Composite, Composited, KeyChain, Plan, Step, TILE_BYTES, TileSet};
 
 /// A plan as the app builds it: what [`Plan`] borrows, owned. It names
@@ -721,7 +725,7 @@ pub unsafe extern "C" fn gpu_engine_composited_free(composited: *mut Composited)
 }
 
 /// Composites `plan` onto the pixels `rect` of `target` — [left, top,
-/// right, bottom) — leaving the rest of it as it was, and submits the work;
+/// right, bottom) — leaving the rest of it as it was, and waits for the GPU;
 /// returns how many passes it took, -1 on failure (see the last error).
 /// `target` is what the screen shows: a surface's texture
 /// (`gpu_engine_surface_texture`) or a window's next image
@@ -744,5 +748,87 @@ pub unsafe extern "C" fn gpu_engine_composite_show(
     let rect = unsafe { *rect.cast::<[u32; 4]>() };
     let chains = plan.chained();
     let shown = composite.show(engine, &plan.plan(pool.pages(), &chains), target, rect, composite.widest());
+    shown.map_or(-1, |passes| passes as isize)
+}
+
+/// The screen of a canvas of `width` × `height` pixels, shown on Blend's
+/// radius `floor` at least — nothing composed on it yet. Null on failure;
+/// see the last error.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_screen_new(width: u32, height: u32, floor: f64) -> *mut Screen {
+    Screen::new((width, height), floor).map_or(std::ptr::null_mut(), |screen| Box::into_raw(Box::new(screen)))
+}
+
+/// # Safety
+/// `screen` came from `gpu_engine_screen_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut Screen) {
+    if !screen.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(screen) });
+    }
+}
+
+/// Composites `plan` onto `screen`'s canvas over its tiles that meet the
+/// pixels `changed` — [left, top, right, bottom); the whole canvas the
+/// first time — and submits the work. False on failure; see the last error.
+///
+/// # Safety
+/// Every pointer is live, the pool and the executor were made on `engine`;
+/// `changed` holds four words.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_screen_compose(
+    screen: *mut Screen,
+    composite: *const Composite,
+    engine: *const Engine,
+    pool: *const Pool,
+    plan: *const Planned,
+    changed: *const i32,
+) -> bool {
+    // SAFETY: see the function's contract.
+    let (screen, composite, engine, pool, plan) = unsafe { (&mut *screen, &*composite, &*engine, &*pool, &*plan) };
+    // SAFETY: see the function's contract.
+    let changed = unsafe { *changed.cast::<[i32; 4]>() };
+    let chains = plan.chained();
+    let plan = plan.plan(pool.pages(), &chains);
+    screen.compose(engine, composite, &plan, changed, composite.widest()).is_some()
+}
+
+/// Shows `screen`'s canvas through the camera onto the pixels `rect` of
+/// `target` — [left, top, right, bottom) — leaving the rest of it as it
+/// was, and waits for the GPU; returns how many passes it took, -1 on
+/// failure (see the last error). The camera is `inverse` — a screen pixel
+/// to the canvas's, row-major with the homogeneous row last — over a
+/// screen of `columns` × `rows` pixels at display `scale`, device pixels a
+/// canvas pixel, sampled by `sampling` (0 blend, 1 pick, 3 nearest).
+/// `target` is a surface's texture or a window's next image, as
+/// `gpu_engine_composite_show`'s is.
+///
+/// # Safety
+/// Every pointer is live, made on `engine`; `inverse` holds nine doubles
+/// and `rect` four words.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_screen_show(
+    screen: *mut Screen,
+    composite: *const Composite,
+    engine: *const Engine,
+    inverse: *const f64,
+    scale: f64,
+    sampling_id: u32,
+    columns: u32,
+    rows: u32,
+    target: *const wgpu::Texture,
+    rect: *const u32,
+) -> isize {
+    // SAFETY: see the function's contract.
+    let (screen, composite, engine, target) = unsafe { (&mut *screen, &*composite, &*engine, &*target) };
+    // SAFETY: see the function's contract.
+    let (inverse, rect) = unsafe { (*inverse.cast::<[f64; 9]>(), *rect.cast::<[u32; 4]>()) };
+    let Some(mode) = sampling(sampling_id) else {
+        return -1;
+    };
+    let camera = Camera { inverse, scale, mode, size: (columns, rows) };
+    let shown = screen.show(engine, composite, camera, target, rect, composite.widest());
     shown.map_or(-1, |passes| passes as isize)
 }

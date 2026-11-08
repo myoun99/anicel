@@ -11,7 +11,7 @@ use crate::device::gpu_engine_close;
 use crate::kernels::cel_pixel::abi::{gpu_engine_ink_free, gpu_engine_ink_new};
 use crate::kernels::composite::abi::{
     gpu_engine_composite_free, gpu_engine_composite_new, gpu_engine_composited_free,
-    gpu_engine_plan_free, gpu_engine_plan_new,
+    gpu_engine_plan_free, gpu_engine_plan_new, gpu_engine_screen_free, gpu_engine_screen_new,
 };
 use crate::kernels::composite::{Composited, TILE_TEXELS};
 use crate::kernels::export::abi::{
@@ -53,7 +53,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 13] {
+fn frees() -> [(&'static str, fn(&'static str)); 14] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -66,6 +66,9 @@ fn frees() -> [(&'static str, fn(&'static str)); 13] {
         }),
         ("gpu_engine_composited_free", |name| {
             gives_back(name, Box::into_raw(Box::new(composited())), gpu_engine_composited_free)
+        }),
+        ("gpu_engine_screen_free", |name| {
+            gives_back(name, gpu_engine_screen_new(4, 4, 1.0), gpu_engine_screen_free)
         }),
         ("gpu_engine_export_free", |name| gives_back(name, gpu_engine_export_new(), gpu_engine_export_free)),
         ("gpu_engine_readout_free", |name| {

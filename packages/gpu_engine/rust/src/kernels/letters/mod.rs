@@ -35,11 +35,9 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
 use crate::kernels::chain::tiles_of;
-use crate::kernels::composite::{
-    Composite, NO_EDGE, Plan, Step, TILE, TILE_BYTES, TILE_TEXELS, TileAt, TileSet,
-};
+use crate::kernels::composite::{Composite, NO_EDGE, Plan, Step, TILE, TILE_TEXELS, TileAt, TileSet};
 use crate::kernels::effects::blur::TileRect;
-use crate::kernels::shared::ResampleMap;
+use crate::kernels::shared::{ResampleMap, tiles_a_page};
 
 /// One pass of the letters, as `CanvasLetterPasses` paints them: the box
 /// behind, the outlines, the fills — a run's lines with it.
@@ -203,11 +201,7 @@ fn paged(
     rect: TileRect,
     tiles: &[(i32, i32)],
 ) -> Option<(Vec<wgpu::Buffer>, Vec<TileSet>)> {
-    let binding = u64::from(engine.device.limits().max_storage_buffer_binding_size);
-    let per_page = (binding / TILE_BYTES).min(u64::from(u16::MAX) + 1) as usize;
-    if per_page == 0 {
-        return fail(format!("a binding of {binding} bytes holds no tile"));
-    }
+    let per_page = tiles_a_page(engine)?;
     let side = TILE as i32;
     let mut pages: Vec<Vec<u32>> = Vec::new();
     let mut sets = Vec::with_capacity(layers.len());

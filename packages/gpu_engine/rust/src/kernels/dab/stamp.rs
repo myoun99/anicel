@@ -31,10 +31,10 @@ pub(crate) mod tests;
 
 use crate::device::Engine;
 use crate::fail;
-use crate::kernels::composite::{TILE, TILE_BYTES, TileAt, TileSet};
+use crate::kernels::composite::{TILE, TILE_BYTES, TileSet};
 use crate::kernels::mask::{BYTE_WGSL, Mask};
 use crate::kernels::shared::{
-    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, WIDE_WGSL, encode, pipeline, plane, tiles_a_pass, whole,
+    Encoded, PREMULTIPLY_WGSL, TILE_WGSL, WIDE_WGSL, encode, pipeline, plane, tiles_a_page, whole,
     words_buffer,
 };
 use crate::kernels::warp::Boxed;
@@ -142,8 +142,8 @@ impl Stamps {
         source: &Source,
         first_page: u16,
     ) -> Option<Stamped> {
-        // A pass a page, a tile a workgroup deep — and a slot is a u16.
-        let most = tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX));
+        // A pass a page, a tile a workgroup deep.
+        let most = tiles_a_page(engine)?;
         self.stamp_by(engine, source, first_page, most)
     }
 
@@ -157,7 +157,7 @@ impl Stamps {
         per_page: usize,
     ) -> Option<Stamped> {
         let read = self.read(engine, source)?;
-        let set = tiles_of(read.at, read.size, first_page, per_page)?;
+        let set = TileSet::paged(read.at, read.size, first_page, per_page)?;
         let mut pages = Vec::new();
         let mut first = 0;
         while first < set.tiles.len() {
@@ -278,47 +278,4 @@ fn graded(gradient: &Gradient, mask: &Mask) -> Option<([u32; 5], Vec<u32>)> {
         })
         .collect();
     Some((ends, stops))
-}
-
-/// The tiles a box `size` across and down from `at` meets, row after row,
-/// `per_page` to a page from page `first_page` on.
-fn tiles_of(
-    at: (i32, i32),
-    size: (u32, u32),
-    first_page: u16,
-    per_page: usize,
-) -> Option<TileSet> {
-    let side = i64::from(TILE);
-    let (left, top) = (i64::from(at.0), i64::from(at.1));
-    let (width, height) = (i64::from(size.0), i64::from(size.1));
-    // In tiles, ends excluded; an empty box meets none.
-    let (x0, y0) = (left.div_euclid(side), top.div_euclid(side));
-    let x1 = if width == 0 { x0 } else { (left + width - 1).div_euclid(side) + 1 };
-    let y1 = if height == 0 { y0 } else { (top + height - 1).div_euclid(side) + 1 };
-    let (Ok(x0), Ok(y0), Ok(columns), Ok(rows)) = (
-        i32::try_from(x0),
-        i32::try_from(y0),
-        u32::try_from(x1 - x0),
-        u32::try_from(y1 - y0),
-    ) else {
-        return fail("a stamp's box lies past the canvas's grid");
-    };
-    let count = columns as usize * rows as usize;
-    let tiles: Option<Vec<Option<TileAt>>> = (0..count)
-        .map(|tile| {
-            let page = u16::try_from(tile / per_page).ok()?.checked_add(first_page)?;
-            let slot = u16::try_from(tile % per_page).ok()?;
-            Some(Some(TileAt { page, slot }))
-        })
-        .collect();
-    let Some(tiles) = tiles else {
-        return fail("a stamp's pages are past what a plan names");
-    };
-    Some(TileSet {
-        x0,
-        y0,
-        columns,
-        rows,
-        tiles,
-    })
 }
