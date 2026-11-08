@@ -59,12 +59,12 @@ void main() {
     const otherId = LayerId('other');
     const cameraId = LayerId('cam');
     final glowJson = {
-      'spec': 1,
+      'spec': 2,
       'id': 'com.example.glow',
       'name': 'Glow',
       'vendor': 'Example',
       'version': '1',
-      'can': ['cpu'],
+      'can': ['gpu'],
       'params': [
         {
           'id': 'amount',
@@ -129,7 +129,7 @@ void main() {
       room = Directory.systemTemp.createTempSync('anicel_kept_lanes_');
       plugins = InstalledFxPlugins(
         service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-        describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
+        check: (_) => null,
       );
       session = sessionOf();
     });
@@ -236,14 +236,16 @@ void main() {
       await readAgainFor('the device\'s plugins', celId, () async {
         await plugins.install(
           ZipEncoder().encodeBytes(
-            Archive()..add(
+            Archive()
+              ..add(ArchiveFile.bytes('plugin.wgsl', const <int>[]))
+              ..add(
               ArchiveFile.bytes(
-                'plugin.wasm',
+                'plugin.json',
                 utf8.encode(jsonEncode(glowJson)),
               ),
             ),
           ),
-          confirm: (_, {required native, required replacing}) async => true,
+          confirm: (_, {required replacing}) async => true,
         );
         return (layer: layer, session: session, open: open);
       });

@@ -298,13 +298,14 @@ final class _Stage {
     if (pixels == null || _input == null) {
       return;
     }
-    final made = output = _ranThrough(run, pixels);
+    final made = output = _ranThrough(run, straightRgbaFor(pixels));
     run.told?.call(failed: made == null);
   }
 
-  /// [premultiplied] — this step's input — through [run]'s plugin; null
-  /// where the plugin fails.
-  Uint8List? _ranThrough(FxPluginRun run, Uint8List premultiplied) {
+  /// [straight] — this step's input — through [run]'s plugin, which reads
+  /// and draws straight ([FxPluginPicture]), premultiplied again as the
+  /// plan takes it; null where the plugin fails.
+  Uint8List? _ranThrough(FxPluginRun run, Uint8List straight) {
     final canvas = CanvasSize(
       width: (paper.width / scale).round(),
       height: (paper.height / scale).round(),
@@ -323,7 +324,7 @@ final class _Stage {
     FxPluginPicture handed(Uint8List pixels) =>
         (pixels: pixels, width: width, height: height, left: left, top: top);
     final output = run.runner.render(
-      input: handed(premultiplied),
+      input: handed(straight),
       values: values,
       layers: [
         for (final row in rows)
@@ -334,14 +335,13 @@ final class _Stage {
     if (output == null) {
       return null;
     }
-    zeroFullyClearPixels(output);
+    premultiplyRgbaInPlace(output);
     return output;
   }
 
   /// [row]'s own picture on this step's grid — its first pixel at ([left],
   /// [top]) from the paper's, [scale] of them a canvas pixel, each read
-  /// from the canvas pixel it lies in — premultiplied; clear where no cel
-  /// is.
+  /// from the canvas pixel it lies in — straight; clear where no cel is.
   Uint8List _rowOnTheGrid(
     BitmapSurface? row, {
     required int left,
@@ -369,7 +369,6 @@ final class _Stage {
         out.setRange(to, to + 4, straight, at);
       }
     }
-    premultiplyRgbaInPlace(out);
     return out;
   }
 

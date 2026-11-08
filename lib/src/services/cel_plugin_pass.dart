@@ -121,9 +121,7 @@ BitmapSurface? _rendered(
   FxPluginPicture pictureOf(BitmapSurface? picture) => (
     pixels: picture == null
         ? Uint8List(input.width * input.height * 4)
-        : _premultiplied(
-            engineSurfaceRegionPixels(celSurfaceWithTextsLaid(picture), input),
-          ),
+        : engineSurfaceRegionPixels(celSurfaceWithTextsLaid(picture), input),
     width: input.width,
     height: input.height,
     left: input.left,
@@ -138,9 +136,8 @@ BitmapSurface? _rendered(
   if (output == null) {
     return null;
   }
-  final straight = straightRgbaFor(output);
-  zeroFullyClearPixels(straight);
-  return _surfaceOf(surface, straight, input);
+  zeroFullyClearPixels(output);
+  return _surfaceOf(surface, output, input);
 }
 
 /// The paper, and every tile of [surface] that holds ink — what a plugin is
@@ -222,11 +219,6 @@ BitmapSurface _surfaceOf(
     ));
   }
   return surface.putMaterializedTiles(tiles);
-}
-
-Uint8List _premultiplied(Uint8List straight) {
-  premultiplyRgbaInPlace(straight);
-  return straight;
 }
 
 /// The picture a plugin made of each surface, by the sample it was made

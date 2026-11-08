@@ -24,8 +24,14 @@ final class FxPluginDescription {
     required this.parameters,
   });
 
-  /// The spec version this app's host speaks (`ANICEL_FX_SPEC_VERSION`).
-  static const int specVersion = 1;
+  /// The spec version this app's host speaks: 2, a plugin a GPU kernel in
+  /// WGSL (an-endless-plugin-stalls-the-app-Q4). ↩️1 was a WebAssembly
+  /// module or a native build, which no host here reads any more.
+  static const int specVersion = 2;
+
+  /// Past what a number or an angle the plugin reads may be: each is Q.16
+  /// in an i32 (design ③), so below 2^15 in magnitude.
+  static const double _fixedReach = 32768;
 
   /// Reverse-DNS, the plugin's for every version — what a project names it
   /// by.
@@ -34,8 +40,8 @@ final class FxPluginDescription {
   final String vendor;
   final String version;
 
-  /// What the plugin can do (spec 1: `cpu`) — the list a later host offers
-  /// more by (a GPU route), so an older plugin still runs.
+  /// What the plugin can do (spec 2: `gpu`) — the list a later host offers
+  /// more by, so an older plugin still runs.
   final List<String> can;
 
   /// Its parameters, in its order — the order of its values in a frame.
@@ -63,7 +69,7 @@ final class FxPluginDescription {
       'params': final List<dynamic> params,
     } when _isName(id)) {
       final canDo = can.whereType<String>().toList();
-      if (canDo.length != can.length || !canDo.contains('cpu')) {
+      if (canDo.length != can.length || !canDo.contains('gpu')) {
         return null;
       }
       final parameters = <EffectParameterSpec>[];
@@ -143,7 +149,11 @@ final class FxPluginDescription {
       'default': final num initial,
       'min': final num low,
       'max': final num high,
-    }) when low <= initial && initial <= high =>
+    })
+        when low <= initial &&
+            initial <= high &&
+            -_fixedReach < low &&
+            high < _fixedReach =>
       EffectParameterSpec(
         id: id,
         label: label,

@@ -232,7 +232,7 @@ class TimelineBarMenus {
     return [
       const PanelFlyoutDivider(),
       PanelFlyoutHeader(AppText.strings.fxPluginsOfDevice),
-      for (final (:description, wasm: _, native: _) in installed.plugins)
+      for (final (:description, source: _) in installed.plugins)
         PanelFlyoutItem(
           keyValue: 'add-effect-plugin-${description.id}',
           label: addEffectLabel(description.name, AppText.language),

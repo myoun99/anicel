@@ -22,20 +22,21 @@ void main() {
       'one of them leaves it to the others', (tester) async {
     await tester.runAsync(() async {
       final device = InstalledFxPlugins(
-        describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
+        check: (_) => null,
       );
       final archive = Archive()
+        ..add(ArchiveFile.bytes('plugin.wgsl', const <int>[]))
         ..add(
           ArchiveFile.bytes(
-            'plugin.wasm',
+            'plugin.json',
             utf8.encode(
               jsonEncode({
-                'spec': 1,
+                'spec': 2,
                 'id': 'com.example.glow',
                 'name': 'Glow',
                 'vendor': 'Example',
                 'version': '1',
-                'can': ['cpu'],
+                'can': ['gpu'],
                 'params': [],
               }),
             ),
@@ -43,7 +44,7 @@ void main() {
         );
       await device.install(
         ZipEncoder().encodeBytes(archive),
-        confirm: (_, {required native, required replacing}) async => true,
+        confirm: (_, {required replacing}) async => true,
       );
       device.dispose();
     });

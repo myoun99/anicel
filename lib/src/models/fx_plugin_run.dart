@@ -4,9 +4,15 @@ import '../core/frozen_collections.dart';
 import 'bitmap_surface.dart';
 import 'layer_id.dart';
 
-/// A picture a plugin is handed or gives back: premultiplied RGBA8, rows
+/// A picture a plugin is handed or gives back: straight RGBA8, rows
 /// [width] × 4 bytes apart, its first pixel at ([left], [top]) on the
 /// canvas.
+///
+/// Straight, as the engine's pool holds a pixel and a GPU plugin reads one
+/// (fx spec 2, an-endless-plugin-stalls-the-app 19:27): ↩️spec 1's host
+/// took them premultiplied, so a cel's straight pixels were premultiplied
+/// on the way in and undone on the way out — a rounding each way, which at
+/// a low alpha would have told the seam's picture from the engine chain's.
 typedef FxPluginPicture = ({
   Uint8List pixels,
   int width,
@@ -25,9 +31,9 @@ typedef FxPluginMoment = ({
   double scale,
 });
 
-/// What a plugin's effect is run through (sdk/fx/anicel-fx): how far it
-/// reaches, and the picture it makes — the engine's host for a plugin this
-/// device has opened (`QaFxPlugin`), whatever its build.
+/// What a plugin's effect is run through (fx spec 2): how far it reaches,
+/// and the picture it makes — the engine's device for a plugin this device
+/// has opened (`GpuFxPlugin`).
 abstract interface class FxPluginRunner {
   /// How far past its input the effect reaches for [values] (four doubles
   /// a parameter, anicel_fx_value) at [moment], in output pixels — or null

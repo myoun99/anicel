@@ -45,6 +45,27 @@ final class PremultipliedRows implements PictureBytes {
       use(_premultiplied);
 }
 
+/// Straight rgba rows held in a list, as the door reads them: a floating
+/// text's picture, and what a GPU fx plugin drew.
+final class StraightRgbaRows implements PictureBytes {
+  StraightRgbaRows(this._straight, this.width, this.height);
+
+  final Uint8List _straight;
+
+  @override
+  final int width;
+
+  @override
+  final int height;
+
+  @override
+  T readStraight<T>(T Function(Uint8List straight) use) => use(_straight);
+
+  @override
+  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
+      use(premultipliedRgbaCopy(_straight));
+}
+
 /// 🚨★★★THE ONE DOOR FROM BYTES TO A PICTURE — synchronous on every engine
 /// (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
 ///

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -12,9 +11,9 @@ import 'package:anicel/src/services/cel_source_effect_pass.dart'
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
-import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fx_plugin_file.dart';
 import 'project_scratch_folder.dart';
 
 /// A run of [runner] at [frame], reading [rows].
@@ -31,12 +30,12 @@ FxPluginRun fxPluginRunOf(
 /// The stand-in plugin as its file describes it: one with no parameters.
 final FxPluginDescription shiftingFxPluginDescription =
     FxPluginDescription.fromJson({
-      'spec': 1,
+      'spec': 2,
       'id': 'test.shift',
       'name': 'Shift',
       'vendor': 'Test',
       'version': '1',
-      'can': ['cpu'],
+      'can': ['gpu'],
       'params': <Object?>[],
     })!;
 
@@ -73,23 +72,16 @@ Future<InstalledFxPlugins> installedShiftingFxPlugin(
   deleteAfterSessionEnds(room);
   final plugins = InstalledFxPlugins(
     service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-    // The stand-in's module is its description's text.
-    describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
+    // The stand-in is no WGSL a device would open: no device is asked.
+    check: (_) => null,
     open: (_, _) => opens ? runner ?? ShiftingFxPlugin(by: by) : null,
   );
   addTearDown(plugins.dispose);
   await tester.runAsync(() async {
     await plugins.load();
     await plugins.install(
-      ZipEncoder().encodeBytes(
-        Archive()..add(
-          ArchiveFile.bytes(
-            'plugin.wasm',
-            utf8.encode(jsonEncode(description.toJson())),
-          ),
-        ),
-      ),
-      confirm: (_, {required native, required replacing}) async => true,
+      fxPluginFileOf(description),
+      confirm: (_, {required replacing}) async => true,
     );
   });
   return plugins;

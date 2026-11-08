@@ -137,7 +137,9 @@ class GpuPreferenceRow extends StatelessWidget {
       );
 
   void _pick(AppGpuPreference preference) =>
-      appSettings.setGpuSettings(AppGpuSettings(preference: preference));
+      appSettings.setGpuSettings(
+        AppGpu.settings.value.copyWith(preference: preference),
+      );
 
   /// What the row's tooltip says here: what the choice is where it can be
   /// made, and why it cannot where it cannot.

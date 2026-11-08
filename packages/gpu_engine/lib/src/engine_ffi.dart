@@ -139,6 +139,9 @@ final class DabSpec extends Struct {
   external int pad;
 }
 
+/// A GPU fx plugin the device compiled (rust/src/kernels/plugin/abi.rs).
+final class Plugin extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -1274,6 +1277,68 @@ external bool letteredRead(
 
 @Native<Void Function(Pointer<Lettered>)>(symbol: 'gpu_engine_lettered_free')
 external void letteredFree(Pointer<Lettered> lettered);
+
+@Native<Pointer<Plugin> Function(Pointer<Engine>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_plugin_open',
+)
+external Pointer<Plugin> pluginOpen(
+  Pointer<Engine> engine,
+  Pointer<Uint8> source,
+  int length,
+);
+
+@Native<Void Function(Pointer<Plugin>)>(symbol: 'gpu_engine_plugin_free')
+external void pluginFree(Pointer<Plugin> plugin);
+
+@Native<
+  Int64 Function(
+    Pointer<Plugin>,
+    Pointer<Double>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Double>,
+    Uint64,
+    Uint64,
+  )
+>(symbol: 'gpu_engine_plugin_reach')
+external int pluginReach(
+  Pointer<Plugin> plugin,
+  Pointer<Double> values,
+  Pointer<Uint32> kinds,
+  int count,
+  Pointer<Double> moment,
+  int limit,
+  int pixels,
+);
+
+@Native<
+  Int32 Function(
+    Pointer<Plugin>,
+    Pointer<Engine>,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Size,
+    Pointer<Double>,
+    Pointer<Uint32>,
+    Size,
+    Pointer<Double>,
+    Uint64,
+    Pointer<Uint32>,
+  )
+>(symbol: 'gpu_engine_plugin_render')
+external int pluginRender(
+  Pointer<Plugin> plugin,
+  Pointer<Engine> engine,
+  Pointer<Uint32> pixels,
+  Pointer<Int32> rects,
+  int layers,
+  Pointer<Double> values,
+  Pointer<Uint32> kinds,
+  int count,
+  Pointer<Double> moment,
+  int limit,
+  Pointer<Uint32> output,
+);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);

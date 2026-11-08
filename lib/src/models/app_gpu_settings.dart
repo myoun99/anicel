@@ -34,26 +34,55 @@ enum AppGpuPreference {
 /// whole-settings file (`settingsBoundToThisMachine`).
 @immutable
 class AppGpuSettings {
-  const AppGpuSettings({this.preference = AppGpuPreference.auto});
+  const AppGpuSettings({
+    this.preference = AppGpuPreference.auto,
+    this.pluginLimit = defaultPluginLimit,
+  });
 
   final AppGpuPreference preference;
 
-  Map<String, dynamic> toJson() => {'preference': preference.name};
+  /// What one run of a GPU fx plugin may spend on this machine — a count
+  /// of its instructions, the same on every device, each pixel its share
+  /// (an-endless-plugin-stalls-the-app-Q1 · Q5); a run that spends it is
+  /// cut and shown as failed. 🗣️-Q3 (유저 2026-11-08): 「설정에 두고 유저가
+  /// 바꾼다(기본값 100억)」. Dart's alone: the runner reads [preference].
+  final int pluginLimit;
+
+  /// -Q3's 100억.
+  static const int defaultPluginLimit = 10000000000;
+
+  AppGpuSettings copyWith({AppGpuPreference? preference, int? pluginLimit}) =>
+      AppGpuSettings(
+        preference: preference ?? this.preference,
+        pluginLimit: pluginLimit ?? this.pluginLimit,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'preference': preference.name,
+    'pluginLimit': pluginLimit,
+  };
 
   /// A name this build does not know reads as [AppGpuPreference.auto] — as
-  /// the runner reads it.
+  /// the runner reads it — and a limit that is no count above 0 as
+  /// [defaultPluginLimit].
   static AppGpuSettings fromJson(Map<String, dynamic> json) => AppGpuSettings(
     preference:
         AppGpuPreference.values.asNameMap()[json['preference']] ??
         AppGpuPreference.auto,
+    pluginLimit: switch (json['pluginLimit']) {
+      final int limit when limit > 0 => limit,
+      _ => defaultPluginLimit,
+    },
   );
 
   @override
   bool operator ==(Object other) =>
-      other is AppGpuSettings && other.preference == preference;
+      other is AppGpuSettings &&
+      other.preference == preference &&
+      other.pluginLimit == pluginLimit;
 
   @override
-  int get hashCode => preference.hashCode;
+  int get hashCode => Object.hash(preference, pluginLimit);
 }
 
 /// The app-wide GPU choice, on the same idiom as `AppMemory.settings`.

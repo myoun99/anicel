@@ -5,18 +5,15 @@ import 'package:flutter/foundation.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/fx_plugin_run.dart';
 import '../../models/project.dart';
-import '../../native/qa_fx_plugin_host.dart';
+import '../../native/gpu_fx_plugin.dart';
 import '../project_lookup.dart' show projectLayersAnywhere;
 import 'fx_plugin_bundle.dart';
 import 'fx_plugin_library_service.dart';
 import 'fx_plugin_outcomes.dart';
 
-/// What a plugin's module said when it was asked who it is: its
-/// description's text, or why the engine would not open it.
-typedef FxPluginDescribed = ({String? text, String? refusal});
-
-/// Asks a plugin's module who it is.
-typedef FxPluginDescriber = FxPluginDescribed Function(Uint8List wasm);
+/// Opens a plugin's file on the device to see that it would run: null
+/// where it opens, the engine's words of why not where it does not.
+typedef FxPluginChecker = String? Function(FxPluginBundle bundle);
 
 /// Opens [plugin], as [library] keeps it, to run — null where it will not
 /// open.
@@ -27,13 +24,10 @@ typedef FxPluginOpener =
     );
 
 /// Asks the person whether to install the plugin that says [description]
-/// of itself — [native]: its file has a native build for this device,
-/// which runs outside the sandbox; [replacing]: the version of it this
-/// device has now.
+/// of itself — [replacing]: the version of it this device has now.
 typedef FxPluginConfirm =
     Future<bool> Function(
       FxPluginDescription description, {
-      required bool native,
       required FxPluginDescription? replacing,
     });
 
@@ -42,13 +36,12 @@ sealed class FxPluginInstall {
   const FxPluginInstall();
 }
 
-/// No plugin's file, or one whose module describes itself as the spec
-/// does not.
+/// No plugin's file, or one whose description is not a whole one.
 final class FxPluginUnreadable extends FxPluginInstall {
   const FxPluginUnreadable();
 }
 
-/// The engine would not open its module — [why], in the engine's words.
+/// The engine would not open its WGSL — [why], in the engine's words.
 final class FxPluginUnopened extends FxPluginInstall {
   const FxPluginUnopened(this.why);
   final String why;
@@ -69,21 +62,21 @@ final class FxPluginInstalled extends FxPluginInstall {
 /// THE FX PLUGINS INSTALLED ON THIS DEVICE (I-132), as the app reads them:
 /// the list, and installing one more from its file.
 ///
-/// The files and their index are [FxPluginLibraryService]'s. A plugin is
-/// asked who it is by its MODULE, in the sandbox, and shown to the person
-/// before anything is kept; its native build is opened only to run it, once
-/// they have said yes (sdk/fx/anicel-fx, The file).
+/// The files and their index are [FxPluginLibraryService]'s. A plugin says
+/// who it is in its description, and is opened on the device — checked,
+/// its loops counted, compiled — before it is shown to the person; nothing
+/// is kept before they say yes (fx spec 2).
 class InstalledFxPlugins extends ChangeNotifier {
   InstalledFxPlugins({
     FxPluginLibraryService? service,
-    FxPluginDescriber? describe,
+    FxPluginChecker? check,
     FxPluginOpener? open,
   }) : _service = service ?? FxPluginLibraryService(),
-       _describe = describe ?? describeFxPluginModule,
+       _check = check ?? checkFxPluginOnTheDevice,
        _open = open ?? openInstalledFxPlugin;
 
   final FxPluginLibraryService _service;
-  final FxPluginDescriber _describe;
+  final FxPluginChecker _check;
   final FxPluginOpener _open;
 
   /// The plugins opened to run, by id — one that would not open kept as
@@ -178,25 +171,18 @@ class InstalledFxPlugins extends ChangeNotifier {
     if (bundle == null) {
       return const FxPluginUnreadable();
     }
-    final (:text, :refusal) = _describe(bundle.wasm);
-    final description = text == null ? null : FxPluginDescription.read(text);
-    if (description == null) {
-      return refusal == null
-          ? const FxPluginUnreadable()
-          : FxPluginUnopened(refusal);
+    if (_check(bundle) case final why?) {
+      return FxPluginUnopened(why);
     }
+    final description = bundle.description;
     final previous = _plugins
         .where((plugin) => plugin.description.id == description.id)
         .firstOrNull;
-    final yes = await confirm(
-      description,
-      native: bundle.native != null,
-      replacing: previous?.description,
-    );
+    final yes = await confirm(description, replacing: previous?.description);
     if (!yes || _disposed) {
       return const FxPluginDeclined();
     }
-    final kept = await _service.keep(bundle, description);
+    final kept = await _service.keep(bundle);
     _plugins = List.unmodifiable([
       for (final plugin in _plugins)
         if (identical(plugin, previous)) kept else plugin,
@@ -264,50 +250,37 @@ final class _Unopened implements FxPluginRunner {
   void close() {}
 }
 
-/// [plugin] opened through the engine's host: its native build where this
-/// device has one (🗣️I-132-Q5 b), its module everywhere else — null where
-/// there is no host, or it will not open.
+/// [plugin] opened on the app's GPU engine — null where its WGSL is gone,
+/// unreadable, or will not open.
 ///
-/// ⚠️The module is read here, at once: what asks for a runner is a frame
+/// ⚠️The WGSL is read here, at once: what asks for a runner is a frame
 /// being drawn, and it is read the first time only
 /// ([InstalledFxPlugins.runnerFor]).
 FxPluginRunner? openInstalledFxPlugin(
   InstalledFxPlugin plugin,
   FxPluginLibraryService library,
 ) {
-  final host = QaFxPluginHost.instance;
-  if (host == null) {
-    return null;
-  }
-  if (plugin.native case final native?) {
-    if (library.pathOf(native) case final path?) {
-      return host.openNative(path).plugin;
-    }
-  }
-  final path = library.pathOf(plugin.wasm);
+  final path = library.pathOf(plugin.source);
   if (path == null) {
     return null;
   }
   try {
-    return host.openWasm(File(path).readAsBytesSync()).plugin;
+    final source = File(path).readAsStringSync();
+    return GpuFxPlugin.open(source, plugin.description).plugin;
   } on FileSystemException {
+    return null;
+  } on FormatException {
     return null;
   }
 }
 
-/// [wasm] asked who it is through the engine's host, in its sandbox.
-FxPluginDescribed describeFxPluginModule(Uint8List wasm) {
-  final host = QaFxPluginHost.instance;
-  if (host == null) {
-    return (text: null, refusal: 'the engine has no plugin host');
-  }
-  final (:plugin, :error) = host.openWasm(wasm);
-  if (plugin == null) {
-    return (text: null, refusal: error);
-  }
-  try {
-    return (text: plugin.describe(), refusal: null);
-  } finally {
-    plugin.close();
-  }
+/// [bundle]'s WGSL opened on the app's GPU engine and let go of: what an
+/// install asks before the person is shown the plugin.
+String? checkFxPluginOnTheDevice(FxPluginBundle bundle) {
+  final (:plugin, :refusal) = GpuFxPlugin.open(
+    bundle.source,
+    bundle.description,
+  );
+  plugin?.close();
+  return refusal;
 }

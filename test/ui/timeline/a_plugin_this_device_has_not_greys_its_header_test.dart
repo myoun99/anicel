@@ -36,12 +36,12 @@ void main() {
   tearDown(() => deleteTempQuietly(room));
 
   final glowJson = {
-    'spec': 1,
+    'spec': 2,
     'id': 'com.example.glow',
     'name': 'Glow',
     'vendor': 'Example',
     'version': '1',
-    'can': ['cpu'],
+    'can': ['gpu'],
     'params': [
       {
         'id': 'amount',
@@ -106,7 +106,7 @@ void main() {
       'heard by the project until it is closed', () async {
     final plugins = InstalledFxPlugins(
       service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-      describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
+      check: (_) => null,
     );
     addTearDown(plugins.dispose);
     final session = EditorSessionManager(
@@ -157,11 +157,13 @@ void main() {
     expect(greyed(), isTrue);
     await plugins.install(
       ZipEncoder().encodeBytes(
-        Archive()..add(
-          ArchiveFile.bytes('plugin.wasm', utf8.encode(jsonEncode(glowJson))),
+        Archive()
+          ..add(ArchiveFile.bytes('plugin.wgsl', const <int>[]))
+          ..add(
+          ArchiveFile.bytes('plugin.json', utf8.encode(jsonEncode(glowJson))),
         ),
       ),
-      confirm: (_, {required native, required replacing}) async => true,
+      confirm: (_, {required replacing}) async => true,
     );
     expect(heard, 1);
     expect(greyed(), isFalse);

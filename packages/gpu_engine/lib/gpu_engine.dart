@@ -2935,3 +2935,174 @@ class SharedTexture {
   /// plugin when Flutter stops drawing it (linux/gpu_engine_plugin.cc).
   void unregister() => shim.textureUnregister(id);
 }
+
+/// How a plugin's value — four doubles a parameter — becomes the words it
+/// reads; its index is the engine's code (rust/src/kernels/plugin/abi.rs:
+/// WHOLE · FIXED · CHANNELS).
+enum GpuPluginValue {
+  /// A whole number: a menu's choice, a checkbox's 0 or 1, a layer's slot
+  /// or -1.
+  whole,
+
+  /// Q.16: a number, an angle, a length in pixels, a point's canvas pixels.
+  fixed,
+
+  /// 16 bits a channel: a colour's four, each on 0..=1.
+  channels,
+}
+
+/// What a plugin is asked with: its values, four doubles a parameter each
+/// read as its kind says, and the moment — the frame's number, its time in
+/// seconds, the frames a second and the output pixels a canvas pixel.
+typedef GpuPluginAsked = ({
+  Float64List values,
+  List<GpuPluginValue> kinds,
+  int frame,
+  double time,
+  double rate,
+  double scale,
+});
+
+/// A picture a plugin reads: straight RGBA8 words as the engine's pool
+/// holds them, row by row, its first pixel at ([left], [top]) on the
+/// canvas.
+typedef GpuPluginPicture = ({
+  Uint32List pixels,
+  int left,
+  int top,
+  int width,
+  int height,
+});
+
+/// A GPU fx plugin the device compiled (rust/src/kernels/plugin/abi.rs):
+/// asked its reach on the CPU, run over a picture on the device. Each run
+/// is cut once it spends its share of a limit — a count of the plugin's
+/// instructions, the same on every device.
+class GpuPlugin {
+  GpuPlugin._(this._engine, this._plugin);
+
+  /// [source], the plugin's WGSL, checked, counted and compiled on
+  /// [engine] — or the refusal's words thrown.
+  factory GpuPlugin.open(GpuEngine engine, String source) => using((arena) {
+    final bytes = utf8.encode(source);
+    final at = arena<Uint8>(_held(bytes.length))
+      ..asTypedList(bytes.length).setAll(0, bytes);
+    final plugin = rust.pluginOpen(engine._engine, at, bytes.length);
+    if (plugin == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuPlugin._(engine, plugin);
+  });
+
+  final GpuEngine _engine;
+  final Pointer<rust.Plugin> _plugin;
+
+  /// How far past its input the plugin reaches, in output pixels, for
+  /// [asked] — spending the share of one of [pixels] of [limit] — or why
+  /// not thrown: a value past what the plugin reads, or the reach cut.
+  int reach(
+    GpuPluginAsked asked, {
+    required int limit,
+    required int pixels,
+  }) => using((arena) {
+    _whole(asked);
+    return _checked(
+      rust.pluginReach(
+        _plugin,
+        _doubles(arena, asked.values),
+        _kinds(arena, asked.kinds),
+        asked.kinds.length,
+        _moment(arena, asked),
+        limit,
+        pixels,
+      ),
+    );
+  });
+
+  /// The plugin's picture of [input] over [layers] — the pictures its
+  /// layer values name, by slot — with [asked], each pixel spending one of
+  /// [input]'s pixels' share of [limit]: a word a pixel of [input]'s size
+  /// and place, transparent where it writes none — or why not thrown: a
+  /// value past what the plugin reads, the run cut, or the device failed.
+  Uint32List render(
+    GpuPluginPicture input,
+    List<GpuPluginPicture> layers,
+    GpuPluginAsked asked, {
+    required int limit,
+  }) => using((arena) {
+    _whole(asked);
+    final pictures = [input, ...layers];
+    for (final picture in pictures) {
+      if (picture.width < 0 ||
+          picture.height < 0 ||
+          picture.pixels.length != picture.width * picture.height) {
+        throw ArgumentError(
+          '${picture.pixels.length} pixels for a picture '
+          '${picture.width} by ${picture.height}',
+        );
+      }
+    }
+    final words = pictures.fold(
+      0,
+      (sum, picture) => sum + picture.pixels.length,
+    );
+    final pixels = arena<Uint32>(_held(words));
+    final rects = arena<Int32>(4 * pictures.length);
+    var at = 0;
+    for (final (index, picture) in pictures.indexed) {
+      pixels.asTypedList(words).setAll(at, picture.pixels);
+      at += picture.pixels.length;
+      rects.asTypedList(4 * pictures.length).setAll(4 * index, [
+        picture.left,
+        picture.top,
+        picture.width,
+        picture.height,
+      ]);
+    }
+    final count = input.width * input.height;
+    final output = arena<Uint32>(_held(count));
+    _checked(
+      rust.pluginRender(
+        _plugin,
+        _engine._engine,
+        pixels,
+        rects,
+        layers.length,
+        _doubles(arena, asked.values),
+        _kinds(arena, asked.kinds),
+        asked.kinds.length,
+        _moment(arena, asked),
+        limit,
+        output,
+      ),
+    );
+    return Uint32List.fromList(output.asTypedList(count));
+  });
+
+  /// Throws where [asked] has other than four values a kind: the engine
+  /// reads as many as the kinds say.
+  static void _whole(GpuPluginAsked asked) {
+    if (asked.values.length != 4 * asked.kinds.length) {
+      throw ArgumentError(
+        '${asked.values.length} values for ${asked.kinds.length} kinds',
+      );
+    }
+  }
+
+  static Pointer<Uint32> _kinds(Arena arena, List<GpuPluginValue> kinds) =>
+      arena<Uint32>(_held(kinds.length))
+        ..asTypedList(kinds.length).setAll(0, [
+          for (final kind in kinds) kind.index,
+        ]);
+
+  static Pointer<Double> _moment(Arena arena, GpuPluginAsked asked) =>
+      _doubles(arena, [
+        asked.frame.toDouble(),
+        asked.time,
+        asked.rate,
+        asked.scale,
+      ]);
+
+  /// Lets the compiled plugin go; it is asked nothing after.
+  void free() => rust.pluginFree(_plugin);
+}

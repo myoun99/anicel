@@ -3,7 +3,6 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart' show immutable;
 
-import '../../../core/rgba_premultiply.dart';
 import '../../../core/sync_image_upload.dart';
 import '../../../models/bitmap_tile.dart';
 import '../../../models/dirty_region.dart';
@@ -141,7 +140,7 @@ class CelTextLanding implements LandingPreview {
   factory CelTextLanding.of(DirtyRegion region, Uint8List straight) =>
       CelTextLanding(
         picture: pictureOf(
-          _StraightRows(straight, region.width, region.height),
+          StraightRgbaRows(straight, region.width, region.height),
         ),
         tiles: tilesOfRegion(region, straight),
         left: region.left,
@@ -209,24 +208,4 @@ class CelTextLanding implements LandingPreview {
       DeferredImageDisposer.instance.retire(made);
     }
   }
-}
-
-/// Straight rgba rows held in a list, as the picture door reads them.
-class _StraightRows implements PictureBytes {
-  _StraightRows(this._straight, this.width, this.height);
-
-  final Uint8List _straight;
-
-  @override
-  final int width;
-
-  @override
-  final int height;
-
-  @override
-  T readStraight<T>(T Function(Uint8List straight) use) => use(_straight);
-
-  @override
-  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
-      use(premultipliedRgbaCopy(_straight));
 }

@@ -1892,8 +1892,6 @@ enum AppStrings {
   String fxPluginReplaces(String version) =>
       _s('fxPluginReplacesTemplate').replaceAll('{version}', version);
 
-  /// ⚠️A warning: a native build runs outside the sandbox.
-  String get fxPluginRunsNatively => _s('fxPluginRunsNatively');
   String fxPluginInstalled(String name) =>
       _s('fxPluginInstalledTemplate').replaceAll('{name}', name);
   String fxPluginUnreadable(String file) =>
@@ -3504,10 +3502,6 @@ enum AppStrings {
         'Install "{name}" {version} from {vendor}?',
     'fxPluginReplacesTemplate':
         'It replaces version {version} on this device.',
-    'fxPluginRunsNatively':
-        'This plugin includes code that runs directly on this device, '
-        'outside the sandbox. Install it only if you trust where it came '
-        'from.',
     'fxPluginInstalledTemplate': 'Installed the FX plugin "{name}".',
     'fxPluginUnreadableTemplate':
         '"{file}" is not an FX plugin this app can read.',
@@ -5338,9 +5332,6 @@ enum AppStrings {
     'fxPluginInstallBodyTemplate':
         '{vendor} の「{name}」{version} をインストールしますか？',
     'fxPluginReplacesTemplate': 'この端末のバージョン {version} と置き換わります。',
-    'fxPluginRunsNatively':
-        'このプラグインには、サンドボックスの外でこの端末上で直接動くコードが'
-        '含まれています。入手元を信頼できる場合だけインストールしてください。',
     'fxPluginInstalledTemplate': 'FXプラグイン「{name}」をインストールしました。',
     'fxPluginUnreadableTemplate': '「{file}」は読み込めるFXプラグインではありません。',
     'fxPluginUnopenedTemplate':
@@ -7195,9 +7186,6 @@ enum AppStrings {
     'fxPluginInstall': '설치',
     'fxPluginInstallBodyTemplate': '{vendor}의 「{name}」 {version}을(를) 설치할까요?',
     'fxPluginReplacesTemplate': '이 기기의 {version} 버전을 대신합니다.',
-    'fxPluginRunsNatively':
-        '이 플러그인에는 샌드박스 밖에서 이 기기에서 직접 실행되는 코드가 들어 '
-        '있습니다. 출처를 믿을 수 있을 때만 설치하세요.',
     'fxPluginInstalledTemplate': 'FX 플러그인 「{name}」을(를) 설치했습니다.',
     'fxPluginUnreadableTemplate': '「{file}」은(는) 읽을 수 있는 FX 플러그인이 아닙니다.',
     'fxPluginUnopenedTemplate':
@@ -9220,10 +9208,6 @@ enum AppStrings {
         'Installer « {name} » {version} de {vendor} ?',
     'fxPluginReplacesTemplate':
         'Il remplace la version {version} de cet appareil.',
-    'fxPluginRunsNatively':
-        'Ce plug-in contient du code qui s’exécute directement sur cet '
-        'appareil, hors du bac à sable. Ne l’installez que si vous faites '
-        'confiance à sa provenance.',
     'fxPluginInstalledTemplate': 'Plug-in FX « {name} » installé.',
     'fxPluginUnreadableTemplate':
         '« {file} » n’est pas un plug-in FX lisible par cette application.',
@@ -11033,7 +11017,6 @@ enum AppStrings {
     'fxPluginInstall': '安装',
     'fxPluginInstallBodyTemplate': '要安装 {vendor} 的“{name}” {version} 吗？',
     'fxPluginReplacesTemplate': '它将替换此设备上的 {version} 版本。',
-    'fxPluginRunsNatively': '此插件包含在沙盒之外、直接在此设备上运行的代码。仅在信任其来源时安装。',
     'fxPluginInstalledTemplate': '已安装 FX 插件“{name}”。',
     'fxPluginUnreadableTemplate': '“{file}”不是可读取的 FX 插件。',
     'fxPluginUnopenedTemplate': '无法在此设备上将“{file}”作为 FX 插件打开：{why}',

@@ -817,7 +817,6 @@ void main() {
     'textToolFontNotKept': (s) => s.textToolFontNotKept,
     'fxPluginInstallTitle': (s) => s.fxPluginInstallTitle,
     'fxPluginInstall': (s) => s.fxPluginInstall,
-    'fxPluginRunsNatively': (s) => s.fxPluginRunsNatively,
     'fxPluginsOfDevice': (s) => s.fxPluginsOfDevice,
     'fxPluginDelete': (s) => s.fxPluginDelete,
     'toolSelect': (s) => s.toolSelect,
