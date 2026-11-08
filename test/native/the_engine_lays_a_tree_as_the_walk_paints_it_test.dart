@@ -17,6 +17,7 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -1366,6 +1367,28 @@ void main() {
         });
       });
     }
+
+    test('letters that cover no pixel are a plate of no tile — a row named '
+        'nothing over an unnamed drawing — and a plate is kept by its '
+        'letters', () {
+      final paper = BitmapSurface(canvasSize: canvas, tileSize: side);
+      CelNumberLetters writing(String text) => CelNumberLetters(
+        text: text,
+        color: 0xFF2050C0,
+        center: CanvasPoint(x: 96, y: 58),
+        scale: CanvasPoint(x: 1, y: 1),
+      );
+      expect(letters.celNumberPlate(writing(''), paper).tiles, isEmpty);
+      expect(letters.celNumberPlate(writing(' '), paper).tiles, isEmpty);
+      final a = letters.celNumberPlate(writing('A'), paper);
+      expect(a.tiles, isNotEmpty, reason: 'LIVENESS: letters were set');
+      expect(letters.celNumberPlate(writing('A'), paper), same(a));
+      expect(
+        letters.celNumberPlate(writing('B'), paper),
+        isNot(same(a)),
+        reason: 'another letter, another plate',
+      );
+    });
   });
 
   // ⏳What the engine lays no step for yet is refused, never dropped: a
