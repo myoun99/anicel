@@ -137,6 +137,8 @@ void main() {
     expect(shownBy(laid!), want);
     expect(store.peek('a'), same(laid));
     expect(store.bytesOf('a'), picture);
+    expect(store.holdsWhere((key) => key == 'a'), isTrue);
+    expect(store.holdsWhere((key) => key == 'b'), isFalse);
   });
 
   test('a key asked for again is one picture, laid once', () async {
@@ -151,21 +153,39 @@ void main() {
     expect(keptSince(before), picture, reason: 'one picture');
   });
 
-  test('the frame on screen is laid before the ones made ahead', () async {
-    final store = storeOf();
+  /// The keys [store] lays as [asked] for them, in the order they are laid.
+  Future<List<String>> laidInTurn(
+    EngineFramePictureStore<String> store,
+    List<(String, {bool shownNow})> asked,
+  ) async {
     final laid = <String>[];
+    await Future.wait([
+      for (final (key, :shownNow) in asked)
+        store
+            .lay(key, frameOf(cel(5)), shownNow: shownNow)
+            .then((_) => laid.add(key)),
+    ]);
+    return laid;
+  }
 
-    final ahead = store.lay('ahead', frameOf(cel(5))).then((_) {
-      laid.add('ahead');
-    });
-    final shown = store.lay('shown', frameOf(cel(6)), shownNow: true).then((
-      _,
-    ) {
-      laid.add('shown');
-    });
-    await Future.wait([ahead, shown]);
+  test('the frame on screen is laid before the ones made ahead', () async {
+    final laid = await laidInTurn(storeOf(), [
+      ('ahead', shownNow: false),
+      ('shown', shownNow: true),
+    ]);
 
     expect(laid, ['shown', 'ahead']);
+  });
+
+  test('a frame waiting its turn goes to the front once the screen asks for '
+      'it', () async {
+    final laid = await laidInTurn(storeOf(), [
+      ('ahead', shownNow: false),
+      ('shown', shownNow: false),
+      ('shown', shownNow: true),
+    ]);
+
+    expect(laid, ['shown', 'shown', 'ahead']);
   });
 
   test('🗣️F-529: a lay every asker has left is not made', () async {
@@ -177,6 +197,55 @@ void main() {
     expect(laid, isNull);
     expect(store.holds('a'), isFalse);
     expect(keptSince(before), 0);
+  });
+
+  test('🗣️F-529: a lay one of its askers still wants is made', () async {
+    final store = storeOf();
+
+    final left = store.lay('a', frameOf(cel(5)), gone: () => true);
+    final stays = store.lay('a', frameOf(cel(5)));
+
+    expect(await stays, isNotNull);
+    expect(await left, same(await stays));
+  });
+
+  test('a frame the engine refuses is answered with its reason, and the lays '
+      'after it are laid', () async {
+    final store = storeOf();
+    final refused = stackedFrameOf(
+      const [
+        CompositeOpaque(
+          CompositeLeaf(CanvasLayerImageRequest(frameKey: key, opacity: 1)),
+        ),
+      ],
+      page: (
+        canvasSize: canvas,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: true,
+        paperBackground: paper,
+      ),
+      surfaceOf: (_) => cel(5),
+    );
+
+    final failing = store.lay('refused', refused);
+    final next = store.lay('next', frameOf(cel(5)));
+
+    await expectLater(failing, throwsStateError);
+    expect(await next, isNotNull);
+    expect(store.holds('refused'), isFalse);
+  });
+
+  test('a key a picture moves to while its lay waits answers with that '
+      'picture', () async {
+    final store = storeOf();
+    final before = GpuScreen.liveBytes;
+    final moved = await store.lay('a', frameOf(cel(5)));
+    final waiting = store.lay('b', frameOf(cel(6)));
+
+    store.move(from: 'a', to: 'b');
+
+    expect(await waiting, same(moved));
+    expect(keptSince(before), picture, reason: 'one picture');
   });
 
   test('🚨a patch composes the frame where it changed, and moves the picture '
@@ -278,6 +347,55 @@ void main() {
     expect(store.estimatedBytes, picture);
   });
 
+  test('the budget lets go of the picture wanted latest first, the one '
+      'shown least lately among equals, and none wanted that soon', () async {
+    final store = storeOf();
+    for (final (key, seed) in [('a', 5), ('b', 6), ('c', 7)]) {
+      await store.lay(key, frameOf(cel(seed)));
+    }
+    store.peek('a');
+
+    store.enforceBudget(maxBytes: 2 * picture);
+    expect([for (final key in 'abc'.split('')) store.holds(key)], [
+      true,
+      false,
+      true,
+    ], reason: 'b shown least lately');
+
+    store.enforceBudget(
+      maxBytes: picture,
+      wantedAt: (key) => key == 'a' ? 9 : 1,
+    );
+    expect(store.holds('a'), isFalse, reason: 'a wanted latest');
+
+    expect(
+      store.enforceBudget(maxBytes: 0, wantedAt: (_) => 1, laterThan: 1),
+      isFalse,
+    );
+    expect(store.holds('c'), isTrue, reason: 'c wanted that soon');
+  });
+
+  test('a picture a screen pins is let go of only once no screen '
+      'does', () async {
+    final store = storeOf();
+    for (final (key, seed) in [('pinned', 5), ('dead', 6), ('alive', 7)]) {
+      await store.lay(key, frameOf(cel(seed)));
+    }
+    store.retainPin('pinned');
+
+    store
+      ..letGoUnpinned('pinned')
+      ..letGoUnpinnedWhere((key) => key != 'alive');
+
+    expect(store.holds('pinned'), isTrue);
+    expect(store.holds('dead'), isFalse);
+    expect(store.holds('alive'), isTrue);
+    store
+      ..releasePin('pinned')
+      ..letGoUnpinned('pinned');
+    expect(store.holds('pinned'), isFalse);
+  });
+
   test('🚨a picture let go while a screen holds it stays to be shown, and '
       'goes at the last release', () async {
     final store = storeOf();
@@ -295,7 +413,8 @@ void main() {
     expect(keptSince(before), 0, reason: 'released');
   });
 
-  test('a store let go of keeps nothing', () async {
+  test('a store let go of keeps nothing, and answers the lays waiting with '
+      'none', () async {
     final before = GpuScreen.liveBytes;
     final store = EngineFramePictureStore<String>(
       composite: engine.composite,
@@ -303,9 +422,12 @@ void main() {
     );
     await store.lay('a', frameOf(cel(5)));
     await store.lay('b', frameOf(cel(6)));
+    final waiting = store.lay('c', frameOf(cel(7)));
 
     store.dispose();
 
+    expect(await waiting, isNull);
     expect(keptSince(before), 0);
+    expect(store.holds('a'), isFalse);
   });
 }

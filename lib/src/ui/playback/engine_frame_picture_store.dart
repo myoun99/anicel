@@ -29,9 +29,6 @@ class EngineFramePicture extends ChangeNotifier {
   int _holds = 0;
   bool _gone = false;
 
-  /// Where the picture lies in the world — whole pixels.
-  ui.Rect get extent => _screen.extent;
-
   /// The bytes it keeps on the GPU ([EngineStackScreen.bytes]).
   int get bytes => _screen.bytes;
 
@@ -101,7 +98,6 @@ class EngineFramePictureStore<K extends Object> {
   final PinCounts<K> _pins = PinCounts<K>();
   final List<_Lay<K>> _lays = [];
   bool _laying = false;
-  bool _disposed = false;
   int _clock = 0;
 
   /// Whether [key]'s picture is there — asked by a warmer and a ready bar
@@ -209,16 +205,13 @@ class EngineFramePictureStore<K extends Object> {
     return true;
   }
 
-  /// [entry] answers to [to] and not [from] from here on; a picture [to]
-  /// answered with before, and no key now does, is let go — nothing could
-  /// ask for it again.
+  /// [entry] answers to [to] and not [from] from here on; the picture [to]
+  /// answered with before is let go — nothing could ask for it again.
   void _moved(_Entry entry, {required K from, required K to}) {
     _entries.remove(from);
     final there = _entries[to];
     _entries[to] = entry;
-    if (there != null && !_entries.containsValue(there)) {
-      there.picture._letGo();
-    }
+    there?.picture._letGo();
   }
 
   /// The bytes the pictures keep on the GPU.
@@ -249,17 +242,12 @@ class EngineFramePictureStore<K extends Object> {
     wantedAt: (entry) => wantedAt?.call(entry.key),
     lastUsed: (entry) => entry.value.lastUsed,
     bytesOf: (entry) => entry.value.picture.bytes,
-    letGo: (entry) => _letGo(entry.value),
+    letGo: (entry) => letGo(entry.key),
     laterThan: laterThan,
   );
 
-  /// Lets go of [key]'s picture, under every key it answers to.
-  void letGo(K key) {
-    final entry = _entries[key];
-    if (entry != null) {
-      _letGo(entry);
-    }
-  }
+  /// Lets go of [key]'s picture.
+  void letGo(K key) => _entries.remove(key)?.picture._letGo();
 
   /// Lets go of [key]'s picture as [letGo] does, unless a screen holds it
   /// ([retainPin]) — as the budget never lets one go ([enforceBudget]).
@@ -269,17 +257,9 @@ class EngineFramePictureStore<K extends Object> {
     }
   }
 
-  /// Lets go of every picture under a key [dead] says none will ask for
-  /// again — but one a screen holds under any of its keys: that goes as its
-  /// screen leaves it.
-  void letGoUnpinnedWhere(bool Function(K key) dead) {
-    final kept = <_Entry>{for (final key in _pins.keys) ?_entries[key]};
-    final going = [
-      for (final MapEntry(:key, value: entry) in _entries.entries)
-        if (!kept.contains(entry) && dead(key)) entry,
-    ];
-    going.forEach(_letGo);
-  }
+  /// [letGoUnpinned] for every key [dead] says none will ask for again.
+  void letGoUnpinnedWhere(bool Function(K key) dead) =>
+      _entries.keys.where(dead).toList().forEach(letGoUnpinned);
 
   /// Declares a holder of [key]'s picture — one the screen draws. Balanced
   /// by [releasePin]; counts nest.
@@ -297,12 +277,14 @@ class EngineFramePictureStore<K extends Object> {
   }
 
   void dispose() {
-    _disposed = true;
     for (final lay in _lays) {
       lay.done.complete(null);
     }
     _lays.clear();
-    _entries.values.toSet().forEach(_letGo);
+    for (final entry in _entries.values) {
+      entry.picture._letGo();
+    }
+    _entries.clear();
   }
 
   /// ⚠️A lay stays in [_lays] until it is done: the same key asked for
@@ -313,7 +295,7 @@ class EngineFramePictureStore<K extends Object> {
     }
     _laying = true;
     try {
-      while (_lays.isNotEmpty && !_disposed) {
+      while (_lays.isNotEmpty) {
         // A turn between lays: one asked for the screen meanwhile goes to
         // the front.
         await Future<void>.value();
@@ -327,9 +309,11 @@ class EngineFramePictureStore<K extends Object> {
     }
   }
 
+  /// A key a picture moved to meanwhile ([move]) answers with it: one
+  /// picture a key.
   void _layInItsTurn(_Lay<K> lay) {
     try {
-      final laid = lay.unwanted ? null : _laid(lay);
+      final laid = lay.unwanted ? null : peek(lay.key) ?? _laid(lay);
       lay.done.complete(laid);
     } on Object catch (error, stack) {
       lay.done.completeError(error, stack);
@@ -350,11 +334,6 @@ class EngineFramePictureStore<K extends Object> {
     }
     _entries[lay.key] = _Entry(picture)..lastUsed = ++_clock;
     return picture;
-  }
-
-  void _letGo(_Entry entry) {
-    _entries.removeWhere((_, value) => identical(value, entry));
-    entry.picture._letGo();
   }
 }
 
