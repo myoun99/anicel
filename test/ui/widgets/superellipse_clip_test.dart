@@ -116,6 +116,29 @@ void main() {
     );
   });
 
+  testWidgets('a SuperellipseClip clips what it holds to its shape', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox.fromSize(
+            size: size,
+            child: SuperellipseClip(
+              shape: AppShapes.container(radius),
+              child: const ColoredBox(color: Color(0xFF224466)),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.renderObject(find.byType(SuperellipseClip)),
+      paintsExactlyCountTimes(#clipRSuperellipse, 1),
+    );
+  });
+
   testWidgets('it paints, and survives a resize and a radius change', (
     tester,
   ) async {

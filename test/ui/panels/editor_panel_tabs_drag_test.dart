@@ -206,6 +206,36 @@ void main() {
     expect(bandOf('a'), isEmpty);
   });
 
+  // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10: the band no longer stands
+  // inside the tab's clip, so it asks the tab's shape itself where a
+  // pointer meets it.
+  testWidgets('a pointer in the tab\'s cut corner is not on its grip', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_Harness(model: _twoGroups()));
+    final tab = tester.getRect(_tab('a'));
+    List<Color> inks() => [
+      for (final shape in gripBandDrawn(
+        tester,
+        const ValueKey<String>('panel-grip-a'),
+      ))
+        shape.paint.color,
+    ];
+    final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await pointer.addPointer(location: tab.topLeft + const Offset(0.5, 0.5));
+    addTearDown(pointer.removePointer);
+    await tester.pumpAndSettle();
+    expect(inks(), [
+      isSameColorAs(GripBand.ink(nearby: true, hovered: false, active: false)),
+    ], reason: 'in the corner the shape cut away');
+
+    await pointer.moveTo(Offset(tab.center.dx, tab.top + 1));
+    await tester.pumpAndSettle();
+    expect(inks(), [
+      isSameColorAs(GripBand.ink(nearby: true, hovered: true, active: false)),
+    ], reason: 'fixture: on the grip, it is');
+  });
+
   testWidgets('유저 R4 #1: a seam separates the tab strip from the body, and '
       'the OPEN tab cuts its own gap in it', (tester) async {
     // 패널 아이콘쪽 영역 밑에 가로선 둬서 탭이랑 내용 구분할 수 있게 하자.
