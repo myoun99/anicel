@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, ValueNotifier, visibleForTesting;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -29,6 +30,12 @@ sealed class ScreenTexture {
   ) async => Platform.isAndroid
       ? _WindowTexture(await engine.window(width, height), width, height)
       : _AlternatedTextures(engine, width, height);
+
+  /// [surface] alone, presented onto and shown by no texture Flutter
+  /// knows: what a test reads a screen back from ([GpuSurface.fingerprint])
+  /// — `flutter test` registers no texture. The surface stays the test's.
+  @visibleForTesting
+  factory ScreenTexture.debugOnSurface(GpuSurface surface) = _SurfaceTexture;
 
   final int width;
   final int height;
@@ -111,6 +118,22 @@ final class _AlternatedTextures extends ScreenTexture {
     }
     _shown.dispose();
   }
+}
+
+final class _SurfaceTexture extends ScreenTexture {
+  _SurfaceTexture(this._surface) : super(_surface.width, _surface.height);
+
+  final GpuSurface _surface;
+  final ValueNotifier<int> _id = ValueNotifier(0);
+
+  @override
+  ValueListenable<int> get textureId => _id;
+
+  @override
+  void present(void Function(GpuTarget next) draw) => draw(_surface);
+
+  @override
+  Future<void> free() async => _id.dispose();
 }
 
 /// Android's: the engine presents into a SurfaceProducer's window, whose

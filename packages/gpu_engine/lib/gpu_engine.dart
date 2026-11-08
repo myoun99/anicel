@@ -6,6 +6,7 @@ library;
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -94,6 +95,20 @@ class GpuEngine {
   /// Flutter names one (rust/src/device.rs, `open_first`).
   factory GpuEngine.onFirstAdapter() =>
       GpuEngine._(_opened(rust.engineOpenFirst()), null);
+
+  /// [open] — one of the factories above — run on an isolate of its own,
+  /// the engine coming back by its address, so the caller's isolate goes
+  /// on while a device opens (0.6–1.2 s, 보드/인프라 2026-11-07). The device
+  /// opens on a thread of the engine's own either way (rust/src/device.rs,
+  /// `opened`), but the isolate that asks waits for that thread
+  /// (grid-on-the-engine, 관제 2026-11-08 20:54: 「장치는 첫 프레임 뒤에」).
+  static Future<GpuEngine> opening(GpuEngine Function() open) async {
+    final (address, luid) = await Isolate.run(() {
+      final engine = open();
+      return (engine._engine.address, engine.adapterLuid);
+    });
+    return GpuEngine._(Pointer.fromAddress(address), luid);
+  }
 
   static Pointer<rust.Engine> _opened(Pointer<rust.Engine> engine) {
     if (engine == nullptr) {
