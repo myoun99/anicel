@@ -44,6 +44,7 @@ import '../services/shaded_passes.dart'
     show IrisGatherPass, IrisMap, IrisMapChannel, LineBoxPass, irisTurnsOf;
 import '../ui/canvas/subtree_image_composite.dart' show subtreeBufferBounds;
 import '../ui/canvas/tiled_surface_compose.dart' show surfaceContentWorldRect;
+import 'engine_letters.dart';
 import 'engine_tile_ledger.dart';
 
 /// What a row of a composite tree lays on the engine. Each route folds its
@@ -103,7 +104,7 @@ GpuSampling gpuSamplingOf(ui.FilterQuality quality) =>
 
 /// Lays [nodes] on [plan] bottom to top, over the canvas [paper] lies on —
 /// their rows' tiles held by [hold] ([EngineTileLedger.held]), inside which
-/// the plan runs.
+/// the plan runs; a cel number's letters set by [letters].
 ///
 /// Each node takes the steps that are its picture: a row a `Row` and a
 /// solid a `Solid`; a folder, an adjustment and a clip a buffer of their
@@ -117,14 +118,16 @@ void planCompositeTree(
   List<CompositeNode<EngineRow>> nodes, {
   required TileHold hold,
   required ui.Rect paper,
-}) => _TreePlan(plan, hold, paper)._lay(nodes);
+  required EngineLetters letters,
+}) => _TreePlan(plan, hold, paper, letters)._lay(nodes);
 
 class _TreePlan {
-  _TreePlan(this.plan, this.hold, this.paper);
+  _TreePlan(this.plan, this.hold, this.paper, this.letters);
 
   final GpuPlan plan;
   final TileHold hold;
   final ui.Rect paper;
+  final EngineLetters letters;
 
   /// Where the steps being laid lie: the canvas, or — while a blur map a
   /// posed row's chain reads is drawn — that row's own space, canvas to it
@@ -151,7 +154,7 @@ class _TreePlan {
         _row(row, mode ?? _blendOf(row.blendMode), reads);
       case CompositeLeaf(payload: EngineSolid(:final argb, :final rect)):
         plan.solid(
-          _rgbaOf(argb),
+          gpuColourOf(argb),
           rect.left,
           rect.top,
           rect.rightExclusive,
@@ -175,10 +178,25 @@ class _TreePlan {
           'a base made opaque lies at the bottom of its clip\'s scope, where '
           'the scope is opened on it — not $node',
         );
-      // ⏳The letters are a plate Flutter draws (`celNumberPlate`) till the
-      // engine's own letters lay them (공통, engine-canvas-letters).
+      // A row's letters lie where the row does (I-65), a plate on its paper
+      // laid as the row's picture is — the engine's own raster of them
+      // ([EngineLetters]), as the walk lays the app's (`celNumberPlate`).
+      case CompositeCelNumber(
+        on: CompositeLeaf(payload: final EngineTiles row),
+        letters: final number,
+      ):
+        final plate = letters.celNumberPlate(number, row.surface);
+        _row(
+          EngineTiles(
+            lineage: plate,
+            surface: plate,
+            placement: row.placement,
+          ),
+          GpuBlend.normal,
+          const {},
+        );
       case CompositeCelNumber():
-        throw UnsupportedError('a cel number on the engine: $node');
+        throw StateError('a cel number on a row of no tiles: $node');
       case CompositeReadsRows(:final node, :final rows):
         _node(node, mode: mode, reads: rows);
     }
@@ -727,11 +745,6 @@ int _blendOf(LayerBlendMode mode) => switch (mode) {
 
 /// [opacity] as the engine lays it, 65535 whole.
 int _strengthOf(double opacity) => (opacity * 65535).round();
-
-/// [argb] — a `Color`'s — as the engine's solid takes it: straight RGBA8,
-/// A<<24|B<<16|G<<8|R.
-int _rgbaOf(int argb) =>
-    argb & 0xFF00FF00 | (argb >> 16 & 0xFF) | (argb & 0xFF) << 16;
 
 int _least(int a, int b) => a < b ? a : b;
 int _most(int a, int b) => a > b ? a : b;

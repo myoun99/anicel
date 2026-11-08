@@ -35,6 +35,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/composite_tree_plan.dart';
+import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart'
     show strokeBlendModeNativeId;
@@ -58,9 +59,16 @@ void main() {
   const canvas = CanvasSize(width: 256, height: 128);
   const side = 128;
   late GpuComposite composite;
+  late EngineLetters letters;
 
-  setUpAll(() => composite = GpuComposite(appGpuEngine));
-  tearDownAll(() => composite.free());
+  setUpAll(() async {
+    composite = GpuComposite(appGpuEngine);
+    letters = await EngineLetters.open(composite);
+  });
+  tearDownAll(() {
+    letters.free();
+    composite.free();
+  });
 
   /// A cel of [width] × 128 whose pixels are [seed]'s, in the tiles of
   /// [columns] it holds: colours no two neighbours share, and alphas in
@@ -253,6 +261,7 @@ void main() {
         tree,
         hold: hold,
         paper: paper ?? canvas.canvasRect,
+        letters: letters,
       ),
     );
   }
@@ -1207,16 +1216,21 @@ void main() {
   // Position and Scale put them, laid as the row's picture is, at rest or
   // moved and scaled with it. Two rasters of one outline: where the ink
   // lies and how much of it, not each pixel — and every pixel off the
-  // letters as the row's.
+  // letters as the row's, unnumbered. ⚠️The row's own, on the engine: a row
+  // scaled by 1.25 from half a pixel is no pose the walk and the engine
+  // sample alike — of a picture whose neighbours share no colour, a texel
+  // apart is up to 253 apart —, so the rows laid alike are the poses that
+  // land on whole texels (「a row moved by whole pixels」 and the rest).
   group('a cel number', () {
     setUpAll(loadTheAppFaces);
 
     /// The animation row 「A」 of [surface], its drawing unnamed, numbered
-    /// in a blue ink where its own stand puts the letters — placed by
-    /// [transform] where one is given.
+    /// in a blue ink where its own stand puts the letters — but where
+    /// [number] is false — and placed by [transform] where one is given.
     List<CompositeNode<CutFrameCompositeLayer>> numbered(
       BitmapSurface surface, {
       TransformTrack? transform,
+      bool number = true,
     }) => planCutFrameCompositeTree(
       cut: Cut(
         id: const CutId('cut'),
@@ -1236,23 +1250,24 @@ void main() {
             },
             transformTrack: transform,
             effects: [
-              LayerEffect(
-                id: const EffectId('n'),
-                kind: EffectKind.celNumber,
-                stand: TransformTrack.empty().copyWith(
-                  position: PropertyTrack<CanvasPoint>.empty().withKey(
-                    0,
-                    CanvasPoint(x: 96.4, y: 58.7),
+              if (number)
+                LayerEffect(
+                  id: const EffectId('n'),
+                  kind: EffectKind.celNumber,
+                  stand: TransformTrack.empty().copyWith(
+                    position: PropertyTrack<CanvasPoint>.empty().withKey(
+                      0,
+                      CanvasPoint(x: 96.4, y: 58.7),
+                    ),
+                    scale: PropertyTrack<CanvasPoint>.empty().withKey(
+                      0,
+                      CanvasPoint(x: 1.5, y: 1.5),
+                    ),
                   ),
-                  scale: PropertyTrack<CanvasPoint>.empty().withKey(
-                    0,
-                    CanvasPoint(x: 1.5, y: 1.5),
-                  ),
+                  colors: {
+                    'ink': PropertyTrack<int>.empty().withKey(0, 0xFF2050C0),
+                  },
                 ),
-                colors: {
-                  'ink': PropertyTrack<int>.empty().withKey(0, 0xFF2050C0),
-                },
-              ),
             ],
           ),
         ],
@@ -1310,6 +1325,10 @@ void main() {
           final walk = inkOf(await walked(bare, clear));
           final engine = inkOf(laid(bare, clear));
           expect(walk.ink, isNot(0), reason: 'LIVENESS: the walk wrote');
+          // 📏flutter_tester on Impeller, Windows, 11-08: the boxes a pixel
+          // apart at the left and alike elsewhere, the engine's ink 0.993
+          // and 0.991 of the walk's, at rest and moved. A pixel more and a
+          // part in fifty more, for another device's raster of the walk's.
           final edges = [
             walk.box.left - engine.box.left,
             walk.box.top - engine.box.top,
@@ -1318,20 +1337,23 @@ void main() {
           ];
           expect(
             [for (final edge in edges) edge.abs()],
-            everyElement(lessThanOrEqualTo(1)),
+            everyElement(lessThanOrEqualTo(2)),
             reason: 'the ink lies at ${walk.box} walked, ${engine.box} laid',
           );
           expect(
             engine.ink / walk.ink,
-            closeTo(1, 0.1),
+            closeTo(1, 0.03),
             reason: 'ink ${walk.ink} walked, ${engine.ink} laid',
           );
 
-          final over = numbered(cel(1), transform: transform);
-          final drawn = await walked(over, clear);
-          final put = laid(over, clear);
+          final put = laid(numbered(cel(1), transform: transform), clear);
+          final row = laid(
+            numbered(cel(1), transform: transform, number: false),
+            clear,
+          );
+          expect(put, isNot(row), reason: 'LIVENESS: the number was laid');
           final letters = walk.box.inflate(2);
-          for (final picture in [drawn, put]) {
+          for (final picture in [put, row]) {
             for (var at = 0; at < picture.length; at += 4) {
               final x = (at ~/ 4) % canvas.width;
               final y = (at ~/ 4) ~/ canvas.width;
@@ -1340,11 +1362,7 @@ void main() {
               }
             }
           }
-          expect(
-            apartness(drawn, put).most,
-            lessThanOrEqualTo(2),
-            reason: 'off the letters the row is laid as the walk paints it',
-          );
+          expect(put, row, reason: 'off the letters the row is as it lies');
         });
       });
     }

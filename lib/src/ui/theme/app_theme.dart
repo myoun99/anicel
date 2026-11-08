@@ -726,6 +726,28 @@ abstract final class AppTypography {
     regular: 'assets/fonts/NanumGothic-Regular.ttf',
     bold: 'assets/fonts/NanumGothic-Bold.ttf',
   );
+
+  /// 🚨THE FACES A CANVAS LETTER IS SET IN, in the order a letter goes down
+  /// them — [bundledFamily], [bundledFallback], then the Chinese UI's face —
+  /// each one's files as `pubspec.yaml` declares them: the names the app
+  /// sets its canvas letters in (`canvasLetterTextStyle`) and the files the
+  /// GPU engine is handed (`engine_letters.dart`), one order read by both.
+  ///
+  /// 🗣️engine-canvas-letters-Q2 (유저 2026-11-07): 「이미 들어 있는 Noto Sans
+  /// SC 를 마지막 글꼴로 더한다」. ↩️A simplified character neither of the two
+  /// has was the OS's face's, as each machine had one.
+  static final List<({String family, List<String> files})> canvasLetterFaces =
+      [
+        (
+          family: _family,
+          files: [bundledFiles.regular, bundledFiles.bold],
+        ),
+        (
+          family: _fallback.single,
+          files: [bundledFallbackFiles.regular, bundledFallbackFiles.bold],
+        ),
+        (family: _chineseFamily, files: [chineseFile]),
+      ];
 }
 
 /// 🚨★★★**THE APP HAS NO PAGE ROUTES, AND PAYS FOR NO PAGE TRANSITION.**

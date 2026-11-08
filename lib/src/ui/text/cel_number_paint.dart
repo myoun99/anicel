@@ -10,6 +10,7 @@ import '../../models/text_cel_style.dart';
 import '../canvas/display_resample.dart' show wholeLevelPixelsOutward;
 import '../canvas/image_pieces.dart';
 import 'canvas_letter_plate.dart';
+import 'canvas_letter_shapes.dart';
 import 'text_cel_render.dart';
 
 /// A CEL NUMBER's letters (I-65) — the one implementation every walk that
@@ -43,6 +44,25 @@ ImagePiece? celNumberPlate(CelNumberLetters letters) {
     into.restore();
   });
   return (image: plate, worldRect: window);
+}
+
+/// [letters] as the GPU engine is handed them to raster their plate itself
+/// (cel-number-on-the-engine-letters): the layers of the one layout
+/// [celNumberPlate] draws, and where it stands on the row's paper — the
+/// six floats a, b, c, d, e, f of x' = a·x + c·y + e, y' = b·x + d·y + f.
+/// Null where [celNumberPlate] is.
+({List<CanvasLetterShapes> layers, List<double> stand})? celNumberShapes(
+  CelNumberLetters letters,
+) {
+  if (celNumberExtent(letters).isEmpty) {
+    return null;
+  }
+  final layout = _layoutOf(letters);
+  final stand = _standOf(letters, layout).storage;
+  return (
+    layers: layout.shapes,
+    stand: [stand[0], stand[1], stand[4], stand[5], stand[12], stand[13]],
+  );
 }
 
 /// The rect of the row's paper [letters] may paint, on whole pixels — the

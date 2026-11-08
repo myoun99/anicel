@@ -27,6 +27,12 @@ final class Readout extends Opaque {}
 
 final class Ink extends Opaque {}
 
+final class Faces extends Opaque {}
+
+final class Lettering extends Opaque {}
+
+final class Lettered extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -664,6 +670,108 @@ external int inkRun(
   Pointer<Int32> out,
   int capacity,
 );
+
+@Native<
+  Pointer<Faces> Function(
+    Pointer<Pointer<Uint8>>,
+    Pointer<UintPtr>,
+    Pointer<Uint32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_faces_new')
+external Pointer<Faces> facesNew(
+  Pointer<Pointer<Uint8>> files,
+  Pointer<UintPtr> lengths,
+  Pointer<Uint32> families,
+  int count,
+);
+
+@Native<Void Function(Pointer<Faces>)>(symbol: 'gpu_engine_faces_free')
+external void facesFree(Pointer<Faces> faces);
+
+@Native<Pointer<Lettering> Function()>(symbol: 'gpu_engine_letters_new')
+external Pointer<Lettering> lettersNew();
+
+@Native<Void Function(Pointer<Lettering>)>(symbol: 'gpu_engine_letters_free')
+external void lettersFree(Pointer<Lettering> letters);
+
+@Native<Bool Function(Pointer<Lettering>, Uint32, Bool, Int32)>(
+  symbol: 'gpu_engine_letters_pass',
+)
+external bool lettersPass(
+  Pointer<Lettering> letters,
+  int colour,
+  bool hard,
+  int outline,
+);
+
+@Native<
+  Bool Function(
+    Pointer<Lettering>,
+    Pointer<Float>,
+    Int32,
+    Bool,
+    Bool,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_letters_run')
+external bool lettersRun(
+  Pointer<Lettering> letters,
+  Pointer<Float> at,
+  int size,
+  bool bold,
+  bool italic,
+  Pointer<Uint8> text,
+  int length,
+  Pointer<Uint32> ends,
+  Pointer<Int32> origins,
+  int count,
+);
+
+@Native<Bool Function(Pointer<Lettering>, Pointer<Float>, Pointer<Int32>)>(
+  symbol: 'gpu_engine_letters_rect',
+)
+external bool lettersRect(
+  Pointer<Lettering> letters,
+  Pointer<Float> at,
+  Pointer<Int32> rect,
+);
+
+@Native<
+  Pointer<Lettered> Function(
+    Pointer<Lettering>,
+    Pointer<Engine>,
+    Pointer<Composite>,
+    Pointer<Faces>,
+    Pointer<Float>,
+    Pointer<Int32>,
+  )
+>(symbol: 'gpu_engine_letters_set')
+external Pointer<Lettered> lettersSet(
+  Pointer<Lettering> letters,
+  Pointer<Engine> engine,
+  Pointer<Composite> composite,
+  Pointer<Faces> faces,
+  Pointer<Float> toGrid,
+  Pointer<Int32> rect,
+);
+
+@Native<
+  Bool Function(Pointer<Engine>, Pointer<Lettered>, Pointer<Uint8>, Size)
+>(symbol: 'gpu_engine_lettered_read')
+external bool letteredRead(
+  Pointer<Engine> engine,
+  Pointer<Lettered> lettered,
+  Pointer<Uint8> bytes,
+  int capacity,
+);
+
+@Native<Void Function(Pointer<Lettered>)>(symbol: 'gpu_engine_lettered_free')
+external void letteredFree(Pointer<Lettered> lettered);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);

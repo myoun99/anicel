@@ -1077,6 +1077,192 @@ class GpuInk {
   void free() => rust.inkFree(_ink);
 }
 
+/// The faces letters are set in (rust/src/kernels/letters/glyphs.rs): each
+/// family's files, the families in the order a letter goes down them.
+class GpuFaces {
+  /// [families], each one's files read whole — copied for the engine,
+  /// which keeps them.
+  factory GpuFaces(List<List<Uint8List>> families) {
+    final files = [
+      for (final (family, files) in families.indexed)
+        for (final file in files) (family: family, bytes: file),
+    ];
+    final faces = using((arena) {
+      final count = _held(files.length);
+      final at = arena<Pointer<Uint8>>(count);
+      final lengths = arena<UintPtr>(count);
+      final named = arena<Uint32>(count);
+      for (final (index, file) in files.indexed) {
+        final bytes = file.bytes;
+        at[index] = arena<Uint8>(_held(bytes.length))
+          ..asTypedList(bytes.length).setAll(0, bytes);
+        lengths[index] = bytes.length;
+        named[index] = file.family;
+      }
+      return rust.facesNew(at, lengths, named, files.length);
+    });
+    if (faces == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuFaces._(faces);
+  }
+
+  GpuFaces._(this._faces);
+
+  final Pointer<rust.Faces> _faces;
+
+  void free() => rust.facesFree(_faces);
+}
+
+/// A cluster of letters as the app's layout set it: its text, its box's
+/// left and its line's baseline — 64ths of a px.
+typedef GpuCluster = ({String text, int x, int y});
+
+/// A PICTURE OF LETTERS (rust/src/kernels/letters): passes bottom to top,
+/// each of runs of letters as the app's layout set them and of boxes and
+/// lines, set in [GpuFaces] on the GPU into the straight RGBA8 tiles of one
+/// rectangle of the grid. Where a shape stands in the layout is the six
+/// floats a, b, c, d, e, f: x' = a·x + c·y + e, y' = b·x + d·y + f.
+class GpuLetters {
+  GpuLetters() : _letters = rust.lettersNew();
+
+  final Pointer<rust.Lettering> _letters;
+
+  /// Begins a pass over the ones before it: its shapes in [colour] —
+  /// straight RGBA8, A<<24|B<<16|G<<8|R, its alpha the pass's strength —
+  /// cut [hard] or not, filled where [outline] is 0 and else outlined that
+  /// wide, 64ths of a px.
+  void pass(int colour, {required bool hard, int outline = 0}) =>
+      _done(rust.lettersPass(_letters, colour, hard, outline));
+
+  /// Adds to the pass begun last a run of [clusters] in one style — [size]
+  /// 64ths of a px — standing in the layout where [at] puts its own space.
+  void run(
+    List<double> at, {
+    required int size,
+    required bool bold,
+    required bool italic,
+    required List<GpuCluster> clusters,
+  }) => using((arena) {
+    final text = <int>[];
+    final ends = arena<Uint32>(_held(clusters.length));
+    final origins = arena<Int32>(_held(2 * clusters.length));
+    for (final (index, cluster) in clusters.indexed) {
+      text.addAll(utf8.encode(cluster.text));
+      ends[index] = text.length;
+      origins[2 * index] = cluster.x;
+      origins[2 * index + 1] = cluster.y;
+    }
+    final bytes = arena<Uint8>(_held(text.length))
+      ..asTypedList(text.length).setAll(0, text);
+    _done(
+      rust.lettersRun(
+        _letters,
+        _floats(arena, _six(at)),
+        size,
+        bold,
+        italic,
+        bytes,
+        text.length,
+        ends,
+        origins,
+        clusters.length,
+      ),
+    );
+  });
+
+  /// Adds to the pass begun last a box or a line — [rect], [left, top,
+  /// right, bottom), 64ths of a px — standing in the layout where [at] puts
+  /// its own space.
+  void rect(List<double> at, (int, int, int, int) rect) => using(
+    (arena) => _done(
+      rust.lettersRect(_letters, _floats(arena, _six(at)), _rect(arena, rect)),
+    ),
+  );
+
+  /// The letters set in [faces] and laid on the grid by [toGrid] — the
+  /// layout's space to the grid's — by [composite]; the work submitted.
+  /// Null for letters that cover no pixel.
+  GpuLettered? set(
+    GpuComposite composite,
+    GpuFaces faces,
+    List<double> toGrid,
+  ) => using((arena) {
+    final rect = arena<Int32>(4)..asTypedList(4).fillRange(0, 4, -1);
+    final lettered = rust.lettersSet(
+      _letters,
+      composite._engine._engine,
+      composite._composite,
+      faces._faces,
+      _floats(arena, _six(toGrid)),
+      rect,
+    );
+    final [x0, y0, columns, rows] = rect.asTypedList(4).toList();
+    if (lettered == nullptr) {
+      return columns == 0 ? null : throw StateError(_lastError());
+    }
+    return GpuLettered._(composite._engine, lettered, (
+      x0: x0,
+      y0: y0,
+      columns: columns,
+      rows: rows,
+    ));
+  });
+
+  void free() => rust.lettersFree(_letters);
+}
+
+/// [argb] — a `Color`'s, A<<24|R<<16|G<<8|B — as the engine's colours
+/// are: straight RGBA8, A<<24|B<<16|G<<8|R.
+int gpuColourOf(int argb) =>
+    argb & 0xFF00FF00 | (argb >> 16 & 0xFF) | (argb & 0xFF) << 16;
+
+/// [values] as floats of [arena]'s.
+Pointer<Float> _floats(Arena arena, List<double> values) =>
+    arena<Float>(_held(values.length))
+      ..asTypedList(values.length).setAll(0, values);
+
+/// [affine], checked to be the six floats a placement is.
+List<double> _six(List<double> affine) {
+  if (affine.length != 6) {
+    throw ArgumentError('a placement of ${affine.length}, not 6');
+  }
+  return affine;
+}
+
+/// What a C entry answering whether it did answered: nothing, or its last
+/// error thrown.
+void _done(bool done) {
+  if (!done) {
+    throw StateError(_lastError());
+  }
+}
+
+/// A picture of letters set ([GpuLetters.set]): the straight RGBA8 tiles of
+/// [rect] — its first tile's column and row, and how many columns and rows
+/// of tiles it spans — on the GPU.
+class GpuLettered {
+  GpuLettered._(this._engine, this._lettered, this.rect);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Lettered> _lettered;
+  final ({int x0, int y0, int columns, int rows}) rect;
+
+  /// Its pixels once the GPU is done — tile after tile, row by row of
+  /// [rect], each [gpuTileSide] rows of [gpuTileSide].
+  Uint8List read() => using((arena) {
+    final count = rect.columns * rect.rows * gpuTileBytes;
+    final bytes = arena<Uint8>(_held(count));
+    // ⚠️No test reaches the throw: a read fails only where the device does.
+    if (!rust.letteredRead(_engine._engine, _lettered, bytes, count)) {
+      throw StateError(_lastError());
+    }
+    return Uint8List.fromList(bytes.asTypedList(count));
+  });
+
+  void free() => rust.letteredFree(_lettered);
+}
+
 /// The walked tile whose words start at [at] of [words].
 GpuTileInk _walkedAt(Int32List words, int at) {
   final [column, row, left, top, right, bottom] = words.sublist(

@@ -1,7 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-
 import '../../core/lru.dart';
 import '../canvas/raster_picture.dart';
 
@@ -52,7 +50,6 @@ ui.Image keptLetterPlate(
 /// would raster them all again at every frame laid. A cel number's plate
 /// is some tens of kilobytes; this holds the letters of every row of a
 /// long cut's every drawing.
-@visibleForTesting
 const int letterPlateBytesKept = 32 << 20;
 
 /// What the plates kept weigh — the memory census's `textImages`, beside the
