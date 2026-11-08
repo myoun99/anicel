@@ -19,14 +19,13 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart';
 import 'package:anicel/src/native/composite_tree_plan.dart';
-import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/native/engine_tile_ledger.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../helpers/a_shown_surface.dart';
+import '../helpers/engine_screen_pins.dart';
 
 
 /// 🚨THE ENGINE'S SCREEN SHOWS THE FRAME IT KEEPS (screen-on-the-engine c6
@@ -66,16 +65,7 @@ void main() {
   const columns = [-1, 0, 1];
   // What the frame holds: the page and the tile past it.
   const world = (-side, 0, 2 * side, side);
-  late GpuComposite composite;
-  late EngineLetters letters;
-
-  setUpAll(() async {
-    composite = GpuComposite(appGpuEngine);
-    letters = await EngineLetters.open(composite);
-  });
-  tearDownAll(() {
-    composite.free();
-  });
+  final engine = EngineScreenPins('the engine screen shows the frame it keeps');
 
   /// A cel of [seed]'s pixels in the tiles of [over], [marked] green: on the
   /// page alphas of every kind over the paper, past it whole or none —
@@ -170,9 +160,9 @@ void main() {
         tree,
         hold: hold,
         paper: canvas.canvasRect,
-        letters: letters,
+        letters: engine.letters,
       );
-      final out = composite.run(ledger.pool, plan, [
+      final out = engine.composite.run(ledger.pool, plan, [
         for (final column in columns) (column, 0),
       ], world);
       addTearDown(out.free);
@@ -281,7 +271,7 @@ void main() {
   }
 
   test('the screen shows the frame the engine lays, through the view', () {
-    final screen = EngineStackScreen(composite, letters);
+    final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     final surface = cel(3);
     screen.compose(frameOf(surface));
@@ -293,7 +283,7 @@ void main() {
   // a mark across the page's left edge, told where it changed; and a frame
   // told nothing of where is laid everywhere.
   test('a change composed where it lies is the frame the engine lays', () {
-    final screen = EngineStackScreen(composite, letters);
+    final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     screen.compose(frameOf(cel(5)));
     const marked = (-20, 10, 40, 50);
@@ -311,7 +301,7 @@ void main() {
   // A change the screen is not told of is kept as it was: the frame is
   // made again where it is told it changed, not everywhere.
   test('a change not told of is not composed', () {
-    final screen = EngineStackScreen(composite, letters);
+    final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     final before = cel(5);
     screen.compose(frameOf(before));
@@ -329,7 +319,7 @@ void main() {
   // A frame of another world — its pasteboard tile wiped — is laid on a
   // screen of that world, whole: nothing of the world kept before shows.
   test('a frame of another world is laid whole', () {
-    final screen = EngineStackScreen(composite, letters);
+    final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
     screen.compose(frameOf(cel(5)));
     final within = cel(5, over: const [0, 1]);

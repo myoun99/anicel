@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -15,8 +14,6 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/cel_surface_as_shown.dart'
     show celSurfaceAsShown;
@@ -27,7 +24,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../helpers/a_plugin_that_shifts.dart' show shiftingFxPluginEffect;
 import '../helpers/cel_text_fixture.dart' show textOf;
-import '../helpers/engine_screen_shown.dart';
+import '../helpers/engine_screen_pins.dart';
 
 /// 🚨★★★THE ENGINE'S SCREEN SHOWS A STROKE AS IT LANDS (flip lane ⓐ, 유저
 /// 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」): the
@@ -45,17 +42,7 @@ void main() {
   const side = 128;
   final left = TileCoord(x: 0, y: 0);
   final right = TileCoord(x: 1, y: 0);
-  late GpuComposite composite;
-  late EngineLetters letters;
-
-  setUpAll(() async {
-    composite = GpuComposite(appGpuEngine);
-    letters = await EngineLetters.open(composite);
-  });
-  tearDownAll(() {
-    letters.free();
-    composite.free();
-  });
+  final engine = EngineScreenPins('the engine screen shows a stroke as it lands');
 
   /// A tile of [seed]'s pixels, alphas of every kind.
   BitmapTile tileOf(int seed) {
@@ -170,12 +157,8 @@ void main() {
 
   /// What the engine's screen shows of [frame] at rest, one texel a canvas
   /// pixel — its fingerprint.
-  int shown(StackedFrame frame) => engineScreenShown(
-    frame,
-    composite: composite,
-    letters: letters,
-    size: (canvas.width, canvas.height),
-  );
+  int shown(StackedFrame frame) =>
+      engine.shown(frame, size: (canvas.width, canvas.height));
 
   for (final erase in [false, true]) {
     test('🚨a stroke that ${erase ? 'erases' : 'paints'} shows on the '

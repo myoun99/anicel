@@ -20,8 +20,6 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
@@ -30,7 +28,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/fill_range_mark.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
-import '../helpers/engine_screen_shown.dart';
+import '../helpers/engine_screen_pins.dart';
 
 /// 🚨★★★THE ENGINE'S SCREEN MARKS THE RANGE A HELD FILL WILL COVER (flip
 /// lane ⓐ-3, I-160-Q1 a, 유저 2026-11-04 「TVPaint 처럼 체크 격자」 —
@@ -53,17 +51,7 @@ void main() {
     paintPaper: true,
     paperBackground: ProjectBackground.color(0xFF30A060),
   );
-  late GpuComposite composite;
-  late EngineLetters letters;
-
-  setUpAll(() async {
-    composite = GpuComposite(appGpuEngine);
-    letters = await EngineLetters.open(composite);
-  });
-  tearDownAll(() {
-    letters.free();
-    composite.free();
-  });
+  final engine = EngineScreenPins("the engine screen marks a held fill's range");
 
   BrushFrameKey keyOf(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -186,13 +174,7 @@ void main() {
     StackedFrame frame, {
     CanvasViewport? viewport,
     (int, int) size = (256, 128),
-  }) => engineScreenShown(
-    frame,
-    composite: composite,
-    letters: letters,
-    size: size,
-    viewport: viewport,
-  );
+  }) => engine.shown(frame, size: size, viewport: viewport);
 
   /// What the screen shows of [frame] over the canvas and past it: 64 to
   /// its left, above and below it, 192 to its right.
@@ -430,7 +412,7 @@ void main() {
     final range = covered();
     final row = CanvasActiveLayerRow(opacity: 1, frameKey: pen);
     StackedFrame frame() => frameOf([CompositeLeaf(row)], live: penOn(cel()));
-    final screen = EngineStackScreen(composite, letters);
+    final screen = EngineStackScreen(engine.composite, engine.letters);
     addTearDown(screen.free);
 
     overlay.showFillRange(FillRangeMark(range));

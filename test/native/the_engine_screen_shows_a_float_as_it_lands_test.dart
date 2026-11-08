@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gpu_engine/gpu_engine.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -25,8 +24,6 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/native/app_gpu_engine.dart';
-import 'package:anicel/src/native/engine_letters.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart'
     show materializeBrushDabSequenceOnBitmapSurface;
 import 'package:anicel/src/services/bitmap_surface_geometry.dart'
@@ -41,7 +38,7 @@ import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
-import '../helpers/engine_screen_shown.dart';
+import '../helpers/engine_screen_pins.dart';
 
 /// 🚨★★★THE ENGINE'S SCREEN SHOWS A FLOAT AS IT LANDS (flip lane ⓐ-2, 유저
 /// 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」 · F-240 ·
@@ -63,17 +60,7 @@ void main() {
   const side = 128;
   final left = TileCoord(x: 0, y: 0);
   final right = TileCoord(x: 1, y: 0);
-  late GpuComposite composite;
-  late EngineLetters letters;
-
-  setUpAll(() async {
-    composite = GpuComposite(appGpuEngine);
-    letters = await EngineLetters.open(composite);
-  });
-  tearDownAll(() {
-    letters.free();
-    composite.free();
-  });
+  final engine = EngineScreenPins('the engine screen shows a float as it lands');
 
   /// A tile of [seed]'s pixels, alphas of every kind.
   BitmapTile tileOf(int seed) {
@@ -219,13 +206,7 @@ void main() {
     StackedFrame frame, {
     CanvasViewport? viewport,
     (int, int) size = (256, 128),
-  }) => engineScreenShown(
-    frame,
-    composite: composite,
-    letters: letters,
-    size: size,
-    viewport: viewport,
-  );
+  }) => engine.shown(frame, size: size, viewport: viewport);
 
   /// A row of [kind] at its defaults but for [lanes].
   ResolvedLayerEffect fx(EffectKind kind, Map<String, double> lanes) =>
