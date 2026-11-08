@@ -74,17 +74,22 @@ pub(crate) struct Blur {
 /// The weights of a way of `sigma` reaching `reach` pixels: e^(−i²/2σ²)
 /// at i = 0 ..= reach — `libm`'s, the same Rust on every device, where
 /// `f64::exp` is the device's maths library's (shared/one_maths.rs) —
-/// scaled so the 2·reach + 1 of them sum to 65536 and taken as integers
-/// each within one of its share: the floors, then what they fall short
-/// given a pair at a time — a weight stands either side — to the largest
-/// remainders, the nearer first among equals, and the odd one left to the
-/// middle.
+/// scaled so the 2·reach + 1 of them sum to 65536, taken as integers
+/// ([`integers`]).
 pub(crate) fn weights(sigma: f64, reach: u32) -> Vec<u32> {
     let twice_variance = 2.0 * sigma * sigma;
     let gaussian: Vec<f64> =
         (0..=reach).map(|i| libm::exp(-f64::from(i * i) / twice_variance)).collect();
     let total = gaussian[0] + 2.0 * gaussian[1..].iter().sum::<f64>();
-    let shares: Vec<f64> = gaussian.iter().map(|g| g * f64::from(WHOLE) / total).collect();
+    integers(&gaussian.iter().map(|g| g * f64::from(WHOLE) / total).collect::<Vec<f64>>())
+}
+
+/// `shares` — the middle's, then each pair's one — summing to 65536 both
+/// sides, as integers each within one of its share: the floors, then what
+/// they fall short given a pair at a time — a weight stands either side —
+/// to the largest remainders, the nearer first among equals, and the odd
+/// one left to the middle.
+fn integers(shares: &[f64]) -> Vec<u32> {
     let mut weights: Vec<u32> = shares.iter().map(|share| share.floor() as u32).collect();
     let mut short = WHOLE - weights[0] - 2 * weights[1..].iter().sum::<u32>();
     let remainder = |i: usize| shares[i] - f64::from(weights[i]);

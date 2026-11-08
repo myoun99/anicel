@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use super::super::pictures::{Blurred, LEDGER_TILES, ONE_TILE, WHITE, pattern, tiles, white};
 use super::super::{TileRect, bands};
-use super::{Blur, Edge, Gaussian, MOST_REACH, Way, planes, weights};
+use super::{Blur, Edge, Gaussian, MOST_REACH, Way, integers, planes, weights};
 use crate::device::Engine;
 use crate::kernels::composite::TILE_TEXELS;
 use crate::kernels::effects::tests::rgba;
@@ -87,6 +87,15 @@ fn the_weights_are_the_gaussian_s_in_integers() {
     assert_eq!(weights(2.0, 6), vec![13086, 11548, 7937, 4249, 1771, 575, 145]);
     // A sigma no pixel beside the middle holds a share of.
     assert_eq!(weights(0.05, 2), vec![65536, 0, 0]);
+}
+
+/// Pairs of equal remainders: the nearer takes the two first. 65520 ·
+/// 4.5 · 3.5 floor to 65534 both sides — one pair's two short, and both
+/// pairs' remainders ½. No sigma we know of gives two equal remainders,
+/// so the shares are given by hand.
+#[test]
+fn among_equal_remainders_the_nearer_pair_takes_the_two() {
+    assert_eq!(integers(&[65520.0, 4.5, 3.5]), vec![65520, 5, 3]);
 }
 
 /// However far a way reaches, its weights sum to 65536 both sides and fall
@@ -189,6 +198,29 @@ fn past_its_picture_across_a_blur_reads_nothing_either() {
         assert_eq!(blurred.row(y, 30..34), vec![0; 4], "{y}");
     }
     assert_eq!(blurred.row(64, 30..34), white(&[255; 4]));
+}
+
+/// Either way alone reads the lines past its picture across as it reads
+/// past it along: a blur along the rows puts the rows next above and below
+/// its picture — and one down the columns the columns either side — from
+/// nothing, or repeating, from the nearest line inside: never from the red
+/// the tiles hold there.
+#[test]
+fn a_way_alone_reads_the_lines_past_its_picture_as_past_it() {
+    let inside = [20, 20, 40, 40];
+    let pixel = |x, y| {
+        if (20..40).contains(&x) && (20..40).contains(&y) { WHITE } else { rgba(255, 0, 0, 255) }
+    };
+    for (across, down) in [(ONE, NONE), (NONE, ONE)] {
+        let blur = |edge| Blur { across, down, picture: inside, edge, puts: [16, 16, 44, 44] };
+        let nothing = blurred(ONE_TILE, &blur(Edge::Nothing), pixel).expect("blur");
+        let repeated = blurred(ONE_TILE, &blur(Edge::Repeat), pixel).expect("blur");
+        for past in [19, 40] {
+            let (x, y) = if down == NONE { (30, past) } else { (past, 30) };
+            assert_eq!(nothing.at(x, y), 0, "{across:?} ({x}, {y})");
+            assert_eq!(repeated.at(x, y), WHITE, "{across:?} ({x}, {y})");
+        }
+    }
 }
 
 /// Repeat Edge Pixels: black then white across a 4 × 2 rectangle, red all
