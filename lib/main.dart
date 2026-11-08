@@ -1,7 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart'
-    show LicenseEntryWithLineBreaks, LicenseRegistry;
+    show LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
@@ -10,6 +10,7 @@ import 'src/native/device_battery.dart';
 import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/crate_licences.dart';
+import 'src/services/licence_entry.dart';
 import 'src/services/import/cel_picture.dart' show pictureSideLimit;
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
@@ -120,20 +121,20 @@ Future<void> main(List<String> handedAtLaunch) async {
   // which embeds the same files. The third is the Chinese UI's (유저
   // 2026-11-05, gpu-int-spec-word-bake-Q2).
   LicenseRegistry.addLicense(() async* {
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'BIZ UDPGothic',
     ], await rootBundle.loadString('assets/fonts/OFL-BIZUDPGothic.txt'));
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'Nanum Gothic',
     ], await rootBundle.loadString('assets/fonts/OFL-NanumGothic.txt'));
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'Noto Sans SC',
     ], await rootBundle.loadString('assets/fonts/OFL-NotoSansSC.txt'));
     // PDFium binaries bundle at build time (pdfrx native assets); their
     // license requires the notice to ship with binary redistributions —
     // pub's automatic NOTICES only covers the Dart packages, not the
     // downloaded engine itself.
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'PDFium',
     ], await rootBundle.loadString('assets/licenses/LICENSE-PDFium.txt'));
     // RNNoise, ported line for line into the GPU engine's denoiser
@@ -142,14 +143,14 @@ Future<void> main(List<String> handedAtLaunch) async {
     // rust_crates.json below never lists it — and the C it was before
     // shipped without this entry (connection-round-checklist H, 관제
     // 2026-11-08 06:15 ⓔ).
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'RNNoise',
     ], await rootBundle.loadString('assets/licenses/LICENSE-RNNoise.txt'));
     // The dxcompiler.dll the GPU engine compiles its DX12 shaders with ships
     // beside it on Windows: one entry for the three licence texts its zip
     // carries, since the zip does not say which file each covers
     // (packages/gpu_engine/rust/build.rs, LICENCES).
-    yield LicenseEntryWithLineBreaks(const [
+    yield licenceEntry(const [
       'DirectX Shader Compiler',
     ], [
       await rootBundle.loadString('assets/licenses/LICENSE-DXC-LLVM.txt'),
