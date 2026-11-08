@@ -361,7 +361,11 @@ void main() {
 /// tile paint, and the composes' `FilterQuality.none`). ±0 in
 /// canvas/chained_picture: its 1:1 copy is one `drawImageRect` of the
 /// picture's part, a slot's or the whole.
-const int _knownRawDraws = 30;
+/// **29** on 2026-11-08 (grid-on-the-engine ⑤): −1 in
+/// timeline/timeline_row_cells_painter — a row's grid tile is laid on its
+/// grid's screen (`TimelineGridScreenSlot`), the GPU engine's picture onto
+/// the engine's texture, not drawn on the row's canvas (`_layTile`).
+const int _knownRawDraws = 29;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'

@@ -435,11 +435,10 @@ const _imageHolders = <String, String>{
   'lib/src/ui/text/word_bake.dart → _images': 'counted:imageBytes',
   'lib/src/ui/brush/brush_stroke_preview_cache.dart → _store':
       'counted:sampleBytes',
-  'lib/src/ui/timeline/timeline_grid_tile_store.dart → _entries':
-      'counted:tileImageBytes',
-  'lib/src/ui/timeline/timeline_grid_tile_store.dart → _keptByRow':
-      'the tiles of _entries again, by row and the frame each starts on: '
-      'an index, whose pictures are counted there (tileImageBytes)',
+  // ↩️The timeline's tiles were the third (`timeline_grid_tile_store.dart`,
+  // `_entries` and its index `_keptByRow`): they keep the GPU engine's
+  // pictures since grid-on-the-engine ⑤, no `ui.Image`, and are still
+  // weighed by `tileImageBytes`, which the test above holds to the census.
   // … holdings counted all along, by a counter of their own file …
   'lib/src/ui/playback/frame_picture_store.dart → _entries':
       'counted:estimatedBytes',

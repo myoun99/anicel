@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
@@ -27,6 +28,7 @@ import '../../helpers/exposure_of.dart';
 import '../../helpers/line_on_screen.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/room_for_the_pills.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/timeline_host.dart';
 import 'tile_store_idle.dart';
 
@@ -40,23 +42,31 @@ import 'tile_store_idle.dart';
 /// stand left it, and after the host is made to build. Equal pixels are what
 /// says no reader of the stand was left out; a list of readers could not.
 void main() {
-  /// The screen once the cell tiles have landed and been painted.
+  /// The screen once the cell tiles and the narrowed words have landed and
+  /// been painted.
   ///
   /// 🚨A TILE THAT LANDS BETWEEN THE TWO READS CHANGES THE SCREEN WHATEVER
   /// THE STAND DID. 🔬At 512 px spans the X-sheet's tiles were still landing
   /// at both reads (11-07): four lines of a cell row moved by a few
   /// levels, with or without the build, and the case went red in a run of
   /// the file and green alone. ↩️It read the screen at once.
+  ///
+  /// And so does a word: 🔬the X-sheet's rail narrows a row's name, whose
+  /// bake the GPU engine lands in real time (grid-on-the-engine ③) — one
+  /// word was waited for at the first read, and 2098 bytes of the plate had
+  /// moved by the second (11-08). ↩️It waited for the tiles alone.
   Future<ByteData> landedPixels(WidgetTester tester) async {
     final store = TimelineGridTileStore.instance;
+    final words = BakedWords.instance;
     for (var round = 0; round < 20; round += 1) {
       await tileStoreIdle(store, tester: tester);
+      await settleAsync(tester, () => words.debugWaitingWords == 0);
       await tester.pump();
-      if (!store.debugBusy) {
+      if (!store.debugBusy && words.debugWaitingWords == 0) {
         return screenPixels(tester);
       }
     }
-    fail('a pump kept asking the tile store for more');
+    fail('a pump kept asking the tile store or the word bakes for more');
   }
 
   Future<void> expectBuildChangesNothing(
