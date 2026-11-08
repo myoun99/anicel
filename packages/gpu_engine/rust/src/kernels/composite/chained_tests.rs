@@ -625,7 +625,8 @@ fn a_held_row_lays_what_its_chain_put_while_its_hold_keeps_it() {
 }
 
 // A chained buffer whose chain's hold keeps what it put is laid from that,
-// its steps not walked: other rows in it under the same number lay it too.
+// its steps — a clip among them — not walked: other rows in it under the
+// same number lay it too.
 #[test]
 fn a_held_buffer_lays_what_its_chain_put_and_walks_none_of_its_steps() {
     let laying = Laying::new(&[((0, 0), (2, 2)), ((0, 0), (2, 1)), ((-1, 1), (2, 1))]);
@@ -633,7 +634,15 @@ fn a_held_buffer_lays_what_its_chain_put_and_walks_none_of_its_steps() {
     let base = row(0, (0, 0), WHOLE, NORMAL);
     let closing = chained(close(45000, SCREEN, Some(0)), 0);
     let buffer = |rows: &[Step]| [&[base, Step::Open][..], rows, &[closing]].concat();
-    let rows = [row(1, (3, -2), 50000, NORMAL), row(2, (-5, 4), 40000, MULTIPLY)];
+    let rows = [
+        row(1, (3, -2), 50000, NORMAL),
+        Step::Open,
+        row(2, (-5, 4), WHOLE, NORMAL),
+        Step::OpenOpaque,
+        row(1, (1, 1), WHOLE, MULTIPLY),
+        Step::CloseAtop,
+        close(40000, NORMAL, None),
+    ];
     let other = [row(2, (1, 0), WHOLE, NORMAL)];
     let holding = held_chain(Some((&held, 3)), false);
     let first = laying.widest(&holding, &buffer(&rows), None);
