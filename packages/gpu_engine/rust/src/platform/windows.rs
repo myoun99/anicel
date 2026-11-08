@@ -228,7 +228,7 @@ fn beside_engine() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::kernels::shared::pipeline;
+    use crate::kernels::shared::pipeline_or_why;
     use crate::testing::first_engine;
 
     // The shape R1's vote table was first written in (gpu-canonical-store,
@@ -282,10 +282,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     #[test]
     fn the_engine_compiles_what_fxc_cannot() {
         let engine = first_engine();
-        let scope = engine.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let _pipeline = pipeline(engine, &[FXC_CANNOT], "main");
-        let error = pollster::block_on(scope.pop());
-        assert!(error.is_none(), "{error:?}");
+        let compiled = pipeline_or_why(engine, &[FXC_CANNOT], "main");
+        assert!(compiled.is_ok(), "{:?}", compiled.err());
     }
 
     #[test]

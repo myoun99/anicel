@@ -136,6 +136,15 @@ impl Engine {
         polled.map_or_else(fail, Some)
     }
 
+    /// What `work` answers, run on the engine's thread ([`EngineThread`])
+    /// while the caller waits.
+    pub(crate) fn on_its_thread<T: Send + 'static>(
+        &self,
+        work: impl FnOnce() -> T + Send + 'static,
+    ) -> T {
+        self.thread.run(work).expect("the engine's thread")
+    }
+
     /// The texture's bytes, rows top to bottom with no padding — for
     /// fingerprints and tests; the screen path never reads back.
     pub(crate) fn read_texture(&self, texture: &wgpu::Texture) -> Option<Vec<u8>> {
@@ -322,8 +331,31 @@ type Job = Box<dyn FnOnce() + Send>;
 /// PC against 1 µs handed to this one, and the screen waits every frame.
 /// Each job brings what it works on, so none is kept between them.
 ///
-/// ⚠️Only these three have been seen to die: a kernel's `create_*` and
-/// `write_*` still run on its caller's.
+/// 🔬A kernel's compile runs here too, though none has been seen to die in
+/// one: it goes deeper than a submit (관제, 2026-11-09). The frames the walk
+/// faulted on lay 41 and 65 KB below `rsp`, so a call that never writes
+/// that far has no such frame. Measured with the stack painted around every
+/// call, a release build, the 28 `flutter test` files that call the engine,
+/// on the main PC's RTX 4080 — bytes below the caller at the deepest, and
+/// how many calls passed 40 KiB:
+///
+/// | call | calls | deepest | past 40 KiB |
+/// |---|---|---|---|
+/// | `create_compute_pipeline` | 95 | 91,935 | 64 |
+/// | submit | 1,630 | 78,606 | 1,294 |
+/// | `create_shader_module` | 102 | 34,590 | 0 |
+/// | `finish` | 1,630 | 26,406 | 0 |
+/// | `create_buffer` | 2,493 | 24,711 | 0 |
+/// | `create_texture` | 5 | 19,359 | 0 |
+/// | `write_buffer` | 5 | 15,903 | 0 |
+/// | `create_command_encoder` | 1,630 | 15,223 | 0 |
+/// | `create_bind_group` | 1,028 | 8,271 | 0 |
+/// | `create_view` | 172 | 6,287 | 0 |
+///
+/// ⛔So the rest stay on their caller's: alone on a thread of 1 MiB,
+/// `write_buffer` of 4 MiB went 22,319 and `write_texture` of a tile 17,371,
+/// and no call but these two has a frame the walk can fault on. A device
+/// or driver that goes deeper is what would change that; this is one card.
 #[derive(Clone)]
 pub(crate) struct EngineThread(mpsc::Sender<Job>);
 
@@ -459,6 +491,20 @@ mod tests {
         engine.queue.submit([commands]);
         let submitted_on = answered.try_recv().expect("the submit was refused inside it");
         assert_ne!(submitted_on, std::thread::current().id());
+    }
+
+    #[test]
+    fn a_compile_enters_the_driver_on_a_thread_of_the_engines_not_the_callers() {
+        let engine = Engine::open_first().expect("an adapter");
+        let (sender, answered) = std::sync::mpsc::channel();
+        // What a compile refuses reaches this handler on the thread that
+        // compiled.
+        engine.device.on_uncaptured_error(std::sync::Arc::new(move |_| {
+            let _ = sender.send(std::thread::current().id());
+        }));
+        let _ = crate::kernels::shared::pipeline(&engine, &["not a shader"], "main");
+        let compiled_on = answered.try_recv().expect("the compile was refused inside it");
+        assert_ne!(compiled_on, std::thread::current().id());
     }
 
     #[test]

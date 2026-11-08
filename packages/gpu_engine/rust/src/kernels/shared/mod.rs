@@ -107,7 +107,7 @@ pub(crate) fn pipeline_or_why(engine: &Engine, sources: &[&str], entry: &str) ->
             .spawn_scoped(scope, || {
                 let refused = engine.device.push_error_scope(wgpu::ErrorFilter::Validation);
                 let failed = engine.device.push_error_scope(wgpu::ErrorFilter::Internal);
-                let pipeline = pipeline(engine, sources, entry);
+                let pipeline = compiled(&engine.device, sources.join("\n"), entry, &[], true);
                 let failed = pollster::block_on(failed.pop());
                 let refused = pollster::block_on(refused.pop());
                 match failed.or(refused) {
@@ -136,6 +136,8 @@ pub(crate) fn pipeline_unzeroed(
     build(engine, sources, entry, &[], false)
 }
 
+/// The engine's own pipeline, compiled on its thread (`EngineThread`, in
+/// `device.rs`, says why) while the caller waits.
 fn build(
     engine: &Engine,
     sources: &[&str],
@@ -143,27 +145,38 @@ fn build(
     constants: &[(&str, f64)],
     zeroed: bool,
 ) -> wgpu::ComputePipeline {
-    let source = sources.join("\n");
-    let module = engine
-        .device
-        .create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(entry),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        });
-    engine
-        .device
-        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some(entry),
-            layout: None,
-            module: &module,
-            entry_point: Some(entry),
-            compilation_options: wgpu::PipelineCompilationOptions {
-                constants,
-                zero_initialize_workgroup_memory: zeroed,
-                ..Default::default()
-            },
-            cache: None,
-        })
+    let (device, source, entry) = (engine.device.clone(), sources.join("\n"), entry.to_owned());
+    let constants: Vec<_> = constants.iter().map(|&(name, value)| (name.to_owned(), value)).collect();
+    engine.on_its_thread(move || {
+        let constants: Vec<_> = constants.iter().map(|(name, value)| (name.as_str(), *value)).collect();
+        compiled(&device, source, &entry, &constants, zeroed)
+    })
+}
+
+/// The module and the pipeline of `source`, on the thread that asks.
+fn compiled(
+    device: &wgpu::Device,
+    source: String,
+    entry: &str,
+    constants: &[(&str, f64)],
+    zeroed: bool,
+) -> wgpu::ComputePipeline {
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some(entry),
+        source: wgpu::ShaderSource::Wgsl(source.into()),
+    });
+    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some(entry),
+        layout: None,
+        module: &module,
+        entry_point: Some(entry),
+        compilation_options: wgpu::PipelineCompilationOptions {
+            constants,
+            zero_initialize_workgroup_memory: zeroed,
+            ..Default::default()
+        },
+        cache: None,
+    })
 }
 
 /// The WGSL name of a surface's format, as a pass storing to it declares
