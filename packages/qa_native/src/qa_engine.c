@@ -17,29 +17,6 @@
 #include <stdint.h>
 #include <string.h>
 
-// qa_physical_memory_bytes is the one OS-API call in this file: each
-// platform answers "how much RAM does this machine have" its own way,
-// and keeping the three arms here means Dart needs no method channel and
-// the answer works from any isolate.
-#if defined(_WIN32)
-#include <windows.h>
-#elif defined(__APPLE__)
-#include <TargetConditionals.h>
-#include <mach/mach.h>
-#include <sys/sysctl.h>
-#include <sys/types.h>
-#if TARGET_OS_IPHONE
-// os_proc_available_memory: what is left of THIS APP's allowance, which
-// is the only number that predicts a jetsam kill. iOS/iPadOS only.
-#include <os/proc.h>
-#endif
-#else
-#include <sys/sysinfo.h>
-#endif
-// stdio for /proc/self/smaps_rollup in qa_process_footprint_bytes -- libc,
-// not a link dependency.
-#include <stdio.h>
-
 #if defined(_WIN32)
 #define QA_EXPORT __declspec(dllexport)
 #else
@@ -6118,173 +6095,6 @@ QA_EXPORT int32_t qa_resample_rgba(
   return 0;
 }
 
-// The device's physical RAM in bytes; 0 when the platform refuses to
-// answer. The hot cel budget scales from this instead of assuming a
-// desktop-class machine (a 3GB tablet was being asked to hold 1.5GB of
-// hot cels).
-QA_EXPORT int64_t qa_physical_memory_bytes(void) {
-#if defined(_WIN32)
-  MEMORYSTATUSEX status;
-  status.dwLength = sizeof(status);
-  if (GlobalMemoryStatusEx(&status)) {
-    return (int64_t)status.ullTotalPhys;
-  }
-  return 0;
-#elif defined(__APPLE__)
-  int64_t bytes = 0;
-  size_t length = sizeof(bytes);
-  int mib[2] = {CTL_HW, HW_MEMSIZE};
-  if (sysctl(mib, 2, &bytes, &length, NULL, 0) == 0) {
-    return bytes;
-  }
-  return 0;
-#else
-  struct sysinfo info;
-  if (sysinfo(&info) == 0) {
-    return (int64_t)info.totalram * (int64_t)info.mem_unit;
-  }
-  return 0;
-#endif
-}
-
-// What THIS PROCESS is holding right now, in bytes; 0 when the platform
-// will not say.
-//
-// ONE QUESTION, ANSWERED BY EVERY PLATFORM IN ITS OWN WORDS: the bytes
-// that belong to this process alone and come back when it exits. That is
-// the number each OS puts next to the app in its own task manager -- Task
-// Manager's "Memory" column, Activity Monitor's "Memory", the number a
-// jetsam report calls `rpages x pageSize`. The user asked for the panel to
-// show that same number (2026-09-10), so all three arms answer it.
-//
-// The Apple arm has been here since v29. Windows and Linux used to return
-// 0 with a note that a per-process API would add a link dependency to a
-// file that deliberately has none. It does not: kernel32 exports
-// K32GetProcessMemoryInfo, so Windows needs GetProcAddress and no import
-// library, and Linux reads a file.
-//
-// Physical RAM (qa_physical_memory_bytes above) answers a different
-// question and had been standing in for this one.
-QA_EXPORT int64_t qa_process_footprint_bytes(void) {
-#if defined(__APPLE__)
-  task_vm_info_data_t info;
-  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
-  if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count) ==
-      KERN_SUCCESS) {
-    return (int64_t)info.phys_footprint;
-  }
-  return 0;
-#elif defined(_WIN32)
-  // PROCESS_MEMORY_COUNTERS_EX2 (Windows 10 1809+) carries
-  // PrivateWorkingSetSize: the RESIDENT bytes no other process shares,
-  // which is what Task Manager's "Memory" column shows. The struct is
-  // declared here rather than included because psapi.h only grew it in
-  // newer SDKs, and this file compiles against whatever the platform
-  // hands it.
-  //
-  // NOT PrivateUsage from the smaller EX struct: that is private COMMIT,
-  // which on this app reads 237MB where the working set reads 139MB
-  // (measured 2026-09-10). They are two different questions, so an older
-  // Windows gets 0 -- "not measured here" -- rather than a number that
-  // quietly means something else.
-  typedef struct {
-    DWORD cb;
-    DWORD PageFaultCount;
-    SIZE_T PeakWorkingSetSize;
-    SIZE_T WorkingSetSize;
-    SIZE_T QuotaPeakPagedPoolUsage;
-    SIZE_T QuotaPagedPoolUsage;
-    SIZE_T QuotaPeakNonPagedPoolUsage;
-    SIZE_T QuotaNonPagedPoolUsage;
-    SIZE_T PagefileUsage;
-    SIZE_T PeakPagefileUsage;
-    SIZE_T PrivateUsage;
-    SIZE_T PrivateWorkingSetSize;
-    ULONG64 SharedCommitUsage;
-  } qa_pmc_ex2;
-  typedef BOOL(WINAPI * qa_get_pmi)(HANDLE, void *, DWORD);
-  HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
-  qa_get_pmi get_process_memory_info =
-      kernel32 == NULL ? NULL
-                       : (qa_get_pmi)(void *)GetProcAddress(
-                             kernel32, "K32GetProcessMemoryInfo");
-  if (get_process_memory_info != NULL) {
-    qa_pmc_ex2 counters;
-    memset(&counters, 0, sizeof(counters));
-    counters.cb = (DWORD)sizeof(counters);
-    if (get_process_memory_info(GetCurrentProcess(), &counters,
-                                (DWORD)sizeof(counters))) {
-      return (int64_t)counters.PrivateWorkingSetSize;
-    }
-  }
-  return 0;
-#else
-  // Linux and Android: /proc/self/smaps_rollup is the kernel's own sum
-  // over every mapping (4.14+), so this is one small read instead of a
-  // walk of /proc/self/smaps. Private_Clean + Private_Dirty is the same
-  // quantity the other two arms return -- pages no other process shares.
-  FILE *rollup = fopen("/proc/self/smaps_rollup", "r");
-  if (rollup == NULL) {
-    return 0;
-  }
-  char line[256];
-  int64_t private_kb = 0;
-  int found = 0;
-  while (fgets(line, (int)sizeof(line), rollup) != NULL) {
-    long long value = 0;
-    if (sscanf(line, "Private_Clean: %lld kB", &value) == 1 ||
-        sscanf(line, "Private_Dirty: %lld kB", &value) == 1) {
-      private_kb += (int64_t)value;
-      found = 1;
-    }
-  }
-  fclose(rollup);
-  return found ? private_kb * 1024 : 0;
-#endif
-}
-
-// How much more this process may take before the OS stops it; 0 when the
-// platform will not say.
-//
-// On iOS this is the real ceiling - os_proc_available_memory answers what
-// is left of the app's own allowance, which is not the device's free RAM
-// and not a fraction of its total. Elsewhere the closest honest answer is
-// the machine's free memory.
-QA_EXPORT int64_t qa_available_memory_bytes(void) {
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-  return (int64_t)os_proc_available_memory();
-#elif defined(_WIN32)
-  MEMORYSTATUSEX status;
-  status.dwLength = sizeof(status);
-  if (GlobalMemoryStatusEx(&status)) {
-    return (int64_t)status.ullAvailPhys;
-  }
-  return 0;
-#elif defined(__APPLE__)
-  return 0;
-#else
-  struct sysinfo info;
-  if (sysinfo(&info) == 0) {
-    return (int64_t)info.freeram * (int64_t)info.mem_unit;
-  }
-  return 0;
-#endif
-}
-
-// What the OS lets THIS APP hold, all in: what it holds now plus what it may
-// still take - the ceiling a jetsam decision is made against. 0 where the OS
-// gives an app no limit of its own: a desktop's free memory
-// (qa_available_memory_bytes there) is the machine's, not this app's.
-// C-ipad-crash (ABI 36): the automatic allowance is half of this where it
-// exists and half the RAM where it does not.
-QA_EXPORT int64_t qa_app_memory_limit_bytes(void) {
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-  return qa_process_footprint_bytes() + (int64_t)os_proc_available_memory();
-#else
-  return 0;
-#endif
-}
-
 // ---------------------------------------------------------------------------
 // Cel pixel pass (ABI 33): 색 변환 and 픽셀 비우기 over a cel's tiles.
 //
@@ -6637,4 +6447,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // and qa_zstd_decompress leave - the cel compressor is the Rust engine's
 // (native/compress), which the app binds in the GPU engine's library. The
 // span reader keeps its own zstd decoder.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 68; }
+// v69: qa_physical_memory_bytes, qa_process_footprint_bytes,
+// qa_available_memory_bytes and qa_app_memory_limit_bytes leave - the memory
+// questions are the Rust engine's (native/memory), which the app binds in
+// the GPU engine's library.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 69; }

@@ -342,7 +342,12 @@ import '../core/on_a_worker.dart';
 ///   (native/compress, connection-round-checklist H), which
 ///   `QaCelCompressor` binds in the GPU engine's library. The span reader
 ///   (`QaMediaSpan`) keeps its own zstd decoder.
-const int kQaEngineAbiVersion = 68;
+/// - v69: `qa_physical_memory_bytes` · `qa_process_footprint_bytes` ·
+///   `qa_available_memory_bytes` · `qa_app_memory_limit_bytes` leave the C:
+///   the memory questions are the Rust engine's (native/memory,
+///   connection-round-checklist H), which `QaMemory` binds in the GPU
+///   engine's library.
+const int kQaEngineAbiVersion = 69;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
