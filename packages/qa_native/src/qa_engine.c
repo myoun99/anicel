@@ -5695,4 +5695,5 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // sound decoder is the Rust engine's (native/audio), which the app binds in
 // the GPU engine's library with native/media's span reader. The engine is
 // its raster half alone: no media, no zstd, no OS codec stack.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 73; }
+// v74: qa_alpha_bounds_tiles leaves - a cel's ink is found by the GPU engine.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 74; }

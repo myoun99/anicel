@@ -368,7 +368,9 @@ import '../core/on_a_worker.dart';
 /// - v73: `qa_grid_raster_tile` leaves the C: the frame grids' tiles are
 ///   drawn by the GPU engine's grid pass (grid-on-the-engine ⑥), and the
 ///   C rasterizes no grid.
-const int kQaEngineAbiVersion = 73;
+/// - v74: `qa_alpha_bounds_tiles` leaves the C: a cel's ink is found by the
+///   GPU engine (`EngineTileLedger.rememberInk`).
+const int kQaEngineAbiVersion = 74;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
