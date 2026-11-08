@@ -27,14 +27,15 @@ void main() {
   tearDown(() => deleteTempQuietly(directory));
 
   BitmapSurface inkSurface({int seed = 1}) {
-    final pixels = Uint8List(8 * 8 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed * 13 + seed) & 0xFF;
     }
     return BitmapSurface(
-      canvasSize: const CanvasSize(width: 16, height: 12),
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      canvasSize: const CanvasSize(width: 2 * side, height: side * 3 ~/ 2),
+      tileSize: side,
+      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: side, pixels: pixels)},
     );
   }
 

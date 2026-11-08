@@ -22,8 +22,8 @@ import '../../../helpers/cel_text_held_baker.dart';
 ///
 /// In the test font every letter is a box one size wide: 「ab」 at 8 is 16
 /// wide on a line 10 tall, and its pixels can be a letter's size — 8 —
-/// beyond that on every side. The test canvas is 32×32, its pasteboard wall
-/// one canvas further out: −32 to 64.
+/// beyond that on every side. The test canvas is 512×512 in tiles of 128,
+/// its pasteboard wall one canvas further out: −512 to 1024.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -440,12 +440,12 @@ void main() {
       final (:session, :baker) = holding(standing);
       final origin = session.moveOrigin;
 
-      session.showMoved(origin, dx: 8, dy: 0);
+      session.showMoved(origin, dx: 128, dy: 0);
 
-      expect(session.shown.content, says('ab', x: 16));
-      expect(session.content, says('ab', x: 16));
+      expect(session.shown.content, says('ab', x: 136));
+      expect(session.content, says('ab', x: 136));
       expect(session.settled, isTrue);
-      expect(session.shown.plate.keys, [TileCoord(x: 2, y: 1)]);
+      expect(session.shown.plate.keys, [TileCoord(x: 1, y: 0)]);
       expect(
         session.shown.plate.values.single,
         standing.plate.values.single,
@@ -453,7 +453,7 @@ void main() {
       );
       expect(
         session.shown.layout.content,
-        says('ab', x: 16),
+        says('ab', x: 136),
         reason: 'the box moves with the letters',
       );
       expect(baker.asked, isEmpty);
@@ -466,11 +466,11 @@ void main() {
       final origin = session.moveOrigin;
 
       session
-        ..showMoved(origin, dx: 8, dy: 0)
-        ..showMoved(origin, dx: 16, dy: 8);
+        ..showMoved(origin, dx: 128, dy: 0)
+        ..showMoved(origin, dx: 256, dy: 128);
 
-      expect(session.shown.content, says('ab', x: 24, y: 16));
-      expect(session.shown.plate.keys, [TileCoord(x: 3, y: 2)]);
+      expect(session.shown.content, says('ab', x: 264, y: 136));
+      expect(session.shown.plate.keys, [TileCoord(x: 2, y: 1)]);
     });
 
     test('back where it stood, it is the text the cel carries — its very '
@@ -481,7 +481,7 @@ void main() {
       final origin = session.moveOrigin;
 
       session
-        ..showMoved(origin, dx: 8, dy: 0)
+        ..showMoved(origin, dx: 128, dy: 0)
         ..showMoved(origin, dx: 0, dy: 0);
 
       expect(session.shown.plate, same(origin.plate));
@@ -495,31 +495,31 @@ void main() {
       final (:session, :baker) = holding(standing);
       final origin = session.moveOrigin;
 
-      // Its pixels can reach x = 32; 40 further is past the wall at 64.
-      session.showMoved(origin, dx: 40, dy: 0);
+      // Its pixels can reach x = 32; 1000 further is past the wall at 1024.
+      session.showMoved(origin, dx: 1000, dy: 0);
 
-      expect(baker.asked.single.content, says('ab', x: 48));
+      expect(baker.asked.single.content, says('ab', x: 1008));
       expect(session.shown.content, says('ab'), reason: 'until it is set');
 
       // Back inside, where a move alone would do — but a bake is under way.
-      session.showMoved(origin, dx: 8, dy: 0);
+      session.showMoved(origin, dx: 128, dy: 0);
 
       expect(baker.asked, hasLength(1));
       expect(session.shown.content, says('ab'));
 
       await baker.asked[0].answer();
-      expect(baker.asked[1].content, says('ab', x: 16));
+      expect(baker.asked[1].content, says('ab', x: 136));
       await baker.asked[1].answer();
 
-      expect(session.shown.content, says('ab', x: 16));
+      expect(session.shown.content, says('ab', x: 136));
       expect(session.settled, isTrue);
     });
 
     test('each of the four walls is a wall — and up to it, it is still a '
         'move', () {
       // 「ab」 at (8, 8) can reach from (0, 0) to (32, 26); the walls stand
-      // at −32 and 64.
-      for (final (dx, dy) in [(40, 0), (-40, 0), (0, 40), (0, -40)]) {
+      // at −512 and 1024.
+      for (final (dx, dy) in [(1000, 0), (-520, 0), (0, 1000), (0, -520)]) {
         final standing = carried(4, says('ab'));
         final (:session, :baker) = holding(standing);
 
@@ -527,7 +527,7 @@ void main() {
 
         expect(baker.asked, hasLength(1), reason: 'past it by ($dx, $dy)');
       }
-      for (final (dx, dy) in [(32, 0), (-32, 0), (0, 38), (0, -32)]) {
+      for (final (dx, dy) in [(992, 0), (-512, 0), (0, 998), (0, -512)]) {
         final standing = carried(4, says('ab'));
         final (:session, :baker) = holding(standing);
 
@@ -584,24 +584,24 @@ void main() {
       final (:session, baker: _) = holding(standing);
       final origin = session.moveOrigin;
 
-      session.showMoved(origin, dx: 8, dy: 0);
+      session.showMoved(origin, dx: 128, dy: 0);
 
       final shown = session.shown;
       expect(shown.pixels.plate, same(origin.plate));
-      expect((shown.pixels.dx, shown.pixels.dy), (8, 0));
-      expect(shown.plate.keys, [TileCoord(x: 2, y: 1)]);
+      expect((shown.pixels.dx, shown.pixels.dy), (128, 0));
+      expect(shown.plate.keys, [TileCoord(x: 1, y: 0)]);
       expect(shown.plate.values.single, standing.plate.values.single);
     });
 
     test('a text that stands ACROSS the wall is set again wherever it goes: '
         'what the wall cut away is not in its pixels', () {
-      // Its pixels can reach x = 68, past the wall at 64.
-      final standing = carried(4, says('ab', x: 44));
+      // Its pixels can reach x = 1028, past the wall at 1024.
+      final standing = carried(4, says('ab', x: 1004));
       final (:session, :baker) = holding(standing);
 
       session.showMoved(session.moveOrigin, dx: -24, dy: 0);
 
-      expect(baker.asked.single.content, says('ab', x: 20));
+      expect(baker.asked.single.content, says('ab', x: 980));
     });
   });
 

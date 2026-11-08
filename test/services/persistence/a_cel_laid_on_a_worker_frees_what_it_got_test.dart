@@ -23,13 +23,13 @@ void main() {
 
   final a = TileCoord(x: 0, y: 0);
   final b = TileCoord(x: 1, y: 0);
-  // Past the wall (the pasteboard ends at -32), where a file lies.
+  // Past the wall (the pasteboard ends at -512), where a file lies.
   final past = TileCoord(x: -6, y: 0);
   final whereTheFileLies = DirtyRegion(
-    left: -44,
+    left: -704,
     top: 0,
-    rightExclusive: 4,
-    bottomExclusive: 8,
+    rightExclusive: 64,
+    bottomExclusive: 128,
   );
 
   /// A drawing of two tiles, a file's picture laid past the wall over a

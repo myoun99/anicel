@@ -38,20 +38,24 @@ import '../../helpers/cels_parked_cold.dart';
 /// the same bytes). 🔬On the user's film the rows went from 2,859 to
 /// 1,305 Mpx and the run from 151 to 132 s.
 void main() {
-  const canvasSize = CanvasSize(width: 64, height: 48);
+  // Four tiles across and three down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 4 * tileSide, height: 3 * tileSide);
   const cutId = CutId('cut');
 
   /// One tile of ink — the canvas's second column of tiles, first row.
   BitmapSurface inkInOneTile() {
-    final pixels = Uint8List(16 * 16 * 4);
+    final pixels = Uint8List(tileSide * tileSide * 4);
     for (var i = 0; i < pixels.length; i += 4) {
       pixels[i] = 200;
       pixels[i + 3] = 255;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 16,
-      tiles: {TileCoord(x: 1, y: 0): BitmapTile(size: 16, pixels: pixels)},
+      tileSize: tileSide,
+      tiles: {
+        TileCoord(x: 1, y: 0): BitmapTile(size: tileSide, pixels: pixels),
+      },
     );
   }
 
@@ -142,6 +146,9 @@ void main() {
   }
 
   group('a camera-size picture sequence', () {
+    // The canvas's middle.
+    final middle = CanvasPoint(x: 2.0 * tileSide, y: 1.5 * tileSide);
+
     /// Both frames of a sequence of the cut [camera] looks through, drawn
     /// in order.
     Future<void> drawBoth(CutCamera camera) async {
@@ -165,8 +172,8 @@ void main() {
         await drawBoth(
           CutCamera(
             keyframes: {
-              0: CameraPose(center: CanvasPoint(x: 32, y: 24)),
-              1: CameraPose(center: CanvasPoint(x: 33, y: 24)),
+              0: CameraPose(center: middle),
+              1: CameraPose(center: CanvasPoint(x: middle.x + 1, y: middle.y)),
             },
           ),
         );
@@ -183,8 +190,10 @@ void main() {
         await drawBoth(
           CutCamera(
             keyframes: {
-              0: CameraPose(center: CanvasPoint(x: 32, y: 24)),
-              1: CameraPose(center: CanvasPoint(x: 32.5, y: 24)),
+              0: CameraPose(center: middle),
+              1: CameraPose(
+                center: CanvasPoint(x: middle.x + 0.5, y: middle.y),
+              ),
             },
           ),
         );

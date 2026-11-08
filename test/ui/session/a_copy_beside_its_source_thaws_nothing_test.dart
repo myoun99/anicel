@@ -36,7 +36,8 @@ void main() {
   late BrushFrameStore store;
   late int drawnRowAt;
 
-  final ink = Uint8List(256 * 256 * 4);
+  const tileSide = defaultCelTileSize;
+  final ink = Uint8List(tileSide * tileSide * 4);
   for (var at = 0; at < ink.length; at += 1) {
     ink[at] = (at * 31 + 7) & 0xFF;
   }
@@ -49,8 +50,8 @@ void main() {
   /// [ink] in the top-left tile of a surface [canvasSize] wide.
   BitmapSurface inked(CanvasSize canvasSize) => BitmapSurface(
     canvasSize: canvasSize,
-    tileSize: 256,
-    tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 256, pixels: ink)},
+    tileSize: tileSide,
+    tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: tileSide, pixels: ink)},
   );
 
   /// What [key] shows in [of] (the cels' store when left out), read as a

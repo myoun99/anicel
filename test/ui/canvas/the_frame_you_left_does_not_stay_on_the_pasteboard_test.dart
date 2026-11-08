@@ -45,9 +45,9 @@ import '../../helpers/settle_async.dart';
 /// ⛔never the picture you left moved under its key, as a stroke that lands
 /// moves one.
 void main() {
-  const canvasSize = CanvasSize(width: 32, height: 32);
-  const tileSize = 16;
-  const view = Size(96, 96);
+  const tileSize = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
+  const view = Size(6.0 * tileSize, 6.0 * tileSize);
   const backdrop = [128, 128, 128, 255];
   final screen = GlobalKey();
 
@@ -87,7 +87,7 @@ void main() {
         'where B has none', (tester) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
-      // Frame A: red at tile (-1, 1), canvas (-16..0, 16..32).
+      // Frame A: red at tile (-1, 1), left of the page's lower half.
       final frameA = surfaceWith({
         TileCoord(x: -1, y: 1): BitmapTile(
           size: tileSize,
@@ -119,12 +119,14 @@ void main() {
         canvasSize: canvasSize,
         stackOf: (picture) => stackOn(picture.frameIndex == 0 ? a : b),
       );
-      final viewport = CanvasViewport(zoom: zoom, panX: 32, panY: 32);
+      // The page two tiles in from the view's top left.
+      const pan = 2.0 * tileSize;
+      final viewport = CanvasViewport(zoom: zoom, panX: pan, panY: pan);
       Offset onScreen(double x, double y) =>
-          Offset(32 + x * zoom, 32 + y * zoom);
+          Offset(pan + x * zoom, pan + y * zoom);
       // The middle of A's red tile, and of B's blue one.
-      final whereAWas = onScreen(-8, 24);
-      final whereBIs = onScreen(-24, 8);
+      final whereAWas = onScreen(-tileSize / 2, tileSize * 3 / 2);
+      final whereBIs = onScreen(-tileSize * 3 / 2, tileSize / 2);
 
       /// The canvas standing on [cel]'s frame, once its picture is there.
       Future<Shot> show(BrushFrameKey cel, BitmapSurface surface) async {

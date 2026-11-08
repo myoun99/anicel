@@ -50,7 +50,8 @@ void main() {
       ..writeAsStringSync('keep');
 
     final store = BrushFrameStore();
-    final pixels = Uint8List(8 * 8 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     store.storeBakedSurface(
       const BrushFrameKey(
         projectId: ProjectId('p'),
@@ -60,11 +61,11 @@ void main() {
         frameId: FrameId('f1'),
       ),
       BitmapSurface(
-        canvasSize: const CanvasSize(width: 16, height: 16),
-        tileSize: 8,
+        canvasSize: const CanvasSize(width: 2 * side, height: 2 * side),
+        tileSize: side,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
-            size: 8,
+            size: side,
             pixels: pixels,
           ),
         },

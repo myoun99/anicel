@@ -51,11 +51,11 @@ import '../../helpers/settle_async.dart';
 /// into it one patch at a time — a stroke shown late by the plugin's time.
 /// Beside each, the same frame with no plugin, as it always was.
 void main() {
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   // ⚠️Wide enough that a folder drawn whole with a plugin's reach on it
   // is held: none is past a page ([HeldSubtreeRasters]).
-  const canvasSize = CanvasSize(width: 128, height: 128);
-  const viewSize = Size(48, 40);
+  const canvasSize = CanvasSize(width: 8 * tileSize, height: 8 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const under = Color(0xFF203040);
   const ink = [0x00, 0x40, 0x00, 0xFF];
   const stroke = [0x40, 0x00, 0x00, 0xFF];
@@ -208,10 +208,10 @@ void main() {
     return BitmapTile(size: tileSize, pixels: pixels);
   }
 
-  /// A canvas standing on [nodes]' frame — its one row inked at (4..8,
-  /// 4..8) — over a store on [gpu]; what [screen] shows, the overlay its
-  /// pen's steps are shown by, and a hand of the pen's row anew — on another
-  /// frame's nodes where it is handed them.
+  /// A canvas standing on [nodes]' frame — its one row inked from a quarter
+  /// of a tile to half of one, across and down — over a store on [gpu]; what
+  /// [screen] shows, the overlay its pen's steps are shown by, and a hand of
+  /// the pen's row anew — on another frame's nodes where it is handed them.
   Future<
     ({
       FramePictureStore<FramePictureKey> store,
@@ -237,7 +237,12 @@ void main() {
           TileCoord(x: 0, y: 0): tileOf(
             TileCoord(x: 0, y: 0),
             ink,
-            (at) => const Rect.fromLTRB(4, 4, 8, 8).contains(at),
+            (at) => const Rect.fromLTRB(
+              tileSize / 4,
+              tileSize / 4,
+              tileSize / 2,
+              tileSize / 2,
+            ).contains(at),
           ),
         },
       ),
@@ -248,7 +253,12 @@ void main() {
           TileCoord(x: 0, y: 1): tileOf(
             TileCoord(x: 0, y: 1),
             other,
-            (at) => const Rect.fromLTRB(4, 20, 8, 24).contains(at),
+            (at) => const Rect.fromLTRB(
+              tileSize / 4,
+              tileSize * 5 / 4,
+              tileSize / 2,
+              tileSize * 3 / 2,
+            ).contains(at),
           ),
         },
       ),
@@ -294,7 +304,7 @@ void main() {
           picture: shown,
           nodes: standing,
           // The pasteboard left of the page in view.
-          viewport: CanvasViewport(panX: 8, panY: 4),
+          viewport: CanvasViewport(panX: tileSize / 2, panY: tileSize / 4),
           live: (
             activeSurfacePainter: painter,
             floatOverlay: null,

@@ -54,9 +54,12 @@ import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
 void main() {
-  const canvasSize = CanvasSize(width: 48, height: 32);
-  const viewSize = Size(48, 32);
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
+  // 3 × 2 tiles — the stroke laid out in sixteenths of one, as it was on
+  // the tiles of 16 this was first drawn on.
+  const sixteenth = tileSize / 16;
+  const canvasSize = CanvasSize(width: 3 * tileSize, height: 2 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.0 * tileSize);
   const ground = [64, 192, 96];
   final screen = GlobalKey();
   const key = BrushFrameKey(
@@ -118,9 +121,12 @@ void main() {
   final dabs = [
     for (var i = 0; i < 12; i += 1)
       BrushDab(
-        center: CanvasPoint(x: 3.3 + i * 3.7, y: 4.6 + i * 2.1),
+        center: CanvasPoint(
+          x: (3.3 + i * 3.7) * sixteenth,
+          y: (4.6 + i * 2.1) * sixteenth,
+        ),
         color: i % 3 == 0 ? 0xFF40C060 : 0xFF102030,
-        size: 5,
+        size: 5 * sixteenth,
         opacity: 0.6,
         flow: 1,
         hardness: 0.4,

@@ -355,8 +355,8 @@ void main() {
         _inkSurface(),
       );
       final state = await pumpDialog(tester, session);
-      // The real-sheet size, so the 8px ink tile is several output pixels
-      // wide rather than a fraction of one.
+      // The real-sheet size, so the ink tile is several output pixels wide
+      // rather than a fraction of one.
       await tapSetting(tester, 'export-envelope-paper-sheet');
 
       await tester.runAsync(state.export);
@@ -637,18 +637,21 @@ void main() {
   });
 }
 
+/// Red ink in the top-left tile of a sheet's cel two tiles across, at the
+/// engine's side.
 BitmapSurface _inkSurface() {
-  final pixels = Uint8List(8 * 8 * 4);
+  const side = defaultCelTileSize;
+  final pixels = Uint8List(side * side * 4);
   for (var i = 0; i < pixels.length; i += 4) {
     pixels[i] = 0xFF;
     pixels[i + 3] = 0xFF;
   }
   return BitmapSurface(
-    canvasSize: const CanvasSize(width: 16, height: 16),
-    tileSize: 8,
+    canvasSize: const CanvasSize(width: 2 * side, height: 2 * side),
+    tileSize: side,
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
-        size: 8,
+        size: side,
         pixels: pixels,
       ),
     },

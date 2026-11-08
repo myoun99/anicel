@@ -68,12 +68,15 @@ typedef _Cel = ({
 /// pose, a colour key, an adjustment, ink past the page, a blend inside a
 /// folder.
 void main() {
-  const tileSize = 8;
+  const tileSize = defaultCelTileSize;
   // 3 × 2 tiles: a pose and a blur reach across their edges.
-  const canvasSize = CanvasSize(width: 24, height: 16);
+  const canvasSize = CanvasSize(width: 3 * tileSize, height: 2 * tileSize);
   // A tile's width of pasteboard round the page is in view.
-  const margin = 8;
-  const viewSize = Size(24 + 2.0 * margin, 16 + 2.0 * margin);
+  const margin = tileSize;
+  const viewSize = Size(
+    3.0 * tileSize + 2 * margin,
+    2.0 * tileSize + 2 * margin,
+  );
   // Something to blend against: a multiply over nothing is
   // indistinguishable from a dropped blend.
   const paper = ProjectBackground.color(0xFF30A060);
@@ -485,7 +488,7 @@ void main() {
       final picture = await pictureShows(tester, scene, store);
 
       expect(
-        alphaAt(canvas, 12, 8),
+        alphaAt(canvas, 3 * tileSize ~/ 2, tileSize),
         255,
         reason: 'the canvas showed no paper — the comparison would be '
             'between two empty pictures',
@@ -517,7 +520,10 @@ void main() {
       final scene = scenes[name]!;
       final canvas = await canvasShows(tester, scene, storeOf(scene));
       expect(
-        [for (var x = -margin; x < 0; x += 1) alphaAt(canvas, x, 3)],
+        [
+          for (var x = -margin; x < 0; x += 1)
+            alphaAt(canvas, x, 3 * tileSize ~/ 8),
+        ],
         everyElement(0),
         reason: 'the blur repeating the paper\'s edge is cut to the paper',
       );
@@ -533,8 +539,12 @@ void main() {
 
     final picture = await pictureShows(tester, scene, store);
 
+    // Inside the tile left of the page, and the one right of its foot.
     expect(
-      [alphaAt(picture, -3, 3), alphaAt(picture, 27, 13)],
+      [
+        alphaAt(picture, -3 * tileSize ~/ 8, 3 * tileSize ~/ 8),
+        alphaAt(picture, 27 * tileSize ~/ 8, 13 * tileSize ~/ 8),
+      ],
       everyElement(greaterThan(0)),
       reason: 'the ink left and right of the page fell outside the '
           'picture\'s extent',

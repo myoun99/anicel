@@ -45,7 +45,9 @@ import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
 
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
+  // Two tiles across and two down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
 
   BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
       BrushFrameKey(
@@ -127,16 +129,16 @@ void main() {
   /// A cel's pixels as an open donates them — baked, under a key no
   /// coordinator drew on.
   BitmapSurface inkedSurface() {
-    final pixels = Uint8List(4 * 4 * 4);
+    final pixels = Uint8List(tileSide * tileSide * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 31 + 7) & 0xFF;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: tileSide,
       tiles: {
         TileCoord(x: 0, y: 0): BitmapTile(
-          size: 4,
+          size: tileSide,
           pixels: pixels,
         ),
       },
@@ -160,7 +162,7 @@ void main() {
       frameStore: store,
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: canvasSize,
-        tileSize: 4,
+        tileSize: tileSide,
       ),
       historyPolicy: const BrushHistoryPolicy(),
     );
@@ -577,7 +579,7 @@ void main() {
       f.coordinator.commitSourceStroke(
         sourceDabs: [
           BrushDab(
-            center: CanvasPoint(x: 5, y: 5),
+            center: CanvasPoint(x: tileSide + 1.0, y: tileSide + 1.0),
             color: 0xFF000000,
             size: 2,
             opacity: 1,
@@ -808,14 +810,15 @@ void main() {
     /// A cel inked across [four]'s canvas, and [past] tiles past every edge.
     BitmapSurface inkedOut(int past) => BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: tileSide,
       tiles: {
         for (var y = -past; y <= 1 + past; y += 1)
           for (var x = -past; x <= 1 + past; x += 1)
             TileCoord(x: x, y: y): BitmapTile(
-              size: 4,
+              size: tileSide,
               pixels: Uint8List.fromList([
-                for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
+                for (var i = 0; i < tileSide * tileSide; i += 1)
+                  ...[0, 0, 0, 255],
               ]),
             ),
       },
@@ -851,15 +854,15 @@ void main() {
           frameStore: store,
           sessionStore: BrushFrameEditSessionStore(
             canvasSize: canvasSize,
-            tileSize: 4,
+            tileSize: tileSide,
           ),
           historyPolicy: const BrushHistoryPolicy(),
         ).commitSourceStroke(
           sourceDabs: [
             BrushDab(
-              center: CanvasPoint(x: 4, y: 4),
+              center: CanvasPoint(x: tileSide * 1.0, y: tileSide * 1.0),
               color: 0xFF000000,
-              size: 6,
+              size: tileSide * 1.5,
               opacity: 1,
               flow: 1,
               hardness: 1,
@@ -972,9 +975,9 @@ void main() {
             store,
             frameKey(six(), const LayerId('layer'), FrameId('f$index')),
             canvasSize: canvasSize,
-            at: CanvasPoint(x: 4, y: 4),
-            size: 6,
-            tileSize: 4,
+            at: CanvasPoint(x: tileSide * 1.0, y: tileSide * 1.0),
+            size: tileSide * 1.5,
+            tileSize: tileSide,
           );
         }
         final images = LayerFrameImageCache(frameStore: store);

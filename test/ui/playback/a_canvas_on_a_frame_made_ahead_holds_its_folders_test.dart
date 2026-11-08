@@ -46,7 +46,7 @@ import '../../helpers/settle_async.dart';
 /// — a run — holds none. ↩️What lies below the pen it does not draw since
 /// 2026-10-28 (card a-scrub-prepares-every-frame-it-crosses).
 void main() {
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   // Past a cell of what lies below a pen ([belowCellSide]) at two pages:
   // a step keeps the cell it lands in.
   const canvasSize = CanvasSize(width: 400, height: 400);

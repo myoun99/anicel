@@ -35,8 +35,9 @@ import '../../helpers/poll_until.dart';
 /// screen shows — one picture, kept under the key of the tree it stacks —
 /// and nothing else.
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
-  const tileSize = 4;
+  // Two tiles across and two down, at the engine's side.
+  const tileSize = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
 
   final cut = Cut(
     id: const CutId('c'),
@@ -69,7 +70,8 @@ void main() {
     for (final cel in cels) {
       for (final corner in [
         CanvasPoint(x: 1, y: 1),
-        if (bothCorners) CanvasPoint(x: 6, y: 6),
+        if (bothCorners)
+          CanvasPoint(x: canvasSize.width - 2.0, y: canvasSize.height - 2.0),
       ]) {
         inkCelIn(
           store,
@@ -417,7 +419,7 @@ void main() {
       addTearDown(images.dispose);
       final pictures = picturesOf(
         images,
-        drawnAt: const CanvasSize(width: 16, height: 16),
+        drawnAt: const CanvasSize(width: 4 * tileSize, height: 4 * tileSize),
       );
       final key = pictures.keyOf(at(0));
 
@@ -490,7 +492,7 @@ void main() {
       store,
       keyOf('a'),
       canvasSize: canvasSize,
-      at: CanvasPoint(x: 5, y: 1),
+      at: CanvasPoint(x: tileSize + 1.0, y: 1),
       size: 2,
       tipShape: BrushTipShape.square,
       tileSize: tileSize,
@@ -770,7 +772,7 @@ void main() {
         var turnsAsked = 0;
         final pictures = picturesOf(
           images,
-          drawnAt: const CanvasSize(width: 16, height: 16),
+          drawnAt: const CanvasSize(width: 4 * tileSize, height: 4 * tileSize),
           quietTurns: QuietTurns(
             clock: QuietClock(
               quiet: () {

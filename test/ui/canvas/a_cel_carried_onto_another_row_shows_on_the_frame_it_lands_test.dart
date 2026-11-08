@@ -36,15 +36,15 @@ import '../../helpers/settle_async.dart';
 /// frame before did: its preview travels with it, and the frame is drawn as
 /// it stands from it while its picture is laid.
 ///
-/// 🔬Measured before the pictures travelled with their cel (2026-10-12):
-/// **0 of 32** columns on the first frame after the release, at 50% and at
-/// 100%, for a cel that lands as an image row (an onion ghost, a row of a
-/// multi-row move the brush is not on). ↩️Pinned on the editing stack's row
-/// images at both zooms, until a frame's one picture was all a screen drew
-/// (one-picture-per-frame ②-5b-1) — the zoom asks nothing of a picture
-/// made at the canvas's own resolution.
+/// 🔬Measured before the pictures travelled with their cel (2026-10-12, on
+/// tiles of 16): **0 of 32** columns on the first frame after the release,
+/// at 50% and at 100%, for a cel that lands as an image row (an onion
+/// ghost, a row of a multi-row move the brush is not on). ↩️Pinned on the
+/// editing stack's row images at both zooms, until a frame's one picture
+/// was all a screen drew (one-picture-per-frame ②-5b-1) — the zoom asks
+/// nothing of a picture made at the canvas's own resolution.
 void main() {
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   const tileCount = 8;
   const canvasSize = CanvasSize(width: tileSize * tileCount, height: tileSize);
   const viewSize = Size(tileSize * 2.0, tileSize * 1.0);

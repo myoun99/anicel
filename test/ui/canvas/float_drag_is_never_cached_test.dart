@@ -43,8 +43,11 @@ import '../../helpers/settle_async.dart';
 /// ↩️It was the canvas's display buffer kept under the float, until the
 /// canvas showed the frame's one picture (one-picture-per-frame ②-5a).
 void main() {
-  const canvasSize = CanvasSize(width: 4, height: 4);
-  const viewSize = Size(4, 4);
+  const canvasSize = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
+  const viewSize = Size(defaultCelTileSize * 1.0, defaultCelTileSize * 1.0);
   final red = RgbaColor(r: 255, g: 0, b: 0, a: 255);
   final blue = RgbaColor(r: 0, g: 0, b: 255, a: 255);
   final screen = GlobalKey();
@@ -76,10 +79,10 @@ void main() {
 
   BitmapSurface solid(RgbaColor color) => BitmapSurface(
     canvasSize: canvasSize,
-    tileSize: 4,
+    tileSize: defaultCelTileSize,
     tiles: {
       TileCoord(x: 0, y: 0): writeRgbaColorToBitmapTile(
-        tile: BitmapTile.blank(size: 4),
+        tile: BitmapTile.blank(size: defaultCelTileSize),
         x: 0,
         y: 0,
         color: color,
@@ -250,7 +253,7 @@ class _InkOutOfSight extends BitmapSurfacePainter {
     : super(
         surface: BitmapSurface(
           canvasSize: canvasSize,
-          tileSize: 4,
+          tileSize: defaultCelTileSize,
           tiles: const {},
         ),
         showTransparentBackground: false,
@@ -284,7 +287,12 @@ class _InkOutOfSight extends BitmapSurfacePainter {
     RowFloat? float,
   }) {
     canvas.drawRect(
-      const Rect.fromLTWH(0, 0, 4, 4),
+      const Rect.fromLTWH(
+        0,
+        0,
+        defaultCelTileSize * 1.0,
+        defaultCelTileSize * 1.0,
+      ),
       Paint()..color = ink.value,
     );
   }

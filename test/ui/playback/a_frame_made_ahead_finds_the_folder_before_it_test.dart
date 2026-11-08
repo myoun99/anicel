@@ -40,7 +40,7 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// the raster thread through its chain, and one nothing finds was that for
 /// nothing.
 void main() {
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   const canvasSize = CanvasSize(width: 300, height: 200);
 
   BrushFrameKey celOf(String layer, String frame) => BrushFrameKey(

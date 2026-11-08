@@ -37,18 +37,21 @@ const key = BrushFrameKey(
 );
 
 BitmapSurface surfaceWith(Uint8List pixels) => BitmapSurface(
-  canvasSize: const CanvasSize(width: 16, height: 16),
-  tileSize: 8,
+  canvasSize: const CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  ),
+  tileSize: defaultCelTileSize,
   tiles: {
     TileCoord(x: 1, y: 0): BitmapTile(
-      size: 8,
+      size: defaultCelTileSize,
       pixels: pixels,
     ),
   },
 );
 
 Uint8List patterned(int seed) {
-  final pixels = Uint8List(8 * 8 * 4);
+  final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
   for (var i = 0; i < pixels.length; i += 1) {
     pixels[i] = (i * seed) & 0xFF;
   }
@@ -72,7 +75,7 @@ void main() {
 
   test('every byte value survives — 0x00 and 0xFF are '
       'where an off-by-one would show', () {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = i % 3 == 0 ? 0x00 : (i % 3 == 1 ? 0xFF : 0x80);
     }
@@ -82,16 +85,18 @@ void main() {
 
   group('🚨the head says whether the picture shows anything — read back '
       'without the stream', () {
-    final ink = tileOf({
-      (2, 3): [9, 9, 9, 255],
-    });
+    final ink = Uint8List(defaultCelTileSize * defaultCelTileSize * 4)
+      ..setAll(0, [9, 9, 9, 255]);
     // Colour in every pixel and no alpha in any: kept, and nothing seen.
-    final clear = tileFilledWith([9, 9, 9, 0]);
+    final clear = Uint8List.fromList([
+      for (var at = 0; at < ink.length; at += 1)
+        if (at % 4 == 3) 0 else 9,
+    ]);
     for (final (name, picture, shows) in [
-      ('ink in a tile', drawingOf({TileCoord(x: 0, y: 0): ink}), true),
+      ('ink in a tile', surfaceWith(ink), true),
       ('a text alone', drawingOf(const {}).withTexts([textOf(1)]), true),
       ('a photo alone', drawingOf(const {}).withPhotos([photoOf(1)]), true),
-      ('tiles with no ink', drawingOf({TileCoord(x: 0, y: 0): clear}), false),
+      ('tiles with no ink', surfaceWith(clear), false),
       ('nothing at all', drawingOf(const {}), false),
     ]) {
       test(name, () {
@@ -114,7 +119,7 @@ void main() {
     );
     for (final picture in [
       surfaceWith(patterned(11)),
-      surfaceWith(Uint8List(8 * 8 * 4)),
+      surfaceWith(Uint8List(defaultCelTileSize * defaultCelTileSize * 4)),
     ]) {
       final blob = AnicelCelBlob.ofSurface(key, picture);
       final rekeyed = AnicelCelBlob(AnicelCelBlob.reKeyed(blob, other).bytes);

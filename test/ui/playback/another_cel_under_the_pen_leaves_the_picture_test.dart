@@ -50,9 +50,10 @@ import '../../helpers/settle_async.dart';
 /// asked of the picture is the oracle, the GPU's own writes are pinned
 /// elsewhere (`a_stroke_is_written_into_the_picture_shown_test`).
 void main() {
-  const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 32);
-  const viewSize = Size(48, 40);
+  const tileSize = defaultCelTileSize;
+  // 2 × 2 tiles, the pasteboard round them in view.
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const under = Color(0xFF203040);
   BrushFrameKey celOf(String row) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -76,7 +77,7 @@ void main() {
     paintPaper: false,
     ghosts: FrameGhosts.none,
   );
-  final view = CanvasViewport(panX: 8, panY: 4);
+  final view = CanvasViewport(panX: tileSize / 2, panY: tileSize / 4);
   final screen = GlobalKey();
   final at = TileCoord(x: 0, y: 0);
   final beside = TileCoord(x: 1, y: 0);

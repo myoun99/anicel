@@ -27,8 +27,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const size = 8;
-  const canvas = CanvasSize(width: 64, height: 64);
+  const size = defaultCelTileSize;
+  const canvas = CanvasSize(width: 8 * size, height: 8 * size);
 
   BrushFrameKey keyOf(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),

@@ -35,7 +35,15 @@ void main() {
   setUp(() => debugWorkersRunHere = false);
   tearDown(() => debugWorkersRunHere = true);
 
-  const canvasSize = CanvasSize(width: 16, height: 16);
+  // Two tiles across and down, on the engine's side.
+  const canvasSize = CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  );
+  const bigger = CanvasSize(
+    width: 4 * defaultCelTileSize,
+    height: 4 * defaultCelTileSize,
+  );
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -49,16 +57,16 @@ void main() {
   /// the other's block reads wrong.
   BitmapSurface inkSurface({int seed = 1, CanvasSize canvas = canvasSize}) {
     BitmapTile tile(int salt) {
-      final pixels = Uint8List(8 * 8 * 4);
+      final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
       for (var i = 0; i < pixels.length; i += 1) {
         pixels[i] = (i * seed * 31 + salt) & 0xFF;
       }
-      return BitmapTile(size: 8, pixels: pixels);
+      return BitmapTile(size: defaultCelTileSize, pixels: pixels);
     }
 
     return BitmapSurface(
       canvasSize: canvas,
-      tileSize: 8,
+      tileSize: defaultCelTileSize,
       tiles: {
         TileCoord(x: 0, y: 0): tile(3),
         TileCoord(x: 1, y: 1): tile(7),
@@ -152,10 +160,7 @@ void main() {
         await answeredAtOnce([
           store.thawAhead(hotKey, canvasSize: canvasSize),
           store.thawAhead(key('empty'), canvasSize: canvasSize),
-          store.thawAhead(
-            other,
-            canvasSize: const CanvasSize(width: 32, height: 32),
-          ),
+          store.thawAhead(other, canvasSize: bigger),
         ]),
         isTrue,
         reason: 'none of them stood in line',
@@ -194,7 +199,6 @@ void main() {
 
     await whileNoWorkerIsFree(() async {
       thaw = store.thawAhead(k, canvasSize: canvasSize);
-      const bigger = CanvasSize(width: 32, height: 32);
       parkCold(store, {k: inkSurface(canvas: bigger)});
     });
     await thaw;

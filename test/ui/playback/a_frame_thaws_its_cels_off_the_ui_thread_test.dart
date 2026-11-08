@@ -42,7 +42,9 @@ void main() {
   setUp(() => debugWorkersRunHere = false);
   tearDown(() => debugWorkersRunHere = true);
 
-  const canvasSize = CanvasSize(width: 8, height: 8);
+  // Two tiles across and two down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
 
   final cut = Cut(
     id: const CutId('c'),
@@ -63,16 +65,16 @@ void main() {
   /// Two inked tiles of the cel's own bytes.
   BitmapSurface surfaceOf(int seed) {
     BitmapTile tile(int salt) {
-      final pixels = Uint8List(4 * 4 * 4);
+      final pixels = Uint8List(tileSide * tileSide * 4);
       for (var i = 0; i < pixels.length; i += 1) {
         pixels[i] = i % 4 == 3 ? 255 : (i * seed * 31 + salt) & 0xFF;
       }
-      return BitmapTile(size: 4, pixels: pixels);
+      return BitmapTile(size: tileSide, pixels: pixels);
     }
 
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 4,
+      tileSize: tileSide,
       tiles: {TileCoord(x: 0, y: 0): tile(3), TileCoord(x: 1, y: 1): tile(7)},
     );
   }

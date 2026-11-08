@@ -44,7 +44,7 @@ void main() {
   tearDown(() => session.dispose());
 
   // One picture: a cut's composite, and the canvas's image of a cel inked over
-  // it — the canvas is one tile, so both are its size.
+  // it — the ink covers every tile of the canvas, so both are its size.
   const picture = 256 * 256 * 4;
 
   /// [twoPictures]' cut, its two cels not inked yet.

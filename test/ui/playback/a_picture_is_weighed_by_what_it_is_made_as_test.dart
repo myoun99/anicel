@@ -39,7 +39,9 @@ import '../../helpers/poll_until.dart';
 /// shape by a row's kind at every level, until no row image was made
 /// (one-picture-per-frame ②-5b-1).
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
+  // Two tiles across and two down, at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: 2 * tileSide, height: 2 * tileSide);
   // The canvas as its picture lies ([pictureExtentOf]).
   final canvasPicture = pictureExtentOf(canvasSize.canvasRect);
   final canvasBytes = estimatedImageBytes(
@@ -64,15 +66,15 @@ void main() {
   final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
 
   BitmapTile red() => BitmapTile(
-    size: 4,
+    size: tileSide,
     pixels: Uint8List.fromList([
-      for (var i = 0; i < 4 * 4; i += 1) ...[255, 0, 0, 255],
+      for (var i = 0; i < tileSide * tileSide; i += 1) ...[255, 0, 0, 255],
     ]),
   );
 
   BitmapSurface inkedAt(List<TileCoord> tiles) => BitmapSurface(
     canvasSize: canvasSize,
-    tileSize: 4,
+    tileSize: tileSide,
     tiles: {for (final at in tiles) at: red()},
   );
 

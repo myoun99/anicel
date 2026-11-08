@@ -77,7 +77,9 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
 void main() {
-  const side = 32;
+  // Two tiles across at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const side = 2 * tileSide;
   const canvasSize = CanvasSize(width: side, height: side);
   const viewSize = Size(side * 1.0, side * 1.0);
   final screen = GlobalKey();
@@ -104,19 +106,23 @@ void main() {
 
   /// One tile of [colour] at the pixels [inked] says, clear elsewhere.
   BitmapTile tileOf(List<int> colour, bool Function(int x, int y) inked) {
-    final pixels = Uint8List(16 * 16 * 4);
-    for (var y = 0; y < 16; y += 1) {
-      for (var x = 0; x < 16; x += 1) {
+    final pixels = Uint8List(tileSide * tileSide * 4);
+    for (var y = 0; y < tileSide; y += 1) {
+      for (var x = 0; x < tileSide; x += 1) {
         if (inked(x, y)) {
-          pixels.setRange((y * 16 + x) * 4, (y * 16 + x) * 4 + 4, colour);
+          pixels.setRange(
+            (y * tileSide + x) * 4,
+            (y * tileSide + x) * 4 + 4,
+            colour,
+          );
         }
       }
     }
-    return BitmapTile(size: 16, pixels: pixels);
+    return BitmapTile(size: tileSide, pixels: pixels);
   }
 
   BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
-      BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: tiles);
+      BitmapSurface(canvasSize: canvasSize, tileSize: tileSide, tiles: tiles);
 
   /// What the text tool floats over a text's hole, as it carries the text:
   /// a 4×4 square of red ink at the far corner of a tile of its own, moved
@@ -125,7 +131,7 @@ void main() {
     surface: surfaceOf({
       TileCoord(x: 0, y: 0): tileOf(
         [0xFF, 0, 0, 0xFF],
-        (x, y) => x >= 12 && y >= 12,
+        (x, y) => x >= tileSide - 4 && y >= tileSide - 4,
       ),
     }),
     showTransparentBackground: false,
@@ -222,7 +228,7 @@ void main() {
         rows: (
           activeSurfacePainter: BitmapSurfacePainter(
             surface: surfaceOf({
-              TileCoord(x: 0, y: 0): BitmapTile.blank(size: 16),
+              TileCoord(x: 0, y: 0): BitmapTile.blank(size: tileSide),
             }),
             showTransparentBackground: false,
             landingPreview: preview,
@@ -261,7 +267,7 @@ void main() {
     BitmapSurface theCel() => surfaceOf({
       TileCoord(x: 1, y: 1): tileOf(
         [0, 0, 0xFF, 0xFF],
-        (x, y) => x == 15 && y == 15,
+        (x, y) => x == tileSide - 1 && y == tileSide - 1,
       ),
     });
     final cels = BrushFrameStore();
@@ -301,7 +307,7 @@ void main() {
       preview.value = floatAt(2, 2);
     }, what: 'the preview as it comes');
     expect(
-      isRed(await shotOf(tester, screen), 15, 15),
+      isRed(await shotOf(tester, screen), tileSide - 1, tileSide - 1),
       isTrue,
       reason: 'it is drawn where it is',
     );
@@ -309,8 +315,16 @@ void main() {
       preview.value = floatAt(10, 8);
     }, what: 'the preview as it moves');
     final patched = await shotOf(tester, screen);
-    expect(isRed(patched, 15, 15), isFalse, reason: 'the old place is cleared');
-    expect(isRed(patched, 23, 21), isTrue, reason: 'the new place is inked');
+    expect(
+      isRed(patched, tileSide - 1, tileSide - 1),
+      isFalse,
+      reason: 'the old place is cleared',
+    );
+    expect(
+      isRed(patched, tileSide + 7, tileSide + 5),
+      isTrue,
+      reason: 'the new place is inked',
+    );
 
     // A view of its own, the preview in hand: the frame as it stands.
     final standing = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
@@ -352,13 +366,13 @@ void main() {
       under: surfaceOf({
         TileCoord(x: 1, y: 1): tileOf(
           [0, 0, 0xFF, 0xFF],
-          (x, y) => x == 15 && y == 15,
+          (x, y) => x == tileSide - 1 && y == tileSide - 1,
         ),
       }),
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final overlay = ActiveStrokeOverlayModel(tileSize: 16);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSide);
     addTearDown(overlay.dispose);
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
@@ -427,7 +441,7 @@ void main() {
     // cache that knows none of its fresh tile objects — the frame the
     // first-activation stand-in used to exist for; every tile pictures
     // itself inside this paint now (2026-09-17).
-    const tileSize = 16;
+    const tileSize = defaultCelTileSize;
     const tileCount = 4;
     final key = keyOf('l');
     const celSize = CanvasSize(width: tileCount * tileSize, height: tileSize);

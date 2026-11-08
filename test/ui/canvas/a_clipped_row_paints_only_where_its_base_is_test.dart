@@ -44,7 +44,10 @@ void main() {
   // A row in multiply is composed over its backdrop in the shader.
   setUpAll(LayerBlendShader.load);
 
-  const canvasSize = CanvasSize(width: 4, height: 4);
+  const canvasSize = CanvasSize(
+    width: defaultCelTileSize,
+    height: defaultCelTileSize,
+  );
 
   /// The base: grey, opaque at (0, 0), half at (1, 0), nothing at (2, 0).
   BitmapSurface base() => _surface({
@@ -180,8 +183,8 @@ void main() {
           home: Scaffold(
             body: Center(
               child: SizedBox(
-                width: 4,
-                height: 4,
+                width: defaultCelTileSize * 1.0,
+                height: defaultCelTileSize * 1.0,
                 child: TheFrameAsItStands(
                   nodes: nodes,
                   imageCache: cache,
@@ -210,9 +213,12 @@ void main() {
           .first;
       return (await tester.runAsync(() async {
         final recorder = ui.PictureRecorder();
-        const size = Size(4, 4);
+        const size = Size(defaultCelTileSize * 1.0, defaultCelTileSize * 1.0);
         painter.paint(Canvas(recorder, Offset.zero & size), size);
-        final image = await recorder.endRecording().toImage(4, 4);
+        final image = await recorder.endRecording().toImage(
+          defaultCelTileSize,
+          defaultCelTileSize,
+        );
         final data = await image.toByteData(
           format: ui.ImageByteFormat.rawStraightRgba,
         );
@@ -257,16 +263,18 @@ void main() {
   });
 }
 
-/// A 4×4 surface holding [row0] along its top row: each x → its RGBA.
+/// A surface of one tile at the engine's side ([defaultCelTileSize]) holding
+/// [row0] along its top row: each x → its RGBA.
 BitmapSurface _surface(Map<int, List<int>> row0) {
-  final pixels = Uint8List(4 * 4 * 4);
+  const side = defaultCelTileSize;
+  final pixels = Uint8List(side * side * 4);
   for (final MapEntry(key: x, value: rgba) in row0.entries) {
     pixels.setAll(x * 4, rgba);
   }
   return BitmapSurface(
-    canvasSize: const CanvasSize(width: 4, height: 4),
-    tileSize: 4,
-    tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 4, pixels: pixels)},
+    canvasSize: const CanvasSize(width: side, height: side),
+    tileSize: side,
+    tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: side, pixels: pixels)},
   );
 }
 

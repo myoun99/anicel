@@ -43,7 +43,7 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// and the canvas's strokes found nothing held. Laid at once, the frame is
 /// drawn once, holding as it draws — as before pieces.
 void main() {
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   // Three pieces across, the folder's ink in the first alone.
   const canvasSize = CanvasSize(width: 1100, height: 300);
 

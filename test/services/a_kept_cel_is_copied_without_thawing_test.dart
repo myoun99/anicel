@@ -29,7 +29,11 @@ import '../helpers/project_scratch_folder.dart';
 /// thawed every cel it copied, and FU rose to 3000MB. A copy takes the
 /// picture in the tier its source keeps it in.
 void main() {
-  const size = CanvasSize(width: 16, height: 16);
+  // Two tiles across and down, on the engine's side.
+  const size = CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  );
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -40,14 +44,19 @@ void main() {
   );
 
   BitmapSurface inked(int seed) {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed * 31 + seed) & 0xFF;
     }
     return BitmapSurface(
       canvasSize: size,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: defaultCelTileSize,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(
+          size: defaultCelTileSize,
+          pixels: pixels,
+        ),
+      },
     );
   }
 
@@ -113,7 +122,10 @@ void main() {
 
   test('a hot cel copied onto a canvas of another size is laid to it', () {
     final store = BrushFrameStore()..storeBakedSurface(key('a'), inked(3));
-    const bigger = CanvasSize(width: 32, height: 32);
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
 
     store.copyCel(key('a'), key('b'), canvasSize: bigger);
 
@@ -138,7 +150,10 @@ void main() {
       'parked — never hot', () {
     final store = BrushFrameStore();
     keepInAFile(store, {key('a'): inked(4)});
-    const bigger = CanvasSize(width: 32, height: 32);
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
 
     store.copyCel(key('a'), key('b'), canvasSize: bigger);
 
@@ -189,7 +204,10 @@ void main() {
       store.copyCel(
         key('a'),
         key('b'),
-        canvasSize: const CanvasSize(width: 32, height: 32),
+        canvasSize: const CanvasSize(
+          width: 4 * defaultCelTileSize,
+          height: 4 * defaultCelTileSize,
+        ),
       );
 
       expect(store.isCelFileBacked(key('b')), isFalse);
@@ -242,7 +260,10 @@ void main() {
   test('a copy answers the size it is kept at — what an undo empties', () {
     final store = BrushFrameStore();
     keepInAFile(store, {key('a'): inked(1)});
-    const bigger = CanvasSize(width: 32, height: 32);
+    const bigger = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
 
     expect(store.copyCel(key('a'), key('b'), canvasSize: size), size);
     expect(store.copyCel(key('a'), key('c'), canvasSize: bigger), bigger);
@@ -253,7 +274,10 @@ void main() {
   // its surface is — the sheet's, whatever the cut's canvas.
   group('left without a size, a copy keeps the size its source is kept '
       'at', () {
-    const sheet = CanvasSize(width: 24, height: 40);
+    const sheet = CanvasSize(
+      width: 3 * defaultCelTileSize,
+      height: 5 * defaultCelTileSize,
+    );
 
     BitmapSurface onTheSheet(int seed) =>
         resizeBitmapSurfaceCanvas(inked(seed), sheet);

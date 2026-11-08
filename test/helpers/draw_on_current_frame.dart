@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -83,7 +84,9 @@ void inkCel(
 );
 
 /// [inkCel] into a bare [store] — through a coordinator of its own, straight
-/// into the store, in [color] (black unless asked) on tiles of [tileSize].
+/// into the store, in [color] (black unless asked) on tiles of [tileSize]:
+/// the engine's side unless asked, the only tile a cel's save, cooling or
+/// parked undo can read back.
 void inkCelIn(
   BrushFrameStore store,
   BrushFrameKey key, {
@@ -92,7 +95,7 @@ void inkCelIn(
   required double size,
   BrushTipShape tipShape = BrushTipShape.round,
   int color = 0xFF000000,
-  int tileSize = 256,
+  int tileSize = defaultCelTileSize,
 }) {
   BrushFrameEditingCoordinator(
     initialFrameKey: key,

@@ -23,7 +23,7 @@ import '../../helpers/one_piece.dart';
 /// leaf a surface that STILL CARRIES its texts, as such a route would.
 void main() {
   final drawn = TileCoord(x: 0, y: 0);
-  // On the pasteboard, past the canvas's right edge (32 px = four tiles).
+  // On the pasteboard, past the canvas's right edge (512 px = four tiles).
   final pastTheEdge = TileCoord(x: 5, y: 1);
   final ink = tileOf({
     (1, 1): [10, 20, 30, 255],
@@ -65,8 +65,14 @@ void main() {
         showTransparentBackground: false,
       );
 
-      expect(painter.drawnWorldRect.right, (pastTheEdge.x + 1) * 8.0);
-      expect(painter.drawnWorldRect.bottom, (pastTheEdge.y + 1) * 8.0);
+      expect(
+        painter.drawnWorldRect.right,
+        (pastTheEdge.x + 1) * celTextTestTileSize,
+      );
+      expect(
+        painter.drawnWorldRect.bottom,
+        (pastTheEdge.y + 1) * celTextTestTileSize,
+      );
     });
 
     test('a surface with no text is drawn as the object it is', () {
@@ -80,10 +86,10 @@ void main() {
     test('a text past the drawing grows the rect a compose rasters', () {
       final withTexts = picture();
 
-      expect(surfaceContentWorldRect(withTexts).right, 48);
-      expect(surfaceContentWorldRect(drawingOf({drawn: ink})).right, 32);
-      expect(surfaceInkWorldRect(withTexts).right, 48);
-      expect(surfaceInkWorldRect(withTexts).bottom, 16);
+      expect(surfaceContentWorldRect(withTexts).right, 768);
+      expect(surfaceContentWorldRect(drawingOf({drawn: ink})).right, 512);
+      expect(surfaceInkWorldRect(withTexts).right, 768);
+      expect(surfaceInkWorldRect(withTexts).bottom, 256);
     });
 
     testWidgets('🚨every compose draws the letters: the image of a surface '
@@ -118,7 +124,7 @@ void main() {
         final positionedReference = await composePositionedSurfaceImage(laid);
         final positioned = await composePositionedSurfaceImage(withTexts);
         expect(positioned!.worldRect, positionedReference!.worldRect);
-        expect(positioned.worldRect.right, 48);
+        expect(positioned.worldRect.right, 768);
         expect(
           await bytesOf(positioned.image),
           await bytesOf(positionedReference.image),

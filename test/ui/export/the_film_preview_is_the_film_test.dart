@@ -50,7 +50,10 @@ void main() {
   const cream = 0xFFFFEECC;
   const creamPixel = (0xFF, 0xEE, 0xCC, 0xFF);
   const ink = (0, 0, 200, 255);
-  const size = CanvasSize(width: 8, height: 8);
+  // One tile at the engine's side; the pins read it in eighths.
+  const tileSide = defaultCelTileSize;
+  const eighth = tileSide ~/ 8;
+  const size = CanvasSize(width: tileSide, height: tileSide);
   const cutId = CutId('c');
   const rowId = LayerId('row');
   const drawingId = FrameId('drawing');
@@ -105,9 +108,9 @@ void main() {
 
   /// [session]'s drawing inked on its left half, its right half bare.
   void inkLeftHalf(EditorSessionManager session) {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(tileSide * tileSide * 4);
     for (var i = 0; i < pixels.length; i += 4) {
-      if ((i ~/ 4) % 8 < 4) {
+      if ((i ~/ 4) % tileSide < tileSide ~/ 2) {
         pixels
           ..[i + 2] = ink.$3
           ..[i + 3] = 255;
@@ -117,8 +120,10 @@ void main() {
       session.brushFrameKeyForCut(session.requireActiveCut, rowId, drawingId):
           BitmapSurface(
             canvasSize: size,
-            tileSize: 8,
-            tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+            tileSize: tileSide,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(size: tileSide, pixels: pixels),
+            },
           ),
     });
   }
@@ -180,7 +185,10 @@ void main() {
         for (final mode in ExportSizeMode.values) {
           final frame = await filmFrame(session, format, mode);
           expect(
-            (pixelOf(frame, 1, 4, 8), pixelOf(frame, 6, 4, 8)),
+            (
+              pixelOf(frame, eighth, 4 * eighth, tileSide),
+              pixelOf(frame, 6 * eighth, 4 * eighth, tileSide),
+            ),
             (ink, creamPixel),
             reason: '${format.container} at the $mode size',
           );
@@ -200,11 +208,21 @@ void main() {
         const ProjectBackground.color(cream, none: true),
       );
       expect(
-        pixelOf(await filmFrame(session, gif, ExportSizeMode.canvas), 4, 4, 8),
+        pixelOf(
+          await filmFrame(session, gif, ExportSizeMode.canvas),
+          4 * eighth,
+          4 * eighth,
+          tileSide,
+        ),
         (0, 0, 0, 0),
       );
       expect(
-        pixelOf(await filmFrame(session, mp4, ExportSizeMode.canvas), 4, 4, 8),
+        pixelOf(
+          await filmFrame(session, mp4, ExportSizeMode.canvas),
+          4 * eighth,
+          4 * eighth,
+          tileSide,
+        ),
         (255, 255, 255, 255),
       );
     });
@@ -217,18 +235,26 @@ void main() {
     await tester.runAsync(() async {
       final session = sessionOn(const ProjectBackground.color(cream));
       inkLeftHalf(session);
+      const halfSide = tileSide ~/ 2;
       for (final mode in ExportSizeMode.values) {
         final half = await filmFrame(
           session,
           mp4,
           mode,
-          outputSize: const CanvasSize(width: 4, height: 4),
+          outputSize: const CanvasSize(width: halfSide, height: halfSide),
         );
-        expect(half.length, 4 * 4 * 4, reason: 'at the size asked ($mode)');
+        expect(
+          half.length,
+          halfSide * halfSide * 4,
+          reason: 'at the size asked ($mode)',
+        );
         // Inside the edge: a reduced render's paper yields the pixel the
         // canvas's edge falls in to the rows (#15).
         expect(
-          (pixelOf(half, 1, 2, 4), pixelOf(half, 2, 2, 4)),
+          (
+            pixelOf(half, eighth, 2 * eighth, halfSide),
+            pixelOf(half, 2 * eighth, 2 * eighth, halfSide),
+          ),
           (ink, creamPixel),
           reason: 'the ink on the left, the paper on the right ($mode)',
         );
@@ -254,7 +280,8 @@ void main() {
     await tester.runAsync(() async {
       final session = sessionOn(const ProjectBackground.color(cream));
       inkLeftHalf(session);
-      const quarter = CanvasSize(width: 4, height: 4);
+      const halfSide = tileSide ~/ 2;
+      const quarter = CanvasSize(width: halfSide, height: halfSide);
       for (final mode in ExportSizeMode.values) {
         // The window keeps one renderer for its preview, whatever the size
         // the preview asks at.
@@ -271,16 +298,24 @@ void main() {
                 outputSize: size,
               ),
             );
-        expect((await at(null)).length, 8 * 8 * 4, reason: '$mode');
+        expect(
+          (await at(null)).length,
+          tileSide * tileSide * 4,
+          reason: '$mode',
+        );
         final small = await at(quarter);
         expect(
-          (small.length, pixelOf(small, 1, 2, 4), pixelOf(small, 2, 2, 4)),
-          (4 * 4 * 4, ink, creamPixel),
+          (
+            small.length,
+            pixelOf(small, eighth, 2 * eighth, halfSide),
+            pixelOf(small, 2 * eighth, 2 * eighth, halfSide),
+          ),
+          (halfSide * halfSide * 4, ink, creamPixel),
           reason: 'not the picture held from the size before ($mode)',
         );
         expect(
           (await at(quarter, frameIndex: -1)).length,
-          4 * 4 * 4,
+          halfSide * halfSide * 4,
           reason: 'a gap ($mode)',
         );
       }
@@ -345,8 +380,11 @@ void main() {
             sizeMode: sizeMode,
           );
           expect(tester.exportPreviewImage, isNotNull, reason: 'LIVENESS');
-          expect(await previewPixel(tester, 1, 4), ink);
-          expect(await previewPixel(tester, 6, 4), creamPixel);
+          expect(await previewPixel(tester, eighth, 4 * eighth), ink);
+          expect(
+            await previewPixel(tester, 6 * eighth, 4 * eighth),
+            creamPixel,
+          );
           session.playbackRig.prerenderScheduler.cancel();
         });
       }
@@ -388,8 +426,15 @@ void main() {
         format: gif,
         sizeMode: ExportSizeMode.canvas,
       );
-      expect(await previewPixel(tester, 1, 4), ink, reason: 'LIVENESS');
-      expect(await previewPixel(tester, 6, 4), (0, 0, 0, 0));
+      expect(
+        await previewPixel(tester, eighth, 4 * eighth),
+        ink,
+        reason: 'LIVENESS',
+      );
+      expect(
+        await previewPixel(tester, 6 * eighth, 4 * eighth),
+        (0, 0, 0, 0),
+      );
       session.playbackRig.prerenderScheduler.cancel();
     });
 
@@ -406,7 +451,10 @@ void main() {
         format: mp4.copyWith(backgroundArgb: 0xFF000000),
         sizeMode: ExportSizeMode.canvas,
       );
-      expect(await previewPixel(tester, 4, 4), (255, 255, 255, 255));
+      expect(
+        await previewPixel(tester, 4 * eighth, 4 * eighth),
+        (255, 255, 255, 255),
+      );
       session.playbackRig.prerenderScheduler.cancel();
     });
   });

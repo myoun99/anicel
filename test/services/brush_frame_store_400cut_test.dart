@@ -52,22 +52,32 @@ void main() {
         frameId: FrameId('f$i'),
       );
 
-      // One inked 256px tile per cel (sparse line art — the realistic cel).
+      // One inked 256px square per cel at (512, 512) (sparse line art — the
+      // realistic cel), on the engine's tiles: the four it covers. ⚠️Not
+      // one tile with its ink scaled down: what the append is weighed
+      // against is the cels' ink, and project.json and the directory do not
+      // shrink with it.
+      const tileSide = defaultCelTileSize;
+      const side = 256;
       BitmapSurface inked(int seed) {
-        final pixels = Uint8List(256 * 256 * 4);
+        final tiles = <TileCoord, Uint8List>{};
         for (var i = 0; i < 4096; i += 1) {
-          final at = ((i * 97 + seed) % (256 * 256)) * 4;
-          pixels[at] = 20;
-          pixels[at + 3] = 255;
+          final at = (i * 97 + seed) % (side * side);
+          final (x, y) = (2 * side + at % side, 2 * side + at ~/ side);
+          final pixels = tiles.putIfAbsent(
+            TileCoord(x: x ~/ tileSide, y: y ~/ tileSide),
+            () => Uint8List(BitmapTile.bytesFor(tileSide)),
+          );
+          final local = ((y % tileSide) * tileSide + x % tileSide) * 4;
+          pixels[local] = 20;
+          pixels[local + 3] = 255;
         }
         return BitmapSurface(
           canvasSize: canvasSize,
-          tileSize: 256,
+          tileSize: tileSide,
           tiles: {
-            TileCoord(x: 2, y: 2): BitmapTile(
-              size: 256,
-              pixels: pixels,
-            ),
+            for (final MapEntry(key: coord, value: pixels) in tiles.entries)
+              coord: BitmapTile(size: tileSide, pixels: pixels),
           },
         );
       }
@@ -144,11 +154,14 @@ void main() {
       final touchWatch = Stopwatch()..start();
       final surface = store2.bakedSurfaceOrNull(key(3))!;
       touchWatch.stop();
-      expect(
-        surface.tiles[TileCoord(x: 2, y: 2)]!.pixels,
-        inked(9999).tiles[TileCoord(x: 2, y: 2)]!.pixels,
-        reason: 'the shadowing entry is the one that opens',
-      );
+      final edited = inked(9999);
+      for (final MapEntry(key: coord, value: tile) in edited.tiles.entries) {
+        expect(
+          surface.tiles[coord]!.pixels,
+          tile.pixels,
+          reason: 'the shadowing entry is the one that opens',
+        );
+      }
 
       // ignore: avoid_print
       print(

@@ -54,8 +54,12 @@ import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
-  const viewSize = Size(8, 8);
+  // One tile, at the engine's side — the stroke laid out in its eighths,
+  // as it was on the tile of 8 this was first drawn on.
+  const tileSide = defaultCelTileSize;
+  const eighth = tileSide ~/ 8;
+  const canvasSize = CanvasSize(width: tileSide, height: tileSide);
+  const viewSize = Size(tileSide * 1.0, tileSide * 1.0);
   final screen = GlobalKey();
 
   const key = BrushFrameKey(
@@ -87,19 +91,22 @@ void main() {
   /// not reach — a cel with nothing on it is no part of its frame's
   /// picture, and there would be no picture to patch.
   BitmapSurface theCel() {
-    final pixels = Uint8List(8 * 8 * 4);
-    pixels.setRange((7 * 8 + 7) * 4, (7 * 8 + 7) * 4 + 4, [0, 0, 255, 255]);
+    const corner = (tileSide * tileSide - 1) * 4;
+    final pixels = Uint8List(tileSide * tileSide * 4);
+    pixels.setRange(corner, corner + 4, [0, 0, 255, 255]);
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: tileSide,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(size: tileSide, pixels: pixels),
+      },
     );
   }
 
   BrushDab dabAt(double x, {int sequence = 0}) => BrushDab(
-    center: CanvasPoint(x: x, y: 4),
+    center: CanvasPoint(x: x, y: 4.0 * eighth),
     color: 0xFF000000,
-    size: 3,
+    size: 3.0 * eighth,
     opacity: 1,
     flow: 1,
     hardness: 1,
@@ -116,7 +123,7 @@ void main() {
     keepInAFile(cels, {key: theCel()});
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final overlay = ActiveStrokeOverlayModel(tileSize: 8);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSide);
     addTearDown(overlay.dispose);
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
@@ -199,12 +206,22 @@ void main() {
     }
 
     await step(
-      [dabAt(2)],
-      DirtyRegion.fromXYWH(x: 0, y: 2, width: 5, height: 5),
+      [dabAt(2.0 * eighth)],
+      DirtyRegion.fromXYWH(
+        x: 0,
+        y: 2 * eighth,
+        width: 5 * eighth,
+        height: 5 * eighth,
+      ),
     );
     await step(
-      [dabAt(2), dabAt(5, sequence: 1)],
-      DirtyRegion.fromXYWH(x: 3, y: 2, width: 5, height: 5),
+      [dabAt(2.0 * eighth), dabAt(5.0 * eighth, sequence: 1)],
+      DirtyRegion.fromXYWH(
+        x: 3 * eighth,
+        y: 2 * eighth,
+        width: 5 * eighth,
+        height: 5 * eighth,
+      ),
     );
     final afterPatch = await shotOf(tester, screen);
 

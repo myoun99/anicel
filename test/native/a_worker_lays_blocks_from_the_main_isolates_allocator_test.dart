@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -76,8 +77,10 @@ void main() {
       'worker those addresses, not a pool of the worker\'s own', () async {
     final engine = QaNativeEngine.instance;
     expect(engine, isNotNull, reason: 'the binary at $libraryPath loaded');
-    // One tile, of a size no tile wears — as above.
-    const tileSize = 24;
+    // One tile, of the engine's side — the only one a cel's tile wears, so
+    // its bucket is not this block's alone: the pool hands back the block
+    // it parked last, which is the one freed here.
+    const tileSize = defaultCelTileSize;
     final length = BitmapTile.bytesFor(tileSize);
     // ↩️Deflate until the connection round (connection-round-checklist H),
     // so the worker had no C engine of its own to find: the compressor is

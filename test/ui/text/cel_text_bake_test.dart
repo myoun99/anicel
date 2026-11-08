@@ -19,7 +19,7 @@ import '../../helpers/cel_text_fixture.dart';
 /// what it holds here is what the person sees, saves and exports.
 ///
 /// ⚠️The test font sets every glyph as a filled box one letter-size wide
-/// and tall, so at a line pitch of 1 and size 8 — the fixture's tile — a
+/// and tall, so at a line pitch of 1 and size 128 — the fixture's tile — a
 /// letter on the grid IS a tile.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -28,8 +28,8 @@ void main() {
 
   CelTextContent said(
     List<CelTextSpan> spans, {
-    double x = 8,
-    double y = 8,
+    double x = 128,
+    double y = 128,
     double turn = 0,
     double? wrapWidth,
     int? background,
@@ -47,7 +47,7 @@ void main() {
 
   CelTextSpan run(
     String words, {
-    double size = 8,
+    double size = 128,
     int color = 0xFF0A141E,
     int? outline,
     double outlineWidth = 0,
@@ -131,12 +131,12 @@ void main() {
   /// A text that tries every setting at once, off the pixel grid.
   CelTextContent everything({double turn = 30}) => said(
     [
-      run('a', size: 10),
-      run('b', size: 14, outline: 0xFFFF0000, outlineWidth: 3),
-      run('\nc', size: 9, color: 0x800000FF),
+      run('a', size: 160),
+      run('b', size: 224, outline: 0xFFFF0000, outlineWidth: 48),
+      run('\nc', size: 144, color: 0x800000FF),
     ],
-    x: 9.5,
-    y: 6.25,
+    x: 152.5,
+    y: 100.25,
     turn: turn,
     background: 0x4000FF00,
     lineHeight: 1.25,
@@ -153,10 +153,10 @@ void main() {
   });
 
   // 세로쓰기 (유저 2026-10-06). 「123」 is three digits — too many for one
-  // cell — so each stands in a cell of its own: a tile apiece at size 8.
+  // cell — so each stands in a cell of its own: a tile apiece at size 128.
   test('🚨a text in COLUMNS is drawn DOWN from its anchor and to its left: '
       'a letter a tile, one under the other', () async {
-    final plate = await baked(said([run('123')], x: 16, vertical: true));
+    final plate = await baked(said([run('123')], x: 256, vertical: true));
 
     expect(plate.keys.toSet(), {
       TileCoord(x: 1, y: 1),
@@ -168,7 +168,7 @@ void main() {
     }
 
     // ⛔CONTROL: in lines the very text runs to the RIGHT of that anchor.
-    final lines = await baked(said([run('123')], x: 16));
+    final lines = await baked(said([run('123')], x: 256));
     expect(lines.keys.toSet(), {
       TileCoord(x: 2, y: 1),
       TileCoord(x: 3, y: 1),
@@ -186,13 +186,13 @@ void main() {
           const CelTextSpan(
             text: '123',
             style: TextLetterStyle(
-              fontSize: 8,
+              fontSize: 128,
               color: 0xFF0A141E,
-              letterSpacing: 8,
+              letterSpacing: 128,
             ),
           ),
         ],
-        x: 16,
+        x: 256,
         y: 0,
         vertical: true,
       ),
@@ -215,7 +215,7 @@ void main() {
 
   test('a break typed into a text in columns opens the next one to the '
       'LEFT, and a word lying down runs down its column', () async {
-    final plate = await baked(said([run('7\nab')], x: 24, vertical: true));
+    final plate = await baked(said([run('7\nab')], x: 384, vertical: true));
 
     // 「7」 at the anchor's left; 「ab」 lying down the column left of that.
     expect(plate.keys.toSet(), {
@@ -276,19 +276,20 @@ void main() {
   });
 
   group('the pasteboard wall', () {
-    // The fixture's canvas is 32 wide and its pasteboard a canvas more on
-    // every side: the wall stands at 64, the right edge of tile 7.
+    // The fixture's canvas is 512 wide and its pasteboard a canvas more on
+    // every side: the wall stands at 1024, the right edge of tile 7.
     test('a text set across it is cut there, as every picture is', () async {
-      final plate = await baked(said([run('abc')], x: 60));
+      const size = celTextTestTileSize;
+      final plate = await baked(said([run('abc')], x: 960));
 
       expect(plate.keys.toSet(), {TileCoord(x: 7, y: 1)});
       final pixels = plate.values.single.pixels;
-      for (var y = 0; y < 8; y += 1) {
-        for (var x = 0; x < 8; x += 1) {
+      for (var y = 0; y < size; y += 1) {
+        for (var x = 0; x < size; x += 1) {
           expect(
-            pixels.sublist((y * 8 + x) * 4, (y * 8 + x) * 4 + 4),
-            x < 4 ? [0, 0, 0, 0] : ink,
-            reason: 'the letter starts at 60 — pixel ($x, $y) of the tile',
+            pixels.sublist((y * size + x) * 4, (y * size + x) * 4 + 4),
+            x < 64 ? [0, 0, 0, 0] : ink,
+            reason: 'the letter starts at 960 — pixel ($x, $y) of the tile',
           );
         }
       }
@@ -311,8 +312,8 @@ void main() {
     });
 
     test('a text set wholly beyond it has no plate', () async {
-      expect(await baked(said([run('ab')], x: 500, y: 500)), isEmpty);
-      expect(await baked(said([run('ab')], x: -500, y: -500)), isEmpty);
+      expect(await baked(said([run('ab')], x: 8000, y: 8000)), isEmpty);
+      expect(await baked(said([run('ab')], x: -8000, y: -8000)), isEmpty);
     });
   });
 

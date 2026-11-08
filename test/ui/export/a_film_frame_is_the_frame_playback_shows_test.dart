@@ -88,28 +88,34 @@ void main() {
     return (bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
   }
 
-  /// [paint] decides each pixel of a [canvas] in tiles of [tile] —
+  /// [paint] decides each pixel of a [canvas] in the engine's tiles —
   /// premultiplied, as the tiles hold it — over the tiles [coords] names,
-  /// the canvas's own unless told.
+  /// or, unless told, inside the canvas alone, over the tiles it lies in.
   BitmapSurface surfaceOf(
     CanvasSize canvas,
     int? Function(int x, int y) paint, {
-    int tile = 16,
     Iterable<TileCoord>? coords,
   }) {
+    const tile = defaultCelTileSize;
+    final insideTheCanvas = coords == null;
     final tiles = <TileCoord, BitmapTile>{};
     for (final coord
         in coords ??
             [
-              for (var ty = 0; ty < canvas.height ~/ tile; ty += 1)
-                for (var tx = 0; tx < canvas.width ~/ tile; tx += 1)
+              for (var ty = 0; ty * tile < canvas.height; ty += 1)
+                for (var tx = 0; tx * tile < canvas.width; tx += 1)
                   TileCoord(x: tx, y: ty),
             ]) {
       final pixels = Uint8List(tile * tile * 4);
       var any = false;
       for (var y = 0; y < tile; y += 1) {
         for (var x = 0; x < tile; x += 1) {
-          final argb = paint(coord.x * tile + x, coord.y * tile + y);
+          final (atX, atY) = (coord.x * tile + x, coord.y * tile + y);
+          if (insideTheCanvas &&
+              (atX >= canvas.width || atY >= canvas.height)) {
+            continue;
+          }
+          final argb = paint(atX, atY);
           if (argb == null) {
             continue;
           }
@@ -347,9 +353,13 @@ void main() {
       'stays out of a film\'s frame and a picture of the sequence, where the '
       'camera sees past the canvas', (tester) async {
     await tester.runAsync(() async {
-      const canvas = CanvasSize(width: 32, height: 32);
+      // Two tiles a side.
+      const canvas = CanvasSize(
+        width: 2 * defaultCelTileSize,
+        height: 2 * defaultCelTileSize,
+      );
       const cutId = CutId('cut');
-      // Red ink on the pasteboard tile left of the canvas — x −16 to −1.
+      // Red ink on the pasteboard tiles left of the canvas — x −128 to −1.
       final parked = surfaceOf(
         canvas,
         (_, _) => 0xFFFF0000,
@@ -371,11 +381,11 @@ void main() {
                   name: 'Cut',
                   duration: 1,
                   canvasSize: canvas,
-                  // Its frame from canvas x −8 to 24: a quarter past the
+                  // Its frame from canvas x −64 to 192: a quarter past the
                   // canvas's left edge.
                   camera: CutCamera(
                     keyframes: {
-                      0: CameraPose(center: CanvasPoint(x: 8, y: 16)),
+                      0: CameraPose(center: CanvasPoint(x: 64, y: 128)),
                     },
                   ),
                   layers: [row('parked'), createCameraLayer(cutId: cutId)],
@@ -416,13 +426,14 @@ void main() {
       final still = await bytesOf(
         await renderer.renderComposite(task, ExportSizeMode.camera),
       );
+      // Canvas (−40, 128), in the red.
       expect(
-        pixelOf(video, 32, 3, 16),
+        pixelOf(video, canvas.width, 24, 128),
         (0, 0, 255, 255),
         reason: 'the stage\'s apron, past the paper',
       );
       expect(
-        pixelOf(still, 32, 3, 16),
+        pixelOf(still, canvas.width, 24, 128),
         (255, 255, 255, 255),
         reason: 'the picture\'s ground, past the canvas',
       );
@@ -434,7 +445,7 @@ void main() {
           .singleWhere((row) => row.name == 'parked');
       final layered = await bytesOf(await parkedRow.draw());
       expect(
-        pixelOf(layered, 32, 3, 16),
+        pixelOf(layered, canvas.width, 24, 128),
         (0, 0, 0, 0),
         reason: 'a layered file\'s row, past the canvas',
       );
@@ -457,10 +468,6 @@ void main() {
     final filled = surfaceOf(
       canvas,
       (x, y) => x < canvas.width && y < canvas.height ? 0xFF102030 : null,
-      coords: [
-        for (var ty = 0; ty < 3; ty += 1)
-          for (var tx = 0; tx < 4; tx += 1) TileCoord(x: tx, y: ty),
-      ],
     );
 
     /// The cut through a camera at [pose], on a blue apron over a black
@@ -701,7 +708,7 @@ void main() {
       session,
       [
         for (final (cut, argb) in cuts)
-          (cut, cut.id.value, surfaceOf(canvas, (_, _) => argb, tile: 8)),
+          (cut, cut.id.value, surfaceOf(canvas, (_, _) => argb)),
       ],
     );
 
@@ -906,7 +913,7 @@ void main() {
           (
             s.requireActiveCut,
             'c',
-            surfaceOf(canvas, (x, _) => x < 4 ? 0xFF000064 : null, tile: 8),
+            surfaceOf(canvas, (x, _) => x < 4 ? 0xFF000064 : null),
           ),
         ]);
         return s;

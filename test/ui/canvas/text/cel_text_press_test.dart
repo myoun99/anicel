@@ -42,7 +42,7 @@ import '../../../helpers/placement_reading.dart';
 /// enough in for a hand to wander less than a pixel, a row that is shown
 /// posed, two texts on top of each other.
 ///
-/// The stage is the 32×32 test canvas at FOUR screen pixels a canvas pixel
+/// The stage is the 512×512 test canvas at FOUR screen pixels a canvas pixel
 /// unless a test says otherwise, so the canvas pixel (x, y) is at (4x, 4y)
 /// on the panel. In the test font 「ab」 at 8 is 16 wide on a line 10 tall,
 /// and its box reaches 2 past it on every side — a quarter of its 8.
@@ -786,7 +786,7 @@ void main() {
       press(scene, 12, 12);
 
       // Past the pasteboard, which reaches one canvas beyond each edge.
-      final down = press(scene, 70, 10);
+      final down = press(scene, 1120, 10);
 
       expect(down, isNull);
       expect(tool.session, isNull);
@@ -1381,14 +1381,14 @@ void main() {
   });
 
   group('a row shown posed', () {
-    // The row moved 6 right and 2 down, and shown at twice its size about
-    // the canvas's middle (16, 16): the artwork pixel (x, y) is on the
-    // canvas at (2x − 10, 2y − 14).
+    // The row moved 246 right and 242 down, and shown at twice its size
+    // about the canvas's middle (256, 256): the artwork pixel (x, y) is on
+    // the canvas at (2x − 10, 2y − 14).
     final posed = CelTextStage(
       viewport: CanvasViewport(zoom: 4),
       pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
       placement: placedBy(
-        TransformPose.uniform(center: CanvasPoint(x: 22, y: 18), zoom: 2),
+        TransformPose.uniform(center: CanvasPoint(x: 502, y: 498), zoom: 2),
         celTextTestCanvas,
       ),
     );

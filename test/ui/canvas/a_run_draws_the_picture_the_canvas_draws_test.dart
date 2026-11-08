@@ -74,14 +74,17 @@ import '../../helpers/settle_async.dart';
 /// 캔버스처럼)」): the film shows the pasteboard and what is drawn on it as
 /// the canvas shows them standing still.
 void main() {
-  const tileSize = 16;
-  // 60 × 38: no whole number of tiles, and odd on the way down — 30 × 19,
-  // 15 × 10 grown past the odd edge, 8 × 5.
-  const canvasSize = CanvasSize(width: 60, height: 38);
+  const tileSize = defaultCelTileSize;
+  // 300 × 190: no whole number of tiles — seams inside it at 128 and 256
+  // across and 128 down — and odd on the way down: 150 × 95, 75 × 48 grown
+  // past the odd edge, 38 × 24.
+  // ↩️60 × 38 on tiles of 16, until the engine kept tiles of 128 alone:
+  // every number in canvas space here is that one five times over.
+  const canvasSize = CanvasSize(width: 300, height: 190);
   // Room past the canvas on both sides it can end on, so its edge is seen —
   // and whole device pixels at every ratio below, so the box's own edge
   // cuts no pixel.
-  const viewSize = Size(80, 48);
+  const viewSize = Size(400, 240);
   const fill = [0x10, 0x20, 0x30, 0xFF];
   // Where the cel holds no ink: the paper — or its absence — shows there.
   // Off every halving's grid, odd on each side: a reduced pixel mixes ink
@@ -93,7 +96,7 @@ void main() {
   // its live row from level tiles — until every road drew the frame's one
   // picture by its own chain and no halving was left
   // (one-picture-per-frame ②-5b-3).
-  const hole = Rect.fromLTRB(17, 9, 31, 23);
+  const hole = Rect.fromLTRB(85, 45, 155, 115);
   // Past the canvas every road shows this one colour — the editing
   // canvas's pasteboard, the camera's apron and letterbox, the film's
   // floor — so a pixel that differs is the picture's own.
@@ -499,7 +502,7 @@ void main() {
     // The ink runs onto the pasteboard past the canvas's right and bottom
     // edges, the pasteboard is a colour of its own, and the backdrop lies
     // past it.
-    const reach = 12;
+    const reach = 60;
     const pasteboard = Color(0xFF5A4630);
     const stages = {
       'the stage\'s planes': (pasteboardNone: false, paperNone: false),
@@ -551,15 +554,15 @@ void main() {
             if (zoom == 1) {
               // At 1:1 the ink past the canvas is on the screen, and the
               // pasteboard past the ink.
-              final y = (5 * ratio).floor();
+              final y = (25 * ratio).floor();
               expect(
-                pixelAt(still, (66 * ratio).floor(), y),
+                pixelAt(still, (330 * ratio).floor(), y),
                 fill,
                 reason: 'LIVENESS: the ink past the canvas shows standing '
                     'still',
               );
               expect(
-                pixelAt(still, (76 * ratio).floor(), y),
+                pixelAt(still, (380 * ratio).floor(), y),
                 isNot(rgbaOf(past)),
                 reason: 'LIVENESS: and the pasteboard past the ink',
               );
@@ -567,7 +570,7 @@ void main() {
                 // Both roads lay the paper's absence with one painter:
                 // only this tells that it is laid at all.
                 expect(
-                  pixelAt(still, (20 * ratio).floor(), (12 * ratio).floor()),
+                  pixelAt(still, (100 * ratio).floor(), (60 * ratio).floor()),
                   isNot(rgbaOf(pasteboard)),
                   reason: 'LIVENESS: in the hole the checkerboard lies in '
                       'the absent paper\'s place, not the pasteboard',
@@ -612,9 +615,12 @@ void main() {
   /// 기대안해서 심각하게 맞출필요는없어」, within 2 of the levels it replaced),
   /// and the page's edge reaches a level's texel past the page onto the
   /// pasteboard — a trace the camera covers as it covers any ink there.
+  /// Here its foot ends inside a texel from a quarter down (190 = 4 × 47.5),
+  /// its right edge from an eighth (300 = 8 × 37.5).
   /// ↩️Compared whole until the canvas standing still drew its picture
   /// (2026-10-25): at 31% (ratio 1.25) that trace lay one row under the
-  /// page, 1 in 255.
+  /// page, 1 in 255 — on the 60 × 38 canvas, whose foot ends inside a texel
+  /// at a quarter as this one's does.
   group('through the camera at rest', () {
     for (final ratio in ratios) {
       for (final zoom in zooms) {
@@ -733,7 +739,7 @@ void main() {
           );
           if (zoom == 1) {
             expect(
-              pixelAt(theFilm, (20 * ratio).floor(), (12 * ratio).floor()),
+              pixelAt(theFilm, (100 * ratio).floor(), (60 * ratio).floor()),
               isNot(rgbaOf(apron)),
               reason: 'LIVENESS: in the hole the film lays the '
                   'checkerboard, not the apron',

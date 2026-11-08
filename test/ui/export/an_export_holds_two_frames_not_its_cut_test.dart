@@ -46,7 +46,9 @@ import '../../helpers/no_guides_laid.dart';
 /// before read — a drawing held across frames is read once for the run of
 /// them, and nothing older stays.
 void main() {
-  const canvasSize = CanvasSize(width: 8, height: 8);
+  // One tile at the engine's side.
+  const tileSide = defaultCelTileSize;
+  const canvasSize = CanvasSize(width: tileSide, height: tileSide);
   const trackId = TrackId('track');
   const layerId = LayerId('layer');
 
@@ -54,15 +56,17 @@ void main() {
       Frame(id: FrameId(id), duration: 1, strokes: const []);
 
   BitmapSurface ink(int seed) {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(tileSide * tileSide * 4);
     for (var i = 0; i < pixels.length; i += 4) {
       pixels[i] = seed * 40;
       pixels[i + 3] = 255;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 8,
-      tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
+      tileSize: tileSide,
+      tiles: {
+        TileCoord(x: 0, y: 0): BitmapTile(size: tileSide, pixels: pixels),
+      },
     );
   }
 
@@ -378,6 +382,11 @@ void main() {
       'made of is THAT FRAME\'S PICTURE, handed again (F-289)', () {
     const cutId = CutId('cut');
 
+    // Where a moving camera stands at its first key and at its last: an
+    // eighth of the canvas either side of its middle.
+    final standsAt = CanvasPoint(x: tileSide * 3 / 8, y: tileSide / 2);
+    final movesTo = CanvasPoint(x: tileSide * 5 / 8, y: tileSide / 2);
+
     /// A: one drawing for the whole cut. B: b1 for frames 0–1, b2 for 2–3.
     Cut cut({CutCamera? camera}) => Cut(
       id: cutId,
@@ -613,7 +622,7 @@ void main() {
           final (:renderer, :frameAt) = over(s);
           final line = s.playbackRig.playbackCache;
           final heldBefore = HeldRows.debugHeld;
-          const row = 8 * 8 * 4;
+          const row = tileSide * tileSide * 4;
 
           (await frameAt(0)).dispose();
           expect(line.lentBytes, 2 * row, reason: 'a1 and b1');
@@ -706,8 +715,8 @@ void main() {
           cut(
             camera: CutCamera(
               keyframes: {
-                0: CameraPose(center: CanvasPoint(x: 3, y: 4)),
-                1: CameraPose(center: CanvasPoint(x: 5, y: 4)),
+                0: CameraPose(center: standsAt),
+                1: CameraPose(center: movesTo),
               },
             ),
           ),
@@ -761,8 +770,8 @@ void main() {
             cut(
               camera: CutCamera(
                 keyframes: {
-                  0: CameraPose(center: CanvasPoint(x: 3, y: 4)),
-                  1: CameraPose(center: CanvasPoint(x: 5, y: 4)),
+                  0: CameraPose(center: standsAt),
+                  1: CameraPose(center: movesTo),
                 },
               ),
             ),
@@ -804,8 +813,8 @@ void main() {
             cycle(
               camera: CutCamera(
                 keyframes: {
-                  0: CameraPose(center: CanvasPoint(x: 3, y: 4)),
-                  3: CameraPose(center: CanvasPoint(x: 5, y: 4)),
+                  0: CameraPose(center: standsAt),
+                  3: CameraPose(center: movesTo),
                 },
               ),
             ),

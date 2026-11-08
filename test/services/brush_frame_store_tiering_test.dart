@@ -25,7 +25,11 @@ import '../helpers/project_scratch_folder.dart';
 /// first access, and over-budget hot cels cool back down in LRU order.
 /// Representation must never change existence or bytes.
 void main() {
-  const canvasSize = CanvasSize(width: 16, height: 16);
+  // Two tiles across and down, on the engine's side.
+  const canvasSize = CanvasSize(
+    width: 2 * defaultCelTileSize,
+    height: 2 * defaultCelTileSize,
+  );
 
   BrushFrameKey key({String layer = 'l', String frame = 'f'}) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -36,16 +40,16 @@ void main() {
   );
 
   BitmapSurface inkSurface({int seed = 1}) {
-    final pixels = Uint8List(8 * 8 * 4);
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed * 31 + seed) & 0xFF;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
-      tileSize: 8,
+      tileSize: defaultCelTileSize,
       tiles: {
         TileCoord(x: 0, y: 0): BitmapTile(
-          size: 8,
+          size: defaultCelTileSize,
           pixels: pixels,
         ),
       },
@@ -283,7 +287,7 @@ void main() {
         dataOffset: 0,
         length: 1,
         canvasSize: canvasSize,
-        tileSize: 8,
+        tileSize: defaultCelTileSize,
         photoPaths: [],
         showsSomething: true,
       ),
@@ -337,7 +341,7 @@ void main() {
       dataOffset: 0,
       length: 1,
       canvasSize: canvasSize,
-      tileSize: 8,
+      tileSize: defaultCelTileSize,
       photoPaths: [],
       showsSomething: true,
     );
@@ -484,7 +488,11 @@ void main() {
     // An empty donation IS the removal signal (undo of a first stroke).
     store.storeBakedSurface(
       k1,
-      BitmapSurface(canvasSize: canvasSize, tileSize: 8, tiles: const {}),
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: defaultCelTileSize,
+        tiles: const {},
+      ),
     );
     await service.save(
       project: project,
@@ -543,18 +551,21 @@ void main() {
     // Incompressible-ish pixels so the cel dominates project.json and
     // the garbage ratio is deterministic.
     BitmapSurface noisySurface(int seed) {
-      final pixels = Uint8List(32 * 32 * 4);
+      final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
       var state = seed * 2654435761 & 0x7FFFFFFF;
       for (var i = 0; i < pixels.length; i += 1) {
         state = (state * 1103515245 + 12345) & 0x7FFFFFFF;
         pixels[i] = (state >> 16) & 0xFF;
       }
       return BitmapSurface(
-        canvasSize: const CanvasSize(width: 32, height: 32),
-        tileSize: 32,
+        canvasSize: const CanvasSize(
+          width: defaultCelTileSize,
+          height: defaultCelTileSize,
+        ),
+        tileSize: defaultCelTileSize,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
-            size: 32,
+            size: defaultCelTileSize,
             pixels: pixels,
           ),
         },
@@ -606,18 +617,22 @@ void main() {
       layerId: LayerId('l'),
       frameId: FrameId('f'),
     );
-    // A cel with content BEYOND a smaller canvas (tile at (1,1) of a
-    // 32px canvas — outside a 16px one).
-    final pixels = Uint8List(8 * 8 * 4);
+    // A cel with content BEYOND a smaller canvas (tile at (3,3) of a
+    // canvas four tiles across — outside one two tiles across).
+    const bigCanvas = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
+    final pixels = Uint8List(defaultCelTileSize * defaultCelTileSize * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 31 + 7) & 0xFF;
     }
     final big = BitmapSurface(
-      canvasSize: const CanvasSize(width: 32, height: 32),
-      tileSize: 8,
+      canvasSize: bigCanvas,
+      tileSize: defaultCelTileSize,
       tiles: {
         TileCoord(x: 3, y: 3): BitmapTile(
-          size: 8,
+          size: defaultCelTileSize,
           pixels: pixels,
         ),
       },
@@ -628,23 +643,20 @@ void main() {
         filePath: 'unused.anicel',
         dataOffset: 0,
         length: 1,
-        canvasSize: CanvasSize(width: 32, height: 32),
-        tileSize: 8,
+        canvasSize: bigCanvas,
+        tileSize: defaultCelTileSize,
         photoPaths: [],
         showsSomething: true,
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
 
-    // The OLD bug: switching to a 16px cut ran a store-GLOBAL resize
-    // that clipped this 32px cel's outer tiles. Scoped resize of the
+    // The OLD bug: switching to a smaller cut ran a store-GLOBAL resize
+    // that clipped this bigger cel's outer tiles. Scoped resize of the
     // ACTIVE (different) cut must leave it byte-identical, clean and
     // still file-backed.
-    store.resizeBakedSurfaces(
-      const CanvasSize(width: 16, height: 16),
-      cutId: const CutId('c'),
-    );
+    store.resizeBakedSurfaces(canvasSize, cutId: const CutId('c'));
     final after = store.bakedSurfaceOrNull(otherCutKey)!;
-    expect(after.canvasSize, const CanvasSize(width: 32, height: 32));
+    expect(after.canvasSize, bigCanvas);
     expect(
       after.tiles[TileCoord(x: 3, y: 3)]!.pixels,
       pixels,
@@ -661,7 +673,10 @@ void main() {
     final source = inkSurface();
     parkCold(store, {k: source});
 
-    const grown = CanvasSize(width: 32, height: 32);
+    const grown = CanvasSize(
+      width: 4 * defaultCelTileSize,
+      height: 4 * defaultCelTileSize,
+    );
     store.resizeBakedSurfaces(grown, cutId: const CutId('c'));
 
     expect(store.isCelCold(k), isTrue, reason: '1500 cels must not blow RAM');

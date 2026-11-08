@@ -25,8 +25,8 @@ import '../helpers/project_scratch_folder.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const size = 8;
-  const canvas = CanvasSize(width: 64, height: 64);
+  const size = defaultCelTileSize;
+  const canvas = CanvasSize(width: 8 * size, height: 8 * size);
   const key = BrushFrameKey(
     projectId: ProjectId('p'),
     trackId: TrackId('t'),

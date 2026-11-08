@@ -45,9 +45,10 @@ import '../../helpers/settle_async.dart';
 /// same — and given back once nothing such is shown; the canvas that goes
 /// with it lent takes it along.
 void main() {
-  const tileSize = 16;
-  const page = CanvasSize(width: 32, height: 32);
-  const viewSize = Size(48, 40);
+  const tileSize = defaultCelTileSize;
+  // 2 × 2 tiles, the pasteboard past them in view.
+  const page = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const ink = [0x00, 0x40, 0x00, 0xFF];
   const ghost = [0x40, 0x00, 0x00, 0x80];
   const under = Color(0xFF203040);
@@ -113,9 +114,11 @@ void main() {
     ),
   ];
   final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: FrameGhosts.none);
+  // A quarter of the tile in from each edge.
+  bool inTheMiddle(int at) => at >= tileSize ~/ 4 && at < tileSize * 3 ~/ 4;
   final ghostTile = PromotedStrokeTile(
     TileCoord(x: 0, y: 0),
-    tileOf((x, y) => x > 3 && x < 12 && y > 3 && y < 12 ? ghost : null),
+    tileOf((x, y) => inTheMiddle(x) && inTheMiddle(y) ? ghost : null),
     1,
   );
 

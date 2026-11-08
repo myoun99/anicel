@@ -66,8 +66,8 @@ void main() {
   List<BrushDab> strokeDabs() {
     var sequence = 0;
     return [
-      for (var x = 2; x < 16; x += 4)
-        for (var y = 0; y < 16; y += 1)
+      for (var x = 2; x < 2 * tileSize; x += 4)
+        for (var y = 0; y < 2 * tileSize; y += 1)
           BrushDab(
             center: CanvasPoint(x: x + 0.5, y: y + 0.5),
             color: 0xFF102030,

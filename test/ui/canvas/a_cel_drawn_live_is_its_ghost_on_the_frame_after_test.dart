@@ -37,11 +37,11 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// drawn vanished and came back.
 ///
 /// 🔬Measured on these fixtures before the fix (2026-09-17, when the ghosts
-/// were stacked from their rows' images): at 50% on the display buffer
-/// **0 of 32** columns on the first frame, and at 100% on the direct walk,
-/// again **0 of 32**. ↩️The two routes were one when the ghosts were one
-/// picture (one-picture-per-frame ②-5b-1), which read nothing on this
-/// thread until it was told what the canvas drew live.
+/// were stacked from their rows' images, on tiles of 16): at 50% on the
+/// display buffer **0 of 32** columns on the first frame, and at 100% on the
+/// direct walk, again **0 of 32**. ↩️The two routes were one when the
+/// ghosts were one picture (one-picture-per-frame ②-5b-1), which read
+/// nothing on this thread until it was told what the canvas drew live.
 ///
 /// The ghosts' view reads which cels the canvas under it drew live the build
 /// it replaces ([FramePictureView.drawnLive]) and reads those on the spot.
@@ -50,7 +50,7 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// project just opened — is not read inside the build: a whole cold stack
 /// read in one build is a stall nobody asked for.
 void main() {
-  const tileSize = 16;
+  const tileSize = defaultCelTileSize;
   const tileCount = 8;
   const canvasSize = CanvasSize(width: tileSize * tileCount, height: tileSize);
   // The VIEW is two tiles wide; the cel is eight.

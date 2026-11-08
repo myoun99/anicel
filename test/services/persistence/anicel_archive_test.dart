@@ -39,16 +39,17 @@ void main() {
         MediaAsset(path: 'E:/elsewhere/hiss.wav', name: 'hiss'),
       ],
     );
-    final pixels = Uint8List(8 * 8 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 37) & 0xFF;
     }
     final surface = BitmapSurface(
-      canvasSize: const CanvasSize(width: 16, height: 16),
-      tileSize: 8,
+      canvasSize: const CanvasSize(width: 2 * side, height: 2 * side),
+      tileSize: side,
       tiles: {
         TileCoord(x: 1, y: 0): BitmapTile(
-          size: 8,
+          size: side,
           pixels: pixels,
         ),
       },
@@ -74,7 +75,7 @@ void main() {
     );
     final reopened = contents.cels.single.toSurface();
     expect(reopened.canvasSize, surface.canvasSize);
-    expect(reopened.tileSize, 8);
+    expect(reopened.tileSize, side);
     expect(
       reopened.tiles[TileCoord(x: 1, y: 0)]!.pixels,
       pixels,
@@ -127,20 +128,21 @@ void main() {
 
   test('pasteboard tiles (negative coords) round-trip through the cel '
       'blob (v2 signed coords)', () {
-    final pixels = Uint8List(8 * 8 * 4);
+    const side = defaultCelTileSize;
+    final pixels = Uint8List(side * side * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * 11) & 0xFF;
     }
     final surface = BitmapSurface(
-      canvasSize: const CanvasSize(width: 16, height: 16),
-      tileSize: 8,
+      canvasSize: const CanvasSize(width: 2 * side, height: 2 * side),
+      tileSize: side,
       tiles: {
         TileCoord(x: -1, y: -2): BitmapTile(
-          size: 8,
+          size: side,
           pixels: pixels,
         ),
         TileCoord(x: 3, y: 0): BitmapTile.blank(
-          size: 8,
+          size: side,
         ),
       },
     );

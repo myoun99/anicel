@@ -82,12 +82,13 @@ final class _Raster {
 /// thread keeps up with goes as it was handed, and nothing but the tree
 /// waits: a picture there to take, the live rows handed anew.
 void main() {
-  const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 32);
-  const viewSize = Size(48, 40);
+  const tileSize = defaultCelTileSize;
+  // 2 × 2 tiles, the pasteboard round them in view.
+  const canvasSize = CanvasSize(width: 2 * tileSize, height: 2 * tileSize);
+  const viewSize = Size(3.0 * tileSize, 2.5 * tileSize);
   const fill = [0x30, 0x60, 0x90, 0xFF];
   const under = Color(0xFF203040);
-  final view = CanvasViewport(panX: 8, panY: 4);
+  final view = CanvasViewport(panX: tileSize / 2, panY: tileSize / 4);
 
   const inked = BrushFrameKey(
     projectId: ProjectId('p'),
@@ -233,7 +234,9 @@ void main() {
   /// The red the ink shows at, over the screen's own.
   Future<int> redOnThePage(WidgetTester tester) async {
     final shot = await shotOf(tester, screen);
-    return shot.rgba[(12 * shot.width + 20) * 4];
+    const x = tileSize * 5 ~/ 4;
+    const y = tileSize * 3 ~/ 4;
+    return shot.rgba[(y * shot.width + x) * 4];
   }
 
   /// The red of [opacity]'s ink over [under].
