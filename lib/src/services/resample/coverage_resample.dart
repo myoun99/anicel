@@ -27,7 +27,8 @@ import 'resample_kernel.dart';
 /// the way professional tools do it; the tip's appearance changing is
 /// fine". Every tip mask in the app minifies through here now, and no tip
 /// has a second minification filter left to drift from it. A baked word's
-/// box is another filter, on purpose, and says why (`boxFilterA8`).
+/// box is another filter, on purpose, and says why (the GPU engine's
+/// `narrowed_cover`, `kernels/letters/words.rs`).
 ///
 /// ★WHY A CONVERSION AND NOT A GRAY ENTRY POINT IN THE KERNEL — the
 /// honest cost, decided 2026-09-07. The kernel is RGBA8 and this is

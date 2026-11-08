@@ -257,7 +257,7 @@ fn a_word_built_call_by_call_bakes_as_the_one_built_in_rust() {
     assert!(word_run_of(word, "3a", 12 * 64, 12 * 64, 7 * 64), "{}", last_error());
     assert!(word_run_of(word, "셀", 9 * 64, 12 * 64, 0), "{}", last_error());
     // SAFETY: both are live.
-    let cover = unsafe { gpu_engine_word_bake(word, handed_faces, 1.5, 2, 24.0, 15.0, 45, 64) };
+    let cover = unsafe { gpu_engine_word_bake(word, handed_faces, 1.5, 2, 24.0, 15.0, 45.0 / 64.0, 1.0) };
     assert!(!cover.is_null(), "{}", last_error());
     let mut size = [0u32; 2];
     // SAFETY: `cover` is live and `size` holds two words.
@@ -267,7 +267,7 @@ fn a_word_built_call_by_call_bakes_as_the_one_built_in_rust() {
     unsafe { gpu_engine_word_cover_read(cover, bytes.as_mut_ptr(), bytes.len()) };
 
     let runs = [run("3a", 12 * 64, (0, 12 * 64), 7 * 64), run("셀", 9 * 64, (0, 12 * 64), 0)];
-    let built = words::bake(faces(), &here(runs.into_iter().map(Shape::Letters).collect()), 1.5, 2, [24.0, 15.0], [45, 64])
+    let built = words::bake(faces(), &here(runs.into_iter().map(Shape::Letters).collect()), 1.5, 2, [24.0, 15.0], [45 * words::WHOLE / 64, words::WHOLE])
         .expect("bake");
     assert_eq!(size, [built.width, built.height]);
     assert!(bytes == built.bytes, "the coverage");
@@ -285,10 +285,13 @@ fn a_word_the_bake_refuses_is_no_cover_and_says_why() {
     let handed_faces = handed();
     let word = gpu_engine_word_new();
     assert!(word_run_of(word, "3a", 12 * 64, 12 * 64, 7 * 64));
-    // SAFETY: both are live.
-    let refused = unsafe { gpu_engine_word_bake(word, handed_faces, 1.0, 1, 14.0, 15.0, 65, 64) };
-    assert!(refused.is_null());
-    assert!(last_error().contains("each is 1 to 64"), "{}", last_error());
+    // A narrowing past whole, none, under none or no number at all.
+    for along in [65.0 / 64.0, 0.0, -0.5, f64::NAN] {
+        // SAFETY: both are live.
+        let refused = unsafe { gpu_engine_word_bake(word, handed_faces, 1.0, 1, 14.0, 15.0, along, 1.0) };
+        assert!(refused.is_null(), "{along}");
+        assert!(last_error().contains("each is 1 to 4096"), "{}", last_error());
+    }
     // A run's weight is `FontWeight`'s.
     for weight in [0, 1001] {
         let origins = [0; 2];
@@ -308,5 +311,47 @@ fn a_word_the_bake_refuses_is_no_cover_and_says_why() {
     unsafe {
         gpu_engine_word_free(word);
         gpu_engine_faces_free(handed_faces);
+    }
+}
+
+#[test]
+fn faces_in_another_order_outlive_the_faces_they_were_ordered_from() {
+    let handed_faces = handed();
+    let order = [2u32, 0, 1];
+    // SAFETY: `handed_faces` is live and `order` holds three.
+    let chinese = unsafe { gpu_engine_faces_ordered(handed_faces, order.as_ptr(), order.len()) };
+    assert!(!chinese.is_null(), "{}", last_error());
+    // SAFETY: it came from `gpu_engine_faces_new`; `chinese` shares, not borrows.
+    unsafe { gpu_engine_faces_free(handed_faces) };
+    let word = gpu_engine_word_new();
+    assert!(word_run_of(word, "日3", 12 * 64, 12 * 64, 12 * 64), "{}", last_error());
+    // SAFETY: both are live.
+    let cover = unsafe { gpu_engine_word_bake(word, chinese, 1.0, 1, 24.0, 15.0, 0.7321, 1.0) };
+    assert!(!cover.is_null(), "{}", last_error());
+    let mut size = [0u32; 2];
+    // SAFETY: `cover` is live and `size` holds two words.
+    unsafe { gpu_engine_word_cover_size(cover, size.as_mut_ptr()) };
+    let mut bytes = vec![7u8; (size[0] * size[1]) as usize];
+    // SAFETY: `bytes` holds its length.
+    unsafe { gpu_engine_word_cover_read(cover, bytes.as_mut_ptr(), bytes.len()) };
+
+    // A column's narrowing, 0.7321: 2998.6 4096ths, to the nearest part.
+    let runs = [run("日3", 12 * 64, (0, 12 * 64), 12 * 64)];
+    let ordered = faces().ordered(&order).expect("an order");
+    let built = words::bake(&ordered, &here(runs.into_iter().map(Shape::Letters).collect()), 1.0, 1, [24.0, 15.0], [2999, words::WHOLE])
+        .expect("bake");
+    assert!(bytes == built.bytes, "the coverage");
+    assert!(bytes.iter().any(|&alpha| alpha != 0), "LIVENESS: the word has ink");
+    // An order naming a family past them is refused, and says so.
+    let past = [3u32];
+    // SAFETY: `chinese` is live and `past` holds one.
+    let refused = unsafe { gpu_engine_faces_ordered(chinese, past.as_ptr(), past.len()) };
+    assert!(refused.is_null());
+    assert!(last_error().contains("names family 3"), "{}", last_error());
+    // SAFETY: each came from its `_new`, its order or its bake.
+    unsafe {
+        gpu_engine_word_cover_free(cover);
+        gpu_engine_word_free(word);
+        gpu_engine_faces_free(chinese);
     }
 }

@@ -67,7 +67,6 @@ void main() {
     letters = await EngineLetters.open(composite);
   });
   tearDownAll(() {
-    letters.free();
     composite.free();
   });
 

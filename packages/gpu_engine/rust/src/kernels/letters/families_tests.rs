@@ -168,6 +168,42 @@ fn a_letter_goes_to_the_family_whose_face_for_the_run_has_it() {
     assert_eq!(by_family(&faces, "셀", (400, true)), [(0, "셀".into())]);
 }
 
+/// `text` at 30 px as `faces` set it: where its ink lies and what it is.
+fn inked(faces: &Faces, text: &str) -> ([i32; 4], Vec<u8>) {
+    let letters = here(vec![Shape::Letters(run(text, 30 * 64, (0, 40 * 64), 0))]);
+    let cover = covered(faces, &letters, Paint::Fill, IDENTITY).expect("a cover");
+    (cover.at, cover.bytes)
+}
+
+#[test]
+fn faces_in_another_order_set_a_letter_in_the_first_of_it_that_has_it() {
+    // The Chinese UI's order: Noto Sans SC, then BIZ UDPGothic, 나눔고딕.
+    let chinese = faces().ordered(&[2, 0, 1]).expect("an order");
+    let noto = Faces::new(vec![Family::of_files(vec![file("NotoSansSC-Variable.ttf")]).unwrap()]).unwrap();
+    let biz = Faces::new(vec![Family::of_files(vec![file("BIZUDPGothic-Regular.ttf")]).unwrap()]).unwrap();
+    assert_eq!(inked(&chinese, "日"), inked(&noto, "日"));
+    assert_eq!(inked(faces(), "日"), inked(&biz, "日"), "the app's own order");
+    assert_ne!(inked(&noto, "日"), inked(&biz, "日"), "two faces the test can tell apart");
+}
+
+#[test]
+fn an_order_of_faces_holds_no_copy_of_their_files() {
+    let app = faces();
+    let before = crate::testing::held();
+    let chinese = app.ordered(&[2, 0, 1]).expect("an order");
+    let grown = crate::testing::held() - before;
+    assert!(grown < 4096, "an order of three families took {grown} bytes");
+    drop(chinese);
+}
+
+#[test]
+fn an_order_naming_no_family_or_one_past_them_is_refused() {
+    assert!(faces().ordered(&[0, 3]).is_none());
+    assert_eq!(crate::testing::last_error(), "an order of faces names family 3 — there are 3");
+    assert!(faces().ordered(&[]).is_none());
+    assert_eq!(crate::testing::last_error(), "letters are set in a face — none was given");
+}
+
 /// How many pixels of ink the middle row of an "I" holds — the width of
 /// its stem — set `px` px in BIZ UDPGothic's regular file alone, `bold`.
 fn stem(px: f64, bold: bool, paint: Paint) -> f64 {

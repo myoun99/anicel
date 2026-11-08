@@ -61,35 +61,45 @@ fn baked(shapes: &[Placed], size: [f64; 2], dpr: f64, times: u32, narrowed: [u32
     bake(faces(), shapes, dpr, times, size, narrowed).unwrap_or_else(|| panic!("{}", last_error()))
 }
 
-// Pixel i's window is [t(64(i − 1) + k), t(64i + k)) in k-ths of a raster
-// pixel; raster pixel p is [pk, (p + 1)k).
+/// A 64th of a word, in the parts a narrowing is counted in: what
+/// `wordCondensation` narrows a block word by.
+const SIXTY_FOURTH: u32 = WHOLE / 64;
+
+// Pixel i's window is [t(W(i − 1) + k), t(Wi + k)) in k-ths of a raster
+// pixel, W the parts a word is whole in; raster pixel p is [pk, (p + 1)k).
 #[test]
 fn a_window_covers_its_raster_pixels_by_the_part_it_covers() {
+    let s = SIXTY_FOURTH;
     // 1:1 — each pixel is its own raster pixel, whole.
-    assert_eq!(narrowed_windows(1, 64, 3, 3), [(0, vec![64]), (1, vec![64]), (2, vec![64])]);
-    // Twice over: [0, 128) and [128, 256) in 64ths — two raster pixels each.
-    assert_eq!(narrowed_windows(2, 64, 2, 4), [(0, vec![64, 64]), (2, vec![64, 64])]);
-    // Narrowed to a half: [−32, 32) — the margin pixel and as much past the
-    // raster —, then [32, 96) and [96, 160) in 32nds.
+    assert_eq!(narrowed_windows(1, 64 * s, 3, 3), [(0, vec![64 * s]), (1, vec![64 * s]), (2, vec![64 * s])]);
+    // Twice over: [0, 2W) and [2W, 4W) — two raster pixels each.
+    assert_eq!(narrowed_windows(2, 64 * s, 2, 4), [(0, vec![64 * s, 64 * s]), (2, vec![64 * s, 64 * s])]);
+    // Narrowed to a half: [−W/2, W/2) — the margin pixel and as much past
+    // the raster —, then [W/2, 3W/2) and [3W/2, 5W/2), raster pixels W/2.
     assert_eq!(
-        narrowed_windows(1, 32, 3, 5),
-        [(0, vec![32]), (1, vec![32, 32]), (3, vec![32, 32])]
+        narrowed_windows(1, 32 * s, 3, 5),
+        [(0, vec![32 * s]), (1, vec![32 * s, 32 * s]), (3, vec![32 * s, 32 * s])]
     );
-    // To three quarters: [−16, 48), then [48, 112) — raster pixel 1 whole,
-    // and a third of pixel 2 ([96, 144)).
-    assert_eq!(narrowed_windows(1, 48, 2, 3), [(0, vec![48]), (1, vec![48, 16])]);
+    // To three quarters: [−W/4, 3W/4), then [3W/4, 7W/4) — raster pixel 1
+    // whole, and a third of pixel 2 ([3W/2, 9W/4)).
+    assert_eq!(narrowed_windows(1, 48 * s, 2, 3), [(0, vec![48 * s]), (1, vec![48 * s, 16 * s])]);
+    // A column's narrowing, no 64th: [−1096, 3000), then [3000, 7096) —
+    // raster pixel 1 whole, and 1096 of pixel 2's 3000.
+    assert_eq!(narrowed_windows(1, 3000, 2, 3), [(0, vec![3000]), (1, vec![3000, 1096])]);
     // A window wholly past the raster covers none of it.
-    assert_eq!(narrowed_windows(1, 64, 2, 1)[1].1, Vec::<u32>::new());
+    assert_eq!(narrowed_windows(1, WHOLE, 2, 1)[1].1, Vec::<u32>::new());
 }
 
 #[test]
 fn a_window_inside_the_raster_is_its_whole_and_they_tile_it() {
     for times in 1..=4 {
         for k in 1..=WHOLE {
-            let windows = narrowed_windows(times, k, 8, 1 << 12);
+            // Eight windows of the narrowest, a 4096th, four times over,
+            // lie inside 2^17 raster pixels.
+            let windows = narrowed_windows(times, k, 8, 1 << 17);
             for (i, (first, parts)) in windows.iter().enumerate().skip(1) {
                 let why = format!("t {times}, k {k}, pixel {i}");
-                assert_eq!(parts.iter().sum::<u32>(), 64 * times, "{why}: the whole of a window");
+                assert_eq!(parts.iter().sum::<u32>(), WHOLE * times, "{why}: the whole of a window");
                 // No gap and no overlap: the last raster pixel a window covers
                 // in part is the next one's first.
                 let (next, _) = windows.get(i + 1).cloned().unwrap_or((u32::MAX, Vec::new()));
@@ -104,22 +114,24 @@ fn a_window_inside_the_raster_is_its_whole_and_they_tile_it() {
 fn a_field_of_one_value_stays_that_value_wherever_a_window_lies_in_it() {
     let raster = [40, 24];
     for times in [1, 2, 3, 4, 64, 65] {
-        for k in [1, 6, 19, 32, 45, 54, 63, 64] {
+        // A block word's 64ths, and a column's narrowings that are none.
+        let sixty_fourths = [1, 6, 19, 32, 45, 54, 63, 64].map(|k| k * SIXTY_FOURTH);
+        for k in sixty_fourths.into_iter().chain([1, 1777, 3001, WHOLE - 1]) {
             for value in [1, 128, 254, 255] {
                 let field = Cover {
                     at: [-8, -8, raster[0] as i32 + 8, raster[1] as i32 + 8],
                     bytes: vec![value; (raster[0] as usize + 16) * (raster[1] as usize + 16)],
                 };
                 let boxed = [8, 5];
-                let bytes = narrowed_cover(&field, raster, boxed, times, [k, 64]);
+                let bytes = narrowed_cover(&field, raster, boxed, times, [k, WHOLE]);
                 let columns = narrowed_windows(times, k, boxed[0], raster[0]);
-                let rows = narrowed_windows(times, 64, boxed[1], raster[1]);
+                let rows = narrowed_windows(times, WHOLE, boxed[1], raster[1]);
                 for (y, (top, down)) in rows.iter().enumerate() {
                     for (x, (left, along)) in columns.iter().enumerate() {
                         let inside = |(first, parts): (&u32, &Vec<u32>), extent: u32, whole: u32| {
                             parts.iter().sum::<u32>() == whole && first + parts.len() as u32 <= extent
                         };
-                        if inside((top, down), raster[1], 64 * times) && inside((left, along), raster[0], 64 * times) {
+                        if inside((top, down), raster[1], WHOLE * times) && inside((left, along), raster[0], WHOLE * times) {
                             assert_eq!(bytes[y * boxed[0] as usize + x], value, "t {times}, k {k}, ({x}, {y})");
                         }
                     }
@@ -129,6 +141,25 @@ fn a_field_of_one_value_stays_that_value_wherever_a_window_lies_in_it() {
     }
 }
 
+// 🚨★★★TINY TEXT IS RASTERED BIG AND SHRUNK, and does not vanish (유저
+// 2026-08-28: 「타임시트패널 줌아웃 하다보면 글자 사라지는데 그거로 티나거든」).
+// 🧪Measured 2026-08-29: "12" rastered at 4px keeps mean alpha 136 over its
+// box; rastered at 12px and averaged into the same box, 212. Both peak at
+// 255 — the ink was never missing, it was blotchy, dark only where a stroke
+// landed on the grid. A stroke a point sample would land between is
+// averaged into its pixel's share instead.
+#[test]
+fn a_thin_stroke_is_averaged_into_its_pixel_not_dropped() {
+    // One raster pixel wide, column 3 of 8, rastered four times over into
+    // 2 × 2: the left pixel holds a quarter of it all the way down, the
+    // right one none — the shape kept, not smeared over both.
+    let stroke = Cover {
+        at: [3, 0, 4, 8],
+        bytes: vec![255; 8],
+    };
+    assert_eq!(narrowed_cover(&stroke, [8, 8], [2, 2], 4, [WHOLE, WHOLE]), [63, 0, 63, 0]);
+}
+
 // 유저 2026-08-28: 「줌인하면 텍스트는 선명하게 보고싶다」 — the average of one
 // pixel is that pixel, so a word the app does not narrow keeps the raster.
 #[test]
@@ -136,7 +167,7 @@ fn a_word_neither_narrowed_nor_rastered_over_is_its_raster_byte_for_byte() {
     for size in [12.0, 13.0, 20.0] {
         for dpr in [1.0, 1.5, 2.0] {
             let (shapes, box_) = word(size, false);
-            let whole = baked(&shapes, box_, dpr, 1, [64, 64]);
+            let whole = baked(&shapes, box_, dpr, 1, [WHOLE, WHOLE]);
             let to_box = Affine { a: dpr as f32, b: 0.0, c: 0.0, d: dpr as f32, e: 1.0, f: 1.0 };
             let raster = covered(faces(), &shapes, Paint::Fill, to_box).expect("the word has ink");
             let straight: Vec<u8> = (0..whole.height as i32)
@@ -160,11 +191,11 @@ fn a_word_narrowed_along_its_line_stands_on_the_rows_it_stood_on() {
             for alone in [true, false] {
                 let (shapes, box_) = word(size, alone);
                 let times = times_for(size);
-                let whole = ink_of(&baked(&shapes, box_, dpr, times, [64, 64]));
-                for k in [54, 45, 32, 19] {
-                    let narrow = baked(&shapes, box_, dpr, times, [k, 64]);
-                    let fit = f64::from(k) / 64.0;
-                    let why = format!("{} at {size} px ×{k}/64 at {dpr}", if alone { "3" } else { "3a" });
+                let whole = ink_of(&baked(&shapes, box_, dpr, times, [WHOLE, WHOLE]));
+                for k in [54, 45, 32, 19].map(|k| k * SIXTY_FOURTH).into_iter().chain([3001, 1777]) {
+                    let narrow = baked(&shapes, box_, dpr, times, [k, WHOLE]);
+                    let fit = f64::from(k) / f64::from(WHOLE);
+                    let why = format!("{} at {size} px ×{k}/{WHOLE} at {dpr}", if alone { "3" } else { "3a" });
                     let tall = (box_[1] * dpr).ceil() as u32 + 2;
                     assert_eq!(
                         (narrow.width, narrow.height),
@@ -185,8 +216,8 @@ fn a_word_narrowed_along_its_line_stands_on_the_rows_it_stood_on() {
 #[test]
 fn a_word_narrowed_down_its_line_alone_is_averaged_down_it() {
     let (shapes, box_) = word(12.0, false);
-    let whole = ink_of(&baked(&shapes, box_, 1.0, 1, [64, 64]));
-    let squat = baked(&shapes, box_, 1.0, 1, [64, 32]);
+    let whole = ink_of(&baked(&shapes, box_, 1.0, 1, [WHOLE, WHOLE]));
+    let squat = baked(&shapes, box_, 1.0, 1, [WHOLE, 32 * SIXTY_FOURTH]);
     assert_eq!((squat.width, squat.height), ((box_[0]).ceil() as u32 + 2, (box_[1] * 0.5).ceil() as u32 + 2));
     let squat = ink_of(&squat);
     assert!((squat.cx - whole.cx).abs() < 0.01, "along: left alone");
@@ -199,13 +230,13 @@ fn a_word_narrowed_down_its_line_alone_is_averaged_down_it() {
 fn the_bake_keeps_a_pixel_of_margin_round_the_word_where_ink_hangs_past_it() {
     let block = [vec![Placed { at: IDENTITY, shape: Shape::Rect([-64, -64, 13 * 64, 17 * 64]) }]];
     for times in [1, 2] {
-        let cover = baked(&block[0], [12.0, 16.0], 1.0, times, [64, 64]);
+        let cover = baked(&block[0], [12.0, 16.0], 1.0, times, [WHOLE, WHOLE]);
         assert_eq!((cover.width, cover.height), (14, 18));
         assert!(cover.bytes.iter().all(|&alpha| alpha == 255), "{times} times over: ink to every edge");
     }
     // Narrowed to a half, the margin pixel is half overhang and half what
-    // lies past the raster, which is nothing: 64 · 32 · 255 / 64² = 127.5.
-    let cover = baked(&block[0], [12.0, 16.0], 1.0, 1, [32, 64]);
+    // lies past the raster, which is nothing: W · W/2 · 255 / W² = 127.5.
+    let cover = baked(&block[0], [12.0, 16.0], 1.0, 1, [32 * SIXTY_FOURTH, WHOLE]);
     let row = &cover.bytes[..cover.width as usize];
     assert_eq!(cover.width, 8);
     assert_eq!((row[0], row[7]), (127, 127), "the margins before and after the word");
@@ -215,19 +246,19 @@ fn the_bake_keeps_a_pixel_of_margin_round_the_word_where_ink_hangs_past_it() {
 #[test]
 fn a_word_past_what_the_bake_takes_is_refused_with_why() {
     let (shapes, box_) = word(12.0, false);
-    assert!(bake(faces(), &shapes, 1.0, 0, box_, [64, 64]).is_none());
+    assert!(bake(faces(), &shapes, 1.0, 0, box_, [WHOLE, WHOLE]).is_none());
     assert!(last_error().contains("once over at the least"), "{}", last_error());
-    for narrowed in [[0, 64], [64, 65]] {
+    for narrowed in [[0, WHOLE], [WHOLE, WHOLE + 1]] {
         assert!(bake(faces(), &shapes, 1.0, 1, box_, narrowed).is_none());
-        assert!(last_error().contains("each is 1 to 64"), "{}", last_error());
+        assert!(last_error().contains("each is 1 to 4096"), "{}", last_error());
     }
     // As many times over as the app asks: it bounded none (`wordBakeScale`).
-    assert!(bake(faces(), &shapes, 1.0, 65, box_, [64, 64]).is_some(), "{}", last_error());
+    assert!(bake(faces(), &shapes, 1.0, 65, box_, [WHOLE, WHOLE]).is_some(), "{}", last_error());
     for (size, dpr) in [([0.0, 16.0], 1.0), ([12.0, -1.0], 1.0), (box_, 0.0), ([f64::INFINITY, 16.0], 1.0)] {
-        assert!(bake(faces(), &shapes, dpr, 1, size, [64, 64]).is_none());
+        assert!(bake(faces(), &shapes, dpr, 1, size, [WHOLE, WHOLE]).is_none());
         assert!(last_error().contains("has no pixels"), "{}", last_error());
     }
-    assert!(bake(faces(), &shapes, 1.0, 64, [2000.0, 16.0], [64, 64]).is_none());
+    assert!(bake(faces(), &shapes, 1.0, 64, [2000.0, 16.0], [WHOLE, WHOLE]).is_none());
     assert!(last_error().contains("a side is 65536 at most"), "{}", last_error());
 }
 
@@ -237,7 +268,7 @@ fn a_word_of_no_ink_is_its_box_of_nothing() {
         at: IDENTITY,
         shape: Shape::Letters(Run { size: 768, weight: 400, italic: false, clusters: vec![Cluster { text: " ".into(), origin: [0, 768] }] }),
     }];
-    let cover = baked(&space, [3.0, 15.0], 1.0, 1, [32, 64]);
+    let cover = baked(&space, [3.0, 15.0], 1.0, 1, [32 * SIXTY_FOURTH, WHOLE]);
     assert_eq!((cover.width, cover.height), (4, 17));
     assert!(cover.bytes.iter().all(|&alpha| alpha == 0));
 }

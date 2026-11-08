@@ -1217,6 +1217,21 @@ class GpuFaces {
 
   final Pointer<rust.Faces> _faces;
 
+  /// These families in the order [order] names them, each by where it
+  /// stands in this one — sharing their files, and freed on its own,
+  /// before or after these.
+  GpuFaces ordered(List<int> order) {
+    final faces = using((arena) {
+      final at = arena<Uint32>(_held(order.length));
+      at.asTypedList(order.length).setAll(0, order);
+      return rust.facesOrdered(_faces, at, order.length);
+    });
+    if (faces == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuFaces._(faces);
+  }
+
   void free() => rust.facesFree(_faces);
 }
 
@@ -1369,16 +1384,17 @@ class GpuWord {
 
   /// The word — its box [width] × [height] px of its layout — set in
   /// [faces] at [dpr] device pixels a px, rastered [times] times over and
-  /// narrowed to [along] and [down] 64ths of itself; null where the bake
-  /// refuses it, and the word is painted as it always was.
+  /// narrowed to [along] and [down] of itself, each over 0 and 1 at the
+  /// most; null where the bake refuses it, and the word is painted as it
+  /// always was.
   GpuWordCover? bake(
     GpuFaces faces, {
     required double dpr,
     required int times,
     required double width,
     required double height,
-    required int along,
-    required int down,
+    required double along,
+    required double down,
   }) {
     final cover = rust.wordBake(
       _word,

@@ -1,10 +1,13 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/word_bake.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
+
+import '../../helpers/app_faces.dart';
 
 /// F-297 (유저 2026-10-05): 「3a로 글자가 폭이 부족해서 가로 짧아진다거나
 /// 할때, 글자의 세로길이나 세로 중앙정렬이 이상해짐. 3a만 이상하게 중앙에서
@@ -24,68 +27,48 @@ import 'package:anicel/src/ui/text/word_bake.dart';
 /// Windows and red on the Linux runner — there a glyph drawn under a scale
 /// that differs by axis stands a row off ("3" at 9px narrowed to 0.85: rows
 /// 0–9 for 1–9). The word is rasterised un-narrowed now, at one scale, and
-/// narrowed by the bake's own average; the pin that says so on EVERY
-/// machine is the one on the transform below.
+/// narrowed by the bake's own average.
+///
+/// ↩️2026-11-08: the GPU engine sets the word and rasters it itself
+/// (word-bake-Q1), and the pins on its raster and its average went with it
+/// (`kernels/letters/words/tests.rs`: the rows a narrowed word stands on,
+/// its margin, the raster byte for byte where nothing is averaged). What
+/// is held here is the hand-over — the narrowing the screen draws the word
+/// at; where its letters stand, `a_word_goes_to_the_engine_as_it_is_laid
+/// _test.dart`.
+///
+/// ⚠️THE ENGINE'S RASTER IS NOT FLUTTER'S, and word-bake-Q1 chose it so
+/// (유저 2026-11-05, its cost said: a narrowed word beside un-narrowed ones
+/// Flutter draws may stand off their line until every block word is the
+/// engine's). 🔬Measured the same day (flutter_tester; 9–20 px × ratio 1–2
+/// × 「3a」 · 「12」 · 「カット」 · 「셀번호」 × three narrowings, 216 bakes):
+/// against the bake it replaces, Flutter's raster averaged, the engine's
+/// stood −1.5 to +0.8 px off its centre — mostly higher — and inked 0.88 to
+/// 1.34 times as much; 48 of the 216 inked the same rows. Flutter hints
+/// (BIZ UDPGothic's 「3」 is 9.6 px tall at 12 px, and Flutter draws it 8.6)
+/// and puts the baseline on a whole pixel; the engine draws the outline as
+/// it is, where the layout put it.
 
+/// [text] at [fontSize] in the app's face, as the Japanese UI sets it.
 TextPainter _word(String text, double fontSize) => TextPainter(
   text: TextSpan(
     text: text,
-    style: TextStyle(fontSize: fontSize, color: const Color(0xFF000000)),
+    style: TextStyle(
+      fontSize: fontSize,
+      color: const Color(0xFF000000),
+      fontFamily: AppTypography.familyFor(AppLanguage.ja),
+      fontFamilyFallback: AppTypography.fallbackFor(AppLanguage.ja),
+    ),
   ),
   textDirection: TextDirection.ltr,
 )..layout();
 
-/// A word whose ink hangs one device pixel past its box on every side — a
-/// solid block from a pixel before it to a pixel after.
-class _OverhungWord extends TextPainter {
-  _OverhungWord(double fontSize, this.dpr)
-    : super(
-        text: TextSpan(
-          text: '3a',
-          style: TextStyle(fontSize: fontSize, color: const Color(0xFF000000)),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-
-  final double dpr;
-
-  @override
-  void paint(Canvas canvas, Offset offset) {
-    final pixel = 1 / dpr;
-    canvas.drawRect(
-      Rect.fromLTRB(-pixel, -pixel, width + pixel, height + pixel),
-      Paint()..color = const Color(0xFF000000),
-    );
-  }
-}
-
-/// A word that keeps the transform it was asked to paint under.
-class _WatchedWord extends TextPainter {
-  _WatchedWord(String text, double fontSize)
-    : super(
-        text: TextSpan(
-          text: text,
-          style: TextStyle(fontSize: fontSize, color: const Color(0xFF000000)),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-
-  Float64List? paintedUnder;
-
-  @override
-  void paint(Canvas canvas, Offset offset) {
-    paintedUnder = canvas.getTransform();
-    super.paint(canvas, offset);
-  }
-}
-
-/// Where a box's ink is: its weight, the centre of that weight, and the
-/// rows that hold any — and the box.
+/// Where a box's ink is: its weight and the centre of that weight — and
+/// the box.
 typedef _Ink = ({
   double sum,
   double cx,
   double cy,
-  List<int> rows,
   ({int width, int height}) box,
 });
 
@@ -93,242 +76,82 @@ _Ink _inkOf(Uint8List alpha, int width, int height) {
   var sum = 0.0;
   var sumX = 0.0;
   var sumY = 0.0;
-  final rows = <int>[];
   for (var y = 0; y < height; y += 1) {
-    var inked = false;
     for (var x = 0; x < width; x += 1) {
       final a = alpha[y * width + x];
       sum += a;
       sumX += a * (x + 0.5);
       sumY += a * (y + 0.5);
-      inked = inked || a > 0;
-    }
-    if (inked) {
-      rows.add(y);
     }
   }
   return (
     sum: sum,
     cx: sumX / sum,
     cy: sumY / sum,
-    rows: rows,
     box: (width: width, height: height),
   );
 }
 
-Future<_Ink> _baked(TextPainter word, double fx, double dpr) async {
+Future<_Ink> _baked(TextPainter word, _Fit fit, double dpr) async {
   final baked = (await bakeWordCoverage(
     word,
-    fit: (x: fx, y: 1.0),
+    fit: fit,
     dpr: dpr,
     fontSize: word.text!.style!.fontSize,
   ))!;
   return _inkOf(baked.alpha, baked.width, baked.height);
 }
 
-/// The word drawn straight into the box its un-narrowed bake has: one pixel
-/// of margin, then the word.
-Future<Uint8List> _drawnStraight(TextPainter word, double dpr) async {
-  final width = (word.width * dpr).ceil() + 2;
-  final height = (word.height * dpr).ceil() + 2;
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder)
-    ..translate(1, 1)
-    ..scale(dpr);
-  word.paint(canvas, Offset.zero);
-  final picture = recorder.endRecording();
-  final image = await picture.toImage(width, height);
-  picture.dispose();
-  final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
-  image.dispose();
-  final alpha = Uint8List(width * height);
-  for (var i = 0; i < alpha.length; i += 1) {
-    alpha[i] = data.getUint8(i * 4 + 3);
-  }
-  return alpha;
-}
+typedef _Fit = ({double x, double y});
 
 void main() {
-  testWidgets('a word narrowed along its line stands on the rows it stood '
-      'on — the same ink down the line, at every narrowing, type and '
-      'pixel ratio', (tester) async {
-    await tester.runAsync(() async {
-      for (final size in [9.0, 11.0, 12.0, 13.0]) {
-        for (final dpr in [1.0, 1.25, 1.5, 2.0]) {
-          for (final text in ['3', '3a']) {
-            final word = _word(text, size);
-            final whole = await _baked(word, 1, dpr);
-            for (final fx in [0.85, 0.7, 0.5, 0.3]) {
-              final narrow = await _baked(word, fx, dpr);
-              final why = '"$text" ${size}px ×$fx at $dpr';
-              expect(
-                narrow.box,
-                (
-                  width: (word.width * fx * dpr).ceil() + 2,
-                  height: whole.box.height,
-                ),
-                reason: '$why: the box is the narrowed word and a pixel round',
-              );
-              expect(
-                narrow.rows,
-                whole.rows,
-                reason: '$why: 「세로길이」 — the rows were averaged with '
-                    'the columns, and 12 rows of ink came out over 14',
-              );
-              expect(
-                narrow.cy,
-                closeTo(whole.cy, 0.01),
-                reason: '$why: 「3a만 … 위에」 — it stood up to 1.24px high',
-              );
-              expect(
-                narrow.cx - 1,
-                closeTo((whole.cx - 1) * fx, 0.1),
-                reason: '$why: along the line it is the same word, narrower',
-              );
-              expect(
-                narrow.sum / (whole.sum * fx),
-                closeTo(1, 0.02),
-                reason: '$why: and as much ink as that',
-              );
-            }
-          }
-        }
-      }
-    });
-  });
+  setUpAll(loadTheAppFaces);
 
-  testWidgets('at and above the legible size an un-narrowed word\'s bake '
-      'is the word drawn straight — byte for byte', (tester) async {
-    // 유저 2026-08-28: 「줌인하면 텍스트는 선명하게 보고싶다」. No arm of the
-    // bake says so any more — the average of one pixel is that pixel — so
-    // this is where it is held.
-    await tester.runAsync(() async {
-      for (final size in [12.0, 13.0, 20.0]) {
-        for (final dpr in [1.0, 1.5, 2.0]) {
-          final word = _word('3a', size);
-          final whole = (await bakeWordCoverage(
-            word,
-            fit: (x: 1.0, y: 1.0),
-            dpr: dpr,
-            fontSize: size,
-          ))!;
-          final straight = await _drawnStraight(word, dpr);
-          expect(
-            _inkOf(straight, whole.width, whole.height).sum,
-            greaterThan(0),
-            reason: 'LIVENESS ${size}px at $dpr: there is a word to compare',
-          );
-          expect(whole.alpha, straight, reason: '${size}px at $dpr');
-        }
-      }
-    });
-  });
-
-  testWidgets('a word narrowed DOWN its line alone is averaged down it — '
-      'the other axis\'s turn', (tester) async {
-    await tester.runAsync(() async {
-      final word = _word('3a', 12);
-      final whole = await _baked(word, 1, 1);
-      final squat = (await bakeWordCoverage(
-        word,
-        fit: (x: 1.0, y: 0.5),
-        dpr: 1,
-        fontSize: 12,
-      ))!;
-      expect(
-        (squat.width, squat.height),
-        (whole.box.width, (word.height * 0.5).ceil() + 2),
-        reason: 'the box is the squat word and a pixel round',
-      );
-      expect(
-        squat.alpha,
-        hasLength(squat.width * squat.height),
-        reason: 'the box it is blitted by, not the raster it came from',
-      );
-      final ink = _inkOf(squat.alpha, squat.width, squat.height);
-      expect(ink.cx, closeTo(whole.cx, 0.01), reason: 'along: left alone');
-      expect(ink.cy - 1, closeTo((whole.cy - 1) * 0.5, 0.1));
-      expect(ink.sum / (whole.sum * 0.5), closeTo(1, 0.02));
-    });
-  });
-
-  testWidgets('the rasteriser is asked for the word as it stands — one '
-      'scale for both axes, its type\'s own, whatever the narrowing', (
+  testWidgets('a narrowed word is handed its narrowing — the box of the '
+      'narrowed word and a pixel round, standing where it stood', (
     tester,
   ) async {
-    // ↩️Each axis had its own scale (its own narrowing's) until 2026-10-08,
-    // and where a glyph lands under such a scale is the font backend's to
-    // say: this is the pin that is red on the old bake on every machine.
     await tester.runAsync(() async {
-      for (final (size, times) in [(12.0, 1.0), (9.0, 2.0), (3.0, 4.0)]) {
+      for (final size in [9.0, 12.0]) {
         for (final dpr in [1.0, 1.5]) {
+          final word = _word('3a', size);
+          final whole = await _baked(word, (x: 1, y: 1), dpr);
+          // A block word's 64ths, and a column's narrowing, which is none.
           for (final fit in [
-            (x: 1.0, y: 1.0),
+            (x: 27 / 64, y: 1.0),
             (x: 0.85, y: 1.0),
-            (x: 0.3, y: 1.0),
             (x: 1.0, y: 0.5),
-            (x: 0.25, y: 0.5),
           ]) {
-            final word = _WatchedWord('3a', size)..layout();
-            await bakeWordCoverage(word, fit: fit, dpr: dpr, fontSize: size);
-            final under = word.paintedUnder!;
+            final narrow = await _baked(word, fit, dpr);
             final why = '${size}px ×$fit at $dpr';
-            expect(under[0], dpr * times, reason: '$why: along the line');
-            expect(under[5], dpr * times, reason: '$why: down it');
             expect(
-              (under[12], under[13]),
-              (times, times),
-              reason: '$why: one final pixel of margin, in the raster\'s own',
+              narrow.box,
+              (
+                width: (word.width * fit.x * dpr).ceil() + 2,
+                height: (word.height * fit.y * dpr).ceil() + 2,
+              ),
+              reason: '$why: the box is the narrowed word and a pixel round',
+            );
+            // Where it stood on the axis left alone, and that narrower on
+            // the other, from the margin's edge — what the bake's own pins
+            // hold of its rows (`words/tests.rs`).
+            final (alone, narrowed) = fit.y == 1
+                ? ((narrow.cy, whole.cy), (narrow.cx, whole.cx, fit.x))
+                : ((narrow.cx, whole.cx), (narrow.cy, whole.cy, fit.y));
+            expect(alone.$1, closeTo(alone.$2, 0.02), reason: '$why: alone');
+            expect(
+              narrowed.$1 - 1,
+              closeTo((narrowed.$2 - 1) * narrowed.$3, 0.1),
+              reason: '$why: narrower',
+            );
+            expect(
+              narrow.sum / (whole.sum * fit.x * fit.y),
+              closeTo(1, 0.02),
+              reason: '$why: as much ink as that',
             );
           }
         }
       }
-    });
-  });
-
-  testWidgets('the bake keeps a pixel of margin on every side — ink that '
-      'hangs past the word\'s box is in it, where it hung', (tester) async {
-    await tester.runAsync(() async {
-      // Un-narrowed, the block fills the box to its last pixel: at a type
-      // the rasteriser draws well, and at one rasterised twice over (whose
-      // margin is two of the raster's pixels).
-      for (final size in [12.0, 9.0]) {
-        final word = _OverhungWord(size, 1)..layout();
-        final baked = (await bakeWordCoverage(
-          word,
-          fit: (x: 1.0, y: 1.0),
-          dpr: 1,
-          fontSize: size,
-        ))!;
-        expect(
-          (baked.width, baked.height),
-          (word.width.ceil() + 2, word.height.ceil() + 2),
-          reason: 'fixture ${size}px: the word is a whole number of pixels',
-        );
-        expect(
-          baked.alpha.toSet(),
-          {255},
-          reason: '${size}px: ink to the edge of the box, every side',
-        );
-      }
-
-      // Narrowed to a half, the margin pixel is half overhang and half what
-      // lies past the raster — which is nothing.
-      final word = _OverhungWord(12, 1)..layout();
-      final baked = (await bakeWordCoverage(
-        word,
-        fit: (x: 0.5, y: 1.0),
-        dpr: 1,
-        fontSize: 12,
-      ))!;
-      final row = baked.alpha.sublist(0, baked.width);
-      expect(row.first, 127, reason: 'the margin before the word');
-      expect(row.last, 127, reason: 'and the one after it');
-      expect(
-        row.sublist(1, row.length - 1).toSet(),
-        {255},
-        reason: 'the word between them',
-      );
     });
   });
 

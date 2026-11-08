@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../core/lru.dart';
@@ -17,6 +16,7 @@ import '../ui/text/canvas_letter_style.dart' show canvasLetterWeight;
 import '../ui/text/cel_number_paint.dart' show celNumberShapes;
 import '../ui/text/text_measure.dart' show TextMeasure;
 import '../ui/theme/app_theme.dart' show AppTypography;
+import 'engine_faces.dart';
 
 /// THE GPU ENGINE'S LETTERS (rust/src/kernels/letters): a cel number's
 /// letters set by the engine itself, in the app's canvas letters' faces
@@ -37,17 +37,9 @@ import '../ui/theme/app_theme.dart' show AppTypography;
 class EngineLetters {
   EngineLetters._(this._composite, this._faces);
 
-  /// The letters [composite] lays, in the app's faces read from its bundle.
-  static Future<EngineLetters> open(GpuComposite composite) async {
-    final families = [
-      for (final face in AppTypography.canvasLetterFaces)
-        [
-          for (final file in face.files)
-            Uint8List.sublistView(await rootBundle.load(file)),
-        ],
-    ];
-    return EngineLetters._(composite, GpuFaces(families));
-  }
+  /// The letters [composite] lays, in the app's faces ([EngineFaces]).
+  static Future<EngineLetters> open(GpuComposite composite) async =>
+      EngineLetters._(composite, await EngineFaces.bundled());
 
   final GpuComposite _composite;
   final GpuFaces _faces;
@@ -126,8 +118,6 @@ class EngineLetters {
       picture.free();
     }
   }
-
-  void free() => _faces.free();
 }
 
 typedef _PlateKey = ({

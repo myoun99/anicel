@@ -100,8 +100,24 @@ pub unsafe extern "C" fn gpu_engine_faces_new(
     Faces::new(set_in).map_or(std::ptr::null_mut(), |faces| Box::into_raw(Box::new(faces)))
 }
 
+/// The families of `faces` in the order `order` names them — `count`
+/// places in the order `faces` holds them —, sharing their files: freed on
+/// its own, before or after `faces`. Null on failure; see the last error.
+///
 /// # Safety
-/// `faces` came from `gpu_engine_faces_new`.
+/// `faces` came from `gpu_engine_faces_new` or this, and `order` holds
+/// `count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_faces_ordered(faces: *const Faces, order: *const u32, count: usize) -> *mut Faces {
+    // SAFETY: see the function's contract.
+    let (faces, order) = unsafe { (&*faces, std::slice::from_raw_parts(order, count)) };
+    faces
+        .ordered(order)
+        .map_or(std::ptr::null_mut(), |faces| Box::into_raw(Box::new(faces)))
+}
+
+/// # Safety
+/// `faces` came from `gpu_engine_faces_new` or `gpu_engine_faces_ordered`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gpu_engine_faces_free(faces: *mut Faces) {
     if !faces.is_null() {
@@ -325,10 +341,11 @@ pub unsafe extern "C" fn gpu_engine_word_run(
 
 /// Bakes `word` — its box `width` × `height` px of its layout — set in
 /// `faces` at `dpr` device pixels a px, rastered `times` times over and
-/// narrowed to `along` and `down` 64ths of itself ([`words::bake`]): its
-/// coverage, a byte a pixel with a pixel of margin round it. Null on
-/// failure, and for a word the bake refuses — the app paints that one as
-/// it always did; see the last error.
+/// narrowed to `along` and `down` of itself — the narrowings the app drew
+/// it at, counted in [`words::WHOLE`]ths ([`words::bake`]): its coverage,
+/// a byte a pixel with a pixel of margin round it. Null on failure, and
+/// for a word the bake refuses — the app paints that one as it always did;
+/// see the last error.
 ///
 /// # Safety
 /// `word` and `faces` are live.
@@ -341,12 +358,15 @@ pub unsafe extern "C" fn gpu_engine_word_bake(
     times: u32,
     width: f64,
     height: f64,
-    along: u32,
-    down: u32,
+    along: f64,
+    down: f64,
 ) -> *mut WordCover {
     // SAFETY: see the function's contract.
     let (word, faces) = unsafe { (&*word, &*faces) };
-    let baked = words::bake(faces, &word.shapes, dpr, times, [width, height], [along, down]);
+    // A narrowing that is no number, none or past whole comes out of its
+    // parts' range, and the bake refuses it.
+    let narrowed = [along, down].map(|fit| (fit * f64::from(words::WHOLE)).round() as u32);
+    let baked = words::bake(faces, &word.shapes, dpr, times, [width, height], narrowed);
     baked.map_or(std::ptr::null_mut(), |cover| Box::into_raw(Box::new(cover)))
 }
 

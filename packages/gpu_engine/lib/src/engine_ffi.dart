@@ -750,6 +750,15 @@ external Pointer<Faces> facesNew(
   int count,
 );
 
+@Native<Pointer<Faces> Function(Pointer<Faces>, Pointer<Uint32>, Size)>(
+  symbol: 'gpu_engine_faces_ordered',
+)
+external Pointer<Faces> facesOrdered(
+  Pointer<Faces> faces,
+  Pointer<Uint32> order,
+  int count,
+);
+
 @Native<Void Function(Pointer<Faces>)>(symbol: 'gpu_engine_faces_free')
 external void facesFree(Pointer<Faces> faces);
 
@@ -879,8 +888,8 @@ external bool wordRun(
     Uint32,
     Double,
     Double,
-    Uint32,
-    Uint32,
+    Double,
+    Double,
   )
 >(symbol: 'gpu_engine_word_bake')
 external Pointer<WordCover> wordBake(
@@ -890,8 +899,8 @@ external Pointer<WordCover> wordBake(
   int times,
   double width,
   double height,
-  int along,
-  int down,
+  double along,
+  double down,
 );
 
 @Native<Void Function(Pointer<WordCover>, Pointer<Uint32>)>(
