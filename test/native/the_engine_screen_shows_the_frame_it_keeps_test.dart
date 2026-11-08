@@ -36,6 +36,16 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// after a change composed where it lies. ↩️Not against the walk's screen:
 /// 「지금화면이랑 맞출필요는없어 … 바뀌고 나서만 동일하면되」(유저 11-08, 관제가
 /// 전함).
+/// A view a case shows through: where each device pixel's middle lands on
+/// the world ([canvasAt]), and the surface's size.
+typedef View = ({
+  String name,
+  CanvasViewport viewport,
+  double devicePixelRatio,
+  (int, int) size,
+  (int, int) Function(int x, int y) canvasAt,
+});
+
 void main() {
   // The letters read their faces from the bundle.
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -66,10 +76,14 @@ void main() {
     composite.free();
   });
 
-  /// A cel of [seed]'s pixels in [columns]' tiles, [marked] green: on the
+  /// A cel of [seed]'s pixels in the tiles of [over], [marked] green: on the
   /// page alphas of every kind over the paper, past it whole or none —
   /// there they lie over nothing, as the screen shows them premultiplied.
-  BitmapSurface cel(int seed, {(int, int, int, int)? marked}) {
+  BitmapSurface cel(
+    int seed, {
+    (int, int, int, int)? marked,
+    List<int> over = columns,
+  }) {
     BitmapTile tile(int column) {
       final pixels = Uint8List(side * side * 4);
       for (var y = 0; y < side; y++) {
@@ -105,7 +119,7 @@ void main() {
       canvasSize: canvas,
       tileSize: side,
       tiles: {
-        for (final column in columns)
+        for (final column in over)
           TileCoord(x: column, y: 0): tile(column),
       },
     );
@@ -184,42 +198,40 @@ void main() {
     }
   }
 
-  /// The views each case shows through: where each device pixel's middle
-  /// lands on the world ([canvasAt]), and the surface's size.
-  final views =
-      <
-        ({
-          String name,
-          CanvasViewport viewport,
-          double devicePixelRatio,
-          (int, int) size,
-          (int, int) Function(int x, int y) canvasAt,
-        })
-      >[
-        (
-          name: 'at rest',
-          viewport: CanvasViewport(),
-          devicePixelRatio: 1,
-          size: (2 * side, side),
-          canvasAt: (x, y) => (x, y),
-        ),
-        // Half the zoom at twice the pixels is 100% again, the page's
-        // corner 32 logical pixels in and 3 up: a texel a canvas pixel.
-        (
-          name: 'moved and shrunk at twice the pixels',
-          viewport: CanvasViewport(zoom: 0.5, panX: 32, panY: -3),
-          devicePixelRatio: 2,
-          size: (160, 100),
-          canvasAt: (x, y) => (x - 64, y + 6),
-        ),
-        (
-          name: 'turned a quarter',
-          viewport: CanvasViewport(panX: 128, rotationDegrees: 90),
-          devicePixelRatio: 1,
-          size: (side, 2 * side),
-          canvasAt: (x, y) => (y, 127 - x),
-        ),
-      ];
+  /// The views the cases show through.
+  final views = <View>[
+    (
+      name: 'at rest',
+      viewport: CanvasViewport(),
+      devicePixelRatio: 1,
+      size: (2 * side, side),
+      canvasAt: (x, y) => (x, y),
+    ),
+    // Half the zoom at twice the pixels is 100% again, the page's
+    // corner 32 logical pixels in and 3 up: a texel a canvas pixel.
+    (
+      name: 'moved and shrunk at twice the pixels',
+      viewport: CanvasViewport(zoom: 0.5, panX: 32, panY: -3),
+      devicePixelRatio: 2,
+      size: (160, 100),
+      canvasAt: (x, y) => (x - 64, y + 6),
+    ),
+    (
+      name: 'turned a quarter',
+      viewport: CanvasViewport(panX: 128, rotationDegrees: 90),
+      devicePixelRatio: 1,
+      size: (side, 2 * side),
+      canvasAt: (x, y) => (y, 127 - x),
+    ),
+    // Twice the zoom samples Nearest, as the walk does over 100%.
+    (
+      name: 'magnified twice',
+      viewport: CanvasViewport(zoom: 2, panX: -64, panY: -10),
+      devicePixelRatio: 1,
+      size: (side, 64),
+      canvasAt: (x, y) => ((x + 64) ~/ 2, (y + 10) ~/ 2),
+    ),
+  ];
 
   /// What [surface] of [size] shows of [pixel] through [canvasAt], in the
   /// surface's channel order.
@@ -244,12 +256,12 @@ void main() {
     return bytes;
   }
 
-  test('the screen shows the frame the engine lays, through the view', () {
-    final screen = EngineStackScreen(composite, letters);
-    addTearDown(screen.free);
-    final surface = cel(3);
-    screen.compose(frameOf(surface));
-    final pixel = ranOver(surface);
+  /// [screen] shown through each of [views] is [pixel] through it.
+  void showsThrough(
+    EngineStackScreen screen,
+    List<int> Function(int x, int y) pixel,
+    Iterable<View> views,
+  ) {
     for (final view in views) {
       final (width, height) = view.size;
       final target = surfaceOf(width, height);
@@ -265,39 +277,74 @@ void main() {
 
       expect(target.fingerprint(), fingerprintBytes(want), reason: view.name);
     }
+  }
+
+  /// [rect] as a rectangle of the world.
+  Rect rectOf((int, int, int, int) rect) {
+    final (left, top, right, bottom) = rect;
+    return Rect.fromLTRB(
+      left.toDouble(),
+      top.toDouble(),
+      right.toDouble(),
+      bottom.toDouble(),
+    );
+  }
+
+  test('the screen shows the frame the engine lays, through the view', () {
+    final screen = EngineStackScreen(composite, letters);
+    addTearDown(screen.free);
+    final surface = cel(3);
+    screen.compose(frameOf(surface));
+
+    showsThrough(screen, ranOver(surface), views);
   });
 
   // A change composed where it lies shows, at rest and past the page alike:
-  // a mark across the page's left edge, told where it changed.
+  // a mark across the page's left edge, told where it changed; and a frame
+  // told nothing of where is laid everywhere.
   test('a change composed where it lies is the frame the engine lays', () {
     final screen = EngineStackScreen(composite, letters);
     addTearDown(screen.free);
     screen.compose(frameOf(cel(5)));
     const marked = (-20, 10, 40, 50);
     final changed = cel(5, marked: marked);
-    final (l, t, r, b) = marked;
-    final where = Rect.fromLTRB(
-      l.toDouble(),
-      t.toDouble(),
-      r.toDouble(),
-      b.toDouble(),
-    );
-    screen.compose(frameOf(changed), changed: where);
-    final pixel = ranOver(changed);
-    for (final view in views.take(2)) {
-      final (width, height) = view.size;
-      final target = surfaceOf(width, height);
-      addTearDown(target.free);
-      screen.show(
-        target,
-        columns: width,
-        rows: height,
-        viewport: view.viewport,
-        devicePixelRatio: view.devicePixelRatio,
-      );
-      final want = expected(target, view.size, view.canvasAt, pixel);
+    screen.compose(frameOf(changed), changed: rectOf(marked));
 
-      expect(target.fingerprint(), fingerprintBytes(want), reason: view.name);
-    }
+    showsThrough(screen, ranOver(changed), views.take(2));
+
+    final another = cel(7);
+    screen.compose(frameOf(another));
+
+    showsThrough(screen, ranOver(another), views.take(2));
+  });
+
+  // A change the screen is not told of is kept as it was: the frame is
+  // made again where it is told it changed, not everywhere.
+  test('a change not told of is not composed', () {
+    final screen = EngineStackScreen(composite, letters);
+    addTearDown(screen.free);
+    final before = cel(5);
+    screen.compose(frameOf(before));
+    final marked = cel(5, marked: (200, 60, 220, 80));
+    screen.compose(frameOf(marked), changed: rectOf((10, 10, 20, 20)));
+
+    showsThrough(screen, ranOver(before), views.take(1));
+    expect(
+      ranOver(marked)(210, 70),
+      isNot(ranOver(before)(210, 70)),
+      reason: 'the mark not told of is one the frame shows',
+    );
+  });
+
+  // A frame of another world — its pasteboard tile wiped — is laid on a
+  // screen of that world, whole: nothing of the world kept before shows.
+  test('a frame of another world is laid whole', () {
+    final screen = EngineStackScreen(composite, letters);
+    addTearDown(screen.free);
+    screen.compose(frameOf(cel(5)));
+    final within = cel(5, over: const [0, 1]);
+    screen.compose(frameOf(within), changed: rectOf((10, 10, 20, 20)));
+
+    showsThrough(screen, ranOver(within), views.take(2));
   });
 }

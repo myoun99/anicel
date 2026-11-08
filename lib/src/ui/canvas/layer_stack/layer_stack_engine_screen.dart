@@ -37,7 +37,6 @@ final class EngineStackScreen {
       screen?.free();
       screen = _screen = GpuScreen(_composite, _edgesOf(world));
       _kept = world;
-      changed = null;
     }
     final ledger = EngineTileLedger.instance;
     ledger.held((hold) {
