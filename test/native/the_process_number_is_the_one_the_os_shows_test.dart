@@ -35,6 +35,20 @@ void main() {
   // has to exist before it can be collected.
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  const megabytes = 64;
+  const ballastBytes = megabytes * 1024 * 1024;
+
+  /// [ballastBytes] of private memory, resident: one byte per page, since
+  /// allocating is not enough — the pages have to be resident before a
+  /// working-set number can see them.
+  Uint8List touchedBallast() {
+    final ballast = Uint8List(ballastBytes);
+    for (var offset = 0; offset < ballast.length; offset += 4096) {
+      ballast[offset] = 1;
+    }
+    return ballast;
+  }
+
   test('this platform answers the process footprint at all', () {
     expect(
       QaMemory.processFootprintBytes,
@@ -49,16 +63,9 @@ void main() {
 
   test('the reading follows the private bytes we touch, and the RAM does '
       'not', () {
-    const megabytes = 64;
-    const ballastBytes = megabytes * 1024 * 1024;
     final ram = QaMemory.physicalMemoryBytes;
     final before = QaMemory.processFootprintBytes!;
-    final ballast = Uint8List(ballastBytes);
-    // One byte per page: allocating is not enough, the pages have to be
-    // resident before a working-set number can see them.
-    for (var offset = 0; offset < ballast.length; offset += 4096) {
-      ballast[offset] = 1;
-    }
+    final ballast = touchedBallast();
     final after = QaMemory.processFootprintBytes!;
     expect(
       after - before,
@@ -77,6 +84,25 @@ void main() {
     // Keeps the ballast alive across the second reading.
     expect(ballast[0], 1);
   });
+
+  test('what more the process may take is what the bytes it touches come '
+      'out of, not what they go into', () {
+    // What is free moves with every process on the machine, and one of them
+    // letting go can crowd out a reading: the ballast is taken again, a few
+    // times, before the reading is held to have gone the wrong way.
+    final ballasts = <Uint8List>[];
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      final before = QaMemory.availableMemoryBytes!;
+      ballasts.add(touchedBallast());
+      final after = QaMemory.availableMemoryBytes!;
+      if (after - before < ballastBytes ~/ 2) {
+        return;
+      }
+    }
+    fail('what more the process may take grew with each $megabytes MB it '
+        'took, ${ballasts.length} times — that is what it holds, not what '
+        'is free');
+  }, skip: Platform.isMacOS ? 'a Mac gives a process no such number' : null);
 
   test('a desktop gives this app no limit of its own — none, not a limit '
       'of 0', () {
