@@ -981,6 +981,17 @@ void main() {
   /// ⚠️463 → 464 on 2026-11-09 (connection-round-checklist-Q30, a screen's
   /// words back to Flutter's raster): `boxFilterA8` came back with the bake
   /// it averages, the one signature added.
+  /// ⚠️464 → 465 on 2026-11-08, one name (flip-writers-and-holders, the
+  /// frames' pictures on the engine — 관제 11-08 21:40, the ghosts over
+  /// their film): `EngineFramePictureStore.lay` (five) took the film a
+  /// ghost's frame is laid over and where it is fresh (`over`) beside the
+  /// four of the store it replaces (`FramePictureStore.lay` — the key, the
+  /// frame, whether the screen shows it now, and whether its asker is
+  /// gone, F-529). 🔬`clean_code_diff` against the lane's base
+  /// (`63d034dba`) names it added and nothing gone; the old store's goes
+  /// at ⓔ without moving the count, as it takes four. ⛔Not bundled to
+  /// fit: whether it is wanted first, whether it is wanted at all, and what
+  /// it lies over are three questions, each asked by a caller of its own.
   const wideSignatures = 464;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
