@@ -277,12 +277,18 @@ void main() {
     });
   }
 
-  /// What the screen shows of [frame] over the canvas and 64 past it each
-  /// way.
+  /// What the screen shows of [frame] over the canvas and past it: 64 to
+  /// its left, above and below it, 192 to its right.
   int shownPast(StackedFrame frame) => shown(
     frame,
     viewport: CanvasViewport(panX: 64, panY: 64),
-    size: (canvas.width + 128, canvas.height + 128),
+    size: (canvas.width + 256, canvas.height + 128),
+  );
+
+  /// The pen's row through a blur.
+  CanvasActiveLayerRow blurred() => CanvasActiveLayerRow(
+    opacity: 1,
+    effects: [fx(EffectKind.blur, {'blurriness': 6, 'blurDimensions': 0})],
   );
 
   for (final (name, at, dx, dy, seen) in [
@@ -292,19 +298,16 @@ void main() {
     // tile apart on the pasteboard (board
     // pasteboard-blur-cut-at-row-extent, 2026-11-08).
     ('on the canvas', CanvasPoint(x: 120, y: 60), 30, 9, shown),
-    // Past every tile the cel holds: the chain's picture holds the float.
-    ('past the canvas', CanvasPoint(x: 230, y: 60), 40, 0, shownPast),
+    // Past every tile the cel holds and past the float's own tiles where
+    // it was taken up: the chain's picture holds it where it is carried —
+    // a whole tile on, so its tiles there are the landed cel's.
+    ('past the canvas', CanvasPoint(x: 230, y: 60), 128, 0, shownPast),
   ]) {
     test('🚨a float $name shows through its row\'s blur as it lands '
         '(F-240)', () {
       final base = cel();
       final lift = liftAt(at);
-      final row = CanvasActiveLayerRow(
-        opacity: 1,
-        effects: [
-          fx(EffectKind.blur, {'blurriness': 6, 'blurDimensions': 0}),
-        ],
-      );
+      final row = blurred();
       final drawing = seen(
         frameOf(
           BitmapSurfacePainter(surface: base),
@@ -327,7 +330,8 @@ void main() {
     });
   }
 
-  test('🚨a float carried past the wall shows cut there, as it lands', () {
+  test('🚨a float carried past the wall shows cut there, as it lands — '
+      'through a blur, which spreads what lies past it back inside', () {
     const reach = PasteboardReach.none;
     final base = cel(reach: reach);
     final lift = liftAt(CanvasPoint(x: 200, y: 64));
@@ -336,6 +340,7 @@ void main() {
       frameOf(
         BitmapSurfacePainter(surface: base),
         float: carried(lift, base, dx: 40, dy: 50),
+        row: blurred(),
         reach: reach,
       ),
     );
@@ -345,6 +350,7 @@ void main() {
       shownPast(
         frameOf(
           BitmapSurfacePainter(surface: stamped(base, movedBy(lift, 40, 50))),
+          row: blurred(),
           reach: reach,
         ),
       ),
