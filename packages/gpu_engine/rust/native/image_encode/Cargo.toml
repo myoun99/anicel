@@ -4,8 +4,7 @@ version = "0.0.1"
 edition = "2024"
 publish = false
 
-# The C answer key: the engine's qa_image_encode_jpg, byte for byte
-# (native/oracle), and the app's ledger (native/ledger).
+# The app's ledger (native/ledger), which keeps the bytes the C engine's
+# qa_image_encode_jpg wrote before it was deleted.
 [dev-dependencies]
 ledger = { path = "../ledger" }
-oracle = { path = "../oracle" }

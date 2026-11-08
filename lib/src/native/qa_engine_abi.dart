@@ -334,7 +334,11 @@ import '../core/on_a_worker.dart';
 ///   native/audio_denoise, connection-round-checklist H), which
 ///   `qa_audio_resampler.dart` and `qa_audio_denoiser.dart` ask in the GPU
 ///   engine's library.
-const int kQaEngineAbiVersion = 66;
+/// - v67: `qa_image_encode_jpg` · `qa_image_encode_free` leave the C: the
+///   JPEG encoder is the Rust engine's (native/image_encode,
+///   connection-round-checklist H), which `QaImageEncoder` binds in the GPU
+///   engine's library.
+const int kQaEngineAbiVersion = 67;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

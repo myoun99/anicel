@@ -1039,7 +1039,6 @@ name = "image_encode"
 version = "0.0.1"
 dependencies = [
  "ledger",
- "oracle",
 ]
 
 [[package]]

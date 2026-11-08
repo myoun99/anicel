@@ -6630,4 +6630,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // leave - the conform's resampler and the voice take's denoiser are the
 // Rust engine's (native/audio_mix, native/audio_denoise), which the app
 // opens in the GPU engine's library.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 66; }
+// v67: qa_image_encode_jpg and qa_image_encode_free leave - the JPEG encoder
+// is the Rust engine's (native/image_encode), which the app binds in the GPU
+// engine's library.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 67; }
