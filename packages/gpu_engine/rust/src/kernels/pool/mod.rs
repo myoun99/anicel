@@ -286,6 +286,10 @@ impl Pool {
         for &at in places {
             self.holding(at)?;
         }
+        // ⚠️No test tells this from a read of nothing mapped: DX12 maps a
+        // buffer of no bytes as one of some (mutant R03 lived, 11-09). It
+        // stands so a read of no tile waits for no GPU and asks no driver
+        // for a buffer of no bytes.
         if places.is_empty() {
             return Some(());
         }
