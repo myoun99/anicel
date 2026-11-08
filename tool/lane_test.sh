@@ -96,6 +96,11 @@
 # 🆕And where it looked (same day — sections T and V, 155 checks in all): a
 # refusal to download names the cargo home or the pub cache it read. ⚠️The
 # script before THAT fails both: it names what is missing, not from where.
+# 🆕And a link (2026-11-08, the-hook-folder-lost-an-android-dep-file —
+# section X, 171 checks in all): a lane holding a link to a folder outside
+# it is dropped and landed with the folder's files kept. ⚠️The script
+# before THAT fails 2 of the 5 there: on Windows its `git worktree remove`
+# empties the folder through the junction.
 #
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
