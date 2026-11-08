@@ -18,7 +18,16 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -36,6 +45,8 @@ import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/directional_blur_shader.dart';
 import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
+
+import '../helpers/app_faces.dart';
 
 /// 🚨THE ENGINE LAYS A TREE AS THE WALK PAINTS IT (screen-on-the-engine
 /// c5): one tree, painted by the walk every route composites by
@@ -1187,6 +1198,156 @@ void main() {
       laid([row(1, effects: edge)], clear),
       reason: 'the ink left of the paper is no part of its edge',
     );
+  });
+
+  // 🚨A CEL NUMBER (cel-number-on-the-engine-letters): the walk lays the
+  // app's plate of the letters (`celNumberPlate`), the engine its own
+  // raster of the app's one layout of them — set in the app's faces, the
+  // unnamed drawing's mark and all, standing where the number's own
+  // Position and Scale put them, laid as the row's picture is, at rest or
+  // moved and scaled with it. Two rasters of one outline: where the ink
+  // lies and how much of it, not each pixel — and every pixel off the
+  // letters as the row's.
+  group('a cel number', () {
+    setUpAll(loadTheAppFaces);
+
+    /// The animation row 「A」 of [surface], its drawing unnamed, numbered
+    /// in a blue ink where its own stand puts the letters — placed by
+    /// [transform] where one is given.
+    List<CompositeNode<CutFrameCompositeLayer>> numbered(
+      BitmapSurface surface, {
+      TransformTrack? transform,
+    }) => planCutFrameCompositeTree(
+      cut: Cut(
+        id: const CutId('cut'),
+        name: 'Cut',
+        canvasSize: canvas,
+        duration: 1,
+        layers: [
+          Layer(
+            id: const LayerId('a'),
+            name: 'A',
+            kind: LayerKind.animation,
+            frames: [
+              Frame(id: const FrameId('f'), duration: 1, strokes: const []),
+            ],
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('f'), length: 1),
+            },
+            transformTrack: transform,
+            effects: [
+              LayerEffect(
+                id: const EffectId('n'),
+                kind: EffectKind.celNumber,
+                stand: TransformTrack.empty().copyWith(
+                  position: PropertyTrack<CanvasPoint>.empty().withKey(
+                    0,
+                    CanvasPoint(x: 96.4, y: 58.7),
+                  ),
+                  scale: PropertyTrack<CanvasPoint>.empty().withKey(
+                    0,
+                    CanvasPoint(x: 1.5, y: 1.5),
+                  ),
+                ),
+                colors: {
+                  'ink': PropertyTrack<int>.empty().withKey(0, 0xFF2050C0),
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+      frameIndex: 0,
+      reading: (surfaces: (_, _) => surface, plugins: null),
+    );
+
+    /// Where [pixels] hold any alpha, and how much of it they hold.
+    ({ui.Rect box, int ink}) inkOf(Uint8List pixels) {
+      var (left, top) = (canvas.width, canvas.height);
+      var (right, bottom, ink) = (0, 0, 0);
+      for (var at = 0; at < pixels.length; at += 4) {
+        final alpha = pixels[at + 3];
+        if (alpha == 0) {
+          continue;
+        }
+        final x = (at ~/ 4) % canvas.width;
+        final y = (at ~/ 4) ~/ canvas.width;
+        (left, top) = (math.min(left, x), math.min(top, y));
+        (right, bottom) = (math.max(right, x + 1), math.max(bottom, y + 1));
+        ink += alpha;
+      }
+      final box = ui.Rect.fromLTRB(
+        left.toDouble(),
+        top.toDouble(),
+        right.toDouble(),
+        bottom.toDouble(),
+      );
+      return (box: box, ink: ink);
+    }
+
+    final placements = <String, TransformTrack?>{
+      'at rest': null,
+      'moved and scaled': TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 128 + 20.5, y: 64 - 10.25),
+        ),
+        scale: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 1.25, y: 1.25),
+        ),
+      ),
+    };
+    for (final MapEntry(key: name, value: transform) in placements.entries) {
+      testWidgets('on a row $name is laid where the walk lays it', (
+        tester,
+      ) async {
+        await tester.runAsync(() async {
+          final bare = numbered(
+            BitmapSurface(canvasSize: canvas, tileSize: side),
+            transform: transform,
+          );
+          final walk = inkOf(await walked(bare, clear));
+          final engine = inkOf(laid(bare, clear));
+          expect(walk.ink, isNot(0), reason: 'LIVENESS: the walk wrote');
+          final edges = [
+            walk.box.left - engine.box.left,
+            walk.box.top - engine.box.top,
+            walk.box.right - engine.box.right,
+            walk.box.bottom - engine.box.bottom,
+          ];
+          expect(
+            [for (final edge in edges) edge.abs()],
+            everyElement(lessThanOrEqualTo(1)),
+            reason: 'the ink lies at ${walk.box} walked, ${engine.box} laid',
+          );
+          expect(
+            engine.ink / walk.ink,
+            closeTo(1, 0.1),
+            reason: 'ink ${walk.ink} walked, ${engine.ink} laid',
+          );
+
+          final over = numbered(cel(1), transform: transform);
+          final drawn = await walked(over, clear);
+          final put = laid(over, clear);
+          final letters = walk.box.inflate(2);
+          for (final picture in [drawn, put]) {
+            for (var at = 0; at < picture.length; at += 4) {
+              final x = (at ~/ 4) % canvas.width;
+              final y = (at ~/ 4) ~/ canvas.width;
+              if (letters.contains(ui.Offset(x + 0.5, y + 0.5))) {
+                picture.fillRange(at, at + 4, 0);
+              }
+            }
+          }
+          expect(
+            apartness(drawn, put).most,
+            lessThanOrEqualTo(2),
+            reason: 'off the letters the row is laid as the walk paints it',
+          );
+        });
+      });
+    }
   });
 
   // ⏳What the engine lays no step for yet is refused, never dropped: a
