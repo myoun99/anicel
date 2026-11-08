@@ -153,6 +153,22 @@ void main() {
     expect(keptSince(before), picture, reason: 'one picture');
   });
 
+  test('a picture there is answered at once, not behind the lays '
+      'waiting', () async {
+    final store = storeOf();
+    await store.lay('there', frameOf(cel(5)));
+    final answered = <String>[];
+
+    await Future.wait([
+      store
+          .lay('waiting', frameOf(cel(6)))
+          .then((_) => answered.add('waiting')),
+      store.lay('there', frameOf(cel(5))).then((_) => answered.add('there')),
+    ]);
+
+    expect(answered, ['there', 'waiting']);
+  });
+
   /// The keys [store] lays as [asked] for them, in the order they are laid.
   Future<List<String>> laidInTurn(
     EngineFramePictureStore<String> store,
@@ -414,6 +430,11 @@ void main() {
     expect(keptSince(before), picture, reason: 'held');
     laid.release();
     expect(keptSince(before), 0, reason: 'released');
+    expect(
+      () => laid.addListener(() {}),
+      throwsFlutterError,
+      reason: 'a picture freed is told to no one',
+    );
   });
 
   test('a store let go of keeps nothing, and answers the lays waiting with '
