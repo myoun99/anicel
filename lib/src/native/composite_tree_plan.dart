@@ -151,10 +151,11 @@ void planCompositeTree(
 }) => _TreePlan(plan, hold, paper, letters)._lay(nodes);
 
 class _TreePlan {
-  _TreePlan(this.plan, this.hold, this.paper, this.letters);
+  _TreePlan(this.plan, TileHold hold, this.paper, this.letters)
+    : _tiles = _TileLaying(plan, hold, paper);
 
   final GpuPlan plan;
-  final TileHold hold;
+  final _TileLaying _tiles;
   final ui.Rect paper;
   final EngineLetters letters;
 
@@ -331,12 +332,12 @@ class _TreePlan {
     final opacity = _strengthOf(row.opacity);
     if (row.held.isEmpty) {
       plan.row(
-        set: _setOf(row.lineage, tiles),
+        set: _tiles.setOf(row.lineage, tiles),
         chain: chain,
         inverse: posed,
-        sampling: _rowSampling,
-        columns: _columns,
-        rows: _rows,
+        sampling: _tiles.sampling,
+        columns: _tiles.columns,
+        rows: _tiles.rows,
         mode: mode,
         matrix: matrix,
         opacity: opacity,
@@ -345,126 +346,22 @@ class _TreePlan {
     }
     plan.open();
     if (tiles.isNotEmpty) {
-      _laySet(_setOf(row.lineage, tiles), null, GpuBlend.normal);
+      _tiles.lay(_tiles.setOf(row.lineage, tiles), null, GpuBlend.normal);
     }
     for (final held in row.held) {
-      _held(held, row.surface.pasteboard);
+      _tiles.layHeld(held, row.surface.pasteboard);
     }
     plan.closeRow(
       chain: chain,
       tiles: chain == null ? _tilesOf(_pixelsOf(picture)) : null,
       inverse: posed,
-      sampling: _rowSampling,
-      columns: _columns,
-      rows: _rows,
+      sampling: _tiles.sampling,
+      columns: _tiles.columns,
+      rows: _tiles.rows,
       mode: mode,
       matrix: matrix,
       opacity: opacity,
     );
-  }
-
-  /// A row is laid at the canvas's own resolution, one of its pixels a
-  /// canvas pixel, whatever its pose (🗣️I-120-Q26 · Q28 — a picture baked
-  /// as the canvas shows it).
-  GpuSampling get _rowSampling =>
-      gpuSamplingOf(filterQualityForDisplayScale(1));
-
-  // A placement is affine: no corner of what the plan lays says how far a
-  // pixel lies, as a homography's would.
-  int get _columns => paper.width.ceil();
-  int get _rows => paper.height.ceil();
-
-  /// [held] in the open buffer of its row, as its laying says, and cut at
-  /// [wall] — its row's pasteboard — where it reaches past it, as its
-  /// landing is cut there.
-  void _held(EngineHeld held, PasteboardWall wall) {
-    final reach = _reachOf(held);
-    if (reach == null) {
-      return;
-    }
-    final set = _setOf(held.lineage, held.tiles);
-    final (left, top, right, bottom) = _pixelsOf(reach);
-    final outside = [
-      (left, top, right, wall.top),
-      (left, wall.bottomExclusive, right, bottom),
-      (left, wall.top, wall.left, wall.bottomExclusive),
-      (wall.rightExclusive, wall.top, right, wall.bottomExclusive),
-    ].where((band) => band.$1 < band.$3 && band.$2 < band.$4).toList();
-    void laid(int mode) {
-      if (outside.isEmpty) {
-        _laySet(set, held.toHeld, mode);
-        return;
-      }
-      plan.open();
-      _laySet(set, held.toHeld, GpuBlend.normal);
-      plan.open();
-      for (final (l, t, r, b) in outside) {
-        plan.solid(_opaque, l, t, r, b);
-      }
-      plan.close(mode: GpuBlend.erase);
-      plan.close(mode: mode);
-    }
-
-    switch (held.laying) {
-      case LaidOver():
-        laid(GpuBlend.normal);
-      case LaidErasing():
-        laid(GpuBlend.erase);
-      case LaidReplacing(:final region):
-        final (l, t, r, b) = _pixelsOf(region);
-        final cut = (
-          math.max(l, wall.left),
-          math.max(t, wall.top),
-          math.min(r, wall.rightExclusive),
-          math.min(b, wall.bottomExclusive),
-        );
-        if (cut case (final l, final t, final r, final b) when l < r && t < b) {
-          plan.open();
-          plan.solid(_opaque, l, t, r, b);
-          plan.close(mode: GpuBlend.erase);
-        }
-        laid(GpuBlend.normal);
-    }
-  }
-
-  /// Tile set [set] laid whole in [mode] where [toOwn] — a pixel of the
-  /// space the steps are laid in to the set's own, none where they are
-  /// one — reads it.
-  void _laySet(int set, GuideTransform? toOwn, int mode) {
-    final GuideTransform(:a, :b, :c, :d, :tx, :ty) =
-        toOwn ?? const GuideTransform.identity();
-    plan.row(
-      set: set,
-      inverse: [a, c, tx, b, d, ty, 0, 0, 1],
-      sampling: _rowSampling,
-      columns: _columns,
-      rows: _rows,
-      mode: mode,
-    );
-  }
-
-  /// Opaque white, as a solid takes it.
-  static final int _opaque = gpuColourOf(0xFFFFFFFF);
-
-  /// The tile set of [tiles], held as [lineage]'s: the box their
-  /// coordinates span, row by row, an empty place where none is.
-  int _setOf(Object lineage, Map<TileCoord, BitmapTile> tiles) {
-    final coords = tiles.keys;
-    final left = coords.map((coord) => coord.x).reduce(_least);
-    final top = coords.map((coord) => coord.y).reduce(_least);
-    final right = coords.map((coord) => coord.x).reduce(_most);
-    final bottom = coords.map((coord) => coord.y).reduce(_most);
-    final columns = right - left + 1;
-    final rows = bottom - top + 1;
-    final entries = tiles.entries.toList();
-    final slots = hold.slotsOf(lineage, [
-      for (final entry in entries) entry.value,
-    ]);
-    final grid = List<GpuTile?>.filled(columns * rows, null);
-    for (final (at, entry) in entries.indexed) {
-      grid[(entry.key.y - top) * columns + entry.key.x - left] = slots[at];
-    }
-    return plan.set(left, top, columns, rows, grid);
   }
 
   /// [matrix] added to the plan, or none.
@@ -766,6 +663,121 @@ class _TreePlan {
       ),
       outset,
     );
+  }
+}
+
+/// What lays tile sets on [plan] — their tiles kept in the pool by [hold]
+/// — at the canvas's own resolution over [paper]: a row's tiles, and what
+/// a hand holds over them.
+final class _TileLaying {
+  _TileLaying(this.plan, this.hold, this.paper);
+
+  final GpuPlan plan;
+  final TileHold hold;
+  final ui.Rect paper;
+
+  /// A row is laid at the canvas's own resolution, one of its pixels a
+  /// canvas pixel, whatever its pose (🗣️I-120-Q26 · Q28 — a picture baked
+  /// as the canvas shows it).
+  GpuSampling get sampling =>
+      gpuSamplingOf(filterQualityForDisplayScale(1));
+
+  // A placement is affine: no corner of what the plan lays says how far a
+  // pixel lies, as a homography's would.
+  int get columns => paper.width.ceil();
+  int get rows => paper.height.ceil();
+
+  /// [held] in the open buffer of its row, as its laying says, and cut at
+  /// [wall] — its row's pasteboard — where it reaches past it, as its
+  /// landing is cut there.
+  void layHeld(EngineHeld held, PasteboardWall wall) {
+    final reach = _reachOf(held);
+    if (reach == null) {
+      return;
+    }
+    final set = setOf(held.lineage, held.tiles);
+    final (left, top, right, bottom) = _pixelsOf(reach);
+    final outside = [
+      (left, top, right, wall.top),
+      (left, wall.bottomExclusive, right, bottom),
+      (left, wall.top, wall.left, wall.bottomExclusive),
+      (wall.rightExclusive, wall.top, right, wall.bottomExclusive),
+    ].where((band) => band.$1 < band.$3 && band.$2 < band.$4).toList();
+    void laid(int mode) {
+      if (outside.isEmpty) {
+        lay(set, held.toHeld, mode);
+        return;
+      }
+      plan.open();
+      lay(set, held.toHeld, GpuBlend.normal);
+      plan.open();
+      for (final (l, t, r, b) in outside) {
+        plan.solid(_opaque, l, t, r, b);
+      }
+      plan.close(mode: GpuBlend.erase);
+      plan.close(mode: mode);
+    }
+
+    switch (held.laying) {
+      case LaidOver():
+        laid(GpuBlend.normal);
+      case LaidErasing():
+        laid(GpuBlend.erase);
+      case LaidReplacing(:final region):
+        final (l, t, r, b) = _pixelsOf(region);
+        final cut = (
+          math.max(l, wall.left),
+          math.max(t, wall.top),
+          math.min(r, wall.rightExclusive),
+          math.min(b, wall.bottomExclusive),
+        );
+        if (cut case (final l, final t, final r, final b) when l < r && t < b) {
+          plan.open();
+          plan.solid(_opaque, l, t, r, b);
+          plan.close(mode: GpuBlend.erase);
+        }
+        laid(GpuBlend.normal);
+    }
+  }
+
+  /// Tile set [set] laid whole in [mode] where [toOwn] — a pixel of the
+  /// space the steps are laid in to the set's own, none where they are
+  /// one — reads it.
+  void lay(int set, GuideTransform? toOwn, int mode) {
+    final GuideTransform(:a, :b, :c, :d, :tx, :ty) =
+        toOwn ?? const GuideTransform.identity();
+    plan.row(
+      set: set,
+      inverse: [a, c, tx, b, d, ty, 0, 0, 1],
+      sampling: sampling,
+      columns: columns,
+      rows: rows,
+      mode: mode,
+    );
+  }
+
+  /// Opaque white, as a solid takes it.
+  static final int _opaque = gpuColourOf(0xFFFFFFFF);
+
+  /// The tile set of [tiles], held as [lineage]'s: the box their
+  /// coordinates span, row by row, an empty place where none is.
+  int setOf(Object lineage, Map<TileCoord, BitmapTile> tiles) {
+    final coords = tiles.keys;
+    final left = coords.map((coord) => coord.x).reduce(_least);
+    final top = coords.map((coord) => coord.y).reduce(_least);
+    final right = coords.map((coord) => coord.x).reduce(_most);
+    final bottom = coords.map((coord) => coord.y).reduce(_most);
+    final columns = right - left + 1;
+    final rows = bottom - top + 1;
+    final entries = tiles.entries.toList();
+    final slots = hold.slotsOf(lineage, [
+      for (final entry in entries) entry.value,
+    ]);
+    final grid = List<GpuTile?>.filled(columns * rows, null);
+    for (final (at, entry) in entries.indexed) {
+      grid[(entry.key.y - top) * columns + entry.key.x - left] = slots[at];
+    }
+    return plan.set(left, top, columns, rows, grid);
   }
 }
 

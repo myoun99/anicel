@@ -277,46 +277,62 @@ void main() {
     });
   }
 
-  test('🚨a float shows through its row\'s blur as it lands (F-240)', () {
-    final base = cel();
-    final lift = liftAt(CanvasPoint(x: 120, y: 60));
-    final row = CanvasActiveLayerRow(
-      opacity: 1,
-      effects: [
-        fx(EffectKind.blur, {'blurriness': 6, 'blurDimensions': 0}),
-      ],
-    );
-    final drawing = shown(
-      frameOf(
-        BitmapSurfacePainter(surface: base),
-        float: carried(lift, base, dx: 30, dy: 9),
-        row: row,
-      ),
-    );
+  /// What the screen shows of [frame] over the canvas and 64 past it each
+  /// way.
+  int shownPast(StackedFrame frame) => shown(
+    frame,
+    viewport: CanvasViewport(panX: 64, panY: 64),
+    size: (canvas.width + 128, canvas.height + 128),
+  );
 
-    expect(
-      drawing,
-      shown(
+  for (final (name, at, dx, dy, seen) in [
+    // ⚠️Over the canvas alone: past it, the screen's world reaches as far
+    // as the float's tiles, at its offset, where the landed cel's reaches
+    // its own tiles, and a row's blur spreads only inside the world — one
+    // tile apart on the pasteboard (board
+    // pasteboard-blur-cut-at-row-extent, 2026-11-08).
+    ('on the canvas', CanvasPoint(x: 120, y: 60), 30, 9, shown),
+    // Past every tile the cel holds: the chain's picture holds the float.
+    ('past the canvas', CanvasPoint(x: 230, y: 60), 40, 0, shownPast),
+  ]) {
+    test('🚨a float $name shows through its row\'s blur as it lands '
+        '(F-240)', () {
+      final base = cel();
+      final lift = liftAt(at);
+      final row = CanvasActiveLayerRow(
+        opacity: 1,
+        effects: [
+          fx(EffectKind.blur, {'blurriness': 6, 'blurDimensions': 0}),
+        ],
+      );
+      final drawing = seen(
         frameOf(
-          BitmapSurfacePainter(surface: stamped(base, movedBy(lift, 30, 9))),
+          BitmapSurfacePainter(surface: base),
+          float: carried(lift, base, dx: dx, dy: dy),
           row: row,
         ),
-      ),
-    );
-  });
+      );
+
+      expect(
+        drawing,
+        seen(
+          frameOf(
+            BitmapSurfacePainter(
+              surface: stamped(base, movedBy(lift, dx, dy)),
+            ),
+            row: row,
+          ),
+        ),
+      );
+    });
+  }
 
   test('🚨a float carried past the wall shows cut there, as it lands', () {
     const reach = PasteboardReach.none;
     final base = cel(reach: reach);
     final lift = liftAt(CanvasPoint(x: 200, y: 64));
-    // The canvas and 64 past it each way: past the wall, which is its edge.
-    final past = (
-      viewport: CanvasViewport(panX: 64, panY: 64),
-      size: (canvas.width + 128, canvas.height + 128),
-    );
-    int seen(StackedFrame frame) =>
-        shown(frame, viewport: past.viewport, size: past.size);
-    final drawing = seen(
+    // The canvas is the wall: what is past it is past the wall.
+    final drawing = shownPast(
       frameOf(
         BitmapSurfacePainter(surface: base),
         float: carried(lift, base, dx: 40, dy: 50),
@@ -326,7 +342,7 @@ void main() {
 
     expect(
       drawing,
-      seen(
+      shownPast(
         frameOf(
           BitmapSurfacePainter(surface: stamped(base, movedBy(lift, 40, 50))),
           reach: reach,
@@ -417,6 +433,36 @@ void main() {
       drawing,
       isNot(shown(frameOf(BitmapSurfacePainter(surface: base), row: row))),
       reason: 'the landing shows while it is carried',
+    );
+  });
+
+  test('🚨on a row posed by whole pixels, a float no lift holds a hole for '
+      'shows itself, carried into the row\'s space, as it lands', () {
+    const row = CanvasActiveLayerRow(
+      opacity: 1,
+      placement: GuideTransform(1, 0, 0, 1, 7, -3),
+    );
+    final base = cel();
+    final lift = liftAt(CanvasPoint(x: 120, y: 60));
+    final drawing = shown(
+      frameOf(
+        BitmapSurfacePainter(surface: base),
+        float: carried(lift, base, dx: 25, dy: 14),
+        row: row,
+      ),
+    );
+
+    // Where it lies on the canvas, in the row's pixels: the pose undone.
+    expect(
+      drawing,
+      shown(
+        frameOf(
+          BitmapSurfacePainter(
+            surface: stamped(base, movedBy(lift, 25 - 7, 14 + 3)),
+          ),
+          row: row,
+        ),
+      ),
     );
   });
 
