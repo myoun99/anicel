@@ -148,7 +148,7 @@ ConformRunner conformingInto(QaAudioDevice? Function() device) =>
       if (into == null) {
         return runConformInIsolate(request);
       }
-      final landed = await _conformOnAWorker(request, into.buffers);
+      final landed = await _conformOnAWorker(request);
       return landed.address == 0
           ? landed.result
           : landed.result.withSamples(
@@ -176,7 +176,6 @@ ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
         (lent) => _resampleOnAWorker(
           lent == null ? request : request.withSamples(Float32List(0)),
           lent,
-          into.buffers,
         ),
       );
       return landed.address == 0
@@ -185,15 +184,14 @@ ResampleRunner resamplingInto(QaAudioDevice? Function() device) =>
     };
 
 /// The workers' jobs, each in a function of its own: [onAWorker] copies
-/// the closure's whole context, and these hold a request and addresses.
+/// the closure's whole context, and these hold a request and an address.
 Future<({ConformResult result, int address, int floats})> _conformOnAWorker(
   ConformRequest request,
-  AudioBuffers buffers,
 ) => onAWorker(() {
   final result = runConformHere(request);
   final placed = placedWhereTheDevicePlays(
     result.samples,
-    audioBuffersHere(buffers),
+    audioBuffersHere(),
   );
   return (
     result: placed.address == 0 ? result : result.withSamples(null),
@@ -206,7 +204,6 @@ Future<({ConformResult result, int address, int floats})> _conformOnAWorker(
 Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
   ResampleRequest request,
   ({int address, int floats})? lent,
-  AudioBuffers buffers,
 ) => onAWorker(() {
   assert(
     lent == null || request.samples.isEmpty,
@@ -221,7 +218,7 @@ Future<({Float32List samples, int address, int floats})> _resampleOnAWorker(
   );
   final placed = placedWhereTheDevicePlays(
     converted,
-    audioBuffersHere(buffers),
+    audioBuffersHere(),
   );
   return (
     samples: placed.address == 0 ? converted : Float32List(0),

@@ -24,11 +24,10 @@ endif()
 add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_engine.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
-  "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_encode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
-  "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
 if(APPLE)
   target_sources(qa_engine PRIVATE
@@ -171,39 +170,6 @@ if(NOT ANDROID AND NOT IOS)
   add_test(NAME qa_audio_range COMMAND qa_audio_range_test)
 endif()
 
-# The transport against a move that lands mid-block
-# (a-seek-lost-to-the-block-in-flight). It includes the device's translation
-# unit with miniaudio's null backend alone, so no OS audio stack comes along
-# and the test is the same on every host.
-if(NOT ANDROID AND NOT IOS)
-  add_executable(qa_audio_transport_test
-    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_transport_test.c")
-  set_target_properties(qa_audio_transport_test PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED ON
-  )
-  if(APPLE)
-    target_link_libraries(qa_audio_transport_test
-      "-framework CoreFoundation" "-framework CoreAudio"
-      "-framework AudioToolbox")
-  elseif(UNIX)
-    find_package(Threads REQUIRED)
-    target_link_libraries(qa_audio_transport_test
-      Threads::Threads ${CMAKE_DL_LIBS} m)
-  elseif(WIN32)
-    target_link_libraries(qa_audio_transport_test ole32)
-  endif()
-  if(MSVC)
-    target_compile_options(qa_audio_transport_test
-      PRIVATE /utf-8 /wd4267 /wd4244 /wd4996)
-  else()
-    target_compile_options(qa_audio_transport_test
-      PRIVATE -Wno-unused-function)
-  endif()
-  enable_testing()
-  add_test(NAME qa_audio_transport COMMAND qa_audio_transport_test)
-endif()
-
 # The range byte stream, driven for real. ⚠️Unlike the law test above, this
 # one WANTS its platform: the object under test IS Media Foundation's
 # interface, so there is nothing portable to check and the MF libraries are
@@ -275,27 +241,26 @@ endif()
 if(MSVC)
   set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
-  "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
     PROPERTIES COMPILE_OPTIONS "/wd4267;/wd4244;/wd4996;/wd4018;/wd4389")
 else()
   set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_device.c"
-  "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
     PROPERTIES COMPILE_OPTIONS "-Wno-conversion;-Wno-unused-function")
 endif()
 
-# miniaudio dlopens the platform audio APIs at runtime, so building needs
-# no audio dev headers — that is what keeps CI's Linux job from needing an
-# ALSA package. It does need the OS threading/dl primitives, and on Apple
-# the CoreAudio frameworks at LINK time.
+# The OS threading/dl primitives, and on Apple the frameworks the decoders
+# and the video writer link. 🪦The C's sound device (miniaudio) linked
+# CoreAudio here and OpenSLES on Android, until the device moved into the
+# GPU engine's library (connection-round-checklist H, 2026-11-08).
 if(APPLE)
   # AVFoundation/CoreMedia/CoreVideo carry the video writer (R7);
   # Foundation is the Objective-C runtime half of it (NSString and
   # friends) — CoreFoundation alone does NOT provide those classes.
+  # AudioToolbox carries the OS audio decoder (qa_audio_decode.c).
   target_link_libraries(qa_engine
-    "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox"
+    "-framework CoreFoundation" "-framework AudioToolbox"
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     # CoreGraphics arrived with the DECODER: a CGImage from the image
     # generator is drawn into a bitmap context to come out as RGBA.
@@ -306,10 +271,10 @@ elseif(UNIX AND NOT ANDROID)
   target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})
 elseif(ANDROID)
   # mediandk: the NDK media stack — the movie decoder and encoder and the
-  # OS audio decoder (AAC). OpenSLES: miniaudio.
+  # OS audio decoder (AAC).
   # ↩️mediandk was resolved via dlopen/dlsym at runtime until 2026-10-24,
   # when the minSdk 29 floor left the headers nothing to hide (qa_ndk_media.h).
-  target_link_libraries(qa_engine OpenSLES mediandk)
+  target_link_libraries(qa_engine mediandk)
 elseif(WIN32)
   # The OS decoders (AAC/m4a, and every movie): Media Foundation source
   # readers over the span stream (qa_win_range_stream.c). ole32 carries the

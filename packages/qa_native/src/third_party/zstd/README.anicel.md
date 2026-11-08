@@ -6,7 +6,7 @@
 - Generated with `build/single_file_libs/combine.sh -r ../../lib -x legacy/zstd_legacy.h -o zstd.c zstd-in.c`
 - License: BSD-3-Clause (`LICENSE`), the only one of its kind here: the
   other vendored libraries are MIT or public domain (stb) and public
-  domain or MIT-0 (miniaudio, dr_libs), each in its PROVENANCE.md.
+  domain or MIT-0 (dr_libs), each in its PROVENANCE.md.
   The Rust port in `packages/gpu_engine/rust/native/compress` carries a
   copy of the same `LICENSE`.
 

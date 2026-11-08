@@ -131,7 +131,7 @@ void main() {
         expect(
           source.contains('qaAudioStructLayoutsMatch'),
           isTrue,
-          reason: '$name hands the audio structs to the C. Unchecked, a '
+          reason: '$name hands the audio structs to the engine. Unchecked, a '
               'layout change makes every field read garbage — and garbage '
               'in an audio buffer is a loud noise in someone\'s headphones.',
         );
@@ -155,37 +155,33 @@ void main() {
     );
   });
 
-  group('with a built engine', () {
-    final libraryPath = nativeEngineLibraryPathOrNull();
-    final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
+  final libraryPath = nativeEngineLibraryPathOrNull();
+  test('a built C engine speaks this source\'s ABI', () {
+    expect(
+      qaEngineAbiMatches(DynamicLibrary.open(libraryPath!)),
+      isTrue,
+      reason: 'the built binary reports a different ABI than this source '
+          'expects — rebuild build/native_standalone',
+    );
+  }, skip: libraryPath != null ? false : nativeEngineMissingSkipReason);
 
-    tearDown(() {
-      QaAudioDevice.debugResetForTests();
-      debugQaEngineLibraryPathOverride = null;
-    });
+  group('the audio structs, which the GPU engine reads', () {
+    tearDown(QaAudioDevice.debugResetForTests);
 
-    test('the binary passes both gates', () {
-      final library = DynamicLibrary.open(libraryPath!);
+    test('are laid out as Dart lays them', () {
       expect(
-        qaEngineAbiMatches(library),
-        isTrue,
-        reason: 'the built binary reports a different ABI than this source '
-            'expects — rebuild build/native_standalone',
-      );
-      expect(
-        qaAudioStructLayoutsMatch(library),
+        qaAudioStructLayoutsMatch(),
         isTrue,
         reason: 'the audio structs disagree byte-for-byte',
       );
-    }, skip: skip);
+    });
 
-    test('the gate does not stand the real device down', () {
+    test('and the gate does not stand the real device down', () {
       // The point of the change: QaAudioDevice went from ungated to gated.
       // A gate that is subtly wrong looks exactly like "no binary" —
       // playback quietly plays without sound and nothing fails.
       QaAudioDevice.debugResetForTests();
-      debugQaEngineLibraryPathOverride = libraryPath;
       expect(QaAudioDevice.instance, isNotNull);
-    }, skip: skip);
+    });
   });
 }

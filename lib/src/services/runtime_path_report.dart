@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import '../native/qa_audio_decoder.dart';
-import '../native/qa_audio_native.dart';
 import '../native/qa_engine_abi.dart';
 import '../native/qa_native_engine.dart';
 import '../native/qa_tablet_bridge.dart';
@@ -69,26 +68,13 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     ),
   );
 
-  // --- Audio engine (same binary): the playback mixer.
-  //
-  // 🪦It said 「and windowed-sinc sample-rate conversion」 too, until the
-  // conversion and the voice take's denoiser moved into the GPU engine's
-  // library (connection-round-checklist H, 2026-11-08). They have no other
-  // path there — no fallback to report — so they have no row, as the fx
-  // plugin host has none: this report lists what is chosen at run time.
-  final audio = QaAudioNative.instance;
-  entries.add(
-    RuntimePathEntry(
-      subsystem: 'Audio engine',
-      active: audio != null
-          ? 'Native C (qa_engine, ABI $kQaEngineAbiVersion)'
-          : 'Dart fallback (no native binary loaded)',
-      isPrimary: audio != null,
-      detail:
-          'Realtime playback mixing. The Dart reference keeps sound '
-          'working without the native binary, at higher CPU cost.',
-    ),
-  );
+  // 🪦An 「Audio engine」 row named the C's playback mixer (and its
+  // sample-rate conversion), until the conversion and the voice take's
+  // denoiser, and then the mixer with the device it plays through, moved
+  // into the GPU engine's library (connection-round-checklist H,
+  // 2026-11-08). None has another path there — no fallback to report — so
+  // none has a row, as the fx plugin host has none: this report lists what
+  // is chosen at run time.
 
   // --- Audio import decoder: bundled decoders + the OS codec stack.
   //

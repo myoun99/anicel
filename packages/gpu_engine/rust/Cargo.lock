@@ -127,7 +127,6 @@ dependencies = [
  "cpal",
  "libc",
  "objc2-avf-audio",
- "oracle",
 ]
 
 [[package]]
@@ -136,7 +135,6 @@ version = "0.0.1"
 dependencies = [
  "ledger",
  "libm",
- "oracle",
 ]
 
 [[package]]
@@ -896,6 +894,7 @@ version = "0.0.1"
 dependencies = [
  "ash",
  "audio_denoise",
+ "audio_device",
  "audio_mix",
  "compress",
  "crc32fast",

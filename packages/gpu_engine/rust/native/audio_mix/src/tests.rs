@@ -1,12 +1,12 @@
-//! The mix bus against the engine's C (native/oracle), bit for bit: both
-//! asked through their exports, on schedules made up here. The C made the
-//! conversions too until its resampler went (connection-round-checklist H,
-//! 관제 2026-11-08 05:58); they are held to the app's ledger alone now.
+//! The mix bus and the conversions, asked through their exports on
+//! schedules made up here. The engine's C answered beside them, bit for
+//! bit, until its resampler went (connection-round-checklist H, 관제
+//! 2026-11-08 05:58) and then its mixer with the device (H, 07:26).
 //!
 //! What they hand back is pinned in the ledger — the bus, its output
 //! stage, the filter lengths and frame counts, and the conversions — each
 //! row pinned beside the C's answer, and so the C's to the bit: the row is
-//! what holds these tests once the C is deleted (connection-round-checklist
+//! what holds these tests now the C is deleted (connection-round-checklist
 //! A, 관제 2026-11-07). It holds on every device because nothing here calls
 //! the device's maths library: the filters' sin and pow, and the sounds
 //! made up here, are libm's (Cargo.toml).
@@ -23,28 +23,8 @@ use crate::resample::{
     qa_audio_resampler_push, qa_audio_resampler_ready,
 };
 
-type Sizeof = extern "C" fn() -> i32;
 type Mix =
     unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32, i64, i32, i32, *mut f64);
-type ToFloat = unsafe extern "C" fn(*const f64, i32, *mut f32);
-type ToInt16 = unsafe extern "C" fn(*const f64, i32, *mut i16);
-
-fn c<F: Copy>(name: &str) -> F {
-    // SAFETY: each type above is its export's C declaration in qa_engine.c.
-    unsafe { oracle::export::<F>(name) }
-}
-
-/// The two ends of one export: the C's and the Rust's.
-struct Both<F> {
-    c: F,
-    rust: F,
-}
-
-impl<F: Copy> Both<F> {
-    fn of(name: &str, rust: F) -> Self {
-        Both { c: c(name), rust }
-    }
-}
 
 /// xorshift32.
 struct Dice(u32);
@@ -74,23 +54,8 @@ impl Dice {
     }
 }
 
-fn same_bits(rust: &[f64], c: &[f64], what: &str) {
-    let first = rust.iter().zip(c).position(|(a, b)| a.to_bits() != b.to_bits());
-    if let Some(at) = first {
-        panic!("{what}: value {at} — rust {} c {}", rust[at], c[at]);
-    }
-}
-
 #[test]
-fn the_structs_are_laid_out_as_the_c_lays_them() {
-    for (name, rust) in [
-        ("qa_audio_clip_sizeof", qa_audio_clip_sizeof as Sizeof),
-        ("qa_audio_source_sizeof", qa_audio_source_sizeof),
-        ("qa_audio_envelope_key_sizeof", qa_audio_envelope_key_sizeof),
-    ] {
-        let both = Both::of(name, rust);
-        assert_eq!((both.rust)(), (both.c)(), "{name}");
-    }
+fn the_structs_are_laid_out_as_the_c_laid_them() {
     assert_eq!((qa_audio_clip_sizeof(), qa_audio_source_sizeof(), qa_audio_envelope_key_sizeof()), (80, 32, 16));
 }
 
@@ -172,18 +137,16 @@ fn mixed(mix: Mix, schedule: &Schedule, start: i64, samples: i32, channels: i32)
 }
 
 #[test]
-fn every_made_up_schedule_mixes_as_the_c_mixes_it() {
-    let mix = Both::of("qa_audio_mix", qa_audio_mix as Mix);
+fn every_made_up_schedule_mixes_as_the_c_mixed_it() {
     let mut dice = Dice(0x5eed_1234);
     let mut heard = 0;
     let mut buses = Vec::new();
-    for round in 0..600 {
+    for _ in 0..600 {
         let schedule = Schedule::made(&mut dice);
         let start = dice.int(-400, 3_000);
         let samples = dice.int(1, 1_500) as i32;
         let channels = [1, 2, 2, 3, 6][dice.int(0, 5) as usize];
-        let rust = mixed(mix.rust, &schedule, start, samples, channels);
-        same_bits(&rust, &mixed(mix.c, &schedule, start, samples, channels), &format!("round {round}"));
+        let rust = mixed(qa_audio_mix, &schedule, start, samples, channels);
         heard += rust.iter().filter(|v| **v != 0.0).count();
         buses.extend(rust.iter().flat_map(|v| v.to_le_bytes()));
     }
@@ -193,39 +156,35 @@ fn every_made_up_schedule_mixes_as_the_c_mixes_it() {
 
 #[test]
 fn a_bus_that_cannot_be_written_is_left_alone_and_no_clips_is_silence() {
-    let mix = Both::of("qa_audio_mix", qa_audio_mix as Mix);
     let held = [0.5f32; 64];
     let source = Source { source_start: 0, length: 64, channels: 1, reserved: 0, samples: held.as_ptr() };
     let clip = Clip { gain: 1.0, end_sample: 64, pan_left: 1.0, pan_right: 1.0, ..Clip::default() };
     let schedule = Schedule { _samples: Vec::new(), sources: vec![source, source], clips: vec![clip], keys: Vec::new() };
-    for f in [mix.c, mix.rust] {
-        for (samples, channels) in [(0, 2), (-3, 2), (16, 0), (16, -1)] {
-            let mut out = [7.0f64; 4];
-            // SAFETY: nothing is written for these counts.
-            unsafe { f(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, samples, channels, out.as_mut_ptr()) };
-            assert_eq!(out, [7.0; 4], "{samples} x {channels}");
-        }
-        // SAFETY: a null bus is refused.
-        unsafe { f(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, 4, 1, ptr::null_mut()) };
-        let mut out = [7.0f64; 8];
-        let (clips, sources) = (schedule.clips.as_ptr(), schedule.sources.as_ptr());
-        for (clips, clip_count, sources, source_count) in [
-            (ptr::null(), 3, sources, 2),
-            (clips, 1, ptr::null(), 2),
-            (clips, 0, sources, 2),
-            (clips, 1, sources, -1),
-        ] {
-            // SAFETY: the counts are within the schedule's.
-            unsafe { f(clips, clip_count, sources, source_count, ptr::null(), 0, 0, 4, 2, out.as_mut_ptr()) };
-            assert_eq!(out, [0.0; 8]);
-            out = [7.0; 8];
-        }
+    for (samples, channels) in [(0, 2), (-3, 2), (16, 0), (16, -1)] {
+        let mut out = [7.0f64; 4];
+        // SAFETY: nothing is written for these counts.
+        unsafe { qa_audio_mix(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, samples, channels, out.as_mut_ptr()) };
+        assert_eq!(out, [7.0; 4], "{samples} x {channels}");
+    }
+    // SAFETY: a null bus is refused.
+    unsafe { qa_audio_mix(ptr::null(), 0, ptr::null(), 0, ptr::null(), 0, 0, 4, 1, ptr::null_mut()) };
+    let mut out = [7.0f64; 8];
+    let (clips, sources) = (schedule.clips.as_ptr(), schedule.sources.as_ptr());
+    for (clips, clip_count, sources, source_count) in [
+        (ptr::null(), 3, sources, 2),
+        (clips, 1, ptr::null(), 2),
+        (clips, 0, sources, 2),
+        (clips, 1, sources, -1),
+    ] {
+        // SAFETY: the counts are within the schedule's.
+        unsafe { qa_audio_mix(clips, clip_count, sources, source_count, ptr::null(), 0, 0, 4, 2, out.as_mut_ptr()) };
+        assert_eq!(out, [0.0; 8]);
+        out = [7.0; 8];
     }
 }
 
 #[test]
 fn a_mono_source_lies_on_a_stereo_bus_at_minus_3_db_a_side_and_stereo_at_unity() {
-    let mix = Both::of("qa_audio_mix", qa_audio_mix as Mix);
     let mono = [0.5f32; 4];
     let stereo = [0.5f32, 0.25, 0.5, 0.25, 0.5, 0.25, 0.5, 0.25];
     let sources = vec![
@@ -234,19 +193,17 @@ fn a_mono_source_lies_on_a_stereo_bus_at_minus_3_db_a_side_and_stereo_at_unity()
     ];
     let center = Clip { gain: 1.0, end_sample: 4, pan_left: 1.0, pan_right: 1.0, ..Clip::default() };
     let hard_left = Clip { pan_left: std::f64::consts::SQRT_2, pan_right: 0.0, ..center };
-    let heard = |f: Mix, clip: Clip, source_index: i32, channels: i32| {
+    let heard = |clip: Clip, source_index: i32, channels: i32| {
         let clip = Clip { source_index, ..clip };
         let schedule = Schedule { _samples: Vec::new(), sources: sources.clone(), clips: vec![clip], keys: Vec::new() };
-        mixed(f, &schedule, 0, 4, channels)[..channels as usize].to_vec()
+        mixed(qa_audio_mix, &schedule, 0, 4, channels)[..channels as usize].to_vec()
     };
     assert_eq!(MONO_ON_STEREO, 0.7071067811865476, "-3 dB: 20 log10 = {}", 20.0 * MONO_ON_STEREO.log10());
-    for f in [mix.c, mix.rust] {
-        assert_eq!(heard(f, center, 0, 2), [0.5 * MONO_ON_STEREO; 2], "mono at center");
-        assert_eq!(heard(f, hard_left, 0, 2), [0.5 * (std::f64::consts::SQRT_2 * MONO_ON_STEREO), 0.0], "mono at a hard pan");
-        assert_eq!(heard(f, center, 1, 2), [0.5, 0.25], "stereo at center");
-        assert_eq!(heard(f, center, 0, 1), [0.5], "mono on a mono bus");
-        assert_eq!(heard(f, center, 1, 1), [0.5], "stereo on a mono bus");
-    }
+    assert_eq!(heard(center, 0, 2), [0.5 * MONO_ON_STEREO; 2], "mono at center");
+    assert_eq!(heard(hard_left, 0, 2), [0.5 * (std::f64::consts::SQRT_2 * MONO_ON_STEREO), 0.0], "mono at a hard pan");
+    assert_eq!(heard(center, 1, 2), [0.5, 0.25], "stereo at center");
+    assert_eq!(heard(center, 0, 1), [0.5], "mono on a mono bus");
+    assert_eq!(heard(center, 1, 1), [0.5], "stereo on a mono bus");
 }
 
 /// The values a bus reaches, and its edges.
@@ -269,38 +226,29 @@ fn bus_values() -> Vec<f64> {
 fn the_output_stage_makes_the_c_s_floats_and_shorts() {
     let values = bus_values();
     let count = values.len() as i32;
-    let to_float = Both::of("qa_audio_bus_to_float", qa_audio_bus_to_float as ToFloat);
-    let to_int16 = Both::of("qa_audio_bus_to_int16", qa_audio_bus_to_int16 as ToInt16);
-    let floats = |f: ToFloat| {
+    let floats = || {
         let mut out = vec![0.0f32; values.len()];
         // SAFETY: both hold `count` values.
-        unsafe { f(values.as_ptr(), count, out.as_mut_ptr()) };
+        unsafe { qa_audio_bus_to_float(values.as_ptr(), count, out.as_mut_ptr()) };
         out.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
     };
-    let shorts = |f: ToInt16| {
-        let mut out = vec![0i16; values.len()];
-        // SAFETY: both hold `count` values.
-        unsafe { f(values.as_ptr(), count, out.as_mut_ptr()) };
-        out
-    };
-    assert_eq!(floats(to_float.rust), floats(to_float.c));
-    assert_eq!(shorts(to_int16.rust), shorts(to_int16.c));
-    assert_eq!(shorts(to_int16.rust)[..4], [0, 0, 32767, -32768], "LIVENESS: the edges");
-    let float_bytes: Vec<u8> = floats(to_float.rust).iter().flat_map(|v| v.to_le_bytes()).collect();
+    let mut shorts = vec![0i16; values.len()];
+    // SAFETY: both hold `count` values.
+    unsafe { qa_audio_bus_to_int16(values.as_ptr(), count, shorts.as_mut_ptr()) };
+    assert_eq!(shorts[..4], [0, 0, 32767, -32768], "LIVENESS: the edges");
+    let float_bytes: Vec<u8> = floats().iter().flat_map(|v| v.to_le_bytes()).collect();
     ledger::assert_pinned("audio_mix/bus-to-float", &float_bytes);
-    let short_bytes: Vec<u8> = shorts(to_int16.rust).iter().flat_map(|v| v.to_le_bytes()).collect();
+    let short_bytes: Vec<u8> = shorts.iter().flat_map(|v| v.to_le_bytes()).collect();
     ledger::assert_pinned("audio_mix/bus-to-int16", &short_bytes);
-    for f in [to_float.c, to_float.rust] {
-        let mut out = [7.0f32];
-        // SAFETY: nothing is read or written for these.
-        unsafe {
-            f(ptr::null(), 1, out.as_mut_ptr());
-            f(values.as_ptr(), 0, out.as_mut_ptr());
-            f(values.as_ptr(), -1, out.as_mut_ptr());
-            f(values.as_ptr(), 1, ptr::null_mut());
-        }
-        assert_eq!(out, [7.0]);
+    let mut out = [7.0f32];
+    // SAFETY: nothing is read or written for these.
+    unsafe {
+        qa_audio_bus_to_float(ptr::null(), 1, out.as_mut_ptr());
+        qa_audio_bus_to_float(values.as_ptr(), 0, out.as_mut_ptr());
+        qa_audio_bus_to_float(values.as_ptr(), -1, out.as_mut_ptr());
+        qa_audio_bus_to_float(values.as_ptr(), 1, ptr::null_mut());
     }
+    assert_eq!(out, [7.0]);
 }
 
 #[test]

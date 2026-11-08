@@ -13,10 +13,9 @@ Pod::Spec.new do |s|
   # not allow loading a standalone dylib from the bundle, so Dart resolves
   # its symbols with DynamicLibrary.process().
   s.source_files     = 'Classes/**/*'
-  # miniaudio needs the CoreAudio stack at LINK time (it dlopens nothing
-  # on Apple); AVFoundation/CoreMedia/CoreVideo carry the video writer
-  # (AUDIO-PRO R7).
-  s.frameworks       = 'CoreFoundation', 'CoreAudio', 'AudioToolbox',
+  # AudioToolbox carries the OS audio decoder; AVFoundation/CoreMedia/CoreVideo
+  # carry the video writer (AUDIO-PRO R7).
+  s.frameworks       = 'CoreFoundation', 'AudioToolbox',
                        'AVFoundation', 'CoreMedia', 'CoreVideo',
                        'CoreGraphics'
   s.dependency 'FlutterMacOS'

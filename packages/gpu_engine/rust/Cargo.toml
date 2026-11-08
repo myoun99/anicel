@@ -23,6 +23,7 @@ crc32fast = "1"
 # The app's native modules this library carries, each exported from here
 # (src/lib.rs names it — the workspace note below says why it must).
 audio_denoise = { path = "native/audio_denoise" }
+audio_device = { path = "native/audio_device" }
 audio_mix = { path = "native/audio_mix" }
 compress = { path = "native/compress" }
 display = { path = "native/display" }

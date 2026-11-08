@@ -13,9 +13,7 @@ publish = false
 [dependencies]
 libm = "0.2"
 
-# The C answer key: the engine's qa_audio_mix and bus conversions, bit
-# for bit (native/oracle), and the app's ledger (native/ledger), which
-# alone holds the resamplers now the C's are gone.
+# The app's ledger (native/ledger), which alone holds the mix bus and the
+# resamplers now the C's are gone.
 [dev-dependencies]
 ledger = { path = "../ledger" }
-oracle = { path = "../oracle" }

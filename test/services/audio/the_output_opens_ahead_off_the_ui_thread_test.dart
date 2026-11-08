@@ -1,26 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 
-import '../../helpers/native_engine_path.dart';
 
 /// play-press-first-frame-stall-Q1 (유저 10-15: 「프로젝트를 열면 미리 연다(UI
 /// 스레드 밖에서)」): the output opened ahead of a run, on a worker — a first
 /// play's open held the UI thread for 63–272 ms. The device is one per
 /// process, so what a worker opens is open here.
 ///
-/// miniaudio's null backend throughout — a real callback on a real thread,
+/// the engine's null backend throughout — a real callback on a real thread,
 /// no speaker: each device is opened on it once and closed again, and every
 /// open after that stands on it ([QaAudioDevice.open]).
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     debugWorkersRunHere = true;
@@ -30,7 +23,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   /// The device, closed, on the null backend from here on.
@@ -60,7 +52,7 @@ void main() {
     expect(device.openedFor, 'a speaker',
         reason: 'an unattached name opens the default, and is still what '
             'the device was opened for');
-  }, skip: skip);
+  });
 
   test('🚨open for another output it is opened again — and left as it is for '
       'the one it is open for', () async {
@@ -76,7 +68,7 @@ void main() {
     expect(device.openedFor, 'another');
     expect(device.isPlaying, isFalse,
         reason: 'opened again: a new device, playing nothing');
-  }, skip: skip);
+  });
 
   test('🚨one at a time: an open asked for while one is under way follows '
       'it, and the last asked is what it is open for', () async {
@@ -95,7 +87,7 @@ void main() {
     expect(device.openedFor, 'first',
         reason: 'not waiting, it would have found the output still open for '
             'the first and left it — then the open for the second landed');
-  }, skip: skip);
+  });
 
   // playback-waits-for-its-sound: a run plays its sound at the rate it was
   // conformed at, and the output is opened again at it ahead of the run —
@@ -112,7 +104,7 @@ void main() {
 
     device.open(sampleRate: 48000, useNullBackend: true);
     expect(device.openedAtRate, 44100, reason: 'it opened nothing');
-  }, skip: skip);
+  });
 
   test('🚨open at another rate, an open ahead of a run leaves it — and one '
       'asked AT a rate (an arm\'s) opens it again there', () async {
@@ -133,7 +125,7 @@ void main() {
     );
     expect(device.openedAtRate, 48000);
     expect(device.isPlaying, isFalse, reason: 'opened again');
-  }, skip: skip);
+  });
 
   group('kept open', () {
     test('🚨the output closes when the last who keeps it lets go — ↩️each '
@@ -153,7 +145,7 @@ void main() {
 
       device.letGo(other);
       expect(device.isOpen, isFalse);
-    }, skip: skip);
+    });
 
     test('let go while it is opened ahead, it closes once that open is done',
         () async {
@@ -168,6 +160,6 @@ void main() {
       await pumpEventQueue();
 
       expect(device.isOpen, isFalse, reason: 'nobody keeps what it opened');
-    }, skip: skip);
+    });
   });
 }

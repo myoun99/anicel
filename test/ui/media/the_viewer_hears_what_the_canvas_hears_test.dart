@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -13,7 +12,6 @@ import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
 import '../../helpers/device_paced.dart';
-import '../../helpers/native_engine_path.dart';
 
 /// 🚨★★★**THE VIEWER HEARS WHAT THE CANVAS HEARS**
 /// (viewer-plays-by-the-one-playback-law ④-b).
@@ -25,16 +23,11 @@ import '../../helpers/native_engine_path.dart';
 /// what had been HANDED: its picture ran ahead of what was heard by the
 /// device's latency, and a correction set in the settings never reached it.
 ///
-/// Driven for real — miniaudio's null backend, the actual callback on an
+/// Driven for real — the engine's null backend, the actual callback on an
 /// actual thread — as the transport's own pins are.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -43,7 +36,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   const tone = 'C:/work/tone.wav';
@@ -112,8 +104,9 @@ void main() {
     // look's own time and the latency, it failed again (1.0512 on a loaded
     // mac runner, 10-24): the null device runs on a timer from its open,
     // and a worker that fell behind hands every period it owes at once as
-    // the run starts (miniaudio's `ma_device_write__null` waits only while
-    // it is ahead). Real hardware never takes more than its buffer.
+    // the run starts (the null device's `paced` loop, native/audio_device,
+    // waits only while it is ahead). Real hardware never takes more than its
+    // buffer.
     final heard = sound.heardAt()!.seconds;
     final handed = device.readClock().stairSamples / rate;
     expect(
@@ -123,7 +116,7 @@ void main() {
     );
     expect(device.isPlaying, isTrue, reason: 'the first look starts it');
     sound.stop();
-  }, skip: skip);
+  });
 
   /// A run that parks in the look it goes on in (`MediaRun`: resume, then
   /// hold) holds a sound that has not started yet — and the parked run
@@ -141,7 +134,7 @@ void main() {
     sound.keepStreaming(frameTime: null);
     expect(device.isPlaying, isTrue, reason: 'going on, the next look starts');
     sound.stop();
-  }, skip: skip);
+  });
 
   // board a-start-is-heard-ahead-of-its-first-picture — the canvas's law,
   // here too: the run's first sample is heard as its first look's frame is
@@ -178,7 +171,7 @@ void main() {
             '↩️started on it, it was heard 0.3s less what it holds ahead',
       );
       sound.stop();
-    }, skip: skip);
+    });
 
     test('the look that keeps the sound streaming first — as a run\'s tick '
         'looks (`MediaRun`)', () async {
@@ -189,7 +182,7 @@ void main() {
       expect(device.isPlaying, isTrue, reason: '⛔premise: it started');
       expect(device.positionSamples, lessThan(rate));
       sound.stop();
-    }, skip: skip);
+    });
   });
 
   test('🚨what the viewer reads is HEARD: the device\'s latency off what it '
@@ -224,7 +217,7 @@ void main() {
           'tenth of a second on',
     );
     sound.stop();
-  }, skip: skip);
+  });
 
   test('🚨the end is told by what is HEARD — once the last sample has been '
       'played out, and not before it has been handed', () async {
@@ -254,7 +247,7 @@ void main() {
           'as the device held',
     );
     sound.stop();
-  }, skip: skip);
+  });
 
   testWidgets('🚨a session\'s viewer sound takes the user\'s correction the '
       'canvas takes — read in one place, the rig', (tester) async {
@@ -295,7 +288,7 @@ void main() {
           'samples behind where play was pressed',
     );
     sound.stop();
-  }, skip: skip);
+  });
 
   test('a viewer going silent silences its own sound at once', () async {
     final (device, sound) = await playing(fromSeconds: 1);
@@ -303,7 +296,7 @@ void main() {
 
     sound.stop();
     expect(device.isPlaying, isFalse);
-  }, skip: skip);
+  });
 
   test('🚨a viewer going silent leaves another player\'s sound alone — it '
       'silences its own run only', () async {
@@ -317,5 +310,5 @@ void main() {
       isTrue,
       reason: '↩️the viewer stopped the output whatever played',
     );
-  }, skip: skip);
+  });
 }

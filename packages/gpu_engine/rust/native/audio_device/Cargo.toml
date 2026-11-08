@@ -29,8 +29,3 @@ libc = "0.2"
 version = "0.3"
 default-features = false
 features = ["std", "AVAudioSession", "AVAudioSessionTypes"]
-
-# The C answer key: the engine's qa_audio_buffer_*, its transport's doors
-# and its null device (native/oracle).
-[dev-dependencies]
-oracle = { path = "../oracle" }

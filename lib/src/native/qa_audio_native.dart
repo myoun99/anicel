@@ -1,12 +1,65 @@
+// The engine's Rust library carries the mixer (rust/src/lib.rs,
+// native/audio_mix), and its names are found in that code asset — no
+// library opened, no path named (connection-round-checklist H, the mixer
+// leaving the C with the device it plays through).
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
 import '../services/audio/audio_mixer_reference.dart';
-import 'qa_engine_abi.dart';
+import 'gpu_engine_asset.dart';
 
-/// Whether [library] lays the audio structs out byte-for-byte the way
+@Native<Int32 Function()>(symbol: 'qa_audio_clip_sizeof')
+external int _clipSizeof();
+
+@Native<Int32 Function()>(symbol: 'qa_audio_source_sizeof')
+external int _sourceSizeof();
+
+@Native<Int32 Function()>(symbol: 'qa_audio_envelope_key_sizeof')
+external int _envelopeKeySizeof();
+
+@Native<
+  Void Function(
+    Pointer<QaAudioClipStruct>,
+    Int32,
+    Pointer<QaAudioSourceStruct>,
+    Int32,
+    Pointer<QaAudioEnvelopeKeyStruct>,
+    Int32,
+    Int64,
+    Int32,
+    Int32,
+    Pointer<Double>,
+  )
+>(symbol: 'qa_audio_mix')
+external void _mix(
+  Pointer<QaAudioClipStruct> clips,
+  int clipCount,
+  Pointer<QaAudioSourceStruct> sources,
+  int sourceCount,
+  Pointer<QaAudioEnvelopeKeyStruct> keys,
+  int keyCount,
+  int startSample,
+  int sampleCount,
+  int outChannels,
+  Pointer<Double> bus,
+);
+
+@Native<Void Function(Pointer<Double>, Int32, Pointer<Float>)>(
+  symbol: 'qa_audio_bus_to_float',
+)
+external void _busToFloat(Pointer<Double> bus, int count, Pointer<Float> out);
+
+@Native<Void Function(Pointer<Double>, Int32, Pointer<Int16>)>(
+  symbol: 'qa_audio_bus_to_int16',
+)
+external void _busToInt16(Pointer<Double> bus, int count, Pointer<Int16> out);
+
+/// Whether the engine lays the audio structs out byte-for-byte the way
 /// this Dart build does.
 ///
 /// Struct-layout paranoia, and the audio side has the sharpest version of
@@ -15,155 +68,35 @@ import 'qa_engine_abi.dart';
 /// someone's headphones, not a wrong pixel.
 ///
 /// It lives here because this file DECLARES the structs, and it is public
-/// because [QaAudioDevice] passes those same structs to the same binary
+/// because [QaAudioDevice] passes those same structs to the same library
 /// on the path that actually reaches a speaker. Both must call it; the
 /// roster test in `qa_engine_abi_test.dart` fails if one stops.
-bool qaAudioStructLayoutsMatch(DynamicLibrary library) {
-  try {
-    return qaStructSizeMatches(
-          library,
-          'qa_audio_clip_sizeof',
-          sizeOf<QaAudioClipStruct>(),
-        ) &&
-        qaStructSizeMatches(
-          library,
-          'qa_audio_source_sizeof',
-          sizeOf<QaAudioSourceStruct>(),
-        ) &&
-        qaStructSizeMatches(
-          library,
-          'qa_audio_envelope_key_sizeof',
-          sizeOf<QaAudioEnvelopeKeyStruct>(),
-        );
-  } on Object {
-    return false;
-  }
-}
+bool qaAudioStructLayoutsMatch() =>
+    _clipSizeof() == sizeOf<QaAudioClipStruct>() &&
+    _sourceSizeof() == sizeOf<QaAudioSourceStruct>() &&
+    _envelopeKeySizeof() == sizeOf<QaAudioEnvelopeKeyStruct>();
 
-/// FFI binding for the native audio mixer (2B).
+/// FFI binding for the engine's audio mixer (2B).
 ///
-/// Deliberately a SEPARATE loader from [QaNativeEngine]: the mixer is a
-/// different subsystem with a different lifetime — in production the C runs
-/// on the device's realtime thread, where Dart never goes. What this class
-/// binds is the verification and fallback surface: the parity tests drive
-/// both implementations through it, and a device that comes up without a
-/// native engine still gets sound out of the Dart reference.
+/// In production the mixer runs on the device's realtime thread, where Dart
+/// never goes. What this class binds is the verification surface: the
+/// parity tests drive it against the Dart reference the export mixes with
+/// (`mixAudioReference`), so what is exported is what is played.
 ///
-/// Absence is graceful everywhere, exactly like the raster engine: a
-/// missing symbol or a layout disagreement stands the native path down
-/// rather than reading garbage.
+/// A layout disagreement stands it down rather than reading garbage.
 final class QaAudioNative {
-  QaAudioNative._(this._mix, this._busToFloat, this._busToInt16);
+  const QaAudioNative._();
 
-  final void Function(
-    Pointer<QaAudioClipStruct>,
-    int,
-    Pointer<QaAudioSourceStruct>,
-    int,
-    Pointer<QaAudioEnvelopeKeyStruct>,
-    int,
-    int,
-    int,
-    int,
-    Pointer<Double>,
-  )
-  _mix;
-  final void Function(Pointer<Double>, int, Pointer<Float>) _busToFloat;
-  final void Function(Pointer<Double>, int, Pointer<Int16>) _busToInt16;
-
-  static QaAudioNative? _instance;
-  static bool _tried = false;
-
-  /// Test hook: force the Dart reference path even when a binary loads.
-  /// (Where the binary IS lives in [debugQaEngineLibraryPathOverride] —
-  /// one switch for every loader.)
-  static bool debugForceDartFallback = false;
-
-  static void debugResetForTests() {
-    _instance = null;
-    _tried = false;
-  }
-
-  /// The native mixer, or null when none is available (Dart reference
-  /// then carries playback).
-  static QaAudioNative? get instance {
-    if (debugForceDartFallback) {
-      return null;
-    }
-    if (!_tried) {
-      _tried = true;
-      _instance = _load();
-    }
-    return _instance;
-  }
-
-  /// 🚨★★★**THE C'S MIXER NAMES ONLY, NOTHING THE ENGINE ANSWERS**
-  /// (connection-round-checklist H, 관제 2026-11-08 06:15 ⓓ · 타임라인/콘티
-  /// 06:17). Every name is found in one `try`, and one missing stands the
-  /// whole class down — the mixer to the Dart reference with it. The
-  /// resampler and the denoiser left this class when their C went
-  /// (`qa_audio_resampler.dart`, `qa_audio_denoiser.dart`), and their
-  /// names went from this list in the same change: on Apple's the library
-  /// [openQaEngineLibrary] answers is the process's, which searches every
-  /// image loaded, the engine's among them — so a name the C no longer has
-  /// would be found there or not by whether the engine had been opened
-  /// first, and the mixer would stand on the C or on Dart by that order
-  /// alone.
-  /// Windows and Linux open the C by its own handle and could never show
-  /// it. ⛔Name nothing here the C engine does not export itself.
-  static QaAudioNative? _load() {
-    final library = openQaEngineLibrary();
-    if (library == null || !qaAudioStructLayoutsMatch(library)) {
-      return null;
-    }
-    try {
-      return QaAudioNative._(
-        library.lookupFunction<
-          Void Function(
-            Pointer<QaAudioClipStruct>,
-            Int32,
-            Pointer<QaAudioSourceStruct>,
-            Int32,
-            Pointer<QaAudioEnvelopeKeyStruct>,
-            Int32,
-            Int64,
-            Int32,
-            Int32,
-            Pointer<Double>,
-          ),
-          void Function(
-            Pointer<QaAudioClipStruct>,
-            int,
-            Pointer<QaAudioSourceStruct>,
-            int,
-            Pointer<QaAudioEnvelopeKeyStruct>,
-            int,
-            int,
-            int,
-            int,
-            Pointer<Double>,
-          )
-        >('qa_audio_mix'),
-        library.lookupFunction<
-          Void Function(Pointer<Double>, Int32, Pointer<Float>),
-          void Function(Pointer<Double>, int, Pointer<Float>)
-        >('qa_audio_bus_to_float'),
-        library.lookupFunction<
-          Void Function(Pointer<Double>, Int32, Pointer<Int16>),
-          void Function(Pointer<Double>, int, Pointer<Int16>)
-        >('qa_audio_bus_to_int16'),
-      );
-    } on Object {
-      return null;
-    }
-  }
+  /// The engine's mixer, or null when it lays the structs out otherwise.
+  static QaAudioNative? get instance =>
+      qaAudioStructLayoutsMatch() ? const QaAudioNative._() : null;
 
   /// Mixes through the native core, marshalling the clips and sources into
   /// native memory for the call.
   ///
   /// This copy exists because the CALLER here is Dart (tests, and the
   /// fallback path). The realtime path never comes through this method —
-  /// the device stage hands the C its arrays directly and no Dart runs on
+  /// the device stage hands the engine its arrays directly and no Dart runs on
   /// that thread at all.
   Float64List mix({
     required List<AudioMixClip> clips,
@@ -281,10 +214,10 @@ int qaAudioEnvelopeTotal(List<AudioMixClip> clips) {
   return total;
 }
 
-/// The C schedule layout, allocated and filled once: the clip array, the
+/// The engine's schedule layout, allocated and filled once: the clip array, the
 /// source array, and the ONE flattened envelope key array beside them.
 ///
-/// ⛔BOTH FFI PATHS HAND THE C SIDE THIS EXACT LAYOUT — the device's
+/// ⛔BOTH FFI PATHS HAND THE ENGINE THIS EXACT LAYOUT — the device's
 /// schedule and the one-shot mixer — and each used to allocate it out
 /// itself: three `calloc`s with the same `max(1, n)` guard, the same
 /// [qaAudioWriteClips], the same four-field source write, and the same
@@ -303,7 +236,7 @@ final class QaAudioScheduleArrays {
     List<AudioMixSource> sources,
   ) {
     // Every clip's envelope points flatten into ONE shared array; the
-    // clips reference their slice by offset/count (mirrors the C layout).
+    // clips reference their slice by offset/count (mirrors the engine's layout).
     final envelopeTotal = qaAudioEnvelopeTotal(clips);
     final arrays = QaAudioScheduleArrays._(
       clipArray: calloc<QaAudioClipStruct>(clips.isEmpty ? 1 : clips.length),
@@ -357,11 +290,11 @@ final class QaAudioScheduleArrays {
 /// Copies [clips] into [clipArray] and flattens their envelopes into
 /// [envelopeArray], returning how many keys were written.
 ///
-/// ⛔BOTH FFI PATHS HAND THE C SIDE THIS EXACT LAYOUT — the device's
+/// ⛔BOTH FFI PATHS HAND THE ENGINE THIS EXACT LAYOUT — the device's
 /// schedule and the one-shot mixer — and each used to write it out itself,
 /// twelve fields and the envelope walk, twice. A field added to the struct
 /// on one side only is the failure that shape invites, and it is silent:
-/// the C reads whatever the calloc left there.
+/// the engine reads whatever the calloc left there.
 void qaAudioWriteClips({
   required List<AudioMixClip> clips,
   required Pointer<QaAudioClipStruct> clipArray,
@@ -391,7 +324,7 @@ void qaAudioWriteClips({
     }
   }
 }
-/// Mirrors the C `qa_audio_clip`: doubles, then int64s, then an even
+/// Mirrors the engine's `qa_audio_clip`: doubles, then int64s, then an even
 /// number of int32s — natural alignment with no implicit padding on any
 /// supported ABI. The loader cross-checks `sizeof` before enabling the
 /// native path.
@@ -422,7 +355,7 @@ final class QaAudioClipStruct extends Struct {
   external int envelopeCount;
 }
 
-/// Mirrors the C `qa_audio_envelope_key`.
+/// Mirrors the engine's `qa_audio_envelope_key`.
 final class QaAudioEnvelopeKeyStruct extends Struct {
   @Int64()
   external int sample;
@@ -430,7 +363,7 @@ final class QaAudioEnvelopeKeyStruct extends Struct {
   external double gain;
 }
 
-/// Mirrors the C `qa_audio_source`.
+/// Mirrors the engine's `qa_audio_source`.
 final class QaAudioSourceStruct extends Struct {
   @Int64()
   external int sourceStart;

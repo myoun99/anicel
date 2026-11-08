@@ -10,13 +10,11 @@ import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
-import '../../helpers/native_engine_path.dart';
 
 /// playback-waits-for-its-sound (유저 2026-10-16, se-fallback-opens-the-
 /// original-path-Q2: 「대체 재생을 안 쓰고, 소리가 준비될 때까지 기다린다」),
@@ -24,16 +22,11 @@ import '../../helpers/native_engine_path.dart';
 /// picture (`PlaybackWait`), and the rig's transport answers.
 ///
 /// The bench never hears what a session plays (`audioDeviceUnlessTesting`),
-/// so the rig's transport gets a device opened once on miniaudio's null
+/// so the rig's transport gets a device opened once on the engine's null
 /// backend (`PlaybackRig.debugTransportOutput`).
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -42,7 +35,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   /// The default project with a sound from its first frame, on its first SE
@@ -123,5 +115,5 @@ void main() {
     await pumpEventQueue();
     expect(playback.isWaiting, isFalse);
     expect(rig.audioDeviceTransport.carryingPlayback, isTrue);
-  }, skip: skip);
+  });
 }

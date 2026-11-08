@@ -1,8 +1,8 @@
-//! The device against the engine's C (native/oracle): the transport's
-//! races as `qa_audio_transport_test.c` runs them, what a callback hands
-//! against the C's mix bus, the buffers' holds, the null backend's devices
-//! and capture, and the clock — the Rust's exports and the C's side by
-//! side.
+//! The device: the transport's races as `qa_audio_transport_test.c` ran
+//! them, what a callback hands against the mix bus, the buffers' holds, the
+//! null backend's devices and capture, and the clock. Each answer the C's
+//! gave was held beside it until the C went (connection-round-checklist H,
+//! 2026-11-08) — the fixed answers here are what it was measured to give.
 
 use std::cell::Cell;
 use std::ffi::c_char;
@@ -17,18 +17,10 @@ use audio_mix::{Clip, EnvelopeKey, Source};
 use crate::transport::{MAX_BLOCK, Slot, Transport, mix_slot};
 use crate::*;
 
-type Mix =
-    unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32, i64, i32, i32, *mut f64);
 type SetSchedule = unsafe extern "C" fn(*const Clip, i32, *const Source, i32, *const EnvelopeKey, i32) -> i32;
 type Describe = unsafe extern "C" fn(i32, i32, *mut c_char, i32, *mut i32) -> i32;
 type Point = unsafe extern "C" fn(*mut i64) -> i32;
 type Read = unsafe extern "C" fn(*mut f32, i32) -> i32;
-
-fn c<F: Copy>(name: &str) -> F {
-    // SAFETY: each type is its export's C declaration in qa_audio_device.c
-    // or qa_engine.c.
-    unsafe { oracle::export::<F>(name) }
-}
 
 /// One test at a time on the devices: both sides' are process-wide.
 fn serial() -> MutexGuard<'static, ()> {
@@ -364,10 +356,10 @@ fn a_closed_ring_hands_nothing_and_opens_again_empty() {
     assert_eq!(never.frames(), 0, "a capture with no ring takes nothing");
 }
 
-// --- What a callback hands, against the C's mix bus -----------------------
+// --- What a callback hands, against the mix bus ---------------------------
 
-/// A schedule over buffers of this crate's, which the C's mix reads as
-/// well as any samples.
+/// A schedule over buffers of this crate's, which the mix bus reads where
+/// they lie.
 struct Schedule {
     buffers: Vec<*mut f32>,
     sources: Vec<Source>,
@@ -438,28 +430,8 @@ impl Schedule {
         Schedule { buffers, sources, clips, keys }
     }
 
-    /// The C's mix bus: `bus`, of `channels`, from `start`.
-    fn c_mix(&self, start: i64, channels: usize, bus: &mut [f64]) {
-        let mix: Mix = c("qa_audio_mix");
-        // SAFETY: every count is its array's; the bus is its frames x channels.
-        unsafe {
-            mix(
-                self.clips.as_ptr(),
-                self.clips.len() as i32,
-                self.sources.as_ptr(),
-                self.sources.len() as i32,
-                self.keys.as_ptr(),
-                self.keys.len() as i32,
-                start,
-                (bus.len() / channels) as i32,
-                channels as i32,
-                bus.as_mut_ptr(),
-            )
-        };
-    }
-
-    /// The Rust's mix bus (audio_mix, held to the C's in its own tests), the
-    /// same.
+    /// The mix bus (audio_mix, held to its ledger in its own tests): `bus`,
+    /// of `channels`, from `start`.
     fn rust_mix(&self, start: i64, channels: usize, bus: &mut [f64]) {
         // SAFETY: every source holds the samples it reads (`Schedule::new`).
         unsafe { audio_mix::mix(&self.clips, &self.sources, &self.keys, start, channels, bus) }
@@ -478,8 +450,8 @@ impl Schedule {
             mix(self, start + done as i64, channels, &mut bus);
             (left, right) = (0.0, 0.0);
             for (index, value) in bus.iter().enumerate() {
-                // The C's meter: channel 0 the left side, channel 1 the
-                // right, any wider channel neither.
+                // The meter: channel 0 the left side, channel 1 the right,
+                // any wider channel neither.
                 match index % channels {
                     0 => left = f64::max(left, value.abs()),
                     1 => right = f64::max(right, value.abs()),
@@ -505,7 +477,7 @@ impl Drop for Schedule {
 }
 
 #[test]
-fn a_callback_hands_what_the_cs_mix_bus_mixes_and_clips() {
+fn a_callback_hands_what_the_mix_bus_mixes_and_clips() {
     let schedule = Schedule::new();
     for channels in [1usize, 2, 3] {
         let transport = Transport::new();
@@ -524,8 +496,6 @@ fn a_callback_hands_what_the_cs_mix_bus_mixes_and_clips() {
             assert!(out[..silent * channels].iter().all(|&sample| sample == 0.0), "{channels}ch lead at {position}");
             let from = position + silent as i64;
             let (want, left, right) = schedule.hands(Schedule::rust_mix, from, frames - silent, channels);
-            let theirs = schedule.hands(Schedule::c_mix, from, frames - silent, channels);
-            assert!(theirs == (want.clone(), left, right), "{channels}ch from {from}: the Rust's mix bus is the C's");
             let got: Vec<u32> = out[silent * channels..].iter().map(|sample| sample.to_bits()).collect();
             assert_eq!(got.len(), want.len());
             let first = got.iter().zip(&want).position(|(got, want)| got != want);
@@ -560,16 +530,6 @@ struct Doors {
 }
 
 impl Doors {
-    fn c() -> Doors {
-        Doors {
-            new: c("qa_audio_buffer_new"),
-            retain: c("qa_audio_buffer_retain"),
-            release: c("qa_audio_buffer_release"),
-            holds: c("qa_audio_buffer_holds"),
-            set_schedule: c("qa_audio_device_set_schedule"),
-        }
-    }
-
     fn rust() -> Doors {
         Doors {
             new: qa_audio_buffer_new,
@@ -603,8 +563,8 @@ impl Doors {
         (self.release)(empty);
         seen.push(i64::from((self.holds)(another)));
         (self.release)(another);
-        // Samples that are no buffer's — with zeros before them, where the C
-        // looks for a buffer's head.
+        // Samples that are no buffer's — with zeros before them, where a
+        // buffer's head would lie.
         let mut padded = vec![0.0f32; 24];
         let foreign = padded[16..].as_mut_ptr();
         seen.push(i64::from((self.holds)(foreign)));
@@ -623,21 +583,18 @@ impl Doors {
         seen.push(i64::from(self.schedule(&[stereo(made, 0), Source { channels: 0, ..stereo(made, 999) }])));
         seen.push(i64::from((self.holds)(made)));
         // The last slot let go: the buffer goes (not asked of it again —
-        // the C's would read freed memory).
+        // that would read freed memory).
         seen.push(i64::from(self.schedule(&[])));
         seen
     }
 }
 
-// Each step's answer the C's, and — measured of the C 2026-11-07, so held
-// once it is gone (connection-round-checklist A) — these.
+// Each step's answer as the C was measured to give it 2026-11-07
+// (connection-round-checklist A), held now that it is gone.
 #[test]
-fn the_buffers_are_held_and_let_go_as_the_cs_are() {
+fn the_buffers_are_held_and_let_go_as_the_cs_were() {
     let _serial = serial();
-    let (c, rust) = (Doors::c(), Doors::rust());
-    let ours = rust.story();
-    assert_eq!(ours, c.story());
-    assert_eq!(ours, [1, 1, 2, 1, 1, 1, 1, 1, -1, 1, 1, 3, 0, 0, 3, 2, 1, 2, 1]);
+    assert_eq!(Doors::rust().story(), [1, 1, 2, 1, 1, 1, 1, 1, -1, 1, 1, 3, 0, 0, 3, 2, 1, 2, 1]);
 }
 
 #[test]
@@ -653,13 +610,12 @@ fn a_buffer_let_go_by_every_holder_is_gone() {
 }
 
 #[test]
-fn a_negative_count_refuses_the_schedule_as_the_cs_does() {
+fn a_negative_count_refuses_the_schedule_as_the_cs_did() {
     let _serial = serial();
-    for set in [Doors::c().set_schedule, Doors::rust().set_schedule] {
-        for (clips, sources, keys) in [(-1, 0, 0), (0, -1, 0), (0, 0, -1)] {
-            // SAFETY: refused before anything is read.
-            assert_eq!(unsafe { set(ptr::null(), clips, ptr::null(), sources, ptr::null(), keys) }, 0);
-        }
+    for (clips, sources, keys) in [(-1, 0, 0), (0, -1, 0), (0, 0, -1)] {
+        // SAFETY: refused before anything is read.
+        let set = unsafe { qa_audio_device_set_schedule(ptr::null(), clips, ptr::null(), sources, ptr::null(), keys) };
+        assert_eq!(set, 0);
     }
 }
 
@@ -679,19 +635,6 @@ struct Output {
 }
 
 impl Output {
-    fn c() -> Output {
-        Output {
-            count: c("qa_audio_device_count"),
-            describe: c("qa_audio_device_describe"),
-            open: c("qa_audio_device_open"),
-            close: c("qa_audio_device_close"),
-            is_open: c("qa_audio_device_is_open"),
-            sample_rate: c("qa_audio_device_sample_rate"),
-            channels: c("qa_audio_device_channels"),
-            latency: c("qa_audio_device_latency_samples"),
-        }
-    }
-
     fn rust() -> Output {
         Output {
             count: qa_audio_device_count,
@@ -762,16 +705,13 @@ fn room(bytes: &[u8]) -> String {
     format!("{:?} +{untouched}", String::from_utf8_lossy(&bytes[..bytes.len() - untouched]))
 }
 
-// Each step's answer the C's, and — measured of the C 2026-11-07, so held
-// once it is gone (connection-round-checklist A) — these.
+// Each step's answer as the C was measured to give it 2026-11-07
+// (connection-round-checklist A), held now that it is gone.
 #[test]
-fn the_null_backend_lists_and_opens_as_the_cs_does() {
+fn the_null_backend_lists_and_opens_as_the_cs_did() {
     let _serial = serial();
-    let (c, rust) = (Output::c(), Output::rust());
-    let ours = rust.story();
-    assert_eq!(ours, c.story());
     assert_eq!(
-        ours,
+        Output::rust().story(),
         [
             "count: 1",
             r#"describe: 20 "NULL Playback Device\0" +43 1"#,
@@ -888,21 +828,6 @@ struct Capture {
 }
 
 impl Capture {
-    fn c() -> Capture {
-        Capture {
-            start: c("qa_audio_capture_start"),
-            read: c("qa_audio_capture_read"),
-            stop: c("qa_audio_capture_stop"),
-            is_open: c("qa_audio_capture_is_open"),
-            channels: c("qa_audio_capture_channels"),
-            sample_rate: c("qa_audio_capture_sample_rate"),
-            dropped: c("qa_audio_capture_dropped_frames"),
-            frames: c("qa_audio_capture_frames"),
-            clock: c("qa_audio_capture_clock"),
-            latency: c("qa_audio_capture_latency_samples"),
-        }
-    }
-
     fn rust() -> Capture {
         Capture {
             start: qa_audio_capture_start,
@@ -970,15 +895,12 @@ impl Capture {
     }
 }
 
-// Each step's answer the C's, and — measured of the C 2026-11-07, so held
-// once it is gone (connection-round-checklist A) — these.
+// Each step's answer as the C was measured to give it 2026-11-07
+// (connection-round-checklist A), held now that it is gone.
 #[test]
-fn the_null_capture_runs_as_the_cs_does() {
+fn the_null_capture_runs_as_the_cs_did() {
     let _serial = serial();
-    let (c, rust) = (Capture::c(), Capture::rust());
-    let (said, drained) = rust.story();
-    let (c_said, c_drained) = c.story();
-    assert_eq!(said, c_said);
+    let (said, drained) = Capture::rust().story();
     assert_eq!(
         said,
         [
@@ -1002,7 +924,7 @@ fn the_null_capture_runs_as_the_cs_does() {
             "its own point: true",
         ]
     );
-    assert!(drained.iter().chain(&c_drained).all(|&sample| sample == 0.0), "the null microphone hears silence");
+    assert!(drained.iter().all(|&sample| sample == 0.0), "the null microphone hears silence");
 }
 
 #[test]
@@ -1149,17 +1071,6 @@ fn a_refused_rate_opens_at_the_devices_own() {
 }
 
 // --- The clock ------------------------------------------------------------
-
-#[test]
-fn the_clock_is_the_cs_clock() {
-    let now: extern "C" fn() -> i64 = c("qa_audio_clock_now_us");
-    for _ in 0..1000 {
-        let before = now();
-        let ours = qa_audio_clock_now_us();
-        let after = now();
-        assert!(before <= ours && ours <= after, "{before} {ours} {after}");
-    }
-}
 
 /// The clock `now_us` reads, asked through another door than its own: std's
 /// `Instant`, which reads that clock — but on Apple, where `Instant` reads

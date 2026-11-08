@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -30,7 +29,6 @@ import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/device_paced.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The audio scrub, driven for real on the null backend: each crossed
@@ -198,14 +196,8 @@ AudioConformStore _residentStore() => AudioConformStore(
 );
 
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
 
-  setUp(() {
-    QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
+  setUp(QaAudioDevice.debugResetForTests);
 
   tearDown(() {
     try {
@@ -214,7 +206,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
   });
 
   CanvasPlaybackController buildController(Project project) =>
@@ -275,7 +266,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('🚨a release leaves another player\'s sound alone — it silences the '
       'scrub\'s own slice only', () async {
@@ -314,7 +305,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('active playback owns the device: the scrub stays visual', () async {
     openNullDevice();
@@ -338,7 +329,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   test('a cut with no sound never arms (no device churn for silence)',
       () async {
@@ -422,7 +413,7 @@ void main() {
         isTrue,
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
 
     test('from a cut with sound into a silent one: the cut it left goes '
         'quiet — never played at the frame numbers of the cut it reached',
@@ -439,7 +430,7 @@ void main() {
       expect(scrubber.isArmed, isFalse);
       expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
   });
 
   group('🗣️F-341: where no cut is, a scrub hears the TRACK\'s sound — a sound '
@@ -487,7 +478,7 @@ void main() {
         isTrue,
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
 
     test('out of a silent cut into the movie\'s trailing frames: the sound '
         'there, at the track\'s own frame', () async {
@@ -507,7 +498,7 @@ void main() {
         isTrue,
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
   });
 
   test('missing PCM stands the gesture down and kicks the conform for the '
@@ -535,7 +526,7 @@ void main() {
     scrubber.dispose();
     controller.dispose();
     store.dispose();
-  }, skip: skip);
+  });
 
   group('🚨a sound past two minutes streams from a window, and a scrub hears '
       'it wherever the drag goes (scrub-recentres-by-its-own-rule)', () {
@@ -612,7 +603,7 @@ void main() {
             'this slice played silence',
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
 
     test('a scrub\'s window reaches a second behind and two ahead — and moves '
         'once a drag is past half its lead', () async {
@@ -643,6 +634,6 @@ void main() {
             'it only fifteen seconds on',
       );
       scrubber.onScrubEnd();
-    }, skip: skip);
+    });
   });
 }

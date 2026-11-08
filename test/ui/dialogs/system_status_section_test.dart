@@ -27,7 +27,6 @@ void main() {
     final entries = collectRuntimePathReport();
     expect(entries.map((entry) => entry.subsystem), [
       'Raster engine',
-      'Audio engine',
       'Audio import decoder',
       'Video export encoder',
       'PDF renderer',

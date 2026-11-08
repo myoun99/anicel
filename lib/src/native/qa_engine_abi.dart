@@ -347,7 +347,14 @@ import '../core/on_a_worker.dart';
 ///   the memory questions are the Rust engine's (native/memory,
 ///   connection-round-checklist H), which `QaMemory` binds in the GPU
 ///   engine's library.
-const int kQaEngineAbiVersion = 69;
+/// - v70: `qa_audio_device_*` · `qa_audio_capture_*` · `qa_audio_buffer_*` ·
+///   `qa_audio_clock_now_us` and the mixer — `qa_audio_mix` ·
+///   `qa_audio_bus_to_*` · the three `qa_audio_*_sizeof` — leave the C: the
+///   sound device and its mixer are the Rust engine's (native/audio_device,
+///   native/audio_mix, connection-round-checklist H), which
+///   `qa_audio_device.dart` and `qa_audio_native.dart` bind in the GPU
+///   engine's library.
+const int kQaEngineAbiVersion = 70;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

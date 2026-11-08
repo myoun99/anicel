@@ -1,55 +1,173 @@
+// The engine's Rust library carries the device (rust/src/lib.rs,
+// native/audio_device), and its names are found in that code asset — no
+// library opened, no path named, the same functions in every isolate
+// (connection-round-checklist H, 관제 2026-11-08 07:26 ⓐ: the binding and
+// the C's going are one landing).
+@DefaultAsset(gpuEngineAsset)
+library;
+
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../core/on_a_worker.dart';
 import '../services/flutter_test_run.dart';
 import '../services/audio/audio_mixer_reference.dart';
+import 'gpu_engine_asset.dart';
 import 'qa_audio_native.dart';
-import 'qa_engine_abi.dart';
 
-/// Where the device's buffers come from, as one isolate tells another: its
-/// maker and its release, by their functions' addresses
-/// ([QaAudioDevice.buffers]). [audioBuffersHere] binds them.
-///
-/// 🚨A worker filling buffers for [QaAudioDevice.adoptSamples] takes them
-/// from the isolate that ADOPTS them: the release its lists' finalizer runs
-/// is that isolate's, and a worker's own probe can load another binary, or
-/// none — a test's path override is a static, and statics do not cross
-/// isolates (`TileBlocks`, the same shape for a tile's pixels).
-typedef AudioBuffers = ({int make, int release});
+@Native<Int32 Function(Int32, Int32, Int32, Int32)>(
+  symbol: 'qa_audio_device_open',
+)
+external int _open(int sampleRate, int channels, int backend, int index);
 
-/// What fills the device's buffers where [AudioBuffers] were sent: where a
-/// buffer comes from, and where it goes back when the work it was for
-/// fails.
+@Native<Int32 Function(Int32, Int32)>(symbol: 'qa_audio_device_count')
+external int _deviceCount(int kind, int backend);
+
+@Native<Int32 Function(Int32, Int32, Pointer<Utf8>, Int32, Pointer<Int32>)>(
+  symbol: 'qa_audio_device_describe',
+)
+external int _deviceDescribe(
+  int kind,
+  int index,
+  Pointer<Utf8> name,
+  int capacity,
+  Pointer<Int32> isDefault,
+);
+
+@Native<Void Function()>(symbol: 'qa_audio_device_close')
+external void _close();
+
+@Native<Int32 Function()>(symbol: 'qa_audio_device_is_open')
+external int _isOpen();
+
+@Native<Int32 Function()>(symbol: 'qa_audio_device_sample_rate')
+external int _sampleRate();
+
+@Native<Int32 Function()>(symbol: 'qa_audio_device_channels')
+external int _channels();
+
+@Native<Int64 Function()>(symbol: 'qa_audio_device_latency_samples')
+external int _latency();
+
+@Native<
+  Int32 Function(
+    Pointer<QaAudioClipStruct>,
+    Int32,
+    Pointer<QaAudioSourceStruct>,
+    Int32,
+    Pointer<QaAudioEnvelopeKeyStruct>,
+    Int32,
+  )
+>(symbol: 'qa_audio_device_set_schedule')
+external int _setSchedule(
+  Pointer<QaAudioClipStruct> clips,
+  int clipCount,
+  Pointer<QaAudioSourceStruct> sources,
+  int sourceCount,
+  Pointer<QaAudioEnvelopeKeyStruct> keys,
+  int keyCount,
+);
+
+@Native<Pointer<Float> Function(Int64)>(symbol: 'qa_audio_buffer_new')
+external Pointer<Float> _bufferNew(int floats);
+
+@Native<Void Function(Pointer<Void>)>(symbol: 'qa_audio_buffer_release')
+external void _bufferRelease(Pointer<Void> samples);
+
+@Native<Pointer<Float> Function(Pointer<Float>)>(
+  symbol: 'qa_audio_buffer_retain',
+  isLeaf: true,
+)
+external Pointer<Float> _bufferRetain(Pointer<Float> samples);
+
+@Native<Int32 Function(Pointer<Float>)>(
+  symbol: 'qa_audio_buffer_holds',
+  isLeaf: true,
+)
+external int _bufferHolds(Pointer<Float> samples);
+
+@Native<Int32 Function(Int64, Int64, Int32, Int64)>(
+  symbol: 'qa_audio_device_play',
+)
+external int _play(int start, int stop, int looping, int lead);
+
+@Native<Void Function()>(symbol: 'qa_audio_device_stop')
+external void _stop();
+
+@Native<Void Function(Int32)>(symbol: 'qa_audio_device_stop_run')
+external void _stopRun(int run);
+
+@Native<Int32 Function()>(symbol: 'qa_audio_device_is_playing')
+external int _isPlaying();
+
+@Native<Int64 Function()>(symbol: 'qa_audio_device_position')
+external int _position();
+
+@Native<Void Function(Int64)>(symbol: 'qa_audio_device_seek')
+external void _seek(int sample);
+
+@Native<Int32 Function(Pointer<Int64>)>(symbol: 'qa_audio_device_clock')
+external int _clock(Pointer<Int64> out2);
+
+@Native<Int64 Function()>(symbol: 'qa_audio_clock_now_us')
+external int _clockNow();
+
+@Native<Double Function(Int32)>(symbol: 'qa_audio_device_peak')
+external double _peak(int channel);
+
+@Native<Int32 Function(Int32, Int32, Int32)>(symbol: 'qa_audio_capture_start')
+external int _captureStart(int sampleRate, int backend, int index);
+
+@Native<Int32 Function(Pointer<Float>, Int32)>(symbol: 'qa_audio_capture_read')
+external int _captureRead(Pointer<Float> out, int maxFloats);
+
+@Native<Void Function()>(symbol: 'qa_audio_capture_stop')
+external void _captureStop();
+
+@Native<Int32 Function()>(symbol: 'qa_audio_capture_is_open')
+external int _captureIsOpen();
+
+@Native<Int32 Function()>(symbol: 'qa_audio_capture_channels')
+external int _captureChannels();
+
+@Native<Int64 Function()>(symbol: 'qa_audio_capture_dropped_frames')
+external int _captureDroppedFrames();
+
+@Native<Int64 Function()>(symbol: 'qa_audio_capture_latency_samples')
+external int _captureLatency();
+
+@Native<Int64 Function()>(symbol: 'qa_audio_capture_frames')
+external int _captureFrames();
+
+@Native<Int32 Function(Pointer<Int64>)>(symbol: 'qa_audio_capture_clock')
+external int _captureClock(Pointer<Int64> out2);
+
+/// What fills the device's buffers on a worker: where a buffer comes from,
+/// and where it goes back when the work it was for fails.
 typedef AudioBufferHands = ({
   Pointer<Float> Function(int floats) make,
   void Function(Pointer<Float> samples) release,
 });
 
-/// [buffers] bound in the isolate they were sent to — whose [make] throws
-/// when the memory is not there, failing the work it was for whole.
-AudioBufferHands audioBuffersHere(AudioBuffers buffers) {
-  final make =
-      Pointer<NativeFunction<Pointer<Float> Function(Int64)>>.fromAddress(
-        buffers.make,
-      ).asFunction<Pointer<Float> Function(int)>();
-  final release =
-      Pointer<NativeFunction<Void Function(Pointer<Void>)>>.fromAddress(
-        buffers.release,
-      ).asFunction<void Function(Pointer<Void>)>();
-  return (
-    make: (floats) {
-      final samples = make(floats);
-      if (samples == nullptr) {
-        throw StateError('qa_audio_buffer_new failed for $floats floats');
-      }
-      return samples;
-    },
-    release: (samples) => release(samples.cast()),
-  );
-}
+/// The device's buffer maker and release, in whichever isolate asks — the
+/// same functions every isolate's [QaAudioDevice.adoptSamples] finalizes
+/// with, so a worker's buffer is one the adopting isolate lets go of. Its
+/// [make] throws when the memory is not there, failing the work it was for
+/// whole. ↩️Their addresses were sent from the adopting isolate, whose
+/// loader alone was sure to have opened the binary they belonged to.
+AudioBufferHands audioBuffersHere() => (
+  make: (floats) {
+    final samples = _bufferNew(floats);
+    if (samples == nullptr) {
+      throw StateError('qa_audio_buffer_new failed for $floats floats');
+    }
+    return samples;
+  },
+  release: (samples) => _bufferRelease(samples.cast()),
+);
 
 /// The output device and the transport (audio program 2C).
 ///
@@ -65,9 +183,7 @@ AudioBufferHands audioBuffersHere(AudioBuffers buffers) {
 /// leaves [isOpen] false and the caller on its existing path. Silence is
 /// never an acceptable outcome for audio.
 final class QaAudioDevice {
-  QaAudioDevice._(this._library);
-
-  final DynamicLibrary _library;
+  QaAudioDevice._();
 
   static QaAudioDevice? _instance;
   static bool _tried = false;
@@ -77,177 +193,32 @@ final class QaAudioDevice {
     _tried = false;
   }
 
-  /// The device, or null when no binary loads, the binary speaks a
-  /// different ABI, or it disagrees about the audio struct layout.
+  /// The device, or null when the engine disagrees about the audio struct
+  /// layout.
   ///
-  /// That last check matters more here than anywhere else: this class
-  /// hands [QaAudioClipStruct] and friends — declared next door in
-  /// `qa_audio_native.dart` — straight to the C on the path that reaches
-  /// a real speaker. Until the AUDIO-PRO ABI consolidation it was the one
-  /// loader with NO gate at all, so a layout change would have stood the
-  /// verification mixer down correctly while the device kept pushing
-  /// misread fields at someone's headphones.
+  /// That check matters more here than anywhere else: this class hands
+  /// [QaAudioClipStruct] and friends — declared next door in
+  /// `qa_audio_native.dart` — straight to the engine on the path that
+  /// reaches a real speaker. Until the AUDIO-PRO ABI consolidation it was
+  /// the one loader with NO gate at all, so a layout change would have
+  /// stood the verification mixer down correctly while the device kept
+  /// pushing misread fields at someone's headphones.
   static QaAudioDevice? get instance {
     if (!_tried) {
       _tried = true;
-      final library = openQaEngineLibrary();
-      _instance = library == null || !qaAudioStructLayoutsMatch(library)
-          ? null
-          : QaAudioDevice._(library);
+      _instance = qaAudioStructLayoutsMatch() ? QaAudioDevice._() : null;
     }
     return _instance;
   }
-
-  late final _open = _library
-      .lookupFunction<
-        Int32 Function(Int32, Int32, Int32, Int32),
-        int Function(int, int, int, int)
-      >('qa_audio_device_open');
-  late final _deviceCount = _library
-      .lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>(
-        'qa_audio_device_count',
-      );
-  late final _deviceDescribe = _library.lookupFunction<
-    Int32 Function(Int32, Int32, Pointer<Utf8>, Int32, Pointer<Int32>),
-    int Function(int, int, Pointer<Utf8>, int, Pointer<Int32>)
-  >('qa_audio_device_describe');
-  late final _close = _library
-      .lookupFunction<Void Function(), void Function()>('qa_audio_device_close');
-  late final _isOpen = _library
-      .lookupFunction<Int32 Function(), int Function()>('qa_audio_device_is_open');
-  late final _sampleRate = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_audio_device_sample_rate',
-      );
-  late final _channels = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_audio_device_channels',
-      );
-  late final _latency = _library
-      .lookupFunction<Int64 Function(), int Function()>(
-        'qa_audio_device_latency_samples',
-      );
-  late final _setSchedule = _library.lookupFunction<
-    Int32 Function(
-      Pointer<QaAudioClipStruct>,
-      Int32,
-      Pointer<QaAudioSourceStruct>,
-      Int32,
-      Pointer<QaAudioEnvelopeKeyStruct>,
-      Int32,
-    ),
-    int Function(
-      Pointer<QaAudioClipStruct>,
-      int,
-      Pointer<QaAudioSourceStruct>,
-      int,
-      Pointer<QaAudioEnvelopeKeyStruct>,
-      int,
-    )
-  >('qa_audio_device_set_schedule');
-  late final _bufferNewNative = _library
-      .lookup<NativeFunction<Pointer<Float> Function(Int64)>>(
-        'qa_audio_buffer_new',
-      );
-  late final _bufferNew = _bufferNewNative
-      .asFunction<Pointer<Float> Function(int)>();
-  late final _bufferReleaseNative = _library
-      .lookup<NativeFunction<Void Function(Pointer<Void>)>>(
-        'qa_audio_buffer_release',
-      );
-  late final _bufferRelease = _bufferReleaseNative
-      .asFunction<void Function(Pointer<Void>)>();
-
-  late final _bufferRetain = _library
-      .lookupFunction<
-        Pointer<Float> Function(Pointer<Float>),
-        Pointer<Float> Function(Pointer<Float>)
-      >('qa_audio_buffer_retain', isLeaf: true);
-  late final _bufferHolds = _library
-      .lookupFunction<
-        Int32 Function(Pointer<Float>),
-        int Function(Pointer<Float>)
-      >('qa_audio_buffer_holds', isLeaf: true);
 
   /// The buffers [newSamples] made, by the list that is their samples.
   final Expando<Pointer<Float>> _made = Expando<Pointer<Float>>(
     'device buffers',
   );
-  late final _play = _library
-      .lookupFunction<
-        Int32 Function(Int64, Int64, Int32, Int64),
-        int Function(int, int, int, int)
-      >('qa_audio_device_play');
-  late final _stop = _library
-      .lookupFunction<Void Function(), void Function()>('qa_audio_device_stop');
-  late final _stopRun = _library
-      .lookupFunction<Void Function(Int32), void Function(int)>(
-        'qa_audio_device_stop_run',
-      );
-  late final _isPlaying = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_audio_device_is_playing',
-      );
-  late final _position = _library
-      .lookupFunction<Int64 Function(), int Function()>(
-        'qa_audio_device_position',
-      );
-  late final _seek = _library
-      .lookupFunction<Void Function(Int64), void Function(int)>(
-        'qa_audio_device_seek',
-      );
-  late final _clock = _library
-      .lookupFunction<Int32 Function(Pointer<Int64>), int Function(Pointer<Int64>)>(
-        'qa_audio_device_clock',
-      );
-  late final _clockNow = _library
-      .lookupFunction<Int64 Function(), int Function()>(
-        'qa_audio_clock_now_us',
-      );
 
   /// Where [clockPoint] has the native side write its two numbers. One
   /// block for the life of the binding: the clock is read every tick.
   late final Pointer<Int64> _clockOut = calloc<Int64>(2);
-  late final _peak = _library
-      .lookupFunction<Double Function(Int32), double Function(int)>(
-        'qa_audio_device_peak',
-      );
-  late final _captureStart = _library
-      .lookupFunction<
-        Int32 Function(Int32, Int32, Int32),
-        int Function(int, int, int)
-      >('qa_audio_capture_start');
-  late final _captureRead = _library
-      .lookupFunction<
-        Int32 Function(Pointer<Float>, Int32),
-        int Function(Pointer<Float>, int)
-      >('qa_audio_capture_read');
-  late final _captureStop = _library
-      .lookupFunction<Void Function(), void Function()>('qa_audio_capture_stop');
-  late final _captureIsOpen = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_audio_capture_is_open',
-      );
-  late final _captureChannels = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_audio_capture_channels',
-      );
-  late final _captureDroppedFrames = _library
-      .lookupFunction<Int64 Function(), int Function()>(
-        'qa_audio_capture_dropped_frames',
-      );
-  late final _captureLatency = _library
-      .lookupFunction<Int64 Function(), int Function()>(
-        'qa_audio_capture_latency_samples',
-      );
-  late final _captureFrames = _library
-      .lookupFunction<Int64 Function(), int Function()>(
-        'qa_audio_capture_frames',
-      );
-  late final _captureClock = _library
-      .lookupFunction<Int32 Function(Pointer<Int64>), int Function(Pointer<Int64>)>(
-        'qa_audio_capture_clock',
-      );
 
   /// Where [readCaptureClock] has the native side write its two numbers.
   late final Pointer<Int64> _captureClockOut = calloc<Int64>(2);
@@ -259,9 +230,9 @@ final class QaAudioDevice {
   /// refuse the one asked for, and conforming to a rate the device is not
   /// running at would put every sound at the wrong speed.
   ///
-  /// [useNullBackend] runs miniaudio's null device: a real callback on a
-  /// real thread with no hardware. That is how the transport is exercised
-  /// on a CI runner with no sound card.
+  /// [useNullBackend] runs the null device: a real callback on a real
+  /// thread with no hardware. That is how the transport is exercised on a
+  /// CI runner with no sound card.
   ///
   /// [deviceIndex] picks from the last [devicesOf] enumeration (AUDIO-PRO
   /// R4); -1 = the system default. A bad index fails rather than opening
@@ -357,7 +328,7 @@ final class QaAudioDevice {
   /// Whether the output is being opened off this thread
   /// ([openAudioOutputAhead]) — what an arm answers 「coming」 for
   /// (`OutputComing`), rather than open it here again and wait for the
-  /// worker's open to let go of the C.
+  /// worker's open to let go of the device.
   bool get isOpening => _opening != null;
 
   /// The open under way off this thread, while [isOpening] — what a run
@@ -409,15 +380,7 @@ final class QaAudioDevice {
     return pointer == nullptr ? null : _listOver(pointer, floats);
   }
 
-  /// [newSamples]' maker and the release its lists' finalizer runs, by
-  /// address — for a worker that fills buffers this isolate adopts
-  /// ([audioBuffersHere], [adoptSamples]).
-  AudioBuffers get buffers => (
-    make: _bufferNewNative.address,
-    release: _bufferReleaseNative.address,
-  );
-
-  /// The [floats] samples a worker made with [buffers] and filled, at
+  /// The [floats] samples a worker made with [audioBuffersHere] and filled, at
   /// [address] — the list over them, holding them as if [newSamples] had
   /// made them here: the worker's hold is the list's now.
   Float32List adoptSamples(int address, int floats) =>
@@ -450,7 +413,7 @@ final class QaAudioDevice {
   Float32List _listOver(Pointer<Float> pointer, int floats) {
     final samples = pointer.asTypedList(
       floats,
-      finalizer: _bufferReleaseNative,
+      finalizer: Native.addressOf<NativeFinalizerFunction>(_bufferRelease),
       token: pointer.cast(),
     );
     _made[samples] = pointer;
@@ -465,7 +428,7 @@ final class QaAudioDevice {
     return made == null ? -1 : _bufferHolds(made);
   }
 
-  /// Uploads the schedule — legal at ANY time (AUDIO-PRO R3): the C builds
+  /// Uploads the schedule — legal at ANY time (AUDIO-PRO R3): the engine builds
   /// the replacement in a standby slot and flips atomically, so a swap
   /// during playback is heard within one mixed block, with the old arrays
   /// freed only after the callback provably abandoned them.
@@ -627,9 +590,9 @@ final class QaAudioDevice {
   ({double left, double right}) get meterPeaks =>
       isOpen ? (left: peakFor(0), right: peakFor(1)) : (left: 0, right: 0);
 
-  /// Opens the capture device and starts delivering into the C-side ring
-  /// (AUDIO-PRO R5). Returns the delivered sample rate ([sampleRate] — the
-  /// C converts from the device's native rate) or 0 on failure, which on
+  /// Opens the capture device and starts delivering into the engine's ring
+  /// (AUDIO-PRO R5). Returns the delivered sample rate ([sampleRate], or the
+  /// device's own rate when it refuses that one) or 0 on failure, which on
   /// mobile/macOS includes "no microphone permission". Channels are the
   /// device's own — read [captureChannels] after a successful start.
   ///
@@ -693,7 +656,7 @@ final class QaAudioDevice {
 /// unplugged (AUDIO-PRO R5).
 ///
 /// [capture] is the enumeration-kind axis [QaAudioDevice.devicesOf] already
-/// takes (it becomes the C `kind`), not a behaviour switch: one search, one
+/// takes (it becomes the engine's `kind`), not a behaviour switch: one search, one
 /// question.
 int audioDeviceIndexByName(
   QaAudioDevice device, {
@@ -860,7 +823,7 @@ Future<void> _openAhead(
   final onTheNullBackend = device._onNullBackend;
   bool opened;
   try {
-    opened = await onAWorkerWithThisEngine(() {
+    opened = await onAWorker(() {
       final here = QaAudioDevice.instance;
       if (here == null) {
         return false;

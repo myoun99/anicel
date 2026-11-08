@@ -7,8 +7,8 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/native/gpu_engine_asset.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixSource;
@@ -19,7 +19,6 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A STREAMING WINDOW MOVES WITHOUT THE THREAD THAT DRAWS**
@@ -33,13 +32,10 @@ import '../../helpers/temp_dir.dart';
 /// adopts what landed and swaps the schedule. An answer that is no longer
 /// wanted when it lands uploads nothing.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath == null ? nativeEngineMissingSkipReason : false;
   late Directory directory;
 
   setUp(() async {
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-window-worker');
   });
 
@@ -50,7 +46,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
     deleteTempQuietly(directory);
   });
 
@@ -169,7 +164,7 @@ void main() {
             'hold handed to the list that adopted it',
       );
     }
-  }, skip: skip);
+  });
 
   test('a buffer that cannot be made lets go of every one made before it, '
       'and hands nothing over', () async {
@@ -246,7 +241,7 @@ void main() {
     final windows = (await readStreamWindowsOnAWorker([past], device))!;
     expect(windows.single.samples, isEmpty);
     expect(windows.single.sourceStart, reader.length);
-  }, skip: skip);
+  });
 
   test('🚨and on the worker\'s road, windows that did not land whole are '
       'none at all', () async {
@@ -258,35 +253,29 @@ void main() {
     }
 
     expect(await readStreamWindowsOnAWorker(plan.reads, device), isNull);
-  }, skip: skip);
+  });
 
-  group('the hands a worker is sent', () {
+  group('the hands a worker fills buffers with', () {
     test('make the device\'s own buffers, and let go of them as its lists '
         'do', () {
       final device = openNull();
-      final hands = audioBuffersHere(device.buffers);
+      final hands = audioBuffersHere();
       final buffer = hands.make(8);
       final samples = device.adoptSamples(buffer.address, 8);
       expect(device.debugHoldsOf(samples), 1, reason: 'its maker\'s');
       // A hold of the test's own, for the hands to let go of.
-      DynamicLibrary.open(libraryPath!)
-          .lookupFunction<
-            Pointer<Float> Function(Pointer<Float>),
-            Pointer<Float> Function(Pointer<Float>)
-          >('qa_audio_buffer_retain')(buffer);
+      _retain(buffer);
       expect(device.debugHoldsOf(samples), 2);
 
       hands.release(buffer);
 
       expect(device.debugHoldsOf(samples), 1, reason: 'the list\'s alone');
-    }, skip: skip);
+    });
 
     test('throw where the memory is not there, rather than hand back a '
         'buffer that is none', () {
-      final hands = audioBuffersHere(openNull().buffers);
-
-      expect(() => hands.make(-1), throwsStateError);
-    }, skip: skip);
+      expect(() => audioBuffersHere().make(-1), throwsStateError);
+    });
   });
 
   test('🎯a window that plays reads on a worker unless a test holds the '
@@ -308,9 +297,6 @@ void main() {
     ({QaAudioDevice device, int deviceRate})? carrying;
 
     setUp(() async {
-      if (libraryPath == null) {
-        return;
-      }
       device = openNull();
       (store, _) = await streamingStore();
       reading = Completer();
@@ -360,14 +346,14 @@ void main() {
       expect(window.centerSample, 0, reason: 'moved before it landed');
       await land();
       expect(window.centerSample, 5000);
-    }, skip: skip);
+    });
 
     test('🚨the player stopped meanwhile: it uploads nothing', () async {
       await followTo(5000);
       carrying = null;
       await land();
       expect(window.centerSample, 0);
-    }, skip: skip);
+    });
 
     test('🚨another mix was put in meanwhile: its windows are not of it, and '
         'it uploads nothing', () async {
@@ -375,7 +361,7 @@ void main() {
       window.mix = mixOf(['a', 'b']);
       await land();
       expect(window.centerSample, 0);
-    }, skip: skip);
+    });
 
     test('🚨the window was uploaded anew meanwhile (a seek, an edit): the '
         'newer upload stands', () async {
@@ -391,7 +377,7 @@ void main() {
       );
       await land();
       expect(window.centerSample, 9000);
-    }, skip: skip);
+    });
 
     test('🚨windows that did not land whole upload nothing — the old window '
         'still has fifteen seconds to play', () async {
@@ -399,7 +385,7 @@ void main() {
       reading.complete(null);
       await pumpEventQueue();
       expect(window.centerSample, 0);
-    }, skip: skip);
+    });
 
     test('a read the memory was not there for uploads nothing — the old '
         'schedule plays on, and nothing is thrown at the tick', () async {
@@ -407,7 +393,7 @@ void main() {
       reading.completeError(StateError('no memory for a window'));
       await pumpEventQueue();
       expect(window.centerSample, 0);
-    }, skip: skip);
+    });
 
     test('one read at a time: ticks while it is out ask for no second '
         'one', () async {
@@ -422,6 +408,14 @@ void main() {
       expect(readsAsked, 1);
       await land();
       expect(window.centerSample, 5000);
-    }, skip: skip);
+    });
   });
 }
+
+/// A hold of the test's own on a device buffer, taken in the engine that
+/// made it.
+@Native<Pointer<Float> Function(Pointer<Float>)>(
+  symbol: 'qa_audio_buffer_retain',
+  assetId: gpuEngineAsset,
+)
+external Pointer<Float> _retain(Pointer<Float> samples);
