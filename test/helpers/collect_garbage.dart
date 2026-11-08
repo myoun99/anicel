@@ -38,21 +38,20 @@ Future<void> collectGarbage({
 }) async {
   final target = reachabilityBarrier + 2;
   final clock = Stopwatch()..start();
-  final held = <Uint8List>[];
   await churnUntil(
     happened: () => reachabilityBarrier >= target,
     elapsed: () => clock.elapsed,
     atMost: atMost,
     churn: () async {
       await Future<void>.delayed(Duration.zero);
-      _churn(held);
+      _churn();
     },
   );
   await Future<void>.delayed(Duration.zero);
   await Future<void>.delayed(Duration.zero);
 }
 
-/// A megabyte of bytes on [held], the one before let go: what brings the
+/// A megabyte of bytes, let go as soon as it is made: what brings the
 /// collector round.
 ///
 /// 🚨★★★OLD-SPACE GARBAGE THE CHURN MARKS AGAINST ITSELF, NOT PROMOTED
@@ -73,10 +72,8 @@ Future<void> collectGarbage({
 /// finished mark — so the collection moves with the churn itself, whatever
 /// the helper threads get. Bytes hold no pointers: nothing more to mark.
 /// Measured the same day, bare VM: a collection in 13–58 ms.
-void _churn(List<Uint8List> held) {
-  held
-    ..clear()
-    ..add(Uint8List(churnBytes));
+void _churn() {
+  Uint8List(churnBytes);
 }
 
 /// The bytes of each list [_churn] makes: past the 256 KB a list may take
@@ -97,9 +94,8 @@ void collectGarbageInThisTurn({
 }) {
   final target = reachabilityBarrier + 2;
   final clock = Stopwatch()..start();
-  final held = <Uint8List>[];
   while (reachabilityBarrier < target && clock.elapsed < atMost) {
-    _churn(held);
+    _churn();
   }
 }
 

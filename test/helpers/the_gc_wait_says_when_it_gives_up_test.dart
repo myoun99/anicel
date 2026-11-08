@@ -123,6 +123,9 @@ void main() {
     await collectGarbageUntil(() => true);
 
     // 🔬Measured here, idle: one collection is 34–124 ms.
+    // ⚠️It is also what says a churn that stops reaching old space brings
+    // nothing round: lists new space takes, let go at once, die there —
+    // that mutant waited its whole 30 s here (gc-pin-stall, 2026-11-08).
     expect(clock.elapsed, lessThan(const Duration(seconds: 10)));
   });
 
