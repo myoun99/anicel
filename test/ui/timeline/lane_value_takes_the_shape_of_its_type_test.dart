@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart'
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/icon_button_box.dart' show FaceGround;
 
 /// **F-22 — a flag is a button, not a word you type.**
 ///
@@ -307,6 +309,24 @@ void main() {
       ),
       findsNothing,
       reason: 'not ALSO a number box — one cell, one control',
+    );
+    // 🗣️a-live-dock-frame-costs-a-whole-draw-Q12: the list stands on the
+    // lane's plate over the panel, and fills its inside with that.
+    final plate =
+        (tester
+                    .widget<Container>(
+                      find.byKey(
+                        const ValueKey<String>(
+                          'timeline-lane-label-cel-fx:k:keyOperation',
+                        ),
+                      ),
+                    )
+                    .decoration!
+                as BoxDecoration)
+            .color!;
+    expect(
+      FaceGround.of(tester.element(button)),
+      isSameColorAs(Color.alphaBlend(plate, AppColors.surface)),
     );
 
     await tester.tap(button);

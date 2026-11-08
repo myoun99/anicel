@@ -207,6 +207,47 @@ void main() {
     );
   });
 
+  testWidgets('the swatch is a well and a chosen cell its frame and fill — '
+      'each edge two fills (a-live-dock-frame-costs-a-whole-draw-Q12)', (
+    tester,
+  ) async {
+    await pumpPanel(
+      tester,
+      tips: [_entry('tip-1', 'Mine'), _entry('tip-2', 'Other')],
+      initial: BrushToolState.defaults.copyWith(tips: [_mask('tip-1')]),
+    );
+    final swatch = find.byKey(const ValueKey<String>('brush-tip-picker-tip'));
+    final colorScheme = Theme.of(tester.element(swatch)).colorScheme;
+    expect(
+      tester.renderObject(swatch),
+      paints
+        ..rsuperellipse(color: colorScheme.outlineVariant)
+        ..rsuperellipse(color: colorScheme.surfaceContainerHighest),
+    );
+
+    await tester.ensureVisible(swatch);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+    RenderObject cell(String id) => tester.renderObject(
+      find.byKey(ValueKey<String>('brush-tip-cell-$id')),
+    );
+    expect(
+      cell('tip-1'),
+      paints
+        ..rsuperellipse(color: colorScheme.primary)
+        ..rsuperellipse(color: colorScheme.surfaceContainerHigh),
+      reason: 'chosen',
+    );
+    expect(
+      cell('tip-2'),
+      paints
+        ..rsuperellipse(color: colorScheme.outlineVariant)
+        ..rsuperellipse(color: AppColors.surface),
+      reason: 'not chosen',
+    );
+    await dismissPicker(tester);
+  });
+
   testWidgets('the none cell takes the tip back off', (tester) async {
     // copyWith preserves masks so a slider drag never drops one, which is
     // exactly why removing one needs its own path.

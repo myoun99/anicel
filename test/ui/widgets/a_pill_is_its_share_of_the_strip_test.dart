@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/face_ink_well.dart';
+import 'package:anicel/src/ui/widgets/icon_button_box.dart' show FaceGround;
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/drawn_shapes.dart';
@@ -166,6 +167,27 @@ void main() {
         includes: [centreOf(tester, 1)],
         excludes: besides(tester, 1),
       ),
+    );
+  });
+
+  testWidgets('on a ground it is told of, a strip of outline is that ground '
+      'inside, and an even strip its frame', (tester) async {
+    const wash = Color(0xFF334455);
+    Future<Color> insideOn(Widget strip) async {
+      final face = await pumpStrip(
+        tester,
+        FaceGround(ground: wash, child: strip),
+      );
+      return DrawnShapes.of(face)[1].paint.color;
+    }
+
+    expect(
+      await insideOn(PillStrip(items: items())),
+      isSameColorAs(wash),
+    );
+    expect(
+      await insideOn(PillStrip.even(items: items())),
+      isSameColorAs(AppColors.surface),
     );
   });
 }
