@@ -64,7 +64,7 @@ void main() {
   test('an m4a conforms END-TO-END: decode, resample to the project rate, '
       'peaks — the whole import chain in one call', () {
     final result = runConformHere(
-      ConformRequest(
+      const ConformRequest(
         sourcePath: 'test/fixtures/tone.m4a',
         conformPath: null, // memory-only, like an unsaved project
       ),

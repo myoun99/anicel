@@ -953,7 +953,18 @@ void main() {
   /// the five outs it describes the movie through. 🔬`clean_code_diff`
   /// against the lane's base (`a037dd5b0`) names those two added and nothing
   /// gone. ⛔Not bundled to fit: the bindings take what the exports take.
-  const wideSignatures = 471;
+  ///
+  /// ⚠️471 → 473 on 2026-11-08, the same way (connection-round-checklist
+  /// H, the sound decoder moved into the Rust engine): `_decodeSpan` (ten)
+  /// and `_streamOpen` (seven) in `qa_audio_decoder.dart` are the `@Native`
+  /// bindings of `qa_audio_decode_span_window` — the span's path, offset,
+  /// length and framing, the window's first frame and count, and the four
+  /// outs — and of `qa_audio_stream_open`, the span and its three outs.
+  /// They were `lookupFunction` types before, which this scan does not read.
+  /// 🔬`clean_code_diff` against master (`6793af759`) names those two added
+  /// and nothing gone. ⛔Not bundled to fit: the bindings take what the
+  /// exports take.
+  const wideSignatures = 473;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

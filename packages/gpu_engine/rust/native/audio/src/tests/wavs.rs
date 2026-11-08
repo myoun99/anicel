@@ -282,7 +282,7 @@ fn aiff(compression: Option<&[u8; 4]>, channels: u16, bits: u16, frames: u32, da
 #[test]
 fn every_aiff_reads_as_the_c_reads_it() {
     let mut pins = Sounds::default();
-    for (what, compression, channels, bits) in [
+    for (_what, compression, channels, bits) in [
         ("8-bit", None, 2, 8),
         ("16-bit", None, 2, 16),
         ("24-bit", None, 1, 24),

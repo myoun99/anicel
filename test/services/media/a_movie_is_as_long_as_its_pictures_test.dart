@@ -22,9 +22,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// sound — so the overshoot is not a fraction of a frame that rounding
 /// hides but sixty frames that are plainly not there.
 void main() {
-  tearDown(() {
-    QaVideoDecoder.instance.close();
-  });
+  tearDown(QaVideoDecoder.instance.close);
 
   test('🚨twelve pictures with three seconds of sound are twelve frames, and '
       'the last of them is a picture', () {
