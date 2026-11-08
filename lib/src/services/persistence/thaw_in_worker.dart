@@ -149,9 +149,6 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
 /// 🗣️a-resize-redo-moves-every-cel-on-the-ui-thread-Q1 (유저 2026-10-22:
 /// 「다시 하기도 대기 창 뒤에서 옮긴다」): a redo's cels are the ones its undo
 /// put back, every one hot.
-///
-/// 🚨The caller holds [surface] until this is done: its blocks go back to
-/// the pool with it.
 Future<BitmapSurface> moveHotCelInWorker(
   BrushFrameKey key,
   BitmapSurface surface, {
@@ -187,7 +184,7 @@ Future<BitmapSurface?> cutHotCelInWorker(
       : surfaceBehindReach(surface, reach, crossed: crossed);
 }
 
-/// A hot cel's [surface] — its blocks, read where they lie ([celBlocksOf])
+/// A hot cel's [surface] — read back from the engine ([withCelBlocks])
 /// — copied into a worker's own tiles ([copiedCelSurface]), made anew there
 /// by [remake], laid into this isolate's tile blocks and adopted behind the
 /// wall [remake] left it at; null where [remake] leaves the picture as it
@@ -202,21 +199,24 @@ Future<BitmapSurface?> _remakeHotCelInWorker(
   BitmapSurface surface,
   BitmapSurface? Function(BitmapSurface copy) remake,
 ) async {
-  final at = celBlocksOf(surface);
   final standsBehind = surface.pasteboardReach;
   final blocks = BitmapTile.blocks;
-  final made = await onAWorker(() {
-    final made = remake(copiedCelSurface(at, standsBehind: standsBehind));
-    return made == null
-        ? null
-        : (
-            laid: layCelEntry(
-              AnicelCelEntry.fromSurface(key, made),
-              tileBlocksHere(blocks),
-            ),
-            standsBehind: made.pasteboardReach,
-          );
-  });
+  final made = await withCelBlocks(
+    key,
+    surface,
+    (at) => onAWorker(() {
+      final made = remake(copiedCelSurface(at, standsBehind: standsBehind));
+      return made == null
+          ? null
+          : (
+              laid: layCelEntry(
+                AnicelCelEntry.fromSurface(key, made),
+                tileBlocksHere(blocks),
+              ),
+              standsBehind: made.pasteboardReach,
+            );
+    }),
+  );
   return made == null
       ? null
       : laidCelSurface(made.laid, standsBehind: made.standsBehind);

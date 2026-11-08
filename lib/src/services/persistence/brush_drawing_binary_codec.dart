@@ -7,7 +7,10 @@ library;
 
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart' show malloc;
 
 import 'anicel_payload_codec.dart';
 import '../../models/bitmap_surface.dart';
@@ -118,7 +121,7 @@ typedef AnicelLaidCel = CelParts<int>;
 
 /// [surface] in plain parts, each tile's pixels as [pixelsOf] gives them:
 /// the copy [AnicelCelEntry.fromSurface] makes, or the blocks' addresses
-/// ([celBlocksOf]) — the way back of [_surfaceOf], one for both.
+/// ([withCelBlocks]) — the way back of [_surfaceOf], one for both.
 CelParts<P> _partsOf<P>(
   BitmapSurface surface,
   P Function(BitmapTile tile) pixelsOf,
@@ -150,20 +153,46 @@ List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
     (id: photo.id, reference: jsonEncode(photo.reference.toJson())),
 ];
 
-/// [surface] with each tile's pixels named by the ADDRESS of its block, for
-/// a worker to read them where they lie ([copiedCelSurface]) — the way
-/// there of [laidCelSurface], with no pixel copied here.
+/// What [use] makes of [surface] with each tile's pixels named by the
+/// ADDRESS of its bytes, read back from the engine into one block [blocks]
+/// gives, for a worker to read them where they lie ([copiedCelSurface]) —
+/// the way there of [laidCelSurface].
 ///
-/// 🚨The addresses are good only while [surface] is held: its tiles' blocks
-/// go back to the pool with them (native-tile-pixel-lifetime). The caller
-/// holds it until the worker is done.
-AnicelLaidCel celBlocksOf(BitmapSurface surface) => _partsOf(
-  surface,
-  (tile) => tile.readPixels((pointer, _) => pointer.address),
-);
+/// 🚨The addresses are good only inside [use]: the block goes when it ends.
+Future<T> withCelBlocks<T>(
+  BrushFrameKey key,
+  BitmapSurface surface,
+  Future<T> Function(AnicelLaidCel at) use, {
+  Allocator blocks = malloc,
+}) async {
+  final bytes = BitmapTile.bytesFor(surface.tileSize);
+  // By the tile itself: a tile's == compares, and hashes, every byte.
+  final offsets = Map<BitmapTile, int>.identity();
+  _partsOf(
+    surface,
+    (tile) => offsets.putIfAbsent(tile, () => offsets.length * bytes),
+  );
+  // One tile's at the least: C may answer a malloc of 0 with null, which
+  // package:ffi throws for.
+  final capacity = math.max(1, offsets.length) * bytes;
+  final block = blocks<Uint8>(capacity);
+  try {
+    final into = block.asTypedList(capacity);
+    var at = 0;
+    EngineTileLedger.instance.readEach(key.cel, [...offsets.keys], (tile) {
+      into.setAll(at, tile);
+      at += bytes;
+    });
+    return await use(
+      _partsOf(surface, (tile) => block.address + offsets[tile]!),
+    );
+  } finally {
+    blocks.free(block);
+  }
+}
 
 /// [laid]'s blocks — another isolate's, read where they lie
-/// ([celBlocksOf]) — copied into tiles of this one: a surface this isolate
+/// ([withCelBlocks]) — copied into tiles of this one: a surface this isolate
 /// owns, whose tiles it frees as its own, behind the wall the picture
 /// [standsBehind] there — which its parts do not carry.
 BitmapSurface copiedCelSurface(
