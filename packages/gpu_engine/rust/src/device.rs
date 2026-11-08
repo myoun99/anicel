@@ -14,14 +14,56 @@ pub struct Engine {
     pub(crate) instance: wgpu::Instance,
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
-    pub(crate) queue: wgpu::Queue,
-    /// Where [`Engine::wait`] sends to the thread its waits block on
-    /// ([`waiter`]).
-    waits: mpsc::Sender<Wait>,
+    pub(crate) queue: Queue,
+    /// What [`Engine::wait`] polls on.
+    thread: EngineThread,
 }
 
-/// What a wait sends its thread: the device to poll, and where to answer.
-type Wait = (wgpu::Device, mpsc::Sender<Result<(), String>>);
+/// The queue the kernels submit to, whose submits enter the driver on the
+/// engine's thread ([`EngineThread`]) — ⛔the `wgpu::Queue` stays private
+/// to this type so that no kernel can submit on its caller's.
+#[derive(Clone)]
+pub(crate) struct Queue {
+    queue: wgpu::Queue,
+    thread: EngineThread,
+}
+
+impl Queue {
+    /// Submits `buffers` and returns once the driver has them, so what the
+    /// caller writes next goes after them, as on one thread. A thread that
+    /// is gone is the next wait's error.
+    pub(crate) fn submit(&self, buffers: impl IntoIterator<Item = wgpu::CommandBuffer>) {
+        let (queue, buffers): (_, Vec<_>) = (self.queue.clone(), buffers.into_iter().collect());
+        let _ = self.thread.run(move || {
+            queue.submit(buffers);
+        });
+    }
+
+    pub(crate) fn write_buffer(&self, buffer: &wgpu::Buffer, offset: wgpu::BufferAddress, data: &[u8]) {
+        self.queue.write_buffer(buffer, offset, data);
+    }
+
+    #[cfg(target_os = "android")]
+    pub(crate) fn present(&self, texture: wgpu::SurfaceTexture) {
+        self.queue.present(texture);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn write_texture(
+        &self,
+        texture: wgpu::TexelCopyTextureInfo<'_>,
+        data: &[u8],
+        layout: wgpu::TexelCopyBufferLayout,
+        size: wgpu::Extent3d,
+    ) {
+        self.queue.write_texture(texture, data, layout, size);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn on_submitted_work_done(&self, callback: impl FnOnce() + Send + 'static) {
+        self.queue.on_submitted_work_done(callback);
+    }
+}
 
 impl Engine {
     /// Opens on the adapter whose LUID is `luid`.
@@ -66,30 +108,33 @@ impl Engine {
             ..Default::default()
         });
         match pollster::block_on(request) {
-            Ok((device, queue)) => Some(Self {
-                waits: waiter()?,
-                instance,
-                adapter,
-                device,
-                queue,
-            }),
+            Ok((device, queue)) => {
+                let thread = EngineThread::start()?;
+                Some(Self {
+                    queue: Queue {
+                        queue,
+                        thread: thread.clone(),
+                    },
+                    thread,
+                    instance,
+                    adapter,
+                    device,
+                })
+            }
             Err(error) => fail(format!("request_device: {error}")),
         }
     }
 
     /// Blocks until the GPU has finished everything submitted — polled on
-    /// the thread the engine's waits block on ([`waiter`]), the caller
-    /// waiting outside the driver.
+    /// the engine's thread ([`EngineThread`]), the caller waiting outside
+    /// the driver.
     pub(crate) fn wait(&self) -> Option<()> {
-        let (answer, answered) = mpsc::channel();
-        if self.waits.send((self.device.clone(), answer)).is_err() {
-            return fail("the engine's wait thread is gone");
-        }
-        match answered.recv() {
-            Ok(Ok(())) => Some(()),
-            Ok(Err(error)) => fail(error),
-            Err(error) => fail(format!("the engine's wait thread never answered: {error}")),
-        }
+        let device = self.device.clone();
+        let polled = self.thread.run(move || {
+            let polled = device.poll(wgpu::PollType::wait_indefinitely());
+            polled.map(|_| ()).map_err(|error| format!("poll: {error}"))
+        })?;
+        polled.map_or_else(fail, Some)
     }
 
     /// The texture's bytes, rows top to bottom with no padding — for
@@ -236,11 +281,25 @@ pub(crate) fn storage_texture(
     })
 }
 
-/// The engine `open` makes, made on a thread of the engine's own while
-/// the caller waits — its failure, if it fails, the caller's last error.
+/// The engine `open` makes, made on a thread of the engine's while the
+/// caller waits ([`EngineThread`]) — its failure, if it fails, the caller's
+/// last error.
+fn opened(open: impl FnOnce() -> Option<Engine> + Send + 'static) -> *mut Engine {
+    let made = EngineThread::start()
+        .and_then(|thread| thread.run(move || open().ok_or_else(last_error)))
+        .and_then(|opened| opened.map_or_else(fail, Some));
+    made.map_or(std::ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
+}
+
+/// Work for an [`EngineThread`].
+type Job = Box<dyn FnOnce() + Send>;
+
+/// A thread of the engine's, where what is handed to [`EngineThread::run`]
+/// enters the driver while its caller waits outside it, till no engine is
+/// left to hand it anything.
 ///
-/// 🚨★★A DEVICE IS NEVER OPENED ON THE CALLER'S THREAD
-/// (an-engine-setup-hangs-in-a-batch, 2026-11-08): the caller is a Dart
+/// 🚨★★THE CALLER'S THREAD NEVER OPENS A DEVICE, WAITS ON ONE OR SUBMITS TO
+/// ONE (an-engine-setup-hangs-in-a-batch, 2026-11-08): the caller is a Dart
 /// isolate's, and the Dart VM's sampling profiler — on in every
 /// `flutter test` (flutter_tools `flutter_tester_device.dart`,
 /// `--enable-dart-profiling`) and every debug run — walks that thread's
@@ -251,47 +310,51 @@ pub(crate) fn storage_texture(
 /// once on the main PC's RTX 4080, every one in the adapters' enumeration
 /// (the Surface's setUpAll `did not complete` is the same death). The
 /// profiler walks the isolate's thread, so the driver runs on this one.
-fn opened(open: impl FnOnce() -> Option<Engine> + Send) -> *mut Engine {
-    let made = std::thread::scope(|scope| {
-        let thread = std::thread::Builder::new().name("gpu_engine open".into());
-        let opening = thread.spawn_scoped(scope, || open().ok_or_else(last_error));
-        match opening {
-            Ok(opening) => opening.join().unwrap_or_else(|_| Err("opening panicked".into())),
-            Err(error) => Err(format!("no thread to open on: {error}")),
-        }
-    });
-    match made {
-        Ok(engine) => Box::into_raw(Box::new(engine)),
-        Err(error) => {
-            let _ = fail::<()>(error);
-            std::ptr::null_mut()
+///
+/// A wait stays in the driver as long as the GPU takes. 🔬Flip lane ⓓ
+/// (2026-11-09) put a read back in every save, park and cooling: eight
+/// `flutter test` files at once lost one at its first read, three runs of
+/// three, each passing alone. A submit is the same death, 🔬four of the
+/// four caught at the fault over two runs of 356 files eighteen at once
+/// (2026-11-09), each in `gpu_engine_pool_store`'s submit, inside
+/// `nvwgf2umx.dll`, `rbp` holding no frame 7–25 KB below the commit floor
+/// and the walk reading exactly it — and none in two runs more with the
+/// submit moved here. A thread made for each wait took 50–60 µs on the main
+/// PC against 1 µs handed to this one, and the screen waits every frame.
+/// Each job brings what it works on, so none is kept between them.
+///
+/// ⚠️Only these three have been seen to die: a kernel's `create_*` and
+/// `write_*` still run on its caller's.
+#[derive(Clone)]
+pub(crate) struct EngineThread(mpsc::Sender<Job>);
+
+impl EngineThread {
+    fn start() -> Option<Self> {
+        let (jobs, asked) = mpsc::channel::<Job>();
+        let working = move || {
+            for job in asked {
+                job();
+            }
+        };
+        match std::thread::Builder::new().name("gpu_engine".into()).spawn(working) {
+            Ok(_) => Some(Self(jobs)),
+            Err(error) => fail(format!("no thread for the engine: {error}")),
         }
     }
-}
 
-/// The thread an engine's waits block on ([`Engine::wait`]), polling the
-/// device each one sends till no engine is left to send.
-///
-/// 🚨★★A WAIT NEVER BLOCKS IN THE DRIVER ON THE CALLER'S THREAD, for the
-/// reason a device is never opened there ([`opened`]): the profiler walks
-/// that thread's stack, and a wait stays in the driver as long as the GPU
-/// takes. 🔬Flip lane ⓓ (2026-11-09) put a read back in every save, park
-/// and cooling: eight `flutter test` files at once lost one at its first
-/// read, three runs of three, each passing alone. A thread made for each
-/// wait took 50–60 µs on the main PC against 1 µs handed to this one, and
-/// the screen waits every frame. The device comes with each wait, so none
-/// is kept between them.
-fn waiter() -> Option<mpsc::Sender<Wait>> {
-    let (waits, asked) = mpsc::channel::<Wait>();
-    let polling = move || {
-        for (device, answer) in asked {
-            let polled = device.poll(wgpu::PollType::wait_indefinitely());
-            let _ = answer.send(polled.map(|_| ()).map_err(|error| format!("poll: {error}")));
+    /// What `work` answers, run on this thread while the caller waits.
+    fn run<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        let (answer, answered) = mpsc::channel();
+        let job: Job = Box::new(move || {
+            let _ = answer.send(work());
+        });
+        if self.0.send(job).is_err() {
+            return fail("the engine's thread is gone");
         }
-    };
-    match std::thread::Builder::new().name("gpu_engine wait".into()).spawn(polling) {
-        Ok(_) => Some(waits),
-        Err(error) => fail(format!("no thread to wait on: {error}")),
+        match answered.recv() {
+            Ok(worked) => Some(worked),
+            Err(error) => fail(format!("the engine's thread never answered: {error}")),
+        }
     }
 }
 
@@ -299,7 +362,7 @@ fn waiter() -> Option<mpsc::Sender<Wait>> {
 /// upper 32 bits) — Flutter's own. Null on failure; see the last error.
 #[unsafe(no_mangle)]
 pub extern "C" fn gpu_engine_open(luid: u64) -> *mut Engine {
-    opened(|| Engine::open(luid))
+    opened(move || Engine::open(luid))
 }
 
 /// Opens the engine on the platform's only adapter — Android's, where
@@ -364,16 +427,39 @@ mod tests {
 
     #[test]
     fn a_device_is_opened_on_a_thread_of_its_own_not_the_callers() {
-        let caller = std::thread::current().id();
-        let mut on = None;
-        let made = opened(|| {
-            on = Some(std::thread::current().id());
+        let (sender, on) = std::sync::mpsc::channel();
+        let made = opened(move || {
+            let _ = sender.send(std::thread::current().id());
             Engine::open_first()
         });
         assert!(!made.is_null(), "{}", last_error());
-        assert!(on.is_some_and(|on| on != caller));
+        assert_ne!(on.try_recv().expect("the open ran"), std::thread::current().id());
         // SAFETY: `made` came from `opened`, nothing made on it.
         unsafe { gpu_engine_close(made) };
+    }
+
+    #[test]
+    fn a_submit_enters_the_driver_on_a_thread_of_the_engines_not_the_callers() {
+        let engine = Engine::open_first().expect("an adapter");
+        let (sender, answered) = std::sync::mpsc::channel();
+        // What a submit refuses reaches this handler on the thread that
+        // submitted.
+        engine.device.on_uncaptured_error(std::sync::Arc::new(move |_| {
+            let _ = sender.send(std::thread::current().id());
+        }));
+        let source = engine.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 4,
+            usage: wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let mut encoder = engine.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_buffer_to_buffer(&source, 0, &engine.readback(4), 0, 4);
+        let commands = encoder.finish();
+        source.destroy();
+        engine.queue.submit([commands]);
+        let submitted_on = answered.try_recv().expect("the submit was refused inside it");
+        assert_ne!(submitted_on, std::thread::current().id());
     }
 
     #[test]
