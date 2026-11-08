@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_image_encoder.dart';
 
-/// The engine's JPEG encoder as Dart asks it (native/image_encode, which
-/// holds its own bytes to the ledger). ↩️Until the connection round
+/// The engine's JPEG encoder as Dart asks it ([_encoder], which holds its
+/// own bytes to the ledger). ↩️Until the connection round
 /// (connection-round-checklist H, 2026-11-08) it was the C engine's, and
 /// these skipped where none was built.
 void main() {
@@ -28,7 +28,7 @@ void main() {
       height: 48,
       quality: 90,
     );
-    expect(bytes, isNotNull);
+    expect(bytes, isNotNull, reason: '$_encoder wrote no JPEG');
     // SOI … EOI.
     expect(bytes!.sublist(0, 2), [0xFF, 0xD8]);
     expect(bytes.sublist(bytes.length - 2), [0xFF, 0xD9]);
@@ -74,3 +74,8 @@ void main() {
     );
   });
 }
+
+/// The encoder these ask — named as a path, so a lane that changed only the
+/// engine's JPEG encoder runs this file (`affected_tests` picks a test by the
+/// paths it writes out, 보드/인프라 2026-11-08 05:35).
+const _encoder = 'packages/gpu_engine/rust/native/image_encode';
