@@ -34,7 +34,7 @@ void main() {
   );
 
   BitmapSurface surfaceOf(List<BitmapTile> tiles) => BitmapSurface(
-    canvasSize: CanvasSize(
+    canvasSize: const CanvasSize(
       width: 8 * defaultCelTileSize,
       height: 8 * defaultCelTileSize,
     ),
