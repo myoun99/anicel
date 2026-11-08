@@ -243,10 +243,18 @@ Future<void> main(List<String> handedAtLaunch) async {
     (_) => unawaited(pictureSideLimit()),
   );
   // The GPU engine the frame grids' tiles are drawn and shown on, opened
-  // off this isolate after the first frame (관제 2026-11-08 20:54: 「장치는
-  // 첫 프레임 뒤에」): till it is open every row draws its cells itself.
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => unawaited(openAppGpuEngine()),
+  // off this isolate once the first frame is on the screen (관제 2026-11-08
+  // 20:54: 「장치는 첫 프레임 뒤에」): till it is open every row draws its
+  // cells itself.
+  // ↩️Asked once the first frame was BUILT (a post-frame callback), it was
+  // open before that frame was rastered in 4 of 5 launches (🔬main PC,
+  // profile, 11-09). The first frame was no later for it — run to first
+  // raster 623 ms there, 652 with no open, 622 opened after the raster
+  // (medians of five) — so it waits for the raster, which costs nothing.
+  unawaited(
+    WidgetsBinding.instance.waitUntilFirstFrameRasterized.then(
+      (_) => openAppGpuEngine(),
+    ),
   );
 }
 
