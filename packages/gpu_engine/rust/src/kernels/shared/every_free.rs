@@ -17,7 +17,14 @@ use crate::kernels::composite::{Composited, TILE_TEXELS};
 use crate::kernels::export::abi::{
     gpu_engine_export_free, gpu_engine_export_new, gpu_engine_export_opaque, gpu_engine_readout_free,
 };
+use crate::kernels::effects::blur::TileRect;
 use crate::kernels::fill::{gpu_engine_fill_free, gpu_engine_fill_new};
+use crate::kernels::letters::Lettered;
+use crate::kernels::letters::abi::{
+    gpu_engine_faces_free, gpu_engine_faces_new, gpu_engine_lettered_free, gpu_engine_letters_free,
+    gpu_engine_letters_new,
+};
+use crate::kernels::letters::glyphs_tests::file;
 use crate::kernels::pool::{gpu_engine_pool_free, gpu_engine_pool_new};
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
 use crate::testing::{first_engine, held, last_error};
@@ -46,7 +53,7 @@ fn composited() -> Composited {
 }
 
 /// Each free, by its name, and a box of its own made and let go of.
-fn frees() -> [(&'static str, fn(&'static str)); 10] {
+fn frees() -> [(&'static str, fn(&'static str)); 13] {
     [
         ("gpu_engine_close", |name| {
             gives_back(name, Box::into_raw(Box::new(first_engine().clone())), gpu_engine_close)
@@ -78,6 +85,18 @@ fn frees() -> [(&'static str, fn(&'static str)); 10] {
             // SAFETY: the engine is live.
             let made = unsafe { gpu_engine_ink_new(first_engine()) };
             gives_back(name, made, gpu_engine_ink_free)
+        }),
+        ("gpu_engine_faces_free", |name| {
+            let face = file("BIZUDPGothic-Regular.ttf");
+            // SAFETY: each pointer holds one, alive for the call.
+            let made = unsafe { gpu_engine_faces_new(&face.as_ptr(), &face.len(), &0, 1) };
+            gives_back(name, made, gpu_engine_faces_free)
+        }),
+        ("gpu_engine_letters_free", |name| gives_back(name, gpu_engine_letters_new(), gpu_engine_letters_free)),
+        ("gpu_engine_lettered_free", |name| {
+            let rect = TileRect { x0: 0, y0: 0, columns: 1, rows: 1 };
+            let made = Box::into_raw(Box::new(Lettered { rect, tiles: composited().out }));
+            gives_back(name, made, gpu_engine_lettered_free)
         }),
         ("gpu_engine_pool_free", |name| {
             // SAFETY: the engine is live.

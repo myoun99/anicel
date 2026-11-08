@@ -14,13 +14,10 @@
 //! letters and the hard letters' layer at its alpha (`_drawHard`) come out
 //! of the executor's one formula, and no copy of it.
 
-// ⏳Nothing outside the tests calls it until the connection round (the app's
-// layout hands the engine its letters there).
-#![cfg_attr(not(test), allow(dead_code))]
-
+pub(crate) mod abi;
 pub(crate) mod glyphs;
 #[cfg(test)]
-mod glyphs_tests;
+pub(crate) mod glyphs_tests;
 #[cfg(test)]
 mod families_tests;
 #[cfg(test)]

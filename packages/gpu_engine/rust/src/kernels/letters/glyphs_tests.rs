@@ -26,7 +26,7 @@ pub(super) fn here(shapes: Vec<Shape>) -> Vec<Placed> {
     shapes.into_iter().map(|shape| Placed { at: IDENTITY, shape }).collect()
 }
 
-pub(super) fn file(name: &str) -> Vec<u8> {
+pub(crate) fn file(name: &str) -> Vec<u8> {
     let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
     let path = format!("{dir}/../../../assets/fonts/{name}");
     std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"))
