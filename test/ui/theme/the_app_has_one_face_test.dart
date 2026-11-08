@@ -219,14 +219,17 @@ void main() {
   test('🚨문서의 번들 글꼴도 같은 둘이다 — 콘티 PDF 가 박는 파일이 앱의 파일', () {
     // 유저 2026-09-25: 「글꼴 앱에서 정한거 통일하는거 해주고」. 콘티(PDF 가
     // 이 파일을 박는다)와 텍스트 셀은 UI 언어와 무관하게 이 둘로 찍는다.
+    // 🗣️connection-round-checklist-Q21 (11-08): the UI goes on to the Chinese
+    // face behind these two; whether the conte does too is
+    // connection-round-checklist-Q22, unanswered — until then it does not.
     expect(
       AppTypography.bundledFamily,
       AppTypography.familyFor(AppLanguage.ja),
     );
-    expect(
-      AppTypography.bundledFallback,
-      AppTypography.fallbackFor(AppLanguage.ja),
-    );
+    expect(AppTypography.fallbackFor(AppLanguage.ja), [
+      ...AppTypography.bundledFallback,
+      AppTypography.familyFor(AppLanguage.zhHans),
+    ]);
     final pubspec = File('pubspec.yaml').readAsStringSync();
     for (final (family, files) in [
       (AppTypography.bundledFamily, AppTypography.bundledFiles),

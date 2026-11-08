@@ -716,7 +716,8 @@ abstract final class AppTypography {
   /// 앱에서 정한거 통일하는거 해주고」): the conte, whose PDF embeds these
   /// very files, and a text cel, which bakes into the picture. Only the UI
   /// follows the language ([familyFor]) — a Chinese UI wears
-  /// [_chineseFamily] in front of these two.
+  /// [_chineseFamily] in front of these two, any other UI behind them
+  /// ([fallbackFor]).
   ///
   /// ↩️The conte printed in faces of its own (M PLUS 1p + IBM Plex Sans KR)
   /// and a text cel caught CJK in them: two more families, bundled for two
