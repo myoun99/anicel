@@ -8,6 +8,8 @@ import 'package:anicel/src/services/persistence/usage_stats_store.dart';
 import 'package:anicel/src/services/usage_stats/aptabase_client.dart';
 import 'package:anicel/src/services/usage_stats/usage_stats.dart';
 
+import '../../helpers/due_timers.dart';
+
 /// The answer, the record and the queue kept in memory, as the settings
 /// file keeps them across launches.
 class _MemoryStore extends UsageStatsStore {
@@ -37,35 +39,6 @@ class _MemoryStore extends UsageStatsStore {
 
   @override
   Future<void> save(UsageStatsAnswer answer) async => this.answer = answer;
-}
-
-/// A one-shot timer the test fires by hand ([fire]).
-class _Due implements Timer {
-  _Due(this.after, this._onDue);
-
-  /// How long it was armed for.
-  final Duration after;
-  final void Function() _onDue;
-  bool _active = true;
-  int _ticks = 0;
-
-  /// Its moment come.
-  void fire() {
-    if (_active) {
-      _active = false;
-      _ticks += 1;
-      _onDue();
-    }
-  }
-
-  @override
-  void cancel() => _active = false;
-
-  @override
-  bool get isActive => _active;
-
-  @override
-  int get tick => _ticks;
 }
 
 /// One POST's events, each as its name and props: `day days=3+`.
@@ -110,7 +83,7 @@ void main() {
   late Map<String, Object> settings;
 
   /// Every timer a run armed, the latest last.
-  late List<_Due> timers;
+  late DueTimers timers;
 
   setUp(() {
     sent = [];
@@ -120,7 +93,7 @@ void main() {
     hold = null;
     clock = DateTime.utc(2026, 10, 29, 6, 20);
     settings = const {};
-    timers = [];
+    timers = DueTimers();
   });
 
   final today = UsageStats.dayOf(DateTime.utc(2026, 10, 29, 6, 20));
@@ -139,13 +112,6 @@ void main() {
     build: '1081',
   );
 
-  /// A one-shot timer the test fires, kept in [timers].
-  Timer after(Duration after, void Function() onDue) {
-    final timer = _Due(after, onDue);
-    timers.add(timer);
-    return timer;
-  }
-
   /// A run of the app on [store], restored as the shell restores it.
   UsageStats run(_MemoryStore? store, {String appKey = 'A-EU-1462843916'}) {
     final stats = UsageStats(
@@ -155,21 +121,15 @@ void main() {
       osLocale: () => 'ko-KR',
       settings: () => settings,
       now: () => clock,
-      after: after,
+      after: timers.arm,
     );
     addTearDown(stats.dispose);
     unawaited(stats.restore());
     return stats;
   }
 
-  /// The timers still armed.
-  List<_Due> running() => [
-    for (final timer in timers)
-      if (timer.isActive) timer,
-  ];
-
   /// The one `in_use` armed.
-  _Due armed() => running().single;
+  Due armed() => timers.running.single;
 
   /// The armed `in_use`'s moment come — [late] after it, as a timer is —
   /// and what it sends sent.
@@ -205,13 +165,13 @@ void main() {
       expect(stats.enabled.value, isTrue);
       expect(store.days, [today - 1]);
       expect(store.queue, isEmpty);
-      expect(timers, isEmpty);
+      expect(timers.armed, isEmpty);
       stats.setEnabled(false);
       stats.setEnabled(true);
       await pumpEventQueue();
       expect(sent, isEmpty);
       expect(store.queue, isEmpty);
-      expect(timers, isEmpty);
+      expect(timers.armed, isEmpty);
     });
 
     test('once it is turned off', () async {
@@ -355,7 +315,7 @@ void main() {
           osLocale: () => osLocale,
           settings: () => const {},
           now: () => clock,
-          after: after,
+          after: timers.arm,
         );
         addTearDown(stats.dispose);
         unawaited(stats.restore());
@@ -626,7 +586,7 @@ void main() {
         'off; turned on, it is armed then', () async {
       final stats = run(_MemoryStore());
       await stats.reportLaunch();
-      expect(timers, isEmpty);
+      expect(timers.armed, isEmpty);
 
       stats.setEnabled(true);
       await pumpEventQueue();
@@ -634,7 +594,7 @@ void main() {
       expect(due.after, AptabaseClient.sessionLasts);
 
       stats.setEnabled(false);
-      expect(running(), isEmpty);
+      expect(timers.running, isEmpty);
       due.fire();
       await pumpEventQueue();
       expect(sent.expand((events) => events), isNot(contains('in_use')));
@@ -655,7 +615,7 @@ void main() {
       );
 
       await stats.reportAway();
-      expect(running(), isEmpty);
+      expect(timers.running, isEmpty);
       first.fire();
       await pumpEventQueue();
       expect(sent, hasLength(2));
@@ -688,9 +648,9 @@ void main() {
       final stats = run(_MemoryStore());
       stats.setEnabled(true);
       await pumpEventQueue();
-      expect(timers, isEmpty);
+      expect(timers.armed, isEmpty);
       await stats.reportLaunch();
-      expect(running(), hasLength(1));
+      expect(timers.running, hasLength(1));
     });
 
     test('away before the saved answer is back: the launch arms none',
@@ -700,7 +660,7 @@ void main() {
       await stats.reportAway();
       await launch;
       expect(stats.enabled.value, isTrue);
-      expect(timers, isEmpty);
+      expect(timers.armed, isEmpty);
     });
 
     test('gone with the settings — and a launch reported after arms none',
@@ -712,16 +672,16 @@ void main() {
         osLocale: () => 'ko-KR',
         settings: () => const {},
         now: () => clock,
-        after: after,
+        after: timers.arm,
       );
       unawaited(stats.restore());
       await stats.reportLaunch();
-      expect(running(), hasLength(1));
+      expect(timers.running, hasLength(1));
 
       stats.dispose();
-      expect(running(), isEmpty);
+      expect(timers.running, isEmpty);
       await stats.reportLaunch();
-      expect(running(), isEmpty);
+      expect(timers.running, isEmpty);
     });
   });
 
@@ -918,7 +878,7 @@ void main() {
         osLocale: () => 'ko-KR',
         settings: () => const {},
         now: () => clock,
-        after: after,
+        after: timers.arm,
       );
       addTearDown(stats.dispose);
       unawaited(stats.restore());

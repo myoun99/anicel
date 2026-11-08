@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/app_gpu_engine.dart';
@@ -13,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/due_timers.dart';
 import '../../helpers/painted_glyph_boxes.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/tiles_laid.dart';
@@ -30,9 +33,11 @@ import 'timeline_frame_geometry_probe.dart';
 /// on S5_BA's cut 352, rastered in the frames after it and thrown away by
 /// the next step.
 ///
-/// The stop waits [TimelineGridTileStore.debugZoomSettles]: two seconds
-/// where the zoom has to stop, an hour where it must not have to — a
-/// loaded machine stretches the steps' gaps, never by that much.
+/// The stop is the test's to fire ([stop]): a step arms it
+/// ([TimelineGridTileStore.debugZoomTimer]) and nothing fires it but the
+/// test. ↩️It came on a real clock, two seconds after a step — an hour where
+/// it must not come — and a test waited 0.2–1 s past it, a margin a loaded
+/// machine could outlast (타임라인/콘티 리뷰 2026-11-09 C).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(openAppGpuEngine);
@@ -40,6 +45,12 @@ void main() {
   final store = TimelineGridTileStore.instance;
   var landings = 0;
   void landed() => landings += 1;
+
+  /// The stops the zoom armed, the latest last.
+  late DueTimers stops;
+
+  /// The zoom stands still: its latest stop comes.
+  void stop() => stops.armed.last.fire();
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -96,17 +107,18 @@ void main() {
     store.clear();
     store.revision.addListener(landed);
     landings = 0;
+    stops = DueTimers();
+    store.debugZoomTimer = stops.arm;
   });
 
   tearDown(() {
     store.revision.removeListener(landed);
-    store.debugZoomSettles = TimelineGridTileStore.zoomSettles;
+    store.debugZoomTimer = Timer.new;
     store.clear();
   });
 
   test('a zoom\'s steps show the old tile and raster nothing; stopped, the '
       'span is rastered once at the extent it stopped at', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
     for (final extent in [20.0, 16.0, 14.0, 12.0]) {
@@ -115,7 +127,13 @@ void main() {
     await aWhile();
     expect(landings, 1, reason: 'nothing rastered at a step\'s extent');
     expect(store.debugBusy, isTrue, reason: 'the span waits for the stop');
+    expect(
+      stops.running.single.after,
+      TimelineGridTileStore.zoomSettles,
+      reason: 'the stop comes the user\'s 0.15 s after the latest step',
+    );
 
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     final crisp = ask(12);
     expect(crisp, isNot(same(old)));
@@ -125,7 +143,6 @@ void main() {
   });
 
   test('past twice the old tile\'s extent a step is rastered then', () async {
-    store.debugZoomSettles = const Duration(hours: 1);
     await baked(24);
 
     expect(ask(10), isNull, reason: 'the classic paint covers the step');
@@ -135,39 +152,38 @@ void main() {
 
   test('a span a zoom left waiting and a jump then took past twice is '
       'rastered at the jump, and not again when the zoom stops', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
     expect(ask(10), isNull);
     expect(await pollUntil(() => landings == 2), isTrue);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 2, reason: 'the stop finds nothing waiting');
     expect(ask(10)!.width, 4 * 10 * 2, reason: 'the jump\'s tile stays');
   });
 
   test('a zoom that comes back to the tile\'s extent stretches it no more '
       '— the stop rasters nothing', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
     ask(16);
     expect(ask(24), same(old), reason: 'the tile shows its extent again');
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 1);
     expect(ask(24), same(old), reason: 'it was not rastered over');
   });
 
   test('once the zoom stopped, a span it did not reach is asked at the '
       'extent it stopped at as any other', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(24, start: 4);
     ask(16);
     ask(12);
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
 
-    store.debugZoomSettles = const Duration(hours: 1);
     expect(ask(12, start: 4), isNotNull, reason: 'its old tile, scaled');
     expect(await pollUntil(() => landings == 4), isTrue);
     expect(ask(12, start: 4)!.width, 4 * 12 * 2);
@@ -175,7 +191,6 @@ void main() {
 
   test('a warm-up waits for the zoom too — and what a step asked of it at '
       'another extent is let go', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(20);
@@ -189,6 +204,7 @@ void main() {
     await aWhile();
     expect(landings, 1, reason: 'the warm-up waits for the stop');
 
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     await aWhile();
     expect(
@@ -200,20 +216,19 @@ void main() {
 
   test('a span a step stretched and the last step did not ask for is let '
       'go at the stop, not rastered at that step\'s extent', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(24, start: 4);
 
     ask(16);
     ask(16, start: 4);
     ask(12);
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
     await aWhile();
     expect(landings, 3, reason: 'the span left behind at 16 is let go');
   });
 
   test('a span waiting for the stop is not warmed beside it', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
@@ -223,6 +238,9 @@ void main() {
       spanEndIndexExclusive: 4,
       devicePixelRatio: 2.0,
     );
+    await aWhile();
+    expect(landings, 1, reason: 'not warmed while it waits');
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     await aWhile();
     expect(landings, 2, reason: 'rastered once, for the stop');
@@ -230,7 +248,6 @@ void main() {
 
   test('a span the zoom came back to with an edit is baked in that ask, '
       'and not rastered over at the stop', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
@@ -247,24 +264,26 @@ void main() {
       devicePixelRatio: 2.0,
     );
     expect(landings, 2, reason: '⛔전제: the edit is baked in its ask');
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 2, reason: 'the stop finds nothing waiting');
   });
 
   test('a clear lets go of a zoom under way and of where the cells stood '
       'still', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     ask(16);
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     ask(20);
+    final before = stops.armed.last;
 
     store.clear();
     expect(store.debugBusy, isFalse, reason: 'nothing waits past a clear');
-    store.debugZoomSettles = const Duration(hours: 1);
     await baked(24);
     ask(16);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    before.fire();
+    await aWhile();
     expect(
       landings,
       3,
@@ -274,46 +293,51 @@ void main() {
   });
 
   test('a zoom begun after a clear stops as any other', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     ask(20);
 
     store.clear();
     await baked(24);
     ask(20);
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
   });
 
   test('a span queued at a jump and stretched by the next step waits for '
       'the stop — the jump\'s raster is not made', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     expect(ask(10), isNull, reason: '⛔전제: queued, past twice');
     ask(16);
+    await aWhile();
+    expect(landings, 1, reason: 'the jump\'s raster is not made');
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    await aWhile();
     expect(landings, 2, reason: 'one raster, at the stop');
     expect(ask(16)!.width, 4 * 16 * 2);
   });
 
   test('each step puts the stop off — a zoom that goes on is not stopped '
       'by the time since its first step', () async {
-    store.debugZoomSettles = const Duration(seconds: 4);
     await baked(24);
 
     ask(20);
-    await Future<void>.delayed(const Duration(seconds: 3));
+    final first = stops.running.single;
     ask(16);
-    await Future<void>.delayed(const Duration(seconds: 2));
-    expect(landings, 1, reason: 'four seconds have not passed since a step');
+    expect(first.isActive, isFalse, reason: 'the step put the first off');
+    expect(
+      stops.running.single,
+      isNot(same(first)),
+      reason: 'and armed its own',
+    );
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     expect(ask(16)!.width, 4 * 16 * 2);
   });
 
   test('a zoom that came back stands where its paint last asked — a '
       'warm-up a step asked is let go', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
 
     ask(16);
@@ -325,13 +349,13 @@ void main() {
     );
     await aWhile();
     expect(ask(24), same(old));
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
     expect(landings, 1, reason: 'the span past the edge was asked at 16');
   });
 
   test('a warm-up the zoom held goes on when it stops, though nothing it '
       'stretched is left to raster', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
     await baked(12, start: 4);
 
@@ -345,23 +369,24 @@ void main() {
     await aWhile();
     expect(landings, 2, reason: '⛔전제: the warm-up waits for the stop');
     expect(ask(12, start: 4), isNotNull, reason: 'the row stands at 12');
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
   });
 
   test('a second zoom after one that came back stops as any other', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
     ask(16);
     expect(ask(24), same(old));
-    await Future<void>.delayed(const Duration(seconds: 3));
+    stop();
+    await aWhile();
 
     ask(16);
+    stop();
     expect(await pollUntil(() => landings == 2), isTrue);
     expect(ask(16)!.width, 4 * 16 * 2);
   });
 
   test('another row\'s warm-up is not let go at this row\'s stop', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     await baked(24);
 
     ask(16);
@@ -379,19 +404,25 @@ void main() {
       spanEndIndexExclusive: 4,
       devicePixelRatio: 2.0,
     );
+    stop();
     expect(await pollUntil(() => landings == 3), isTrue);
   });
 
   test('a repaint at the extent the zoom already waits at does not put '
       'the stop off', () async {
-    store.debugZoomSettles = const Duration(seconds: 3);
     await baked(24);
 
     ask(16);
-    await Future<void>.delayed(const Duration(seconds: 2));
+    final armed = stops.running.single;
     ask(16);
-    await Future<void>.delayed(const Duration(milliseconds: 2200));
-    expect(landings, 2, reason: 'stopped 3s after the step, not the repaint');
+    expect(
+      stops.armed.single,
+      same(armed),
+      reason: 'the stop the step armed, not one the repaint armed',
+    );
+    expect(armed.isActive, isTrue);
+    stop();
+    expect(await pollUntil(() => landings == 2), isTrue);
   });
 
   // 🚨Through the row's own cut: a span is 512 px of cells
@@ -401,7 +432,6 @@ void main() {
   test('🚨a zoom that cuts the row into other spans shows its old tiles, '
       'scaled over the frames they hold, and rasters nothing until it '
       'stops', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     expect(
       at(20).tileSpans.shown,
       isNot(at(24).tileSpans.shown),
@@ -464,6 +494,7 @@ void main() {
     await aWhile();
     expect(landings, rastered, reason: 'nothing rastered at a step\'s extent');
 
+    stop();
     expect(await pollUntil(() => landings > rastered), isTrue);
     await tileStoreIdle(store);
     final stopped = tilesLaidBy(
@@ -486,7 +517,6 @@ void main() {
   // Kept one at a time, the row's other tile lands and the one shown before
   // it is let go.
   test('a tile the store let go stands in for nothing', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     store.debugCapacity = 1;
     addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
     tilesLaidBy(
@@ -539,7 +569,6 @@ void main() {
 
   test('a tile stands in only at its own pixel ratio and in a row as thick '
       'as its own', () async {
-    store.debugZoomSettles = const Duration(seconds: 2);
     final old = await baked(24);
     expect(ask(20), same(old), reason: '⛔CONTROL: but for the extent, it does');
     expect(

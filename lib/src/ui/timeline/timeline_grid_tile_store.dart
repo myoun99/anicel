@@ -175,7 +175,7 @@ class TimelineGridTileStore {
   /// zoom-step-lays-out-five-times-the-07-25-count-Q1: 「줌이 멈출 때까지
   /// 늘린 옛 타일만 보여 준다」): shown, each its old tile scaled, and rastered
   /// at the new cell extent once the zoom has stood still for
-  /// [debugZoomSettles] — once, however many steps it took within the
+  /// [zoomSettles] — once, however many steps it took within the
   /// band a tile stretches across ([_standInFor]); a step past it rasters
   /// then, as before.
   ///
@@ -194,7 +194,7 @@ class TimelineGridTileStore {
   /// storyboard's run along one axis at two zooms.
   final Map<String, double> _zooming = <String, double>{};
 
-  /// What ends the zoom [debugZoomSettles] after its latest step.
+  /// What ends the zoom [zoomSettles] after its latest step.
   Timer? _zoomStops;
 
   /// The cell extent each row last stood still at. A stretched span asked
@@ -206,11 +206,14 @@ class TimelineGridTileStore {
   /// the user's example, 「예: 0.15초」.
   static const Duration zoomSettles = Duration(milliseconds: 150);
 
-  /// [zoomSettles] — longer in a test that steps a zoom on a real clock,
-  /// where a loaded machine could stretch a step's gap past it.
-  /// ⚠️TEST ONLY.
+  /// How the stop is timed, [zoomSettles] after the zoom's latest step:
+  /// [Timer.new], or a timer a test fires by hand. ⚠️TEST ONLY.
+  ///
+  /// ↩️A test stretched the wait instead (`debugZoomSettles`, two seconds
+  /// or an hour) and stepped on a real clock, 0.2–1 s short of the stop — a
+  /// margin a loaded machine could outlast (타임라인/콘티 리뷰 2026-11-09 C).
   @visibleForTesting
-  Duration debugZoomSettles = zoomSettles;
+  Timer Function(Duration, void Function()) debugZoomTimer = Timer.new;
 
   /// The latest painter each row's paint asked through, with the device
   /// pixel ratio it asked at — whom a warm-up asks for its next page
@@ -569,7 +572,7 @@ class TimelineGridTileStore {
     }
     _zooming[asked.row] = extent;
     _zoomStops?.cancel();
-    _zoomStops = Timer(debugZoomSettles, _zoomStopped);
+    _zoomStops = debugZoomTimer(zoomSettles, _zoomStopped);
   }
 
   /// The zoom stood still: each row it ran in stands at the extent its
