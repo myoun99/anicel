@@ -2,12 +2,16 @@
 //! canvas letters paint it (canvas_letter_passes.dart `CanvasLetterPasses`):
 //! its layers bottom to top, each one paint's colour over the cover its
 //! pass rastered, laid by the executor into straight RGBA8 tiles over one
-//! rectangle — a chain's (`effects::blur::TileRect`), for the plan above it
-//! to lay as a row (`chain::laid_as`) by copy. The letters are rastered
-//! where they stand on the canvas's grid, their row's placement in their
-//! own affine, so nothing poses them again (engine-canvas-letters;
-//! connection-round-checklist 11-07 00:37 — the canvas grid, 🗣️Q1 of that
-//! card, 유저 2026-11-07: 「캔버스 화소로 보인다」).
+//! rectangle — a chain's (`effects::blur::TileRect`). The letters are
+//! rastered where they stand on their row's paper, a canvas pixel a pixel
+//! — the PLATE — and the plate is laid as the row's picture is, under its
+//! placement, by the plan (engine-canvas-letters; connection-round-
+//! checklist 11-07 00:37 — the canvas grid, 🗣️Q1 of that card, 유저
+//! 2026-11-07: 「캔버스 화소로 보인다」; the law of cel-number-on-the-engine-
+//! letters: 「커널에는 판의 자리만 넘기고, 배치는 행처럼 합성이 준다」).
+//! ↩️They were to be rastered where the row's placement put them on the
+//! canvas, so nothing posed them again: a turned row's letters would have
+//! been smooth over its pixels.
 //!
 //! A layer is laid as a row is: its colour, the cover as the row's alpha,
 //! at the colour's alpha as the row's opacity. So a pass of translucent
@@ -101,14 +105,17 @@ pub(crate) struct Pass {
 
 /// `passes`, bottom to top, set in `faces` and laid on the grid by
 /// `to_grid`: each pass's cover ([`covered`]) laid as a layer
-/// ([`lettered`]). Submits the work; the caller waits.
+/// ([`lettered`]). Submits the work; the caller waits. `Some(None)` for
+/// passes that cover no pixel — letters of spaces, a row named nothing —:
+/// no picture, which the app lays as nothing, where the walk's plate of
+/// them is clear.
 pub(crate) fn set(
     engine: &Engine,
     composite: &Composite,
     faces: &Faces,
     to_grid: Affine,
     passes: &[Pass],
-) -> Option<Lettered> {
+) -> Option<Option<Lettered>> {
     let layers: Vec<Layer> = passes
         .iter()
         .filter_map(|pass| {
@@ -119,7 +126,10 @@ pub(crate) fn set(
             })
         })
         .collect();
-    lettered(engine, composite, &layers)
+    if rect_of(&layers).is_none() {
+        return Some(None);
+    }
+    lettered(engine, composite, &layers).map(Some)
 }
 
 /// The picture of letters: straight RGBA8 tiles over `rect`, tile after

@@ -375,6 +375,7 @@ fn passes_are_set_outline_under_fill_on_the_gpu() {
             },
         ],
     )
+    .flatten()
     .expect("set");
     assert_eq!(pixel_of(&picture, -1, 5), 0xFF20_2020, "outside the fill, the outline");
     assert_eq!(pixel_of(&picture, 1, 5), 0xFFFF_FFFF, "over the outline, the fill");
@@ -392,8 +393,8 @@ fn a_hard_pass_is_cut_on_the_gpu() {
         paint: Paint::Fill,
         shapes: here(vec![Shape::Rect([0, 0, 3 * 64 + 32, 64])]),
     };
-    let smooth = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(false)]).expect("set");
-    let hard = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(true)]).expect("set");
+    let smooth = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(false)]).flatten().expect("set");
+    let hard = set(rig.engine, &rig.composite, faces(), IDENTITY, &[pass(true)]).flatten().expect("set");
     assert_eq!(pixel_of(&smooth, 3, 0), 127 << 24 | 0x0020_30D0);
     assert_eq!(pixel_of(&hard, 3, 0), 0);
     assert_eq!(pixel_of(&hard, 2, 0), 0xFF20_30D0);

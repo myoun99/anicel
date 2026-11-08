@@ -249,8 +249,9 @@ pub unsafe extern "C" fn gpu_engine_letters_rect(letters: *mut Lettering, at: *c
 /// Sets `letters` in `faces` and lays them on the grid by `to_grid` — the
 /// layout's space to the grid's, six floats —, and submits the work: the
 /// picture, its rectangle written to `rect` as its first tile's column and
-/// row and how many columns and rows of tiles it spans. Null on failure,
-/// and for letters that cover no pixel; see the last error.
+/// row and how many columns and rows of tiles it spans. Null for letters
+/// that cover no pixel, `rect` none — zero columns of zero rows —, and on
+/// failure, `rect` as it was; see the last error.
 ///
 /// # Safety
 /// Every pointer is live, the executor made on `engine`; `to_grid` holds
@@ -273,10 +274,13 @@ pub unsafe extern "C" fn gpu_engine_letters_set(
     let Some(lettered) = set(engine, composite, faces, to_grid, &letters.passes) else {
         return std::ptr::null_mut();
     };
-    let at = lettered.rect;
+    let at = lettered.as_ref().map_or([0; 4], |lettered| {
+        let at = lettered.rect;
+        [at.x0, at.y0, at.columns as i32, at.rows as i32]
+    });
     // SAFETY: `rect` holds four words.
-    unsafe { *rect.cast::<[i32; 4]>() = [at.x0, at.y0, at.columns as i32, at.rows as i32] };
-    Box::into_raw(Box::new(lettered))
+    unsafe { *rect.cast::<[i32; 4]>() = at };
+    lettered.map_or(std::ptr::null_mut(), |lettered| Box::into_raw(Box::new(lettered)))
 }
 
 /// Copies `lettered`'s pixels — straight RGBA8, tile after tile, row by

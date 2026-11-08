@@ -119,6 +119,7 @@ fn a_picture_built_call_by_call_is_the_one_built_in_rust() {
             },
         ],
     )
+    .flatten()
     .expect("set");
     let at = built.rect;
     let built = ([at.x0, at.y0, at.columns as i32, at.rows as i32], read_buffer(rig.engine, &built.tiles));
@@ -191,4 +192,31 @@ fn clusters_that_do_not_cut_the_letters_whole_are_refused() {
     assert!(!ask(&[1, 9]), "past the letters");
     // SAFETY: made by `gpu_engine_letters_new`.
     unsafe { gpu_engine_letters_free(letters) };
+}
+
+#[test]
+fn letters_that_cover_nothing_are_no_picture_and_no_failure() {
+    let rig = rig();
+    let faces = handed();
+    let letters = gpu_engine_letters_new();
+    // SAFETY: `letters` is live.
+    unsafe {
+        assert!(gpu_engine_letters_pass(letters, 0xFF00_0000, false, 0));
+        assert!(run_of(letters, " ", WORDS));
+    }
+    let set_in = |to_grid: *const f32| {
+        let mut rect = [-1; 4];
+        // SAFETY: every pointer is live or null where the ABI says so.
+        let lettered =
+            unsafe { gpu_engine_letters_set(letters, rig.engine, &rig.composite, faces, to_grid, rect.as_mut_ptr()) };
+        (lettered.is_null(), rect)
+    };
+    assert_eq!(set_in(WORDS.as_ptr()), (true, [0; 4]), "a space: no picture, its rectangle none");
+    assert_eq!(set_in(std::ptr::null()), (true, [-1; 4]), "a failure: its rectangle as it was");
+    assert!(last_error().contains("no placement was given"), "{}", last_error());
+    // SAFETY: each came from its `_new`.
+    unsafe {
+        gpu_engine_letters_free(letters);
+        gpu_engine_faces_free(faces);
+    }
 }
