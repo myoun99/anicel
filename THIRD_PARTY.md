@@ -69,6 +69,18 @@ of `COPYING`. Until the connection round (2026-11-08) it was vendored as C
 under `packages/qa_native/src/third_party/rnnoise/`, which shipped without
 that entry.
 
+### Zstandard (ported to Rust)
+
+The engine's compressor (`packages/gpu_engine/rust/native/compress`) is a
+port of zstd **1.5.6** (`github.com/facebook/zstd`, tag `v1.5.6`, commit
+`794ea1b`) — its level-9 compressor and its decoder, writing the frames
+the C wrote byte for byte. The C amalgamation it was ported from is
+vendored at `packages/qa_native/src/third_party/zstd/` (its
+`README.anicel.md` says how it was made). **BSD 3-Clause** — the text is
+`LICENSE` in both folders, bundled at `assets/licenses/LICENSE-zstd.txt`
+and shown in the app's About ▸ licenses screen (a binary must reproduce
+the notice).
+
 > When native third-party sources are vendored into `native/` (or into a
 > platform plugin package), each one gets an entry here with: what it is,
 > where it came from, its version/commit, and its license text or a path

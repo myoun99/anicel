@@ -10,7 +10,6 @@ import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
@@ -80,22 +79,19 @@ void main() {
     // One tile, of a size no tile wears — as above.
     const tileSize = 24;
     final length = BitmapTile.bytesFor(tileSize);
-    // Deflate: the worker reads it with no engine of its own to find.
-    QaCelCompressor.debugInstanceOverride = () => null;
-    final AnicelCelBlob blob;
-    try {
-      blob = AnicelCelBlob.ofSurface(
-        celTextTestKey,
-        AnicelCelEntry(
-          key: celTextTestKey,
-          canvasSize: const CanvasSize(width: tileSize, height: tileSize),
-          tileSize: tileSize,
-          tiles: [(x: 0, y: 0, pixels: Uint8List(length))],
-        ).toSurface(),
-      );
-    } finally {
-      QaCelCompressor.debugInstanceOverride = null;
-    }
+    // ↩️Deflate until the connection round (connection-round-checklist H),
+    // so the worker had no C engine of its own to find: the compressor is
+    // the code asset's now, which every isolate reaches, so the blob is
+    // the zstd one a save writes.
+    final blob = AnicelCelBlob.ofSurface(
+      celTextTestKey,
+      AnicelCelEntry(
+        key: celTextTestKey,
+        canvasSize: const CanvasSize(width: tileSize, height: tileSize),
+        tileSize: tileSize,
+        tiles: [(x: 0, y: 0, pixels: Uint8List(length))],
+      ).toSurface(),
+    );
 
     final laid = await layCelInWorker(
       blob,

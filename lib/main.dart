@@ -146,6 +146,12 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield licenceEntry(const [
       'RNNoise',
     ], await rootBundle.loadString('assets/licenses/LICENSE-RNNoise.txt'));
+    // zstd's BSD-3 asks a binary to reproduce its notice, and the engine's
+    // compressor is a port of it (packages/gpu_engine/rust/native/compress,
+    // whose LICENSE this is — 관제 2026-11-08, connection-round-checklist).
+    yield licenceEntry(const [
+      'Zstandard',
+    ], await rootBundle.loadString('assets/licenses/LICENSE-zstd.txt'));
     // The dxcompiler.dll the GPU engine compiles its DX12 shaders with ships
     // beside it on Windows: one entry for the three licence texts its zip
     // carries, since the zip does not say which file each covers

@@ -690,7 +690,7 @@ class BrushFrameStore {
   //    re-inserts). Byte-budgeted by [hotCelByteBudget].
   //  - COLD-PARKED: one file per cel in the run's 이사대기 room, holding
   //    the cel encoded + COMPRESSED — the SAME bytes the .anicel archive
-  //    stores. zstd where the engine answered, deflate as the floor, and
+  //    stores. zstd unless the engine refuses, deflate as the floor, and
   //    the blob's codec byte says which (see [compressAnicelPayload] — ONE
   //    place decides). Over-budget hot cels cool here in a background
   //    isolate.
@@ -1660,14 +1660,15 @@ class BrushFrameStore {
   /// A save passes a cold blob through byte-for-byte, so whatever this
   /// wrote is what the .anicel gets. Two consequences worth knowing:
   ///
-  /// • The isolate re-probes for the engine, because statics do not cross
-  ///   an isolate boundary. If it could not find it there while the main
-  ///   isolate could, every cel would cool to deflate and NOTHING would
-  ///   say so — the floor is silent by design. `the_cooling_path_is_zstd_test`
-  ///   is the only thing standing between that and a silent regression.
+  /// • The isolate finds the engine's compressor by its code asset, as the
+  ///   main isolate does. If it could not, every cel would cool wrong and
+  ///   only a test would say so — `the_cooling_path_is_zstd_test` holds a
+  ///   background isolate's cooled cel to zstd. ↩️Until the connection round
+  ///   (connection-round-checklist H) it re-probed for the C engine, and a
+  ///   miss there cooled every cel to deflate in silence.
   /// • A「save at maximum compression」cannot be a flag on the save: the
   ///   cold and file-ref tiers hand over bytes that were compressed here,
-  ///   minutes earlier, at [anicelZstdLevel] — the only level there is.
+  ///   minutes earlier, at zstd's one level (native/compress's `compress`).
   /// The most recently used cel never cools — the one being painted or
   /// displayed must not thrash even if it alone exceeds the budget.
   ///

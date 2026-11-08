@@ -58,26 +58,22 @@ pub unsafe fn export<F: Copy>(name: &str) -> F {
 
 /// `medium` framed as the save frames it (`writeMediaBlob`): the block size,
 /// the medium's length, the count of blocks and each one's length, then the
-/// blocks — every `block_bytes` of it the C's level-9 zstd frame.
+/// blocks — every `block_bytes` of it the level-9 zstd frame, the Rust
+/// compressor's (native/compress, the C's byte for byte). ↩️The C engine's
+/// `qa_zstd_compress` wrote them until the connection round deleted it
+/// (connection-round-checklist H, 2026-11-08).
 ///
 /// One writing of it for every crate whose tests read a framed span (저장
 /// 2026-11-07): media's span and stream tests and audio's each laid it out
 /// themselves, and the video decoder's would have been a fourth.
 /// `gpu_engine`'s `kernels/shared/one_framing.rs` reads for another.
 pub fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
-    type Bound = extern "C" fn(i64) -> i64;
-    type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
-    // SAFETY: qa_compress.c's declarations.
-    let (bound, compress) =
-        unsafe { (export::<Bound>("qa_zstd_compress_bound"), export::<Compress>("qa_zstd_compress")) };
     let blocks: Vec<Vec<u8>> = medium
         .chunks(block_bytes)
         .map(|block| {
-            let mut frame = vec![0u8; bound(block.len() as i64) as usize];
-            // SAFETY: both buffers hold the sizes passed.
-            let wrote =
-                unsafe { compress(frame.as_mut_ptr(), frame.len() as i64, block.as_ptr(), block.len() as i64, 9) };
-            frame.truncate(wrote as usize);
+            let mut frame = vec![0u8; compress::qa_zstd_compress_bound(block.len() as i64) as usize];
+            let wrote = compress::compress(&mut frame, block).expect("a block compresses");
+            frame.truncate(wrote);
             frame
         })
         .collect();

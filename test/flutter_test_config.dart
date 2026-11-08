@@ -44,8 +44,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // 「Where is the engine」 had two answers and they disagreed.
   // `nativeEngineLibraryPathOrNull` looks under `build/native_standalone`,
   // so the suites that use it ran; `openQaEngineLibrary` — which is what
-  // PRODUCTION calls, and therefore what `QaCelCompressor.instance` calls —
-  // tries `QA_ENGINE_PATH` and then the bare library name beside the
+  // PRODUCTION calls, and therefore what `QaMediaSpan` calls (↩️and the
+  // compressor, until the connection round moved it into the Rust engine)
+  // — tries `QA_ENGINE_PATH` and then the bare library name beside the
   // executable, and `flutter test` has neither. So every suite gated on the
   // compressor skipped SILENTLY with the DLL sitting right there: 27 pins
   // over the zstd block frames, the carried conform and the staged blob

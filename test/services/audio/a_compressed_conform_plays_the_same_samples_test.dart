@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
@@ -25,11 +24,6 @@ import '../../helpers/temp_dir.dart';
 /// the very end — because the boundary is the only place the two designs
 /// can disagree.
 void main() {
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   late Directory directory;
 
   setUp(() async {
@@ -66,8 +60,8 @@ void main() {
   int samplesPerBlock(int blockBytes) => blockBytes ~/ 4;
 
   test('🚨a framed conform returns the SAME samples as the plain one', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final perBlock = samplesPerBlock(mediaBlockBytes);
@@ -126,8 +120,8 @@ void main() {
   });
 
   test('a window still reads only the blocks it lands in', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final perBlock = samplesPerBlock(mediaBlockBytes);
@@ -153,8 +147,8 @@ void main() {
   });
 
   test('the NAME decides how it is read, and open follows it', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final wav = rampWav(20000);

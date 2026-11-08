@@ -1,28 +1,13 @@
-//! The Rust compressor against the engine's C (native/oracle): every frame
-//! held to the bytes `qa_zstd_compress(…, 9)` writes, and decoded back by
-//! the Rust decoder.
-
-use oracle::export;
+//! The Rust compressor held to the bytes the C engine's
+//! `qa_zstd_compress(…, 9)` wrote — every frame's, kept in the ledger — and
+//! decoded back by the Rust decoder. ↩️Until the connection round deleted
+//! the C (connection-round-checklist H, 2026-11-08) each frame was held to
+//! the C's itself (native/oracle), byte for byte; the rows were pinned
+//! while both answered alike (connection-round-checklist A, 관제
+//! 2026-11-07).
 
 use super::compress;
-use crate::tests::{Answers, Noise, compressed, kinds};
-
-type Compress = unsafe extern "C" fn(*mut u8, i64, *const u8, i64, i32) -> i64;
-type Bound = extern "C" fn(i64) -> i64;
-
-/// The C's answer for `data` into `capacity` bytes: its frame, or None
-/// where it answers 0.
-fn c_compress(data: &[u8], capacity: usize) -> Option<Vec<u8>> {
-    // SAFETY: qa_compress.c — `int64_t qa_zstd_compress(uint8_t*, int64_t, const uint8_t*, int64_t, int32_t)`.
-    let compress = unsafe { export::<Compress>("qa_zstd_compress") };
-    let mut frame = vec![0u8; capacity.max(1)];
-    // SAFETY: both buffers hold the sizes passed.
-    let written = unsafe { compress(frame.as_mut_ptr(), capacity as i64, data.as_ptr(), data.len() as i64, 9) };
-    (written > 0).then(|| {
-        frame.truncate(written as usize);
-        frame
-    })
-}
+use crate::tests::{Answers, Noise, kinds};
 
 /// The Rust's answer for `data` into `capacity` bytes.
 fn ours(data: &[u8], capacity: usize) -> Option<Vec<u8>> {
@@ -34,29 +19,19 @@ fn ours(data: &[u8], capacity: usize) -> Option<Vec<u8>> {
 }
 
 fn bound(size: usize) -> usize {
-    // SAFETY: qa_compress.c — `int64_t qa_zstd_compress_bound(int64_t)`.
-    let bound = unsafe { export::<Bound>("qa_zstd_compress_bound") };
-    bound(size as i64) as usize
+    crate::qa_zstd_compress_bound(size as i64) as usize
 }
 
-/// The Rust's frame of `data` is the C's, and decodes to `data`.
+/// The Rust's frame of `data`, which decodes to `data` — into the row the
+/// ledger holds to the C's.
 fn same_frame(answers: &mut Answers, data: &[u8], what: &str) {
-    let theirs = compressed(data, 9);
     let mine = ours(data, bound(data.len())).unwrap_or_else(|| panic!("{what}: the Rust compresses it"));
-    let first = mine.iter().zip(&theirs).position(|(a, b)| a != b);
-    assert!(
-        first.is_none() && mine.len() == theirs.len(),
-        "{what}: {} bytes where the C writes {}, first apart at {first:?}",
-        mine.len(),
-        theirs.len(),
-    );
     let mut back = vec![0u8; data.len()];
     assert_eq!(crate::frame::decompress(&mut back, &mine), Ok(data.len()), "{what}: decoded whole");
     assert!(back == data, "{what}: the input back");
     answers.add(mine.len() as i64, &mine);
 }
 
-// Sizes at each turn of level 9: the window shrunk to small inputs, the
 // tree up to 16 KiB and the rows past it, the parameter rows at 128 KiB
 // and 256 KiB, the content size's forms, stored blocks under 7 bytes, and
 // blocks of 128 KiB in a row behind a window of 4 MiB.
@@ -108,22 +83,20 @@ fn mixed_inputs_compress_to_the_c_s_frame() {
     answers.pinned("compress/encode-mixed-inputs");
 }
 
-// Too small a destination: the Rust refuses where the C answers 0, and
-// writes what the C writes where it does not — a block stored, say, that
-// the room did not take coded.
+// Too small a destination: the Rust refuses where the C answered 0, and
+// writes what the C wrote where it did not (the ledger's) — a block stored,
+// say, that the room did not take coded.
 #[test]
 fn a_short_destination_is_answered_as_the_c_answers_it() {
     let mut answers = Answers::default();
     for &size in &[1, 7, 100, 5000, 16_385, 140_000] {
         for (kind, data) in kinds(size, size as u64 + 1) {
-            let whole = compressed(&data, 9).len();
+            let whole = ours(&data, bound(size)).unwrap_or_else(|| panic!("{kind} × {size}: the Rust compresses it")).len();
             let mut capacities: Vec<usize> = (0..24).collect();
             capacities.extend([whole / 2, whole - 4, whole - 3, whole - 1, whole, whole + 1]);
             capacities.extend((0..8).map(|k| whole * (k + 1) / 9));
             for capacity in capacities {
-                let what = format!("{kind} × {size} into {capacity}");
                 let mine = ours(&data, capacity);
-                assert!(mine == c_compress(&data, capacity), "{what}: the Rust's answer is the C's");
                 // 0 for a refusal, as qa_zstd_compress answers it.
                 answers.add(mine.as_ref().map_or(0, |frame| frame.len() as i64), mine.as_deref().unwrap_or_default());
             }

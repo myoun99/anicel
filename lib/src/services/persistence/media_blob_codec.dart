@@ -105,7 +105,6 @@ import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import '../../native/qa_cel_compressor.dart';
-import 'anicel_payload_codec.dart';
 
 /// Uncompressed bytes per block, for entries written from now on.
 ///
@@ -380,16 +379,15 @@ int _fill(
 /// not need every block's length before the first one is compressed.
 ///
 /// False means「do not frame this」, and the caller writes the same file
-/// verbatim over the top. Every exit takes it: no engine, a short source, a
-/// block the engine refused, or an allowance already spent.
+/// verbatim over the top. Every exit takes it: nothing to frame, a short
+/// source, a block the engine refused, or an allowance already spent.
 bool _writeFramedBlocks(
   RandomAccessFile out,
   int length,
   int Function(Uint8List, int, int) readInto,
   int blockBytes,
 ) {
-  final compressor = QaCelCompressor.instance;
-  if (compressor == null || !compressor.isSupported || length <= 0) {
+  if (length <= 0) {
     return false;
   }
   final blockCount = (length + blockBytes - 1) ~/ blockBytes;
@@ -410,9 +408,8 @@ bool _writeFramedBlocks(
     if (_fill(buffer, at, want, readInto) != want) {
       return false; // The source ran short — verbatim says what is there.
     }
-    final block = compressor.compress(
+    final block = QaCelCompressor.compress(
       Uint8List.sublistView(buffer, 0, want),
-      level: anicelZstdLevel,
     );
     if (block == null) {
       return false;

@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
 import '../../helpers/temp_dir.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
@@ -28,11 +27,6 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 /// reader against a fixture of its own; this is where the two sides of the
 /// format meet, so a writer and a reader that drifted apart go red here.
 void main() {
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   late Directory directory;
   late List<({int blocksDecoded, int storedBytesRead})> costs;
 
@@ -81,8 +75,8 @@ void main() {
   }
 
   test('a window reads only the block it lands in', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
@@ -104,8 +98,8 @@ void main() {
   });
 
   test('a window straddling a boundary reads both blocks and no third', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
@@ -121,8 +115,8 @@ void main() {
   });
 
   test('the whole file comes back byte for byte', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
@@ -132,8 +126,8 @@ void main() {
   });
 
   test('a read past the end is short, not a throw and not garbage', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final source = sourceOf(200 * 1024);
@@ -149,8 +143,8 @@ void main() {
 
   test('🚨many small windows through ONE reader decode their block ONCE — '
       'PDFium reads a few hundred bytes at a time', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final source = sourceOf(mediaBlockBytes * 3 + 1000);
@@ -171,8 +165,8 @@ void main() {
   });
 
   test('a reader reads across the file, and back', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final source = sourceOf(mediaBlockBytes * 2 + 77);
@@ -216,8 +210,8 @@ void main() {
   });
 
   test('a truncated entry says so rather than returning short data', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final (framed: _, :entry, blocks: _, index: _) = written(
@@ -235,8 +229,8 @@ void main() {
   });
 
   test('🚨an entry written at ANOTHER block size still windows correctly', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     // 4MB is what this app wrote until the decompression measurement moved
@@ -270,10 +264,6 @@ void main() {
 
   test('incompressible bytes are stored, so a window into them never comes '
       'here at all', () {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final random = Random(4);
     final noise = Uint8List.fromList(
       List<int>.generate(128 * 1024, (_) => random.nextInt(256)),

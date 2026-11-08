@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/native/qa_cel_compressor.dart';
+import 'package:anicel/src/native/qa_media_span.dart';
 
 import '../helpers/native_engine_path.dart';
 
@@ -59,9 +59,14 @@ void main() {
     // ⚠️Skips only when there is no engine at all, which is the laptop
     // case the corpus deliberately supports. It does NOT skip when the
     // wiring is missing, which is the bug.
+    //
+    // ↩️It asked the compressor until the connection round (connection-
+    // round-checklist H) moved that into the Rust engine, which no path
+    // finds; the span reader is what the production resolver opens now,
+    // and what the framed-media pins gate on.
     final built = nativeEngineLibraryPathOrNull();
     expect(
-      QaCelCompressor.instance?.isSupported ?? false,
+      QaMediaSpan.available,
       isTrue,
       reason:
           'a native engine is built at $built, but the resolver production '

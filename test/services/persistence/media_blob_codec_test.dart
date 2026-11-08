@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
+import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import '../../helpers/temp_dir.dart';
@@ -22,11 +23,6 @@ import '../../helpers/temp_dir.dart';
 /// one reader is — `qa_media_span_test.c`, and against this writer's files
 /// in `framed_media_reads_only_the_blocks_it_needs_test.dart`.
 void main() {
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   /// Compressible bytes — a repeating pattern with enough variety that
   /// zstd cannot fold it to nothing, so the ratios stay realistic.
   Uint8List compressible(int length) {
@@ -92,10 +88,6 @@ void main() {
     }
 
     test('bytes that will not shrink are stored, not framed', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       // 🚨Random bytes, and the comment used to call them「a JPEG or an
       // MP4」. Measured, a JPEG saves 15–21% and an MP4 6.7% — they are
       // FRAMED. What is genuinely incompressible is noise (and PNG, at
@@ -114,8 +106,8 @@ void main() {
     });
 
     test('compressible bytes round-trip through the framed form', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
+      if (!QaMediaSpan.available) {
+        markTestSkipped('no span reader on this run');
         return;
       }
       final source = compressible(300 * 1024);
@@ -130,8 +122,8 @@ void main() {
     });
 
     test('a file longer than one block gets one index entry per block', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
+      if (!QaMediaSpan.available) {
+        markTestSkipped('no span reader on this run');
         return;
       }
       // Two blocks and a bit, at a block size a test can afford.
@@ -148,12 +140,13 @@ void main() {
       expect(framedEntryBytes(Uint8List(0)), isNull);
     });
 
-    test('without an engine, everything is stored — no deflate floor here', () {
-      QaCelCompressor.debugInstanceOverride = () => null;
-      addTearDown(() {
-        QaCelCompressor.debugInstanceOverride = null;
-        QaCelCompressor.debugResetForTests();
-      });
+    // ↩️「without an engine」 until the connection round put the compressor
+    // in the engine the app ships with (connection-round-checklist H): a
+    // refusal is what is left of that world, and the floor answers it.
+    test('where zstd refuses, everything is stored — no deflate floor here',
+        () {
+      QaCelCompressor.debugForceRefusal = true;
+      addTearDown(() => QaCelCompressor.debugForceRefusal = false);
       expect(
         framedEntryBytes(compressible(64 * 1024)),
         isNull,
@@ -175,10 +168,6 @@ void main() {
     });
 
     test('⛔a stored entry is the FILE, with nothing in front of it', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       final random = Random(3);
       final noise = Uint8List.fromList(
         List<int>.generate(8 * 1024, (_) => random.nextInt(256)),
@@ -237,10 +226,6 @@ void main() {
     });
 
     test('🚨 no read is larger than one block, whatever the asset weighs', () {
-      if (!engineHere()) {
-        markTestSkipped('no engine on this run');
-        return;
-      }
       const block = 64 * 1024;
       final random = Random(11);
       final noise = Uint8List.fromList(

@@ -29,6 +29,7 @@ void main() {
     ];
     expect(texts, contains("'assets/licenses/LICENSE-PDFium.txt'"));
     expect(texts, contains("'assets/licenses/LICENSE-RNNoise.txt'"));
+    expect(texts, contains("'assets/licenses/LICENSE-zstd.txt'"));
     expect(texts, contains("'assets/licenses/rust_crates.json'"));
     expect(texts, contains("'assets/fonts/OFL-NotoSansSC.txt'"));
     for (final text in texts) {

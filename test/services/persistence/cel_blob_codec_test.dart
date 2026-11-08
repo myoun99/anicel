@@ -166,36 +166,30 @@ void main() {
     }
   });
 
-  test('🚨with NO engine it writes deflate, and that blob reads anywhere', () {
-    // ⛔The absence is FORCED, not assumed. The first version of this test
+  test('🚨where zstd refuses it writes deflate, and that blob reads '
+      'anywhere', () {
+    // ⛔The refusal is FORCED, not assumed. The first version of this test
     // asserted「flutter_tester loads no engine」— which is true of the
     // ordinary suite and false of the two CI jobs that run WITH the engine
     // on PATH, so it went red there and nowhere else. A test that asserts a
-    // property of its RUNNER is not testing the code.
-    // The seam, not the path: a bogus path falls THROUGH to the default
-    // search by design, so it cannot say「no engine」on a machine that has
-    // one — which is exactly the two CI jobs this test used to fail in.
-    QaCelCompressor.debugInstanceOverride = () => null;
-
-    addTearDown(() {
-      QaCelCompressor.debugInstanceOverride = null;
-    });
+    // property of its RUNNER is not testing the code. ↩️It forced「no
+    // engine」until the connection round (connection-round-checklist H)
+    // put the compressor in the engine the app ships with.
+    QaCelCompressor.debugForceRefusal = true;
+    addTearDown(() => QaCelCompressor.debugForceRefusal = false);
 
     final blob = AnicelCelBlob.ofSurface(key, surfaceWith(patterned(7)));
     expect(
       blob.codec,
       anicelCodecDeflate,
-      reason: 'no engine means the floor, and the floor is dart:io zlib',
+      reason: 'a refusal means the floor, and the floor is dart:io zlib',
     );
     blob.decoded((back) => expect(back.tiles.single.pixels, patterned(7)));
   });
 
-  test('and whatever codec the ambient build picked, the blob round-trips '
-      'and says which one it used', () {
-    // The invariant that holds in BOTH worlds — the one the runner cannot
-    // make false.
+  test('and otherwise the blob is zstd, round-trips, and says so', () {
     final blob = AnicelCelBlob.ofSurface(key, surfaceWith(patterned(13)));
-    expect(blob.codec, anyOf(anicelCodecDeflate, anicelCodecZstd));
+    expect(blob.codec, anicelCodecZstd);
     blob.decoded((back) => expect(back.tiles.single.pixels, patterned(13)));
   });
 
@@ -204,8 +198,8 @@ void main() {
     // Deflate, so the view kept past the reader is Dart memory a test can
     // read: a zstd one's is freed under it. The spoiling is the same for
     // both ([readAnicelPayload]).
-    setUp(() => QaCelCompressor.debugInstanceOverride = () => null);
-    tearDown(() => QaCelCompressor.debugInstanceOverride = null);
+    setUp(() => QaCelCompressor.debugForceRefusal = true);
+    tearDown(() => QaCelCompressor.debugForceRefusal = false);
 
     test('a view kept past the reader reads spoiled bytes, not the picture '
         '— so a reader that keeps one fails here, on either codec', () {

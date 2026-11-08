@@ -44,6 +44,7 @@ pub use audio_denoise;
 // `@Native`, as the resampler is bound — never through `process()`, whose
 // answer, while both carry a name, is the order the images loaded in.
 pub use audio_mix;
+pub use compress;
 pub use display;
 pub use fx_plugin;
 pub use image_encode;

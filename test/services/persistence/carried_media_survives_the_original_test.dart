@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
+import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/project_media_sources.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
@@ -62,11 +62,6 @@ void main() {
     return path;
   }
 
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
-
   test('품기 stages the bytes at IMPORT, not at save', () async {
     final path = compressibleFile('take.wav');
 
@@ -97,10 +92,6 @@ void main() {
 
   test('the staged bytes are what a save writes, and the entry name says '
       'whether they are framed', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
-      return;
-    }
     final path = compressibleFile('take.wav');
     await pool.addMediaAssets([path], carried: true);
     final staged = stagedCopyIn(session, path)!;
@@ -119,8 +110,8 @@ void main() {
 
   test('🚨a FRAMED carry survives a save and a reopen with its original gone '
       '— the manifest names the entry the archive holds', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final path = compressibleFile('take.wav');
@@ -194,8 +185,8 @@ void main() {
   });
 
   test('a framed staged file still serves a WINDOW', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final path = compressibleFile('take.wav');

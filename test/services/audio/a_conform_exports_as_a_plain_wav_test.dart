@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/native/qa_media_span.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_wav_export.dart';
@@ -28,11 +27,6 @@ void main() {
   });
 
   tearDown(() => deleteTempQuietly(directory));
-
-  bool engineHere() {
-    final compressor = QaCelCompressor.instance;
-    return compressor != null && compressor.isSupported;
-  }
 
   String at(String name) => '${directory.path.replaceAll(r'\', '/')}/$name';
 
@@ -97,8 +91,8 @@ void main() {
   });
 
   test('🚨and a FRAMED conform comes out identical', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     final conform = conformBytes();
@@ -134,8 +128,8 @@ void main() {
 
   test('🚨a FRAMED conform is decoded once through — each block once, not '
       'once per chunk that straddles it', () async {
-    if (!engineHere()) {
-      markTestSkipped('no engine on this run');
+    if (!QaMediaSpan.available) {
+      markTestSkipped('no span reader on this run');
       return;
     }
     // Several blocks, and a copy chunk the conform header knocks out of line
