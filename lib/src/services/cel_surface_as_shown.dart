@@ -55,24 +55,6 @@ BitmapTile celTileAsShown(
   tileSize,
 );
 
-/// [celTileAsShown] over one tile's bytes that are not a tile yet:
-/// [straight], straight rgba written IN PLACE — a live stroke's result,
-/// shown in place of the cel's tile until the pen comes up. Equal to the
-/// last byte to what [celTileAsShown] makes of the tile they become: the
-/// laying ends in the same stamp, and the keys walk each pixel as they walk
-/// a tile's.
-void celStraightTileAsShown(
-  Uint8List straight,
-  List<BitmapTile>? plates,
-  List<ResolvedLayerEffect> effects,
-  int tileSize,
-) {
-  if (plates != null) {
-    layPlatesOverStraight(straight, plates, tileSize);
-  }
-  celSourceEffectsOverStraight(straight, effects);
-}
-
 /// THE SEAM, WHERE A TEXT A HAND CARRIES WILL LAND (F-344-Q3): the region
 /// of its cel the carried text's ink covers, and the straight rgba the cel
 /// will show there once it lands — a row the region's width. Null when it

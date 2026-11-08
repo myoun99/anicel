@@ -107,7 +107,7 @@ BitmapSurface celSurfaceWithTextAsDrawing(BitmapSurface surface, int id) {
 ///
 /// What a live stroke asks for the cel it is drawn on: the tiles it is
 /// still changing have to show the letters over them too
-/// ([layPlatesOverStraight]), or a stroke passing under a text would wipe
+/// ([celTileWithPlatesLaid]), or a stroke passing under a text would wipe
 /// the letters off every tile it touched until the pen came up.
 Map<TileCoord, List<BitmapTile>>? celTextPlatesOver(BitmapSurface surface) {
   if (surface.texts.isEmpty) {
@@ -147,25 +147,6 @@ BitmapTile? celTileWithPlatesLaid(
     }
   }
   return laid;
-}
-
-/// The same laying over a tile's bytes that are not a tile yet: [straight]
-/// — one tile of straight rgba, written IN PLACE — with [plates] stamped
-/// over it bottom → top.
-///
-/// A live stroke's result is bytes in the rasterizer's own staging until
-/// the pen comes up; what it shows meanwhile has to be those bytes under
-/// the cel's texts, and equal to the last byte to what
-/// [celTileWithPlatesLaid] makes of the tile they become — which is why
-/// both end in [_stamp].
-void layPlatesOverStraight(
-  Uint8List straight,
-  List<BitmapTile> plates,
-  int tileSize,
-) {
-  for (final plate in plates) {
-    _stamp(straight, plate, tileSize);
-  }
 }
 
 /// A text's [pixels] laid over [straight] — straight rgba of [region] of

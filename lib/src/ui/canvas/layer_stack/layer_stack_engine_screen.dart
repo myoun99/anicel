@@ -113,7 +113,9 @@ final class EngineStackScreen {
 
 extension on _LayerStackPainter {
   /// [row] as the engine lays it: the paper a solid over the page, a
-  /// surface row its tiles, kept under its cel's lineage.
+  /// surface row its tiles as its painter shows them — a live stroke's in
+  /// their place ([BitmapSurfacePainter.shownSurface]) — kept under its
+  /// cel's lineage.
   EngineRow _engineRowOf(_PaintRow row) => switch (row) {
     _PaintPaper() => EngineSolid(
       argb: paperBackground.paintedArgb,
@@ -139,7 +141,7 @@ extension on _LayerStackPainter {
     Object? lineage,
   }) => EngineTiles(
     lineage: lineage ?? painter.lineage ?? BrushFrameKey.noCel,
-    surface: painter.surface,
+    surface: painter.shownSurface,
     placement: row.placement,
     opacity: row.opacity,
     blendMode: row.blendMode,

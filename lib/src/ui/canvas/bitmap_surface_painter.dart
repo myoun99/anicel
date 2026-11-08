@@ -268,6 +268,28 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// bug: it costs a re-raster and keeps the picture right.
   bool get drawsOnlyFromPublishedState => true;
 
+  /// 🚨THE SURFACE AS THIS PAINTER SHOWS IT, AS TILES: [surface], with the
+  /// tile each coordinate a live stroke replaces shows in its place
+  /// ([ActiveStrokeOverlayModel.shownTiles]) — what a screen that lays tiles
+  /// lays for this row (`EngineStackScreen`). Not what is drawn over the
+  /// tiles: a float, a fill's range — rows of their own there.
+  ///
+  /// ⚠️On the overlay's other roads — a grid of its own, a stroke not
+  /// pre-blended — the stroke is drawn over the tiles, and no tile shows
+  /// it: a host's and a test's, not the app's, where every stroke pre-blends
+  /// on its cel's grid (R27 #4). They go with the C rasterizer (flip lane ⓒ).
+  BitmapSurface get shownSurface {
+    final overlay = overlayModel;
+    if (overlay == null || !_overlayReplacesCoords) {
+      return surface;
+    }
+    return surface.putTiles([
+      for (final MapEntry(key: coord, value: tile)
+          in overlay.shownTiles.entries)
+        (coord: coord, tile: tile),
+    ]);
+  }
+
   /// A PRE-BLENDED overlay on the SAME grid: the base pass skips the
   /// committed tile where an overlay image exists and the overlay pass lays
   /// the result tile with plain srcOver.
