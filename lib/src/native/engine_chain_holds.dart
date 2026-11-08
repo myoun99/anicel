@@ -70,11 +70,10 @@ final class EngineChainHolds {
 
   /// Lets go of every hold.
   void clear() {
-    for (final hold in [..._holds.values, ..._asked.values]) {
+    for (final hold in _holds.values) {
       held.letGo(hold.id);
     }
     _holds.clear();
-    _asked.clear();
   }
 
   /// Lets go of every hold and frees the engine's.

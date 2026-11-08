@@ -173,7 +173,7 @@ void planCompositeTree(
   required ui.Rect paper,
   required EngineLetters letters,
   ChainHolding? holding,
-}) => _TreePlan(plan, hold, paper, letters, holding)._lay(nodes);
+}) => _TreePlan(_TileLaying(plan, hold, paper), letters, holding)._lay(nodes);
 
 /// Where the chains a plan runs are held past it ([GpuHeldChains]): the
 /// hold, and the number [idOf] gives the chain of a node run in a space —
@@ -185,14 +185,14 @@ typedef ChainHolding = ({
 });
 
 class _TreePlan {
-  _TreePlan(this.plan, TileHold hold, this.paper, this.letters, this.holding)
-    : _tiles = _TileLaying(plan, hold, paper);
+  _TreePlan(this._tiles, this.letters, this.holding);
 
-  final GpuPlan plan;
   final _TileLaying _tiles;
-  final ui.Rect paper;
   final EngineLetters letters;
   final ChainHolding? holding;
+
+  GpuPlan get plan => _tiles.plan;
+  ui.Rect get paper => _tiles.paper;
 
   /// Where the steps being laid lie: the canvas, or — while a blur map a
   /// posed row's chain reads is drawn — that row's own space, canvas to it
@@ -287,8 +287,8 @@ class _TreePlan {
       over: (outset) => _bufferOf(group, outset),
       space: _space,
       reads: reads,
-      shows: shows,
     );
+    _hold(chain, shows, _space);
     plan.close(
       opacity: _strengthOf(group.opacity),
       mode: mode,
@@ -322,8 +322,8 @@ class _TreePlan {
       over: (outset) => _bufferOf(adjustment, outset),
       space: _space,
       reads: reads,
-      shows: shows,
     );
+    _hold(chain, shows, _space);
     plan.close(
       mode: GpuBlend.normal,
       chain: chain,
@@ -360,7 +360,7 @@ class _TreePlan {
       return;
     }
     if (row.surface.tiles.isNotEmpty || row.held.isNotEmpty) {
-      _picture(row, mode, reads, pose, shows);
+      _hold(_picture(row, mode, reads, pose), shows, pose.space);
     }
     if (row.mark case final mark?) {
       _mark(mark, pose.posed);
@@ -400,15 +400,9 @@ class _TreePlan {
   }
 
   /// [row]'s picture — its tiles and what a hand holds over them — laid as
-  /// the row is, by [pose], through its chain on what it stands for — held
-  /// as what [shows] is —, in [mode].
-  void _picture(
-    EngineTiles row,
-    int mode,
-    _Reads reads,
-    _RowPose pose,
-    CompositeNode<EngineRow>? shows,
-  ) {
+  /// the row is, by [pose], through its chain on what it stands for, in
+  /// [mode]: that chain, if any.
+  int? _picture(EngineTiles row, int mode, _Reads reads, _RowPose pose) {
     final tiles = row.surface.tiles;
     final picture = _rowExtentOf(row);
     // Its chain runs on its own picture, the whole of what it stands for,
@@ -420,7 +414,6 @@ class _TreePlan {
       over: (_) => picture,
       space: pose.space,
       reads: reads,
-      shows: shows,
     );
     final tint = row.tint;
     // The tint LAST, over the finished pixel: the ghost is the row as the
@@ -446,7 +439,7 @@ class _TreePlan {
         matrix: matrix,
         opacity: opacity,
       );
-      return;
+      return chain;
     }
     plan.open();
     if (tiles.isNotEmpty) {
@@ -466,6 +459,7 @@ class _TreePlan {
       matrix: matrix,
       opacity: opacity,
     );
+    return chain;
   }
 
   /// [matrix] added to the plan, or none.
@@ -486,15 +480,11 @@ class _TreePlan {
   /// each of its Gaussians reads what the one before put and puts as far
   /// past it as it reaches — a row's picture, its own, is no larger for
   /// them (its [over]).
-  ///
-  /// The chain is held as what [shows] is in [space], where [holding] gives
-  /// it a number.
   ({int? chain, List<double>? colour}) _chainOf(
     List<ResolvedLayerEffect> effects, {
     required ui.Rect Function(double outset) over,
     required LayerPlacement? space,
     required _Reads reads,
-    required CompositeNode<EngineRow>? shows,
   }) {
     final steps = resolveCompositeEffectPlan(effects, paper: paper);
     final carried = paintedEffectsOf(steps.finalEffects);
@@ -528,12 +518,23 @@ class _TreePlan {
     for (final op in ops) {
       op(chain);
     }
+    return (chain: chain, colour: colour);
+  }
+
+  /// [chain], if any, held as what [shows] is in [space], where [holding]
+  /// gives it a number.
+  void _hold(
+    int? chain,
+    CompositeNode<EngineRow>? shows,
+    LayerPlacement? space,
+  ) {
     final holding = this.holding;
-    final id = shows == null ? null : holding?.idOf(shows, space);
-    if (holding != null && id != null) {
+    if (chain == null || shows == null || holding == null) {
+      return;
+    }
+    if (holding.idOf(shows, space) case final id?) {
       plan.chainHeld(chain, holding.held, id);
     }
-    return (chain: chain, colour: colour);
   }
 
   /// The op [painted] lays on a chain: a colour over its tiles, or a

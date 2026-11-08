@@ -787,6 +787,25 @@ import '../../tool/refactor/clone_scan.dart';
 /// 85 → 86 (2026-11-09, the narrowed word's average back from the GPU
 /// engine, connection-round-checklist-Q30): that pair again, the bake's
 /// Dart average being what 「화면 글자는 전부 Flutter」 reads back into.
+///
+/// 86 → 87 (2026-11-08, flip-writers-and-holders — the frames' pictures
+/// laid on the engine, one picture a key, beside the store they replace).
+/// Named:
+///
+///     77 tokens
+///       lib/src/ui/playback/engine_frame_picture_store.dart
+///         EngineFramePictureStore.enforceBudget
+///       lib/src/ui/playback/frame_picture_store.dart
+///         FramePictureStore.enforceBudget
+///
+/// They ARE one algorithm — "let go of the pictures no screen pins by the
+/// playback budget's one order" — and the second is the first's
+/// replacement: the playback line moves onto the engine's store in this
+/// lane (ⓑ), and the old store is deleted in it (ⓔ), which takes the pair
+/// with it. ⛔Not shared: a body lifted out to serve a store that is going
+/// would be a seam no one calls once it goes.
+/// 🔬Measured on the lane over master (`63d034dba`, at 86): this one
+/// added (`8b0609636`), none gone.
 void main() {
   const ceiling = 86;
 
