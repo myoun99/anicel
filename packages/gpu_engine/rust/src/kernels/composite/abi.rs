@@ -35,7 +35,8 @@ use super::halvings::Camera;
 use super::held::{HeldChains, held_bytes};
 use super::screen::Screen;
 use super::{
-    BufferChain, Composite, Composited, KeyChain, Over, Plan, Step, TILE_BYTES, TileSet,
+    BufferChain, Composite, Composited, KeyChain, Nesting, Over, Plan, Step, TILE_BYTES,
+    TileSet,
 };
 
 /// A plan as the app builds it: what [`Plan`] borrows, owned. It names
@@ -170,11 +171,11 @@ impl Planned {
     fn open_buffer(&self) -> Option<usize> {
         let mut closed = 0usize;
         for (at, step) in self.steps.iter().enumerate().rev() {
-            match step {
-                Step::Open | Step::OpenOpaque if closed == 0 => return Some(at),
-                Step::Open | Step::OpenOpaque => closed -= 1,
-                Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => closed += 1,
-                Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+            match step.nesting() {
+                Nesting::Opens if closed == 0 => return Some(at),
+                Nesting::Opens => closed -= 1,
+                Nesting::Closes => closed += 1,
+                Nesting::Draws => {}
             }
         }
         None

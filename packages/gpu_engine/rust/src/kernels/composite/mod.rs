@@ -359,6 +359,27 @@ pub(crate) enum Step {
     Mark { map: ResampleMap, shift: [i32; 2] },
 }
 
+/// What a step does to the buffers open: opens one over the one on top,
+/// closes the one on top onto the one under it, or draws into it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Nesting {
+    Opens,
+    Closes,
+    Draws,
+}
+
+impl Step {
+    /// What the step does to the buffers open — the one place a step is
+    /// told as opening or closing one, where six walks each told it.
+    fn nesting(&self) -> Nesting {
+        match self {
+            Step::Open | Step::OpenOpaque => Nesting::Opens,
+            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => Nesting::Closes,
+            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => Nesting::Draws,
+        }
+    }
+}
+
 /// What a buffer closed as a row ([`Step::CloseRow`]) is drawn over, in the
 /// row's space: tiles of its own — those of them its output reads through
 /// the row's pose —, or effect chain `Chain`'s, whose rectangle it runs on
@@ -857,13 +878,12 @@ impl Composite {
                     read_through(rect, &map, tiles)
                 }
                 _ => {
-                    match step {
-                        Step::Open => opens.push((steps.len(), true)),
-                        Step::OpenOpaque => opens.push((steps.len(), false)),
-                        Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => {
+                    match step.nesting() {
+                        Nesting::Opens => opens.push((steps.len(), matches!(step, Step::Open))),
+                        Nesting::Closes => {
                             opens.pop();
                         }
-                        Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+                        Nesting::Draws => {}
                     }
                     steps.push(*step);
                     continue;
@@ -1299,14 +1319,14 @@ fn closes_of(steps: &[Step]) -> Vec<Option<usize>> {
     let mut closes = vec![None; steps.len()];
     let mut opens = Vec::new();
     for (index, step) in steps.iter().enumerate() {
-        match step {
-            Step::Open | Step::OpenOpaque => opens.push(index),
-            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => {
+        match step.nesting() {
+            Nesting::Opens => opens.push(index),
+            Nesting::Closes => {
                 if let Some(open) = opens.pop() {
                     closes[open] = Some(index);
                 }
             }
-            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+            Nesting::Draws => {}
         }
     }
     closes
@@ -1523,12 +1543,15 @@ fn check_depth(
             } => {
                 return fail(format!("step {index} names keys and an effect chain"));
             }
-            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
-            Step::Open | Step::OpenOpaque => depth += 1,
-            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } if depth == 0 => {
+            _ => {}
+        }
+        match step.nesting() {
+            Nesting::Opens => depth += 1,
+            Nesting::Closes if depth == 0 => {
                 return fail(format!("step {index} closes a buffer that is not open"));
             }
-            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => depth -= 1,
+            Nesting::Closes => depth -= 1,
+            Nesting::Draws => {}
         }
     }
     if depth != 0 {
@@ -1652,10 +1675,10 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
         }
         let fresh = each.pages.iter().filter(|page| !batch.pages.contains(page)).count();
         // The levels the step reads and writes, lowest and highest.
-        let (low, high) = match each.step {
-            Step::Open | Step::OpenOpaque => (depth, depth + 1),
-            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => (depth - 1, depth),
-            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => (depth, depth),
+        let (low, high) = match each.step.nesting() {
+            Nesting::Opens => (depth, depth + 1),
+            Nesting::Closes => (depth - 1, depth),
+            Nesting::Draws => (depth, depth),
         };
         let outside = low < batch.base || high >= batch.base + levels;
         if batch.pages.len() + fresh > pages_per_pass || outside {
@@ -1688,10 +1711,10 @@ fn cut(laid: &[Laid], pages_per_pass: usize, levels: usize) -> Option<Vec<Batch>
                 batch.pages.push(page);
             }
         }
-        match each.step {
-            Step::Open | Step::OpenOpaque => depth += 1,
-            Step::Close { .. } | Step::CloseAtop | Step::CloseRow { .. } => depth -= 1,
-            Step::Row { .. } | Step::Solid { .. } | Step::Mark { .. } => {}
+        match each.step.nesting() {
+            Nesting::Opens => depth += 1,
+            Nesting::Closes => depth -= 1,
+            Nesting::Draws => {}
         }
     }
     batch.end = laid.len();
