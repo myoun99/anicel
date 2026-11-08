@@ -1467,8 +1467,9 @@ class GpuGrid {
   final Pointer<rust.Grid> _grid;
 
   /// Draws [ops] into [picture] over clear, its letters read from [atlas]
-  /// where its GLYPH ops say; waits for the GPU. Throws for a stream the
-  /// pass refuses.
+  /// where its GLYPH ops say — submitted, not waited for: what reads the
+  /// picture after ([GpuGridLay.lay], [GpuGridPicture.read]) waits. Throws
+  /// for a stream the pass refuses.
   void draw(GpuGridPicture picture, Int32List ops, {GpuGridAtlas? atlas}) =>
       using((arena) {
         final stream = arena<Int32>(_held(ops.length))

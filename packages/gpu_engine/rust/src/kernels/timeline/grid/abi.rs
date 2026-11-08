@@ -81,8 +81,8 @@ pub unsafe extern "C" fn gpu_engine_grid_picture_read(
 
 /// Draws `ops` — `count` words — into `picture` over clear, its letters
 /// read from `atlas`, `atlas_width` × `atlas_height` A8 bytes row by row —
-/// none where a side is 0 —; and waits for the GPU. False for a stream
-/// the pass refuses, and on failure; see the last error.
+/// none where a side is 0 —; submitted, not waited for ([`GridTile::run`]).
+/// False for a stream the pass refuses, and on failure; see the last error.
 ///
 /// ⚠️Over clear, always: a tile lays over its view's sheet (the store's
 /// contract, timeline_grid_tile_store.dart), so the pass's background word

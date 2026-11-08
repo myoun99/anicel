@@ -15,8 +15,6 @@ pub(crate) mod lay;
 #[cfg(test)]
 mod tests;
 
-use std::time::Instant;
-
 use wgpu::util::DeviceExt;
 
 use crate::device::Engine;
@@ -249,9 +247,17 @@ impl GridTile {
     }
 
     /// Draws `ops` into `tile` over `background` (an RGBA word), the
-    /// letters from `atlas` (an `R8Uint` texture of coverages), and waits
-    /// for the GPU. Returns the wall time from submit to completion, in
-    /// nanoseconds; None, with the last error, for a stream it refuses.
+    /// letters from `atlas` (an `R8Uint` texture of coverages) — submitted,
+    /// not waited for: what reads the tile after comes after it on the same
+    /// queue, and the pass that lays it on a screen waits for the GPU before
+    /// the screen is shown ([`lay::GridLay::lay`]), as a read back waits for
+    /// itself (`Engine::read_texture`). None, with the last error, for a
+    /// stream it refuses.
+    ///
+    /// ↩️It waited for the GPU after each tile: 🔬a zoom across S5_BA's cut
+    /// 352 draws some 16 tiles a frame, in the row's paint, and the UI
+    /// thread's build stood at a median of 11.6 ms a frame of it against 3.1
+    /// with the rows drawing their own cells (main PC, profile, 11-09).
     pub(crate) fn run(
         &mut self,
         engine: &Engine,
@@ -259,7 +265,7 @@ impl GridTile {
         background: u32,
         ops: &[i32],
         atlas: Option<&wgpu::Texture>,
-    ) -> Option<u64> {
+    ) -> Option<()> {
         if let Some(fault) = fault_in(ops, atlas.is_some()) {
             return fail(fault);
         }
@@ -316,9 +322,7 @@ impl GridTile {
                 groups,
             }],
         );
-        let start = Instant::now();
         engine.queue.submit([encoder.finish()]);
-        engine.wait()?;
-        Some(start.elapsed().as_nanos() as u64)
+        Some(())
     }
 }
