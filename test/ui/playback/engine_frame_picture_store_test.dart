@@ -1,0 +1,311 @@
+import 'dart:typed_data';
+import 'dart:ui' show Rect;
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gpu_engine/gpu_engine.dart';
+
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+
+import '../../helpers/engine_screen_pins.dart';
+
+/// 🚨★★★A FRAME'S ONE PICTURE ON THE ENGINE (flip lane ⓑ-1): the store lays
+/// a frame as the engine's screen lays it, one picture a key however often
+/// it is asked for, the frame on screen first and none its askers have
+/// left; composes an edit into it where it changed and moves it to its new
+/// key; lets go of what its budget says but what a screen pins, and frees
+/// a picture once it is let go and no one showing it holds it — as the
+/// engine's count of what it keeps says.
+void main() {
+  // The letters read their faces from the bundle.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const canvas = CanvasSize(width: 256, height: 128);
+  const side = 128;
+  const paper = ProjectBackground.color(0xFF30A060);
+  const key = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('l'),
+    frameId: FrameId('f'),
+  );
+  // A picture of the page's two tiles and the one left of it.
+  const picture = 3 * side * side * 4;
+  final engine = EngineScreenPins('the engine frame picture store');
+
+  /// A cel of [seed]'s pixels in the tiles of [over] — the one left of the
+  /// page and the page's two —, [marked] green.
+  BitmapSurface cel(
+    int seed, {
+    (int, int, int, int)? marked,
+    List<int> over = const [-1, 0, 1],
+  }) {
+    BitmapTile tile(int column) {
+      final pixels = Uint8List(side * side * 4);
+      for (var y = 0; y < side; y++) {
+        for (var x = 0; x < side; x++) {
+          final worldX = x + column * side;
+          final n = worldX * 7 + y * 13 + seed * 101;
+          final green = switch (marked) {
+            (final l, final t, final r, final b) =>
+              worldX >= l && worldX < r && y >= t && y < b,
+            null => false,
+          };
+          pixels.setAll(
+            (y * side + x) * 4,
+            green
+                ? const [0, 255, 0, 255]
+                : [(n * 37) & 255, (n * 23 + 91) & 255, (n * 11) & 255, 255],
+          );
+        }
+      }
+      return BitmapTile(size: side, pixels: pixels);
+    }
+
+    return BitmapSurface(
+      canvasSize: canvas,
+      tileSize: side,
+      tiles: {
+        for (final column in over) TileCoord(x: column, y: 0): tile(column),
+      },
+    );
+  }
+
+  StackedFrame frameOf(BitmapSurface surface) => stackedFrameOf(
+    const [
+      CompositeLeaf(CanvasLayerImageRequest(frameKey: key, opacity: 1)),
+    ],
+    page: (
+      canvasSize: canvas,
+      pasteboardReach: PasteboardReach.whole,
+      paintPaper: true,
+      paperBackground: paper,
+    ),
+    surfaceOf: (_) => surface,
+  );
+
+  /// What the engine's screen shows of [surface]'s frame, at rest.
+  int laidBy(BitmapSurface surface) =>
+      engine.shown(frameOf(surface), size: (256, 128));
+
+  /// What [shown] shows at rest.
+  int shownBy(EngineFramePicture shown) {
+    final target = platformSurfaceOf(256, 128);
+    addTearDown(target.free);
+    shown.show(
+      target,
+      (256, 128),
+      viewport: CanvasViewport(),
+      devicePixelRatio: 1,
+    );
+    return target.fingerprint();
+  }
+
+  EngineFramePictureStore<String> storeOf() {
+    final store = EngineFramePictureStore<String>(
+      composite: engine.composite,
+      letters: engine.letters,
+    );
+    addTearDown(store.dispose);
+    return store;
+  }
+
+  /// What the engine keeps past what it kept at [before].
+  int keptSince(int before) => GpuScreen.liveBytes - before;
+
+  test('🚨a frame laid is the frame the engine\'s screen lays', () async {
+    final want = laidBy(cel(5));
+    final store = storeOf();
+
+    final laid = await store.lay('a', frameOf(cel(5)));
+
+    expect(shownBy(laid!), want);
+    expect(store.peek('a'), same(laid));
+    expect(store.bytesOf('a'), picture);
+  });
+
+  test('a key asked for again is one picture, laid once', () async {
+    final store = storeOf();
+    final before = GpuScreen.liveBytes;
+
+    final first = store.lay('a', frameOf(cel(5)));
+    final again = store.lay('a', frameOf(cel(6)));
+
+    expect(await again, same(await first));
+    expect(await store.lay('a', frameOf(cel(7))), same(await first));
+    expect(keptSince(before), picture, reason: 'one picture');
+  });
+
+  test('the frame on screen is laid before the ones made ahead', () async {
+    final store = storeOf();
+    final laid = <String>[];
+
+    final ahead = store.lay('ahead', frameOf(cel(5))).then((_) {
+      laid.add('ahead');
+    });
+    final shown = store.lay('shown', frameOf(cel(6)), shownNow: true).then((
+      _,
+    ) {
+      laid.add('shown');
+    });
+    await Future.wait([ahead, shown]);
+
+    expect(laid, ['shown', 'ahead']);
+  });
+
+  test('🗣️F-529: a lay every asker has left is not made', () async {
+    final store = storeOf();
+    final before = GpuScreen.liveBytes;
+
+    final laid = await store.lay('a', frameOf(cel(5)), gone: () => true);
+
+    expect(laid, isNull);
+    expect(store.holds('a'), isFalse);
+    expect(keptSince(before), 0);
+  });
+
+  test('🚨a patch composes the frame where it changed, and moves the picture '
+      'to its key', () async {
+    final store = storeOf();
+    final laid = await store.lay('a', frameOf(cel(5)));
+    const marked = (-20, 10, 40, 50);
+    final changed = cel(5, marked: marked);
+
+    expect(
+      store.patch(
+        from: 'a',
+        to: 'b',
+        rect: const Rect.fromLTRB(-20, 10, 40, 50),
+        frame: frameOf(changed),
+      ),
+      isTrue,
+    );
+
+    expect(store.holds('a'), isFalse);
+    expect(store.peek('b'), same(laid));
+    expect(shownBy(laid!), laidBy(changed));
+  });
+
+  test('a patch composes nothing where it is not told the frame '
+      'changed', () async {
+    final store = storeOf();
+    final laid = await store.lay('a', frameOf(cel(5)));
+
+    store.patch(
+      from: 'a',
+      to: 'a',
+      rect: const Rect.fromLTRB(10, 10, 20, 20),
+      frame: frameOf(cel(5, marked: (200, 60, 220, 80))),
+    );
+
+    expect(shownBy(laid!), laidBy(cel(5)));
+  });
+
+  test('a patch of a frame over another world composes it whole', () async {
+    final store = storeOf();
+    final laid = await store.lay('a', frameOf(cel(5)));
+    final within = cel(5, over: const [0, 1]);
+
+    store.patch(
+      from: 'a',
+      to: 'a',
+      rect: const Rect.fromLTRB(10, 10, 20, 20),
+      frame: frameOf(within),
+    );
+
+    expect(shownBy(laid!), laidBy(within));
+    expect(store.bytesOf('a'), 2 * side * side * 4, reason: 'its world');
+  });
+
+  test('a patch or a move from a key that holds nothing answers false', () {
+    final store = storeOf();
+
+    expect(
+      store.patch(
+        from: 'none',
+        to: 'b',
+        rect: const Rect.fromLTRB(0, 0, 1, 1),
+        frame: frameOf(cel(5)),
+      ),
+      isFalse,
+    );
+    expect(store.move(from: 'none', to: 'b'), isFalse);
+    expect(store.holds('b'), isFalse);
+  });
+
+  test('a move gives the picture to its key, and lets go of the one that '
+      'answered to it', () async {
+    final store = storeOf();
+    final before = GpuScreen.liveBytes;
+    final moving = await store.lay('a', frameOf(cel(5)));
+    await store.lay('b', frameOf(cel(6)));
+
+    expect(store.move(from: 'a', to: 'b'), isTrue);
+
+    expect(store.holds('a'), isFalse);
+    expect(store.peek('b'), same(moving));
+    expect(keptSince(before), picture, reason: 'the one there let go');
+  });
+
+  test('the budget lets go of what it must but a picture a screen '
+      'pins', () async {
+    final store = storeOf();
+    await store.lay('pinned', frameOf(cel(5)));
+    await store.lay('ahead', frameOf(cel(6)));
+    store.retainPin('pinned');
+    addTearDown(() => store.releasePin('pinned'));
+
+    store.enforceBudget(maxBytes: 0);
+
+    expect(store.holds('pinned'), isTrue);
+    expect(store.holds('ahead'), isFalse);
+    expect(store.pinnedBytes, picture);
+    expect(store.estimatedBytes, picture);
+  });
+
+  test('🚨a picture let go while a screen holds it stays to be shown, and '
+      'goes at the last release', () async {
+    final store = storeOf();
+    final want = laidBy(cel(5));
+    final before = GpuScreen.liveBytes;
+    final laid = (await store.lay('a', frameOf(cel(5))))!..hold();
+
+    store.letGo('a');
+
+    expect(laid.gone, isTrue);
+    expect(store.holds('a'), isFalse);
+    expect(shownBy(laid), want);
+    expect(keptSince(before), picture, reason: 'held');
+    laid.release();
+    expect(keptSince(before), 0, reason: 'released');
+  });
+
+  test('a store let go of keeps nothing', () async {
+    final before = GpuScreen.liveBytes;
+    final store = EngineFramePictureStore<String>(
+      composite: engine.composite,
+      letters: engine.letters,
+    );
+    await store.lay('a', frameOf(cel(5)));
+    await store.lay('b', frameOf(cel(6)));
+
+    store.dispose();
+
+    expect(keptSince(before), 0);
+  });
+}

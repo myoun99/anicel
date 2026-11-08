@@ -1035,6 +1035,10 @@ class GpuScreen {
   /// it by.
   int get bytes => rust.screenBytes(_screen);
 
+  /// The bytes of every screen's canvas and halvings the engine keeps, counted
+  /// by the engine where it makes and drops them.
+  static int get liveBytes => rust.keptBytes();
+
   /// Frees the screen; before its executor is.
   void free() => rust.screenFree(_screen);
 }

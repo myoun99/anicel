@@ -32,6 +32,8 @@
 #[path = "halvings_tests.rs"]
 pub(crate) mod tests;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::blend::mode::NORMAL;
@@ -94,6 +96,17 @@ fn joined(one: Option<[i64; 4]>, other: [i64; 4]) -> [i64; 4] {
     [l.min(other[0]), t.min(other[1]), r.max(other[2]), b.max(other[3])]
 }
 
+/// The bytes of every picture the engine keeps ([`Kept`]) — a screen's
+/// canvas and its halvings —, counted where one is made and dropped: what
+/// the memory census is to read of them ([`kept_bytes`]; ⏳once the screen
+/// is the engine's, flip lane ⓑ).
+static KEPT_BYTES: AtomicU64 = AtomicU64::new(0);
+
+/// The bytes of every picture the engine keeps.
+pub(crate) fn kept_bytes() -> u64 {
+    KEPT_BYTES.load(Ordering::Relaxed)
+}
+
 /// A picture kept on pages of its own: its tiles over the pixels `extent`,
 /// [left, top, right, bottom), row after row, as many to a page as one
 /// takes — a halving stage, and the canvas's composite the screen reads
@@ -135,7 +148,9 @@ impl Kept {
         for page in tiles.chunks(per_page) {
             pages.push(composite.run(engine, plan, page, extent, budget)?.out);
         }
-        Some(Self { pages, set, extent })
+        let kept = Self { pages, set, extent };
+        KEPT_BYTES.fetch_add(kept.bytes(), Ordering::Relaxed);
+        Some(kept)
     }
 
     /// `plan` composited again over the kept tiles `stale` names, the rest
@@ -176,6 +191,12 @@ impl Kept {
 
     pub(crate) fn as_tiles(&self) -> Tiles<'_> {
         Tiles { pages: &self.pages, set: &self.set }
+    }
+}
+
+impl Drop for Kept {
+    fn drop(&mut self) {
+        KEPT_BYTES.fetch_sub(self.bytes(), Ordering::Relaxed);
     }
 }
 

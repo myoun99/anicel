@@ -1003,6 +1003,13 @@ pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const Screen) -> u64 {
     unsafe { &*screen }.bytes()
 }
 
+/// The bytes of every picture the engine keeps — every screen's canvas and
+/// halvings, made and not yet dropped.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_kept_bytes() -> u64 {
+    super::halvings::kept_bytes()
+}
+
 /// Composites `plan` onto `screen`'s canvas over its tiles that meet the
 /// pixels `changed` — [left, top, right, bottom); the whole canvas the
 /// first time — and submits the work. False on failure; see the last error.

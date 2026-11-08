@@ -99,6 +99,9 @@ final class EngineStackScreen {
     );
   }
 
+  /// The world pixels the kept frame covers — none before a frame is laid.
+  Rect get extent => _kept;
+
   /// The bytes the kept frame holds on the GPU ([GpuScreen.bytes]) — none
   /// before a frame is laid.
   int get bytes => _screen?.bytes ?? 0;
