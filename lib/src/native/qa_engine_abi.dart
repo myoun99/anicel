@@ -338,7 +338,11 @@ import '../core/on_a_worker.dart';
 ///   JPEG encoder is the Rust engine's (native/image_encode,
 ///   connection-round-checklist H), which `QaImageEncoder` binds in the GPU
 ///   engine's library.
-const int kQaEngineAbiVersion = 67;
+/// - v68: `qa_zstd_*` leave the C: the cel compressor is the Rust engine's
+///   (native/compress, connection-round-checklist H), which
+///   `QaCelCompressor` binds in the GPU engine's library. The span reader
+///   (`QaMediaSpan`) keeps its own zstd decoder.
+const int kQaEngineAbiVersion = 68;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

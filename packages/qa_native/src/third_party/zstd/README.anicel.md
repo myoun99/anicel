@@ -4,10 +4,18 @@
 
 - Source: https://github.com/facebook/zstd, tag `v1.5.6` (commit `794ea1b`)
 - Generated with `build/single_file_libs/combine.sh -r ../../lib -x legacy/zstd_legacy.h -o zstd.c zstd-in.c`
-- License: BSD-3-Clause (`LICENSE`), the same terms as the other vendored
-  libraries here (miniaudio, rnnoise, stb, dr_libs).
+- License: BSD-3-Clause (`LICENSE`), the only one of its kind here: the
+  other vendored libraries are MIT or public domain (stb) and public
+  domain or MIT-0 (miniaudio, dr_libs), each in its PROVENANCE.md.
+  The Rust port in `packages/gpu_engine/rust/native/compress` carries a
+  copy of the same `LICENSE`.
 
 ## Why it is here
+
+↩️It compressed cel blobs through `qa_compress.c` until the connection
+round (connection-round-checklist H, 2026-11-08), when the Rust port in
+the engine took that over; what reads it here now is the span reader
+(`qa_media_span.c`). The measurement below is why zstd at all.
 
 Cel blobs are compressed once per save and decompressed **on the main
 isolate, in frame time**, every time a cold cel is promoted to hot

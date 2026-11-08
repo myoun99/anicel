@@ -37,7 +37,7 @@ void main() {
     final sources = _engineLibrarySources(cmake.readAsStringSync());
     expect(
       sources,
-      contains('qa_compress.c'),
+      contains('qa_media_span.c'),
       reason: 'the parser must see the list this test is about',
     );
     expect(sources, contains('third_party/zstd/zstd.c'));

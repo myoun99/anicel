@@ -6633,4 +6633,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v67: qa_image_encode_jpg and qa_image_encode_free leave - the JPEG encoder
 // is the Rust engine's (native/image_encode), which the app binds in the GPU
 // engine's library.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 67; }
+// v68: qa_zstd_compress_bound, qa_zstd_compress, qa_zstd_decompressed_size
+// and qa_zstd_decompress leave - the cel compressor is the Rust engine's
+// (native/compress), which the app binds in the GPU engine's library. The
+// span reader keeps its own zstd decoder.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 68; }
