@@ -35,8 +35,9 @@ import '../helpers/cel_text_fixture.dart' show textOf;
 /// coordinate the stroke replaces shows in its place
 /// ([BitmapSurfacePainter.shownSurface]) — is, byte for byte, the row laid
 /// once the stroke has landed, and not the cel the stroke found: a stroke
-/// that paints, one that erases, and one under a text, whose letters show
-/// over it, one on a row whose chain runs a plugin over the whole cel.
+/// that paints, one that erases, a fill's result, one under a text, whose
+/// letters show over it, one on a row whose chain runs a plugin over the
+/// whole cel.
 void main() {
   // The letters read their faces from the bundle.
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -217,6 +218,30 @@ void main() {
       );
     });
   }
+
+  test('🚨a fill\'s result shows on the engine\'s screen as it lands', () {
+    final base = cel();
+    final overlay = ActiveStrokeOverlayModel(tileSize: side)
+      ..preBlendBase = base;
+    addTearDown(overlay.dispose);
+    final result = PromotedStrokeTile(left, tileOf(5), 1);
+    overlay.showResultTiles([result]);
+
+    expect(
+      shown(
+        frameOf(BitmapSurfacePainter(surface: base, overlayModel: overlay)),
+      ),
+      shown(
+        frameOf(
+          BitmapSurfacePainter(
+            surface: base.putMaterializedTiles([
+              (coord: result.coord, tile: result.tile),
+            ]),
+          ),
+        ),
+      ),
+    );
+  });
 
   test('🚨a stroke under a text shows on the engine\'s screen with the '
       'letters over it, as it lands', () {
