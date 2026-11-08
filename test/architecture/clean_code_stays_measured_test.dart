@@ -931,7 +931,18 @@ void main() {
   /// against the lane's base (`a83767c20`) names it added and nothing gone.
   /// ⛔Not bundled to fit: the hold and the letters live apart — a hold is
   /// one run's, the letters the screen's.
-  const wideSignatures = 466;
+  ///
+  /// ⚠️466 → 469 on 2026-11-08, the same way (connection-round-checklist
+  /// H, the sound device and its mixer moved into the Rust engine): `_mix`
+  /// (ten) in `qa_audio_native.dart`, and `_setSchedule` (six) and
+  /// `_deviceDescribe` (five) in `qa_audio_device.dart`, are the `@Native`
+  /// bindings of `qa_audio_mix`, `qa_audio_device_set_schedule` and
+  /// `qa_audio_device_describe`, their parameters the exports' own — the
+  /// same as `lookupFunction` types before, which this scan does not read.
+  /// 🔬`clean_code_diff` against the lane's base (`f5348acc6`) names those
+  /// three added and nothing gone. ⛔Not bundled to fit: the bindings take
+  /// what the exports take.
+  const wideSignatures = 469;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1734,7 +1745,12 @@ void main() {
   /// other setters do (`_record`). 🔬`clean_code_diff` against master names
   /// this one and no other class. ⛔Not split to fit: a key is put and taken
   /// off where its recording is kept.
-  const longClasses = 85;
+  ///
+  /// ⚠️85 → 84 on 2026-11-08, following one down: `QaAudioDevice` went
+  /// under (its thirty-one lookups became the `@Native` bindings beside it,
+  /// connection-round-checklist H). 🔬`clean_code_diff` against the lane's
+  /// base (`f5348acc6`) names it gone and no class added.
+  const longClasses = 84;
 
   late CleanCodeScan scan;
   setUpAll(() {
