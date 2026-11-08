@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import '../../core/on_a_worker.dart';
 import '../../core/turns.dart';
@@ -251,7 +252,11 @@ cutCelInWorker(
       if (behind == null) {
         return null;
       }
-      final kept = AnicelCelBlob.ofSurface(key, behind);
+      // ⛔A worker has no engine — the app's one is the main isolate's
+      // (`appGpuEngine`, a static) — so what it decoded it writes from the
+      // bytes it decoded. ⏳Till a tile's bytes are the engine's alone
+      // (flip lane ⓔ), when a worker's cut works on the stream's tiles.
+      final kept = AnicelCelBlob.ofSurface(key, behind, bytesOf: _readInPlace);
       final path = ScratchFile.write(parkAt, kept.bytes);
       if (path == null) {
         throw StateError('The room would not take $parkAt.');
@@ -274,4 +279,12 @@ cutCelInWorker(
     path: cut.path,
     was: cut.was,
   );
+}
+
+/// [tiles]' own bytes, each read in place ([BitmapTile.readPixels]): what a
+/// worker decoded, handed to its writer as it is ([TileBytesOf]).
+void _readInPlace(List<BitmapTile> tiles, void Function(Uint8List bytes) use) {
+  for (final tile in tiles) {
+    tile.readPixels((_, view) => use(view));
+  }
 }

@@ -25,6 +25,7 @@ import '../../models/layer_id.dart';
 import '../../models/media_reference.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
+import '../../native/engine_tile_ledger.dart';
 
 /// One cel's BAKED raster — the persistence TRUTH from .anicel format v2 on
 /// (R19 bake-only): what you saved is exactly what reopens, byte for
@@ -335,6 +336,11 @@ BitmapSurface laidCelSurface(
 /// floor, as the blob's did.
 const int anicelCelBinaryVersion = 5;
 
+/// How a cel's writer is handed its tiles' bytes: each of [tiles] in order,
+/// a view good only inside [use].
+typedef TileBytesOf =
+    void Function(List<BitmapTile> tiles, void Function(Uint8List bytes) use);
+
 /// A cel's stream, taken straight off its SURFACE — without the defensive
 /// pixel copy per tile that building an [AnicelCelEntry] first would make.
 ///
@@ -346,10 +352,18 @@ const int anicelCelBinaryVersion = 5;
 /// those copies is live at the same moment — four times the cel,
 /// asked for at the instant the budget says there is no room.
 ///
-/// ⛔`readPixels`, never the `pixels` getter: that getter IS the
-/// defensive copy this exists to avoid (see BitmapTile.readPixels for
-/// why the tile must stay the receiver).
-Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
+/// ⛔Never the `pixels` getter: that getter IS the defensive copy this
+/// exists to avoid. The bytes come back from the engine a batch at a time
+/// through one block ([EngineTileLedger.readEach]), never the cel whole —
+/// or from where [bytesOf] says they are.
+Uint8List encodeCelEntryFromSurface(
+  BrushFrameKey key,
+  BitmapSurface surface, {
+  TileBytesOf? bytesOf,
+}) {
+  final read =
+      bytesOf ??
+      (tiles, use) => EngineTileLedger.instance.readEach(key.cel, tiles, use);
   final writer = _ByteWriter();
   writer.celStreamHeader(
     key,
@@ -358,7 +372,7 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
     _photoRecordsOf(surface.photos),
   );
   writer.u32(surface.tiles.length);
-  writer.tilesOf(surface.tiles);
+  writer.tilesOf(surface.tiles, read);
   writer.u32(surface.texts.length);
   for (final text in surface.texts) {
     writer.celTextHeader(
@@ -366,7 +380,7 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
       jsonEncode(text.content.toJson()),
       text.plate.length,
     );
-    writer.tilesOf(text.plate);
+    writer.tilesOf(text.plate, read);
   }
   writer.celLaid(surface.laidBounds);
   return writer.takeBytes();
@@ -551,11 +565,14 @@ class AnicelCelBlob {
   /// The blob of [surface], [key]'s picture: its stream straight off the
   /// surface ([encodeCelEntryFromSurface]) and whether it shows anything
   /// ([BitmapSurface.showsSomething]), asked of the same picture.
-  factory AnicelCelBlob.ofSurface(BrushFrameKey key, BitmapSurface surface) =>
-      AnicelCelBlob.ofPayload(
-        encodeCelEntryFromSurface(key, surface),
-        showsSomething: surface.showsSomething,
-      );
+  factory AnicelCelBlob.ofSurface(
+    BrushFrameKey key,
+    BitmapSurface surface, {
+    TileBytesOf? bytesOf,
+  }) => AnicelCelBlob.ofPayload(
+    encodeCelEntryFromSurface(key, surface, bytesOf: bytesOf),
+    showsSomething: surface.showsSomething,
+  );
 
   /// The blob of a cel's uncompressed [payload] — the bytes
   /// [encodeCelEntryFromSurface] writes off a surface — compressed here.
@@ -800,15 +817,20 @@ class _ByteWriter {
     _builder.add(encoded);
   }
 
-  /// Tiles straight off a surface or a plate — each one's coordinate, then
-  /// its bytes read in place ([BitmapTile.readPixels], never the copying
-  /// `pixels` getter; see [encodeCelEntryFromSurface]).
-  void tilesOf(Map<TileCoord, BitmapTile> tiles) {
-    for (final entry in tiles.entries) {
-      i32(entry.key.x);
-      i32(entry.key.y);
-      entry.value.readPixels((_, view) => bytes(view));
+  /// Tiles off a surface or a plate — each one's coordinate, then its bytes
+  /// as [read] hands them over (see [encodeCelEntryFromSurface]); [read]
+  /// is not asked for none, so a picture of no tiles opens no engine.
+  void tilesOf(Map<TileCoord, BitmapTile> tiles, TileBytesOf read) {
+    if (tiles.isEmpty) {
+      return;
     }
+    final at = tiles.keys.iterator;
+    read([...tiles.values], (pixels) {
+      at.moveNext();
+      i32(at.current.x);
+      i32(at.current.y);
+      bytes(pixels);
+    });
   }
 
   void bytes(List<int> value) => _builder.add(value);

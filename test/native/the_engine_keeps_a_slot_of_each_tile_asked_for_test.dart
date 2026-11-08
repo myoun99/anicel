@@ -1,5 +1,7 @@
+import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -16,9 +18,10 @@ import '../helpers/census_where_textures_are_ram.dart';
 /// The app's tiles get their slots on the engine through the ledger
 /// (screen-on-the-engine c4): stored inside the call that asks, once a
 /// tile object, each slot holding its tile's bytes; kept while a hold has
-/// them; let go when a pool is full of what no hold has. Let go with their
-/// tile is a_tile_collected_lets_its_engine_slot_go_test.dart's, which
-/// waits for the collector; what the pool does with a store is its own
+/// them; let go when a pool is full of what no hold has; read back as
+/// their bytes, a batch at a time. Let go with their tile is
+/// a_tile_collected_lets_its_engine_slot_go_test.dart's, which waits for
+/// the collector; what the pool does with a store is its own
 /// test's (the_engine_pool_keeps_the_apps_tiles_test.dart) — here, what
 /// the ledger asks of it.
 void main() {
@@ -153,6 +156,60 @@ void main() {
     expect(ledger.slotCount, rest.length + 2);
   });
 
+  test('the tiles read back are their bytes, in order — one without a slot '
+      'stored for the read', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final first = tileOf(10);
+    final second = tileOf(11);
+    ledger.held((hold) => hold.slotsOf(a, [first]));
+    final into = malloc<Uint8>(3 * gpuTileBytes);
+    addTearDown(() => malloc.free(into));
+
+    ledger.read(a, [second, first, second], into);
+
+    expect(into.asTypedList(3 * gpuTileBytes), [
+      ...second.pixels,
+      ...first.pixels,
+      ...second.pixels,
+    ]);
+    expect(ledger.slotOf(second), isNotNull, reason: 'stored for the read');
+    expect(ledger.slotCount, 2);
+  });
+
+  test('each tile read back a batch at a time is handed over in order', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final tiles = [
+      for (var seed = 0; seed < EngineTileLedger.readBatch + 2; seed++)
+        tileOf(seed),
+    ];
+    final handed = <Uint8List>[];
+
+    ledger.readEach(a, tiles, (bytes) => handed.add(Uint8List.fromList(bytes)));
+
+    expect(handed, [for (final tile in tiles) tile.pixels]);
+    ledger.readEach(a, const [], (_) => fail('none to hand over'));
+  });
+
+  test("a read of many batches asks for one batch's block, once, and gives "
+      'it back — a read of fewer tiles, theirs alone', () {
+    final ledger = EngineTileLedger(appGpuEngine);
+    final tile = tileOf(12);
+    final many = _Counted();
+    final few = _Counted();
+
+    ledger.readEach(
+      a,
+      List.filled(2 * EngineTileLedger.readBatch + 1, tile),
+      (_) {},
+      blocks: many,
+    );
+    ledger.readEach(a, [tile, tile], (_) {}, blocks: few);
+
+    expect(many.asked, [EngineTileLedger.readBatch * gpuTileBytes]);
+    expect(few.asked, [2 * gpuTileBytes]);
+    expect([many.givenBack, few.givenBack], [1, 1]);
+  });
+
   test('a hold is asked inside the call it was handed to', () {
     final ledger = EngineTileLedger(appGpuEngine);
     final kept = ledger.held((hold) => hold);
@@ -216,4 +273,23 @@ void main() {
       BitmapTileImageCache.liveImageBytes + app.pool.bytes,
     );
   });
+}
+
+/// [malloc], counting what it is asked: each block's bytes, and the blocks
+/// given back.
+final class _Counted implements Allocator {
+  final asked = <int>[];
+  int givenBack = 0;
+
+  @override
+  Pointer<T> allocate<T extends NativeType>(int byteCount, {int? alignment}) {
+    asked.add(byteCount);
+    return malloc.allocate(byteCount, alignment: alignment);
+  }
+
+  @override
+  void free(Pointer pointer) {
+    givenBack += 1;
+    malloc.free(pointer);
+  }
 }

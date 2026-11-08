@@ -23,8 +23,9 @@ library;
 
 import '../core/collection_equality.dart';
 import '../core/signed_memo.dart';
-import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:collection/collection.dart' show ListExtensions;
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
@@ -476,10 +477,7 @@ Uint8List? _keyedPixels(
 /// ([_keyedPixels]) and the engine's key run (composite_tree_plan.dart)
 /// alike.
 List<KeyRgbaTables> keyRgbaTablesOf(List<CelColorKey> keys) => [
-  for (var from = 0; from < keys.length; from += keyRgbaKeysAtOnce)
-    _keyTables(
-      keys.sublist(from, math.min(from + keyRgbaKeysAtOnce, keys.length)),
-    ),
+  for (final set in keys.slices(keyRgbaKeysAtOnce)) _keyTables(set),
 ];
 
 /// [tables] over [view] as [_keyedPixels] says — in C where the engine is

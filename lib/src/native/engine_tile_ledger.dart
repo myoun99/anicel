@@ -1,3 +1,9 @@
+import 'dart:ffi';
+import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'package:collection/collection.dart' show ListExtensions;
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:gpu_engine/gpu_engine.dart';
 
@@ -141,6 +147,61 @@ class EngineTileLedger {
       _holds.remove(hold);
     }
   }
+
+  /// [tiles]' bytes read back from the engine into [into] — [gpuTileBytes]
+  /// each, in order —, the ones without a slot stored first on pages of
+  /// [cel]'s ([TileHold.slotsOf]): what a save, a cel cooled and an undo
+  /// record parked read of the tiles (flip lane ⓓ). Waits for the GPU.
+  void read(Object cel, List<BitmapTile> tiles, Pointer<Uint8> into) =>
+      held((hold) => pool.read(hold.slotsOf(cel, tiles), into));
+
+  /// Each of [tiles]' bytes read back ([read]) and handed to [use] in order
+  /// — a view good only inside [use] —, [readBatch] tiles a read, through
+  /// one block [blocks] gives.
+  ///
+  /// 🚨A READ ASKS FOR NO MORE THAN ONE BATCH: a cel is parked when memory
+  /// is tight (`encodeCelEntryFromSurface`), so its bytes go a batch at a
+  /// time through one block, never the cel whole. 🔢64 tiles, 4 MiB here
+  /// and as much on the GPU's side, a cel of 2116 tiles (5800² inked
+  /// whole) in 34 maps — 브러시/렌더링's pick (flip lane ⓓ), to measure.
+  // ⏳While the CPU's tiles are the canonical ones a tile read is stored
+  // first: a park asks the pool for its tiles' slots till the engine's are
+  // (flip lane ⓒ).
+  void readEach(
+    Object cel,
+    List<BitmapTile> tiles,
+    void Function(Uint8List bytes) use, {
+    Allocator blocks = malloc,
+  }) {
+    // No block of none: C may answer a malloc of 0 with null, which
+    // package:ffi throws for.
+    if (tiles.isEmpty) {
+      return;
+    }
+    final into = blocks<Uint8>(
+      math.min(tiles.length, readBatch) * gpuTileBytes,
+    );
+    try {
+      for (final batch in tiles.slices(readBatch)) {
+        read(cel, batch, into);
+        final bytes = into.asTypedList(batch.length * gpuTileBytes);
+        for (var at = 0; at < batch.length; at++) {
+          use(
+            Uint8List.sublistView(
+              bytes,
+              at * gpuTileBytes,
+              (at + 1) * gpuTileBytes,
+            ),
+          );
+        }
+      }
+    } finally {
+      blocks.free(into);
+    }
+  }
+
+  /// The tiles a read of [readEach] reads at once.
+  static const int readBatch = 64;
 
   /// The slot [tile] has, or null — nothing is stored here. A probe: a
   /// call that runs over slots asks [held].
