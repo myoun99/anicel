@@ -125,9 +125,9 @@ fn an_atlas_of_no_side_is_none_and_one_its_bytes_do_not_fill_is_refused() {
     for (width, height) in [(0, 3), (3, 0)] {
         assert!(atlas_of(engine, &[], width, height).expect("no atlas").is_none(), "{width} × {height}");
     }
-    assert!(atlas_of(engine, &[0; 3], 2, 2).is_none());
-    assert!(last_error().contains("a letters' atlas 2 × 2 of 3 bytes"), "{}", last_error());
-    assert!(atlas_of(engine, &[0; 4], 2, 2).expect("an atlas").is_some(), "{}", last_error());
+    assert!(atlas_of(engine, &[0; 5], 3, 2).is_none());
+    assert!(last_error().contains("a letters' atlas 3 × 2 of 5 bytes"), "{}", last_error());
+    assert!(atlas_of(engine, &[0; 6], 3, 2).expect("an atlas").is_some(), "{}", last_error());
 }
 
 // (10, 20, 30) opaque, its alpha scaled by the coverage: 65535 times

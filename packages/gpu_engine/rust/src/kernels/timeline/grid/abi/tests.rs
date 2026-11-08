@@ -110,12 +110,16 @@ fn a_stream_the_pass_refuses_draws_nothing_and_says_why() {
 #[test]
 fn an_atlas_past_the_device_is_refused_with_why() {
     let most = first_engine().device.limits().max_texture_dimension_2d;
-    let wide = vec![255; most as usize + 1];
-    let (ok, _) = drawn((1, 1), &[], (&wide, most + 1, 1));
-    assert!(!ok);
-    assert!(last_error().contains(&format!("a letters' atlas {} × 1", most + 1)), "{}", last_error());
-    let (ok, _) = drawn((1, 1), &[], (&wide[1..], most, 1));
-    assert!(ok, "an atlas as wide as the device makes: {}", last_error());
+    let long = vec![255; most as usize + 1];
+    for (width, height) in [(most + 1, 1), (1, most + 1)] {
+        let (ok, _) = drawn((1, 1), &[], (&long, width, height));
+        assert!(!ok, "{width} × {height}");
+        assert!(last_error().contains(&format!("a letters' atlas {width} × {height}")), "{}", last_error());
+    }
+    for (width, height) in [(most, 1), (1, most)] {
+        let (ok, _) = drawn((1, 1), &[], (&long[1..], width, height));
+        assert!(ok, "an atlas {width} × {height}, as long as the device makes: {}", last_error());
+    }
 }
 
 // Through the ABI a box is eight doubles, the tile's part then the
