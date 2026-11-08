@@ -6,8 +6,10 @@
 //!   caught): the engine's integer law, the same picture on every device.
 //! - No texture, sampler or other handle: the pictures come through the
 //!   prelude alone.
-//! - ⛔Until the next lane (Q6 answer: 「바로 다음 레인에서 … ⓐⓑⓒ 와 함께
-//!   연다」): no workgroup memory, barrier or atomic.
+//! - A group's shared memory, `workgroupBarrier` and atomics (Q6 answer:
+//!   「바로 다음 레인에서 … ⓐⓑⓒ 와 함께 연다」), in `anicel_render` alone,
+//!   under group.rs: atomics are an add, a min or a max whose result is
+//!   not read (ⓑ); no `storageBarrier` or `textureBarrier`.
 //! - One entry point, `@compute fn anicel_render`, of at most
 //!   [`MOST_INVOCATIONS`] invocations a group, taking its
 //!   `global_invocation_id`; and `fn anicel_reach() -> u32`.
@@ -17,9 +19,9 @@
 //! - Only what the CPU's run (run.rs) runs: the integer builtins listed in
 //!   [`INTEGER_MATHS`], no subgroup operation, no override.
 
-use naga::valid::ModuleInfo;
+use naga::valid::{FunctionInfo, ModuleInfo};
 use naga::{
-    AddressSpace, Binding, BuiltIn, Expression, Function, FunctionArgument, MathFunction, Module, ScalarKind,
+    AddressSpace, AtomicFunction, Binding, BuiltIn, Expression, Function, FunctionArgument, MathFunction, Module, ScalarKind,
     ShaderStage, Span, Statement, TypeInner,
 };
 
@@ -74,7 +76,7 @@ pub(crate) fn is_invocation(argument: &FunctionArgument) -> bool {
 
 pub(crate) fn check(module: &Module, info: &ModuleInfo, plugin: &str) -> Result<(), Refusal> {
     let refuse = |span: Span, why: String| Err(Refusal::at(plugin, span, why));
-    floats_in_text(plugin)?;
+    floats_in_text(module, plugin)?;
     names(module, plugin)?;
     for (handle, ty) in module.types.iter() {
         if let Some(why) = refused_type(&ty.inner) {
@@ -87,10 +89,7 @@ pub(crate) fn check(module: &Module, info: &ModuleInfo, plugin: &str) -> Result<
             continue;
         }
         match global.space {
-            AddressSpace::Private => {}
-            AddressSpace::WorkGroup => {
-                return refuse(span, "workgroup memory is not open yet (it comes with the group's cut, Q6)".into());
-            }
+            AddressSpace::Private | AddressSpace::WorkGroup => {}
             _ => return refuse(span, "a plugin binds nothing: the pictures and values are the prelude's".into()),
         }
     }
@@ -101,11 +100,13 @@ pub(crate) fn check(module: &Module, info: &ModuleInfo, plugin: &str) -> Result<
     reach(module, plugin)?;
     for (handle, function) in module.functions.iter() {
         if is_plugins(module.functions.get_span(handle), plugin) {
-            body(module, function, &info[handle], plugin)?;
+            body(&Code { module, info: &info[handle], plugin, render: false }, function)?;
         }
     }
     let (index, render) = module.entry_points.iter().enumerate().find(|(_, entry)| entry.name == RENDER).expect("entry");
-    body(module, &render.function, info.get_entry_point(index), plugin)
+    let render_info = info.get_entry_point(index);
+    body(&Code { module, info: render_info, plugin, render: true }, &render.function)?;
+    crate::group::check(module, render, render_info, plugin)
 }
 
 /// The `anicel_` names are the host's.
@@ -141,10 +142,12 @@ fn names(module: &Module, plugin: &str) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// The float names WGSL has for a type or for a builtin that makes or
-/// takes one — besides `mat…`, every matrix being float.
-const FLOAT_WORDS: &[&str] = &[
-    "f32", "f16", "vec2f", "vec3f", "vec4f", "vec2h", "vec3h", "vec4h",
+/// The float names WGSL has for a type — besides `mat…`, every matrix
+/// being float.
+const FLOAT_TYPES: &[&str] = &["f32", "f16", "vec2f", "vec3f", "vec4f", "vec2h", "vec3h", "vec4h"];
+
+/// The builtins that make or take a float.
+const FLOAT_BUILTINS: &[&str] = &[
     "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2", "ceil", "cos", "cosh", "cross", "degrees",
     "determinant", "distance", "exp", "exp2", "faceForward", "floor", "fma", "fract", "frexp", "inverseSqrt",
     "ldexp", "length", "log", "log2", "mix", "modf", "normalize", "pow", "quantizeToF16", "radians",
@@ -159,19 +162,28 @@ const FLOAT_WORDS: &[&str] = &[
 /// parses — `u32(sqrt(4.0))` reaches the IR as `2u` — and folds a float
 /// with the host's own maths, whose last place differs from OS to OS
 /// (`sin` · `pow` are the device's library, as native/audio's pins found;
-/// one_maths.rs). A float literal, type or builtin is refused where it is
-/// written, so no float is ever made, folded or not.
-fn floats_in_text(plugin: &str) -> Result<(), Refusal> {
+/// one_maths.rs). A float literal, type or builtin call is refused where it
+/// is written, so no float is ever made, folded or not. A builtin's name
+/// alone is not: WGSL lets a plugin name a value `round` or its own
+/// function `length`, and those make no float.
+fn floats_in_text(module: &Module, plugin: &str) -> Result<(), Refusal> {
     let at = |offset: usize| naga::Span::new(offset as u32, offset as u32 + 1);
     let why = "no float: a plugin is integers alone, so every device draws the same picture";
     if let Some(offset) = crate::scan::first_float_literal(plugin) {
         return Err(Refusal::at(plugin, at(offset), why));
     }
-    let float_word = |word: &str| {
-        FLOAT_WORDS.contains(&word)
-            || (word.starts_with("mat") && word.as_bytes().get(3).is_some_and(u8::is_ascii_digit))
+    let plugins_function = |word: &str| {
+        module.functions.iter().any(|(handle, function)| {
+            function.name.as_deref() == Some(word) && is_plugins(module.functions.get_span(handle), plugin)
+        })
     };
-    match crate::scan::words(plugin).into_iter().find(|(_, word)| float_word(word)) {
+    let called = |offset: usize, word: &str| crate::scan::next_byte(plugin, offset + word.len()) == Some(b'(');
+    let float_word = |offset: usize, word: &str| {
+        FLOAT_TYPES.contains(&word)
+            || (word.starts_with("mat") && word.as_bytes().get(3).is_some_and(u8::is_ascii_digit))
+            || (FLOAT_BUILTINS.contains(&word) && called(offset, word) && !plugins_function(word))
+    };
+    match crate::scan::words(plugin).into_iter().find(|&(offset, word)| float_word(offset, word)) {
         Some((offset, word)) => Err(Refusal::at(plugin, at(offset), format!("`{word}` — {why}"))),
         None => Ok(()),
     }
@@ -253,13 +265,28 @@ fn reach(module: &Module, plugin: &str) -> Result<(), Refusal> {
     if shaped { Ok(()) } else { Err(Refusal::nowhere("a plugin answers its reach: `fn anicel_reach() -> u32`")) }
 }
 
+/// Where a function's code is read: the module and the function's info,
+/// the plugin's text, and whether the function is `anicel_render` — the one
+/// a group's shared memory, barriers and atomics belong to (group.rs).
+struct Code<'a> {
+    module: &'a Module,
+    info: &'a FunctionInfo,
+    plugin: &'a str,
+    render: bool,
+}
+
 /// The plugin's code in one function: what it may run and name.
-fn body(module: &Module, function: &Function, info: &naga::valid::FunctionInfo, plugin: &str) -> Result<(), Refusal> {
+fn body(code: &Code<'_>, function: &Function) -> Result<(), Refusal> {
+    let module = code.module;
     for (handle, expression) in function.expressions.iter() {
         let span = function.expressions.get_span(handle);
-        let refuse = |why: String| Err(Refusal::at(plugin, span, why));
-        if let Some(why) = refused_type(info[handle].ty.inner_with(&module.types)) {
+        let refuse = |why: String| Err(Refusal::at(code.plugin, span, why));
+        let ty = code.info[handle].ty.inner_with(&module.types);
+        if let Some(why) = refused_type(ty) {
             return refuse(why);
+        }
+        if !code.render && points_at_group(ty) {
+            return refuse(SHARED_IN_RENDER.into());
         }
         match *expression {
             Expression::Literal(_)
@@ -277,7 +304,9 @@ fn body(module: &Module, function: &Function, info: &naga::valid::FunctionInfo, 
             | Expression::Binary { .. }
             | Expression::Select { .. }
             | Expression::As { .. }
-            | Expression::CallResult(_) => {}
+            | Expression::CallResult(_)
+            | Expression::AtomicResult { .. }
+            | Expression::WorkGroupUniformLoadResult { .. } => {}
             Expression::Relational { fun, .. } => {
                 if !matches!(fun, naga::RelationalFunction::All | naga::RelationalFunction::Any) {
                     return refuse(format!("`{fun:?}` is a float test"));
@@ -289,39 +318,45 @@ fn body(module: &Module, function: &Function, info: &naga::valid::FunctionInfo, 
                 }
             }
             Expression::GlobalVariable(global) => {
-                if !is_plugins(module.global_variables.get_span(global), plugin) {
-                    let name = module.global_variables[global].name.as_deref().unwrap_or("");
+                let declared = &module.global_variables[global];
+                if !is_plugins(module.global_variables.get_span(global), code.plugin) {
+                    let name = declared.name.as_deref().unwrap_or("");
                     return refuse(format!("`{name}` is the host's: a plugin reaches it through the `anicel_` functions"));
+                }
+                if declared.space == AddressSpace::WorkGroup && !code.render {
+                    return refuse(SHARED_IN_RENDER.into());
                 }
             }
             ref other => return refuse(format!("a plugin cannot use {}", kind_of(other))),
         }
     }
-    statements(module, &function.body, plugin)
+    statements(code, &function.body)
 }
 
-fn statements(module: &Module, block: &naga::Block, plugin: &str) -> Result<(), Refusal> {
+/// Why shared memory, a barrier or an atomic outside `anicel_render` is
+/// refused: the proof of group.rs does not follow calls.
+const SHARED_IN_RENDER: &str = "shared memory, barriers and atomics are anicel_render's own: the host's proof \
+                                that the group meets them alike does not follow calls";
+
+fn statements(code: &Code<'_>, block: &naga::Block) -> Result<(), Refusal> {
+    let module = code.module;
     for (statement, span) in block.span_iter() {
-        let refuse = |why: String| Err(Refusal::at(plugin, *span, why));
+        let refuse = |why: String| Err(Refusal::at(code.plugin, *span, why));
         match statement {
-            Statement::Emit(_)
-            | Statement::Break
-            | Statement::Continue
-            | Statement::Return { .. }
-            | Statement::Store { .. } => {}
-            Statement::Block(inner) => statements(module, inner, plugin)?,
+            Statement::Emit(_) | Statement::Break | Statement::Continue | Statement::Return { .. } | Statement::Store { .. } => {}
+            Statement::Block(inner) => statements(code, inner)?,
             Statement::If { accept, reject, .. } => {
-                statements(module, accept, plugin)?;
-                statements(module, reject, plugin)?;
+                statements(code, accept)?;
+                statements(code, reject)?;
             }
             Statement::Switch { cases, .. } => {
                 for case in cases {
-                    statements(module, &case.body, plugin)?;
+                    statements(code, &case.body)?;
                 }
             }
             Statement::Loop { body, continuing, .. } => {
-                statements(module, body, plugin)?;
-                statements(module, continuing, plugin)?;
+                statements(code, body)?;
+                statements(code, continuing)?;
             }
             Statement::Call { function, .. } => {
                 let name = module.functions[*function].name.as_deref().unwrap_or("");
@@ -329,16 +364,37 @@ fn statements(module: &Module, block: &naga::Block, plugin: &str) -> Result<(), 
                     return refuse(format!("`{name}` is the host's"));
                 }
             }
-            Statement::ControlBarrier(_)
-            | Statement::MemoryBarrier(_)
-            | Statement::WorkGroupUniformLoad { .. }
-            | Statement::Atomic { .. } => {
-                return refuse("barriers and atomics are not open yet (they come with the group's cut, Q6)".into());
+            Statement::ControlBarrier(_) | Statement::WorkGroupUniformLoad { .. } if !code.render => {
+                return refuse(SHARED_IN_RENDER.into());
+            }
+            Statement::ControlBarrier(barrier) if *barrier != naga::Barrier::WORK_GROUP => {
+                return refuse("the one barrier a plugin has is `workgroupBarrier`: it owns no storage, texture or subgroup".into());
+            }
+            Statement::ControlBarrier(_) | Statement::WorkGroupUniformLoad { .. } => {}
+            Statement::Atomic { fun, result, .. } => {
+                if !code.render {
+                    return refuse(SHARED_IN_RENDER.into());
+                }
+                if !matches!(fun, AtomicFunction::Add | AtomicFunction::Min | AtomicFunction::Max) {
+                    return refuse("an atomic is an add, a min or a max — its last value is then the same in any order (Q6 ⓑ)".into());
+                }
+                if result.is_some_and(|result| code.info[result].ref_count > 0) {
+                    return refuse("what an atomic gives back is not read — the order it came in is the device's (Q6 ⓑ)".into());
+                }
             }
             other => return refuse(format!("a plugin cannot use {}", kind_of(other))),
         }
     }
     Ok(())
+}
+
+/// Whether a value points at a group's shared memory — a helper handed
+/// `&tile` would read and write it where group.rs does not look.
+fn points_at_group(ty: &TypeInner) -> bool {
+    matches!(
+        *ty,
+        TypeInner::Pointer { space: AddressSpace::WorkGroup, .. } | TypeInner::ValuePointer { space: AddressSpace::WorkGroup, .. }
+    )
 }
 
 /// The variant's name of an IR node, for a refusal.

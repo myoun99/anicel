@@ -53,6 +53,23 @@ pub(crate) fn words(source: &str) -> Vec<(usize, &str)> {
     found
 }
 
+/// The first byte at or after `from` that is neither blank nor in a
+/// comment — what the text says next.
+pub(crate) fn next_byte(source: &str, from: usize) -> Option<u8> {
+    let bytes = source.as_bytes();
+    let mut at = from;
+    while at < bytes.len() {
+        if let Some(past) = comment_end(bytes, at) {
+            at = past;
+        } else if bytes[at].is_ascii_whitespace() {
+            at += 1;
+        } else {
+            return Some(bytes[at]);
+        }
+    }
+    None
+}
+
 fn is_word(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }

@@ -11,13 +11,22 @@
 //! `Restrict` for a checked module, the index taken as unsigned (naga's
 //! proc/index.rs names that form; the device's run holds the GPU to it).
 //! It runs only what the check lets through.
+//!
+//! A group runs as the device runs it: each invocation on a thread of its
+//! own, the group's shared memory zeroed before it starts (Q6 ⓒ), and the
+//! threads meeting at each barrier. What the check proved (group.rs) makes
+//! the picture the same in any order the threads take; a group whose
+//! invocations meet at different places is a hole in that proof, and the
+//! run stops on it rather than wait.
+
+use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 
 use naga::{
-    ArraySize, AtomicFunction, BinaryOperator, Binding, Block, BuiltIn, Expression, Function, Handle, Literal,
-    MathFunction, Module, RelationalFunction, ScalarKind, Statement, SwitchValue, TypeInner, UnaryOperator,
+    AddressSpace, ArraySize, AtomicFunction, BinaryOperator, Binding, Block, BuiltIn, Expression, Function, Handle,
+    Literal, MathFunction, Module, RelationalFunction, ScalarKind, Statement, SwitchValue, TypeInner, UnaryOperator,
 };
 
-use crate::{Kernel, REACH, RENDER};
+use crate::{Kernel, REACH};
 
 /// The pictures, values and moment one run is handed — what the GPU's
 /// bindings hold (prelude.wgsl's `AnicelFrame` and buffers). Places are
@@ -49,13 +58,13 @@ impl Kernel {
     /// values and moment — every invocation's share to spend, as one
     /// invocation of the render has.
     pub fn reach(&self, frame: &Frame<'_>) -> Result<u32, Cut> {
-        let mut no_output: [u32; 0] = [];
-        let mut machine = Machine::new(&self.module, frame, &mut no_output);
+        let world = World::new(&self.module, frame, &[], 1);
+        let mut machine = Machine::new(&world);
         let reach = machine.function_named(REACH);
         machine.fresh_invocation();
         machine.set_private("anicel_host_fuel", Val::U32(frame.fuel));
         let answer = machine.call(reach, Vec::new());
-        machine.cut()?;
+        world.cut()?;
         match answer {
             Some(Val::U32(reach)) => Ok(reach),
             other => unreachable!("the check holds anicel_reach to a u32, and it answered {other:?}"),
@@ -72,33 +81,41 @@ impl Kernel {
             (frame.out_size[1].max(0) as u32).div_ceil(size[1]),
             1,
         ];
-        let render =
-            self.module.entry_points.iter().find(|entry| entry.name == RENDER).expect("checked");
-        let mut machine = Machine::new(&self.module, frame, output);
-        for group in grid(groups) {
+        let render = self.render_entry();
+        let world = World::new(&self.module, frame, output, size.iter().product::<u32>() as usize);
+        std::thread::scope(|scope| {
             for local in grid(size) {
-                let global: [u32; 3] = std::array::from_fn(|axis| group[axis] * size[axis] + local[axis]);
-                let index = local[0] + local[1] * size[0] + local[2] * size[0] * size[1];
-                let arguments = render
-                    .function
-                    .arguments
-                    .iter()
-                    .map(|argument| match argument.binding {
-                        Some(Binding::BuiltIn(BuiltIn::GlobalInvocationId)) => vector(global),
-                        Some(Binding::BuiltIn(BuiltIn::LocalInvocationId)) => vector(local),
-                        Some(Binding::BuiltIn(BuiltIn::LocalInvocationIndex)) => Val::U32(index),
-                        Some(Binding::BuiltIn(BuiltIn::WorkGroupId)) => vector(group),
-                        Some(Binding::BuiltIn(BuiltIn::NumWorkGroups)) => vector(groups),
-                        ref other => unreachable!("the check refuses {other:?}"),
-                    })
-                    .map(Ev::V)
-                    .collect();
-                machine.fresh_invocation();
-                machine.run(&render.function, arguments);
+                let world = &world;
+                scope.spawn(move || {
+                    let _breaks = BreakOnPanic(&world.meet);
+                    let mut machine = Machine::new(world);
+                    for group in grid(groups) {
+                        world.meet.meet(At::Group, || world.zero_group());
+                        let global: [u32; 3] = std::array::from_fn(|axis| group[axis] * size[axis] + local[axis]);
+                        let index = local[0] + local[1] * size[0] + local[2] * size[0] * size[1];
+                        let arguments = render
+                            .function
+                            .arguments
+                            .iter()
+                            .map(|argument| match argument.binding {
+                                Some(Binding::BuiltIn(BuiltIn::GlobalInvocationId)) => vector(global),
+                                Some(Binding::BuiltIn(BuiltIn::LocalInvocationId)) => vector(local),
+                                Some(Binding::BuiltIn(BuiltIn::LocalInvocationIndex)) => Val::U32(index),
+                                Some(Binding::BuiltIn(BuiltIn::WorkGroupId)) => vector(group),
+                                Some(Binding::BuiltIn(BuiltIn::NumWorkGroups)) => vector(groups),
+                                ref other => unreachable!("the check refuses {other:?}"),
+                            })
+                            .map(Ev::V)
+                            .collect();
+                        machine.fresh_invocation();
+                        machine.run(&render.function, arguments);
+                    }
+                    world.meet.meet(At::Group, || {});
+                });
             }
-        }
-        machine.write_back();
-        machine.cut()
+        });
+        world.write_back(output);
+        world.cut()
     }
 }
 
@@ -188,60 +205,212 @@ struct Activation {
     values: Vec<Option<Ev>>,
 }
 
-struct Machine<'m, 'o> {
-    module: &'m Module,
-    globals: Vec<Val>,
-    /// Each private's starting value, for a fresh invocation.
-    privates: Vec<(usize, Val)>,
-    /// The locals of every call on the stack.
-    locals: Vec<Vec<Val>>,
-    constants: Vec<Option<Val>>,
-    output: &'o mut [u32],
-    output_global: Option<usize>,
-    cut_global: usize,
+/// Where a global lives in a run.
+#[derive(Clone, Copy)]
+enum Home {
+    /// A binding no invocation writes: the frame, the pictures, the values.
+    Fixed,
+    /// The output, the cut and a group's shared memory, behind one lock.
+    Shared,
+    /// Each invocation's own.
+    Private,
 }
 
-impl<'m, 'o> Machine<'m, 'o> {
-    fn new(module: &'m Module, frame: &Frame<'_>, output: &'o mut [u32]) -> Self {
-        let mut machine = Machine {
-            module,
-            globals: Vec::new(),
-            privates: Vec::new(),
-            locals: Vec::new(),
-            constants: vec![None; module.global_expressions.len()],
-            output,
-            output_global: None,
-            cut_global: usize::MAX,
-        };
+/// What every invocation of a run reads and writes alike.
+struct World<'m> {
+    module: &'m Module,
+    homes: Vec<Home>,
+    fixed: Vec<Option<Val>>,
+    shared: Mutex<Vec<Option<Val>>>,
+    /// Each shared memory variable's zero, set again before each group.
+    group_zero: Vec<(usize, Val)>,
+    output_global: Option<usize>,
+    cut_global: usize,
+    meet: Meet,
+}
+
+impl<'m> World<'m> {
+    fn new(module: &'m Module, frame: &Frame<'_>, output: &[u32], invocations: usize) -> Self {
         let plane = (frame.in_size[0].max(0) * frame.in_size[1].max(0)) as usize;
         let rows = if plane == 0 { 0 } else { frame.rows.len() / plane };
+        let words = |words: &[u32]| Val::Comp(words.iter().map(|&w| Val::U32(w)).collect());
+        let mut world = World {
+            module,
+            homes: Vec::new(),
+            fixed: Vec::new(),
+            shared: Mutex::new(Vec::new()),
+            group_zero: Vec::new(),
+            output_global: None,
+            cut_global: usize::MAX,
+            meet: Meet::new(invocations),
+        };
+        let mut shared = Vec::new();
         for (handle, global) in module.global_variables.iter() {
-            let words = |words: &[u32]| Val::Comp(words.iter().map(|&w| Val::U32(w)).collect());
-            let val = match global.name.as_deref() {
-                Some("anicel_host_frame") => frame_val(frame, rows, frame.values.len()),
-                Some("anicel_host_input") => words(frame.input),
-                Some("anicel_host_rows") => words(frame.rows),
-                Some("anicel_host_values") => Val::Comp(
-                    frame.values.iter().map(|v| Val::Comp(v.iter().map(|&w| Val::I32(w)).collect())).collect(),
+            let index = handle.index();
+            let (home, val) = match global.name.as_deref() {
+                Some("anicel_host_frame") => (Home::Fixed, Some(frame_val(frame, rows, frame.values.len()))),
+                Some("anicel_host_input") => (Home::Fixed, Some(words(frame.input))),
+                Some("anicel_host_rows") => (Home::Fixed, Some(words(frame.rows))),
+                Some("anicel_host_values") => (
+                    Home::Fixed,
+                    Some(Val::Comp(
+                        frame.values.iter().map(|v| Val::Comp(v.iter().map(|&w| Val::I32(w)).collect())).collect(),
+                    )),
                 ),
                 Some("anicel_host_output") => {
-                    machine.output_global = Some(handle.index());
-                    words(machine.output)
+                    world.output_global = Some(index);
+                    (Home::Shared, Some(words(output)))
                 }
                 Some("anicel_host_cut") => {
-                    machine.cut_global = handle.index();
-                    Val::U32(0)
+                    world.cut_global = index;
+                    (Home::Shared, Some(Val::U32(0)))
                 }
-                _ => {
-                    let start = match global.init {
-                        Some(init) => machine.constant(init),
-                        None => machine.zero(global.ty),
-                    };
-                    machine.privates.push((handle.index(), start.clone()));
-                    start
+                _ if global.space == AddressSpace::WorkGroup => {
+                    let zero = zero(module, global.ty);
+                    world.group_zero.push((index, zero.clone()));
+                    (Home::Shared, Some(zero))
                 }
+                _ => (Home::Private, None),
             };
-            machine.globals.push(val);
+            world.homes.push(home);
+            let fixed = matches!(home, Home::Fixed);
+            world.fixed.push(if fixed { val.clone() } else { None });
+            shared.push(if fixed { None } else { val });
+        }
+        world.shared = Mutex::new(shared);
+        world
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Vec<Option<Val>>> {
+        self.shared.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Ⓒ: the group's shared memory starts zeroed.
+    fn zero_group(&self) {
+        let mut shared = self.lock();
+        for (index, zero) in &self.group_zero {
+            shared[*index] = Some(zero.clone());
+        }
+    }
+
+    fn cut(&self) -> Result<(), Cut> {
+        if self.lock()[self.cut_global] == Some(Val::U32(0)) { Ok(()) } else { Err(Cut) }
+    }
+
+    fn write_back(&self, output: &mut [u32]) {
+        if let Some(index) = self.output_global {
+            let shared = self.lock();
+            for (word, val) in output.iter_mut().zip(shared[index].as_ref().expect("the output").parts()) {
+                *word = val.index();
+            }
+        }
+    }
+}
+
+/// Where a group's invocations meet: before a group starts, and at a
+/// barrier statement (by its place in the module).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum At {
+    Group,
+    Barrier(usize),
+}
+
+/// The group's meeting place: every invocation waits there until all have
+/// come — to the same place, or the run stops.
+struct Meet {
+    size: usize,
+    state: Mutex<Meeting>,
+    woken: Condvar,
+}
+
+struct Meeting {
+    come: usize,
+    round: u64,
+    at: Option<At>,
+    broken: bool,
+}
+
+impl Meet {
+    fn new(size: usize) -> Self {
+        Meet { size, state: Mutex::new(Meeting { come: 0, round: 0, at: None, broken: false }), woken: Condvar::new() }
+    }
+
+    /// Waits at `at` until the whole group is there; the last to come runs
+    /// `last` before any goes on.
+    fn meet(&self, at: At, last: impl FnOnce()) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        assert!(!state.broken, "another invocation of the group stopped");
+        let waiting = *state.at.get_or_insert(at);
+        assert!(
+            waiting == at,
+            "the group met at different places, {waiting:?} and {at:?}: the check let a barrier through \
+             that not every invocation meets"
+        );
+        state.come += 1;
+        if state.come == self.size {
+            last();
+            state.come = 0;
+            state.at = None;
+            state.round += 1;
+            self.woken.notify_all();
+            return;
+        }
+        let round = state.round;
+        while state.round == round && !state.broken {
+            state = self.woken.wait(state).unwrap_or_else(PoisonError::into_inner);
+        }
+        assert!(!state.broken, "another invocation of the group stopped");
+    }
+
+    fn break_off(&self) {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner).broken = true;
+        self.woken.notify_all();
+    }
+}
+
+/// Wakes the rest of the group when an invocation's thread panics, so
+/// they stop too instead of waiting at a barrier for ever.
+struct BreakOnPanic<'a>(&'a Meet);
+
+impl Drop for BreakOnPanic<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.0.break_off();
+        }
+    }
+}
+
+/// One invocation's run: its privates and the locals of every call on
+/// its stack.
+struct Machine<'w, 'm> {
+    world: &'w World<'m>,
+    module: &'m Module,
+    privates: Vec<Option<Val>>,
+    /// Each private's starting value, for a fresh invocation.
+    private_start: Vec<(usize, Val)>,
+    locals: Vec<Vec<Val>>,
+    constants: Vec<Option<Val>>,
+}
+
+impl<'w, 'm> Machine<'w, 'm> {
+    fn new(world: &'w World<'m>) -> Self {
+        let module = world.module;
+        let mut machine = Machine {
+            world,
+            module,
+            privates: vec![None; module.global_variables.len()],
+            private_start: Vec::new(),
+            locals: Vec::new(),
+            constants: vec![None; module.global_expressions.len()],
+        };
+        for (handle, global) in module.global_variables.iter() {
+            if matches!(world.homes[handle.index()], Home::Private) {
+                let start = match global.init {
+                    Some(init) => machine.constant(init),
+                    None => zero(module, global.ty),
+                };
+                machine.private_start.push((handle.index(), start));
+            }
         }
         machine
     }
@@ -251,27 +420,15 @@ impl<'m, 'o> Machine<'m, 'o> {
     }
 
     fn fresh_invocation(&mut self) {
-        for (index, start) in &self.privates {
-            self.globals[*index] = start.clone();
+        for (index, start) in &self.private_start {
+            self.privates[*index] = Some(start.clone());
         }
     }
 
     fn set_private(&mut self, name: &str, val: Val) {
         let (handle, _) =
             self.module.global_variables.iter().find(|(_, g)| g.name.as_deref() == Some(name)).expect("the prelude's");
-        self.globals[handle.index()] = val;
-    }
-
-    fn cut(&self) -> Result<(), Cut> {
-        if self.globals[self.cut_global] == Val::U32(0) { Ok(()) } else { Err(Cut) }
-    }
-
-    fn write_back(&mut self) {
-        if let Some(index) = self.output_global {
-            for (word, val) in self.output.iter_mut().zip(self.globals[index].parts()) {
-                *word = val.index();
-            }
-        }
+        self.privates[handle.index()] = Some(val);
     }
 
     fn call(&mut self, function: Handle<Function>, arguments: Vec<Ev>) -> Option<Val> {
@@ -286,7 +443,7 @@ impl<'m, 'o> Machine<'m, 'o> {
         for (_, local) in function.local_variables.iter() {
             let start = match local.init {
                 Some(init) => self.eval(function, &mut activation, call, init).val(),
-                None => self.zero(local.ty),
+                None => zero(self.module, local.ty),
             };
             self.locals[call].push(start);
         }
@@ -364,7 +521,7 @@ impl<'m, 'o> Machine<'m, 'o> {
             Statement::Store { pointer, value } => {
                 let Ev::P(ptr) = self.eval(function, act, call, pointer) else { unreachable!("a store's pointer") };
                 let value = self.eval(function, act, call, value).val();
-                *self.place(&ptr) = value;
+                self.change(&ptr, |place| *place = value);
                 Flow::Next
             }
             Statement::Call { function: callee, ref arguments, result } => {
@@ -378,22 +535,34 @@ impl<'m, 'o> Machine<'m, 'o> {
             Statement::Atomic { pointer, ref fun, value, result } => {
                 let Ev::P(ptr) = self.eval(function, act, call, pointer) else { unreachable!("an atomic's pointer") };
                 let operand = self.eval(function, act, call, value).val();
-                let before = self.place(&ptr).clone();
-                let after = match fun {
-                    AtomicFunction::Add => binary(BinaryOperator::Add, &before, &operand),
-                    AtomicFunction::Subtract => binary(BinaryOperator::Subtract, &before, &operand),
-                    AtomicFunction::And => binary(BinaryOperator::And, &before, &operand),
-                    AtomicFunction::ExclusiveOr => binary(BinaryOperator::ExclusiveOr, &before, &operand),
-                    AtomicFunction::InclusiveOr => binary(BinaryOperator::InclusiveOr, &before, &operand),
-                    AtomicFunction::Min => math2(MathFunction::Min, &before, &operand),
-                    AtomicFunction::Max => math2(MathFunction::Max, &before, &operand),
-                    AtomicFunction::Exchange { compare: None } => operand,
-                    AtomicFunction::Exchange { compare: Some(_) } => unreachable!("the prelude swaps nothing"),
-                };
-                *self.place(&ptr) = after;
+                let before = self.change(&ptr, |place| {
+                    let before = place.clone();
+                    *place = match fun {
+                        AtomicFunction::Add => binary(BinaryOperator::Add, &before, &operand),
+                        AtomicFunction::Min => math2(MathFunction::Min, &before, &operand),
+                        AtomicFunction::Max => math2(MathFunction::Max, &before, &operand),
+                        other => unreachable!("the check refuses {other:?}"),
+                    };
+                    before
+                });
                 if let Some(result) = result {
                     act.values[result.index()] = Some(Ev::V(before));
                 }
+                Flow::Next
+            }
+            Statement::ControlBarrier(_) => {
+                self.world.meet.meet(At::Barrier(statement as *const Statement as usize), || {});
+                Flow::Next
+            }
+            Statement::WorkGroupUniformLoad { pointer, result } => {
+                // As the device runs it: a barrier, the load, a barrier —
+                // so no invocation writes before all have read.
+                let at = At::Barrier(statement as *const Statement as usize);
+                self.world.meet.meet(at, || {});
+                let Ev::P(ptr) = self.eval(function, act, call, pointer) else { unreachable!("a load's pointer") };
+                let value = self.look(&ptr, Val::clone);
+                self.world.meet.meet(at, || {});
+                act.values[result.index()] = Some(Ev::V(value));
                 Flow::Next
             }
             ref other => unreachable!("the check refuses {other:?}"),
@@ -419,10 +588,10 @@ impl<'m, 'o> Machine<'m, 'o> {
                 let init = self.module.constants[constant].init;
                 self.constant(init)
             }
-            Expression::ZeroValue(ty) => self.zero(ty),
+            Expression::ZeroValue(ty) => zero(self.module, ty),
             Expression::Compose { ty, ref components } => {
                 let parts: Vec<Val> = components.iter().map(|&c| val(self, act, c)).collect();
-                self.compose(ty, parts)
+                compose(self.module, ty, parts)
             }
             Expression::Splat { size, value } => Val::Comp(vec![val(self, act, value); size as usize]),
             Expression::Swizzle { size, vector, pattern } => {
@@ -443,7 +612,7 @@ impl<'m, 'o> Machine<'m, 'o> {
             Expression::AccessIndex { base, index } => return self.access(function, act, call, base, index),
             Expression::Load { pointer } => {
                 let Ev::P(ptr) = self.eval(function, act, call, pointer) else { unreachable!("a load's pointer") };
-                self.place(&ptr).clone()
+                self.look(&ptr, Val::clone)
             }
             Expression::Unary { op, expr } => unary(op, &val(self, act, expr)),
             Expression::Binary { op, left, right } => binary(op, &val(self, act, left), &val(self, act, right)),
@@ -465,12 +634,12 @@ impl<'m, 'o> Machine<'m, 'o> {
                 math(fun, &args)
             }
             Expression::As { expr, kind, .. } => cast(&val(self, act, expr), kind),
-            Expression::CallResult(_) | Expression::AtomicResult { .. } => {
+            Expression::CallResult(_) | Expression::AtomicResult { .. } | Expression::WorkGroupUniformLoadResult { .. } => {
                 unreachable!("a result is set by its statement before it is read")
             }
             Expression::ArrayLength(array) => {
                 let Ev::P(ptr) = self.eval(function, act, call, array) else { unreachable!("an array's pointer") };
-                Val::U32(self.place(&ptr).parts().len() as u32)
+                Val::U32(self.look(&ptr, |array| array.parts().len()) as u32)
             }
             ref other => unreachable!("the check refuses {other:?}"),
         })
@@ -481,7 +650,7 @@ impl<'m, 'o> Machine<'m, 'o> {
     fn access(&mut self, function: &'m Function, act: &mut Activation, call: usize, base: Handle<Expression>, index: u32) -> Ev {
         match self.eval(function, act, call, base) {
             Ev::P(mut ptr) => {
-                let last = self.place(&ptr).parts().len() - 1;
+                let last = self.look(&ptr, |place| place.parts().len()) - 1;
                 ptr.path.push((index as usize).min(last));
                 Ev::P(ptr)
             }
@@ -492,18 +661,37 @@ impl<'m, 'o> Machine<'m, 'o> {
         }
     }
 
-    fn place(&mut self, ptr: &Ptr) -> &mut Val {
-        let mut place = match ptr.root {
-            Root::Global(index) => &mut self.globals[index],
-            Root::Local { call, local } => &mut self.locals[call][local],
+    /// `f` of the place `ptr` points at.
+    fn look<R>(&self, ptr: &Ptr, f: impl FnOnce(&Val) -> R) -> R {
+        let shared;
+        let root = match ptr.root {
+            Root::Local { call, local } => &self.locals[call][local],
+            Root::Global(index) => match self.world.homes[index] {
+                Home::Private => self.privates[index].as_ref().expect("a private is set"),
+                Home::Fixed => self.world.fixed[index].as_ref().expect("a binding is set"),
+                Home::Shared => {
+                    shared = self.world.lock();
+                    shared[index].as_ref().expect("a shared variable is set")
+                }
+            },
         };
-        for &step in &ptr.path {
-            place = match place {
-                Val::Comp(parts) => &mut parts[step],
-                other => unreachable!("a pointer into {other:?}"),
-            };
+        f(descend(root, &ptr.path))
+    }
+
+    /// `f` of the place `ptr` points at, to change it — in one hold of the
+    /// lock for what the group shares, so an atomic is one step.
+    fn change<R>(&mut self, ptr: &Ptr, f: impl FnOnce(&mut Val) -> R) -> R {
+        match ptr.root {
+            Root::Local { call, local } => f(descend_mut(&mut self.locals[call][local], &ptr.path)),
+            Root::Global(index) => match self.world.homes[index] {
+                Home::Private => f(descend_mut(self.privates[index].as_mut().expect("a private is set"), &ptr.path)),
+                Home::Fixed => unreachable!("the bindings the host fills are read alone"),
+                Home::Shared => {
+                    let mut shared = self.world.lock();
+                    f(descend_mut(shared[index].as_mut().expect("a shared variable is set"), &ptr.path))
+                }
+            },
         }
-        place
     }
 
     /// A module-scope constant expression's value.
@@ -515,10 +703,10 @@ impl<'m, 'o> Machine<'m, 'o> {
         let value = match module.global_expressions[handle] {
             Expression::Literal(literal) => literal_val(literal),
             Expression::Constant(constant) => self.constant(module.constants[constant].init),
-            Expression::ZeroValue(ty) => self.zero(ty),
+            Expression::ZeroValue(ty) => zero(module, ty),
             Expression::Compose { ty, ref components } => {
                 let parts = components.iter().map(|&c| self.constant(c)).collect();
-                self.compose(ty, parts)
+                compose(module, ty, parts)
             }
             Expression::Splat { size, value } => Val::Comp(vec![self.constant(value); size as usize]),
             ref other => unreachable!("naga folds a constant to literals, and this one is {other:?}"),
@@ -526,39 +714,56 @@ impl<'m, 'o> Machine<'m, 'o> {
         self.constants[handle.index()] = Some(value.clone());
         value
     }
+}
 
-    fn compose(&self, ty: Handle<naga::Type>, parts: Vec<Val>) -> Val {
-        match self.module.types[ty].inner {
-            TypeInner::Vector { .. } => Val::Comp(
-                parts
-                    .into_iter()
-                    .flat_map(|part| match part {
-                        Val::Comp(inner) => inner,
-                        scalar => vec![scalar],
-                    })
-                    .collect(),
-            ),
-            _ => Val::Comp(parts),
-        }
+fn descend<'v>(mut place: &'v Val, path: &[usize]) -> &'v Val {
+    for &step in path {
+        place = &place.parts()[step];
     }
+    place
+}
 
-    fn zero(&self, ty: Handle<naga::Type>) -> Val {
-        let scalar = |kind: ScalarKind| match kind {
-            ScalarKind::Sint => Val::I32(0),
-            ScalarKind::Uint => Val::U32(0),
-            ScalarKind::Bool => Val::Bool(false),
-            other => unreachable!("the check refuses {other:?}"),
+fn descend_mut<'v>(mut place: &'v mut Val, path: &[usize]) -> &'v mut Val {
+    for &step in path {
+        place = match place {
+            Val::Comp(parts) => &mut parts[step],
+            other => unreachable!("a pointer into {other:?}"),
         };
-        match self.module.types[ty].inner {
-            TypeInner::Scalar(s) | TypeInner::Atomic(s) => scalar(s.kind),
-            TypeInner::Vector { size, scalar: s } => Val::Comp(vec![scalar(s.kind); size as usize]),
-            TypeInner::Array { base, size: ArraySize::Constant(count), .. } => {
-                Val::Comp(vec![self.zero(base); count.get() as usize])
-            }
-            TypeInner::Array { size: ArraySize::Dynamic, .. } => Val::Comp(Vec::new()),
-            TypeInner::Struct { ref members, .. } => Val::Comp(members.iter().map(|m| self.zero(m.ty)).collect()),
-            ref other => unreachable!("the check refuses {other:?}"),
+    }
+    place
+}
+
+fn compose(module: &Module, ty: Handle<naga::Type>, parts: Vec<Val>) -> Val {
+    match module.types[ty].inner {
+        TypeInner::Vector { .. } => Val::Comp(
+            parts
+                .into_iter()
+                .flat_map(|part| match part {
+                    Val::Comp(inner) => inner,
+                    scalar => vec![scalar],
+                })
+                .collect(),
+        ),
+        _ => Val::Comp(parts),
+    }
+}
+
+fn zero(module: &Module, ty: Handle<naga::Type>) -> Val {
+    let scalar = |kind: ScalarKind| match kind {
+        ScalarKind::Sint => Val::I32(0),
+        ScalarKind::Uint => Val::U32(0),
+        ScalarKind::Bool => Val::Bool(false),
+        other => unreachable!("the check refuses {other:?}"),
+    };
+    match module.types[ty].inner {
+        TypeInner::Scalar(s) | TypeInner::Atomic(s) => scalar(s.kind),
+        TypeInner::Vector { size, scalar: s } => Val::Comp(vec![scalar(s.kind); size as usize]),
+        TypeInner::Array { base, size: ArraySize::Constant(count), .. } => {
+            Val::Comp(vec![zero(module, base); count.get() as usize])
         }
+        TypeInner::Array { size: ArraySize::Dynamic, .. } => Val::Comp(Vec::new()),
+        TypeInner::Struct { ref members, .. } => Val::Comp(members.iter().map(|m| zero(module, m.ty)).collect()),
+        ref other => unreachable!("the check refuses {other:?}"),
     }
 }
 

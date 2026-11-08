@@ -22,10 +22,15 @@
 //! reach, which the chain's plan needs before anything is dispatched, and
 //! for the reference picture the GPU's is held to.
 //!
-//! ⛔Not here yet (Q6 answer, 2026-11-08: 「화소마다 꼴(설계 ①)을 먼저
-//! 짓고 바로 다음 레인에서 공유 메모리 · 동기화 · 원자 연산을 ⓐⓑⓒ 와 함께
-//! 연다」): workgroup memory, barriers and atomics are refused until that
-//! lane adds the group's cut (ⓐ), the atomic rule (ⓑ), Q8 and Q9.
+//! 🗣️Q6 (2026-11-08: 「화소마다 꼴(설계 ①)을 먼저 짓고 바로 다음 레인에서
+//! 공유 메모리 · 동기화 · 원자 연산을 ⓐⓑⓒ 와 함께 연다」): a group's shared
+//! memory, `workgroupBarrier` and atomics are open to `anicel_render`,
+//! under the rules group.rs proves — the group leaves a barrier's loop
+//! together (ⓐ, uniform.rs, and count.rs's group charge), an atomic only
+//! adds, mins or maxes (ⓑ), shared memory starts zeroed (ⓒ), and the
+//! answers to Q8 · Q9 · Q10 make every read see one value on every device.
+//! The CPU's run takes each invocation of a group on its own thread and
+//! meets them at each barrier.
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
@@ -34,8 +39,10 @@ const _CHECKOUT: Option<&str> = option_env!("QA_CHECKOUT");
 
 mod check;
 mod count;
+mod group;
 mod run;
 mod scan;
+mod uniform;
 
 #[cfg(test)]
 mod tests;

@@ -5,6 +5,9 @@ const ENDLESS: &str = include_str!("../fixtures/endless.wgsl");
 const FLOAT: &str = include_str!("../fixtures/float.wgsl");
 const BLUR: &str = include_str!("../fixtures/blur.wgsl");
 const LAYER: &str = include_str!("../fixtures/layer.wgsl");
+const ROW_BLUR: &str = include_str!("../fixtures/row_blur.wgsl");
+const HISTOGRAM: &str = include_str!("../fixtures/histogram.wgsl");
+const GROUP_SUM: &str = include_str!("../fixtures/group_sum.wgsl");
 
 /// What a reach is asked: the values and the moment, no picture.
 fn ask(values: &[[i32; 4]], fuel: u32) -> Frame<'_> {
@@ -61,7 +64,16 @@ fn pixel(r: u32, g: u32, b: u32, a: u32) -> u32 {
 
 #[test]
 fn the_fixtures_open_but_the_float() {
-    for (name, source) in [("invert", INVERT), ("endless", ENDLESS), ("blur", BLUR), ("layer", LAYER)] {
+    let fixtures = [
+        ("invert", INVERT),
+        ("endless", ENDLESS),
+        ("blur", BLUR),
+        ("layer", LAYER),
+        ("row blur", ROW_BLUR),
+        ("histogram", HISTOGRAM),
+        ("group sum", GROUP_SUM),
+    ];
+    for (name, source) in fixtures {
         open(source).unwrap_or_else(|refusal| panic!("{name}: {refusal}"));
     }
     let refused = refusal(FLOAT);
@@ -239,13 +251,13 @@ fn what_the_check_refuses_and_why() {
     let with_render_argument = |argument: &str| {
         plugin("", render, reach).replace("at: vec3<u32>) {", &format!("at: vec3<u32>, {argument}) {{"))
     };
-    let cases: [(&str, String, &str); 21] = [
+    let cases: [(&str, String, &str); 22] = [
         ("a float literal", plugin("", "let x = 1.5;", reach), "no float"),
         ("a float conversion", plugin("", "let x = u32(f32(at.x));", reach), "no float"),
         ("a texture", plugin("@group(1) @binding(0) var picture: texture_2d<u32>;", render, reach), "no texture"),
         ("its own binding", plugin("@group(1) @binding(0) var<storage> extra: array<u32>;", render, reach), "binds nothing"),
-        ("workgroup memory", plugin("var<workgroup> tile: array<u32, 256>;", "tile[0] = 1u;", reach), "workgroup memory"),
-        ("a barrier", plugin("", "workgroupBarrier();", reach), "barriers"),
+        ("another's cell written", plugin("var<workgroup> tile: array<u32, 256>;", "tile[0] = 1u;", reach), "own cell"),
+        ("a barrier in a helper", plugin("fn wait() { workgroupBarrier(); }", "wait();", reach), "anicel_render's own"),
         ("an anicel_ name", plugin("fn anicel_mine() -> u32 { return 1u; }", render, reach), "names are the host's"),
         ("the host's spend", plugin("", "let paid = anicel_host_spend(1u);", reach), "`anicel_host_spend` is the host's"),
         ("the host's fuel", plugin("", "anicel_host_fuel = 99u;", reach), "`anicel_host_fuel` is the host's"),
@@ -277,6 +289,7 @@ fn what_the_check_refuses_and_why() {
         ),
         ("a float the parser folds", plugin("", "let x = countOneBits(u32(sqrt(4.0)));", reach), "no float"),
         ("a float builtin on an integer", plugin("", "let x = u32(sqrt(4));", reach), "`sqrt`"),
+        ("a float builtin past a comment", plugin("", "let x = u32(sqrt /* ( */ (4));", reach), "`sqrt`"),
         ("an exponent", plugin("", "let x = u32(1e3);", reach), "no float"),
         ("a matrix", plugin("const m = mat2x2(1, 0, 0, 1);", render, reach), "`mat2x2`"),
     ];
@@ -303,6 +316,18 @@ fn a_float_in_a_comment_and_a_hex_integer_open() {
 }
 
 #[test]
+fn a_float_builtins_name_on_a_value_or_an_own_function_opens() {
+    // WGSL lets a plugin take the names: `round` here is a number, and
+    // `length` the plugin's own, on integers — no float is made.
+    let kernel = opened(&plugin(
+        "fn length(v: vec2<i32>) -> u32 { return u32(abs(v.x) + abs(v.y)); }",
+        "anicel_out(0u);",
+        "let round = 2u;\nreturn round + length(vec2<i32>(-3, 4));",
+    ));
+    assert_eq!(kernel.reach(&ask(&[], 1_000)), Ok(9));
+}
+
+#[test]
 fn a_read_past_the_input_is_transparent() {
     // Five to the left of a reach of none is off the input: spec 1's
     // `Picture::at` answered None there, and the prelude answers 0.
@@ -315,4 +340,163 @@ fn a_read_past_the_input_is_transparent() {
     let mut output = [9u32; 2];
     kernel.render(&picture([2, 1], 0, &input, &[], &[]), &mut output).expect("not cut");
     assert_eq!(output, [6, 10]);
+}
+
+/// `plugin`'s render, also taking its `local_invocation_index` as `i`.
+fn indexed(extra: &str, render_body: &str) -> String {
+    plugin(extra, render_body, "return 0u;")
+        .replace("at: vec3<u32>) {", "at: vec3<u32>, @builtin(local_invocation_index) i: u32) {")
+}
+
+/// A canvas of `size` pixels, pixel `i` the word `word(i)`.
+fn canvas(size: [i32; 2], word: impl Fn(u32) -> u32) -> Vec<u32> {
+    (0..(size[0] * size[1]) as u32).map(word).collect()
+}
+
+#[test]
+fn the_row_blur_reads_its_neighbours_after_the_barrier() {
+    let kernel = opened(ROW_BLUR);
+    let size = [32, 2];
+    let input = canvas(size, |i| pixel(i * 7 % 256, i * 13 % 256, 255 - i, 255));
+    let mut output = vec![0u32; input.len()];
+    kernel.render(&picture(size, 0, &input, &[], &[]), &mut output).expect("not cut");
+    for (at, word) in output.iter().enumerate() {
+        let (start, i) = (at - at % 16, at % 16);
+        let around = [start + i.max(1) - 1, at, start + (i + 1).min(15)];
+        let channel = |c: u32| (around.iter().map(|&n| (input[n] >> (8 * c)) & 0xff).sum::<u32>() + 1) / 3;
+        assert_eq!(*word, pixel(channel(0), channel(1), channel(2), channel(3)), "pixel {at}");
+    }
+}
+
+#[test]
+fn the_histogram_counts_each_group_from_zero() {
+    // Two groups side by side: the second's counts start from zero again
+    // (Q6 ⓒ), not from where the first's ended.
+    let kernel = opened(HISTOGRAM);
+    let size = [16, 8];
+    let input = canvas(size, |i| pixel(0, 0, 0, i * 37 % 256));
+    let mut output = vec![0u32; input.len()];
+    kernel.render(&picture(size, 0, &input, &[], &[]), &mut output).expect("not cut");
+    let group = |at: usize| (at % 16) / 8;
+    for (at, word) in output.iter().enumerate() {
+        let quarter = input[at] >> 30;
+        let alike = (0..input.len()).filter(|&n| group(n) == group(at) && input[n] >> 30 == quarter).count();
+        assert_eq!(*word, alike as u32, "pixel {at}");
+    }
+}
+
+#[test]
+fn the_group_sum_adds_in_two_steps_a_round() {
+    let kernel = opened(GROUP_SUM);
+    let size = [8, 16];
+    let input = canvas(size, |i| pixel(i * 29 % 256, 1, 2, 3));
+    let mut output = vec![0u32; input.len()];
+    kernel.render(&picture(size, 0, &input, &[], &[]), &mut output).expect("not cut");
+    let sum = |group: usize| input[group * 64..(group + 1) * 64].iter().map(|word| word & 0xff).sum::<u32>();
+    assert_eq!(output, (0..input.len()).map(|at| sum(at / 64)).collect::<Vec<_>>());
+    assert!(kernel.source().contains("anicel_host_spend_together("), "the round waits at barriers:\n{}", kernel.source());
+}
+
+#[test]
+fn a_cut_in_a_barriers_loop_takes_the_whole_group_out() {
+    // The first loop runs `i` turns, so the later invocations spend their
+    // share there; the second waits at a barrier each round, and the group
+    // leaves it together on the cut. The CPU's run stops, rather than
+    // waits, if any invocation meets a barrier the others do not.
+    let kernel = opened(&indexed(
+        "var<workgroup> cells: array<u32, 256>;",
+        "var spent = 0u;\nfor (var k = 0u; k < i; k++) { spent += 1u; }\n\
+         for (var round = 0u; round < 8u; round++) {\ncells[i] = spent + round;\nworkgroupBarrier();\n}\n\
+         anicel_out(spent);",
+    ));
+    let input = [0u32; 256];
+    let mut output = [0u32; 256];
+    let frame = picture([16, 16], 0, &input, &[], &[]);
+    kernel.render(&frame, &mut output).expect("enough to spend");
+    assert_eq!(output.to_vec(), (0..256).collect::<Vec<u32>>());
+    let short = Frame { fuel: 100 * first_turn(&kernel), ..frame };
+    assert_eq!(kernel.render(&short, &mut output), Err(Cut));
+}
+
+#[test]
+fn a_barrier_under_a_uniform_load_opens() {
+    let kernel = opened(&plugin(
+        "var<workgroup> most: atomic<u32>;",
+        "let here = anicel_here();\natomicMax(&most, anicel_in(here.x, here.y) >> 24u);\nworkgroupBarrier();\n\
+         let top = workgroupUniformLoad(&most);\nif (top > 128u) {\nworkgroupBarrier();\n}\nanicel_out(top);",
+        "return 0u;",
+    ));
+    let input = canvas([16, 16], |i| pixel(0, 0, 0, i * 3 % 211));
+    let mut output = vec![0u32; 256];
+    kernel.render(&picture([16, 16], 0, &input, &[], &[]), &mut output).expect("not cut");
+    assert_eq!(output, vec![210; 256]);
+}
+
+#[test]
+fn what_the_group_check_refuses_and_why() {
+    let tile = "var<workgroup> tile: array<u32, 256>;";
+    let count = "var<workgroup> count: atomic<u32>;";
+    let cases: [(&str, String, &str); 17] = [
+        (
+            "an in-place tree sum (Q10)",
+            indexed(tile, "tile[i] = 1u;\nworkgroupBarrier();\ntile[i] = tile[i] + tile[min(i + 1u, 255u)];"),
+            "not both",
+        ),
+        ("an exchange (b)", indexed(count, "atomicExchange(&count, 1u);"), "an add, a min or a max"),
+        ("an atomic's answer read (b)", indexed(count, "anicel_out(atomicAdd(&count, 1u));"), "is not read"),
+        ("an atomic stored (b)", indexed(count, "atomicStore(&count, 1u);"), "alone (Q6"),
+        (
+            "an atomic read before a barrier (Q8)",
+            indexed(count, "atomicAdd(&count, 1u);\nanicel_out(atomicLoad(&count));"),
+            "only after a barrier has followed its last write",
+        ),
+        (
+            "an atomic written once read (Q8)",
+            indexed(count, "atomicAdd(&count, 1u);\nworkgroupBarrier();\nanicel_out(atomicLoad(&count));\natomicAdd(&count, 1u);"),
+            "not written again",
+        ),
+        ("another's cell written (Q9)", indexed(tile, "tile[255u - i] = 1u;"), "own cell"),
+        ("a cell chosen by data (Q9)", indexed(tile, "tile[anicel_in(0, 0) & 255u] = 1u;"), "own cell"),
+        ("too few cells for the group", indexed("var<workgroup> tile: array<u32, 16>;", "tile[i] = 1u;"), "own cell"),
+        (
+            "a neighbour read before the barrier",
+            indexed(tile, "tile[i] = 1u;\nanicel_out(tile[min(i + 1u, 255u)]);"),
+            "only after a barrier has followed the writes",
+        ),
+        (
+            "a write a break carries out, read past (Q9, Q10)",
+            indexed(tile, "loop {\ntile[i] = 1u;\nif (anicel_frame() == 0) { break; }\nworkgroupBarrier();\n}\nanicel_out(tile[min(i + 1u, 255u)]);"),
+            "only after a barrier has followed the writes",
+        ),
+        (
+            "a write a continue carries round (Q9, Q10)",
+            indexed(
+                tile,
+                "for (var k = 0u; k < 4u; k++) {\nlet other = tile[min(i + 1u, 255u)];\nworkgroupBarrier();\n\
+                 tile[i] = other + k;\nif (k == 2u) { continue; }\nworkgroupBarrier();\n}",
+            ),
+            "only after a barrier has followed the writes",
+        ),
+        (
+            "a barrier's loop left apart (a)",
+            indexed("", "for (var k = 0u; k < i; k++) { workgroupBarrier(); }"),
+            "left by the whole group at once",
+        ),
+        (
+            "a barrier passed by after a return (a)",
+            indexed("", "loop { if (i == 0u) { return; } break; }\nworkgroupBarrier();"),
+            "met by the whole group",
+        ),
+        (
+            "shared memory in a helper",
+            plugin(&format!("{tile}\nfn put() {{ tile[0] = 1u; }}"), "put();", "return 0u;"),
+            "anicel_render's own",
+        ),
+        ("a storage barrier", plugin("", "storageBarrier();", "return 0u;"), "the one barrier"),
+        ("too much shared memory", indexed("var<workgroup> big: array<u32, 4096>;", "big[i] = 1u;"), "at most 16368 bytes"),
+    ];
+    for (what, source, why) in cases {
+        let refused = refusal(&source);
+        assert!(refused.why.contains(why), "{what}: refused for another reason — {refused}\n{source}");
+    }
 }

@@ -1,7 +1,11 @@
 //! The charges (design 2/3 ②, 🗣️Q1 「명령 수 — 정한 수만큼 실행하면
 //! 끊는다」 · Q5 「화소마다 몫」): the top of every loop of the plugin's
 //! spends what one turn costs from the invocation's share, and breaks when
-//! the share cannot pay — `anicel_host_spend` in the prelude.
+//! the share cannot pay — `anicel_host_spend` in the prelude. A loop of the
+//! render that waits at a barrier is charged with
+//! `anicel_host_spend_together` instead: each invocation pays from its own
+//! share, and the group breaks when any of it could not (Q6 ⓐ), so none is
+//! left waiting at a barrier the others no longer reach.
 //!
 //! A turn's cost is the loop's size in IR, read from the plugin's own
 //! module: one for every statement and every expression its body and
@@ -27,11 +31,11 @@ pub(crate) fn count(module: &Module, plugin: &str) -> String {
     let mut charges = Vec::new();
     for (handle, function) in module.functions.iter() {
         if crate::check::is_plugins(module.functions.get_span(handle), plugin) {
-            sizes.charge(&function.body, plugin, &mut charges);
+            sizes.charge(&function.body, plugin, false, &mut charges);
         }
     }
     let render = module.entry_points.iter().find(|entry| entry.name == RENDER).expect("the check found it");
-    sizes.charge(&render.function.body, plugin, &mut charges);
+    sizes.charge(&render.function.body, plugin, true, &mut charges);
     charges.push((render_open(plugin), format!(" anicel_host_enter({});", invocation_name(&render.function))));
     charges.sort_by_key(|(at, _)| *at);
     let mut counted = String::with_capacity(plugin.len() + charges.len() * 48);
@@ -72,25 +76,27 @@ struct Sizes<'m> {
 impl Sizes<'_> {
     /// Records a charge at the top of every loop in `block`, nested ones
     /// included.
-    fn charge(&mut self, block: &Block, plugin: &str, charges: &mut Vec<(usize, String)>) {
+    fn charge(&mut self, block: &Block, plugin: &str, render: bool, charges: &mut Vec<(usize, String)>) {
         for (statement, span) in block.span_iter() {
             match statement {
                 Statement::Loop { body, continuing, break_if } => {
                     let turn = (self.size(body) + self.size(continuing) + u64::from(break_if.is_some())).max(1);
                     let start = span.to_range().expect("a loop the parser read has a place").start;
                     let open = scan::body_open(plugin, start).expect("a loop has a body");
-                    charges.push((open, format!(" if anicel_host_spend({turn}u) {{ break; }}")));
-                    self.charge(body, plugin, charges);
-                    self.charge(continuing, plugin, charges);
+                    let together = render && (crate::group::holds_barrier(body) || crate::group::holds_barrier(continuing));
+                    let spend = if together { "anicel_host_spend_together" } else { "anicel_host_spend" };
+                    charges.push((open, format!(" if {spend}({turn}u) {{ break; }}")));
+                    self.charge(body, plugin, render, charges);
+                    self.charge(continuing, plugin, render, charges);
                 }
-                Statement::Block(inner) => self.charge(inner, plugin, charges),
+                Statement::Block(inner) => self.charge(inner, plugin, render, charges),
                 Statement::If { accept, reject, .. } => {
-                    self.charge(accept, plugin, charges);
-                    self.charge(reject, plugin, charges);
+                    self.charge(accept, plugin, render, charges);
+                    self.charge(reject, plugin, render, charges);
                 }
                 Statement::Switch { cases, .. } => {
                     for case in cases {
-                        self.charge(&case.body, plugin, charges);
+                        self.charge(&case.body, plugin, render, charges);
                     }
                 }
                 _ => {}
