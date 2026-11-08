@@ -182,6 +182,15 @@ final class _GridScreen {
     await held?.free();
   }
 
+  /// A row's paint, or its going, changed what the box shows — nothing
+  /// where the screen does not lay: the rows draw their own cells, and a
+  /// row painting on a tick layer paints alone (F-244).
+  void _rowChanged() {
+    if (lays) {
+      _box?.markNeedsPaint();
+    }
+  }
+
   /// What lays here changed: every row asks again whether it lays its
   /// tiles here, and the box shows what they lay.
   void _laysChanged() {
@@ -541,7 +550,7 @@ class _RenderGridScreenSlot extends RenderProxyBox
   @override
   void markNeedsPaint() {
     super.markNeedsPaint();
-    _screen?._box?.markNeedsPaint();
+    _screen?._rowChanged();
   }
 
   // A slot that comes paints, and so does one that comes back — what it
@@ -576,7 +585,7 @@ class _RenderGridScreenSlot extends RenderProxyBox
   void _leave() {
     final screen = _screen;
     if (screen != null && screen._slots.remove(this)) {
-      screen._box?.markNeedsPaint();
+      screen._rowChanged();
     }
   }
 

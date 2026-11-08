@@ -75,12 +75,15 @@ void main() {
     );
     // What the strips scroll in: the first boundary above them.
     final strips = tester.renderObject(stripsColumn);
-    var up = strips.parent!.parent;
+    // Its own boundary, above its grid's screen host; the next one is what
+    // it scrolls in.
+    final own = strips.parent!.parent!;
+    var up = own.parent;
     while (up != null && !up.isRepaintBoundary) {
       up = up.parent;
     }
     final scroller = up!;
-    expect(strips.parent, isA<RenderRepaintBoundary>(), reason: 'premise');
+    expect(own, isA<RenderRepaintBoundary>(), reason: 'premise');
 
     final tint = find.byKey(const ValueKey<String>('storyboard-playhead'));
     final ring = find.byKey(const ValueKey<String>('storyboard-standing-cell'));
