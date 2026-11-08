@@ -41,7 +41,7 @@ pub(crate) mod tests;
 use crate::device::Engine;
 
 pub(crate) use dispatch::{
-    Encoded, encode, encode_on, fits, flat, le_bytes, plane, range, room, tiles_a_page, tiles_a_pass,
+    Encoded, encode, encode_on, fits, flat, le_bytes, le_words, plane, range, room, tiles_a_page, tiles_a_pass,
     whole, words_buffer,
 };
 pub(crate) use paged::{Given, Run, cut_by, encoded, given};
@@ -83,6 +83,41 @@ pub(crate) fn pipeline_with(
     constants: &[(&str, f64)],
 ) -> wgpu::ComputePipeline {
     build(engine, sources, entry, constants, true)
+}
+
+/// The stack a compile of sources the engine did not write runs on.
+/// 🔬D3D12's compiler runs in this process and takes stack with a shader's
+/// size: a plugin of 48 thousand IR expressions and 80 loops overflowed
+/// 4 MiB and compiled on 8, one of 12 thousand overflowed 1 MiB (Surface
+/// Pro 11, release, 2026-11-08) — and Windows gives a process's main
+/// thread 1 MiB. Reserved, not committed: only what the compile touches
+/// is memory.
+const FOREIGN_COMPILE_STACK: usize = 64 << 20;
+
+/// [`pipeline`] of sources the engine did not write — a plugin's —, or why
+/// the device would not take them: what its compiler and its pipeline
+/// refuse is caught here, where wgpu would raise it on the device, and the
+/// compile runs on a thread of its own, whose stack the compiler cannot
+/// outgrow ([`FOREIGN_COMPILE_STACK`]) whatever thread asked.
+pub(crate) fn pipeline_or_why(engine: &Engine, sources: &[&str], entry: &str) -> Result<wgpu::ComputePipeline, String> {
+    std::thread::scope(|scope| {
+        let compile = std::thread::Builder::new()
+            .name("foreign compile".into())
+            .stack_size(FOREIGN_COMPILE_STACK)
+            .spawn_scoped(scope, || {
+                let refused = engine.device.push_error_scope(wgpu::ErrorFilter::Validation);
+                let failed = engine.device.push_error_scope(wgpu::ErrorFilter::Internal);
+                let pipeline = pipeline(engine, sources, entry);
+                let failed = pollster::block_on(failed.pop());
+                let refused = pollster::block_on(refused.pop());
+                match failed.or(refused) {
+                    Some(error) => Err(error.to_string()),
+                    None => Ok(pipeline),
+                }
+            })
+            .map_err(|error| format!("no thread to compile on: {error}"))?;
+        compile.join().unwrap_or_else(|_| Err("the device's compile panicked".to_string()))
+    })
 }
 
 /// [`pipeline`], its workgroup memory left as the device hands it — for a

@@ -857,6 +857,7 @@ dependencies = [
  "crc32fast",
  "display",
  "fx_plugin",
+ "fx_wgsl",
  "harfrust",
  "image_encode",
  "ledger",

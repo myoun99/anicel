@@ -45,6 +45,11 @@ pub(crate) fn le_bytes(words: &[u32]) -> Vec<u8> {
     words.iter().flat_map(|word| word.to_le_bytes()).collect()
 }
 
+/// The words a buffer's `bytes` hold — [`le_bytes`] read back.
+pub(crate) fn le_words(bytes: &[u8]) -> Vec<u32> {
+    bytes.chunks_exact(4).map(|four| u32::from_le_bytes([four[0], four[1], four[2], four[3]])).collect()
+}
+
 /// The bytes one binding holds on this device: no more than a buffer does.
 pub(crate) fn room(engine: &Engine) -> u64 {
     let limits = engine.device.limits();
