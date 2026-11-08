@@ -125,4 +125,14 @@ void main() {
     // 🔬Measured here, idle: one collection is 34–124 ms.
     expect(clock.elapsed, lessThan(const Duration(seconds: 10)));
   });
+
+  // 🚨gc-pin-stall (2026-11-08): a churn new space takes is promoted, and a
+  // promotion is grown with no back pressure — on a loaded machine the mark
+  // never caught it, and a waiting process grew to 16 GB. No test can
+  // load a machine on cue, so the size that keeps the churn out of new space
+  // is what is pinned; collect_garbage.dart's `_churn` says the rest.
+  test('🚨each churn is made in old space — past the 256 KB new space takes '
+      '— so the collection moves with it, not after a promotion', () {
+    expect(churnBytes, greaterThan(256 * 1024));
+  });
 }
