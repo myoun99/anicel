@@ -943,10 +943,12 @@ void main() {
   // case measured (11-08, an RTX 4080): the engine's is the one the ledger
   // pins.
   //
-  // 🔬And a row and a folder spread past their picture onto the canvas
-  // lie no further apart than one that cannot: a chain that put no
-  // further than its picture would leave the canvas clear where the walk
-  // spreads it, ~100 a pixel past a solid edge.
+  // 🔬And a row spread past its picture — the canvas it stands on, and its
+  // tiles where they reach past that — onto the canvas shown lies no
+  // further apart than one that cannot: a chain put no further than its
+  // picture would leave the canvas clear where the walk spreads it, ~100
+  // a pixel past a solid edge. A folder's buffer holds its reach already
+  // (effectBufferBounds), so past its picture it spreads nothing.
   ResolvedLayerEffect gaussian(
     double blurriness, {
     int dimensions = 0,
@@ -990,18 +992,19 @@ void main() {
           clear,
           12,
         ),
-        'a row blurred past its own tiles': (
+        'a row blurred past its picture': (
           [
-            row(1, columns: [0], effects: [gaussian(20)]),
+            row(1, columns: [0], width: side, effects: [gaussian(20)]),
           ],
           clear,
           26,
         ),
-        'a moved row blurred past its own tiles': (
+        'a moved row blurred past its picture': (
           [
             row(
               1,
               columns: [0],
+              width: side,
               placement: moved(40, 30),
               effects: [gaussian(10)],
             ),
@@ -1009,11 +1012,12 @@ void main() {
           clear,
           32,
         ),
-        'a turned row blurred across its own tiles': (
+        'a turned row blurred across past its picture': (
           [
             row(
               1,
               columns: [0],
+              width: side,
               placement: quarter,
               effects: [gaussian(10, dimensions: 1)],
             ),
@@ -1025,7 +1029,7 @@ void main() {
           [
             CompositeGroup(
               children: [
-                row(1, columns: [0], placement: moved(40, 30)),
+                row(1, columns: [0], width: side, placement: moved(40, 30)),
               ],
               opacity: 1,
               blendMode: LayerBlendMode.normal,
@@ -1143,10 +1147,12 @@ void main() {
 
   // 🗣️I-132-Q14: with Repeat Edge Pixels on, artwork on the pasteboard
   // stays out of sight — where the canvas shows past its paper, a row
-  // half on it and a folder off it show nothing there. The walk's camera
-  // shows the paper alone, so the engine is held to the law by itself.
+  // half on it and a folder off it show nothing there, and what lies there
+  // is no part of the edge it repeats. The walk's camera shows the paper
+  // alone, and blurs nearly as near the edge whatever it reads past it, so
+  // the engine is held to the law by itself.
   test('a Gaussian repeating the paper\'s edge puts nothing on the '
-      'pasteboard', () {
+      'pasteboard, nor reads it', () {
     const paper = ui.Rect.fromLTWH(0, 0, 128, 128);
     List<CompositeNode<CutFrameCompositeLayer>> nodes(
       List<ResolvedLayerEffect> effects,
@@ -1171,14 +1177,16 @@ void main() {
       return ink;
     }
 
-    final repeating = laid(
-      nodes([gaussian(10, repeats: true)]),
-      clear,
-      paper: paper,
-    );
+    final edge = [gaussian(10, repeats: true)];
+    final repeating = laid(nodes(edge), clear, paper: paper);
     expect(inkPast(laid(nodes(const []), clear, paper: paper), 128), isNot(0));
     expect(inkPast(repeating, 0), isNot(0));
     expect(inkPast(repeating, 128), 0);
+    expect(
+      laid([row(1, columns: [-1, 0, 1], effects: edge)], clear),
+      laid([row(1, effects: edge)], clear),
+      reason: 'the ink left of the paper is no part of its edge',
+    );
   });
 
   // ⏳What the engine lays no step for yet is refused, never dropped: a
