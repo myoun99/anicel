@@ -48,7 +48,6 @@ impl Queue {
         self.queue.present(texture);
     }
 
-    #[cfg(test)]
     pub(crate) fn write_texture(
         &self,
         texture: wgpu::TexelCopyTextureInfo<'_>,
