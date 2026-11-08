@@ -33,6 +33,8 @@ void main() {
 
     test('a $name\'s corner is the one its box takes', () {
       write(16, 16, 100);
+      write(300, 16, 100);
+      write(16, 300, 100);
       write(128, 300, 100);
       expect(() => write(129, 300, 100), throwsArgumentError);
       expect(() => write(300, 129, 100), throwsArgumentError);
