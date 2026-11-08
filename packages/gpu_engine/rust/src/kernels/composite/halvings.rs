@@ -47,16 +47,17 @@ pub(crate) struct Tiles<'a> {
 }
 
 /// The camera the screen is shown through: `inverse`, screen pixel to
-/// canvas pixel (pixel (x, y) spanning x..x+1), over a screen of `size`,
-/// at display `scale` — device pixels a canvas pixel, the app's one
-/// `displayScaleOf` — in `mode`, Nearest at 100% and over and Blend under
-/// it (④).
+/// canvas pixel (pixel (x, y) spanning x..x+1) — `[a, b, c, d, e, f]`,
+/// canvas x = a·x + b·y + c, y = d·x + e·y + f —, at display `scale` —
+/// device pixels a canvas pixel, the app's one `displayScaleOf` — in
+/// `mode`, Nearest at 100% and over and Blend under it (④). Affine: a
+/// view pans, zooms, turns and flips, and leans no plane away, so no
+/// screen's size bounds its w (M11, 관제 11-08 16:27).
 #[derive(Clone, Copy)]
 pub(crate) struct Camera {
-    pub(crate) inverse: [f64; 9],
+    pub(crate) inverse: [f64; 6],
     pub(crate) scale: f64,
     pub(crate) mode: ResampleMode,
-    pub(crate) size: (u32, u32),
 }
 
 /// The stage the screen reads at display `scale` (②): 0 at 1/16 and over,
@@ -67,11 +68,16 @@ pub(crate) fn stage_at(scale: f64) -> Option<usize> {
 }
 
 /// `inverse` landing on stage `k`'s pixels instead of the canvas's (②):
-/// its source rows divided by 2^k, exactly — a power of two.
-pub(crate) fn onto_stage(inverse: [f64; 9], k: usize) -> [f64; 9] {
+/// divided by 2^k, exactly — a power of two.
+pub(crate) fn onto_stage(inverse: [f64; 6], k: usize) -> [f64; 6] {
     let by = 1.0 / f64::from(1u32 << k);
-    let [a, b, c, d, e, f, g, h, i] = inverse;
-    [a * by, b * by, c * by, d * by, e * by, f * by, g, h, i]
+    inverse.map(|entry| entry * by)
+}
+
+/// The affine map `[a, b, c, d, e, f]` as a full inverse, its homogeneous
+/// row (0, 0, 1).
+pub(crate) fn affine([a, b, c, d, e, f]: [f64; 6]) -> [f64; 9] {
+    [a, b, c, d, e, f, 0.0, 0.0, 1.0]
 }
 
 /// Stage `k ≥ 1`'s pixels from stage k − 1's (①): ⌊⌋ of its left and top,
@@ -228,9 +234,8 @@ impl Halvings {
         };
         self.bring_to(engine, composite, canvas, k, budget)?;
         let read = if k == 0 { canvas } else { self.stages[k - 1].kept.as_tiles() };
-        let (columns, rows) = camera.size;
-        let inverse = onto_stage(camera.inverse, k);
-        let Some(map) = ResampleMap::new(inverse, self.floor, camera.mode, columns, rows) else {
+        let inverse = affine(onto_stage(camera.inverse, k));
+        let Some(map) = ResampleMap::new(inverse, self.floor, camera.mode, 1, 1) else {
             return fail("the camera lands nothing on the screen");
         };
         let steps = [row(map)];

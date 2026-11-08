@@ -804,16 +804,13 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
 /// `target` — [left, top, right, bottom) — leaving the rest of it as it
 /// was, and waits for the GPU; returns how many passes it took, -1 on
 /// failure (see the last error). The camera is `inverse` — a screen pixel
-/// to the canvas's, row-major with the homogeneous row last — over a
-/// screen of `columns` × `rows` pixels at display `scale`, device pixels a
-/// canvas pixel, sampled by `sampling` (0 blend, 1 pick, 3 nearest).
-/// `target` is a surface's texture or a window's next image, as
-/// `gpu_engine_composite_show`'s is. ⚠️No test tells `columns` from
-/// `rows`: they bound a homography's w alone (`ResampleMap::new`), and the
-/// app's camera is affine (mutant M11, 11-08).
+/// to the canvas's, the affine `[a, b, c, d, e, f]` — at display `scale`,
+/// device pixels a canvas pixel, sampled by `sampling` (0 blend, 1 pick,
+/// 3 nearest). `target` is a surface's texture or a window's next image,
+/// as `gpu_engine_composite_show`'s is.
 ///
 /// # Safety
-/// Every pointer is live, made on `engine`; `inverse` holds nine doubles
+/// Every pointer is live, made on `engine`; `inverse` holds six doubles
 /// and `rect` four words.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
@@ -824,19 +821,17 @@ pub unsafe extern "C" fn gpu_engine_screen_show(
     inverse: *const f64,
     scale: f64,
     sampling_id: u32,
-    columns: u32,
-    rows: u32,
     target: *const wgpu::Texture,
     rect: *const u32,
 ) -> isize {
     // SAFETY: see the function's contract.
     let (screen, composite, engine, target) = unsafe { (&mut *screen, &*composite, &*engine, &*target) };
     // SAFETY: see the function's contract.
-    let (inverse, rect) = unsafe { (*inverse.cast::<[f64; 9]>(), *rect.cast::<[u32; 4]>()) };
+    let (inverse, rect) = unsafe { (*inverse.cast::<[f64; 6]>(), *rect.cast::<[u32; 4]>()) };
     let Some(mode) = sampling(sampling_id) else {
         return -1;
     };
-    let camera = Camera { inverse, scale, mode, size: (columns, rows) };
+    let camera = Camera { inverse, scale, mode };
     let shown = screen.show(engine, composite, camera, target, rect, composite.widest());
     shown.map_or(-1, |passes| passes as isize)
 }

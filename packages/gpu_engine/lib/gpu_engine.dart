@@ -874,21 +874,18 @@ class GpuScreen {
   /// Shows the kept canvas through the camera onto the pixels [rect] of
   /// [target] — [left, top, right, bottom) — leaving the rest of it as it
   /// was, and waits for the GPU; returns how many passes it took. The
-  /// camera is [inverse] — a screen pixel to the canvas's, row-major with
-  /// the homogeneous row last — over a screen of [columns] × [rows]
-  /// pixels at display [scale], device pixels a canvas pixel, sampled by
-  /// [sampling].
+  /// camera is [inverse] — a screen pixel to the canvas's, the affine
+  /// `[a, b, c, d, e, f]` — at display [scale], device pixels a canvas
+  /// pixel, sampled by [sampling].
   int show(
     GpuTarget target, {
     required List<double> inverse,
     required double scale,
     required GpuSampling sampling,
-    required int columns,
-    required int rows,
     required (int, int, int, int) rect,
   }) {
-    if (inverse.length != 9) {
-      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    if (inverse.length != 6) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 6');
     }
     return _checked(
       using(
@@ -899,8 +896,6 @@ class GpuScreen {
           _doubles(arena, inverse),
           scale,
           sampling.id,
-          columns,
-          rows,
           target._texture,
           _edges(arena, rect),
         ),

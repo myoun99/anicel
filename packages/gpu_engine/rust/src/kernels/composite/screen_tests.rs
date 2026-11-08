@@ -8,7 +8,7 @@ use crate::device::Engine;
 use crate::kernels::composite::halvings::tests::{
     CANVAS, PAGE, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
 };
-use crate::kernels::composite::halvings::{Camera, Halvings, Kept, Tiles, plan, row};
+use crate::kernels::composite::halvings::{Camera, Halvings, Kept, Tiles, affine, plan, row};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on};
 use crate::kernels::composite::{Composite, Plan, Step, TILE, TileSet};
 use crate::kernels::shared::tests::{premultiplied, window};
@@ -207,7 +207,7 @@ fn a_screen_shown_is_done_on_the_gpu_when_show_returns() {
     engine.queue.on_submitted_work_done(move || flag.store(true, Ordering::SeqCst));
     let size = (1024, 768);
     let texture = surface_on(&engine, size, wgpu::TextureFormat::Rgba8Unorm);
-    let camera = Camera { size, ..camera(1.7, (0.6, 0.8), (500.0, 100.0)) };
+    let camera = camera(1.7, (0.6, 0.8), (500.0, 100.0));
     let whole = [0, 0, size.0, size.1];
     screen.show(&engine, &composite, camera, &texture, whole, composite.widest()).expect("show");
     assert!(seen.load(Ordering::SeqCst), "the show waited on nothing");
@@ -288,7 +288,7 @@ fn the_screen_is_r1_through_the_camera_over_r1_laying_a_turned_row() {
         camera(0.61, (1.0, 0.0), at_middle(0.61)),
     ];
     for camera in cameras {
-        let map = ResampleMap::new(camera.inverse, 1.0, camera.mode, SCREEN.0, SCREEN.1).expect("lands");
+        let map = ResampleMap::new(affine(camera.inverse), 1.0, camera.mode, 1, 1).expect("lands");
         let by_r1: Vec<u8> = premultiplied(&window(&map, &canvas, SCREEN, (0, 0))).into_iter().flat_map(u32::to_le_bytes).collect();
         let scale = camera.scale;
         assert!(shown_by(&mut screen, camera) == by_r1, "at {scale}");

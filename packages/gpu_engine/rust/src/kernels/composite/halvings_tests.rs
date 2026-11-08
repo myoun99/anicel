@@ -4,7 +4,7 @@
 //! against stages made anew — never against a CPU copy of a formula
 //! (`kernels/mod.rs` has why).
 
-use super::{Camera, Halvings, Kept, Tiles, halved, onto_stage, stage_at};
+use super::{Camera, Halvings, Kept, Tiles, affine, halved, onto_stage, stage_at};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, pixel_at, rig, surface, texel};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TileSet};
@@ -58,10 +58,9 @@ pub(crate) fn noise(seed: u32) -> impl Fn(i32, i32) -> u32 {
 pub(crate) fn camera(scale: f64, (cos, sin): (f64, f64), (x, y): (f64, f64)) -> Camera {
     let (a, b, d, e) = (cos / scale, sin / scale, -sin / scale, cos / scale);
     Camera {
-        inverse: [a, b, -(a * x + b * y), d, e, -(d * x + e * y), 0.0, 0.0, 1.0],
+        inverse: [a, b, -(a * x + b * y), d, e, -(d * x + e * y)],
         scale,
         mode: ResampleMode::Blend,
-        size: SCREEN,
     }
 }
 
@@ -114,8 +113,8 @@ fn screen_by_r1(canvas: &Picture, floor: f64, camera: Camera) -> Vec<u8> {
     let k = stage_at(camera.scale).expect("a stage");
     let stages = stages_by_r1(canvas, CANVAS, floor, k);
     let read = stages.last().map_or(canvas, |(picture, _)| picture);
-    let inverse = onto_stage(camera.inverse, k);
-    let map = ResampleMap::new(inverse, floor, camera.mode, SCREEN.0, SCREEN.1).expect("lands");
+    let inverse = affine(onto_stage(camera.inverse, k));
+    let map = ResampleMap::new(inverse, floor, camera.mode, 1, 1).expect("lands");
     let straight = window(&map, read, SCREEN, (0, 0));
     premultiplied(&straight).into_iter().flat_map(u32::to_le_bytes).collect()
 }
@@ -135,12 +134,12 @@ fn the_screen_reads_the_least_stage_back_at_1_in_16() {
     assert_eq!(stage_at(f64::NAN), None);
 }
 
-// ② by hand: a map onto stage 2 divides the source rows by 4 and leaves
-// the homogeneous row, so a homography's w is the canvas's.
+// ② by hand: a map onto stage 2 divides each entry by 4, the move with
+// the rest; onto stage 0 it is the map itself.
 #[test]
-fn a_map_onto_a_stage_divides_the_source_rows_by_its_power_of_two() {
-    let inverse = [40.0, -3.0, 7.0, 2.0, 40.0, -5.0, 0.004, -0.002, 1.5];
-    let onto = [10.0, -0.75, 1.75, 0.5, 10.0, -1.25, 0.004, -0.002, 1.5];
+fn a_map_onto_a_stage_divides_it_by_its_power_of_two() {
+    let inverse = [40.0, -3.0, 7.0, 2.0, 40.0, -5.0];
+    let onto = [10.0, -0.75, 1.75, 0.5, 10.0, -1.25];
     assert_eq!(onto_stage(inverse, 2), onto);
     assert_eq!(onto_stage(inverse, 0), inverse);
 }

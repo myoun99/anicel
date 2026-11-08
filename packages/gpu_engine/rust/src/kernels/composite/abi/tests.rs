@@ -542,13 +542,13 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     // The camera reads about x 22 to 58 and y 13 to 48: it sees where these
     // end.
     let (extent, changed) = ([25, 15, 50, 45], [30, 20, 40, 30]);
-    let camera = [0.4, 0.3, 20.25, -0.3, 0.4, 30.5, 0.0, 0.0, 1.0];
+    let camera = [0.4, 0.3, 20.25, -0.3, 0.4, 30.5];
     let (size, rect) = ((64, 48), [3u32, 2, 60, 47]);
     // SAFETY: the extent holds four words.
     let screen = unsafe { gpu_engine_screen_new(extent.as_ptr(), 1.0) };
     assert!(!screen.is_null(), "{}", last_error());
     let mut in_rust = Screen::new(extent, 1.0).expect("screen");
-    let in_rust_camera = Camera { inverse: camera, scale: 2.0, mode: ResampleMode::Nearest, size };
+    let in_rust_camera = Camera { inverse: camera, scale: 2.0, mode: ResampleMode::Nearest };
     let shown = surface(size, wgpu::TextureFormat::Rgba8Unorm);
     let mut screens = Vec::new();
     for (laid, over) in [(plan, extent), (again, changed)] {
@@ -556,7 +556,7 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
         // holds what its call reads.
         let passes = unsafe {
             assert!(gpu_engine_screen_compose(screen, composite, engine, &pool, laid, over.as_ptr()), "{}", last_error());
-            gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, 64, 48, &shown, rect.as_ptr())
+            gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, &shown, rect.as_ptr())
         };
         assert!(passes >= 1, "{}", last_error());
         // SAFETY: `laid` is live.
@@ -572,7 +572,7 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     assert!(screens[0] != screens[1], "the plan composed again shows a canvas of its own");
     // SAFETY: as above.
     let refused =
-        unsafe { gpu_engine_screen_show(screen, composite, engine, IDENTITY.as_ptr(), 1.0, 2, 64, 48, &shown, rect.as_ptr()) };
+        unsafe { gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 1.0, 2, &shown, rect.as_ptr()) };
     assert_eq!((refused, last_error()), (-1, "no sampling has id 2".to_string()));
     // SAFETY: none is used again.
     unsafe {

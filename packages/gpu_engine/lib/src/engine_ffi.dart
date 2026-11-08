@@ -532,8 +532,6 @@ external bool screenCompose(
     Pointer<Double>,
     Double,
     Uint32,
-    Uint32,
-    Uint32,
     Pointer<Texture>,
     Pointer<Uint32>,
   )
@@ -545,8 +543,6 @@ external int screenShow(
   Pointer<Double> inverse,
   double scale,
   int sampling,
-  int columns,
-  int rows,
   Pointer<Texture> target,
   Pointer<Uint32> rect,
 );

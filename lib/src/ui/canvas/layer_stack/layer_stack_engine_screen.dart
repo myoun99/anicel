@@ -88,14 +88,9 @@ final class EngineStackScreen {
         camera[1] * per,
         camera[5] * per,
         camera[13],
-        0,
-        0,
-        1,
       ],
       scale: scale,
       sampling: gpuSamplingOf(filterQualityForDisplayScale(scale)),
-      columns: columns,
-      rows: rows,
       rect: (0, 0, columns, rows),
     );
   }
