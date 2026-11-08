@@ -1,15 +1,12 @@
 import 'dart:io';
 
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_decoder.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/media/movie_span.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_call_watch.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// A trimmed movie's piece carries the span's own sound. Since 10-09 it is
@@ -18,22 +15,6 @@ import '../../helpers/project_scratch_folder.dart';
 /// counted from the span's first frame, not the sound's — and a click in the
 /// span has to come back where it sat in it.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
-  void reset() {
-    QaAudioDecoder.debugResetForTests();
-  }
-
-  setUp(() {
-    reset();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-  tearDown(() {
-    reset();
-    debugQaEngineLibraryPathOverride = null;
-  });
-
   test('a click inside the span comes back where it sat in it', () async {
     // A movie read and written through the engine can stop inside a native
     // call under load (board the-trimmed-movie-test-can-hang-on-windows-ci —
@@ -96,5 +77,5 @@ void main() {
       reason: 'the click sat 3 frames into the span; it came back at '
           '$peakAt, ${peakAt / perFrame} frames in',
     );
-  }, skip: skip);
+  });
 }

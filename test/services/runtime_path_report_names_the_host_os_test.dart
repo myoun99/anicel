@@ -5,28 +5,13 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/native/qa_audio_decoder.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
 
-import '../helpers/native_engine_path.dart';
-
+// ↩️The audio row named a host only when the C engine's decoder loaded,
+// so this ran only where a built C engine was found — until the
+// connection round put the decoder in the Rust engine the app ships with
+// (connection-round-checklist H, 2026-11-08).
 void main() {
-  // The rows only NAME a host on their primary path, and the primary path
-  // needs the built engine — the same resolver every parity suite uses.
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
-  setUp(() {
-    debugQaEngineLibraryPathOverride = libraryPath;
-    QaAudioDecoder.debugResetForTests();
-  });
-
-  tearDown(() {
-    QaAudioDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
-
   test('the audio codec and the video encoder are named for THIS host', () {
     final entries = collectRuntimePathReport();
     final audio = entries.singleWhere(
@@ -45,15 +30,15 @@ void main() {
         ? ('MediaCodec', 'MediaCodec (NDK)')
         : ('OS codecs', 'OS encoder');
 
-    expect(audio.isPrimary, isTrue, reason: 'the native decoder must load');
+    expect(audio.isPrimary, isTrue, reason: 'the engine\'s decoder');
     expect(
       audio.active,
-      'Native (dr_libs WAV/FLAC/MP3, stb_vorbis OGG, '
-      '$audioName for AAC/M4A)',
+      'Native (symphonia WAV/FLAC/MP3/OGG/AAC-LC/ALAC, '
+      '$audioName for the rest)',
     );
     expect(
       video.active,
       video.isPrimary ? '$videoName (H.264/AAC MP4)' : 'ffmpeg fallback',
     );
-  }, skip: skip);
+  });
 }

@@ -1,7 +1,9 @@
-//! What the engine's audio and video codecs share — the engine's
-//! `qa_win_media_foundation.c`, `qa_platform_path.h` and `qa_media_span.c`,
-//! in Rust (native-to-rust, 저장). Each OS's serving of a span joins here
-//! with the decoders that read through it.
+//! What the engine's audio and video codecs share (native-to-rust, 저장):
+//! starting Media Foundation, widening a path, and reading a span. Each
+//! OS's serving of a span joins here with the decoders that read through
+//! it. ↩️The C engine's `qa_win_media_foundation.c`, `qa_platform_path.h`
+//! and `qa_media_span.c` until the connection round deleted them
+//! (connection-round-checklist H, 2026-11-08).
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,

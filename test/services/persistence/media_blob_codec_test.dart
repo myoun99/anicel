@@ -19,8 +19,8 @@ import '../../helpers/temp_dir.dart';
 /// So these check what a whole-frame format could not do: that the header
 /// can be found from a fixed-size prefix. That a range maps to the blocks it
 /// actually touches and no others is the READER's, and is pinned where the
-/// one reader is — `qa_media_span_test.c`, and against this writer's files
-/// in `framed_media_reads_only_the_blocks_it_needs_test.dart`.
+/// one reader is — native/media's `span/tests.rs`, and against this
+/// writer's files in `framed_media_reads_only_the_blocks_it_needs_test.dart`.
 void main() {
   /// Compressible bytes — a repeating pattern with enough variety that
   /// zstd cannot fold it to nothing, so the ratios stay realistic.
@@ -44,7 +44,8 @@ void main() {
       final bytes = header.toBytes();
       final view = ByteData.sublistView(bytes);
 
-      // ⛔The layout `qa_media_span.h` reads, field by field: a reader
+      // ⛔The layout native/media's `span.rs` reads (↩️`qa_media_span.h`
+      // until the connection round), field by field: a reader
       // holding a 3GB movie's entry must never have to read it to find the
       // index, and the engine's reader — the only one there is — trusts
       // exactly these offsets.

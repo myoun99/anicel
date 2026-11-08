@@ -22,10 +22,12 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 /// reader that quietly pulled the whole entry would round-trip perfectly and
 /// have thrown the entire point away.
 ///
-/// 🚨★★★**AND THE FILES ARE WRITTEN BY THE DART WRITER AND READ BY THE C
-/// READER** — the one pairing that ships. `qa_media_span_test.c` pins the
-/// reader against a fixture of its own; this is where the two sides of the
-/// format meet, so a writer and a reader that drifted apart go red here.
+/// 🚨★★★**AND THE FILES ARE WRITTEN BY THE DART WRITER AND READ BY THE
+/// ENGINE'S READER** — the one pairing that ships. native/media's span
+/// tests pin the reader against a fixture of their own (↩️the C's
+/// `qa_media_span_test.c` until the connection round); this is where the
+/// two sides of the format meet, so a writer and a reader that drifted apart
+/// go red here.
 void main() {
   late Directory directory;
   late List<({int blocksDecoded, int storedBytesRead})> costs;

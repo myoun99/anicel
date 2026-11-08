@@ -27,8 +27,9 @@
 //! Nor is one whose description names a reference its list does not have.
 //!
 //! Media Foundation, which read these movies before, reads every shape and
-//! layout the C's `qa_audio_range_test.c` builds to the same samples and
-//! refuses what it refuses (measured 2026-10-16), but:
+//! layout the C's `qa_audio_range_test.c` built (tests/movies.rs's since
+//! the connection round) to the same samples and refuses what it refuses
+//! (measured 2026-10-16), but:
 //!   - 8-bit sound by a convention of its own (up to 1/128 off what a WAV of
 //!     it gives), 32-bit integers a last bit off (2^-23), and a `twos` of 24
 //!     bits and an `enda` outside a `wave` as noise;

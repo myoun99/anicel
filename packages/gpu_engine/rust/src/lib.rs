@@ -27,6 +27,12 @@ mod testing;
 // linked, and its extern "C" functions are not exported (Cargo.toml's
 // workspace note, measured 2026-11-06) — named here, they are.
 //
+// The sound decoder (H ⑤, 관제 2026-11-08 20:18): `qa_audio_decode_*` and
+// `qa_audio_stream_*` are answered here, and the C's are gone — the last of
+// its media, so the C engine is the raster engine alone. The app binds them
+// with `@Native` (qa_audio_decoder.dart), for the reason the device's note
+// below gives.
+pub use audio;
 // The voice take's denoiser and the conform's resampler (H, 관제 2026-11-08
 // 05:58): `qa_audio_denoise_f32` and `qa_audio_resample*` ·
 // `qa_audio_resampler_*` are answered here, and the C's are gone.
@@ -47,10 +53,9 @@ pub use fx_plugin;
 pub use image_encode;
 // The span reader and the movie writer and reader (H, 관제 2026-11-08 06:56
 // ③④): `qa_media_span_*` · `qa_video_export_*` · `qa_video_decode_*` are
-// answered here, and the C's video is gone. ⚠️The span's five stay in the C
-// engine as well, for the C's audio decoder alone, until the audio decode's
-// move deletes it (관제 03:59) — and the app binds these with `@Native`, for
-// the reason the device's note above gives.
+// answered here, and the C's are gone — ↩️the span's five last, with the C's
+// audio decoder they stayed for (관제 03:59). The app binds these with
+// `@Native`, for the reason the device's note above gives.
 pub use media;
 // The four memory questions (H, 관제 2026-11-08 14:51):
 // `qa_physical_memory_bytes` · `qa_process_footprint_bytes` ·

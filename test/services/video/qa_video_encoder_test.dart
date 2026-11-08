@@ -7,15 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_pcm_scale.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_decoder.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_call_watch.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/temp_dir.dart';
 import '../../ui/export/fake_ffmpeg_process.dart';
@@ -26,10 +23,6 @@ import '../../ui/export/fake_ffmpeg_process.dart';
 /// On a platform with no OS encoder (Linux CI) the capability answer is
 /// pinned false and the ffmpeg fallback keeps the export alive.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final available = libraryPath != null;
-  final skip = available ? false : nativeEngineMissingSkipReason;
-
   late Directory directory;
   late NativeCallWatch watch;
 
@@ -39,8 +32,6 @@ void main() {
   // card's ninth sighting), its clock stopped inside the call.
   setUp(() async {
     watch = await NativeCallWatch.start('the OS video encoder');
-    QaAudioDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-video-enc-test');
   });
 
@@ -48,8 +39,6 @@ void main() {
     watch.step('letting the encoder go');
     QaVideoEncoder.instance.abort();
     watch.stop();
-    QaAudioDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
     deleteTempQuietly(directory);
   });
 
@@ -97,7 +86,7 @@ void main() {
           'Windows/Apple encode natively; elsewhere the ffmpeg '
           'fallback carries the export',
     );
-  }, skip: skip);
+  });
 
   test('a real MP4 comes out: video + AAC audio, finalized and playable-'
       'shaped', () {
@@ -150,7 +139,7 @@ void main() {
       reason: 'the file is not a finalized MP4',
     );
     expect(File(path).lengthSync(), greaterThan(2000));
-  }, skip: skip);
+  });
 
   test('an ODD canvas encodes — H.264 needs even, the pad supplies it', () {
     watch.step('an odd canvas: asking for the encoder');
@@ -178,7 +167,7 @@ void main() {
     watch.step('an odd canvas: finishing the movie');
     expect(encoder.finish(), isTrue, reason: encoder.lastError);
     expect(looksLikeMp4(path), isTrue);
-  }, skip: skip);
+  });
 
   test('a second open while one is running refuses; abort cleans up', () {
     watch.step('a second open: asking for the encoder');
@@ -230,7 +219,7 @@ void main() {
     );
     watch.step('a second open: aborting the third');
     encoder.abort();
-  }, skip: skip);
+  });
 
   test('the SERVICE takes the OS path end to end: rendered images and the '
       'mixed WAV land in one MP4', () async {
@@ -287,7 +276,7 @@ void main() {
       isTrue,
       reason: 'the mix\'s tone, not silence',
     );
-  }, skip: skip);
+  });
 
 
   test('🚨a job the OS refuses goes to ffmpeg with the frame the movie was '
@@ -324,7 +313,7 @@ void main() {
     expect(summary, (written: 3, processed: 3));
     expect(ffmpeg.receivedFrameCount, 3);
     expect(ffmpeg.collectedStdin.length, 3 * 64 * 48 * 4);
-  }, skip: skip);
+  });
 
   test('🚨the OS encoder is handed a held frame again without its being '
       'read back — twelve frames of one picture are one readback', () async {
@@ -363,5 +352,5 @@ void main() {
       reason: 'each picture handed is let go of — the one kept to tell the '
           'next by, when the movie is finished',
     );
-  }, skip: skip);
+  });
 }

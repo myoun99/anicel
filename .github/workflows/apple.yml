@@ -61,13 +61,11 @@ jobs:
             -o /tmp/qa_engine_ios.o \
             -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
             -O3 -ffp-contract=off -std=c99 -Wall
-          # The decoder TU carries the AudioToolbox (AAC) path — compile it
-          # for the DEVICE target too, not just the simulator pod build.
-          xcrun --sdk iphoneos clang -c packages/qa_native/src/qa_audio_decode.c \
-            -o /tmp/qa_audio_decode_ios.o \
-            -arch arm64 -isysroot "$SDK" -miphoneos-version-min=13.0 \
-            -O3 -ffp-contract=off -std=c99
-          ls -la /tmp/qa_engine_ios.o /tmp/qa_audio_decode_ios.o
+          # ↩️The decoder TU (qa_audio_decode.c) was compiled for the device
+          # here too, for its AudioToolbox path, until the connection round
+          # moved the decoder to the Rust engine (connection-round-checklist
+          # H, 2026-11-08).
+          ls -la /tmp/qa_engine_ios.o
 
       - uses: subosito/flutter-action@v2
         with:

@@ -510,33 +510,23 @@ fn nothing_to_decode_is_refused() {
     }
 }
 
-/// The C's predefined sequence table `name`, as zstd.c prints it.
-fn c_default_table(name: &str) -> Vec<sequences::Cell> {
-    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo runs the test");
-    let path = format!("{crate_dir}/../../../../qa_native/src/third_party/zstd/zstd.c");
-    let c = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
-    let start = c.find(&format!("static const ZSTD_seqSymbol {name}[")).unwrap_or_else(|| panic!("zstd.c declares {name}"));
-    let body = &c[start..start + c[start..].find("};").expect("the table ends")];
-    // Past the declaration, the array's own brace and the header cell.
-    let numbers: Vec<u32> = body
-        .split('{')
-        .skip(3)
-        .flat_map(|cell| cell.split('}').next().unwrap().split(',').map(|n| n.trim().parse().unwrap()).collect::<Vec<u32>>())
-        .collect();
-    numbers
-        .chunks(4)
-        .map(|cell| sequences::Cell { next_state: cell[0] as u16, extra_bits: cell[1] as u8, nb_bits: cell[2] as u8, base: cell[3] })
-        .collect()
-}
-
 // The predefined tables the Rust builds from the default distributions are
-// the ones zstd ships precomputed.
+// the ones zstd ships precomputed — `LL_defaultDTable`, `OF_defaultDTable`
+// and `ML_defaultDTable` of zstd 1.5.6, held to the ledger: each table's
+// cells, then each cell's fields. ↩️Read from the vendored zstd.c's text
+// until the connection round deleted it (connection-round-checklist H,
+// 2026-11-08), and pinned from that text before it went (관제 20:18).
 #[test]
 fn the_predefined_tables_are_zstd_s() {
-    let ours = sequences::defaults();
-    for (k, name) in ["LL_defaultDTable", "OF_defaultDTable", "ML_defaultDTable"].into_iter().enumerate() {
-        let theirs = c_default_table(name);
-        assert_eq!(theirs.len(), 1 << ours[k].log, "{name}: every cell parsed");
-        assert_eq!(ours[k].cells[..theirs.len()], theirs, "{name}");
+    let mut tables = ledger::Running::new();
+    for table in sequences::defaults() {
+        let cells = &table.cells[..1 << table.log];
+        tables.add(&(cells.len() as u32).to_le_bytes());
+        for cell in cells {
+            tables.add(&cell.next_state.to_le_bytes());
+            tables.add(&[cell.extra_bits, cell.nb_bits]);
+            tables.add(&cell.base.to_le_bytes());
+        }
     }
+    tables.assert_pinned("compress/default-tables");
 }

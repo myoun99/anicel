@@ -18,7 +18,6 @@ import '../../helpers/decode_audio_file.dart';
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_call_watch.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/os_video_codec.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -252,10 +251,6 @@ void main() {
   });
 
   group('with the engine', () {
-    final libraryPath = nativeEngineLibraryPathOrNull();
-    // `testWidgets` takes a bool, not a reason — the reason is
-    // [nativeEngineMissingSkipReason].
-    final skip = libraryPath == null;
 
     /// A stereo ramp, one sample a step, [seconds] long at 48kHz.
     String writeWav(String name, int seconds) {
@@ -301,7 +296,7 @@ void main() {
       expect(kept.samples.first, all.samples[from]);
       expect(kept.samples.last, all.samples[to - 1]);
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🚨a sound is cut in its OWN time — at 1001/1000 project frame '
         'f plays source time f / rate × 1001/1000, and the piece starts there '
@@ -340,7 +335,7 @@ void main() {
       );
       expect(kept.samples.length, (sampleAt(36) - sampleAt(24)) * 2);
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🚨a frame that starts between two samples starts where the '
         'MIXER starts it — rounded up, never a sample of the frame before '
@@ -376,7 +371,7 @@ void main() {
         reason: 'up to where the mixer starts frame 4',
       );
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🚨a sound whose last frame the window counts only because its '
         'peaks round up is carried as EVERY frame of the span — silence past '
@@ -444,7 +439,7 @@ void main() {
             'door would keep one less',
       );
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     /// A watch over the engine calls of [test] — made on this isolate, where
     /// one that never returns stops every timer and held a CI shard to its
@@ -614,7 +609,7 @@ void main() {
       }
       watch.step('settling');
       await tester.pumpAndSettle();
-    }, skip: skip);
+    });
 
     testWidgets('🎯a trimmed movie is carried as an MP4 of the frames the '
         'project shows, one per project frame', (tester) async {
@@ -627,7 +622,7 @@ void main() {
       if (kept != null) {
         expect(kept, 6, reason: 'project frames 4..9 of a 12fps take');
       }
-    }, skip: skip);
+    });
 
     testWidgets('🚨with the 1001/1000 pull on, a 23.976 take in a 24 project '
         'is cut FRAME FOR FRAME — the piece runs at 24000/1001, and its span '
@@ -648,6 +643,6 @@ void main() {
               'project frame would show the take\'s frame before',
         );
       }
-    }, skip: skip);
+    });
   });
 }

@@ -79,7 +79,11 @@ impl Other {
     }
 }
 
-/// `container` from `origin` on, as a symphonia reader is handed it.
+/// `container` from `origin` on, as a symphonia reader is handed it — a
+/// cursor of its own for every attempt. 🚨Every attempt in the dispatch
+/// chain starts from zero: a decoder that declined a container left the C's
+/// one cursor wherever it gave up, and the next would have read from the
+/// middle and declined for the wrong reason.
 fn source(container: &Container, origin: i64, seekable: bool) -> MediaSourceStream<'static> {
     MediaSourceStream::new(Box::new(Cursor::new(container, origin, seekable)), MediaSourceStreamOptions::default())
 }

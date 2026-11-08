@@ -1,7 +1,8 @@
 //! A medium stored in a span of a file, served to MediaExtractor as a
-//! source of our own — the engine's `qa_ndk_served_span`
-//! (`qa_ndk_media.c`): how a FRAMED span, whose stored bytes are not the
-//! container, reaches the extractor at all.
+//! source of our own: how a FRAMED span, whose stored bytes are not the
+//! container, reaches the extractor at all. ↩️The C engine's
+//! `qa_ndk_served_span` (`qa_ndk_media.c`) until the connection round
+//! deleted it (connection-round-checklist H, 2026-11-08).
 //!
 //! ⚠️ONE serving for the video decoder and the audio decoder: each needs
 //! exactly this, and the lock below is the part a second copy forgets.
@@ -13,7 +14,14 @@
 //! 2026-09-24 disagreed where it mattered: an `AMediaDataSource` read is
 //! handed an `off64_t`, and the table that said `off_t` read the offset out
 //! of the wrong registers on a 32-bit device; `AMediaCodec_queueInputBuffer`
-//! takes a `long`, which two said was 64 bits.
+//! takes a `long`, which two said was 64 bits — on armeabi-v7a a 64-bit
+//! argument there shifts every argument after it, and the codec was handed
+//! a SIZE of zero.
+//!
+//! ⚠️Linked, the library needs libmediandk.so to load (ndk-sys's `media`
+//! links it). Every device the app serves has it — a public NDK library
+//! since API 21, and everything called here is API 29 or older (the floor,
+//! minSdk 29, since 2026-10-24, board skia-devices-out-of-release).
 
 use std::ffi::c_void;
 use std::sync::{Mutex, PoisonError};

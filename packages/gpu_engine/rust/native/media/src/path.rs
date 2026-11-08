@@ -1,5 +1,6 @@
 //! A path crosses into native code as UTF-8 and becomes wide exactly once
-//! (the engine's `qa_platform_path.h`). Windows has two personalities for
+//! (↩️in the C engine's `qa_platform_path.h`, until the connection round
+//! deleted it). Windows has two personalities for
 //! a narrow path — UTF-8 or the machine's local codepage — and its narrow
 //! entry points pick the second, so on a Korean or Japanese Windows a file
 //! whose name is not ASCII fails to open with an error that says nothing
@@ -9,7 +10,8 @@
 use std::ffi::CStr;
 use std::path::PathBuf;
 
-/// The longest path, in UTF-16 units with its NUL — the C's buffer.
+/// The longest path, in UTF-16 units with its NUL — the C's buffer, kept: a
+/// longer one is refused rather than cut (`span/tests.rs`).
 #[cfg(windows)]
 pub const WIDE: usize = 1024;
 

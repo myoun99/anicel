@@ -27,8 +27,10 @@ windows-core = "0.62"
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-sys = { version = "0.6", features = ["media"] }
 
-# The C answer key: the engine's qa_media_span_* (native/oracle), and the
-# app's ledger (native/ledger).
+# The app's ledger (native/ledger), and a medium framed as the save frames
+# it (native/oracle's `framed`). ↩️And the C answer key, the engine's
+# qa_media_span_*, until the connection round deleted it
+# (connection-round-checklist H, 2026-11-08).
 [dev-dependencies]
 ledger = { path = "../ledger" }
 oracle = { path = "../oracle" }

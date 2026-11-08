@@ -1,5 +1,7 @@
-//! The span byte stream, driven for real — the engine's
-//! `qa_win_range_stream_test.c`, check for check.
+//! The span byte stream, driven for real — ↩️the C engine's
+//! `qa_win_range_stream_test.c`, check for check, which went with what it
+//! tested in the connection round (connection-round-checklist H,
+//! 2026-11-08).
 //!
 //! 🚨★★★**THIS IS WHERE THE BYTE ARITHMETIC IS.** Everything else about
 //! opening a medium inside the project file is one API call per platform;

@@ -1,6 +1,11 @@
 //! An `IMFByteStream` over a medium stored in a SPAN of a file — plain or
 //! framed — the Windows half of opening a movie or a sound that lives inside
-//! the project file: the engine's `qa_win_range_stream.c`.
+//! the project file. ↩️The C engine's `qa_win_range_stream.c` until the
+//! connection round deleted it (connection-round-checklist H, 2026-11-08).
+//!
+//! ⛔A module of its own rather than more lines inside a decoder that reads
+//! through it: a decoder is its law and its backends, and hand-written COM
+//! is neither.
 //!
 //! 🚨★★★**WHY THIS EXISTS AT ALL.** Media Foundation opens a URL or a byte
 //! stream, and it ships no stream over a SUB-RANGE: `MFCreateFile` covers the
@@ -18,11 +23,14 @@
 //! 🚨★★★**MEDIA FOUNDATION CALLS THIS FROM ITS OWN THREADS**
 //! (framed-movie-parity-hangs-under-load, 2026-09-29). The source inside a
 //! reader reads on MF's work-queue threads while the caller's thread tears
-//! the reader down: in the C, Close freed the file and the block buffers
-//! under a read still using them, the stream could go before a read's
-//! callback finished it, and every EndRead reported the LAST read's count.
-//! So: one lock over the span and the position, and each read carries its
-//! own answer and a hold on the stream until its callback has finished it.
+//! the reader down: in the C, which said 「nothing here is shared between
+//! threads」, Close freed the file and the block buffers under a read still
+//! using them, the stream could go before a read's callback finished it,
+//! and every EndRead reported the LAST read's count — under load (the work
+//! queue behind, the teardown on time) the native parity lost its test
+//! process mid-suite, twice. So: one lock over the span and the position,
+//! and each read carries its own answer and a hold on the stream until its
+//! callback has finished it.
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 

@@ -24,7 +24,6 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/import_span.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/stand_in_movie.dart';
@@ -631,8 +630,6 @@ void main() {
   // is encoded again into a piece of its own, a minute for those two, and
   // that encode is what the window now names and counts frame by frame.
   group('a movie carried as a span is cut into its piece', () {
-    final skip = nativeEngineLibraryPathOrNull() == null;
-
     /// Six real frames — the cut reads the file through the engine — while
     /// the preview reads them through [FakeVideoBackend]; null where this
     /// run has no encoder (Linux: the engine is there, the OS encoder is
@@ -677,7 +674,7 @@ void main() {
       // each a third of it; the holding the rest.
       expectOneBar(counted, [1 / 6, 1 / 3, 0.5, 1]);
       s.playbackRig.prerenderScheduler.cancel();
-    }, skip: skip);
+    });
 
     testWidgets('🎯placed, the window names the encode and counts its frames '
         'before it holds the piece', (tester) async {
@@ -709,6 +706,6 @@ void main() {
       // The cut the first of a placed file's three stretches.
       expectOneBar(counted, [1 / 9, 2 / 9, 1 / 3, 1]);
       s.playbackRig.prerenderScheduler.cancel();
-    }, skip: skip);
+    });
   });
 }

@@ -67,6 +67,12 @@ pub unsafe fn export<F: Copy>(name: &str) -> F {
 /// 2026-11-07): media's span and stream tests and audio's each laid it out
 /// themselves, and the video decoder's would have been a fourth.
 /// `gpu_engine`'s `kernels/shared/one_framing.rs` reads for another.
+///
+/// ⚠️This is NOT the format's writer — that is `writeMediaBlob` in Dart, and
+/// the Dart suite reads what THAT writes through the native reader
+/// (`framed_media_reads_only_the_blocks_it_needs_test.dart`). A test here
+/// has no other way to make a fixture, so this one only has to agree with
+/// the layout `media::span` reads.
 pub fn framed(medium: &[u8], block_bytes: usize) -> Vec<u8> {
     let blocks: Vec<Vec<u8>> = medium
         .chunks(block_bytes)

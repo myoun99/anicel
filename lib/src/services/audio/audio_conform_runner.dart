@@ -6,9 +6,14 @@
 /// moves the whole pipeline to a worker; the request is plain values, the
 /// result crosses back as one copy.
 ///
-/// The native singletons resolve PER ISOLATE (a `DynamicLibrary` is opened
-/// wherever it is first asked for), which is why the entry point builds
-/// the pipeline inside the isolate instead of capturing one.
+/// The entry point builds the pipeline inside the isolate instead of
+/// capturing one: what crosses is the request's plain values. Every native
+/// function the conform asks is the Rust engine's, bound with `@Native`, so
+/// a worker finds it with no path named. ↩️While the decoder was the C
+/// engine's, its singleton resolved PER ISOLATE (a `DynamicLibrary` opened
+/// wherever it was first asked for), and a test's library path travelled
+/// with the request — until the connection round (connection-round-checklist
+/// H, 2026-11-08).
 library;
 
 import 'dart:ffi';
@@ -20,7 +25,6 @@ import '../../core/on_a_worker.dart';
 import '../../native/qa_audio_decoder.dart';
 import '../../native/qa_audio_device.dart';
 import '../../native/qa_audio_resampler.dart';
-import '../../native/qa_engine_abi.dart';
 import '../media/media_byte_source.dart';
 import 'audio_conform_pipeline.dart';
 import 'audio_decode_stream.dart';
@@ -37,7 +41,6 @@ class ConformRequest {
     this.bucketsPerSecond = 80,
     this.speedNumerator = 1,
     this.speedDenominator = 1,
-    this.libraryPathOverride,
   });
 
   final String sourcePath;
@@ -76,10 +79,6 @@ class ConformRequest {
   final int speedNumerator;
   final int speedDenominator;
 
-  /// Test hook: the worker isolate starts with fresh statics, so a test
-  /// pointing the loaders at a locally built binary has to send the path
-  /// along rather than rely on having set it on the main isolate.
-  final String? libraryPathOverride;
 }
 
 /// How a store runs a conform; production is [runConformInIsolate], tests
@@ -255,16 +254,6 @@ Float32List runResampleHere(ResampleRequest request) => resampleAudio(
   outputRate: request.outputRate,
 );
 
-void _applyLibraryOverride(String? override) {
-  // A worker isolate re-resolves the singletons from scratch, so the test
-  // path has to travel with the request. One assignment now covers every
-  // loader — this used to name two of six, which was fine only because
-  // the conform path happens to touch exactly those two.
-  if (override != null) {
-    debugQaEngineLibraryPathOverride = override;
-  }
-}
-
 /// [source]'s sound, decoded at its own rate — what a conform starts from,
 /// and what a trimmed sound's piece is cut from.
 ///
@@ -284,7 +273,7 @@ void _applyLibraryOverride(String? override) {
   MediaByteSource source, {
   ({int start, int count})? window,
 }) {
-  final decoded = QaAudioDecoder.instance?.decodeSpan(
+  final decoded = QaAudioDecoder.instance.decodeSpan(
     _spanOf(source),
     window: window,
   );
@@ -303,7 +292,7 @@ void _applyLibraryOverride(String? override) {
 /// long-sound-conform-memory-Q1). Null when no decoder recognized it.
 /// Decoded where it lies, as [decodeAudioSource] is.
 AudioDecodeStream? openAudioSource(MediaByteSource source) =>
-    QaAudioDecoder.instance?.openSpan(_spanOf(source));
+    QaAudioDecoder.instance.openSpan(_spanOf(source));
 
 /// Where [source]'s bytes lie for the decoder.
 MediaSpan _spanOf(MediaByteSource source) {
@@ -320,7 +309,6 @@ MediaSpan _spanOf(MediaByteSource source) {
 /// [runConformInIsolate]'s worker body, and directly callable by tests
 /// that want the real native path without isolate indirection.
 ConformResult runConformHere(ConformRequest request) {
-  _applyLibraryOverride(request.libraryPathOverride);
   final pipeline = AudioConformPipeline(
     decode: openAudioSource,
     // The engine's resampler, which always loads — its Dart twin is the

@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import '../native/qa_audio_decoder.dart';
 import '../native/qa_engine_abi.dart';
 import '../native/qa_native_engine.dart';
 import '../native/qa_tablet_bridge.dart';
@@ -84,21 +83,24 @@ List<RuntimePathEntry> collectRuntimePathReport() {
   // the only two places in `lib/` that start a process are both video
   // export. Naming a fallback that is gone is worse than naming none — it
   // reads as "something still works".
-  final decoder = QaAudioDecoder.instance;
+  //
+  // ↩️It said 「none — audio does not conform」 where the C engine was not
+  // built, until the connection round moved the decoder into the GPU
+  // engine's library (connection-round-checklist H, 2026-11-08), which
+  // ships with the app: the row stays for the OS stage it names, which is
+  // the host's.
   entries.add(
     RuntimePathEntry(
       subsystem: 'Audio import decoder',
-      active: decoder != null
-          ? 'Native (dr_libs WAV/FLAC/MP3, stb_vorbis OGG, '
-                '${_HostOs.current.audioCodec} for AAC/M4A)'
-          : 'none — audio does not conform',
-      isPrimary: decoder != null,
+      active:
+          'Native (symphonia WAV/FLAC/MP3/OGG/AAC-LC/ALAC, '
+          '${_HostOs.current.audioCodec} for the rest)',
+      isPrimary: true,
       detail:
           'Audio files decode ONCE at import (conform). Bundled '
-          'decoders read WAV/FLAC/MP3/OGG; AAC goes through the '
-          'operating system codec stack. Without the native core there '
-          'is no second decoder: waveforms stay blank and clips are '
-          'silent.',
+          'decoders read WAV/FLAC/MP3/OGG and a movie\'s AAC-LC and ALAC; '
+          'what none of them reads (HE-AAC, WMA) goes through the '
+          'operating system codec stack.',
     ),
   );
 

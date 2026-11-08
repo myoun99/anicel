@@ -6,11 +6,9 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨A CONFORM LANDS WHERE THE DEVICE PLAYS IT, PLACED BY THE WORKER THAT
@@ -22,13 +20,10 @@ import '../../helpers/temp_dir.dart';
 /// draws. The worker fills the buffer now, and the runner hands the list
 /// over it to whoever asked.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath == null ? nativeEngineMissingSkipReason : false;
   late Directory directory;
 
   setUp(() async {
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
     directory = await Directory.systemTemp.createTemp('qa-conform-placed');
   });
 
@@ -39,7 +34,6 @@ void main() {
       // A device that never opened is fine to "close".
     }
     QaAudioDevice.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
     debugWorkersRunHere = true;
     deleteTempQuietly(directory);
   });
@@ -66,7 +60,6 @@ void main() {
     return ConformRequest(
       sourcePath: path,
       conformPath: null,
-      libraryPathOverride: libraryPath,
     );
   }
 
@@ -87,7 +80,7 @@ void main() {
       1,
       reason: 'the worker\'s buffer, its maker\'s hold handed to the list',
     );
-  }, skip: skip);
+  });
 
   test('🎯each rate it is converted to is one too', () async {
     final device = openNull();
@@ -105,7 +98,7 @@ void main() {
 
     expect(converted, here);
     expect(device.debugHoldsOf(converted), 1);
-  }, skip: skip);
+  });
 
   test('🎯a conform the device holds is read where it lies by the worker '
       'that converts it, and lent only for as long as it works', () async {
@@ -128,7 +121,7 @@ void main() {
     expect(converted, here);
     expect(device.debugHoldsOf(converted), 1);
     expect(device.debugHoldsOf(from), 1, reason: 'the lend given back');
-  }, skip: skip);
+  });
 
   group('lendToAWorker', () {
     test('lends the buffer a made list lies in, held while the work runs',
@@ -147,7 +140,7 @@ void main() {
       expect(read, [0.5, -0.25, 1]);
       expect(holdsWhileWorking, 2);
       expect(device.debugHoldsOf(samples), 1);
-    }, skip: skip);
+    });
 
     test('gives the lend back when the work fails', () async {
       final device = openNull();
@@ -160,7 +153,7 @@ void main() {
         throwsStateError,
       );
       expect(device.debugHoldsOf(samples), 1);
-    }, skip: skip);
+    });
 
     test('lends nothing for a list the device did not make', () async {
       final device = openNull();
@@ -171,7 +164,7 @@ void main() {
       });
 
       expect(lends, [null]);
-    }, skip: skip);
+    });
   });
 
   test('with no device, the PCM stays where it was made', () async {
@@ -180,7 +173,7 @@ void main() {
     final landed = await conformingInto(() => null)(request);
 
     expect(landed.samples, runConformHere(request).samples);
-  }, skip: skip);
+  });
 
   test('a buffer that cannot be made places nothing, and leaves the samples '
       'where they are — as a device with no room did', () {

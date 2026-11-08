@@ -360,7 +360,12 @@ import '../core/on_a_worker.dart';
 ///   `QaVideoDecoder` bind in the GPU engine's library, as `QaMediaSpan`
 ///   binds native/media's span reader there. The C's `qa_media_span_*` stay,
 ///   for the C's audio decoder alone, until the audio decoder moves.
-const int kQaEngineAbiVersion = 71;
+/// - v72: `qa_audio_decode_*` · `qa_audio_stream_*` · `qa_media_span_*`
+///   leave the C: the sound decoder is the Rust engine's (native/audio,
+///   connection-round-checklist H), which `QaAudioDecoder` binds in the GPU
+///   engine's library with native/media's span reader. The C engine is its
+///   raster half alone: no media, no zstd, no OS codec stack.
+const int kQaEngineAbiVersion = 72;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

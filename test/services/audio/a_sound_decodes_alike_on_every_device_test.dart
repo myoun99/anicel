@@ -2,11 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
-import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 
 import '../../helpers/decode_audio_file.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/pinned_fingerprints.dart';
 
 /// 🧭관제 (audio-same-across-devices ③, 2026-11-05): a conform rebuilt on
@@ -22,23 +20,14 @@ import '../../helpers/pinned_fingerprints.dart';
 /// type, and the FLAC LPC subframes. The WAV is written here from whole
 /// numbers by the app's own writer.
 ///
-/// ⏳Not here yet: the Ogg Vorbis tables take libm cos/sin, which wait for the
-/// one deterministic set the canvas side brings (관제 12:10, the card's ②).
-/// AAC is the OS's decoder and may differ by device (관제 12:01).
+/// The ogg and the two AAC movies are the bundled decoder's too since the
+/// connection round (connection-round-checklist H, 2026-11-08): symphonia
+/// with `libm`'s maths, one fingerprint for every device (native/audio's
+/// `pins.rs`, which reads these rows). ↩️They waited here — the Vorbis
+/// tables on one deterministic set of cos/sin (관제 12:10), the AAC on the
+/// OS's decoder, which may differ by device (관제 12:01) — and the MP3's row
+/// was dr_mp3's samples until then.
 void main() {
-  final libraryPath = nativeEngineLibraryPathOrNull();
-  final skip = libraryPath == null ? nativeEngineMissingSkipReason : false;
-
-  setUp(() {
-    QaAudioDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = libraryPath;
-  });
-
-  tearDown(() {
-    QaAudioDecoder.debugResetForTests();
-    debugQaEngineLibraryPathOverride = null;
-  });
-
   void expectPinned(
     QaDecodedAudio? decoded, {
     required QaAudioFormat format,
@@ -73,7 +62,7 @@ void main() {
       frames: 44975,
       ledgerId: 'audio/tone.mp3-samples',
     );
-  }, skip: skip);
+  });
 
   test('the FLAC decodes to the pinned samples', () {
     expectPinned(
@@ -84,7 +73,34 @@ void main() {
       frames: 44100,
       ledgerId: 'audio/tone.flac-samples',
     );
-  }, skip: skip);
+  });
+
+  test('the ogg decodes to the pinned samples', () {
+    expectPinned(
+      decodeAudioFile('test/fixtures/tone.ogg'),
+      format: QaAudioFormat.vorbis,
+      channels: 2,
+      sampleRate: 44100,
+      frames: 22050,
+      ledgerId: 'audio/tone.ogg-samples',
+    );
+  });
+
+  test('a movie\'s AAC decodes to the pinned samples', () {
+    for (final (name, frames) in [
+      ('tone.m4a', 22050),
+      ('tone_with_video.mp4', 22528),
+    ]) {
+      expectPinned(
+        decodeAudioFile('test/fixtures/$name'),
+        format: QaAudioFormat.aac,
+        channels: 2,
+        sampleRate: 44100,
+        frames: frames,
+        ledgerId: 'audio/$name-samples',
+      );
+    }
+  });
 
   test('the WAV decodes to the pinned samples', () {
     expectPinned(
@@ -95,7 +111,7 @@ void main() {
       frames: 4800,
       ledgerId: 'audio/whole-number.wav-samples',
     );
-  }, skip: skip);
+  });
 }
 
 /// Two channels of whole numbers at 48 kHz: a full-scale sawtooth on the

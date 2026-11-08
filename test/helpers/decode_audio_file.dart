@@ -6,10 +6,10 @@ import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'temp_dir.dart';
 
 /// The file at [path] decoded whole, as it is — the ordinary case of the
-/// decoder's one door ([QaAudioDecoder.decodeSpan]). Null when there is no
-/// engine, or nothing recognized it.
-QaDecodedAudio? decodeAudioFile(String path) => QaAudioDecoder.instance
-    ?.decodeSpan(
+/// decoder's one door ([QaAudioDecoder.decodeSpan]). Null when nothing
+/// recognized it.
+QaDecodedAudio? decodeAudioFile(String path) =>
+    QaAudioDecoder.instance.decodeSpan(
       (path: path, offset: 0, length: File(path).lengthSync(), framed: false),
     );
 

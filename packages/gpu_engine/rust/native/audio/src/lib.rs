@@ -1,5 +1,7 @@
-//! The engine's `qa_audio_decode.c` in Rust (native-to-rust, 저장): the sound
-//! of a container in a span of a file — a loose file, a sound carried in
+//! The engine's sound decoder (native-to-rust, 저장; ↩️the C engine's
+//! `qa_audio_decode.c` until the connection round deleted it,
+//! connection-round-checklist H, 2026-11-08): the sound of a container in a
+//! span of a file — a loose file, a sound carried in
 //! the project file, the soundtrack of a movie — decoded once, at import,
 //! into interleaved float32 at its own rate. Nothing here is realtime: a
 //! variable-length codec cannot promise to finish inside an audio callback,
@@ -15,11 +17,20 @@
 //! 🚨★★★**THE POINT IS WHAT IS NOT HERE: the container in memory.** A
 //! three-gigabyte movie whose sound is wanted is read through the one span
 //! reader (`media::span`), a block at a time; nothing on this path holds
-//! more than a decode block and one span block.
+//! more than a decode block and one span block. 🪦There were two origins
+//! until 2026-09-24: the span, and the container assembled in memory, which
+//! existed only because a framed entry had no native reader — so Dart
+//! decompressed the whole thing and handed it over, and the soundtrack of a
+//! carried movie arrived as the whole movie in RAM. The span reader reads
+//! framed spans itself, and the memory origin went with its reason. ⛔A
+//! `qa_audio_decode_memory` that came back would be the copy this repo
+//! keeps deleting.
 //!
-//! Until the connection round the C is the answer key: the tests hold the
-//! decode of every file to the engine's — to the sample where both read
-//! whole numbers, within a decoder's rounding where both compute.
+//! The tests hold every decode the bundled decoders make to the ledger —
+//! the C's samples where it read whole numbers, this decoder's where it
+//! computes — and what only the OS reads as its stage, channels and rate
+//! (유저 connection-round-checklist-Q14). ↩️Until the connection round the C
+//! was the answer key: every file was decoded by both.
 
 // The checkout this crate is built from, different in each: a build that
 // another checkout left in the shared target folder is built again here,
@@ -49,7 +60,7 @@ pub const FORMAT_FLAC: i32 = 2;
 pub const FORMAT_MP3: i32 = 3;
 /// The OS's own codec stack — the last stage, for what no bundled decoder
 /// reads ([os], native-to-rust-Q6): Media Foundation on Windows, the NDK's
-/// MediaCodec on Android; ⚠️the Apple stage is the C's still.
+/// MediaCodec on Android, AudioToolbox on Apple's.
 pub const FORMAT_OS: i32 = 4;
 pub const FORMAT_VORBIS: i32 = 5;
 /// A movie's uncompressed sound, read here on every platform.
@@ -57,7 +68,7 @@ pub const FORMAT_MOVIE_PCM: i32 = 6;
 /// AAC-LC and ALAC, read by the bundled decoder where the C left every AAC
 /// to the OS (4, 「the OS's own codec stack carried the file」 — which is what
 /// it still means, for what the bundled decoder does not read:
-/// native-to-rust-Q6). ⚠️New to Dart's `QaAudioFormat`, at the connection
+/// native-to-rust-Q6). Dart's `QaAudioFormat` took them up at the connection
 /// round.
 pub const FORMAT_AAC: i32 = 7;
 pub const FORMAT_ALAC: i32 = 8;

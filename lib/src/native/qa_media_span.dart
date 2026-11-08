@@ -64,8 +64,8 @@ external void _stats(
 /// app, and `flutter test` builds it too. ↩️Until the connection round
 /// (connection-round-checklist H, 2026-11-08) it was the C engine's
 /// (`qa_media_span.c`), which a machine could be without, and a framed
-/// medium said so instead of reading. ⚠️The C's stays, for the C's audio
-/// decoder alone, until that decoder's move deletes it (관제 03:59).
+/// medium said so instead of reading — and then the C's audio decoder's
+/// alone, until that decoder's move deleted it (관제 03:59).
 ///
 /// ⛔A PLAIN span is read through here only by native code. Dart reads a
 /// plain file with `RandomAccessFile` (`MediaByteSource`), which needs no

@@ -13,6 +13,25 @@
 //! own wide copies (`frame::execute_fast`): copied byte-exact, a sequence
 //! at a time, it took 1.65 times the C's.
 //!
+//! Why zstd at all: cel blobs are compressed once per save and decompressed
+//! **on the main isolate, in frame time**, every time a cold cel is promoted
+//! to hot. Measured on a real 22.8MB project — deflate -9: 3.35ms the median
+//! cel, 70ms the largest; zstd -9: **0.11ms** and 55ms. Smaller *and*
+//! faster — 30× on the cel size that actually occurs. deflate was not a bad
+//! choice; it is simply older than the problem. ⛔What was rejected, and why:
+//! - **xz / LZMA** — 30% smaller than deflate but the slowest to decompress
+//!   of everything measured. The cost would land on the promotion path.
+//! - **OpenZL** (Meta, 2025) — format-aware and genuinely aimed at data like
+//!   ours, but its README says the compressed format *will* change, and it
+//!   needed C++17 in a native build that was C. A project file is the wrong
+//!   place to take a moving format. Worth measuring again when it settles.
+//! - **A newer general codec** — there is not one that beats zstd on the
+//!   axis that binds us (decompress speed at a good ratio).
+//!
+//! ↩️(This was the vendored zstd's `README.anicel.md`, which went with the
+//! amalgamation — zstd 1.5.6, tag `v1.5.6`, commit `794ea1b` — in the
+//! connection round.)
+//!
 //! The decoder and the level-9 compressor ([`compress`], which says why
 //! there is one level).
 //!

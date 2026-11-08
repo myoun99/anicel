@@ -45,8 +45,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // `nativeEngineLibraryPathOrNull` looks under `build/native_standalone`,
   // so the suites that use it ran; `openQaEngineLibrary` — which is what
   // PRODUCTION calls, and therefore what the C engine's bindings call
-  // (↩️the compressor's and the span reader's too, until the connection
-  // round moved them into the Rust engine) — tries `QA_ENGINE_PATH` and then
+  // (↩️the compressor's, the span reader's and the sound decoder's too,
+  // until the connection round moved them into the Rust engine) — tries
+  // `QA_ENGINE_PATH` and then
   // the bare library name beside the
   // executable, and `flutter test` has neither. So every suite gated on the
   // compressor skipped SILENTLY with the DLL sitting right there: 27 pins

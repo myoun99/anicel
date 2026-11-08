@@ -74,12 +74,12 @@ that entry.
 The engine's compressor (`packages/gpu_engine/rust/native/compress`) is a
 port of zstd **1.5.6** (`github.com/facebook/zstd`, tag `v1.5.6`, commit
 `794ea1b`) — its level-9 compressor and its decoder, writing the frames
-the C wrote byte for byte. The C amalgamation it was ported from is
-vendored at `packages/qa_native/src/third_party/zstd/` (its
-`README.anicel.md` says how it was made). **BSD 3-Clause** — the text is
-`LICENSE` in both folders, bundled at `assets/licenses/LICENSE-zstd.txt`
-and shown in the app's About ▸ licenses screen (a binary must reproduce
-the notice).
+the C wrote byte for byte. **BSD 3-Clause** — the text is the crate's
+`LICENSE`, bundled at `assets/licenses/LICENSE-zstd.txt` and shown in the
+app's About ▸ licenses screen (a binary must reproduce the notice). Until
+the connection round (2026-11-08) the C amalgamation it was ported from
+was vendored at `packages/qa_native/src/third_party/zstd/`, with the same
+`LICENSE`; the crate's `lib.rs` keeps how it was made.
 
 > When native third-party sources are vendored into `native/` (or into a
 > platform plugin package), each one gets an entry here with: what it is,

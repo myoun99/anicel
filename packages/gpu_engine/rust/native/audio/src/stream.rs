@@ -64,9 +64,12 @@ type Opener = fn(&Container) -> Option<Opened>;
 /// sound-lands-on-its-exact-sample-Q2: 「파일 머리를 먼저 본다」). An MP3
 /// frame-sync scan finds frames in the quiet stretches of uncompressed
 /// sound, whose small negative samples are `FF Fx` bytes: a 30-minute
-/// H.264 + PCM reel came back as a tenth of a second of noise (2026-10-06).
-/// The sniff reads only a container's own magic at its first byte
-/// (`start::mp3_may_try`), never a chunk inside it.
+/// H.264 + PCM reel came back as a tenth of a second of noise (2026-10-06),
+/// and the OS stack, which reads that file exactly, was never asked — it can
+/// only come after the MP3 decoder, and the MP3 decoder said yes. ⛔Trying
+/// the MP3 decoder last of the bundled decoders was the old guard, and it
+/// was not enough. The sniff reads only a container's own magic at its
+/// first byte (`start::mp3_may_try`), never a chunk inside it.
 ///
 /// The ogg sits BEFORE the MP3 on purpose: `OggS` makes its reader strict,
 /// while an MP3 scan is the most permissive of all. What tries after it is

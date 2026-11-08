@@ -18,6 +18,13 @@ audio_mix = { path = "../audio_mix" }
 # The formats are the ones the C's
 # bundled decoders read — dr_wav · dr_flac · dr_mp3 · stb_vorbis — and the
 # AAC-LC and ALAC of a movie the C left to the OS (native-to-rust-Q6).
+# ⛔No ffmpeg on any audio path (the EXPORT-AUDIO round removed it): every
+# format is decoded once at import, natively, tablets included — ogg was
+# why stb_vorbis came, the one format dr_libs did not read. ↩️dr_libs and
+# stb_vorbis were vendored at a pinned commit, so that a commit of this
+# repository always built the same decoder bytes, until the connection round
+# deleted them (connection-round-checklist H, 2026-11-08); symphonia is held
+# to that by the lock and the vendored patch.
 symphonia = { version = "0.6.1", default-features = false, features = [
   "aac",
   "adpcm",
@@ -60,8 +67,10 @@ objc2-audio-toolbox = { version = "0.3", default-features = false, features = [
 ] }
 objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
 
-# The C answer key: the engine's qa_audio_* (native/oracle), and the app's
-# ledger (native/ledger).
+# The app's ledger (native/ledger), and a medium framed as the save frames
+# it (native/oracle's `framed`). ↩️And the C answer key, the engine's
+# qa_audio_*, until the connection round deleted it
+# (connection-round-checklist H, 2026-11-08).
 [dev-dependencies]
 ledger = { path = "../ledger" }
 oracle = { path = "../oracle" }

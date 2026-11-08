@@ -1,17 +1,35 @@
-//! The NDK's MediaExtractor and MediaCodec over the container's bytes — the
-//! engine's Android `qa_os_open`, through `ndk-sys`'s bindings of the NDK's
-//! own headers (`media::served_span` says why never a table by hand).
+//! The NDK's MediaExtractor and MediaCodec over the container's bytes,
+//! through `ndk-sys`'s bindings of the NDK's own headers
+//! (`media::served_span` says why never a table by hand). ↩️The C engine's
+//! Android `qa_os_open` until the connection round deleted it
+//! (connection-round-checklist H, 2026-11-08).
 //!
 //! A plain span opens by descriptor — `AMediaExtractor_setDataSourceFd`
 //! takes a RANGE, exactly the shape a container inside the project file
 //! needs; a FRAMED span, whose stored bytes are not the container, through
 //! the one serving of a span (`media::served_span`).
 //!
+//! 🚨★★★**A REQUIRED SYMBOL THE DEVICE LACKED ONCE COST EVERY AAC FILE.**
+//! The C's comment said the AMediaDataSource entry points were 「API 23+」.
+//! They are `__INTRODUCED_IN(28)`, they were REQUIRED symbols, and one
+//! missing symbol rejected the whole library — so on Android 5.0 through
+//! 8.1, with a `minSdk` of 21, the OS codec path was not degraded, it was
+//! ABSENT: wav/flac/mp3/ogg kept working through the bundled decoders and
+//! every AAC file — every m4a, every movie's soundtrack — came back 「no
+//! decoder recognized this file」. Nobody saw an error; a waveform simply
+//! never drew. The fix was the descriptor-and-range opening above, the data
+//! source made optional. ↩️It is required again since 2026-10-24, when the
+//! app's floor rose to Android 10 (minSdk 29, board
+//! skia-devices-out-of-release), and the whole API went from looked up to
+//! linked: no device left can lose a part of it.
+//!
 //! MediaCodec hands back every frame it decoded — it takes nothing off the
 //! front: the extractor's `encoder-delay` is a note for the player, not a
 //! cut — so where the sound starts is the file's to say
-//! (`start::container_start`). ⚠️Not measured on a device, as the C's was
-//! not: there is no Android run of these tests.
+//! (`start::container_start`). ⚠️Not measured on a device — and neither is
+//! the stream: the first device to conform a long sound is the first to run
+//! this loop a block at a time (user 2026-10-10 chose it all the same, Q1
+//! A). There is no Android run of these tests.
 
 use std::ffi::{CStr, c_char};
 use std::fs::File;

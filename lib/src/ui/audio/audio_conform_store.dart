@@ -36,7 +36,7 @@ class _ConformFailure {
 /// still syncing down from a cloud folder) self-heal, and a hard one
 /// cannot spin the paint loop.
 ///
-/// A format the decoder chain does not read (dr_libs + stb_vorbis + the
+/// A format the decoder chain does not read (the bundled decoders + the
 /// OS codec stack) is a DEFINITIVE `undecodable` answer, not a failure:
 /// the entry stays, the waveform stays blank, and a run plays without that
 /// file, saying so (`OutputArmed.cannotPlay`). ↩️Its playback rode the
@@ -59,7 +59,6 @@ class AudioConformStore extends ChangeNotifier {
     this.maxAttempts = 3,
     this.retryDelay = const Duration(seconds: 2),
     void Function(String message)? log,
-    this.libraryPathOverride,
   }) : _runner = runner ?? runConformInIsolate,
        _resampleRunner = resampleRunner ?? runResampleInIsolate,
        _resolveProjectSampleRate =
@@ -124,10 +123,6 @@ class AudioConformStore extends ChangeNotifier {
   final int maxAttempts;
   final Duration retryDelay;
 
-  /// Test hook, forwarded into every request (worker isolates start with
-  /// fresh statics).
-  final String? libraryPathOverride;
-
   /// A store that conforms each path's FILE as it lies — no carry, no
   /// conform of the project's, nothing kept on disk — at this one's rate
   /// and speed, through its runners: what the import window plays a file
@@ -143,7 +138,6 @@ class AudioConformStore extends ChangeNotifier {
     maxAttempts: maxAttempts,
     retryDelay: retryDelay,
     log: _log,
-    libraryPathOverride: libraryPathOverride,
   );
 
   final Map<String, ConformResult> _entries = {};
@@ -467,7 +461,6 @@ class AudioConformStore extends ChangeNotifier {
           bucketsPerSecond: bucketsPerSecond,
           speedNumerator: speed.numerator,
           speedDenominator: speed.denominator,
-          libraryPathOverride: libraryPathOverride,
         ),
       );
     } on Object catch (error) {

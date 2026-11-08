@@ -193,10 +193,10 @@ const double mediaCompressionWorthIt = 0.95;
 ///
 /// ⛔**THIS SIDE ONLY WRITES IT.** The one reader is the engine's
 /// (native/media's span, reached from Dart as `QaMediaSpan`), which every
-/// decoder and every Dart read of a framed medium goes through. ⚠️Until the
-/// audio decoder moves to Rust, the C's own (`qa_media_span.c`) reads for it
-/// alone, held to the Rust's byte for byte (native/media's span tests;
-/// connection-round-checklist H, 2026-11-08). 🪦A Dart
+/// decoder and every Dart read of a framed medium goes through. ↩️The C's
+/// own (`qa_media_span.c`) read for the C's audio decoder, held to the
+/// Rust's byte for byte, until the connection round deleted both
+/// (connection-round-checklist H, 2026-11-08). 🪦A Dart
 /// parser, block map and whole-entry decoder lived here too, and went when
 /// the engine's became the only one (2026-09-24): a format with two readers
 /// is two chances for them to disagree about a boundary.

@@ -24,6 +24,12 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// ⛔Read from the build files, not from a list kept here: a list would
 /// need the same discipline this test exists to enforce.
+///
+/// ↩️The zstd amalgamation, the span reader and the sound decoder were in
+/// that list until the connection round moved them to the Rust engine
+/// (connection-round-checklist H, 2026-11-08), whose one library every
+/// platform builds from the same crates: the C left is the raster engine,
+/// `qa_engine.c` alone, and the law stands for whatever is added to it.
 void main() {
   final root = _repoRoot();
   final cmake = File('$root/packages/qa_native/src/CMakeLists.txt');
@@ -37,10 +43,9 @@ void main() {
     final sources = _engineLibrarySources(cmake.readAsStringSync());
     expect(
       sources,
-      contains('qa_media_span.c'),
+      contains('qa_engine.c'),
       reason: 'the parser must see the list this test is about',
     );
-    expect(sources, contains('third_party/zstd/zstd.c'));
 
     final missing = <String>[];
     for (final pod in pods.entries) {
@@ -73,7 +78,7 @@ void main() {
     final macos = _forwardedSources(pods['macos']!);
     expect(
       ios,
-      contains('qa_audio_decode.c'),
+      contains('qa_engine.c'),
       reason: 'the parser must see the forwarders this test is about',
     );
     expect(

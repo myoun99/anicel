@@ -6168,4 +6168,8 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // reader are the Rust engine's (native/video), which the app binds in the GPU
 // engine's library, as it binds native/media's span reader there. The C's
 // qa_media_span_* stay, for the C's audio decoder alone, until it moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 71; }
+// v72: qa_audio_decode_*, qa_audio_stream_* and qa_media_span_* leave - the
+// sound decoder is the Rust engine's (native/audio), which the app binds in
+// the GPU engine's library with native/media's span reader. The engine is
+// its raster half alone: no media, no zstd, no OS codec stack.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 72; }

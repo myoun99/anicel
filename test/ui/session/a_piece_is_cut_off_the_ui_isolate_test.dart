@@ -9,7 +9,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/encoded_movie.dart';
-import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨The ROAD THE APP TAKES. `flutter_test_config.dart` cuts every piece
@@ -67,9 +66,6 @@ void main() {
   });
 
   group('with the engine', () {
-    final libraryPath = nativeEngineLibraryPathOrNull();
-    final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
-
     test('a sound is cut in a worker that finds the engine', () async {
       final samples = Int16List(48000 * 2);
       final data = samples.buffer.asUint8List();
@@ -87,7 +83,7 @@ void main() {
       );
 
       expect(cut?.frames, 8);
-    }, skip: skip);
+    });
 
     test('a movie is cut in a worker that finds the engine', () async {
       final movie = inTemp('take.mp4');
@@ -108,6 +104,6 @@ void main() {
       // 🗣️F-494: the encode is the wait — a minute for two minutes of a
       // big movie — and the window hears it frame by frame from the worker.
       expect(heard, [closeTo(1 / 3, 1e-9), closeTo(2 / 3, 1e-9), 1]);
-    }, skip: skip);
+    });
   });
 }

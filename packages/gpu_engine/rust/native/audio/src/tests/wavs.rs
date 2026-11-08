@@ -1,8 +1,11 @@
-//! WAVs, AIFFs and MPEG frames made up here, each decoded by both.
+//! WAVs, AIFFs and MPEG frames made up here, each decode held to the
+//! ledger or to what the C answered. ↩️Each was decoded by both until the
+//! connection round deleted the C (connection-round-checklist H,
+//! 2026-11-08).
 
 use super::{
-    Sounds, Span, TempFile, between_junk, c_window, expect_left_to_the_os, expect_same, expect_the_same_sound,
-    expect_window_of, framed, noise, rust_window,
+    Sounds, Span, TempFile, between_junk, decode, expect_left_to_the_os, expect_the_same_sound, expect_window_of, framed,
+    noise,
 };
 
 /// A WAV's `fmt ` chunk body.
@@ -104,11 +107,11 @@ fn every_wav_reads_as_the_c_reads_it() {
     let mut pins = Sounds::default();
     for (what, bytes) in &cases {
         let file = TempFile::new("wav.wav", bytes);
-        let whole = expect_same(what, &Span::whole(file.path()), 0, -1);
+        let whole = decode(&Span::whole(file.path()), 0, -1);
         let (carried, offset) = between_junk("carried.wav", bytes);
         let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
         let what = format!("{what}, carried");
-        expect_the_same_sound(&what, &expect_same(&what, &span, 0, -1), &whole);
+        expect_the_same_sound(&what, &decode(&span, 0, -1), &whole);
         pins.add(&whole);
     }
     pins.pinned("audio/every-wav");
@@ -188,7 +191,7 @@ fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
         for (family, bytes) in families(tag, channels, bits, 3001) {
             let (carried, offset) = between_junk("family.wav", &bytes);
             let span = Span { path: carried.path(), offset, length: bytes.len() as i64, framed: false };
-            let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
+            let decoded = decode(&span, 0, -1);
             assert_eq!(decoded.samples.len(), 3001 * usize::from(channels), "{family}, {what}: every frame");
             pins.add(&decoded);
         }
@@ -214,20 +217,19 @@ fn the_wavs_symphonia_does_not_open_read_as_the_c_reads_them() {
             }
             let file = TempFile::new("family.wav", bytes);
             let span = Span::whole(file.path());
-            // ⚠️dr_wav pads a Wave64 chunk by its size mod 8, where the
+            // ⚠️dr_wav padded a Wave64 chunk by its size mod 8, where the
             // format puts each chunk on the next eight-byte bound: past a
             // chunk of odd size it found nothing (measured 2026-11-06),
             // and this reads on — the same sound the RF64 holds.
             if *family == "Wave64" && junk {
-                let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-                assert_ne!(c.format, crate::FORMAT_WAV, "the C's {family}, {what}");
+                let wave64 = decode(&span, 0, -1);
                 let file = TempFile::new("family.wav", &files[0].1);
-                let rf64 = expect_same("RF64, the same", &Span::whole(file.path()), 0, -1);
-                assert!(rust.samples.iter().map(|s| s.to_bits()).eq(rf64.samples.iter().map(|s| s.to_bits())));
+                let rf64 = decode(&Span::whole(file.path()), 0, -1);
+                assert!(wave64.samples.iter().map(|s| s.to_bits()).eq(rf64.samples.iter().map(|s| s.to_bits())));
                 pins.add(&rf64);
                 continue;
             }
-            let decoded = expect_same(&format!("{family}, {what}"), &span, 0, -1);
+            let decoded = decode(&span, 0, -1);
             assert_eq!(decoded.format, crate::FORMAT_WAV, "{family}, {what}");
             pins.add(&decoded);
         }
@@ -242,9 +244,9 @@ fn a_framed_wav_reads_as_the_c_reads_it() {
     let (carried, offset) = between_junk("framed.bin", &blob);
     let span = Span { path: carried.path(), offset, length: blob.len() as i64, framed: true };
     let plain = TempFile::new("plain.wav", &bytes);
-    let whole = rust_window(&Span::whole(plain.path()), 0, -1);
-    expect_the_same_sound("framed", &expect_same("framed", &span, 0, -1), &whole);
-    expect_window_of("framed, a window", &expect_same("framed, a window", &span, 12_345, 999), &whole, 12_345, 999);
+    let whole = decode(&Span::whole(plain.path()), 0, -1);
+    expect_the_same_sound("framed", &decode(&span, 0, -1), &whole);
+    expect_window_of("framed, a window", &decode(&span, 12_345, 999), &whole, 12_345, 999);
 }
 
 /// An AIFF (or AIFC, when `compression` is said) of 16-bit-word fields,
@@ -292,7 +294,7 @@ fn every_aiff_reads_as_the_c_reads_it() {
         let data = noise(frames * usize::from(channels * bits / 8), u32::from(bits));
         let bytes = aiff(compression, channels, bits, frames as u32, &data);
         let file = TempFile::new("aiff.aif", &bytes);
-        pins.add(&expect_same(what, &Span::whole(file.path()), 0, -1));
+        pins.add(&decode(&Span::whole(file.path()), 0, -1));
     }
     pins.pinned("audio/every-aiff");
 }
@@ -358,13 +360,10 @@ fn an_mp3_starts_and_ends_where_the_c_s_does() {
         ("behind an ID3 tag with a footer", [super::id3(100, true), tagged_mp3_frames(24, Some(23), 0)].concat(), 25_391),
     ] {
         let file = TempFile::new("mp3.mp3", &bytes);
-        let span = Span::whole(file.path());
-        let (rust, c) = (rust_window(&span, 0, -1), c_window(&span, 0, -1));
-        assert_eq!((rust.format, rust.channels, rust.rate), (c.format, c.channels, c.rate), "{what}");
-        assert_eq!(rust.samples.len(), c.samples.len(), "{what}: the frames");
-        assert_eq!((rust.format, rust.channels, rust.rate), (crate::FORMAT_MP3, 2, 44_100), "{what}");
-        assert_eq!(rust.samples.len(), 2 * frames, "{what}: the frames");
-        assert!(rust.samples.iter().all(|&s| s == 0.0), "{what}: silence");
+        let sound = decode(&Span::whole(file.path()), 0, -1);
+        assert_eq!((sound.format, sound.channels, sound.rate), (crate::FORMAT_MP3, 2, 44_100), "{what}");
+        assert_eq!(sound.samples.len(), 2 * frames, "{what}: the frames");
+        assert!(sound.samples.iter().all(|&s| s == 0.0), "{what}: silence");
     }
 }
 
@@ -429,7 +428,7 @@ impl Bits {
 /// channels.
 fn mp3_read(bytes: &[u8]) -> (Vec<f32>, i32) {
     let file = TempFile::new("pieces.mp3", bytes);
-    let read = rust_window(&Span::whole(file.path()), 0, -1);
+    let read = decode(&Span::whole(file.path()), 0, -1);
     assert_eq!(read.format, crate::FORMAT_MP3);
     (read.samples, read.channels)
 }

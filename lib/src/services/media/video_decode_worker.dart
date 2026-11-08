@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/rgba_premultiply.dart';
 import '../flutter_test_run.dart';
-import '../../native/qa_engine_abi.dart';
 import '../../native/qa_video_decoder.dart';
 
 /// Where a movie is decoded, and — the whole point — WHICH THREAD pays.
@@ -272,12 +271,11 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
       });
       await Isolate.spawn(
         _videoDecodeWorker,
-        (
-          ready: ready.sendPort,
-          // The override has to travel: a fresh isolate resolves the binary
-          // from scratch, and a test that built one locally says where.
-          libraryPath: debugQaEngineLibraryPathOverride,
-        ),
+        // ↩️A test's engine path travelled beside it while a fresh isolate
+        // resolved the C engine from scratch; the decoder is the Rust
+        // engine's, found with no path named (the connection round,
+        // connection-round-checklist H, 2026-11-08).
+        ready.sendPort,
         debugName: 'qa-video-decode',
         onError: stopped.sendPort,
         onExit: stopped.sendPort,
@@ -406,12 +404,9 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
 
 /// The worker's body: it owns the decoder, and nothing else in the process
 /// touches one.
-void _videoDecodeWorker(({SendPort ready, String? libraryPath}) start) {
-  if (start.libraryPath != null) {
-    debugQaEngineLibraryPathOverride = start.libraryPath;
-  }
+void _videoDecodeWorker(SendPort ready) {
   final requests = ReceivePort();
-  start.ready.send(requests.sendPort);
+  ready.send(requests.sendPort);
 
   // 🚨★★★KEYED BY THE HANDLE THE ASKER MINTED, not by this list's own
   // index. This map is created fresh on every spawn, so an index would
