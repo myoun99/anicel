@@ -10,7 +10,8 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 /// The mask a held fill's range is marked under on the engine is made once
 /// for as long as the range lasts — a press pushing its checker marks the
 /// same cover, and uploads nothing again — and let go by the first frame
-/// that marks none (flip lane ⓐ-3).
+/// that marks none (flip lane ⓐ-3); a mask is made of its box's bytes
+/// alone.
 void main() {
   late GpuComposite composite;
   setUpAll(() => composite = GpuComposite(appGpuEngine));
@@ -56,5 +57,19 @@ void main() {
       ..settle();
 
     expect(kept.of(range), isNot(same(first)));
+  });
+
+  test('a mask is refused bytes that are not its box\'s, and a box of no '
+      'pixel with the engine\'s reason', () {
+    expect(
+      () => GpuMask(composite, Uint8List(9), x: 0, y: 0, width: 2, height: 5),
+      throwsArgumentError,
+    );
+    expect(
+      () => GpuMask(composite, Uint8List(0), x: 0, y: 0, width: 0, height: 3),
+      throwsA(
+        isA<StateError>().having((e) => e.message, 'why', contains('pixel')),
+      ),
+    );
   });
 }
