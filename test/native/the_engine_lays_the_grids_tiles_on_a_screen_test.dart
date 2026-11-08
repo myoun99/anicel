@@ -83,16 +83,17 @@ void main() {
   test('a tile reads its letters from the atlas it is handed', () {
     final tile = GpuGridPicture(appGpuEngine, 1, 2);
     addTearDown(tile.free);
-    // 3 × 2: a letter of 255 over 128 down its last column.
+    // 2 × 3: a letter of 255 over 128 down its last column, below its top
+    // row — so an atlas read a side for the other has no such letter.
     final ops = TimelineGridTileOpWriter()
-      ..glyph(0, 0, 2, 0, 1, 2, timelineGridPackRgba(const Color(0xFFFFFFFF)));
+      ..glyph(0, 0, 1, 1, 1, 2, timelineGridPackRgba(const Color(0xFFFFFFFF)));
     grid.draw(
       tile,
       ops.build(),
       atlas: (
-        alpha: Uint8List.fromList([0, 0, 255, 0, 0, 128]),
-        width: 3,
-        height: 2,
+        alpha: Uint8List.fromList([0, 0, 0, 255, 0, 128]),
+        width: 2,
+        height: 3,
       ),
     );
     final surface = shownSurfaceOf(1, 2);
