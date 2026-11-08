@@ -779,7 +779,90 @@ class GpuPlan {
   void solid(int colour, int left, int top, int right, int bottom) =>
       rust.planSolid(_plan, colour, left, top, right, bottom);
 
+  /// Lays the plan's masked steps — its range marks ([mark]) — under
+  /// [mask]: one a plan.
+  void mask(GpuMask mask) => _checked(rust.planMask(_plan, mask._mask));
+
+  /// Adds the range a fill held down will cover, as the engine marks it: a
+  /// checker of cells of 8 of its row's pixels, white and black at half
+  /// alpha, laid in normal under the plan's [mask] — the range — and posed
+  /// as [row] poses its row, by [inverse] and the rest; its cells pushed
+  /// [shift] of the row's pixels, the press's move.
+  ///
+  /// False where its pose lands nothing, so it lays nothing and is left
+  /// out.
+  bool mark({
+    required List<double> inverse,
+    required GpuSampling sampling,
+    required int columns,
+    required int rows,
+    (double, double) shift = (0, 0),
+    double radiusFloor = 1,
+  }) {
+    if (inverse.length != 9) {
+      throw ArgumentError('an inverse of ${inverse.length}, not 9');
+    }
+    final (dx, dy) = shift;
+    final added = using(
+      (arena) => rust.planMark(
+        _plan,
+        _doubles(arena, inverse),
+        radiusFloor,
+        sampling.id,
+        columns,
+        rows,
+        (dx * 65536).round(),
+        (dy * 65536).round(),
+      ),
+    );
+    return _checked(added) == 1;
+  }
+
   void free() => rust.planFree(_plan);
+}
+
+/// A mask kept on the GPU (rust/src/kernels/composite/abi.rs): a byte a
+/// pixel over its box — a fill range's, in the space of the row it lies on
+/// — made once and named by each plan that lays steps under it
+/// ([GpuPlan.mask]) for as long as it is not freed.
+class GpuMask {
+  /// [bytes], a byte a pixel row after row over [width] × [height], whose
+  /// top-left pixel is ([x], [y]), on [composite]'s engine.
+  factory GpuMask(
+    GpuComposite composite,
+    Uint8List bytes, {
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+  }) {
+    if (bytes.length != width * height) {
+      throw ArgumentError('${bytes.length} bytes, not $width × $height');
+    }
+    final mask = using((arena) {
+      final held = arena<Uint8>(_held(bytes.length))
+        ..asTypedList(bytes.length).setAll(0, bytes);
+      return rust.maskNew(
+        composite._engine._engine,
+        held,
+        x,
+        y,
+        width,
+        height,
+      );
+    });
+    if (mask == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuMask._(mask);
+  }
+
+  GpuMask._(this._mask);
+
+  final Pointer<rust.MaskPlane> _mask;
+
+  /// Frees the mask; a plan that names it keeps its own hold.
+  void free() => rust.maskFree(_mask);
 }
 
 /// The executor: plans of the pool's tiles composited on the GPU.

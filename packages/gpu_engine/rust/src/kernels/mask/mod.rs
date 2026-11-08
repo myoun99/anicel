@@ -14,8 +14,9 @@
 //! `Uint8List` as it is, padded to whole words; mask.wgsl's head has the
 //! layout.
 
-// ⏳Nothing outside the tests reads a mask until the canvas's verbs come to
-// the engine (gpu-canonical-store, stage 4).
+// ⏳Nothing outside the tests runs a mask's passes until the canvas's verbs
+// come to the engine (gpu-canonical-store, stage 4); the executor reads the
+// fill range's alone (flip lane ⓐ-3).
 #![cfg_attr(not(test), allow(dead_code))]
 
 pub(crate) mod region;
@@ -63,6 +64,17 @@ impl MaskBox {
     /// The plane's bytes: its rows of words.
     pub(crate) fn bytes(&self) -> u64 {
         u64::from(self.stride()) * u64::from(self.height) * 4
+    }
+
+    /// `bytes` — a byte a pixel, row after row, the app's `Uint8List` as it
+    /// is — as the plane holds them: each row padded to whole words with 0.
+    pub(crate) fn words_of(&self, bytes: &[u8]) -> Vec<u32> {
+        let word = |four: &[u8]| {
+            let mut word = [0; 4];
+            word[..four.len()].copy_from_slice(four);
+            u32::from_le_bytes(word)
+        };
+        bytes.chunks_exact(self.width as usize).flat_map(|row| row.chunks(4).map(word)).collect()
     }
 
     /// A distance plane's bytes: two distances to a word.

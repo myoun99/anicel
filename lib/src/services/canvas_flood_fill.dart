@@ -1675,13 +1675,13 @@ final class FillRange {
     );
   }
 
-  /// The outline of every pixel the fill would write into, inside [within]
-  /// where a selection cuts it — on the pixel grid, in the seed's space
-  /// ([pixelRunContours]). Empty for an [open] range.
-  List<List<CanvasPoint>> contoursWithin(SelectionClip? within) {
+  /// Every pixel the fill would write into, inside [within] where a
+  /// selection cuts it, in the seed's space — read in one pass as the two
+  /// marks of it ([FillRangeCover]). Null for an [open] range.
+  FillRangeCover? coveredWithin(SelectionClip? within) {
     final finished = region;
     if (finished == null) {
-      return const [];
+      return null;
     }
     final width = finished.width;
     final cut = within?.maskFor(
@@ -1691,14 +1691,22 @@ final class FillRange {
       height: finished.height,
     );
     final mask = finished.mask;
+    final cover = Uint8List(mask.length);
     // Four bytes at a time where the four are one answer — all ink inside a
     // run, all empty outside one — and a byte at a time where they are not
     // (🔬I-160: a 4K range read a byte each was 25 ms of rows). Only where
     // the mask's words line up, and never under a cut, which reads its own.
     final words = cut == null && mask.offsetInBytes % 4 == 0
-        ? mask.buffer.asUint32List(mask.offsetInBytes, mask.length ~/ 4)
+        ? (
+            mask: mask.buffer.asUint32List(
+              mask.offsetInBytes,
+              mask.length ~/ 4,
+            ),
+            cover: cover.buffer.asUint32List(0, mask.length ~/ 4),
+          )
         : null;
-    // The covered runs of the row that starts at [offset] in the mask.
+    // The covered runs of the row that starts at [offset] in the mask, each
+    // pixel of them covered in [cover].
     List<int> runsFrom(int offset) {
       // [words] and [cut] are the method's, and a capture checked inside a
       // loop is read past its check by the AOT compiler — a null one kills
@@ -1712,13 +1720,17 @@ final class FillRange {
       while (x < width) {
         final at = offset + x;
         if (wordsNow != null && at & 3 == 0 && x + 4 <= width) {
-          final word = wordsNow[at >> 2];
+          final word = wordsNow.mask[at >> 2];
           if (inside ? word == 0xFFFFFFFF : word == 0) {
+            wordsNow.cover[at >> 2] = word;
             x += 4;
             continue;
           }
         }
         final covered = mask[at] > 0 && (cutNow == null || cutNow[at] > 0);
+        if (covered) {
+          cover[at] = 255;
+        }
         if (covered != inside) {
           runs.add(x);
           inside = covered;
@@ -1731,14 +1743,33 @@ final class FillRange {
       return runs;
     }
 
-    return pixelRunContours(
+    final outline = pixelRunContours(
       [for (var y = 0; y < finished.height; y += 1) runsFrom(y * width)],
       left: finished.left,
       top: finished.top,
       width: width,
     );
+    return (
+      outline: outline,
+      cover: FloodFillRegion(
+        left: finished.left,
+        top: finished.top,
+        width: width,
+        height: finished.height,
+        mask: cover,
+      ),
+    );
   }
 }
+
+/// The pixels a fill held down would write into ([FillRange.coveredWithin])
+/// as each mark of them reads them: their [outline] on the pixel grid
+/// ([pixelRunContours]) — the walk's — and their [cover], 255 on each and 0
+/// elsewhere over the range's box — the engine's (flip lane ⓐ-3).
+typedef FillRangeCover = ({
+  List<List<CanvasPoint>> outline,
+  FloodFillRegion cover,
+});
 
 /// What a canvas asks for the fill's range at [point] — [fillRangeAt] with
 /// the host's cut, frame and knobs — and every copy [symmetry] makes of it.

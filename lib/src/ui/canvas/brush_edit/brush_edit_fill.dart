@@ -254,11 +254,10 @@ class _BrushEditFill implements GradientRangeHold {
   /// selection as the fill will be ([promoteFillDabs]'s `selection`), its
   /// checker pushed [shift] ([FillRangeMark.shift]).
   void _mark(FillRange? range, {Offset shift = Offset.zero}) {
-    final mark = range == null
+    final covered = range?.coveredWithin(_state.widget.selectionNow?.call());
+    final mark = covered == null
         ? null
-        : FillRangeMark(
-            range.contoursWithin(_state.widget.selectionNow?.call()),
-          ).shifted(shift);
+        : FillRangeMark(covered).shifted(shift);
     _state._overlay._overlayModel.showFillRange(
       mark == null || mark.isEmpty ? null : mark,
     );

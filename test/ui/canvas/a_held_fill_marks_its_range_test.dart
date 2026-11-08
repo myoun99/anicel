@@ -61,7 +61,7 @@ void main() {
             height: height,
             mask: Uint8List(width * height)..fillRange(0, width * height, 255),
           ),
-        ).contoursWithin(null),
+        ).coveredWithin(null)!,
       );
 
   /// The frame [nodes] stack, the live row drawn by [live].
@@ -224,7 +224,7 @@ void main() {
         FillRangeMark(
           FillRange.over(
             FloodFillRegion(left: 8, top: 8, width: 16, height: 16, mask: mask),
-          ).contoursWithin(null),
+          ).coveredWithin(null)!,
         ),
       );
 
@@ -369,11 +369,11 @@ void main() {
       for (final at in [14, 15, 20, 21]) {
         mask[at] = 0;
       }
-      final contours = FillRange.over(
+      final covered = FillRange.over(
         FloodFillRegion(left: 0, top: 0, width: 6, height: 6, mask: mask),
-      ).contoursWithin(null);
-      expect(contours, hasLength(2), reason: 'the square and its hole');
-      final path = FillRangeMark(contours).outline;
+      ).coveredWithin(null)!;
+      expect(covered.outline, hasLength(2), reason: 'the square and its hole');
+      final path = FillRangeMark(covered).outline;
       expect(path.contains(const Offset(0.5, 0.5)), isTrue);
       expect(path.contains(const Offset(2.5, 2.5)), isFalse, reason: 'hole');
     });
@@ -386,7 +386,7 @@ void main() {
       mask.fillRange(16 + 8, 16 + 12, 0);
       final contours = FillRange.over(
         FloodFillRegion(left: 0, top: 0, width: 16, height: 3, mask: mask),
-      ).contoursWithin(null);
+      ).coveredWithin(null)!.outline;
       expect(
         [
           for (final contour in contours)
@@ -406,7 +406,7 @@ void main() {
         ),
       );
       final path = FillRangeMark(
-        FillRange.over(square(0, 0, 6)).contoursWithin(clip),
+        FillRange.over(square(0, 0, 6)).coveredWithin(clip)!,
       ).outline;
       expect(path.contains(const Offset(1.5, 1.5)), isTrue);
       expect(
@@ -414,6 +414,56 @@ void main() {
         isFalse,
         reason: 'past the selection nothing fills, so nothing is marked',
       );
+    });
+
+    test('🚨its cover — what the engine lays its checker under — is 255 on '
+        'every pixel its outline holds and 0 elsewhere: a soft edge whole, '
+        'words read at once among them (flip lane ⓐ-3)', () {
+      // A row covered across three words, a row whose first word is empty,
+      // and a row of every coverage there is.
+      const width = 12;
+      final mask = Uint8List(width * 3)
+        ..fillRange(0, width, 255)
+        ..fillRange(width + 4, 2 * width, 255);
+      for (var x = 0; x < width; x += 1) {
+        mask[2 * width + x] = const [0, 1, 128, 255][x % 4];
+      }
+      final covered = FillRange.over(
+        FloodFillRegion(left: 5, top: 7, width: width, height: 3, mask: mask),
+      ).coveredWithin(null)!;
+      final cover = covered.cover;
+      expect(
+        (cover.left, cover.top, cover.width, cover.height),
+        (5, 7, width, 3),
+      );
+      expect(cover.mask, [
+        for (final byte in mask)
+          if (byte > 0) 255 else 0,
+      ]);
+      final path = FillRangeMark(covered).outline;
+      for (var at = 0; at < mask.length; at += 1) {
+        final centre = Offset(5 + at % width + 0.5, 7 + at ~/ width + 0.5);
+        expect(
+          path.contains(centre),
+          cover.mask[at] == 255,
+          reason: 'pixel $at',
+        );
+      }
+    });
+
+    test('its cover is cut by the selection, as its outline is', () {
+      final clip = SelectionClip.outline(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 0, top: 0, right: 3, bottom: 6),
+        ),
+      );
+      final cover = FillRange.over(
+        square(0, 0, 6),
+      ).coveredWithin(clip)!.cover;
+      expect(cover.mask, [
+        for (var at = 0; at < 36; at += 1)
+          if (at % 6 < 3) 255 else 0,
+      ]);
     });
   });
 }

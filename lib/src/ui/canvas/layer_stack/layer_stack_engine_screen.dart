@@ -20,6 +20,9 @@ final class EngineStackScreen {
   /// The world pixels [_screen] keeps.
   Rect _kept = Rect.zero;
 
+  /// The mask the range a fill holds is marked under.
+  late final EngineRangeMask _range = EngineRangeMask(_composite);
+
   /// Lays [frame] onto the kept frame over the world pixels [changed] —
   /// all of it the first time, and when the world the frame holds is not
   /// the one kept: a stroke past the page grows it. Where it changed is
@@ -46,7 +49,7 @@ final class EngineStackScreen {
           plan,
           mapCompositeLeaves<_PaintRow, EngineRow>(
             pass._rootNodes,
-            pass._engineRowOf,
+            (row) => pass._engineRowOf(row, _range.of),
           ),
           hold: hold,
           paper: frame._painter.canvasSize.canvasRect,
@@ -57,6 +60,7 @@ final class EngineStackScreen {
         plan.free();
       }
     });
+    _range.settle();
   }
 
   /// The kept frame through [viewport] at [devicePixelRatio] onto [target]
@@ -99,6 +103,7 @@ final class EngineStackScreen {
   void free() {
     _screen?.free();
     _screen = null;
+    _range.free();
   }
 
   /// [rect], of whole pixels, as the engine's edges: [left, top, right,
@@ -115,9 +120,13 @@ extension on _LayerStackPaintPass {
   /// [row] as the engine lays it: the paper a solid over the page, a
   /// surface row its slot ([_slotOf]) — its tiles as its painter shows
   /// them, a live stroke's in their place ([BitmapSurfacePainter
-  /// .shownSurface]), kept under its cel's lineage, and what a hand holds
-  /// over them where the walk draws it ([_heldOver]).
-  EngineRow _engineRowOf(_PaintRow row) => switch (row) {
+  /// .shownSurface]), kept under its cel's lineage, what a hand holds over
+  /// them where the walk draws it ([_heldOver]) and the range a fill holds
+  /// on it, marked under the mask [maskOf] gives its cover ([_markOn]).
+  EngineRow _engineRowOf(
+    _PaintRow row,
+    GpuMask Function(FloodFillRegion cover) maskOf,
+  ) => switch (row) {
     _PaintPaper() => EngineSolid(
       argb: _painter.paperBackground.paintedArgb,
       rect: DirtyRegion.fromLTBR(
@@ -127,11 +136,19 @@ extension on _LayerStackPaintPass {
         bottomExclusive: _painter.canvasSize.canvasRect.bottom.ceil(),
       ),
     ),
-    _PaintCelSurface(:final lineage) => _engineTilesOf(row, lineage: lineage),
-    final _SurfaceRow row => _engineTilesOf(row),
+    _PaintCelSurface(:final lineage) => _engineTilesOf(
+      row,
+      maskOf,
+      lineage: lineage,
+    ),
+    final _SurfaceRow row => _engineTilesOf(row, maskOf),
   };
 
-  EngineTiles _engineTilesOf(_SurfaceRow row, {Object? lineage}) {
+  EngineTiles _engineTilesOf(
+    _SurfaceRow row,
+    GpuMask Function(FloodFillRegion cover) maskOf, {
+    Object? lineage,
+  }) {
     final slot = _slotOf(row);
     final painter = slot.painter;
     return EngineTiles(
@@ -143,8 +160,24 @@ extension on _LayerStackPaintPass {
       effects: row.effects,
       tint: row.tint,
       held: _heldOver(slot),
+      mark: _markOn(slot, maskOf),
     );
   }
+
+  /// The range a fill holds on [slot]'s row, as the walk marks it over the
+  /// row ([FillRangeMark]) — none where it holds none.
+  EngineMark? _markOn(
+    _SurfaceSlot slot,
+    GpuMask Function(FloodFillRegion cover) maskOf,
+  ) => switch (slot.painter.overlayModel?.fillRange) {
+    null => null,
+    final range when range.isEmpty => null,
+    final range => EngineMark(
+      mask: maskOf(range.cover),
+      bounds: range.bounds,
+      shift: range.shift,
+    ),
+  };
 
   /// What a hand holds over [slot]'s row: each float its painter draws over
   /// it ([BitmapSurfacePainter.floatsOver]), by the tiles it holds, in the

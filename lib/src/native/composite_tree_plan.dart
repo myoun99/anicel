@@ -77,6 +77,7 @@ final class EngineTiles extends EngineRow {
     this.effects = const [],
     this.tint,
     this.held = const [],
+    this.mark,
   });
 
   /// What the row's tiles are kept under, one cel a lineage — the row and
@@ -95,6 +96,26 @@ final class EngineTiles extends EngineRow {
   /// land — a float at its layer's depth, through its filters (TS1 ·
   /// F-240).
   final List<EngineHeld> held;
+
+  /// The range a fill held down will cover, marked over the row — after
+  /// it, outside its opacity and its chain, under its pose — none where no
+  /// fill is held on it (`FillRangeMark`, I-160).
+  final EngineMark? mark;
+}
+
+/// A fill range's mark ([EngineTiles.mark]): its checker laid under [mask]
+/// — the range's cover, in its row's pixels — inside [bounds] there, its
+/// cells pushed [shift] of them.
+final class EngineMark {
+  const EngineMark({
+    required this.mask,
+    required this.bounds,
+    this.shift = ui.Offset.zero,
+  });
+
+  final GpuMask mask;
+  final ui.Rect bounds;
+  final ui.Offset shift;
 }
 
 /// Pixels a hand holds over a row ([EngineTiles.held]) — a float, a text
@@ -294,17 +315,58 @@ class _TreePlan {
 
   /// [row] laid in [mode] — none where its pose collapses it: its tiles,
   /// and what a hand holds over them ([EngineTiles.held]) laid there first,
-  /// in its own space, as one picture — what they are once they land.
+  /// in its own space, as one picture — what they are once they land —,
+  /// then the range a fill holds on it ([EngineTiles.mark]).
   void _row(EngineTiles row, int mode, _Reads reads) {
+    final pose = _poseOf(row);
+    if (pose == null) {
+      return;
+    }
+    if (row.surface.tiles.isNotEmpty || row.held.isNotEmpty) {
+      _picture(row, mode, reads, pose);
+    }
+    if (row.mark case final mark?) {
+      _mark(mark, pose.posed);
+    }
+  }
+
+  /// How [row] is laid ([_RowPose]) — none where its pose has no inverse.
+  _RowPose? _poseOf(EngineTiles row) {
     final placement = _inSpace(row.placement);
     final inverse = switch (placement) {
       null => const GuideTransform.identity(),
       final placement => canvasToArtwork(placement),
     };
-    final tiles = row.surface.tiles;
-    if (inverse == null || tiles.isEmpty && row.held.isEmpty) {
-      return;
+    if (inverse == null) {
+      return null;
     }
+    final GuideTransform(:a, :b, :c, :d, :tx, :ty) = inverse;
+    return (
+      posed: [a, c, tx, b, d, ty, 0.0, 0.0, 1.0],
+      space: placement == null ? null : inverse,
+    );
+  }
+
+  /// [mark] over the row just laid, posed by [posed] as the row is, under
+  /// its mask — the plan's one ([GpuPlan.mask]): a range is held on the
+  /// pen's row alone, the one row a hand's overlay is drawn over.
+  void _mark(EngineMark mark, List<double> posed) {
+    plan
+      ..mask(mark.mask)
+      ..mark(
+        inverse: posed,
+        sampling: _tiles.sampling,
+        columns: _tiles.columns,
+        rows: _tiles.rows,
+        shift: (mark.shift.dx, mark.shift.dy),
+      );
+  }
+
+  /// [row]'s picture — its tiles and what a hand holds over them — laid as
+  /// the row is, by [pose], through its chain on what it stands for, in
+  /// [mode].
+  void _picture(EngineTiles row, int mode, _Reads reads, _RowPose pose) {
+    final tiles = row.surface.tiles;
     final picture = _rowExtentOf(row);
     // Its chain runs on its own picture, the whole of what it stands for,
     // and is cut there — as the walk steps the image it lays, before its
@@ -313,12 +375,10 @@ class _TreePlan {
     final (:chain, :colour) = _chainOf(
       row.effects,
       over: (_) => picture,
-      space: placement == null ? null : inverse,
+      space: pose.space,
       reads: reads,
     );
     final tint = row.tint;
-    final GuideTransform(:a, :b, :c, :d, :tx, :ty) = inverse;
-    final posed = [a, c, tx, b, d, ty, 0.0, 0.0, 1.0];
     // The tint LAST, over the finished pixel: the ghost is the row as the
     // screen shows it, in the peg's colour (resolveCompositeEffectPaint).
     final matrix = _matrixOf(switch ((colour, tint)) {
@@ -334,7 +394,7 @@ class _TreePlan {
       plan.row(
         set: _tiles.setOf(row.lineage, tiles),
         chain: chain,
-        inverse: posed,
+        inverse: pose.posed,
         sampling: _tiles.sampling,
         columns: _tiles.columns,
         rows: _tiles.rows,
@@ -354,7 +414,7 @@ class _TreePlan {
     plan.closeRow(
       chain: chain,
       tiles: chain == null ? _tilesOf(_pixelsOf(picture)) : null,
-      inverse: posed,
+      inverse: pose.posed,
       sampling: _tiles.sampling,
       columns: _tiles.columns,
       rows: _tiles.rows,
@@ -666,6 +726,12 @@ class _TreePlan {
   }
 }
 
+/// How a row is laid ([_TreePlan._poseOf]): [posed], the plan's inverse of
+/// its pose — canvas pixel to the row's own, row-major —, and [space], the
+/// guide's where the row is read in its own space under its pose undone —
+/// none for a row in the space it is laid in.
+typedef _RowPose = ({List<double> posed, GuideTransform? space});
+
 /// What lays tile sets on [plan] — their tiles kept in the pool by [hold]
 /// — at the canvas's own resolution over [paper]: a row's tiles, and what
 /// a hand holds over them.
@@ -809,14 +875,21 @@ ui.Rect _extentOf(EngineRow row) => switch (row) {
 };
 
 /// What [row] stands for, in its own space: its content — the canvas with
-/// every tile it holds — and what is held over it.
-ui.Rect _rowExtentOf(EngineTiles row) => row.held.fold(
-  surfaceContentWorldRect(row.surface),
-  (extent, held) => switch (_reachOf(held)) {
+/// every tile it holds —, what is held over it and the range marked over
+/// it, as the walk's slot draws them (`_SurfaceSlot.extent`).
+ui.Rect _rowExtentOf(EngineTiles row) {
+  final extent = row.held.fold(
+    surfaceContentWorldRect(row.surface),
+    (extent, held) => switch (_reachOf(held)) {
+      null => extent,
+      final reach => extent.expandToInclude(reach),
+    },
+  );
+  return switch (row.mark) {
     null => extent,
-    final reach => extent.expandToInclude(reach),
-  },
-);
+    final mark => extent.expandToInclude(mark.bounds),
+  };
+}
 
 /// The row's pixels [held] reaches, the tiles it holds where the row's
 /// pixels read them — none for no tile, or a map that reads them from no

@@ -17,6 +17,8 @@ final class Pool extends Opaque {}
 
 final class Planned extends Opaque {}
 
+final class MaskPlane extends Opaque {}
+
 final class Composite extends Opaque {}
 
 final class Composited extends Opaque {}
@@ -319,6 +321,56 @@ external void planSolid(
   int top,
   int right,
   int bottom,
+);
+
+@Native<
+  Pointer<MaskPlane> Function(
+    Pointer<Engine>,
+    Pointer<Uint8>,
+    Int32,
+    Int32,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_mask_new')
+external Pointer<MaskPlane> maskNew(
+  Pointer<Engine> engine,
+  Pointer<Uint8> bytes,
+  int x,
+  int y,
+  int width,
+  int height,
+);
+
+@Native<Void Function(Pointer<MaskPlane>)>(symbol: 'gpu_engine_mask_free')
+external void maskFree(Pointer<MaskPlane> mask);
+
+@Native<Int32 Function(Pointer<Planned>, Pointer<MaskPlane>)>(
+  symbol: 'gpu_engine_plan_mask',
+)
+external int planMask(Pointer<Planned> plan, Pointer<MaskPlane> mask);
+
+@Native<
+  Int32 Function(
+    Pointer<Planned>,
+    Pointer<Double>,
+    Double,
+    Uint32,
+    Uint32,
+    Uint32,
+    Int32,
+    Int32,
+  )
+>(symbol: 'gpu_engine_plan_mark')
+external int planMark(
+  Pointer<Planned> plan,
+  Pointer<Double> inverse,
+  double radiusFloor,
+  int sampling,
+  int columns,
+  int rows,
+  int shiftX,
+  int shiftY,
 );
 
 @Native<Uint32 Function(Pointer<Planned>)>(symbol: 'gpu_engine_plan_keys')

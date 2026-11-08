@@ -447,8 +447,8 @@ void main() {
           reason: 'a press moving over it does not flood it again',
         );
         expect(
-          range.contoursWithin(null),
-          isEmpty,
+          range.coveredWithin(null),
+          isNull,
           reason: 'nothing is marked where nothing fills',
         );
         expect(range.dabsIn(0xFF3366CC), isEmpty);

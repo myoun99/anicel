@@ -8,8 +8,10 @@
 //! ([`Composite`]'s walk), as one built in Rust is; a call checks only the
 //! indices it adds to — a chain's or a key chain's —, which no plan holds.
 //!
-//! ⏳All but the selection's mask and the fill range's mark, which come
-//! with the flip lane.
+//! The fill range's mark is laid under a mask the app keeps on the GPU
+//! ([`MaskPlane`]) — made once, for as long as the range lasts, and named
+//! by each plan that marks it (flip lane ⓐ-3). ⏳A row laid under the
+//! plan's mask (R28's `masked`) has no call yet.
 
 #[cfg(test)]
 mod tests;
@@ -23,8 +25,9 @@ use crate::kernels::effects::blur::iris::{Focus, Iris};
 use crate::kernels::effects::blur::lens::{BlurMap, Lens, Light, MapChannel};
 use crate::kernels::effects::blur::line::LinePass;
 use crate::kernels::effects::{KEYS_PER_RUN, KeyRun, MATRIX_WORDS, matrix_words};
+use crate::kernels::mask::{Mask, MaskBox};
 use crate::kernels::pool::Pool;
-use crate::kernels::shared::{ResampleMap, ResampleMode};
+use crate::kernels::shared::{ResampleMap, ResampleMode, words_buffer};
 
 use super::halvings::Camera;
 use super::screen::Screen;
@@ -43,6 +46,23 @@ pub(crate) struct Planned {
     chains: Vec<PlannedChain>,
     maps: Vec<PlannedMap>,
     steps: Vec<Step>,
+    mask: Option<MaskPlane>,
+}
+
+/// A mask the app keeps on the GPU: a plane of bytes (mask.wgsl's layout)
+/// over the box `size` whose top-left pixel is `at` — the fill range's, in
+/// the space of the row it lies on (fill_range_mark.dart).
+#[derive(Clone)]
+pub(crate) struct MaskPlane {
+    plane: wgpu::Buffer,
+    at: (i32, i32),
+    size: MaskBox,
+}
+
+impl MaskPlane {
+    fn mask(&self) -> Mask<'_> {
+        Mask { plane: &self.plane, at: self.at, size: self.size }
+    }
 }
 
 /// An effect chain as the app builds it: its ops, a lens blur's with its
@@ -68,8 +88,14 @@ enum MapFrom {
 }
 
 impl Planned {
-    /// The plan of `pages` and `chains` — [`Self::chained`]'s.
-    fn plan<'a>(&'a self, pages: &'a [wgpu::Buffer], chains: &'a [Chained<'a>]) -> Plan<'a> {
+    /// The plan of `pages`, `chains` — [`Self::chained`]'s — and `mask` —
+    /// [`Self::masked`]'s.
+    fn plan<'a>(
+        &'a self,
+        pages: &'a [wgpu::Buffer],
+        chains: &'a [Chained<'a>],
+        mask: Option<&'a Mask<'a>>,
+    ) -> Plan<'a> {
         Plan {
             pages,
             sets: &self.sets,
@@ -77,8 +103,13 @@ impl Planned {
             matrices: &self.matrices,
             chains,
             steps: &self.steps,
-            mask: None,
+            mask,
         }
+    }
+
+    /// The mask its masked steps are laid under, if it names one.
+    fn masked(&self) -> Option<Mask<'_>> {
+        self.mask.as_ref().map(MaskPlane::mask)
     }
 
     /// The effect chains as a plan names them, each lens blur reading its
@@ -411,6 +442,97 @@ pub unsafe extern "C" fn gpu_engine_plan_solid(
     // SAFETY: see the function's contract.
     let plan = unsafe { &mut *plan };
     plan.steps.push(Step::Solid { colour, rect: [left, top, right, bottom] });
+}
+
+/// A mask of `width` × `height` bytes at `bytes` — a byte a pixel, row
+/// after row, the app's `Uint8List` as it is — whose top-left pixel is
+/// (`x`, `y`), kept on the GPU for the plans that name it
+/// ([`gpu_engine_plan_mask`]). Null where it holds no pixel; see the last
+/// error.
+///
+/// # Safety
+/// `engine` is live and `bytes` holds `width × height`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_mask_new(
+    engine: *const Engine,
+    bytes: *const u8,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> *mut MaskPlane {
+    let size = MaskBox { width, height };
+    if width == 0 || height == 0 {
+        fail::<()>(format!("{size:?} holds no pixel"));
+        return std::ptr::null_mut();
+    }
+    // SAFETY: see the function's contract.
+    let (engine, bytes) =
+        unsafe { (&*engine, std::slice::from_raw_parts(bytes, width as usize * height as usize)) };
+    let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+    let plane = words_buffer(engine, "mask", &size.words_of(bytes), usage);
+    Box::into_raw(Box::new(MaskPlane { plane, at: (x, y), size }))
+}
+
+/// # Safety
+/// `mask` came from `gpu_engine_mask_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_mask_free(mask: *mut MaskPlane) {
+    if !mask.is_null() {
+        // SAFETY: see the function's contract.
+        drop(unsafe { Box::from_raw(mask) });
+    }
+}
+
+/// Lays the plan's masked steps under `mask`: 0, or -1 where it names one
+/// already — a plan has one ([`Plan::mask`]); see the last error.
+///
+/// # Safety
+/// `plan` and `mask` are live.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_plan_mask(plan: *mut Planned, mask: *const MaskPlane) -> i32 {
+    // SAFETY: see the function's contract.
+    let (plan, mask) = unsafe { (&mut *plan, &*mask) };
+    if plan.mask.is_some() {
+        fail::<()>("a plan lays its masked steps under one mask");
+        return -1;
+    }
+    plan.mask = Some(mask.clone());
+    0
+}
+
+/// Adds a fill range's mark ([`Step::Mark`]) under the plan's mask, posed
+/// as [`gpu_engine_plan_row`] poses a row — the mark's row's pose — its
+/// cells pushed (`shift_x`, `shift_y`), Q.16 of the row's pixels.
+///
+/// Returns 1 where it was added, 0 where its pose lands nothing and so it
+/// lays nothing — not added —, and -1 for a sampling no mode has; see the
+/// last error.
+///
+/// # Safety
+/// `plan` is live and `inverse` holds nine doubles.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gpu_engine_plan_mark(
+    plan: *mut Planned,
+    inverse: *const f64,
+    radius_floor: f64,
+    sampling_id: u32,
+    columns: u32,
+    rows: u32,
+    shift_x: i32,
+    shift_y: i32,
+) -> i32 {
+    // SAFETY: see the function's contract.
+    let (plan, inverse) = unsafe { (&mut *plan, *inverse.cast::<[f64; 9]>()) };
+    let Some(sampled) = sampling(sampling_id) else {
+        return -1;
+    };
+    let Some(map) = ResampleMap::new(inverse, radius_floor, sampled, columns, rows) else {
+        return 0;
+    };
+    plan.steps.push(Step::Mark { map, shift: [shift_x, shift_y] });
+    1
 }
 
 /// Adds a key chain of no runs and returns the index a row or a chain's
@@ -756,8 +878,9 @@ pub unsafe extern "C" fn gpu_engine_composite_run(
     // SAFETY: see the function's contract.
     let (words, extent) = unsafe { (std::slice::from_raw_parts(tiles, 2 * count), *extent.cast::<[i32; 4]>()) };
     let tiles: Vec<(i32, i32)> = words.chunks_exact(2).map(|tile| (tile[0], tile[1])).collect();
-    let chains = plan.chained();
-    let ran = composite.run(engine, &plan.plan(pool.pages(), &chains), &tiles, extent, composite.widest());
+    let (chains, mask) = (plan.chained(), plan.masked());
+    let laid = plan.plan(pool.pages(), &chains, mask.as_ref());
+    let ran = composite.run(engine, &laid, &tiles, extent, composite.widest());
     ran.map_or(std::ptr::null_mut(), |composited| Box::into_raw(Box::new(composited)))
 }
 
@@ -823,8 +946,9 @@ pub unsafe extern "C" fn gpu_engine_composite_show(
     let (composite, engine, pool, plan, target) = unsafe { (&*composite, &*engine, &*pool, &*plan, &*target) };
     // SAFETY: see the function's contract.
     let rect = unsafe { *rect.cast::<[u32; 4]>() };
-    let chains = plan.chained();
-    let shown = composite.show(engine, &plan.plan(pool.pages(), &chains), target, rect, composite.widest());
+    let (chains, mask) = (plan.chained(), plan.masked());
+    let laid = plan.plan(pool.pages(), &chains, mask.as_ref());
+    let shown = composite.show(engine, &laid, target, rect, composite.widest());
     shown.map_or(-1, |passes| passes as isize)
 }
 
@@ -872,8 +996,8 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
     let (screen, composite, engine, pool, plan) = unsafe { (&mut *screen, &*composite, &*engine, &*pool, &*plan) };
     // SAFETY: see the function's contract.
     let changed = unsafe { *changed.cast::<[i32; 4]>() };
-    let chains = plan.chained();
-    let plan = plan.plan(pool.pages(), &chains);
+    let (chains, mask) = (plan.chained(), plan.masked());
+    let plan = plan.plan(pool.pages(), &chains, mask.as_ref());
     screen.compose(engine, composite, &plan, changed, composite.widest()).is_some()
 }
 

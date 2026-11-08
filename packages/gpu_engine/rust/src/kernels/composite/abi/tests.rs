@@ -1,12 +1,14 @@
 //! The executor's C ABI on a real GPU: a plan built call by call composites
 //! as the same plan built in Rust, shown onto a surface it lays the pixels a
-//! run puts, a screen composes and shows as one built in Rust does, a row
-//! whose pose lands nothing is left out, and what is refused says why.
+//! run puts, a screen composes and shows as one built in Rust does, as a
+//! range's mark under the mask the app keeps does, a row or a mark whose
+//! pose lands nothing is left out, and what is refused says why.
 
 use super::*;
 use crate::kernels::blend::mode::{MULTIPLY, NORMAL, SCREEN};
 use crate::kernels::composite::tests::{mix, pixel_at, rig, surface};
 use crate::kernels::composite::{NO_TILE, TILE, TILE_TEXELS, TileAt};
+use crate::kernels::mask::tests::masked;
 use crate::kernels::pool::Pool;
 use crate::kernels::shared::le_bytes;
 use crate::platform::{gpu_engine_surface_free, gpu_engine_surface_new};
@@ -82,9 +84,10 @@ fn ran_in_rust(
     matrices: &[[u32; MATRIX_WORDS]],
     chains: &[Chained],
     steps: &[Step],
+    mask: Option<&Mask>,
 ) -> Vec<u8> {
     let (engine, composite) = (rig().engine, &rig().composite);
-    let plan = Plan { pages: pool.pages(), sets, keys, matrices, chains, steps, mask: None };
+    let plan = Plan { pages: pool.pages(), sets, keys, matrices, chains, steps, mask };
     let out = composite.run(engine, &plan, &OUTPUT, [0, 0, 300, 120], composite.widest()).expect("run");
     read_buffer(engine, &out.out)
 }
@@ -153,7 +156,7 @@ fn a_plan_built_call_by_call_composites_as_one_built_in_rust() {
     let built = ran(&pool, plan, [0, 0, 300, 120]).expect("run");
     // SAFETY: `plan` came from `gpu_engine_plan_new`.
     unsafe { gpu_engine_plan_free(plan) };
-    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &matrices, &[], &steps));
+    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &matrices, &[], &steps, None));
 }
 
 // A row copied over nothing lays its stored bytes, tile for tile in the
@@ -432,7 +435,7 @@ fn a_keyed_and_chained_plan_built_call_by_call_composites_as_one_built_in_rust()
     let built = ran(&pool, plan, [0, 0, 300, 120]).unwrap_or_else(|| panic!("{}", last_error()));
     // SAFETY: `plan` came from `gpu_engine_plan_new`.
     unsafe { gpu_engine_plan_free(plan) };
-    assert_eq!(built, ran_in_rust(&pool, &sets, &keys, &[], &chains, &steps));
+    assert_eq!(built, ran_in_rust(&pool, &sets, &keys, &[], &chains, &steps, None));
 }
 
 // A map laid from what a run put is read as the tiles it holds, and the
@@ -480,7 +483,7 @@ fn a_map_laid_from_a_run_is_read_as_its_tiles() {
         rect: TileRect { x0: 0, y0: 0, columns: 3, rows: 1 },
     }];
     let steps = [row(0, None, Some(0), map(IDENTITY, ResampleMode::Blend), 65535, NORMAL)];
-    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &[], &chains, &steps));
+    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &[], &chains, &steps, None));
 }
 
 // What a chain's call cannot add says why.
@@ -562,7 +565,7 @@ fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
         // SAFETY: `laid` is live.
         let planned = unsafe { &*laid };
         let chains = planned.chained();
-        let laid = planned.plan(pool.pages(), &chains);
+        let laid = planned.plan(pool.pages(), &chains, None);
         in_rust.compose(engine, composite, &laid, over, composite.widest()).expect("compose");
         let want = surface(size, wgpu::TextureFormat::Rgba8Unorm);
         in_rust.show(engine, composite, in_rust_camera, &want, rect, composite.widest()).expect("show");
@@ -652,7 +655,7 @@ fn a_buffer_closed_as_a_row_call_by_call_composites_as_one_built_in_rust() {
     let built = ran(&pool, plan, [0, 0, 300, 120]).unwrap_or_else(|| panic!("{}", last_error()));
     // SAFETY: `plan` came from `gpu_engine_plan_new`.
     unsafe { gpu_engine_plan_free(plan) };
-    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &matrices, &chains, &steps));
+    assert_eq!(built, ran_in_rust(&pool, &sets, &[], &matrices, &chains, &steps, None));
 }
 
 // A buffer closed as a row whose pose lands nothing lays nothing, as such
@@ -707,5 +710,103 @@ fn what_a_row_s_close_refuses_says_why() {
     unsafe {
         assert!(matches!((&(*plan).steps)[..], [Step::Open]));
         gpu_engine_plan_free(plan);
+    }
+}
+
+/// A range's cover at the canvas pixel (x, y): soft, each byte its own,
+/// with a hole.
+fn cover(x: i32, y: i32) -> u8 {
+    match (x - 60).abs() < 9 && y < 20 {
+        true => 0,
+        false => (x * 37 + y * 11).rem_euclid(256) as u8 | 1,
+    }
+}
+
+// A range's mark built call by call — its mask made of the bytes the app
+// holds, a byte a pixel row after row, a row of 203 of them padded to
+// whole words — over a row, posed and pushed, composites as the same plan
+// built in Rust under the same mask: each byte in its place, Blend's
+// radius among the pose's fields.
+#[test]
+fn a_mark_built_call_by_call_composites_as_one_built_in_rust() {
+    let (pool, at) = stored(&[tile(4, true), tile(5, true)]);
+    let (left, top, width, height) = (5, 3, 203, 70);
+    let bytes: Vec<u8> =
+        (0..height).flat_map(|y| (0..width).map(move |x| cover(left + x, top + y))).collect();
+    let shift = [3 << 16 | 0x8000, -(2 << 16)];
+    let plan = gpu_engine_plan_new();
+    // SAFETY: the engine is live and `bytes` holds `width × height`.
+    let mask = unsafe { gpu_engine_mask_new(rig().engine, bytes.as_ptr(), left, top, width as u32, height as u32) };
+    assert!(!mask.is_null(), "{}", last_error());
+    // SAFETY: `plan` and `mask` are live; each array holds what its call
+    // reads.
+    unsafe {
+        gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr());
+        gpu_engine_plan_row(plan, 0, -1, -1, -1, POSED.as_ptr(), 1.0, BLEND, 3 * TILE, TILE, 65535, NORMAL);
+        assert_eq!(gpu_engine_plan_mark(plan, POSED.as_ptr(), 2.0, BLEND, 3 * TILE, TILE, shift[0], shift[1]), 1);
+        assert_eq!(gpu_engine_plan_mask(plan, mask), 0);
+    }
+    let built = ran(&pool, plan, [0, 0, 300, 120]).unwrap_or_else(|| panic!("{}", last_error()));
+    // SAFETY: neither is used again.
+    unsafe {
+        gpu_engine_plan_free(plan);
+        gpu_engine_mask_free(mask);
+    }
+    let sets = [TileSet { x0: 0, y0: 0, columns: 2, rows: 1, tiles: vec![Some(at[0]), Some(at[1])] }];
+    let posed = ResampleMap::new(POSED, 2.0, ResampleMode::Blend, 3 * TILE, TILE).expect("lands");
+    let steps = [row(0, None, None, map(POSED, ResampleMode::Blend), 65535, NORMAL), Step::Mark { map: posed, shift }];
+    let range = masked((left, top), (width as u32, height as u32), cover);
+    let want = ran_in_rust(&pool, &sets, &[], &[], &[], &steps, Some(&range.mask()));
+    assert_eq!(built, want);
+    // Not evidence — that the mark lays something over the row at all.
+    assert_ne!(want, ran_in_rust(&pool, &sets, &[], &[], &[], &steps[..1], None));
+}
+
+// A mark whose pose lands nothing lays nothing, as such a row: it is left
+// out.
+#[test]
+fn a_mark_whose_pose_lands_nothing_is_left_out() {
+    let behind = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0];
+    let plan = gpu_engine_plan_new();
+    // SAFETY: `plan` is live and `behind` holds nine; then it is freed.
+    unsafe {
+        assert_eq!(gpu_engine_plan_mark(plan, behind.as_ptr(), 1.0, BLEND, TILE, TILE, 0, 0), 0);
+        assert!((*plan).steps.is_empty());
+        gpu_engine_plan_free(plan);
+    }
+}
+
+// What a mark's calls cannot do they refuse with a reason: a mask of no
+// pixel, a second mask for one plan — the first kept —, a sampling no mode
+// has.
+#[test]
+fn what_a_mark_refuses_says_why() {
+    let bytes = [255u8; 4];
+    // SAFETY: the engine is live and `bytes` holds what each call reads.
+    let none = unsafe { gpu_engine_mask_new(rig().engine, bytes.as_ptr(), 0, 0, 0, 4) };
+    assert!(none.is_null());
+    assert!(last_error().contains("no pixel"), "{}", last_error());
+    // SAFETY: as above.
+    let (mask, other) = unsafe {
+        (
+            gpu_engine_mask_new(rig().engine, bytes.as_ptr(), 0, 0, 2, 2),
+            gpu_engine_mask_new(rig().engine, bytes.as_ptr(), 9, 9, 4, 1),
+        )
+    };
+    assert!(!mask.is_null() && !other.is_null(), "{}", last_error());
+    let plan = gpu_engine_plan_new();
+    // SAFETY: every pointer is live and `IDENTITY` holds nine; then each is
+    // freed.
+    unsafe {
+        assert_eq!(gpu_engine_plan_mask(plan, mask), 0);
+        assert_eq!(gpu_engine_plan_mask(plan, other), -1);
+        assert!(last_error().contains("one mask"), "{}", last_error());
+        assert_eq!((*plan).mask.as_ref().map(|kept| kept.at), Some((0, 0)));
+        assert_eq!(gpu_engine_plan_mark(plan, IDENTITY.as_ptr(), 1.0, 2, TILE, TILE, 0, 0), -1);
+        assert!(last_error().contains("sampling"), "{}", last_error());
+        assert!((*plan).steps.is_empty());
+        gpu_engine_plan_free(plan);
+        gpu_engine_mask_free(mask);
+        gpu_engine_mask_free(other);
     }
 }

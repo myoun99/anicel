@@ -2,10 +2,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart'
-    show GpuComposite, GpuPlan, GpuScreen, GpuTarget;
+    show GpuComposite, GpuMask, GpuPlan, GpuScreen, GpuTarget;
 
 import '../../core/collection_equality.dart';
 import '../../core/tree_nodes.dart';
+import '../../services/canvas_flood_fill.dart' show FloodFillRegion;
 import '../../services/cut_frame_composite_plan.dart'
     show CutFrameCompositeLayer;
 import '../../models/bitmap_surface.dart';
@@ -48,6 +49,7 @@ import '../../core/display_filter.dart' show filterQualityForDisplayScale;
 import '../../models/dirty_region.dart';
 import '../../native/composite_tree_plan.dart';
 import '../../native/engine_letters.dart';
+import '../../native/engine_range_mask.dart';
 import '../../native/engine_tile_ledger.dart';
 import '../../native/screen_texture.dart';
 

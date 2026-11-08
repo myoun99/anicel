@@ -353,9 +353,6 @@ pub(crate) enum Step {
     /// the row's does. Right after the row, so the rows above it hide it.
     /// `shift`, Q.16 of the row's pixels, pushes the cells the way the
     /// press moved (F-568-Q1 a).
-    // ⏳The app's C ABI ([`abi`]) lays none until the flip lane, with the
-    // mask; till then the tests alone.
-    #[cfg_attr(not(test), allow(dead_code))]
     Mark { map: ResampleMap, shift: [i32; 2] },
 }
 
