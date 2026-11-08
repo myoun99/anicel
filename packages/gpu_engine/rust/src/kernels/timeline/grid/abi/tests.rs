@@ -127,7 +127,8 @@ fn an_atlas_past_the_device_is_refused_with_why() {
 
 // Through the ABI a box is eight doubles, the tile's part then the
 // screen's: the right half of a red-and-green tile laid on the screen's
-// left pixel is green there, and the rest of the rect is made clear.
+// top-left pixel is green there, and the rest of the rect — the pixel
+// below it among it — is made clear.
 #[test]
 fn a_tile_laid_through_the_abi_takes_its_part_onto_the_screens() {
     let engine = first_engine();
@@ -139,18 +140,20 @@ fn a_tile_laid_through_the_abi_takes_its_part_onto_the_screens() {
     // SAFETY: every pointer is live and holds what it is said to.
     let drew = unsafe { gpu_engine_grid_draw(grid, engine, tile, ops.as_ptr(), ops.len(), none.as_ptr(), [0].as_ptr(), 0) };
     assert!(drew, "{}", last_error());
-    let screen = crate::device::storage_texture(&engine.device, 3, 1, wgpu::TextureFormat::Rgba8Unorm);
+    let screen = crate::device::storage_texture(&engine.device, 3, 2, wgpu::TextureFormat::Rgba8Unorm);
     let lay = gpu_engine_grid_lay_new();
     let tiles = [tile.cast_const()];
     let laid = |rect: [u32; 4], boxes: [f64; 8]| {
         // SAFETY: as above.
         unsafe { gpu_engine_grid_lay(lay, engine, &screen, rect.as_ptr(), tiles.as_ptr(), boxes.as_ptr(), 1) }
     };
-    assert!(laid([0, 0, 3, 1], [1.0, 0.0, 2.0, 1.0, 0.0, 0.0, 1.0, 1.0]), "{}", last_error());
+    assert!(laid([0, 0, 3, 2], [1.0, 0.0, 2.0, 1.0, 0.0, 0.0, 1.0, 1.0]), "{}", last_error());
     let bytes = engine.read_texture(&screen).expect("read back");
-    assert_eq!(bytes, [0, 255, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0]);
-    assert!(!laid([0, 0, 4, 1], [0.0, 0.0, 2.0, 1.0, 0.0, 0.0, 2.0, 1.0]));
-    assert!(last_error().contains("is no rectangle of a 3 × 1 screen"), "{}", last_error());
+    let mut want = vec![0; 4 * 6];
+    want[..4].copy_from_slice(&[0, 255, 0, 255]);
+    assert_eq!(bytes, want);
+    assert!(!laid([0, 0, 4, 2], [0.0, 0.0, 2.0, 1.0, 0.0, 0.0, 2.0, 1.0]));
+    assert!(last_error().contains("is no rectangle of a 3 × 2 screen"), "{}", last_error());
     // SAFETY: each came from its new, let go of once.
     unsafe {
         gpu_engine_grid_lay_free(lay);
