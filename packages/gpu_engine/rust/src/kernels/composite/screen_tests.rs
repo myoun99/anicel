@@ -4,14 +4,18 @@
 //! never against a CPU copy of a formula (`kernels/mod.rs` has why).
 
 use super::{Screen, meets};
+use crate::device::Engine;
 use crate::kernels::blend::mode::NORMAL;
-use crate::kernels::composite::halvings::tests::{CANVAS, SCREEN, camera, composite_of, kept_bytes, noise};
+use crate::kernels::composite::halvings::tests::{
+    CANVAS, SCREEN, camera, composite_of, composite_on, kept_bytes, noise,
+};
 use crate::kernels::composite::halvings::{Camera, Halvings, Kept, Tiles};
-use crate::kernels::composite::tests::{Rig, rig, surface};
-use crate::kernels::composite::{Plan, Step, TILE, TileSet};
+use crate::kernels::composite::tests::{Rig, rig, surface, surface_on};
+use crate::kernels::composite::{Composite, Plan, Step, TILE, TileSet};
 use crate::kernels::shared::ResampleMap;
 use crate::testing::read_buffer;
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 
 /// The one step laying a tile set whole and unposed: the canvas a composite
 /// of it is.
@@ -204,4 +208,28 @@ fn a_tile_meets_a_rectangle_holding_a_pixel_of_it() {
     assert!(meets((-1, -1), [-1, -1, 0, 0]));
     assert!(!meets((1, 0), [130, 10, 130, 20]));
     assert!(!meets((1, 0), [130, 10, 140, 10]));
+}
+
+// A screen shown is done on the GPU when show returns (Composite::show's
+// 🚨): on an engine of its own — the tests' one is polled by every test at
+// once —, the work submitted before the show is seen done inside it, and
+// nothing it submitted is left after it.
+#[test]
+fn a_screen_shown_is_done_on_the_gpu_when_show_returns() {
+    let engine = Engine::open_first().expect("an engine of its own");
+    let composite = Composite::new(&engine).expect("its executor");
+    let mut screen = Screen::new(CANVAS, 1.0).expect("screen");
+    let (pages, set, _) = composite_on(&engine, noise(23), CANVAS);
+    screen.compose(&engine, &composite, &laid(&pages, &set), [0, 0, 1, 1], composite.widest()).expect("compose");
+    let seen = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&seen);
+    engine.queue.on_submitted_work_done(move || flag.store(true, Ordering::SeqCst));
+    let size = (1024, 768);
+    let texture = surface_on(&engine, size, wgpu::TextureFormat::Rgba8Unorm);
+    let camera = Camera { size, ..camera(1.7, (0.6, 0.8), (500.0, 100.0)) };
+    let whole = [0, 0, size.0, size.1];
+    screen.show(&engine, &composite, camera, &texture, whole, composite.widest()).expect("show");
+    assert!(seen.load(Ordering::SeqCst), "the show waited on nothing");
+    let after = engine.device.poll(wgpu::PollType::Poll).expect("poll");
+    assert!(after.is_queue_empty(), "the show left {after:?}");
 }

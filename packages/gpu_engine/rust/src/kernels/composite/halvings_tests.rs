@@ -6,6 +6,7 @@
 
 use super::{Camera, Halvings, Kept, Tiles, onto_stage, stage_at};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, pixel_at, rig, surface, texel};
+use crate::device::Engine;
 use crate::kernels::composite::{TILE, TileSet};
 use crate::kernels::shared::tests::{Picture, premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
@@ -24,6 +25,15 @@ const FLOORS: [f64; 2] = [1.0, 4.0];
 /// pixels as R1's harness takes a source.
 pub(crate) fn composite_of(
     pixel: impl Fn(i32, i32) -> u32,
+    size: (u32, u32),
+) -> (Vec<wgpu::Buffer>, TileSet, Picture) {
+    composite_on(rig().engine, pixel, size)
+}
+
+/// [`composite_of`] on `engine`.
+pub(crate) fn composite_on(
+    engine: &Engine,
+    pixel: impl Fn(i32, i32) -> u32,
     (width, height): (u32, u32),
 ) -> (Vec<wgpu::Buffer>, TileSet, Picture) {
     let inside = |x: i32, y: i32| {
@@ -34,7 +44,7 @@ pub(crate) fn composite_of(
     let mut pool = Pool::default();
     let set = pool.drawn(&inside, (0, 0), tiles, |_, _| Some(0));
     let picture = picture_of(&inside, (tiles.0 * TILE, tiles.1 * TILE));
-    (pool.upload(rig().engine), set, picture)
+    (pool.upload(engine), set, picture)
 }
 
 pub(crate) fn noise(seed: u32) -> impl Fn(i32, i32) -> u32 {

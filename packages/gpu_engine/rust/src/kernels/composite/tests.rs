@@ -1799,8 +1799,13 @@ fn cameras() -> [(&'static str, ResampleMap); 5] {
 }
 
 /// A surface a test can fill first and read back.
-pub(crate) fn surface((width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
-    rig().engine.device.create_texture(&wgpu::TextureDescriptor {
+pub(crate) fn surface(size: (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
+    surface_on(rig().engine, size, format)
+}
+
+/// [`surface`] on `engine`.
+pub(crate) fn surface_on(engine: &Engine, (width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::Texture {
+    engine.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("test surface"),
         size: wgpu::Extent3d {
             width,
