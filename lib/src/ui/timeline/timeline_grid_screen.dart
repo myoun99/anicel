@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 import 'package:gpu_engine/gpu_engine.dart';
 
 import '../../native/app_gpu_engine.dart';
 import '../../native/screen_texture.dart';
+import '../layout/device_grid.dart';
 import 'timeline_grid_tile_picture.dart';
 
 /// How a grid's screen is opened: [ScreenTexture.open]. A test reads one
@@ -14,6 +17,20 @@ import 'timeline_grid_tile_picture.dart';
 @visibleForTesting
 Future<ScreenTexture> Function(GpuEngine engine, int width, int height)
 debugOpenTimelineGridScreen = ScreenTexture.open;
+
+/// The step a grid's screen's sides are rounded up to, in device pixels
+/// (grid-on-the-engine ④ D1 ⑥, 관제 2026-11-09 08:07 E②): a panel dragged a
+/// pixel at a time opens another texture once in this far, not at every
+/// pixel.
+const int _screenSideStep = 512;
+
+/// How far past what the view shows a screen holds, in device pixels, along
+/// an axis on which the box goes on past it (공통 2026-11-09, for 관제's F).
+/// A scroll moves the screen's layer and lays nothing while what the view
+/// shows stays on the screen; a side that is a whole step already — a panel
+/// 1024 across — would leave it no room at all, and every pixel of a scroll
+/// would lay it again.
+const int _screenRoom = 128;
 
 /// A tile a row lays on its grid's screen: the part [from] of its
 /// [picture], in the picture's pixels, onto the part [onto] of the row, in
@@ -26,11 +43,11 @@ typedef TimelineGridScreenTile = ({
 
 /// THE FRAME GRID'S SCREEN ON THE ENGINE (grid-on-the-engine ④ D1, 관제
 /// 2026-11-08 20:54): one grid's rows lay their tiles on one screen, which
-/// one box under them (`_ScreenBox`) shows — laid and presented in
-/// the box's own paint, the texture's layer put there by it, so what a
-/// frame lays is what that frame shows. ↩️Not a `Texture` widget rebuilt
-/// off the texture's id: a rebuild comes a frame late, and the two textures
-/// it alternates between would each show a frame old.
+/// one box under them (`_ScreenBox`) shows — laid and presented as the box's
+/// layer is composited, so what a frame lays is what that frame shows.
+/// ↩️Not a `Texture` widget rebuilt off the texture's id: a rebuild comes a
+/// frame late, and the two textures it alternates between would each show a
+/// frame old.
 ///
 /// Holds the screen for [child] — the grid's rows — and shows it under
 /// them, as big as they are: their slots ([TimelineGridScreenSlot]) lay on
@@ -87,30 +104,36 @@ class _GridScreenScope extends InheritedWidget {
 }
 
 /// One grid's screen: the box that shows it, the rows that lay on it, and
-/// the texture it is shown through once the app's engine is open — as big
-/// as the view, in device pixels: what of the grid the view shows is laid,
-/// wherever it is scrolled to.
+/// the texture it is shown through once the app's engine is open and a row
+/// is there to lay on it (관제 2026-11-09 08:07 E③) — as big as what of the
+/// box the view shows, with room to scroll ([_screenRoom]), its sides rounded
+/// up ([_screenSideStep]), in device pixels.
 final class _GridScreen {
   _RenderGridScreen? _box;
   final Set<_RenderGridScreenSlot> _slots = {};
   ScreenTexture? _texture;
   GpuGridLay? _lay;
 
-  /// The view's size in device pixels, which the texture holds.
-  (int, int) _size = (0, 0);
+  /// What the texture has to hold, in device pixels: what of the box the
+  /// view showed in the frame last composited, and its room.
+  (int, int) _wanted = (0, 0);
 
   /// The size a texture is being opened at.
   (int, int)? _opening;
   bool _stopped = false;
 
-  /// Whether a row lays its tiles here: a box shows the screen, and its
-  /// texture is open and holds the view. ↩️Any texture open: while a bigger
-  /// one opened, the rows laid on the one held, and what of them lay past
-  /// its edge was shown nowhere (타임라인/콘티 리뷰 2026-11-09 B).
-  bool get lays => _box != null && _holdsTheView(_texture);
+  /// Where the rows' tiles were last laid, in the box's own pixels, and the
+  /// id what was laid is shown by — null where they are to be laid again.
+  ({Rect at, int id})? _laid;
 
-  bool _holdsTheView(ScreenTexture? texture) {
-    final (width, height) = _size;
+  /// Whether a row lays its tiles here: a box shows the screen, and its
+  /// texture is open and holds what it shows. ↩️Any texture open: while a
+  /// bigger one opened, the rows laid on the one held, and what of them lay
+  /// past its edge was shown nowhere (타임라인/콘티 리뷰 2026-11-09 B).
+  bool get lays => _box != null && _holds(_texture);
+
+  bool _holds(ScreenTexture? texture) {
+    final (width, height) = _wanted;
     return texture != null &&
         texture.width >= width &&
         texture.height >= height;
@@ -128,11 +151,9 @@ final class _GridScreen {
     unawaited(texture?.free());
   }
 
-  void showBy(_RenderGridScreen box, (int, int) size) {
+  void showBy(_RenderGridScreen box) {
     assert(_box == null || identical(_box, box), 'one box shows a screen');
     _box = box;
-    _size = size;
-    unawaited(_open());
     _laysChanged();
   }
 
@@ -143,33 +164,79 @@ final class _GridScreen {
     }
   }
 
-  void sizedBy(_RenderGridScreen box, (int, int) size) {
-    if (identical(_box, box) && size != _size) {
+  void slotCame(_RenderGridScreenSlot slot) {
+    _slots.add(slot);
+    unawaited(_open());
+  }
+
+  /// The box tells what of it the view shows, [shown] of [bounds], in device
+  /// pixels. ⚠️What that changes, it changes after the frame: the rows of
+  /// this frame have laid, or not, by what [lays] said as they painted
+  /// ([PipelineOwner.flushPaint] paints what is deeper first), and the box
+  /// shows them by the same answer; marked during the frame a row would
+  /// paint in none (a frame is not asked for in a frame's own phases).
+  ///
+  /// ↩️The view's size, off the MediaQuery (타임라인/콘티 리뷰 2026-11-09 A ·
+  /// 01:46: a window grown stayed laid at the size it opened at): the view
+  /// says nothing of a panel's size, and a texture as big as the view held
+  /// a strip's few rows at the price of a whole window (관제 08:07 E②).
+  void showed(Rect shown, Rect bounds) {
+    final wanted = shown.isEmpty
+        ? (0, 0)
+        : (
+            _sideOf(shown.left, shown.right, bounds.left, bounds.right),
+            _sideOf(shown.top, shown.bottom, bounds.top, bounds.bottom),
+          );
+    if (wanted == _wanted) {
+      return;
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
       final laid = lays;
-      _size = size;
+      _wanted = wanted;
       if (lays != laid) {
         _laysChanged();
       }
       unawaited(_open());
-    }
+    });
   }
 
-  /// Opens a texture of [_size] where the engine is open and the one held
-  /// is smaller; the one it replaces is freed once it is shown no more.
+  /// The side that holds [from] to [to], of a box from [boxFrom] to [boxTo],
+  /// all on device pixels: with room for a scroll where the box goes on
+  /// past it.
+  static int _sideOf(double from, double to, double boxFrom, double boxTo) =>
+      (to - from).toInt() + (from > boxFrom || to < boxTo ? _screenRoom : 0);
+
+  static int _steppedUp(int side) =>
+      (side + _screenSideStep - 1) ~/ _screenSideStep * _screenSideStep;
+
+  /// The size to open a texture at: null where one is being opened at it,
+  /// or none is to be — the engine shut, no box or no row to lay on it, nothing
+  /// to show, or the one held holds it.
+  (int, int)? get _toOpen {
+    final (width, height) = _wanted;
+    if (appGpuEngineOpen.value == null ||
+        _box == null ||
+        _slots.isEmpty ||
+        _holds(_texture) ||
+        width <= 0 ||
+        height <= 0) {
+      return null;
+    }
+    final size = (_steppedUp(width), _steppedUp(height));
+    return size == _opening ? null : size;
+  }
+
+  /// Opens the texture [_toOpen] says; the one it replaces is freed once it
+  /// is shown no more.
   Future<void> _open() async {
     final engine = appGpuEngineOpen.value;
-    final (width, height) = _size;
+    final asked = _toOpen;
+    if (engine == null || asked == null) {
+      return;
+    }
     final held = _texture;
-    if (engine == null ||
-        _box == null ||
-        _holdsTheView(held) ||
-        _opening == _size) {
-      return;
-    }
-    if (width <= 0 || height <= 0) {
-      return;
-    }
-    final asked = _opening = _size;
+    _opening = asked;
+    final (width, height) = asked;
     final opened = await debugOpenTimelineGridScreen(engine, width, height);
     if (_stopped || _opening != asked) {
       await opened.free();
@@ -182,18 +249,16 @@ final class _GridScreen {
     await held?.free();
   }
 
-  /// A row's paint, or its going, changed what the box shows — nothing
-  /// where the screen does not lay: the rows draw their own cells, and a
-  /// row painting on a tick layer paints alone (F-244).
+  /// A row's paint, or its going, changed what the screen shows: it is
+  /// laid again as the frame's scene is built.
   void _rowChanged() {
-    if (lays) {
-      _box?.markNeedsPaint();
-    }
+    _laid = null;
   }
 
   /// What lays here changed: every row asks again whether it lays its
-  /// tiles here, and the box shows what they lay.
+  /// tiles here, and the box whether it shows what they lay.
   void _laysChanged() {
+    _laid = null;
     for (final slot in _slots) {
       slot.markNeedsPaint();
     }
@@ -204,88 +269,44 @@ final class _GridScreen {
 /// The box that shows its grid's screen ([TimelineGridScreenHost]): between
 /// the grid's sheet and its rows, as big as the rows' area. It shows what
 /// of the rows' tiles the view shows — the box's bounds within every clip
-/// over it — there, snapped to device pixels.
+/// over it — on a rect of the texture's size around that, in the box's own
+/// pixels, so a scroll of anything around it moves it with the rows.
 ///
-/// What a frame's rows lay is on the screen that frame shows: a row marked
-/// to paint, or come, marks the box to paint in its frame
-/// ([TimelineGridScreenSlot]), and the box's layer lays the screen once
-/// the frame has painted ([_ScreenLayer]). ↩️Laid in the box's paint, a
-/// row that came after was not on it: a frame paints what is deeper first
-/// ([PipelineOwner.flushPaint]), and a row comes in the paint of a layer
-/// shallower than the box. A scroll of any scrollable around it lays the
-/// screen again; the rows' pictures are kept.
+/// What a frame's rows lay is on the screen that frame shows: the box's
+/// layer lays the screen once the frame has painted ([_ScreenLayer]).
+/// ↩️Laid in the box's paint, a row that came after was not on it: a frame
+/// paints what is deeper first ([PipelineOwner.flushPaint]), and a row comes
+/// in the paint of a layer shallower than the box.
+///
+/// ↩️Every scroll of any scrollable around it marked it to paint and laid
+/// the screen again, on a texture of the view's size at the view's corner
+/// (관제 2026-11-09 08:07 F, D1 as drawn: 「픽셀 스크롤은 레이어째 따라가니
+/// 다시 깔지 않고, 행이 다시 그려질 때만 깐다」).
 class _ScreenBox extends LeafRenderObjectWidget {
   const _ScreenBox();
 
   @override
-  RenderObject createRenderObject(BuildContext context) => _RenderGridScreen(
-    _GridScreenScope.of(context)!,
-    size: _sizeOf(context),
-    moves: _movesOf(context),
-  );
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderGridScreen(_GridScreenScope.of(context)!);
 
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) =>
-      (renderObject as _RenderGridScreen)._update(
+      (renderObject as _RenderGridScreen)._showOn(
         _GridScreenScope.of(context)!,
-        size: _sizeOf(context),
-        moves: _movesOf(context),
       );
-
-  /// The view's size in device pixels. ⚠️Asked of the MediaQuery too —
-  /// its size, and its ratio for a window moved to a screen of another
-  /// ratio at the size it had — though not read off it: the app's UI scale
-  /// rewrites both (`EffectiveDevicePixelRatioScope`). So a view resized
-  /// builds the box again: `View.of` tells of another view, not of another
-  /// size. ↩️It did not, and a window grown stayed laid at the size it
-  /// opened at (타임라인/콘티 리뷰 2026-11-09 A · 01:46).
-  static (int, int) _sizeOf(BuildContext context) {
-    MediaQuery.sizeOf(context);
-    MediaQuery.devicePixelRatioOf(context);
-    final size = View.of(context).physicalSize;
-    return (size.width.ceil(), size.height.ceil());
-  }
-
-  /// The positions of every scrollable around [context].
-  static Listenable _movesOf(BuildContext context) => Listenable.merge([
-    for (
-      var scrollable = Scrollable.maybeOf(context);
-      scrollable != null;
-      scrollable = Scrollable.maybeOf(scrollable.context)
-    )
-      scrollable.position,
-  ]);
 }
 
 class _RenderGridScreen extends RenderBox {
-  _RenderGridScreen(
-    this._screen, {
-    required (int, int) size,
-    required Listenable moves,
-  }) : _viewSize = size,
-       _moves = moves;
+  _RenderGridScreen(this._screen);
 
   _GridScreen _screen;
-  (int, int) _viewSize;
-  Listenable _moves;
 
-  void _update(
-    _GridScreen screen, {
-    required (int, int) size,
-    required Listenable moves,
-  }) {
-    if (attached) {
-      _moves.removeListener(markNeedsPaint);
-      moves.addListener(markNeedsPaint);
-      if (!identical(screen, _screen)) {
-        _screen.hiddenBy(this);
-        screen.showBy(this, size);
-      }
-      screen.sizedBy(this, size);
+  void _showOn(_GridScreen screen) {
+    if (attached && !identical(screen, _screen)) {
+      _screen.hiddenBy(this);
+      screen.showBy(this);
     }
     _screen = screen;
-    _viewSize = size;
-    _moves = moves;
   }
 
   @override
@@ -303,41 +324,104 @@ class _RenderGridScreen extends RenderBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _screen.showBy(this, _viewSize);
-    _moves.addListener(markNeedsPaint);
+    _screen.showBy(this);
   }
 
   @override
   void detach() {
-    _moves.removeListener(markNeedsPaint);
     _screen.hiddenBy(this);
     super.detach();
   }
 
+  // Only where it lays: a layer of a texture is what keeps a dock from
+  // being held as a still image (`StillRaster`), and a grid with no screen
+  // is one like any other. It says what it shows all the same, or no
+  // texture would ever open.
   @override
   void paint(PaintingContext context, Offset offset) {
-    if (!_screen.lays) {
-      return;
+    final laid = _screen.lays;
+    _measured();
+    if (laid) {
+      context.addLayer(_ScreenLayer(this));
     }
-    final texture = _screen._texture!;
-    final lay = _screen._lay!;
-    // In the view's device pixels: to the root by name, its transform — the
-    // ratio — is carried; to `null` it is not.
+  }
+
+  /// What of this box the view shows, in the view's device pixels — told to
+  /// its screen — and the transform that took it there. To the root by name,
+  /// its transform — the ratio — is carried; to `null` it is not.
+  ({Matrix4 toView, Rect shown}) _measured() {
     final view = owner!.rootNode!;
     final toView = getTransformTo(view);
-    final shown = MatrixUtils.transformRect(toView, _shownRect());
-    if (shown.isEmpty) {
-      return;
+    Rect inView(Rect rect) =>
+        _outToDevicePixels(MatrixUtils.transformRect(toView, rect));
+    final shown = inView(_shownRect());
+    _screen.showed(shown, inView(Offset.zero & size));
+    return (toView: toView, shown: shown);
+  }
+
+  /// [rect], in device pixels, out to the whole ones it touches — by the
+  /// grid's own rounding, or a ratio's last bit is a pixel more or less.
+  static Rect _outToDevicePixels(Rect rect) {
+    const pixels = DeviceGrid(1);
+    return rect.isEmpty
+        ? Rect.zero
+        : Rect.fromLTRB(
+            pixels.position(rect.left),
+            pixels.position(rect.top),
+            pixels.clearance(rect.right),
+            pixels.clearance(rect.bottom),
+          );
+  }
+
+  /// What this frame shows of the screen — laid first where a row changed
+  /// or what the view shows has left it — asked as the frame's scene is
+  /// built: nothing is told of a move of any scrollable around this box, or
+  /// of the growing of a panel it stands in, and a frame built is the one
+  /// moment all of them are known to have come to rest.
+  ({Rect at, int id})? _composited() {
+    final screen = _screen;
+    if (!attached || !screen.lays) {
+      return null;
     }
-    final origin = Offset(shown.left.floorToDouble(), shown.top.floorToDouble());
-    final screen =
-        origin & Size(texture.width.toDouble(), texture.height.toDouble());
-    context.addLayer(
-      _ScreenLayer(
-        rect: MatrixUtils.inverseTransformRect(toView, screen).shift(offset),
-        textureId: texture.nextTextureId,
-        lay: () => _layAt(origin, texture, lay, view),
-      ),
+    final (:toView, :shown) = _measured();
+    if (shown.isEmpty) {
+      return null;
+    }
+    final texture = screen._texture!;
+    final laid = screen._laid;
+    if (laid != null && _covers(MatrixUtils.transformRect(toView, laid.at), shown)) {
+      return laid;
+    }
+    final window = _windowOf(texture, shown);
+    final id = texture.nextTextureId;
+    _layAt(window.topLeft, texture, screen._lay!, owner!.rootNode!);
+    return screen._laid = (
+      at: MatrixUtils.inverseTransformRect(toView, window),
+      id: id,
+    );
+  }
+
+  /// Whether the screen, standing at [laid], still has [shown] on it —
+  /// [laid] on whole device pixels but for what the box's pixels took off
+  /// it and gave back.
+  static bool _covers(Rect laid, Rect shown) =>
+      laid.left.roundToDouble() <= shown.left &&
+      laid.top.roundToDouble() <= shown.top &&
+      laid.right.roundToDouble() >= shown.right &&
+      laid.bottom.roundToDouble() >= shown.bottom;
+
+  /// A rect as big as [texture] around [shown], on device pixels: what it
+  /// spares of the texture half to either side, on an axis where it spares
+  /// any — from its start where it is the bigger.
+  static Rect _windowOf(ScreenTexture texture, Rect shown) {
+    double startOf(double from, double to, int side) =>
+        from - (math.max(side - (to - from), 0) / 2).floorToDouble();
+
+    return Rect.fromLTWH(
+      startOf(shown.left, shown.right, texture.width),
+      startOf(shown.top, shown.bottom, texture.height),
+      texture.width.toDouble(),
+      texture.height.toDouble(),
     );
   }
 
@@ -395,26 +479,37 @@ class _RenderGridScreen extends RenderBox {
   }
 }
 
-/// A grid's screen in the frame's layers, laid as the frame's scene is
-/// built ([addToScene]) — once every row the frame paints has laid what it
-/// lays — and shown by the id its texture shows that next frame by.
+/// A grid's screen in the frame's layers, asked what it shows
+/// ([_RenderGridScreen._composited]) as every frame's scene is built — once
+/// every row the frame paints has laid what it lays. So it is added to every
+/// scene, retained in none.
 class _ScreenLayer extends TextureLayer {
-  _ScreenLayer({
-    required super.rect,
-    required super.textureId,
-    required void Function() lay,
-  }) : _lay = lay,
-       super(filterQuality: FilterQuality.none);
+  _ScreenLayer(this._box)
+    : super(
+        rect: Rect.zero,
+        textureId: 0,
+        filterQuality: FilterQuality.none,
+      );
 
-  /// Laid once: a scene built of this layer again shows what it laid.
-  void Function()? _lay;
+  final _RenderGridScreen _box;
+
+  ({Rect at, int id})? _shown;
+
+  @override
+  Rect get rect => _shown?.at ?? Rect.zero;
+
+  @override
+  int get textureId => _shown?.id ?? 0;
+
+  @override
+  bool get alwaysNeedsAddToScene => true;
 
   @override
   void addToScene(ui.SceneBuilder builder) {
-    final lay = _lay;
-    _lay = null;
-    lay?.call();
-    super.addToScene(builder);
+    _shown = _box._composited();
+    if (_shown != null) {
+      super.addToScene(builder);
+    }
   }
 }
 
@@ -422,8 +517,8 @@ class _ScreenLayer extends TextureLayer {
 /// row under it paints may lay tiles there ([laying]), drawing nothing of
 /// their spans itself.
 ///
-/// Its own layer, so a row painting again is a paint of this slot — which
-/// marks the screen's box to paint after it, in the same frame.
+/// Its own layer, so a row painting again is a paint of this slot alone —
+/// what it lays is on the screen as that frame's scene is built.
 class TimelineGridScreenSlot extends SingleChildRenderObjectWidget {
   const TimelineGridScreenSlot({super.key, this.clip, required super.child});
 
@@ -535,7 +630,7 @@ class _RenderGridScreenSlot extends RenderProxyBox
     }
     if (attached) {
       _leave();
-      screen?._slots.add(this);
+      screen?.slotCame(this);
     }
     _screen = screen;
     markNeedsPaint();
@@ -547,21 +642,14 @@ class _RenderGridScreenSlot extends RenderProxyBox
   @override
   bool get isRepaintBoundary => true;
 
-  @override
-  void markNeedsPaint() {
-    super.markNeedsPaint();
-    _screen?._rowChanged();
-  }
-
   // A slot that comes paints, and so does one that comes back — what it
-  // laid was let go as it went ([detach]) — and so does the box
-  // ([markNeedsPaint]). ↩️Left to its layout: a slot moved to another parent
-  // with the constraints it had is not laid out again, and showed nothing
-  // (타임라인/콘티 리뷰 2026-11-09 H).
+  // laid was let go as it went ([detach]). ↩️Left to its layout: a slot moved
+  // to another parent with the constraints it had is not laid out again, and
+  // showed nothing (타임라인/콘티 리뷰 2026-11-09 H).
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _screen?._slots.add(this);
+    _screen?.slotCame(this);
     _clip?.addListener(markNeedsPaint);
     markNeedsPaint();
   }
@@ -635,6 +723,7 @@ class _RenderGridScreenSlot extends RenderProxyBox
   void paint(PaintingContext context, Offset offset) {
     _letGo();
     _clipRects = null;
+    _screen?._rowChanged();
     final outer = _painting;
     _painting = this;
     try {

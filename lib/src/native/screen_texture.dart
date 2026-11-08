@@ -20,7 +20,17 @@ import 'package:gpu_engine/gpu_engine.dart';
 // parting the walk from the engine by what is held is what CLAUDE.md's
 // absolute rule 2 forbids.
 sealed class ScreenTexture {
-  ScreenTexture(this.width, this.height);
+  ScreenTexture(this.width, this.height, {required int surfaces})
+    : _bytes = width * height * 4 * surfaces {
+    _liveBytes += _bytes;
+  }
+
+  /// What every screen open holds, in bytes, for the memory census
+  /// (`every_counted_byte_is_censused`, 관제 2026-11-09 08:07 E①).
+  static int get liveBytes => _liveBytes;
+  static int _liveBytes = 0;
+
+  final int _bytes;
 
   /// A texture of [width] × [height] device pixels on [engine], the
   /// platform's way.
@@ -55,7 +65,12 @@ sealed class ScreenTexture {
   void present(void Function(GpuTarget next) draw);
 
   /// Frees the texture, once Flutter shows it no more.
-  Future<void> free();
+  Future<void> free() {
+    _liveBytes -= _bytes;
+    return _free();
+  }
+
+  Future<void> _free();
 }
 
 /// 🚨TWO TEXTURES, EACH REGISTERED ONCE, the widget switching between them
@@ -83,7 +98,8 @@ final class _AlternatedTextures extends ScreenTexture {
     this._textures,
     super.width,
     super.height,
-  ) : _shown = ValueNotifier(_textures.first.id);
+  ) : _shown = ValueNotifier(_textures.first.id),
+      super(surfaces: _surfaces.length);
 
   /// Whether Flutter shows a BGRA surface here: Apple's Flutter shows
   /// 32BGRA alone among RGB layouts (rust/src/platform/apple.rs), Linux's
@@ -116,7 +132,7 @@ final class _AlternatedTextures extends ScreenTexture {
   }
 
   @override
-  Future<void> free() async {
+  Future<void> _free() async {
     for (final texture in _textures) {
       texture.unregister();
     }
@@ -129,7 +145,8 @@ final class _AlternatedTextures extends ScreenTexture {
 }
 
 final class _SurfaceTexture extends ScreenTexture {
-  _SurfaceTexture(this._surface) : super(_surface.width, _surface.height);
+  _SurfaceTexture(this._surface)
+    : super(_surface.width, _surface.height, surfaces: 1);
 
   final GpuSurface _surface;
   final ValueNotifier<int> _id = ValueNotifier(0);
@@ -144,15 +161,19 @@ final class _SurfaceTexture extends ScreenTexture {
   void present(void Function(GpuTarget next) draw) => draw(_surface);
 
   @override
-  Future<void> free() async => _id.dispose();
+  Future<void> _free() async => _id.dispose();
 }
 
 /// Android's: the engine presents into a SurfaceProducer's window, whose
 /// images Flutter shows without a copy — its swapchain keeps the image
 /// drawn on apart from the one shown.
 final class _WindowTexture extends ScreenTexture {
+  // ⚠️Two is the image drawn on and the one shown, the least it can be: how
+  // many its queue keeps is Android's, and the census does not read a
+  // texture there (`texturesAreInTheRamFigure`).
   _WindowTexture(this._window, super.width, super.height)
-    : _id = ValueNotifier(_window.textureId);
+    : _id = ValueNotifier(_window.textureId),
+      super(surfaces: 2);
 
   final GpuWindow _window;
   final ValueNotifier<int> _id;
@@ -170,7 +191,7 @@ final class _WindowTexture extends ScreenTexture {
   }
 
   @override
-  Future<void> free() async {
+  Future<void> _free() async {
     _id.dispose();
     await _window.free();
   }

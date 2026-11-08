@@ -7,6 +7,7 @@ import '../../native/engine_tile_ledger.dart';
 import '../../native/native_scratch.dart';
 import '../../native/qa_memory.dart';
 import '../../native/qa_native_engine.dart';
+import '../../native/screen_texture.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
@@ -366,7 +367,13 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     if (textures)
       MemoryCensusItem(
         id: 'timelineTiles',
-        bytes: TimelineGridTileStore.instance.tileImageBytes,
+        bytes:
+            TimelineGridTileStore.instance.tileImageBytes +
+            // What the frame grids show those tiles through, a texture a
+            // grid (`TimelineGridScreenHost`, 관제 2026-11-09 08:07 E①). Folded
+            // in for the reason `drawings` gives above; the canvas's own
+            // view, when it takes one, is no timeline's and needs a row.
+            ScreenTexture.liveBytes,
       ),
     // The table of a camera lens blur's iris last laid, the app's one,
     // kept for the next gather of the same iris (2026-10-31).

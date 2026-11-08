@@ -12,23 +12,29 @@ import 'package:anicel/src/native/screen_texture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_screen.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_picture.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 
 import '../helpers/a_shown_surface.dart';
+import '../helpers/census_where_textures_are_ram.dart';
 
 /// 🚨THE GRID'S SCREEN SHOWS WHAT ITS ROWS LAY, IN THE FRAME THEY LAY IT
 /// (grid-on-the-engine ④ D1, 관제 2026-11-08 20:54): a row's tile is laid
-/// where the row stands, in the view's device pixels; a scroll lays it
-/// again where the row went; what a row lays in a paint is on the screen
-/// that paint's frame shows; and before the app's engine is open a row
-/// lays nothing and draws its cells itself.
+/// where the row stands, in the view's device pixels; a scroll moves it with
+/// the row and lays nothing till what the view shows has left the screen;
+/// what a row lays in a paint is on the screen that paint's frame shows; the
+/// screen is as big as what of its box the view shows, rounded up; and before
+/// the app's engine is open a row lays nothing and draws its cells itself.
 void main() {
   late TimelineGridTilePicture tile;
   // The same, for the one case that lets go of it as its store would.
   late TimelineGridTilePicture letGoOf;
+  // The screen opened last, every one opened, and the sizes they were asked.
   late GpuSurface surface;
+  final surfaces = <GpuSurface>[];
+  final asked = <(int, int)>[];
   const red = [255, 0, 0, 255];
   const green = [0, 255, 0, 255];
-  final opened = debugOpenTimelineGridScreen;
+  final opener = debugOpenTimelineGridScreen;
 
   setUpAll(() async {
     final engine = await openAppGpuEngine();
@@ -46,14 +52,25 @@ void main() {
     tile = drawn();
     letGoOf = drawn();
     grid.free();
-    surface = shownSurfaceOf(300, 200);
-    debugOpenTimelineGridScreen = (_, _, _) async =>
-        ScreenTexture.debugOnSurface(surface);
   });
   tearDownAll(() {
-    debugOpenTimelineGridScreen = opened;
-    surface.free();
+    debugOpenTimelineGridScreen = opener;
     tile.letGo();
+  });
+  setUp(() {
+    debugOpenTimelineGridScreen = (_, width, height) async {
+      asked.add((width, height));
+      surface = shownSurfaceOf(width, height);
+      surfaces.add(surface);
+      return ScreenTexture.debugOnSurface(surface);
+    };
+  });
+  tearDown(() {
+    for (final surface in surfaces) {
+      surface.free();
+    }
+    surfaces.clear();
+    asked.clear();
   });
 
   /// A 300 × 200 view at a ratio of 2, so a logical pixel is two.
@@ -65,14 +82,13 @@ void main() {
   }
 
   /// The bytes of a screen [width] × [height]: clear, and [runs] — (left,
-  /// right, colour) each — over the rows [top] to [bottom], in device
-  /// pixels.
+  /// right, colour) each — over the rows [top] to [bottom], in its pixels.
   Uint8List screenOf(
     List<(int, int, List<int>)> runs, {
-    int top = 40,
-    int bottom = 60,
-    int width = 300,
-    int height = 200,
+    int top = 196,
+    int bottom = 216,
+    int width = 512,
+    int height = 512,
   }) {
     final bytes = Uint8List(width * height * 4);
     for (final (left, right, [r, g, b, a]) in runs) {
@@ -88,19 +104,33 @@ void main() {
     return bytes;
   }
 
+  // What [aGrid] lays, unscrolled: the view shows 200 × 200 of its box from
+  // (40, 0), so a screen of 512 × 512 — spare split either side — starts at
+  // (-116, -156), and the row's device (60, 40) is its (176, 196).
+  const laidWhole = <(int, int, List<int>)>[
+    (176, 236, red),
+    (236, 296, green),
+  ];
+
   /// A grid of [row], 60 × 10 at (10, 20) — of none where it is null —,
-  /// inside a scroll of 400 across driven by [scroll]: a viewport 100
-  /// across, 20 in from the view's left edge, so the screen stands where
-  /// the viewport's clip puts it, not the view's. The row is drawn within
-  /// [clip] where there is one, its slot keyed [slot] — under a padding of
-  /// none where it is [padded], another parent with the constraints it had.
+  /// [content] across inside a scroll driven by [scroll]: a viewport
+  /// [viewport] across, 20 in from the view's left edge, so what is shown
+  /// stands where the viewport's clip puts it, not the view's. The row is
+  /// drawn within [clip] where there is one, its slot keyed [slot] — under a
+  /// padding of none where it is [padded], another parent with the
+  /// constraints it had.
   Widget aGrid(
     _Row? row, {
     ScrollController? scroll,
     TimelineGridScreenClip? clip,
     Key? slot,
     bool padded = false,
+    double viewport = 100,
+    double content = 400,
+    double left = 20,
+    Axis axis = Axis.horizontal,
   }) {
+    final across = axis == Axis.horizontal;
     final slotted = TimelineGridScreenSlot(
       key: slot,
       clip: clip,
@@ -111,16 +141,16 @@ void main() {
       child: Align(
         alignment: Alignment.topLeft,
         child: Padding(
-          padding: const EdgeInsets.only(left: 20),
+          padding: EdgeInsets.only(left: left),
           child: SizedBox(
-            width: 100,
-            height: 100,
+            width: across ? viewport : 100,
+            height: across ? 100 : viewport,
             child: SingleChildScrollView(
               controller: scroll,
-              scrollDirection: Axis.horizontal,
+              scrollDirection: axis,
               child: SizedBox(
-                width: 400,
-                height: 100,
+                width: across ? content : 100,
+                height: across ? 100 : content,
                 child: TimelineGridScreenHost(
                   child: Stack(
                     children: [
@@ -169,26 +199,6 @@ void main() {
     ),
   );
 
-  /// Opens each screen on a surface as big as it is asked, the sizes asked
-  /// kept in [asked]; freed after the test.
-  List<GpuSurface> screensAsAsked(List<(int, int)> asked) {
-    final shown = <GpuSurface>[];
-    debugOpenTimelineGridScreen = (_, width, height) async {
-      asked.add((width, height));
-      final surface = shownSurfaceOf(width, height);
-      shown.add(surface);
-      return ScreenTexture.debugOnSurface(surface);
-    };
-    addTearDown(() {
-      debugOpenTimelineGridScreen = (_, _, _) async =>
-          ScreenTexture.debugOnSurface(surface);
-      for (final surface in shown) {
-        surface.free();
-      }
-    });
-    return shown;
-  }
-
   testWidgets('a row lays its tile where it stands, in device pixels', (
     tester,
   ) async {
@@ -198,17 +208,15 @@ void main() {
     await tester.pump();
 
     expect(row.laidLast, isTrue);
-    expect(
-      surface.fingerprint(),
-      fingerprintBytes(screenOf([(20, 80, red), (80, 140, green)])),
-    );
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
     final shown = tester.layers.whereType<TextureLayer>().single;
-    expect(shown.rect, const Rect.fromLTWH(0, 0, 150, 100));
+    // In the box's own pixels: it starts at the view's device 40.
+    expect(shown.rect, const Rect.fromLTWH(-78, -78, 256, 256));
     // The id the screen presented by: a texture on a surface has 0.
     expect(shown.textureId, 0);
   });
 
-  testWidgets('a scroll lays the tile again where the row went', (
+  testWidgets('a scroll moves the screen with its rows and lays nothing', (
     tester,
   ) async {
     aSmallView(tester);
@@ -216,16 +224,108 @@ void main() {
     addTearDown(scroll.dispose);
     await tester.pumpWidget(aGrid(_Row(() => tile), scroll: scroll));
     await tester.pump();
+    final at = tester.layers.whereType<TextureLayer>().single.rect;
 
     scroll.jumpTo(15);
     await tester.pump();
 
-    // 15 logical pixels are 30 device pixels left: the red half's first
-    // ten are past the viewport's left edge, where the screen begins.
+    // Laid again, the screen would start where the view shows, and the row
+    // stand 30 further left on it.
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
+    expect(tester.layers.whereType<TextureLayer>().single.rect, at);
+  });
+
+  testWidgets('a scroll past what the screen holds lays it again where the '
+      'row went', (tester) async {
+    aSmallView(tester);
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(aGrid(_Row(() => tile), scroll: scroll));
+    await tester.pump();
+
+    scroll.jumpTo(85);
+    await tester.pump();
+
+    // 170 device pixels left: the box starts at -130, what the view shows
+    // past where the screen ended (226), and the row at -110 is its 6.
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(0, 50, red), (50, 110, green)])),
+      fingerprintBytes(screenOf([(6, 66, red), (66, 126, green)])),
     );
+
+    // Back: what the view shows starts before where that screen now does.
+    scroll.jumpTo(0);
+    await tester.pump();
+
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
+  });
+
+  testWidgets('a scroll down past what the screen holds lays it again, and '
+      'back up', (tester) async {
+    aSmallView(tester);
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(
+      aGrid(_Row(() => tile), scroll: scroll, axis: Axis.vertical),
+    );
+    await tester.pump();
+    expect(asked, [(512, 512)], reason: '⛔premise');
+
+    scroll.jumpTo(85);
+    await tester.pump();
+
+    // 170 device pixels up: the row at -130 is the screen's 26.
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(screenOf(laidWhole, top: 26, bottom: 46)),
+    );
+
+    scroll.jumpTo(0);
+    await tester.pump();
+
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
+  });
+
+  testWidgets('a box out of the view lays nothing', (tester) async {
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+
+    final lay = GpuGridLay(appGpuEngineOpen.value!);
+    addTearDown(lay.free);
+    lay.lay(surface, (0, 0, 512, 512), const []);
+    final wiped = surface.fingerprint();
+
+    await tester.pumpWidget(aGrid(row, left: 200));
+    await tester.pump();
+
+    expect(surface.fingerprint(), wiped);
+  });
+
+  // 1536 / 1.35 * 1.35 is 1535.9999999999998: a screen standing exactly on
+  // what it shows would, off by that last bit, be laid again every frame.
+  testWidgets('a frame that moved nothing lays nothing, whatever the last '
+      'bit of the ratio', (tester) async {
+    tester.view
+      ..physicalSize = const Size(1536, 1536)
+      ..devicePixelRatio = 1.35;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(aGridAtTheRight(_Row(() => tile)));
+    await tester.pump();
+    expect(asked, [(1536, 1536)], reason: 'no step more for the last bit');
+    final laid = surface.fingerprint();
+
+    final lay = GpuGridLay(appGpuEngineOpen.value!);
+    addTearDown(lay.free);
+    lay.lay(surface, (0, 0, 1536, 1536), const []);
+    final wiped = surface.fingerprint();
+    expect(wiped, isNot(laid), reason: '⛔premise: wiped by hand');
+
+    tester.binding.scheduleForcedFrame();
+    await tester.pump();
+
+    expect(surface.fingerprint(), wiped);
   });
 
   testWidgets('what a row lays in a paint is shown in that frame', (
@@ -242,7 +342,7 @@ void main() {
 
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(20, 140, green)])),
+      fingerprintBytes(screenOf([(176, 296, green)])),
     );
   });
 
@@ -250,16 +350,15 @@ void main() {
     tester,
   ) async {
     aSmallView(tester);
+    await tester.pumpWidget(aGrid(_Row(() => tile)));
+    await tester.pump();
     await tester.pumpWidget(aGrid(null));
     await tester.pump();
     expect(surface.fingerprint(), fingerprintBytes(screenOf([])));
 
     await tester.pumpWidget(aGrid(_Row(() => tile)));
 
-    expect(
-      surface.fingerprint(),
-      fingerprintBytes(screenOf([(20, 80, red), (80, 140, green)])),
-    );
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
   });
 
   testWidgets('a tile its store lets go of lives while a row lays it', (
@@ -274,12 +373,12 @@ void main() {
     expect(letGoOf.debugHolds, 2, reason: 'the store and the row');
 
     letGoOf.letGo();
-    scroll.jumpTo(15);
+    scroll.jumpTo(85);
     await tester.pump();
 
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(0, 50, red), (50, 110, green)])),
+      fingerprintBytes(screenOf([(6, 66, red), (66, 126, green)])),
     );
     row.layFrom(null);
     await tester.pump();
@@ -312,7 +411,7 @@ void main() {
 
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(20, 50, red), (110, 140, green)])),
+      fingerprintBytes(screenOf([(176, 206, red), (266, 296, green)])),
     );
   });
 
@@ -327,7 +426,7 @@ void main() {
     await tester.pump();
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(20, 80, red)])),
+      fingerprintBytes(screenOf([(176, 236, red)])),
       reason: '⛔premise: the left half alone',
     );
 
@@ -338,7 +437,7 @@ void main() {
 
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(80, 140, green)])),
+      fingerprintBytes(screenOf([(236, 296, green)])),
     );
   });
 
@@ -352,7 +451,7 @@ void main() {
     await tester.pump();
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(20, 80, red)])),
+      fingerprintBytes(screenOf([(176, 236, red)])),
       reason: '⛔premise: the left half alone',
     );
 
@@ -361,7 +460,7 @@ void main() {
 
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(80, 140, green)])),
+      fingerprintBytes(screenOf([(236, 296, green)])),
     );
   });
 
@@ -396,7 +495,7 @@ void main() {
     await tester.pump();
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(20, 80, red)])),
+      fingerprintBytes(screenOf([(176, 236, red)])),
       reason: '⛔premise: the left half alone',
     );
 
@@ -405,7 +504,7 @@ void main() {
 
     expect(
       surface.fingerprint(),
-      fingerprintBytes(screenOf([(80, 140, green)])),
+      fingerprintBytes(screenOf([(236, 296, green)])),
     );
   });
   testWidgets('a part of the row its clip leaves none of is not laid', (
@@ -432,10 +531,6 @@ void main() {
     aSmallView(tester);
     final row = _Row(() => tile);
     debugOpenTimelineGridScreen = (_, _, _) => Completer<ScreenTexture>().future;
-    addTearDown(
-      () => debugOpenTimelineGridScreen = (_, _, _) async =>
-          ScreenTexture.debugOnSurface(surface),
-    );
     await tester.pumpWidget(aGrid(row));
     await tester.pump();
 
@@ -443,57 +538,217 @@ void main() {
     expect(tester.layers.whereType<TextureLayer>(), isEmpty);
   });
 
-  // 타임라인/콘티 리뷰 2026-11-09 A: a window grown stayed laid on the
-  // screen it opened at, and what stood past that one's edge was laid
-  // nowhere.
-  testWidgets('a view that grows is laid on a screen as big as it', (
+  // 관제 2026-11-09 08:07 E③: it opened a texture as big as the view for
+  // the grids no row of which lays on it.
+  testWidgets('a grid no row lays on opens no screen, till one comes', (
     tester,
   ) async {
     aSmallView(tester);
-    final asked = <(int, int)>[];
-    final shown = screensAsAsked(asked);
+    await tester.pumpWidget(aGrid(null));
+    await tester.pump();
+    await tester.pump();
+    expect(asked, isEmpty);
+    expect(tester.layers.whereType<TextureLayer>(), isEmpty);
+
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    await tester.pump();
+
+    expect(asked, [(512, 512)]);
+    expect(row.laidLast, isTrue);
+    expect(surface.fingerprint(), fingerprintBytes(screenOf(laidWhole)));
+  });
+
+  // 관제 2026-11-09 08:07 E②: as big as the view, it held a panel's strip
+  // at the price of the whole window.
+  testWidgets('a screen is as big as what of its box the view shows', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(3000, 2000)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(aGrid(_Row(() => tile)));
+    await tester.pump();
+
+    expect(asked, [(512, 512)]);
+  });
+
+  testWidgets('a side that fills a step keeps room to scroll where its box '
+      'goes on', (tester) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    // 512 of its 800 shown: 512 and the room is the step past 512.
+    await tester.pumpWidget(aGrid(_Row(() => tile), viewport: 256));
+    await tester.pump();
+
+    expect(asked, [(1024, 512)]);
+  });
+
+  testWidgets('a side scrolled to its box\'s end keeps room to scroll back', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final scroll = ScrollController(initialScrollOffset: 144);
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(
+      aGrid(_Row(() => tile), scroll: scroll, viewport: 256),
+    );
+    await tester.pump();
+
+    expect(asked, [(1024, 512)]);
+  });
+
+  // 2.9999999999999996 to 515 at 1.35; 1136.0000000000002 to
+  // 1648.0000000000002 at 1.1: each 512 wide, and a pixel more by a bare
+  // floor or ceiling.
+  for (final (ratio, device) in const [(1.35, 3), (1.1, 1136)]) {
+    testWidgets('a box of a whole step at a ratio of $ratio needs no step '
+        'more for the last bit', (tester) async {
+      tester.view
+        ..physicalSize = const Size(2000, 200)
+        ..devicePixelRatio = ratio;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: [
+              Positioned(
+                left: device / ratio,
+                top: 0,
+                width: 512 / ratio,
+                height: 50,
+                child: TimelineGridScreenHost(
+                  child: TimelineGridScreenSlot(
+                    child: CustomPaint(painter: _Row(() => tile)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(asked, [(512, 512)]);
+    });
+  }
+
+  testWidgets('a panel that grows within its screen paints no row again', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    await tester.pump();
+    final painted = row.paints;
+
+    await tester.pumpWidget(aGrid(row, viewport: 110));
+    await tester.pump();
+
+    expect(asked, [(512, 512)], reason: '⛔premise: 220 and the room fit');
+    expect(row.paints, painted);
+  });
+
+  testWidgets('a side its box shows whole keeps no room', (tester) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      aGrid(_Row(() => tile), viewport: 256, content: 256),
+    );
+    await tester.pump();
+
+    expect(asked, [(512, 512)]);
+  });
+
+  // Nothing tells the box of this one: its own size stays, no row paints,
+  // no scroll moves.
+  testWidgets('a panel grown around a box that stays is laid on a screen as '
+      'big as what it now shows', (tester) async {
+    tester.view
+      ..physicalSize = const Size(600, 200)
+      ..devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final row = _Row(() => tile);
+    await tester.pumpWidget(aGrid(row));
+    await tester.pump();
+    expect(asked, [(512, 512)], reason: '⛔premise: 200 and the room');
+
+    await tester.pumpWidget(aGrid(row, viewport: 280));
+    await tester.pump();
+    await tester.pump();
+
+    // 560 shown and the room. The row at device 60 to 180, 40 to 60: 464
+    // spare split either side from the viewport's 40.
+    expect(asked, [(512, 512), (1024, 512)]);
+    expect(
+      surface.fingerprint(),
+      fingerprintBytes(
+        screenOf([(252, 312, red), (312, 372, green)], width: 1024),
+      ),
+    );
+  });
+
+  // 타임라인/콘티 리뷰 2026-11-09 A: a window grown stayed laid on the
+  // screen it opened at, and what stood past that one's edge was laid
+  // nowhere.
+  testWidgets('a view that grows is laid on a screen as big as it, and the '
+      'one it outgrew is let go of', (tester) async {
+    aSmallView(tester);
+    final holding = ScreenTexture.liveBytes;
     await tester.pumpWidget(aGridAtTheRight(_Row(() => tile)));
     await tester.pump();
-    expect(asked, [(300, 200)], reason: '⛔premise: the view it opened at');
+    expect(asked, [(512, 512)], reason: '⛔premise: the view it opened at');
 
     tester.view.physicalSize = const Size(600, 200);
     await tester.pump();
     await tester.pump();
 
-    expect(asked, [(300, 200), (600, 200)]);
-    // 300 logical across: the row stands at 220 to 280, device 440 to 560.
+    expect(asked, [(512, 512), (1024, 512)]);
+    // 300 logical across: the row stands at 220 to 280, device 440 to 560,
+    // on a screen with 424 spare across and 312 down.
     expect(
-      shown.last.fingerprint(),
+      surface.fingerprint(),
       fingerprintBytes(
-        screenOf([(440, 500, red), (500, 560, green)], width: 600),
+        screenOf([(652, 712, red), (712, 772, green)], width: 1024),
       ),
     );
+    expect(ScreenTexture.liveBytes - holding, 1024 * 512 * 4);
   });
 
   testWidgets('a view that only grows taller is laid on a screen as tall', (
     tester,
   ) async {
     aSmallView(tester);
-    final asked = <(int, int)>[];
-    final shown = screensAsAsked(asked);
     await tester.pumpWidget(aGridAtTheRight(_Row(() => tile), low: true));
     await tester.pump();
-    expect(asked, [(300, 200)], reason: '⛔premise: the view it opened at');
+    expect(asked, [(512, 512)], reason: '⛔premise: the view it opened at');
 
-    tester.view.physicalSize = const Size(300, 400);
+    tester.view.physicalSize = const Size(300, 600);
     await tester.pump();
     await tester.pump();
 
-    expect(asked, [(300, 200), (300, 400)]);
-    // 200 logical down: the row stands at 170 to 180, device 340 to 360.
+    expect(asked, [(512, 512), (512, 1024)]);
+    // 300 logical down: the row stands at 270 to 280, device 540 to 560, on
+    // a screen with 212 spare across and 424 down.
     expect(
-      shown.last.fingerprint(),
+      surface.fingerprint(),
       fingerprintBytes(
         screenOf(
-          [(140, 200, red), (200, 260, green)],
-          top: 340,
-          bottom: 360,
-          height: 400,
+          [(246, 306, red), (306, 366, green)],
+          top: 752,
+          bottom: 772,
+          height: 1024,
         ),
       ),
     );
@@ -503,11 +758,9 @@ void main() {
   testWidgets('a view moved to a screen of twice the ratio at the size it '
       'had is laid on a screen as big as its pixels', (tester) async {
     aSmallView(tester);
-    final asked = <(int, int)>[];
-    final shown = screensAsAsked(asked);
     await tester.pumpWidget(aGridAtTheRight(_Row(() => tile)));
     await tester.pump();
-    expect(asked, [(300, 200)], reason: '⛔premise: the view it opened at');
+    expect(asked, [(512, 512)], reason: '⛔premise: the view it opened at');
 
     tester.view
       ..physicalSize = const Size(600, 400)
@@ -515,18 +768,18 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(asked, [(300, 200), (600, 400)]);
+    expect(asked, [(512, 512), (1024, 512)]);
     // Still 150 logical across: the row stands at 70 to 130, 20 to 30 —
-    // device 280 to 520, 80 to 120.
+    // device 280 to 520, 80 to 120 — on a screen with 424 spare across and
+    // 112 down.
     expect(
-      shown.last.fingerprint(),
+      surface.fingerprint(),
       fingerprintBytes(
         screenOf(
-          [(280, 400, red), (400, 520, green)],
-          top: 80,
-          bottom: 120,
-          width: 600,
-          height: 400,
+          [(492, 612, red), (612, 732, green)],
+          top: 136,
+          bottom: 176,
+          width: 1024,
         ),
       ),
     );
@@ -537,7 +790,6 @@ void main() {
       'their cells themselves', (tester) async {
     aSmallView(tester);
     final row = _Row(() => tile);
-    final shown = screensAsAsked([]);
     await tester.pumpWidget(aGridAtTheRight(row));
     await tester.pump();
     expect(row.laidLast, isTrue, reason: '⛔premise: laid on the one opened');
@@ -546,12 +798,21 @@ void main() {
     debugOpenTimelineGridScreen = (_, _, _) => opening.future;
     tester.view.physicalSize = const Size(600, 200);
     await tester.pump();
+    // The frame it outgrew the screen in: its rows have laid on it, and it
+    // shows what it holds from the start of what the view shows.
+    expect(
+      tester.layers.whereType<TextureLayer>().single.rect,
+      const Rect.fromLTWH(0, -78, 256, 256),
+    );
+
+    await tester.pump();
 
     expect(row.laidLast, isFalse);
     expect(tester.layers.whereType<TextureLayer>(), isEmpty);
 
-    final bigger = shownSurfaceOf(600, 200);
-    shown.add(bigger);
+    final bigger = shownSurfaceOf(1024, 512);
+    surfaces.add(bigger);
+    surface = bigger;
     opening.complete(ScreenTexture.debugOnSurface(bigger));
     await tester.pump();
     await tester.pump();
@@ -560,7 +821,7 @@ void main() {
     expect(
       bigger.fingerprint(),
       fingerprintBytes(
-        screenOf([(440, 500, red), (500, 560, green)], width: 600),
+        screenOf([(652, 712, red), (712, 772, green)], width: 1024),
       ),
     );
   });
@@ -575,7 +836,7 @@ void main() {
     final row = _Row(() => tile);
     await tester.pumpWidget(aGrid(row, slot: slot));
     await tester.pump();
-    final laid = fingerprintBytes(screenOf([(20, 80, red), (80, 140, green)]));
+    final laid = fingerprintBytes(screenOf(laidWhole));
     expect(surface.fingerprint(), laid, reason: '⛔premise');
 
     await tester.pumpWidget(aGrid(row, slot: slot, padded: true));
@@ -601,6 +862,28 @@ void main() {
 
     expect(clip.asked - before, 1);
   });
+
+  // 관제 2026-11-09 08:07 E①.
+  testWidgets('what a screen holds is on the census till it is freed', (
+    tester,
+  ) async {
+    aSmallView(tester);
+    final holding = ScreenTexture.liveBytes;
+    await tester.pumpWidget(aGrid(_Row(() => tile)));
+    await tester.pump();
+
+    expect(ScreenTexture.liveBytes - holding, 512 * 512 * 4);
+    expect(
+      collectMemoryCensusWhereTexturesAreRam(
+        const [],
+      ).items.singleWhere((item) => item.id == 'timelineTiles').bytes,
+      TimelineGridTileStore.instance.tileImageBytes + ScreenTexture.liveBytes,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+
+    expect(ScreenTexture.liveBytes, holding);
+  });
 }
 
 /// A row that lays a part of its tile over all of itself where its grid's
@@ -622,8 +905,12 @@ class _Row extends CustomPainter {
   /// Whether its last paint could lay its tile.
   bool laidLast = false;
 
+  /// How many times it was painted.
+  int paints = 0;
+
   @override
   void paint(Canvas canvas, Size size) {
+    paints += 1;
     final laying = TimelineGridScreenSlot.laying;
     laidLast = laying != null;
     if (_from case final from?) {
