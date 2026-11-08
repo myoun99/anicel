@@ -89,9 +89,6 @@ const _clippedOnPurpose = <String, String>{
       'the export window\'s preview well — drawn live, never from an image',
   'lib/src/ui/export/export_settings_modules.dart #1':
       'a module of the export window — drawn live, never from an image',
-  'lib/src/ui/widgets/pill_strip.dart #1':
-      'the strip\'s ground and its hover ink — '
-      'a-live-dock-frame-costs-a-whole-draw-Q12',
   'lib/src/ui/widgets/group_tab.dart #1':
       'the tab\'s picture — its group\'s first brush, a stroke preview — '
       'reaches into its corners; its hover is its face\'s fill since Q12 '

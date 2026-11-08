@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import '../theme/app_theme.dart' show AppCursors, AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes, SuperellipseFace;
 import 'icon_button_box.dart';
+import 'superellipse_clip.dart' show SuperellipseCut;
 
 /// AN [InkWell] WHOSE HOVER AND FOCUS ARE ITS FACE'S INSIDE — [edge] filled
 /// with [fill] over the ground it stands on ([FaceGround]), the hover and
@@ -29,9 +30,21 @@ class FaceInkWell extends StatefulWidget {
     required this.child,
   });
 
+  /// A well with no face of its own: its hover, its focus and its [fill]
+  /// are its share of the [SharedFace] it stands in — that face's inside,
+  /// cut by the well's box.
+  const FaceInkWell.share({
+    super.key,
+    this.fill,
+    required this.onTap,
+    required this.child,
+  }) : edge = null,
+       margin = EdgeInsets.zero,
+       onDoubleTap = null;
+
   /// The face's shape, its side the edge — none is a clear face, its hover
-  /// filling the shape.
-  final RoundedSuperellipseBorder edge;
+  /// filling the shape; null is a share ([FaceInkWell.share]).
+  final RoundedSuperellipseBorder? edge;
 
   /// The face's own colour over its ground — a chosen cell's — or null.
   final Color? fill;
@@ -111,7 +124,7 @@ class _FaceInkWellState extends State<FaceInkWell> {
 /// Everything an [_InkFace] paints with.
 typedef _Look = ({
   WidgetStatesController states,
-  RoundedSuperellipseBorder edge,
+  RoundedSuperellipseBorder? edge,
   Color? fill,
   Color? ground,
   Color hoverInk,
@@ -200,11 +213,138 @@ class _RenderInkFace extends RenderProxyBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
+    final face = _look.margin.deflateRect(offset & size);
+    switch (_look.edge) {
+      case final edge?:
+        _layer.paint(
+          context.canvas,
+          face,
+          iconButtonLayerOf(edge, _inside, ground: _look.ground),
+          _look.textDirection,
+        );
+      case null:
+        _paintShare(context.canvas, offset, face);
+    }
+    super.paint(context, offset);
+  }
+
+  /// Its share of the [SharedFace] it stands in: that face's inside where
+  /// [face] lies, filled with [_inside].
+  void _paintShare(Canvas canvas, Offset offset, Rect face) {
+    final inside = _inside;
+    final shared = _sharedFace;
+    assert(shared != null, 'a FaceInkWell.share stands in a SharedFace');
+    if (inside == null || shared == null) {
+      return;
+    }
+    final at = localToGlobal(Offset.zero, ancestor: shared);
+    canvas.drawRSuperellipseCut(
+      shared.inside.shift(offset - at),
+      face,
+      Paint()..color = inside,
+    );
+  }
+
+  RenderSharedFace? get _sharedFace {
+    for (var at = parent; at != null; at = at.parent) {
+      if (at is RenderSharedFace) {
+        return at;
+      }
+    }
+    return null;
+  }
+
+  @override
+  void dispose() {
+    _layer.dispose();
+    super.dispose();
+  }
+}
+
+/// A FACE SEVERAL WELLS SHARE — a strip of pills (`PillStrip`): [edge]
+/// filled with [fill] over the ground it stands on, its edge by fills, as a
+/// well's own face is ([iconButtonLayerOf]). A well inside it with no face
+/// of its own ([FaceInkWell.share]) shows its hover, its focus and its fill
+/// as its share of the inside — the inside cut by the well's box
+/// ([SuperellipseCut.drawRSuperellipseCut]).
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버 ·
+/// 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」).
+/// ↩️A strip was clipped to its shape, its pills' hover ink on the Material
+/// behind it — where an even strip's opaque frame hid it
+/// (an-even-pill-strip-hides-its-hover).
+class SharedFace extends SingleChildRenderObjectWidget {
+  const SharedFace({
+    super.key,
+    required this.edge,
+    this.fill,
+    required Widget super.child,
+  });
+
+  /// The face's shape, its side the edge.
+  final RoundedSuperellipseBorder edge;
+
+  /// The face's own colour over its ground, or null.
+  final Color? fill;
+
+  @override
+  RenderSharedFace createRenderObject(BuildContext context) =>
+      RenderSharedFace(_faceIn(context));
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderSharedFace renderObject,
+  ) {
+    renderObject.face = _faceIn(context);
+  }
+
+  SharedFaceLook _faceIn(BuildContext context) => (
+    edge: edge,
+    fill: fill,
+    ground: FaceGround.of(context),
+    textDirection: Directionality.of(context),
+  );
+}
+
+/// Everything a [SharedFace] paints with.
+typedef SharedFaceLook = ({
+  RoundedSuperellipseBorder edge,
+  Color? fill,
+  Color? ground,
+  TextDirection textDirection,
+});
+
+/// What paints a [SharedFace] — and what its shares find above them.
+class RenderSharedFace extends RenderProxyBox {
+  RenderSharedFace(this._face);
+
+  SharedFaceLook _face;
+  SharedFaceLook get face => _face;
+  set face(SharedFaceLook value) {
+    if (value == _face) {
+      return;
+    }
+    _face = value;
+    markNeedsPaint();
+  }
+
+  late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
+
+  /// Its inside where it lies — what its wells' shares are cut from: the
+  /// shape its edge's width in, as its face fills it ([SuperellipseFace]).
+  RSuperellipse get inside => _face.edge.borderRadius
+      .resolve(_face.textDirection)
+      .toRSuperellipse(Offset.zero & size)
+      .deflate(_face.edge.side.width);
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
     _layer.paint(
       context.canvas,
-      _look.margin.deflateRect(offset & size),
-      iconButtonLayerOf(_look.edge, _inside, ground: _look.ground),
-      _look.textDirection,
+      offset & size,
+      iconButtonLayerOf(_face.edge, _face.fill, ground: _face.ground),
+      _face.textDirection,
     );
     super.paint(context, offset);
   }
