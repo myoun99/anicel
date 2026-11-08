@@ -33,7 +33,6 @@ final class EngineScreenPins {
     });
     setUp(() => _watch.step('a test, past the screen'));
     tearDownAll(() {
-      letters.free();
       composite.free();
       _watch.stop();
     });
