@@ -132,6 +132,13 @@ void main() {
           'a block the copy found blank hangs in a synced row\'s cel as a '
           'picture with nothing on it — no text to lose (F-545)',
     ),
+    'lib/src/native/engine_letters.dart': (
+      count: 1,
+      why:
+          'a cel number\'s plate begins as the engine\'s raster of its '
+          'letters on the row\'s paper — no text of a cel, and laid whole '
+          'where its letters stand (`laidBounds: laid`)',
+    ),
   };
 
   /// The places that put the texts, the photos and where a file lies back
@@ -209,7 +216,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 23);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 24);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '

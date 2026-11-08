@@ -923,7 +923,15 @@ void main() {
   /// the two outs it hands the file back through. 🔬`clean_code_diff`
   /// against the lane's base (`302604dde`) names it added and nothing gone.
   /// ⛔Not bundled to fit: the binding takes what the export takes.
-  const wideSignatures = 465;
+  ///
+  /// ⚠️465 → 466 on 2026-11-08, one name (cel-number-on-the-engine-
+  /// letters): `planCompositeTree` (five) takes the engine's letters beside
+  /// the plan, the tree, the tiles' hold and the paper — what sets a cel
+  /// number's plate, opened once from the bundle's faces. 🔬`clean_code_diff`
+  /// against the lane's base (`a83767c20`) names it added and nothing gone.
+  /// ⛔Not bundled to fit: the hold and the letters live apart — a hold is
+  /// one run's, the letters the screen's.
+  const wideSignatures = 466;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
