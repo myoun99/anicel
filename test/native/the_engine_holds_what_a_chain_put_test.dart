@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../helpers/a_shown_surface.dart';
 import '../helpers/engine_screen_pins.dart';
 
 /// 🚨★WHAT A CHAIN PUT IS HELD ON THE ENGINE (folder holding, 관제 11-08
@@ -231,7 +232,7 @@ void main() {
   /// What [shown] shows at rest on a page of [size], one texel a canvas
   /// pixel.
   int shownBy(void Function(GpuSurface target) shown, CanvasSize size) {
-    final target = platformSurfaceOf(size.width, size.height);
+    final target = shownSurfaceOf(size.width, size.height);
     addTearDown(target.free);
     shown(target);
     return target.fingerprint();

@@ -390,7 +390,7 @@ void main() {
     screen.compose(frameOf(cel(5)));
     expect(screen.bytes, 3 * tile);
 
-    final target = platformSurfaceOf(64, 48);
+    final target = shownSurfaceOf(64, 48);
     addTearDown(target.free);
     screen.show(
       target,

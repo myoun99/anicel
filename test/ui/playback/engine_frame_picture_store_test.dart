@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/engine_frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../../helpers/a_shown_surface.dart';
 import '../../helpers/engine_screen_pins.dart';
 
 /// 🚨★★★A FRAME'S ONE PICTURE ON THE ENGINE (flip lane ⓑ-1): the store lays
@@ -108,7 +109,7 @@ void main() {
 
   /// What [shown] shows at rest.
   int shownBy(EngineFramePicture shown) {
-    final target = platformSurfaceOf(256, 128);
+    final target = shownSurfaceOf(256, 128);
     addTearDown(target.free);
     shown.show(
       target,
