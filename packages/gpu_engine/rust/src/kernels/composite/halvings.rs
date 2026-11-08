@@ -169,6 +169,11 @@ impl Kept {
         }))
     }
 
+    /// The bytes its pages hold: what keeping it costs.
+    pub(crate) fn bytes(&self) -> u64 {
+        self.pages.iter().map(wgpu::Buffer::size).sum()
+    }
+
     pub(crate) fn as_tiles(&self) -> Tiles<'_> {
         Tiles { pages: &self.pages, set: &self.set }
     }
@@ -202,6 +207,12 @@ impl Halvings {
         }
         Some(Self { floor, extent, stages: Vec::new() })
     }
+
+    /// The bytes its stages hold.
+    pub(crate) fn bytes(&self) -> u64 {
+        self.stages.iter().map(|stage| stage.kept.bytes()).sum()
+    }
+
     /// The composite changed over its pixels `rect`, [left, top, right,
     /// bottom): the stages made over it are made again there when next
     /// read. An empty `rect` marks nothing — joined, its corner would

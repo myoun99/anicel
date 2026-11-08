@@ -10,7 +10,7 @@ use crate::kernels::composite::halvings::tests::{
 };
 use crate::kernels::composite::halvings::{Camera, Halvings, Kept, Tiles, affine, plan, row};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, rig, surface, surface_on};
-use crate::kernels::composite::{Composite, Plan, Step, TILE, TileSet};
+use crate::kernels::composite::{Composite, Plan, Step, TILE, TILE_BYTES, TileSet};
 use crate::kernels::shared::tests::{premultiplied, window};
 use crate::kernels::shared::{ResampleMap, ResampleMode};
 use crate::testing::read_buffer;
@@ -163,6 +163,25 @@ fn the_first_composite_is_whole_and_an_empty_change_composites_nothing() {
 /// The canvas `screen` keeps, read back.
 fn canvas_bytes(screen: &Screen) -> Vec<u8> {
     kept_bytes(screen.canvas.as_ref().expect("a canvas"))
+}
+
+// A screen keeps nothing before its canvas is composed, then its canvas's
+// tiles, every one a tile's bytes — the 5 × 3 tiles the canvas covers —,
+// and the halvings it shows through under 1/16 besides, once it has.
+#[test]
+fn a_screen_keeps_the_bytes_of_its_canvas_and_its_halvings() {
+    let Rig { engine, composite } = rig();
+    let mut screen = Screen::new(PAGE, 1.0).expect("screen");
+    assert_eq!(screen.bytes(), 0);
+    let (pages, set, _) = composite_of(noise(31), CANVAS);
+    screen.compose(engine, composite, &laid(&pages, &set), PAGE, composite.widest()).expect("compose");
+    let canvas = 5 * 3 * TILE_BYTES;
+    assert_eq!(screen.bytes(), canvas);
+    shown_by(&mut screen, camera(0.5, (1.0, 0.0), (0.0, 0.0)));
+    assert_eq!(screen.bytes(), canvas, "at 1/16 and over the canvas alone is read");
+    shown_by(&mut screen, camera(0.03125, (1.0, 0.0), (0.0, 0.0)));
+    assert_eq!(screen.bytes(), canvas + screen.halvings.bytes());
+    assert!(screen.halvings.bytes() > 0, "under 1/16 its halvings are made");
 }
 
 // A screen shows its canvas once one is composed, and says so before.

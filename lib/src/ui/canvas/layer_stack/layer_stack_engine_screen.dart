@@ -99,6 +99,10 @@ final class EngineStackScreen {
     );
   }
 
+  /// The bytes the kept frame holds on the GPU ([GpuScreen.bytes]) — none
+  /// before a frame is laid.
+  int get bytes => _screen?.bytes ?? 0;
+
   /// Frees the kept frame; before its executor is.
   void free() {
     _screen?.free();

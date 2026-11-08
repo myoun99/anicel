@@ -589,6 +589,9 @@ external Pointer<Screen> screenNew(Pointer<Int32> extent, double floor);
 @Native<Void Function(Pointer<Screen>)>(symbol: 'gpu_engine_screen_free')
 external void screenFree(Pointer<Screen> screen);
 
+@Native<Uint64 Function(Pointer<Screen>)>(symbol: 'gpu_engine_screen_bytes')
+external int screenBytes(Pointer<Screen> screen);
+
 @Native<
   Bool Function(
     Pointer<Screen>,

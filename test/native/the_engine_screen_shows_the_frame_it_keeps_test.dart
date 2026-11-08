@@ -327,4 +327,30 @@ void main() {
 
     showsThrough(screen, ranOver(within), views.take(2));
   });
+
+  // What the screen keeps is its world's tiles — the page's two and the one
+  // past it — and, once it shows under 1/16, the halvings it shows through;
+  // a frame of another world is kept on that world's tiles alone.
+  test('the screen keeps the bytes of the world it lays, and of its '
+      'halvings', () {
+    final screen = EngineStackScreen(engine.composite, engine.letters);
+    addTearDown(screen.free);
+    expect(screen.bytes, 0, reason: 'nothing laid');
+    const tile = side * side * 4;
+    screen.compose(frameOf(cel(5)));
+    expect(screen.bytes, 3 * tile);
+
+    final target = platformSurfaceOf(64, 48);
+    addTearDown(target.free);
+    screen.show(
+      target,
+      (64, 48),
+      viewport: CanvasViewport(zoom: 1 / 32),
+      devicePixelRatio: 1,
+    );
+    expect(screen.bytes, greaterThan(3 * tile), reason: 'its halvings');
+
+    screen.compose(frameOf(cel(5, over: const [0, 1])));
+    expect(screen.bytes, 2 * tile, reason: 'another world');
+  });
 }

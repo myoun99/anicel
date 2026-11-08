@@ -1030,6 +1030,11 @@ class GpuScreen {
     );
   }
 
+  /// The bytes the screen keeps on the GPU — its canvas's and the halvings
+  /// it shows under 1/16 through: what a budget and the memory census weigh
+  /// it by.
+  int get bytes => rust.screenBytes(_screen);
+
   /// Frees the screen; before its executor is.
   void free() => rust.screenFree(_screen);
 }

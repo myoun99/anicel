@@ -992,6 +992,17 @@ pub unsafe extern "C" fn gpu_engine_screen_free(screen: *mut Screen) {
     }
 }
 
+/// The bytes `screen` keeps — its canvas's pages and its halvings': what
+/// the budgets and the memory census weigh it by.
+///
+/// # Safety
+/// `screen` came from `gpu_engine_screen_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gpu_engine_screen_bytes(screen: *const Screen) -> u64 {
+    // SAFETY: see the function's contract.
+    unsafe { &*screen }.bytes()
+}
+
 /// Composites `plan` onto `screen`'s canvas over its tiles that meet the
 /// pixels `changed` — [left, top, right, bottom); the whole canvas the
 /// first time — and submits the work. False on failure; see the last error.

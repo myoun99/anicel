@@ -56,6 +56,11 @@ impl Screen {
         Some(())
     }
 
+    /// The bytes it keeps: its canvas's pages and its halvings'.
+    pub(crate) fn bytes(&self) -> u64 {
+        self.canvas.as_ref().map_or(0, Kept::bytes) + self.halvings.bytes()
+    }
+
     /// The kept canvas through `camera` onto the pixels `rect` of `target`
     /// — [left, top, right, bottom) —, the rest of it left as it was; waits
     /// for the GPU ([`Composite::show`]) and returns how many passes it
