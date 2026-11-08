@@ -5,10 +5,11 @@
 // PC by about 1.)
 //
 //   flutter run -d windows --release -t tool/probe/still_edge_probe_main.dart \
-//     --dart-define=EDGE_OUT=<dir> [--dart-define=EDGE_SET=q9]
+//     --dart-define=EDGE_OUT=<dir> [--dart-define=EDGE_SET=q9|writing]
 //
 // `EDGE_SET=q9` keeps to the borders, the clip and the diamond, each beside
-// the same edge drawn as fills alone ([_shapes]).
+// the same edge drawn as fills alone ([_shapes]); `EDGE_SET=writing` to a
+// field's number, changed one thing at a time ([_writingShapes]).
 //
 // It stays open showing a table: a row per way of taking the image, a column
 // per shape, and in each cell the shape drawn LIVE on the left and put back
@@ -109,21 +110,31 @@ typedef _Shape = ({String name, void Function(Canvas canvas) draw});
 /// agreed by, and a key's diamond as a path beside the same diamond as a
 /// turned rectangle — so that a still row stays one line on the Surface's
 /// screen.
+///
+/// `--dart-define=EDGE_SET=writing` keeps to a text and a fill drawn bare,
+/// and adds the field's number changed one thing at a time
+/// ([_writingShapes]) — on one still line too.
 const _set = String.fromEnvironment('EDGE_SET', defaultValue: '');
 
-final List<_Shape> _shapes = _set == 'q9'
-    ? [
-        for (final name in [
-          'rrect-line',
-          'rse-fill',
-          'rse-line',
-          'rse-clip',
-          'path',
-        ])
-          _firstShapes.firstWhere((shape) => shape.name == name),
-        ..._bordersAsFills,
-      ]
-    : _firstShapes;
+final List<_Shape> _shapes = switch (_set) {
+  'q9' => [
+    ..._firstShapesNamed([
+      'rrect-line',
+      'rse-fill',
+      'rse-line',
+      'rse-clip',
+      'path',
+    ]),
+    ..._bordersAsFills,
+  ],
+  'writing' => _firstShapesNamed(['text', 'rse-fill']),
+  _ => _firstShapes,
+};
+
+List<_Shape> _firstShapesNamed(List<String> names) => [
+  for (final name in names)
+    _firstShapes.firstWhere((shape) => shape.name == name),
+];
 
 /// The inside a border is drawn round, as the app's controls fill it.
 const _inside = Color(0xFF3A3D42);
@@ -538,27 +549,7 @@ final List<_WidgetShape> _widgetShapes = [
   // top 4.5 logical pixels down, 6.75 device ones at 150% (🔬the dock
   // probe, 11-08: every rail row parted 31~34/255 at that bar's corner) —
   // and the control shape the canvas capsules wear.
-  (
-    name: 'field',
-    build: (ratio) => Stack(
-      children: [
-        _at(
-          ratio,
-          6,
-          6.75,
-          60,
-          27,
-          FieldSlider(
-            value: 56,
-            min: 0,
-            max: 100,
-            height: 27 / ratio,
-            onChanged: (_) {},
-          ),
-        ),
-      ],
-    ),
-  ),
+  (name: 'field', build: (ratio) => _field(ratio, value: 56)),
   (
     name: 'control',
     build: (ratio) => Stack(
@@ -638,7 +629,86 @@ final List<_WidgetShape> _widgetShapes = [
     name: 'opacity',
     build: (ratio) => Opacity(opacity: 0.5, child: _pill(ratio)),
   ),
+  if (_set == 'writing') ..._writingShapes,
 ];
+
+/// 🔬a-live-dock-frame-costs-a-whole-draw (the Surface, 11-08 10:46): the
+/// field's still parted from live by 56 at its number — 「56.」, as `56.0`
+/// shows clipped to the bar — and a dock row's opacity bar by 57 at its
+/// 「100」, while `text-widget` agreed. Each cell changes ONE thing about the
+/// field, so the one that agrees names the cause: no fill under the number
+/// (`field-0`), the fill under all of it — one ink, no gradient
+/// (`field-100`), the bar on a whole device pixel (`field-y6`), a number
+/// that fits and is not clipped (`field-whole`), and the number alone in
+/// the bar's place and style on no ground, clipped (`num-clip`) and fitting
+/// (`num-whole`).
+final List<_WidgetShape> _writingShapes = [
+  (name: 'field-0', build: (ratio) => _field(ratio, value: 0)),
+  (name: 'field-100', build: (ratio) => _field(ratio, value: 100)),
+  (name: 'field-y6', build: (ratio) => _field(ratio, value: 56, top: 6)),
+  (
+    name: 'field-whole',
+    build: (ratio) => _field(ratio, value: 56, divisions: 100),
+  ),
+  (name: 'num-clip', build: (ratio) => _number(ratio, '56.0')),
+  (name: 'num-whole', build: (ratio) => _number(ratio, '56')),
+];
+
+/// A rail row's opacity bar holding [value], its top [top] device pixels
+/// down — 6.75 where a row stands it at 150%. With no [divisions] it
+/// writes a decimal.
+Widget _field(
+  double ratio, {
+  required double value,
+  double top = 6.75,
+  int? divisions,
+}) => Stack(
+  children: [
+    _at(
+      ratio,
+      6,
+      top,
+      60,
+      27,
+      FieldSlider(
+        value: value,
+        min: 0,
+        max: 100,
+        divisions: divisions,
+        height: 27 / ratio,
+        onChanged: (_) {},
+      ),
+    ),
+  ],
+);
+
+/// [text] as a [_field] writes its number — in the bar's place, padding and
+/// style ([FieldSlider.valueStyleIn]), clipped where it runs past — alone
+/// on no ground.
+Widget _number(double ratio, String text) => Stack(
+  children: [
+    _at(
+      ratio,
+      6,
+      6.75,
+      60,
+      27,
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+        child: Center(
+          child: Builder(
+            builder: (context) => Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: FieldSlider.valueStyleIn(context)?.copyWith(color: _ink),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ],
+);
 
 /// [shape] painted in device pixels from a box's corner.
 class _ShapePainter extends CustomPainter {
