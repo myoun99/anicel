@@ -1243,33 +1243,24 @@ class GpuLetters {
 
   /// Adds to the pass begun last a run of [clusters] in one style — [size]
   /// 64ths of a px — standing in the layout where [at] puts its own space.
+  /// [weight] is a `FontWeight`'s value.
   void run(
     List<double> at, {
     required int size,
-    required bool bold,
+    required int weight,
     required bool italic,
     required List<GpuCluster> clusters,
   }) => using((arena) {
-    final text = <int>[];
-    final ends = arena<Uint32>(_held(clusters.length));
-    final origins = arena<Int32>(_held(2 * clusters.length));
-    for (final (index, cluster) in clusters.indexed) {
-      text.addAll(utf8.encode(cluster.text));
-      ends[index] = text.length;
-      origins[2 * index] = cluster.x;
-      origins[2 * index + 1] = cluster.y;
-    }
-    final bytes = arena<Uint8>(_held(text.length))
-      ..asTypedList(text.length).setAll(0, text);
+    final (:text, :length, :ends, :origins) = _clustered(arena, clusters);
     _done(
       rust.lettersRun(
         _letters,
         _floats(arena, _six(at)),
         size,
-        bold,
+        weight,
         italic,
-        bytes,
-        text.length,
+        text,
+        length,
         ends,
         origins,
         clusters.length,
@@ -1316,6 +1307,183 @@ class GpuLetters {
   });
 
   void free() => rust.lettersFree(_letters);
+}
+
+/// [clusters] as a run is handed them, in [arena]'s: their letters as
+/// UTF-8, [length] bytes, the i-th ending at `ends[i]` and set at
+/// `origins[2i]`, `origins[2i + 1]`.
+({
+  Pointer<Uint8> text,
+  int length,
+  Pointer<Uint32> ends,
+  Pointer<Int32> origins,
+})
+_clustered(Arena arena, List<GpuCluster> clusters) {
+  final text = <int>[];
+  final ends = arena<Uint32>(_held(clusters.length));
+  final origins = arena<Int32>(_held(2 * clusters.length));
+  for (final (index, cluster) in clusters.indexed) {
+    text.addAll(utf8.encode(cluster.text));
+    ends[index] = text.length;
+    origins[2 * index] = cluster.x;
+    origins[2 * index + 1] = cluster.y;
+  }
+  final bytes = arena<Uint8>(_held(text.length))
+    ..asTypedList(text.length).setAll(0, text);
+  return (text: bytes, length: text.length, ends: ends, origins: origins);
+}
+
+/// A WORD OF THE APP'S OWN SCREENS (rust/src/kernels/letters/words.rs): its
+/// runs as the app's layout set them, baked into the coverage of its final
+/// device pixels — what a frame grid's tile reads its letters from
+/// ([GpuGrid.draw]) and what a screen draws a narrowed word from. No GPU
+/// is asked: the bake is the engine's, on the CPU.
+class GpuWord {
+  GpuWord() : _word = rust.wordNew();
+
+  final Pointer<rust.Wording> _word;
+
+  /// Adds a run of [clusters] in one style — [size] 64ths of a px,
+  /// [weight] a `FontWeight`'s value — where the word's layout set it.
+  void run({
+    required int size,
+    required int weight,
+    required bool italic,
+    required List<GpuCluster> clusters,
+  }) => using((arena) {
+    final (:text, :length, :ends, :origins) = _clustered(arena, clusters);
+    _done(
+      rust.wordRun(
+        _word,
+        size,
+        weight,
+        italic,
+        text,
+        length,
+        ends,
+        origins,
+        clusters.length,
+      ),
+    );
+  });
+
+  /// The word — its box [width] × [height] px of its layout — set in
+  /// [faces] at [dpr] device pixels a px, rastered [times] times over and
+  /// narrowed to [along] and [down] 64ths of itself; null where the bake
+  /// refuses it, and the word is painted as it always was.
+  GpuWordCover? bake(
+    GpuFaces faces, {
+    required double dpr,
+    required int times,
+    required double width,
+    required double height,
+    required int along,
+    required int down,
+  }) {
+    final cover = rust.wordBake(
+      _word,
+      faces._faces,
+      dpr,
+      times,
+      width,
+      height,
+      along,
+      down,
+    );
+    return cover == nullptr ? null : GpuWordCover._(cover);
+  }
+
+  void free() => rust.wordFree(_word);
+}
+
+/// A word's coverage ([GpuWord.bake]): a byte a pixel, [width] ×
+/// [height] row by row, a pixel of margin round its ink.
+class GpuWordCover {
+  factory GpuWordCover._(Pointer<rust.WordCover> cover) => using((arena) {
+    final size = arena<Uint32>(2);
+    rust.wordCoverSize(cover, size);
+    return GpuWordCover._sized(cover, size[0], size[1]);
+  });
+
+  GpuWordCover._sized(this._cover, this.width, this.height);
+
+  final Pointer<rust.WordCover> _cover;
+  final int width;
+  final int height;
+
+  /// Its bytes, row by row.
+  Uint8List read() => using((arena) {
+    final count = width * height;
+    final bytes = arena<Uint8>(_held(count));
+    rust.wordCoverRead(_cover, bytes, count);
+    return Uint8List.fromList(bytes.asTypedList(count));
+  });
+
+  void free() => rust.wordCoverFree(_cover);
+}
+
+/// A word a frame grid's tile reads its letters from, and where its
+/// top-left lies in the atlas the tile's GLYPH ops read.
+typedef GpuGridWord = ({GpuWordCover word, int x, int y});
+
+/// THE FRAME GRID'S TILE PASS (rust/src/kernels/timeline/grid): a tile's op
+/// stream — `TimelineGridTileOpWriter`'s words — drawn into a picture the
+/// engine keeps, for the view's screen to lay.
+class GpuGrid {
+  GpuGrid(this._engine) : _grid = rust.gridNew(_engine._engine);
+
+  final GpuEngine _engine;
+  final Pointer<rust.Grid> _grid;
+
+  /// Draws [ops] into [picture] over clear, its letters read from an atlas
+  /// of [words], each where its place puts it; waits for the GPU. Throws
+  /// for a stream the pass refuses.
+  void draw(GpuGridPicture picture, Int32List ops, List<GpuGridWord> words) =>
+      using((arena) {
+        final stream = arena<Int32>(_held(ops.length))
+          ..asTypedList(ops.length).setAll(0, ops);
+        final covers = arena<Pointer<rust.WordCover>>(_held(words.length));
+        final places = arena<Uint32>(_held(2 * words.length));
+        for (final (index, (:word, :x, :y)) in words.indexed) {
+          covers[index] = word._cover;
+          places[2 * index] = x;
+          places[2 * index + 1] = y;
+        }
+        _done(
+          rust.gridDraw(
+            _grid,
+            _engine._engine,
+            picture._picture,
+            stream,
+            ops.length,
+            covers,
+            places,
+            words.length,
+          ),
+        );
+      });
+
+  void free() => rust.gridFree(_grid);
+}
+
+/// A frame grid's tile as the engine keeps it: [width] × [height] pixels,
+/// premultiplied, drawn by [GpuGrid.draw].
+class GpuGridPicture {
+  factory GpuGridPicture(GpuEngine engine, int width, int height) {
+    final picture = rust.gridPictureNew(engine._engine, width, height);
+    if (picture == nullptr) {
+      throw StateError(_lastError());
+    }
+    return GpuGridPicture._(picture, width, height);
+  }
+
+  GpuGridPicture._(this._picture, this.width, this.height);
+
+  final Pointer<rust.GridPicture> _picture;
+  final int width;
+  final int height;
+
+  void free() => rust.gridPictureFree(_picture);
 }
 
 /// [argb] — a `Color`'s, A<<24|R<<16|G<<8|B — as the engine's colours

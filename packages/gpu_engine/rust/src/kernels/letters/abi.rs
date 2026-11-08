@@ -13,7 +13,7 @@ use crate::device::Engine;
 use crate::fail;
 use crate::kernels::composite::Composite;
 
-use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape};
+use super::glyphs::{Affine, Cluster, Faces, Family, Paint, Placed, Run, Shape, WEIGHTS};
 use super::words::{self, WordCover};
 use super::{Lettered, Pass, set};
 
@@ -158,11 +158,12 @@ pub unsafe extern "C" fn gpu_engine_letters_pass(
 }
 
 /// Adds to the pass begun last a run of letters in one style — `size`
-/// 64ths of a px, `bold`, `italic` — standing in the layout where `at`
-/// puts its own space: `text`, `length` bytes of UTF-8, cut into `count`
-/// clusters, the i-th ending at byte `ends[i]` and set with its box's left
-/// and its line's baseline at `origins[2i]`, `origins[2i + 1]`, 64ths of
-/// a px. False on failure; see the last error.
+/// 64ths of a px, `weight` — `FontWeight`'s, 1 to 1000 — and `italic` —
+/// standing in the layout where `at` puts its own space: `text`, `length`
+/// bytes of UTF-8, cut into `count` clusters, the i-th ending at byte
+/// `ends[i]` and set with its box's left and its line's baseline at
+/// `origins[2i]`, `origins[2i + 1]`, 64ths of a px. False on failure; see
+/// the last error.
 ///
 /// # Safety
 /// `letters` is live, `at` holds six floats, `text` holds `length` bytes
@@ -172,7 +173,7 @@ pub unsafe extern "C" fn gpu_engine_letters_run(
     letters: *mut Lettering,
     at: *const f32,
     size: i32,
-    bold: bool,
+    weight: u32,
     italic: bool,
     text: *const u8,
     length: usize,
@@ -186,7 +187,8 @@ pub unsafe extern "C" fn gpu_engine_letters_run(
         return false;
     };
     // SAFETY: see the function's contract.
-    let Some(clusters) = (unsafe { clusters_of(text, length, ends, origins, count) }) else {
+    let (Some(weight), Some(clusters)) = (weight_of(weight), unsafe { clusters_of(text, length, ends, origins, count) })
+    else {
         return false;
     };
     let Some(pass) = letters.last() else {
@@ -196,12 +198,21 @@ pub unsafe extern "C" fn gpu_engine_letters_run(
         at,
         shape: Shape::Letters(Run {
             size,
-            bold,
+            weight,
             italic,
             clusters,
         }),
     });
     true
+}
+
+/// `weight` as a run takes it — None, with the last error, for one that is
+/// no `FontWeight`'s.
+fn weight_of(weight: u32) -> Option<u16> {
+    match u16::try_from(weight) {
+        Ok(weight) if WEIGHTS.contains(&weight) => Some(weight),
+        _ => fail(format!("a weight of {weight}: a run's is 1 to 1000")),
+    }
 }
 
 /// `text`, `length` bytes of UTF-8, cut into `count` clusters, the i-th
@@ -271,11 +282,11 @@ pub unsafe extern "C" fn gpu_engine_word_free(word: *mut Wording) {
 }
 
 /// Adds to `word` a run of letters in one style — `size` 64ths of a px,
-/// `bold`, `italic` — standing where the word's layout set it: `text`,
-/// `length` bytes of UTF-8, cut into `count` clusters, the i-th ending at
-/// byte `ends[i]` and set with its box's left and its line's baseline at
-/// `origins[2i]`, `origins[2i + 1]`, 64ths of a px. False on failure; see
-/// the last error.
+/// `weight` — `FontWeight`'s, 1 to 1000 — and `italic` — standing where
+/// the word's layout set it: `text`, `length` bytes of UTF-8, cut into
+/// `count` clusters, the i-th ending at byte `ends[i]` and set with its
+/// box's left and its line's baseline at `origins[2i]`, `origins[2i + 1]`,
+/// 64ths of a px. False on failure; see the last error.
 ///
 /// # Safety
 /// `word` is live, `text` holds `length` bytes and `ends` `count` words,
@@ -285,7 +296,7 @@ pub unsafe extern "C" fn gpu_engine_word_free(word: *mut Wording) {
 pub unsafe extern "C" fn gpu_engine_word_run(
     word: *mut Wording,
     size: i32,
-    bold: bool,
+    weight: u32,
     italic: bool,
     text: *const u8,
     length: usize,
@@ -296,14 +307,15 @@ pub unsafe extern "C" fn gpu_engine_word_run(
     // SAFETY: see the function's contract.
     let word = unsafe { &mut *word };
     // SAFETY: see the function's contract.
-    let Some(clusters) = (unsafe { clusters_of(text, length, ends, origins, count) }) else {
+    let (Some(weight), Some(clusters)) = (weight_of(weight), unsafe { clusters_of(text, length, ends, origins, count) })
+    else {
         return false;
     };
     word.shapes.push(Placed {
         at: Affine { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 },
         shape: Shape::Letters(Run {
             size,
-            bold,
+            weight,
             italic,
             clusters,
         }),

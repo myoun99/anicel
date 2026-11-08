@@ -16,6 +16,8 @@
 //! the canvas's local space; the path is laid on the grid by zeno's
 //! transform.
 
+use std::sync::{Mutex, PoisonError};
+
 use harfrust::{Buffer, Font, ShapeOptions, ShaperFont, shape};
 use read_fonts::model::attribute::{Attributes, Style, Width};
 use read_fonts::model::glyph::outline::{DrawMemory, DrawOptions, PathSink};
@@ -74,11 +76,12 @@ impl Face {
         })
     }
 
-    /// How well the face answers a run asking for `weight` (400 or 700) and
-    /// `slant`, at the normal width — Skia's `SkFontStyleSet::matchStyleCSS3`,
-    /// which Flutter matches the faces handed to it by
+    /// How well the face answers a run asking for `weight` and `slant`, at
+    /// the normal width — Skia's `SkFontStyleSet::matchStyleCSS3`, which
+    /// Flutter matches the faces handed to it by
     /// (`TypefaceFontStyleSet::matchStyle`): the width first, then the
-    /// slant, then the weight, each shifted past the next.
+    /// slant, then the weight, each shifted past the next (read from
+    /// google/skia `src/core/SkFontMgr.cpp`, 2026-11-08).
     ///
     /// ⚠️A weight's score runs to 1000 and a slant's step is 256, so the
     /// weight can outrank the slant: asked for an italic 400, an upright 400
@@ -97,11 +100,14 @@ impl Face {
         let face = self.weight;
         let weight = match weight {
             _ if face == weight => 1000,
-            // 400: heavier up to 500, then lighter, then heavier still.
-            400 if (weight..=500).contains(&face) => 1000 + weight - face,
-            400 if face <= weight => 500 + face,
-            400 => 1000 - face,
-            // 700: heavier, the nearest first, then lighter.
+            // Under 400: lighter, the nearest first, then heavier.
+            ..400 if face <= weight => 1000 - weight + face,
+            ..400 => 1000 - face,
+            // 400 to 500: heavier up to 500, then lighter, then heavier still.
+            ..=500 if (weight..=500).contains(&face) => 1000 + weight - face,
+            ..=500 if face <= weight => 500 + face,
+            ..=500 => 1000 - face,
+            // Past 500: heavier, the nearest first, then lighter.
             _ if face > weight => 1000 + weight - face,
             _ => face,
         };
@@ -118,7 +124,8 @@ fn width_class(width: Width) -> i32 {
 }
 
 /// What a run is set in: its family's face for the weight and slant it
-/// asks, and what of those the engine fakes.
+/// asks, and what of those the engine fakes. A clone shares its font.
+#[derive(Clone)]
 pub(super) struct Styled {
     /// The face's font, at the weight the run asks where the face varies
     /// by weight — Flutter sets its `wght` to the style's weight unasked
@@ -135,9 +142,17 @@ pub(super) struct Styled {
 
 /// A family's faces, as a run of each weight and slant is set in them.
 pub(crate) struct Family {
-    /// Upright, italic, bold, bold italic.
-    styles: [Styled; 4],
+    faces: Vec<Face>,
+    /// Each weight and slant a run has asked for, and what it is set in —
+    /// made the first time one asks (브러시/렌더링 11-08 17:07: a weight is
+    /// any of `FontWeight`'s 1 to 1000, so there are too many to make
+    /// first).
+    styles: Mutex<Vec<((u16, bool), Styled)>>,
 }
+
+/// The weights a run may ask for: `FontWeight`'s, 1 to 1000
+/// (dart:ui text.dart).
+pub(crate) const WEIGHTS: std::ops::RangeInclusive<u16> = 1..=1000;
 
 impl Family {
     /// The family of `files` — the app's own (BIZ UDPGothic's regular and
@@ -153,38 +168,48 @@ impl Family {
         if faces.is_empty() {
             return None;
         }
-        let styled = |bold: bool, italic: bool| {
-            let (weight, slant) = (if bold { 700 } else { 400 }, usize::from(italic));
-            // The last of the best in reverse: the first of them in order.
-            let face = faces.iter().rev().max_by_key(|face| face.score(weight, slant))?;
-            // How heavy the face is as it is set: a varying one at the
-            // weight asked, as far as its axis reaches.
-            let at = [(WGHT, weight as f32)];
-            let (font, set) = match face.font.axes().get_by_tag(WGHT) {
-                Some(_) => (
-                    face.font.instance_builder().variations(at).build(),
-                    Attributes::from_variations(&face.font, at).weight.value().round() as i32,
-                ),
-                None => (face.font.clone(), face.weight),
-            };
-            Some(Styled {
-                font,
-                bolder: weight >= 600 && weight - set >= 200,
-                lean: italic && face.slant != 1,
-            })
-        };
         Some(Self {
-            styles: [
-                styled(false, false)?,
-                styled(false, true)?,
-                styled(true, false)?,
-                styled(true, true)?,
-            ],
+            faces,
+            styles: Mutex::new(Vec::new()),
         })
     }
 
-    pub(super) fn at(&self, bold: bool, italic: bool) -> &Styled {
-        &self.styles[usize::from(bold) * 2 + usize::from(italic)]
+    /// What a run of `weight` — one of [`WEIGHTS`] — and `italic` is set
+    /// in.
+    pub(super) fn at(&self, weight: u16, italic: bool) -> Styled {
+        let mut styles = self.styles.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((_, styled)) = styles.iter().find(|(asked, _)| *asked == (weight, italic)) {
+            return styled.clone();
+        }
+        let styled = self.styled(i32::from(weight), italic);
+        styles.push(((weight, italic), styled.clone()));
+        styled
+    }
+
+    fn styled(&self, weight: i32, italic: bool) -> Styled {
+        let slant = usize::from(italic);
+        // The last of the best in reverse: the first of them in order.
+        let face = self
+            .faces
+            .iter()
+            .rev()
+            .max_by_key(|face| face.score(weight, slant))
+            .expect("a family holds a face");
+        // How heavy the face is as it is set: a varying one at the weight
+        // asked, as far as its axis reaches.
+        let at = [(WGHT, weight as f32)];
+        let (font, set) = match face.font.axes().get_by_tag(WGHT) {
+            Some(_) => (
+                face.font.instance_builder().variations(at).build(),
+                Attributes::from_variations(&face.font, at).weight.value().round() as i32,
+            ),
+            None => (face.font.clone(), face.weight),
+        };
+        Styled {
+            font,
+            bolder: weight >= 600 && weight - set >= 200,
+            lean: italic && face.slant != 1,
+        }
     }
 }
 
@@ -206,10 +231,10 @@ impl Faces {
 
     /// The family that draws `letter` in a run of that weight and slant:
     /// the first whose face for it has it, or the first of all.
-    fn of(&self, letter: char, bold: bool, italic: bool) -> usize {
+    fn of(&self, letter: char, weight: u16, italic: bool) -> usize {
         self.families
             .iter()
-            .position(|family| family.at(bold, italic).font.charmap().map_unicode(letter).is_some())
+            .position(|family| family.at(weight, italic).font.charmap().map_unicode(letter).is_some())
             .unwrap_or(0)
     }
 }
@@ -218,7 +243,9 @@ impl Faces {
 pub(crate) struct Run {
     /// The letters' size, 1/64 px of the layout.
     pub(crate) size: i32,
-    pub(crate) bold: bool,
+    /// One of [`WEIGHTS`]: Flutter matches a face by it and sets a varying
+    /// one's `wght` to it.
+    pub(crate) weight: u16,
     pub(crate) italic: bool,
     pub(crate) clusters: Vec<Cluster>,
 }
@@ -584,8 +611,8 @@ pub(super) fn letters(faces: &Faces, run: &Run, paint: Paint, at: Affine, path: 
     let size = f64::from(run.size) / 64.0;
     for line in run.clusters.chunk_by(|a, b| a.origin[1] == b.origin[1]) {
         let baseline = f64::from(line[0].origin[1]) / 64.0;
-        for glyph in shaped(faces, line, (run.bold, run.italic), size) {
-            let styled = faces.families[glyph.family].at(run.bold, run.italic);
+        for glyph in shaped(faces, line, (run.weight, run.italic), size) {
+            let styled = faces.families[glyph.family].at(run.weight, run.italic);
             let place = Place {
                 x: glyph.x,
                 y: baseline - glyph.up,
@@ -617,11 +644,11 @@ pub(super) struct Set {
 }
 
 /// `line`'s glyphs at `size` px, in a run of that weight and slant
-/// (`bold`, `italic`): its text cut into runs of the family that draws
+/// (`weight`, `italic`): its text cut into runs of the family that draws
 /// each, each run shaped whole, and each glyph set from the origin of the
 /// cluster holding its first letter, after the glyphs before it there — a
 /// glyph of letters joined across clusters standing at the first one's.
-pub(super) fn shaped(faces: &Faces, line: &[Cluster], (bold, italic): (bool, bool), size: f64) -> Vec<Set> {
+pub(super) fn shaped(faces: &Faces, line: &[Cluster], (weight, italic): (u16, bool), size: f64) -> Vec<Set> {
     let text: String = line.iter().map(|cluster| cluster.text.as_str()).collect();
     let starts: Vec<usize> = line
         .iter()
@@ -634,8 +661,9 @@ pub(super) fn shaped(faces: &Faces, line: &[Cluster], (bold, italic): (bool, boo
     let mut pens: Vec<f64> = line.iter().map(|cluster| f64::from(cluster.origin[0]) / 64.0).collect();
     let mut set = Vec::new();
     let mut from = 0;
-    for (family, letters) in by_family(faces, &text, (bold, italic)) {
-        let font = &faces.families[family].at(bold, italic).font;
+    for (family, letters) in by_family(faces, &text, (weight, italic)) {
+        let styled = faces.families[family].at(weight, italic);
+        let font = &styled.font;
         let scale = size / f64::from(font.units_per_em());
         let mut buffer = Buffer::new();
         buffer.push_str(&letters);
@@ -663,10 +691,10 @@ pub(super) fn shaped(faces: &Faces, line: &[Cluster], (bold, italic): (bool, boo
 
 /// `text` cut where the family that draws it changes, in a run of that
 /// weight and slant — `_runsFor`.
-pub(super) fn by_family(faces: &Faces, text: &str, (bold, italic): (bool, bool)) -> Vec<(usize, String)> {
+pub(super) fn by_family(faces: &Faces, text: &str, (weight, italic): (u16, bool)) -> Vec<(usize, String)> {
     let mut runs: Vec<(usize, String)> = Vec::new();
     for letter in text.chars() {
-        let family = faces.of(letter, bold, italic);
+        let family = faces.of(letter, weight, italic);
         match runs.last_mut() {
             Some((last, run)) if *last == family => run.push(letter),
             _ => runs.push((family, letter.to_string())),

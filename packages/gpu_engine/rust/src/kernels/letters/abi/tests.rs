@@ -51,7 +51,7 @@ fn run_of(letters: *mut Lettering, text: &str, at: [f32; 6]) -> bool {
             letters,
             at.as_ptr(),
             set.size,
-            false,
+            400,
             false,
             text.as_ptr(),
             text.len(),
@@ -172,7 +172,7 @@ fn clusters_that_do_not_cut_the_letters_whole_are_refused() {
                 letters,
                 WORDS.as_ptr(),
                 64,
-                false,
+                400,
                 false,
                 text.as_ptr(),
                 text.len(),
@@ -238,7 +238,7 @@ fn word_run_of(word: *mut Wording, text: &str, size: i32, y: i32, step: i32) -> 
         gpu_engine_word_run(
             word,
             set.size,
-            false,
+            400,
             false,
             text.as_ptr(),
             text.len(),
@@ -286,14 +286,22 @@ fn a_word_the_bake_refuses_is_no_cover_and_says_why() {
     let word = gpu_engine_word_new();
     assert!(word_run_of(word, "3a", 12 * 64, 12 * 64, 7 * 64));
     // SAFETY: both are live.
-    let refused = unsafe { gpu_engine_word_bake(word, handed_faces, 1.0, 65, 14.0, 15.0, 64, 64) };
+    let refused = unsafe { gpu_engine_word_bake(word, handed_faces, 1.0, 1, 14.0, 15.0, 65, 64) };
     assert!(refused.is_null());
     assert!(last_error().contains("each is 1 to 64"), "{}", last_error());
+    // A run's weight is `FontWeight`'s.
+    for weight in [0, 1001] {
+        let origins = [0; 2];
+        // SAFETY: each buffer holds what it is said to.
+        let heavy = unsafe { gpu_engine_word_run(word, 64, weight, false, "A".as_ptr(), 1, [1].as_ptr(), origins.as_ptr(), 1) };
+        assert!(!heavy, "{weight}");
+        assert!(last_error().contains(&format!("a weight of {weight}")), "{}", last_error());
+    }
     // A run's clusters are read as the letters' are: cut short is refused.
     let text = "A셀";
     let origins = [0; 2];
     // SAFETY: each buffer holds what it is said to.
-    let short = unsafe { gpu_engine_word_run(word, 64, false, false, text.as_ptr(), text.len(), [1].as_ptr(), origins.as_ptr(), 1) };
+    let short = unsafe { gpu_engine_word_run(word, 64, 400, false, text.as_ptr(), text.len(), [1].as_ptr(), origins.as_ptr(), 1) };
     assert!(!short);
     assert!(last_error().contains("the letters at 4"), "{}", last_error());
     // SAFETY: each came from its `_new`.

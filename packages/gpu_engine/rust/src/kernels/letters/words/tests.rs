@@ -20,7 +20,7 @@ fn word(size: f64, alone: bool) -> (Vec<Placed>, [f64; 2]) {
     if !alone {
         clusters.push(Cluster { text: "a".into(), origin: [sixty_fourths(0.55 * size), baseline] });
     }
-    let run = Run { size: sixty_fourths(size), bold: false, italic: false, clusters };
+    let run = Run { size: sixty_fourths(size), weight: 400, italic: false, clusters };
     let box_ = [if alone { 0.6 } else { 1.1 } * size, 1.25 * size];
     (vec![Placed { at: IDENTITY, shape: Shape::Letters(run) }], box_)
 }
@@ -85,7 +85,7 @@ fn a_window_covers_its_raster_pixels_by_the_part_it_covers() {
 #[test]
 fn a_window_inside_the_raster_is_its_whole_and_they_tile_it() {
     for times in 1..=4 {
-        for k in 1..=MOST {
+        for k in 1..=WHOLE {
             let windows = narrowed_windows(times, k, 8, 1 << 12);
             for (i, (first, parts)) in windows.iter().enumerate().skip(1) {
                 let why = format!("t {times}, k {k}, pixel {i}");
@@ -103,7 +103,7 @@ fn a_window_inside_the_raster_is_its_whole_and_they_tile_it() {
 #[test]
 fn a_field_of_one_value_stays_that_value_wherever_a_window_lies_in_it() {
     let raster = [40, 24];
-    for times in [1, 2, 3, 4, MOST] {
+    for times in [1, 2, 3, 4, 64, 65] {
         for k in [1, 6, 19, 32, 45, 54, 63, 64] {
             for value in [1, 128, 254, 255] {
                 let field = Cover {
@@ -215,10 +215,14 @@ fn the_bake_keeps_a_pixel_of_margin_round_the_word_where_ink_hangs_past_it() {
 #[test]
 fn a_word_past_what_the_bake_takes_is_refused_with_why() {
     let (shapes, box_) = word(12.0, false);
-    for (times, narrowed) in [(0, [64, 64]), (65, [64, 64]), (1, [0, 64]), (1, [64, 65])] {
-        assert!(bake(faces(), &shapes, 1.0, times, box_, narrowed).is_none());
+    assert!(bake(faces(), &shapes, 1.0, 0, box_, [64, 64]).is_none());
+    assert!(last_error().contains("once over at the least"), "{}", last_error());
+    for narrowed in [[0, 64], [64, 65]] {
+        assert!(bake(faces(), &shapes, 1.0, 1, box_, narrowed).is_none());
         assert!(last_error().contains("each is 1 to 64"), "{}", last_error());
     }
+    // As many times over as the app asks: it bounded none (`wordBakeScale`).
+    assert!(bake(faces(), &shapes, 1.0, 65, box_, [64, 64]).is_some(), "{}", last_error());
     for (size, dpr) in [([0.0, 16.0], 1.0), ([12.0, -1.0], 1.0), (box_, 0.0), ([f64::INFINITY, 16.0], 1.0)] {
         assert!(bake(faces(), &shapes, dpr, 1, size, [64, 64]).is_none());
         assert!(last_error().contains("has no pixels"), "{}", last_error());
@@ -231,7 +235,7 @@ fn a_word_past_what_the_bake_takes_is_refused_with_why() {
 fn a_word_of_no_ink_is_its_box_of_nothing() {
     let space = [Placed {
         at: IDENTITY,
-        shape: Shape::Letters(Run { size: 768, bold: false, italic: false, clusters: vec![Cluster { text: " ".into(), origin: [0, 768] }] }),
+        shape: Shape::Letters(Run { size: 768, weight: 400, italic: false, clusters: vec![Cluster { text: " ".into(), origin: [0, 768] }] }),
     }];
     let cover = baked(&space, [3.0, 15.0], 1.0, 1, [32, 64]);
     assert_eq!((cover.width, cover.height), (4, 17));

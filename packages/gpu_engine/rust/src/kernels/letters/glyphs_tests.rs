@@ -51,7 +51,7 @@ pub(super) fn faces() -> &'static Faces {
 pub(super) fn run(text: &str, size: i32, (x, y): (i32, i32), step: i32) -> Run {
     Run {
         size,
-        bold: false,
+        weight: 400,
         italic: false,
         clusters: text
             .chars()
@@ -75,7 +75,7 @@ pub(super) fn ink(cover: &super::Cover) -> u64 {
 #[test]
 fn a_letter_goes_to_the_first_family_that_has_it() {
     let families = |text: &str| -> Vec<usize> {
-        by_family(faces(), text, (false, false)).into_iter().map(|(family, _)| family).collect()
+        by_family(faces(), text, (400, false)).into_iter().map(|(family, _)| family).collect()
     };
     assert_eq!(families("A"), [0], "BIZ UDPGothic has Latin");
     assert_eq!(families("カ"), [0]);
@@ -85,7 +85,7 @@ fn a_letter_goes_to_the_first_family_that_has_it() {
     assert_eq!(families("业"), [2], "a simplified character neither has");
     assert_eq!(families("😊"), [0], "one none has: the first's empty box");
     // A family's letters are one run, shaped together.
-    assert_eq!(by_family(faces(), "AB셀业", (false, false)), [(0, "AB".into()), (1, "셀".into()), (2, "业".into())]);
+    assert_eq!(by_family(faces(), "AB셀业", (400, false)), [(0, "AB".into()), (1, "셀".into()), (2, "业".into())]);
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn letters_a_face_joins_are_joined_across_clusters() {
                 origin: [x, y],
             })
             .collect();
-        letters(faces(), &Run { size: 40 * 64, bold: false, italic: false, clusters }, Paint::Fill, IDENTITY, &mut path);
+        letters(faces(), &Run { size: 40 * 64, weight: 400, italic: false, clusters }, Paint::Fill, IDENTITY, &mut path);
         path
     };
     let joined = path_of(&[("fi", 640, 3200)]);
@@ -156,6 +156,7 @@ fn harfrusts_advances_meet_the_apps_clusters() {
         let texts: Vec<&str> = line["clusters"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
         let lefts: Vec<f64> = line["lefts"].as_array().unwrap().iter().map(|l| l.as_f64().unwrap()).collect();
         let (size, bold) = (line["size"].as_f64().unwrap(), line["bold"].as_bool().unwrap());
+        let weight = if bold { 700 } else { 400 };
         let whole = [Cluster {
             text: texts.concat(),
             origin: [0, 0],
@@ -168,7 +169,7 @@ fn harfrusts_advances_meet_the_apps_clusters() {
                 origin: [(left * 64.0).round() as i32, 0],
             })
             .collect();
-        let (ours, apps) = (shaped(faces(), &whole, (bold, false), size), shaped(faces(), &split, (bold, false), size));
+        let (ours, apps) = (shaped(faces(), &whole, (weight, false), size), shaped(faces(), &split, (weight, false), size));
         let ids = |set: &[super::glyphs::Set]| set.iter().map(|glyph| glyph.id.to_u32()).collect::<Vec<_>>();
         assert_eq!(ids(&ours), ids(&apps));
         for (glyph, (ours, apps)) in ours.iter().zip(&apps).enumerate() {
@@ -313,7 +314,7 @@ fn bold_letters_carry_more_ink() {
         let mut letters = run(text, 40 * 64, (0, 3000), 0);
         let regular = ink(&filled(vec![Shape::Letters(letters)], IDENTITY));
         letters = run(text, 40 * 64, (0, 3000), 0);
-        letters.bold = true;
+        letters.weight = 700;
         let bold = ink(&filled(vec![Shape::Letters(letters)], IDENTITY));
         assert!(bold > regular * 11 / 10, "{text}: bold {bold}, regular {regular}");
     }

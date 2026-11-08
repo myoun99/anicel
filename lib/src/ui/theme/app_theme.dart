@@ -646,10 +646,18 @@ abstract final class AppTypography {
   static String familyFor(AppLanguage language) =>
       language == AppLanguage.zhHans ? _chineseFamily : _family;
 
+  /// 🗣️connection-round-checklist-Q21 (유저 2026-11-08): 「UI 글꼴 끝에 Noto
+  /// Sans SC 를 더한다」 — outside the Chinese UI, a letter neither BIZ nor
+  /// 나눔고딕 has is drawn by the bundled Chinese face, not the machine's.
+  /// The GPU engine, which draws a narrowed block word, sees no OS face, so
+  /// Flutter and the engine set the UI in this one order (the canvas
+  /// letters' answer to the same question, engine-canvas-letters-Q2).
+  /// ↩️Such a letter was the OS's face's until then — and the engine's
+  /// empty box in a narrowed word.
   static List<String> fallbackFor(AppLanguage language) =>
       language == AppLanguage.zhHans
       ? const <String>[_family, ..._fallback]
-      : _fallback;
+      : const <String>[..._fallback, _chineseFamily];
 
   /// [style] in the face the app speaks in now.
   ///

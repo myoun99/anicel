@@ -13,6 +13,7 @@ import '../models/pasteboard_bounds.dart' show PasteboardReach;
 import '../models/tile_coord.dart';
 import '../ui/text/canvas_letter_plate.dart' show letterPlateBytesKept;
 import '../ui/text/canvas_letter_shapes.dart';
+import '../ui/text/canvas_letter_style.dart' show canvasLetterWeight;
 import '../ui/text/cel_number_paint.dart' show celNumberShapes;
 import '../ui/text/text_measure.dart' show TextMeasure;
 import '../ui/theme/app_theme.dart' show AppTypography;
@@ -160,7 +161,7 @@ extension on GpuLetters {
           run(
             _whereTheyStand,
             size: _inSixtyFourths(size),
-            bold: letters.bold,
+            weight: canvasLetterWeight(letters).value,
             italic: letters.italic,
             clusters: [
               for (final (:text, :left, :baseline) in clusters)

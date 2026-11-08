@@ -35,6 +35,14 @@ final class Lettering extends Opaque {}
 
 final class Lettered extends Opaque {}
 
+final class Wording extends Opaque {}
+
+final class WordCover extends Opaque {}
+
+final class Grid extends Opaque {}
+
+final class GridPicture extends Opaque {}
+
 @Native<Pointer<Engine> Function(Uint64)>(symbol: 'gpu_engine_open')
 external Pointer<Engine> engineOpen(int luid);
 
@@ -766,7 +774,7 @@ external bool lettersPass(
     Pointer<Lettering>,
     Pointer<Float>,
     Int32,
-    Bool,
+    Uint32,
     Bool,
     Pointer<Uint8>,
     Size,
@@ -779,7 +787,7 @@ external bool lettersRun(
   Pointer<Lettering> letters,
   Pointer<Float> at,
   int size,
-  bool bold,
+  int weight,
   bool italic,
   Pointer<Uint8> text,
   int length,
@@ -831,3 +839,119 @@ external void letteredFree(Pointer<Lettered> lettered);
 
 @Native<Size Function(Pointer<Uint8>, Size)>(symbol: 'gpu_engine_last_error')
 external int lastError(Pointer<Uint8> buffer, int capacity);
+
+@Native<Pointer<Wording> Function()>(symbol: 'gpu_engine_word_new')
+external Pointer<Wording> wordNew();
+
+@Native<Void Function(Pointer<Wording>)>(symbol: 'gpu_engine_word_free')
+external void wordFree(Pointer<Wording> word);
+
+@Native<
+  Bool Function(
+    Pointer<Wording>,
+    Int32,
+    Uint32,
+    Bool,
+    Pointer<Uint8>,
+    Size,
+    Pointer<Uint32>,
+    Pointer<Int32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_word_run')
+external bool wordRun(
+  Pointer<Wording> word,
+  int size,
+  int weight,
+  bool italic,
+  Pointer<Uint8> text,
+  int length,
+  Pointer<Uint32> ends,
+  Pointer<Int32> origins,
+  int count,
+);
+
+@Native<
+  Pointer<WordCover> Function(
+    Pointer<Wording>,
+    Pointer<Faces>,
+    Double,
+    Uint32,
+    Double,
+    Double,
+    Uint32,
+    Uint32,
+  )
+>(symbol: 'gpu_engine_word_bake')
+external Pointer<WordCover> wordBake(
+  Pointer<Wording> word,
+  Pointer<Faces> faces,
+  double dpr,
+  int times,
+  double width,
+  double height,
+  int along,
+  int down,
+);
+
+@Native<Void Function(Pointer<WordCover>, Pointer<Uint32>)>(
+  symbol: 'gpu_engine_word_cover_size',
+)
+external void wordCoverSize(Pointer<WordCover> cover, Pointer<Uint32> size);
+
+@Native<Void Function(Pointer<WordCover>, Pointer<Uint8>, Size)>(
+  symbol: 'gpu_engine_word_cover_read',
+)
+external void wordCoverRead(
+  Pointer<WordCover> cover,
+  Pointer<Uint8> bytes,
+  int capacity,
+);
+
+@Native<Void Function(Pointer<WordCover>)>(
+  symbol: 'gpu_engine_word_cover_free',
+)
+external void wordCoverFree(Pointer<WordCover> cover);
+
+@Native<Pointer<Grid> Function(Pointer<Engine>)>(symbol: 'gpu_engine_grid_new')
+external Pointer<Grid> gridNew(Pointer<Engine> engine);
+
+@Native<Void Function(Pointer<Grid>)>(symbol: 'gpu_engine_grid_free')
+external void gridFree(Pointer<Grid> grid);
+
+@Native<Pointer<GridPicture> Function(Pointer<Engine>, Uint32, Uint32)>(
+  symbol: 'gpu_engine_grid_picture_new',
+)
+external Pointer<GridPicture> gridPictureNew(
+  Pointer<Engine> engine,
+  int width,
+  int height,
+);
+
+@Native<Void Function(Pointer<GridPicture>)>(
+  symbol: 'gpu_engine_grid_picture_free',
+)
+external void gridPictureFree(Pointer<GridPicture> picture);
+
+@Native<
+  Bool Function(
+    Pointer<Grid>,
+    Pointer<Engine>,
+    Pointer<GridPicture>,
+    Pointer<Int32>,
+    Size,
+    Pointer<Pointer<WordCover>>,
+    Pointer<Uint32>,
+    Size,
+  )
+>(symbol: 'gpu_engine_grid_draw')
+external bool gridDraw(
+  Pointer<Grid> grid,
+  Pointer<Engine> engine,
+  Pointer<GridPicture> picture,
+  Pointer<Int32> ops,
+  int count,
+  Pointer<Pointer<WordCover>> words,
+  Pointer<Uint32> places,
+  int wordCount,
+);

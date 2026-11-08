@@ -125,7 +125,18 @@ void main() {
     // ②나눔고딕에는 라틴 확장이 없고 BIZ 에는 프랑스어 32/32 가 있다
     //   ⇒ 뒤집히면 é 가 두부가 된다
     expect(AppTypography.familyFor(AppLanguage.ja), 'BIZ UDPGothic');
-    expect(AppTypography.fallbackFor(AppLanguage.ja), ['Nanum Gothic']);
+    // 🗣️connection-round-checklist-Q21 (유저 2026-11-08): 「UI 글꼴 끝에
+    // Noto Sans SC 를 더한다」 — what neither has is the bundled Chinese
+    // face's, as it is in the engine, not the machine's.
+    expect(AppTypography.fallbackFor(AppLanguage.ja), [
+      'Nanum Gothic',
+      'Noto Sans SC',
+    ]);
+    expect(
+      AppTypography.fallbackFor(AppLanguage.ko),
+      AppTypography.fallbackFor(AppLanguage.ja),
+      reason: 'every UI but the Chinese one, in one order',
+    );
     expect(
       AppTypography.familyFor(AppLanguage.ko),
       'BIZ UDPGothic',
@@ -139,9 +150,11 @@ void main() {
     // 간체 글꼴이 그린다. ↩️I-4-Q10 은 중국어를 OS 에 맡겼다 — BIZ 에 앱의
     // 중국어 한자가 다 없어서 한 문장 안에서 두 얼굴로 섞였기 때문이다.
     expect(AppTypography.familyFor(AppLanguage.zhHans), 'Noto Sans SC');
+    // Behind it the bundled two, in their order — it is the last of the
+    // others' itself (Q21).
     expect(AppTypography.fallbackFor(AppLanguage.zhHans), [
       AppTypography.familyFor(AppLanguage.ja),
-      ...AppTypography.fallbackFor(AppLanguage.ja),
+      ...AppTypography.bundledFallback,
     ]);
     // Its one file is declared UNDER its family, as the others' are.
     final pubspec = File('pubspec.yaml').readAsStringSync();

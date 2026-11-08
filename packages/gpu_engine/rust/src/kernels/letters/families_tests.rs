@@ -21,24 +21,24 @@ fn said(name: &str, (width, slant, weight): (i32, usize, i32)) -> Face {
     }
 }
 
-/// Which of two faces a run of `bold` and `italic` is set in — BIZ
+/// Which of two faces a run of `weight` and `italic` is set in — BIZ
 /// UDPGothic's regular file said to be `first`, 나눔고딕's said to be
 /// `second` — told by whether its face has Hangul.
-fn picked(first: (i32, usize, i32), second: (i32, usize, i32), (bold, italic): (bool, bool)) -> &'static str {
+fn picked(first: (i32, usize, i32), second: (i32, usize, i32), (weight, italic): (u16, bool)) -> &'static str {
     let family = Family::of_faces(vec![
         said("BIZUDPGothic-Regular.ttf", first),
         said("NanumGothic-Regular.ttf", second),
     ])
     .expect("a family");
-    match family.at(bold, italic).font.charmap().map_unicode('셀') {
+    match family.at(weight, italic).font.charmap().map_unicode('셀') {
         Some(_) => "second",
         None => "first",
     }
 }
 
-const UPRIGHT: (bool, bool) = (false, false);
-const ITALIC: (bool, bool) = (false, true);
-const BOLD: (bool, bool) = (true, false);
+const UPRIGHT: (u16, bool) = (400, false);
+const ITALIC: (u16, bool) = (400, true);
+const BOLD: (u16, bool) = (700, false);
 
 #[test]
 fn a_regular_run_takes_400_then_up_to_500_then_lighter_then_heavier() {
@@ -58,6 +58,40 @@ fn a_bold_run_takes_700_then_heavier_then_lighter() {
     assert_eq!(picked(face(800), face(900), BOLD), "first", "the nearer of the heavier");
     assert_eq!(picked(face(600), face(900), BOLD), "second", "any heavier before a lighter");
     assert_eq!(picked(face(400), face(600), BOLD), "second", "the heavier of the lighter");
+}
+
+// Any of `FontWeight`'s weights, by Skia's four ways (브러시/렌더링 11-08
+// 17:07): under 400 the lighter first, 400 to 500 the heavier up to 500,
+// past 500 the heavier first.
+#[test]
+fn a_run_of_any_weight_takes_its_face_as_skia_does() {
+    let face = |weight: i32| (5, 0, weight);
+    // A family of a 400 and a 700 file, as the app's are.
+    assert_eq!(picked(face(400), face(700), (600, false)), "second", "600: the heavier");
+    assert_eq!(picked(face(400), face(700), (500, false)), "first", "500: the lighter, none up to 500");
+    assert_eq!(picked(face(400), face(700), (300, false)), "first", "300: the nearer heavier, none lighter");
+    // Under 400: the nearest lighter, then the nearest heavier.
+    assert_eq!(picked(face(200), face(350), (300, false)), "first", "lighter before heavier");
+    assert_eq!(picked(face(100), face(250), (300, false)), "second", "the nearer of the lighter");
+    assert_eq!(picked(face(500), face(350), (300, false)), "second", "the nearer of the heavier");
+    // 400 to 500: heavier up to 500, then lighter.
+    assert_eq!(picked(face(450), face(500), (450, false)), "first");
+    assert_eq!(picked(face(480), face(420), (450, false)), "first", "heavier up to 500 before lighter");
+    assert_eq!(picked(face(600), face(420), (450, false)), "second", "lighter before heavier past 500");
+    // Past 500: heavier, the nearest first, then lighter.
+    assert_eq!(picked(face(900), face(650), (600, false)), "second");
+    assert_eq!(picked(face(550), face(500), (600, false)), "first", "the heavier of the lighter");
+}
+
+#[test]
+fn a_varying_face_is_set_at_the_weight_the_run_asks() {
+    let family = || Family::of_files(vec![file("NotoSansSC-Variable.ttf")]).unwrap();
+    let noto = Faces::new(vec![family()]).unwrap();
+    let (semibold, bold) = (set_in(&noto, "业", (600, false)), set_in(&noto, "业", (700, false)));
+    assert!((semibold.at, &semibold.bytes) != (bold.at, &bold.bytes), "600 is its own outline, not 700's");
+    let ink = |cover: &super::Cover| cover.bytes.iter().map(|&alpha| u64::from(alpha)).sum::<u64>();
+    assert!(ink(&semibold) < ink(&bold), "and lighter");
+    assert!(!family().at(600, false).bolder, "set at 600, nothing to fake");
 }
 
 #[test]
@@ -91,26 +125,26 @@ fn a_run_bolder_than_its_face_by_200_and_at_least_600_is_drawn_bolder() {
         (300, false, false),
         (100, false, false),
     ] {
-        assert_eq!(alone(weight).at(bold, false).bolder, bolder, "a face of {weight}, bold {bold}");
+        assert_eq!(alone(weight).at(if bold { 700 } else { 400 }, false).bolder, bolder, "a face of {weight}, bold {bold}");
     }
 }
 
 #[test]
 fn a_run_leans_where_its_face_is_not_italic() {
     let alone = |slant: usize| Family::of_faces(vec![said("BIZUDPGothic-Regular.ttf", (5, slant, 400))]).unwrap();
-    assert!(alone(0).at(false, true).lean);
-    assert!(!alone(1).at(false, true).lean, "an italic face leans of itself");
-    assert!(alone(2).at(false, true).lean, "an oblique face is leaned again");
-    assert!(!alone(0).at(false, false).lean);
-    assert!(!alone(1).at(true, false).lean, "an upright run never leans");
+    assert!(alone(0).at(400, true).lean);
+    assert!(!alone(1).at(400, true).lean, "an italic face leans of itself");
+    assert!(alone(2).at(400, true).lean, "an oblique face is leaned again");
+    assert!(!alone(0).at(400, false).lean);
+    assert!(!alone(1).at(700, false).lean, "an upright run never leans");
 }
 
 #[test]
 fn a_variable_face_is_set_at_the_runs_weight_and_not_drawn_bolder() {
     let noto = Family::of_files(vec![file("NotoSansSC-Variable.ttf")]).unwrap();
-    assert!(!noto.at(true, false).bolder, "its wght is 700, not its file's 400");
+    assert!(!noto.at(700, false).bolder, "its wght is 700, not its file's 400");
     let only_regular = Family::of_files(vec![file("BIZUDPGothic-Regular.ttf")]).unwrap();
-    assert!(only_regular.at(true, false).bolder);
+    assert!(only_regular.at(700, false).bolder);
 }
 
 #[test]
@@ -130,8 +164,8 @@ fn a_letter_goes_to_the_family_whose_face_for_the_run_has_it() {
     .unwrap();
     let second = Family::of_files(vec![file("NanumGothic-Regular.ttf")]).unwrap();
     let faces = Faces::new(vec![first, second]).unwrap();
-    assert_eq!(by_family(&faces, "셀", (false, false)), [(1, "셀".into())]);
-    assert_eq!(by_family(&faces, "셀", (false, true)), [(0, "셀".into())]);
+    assert_eq!(by_family(&faces, "셀", (400, false)), [(1, "셀".into())]);
+    assert_eq!(by_family(&faces, "셀", (400, true)), [(0, "셀".into())]);
 }
 
 /// How many pixels of ink the middle row of an "I" holds — the width of
@@ -139,7 +173,7 @@ fn a_letter_goes_to_the_family_whose_face_for_the_run_has_it() {
 fn stem(px: f64, bold: bool, paint: Paint) -> f64 {
     let alone = Faces::new(vec![Family::of_files(vec![file("BIZUDPGothic-Regular.ttf")]).unwrap()]).unwrap();
     let mut letters = run("I", (px * 64.0) as i32, (19, 200 * 64), 0);
-    letters.bold = bold;
+    letters.weight = if bold { 700 } else { 400 };
     let cover = covered(&alone, &here(vec![Shape::Letters(letters)]), paint, IDENTITY).expect("a cover");
     let [left, top, right, bottom] = cover.at;
     let width = (right - left) as usize;
@@ -404,11 +438,11 @@ fn a_corner_turning_in_too_sharply_stays_where_it_was() {
     assert!(corners.iter().all(|&(x, y)| (-1.5..=11.5).contains(&x) && (-1.5..=11.5).contains(&y)), "{corners:?}");
 }
 
-/// The cover of `text` set 40 px in a run of `bold` and `italic`, in the
+/// The cover of `text` set 40 px in a run of `weight` and `italic`, in the
 /// families `faces`.
-fn set_in(faces: &Faces, text: &str, (bold, italic): (bool, bool)) -> super::Cover {
+fn set_in(faces: &Faces, text: &str, (weight, italic): (u16, bool)) -> super::Cover {
     let mut letters = run(text, 40 * 64, (0, 100 * 64), 0);
-    (letters.bold, letters.italic) = (bold, italic);
+    (letters.weight, letters.italic) = (weight, italic);
     covered(faces, &here(vec![Shape::Letters(letters)]), Paint::Fill, IDENTITY).expect("a cover")
 }
 

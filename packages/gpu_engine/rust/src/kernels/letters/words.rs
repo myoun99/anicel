@@ -28,27 +28,30 @@ pub(crate) struct WordCover {
     pub(crate) bytes: Vec<u8>,
 }
 
-/// The most times a word is rastered over its final size, and the most
-/// 64ths it is narrowed to: past either the bake is refused, and the app
-/// paints the word as it always did.
-///
-/// ⚠️Mine (gpu-int-spec-word-bake, 규격 6): `times` is 1 or 2 at the block
-/// words' sizes, and past 64 only under 0.1875 px; a narrowing is k/64,
-/// 1 to 64 (`wordCondensation`). Within them a window's sum stays in a
-/// u32 (규격 5).
-pub(crate) const MOST: u32 = 64;
+/// A word not narrowed, in 64ths of itself: a narrowing is 1 to 64 of
+/// them, what `wordCondensation` makes — it floors a word's narrowing to
+/// 64ths, a 64th the least, and never widens one — so the bake takes the
+/// 64ths and a narrowing that is none cannot be asked (gpu-int-spec-word-
+/// bake 규격 1).
+pub(crate) const WHOLE: u32 = 64;
 
-/// The longest side a word is rastered over, in the raster's pixels.
+/// The longest side a word is rastered over, in the raster's pixels: past
+/// it the bake is refused, and the app paints the word as it always did.
 ///
-/// ⚠️Mine: a side's pixels and its window's sums are u32s here, and a word
-/// is a cell's name or a line of dialogue — a screen across at the most,
-/// rastered twice over at 3 pixels a px is under 2^15.
+/// ⚠️Mine (11-08): the bake on Flutter's raster failed past the GPU's
+/// largest texture — `toImageSync` threw, and word_bake.dart `_land`'s
+/// refusal arm painted the word as it always was. A CPU raster has no such
+/// wall; this is one, past any word the app sets — a cell's name, a line
+/// of dialogue, a screen across at the most, twice over at 3 pixels a px,
+/// is under 2^15. ⛔No bound on `times` itself: the app's had none
+/// (`wordBakeScale`), and the sums are u64s.
 const MOST_RASTER: u32 = 1 << 16;
 
 /// `shapes` — a word as the app's layout set it, its box `size` px of the
 /// layout — at `dpr` device pixels a px, rastered `times` times over and
 /// narrowed to `narrowed` 64ths along and down its line. None, with the
-/// last error, for a word of no size or a scale past [`MOST`].
+/// last error, for a word of no size, no raster or no narrowing, or one
+/// rastered past [`MOST_RASTER`].
 pub(crate) fn bake(
     faces: &Faces,
     shapes: &[Placed],
@@ -61,8 +64,11 @@ pub(crate) fn bake(
     if !(width > 0.0 && height > 0.0 && dpr > 0.0) || !(width * height * dpr).is_finite() {
         return fail(format!("a word {width} × {height} px at {dpr} pixels a px has no pixels"));
     }
-    if !(1..=MOST).contains(&times) || narrowed.iter().any(|k| !(1..=MOST).contains(k)) {
-        return fail(format!("a word rastered {times} times over, narrowed to {narrowed:?} 64ths: each is 1 to {MOST}"));
+    if times == 0 {
+        return fail("a word is rastered once over at the least");
+    }
+    if narrowed.iter().any(|k| !(1..=WHOLE).contains(k)) {
+        return fail(format!("a word narrowed to {narrowed:?} 64ths: each is 1 to {WHOLE}"));
     }
     // The raster is the word as it stands un-narrowed with one final pixel
     // of margin round it, `times` times over: one final pixel of margin is
