@@ -224,6 +224,44 @@ void main() {
     });
   }
 
+  for (final MapEntry(key: road, value: draw) in roads.entries) {
+    testWidgets('$road tells the row\'s header the frame its plugin could '
+        'not draw — an export is a picture shown, in its file', (
+      tester,
+    ) async {
+      final plugins = await installedShiftingFxPlugin(tester, opens: false);
+      await tester.runAsync(() async {
+        expect(
+          await redIn(draw, plugins, effects: [shift]),
+          [10],
+          reason: '⛔fixture: the cel as it is, as if the effect were off',
+        );
+      });
+      expect(plugins.outcomes.failedAt((owner: cel, effect: shift.id), 0),
+          isTrue);
+    });
+  }
+
+  testWidgets('a film tells the V row\'s header the frame its plugin could '
+      'not draw', (tester) async {
+    final plugins = await installedShiftingFxPlugin(tester, opens: false);
+    final film = roads['a frame of the film']!;
+    await tester.runAsync(() async {
+      expect(
+        await redIn(film, plugins, effects: const [], track: [shift]),
+        [10],
+        reason: '⛔fixture: the cut as it is, as if the effect were off',
+      );
+    });
+    expect(
+      plugins.outcomes.failedAt(
+        (owner: const TrackId('track'), effect: shift.id),
+        0,
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('🗣️I-132-Q34 a: a film runs one on a folder\'s chain and on the '
       'V row\'s', (tester) async {
     final plugins = await installedShiftingFxPlugin(tester);
