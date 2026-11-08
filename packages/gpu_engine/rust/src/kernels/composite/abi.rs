@@ -16,6 +16,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::device::Engine;
 use crate::fail;
 use crate::kernels::chain::{Chained, MapTiles, Op};
@@ -444,6 +446,12 @@ pub unsafe extern "C" fn gpu_engine_plan_solid(
     plan.steps.push(Step::Solid { colour, rect: [left, top, right, bottom] });
 }
 
+/// The bytes of every mask the app keeps — made ([`gpu_engine_mask_new`])
+/// and not yet freed —, counted where they are made and let go: what the
+/// memory census is to read of them ([`gpu_engine_mask_bytes`]; ⏳once the
+/// screen is the engine's, flip lane ⓑ).
+static MASK_BYTES: AtomicU64 = AtomicU64::new(0);
+
 /// A mask of `width` × `height` bytes at `bytes` — a byte a pixel, row
 /// after row, the app's `Uint8List` as it is — whose top-left pixel is
 /// (`x`, `y`), kept on the GPU for the plans that name it
@@ -471,6 +479,7 @@ pub unsafe extern "C" fn gpu_engine_mask_new(
         unsafe { (&*engine, std::slice::from_raw_parts(bytes, width as usize * height as usize)) };
     let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
     let plane = words_buffer(engine, "mask", &size.words_of(bytes), usage);
+    MASK_BYTES.fetch_add(size.bytes(), Ordering::Relaxed);
     Box::into_raw(Box::new(MaskPlane { plane, at: (x, y), size }))
 }
 
@@ -480,8 +489,15 @@ pub unsafe extern "C" fn gpu_engine_mask_new(
 pub unsafe extern "C" fn gpu_engine_mask_free(mask: *mut MaskPlane) {
     if !mask.is_null() {
         // SAFETY: see the function's contract.
-        drop(unsafe { Box::from_raw(mask) });
+        let mask = unsafe { Box::from_raw(mask) };
+        MASK_BYTES.fetch_sub(mask.size.bytes(), Ordering::Relaxed);
     }
+}
+
+/// The bytes of every mask the app keeps, made and not yet freed.
+#[unsafe(no_mangle)]
+pub extern "C" fn gpu_engine_mask_bytes() -> u64 {
+    MASK_BYTES.load(Ordering::Relaxed)
 }
 
 /// Lays the plan's masked steps under `mask`: 0, or -1 where it names one

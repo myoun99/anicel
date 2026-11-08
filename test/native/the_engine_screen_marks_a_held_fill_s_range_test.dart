@@ -30,6 +30,8 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/fill_range_mark.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../helpers/engine_screen_shown.dart';
+
 /// 🚨★★★THE ENGINE'S SCREEN MARKS THE RANGE A HELD FILL WILL COVER (flip
 /// lane ⓐ-3, I-160-Q1 a, 유저 2026-11-04 「TVPaint 처럼 체크 격자」 —
 /// 「체크격자가 그림 위에 오는것임. 즉 현재 행 위. 그 위에 레이어있으면
@@ -38,7 +40,8 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// black cells of eight of its pixels at half alpha over the range alone,
 /// its hole kept, pushed as far as the press moved (F-568-Q1 a) —, outside
 /// its opacity, under every row above it, under its pose, and in a
-/// blurred folder's picture where it reaches past the row's ink.
+/// blurred folder's picture where it reaches past the row's ink — the mask
+/// it is marked under kept while it is marked alone.
 void main() {
   // The letters read their faces from the bundle.
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -177,28 +180,27 @@ void main() {
     ),
   );
 
-  /// What the engine's screen shows of [frame] — its fingerprint.
-  int shown(StackedFrame frame) {
-    final screen = EngineStackScreen(composite, letters);
-    addTearDown(screen.free);
-    screen.compose(frame);
-    const size = (256, 128);
-    final target = () {
-      try {
-        return appGpuEngine.surface(size.$1, size.$2, bgra: false);
-      } on StateError {
-        return appGpuEngine.surface(size.$1, size.$2, bgra: true);
-      }
-    }();
-    addTearDown(target.free);
-    screen.show(
-      target,
-      size,
-      viewport: CanvasViewport(),
-      devicePixelRatio: 1,
-    );
-    return target.fingerprint();
-  }
+  /// What the engine's screen shows of [frame] through [viewport], [size]
+  /// texels — its fingerprint.
+  int shown(
+    StackedFrame frame, {
+    CanvasViewport? viewport,
+    (int, int) size = (256, 128),
+  }) => engineScreenShown(
+    frame,
+    composite: composite,
+    letters: letters,
+    size: size,
+    viewport: viewport,
+  );
+
+  /// What the screen shows of [frame] over the canvas and past it: 64 to
+  /// its left, above and below it, 192 to its right.
+  int shownPast(StackedFrame frame) => shown(
+    frame,
+    viewport: CanvasViewport(panX: 64, panY: 64),
+    size: (canvas.width + 256, canvas.height + 128),
+  );
 
   late ActiveStrokeOverlayModel overlay;
   setUp(() => overlay = ActiveStrokeOverlayModel(tileSize: side));
@@ -368,8 +370,8 @@ void main() {
   test('🚨in a blurred folder, a range past the row\'s ink is laid in the '
       'folder\'s picture and blurred with it, as a row of its cells is', () {
     // A tile past the canvas, covered whole: where the row holds no ink,
-    // so only the range's own extent puts it in the folder's picture —
-    // whose blur spreads it back over the canvas's edge.
+    // so only the range's own extent puts it in the folder's picture,
+    // cut past its blur's reach — seen on the pasteboard past the canvas.
     final range = FillRange.over(
       FloodFillRegion(
         left: 256,
@@ -403,12 +405,12 @@ void main() {
     overlay.showFillRange(FillRangeMark(range));
 
     expect(
-      shown(
+      shownPast(
         frameOf([
           blurred([CompositeLeaf(row)]),
         ], live: penOn(cel())),
       ),
-      shown(
+      shownPast(
         frameOf(
           [
             blurred([CompositeLeaf(row), cellsRow()]),
@@ -418,5 +420,33 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('🚨the screen keeps a range\'s mask while it is marked, and lets it '
+      'go at the first frame that marks none and once it is freed', () {
+    final before = GpuMask.liveBytes;
+    // The range's box, 170 × 90: 43 words a row.
+    const plane = 43 * 4 * 90;
+    final range = covered();
+    final row = CanvasActiveLayerRow(opacity: 1, frameKey: pen);
+    StackedFrame frame() => frameOf([CompositeLeaf(row)], live: penOn(cel()));
+    final screen = EngineStackScreen(composite, letters);
+    addTearDown(screen.free);
+
+    overlay.showFillRange(FillRangeMark(range));
+    screen.compose(frame());
+    overlay.showFillRange(FillRangeMark(range).shifted(const ui.Offset(2, 0)));
+    screen.compose(frame());
+    expect(GpuMask.liveBytes - before, plane, reason: 'one mask, kept');
+
+    overlay.showFillRange(null);
+    screen.compose(frame());
+    expect(GpuMask.liveBytes, before, reason: 'a frame that marks none');
+
+    overlay.showFillRange(FillRangeMark(range));
+    screen
+      ..compose(frame())
+      ..free();
+    expect(GpuMask.liveBytes, before, reason: 'the screen freed');
   });
 }

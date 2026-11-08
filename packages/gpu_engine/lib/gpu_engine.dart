@@ -859,6 +859,10 @@ class GpuMask {
 
   GpuMask._(this._mask);
 
+  /// The bytes of every mask made and not yet freed, counted by the engine
+  /// where it makes and frees them.
+  static int get liveBytes => rust.maskBytes();
+
   final Pointer<rust.MaskPlane> _mask;
 
   /// Frees the mask; a plan that names it keeps its own hold.

@@ -345,6 +345,9 @@ external Pointer<MaskPlane> maskNew(
 @Native<Void Function(Pointer<MaskPlane>)>(symbol: 'gpu_engine_mask_free')
 external void maskFree(Pointer<MaskPlane> mask);
 
+@Native<Uint64 Function()>(symbol: 'gpu_engine_mask_bytes')
+external int maskBytes();
+
 @Native<Int32 Function(Pointer<Planned>, Pointer<MaskPlane>)>(
   symbol: 'gpu_engine_plan_mask',
 )

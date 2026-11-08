@@ -10,7 +10,6 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -28,6 +27,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../helpers/a_plugin_that_shifts.dart' show shiftingFxPluginEffect;
 import '../helpers/cel_text_fixture.dart' show textOf;
+import '../helpers/engine_screen_shown.dart';
 
 /// 🚨★★★THE ENGINE'S SCREEN SHOWS A STROKE AS IT LANDS (flip lane ⓐ, 유저
 /// 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」): the
@@ -170,26 +170,12 @@ void main() {
 
   /// What the engine's screen shows of [frame] at rest, one texel a canvas
   /// pixel — its fingerprint.
-  int shown(StackedFrame frame) {
-    final screen = EngineStackScreen(composite, letters);
-    addTearDown(screen.free);
-    screen.compose(frame);
-    final target = () {
-      try {
-        return appGpuEngine.surface(canvas.width, canvas.height, bgra: false);
-      } on StateError {
-        return appGpuEngine.surface(canvas.width, canvas.height, bgra: true);
-      }
-    }();
-    addTearDown(target.free);
-    screen.show(
-      target,
-      (canvas.width, canvas.height),
-      viewport: CanvasViewport(),
-      devicePixelRatio: 1,
-    );
-    return target.fingerprint();
-  }
+  int shown(StackedFrame frame) => engineScreenShown(
+    frame,
+    composite: composite,
+    letters: letters,
+    size: (canvas.width, canvas.height),
+  );
 
   for (final erase in [false, true]) {
     test('🚨a stroke that ${erase ? 'erases' : 'paints'} shows on the '

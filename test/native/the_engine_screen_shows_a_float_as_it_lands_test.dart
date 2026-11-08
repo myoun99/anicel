@@ -41,6 +41,8 @@ import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
+import '../helpers/engine_screen_shown.dart';
+
 /// 🚨★★★THE ENGINE'S SCREEN SHOWS A FLOAT AS IT LANDS (flip lane ⓐ-2, 유저
 /// 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」 · F-240 ·
 /// TS1): what a hand carries over a row is laid in the row's own picture,
@@ -217,27 +219,13 @@ void main() {
     StackedFrame frame, {
     CanvasViewport? viewport,
     (int, int) size = (256, 128),
-  }) {
-    final screen = EngineStackScreen(composite, letters);
-    addTearDown(screen.free);
-    screen.compose(frame);
-    final (columns, rows) = size;
-    final target = () {
-      try {
-        return appGpuEngine.surface(columns, rows, bgra: false);
-      } on StateError {
-        return appGpuEngine.surface(columns, rows, bgra: true);
-      }
-    }();
-    addTearDown(target.free);
-    screen.show(
-      target,
-      size,
-      viewport: viewport ?? CanvasViewport(),
-      devicePixelRatio: 1,
-    );
-    return target.fingerprint();
-  }
+  }) => engineScreenShown(
+    frame,
+    composite: composite,
+    letters: letters,
+    size: size,
+    viewport: viewport,
+  );
 
   /// A row of [kind] at its defaults but for [lanes].
   ResolvedLayerEffect fx(EffectKind kind, Map<String, double> lanes) =>
@@ -276,6 +264,32 @@ void main() {
       );
     });
   }
+
+  test('🚨a float carried over a row of no ink shows on the engine\'s '
+      'screen as it lands', () {
+    final base = nothingLike(cel());
+    final lift = liftAt(CanvasPoint(x: 120, y: 60));
+    final drawing = shown(
+      frameOf(
+        BitmapSurfacePainter(surface: base),
+        float: carried(lift, base, dx: 37, dy: -11),
+      ),
+    );
+
+    expect(
+      drawing,
+      shown(
+        frameOf(
+          BitmapSurfacePainter(surface: stamped(base, movedBy(lift, 37, -11))),
+        ),
+      ),
+    );
+    expect(
+      drawing,
+      isNot(shown(frameOf(BitmapSurfacePainter(surface: base)))),
+      reason: 'the float shows while it is carried',
+    );
+  });
 
   /// What the screen shows of [frame] over the canvas and past it: 64 to
   /// its left, above and below it, 192 to its right.
