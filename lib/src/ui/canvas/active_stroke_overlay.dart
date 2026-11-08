@@ -714,12 +714,6 @@ final class _PicturesOf extends UnmodifiableMapBase<TileCoord, ui.Image> {
 
   @override
   Iterable<TileCoord> get keys => _shown.keys;
-
-  @override
-  int get length => _shown.length;
-
-  @override
-  bool containsKey(Object? key) => _shown.containsKey(key);
 }
 
 /// A place in the moves of an overlay's pictures
