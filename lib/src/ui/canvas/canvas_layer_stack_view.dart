@@ -1,6 +1,8 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
+import 'package:gpu_engine/gpu_engine.dart'
+    show GpuComposite, GpuPlan, GpuScreen, GpuTarget;
 
 import '../../core/collection_equality.dart';
 import '../../core/tree_nodes.dart';
@@ -40,7 +42,14 @@ import '../../services/playback/cut_frame_composite_signature.dart'
         CutFrameCompositeSignature;
 import 'raster_picture.dart';
 import 'tile_origin.dart';
+import '../../core/display_filter.dart' show filterQualityForDisplayScale;
+import '../../models/dirty_region.dart';
+import '../../native/composite_tree_plan.dart';
+import '../../native/engine_letters.dart';
+import '../../native/engine_tile_ledger.dart';
+import '../../native/screen_texture.dart';
 
+part 'layer_stack/layer_stack_engine_screen.dart';
 part 'layer_stack/layer_stack_paint_pass.dart';
 
 /// One ROW that paints in the editing canvas's composite tree: a cached
@@ -355,6 +364,10 @@ final class StackedFrame {
       final stored? => _PaintCelSurface(
         stored,
         drawnOn: of is CanvasActiveLayerRow,
+        lineage: switch (of) {
+          CanvasActiveLayerRow(:final frameKey) => frameKey?.cel,
+          CanvasLayerImageRequest(:final frameKey) => frameKey.cel,
+        },
       ),
       null => null,
     };
@@ -724,8 +737,11 @@ final class _PaintLiftedSurface extends _SurfaceRow {
 /// frame's one picture ([StackedFrame]), by the body the live row is
 /// drawn with.
 final class _PaintCelSurface extends _SurfaceRow {
-  _PaintCelSurface(StoredRow row, {required this.drawnOn})
-    : painter = BitmapSurfacePainter(
+  _PaintCelSurface(
+    StoredRow row, {
+    required this.drawnOn,
+    required this.lineage,
+  }) : painter = BitmapSurfacePainter(
         surface: row.layer.surface,
         // The stack lays its own paper.
         showTransparentBackground: false,
@@ -751,6 +767,11 @@ final class _PaintCelSurface extends _SurfaceRow {
   /// holds it live ([_PaintActiveSurface]): what lies below it is held as
   /// one picture for the steps to come ([SubtreeHolding.drawnOn]).
   final bool drawnOn;
+
+  /// The cel its row names ([BrushFrameKey.cel]) — what the engine keeps
+  /// its tiles under ([EngineTiles.lineage]) — or null for a row that
+  /// names none.
+  final Object? lineage;
   @override
   final double opacity;
   @override
