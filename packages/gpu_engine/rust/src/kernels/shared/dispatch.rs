@@ -68,7 +68,9 @@ pub(crate) fn tiles_a_pass(engine: &Engine, per_tile: u64, fixed: u64) -> Option
 /// The most tiles a page takes on this device: as many as a pass takes and
 /// a slot names — a u16 (`TileAt`). ⛔ONE COUNT: a gathered row's page, a
 /// chained row's, a stamp's and the letters' each worked it out, and a kept
-/// picture's was to be the fifth (11-08).
+/// picture's was to be the fifth (11-08). ⚠️No test reaches the u16: a
+/// page past it is a binding of 4 GiB, past every device here (mutant M13,
+/// 11-08).
 pub(crate) fn tiles_a_page(engine: &Engine) -> Option<usize> {
     Some(tiles_a_pass(engine, TILE_BYTES, 0)?.min(usize::from(u16::MAX)))
 }

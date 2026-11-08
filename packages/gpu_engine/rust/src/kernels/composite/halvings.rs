@@ -10,16 +10,17 @@
 //!
 //! ① Stage k ≥ 1 is stage k − 1 through R1 Blend at a half — its pixel x
 //!   about 2x + 1, the edge between two of stage k − 1's — on the screen's
-//!   floor, ⌈w/2⌉ × ⌈h/2⌉ of them, nothing past that. Stage 0 is the
-//!   canvas's composite.
+//!   floor, from ⌊left/2⌋ to ⌈right/2⌉ each way, nothing past that. Stage 0
+//!   is the canvas's composite, over the pixels it covers: the page and what
+//!   lies past it (screen.rs).
 //! ② The screen reads stage 0 through the camera at 1/16 and over, as
 //!   before; under it, the finest stage k whose scale · 2^k is 1/16 or over,
 //!   so what is left to reduce lies in [1/16, 1/8) and a tent stays within
 //!   16 px. Stage k's pixel x spans the canvas's 2^k·x..2^k·(x + 1) exactly
-//!   — ⌈⌉ only leaves its last pixel partly past the canvas, holding what
-//!   lies inside — so the camera reaches it with its source rows divided by
-//!   2^k, not by the ratio of the sizes, which is short of 2^k on an odd
-//!   side and would slide the far edge.
+//!   — ⌊⌋ and ⌈⌉ only leave its first and last pixels partly past the
+//!   composite, holding what lies inside — so the camera reaches it with
+//!   its source rows divided by 2^k, not by the ratio of the sizes, which
+//!   is short of 2^k on an odd side and would slide the far edge.
 //!
 //! The stages are kept, ⅓ of the composite's tiles at most, made the first
 //! time the screen goes under 1/16. A change to the composite says where
@@ -73,15 +74,10 @@ pub(crate) fn onto_stage(inverse: [f64; 9], k: usize) -> [f64; 9] {
     [a * by, b * by, c * by, d * by, e * by, f * by, g, h, i]
 }
 
-/// Stage `k ≥ 1`'s size from stage k − 1's (①): ⌈⌉ of it.
-fn halved((width, height): (u32, u32)) -> (u32, u32) {
-    (width.div_ceil(2), height.div_ceil(2))
-}
-
-/// A picture's pixels from the canvas's origin, as the executor bounds an
-/// output: [left, top, right, bottom).
-fn extent_of((width, height): (u32, u32)) -> [i32; 4] {
-    [0, 0, width as i32, height as i32]
+/// Stage `k ≥ 1`'s pixels from stage k − 1's (①): ⌊⌋ of its left and top,
+/// ⌈⌉ of its right and bottom.
+fn halved([left, top, right, bottom]: [i32; 4]) -> [i32; 4] {
+    [left.div_euclid(2), top.div_euclid(2), (right + 1).div_euclid(2), (bottom + 1).div_euclid(2)]
 }
 
 /// The smallest rectangle holding both.
@@ -92,26 +88,27 @@ fn joined(one: Option<[i64; 4]>, other: [i64; 4]) -> [i64; 4] {
     [l.min(other[0]), t.min(other[1]), r.max(other[2]), b.max(other[3])]
 }
 
-/// A picture kept on pages of its own: its tiles over `size` pixels from
-/// the canvas's origin, row after row, as many to a page as one takes — a
-/// halving stage, and the canvas's composite the screen reads (screen.rs).
+/// A picture kept on pages of its own: its tiles over the pixels `extent`,
+/// [left, top, right, bottom), row after row, as many to a page as one
+/// takes — a halving stage, and the canvas's composite the screen reads
+/// (screen.rs).
 pub(crate) struct Kept {
     pages: Vec<wgpu::Buffer>,
     set: TileSet,
-    size: (u32, u32),
+    extent: [i32; 4],
 }
 
 impl Kept {
-    /// `plan` composited over a picture of `size` from the canvas's origin,
-    /// nothing past it, and kept.
+    /// `plan` composited over the pixels `extent`, [left, top, right,
+    /// bottom), nothing past it, and kept.
     pub(crate) fn made(
         engine: &Engine,
         composite: &Composite,
         plan: &Plan,
-        size: (u32, u32),
+        extent: [i32; 4],
         budget: Budget,
     ) -> Option<Self> {
-        Self::made_by(engine, composite, plan, size, tiles_a_page(engine)?, budget)
+        Self::made_by(engine, composite, plan, extent, tiles_a_page(engine)?, budget)
     }
 
     /// `made`, a page holding no more than `per_page` tiles — a test's
@@ -120,17 +117,19 @@ impl Kept {
         engine: &Engine,
         composite: &Composite,
         plan: &Plan,
-        size: (u32, u32),
+        extent: [i32; 4],
         per_page: usize,
         budget: Budget,
     ) -> Option<Self> {
-        let set = TileSet::paged((0, 0), size, 0, per_page)?;
+        let [left, top, right, bottom] = extent;
+        let size = (right.abs_diff(left), bottom.abs_diff(top));
+        let set = TileSet::paged((left, top), size, 0, per_page)?;
         let tiles: Vec<(i32, i32)> = set.placed_under(None).map(|(place, _)| place).collect();
         let mut pages = Vec::with_capacity(tiles.len().div_ceil(per_page));
         for page in tiles.chunks(per_page) {
-            pages.push(composite.run(engine, plan, page, extent_of(size), budget)?.out);
+            pages.push(composite.run(engine, plan, page, extent, budget)?.out);
         }
-        Some(Self { pages, set, size })
+        Some(Self { pages, set, extent })
     }
 
     /// `plan` composited again over the kept tiles `stale` names, the rest
@@ -148,7 +147,7 @@ impl Kept {
         // A run puts no more than a page takes.
         let per_page = tiles_a_page(engine)?;
         for (some, slots) in places.chunks(per_page).zip(slots.chunks(per_page)) {
-            let done = composite.run(engine, plan, some, extent_of(self.size), budget)?;
+            let done = composite.run(engine, plan, some, self.extent, budget)?;
             let mut encoder = engine.device.create_command_encoder(&Default::default());
             for (from, at) in slots.iter().enumerate() {
                 let (from, to) = (from as u64 * TILE_BYTES, u64::from(at.slot) * TILE_BYTES);
@@ -177,24 +176,25 @@ struct Stage {
 }
 
 /// The canvas's composite's halving stages, kept for the screen. One is
-/// made for a composite's size: a canvas of another size is another.
+/// made for a composite's pixels: a composite over others is another.
 pub(crate) struct Halvings {
     /// The screen's radius floor, the stages' and the camera's.
     floor: f64,
-    /// Stage 0's, the canvas's: its pixels from its origin.
-    size: (u32, u32),
+    /// Stage 0's, the canvas's composite's: [left, top, right, bottom).
+    extent: [i32; 4],
     /// Stage 1 first.
     stages: Vec<Stage>,
 }
 
 impl Halvings {
-    /// None made yet, for the composite of a canvas of `size` the screen
-    /// shows on `floor`.
-    pub(crate) fn new(size: (u32, u32), floor: f64) -> Option<Self> {
-        if size.0 == 0 || size.1 == 0 || size.0 > i32::MAX as u32 || size.1 > i32::MAX as u32 {
-            return fail(format!("a canvas of {size:?} holds no pixel to halve"));
+    /// None made yet, for the composite over the pixels `extent` — [left,
+    /// top, right, bottom) — the screen shows on `floor`.
+    pub(crate) fn new(extent: [i32; 4], floor: f64) -> Option<Self> {
+        let [left, top, right, bottom] = extent;
+        if left >= right || top >= bottom {
+            return fail(format!("a composite over {extent:?} holds no pixel to halve"));
         }
-        Some(Self { floor, size, stages: Vec::new() })
+        Some(Self { floor, extent, stages: Vec::new() })
     }
     /// The composite changed over its pixels `rect`, [left, top, right,
     /// bottom): the stages made over it are made again there when next
@@ -249,12 +249,12 @@ impl Halvings {
         budget: Budget,
     ) -> Option<()> {
         for at in 0..k {
-            let (above, size) = match at {
-                0 => (canvas, self.size),
-                _ => (self.stages[at - 1].kept.as_tiles(), self.stages[at - 1].kept.size),
+            let (above, extent) = match at {
+                0 => (canvas, self.extent),
+                _ => (self.stages[at - 1].kept.as_tiles(), self.stages[at - 1].kept.extent),
             };
             if at == self.stages.len() {
-                let made = self.made(engine, composite, above, size, budget)?;
+                let made = self.made(engine, composite, above, extent, budget)?;
                 self.stages.push(made);
                 continue;
             }
@@ -270,17 +270,18 @@ impl Halvings {
         Some(())
     }
 
-    /// The stage under `above`, a picture of `size`, made whole.
+    /// The stage under `above`, a picture over the pixels `extent`, made
+    /// whole.
     fn made(
         &self,
         engine: &Engine,
         composite: &Composite,
         above: Tiles,
-        size: (u32, u32),
+        extent: [i32; 4],
         budget: Budget,
     ) -> Option<Stage> {
         let steps = [row(self.halving())];
-        let kept = Kept::made(engine, composite, &plan(above, &steps), halved(size), budget)?;
+        let kept = Kept::made(engine, composite, &plan(above, &steps), halved(extent), budget)?;
         Some(Stage { kept, behind: None })
     }
 
@@ -320,7 +321,7 @@ impl Halvings {
 
 /// Tiles laid whole in normal over nothing through `map` — the screen's
 /// one row, and a stage's.
-fn row(map: ResampleMap) -> Step {
+pub(crate) fn row(map: ResampleMap) -> Step {
     Step::Row {
         set: 0,
         keys: None,
@@ -334,7 +335,7 @@ fn row(map: ResampleMap) -> Step {
 }
 
 /// The plan laying `steps` over `tiles`, the one tile set.
-fn plan<'a>(tiles: Tiles<'a>, steps: &'a [Step]) -> Plan<'a> {
+pub(crate) fn plan<'a>(tiles: Tiles<'a>, steps: &'a [Step]) -> Plan<'a> {
     Plan {
         pages: tiles.pages,
         sets: std::slice::from_ref(tiles.set),

@@ -15,19 +15,20 @@ use crate::fail;
 use super::halvings::{Camera, Halvings, Kept};
 use super::{Budget, Composite, Plan, TILE};
 
-/// A canvas's screen: its composite once one is laid, and the halvings the
-/// screen reads under 1/16.
+/// A canvas's screen: its composite over the pixels it covers once one is
+/// laid — the page and what lies past it, a frame's world — and the
+/// halvings the screen reads under 1/16.
 pub(crate) struct Screen {
-    size: (u32, u32),
+    extent: [i32; 4],
     canvas: Option<Kept>,
     halvings: Halvings,
 }
 
 impl Screen {
-    /// Nothing composed yet, for a canvas of `size` pixels shown on Blend's
-    /// radius `floor` at least.
-    pub(crate) fn new(size: (u32, u32), floor: f64) -> Option<Self> {
-        Some(Self { size, canvas: None, halvings: Halvings::new(size, floor)? })
+    /// Nothing composed yet, for a composite over the pixels `extent`,
+    /// [left, top, right, bottom), shown on Blend's radius `floor` at least.
+    pub(crate) fn new(extent: [i32; 4], floor: f64) -> Option<Self> {
+        Some(Self { extent, canvas: None, halvings: Halvings::new(extent, floor)? })
     }
 
     /// `plan` composited onto the kept canvas over its tiles that meet the
@@ -45,7 +46,7 @@ impl Screen {
         budget: Budget,
     ) -> Option<()> {
         match &self.canvas {
-            None => self.canvas = Some(Kept::made(engine, composite, plan, self.size, budget)?),
+            None => self.canvas = Some(Kept::made(engine, composite, plan, self.extent, budget)?),
             Some(canvas) => {
                 let meets = |tile| meets(tile, changed);
                 canvas.made_again(engine, composite, plan, meets, budget)?;

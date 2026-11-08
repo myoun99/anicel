@@ -68,7 +68,9 @@ fn frees() -> [(&'static str, fn(&'static str)); 14] {
             gives_back(name, Box::into_raw(Box::new(composited())), gpu_engine_composited_free)
         }),
         ("gpu_engine_screen_free", |name| {
-            gives_back(name, gpu_engine_screen_new(4, 4, 1.0), gpu_engine_screen_free)
+            // SAFETY: the extent holds four words.
+            let made = unsafe { gpu_engine_screen_new([0, 0, 4, 4].as_ptr(), 1.0) };
+            gives_back(name, made, gpu_engine_screen_free)
         }),
         ("gpu_engine_export_free", |name| gives_back(name, gpu_engine_export_new(), gpu_engine_export_free)),
         ("gpu_engine_readout_free", |name| {

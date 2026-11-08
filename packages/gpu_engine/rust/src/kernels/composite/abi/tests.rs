@@ -520,51 +520,64 @@ fn what_a_chain_s_call_refuses_says_why() {
 }
 
 // A screen composed and shown call by call is the screen built in Rust over
-// the same plan: a posed row laid on the canvas at its own pixels, then the
-// camera magnifying it 2× and turned past a quarter pixel. A sampling no
-// mode has is refused, saying why, and the screen frees.
+// the same plan: a posed row laid on the canvas at its own pixels over an
+// extent the camera's view cuts, then the camera magnifying it 2× and
+// turned past a quarter pixel — and so again after another plan composed
+// where it changed. A sampling no mode has is refused, saying why, and the
+// screen frees.
 #[test]
 fn a_screen_composed_and_shown_call_by_call_is_the_screen_in_rust() {
     let tiles = [tile(11, true), tile(12, false)];
     let (pool, at) = stored(&tiles);
     let (engine, composite) = (rig().engine, &rig().composite);
-    let plan = gpu_engine_plan_new();
-    // SAFETY: `plan` is live; each array holds what its call reads.
+    let (plan, again) = (gpu_engine_plan_new(), gpu_engine_plan_new());
+    // SAFETY: both plans are live; each array holds what its call reads.
     unsafe {
         gpu_engine_plan_set(plan, 0, 0, 2, 1, [at[0].word(), at[1].word()].as_ptr());
-        gpu_engine_plan_row(plan, 0, -1, -1, -1, POSED.as_ptr(), 1.0, BLEND, 2 * TILE, TILE, 65535, NORMAL);
+        gpu_engine_plan_set(again, 0, 0, 2, 1, [at[1].word(), at[0].word()].as_ptr());
+        for laid in [plan, again] {
+            gpu_engine_plan_row(laid, 0, -1, -1, -1, POSED.as_ptr(), 1.0, BLEND, 2 * TILE, TILE, 65535, NORMAL);
+        }
     }
-    let canvas = [0, 0, 2 * TILE as i32, TILE as i32];
+    // The camera reads about x 22 to 58 and y 13 to 48: it sees where these
+    // end.
+    let (extent, changed) = ([25, 15, 50, 45], [30, 20, 40, 30]);
     let camera = [0.4, 0.3, 20.25, -0.3, 0.4, 30.5, 0.0, 0.0, 1.0];
     let (size, rect) = ((64, 48), [3u32, 2, 60, 47]);
-    let screen = gpu_engine_screen_new(2 * TILE, TILE, 1.0);
+    // SAFETY: the extent holds four words.
+    let screen = unsafe { gpu_engine_screen_new(extent.as_ptr(), 1.0) };
     assert!(!screen.is_null(), "{}", last_error());
+    let mut in_rust = Screen::new(extent, 1.0).expect("screen");
+    let in_rust_camera = Camera { inverse: camera, scale: 2.0, mode: ResampleMode::Nearest, size };
     let shown = surface(size, wgpu::TextureFormat::Rgba8Unorm);
-    // SAFETY: every pointer is live and made on `engine`; each array holds
-    // what its call reads.
-    let passes = unsafe {
-        assert!(gpu_engine_screen_compose(screen, composite, engine, &pool, plan, canvas.as_ptr()), "{}", last_error());
-        gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, 64, 48, &shown, rect.as_ptr())
-    };
-    assert!(passes >= 1, "{}", last_error());
-    let mut in_rust = Screen::new((2 * TILE, TILE), 1.0).expect("screen");
-    // SAFETY: `plan` is live.
-    let planned = unsafe { &*plan };
-    let chains = planned.chained();
-    let laid = planned.plan(pool.pages(), &chains);
-    in_rust.compose(engine, composite, &laid, canvas, composite.widest()).expect("compose");
-    let want = surface(size, wgpu::TextureFormat::Rgba8Unorm);
-    let mode = ResampleMode::Nearest;
-    let camera = Camera { inverse: camera, scale: 2.0, mode, size };
-    in_rust.show(engine, composite, camera, &want, rect, composite.widest()).expect("show");
-    assert!(engine.read_texture(&shown) == engine.read_texture(&want));
+    let mut screens = Vec::new();
+    for (laid, over) in [(plan, extent), (again, changed)] {
+        // SAFETY: every pointer is live and made on `engine`; each array
+        // holds what its call reads.
+        let passes = unsafe {
+            assert!(gpu_engine_screen_compose(screen, composite, engine, &pool, laid, over.as_ptr()), "{}", last_error());
+            gpu_engine_screen_show(screen, composite, engine, camera.as_ptr(), 2.0, NEAREST, 64, 48, &shown, rect.as_ptr())
+        };
+        assert!(passes >= 1, "{}", last_error());
+        // SAFETY: `laid` is live.
+        let planned = unsafe { &*laid };
+        let chains = planned.chained();
+        let laid = planned.plan(pool.pages(), &chains);
+        in_rust.compose(engine, composite, &laid, over, composite.widest()).expect("compose");
+        let want = surface(size, wgpu::TextureFormat::Rgba8Unorm);
+        in_rust.show(engine, composite, in_rust_camera, &want, rect, composite.widest()).expect("show");
+        assert!(engine.read_texture(&shown) == engine.read_texture(&want), "over {over:?}");
+        screens.push(engine.read_texture(&shown));
+    }
+    assert!(screens[0] != screens[1], "the plan composed again shows a canvas of its own");
     // SAFETY: as above.
     let refused =
         unsafe { gpu_engine_screen_show(screen, composite, engine, IDENTITY.as_ptr(), 1.0, 2, 64, 48, &shown, rect.as_ptr()) };
     assert_eq!((refused, last_error()), (-1, "no sampling has id 2".to_string()));
-    // SAFETY: neither is used again.
+    // SAFETY: none is used again.
     unsafe {
         gpu_engine_screen_free(screen);
         gpu_engine_plan_free(plan);
+        gpu_engine_plan_free(again);
     }
 }

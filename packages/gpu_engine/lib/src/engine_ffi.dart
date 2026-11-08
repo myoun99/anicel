@@ -491,10 +491,10 @@ external int compositeShow(
   Pointer<Uint32> rect,
 );
 
-@Native<Pointer<Screen> Function(Uint32, Uint32, Double)>(
+@Native<Pointer<Screen> Function(Pointer<Int32>, Double)>(
   symbol: 'gpu_engine_screen_new',
 )
-external Pointer<Screen> screenNew(int width, int height, double floor);
+external Pointer<Screen> screenNew(Pointer<Int32> extent, double floor);
 
 @Native<Void Function(Pointer<Screen>)>(symbol: 'gpu_engine_screen_free')
 external void screenFree(Pointer<Screen> screen);

@@ -751,12 +751,18 @@ pub unsafe extern "C" fn gpu_engine_composite_show(
     shown.map_or(-1, |passes| passes as isize)
 }
 
-/// The screen of a canvas of `width` × `height` pixels, shown on Blend's
-/// radius `floor` at least — nothing composed on it yet. Null on failure;
+/// The screen of a canvas's composite over the pixels `extent` — [left,
+/// top, right, bottom): the page and what lies past it — shown on Blend's
+/// radius `floor` at least, nothing composed on it yet. Null on failure;
 /// see the last error.
+///
+/// # Safety
+/// `extent` holds four words.
 #[unsafe(no_mangle)]
-pub extern "C" fn gpu_engine_screen_new(width: u32, height: u32, floor: f64) -> *mut Screen {
-    Screen::new((width, height), floor).map_or(std::ptr::null_mut(), |screen| Box::into_raw(Box::new(screen)))
+pub unsafe extern "C" fn gpu_engine_screen_new(extent: *const i32, floor: f64) -> *mut Screen {
+    // SAFETY: see the function's contract.
+    let extent = unsafe { *extent.cast::<[i32; 4]>() };
+    Screen::new(extent, floor).map_or(std::ptr::null_mut(), |screen| Box::into_raw(Box::new(screen)))
 }
 
 /// # Safety
@@ -802,7 +808,9 @@ pub unsafe extern "C" fn gpu_engine_screen_compose(
 /// screen of `columns` × `rows` pixels at display `scale`, device pixels a
 /// canvas pixel, sampled by `sampling` (0 blend, 1 pick, 3 nearest).
 /// `target` is a surface's texture or a window's next image, as
-/// `gpu_engine_composite_show`'s is.
+/// `gpu_engine_composite_show`'s is. ⚠️No test tells `columns` from
+/// `rows`: they bound a homography's w alone (`ResampleMap::new`), and the
+/// app's camera is affine (mutant M11, 11-08).
 ///
 /// # Safety
 /// Every pointer is live, made on `engine`; `inverse` holds nine doubles

@@ -4,7 +4,7 @@
 //! against stages made anew — never against a CPU copy of a formula
 //! (`kernels/mod.rs` has why).
 
-use super::{Camera, Halvings, Kept, Tiles, onto_stage, stage_at};
+use super::{Camera, Halvings, Kept, Tiles, halved, onto_stage, stage_at};
 use crate::kernels::composite::tests::{Pool, Rig, picture_of, pixel_at, rig, surface, texel};
 use crate::device::Engine;
 use crate::kernels::composite::{TILE, TileSet};
@@ -15,6 +15,8 @@ use crate::testing::{assert_pinned, read_buffer};
 /// The canvas: odd both ways, so every stage's last column and row lie
 /// half past the one above it.
 pub(crate) const CANVAS: (u32, u32) = (517, 301);
+/// The canvas's pixels, [left, top, right, bottom): its page.
+pub(crate) const PAGE: [i32; 4] = [0, 0, CANVAS.0 as i32, CANVAS.1 as i32];
 pub(crate) const SCREEN: (u32, u32) = (64, 48);
 /// The screen's floor, 1 (`resampleRadiusFloor`), and one past the tent a
 /// half spans, 2 — what a stage reads on it is the screen's.
@@ -143,6 +145,16 @@ fn a_map_onto_a_stage_divides_the_source_rows_by_its_power_of_two() {
     assert_eq!(onto_stage(inverse, 0), inverse);
 }
 
+// ① by hand: a stage's pixels are ⌊⌋ of half the left and top above it and
+// ⌈⌉ of half the right and bottom, before the origin as past it — a stage
+// of a pasteboard's world: -3 to -2, -5 to -3, and an edge at 0 stays.
+#[test]
+fn a_stage_spans_the_pixels_half_of_the_one_above_touches() {
+    assert_eq!(halved([-3, -5, 7, 9]), [-2, -3, 4, 5]);
+    assert_eq!(halved([-4, -6, -1, 0]), [-2, -3, 0, 0]);
+    assert_eq!(halved([0, 0, 517, 301]), [0, 0, 259, 151]);
+}
+
 // ①: a stage is R1 Blend at a half of the one above on the screen's floor,
 // over ⌈⌉ of its pixels and nothing past them — 517 × 301 to 259 × 151,
 // 130 × 76, 65 × 38.
@@ -151,11 +163,11 @@ fn a_stage_is_r1_blend_at_a_half_of_the_one_above() {
     let (pages, set, picture) = composite_of(noise(71), CANVAS);
     let canvas = Tiles { pages: &pages, set: &set };
     for floor in FLOORS {
-        let mut halvings = Halvings::new(CANVAS, floor).expect("halvings");
+        let mut halvings = Halvings::new(PAGE, floor).expect("halvings");
         drop(shown(&mut halvings, canvas, camera(0.01, (1.0, 0.0), (3.0, 2.0))));
         let by_r1 = stages_by_r1(&picture, CANVAS, floor, 3);
-        let sizes: Vec<(u32, u32)> = halvings.stages.iter().map(|stage| stage.kept.size).collect();
-        assert_eq!(sizes, [(259, 151), (130, 76), (65, 38)]);
+        let extents: Vec<[i32; 4]> = halvings.stages.iter().map(|stage| stage.kept.extent).collect();
+        assert_eq!(extents, [[0, 0, 259, 151], [0, 0, 130, 76], [0, 0, 65, 38]]);
         for (stage, (picture, _)) in halvings.stages.iter().zip(&by_r1) {
             let bytes = kept_bytes(&stage.kept);
             let tiles: Vec<(i32, i32)> = stage.kept.set.placed_under(None).map(|(place, _)| place).collect();
@@ -163,8 +175,8 @@ fn a_stage_is_r1_blend_at_a_half_of_the_one_above() {
                 for x in 0..picture.width as i32 {
                     let at = (y as u32 * picture.width + x as u32) as usize;
                     let word = u32::from_le_bytes(pixel_at(&bytes, &tiles, x, y));
-                    let size = stage.kept.size;
-                    assert_eq!(word, picture.pixels[at], "{floor} {size:?} ({x}, {y})");
+                    let extent = stage.kept.extent;
+                    assert_eq!(word, picture.pixels[at], "{floor} {extent:?} ({x}, {y})");
                 }
             }
         }
@@ -191,7 +203,7 @@ fn the_screen_shows_r1_over_the_stage_it_reads() {
     let (pages, set, picture) = composite_of(noise(71), CANVAS);
     let canvas = Tiles { pages: &pages, set: &set };
     for floor in FLOORS {
-        let mut halvings = Halvings::new(CANVAS, floor).expect("halvings");
+        let mut halvings = Halvings::new(PAGE, floor).expect("halvings");
         for camera in cameras() {
             let screen = shown(&mut halvings, canvas, camera);
             let scale = camera.scale;
@@ -204,7 +216,7 @@ fn the_screen_shows_r1_over_the_stage_it_reads() {
 fn every_device_shows_the_pinned_far_screens() {
     let (pages, set, _) = composite_of(noise(71), CANVAS);
     let canvas = Tiles { pages: &pages, set: &set };
-    let mut halvings = Halvings::new(CANVAS, 1.0).expect("halvings");
+    let mut halvings = Halvings::new(PAGE, 1.0).expect("halvings");
     let screens: Vec<u8> =
         cameras().into_iter().flat_map(|camera| shown(&mut halvings, canvas, camera)).collect();
     assert_pinned("composite/screen-halved", &screens);
@@ -231,7 +243,7 @@ fn line_shown(at: i32, across: bool, scale: f64) -> Vec<u32> {
     };
     let (pages, set, _) = composite_of(line, size);
     let canvas = Tiles { pages: &pages, set: &set };
-    let mut halvings = Halvings::new(size, 1.0).expect("halvings");
+    let mut halvings = Halvings::new([0, 0, size.0 as i32, size.1 as i32], 1.0).expect("halvings");
     let screen = shown(&mut halvings, canvas, camera(scale, (1.0, 0.0), (0.0, 0.0)));
     alphas_along(&screen, across, 2)
 }
@@ -293,7 +305,7 @@ fn inside([left, top, right, bottom]: [i32; 4], x: i32, y: i32) -> bool {
 #[test]
 fn a_kept_stage_is_made_again_where_the_composite_changed() {
     let far = camera(0.01, (1.0, 0.0), (20.75, 18.0));
-    let mut kept = Halvings::new(CANVAS, 1.0).expect("halvings");
+    let mut kept = Halvings::new(PAGE, 1.0).expect("halvings");
     let mut pixel: Box<dyn Fn(i32, i32) -> u32> = Box::new(noise(71));
     let (pages, set, _) = composite_of(&pixel, CANVAS);
     drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
@@ -314,7 +326,7 @@ fn a_kept_stage_is_made_again_where_the_composite_changed() {
         let (pages, set, _) = composite_of(&pixel, CANVAS);
         let canvas = Tiles { pages: &pages, set: &set };
         drop(shown(&mut kept, canvas, far));
-        let mut anew = Halvings::new(CANVAS, 1.0).expect("halvings");
+        let mut anew = Halvings::new(PAGE, 1.0).expect("halvings");
         drop(shown(&mut anew, canvas, far));
         assert!(stage_bytes(&kept) == stage_bytes(&anew), "{stripes:?}");
     }
@@ -324,7 +336,7 @@ fn a_kept_stage_is_made_again_where_the_composite_changed() {
     let canvas = Tiles { pages: &pages, set: &set };
     drop(shown(&mut kept, canvas, far));
     assert!(stage_bytes(&kept) == made);
-    let mut anew = Halvings::new(CANVAS, 1.0).expect("halvings");
+    let mut anew = Halvings::new(PAGE, 1.0).expect("halvings");
     drop(shown(&mut anew, canvas, far));
     assert!(stage_bytes(&anew) != made, "the change not marked is one a stage shows");
 }
@@ -337,7 +349,7 @@ fn an_empty_change_marks_nothing() {
     let real = [500, 280, 502, 282];
     let red = move |x, y| if inside(real, x, y) { 0xff00_00ff } else { noise(71)(x, y) };
     let between = move |x, y| if inside([250, 140, 260, 150], x, y) { 0 } else { red(x, y) };
-    let mut kept = Halvings::new(CANVAS, 1.0).expect("halvings");
+    let mut kept = Halvings::new(PAGE, 1.0).expect("halvings");
     let (pages, set, _) = composite_of(noise(71), CANVAS);
     drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
     let (pages, set, _) = composite_of(between, CANVAS);
@@ -346,7 +358,7 @@ fn an_empty_change_marks_nothing() {
     kept.changed(real);
     drop(shown(&mut kept, Tiles { pages: &pages, set: &set }, far));
     let (pages, set, _) = composite_of(red, CANVAS);
-    let mut anew = Halvings::new(CANVAS, 1.0).expect("halvings");
+    let mut anew = Halvings::new(PAGE, 1.0).expect("halvings");
     drop(shown(&mut anew, Tiles { pages: &pages, set: &set }, far));
     assert!(stage_bytes(&kept) == stage_bytes(&anew));
 }

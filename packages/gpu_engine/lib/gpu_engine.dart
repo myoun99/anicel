@@ -812,16 +812,18 @@ Pointer<Uint32> _edges(Arena arena, (int, int, int, int) rect) {
 /// shows what is kept, the canvas's pixels magnified, so what is shown
 /// while working is the result (gpu-canonical-store ④⑤).
 class GpuScreen {
-  /// The screen of a canvas of [width] × [height] pixels on [composite]'s
-  /// engine, shown on Blend's radius [radiusFloor] at least — nothing
-  /// composed on it yet.
+  /// The screen of a canvas's composite over the pixels [extent] — [left,
+  /// top, right, bottom): the page and what lies past it — on
+  /// [composite]'s engine, shown on Blend's radius [radiusFloor] at least,
+  /// nothing composed on it yet.
   factory GpuScreen(
     GpuComposite composite,
-    int width,
-    int height, {
+    (int, int, int, int) extent, {
     double radiusFloor = 1,
   }) {
-    final screen = rust.screenNew(width, height, radiusFloor);
+    final screen = using(
+      (arena) => rust.screenNew(_rect(arena, extent), radiusFloor),
+    );
     if (screen == nullptr) {
       throw StateError(_lastError());
     }
