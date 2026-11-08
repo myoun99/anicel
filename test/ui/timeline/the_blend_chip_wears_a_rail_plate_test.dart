@@ -2,10 +2,12 @@
 // (I-57 ①): the rail's plate face around [PanelFlyoutChip], not a tooltip,
 // a Material and an InkWell of its own (~43 elements a chip, mounted anew
 // whenever a frame panel is shown again — frame-panels-build-in-one-frame,
-// 10-24). The chip is clear, so the one ink the app keeps — the hover —
-// showed on it; the face paints that hover, and the chip looks as it did —
-// but at the hover's rim, which is the shape's fill and not a clip (Q10).
-import 'dart:math' as math;
+// 10-24) — and the panels' button is that press too, so the two are one.
+//
+// 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버 ·
+// 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」): the face
+// draws a clear chip's edge by fills, its inside the ground it stands on
+// with the hover over that ([FaceGround]).
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -15,10 +17,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+import 'package:anicel/src/ui/widgets/icon_button_box.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
+import '../../helpers/drawn_shapes.dart';
 import '../../helpers/named_finders.dart';
 
 const _chipSize = Size(64, 22);
@@ -49,19 +53,48 @@ Future<Uint8List> _pixelsOf(WidgetTester tester, String key) async {
   return pixels;
 }
 
-/// The most two captures of one size part by in any channel.
-int _partedBy(Uint8List a, Uint8List b) {
-  expect(a.length, b.length, reason: 'two captures of one size');
-  var most = 0;
-  for (var i = 0; i < a.length; i++) {
-    most = math.max(most, (a[i] - b[i]).abs());
+/// The rail's chip as a row wears it, on [ground] where one is given.
+Widget _railChip({Color? ground, bool groundSaid = false}) {
+  final chip = RailFlyoutTrigger(
+    name: 'rail-chip',
+    tooltip: 'Blend',
+    shape: PanelFlyoutChip.faceOf(),
+    entriesBuilder: _entries,
+    child: const PanelFlyoutChip(label: 'Normal', expand: true),
+  );
+  return groundSaid ? FaceGround(ground: ground, child: chip) : chip;
+}
+
+/// The hover's colour as the face fills it — its alpha in whole bytes.
+Color _hoverOf(ThemeData theme) =>
+    theme.hoverColor.withAlpha((theme.hoverColor.a * 255).round());
+
+Future<RenderObject> _pumpChip(
+  WidgetTester tester,
+  ThemeData theme,
+  Widget chip, {
+  bool hovered = false,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: theme,
+      home: Material(child: Center(child: _boxed('rail', chip))),
+    ),
+  );
+  if (hovered) {
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(
+      location: tester.getCenter(find.byKey(const ValueKey<String>('rail'))),
+    );
+    await tester.pump();
   }
-  return most;
+  return tester.renderObject(find.byType(RailFlyoutTrigger));
 }
 
 void main() {
-  testWidgets('the rail chip and the InkWell chip paint the same pixels at '
-      'rest, and under the mouse but at the rim', (tester) async {
+  testWidgets('the panels\' button and the rail\'s chip are one press — the '
+      'same pixels at rest and under the mouse', (tester) async {
     const label = 'Normal';
     await tester.pumpWidget(
       MaterialApp(
@@ -70,109 +103,109 @@ void main() {
           child: Column(
             children: [
               _boxed(
-                'inkwell',
+                'button',
                 const PanelFlyoutButton(
                   label: label,
                   expand: true,
                   entriesBuilder: _entries,
                 ),
               ),
-              _boxed(
-                'rail',
-                RailFlyoutTrigger(
-                  name: 'rail-chip',
-                  tooltip: 'Blend',
-                  hoverShape: PanelFlyoutChip.shape,
-                  entriesBuilder: _entries,
-                  child: const PanelFlyoutChip(label: label, expand: true),
-                ),
-              ),
+              _boxed('rail', _railChip()),
             ],
           ),
         ),
       ),
     );
 
-    expect(
-      await _pixelsOf(tester, 'rail'),
-      await _pixelsOf(tester, 'inkwell'),
-      reason: 'at rest',
-    );
+    final rest = await _pixelsOf(tester, 'button');
+    expect(await _pixelsOf(tester, 'rail'), rest, reason: 'at rest');
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
     await mouse.addPointer(location: const Offset(-50, -50));
     Future<Uint8List> hovered(String key) async {
       await mouse.moveTo(tester.getCenter(find.byKey(ValueKey<String>(key))));
-      // Past the InkWell's hover fade: its first frame starts the fade at
-      // nothing, the next one finishes it.
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
       final pixels = await _pixelsOf(tester, key);
       await mouse.moveTo(const Offset(-50, -50));
-      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
       return pixels;
     }
 
-    final inkwellHovered = await hovered('inkwell');
-    final railHovered = await hovered('rail');
-    expect(
-      inkwellHovered,
-      isNot(await _pixelsOf(tester, 'inkwell')),
-      reason: 'the hover shows on a clear chip — or this compares nothing',
-    );
-    // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10: the rail's hover is the
-    // chip's shape FILLED, the InkWell's the box clipped to it — the two
-    // part at the rim by the raster's step, and nowhere else.
-    expect(
-      _partedBy(railHovered, inkwellHovered),
-      lessThanOrEqualTo(2),
-      reason: 'under the mouse',
-    );
+    final button = await hovered('button');
+    expect(button, isNot(rest), reason: 'fixture: the hover shows');
+    expect(await hovered('rail'), button, reason: 'under the mouse');
   });
 
-  testWidgets('the rail chip\'s hover is its shape filled, not the box '
-      'clipped to it', (tester) async {
+  testWidgets('a clear chip is drawn by fills — its inside the ground it '
+      'stands on, the hover over that', (tester) async {
     final theme = buildAppTheme();
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: theme,
-        home: Material(
-          child: Center(
-            child: _boxed(
-              'rail',
-              RailFlyoutTrigger(
-                name: 'rail-chip',
-                tooltip: 'Blend',
-                hoverShape: PanelFlyoutChip.shape,
-                entriesBuilder: _entries,
-                child: const PanelFlyoutChip(label: 'Normal', expand: true),
-              ),
-            ),
+    final shape = PanelFlyoutChip.faceOf().borderRadius
+        .resolve(TextDirection.ltr)
+        .toRSuperellipse(Offset.zero & _chipSize);
+    for (final hovered in [false, true]) {
+      final plate = await _pumpChip(
+        tester,
+        theme,
+        _railChip(),
+        hovered: hovered,
+      );
+      final inside = hovered
+          ? Color.alphaBlend(_hoverOf(theme), AppColors.surface)
+          : AppColors.surface;
+      expect(
+        plate,
+        paints
+          ..rsuperellipse(rsuperellipse: shape, color: AppColors.hairline)
+          ..rsuperellipse(
+            rsuperellipse: shape.deflate(1),
+            color: inside,
           ),
+        reason: hovered ? 'hovered' : 'at rest',
+      );
+      expect(
+        DrawnShapes.of(plate).where(
+          (drawn) => drawn.paint.style == PaintingStyle.stroke,
         ),
-      ),
-    );
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    addTearDown(mouse.removePointer);
-    await mouse.addPointer(
-      location: tester.getCenter(find.byKey(const ValueKey<String>('rail'))),
-    );
-    await tester.pump();
+        isEmpty,
+        reason: 'no stroke',
+      );
+      expect(plate, paintsExactlyCountTimes(#clipPath, 0));
+      expect(plate, paintsExactlyCountTimes(#clipRSuperellipse, 0));
+    }
+  });
 
-    final plate = tester.renderObject(find.byType(RailFlyoutTrigger));
-    final ink = theme.hoverColor;
+  testWidgets('on a ground it is told of, its inside is that ground — and on '
+      'one of no one colour its edge is a stroke', (tester) async {
+    final theme = buildAppTheme();
+    const wash = Color(0xFF334455);
     expect(
-      plate,
-      paints..rsuperellipse(
-        rsuperellipse: PanelFlyoutChip.shape.borderRadius
-            .resolve(TextDirection.ltr)
-            .toRSuperellipse(Offset.zero & _chipSize),
-        color: ink.withAlpha((ink.a * 255).round()),
+      await _pumpChip(
+        tester,
+        theme,
+        _railChip(ground: wash, groundSaid: true),
       ),
+      paints
+        ..rsuperellipse(color: AppColors.hairline)
+        ..rsuperellipse(color: wash),
     );
-    expect(plate, paintsExactlyCountTimes(#clipPath, 0));
-    expect(plate, paintsExactlyCountTimes(#clipRSuperellipse, 0));
+
+    final bare = await _pumpChip(
+      tester,
+      theme,
+      _railChip(groundSaid: true),
+      hovered: true,
+    );
+    expect(
+      DrawnShapes.of(bare).map((drawn) => drawn.paint.style),
+      containsAll([PaintingStyle.fill, PaintingStyle.stroke]),
+      reason: 'the hover filled, the edge stroked',
+    );
+    expect(
+      bare,
+      isNot(paints..rsuperellipse(color: AppColors.surface)),
+      reason: 'no inside of a ground it does not stand on',
+    );
   });
 
   testWidgets('the row\'s blend chip is the rail plate around the panels\' '
@@ -200,8 +233,8 @@ void main() {
     final chip = find.named('blend-probe');
     expect(tester.widget(chip), isA<RailPlateButton>());
     expect(
-      tester.widget<RailPlateButton>(chip).hoverShape,
-      PanelFlyoutChip.shape,
+      tester.widget<RailPlateButton>(chip).shape,
+      PanelFlyoutChip.faceOf(),
       reason: 'a clear chip shows its hover',
     );
     final host = find.byType(LayerBlendModeChip);

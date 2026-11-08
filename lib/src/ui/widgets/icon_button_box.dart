@@ -398,18 +398,63 @@ final class IconButtonLayer {
 /// and the overlay is the face's own fill, not something behind it.
 /// ⛔A button outlined on another ground wears a surface plate there —
 /// that ground is then its to say.
-ShapeDecoration iconButtonLayerOf(ShapeBorder shape, Color? overlay) =>
-    switch (shape) {
-      RoundedSuperellipseBorder(side: BorderSide(style: BorderStyle.solid)) =>
-        SuperellipseFace(
-          color: Color.alphaBlend(
-            overlay ?? const Color(0x00000000),
-            AppColors.surface,
-          ),
-          edge: shape,
-        ),
-      _ => ShapeDecoration(shape: shape, color: overlay),
-    };
+/// ↩️It said so by standing on [AppColors.surface] alone until Q12: the
+/// ground is read now ([FaceGround]) — and where it is no one colour, the
+/// edge is a stroke, as it was.
+ShapeDecoration iconButtonLayerOf(
+  ShapeBorder shape,
+  Color? overlay, {
+  required Color? ground,
+}) => switch ((shape, ground)) {
+  (
+    final RoundedSuperellipseBorder edge &&
+        RoundedSuperellipseBorder(side: BorderSide(style: BorderStyle.solid)),
+    final ground?,
+  ) =>
+    SuperellipseFace(
+      color: Color.alphaBlend(overlay ?? const Color(0x00000000), ground),
+      edge: edge,
+    ),
+  _ => ShapeDecoration(shape: shape, color: overlay),
+};
+
+/// THE GROUND A FACE STANDS ON — the one colour painted under it, which an
+/// outlined face fills its inside with, its hover and its focus over that,
+/// so its edge is drawn by fills ([iconButtonLayerOf]).
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버 ·
+/// 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」). Census
+/// 11-08: the panels, the windows, the popups, the capsules and the top
+/// strip all stand on [AppColors.surface], so that is the ground where
+/// nothing says otherwise. A row that washes itself says what it is washed
+/// to, over the ground it stands on ([washedIn]); where the ground is no
+/// one colour — a row laid over the artwork, a cell carried over whatever
+/// the pointer passes — it says null, and an outlined face there draws its
+/// edge as a stroke.
+class FaceGround extends InheritedWidget {
+  const FaceGround({super.key, required this.ground, required super.child});
+
+  /// The ground below, or null where it is no one colour.
+  final Color? ground;
+
+  /// The ground [context] stands on.
+  static Color? of(BuildContext context) => switch (context
+      .dependOnInheritedWidgetOfExactType<FaceGround>()) {
+    null => AppColors.surface,
+    final scope => scope.ground,
+  };
+
+  /// [wash] laid over the ground [context] stands on — null where that is
+  /// no one colour.
+  static Color? washedIn(BuildContext context, Color wash) =>
+      switch (of(context)) {
+        final ground? => Color.alphaBlend(wash, ground),
+        null => null,
+      };
+
+  @override
+  bool updateShouldNotify(FaceGround oldWidget) => oldWidget.ground != ground;
+}
 
 /// Where the keyboard's focus is, as an icon button shows it: not on it;
 /// on it but unseen — the pointer is driving, and M3 shows the focus layer

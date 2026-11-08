@@ -192,6 +192,7 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
         danger: danger,
         isSelected: isSelected,
       ),
+      ground: FaceGround.of(context),
       minWidth: box.minWidth,
       maxWidth: box.maxWidth,
       height: box.height,
@@ -219,6 +220,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
     required this.focus,
     required this.ink,
     required this.shape,
+    required this.ground,
     required this.minWidth,
     required this.maxWidth,
     required this.height,
@@ -238,6 +240,9 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
   final IconButtonFocus? focus;
   final IconButtonInk ink;
   final ShapeBorder shape;
+
+  /// The ground it stands on ([FaceGround]).
+  final Color? ground;
   final double minWidth;
   final double maxWidth;
   final double height;
@@ -268,7 +273,8 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
       (other.focus == IconButtonFocus.shown) ==
           (focus == IconButtonFocus.shown) &&
       other.ink == ink &&
-      other.shape == shape;
+      other.shape == shape &&
+      other.ground == ground;
 
   @override
   bool operator ==(Object other) =>
@@ -290,6 +296,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
     focus,
     ink,
     shape,
+    ground,
     minWidth,
     maxWidth,
     height,
@@ -465,7 +472,11 @@ class RenderRailGlyphFace extends RenderBox
     _layer.paint(
       context.canvas,
       offset & size,
-      iconButtonLayerOf(_spec.shape, _spec.ink.overlay(states)),
+      iconButtonLayerOf(
+        _spec.shape,
+        _spec.ink.overlay(states),
+        ground: _spec.ground,
+      ),
       _spec.textDirection,
     );
     _glyphPainter(_spec.ink.foreground(states)).paint(
@@ -519,7 +530,7 @@ class RenderRailGlyphFace extends RenderBox
 /// A CLEAR plate — an edge and a word, the blend chip's — let that ink show:
 /// the hover, the one ink the app keeps (its theme turns the splash and the
 /// held fill off, F-132 · F-138). Such a face paints it, UNDER the plate as
-/// the [InkWell] drew it ([RailPlateSpec.hoverShape]) — and, where the
+/// the [InkWell] drew it ([RailPlateSpec.shape]) — and, where the
 /// keyboard reaches the plate ([RailPlateSpec.focus]), the focus the
 /// [InkWell] drew there too.
 class RenderRailPlateFace extends RenderProxyBox
@@ -541,36 +552,52 @@ class RenderRailPlateFace extends RenderProxyBox
 
   @override
   void pressLookChanged() {
-    if (_spec.hoverShape != null) {
+    if (_spec.shape != null) {
       markNeedsPaint();
     }
   }
 
+  late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
+
+  /// The [InkWell]'s two highlights as one overlay, each with its alpha in
+  /// whole bytes as an `InkHighlight` fills it — the same hue over itself,
+  /// so their order says nothing. Null while neither shows.
+  Color? get _overlay => [
+    if (_spec.focus == IconButtonFocus.shown) _spec.focusInk,
+    if (hovered && _spec.enabled) _spec.hoverInk,
+  ].fold<Color?>(null, (under, ink) {
+    final whole = ink.withAlpha((ink.a * 255).round());
+    return under == null ? whole : Color.alphaBlend(whole, under);
+  });
+
   @override
   void paint(PaintingContext context, Offset offset) {
-    if (_spec.hoverShape case final shape?) {
-      // The [InkWell]'s two highlights, each in its own colour; the same
-      // hue over itself, so their order says nothing. Each is filled with
-      // its alpha in whole bytes, as an `InkHighlight` fills it.
-      //
+    if (_spec.shape case final shape?) {
       // 🗣️a-live-dock-frame-costs-a-whole-draw-Q10 (유저 2026-11-08, 2: 「그림
       // 안의 자르기를 『자르지 않고 그 모양으로 칠하는』 그리기로 다시 짠다」):
       // the shape is FILLED, not clipped to ([SuperellipseClip] says why).
       // ↩️It was the box clipped to the shape, as an `InkHighlight` paints
       // inside its `Material`.
-      for (final ink in [
-        if (_spec.focus == IconButtonFocus.shown) _spec.focusInk,
-        if (hovered && _spec.enabled) _spec.hoverInk,
-      ]) {
-        shape.paintInterior(
-          context.canvas,
-          offset & size,
-          Paint()..color = ink.withAlpha((ink.a * 255).round()),
-          textDirection: _spec.textDirection,
-        );
-      }
+      //
+      // 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버
+      // · 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」): an
+      // outlined plate is drawn here whole, as an outlined icon button is —
+      // its inside the ground it stands on with the hover and the focus
+      // over that, its edge by fills ([iconButtonLayerOf]).
+      _layer.paint(
+        context.canvas,
+        offset & size,
+        iconButtonLayerOf(shape, _overlay, ground: _spec.ground),
+        _spec.textDirection,
+      );
     }
     super.paint(context, offset);
+  }
+
+  @override
+  void dispose() {
+    _layer.dispose();
+    super.dispose();
   }
 
   @override
@@ -612,10 +639,11 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
     required this.semanticLabel,
     required this.textDirection,
     required this.triggerMode,
-    required this.hoverShape,
+    required this.shape,
     required this.hoverInk,
     required this.focus,
     required this.focusInk,
+    required this.ground,
   });
 
   final String tooltip;
@@ -624,9 +652,10 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   final TextDirection textDirection;
   final TooltipTriggerMode triggerMode;
 
-  /// A clear plate's hover, in this shape — null for an opaque plate, whose
-  /// ink nobody saw ([RailPlateButton.hoverShape]).
-  final RoundedSuperellipseBorder? hoverShape;
+  /// A clear plate's shape — its hover's, and an outlined one its edge's
+  /// ([RailPlateButton.shape]); null for an opaque plate, whose ink nobody
+  /// saw.
+  final RoundedSuperellipseBorder? shape;
 
   /// The hover's colour: the theme's, as an [InkWell] with none of its own
   /// takes it.
@@ -639,6 +668,10 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   /// The focus's colour: the theme's, as an [InkWell] takes it.
   final Color focusInk;
 
+  /// The ground it stands on ([FaceGround]) — what an outlined [shape]
+  /// fills its inside with.
+  final Color? ground;
+
   bool get enabled => onPressed != null;
 
   /// The plate lays itself out — the face is its size.
@@ -648,11 +681,12 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   /// Whether [other] paints the same hover.
   @override
   bool paintsAs(RailPlateSpec other) =>
-      other.hoverShape == hoverShape &&
+      other.shape == shape &&
       other.hoverInk == hoverInk &&
       (other.focus == IconButtonFocus.shown) ==
           (focus == IconButtonFocus.shown) &&
       other.focusInk == focusInk &&
+      other.ground == ground &&
       other.enabled == enabled &&
       other.textDirection == textDirection;
 
@@ -673,10 +707,11 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
     semanticLabel,
     textDirection,
     triggerMode,
-    hoverShape,
+    shape,
     hoverInk,
     focus,
     focusInk,
+    ground,
   );
 }
 
@@ -695,19 +730,19 @@ class RailPlateButton extends SingleChildRenderObjectWidget
     implements NamesItself {
   const RailPlateButton({
     super.key,
-    required this.name,
+    this.name,
     required this.tooltip,
     required this.onPressed,
     required Widget super.child,
     this.semanticLabel,
-    this.hoverShape,
+    this.shape,
     this.focus,
   });
 
   /// What a finder calls this plate — a name, as a [RailGlyphButton.name]
-  /// is and for its reason.
+  /// is and for its reason; null names nothing (a [Named]'s null).
   @override
-  final String name;
+  final String? name;
   final String tooltip;
 
   /// What a press does — the pointer's, through the claim, and a screen
@@ -718,10 +753,11 @@ class RailPlateButton extends SingleChildRenderObjectWidget
   /// What a screen reader calls it.
   final String? semanticLabel;
 
-  /// A CLEAR plate's hover, painted under it in this shape — the ink an
-  /// [InkWell] drew where the plate let it show ([RenderRailPlateFace]).
-  /// Null for an opaque plate.
-  final RoundedSuperellipseBorder? hoverShape;
+  /// A CLEAR plate's shape: its hover and its focus fill it, under the
+  /// plate, where an [InkWell] drew its ink ([RenderRailPlateFace]) — and an
+  /// OUTLINED one is the plate's edge too, drawn by the face with its
+  /// inside the ground it stands on (Q12). Null for an opaque plate.
+  final RoundedSuperellipseBorder? shape;
 
   /// Where the keyboard's focus is, for a plate the keyboard reaches — a
   /// toolbar's name cell, whose [KeyboardPress] stands above this. Null for
@@ -756,10 +792,11 @@ class RailPlateButton extends SingleChildRenderObjectWidget
     semanticLabel: semanticLabel,
     textDirection: Directionality.of(context),
     triggerMode: AppTooltipLook.triggerModeIn(context),
-    hoverShape: hoverShape,
+    shape: shape,
     hoverInk: Theme.of(context).hoverColor,
     focus: focus,
     focusInk: Theme.of(context).focusColor,
+    ground: FaceGround.of(context),
   );
 }
 

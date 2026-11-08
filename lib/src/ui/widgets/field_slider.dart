@@ -1641,7 +1641,7 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
           tooltip: AppText.strings.valueTypeIn,
           onPressed: _enabled ? _type : null,
           focus: keyboardFocus,
-          hoverShape: AppShapes.control(sizes.height),
+          shape: AppShapes.control(sizes.height),
           child: Center(
             child: Text(
               said,

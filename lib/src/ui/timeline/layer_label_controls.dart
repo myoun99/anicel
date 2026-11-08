@@ -600,7 +600,7 @@ class RailChoiceChip<T extends Enum> extends StatelessWidget {
         child: RailFlyoutTrigger(
           name: name,
           tooltip: tooltip,
-          hoverShape: PanelFlyoutChip.shape,
+          shape: PanelFlyoutChip.faceOf(),
           entriesBuilder: () => options().asFlyoutChoices(
             current: value,
             keyPrefix: optionKeyPrefix,

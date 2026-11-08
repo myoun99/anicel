@@ -12,6 +12,7 @@ import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
 import 'ellipsis_text.dart';
+import 'keyboard_press.dart';
 import 'rail_glyph_button.dart';
 
 /// One entry of a [showPanelFlyout] list.
@@ -1519,28 +1520,36 @@ class PanelFlyoutTrigger extends StatelessWidget {
 /// the face carries the real opener, as a [RailGlyphButton]'s node does.
 ///
 /// A CLEAR plate — the blend chip, a [PanelFlyoutChip] — showed its hover
-/// ink, so it hands the face the ink's shape ([hoverShape]).
+/// ink, so it hands the face its shape ([shape]): the chip's edge, which
+/// the face draws with its inside the ground (Q12).
 ///
-/// ★It IS the plate button, opening its list from where it stands.
+/// ★It IS the plate button, opening its list from where it stands — the
+/// rail's, and every panel's and window's ([PanelFlyoutButton]).
 /// ↩️It was a widget that built one — an element more on every mark, take
 /// and blend chip of every rail row, paid on every panel reopen (card
 /// frame-panels-build-in-one-frame, 2026-10-25).
 class RailFlyoutTrigger extends RailPlateButton {
   const RailFlyoutTrigger({
     super.key,
-    required super.name,
+    super.name,
     required super.tooltip,
     required this.entriesBuilder,
     required super.child,
     super.semanticLabel,
-    super.hoverShape,
+    super.shape,
+    super.focus,
+    this.enabled = true,
   }) : super(onPressed: null);
 
   final List<PanelFlyoutEntry> Function() entriesBuilder;
 
+  /// False = a dead plate: it opens nothing ([PanelFlyoutButton.enabled]).
+  final bool enabled;
+
   @override
-  VoidCallback pressIn(BuildContext context) =>
-      () => showPanelFlyout(context, entries: entriesBuilder());
+  VoidCallback? pressIn(BuildContext context) => enabled
+      ? () => showPanelFlyout(context, entries: entriesBuilder())
+      : null;
 }
 
 /// A labeled flyout trigger ('Layer', 'Frame', 'Cut'): compact bordered
@@ -1553,7 +1562,7 @@ class RailFlyoutTrigger extends RailPlateButton {
 /// wears one (law-패널), and there is no switch left to put it back with.
 /// The chip is its label and its padding, as the x-sheet's blend chip — the
 /// one that had already dropped it — always was.
-class PanelFlyoutButton extends StatelessWidget {
+class PanelFlyoutButton extends StatefulWidget {
   const PanelFlyoutButton({
     super.key,
     required this.label,
@@ -1611,39 +1620,50 @@ class PanelFlyoutButton extends StatelessWidget {
   final bool expand;
 
   @override
-  Widget build(BuildContext context) {
-    void open() => showPanelFlyout(context, entries: entriesBuilder());
-    final chip = Material(
-      color: Colors.transparent,
-      child: ControlPressClaim(
-        onPressed: enabled ? open : null,
-        child: InkWell(
-          mouseCursor: AppCursors.press,
-          customBorder: PanelFlyoutChip.shape,
-          // Null, not a no-op: an `InkWell` with a null callback stops
-          // splashing and stops taking hover, so the button reads shut to
-          // the hand as well as to the eye.
-          onTap: silentPress(enabled ? open : null),
-          child: PanelFlyoutChip(
-            label: label,
-            icon: icon,
-            fontSize: fontSize,
-            labelColor: labelColor,
-            fill: fill,
-            fontWeight: fontWeight,
-            padding: padding,
-            expand: expand,
-            axis: axis,
-            enabled: enabled,
-          ),
-        ),
+  State<PanelFlyoutButton> createState() => _PanelFlyoutButtonState();
+}
+
+/// The button's press: the rail's plate face around its chip
+/// ([RailFlyoutTrigger]), where the keyboard reaches it.
+///
+/// 🗣️a-live-dock-frame-costs-a-whole-draw-Q12 (유저 2026-11-08, 2: 「호버 ·
+/// 포커스를 테두리 안쪽 채움의 색으로 그리고, 넷도 채우기 둘로」): the face
+/// draws the chip's edge by fills, its inside the ground the button stands
+/// on with the hover and the focus over that.
+/// ↩️It was a [Material], a claim and an [InkWell] around the chip, whose
+/// hover was ink on the ground behind the chip's stroked edge.
+class _PanelFlyoutButtonState extends State<PanelFlyoutButton>
+    with KeyboardPress {
+  @override
+  VoidCallback? get keyboardPress => widget.enabled
+      ? () => showPanelFlyout(context, entries: widget.entriesBuilder())
+      : null;
+
+  @override
+  Widget build(BuildContext context) => keyboardReaches(
+    RailFlyoutTrigger(
+      tooltip: widget.tooltip ?? '',
+      entriesBuilder: widget.entriesBuilder,
+      enabled: widget.enabled,
+      focus: keyboardFocus,
+      shape: PanelFlyoutChip.faceOf(
+        fill: widget.fill,
+        enabled: widget.enabled,
       ),
-    );
-    return switch (tooltip) {
-      final tooltip? => AppTooltip(message: tooltip, child: chip),
-      null => chip,
-    };
-  }
+      child: PanelFlyoutChip(
+        label: widget.label,
+        icon: widget.icon,
+        fontSize: widget.fontSize,
+        labelColor: widget.labelColor,
+        fill: widget.fill,
+        fontWeight: widget.fontWeight,
+        padding: widget.padding,
+        expand: widget.expand,
+        axis: widget.axis,
+        enabled: widget.enabled,
+      ),
+    ),
+  );
 }
 
 /// What a [PanelFlyoutButton] SHOWS — its edge (or its ground) and its
@@ -1667,10 +1687,21 @@ class PanelFlyoutChip extends StatelessWidget {
     this.enabled = true,
   });
 
-  /// The chip's outline — its edge, and where a press's hover ink shows on
-  /// a clear chip.
-  static RoundedSuperellipseBorder get shape =>
-      AppShapes.container(AppShapes.wellRadius);
+  /// The chip's face, as the press that wears it draws it
+  /// ([RailPlateButton.shape]): a clear chip's edge — the hairline, dimmed
+  /// with the chip — whose inside is the ground it stands on; a plate's
+  /// outline alone, its ground its own ([fill]).
+  static RoundedSuperellipseBorder faceOf({Color? fill, bool enabled = true}) =>
+      AppShapes.container(
+        AppShapes.wellRadius,
+        side: fill != null
+            ? BorderSide.none
+            : BorderSide(
+                color: enabled
+                    ? AppColors.hairline
+                    : AppColors.hairline.withValues(alpha: 0.5),
+              ),
+      );
 
   /// [PanelFlyoutButton.label].
   final String label;
@@ -1740,26 +1771,18 @@ class PanelFlyoutChip extends StatelessWidget {
             ],
           );
     final ground = fill;
-    return DecoratedBox(
-      decoration: ShapeDecoration(
-        // A plate is a control that IS its ground, so the whole of it
-        // dims ([dimmedIfDisabled]); a clear chip dims its ink and edge.
-        color: ground == null
-            ? null
-            : dimmedIfDisabled(ground, enabled: enabled),
-        shape: AppShapes.container(
-          AppShapes.wellRadius,
-          side: ground != null
-              ? BorderSide.none
-              : BorderSide(
-                  color: enabled
-                      ? AppColors.hairline
-                      : AppColors.hairline.withValues(alpha: 0.5),
-                ),
-        ),
-      ),
-      child: Padding(padding: padding, child: line),
-    );
+    final body = Padding(padding: padding, child: line);
+    // A plate is a control that IS its ground, so the whole of it dims
+    // ([dimmedIfDisabled]); a clear chip's edge is the press's ([faceOf]).
+    return ground == null
+        ? body
+        : DecoratedBox(
+            decoration: ShapeDecoration(
+              color: dimmedIfDisabled(ground, enabled: enabled),
+              shape: faceOf(fill: ground),
+            ),
+            child: body,
+          );
   }
 }
 

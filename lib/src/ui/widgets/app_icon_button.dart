@@ -454,6 +454,7 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
     focus: focus,
     ink: ink,
     shape: shape,
+    ground: FaceGround.of(context),
     minWidth: minWidth,
     maxWidth: maxWidth,
     minHeight: minHeight,
@@ -474,6 +475,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
     required this.focus,
     required this.ink,
     required this.shape,
+    required this.ground,
     required this.minWidth,
     required this.maxWidth,
     required this.minHeight,
@@ -488,6 +490,9 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
   final IconButtonFocus focus;
   final IconButtonInk ink;
   final ShapeBorder shape;
+
+  /// The ground it stands on ([FaceGround]).
+  final Color? ground;
   final double minWidth;
   final double maxWidth;
   final double minHeight;
@@ -523,6 +528,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
           (focus == IconButtonFocus.shown) &&
       other.ink == ink &&
       other.shape == shape &&
+      other.ground == ground &&
       other.textDirection == textDirection;
 
   @override
@@ -542,6 +548,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
     focus,
     ink,
     shape,
+    ground,
     minWidth,
     maxWidth,
     minHeight,
@@ -680,7 +687,11 @@ class RenderIconButtonPressFace extends RenderShiftedBox
     _layer.paint(
       context.canvas,
       offset & size,
-      iconButtonLayerOf(_spec.shape, _spec.ink.overlay(_states)),
+      iconButtonLayerOf(
+        _spec.shape,
+        _spec.ink.overlay(_states),
+        ground: _spec.ground,
+      ),
       _spec.textDirection,
     );
     super.paint(context, offset);

@@ -326,7 +326,7 @@ class _PillNameCellState extends State<PillNameCell> with KeyboardPress {
           focus: keyboardFocus,
           // The app's control shape, as the [InkWell]'s `customBorder` wore
           // it — never a hand-typed radius (`app_shapes_coverage_test`).
-          hoverShape: AppShapes.control(height),
+          shape: AppShapes.control(height),
           // The [Material] the cell stood on SET the words' style — the
           // theme's body text — rather than leaving the bar's.
           child: DefaultTextStyle(

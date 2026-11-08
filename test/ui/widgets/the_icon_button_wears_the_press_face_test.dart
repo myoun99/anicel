@@ -70,6 +70,7 @@ class _OldFace extends StatelessWidget {
                 isSelected: isSelected,
               ),
               ink.overlay(states),
+              ground: AppColors.surface,
             ),
             child: Align(
               widthFactor: 1.0,

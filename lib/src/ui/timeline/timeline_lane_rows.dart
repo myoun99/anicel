@@ -849,7 +849,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
     ),
     alignment: alignment,
-    child: child,
+    // What the cell's chips stand on: its plate over the panel (Q12,
+    // [FaceGround]).
+    child: Builder(
+      builder: (context) => FaceGround(
+        ground: FaceGround.washedIn(context, plate),
+        child: child,
+      ),
+    ),
   );
 
   /// The rows' section band continues through lane rows (UI-R6 #5); the

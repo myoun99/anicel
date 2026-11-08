@@ -1194,17 +1194,26 @@ class _StoodPlate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = RailStand.standsOnRow(context) ?? row.active;
+    final plate = row._plate(colorScheme, active: active);
     return RowPlate(
       name: active ? '${row.keyPrefix}-selected-layer' : null,
       width: row._size.width,
       height: row._size.height,
       padding: row._padding,
-      decoration: row._plate(colorScheme, active: active),
+      decoration: plate,
       // The program language's word, as the conte's own rows say it.
       label: active
           ? AppText.strings.semSelectedLayer
           : AppText.strings.semLayer,
-      child: child,
+      // What the row's chips stand on: its plate over the panel — and,
+      // chromeless over the artwork, no one colour (Q12, [FaceGround]).
+      child: FaceGround(
+        ground: switch (plate?.color) {
+          final wash? => FaceGround.washedIn(context, wash),
+          null => null,
+        },
+        child: child,
+      ),
     );
   }
 }
