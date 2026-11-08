@@ -4,6 +4,8 @@ import 'package:anicel/src/services/crate_licences.dart';
 import 'package:anicel/src/services/licence_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'helpers/dart_sources.dart';
+
 /// A licence the app ships a binary under is SHOWN with it — the About ▸
 /// licenses screen registers each text in `assets/licenses/`, and each font's
 /// OFL text beside it in `assets/fonts/` (THIRD_PARTY.md: 「a component whose
@@ -64,10 +66,8 @@ void main() {
 
   test('every licence entry in lib is made through licenceEntry', () {
     final makers = [
-      for (final file in Directory('lib').listSync(recursive: true))
-        if (file is File &&
-            file.path.endsWith('.dart') &&
-            file.readAsStringSync().contains('LicenseEntryWithLineBreaks('))
+      for (final file in dartFilesUnder('lib'))
+        if (file.readAsStringSync().contains('LicenseEntryWithLineBreaks('))
           file.uri.pathSegments.last,
     ];
     expect(makers, ['licence_entry.dart']);
